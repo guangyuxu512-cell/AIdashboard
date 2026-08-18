@@ -23,3 +23,28 @@ Pydantic Schema / OpenAPI 为权威来源。
   "status": "ok"
 }
 ```
+
+## Core Domain V1 Contract
+
+统一前缀为 `/api/v1`：
+
+- `/users`：GET list、GET detail、POST create、PATCH update。
+- `/shops`：GET list、GET detail、POST create、PATCH update。
+- `/devices`：GET list、GET detail、POST create、PATCH update。
+- `/shops/{shop_id}/device-bindings`：GET list、POST create。
+- `/shops/{shop_id}/device-bindings/{device_id}`：PATCH update/disable。
+
+列表统一返回：
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "page": 1,
+  "page_size": 20
+}
+```
+
+错误统一返回 `code`、`message`、`request_id`、可选 `details`。V1 业务错误码包含 `USER_NOT_FOUND`、`SHOP_NOT_FOUND`、`DEVICE_NOT_FOUND`、`INVALID_DEVICE_BINDING`；请求校验使用 `VALIDATION_ERROR`，数据库异常统一映射为 `DATABASE_OPERATION_FAILED`。
+
+Pydantic Create、Update、Read Schema 是正式 API Contract。Frontend 的 GMV、Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。

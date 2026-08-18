@@ -5,6 +5,11 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.core.database import Base
+from app.modules.devices.models import Device
+from app.modules.shops.models import Shop, ShopDeviceBinding
+from app.modules.users.models import User
+
+_MODELS = (Device, Shop, ShopDeviceBinding, User)
 
 config = context.config
 
