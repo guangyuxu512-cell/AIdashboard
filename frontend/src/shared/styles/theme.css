@@ -5,3 +5,8 @@
 body {
   background: var(--color-bg-page);
 }
+
+::selection {
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
+}

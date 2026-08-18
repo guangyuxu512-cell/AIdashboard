@@ -1,0 +1,22 @@
+<script setup lang="ts">
+import AppDrawer from '@/shared/ui/AppDrawer.vue'
+import type { OverlaySize } from '@/shared/ui/types'
+
+withDefaults(defineProps<{ show: boolean; title: string; size?: OverlaySize }>(), {
+  size: 'md',
+})
+
+defineEmits<{ 'update:show': [value: boolean] }>()
+</script>
+
+<template>
+  <AppDrawer
+    :show="show"
+    :title="title"
+    :size="size"
+    @update:show="$emit('update:show', $event)"
+  >
+    <slot />
+    <template v-if="$slots.footer" #footer><slot name="footer" /></template>
+  </AppDrawer>
+</template>

@@ -1,0 +1,30 @@
+<script setup lang="ts">
+import AppDialog from '@/shared/ui/AppDialog.vue'
+import type { OverlaySize } from '@/shared/ui/types'
+
+withDefaults(
+  defineProps<{ show: boolean; title: string; size?: OverlaySize; submitting?: boolean }>(),
+  { size: 'md', submitting: false },
+)
+
+defineEmits<{
+  'update:show': [value: boolean]
+  submit: []
+  cancel: []
+}>()
+</script>
+
+<template>
+  <AppDialog
+    :show="show"
+    :title="title"
+    :size="size"
+    :loading="submitting"
+    positive-text="保存"
+    @update:show="$emit('update:show', $event)"
+    @confirm="$emit('submit')"
+    @cancel="$emit('cancel')"
+  >
+    <slot />
+  </AppDialog>
+</template>

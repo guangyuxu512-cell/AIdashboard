@@ -1,13 +1,85 @@
 :root {
+  color-scheme: light;
+
+  /* Brand and status */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
-  --color-text-primary: #1f2937;
-  --color-text-secondary: #6b7280;
-  --color-bg-page: #f5f7fa;
+  --color-primary-pressed: #1e40af;
+  --color-primary-soft: #eff6ff;
+  --color-info: #0ea5e9;
+  --color-info-soft: #f0f9ff;
+  --color-success: #16a34a;
+  --color-success-soft: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-error: #dc2626;
+  --color-error-soft: #fef2f2;
+
+  /* Text, surfaces and borders */
+  --color-text-primary: #172033;
+  --color-text-secondary: #5b6578;
+  --color-text-muted: #8992a3;
+  --color-text-inverse: #ffffff;
+  --color-bg-page: #f3f6fa;
   --color-bg-card: #ffffff;
-  --color-border-default: #e5e7eb;
+  --color-bg-subtle: #f8fafc;
+  --color-bg-sidebar: #111827;
+  --color-bg-sidebar-active: #25324a;
+  --color-border-default: #dfe5ee;
+  --color-border-strong: #cbd3df;
+
+  /* Typography */
+  --font-family-base: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-size-secondary: 12px;
   --font-size-body: 14px;
-  --space-page-x: 24px;
-  --space-page-y: 20px;
+  --font-size-section-title: 16px;
+  --font-size-page-title: 22px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --line-height-compact: 1.35;
+  --line-height-body: 1.6;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Controls and semantic widths */
+  --control-height-compact: 32px;
+  --control-height-default: 36px;
+  --control-height-large: 40px;
+  --field-width-xs: 120px;
+  --field-width-sm: 160px;
+  --field-width-md: 220px;
+  --field-width-lg: 320px;
+  --field-width-xl: 420px;
+
+  /* Radius, shadow and overlay sizes */
+  --radius-control: 6px;
   --radius-card: 8px;
+  --radius-dialog: 10px;
+  --shadow-card: 0 1px 3px rgb(15 23 42 / 8%);
+  --shadow-overlay: 0 18px 48px rgb(15 23 42 / 18%);
+  --dialog-width-sm: 420px;
+  --dialog-width-md: 560px;
+  --dialog-width-lg: 720px;
+  --drawer-width-sm: 420px;
+  --drawer-width-md: 560px;
+  --drawer-width-lg: 720px;
+
+  /* Application layout */
+  --layout-sidebar-width: 240px;
+  --layout-topbar-height: 56px;
+  --layout-page-padding-x: 24px;
+  --layout-page-padding-y: 20px;
+  --layout-section-gap: 16px;
+  --layout-card-gap: 16px;
+  --table-header-height: 40px;
+  --table-row-height: 44px;
 }

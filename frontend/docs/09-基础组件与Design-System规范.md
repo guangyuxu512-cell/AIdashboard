@@ -503,3 +503,28 @@ description（需要时）
 - 保持 API 简单。
 - 写最小使用示例或测试。
 - 更新本规范/组件索引（若属于通用组件）。
+
+---
+
+## 17. 阶段 0B 基础组件索引
+
+统一从 `@/shared/ui` 导入：
+
+| 组件 | 基础实现 | 项目级默认语义 |
+|---|---|---|
+| `AppButton` | `NButton` | primary / secondary / danger / text，固定 medium |
+| `AppInput` | `NInput` | 语义宽度、固定 medium |
+| `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium |
+| `AppSelect` | `NSelect` | 语义宽度、固定 medium |
+| `AppDatePicker` | `NDatePicker` | date / daterange、语义宽度 |
+| `AppTimePicker` | `NTimePicker` | 语义宽度、固定 medium |
+| `AppSwitch` | `NSwitch` | 统一 medium |
+| `AppCheckbox` | `NCheckbox` | 统一受控布尔值 |
+| `AppRadio` | `NRadioGroup` | 统一 button 模式 |
+| `AppTable` | `NDataTable` | 统一尺寸、边框和滚动入口 |
+| `AppPagination` | `NPagination` | 统一 page/pageSize 事件和页容量 |
+| `AppDialog` | `NModal` | sm / md / lg、统一按钮区 |
+| `AppDrawer` | `NDrawer` | sm / md / lg、统一内容区 |
+| `AppTabs` | `NTabs` | 统一 medium 与动画 |
+
+宽度只允许 `xs / sm / md / lg / xl / full`，弹层只允许 `sm / md / lg`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。

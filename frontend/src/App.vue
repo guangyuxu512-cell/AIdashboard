@@ -1,15 +1,42 @@
 <script setup lang="ts">
-import { NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
+import {
+  NConfigProvider,
+  NDialogProvider,
+  NGlobalStyle,
+  NLoadingBarProvider,
+  NMessageProvider,
+  NNotificationProvider,
+} from 'naive-ui'
 import { RouterView } from 'vue-router'
 
-import { naiveThemeOverrides } from '@/app/providers/naive-theme'
+import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
+import AppShell from '@/shared/components/AppShell.vue'
+import type { AppNavigationItem } from '@/shared/components/AppShell.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
+
+const navigation: AppNavigationItem[] = [
+  { key: 'foundation', label: 'UI 基础设施', to: '/' },
+]
+
+const naiveThemeOverrides = createNaiveThemeOverrides()
 </script>
 
 <template>
   <NConfigProvider :theme-overrides="naiveThemeOverrides">
     <NGlobalStyle />
-    <NMessageProvider>
-      <RouterView />
-    </NMessageProvider>
+    <NLoadingBarProvider>
+      <NDialogProvider>
+        <NNotificationProvider>
+          <NMessageProvider>
+            <AppShell :navigation="navigation">
+              <template #topbar-actions>
+                <StatusTag label="工程模式" tone="info" />
+              </template>
+              <RouterView />
+            </AppShell>
+          </NMessageProvider>
+        </NNotificationProvider>
+      </NDialogProvider>
+    </NLoadingBarProvider>
   </NConfigProvider>
 </template>
