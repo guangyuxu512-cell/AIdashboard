@@ -9,7 +9,7 @@ from app.core.config import Settings
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.models import Task
-from app.modules.tasks.schemas import TaskComplete, TaskCreate
+from app.modules.tasks.schemas import TaskComplete, TaskCreate, TaskFail
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
 from app.modules.workers.schemas import WorkerHeartbeat
@@ -136,5 +136,23 @@ def test_worker_identity_runtime_claim_result_and_lost(
             session.refresh(sleep)
             assert sleep.status == TaskStatus.LOST.value
             assert sleep.error_code == "WORKER_LEASE_EXPIRED"
+
+            rpa = task_service.create(
+                TaskCreate(
+                    target_device_id=device_a,
+                    skill_id=TaskSkillId.YINGDAO_TEST,
+                    input={},
+                ),
+            )
+            assert task_service.claim(principal_a) is not None
+            failed_rpa = task_service.fail(
+                principal_a,
+                rpa.task_id,
+                TaskFail(
+                    error_code="RPA_PROVIDER_UNAVAILABLE",
+                    error_message="No complete Yingdao trigger contract",
+                ),
+            )
+            assert failed_rpa.status == TaskStatus.FAILED.value
     finally:
         _cleanup(postgresql_engine, device_ids)

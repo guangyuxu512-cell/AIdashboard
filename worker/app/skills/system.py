@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.skills.registry import SkillDefinition, registry
+from app.skills.registry import SkillDefinition, SkillRuntime, registry
 
 
 class EchoInput(BaseModel):
@@ -33,15 +33,17 @@ registry.register(
     SkillDefinition(
         skill_id="system.echo",
         input_model=EchoInput,
-        handler=echo_skill,
+        runtime=SkillRuntime.PYTHON,
         timeout_seconds=30,
+        handler=echo_skill,
     ),
 )
 registry.register(
     SkillDefinition(
         skill_id="system.sleep",
         input_model=SleepInput,
-        handler=sleep_skill,
+        runtime=SkillRuntime.PYTHON,
         timeout_seconds=330,
+        handler=sleep_skill,
     ),
 )

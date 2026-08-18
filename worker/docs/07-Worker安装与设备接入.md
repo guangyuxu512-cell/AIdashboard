@@ -31,5 +31,5 @@
 ## 安全边界
 
 Worker `.env` 不提交 Git。Worker 不配置 `DATABASE_URL`，也不接收店铺密码、
-Cookie、Session Payload、Shell 命令或本地程序路径。当前只可执行本地注册的
-`system.echo` 与 `system.sleep`。
+Cookie、Session Payload、Shell 命令或本地程序路径。当前可识别 `system.echo`、
+`system.sleep` 与 `yingdao.test`；后者在真实影刀应用映射完成前会明确失败。

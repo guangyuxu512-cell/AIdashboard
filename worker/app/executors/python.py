@@ -1,17 +1,18 @@
 import asyncio
-import json
 import sys
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
+from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
 from app.skills import registry
+from app.skills.registry import SkillRuntime
 
 
 class PythonExecutor:
     def __init__(self, runtime_root: Path) -> None:
-        self.runtime_root = runtime_root.resolve()
+        self.runtime = TaskRuntimeManager(runtime_root)
 
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = registry.get(task.skill_id)
@@ -20,37 +21,32 @@ class PythonExecutor:
                 "SKILL_NOT_FOUND",
                 "Skill is not registered on this Worker",
             )
+        if definition.runtime is not SkillRuntime.PYTHON:
+            return self._failure(
+                "SKILL_RUNTIME_MISMATCH",
+                "Skill is not registered for the Python runtime",
+            )
 
-        task_directory = self.runtime_root / str(task.task_id)
-        if task_directory.exists():
+        try:
+            paths = self.runtime.prepare(task)
+        except TaskRuntimeExistsError:
             return self._failure(
                 "RUNTIME_DIRECTORY_EXISTS",
                 "Task runtime directory already exists",
             )
-        task_directory.mkdir(parents=True, exist_ok=False)
-        input_path = task_directory / "input.json"
-        output_path = task_directory / "output.json"
-        stdout_path = task_directory / "stdout.log"
-        stderr_path = task_directory / "stderr.log"
-        input_path.write_text(
-            json.dumps(
-                {"task_id": str(task.task_id), "params": task.input},
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
+        self.runtime.write_status(paths, status="running")
 
         with (
-            stdout_path.open("wb") as stdout_file,
-            stderr_path.open("wb") as stderr_file,
+            paths.stdout.open("wb") as stdout_file,
+            paths.stderr.open("wb") as stderr_file,
         ):
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-m",
                 "app.skills.runner",
                 task.skill_id,
-                str(input_path),
-                str(output_path),
+                str(paths.input),
+                str(paths.output),
                 stdout=stdout_file,
                 stderr=stderr_file,
             )
@@ -62,7 +58,10 @@ class PythonExecutor:
             except TimeoutError:
                 process.kill()
                 await process.wait()
-                return self._failure("SKILL_TIMEOUT", "Skill execution timed out")
+                return self._finish(
+                    paths,
+                    self._failure("SKILL_TIMEOUT", "Skill execution timed out"),
+                )
             except asyncio.CancelledError:
                 process.terminate()
                 try:
@@ -72,20 +71,32 @@ class PythonExecutor:
                     await process.wait()
                 raise
 
-        if not output_path.exists():
-            return self._failure(
-                "SKILL_PROCESS_FAILED",
-                "Skill process exited without a result",
+        if not paths.output.exists():
+            return self._finish(
+                paths,
+                self._failure(
+                    "SKILL_PROCESS_FAILED",
+                    "Skill process exited without a result",
+                ),
             )
         try:
-            return ExecutionResult.model_validate_json(
-                output_path.read_text(encoding="utf-8"),
+            result = ExecutionResult.model_validate_json(
+                paths.output.read_text(encoding="utf-8"),
             )
         except (OSError, ValidationError):
-            return self._failure(
+            result = self._failure(
                 "SKILL_OUTPUT_INVALID",
                 "Skill process returned an invalid result",
             )
+        return self._finish(paths, result)
+
+    def _finish(
+        self,
+        paths: TaskRuntimePaths,
+        result: ExecutionResult,
+    ) -> ExecutionResult:
+        self.runtime.finish(paths, result)
+        return result
 
     @staticmethod
     def _failure(code: str, message: str) -> ExecutionResult:

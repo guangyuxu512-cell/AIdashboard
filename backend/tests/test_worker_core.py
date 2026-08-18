@@ -94,6 +94,7 @@ def test_worker_token_hash_and_skill_contracts() -> None:
         TaskSkillId.SYSTEM_SLEEP,
         {"seconds": 45},
     ) == {"seconds": 45.0}
+    assert validate_skill_input(TaskSkillId.YINGDAO_TEST, {}) == {}
 
 
 def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:

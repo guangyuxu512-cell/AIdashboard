@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import null, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.devices.models import Device
@@ -103,7 +103,9 @@ class TaskRepository:
             )
             .values(
                 status=status.value,
-                result_json=result,
+                # JSONB(None) is JSON `null`, which violates the table's
+                # object-or-SQL-NULL constraint used by failed Tasks.
+                result_json=result if result is not None else null(),
                 error_code=error_code,
                 error_message=error_message,
                 lease_until=None,

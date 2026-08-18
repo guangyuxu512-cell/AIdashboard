@@ -6,7 +6,10 @@ from pydantic import ValidationError
 
 from app.client import WorkerApiClient
 from app.config import get_settings
-from app.executors import PythonExecutor
+from app.executors import ExecutorRouter, PythonExecutor, RPAExecutor
+from app.providers.yingdao import UnavailableYingdaoAdapter
+from app.skills import registry
+from app.skills.registry import SkillProvider, SkillRuntime
 from app.worker import Worker
 
 
@@ -19,10 +22,21 @@ async def run_worker() -> None:
             loop.add_signal_handler(signal_name, stop_event.set)
         except NotImplementedError:
             pass
+    executor = ExecutorRouter(
+        registry,
+        {
+            SkillRuntime.PYTHON: PythonExecutor(settings.runtime_root),
+            SkillRuntime.RPA: RPAExecutor(
+                settings.runtime_root,
+                registry,
+                {SkillProvider.YINGDAO: UnavailableYingdaoAdapter()},
+            ),
+        },
+    )
     worker = Worker(
         settings,
         WorkerApiClient(settings),
-        PythonExecutor(settings.runtime_root),
+        executor,
     )
     await worker.run(stop_event)
 

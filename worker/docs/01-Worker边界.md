@@ -8,7 +8,7 @@ Heartbeat
 ↓
 每 3 秒 Poll / 原子 Claim 自身 Task
 ↓
-按本地 Skill Registry 选择 PythonExecutor
+按本地 Skill Registry 选择 PythonExecutor / RPAExecutor
 ↓
 执行 Skill 并续租
 ↓
@@ -24,4 +24,7 @@ Worker：
 - 不获取店铺密码、Cookie 或 Session Payload。
 - 不承载 Vue/Electron UI。
 - 不接受命令、Shell、脚本路径或 EXE 路径。
-- 3B-Lite 只存在 PythonExecutor，不实现 RPA、Browser、Node 或 EXE Executor。
+- 当前存在 PythonExecutor 与 RPAExecutor；Browser、Node、EXE Executor 尚未实现。
+
+Worker 只处理执行目标为 `WORKER` 的 Action。AI、财务、报表和常规订单/商品数据
+处理默认属于 Backend Server Modules，不应为了统一入口而绕经 Worker。

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,19 +21,31 @@ def test_worker_configuration_defaults() -> None:
     assert settings.device_token.get_secret_value() == "secret-token"
 
 
-def test_skill_registry_executes_only_echo_and_sleep() -> None:
+def test_python_process_runner_keeps_echo_sleep_and_blocks_unknown_skills() -> None:
     task_id = uuid4()
     echo = execute(
         "system.echo",
-        {"task_id": str(task_id), "params": {"message": "hello"}},
+        {
+            "task_id": str(task_id),
+            "skill_id": "system.echo",
+            "params": {"message": "hello"},
+        },
     )
     sleep = execute(
         "system.sleep",
-        {"task_id": str(task_id), "params": {"seconds": 0.01}},
+        {
+            "task_id": str(task_id),
+            "skill_id": "system.sleep",
+            "params": {"seconds": 0.01},
+        },
     )
     unknown = execute(
         "system.command",
-        {"task_id": str(task_id), "params": {"command": "whoami"}},
+        {
+            "task_id": str(task_id),
+            "skill_id": "system.command",
+            "params": {"command": "whoami"},
+        },
     )
 
     assert echo.status is ExecutionStatus.SUCCESS
@@ -59,6 +72,14 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
     assert (task_directory / "output.json").exists()
     assert (task_directory / "stdout.log").exists()
     assert (task_directory / "stderr.log").exists()
+    assert (task_directory / "status.json").exists()
+    assert (task_directory / "artifacts").is_dir()
+    runtime_input = json.loads((task_directory / "input.json").read_text("utf-8"))
+    assert runtime_input == {
+        "task_id": str(task.task_id),
+        "skill_id": "system.echo",
+        "params": {"message": "hello"},
+    }
 
     duplicate = asyncio.run(PythonExecutor(tmp_path).execute(task))
     assert duplicate.status is ExecutionStatus.FAILED

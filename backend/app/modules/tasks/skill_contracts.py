@@ -17,9 +17,14 @@ class SleepSkillInput(BaseModel):
     seconds: float = Field(gt=0, le=300)
 
 
+class YingdaoTestSkillInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 SKILL_INPUT_MODELS: dict[TaskSkillId, type[BaseModel]] = {
     TaskSkillId.SYSTEM_ECHO: EchoSkillInput,
     TaskSkillId.SYSTEM_SLEEP: SleepSkillInput,
+    TaskSkillId.YINGDAO_TEST: YingdaoTestSkillInput,
 }
 
 

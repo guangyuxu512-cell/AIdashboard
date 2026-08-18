@@ -17,6 +17,22 @@ class OperationRecorder:
     def drop_table(self, name: str, *args: object, **kwargs: object) -> None:
         self.calls.append(("drop_table", name))
 
+    def create_check_constraint(
+        self,
+        name: str,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.calls.append(("create_check_constraint", name))
+
+    def drop_constraint(
+        self,
+        name: str,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.calls.append(("drop_constraint", name))
+
 
 def test_core_domain_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
     migration = importlib.import_module(
@@ -94,4 +110,25 @@ def test_worker_core_lite_migration_upgrade_and_downgrade(monkeypatch: object) -
         ("drop_table", "tasks"),
         ("drop_table", "device_runtime"),
         ("drop_table", "worker_device_credentials"),
+    ]
+
+
+def test_yingdao_skill_constraint_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260820_0004_yingdao_test_skill",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls == [
+        ("drop_constraint", "ck_tasks_skill_id"),
+        ("create_check_constraint", "ck_tasks_skill_id"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_constraint", "ck_tasks_skill_id"),
+        ("create_check_constraint", "ck_tasks_skill_id"),
     ]

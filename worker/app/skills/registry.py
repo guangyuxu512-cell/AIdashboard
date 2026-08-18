@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
@@ -8,12 +9,30 @@ from pydantic import BaseModel
 SkillHandler = Callable[[BaseModel], dict[str, Any]]
 
 
+class SkillRuntime(StrEnum):
+    PYTHON = "python"
+    RPA = "rpa"
+
+
+class SkillProvider(StrEnum):
+    YINGDAO = "yingdao"
+
+
 @dataclass(frozen=True)
 class SkillDefinition:
     skill_id: str
     input_model: type[BaseModel]
-    handler: SkillHandler
+    runtime: SkillRuntime
     timeout_seconds: float
+    handler: SkillHandler | None = None
+    provider: SkillProvider | None = None
+    provider_app_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.runtime is SkillRuntime.PYTHON and self.handler is None:
+            raise ValueError("Python Skill requires a local handler")
+        if self.runtime is SkillRuntime.RPA and self.provider is None:
+            raise ValueError("RPA Skill requires a provider")
 
 
 class SkillRegistry:

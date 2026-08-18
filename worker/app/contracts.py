@@ -31,4 +31,5 @@ class SkillProcessInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: UUID
+    skill_id: str
     params: dict[str, Any]

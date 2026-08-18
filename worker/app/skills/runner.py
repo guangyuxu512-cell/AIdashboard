@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.contracts import ExecutionResult, ExecutionStatus, SkillProcessInput
 from app.skills import registry
+from app.skills.registry import SkillRuntime
 
 
 def execute(skill_id: str, payload: dict[str, Any]) -> ExecutionResult:
@@ -17,12 +18,20 @@ def execute(skill_id: str, payload: dict[str, Any]) -> ExecutionResult:
             error_code="SKILL_NOT_FOUND",
             error_message="Skill is not registered on this Worker",
         )
+    if definition.runtime is not SkillRuntime.PYTHON or definition.handler is None:
+        return ExecutionResult(
+            status=ExecutionStatus.FAILED,
+            error_code="SKILL_RUNTIME_MISMATCH",
+            error_message="Skill cannot run in the Python process runtime",
+        )
     try:
         process_input = SkillProcessInput.model_validate(payload)
+        if process_input.skill_id != skill_id:
+            raise ValueError("Skill ID mismatch")
         skill_input = definition.input_model.model_validate(process_input.params)
         result = definition.handler(skill_input)
         return ExecutionResult(status=ExecutionStatus.SUCCESS, result=result)
-    except ValidationError:
+    except (ValidationError, ValueError):
         return ExecutionResult(
             status=ExecutionStatus.FAILED,
             error_code="SKILL_INPUT_INVALID",

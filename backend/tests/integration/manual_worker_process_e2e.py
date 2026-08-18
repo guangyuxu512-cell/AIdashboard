@@ -207,6 +207,16 @@ def main() -> int:
                 wait_worker(client, device_a, "online", 20)
                 print("E2E echo PENDING-RUNNING-SUCCESS verified")
 
+                yingdao = create_task(client, device_a, "yingdao.test", {})
+                yingdao_result = wait_task(
+                    client,
+                    yingdao["task_id"],
+                    "failed",
+                    25,
+                )
+                assert yingdao_result["error_code"] == "RPA_PROVIDER_UNAVAILABLE"
+                print("E2E unavailable Yingdao ended FAILED without RUNNING residue")
+
                 sleep = create_task(
                     client,
                     device_a,
