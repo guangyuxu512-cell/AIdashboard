@@ -8,6 +8,9 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.devices.schemas import DeviceCreate, DeviceRead, DeviceUpdate
 from app.modules.devices.service import DeviceService
+from app.modules.devices.models import Device
+from app.modules.workers.schemas import DeviceRuntimeRead
+from app.modules.workers.service import WorkerService
 from app.shared.pagination import Page, PaginationParams
 
 
@@ -27,14 +30,36 @@ def get_device_service(
     return DeviceService(session)
 
 
+def get_worker_service(
+    session: Annotated[Session, Depends(get_database_session)],
+) -> WorkerService:
+    return WorkerService(session)
+
+
+def to_device_read(
+    device: Device,
+    runtime: DeviceRuntimeRead | None,
+) -> DeviceRead:
+    return DeviceRead.model_validate(device).model_copy(
+        update={"worker_runtime": runtime},
+    )
+
+
 @router.get("", response_model=Page[DeviceRead])
 def list_devices(
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[DeviceService, Depends(get_device_service)],
+    worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> Page[DeviceRead]:
     devices, total = service.list(offset=pagination.offset, limit=pagination.page_size)
+    runtimes = worker_service.get_runtime_reads(
+        [device.device_id for device in devices],
+    )
     return Page[DeviceRead](
-        items=[DeviceRead.model_validate(device) for device in devices],
+        items=[
+            to_device_read(device, runtimes.get(device.device_id))
+            for device in devices
+        ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -45,8 +70,11 @@ def list_devices(
 def get_device(
     device_id: UUID,
     service: Annotated[DeviceService, Depends(get_device_service)],
+    worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> DeviceRead:
-    return DeviceRead.model_validate(service.get(device_id))
+    device = service.get(device_id)
+    runtime = worker_service.get_runtime_reads([device_id]).get(device_id)
+    return to_device_read(device, runtime)
 
 
 @router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)
@@ -54,7 +82,7 @@ def create_device(
     data: DeviceCreate,
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> DeviceRead:
-    return DeviceRead.model_validate(service.create(data))
+    return to_device_read(service.create(data), None)
 
 
 @router.patch("/{device_id}", response_model=DeviceRead)
@@ -63,4 +91,4 @@ def update_device(
     data: DeviceUpdate,
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> DeviceRead:
-    return DeviceRead.model_validate(service.update(device_id, data))
+    return to_device_read(service.update(device_id, data), None)

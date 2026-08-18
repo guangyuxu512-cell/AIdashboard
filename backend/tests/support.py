@@ -23,6 +23,7 @@ class FakeSession:
             "device_id",
             "credential_id",
             "session_id",
+            "task_id",
         ):
             if hasattr(entity, identifier) and getattr(entity, identifier) is None:
                 setattr(entity, identifier, uuid4())

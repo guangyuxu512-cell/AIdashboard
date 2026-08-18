@@ -18,6 +18,7 @@ export function useDeviceListQuery(
     queryKey: computed(() => deviceQueryKeys.list(toValue(params))),
     queryFn: () => deviceDataSource.list(toValue(params)),
     enabled: computed(() => toValue(enabled)),
+    refetchInterval: deviceDataSource.mode === 'real' ? 15_000 : false,
   })
 }
 
@@ -28,6 +29,7 @@ export function useDeviceDetailQuery(
     queryKey: computed(() => deviceQueryKeys.detail(toValue(deviceId))),
     queryFn: () => deviceDataSource.get(toValue(deviceId)!),
     enabled: computed(() => Boolean(toValue(deviceId))),
+    refetchInterval: deviceDataSource.mode === 'real' ? 15_000 : false,
   })
 }
 

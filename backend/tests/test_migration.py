@@ -72,3 +72,26 @@ def test_auth_domain_migration_upgrade_and_downgrade(monkeypatch: object) -> Non
         ("drop_table", "shop_credential_bindings"),
         ("drop_table", "platform_credentials"),
     ]
+
+
+def test_worker_core_lite_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260819_0003_worker_core_lite",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "worker_device_credentials"),
+        ("create_table", "device_runtime"),
+        ("create_table", "tasks"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "tasks"),
+        ("drop_table", "device_runtime"),
+        ("drop_table", "worker_device_credentials"),
+    ]

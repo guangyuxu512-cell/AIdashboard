@@ -7,6 +7,10 @@ name = "ecommerce-control-worker"
 version = "0.1.0"
 description = "Worker skeleton for the ecommerce AI control center"
 requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28,<1",
+    "pydantic-settings>=2.7,<3",
+]
 
 [project.optional-dependencies]
 dev = [

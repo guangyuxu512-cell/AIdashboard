@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.workers.schemas import DeviceRuntimeRead
+
 
 class DeviceCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -39,5 +41,6 @@ class DeviceRead(BaseModel):
     enabled: bool
     location: str | None
     note: str | None
+    worker_runtime: DeviceRuntimeRead | None = None
     created_at: datetime
     updated_at: datetime

@@ -19,6 +19,9 @@ CORE_TABLES = {
     "platform_credentials",
     "shop_credential_bindings",
     "shop_sessions",
+    "worker_device_credentials",
+    "device_runtime",
+    "tasks",
 }
 DESTRUCTIVE_TEST_DATABASE = "control_center_dev"
 

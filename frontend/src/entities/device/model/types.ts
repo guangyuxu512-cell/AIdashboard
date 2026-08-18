@@ -16,7 +16,7 @@ export interface DeviceCapabilityViewModel {
 /**
  * 设备中心第一版的前端展示模型。
  *
- * 心跳、资源、Worker 版本及能力字段只服务本地 Fixture，不是 Worker 或 Backend 契约。
+ * Real API 只提供 Worker 在线状态、版本与最近心跳；资源、当前任务及能力仍只服务 Fixture。
  */
 export interface DeviceListItemViewModel {
   deviceId: string

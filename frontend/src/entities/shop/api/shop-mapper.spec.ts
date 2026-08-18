@@ -32,6 +32,7 @@ describe('shop backend DTO mapper', () => {
             enabled: true,
             location: null,
             note: null,
+            worker_runtime: null,
             created_at: '2026-08-18T10:00:00+00:00',
             updated_at: '2026-08-18T10:00:00+00:00',
           },

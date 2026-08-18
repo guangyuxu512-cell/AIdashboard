@@ -9,16 +9,21 @@ from app.modules.credentials.models import PlatformCredential, ShopCredentialBin
 from app.modules.devices.models import Device
 from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
+from app.modules.tasks.models import Task
 from app.modules.users.models import User
+from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
 
 _MODELS = (
     Device,
+    DeviceRuntime,
     PlatformCredential,
     Shop,
     ShopCredentialBinding,
     ShopDeviceBinding,
     ShopSession,
+    Task,
     User,
+    WorkerDeviceCredential,
 )
 
 config = context.config

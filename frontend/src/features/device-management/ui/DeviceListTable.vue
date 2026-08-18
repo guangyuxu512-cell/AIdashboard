@@ -60,9 +60,11 @@ const columns: DataTableColumns<DeviceListItemViewModel> = [
     width: 180,
     ellipsis: { tooltip: true },
     render: (device) =>
-      device.runtimeStatus === 'unavailable'
-        ? '未接入'
-        : (device.currentTaskName ?? '空闲'),
+      device.dataSource === 'real'
+        ? '未提供'
+        : device.runtimeStatus === 'unavailable'
+          ? '未接入'
+          : (device.currentTaskName ?? '空闲'),
   },
   { title: 'CPU', key: 'cpuUsageDisplay', width: 80, align: 'right' },
   { title: '内存', key: 'memoryUsageDisplay', width: 80, align: 'right' },

@@ -12,20 +12,23 @@ function formatDateTime(value: string): string {
 }
 
 export function mapDeviceDto(dto: DeviceReadDto): DeviceListItemViewModel {
+  const runtime = dto.worker_runtime
   return {
     deviceId: dto.device_id,
     deviceName: dto.display_name,
     enabled: dto.enabled,
     enabledStatus: dto.enabled ? 'enabled' : 'disabled',
-    runtimeStatus: 'unavailable',
+    runtimeStatus: runtime?.connection_status ?? 'unavailable',
     location: dto.location || '未设置',
     note: dto.note || '',
     systemDisplay: '—',
-    workerVersionDisplay: '未接入',
+    workerVersionDisplay: runtime?.worker_version ?? '未接入',
     currentTaskName: null,
     cpuUsageDisplay: '—',
     memoryUsageDisplay: '—',
-    lastHeartbeatAtDisplay: '未接入',
+    lastHeartbeatAtDisplay: runtime
+      ? formatDateTime(runtime.last_seen_at)
+      : '未接入',
     tags: [],
     capabilities: [],
     updatedAtDisplay: formatDateTime(dto.updated_at),

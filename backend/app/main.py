@@ -1,3 +1,7 @@
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
+
 from fastapi import FastAPI
 
 from app.core.exceptions import install_exception_handlers
@@ -6,11 +10,30 @@ from app.modules.credentials.api import router as credentials_router
 from app.modules.devices.api import router as devices_router
 from app.modules.sessions.api import router as sessions_router
 from app.modules.shops.api import router as shops_router
+from app.modules.tasks.api import router as tasks_router
+from app.modules.tasks.reconcile import reconcile_lost_tasks_forever
+from app.modules.tasks.worker_api import router as worker_tasks_router
 from app.modules.users.api import router as users_router
+from app.modules.workers.api import router as workers_router
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    del application
+    reconcile_task = asyncio.create_task(reconcile_lost_tasks_forever())
+    try:
+        yield
+    finally:
+        reconcile_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reconcile_task
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="Ecommerce AI Control Center Backend")
+    application = FastAPI(
+        title="Ecommerce AI Control Center Backend",
+        lifespan=lifespan,
+    )
     install_exception_handlers(application)
     application.include_router(health_router)
     application.include_router(users_router)
@@ -18,6 +41,9 @@ def create_app() -> FastAPI:
     application.include_router(devices_router)
     application.include_router(credentials_router)
     application.include_router(sessions_router)
+    application.include_router(tasks_router)
+    application.include_router(workers_router)
+    application.include_router(worker_tasks_router)
     return application
 
 

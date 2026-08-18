@@ -71,9 +71,11 @@ defineEmits<{ 'update:show': [value: boolean]; retry: [] }>()
           </NDescriptionsItem>
           <NDescriptionsItem label="当前任务">
             {{
-              device.runtimeStatus === 'unavailable'
-                ? '未接入'
-                : (device.currentTaskName ?? '无运行中任务')
+              device.dataSource === 'real'
+                ? '未提供'
+                : device.runtimeStatus === 'unavailable'
+                  ? '未接入'
+                  : (device.currentTaskName ?? '无运行中任务')
             }}
           </NDescriptionsItem>
           <NDescriptionsItem label="最近心跳">
