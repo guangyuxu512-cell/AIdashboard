@@ -60,7 +60,7 @@ douyin
 pdd
 ```
 
-因此淘宝、视频号在平台栏正常展示，在 Create Shop Select 中显示“待接入”并禁用。Frontend 不得提交后再依赖 Backend 报错，也不得扩展 DTO、Query、Mapper 或数据库枚举。
+因此淘宝、视频号在平台栏正常展示，在 Legacy Create Shop Select 中显示“待接入”并禁用。正式 Onboarding Step 1 则按 `registered` 允许选择所有已注册平台，再通过独立 capability 在后续步骤显示“登录执行能力尚未接入”。Frontend 不得提交后再依赖 Backend 报错，也不得扩展 DTO、Query、Mapper 或数据库枚举。
 
 平台栏在 Backend 没有正式筛选参数时，只筛选当前已加载 ViewModel，并必须在代码中明确为 client-side filter。
 

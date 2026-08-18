@@ -44,3 +44,5 @@ Session 维护是状态驱动：有效则复用；无效或需刷新时，由授
 ## 6. 敏感数据边界
 
 Frontend 只读脱敏账号及 Session 元数据。Worker 未来也不能枚举凭证，只能在合法 Task 和设备授权范围内临时获取所需 Secret。密码、验证码、Cookie、Token、Session payload 不得进入普通 API、日志、错误或审计内容。
+
+账号密码是 Session 恢复的基础能力：Browser Profile 或 Cookie 失效后，授权 Device 只能在合法 Task 范围内临时取得目标 Shop 的 Credential，完成重新登录与验证，再写入更高版本 Session。Frontend Onboarding 在 Shop 尚未由平台探测创建前只收集短生命周期表单值，不伪造 `shop_id` 或提前调用 Credential Create。

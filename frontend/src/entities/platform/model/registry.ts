@@ -102,6 +102,13 @@ export interface PlatformSelectOption {
   disabled: boolean
 }
 
+export interface PlatformOnboardingOption {
+  [key: string]: unknown
+  label: string
+  value: PlatformCode
+  disabled: false
+}
+
 export const PLATFORM_ALL_NAV_ITEM = {
   code: 'all',
   label: '全部平台',
@@ -134,7 +141,20 @@ export function getPlatformCreateOptions(
     }))
 }
 
+export function getPlatformOnboardingOptions(
+  registry: ReadonlyArray<PlatformDefinition> = PLATFORM_REGISTRY,
+): PlatformOnboardingOption[] {
+  return registry
+    .filter((platform) => platform.enabled && platform.registered)
+    .map((platform) => ({
+      label: platform.label,
+      value: platform.code as PlatformCode,
+      disabled: false,
+    }))
+}
+
 export const PLATFORM_NAVIGATION_ITEMS = PLATFORM_REGISTRY.filter(
   (platform) => platform.enabled,
 )
 export const PLATFORM_CREATE_OPTIONS = getPlatformCreateOptions()
+export const PLATFORM_ONBOARDING_OPTIONS = getPlatformOnboardingOptions()

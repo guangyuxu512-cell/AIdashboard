@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:real": "vite --host 127.0.0.1 --mode real",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "eslint .",

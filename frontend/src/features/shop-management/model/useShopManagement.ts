@@ -39,6 +39,7 @@ export function useShopManagement() {
   const selectedShopIds = ref<string[]>([])
   const detailShopId = ref<string | null>(null)
   const detailVisible = ref(false)
+  const onboardingVisible = ref(false)
   const formVisible = ref(false)
   const formMode = ref<ShopFormMode>('create')
   const formInitialValue = ref<ShopFormViewModel | null>(null)
@@ -112,6 +113,10 @@ export function useShopManagement() {
   }
 
   function openCreate(): void {
+    onboardingVisible.value = true
+  }
+
+  function openLegacyCreate(): void {
     formMode.value = 'create'
     editingShopId.value = null
     formInitialValue.value = null
@@ -162,6 +167,7 @@ export function useShopManagement() {
     selectedShopIds,
     selectedShopCount,
     detailVisible,
+    onboardingVisible,
     formVisible,
     formMode,
     formInitialValue,
@@ -186,6 +192,7 @@ export function useShopManagement() {
     retryDetail: detailQuery.refetch,
     openDetail,
     openCreate,
+    openLegacyCreate,
     openEdit,
     editFromDetail,
     saveShop,

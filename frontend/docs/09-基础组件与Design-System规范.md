@@ -549,6 +549,8 @@ description（需要时）
 
 阶段 2D-4 为 `AppSelect` 增加通用 `renderLabel` 透传，用于 Platform Registry 等领域展示在原有 Select 中组合图标、Label 和支持状态；不得为图标选项创建第二套 Select。
 
+阶段 3A-1 增加 `AppOverlayHost`，由 AppShell 唯一渲染。`AppDrawer`、`AppDialog` 与 `NDialogProvider` 默认挂载到该 Host，使所有业务弹层只覆盖 Topbar 下方 Workspace。基础组件允许为隔离测试显式覆盖 `to`，业务页面不得自行选择 Teleport 容器。
+
 ## 18. Design System V2 公共视觉规则
 
 - `ThemeSelector` 是 Topbar 的紧凑主题入口，通过 Naive `NDropdown` 组合既有 `AppButton`，不建立第二套 Button/Dropdown。

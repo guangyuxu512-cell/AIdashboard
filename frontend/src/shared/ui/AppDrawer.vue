@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { NDrawer, NDrawerContent } from 'naive-ui'
 
+import { APP_OVERLAY_HOST_SELECTOR } from './overlay-host'
 import type { OverlaySize } from './types'
 
 const drawerWidths: Record<OverlaySize, string> = {
@@ -15,11 +16,13 @@ withDefaults(
     title?: string
     size?: OverlaySize
     closable?: boolean
+    to?: string | HTMLElement
   }>(),
   {
     title: '',
     size: 'md',
     closable: true,
+    to: APP_OVERLAY_HOST_SELECTOR,
   },
 )
 
@@ -33,6 +36,7 @@ defineEmits<{
     :show="show"
     :width="drawerWidths[size]"
     :mask-closable="false"
+    :to="to"
     @update:show="$emit('update:show', $event)"
   >
     <NDrawerContent :title="title" :closable="closable">

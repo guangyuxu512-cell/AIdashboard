@@ -8,6 +8,7 @@ import type {
   CredentialStatusViewModel,
   CredentialUpdateInput,
 } from '../model/types'
+import { maskCredentialIdentifier } from '../model/display'
 import type { CredentialStatusReadDto } from './contracts'
 import { credentialApi } from './credential-api'
 
@@ -62,7 +63,7 @@ export function createMockCredentialDataSource(): CredentialDataSource {
       const status: CredentialStatusViewModel = {
         credentialId: `credential-fixture-${sequence++}`,
         platform: input.platform,
-        maskedIdentifier: maskFixtureIdentifier(input.loginIdentifier),
+        maskedIdentifier: maskCredentialIdentifier(input.loginIdentifier),
         configured: true,
         passwordConfigured: true,
         enabled: true,
@@ -81,7 +82,7 @@ export function createMockCredentialDataSource(): CredentialDataSource {
       const updated: CredentialStatusViewModel = {
         ...existing,
         maskedIdentifier: input.loginIdentifier
-          ? maskFixtureIdentifier(input.loginIdentifier)
+          ? maskCredentialIdentifier(input.loginIdentifier)
           : existing.maskedIdentifier,
         preferredVerificationChannel:
           input.preferredVerificationChannel ??
@@ -92,16 +93,6 @@ export function createMockCredentialDataSource(): CredentialDataSource {
       return updated
     },
   }
-}
-
-function maskFixtureIdentifier(value: string): string {
-  if (value.includes('@')) {
-    const [local = '', domain = ''] = value.split('@')
-    return `${local.slice(0, 3)}***@${domain}`
-  }
-  if (/^\d{7,}$/.test(value))
-    return `${value.slice(0, 3)}****${value.slice(-4)}`
-  return `${value.slice(0, 2)}***${value.slice(-2)}`
 }
 
 const realCredentialDataSource: CredentialDataSource = {

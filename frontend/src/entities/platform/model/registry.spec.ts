@@ -4,6 +4,7 @@ import {
   getPlatformCreateOptions,
   getPlatformDefinition,
   getPlatformNavigationItems,
+  getPlatformOnboardingOptions,
   PLATFORM_CREATE_OPTIONS,
   PLATFORM_REGISTRY,
   type PlatformDefinition,
@@ -22,6 +23,15 @@ describe('Platform Registry', () => {
         (item) => item.value,
       ),
     ).toEqual(['taobao', 'wechat_channels'])
+    expect(getPlatformOnboardingOptions().map((item) => item.value)).toEqual([
+      'douyin',
+      'pdd',
+      'taobao',
+      'wechat_channels',
+    ])
+    expect(getPlatformOnboardingOptions().every((item) => !item.disabled)).toBe(
+      true,
+    )
   })
 
   it('makes a newly registered platform visible to every derived data source', () => {
@@ -48,6 +58,11 @@ describe('Platform Registry', () => {
       label: '测试平台',
       value: 'test-platform',
       disabled: true,
+    })
+    expect(getPlatformOnboardingOptions(registry)).toContainEqual({
+      label: '测试平台',
+      value: 'test-platform',
+      disabled: false,
     })
     expect(getPlatformDefinition('test-platform', registry)).toEqual(
       testPlatform,

@@ -114,6 +114,12 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
 
   await page.getByRole('button', { name: '查看' }).first().click()
   await expect(page.getByText('星河服饰旗舰店').last()).toBeVisible()
+  const drawerSafeArea = await page.evaluate(() => {
+    const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
+    const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
+    return { topbarBottom: topbar?.bottom, drawerTop: drawer?.top }
+  })
+  expect(drawerSafeArea.drawerTop).toBe(drawerSafeArea.topbarBottom)
   const drawerShopId = await page
     .locator('.shop-detail__id')
     .first()
@@ -257,26 +263,55 @@ test('fills the remaining workspace and pins pagination for multi-row, one-row a
   expect(multiRowLayout.workspaceBottomGap).toBeLessThanOrEqual(20)
 })
 
-test('drives the Create Shop platform Select from the shared registry', async ({
+test('drives the Shop Onboarding shell from shared platform and device data', async ({
   page,
 }) => {
   await page.goto('/#/shops')
   await page.getByRole('button', { name: '新增店铺' }).click()
-  await expect(
-    page.getByText('新增店铺（Legacy Onboarding）', { exact: true }),
-  ).toBeVisible()
-  await expect(page.getByPlaceholder('请输入店铺名称')).toBeVisible()
-  await expect(page.getByText('可选负责人', { exact: true })).toBeVisible()
+  await expect(page.getByText('新增店铺', { exact: true })).toBeVisible()
+  await expect(page.getByText('选择平台', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('账号与密码', { exact: true })).toBeVisible()
+  await expect(page.getByText('登录设备', { exact: true })).toBeVisible()
+  await expect(page.getByText('准备连接', { exact: true })).toBeVisible()
+  await expect(page.getByText('登录成功后自动读取')).toBeVisible()
+  await expect(page.getByPlaceholder('请输入店铺名称')).toHaveCount(0)
 
-  const dialog = page.locator('.n-modal')
-  await dialog.getByText('抖店', { exact: true }).click()
+  await page.locator('.n-drawer .n-base-selection').click()
   const options = page.locator('.n-base-select-option')
   await expect(options.filter({ hasText: '抖店' })).toBeVisible()
   await expect(options.filter({ hasText: '拼多多' })).toBeVisible()
-  await expect(options.filter({ hasText: '淘宝' })).toHaveClass(/--disabled/)
-  await expect(options.filter({ hasText: '视频号' })).toHaveClass(/--disabled/)
+  await expect(options.filter({ hasText: '淘宝' })).not.toHaveClass(/--disabled/)
+  await expect(options.filter({ hasText: '视频号' })).not.toHaveClass(
+    /--disabled/,
+  )
+  await options.filter({ hasText: '淘宝' }).click()
+  await expect(page.getByText('该平台已注册，但登录执行能力尚未接入。')).toBeVisible()
   await expect(page.getByAltText('淘宝平台图标').last()).toBeVisible()
-  await expect(page.getByAltText('视频号平台图标').last()).toBeVisible()
+  await page.getByRole('button', { name: '下一步' }).click()
+
+  await page
+    .getByPlaceholder('手机号、邮箱、用户名或账号 ID')
+    .fill('13812348888')
+  await page.getByPlaceholder('请输入登录密码').fill('onboarding-password')
+  await page.getByRole('button', { name: '下一步' }).click()
+
+  await page.locator('.n-drawer .n-base-selection').click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '深圳-工作站-03' })
+    .click()
+  await page.getByRole('button', { name: '下一步' }).click()
+  await expect(page.getByText('138****8888')).toBeVisible()
+  await expect(page.getByText('深圳-工作站-03', { exact: true }).last()).toBeVisible()
+  await expect(page.getByRole('button', { name: '打开浏览器并登录' })).toBeDisabled()
+  await expect(page.getByText('待 Worker Browser Session Manager 接入')).toBeVisible()
+  await expect(page.getByText('onboarding-password')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '新增店铺' }).click()
+  await page.getByRole('button', { name: '开发：Legacy Onboarding' }).click()
+  await expect(page.getByText('新增店铺（Legacy Onboarding）')).toBeVisible()
+  await expect(page.getByPlaceholder('请输入店铺名称')).toBeVisible()
 })
 
 test('renders compact Shop and Device pages in light and dark themes', async ({
@@ -320,6 +355,12 @@ for (const viewport of [
     await assertNoPageOverflow()
     await page.getByRole('button', { name: '查看' }).first().click()
     await expect(page.getByText('基本信息')).toBeVisible()
+    const safeArea = await page.evaluate(() => {
+      const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
+      const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
+      return { topbarBottom: topbar?.bottom, drawerTop: drawer?.top }
+    })
+    expect(safeArea.drawerTop).toBe(safeArea.topbarBottom)
     await assertNoPageOverflow()
     await page.getByRole('button', { name: '关闭', exact: true }).click()
   })

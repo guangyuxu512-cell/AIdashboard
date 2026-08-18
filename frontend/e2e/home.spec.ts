@@ -23,9 +23,33 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
 
   await page.getByRole('button', { name: '打开 Dialog' }).click()
   await expect(page.getByText('Dialog 主题验收', { exact: true })).toBeVisible()
+  const dialogLayout = await page.evaluate(() => {
+    const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
+    const host = document.querySelector('#app-overlay-host')?.getBoundingClientRect()
+    const wrapper = document.querySelector('.n-modal-body-wrapper')?.getBoundingClientRect()
+    return {
+      topbarBottom: topbar?.bottom,
+      hostTop: host?.top,
+      wrapperTop: wrapper?.top,
+    }
+  })
+  expect(dialogLayout.hostTop).toBe(dialogLayout.topbarBottom)
+  expect(dialogLayout.wrapperTop).toBe(dialogLayout.hostTop)
   await page.getByRole('button', { name: '取消' }).click()
   await page.getByRole('button', { name: '打开 Drawer' }).click()
   await expect(page.getByText('Drawer 主题验收', { exact: true })).toBeVisible()
+  const drawerLayout = await page.evaluate(() => {
+    const host = document.querySelector('#app-overlay-host')?.getBoundingClientRect()
+    const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
+    return {
+      hostTop: host?.top,
+      drawerTop: drawer?.top,
+      drawerBottom: drawer?.bottom,
+      viewportHeight: window.innerHeight,
+    }
+  })
+  expect(drawerLayout.drawerTop).toBe(drawerLayout.hostTop)
+  expect(drawerLayout.drawerBottom).toBe(drawerLayout.viewportHeight)
   await page.getByRole('button', { name: '关闭' }).click()
 
   const layout = await page.evaluate(() => ({
@@ -110,5 +134,14 @@ for (const viewport of [
     expect(layout.content?.bottom).toBe(viewport.height)
     expect(layout.contentOverflowY).toBe('auto')
     expect(layout.documentHasHorizontalOverflow).toBe(false)
+
+    await page.getByRole('button', { name: '打开 Drawer' }).click()
+    const overlay = await page.evaluate(() => {
+      const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
+      const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
+      return { topbarBottom: topbar?.bottom, drawerTop: drawer?.top }
+    })
+    expect(overlay.drawerTop).toBe(overlay.topbarBottom)
+    await page.getByRole('button', { name: '关闭' }).click()
   })
 }

@@ -115,6 +115,8 @@ Main Content = 唯一主滚动区
 
 Electron Windows 窗口使用原生 Window Controls Overlay 覆盖现有 54px Topbar。Sidebar Brand 与 Topbar 是统一可拖动区域，Topbar Actions 是明确的 `no-drag` 交互区域；右侧空间通过 `titlebar-area-*` 环境变量避让原生最小化、最大化/恢复和关闭按钮。业务页不得自行添加拖动区域、窗口按钮或标题栏高度。
 
+所有 Drawer、Modal 与动态 Dialog 统一 Teleport 到 AppShell 内的 `AppOverlayHost`。该 Host 从 `--layout-topbar-height` 以下覆盖 Workspace，并建立 Fixed Position Containing Block；业务 Overlay 因而不会进入 Custom Title Bar 或 Window Controls Overlay。业务 Drawer 禁止用单页 `top`、`margin-top` 或固定像素修补。
+
 ## Compact Management Fill 链路
 
 需要将列表 Card 填满筛选区以下剩余工作区时，必须使用可收缩 Flex 链：

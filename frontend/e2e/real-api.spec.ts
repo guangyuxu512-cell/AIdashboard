@@ -84,6 +84,8 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   const shopName = `${testPrefix}shop`
   const updatedShopName = `${testPrefix}shop-updated`
   await page.getByRole('button', { name: '新增店铺' }).click()
+  await expect(page.getByText('新增店铺', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '开发：Legacy Onboarding' }).click()
   await page.getByPlaceholder('请输入店铺名称').fill(shopName)
   await expect(page.getByText('抖店', { exact: true }).last()).toBeVisible()
   const createDialog = page.locator('.n-modal')

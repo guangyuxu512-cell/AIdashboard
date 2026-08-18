@@ -6,6 +6,9 @@
   "scripts": {
     "dev:frontend": "pnpm --filter @control-center/frontend dev",
     "dev:electron": "pnpm --filter @control-center/electron dev",
+    "dev:up": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-up.ps1",
+    "dev:down": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-down.ps1",
+    "dev:status": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-status.ps1",
     "build:frontend": "pnpm --filter @control-center/frontend build",
     "build:electron": "pnpm --filter @control-center/electron build"
   }

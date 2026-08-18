@@ -4,6 +4,8 @@ import { NMenu } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 
+import AppOverlayHost from '@/shared/ui/AppOverlayHost.vue'
+
 export interface AppNavigationItem {
   key: string
   label: string
@@ -103,6 +105,7 @@ function navigate(key: string): void {
           <slot name="topbar-actions" />
         </div>
       </header>
+      <AppOverlayHost />
       <main class="app-shell__content">
         <slot />
       </main>
@@ -211,6 +214,7 @@ function navigate(key: string): void {
 }
 
 .app-shell__workspace {
+  position: relative;
   display: grid;
   height: 100%;
   min-width: 0;

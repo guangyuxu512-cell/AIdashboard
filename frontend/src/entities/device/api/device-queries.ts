@@ -10,10 +10,14 @@ export const deviceQueryKeys = {
   detail: (deviceId: string | null) => ['devices', 'detail', deviceId] as const,
 }
 
-export function useDeviceListQuery(params: MaybeRefOrGetter<DeviceListParams>) {
+export function useDeviceListQuery(
+  params: MaybeRefOrGetter<DeviceListParams>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
   return useQuery({
     queryKey: computed(() => deviceQueryKeys.list(toValue(params))),
     queryFn: () => deviceDataSource.list(toValue(params)),
+    enabled: computed(() => toValue(enabled)),
   })
 }
 

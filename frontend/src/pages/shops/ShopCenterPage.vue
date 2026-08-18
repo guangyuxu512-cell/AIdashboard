@@ -5,6 +5,7 @@ import {
   ShopFilterBar,
   ShopFormDialog,
   ShopListTable,
+  ShopOnboardingDrawer,
   ShopPlatformSwitchBar,
   useShopManagement,
 } from '@/features/shop-management'
@@ -62,6 +63,11 @@ const management = useShopManagement()
       :error="management.detailError.value"
       @edit="management.editFromDetail"
       @retry="management.retryDetail"
+    />
+
+    <ShopOnboardingDrawer
+      v-model:show="management.onboardingVisible.value"
+      @open-legacy="management.openLegacyCreate"
     />
 
     <ShopFormDialog

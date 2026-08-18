@@ -2,6 +2,7 @@
 import { NModal } from 'naive-ui'
 
 import AppButton from './AppButton.vue'
+import { APP_OVERLAY_HOST_SELECTOR } from './overlay-host'
 import type { OverlaySize } from './types'
 
 const dialogWidths: Record<OverlaySize, string> = {
@@ -18,12 +19,14 @@ withDefaults(
     positiveText?: string
     negativeText?: string
     loading?: boolean
+    to?: string | HTMLElement
   }>(),
   {
     size: 'md',
     positiveText: '确认',
     negativeText: '取消',
     loading: false,
+    to: APP_OVERLAY_HOST_SELECTOR,
   },
 )
 
@@ -50,6 +53,7 @@ function cancel(): void {
     }"
     :bordered="true"
     :mask-closable="false"
+    :to="to"
     @update:show="$emit('update:show', $event)"
   >
     <slot />

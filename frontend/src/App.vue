@@ -18,6 +18,7 @@ import AppShell from '@/shared/components/AppShell.vue'
 import type { AppNavigationItem } from '@/shared/components/AppShell.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import ThemeSelector from '@/shared/components/ThemeSelector.vue'
+import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
 import { useThemeStore } from '@/stores/theme'
 
 const navigation: AppNavigationItem[] = [
@@ -48,7 +49,7 @@ const naiveThemeOverrides = computed(() =>
   >
     <NGlobalStyle />
     <NLoadingBarProvider>
-      <NDialogProvider>
+      <NDialogProvider :to="APP_OVERLAY_HOST_SELECTOR">
         <NNotificationProvider>
           <NMessageProvider>
             <AppShell :navigation="navigation">
