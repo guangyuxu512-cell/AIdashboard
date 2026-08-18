@@ -1,0 +1,157 @@
+import type { SelectOption } from 'naive-ui'
+
+import { SHOP_PLATFORM_META } from '../model/status-meta'
+import type { ShopListItemViewModel, ShopPlatform } from '../model/types'
+
+export interface ShopDeviceFixtureOption extends SelectOption {
+  label: string
+  value: string
+}
+
+export const SHOP_PLATFORM_FIXTURE_OPTIONS: SelectOption[] = (
+  Object.entries(SHOP_PLATFORM_META) as [ShopPlatform, { label: string }][]
+).map(([value, meta]) => ({ label: meta.label, value }))
+
+export const SHOP_OWNER_FIXTURE_OPTIONS: SelectOption[] = [
+  { label: '林晓', value: '林晓' },
+  { label: '周然', value: '周然' },
+  { label: '沈宁', value: '沈宁' },
+  { label: '陈屿', value: '陈屿' },
+]
+
+export const SHOP_DEVICE_FIXTURE_OPTIONS: ShopDeviceFixtureOption[] = [
+  { label: '杭州-运营机-01', value: 'device-fixture-001' },
+  { label: '上海-直播机-02', value: 'device-fixture-002' },
+  { label: '深圳-工作站-03', value: 'device-fixture-003' },
+]
+
+export const SHOP_LIST_FIXTURE: ShopListItemViewModel[] = [
+  {
+    shopId: 'shop-fixture-001',
+    shopName: '星河服饰旗舰店',
+    platform: 'douyin',
+    ownerName: '林晓',
+    operationalStatus: 'normal',
+    sessionStatus: 'normal',
+    executionDeviceId: 'device-fixture-001',
+    executionDeviceName: '杭州-运营机-01',
+    automationStatus: 'running',
+    todayGmvDisplay: '¥128,560.00',
+    updatedAtDisplay: '2026-08-18 10:32',
+    accountConfigurationStatus: 'configured',
+    sessionConfigurationStatus: 'configured',
+    note: '服饰主力店铺',
+  },
+  {
+    shopId: 'shop-fixture-002',
+    shopName: '海风家居生活馆',
+    platform: 'taobao',
+    ownerName: '周然',
+    operationalStatus: 'attention',
+    sessionStatus: 'warning',
+    executionDeviceId: 'device-fixture-002',
+    executionDeviceName: '上海-直播机-02',
+    automationStatus: 'paused',
+    todayGmvDisplay: '¥76,820.00',
+    updatedAtDisplay: '2026-08-18 09:48',
+    accountConfigurationStatus: 'configured',
+    sessionConfigurationStatus: 'configured',
+    note: '等待运营确认会话状态',
+  },
+  {
+    shopId: 'shop-fixture-003',
+    shopName: '云朵母婴专营店',
+    platform: 'jd',
+    ownerName: '沈宁',
+    operationalStatus: 'normal',
+    sessionStatus: 'normal',
+    executionDeviceId: 'device-fixture-003',
+    executionDeviceName: '深圳-工作站-03',
+    automationStatus: 'running',
+    todayGmvDisplay: '¥95,430.00',
+    updatedAtDisplay: '2026-08-18 10:15',
+    accountConfigurationStatus: 'configured',
+    sessionConfigurationStatus: 'configured',
+    note: '母婴品类日常运营',
+  },
+  {
+    shopId: 'shop-fixture-004',
+    shopName: '拾光数码工坊',
+    platform: 'pdd',
+    ownerName: '陈屿',
+    operationalStatus: 'normal',
+    sessionStatus: 'not_configured',
+    executionDeviceId: null,
+    executionDeviceName: null,
+    automationStatus: 'idle',
+    todayGmvDisplay: '¥42,190.00',
+    updatedAtDisplay: '2026-08-17 18:06',
+    accountConfigurationStatus: 'not_configured',
+    sessionConfigurationStatus: 'not_configured',
+    note: '新店待完成基础配置',
+  },
+  {
+    shopId: 'shop-fixture-005',
+    shopName: '青禾食品旗舰店',
+    platform: 'douyin',
+    ownerName: '林晓',
+    operationalStatus: 'normal',
+    sessionStatus: 'normal',
+    executionDeviceId: 'device-fixture-001',
+    executionDeviceName: '杭州-运营机-01',
+    automationStatus: 'running',
+    todayGmvDisplay: '¥68,960.00',
+    updatedAtDisplay: '2026-08-18 10:27',
+    accountConfigurationStatus: 'configured',
+    sessionConfigurationStatus: 'configured',
+    note: '食品类目重点店铺',
+  },
+  {
+    shopId: 'shop-fixture-006',
+    shopName: '山岚户外装备店',
+    platform: 'taobao',
+    ownerName: '周然',
+    operationalStatus: 'disabled',
+    sessionStatus: 'not_configured',
+    executionDeviceId: null,
+    executionDeviceName: null,
+    automationStatus: 'paused',
+    todayGmvDisplay: '¥0.00',
+    updatedAtDisplay: '2026-08-15 16:20',
+    accountConfigurationStatus: 'not_configured',
+    sessionConfigurationStatus: 'not_configured',
+    note: '暂停售卖',
+  },
+  {
+    shopId: 'shop-fixture-007',
+    shopName: '光年美妆集合店',
+    platform: 'jd',
+    ownerName: '沈宁',
+    operationalStatus: 'attention',
+    sessionStatus: 'warning',
+    executionDeviceId: 'device-fixture-003',
+    executionDeviceName: '深圳-工作站-03',
+    automationStatus: 'idle',
+    todayGmvDisplay: '¥53,680.00',
+    updatedAtDisplay: '2026-08-18 08:42',
+    accountConfigurationStatus: 'configured',
+    sessionConfigurationStatus: 'configured',
+    note: '会话状态待检查',
+  },
+  {
+    shopId: 'shop-fixture-008',
+    shopName: '小满宠物用品店',
+    platform: 'pdd',
+    ownerName: '陈屿',
+    operationalStatus: 'normal',
+    sessionStatus: 'normal',
+    executionDeviceId: 'device-fixture-002',
+    executionDeviceName: '上海-直播机-02',
+    automationStatus: 'running',
+    todayGmvDisplay: '¥37,250.00',
+    updatedAtDisplay: '2026-08-18 10:05',
+    accountConfigurationStatus: 'configured',
+    sessionConfigurationStatus: 'configured',
+    note: '宠物用品日常运营',
+  },
+]
