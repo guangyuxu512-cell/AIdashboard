@@ -8,6 +8,11 @@ export type DeviceCapability = 'rpa' | 'python' | 'browser' | 'node'
 
 export type DeviceCapabilityAvailability = 'available' | 'unavailable'
 
+export type YingdaoAvailabilityStatus =
+  | 'available'
+  | 'unavailable'
+  | 'not_detected'
+
 export interface DeviceCapabilityViewModel {
   capability: DeviceCapability
   availability: DeviceCapabilityAvailability
@@ -51,4 +56,24 @@ export interface DeviceSaveInput {
   enabled: boolean
   location: string
   note: string
+}
+
+export interface ProviderApplicationViewModel {
+  appId: string
+  appName: string
+  packageVersion: string
+  entrypoint: string
+}
+
+export interface YingdaoInventoryViewModel {
+  available: boolean
+  availabilityStatus: Exclude<YingdaoAvailabilityStatus, 'not_detected'>
+  providerVersion: string
+  loggedIn: boolean
+  accountDisplay: string
+  accountType: string
+  enterpriseAccount: boolean
+  applicationCount: number
+  applications: ProviderApplicationViewModel[]
+  lastDiscoveredAtDisplay: string
 }

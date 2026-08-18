@@ -9,7 +9,7 @@ from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.devices.schemas import DeviceCreate, DeviceRead, DeviceUpdate
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
-from app.modules.workers.schemas import DeviceRuntimeRead
+from app.modules.workers.schemas import DeviceProviderInventoryRead, DeviceRuntimeRead
 from app.modules.workers.service import WorkerService
 from app.shared.pagination import Page, PaginationParams
 
@@ -75,6 +75,19 @@ def get_device(
     device = service.get(device_id)
     runtime = worker_service.get_runtime_reads([device_id]).get(device_id)
     return to_device_read(device, runtime)
+
+
+@router.get(
+    "/{device_id}/provider-inventories",
+    response_model=list[DeviceProviderInventoryRead],
+)
+def get_device_provider_inventories(
+    device_id: UUID,
+    service: Annotated[DeviceService, Depends(get_device_service)],
+    worker_service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> list[DeviceProviderInventoryRead]:
+    service.get(device_id)
+    return worker_service.get_provider_inventory_reads(device_id)
 
 
 @router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)

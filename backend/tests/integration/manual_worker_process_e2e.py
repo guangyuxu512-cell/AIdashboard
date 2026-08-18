@@ -23,7 +23,11 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_engine
 from app.modules.devices.models import Device
 from app.modules.tasks.models import Task
-from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
+from app.modules.workers.models import (
+    DeviceProviderInventory,
+    DeviceRuntime,
+    WorkerDeviceCredential,
+)
 from app.modules.workers.service import WorkerService
 
 
@@ -33,6 +37,13 @@ WORKER_ROOT = PROJECT_ROOT / "worker"
 BACKEND_PYTHON = BACKEND_ROOT / ".venv" / "Scripts" / "python.exe"
 WORKER_PYTHON = WORKER_ROOT / ".venv" / "Scripts" / "python.exe"
 API_BASE = "http://127.0.0.1:8000"
+
+
+def get_yingdao_install_root() -> Path:
+    value = os.environ.get("E2E_YINGDAO_INSTALL_ROOT")
+    if not value:
+        raise RuntimeError("E2E_YINGDAO_INSTALL_ROOT is required")
+    return Path(value).resolve()
 
 
 def wait_for(
@@ -94,7 +105,14 @@ def create_task(
     )
 
 
-def start_worker(device_id: UUID, token: str, runtime_root: Path) -> subprocess.Popen:
+def start_worker(
+    device_id: UUID,
+    token: str,
+    runtime_root: Path,
+    *,
+    yingdao_install_root: Path | None = None,
+) -> subprocess.Popen:
+    provider_root = yingdao_install_root or get_yingdao_install_root()
     environment = os.environ.copy()
     environment.update(
         {
@@ -102,6 +120,7 @@ def start_worker(device_id: UUID, token: str, runtime_root: Path) -> subprocess.
             "WORKER_DEVICE_ID": str(device_id),
             "WORKER_DEVICE_TOKEN": token,
             "WORKER_RUNTIME_ROOT": str(runtime_root),
+            "WORKER_YINGDAO_INSTALL_ROOT": str(provider_root),
         },
     )
     return subprocess.Popen(
@@ -129,6 +148,11 @@ def cleanup(device_ids: set[UUID]) -> None:
         return
     with Session(get_database_engine()) as session:
         session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
+        session.execute(
+            delete(DeviceProviderInventory).where(
+                DeviceProviderInventory.device_id.in_(device_ids),
+            ),
+        )
         session.execute(
             delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)),
         )
@@ -207,15 +231,71 @@ def main() -> int:
                 wait_worker(client, device_a, "online", 20)
                 print("E2E echo PENDING-RUNNING-SUCCESS verified")
 
-                yingdao = create_task(client, device_a, "yingdao.test", {})
+                yingdao = create_task(client, device_a, "yingdao.discover", {})
                 yingdao_result = wait_task(
                     client,
                     yingdao["task_id"],
+                    "success",
+                    25,
+                )
+                assert yingdao_result["started_at"] is not None
+                assert yingdao_result["finished_at"] is not None
+                assert yingdao_result["result"]["provider_version"] == "6.2.23"
+                assert yingdao_result["result"]["logged_in"] is True
+                assert yingdao_result["result"]["account_display"] == "GY00999"
+                assert yingdao_result["result"]["account_type"] == "PersonalBasic"
+                assert len(yingdao_result["result"]["applications"]) == 9
+                inventory_before_failure = (
+                    client.get(
+                        f"/api/v1/devices/{device_a}/provider-inventories",
+                    )
+                    .raise_for_status()
+                    .json()
+                )
+                assert len(inventory_before_failure) == 1
+                assert inventory_before_failure[0]["provider_code"] == "yingdao"
+                assert inventory_before_failure[0]["provider_version"] == "6.2.23"
+                assert len(
+                    inventory_before_failure[0]["inventory"]["applications"],
+                ) == 9
+                print("E2E real Yingdao discovery and inventory refresh verified")
+
+                stop_process(worker_a)
+                worker_a = start_worker(
+                    device_a,
+                    token_a,
+                    runtime_root / "a-invalid-provider",
+                    yingdao_install_root=runtime_root / "missing-shadowbot",
+                )
+                failed_discovery = create_task(
+                    client,
+                    device_a,
+                    "yingdao.discover",
+                    {},
+                )
+                failed_discovery_result = wait_task(
+                    client,
+                    failed_discovery["task_id"],
                     "failed",
                     25,
                 )
-                assert yingdao_result["error_code"] == "RPA_PROVIDER_UNAVAILABLE"
-                print("E2E unavailable Yingdao ended FAILED without RUNNING residue")
+                assert failed_discovery_result["error_code"] == "YINGDAO_NOT_INSTALLED"
+                inventory_after_failure = (
+                    client.get(
+                        f"/api/v1/devices/{device_a}/provider-inventories",
+                    )
+                    .raise_for_status()
+                    .json()
+                )
+                assert inventory_after_failure == inventory_before_failure
+                print("E2E failed discovery preserved the last successful inventory")
+
+                stop_process(worker_a)
+                worker_a = start_worker(
+                    device_a,
+                    token_a,
+                    runtime_root / "a-before-lost",
+                )
 
                 sleep = create_task(
                     client,

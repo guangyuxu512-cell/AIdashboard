@@ -7,6 +7,8 @@ import {
   DeviceEnabledStatusTag,
   DeviceStatusTag,
   type DeviceListItemViewModel,
+  type YingdaoInventoryViewModel,
+  YingdaoAvailabilityStatusTag,
 } from '@/entities/device'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
@@ -19,9 +21,19 @@ defineProps<{
   device: DeviceListItemViewModel | null
   loading?: boolean
   error?: string | null
+  yingdaoInventory?: YingdaoInventoryViewModel | null
+  providerInventoryLoading?: boolean
+  providerInventoryError?: string | null
+  yingdaoRefreshing?: boolean
 }>()
 
-defineEmits<{ 'update:show': [value: boolean]; retry: [] }>()
+defineEmits<{
+  'update:show': [value: boolean]
+  retry: []
+  'retry-provider-inventory': []
+  'refresh-yingdao': []
+  'view-yingdao-applications': []
+}>()
 </script>
 
 <template>
@@ -122,6 +134,64 @@ defineEmits<{ 'update:show': [value: boolean]; retry: [] }>()
           </li>
         </ul>
       </section>
+
+      <section>
+        <div class="device-detail__section-heading">
+          <h3>影刀环境</h3>
+          <div class="device-detail__section-actions">
+            <AppButton
+              v-if="yingdaoInventory?.applicationCount"
+              tone="text"
+              @click="$emit('view-yingdao-applications')"
+            >
+              查看应用
+            </AppButton>
+            <AppButton
+              :loading="yingdaoRefreshing"
+              :disabled="device.dataSource !== 'real'"
+              @click="$emit('refresh-yingdao')"
+            >
+              刷新影刀能力
+            </AppButton>
+          </div>
+        </div>
+        <LoadingState
+          v-if="providerInventoryLoading"
+          description="正在读取影刀环境…"
+        />
+        <ErrorState
+          v-else-if="providerInventoryError"
+          :description="providerInventoryError"
+          retryable
+          @retry="$emit('retry-provider-inventory')"
+        />
+        <NDescriptions v-else :column="1" label-placement="left" bordered>
+          <NDescriptionsItem label="影刀">
+            <YingdaoAvailabilityStatusTag
+              :status="
+                yingdaoInventory
+                  ? yingdaoInventory.availabilityStatus
+                  : 'not_detected'
+              "
+            />
+          </NDescriptionsItem>
+          <NDescriptionsItem label="版本">
+            {{ yingdaoInventory?.providerVersion ?? '未检测' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="账号">
+            {{ yingdaoInventory?.accountDisplay ?? '未检测' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="账号类型">
+            {{ yingdaoInventory?.accountType ?? '未检测' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="应用">
+            {{ yingdaoInventory?.applicationCount ?? 0 }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="最近检测">
+            {{ yingdaoInventory?.lastDiscoveredAtDisplay ?? '尚未检测' }}
+          </NDescriptionsItem>
+        </NDescriptions>
+      </section>
     </div>
 
     <template #footer>
@@ -169,5 +239,17 @@ defineEmits<{ 'update:show': [value: boolean]; retry: [] }>()
 
 .device-detail__unavailable {
   color: var(--color-text-secondary);
+}
+
+.device-detail__section-heading,
+.device-detail__section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.device-detail__section-heading h3 {
+  margin-bottom: 0;
 }
 </style>

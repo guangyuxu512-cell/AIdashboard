@@ -50,3 +50,12 @@ Migration `20260819_0002_auth_domain_foundation` 增加：
 | `shop_sessions` | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload |
 
 外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只允许在可随时重建的 `control_center_dev` 执行。
+
+## Device Provider Inventory
+
+Migration `20260820_0005_provider_inventory` 增加
+`device_provider_inventory`。它以 `(device_id, provider_code)` 为复合主键，只保存
+每台设备、每个 Provider 最近一次成功发现快照；失败任务不删除或覆盖旧快照。
+`inventory_payload` 是外部 Provider Inventory 的专用 JSONB，并用对象类型约束，
+不得演变为任意业务数据容器。当前影刀应用数组保留在该快照中，等真实 Skill 与 App
+绑定或版本管理需求出现后再独立建模。

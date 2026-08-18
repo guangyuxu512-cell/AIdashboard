@@ -20,11 +20,21 @@ class WorkerTask(BaseModel):
     lease_until: datetime
 
 
+class ProviderInventoryReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_code: str
+    inventory: dict[str, Any]
+
+
 class ExecutionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: ExecutionStatus
     result: dict[str, Any] | None = None
     error_code: str | None = None
     error_message: str | None = None
+    provider_inventory: ProviderInventoryReport | None = None
 
 
 class SkillProcessInput(BaseModel):

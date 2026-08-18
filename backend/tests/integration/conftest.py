@@ -21,6 +21,7 @@ CORE_TABLES = {
     "shop_sessions",
     "worker_device_credentials",
     "device_runtime",
+    "device_provider_inventory",
     "tasks",
 }
 DESTRUCTIVE_TEST_DATABASE = "control_center_dev"

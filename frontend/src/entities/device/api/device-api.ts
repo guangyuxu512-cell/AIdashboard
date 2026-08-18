@@ -2,6 +2,7 @@ import { httpClient, type PageDto, type PageParams } from '@/shared/api'
 
 import type {
   DeviceCreateDto,
+  DeviceProviderInventoryReadDto,
   DeviceReadDto,
   DeviceUpdateDto,
 } from './contracts'
@@ -39,6 +40,15 @@ export const deviceApi = {
     const response = await httpClient.patch<DeviceReadDto>(
       `/api/v1/devices/${deviceId}`,
       data,
+    )
+    return response.data
+  },
+
+  async getProviderInventories(
+    deviceId: string,
+  ): Promise<DeviceProviderInventoryReadDto[]> {
+    const response = await httpClient.get<DeviceProviderInventoryReadDto[]>(
+      `/api/v1/devices/${deviceId}/provider-inventories`,
     )
     return response.data
   },

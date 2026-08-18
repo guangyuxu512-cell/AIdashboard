@@ -58,3 +58,17 @@ Pydantic Create、Update、Read Schema 是正式 API Contract。Frontend 的 GMV
 - `GET /api/v1/shops/{shop_id}/session`：仅返回 Session 状态、版本、来源设备和时间元数据。
 
 Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或密文。密码只存在于 Create/Update 写请求，Update 的空字符串表示保留现有密码。Session payload 的写入目前只属于内部 Service Contract，不开放普通 Frontend Route。
+
+## Device Provider Inventory Contract
+
+阶段 3B-1A 增加最新 Provider 快照：
+
+- `POST /api/v1/worker/provider-inventory`：Worker 认证接口，请求只含
+  `provider_code` 与严格校验的 `inventory`，不接受 Body `device_id`。
+- `GET /api/v1/devices/{device_id}/provider-inventories`：读取指定设备的最新 Provider
+  快照。
+
+当前正式 Provider 为 `yingdao`。影刀 Inventory 只包含版本、登录状态、安全账号元数据、
+当前 userId、未回收应用的 ID/名称/package version/entrypoint 与发现时间；禁止密码、
+Token、Cookie 和完整认证响应。应用数组作为外部 Provider 最新快照存入专用 JSONB，
+不是通用业务 JSON，也不是中控台 Skill 注册表。

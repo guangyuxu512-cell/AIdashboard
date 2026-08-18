@@ -88,6 +88,18 @@ class Worker:
             lease_task.cancel()
             await asyncio.gather(lease_task, return_exceptions=True)
             if result.status is ExecutionStatus.SUCCESS:
+                if result.provider_inventory is not None:
+                    try:
+                        await self.client.report_provider_inventory(
+                            result.provider_inventory,
+                        )
+                    except Exception:
+                        await self.client.fail(
+                            task.task_id,
+                            error_code="PROVIDER_INVENTORY_REPORT_FAILED",
+                            error_message="Provider inventory could not be saved",
+                        )
+                        return
                 await self.client.complete(task.task_id, result.result or {})
             else:
                 await self.client.fail(

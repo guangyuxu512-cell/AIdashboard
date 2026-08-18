@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -18,14 +18,23 @@ class YingdaoApplication(BaseModel):
 
     app_id: str = Field(min_length=1)
     app_name: str = Field(min_length=1)
+    package_version: str | None = None
+    entrypoint: str | None = None
 
 
 class YingdaoDiscoveryResult(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    provider_available: bool
+    provider: Literal["yingdao"] = "yingdao"
+    provider_available: bool = Field(serialization_alias="available")
+    provider_version: str | None = None
+    logged_in: bool = False
     account_display: str | None = None
+    account_type: str | None = None
+    enterprise_account: bool | None = None
+    user_id: str | None = None
     applications: list[YingdaoApplication] = Field(default_factory=list)
+    discovered_at: datetime | None = None
 
 
 class YingdaoExecutionRequest(BaseModel):

@@ -1,8 +1,13 @@
 import dayjs from 'dayjs'
 
-import type { DeviceListItemViewModel, DeviceSaveInput } from '../model/types'
+import type {
+  DeviceListItemViewModel,
+  DeviceSaveInput,
+  YingdaoInventoryViewModel,
+} from '../model/types'
 import type {
   DeviceCreateDto,
+  DeviceProviderInventoryReadDto,
   DeviceReadDto,
   DeviceUpdateDto,
 } from './contracts'
@@ -47,4 +52,26 @@ export function mapDeviceCreateInput(input: DeviceSaveInput): DeviceCreateDto {
 
 export function mapDeviceUpdateInput(input: DeviceSaveInput): DeviceUpdateDto {
   return mapDeviceCreateInput(input)
+}
+
+export function mapYingdaoInventoryDto(
+  dto: DeviceProviderInventoryReadDto,
+): YingdaoInventoryViewModel {
+  return {
+    available: dto.available,
+    availabilityStatus: dto.available ? 'available' : 'unavailable',
+    providerVersion: dto.provider_version ?? '未知',
+    loggedIn: dto.inventory.logged_in,
+    accountDisplay: dto.account_display ?? '未知',
+    accountType: dto.account_type ?? '未知',
+    enterpriseAccount: dto.enterprise_account ?? false,
+    applicationCount: dto.inventory.applications.length,
+    applications: dto.inventory.applications.map((application) => ({
+      appId: application.app_id,
+      appName: application.app_name,
+      packageVersion: application.package_version,
+      entrypoint: application.entrypoint,
+    })),
+    lastDiscoveredAtDisplay: formatDateTime(dto.last_discovered_at),
+  }
 }

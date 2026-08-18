@@ -5,7 +5,7 @@ from uuid import UUID
 import httpx
 
 from app.config import WorkerSettings
-from app.contracts import WorkerTask
+from app.contracts import ProviderInventoryReport, WorkerTask
 
 
 class WorkerApiError(RuntimeError):
@@ -71,6 +71,16 @@ class WorkerApiClient:
         response = await self.client.post(
             f"/api/v1/worker/tasks/{task_id}/complete",
             json={"result": result},
+        )
+        self._raise_for_error(response)
+
+    async def report_provider_inventory(
+        self,
+        report: ProviderInventoryReport,
+    ) -> None:
+        response = await self.client.post(
+            "/api/v1/worker/provider-inventory",
+            json=report.model_dump(mode="json"),
         )
         self._raise_for_error(response)
 

@@ -132,3 +132,28 @@ def test_yingdao_skill_constraint_migration(monkeypatch: object) -> None:
         ("drop_constraint", "ck_tasks_skill_id"),
         ("create_check_constraint", "ck_tasks_skill_id"),
     ]
+
+
+def test_provider_inventory_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260820_0005_provider_inventory",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls == [
+        ("create_table", "device_provider_inventory"),
+        ("drop_constraint", "ck_tasks_skill_id"),
+        ("create_check_constraint", "ck_tasks_skill_id"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_constraint", "ck_tasks_skill_id"),
+        ("create_check_constraint", "ck_tasks_skill_id"),
+        ("drop_table", "device_provider_inventory"),
+    ]

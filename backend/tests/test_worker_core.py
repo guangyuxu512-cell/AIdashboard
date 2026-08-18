@@ -7,7 +7,7 @@ from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.skill_contracts import validate_skill_input
 from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
-from app.modules.workers.schemas import WorkerHeartbeat
+from app.modules.workers.schemas import ProviderInventoryUpsert, WorkerHeartbeat
 from app.modules.workers.security import hash_worker_token, verify_worker_token
 from app.modules.workers.service import WorkerPrincipal, WorkerService
 from tests.support import FakeSession
@@ -95,6 +95,7 @@ def test_worker_token_hash_and_skill_contracts() -> None:
         {"seconds": 45},
     ) == {"seconds": 45.0}
     assert validate_skill_input(TaskSkillId.YINGDAO_TEST, {}) == {}
+    assert validate_skill_input(TaskSkillId.YINGDAO_DISCOVER, {}) == {}
 
 
 def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:
@@ -107,6 +108,30 @@ def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:
         "/api/v1/worker/tasks/{task_id}/renew",
         "/api/v1/worker/tasks/{task_id}/complete",
         "/api/v1/worker/tasks/{task_id}/fail",
+        "/api/v1/worker/provider-inventory",
+        "/api/v1/devices/{device_id}/provider-inventories",
     }
     assert expected <= set(paths)
     assert all("command" not in path for path in paths)
+
+
+def test_provider_inventory_schema_has_no_device_identity_in_request() -> None:
+    data = ProviderInventoryUpsert.model_validate(
+        {
+            "provider_code": "yingdao",
+            "inventory": {
+                "provider": "yingdao",
+                "available": True,
+                "provider_version": "6.2.23",
+                "logged_in": True,
+                "account_display": "GY00999",
+                "account_type": "PersonalBasic",
+                "enterprise_account": False,
+                "user_id": "yingdao-user-test",
+                "applications": [],
+                "discovered_at": "2026-08-20T12:00:00+00:00",
+            },
+        },
+    )
+
+    assert "device_id" not in data.model_dump(mode="json")

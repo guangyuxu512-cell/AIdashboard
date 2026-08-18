@@ -6,8 +6,16 @@ from pydantic import ValidationError
 
 from app.client import WorkerApiClient
 from app.config import get_settings
-from app.executors import ExecutorRouter, PythonExecutor, RPAExecutor
-from app.providers.yingdao import UnavailableYingdaoAdapter
+from app.executors import (
+    ExecutorRouter,
+    ProviderDiscoveryExecutor,
+    PythonExecutor,
+    RPAExecutor,
+)
+from app.providers.yingdao import (
+    UnavailableYingdaoAdapter,
+    YingdaoDiscoveryService,
+)
 from app.skills import registry
 from app.skills.registry import SkillProvider, SkillRuntime
 from app.worker import Worker
@@ -22,6 +30,7 @@ async def run_worker() -> None:
             loop.add_signal_handler(signal_name, stop_event.set)
         except NotImplementedError:
             pass
+    client = WorkerApiClient(settings)
     executor = ExecutorRouter(
         registry,
         {
@@ -31,11 +40,24 @@ async def run_worker() -> None:
                 registry,
                 {SkillProvider.YINGDAO: UnavailableYingdaoAdapter()},
             ),
+            SkillRuntime.DISCOVERY: ProviderDiscoveryExecutor(
+                settings.runtime_root,
+                registry,
+                {
+                    SkillProvider.YINGDAO: YingdaoDiscoveryService(
+                        install_root=settings.yingdao_install_root,
+                        data_root=settings.yingdao_data_root,
+                        command_timeout_seconds=(
+                            settings.yingdao_command_timeout_seconds
+                        ),
+                    ),
+                },
+            ),
         },
     )
     worker = Worker(
         settings,
-        WorkerApiClient(settings),
+        client,
         executor,
     )
     await worker.run(stop_event)

@@ -7,7 +7,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.modules.devices.models import Device
-from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
+from app.modules.workers.models import (
+    DeviceProviderInventory,
+    DeviceRuntime,
+    WorkerDeviceCredential,
+)
 
 
 class WorkerRepository:
@@ -66,3 +70,63 @@ class WorkerRepository:
             return {}
         statement = select(DeviceRuntime).where(DeviceRuntime.device_id.in_(identifiers))
         return {runtime.device_id: runtime for runtime in self.session.scalars(statement)}
+
+    def upsert_provider_inventory(
+        self,
+        *,
+        device_id: UUID,
+        provider_code: str,
+        available: bool,
+        provider_version: str | None,
+        account_display: str | None,
+        account_type: str | None,
+        enterprise_account: bool | None,
+        last_discovered_at: datetime,
+        inventory_payload: dict[str, object],
+        updated_at: datetime,
+    ) -> DeviceProviderInventory:
+        statement = (
+            insert(DeviceProviderInventory)
+            .values(
+                device_id=device_id,
+                provider_code=provider_code,
+                available=available,
+                provider_version=provider_version,
+                account_display=account_display,
+                account_type=account_type,
+                enterprise_account=enterprise_account,
+                last_discovered_at=last_discovered_at,
+                inventory_payload=inventory_payload,
+                updated_at=updated_at,
+            )
+            .on_conflict_do_update(
+                index_elements=[
+                    DeviceProviderInventory.device_id,
+                    DeviceProviderInventory.provider_code,
+                ],
+                set_={
+                    "available": available,
+                    "provider_version": provider_version,
+                    "account_display": account_display,
+                    "account_type": account_type,
+                    "enterprise_account": enterprise_account,
+                    "last_discovered_at": last_discovered_at,
+                    "inventory_payload": inventory_payload,
+                    "updated_at": updated_at,
+                },
+            )
+            .returning(DeviceProviderInventory)
+            .execution_options(populate_existing=True)
+        )
+        return self.session.execute(statement).scalar_one()
+
+    def get_provider_inventories(
+        self,
+        device_id: UUID,
+    ) -> list[DeviceProviderInventory]:
+        statement = (
+            select(DeviceProviderInventory)
+            .where(DeviceProviderInventory.device_id == device_id)
+            .order_by(DeviceProviderInventory.provider_code.asc())
+        )
+        return list(self.session.scalars(statement))

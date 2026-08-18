@@ -45,6 +45,11 @@ test('opens the device center and keeps the standard page behavior', async ({
   await expect(page.getByText('设备详情', { exact: true })).toBeVisible()
   await expect(page.getByText('执行能力', { exact: true }).last()).toBeVisible()
   await expect(page.getByText('CPU 摘要', { exact: true })).toBeVisible()
+  await expect(page.getByText('影刀环境', { exact: true })).toBeVisible()
+  await expect(page.getByText('未检测', { exact: true }).first()).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '刷新影刀能力' }),
+  ).toBeDisabled()
   await page.getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '添加设备' }).click()

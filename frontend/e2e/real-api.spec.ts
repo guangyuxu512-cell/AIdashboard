@@ -26,6 +26,8 @@ function cleanupRealTestData(): void {
     'from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding',
     'from app.modules.sessions.models import ShopSession',
     'from app.modules.shops.models import Shop, ShopDeviceBinding',
+    'from app.modules.tasks.models import Task',
+    'from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, WorkerDeviceCredential',
     `prefix = ${JSON.stringify(`${testPrefix}%`)}`,
     'with Session(get_database_engine()) as session:',
     '    shop_ids = list(session.scalars(select(Shop.shop_id).where(Shop.display_name.like(prefix))))',
@@ -40,6 +42,10 @@ function cleanupRealTestData(): void {
     '        session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))',
     '    if device_ids:',
     '        session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.device_id.in_(device_ids)))',
+    '        session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))',
+    '        session.execute(delete(DeviceProviderInventory).where(DeviceProviderInventory.device_id.in_(device_ids)))',
+    '        session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)))',
+    '        session.execute(delete(WorkerDeviceCredential).where(WorkerDeviceCredential.device_id.in_(device_ids)))',
     '        session.execute(delete(Device).where(Device.device_id.in_(device_ids)))',
     '    session.commit()',
   ].join('\n')
@@ -48,6 +54,34 @@ function cleanupRealTestData(): void {
     cwd: backendDirectory,
     stdio: 'pipe',
   })
+}
+
+function issueWorkerIdentity(deviceName: string): {
+  deviceId: string
+  token: string
+} {
+  const issueScript = [
+    'import json',
+    'from sqlalchemy import select',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.modules.devices.models import Device',
+    'from app.modules.workers.service import WorkerService',
+    `device_name = ${JSON.stringify(deviceName)}`,
+    'with Session(get_database_engine()) as session:',
+    '    device = session.scalar(select(Device).where(Device.display_name == device_name))',
+    '    assert device is not None',
+    '    token = WorkerService(session).issue_token(device.device_id)',
+    '    print(json.dumps({"deviceId": str(device.device_id), "token": token}))',
+  ].join('\n')
+
+  return JSON.parse(
+    execFileSync(backendPython, ['-c', issueScript], {
+      cwd: backendDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  ) as { deviceId: string; token: string }
 }
 
 test.beforeAll(cleanupRealTestData)
@@ -193,6 +227,39 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await page.getByPlaceholder('请输入设备名称').fill(updatedDeviceName)
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(updatedDeviceName, { exact: true })).toBeVisible()
+  const workerIdentity = issueWorkerIdentity(updatedDeviceName)
+  const inventoryResponse = await page.request.post(
+    'http://127.0.0.1:8000/api/v1/worker/provider-inventory',
+    {
+      headers: {
+        Authorization: `Bearer ${workerIdentity.token}`,
+        'X-Device-ID': workerIdentity.deviceId,
+      },
+      data: {
+        provider_code: 'yingdao',
+        inventory: {
+          provider: 'yingdao',
+          available: true,
+          provider_version: '6.2.23',
+          logged_in: true,
+          account_display: 'GY00999',
+          account_type: 'PersonalBasic',
+          enterprise_account: false,
+          user_id: 'yingdao-user-e2e',
+          applications: [
+            {
+              app_id: 'stage-3b-1a-app',
+              app_name: '影刀应用 E2E',
+              package_version: '1',
+              entrypoint: 'main',
+            },
+          ],
+          discovered_at: new Date().toISOString(),
+        },
+      },
+    },
+  )
+  expect(inventoryResponse.ok()).toBe(true)
   await page
     .getByRole('row')
     .filter({ hasText: updatedDeviceName })
@@ -200,7 +267,26 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .click()
   await expect(page.getByText('设备详情', { exact: true })).toBeVisible()
   await expect(page.getByText('Worker 执行能力尚未接入')).toBeVisible()
-  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(page.getByText('影刀环境', { exact: true })).toBeVisible()
+  await expect(page.getByText('6.2.23', { exact: true })).toBeVisible()
+  await expect(page.getByText('GY00999', { exact: true })).toBeVisible()
+  await expect(page.getByText('PersonalBasic', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '查看应用' }).click()
+  await expect(page.getByText('影刀应用列表', { exact: true })).toBeVisible()
+  await expect(page.getByText('影刀应用 E2E', { exact: true })).toBeVisible()
+  await expect(page.getByText('stage-3b-1a-app', { exact: true })).toBeVisible()
+  await expect(page.getByText('main', { exact: true })).toBeVisible()
+  const applicationsDrawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '影刀应用列表' }),
+  })
+  await applicationsDrawer
+    .getByRole('button', { name: '关闭', exact: true })
+    .click()
+  await expect(page.getByText('影刀应用列表', { exact: true })).toHaveCount(0)
+  const deviceDrawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '设备详情' }),
+  })
+  await deviceDrawer.getByRole('button', { name: '关闭', exact: true }).click()
 
   const layout = await page.evaluate(() => ({
     documentHasHorizontalOverflow:

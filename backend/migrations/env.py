@@ -11,10 +11,15 @@ from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
-from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
+from app.modules.workers.models import (
+    DeviceProviderInventory,
+    DeviceRuntime,
+    WorkerDeviceCredential,
+)
 
 _MODELS = (
     Device,
+    DeviceProviderInventory,
     DeviceRuntime,
     PlatformCredential,
     Shop,

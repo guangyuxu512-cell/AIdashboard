@@ -9,7 +9,8 @@ Backend Task → Worker → RPAExecutor → YingdaoAdapter → 影刀
 ```
 
 RPAExecutor 只负责确认 Provider、校验本地 App 映射、执行超时、统一 Result 转换
-和 Runtime 收口。影刀发现与触发细节只允许存在于 YingdaoAdapter。
+和 Runtime 收口。影刀应用执行细节只允许存在于 YingdaoAdapter；只读环境发现由
+独立的 `YingdaoDiscoveryService` 承担，不能借 Discovery 启动应用。
 
 必须支持：
 
@@ -33,8 +34,35 @@ runtime/<task_id>/
 
 ## Yingdao Adapter Contract
 
-Discovery 最小返回 `provider_available`、可选 `account_display` 与 applications；每个
-Application 只包含 `app_id`、`app_name`。
+Discovery 正式返回 provider、available、provider_version、logged_in、
+account_display、account_type、enterprise_account、user_id、applications 与
+discovered_at。每个 Application 只包含 `app_id`、`app_name`、`package_version`、
+`entrypoint`，不包含密码、Token、Cookie 或完整认证响应。
+
+## 已验证的只读 Discovery
+
+`yingdao.discover` 是可重试的只读 Provider Inventory 发现能力，不属于影刀 App
+执行。固定链路为：
+
+```text
+system health
+→ 确认 console-restapi = ready
+→ auth current
+→ 使用响应中的 userId
+→ %LOCALAPPDATA%/ShadowBot/users/<userId>/user.db3（SQLite read-only）
+→ developmentsync_apps_v2 WHERE isRecycleBin = 0
+→ apps/<appId>/xbot_robot/package.json
+```
+
+数据库只读取 uuid、name；package.json 只读取并校验 uuid、name、version、startup。
+禁止扫描 users 目录猜测当前账号，禁止写入影刀数据库。任一 package 损坏会让本次
+Discovery 以 `YINGDAO_PACKAGE_INVALID` 失败并指出 App ID，不会令 Worker 进程退出，
+也不会静默丢弃应用。
+
+当前已在 PersonalBasic 账号完成真实验证。个人账号的企业应用接口 5010 属于
+not applicable，Discovery 不调用该接口，也不记录为系统错误。Enterprise 账号尚未
+真实验证，不得宣称已支持。安装 Root 和可选数据 Root 进入 Worker Config，代码不
+硬编码本机路径。
 
 成功结果：
 
@@ -62,9 +90,10 @@ Adapter 可内部读取 `running/success/failed` 和 step/message，但本阶段
 握手及本地 Tag 映射。但当前交换目录不存在，未发现实际消费 Task 文件并写 Done
 文件的影刀流程；旧 Done 还是无结构文本，不能满足正式 FAILED/Result Contract。
 
-因此本阶段未把该旧格式接入生产 Adapter，也未猜测影刀 CLI/API/App ID。生产使用
-UnavailableYingdaoAdapter 明确返回 `RPA_PROVIDER_UNAVAILABLE`；待提供真实测试应用
-ID、触发入口和结构化结果格式后，再实现具体 FileTrigger 或 CLI Adapter。
+因此旧格式仍未接入生产 Adapter。只读 Discovery 已正式接入，但真实 App 执行入口、
+`app_id → run`、结构化运行结果仍未确认；生产执行继续由
+UnavailableYingdaoAdapter 明确返回 `RPA_PROVIDER_UNAVAILABLE`。待执行契约真实验证
+后，再实现具体执行 Adapter。
 
 禁止：
 

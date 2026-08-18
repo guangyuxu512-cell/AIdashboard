@@ -4,6 +4,7 @@ import {
   DeviceFilterBar,
   DeviceFormDialog,
   DeviceListTable,
+  YingdaoApplicationsDrawer,
   useDeviceManagement,
 } from '@/features/device-management'
 import PageSection from '@/shared/components/PageSection.vue'
@@ -52,7 +53,19 @@ const management = useDeviceManagement()
       :device="management.detailDevice.value"
       :loading="management.detailLoading.value"
       :error="management.detailError.value"
+      :yingdao-inventory="management.yingdaoInventory.value"
+      :provider-inventory-loading="management.providerInventoryLoading.value"
+      :provider-inventory-error="management.providerInventoryError.value"
+      :yingdao-refreshing="management.yingdaoRefreshing.value"
       @retry="management.retryDetail"
+      @retry-provider-inventory="management.retryProviderInventory"
+      @refresh-yingdao="management.refreshYingdao"
+      @view-yingdao-applications="management.openYingdaoApplications"
+    />
+
+    <YingdaoApplicationsDrawer
+      v-model:show="management.applicationsVisible.value"
+      :applications="management.yingdaoInventory.value?.applications ?? []"
     />
 
     <DeviceFormDialog

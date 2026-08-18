@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createMockDeviceDataSource } from './device-data-source'
-import { mapDeviceDto } from './device-mapper'
+import { mapDeviceDto, mapYingdaoInventoryDto } from './device-mapper'
 import { deviceQueryKeys } from './device-queries'
 
 const emptyFilters = {
@@ -67,6 +67,50 @@ describe('device mapper, query and mutation', () => {
       'list',
       { page: 3, pageSize: 50, filters: emptyFilters },
     ])
+  })
+
+  it('maps the latest Yingdao provider snapshot without exposing secrets', () => {
+    const inventory = mapYingdaoInventoryDto({
+      device_id: '00000000-0000-0000-0000-000000000001',
+      provider_code: 'yingdao',
+      available: true,
+      provider_version: '6.2.23',
+      account_display: 'GY00999',
+      account_type: 'PersonalBasic',
+      enterprise_account: false,
+      last_discovered_at: '2026-08-20T12:00:00+00:00',
+      updated_at: '2026-08-20T12:00:01+00:00',
+      inventory: {
+        provider: 'yingdao',
+        available: true,
+        provider_version: '6.2.23',
+        logged_in: true,
+        account_display: 'GY00999',
+        account_type: 'PersonalBasic',
+        enterprise_account: false,
+        user_id: 'yingdao-user-test',
+        applications: [
+          {
+            app_id: 'app-1',
+            app_name: '应用一',
+            package_version: '1',
+            entrypoint: 'main',
+          },
+        ],
+        discovered_at: '2026-08-20T12:00:00+00:00',
+      },
+    })
+
+    expect(inventory.availabilityStatus).toBe('available')
+    expect(inventory.providerVersion).toBe('6.2.23')
+    expect(inventory.accountDisplay).toBe('GY00999')
+    expect(inventory.applicationCount).toBe(1)
+    expect(inventory.applications[0]).toEqual({
+      appId: 'app-1',
+      appName: '应用一',
+      packageVersion: '1',
+      entrypoint: 'main',
+    })
   })
 
   it('creates and updates a mock device record without inventing runtime data', async () => {

@@ -1,5 +1,6 @@
 import { useMessage } from 'naive-ui'
-import { computed, ref } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
+import { computed, ref, watch } from 'vue'
 
 import {
   deviceDataSource,
@@ -9,8 +10,11 @@ import {
   useCreateDeviceMutation,
   useDeviceDetailQuery,
   useDeviceListQuery,
+  useDeviceProviderInventoriesQuery,
   useUpdateDeviceMutation,
+  deviceQueryKeys,
 } from '@/entities/device'
+import { useCreateTaskMutation, useTaskQuery } from '@/entities/task'
 import { getErrorMessage } from '@/shared/api'
 
 import type {
@@ -41,6 +45,10 @@ export function useDeviceManagement() {
   const formMode = ref<DeviceFormMode>('create')
   const formInitialValue = ref<DeviceFormViewModel | null>(null)
   const editingDeviceId = ref<string | null>(null)
+  const applicationsVisible = ref(false)
+  const refreshTaskId = ref<string | null>(null)
+  const handledRefreshTaskId = ref<string | null>(null)
+  const queryClient = useQueryClient()
 
   const listParams = computed(() => ({
     page: page.value,
@@ -49,6 +57,9 @@ export function useDeviceManagement() {
   }))
   const listQuery = useDeviceListQuery(listParams)
   const detailQuery = useDeviceDetailQuery(detailDeviceId)
+  const providerInventoryQuery = useDeviceProviderInventoriesQuery(detailDeviceId)
+  const refreshTaskQuery = useTaskQuery(refreshTaskId)
+  const createTaskMutation = useCreateTaskMutation()
   const createMutation = useCreateDeviceMutation()
   const updateMutation = useUpdateDeviceMutation()
 
@@ -64,6 +75,17 @@ export function useDeviceManagement() {
   )
   const detailError = computed(() =>
     detailQuery.error.value ? getErrorMessage(detailQuery.error.value) : null,
+  )
+  const providerInventoryError = computed(() =>
+    providerInventoryQuery.error.value
+      ? getErrorMessage(providerInventoryQuery.error.value)
+      : null,
+  )
+  const yingdaoRefreshing = computed(
+    () =>
+      createTaskMutation.isPending.value ||
+      refreshTaskQuery.data.value?.status === 'pending' ||
+      refreshTaskQuery.data.value?.status === 'running',
   )
   const formSubmitting = computed(
     () => createMutation.isPending.value || updateMutation.isPending.value,
@@ -89,6 +111,51 @@ export function useDeviceManagement() {
     detailDeviceId.value = device.deviceId
     detailVisible.value = true
   }
+
+  async function refreshYingdao(): Promise<void> {
+    if (!detailDeviceId.value || deviceDataSource.mode !== 'real') return
+    try {
+      const task = await createTaskMutation.mutateAsync({
+        target_device_id: detailDeviceId.value,
+        skill_id: 'yingdao.discover',
+        input: {},
+      })
+      handledRefreshTaskId.value = null
+      refreshTaskId.value = task.task_id
+      message.info('已创建影刀能力刷新任务')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
+  }
+
+  function openYingdaoApplications(): void {
+    applicationsVisible.value = true
+  }
+
+  watch(
+    () => refreshTaskQuery.data.value,
+    async (task) => {
+      if (
+        !task ||
+        task.task_id === handledRefreshTaskId.value ||
+        !['success', 'failed', 'lost'].includes(task.status)
+      ) {
+        return
+      }
+      handledRefreshTaskId.value = task.task_id
+      if (task.status === 'success') {
+        await queryClient.invalidateQueries({
+          queryKey: deviceQueryKeys.providerInventories(task.target_device_id),
+        })
+        message.success('影刀能力已刷新')
+        return
+      }
+      message.error(
+        task.error_message ??
+          (task.status === 'lost' ? '刷新任务已失联' : '影刀能力刷新失败'),
+      )
+    },
+  )
 
   function openCreate(): void {
     formMode.value = 'create'
@@ -133,6 +200,7 @@ export function useDeviceManagement() {
     page,
     pageSize,
     detailVisible,
+    applicationsVisible,
     formVisible,
     formMode,
     formInitialValue,
@@ -142,22 +210,33 @@ export function useDeviceManagement() {
     filtersAvailable: deviceDataSource.supportsFilters,
     dataSourceDescription:
       deviceDataSource.mode === 'real'
-        ? '数据来自 FastAPI；Worker、运行状态与资源数据尚未接入。'
+        ? '数据来自 FastAPI；Worker在线状态与影刀环境来自目标设备。'
         : '当前运行、资源与心跳信息来自 Frontend Fixture。',
     listLoading: listQuery.isPending,
     listError,
     detailDevice: computed(() => detailQuery.data.value ?? null),
     detailLoading: detailQuery.isPending,
     detailError,
+    yingdaoInventory: computed(() => providerInventoryQuery.data.value ?? null),
+    providerInventoryLoading: computed(
+      () =>
+        deviceDataSource.mode === 'real' &&
+        providerInventoryQuery.isPending.value,
+    ),
+    providerInventoryError,
+    yingdaoRefreshing,
     formSubmitting,
     query,
     resetFilters,
     setPageSize,
     retryList: listQuery.refetch,
     retryDetail: detailQuery.refetch,
+    retryProviderInventory: providerInventoryQuery.refetch,
     openDetail,
     openCreate,
     openEdit,
+    openYingdaoApplications,
+    refreshYingdao,
     saveDevice,
   }
 }

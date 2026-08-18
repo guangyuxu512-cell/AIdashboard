@@ -12,6 +12,7 @@ SkillHandler = Callable[[BaseModel], dict[str, Any]]
 class SkillRuntime(StrEnum):
     PYTHON = "python"
     RPA = "rpa"
+    DISCOVERY = "discovery"
 
 
 class SkillProvider(StrEnum):
@@ -33,6 +34,8 @@ class SkillDefinition:
             raise ValueError("Python Skill requires a local handler")
         if self.runtime is SkillRuntime.RPA and self.provider is None:
             raise ValueError("RPA Skill requires a provider")
+        if self.runtime is SkillRuntime.DISCOVERY and self.provider is None:
+            raise ValueError("Discovery Skill requires a provider")
 
 
 class SkillRegistry:

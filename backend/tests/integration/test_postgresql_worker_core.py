@@ -11,8 +11,12 @@ from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.models import Task
 from app.modules.tasks.schemas import TaskComplete, TaskCreate, TaskFail
 from app.modules.tasks.service import TaskService
-from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
-from app.modules.workers.schemas import WorkerHeartbeat
+from app.modules.workers.models import (
+    DeviceProviderInventory,
+    DeviceRuntime,
+    WorkerDeviceCredential,
+)
+from app.modules.workers.schemas import ProviderInventoryUpsert, WorkerHeartbeat
 from app.modules.workers.service import WorkerPrincipal, WorkerService
 
 
@@ -22,6 +26,11 @@ pytestmark = pytest.mark.integration
 def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
     with Session(engine) as session:
         session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
+        session.execute(
+            delete(DeviceProviderInventory).where(
+                DeviceProviderInventory.device_id.in_(device_ids),
+            ),
+        )
         session.execute(
             delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)),
         )
@@ -70,6 +79,50 @@ def test_worker_identity_runtime_claim_result_and_lost(
             assert token_b not in credential_hashes
             principal_a = worker_service.authenticate(device_a, token_a)
             principal_b = worker_service.authenticate(device_b, token_b)
+            inventory_input = ProviderInventoryUpsert.model_validate(
+                {
+                    "provider_code": "yingdao",
+                    "inventory": {
+                        "provider": "yingdao",
+                        "available": True,
+                        "provider_version": "6.2.23",
+                        "logged_in": True,
+                        "account_display": "GY00999",
+                        "account_type": "PersonalBasic",
+                        "enterprise_account": False,
+                        "user_id": "yingdao-user-integration",
+                        "applications": [
+                            {
+                                "app_id": "app-1",
+                                "app_name": "应用一",
+                                "package_version": "1",
+                                "entrypoint": "main",
+                            },
+                        ],
+                        "discovered_at": base_time.isoformat(),
+                    },
+                },
+            )
+            inventory_a = worker_service.save_provider_inventory(
+                principal_a,
+                inventory_input,
+                now=base_time,
+            )
+            assert inventory_a.device_id == device_a
+            assert inventory_a.inventory.account_display == "GY00999"
+            assert worker_service.get_provider_inventory_reads(device_b) == []
+            inventory_b = worker_service.save_provider_inventory(
+                principal_b,
+                inventory_input,
+                now=base_time,
+            )
+            assert inventory_b.device_id == device_b
+            assert session.scalar(
+                select(DeviceProviderInventory).where(
+                    DeviceProviderInventory.device_id == device_a,
+                    DeviceProviderInventory.provider_code == "yingdao",
+                ),
+            ) is not None
             online = worker_service.heartbeat(
                 principal_a,
                 WorkerHeartbeat(worker_version="0.1.0", started_at=base_time),

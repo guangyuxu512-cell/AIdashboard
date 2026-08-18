@@ -10,12 +10,18 @@ from app.providers.yingdao.contracts import (
     YingdaoExecutionResult,
     YingdaoExecutionStatus,
 )
+from app.providers.yingdao.discovery import (
+    YingdaoDiscoveryError,
+    YingdaoDiscoveryService,
+)
 
 __all__ = [
     "UnavailableYingdaoAdapter",
     "YingdaoAdapter",
     "YingdaoApplication",
     "YingdaoDiscoveryResult",
+    "YingdaoDiscoveryError",
+    "YingdaoDiscoveryService",
     "YingdaoExecutionRequest",
     "YingdaoExecutionResult",
     "YingdaoExecutionStatus",

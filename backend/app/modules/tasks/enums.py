@@ -13,3 +13,4 @@ class TaskSkillId(StrEnum):
     SYSTEM_ECHO = "system.echo"
     SYSTEM_SLEEP = "system.sleep"
     YINGDAO_TEST = "yingdao.test"
+    YINGDAO_DISCOVER = "yingdao.discover"

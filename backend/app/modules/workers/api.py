@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.workers.auth import get_worker_principal
-from app.modules.workers.schemas import DeviceRuntimeRead, WorkerHeartbeat
+from app.modules.workers.schemas import (
+    DeviceProviderInventoryRead,
+    DeviceRuntimeRead,
+    ProviderInventoryUpsert,
+    WorkerHeartbeat,
+)
 from app.modules.workers.service import WorkerPrincipal, WorkerService
 
 
@@ -33,3 +38,15 @@ def heartbeat(
     service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> DeviceRuntimeRead:
     return service.heartbeat(principal, data)
+
+
+@router.post(
+    "/provider-inventory",
+    response_model=DeviceProviderInventoryRead,
+)
+def save_provider_inventory(
+    data: ProviderInventoryUpsert,
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> DeviceProviderInventoryRead:
+    return service.save_provider_inventory(principal, data)

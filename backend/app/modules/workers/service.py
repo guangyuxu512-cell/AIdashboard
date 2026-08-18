@@ -11,9 +11,19 @@ from app.modules.workers.exceptions import (
     WorkerAuthenticationError,
     WorkerCredentialNotFoundError,
 )
-from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
+from app.modules.workers.models import (
+    DeviceProviderInventory,
+    DeviceRuntime,
+    WorkerDeviceCredential,
+)
 from app.modules.workers.repository import WorkerRepository
-from app.modules.workers.schemas import DeviceRuntimeRead, WorkerHeartbeat
+from app.modules.workers.schemas import (
+    DeviceProviderInventoryRead,
+    DeviceRuntimeRead,
+    ProviderInventoryUpsert,
+    WorkerHeartbeat,
+    YingdaoProviderInventory,
+)
 from app.modules.workers.security import (
     generate_worker_token,
     hash_worker_token,
@@ -106,6 +116,39 @@ class WorkerService:
             for device_id, runtime in self.repository.get_runtimes(device_ids).items()
         }
 
+    def save_provider_inventory(
+        self,
+        principal: WorkerPrincipal,
+        data: ProviderInventoryUpsert,
+        *,
+        now: datetime | None = None,
+    ) -> DeviceProviderInventoryRead:
+        updated_at = now or datetime.now(UTC)
+        inventory = data.inventory
+        record = self.repository.upsert_provider_inventory(
+            device_id=principal.device_id,
+            provider_code=data.provider_code.value,
+            available=inventory.available,
+            provider_version=inventory.provider_version,
+            account_display=inventory.account_display,
+            account_type=inventory.account_type,
+            enterprise_account=inventory.enterprise_account,
+            last_discovered_at=inventory.discovered_at,
+            inventory_payload=inventory.model_dump(mode="json"),
+            updated_at=updated_at,
+        )
+        self.session.commit()
+        return self.to_provider_inventory_read(record)
+
+    def get_provider_inventory_reads(
+        self,
+        device_id: UUID,
+    ) -> list[DeviceProviderInventoryRead]:
+        return [
+            self.to_provider_inventory_read(record)
+            for record in self.repository.get_provider_inventories(device_id)
+        ]
+
     def to_runtime_read(
         self,
         runtime: DeviceRuntime,
@@ -125,4 +168,23 @@ class WorkerService:
             last_seen_at=runtime.last_seen_at,
             started_at=runtime.started_at,
             updated_at=runtime.updated_at,
+        )
+
+    @staticmethod
+    def to_provider_inventory_read(
+        record: DeviceProviderInventory,
+    ) -> DeviceProviderInventoryRead:
+        return DeviceProviderInventoryRead(
+            device_id=record.device_id,
+            provider_code=record.provider_code,
+            available=record.available,
+            provider_version=record.provider_version,
+            account_display=record.account_display,
+            account_type=record.account_type,
+            enterprise_account=record.enterprise_account,
+            last_discovered_at=record.last_discovered_at,
+            inventory=YingdaoProviderInventory.model_validate(
+                record.inventory_payload,
+            ),
+            updated_at=record.updated_at,
         )
