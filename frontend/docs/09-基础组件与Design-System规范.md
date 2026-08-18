@@ -333,6 +333,8 @@ table border
 
 `DataTable.viewport="stable"` 用于需要稳定分页位置的标准列表管理页：满页、单行、空态、首次加载和错误态共享同一最小视口高度。该能力由表格语义 Token 驱动，页面禁止再写固定高度。
 
+`DataTable.viewport="fill"` 用于列表 Card 必须消费剩余工作区的 Compact Management 页面。它与 `PageSection.fill` 组成 `flex: 1 / min-height: 0` 链，Loading、Empty、Error 和 Table Body 共用剩余主体空间，Pagination 由页面组合固定在底部。空间不足时通过 Naive DataTable `flex-height` 处理表格主体，不拉伸行高。
+
 `DataTable.appearance="list"` 提供无明显纵向网格的列表外观：保留轻量行分隔、表头层级、Hover、Selected 和固定列阴影。默认 `grid` 行为保持不变，必须由页面模式显式选择。
 
 行选择继续使用 Naive UI 原生 selection column，并通过 `checkedRowKeys` / `update:checkedRowKeys` 由 `AppTable`、`DataTable` 统一透传；业务页面不得手写第二套 Checkbox 表头联动。
@@ -544,6 +546,8 @@ description（需要时）
 阶段 2C 增加 `ThemeSelector`，作为 AppShell Topbar 的 Light / Dark / System 入口，内部复用 `AppButton` 和 Naive `NDropdown`。
 
 阶段 2D-1 为既有 `AppDrawer` / `DetailDrawer` 增加通用 `header` Slot，用于领域详情的图标、身份信息和真实操作组合；宽度仍只能使用 `sm / md / lg` 语义尺寸，不新增店铺专用 Drawer。
+
+阶段 2D-4 为 `AppSelect` 增加通用 `renderLabel` 透传，用于 Platform Registry 等领域展示在原有 Select 中组合图标、Label 和支持状态；不得为图标选项创建第二套 Select。
 
 ## 18. Design System V2 公共视觉规则
 

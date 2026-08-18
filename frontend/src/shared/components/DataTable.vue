@@ -17,7 +17,7 @@ const props = withDefaults(
     scrollX?: number
     emptyDescription?: string
     checkedRowKeys?: DataTableRowKey[]
-    viewport?: 'auto' | 'stable'
+    viewport?: 'auto' | 'stable' | 'fill'
     appearance?: 'grid' | 'list'
   }>(),
   {
@@ -67,6 +67,7 @@ defineEmits<{
       :scroll-x="scrollX"
       :checked-row-keys="checkedRowKeys"
       :appearance="appearance"
+      :fill="viewport === 'fill'"
       @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
     />
   </div>
@@ -83,5 +84,17 @@ defineEmits<{
 
 .data-table--stable > :deep(.state-panel) {
   min-height: var(--table-list-viewport-height);
+}
+
+.data-table--fill {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.data-table--fill > :deep(.state-panel) {
+  min-height: 0;
+  flex: 1;
 }
 </style>

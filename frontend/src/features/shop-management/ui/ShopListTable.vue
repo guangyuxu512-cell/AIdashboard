@@ -4,10 +4,9 @@ import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 
 import {
   getShopExecutionDeviceSummary,
-  SHOP_UNASSIGNED_GROUP_LABEL,
-  ShopPlatformDisplay,
   type ShopListItemViewModel,
 } from '@/entities/shop'
+import { PlatformDisplay } from '@/entities/platform'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppSwitch from '@/shared/ui/AppSwitch.vue'
@@ -39,14 +38,7 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     key: 'platform',
     width: 96,
     align: 'center',
-    render: (shop) => h(ShopPlatformDisplay, { platform: shop.platform }),
-  },
-  {
-    title: '分组',
-    key: 'groupPlaceholder',
-    width: 88,
-    align: 'center',
-    render: () => SHOP_UNASSIGNED_GROUP_LABEL,
+    render: (shop) => h(PlatformDisplay, { code: shop.platform }),
   },
   {
     title: '负责人',
@@ -140,10 +132,11 @@ function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
     :loading="loading"
     :error="error"
     :row-key="(row: ShopListItemViewModel) => row.shopId"
-    :scroll-x="962"
+    :scroll-x="874"
     :checked-row-keys="checkedRowKeys"
     appearance="list"
-    viewport="stable"
+    viewport="fill"
+    class="shop-list-table"
     empty-description="没有符合当前条件的店铺"
     @retry="$emit('retry')"
     @update:checked-row-keys="updateCheckedRowKeys"
@@ -151,6 +144,11 @@ function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
 </template>
 
 <style scoped>
+.shop-list-table {
+  min-height: 0;
+  flex: 1;
+}
+
 :deep(.shop-list-table__automation-placeholder) {
   display: inline-flex;
   align-items: center;

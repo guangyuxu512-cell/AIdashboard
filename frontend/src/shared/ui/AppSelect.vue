@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NSelect } from 'naive-ui'
-import type { SelectOption } from 'naive-ui'
+import type { SelectOption, SelectProps } from 'naive-ui'
 
 import type { AppOptionValue, FieldWidth } from './types'
 
@@ -14,6 +14,7 @@ withDefaults(
     filterable?: boolean
     loading?: boolean
     disabled?: boolean
+    renderLabel?: SelectProps['renderLabel']
   }>(),
   {
     modelValue: null,
@@ -23,6 +24,7 @@ withDefaults(
     filterable: false,
     loading: false,
     disabled: false,
+    renderLabel: undefined,
   },
 )
 
@@ -43,6 +45,7 @@ defineEmits<{
     :filterable="filterable"
     :loading="loading"
     :disabled="disabled"
+    :render-label="renderLabel"
     @update:value="$emit('update:modelValue', $event)"
   />
 </template>

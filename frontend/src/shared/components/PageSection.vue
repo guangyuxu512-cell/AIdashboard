@@ -4,17 +4,22 @@ withDefaults(
     title?: string
     description?: string
     surface?: 'card' | 'transparent'
+    fill?: boolean
   }>(),
   {
     title: undefined,
     description: undefined,
     surface: 'card',
+    fill: false,
   },
 )
 </script>
 
 <template>
-  <section class="page-section" :class="`page-section--${surface}`">
+  <section
+    class="page-section"
+    :class="[`page-section--${surface}`, { 'page-section--fill': fill }]"
+  >
     <header
       v-if="title || description || $slots.actions"
       class="page-section__header"
@@ -36,6 +41,20 @@ withDefaults(
 <style scoped>
 .page-section {
   min-width: 0;
+}
+
+.page-section--fill {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.page-section--fill .page-section__content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
 }
 
 .page-section--card {

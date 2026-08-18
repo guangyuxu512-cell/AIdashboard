@@ -78,9 +78,25 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   const updatedShopName = `${testPrefix}shop-updated`
   await page.getByRole('button', { name: '新增店铺' }).click()
   await page.getByPlaceholder('请输入店铺名称').fill(shopName)
-  await expect(page.getByText('抖音', { exact: true }).last()).toBeVisible()
+  await expect(page.getByText('抖店', { exact: true }).last()).toBeVisible()
+  const createDialog = page.locator('.n-modal')
+  await createDialog.getByText('抖店', { exact: true }).click()
+  const platformOptions = page.locator('.n-base-select-option')
+  await expect(platformOptions.filter({ hasText: '淘宝' })).toHaveClass(
+    /--disabled/,
+  )
+  await expect(platformOptions.filter({ hasText: '视频号' })).toHaveClass(
+    /--disabled/,
+  )
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('row')
+      .filter({ hasText: shopName })
+      .getByRole('checkbox'),
+  ).toBeChecked()
 
   await page.reload()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
@@ -98,8 +114,10 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .filter({ hasText: updatedShopName })
     .getByRole('button', { name: '查看' })
     .click()
-  await expect(page.getByText('账号与连接')).toBeVisible()
-  await expect(page.getByText('自动化策略与控制能力尚未接入')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: '账号与连接' }),
+  ).toBeVisible()
+  await expect(page.getByText('未配置')).toBeVisible()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByText('设备中心', { exact: true }).click()

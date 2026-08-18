@@ -13,7 +13,6 @@ defineProps<{ selectedCount: number }>()
     <span class="shop-batch-toolbar__placeholder">批量能力待接入</span>
 
     <template #actions>
-      <AppButton disabled title="分组领域尚未接入">批量分配分组</AppButton>
       <AppButton disabled title="自动化总开关尚未接入">批量开启</AppButton>
       <AppButton disabled title="自动化总开关尚未接入">批量关闭</AppButton>
       <AppButton tone="danger" disabled title="店铺删除 API 尚未接入">

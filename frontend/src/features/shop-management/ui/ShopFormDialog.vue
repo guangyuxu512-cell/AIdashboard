@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, h, watch } from 'vue'
 import { NForm, NFormItem } from 'naive-ui'
 import type { SelectOption } from 'naive-ui'
 import { useForm } from 'vee-validate'
 import { z } from 'zod'
 
 import type { ShopPlatform } from '@/entities/shop'
+import {
+  PLATFORM_CREATE_OPTIONS,
+  PlatformDisplay,
+  type PlatformCode,
+} from '@/entities/platform'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -18,7 +23,6 @@ const props = defineProps<{
   show: boolean
   mode: ShopFormMode
   initialValue: ShopFormViewModel | null
-  platformOptions: SelectOption[]
   ownerOptions: SelectOption[]
   ownerOptionsLoading?: boolean
   submitting?: boolean
@@ -77,8 +81,8 @@ watch(
           : {
               ...emptyForm,
               platform:
-                (props.platformOptions[0]?.value as ShopPlatform | undefined) ??
-                null,
+                (PLATFORM_CREATE_OPTIONS.find((option) => !option.disabled)
+                  ?.value as ShopPlatform | undefined) ?? null,
             },
       })
     }
@@ -87,6 +91,13 @@ watch(
 
 function updatePlatform(value: AppOptionValue | null): void {
   platform.value = value as ShopPlatform | null
+}
+
+function renderPlatformLabel(option: SelectOption) {
+  return h(PlatformDisplay, {
+    code: option.value as PlatformCode,
+    supportLabel: option.disabled ? '待接入' : undefined,
+  })
 }
 
 function updateOwner(value: AppOptionValue | null): void {
@@ -141,7 +152,8 @@ const submit = handleSubmit((values) => {
         >
           <AppSelect
             :model-value="platform"
-            :options="platformOptions"
+            :options="PLATFORM_CREATE_OPTIONS"
+            :render-label="renderPlatformLabel"
             placeholder="请选择平台"
             @update:model-value="updatePlatform"
           />

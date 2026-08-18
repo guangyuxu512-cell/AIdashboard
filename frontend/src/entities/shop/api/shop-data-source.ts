@@ -7,7 +7,6 @@ import { apiMode, type ApiMode, type PageResult } from '@/shared/api'
 import {
   SHOP_LIST_FIXTURE,
   SHOP_OWNER_FIXTURE_OPTIONS,
-  SHOP_PLATFORM_FIXTURE_OPTIONS,
 } from '../fixtures/shop-list.fixture'
 import type {
   ShopListFilters,
@@ -30,7 +29,6 @@ export interface ShopListParams {
 
 export interface ShopDataSource {
   readonly mode: ApiMode
-  readonly platformOptions: ShopSelectOption[]
   list(params: ShopListParams): Promise<PageResult<ShopListItemViewModel>>
   get(shopId: string): Promise<ShopListItemViewModel>
   create(input: ShopSaveInput): Promise<ShopListItemViewModel>
@@ -51,7 +49,6 @@ export function createMockShopDataSource(): ShopDataSource {
 
   return {
     mode: 'mock',
-    platformOptions: SHOP_PLATFORM_FIXTURE_OPTIONS as ShopSelectOption[],
     async list(params) {
       const start = (params.page - 1) * params.pageSize
       return {
@@ -128,10 +125,6 @@ async function loadMappingReferences() {
 
 const realShopDataSource: ShopDataSource = {
   mode: 'real',
-  platformOptions: [
-    { label: '抖音', value: 'douyin' },
-    { label: '拼多多', value: 'pdd' },
-  ],
   async list(params) {
     const [page, references] = await Promise.all([
       shopApi.list(params),

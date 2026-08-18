@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import DataTable from './DataTable.vue'
@@ -55,5 +55,18 @@ describe('DataTable', () => {
     expect(wrapper.get('.data-table').classes()).toContain(
       'data-table--appearance-list',
     )
+  })
+
+  it('supports a flex-fill table body without changing the default mode', () => {
+    const wrapper = shallowMount(DataTable, {
+      props: {
+        columns: [{ title: '名称', key: 'name' }],
+        data: [{ name: '测试' }],
+        viewport: 'fill',
+      },
+    })
+
+    expect(wrapper.get('.data-table').classes()).toContain('data-table--fill')
+    expect(wrapper.findComponent({ name: 'AppTable' }).props('fill')).toBe(true)
   })
 })

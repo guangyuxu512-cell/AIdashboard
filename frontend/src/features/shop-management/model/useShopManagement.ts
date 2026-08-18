@@ -144,7 +144,8 @@ export function useShopManagement() {
         await updateMutation.mutateAsync({ shopId: editingShopId.value, input })
         message.success('店铺已更新')
       } else {
-        await createMutation.mutateAsync(input)
+        const createdShop = await createMutation.mutateAsync(input)
+        selectedShopIds.value = [createdShop.shopId]
         message.success('店铺已创建')
       }
       formVisible.value = false
@@ -166,7 +167,6 @@ export function useShopManagement() {
     formInitialValue,
     rows,
     total,
-    platformOptions: shopDataSource.platformOptions,
     ownerOptions: computed(() => ownerOptionsQuery.data.value ?? []),
     ownerOptionsLoading: ownerOptionsQuery.isPending,
     dataSourceDescription:

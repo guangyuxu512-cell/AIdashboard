@@ -1,11 +1,12 @@
-export type ShopPlatform = 'douyin' | 'pdd'
+import type { PlatformCode } from '@/entities/platform'
+
+/** Shop API 当前正式支持的平台子集。 */
+export type ShopPlatform = Extract<PlatformCode, 'douyin' | 'pdd'>
 
 /** 店铺中心平台栏的前端展示值，不是 Backend 平台枚举。 */
 export type ShopPlatformFilter =
   | 'all'
-  | ShopPlatform
-  | 'taobao'
-  | 'wechat_channels'
+  | PlatformCode
 
 export type ShopEnabledStatus = 'enabled' | 'disabled'
 

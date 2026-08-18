@@ -1,16 +1,11 @@
 import type { SelectOption } from 'naive-ui'
 
-import { SHOP_PLATFORM_META } from '../model/status-meta'
 import type { ShopListItemViewModel } from '../model/types'
 
 export interface ShopDeviceFixtureOption extends SelectOption {
   label: string
   value: string
 }
-
-export const SHOP_PLATFORM_FIXTURE_OPTIONS: SelectOption[] = Object.values(
-  SHOP_PLATFORM_META,
-).map(({ label, value }) => ({ label, value }))
 
 export const SHOP_OWNER_FIXTURE_OPTIONS: SelectOption[] = [
   { label: '林晓', value: 'user-fixture-linxiao' },

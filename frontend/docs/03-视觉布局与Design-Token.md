@@ -112,3 +112,21 @@ Main Content = 唯一主滚动区
 ```
 
 禁止通过业务页 `100vh - x` 或固定高度修补 AppShell。
+
+## Compact Management Fill 链路
+
+需要将列表 Card 填满筛选区以下剩余工作区时，必须使用可收缩 Flex 链：
+
+```text
+Main Content（确定高度）
+↓
+Page（height: 100%; min-height: 0）
+↓
+PageSection fill（flex: 1; min-height: 0）
+↓
+DataTable fill（flex: 1; min-height: 0）
+↓
+PaginationBar（固定在 Section 底部）
+```
+
+数据行保持既有行高；空间不足时仅表格主体使用 Naive DataTable 的必要滚动能力。禁止以固定像素或 `100vh - x` 猜测工作区高度。

@@ -1,31 +1,37 @@
 <script setup lang="ts">
-import { SHOP_PLATFORM_NAV_ITEMS, type ShopPlatformFilter } from '@/entities/shop'
+import {
+  PLATFORM_ALL_NAV_ITEM,
+  PLATFORM_NAVIGATION_ITEMS,
+  PlatformIcon,
+} from '@/entities/platform'
+import type { ShopPlatformFilter } from '@/entities/shop'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 defineProps<{ modelValue: ShopPlatformFilter }>()
 
 defineEmits<{ 'update:modelValue': [value: ShopPlatformFilter] }>()
+
+const navigationItems = [
+  PLATFORM_ALL_NAV_ITEM,
+  ...PLATFORM_NAVIGATION_ITEMS,
+]
 </script>
 
 <template>
   <nav class="shop-platform-switch" aria-label="店铺平台切换">
     <AppButton
-      v-for="item in SHOP_PLATFORM_NAV_ITEMS"
-      :key="item.value"
-      :tone="modelValue === item.value ? 'secondary' : 'text'"
+      v-for="item in navigationItems"
+      :key="item.code"
+      :tone="modelValue === item.code ? 'secondary' : 'text'"
       :class="{
-        'shop-platform-switch__item--active': modelValue === item.value,
+        'shop-platform-switch__item--active': modelValue === item.code,
       }"
-      :aria-pressed="modelValue === item.value"
+      :aria-pressed="modelValue === item.code"
       :aria-label="item.label"
-      @click="$emit('update:modelValue', item.value)"
+      @click="$emit('update:modelValue', item.code)"
     >
       <span class="shop-platform-switch__content">
-        <img
-          class="shop-platform-switch__icon"
-          :src="item.icon"
-          :alt="item.iconAlt"
-        />
+        <PlatformIcon :code="item.code" />
         <span>{{ item.label }}</span>
       </span>
     </AppButton>
@@ -49,12 +55,6 @@ defineEmits<{ 'update:modelValue': [value: ShopPlatformFilter] }>()
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.shop-platform-switch__icon {
-  width: var(--space-5);
-  height: var(--space-5);
-  border-radius: var(--radius-sm);
 }
 
 .shop-platform-switch__item--active {

@@ -17,6 +17,7 @@ const props = withDefaults(
     scrollX?: number
     checkedRowKeys?: DataTableRowKey[]
     appearance?: 'grid' | 'list'
+    fill?: boolean
   }>(),
   {
     data: () => [],
@@ -27,6 +28,7 @@ const props = withDefaults(
     scrollX: undefined,
     checkedRowKeys: () => [],
     appearance: 'grid',
+    fill: false,
   },
 )
 
@@ -44,7 +46,7 @@ function rowClassName(row: DataTableRowData): string {
 <template>
   <NDataTable
     class="app-table"
-    :class="`app-table--${appearance}`"
+    :class="[`app-table--${appearance}`, { 'app-table--fill': fill }]"
     size="medium"
     :columns="columns"
     :data="data"
@@ -56,6 +58,7 @@ function rowClassName(row: DataTableRowData): string {
     :checked-row-keys="props.checkedRowKeys"
     :row-class-name="rowClassName"
     :single-line="appearance === 'list'"
+    :flex-height="fill"
     @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
   />
 </template>
@@ -69,5 +72,10 @@ function rowClassName(row: DataTableRowData): string {
 .app-table--list
   :deep(.n-data-table-tr.app-table__row--selected .n-data-table-td) {
   background-color: var(--color-primary-soft);
+}
+
+.app-table--fill {
+  min-height: 0;
+  flex: 1;
 }
 </style>

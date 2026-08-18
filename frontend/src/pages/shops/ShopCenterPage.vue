@@ -33,7 +33,7 @@ const management = useShopManagement()
       </template>
     </ShopFilterBar>
 
-    <PageSection>
+    <PageSection class="shop-list-section" fill>
       <div class="shop-list-pattern">
         <ShopBatchToolbar
           :selected-count="management.selectedShopCount.value"
@@ -68,7 +68,6 @@ const management = useShopManagement()
       v-model:show="management.formVisible.value"
       :mode="management.formMode.value"
       :initial-value="management.formInitialValue.value"
-      :platform-options="management.platformOptions"
       :owner-options="management.ownerOptions.value"
       :owner-options-loading="management.ownerOptionsLoading.value"
       :submitting="management.formSubmitting.value"
@@ -78,9 +77,16 @@ const management = useShopManagement()
 </template>
 
 <style scoped>
+.shop-center-page {
+  height: 100%;
+  min-height: 0;
+}
+
 .shop-list-pattern {
   display: flex;
   min-width: 0;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
   gap: var(--space-4);
 }

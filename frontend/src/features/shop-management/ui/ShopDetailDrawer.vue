@@ -2,16 +2,18 @@
 import { NDescriptions, NDescriptionsItem } from 'naive-ui'
 
 import {
-  SHOP_UNASSIGNED_GROUP_LABEL,
-  SHOP_PLATFORM_META,
-  ShopPlatformDisplay,
+  ShopStatusTag,
   type ShopListItemViewModel,
 } from '@/entities/shop'
+import {
+  getPlatformDefinition,
+  PlatformDisplay,
+} from '@/entities/platform'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
+import EmptyState from '@/shared/components/EmptyState.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppSwitch from '@/shared/ui/AppSwitch.vue'
 
 defineProps<{
   show: boolean
@@ -36,11 +38,11 @@ defineEmits<{
   >
     <template v-if="shop" #header>
       <div class="shop-detail-header">
-        <ShopPlatformDisplay :platform="shop.platform" :label="false" />
+        <PlatformDisplay :code="shop.platform" :label="false" />
         <div class="shop-detail-header__identity">
           <strong>{{ shop.shopName }}</strong>
           <span>
-            {{ SHOP_PLATFORM_META[shop.platform].label }} · {{ shop.shopId }}
+            {{ getPlatformDefinition(shop.platform)?.label }} · {{ shop.shopId }}
           </span>
         </div>
         <AppButton tone="text" @click="$emit('edit', shop)">编辑</AppButton>
@@ -62,27 +64,16 @@ defineEmits<{
             shop.shopName
           }}</NDescriptionsItem>
           <NDescriptionsItem label="平台">
-            <ShopPlatformDisplay :platform="shop.platform" />
+            <PlatformDisplay :code="shop.platform" />
           </NDescriptionsItem>
           <NDescriptionsItem label="负责人">{{
             shop.ownerName
           }}</NDescriptionsItem>
-          <NDescriptionsItem label="分组">
-            {{ SHOP_UNASSIGNED_GROUP_LABEL }}
-          </NDescriptionsItem>
           <NDescriptionsItem label="店铺 ID">
             <span class="shop-detail__id">{{ shop.shopId }}</span>
           </NDescriptionsItem>
-          <NDescriptionsItem label="开启">
-            <span class="shop-detail__enable-placeholder">
-              <AppSwitch
-                :model-value="false"
-                disabled
-                title="店铺自动化总开关尚未接入"
-                aria-label="店铺自动化总开关尚未接入"
-              />
-              <span>自动化总开关待接入</span>
-            </span>
+          <NDescriptionsItem label="基础状态">
+            <ShopStatusTag :status="shop.enabledStatus" />
           </NDescriptionsItem>
           <NDescriptionsItem label="备注">{{
             shop.note || '—'
@@ -97,7 +88,20 @@ defineEmits<{
       </section>
 
       <section class="shop-detail__section">
-        <h3>执行配置</h3>
+        <h3>账号与连接</h3>
+        <div class="shop-detail-account">
+          <div>
+            <span>状态</span>
+            <strong>未配置</strong>
+          </div>
+          <AppButton disabled title="账号与连接能力尚未接入">
+            配置账号与连接
+          </AppButton>
+        </div>
+      </section>
+
+      <section class="shop-detail__section">
+        <h3>执行设备</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
           <NDescriptionsItem label="主执行设备">
             {{ shop.executionDeviceName ?? '未分配' }}
@@ -114,25 +118,8 @@ defineEmits<{
       </section>
 
       <section class="shop-detail__section">
-        <h3>待接入能力</h3>
-        <div class="shop-detail-placeholders">
-          <article>
-            <strong>账号与连接</strong>
-            <span>账号、Cookie 与连接状态尚未接入</span>
-          </article>
-          <article>
-            <strong>自动化策略</strong>
-            <span>自动化策略与控制能力尚未接入</span>
-          </article>
-          <article>
-            <strong>数据同步</strong>
-            <span>业务数据同步能力尚未接入</span>
-          </article>
-          <article>
-            <strong>操作记录</strong>
-            <span>店铺操作历史尚未接入</span>
-          </article>
-        </div>
+        <h3>操作记录</h3>
+        <EmptyState description="暂无操作记录" />
       </section>
     </div>
 
@@ -199,36 +186,30 @@ defineEmits<{
   font-size: var(--font-size-secondary);
 }
 
-.shop-detail__enable-placeholder {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
-}
-
-.shop-detail-placeholders {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.shop-detail-placeholders article {
+.shop-detail-account {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   background: var(--bg-subtle);
 }
 
-.shop-detail-placeholders strong {
-  color: var(--text-secondary);
-  font-size: var(--font-size-body);
+.shop-detail-account div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.shop-detail-placeholders span {
+.shop-detail-account span {
   color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
+}
+
+.shop-detail-account strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
 }
 </style>
