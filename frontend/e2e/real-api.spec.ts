@@ -71,7 +71,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   })
   await page.goto('/#/shops')
   await expect(page.getByText('正在加载，请稍候…')).toBeVisible()
-  await expect(page.getByText('没有符合当前条件的店铺')).toBeVisible()
+  await expect(page.getByText('正在加载，请稍候…')).toHaveCount(0)
   await page.unroute('**/api/v1/shops?page=*')
 
   const shopName = `${testPrefix}shop`
@@ -84,18 +84,26 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
 
   await page.reload()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '查看' }).first().click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: shopName })
+    .getByRole('button', { name: '查看' })
+    .click()
   await page.getByRole('button', { name: '编辑' }).click()
   await page.getByPlaceholder('请输入店铺名称').fill(updatedShopName)
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(updatedShopName, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '查看' }).first().click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: updatedShopName })
+    .getByRole('button', { name: '查看' })
+    .click()
   await expect(page.getByText('账号与连接')).toBeVisible()
   await expect(page.getByText('自动化配置与控制能力尚未接入')).toBeVisible()
   await page.getByRole('button', { name: '关闭' }).click()
 
   await page.getByText('设备中心', { exact: true }).click()
-  await expect(page.getByText('没有符合当前条件的设备')).toBeVisible()
+  await expect(page.getByRole('button', { name: '添加设备' })).toBeVisible()
   const deviceName = `${testPrefix}device`
   const updatedDeviceName = `${testPrefix}device-updated`
   await page.getByRole('button', { name: '添加设备' }).click()
@@ -106,11 +114,19 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
 
   await page.reload()
   await expect(page.getByText(deviceName, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '编辑' }).first().click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: deviceName })
+    .getByRole('button', { name: '编辑' })
+    .click()
   await page.getByPlaceholder('请输入设备名称').fill(updatedDeviceName)
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(updatedDeviceName, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '查看' }).first().click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: updatedDeviceName })
+    .getByRole('button', { name: '查看' })
+    .click()
   await expect(page.getByText('设备详情', { exact: true })).toBeVisible()
   await expect(page.getByText('Worker 执行能力尚未接入')).toBeVisible()
   await page.getByRole('button', { name: '关闭' }).click()

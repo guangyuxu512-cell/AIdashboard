@@ -533,6 +533,8 @@ description（需要时）
 
 阶段 1B 增加页面模式辅助组件：`FilterField` 统一筛选字段标签和语义宽度，`SummaryGrid` 统一 StatCard 响应式网格。两者只组合既有基础能力，不替代 `AppSelect`、`AppInput` 或 `StatCard`。
 
+阶段 2D-2 起 `FilterField.label` 为可选属性：普通表单式筛选可保留标签，Compact Management Pattern 默认省略标签并依赖控件 Placeholder / Accessible Name 表达含义。`FilterBar` 提供独立 `primary-action` Slot，将新建/添加等主操作与查询、重置放在同一自适应工具栏最右侧。
+
 阶段 2C 增加 `ThemeSelector`，作为 AppShell Topbar 的 Light / Dark / System 入口，内部复用 `AppButton` 和 Naive `NDropdown`。
 
 阶段 2D-1 为既有 `AppDrawer` / `DetailDrawer` 增加通用 `header` Slot，用于领域详情的图标、身份信息和真实操作组合；宽度仍只能使用 `sm / md / lg` 语义尺寸，不新增店铺专用 Drawer。
@@ -542,6 +544,7 @@ description（需要时）
 - `ThemeSelector` 是 Topbar 的紧凑主题入口，通过 Naive `NDropdown` 组合既有 `AppButton`，不建立第二套 Button/Dropdown。
 - `StatCard` 统一使用相同 Surface，tone 仅改变 2px 轻量 Accent，禁止每张 KPI 使用不同底色。
 - `PageHeader`、`PageSection`、`FilterBar` 共享紧凑间距和 Surface Token，不在 Shop/Device 页单独调整。
+- 普通列表管理页默认省略 `PageHeader` 和 `PageSection` Header；组件本身继续保留给复杂页面使用。
 - `DataTable` 使用实色 Table Surface，统一 Header/Row/Hover/Border；固定列必须使用语义阴影和不透明单元格，避免滚动时文字叠影。
 - `EmptyState`、`LoadingState`、`ErrorState` 共享紧凑状态区高度，禁止列表空态人为占满剩余视口。
 - Dialog/Drawer 统一使用 Dark/Light Surface、Border、Overlay Shadow 与紧凑 Padding。

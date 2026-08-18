@@ -28,8 +28,6 @@ const emit = defineEmits<{
   query: []
   reset: []
 }>()
-const isDevelopment = import.meta.env.DEV
-
 function updateFilter<Key extends keyof DeviceFilterViewModel>(
   key: Key,
   value: DeviceFilterViewModel[Key],
@@ -69,11 +67,8 @@ const keyword = computed({
 
 <template>
   <FilterBar>
-    <span v-if="!available && isDevelopment" class="filter-unavailable">
-      Backend V1 暂未提供设备列表筛选参数；当前仅使用服务端分页。
-    </span>
-    <template v-else>
-      <FilterField label="设备状态">
+    <template v-if="available">
+      <FilterField>
         <AppSelect
           v-model="status"
           width="sm"
@@ -82,7 +77,7 @@ const keyword = computed({
           placeholder="全部状态"
         />
       </FilterField>
-      <FilterField label="设备标签">
+      <FilterField>
         <AppSelect
           v-model="tag"
           width="sm"
@@ -91,7 +86,7 @@ const keyword = computed({
           placeholder="全部标签"
         />
       </FilterField>
-      <FilterField label="Worker 版本">
+      <FilterField>
         <AppSelect
           v-model="workerVersion"
           width="sm"
@@ -100,7 +95,7 @@ const keyword = computed({
           placeholder="全部版本"
         />
       </FilterField>
-      <FilterField label="执行能力">
+      <FilterField>
         <AppSelect
           v-model="capability"
           width="sm"
@@ -109,7 +104,7 @@ const keyword = computed({
           placeholder="全部能力"
         />
       </FilterField>
-      <FilterField label="关键词" width="md">
+      <FilterField width="md">
         <AppInput
           v-model="keyword"
           width="md"
@@ -125,12 +120,8 @@ const keyword = computed({
         <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
       </template>
     </template>
+    <template v-if="$slots['primary-action']" #primary-action>
+      <slot name="primary-action" />
+    </template>
   </FilterBar>
 </template>
-
-<style scoped>
-.filter-unavailable {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
-}
-</style>

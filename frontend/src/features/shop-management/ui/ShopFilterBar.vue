@@ -58,7 +58,7 @@ const keyword = computed({
 
 <template>
   <FilterBar>
-    <FilterField label="店铺状态">
+    <FilterField>
       <AppSelect
         v-model="enabledStatus"
         width="sm"
@@ -67,7 +67,7 @@ const keyword = computed({
         placeholder="全部状态"
       />
     </FilterField>
-    <FilterField label="负责人">
+    <FilterField>
       <AppSelect
         v-model="ownerUserId"
         width="sm"
@@ -77,7 +77,7 @@ const keyword = computed({
         placeholder="全部负责人"
       />
     </FilterField>
-    <FilterField label="关键词" width="md">
+    <FilterField width="md">
       <AppInput
         v-model="keyword"
         width="md"
@@ -87,17 +87,11 @@ const keyword = computed({
       />
     </FilterField>
     <template #actions>
-      <span class="shop-filter-bar__scope">筛选当前页</span>
       <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
       <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
     </template>
+    <template v-if="$slots['primary-action']" #primary-action>
+      <slot name="primary-action" />
+    </template>
   </FilterBar>
 </template>
-
-<style scoped>
-.shop-filter-bar__scope {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
-  white-space: nowrap;
-}
-</style>

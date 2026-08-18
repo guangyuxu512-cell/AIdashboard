@@ -6,58 +6,29 @@ import {
   DeviceListTable,
   useDeviceManagement,
 } from '@/features/device-management'
-import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
-import StatCard from '@/shared/components/StatCard.vue'
-import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useDeviceManagement()
-const isDevelopment = import.meta.env.DEV
 </script>
 
 <template>
   <div class="page-container device-center-page">
-    <PageHeader
-      title="设备中心"
-      description="统一管理执行设备、运行状态与自动化能力"
-    >
-      <template #actions>
-        <AppButton tone="primary" @click="management.openCreate"
-          >添加设备</AppButton
-        >
-      </template>
-    </PageHeader>
-
-    <SummaryGrid aria-label="设备统计">
-      <StatCard label="设备总数" :value="management.statistics.value.total" />
-      <StatCard
-        label="本页已启用"
-        :value="management.statistics.value.enabled"
-        tone="success"
-      />
-      <StatCard
-        label="本页已停用"
-        :value="management.statistics.value.disabled"
-      />
-      <StatCard label="Worker 运行状态" value="未接入" />
-    </SummaryGrid>
-
     <DeviceFilterBar
-      v-if="management.filtersAvailable || isDevelopment"
       v-model="management.filterDraft.value"
       :available="management.filtersAvailable"
       @query="management.query"
       @reset="management.resetFilters"
-    />
-
-    <PageSection
-      title="设备列表"
-      :description="
-        isDevelopment ? management.dataSourceDescription : undefined
-      "
     >
+      <template #primary-action>
+        <AppButton tone="primary" @click="management.openCreate">
+          + 添加设备
+        </AppButton>
+      </template>
+    </DeviceFilterBar>
+
+    <PageSection>
       <div class="device-list-pattern">
         <DeviceListTable
           :rows="management.rows.value"

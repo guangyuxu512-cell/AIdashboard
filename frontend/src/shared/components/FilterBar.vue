@@ -3,8 +3,16 @@
     <div class="filter-bar__fields">
       <slot />
     </div>
-    <div v-if="$slots.actions" class="filter-bar__actions">
-      <slot name="actions" />
+    <div
+      v-if="$slots.actions || $slots['primary-action']"
+      class="filter-bar__toolbar"
+    >
+      <div v-if="$slots.actions" class="filter-bar__actions">
+        <slot name="actions" />
+      </div>
+      <div v-if="$slots['primary-action']" class="filter-bar__primary-action">
+        <slot name="primary-action" />
+      </div>
     </div>
   </section>
 </template>
@@ -22,19 +30,29 @@
 }
 
 .filter-bar__fields,
-.filter-bar__actions {
+.filter-bar__toolbar,
+.filter-bar__actions,
+.filter-bar__primary-action {
   display: flex;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
 }
 
 .filter-bar__fields {
   min-width: 0;
   flex: 1;
   flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
 }
 
-.filter-bar__actions {
+.filter-bar__toolbar {
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
+.filter-bar__actions,
+.filter-bar__primary-action {
+  gap: var(--space-2);
 }
 </style>

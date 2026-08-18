@@ -15,10 +15,26 @@ test('opens the device center and keeps the standard page behavior', async ({
   await page.getByText('设备中心', { exact: true }).click()
 
   await expect(page).toHaveURL(/#\/devices$/)
-  await expect(page.getByRole('heading', { name: '设备中心' })).toBeVisible()
-  await expect(page.getByLabel('设备统计')).toBeVisible()
-  await expect(page.getByText('设备总数', { exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '设备中心' })).toHaveCount(0)
+  await expect(
+    page.getByText('统一管理执行设备、运行状态与自动化能力'),
+  ).toHaveCount(0)
+  await expect(page.getByLabel('设备统计')).toHaveCount(0)
+  await expect(page.getByText('设备列表', { exact: true })).toHaveCount(0)
+  await expect(page.getByText(/数据来自 FastAPI/)).toHaveCount(0)
+  await expect(page.getByText(/Frontend Fixture/)).toHaveCount(0)
+  const filterBar = page.getByRole('region', { name: '筛选条件' })
+  await expect(filterBar).toBeVisible()
+  await expect(filterBar.getByText('设备状态', { exact: true })).toHaveCount(0)
+  await expect(filterBar.getByText('设备标签', { exact: true })).toHaveCount(0)
+  await expect(filterBar.getByText('Worker 版本', { exact: true })).toHaveCount(
+    0,
+  )
+  await expect(filterBar.getByText('执行能力', { exact: true })).toHaveCount(0)
+  await expect(filterBar.getByText('关键词', { exact: true })).toHaveCount(0)
+  await expect(
+    filterBar.getByRole('button', { name: '添加设备' }),
+  ).toBeVisible()
   await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('columnheader', { name: '最后心跳' }),
@@ -60,3 +76,25 @@ test('opens the device center and keeps the standard page behavior', async ({
   expect(layout.bodyHasHorizontalOverflow).toBe(false)
   expect(runtimeErrors).toEqual([])
 })
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 1366, height: 768 },
+]) {
+  test(`keeps the compact Device Center within ${viewport.width}×${viewport.height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/devices')
+    await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
+    await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
+
+    const overflow = await page.evaluate(() => ({
+      document:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+      body: document.body.scrollWidth > document.body.clientWidth,
+    }))
+    expect(overflow).toEqual({ document: false, body: false })
+  })
+}

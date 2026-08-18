@@ -15,7 +15,10 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await page.getByText('店铺中心', { exact: true }).click()
 
   await expect(page).toHaveURL(/#\/shops$/)
-  await expect(page.getByRole('heading', { name: '店铺中心' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '店铺中心' })).toHaveCount(0)
+  await expect(
+    page.getByText('统一管理平台店铺、会话状态与执行配置'),
+  ).toHaveCount(0)
   await expect(
     page.getByRole('navigation', { name: '店铺平台切换' }),
   ).toBeVisible()
@@ -23,8 +26,18 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await expect(page.getByAltText('抖店平台图标').first()).toBeVisible()
   await expect(page.getByAltText('拼多多平台图标').first()).toBeVisible()
 
-  await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
+  const filterBar = page.getByRole('region', { name: '筛选条件' })
+  await expect(filterBar).toBeVisible()
   await expect(page.getByPlaceholder('搜索店铺名称')).toBeVisible()
+  await expect(filterBar.getByText('店铺状态', { exact: true })).toHaveCount(0)
+  await expect(filterBar.getByText('负责人', { exact: true })).toHaveCount(0)
+  await expect(filterBar.getByText('关键词', { exact: true })).toHaveCount(0)
+  await expect(
+    filterBar.getByRole('button', { name: '新增店铺' }),
+  ).toBeVisible()
+  await expect(page.getByText('店铺列表', { exact: true })).toHaveCount(0)
+  await expect(page.getByText(/数据来自 FastAPI/)).toHaveCount(0)
+  await expect(page.getByText(/Frontend Fixture/)).toHaveCount(0)
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   await expect(page.getByText('海风家居生活馆')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '开启' })).toBeVisible()
@@ -33,6 +46,18 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   )
   await expect(page.getByText('今日 GMV')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(0)
+
+  const compactOrder = await page.evaluate(() => {
+    const top = (selector: string) =>
+      document.querySelector(selector)?.getBoundingClientRect().top ?? -1
+    return {
+      platform: top('.shop-platform-switch'),
+      filter: top('.filter-bar'),
+      table: top('.n-data-table'),
+    }
+  })
+  expect(compactOrder.platform).toBeLessThan(compactOrder.filter)
+  expect(compactOrder.filter).toBeLessThan(compactOrder.table)
 
   await page.getByRole('button', { name: '抖店', exact: true }).click()
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
@@ -96,6 +121,22 @@ test('opens the existing create form from the V2 page', async ({ page }) => {
   await expect(page.getByText('新增店铺', { exact: true }).last()).toBeVisible()
   await expect(page.getByPlaceholder('请输入店铺名称')).toBeVisible()
   await expect(page.getByText('可选负责人', { exact: true })).toBeVisible()
+})
+
+test('renders compact Shop and Device pages in light and dark themes', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  await page.getByRole('button', { name: '切换主题' }).click()
+  await page.getByText('浅色', { exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
+
+  await page.getByText('设备中心', { exact: true }).click()
+  await page.getByRole('button', { name: '切换主题' }).click()
+  await page.getByText('深色', { exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
 })
 
 for (const viewport of [

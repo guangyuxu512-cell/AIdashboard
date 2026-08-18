@@ -7,28 +7,15 @@ import {
   ShopPlatformSwitchBar,
   useShopManagement,
 } from '@/features/shop-management'
-import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useShopManagement()
-const isDevelopment = import.meta.env.DEV
 </script>
 
 <template>
   <div class="page-container shop-center-page">
-    <PageHeader
-      title="店铺中心"
-      description="统一管理平台店铺、会话状态与执行配置"
-    >
-      <template #actions>
-        <AppButton tone="primary" @click="management.openCreate"
-          >新增店铺</AppButton
-        >
-      </template>
-    </PageHeader>
-
     <ShopPlatformSwitchBar v-model="management.selectedPlatform.value" />
 
     <ShopFilterBar
@@ -37,14 +24,15 @@ const isDevelopment = import.meta.env.DEV
       :owner-options-loading="management.ownerOptionsLoading.value"
       @query="management.query"
       @reset="management.resetFilters"
-    />
-
-    <PageSection
-      title="店铺列表"
-      :description="
-        isDevelopment ? management.dataSourceDescription : undefined
-      "
     >
+      <template #primary-action>
+        <AppButton tone="primary" @click="management.openCreate">
+          + 新增店铺
+        </AppButton>
+      </template>
+    </ShopFilterBar>
+
+    <PageSection>
       <div class="shop-list-pattern">
         <ShopListTable
           :rows="management.rows.value"

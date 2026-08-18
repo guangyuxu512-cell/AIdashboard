@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import type { FieldWidth } from '@/shared/ui/types'
 
-withDefaults(defineProps<{ label: string; width?: FieldWidth }>(), {
+withDefaults(defineProps<{ label?: string; width?: FieldWidth }>(), {
+  label: undefined,
   width: 'sm',
 })
 </script>
 
 <template>
-  <label class="filter-field" :class="`filter-field--${width}`">
-    <span>{{ label }}</span>
+  <label
+    class="filter-field"
+    :class="[
+      `filter-field--${width}`,
+      { 'filter-field--labelled': Boolean(label) },
+    ]"
+  >
+    <span v-if="label">{{ label }}</span>
     <slot />
   </label>
 </template>
@@ -17,9 +24,12 @@ withDefaults(defineProps<{ label: string; width?: FieldWidth }>(), {
 .filter-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
+}
+
+.filter-field--labelled {
+  gap: var(--space-1);
 }
 
 .filter-field--xs {
