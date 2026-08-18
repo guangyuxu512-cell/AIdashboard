@@ -76,7 +76,9 @@ pdd
 
 ## 7. 账号与连接边界
 
-“账号与连接”是 Shop 基础主档之外的独立后续业务动作。它未来负责平台登录账号、凭证、授权、Verification Challenge、Cookie / Session 状态及 Session 维护；本阶段只提供“未配置”入口，不实现 Credential、Cookie、验证码或登录成功状态。
+“账号与连接”是 Shop 基础主档之外的独立后续业务动作。未来正式能力必须管理登录账号、加密密码、Cookie / Session、验证方式和 Session 维护，其中账号和密码是必需能力，不得退化为只保存 Cookie 的临时入口。本阶段只提供“未配置”入口，不实现 Credential、Cookie、验证码或登录成功状态。
+
+Frontend 只负责表单交互、状态展示和调用正式契约。密码加密、Credential 持久化、Cookie / Session 安全存储、认证执行与维护规则必须由后续 Backend 正式领域设计确定，禁止在 Renderer 保存明文密码、完整 Cookie 或 Token，也禁止提前猜测 DTO 和存储结构。
 
 未来认证链路遵循：
 

@@ -35,6 +35,7 @@ function mockSystemTheme(initialMatches: boolean) {
 describe('theme store', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    delete window.desktop
     delete document.documentElement.dataset.theme
     document.documentElement.style.colorScheme = ''
     setActivePinia(createPinia())
@@ -72,5 +73,18 @@ describe('theme store', () => {
 
     expect(store.mode).toBe('dark')
     expect(store.resolvedTheme).toBe('dark')
+  })
+
+  it('syncs the resolved theme to the Electron title bar when available', () => {
+    const setTitleBarTheme = vi.fn()
+    window.desktop = { appearance: { setTitleBarTheme } }
+    mockSystemTheme(false)
+
+    const store = useThemeStore()
+    store.initialize()
+    store.setMode('dark')
+
+    expect(setTitleBarTheme).toHaveBeenNthCalledWith(1, 'light')
+    expect(setTitleBarTheme).toHaveBeenLastCalledWith('dark')
   })
 })

@@ -1,2 +1,6 @@
-// Shared Electron boundary types will be added together with formal contracts.
-export {}
+export {
+  desktopIpcChannels,
+  isDesktopResolvedTheme,
+  type DesktopApi,
+  type DesktopResolvedTheme,
+} from './desktop-api'

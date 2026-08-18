@@ -76,7 +76,7 @@ Naive UI 统一通过 Theme Override 对接 Token。
 
 ## 阶段 2C 主题与语义 Token
 
-Theme Store 正式支持 `light`、`dark`、`system`。模式保存于 Renderer `localStorage`，`system` 通过 `prefers-color-scheme` 实时跟随系统，不使用 Electron IPC。
+Theme Store 正式支持 `light`、`dark`、`system`。模式保存于 Renderer `localStorage`，`system` 通过 `prefers-color-scheme` 实时跟随系统。Electron 桌面环境只通过类型化 `window.desktop.appearance.setTitleBarTheme` 接收解析后的 Light / Dark 结果，用于同步原生 Window Controls Overlay 图标颜色；Web 环境保持无 Electron 依赖。
 
 Token 分层：
 
@@ -112,6 +112,8 @@ Main Content = 唯一主滚动区
 ```
 
 禁止通过业务页 `100vh - x` 或固定高度修补 AppShell。
+
+Electron Windows 窗口使用原生 Window Controls Overlay 覆盖现有 54px Topbar。Sidebar Brand 与 Topbar 是统一可拖动区域，Topbar Actions 是明确的 `no-drag` 交互区域；右侧空间通过 `titlebar-area-*` 环境变量避让原生最小化、最大化/恢复和关闭按钮。业务页不得自行添加拖动区域、窗口按钮或标题栏高度。
 
 ## Compact Management Fill 链路
 

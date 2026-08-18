@@ -44,6 +44,7 @@ export const useThemeStore = defineStore('theme', () => {
   function applyTheme(theme: ResolvedTheme): void {
     document.documentElement.dataset.theme = theme
     document.documentElement.style.colorScheme = theme
+    window.desktop?.appearance.setTitleBarTheme(theme)
   }
 
   function setMode(value: ThemeMode): void {

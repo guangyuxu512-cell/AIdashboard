@@ -112,6 +112,14 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
 
   await page.getByRole('button', { name: '查看' }).first().click()
   await expect(page.getByText('星河服饰旗舰店').last()).toBeVisible()
+  const drawerShopId = await page
+    .locator('.shop-detail__id')
+    .first()
+    .innerText()
+  await expect(page.locator('.shop-detail-header')).toContainText('抖店')
+  await expect(page.locator('.shop-detail-header')).not.toContainText(
+    drawerShopId,
+  )
   await expect(
     page.getByRole('heading', { name: '账号与连接' }),
   ).toBeVisible()

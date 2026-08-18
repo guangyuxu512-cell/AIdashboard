@@ -41,9 +41,7 @@ defineEmits<{
         <PlatformDisplay :code="shop.platform" :label="false" />
         <div class="shop-detail-header__identity">
           <strong>{{ shop.shopName }}</strong>
-          <span>
-            {{ getPlatformDefinition(shop.platform)?.label }} · {{ shop.shopId }}
-          </span>
+          <span>{{ getPlatformDefinition(shop.platform)?.label }}</span>
         </div>
         <AppButton tone="text" @click="$emit('edit', shop)">编辑</AppButton>
       </div>
