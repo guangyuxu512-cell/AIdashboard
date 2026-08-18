@@ -1,22 +1,22 @@
 import type {
-  ShopOperationalStatus,
+  ShopEnabledStatus,
   ShopPlatform,
   ShopSessionStatus,
 } from '@/entities/shop'
 
 export interface ShopFilterViewModel {
   platform: ShopPlatform | null
-  operationalStatus: ShopOperationalStatus | null
+  enabledStatus: ShopEnabledStatus | null
   sessionStatus: ShopSessionStatus | null
-  ownerName: string | null
+  ownerUserId: string | null
   keyword: string
 }
 
 export interface ShopFormViewModel {
   shopName: string
   platform: ShopPlatform | null
-  ownerName: string
-  executionDeviceId: string | null
+  enabled: boolean
+  ownerUserId: string | null
   note: string
 }
 

@@ -4,6 +4,18 @@ import { describe, expect, it } from 'vitest'
 import DataTable from './DataTable.vue'
 
 describe('DataTable', () => {
+  it('renders the shared loading state before the first rows arrive', () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ title: '名称', key: 'name' }],
+        data: [],
+        loading: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在加载')
+  })
+
   it('renders the shared empty state when there are no rows', () => {
     const wrapper = mount(DataTable, {
       props: {

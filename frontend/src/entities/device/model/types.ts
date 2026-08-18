@@ -1,5 +1,9 @@
 export type DeviceStatus = 'online' | 'offline' | 'busy' | 'error'
 
+export type DeviceRuntimeStatus = DeviceStatus | 'unavailable'
+
+export type DeviceEnabledStatus = 'enabled' | 'disabled'
+
 export type DeviceCapability = 'rpa' | 'python' | 'browser' | 'node'
 
 export type DeviceCapabilityAvailability = 'available' | 'unavailable'
@@ -17,8 +21,11 @@ export interface DeviceCapabilityViewModel {
 export interface DeviceListItemViewModel {
   deviceId: string
   deviceName: string
-  status: DeviceStatus
+  enabled: boolean
+  enabledStatus: DeviceEnabledStatus
+  runtimeStatus: DeviceRuntimeStatus
   location: string
+  note: string
   systemDisplay: string
   workerVersionDisplay: string
   currentTaskName: string | null
@@ -27,4 +34,21 @@ export interface DeviceListItemViewModel {
   lastHeartbeatAtDisplay: string
   tags: string[]
   capabilities: DeviceCapabilityViewModel[]
+  updatedAtDisplay: string
+  dataSource: 'mock' | 'real'
+}
+
+export interface DeviceListFilters {
+  status: DeviceStatus | null
+  tag: string | null
+  workerVersion: string | null
+  capability: DeviceCapability | null
+  keyword: string
+}
+
+export interface DeviceSaveInput {
+  deviceName: string
+  enabled: boolean
+  location: string
+  note: string
 }

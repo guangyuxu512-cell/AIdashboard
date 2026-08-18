@@ -7,11 +7,18 @@ import {
   type ShopListItemViewModel,
 } from '@/entities/shop'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
+import ErrorState from '@/shared/components/ErrorState.vue'
+import LoadingState from '@/shared/components/LoadingState.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
-defineProps<{ show: boolean; shop: ShopListItemViewModel | null }>()
+defineProps<{
+  show: boolean
+  shop: ShopListItemViewModel | null
+  loading?: boolean
+  error?: string | null
+}>()
 
-defineEmits<{ 'update:show': [value: boolean] }>()
+defineEmits<{ 'update:show': [value: boolean]; retry: [] }>()
 </script>
 
 <template>
@@ -21,7 +28,14 @@ defineEmits<{ 'update:show': [value: boolean] }>()
     size="md"
     @update:show="$emit('update:show', $event)"
   >
-    <div v-if="shop" class="shop-detail">
+    <LoadingState v-if="loading" description="正在加载店铺详情…" />
+    <ErrorState
+      v-else-if="error"
+      :description="error"
+      retryable
+      @retry="$emit('retry')"
+    />
+    <div v-else-if="shop" class="shop-detail">
       <section>
         <h3>基本信息</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
@@ -35,7 +49,7 @@ defineEmits<{ 'update:show': [value: boolean] }>()
             shop.ownerName
           }}</NDescriptionsItem>
           <NDescriptionsItem label="店铺状态">
-            <ShopStatusTag category="shop" :status="shop.operationalStatus" />
+            <ShopStatusTag category="shop" :status="shop.enabledStatus" />
           </NDescriptionsItem>
           <NDescriptionsItem label="备注">{{
             shop.note || '—'
@@ -51,6 +65,9 @@ defineEmits<{ 'update:show': [value: boolean] }>()
           </NDescriptionsItem>
           <NDescriptionsItem label="执行设备">
             {{ shop.executionDeviceName ?? '未分配' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="备用设备">
+            {{ shop.backupDeviceNames.join('、') || '未分配' }}
           </NDescriptionsItem>
           <NDescriptionsItem label="自动化状态">
             <ShopStatusTag

@@ -1,6 +1,6 @@
 export * from './model/types'
-export * from './model/useDeviceManagementMock'
-export { default as AddDeviceInfoDialog } from './ui/AddDeviceInfoDialog.vue'
+export * from './model/useDeviceManagement'
 export { default as DeviceDetailDrawer } from './ui/DeviceDetailDrawer.vue'
 export { default as DeviceFilterBar } from './ui/DeviceFilterBar.vue'
+export { default as DeviceFormDialog } from './ui/DeviceFormDialog.vue'
 export { default as DeviceListTable } from './ui/DeviceListTable.vue'

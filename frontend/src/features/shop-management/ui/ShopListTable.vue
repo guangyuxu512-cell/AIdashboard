@@ -10,11 +10,16 @@ import {
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
-defineProps<{ rows: ShopListItemViewModel[] }>()
+defineProps<{
+  rows: ShopListItemViewModel[]
+  loading?: boolean
+  error?: string | null
+}>()
 
 const emit = defineEmits<{
   view: [shop: ShopListItemViewModel]
   edit: [shop: ShopListItemViewModel]
+  retry: []
 }>()
 
 const columns: DataTableColumns<ShopListItemViewModel> = [
@@ -33,10 +38,10 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
   { title: '负责人', key: 'ownerName', width: 90 },
   {
     title: '店铺状态',
-    key: 'operationalStatus',
+    key: 'enabledStatus',
     width: 110,
     render: (shop) =>
-      h(ShopStatusTag, { category: 'shop', status: shop.operationalStatus }),
+      h(ShopStatusTag, { category: 'shop', status: shop.enabledStatus }),
   },
   {
     title: '会话状态',
@@ -90,9 +95,12 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
   <DataTable
     :columns="columns"
     :data="rows"
+    :loading="loading"
+    :error="error"
     :row-key="(row: ShopListItemViewModel) => row.shopId"
     :scroll-x="1290"
     empty-description="没有符合当前条件的店铺"
+    @retry="$emit('retry')"
   />
 </template>
 

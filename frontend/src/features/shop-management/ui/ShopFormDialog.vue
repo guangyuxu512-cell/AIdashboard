@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { NForm, NFormItem } from 'naive-ui'
+import type { SelectOption } from 'naive-ui'
 import { useForm } from 'vee-validate'
 import { z } from 'zod'
 
-import {
-  SHOP_DEVICE_FIXTURE_OPTIONS,
-  SHOP_PLATFORM_FIXTURE_OPTIONS,
-  type ShopPlatform,
-} from '@/entities/shop'
+import type { ShopPlatform } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import AppSwitch from '@/shared/ui/AppSwitch.vue'
 import type { AppOptionValue } from '@/shared/ui/types'
 
 import type { ShopFormMode, ShopFormViewModel } from '../model/types'
@@ -20,6 +18,10 @@ const props = defineProps<{
   show: boolean
   mode: ShopFormMode
   initialValue: ShopFormViewModel | null
+  platformOptions: SelectOption[]
+  ownerOptions: SelectOption[]
+  ownerOptionsLoading?: boolean
+  submitting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -30,8 +32,8 @@ const emit = defineEmits<{
 const emptyForm: ShopFormViewModel = {
   shopName: '',
   platform: null,
-  ownerName: '',
-  executionDeviceId: null,
+  enabled: true,
+  ownerUserId: null,
   note: '',
 }
 
@@ -40,18 +42,14 @@ const formSchema = z.object({
     .string()
     .trim()
     .min(1, '请输入店铺名称')
-    .max(50, '店铺名称最多 50 个字符'),
+    .max(100, '店铺名称最多 100 个字符'),
   platform: z
     .enum(['douyin', 'taobao', 'pdd', 'jd'])
     .nullable()
     .refine((value) => value !== null, '请选择平台'),
-  ownerName: z
-    .string()
-    .trim()
-    .min(1, '请输入负责人')
-    .max(20, '负责人最多 20 个字符'),
-  executionDeviceId: z.string().nullable(),
-  note: z.string().trim().max(200, '备注最多 200 个字符'),
+  enabled: z.boolean(),
+  ownerUserId: z.string().nullable(),
+  note: z.string().trim().max(1000, '备注最多 1000 个字符'),
 })
 
 const { defineField, errors, handleSubmit, resetForm, setErrors } =
@@ -61,8 +59,8 @@ const { defineField, errors, handleSubmit, resetForm, setErrors } =
 
 const [shopName] = defineField('shopName')
 const [platform] = defineField('platform')
-const [ownerName] = defineField('ownerName')
-const [executionDeviceId] = defineField('executionDeviceId')
+const [enabled] = defineField('enabled')
+const [ownerUserId] = defineField('ownerUserId')
 const [note] = defineField('note')
 
 const title = computed(() =>
@@ -76,7 +74,12 @@ watch(
       resetForm({
         values: props.initialValue
           ? { ...props.initialValue }
-          : { ...emptyForm },
+          : {
+              ...emptyForm,
+              platform:
+                (props.platformOptions[0]?.value as ShopPlatform | undefined) ??
+                null,
+            },
       })
     }
   },
@@ -86,8 +89,8 @@ function updatePlatform(value: AppOptionValue | null): void {
   platform.value = value as ShopPlatform | null
 }
 
-function updateDevice(value: AppOptionValue | null): void {
-  executionDeviceId.value = value as string | null
+function updateOwner(value: AppOptionValue | null): void {
+  ownerUserId.value = value as string | null
 }
 
 const submit = handleSubmit((values) => {
@@ -97,8 +100,8 @@ const submit = handleSubmit((values) => {
     setErrors({
       shopName: fieldErrors.shopName?.[0],
       platform: fieldErrors.platform?.[0],
-      ownerName: fieldErrors.ownerName?.[0],
-      executionDeviceId: fieldErrors.executionDeviceId?.[0],
+      enabled: fieldErrors.enabled?.[0],
+      ownerUserId: fieldErrors.ownerUserId?.[0],
       note: fieldErrors.note?.[0],
     })
     return
@@ -113,6 +116,7 @@ const submit = handleSubmit((values) => {
     :show="show"
     :title="title"
     size="md"
+    :submitting="submitting"
     @update:show="$emit('update:show', $event)"
     @submit="submit"
     @cancel="$emit('update:show', false)"
@@ -126,7 +130,7 @@ const submit = handleSubmit((values) => {
         >
           <AppInput
             v-model="shopName"
-            :maxlength="50"
+            :maxlength="100"
             placeholder="请输入店铺名称"
           />
         </NFormItem>
@@ -137,34 +141,27 @@ const submit = handleSubmit((values) => {
         >
           <AppSelect
             :model-value="platform"
-            :options="SHOP_PLATFORM_FIXTURE_OPTIONS"
+            :options="platformOptions"
             placeholder="请选择平台"
             @update:model-value="updatePlatform"
           />
         </NFormItem>
         <NFormItem
           label="负责人"
-          :validation-status="errors.ownerName ? 'error' : undefined"
-          :feedback="errors.ownerName"
-        >
-          <AppInput
-            v-model="ownerName"
-            :maxlength="20"
-            placeholder="请输入负责人"
-          />
-        </NFormItem>
-        <NFormItem
-          label="执行设备"
-          :validation-status="errors.executionDeviceId ? 'error' : undefined"
-          :feedback="errors.executionDeviceId"
+          :validation-status="errors.ownerUserId ? 'error' : undefined"
+          :feedback="errors.ownerUserId"
         >
           <AppSelect
-            :model-value="executionDeviceId"
+            :model-value="ownerUserId"
+            :options="ownerOptions"
+            :loading="ownerOptionsLoading"
             clearable
-            :options="SHOP_DEVICE_FIXTURE_OPTIONS"
-            placeholder="可选 Mock 设备"
-            @update:model-value="updateDevice"
+            placeholder="可选负责人"
+            @update:model-value="updateOwner"
           />
+        </NFormItem>
+        <NFormItem label="启用状态">
+          <AppSwitch v-model="enabled" />
         </NFormItem>
       </div>
       <NFormItem
@@ -175,7 +172,7 @@ const submit = handleSubmit((values) => {
         <AppInput
           v-model="note"
           type="textarea"
-          :maxlength="200"
+          :maxlength="1000"
           placeholder="请输入备注（选填）"
         />
       </NFormItem>

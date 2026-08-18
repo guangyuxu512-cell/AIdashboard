@@ -4,16 +4,24 @@ import { NDescriptions, NDescriptionsItem } from 'naive-ui'
 import {
   DEVICE_CAPABILITY_AVAILABILITY_META,
   DEVICE_CAPABILITY_META,
+  DeviceEnabledStatusTag,
   DeviceStatusTag,
   type DeviceListItemViewModel,
 } from '@/entities/device'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
+import ErrorState from '@/shared/components/ErrorState.vue'
+import LoadingState from '@/shared/components/LoadingState.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
-defineProps<{ show: boolean; device: DeviceListItemViewModel | null }>()
+defineProps<{
+  show: boolean
+  device: DeviceListItemViewModel | null
+  loading?: boolean
+  error?: string | null
+}>()
 
-defineEmits<{ 'update:show': [value: boolean] }>()
+defineEmits<{ 'update:show': [value: boolean]; retry: [] }>()
 </script>
 
 <template>
@@ -23,7 +31,14 @@ defineEmits<{ 'update:show': [value: boolean] }>()
     size="md"
     @update:show="$emit('update:show', $event)"
   >
-    <div v-if="device" class="device-detail">
+    <LoadingState v-if="loading" description="正在加载设备详情…" />
+    <ErrorState
+      v-else-if="error"
+      :description="error"
+      retryable
+      @retry="$emit('retry')"
+    />
+    <div v-else-if="device" class="device-detail">
       <section>
         <h3>基础信息</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
@@ -33,6 +48,9 @@ defineEmits<{ 'update:show': [value: boolean] }>()
           <NDescriptionsItem label="位置">{{
             device.location
           }}</NDescriptionsItem>
+          <NDescriptionsItem label="启用状态">
+            <DeviceEnabledStatusTag :status="device.enabledStatus" />
+          </NDescriptionsItem>
           <NDescriptionsItem label="标签">{{
             device.tags.join('、')
           }}</NDescriptionsItem>
@@ -49,10 +67,14 @@ defineEmits<{ 'update:show': [value: boolean] }>()
         <h3>运行状态</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
           <NDescriptionsItem label="设备状态">
-            <DeviceStatusTag :status="device.status" />
+            <DeviceStatusTag :status="device.runtimeStatus" />
           </NDescriptionsItem>
           <NDescriptionsItem label="当前任务">
-            {{ device.currentTaskName ?? '无运行中任务' }}
+            {{
+              device.runtimeStatus === 'unavailable'
+                ? '未接入'
+                : (device.currentTaskName ?? '无运行中任务')
+            }}
           </NDescriptionsItem>
           <NDescriptionsItem label="最近心跳">
             {{ device.lastHeartbeatAtDisplay }}
@@ -63,12 +85,21 @@ defineEmits<{ 'update:show': [value: boolean] }>()
           <NDescriptionsItem label="内存摘要">
             {{ device.memoryUsageDisplay }}
           </NDescriptionsItem>
+          <NDescriptionsItem label="更新时间">
+            {{ device.updatedAtDisplay }}
+          </NDescriptionsItem>
         </NDescriptions>
       </section>
 
       <section>
         <h3>执行能力</h3>
-        <ul class="device-detail__capabilities">
+        <p
+          v-if="device.capabilities.length === 0"
+          class="device-detail__unavailable"
+        >
+          Worker 执行能力尚未接入
+        </p>
+        <ul v-else class="device-detail__capabilities">
           <li
             v-for="capability in device.capabilities"
             :key="capability.capability"
@@ -132,5 +163,9 @@ defineEmits<{ 'update:show': [value: boolean] }>()
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-card);
   background: var(--color-bg-subtle);
+}
+
+.device-detail__unavailable {
+  color: var(--color-text-secondary);
 }
 </style>

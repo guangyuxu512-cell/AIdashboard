@@ -5,6 +5,7 @@ import AppTable from '@/shared/ui/AppTable.vue'
 
 import EmptyState from './EmptyState.vue'
 import ErrorState from './ErrorState.vue'
+import LoadingState from './LoadingState.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -30,7 +31,13 @@ defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <ErrorState v-if="error" :description="error" retryable @retry="$emit('retry')" />
+  <LoadingState v-if="loading && (props.data?.length ?? 0) === 0" />
+  <ErrorState
+    v-else-if="error"
+    :description="error"
+    retryable
+    @retry="$emit('retry')"
+  />
   <EmptyState
     v-else-if="!loading && (props.data?.length ?? 0) === 0"
     :description="emptyDescription"

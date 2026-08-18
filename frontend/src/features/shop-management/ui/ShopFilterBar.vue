@@ -3,11 +3,9 @@ import { computed } from 'vue'
 import type { SelectOption } from 'naive-ui'
 
 import {
-  SHOP_OPERATIONAL_STATUS_META,
-  SHOP_OWNER_FIXTURE_OPTIONS,
-  SHOP_PLATFORM_FIXTURE_OPTIONS,
+  SHOP_ENABLED_STATUS_META,
   SHOP_SESSION_STATUS_META,
-  type ShopOperationalStatus,
+  type ShopEnabledStatus,
   type ShopPlatform,
   type ShopSessionStatus,
 } from '@/entities/shop'
@@ -20,7 +18,13 @@ import type { AppOptionValue } from '@/shared/ui/types'
 
 import type { ShopFilterViewModel } from '../model/types'
 
-const props = defineProps<{ modelValue: ShopFilterViewModel }>()
+const props = defineProps<{
+  modelValue: ShopFilterViewModel
+  available: boolean
+  platformOptions: SelectOption[]
+  ownerOptions: SelectOption[]
+  ownerOptionsLoading?: boolean
+}>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: ShopFilterViewModel]
@@ -28,8 +32,8 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-const operationalStatusOptions: SelectOption[] = Object.entries(
-  SHOP_OPERATIONAL_STATUS_META,
+const enabledStatusOptions: SelectOption[] = Object.entries(
+  SHOP_ENABLED_STATUS_META,
 ).map(([value, meta]) => ({ label: meta.label, value }))
 
 const sessionStatusOptions: SelectOption[] = Object.entries(
@@ -49,10 +53,10 @@ const platform = computed({
     updateFilter('platform', value as ShopPlatform | null),
 })
 
-const operationalStatus = computed({
-  get: () => props.modelValue.operationalStatus,
+const enabledStatus = computed({
+  get: () => props.modelValue.enabledStatus,
   set: (value: AppOptionValue | null) =>
-    updateFilter('operationalStatus', value as ShopOperationalStatus | null),
+    updateFilter('enabledStatus', value as ShopEnabledStatus | null),
 })
 
 const sessionStatus = computed({
@@ -61,10 +65,10 @@ const sessionStatus = computed({
     updateFilter('sessionStatus', value as ShopSessionStatus | null),
 })
 
-const ownerName = computed({
-  get: () => props.modelValue.ownerName,
+const ownerUserId = computed({
+  get: () => props.modelValue.ownerUserId,
   set: (value: AppOptionValue | null) =>
-    updateFilter('ownerName', value as string | null),
+    updateFilter('ownerUserId', value as string | null),
 })
 
 const keyword = computed({
@@ -75,54 +79,69 @@ const keyword = computed({
 
 <template>
   <FilterBar>
-    <FilterField label="平台">
-      <AppSelect
-        v-model="platform"
-        width="sm"
-        clearable
-        :options="SHOP_PLATFORM_FIXTURE_OPTIONS"
-        placeholder="全部平台"
-      />
-    </FilterField>
-    <FilterField label="店铺状态">
-      <AppSelect
-        v-model="operationalStatus"
-        width="sm"
-        clearable
-        :options="operationalStatusOptions"
-        placeholder="全部状态"
-      />
-    </FilterField>
-    <FilterField label="会话状态">
-      <AppSelect
-        v-model="sessionStatus"
-        width="sm"
-        clearable
-        :options="sessionStatusOptions"
-        placeholder="全部状态"
-      />
-    </FilterField>
-    <FilterField label="负责人">
-      <AppSelect
-        v-model="ownerName"
-        width="sm"
-        clearable
-        :options="SHOP_OWNER_FIXTURE_OPTIONS"
-        placeholder="全部负责人"
-      />
-    </FilterField>
-    <FilterField label="关键词" width="md">
-      <AppInput
-        v-model="keyword"
-        width="md"
-        clearable
-        placeholder="店铺、负责人或设备"
-        @keyup.enter="$emit('query')"
-      />
-    </FilterField>
+    <span v-if="!available" class="filter-unavailable">
+      Backend V1 暂未提供店铺列表筛选参数；当前仅使用服务端分页。
+    </span>
+    <template v-else>
+      <FilterField label="平台">
+        <AppSelect
+          v-model="platform"
+          width="sm"
+          clearable
+          :options="platformOptions"
+          placeholder="全部平台"
+        />
+      </FilterField>
+      <FilterField label="启用状态">
+        <AppSelect
+          v-model="enabledStatus"
+          width="sm"
+          clearable
+          :options="enabledStatusOptions"
+          placeholder="全部状态"
+        />
+      </FilterField>
+      <FilterField label="会话状态">
+        <AppSelect
+          v-model="sessionStatus"
+          width="sm"
+          clearable
+          :options="sessionStatusOptions"
+          placeholder="全部状态"
+        />
+      </FilterField>
+      <FilterField label="负责人">
+        <AppSelect
+          v-model="ownerUserId"
+          width="sm"
+          clearable
+          :options="ownerOptions"
+          :loading="ownerOptionsLoading"
+          placeholder="全部负责人"
+        />
+      </FilterField>
+      <FilterField label="关键词" width="md">
+        <AppInput
+          v-model="keyword"
+          width="md"
+          clearable
+          placeholder="店铺、负责人或设备"
+          @keyup.enter="$emit('query')"
+        />
+      </FilterField>
+    </template>
     <template #actions>
-      <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
-      <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
+      <template v-if="available">
+        <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
+        <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
+      </template>
     </template>
   </FilterBar>
 </template>
+
+<style scoped>
+.filter-unavailable {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
+}
+</style>

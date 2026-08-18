@@ -3,7 +3,8 @@ import type { StatusTone } from '@/shared/components/StatusTag.vue'
 import type {
   DeviceCapability,
   DeviceCapabilityAvailability,
-  DeviceStatus,
+  DeviceEnabledStatus,
+  DeviceRuntimeStatus,
 } from './types'
 
 export interface DeviceStatusMeta {
@@ -16,7 +17,13 @@ export const DEVICE_STATUS_META = {
   offline: { label: '离线', tone: 'neutral' },
   busy: { label: '忙碌', tone: 'info' },
   error: { label: '异常', tone: 'error' },
-} satisfies Record<DeviceStatus, DeviceStatusMeta>
+  unavailable: { label: '未接入', tone: 'neutral' },
+} satisfies Record<DeviceRuntimeStatus, DeviceStatusMeta>
+
+export const DEVICE_ENABLED_STATUS_META = {
+  enabled: { label: '已启用', tone: 'success' },
+  disabled: { label: '已停用', tone: 'neutral' },
+} satisfies Record<DeviceEnabledStatus, DeviceStatusMeta>
 
 export const DEVICE_CAPABILITY_META = {
   rpa: { label: 'RPA' },

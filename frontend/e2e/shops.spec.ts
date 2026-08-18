@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
+
 test('opens the shop center flows without runtime or horizontal page errors', async ({
   page,
 }) => {
@@ -28,7 +30,7 @@ test('opens the shop center flows without runtime or horizontal page errors', as
   await page.getByRole('button', { name: '新增店铺' }).click()
   await expect(page.getByText('新增店铺', { exact: true }).last()).toBeVisible()
   await expect(page.getByPlaceholder('请输入店铺名称')).toBeVisible()
-  await expect(page.getByText('可选 Mock 设备', { exact: true })).toBeVisible()
+  await expect(page.getByText('可选负责人', { exact: true })).toBeVisible()
 
   const layout = await page.evaluate(() => ({
     documentHasHorizontalOverflow:

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
+
 test('opens the device center and keeps the standard page behavior', async ({
   page,
 }) => {
@@ -15,7 +17,7 @@ test('opens the device center and keeps the standard page behavior', async ({
   await expect(page).toHaveURL(/#\/devices$/)
   await expect(page.getByRole('heading', { name: '设备中心' })).toBeVisible()
   await expect(page.getByLabel('设备统计')).toBeVisible()
-  await expect(page.getByText('在线设备', { exact: true })).toBeVisible()
+  await expect(page.getByText('设备总数', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
   await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
   await expect(
@@ -31,7 +33,10 @@ test('opens the device center and keeps the standard page behavior', async ({
 
   await page.getByRole('button', { name: '添加设备' }).click()
   await expect(
-    page.getByText('设备需要安装 Worker 后由服务器注册'),
+    page.getByText('创建设备基础记录', { exact: true }).last(),
+  ).toBeVisible()
+  await expect(
+    page.getByText('创建设备记录不代表 Worker 已注册，也不代表设备在线。'),
   ).toBeVisible()
 
   const layout = await page.evaluate(() => {

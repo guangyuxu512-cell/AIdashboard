@@ -4,7 +4,7 @@ import {
   ShopFilterBar,
   ShopFormDialog,
   ShopListTable,
-  useShopManagementMock,
+  useShopManagement,
 } from '@/features/shop-management'
 import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
@@ -13,7 +13,7 @@ import StatCard from '@/shared/components/StatCard.vue'
 import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
-const management = useShopManagementMock()
+const management = useShopManagement()
 </script>
 
 <template>
@@ -32,42 +32,45 @@ const management = useShopManagementMock()
     <SummaryGrid aria-label="店铺统计">
       <StatCard label="店铺总数" :value="management.statistics.value.total" />
       <StatCard
-        label="正常店铺"
-        :value="management.statistics.value.normal"
+        label="本页已启用"
+        :value="management.statistics.value.enabled"
         tone="success"
       />
       <StatCard
-        label="会话异常"
-        :value="management.statistics.value.sessionWarning"
-        tone="error"
+        label="本页已停用"
+        :value="management.statistics.value.disabled"
       />
-      <StatCard
-        label="自动化运行中"
-        :value="management.statistics.value.automationRunning"
-        tone="primary"
-      />
+      <StatCard label="会话 / 自动化" value="未接入" />
     </SummaryGrid>
 
     <ShopFilterBar
       v-model="management.filterDraft.value"
+      :available="management.filtersAvailable"
+      :platform-options="management.platformOptions"
+      :owner-options="management.ownerOptions.value"
+      :owner-options-loading="management.ownerOptionsLoading.value"
       @query="management.query"
       @reset="management.resetFilters"
     />
 
     <PageSection
       title="店铺列表"
-      description="当前数据来自 Frontend Fixture，仅用于界面验证。"
+      :description="management.dataSourceDescription"
     >
       <div class="shop-list-pattern">
         <ShopListTable
-          :rows="management.pagedShops.value"
+          :rows="management.rows.value"
+          :loading="management.listLoading.value"
+          :error="management.listError.value"
           @view="management.openDetail"
           @edit="management.openEdit"
+          @retry="management.retryList"
         />
         <PaginationBar
           v-model:page="management.page.value"
-          v-model:page-size="management.pageSize.value"
-          :item-count="management.filteredShops.value.length"
+          :page-size="management.pageSize.value"
+          :item-count="management.total.value"
+          @update:page-size="management.setPageSize"
         />
       </div>
     </PageSection>
@@ -75,12 +78,19 @@ const management = useShopManagementMock()
     <ShopDetailDrawer
       v-model:show="management.detailVisible.value"
       :shop="management.detailShop.value"
+      :loading="management.detailLoading.value"
+      :error="management.detailError.value"
+      @retry="management.retryDetail"
     />
 
     <ShopFormDialog
       v-model:show="management.formVisible.value"
       :mode="management.formMode.value"
       :initial-value="management.formInitialValue.value"
+      :platform-options="management.platformOptions"
+      :owner-options="management.ownerOptions.value"
+      :owner-options-loading="management.ownerOptionsLoading.value"
+      :submitting="management.formSubmitting.value"
       @save="management.saveShop"
     />
   </div>
