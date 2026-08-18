@@ -14,18 +14,18 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border-default);
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
-  background: var(--color-bg-subtle);
+  background: var(--bg-surface);
 }
 
 .filter-bar__fields,
 .filter-bar__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
 }
 
 .filter-bar__fields {

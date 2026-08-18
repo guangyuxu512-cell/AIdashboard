@@ -23,7 +23,7 @@ defineProps<{
   min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-5);
 }
 
 .page-header__copy {
@@ -37,14 +37,15 @@ defineProps<{
 }
 
 .page-header p {
-  margin-top: var(--space-2);
-  color: var(--color-text-secondary);
+  margin-top: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
 }
 
 .page-header__actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 </style>

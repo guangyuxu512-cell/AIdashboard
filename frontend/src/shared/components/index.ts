@@ -16,6 +16,7 @@ export { default as StatCard } from './StatCard.vue'
 export { default as StatusTag } from './StatusTag.vue'
 export { default as SummaryGrid } from './SummaryGrid.vue'
 export { default as TableToolbar } from './TableToolbar.vue'
+export { default as ThemeSelector } from './ThemeSelector.vue'
 
 export type { AppNavigationItem } from './AppShell.vue'
 export type { StatusTone } from './StatusTag.vue'

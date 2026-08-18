@@ -18,7 +18,7 @@ withDefaults(defineProps<{ label: string; width?: FieldWidth }>(), {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
   font-size: var(--font-size-secondary);
 }
 

@@ -8,7 +8,7 @@ withDefaults(defineProps<{ description?: string }>(), {
 
 <template>
   <div class="state-panel">
-    <NEmpty :description="description">
+    <NEmpty size="small" :description="description">
       <template v-if="$slots.actions" #extra>
         <slot name="actions" />
       </template>
@@ -19,7 +19,7 @@ withDefaults(defineProps<{ description?: string }>(), {
 <style scoped>
 .state-panel {
   display: grid;
-  min-height: 180px;
+  min-height: 112px;
   place-items: center;
 }
 </style>

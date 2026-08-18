@@ -14,6 +14,7 @@ import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useDeviceManagement()
+const isDevelopment = import.meta.env.DEV
 </script>
 
 <template>
@@ -44,6 +45,7 @@ const management = useDeviceManagement()
     </SummaryGrid>
 
     <DeviceFilterBar
+      v-if="management.filtersAvailable || isDevelopment"
       v-model="management.filterDraft.value"
       :available="management.filtersAvailable"
       @query="management.query"
@@ -52,7 +54,9 @@ const management = useDeviceManagement()
 
     <PageSection
       title="设备列表"
-      :description="management.dataSourceDescription"
+      :description="
+        isDevelopment ? management.dataSourceDescription : undefined
+      "
     >
       <div class="device-list-pattern">
         <DeviceListTable

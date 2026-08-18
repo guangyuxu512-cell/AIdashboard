@@ -15,7 +15,10 @@ withDefaults(
 
 <template>
   <section class="page-section" :class="`page-section--${surface}`">
-    <header v-if="title || description || $slots.actions" class="page-section__header">
+    <header
+      v-if="title || description || $slots.actions"
+      class="page-section__header"
+    >
       <div>
         <h2 v-if="title">{{ title }}</h2>
         <p v-if="description">{{ description }}</p>
@@ -36,11 +39,12 @@ withDefaults(
 }
 
 .page-section--card {
-  padding: var(--space-5);
-  border: 1px solid var(--color-border-default);
+  padding: var(--surface-padding);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
-  background: var(--color-bg-card);
+  background: var(--bg-surface);
   box-shadow: var(--shadow-card);
+  backdrop-filter: blur(var(--glass-blur));
 }
 
 .page-section__header {
@@ -48,7 +52,7 @@ withDefaults(
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .page-section__header h2 {
@@ -59,7 +63,7 @@ withDefaults(
 
 .page-section__header p {
   margin-top: var(--space-1);
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
   font-size: var(--font-size-secondary);
 }
 

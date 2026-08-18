@@ -16,11 +16,11 @@ withDefaults(defineProps<{ description?: string }>(), {
 <style scoped>
 .state-panel {
   display: flex;
-  min-height: 180px;
+  min-height: 112px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: var(--space-3);
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, h } from 'vue'
 import { NMenu } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
@@ -18,19 +18,42 @@ const props = withDefaults(
   }>(),
   {
     appName: '电商 AI 中控台',
-    contextLabel: '桌面控制平台',
+    contextLabel: '运营工作台',
   },
 )
 
 const route = useRoute()
 const router = useRouter()
-
-const menuOptions = computed<MenuOption[]>(() =>
-  props.navigation.map((item) => ({ key: item.key, label: item.label })),
-)
+const isDevelopment = import.meta.env.DEV
 
 const activeNavigationKey = computed(
   () => props.navigation.find((item) => item.to === route.path)?.key ?? null,
+)
+
+const activeNavigationLabel = computed(
+  () =>
+    props.navigation.find((item) => item.key === activeNavigationKey.value)
+      ?.label ?? '工作台',
+)
+
+const menuOptions = computed<MenuOption[]>(() =>
+  props.navigation.map((item) => ({
+    key: item.key,
+    label: () =>
+      h(
+        'span',
+        {
+          class: [
+            'app-shell__nav-label',
+            {
+              'app-shell__nav-label--active':
+                item.key === activeNavigationKey.value,
+            },
+          ],
+        },
+        item.label,
+      ),
+  })),
 )
 
 function navigate(key: string): void {
@@ -45,7 +68,7 @@ function navigate(key: string): void {
   <div class="app-shell">
     <aside class="app-shell__sidebar">
       <div class="app-shell__brand">
-        <span class="app-shell__brand-mark" aria-hidden="true">AI</span>
+        <span class="app-shell__brand-mark" aria-hidden="true">控</span>
         <div>
           <strong>{{ appName }}</strong>
           <span>{{ contextLabel }}</span>
@@ -55,18 +78,25 @@ function navigate(key: string): void {
         <NMenu
           :value="activeNavigationKey"
           :options="menuOptions"
-          inverted
+          :indent="12"
           @update:value="navigate"
         />
       </nav>
-      <div class="app-shell__sidebar-footer">阶段 0B · UI 基础设施</div>
+      <div v-if="isDevelopment" class="app-shell__sidebar-footer">
+        <span />
+        开发预览
+      </div>
     </aside>
 
     <section class="app-shell__workspace">
       <header class="app-shell__topbar">
         <div class="app-shell__topbar-leading">
           <slot name="topbar-leading">
-            <span class="app-shell__environment">本地桌面环境</span>
+            <div class="app-shell__breadcrumb" aria-label="当前位置">
+              <span>中控台</span>
+              <span aria-hidden="true">/</span>
+              <strong>{{ activeNavigationLabel }}</strong>
+            </div>
           </slot>
         </div>
         <div class="app-shell__topbar-actions">
@@ -85,17 +115,20 @@ function navigate(key: string): void {
   display: grid;
   width: 100%;
   height: 100%;
+  min-height: 0;
   grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr);
   overflow: hidden;
-  background: var(--color-bg-page);
+  background: var(--bg-app);
 }
 
 .app-shell__sidebar {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  color: var(--color-text-inverse);
-  background: var(--color-bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  color: var(--sidebar-text);
+  background: var(--bg-sidebar);
+  backdrop-filter: blur(var(--glass-blur));
 }
 
 .app-shell__brand {
@@ -103,20 +136,22 @@ function navigate(key: string): void {
   height: var(--layout-topbar-height);
   flex: 0 0 var(--layout-topbar-height);
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: 0 var(--space-4);
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .app-shell__brand-mark {
   display: grid;
-  width: var(--control-height-default);
-  height: var(--control-height-default);
-  flex: 0 0 var(--control-height-default);
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  flex: 0 0 var(--control-height-compact);
   place-items: center;
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-control);
-  color: var(--color-text-inverse);
-  background: var(--color-primary);
+  color: var(--sidebar-text-active);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
   font-size: var(--font-size-secondary);
   font-weight: var(--font-weight-semibold);
 }
@@ -127,13 +162,14 @@ function navigate(key: string): void {
 }
 
 .app-shell__brand strong {
+  color: var(--text-primary);
   font-size: var(--font-size-body);
   line-height: var(--line-height-compact);
 }
 
 .app-shell__brand div > span {
   margin-top: var(--space-1);
-  color: rgb(255 255 255 / 56%);
+  color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
 }
 
@@ -144,14 +180,37 @@ function navigate(key: string): void {
   overflow-y: auto;
 }
 
+:deep(.app-shell__nav-label) {
+  display: block;
+  width: 100%;
+  padding-left: 10px;
+  border-left: 2px solid transparent;
+  line-height: var(--line-height-body);
+}
+
+:deep(.app-shell__nav-label--active) {
+  border-left-color: var(--color-primary);
+}
+
 .app-shell__sidebar-footer {
-  padding: var(--space-4);
-  color: rgb(255 255 255 / 48%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
+}
+
+.app-shell__sidebar-footer span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-success);
 }
 
 .app-shell__workspace {
   display: grid;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   grid-template-rows: var(--layout-topbar-height) minmax(0, 1fr);
@@ -162,8 +221,9 @@ function navigate(key: string): void {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--layout-page-padding-x);
-  border-bottom: 1px solid var(--color-border-default);
-  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-topbar);
+  backdrop-filter: blur(var(--glass-blur));
 }
 
 .app-shell__topbar-leading,
@@ -173,14 +233,25 @@ function navigate(key: string): void {
   gap: var(--space-3);
 }
 
-.app-shell__environment {
-  color: var(--color-text-secondary);
+.app-shell__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
+}
+
+.app-shell__breadcrumb strong {
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
 }
 
 .app-shell__content {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: var(--bg-app);
 }
 </style>

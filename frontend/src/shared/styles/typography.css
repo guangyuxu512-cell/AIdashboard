@@ -1,10 +1,18 @@
 body {
-  color: var(--color-text-primary);
+  color: var(--text-primary);
   font-family: var(--font-family-base);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-body);
   -webkit-font-smoothing: antialiased;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-variant-numeric: tabular-nums;
 }
 
 h1,

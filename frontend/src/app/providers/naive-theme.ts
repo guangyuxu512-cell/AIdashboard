@@ -1,17 +1,22 @@
 import type { GlobalThemeOverrides } from 'naive-ui'
 
-function readCssToken(name: string): string {
+function readCssToken(name: string, theme?: 'light' | 'dark'): string {
   const value = getComputedStyle(document.documentElement)
     .getPropertyValue(name)
     .trim()
   if (!value) {
-    throw new Error(`Missing required design token: ${name}`)
+    throw new Error(
+      `Missing required design token: ${name}${theme ? ` (${theme})` : ''}`,
+    )
   }
   return value
 }
 
-export function createNaiveThemeOverrides(): GlobalThemeOverrides {
-  const color = (name: string) => readCssToken(`--color-${name}`)
+export function createNaiveThemeOverrides(
+  theme?: 'light' | 'dark',
+): GlobalThemeOverrides {
+  const token = (name: string) => readCssToken(name, theme)
+  const color = (name: string) => token(`--color-${name}`)
 
   return {
     common: {
@@ -20,16 +25,37 @@ export function createNaiveThemeOverrides(): GlobalThemeOverrides {
       primaryColor: color('primary'),
       primaryColorHover: color('primary-hover'),
       primaryColorPressed: color('primary-pressed'),
-      infoColor: color('info'),
-      successColor: color('success'),
-      warningColor: color('warning'),
-      errorColor: color('error'),
+      primaryColorSuppl: color('primary-hover'),
+      infoColor: token('--status-info'),
+      successColor: token('--status-success'),
+      warningColor: token('--status-warning'),
+      errorColor: token('--status-danger'),
+      baseColor: token('--bg-surface-solid'),
+      bodyColor: token('--bg-app'),
+      cardColor: token('--bg-surface-solid'),
+      modalColor: token('--bg-surface-solid'),
+      popoverColor: token('--bg-surface-solid'),
+      tableColor: token('--bg-surface'),
+      tableHeaderColor: token('--bg-subtle'),
+      tableColorHover: token('--bg-surface-hover'),
+      inputColor: token('--bg-surface-solid'),
+      inputColorDisabled: token('--bg-subtle'),
+      actionColor: token('--bg-subtle'),
+      hoverColor: token('--bg-surface-hover'),
+      dividerColor: token('--border-subtle'),
+      borderColor: token('--border-default'),
+      textColorBase: token('--text-primary'),
+      textColor1: token('--text-primary'),
+      textColor2: token('--text-secondary'),
+      textColor3: token('--text-tertiary'),
+      textColorDisabled: token('--text-disabled'),
+      placeholderColor: token('--text-tertiary'),
+      placeholderColorDisabled: token('--text-disabled'),
       borderRadius: 'var(--radius-control)',
-      borderColor: color('border-default'),
-      textColorBase: color('text-primary'),
-      textColor1: color('text-primary'),
-      textColor2: color('text-secondary'),
-      textColor3: color('text-muted'),
+      borderRadiusSmall: 'var(--radius-control)',
+      boxShadow1: 'var(--shadow-card)',
+      boxShadow2: 'var(--shadow-overlay)',
+      boxShadow3: 'var(--shadow-overlay)',
     },
     Button: {
       heightSmall: 'var(--control-height-compact)',
@@ -39,6 +65,7 @@ export function createNaiveThemeOverrides(): GlobalThemeOverrides {
       borderRadiusMedium: 'var(--radius-control)',
       borderRadiusLarge: 'var(--radius-control)',
       fontSizeMedium: 'var(--font-size-body)',
+      fontWeight: 'var(--font-weight-medium)',
     },
     Input: {
       heightSmall: 'var(--control-height-compact)',
@@ -46,36 +73,93 @@ export function createNaiveThemeOverrides(): GlobalThemeOverrides {
       heightLarge: 'var(--control-height-large)',
       borderRadius: 'var(--radius-control)',
       fontSizeMedium: 'var(--font-size-body)',
+      color: token('--bg-surface-solid'),
+      colorFocus: token('--bg-surface-solid'),
+      colorDisabled: token('--bg-subtle'),
+      border: `1px solid ${token('--border-default')}`,
+      borderHover: `1px solid ${color('primary')}`,
+      borderFocus: `1px solid ${color('primary')}`,
+      boxShadowFocus: `0 0 0 2px ${color('primary-soft')}`,
+      textColor: token('--text-primary'),
+      textColorDisabled: token('--text-disabled'),
+      placeholderColor: token('--text-tertiary'),
+      placeholderColorDisabled: token('--text-disabled'),
     },
     DataTable: {
-      borderColor: color('border-default'),
+      borderColor: token('--border-subtle'),
       borderRadius: 'var(--radius-card)',
-      thColor: color('bg-subtle'),
-    thTextColor: color('text-secondary'),
-    thFontWeight: 'var(--font-weight-semibold)',
-    thPaddingMedium: 'var(--space-2) var(--space-3)',
-    tdTextColor: color('text-primary'),
-    tdPaddingMedium: 'var(--space-3)',
+      thColor: token('--bg-subtle'),
+      thColorHover: token('--bg-subtle'),
+      thTextColor: token('--text-secondary'),
+      thFontWeight: 'var(--font-weight-semibold)',
+      thPaddingMedium: 'var(--space-2) var(--space-3)',
+      tdColor: token('--bg-surface-solid'),
+      tdColorHover: token('--bg-surface-hover'),
+      tdTextColor: token('--text-primary'),
+      tdPaddingMedium: 'var(--space-2) var(--space-3)',
+      emptyPadding: 'var(--space-5)',
+      boxShadowBefore: 'var(--shadow-sticky-left)',
+      boxShadowAfter: 'var(--shadow-sticky-right)',
+    },
+    Menu: {
+      color: 'transparent',
+      borderRadius: 'var(--radius-control)',
+      itemHeight: 'var(--control-height-large)',
+      itemColorHover: token('--sidebar-item-hover'),
+      itemColorActive: token('--sidebar-item-active'),
+      itemColorActiveHover: token('--sidebar-item-active'),
+      itemTextColor: token('--sidebar-text'),
+      itemTextColorHover: token('--text-primary'),
+      itemTextColorActive: token('--sidebar-text-active'),
+      itemTextColorActiveHover: token('--sidebar-text-active'),
+      fontSize: 'var(--font-size-body)',
     },
     Pagination: {
       itemSizeMedium: 'var(--control-height-compact)',
       itemBorderRadius: 'var(--radius-control)',
+      itemColorActive: token('--color-primary-soft'),
+      itemTextColorActive: color('primary'),
+    },
+    Dropdown: {
+      color: token('--bg-surface-solid'),
+      borderRadius: 'var(--radius-card)',
+      optionHeightMedium: 'var(--control-height-default)',
+      optionColorHover: token('--bg-surface-hover'),
+      optionColorActive: token('--color-primary-soft'),
+      optionTextColor: token('--text-primary'),
+      optionTextColorActive: color('primary'),
+    },
+    Tag: {
+      borderRadius: 'var(--radius-control)',
+      color: token('--bg-subtle'),
+      textColor: token('--text-secondary'),
+      colorInfo: token('--status-info-soft'),
+      textColorInfo: token('--status-info'),
+      colorSuccess: token('--status-success-soft'),
+      textColorSuccess: token('--status-success'),
+      colorWarning: token('--status-warning-soft'),
+      textColorWarning: token('--status-warning'),
+      colorError: token('--status-danger-soft'),
+      textColorError: token('--status-danger'),
     },
     Drawer: {
       borderRadius: 'var(--radius-dialog)',
-      color: color('bg-card'),
+      color: token('--bg-surface-solid'),
       boxShadow: 'var(--shadow-overlay)',
-      bodyPadding: 'var(--space-6)',
-      headerPadding: 'var(--space-5) var(--space-6)',
-      footerPadding: 'var(--space-4) var(--space-6)',
+      bodyPadding: 'var(--surface-padding)',
+      headerPadding: 'var(--space-4) var(--surface-padding)',
+      footerPadding: 'var(--space-3) var(--surface-padding)',
+      headerBorderBottom: `1px solid ${token('--border-subtle')}`,
+      footerBorderTop: `1px solid ${token('--border-subtle')}`,
     },
     Modal: {
-      color: color('bg-card'),
+      color: token('--bg-surface-solid'),
       boxShadow: 'var(--shadow-overlay)',
+      borderRadius: 'var(--radius-dialog)',
     },
     Tabs: {
       tabFontSizeMedium: 'var(--font-size-body)',
-      tabGapMediumLine: 'var(--space-6)',
+      tabGapMediumLine: 'var(--space-5)',
       tabFontWeightActive: 'var(--font-weight-semibold)',
     },
   }

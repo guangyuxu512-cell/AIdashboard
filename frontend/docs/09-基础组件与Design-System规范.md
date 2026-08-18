@@ -336,6 +336,7 @@ table border
 ## 10. Dialog / Drawer 规范
 
 ### Dialog
+
 适合：
 
 - 简单编辑。
@@ -351,6 +352,7 @@ dialog-lg
 ```
 
 ### Drawer
+
 适合：
 
 - 详情。
@@ -510,23 +512,37 @@ description（需要时）
 
 统一从 `@/shared/ui` 导入：
 
-| 组件 | 基础实现 | 项目级默认语义 |
-|---|---|---|
-| `AppButton` | `NButton` | primary / secondary / danger / text，固定 medium |
-| `AppInput` | `NInput` | 语义宽度、固定 medium |
-| `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium |
-| `AppSelect` | `NSelect` | 语义宽度、固定 medium |
-| `AppDatePicker` | `NDatePicker` | date / daterange、语义宽度 |
-| `AppTimePicker` | `NTimePicker` | 语义宽度、固定 medium |
-| `AppSwitch` | `NSwitch` | 统一 medium |
-| `AppCheckbox` | `NCheckbox` | 统一受控布尔值 |
-| `AppRadio` | `NRadioGroup` | 统一 button 模式 |
-| `AppTable` | `NDataTable` | 统一尺寸、边框和滚动入口 |
-| `AppPagination` | `NPagination` | 统一 page/pageSize 事件和页容量 |
-| `AppDialog` | `NModal` | sm / md / lg、统一按钮区 |
-| `AppDrawer` | `NDrawer` | sm / md / lg、统一内容区 |
-| `AppTabs` | `NTabs` | 统一 medium 与动画 |
+| 组件             | 基础实现       | 项目级默认语义                                   |
+| ---------------- | -------------- | ------------------------------------------------ |
+| `AppButton`      | `NButton`      | primary / secondary / danger / text，固定 medium |
+| `AppInput`       | `NInput`       | 语义宽度、固定 medium                            |
+| `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium                            |
+| `AppSelect`      | `NSelect`      | 语义宽度、固定 medium                            |
+| `AppDatePicker`  | `NDatePicker`  | date / daterange、语义宽度                       |
+| `AppTimePicker`  | `NTimePicker`  | 语义宽度、固定 medium                            |
+| `AppSwitch`      | `NSwitch`      | 统一 medium                                      |
+| `AppCheckbox`    | `NCheckbox`    | 统一受控布尔值                                   |
+| `AppRadio`       | `NRadioGroup`  | 统一 button 模式                                 |
+| `AppTable`       | `NDataTable`   | 统一尺寸、边框和滚动入口                         |
+| `AppPagination`  | `NPagination`  | 统一 page/pageSize 事件和页容量                  |
+| `AppDialog`      | `NModal`       | sm / md / lg、统一按钮区                         |
+| `AppDrawer`      | `NDrawer`      | sm / md / lg、统一内容区                         |
+| `AppTabs`        | `NTabs`        | 统一 medium 与动画                               |
 
 宽度只允许 `xs / sm / md / lg / xl / full`，弹层只允许 `sm / md / lg`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
 
 阶段 1B 增加页面模式辅助组件：`FilterField` 统一筛选字段标签和语义宽度，`SummaryGrid` 统一 StatCard 响应式网格。两者只组合既有基础能力，不替代 `AppSelect`、`AppInput` 或 `StatCard`。
+
+阶段 2C 增加 `ThemeSelector`，作为 AppShell Topbar 的 Light / Dark / System 入口，内部复用 `AppButton` 和 Naive `NDropdown`。
+
+## 18. Design System V2 公共视觉规则
+
+- `ThemeSelector` 是 Topbar 的紧凑主题入口，通过 Naive `NDropdown` 组合既有 `AppButton`，不建立第二套 Button/Dropdown。
+- `StatCard` 统一使用相同 Surface，tone 仅改变 2px 轻量 Accent，禁止每张 KPI 使用不同底色。
+- `PageHeader`、`PageSection`、`FilterBar` 共享紧凑间距和 Surface Token，不在 Shop/Device 页单独调整。
+- `DataTable` 使用实色 Table Surface，统一 Header/Row/Hover/Border；固定列必须使用语义阴影和不透明单元格，避免滚动时文字叠影。
+- `EmptyState`、`LoadingState`、`ErrorState` 共享紧凑状态区高度，禁止列表空态人为占满剩余视口。
+- Dialog/Drawer 统一使用 Dark/Light Surface、Border、Overlay Shadow 与紧凑 Padding。
+- Naive Provider 统一提供中文 Locale，DatePicker 与 Pagination 不得在中文页面显示默认英文文案。
+
+`Design System Playground` 是开发验收页，必须复用真实基础组件展示 Button、Input、Select、Switch、DatePicker、Status、StatCard、FilterBar、Table、Dialog 和 Drawer。禁止为 Playground 重写仿真组件。

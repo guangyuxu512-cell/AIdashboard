@@ -44,8 +44,11 @@ function cancel(): void {
     :show="show"
     preset="card"
     :title="title"
-    :style="{ width: dialogWidths[size], maxWidth: 'calc(100vw - var(--space-8))' }"
-    :bordered="false"
+    :style="{
+      width: dialogWidths[size],
+      maxWidth: 'calc(100vw - var(--space-8))',
+    }"
+    :bordered="true"
     :mask-closable="false"
     @update:show="$emit('update:show', $event)"
   >

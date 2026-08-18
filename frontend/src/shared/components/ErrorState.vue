@@ -20,7 +20,12 @@ defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <NResult status="error" :title="title" :description="description" class="state-panel">
+  <NResult
+    status="error"
+    :title="title"
+    :description="description"
+    class="state-panel"
+  >
     <template v-if="retryable || $slots.actions" #footer>
       <slot name="actions">
         <AppButton tone="primary" @click="$emit('retry')">重新加载</AppButton>
@@ -31,7 +36,7 @@ defineEmits<{ retry: [] }>()
 
 <style scoped>
 .state-panel {
-  min-height: 180px;
-  padding: var(--space-6);
+  min-height: 112px;
+  padding: var(--space-4);
 }
 </style>

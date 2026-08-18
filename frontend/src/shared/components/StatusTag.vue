@@ -14,9 +14,11 @@ const props = withDefaults(
   },
 )
 
-const tagType = computed(() => (props.tone === 'neutral' ? 'default' : props.tone))
+const tagType = computed(() =>
+  props.tone === 'neutral' ? 'default' : props.tone,
+)
 </script>
 
 <template>
-  <NTag :type="tagType" size="small" round :bordered="false">{{ label }}</NTag>
+  <NTag :type="tagType" size="small" :bordered="false">{{ label }}</NTag>
 </template>

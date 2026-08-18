@@ -17,55 +17,69 @@ withDefaults(
   <article class="stat-card" :class="`stat-card--${tone}`">
     <span class="stat-card__label">{{ label }}</span>
     <strong>{{ value }}</strong>
-    <span v-if="description" class="stat-card__description">{{ description }}</span>
+    <span v-if="description" class="stat-card__description">{{
+      description
+    }}</span>
   </article>
 </template>
 
 <style scoped>
 .stat-card {
+  --stat-accent: var(--border-strong);
+
+  position: relative;
   min-width: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--color-border-default);
+  overflow: hidden;
+  padding: var(--space-3) var(--surface-padding);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
-  background: var(--color-bg-card);
+  background: var(--bg-surface);
   box-shadow: var(--shadow-card);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.stat-card::before {
+  position: absolute;
+  top: var(--space-3);
+  bottom: var(--space-3);
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--stat-accent);
+  content: '';
 }
 
 .stat-card__label,
 .stat-card__description {
   display: block;
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
   font-size: var(--font-size-secondary);
 }
 
 .stat-card strong {
   display: block;
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
   font-size: var(--font-size-page-title);
   line-height: var(--line-height-compact);
 }
 
 .stat-card__description {
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .stat-card--primary {
-  border-color: var(--color-primary);
-  background: var(--color-primary-soft);
+  --stat-accent: var(--color-primary);
 }
 
 .stat-card--success {
-  border-color: var(--color-success);
-  background: var(--color-success-soft);
+  --stat-accent: var(--status-success);
 }
 
 .stat-card--warning {
-  border-color: var(--color-warning);
-  background: var(--color-warning-soft);
+  --stat-accent: var(--status-warning);
 }
 
 .stat-card--error {
-  border-color: var(--color-error);
-  background: var(--color-error-soft);
+  --stat-accent: var(--status-danger);
 }
 </style>

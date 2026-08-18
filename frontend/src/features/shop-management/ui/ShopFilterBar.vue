@@ -31,6 +31,7 @@ const emit = defineEmits<{
   query: []
   reset: []
 }>()
+const isDevelopment = import.meta.env.DEV
 
 const enabledStatusOptions: SelectOption[] = Object.entries(
   SHOP_ENABLED_STATUS_META,
@@ -79,7 +80,7 @@ const keyword = computed({
 
 <template>
   <FilterBar>
-    <span v-if="!available" class="filter-unavailable">
+    <span v-if="!available && isDevelopment" class="filter-unavailable">
       Backend V1 暂未提供店铺列表筛选参数；当前仅使用服务端分页。
     </span>
     <template v-else>
@@ -141,7 +142,7 @@ const keyword = computed({
 
 <style scoped>
 .filter-unavailable {
-  color: var(--color-text-secondary);
+  color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
 }
 </style>

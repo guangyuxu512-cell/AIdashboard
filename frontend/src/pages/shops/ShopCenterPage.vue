@@ -14,6 +14,7 @@ import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useShopManagement()
+const isDevelopment = import.meta.env.DEV
 </script>
 
 <template>
@@ -44,6 +45,7 @@ const management = useShopManagement()
     </SummaryGrid>
 
     <ShopFilterBar
+      v-if="management.filtersAvailable || isDevelopment"
       v-model="management.filterDraft.value"
       :available="management.filtersAvailable"
       :platform-options="management.platformOptions"
@@ -55,7 +57,9 @@ const management = useShopManagement()
 
     <PageSection
       title="店铺列表"
-      :description="management.dataSourceDescription"
+      :description="
+        isDevelopment ? management.dataSourceDescription : undefined
+      "
     >
       <div class="shop-list-pattern">
         <ShopListTable

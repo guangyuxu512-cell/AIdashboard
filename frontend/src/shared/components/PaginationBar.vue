@@ -39,7 +39,7 @@ defineEmits<{
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
   font-size: var(--font-size-secondary);
 }
 </style>
