@@ -12,6 +12,7 @@ import {
   type ShopSessionStatus,
 } from '@/entities/shop'
 import FilterBar from '@/shared/components/FilterBar.vue'
+import FilterField from '@/shared/components/FilterField.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -74,8 +75,7 @@ const keyword = computed({
 
 <template>
   <FilterBar>
-    <label class="shop-filter-field">
-      <span>平台</span>
+    <FilterField label="平台">
       <AppSelect
         v-model="platform"
         width="sm"
@@ -83,9 +83,8 @@ const keyword = computed({
         :options="SHOP_PLATFORM_FIXTURE_OPTIONS"
         placeholder="全部平台"
       />
-    </label>
-    <label class="shop-filter-field">
-      <span>店铺状态</span>
+    </FilterField>
+    <FilterField label="店铺状态">
       <AppSelect
         v-model="operationalStatus"
         width="sm"
@@ -93,9 +92,8 @@ const keyword = computed({
         :options="operationalStatusOptions"
         placeholder="全部状态"
       />
-    </label>
-    <label class="shop-filter-field">
-      <span>会话状态</span>
+    </FilterField>
+    <FilterField label="会话状态">
       <AppSelect
         v-model="sessionStatus"
         width="sm"
@@ -103,9 +101,8 @@ const keyword = computed({
         :options="sessionStatusOptions"
         placeholder="全部状态"
       />
-    </label>
-    <label class="shop-filter-field">
-      <span>负责人</span>
+    </FilterField>
+    <FilterField label="负责人">
       <AppSelect
         v-model="ownerName"
         width="sm"
@@ -113,9 +110,8 @@ const keyword = computed({
         :options="SHOP_OWNER_FIXTURE_OPTIONS"
         placeholder="全部负责人"
       />
-    </label>
-    <label class="shop-filter-field shop-filter-field--keyword">
-      <span>关键词</span>
+    </FilterField>
+    <FilterField label="关键词" width="md">
       <AppInput
         v-model="keyword"
         width="md"
@@ -123,27 +119,10 @@ const keyword = computed({
         placeholder="店铺、负责人或设备"
         @keyup.enter="$emit('query')"
       />
-    </label>
+    </FilterField>
     <template #actions>
       <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
       <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
     </template>
   </FilterBar>
 </template>
-
-<style scoped>
-.shop-filter-field {
-  display: flex;
-  width: var(--field-width-sm);
-  flex: 0 0 var(--field-width-sm);
-  flex-direction: column;
-  gap: var(--space-1);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-secondary);
-}
-
-.shop-filter-field--keyword {
-  width: var(--field-width-md);
-  flex-basis: var(--field-width-md);
-}
-</style>

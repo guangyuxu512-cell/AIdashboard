@@ -10,6 +10,7 @@ import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import StatCard from '@/shared/components/StatCard.vue'
+import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useShopManagementMock()
@@ -28,7 +29,7 @@ const management = useShopManagementMock()
       </template>
     </PageHeader>
 
-    <div class="shop-stat-grid" aria-label="店铺统计">
+    <SummaryGrid aria-label="店铺统计">
       <StatCard label="店铺总数" :value="management.statistics.value.total" />
       <StatCard
         label="正常店铺"
@@ -45,7 +46,7 @@ const management = useShopManagementMock()
         :value="management.statistics.value.automationRunning"
         tone="primary"
       />
-    </div>
+    </SummaryGrid>
 
     <ShopFilterBar
       v-model="management.filterDraft.value"
@@ -86,28 +87,10 @@ const management = useShopManagementMock()
 </template>
 
 <style scoped>
-.shop-stat-grid {
-  display: grid;
-  gap: var(--layout-card-gap);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .shop-list-pattern {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-4);
-}
-
-@media (max-width: 1200px) {
-  .shop-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 720px) {
-  .shop-stat-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

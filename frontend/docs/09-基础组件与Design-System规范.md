@@ -528,3 +528,5 @@ description（需要时）
 | `AppTabs` | `NTabs` | 统一 medium 与动画 |
 
 宽度只允许 `xs / sm / md / lg / xl / full`，弹层只允许 `sm / md / lg`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
+
+阶段 1B 增加页面模式辅助组件：`FilterField` 统一筛选字段标签和语义宽度，`SummaryGrid` 统一 StatCard 响应式网格。两者只组合既有基础能力，不替代 `AppSelect`、`AppInput` 或 `StatCard`。

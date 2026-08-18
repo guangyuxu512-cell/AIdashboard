@@ -1,0 +1,198 @@
+import type { SelectOption } from 'naive-ui'
+
+import {
+  DEVICE_CAPABILITY_META,
+  DEVICE_STATUS_META,
+} from '../model/status-meta'
+import type {
+  DeviceCapability,
+  DeviceCapabilityAvailability,
+  DeviceListItemViewModel,
+  DeviceStatus,
+} from '../model/types'
+
+function capability(
+  name: DeviceCapability,
+  availability: DeviceCapabilityAvailability,
+) {
+  return { capability: name, availability }
+}
+
+export const DEVICE_STATUS_FIXTURE_OPTIONS: SelectOption[] = (
+  Object.entries(DEVICE_STATUS_META) as [DeviceStatus, { label: string }][]
+).map(([value, meta]) => ({ label: meta.label, value }))
+
+export const DEVICE_CAPABILITY_FIXTURE_OPTIONS: SelectOption[] = (
+  Object.entries(DEVICE_CAPABILITY_META) as [
+    DeviceCapability,
+    { label: string },
+  ][]
+).map(([value, meta]) => ({ label: meta.label, value }))
+
+export const DEVICE_TAG_FIXTURE_OPTIONS: SelectOption[] = [
+  { label: '运营', value: '运营' },
+  { label: '直播', value: '直播' },
+  { label: '备用', value: '备用' },
+  { label: '测试', value: '测试' },
+]
+
+export const DEVICE_WORKER_VERSION_FIXTURE_OPTIONS: SelectOption[] = [
+  { label: 'v0.3.2 (Mock)', value: 'v0.3.2 (Mock)' },
+  { label: 'v0.3.1 (Mock)', value: 'v0.3.1 (Mock)' },
+  { label: '未报告', value: '未报告' },
+]
+
+export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
+  {
+    deviceId: 'device-fixture-001',
+    deviceName: '杭州-运营机-01',
+    status: 'online',
+    location: '杭州运营区',
+    systemDisplay: 'Windows 11',
+    workerVersionDisplay: 'v0.3.2 (Mock)',
+    currentTaskName: null,
+    cpuUsageDisplay: '18%',
+    memoryUsageDisplay: '42%',
+    lastHeartbeatAtDisplay: '2026-08-18 16:38:20',
+    tags: ['运营'],
+    capabilities: [
+      capability('rpa', 'available'),
+      capability('python', 'available'),
+      capability('browser', 'available'),
+      capability('node', 'unavailable'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-002',
+    deviceName: '上海-直播机-02',
+    status: 'busy',
+    location: '上海直播间',
+    systemDisplay: 'Windows 11',
+    workerVersionDisplay: 'v0.3.2 (Mock)',
+    currentTaskName: '直播素材整理（Mock）',
+    cpuUsageDisplay: '61%',
+    memoryUsageDisplay: '68%',
+    lastHeartbeatAtDisplay: '2026-08-18 16:38:18',
+    tags: ['直播', '运营'],
+    capabilities: [
+      capability('rpa', 'available'),
+      capability('python', 'available'),
+      capability('browser', 'available'),
+      capability('node', 'available'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-003',
+    deviceName: '深圳-工作站-03',
+    status: 'online',
+    location: '深圳办公区',
+    systemDisplay: 'Windows 10',
+    workerVersionDisplay: 'v0.3.1 (Mock)',
+    currentTaskName: null,
+    cpuUsageDisplay: '23%',
+    memoryUsageDisplay: '51%',
+    lastHeartbeatAtDisplay: '2026-08-18 16:38:12',
+    tags: ['运营'],
+    capabilities: [
+      capability('rpa', 'available'),
+      capability('python', 'available'),
+      capability('browser', 'available'),
+      capability('node', 'available'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-004',
+    deviceName: '杭州-备用机-04',
+    status: 'offline',
+    location: '杭州设备间',
+    systemDisplay: 'Windows 10',
+    workerVersionDisplay: '未报告',
+    currentTaskName: null,
+    cpuUsageDisplay: '—',
+    memoryUsageDisplay: '—',
+    lastHeartbeatAtDisplay: '2026-08-18 12:15:04',
+    tags: ['备用'],
+    capabilities: [
+      capability('rpa', 'unavailable'),
+      capability('python', 'unavailable'),
+      capability('browser', 'unavailable'),
+      capability('node', 'unavailable'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-005',
+    deviceName: '北京-运营机-05',
+    status: 'error',
+    location: '北京运营区',
+    systemDisplay: 'Windows 11',
+    workerVersionDisplay: 'v0.3.1 (Mock)',
+    currentTaskName: null,
+    cpuUsageDisplay: '—',
+    memoryUsageDisplay: '—',
+    lastHeartbeatAtDisplay: '2026-08-18 16:20:35',
+    tags: ['运营'],
+    capabilities: [
+      capability('rpa', 'unavailable'),
+      capability('python', 'available'),
+      capability('browser', 'unavailable'),
+      capability('node', 'available'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-006',
+    deviceName: '成都-测试机-06',
+    status: 'busy',
+    location: '成都测试区',
+    systemDisplay: 'Windows 11',
+    workerVersionDisplay: 'v0.3.2 (Mock)',
+    currentTaskName: '页面兼容性验证（Mock）',
+    cpuUsageDisplay: '49%',
+    memoryUsageDisplay: '57%',
+    lastHeartbeatAtDisplay: '2026-08-18 16:38:16',
+    tags: ['测试'],
+    capabilities: [
+      capability('rpa', 'available'),
+      capability('python', 'available'),
+      capability('browser', 'available'),
+      capability('node', 'available'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-007',
+    deviceName: '武汉-备用机-07',
+    status: 'offline',
+    location: '武汉设备间',
+    systemDisplay: 'Windows 10',
+    workerVersionDisplay: '未报告',
+    currentTaskName: null,
+    cpuUsageDisplay: '—',
+    memoryUsageDisplay: '—',
+    lastHeartbeatAtDisplay: '2026-08-17 19:44:08',
+    tags: ['备用'],
+    capabilities: [
+      capability('rpa', 'unavailable'),
+      capability('python', 'unavailable'),
+      capability('browser', 'unavailable'),
+      capability('node', 'unavailable'),
+    ],
+  },
+  {
+    deviceId: 'device-fixture-008',
+    deviceName: '南京-运营机-08',
+    status: 'online',
+    location: '南京运营区',
+    systemDisplay: 'Windows 11',
+    workerVersionDisplay: 'v0.3.2 (Mock)',
+    currentTaskName: null,
+    cpuUsageDisplay: '16%',
+    memoryUsageDisplay: '39%',
+    lastHeartbeatAtDisplay: '2026-08-18 16:38:09',
+    tags: ['运营'],
+    capabilities: [
+      capability('rpa', 'available'),
+      capability('python', 'available'),
+      capability('browser', 'available'),
+      capability('node', 'unavailable'),
+    ],
+  },
+]

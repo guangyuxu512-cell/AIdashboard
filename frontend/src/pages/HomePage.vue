@@ -12,6 +12,7 @@ import PageSection from '@/shared/components/PageSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import StatCard from '@/shared/components/StatCard.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
+import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import TableToolbar from '@/shared/components/TableToolbar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
@@ -82,11 +83,11 @@ const columns: DataTableColumns<FoundationRow> = [
       </template>
     </PageHeader>
 
-    <div class="stat-grid">
+    <SummaryGrid :columns="3">
       <StatCard label="Design Token" value="1 套" description="CSS Token 为唯一视觉来源" tone="primary" />
       <StatCard label="基础控件" value="14 个" description="复用 Naive UI，不重复造轮子" tone="success" />
-      <StatCard label="页面模式" value="16 个" description="覆盖骨架、状态与表格模式" />
-    </div>
+      <StatCard label="页面模式" value="18 个" description="覆盖骨架、状态与表格模式" />
+    </SummaryGrid>
 
     <PageSection title="控件与页面模式" description="筛选与操作区域使用统一语义尺寸。">
       <FilterBar>
@@ -133,7 +134,6 @@ const columns: DataTableColumns<FoundationRow> = [
 </template>
 
 <style scoped>
-.stat-grid,
 .state-grid {
   display: grid;
   gap: var(--layout-card-gap);
@@ -159,7 +159,6 @@ const columns: DataTableColumns<FoundationRow> = [
 }
 
 @media (max-width: 1100px) {
-  .stat-grid,
   .state-grid {
     grid-template-columns: 1fr;
   }

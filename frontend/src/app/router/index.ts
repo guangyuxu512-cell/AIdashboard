@@ -13,6 +13,11 @@ const router = createRouter({
       name: 'shops',
       component: () => import('@/pages/shops/ShopCenterPage.vue'),
     },
+    {
+      path: '/devices',
+      name: 'devices',
+      component: () => import('@/pages/devices/DeviceCenterPage.vue'),
+    },
   ],
 })
 

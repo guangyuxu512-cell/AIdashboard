@@ -17,6 +17,7 @@ import StatusTag from '@/shared/components/StatusTag.vue'
 const navigation: AppNavigationItem[] = [
   { key: 'foundation', label: 'UI 基础设施', to: '/' },
   { key: 'shops', label: '店铺中心', to: '/shops' },
+  { key: 'devices', label: '设备中心', to: '/devices' },
 ]
 
 const naiveThemeOverrides = createNaiveThemeOverrides()
