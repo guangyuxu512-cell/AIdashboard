@@ -1,0 +1,13 @@
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-bg-page: #f5f7fa;
+  --color-bg-card: #ffffff;
+  --color-border-default: #e5e7eb;
+  --font-size-body: 14px;
+  --space-page-x: 24px;
+  --space-page-y: 20px;
+  --radius-card: 8px;
+}

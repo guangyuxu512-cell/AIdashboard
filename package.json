@@ -1,0 +1,12 @@
+{
+  "name": "ecommerce-ai-control-center",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev:frontend": "pnpm --filter @control-center/frontend dev",
+    "dev:electron": "pnpm --filter @control-center/electron dev",
+    "build:frontend": "pnpm --filter @control-center/frontend build",
+    "build:electron": "pnpm --filter @control-center/electron build"
+  }
+}

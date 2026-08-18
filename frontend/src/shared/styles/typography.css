@@ -1,0 +1,7 @@
+body {
+  color: var(--color-text-primary);
+  font-family:
+    Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  font-size: var(--font-size-body);
+}

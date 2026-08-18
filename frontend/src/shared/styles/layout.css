@@ -1,0 +1,12 @@
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
+
+.page-container {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: var(--space-page-y) var(--space-page-x);
+}

@@ -1,0 +1,7 @@
+@import './tokens.css';
+@import './typography.css';
+@import './layout.css';
+
+body {
+  background: var(--color-bg-page);
+}
