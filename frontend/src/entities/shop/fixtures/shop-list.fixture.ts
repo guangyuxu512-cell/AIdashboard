@@ -68,7 +68,7 @@ export const SHOP_LIST_FIXTURE: ShopListItemViewModel[] = [
     enabledStatus: 'enabled',
     executionDeviceId: 'device-fixture-003',
     executionDeviceName: '深圳-工作站-03',
-    backupDeviceNames: ['上海-直播机-02'],
+    backupDeviceNames: ['上海-直播机-02', '杭州-运营机-01'],
     createdAtDisplay: '2026-07-21 11:46',
     updatedAtDisplay: '2026-08-18 10:15',
     note: '母婴品类日常运营',

@@ -3,6 +3,8 @@ import type { StatusTone } from '@/shared/components/StatusTag.vue'
 import platformAllIcon from '../assets/platform-all.svg'
 import platformDouyinIcon from '../assets/platform-douyin.svg'
 import platformPddIcon from '../assets/platform-pdd.svg'
+import platformTaobaoIcon from '../assets/platform-taobao.svg'
+import platformWechatChannelsIcon from '../assets/platform-wechat-channels.svg'
 import type {
   ShopEnabledStatus,
   ShopPlatform,
@@ -45,12 +47,27 @@ export const SHOP_PLATFORM_NAV_ITEMS = [
   },
   SHOP_PLATFORM_META.douyin,
   SHOP_PLATFORM_META.pdd,
+  {
+    value: 'taobao',
+    label: '淘宝',
+    icon: platformTaobaoIcon,
+    iconAlt: '淘宝平台图标',
+  },
+  {
+    value: 'wechat_channels',
+    label: '视频号',
+    icon: platformWechatChannelsIcon,
+    iconAlt: '视频号平台图标',
+  },
 ] satisfies ReadonlyArray<{
   value: ShopPlatformFilter
   label: string
   icon: string
   iconAlt: string
 }>
+
+/** 前端 V3 分组占位文案；当前没有 Group 领域或持久化契约。 */
+export const SHOP_UNASSIGNED_GROUP_LABEL = '未分组'
 
 export const SHOP_ENABLED_STATUS_META = {
   enabled: { label: '已启用', tone: 'success' },

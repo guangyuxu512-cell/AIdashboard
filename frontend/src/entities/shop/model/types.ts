@@ -1,6 +1,11 @@
 export type ShopPlatform = 'douyin' | 'pdd'
 
-export type ShopPlatformFilter = 'all' | ShopPlatform
+/** 店铺中心平台栏的前端展示值，不是 Backend 平台枚举。 */
+export type ShopPlatformFilter =
+  | 'all'
+  | ShopPlatform
+  | 'taobao'
+  | 'wechat_channels'
 
 export type ShopEnabledStatus = 'enabled' | 'disabled'
 

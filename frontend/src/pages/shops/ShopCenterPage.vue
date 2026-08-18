@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ShopDetailDrawer,
+  ShopBatchToolbar,
   ShopFilterBar,
   ShopFormDialog,
   ShopListTable,
@@ -34,7 +35,11 @@ const management = useShopManagement()
 
     <PageSection>
       <div class="shop-list-pattern">
+        <ShopBatchToolbar
+          :selected-count="management.selectedShopCount.value"
+        />
         <ShopListTable
+          v-model:checked-row-keys="management.selectedShopIds.value"
           :rows="management.rows.value"
           :loading="management.listLoading.value"
           :error="management.listError.value"

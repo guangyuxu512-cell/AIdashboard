@@ -54,6 +54,14 @@
   --layout-card-gap: 12px;
   --table-header-height: 38px;
   --table-row-height: 42px;
+  --table-list-row-slot-height: 51px;
+  --table-divider-width: 1px;
+  --table-list-page-size: 10;
+  --table-list-viewport-height: calc(
+    var(--table-header-height) +
+      var(--table-list-row-slot-height) * var(--table-list-page-size) +
+      var(--table-divider-width)
+  );
 }
 
 :root,

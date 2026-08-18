@@ -40,4 +40,20 @@ describe('DataTable', () => {
     await wrapper.get('button').trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
+
+  it('applies the semantic stable viewport only when requested', () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ title: '名称', key: 'name' }],
+        data: [],
+        viewport: 'stable',
+        appearance: 'list',
+      },
+    })
+
+    expect(wrapper.get('.data-table').classes()).toContain('data-table--stable')
+    expect(wrapper.get('.data-table').classes()).toContain(
+      'data-table--appearance-list',
+    )
+  })
 })

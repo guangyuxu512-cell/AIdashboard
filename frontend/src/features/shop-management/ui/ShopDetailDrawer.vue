@@ -2,15 +2,16 @@
 import { NDescriptions, NDescriptionsItem } from 'naive-ui'
 
 import {
+  SHOP_UNASSIGNED_GROUP_LABEL,
   SHOP_PLATFORM_META,
   ShopPlatformDisplay,
-  ShopStatusTag,
   type ShopListItemViewModel,
 } from '@/entities/shop'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import AppSwitch from '@/shared/ui/AppSwitch.vue'
 
 defineProps<{
   show: boolean
@@ -42,7 +43,6 @@ defineEmits<{
             {{ SHOP_PLATFORM_META[shop.platform].label }} · {{ shop.shopId }}
           </span>
         </div>
-        <ShopStatusTag :status="shop.enabledStatus" />
         <AppButton tone="text" @click="$emit('edit', shop)">编辑</AppButton>
       </div>
     </template>
@@ -67,11 +67,22 @@ defineEmits<{
           <NDescriptionsItem label="负责人">{{
             shop.ownerName
           }}</NDescriptionsItem>
+          <NDescriptionsItem label="分组">
+            {{ SHOP_UNASSIGNED_GROUP_LABEL }}
+          </NDescriptionsItem>
           <NDescriptionsItem label="店铺 ID">
             <span class="shop-detail__id">{{ shop.shopId }}</span>
           </NDescriptionsItem>
-          <NDescriptionsItem label="状态">
-            <ShopStatusTag :status="shop.enabledStatus" />
+          <NDescriptionsItem label="开启">
+            <span class="shop-detail__enable-placeholder">
+              <AppSwitch
+                :model-value="false"
+                disabled
+                title="店铺自动化总开关尚未接入"
+                aria-label="店铺自动化总开关尚未接入"
+              />
+              <span>自动化总开关待接入</span>
+            </span>
           </NDescriptionsItem>
           <NDescriptionsItem label="备注">{{
             shop.note || '—'
@@ -110,12 +121,16 @@ defineEmits<{
             <span>账号、Cookie 与连接状态尚未接入</span>
           </article>
           <article>
-            <strong>自动化</strong>
-            <span>自动化配置与控制能力尚未接入</span>
+            <strong>自动化策略</strong>
+            <span>自动化策略与控制能力尚未接入</span>
           </article>
           <article>
             <strong>数据同步</strong>
             <span>业务数据同步能力尚未接入</span>
+          </article>
+          <article>
+            <strong>操作记录</strong>
+            <span>店铺操作历史尚未接入</span>
           </article>
         </div>
       </section>
@@ -181,6 +196,14 @@ defineEmits<{
   overflow-wrap: anywhere;
   color: var(--text-secondary);
   font-family: monospace;
+  font-size: var(--font-size-secondary);
+}
+
+.shop-detail__enable-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
 }
 

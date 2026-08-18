@@ -18,6 +18,8 @@ describe('shop status metadata', () => {
       'all',
       'douyin',
       'pdd',
+      'taobao',
+      'wechat_channels',
     ])
   })
 })

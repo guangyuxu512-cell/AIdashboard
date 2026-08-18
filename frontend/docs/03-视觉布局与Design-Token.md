@@ -68,9 +68,11 @@ Naive UI 统一通过 Theme Override 对接 Token。
 | 控件      | `--control-height-*`、`--field-width-*`                                                       |
 | 圆角/阴影 | `--radius-*`、`--shadow-*`                                                                    |
 | 弹层      | `--dialog-width-*`、`--drawer-width-*`                                                        |
-| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`                                   |
+| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`    |
 
 `typography.css` 只负责全局排版基线，`layout.css` 只负责页面和语义宽度布局，`theme.css` 是应用唯一样式入口。Naive UI 的全局覆盖位于 `app/providers/naive-theme.ts`，其尺寸直接引用 CSS Token；需要参与 Naive 颜色计算的值必须在 Provider 创建时从 CSS Token 读取计算值，禁止在 TypeScript 再复制一份颜色常量。
+
+`--table-list-viewport-height` 是标准 10 行管理列表的稳定视口高度，由表头、包含标准操作控件的行槽、每页数量和分隔线 Token 推导。`--table-row-height` 仍表达普通文本行密度，`--table-list-row-slot-height` 表达列表操作行的实际占位。业务页面不得复制计算式或另写像素高度；空态、单行和满页状态均复用该语义 Token，Pagination 因而保持在稳定位置。
 
 ## 阶段 2C 主题与语义 Token
 

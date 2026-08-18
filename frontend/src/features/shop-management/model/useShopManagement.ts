@@ -1,5 +1,5 @@
 import { useMessage } from 'naive-ui'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import {
   shopDataSource,
@@ -36,6 +36,7 @@ export function useShopManagement() {
   const selectedPlatform = ref<ShopPlatformFilter>('all')
   const page = ref(1)
   const pageSize = ref(10)
+  const selectedShopIds = ref<string[]>([])
   const detailShopId = ref<string | null>(null)
   const detailVisible = ref(false)
   const formVisible = ref(false)
@@ -70,6 +71,7 @@ export function useShopManagement() {
         (!keyword || shop.shopName.toLocaleLowerCase().includes(keyword)),
     )
   })
+  const selectedShopCount = computed(() => selectedShopIds.value.length)
   const total = computed(() => listQuery.data.value?.total ?? 0)
   const listError = computed(() =>
     listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
@@ -80,6 +82,13 @@ export function useShopManagement() {
   const formSubmitting = computed(
     () => createMutation.isPending.value || updateMutation.isPending.value,
   )
+
+  watch(rows, (currentRows) => {
+    const currentIds = new Set(currentRows.map((shop) => shop.shopId))
+    selectedShopIds.value = selectedShopIds.value.filter((shopId) =>
+      currentIds.has(shopId),
+    )
+  })
 
   function query(): void {
     appliedFilters.value = { ...filterDraft.value }
@@ -149,6 +158,8 @@ export function useShopManagement() {
     selectedPlatform,
     page,
     pageSize,
+    selectedShopIds,
+    selectedShopCount,
     detailVisible,
     formVisible,
     formMode,

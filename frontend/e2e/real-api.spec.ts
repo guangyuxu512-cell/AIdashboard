@@ -99,8 +99,8 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .getByRole('button', { name: '查看' })
     .click()
   await expect(page.getByText('账号与连接')).toBeVisible()
-  await expect(page.getByText('自动化配置与控制能力尚未接入')).toBeVisible()
-  await page.getByRole('button', { name: '关闭' }).click()
+  await expect(page.getByText('自动化策略与控制能力尚未接入')).toBeVisible()
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByText('设备中心', { exact: true }).click()
   await expect(page.getByRole('button', { name: '添加设备' })).toBeVisible()
@@ -129,7 +129,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .click()
   await expect(page.getByText('设备详情', { exact: true })).toBeVisible()
   await expect(page.getByText('Worker 执行能力尚未接入')).toBeVisible()
-  await page.getByRole('button', { name: '关闭' }).click()
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   const layout = await page.evaluate(() => ({
     documentHasHorizontalOverflow:

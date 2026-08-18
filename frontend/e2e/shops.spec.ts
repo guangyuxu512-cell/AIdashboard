@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
-test('validates the Shop Center V2 list, platform switch and detail drawer', async ({
+test('validates the Shop Center V3 list, selection, platform switch and detail drawer', async ({
   page,
 }) => {
   const runtimeErrors: string[] = []
@@ -25,6 +25,8 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await expect(page.getByAltText('全部平台图标')).toBeVisible()
   await expect(page.getByAltText('抖店平台图标').first()).toBeVisible()
   await expect(page.getByAltText('拼多多平台图标').first()).toBeVisible()
+  await expect(page.getByAltText('淘宝平台图标')).toBeVisible()
+  await expect(page.getByAltText('视频号平台图标')).toBeVisible()
 
   const filterBar = page.getByRole('region', { name: '筛选条件' })
   await expect(filterBar).toBeVisible()
@@ -41,11 +43,30 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   await expect(page.getByText('海风家居生活馆')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '开启' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '分组' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '状态' })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: '今日订单' })).toHaveCount(
     0,
   )
   await expect(page.getByText('今日 GMV')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(0)
+  await expect(page.getByText('未分组').first()).toBeVisible()
+  await expect(page.getByText('深圳-工作站-03 +2')).toBeVisible()
+  await expect(page.getByRole('switch').first()).toBeDisabled()
+  await expect(page.getByText('批量分配分组')).toBeVisible()
+  await expect(page.getByText('批量开启')).toBeVisible()
+  await expect(page.getByText('批量关闭')).toBeVisible()
+  await expect(page.getByText('批量删除')).toBeVisible()
+  await expect(page.getByRole('button', { name: '删除' }).first()).toBeDisabled()
+
+  const rowCheckboxes = page.getByRole('checkbox')
+  await expect(rowCheckboxes.first()).toBeVisible()
+  await rowCheckboxes.nth(1).click()
+  await expect(page.getByText('已选择 1 家店铺')).toBeVisible()
+  await expect(page.locator('.app-table__row--selected')).toHaveCount(1)
+  await rowCheckboxes.first().click()
+  await expect(page.getByText('已选择 10 家店铺')).toBeVisible()
+  await expect(page.locator('.app-table__row--selected')).toHaveCount(10)
 
   const compactOrder = await page.evaluate(() => {
     const top = (selector: string) =>
@@ -71,6 +92,10 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   await expect(page.getByText('海风家居生活馆')).toBeVisible()
 
+  await page.getByRole('button', { name: '淘宝', exact: true }).click()
+  await expect(page.getByText('没有符合当前条件的店铺')).toBeVisible()
+  await page.getByRole('button', { name: '全部平台', exact: true }).click()
+
   await page.getByPlaceholder('搜索店铺名称').fill('星河')
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
@@ -86,8 +111,11 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await expect(page.getByText('星河服饰旗舰店').last()).toBeVisible()
   await expect(page.getByText('账号与连接')).toBeVisible()
   await expect(page.getByText('账号、Cookie 与连接状态尚未接入')).toBeVisible()
-  await expect(page.getByText('自动化配置与控制能力尚未接入')).toBeVisible()
+  await expect(page.getByText('自动化策略与控制能力尚未接入')).toBeVisible()
   await expect(page.getByText('业务数据同步能力尚未接入')).toBeVisible()
+  await expect(page.getByText('店铺操作历史尚未接入')).toBeVisible()
+  await expect(page.getByText('自动化总开关待接入')).toBeVisible()
+  await expect(page.getByText('未分组').last()).toBeVisible()
 
   const openContentWidth = await page
     .locator('.app-shell__content')
@@ -97,9 +125,10 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(page.getByText('账号与连接')).toHaveCount(0)
 
-  await page.getByRole('button', { name: '查看' }).nth(1).click()
-  await expect(page.getByText('海风家居生活馆').last()).toBeVisible()
-  await expect(page.getByText('shop-fixture-002').first()).toBeVisible()
+  await page.getByRole('button', { name: '查看' }).nth(2).click()
+  await expect(page.getByText('云朵母婴专营店').last()).toBeVisible()
+  await expect(page.getByText('shop-fixture-003').first()).toBeVisible()
+  await expect(page.getByText('上海-直播机-02、杭州-运营机-01')).toBeVisible()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   const layout = await page.evaluate(() => ({
@@ -115,7 +144,34 @@ test('validates the Shop Center V2 list, platform switch and detail drawer', asy
   expect(runtimeErrors).toEqual([])
 })
 
-test('opens the existing create form from the V2 page', async ({ page }) => {
+test('keeps the Shop V3 list viewport stable for full, single-row and empty states', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  const viewport = page.locator('.data-table--stable')
+  await expect(viewport).toBeVisible()
+  const fullHeight = await viewport.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().height),
+  )
+
+  await page.getByPlaceholder('搜索店铺名称').fill('星河')
+  await page.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
+  const singleHeight = await viewport.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().height),
+  )
+
+  await page.getByRole('button', { name: '淘宝', exact: true }).click()
+  await expect(page.getByText('没有符合当前条件的店铺')).toBeVisible()
+  const emptyHeight = await viewport.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().height),
+  )
+
+  expect(singleHeight).toBe(fullHeight)
+  expect(emptyHeight).toBe(fullHeight)
+})
+
+test('opens the existing create form from the V3 page', async ({ page }) => {
   await page.goto('/#/shops')
   await page.getByRole('button', { name: '新增店铺' }).click()
   await expect(page.getByText('新增店铺', { exact: true }).last()).toBeVisible()

@@ -24,6 +24,7 @@ defineEmits<{
     size="medium"
     :value="modelValue"
     :disabled="disabled"
+    :aria-disabled="disabled"
     :loading="loading"
     @update:value="$emit('update:modelValue', $event)"
   />

@@ -331,6 +331,12 @@ row height
 table border
 ```
 
+`DataTable.viewport="stable"` 用于需要稳定分页位置的标准列表管理页：满页、单行、空态、首次加载和错误态共享同一最小视口高度。该能力由表格语义 Token 驱动，页面禁止再写固定高度。
+
+`DataTable.appearance="list"` 提供无明显纵向网格的列表外观：保留轻量行分隔、表头层级、Hover、Selected 和固定列阴影。默认 `grid` 行为保持不变，必须由页面模式显式选择。
+
+行选择继续使用 Naive UI 原生 selection column，并通过 `checkedRowKeys` / `update:checkedRowKeys` 由 `AppTable`、`DataTable` 统一透传；业务页面不得手写第二套 Checkbox 表头联动。
+
 ---
 
 ## 10. Dialog / Drawer 规范
@@ -545,7 +551,7 @@ description（需要时）
 - `StatCard` 统一使用相同 Surface，tone 仅改变 2px 轻量 Accent，禁止每张 KPI 使用不同底色。
 - `PageHeader`、`PageSection`、`FilterBar` 共享紧凑间距和 Surface Token，不在 Shop/Device 页单独调整。
 - 普通列表管理页默认省略 `PageHeader` 和 `PageSection` Header；组件本身继续保留给复杂页面使用。
-- `DataTable` 使用实色 Table Surface，统一 Header/Row/Hover/Border；固定列必须使用语义阴影和不透明单元格，避免滚动时文字叠影。
+- `DataTable` 使用实色 Table Surface，统一 Header/Row/Hover/Selected；列表外观不显示明显纵向网格，仅保留极轻横向层次。固定列必须使用语义阴影和不透明单元格，避免滚动时文字叠影。
 - `EmptyState`、`LoadingState`、`ErrorState` 共享紧凑状态区高度，禁止列表空态人为占满剩余视口。
 - Dialog/Drawer 统一使用 Dark/Light Surface、Border、Overlay Shadow 与紧凑 Padding。
 - Naive Provider 统一提供中文 Locale，DatePicker 与 Pagination 不得在中文页面显示默认英文文案。
