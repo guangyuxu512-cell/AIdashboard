@@ -1,19 +1,13 @@
-export type ShopPlatform = 'douyin' | 'taobao' | 'pdd' | 'jd'
+export type ShopPlatform = 'douyin' | 'pdd'
+
+export type ShopPlatformFilter = 'all' | ShopPlatform
 
 export type ShopEnabledStatus = 'enabled' | 'disabled'
 
-export type ShopSessionStatus =
-  'normal' | 'warning' | 'not_configured' | 'unavailable'
-
-export type ShopAutomationStatus = 'running' | 'idle' | 'paused' | 'unavailable'
-
-export type ShopConfigurationStatus =
-  'configured' | 'not_configured' | 'unavailable'
-
 /**
- * 店铺中心第一版的前端展示模型。
+ * 店铺中心的前端展示模型。
  *
- * 该类型只服务本地 Fixture 与 UI 验证，不是 Backend DTO，也不约束未来数据库字段。
+ * 该类型由真实 DTO 显式映射，也用于本地 Fixture；它不是 Backend DTO 或数据库模型。
  */
 export interface ShopListItemViewModel {
   shopId: string
@@ -23,23 +17,17 @@ export interface ShopListItemViewModel {
   ownerName: string
   enabled: boolean
   enabledStatus: ShopEnabledStatus
-  sessionStatus: ShopSessionStatus
   executionDeviceId: string | null
   executionDeviceName: string | null
   backupDeviceNames: string[]
-  automationStatus: ShopAutomationStatus
-  todayGmvDisplay: string
+  createdAtDisplay: string
   updatedAtDisplay: string
-  accountConfigurationStatus: ShopConfigurationStatus
-  sessionConfigurationStatus: ShopConfigurationStatus
   note: string
   dataSource: 'mock' | 'real'
 }
 
 export interface ShopListFilters {
-  platform: ShopPlatform | null
   enabledStatus: ShopEnabledStatus | null
-  sessionStatus: ShopSessionStatus | null
   ownerUserId: string | null
   keyword: string
 }

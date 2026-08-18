@@ -4,9 +4,7 @@ import { createMockShopDataSource } from './shop-data-source'
 import { shopQueryKeys } from './shop-queries'
 
 const emptyFilters = {
-  platform: null,
   enabledStatus: null,
-  sessionStatus: null,
   ownerUserId: null,
   keyword: '',
 } as const
@@ -46,6 +44,6 @@ describe('shop query and mutation data source', () => {
 
     expect(updated.enabledStatus).toBe('disabled')
     expect(page.items[0]?.shopName).toBe('Mock Mutation Shop Updated')
-    expect(page.total).toBe(9)
+    expect(page.total).toBe(11)
   })
 })

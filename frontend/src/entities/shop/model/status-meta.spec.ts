@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  SHOP_AUTOMATION_STATUS_META,
-  SHOP_CONFIGURATION_STATUS_META,
   SHOP_ENABLED_STATUS_META,
-  SHOP_SESSION_STATUS_META,
+  SHOP_PLATFORM_META,
+  SHOP_PLATFORM_NAV_ITEMS,
 } from './status-meta'
 
 describe('shop status metadata', () => {
@@ -13,15 +12,12 @@ describe('shop status metadata', () => {
       label: '已启用',
       tone: 'success',
     })
-    expect(SHOP_SESSION_STATUS_META.warning).toEqual({
-      label: '异常',
-      tone: 'error',
-    })
-    expect(SHOP_AUTOMATION_STATUS_META.running).toEqual({
-      label: '运行中',
-      tone: 'info',
-    })
-    expect(SHOP_CONFIGURATION_STATUS_META.not_configured.label).toBe('未配置')
-    expect(SHOP_SESSION_STATUS_META.unavailable.label).toBe('未接入')
+    expect(SHOP_PLATFORM_META.douyin.label).toBe('抖店')
+    expect(SHOP_PLATFORM_META.pdd.icon).toMatch(/^(data:image|\/src\/)/)
+    expect(SHOP_PLATFORM_NAV_ITEMS.map((item) => item.value)).toEqual([
+      'all',
+      'douyin',
+      'pdd',
+    ])
   })
 })

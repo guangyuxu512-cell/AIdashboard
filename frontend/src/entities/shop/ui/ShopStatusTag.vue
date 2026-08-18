@@ -3,41 +3,12 @@ import { computed } from 'vue'
 
 import StatusTag from '@/shared/components/StatusTag.vue'
 
-import {
-  SHOP_AUTOMATION_STATUS_META,
-  SHOP_CONFIGURATION_STATUS_META,
-  SHOP_ENABLED_STATUS_META,
-  SHOP_SESSION_STATUS_META,
-} from '../model/status-meta'
-import type {
-  ShopAutomationStatus,
-  ShopConfigurationStatus,
-  ShopEnabledStatus,
-  ShopSessionStatus,
-} from '../model/types'
+import { SHOP_ENABLED_STATUS_META } from '../model/status-meta'
+import type { ShopEnabledStatus } from '../model/types'
 
-type ShopStatusTagProps =
-  | { category: 'shop'; status: ShopEnabledStatus }
-  | { category: 'session'; status: ShopSessionStatus }
-  | { category: 'automation'; status: ShopAutomationStatus }
-  | { category: 'configuration'; status: ShopConfigurationStatus }
+const props = defineProps<{ status: ShopEnabledStatus }>()
 
-const props = defineProps<ShopStatusTagProps>()
-
-const meta = computed(() => {
-  switch (props.category) {
-    case 'shop':
-      return SHOP_ENABLED_STATUS_META[props.status]
-    case 'session':
-      return SHOP_SESSION_STATUS_META[props.status]
-    case 'automation':
-      return SHOP_AUTOMATION_STATUS_META[props.status]
-    case 'configuration':
-      return SHOP_CONFIGURATION_STATUS_META[props.status]
-    default:
-      throw new Error('未知店铺状态分类')
-  }
-})
+const meta = computed(() => SHOP_ENABLED_STATUS_META[props.status])
 </script>
 
 <template>

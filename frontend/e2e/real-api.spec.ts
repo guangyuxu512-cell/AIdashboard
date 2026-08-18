@@ -84,13 +84,14 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
 
   await page.reload()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '编辑' }).first().click()
+  await page.getByRole('button', { name: '查看' }).first().click()
+  await page.getByRole('button', { name: '编辑' }).click()
   await page.getByPlaceholder('请输入店铺名称').fill(updatedShopName)
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(updatedShopName, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '查看' }).first().click()
-  await expect(page.getByText('店铺详情', { exact: true })).toBeVisible()
-  await expect(page.getByText('未接入', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('账号与连接')).toBeVisible()
+  await expect(page.getByText('自动化配置与控制能力尚未接入')).toBeVisible()
   await page.getByRole('button', { name: '关闭' }).click()
 
   await page.getByText('设备中心', { exact: true }).click()

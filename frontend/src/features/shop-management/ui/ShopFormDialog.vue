@@ -44,7 +44,7 @@ const formSchema = z.object({
     .min(1, '请输入店铺名称')
     .max(100, '店铺名称最多 100 个字符'),
   platform: z
-    .enum(['douyin', 'taobao', 'pdd', 'jd'])
+    .enum(['douyin', 'pdd'])
     .nullable()
     .refine((value) => value !== null, '请选择平台'),
   enabled: z.boolean(),

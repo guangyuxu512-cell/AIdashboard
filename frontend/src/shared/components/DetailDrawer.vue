@@ -2,9 +2,10 @@
 import AppDrawer from '@/shared/ui/AppDrawer.vue'
 import type { OverlaySize } from '@/shared/ui/types'
 
-withDefaults(defineProps<{ show: boolean; title: string; size?: OverlaySize }>(), {
-  size: 'md',
-})
+withDefaults(
+  defineProps<{ show: boolean; title?: string; size?: OverlaySize }>(),
+  { title: '', size: 'md' },
+)
 
 defineEmits<{ 'update:show': [value: boolean] }>()
 </script>
@@ -16,6 +17,7 @@ defineEmits<{ 'update:show': [value: boolean] }>()
     :size="size"
     @update:show="$emit('update:show', $event)"
   >
+    <template v-if="$slots.header" #header><slot name="header" /></template>
     <slot />
     <template v-if="$slots.footer" #footer><slot name="footer" /></template>
   </AppDrawer>

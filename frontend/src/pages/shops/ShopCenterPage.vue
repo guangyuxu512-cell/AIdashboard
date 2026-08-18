@@ -4,13 +4,12 @@ import {
   ShopFilterBar,
   ShopFormDialog,
   ShopListTable,
+  ShopPlatformSwitchBar,
   useShopManagement,
 } from '@/features/shop-management'
 import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
-import StatCard from '@/shared/components/StatCard.vue'
-import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useShopManagement()
@@ -30,25 +29,10 @@ const isDevelopment = import.meta.env.DEV
       </template>
     </PageHeader>
 
-    <SummaryGrid aria-label="店铺统计">
-      <StatCard label="店铺总数" :value="management.statistics.value.total" />
-      <StatCard
-        label="本页已启用"
-        :value="management.statistics.value.enabled"
-        tone="success"
-      />
-      <StatCard
-        label="本页已停用"
-        :value="management.statistics.value.disabled"
-      />
-      <StatCard label="会话 / 自动化" value="未接入" />
-    </SummaryGrid>
+    <ShopPlatformSwitchBar v-model="management.selectedPlatform.value" />
 
     <ShopFilterBar
-      v-if="management.filtersAvailable || isDevelopment"
       v-model="management.filterDraft.value"
-      :available="management.filtersAvailable"
-      :platform-options="management.platformOptions"
       :owner-options="management.ownerOptions.value"
       :owner-options-loading="management.ownerOptionsLoading.value"
       @query="management.query"
@@ -67,7 +51,6 @@ const isDevelopment = import.meta.env.DEV
           :loading="management.listLoading.value"
           :error="management.listError.value"
           @view="management.openDetail"
-          @edit="management.openEdit"
           @retry="management.retryList"
         />
         <PaginationBar
@@ -84,6 +67,7 @@ const isDevelopment = import.meta.env.DEV
       :shop="management.detailShop.value"
       :loading="management.detailLoading.value"
       :error="management.detailError.value"
+      @edit="management.editFromDetail"
       @retry="management.retryDetail"
     />
 

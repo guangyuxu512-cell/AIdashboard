@@ -30,7 +30,6 @@ export interface ShopListParams {
 
 export interface ShopDataSource {
   readonly mode: ApiMode
-  readonly supportsFilters: boolean
   readonly platformOptions: ShopSelectOption[]
   list(params: ShopListParams): Promise<PageResult<ShopListItemViewModel>>
   get(shopId: string): Promise<ShopListItemViewModel>
@@ -52,31 +51,12 @@ export function createMockShopDataSource(): ShopDataSource {
 
   return {
     mode: 'mock',
-    supportsFilters: true,
     platformOptions: SHOP_PLATFORM_FIXTURE_OPTIONS as ShopSelectOption[],
     async list(params) {
-      const filters = params.filters
-      const keyword = filters.keyword.trim().toLocaleLowerCase()
-      const filtered = rows.filter((shop) => {
-        const matchesKeyword =
-          !keyword ||
-          [shop.shopName, shop.ownerName, shop.executionDeviceName ?? ''].some(
-            (value) => value.toLocaleLowerCase().includes(keyword),
-          )
-        return (
-          matchesKeyword &&
-          (!filters.platform || shop.platform === filters.platform) &&
-          (!filters.enabledStatus ||
-            shop.enabledStatus === filters.enabledStatus) &&
-          (!filters.sessionStatus ||
-            shop.sessionStatus === filters.sessionStatus) &&
-          (!filters.ownerUserId || shop.ownerUserId === filters.ownerUserId)
-        )
-      })
       const start = (params.page - 1) * params.pageSize
       return {
-        items: filtered.slice(start, start + params.pageSize),
-        total: filtered.length,
+        items: rows.slice(start, start + params.pageSize),
+        total: rows.length,
         page: params.page,
         pageSize: params.pageSize,
       }
@@ -98,15 +78,11 @@ export function createMockShopDataSource(): ShopDataSource {
         ownerName: String(owner?.label ?? '未分配'),
         enabled: input.enabled,
         enabledStatus: input.enabled ? 'enabled' : 'disabled',
-        sessionStatus: 'not_configured',
         executionDeviceId: null,
         executionDeviceName: null,
         backupDeviceNames: [],
-        automationStatus: 'idle',
-        todayGmvDisplay: '¥0.00',
+        createdAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
         updatedAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
-        accountConfigurationStatus: 'not_configured',
-        sessionConfigurationStatus: 'not_configured',
         note: input.note,
         dataSource: 'mock',
       }
@@ -152,7 +128,6 @@ async function loadMappingReferences() {
 
 const realShopDataSource: ShopDataSource = {
   mode: 'real',
-  supportsFilters: false,
   platformOptions: [
     { label: '抖音', value: 'douyin' },
     { label: '拼多多', value: 'pdd' },

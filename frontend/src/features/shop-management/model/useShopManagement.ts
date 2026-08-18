@@ -5,6 +5,7 @@ import {
   shopDataSource,
   type ShopListFilters,
   type ShopListItemViewModel,
+  type ShopPlatformFilter,
   type ShopSaveInput,
   useCreateShopMutation,
   useShopDetailQuery,
@@ -22,9 +23,7 @@ import type {
 
 function createEmptyFilters(): ShopFilterViewModel {
   return {
-    platform: null,
     enabledStatus: null,
-    sessionStatus: null,
     ownerUserId: null,
     keyword: '',
   }
@@ -34,6 +33,7 @@ export function useShopManagement() {
   const message = useMessage()
   const filterDraft = ref<ShopFilterViewModel>(createEmptyFilters())
   const appliedFilters = ref<ShopListFilters>(createEmptyFilters())
+  const selectedPlatform = ref<ShopPlatformFilter>('all')
   const page = ref(1)
   const pageSize = ref(10)
   const detailShopId = ref<string | null>(null)
@@ -46,7 +46,9 @@ export function useShopManagement() {
   const listParams = computed(() => ({
     page: page.value,
     pageSize: pageSize.value,
-    filters: appliedFilters.value,
+    // Backend V1 only accepts pagination. All visible filters are applied to
+    // the already-loaded page and must never become invented query params.
+    filters: createEmptyFilters(),
   }))
   const listQuery = useShopListQuery(listParams)
   const detailQuery = useShopDetailQuery(detailShopId)
@@ -54,13 +56,21 @@ export function useShopManagement() {
   const createMutation = useCreateShopMutation()
   const updateMutation = useUpdateShopMutation()
 
-  const rows = computed(() => listQuery.data.value?.items ?? [])
+  const sourceRows = computed(() => listQuery.data.value?.items ?? [])
+  const rows = computed(() => {
+    const filters = appliedFilters.value
+    const keyword = filters.keyword.trim().toLocaleLowerCase()
+    return sourceRows.value.filter(
+      (shop) =>
+        (selectedPlatform.value === 'all' ||
+          shop.platform === selectedPlatform.value) &&
+        (!filters.enabledStatus ||
+          shop.enabledStatus === filters.enabledStatus) &&
+        (!filters.ownerUserId || shop.ownerUserId === filters.ownerUserId) &&
+        (!keyword || shop.shopName.toLocaleLowerCase().includes(keyword)),
+    )
+  })
   const total = computed(() => listQuery.data.value?.total ?? 0)
-  const statistics = computed(() => ({
-    total: total.value,
-    enabled: rows.value.filter((shop) => shop.enabled).length,
-    disabled: rows.value.filter((shop) => !shop.enabled).length,
-  }))
   const listError = computed(() =>
     listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
   )
@@ -112,6 +122,11 @@ export function useShopManagement() {
     formVisible.value = true
   }
 
+  function editFromDetail(shop: ShopListItemViewModel): void {
+    detailVisible.value = false
+    openEdit(shop)
+  }
+
   async function saveShop(form: ShopFormViewModel): Promise<void> {
     if (!form.platform) return
     const input: ShopSaveInput = { ...form, platform: form.platform }
@@ -131,6 +146,7 @@ export function useShopManagement() {
 
   return {
     filterDraft,
+    selectedPlatform,
     page,
     pageSize,
     detailVisible,
@@ -139,15 +155,13 @@ export function useShopManagement() {
     formInitialValue,
     rows,
     total,
-    statistics,
-    filtersAvailable: shopDataSource.supportsFilters,
     platformOptions: shopDataSource.platformOptions,
     ownerOptions: computed(() => ownerOptionsQuery.data.value ?? []),
     ownerOptionsLoading: ownerOptionsQuery.isPending,
     dataSourceDescription:
       shopDataSource.mode === 'real'
-        ? '数据来自 FastAPI；会话、自动化与经营数据尚未接入。'
-        : '当前数据来自 Frontend Fixture。',
+        ? '数据来自 FastAPI；平台与筛选条件仅筛选当前页。'
+        : '当前数据来自 Frontend Fixture；平台与筛选条件仅筛选当前页。',
     listLoading: listQuery.isPending,
     listError,
     detailShop: computed(() => detailQuery.data.value ?? null),
@@ -162,6 +176,7 @@ export function useShopManagement() {
     openDetail,
     openCreate,
     openEdit,
+    editFromDetail,
     saveShop,
   }
 }

@@ -12,11 +12,12 @@ const drawerWidths: Record<OverlaySize, string> = {
 withDefaults(
   defineProps<{
     show: boolean
-    title: string
+    title?: string
     size?: OverlaySize
     closable?: boolean
   }>(),
   {
+    title: '',
     size: 'md',
     closable: true,
   },
@@ -35,6 +36,9 @@ defineEmits<{
     @update:show="$emit('update:show', $event)"
   >
     <NDrawerContent :title="title" :closable="closable">
+      <template v-if="$slots.header" #header>
+        <slot name="header" />
+      </template>
       <slot />
       <template v-if="$slots.footer" #footer>
         <slot name="footer" />

@@ -47,17 +47,13 @@ export function mapShopDto(
       : '未分配',
     enabled: dto.enabled,
     enabledStatus: dto.enabled ? 'enabled' : 'disabled',
-    sessionStatus: 'unavailable',
     executionDeviceId: primaryBinding?.device_id ?? null,
     executionDeviceName: primaryBinding
       ? (deviceNames.get(primaryBinding.device_id) ?? '未知设备')
       : null,
     backupDeviceNames,
-    automationStatus: 'unavailable',
-    todayGmvDisplay: '—',
+    createdAtDisplay: formatDateTime(dto.created_at),
     updatedAtDisplay: formatDateTime(dto.updated_at),
-    accountConfigurationStatus: 'unavailable',
-    sessionConfigurationStatus: 'unavailable',
     note: dto.note || '',
     dataSource: 'real',
   }

@@ -535,6 +535,8 @@ description（需要时）
 
 阶段 2C 增加 `ThemeSelector`，作为 AppShell Topbar 的 Light / Dark / System 入口，内部复用 `AppButton` 和 Naive `NDropdown`。
 
+阶段 2D-1 为既有 `AppDrawer` / `DetailDrawer` 增加通用 `header` Slot，用于领域详情的图标、身份信息和真实操作组合；宽度仍只能使用 `sm / md / lg` 语义尺寸，不新增店铺专用 Drawer。
+
 ## 18. Design System V2 公共视觉规则
 
 - `ThemeSelector` 是 Topbar 的紧凑主题入口，通过 Naive `NDropdown` 组合既有 `AppButton`，不建立第二套 Button/Dropdown。

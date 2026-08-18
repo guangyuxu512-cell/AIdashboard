@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { mapShopCreateInput, mapShopDto } from './shop-mapper'
 
 describe('shop backend DTO mapper', () => {
-  it('maps only real backend facts and marks unavailable UI fields honestly', () => {
+  it('maps only real backend facts into the frontend ViewModel', () => {
     const viewModel = mapShopDto(
       {
         shop_id: '00000000-0000-0000-0000-000000000001',
@@ -54,9 +54,8 @@ describe('shop backend DTO mapper', () => {
       ownerName: '负责人',
       enabledStatus: 'enabled',
       executionDeviceName: '主设备',
-      sessionStatus: 'unavailable',
-      automationStatus: 'unavailable',
-      todayGmvDisplay: '—',
+      createdAtDisplay: '2026-08-18 18:00',
+      updatedAtDisplay: '2026-08-18 19:00',
       dataSource: 'real',
     })
   })
