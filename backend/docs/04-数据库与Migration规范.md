@@ -38,3 +38,15 @@ Credential / Session 与普通业务字段分离并加密。
 核心 ID 使用统一 UUID；核心表使用带时区的 `created_at`、`updated_at`。`shop_device_bindings` 使用 `(shop_id, device_id)` 复合主键防止重复关系，并使用 PostgreSQL 部分唯一索引保证每个 Shop 最多一个启用 PRIMARY。
 
 Shop 平台 V1 机器值仅包含 `douyin`、`pdd`；绑定角色机器值为 `primary`、`backup`。
+
+## Authentication Domain V1 数据库
+
+Migration `20260819_0002_auth_domain_foundation` 增加：
+
+| 表 | 职责 |
+|---|---|
+| `platform_credentials` | 平台、统一登录标识、加密 Secret、验证码渠道与启用状态 |
+| `shop_credential_bindings` | Credential 与 Shop 的可扩展关系；每 Shop 最多一个启用关系 |
+| `shop_sessions` | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload |
+
+外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只允许在可随时重建的 `control_center_dev` 执行。

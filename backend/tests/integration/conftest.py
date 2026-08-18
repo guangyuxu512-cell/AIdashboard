@@ -11,7 +11,15 @@ from app.core.database import get_database_engine
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-CORE_TABLES = {"users", "shops", "devices", "shop_device_bindings"}
+CORE_TABLES = {
+    "users",
+    "shops",
+    "devices",
+    "shop_device_bindings",
+    "platform_credentials",
+    "shop_credential_bindings",
+    "shop_sessions",
+}
 DESTRUCTIVE_TEST_DATABASE = "control_center_dev"
 
 

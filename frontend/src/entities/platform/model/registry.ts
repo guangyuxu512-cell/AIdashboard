@@ -9,8 +9,20 @@ export interface PlatformDefinition<Code extends string = string> {
   label: string
   icon: string
   enabled: boolean
-  backendSupported: boolean
-  createSupported: boolean
+  registered: boolean
+  capabilities: PlatformCapabilities
+}
+
+export type PlatformCapabilityStatus = 'available' | 'planned' | 'unavailable'
+
+export interface PlatformCapabilities {
+  legacyShopCreate: PlatformCapabilityStatus
+  credentialManagement: PlatformCapabilityStatus
+  shopOnboarding: PlatformCapabilityStatus
+  authentication: PlatformCapabilityStatus
+  sessionCapture: PlatformCapabilityStatus
+  dataFetch: PlatformCapabilityStatus
+  rpa: PlatformCapabilityStatus
 }
 
 /** 前端平台展示的唯一正式来源。Backend 支持能力必须由独立字段诚实表达。 */
@@ -20,32 +32,64 @@ export const PLATFORM_REGISTRY = [
     label: '抖店',
     icon: platformDouyinIcon,
     enabled: true,
-    backendSupported: true,
-    createSupported: true,
+    registered: true,
+    capabilities: {
+      legacyShopCreate: 'available',
+      credentialManagement: 'available',
+      shopOnboarding: 'planned',
+      authentication: 'planned',
+      sessionCapture: 'planned',
+      dataFetch: 'planned',
+      rpa: 'planned',
+    },
   },
   {
     code: 'pdd',
     label: '拼多多',
     icon: platformPddIcon,
     enabled: true,
-    backendSupported: true,
-    createSupported: true,
+    registered: true,
+    capabilities: {
+      legacyShopCreate: 'available',
+      credentialManagement: 'available',
+      shopOnboarding: 'planned',
+      authentication: 'planned',
+      sessionCapture: 'planned',
+      dataFetch: 'planned',
+      rpa: 'planned',
+    },
   },
   {
     code: 'taobao',
     label: '淘宝',
     icon: platformTaobaoIcon,
     enabled: true,
-    backendSupported: false,
-    createSupported: false,
+    registered: true,
+    capabilities: {
+      legacyShopCreate: 'unavailable',
+      credentialManagement: 'unavailable',
+      shopOnboarding: 'planned',
+      authentication: 'planned',
+      sessionCapture: 'planned',
+      dataFetch: 'planned',
+      rpa: 'planned',
+    },
   },
   {
     code: 'wechat_channels',
     label: '视频号',
     icon: platformWechatChannelsIcon,
     enabled: true,
-    backendSupported: false,
-    createSupported: false,
+    registered: true,
+    capabilities: {
+      legacyShopCreate: 'unavailable',
+      credentialManagement: 'unavailable',
+      shopOnboarding: 'planned',
+      authentication: 'planned',
+      sessionCapture: 'planned',
+      dataFetch: 'planned',
+      rpa: 'planned',
+    },
   },
 ] as const satisfies ReadonlyArray<PlatformDefinition>
 
@@ -69,8 +113,7 @@ export function getPlatformDefinition<Code extends string>(
   registry: ReadonlyArray<PlatformDefinition> = PLATFORM_REGISTRY,
 ): PlatformDefinition<Code> | undefined {
   return registry.find((platform) => platform.code === code) as
-    | PlatformDefinition<Code>
-    | undefined
+    PlatformDefinition<Code> | undefined
 }
 
 export function getPlatformNavigationItems(
@@ -87,7 +130,7 @@ export function getPlatformCreateOptions(
     .map((platform) => ({
       label: platform.label,
       value: platform.code as PlatformCode,
-      disabled: !platform.createSupported,
+      disabled: platform.capabilities.legacyShopCreate !== 'available',
     }))
 }
 

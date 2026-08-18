@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exceptions.errors import AppError
+from app.core.security import redact_validation_errors
 
 
 class ErrorResponse(BaseModel):
@@ -71,7 +72,7 @@ def install_exception_handlers(application: FastAPI) -> None:
             code="VALIDATION_ERROR",
             message="请求参数校验失败",
             request_id=request_id,
-            details=jsonable_encoder(error.errors()),
+            details=jsonable_encoder(redact_validation_errors(error.errors())),
         )
         return JSONResponse(
             status_code=422,

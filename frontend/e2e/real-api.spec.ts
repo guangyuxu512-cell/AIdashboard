@@ -23,12 +23,19 @@ function cleanupRealTestData(): void {
     'from sqlalchemy.orm import Session',
     'from app.core.database import get_database_engine',
     'from app.modules.devices.models import Device',
+    'from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding',
+    'from app.modules.sessions.models import ShopSession',
     'from app.modules.shops.models import Shop, ShopDeviceBinding',
     `prefix = ${JSON.stringify(`${testPrefix}%`)}`,
     'with Session(get_database_engine()) as session:',
     '    shop_ids = list(session.scalars(select(Shop.shop_id).where(Shop.display_name.like(prefix))))',
     '    device_ids = list(session.scalars(select(Device.device_id).where(Device.display_name.like(prefix))))',
     '    if shop_ids:',
+    '        credential_ids = list(session.scalars(select(ShopCredentialBinding.credential_id).where(ShopCredentialBinding.shop_id.in_(shop_ids))))',
+    '        session.execute(delete(ShopSession).where(ShopSession.shop_id.in_(shop_ids)))',
+    '        session.execute(delete(ShopCredentialBinding).where(ShopCredentialBinding.shop_id.in_(shop_ids)))',
+    '        if credential_ids:',
+    '            session.execute(delete(PlatformCredential).where(PlatformCredential.credential_id.in_(credential_ids)))',
     '        session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.shop_id.in_(shop_ids)))',
     '        session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))',
     '    if device_ids:',
@@ -92,10 +99,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
   await expect(
-    page
-      .getByRole('row')
-      .filter({ hasText: shopName })
-      .getByRole('checkbox'),
+    page.getByRole('row').filter({ hasText: shopName }).getByRole('checkbox'),
   ).toBeChecked()
 
   await page.reload()
@@ -114,10 +118,57 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .filter({ hasText: updatedShopName })
     .getByRole('button', { name: '查看' })
     .click()
+  await expect(page.getByRole('heading', { name: '账号与连接' })).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: '账号与连接' }),
+    page
+      .getByRole('row', { name: /Cookie \/ Session/ })
+      .getByText('未配置', { exact: true }),
   ).toBeVisible()
-  await expect(page.getByText('未配置')).toBeVisible()
+  await page.getByRole('button', { name: '配置账号与连接' }).click()
+  await page
+    .getByPlaceholder('手机号、邮箱、用户名或账号 ID')
+    .fill('13812348888')
+  await page.getByPlaceholder('请输入登录密码').fill('stage-3a-password')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(
+    page.getByRole('row', { name: /登录账号/ }).getByText('138****8888'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('row', { name: /登录密码/ }).getByText('已配置'),
+  ).toBeVisible()
+  await expect(page.getByText('stage-3a-password')).toHaveCount(0)
+  await expect(page.getByText('Cookie / Session')).toBeVisible()
+  await expect(
+    page
+      .getByRole('row', { name: /Cookie \/ Session/ })
+      .getByText('未配置', { exact: true }),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.reload()
+  await page
+    .getByRole('row')
+    .filter({ hasText: updatedShopName })
+    .getByRole('button', { name: '查看' })
+    .click()
+  await expect(
+    page.getByRole('row', { name: /登录账号/ }).getByText('138****8888'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: '更新账号与连接' }).click()
+  await page.getByPlaceholder('留空保留当前登录账号').fill('account-updated')
+  await expect(page.getByPlaceholder('留空表示不修改现有密码')).toHaveValue('')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(
+    page.getByRole('row', { name: /登录账号/ }).getByText('ac***ed'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: '更新账号与连接' }).click()
+  await page.getByPlaceholder('留空表示不修改现有密码').fill('updated-password')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(
+    page.getByRole('row', { name: /登录密码/ }).getByText('已配置'),
+  ).toBeVisible()
+  await expect(page.getByText('updated-password')).toHaveCount(0)
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByText('设备中心', { exact: true }).click()

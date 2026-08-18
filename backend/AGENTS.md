@@ -23,7 +23,7 @@ Redis / MinIO 按需求引入。
 | 新模块 | 01 + 02 + 03 |
 | 数据库/表/字段 | 04 |
 | API | 05 |
-| Credential/Session/权限 | 06 |
+| Credential/Session/权限 | 06 + 10 |
 | Task/Worker 通信 | 07 |
 | 测试/验证 | 08 |
 | 跨模块重构 | 01 + 02 + 03 + 08 |

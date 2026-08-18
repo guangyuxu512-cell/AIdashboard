@@ -30,8 +30,16 @@ describe('Platform Registry', () => {
       label: '测试平台',
       icon: '/test-platform.svg',
       enabled: true,
-      backendSupported: false,
-      createSupported: false,
+      registered: true,
+      capabilities: {
+        legacyShopCreate: 'unavailable',
+        credentialManagement: 'unavailable',
+        shopOnboarding: 'planned',
+        authentication: 'planned',
+        sessionCapture: 'planned',
+        dataFetch: 'planned',
+        rpa: 'planned',
+      },
     }
     const registry = [...PLATFORM_REGISTRY, testPlatform]
 

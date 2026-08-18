@@ -68,7 +68,7 @@ const [ownerUserId] = defineField('ownerUserId')
 const [note] = defineField('note')
 
 const title = computed(() =>
-  props.mode === 'create' ? '新增店铺' : '编辑店铺',
+  props.mode === 'create' ? '新增店铺（Legacy Onboarding）' : '编辑店铺',
 )
 
 watch(

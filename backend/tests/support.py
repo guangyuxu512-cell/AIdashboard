@@ -13,8 +13,17 @@ class FakeSession:
     def rollback(self) -> None:
         self.rollbacks += 1
 
+    def flush(self) -> None:
+        pass
+
     def refresh(self, entity: object) -> None:
-        for identifier in ("user_id", "shop_id", "device_id"):
+        for identifier in (
+            "user_id",
+            "shop_id",
+            "device_id",
+            "credential_id",
+            "session_id",
+        ):
             if hasattr(entity, identifier) and getattr(entity, identifier) is None:
                 setattr(entity, identifier, uuid4())
         now = datetime.now(UTC)

@@ -45,9 +45,9 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByRole('columnheader', { name: '开启' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '分组' })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: '状态' })).toHaveCount(0)
-  await expect(page.getByRole('columnheader', { name: '今日订单' })).toHaveCount(
-    0,
-  )
+  await expect(
+    page.getByRole('columnheader', { name: '今日订单' }),
+  ).toHaveCount(0)
   await expect(page.getByText('今日 GMV')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(0)
   await expect(page.getByText('未分组')).toHaveCount(0)
@@ -57,7 +57,9 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByText('批量开启')).toBeVisible()
   await expect(page.getByText('批量关闭')).toBeVisible()
   await expect(page.getByText('批量删除')).toBeVisible()
-  await expect(page.getByRole('button', { name: '删除' }).first()).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: '删除' }).first(),
+  ).toBeDisabled()
 
   const rowCheckboxes = page.getByRole('checkbox')
   await expect(rowCheckboxes.first()).toBeVisible()
@@ -120,18 +122,45 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.locator('.shop-detail-header')).not.toContainText(
     drawerShopId,
   )
+  await expect(page.getByRole('heading', { name: '账号与连接' })).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: '账号与连接' }),
+    page
+      .getByRole('row', { name: /Cookie \/ Session/ })
+      .getByText('未配置', { exact: true }),
   ).toBeVisible()
-  await expect(page.getByText('未配置')).toBeVisible()
   await expect(
     page.getByRole('button', { name: '配置账号与连接' }),
+  ).toBeEnabled()
+  await expect(page.getByText('Cookie / Session')).toBeVisible()
+  await expect(
+    page
+      .getByRole('row', { name: /Cookie \/ Session/ })
+      .getByText('未配置', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '打开浏览器登录' }),
   ).toBeDisabled()
+  await expect(page.getByRole('button', { name: '验证连接' })).toBeDisabled()
+  await page.getByRole('button', { name: '配置账号与连接' }).click()
+  await page
+    .getByPlaceholder('手机号、邮箱、用户名或账号 ID')
+    .fill('13812348888')
+  await page.getByPlaceholder('请输入登录密码').fill('fixture-password')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(
+    page.getByRole('row', { name: /登录账号/ }).getByText('138****8888'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('row', { name: /登录密码/ }).getByText('已配置'),
+  ).toBeVisible()
+  await expect(page.getByText('fixture-password')).toHaveCount(0)
   await expect(page.getByText('基本信息')).toBeVisible()
   await expect(page.getByText('执行设备', { exact: true }).last()).toBeVisible()
   await expect(page.getByRole('heading', { name: '操作记录' })).toBeVisible()
   await expect(page.getByText('暂无操作记录')).toBeVisible()
-  await expect(page.getByText(/Cookie/)).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: /(?:查看|复制|导出).*Cookie/ }),
+  ).toHaveCount(0)
   await expect(page.getByText('自动化策略')).toHaveCount(0)
   await expect(page.getByText('数据同步')).toHaveCount(0)
   await expect(page.getByText('未分组')).toHaveCount(0)
@@ -142,9 +171,7 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   expect(openContentWidth).toBe(closedContentWidth)
 
   await page.getByRole('button', { name: '关闭', exact: true }).click()
-  await expect(
-    page.getByRole('heading', { name: '账号与连接' }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '账号与连接' })).toHaveCount(0)
   await expect(page.locator('.shop-list-section')).toHaveCSS('flex-grow', '1')
   const restoredSectionHeight = await page
     .locator('.shop-list-section')
@@ -235,7 +262,9 @@ test('drives the Create Shop platform Select from the shared registry', async ({
 }) => {
   await page.goto('/#/shops')
   await page.getByRole('button', { name: '新增店铺' }).click()
-  await expect(page.getByText('新增店铺', { exact: true }).last()).toBeVisible()
+  await expect(
+    page.getByText('新增店铺（Legacy Onboarding）', { exact: true }),
+  ).toBeVisible()
   await expect(page.getByPlaceholder('请输入店铺名称')).toBeVisible()
   await expect(page.getByText('可选负责人', { exact: true })).toBeVisible()
 

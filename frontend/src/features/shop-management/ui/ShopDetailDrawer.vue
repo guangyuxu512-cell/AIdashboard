@@ -1,19 +1,15 @@
 <script setup lang="ts">
 import { NDescriptions, NDescriptionsItem } from 'naive-ui'
 
-import {
-  ShopStatusTag,
-  type ShopListItemViewModel,
-} from '@/entities/shop'
-import {
-  getPlatformDefinition,
-  PlatformDisplay,
-} from '@/entities/platform'
+import { ShopStatusTag, type ShopListItemViewModel } from '@/entities/shop'
+import { getPlatformDefinition, PlatformDisplay } from '@/entities/platform'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+
+import ShopConnectionSection from './ShopConnectionSection.vue'
 
 defineProps<{
   show: boolean
@@ -85,18 +81,7 @@ defineEmits<{
         </NDescriptions>
       </section>
 
-      <section class="shop-detail__section">
-        <h3>账号与连接</h3>
-        <div class="shop-detail-account">
-          <div>
-            <span>状态</span>
-            <strong>未配置</strong>
-          </div>
-          <AppButton disabled title="账号与连接能力尚未接入">
-            配置账号与连接
-          </AppButton>
-        </div>
-      </section>
+      <ShopConnectionSection :shop="shop" />
 
       <section class="shop-detail__section">
         <h3>执行设备</h3>
@@ -182,32 +167,5 @@ defineEmits<{
   color: var(--text-secondary);
   font-family: monospace;
   font-size: var(--font-size-secondary);
-}
-
-.shop-detail-account {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--bg-subtle);
-}
-
-.shop-detail-account div {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.shop-detail-account span {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
-}
-
-.shop-detail-account strong {
-  color: var(--text-primary);
-  font-size: var(--font-size-body);
 }
 </style>

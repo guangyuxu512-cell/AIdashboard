@@ -45,3 +45,30 @@ def test_core_domain_migration_upgrade_and_downgrade(monkeypatch: object) -> Non
         ("drop_table", "devices"),
         ("drop_table", "users"),
     ]
+
+
+def test_auth_domain_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260819_0002_auth_domain_foundation",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "platform_credentials"),
+        ("create_table", "shop_credential_bindings"),
+        ("create_table", "shop_sessions"),
+    ]
+    assert (
+        "create_index",
+        "uq_shop_credential_bindings_enabled_shop",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "shop_sessions"),
+        ("drop_table", "shop_credential_bindings"),
+        ("drop_table", "platform_credentials"),
+    ]
