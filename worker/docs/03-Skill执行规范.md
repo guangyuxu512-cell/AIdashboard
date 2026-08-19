@@ -7,6 +7,7 @@
 - `system.echo`
 - `system.sleep`
 - `yingdao.test`
+- `yingdao.discover`
 
 统一输入：
 
@@ -54,5 +55,5 @@ Task → stable skill_id → Skill Registry → runtime → Executor → Provide
 - RPA Skill 额外声明 `provider=yingdao`，本地应用 ID 是设备侧映射。
 - Backend 不得传影刀应用名称、CLI、文件路径或任意命令。
 
-当前 `yingdao.test` 已注册为 RPA/Yingdao 测试能力，但真实应用 ID 尚未获得正式
+`yingdao.discover` 使用独立 `discovery` Runtime，只做本机影刀只读能力发现；它不经过 Python 子进程，也不启动影刀应用。当前 `yingdao.test` 已注册为 RPA/Yingdao 测试能力，但真实应用 ID 尚未获得正式
 契约，因此生产映射为空，执行时明确失败而非猜测 App ID。

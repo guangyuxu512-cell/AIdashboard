@@ -5,7 +5,7 @@ import signal
 from pydantic import ValidationError
 
 from app.client import WorkerApiClient
-from app.config import get_settings
+from app.config import WorkerSettings, get_settings
 from app.executors import (
     ExecutorRouter,
     ProviderDiscoveryExecutor,
@@ -16,13 +16,14 @@ from app.providers.yingdao import (
     UnavailableYingdaoAdapter,
     YingdaoDiscoveryService,
 )
+from app.logging_config import configure_logging
+from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills import registry
 from app.skills.registry import SkillProvider, SkillRuntime
 from app.worker import Worker
 
 
-async def run_worker() -> None:
-    settings = get_settings()
+async def run_worker(settings: WorkerSettings) -> None:
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signal_name in (signal.SIGINT, signal.SIGTERM):
@@ -64,15 +65,20 @@ async def run_worker() -> None:
 
 
 def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
     try:
-        asyncio.run(run_worker())
+        settings = get_settings()
+        configure_logging(settings)
+        with WorkerSingleInstance(settings.device_id):
+            asyncio.run(run_worker(settings))
     except KeyboardInterrupt:
         return 0
+    except WorkerAlreadyRunningError:
+        logging.getLogger(__name__).error(
+            "Worker is already running for this Device identity",
+        )
+        return 3
     except ValidationError as error:
+        logging.basicConfig(level=logging.ERROR)
         logging.getLogger(__name__).error(
             "Worker configuration is invalid: %s",
             error.errors(include_input=False),

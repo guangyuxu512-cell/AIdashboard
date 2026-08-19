@@ -1,22 +1,15 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version
 
 from app.client import WorkerApiClient
 from app.config import WorkerSettings
 from app.contracts import ExecutionStatus, WorkerTask
 from app.executors import Executor
+from app.version import WORKER_VERSION
 
 
 logger = logging.getLogger(__name__)
-
-
-def get_worker_version() -> str:
-    try:
-        return version("ecommerce-control-worker")
-    except PackageNotFoundError:
-        return "0.1.0"
 
 
 class Worker:
@@ -30,7 +23,7 @@ class Worker:
         self.client = client
         self.executor = executor
         self.started_at = datetime.now(UTC)
-        self.worker_version = get_worker_version()
+        self.worker_version = WORKER_VERSION
 
     async def run(self, stop_event: asyncio.Event) -> None:
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(stop_event))

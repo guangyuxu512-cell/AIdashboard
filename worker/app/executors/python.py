@@ -41,12 +41,7 @@ class PythonExecutor:
             paths.stderr.open("wb") as stderr_file,
         ):
             process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
-                "app.skills.runner",
-                task.skill_id,
-                str(paths.input),
-                str(paths.output),
+                *build_skill_process_command(task, paths),
                 stdout=stdout_file,
                 stderr=stderr_file,
             )
@@ -105,3 +100,13 @@ class PythonExecutor:
             error_code=code,
             error_message=message,
         )
+
+
+def build_skill_process_command(
+    task: WorkerTask,
+    paths: TaskRuntimePaths,
+) -> list[str]:
+    arguments = [task.skill_id, str(paths.input), str(paths.output)]
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--skill-runner", *arguments]
+    return [sys.executable, "-m", "app.skills.runner", *arguments]

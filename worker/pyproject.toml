@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecommerce-control-worker"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Worker skeleton for the ecommerce AI control center"
 requires-python = ">=3.12"
 dependencies = [
@@ -14,8 +14,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pyinstaller>=6.11,<7",
     "pytest>=8.3,<9",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "app.version.WORKER_VERSION"}
 
 [project.scripts]
 control-center-worker = "app.main:main"

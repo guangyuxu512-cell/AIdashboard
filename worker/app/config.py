@@ -21,6 +21,13 @@ class WorkerSettings(BaseSettings):
     lease_renew_interval_seconds: float = Field(default=20, ge=1, le=300)
     request_timeout_seconds: float = Field(default=10, ge=1, le=60)
     runtime_root: Path = Path("runtime")
+    log_directory: Path = Path("logs")
+    log_max_bytes: int = Field(
+        default=5 * 1024 * 1024,
+        ge=1024,
+        le=100 * 1024 * 1024,
+    )
+    log_backup_count: int = Field(default=5, ge=1, le=20)
     yingdao_install_root: Path | None = None
     yingdao_data_root: Path | None = None
     yingdao_command_timeout_seconds: float = Field(default=15, ge=1, le=60)

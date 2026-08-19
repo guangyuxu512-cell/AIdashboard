@@ -1,11 +1,17 @@
 import asyncio
 import json
+import os
+import sys
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from app.config import WorkerSettings
 from app.contracts import ExecutionStatus, WorkerTask
-from app.executors.python import PythonExecutor
+from app.executors.python import PythonExecutor, build_skill_process_command
+from app.runtime import TaskRuntimePaths
+from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills.runner import execute
 
 
@@ -18,6 +24,8 @@ def test_worker_configuration_defaults() -> None:
     assert settings.poll_interval_seconds == 3
     assert settings.heartbeat_interval_seconds == 15
     assert settings.lease_renew_interval_seconds == 20
+    assert settings.log_max_bytes == 5 * 1024 * 1024
+    assert settings.log_backup_count == 5
     assert settings.device_token.get_secret_value() == "secret-token"
 
 
@@ -84,3 +92,45 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
     duplicate = asyncio.run(PythonExecutor(tmp_path).execute(task))
     assert duplicate.status is ExecutionStatus.FAILED
     assert duplicate.error_code == "RUNTIME_DIRECTORY_EXISTS"
+
+
+def test_frozen_python_executor_reenters_the_packaged_skill_runner(
+    monkeypatch: object,
+    tmp_path: Path,
+) -> None:
+    task = WorkerTask(
+        task_id=uuid4(),
+        skill_id="system.echo",
+        input={"message": "packaged"},
+        lease_until="2026-08-19T12:00:00+00:00",
+    )
+    paths = TaskRuntimePaths(
+        directory=tmp_path,
+        input=tmp_path / "input.json",
+        status=tmp_path / "status.json",
+        output=tmp_path / "output.json",
+        stdout=tmp_path / "stdout.log",
+        stderr=tmp_path / "stderr.log",
+        artifacts=tmp_path / "artifacts",
+    )
+    monkeypatch.setattr(sys, "frozen", True, raising=False)  # type: ignore[attr-defined]
+
+    command = build_skill_process_command(task, paths)
+
+    assert command == [
+        sys.executable,
+        "--skill-runner",
+        "system.echo",
+        str(paths.input),
+        str(paths.output),
+    ]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows named mutex")
+def test_windows_mutex_blocks_the_same_device_identity() -> None:
+    device_id = uuid4()
+
+    with WorkerSingleInstance(device_id):
+        with pytest.raises(WorkerAlreadyRunningError):
+            with WorkerSingleInstance(device_id):
+                pass

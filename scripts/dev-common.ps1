@@ -16,6 +16,26 @@ function Get-DevStatePath([string]$Name) {
     return Join-Path $script:RuntimeDirectory "$Name.json"
 }
 
+function Save-DevMode([string]$Mode, [string]$ApiTarget) {
+    New-Item -ItemType Directory -Path $script:RuntimeDirectory -Force | Out-Null
+    [pscustomobject]@{
+        mode = $Mode
+        apiTarget = $ApiTarget
+    } | ConvertTo-Json | Set-Content -LiteralPath (Get-DevStatePath 'mode') -Encoding UTF8
+}
+
+function Get-DevMode {
+    $state = Get-ManagedProcessState 'mode'
+    if ($null -eq $state) {
+        return $null
+    }
+    return $state
+}
+
+function Remove-DevMode {
+    Remove-ManagedProcessState 'mode'
+}
+
 function Save-ManagedProcess([string]$Name, [System.Diagnostics.Process]$Process) {
     New-Item -ItemType Directory -Path $script:RuntimeDirectory -Force | Out-Null
     $state = [pscustomobject]@{
@@ -149,6 +169,16 @@ function Test-BackendHealth {
     }
 }
 
+function Test-RemoteBackendHealth([string]$ApiTarget) {
+    try {
+        $response = Invoke-RestMethod -Uri "$($ApiTarget.TrimEnd('/'))/health" -TimeoutSec 5
+        return $response.status -eq 'ok'
+    }
+    catch {
+        return $false
+    }
+}
+
 function Test-FrontendReal {
     try {
         $response = Invoke-WebRequest -Uri 'http://127.0.0.1:5173' -UseBasicParsing -TimeoutSec 2
@@ -201,19 +231,32 @@ function Start-DevProcess(
     [string]$Name,
     [string]$FilePath,
     [string[]]$ArgumentList,
-    [string]$WorkingDirectory
+    [string]$WorkingDirectory,
+    [hashtable]$Environment = @{}
 ) {
     New-Item -ItemType Directory -Path $script:RuntimeDirectory -Force | Out-Null
     $stdout = Join-Path $script:RuntimeDirectory "$Name.out.log"
     $stderr = Join-Path $script:RuntimeDirectory "$Name.err.log"
-    $process = Start-Process `
-        -FilePath $FilePath `
-        -ArgumentList $ArgumentList `
-        -WorkingDirectory $WorkingDirectory `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr `
-        -PassThru
+    $previous = @{}
+    foreach ($name in $Environment.Keys) {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, [string]$Environment[$name], 'Process')
+    }
+    try {
+        $process = Start-Process `
+            -FilePath $FilePath `
+            -ArgumentList $ArgumentList `
+            -WorkingDirectory $WorkingDirectory `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr `
+            -PassThru
+    }
+    finally {
+        foreach ($name in $Environment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        }
+    }
     Save-ManagedProcess $Name $process
     return $process
 }

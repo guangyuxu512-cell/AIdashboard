@@ -9,6 +9,8 @@ foreach ($name in @('electron', 'frontend', 'backend', 'ssh')) {
     }
 }
 
+Remove-DevMode
+
 if (Test-Path -LiteralPath (Get-DevRuntimeDirectory)) {
     $remainingState = @(Get-ChildItem -LiteralPath (Get-DevRuntimeDirectory) -Filter '*.json' -ErrorAction SilentlyContinue)
     if ($remainingState.Count -eq 0) {
