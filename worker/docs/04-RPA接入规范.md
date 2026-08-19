@@ -64,6 +64,16 @@ not applicable，Discovery 不调用该接口，也不记录为系统错误。En
 真实验证，不得宣称已支持。安装 Root 和可选数据 Root 进入 Worker Config，代码不
 硬编码本机路径。
 
+`developmentsync_apps_v2` 是设备本地同步缓存，不是账号云端完整应用索引。同一账号
+在不同电脑上可能得到不同数量。排查这类差异时使用独立的影刀只读诊断包，只采集
+当前账号的安全元数据、应用索引安全字段、包存在性和候选表结构；不得上传原始数据库、
+Token、Cookie、变量、流程或选择器。未来完整列表与本机可执行状态必须作为两个维度
+建模，不能继续用本地缓存数量代表账号云端应用总数。
+
+诊断包通过 `scripts/build-yingdao-diagnostic.ps1` 构建为
+`dist/yingdao-readonly-diagnostic-win-x64.zip`。目标电脑完整解压后只需双击
+`影刀只读诊断.cmd`，再回传生成的 `yingdao-diagnostic.json`。
+
 成功结果：
 
 ```json
