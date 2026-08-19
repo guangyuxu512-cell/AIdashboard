@@ -4,7 +4,8 @@ param(
     [string]$Action,
     [string]$ImportConfigPath,
     [switch]$StartAfterConfigure,
-    [switch]$AllowInsecureLoopback
+    [switch]$AllowInsecureLoopback,
+    [switch]$AllowInsecureDevelopment
 )
 
 Set-StrictMode -Version Latest
@@ -83,6 +84,10 @@ function Assert-ServerUrl([string]$ServerUrl) {
     }
     if ($AllowInsecureLoopback -and $uri.Scheme -eq 'http' -and $uri.IsLoopback) {
         Write-Warning 'Using loopback HTTP only for an explicit local/SSH-tunnel test.'
+        return $uri.AbsoluteUri.TrimEnd('/')
+    }
+    if ($AllowInsecureDevelopment -and $uri.Scheme -eq 'http') {
+        Write-Warning 'DEV ONLY: Device Token and task traffic will cross the network without TLS.'
         return $uri.AbsoluteUri.TrimEnd('/')
     }
     throw 'Worker Server URL must use HTTPS. Public plaintext HTTP is refused.'

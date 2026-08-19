@@ -1,7 +1,8 @@
 param(
     [string]$SshHost = 'control-center-dev',
     [string]$RemoteRoot = '/opt/ecommerce-control-center/backend',
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$AllowInsecurePublicHttp
 )
 
 Set-StrictMode -Version Latest
@@ -16,6 +17,8 @@ $releaseTimestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "control-center-backend-$([guid]::NewGuid().ToString('N'))"
 $stagingRoot = Join-Path $temporaryRoot 'release'
 $archivePath = Join-Path $temporaryRoot 'release.tar.gz'
+$backendBindHost = if ($AllowInsecurePublicHttp) { '0.0.0.0' } else { '127.0.0.1' }
+$backendBindPort = if ($AllowInsecurePublicHttp) { 8000 } else { 18000 }
 
 if ($RemoteRoot -ne '/opt/ecommerce-control-center/backend') {
     throw 'RemoteRoot must remain inside /opt/ecommerce-control-center/backend.'
@@ -116,7 +119,10 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'Remote deployment script upload failed.'
     }
-    & ssh.exe $SshHost "chmod 0700 '$remoteDeployScript' && '$remoteDeployScript' '$RemoteRoot' '$remoteArchive' '$releaseId'; status=`$?; rm -f '$remoteDeployScript'; exit `$status"
+    if ($AllowInsecurePublicHttp) {
+        Write-Warning 'Deploying the DEV Backend over public plaintext HTTP. Worker tokens are not protected in transit.'
+    }
+    & ssh.exe $SshHost "chmod 0700 '$remoteDeployScript' && '$remoteDeployScript' '$RemoteRoot' '$remoteArchive' '$releaseId' '$backendBindHost' '$backendBindPort'; status=`$?; rm -f '$remoteDeployScript'; exit `$status"
     if ($LASTEXITCODE -ne 0) {
         throw 'Remote Backend deployment failed.'
     }

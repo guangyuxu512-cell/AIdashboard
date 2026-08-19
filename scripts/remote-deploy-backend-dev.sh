@@ -4,6 +4,8 @@ set -euo pipefail
 remote_root="${1:?remote root is required}"
 archive_path="${2:?archive path is required}"
 release_id="${3:?release id is required}"
+bind_host="${4:-127.0.0.1}"
+bind_port="${5:-18000}"
 
 if [[ "$remote_root" != "/opt/ecommerce-control-center/backend" ]]; then
     echo "Refusing unexpected deployment root" >&2
@@ -11,6 +13,14 @@ if [[ "$remote_root" != "/opt/ecommerce-control-center/backend" ]]; then
 fi
 if [[ ! "$release_id" =~ ^[0-9]{8}-[0-9]{6}-[a-f0-9]{7}$ ]]; then
     echo "Invalid release identifier" >&2
+    exit 2
+fi
+if [[ "$bind_host" != "127.0.0.1" && "$bind_host" != "0.0.0.0" ]]; then
+    echo "Invalid Backend bind host" >&2
+    exit 2
+fi
+if [[ "$bind_port" != "18000" && "$bind_port" != "8000" ]]; then
+    echo "Invalid Backend bind port" >&2
     exit 2
 fi
 if [[ ! -f "$remote_root/.env" ]]; then
@@ -51,7 +61,8 @@ fi
 install -d -m 0750 "$remote_root" "$remote_root/releases"
 install -d -m 0750 "$release_directory"
 tar -xzf "$archive_path" -C "$release_directory"
-printf 'BACKEND_IMAGE_TAG=%s\n' "$release_id" > "$release_directory/.deploy.env"
+printf 'BACKEND_IMAGE_TAG=%s\nBACKEND_BIND_HOST=%s\nBACKEND_BIND_PORT=%s\n' \
+    "$release_id" "$bind_host" "$bind_port" > "$release_directory/.deploy.env"
 chmod 0640 "$release_directory/.deploy.env"
 
 for required in Dockerfile compose.yaml pyproject.toml alembic.ini app migrations; do
@@ -92,7 +103,7 @@ if [[ "$healthy" != "true" ]]; then
     exit 1
 fi
 
-curl --fail --silent --show-error http://127.0.0.1:18000/health
+curl --fail --silent --show-error "http://127.0.0.1:$bind_port/health"
 echo
 "${compose[@]}" exec -T backend python -c \
     "from sqlalchemy import text; from app.core.database import get_database_engine; e=get_database_engine(); c=e.connect(); print('database=' + c.scalar(text('select current_database()'))); print('postgresql=connected'); c.close(); e.dispose()"

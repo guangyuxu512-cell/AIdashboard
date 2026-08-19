@@ -76,8 +76,8 @@ Copy-Item -LiteralPath (Join-Path $pyInstallerDist 'ecommerce-worker') -Destinat
 Copy-Item -LiteralPath (Join-Path $workerRoot 'distribution\worker-control.ps1') -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $workerRoot 'distribution\README.txt') -Destination $packageRoot
 $commandFiles = @(Get-ChildItem -LiteralPath (Join-Path $workerRoot 'distribution') -Filter '*.cmd')
-if ($commandFiles.Count -ne 4) {
-    throw 'Worker distribution must contain exactly four command wrappers.'
+if ($commandFiles.Count -ne 5) {
+    throw 'Worker distribution must contain exactly five command wrappers.'
 }
 foreach ($commandFile in $commandFiles) {
     Copy-Item -LiteralPath $commandFile.FullName -Destination $packageRoot

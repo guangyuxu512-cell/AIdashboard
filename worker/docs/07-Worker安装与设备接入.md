@@ -29,7 +29,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 5. 输入 Backend HTTPS URL、Device ID、Device Token；本机装有影刀时可填写 ShadowBot 安装根目录。
 6. 脚本验证配置、加密保存 Token、后台启动 Worker，并显示 Backend 与设备连接状态。
 
-公网 Server URL 强制使用 HTTPS。仓库不提供 localhost 默认值；明文 loopback 只允许构建验证显式启用，不能作为其他电脑的正式接入方式。
+公网 Server URL 默认强制使用 HTTPS。仓库不提供 localhost 默认值；明文 loopback 只允许构建验证显式启用。对于负责人明确批准的可丢弃 DEV 服务器，可改用 `首次配置并启动-开发HTTP.cmd`，但该入口会警告 Token 和任务流量没有传输加密，绝不能用于正式服务器或重要数据。切换 HTTPS 后必须轮换曾通过 HTTP 使用的 Token。
 
 ## 配置与本地数据
 
@@ -48,6 +48,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 - `启动Worker.cmd`：检查配置和精确进程身份；已有实例时不重复启动，随后显示进程、Backend、Device ID、Server URL 与 Device Runtime。
 - `停止Worker.cmd`：使用状态文件中的 PID、启动时间和 EXE 绝对路径三重校验，只停止本 Worker。
 - `查看状态.cmd`：只读显示运行与连接状态，不显示 Token、Credential 或 Cookie。
+- `首次配置并启动-开发HTTP.cmd`：显式允许临时公网 HTTP，只用于已批准的可丢弃开发环境。
 
 Worker 进程另以 `Global\\EcommerceAIWorker-<device_id>` Windows Mutex 保证同一电脑同一 Device 单实例，即使绕过控制脚本直接启动第二个 EXE，也会退出。
 

@@ -7,6 +7,10 @@ Ecommerce AI Worker for Windows
 3. 输入 Backend HTTPS URL、Device ID、Device Token。
 4. 如果此电脑安装影刀，可同时填写包含 shadowbot.shell-cli.exe 和 ShadowBot.exe 的安装根目录。
 
+临时开发HTTP
+- 仅在负责人明确接受明文风险时，使用“首次配置并启动-开发HTTP.cmd”。
+- HTTP 会让 Device Token 和任务流量失去传输加密，不得用于正式服务器或重要数据。
+
 日常使用
 - 启动Worker.cmd：检查配置和现有实例后在后台启动。
 - 停止Worker.cmd：只停止状态文件精确记录的本 Worker PID。

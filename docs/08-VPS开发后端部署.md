@@ -61,4 +61,14 @@ curl --fail http://127.0.0.1:18000/health
 
 ## HTTPS 与停止条件
 
-仓库提供 `backend/deploy/nginx-backend-dev.conf.template`，但模板中的域名和证书路径必须由真实 Domain / DNS / TLS 确定后才可启用。禁止猜域名、用公网 `http://IP:8000` 传 Worker Token，或覆盖服务器现有 Nginx 配置。在 HTTPS 未具备前，Backend 只允许 VPS 回环或临时 SSH 隧道验证，公网 Worker 接入保持阻塞。
+仓库提供 `backend/deploy/nginx-backend-dev.conf.template`，但模板中的域名和证书路径必须由真实 Domain / DNS / TLS 确定后才可启用。默认禁止猜域名、用公网 `http://IP:8000` 传 Worker Token，或覆盖服务器现有 Nginx 配置。在 HTTPS 未具备前，除下述负责人显式批准的可丢弃开发环境外，Backend 只允许 VPS 回环或临时 SSH 隧道验证。
+
+### 可丢弃服务器的显式开发 HTTP 例外
+
+只有项目负责人明确接受 Device Token 和任务流量明文传输、且服务器与数据均可丢弃时，允许执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy-backend-dev.ps1 -AllowInsecurePublicHttp
+```
+
+该开关把 DEV Backend 改为 `0.0.0.0:8000`，不会改变 PostgreSQL 的 `127.0.0.1:35433` 绑定。它不是 Production 配置；迁移到正式服务器前必须去掉该开关、部署 HTTPS，并轮换所有曾经通过 HTTP 使用的 Device Token。

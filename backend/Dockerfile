@@ -4,7 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=120 \
-    PIP_RETRIES=10
+    PIP_RETRIES=10 \
+    UVICORN_HOST=127.0.0.1 \
+    UVICORN_PORT=18000
 
 WORKDIR /app
 
@@ -22,6 +24,6 @@ USER app
 EXPOSE 18000
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=4 \
-    CMD ["python", "-c", "import json,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:18000/health', timeout=2); assert r.status == 200 and json.load(r)['status'] == 'ok'"]
+    CMD ["python", "-c", "import json,os,urllib.request; p=os.environ.get('UVICORN_PORT','18000'); r=urllib.request.urlopen(f'http://127.0.0.1:{p}/health', timeout=2); assert r.status == 200 and json.load(r)['status'] == 'ok'"]
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "18000", "--workers", "1", "--no-access-log"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--workers", "1", "--no-access-log"]

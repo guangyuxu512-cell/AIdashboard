@@ -9,6 +9,9 @@ services:
     container_name: control-center-backend-dev
     env_file:
       - ../../.env
+    environment:
+      UVICORN_HOST: ${BACKEND_BIND_HOST:-127.0.0.1}
+      UVICORN_PORT: ${BACKEND_BIND_PORT:-18000}
     network_mode: host
     restart: unless-stopped
     init: true

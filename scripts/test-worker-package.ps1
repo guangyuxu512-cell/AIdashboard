@@ -1,7 +1,8 @@
 param(
     [string]$SshHost = 'control-center-dev',
     [int]$LocalPort = 18080,
-    [string]$YingdaoInstallRoot
+    [string]$YingdaoInstallRoot,
+    [string]$PublicServerUrl
 )
 
 Set-StrictMode -Version Latest
@@ -13,7 +14,12 @@ $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "control-center-wor
 $extractRoot = Join-Path $temporaryRoot 'package'
 $dataRoot = Join-Path $temporaryRoot 'data'
 $importPath = Join-Path $temporaryRoot 'worker-config.json'
-$serverUrl = "http://127.0.0.1:$LocalPort"
+$serverUrl = if ([string]::IsNullOrWhiteSpace($PublicServerUrl)) {
+    "http://127.0.0.1:$LocalPort"
+}
+else {
+    $PublicServerUrl.TrimEnd('/')
+}
 $tunnel = $null
 $deviceId = $null
 $controller = $null
@@ -61,7 +67,7 @@ try {
     if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {
         throw 'Worker ZIP is missing. Run scripts/build-worker.ps1 first.'
     }
-    if ($null -ne (Get-NetTCPConnection -State Listen -LocalPort $LocalPort -ErrorAction SilentlyContinue)) {
+    if (-not $PublicServerUrl -and $null -ne (Get-NetTCPConnection -State Listen -LocalPort $LocalPort -ErrorAction SilentlyContinue)) {
         throw "Local test port $LocalPort is already in use."
     }
 
@@ -81,9 +87,11 @@ try {
     }
     $controller = Join-Path $extractRoot 'worker-control.ps1'
 
-    $tunnel = Start-Process -FilePath 'ssh.exe' -ArgumentList @(
-        '-N', '-T', '-L', "$LocalPort`:127.0.0.1:18000", $SshHost
-    ) -WindowStyle Hidden -PassThru
+    if (-not $PublicServerUrl) {
+        $tunnel = Start-Process -FilePath 'ssh.exe' -ArgumentList @(
+            '-N', '-T', '-L', "$LocalPort`:127.0.0.1:18000", $SshHost
+        ) -WindowStyle Hidden -PassThru
+    }
     Wait-Condition {
         try { return (Invoke-RestMethod -Uri "$serverUrl/health" -TimeoutSec 2).status -eq 'ok' } catch { return $false }
     } 20 'SSH-forwarded VPS Backend did not become healthy.'
@@ -114,8 +122,12 @@ try {
     $tokenOutput = $null
 
     [Environment]::SetEnvironmentVariable('ECOMMERCE_WORKER_DATA_ROOT', $dataRoot, 'Process')
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller `
-        -Action Configure -ImportConfigPath $importPath -StartAfterConfigure -AllowInsecureLoopback
+    $configureArguments = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $controller,
+        '-Action', 'Configure', '-ImportConfigPath', $importPath, '-StartAfterConfigure'
+    )
+    $configureArguments += if ($PublicServerUrl) { '-AllowInsecureDevelopment' } else { '-AllowInsecureLoopback' }
+    & powershell.exe @configureArguments
     if ($LASTEXITCODE -ne 0) { throw 'Packaged Worker configuration/start failed.' }
 
     Wait-Condition {
