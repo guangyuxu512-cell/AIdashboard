@@ -28,6 +28,3 @@ Thumbs.db
 *.log
 .dev-runtime/
 worker/runtime/
-
-# Local import staging
-incoming/

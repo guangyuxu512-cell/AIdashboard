@@ -68,7 +68,7 @@ Naive UI 统一通过 Theme Override 对接 Token。
 | 控件      | `--control-height-*`、`--field-width-*`                                                       |
 | 圆角/阴影 | `--radius-*`、`--shadow-*`                                                                    |
 | 弹层      | `--dialog-width-*`、`--drawer-width-*`                                                        |
-| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`   |
+| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`    |
 
 `typography.css` 只负责全局排版基线，`layout.css` 只负责页面和语义宽度布局，`theme.css` 是应用唯一样式入口。Naive UI 的全局覆盖位于 `app/providers/naive-theme.ts`，其尺寸直接引用 CSS Token；需要参与 Naive 颜色计算的值必须在 Provider 创建时从 CSS Token 读取计算值，禁止在 TypeScript 再复制一份颜色常量。
 
@@ -134,11 +134,3 @@ PaginationBar（固定在 Section 底部）
 ```
 
 数据行保持既有行高；空间不足时仅表格主体使用 Naive DataTable 的必要滚动能力。禁止以固定像素或 `100vh - x` 猜测工作区高度。
-
-## Device Office 2.5D 主题与合成边界
-
-设备中心办公区采用固定视角的预渲染美术与 Vue 2.5D 分层合成。Light / Dark 使用相同工位坐标和交互层，只替换背景、前景及对应主题素材；办公室专用色彩留在领域资产或 `device-office` 领域样式变量中，不扩散为整个中控台的卡通主题。
-
-设备页外围工具栏、分页、状态、Drawer 和列表继续使用全局 Design Token。OfficeStage 不建立 WebGL Canvas、Renderer、自由相机或后处理；页面只加载普通图像/动画素材，复杂动画必须支持页面不可见时暂停或降频。
-
-正式素材规范见 `12-设备中心2.5D资产规范.md`。正式 V2 已使用 Light / Dark 背景、成对 Desk / Foreground Mask、对齐 Actor / Screen、灯光和 FX 资产；Preview 图片不得作为运行背景。禁止使用 CSS/SVG 绘制机器人、桌椅、电脑或办公室背景，不得以代码生成实时 3D 办公室，也不得重新引入 GLB Mascot Runtime。

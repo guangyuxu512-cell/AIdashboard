@@ -29,7 +29,7 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
 <template>
   <DetailDrawer
     :show="show"
-    title="本机已同步影刀应用"
+    title="影刀应用列表"
     size="lg"
     @update:show="$emit('update:show', $event)"
   >
@@ -41,7 +41,7 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
       :data="applications"
       :row-key="(row: ProviderApplicationViewModel) => row.appId"
       :scroll-x="700"
-      empty-description="本机当前没有已同步应用"
+      empty-description="当前账号没有已发现应用"
     />
 
     <template #footer>
