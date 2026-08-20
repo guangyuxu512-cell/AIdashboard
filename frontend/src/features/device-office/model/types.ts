@@ -9,9 +9,8 @@ export type DeviceVisualState =
 
 export type DeviceCenterViewMode = 'office' | 'list'
 
-export interface DeviceMascotVariant {
+export interface DeviceAvatarVariant {
   index: number
-  bodyColor: string
   accentColor: string
   accessory: 'scarf' | 'badge' | 'antenna'
 }
@@ -20,5 +19,5 @@ export interface OfficeStationViewModel {
   slot: number
   device: DeviceListItemViewModel | null
   visualState: DeviceVisualState
-  mascotVariant: DeviceMascotVariant | null
+  avatarVariant: DeviceAvatarVariant | null
 }

@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useDocumentVisibility } from '@vueuse/core'
-import { TresCanvas } from '@tresjs/core'
+import { computed, onMounted, ref } from 'vue'
 
 import type { ResolvedTheme } from '@/stores/theme'
 
+import {
+  checkOfficeAssetAvailability,
+  loadOfficeAssetBundle,
+} from '../assets/office-asset-loader'
+import type { OfficeAssetDefinition } from '../assets/office-asset-manifest'
 import type { OfficeStationViewModel } from '../model/types'
-import { getOfficeSceneTheme } from '../theme/office-scene-theme'
-import OfficeWorld from './OfficeWorld.vue'
 
-const props = defineProps<{
+defineProps<{
   stations: OfficeStationViewModel[]
   resolvedTheme: ResolvedTheme
 }>()
 
 const emit = defineEmits<{ select: [station: OfficeStationViewModel] }>()
-const documentVisibility = useDocumentVisibility()
-const theme = computed(() => getOfficeSceneTheme(props.resolvedTheme))
-const clearColor = computed(() => theme.value.wall)
-const renderedFps = ref(0)
+const assetState = ref<'checking' | 'missing' | 'invalid' | 'ready'>('checking')
+const missingAssets = ref<OfficeAssetDefinition[]>([])
+const assetError = ref('')
 
 const stateLabel = {
   empty: '空工位',
@@ -27,6 +27,26 @@ const stateLabel = {
   offline: '离线',
   error: '异常',
 } as const
+
+const missingAssetNames = computed(() =>
+  missingAssets.value.map((asset) => asset.url.split('/').at(-1)).join('、'),
+)
+
+onMounted(async () => {
+  const availability = await checkOfficeAssetAvailability()
+  if (!availability.ready) {
+    missingAssets.value = availability.missing
+    assetState.value = 'missing'
+    return
+  }
+  try {
+    await loadOfficeAssetBundle()
+    assetState.value = 'ready'
+  } catch (error) {
+    assetError.value = error instanceof Error ? error.message : '未知资产错误'
+    assetState.value = 'invalid'
+  }
+})
 </script>
 
 <template>
@@ -35,26 +55,25 @@ const stateLabel = {
     :class="`office-scene--${resolvedTheme}`"
     aria-label="设备 3D 办公区"
     data-testid="device-office-scene"
-    :data-render-fps="renderedFps"
+    :data-office-assets="assetState"
   >
-    <TresCanvas
-      v-if="documentVisibility === 'visible'"
-      class="office-scene__canvas"
-      :clear-color="clearColor"
-      :dpr="[1, 1.5]"
-      :shadows="true"
-      render-mode="always"
-      :alpha="false"
-      :antialias="true"
-    >
-      <OfficeWorld
-        :stations="stations"
-        :theme="theme"
-        @select="emit('select', $event)"
-        @performance="renderedFps = $event"
-      />
-    </TresCanvas>
-    <div v-else class="office-scene__paused">页面处于后台，3D 渲染已暂停</div>
+    <div class="office-scene__asset-state" role="status">
+      <template v-if="assetState === 'checking'">
+        <strong>正在校验 3D 资产</strong>
+      </template>
+      <template v-else-if="assetState === 'missing'">
+        <strong>正式 3D 资产尚未就绪</strong>
+        <span>旧程序化几何体已停用，缺少：{{ missingAssetNames }}</span>
+      </template>
+      <template v-else-if="assetState === 'invalid'">
+        <strong>3D 资产不符合加载契约</strong>
+        <span>{{ assetError }}</span>
+      </template>
+      <template v-else>
+        <strong>正式 3D 资产已通过契约校验</strong>
+        <span>场景装配将在正式资产评审通过后启用</span>
+      </template>
+    </div>
 
     <div class="office-scene__labels" aria-label="办公位设备">
       <button
@@ -71,12 +90,9 @@ const stateLabel = {
         "
         @click="station.device && emit('select', station)"
       >
-        <span class="office-station-label__name">
-          {{ station.device?.deviceName ?? `工位 ${station.slot}` }}
-        </span>
-        <span class="office-station-label__status">
-          <i aria-hidden="true" />{{ stateLabel[station.visualState] }}
-        </span>
+        <i aria-hidden="true" />
+        <span>{{ station.device?.deviceName ?? `工位 ${station.slot}` }}</span>
+        <span>{{ stateLabel[station.visualState] }}</span>
       </button>
     </div>
   </section>
@@ -96,16 +112,21 @@ const stateLabel = {
   isolation: isolate;
 }
 
-.office-scene__canvas {
-  position: absolute !important;
+.office-scene__asset-state {
+  position: absolute;
   inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  text-align: center;
 }
 
-.office-scene__paused {
-  display: grid;
-  height: 100%;
-  place-items: center;
-  color: var(--text-secondary);
+.office-scene__asset-state strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-section-title);
 }
 
 .office-scene__labels {
@@ -122,9 +143,12 @@ const stateLabel = {
 }
 
 .office-station-label {
-  align-self: end;
+  display: inline-flex;
   min-width: 0;
   max-width: var(--field-width-sm);
+  align-items: center;
+  align-self: end;
+  gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
   border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
   border-radius: var(--radius-control);
@@ -132,9 +156,28 @@ const stateLabel = {
   box-shadow: var(--shadow-card);
   color: var(--text-primary);
   font: inherit;
-  text-align: left;
+  white-space: nowrap;
   backdrop-filter: blur(var(--glass-blur));
   pointer-events: auto;
+}
+
+.office-station-label > span:first-of-type {
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+}
+
+.office-station-label > span:last-child {
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.office-station-label i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-tertiary);
 }
 
 .office-station-label:not(:disabled) {
@@ -149,32 +192,6 @@ const stateLabel = {
   color: var(--text-tertiary);
   cursor: default;
   opacity: 0.76;
-}
-
-.office-station-label__name,
-.office-station-label__status {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.office-station-label__name {
-  font-weight: var(--font-weight-medium);
-}
-
-.office-station-label__status {
-  color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
-}
-
-.office-station-label__status i {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: var(--space-1);
-  border-radius: 50%;
-  background: var(--text-tertiary);
 }
 
 .office-station-label.is-onlineIdle i {

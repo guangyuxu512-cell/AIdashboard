@@ -4,20 +4,18 @@ import type {
 } from '@/entities/device'
 
 import type {
-  DeviceMascotVariant,
+  DeviceAvatarVariant,
   DeviceVisualState,
   OfficeStationViewModel,
 } from './types'
 
 export const OFFICE_PAGE_SIZE = 9
 
-const MASCOT_PALETTES = [
-  ['#7b9fc1', '#d9ad66'],
-  ['#d39a6a', '#6b8e9d'],
-  ['#9184b6', '#d8a96d'],
-  ['#6f9d82', '#d7a86e'],
-  ['#b77f88', '#6f91af'],
-  ['#7296a1', '#c9907a'],
+const AVATAR_ACCENTS = [
+  '#4a9cff',
+  '#42bf82',
+  '#8a63e6',
+  '#f09a3e',
 ] as const
 
 const ACCESSORIES = ['scarf', 'badge', 'antenna'] as const
@@ -31,14 +29,12 @@ export function hashStableId(value: string): number {
   return hash >>> 0
 }
 
-export function getMascotVariant(deviceId: string): DeviceMascotVariant {
+export function getAvatarVariant(deviceId: string): DeviceAvatarVariant {
   const hash = hashStableId(deviceId)
-  const index = hash % MASCOT_PALETTES.length
-  const palette = MASCOT_PALETTES[index]!
+  const index = hash % AVATAR_ACCENTS.length
   return {
     index,
-    bodyColor: palette[0],
-    accentColor: palette[1],
+    accentColor: AVATAR_ACCENTS[index]!,
     accessory: ACCESSORIES[(hash >>> 8) % ACCESSORIES.length]!,
   }
 }
@@ -70,7 +66,7 @@ export function createOfficeStations(
       visualState: device
         ? mapDeviceVisualState(device.runtimeStatus)
         : 'empty',
-      mascotVariant: device ? getMascotVariant(device.deviceId) : null,
+      avatarVariant: device ? getAvatarVariant(device.deviceId) : null,
     }
   })
 }

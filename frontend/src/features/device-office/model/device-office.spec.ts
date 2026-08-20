@@ -4,7 +4,7 @@ import { DEVICE_LIST_FIXTURE } from '@/entities/device'
 
 import {
   createOfficeStations,
-  getMascotVariant,
+  getAvatarVariant,
   mapDeviceVisualState,
   OFFICE_PAGE_SIZE,
 } from './device-office'
@@ -34,10 +34,10 @@ describe('device office view model', () => {
     )
   })
 
-  it('derives a stable mascot variant from the device id', () => {
-    expect(getMascotVariant('device-stable-id')).toEqual(
-      getMascotVariant('device-stable-id'),
+  it('derives a stable replaceable avatar variant from the device id', () => {
+    expect(getAvatarVariant('device-stable-id')).toEqual(
+      getAvatarVariant('device-stable-id'),
     )
-    expect(getMascotVariant('device-stable-id').index).toBeGreaterThanOrEqual(0)
+    expect(getAvatarVariant('device-stable-id').index).toBeGreaterThanOrEqual(0)
   })
 })
