@@ -135,10 +135,10 @@ PaginationBar（固定在 Section 底部）
 
 数据行保持既有行高；空间不足时仅表格主体使用 Naive DataTable 的必要滚动能力。禁止以固定像素或 `100vh - x` 猜测工作区高度。
 
-## Device Office 场景主题与渲染边界
+## Device Office 2.5D 主题与合成边界
 
-阶段 3B-1D 的设备中心 3D 区域使用领域级 `officeSceneTheme`，Light / Dark 分别定义 `floor`、`wall`、`desk`、`chair`、`monitor`、`ambientLight`、`mainLight`、`accentLight` 语义值。该 Palette 只服务 Three.js 材质与灯光，不扩散为整个中控台的卡通主题，也不得在各个 3D Object 内重复硬编码办公室颜色。
+设备中心办公区采用固定视角的预渲染美术与 Vue 2.5D 分层合成。Light / Dark 使用相同工位坐标和交互层，只替换背景、前景及对应主题素材；办公室专用色彩留在领域资产或 `device-office` 领域样式变量中，不扩散为整个中控台的卡通主题。
 
-设备页外围工具栏、分页、状态、Drawer 和列表仍使用全局 Design Token。WebGL Canvas 的 DPR 上限为 `1.5`，只保留单个有限阴影主光源，不启用后处理；页面进入后台时暂停 Canvas，离开设备路由时释放 Renderer、Geometry、Material、CanvasTexture 和动画监听。其他业务路由必须通过异步组件边界避免加载 Three Renderer。
+设备页外围工具栏、分页、状态、Drawer 和列表继续使用全局 Design Token。OfficeStage 不建立 WebGL Canvas、Renderer、自由相机或后处理；页面只加载普通图像/动画素材，复杂动画必须支持页面不可见时暂停或降频。
 
-阶段 3B-1D 后续视觉收口禁止继续以运行时基础几何体拼装最终人物、桌椅和办公室陈设。正式场景必须使用通过 `12-设备中心3D资产规范.md` 验收的 GLB；没有正式资产时只保留明确的资产缺失状态，不提供看似完成的占位 3D。
+正式素材规范见 `12-设备中心2.5D资产规范.md`。当前占位素材必须明确保持可替换，不得以代码生成实时 3D 办公室，也不得重新引入 GLB Mascot Runtime。

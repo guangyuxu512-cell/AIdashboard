@@ -1,7 +1,5 @@
 export * from './model/device-office'
 export * from './model/types'
 export * from './model/useDeviceOfficeView'
-export * from './theme/office-scene-theme'
+export * from './assets/office-2d-asset-manifest'
 export { default as DeviceOfficeToolbar } from './ui/DeviceOfficeToolbar.vue'
-export * from './assets/office-asset-loader'
-export * from './assets/office-asset-manifest'

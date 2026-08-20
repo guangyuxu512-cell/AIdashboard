@@ -1,0 +1,326 @@
+.device-office-stage {
+  position: relative;
+  z-index: 0;
+  min-height: 520px;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface-solid);
+  box-shadow: var(--shadow-card);
+  isolation: isolate;
+}
+
+.office-stage-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.office-background-layer {
+  z-index: 0;
+  background: var(--bg-subtle);
+}
+
+.office-background-layer img,
+.office-foreground-layer img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+.office-stage-grid {
+  inset: 15% 8% 7%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  column-gap: 5%;
+  row-gap: 1%;
+}
+
+.office-slots-layer {
+  z-index: 1;
+}
+
+.office-workstation {
+  position: relative;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.office-workstation:disabled {
+  cursor: default;
+}
+
+.office-workstation__desk {
+  position: absolute;
+  z-index: 2;
+  right: 4%;
+  bottom: 18%;
+  left: 4%;
+  height: 42%;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 64%, transparent);
+  border-radius: 18% 16% 24% 22%;
+  background:
+    linear-gradient(164deg, rgba(255, 255, 255, 0.24), transparent 42%),
+    color-mix(in srgb, var(--bg-surface-solid) 76%, #8b7158 24%);
+  box-shadow:
+    0 10px 18px rgba(8, 17, 30, 0.28),
+    inset 0 -5px 0 color-mix(in srgb, var(--color-primary) 32%, transparent);
+  transform: skewX(-6deg);
+}
+
+.device-office-stage--light .office-workstation__desk {
+  background:
+    linear-gradient(164deg, rgba(255, 255, 255, 0.55), transparent 42%),
+    #c7ad8c;
+  box-shadow:
+    0 8px 16px rgba(58, 67, 76, 0.18),
+    inset 0 -4px 0 rgba(111, 151, 189, 0.28);
+}
+
+.office-workstation__monitor {
+  position: absolute;
+  top: -47%;
+  left: 47%;
+  width: 31%;
+  height: 63%;
+  border: 4px solid #1b2633;
+  border-radius: var(--radius-control);
+  background: #0b1320;
+  box-shadow: 0 5px 10px rgba(5, 10, 16, 0.35);
+  transform: skewX(6deg);
+}
+
+.office-workstation__monitor::after {
+  position: absolute;
+  top: 100%;
+  left: 43%;
+  width: 14%;
+  height: 35%;
+  border-radius: 0 0 3px 3px;
+  background: #1b2633;
+  content: '';
+}
+
+.office-workstation__keyboard {
+  position: absolute;
+  top: 18%;
+  left: 43%;
+  width: 32%;
+  height: 14%;
+  border-radius: 3px;
+  background: #26323e;
+  transform: skewX(6deg);
+}
+
+.office-workstation__plant {
+  position: absolute;
+  top: -4%;
+  left: 12%;
+  width: 10%;
+  aspect-ratio: 1;
+  border-radius: 60% 35%;
+  background: #4d8264;
+  box-shadow: 5px -2px 0 #6a9b75, 2px 6px 0 -2px #846c54;
+  transform: skewX(6deg) rotate(-16deg);
+}
+
+.office-workstation__chair {
+  position: absolute;
+  z-index: 1;
+  bottom: 4%;
+  left: 34%;
+  width: 28%;
+  height: 45%;
+  border-radius: 42% 42% 28% 28%;
+  background: color-mix(in srgb, var(--bg-surface-solid) 16%, #27384c 84%);
+  box-shadow: 0 8px 12px rgba(5, 12, 20, 0.32);
+}
+
+.office-workstation:not(:disabled):hover .office-workstation__desk,
+.office-workstation:not(:disabled):focus-visible .office-workstation__desk {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 75%, transparent);
+  outline-offset: 3px;
+}
+
+.device-actor-layer,
+.device-screen-layer,
+.office-foreground-layer {
+  pointer-events: none;
+}
+
+.device-actor-layer {
+  z-index: 2;
+}
+
+.device-actor-slot,
+.device-screen-slot,
+.device-label-slot {
+  position: relative;
+  min-width: 0;
+}
+
+.device-actor-slot__asset {
+  position: absolute;
+  z-index: 1;
+  bottom: 22%;
+  left: 9%;
+  width: 37%;
+  max-height: 70%;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 7px rgba(5, 10, 18, 0.3));
+  transform-origin: 50% 100%;
+}
+
+.device-actor-slot__asset.is-busy {
+  left: 17%;
+  transform: rotate(-4deg);
+}
+
+.device-actor-slot__asset.is-offline {
+  opacity: 0.82;
+  transform: rotate(7deg) translateY(4%);
+}
+
+.device-screen-layer {
+  z-index: 3;
+}
+
+.device-screen-slot__asset {
+  position: absolute;
+  top: 24%;
+  right: 13%;
+  width: 25%;
+  height: 22%;
+  border-radius: 3px;
+  object-fit: cover;
+  opacity: 0.92;
+  transform: skewY(-1deg);
+}
+
+.device-screen-slot__asset.is-busy {
+  animation: office-screen-pulse 1.8s ease-in-out infinite;
+}
+
+.office-foreground-layer {
+  z-index: 4;
+}
+
+.device-label-layer {
+  z-index: 5;
+  pointer-events: none;
+}
+
+.device-label-slot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2%;
+}
+
+.device-label-pill {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 82%;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid rgba(202, 214, 228, 0.34);
+  border-radius: var(--radius-control);
+  background: rgba(20, 29, 43, 0.72);
+  box-shadow: 0 5px 14px rgba(4, 9, 16, 0.22);
+  color: #f4f7fb;
+  font: inherit;
+  white-space: nowrap;
+  backdrop-filter: blur(7px);
+  pointer-events: auto;
+}
+
+.device-office-stage--light .device-label-pill {
+  border-color: rgba(83, 102, 122, 0.22);
+  background: rgba(255, 255, 255, 0.8);
+  color: #253241;
+}
+
+button.device-label-pill {
+  cursor: pointer;
+}
+
+button.device-label-pill:hover,
+button.device-label-pill:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.device-label-pill > span {
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+}
+
+.device-label-pill small {
+  color: rgba(231, 237, 244, 0.76);
+  font-size: var(--font-size-secondary);
+}
+
+.device-office-stage--light .device-label-pill small {
+  color: #677687;
+}
+
+.device-label-pill i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #8f99a5;
+}
+
+.device-label-pill.is-onlineIdle i {
+  background: #42c887;
+}
+
+.device-label-pill.is-busy i {
+  background: #4b9cff;
+}
+
+.device-label-pill.is-error i {
+  background: #ef6262;
+}
+
+.device-label-pill.is-empty {
+  opacity: 0.56;
+  pointer-events: none;
+}
+
+@keyframes office-screen-pulse {
+  0%,
+  100% {
+    filter: brightness(0.92);
+  }
+  50% {
+    filter: brightness(1.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-screen-slot__asset.is-busy {
+    animation: none;
+  }
+}
+
+@media (max-height: 800px) {
+  .device-office-stage {
+    min-height: 430px;
+  }
+
+  .office-stage-grid {
+    inset-block: 13% 5%;
+  }
+}

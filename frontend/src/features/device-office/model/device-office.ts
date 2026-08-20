@@ -4,7 +4,8 @@ import type {
 } from '@/entities/device'
 
 import type {
-  DeviceAvatarVariant,
+  DeviceActorVariant,
+  DeviceLocalBehavior,
   DeviceVisualState,
   OfficeStationViewModel,
 } from './types'
@@ -29,13 +30,28 @@ export function hashStableId(value: string): number {
   return hash >>> 0
 }
 
-export function getAvatarVariant(deviceId: string): DeviceAvatarVariant {
+export function getActorVariant(deviceId: string): DeviceActorVariant {
   const hash = hashStableId(deviceId)
   const index = hash % AVATAR_ACCENTS.length
   return {
     index,
     accentColor: AVATAR_ACCENTS[index]!,
     accessory: ACCESSORIES[(hash >>> 8) % ACCESSORIES.length]!,
+  }
+}
+
+export function getDefaultLocalBehavior(
+  visualState: Exclude<DeviceVisualState, 'empty'>,
+): DeviceLocalBehavior {
+  switch (visualState) {
+    case 'onlineIdle':
+      return 'idle'
+    case 'busy':
+      return 'work'
+    case 'offline':
+      return 'sleep'
+    case 'error':
+      return 'idle'
   }
 }
 
@@ -60,13 +76,16 @@ export function createOfficeStations(
 ): OfficeStationViewModel[] {
   return Array.from({ length: OFFICE_PAGE_SIZE }, (_, index) => {
     const device = devices[index] ?? null
+    const visualState = device
+      ? mapDeviceVisualState(device.runtimeStatus)
+      : 'empty'
     return {
       slot: index + 1,
       device,
-      visualState: device
-        ? mapDeviceVisualState(device.runtimeStatus)
-        : 'empty',
-      avatarVariant: device ? getAvatarVariant(device.deviceId) : null,
+      visualState,
+      localBehavior:
+        visualState === 'empty' ? null : getDefaultLocalBehavior(visualState),
+      actorVariant: device ? getActorVariant(device.deviceId) : null,
     }
   })
 }

@@ -9,7 +9,9 @@ export type DeviceVisualState =
 
 export type DeviceCenterViewMode = 'office' | 'list'
 
-export interface DeviceAvatarVariant {
+export type DeviceLocalBehavior = 'idle' | 'work' | 'sleep' | 'coffee' | 'walk'
+
+export interface DeviceActorVariant {
   index: number
   accentColor: string
   accessory: 'scarf' | 'badge' | 'antenna'
@@ -19,5 +21,6 @@ export interface OfficeStationViewModel {
   slot: number
   device: DeviceListItemViewModel | null
   visualState: DeviceVisualState
-  avatarVariant: DeviceAvatarVariant | null
+  localBehavior: DeviceLocalBehavior | null
+  actorVariant: DeviceActorVariant | null
 }

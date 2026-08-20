@@ -564,4 +564,4 @@ description（需要时）
 
 `Design System Playground` 是开发验收页，必须复用真实基础组件展示 Button、Input、Select、Switch、DatePicker、Status、StatCard、FilterBar、Table、Dialog 和 Drawer。禁止为 Playground 重写仿真组件。
 
-阶段 3B-1D 的 Device Office 不新增第二套 Button、Input、Pagination、Drawer、DataTable 或状态组件。设备工具栏继续组合 `AppButton`、`AppInput`，详情与本机影刀应用继续复用 `DetailDrawer`、`StatusTag`、`DataTable`。Three/Tres 场景组件属于 `features/device-office` 领域表现能力，不得放入 `shared/ui`，也不得改变其他页面的基础组件默认视觉。
+Device Office 2.5D 不新增第二套 Button、Input、Pagination、Drawer、DataTable 或状态组件。设备工具栏继续组合 `AppButton`、`AppInput`，详情与本机影刀应用继续复用 `DetailDrawer`、`StatusTag`、`DataTable`。OfficeStage 与各 Layer 属于 `features/device-office` 领域表现能力，不得放入 `shared/ui`，也不得改变其他页面的基础组件默认视觉。

@@ -327,7 +327,7 @@ test('renders compact Shop and Device pages in light and dark themes', async ({
   await page.getByRole('button', { name: '切换主题' }).click()
   await page.getByText('深色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await expect(page.getByTestId('device-office-scene')).toBeVisible()
+  await expect(page.getByTestId('device-office-stage')).toBeVisible()
 })
 
 for (const viewport of [

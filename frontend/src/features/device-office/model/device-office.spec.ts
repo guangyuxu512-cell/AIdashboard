@@ -4,7 +4,8 @@ import { DEVICE_LIST_FIXTURE } from '@/entities/device'
 
 import {
   createOfficeStations,
-  getAvatarVariant,
+  getActorVariant,
+  getDefaultLocalBehavior,
   mapDeviceVisualState,
   OFFICE_PAGE_SIZE,
 } from './device-office'
@@ -35,9 +36,16 @@ describe('device office view model', () => {
   })
 
   it('derives a stable replaceable avatar variant from the device id', () => {
-    expect(getAvatarVariant('device-stable-id')).toEqual(
-      getAvatarVariant('device-stable-id'),
+    expect(getActorVariant('device-stable-id')).toEqual(
+      getActorVariant('device-stable-id'),
     )
-    expect(getAvatarVariant('device-stable-id').index).toBeGreaterThanOrEqual(0)
+    expect(getActorVariant('device-stable-id').index).toBeGreaterThanOrEqual(0)
+  })
+
+  it('keeps local presentation behavior subordinate to the visual state', () => {
+    expect(getDefaultLocalBehavior('onlineIdle')).toBe('idle')
+    expect(getDefaultLocalBehavior('busy')).toBe('work')
+    expect(getDefaultLocalBehavior('offline')).toBe('sleep')
+    expect(getDefaultLocalBehavior('error')).toBe('idle')
   })
 })

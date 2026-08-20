@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 720" role="img" aria-label="深色办公室占位背景">
+  <defs>
+    <linearGradient id="wall" x2="0" y2="1"><stop stop-color="#182439"/><stop offset="1" stop-color="#303b52"/></linearGradient>
+    <linearGradient id="floor" x2="0" y2="1"><stop stop-color="#34445c"/><stop offset="1" stop-color="#202c40"/></linearGradient>
+    <pattern id="tiles" width="140" height="80" patternUnits="userSpaceOnUse"><path d="M0 0H140V80H0Z" fill="none" stroke="#8eb8df" stroke-opacity=".12"/></pattern>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <path d="M0 0H1400V225L1260 300H140L0 225Z" fill="url(#wall)"/>
+  <path d="M140 225H1260L1400 720H0Z" fill="url(#floor)"/>
+  <path d="M140 225H1260L1400 720H0Z" fill="url(#tiles)"/>
+  <path d="M18 35V205M1382 35V205M168 244H1232" stroke="#66bfff" stroke-width="5" opacity=".75" filter="url(#glow)"/>
+  <rect x="455" y="34" width="490" height="145" rx="22" fill="#101c31" stroke="#4b6d99"/>
+  <rect x="480" y="57" width="440" height="99" rx="13" fill="#081429"/>
+  <circle cx="545" cy="106" r="30" fill="none" stroke="#507de8" stroke-width="12"/><path d="M545 76a30 30 0 0126 15" fill="none" stroke="#4adab0" stroke-width="12"/>
+  <path d="M625 84H865M625 109H815M625 134H848" stroke="#5e9fd9" stroke-width="9" stroke-linecap="round" opacity=".65"/>
+  <rect x="1090" y="42" width="260" height="150" rx="16" fill="#4b3a32" stroke="#966d4b"/>
+  <path d="M1102 48H1338" stroke="#ffb76a" stroke-width="6" filter="url(#glow)"/>
+  <text x="1220" y="77" fill="#ffd4a0" font-size="25" text-anchor="middle" font-family="sans-serif">COFFEE</text>
+  <rect x="1120" y="92" width="68" height="72" rx="9" fill="#1f2630"/><circle cx="1154" cy="113" r="11" fill="#61c8ef"/>
+  <path d="M1280 184c-33-46-4-105 21-130 21 31 28 87-21 130Z" fill="#467459"/><path d="M1280 184c12-52-29-82-61-92-6 38 9 82 61 92Z" fill="#568665"/>
+</svg>

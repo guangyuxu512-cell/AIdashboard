@@ -26,8 +26,8 @@ const themeStore = useThemeStore()
 const { resolvedTheme } = storeToRefs(themeStore)
 const search = ref('')
 const { viewMode } = useDeviceOfficeView()
-const OfficeScene = defineAsyncComponent(
-  () => import('@/features/device-office/ui/OfficeScene.vue'),
+const DeviceOfficeStage = defineAsyncComponent(
+  () => import('@/features/device-office/ui/DeviceOfficeStage.vue'),
 )
 
 const visibleRows = computed(() => {
@@ -72,7 +72,7 @@ function openStation(station: OfficeStationViewModel): void {
       @retry="management.retryList"
     />
     <template v-else-if="viewMode === 'office'">
-      <OfficeScene
+      <DeviceOfficeStage
         :stations="stations"
         :resolved-theme="resolvedTheme"
         @select="openStation"
@@ -143,7 +143,7 @@ function openStation(station: OfficeStationViewModel): void {
 
 .device-center-page {
   height: 100%;
-  min-height: 680px;
+  min-height: 0;
 }
 
 .device-center-page__state {

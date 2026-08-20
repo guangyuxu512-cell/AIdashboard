@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
-test('renders the device office, opens the correct drawer, and switches views', async ({
+test('renders the 2.5D device office, opens the correct drawer, and switches views', async ({
   page,
 }) => {
   const runtimeErrors: string[] = []
@@ -12,7 +12,7 @@ test('renders the device office, opens the correct drawer, and switches views', 
   page.on('pageerror', (error) => runtimeErrors.push(error.message))
 
   await page.goto('/#/devices')
-  await expect(page.getByTestId('device-office-scene')).toBeVisible()
+  await expect(page.getByTestId('device-office-stage')).toBeVisible()
   await expect(page.getByRole('button', { name: /查看设备/ })).toHaveCount(9)
   await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
 
@@ -26,18 +26,20 @@ test('renders the device office, opens the correct drawer, and switches views', 
 
   await page.getByRole('button', { name: '列表' }).click()
   await expect(page.getByRole('columnheader', { name: '设备名称' })).toBeVisible()
-  await expect(page.getByTestId('device-office-scene')).toHaveCount(0)
+  await expect(page.getByTestId('device-office-stage')).toHaveCount(0)
   await page.getByRole('button', { name: '办公区' }).click()
-  await expect(page.getByTestId('device-office-scene')).toBeVisible()
+  await expect(page.getByTestId('device-office-stage')).toBeVisible()
 
   await page.getByLabel('切换主题').click()
   await page.getByText('深色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await expect(page.getByTestId('device-office-scene')).toHaveClass(
-    /office-scene--dark/,
+  await expect(page.getByTestId('device-office-stage')).toHaveClass(
+    /device-office-stage--dark/,
   )
 
-  await page.getByRole('button', { name: '查看设备 上海-直播机-02' }).click()
+  await page
+    .getByRole('button', { name: '打开设备标签 上海-直播机-02' })
+    .click()
   await expect(page.getByText('device-fixture-002', { exact: true })).toBeVisible()
   await expect(
     page.locator('.n-drawer').getByText('上海-直播机-02', { exact: true }),
@@ -54,6 +56,7 @@ test('renders the device office, opens the correct drawer, and switches views', 
 
 test('uses nine devices per page and preserves empty workstations', async ({ page }) => {
   await page.goto('/#/devices')
+  await expect(page.locator('[data-testid^="office-slot-"]')).toHaveCount(9)
   await expect(page.getByRole('button', { name: /查看设备/ })).toHaveCount(9)
   await page
     .locator('.pagination-bar .n-pagination-item')
@@ -72,7 +75,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport)
     await page.goto('/#/devices')
-    const office = page.getByTestId('device-office-scene')
+    const office = page.getByTestId('device-office-stage')
     await expect(office).toBeVisible()
     await expect(
       page.getByRole('button', { name: '查看设备 杭州-运营机-01' }),
