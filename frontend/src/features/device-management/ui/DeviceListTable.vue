@@ -52,22 +52,7 @@ const columns: DataTableColumns<DeviceListItemViewModel> = [
         h('small', device.tags.join(' · ')),
       ]),
   },
-  { title: '系统', key: 'systemDisplay', width: 120 },
   { title: 'Worker 版本', key: 'workerVersionDisplay', width: 130 },
-  {
-    title: '当前任务',
-    key: 'currentTaskName',
-    width: 180,
-    ellipsis: { tooltip: true },
-    render: (device) =>
-      device.dataSource === 'real'
-        ? '未提供'
-        : device.runtimeStatus === 'unavailable'
-          ? '未接入'
-          : (device.currentTaskName ?? '空闲'),
-  },
-  { title: 'CPU', key: 'cpuUsageDisplay', width: 80, align: 'right' },
-  { title: '内存', key: 'memoryUsageDisplay', width: 80, align: 'right' },
   { title: '最后心跳', key: 'lastHeartbeatAtDisplay', width: 165 },
   {
     title: '操作',
@@ -98,7 +83,7 @@ const columns: DataTableColumns<DeviceListItemViewModel> = [
     :loading="loading"
     :error="error"
     :row-key="(row: DeviceListItemViewModel) => row.deviceId"
-    :scroll-x="1435"
+    :scroll-x="975"
     empty-description="没有符合当前条件的设备"
     @retry="$emit('retry')"
   />

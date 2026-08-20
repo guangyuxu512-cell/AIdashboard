@@ -2,8 +2,6 @@
 import { NDescriptions, NDescriptionsItem } from 'naive-ui'
 
 import {
-  DEVICE_CAPABILITY_AVAILABILITY_META,
-  DEVICE_CAPABILITY_META,
   DeviceEnabledStatusTag,
   DeviceStatusTag,
   type DeviceListItemViewModel,
@@ -57,82 +55,31 @@ defineEmits<{
           <NDescriptionsItem label="设备名称">{{
             device.deviceName
           }}</NDescriptionsItem>
+          <NDescriptionsItem label="Device ID">{{
+            device.deviceId
+          }}</NDescriptionsItem>
           <NDescriptionsItem label="位置">{{
             device.location
           }}</NDescriptionsItem>
           <NDescriptionsItem label="启用状态">
             <DeviceEnabledStatusTag :status="device.enabledStatus" />
           </NDescriptionsItem>
-          <NDescriptionsItem label="标签">{{
-            device.tags.join('、')
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="系统">{{
-            device.systemDisplay
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="Worker 版本">
-            {{ device.workerVersionDisplay }}
-          </NDescriptionsItem>
         </NDescriptions>
       </section>
 
       <section>
-        <h3>运行状态</h3>
+        <h3>Worker</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="设备状态">
+          <NDescriptionsItem label="连接状态">
             <DeviceStatusTag :status="device.runtimeStatus" />
           </NDescriptionsItem>
-          <NDescriptionsItem label="当前任务">
-            {{
-              device.dataSource === 'real'
-                ? '未提供'
-                : device.runtimeStatus === 'unavailable'
-                  ? '未接入'
-                  : (device.currentTaskName ?? '无运行中任务')
-            }}
+          <NDescriptionsItem label="Worker 版本">
+            {{ device.workerVersionDisplay }}
           </NDescriptionsItem>
           <NDescriptionsItem label="最近心跳">
             {{ device.lastHeartbeatAtDisplay }}
           </NDescriptionsItem>
-          <NDescriptionsItem label="CPU 摘要">{{
-            device.cpuUsageDisplay
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="内存摘要">
-            {{ device.memoryUsageDisplay }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="更新时间">
-            {{ device.updatedAtDisplay }}
-          </NDescriptionsItem>
         </NDescriptions>
-      </section>
-
-      <section>
-        <h3>执行能力</h3>
-        <p
-          v-if="device.capabilities.length === 0"
-          class="device-detail__unavailable"
-        >
-          Worker 执行能力尚未接入
-        </p>
-        <ul v-else class="device-detail__capabilities">
-          <li
-            v-for="capability in device.capabilities"
-            :key="capability.capability"
-          >
-            <span>{{
-              DEVICE_CAPABILITY_META[capability.capability].label
-            }}</span>
-            <StatusTag
-              :label="
-                DEVICE_CAPABILITY_AVAILABILITY_META[capability.availability]
-                  .label
-              "
-              :tone="
-                DEVICE_CAPABILITY_AVAILABILITY_META[capability.availability]
-                  .tone
-              "
-            />
-          </li>
-        </ul>
       </section>
 
       <section>
@@ -144,7 +91,7 @@ defineEmits<{
               tone="text"
               @click="$emit('view-yingdao-applications')"
             >
-              查看应用
+              查看已同步应用
             </AppButton>
             <AppButton
               :loading="yingdaoRefreshing"
@@ -184,11 +131,20 @@ defineEmits<{
           <NDescriptionsItem label="账号类型">
             {{ yingdaoInventory?.accountType ?? '未检测' }}
           </NDescriptionsItem>
-          <NDescriptionsItem label="应用">
+          <NDescriptionsItem label="本机已同步应用">
             {{ yingdaoInventory?.applicationCount ?? 0 }}
           </NDescriptionsItem>
           <NDescriptionsItem label="最近检测">
             {{ yingdaoInventory?.lastDiscoveredAtDisplay ?? '尚未检测' }}
+          </NDescriptionsItem>
+        </NDescriptions>
+      </section>
+
+      <section>
+        <h3>执行关系</h3>
+        <NDescriptions :column="1" label-placement="left" bordered>
+          <NDescriptionsItem label="绑定店铺">
+            <StatusTag label="待接入" tone="neutral" />
           </NDescriptionsItem>
         </NDescriptions>
       </section>
@@ -215,30 +171,6 @@ defineEmits<{
   margin-bottom: var(--space-3);
   font-size: var(--font-size-section-title);
   font-weight: var(--font-weight-semibold);
-}
-
-.device-detail__capabilities {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  gap: var(--space-3);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  list-style: none;
-}
-
-.device-detail__capabilities li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-card);
-  background: var(--color-bg-subtle);
-}
-
-.device-detail__unavailable {
-  color: var(--color-text-secondary);
 }
 
 .device-detail__section-heading,

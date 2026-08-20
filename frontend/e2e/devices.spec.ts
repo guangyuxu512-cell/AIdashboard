@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
-test('opens the device center and keeps the standard page behavior', async ({
+test('renders the device office, opens the correct drawer, and switches views', async ({
   page,
 }) => {
   const runtimeErrors: string[] = []
@@ -11,95 +11,76 @@ test('opens the device center and keeps the standard page behavior', async ({
   })
   page.on('pageerror', (error) => runtimeErrors.push(error.message))
 
-  await page.goto('/#/shops')
-  await page.getByText('设备中心', { exact: true }).click()
-
-  await expect(page).toHaveURL(/#\/devices$/)
-  await expect(page.getByRole('heading', { name: '设备中心' })).toHaveCount(0)
-  await expect(
-    page.getByText('统一管理执行设备、运行状态与自动化能力'),
-  ).toHaveCount(0)
-  await expect(page.getByLabel('设备统计')).toHaveCount(0)
-  await expect(page.getByText('设备列表', { exact: true })).toHaveCount(0)
-  await expect(page.getByText(/数据来自 FastAPI/)).toHaveCount(0)
-  await expect(page.getByText(/Frontend Fixture/)).toHaveCount(0)
-  const filterBar = page.getByRole('region', { name: '筛选条件' })
-  await expect(filterBar).toBeVisible()
-  await expect(filterBar.getByText('设备状态', { exact: true })).toHaveCount(0)
-  await expect(filterBar.getByText('设备标签', { exact: true })).toHaveCount(0)
-  await expect(filterBar.getByText('Worker 版本', { exact: true })).toHaveCount(
-    0,
-  )
-  await expect(filterBar.getByText('执行能力', { exact: true })).toHaveCount(0)
-  await expect(filterBar.getByText('关键词', { exact: true })).toHaveCount(0)
-  await expect(
-    filterBar.getByRole('button', { name: '添加设备' }),
-  ).toBeVisible()
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('device-office-scene')).toBeVisible()
+  await expect(page.getByRole('button', { name: /查看设备/ })).toHaveCount(9)
   await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
-  await expect(
-    page.getByRole('columnheader', { name: '最后心跳' }),
-  ).toBeVisible()
-  await expect(page.getByText('在线', { exact: true }).first()).toBeVisible()
 
-  await page.getByRole('button', { name: '查看' }).first().click()
+  await page.getByRole('button', { name: '查看设备 杭州-运营机-01' }).click()
   await expect(page.getByText('设备详情', { exact: true })).toBeVisible()
-  await expect(page.getByText('执行能力', { exact: true }).last()).toBeVisible()
-  await expect(page.getByText('CPU 摘要', { exact: true })).toBeVisible()
-  await expect(page.getByText('影刀环境', { exact: true })).toBeVisible()
-  await expect(page.getByText('未检测', { exact: true }).first()).toBeVisible()
-  await expect(
-    page.getByRole('button', { name: '刷新影刀能力' }),
-  ).toBeDisabled()
+  await expect(page.getByText('device-fixture-001', { exact: true })).toBeVisible()
+  await expect(page.getByText('CPU 摘要', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('内存摘要', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('执行关系', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '关闭' }).click()
 
-  await page.getByRole('button', { name: '添加设备' }).click()
+  await page.getByRole('button', { name: '列表' }).click()
+  await expect(page.getByRole('columnheader', { name: '设备名称' })).toBeVisible()
+  await expect(page.getByTestId('device-office-scene')).toHaveCount(0)
+  await page.getByRole('button', { name: '办公区' }).click()
+  await expect(page.getByTestId('device-office-scene')).toBeVisible()
+
+  await page.getByLabel('切换主题').click()
+  await page.getByText('深色', { exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.getByTestId('device-office-scene')).toHaveClass(
+    /office-scene--dark/,
+  )
+
+  await page.getByRole('button', { name: '查看设备 上海-直播机-02' }).click()
+  await expect(page.getByText('device-fixture-002', { exact: true })).toBeVisible()
   await expect(
-    page.getByText('创建设备基础记录', { exact: true }).last(),
-  ).toBeVisible()
-  await expect(
-    page.getByText('创建设备记录不代表 Worker 已注册，也不代表设备在线。'),
+    page.locator('.n-drawer').getByText('上海-直播机-02', { exact: true }),
   ).toBeVisible()
 
-  const layout = await page.evaluate(() => {
-    const mainContent = document.querySelector('.app-shell__content')
-    return {
-      bodyOverflow: getComputedStyle(document.body).overflow,
-      mainOverflowY: mainContent
-        ? getComputedStyle(mainContent).overflowY
-        : null,
-      documentHasHorizontalOverflow:
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth,
-      bodyHasHorizontalOverflow:
-        document.body.scrollWidth > document.body.clientWidth,
-    }
-  })
-
-  expect(layout.bodyOverflow).toBe('hidden')
-  expect(layout.mainOverflowY).toBe('auto')
-  expect(layout.documentHasHorizontalOverflow).toBe(false)
-  expect(layout.bodyHasHorizontalOverflow).toBe(false)
+  const overflow = await page.evaluate(() => ({
+    document:
+      document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    body: document.body.scrollWidth > document.body.clientWidth,
+  }))
+  expect(overflow).toEqual({ document: false, body: false })
   expect(runtimeErrors).toEqual([])
+})
+
+test('uses nine devices per page and preserves empty workstations', async ({ page }) => {
+  await page.goto('/#/devices')
+  await expect(page.getByRole('button', { name: /查看设备/ })).toHaveCount(9)
+  await page
+    .locator('.pagination-bar .n-pagination-item')
+    .filter({ hasText: '2' })
+    .click()
+  await expect(page.getByRole('button', { name: /查看设备/ })).toHaveCount(2)
+  await expect(page.getByRole('button', { name: /空工位/ })).toHaveCount(7)
 })
 
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 1366, height: 768 },
 ]) {
-  test(`keeps the compact Device Center within ${viewport.width}×${viewport.height}`, async ({
+  test(`keeps the complete office usable within ${viewport.width}×${viewport.height}`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport)
     await page.goto('/#/devices')
-    await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
-    await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
+    const office = page.getByTestId('device-office-scene')
+    await expect(office).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: '查看设备 杭州-运营机-01' }),
+    ).toBeVisible()
 
-    const overflow = await page.evaluate(() => ({
-      document:
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth,
-      body: document.body.scrollWidth > document.body.clientWidth,
-    }))
-    expect(overflow).toEqual({ document: false, body: false })
+    const bounds = await office.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.width).toBeLessThanOrEqual(viewport.width)
+    expect(bounds!.height).toBeGreaterThan(400)
   })
 }

@@ -134,3 +134,9 @@ PaginationBar（固定在 Section 底部）
 ```
 
 数据行保持既有行高；空间不足时仅表格主体使用 Naive DataTable 的必要滚动能力。禁止以固定像素或 `100vh - x` 猜测工作区高度。
+
+## Device Office 场景主题与渲染边界
+
+阶段 3B-1D 的设备中心 3D 区域使用领域级 `officeSceneTheme`，Light / Dark 分别定义 `floor`、`wall`、`desk`、`chair`、`monitor`、`ambientLight`、`mainLight`、`accentLight` 语义值。该 Palette 只服务 Three.js 材质与灯光，不扩散为整个中控台的卡通主题，也不得在各个 3D Object 内重复硬编码办公室颜色。
+
+设备页外围工具栏、分页、状态、Drawer 和列表仍使用全局 Design Token。WebGL Canvas 的 DPR 上限为 `1.5`，只保留单个有限阴影主光源，不启用后处理；页面进入后台时暂停 Canvas，离开设备路由时释放 Renderer、Geometry、Material、CanvasTexture 和动画监听。其他业务路由必须通过异步组件边界避免加载 Three Renderer。

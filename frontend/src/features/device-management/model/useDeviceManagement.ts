@@ -38,7 +38,7 @@ export function useDeviceManagement() {
   const filterDraft = ref<DeviceFilterViewModel>(createEmptyFilters())
   const appliedFilters = ref<DeviceListFilters>(createEmptyFilters())
   const page = ref(1)
-  const pageSize = ref(10)
+  const pageSize = ref(9)
   const detailDeviceId = ref<string | null>(null)
   const detailVisible = ref(false)
   const formVisible = ref(false)
@@ -67,8 +67,12 @@ export function useDeviceManagement() {
   const total = computed(() => listQuery.data.value?.total ?? 0)
   const statistics = computed(() => ({
     total: total.value,
-    enabled: rows.value.filter((device) => device.enabled).length,
-    disabled: rows.value.filter((device) => !device.enabled).length,
+    online: rows.value.filter((device) =>
+      ['online', 'busy'].includes(device.runtimeStatus),
+    ).length,
+    offline: rows.value.filter((device) =>
+      ['offline', 'unavailable', 'error'].includes(device.runtimeStatus),
+    ).length,
   }))
   const listError = computed(() =>
     listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,

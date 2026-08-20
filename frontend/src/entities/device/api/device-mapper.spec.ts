@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { DEVICE_LIST_FIXTURE } from '../fixtures/device-list.fixture'
 import { createMockDeviceDataSource } from './device-data-source'
 import { mapDeviceDto, mapYingdaoInventoryDto } from './device-mapper'
 import { deviceQueryKeys } from './device-queries'
@@ -136,6 +137,6 @@ describe('device mapper, query and mutation', () => {
     expect(updated.runtimeStatus).toBe('unavailable')
     expect(updated.enabledStatus).toBe('disabled')
     expect(page.items[0]?.deviceName).toBe('Mock Device Updated')
-    expect(page.total).toBe(9)
+    expect(page.total).toBe(DEVICE_LIST_FIXTURE.length + 1)
   })
 })
