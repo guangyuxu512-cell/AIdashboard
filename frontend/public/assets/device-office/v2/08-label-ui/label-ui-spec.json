@@ -1,0 +1,26 @@
+{
+  "runtime": "Vue DOM",
+  "not_baked_into_scene": true,
+  "fields": [
+    "device_name",
+    "visual_status"
+  ],
+  "states": {
+    "onlineIdle": {
+      "asset_preview": "label-online.png",
+      "text": "在线"
+    },
+    "busy": {
+      "asset_preview": "label-busy.png",
+      "text": "执行中"
+    },
+    "offline": {
+      "asset_preview": "label-offline.png",
+      "text": "离线"
+    },
+    "error": {
+      "asset_preview": "label-error.png",
+      "text": "异常"
+    }
+  }
+}

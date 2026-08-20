@@ -1,0 +1,68 @@
+{
+  "design_canvas": {
+    "width": 1440,
+    "height": 810
+  },
+  "station_source_canvas": {
+    "width": 1448,
+    "height": 1086
+  },
+  "station_render_width": 400,
+  "slots": [
+    {
+      "id": "S1",
+      "x": 70,
+      "y": 105
+    },
+    {
+      "id": "S2",
+      "x": 520,
+      "y": 105
+    },
+    {
+      "id": "S3",
+      "x": 970,
+      "y": 105
+    },
+    {
+      "id": "S4",
+      "x": 70,
+      "y": 325
+    },
+    {
+      "id": "S5",
+      "x": 520,
+      "y": 325
+    },
+    {
+      "id": "S6",
+      "x": 970,
+      "y": 325
+    },
+    {
+      "id": "S7",
+      "x": 70,
+      "y": 545
+    },
+    {
+      "id": "S8",
+      "x": 520,
+      "y": 545
+    },
+    {
+      "id": "S9",
+      "x": 970,
+      "y": 545
+    }
+  ],
+  "layer_order": [
+    "01-background",
+    "02-desk-base",
+    "03-screen-overlay",
+    "04-actor",
+    "05-foreground-mask",
+    "06-light-overlay",
+    "07-fx-overlay",
+    "08-label-ui"
+  ]
+}
