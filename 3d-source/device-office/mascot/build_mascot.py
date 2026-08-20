@@ -249,7 +249,40 @@ def mouth_mesh(material: bpy.types.Material) -> bpy.types.Object:
     return obj
 
 
+def text_mesh(
+    name: str,
+    body: str,
+    location: tuple[float, float, float],
+    size: float,
+    material: bpy.types.Material,
+    *,
+    rotation: tuple[float, float, float],
+) -> bpy.types.Object:
+    curve = bpy.data.curves.new(f"{name}Curve", "FONT")
+    curve.body = body
+    curve.align_x = "CENTER"
+    curve.align_y = "CENTER"
+    curve.size = size
+    curve.extrude = 0.003
+    curve.bevel_depth = 0.0015
+    curve.bevel_resolution = 2
+    obj = bpy.data.objects.new(name, curve)
+    obj.location = location
+    obj.rotation_euler = rotation
+    bpy.data.collections[ASSET_COLLECTION].objects.link(obj)
+    curve.materials.append(material)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.convert(target="MESH")
+    apply_transform(obj)
+    obj.select_set(False)
+    return obj
+
+
 def join_objects(name: str, objects: list[bpy.types.Object]) -> bpy.types.Object:
+    if len(objects) == 1:
+        objects[0].name = name
+        return objects[0]
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
         obj.select_set(True)
@@ -271,7 +304,7 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     asset_collection = bpy.data.collections[ASSET_COLLECTION]
     shell = make_material(
         "Mascot_Shell",
-        (0.83, 0.86, 0.88, 1.0),
+        (0.88, 0.87, 0.84, 1.0),
         metallic=0.0,
         roughness=0.30,
         coat_weight=0.28,
@@ -287,15 +320,15 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     )
     eyes_material = make_material(
         "Mascot_Eyes",
-        (0.01, 0.50, 0.78, 1.0),
+        (0.0, 0.34, 0.82, 1.0),
         metallic=0.0,
         roughness=0.22,
-        emission_color=(0.01, 0.70, 1.0, 1.0),
-        emission_strength=2.2,
+        emission_color=(0.0, 0.56, 1.0, 1.0),
+        emission_strength=1.35,
     )
     accent = make_material(
         "Mascot_Accent",
-        (0.035, 0.30, 0.86, 1.0),
+        (0.015, 0.18, 0.78, 1.0),
         metallic=0.18,
         roughness=0.24,
         coat_weight=0.32,
@@ -310,19 +343,19 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
 
     head = superellipsoid(
         "HeadShell",
-        (0.0, 0.0, 1.025),
-        (0.98, 0.76, 0.72),
+        (0.0, 0.0, 0.995),
+        (0.92, 0.78, 0.75),
         shell,
-        exponent=0.68,
+        exponent=0.86,
         segments=48,
         rings=24,
     )
     face = superellipsoid(
         "FaceVisor",
-        (0.0, -0.350, 1.015),
-        (0.78, 0.18, 0.46),
+        (0.0, -0.371, 0.995),
+        (0.74, 0.145, 0.405),
         visor,
-        exponent=0.58,
+        exponent=0.66,
         segments=48,
         rings=24,
     )
@@ -330,8 +363,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     eye_parts = [
         superellipsoid(
             "EyeLeft",
-            (-0.165, -0.453, 1.055),
-            (0.105, 0.035, 0.175),
+            (-0.155, -0.451, 1.025),
+            (0.088, 0.028, 0.145),
             eyes_material,
             exponent=0.72,
             segments=28,
@@ -339,8 +372,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
         ),
         superellipsoid(
             "EyeRight",
-            (0.165, -0.453, 1.055),
-            (0.105, 0.035, 0.175),
+            (0.155, -0.451, 1.025),
+            (0.088, 0.028, 0.145),
             eyes_material,
             exponent=0.72,
             segments=28,
@@ -352,10 +385,10 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
 
     body = superellipsoid(
         "BodyShell",
-        (0.0, 0.015, 0.535),
-        (0.58, 0.43, 0.57),
+        (0.0, 0.012, 0.470),
+        (0.53, 0.39, 0.48),
         shell,
-        exponent=0.82,
+        exponent=0.74,
         segments=40,
         rings=20,
     )
@@ -363,8 +396,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     arm_parts = [
         superellipsoid(
             "ArmLeft",
-            (-0.355, -0.005, 0.550),
-            (0.17, 0.18, 0.37),
+            (-0.315, -0.005, 0.490),
+            (0.145, 0.155, 0.300),
             shell,
             exponent=0.92,
             segments=28,
@@ -373,8 +406,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
         ),
         superellipsoid(
             "ArmRight",
-            (0.355, -0.005, 0.550),
-            (0.17, 0.18, 0.37),
+            (0.315, -0.005, 0.490),
+            (0.145, 0.155, 0.300),
             shell,
             exponent=0.92,
             segments=28,
@@ -387,8 +420,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     hand_parts = [
         superellipsoid(
             "HandLeft",
-            (-0.385, -0.035, 0.365),
-            (0.19, 0.18, 0.19),
+            (-0.337, -0.030, 0.335),
+            (0.145, 0.145, 0.150),
             shell,
             exponent=0.78,
             segments=24,
@@ -396,8 +429,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
         ),
         superellipsoid(
             "HandRight",
-            (0.385, -0.035, 0.365),
-            (0.19, 0.18, 0.19),
+            (0.337, -0.030, 0.335),
+            (0.145, 0.145, 0.150),
             shell,
             exponent=0.78,
             segments=24,
@@ -409,8 +442,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     leg_parts = [
         superellipsoid(
             "LegLeft",
-            (-0.145, 0.02, 0.235),
-            (0.17, 0.18, 0.29),
+            (-0.125, 0.015, 0.205),
+            (0.145, 0.155, 0.225),
             shell,
             exponent=0.88,
             segments=24,
@@ -418,8 +451,8 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
         ),
         superellipsoid(
             "LegRight",
-            (0.145, 0.02, 0.235),
-            (0.17, 0.18, 0.29),
+            (0.125, 0.015, 0.205),
+            (0.145, 0.155, 0.225),
             shell,
             exponent=0.88,
             segments=24,
@@ -429,56 +462,49 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
     legs = join_objects("Legs", leg_parts)
 
     foot_parts = [
-        rounded_box("FootLeft", (-0.155, -0.045, 0.080), (0.255, 0.34, 0.16), 0.072, shell),
-        rounded_box("FootRight", (0.155, -0.045, 0.080), (0.255, 0.34, 0.16), 0.072, shell),
+        rounded_box("FootLeft", (-0.130, -0.030, 0.065), (0.205, 0.265, 0.13), 0.058, shell),
+        rounded_box("FootRight", (0.130, -0.030, 0.065), (0.205, 0.265, 0.13), 0.058, shell),
+        rounded_box("SoleLeft", (-0.130, -0.076, 0.029), (0.190, 0.205, 0.058), 0.025, visor),
+        rounded_box("SoleRight", (0.130, -0.076, 0.029), (0.190, 0.205, 0.058), 0.025, visor),
     ]
     feet = join_objects("Feet", foot_parts)
 
     antenna_parts = [
         cylinder(
             "AntennaStem",
-            (0.125, 0.015, 1.445),
-            0.022,
-            0.235,
+            (0.030, 0.012, 1.415),
+            0.018,
+            0.145,
             visor,
-            rotation=(0.0, 0.13, 0.0),
+            rotation=(-0.16, 0.0, 0.0),
             vertices=24,
             bevel=0.008,
-        ),
-        superellipsoid(
-            "AntennaTip",
-            (0.140, 0.015, 1.570),
-            (0.13, 0.13, 0.13),
-            accent,
-            exponent=0.80,
-            segments=24,
-            rings=12,
         ),
     ]
     antenna = join_objects("Antenna", antenna_parts)
 
     accent_parts = [
         torus(
-            "EarRingLeft",
-            (-0.505, 0.0, 1.025),
-            0.135,
-            0.026,
-            accent,
+            "EarFrameLeft",
+            (-0.466, 0.0, 0.995),
+            0.120,
+            0.020,
+            visor,
             rotation=(0.0, math.pi / 2.0, 0.0),
         ),
         torus(
-            "EarRingRight",
-            (0.505, 0.0, 1.025),
-            0.135,
-            0.026,
-            accent,
+            "EarFrameRight",
+            (0.466, 0.0, 0.995),
+            0.120,
+            0.020,
+            visor,
             rotation=(0.0, math.pi / 2.0, 0.0),
         ),
         cylinder(
             "EarPlateLeft",
-            (-0.505, 0.0, 1.025),
-            0.095,
-            0.045,
+            (-0.471, 0.0, 0.995),
+            0.094,
+            0.038,
             accent,
             rotation=(0.0, math.pi / 2.0, 0.0),
             vertices=32,
@@ -486,29 +512,37 @@ def build_asset() -> tuple[bpy.types.Object, list[bpy.types.Object], dict[str, b
         ),
         cylinder(
             "EarPlateRight",
-            (0.505, 0.0, 1.025),
-            0.095,
-            0.045,
+            (0.471, 0.0, 0.995),
+            0.094,
+            0.038,
             accent,
             rotation=(0.0, math.pi / 2.0, 0.0),
             vertices=32,
             bevel=0.012,
         ),
-        torus("NeckAccent", (0.0, 0.0, 0.765), 0.255, 0.028, accent),
-        rounded_box("ChestAccent", (0.0, -0.218, 0.550), (0.235, 0.045, 0.16), 0.035, accent),
-        rounded_box("BackModule", (0.0, 0.225, 0.565), (0.39, 0.13, 0.35), 0.065, accent),
-        rounded_box("ToeAccentLeft", (-0.155, -0.205, 0.085), (0.16, 0.035, 0.055), 0.018, accent),
-        rounded_box("ToeAccentRight", (0.155, -0.205, 0.085), (0.16, 0.035, 0.055), 0.018, accent),
+        superellipsoid("ShoulderAccentLeft", (-0.250, -0.010, 0.715), (0.17, 0.20, 0.080), accent, exponent=0.76, segments=24, rings=12, rotation=(0.0, -0.22, -0.08)),
+        superellipsoid("ShoulderAccentRight", (0.250, -0.010, 0.715), (0.17, 0.20, 0.080), accent, exponent=0.76, segments=24, rings=12, rotation=(0.0, 0.22, 0.08)),
+        superellipsoid("NeckAccent", (0.0, -0.010, 0.725), (0.20, 0.18, 0.075), accent, exponent=0.78, segments=24, rings=12),
+        rounded_box("BackModule", (0.0, 0.215, 0.495), (0.30, 0.105, 0.33), 0.052, accent),
+        superellipsoid("AntennaTip", (0.030, 0.025, 1.495), (0.105, 0.105, 0.105), accent, exponent=0.82, segments=24, rings=12),
+        text_mesh("ChestMark", "DC", (0.0, -0.205, 0.495), 0.115, accent, rotation=(math.pi / 2.0, 0.0, 0.0)),
+        text_mesh("EarMarkLeft", "DC", (-0.493, 0.0, 0.995), 0.055, shell, rotation=(math.pi / 2.0, 0.0, -math.pi / 2.0)),
+        text_mesh("EarMarkRight", "DC", (0.493, 0.0, 0.995), 0.055, shell, rotation=(math.pi / 2.0, 0.0, math.pi / 2.0)),
+        text_mesh("BackMark", "D", (0.0, 0.274, 0.495), 0.105, shell, rotation=(math.pi / 2.0, 0.0, math.pi)),
     ]
     accent_object = join_objects("Accent", accent_parts)
 
-    asset_objects = [head, face, eyes, body, arms, hands, legs, feet, antenna, accent_object]
+    belt = torus("Belt", (0.0, 0.0, 0.285), 0.215, 0.014, visor)
+    belt.scale.y = 0.70
+    apply_transform(belt)
+
+    asset_objects = [head, face, eyes, body, arms, hands, legs, feet, antenna, accent_object, belt]
     parent_to_root(root, asset_objects)
 
     for anchor_name, location in (
-        ("AccessoryHeadset", (0.0, 0.0, 1.025)),
-        ("AccessoryScarf", (0.0, 0.0, 0.765)),
-        ("AccessoryBadge", (0.0, -0.225, 0.545)),
+        ("AccessoryHeadset", (0.0, 0.0, 0.995)),
+        ("AccessoryScarf", (0.0, 0.0, 0.725)),
+        ("AccessoryBadge", (0.0, -0.205, 0.495)),
     ):
         anchor = bpy.data.objects.new(anchor_name, None)
         anchor.location = location
@@ -613,11 +647,11 @@ def configure_render() -> None:
 
 def render_views(camera: bpy.types.Object, scale_guides: bpy.types.Collection) -> None:
     views = (
-        ("01_front.png", (0.0, -4.0, 1.40), (0.0, 0.0, 0.76), 72, False, (768, 768)),
-        ("02_side.png", (4.0, 0.0, 1.40), (0.0, 0.0, 0.76), 72, False, (768, 768)),
-        ("03_three_quarter.png", (3.0, -3.0, 1.55), (0.0, 0.0, 0.77), 70, False, (768, 768)),
-        ("04_back.png", (0.0, 4.0, 1.40), (0.0, 0.0, 0.76), 72, False, (768, 768)),
-        ("05_scale_preview.png", (4.4, -6.2, 3.2), (0.0, 0.0, 0.64), 55, True, (960, 640)),
+        ("01_front.png", (0.0, -4.0, 1.32), (0.0, 0.0, 0.70), 72, False, (768, 768)),
+        ("02_side.png", (4.0, 0.0, 1.32), (0.0, 0.0, 0.70), 72, False, (768, 768)),
+        ("03_three-quarter.png", (3.0, -3.0, 1.45), (0.0, 0.0, 0.71), 70, False, (768, 768)),
+        ("04_back.png", (0.0, 4.0, 1.32), (0.0, 0.0, 0.70), 72, False, (768, 768)),
+        ("05_scale-preview.png", (4.4, -6.2, 3.2), (0.0, 0.0, 0.61), 55, True, (960, 640)),
     )
     for filename, position, target, lens, show_scale, resolution in views:
         camera.location = position
@@ -677,6 +711,7 @@ def asset_bounds(objects: list[bpy.types.Object]) -> tuple[Vector, Vector]:
 
 def main() -> None:
     RENDER_DIR.mkdir(parents=True, exist_ok=True)
+    bpy.context.preferences.filepaths.save_version = 0
     reset_scene()
     root, asset_objects, materials = build_asset()
     camera, scale_guides = create_render_setup()
