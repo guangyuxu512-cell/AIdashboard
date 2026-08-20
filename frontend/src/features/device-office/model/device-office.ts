@@ -4,20 +4,21 @@ import type {
 } from '@/entities/device'
 
 import type {
+  DeviceAccentVariant,
+  DeviceActorState,
   DeviceActorVariant,
-  DeviceLocalBehavior,
   DeviceVisualState,
   OfficeStationViewModel,
 } from './types'
 
 export const OFFICE_PAGE_SIZE = 9
 
-const AVATAR_ACCENTS = [
-  '#4a9cff',
-  '#42bf82',
-  '#8a63e6',
-  '#f09a3e',
-] as const
+const ACTOR_ACCENTS = [
+  'blue',
+  'green',
+  'purple',
+  'orange',
+] as const satisfies readonly DeviceAccentVariant[]
 
 const ACCESSORIES = ['scarf', 'badge', 'antenna'] as const
 
@@ -32,17 +33,15 @@ export function hashStableId(value: string): number {
 
 export function getActorVariant(deviceId: string): DeviceActorVariant {
   const hash = hashStableId(deviceId)
-  const index = hash % AVATAR_ACCENTS.length
   return {
-    index,
-    accentColor: AVATAR_ACCENTS[index]!,
+    accentVariant: ACTOR_ACCENTS[hash % ACTOR_ACCENTS.length]!,
     accessory: ACCESSORIES[(hash >>> 8) % ACCESSORIES.length]!,
   }
 }
 
-export function getDefaultLocalBehavior(
+export function mapVisualStateToActorState(
   visualState: Exclude<DeviceVisualState, 'empty'>,
-): DeviceLocalBehavior {
+): DeviceActorState {
   switch (visualState) {
     case 'onlineIdle':
       return 'idle'
@@ -51,7 +50,7 @@ export function getDefaultLocalBehavior(
     case 'offline':
       return 'sleep'
     case 'error':
-      return 'idle'
+      return 'error'
   }
 }
 
@@ -83,8 +82,10 @@ export function createOfficeStations(
       slot: index + 1,
       device,
       visualState,
-      localBehavior:
-        visualState === 'empty' ? null : getDefaultLocalBehavior(visualState),
+      actorState:
+        visualState === 'empty'
+          ? null
+          : mapVisualStateToActorState(visualState),
       actorVariant: device ? getActorVariant(device.deviceId) : null,
     }
   })

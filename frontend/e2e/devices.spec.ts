@@ -12,7 +12,10 @@ test('renders the 2.5D device office, opens the correct drawer, and switches vie
   page.on('pageerror', (error) => runtimeErrors.push(error.message))
 
   await page.goto('/#/devices')
+  await page.getByLabel('切换主题').click()
+  await page.getByText('浅色', { exact: true }).click()
   await expect(page.getByTestId('device-office-stage')).toBeVisible()
+  await expect(page.getByText('Light office artwork pending')).toBeVisible()
   await expect(page.getByRole('button', { name: /查看设备/ })).toHaveCount(9)
   await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
 
@@ -33,9 +36,17 @@ test('renders the 2.5D device office, opens the correct drawer, and switches vie
   await page.getByLabel('切换主题').click()
   await page.getByText('深色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await expect(page.getByTestId('device-office-stage')).toHaveClass(
-    /device-office-stage--dark/,
-  )
+  const officeStage = page.getByTestId('device-office-stage')
+  await expect(officeStage).toHaveClass(/device-office-stage--dark/)
+  await expect(officeStage).toHaveAttribute('data-stage-mode', 'REFERENCE_PREVIEW')
+  await expect(officeStage.getByText('ART ASSETS PENDING')).toBeVisible()
+  await expect(officeStage.locator('.workstation-hotspot')).toHaveCount(9)
+  await expect(
+    officeStage.locator('.mascot-actor[data-asset-status="missing"]'),
+  ).toHaveCount(9)
+  await expect(
+    officeStage.locator('img[src*="dark-office-master.png"]'),
+  ).toBeVisible()
 
   await page
     .getByRole('button', { name: '打开设备标签 上海-直播机-02' })

@@ -4,7 +4,9 @@ import type { DeviceCenterViewMode } from './types'
 
 export const DEVICE_OFFICE_VIEW_STORAGE_KEY = 'control-center.device-view-mode'
 
-function isDeviceCenterViewMode(value: string | null): value is DeviceCenterViewMode {
+function isDeviceCenterViewMode(
+  value: string | null,
+): value is DeviceCenterViewMode {
   return value === 'office' || value === 'list'
 }
 

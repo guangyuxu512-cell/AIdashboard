@@ -24,9 +24,15 @@ defineEmits<{
 <template>
   <section class="device-office-toolbar" aria-label="设备中心工具栏">
     <div class="device-office-toolbar__counts" aria-label="设备统计">
-      <span>设备 <strong>{{ total }}</strong></span>
-      <span class="is-online">在线 <strong>{{ online }}</strong></span>
-      <span class="is-offline">离线 <strong>{{ offline }}</strong></span>
+      <span
+        >设备 <strong>{{ total }}</strong></span
+      >
+      <span class="is-online"
+        >在线 <strong>{{ online }}</strong></span
+      >
+      <span class="is-offline"
+        >离线 <strong>{{ offline }}</strong></span
+      >
     </div>
 
     <div class="device-office-toolbar__actions">

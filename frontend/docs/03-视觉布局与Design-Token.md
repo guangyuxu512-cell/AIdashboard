@@ -141,4 +141,4 @@ PaginationBar（固定在 Section 底部）
 
 设备页外围工具栏、分页、状态、Drawer 和列表继续使用全局 Design Token。OfficeStage 不建立 WebGL Canvas、Renderer、自由相机或后处理；页面只加载普通图像/动画素材，复杂动画必须支持页面不可见时暂停或降频。
 
-正式素材规范见 `12-设备中心2.5D资产规范.md`。当前占位素材必须明确保持可替换，不得以代码生成实时 3D 办公室，也不得重新引入 GLB Mascot Runtime。
+正式素材规范见 `12-设备中心2.5D资产规范.md`。禁止使用 CSS/SVG 绘制机器人、桌椅、电脑或办公室背景；正式美术缺失时必须显示明确的 Asset Missing 状态，开发环境允许使用带 `REFERENCE_PREVIEW` 标识的整张参考图校准坐标。不得以代码生成实时 3D 办公室，也不得重新引入 GLB Mascot Runtime。

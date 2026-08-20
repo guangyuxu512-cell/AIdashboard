@@ -1,0 +1,218 @@
+.device-office-stage {
+  position: relative;
+  z-index: 0;
+  min-height: 520px;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface-solid);
+  box-shadow: var(--shadow-card);
+  isolation: isolate;
+}
+
+.device-office-stage__canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1440px;
+  height: 810px;
+  overflow: hidden;
+  background: var(--bg-subtle);
+  transform: translate(-50%, -50%) scale(var(--office-stage-scale));
+  transform-origin: center;
+}
+
+.office-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.office-background {
+  z-index: 1;
+}
+.back-environment {
+  z-index: 2;
+}
+.device-actor-layer {
+  z-index: 3;
+}
+.monitor-screen-layer {
+  z-index: 4;
+}
+.foreground-occlusion {
+  z-index: 5;
+}
+.device-labels {
+  z-index: 8;
+}
+.interaction-hotspots {
+  z-index: 7;
+}
+
+.office-background__asset,
+.back-environment__asset,
+.foreground-occlusion__asset {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  user-select: none;
+}
+
+.mascot-actor,
+.monitor-screen,
+.device-label-anchor,
+.workstation-hotspot {
+  position: absolute;
+}
+
+.mascot-actor__asset,
+.monitor-screen__asset {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.device-label-anchor {
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.device-label-pill {
+  display: inline-flex;
+  max-width: 230px;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid rgba(208, 218, 232, 0.32);
+  border-radius: var(--radius-control);
+  background: rgba(18, 26, 40, 0.74);
+  box-shadow: 0 5px 14px rgba(4, 9, 16, 0.22);
+  color: #f4f7fb;
+  font: inherit;
+  white-space: nowrap;
+  backdrop-filter: blur(7px);
+}
+
+button.device-label-pill {
+  cursor: pointer;
+}
+
+button.device-label-pill:hover,
+button.device-label-pill:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.device-label-pill > span {
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+}
+
+.device-label-pill small {
+  color: rgba(231, 237, 244, 0.76);
+  font-size: var(--font-size-secondary);
+}
+
+.device-label-pill i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.device-label-pill.is-onlineIdle i {
+  background: var(--status-success);
+}
+.device-label-pill.is-busy i {
+  background: var(--status-info);
+}
+.device-label-pill.is-error i {
+  background: var(--status-danger);
+}
+
+.device-label-pill.is-empty {
+  opacity: 0.62;
+}
+
+.workstation-hotspot {
+  border: 1px solid transparent;
+  padding: 0;
+  background: transparent;
+  color: var(--text-inverse);
+  font: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.workstation-hotspot:disabled {
+  cursor: default;
+}
+
+.workstation-hotspot:focus-visible {
+  border-color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.interaction-hotspots.is-calibrating .workstation-hotspot {
+  border-color: rgba(105, 181, 255, 0.34);
+  border-style: dashed;
+}
+
+.interaction-hotspots.is-calibrating .workstation-hotspot span {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-control);
+  background: rgba(10, 22, 39, 0.64);
+  font-size: var(--font-size-secondary);
+}
+
+.device-office-stage__status {
+  position: absolute;
+  z-index: 9;
+  top: var(--space-3);
+  left: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.device-office-stage__badge {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.device-office-stage__missing {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.device-office-stage__missing strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-section-title);
+}
+
+@media (max-height: 800px) {
+  .device-office-stage {
+    min-height: 430px;
+  }
+}

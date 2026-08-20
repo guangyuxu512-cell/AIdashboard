@@ -1,29 +1,28 @@
 <script setup lang="ts">
-import { officeActorAssets } from '../assets/office-2d-asset-manifest'
+import type { ActorAssetProvider } from '../assets/device-office-assets'
+import { getWorkstationSlot } from '../model/office-layout'
 import type { OfficeStationViewModel } from '../model/types'
+import MascotActor from './MascotActor.vue'
 
-defineProps<{ stations: OfficeStationViewModel[] }>()
+defineProps<{
+  stations: OfficeStationViewModel[]
+  provider: ActorAssetProvider
+}>()
 </script>
 
 <template>
-  <div
-    class="office-stage-layer office-stage-grid device-actor-layer"
-    aria-hidden="true"
-  >
-    <div
-      v-for="station in stations"
+  <div class="office-layer device-actor-layer" aria-hidden="true">
+    <MascotActor
+      v-for="station in stations.filter(
+        (item) => item.device && item.actorState && item.actorVariant,
+      )"
       :key="station.slot"
-      class="device-actor-slot"
-      :data-behavior="station.localBehavior ?? undefined"
-    >
-      <img
-        v-if="station.device && station.visualState !== 'empty'"
-        class="device-actor-slot__asset"
-        :class="`is-${station.visualState}`"
-        :src="officeActorAssets[station.visualState]"
-        alt=""
-        draggable="false"
-      />
-    </div>
+      :actor-state="station.actorState!"
+      :accent-variant="station.actorVariant!.accentVariant"
+      :position="getWorkstationSlot(station.slot).actorAnchor"
+      :scale="getWorkstationSlot(station.slot).actorScale"
+      :z-index="getWorkstationSlot(station.slot).zIndex"
+      :provider="provider"
+    />
   </div>
 </template>

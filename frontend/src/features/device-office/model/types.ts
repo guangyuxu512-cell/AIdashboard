@@ -1,19 +1,17 @@
 import type { DeviceListItemViewModel } from '@/entities/device'
 
 export type DeviceVisualState =
-  | 'empty'
-  | 'onlineIdle'
-  | 'busy'
-  | 'offline'
-  | 'error'
+  'empty' | 'onlineIdle' | 'busy' | 'offline' | 'error'
 
 export type DeviceCenterViewMode = 'office' | 'list'
 
-export type DeviceLocalBehavior = 'idle' | 'work' | 'sleep' | 'coffee' | 'walk'
+export type DeviceActorState =
+  'idle' | 'work' | 'sleep' | 'error' | 'coffee' | 'walk' | 'celebrate'
+
+export type DeviceAccentVariant = 'blue' | 'green' | 'purple' | 'orange'
 
 export interface DeviceActorVariant {
-  index: number
-  accentColor: string
+  accentVariant: DeviceAccentVariant
   accessory: 'scarf' | 'badge' | 'antenna'
 }
 
@@ -21,6 +19,6 @@ export interface OfficeStationViewModel {
   slot: number
   device: DeviceListItemViewModel | null
   visualState: DeviceVisualState
-  localBehavior: DeviceLocalBehavior | null
+  actorState: DeviceActorState | null
   actorVariant: DeviceActorVariant | null
 }

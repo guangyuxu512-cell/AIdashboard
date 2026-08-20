@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { getWorkstationSlot } from '../model/office-layout'
 import type { OfficeStationViewModel } from '../model/types'
 
 defineProps<{ stations: OfficeStationViewModel[] }>()
 defineEmits<{ select: [station: OfficeStationViewModel] }>()
 
 const stateLabel = {
-  empty: '空工位',
+  empty: '空闲',
   onlineIdle: '在线',
   busy: '执行中',
   offline: '离线',
@@ -14,8 +15,16 @@ const stateLabel = {
 </script>
 
 <template>
-  <div class="office-stage-layer office-stage-grid device-label-layer">
-    <div v-for="station in stations" :key="station.slot" class="device-label-slot">
+  <div class="office-layer device-labels">
+    <div
+      v-for="station in stations"
+      :key="station.slot"
+      class="device-label-anchor"
+      :style="{
+        left: `${getWorkstationSlot(station.slot).labelAnchor.x}px`,
+        top: `${getWorkstationSlot(station.slot).labelAnchor.y}px`,
+      }"
+    >
       <button
         v-if="station.device"
         type="button"
