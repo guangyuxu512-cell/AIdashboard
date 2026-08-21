@@ -12,6 +12,7 @@ describe('Module Registry Lite', () => {
       'foundation',
       'shop',
       'device',
+      'settings',
     ])
   })
 
@@ -19,12 +20,13 @@ describe('Module Registry Lite', () => {
     expect(getNavigationModules().map((module) => module.moduleCode)).toEqual([
       'shop',
       'device',
+      'settings',
     ])
     expect(
       getNavigationModules(MODULE_REGISTRY, { includeDevelopment: true }).map(
         (module) => module.moduleCode,
       ),
-    ).toEqual(['foundation', 'shop', 'device'])
+    ).toEqual(['foundation', 'shop', 'device', 'settings'])
   })
 
   it('does not expose disabled modules', () => {
@@ -48,6 +50,11 @@ describe('Module Registry Lite', () => {
           module.permissionCode,
         ]),
       ),
-    ).toEqual({ foundation: null, shop: null, device: null })
+    ).toEqual({
+      foundation: null,
+      shop: null,
+      device: null,
+      settings: null,
+    })
   })
 })

@@ -133,6 +133,62 @@ test('fills remaining space and pins pagination for many, one and empty rows', a
   await expect(section).toHaveCSS('flex-grow', '1')
 })
 
+test('persists enable state, protects active tasks and soft-removes idle devices', async ({
+  page,
+}) => {
+  await page.goto('/#/devices')
+
+  const idleRow = page.getByRole('row').filter({ hasText: '杭州-运营机-01' })
+  await idleRow.getByRole('button', { name: '停用' }).click()
+  await expect(idleRow.getByText('已停用', { exact: true })).toBeVisible()
+  await idleRow.getByRole('button', { name: '启用' }).click()
+  await expect(idleRow.getByText('已启用', { exact: true })).toBeVisible()
+
+  const busyRow = page.getByRole('row').filter({ hasText: '上海-直播机-02' })
+  await busyRow.getByRole('button', { name: '移除' }).click()
+  await page.getByRole('button', { name: '确认移除' }).click()
+  await expect(
+    page.getByText('设备存在待执行或执行中的任务，暂时不能移除'),
+  ).toBeVisible()
+  await expect(busyRow).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).click()
+
+  await idleRow.getByRole('button', { name: '移除' }).click()
+  await expect(page.getByText('Worker Token 立即失效')).toBeVisible()
+  await page.getByRole('button', { name: '确认移除' }).click()
+  await expect(page.getByText('杭州-运营机-01', { exact: true })).toHaveCount(0)
+})
+
+test('configures and tests a system webhook without revealing its URL', async ({
+  page,
+}) => {
+  await page.goto('/#/devices')
+  await page.getByText('系统设置', { exact: true }).click()
+  await expect(page).toHaveURL(/#\/settings\/notifications$/)
+  await expect(page.getByRole('heading', { name: '通知配置' })).toBeVisible()
+
+  await page.getByRole('button', { name: '新增通道' }).click()
+  await page.getByPlaceholder('例如：运营告警群').fill('设备告警群')
+  await page
+    .getByPlaceholder('请输入群机器人 Webhook URL')
+    .fill('https://example.test/webhook/super-secret')
+  await page.getByRole('button', { name: '保存配置' }).click()
+  await expect(page.getByText('通知配置已保存').last()).toBeVisible()
+  await expect(page.getByText('Webhook 已配置')).toBeVisible()
+  await expect(page.getByText('super-secret')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '保存配置' }).click()
+  await expect(page.getByText('通知配置已保存').last()).toBeVisible()
+  await page.getByRole('button', { name: '发送测试通知' }).click()
+  await expect(page.getByText('测试通知已发送')).toBeVisible()
+
+  for (const theme of ['深色', '浅色']) {
+    await page.getByRole('button', { name: '切换主题' }).click()
+    await page.getByText(theme, { exact: true }).click()
+    await expect(page.getByRole('heading', { name: '通知配置' })).toBeVisible()
+  }
+})
+
 for (const viewport of [
   { width: 1920, height: 1080 },
   { width: 1440, height: 900 },

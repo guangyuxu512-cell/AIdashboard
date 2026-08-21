@@ -1,4 +1,4 @@
-import { Blocks, Monitor, Store } from '@lucide/vue'
+import { Blocks, Monitor, Settings, Store } from '@lucide/vue'
 import type { Component } from 'vue'
 
 export type ModuleNavigationGroup = 'development' | 'management'
@@ -49,6 +49,17 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 30,
+  },
+  {
+    moduleCode: 'settings',
+    moduleName: '系统设置',
+    navigationGroup: 'management',
+    routeName: 'notification-settings',
+    routePath: '/settings/notifications',
+    icon: Settings,
+    enabled: true,
+    permissionCode: null,
+    order: 40,
   },
 ] as const satisfies ReadonlyArray<ModuleDefinition>
 

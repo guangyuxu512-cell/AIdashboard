@@ -5,6 +5,7 @@ import { requireModuleDefinition } from '@/app/modules/registry'
 const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
 const deviceModule = requireModuleDefinition('device')
+const settingsModule = requireModuleDefinition('settings')
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -26,6 +27,13 @@ const router = createRouter({
       name: deviceModule.routeName,
       component: () => import('@/pages/devices/DeviceCenterPage.vue'),
       meta: { moduleCode: deviceModule.moduleCode },
+    },
+    {
+      path: settingsModule.routePath,
+      name: settingsModule.routeName,
+      component: () =>
+        import('@/pages/settings/NotificationSettingsPage.vue'),
+      meta: { moduleCode: settingsModule.moduleCode },
     },
   ],
 })
