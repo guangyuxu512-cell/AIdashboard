@@ -6,8 +6,12 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from pydantic import SecretStr
 
-from app.modules.sessions.auth_context import ShopSessionAuthContext
+from app.modules.sessions.auth_context import (
+    ShopSessionAuthContext,
+    StoredSessionCookie,
+)
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.exceptions import (
     PlatformAuthenticationInvalidError,
@@ -132,6 +136,7 @@ class DouyinPlatformConnector:
         return PlatformShopIdentity(
             platform_shop_id=platform_shop_id,
             shop_display_name=shop_display_name,
+            cookie_updates=_response_cookie_updates(response),
         )
 
 
@@ -139,3 +144,25 @@ def _safe_scalar(value: Any) -> str:
     if isinstance(value, (str, int, float, bool)):
         return str(value)[:64]
     return "unknown"
+
+
+def _response_cookie_updates(
+    response: httpx.Response,
+) -> tuple[StoredSessionCookie, ...]:
+    updates: list[StoredSessionCookie] = []
+    for cookie in response.cookies.jar:
+        rest = {str(key).lower(): value for key, value in cookie._rest.items()}
+        same_site = rest.get("samesite")
+        updates.append(
+            StoredSessionCookie(
+                name=cookie.name,
+                value=SecretStr(cookie.value),
+                domain=cookie.domain or None,
+                path=cookie.path or "/",
+                secure=cookie.secure,
+                httpOnly="httponly" in rest,
+                sameSite=str(same_site) if same_site is not None else None,
+                expirationDate=float(cookie.expires) if cookie.expires is not None else None,
+            ),
+        )
+    return tuple(updates)

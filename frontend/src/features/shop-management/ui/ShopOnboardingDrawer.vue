@@ -29,6 +29,7 @@ import {
   type CredentialFormErrors,
   type CredentialFormValue,
 } from '../model/credential-form'
+import { startManagementLoginPolling } from '../model/management-login-poller'
 import CredentialFormFields from './CredentialFormFields.vue'
 
 const props = defineProps<{ show: boolean }>()
@@ -47,8 +48,7 @@ const completedResult = ref<ManagementLoginCompleteResult | null>(null)
 const actionError = ref<string | null>(null)
 const openingLogin = ref(false)
 const completing = ref(false)
-let pollTimer: number | undefined
-let polling = false
+let stopLoginPolling: (() => void) | undefined
 
 const selectedPlatformMeta = computed(() =>
   selectedPlatform.value
@@ -156,42 +156,23 @@ async function openLogin(): Promise<void> {
 
 function startPolling(): void {
   stopPolling()
-  void pollLoginStatus()
-  pollTimer = window.setInterval(() => void pollLoginStatus(), 1500)
+  if (!loginStatus.value?.attemptId || !window.desktop?.managementLogin) return
+  stopLoginPolling = startManagementLoginPolling({
+    attemptId: loginStatus.value.attemptId,
+    getStatus: window.desktop.managementLogin.getStatus,
+    onStatus(status) {
+      loginStatus.value = status
+      if (status.status === 'identified') currentStep.value = 4
+    },
+    onError(error) {
+      actionError.value = getErrorMessage(error)
+    },
+  })
 }
 
 function stopPolling(): void {
-  if (pollTimer !== undefined) window.clearInterval(pollTimer)
-  pollTimer = undefined
-}
-
-async function pollLoginStatus(): Promise<void> {
-  if (
-    polling ||
-    !loginStatus.value?.attemptId ||
-    !window.desktop?.managementLogin
-  )
-    return
-  polling = true
-  try {
-    loginStatus.value = await window.desktop.managementLogin.getStatus(
-      loginStatus.value.attemptId,
-    )
-    if (loginStatus.value.status === 'identified') {
-      stopPolling()
-      currentStep.value = 4
-    } else if (
-      loginStatus.value.status === 'closed' ||
-      loginStatus.value.status === 'failed'
-    ) {
-      stopPolling()
-    }
-  } catch (error) {
-    stopPolling()
-    actionError.value = getErrorMessage(error)
-  } finally {
-    polling = false
-  }
+  stopLoginPolling?.()
+  stopLoginPolling = undefined
 }
 
 async function completeOnboarding(): Promise<void> {

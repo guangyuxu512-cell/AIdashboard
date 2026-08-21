@@ -31,6 +31,14 @@ export function registerIpcHandlers(
       return managementLoginService.open(parent, input)
     },
   )
+
+  ipcMain.handle(
+    desktopIpcChannels.refreshManagementLogin,
+    (_event, attemptId: unknown) => {
+      if (!isUuid(attemptId)) throw new Error('登录尝试参数无效')
+      return managementLoginService.refresh(attemptId)
+    },
+  )
   ipcMain.handle(
     desktopIpcChannels.getManagementLoginStatus,
     (_event, attemptId: unknown) => {

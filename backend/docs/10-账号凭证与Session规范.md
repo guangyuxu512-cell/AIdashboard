@@ -55,3 +55,11 @@ Credential 变更、Session 版本变更及授权读取未来必须接入审计�
 `captured` 可用于首次只读验证；成功后同一 payload 标记为 `valid` 并记录
 `validated_at`，明确 HTTP 401/403 才标记 `invalid`。超时、平台 5xx、响应结构异常不改变
 Session 状态，也不触发自动登录。Backend 请求不读取 Management Login Profile。
+
+## 8. 健康检查、Cookie 更新与恢复租约
+
+`ShopSessionHealthService` 是解密后验证、身份匹配和状态更新的唯一边界。抖店 V1 使用已验证的 `shop_info_v2`；最近验证时间仍处于 `BACKEND_SHOP_SESSION_VALIDATION_FRESHNESS_SECONDS` 窗口时，后续业务可直接使用，超出窗口才按需先验证。没有全店铺 Cron。
+
+Cookie 到期时间只用于预警，不阻止权威平台请求。HTTPX 响应真实提供 `Set-Cookie` 时，Accessor 按 name/domain/path 合并，保留 HttpOnly、Secure、SameSite 和 expires，随后加密并通过 `expected_version` 写入新版本；没有 Cookie 更新时只更新验证状态和时间。
+
+人工恢复使用 `shop_sessions.refresh_lease_id` 与 `refresh_lease_expires_at` 作为跨 Backend 进程的可过期租约，不持有长事务。租约时长由 `BACKEND_SHOP_SESSION_REFRESH_LEASE_SECONDS` 配置，默认 1800 秒。完成、取消和 Electron 超时主动释放；客户端崩溃后由到期条件允许下一次获取。恢复提交先校验 Lease 和 `expected_version`，写 `captured` 新版本后立即执行健康检查，身份匹配才转为 `valid`。

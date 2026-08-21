@@ -5,6 +5,7 @@ import type {
   DesktopResolvedTheme,
   ManagementLoginCompleteInput,
   ManagementLoginOpenInput,
+  ManagementLoginRefreshResult,
 } from '../types'
 
 // Sandboxed preloads cannot load local runtime modules without bundling.
@@ -13,6 +14,7 @@ const setTitleBarThemeChannel = 'appearance:set-title-bar-theme'
 const openManagementLoginChannel = 'management-login:open'
 const getManagementLoginStatusChannel = 'management-login:get-status'
 const completeManagementLoginChannel = 'management-login:complete'
+const refreshManagementLoginChannel = 'management-login:refresh'
 const closeManagementLoginChannel = 'management-login:close'
 
 function isDesktopResolvedTheme(value: unknown): value is DesktopResolvedTheme {
@@ -35,6 +37,9 @@ const desktopApi: DesktopApi = {
     },
     complete(input: ManagementLoginCompleteInput) {
       return ipcRenderer.invoke(completeManagementLoginChannel, input)
+    },
+    refresh(attemptId: string): Promise<ManagementLoginRefreshResult> {
+      return ipcRenderer.invoke(refreshManagementLoginChannel, attemptId)
     },
     close(attemptId: string) {
       return ipcRenderer.invoke(closeManagementLoginChannel, attemptId)

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.sessions.enums import ShopSessionStatus
@@ -24,12 +24,16 @@ class ShopSessionRepository:
         self,
         *,
         shop_id: UUID,
+        expected_version: int,
         status: ShopSessionStatus,
         validated_at: datetime,
     ) -> bool:
         result = self.session.execute(
             update(ShopSession)
-            .where(ShopSession.shop_id == shop_id)
+            .where(
+                ShopSession.shop_id == shop_id,
+                ShopSession.version == expected_version,
+            )
             .values(status=status, validated_at=validated_at, updated_at=func.now()),
         )
         return result.rowcount == 1
@@ -64,4 +68,62 @@ class ShopSessionRepository:
             )
         )
         result = self.session.execute(statement)
+        return result.rowcount == 1
+
+    def acquire_refresh_lease(
+        self,
+        *,
+        shop_id: UUID,
+        lease_id: UUID,
+        now: datetime,
+        expires_at: datetime,
+    ) -> bool:
+        result = self.session.execute(
+            update(ShopSession)
+            .where(
+                ShopSession.shop_id == shop_id,
+                or_(
+                    ShopSession.refresh_lease_id.is_(None),
+                    ShopSession.refresh_lease_expires_at <= now,
+                ),
+            )
+            .values(
+                refresh_lease_id=lease_id,
+                refresh_lease_expires_at=expires_at,
+                updated_at=func.now(),
+            ),
+        )
+        return result.rowcount == 1
+
+    def has_active_refresh_lease(
+        self,
+        *,
+        shop_id: UUID,
+        lease_id: UUID,
+        now: datetime,
+    ) -> bool:
+        return (
+            self.session.scalar(
+                select(ShopSession.session_id).where(
+                    ShopSession.shop_id == shop_id,
+                    ShopSession.refresh_lease_id == lease_id,
+                    ShopSession.refresh_lease_expires_at > now,
+                ),
+            )
+            is not None
+        )
+
+    def release_refresh_lease(self, *, shop_id: UUID, lease_id: UUID) -> bool:
+        result = self.session.execute(
+            update(ShopSession)
+            .where(
+                ShopSession.shop_id == shop_id,
+                ShopSession.refresh_lease_id == lease_id,
+            )
+            .values(
+                refresh_lease_id=None,
+                refresh_lease_expires_at=None,
+                updated_at=func.now(),
+            ),
+        )
         return result.rowcount == 1

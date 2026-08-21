@@ -10,6 +10,7 @@ export {
   type ManagementLoginCompleteResult,
   type ManagementLoginIdentity,
   type ManagementLoginOpenInput,
+  type ManagementLoginRefreshResult,
   type ManagementLoginPlatform,
   type ManagementLoginStatus,
   type ManagementLoginStatusResult,

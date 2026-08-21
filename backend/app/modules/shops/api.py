@@ -8,6 +8,8 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.sessions.auth_context import ShopSessionAccessor
+from app.modules.sessions.health_service import ShopSessionHealthService
+from app.modules.sessions.service import ShopSessionService
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.platform_service import ShopPlatformService
 from app.modules.shops.schemas import (
@@ -45,11 +47,13 @@ def get_shop_platform_service(
     session: Annotated[Session, Depends(get_database_session)],
     cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> ShopPlatformService:
-    return ShopPlatformService(
+    health_service = ShopSessionHealthService(
         session,
         ShopSessionAccessor(session, cipher),
         {ShopPlatform.DOUYIN: DouyinPlatformConnector()},
+        session_service=ShopSessionService(session, cipher),
     )
+    return ShopPlatformService(health_service)
 
 
 @router.get("", response_model=Page[ShopRead])

@@ -11,6 +11,8 @@ from sqlalchemy import select
 from app.core.database import get_session_factory
 from app.core.security import get_secret_cipher
 from app.modules.sessions.auth_context import ShopSessionAccessor
+from app.modules.sessions.health_service import ShopSessionHealthService
+from app.modules.sessions.service import ShopSessionService
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.modules.shops.platform_service import ShopPlatformService
@@ -27,9 +29,12 @@ def main() -> int:
         if shop is None:
             raise SystemExit("target shop not found")
         service = ShopPlatformService(
-            session,
-            ShopSessionAccessor(session, get_secret_cipher()),
-            {ShopPlatform.DOUYIN: DouyinPlatformConnector()},
+            ShopSessionHealthService(
+                session,
+                ShopSessionAccessor(session, get_secret_cipher()),
+                {ShopPlatform.DOUYIN: DouyinPlatformConnector()},
+                session_service=ShopSessionService(session, get_secret_cipher()),
+            ),
         )
         result = service.fetch_identity(shop.shop_id)
         print(

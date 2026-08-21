@@ -29,3 +29,15 @@ class ShopSessionAuthenticationInvalidError(AppError):
     code = "AUTH_INVALID"
     message = "店铺 Session 已失效，需要重新登录"
     status_code = 401
+
+
+class SessionRefreshLeaseConflictError(AppError):
+    code = "SESSION_REFRESH_IN_PROGRESS"
+    message = "该店铺正在其他窗口恢复登录会话"
+    status_code = 409
+
+
+class SessionRefreshLeaseInvalidError(AppError):
+    code = "SESSION_REFRESH_LEASE_INVALID"
+    message = "Session 恢复租约不存在或已过期"
+    status_code = 409

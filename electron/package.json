@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test dist/tests/desktop-api.test.js",
+    "test:recovery-e2e": "pnpm run build && electron dist/tools/manual-management-login-recovery-e2e.js",
     "dev": "pnpm run build && cross-env FRONTEND_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "start": "electron ."
   },

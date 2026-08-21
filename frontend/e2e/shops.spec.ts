@@ -132,22 +132,22 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByRole('heading', { name: '账号与连接' })).toBeVisible()
   await expect(
     page
-      .getByRole('row', { name: /Cookie \/ Session/ })
-      .getByText('未配置', { exact: true }),
+      .getByRole('row', { name: /登录会话/ })
+      .getByText('失效', { exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: '配置账号与连接' }),
   ).toBeEnabled()
-  await expect(page.getByText('Cookie / Session')).toBeVisible()
+  await expect(page.getByText('登录会话', { exact: true })).toBeVisible()
   await expect(
     page
-      .getByRole('row', { name: /Cookie \/ Session/ })
-      .getByText('未配置', { exact: true }),
+      .getByRole('row', { name: /登录会话/ })
+      .getByText('失效', { exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByRole('button', { name: '打开浏览器登录' }),
-  ).toBeDisabled()
-  await expect(page.getByRole('button', { name: '验证连接' })).toBeDisabled()
+    page.getByRole('button', { name: '验证会话' }),
+  ).toBeEnabled()
+  await expect(page.getByRole('button', { name: '重新登录' })).toBeVisible()
   await page.getByRole('button', { name: '配置账号与连接' }).click()
   await page
     .getByPlaceholder('手机号、邮箱、用户名或账号 ID')
@@ -315,6 +315,119 @@ test('fills the remaining workspace and pins pagination for multi-row, one-row a
   expect(multiRowLayout.workspaceBottomGap).toBeLessThanOrEqual(20)
 })
 
+test('validates an invalid ShopSession and refreshes the compact drawer state', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  await page.getByRole('button', { name: '查看' }).first().click()
+
+  await expect(
+    page.getByRole('row', { name: /登录会话/ }).getByText('失效'),
+  ).toBeVisible()
+  await expect(page.getByText('v3', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '验证会话' }).click()
+
+  await expect(
+    page.getByRole('row', { name: /登录会话/ }).getByText('有效'),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: '重新登录' })).toHaveCount(0)
+})
+
+test('reuses Management Profile, shows recovery progress and refreshes version', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const attemptId = '00000000-0000-4000-8000-000000000011'
+    window.desktop = {
+      appearance: { setTitleBarTheme() {} },
+      managementLogin: {
+        async open() {
+          return {
+            attemptId,
+            status: 'waiting',
+            identity: null,
+            sessionCaptured: false,
+            cookieCount: 0,
+            recovery: true,
+            profileReused: true,
+            message: '正在检查本机登录环境',
+          }
+        },
+        async getStatus() {
+          await new Promise((resolve) => window.setTimeout(resolve, 500))
+          return {
+            attemptId,
+            status: 'identified',
+            identity: {
+              platform: 'douyin',
+              platformShopId: 'platform-shop-fixture-001',
+              shopDisplayName: '星河服饰旗舰店',
+            },
+            sessionCaptured: true,
+            cookieCount: 12,
+            recovery: true,
+            profileReused: true,
+            message: '已重新采集登录会话',
+          }
+        },
+        async refresh() {
+          return {
+            shopId: 'shop-fixture-001',
+            status: 'valid',
+            sessionVersion: 4,
+            validatedAt: '2026-08-22T00:20:00+08:00',
+            cookieUpdatesApplied: 0,
+          }
+        },
+        async complete() {
+          throw new Error('not used')
+        },
+        async close() {},
+      },
+    }
+  })
+  await page.goto('/#/shops')
+  await page.getByRole('button', { name: '查看' }).first().click()
+  await page.getByRole('button', { name: '重新登录' }).click()
+
+  await expect(page.getByText(/已复用本机登录环境/)).toBeVisible()
+  await expect(page.getByText('v4', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('row', { name: /登录会话/ }).getByText('有效'),
+  ).toBeVisible()
+})
+
+test('surfaces a refresh lease conflict without opening a login window', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.desktop = {
+      appearance: { setTitleBarTheme() {} },
+      managementLogin: {
+        async open() {
+          throw new Error('login window must not open after lease conflict')
+        },
+        async getStatus() {
+          throw new Error('not used')
+        },
+        async complete() {
+          throw new Error('not used')
+        },
+        async refresh() {
+          throw new Error('not used')
+        },
+        async close() {},
+      },
+    }
+  })
+  await page.goto('/#/shops')
+  const row = page.getByRole('row', { name: /云朵母婴专营店/ })
+  await row.getByRole('button', { name: '查看' }).click()
+  await page.getByRole('button', { name: '重新登录' }).click()
+
+  await expect(page.getByText('该店铺登录会话正在恢复')).toBeVisible()
+})
+
 test('drives the Management Login onboarding through typed Electron state', async ({
   page,
 }) => {
@@ -331,6 +444,8 @@ test('drives the Management Login onboarding through typed Electron state', asyn
             identity: null,
             sessionCaptured: false,
             cookieCount: 0,
+            recovery: false,
+            profileReused: false,
             message: '等待人工登录，系统会自动识别店铺',
           }
         },
@@ -346,6 +461,8 @@ test('drives the Management Login onboarding through typed Electron state', asyn
             },
             sessionCaptured: true,
             cookieCount: 12,
+            recovery: false,
+            profileReused: false,
             message: '已自动识别店铺并采集登录会话，登录窗口已关闭',
           }
         },
@@ -358,6 +475,15 @@ test('drives the Management Login onboarding through typed Electron state', asyn
             sessionStatus: 'captured',
             sessionVersion: 1,
             sessionCapturedAt: '2026-08-21T12:00:00Z',
+          }
+        },
+        async refresh() {
+          return {
+            shopId: '00000000-0000-4000-8000-000000000002',
+            status: 'valid',
+            sessionVersion: 2,
+            validatedAt: '2026-08-21T12:05:00Z',
+            cookieUpdatesApplied: 0,
           }
         },
         async close() {},

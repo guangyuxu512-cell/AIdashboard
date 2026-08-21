@@ -16,6 +16,8 @@ describe('shop session data source', () => {
       capturedAtDisplay: null,
       validatedAtDisplay: null,
       expiresAtDisplay: null,
+      refreshInProgress: false,
+      refreshLeaseExpiresAtDisplay: null,
     })
     expect(JSON.stringify(session)).not.toMatch(/cookie|payload/i)
   })

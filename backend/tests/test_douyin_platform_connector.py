@@ -51,6 +51,12 @@ def test_connector_constructs_verified_request_and_converts_response(
         return httpx.Response(
             200,
             request=request,
+            headers={
+                "set-cookie": (
+                    "sessionid=rotated-secret; Domain=.jinritemai.com; "
+                    "Path=/; Secure; HttpOnly; SameSite=Lax"
+                ),
+            },
             json={
                 "st": 0,
                 "msg": "success",
@@ -65,6 +71,14 @@ def test_connector_constructs_verified_request_and_converts_response(
 
     assert identity.platform_shop_id == "shop-1"
     assert identity.shop_display_name == "HuanYu"
+    assert len(identity.cookie_updates) == 1
+    assert identity.cookie_updates[0].name == "sessionid"
+    assert (
+        identity.cookie_updates[0].value.get_secret_value()
+        == "rotated-secret"
+    )
+    assert identity.cookie_updates[0].http_only is True
+    assert identity.cookie_updates[0].same_site == "Lax"
     assert "fetch_shop_identity" in caplog.text
     assert secret not in caplog.text
     assert "cookie" not in caplog.text.lower()

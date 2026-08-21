@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { NDescriptions, NDescriptionsItem } from 'naive-ui'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { NAlert, NDescriptions, NDescriptionsItem } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 
 import {
@@ -11,7 +11,11 @@ import {
 import type { ShopListItemViewModel } from '@/entities/shop'
 import {
   ShopSessionStatusTag,
+  useAcquireShopSessionRefreshLeaseMutation,
+  useReleaseShopSessionRefreshLeaseMutation,
   useShopSessionQuery,
+  useValidateShopSessionMutation,
+  shopSessionDataSource,
 } from '@/entities/shop-session'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
@@ -20,6 +24,7 @@ import AppButton from '@/shared/ui/AppButton.vue'
 
 import CredentialFormDialog from './CredentialFormDialog.vue'
 import type { CredentialFormValue } from './CredentialFormDialog.vue'
+import { startManagementLoginPolling } from '../model/management-login-poller'
 
 const props = defineProps<{ shop: ShopListItemViewModel }>()
 const message = useMessage()
@@ -30,6 +35,14 @@ const credentialQuery = useShopCredentialQuery(shopId, platform)
 const sessionQuery = useShopSessionQuery(shopId)
 const createMutation = useCreateCredentialMutation()
 const updateMutation = useUpdateCredentialMutation(shopId)
+const validateSessionMutation = useValidateShopSessionMutation(shopId)
+const acquireLeaseMutation = useAcquireShopSessionRefreshLeaseMutation(shopId)
+const releaseLeaseMutation = useReleaseShopSessionRefreshLeaseMutation()
+const recoveryStatus = ref<ManagementLoginStatusResult | null>(null)
+const recoveryError = ref<string | null>(null)
+const recovering = ref(false)
+const activeLease = ref<{ shopId: string; leaseId: string } | null>(null)
+let stopRecoveryPolling: (() => void) | undefined
 
 const credential = computed(() => credentialQuery.data.value ?? null)
 const shopSession = computed(() => sessionQuery.data.value ?? null)
@@ -51,6 +64,18 @@ const verificationChannelLabel = computed(() => {
   }
   const channel = credential.value?.preferredVerificationChannel
   return channel ? labels[channel] : '未配置'
+})
+const recoveryAvailable = computed(
+  () =>
+    shopSession.value?.configured &&
+    props.shop.platform === 'douyin' &&
+    (shopSession.value.status === 'invalid' ||
+      shopSession.value.status === 'refresh_required'),
+)
+
+onBeforeUnmount(() => {
+  stopRecoveryPolling?.()
+  void cancelRecovery()
 })
 
 function retry(): void {
@@ -87,6 +112,102 @@ async function saveCredential(value: CredentialFormValue): Promise<void> {
     updateMutation.reset()
   }
 }
+
+async function validateSession(): Promise<void> {
+  try {
+    await validateSessionMutation.mutateAsync()
+    message.success('登录会话验证有效')
+  } catch (validationError) {
+    await sessionQuery.refetch()
+    message.error(getErrorMessage(validationError))
+  }
+}
+
+async function recoverSession(): Promise<void> {
+  if (!window.desktop?.managementLogin) {
+    recoveryError.value = '请在 Electron 中控台中恢复登录会话'
+    return
+  }
+  recovering.value = true
+  recoveryError.value = null
+  try {
+    const lease = await acquireLeaseMutation.mutateAsync()
+    activeLease.value = { shopId: lease.shopId, leaseId: lease.leaseId }
+    recoveryStatus.value = await window.desktop.managementLogin.open({
+      platform: props.shop.platform as 'douyin',
+      recovery: {
+        shopId: lease.shopId,
+        leaseId: lease.leaseId,
+        expectedVersion: lease.expectedVersion,
+      },
+    })
+    stopRecoveryPolling?.()
+    stopRecoveryPolling = startManagementLoginPolling({
+      attemptId: recoveryStatus.value.attemptId,
+      getStatus: window.desktop.managementLogin.getStatus,
+      async onStatus(status) {
+        recoveryStatus.value = status
+        if (status.status !== 'identified') {
+          if (status.status === 'closed' || status.status === 'failed') {
+            recovering.value = false
+            activeLease.value = null
+            void window.desktop?.managementLogin?.close(status.attemptId)
+          }
+          return
+        }
+        const result = await window.desktop!.managementLogin!.refresh(
+          status.attemptId,
+        )
+        recovering.value = false
+        recoveryStatus.value = null
+        activeLease.value = null
+        await shopSessionDataSource.confirmRecovery(
+          result.shopId,
+          result.sessionVersion,
+          result.validatedAt,
+        )
+        await sessionQuery.refetch()
+        message.success(`登录会话已恢复并验证有效 · v${result.sessionVersion}`)
+      },
+      onError(error) {
+        recovering.value = false
+        recoveryError.value = getErrorMessage(error)
+        const attemptId = recoveryStatus.value?.attemptId
+        if (attemptId) {
+          void window.desktop?.managementLogin?.close(attemptId)
+        }
+        activeLease.value = null
+      },
+    })
+  } catch (error) {
+    recovering.value = false
+    recoveryError.value = getErrorMessage(error)
+    if (activeLease.value && !recoveryStatus.value?.attemptId) {
+      await releaseLeaseMutation
+        .mutateAsync(activeLease.value)
+        .catch(() => undefined)
+      activeLease.value = null
+    }
+  }
+}
+
+async function cancelRecovery(): Promise<void> {
+  stopRecoveryPolling?.()
+  stopRecoveryPolling = undefined
+  const attemptId = recoveryStatus.value?.attemptId
+  if (attemptId && window.desktop?.managementLogin) {
+    await window.desktop.managementLogin.close(attemptId).catch(() => undefined)
+  } else if (activeLease.value) {
+    await releaseLeaseMutation
+      .mutateAsync(activeLease.value)
+      .catch(() => undefined)
+  }
+  recoveryStatus.value = null
+  recovering.value = false
+  recoveryError.value = null
+  activeLease.value = null
+  releaseLeaseMutation.reset()
+}
 </script>
 
 <template>
@@ -110,11 +231,11 @@ async function saveCredential(value: CredentialFormValue): Promise<void> {
         <NDescriptionsItem label="首选验证">
           {{ verificationChannelLabel }}
         </NDescriptionsItem>
-        <NDescriptionsItem label="Cookie / Session">
+        <NDescriptionsItem label="登录会话">
           <ShopSessionStatusTag :status="shopSession.status" />
         </NDescriptionsItem>
-        <NDescriptionsItem label="Session 来源">
-          {{ shopSession.sourceDeviceName ?? '—' }}
+        <NDescriptionsItem label="Session 版本">
+          {{ shopSession.configured ? `v${shopSession.version}` : '—' }}
         </NDescriptionsItem>
         <NDescriptionsItem label="最近采集">
           {{ shopSession.capturedAtDisplay ?? '—' }}
@@ -124,19 +245,38 @@ async function saveCredential(value: CredentialFormValue): Promise<void> {
         </NDescriptionsItem>
       </NDescriptions>
 
+      <NAlert
+        v-if="recoveryStatus || recoveryError"
+        :type="recoveryError ? 'error' : 'info'"
+        :bordered="true"
+        class="shop-connection-section__recovery"
+      >
+        {{
+          recoveryError ??
+          `${recoveryStatus?.profileReused ? '已复用本机登录环境' : '已创建本机登录环境'}；${recoveryStatus?.message}`
+        }}
+      </NAlert>
+
       <div class="shop-connection-section__actions">
         <AppButton tone="primary" @click="formVisible = true">
           {{ credential.configured ? '更新账号与连接' : '配置账号与连接' }}
         </AppButton>
-        <AppButton disabled title="待 Worker Browser Session Manager 接入">
-          打开浏览器登录
+        <AppButton
+          :loading="validateSessionMutation.isPending.value"
+          :disabled="!shopSession.configured || recovering"
+          @click="validateSession"
+        >
+          验证会话
         </AppButton>
         <AppButton
-          disabled
-          title="待 Session Validator / Platform Connector 接入"
+          v-if="recoveryAvailable && !recovering"
+          tone="primary"
+          :loading="acquireLeaseMutation.isPending.value"
+          @click="recoverSession"
         >
-          验证连接
+          重新登录
         </AppButton>
+        <AppButton v-if="recovering" @click="cancelRecovery">取消恢复</AppButton>
       </div>
 
       <CredentialFormDialog
@@ -160,6 +300,10 @@ async function saveCredential(value: CredentialFormValue): Promise<void> {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.shop-connection-section__recovery {
   margin-top: var(--space-3);
 }
 </style>

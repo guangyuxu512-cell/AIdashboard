@@ -17,6 +17,11 @@ export interface ManagementLoginIdentity {
 export interface ManagementLoginOpenInput {
   platform: ManagementLoginPlatform
   attemptId?: string
+  recovery?: {
+    shopId: string
+    leaseId: string
+    expectedVersion: number
+  }
 }
 
 export interface ManagementLoginStatusResult {
@@ -25,6 +30,8 @@ export interface ManagementLoginStatusResult {
   identity: ManagementLoginIdentity | null
   sessionCaptured: boolean
   cookieCount: number
+  recovery: boolean
+  profileReused: boolean
   message: string
 }
 
@@ -45,11 +52,20 @@ export interface ManagementLoginCompleteResult {
   sessionCapturedAt: string
 }
 
+export interface ManagementLoginRefreshResult {
+  shopId: string
+  status: 'valid'
+  sessionVersion: number
+  validatedAt: string
+  cookieUpdatesApplied: number
+}
+
 export const desktopIpcChannels = {
   setTitleBarTheme: 'appearance:set-title-bar-theme',
   openManagementLogin: 'management-login:open',
   getManagementLoginStatus: 'management-login:get-status',
   completeManagementLogin: 'management-login:complete',
+  refreshManagementLogin: 'management-login:refresh',
   closeManagementLogin: 'management-login:close',
 } as const
 
@@ -63,6 +79,7 @@ export interface DesktopApi {
     complete(
       input: ManagementLoginCompleteInput,
     ): Promise<ManagementLoginCompleteResult>
+    refresh(attemptId: string): Promise<ManagementLoginRefreshResult>
     close(attemptId: string): Promise<void>
   }
 }
@@ -85,9 +102,22 @@ export function isManagementLoginOpenInput(
   if (!value || typeof value !== 'object') return false
   const input = value as Record<string, unknown>
   return (
-    hasOnlyKeys(input, ['platform', 'attemptId']) &&
+    hasOnlyKeys(input, ['platform', 'attemptId', 'recovery']) &&
     isManagementLoginPlatform(input.platform) &&
-    (input.attemptId === undefined || isUuid(input.attemptId))
+    (input.attemptId === undefined || isUuid(input.attemptId)) &&
+    (input.recovery === undefined || isManagementLoginRecovery(input.recovery))
+  )
+}
+
+function isManagementLoginRecovery(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const recovery = value as Record<string, unknown>
+  return (
+    hasOnlyKeys(recovery, ['shopId', 'leaseId', 'expectedVersion']) &&
+    isUuid(recovery.shopId) &&
+    isUuid(recovery.leaseId) &&
+    Number.isInteger(recovery.expectedVersion) &&
+    Number(recovery.expectedVersion) >= 1
   )
 }
 

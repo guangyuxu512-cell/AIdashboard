@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.security import EncryptedPayloadError, SecretCipher
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
+    SessionVersionConflictError,
     ShopSessionAuthenticationInvalidError,
     ShopSessionNotConfiguredError,
     ShopSessionPayloadInvalidError,
@@ -27,7 +28,17 @@ class StoredSessionCookie(BaseModel):
     domain: str | None = None
     path: str = "/"
     secure: bool = False
+    http_only: bool = Field(default=False, alias="httpOnly")
+    same_site: str | None = Field(default=None, alias="sameSite")
     expiration_date: float | None = Field(default=None, alias="expirationDate")
+
+
+class StoredSessionIdentity(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    platform: ShopPlatform
+    platform_shop_id: str = Field(alias="platformShopId", min_length=1)
+    shop_display_name: str = Field(alias="shopDisplayName", min_length=1)
 
 
 class StoredManagementSessionPayload(BaseModel):
@@ -35,6 +46,7 @@ class StoredManagementSessionPayload(BaseModel):
 
     schema_name: Literal["management-login.session.v1"] = Field(alias="schema")
     platform: ShopPlatform
+    identity: StoredSessionIdentity | None = None
     cookies: list[StoredSessionCookie] = Field(min_length=1)
 
 
@@ -73,10 +85,6 @@ class ShopSessionAccessor:
             ShopSessionStatus.VALID,
         }:
             raise ShopSessionAuthenticationInvalidError()
-        now = datetime.now(UTC)
-        if stored.expires_at is not None and stored.expires_at <= now:
-            raise ShopSessionAuthenticationInvalidError()
-
         try:
             plaintext = self.cipher.decrypt_bytes(stored.payload_encrypted)
             payload = StoredManagementSessionPayload.model_validate(
@@ -92,24 +100,88 @@ class ShopSessionAccessor:
         if payload.platform is not expected_platform:
             raise ShopSessionPayloadInvalidError()
 
-        active_cookies = tuple(
-            cookie
-            for cookie in payload.cookies
-            if cookie.expiration_date is None
-            or cookie.expiration_date > now.timestamp()
-        )
-        if not active_cookies:
+        cookies = tuple(payload.cookies)
+        if not cookies:
             raise ShopSessionAuthenticationInvalidError()
         return ShopSessionAuthContext(
             shop_id=shop_id,
             platform=payload.platform,
             session_version=stored.version,
-            cookies=active_cookies,
+            cookies=cookies,
         )
+
+    def merge_response_cookies(
+        self,
+        shop_id: UUID,
+        updates: tuple[StoredSessionCookie, ...],
+    ) -> tuple[bytes, int]:
+        """Merge explicit Set-Cookie updates without exposing decrypted payloads."""
+        stored = self.repository.get_by_shop(shop_id)
+        if stored is None:
+            raise ShopSessionNotConfiguredError()
+        try:
+            plaintext = self.cipher.decrypt_bytes(stored.payload_encrypted)
+            raw_payload = json.loads(plaintext)
+            StoredManagementSessionPayload.model_validate(raw_payload)
+        except (
+            EncryptedPayloadError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValidationError,
+        ) as error:
+            raise ShopSessionPayloadInvalidError() from error
+        if not isinstance(raw_payload, dict) or not isinstance(
+            raw_payload.get("cookies"),
+            list,
+        ):
+            raise ShopSessionPayloadInvalidError()
+
+        cookies = [item for item in raw_payload["cookies"] if isinstance(item, dict)]
+        now_timestamp = datetime.now(UTC).timestamp()
+        applied = 0
+        for update in updates:
+            key = _cookie_key(update.name, update.domain, update.path)
+            existing_index = next(
+                (
+                    index
+                    for index, item in enumerate(cookies)
+                    if _cookie_key(
+                        str(item.get("name") or ""),
+                        _optional_string(item.get("domain")),
+                        str(item.get("path") or "/"),
+                    )
+                    == key
+                ),
+                None,
+            )
+            if update.expiration_date is not None and update.expiration_date <= now_timestamp:
+                if existing_index is not None:
+                    cookies.pop(existing_index)
+                    applied += 1
+                continue
+            replacement = {
+                "name": update.name,
+                "value": update.value.get_secret_value(),
+                "domain": update.domain,
+                "path": update.path,
+                "secure": update.secure,
+                "httpOnly": update.http_only,
+                "sameSite": update.same_site,
+                "expirationDate": update.expiration_date,
+            }
+            replacement = {key: value for key, value in replacement.items() if value is not None}
+            if existing_index is None:
+                cookies.append(replacement)
+            else:
+                cookies[existing_index] = {**cookies[existing_index], **replacement}
+            applied += 1
+        raw_payload["cookies"] = cookies
+        return json.dumps(raw_payload, separators=(",", ":")).encode(), applied
 
     def mark_validation_status(
         self,
         shop_id: UUID,
+        expected_version: int,
         status: Literal[ShopSessionStatus.VALID, ShopSessionStatus.INVALID],
     ) -> None:
         stored = self.repository.get_by_shop(shop_id)
@@ -117,9 +189,18 @@ class ShopSessionAccessor:
             raise ShopSessionNotConfiguredError()
         if not self.repository.set_validation_status(
             shop_id=shop_id,
+            expected_version=expected_version,
             status=status,
             validated_at=datetime.now(UTC),
         ):
             self.session.rollback()
-            raise ShopSessionNotConfiguredError()
+            raise SessionVersionConflictError()
         self.session.commit()
+
+
+def _cookie_key(name: str, domain: str | None, path: str) -> tuple[str, str, str]:
+    return (name, (domain or "").lstrip(".").lower(), path or "/")
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None

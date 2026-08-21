@@ -39,3 +39,5 @@ Renderer 仅通过 `window.desktop.appearance.setTitleBarTheme(light | dark)` �
 管理端登录身份与 Session 仅由 Main 在单次 attempt 的内存中暂存。Adapter 识别真实店铺并完成 Session 采集后，Main 标记系统关闭意图并主动关闭独立平台窗口；`closed` 事件只有同时满足 `identified + systemCloseRequested + sessionCaptured` 才保留确认状态。用户提前关闭会清空身份和 Session，并返回可重试的未完成状态。
 
 取消、完成、应用退出和 30 分钟超时都会清空 Buffer；Session payload、密码不得写入磁盘或日志。Management Login Profile 仅保存完成接入后的平台与 partition 映射，不保存 Cookie payload。
+
+阶段 3C-3 的 Session 恢复仍由 Management Login Service 承担：存在 shop 映射时复用本机 persistent partition，不存在时只在当前电脑新建 Profile。Main 持有 Backend Refresh Lease、expected version 与捕获 Buffer，Renderer 只看非敏感进度。用户提前关闭、取消、30 分钟超时和应用退出会请求释放 Lease；异常退出由服务器 Lease 到期兜底。Management Login Profile 是当前管理电脑本地浏览器身份环境，ShopSession 是服务器权威程序认证状态，两者不得同步或混用。

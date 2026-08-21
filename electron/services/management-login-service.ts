@@ -11,9 +11,14 @@ import type {
   ManagementLoginPlatform,
   ManagementLoginStatus,
   ManagementLoginStatusResult,
+  ManagementLoginRefreshResult,
 } from '../types'
 import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
 import { shouldPreserveCapturedLogin } from './management-login-lifecycle'
+import {
+  parseManagementLoginProfile,
+  resolveManagementLoginPartition,
+} from './management-login-profile'
 import type {
   CapturedManagementSession,
   PlatformAuthAdapter,
@@ -30,6 +35,8 @@ interface LoginAttempt {
   message: string
   systemCloseRequested: boolean
   expiresAt: ReturnType<typeof setTimeout> | null
+  recovery: ManagementLoginOpenInput['recovery'] | null
+  profileReused: boolean
 }
 
 const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
@@ -46,6 +53,14 @@ interface OnboardingApiResponse {
     version: number
     captured_at: string
   }
+}
+
+interface RefreshApiResponse {
+  shop_id: string
+  status: 'valid'
+  version: number
+  validated_at: string
+  cookie_updates_applied: number
 }
 
 export class ManagementLoginService {
@@ -65,10 +80,14 @@ export class ManagementLoginService {
       throw new Error('登录尝试与平台不匹配')
     }
     if (!attempt) {
+      const mapping = input.recovery
+        ? await this.loadProfileMapping(input.recovery.shopId, input.platform)
+        : null
+      const profile = resolveManagementLoginPartition(attemptId, mapping)
       attempt = {
         attemptId,
         platform: input.platform,
-        partition: `persist:management-login-${attemptId}`,
+        partition: profile.partition,
         window: null,
         status: 'opened',
         identity: null,
@@ -76,8 +95,17 @@ export class ManagementLoginService {
         message: '登录窗口已打开，请人工完成平台登录',
         systemCloseRequested: false,
         expiresAt: null,
+        recovery: input.recovery ?? null,
+        profileReused: profile.profileReused,
       }
       this.attempts.set(attemptId, attempt)
+    }
+    if (
+      attempt.recovery?.shopId !== input.recovery?.shopId ||
+      attempt.recovery?.leaseId !== input.recovery?.leaseId ||
+      attempt.recovery?.expectedVersion !== input.recovery?.expectedVersion
+    ) {
+      throw new Error('登录尝试与 Session 恢复上下文不匹配')
     }
     if (attempt.window && !attempt.window.isDestroyed()) {
       if (attempt.status === 'failed') {
@@ -127,9 +155,15 @@ export class ManagementLoginService {
         this.clearCapturedSession(attempt!)
         attempt!.status = 'closed'
         attempt!.message = '登录窗口已提前关闭，未采集店铺会话'
+        void this.releaseRecoveryLease(attempt!)
       }
     })
-    await loginWindow.loadURL(adapter.loginUrl)
+    try {
+      await loginWindow.loadURL(adapter.loginUrl)
+    } catch (error) {
+      await this.close(attemptId)
+      throw error
+    }
     return this.toStatus(attempt)
   }
 
@@ -186,6 +220,7 @@ export class ManagementLoginService {
     input: ManagementLoginCompleteInput,
   ): Promise<ManagementLoginCompleteResult> {
     const attempt = this.requireAttempt(input.attemptId)
+    if (attempt.recovery) throw new Error('Session 恢复不能调用首次接入命令')
     if (!attempt.identity || !attempt.capturedSession) {
       throw new Error('尚未识别有效店铺登录会话')
     }
@@ -243,6 +278,59 @@ export class ManagementLoginService {
     }
   }
 
+  async refresh(attemptId: string): Promise<ManagementLoginRefreshResult> {
+    const attempt = this.requireAttempt(attemptId)
+    if (!attempt.recovery) throw new Error('当前登录尝试不是 Session 恢复')
+    if (!attempt.identity || !attempt.capturedSession) {
+      throw new Error('尚未识别有效店铺登录会话')
+    }
+    const response = await fetch(
+      this.backendUrl(`/api/v1/shops/${attempt.recovery.shopId}/session/refresh`),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          lease_id: attempt.recovery.leaseId,
+          expected_version: attempt.recovery.expectedVersion,
+          session_payload_base64:
+            attempt.capturedSession.payload.toString('base64'),
+          captured_at: attempt.capturedSession.capturedAt,
+        }),
+      },
+    )
+    if (!response.ok) throw new Error(await safeBackendError(response))
+    const result = (await response.json()) as RefreshApiResponse
+    if (
+      result.shop_id !== attempt.recovery.shopId ||
+      result.status !== 'valid' ||
+      !Number.isInteger(result.version) ||
+      !result.validated_at
+    ) {
+      throw new Error('服务器返回的 Session 恢复结果不完整')
+    }
+    await this.saveProfileMapping(
+      result.shop_id,
+      attempt.platform,
+      attempt.partition,
+    )
+    attempt.status = 'completed'
+    attempt.message = '登录会话已恢复并验证有效'
+    if (attempt.window && !attempt.window.isDestroyed()) {
+      attempt.systemCloseRequested = true
+      attempt.window.close()
+    }
+    this.clearCapturedSession(attempt)
+    this.clearAttemptTimeout(attempt)
+    this.attempts.delete(attempt.attemptId)
+    return {
+      shopId: result.shop_id,
+      status: result.status,
+      sessionVersion: result.version,
+      validatedAt: result.validated_at,
+      cookieUpdatesApplied: result.cookie_updates_applied,
+    }
+  }
+
   async close(attemptId: string): Promise<void> {
     const attempt = this.attempts.get(attemptId)
     if (!attempt) return
@@ -250,6 +338,7 @@ export class ManagementLoginService {
     attempt.identity = null
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
+    await this.releaseRecoveryLease(attempt)
     this.attempts.delete(attemptId)
   }
 
@@ -276,6 +365,8 @@ export class ManagementLoginService {
       identity: attempt.identity,
       sessionCaptured: Boolean(attempt.capturedSession),
       cookieCount: attempt.capturedSession?.cookieCount ?? 0,
+      recovery: Boolean(attempt.recovery),
+      profileReused: attempt.profileReused,
       message: attempt.message,
     }
   }
@@ -294,6 +385,7 @@ export class ManagementLoginService {
       attempt.status = 'closed'
       attempt.message = '登录尝试已超时，请重新打开浏览器登录'
       attempt.expiresAt = null
+      void this.releaseRecoveryLease(attempt)
     }, LOGIN_ATTEMPT_TIMEOUT_MS)
     attempt.expiresAt.unref()
   }
@@ -303,15 +395,54 @@ export class ManagementLoginService {
     attempt.expiresAt = null
   }
 
-  private backendEndpoint(): string {
+  private backendUrl(pathname: string): string {
     const configured =
       process.env.CONTROL_CENTER_BACKEND_URL || 'http://127.0.0.1:8000'
-    const url = new URL('/api/v1/shop-onboarding/complete', configured)
+    const url = new URL(pathname, configured)
     const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost'
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
       throw new Error('管理端登录只允许连接 HTTPS Backend 或本机 Backend')
     }
     return url.toString()
+  }
+
+  private backendEndpoint(): string {
+    return this.backendUrl('/api/v1/shop-onboarding/complete')
+  }
+
+  private async releaseRecoveryLease(attempt: LoginAttempt): Promise<void> {
+    if (!attempt.recovery) return
+    const { shopId, leaseId } = attempt.recovery
+    attempt.recovery = null
+    try {
+      await fetch(
+        this.backendUrl(
+          `/api/v1/shops/${shopId}/session/refresh-lease/${leaseId}`,
+        ),
+        { method: 'DELETE' },
+      )
+    } catch {
+      // Lease is expiring server-side; cancellation remains best effort offline.
+    }
+  }
+
+  private async loadProfileMapping(
+    shopId: string,
+    platform: ManagementLoginPlatform,
+  ) {
+    const filePath = path.join(
+      app.getPath('userData'),
+      'management-login-profiles.json',
+    )
+    try {
+      const mappings = JSON.parse(await fs.readFile(filePath, 'utf8')) as Record<
+        string,
+        unknown
+      >
+      return parseManagementLoginProfile(mappings[shopId], platform)
+    } catch {
+      return null
+    }
   }
 
   private async saveProfileMapping(

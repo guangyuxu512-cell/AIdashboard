@@ -24,6 +24,10 @@ class ShopSession(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("shop_id", name="uq_shop_sessions_shop_id"),
         CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint(
+            "(refresh_lease_id IS NULL) = (refresh_lease_expires_at IS NULL)",
+            name="refresh_lease_pair",
+        ),
     )
 
     session_id: Mapped[UUID] = mapped_column(
@@ -62,6 +66,14 @@ class ShopSession(TimestampMixin, Base):
         nullable=True,
     )
     expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    refresh_lease_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    refresh_lease_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

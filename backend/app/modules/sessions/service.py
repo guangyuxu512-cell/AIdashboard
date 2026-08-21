@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -53,6 +54,8 @@ class ShopSessionService:
                 captured_at=None,
                 validated_at=None,
                 expires_at=None,
+                refresh_in_progress=False,
+                refresh_lease_expires_at=None,
             )
         return self._to_metadata(shop_session)
 
@@ -114,6 +117,12 @@ class ShopSessionService:
 
     @staticmethod
     def _to_metadata(shop_session: ShopSession) -> ShopSessionMetadataRead:
+        now = datetime.now(UTC)
+        refresh_in_progress = (
+            shop_session.refresh_lease_id is not None
+            and shop_session.refresh_lease_expires_at is not None
+            and shop_session.refresh_lease_expires_at > now
+        )
         return ShopSessionMetadataRead(
             session_id=shop_session.session_id,
             configured=True,
@@ -123,4 +132,10 @@ class ShopSessionService:
             captured_at=shop_session.captured_at,
             validated_at=shop_session.validated_at,
             expires_at=shop_session.expires_at,
+            refresh_in_progress=refresh_in_progress,
+            refresh_lease_expires_at=(
+                shop_session.refresh_lease_expires_at
+                if refresh_in_progress
+                else None
+            ),
         )

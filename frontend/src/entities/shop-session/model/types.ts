@@ -15,4 +15,13 @@ export interface ShopSessionMetadataViewModel {
   capturedAtDisplay: string | null
   validatedAtDisplay: string | null
   expiresAtDisplay: string | null
+  refreshInProgress: boolean
+  refreshLeaseExpiresAtDisplay: string | null
+}
+
+export interface ShopSessionRefreshLeaseViewModel {
+  shopId: string
+  leaseId: string
+  expectedVersion: number
+  expiresAt: string
 }

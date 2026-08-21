@@ -53,7 +53,7 @@ Profile 本地、Session 服务器。Backend HTTP 使用 ShopSession，不读取
 
 Payload 不经过 Renderer，不提供读取 API，也不记录日志。Electron Main 只通过固定 Adapter 脚本采集，Renderer 不能传入 JavaScript。Backend Base64 解码后立即使用 Fernet 加密落库。
 
-本阶段没有已验证的服务器只读平台接口，因此写入状态为 `captured`、`validated_at = NULL`。`captured` 只表示真实身份已识别且认证状态已采集，不等价于服务器 HTTP 已验证。首次版本仍要求 `expected_version = 0` 并生成版本 `1`，后续更新继续使用乐观并发版本。
+首次采集写入 `captured`、`validated_at = NULL`。`captured` 只表示真实身份已识别且认证状态已采集，不等价于服务器 HTTP 已验证。Backend 随后通过抖店 `shop_info_v2` 只读接口验证远端 `shop_id` 与本地 `platform_shop_id`；成功才写 `valid`。首次版本要求 `expected_version = 0` 并生成版本 `1`，后续更新继续使用乐观并发版本。
 
 ## 5. 本地 Profile
 
@@ -72,15 +72,33 @@ Renderer 只能使用类型化的：
 - `management-login:open`
 - `management-login:get-status`
 - `management-login:complete`
+- `management-login:refresh`
 - `management-login:close`
 
 参数经过白名单校验。不存在任意 JavaScript、通用 IPC、Shell 或 Profile 文件读取能力。`contextIsolation = true`、`nodeIntegration = false`、`sandbox = true` 保持不变。
 
-## 7. 明确未实现
+## 7. 健康检查与恢复
+
+Session 健康判断由 Backend `ShopSessionHealthService` 统一完成。只有平台明确返回 HTTP 401/403 或 Connector 已有证据的认证失效响应才写 `invalid`；Timeout、DNS、网络错误、平台 5xx、响应结构异常只表示本次无法验证，不改变 Session 状态。`validated_at` 的新鲜窗口由 Backend 配置统一控制，不建立全店铺定时 Cron。
+
+Cookie 不保证永不过期，Cookie `expires` 只用于预警，平台只读验证才是权威。真实响应包含 `Set-Cookie` 时按 name/domain/path 合并并保留 HttpOnly、Secure、SameSite、expires；无 `Set-Cookie` 时不伪造续期、不增加版本。
+
+恢复优先级：
+
+1. 当前 Session 仍有效则继续使用；
+2. 当前管理电脑存在 Management Profile 时重新采集；
+3. Profile 已掉线或本机无 Profile 时由用户人工登录；
+4. Credential 自动登录留待后续；
+5. Worker Profile 恢复留待后续。
+
+同一店铺恢复前获取 Backend 可过期 Refresh Lease，提交使用开始时取得的 `expected_version`。完成、取消、窗口提前关闭和超时均释放 Lease；异常退出由 Lease 到期恢复。Profile 始终是本机资产，不跨电脑同步；不同电脑可用各自 Profile 更新同一服务器 ShopSession。
+
+## 8. 明确未实现
 
 - 自动验证码和验证码 Provider；
 - 账号密码自动填充或自动登录；
-- Session 定时检测与自动恢复；
+- 全店铺后台定时巡检；
+- Credential 自动填充、自动验证码；
 - Worker Browser Profile、Worker 自动登录或 Credential 下发；
 - 影刀读取 Session；
-- Backend 平台 HTTP Connector 与服务器有效性验证。
+- Worker Session 恢复。

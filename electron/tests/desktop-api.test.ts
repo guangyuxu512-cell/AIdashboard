@@ -6,6 +6,10 @@ import {
   isManagementLoginOpenInput,
 } from '../types'
 import { shouldPreserveCapturedLogin } from '../services/management-login-lifecycle'
+import {
+  parseManagementLoginProfile,
+  resolveManagementLoginPartition,
+} from '../services/management-login-profile'
 
 const attemptId = '00000000-0000-4000-8000-000000000001'
 
@@ -15,10 +19,51 @@ test('management login IPC only accepts registered platform and typed attempt', 
     isManagementLoginOpenInput({ platform: 'douyin', attemptId }),
     true,
   )
+  assert.equal(
+    isManagementLoginOpenInput({
+      platform: 'douyin',
+      recovery: {
+        shopId: '00000000-0000-4000-8000-000000000002',
+        leaseId: '00000000-0000-4000-8000-000000000003',
+        expectedVersion: 3,
+      },
+    }),
+    true,
+  )
   assert.equal(isManagementLoginOpenInput({ platform: 'pdd' }), false)
   assert.equal(
     isManagementLoginOpenInput({ platform: 'douyin', attemptId: '../profile' }),
     false,
+  )
+})
+
+test('management login recovery reuses only a valid local profile mapping', () => {
+  const mapping = parseManagementLoginProfile(
+    {
+      platform: 'douyin',
+      partition: `persist:management-login-${attemptId}`,
+      updatedAt: '2026-08-21T12:00:00Z',
+    },
+    'douyin',
+  )
+  assert.deepEqual(resolveManagementLoginPartition(attemptId, mapping), {
+    partition: `persist:management-login-${attemptId}`,
+    profileReused: true,
+  })
+  assert.deepEqual(resolveManagementLoginPartition(attemptId, null), {
+    partition: `persist:management-login-${attemptId}`,
+    profileReused: false,
+  })
+  assert.equal(
+    parseManagementLoginProfile(
+      {
+        platform: 'douyin',
+        partition: 'persist:../../unsafe',
+        updatedAt: '2026-08-21T12:00:00Z',
+      },
+      'douyin',
+    ),
+    null,
   )
 })
 

@@ -48,9 +48,10 @@ Error behavior: Preload 与 Main 均拒绝非法主题值；窗口已销毁或�
 management-login:open
 management-login:get-status
 management-login:complete
+management-login:refresh
 management-login:close
 ```
 
-`open` 只接受已注册 Management Login 平台和可选 UUID attempt ID；`get-status` 只返回状态、真实店铺身份与 Cookie 数量等非敏感元数据；`complete` 接收当前内存凭证并由 Main 将 Adapter 持有的 payload 直接提交 Backend；`close` 关闭尝试并清除 Main 内存 payload。
+`open` 只接受已注册平台、可选 UUID attempt ID，以及白名单化的 Session 恢复上下文（shop、lease、expected version）；`get-status` 只返回状态、真实店铺身份与 Cookie 数量等非敏感元数据；`complete` 完成首次接入；`refresh` 由 Main 将 Adapter 持有的新 payload 直接提交 Backend 并触发服务器立即验证；`close` 关闭尝试、清除 Main 内存 payload 并释放恢复租约。
 
-Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。每个尝试使用独立 `persist:management-login-<attempt_id>` partition，Profile 位于 Electron `userData`，成功后只在本机保存 shop 到 partition 的映射。
+Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。
