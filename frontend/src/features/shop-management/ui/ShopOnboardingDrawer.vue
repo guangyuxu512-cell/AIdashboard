@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, ref, watch } from 'vue'
 import {
   NAlert,
   NDescriptions,
@@ -11,8 +11,6 @@ import {
 } from 'naive-ui'
 import type { SelectOption } from 'naive-ui'
 
-import { maskCredentialIdentifier } from '@/entities/credential'
-import { useDeviceListQuery } from '@/entities/device'
 import {
   getPlatformDefinition,
   PLATFORM_ONBOARDING_OPTIONS,
@@ -20,8 +18,6 @@ import {
   type PlatformCode,
 } from '@/entities/platform'
 import { getErrorMessage } from '@/shared/api'
-import ErrorState from '@/shared/components/ErrorState.vue'
-import LoadingState from '@/shared/components/LoadingState.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppDrawer from '@/shared/ui/AppDrawer.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -38,75 +34,52 @@ import CredentialFormFields from './CredentialFormFields.vue'
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
   'update:show': [value: boolean]
-  'open-legacy': []
+  completed: [shopId: string]
 }>()
 
-const isDevelopment = import.meta.env.DEV
 const currentStep = ref(1)
 const selectedPlatform = ref<PlatformCode | null>(null)
 const platformError = ref<string | null>(null)
 const credential = ref<CredentialFormValue>({ ...EMPTY_CREDENTIAL_FORM })
 const credentialErrors = ref<CredentialFormErrors>({})
-const credentialConfigured = ref(false)
-const selectedDeviceId = ref<string | null>(null)
-const deviceError = ref<string | null>(null)
+const loginStatus = ref<ManagementLoginStatusResult | null>(null)
+const completedResult = ref<ManagementLoginCompleteResult | null>(null)
+const actionError = ref<string | null>(null)
+const openingLogin = ref(false)
+const completing = ref(false)
+let pollTimer: number | undefined
+let polling = false
 
-const deviceListParams = computed(() => ({
-  page: 1,
-  pageSize: 100,
-  filters: {
-    status: null,
-    tag: null,
-    workerVersion: null,
-    capability: null,
-    keyword: '',
-  },
-}))
-const deviceQuery = useDeviceListQuery(
-  deviceListParams,
-  computed(() => props.show && currentStep.value >= 3),
-)
-const deviceOptions = computed<SelectOption[]>(() =>
-  (deviceQuery.data.value?.items ?? []).map((device) => ({
-    label: device.deviceName,
-    value: device.deviceId,
-  })),
-)
-const selectedDevice = computed(() =>
-  (deviceQuery.data.value?.items ?? []).find(
-    (device) => device.deviceId === selectedDeviceId.value,
-  ),
-)
 const selectedPlatformMeta = computed(() =>
   selectedPlatform.value
     ? getPlatformDefinition(selectedPlatform.value)
     : undefined,
 )
-const loginExecutionAvailable = computed(
+const loginAvailable = computed(
   () =>
+    selectedPlatform.value === 'douyin' &&
     selectedPlatformMeta.value?.capabilities.shopOnboarding === 'available' &&
-    selectedPlatformMeta.value.capabilities.authentication === 'available',
+    selectedPlatformMeta.value.capabilities.authentication === 'available' &&
+    selectedPlatformMeta.value.capabilities.sessionCapture === 'available',
 )
-const maskedIdentifier = computed(() =>
-  credential.value.loginIdentifier
-    ? maskCredentialIdentifier(credential.value.loginIdentifier)
-    : '—',
-)
+const loginStateType = computed(() => {
+  if (actionError.value || loginStatus.value?.status === 'failed') return 'error'
+  if (loginStatus.value?.status === 'identified') return 'success'
+  if (loginStatus.value?.status === 'closed') return 'warning'
+  return 'info'
+})
 
 watch(
   () => props.show,
   (show) => {
-    if (!show) return
-    currentStep.value = 1
-    selectedPlatform.value = null
-    platformError.value = null
-    credential.value = { ...EMPTY_CREDENTIAL_FORM }
-    credentialErrors.value = {}
-    credentialConfigured.value = false
-    selectedDeviceId.value = null
-    deviceError.value = null
+    if (show) reset()
   },
 )
+
+onBeforeUnmount(() => {
+  stopPolling()
+  void closeLoginAttempt()
+})
 
 function renderPlatformLabel(option: SelectOption) {
   const definition = getPlatformDefinition(option.value as PlatformCode)
@@ -124,13 +97,8 @@ function updatePlatform(value: AppOptionValue | null): void {
   platformError.value = null
 }
 
-function updateDevice(value: AppOptionValue | null): void {
-  selectedDeviceId.value = value as string | null
-  deviceError.value = null
-}
-
 function previous(): void {
-  if (currentStep.value > 1) currentStep.value -= 1
+  if (currentStep.value > 1 && currentStep.value < 4) currentStep.value -= 1
 }
 
 function next(): void {
@@ -139,50 +107,158 @@ function next(): void {
       platformError.value = '请选择平台'
       return
     }
-  }
-  if (currentStep.value === 2) {
-    const parsed = createCredentialFormSchema(false).safeParse(credential.value)
-    if (!parsed.success) {
-      const errors = parsed.error.flatten().fieldErrors
-      credentialErrors.value = {
-        loginIdentifier: errors.loginIdentifier?.[0],
-        password: errors.password?.[0],
-        preferredVerificationChannel:
-          errors.preferredVerificationChannel?.[0],
-      }
+    if (!loginAvailable.value) {
+      platformError.value = '该平台的真实登录识别尚未接入'
       return
     }
+  }
+  if (currentStep.value === 2 && !validateCredential()) return
+  if (currentStep.value < 3) currentStep.value += 1
+}
+
+function validateCredential(): boolean {
+  const parsed = createCredentialFormSchema(false).safeParse(credential.value)
+  if (parsed.success) {
     credential.value = parsed.data
     credentialErrors.value = {}
-    credentialConfigured.value = true
+    return true
   }
-  if (currentStep.value === 3) {
-    if (!selectedDeviceId.value) {
-      deviceError.value = '请选择计划建立登录环境的设备'
-      return
+  const errors = parsed.error.flatten().fieldErrors
+  credentialErrors.value = {
+    loginIdentifier: errors.loginIdentifier?.[0],
+    password: errors.password?.[0],
+    preferredVerificationChannel:
+      errors.preferredVerificationChannel?.[0],
+  }
+  return false
+}
+
+async function openLogin(): Promise<void> {
+  if (!loginAvailable.value || selectedPlatform.value !== 'douyin') return
+  if (!window.desktop?.managementLogin) {
+    actionError.value = '请在 Electron 中控台中完成管理端登录'
+    return
+  }
+  openingLogin.value = true
+  actionError.value = null
+  try {
+    loginStatus.value = await window.desktop.managementLogin.open({
+      platform: selectedPlatform.value,
+      attemptId: loginStatus.value?.attemptId,
+    })
+    startPolling()
+  } catch (error) {
+    actionError.value = getErrorMessage(error)
+  } finally {
+    openingLogin.value = false
+  }
+}
+
+function startPolling(): void {
+  stopPolling()
+  void pollLoginStatus()
+  pollTimer = window.setInterval(() => void pollLoginStatus(), 1500)
+}
+
+function stopPolling(): void {
+  if (pollTimer !== undefined) window.clearInterval(pollTimer)
+  pollTimer = undefined
+}
+
+async function pollLoginStatus(): Promise<void> {
+  if (
+    polling ||
+    !loginStatus.value?.attemptId ||
+    !window.desktop?.managementLogin
+  )
+    return
+  polling = true
+  try {
+    loginStatus.value = await window.desktop.managementLogin.getStatus(
+      loginStatus.value.attemptId,
+    )
+    if (loginStatus.value.status === 'identified') {
+      stopPolling()
+      currentStep.value = 4
+    } else if (
+      loginStatus.value.status === 'closed' ||
+      loginStatus.value.status === 'failed'
+    ) {
+      stopPolling()
     }
+  } catch (error) {
+    stopPolling()
+    actionError.value = getErrorMessage(error)
+  } finally {
+    polling = false
   }
-  if (currentStep.value < 4) currentStep.value += 1
+}
+
+async function completeOnboarding(): Promise<void> {
+  if (
+    !loginStatus.value?.attemptId ||
+    !loginStatus.value.identity ||
+    !loginStatus.value.sessionCaptured ||
+    !window.desktop?.managementLogin
+  ) {
+    actionError.value = '尚未识别有效店铺登录会话'
+    return
+  }
+  if (!validateCredential()) {
+    currentStep.value = 2
+    return
+  }
+  completing.value = true
+  actionError.value = null
+  try {
+    completedResult.value = await window.desktop.managementLogin.complete({
+      attemptId: loginStatus.value.attemptId,
+      loginIdentifier: credential.value.loginIdentifier,
+      secret: credential.value.password,
+      preferredVerificationChannel:
+        credential.value.preferredVerificationChannel,
+    })
+    credential.value.password = ''
+    currentStep.value = 5
+    emit('completed', completedResult.value.shopId)
+  } catch (error) {
+    actionError.value = getErrorMessage(error)
+  } finally {
+    completing.value = false
+  }
+}
+
+async function closeLoginAttempt(): Promise<void> {
+  const attemptId = loginStatus.value?.attemptId
+  if (attemptId && window.desktop?.managementLogin) {
+    await window.desktop.managementLogin.close(attemptId).catch(() => undefined)
+  }
+}
+
+function reset(): void {
+  stopPolling()
+  currentStep.value = 1
+  selectedPlatform.value = null
+  platformError.value = null
+  credential.value = { ...EMPTY_CREDENTIAL_FORM }
+  credentialErrors.value = {}
+  loginStatus.value = null
+  completedResult.value = null
+  actionError.value = null
+  openingLogin.value = false
+  completing.value = false
 }
 
 function close(): void {
+  stopPolling()
+  void closeLoginAttempt()
   credential.value = { ...EMPTY_CREDENTIAL_FORM }
-  credentialErrors.value = {}
-  credentialConfigured.value = false
   emit('update:show', false)
 }
 
 function updateShow(show: boolean): void {
-  if (!show) {
-    close()
-    return
-  }
-  emit('update:show', true)
-}
-
-function openLegacy(): void {
-  close()
-  emit('open-legacy')
+  if (!show) close()
+  else emit('update:show', true)
 }
 </script>
 
@@ -197,14 +273,15 @@ function openLegacy(): void {
       <NSteps :current="currentStep" size="small">
         <NStep title="选择平台" />
         <NStep title="账号与密码" />
-        <NStep title="登录设备" />
-        <NStep title="准备连接" />
+        <NStep title="登录并识别" />
+        <NStep title="确认店铺" />
+        <NStep title="完成" />
       </NSteps>
 
       <section v-if="currentStep === 1" class="shop-onboarding__step">
         <div>
           <h3>选择平台</h3>
-          <p>已注册的平台都可进入接入流程，具体登录能力按平台独立演进。</p>
+          <p>当前只开放已有真实登录识别依据的平台。</p>
         </div>
         <NForm label-placement="top">
           <NFormItem
@@ -222,25 +299,16 @@ function openLegacy(): void {
           </NFormItem>
           <NFormItem label="店铺名称">
             <span class="shop-onboarding__resolved-field">
-              登录成功后自动读取
+              登录成功后由平台自动识别
             </span>
           </NFormItem>
         </NForm>
-        <NAlert
-          v-if="selectedPlatform && !loginExecutionAvailable"
-          type="info"
-          :bordered="true"
-        >
-          该平台已注册，但登录执行能力尚未接入。
-        </NAlert>
       </section>
 
       <section v-else-if="currentStep === 2" class="shop-onboarding__step">
         <div>
-          <h3>配置账号与密码</h3>
-          <p>
-            账号密码用于 Session 失效后的授权恢复；当前 Shell 不会提前创建 Shop 或写入凭证。
-          </p>
+          <h3>账号与密码</h3>
+          <p>本轮登录窗口不自动填充；凭证只在接入完成时发送到服务器加密保存。</p>
         </div>
         <NForm label-placement="top" @submit.prevent="next">
           <CredentialFormFields
@@ -252,79 +320,102 @@ function openLegacy(): void {
 
       <section v-else-if="currentStep === 3" class="shop-onboarding__step">
         <div>
-          <h3>选择登录设备</h3>
-          <p>这里只规划在哪台设备建立独立登录环境，不表示 Worker 在线或可用。</p>
+          <h3>登录并识别</h3>
+          <p>独立登录窗口保存在当前管理电脑；验证码、扫码、滑块和 App 确认由你人工完成。</p>
         </div>
-        <LoadingState
-          v-if="deviceQuery.isPending.value"
-          description="正在加载设备…"
-        />
-        <ErrorState
-          v-else-if="deviceQuery.error.value"
-          :description="getErrorMessage(deviceQuery.error.value)"
-          retryable
-          @retry="deviceQuery.refetch"
-        />
-        <NForm v-else label-placement="top">
-          <NFormItem
-            label="登录设备"
-            :validation-status="deviceError ? 'error' : undefined"
-            :feedback="deviceError ?? undefined"
+        <div class="shop-onboarding__connect-action">
+          <AppButton
+            tone="primary"
+            :loading="openingLogin"
+            @click="openLogin"
           >
-            <AppSelect
-              :model-value="selectedDeviceId"
-              :options="deviceOptions"
-              :disabled="deviceOptions.length === 0"
-              placeholder="请选择登录设备"
-              @update:model-value="updateDevice"
+            {{ loginStatus?.status === 'closed' ? '重新打开登录' : '打开浏览器登录' }}
+          </AppButton>
+        </div>
+        <NAlert
+          v-if="loginStatus || actionError"
+          :type="loginStateType"
+          :bordered="true"
+        >
+          {{ actionError ?? loginStatus?.message }}
+        </NAlert>
+      </section>
+
+      <section v-else-if="currentStep === 4" class="shop-onboarding__step">
+        <div>
+          <h3>确认店铺</h3>
+          <p>以下身份来自平台账号接口，确认后才会原子创建正式店铺。</p>
+        </div>
+        <NDescriptions :column="1" label-placement="left" bordered>
+          <NDescriptionsItem label="平台">
+            <PlatformDisplay
+              v-if="loginStatus?.identity"
+              :code="loginStatus.identity.platform"
             />
-          </NFormItem>
-          <p v-if="deviceOptions.length === 0" class="shop-onboarding__hint">
-            暂无设备，请先在设备中心添加设备。
-          </p>
-        </NForm>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="店铺名称">
+            {{ loginStatus?.identity?.shopDisplayName ?? '—' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="平台店铺 ID">
+            {{ loginStatus?.identity?.platformShopId ?? '—' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="Session">
+            {{ loginStatus?.sessionCaptured ? '已采集' : '未采集' }}
+          </NDescriptionsItem>
+        </NDescriptions>
+        <NAlert v-if="actionError" type="error" :bordered="true">
+          {{ actionError }}
+        </NAlert>
       </section>
 
       <section v-else class="shop-onboarding__step">
         <div>
-          <h3>准备连接</h3>
-          <p>以下信息将在未来 Worker 登录编排中使用。</p>
+          <h3>接入成功</h3>
+          <p>店铺、加密凭证与加密 Session 已由服务器一致保存。</p>
         </div>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="平台">
-            <PlatformDisplay v-if="selectedPlatform" :code="selectedPlatform" />
+          <NDescriptionsItem label="店铺名称">
+            {{ completedResult?.shopDisplayName ?? '—' }}
+          </NDescriptionsItem>
+          <NDescriptionsItem label="平台店铺 ID">
+            {{ completedResult?.platformShopId ?? '—' }}
           </NDescriptionsItem>
           <NDescriptionsItem label="登录账号">
-            {{ maskedIdentifier }}
+            {{ completedResult?.maskedIdentifier ?? '—' }}
           </NDescriptionsItem>
-          <NDescriptionsItem label="登录密码">
-            {{ credentialConfigured ? '已配置' : '未配置' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="登录设备">
-            {{ selectedDevice?.deviceName ?? '—' }}
+          <NDescriptionsItem label="Session">
+            已采集 · v{{ completedResult?.sessionVersion ?? 1 }}
           </NDescriptionsItem>
         </NDescriptions>
-        <div class="shop-onboarding__connect-action">
-          <AppButton tone="primary" disabled>打开浏览器并登录</AppButton>
-          <span>待 Worker Browser Session Manager 接入</span>
-        </div>
       </section>
     </div>
 
     <template #footer>
       <div class="shop-onboarding__footer">
-        <AppButton v-if="isDevelopment" tone="text" @click="openLegacy">
-          开发：Legacy Onboarding
+        <AppButton @click="close">
+          {{ currentStep === 5 ? '关闭' : '取消' }}
         </AppButton>
         <div class="shop-onboarding__footer-actions">
-          <AppButton @click="close">关闭</AppButton>
-          <AppButton v-if="currentStep > 1" @click="previous">上一步</AppButton>
           <AppButton
-            v-if="currentStep < 4"
+            v-if="currentStep > 1 && currentStep < 4"
+            @click="previous"
+          >
+            上一步
+          </AppButton>
+          <AppButton
+            v-if="currentStep < 3"
             tone="primary"
             @click="next"
           >
             下一步
+          </AppButton>
+          <AppButton
+            v-if="currentStep === 4"
+            tone="primary"
+            :loading="completing"
+            @click="completeOnboarding"
+          >
+            完成接入
           </AppButton>
         </div>
       </div>
@@ -353,9 +444,7 @@ function openLegacy(): void {
   font-weight: var(--font-weight-semibold);
 }
 
-.shop-onboarding__step p,
-.shop-onboarding__hint,
-.shop-onboarding__connect-action span {
+.shop-onboarding__step p {
   color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
 }
@@ -382,7 +471,6 @@ function openLegacy(): void {
 }
 
 @media (max-width: 720px) {
-  .shop-onboarding__connect-action,
   .shop-onboarding__footer {
     align-items: stretch;
     flex-direction: column;

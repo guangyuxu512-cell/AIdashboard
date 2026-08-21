@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.modules.shops.enums import BindingRole
+from app.modules.shops.enums import BindingRole, ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 
 
@@ -20,6 +20,18 @@ class ShopRepository:
 
     def get(self, shop_id: UUID) -> Shop | None:
         return self.session.get(Shop, shop_id)
+
+    def get_by_platform_identity(
+        self,
+        platform: ShopPlatform,
+        platform_shop_id: str,
+    ) -> Shop | None:
+        return self.session.scalar(
+            select(Shop).where(
+                Shop.platform == platform,
+                Shop.platform_shop_id == platform_shop_id,
+            ),
+        )
 
     def add(self, shop: Shop) -> None:
         self.session.add(shop)

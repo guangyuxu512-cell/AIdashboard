@@ -71,6 +71,7 @@ export function createMockShopDataSource(): ShopDataSource {
         shopId: `shop-fixture-${String(sequence++).padStart(3, '0')}`,
         shopName: input.shopName,
         platform: input.platform,
+        platformShopId: null,
         ownerUserId: input.ownerUserId,
         ownerName: String(owner?.label ?? '未分配'),
         enabled: input.enabled,

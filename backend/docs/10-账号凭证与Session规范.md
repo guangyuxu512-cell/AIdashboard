@@ -24,7 +24,9 @@ PlatformCredential ──< ShopCredentialBinding >── Shop ── ShopSession
 
 `ShopSession` 每店铺一条当前快照，持有 `version`、必要状态、来源设备、采集/验证/可选过期时间，以及 `payload_encrypted`。Payload 可以承载 Cookie 和必要认证快照，但不是任意业务 JSON 容器。
 
-状态仅有：`not_configured`、`valid`、`invalid`、`refresh_required`。未配置时数据库无需伪造空 Session，由 Metadata Service 返回版本 `0`。
+状态包含：`not_configured`、`captured`、`valid`、`invalid`、`refresh_required`。`captured` 表示真实登录身份已经识别且 payload 已加密保存，但尚未通过服务器只读平台接口验证；不得把它展示成 `valid`。未配置时数据库无需伪造空 Session，由 Metadata Service 返回版本 `0`。
+
+管理端首次登录不是 Worker，使用 `source_device_id = NULL`。未来 Worker 重采集才写入真实 Device ID，禁止为管理电脑伪造 Device。
 
 Session payload 与密码共用成熟的加密基础设施，但在领域上互相独立。普通 API 只返回元数据，绝不返回 Cookie、payload 或密文。
 
@@ -38,6 +40,10 @@ Session payload 与密码共用成熟的加密基础设施，但在领域上互�
 
 Browser Profile 永远保留在设备侧，并按 `Device × Shop` 隔离；服务器集中管理 Credential、Session 与业务数据，不上传完整 Chrome Profile。
 
-## 6. 审计与后续实现
+## 6. 管理端原子接入
+
+阶段 3C-1 的完成命令由 Electron Main 在 Adapter 已确认身份并采集 payload 后调用。Backend 在单个数据库事务内创建 Shop、PlatformCredential、ShopCredentialBinding 与 ShopSession；失败全部回滚。Shop 使用 `(platform, platform_shop_id)` 唯一约束避免同一平台店铺重复接入。
+
+## 7. 审计与后续实现
 
 Credential 变更、Session 版本变更及授权读取未来必须接入审计，但审计只记录主体、对象、动作和结果，不记录敏感值。阶段 3A 只建立 Domain、API 元数据和认证 Protocol，不实现 Worker、浏览器、Cookie 采集、验证码 Provider 或平台 Connector。

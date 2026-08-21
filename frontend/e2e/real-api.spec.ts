@@ -119,24 +119,14 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   const updatedShopName = `${testPrefix}shop-updated`
   await page.getByRole('button', { name: '新增店铺' }).click()
   await expect(page.getByText('新增店铺', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '开发：Legacy Onboarding' }).click()
-  await page.getByPlaceholder('请输入店铺名称').fill(shopName)
-  await expect(page.getByText('抖店', { exact: true }).last()).toBeVisible()
-  const createDialog = page.locator('.n-modal')
-  await createDialog.getByText('抖店', { exact: true }).click()
-  const platformOptions = page.locator('.n-base-select-option')
-  await expect(platformOptions.filter({ hasText: '淘宝' })).toHaveClass(
-    /--disabled/,
-  )
-  await expect(platformOptions.filter({ hasText: '视频号' })).toHaveClass(
-    /--disabled/,
-  )
-  await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText('登录并识别', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).click()
+  const createResponse = await page.request.post('/api/v1/shops', {
+    data: { display_name: shopName, platform: 'douyin' },
+  })
+  expect(createResponse.ok()).toBe(true)
+  await page.reload()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
-  await expect(
-    page.getByRole('row').filter({ hasText: shopName }).getByRole('checkbox'),
-  ).toBeChecked()
 
   await page.reload()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
@@ -265,6 +255,9 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .filter({ hasText: updatedDeviceName })
     .getByRole('button', { name: '查看' })
     .click()
+  const deviceDrawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: new RegExp(updatedDeviceName) }),
+  })
   await expect(
     page.getByRole('heading', { name: new RegExp(updatedDeviceName) }),
   ).toBeVisible()
@@ -272,9 +265,11 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(page.getByRole('heading', { name: '执行能力' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '影刀 RPA' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '最近执行' })).toBeVisible()
-  await expect(page.getByText('6.2.23', { exact: true })).toBeVisible()
-  await expect(page.getByText('GY00999', { exact: true })).toBeVisible()
-  await expect(page.getByText('PersonalBasic', { exact: true })).toBeVisible()
+  await expect(deviceDrawer.getByText('6.2.23', { exact: true })).toBeVisible()
+  await expect(deviceDrawer.getByText('GY00999', { exact: true })).toBeVisible()
+  await expect(
+    deviceDrawer.getByText('PersonalBasic', { exact: true }),
+  ).toBeVisible()
   await page.getByRole('button', { name: '查看应用' }).click()
   await expect(page.getByText('影刀应用列表', { exact: true })).toBeVisible()
   await expect(page.getByText('影刀应用 E2E', { exact: true })).toBeVisible()
@@ -287,9 +282,6 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .getByRole('button', { name: '关闭', exact: true })
     .click()
   await expect(page.getByText('影刀应用列表', { exact: true })).toHaveCount(0)
-  const deviceDrawer = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: new RegExp(updatedDeviceName) }),
-  })
   await deviceDrawer.getByRole('button', { name: '关闭', exact: true }).click()
 
   const layout = await page.evaluate(() => ({

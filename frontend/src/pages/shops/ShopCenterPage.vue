@@ -63,7 +63,7 @@ const management = useShopManagement()
 
     <ShopOnboardingDrawer
       v-model:show="management.onboardingVisible.value"
-      @open-legacy="management.openLegacyCreate"
+      @completed="management.handleOnboardingCompleted"
     />
 
     <ShopFormDialog

@@ -36,9 +36,9 @@ export const PLATFORM_REGISTRY = [
     capabilities: {
       legacyShopCreate: 'available',
       credentialManagement: 'available',
-      shopOnboarding: 'planned',
-      authentication: 'planned',
-      sessionCapture: 'planned',
+      shopOnboarding: 'available',
+      authentication: 'available',
+      sessionCapture: 'available',
       dataFetch: 'planned',
       rpa: 'planned',
     },
@@ -106,7 +106,7 @@ export interface PlatformOnboardingOption {
   [key: string]: unknown
   label: string
   value: PlatformCode
-  disabled: false
+  disabled: boolean
 }
 
 export const PLATFORM_ALL_NAV_ITEM = {
@@ -149,7 +149,10 @@ export function getPlatformOnboardingOptions(
     .map((platform) => ({
       label: platform.label,
       value: platform.code as PlatformCode,
-      disabled: false,
+      disabled:
+        platform.capabilities.shopOnboarding !== 'available' ||
+        platform.capabilities.authentication !== 'available' ||
+        platform.capabilities.sessionCapture !== 'available',
     }))
 }
 

@@ -11,6 +11,23 @@ class OperationRecorder:
     def create_index(self, name: str, *args: object, **kwargs: object) -> None:
         self.calls.append(("create_index", name))
 
+    def add_column(self, name: str, *args: object, **kwargs: object) -> None:
+        self.calls.append(("add_column", name))
+
+    def drop_column(self, name: str, *args: object, **kwargs: object) -> None:
+        self.calls.append(("drop_column", name))
+
+    def create_unique_constraint(
+        self,
+        name: str,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.calls.append(("create_unique_constraint", name))
+
+    def execute(self, statement: str, *args: object, **kwargs: object) -> None:
+        self.calls.append(("execute", statement))
+
     def drop_index(self, name: str, *args: object, **kwargs: object) -> None:
         self.calls.append(("drop_index", name))
 
@@ -157,3 +174,26 @@ def test_provider_inventory_migration_upgrade_and_downgrade(
         ("create_check_constraint", "ck_tasks_skill_id"),
         ("drop_table", "device_provider_inventory"),
     ]
+
+
+def test_management_login_session_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260821_0006_management_login_session",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert ("add_column", "shops") in recorder.calls
+    assert ("create_unique_constraint", "uq_shops_platform_identity") in recorder.calls
+    assert (
+        "create_check_constraint",
+        "shop_session_status",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert ("drop_constraint", "uq_shops_platform_identity") in recorder.calls
+    assert ("drop_column", "shops") in recorder.calls

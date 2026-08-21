@@ -29,9 +29,11 @@ describe('Platform Registry', () => {
       'taobao',
       'wechat_channels',
     ])
-    expect(getPlatformOnboardingOptions().every((item) => !item.disabled)).toBe(
-      true,
-    )
+    expect(
+      getPlatformOnboardingOptions()
+        .filter((item) => !item.disabled)
+        .map((item) => item.value),
+    ).toEqual(['douyin'])
   })
 
   it('makes a newly registered platform visible to every derived data source', () => {
@@ -62,7 +64,7 @@ describe('Platform Registry', () => {
     expect(getPlatformOnboardingOptions(registry)).toContainEqual({
       label: '测试平台',
       value: 'test-platform',
-      disabled: false,
+      disabled: true,
     })
     expect(getPlatformDefinition('test-platform', registry)).toEqual(
       testPlatform,

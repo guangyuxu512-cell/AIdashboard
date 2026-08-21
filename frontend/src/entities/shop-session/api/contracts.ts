@@ -1,5 +1,9 @@
 export type ShopSessionStatusDto =
-  'not_configured' | 'valid' | 'invalid' | 'refresh_required'
+  | 'not_configured'
+  | 'captured'
+  | 'valid'
+  | 'invalid'
+  | 'refresh_required'
 
 export interface ShopSessionMetadataReadDto {
   session_id: string | null

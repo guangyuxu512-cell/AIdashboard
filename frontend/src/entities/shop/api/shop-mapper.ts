@@ -41,6 +41,7 @@ export function mapShopDto(
     shopId: dto.shop_id,
     shopName: dto.display_name,
     platform: dto.platform,
+    platformShopId: dto.platform_shop_id,
     ownerUserId: dto.owner_user_id,
     ownerName: dto.owner_user_id
       ? (owner?.display_name ?? '未知用户')

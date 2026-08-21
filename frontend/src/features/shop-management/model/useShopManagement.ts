@@ -123,6 +123,11 @@ export function useShopManagement() {
     formVisible.value = true
   }
 
+  async function handleOnboardingCompleted(shopId: string): Promise<void> {
+    selectedShopIds.value = [shopId]
+    await listQuery.refetch()
+  }
+
   function openEdit(shop: ShopListItemViewModel): void {
     formMode.value = 'edit'
     editingShopId.value = shop.shopId
@@ -193,6 +198,7 @@ export function useShopManagement() {
     openDetail,
     openCreate,
     openLegacyCreate,
+    handleOnboardingCompleted,
     openEdit,
     editFromDetail,
     saveShop,

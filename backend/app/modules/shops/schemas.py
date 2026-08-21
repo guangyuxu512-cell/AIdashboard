@@ -11,6 +11,7 @@ class ShopCreate(BaseModel):
 
     display_name: str = Field(min_length=1, max_length=100)
     platform: ShopPlatform
+    platform_shop_id: str | None = Field(default=None, min_length=1, max_length=128)
     enabled: bool = True
     owner_user_id: UUID | None = None
     note: str | None = Field(default=None, max_length=1000)
@@ -41,6 +42,7 @@ class ShopRead(BaseModel):
     shop_id: UUID
     display_name: str
     platform: ShopPlatform
+    platform_shop_id: str | None
     enabled: bool
     owner_user_id: UUID | None
     note: str | None

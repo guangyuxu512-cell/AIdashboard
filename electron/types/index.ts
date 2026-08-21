@@ -1,6 +1,16 @@
 export {
   desktopIpcChannels,
   isDesktopResolvedTheme,
+  isManagementLoginCompleteInput,
+  isManagementLoginOpenInput,
+  isUuid,
   type DesktopApi,
   type DesktopResolvedTheme,
+  type ManagementLoginCompleteInput,
+  type ManagementLoginCompleteResult,
+  type ManagementLoginIdentity,
+  type ManagementLoginOpenInput,
+  type ManagementLoginPlatform,
+  type ManagementLoginStatus,
+  type ManagementLoginStatusResult,
 } from './desktop-api'

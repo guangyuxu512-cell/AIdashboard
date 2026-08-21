@@ -85,7 +85,12 @@ try {
     if (-not (Test-ElectronRunning)) {
         Write-Host 'Starting Electron...'
         $pnpm = (Get-Command 'pnpm.cmd').Source
-        Start-DevProcess 'electron' $pnpm @('dev') $script:ElectronDirectory | Out-Null
+        Start-DevProcess `
+            'electron' `
+            $pnpm `
+            @('dev') `
+            $script:ElectronDirectory `
+            @{ CONTROL_CENTER_BACKEND_URL = $apiTarget } | Out-Null
         $started.Add('electron')
         Wait-DevCondition ${function:Test-ElectronRunning} 30 'Electron did not start.'
         $electronMainProcess = Get-ElectronMainProcess

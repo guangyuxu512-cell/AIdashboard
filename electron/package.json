@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test dist/tests/desktop-api.test.js",
     "dev": "pnpm run build && cross-env FRONTEND_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "start": "electron ."
   },

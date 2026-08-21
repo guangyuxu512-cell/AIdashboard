@@ -3,19 +3,15 @@
 ## 1. 统一认证链路
 
 ```text
-Shop Onboarding / Session Refresh
-↓
-Backend Task（后续）
-↓
-授权 Worker + 独立 Browser Profile
+Shop Onboarding（阶段 3C-1：当前 Electron 管理电脑）
 ↓
 PlatformAuthAdapter
-├─ VerificationChallenge → VerificationProvider / 统一 Challenge UI
+├─ 人工验证码 / 扫码 / 滑块 / App 确认
 ├─ DiscoveredShopIdentity → 创建 Shop + 绑定 Credential
 └─ SessionSnapshot → 版本检查 → 加密保存 ShopSession
 ```
 
-阶段 3A 只定义 Contract，不启动浏览器、不接验证码渠道、不采集 Cookie。
+阶段 3C-1 使用 Electron persistent session 完成首个抖店真实采集闭环。未来 Session Refresh 才进入 Backend Task → 授权 Worker → Worker Browser Profile，不得把管理电脑伪装成 Worker Device。
 
 ## 2. PlatformAuthAdapter
 
@@ -31,7 +27,7 @@ Challenge 类型固定为 `sms_code`、`email_code`、`qr_scan`、`app_confirm`�
 
 ## 4. Browser Profile 与 SessionCapture
 
-设备侧执行 `Device × Shop = 独立 Browser Profile`，禁止多店铺共享默认 Chrome Profile。概念路径为 `profiles/<platform_code>/<shop_id>/`，实际路径由未来 Worker Runtime 定义。
+管理端首次接入按登录尝试使用独立 Management Login Profile，成功后在本机建立 Profile 与真实 `shop_id` 的映射。未来 Worker 侧仍执行 `Device × Shop = 独立 Browser Profile`；两者不是同一种 Profile，禁止共享默认 Chrome Profile。
 
 服务器不保存完整 Browser Profile，只集中保存加密 Credential、加密 Session Snapshot 与业务数据。SessionCapture 成功后必须携带旧版本，通过乐观并发控制写入新版本。
 

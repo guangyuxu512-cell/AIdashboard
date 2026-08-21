@@ -5,6 +5,7 @@ export interface ShopReadDto {
   shop_id: string
   display_name: string
   platform: BackendShopPlatform
+  platform_shop_id: string | null
   enabled: boolean
   owner_user_id: string | null
   note: string | null

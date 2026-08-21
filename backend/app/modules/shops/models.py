@@ -8,6 +8,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     text,
     true,
@@ -23,6 +24,11 @@ class Shop(TimestampMixin, Base):
     __tablename__ = "shops"
     __table_args__ = (
         CheckConstraint("length(trim(display_name)) > 0", name="display_name_not_blank"),
+        UniqueConstraint(
+            "platform",
+            "platform_shop_id",
+            name="uq_shops_platform_identity",
+        ),
     )
 
     shop_id: Mapped[UUID] = mapped_column(
@@ -41,6 +47,10 @@ class Shop(TimestampMixin, Base):
             values_callable=enum_values,
         ),
         nullable=False,
+    )
+    platform_shop_id: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
     )
     enabled: Mapped[bool] = mapped_column(
         Boolean,

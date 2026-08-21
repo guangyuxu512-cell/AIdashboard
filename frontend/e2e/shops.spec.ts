@@ -263,30 +263,74 @@ test('fills the remaining workspace and pins pagination for multi-row, one-row a
   expect(multiRowLayout.workspaceBottomGap).toBeLessThanOrEqual(20)
 })
 
-test('drives the Shop Onboarding shell from shared platform and device data', async ({
+test('drives the Management Login onboarding through typed Electron state', async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    let statusChecks = 0
+    const attemptId = '00000000-0000-4000-8000-000000000001'
+    window.desktop = {
+      appearance: { setTitleBarTheme() {} },
+      managementLogin: {
+        async open() {
+          return {
+            attemptId,
+            status: 'waiting',
+            identity: null,
+            sessionCaptured: false,
+            cookieCount: 0,
+            message: '等待人工登录，系统会自动识别店铺',
+          }
+        },
+        async getStatus() {
+          statusChecks += 1
+          return {
+            attemptId,
+            status: statusChecks > 0 ? 'identified' : 'waiting',
+            identity: {
+              platform: 'douyin',
+              platformShopId: '987654321',
+              shopDisplayName: '真实识别店铺',
+            },
+            sessionCaptured: true,
+            cookieCount: 12,
+            message: '已自动识别店铺并采集登录会话，请确认后完成接入',
+          }
+        },
+        async complete() {
+          return {
+            shopId: '00000000-0000-4000-8000-000000000002',
+            platformShopId: '987654321',
+            shopDisplayName: '真实识别店铺',
+            maskedIdentifier: '138****8888',
+            sessionStatus: 'captured',
+            sessionVersion: 1,
+            sessionCapturedAt: '2026-08-21T12:00:00Z',
+          }
+        },
+        async close() {},
+      },
+    }
+  })
   await page.goto('/#/shops')
   await page.getByRole('button', { name: '新增店铺' }).click()
   await expect(page.getByText('新增店铺', { exact: true })).toBeVisible()
   await expect(page.getByText('选择平台', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('账号与密码', { exact: true })).toBeVisible()
-  await expect(page.getByText('登录设备', { exact: true })).toBeVisible()
-  await expect(page.getByText('准备连接', { exact: true })).toBeVisible()
-  await expect(page.getByText('登录成功后自动读取')).toBeVisible()
+  await expect(page.getByText('登录并识别', { exact: true })).toBeVisible()
+  await expect(page.getByText('确认店铺', { exact: true })).toBeVisible()
+  await expect(page.getByText('完成', { exact: true })).toBeVisible()
+  await expect(page.getByText('登录成功后由平台自动识别')).toBeVisible()
   await expect(page.getByPlaceholder('请输入店铺名称')).toHaveCount(0)
 
   await page.locator('.n-drawer .n-base-selection').click()
   const options = page.locator('.n-base-select-option')
   await expect(options.filter({ hasText: '抖店' })).toBeVisible()
   await expect(options.filter({ hasText: '拼多多' })).toBeVisible()
-  await expect(options.filter({ hasText: '淘宝' })).not.toHaveClass(/--disabled/)
-  await expect(options.filter({ hasText: '视频号' })).not.toHaveClass(
-    /--disabled/,
-  )
-  await options.filter({ hasText: '淘宝' }).click()
-  await expect(page.getByText('该平台已注册，但登录执行能力尚未接入。')).toBeVisible()
-  await expect(page.getByAltText('淘宝平台图标').last()).toBeVisible()
+  await expect(options.filter({ hasText: '拼多多' })).toHaveClass(/--disabled/)
+  await expect(options.filter({ hasText: '淘宝' })).toHaveClass(/--disabled/)
+  await expect(options.filter({ hasText: '视频号' })).toHaveClass(/--disabled/)
+  await options.filter({ hasText: '抖店' }).click()
   await page.getByRole('button', { name: '下一步' }).click()
 
   await page
@@ -295,23 +339,14 @@ test('drives the Shop Onboarding shell from shared platform and device data', as
   await page.getByPlaceholder('请输入登录密码').fill('onboarding-password')
   await page.getByRole('button', { name: '下一步' }).click()
 
-  await page.locator('.n-drawer .n-base-selection').click()
-  await page
-    .locator('.n-base-select-option')
-    .filter({ hasText: '深圳-工作站-03' })
-    .click()
-  await page.getByRole('button', { name: '下一步' }).click()
-  await expect(page.getByText('138****8888')).toBeVisible()
-  await expect(page.getByText('深圳-工作站-03', { exact: true }).last()).toBeVisible()
-  await expect(page.getByRole('button', { name: '打开浏览器并登录' })).toBeDisabled()
-  await expect(page.getByText('待 Worker Browser Session Manager 接入')).toBeVisible()
+  await page.getByRole('button', { name: '打开浏览器登录' }).click()
+  await expect(page.getByText('真实识别店铺', { exact: true })).toBeVisible()
+  await expect(page.getByText('987654321', { exact: true })).toBeVisible()
+  await expect(page.getByText('已采集', { exact: true })).toBeVisible()
   await expect(page.getByText('onboarding-password')).toHaveCount(0)
-
-  await page.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.getByRole('button', { name: '新增店铺' }).click()
-  await page.getByRole('button', { name: '开发：Legacy Onboarding' }).click()
-  await expect(page.getByText('新增店铺（Legacy Onboarding）')).toBeVisible()
-  await expect(page.getByPlaceholder('请输入店铺名称')).toBeVisible()
+  await page.getByRole('button', { name: '完成接入' }).click()
+  await expect(page.getByText('接入成功', { exact: true })).toBeVisible()
+  await expect(page.getByText('138****8888')).toBeVisible()
 })
 
 test('renders compact Shop and Device pages in light and dark themes', async ({

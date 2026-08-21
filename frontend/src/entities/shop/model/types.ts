@@ -19,6 +19,7 @@ export interface ShopListItemViewModel {
   shopId: string
   shopName: string
   platform: ShopPlatform
+  platformShopId?: string | null
   ownerUserId: string | null
   ownerName: string
   enabled: boolean

@@ -9,6 +9,7 @@ describe('shop backend DTO mapper', () => {
         shop_id: '00000000-0000-0000-0000-000000000001',
         display_name: '真实店铺',
         platform: 'douyin',
+        platform_shop_id: '987654321',
         enabled: true,
         owner_user_id: '00000000-0000-0000-0000-000000000002',
         note: '真实备注',
@@ -52,6 +53,7 @@ describe('shop backend DTO mapper', () => {
 
     expect(viewModel).toMatchObject({
       shopName: '真实店铺',
+      platformShopId: '987654321',
       ownerName: '负责人',
       enabledStatus: 'enabled',
       executionDeviceName: '主设备',
