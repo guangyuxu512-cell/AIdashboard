@@ -14,20 +14,16 @@ import {
 import { RouterView } from 'vue-router'
 
 import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
+import { getNavigationModules } from '@/app/modules/registry'
 import AppShell from '@/shared/components/AppShell.vue'
-import type { AppNavigationItem } from '@/shared/components/AppShell.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import ThemeSelector from '@/shared/components/ThemeSelector.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
 import { useThemeStore } from '@/stores/theme'
 
-const navigation: AppNavigationItem[] = [
-  ...(import.meta.env.DEV
-    ? [{ key: 'foundation', label: 'UI 基础设施', to: '/' }]
-    : []),
-  { key: 'shops', label: '店铺中心', to: '/shops' },
-  { key: 'devices', label: '设备中心', to: '/devices' },
-]
+const navigation = getNavigationModules(undefined, {
+  includeDevelopment: import.meta.env.DEV,
+})
 
 const themeStore = useThemeStore()
 const isDevelopment = import.meta.env.DEV

@@ -57,3 +57,17 @@ Task → stable skill_id → Skill Registry → runtime → Executor → Provide
 
 `yingdao.discover` 使用独立 `discovery` Runtime，只做本机影刀只读能力发现；它不经过 Python 子进程，也不启动影刀应用。当前 `yingdao.test` 已注册为 RPA/Yingdao 测试能力，但真实应用 ID 尚未获得正式
 契约，因此生产映射为空，执行时明确失败而非猜测 App ID。
+
+## SkillDescriptor
+
+每个本地 `SkillDefinition` 同时提供稳定、可序列化的 `SkillDescriptor`：
+
+- `skill_id`
+- `display_name`
+- `runtime`
+- `provider`（无 Provider 时为 null）
+- `version`
+
+Descriptor 只描述 Worker 已实现能力，不暴露影刀 App ID、本地脚本路径或 EXE 路径。
+本阶段不自动上报、不建立 Skill Inventory 表或 Skill Center；待首个真实业务 Skill 接入
+时，再通过正式 Worker ↔ Backend 契约上报。

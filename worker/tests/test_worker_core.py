@@ -13,6 +13,7 @@ from app.executors.python import PythonExecutor, build_skill_process_command
 from app.runtime import TaskRuntimePaths
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills.runner import execute
+from app.skills import registry
 
 
 def test_worker_configuration_defaults() -> None:
@@ -27,6 +28,31 @@ def test_worker_configuration_defaults() -> None:
     assert settings.log_max_bytes == 5 * 1024 * 1024
     assert settings.log_backup_count == 5
     assert settings.device_token.get_secret_value() == "secret-token"
+
+
+def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
+    descriptors = {item.skill_id: item for item in registry.descriptors()}
+
+    assert set(descriptors) == {
+        "system.echo",
+        "system.sleep",
+        "yingdao.test",
+        "yingdao.discover",
+    }
+    assert descriptors["system.echo"].model_dump() == {
+        "skill_id": "system.echo",
+        "display_name": "Echo",
+        "runtime": "python",
+        "provider": None,
+        "version": "1",
+    }
+    assert descriptors["yingdao.discover"].model_dump() == {
+        "skill_id": "yingdao.discover",
+        "display_name": "影刀能力发现",
+        "runtime": "discovery",
+        "provider": "yingdao",
+        "version": "1",
+    }
 
 
 def test_python_process_runner_keeps_echo_sleep_and_blocks_unknown_skills() -> None:

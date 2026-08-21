@@ -88,6 +88,8 @@ def make_executor(
     registry.register(
         SkillDefinition(
             skill_id="yingdao.test",
+            display_name="影刀测试",
+            version="1",
             input_model=EmptyInput,
             runtime=SkillRuntime.RPA,
             provider=SkillProvider.YINGDAO,

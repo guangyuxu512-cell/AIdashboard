@@ -32,6 +32,8 @@ def sleep_skill(data: BaseModel) -> dict[str, Any]:
 registry.register(
     SkillDefinition(
         skill_id="system.echo",
+        display_name="Echo",
+        version="1",
         input_model=EchoInput,
         runtime=SkillRuntime.PYTHON,
         timeout_seconds=30,
@@ -41,6 +43,8 @@ registry.register(
 registry.register(
     SkillDefinition(
         skill_id="system.sleep",
+        display_name="Sleep",
+        version="1",
         input_model=SleepInput,
         runtime=SkillRuntime.PYTHON,
         timeout_seconds=330,

@@ -19,9 +19,19 @@ class SkillProvider(StrEnum):
     YINGDAO = "yingdao"
 
 
+class SkillDescriptor(BaseModel):
+    skill_id: str
+    display_name: str
+    runtime: SkillRuntime
+    provider: SkillProvider | None
+    version: str
+
+
 @dataclass(frozen=True)
 class SkillDefinition:
     skill_id: str
+    display_name: str
+    version: str
     input_model: type[BaseModel]
     runtime: SkillRuntime
     timeout_seconds: float
@@ -30,12 +40,23 @@ class SkillDefinition:
     provider_app_id: str | None = None
 
     def __post_init__(self) -> None:
+        if not self.skill_id or not self.display_name or not self.version:
+            raise ValueError("Skill descriptor fields cannot be blank")
         if self.runtime is SkillRuntime.PYTHON and self.handler is None:
             raise ValueError("Python Skill requires a local handler")
         if self.runtime is SkillRuntime.RPA and self.provider is None:
             raise ValueError("RPA Skill requires a provider")
         if self.runtime is SkillRuntime.DISCOVERY and self.provider is None:
             raise ValueError("Discovery Skill requires a provider")
+
+    def descriptor(self) -> SkillDescriptor:
+        return SkillDescriptor(
+            skill_id=self.skill_id,
+            display_name=self.display_name,
+            runtime=self.runtime,
+            provider=self.provider,
+            version=self.version,
+        )
 
 
 class SkillRegistry:
@@ -55,6 +76,9 @@ class SkillRegistry:
         if definition is None:
             raise KeyError(skill_id)
         return definition
+
+    def descriptors(self) -> tuple[SkillDescriptor, ...]:
+        return tuple(definition.descriptor() for definition in self._definitions.values())
 
 
 registry = SkillRegistry()

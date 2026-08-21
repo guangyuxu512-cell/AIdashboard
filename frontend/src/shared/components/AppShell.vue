@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
+import type { Component } from 'vue'
 import { NMenu } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
@@ -7,9 +8,10 @@ import { useRoute, useRouter } from 'vue-router'
 import AppOverlayHost from '@/shared/ui/AppOverlayHost.vue'
 
 export interface AppNavigationItem {
-  key: string
-  label: string
-  to: string
+  moduleCode: string
+  moduleName: string
+  routePath: string
+  icon: Component
 }
 
 const props = withDefaults(
@@ -29,18 +31,22 @@ const router = useRouter()
 const isDevelopment = import.meta.env.DEV
 
 const activeNavigationKey = computed(
-  () => props.navigation.find((item) => item.to === route.path)?.key ?? null,
+  () =>
+    props.navigation.find((item) => item.routePath === route.path)
+      ?.moduleCode ?? null,
 )
 
 const activeNavigationLabel = computed(
   () =>
-    props.navigation.find((item) => item.key === activeNavigationKey.value)
-      ?.label ?? '工作台',
+    props.navigation.find(
+      (item) => item.moduleCode === activeNavigationKey.value,
+    )?.moduleName ?? '工作台',
 )
 
 const menuOptions = computed<MenuOption[]>(() =>
   props.navigation.map((item) => ({
-    key: item.key,
+    key: item.moduleCode,
+    icon: () => h(item.icon, { size: 17, strokeWidth: 1.8 }),
     label: () =>
       h(
         'span',
@@ -49,19 +55,19 @@ const menuOptions = computed<MenuOption[]>(() =>
             'app-shell__nav-label',
             {
               'app-shell__nav-label--active':
-                item.key === activeNavigationKey.value,
+                item.moduleCode === activeNavigationKey.value,
             },
           ],
         },
-        item.label,
+        item.moduleName,
       ),
   })),
 )
 
 function navigate(key: string): void {
-  const target = props.navigation.find((item) => item.key === key)
-  if (target && target.to !== route.path) {
-    void router.push(target.to)
+  const target = props.navigation.find((item) => item.moduleCode === key)
+  if (target && target.routePath !== route.path) {
+    void router.push(target.routePath)
   }
 }
 </script>

@@ -19,6 +19,8 @@ class YingdaoDiscoverInput(BaseModel):
 registry.register(
     SkillDefinition(
         skill_id="yingdao.test",
+        display_name="影刀测试",
+        version="1",
         input_model=YingdaoTestInput,
         runtime=SkillRuntime.RPA,
         provider=SkillProvider.YINGDAO,
@@ -29,6 +31,8 @@ registry.register(
 registry.register(
     SkillDefinition(
         skill_id="yingdao.discover",
+        display_name="影刀能力发现",
+        version="1",
         input_model=YingdaoDiscoverInput,
         runtime=SkillRuntime.DISCOVERY,
         provider=SkillProvider.YINGDAO,
