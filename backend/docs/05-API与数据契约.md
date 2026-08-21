@@ -82,3 +82,17 @@ Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或
 当前 userId、未回收应用的 ID/名称/package version/entrypoint 与发现时间；禁止密码、
 Token、Cookie 和完整认证响应。应用数组作为外部 Provider 最新快照存入专用 JSONB，
 不是通用业务 JSON，也不是中控台 Skill 注册表。
+
+## Device Lifecycle API
+
+- `PATCH /api/v1/devices/{device_id}` 的 `enabled` 是执行资格，不是在线状态。
+- `DELETE /api/v1/devices/{device_id}` 返回 204，但实现为软移除；有活动任务时返回 `409 / DEVICE_HAS_ACTIVE_TASKS`。
+- 已移除 Device 的列表与详情行为和 Shop 软删除一致：普通读取视为不存在。
+
+## Notification Channel API
+
+- `GET/POST /api/v1/notification-channels`
+- `PATCH /api/v1/notification-channels/{channel_id}`
+- `POST /api/v1/notification-channels/{channel_id}/test`
+
+Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密文。Update 的空 Webhook 表示保留原 Secret；测试消息由 Backend 投递。

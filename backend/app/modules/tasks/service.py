@@ -63,6 +63,9 @@ class TaskService:
         now: datetime | None = None,
     ) -> Task | None:
         claimed_at = now or datetime.now(UTC)
+        if self.repository.get_enabled_device(principal.device_id) is None:
+            self.session.rollback()
+            return None
         lease_until = claimed_at + timedelta(
             seconds=self.settings.worker_task_lease_seconds,
         )

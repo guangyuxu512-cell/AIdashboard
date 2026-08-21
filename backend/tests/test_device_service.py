@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.modules.devices.exceptions import DeviceNotFoundError
+from app.modules.devices.exceptions import DeviceHasActiveTasksError, DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.devices.schemas import DeviceCreate, DeviceUpdate
 from app.modules.devices.service import DeviceService
@@ -14,18 +14,54 @@ class FakeDeviceRepository:
         self.items: dict[object, Device] = {}
 
     def list(self, *, offset: int, limit: int) -> list[Device]:
-        return list(self.items.values())[offset : offset + limit]
+        return [
+            item for item in self.items.values() if item.deleted_at is None
+        ][offset : offset + limit]
 
     def count(self) -> int:
-        return len(self.items)
+        return sum(item.deleted_at is None for item in self.items.values())
 
     def get(self, device_id: object) -> Device | None:
+        device = self.items.get(device_id)
+        return device if device is not None and device.deleted_at is None else None
+
+    def get_for_update(self, device_id: object) -> Device | None:
+        return self.get(device_id)
+
+    def get_including_deleted(self, device_id: object) -> Device | None:
         return self.items.get(device_id)
 
     def add(self, device: Device) -> None:
         if device.device_id is None:
             device.device_id = uuid4()
         self.items[device.device_id] = device
+
+
+class FakeBindingRepository:
+    def __init__(self) -> None:
+        self.disabled: list[object] = []
+
+    def disable_enabled_by_device(self, device_id: object) -> int:
+        self.disabled.append(device_id)
+        return 1
+
+
+class FakeTaskRepository:
+    def __init__(self, active: bool = False) -> None:
+        self.active = active
+
+    def has_active_for_device(self, device_id: object) -> bool:
+        del device_id
+        return self.active
+
+
+class FakeWorkerRepository:
+    def __init__(self) -> None:
+        self.revoked: list[object] = []
+
+    def disable_credentials_by_device(self, device_id: object) -> int:
+        self.revoked.append(device_id)
+        return 1
 
 
 def test_device_create_get_list_and_update() -> None:
@@ -59,3 +95,53 @@ def test_device_not_found() -> None:
 
     with pytest.raises(DeviceNotFoundError):
         service.get(uuid4())
+
+
+def test_device_soft_remove_disables_bindings_and_revokes_worker_token() -> None:
+    session = FakeSession()
+    repository = FakeDeviceRepository()
+    bindings = FakeBindingRepository()
+    tasks = FakeTaskRepository()
+    workers = FakeWorkerRepository()
+    service = DeviceService(  # type: ignore[arg-type]
+        session,
+        repository,
+        bindings,
+        tasks,
+        workers,
+    )
+    device = service.create(DeviceCreate(display_name="待移除设备"))
+
+    service.remove(device.device_id)
+
+    stored = repository.get_including_deleted(device.device_id)
+    assert stored is not None
+    assert stored.enabled is False
+    assert stored.deleted_at is not None
+    assert repository.get(device.device_id) is None
+    assert bindings.disabled == [device.device_id]
+    assert workers.revoked == [device.device_id]
+
+
+def test_device_soft_remove_rejects_active_tasks_without_side_effects() -> None:
+    session = FakeSession()
+    repository = FakeDeviceRepository()
+    bindings = FakeBindingRepository()
+    tasks = FakeTaskRepository(active=True)
+    workers = FakeWorkerRepository()
+    service = DeviceService(  # type: ignore[arg-type]
+        session,
+        repository,
+        bindings,
+        tasks,
+        workers,
+    )
+    device = service.create(DeviceCreate(display_name="活动任务设备"))
+
+    with pytest.raises(DeviceHasActiveTasksError):
+        service.remove(device.device_id)
+
+    assert device.enabled is True
+    assert device.deleted_at is None
+    assert bindings.disabled == []
+    assert workers.revoked == []

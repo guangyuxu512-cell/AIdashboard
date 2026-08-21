@@ -44,6 +44,10 @@ export const deviceApi = {
     return response.data
   },
 
+  async remove(deviceId: string): Promise<void> {
+    await httpClient.delete(`/api/v1/devices/${deviceId}`)
+  },
+
   async getProviderInventories(
     deviceId: string,
   ): Promise<DeviceProviderInventoryReadDto[]> {

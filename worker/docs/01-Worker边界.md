@@ -28,3 +28,7 @@ Worker：
 
 Worker 只处理执行目标为 `WORKER` 的 Action。AI、财务、报表和常规订单/商品数据
 处理默认属于 Backend Server Modules，不应为了统一入口而绕经 Worker。
+
+## Device 生命周期约束
+
+Worker 不自行解释 Device.enabled。停用设备仍保持 Heartbeat 与 Provider Inventory 上报，用于让中控台看到真实运行状态，但 Backend 不会向其发放新 Task。软移除后旧 Token 对所有 Worker API 失效，Worker 应进入认证失败状态，不能自行复用旧 Device UUID。

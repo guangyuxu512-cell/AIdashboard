@@ -17,6 +17,9 @@ class OperationRecorder:
     def drop_column(self, name: str, *args: object, **kwargs: object) -> None:
         self.calls.append(("drop_column", name))
 
+    def alter_column(self, name: str, *args: object, **kwargs: object) -> None:
+        self.calls.append(("alter_column", name))
+
     def create_unique_constraint(
         self,
         name: str,
@@ -220,3 +223,28 @@ def test_shop_soft_delete_migration_upgrade_and_downgrade(
         ("drop_index", "ix_shops_deleted_at"),
         ("drop_column", "shops"),
     ]
+
+
+def test_device_lifecycle_notification_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260822_0009_device_lifecycle_notifications",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert ("add_column", "devices") in recorder.calls
+    assert recorder.calls.count(("add_column", "device_runtime")) == 2
+    assert ("create_table", "notification_channels") in recorder.calls
+    assert (
+        "create_check_constraint",
+        "ck_device_runtime_connection_status",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert ("drop_table", "notification_channels") in recorder.calls
+    assert recorder.calls.count(("drop_column", "device_runtime")) == 2
+    assert ("drop_column", "devices") in recorder.calls

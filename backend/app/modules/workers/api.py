@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.notifications.service import NotificationService
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.schemas import (
     DeviceProviderInventoryRead,
@@ -27,8 +29,12 @@ router = APIRouter(
 
 def get_worker_service(
     session: Annotated[Session, Depends(get_database_session)],
+    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> WorkerService:
-    return WorkerService(session)
+    return WorkerService(
+        session,
+        notification_service=NotificationService(session, cipher),
+    )
 
 
 @router.post("/heartbeat", response_model=DeviceRuntimeRead)

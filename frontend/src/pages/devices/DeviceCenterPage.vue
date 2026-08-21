@@ -4,6 +4,7 @@ import {
   DeviceFilterBar,
   DeviceFormDialog,
   DeviceListTable,
+  DeviceRemoveDialog,
   YingdaoApplicationsDrawer,
   useDeviceManagement,
 } from '@/features/device-management'
@@ -35,8 +36,11 @@ const management = useDeviceManagement()
         :rows="management.visibleRows.value"
         :loading="management.listLoading.value"
         :error="management.listError.value"
+        :status-changing-device-id="management.statusChangingDeviceId.value"
         @view="management.openDetail"
         @edit="management.openEdit"
+        @toggle-enabled="management.toggleEnabled"
+        @remove="management.requestRemove"
         @retry="management.retryList"
       />
       <PaginationBar
@@ -59,10 +63,18 @@ const management = useDeviceManagement()
       :current-execution="management.detailCurrentExecution.value"
       :bound-shop-count="management.detailBoundShopCount.value"
       :recent-executions="management.recentExecutions.value"
+      :status-changing="
+        management.statusChangingDeviceId.value ===
+        management.detailDevice.value?.deviceId
+      "
+      :removing="management.removeSubmitting.value"
       @retry="management.retryDetail"
       @retry-provider-inventory="management.retryProviderInventory"
       @refresh-yingdao="management.refreshYingdao"
       @view-yingdao-applications="management.openYingdaoApplications"
+      @edit="management.openEdit"
+      @toggle-enabled="management.toggleEnabled"
+      @remove="management.requestRemove"
     />
 
     <YingdaoApplicationsDrawer
@@ -76,6 +88,13 @@ const management = useDeviceManagement()
       :initial-value="management.formInitialValue.value"
       :submitting="management.formSubmitting.value"
       @save="management.saveDevice"
+    />
+
+    <DeviceRemoveDialog
+      v-model:show="management.removeVisible.value"
+      :device="management.removeDevice.value"
+      :submitting="management.removeSubmitting.value"
+      @confirm="management.confirmRemove"
     />
   </div>
 </template>

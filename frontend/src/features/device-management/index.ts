@@ -6,3 +6,4 @@ export { default as YingdaoApplicationsDrawer } from './ui/YingdaoApplicationsDr
 export { default as DeviceFilterBar } from './ui/DeviceFilterBar.vue'
 export { default as DeviceFormDialog } from './ui/DeviceFormDialog.vue'
 export { default as DeviceListTable } from './ui/DeviceListTable.vue'
+export { default as DeviceRemoveDialog } from './ui/DeviceRemoveDialog.vue'

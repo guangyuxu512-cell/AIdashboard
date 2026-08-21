@@ -49,6 +49,12 @@ class WorkerDeviceCredential(TimestampMixin, Base):
 
 class DeviceRuntime(TimestampMixin, Base):
     __tablename__ = "device_runtime"
+    __table_args__ = (
+        CheckConstraint(
+            "connection_status IN ('online', 'offline')",
+            name="connection_status",
+        ),
+    )
 
     device_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -64,6 +70,15 @@ class DeviceRuntime(TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+    )
+    connection_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="online",
+    )
+    offline_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
 

@@ -34,6 +34,7 @@ describe('device mapper, query and mutation', () => {
       location: '杭州',
       note: null,
       worker_runtime: null,
+      deleted_at: null,
       created_at: '2026-08-18T10:00:00+00:00',
       updated_at: '2026-08-18T11:00:00+00:00',
     })
@@ -60,6 +61,7 @@ describe('device mapper, query and mutation', () => {
         started_at: '2026-08-19T08:00:00+00:00',
         updated_at: '2026-08-19T08:30:00+00:00',
       },
+      deleted_at: null,
       created_at: '2026-08-18T10:00:00+00:00',
       updated_at: '2026-08-18T11:00:00+00:00',
     })

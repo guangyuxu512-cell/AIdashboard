@@ -13,6 +13,7 @@ export interface DeviceReadDto {
   enabled: boolean
   location: string | null
   note: string | null
+  deleted_at: string | null
   worker_runtime: DeviceRuntimeReadDto | null
   created_at: string
   updated_at: string

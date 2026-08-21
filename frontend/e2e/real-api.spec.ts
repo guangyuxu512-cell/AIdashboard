@@ -142,6 +142,45 @@ function inspectSoftRemovedShop(shopId: string, deviceId: string): {
   )
 }
 
+function inspectSoftRemovedDevice(deviceId: string): {
+  deviceExists: boolean
+  enabled: boolean
+  deleted: boolean
+  bindingEnabled: boolean
+  credentialEnabled: boolean
+  taskExists: boolean
+  runtimeExists: boolean
+  inventoryExists: boolean
+} {
+  const script = [
+    'import json',
+    'from uuid import UUID',
+    'from sqlalchemy import select',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.modules.devices.models import Device',
+    'from app.modules.shops.models import ShopDeviceBinding',
+    'from app.modules.tasks.models import Task',
+    'from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, WorkerDeviceCredential',
+    `device_id = UUID(${JSON.stringify(deviceId)})`,
+    'with Session(get_database_engine()) as session:',
+    '    device = session.get(Device, device_id)',
+    '    binding = session.scalar(select(ShopDeviceBinding).where(ShopDeviceBinding.device_id == device_id))',
+    '    credential = session.scalar(select(WorkerDeviceCredential).where(WorkerDeviceCredential.device_id == device_id))',
+    '    task = session.scalar(select(Task).where(Task.target_device_id == device_id))',
+    '    runtime = session.get(DeviceRuntime, device_id)',
+    '    inventory = session.scalar(select(DeviceProviderInventory).where(DeviceProviderInventory.device_id == device_id))',
+    '    print(json.dumps({"deviceExists": device is not None, "enabled": bool(device.enabled) if device else False, "deleted": device.deleted_at is not None if device else False, "bindingEnabled": bool(binding.enabled) if binding else False, "credentialEnabled": bool(credential.enabled) if credential else False, "taskExists": task is not None, "runtimeExists": runtime is not None, "inventoryExists": inventory is not None}))',
+  ].join('\n')
+  return JSON.parse(
+    execFileSync(backendPython, ['-c', script], {
+      cwd: backendDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  )
+}
+
 test.beforeAll(cleanupRealTestData)
 test.afterAll(cleanupRealTestData)
 
@@ -497,4 +536,129 @@ test('persists Shop.enabled and safely soft-removes a dedicated real Shop', asyn
     credentialExists: true,
     sessionExists: true,
   })
+})
+
+test('protects active Device tasks and revokes every Worker endpoint after soft removal', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const deviceName = `${testPrefix}device-lifecycle`
+  const shopName = `${testPrefix}device-lifecycle-shop`
+  const deviceResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  const shopResponse = await page.request.post('/api/v1/shops', {
+    data: { display_name: shopName, platform: 'douyin' },
+  })
+  expect(deviceResponse.ok()).toBe(true)
+  expect(shopResponse.ok()).toBe(true)
+  const deviceId = (await deviceResponse.json()).device_id as string
+  const shopId = (await shopResponse.json()).shop_id as string
+  expect(
+    (
+      await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
+        data: { device_id: deviceId, binding_role: 'primary' },
+      })
+    ).ok(),
+  ).toBe(true)
+  const identity = issueWorkerIdentity(deviceName)
+  const workerHeaders = {
+    Authorization: `Bearer ${identity.token}`,
+    'X-Device-ID': identity.deviceId,
+  }
+  const now = new Date().toISOString()
+  expect(
+    (
+      await page.request.post('/api/v1/worker/heartbeat', {
+        headers: workerHeaders,
+        data: { worker_version: '0.1.0', started_at: now },
+      })
+    ).ok(),
+  ).toBe(true)
+  const inventoryPayload = {
+    provider_code: 'yingdao',
+    inventory: {
+      provider: 'yingdao',
+      available: true,
+      provider_version: '6.3.6',
+      logged_in: true,
+      account_display: 'E2E',
+      account_type: 'PersonalBasic',
+      enterprise_account: false,
+      user_id: 'device-lifecycle-e2e',
+      applications: [],
+      discovered_at: now,
+    },
+  }
+  expect(
+    (
+      await page.request.post('/api/v1/worker/provider-inventory', {
+        headers: workerHeaders,
+        data: inventoryPayload,
+      })
+    ).ok(),
+  ).toBe(true)
+  const taskResponse = await page.request.post('/api/v1/tasks', {
+    data: {
+      target_device_id: deviceId,
+      skill_id: 'system.echo',
+      input: { message: 'device lifecycle e2e' },
+    },
+  })
+  expect(taskResponse.ok()).toBe(true)
+
+  const protectedRemove = await page.request.delete(`/api/v1/devices/${deviceId}`)
+  expect(protectedRemove.status()).toBe(409)
+  expect(await protectedRemove.json()).toMatchObject({
+    code: 'DEVICE_HAS_ACTIVE_TASKS',
+  })
+
+  const claimed = await page.request.post('/api/v1/worker/tasks/claim', {
+    headers: workerHeaders,
+  })
+  expect(claimed.ok()).toBe(true)
+  const taskId = (await claimed.json()).task_id as string
+  expect(
+    (
+      await page.request.post(`/api/v1/worker/tasks/${taskId}/complete`, {
+        headers: workerHeaders,
+        data: { result: { ok: true } },
+      })
+    ).ok(),
+  ).toBe(true)
+
+  await page.goto('/#/devices')
+  const row = page.getByRole('row').filter({ hasText: deviceName })
+  await row.getByRole('button', { name: '移除' }).click()
+  await page.getByRole('button', { name: '确认移除' }).click()
+  await expect(page.getByText(deviceName, { exact: true })).toHaveCount(0)
+
+  for (const request of [
+    page.request.post('/api/v1/worker/heartbeat', {
+      headers: workerHeaders,
+      data: { worker_version: '0.1.0', started_at: now },
+    }),
+    page.request.post('/api/v1/worker/tasks/claim', { headers: workerHeaders }),
+    page.request.post('/api/v1/worker/provider-inventory', {
+      headers: workerHeaders,
+      data: inventoryPayload,
+    }),
+  ]) {
+    expect((await request).status()).toBe(401)
+  }
+  expect(inspectSoftRemovedDevice(deviceId)).toEqual({
+    deviceExists: true,
+    enabled: false,
+    deleted: true,
+    bindingEnabled: false,
+    credentialEnabled: false,
+    taskExists: true,
+    runtimeExists: true,
+    inventoryExists: true,
+  })
+  const replacement = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(replacement.ok()).toBe(true)
+  expect((await replacement.json()).device_id).not.toBe(deviceId)
 })

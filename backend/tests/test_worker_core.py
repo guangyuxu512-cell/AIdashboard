@@ -1,12 +1,15 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
+
 from app.core.config import Settings
 from app.main import create_app
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.skill_contracts import validate_skill_input
 from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
+from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.schemas import ProviderInventoryUpsert, WorkerHeartbeat
 from app.modules.workers.security import hash_worker_token, verify_worker_token
 from app.modules.workers.service import WorkerPrincipal, WorkerService
@@ -20,7 +23,11 @@ class FakeWorkerRepository:
         self.runtime: DeviceRuntime | None = None
 
     def get_device(self, device_id: object) -> Device | None:
-        return self.device if device_id == self.device.device_id else None
+        return (
+            self.device
+            if device_id == self.device.device_id and self.device.deleted_at is None
+            else None
+        )
 
     def get_credential(self, device_id: object) -> WorkerDeviceCredential | None:
         return self.credential if device_id == self.device.device_id else None
@@ -41,10 +48,31 @@ class FakeWorkerRepository:
             worker_version=worker_version,
             last_seen_at=last_seen_at,
             started_at=started_at,
+            connection_status="online",
+            offline_since=None,
         )
         self.runtime.created_at = last_seen_at
         self.runtime.updated_at = last_seen_at
         return self.runtime
+
+    def get_runtime_for_update(self, device_id: object) -> DeviceRuntime | None:
+        return self.runtime if self.runtime and self.runtime.device_id == device_id else None
+
+    def mark_stale_online_offline(
+        self,
+        *,
+        stale_before: datetime,
+        offline_since: datetime,
+    ) -> list[DeviceRuntime]:
+        if (
+            self.runtime is None
+            or self.runtime.connection_status != "online"
+            or self.runtime.last_seen_at >= stale_before
+        ):
+            return []
+        self.runtime.connection_status = "offline"
+        self.runtime.offline_since = offline_since
+        return [self.runtime]
 
     def get_runtimes(self, device_ids: object) -> dict[object, DeviceRuntime]:
         if self.runtime is None:
@@ -52,12 +80,38 @@ class FakeWorkerRepository:
         return {self.runtime.device_id: self.runtime}
 
 
-def test_worker_token_is_hashed_and_runtime_online_is_time_based() -> None:
+class FakeNotificationService:
+    def __init__(self) -> None:
+        self.offline: list[str] = []
+        self.recovered: list[str] = []
+
+    def notify_device_offline(self, *, device_name: str, **_: object) -> None:
+        self.offline.append(device_name)
+
+    def notify_device_recovered(self, *, device_name: str, **_: object) -> None:
+        self.recovered.append(device_name)
+
+
+class FailingNotificationService:
+    def notify_device_offline(self, **_: object) -> None:
+        raise RuntimeError("webhook failed")
+
+    def notify_device_recovered(self, **_: object) -> None:
+        raise RuntimeError("webhook failed")
+
+
+def test_worker_token_runtime_transitions_and_disabled_heartbeat() -> None:
     device = Device(device_id=uuid4(), display_name="Worker PC", enabled=True)
     repository = FakeWorkerRepository(device)
     session = FakeSession()
     settings = Settings(worker_online_timeout_seconds=45)
-    service = WorkerService(session, repository, settings)  # type: ignore[arg-type]
+    notifications = FakeNotificationService()
+    service = WorkerService(  # type: ignore[arg-type]
+        session,
+        repository,
+        settings,
+        notification_service=notifications,
+    )
 
     token = service.issue_token(device.device_id)
     assert repository.credential is not None
@@ -74,10 +128,26 @@ def test_worker_token_is_hashed_and_runtime_online_is_time_based() -> None:
         now=now,
     )
     assert runtime.connection_status == "online"
-    assert service.to_runtime_read(
-        repository.runtime,  # type: ignore[arg-type]
-        now=now + timedelta(seconds=46),
-    ).connection_status == "offline"
+    assert service.reconcile_offline_devices(now=now + timedelta(seconds=46)) == 1
+    assert repository.runtime.connection_status == "offline"  # type: ignore[union-attr]
+    assert notifications.offline == ["Worker PC"]
+    assert service.reconcile_offline_devices(now=now + timedelta(seconds=60)) == 0
+    assert notifications.offline == ["Worker PC"]
+
+    device.enabled = False
+    assert service.authenticate(device.device_id, token).device_id == device.device_id
+    recovered = service.heartbeat(
+        WorkerPrincipal(device_id=device.device_id),
+        WorkerHeartbeat(worker_version="0.1.0", started_at=now),
+        now=now + timedelta(seconds=61),
+    )
+    assert recovered.connection_status == "online"
+    assert notifications.recovered == []
+
+    device.deleted_at = now + timedelta(seconds=62)
+    with pytest.raises(WorkerAuthenticationError) as error:
+        service.authenticate(device.device_id, token)
+    assert getattr(error.value, "code", None) == "WORKER_AUTHENTICATION_FAILED"
 
 
 def test_worker_token_hash_and_skill_contracts() -> None:
@@ -96,6 +166,35 @@ def test_worker_token_hash_and_skill_contracts() -> None:
     ) == {"seconds": 45.0}
     assert validate_skill_input(TaskSkillId.YINGDAO_TEST, {}) == {}
     assert validate_skill_input(TaskSkillId.YINGDAO_DISCOVER, {}) == {}
+
+
+def test_notification_failure_does_not_rollback_runtime_transition() -> None:
+    device = Device(device_id=uuid4(), display_name="Worker PC", enabled=True)
+    repository = FakeWorkerRepository(device)
+    session = FakeSession()
+    service = WorkerService(  # type: ignore[arg-type]
+        session,
+        repository,
+        Settings(worker_online_timeout_seconds=45),
+        notification_service=FailingNotificationService(),  # type: ignore[arg-type]
+    )
+    now = datetime.now(UTC)
+    principal = WorkerPrincipal(device_id=device.device_id)
+    service.heartbeat(
+        principal,
+        WorkerHeartbeat(worker_version="0.1.0", started_at=now),
+        now=now,
+    )
+
+    assert service.reconcile_offline_devices(now=now + timedelta(seconds=46)) == 1
+    assert repository.runtime is not None
+    assert repository.runtime.connection_status == "offline"
+    recovered = service.heartbeat(
+        principal,
+        WorkerHeartbeat(worker_version="0.1.0", started_at=now),
+        now=now + timedelta(seconds=60),
+    )
+    assert recovered.connection_status == "online"
 
 
 def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:

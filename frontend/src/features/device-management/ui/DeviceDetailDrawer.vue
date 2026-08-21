@@ -34,6 +34,8 @@ defineProps<{
   currentExecution?: DeviceCurrentExecutionViewModel | null
   boundShopCount?: number | null
   recentExecutions?: DeviceRecentExecutionViewModel[]
+  statusChanging?: boolean
+  removing?: boolean
 }>()
 
 defineEmits<{
@@ -42,6 +44,9 @@ defineEmits<{
   'retry-provider-inventory': []
   'refresh-yingdao': []
   'view-yingdao-applications': []
+  edit: [device: DeviceListItemViewModel]
+  'toggle-enabled': [device: DeviceListItemViewModel]
+  remove: [device: DeviceListItemViewModel]
 }>()
 </script>
 
@@ -198,7 +203,20 @@ defineEmits<{
     </div>
 
     <template #footer>
-      <AppButton @click="$emit('update:show', false)">关闭</AppButton>
+      <div v-if="device" class="device-detail-footer">
+        <AppButton tone="danger" :loading="removing" @click="$emit('remove', device)">
+          移除设备
+        </AppButton>
+        <span class="device-detail-footer__spacer" />
+        <AppButton @click="$emit('edit', device)">编辑</AppButton>
+        <AppButton
+          :loading="statusChanging"
+          @click="$emit('toggle-enabled', device)"
+        >
+          {{ device.enabled ? '停用设备' : '启用设备' }}
+        </AppButton>
+        <AppButton @click="$emit('update:show', false)">关闭</AppButton>
+      </div>
     </template>
   </DetailDrawer>
 </template>
@@ -211,6 +229,17 @@ defineEmits<{
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+.device-detail-footer {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.device-detail-footer__spacer {
+  flex: 1;
 }
 
 .device-detail-header :deep(.device-identity) {

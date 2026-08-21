@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,12 @@ class WorkerRepository:
         self.session = session
 
     def get_device(self, device_id: UUID) -> Device | None:
-        return self.session.get(Device, device_id)
+        return self.session.scalar(
+            select(Device).where(
+                Device.device_id == device_id,
+                Device.deleted_at.is_(None),
+            ),
+        )
 
     def get_credential(self, device_id: UUID) -> WorkerDeviceCredential | None:
         statement = select(WorkerDeviceCredential).where(
@@ -29,6 +34,17 @@ class WorkerRepository:
 
     def add_credential(self, credential: WorkerDeviceCredential) -> None:
         self.session.add(credential)
+
+    def disable_credentials_by_device(self, device_id: UUID) -> int:
+        result = self.session.execute(
+            update(WorkerDeviceCredential)
+            .where(
+                WorkerDeviceCredential.device_id == device_id,
+                WorkerDeviceCredential.enabled.is_(True),
+            )
+            .values(enabled=False),
+        )
+        return result.rowcount or 0
 
     def upsert_runtime(
         self,
@@ -45,6 +61,8 @@ class WorkerRepository:
                 worker_version=worker_version,
                 last_seen_at=last_seen_at,
                 started_at=started_at,
+                connection_status="online",
+                offline_since=None,
                 updated_at=last_seen_at,
             )
             .on_conflict_do_update(
@@ -53,6 +71,8 @@ class WorkerRepository:
                     "worker_version": worker_version,
                     "last_seen_at": last_seen_at,
                     "started_at": started_at,
+                    "connection_status": "online",
+                    "offline_since": None,
                     "updated_at": last_seen_at,
                 },
             )
@@ -63,6 +83,37 @@ class WorkerRepository:
 
     def get_runtime(self, device_id: UUID) -> DeviceRuntime | None:
         return self.session.get(DeviceRuntime, device_id)
+
+    def get_runtime_for_update(self, device_id: UUID) -> DeviceRuntime | None:
+        return self.session.scalar(
+            select(DeviceRuntime)
+            .where(DeviceRuntime.device_id == device_id)
+            .with_for_update(),
+        )
+
+    def mark_stale_online_offline(
+        self,
+        *,
+        stale_before: datetime,
+        offline_since: datetime,
+    ) -> list[DeviceRuntime]:
+        runtimes = list(
+            self.session.scalars(
+                select(DeviceRuntime)
+                .join(Device, Device.device_id == DeviceRuntime.device_id)
+                .where(
+                    DeviceRuntime.connection_status == "online",
+                    DeviceRuntime.last_seen_at < stale_before,
+                    Device.deleted_at.is_(None),
+                )
+                .with_for_update(skip_locked=True),
+            ),
+        )
+        for runtime in runtimes:
+            runtime.connection_status = "offline"
+            runtime.offline_since = offline_since
+            runtime.updated_at = offline_since
+        return runtimes
 
     def get_runtimes(self, device_ids: Iterable[UUID]) -> dict[UUID, DeviceRuntime]:
         identifiers = list(device_ids)

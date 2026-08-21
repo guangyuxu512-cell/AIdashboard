@@ -105,3 +105,11 @@ def update_device(
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> DeviceRead:
     return to_device_read(service.update(device_id, data), None)
+
+
+@router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_device(
+    device_id: UUID,
+    service: Annotated[DeviceService, Depends(get_device_service)],
+) -> None:
+    service.remove(device_id)

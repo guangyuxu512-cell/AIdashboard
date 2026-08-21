@@ -12,6 +12,8 @@ import {
   useDeviceDetailQuery,
   useDeviceListQuery,
   useDeviceProviderInventoriesQuery,
+  useRemoveDeviceMutation,
+  useSetDeviceEnabledMutation,
   useUpdateDeviceMutation,
   deviceQueryKeys,
 } from '@/entities/device'
@@ -52,6 +54,9 @@ export function useDeviceManagement() {
   const editingDeviceId = ref<string | null>(null)
   const applicationsVisible = ref(false)
   const selectedDeviceIds = ref<string[]>([])
+  const statusChangingDeviceId = ref<string | null>(null)
+  const removeDevice = ref<DeviceListItemViewModel | null>(null)
+  const removeVisible = ref(false)
   const refreshTaskId = ref<string | null>(null)
   const handledRefreshTaskId = ref<string | null>(null)
   const queryClient = useQueryClient()
@@ -77,6 +82,8 @@ export function useDeviceManagement() {
   const createTaskMutation = useCreateTaskMutation()
   const createMutation = useCreateDeviceMutation()
   const updateMutation = useUpdateDeviceMutation()
+  const setEnabledMutation = useSetDeviceEnabledMutation()
+  const removeMutation = useRemoveDeviceMutation()
 
   function getCurrentExecution(
     device: DeviceListItemViewModel,
@@ -330,6 +337,47 @@ export function useDeviceManagement() {
     }
   }
 
+  async function toggleEnabled(device: DeviceListItemViewModel): Promise<void> {
+    statusChangingDeviceId.value = device.deviceId
+    try {
+      await setEnabledMutation.mutateAsync({
+        deviceId: device.deviceId,
+        enabled: !device.enabled,
+      })
+      message.success(device.enabled ? '设备已停用' : '设备已启用')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    } finally {
+      statusChangingDeviceId.value = null
+    }
+  }
+
+  function requestRemove(device: DeviceListItemViewModel): void {
+    removeDevice.value = device
+    removeVisible.value = true
+  }
+
+  async function confirmRemove(): Promise<void> {
+    const device = removeDevice.value
+    if (!device) return
+    try {
+      await removeMutation.mutateAsync(device.deviceId)
+      selectedDeviceIds.value = selectedDeviceIds.value.filter(
+        (deviceId) => deviceId !== device.deviceId,
+      )
+      if (detailDeviceId.value === device.deviceId) {
+        detailVisible.value = false
+        detailDeviceId.value = null
+      }
+      removeVisible.value = false
+      removeDevice.value = null
+      if (visibleRows.value.length === 1 && page.value > 1) page.value -= 1
+      message.success('设备已移除')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
+  }
+
   return {
     filterDraft,
     page,
@@ -342,6 +390,9 @@ export function useDeviceManagement() {
     rows,
     visibleRows,
     selectedDeviceIds,
+    statusChangingDeviceId,
+    removeDevice,
+    removeVisible,
     total,
     statistics,
     refreshing: computed(
@@ -361,6 +412,7 @@ export function useDeviceManagement() {
     providerInventoryError,
     yingdaoRefreshing,
     formSubmitting,
+    removeSubmitting: computed(() => removeMutation.isPending.value),
     query,
     resetFilters,
     setPageSize,
@@ -374,5 +426,8 @@ export function useDeviceManagement() {
     openYingdaoApplications,
     refreshYingdao,
     saveDevice,
+    toggleEnabled,
+    requestRemove,
+    confirmRemove,
   }
 }

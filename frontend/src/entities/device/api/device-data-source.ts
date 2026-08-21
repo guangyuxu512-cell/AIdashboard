@@ -31,6 +31,11 @@ export interface DeviceDataSource {
     deviceId: string,
     input: DeviceSaveInput,
   ): Promise<DeviceListItemViewModel>
+  setEnabled(
+    deviceId: string,
+    enabled: boolean,
+  ): Promise<DeviceListItemViewModel>
+  remove(deviceId: string): Promise<void>
 }
 
 function cloneFixtureRows(): DeviceListItemViewModel[] {
@@ -128,6 +133,26 @@ export function createMockDeviceDataSource(): DeviceDataSource {
       rows[index] = updated
       return { ...updated }
     },
+    async setEnabled(deviceId, enabled) {
+      const index = rows.findIndex((item) => item.deviceId === deviceId)
+      if (index < 0) throw new Error('设备不存在')
+      const updated: DeviceListItemViewModel = {
+        ...rows[index]!,
+        enabled,
+        enabledStatus: enabled ? 'enabled' : 'disabled',
+        updatedAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
+      }
+      rows[index] = updated
+      return { ...updated }
+    },
+    async remove(deviceId) {
+      const index = rows.findIndex((item) => item.deviceId === deviceId)
+      if (index < 0) throw new Error('设备不存在')
+      if (rows[index]!.currentTaskName) {
+        throw new Error('设备存在待执行或执行中的任务，暂时不能移除')
+      }
+      rows.splice(index, 1)
+    },
   }
 }
 
@@ -153,6 +178,12 @@ const realDeviceDataSource: DeviceDataSource = {
     return mapDeviceDto(
       await deviceApi.update(deviceId, mapDeviceUpdateInput(input)),
     )
+  },
+  async setEnabled(deviceId, enabled) {
+    return mapDeviceDto(await deviceApi.update(deviceId, { enabled }))
+  },
+  async remove(deviceId) {
+    await deviceApi.remove(deviceId)
   },
 }
 

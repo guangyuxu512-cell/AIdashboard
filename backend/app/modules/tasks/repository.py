@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import null, select, update
+from sqlalchemy import exists, func, null, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.devices.models import Device
@@ -18,11 +18,30 @@ class TaskRepository:
         return self.session.get(Task, task_id)
 
     def get_enabled_device(self, device_id: UUID) -> Device | None:
-        statement = select(Device).where(
-            Device.device_id == device_id,
-            Device.enabled.is_(True),
+        statement = (
+            select(Device)
+            .where(
+                Device.device_id == device_id,
+                Device.enabled.is_(True),
+                Device.deleted_at.is_(None),
+            )
+            .with_for_update()
         )
         return self.session.scalar(statement)
+
+    def has_active_for_device(self, device_id: UUID) -> bool:
+        return bool(
+            self.session.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.target_device_id == device_id,
+                    Task.status.in_(
+                        [TaskStatus.PENDING.value, TaskStatus.RUNNING.value],
+                    ),
+                ),
+            ),
+        )
 
     def add(self, task: Task) -> None:
         self.session.add(task)
@@ -39,6 +58,13 @@ class TaskRepository:
             .where(
                 Task.target_device_id == device_id,
                 Task.status == TaskStatus.PENDING.value,
+                exists(
+                    select(Device.device_id).where(
+                        Device.device_id == device_id,
+                        Device.enabled.is_(True),
+                        Device.deleted_at.is_(None),
+                    ),
+                ),
             )
             .order_by(Task.created_at.asc(), Task.task_id.asc())
             .with_for_update(skip_locked=True)

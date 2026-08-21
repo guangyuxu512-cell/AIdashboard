@@ -76,3 +76,29 @@ export function useUpdateDeviceMutation() {
       ]),
   })
 }
+
+export function useSetDeviceEnabledMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, enabled }: { deviceId: string; enabled: boolean }) =>
+      deviceDataSource.setEnabled(deviceId, enabled),
+    onSuccess: (_, variables) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: deviceQueryKeys.all }),
+        queryClient.invalidateQueries({
+          queryKey: deviceQueryKeys.detail(variables.deviceId),
+        }),
+      ]),
+  })
+}
+
+export function useRemoveDeviceMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceId: string) => deviceDataSource.remove(deviceId),
+    onSuccess: (_, deviceId) => {
+      queryClient.removeQueries({ queryKey: deviceQueryKeys.detail(deviceId) })
+      return queryClient.invalidateQueries({ queryKey: deviceQueryKeys.all })
+    },
+  })
+}

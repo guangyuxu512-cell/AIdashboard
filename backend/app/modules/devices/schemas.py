@@ -41,6 +41,7 @@ class DeviceRead(BaseModel):
     enabled: bool
     location: str | None
     note: str | None
+    deleted_at: datetime | None
     worker_runtime: DeviceRuntimeRead | None = None
     created_at: datetime
     updated_at: datetime

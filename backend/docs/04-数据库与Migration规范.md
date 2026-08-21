@@ -61,3 +61,11 @@ Migration `20260820_0005_provider_inventory` 增加
 `inventory_payload` 是外部 Provider Inventory 的专用 JSONB，并用对象类型约束，
 不得演变为任意业务数据容器。当前影刀应用数组保留在该快照中，等真实 Skill 与 App
 绑定或版本管理需求出现后再独立建模。
+
+## 阶段 3D-1 持久结构
+
+- `devices.deleted_at`：Device 软移除时间，UUID 和历史引用不删除。
+- `device_runtime.connection_status/offline_since`：持久化转换前状态，避免 Backend 重启制造重复离线通知。
+- `notification_channels`：全局通知通道；Webhook URL 仅以 SecretCipher 密文保存。
+
+Migration 对既有 Runtime 按当前 45 秒阈值回填状态，但回填过程不产生通知。

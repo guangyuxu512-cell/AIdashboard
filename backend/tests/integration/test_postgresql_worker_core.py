@@ -131,10 +131,12 @@ def test_worker_identity_runtime_claim_result_and_lost(
             assert online.connection_status == "online"
             stored_runtime = session.get(DeviceRuntime, device_a)
             assert stored_runtime is not None
-            assert worker_service.to_runtime_read(
-                stored_runtime,
+            assert worker_service.reconcile_offline_devices(
                 now=base_time + timedelta(seconds=46),
-            ).connection_status == "offline"
+            ) >= 1
+            session.refresh(stored_runtime)
+            assert stored_runtime.connection_status == "offline"
+            assert stored_runtime.connection_status == "offline"
             restarted = worker_service.heartbeat(
                 principal_a,
                 WorkerHeartbeat(

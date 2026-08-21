@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import logging
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.modules.devices.exceptions import DeviceNotFoundError
+from app.modules.notifications.service import NotificationService
 from app.modules.workers.enums import WorkerConnectionStatus
 from app.modules.workers.exceptions import (
     WorkerAuthenticationError,
@@ -31,6 +33,9 @@ from app.modules.workers.security import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class WorkerPrincipal:
     device_id: UUID
@@ -42,10 +47,12 @@ class WorkerService:
         session: Session,
         repository: WorkerRepository | None = None,
         settings: Settings | None = None,
+        notification_service: NotificationService | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or WorkerRepository(session)
         self.settings = settings or get_settings()
+        self.notification_service = notification_service
 
     def issue_token(self, device_id: UUID) -> str:
         device = self.repository.get_device(device_id)
@@ -79,7 +86,6 @@ class WorkerService:
         credential = self.repository.get_credential(device_id)
         if (
             device is None
-            or not device.enabled
             or credential is None
             or not credential.enabled
             or not verify_worker_token(token, credential.token_hash)
@@ -95,6 +101,13 @@ class WorkerService:
         now: datetime | None = None,
     ) -> DeviceRuntimeRead:
         seen_at = now or datetime.now(UTC)
+        previous_runtime = self.repository.get_runtime_for_update(principal.device_id)
+        previous_status = (
+            previous_runtime.connection_status if previous_runtime is not None else None
+        )
+        previous_offline_since = (
+            previous_runtime.offline_since if previous_runtime is not None else None
+        )
         runtime = self.repository.upsert_runtime(
             device_id=principal.device_id,
             worker_version=data.worker_version,
@@ -102,7 +115,56 @@ class WorkerService:
             started_at=data.started_at,
         )
         self.session.commit()
+        device = self.repository.get_device(principal.device_id)
+        if (
+            previous_status == WorkerConnectionStatus.OFFLINE.value
+            and device is not None
+            and device.enabled
+            and self.notification_service is not None
+        ):
+            offline_duration = (
+                seen_at - previous_offline_since
+                if previous_offline_since is not None
+                else None
+            )
+            try:
+                self.notification_service.notify_device_recovered(
+                    device_name=device.display_name,
+                    offline_duration=offline_duration,
+                )
+            except Exception:
+                logger.exception(
+                    "Device recovery notification failed device_id=%s",
+                    principal.device_id,
+                )
         return self.to_runtime_read(runtime, now=seen_at)
+
+    def reconcile_offline_devices(self, *, now: datetime | None = None) -> int:
+        observed_at = now or datetime.now(UTC)
+        threshold = timedelta(seconds=self.settings.worker_online_timeout_seconds)
+        runtimes = self.repository.mark_stale_online_offline(
+            stale_before=observed_at - threshold,
+            offline_since=observed_at,
+        )
+        notifications = []
+        for runtime in runtimes:
+            device = self.repository.get_device(runtime.device_id)
+            if device is not None and device.enabled:
+                notifications.append((device.display_name, runtime.last_seen_at))
+        self.session.commit()
+        if self.notification_service is not None:
+            for device_name, last_seen_at in notifications:
+                try:
+                    self.notification_service.notify_device_offline(
+                        device_name=device_name,
+                        last_heartbeat=last_seen_at,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Device offline notification failed device_name=%s",
+                        device_name,
+                    )
+        return len(runtimes)
 
     def get_runtime_reads(
         self,
@@ -155,12 +217,8 @@ class WorkerService:
         *,
         now: datetime,
     ) -> DeviceRuntimeRead:
-        threshold = timedelta(seconds=self.settings.worker_online_timeout_seconds)
-        connection_status = (
-            WorkerConnectionStatus.ONLINE
-            if now - runtime.last_seen_at <= threshold
-            else WorkerConnectionStatus.OFFLINE
-        )
+        del now
+        connection_status = WorkerConnectionStatus(runtime.connection_status)
         return DeviceRuntimeRead(
             device_id=runtime.device_id,
             worker_version=runtime.worker_version,

@@ -118,3 +118,14 @@ class ShopDeviceBindingRepository:
             .values(enabled=False, updated_at=func.now()),
         )
         return result.rowcount
+
+    def disable_enabled_by_device(self, device_id: UUID) -> int:
+        result = self.session.execute(
+            update(ShopDeviceBinding)
+            .where(
+                ShopDeviceBinding.device_id == device_id,
+                ShopDeviceBinding.enabled.is_(True),
+            )
+            .values(enabled=False, updated_at=func.now()),
+        )
+        return result.rowcount

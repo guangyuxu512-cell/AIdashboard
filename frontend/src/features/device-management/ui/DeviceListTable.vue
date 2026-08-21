@@ -14,16 +14,19 @@ import AppButton from '@/shared/ui/AppButton.vue'
 
 import type { DeviceManagementRowViewModel } from '../model/types'
 
-defineProps<{
+const props = defineProps<{
   rows: DeviceManagementRowViewModel[]
   loading?: boolean
   error?: string | null
   checkedRowKeys?: DataTableRowKey[]
+  statusChangingDeviceId?: string | null
 }>()
 
 const emit = defineEmits<{
   view: [device: DeviceManagementRowViewModel]
   edit: [device: DeviceManagementRowViewModel]
+  'toggle-enabled': [device: DeviceManagementRowViewModel]
+  remove: [device: DeviceManagementRowViewModel]
   retry: []
   'update:checkedRowKeys': [keys: DataTableRowKey[]]
 }>()
@@ -118,7 +121,7 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
   {
     title: '操作',
     key: 'actions',
-    width: 116,
+    width: 246,
     align: 'center',
     fixed: 'right',
     render: (device) =>
@@ -134,6 +137,23 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
             { tone: 'text', onClick: () => emit('edit', device) },
             () => '编辑',
           ),
+          h(
+            AppButton,
+            {
+              tone: 'text',
+              loading: props.statusChangingDeviceId === device.deviceId,
+              disabled:
+                Boolean(props.statusChangingDeviceId) &&
+                props.statusChangingDeviceId !== device.deviceId,
+              onClick: () => emit('toggle-enabled', device),
+            },
+            () => (device.enabled ? '停用' : '启用'),
+          ),
+          h(
+            AppButton,
+            { tone: 'text', onClick: () => emit('remove', device) },
+            () => '移除',
+          ),
         ]),
       ),
   },
@@ -148,7 +168,7 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
     :loading="loading"
     :error="error"
     :row-key="(row: DeviceManagementRowViewModel) => row.deviceId"
-    :scroll-x="1254"
+    :scroll-x="1384"
     :checked-row-keys="checkedRowKeys"
     appearance="list"
     viewport="fill"
