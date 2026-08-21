@@ -20,6 +20,20 @@ class ShopSessionRepository:
     def add(self, shop_session: ShopSession) -> None:
         self.session.add(shop_session)
 
+    def set_validation_status(
+        self,
+        *,
+        shop_id: UUID,
+        status: ShopSessionStatus,
+        validated_at: datetime,
+    ) -> bool:
+        result = self.session.execute(
+            update(ShopSession)
+            .where(ShopSession.shop_id == shop_id)
+            .values(status=status, validated_at=validated_at, updated_at=func.now()),
+        )
+        return result.rowcount == 1
+
     def update_if_version(
         self,
         *,

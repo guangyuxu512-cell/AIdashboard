@@ -49,3 +49,9 @@ Browser Profile 永远保留在设备侧，并按 `Device × Shop` 隔离；服�
 ## 7. 审计与后续实现
 
 Credential 变更、Session 版本变更及授权读取未来必须接入审计，但审计只记录主体、对象、动作和结果，不记录敏感值。阶段 3A 只建立 Domain、API 元数据和认证 Protocol，不实现 Worker、浏览器、Cookie 采集、验证码 Provider 或平台 Connector。
+
+阶段 3C-2 起服务器请求通过 `ShopSessionAccessor` 取得认证上下文。只有 Accessor 可以解密
+并校验 `management-login.session.v1`，业务 Service 与 Connector 都不得直接读取加密载荷。
+`captured` 可用于首次只读验证；成功后同一 payload 标记为 `valid` 并记录
+`validated_at`，明确 HTTP 401/403 才标记 `invalid`。超时、平台 5xx、响应结构异常不改变
+Session 状态，也不触发自动登录。Backend 请求不读取 Management Login Profile。

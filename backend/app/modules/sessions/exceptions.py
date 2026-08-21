@@ -11,3 +11,21 @@ class SessionEncryptionUnavailableError(AppError):
     code = "SESSION_ENCRYPTION_UNAVAILABLE"
     message = "Session 加密服务不可用"
     status_code = 500
+
+
+class ShopSessionNotConfiguredError(AppError):
+    code = "SHOP_SESSION_NOT_CONFIGURED"
+    message = "店铺尚未配置可用 Session"
+    status_code = 409
+
+
+class ShopSessionPayloadInvalidError(AppError):
+    code = "SHOP_SESSION_PAYLOAD_INVALID"
+    message = "店铺 Session 无法安全读取"
+    status_code = 500
+
+
+class ShopSessionAuthenticationInvalidError(AppError):
+    code = "AUTH_INVALID"
+    message = "店铺 Session 已失效，需要重新登录"
+    status_code = 401
