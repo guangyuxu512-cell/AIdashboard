@@ -10,6 +10,7 @@ import LoadingState from '@/shared/components/LoadingState.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 import ShopConnectionSection from './ShopConnectionSection.vue'
+import ShopDeviceBindingSection from './ShopDeviceBindingSection.vue'
 
 defineProps<{
   show: boolean
@@ -54,7 +55,7 @@ defineEmits<{
       <section class="shop-detail__section">
         <h3>基本信息</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="店铺名称">{{
+          <NDescriptionsItem label="平台店铺名称">{{
             shop.shopName
           }}</NDescriptionsItem>
           <NDescriptionsItem label="平台">
@@ -63,7 +64,12 @@ defineEmits<{
           <NDescriptionsItem label="负责人">{{
             shop.ownerName
           }}</NDescriptionsItem>
-          <NDescriptionsItem label="店铺 ID">
+          <NDescriptionsItem label="平台店铺 ID">
+            <span class="shop-detail__id">{{
+              shop.platformShopId ?? '—'
+            }}</span>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="中控台 Shop ID">
             <span class="shop-detail__id">{{ shop.shopId }}</span>
           </NDescriptionsItem>
           <NDescriptionsItem label="基础状态">
@@ -83,22 +89,7 @@ defineEmits<{
 
       <ShopConnectionSection :shop="shop" />
 
-      <section class="shop-detail__section">
-        <h3>执行设备</h3>
-        <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="主执行设备">
-            {{ shop.executionDeviceName ?? '未分配' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="主设备 ID">
-            <span class="shop-detail__id">{{
-              shop.executionDeviceId ?? '—'
-            }}</span>
-          </NDescriptionsItem>
-          <NDescriptionsItem label="备用设备">
-            {{ shop.backupDeviceNames.join('、') || '未分配' }}
-          </NDescriptionsItem>
-        </NDescriptions>
-      </section>
+      <ShopDeviceBindingSection :shop="shop" />
 
       <section class="shop-detail__section">
         <h3>操作记录</h3>

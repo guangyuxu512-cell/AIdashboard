@@ -5,7 +5,11 @@ import pytest
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.shops.enums import BindingRole, ShopPlatform
-from app.modules.shops.exceptions import InvalidDeviceBindingError, ShopNotFoundError
+from app.modules.shops.exceptions import (
+    ImmutableShopIdentityError,
+    InvalidDeviceBindingError,
+    ShopNotFoundError,
+)
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.shops.schemas import (
     ShopCreate,
@@ -135,6 +139,31 @@ def test_shop_not_found() -> None:
 
     with pytest.raises(ShopNotFoundError):
         service.get(uuid4())
+
+
+def test_platform_identified_shop_identity_is_immutable() -> None:
+    service, session, _, _, user_id, _ = build_service()
+    shop = service.create(
+        ShopCreate(
+            display_name="平台真实店名",
+            platform=ShopPlatform.DOUYIN,
+            platform_shop_id="987654321",
+            owner_user_id=user_id,
+        ),
+    )
+
+    with pytest.raises(ImmutableShopIdentityError):
+        service.update(shop.shop_id, ShopUpdate(display_name="人工改名"))
+    with pytest.raises(ImmutableShopIdentityError):
+        service.update(shop.shop_id, ShopUpdate(platform=ShopPlatform.PDD))
+
+    updated = service.update(shop.shop_id, ShopUpdate(enabled=False, note="可编辑备注"))
+
+    assert updated.display_name == "平台真实店名"
+    assert updated.platform == ShopPlatform.DOUYIN
+    assert updated.enabled is False
+    assert updated.note == "可编辑备注"
+    assert session.commits == 2
 
 
 def test_binding_primary_backup_duplicate_and_disable() -> None:

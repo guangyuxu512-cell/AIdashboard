@@ -37,3 +37,14 @@ export interface ShopDeviceBindingReadDto {
   created_at: string
   updated_at: string
 }
+
+export interface ShopDeviceBindingCreateDto {
+  device_id: string
+  binding_role: BindingRoleDto
+  enabled: boolean
+}
+
+export interface ShopDeviceBindingUpdateDto {
+  binding_role?: BindingRoleDto
+  enabled?: boolean
+}

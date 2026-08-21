@@ -284,6 +284,32 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(page.getByText('影刀应用列表', { exact: true })).toHaveCount(0)
   await deviceDrawer.getByRole('button', { name: '关闭', exact: true }).click()
 
+  await page.getByText('店铺中心', { exact: true }).click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: updatedShopName })
+    .getByRole('button', { name: '查看' })
+    .click()
+  await page.getByRole('button', { name: '绑定设备', exact: true }).click()
+  await page.getByRole('dialog').last().getByRole('textbox').click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: updatedDeviceName })
+    .click()
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText(updatedDeviceName).last()).toBeVisible()
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await page.reload()
+  await page
+    .getByRole('row')
+    .filter({ hasText: updatedShopName })
+    .getByRole('button', { name: '查看' })
+    .click()
+  await expect(page.getByText(updatedDeviceName).last()).toBeVisible()
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByText('设备中心', { exact: true }).click()
+
   const layout = await page.evaluate(() => ({
     documentHasHorizontalOverflow:
       document.documentElement.scrollWidth >

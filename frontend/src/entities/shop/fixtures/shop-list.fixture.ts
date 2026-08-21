@@ -25,6 +25,7 @@ export const SHOP_LIST_FIXTURE: ShopListItemViewModel[] = [
     shopId: 'shop-fixture-001',
     shopName: '星河服饰旗舰店',
     platform: 'douyin',
+    platformShopId: 'platform-shop-fixture-001',
     ownerUserId: 'user-fixture-linxiao',
     ownerName: '林晓',
     enabled: true,

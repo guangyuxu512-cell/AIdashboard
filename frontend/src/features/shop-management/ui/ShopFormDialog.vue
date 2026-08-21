@@ -36,6 +36,7 @@ const emit = defineEmits<{
 const emptyForm: ShopFormViewModel = {
   shopName: '',
   platform: null,
+  platformShopId: null,
   enabled: true,
   ownerUserId: null,
   note: '',
@@ -51,6 +52,7 @@ const formSchema = z.object({
     .enum(['douyin', 'pdd'])
     .nullable()
     .refine((value) => value !== null, '请选择平台'),
+  platformShopId: z.string().nullable(),
   enabled: z.boolean(),
   ownerUserId: z.string().nullable(),
   note: z.string().trim().max(1000, '备注最多 1000 个字符'),
@@ -63,6 +65,7 @@ const { defineField, errors, handleSubmit, resetForm, setErrors } =
 
 const [shopName] = defineField('shopName')
 const [platform] = defineField('platform')
+const [platformShopId] = defineField('platformShopId')
 const [enabled] = defineField('enabled')
 const [ownerUserId] = defineField('ownerUserId')
 const [note] = defineField('note')
@@ -135,11 +138,15 @@ const submit = handleSubmit((values) => {
     <NForm label-placement="top" @submit.prevent="submit">
       <div class="shop-form__grid">
         <NFormItem
-          label="店铺名称"
+          label="平台店铺名称"
           :validation-status="errors.shopName ? 'error' : undefined"
           :feedback="errors.shopName"
         >
+          <div v-if="platformShopId" class="shop-form__readonly">
+            {{ shopName }}
+          </div>
           <AppInput
+            v-else
             v-model="shopName"
             :maxlength="100"
             placeholder="请输入店铺名称"
@@ -150,13 +157,22 @@ const submit = handleSubmit((values) => {
           :validation-status="errors.platform ? 'error' : undefined"
           :feedback="errors.platform"
         >
+          <div v-if="platformShopId" class="shop-form__readonly">
+            <PlatformDisplay v-if="platform" :code="platform" />
+          </div>
           <AppSelect
+            v-else
             :model-value="platform"
             :options="PLATFORM_CREATE_OPTIONS"
             :render-label="renderPlatformLabel"
             placeholder="请选择平台"
             @update:model-value="updatePlatform"
           />
+        </NFormItem>
+        <NFormItem v-if="platformShopId" label="平台店铺 ID">
+          <div class="shop-form__readonly shop-form__readonly--id">
+            {{ platformShopId }}
+          </div>
         </NFormItem>
         <NFormItem
           label="负责人"
@@ -197,6 +213,24 @@ const submit = handleSubmit((values) => {
   display: grid;
   gap: 0 var(--space-4);
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.shop-form__readonly {
+  display: flex;
+  min-height: var(--control-height-md);
+  width: 100%;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+.shop-form__readonly--id {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: var(--font-size-secondary);
 }
 
 @media (max-width: 640px) {

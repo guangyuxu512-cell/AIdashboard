@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { mapShopCreateInput, mapShopDto } from './shop-mapper'
+import {
+  mapShopCreateInput,
+  mapShopDto,
+  mapShopUpdateInput,
+} from './shop-mapper'
 
 describe('shop backend DTO mapper', () => {
   it('maps only real backend facts into the frontend ViewModel', () => {
@@ -78,6 +82,23 @@ describe('shop backend DTO mapper', () => {
       enabled: true,
       owner_user_id: null,
       note: '备注',
+    })
+  })
+
+  it('omits platform identity fields when updating an identified shop', () => {
+    expect(
+      mapShopUpdateInput({
+        shopName: '不可提交的新名称',
+        platform: 'pdd',
+        platformShopId: '987654321',
+        enabled: true,
+        ownerUserId: null,
+        note: '只更新备注',
+      }),
+    ).toEqual({
+      enabled: true,
+      owner_user_id: null,
+      note: '只更新备注',
     })
   })
 })

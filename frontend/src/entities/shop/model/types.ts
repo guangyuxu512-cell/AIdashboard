@@ -4,11 +4,17 @@ import type { PlatformCode } from '@/entities/platform'
 export type ShopPlatform = Extract<PlatformCode, 'douyin' | 'pdd'>
 
 /** 店铺中心平台栏的前端展示值，不是 Backend 平台枚举。 */
-export type ShopPlatformFilter =
-  | 'all'
-  | PlatformCode
+export type ShopPlatformFilter = 'all' | PlatformCode
 
 export type ShopEnabledStatus = 'enabled' | 'disabled'
+export type ShopDeviceBindingRole = 'primary' | 'backup'
+
+export interface ShopDeviceBindingViewModel {
+  deviceId: string
+  deviceName: string
+  bindingRole: ShopDeviceBindingRole
+  enabled: boolean
+}
 
 /**
  * 店铺中心的前端展示模型。
@@ -27,6 +33,7 @@ export interface ShopListItemViewModel {
   executionDeviceId: string | null
   executionDeviceName: string | null
   backupDeviceNames: string[]
+  deviceBindings?: ShopDeviceBindingViewModel[]
   createdAtDisplay: string
   updatedAtDisplay: string
   note: string
@@ -42,9 +49,16 @@ export interface ShopListFilters {
 export interface ShopSaveInput {
   shopName: string
   platform: ShopPlatform
+  platformShopId?: string | null
   enabled: boolean
   ownerUserId: string | null
   note: string
+}
+
+export interface ShopDeviceBindingInput {
+  deviceId: string
+  bindingRole: ShopDeviceBindingRole
+  enabled: boolean
 }
 
 export interface ShopSelectOption {

@@ -36,6 +36,12 @@ export function mapShopDto(
   const backupDeviceNames = context.bindings
     .filter((binding) => binding.enabled && binding.binding_role === 'backup')
     .map((binding) => deviceNames.get(binding.device_id) ?? '未知设备')
+  const deviceBindings = context.bindings.map((binding) => ({
+    deviceId: binding.device_id,
+    deviceName: deviceNames.get(binding.device_id) ?? '未知设备',
+    bindingRole: binding.binding_role,
+    enabled: binding.enabled,
+  }))
 
   return {
     shopId: dto.shop_id,
@@ -53,6 +59,7 @@ export function mapShopDto(
       ? (deviceNames.get(primaryBinding.device_id) ?? '未知设备')
       : null,
     backupDeviceNames,
+    deviceBindings,
     createdAtDisplay: formatDateTime(dto.created_at),
     updatedAtDisplay: formatDateTime(dto.updated_at),
     note: dto.note || '',
@@ -76,5 +83,14 @@ export function mapShopCreateInput(input: ShopSaveInput): ShopCreateDto {
 }
 
 export function mapShopUpdateInput(input: ShopSaveInput): ShopUpdateDto {
-  return mapShopCreateInput(input)
+  const editableFields: ShopUpdateDto = {
+    enabled: input.enabled,
+    owner_user_id: input.ownerUserId,
+    note: input.note.trim() || null,
+  }
+  if (!input.platformShopId) {
+    editableFields.display_name = input.shopName.trim()
+    editableFields.platform = requireBackendPlatform(input.platform)
+  }
+  return editableFields
 }

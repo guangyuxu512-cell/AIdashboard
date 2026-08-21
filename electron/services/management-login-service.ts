@@ -13,6 +13,7 @@ import type {
   ManagementLoginStatusResult,
 } from '../types'
 import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
+import { shouldPreserveCapturedLogin } from './management-login-lifecycle'
 import type {
   CapturedManagementSession,
   PlatformAuthAdapter,
@@ -27,7 +28,11 @@ interface LoginAttempt {
   identity: ManagementLoginIdentity | null
   capturedSession: CapturedManagementSession | null
   message: string
+  systemCloseRequested: boolean
+  expiresAt: ReturnType<typeof setTimeout> | null
 }
+
+const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
 
 interface OnboardingApiResponse {
   shop: {
@@ -69,6 +74,8 @@ export class ManagementLoginService {
         identity: null,
         capturedSession: null,
         message: '登录窗口已打开，请人工完成平台登录',
+        systemCloseRequested: false,
+        expiresAt: null,
       }
       this.attempts.set(attemptId, attempt)
     }
@@ -102,15 +109,25 @@ export class ManagementLoginService {
     loginWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     attempt.window = loginWindow
     attempt.identity = null
+    attempt.systemCloseRequested = false
     this.clearCapturedSession(attempt)
+    this.armAttemptTimeout(attempt)
     attempt.status = 'waiting'
     attempt.message = '等待人工登录，系统会自动识别店铺'
     loginWindow.on('closed', () => {
-      if (attempt?.status !== 'completed') {
-        attempt!.status = 'closed'
-        attempt!.message = '登录窗口已关闭，尚未完成接入'
-      }
+      const preserveCapture = shouldPreserveCapturedLogin({
+        status: attempt!.status,
+        systemCloseRequested: attempt!.systemCloseRequested,
+        sessionCaptured: Boolean(attempt!.capturedSession),
+      })
+      attempt!.systemCloseRequested = false
       attempt!.window = null
+      if (!preserveCapture && attempt!.status !== 'completed') {
+        attempt!.identity = null
+        this.clearCapturedSession(attempt!)
+        attempt!.status = 'closed'
+        attempt!.message = '登录窗口已提前关闭，未采集店铺会话'
+      }
     })
     await loginWindow.loadURL(adapter.loginUrl)
     return this.toStatus(attempt)
@@ -123,27 +140,41 @@ export class ManagementLoginService {
       attempt.window &&
       !attempt.window.isDestroyed()
     ) {
+      const loginWindow = attempt.window
       try {
         const adapter = this.requireAdapter(attempt.platform)
         const detection = await adapter.detectLoginStatus(
-          attempt.window.webContents.session,
-          attempt.window.webContents.id,
+          loginWindow.webContents.session,
+          loginWindow.webContents.id,
         )
         if (detection.identity) {
           const capturedSession = await adapter.captureSession(
-            attempt.window.webContents.session,
-            attempt.window.webContents.id,
+            loginWindow.webContents.session,
+            loginWindow.webContents.id,
             detection.identity,
           )
+          if (
+            attempt.status !== 'waiting' ||
+            attempt.window !== loginWindow ||
+            loginWindow.isDestroyed()
+          ) {
+            capturedSession.payload.fill(0)
+            return this.toStatus(attempt)
+          }
           this.clearCapturedSession(attempt)
           attempt.identity = detection.identity
           attempt.capturedSession = capturedSession
           attempt.status = 'identified'
-          attempt.message = '已自动识别店铺并采集登录会话，请确认后完成接入'
+          attempt.message = '已自动识别店铺并采集登录会话，登录窗口已关闭'
+          attempt.systemCloseRequested = true
+          loginWindow.close()
         } else {
           attempt.message = detection.message
         }
       } catch (error) {
+        if (attempt.window !== loginWindow || loginWindow.isDestroyed()) {
+          return this.toStatus(attempt)
+        }
         attempt.status = 'failed'
         attempt.message = safeErrorMessage(error)
       }
@@ -194,8 +225,13 @@ export class ManagementLoginService {
     )
     attempt.status = 'completed'
     attempt.message = '店铺接入成功'
-    if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
+    if (attempt.window && !attempt.window.isDestroyed()) {
+      attempt.systemCloseRequested = true
+      attempt.window.close()
+    }
     this.clearCapturedSession(attempt)
+    this.clearAttemptTimeout(attempt)
+    this.attempts.delete(attempt.attemptId)
     return {
       shopId: result.shop.shop_id,
       platformShopId: result.shop.platform_shop_id,
@@ -211,7 +247,9 @@ export class ManagementLoginService {
     const attempt = this.attempts.get(attemptId)
     if (!attempt) return
     if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
+    attempt.identity = null
     this.clearCapturedSession(attempt)
+    this.clearAttemptTimeout(attempt)
     this.attempts.delete(attemptId)
   }
 
@@ -245,6 +283,24 @@ export class ManagementLoginService {
   private clearCapturedSession(attempt: LoginAttempt): void {
     attempt.capturedSession?.payload.fill(0)
     attempt.capturedSession = null
+  }
+
+  private armAttemptTimeout(attempt: LoginAttempt): void {
+    this.clearAttemptTimeout(attempt)
+    attempt.expiresAt = setTimeout(() => {
+      if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
+      attempt.identity = null
+      this.clearCapturedSession(attempt)
+      attempt.status = 'closed'
+      attempt.message = '登录尝试已超时，请重新打开浏览器登录'
+      attempt.expiresAt = null
+    }, LOGIN_ATTEMPT_TIMEOUT_MS)
+    attempt.expiresAt.unref()
+  }
+
+  private clearAttemptTimeout(attempt: LoginAttempt): void {
+    if (attempt.expiresAt) clearTimeout(attempt.expiresAt)
+    attempt.expiresAt = null
   }
 
   private backendEndpoint(): string {

@@ -5,6 +5,7 @@ import {
   isManagementLoginCompleteInput,
   isManagementLoginOpenInput,
 } from '../types'
+import { shouldPreserveCapturedLogin } from '../services/management-login-lifecycle'
 
 const attemptId = '00000000-0000-4000-8000-000000000001'
 
@@ -47,6 +48,33 @@ test('management login completion rejects untyped or arbitrary execution input',
       loginIdentifier: '',
       secret: 'password',
       preferredVerificationChannel: 'manual',
+    }),
+    false,
+  )
+})
+
+test('management login only preserves capture for Main initiated auto close', () => {
+  assert.equal(
+    shouldPreserveCapturedLogin({
+      status: 'identified',
+      systemCloseRequested: true,
+      sessionCaptured: true,
+    }),
+    true,
+  )
+  assert.equal(
+    shouldPreserveCapturedLogin({
+      status: 'identified',
+      systemCloseRequested: false,
+      sessionCaptured: true,
+    }),
+    false,
+  )
+  assert.equal(
+    shouldPreserveCapturedLogin({
+      status: 'waiting',
+      systemCloseRequested: true,
+      sessionCaptured: false,
     }),
     false,
   )

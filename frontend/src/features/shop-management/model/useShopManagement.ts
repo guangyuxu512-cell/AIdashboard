@@ -134,6 +134,7 @@ export function useShopManagement() {
     formInitialValue.value = {
       shopName: shop.shopName,
       platform: shop.platform,
+      platformShopId: shop.platformShopId ?? null,
       enabled: shop.enabled,
       ownerUserId: shop.ownerUserId,
       note: shop.note,

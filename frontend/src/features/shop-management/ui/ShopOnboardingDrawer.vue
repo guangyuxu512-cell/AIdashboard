@@ -63,7 +63,8 @@ const loginAvailable = computed(
     selectedPlatformMeta.value.capabilities.sessionCapture === 'available',
 )
 const loginStateType = computed(() => {
-  if (actionError.value || loginStatus.value?.status === 'failed') return 'error'
+  if (actionError.value || loginStatus.value?.status === 'failed')
+    return 'error'
   if (loginStatus.value?.status === 'identified') return 'success'
   if (loginStatus.value?.status === 'closed') return 'warning'
   return 'info'
@@ -127,8 +128,7 @@ function validateCredential(): boolean {
   credentialErrors.value = {
     loginIdentifier: errors.loginIdentifier?.[0],
     password: errors.password?.[0],
-    preferredVerificationChannel:
-      errors.preferredVerificationChannel?.[0],
+    preferredVerificationChannel: errors.preferredVerificationChannel?.[0],
   }
   return false
 }
@@ -263,12 +263,7 @@ function updateShow(show: boolean): void {
 </script>
 
 <template>
-  <AppDrawer
-    :show="show"
-    title="新增店铺"
-    size="lg"
-    @update:show="updateShow"
-  >
+  <AppDrawer :show="show" title="新增店铺" size="lg" @update:show="updateShow">
     <div class="shop-onboarding">
       <NSteps :current="currentStep" size="small">
         <NStep title="选择平台" />
@@ -308,7 +303,9 @@ function updateShow(show: boolean): void {
       <section v-else-if="currentStep === 2" class="shop-onboarding__step">
         <div>
           <h3>账号与密码</h3>
-          <p>本轮登录窗口不自动填充；凭证只在接入完成时发送到服务器加密保存。</p>
+          <p>
+            本轮登录窗口不自动填充；凭证只在接入完成时发送到服务器加密保存。
+          </p>
         </div>
         <NForm label-placement="top" @submit.prevent="next">
           <CredentialFormFields
@@ -321,15 +318,18 @@ function updateShow(show: boolean): void {
       <section v-else-if="currentStep === 3" class="shop-onboarding__step">
         <div>
           <h3>登录并识别</h3>
-          <p>独立登录窗口保存在当前管理电脑；验证码、扫码、滑块和 App 确认由你人工完成。</p>
+          <p>
+            独立登录窗口保存在当前管理电脑；验证码、扫码、滑块和 App
+            确认由你人工完成。
+          </p>
         </div>
         <div class="shop-onboarding__connect-action">
-          <AppButton
-            tone="primary"
-            :loading="openingLogin"
-            @click="openLogin"
-          >
-            {{ loginStatus?.status === 'closed' ? '重新打开登录' : '打开浏览器登录' }}
+          <AppButton tone="primary" :loading="openingLogin" @click="openLogin">
+            {{
+              loginStatus?.status === 'closed'
+                ? '重新打开登录'
+                : '打开浏览器登录'
+            }}
           </AppButton>
         </div>
         <NAlert
@@ -353,13 +353,14 @@ function updateShow(show: boolean): void {
               :code="loginStatus.identity.platform"
             />
           </NDescriptionsItem>
-          <NDescriptionsItem label="店铺名称">
+          <NDescriptionsItem label="平台店铺名称">
             {{ loginStatus?.identity?.shopDisplayName ?? '—' }}
           </NDescriptionsItem>
           <NDescriptionsItem label="平台店铺 ID">
             {{ loginStatus?.identity?.platformShopId ?? '—' }}
           </NDescriptionsItem>
-          <NDescriptionsItem label="Session">
+          <NDescriptionsItem label="登录状态">已识别</NDescriptionsItem>
+          <NDescriptionsItem label="登录会话">
             {{ loginStatus?.sessionCaptured ? '已采集' : '未采集' }}
           </NDescriptionsItem>
         </NDescriptions>
@@ -374,7 +375,7 @@ function updateShow(show: boolean): void {
           <p>店铺、加密凭证与加密 Session 已由服务器一致保存。</p>
         </div>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="店铺名称">
+          <NDescriptionsItem label="平台店铺名称">
             {{ completedResult?.shopDisplayName ?? '—' }}
           </NDescriptionsItem>
           <NDescriptionsItem label="平台店铺 ID">
@@ -383,7 +384,7 @@ function updateShow(show: boolean): void {
           <NDescriptionsItem label="登录账号">
             {{ completedResult?.maskedIdentifier ?? '—' }}
           </NDescriptionsItem>
-          <NDescriptionsItem label="Session">
+          <NDescriptionsItem label="登录会话">
             已采集 · v{{ completedResult?.sessionVersion ?? 1 }}
           </NDescriptionsItem>
         </NDescriptions>
@@ -402,11 +403,7 @@ function updateShow(show: boolean): void {
           >
             上一步
           </AppButton>
-          <AppButton
-            v-if="currentStep < 3"
-            tone="primary"
-            @click="next"
-          >
+          <AppButton v-if="currentStep < 3" tone="primary" @click="next">
             下一步
           </AppButton>
           <AppButton

@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
 
-import { deviceApi } from '@/entities/device'
+import { DEVICE_LIST_FIXTURE, deviceApi } from '@/entities/device'
 import { userApi } from '@/entities/user'
 import { apiMode, type ApiMode, type PageResult } from '@/shared/api'
 
@@ -9,6 +9,7 @@ import {
   SHOP_OWNER_FIXTURE_OPTIONS,
 } from '../fixtures/shop-list.fixture'
 import type {
+  ShopDeviceBindingInput,
   ShopListFilters,
   ShopListItemViewModel,
   ShopSaveInput,
@@ -33,6 +34,8 @@ export interface ShopDataSource {
   get(shopId: string): Promise<ShopListItemViewModel>
   create(input: ShopSaveInput): Promise<ShopListItemViewModel>
   update(shopId: string, input: ShopSaveInput): Promise<ShopListItemViewModel>
+  createBinding(shopId: string, input: ShopDeviceBindingInput): Promise<void>
+  updateBinding(shopId: string, input: ShopDeviceBindingInput): Promise<void>
   listOwnerOptions(): Promise<ShopSelectOption[]>
 }
 
@@ -40,7 +43,46 @@ function cloneFixtureRows(): ShopListItemViewModel[] {
   return SHOP_LIST_FIXTURE.map((shop) => ({
     ...shop,
     backupDeviceNames: [...shop.backupDeviceNames],
+    deviceBindings: shop.deviceBindings?.map((binding) => ({ ...binding })) ?? [
+      ...(shop.executionDeviceId
+        ? [
+            {
+              deviceId: shop.executionDeviceId,
+              deviceName: shop.executionDeviceName ?? '未知设备',
+              bindingRole: 'primary' as const,
+              enabled: true,
+            },
+          ]
+        : []),
+      ...shop.backupDeviceNames.flatMap((deviceName) => {
+        const device = DEVICE_LIST_FIXTURE.find(
+          (item) => item.deviceName === deviceName,
+        )
+        return device
+          ? [
+              {
+                deviceId: device.deviceId,
+                deviceName,
+                bindingRole: 'backup' as const,
+                enabled: true,
+              },
+            ]
+          : []
+      }),
+    ],
   }))
+}
+
+function syncFixtureBindingSummary(shop: ShopListItemViewModel): void {
+  const active = (shop.deviceBindings ?? []).filter(
+    (binding) => binding.enabled,
+  )
+  const primary = active.find((binding) => binding.bindingRole === 'primary')
+  shop.executionDeviceId = primary?.deviceId ?? null
+  shop.executionDeviceName = primary?.deviceName ?? null
+  shop.backupDeviceNames = active
+    .filter((binding) => binding.bindingRole === 'backup')
+    .map((binding) => binding.deviceName)
 }
 
 export function createMockShopDataSource(): ShopDataSource {
@@ -79,6 +121,7 @@ export function createMockShopDataSource(): ShopDataSource {
         executionDeviceId: null,
         executionDeviceName: null,
         backupDeviceNames: [],
+        deviceBindings: [],
         createdAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
         updatedAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
         note: input.note,
@@ -95,8 +138,12 @@ export function createMockShopDataSource(): ShopDataSource {
       )
       const updated: ShopListItemViewModel = {
         ...rows[index]!,
-        shopName: input.shopName,
-        platform: input.platform,
+        shopName: rows[index]!.platformShopId
+          ? rows[index]!.shopName
+          : input.shopName,
+        platform: rows[index]!.platformShopId
+          ? rows[index]!.platform
+          : input.platform,
         ownerUserId: input.ownerUserId,
         ownerName: String(owner?.label ?? '未分配'),
         enabled: input.enabled,
@@ -106,6 +153,56 @@ export function createMockShopDataSource(): ShopDataSource {
       }
       rows[index] = updated
       return { ...updated }
+    },
+    async createBinding(shopId, input) {
+      const shop = rows.find((item) => item.shopId === shopId)
+      if (!shop) throw new Error('店铺不存在')
+      const bindings = shop.deviceBindings ?? (shop.deviceBindings = [])
+      if (bindings.some((binding) => binding.deviceId === input.deviceId)) {
+        throw new Error('该店铺与设备已经存在绑定关系')
+      }
+      if (
+        input.enabled &&
+        input.bindingRole === 'primary' &&
+        bindings.some(
+          (binding) => binding.enabled && binding.bindingRole === 'primary',
+        )
+      ) {
+        throw new Error('一个店铺最多只能有一个启用的主设备')
+      }
+      const device = DEVICE_LIST_FIXTURE.find(
+        (item) => item.deviceId === input.deviceId,
+      )
+      bindings.push({
+        deviceId: input.deviceId,
+        deviceName: device?.deviceName ?? '未知设备',
+        bindingRole: input.bindingRole,
+        enabled: input.enabled,
+      })
+      syncFixtureBindingSummary(shop)
+    },
+    async updateBinding(shopId, input) {
+      const shop = rows.find((item) => item.shopId === shopId)
+      if (!shop) throw new Error('店铺不存在')
+      const binding = shop.deviceBindings?.find(
+        (item) => item.deviceId === input.deviceId,
+      )
+      if (!binding) throw new Error('设备绑定关系不存在')
+      if (
+        input.enabled &&
+        input.bindingRole === 'primary' &&
+        shop.deviceBindings?.some(
+          (item) =>
+            item.deviceId !== input.deviceId &&
+            item.enabled &&
+            item.bindingRole === 'primary',
+        )
+      ) {
+        throw new Error('一个店铺最多只能有一个启用的主设备')
+      }
+      binding.bindingRole = input.bindingRole
+      binding.enabled = input.enabled
+      syncFixtureBindingSummary(shop)
     },
     async listOwnerOptions() {
       return SHOP_OWNER_FIXTURE_OPTIONS.map((option) => ({
@@ -163,6 +260,19 @@ const realShopDataSource: ShopDataSource = {
       shopApi.listBindings(shopId),
     ])
     return mapShopDto(shop, { ...references, bindings })
+  },
+  async createBinding(shopId, input) {
+    await shopApi.createBinding(shopId, {
+      device_id: input.deviceId,
+      binding_role: input.bindingRole,
+      enabled: input.enabled,
+    })
+  },
+  async updateBinding(shopId, input) {
+    await shopApi.updateBinding(shopId, input.deviceId, {
+      binding_role: input.bindingRole,
+      enabled: input.enabled,
+    })
   },
   async listOwnerOptions() {
     const users = await userApi.list({ page: 1, pageSize: 100 })

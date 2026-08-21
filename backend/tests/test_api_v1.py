@@ -172,9 +172,16 @@ def test_api_validation_and_business_not_found_error() -> None:
         json={"display_name": "", "platform": "unknown"},
     )
     not_found_response = request("GET", f"/api/v1/devices/{uuid4()}")
+    immutable_platform_id_response = request(
+        "PATCH",
+        f"/api/v1/shops/{SHOP_ID}",
+        json={"platform_shop_id": "manually-overwritten"},
+    )
 
     assert validation_response.status_code == 422
     assert validation_response.json()["code"] == "VALIDATION_ERROR"
     assert validation_response.json()["request_id"]
     assert not_found_response.status_code == 404
     assert not_found_response.json()["code"] == "DEVICE_NOT_FOUND"
+    assert immutable_platform_id_response.status_code == 422
+    assert immutable_platform_id_response.json()["code"] == "VALIDATION_ERROR"

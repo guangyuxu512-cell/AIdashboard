@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
-import type { ShopSaveInput } from '../model/types'
+import type { ShopDeviceBindingInput, ShopSaveInput } from '../model/types'
 import { shopDataSource, type ShopListParams } from './shop-data-source'
 
 export const shopQueryKeys = {
@@ -54,5 +54,35 @@ export function useUpdateShopMutation() {
           queryKey: shopQueryKeys.detail(variables.shopId),
         }),
       ]),
+  })
+}
+
+export function useCreateShopDeviceBindingMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      shopId,
+      input,
+    }: {
+      shopId: string
+      input: ShopDeviceBindingInput
+    }) => shopDataSource.createBinding(shopId, input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: shopQueryKeys.all }),
+  })
+}
+
+export function useUpdateShopDeviceBindingMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      shopId,
+      input,
+    }: {
+      shopId: string
+      input: ShopDeviceBindingInput
+    }) => shopDataSource.updateBinding(shopId, input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: shopQueryKeys.all }),
   })
 }

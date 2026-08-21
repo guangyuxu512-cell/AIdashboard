@@ -42,7 +42,7 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByText(/Frontend Fixture/)).toHaveCount(0)
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   await expect(page.getByText('海风家居生活馆')).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: '开启' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '开启' })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: '分组' })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: '状态' })).toHaveCount(0)
   await expect(
@@ -52,10 +52,9 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(0)
   await expect(page.getByText('未分组')).toHaveCount(0)
   await expect(page.getByText('深圳-工作站-03 +2')).toBeVisible()
-  await expect(page.getByRole('switch').first()).toBeDisabled()
   await expect(page.getByText('批量分配分组')).toHaveCount(0)
-  await expect(page.getByText('批量开启')).toBeVisible()
-  await expect(page.getByText('批量关闭')).toBeVisible()
+  await expect(page.getByText('批量开启')).toHaveCount(0)
+  await expect(page.getByText('批量关闭')).toHaveCount(0)
   await expect(page.getByText('批量删除')).toBeVisible()
   await expect(
     page.getByRole('button', { name: '删除' }).first(),
@@ -115,7 +114,9 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await page.getByRole('button', { name: '查看' }).first().click()
   await expect(page.getByText('星河服饰旗舰店').last()).toBeVisible()
   const drawerSafeArea = await page.evaluate(() => {
-    const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
+    const topbar = document
+      .querySelector('.app-shell__topbar')
+      ?.getBoundingClientRect()
     const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
     return { topbarBottom: topbar?.bottom, drawerTop: drawer?.top }
   })
@@ -161,7 +162,57 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   ).toBeVisible()
   await expect(page.getByText('fixture-password')).toHaveCount(0)
   await expect(page.getByText('基本信息')).toBeVisible()
+  await expect(page.getByText('平台店铺名称')).toBeVisible()
+  await expect(page.getByText('platform-shop-fixture-001')).toBeVisible()
   await expect(page.getByText('执行设备', { exact: true }).last()).toBeVisible()
+  await expect(page.getByText('主设备', { exact: true })).toBeVisible()
+  await expect(page.getByText('杭州-运营机-01').last()).toBeVisible()
+
+  await page.getByRole('button', { name: '更换' }).click()
+  await page.getByRole('dialog').last().getByRole('textbox').click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '上海-直播机-02' })
+    .click()
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText('上海-直播机-02').last()).toBeVisible()
+
+  await page.getByRole('button', { name: '+ 绑定设备' }).click()
+  await page.getByRole('dialog').last().getByRole('textbox').click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '深圳-工作站-03' })
+    .click()
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(
+    page
+      .locator('.shop-device-bindings__label')
+      .filter({ hasText: '备用设备' }),
+  ).toBeVisible()
+  await expect(page.getByText('深圳-工作站-03').last()).toBeVisible()
+  await page
+    .locator('.shop-device-bindings__row')
+    .filter({ hasText: '深圳-工作站-03' })
+    .getByRole('button', { name: '解绑' })
+    .click()
+  await expect(
+    page
+      .locator('.shop-device-bindings__label')
+      .filter({ hasText: '备用设备' }),
+  ).toHaveCount(0)
+
+  await page
+    .locator('.shop-detail-header')
+    .getByRole('button', { name: '编辑' })
+    .click()
+  await expect(page.getByText('编辑店铺', { exact: true })).toBeVisible()
+  const editDialog = page.getByRole('dialog').last()
+  await expect(editDialog.getByText('平台店铺名称')).toBeVisible()
+  await expect(page.getByPlaceholder('请输入店铺名称')).toHaveCount(0)
+  await expect(editDialog.getByText('platform-shop-fixture-001')).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).click()
+
+  await page.getByRole('button', { name: '查看' }).first().click()
   await expect(page.getByRole('heading', { name: '操作记录' })).toBeVisible()
   await expect(page.getByText('暂无操作记录')).toBeVisible()
   await expect(
@@ -187,7 +238,8 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await page.getByRole('button', { name: '查看' }).nth(2).click()
   await expect(page.getByText('云朵母婴专营店').last()).toBeVisible()
   await expect(page.getByText('shop-fixture-003').first()).toBeVisible()
-  await expect(page.getByText('上海-直播机-02、杭州-运营机-01')).toBeVisible()
+  await expect(page.getByText('上海-直播机-02').last()).toBeVisible()
+  await expect(page.getByText('杭州-运营机-01').last()).toBeVisible()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   const layout = await page.evaluate(() => ({
@@ -294,7 +346,7 @@ test('drives the Management Login onboarding through typed Electron state', asyn
             },
             sessionCaptured: true,
             cookieCount: 12,
-            message: '已自动识别店铺并采集登录会话，请确认后完成接入',
+            message: '已自动识别店铺并采集登录会话，登录窗口已关闭',
           }
         },
         async complete() {
@@ -315,7 +367,9 @@ test('drives the Management Login onboarding through typed Electron state', asyn
   await page.goto('/#/shops')
   await page.getByRole('button', { name: '新增店铺' }).click()
   await expect(page.getByText('新增店铺', { exact: true })).toBeVisible()
-  await expect(page.getByText('选择平台', { exact: true }).first()).toBeVisible()
+  await expect(
+    page.getByText('选择平台', { exact: true }).first(),
+  ).toBeVisible()
   await expect(page.getByText('账号与密码', { exact: true })).toBeVisible()
   await expect(page.getByText('登录并识别', { exact: true })).toBeVisible()
   await expect(page.getByText('确认店铺', { exact: true })).toBeVisible()
@@ -343,6 +397,7 @@ test('drives the Management Login onboarding through typed Electron state', asyn
   await expect(page.getByText('真实识别店铺', { exact: true })).toBeVisible()
   await expect(page.getByText('987654321', { exact: true })).toBeVisible()
   await expect(page.getByText('已采集', { exact: true })).toBeVisible()
+  await expect(page.getByText('已识别', { exact: true })).toBeVisible()
   await expect(page.getByText('onboarding-password')).toHaveCount(0)
   await page.getByRole('button', { name: '完成接入' }).click()
   await expect(page.getByText('接入成功', { exact: true })).toBeVisible()
@@ -391,8 +446,12 @@ for (const viewport of [
     await page.getByRole('button', { name: '查看' }).first().click()
     await expect(page.getByText('基本信息')).toBeVisible()
     const safeArea = await page.evaluate(() => {
-      const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
-      const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
+      const topbar = document
+        .querySelector('.app-shell__topbar')
+        ?.getBoundingClientRect()
+      const drawer = document
+        .querySelector('.n-drawer')
+        ?.getBoundingClientRect()
       return { topbarBottom: topbar?.bottom, drawerTop: drawer?.top }
     })
     expect(safeArea.drawerTop).toBe(safeArea.topbarBottom)

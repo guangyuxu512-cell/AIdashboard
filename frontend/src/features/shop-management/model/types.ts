@@ -1,7 +1,4 @@
-import type {
-  ShopEnabledStatus,
-  ShopPlatform,
-} from '@/entities/shop'
+import type { ShopEnabledStatus, ShopPlatform } from '@/entities/shop'
 
 export interface ShopFilterViewModel {
   enabledStatus: ShopEnabledStatus | null
@@ -12,6 +9,7 @@ export interface ShopFilterViewModel {
 export interface ShopFormViewModel {
   shopName: string
   platform: ShopPlatform | null
+  platformShopId: string | null
   enabled: boolean
   ownerUserId: string | null
   note: string

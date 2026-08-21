@@ -2,7 +2,9 @@ import { httpClient, type PageDto, type PageParams } from '@/shared/api'
 
 import type {
   ShopCreateDto,
+  ShopDeviceBindingCreateDto,
   ShopDeviceBindingReadDto,
+  ShopDeviceBindingUpdateDto,
   ShopReadDto,
   ShopUpdateDto,
 } from './contracts'
@@ -41,6 +43,29 @@ export const shopApi = {
   async listBindings(shopId: string): Promise<ShopDeviceBindingReadDto[]> {
     const response = await httpClient.get<ShopDeviceBindingReadDto[]>(
       `/api/v1/shops/${shopId}/device-bindings`,
+    )
+    return response.data
+  },
+
+  async createBinding(
+    shopId: string,
+    data: ShopDeviceBindingCreateDto,
+  ): Promise<ShopDeviceBindingReadDto> {
+    const response = await httpClient.post<ShopDeviceBindingReadDto>(
+      `/api/v1/shops/${shopId}/device-bindings`,
+      data,
+    )
+    return response.data
+  },
+
+  async updateBinding(
+    shopId: string,
+    deviceId: string,
+    data: ShopDeviceBindingUpdateDto,
+  ): Promise<ShopDeviceBindingReadDto> {
+    const response = await httpClient.patch<ShopDeviceBindingReadDto>(
+      `/api/v1/shops/${shopId}/device-bindings/${deviceId}`,
+      data,
     )
     return response.data
   },

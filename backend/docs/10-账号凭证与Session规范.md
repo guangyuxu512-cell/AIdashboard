@@ -44,6 +44,8 @@ Browser Profile 永远保留在设备侧，并按 `Device × Shop` 隔离；服�
 
 阶段 3C-1 的完成命令由 Electron Main 在 Adapter 已确认身份并采集 payload 后调用。Backend 在单个数据库事务内创建 Shop、PlatformCredential、ShopCredentialBinding 与 ShopSession；失败全部回滚。Shop 使用 `(platform, platform_shop_id)` 唯一约束避免同一平台店铺重复接入。
 
+平台接入建立后，`display_name` 与 `platform_shop_id` 共同属于外部平台真实身份，不允许普通 Shop Update 修改；本阶段不新增内部别名。平台登录窗口在采集完成后可由 Electron Main 自动关闭，但 Backend 只在用户确认完成时接收一次原子接入请求。
+
 ## 7. 审计与后续实现
 
 Credential 变更、Session 版本变更及授权读取未来必须接入审计，但审计只记录主体、对象、动作和结果，不记录敏感值。阶段 3A 只建立 Domain、API 元数据和认证 Protocol，不实现 Worker、浏览器、Cookie 采集、验证码 Provider 或平台 Connector。

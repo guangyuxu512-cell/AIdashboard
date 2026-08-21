@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.repository import DeviceRepository
 from app.modules.shops.enums import BindingRole
-from app.modules.shops.exceptions import InvalidDeviceBindingError, ShopNotFoundError
+from app.modules.shops.exceptions import (
+    ImmutableShopIdentityError,
+    InvalidDeviceBindingError,
+    ShopNotFoundError,
+)
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.shops.repository import ShopDeviceBindingRepository, ShopRepository
 from app.modules.shops.schemas import (
@@ -63,6 +67,11 @@ class ShopService:
     def update(self, shop_id: UUID, data: ShopUpdate) -> Shop:
         shop = self.get(shop_id)
         changes = data.model_dump(exclude_unset=True)
+        if shop.platform_shop_id is not None and {
+            "display_name",
+            "platform",
+        }.intersection(changes):
+            raise ImmutableShopIdentityError()
         if "owner_user_id" in changes:
             self._ensure_owner_exists(changes["owner_user_id"])
         for field, value in changes.items():

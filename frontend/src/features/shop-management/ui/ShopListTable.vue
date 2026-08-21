@@ -9,7 +9,6 @@ import {
 import { PlatformDisplay } from '@/entities/platform'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppSwitch from '@/shared/ui/AppSwitch.vue'
 
 defineProps<{
   rows: ShopListItemViewModel[]
@@ -58,28 +57,6 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     },
   },
   {
-    title: '开启',
-    key: 'automationPlaceholder',
-    width: 80,
-    align: 'center',
-    render: (shop) =>
-      h(
-        'div',
-        {
-          class: 'shop-list-table__automation-placeholder',
-          title: '自动化控制尚未接入',
-        },
-        [
-          h(AppSwitch, {
-            modelValue: false,
-            disabled: true,
-            title: '店铺自动化总开关尚未接入',
-            'aria-label': `${shop.shopName}自动化总开关尚未接入`,
-          }),
-        ],
-      ),
-  },
-  {
     title: '备注',
     key: 'note',
     width: 150,
@@ -94,26 +71,22 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     align: 'center',
     fixed: 'right',
     render: (shop) =>
-      h(
-        'div',
-        { class: 'shop-list-table__actions' },
-        [
-          h(
-            AppButton,
-            { tone: 'text', onClick: () => emit('view', shop) },
-            () => '查看',
-          ),
-          h(
-            AppButton,
-            {
-              tone: 'text',
-              disabled: true,
-              title: '店铺删除 API 尚未接入',
-            },
-            () => '删除',
-          ),
-        ],
-      ),
+      h('div', { class: 'shop-list-table__actions' }, [
+        h(
+          AppButton,
+          { tone: 'text', onClick: () => emit('view', shop) },
+          () => '查看',
+        ),
+        h(
+          AppButton,
+          {
+            tone: 'text',
+            disabled: true,
+            title: '店铺删除 API 尚未接入',
+          },
+          () => '删除',
+        ),
+      ]),
   },
 ]
 
@@ -132,7 +105,7 @@ function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
     :loading="loading"
     :error="error"
     :row-key="(row: ShopListItemViewModel) => row.shopId"
-    :scroll-x="874"
+    :scroll-x="794"
     :checked-row-keys="checkedRowKeys"
     appearance="list"
     viewport="fill"
@@ -147,15 +120,6 @@ function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
 .shop-list-table {
   min-height: 0;
   flex: 1;
-}
-
-:deep(.shop-list-table__automation-placeholder) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
-  white-space: nowrap;
 }
 
 :deep(.shop-list-table__actions) {
