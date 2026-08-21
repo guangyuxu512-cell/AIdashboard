@@ -5,6 +5,7 @@ import type {
   DeviceSaveInput,
   YingdaoInventoryViewModel,
 } from '../model/types'
+import { formatRelativeTime } from '../model/display'
 import type {
   DeviceCreateDto,
   DeviceProviderInventoryReadDto,
@@ -32,8 +33,8 @@ export function mapDeviceDto(dto: DeviceReadDto): DeviceListItemViewModel {
     cpuUsageDisplay: '—',
     memoryUsageDisplay: '—',
     lastHeartbeatAtDisplay: runtime
-      ? formatDateTime(runtime.last_seen_at)
-      : '未接入',
+      ? formatRelativeTime(runtime.last_seen_at)
+      : '—',
     tags: [],
     capabilities: [],
     updatedAtDisplay: formatDateTime(dto.updated_at),

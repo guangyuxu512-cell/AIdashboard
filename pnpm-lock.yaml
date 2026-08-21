@@ -25,6 +25,9 @@ importers:
 
   frontend:
     dependencies:
+      '@lucide/vue':
+        specifier: ^1.33.0
+        version: 1.33.0(vue@3.5.41(typescript@5.7.3))
       '@tanstack/vue-query':
         specifier: ^5.66.8
         version: 5.101.4(vue@3.5.41(typescript@5.7.3))
@@ -392,6 +395,11 @@ packages:
 
   '@juggle/resize-observer@3.4.0':
     resolution: {integrity: sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA==}
+
+  '@lucide/vue@1.33.0':
+    resolution: {integrity: sha512-8d3HnIIglHnosvsnm+IWNy8XhYYJvkf4YEgQqb74HnY3ihzdz+7XX4MxMZoyKdw7pbKOGno2HoaHTq7DH/v5AA==}
+    peerDependencies:
+      vue: '>=3.0.1'
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -2453,6 +2461,10 @@ snapshots:
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
   '@juggle/resize-observer@3.4.0': {}
+
+  '@lucide/vue@1.33.0(vue@3.5.41(typescript@5.7.3))':
+    dependencies:
+      vue: 3.5.41(typescript@5.7.3)
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

@@ -9,9 +9,7 @@ export type DeviceCapability = 'rpa' | 'python' | 'browser' | 'node'
 export type DeviceCapabilityAvailability = 'available' | 'unavailable'
 
 export type YingdaoAvailabilityStatus =
-  | 'available'
-  | 'unavailable'
-  | 'not_detected'
+  'available' | 'unavailable' | 'not_detected'
 
 export interface DeviceCapabilityViewModel {
   capability: DeviceCapability

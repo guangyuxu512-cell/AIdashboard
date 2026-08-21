@@ -551,6 +551,10 @@ description（需要时）
 
 阶段 3A-1 增加 `AppOverlayHost`，由 AppShell 唯一渲染。`AppDrawer`、`AppDialog` 与 `NDialogProvider` 默认挂载到该 Host，使所有业务弹层只覆盖 Topbar 下方 Workspace。基础组件允许为隔离测试显式覆盖 `to`，业务页面不得自行选择 Teleport 容器。
 
+店铺中心与设备中心共用 `ManagementListSection`。它只封装 `PageSection.fill` 与列表内容的 `flex: 1 / min-height: 0` 链，不替代 `DataTable`、`PaginationBar` 或领域工具栏。普通管理列表不得在 Page 内复制这一布局，也不得使用固定高度或 `100vh - xxx` 修正分页位置。
+
+设备身份图标使用统一图标依赖与 `DeviceIdentity` 领域组件，列表和 Drawer 共享同一 Monitor 图标、尺寸和间距；业务页面禁止散落自绘 SVG。
+
 ## 18. Design System V2 公共视觉规则
 
 - `ThemeSelector` 是 Topbar 的紧凑主题入口，通过 Naive `NDropdown` 组合既有 `AppButton`，不建立第二套 Button/Dropdown。

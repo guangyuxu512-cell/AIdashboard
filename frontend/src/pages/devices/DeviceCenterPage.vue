@@ -7,7 +7,7 @@ import {
   YingdaoApplicationsDrawer,
   useDeviceManagement,
 } from '@/features/device-management'
-import PageSection from '@/shared/components/PageSection.vue'
+import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
@@ -18,9 +18,9 @@ const management = useDeviceManagement()
   <div class="page-container device-center-page">
     <DeviceFilterBar
       v-model="management.filterDraft.value"
-      :available="management.filtersAvailable"
-      @query="management.query"
-      @reset="management.resetFilters"
+      :statistics="management.statistics.value"
+      :refreshing="management.refreshing.value"
+      @refresh="management.refreshList"
     >
       <template #primary-action>
         <AppButton tone="primary" @click="management.openCreate">
@@ -29,24 +29,23 @@ const management = useDeviceManagement()
       </template>
     </DeviceFilterBar>
 
-    <PageSection>
-      <div class="device-list-pattern">
-        <DeviceListTable
-          :rows="management.rows.value"
-          :loading="management.listLoading.value"
-          :error="management.listError.value"
-          @view="management.openDetail"
-          @edit="management.openEdit"
-          @retry="management.retryList"
-        />
-        <PaginationBar
-          v-model:page="management.page.value"
-          :page-size="management.pageSize.value"
-          :item-count="management.total.value"
-          @update:page-size="management.setPageSize"
-        />
-      </div>
-    </PageSection>
+    <ManagementListSection class="device-list-section">
+      <DeviceListTable
+        v-model:checked-row-keys="management.selectedDeviceIds.value"
+        :rows="management.visibleRows.value"
+        :loading="management.listLoading.value"
+        :error="management.listError.value"
+        @view="management.openDetail"
+        @edit="management.openEdit"
+        @retry="management.retryList"
+      />
+      <PaginationBar
+        v-model:page="management.page.value"
+        :page-size="management.pageSize.value"
+        :item-count="management.total.value"
+        @update:page-size="management.setPageSize"
+      />
+    </ManagementListSection>
 
     <DeviceDetailDrawer
       v-model:show="management.detailVisible.value"
@@ -57,6 +56,9 @@ const management = useDeviceManagement()
       :provider-inventory-loading="management.providerInventoryLoading.value"
       :provider-inventory-error="management.providerInventoryError.value"
       :yingdao-refreshing="management.yingdaoRefreshing.value"
+      :current-execution="management.detailCurrentExecution.value"
+      :bound-shop-count="management.detailBoundShopCount.value"
+      :recent-executions="management.recentExecutions.value"
       @retry="management.retryDetail"
       @retry-provider-inventory="management.retryProviderInventory"
       @refresh-yingdao="management.refreshYingdao"
@@ -79,10 +81,8 @@ const management = useDeviceManagement()
 </template>
 
 <style scoped>
-.device-list-pattern {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-4);
+.device-center-page {
+  height: 100%;
+  min-height: 0;
 }
 </style>

@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { NDescriptions, NDescriptionsItem } from 'naive-ui'
+import { NCollapse, NCollapseItem } from 'naive-ui'
 
 import {
-  DEVICE_CAPABILITY_AVAILABILITY_META,
-  DEVICE_CAPABILITY_META,
+  DeviceConnectionStatusTag,
   DeviceEnabledStatusTag,
-  DeviceStatusTag,
+  DeviceIdentity,
   type DeviceListItemViewModel,
   type YingdaoInventoryViewModel,
   YingdaoAvailabilityStatusTag,
 } from '@/entities/device'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
+import EmptyState from '@/shared/components/EmptyState.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+
+import type {
+  DeviceCurrentExecutionViewModel,
+  DeviceRecentExecutionViewModel,
+} from '../model/types'
+import DeviceCapabilityCard from './DeviceCapabilityCard.vue'
 
 defineProps<{
   show: boolean
@@ -25,6 +31,9 @@ defineProps<{
   providerInventoryLoading?: boolean
   providerInventoryError?: string | null
   yingdaoRefreshing?: boolean
+  currentExecution?: DeviceCurrentExecutionViewModel | null
+  boundShopCount?: number | null
+  recentExecutions?: DeviceRecentExecutionViewModel[]
 }>()
 
 defineEmits<{
@@ -43,6 +52,16 @@ defineEmits<{
     size="md"
     @update:show="$emit('update:show', $event)"
   >
+    <template v-if="device" #header>
+      <div class="device-detail-header">
+        <DeviceIdentity :name="device.deviceName" />
+        <div class="device-detail-header__statuses">
+          <DeviceConnectionStatusTag :status="device.runtimeStatus" />
+          <DeviceEnabledStatusTag :status="device.enabledStatus" />
+        </div>
+      </div>
+    </template>
+
     <LoadingState v-if="loading" description="正在加载设备详情…" />
     <ErrorState
       v-else-if="error"
@@ -51,97 +70,76 @@ defineEmits<{
       @retry="$emit('retry')"
     />
     <div v-else-if="device" class="device-detail">
-      <section>
-        <h3>基础信息</h3>
-        <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="设备名称">{{
-            device.deviceName
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="位置">{{
-            device.location
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="启用状态">
-            <DeviceEnabledStatusTag :status="device.enabledStatus" />
-          </NDescriptionsItem>
-          <NDescriptionsItem label="标签">{{
-            device.tags.join('、')
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="系统">{{
-            device.systemDisplay
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="Worker 版本">
-            {{ device.workerVersionDisplay }}
-          </NDescriptionsItem>
-        </NDescriptions>
-      </section>
-
-      <section>
-        <h3>运行状态</h3>
-        <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="设备状态">
-            <DeviceStatusTag :status="device.runtimeStatus" />
-          </NDescriptionsItem>
-          <NDescriptionsItem label="当前任务">
-            {{
-              device.dataSource === 'real'
-                ? '未提供'
-                : device.runtimeStatus === 'unavailable'
-                  ? '未接入'
-                  : (device.currentTaskName ?? '无运行中任务')
-            }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="最近心跳">
-            {{ device.lastHeartbeatAtDisplay }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="CPU 摘要">{{
-            device.cpuUsageDisplay
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="内存摘要">
-            {{ device.memoryUsageDisplay }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="更新时间">
-            {{ device.updatedAtDisplay }}
-          </NDescriptionsItem>
-        </NDescriptions>
-      </section>
-
-      <section>
-        <h3>执行能力</h3>
-        <p
-          v-if="device.capabilities.length === 0"
-          class="device-detail__unavailable"
-        >
-          Worker 执行能力尚未接入
-        </p>
-        <ul v-else class="device-detail__capabilities">
-          <li
-            v-for="capability in device.capabilities"
-            :key="capability.capability"
-          >
-            <span>{{
-              DEVICE_CAPABILITY_META[capability.capability].label
-            }}</span>
+      <section class="device-detail__section">
+        <h3>运行概览</h3>
+        <div class="device-overview">
+          <div class="device-overview__item">
+            <span>当前状态</span>
             <StatusTag
-              :label="
-                DEVICE_CAPABILITY_AVAILABILITY_META[capability.availability]
-                  .label
-              "
-              :tone="
-                DEVICE_CAPABILITY_AVAILABILITY_META[capability.availability]
-                  .tone
-              "
+              :label="currentExecution?.label ?? '—'"
+              :tone="currentExecution?.tone ?? 'neutral'"
             />
-          </li>
-        </ul>
+          </div>
+          <div class="device-overview__item">
+            <span>当前执行</span>
+            <strong>{{ currentExecution?.name ?? '—' }}</strong>
+          </div>
+          <div class="device-overview__item">
+            <span>最后心跳</span>
+            <strong>{{ device.lastHeartbeatAtDisplay }}</strong>
+          </div>
+          <div class="device-overview__item">
+            <span>绑定店铺</span>
+            <strong>{{ boundShopCount ?? '—' }}</strong>
+          </div>
+        </div>
       </section>
 
-      <section>
-        <div class="device-detail__section-heading">
-          <h3>影刀环境</h3>
-          <div class="device-detail__section-actions">
+      <section class="device-detail__section">
+        <h3>执行能力</h3>
+        <DeviceCapabilityCard
+          title="影刀 RPA"
+          description="本机影刀环境与已同步应用"
+        >
+          <template #status>
+            <YingdaoAvailabilityStatusTag
+              :status="yingdaoInventory?.availabilityStatus ?? 'not_detected'"
+            />
+          </template>
+
+          <LoadingState
+            v-if="providerInventoryLoading"
+            description="正在读取影刀环境…"
+          />
+          <ErrorState
+            v-else-if="providerInventoryError"
+            :description="providerInventoryError"
+            retryable
+            @retry="$emit('retry-provider-inventory')"
+          />
+          <dl v-else class="capability-facts">
+            <div>
+              <dt>账号</dt>
+              <dd>{{ yingdaoInventory?.accountDisplay ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>账号类型</dt>
+              <dd>{{ yingdaoInventory?.accountType ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>本机已同步应用</dt>
+              <dd>{{ yingdaoInventory?.applicationCount ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>版本</dt>
+              <dd>{{ yingdaoInventory?.providerVersion ?? '—' }}</dd>
+            </div>
+          </dl>
+
+          <template #actions>
             <AppButton
-              v-if="yingdaoInventory?.applicationCount"
               tone="text"
+              :disabled="!yingdaoInventory?.applicationCount"
               @click="$emit('view-yingdao-applications')"
             >
               查看应用
@@ -153,44 +151,49 @@ defineEmits<{
             >
               刷新影刀能力
             </AppButton>
-          </div>
-        </div>
-        <LoadingState
-          v-if="providerInventoryLoading"
-          description="正在读取影刀环境…"
-        />
-        <ErrorState
-          v-else-if="providerInventoryError"
-          :description="providerInventoryError"
-          retryable
-          @retry="$emit('retry-provider-inventory')"
-        />
-        <NDescriptions v-else :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="影刀">
-            <YingdaoAvailabilityStatusTag
-              :status="
-                yingdaoInventory
-                  ? yingdaoInventory.availabilityStatus
-                  : 'not_detected'
-              "
-            />
-          </NDescriptionsItem>
-          <NDescriptionsItem label="版本">
-            {{ yingdaoInventory?.providerVersion ?? '未检测' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="账号">
-            {{ yingdaoInventory?.accountDisplay ?? '未检测' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="账号类型">
-            {{ yingdaoInventory?.accountType ?? '未检测' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="应用">
-            {{ yingdaoInventory?.applicationCount ?? 0 }}
-          </NDescriptionsItem>
-          <NDescriptionsItem label="最近检测">
-            {{ yingdaoInventory?.lastDiscoveredAtDisplay ?? '尚未检测' }}
-          </NDescriptionsItem>
-        </NDescriptions>
+          </template>
+        </DeviceCapabilityCard>
+      </section>
+
+      <section class="device-detail__section">
+        <h3>最近执行</h3>
+        <ul v-if="recentExecutions?.length" class="recent-executions">
+          <li v-for="execution in recentExecutions" :key="execution.id">
+            <strong>{{ execution.name }}</strong>
+            <StatusTag :label="execution.statusLabel" :tone="execution.tone" />
+            <span>{{ execution.timeDisplay }}</span>
+          </li>
+        </ul>
+        <EmptyState v-else description="暂无可用的最近执行记录" />
+      </section>
+
+      <section class="device-detail__section device-detail__section--muted">
+        <NCollapse>
+          <NCollapseItem title="更多信息" name="more-information">
+            <dl class="more-information">
+              <div>
+                <dt>设备 ID</dt>
+                <dd>{{ device.deviceId }}</dd>
+              </div>
+              <div>
+                <dt>位置</dt>
+                <dd>{{ device.location }}</dd>
+              </div>
+              <div>
+                <dt>标签</dt>
+                <dd>{{ device.tags.join('、') || '—' }}</dd>
+              </div>
+              <div>
+                <dt>备注</dt>
+                <dd>{{ device.note || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Worker 版本</dt>
+                <dd>{{ device.workerVersionDisplay }}</dd>
+              </div>
+            </dl>
+          </NCollapseItem>
+        </NCollapse>
       </section>
     </div>
 
@@ -201,55 +204,123 @@ defineEmits<{
 </template>
 
 <style scoped>
+.device-detail-header {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.device-detail-header :deep(.device-identity) {
+  flex: 1;
+  font-weight: var(--font-weight-semibold);
+}
+
+.device-detail-header__statuses {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .device-detail {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: var(--space-6);
 }
 
-.device-detail section {
+.device-detail__section {
   min-width: 0;
 }
 
-.device-detail h3 {
+.device-detail__section h3 {
   margin-bottom: var(--space-3);
   font-size: var(--font-size-section-title);
   font-weight: var(--font-weight-semibold);
 }
 
-.device-detail__capabilities {
+.device-overview {
   display: grid;
-  margin: 0;
-  padding: 0;
   gap: var(--space-3);
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.device-overview__item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+}
+
+.device-overview__item span,
+.capability-facts dt,
+.more-information dt,
+.recent-executions span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.device-overview__item strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capability-facts,
+.more-information {
+  display: grid;
+  margin: 0;
+  gap: var(--space-3) var(--space-5);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.capability-facts div,
+.more-information div {
+  min-width: 0;
+}
+
+.capability-facts dd,
+.more-information dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.recent-executions {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
   list-style: none;
 }
 
-.device-detail__capabilities li {
-  display: flex;
+.recent-executions li {
+  display: grid;
   align-items: center;
-  justify-content: space-between;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
   gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-card);
-  background: var(--color-bg-subtle);
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
-.device-detail__unavailable {
-  color: var(--color-text-secondary);
+.device-detail__section--muted {
+  color: var(--text-secondary);
 }
 
-.device-detail__section-heading,
-.device-detail__section-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.device-detail__section-heading h3 {
-  margin-bottom: 0;
+@media (max-width: 720px) {
+  .device-overview,
+  .capability-facts,
+  .more-information {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

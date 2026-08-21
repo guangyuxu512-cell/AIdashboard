@@ -1,120 +1,190 @@
 <script setup lang="ts">
 import { h } from 'vue'
-import type { DataTableColumns } from 'naive-ui'
+import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 
 import {
+  DeviceConnectionStatusTag,
   DeviceEnabledStatusTag,
-  DeviceStatusTag,
-  type DeviceListItemViewModel,
+  DeviceIdentity,
+  YingdaoAvailabilityStatusTag,
 } from '@/entities/device'
 import DataTable from '@/shared/components/DataTable.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
+import type { DeviceManagementRowViewModel } from '../model/types'
+
 defineProps<{
-  rows: DeviceListItemViewModel[]
+  rows: DeviceManagementRowViewModel[]
   loading?: boolean
   error?: string | null
+  checkedRowKeys?: DataTableRowKey[]
 }>()
 
 const emit = defineEmits<{
-  view: [device: DeviceListItemViewModel]
-  edit: [device: DeviceListItemViewModel]
+  view: [device: DeviceManagementRowViewModel]
+  edit: [device: DeviceManagementRowViewModel]
   retry: []
+  'update:checkedRowKeys': [keys: DataTableRowKey[]]
 }>()
 
-const columns: DataTableColumns<DeviceListItemViewModel> = [
+function centered(children: unknown) {
+  return h('div', { class: 'device-table__center' }, children as never)
+}
+
+const columns: DataTableColumns<DeviceManagementRowViewModel> = [
+  { type: 'selection', width: 44, fixed: 'left' },
   {
     title: '设备名称',
     key: 'deviceName',
-    width: 170,
-    ellipsis: { tooltip: true },
+    width: 190,
+    fixed: 'left',
+    render: (device) => h(DeviceIdentity, { name: device.deviceName }),
   },
   {
-    title: '启用状态',
-    key: 'enabledStatus',
-    width: 90,
-    render: (device) =>
-      h(DeviceEnabledStatusTag, { status: device.enabledStatus }),
-  },
-  {
-    title: '运行状态',
+    title: '在线状态',
     key: 'runtimeStatus',
-    width: 100,
-    render: (device) => h(DeviceStatusTag, { status: device.runtimeStatus }),
-  },
-  {
-    title: '标签 / 位置',
-    key: 'location',
-    width: 180,
+    width: 90,
+    align: 'center',
     render: (device) =>
-      h('div', { class: 'device-table__location' }, [
-        h('span', device.location),
-        h('small', device.tags.join(' · ')),
-      ]),
+      centered(h(DeviceConnectionStatusTag, { status: device.runtimeStatus })),
   },
-  { title: '系统', key: 'systemDisplay', width: 120 },
-  { title: 'Worker 版本', key: 'workerVersionDisplay', width: 130 },
   {
-    title: '当前任务',
-    key: 'currentTaskName',
-    width: 180,
+    title: '当前执行',
+    key: 'currentExecution',
+    width: 190,
+    align: 'center',
+    render: (device) =>
+      centered(
+        h('div', { class: 'device-table__execution' }, [
+          h(StatusTag, {
+            label: device.currentExecution.label,
+            tone: device.currentExecution.tone,
+          }),
+          device.currentExecution.name
+            ? h('small', device.currentExecution.name)
+            : null,
+        ]),
+      ),
+  },
+  {
+    title: '影刀',
+    key: 'yingdao',
+    width: 86,
+    align: 'center',
+    render: (device) =>
+      centered(
+        h(YingdaoAvailabilityStatusTag, {
+          status: device.yingdaoInventory?.availabilityStatus ?? 'not_detected',
+        }),
+      ),
+  },
+  {
+    title: '影刀账号',
+    key: 'yingdaoAccount',
+    width: 120,
+    align: 'center',
     ellipsis: { tooltip: true },
-    render: (device) =>
-      device.dataSource === 'real'
-        ? '未提供'
-        : device.runtimeStatus === 'unavailable'
-          ? '未接入'
-          : (device.currentTaskName ?? '空闲'),
+    render: (device) => device.yingdaoInventory?.accountDisplay ?? '—',
   },
-  { title: 'CPU', key: 'cpuUsageDisplay', width: 80, align: 'right' },
-  { title: '内存', key: 'memoryUsageDisplay', width: 80, align: 'right' },
-  { title: '最后心跳', key: 'lastHeartbeatAtDisplay', width: 165 },
+  {
+    title: '本机已同步应用',
+    key: 'applicationCount',
+    width: 130,
+    align: 'center',
+    render: (device) => device.yingdaoInventory?.applicationCount ?? '—',
+  },
+  {
+    title: '绑定店铺',
+    key: 'boundShopCount',
+    width: 90,
+    align: 'center',
+    render: (device) => device.boundShopCount ?? '—',
+  },
+  {
+    title: '最后心跳',
+    key: 'lastHeartbeatAtDisplay',
+    width: 120,
+    align: 'center',
+  },
+  {
+    title: '启用',
+    key: 'enabledStatus',
+    width: 88,
+    align: 'center',
+    render: (device) =>
+      centered(h(DeviceEnabledStatusTag, { status: device.enabledStatus })),
+  },
   {
     title: '操作',
     key: 'actions',
-    width: 140,
+    width: 116,
+    align: 'center',
     fixed: 'right',
     render: (device) =>
-      h('div', { class: 'device-table__actions' }, [
-        h(
-          AppButton,
-          { tone: 'text', onClick: () => emit('view', device) },
-          () => '查看',
-        ),
-        h(
-          AppButton,
-          { tone: 'text', onClick: () => emit('edit', device) },
-          () => '编辑',
-        ),
-      ]),
+      centered(
+        h('div', { class: 'device-table__actions' }, [
+          h(
+            AppButton,
+            { tone: 'text', onClick: () => emit('view', device) },
+            () => '查看',
+          ),
+          h(
+            AppButton,
+            { tone: 'text', onClick: () => emit('edit', device) },
+            () => '编辑',
+          ),
+        ]),
+      ),
   },
 ]
 </script>
 
 <template>
   <DataTable
+    class="device-list-table"
     :columns="columns"
     :data="rows"
     :loading="loading"
     :error="error"
-    :row-key="(row: DeviceListItemViewModel) => row.deviceId"
-    :scroll-x="1435"
+    :row-key="(row: DeviceManagementRowViewModel) => row.deviceId"
+    :scroll-x="1254"
+    :checked-row-keys="checkedRowKeys"
+    appearance="list"
+    viewport="fill"
     empty-description="没有符合当前条件的设备"
+    @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
     @retry="$emit('retry')"
   />
 </template>
 
 <style scoped>
-:deep(.device-table__location) {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-1);
+.device-list-table {
+  min-height: 0;
+  flex: 1;
 }
 
-:deep(.device-table__location small) {
-  color: var(--color-text-secondary);
+:deep(.device-table__center) {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.device-table__execution) {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+:deep(.device-table__execution small) {
+  overflow: hidden;
+  color: var(--text-secondary);
   font-size: var(--font-size-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :deep(.device-table__actions) {

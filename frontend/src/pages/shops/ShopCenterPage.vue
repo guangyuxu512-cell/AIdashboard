@@ -9,7 +9,7 @@ import {
   ShopPlatformSwitchBar,
   useShopManagement,
 } from '@/features/shop-management'
-import PageSection from '@/shared/components/PageSection.vue'
+import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
@@ -34,27 +34,23 @@ const management = useShopManagement()
       </template>
     </ShopFilterBar>
 
-    <PageSection class="shop-list-section" fill>
-      <div class="shop-list-pattern">
-        <ShopBatchToolbar
-          :selected-count="management.selectedShopCount.value"
-        />
-        <ShopListTable
-          v-model:checked-row-keys="management.selectedShopIds.value"
-          :rows="management.rows.value"
-          :loading="management.listLoading.value"
-          :error="management.listError.value"
-          @view="management.openDetail"
-          @retry="management.retryList"
-        />
-        <PaginationBar
-          v-model:page="management.page.value"
-          :page-size="management.pageSize.value"
-          :item-count="management.total.value"
-          @update:page-size="management.setPageSize"
-        />
-      </div>
-    </PageSection>
+    <ManagementListSection class="shop-list-section">
+      <ShopBatchToolbar :selected-count="management.selectedShopCount.value" />
+      <ShopListTable
+        v-model:checked-row-keys="management.selectedShopIds.value"
+        :rows="management.rows.value"
+        :loading="management.listLoading.value"
+        :error="management.listError.value"
+        @view="management.openDetail"
+        @retry="management.retryList"
+      />
+      <PaginationBar
+        v-model:page="management.page.value"
+        :page-size="management.pageSize.value"
+        :item-count="management.total.value"
+        @update:page-size="management.setPageSize"
+      />
+    </ManagementListSection>
 
     <ShopDetailDrawer
       v-model:show="management.detailVisible.value"
@@ -86,14 +82,5 @@ const management = useShopManagement()
 .shop-center-page {
   height: 100%;
   min-height: 0;
-}
-
-.shop-list-pattern {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--space-4);
 }
 </style>

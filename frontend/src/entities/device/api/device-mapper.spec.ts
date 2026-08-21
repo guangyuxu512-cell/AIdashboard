@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import dayjs from 'dayjs'
 
 import { createMockDeviceDataSource } from './device-data-source'
 import { mapDeviceDto, mapYingdaoInventoryDto } from './device-mapper'
 import { deviceQueryKeys } from './device-queries'
+import { formatRelativeTime } from '../model/display'
 
 const emptyFilters = {
   status: null,
@@ -13,6 +15,17 @@ const emptyFilters = {
 } as const
 
 describe('device mapper, query and mutation', () => {
+  it('formats heartbeat timestamps as human-readable relative time', () => {
+    const now = dayjs('2026-08-21T12:00:00+08:00')
+    expect(formatRelativeTime('2026-08-21T11:59:57+08:00', now)).toBe('刚刚')
+    expect(formatRelativeTime('2026-08-21T11:58:00+08:00', now)).toBe(
+      '2 分钟前',
+    )
+    expect(formatRelativeTime('2026-08-21T10:00:00+08:00', now)).toBe(
+      '2 小时前',
+    )
+  })
+
   it('does not translate enabled into an online runtime status', () => {
     const viewModel = mapDeviceDto({
       device_id: '00000000-0000-0000-0000-000000000001',

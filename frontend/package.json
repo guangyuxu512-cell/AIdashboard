@@ -14,6 +14,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@lucide/vue": "^1.33.0",
     "@tanstack/vue-query": "^5.66.8",
     "@vueuse/core": "^12.7.0",
     "axios": "^1.7.9",

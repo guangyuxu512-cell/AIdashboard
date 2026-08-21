@@ -2,9 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { DeviceSaveInput } from '../model/types'
-import { apiMode } from '@/shared/api'
-import { deviceApi } from './device-api'
-import { mapYingdaoInventoryDto } from './device-mapper'
+import { getYingdaoInventory } from './device-provider-data-source'
 import { deviceDataSource, type DeviceListParams } from './device-data-source'
 
 export const deviceQueryKeys = {
@@ -22,16 +20,8 @@ export function useDeviceProviderInventoriesQuery(
     queryKey: computed(() =>
       deviceQueryKeys.providerInventories(toValue(deviceId)),
     ),
-    queryFn: async () => {
-      const inventories = await deviceApi.getProviderInventories(
-        toValue(deviceId)!,
-      )
-      const yingdao = inventories.find(
-        (inventory) => inventory.provider_code === 'yingdao',
-      )
-      return yingdao ? mapYingdaoInventoryDto(yingdao) : null
-    },
-    enabled: computed(() => apiMode === 'real' && Boolean(toValue(deviceId))),
+    queryFn: () => getYingdaoInventory(toValue(deviceId)!),
+    enabled: computed(() => Boolean(toValue(deviceId))),
   })
 }
 

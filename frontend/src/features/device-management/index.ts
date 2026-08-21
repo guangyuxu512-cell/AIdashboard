@@ -1,6 +1,7 @@
 export * from './model/types'
 export * from './model/useDeviceManagement'
 export { default as DeviceDetailDrawer } from './ui/DeviceDetailDrawer.vue'
+export { default as DeviceCapabilityCard } from './ui/DeviceCapabilityCard.vue'
 export { default as YingdaoApplicationsDrawer } from './ui/YingdaoApplicationsDrawer.vue'
 export { default as DeviceFilterBar } from './ui/DeviceFilterBar.vue'
 export { default as DeviceFormDialog } from './ui/DeviceFormDialog.vue'

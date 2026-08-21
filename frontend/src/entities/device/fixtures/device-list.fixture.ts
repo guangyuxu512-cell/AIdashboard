@@ -56,7 +56,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: null,
     cpuUsageDisplay: '18%',
     memoryUsageDisplay: '42%',
-    lastHeartbeatAtDisplay: '2026-08-18 16:38:20',
+    lastHeartbeatAtDisplay: '3 秒前',
     tags: ['运营'],
     capabilities: [
       capability('rpa', 'available'),
@@ -80,7 +80,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: '直播素材整理（Mock）',
     cpuUsageDisplay: '61%',
     memoryUsageDisplay: '68%',
-    lastHeartbeatAtDisplay: '2026-08-18 16:38:18',
+    lastHeartbeatAtDisplay: '8 秒前',
     tags: ['直播', '运营'],
     capabilities: [
       capability('rpa', 'available'),
@@ -104,7 +104,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: null,
     cpuUsageDisplay: '23%',
     memoryUsageDisplay: '51%',
-    lastHeartbeatAtDisplay: '2026-08-18 16:38:12',
+    lastHeartbeatAtDisplay: '18 秒前',
     tags: ['运营'],
     capabilities: [
       capability('rpa', 'available'),
@@ -128,7 +128,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: null,
     cpuUsageDisplay: '—',
     memoryUsageDisplay: '—',
-    lastHeartbeatAtDisplay: '2026-08-18 12:15:04',
+    lastHeartbeatAtDisplay: '4 小时前',
     tags: ['备用'],
     capabilities: [
       capability('rpa', 'unavailable'),
@@ -152,7 +152,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: null,
     cpuUsageDisplay: '—',
     memoryUsageDisplay: '—',
-    lastHeartbeatAtDisplay: '2026-08-18 16:20:35',
+    lastHeartbeatAtDisplay: '18 分钟前',
     tags: ['运营'],
     capabilities: [
       capability('rpa', 'unavailable'),
@@ -176,7 +176,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: '页面兼容性验证（Mock）',
     cpuUsageDisplay: '49%',
     memoryUsageDisplay: '57%',
-    lastHeartbeatAtDisplay: '2026-08-18 16:38:16',
+    lastHeartbeatAtDisplay: '12 秒前',
     tags: ['测试'],
     capabilities: [
       capability('rpa', 'available'),
@@ -200,7 +200,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: null,
     cpuUsageDisplay: '—',
     memoryUsageDisplay: '—',
-    lastHeartbeatAtDisplay: '2026-08-17 19:44:08',
+    lastHeartbeatAtDisplay: '1 天前',
     tags: ['备用'],
     capabilities: [
       capability('rpa', 'unavailable'),
@@ -224,7 +224,7 @@ export const DEVICE_LIST_FIXTURE: DeviceListItemViewModel[] = [
     currentTaskName: null,
     cpuUsageDisplay: '16%',
     memoryUsageDisplay: '39%',
-    lastHeartbeatAtDisplay: '2026-08-18 16:38:09',
+    lastHeartbeatAtDisplay: '21 秒前',
     tags: ['运营'],
     capabilities: [
       capability('rpa', 'available'),

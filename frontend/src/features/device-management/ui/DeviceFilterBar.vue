@@ -1,127 +1,87 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import {
-  DEVICE_CAPABILITY_FIXTURE_OPTIONS,
-  DEVICE_STATUS_FIXTURE_OPTIONS,
-  DEVICE_TAG_FIXTURE_OPTIONS,
-  DEVICE_WORKER_VERSION_FIXTURE_OPTIONS,
-  type DeviceCapability,
-  type DeviceStatus,
-} from '@/entities/device'
 import FilterBar from '@/shared/components/FilterBar.vue'
-import FilterField from '@/shared/components/FilterField.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
-import AppSelect from '@/shared/ui/AppSelect.vue'
-import type { AppOptionValue } from '@/shared/ui/types'
 
 import type { DeviceFilterViewModel } from '../model/types'
 
 const props = defineProps<{
   modelValue: DeviceFilterViewModel
-  available: boolean
+  statistics: { total: number; online: number; offline: number; error: number }
+  refreshing?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: DeviceFilterViewModel]
-  query: []
-  reset: []
+  refresh: []
 }>()
-function updateFilter<Key extends keyof DeviceFilterViewModel>(
-  key: Key,
-  value: DeviceFilterViewModel[Key],
-): void {
-  emit('update:modelValue', { ...props.modelValue, [key]: value })
-}
-
-const status = computed({
-  get: () => props.modelValue.status,
-  set: (value: AppOptionValue | null) =>
-    updateFilter('status', value as DeviceStatus | null),
-})
-
-const tag = computed({
-  get: () => props.modelValue.tag,
-  set: (value: AppOptionValue | null) =>
-    updateFilter('tag', value as string | null),
-})
-
-const workerVersion = computed({
-  get: () => props.modelValue.workerVersion,
-  set: (value: AppOptionValue | null) =>
-    updateFilter('workerVersion', value as string | null),
-})
-
-const capability = computed({
-  get: () => props.modelValue.capability,
-  set: (value: AppOptionValue | null) =>
-    updateFilter('capability', value as DeviceCapability | null),
-})
 
 const keyword = computed({
   get: () => props.modelValue.keyword,
-  set: (value: string) => updateFilter('keyword', value),
+  set: (value: string) =>
+    emit('update:modelValue', { ...props.modelValue, keyword: value }),
 })
 </script>
 
 <template>
   <FilterBar>
-    <template v-if="available">
-      <FilterField>
-        <AppSelect
-          v-model="status"
-          width="sm"
-          clearable
-          :options="DEVICE_STATUS_FIXTURE_OPTIONS"
-          placeholder="全部状态"
-        />
-      </FilterField>
-      <FilterField>
-        <AppSelect
-          v-model="tag"
-          width="sm"
-          clearable
-          :options="DEVICE_TAG_FIXTURE_OPTIONS"
-          placeholder="全部标签"
-        />
-      </FilterField>
-      <FilterField>
-        <AppSelect
-          v-model="workerVersion"
-          width="sm"
-          clearable
-          :options="DEVICE_WORKER_VERSION_FIXTURE_OPTIONS"
-          placeholder="全部版本"
-        />
-      </FilterField>
-      <FilterField>
-        <AppSelect
-          v-model="capability"
-          width="sm"
-          clearable
-          :options="DEVICE_CAPABILITY_FIXTURE_OPTIONS"
-          placeholder="全部能力"
-        />
-      </FilterField>
-      <FilterField width="md">
-        <AppInput
-          v-model="keyword"
-          width="md"
-          clearable
-          placeholder="设备、位置、系统或标签"
-          @keyup.enter="$emit('query')"
-        />
-      </FilterField>
-    </template>
+    <div class="device-toolbar__statistics" aria-label="设备统计">
+      <span
+        >设备 <strong>{{ statistics.total }}</strong></span
+      >
+      <span class="device-toolbar__stat--online">
+        在线 <strong>{{ statistics.online }}</strong>
+      </span>
+      <span
+        >离线 <strong>{{ statistics.offline }}</strong></span
+      >
+      <span v-if="statistics.error" class="device-toolbar__stat--error">
+        异常 <strong>{{ statistics.error }}</strong>
+      </span>
+    </div>
+
     <template #actions>
-      <template v-if="available">
-        <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
-        <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
-      </template>
+      <AppInput
+        v-model="keyword"
+        width="md"
+        clearable
+        placeholder="搜索设备名称或影刀账号"
+      />
+      <AppButton :loading="refreshing" @click="$emit('refresh')">
+        刷新
+      </AppButton>
     </template>
-    <template v-if="$slots['primary-action']" #primary-action>
+
+    <template #primary-action>
       <slot name="primary-action" />
     </template>
   </FilterBar>
 </template>
+
+<style scoped>
+.device-toolbar__statistics {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  white-space: nowrap;
+}
+
+.device-toolbar__statistics strong {
+  margin-left: var(--space-1);
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.device-toolbar__stat--online strong {
+  color: var(--color-success);
+}
+
+.device-toolbar__stat--error strong {
+  color: var(--color-error);
+}
+</style>

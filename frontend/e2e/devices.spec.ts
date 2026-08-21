@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
-test('opens the device center and keeps the standard page behavior', async ({
+test('uses the shared management list pattern and capability-first drawer', async ({
   page,
 }) => {
   const runtimeErrors: string[] = []
@@ -16,90 +16,146 @@ test('opens the device center and keeps the standard page behavior', async ({
 
   await expect(page).toHaveURL(/#\/devices$/)
   await expect(page.getByRole('heading', { name: '设备中心' })).toHaveCount(0)
-  await expect(
-    page.getByText('统一管理执行设备、运行状态与自动化能力'),
-  ).toHaveCount(0)
-  await expect(page.getByLabel('设备统计')).toHaveCount(0)
-  await expect(page.getByText('设备列表', { exact: true })).toHaveCount(0)
-  await expect(page.getByText(/数据来自 FastAPI/)).toHaveCount(0)
-  await expect(page.getByText(/Frontend Fixture/)).toHaveCount(0)
-  const filterBar = page.getByRole('region', { name: '筛选条件' })
-  await expect(filterBar).toBeVisible()
-  await expect(filterBar.getByText('设备状态', { exact: true })).toHaveCount(0)
-  await expect(filterBar.getByText('设备标签', { exact: true })).toHaveCount(0)
-  await expect(filterBar.getByText('Worker 版本', { exact: true })).toHaveCount(
-    0,
-  )
-  await expect(filterBar.getByText('执行能力', { exact: true })).toHaveCount(0)
-  await expect(filterBar.getByText('关键词', { exact: true })).toHaveCount(0)
-  await expect(
-    filterBar.getByRole('button', { name: '添加设备' }),
-  ).toBeVisible()
-  await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
-  await expect(
-    page.getByRole('columnheader', { name: '最后心跳' }),
-  ).toBeVisible()
-  await expect(page.getByText('在线', { exact: true }).first()).toBeVisible()
+  const toolbar = page.getByRole('region', { name: '筛选条件' })
+  await expect(toolbar.getByLabel('设备统计')).toBeVisible()
+  await expect(toolbar.getByPlaceholder('搜索设备名称或影刀账号')).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: '刷新' })).toBeVisible()
+  await expect(toolbar.getByRole('button', { name: '添加设备' })).toBeVisible()
+
+  for (const columnName of [
+    '设备名称',
+    '在线状态',
+    '当前执行',
+    '影刀',
+    '影刀账号',
+    '本机已同步应用',
+    '绑定店铺',
+    '最后心跳',
+    '启用',
+    '操作',
+  ]) {
+    await expect(
+      page.getByRole('columnheader', { name: columnName, exact: true }),
+    ).toBeVisible()
+  }
+  await expect(page.getByTestId('device-monitor-icon').first()).toBeVisible()
+  await expect(page.getByText('GY00999', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('未提供', { exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: '查看' }).first().click()
-  await expect(page.getByText('设备详情', { exact: true })).toBeVisible()
-  await expect(page.getByText('执行能力', { exact: true }).last()).toBeVisible()
-  await expect(page.getByText('CPU 摘要', { exact: true })).toBeVisible()
-  await expect(page.getByText('影刀环境', { exact: true })).toBeVisible()
-  await expect(page.getByText('未检测', { exact: true }).first()).toBeVisible()
+  const drawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: /杭州-运营机-01/ }),
+  })
   await expect(
-    page.getByRole('button', { name: '刷新影刀能力' }),
+    drawer.getByRole('heading', { name: /杭州-运营机-01/ }),
+  ).toBeVisible()
+  await expect(drawer.getByRole('heading', { name: '运行概览' })).toBeVisible()
+  await expect(drawer.getByRole('heading', { name: '执行能力' })).toBeVisible()
+  await expect(drawer.getByRole('heading', { name: '影刀 RPA' })).toBeVisible()
+  await expect(drawer.getByRole('heading', { name: '最近执行' })).toBeVisible()
+  await expect(drawer.getByText('暂无可用的最近执行记录')).toBeVisible()
+  await expect(drawer.getByText('CPU 摘要')).toHaveCount(0)
+  await expect(drawer.getByText('内存摘要')).toHaveCount(0)
+  await expect(drawer.getByText('系统', { exact: true })).toHaveCount(0)
+  await expect(drawer.getByRole('button', { name: '查看应用' })).toBeEnabled()
+  await expect(
+    drawer.getByRole('button', { name: '刷新影刀能力' }),
   ).toBeDisabled()
-  await page.getByRole('button', { name: '关闭' }).click()
+
+  await drawer.getByRole('button', { name: '查看应用' }).click()
+  const applicationsDrawer = page.getByRole('dialog').filter({
+    has: page.getByText('影刀应用列表', { exact: true }),
+  })
+  await expect(applicationsDrawer).toBeVisible()
+  await expect(
+    applicationsDrawer.getByText('商品发布（Fixture）', { exact: true }),
+  ).toBeVisible()
+  await applicationsDrawer.getByRole('button', { name: '关闭' }).click()
+  await drawer.getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '添加设备' }).click()
   await expect(
     page.getByText('创建设备基础记录', { exact: true }).last(),
   ).toBeVisible()
-  await expect(
-    page.getByText('创建设备记录不代表 Worker 已注册，也不代表设备在线。'),
-  ).toBeVisible()
 
-  const layout = await page.evaluate(() => {
-    const mainContent = document.querySelector('.app-shell__content')
-    return {
-      bodyOverflow: getComputedStyle(document.body).overflow,
-      mainOverflowY: mainContent
-        ? getComputedStyle(mainContent).overflowY
-        : null,
-      documentHasHorizontalOverflow:
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth,
-      bodyHasHorizontalOverflow:
-        document.body.scrollWidth > document.body.clientWidth,
-    }
-  })
-
+  const layout = await page.evaluate(() => ({
+    bodyOverflow: getComputedStyle(document.body).overflow,
+    documentHasHorizontalOverflow:
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+    bodyHasHorizontalOverflow:
+      document.body.scrollWidth > document.body.clientWidth,
+  }))
   expect(layout.bodyOverflow).toBe('hidden')
-  expect(layout.mainOverflowY).toBe('auto')
   expect(layout.documentHasHorizontalOverflow).toBe(false)
   expect(layout.bodyHasHorizontalOverflow).toBe(false)
   expect(runtimeErrors).toEqual([])
 })
 
+test('fills remaining space and pins pagination for many, one and empty rows', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/devices')
+
+  const section = page.locator('.device-list-section')
+  const pagination = section.locator('.pagination-bar')
+  const search = page.getByPlaceholder('搜索设备名称或影刀账号')
+
+  const measure = async () => {
+    const sectionBox = await section.boundingBox()
+    const paginationBox = await pagination.boundingBox()
+    if (!sectionBox || !paginationBox) throw new Error('设备列表布局不可测量')
+    return {
+      sectionHeight: Math.round(sectionBox.height),
+      paginationY: Math.round(paginationBox.y),
+      paginationBottomGap: Math.round(
+        sectionBox.y +
+          sectionBox.height -
+          (paginationBox.y + paginationBox.height),
+      ),
+    }
+  }
+
+  await expect(page.getByText('杭州-运营机-01')).toBeVisible()
+  const many = await measure()
+
+  await search.fill('杭州-运营机-01')
+  await expect(page.getByText('共 1 条')).toBeVisible()
+  const one = await measure()
+
+  await search.fill('完全不存在的设备')
+  await expect(page.getByText('没有符合当前条件的设备')).toBeVisible()
+  const empty = await measure()
+
+  expect(one).toEqual(many)
+  expect(empty).toEqual(many)
+  await expect(section).toHaveCSS('flex-grow', '1')
+})
+
 for (const viewport of [
+  { width: 1920, height: 1080 },
   { width: 1440, height: 900 },
   { width: 1366, height: 768 },
 ]) {
-  test(`keeps the compact Device Center within ${viewport.width}×${viewport.height}`, async ({
+  test(`keeps Device Center inside ${viewport.width}×${viewport.height} in Light and Dark`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport)
     await page.goto('/#/devices')
     await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
-    await expect(page.getByText('杭州-运营机-01', { exact: true })).toBeVisible()
+    await expect(page.getByText('杭州-运营机-01')).toBeVisible()
 
-    const overflow = await page.evaluate(() => ({
-      document:
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth,
-      body: document.body.scrollWidth > document.body.clientWidth,
-    }))
-    expect(overflow).toEqual({ document: false, body: false })
+    for (const theme of ['浅色', '深色']) {
+      await page.getByRole('button', { name: '切换主题' }).click()
+      await page.getByText(theme, { exact: true }).click()
+      const overflow = await page.evaluate(() => ({
+        document:
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth,
+        body: document.body.scrollWidth > document.body.clientWidth,
+      }))
+      expect(overflow).toEqual({ document: false, body: false })
+    }
   })
 }
