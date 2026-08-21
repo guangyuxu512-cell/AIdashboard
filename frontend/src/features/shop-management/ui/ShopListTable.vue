@@ -4,21 +4,26 @@ import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 
 import {
   getShopExecutionDeviceSummary,
+  ShopStatusTag,
   type ShopListItemViewModel,
 } from '@/entities/shop'
 import { PlatformDisplay } from '@/entities/platform'
+import { ShopSessionStatusTag } from '@/entities/shop-session'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
-defineProps<{
+const props = defineProps<{
   rows: ShopListItemViewModel[]
   loading?: boolean
   error?: string | null
   checkedRowKeys?: string[]
+  statusChangingShopId?: string | null
 }>()
 
 const emit = defineEmits<{
   view: [shop: ShopListItemViewModel]
+  'toggle-enabled': [shop: ShopListItemViewModel]
+  remove: [shop: ShopListItemViewModel]
   retry: []
   'update:checkedRowKeys': [keys: string[]]
 }>()
@@ -29,7 +34,7 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     title: '店铺名称',
     key: 'shopName',
     width: 160,
-    align: 'center',
+    align: 'left',
     ellipsis: { tooltip: true },
   },
   {
@@ -38,6 +43,13 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     width: 96,
     align: 'center',
     render: (shop) => h(PlatformDisplay, { code: shop.platform }),
+  },
+  {
+    title: '登录状态',
+    key: 'loginStatus',
+    width: 96,
+    align: 'center',
+    render: (shop) => h(ShopSessionStatusTag, { status: shop.loginStatus }),
   },
   {
     title: '负责人',
@@ -57,6 +69,13 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     },
   },
   {
+    title: '店铺状态',
+    key: 'enabledStatus',
+    width: 96,
+    align: 'center',
+    render: (shop) => h(ShopStatusTag, { status: shop.enabledStatus }),
+  },
+  {
     title: '备注',
     key: 'note',
     width: 150,
@@ -67,7 +86,7 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
   {
     title: '操作',
     key: 'actions',
-    width: 112,
+    width: 184,
     align: 'center',
     fixed: 'right',
     render: (shop) =>
@@ -81,10 +100,21 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
           AppButton,
           {
             tone: 'text',
-            disabled: true,
-            title: '店铺删除 API 尚未接入',
+            loading: props.statusChangingShopId === shop.shopId,
+            disabled:
+              Boolean(props.statusChangingShopId) &&
+              props.statusChangingShopId !== shop.shopId,
+            onClick: () => emit('toggle-enabled', shop),
           },
-          () => '删除',
+          () => (shop.enabled ? '停用' : '启用'),
+        ),
+        h(
+          AppButton,
+          {
+            tone: 'text',
+            onClick: () => emit('remove', shop),
+          },
+          () => '移除',
         ),
       ]),
   },
@@ -105,7 +135,7 @@ function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
     :loading="loading"
     :error="error"
     :row-key="(row: ShopListItemViewModel) => row.shopId"
-    :scroll-x="794"
+    :scroll-x="1058"
     :checked-row-keys="checkedRowKeys"
     appearance="list"
     viewport="fill"

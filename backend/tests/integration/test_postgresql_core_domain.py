@@ -79,7 +79,7 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         assert connection.scalar(text("SELECT 1")) == 1
         assert connection.scalar(text("SHOW server_version"))
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260820_0005"
+            "20260822_0008"
         )
 
     assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -94,6 +94,9 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         assert isinstance(columns["created_at"]["type"], TIMESTAMP)
         assert columns["created_at"]["type"].timezone is True
         assert columns["updated_at"]["type"].timezone is True
+        if table_name == "shops":
+            assert isinstance(columns["deleted_at"]["type"], TIMESTAMP)
+            assert columns["deleted_at"]["type"].timezone is True
         assert inspector.get_pk_constraint(table_name)["constrained_columns"] == [id_column]
 
     binding_pk = inspector.get_pk_constraint("shop_device_bindings")

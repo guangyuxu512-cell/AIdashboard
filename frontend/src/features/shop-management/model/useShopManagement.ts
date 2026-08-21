@@ -8,6 +8,8 @@ import {
   type ShopPlatformFilter,
   type ShopSaveInput,
   useCreateShopMutation,
+  useRemoveShopMutation,
+  useSetShopEnabledMutation,
   useShopDetailQuery,
   useShopListQuery,
   useShopOwnerOptionsQuery,
@@ -44,6 +46,9 @@ export function useShopManagement() {
   const formMode = ref<ShopFormMode>('create')
   const formInitialValue = ref<ShopFormViewModel | null>(null)
   const editingShopId = ref<string | null>(null)
+  const statusChangingShopId = ref<string | null>(null)
+  const removeShop = ref<ShopListItemViewModel | null>(null)
+  const removeVisible = ref(false)
 
   const listParams = computed(() => ({
     page: page.value,
@@ -57,6 +62,8 @@ export function useShopManagement() {
   const ownerOptionsQuery = useShopOwnerOptionsQuery()
   const createMutation = useCreateShopMutation()
   const updateMutation = useUpdateShopMutation()
+  const setEnabledMutation = useSetShopEnabledMutation()
+  const removeMutation = useRemoveShopMutation()
 
   const sourceRows = computed(() => listQuery.data.value?.items ?? [])
   const rows = computed(() => {
@@ -165,6 +172,51 @@ export function useShopManagement() {
     }
   }
 
+  async function toggleEnabled(shop: ShopListItemViewModel): Promise<void> {
+    statusChangingShopId.value = shop.shopId
+    try {
+      await setEnabledMutation.mutateAsync({
+        shopId: shop.shopId,
+        enabled: !shop.enabled,
+      })
+      message.success(shop.enabled ? '店铺已停用' : '店铺已启用')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    } finally {
+      statusChangingShopId.value = null
+    }
+  }
+
+  function requestRemove(shop: ShopListItemViewModel): void {
+    removeShop.value = shop
+    removeVisible.value = true
+  }
+
+  async function confirmRemove(): Promise<void> {
+    const shop = removeShop.value
+    if (!shop) return
+    try {
+      await removeMutation.mutateAsync(shop.shopId)
+      selectedShopIds.value = selectedShopIds.value.filter(
+        (shopId) => shopId !== shop.shopId,
+      )
+      if (detailShopId.value === shop.shopId) {
+        detailVisible.value = false
+        detailShopId.value = null
+      }
+      removeVisible.value = false
+      removeShop.value = null
+      if (rows.value.length === 1 && page.value > 1) page.value -= 1
+      message.success('店铺已移除')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
+  }
+
+  async function refreshList(): Promise<void> {
+    await listQuery.refetch()
+  }
+
   return {
     filterDraft,
     selectedPlatform,
@@ -177,6 +229,9 @@ export function useShopManagement() {
     formVisible,
     formMode,
     formInitialValue,
+    statusChangingShopId,
+    removeShop,
+    removeVisible,
     rows,
     total,
     ownerOptions: computed(() => ownerOptionsQuery.data.value ?? []),
@@ -191,6 +246,7 @@ export function useShopManagement() {
     detailLoading: detailQuery.isPending,
     detailError,
     formSubmitting,
+    removeSubmitting: computed(() => removeMutation.isPending.value),
     query,
     resetFilters,
     setPageSize,
@@ -203,5 +259,9 @@ export function useShopManagement() {
     openEdit,
     editFromDetail,
     saveShop,
+    toggleEnabled,
+    requestRemove,
+    confirmRemove,
+    refreshList,
   }
 }

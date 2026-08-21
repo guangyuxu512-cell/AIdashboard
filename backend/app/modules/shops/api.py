@@ -17,6 +17,7 @@ from app.modules.shops.schemas import (
     ShopDeviceBindingCreate,
     ShopDeviceBindingRead,
     ShopDeviceBindingUpdate,
+    ShopListRead,
     ShopRead,
     ShopUpdate,
 )
@@ -56,14 +57,23 @@ def get_shop_platform_service(
     return ShopPlatformService(health_service)
 
 
-@router.get("", response_model=Page[ShopRead])
+@router.get("", response_model=Page[ShopListRead])
 def list_shops(
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[ShopService, Depends(get_shop_service)],
-) -> Page[ShopRead]:
-    shops, total = service.list(offset=pagination.offset, limit=pagination.page_size)
-    return Page[ShopRead](
-        items=[ShopRead.model_validate(shop) for shop in shops],
+) -> Page[ShopListRead]:
+    shops, total, session_statuses = service.list(
+        offset=pagination.offset,
+        limit=pagination.page_size,
+    )
+    return Page[ShopListRead](
+        items=[
+            ShopListRead(
+                **ShopRead.model_validate(shop).model_dump(),
+                session_status=session_statuses.get(shop.shop_id),
+            )
+            for shop in shops
+        ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -112,6 +122,14 @@ def update_shop(
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopRead:
     return ShopRead.model_validate(service.update(shop_id, data))
+
+
+@router.delete("/{shop_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_shop(
+    shop_id: UUID,
+    service: Annotated[ShopService, Depends(get_shop_service)],
+) -> None:
+    service.remove(shop_id)
 
 
 @router.get("/{shop_id}/device-bindings", response_model=list[ShopDeviceBindingRead])

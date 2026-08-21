@@ -47,6 +47,19 @@ describe('shop query and mutation data source', () => {
     expect(page.total).toBe(11)
   })
 
+  it('persists enabled changes and soft-removes only the selected mock shop', async () => {
+    const source = createMockShopDataSource()
+
+    const disabled = await source.setEnabled('shop-fixture-001', false)
+    expect(disabled.enabledStatus).toBe('disabled')
+    expect((await source.get('shop-fixture-001')).enabled).toBe(false)
+
+    await source.remove('shop-fixture-002')
+    const page = await source.list({ page: 1, pageSize: 20, filters: emptyFilters })
+    expect(page.total).toBe(9)
+    expect(page.items.some((shop) => shop.shopId === 'shop-fixture-002')).toBe(false)
+  })
+
   it('keeps identified identity read-only and manages binding enable state', async () => {
     const source = createMockShopDataSource()
     const identified = await source.get('shop-fixture-001')

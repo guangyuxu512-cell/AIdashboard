@@ -27,6 +27,7 @@ import type { CredentialFormValue } from './CredentialFormDialog.vue'
 import { startManagementLoginPolling } from '../model/management-login-poller'
 
 const props = defineProps<{ shop: ShopListItemViewModel }>()
+const emit = defineEmits<{ sessionUpdated: [] }>()
 const message = useMessage()
 const formVisible = ref(false)
 const shopId = computed(() => props.shop.shopId)
@@ -116,9 +117,11 @@ async function saveCredential(value: CredentialFormValue): Promise<void> {
 async function validateSession(): Promise<void> {
   try {
     await validateSessionMutation.mutateAsync()
+    emit('sessionUpdated')
     message.success('登录会话验证有效')
   } catch (validationError) {
     await sessionQuery.refetch()
+    emit('sessionUpdated')
     message.error(getErrorMessage(validationError))
   }
 }
@@ -167,6 +170,7 @@ async function recoverSession(): Promise<void> {
           result.validatedAt,
         )
         await sessionQuery.refetch()
+        emit('sessionUpdated')
         message.success(`登录会话已恢复并验证有效 · v${result.sessionVersion}`)
       },
       onError(error) {
@@ -231,52 +235,66 @@ async function cancelRecovery(): Promise<void> {
         <NDescriptionsItem label="首选验证">
           {{ verificationChannelLabel }}
         </NDescriptionsItem>
-        <NDescriptionsItem label="登录会话">
-          <ShopSessionStatusTag :status="shopSession.status" />
-        </NDescriptionsItem>
-        <NDescriptionsItem label="Session 版本">
-          {{ shopSession.configured ? `v${shopSession.version}` : '—' }}
-        </NDescriptionsItem>
-        <NDescriptionsItem label="最近采集">
-          {{ shopSession.capturedAtDisplay ?? '—' }}
-        </NDescriptionsItem>
-        <NDescriptionsItem label="最近验证">
-          {{ shopSession.validatedAtDisplay ?? '—' }}
-        </NDescriptionsItem>
       </NDescriptions>
 
-      <NAlert
-        v-if="recoveryStatus || recoveryError"
-        :type="recoveryError ? 'error' : 'info'"
-        :bordered="true"
-        class="shop-connection-section__recovery"
-      >
-        {{
-          recoveryError ??
-          `${recoveryStatus?.profileReused ? '已复用本机登录环境' : '已创建本机登录环境'}；${recoveryStatus?.message}`
-        }}
-      </NAlert>
+      <div class="shop-session-card">
+        <div class="shop-session-card__header">
+          <h4>登录会话</h4>
+          <ShopSessionStatusTag :status="shopSession.status" />
+        </div>
 
-      <div class="shop-connection-section__actions">
-        <AppButton tone="primary" @click="formVisible = true">
+        <div class="shop-session-card__metadata">
+          <div>
+            <span>最近验证</span>
+            <strong>{{ shopSession.validatedAtDisplay ?? '—' }}</strong>
+          </div>
+          <div>
+            <span>最近采集</span>
+            <strong>{{ shopSession.capturedAtDisplay ?? '—' }}</strong>
+          </div>
+          <div>
+            <span>Session 版本</span>
+            <strong>{{ shopSession.configured ? `v${shopSession.version}` : '—' }}</strong>
+          </div>
+        </div>
+
+        <NAlert
+          v-if="recoveryStatus || recoveryError"
+          :type="recoveryError ? 'error' : 'info'"
+          :bordered="true"
+          class="shop-connection-section__recovery"
+        >
+          {{
+            recoveryError ??
+            `${recoveryStatus?.profileReused ? '已复用本机登录环境' : '已创建本机登录环境'}；${recoveryStatus?.message}`
+          }}
+        </NAlert>
+
+        <div class="shop-connection-section__actions">
+          <AppButton
+            :tone="shopSession.status === 'captured' ? 'primary' : 'secondary'"
+            :loading="validateSessionMutation.isPending.value"
+            :disabled="!shopSession.configured || recovering"
+            @click="validateSession"
+          >
+            验证会话
+          </AppButton>
+          <AppButton
+            v-if="recoveryAvailable && !recovering"
+            tone="primary"
+            :loading="acquireLeaseMutation.isPending.value"
+            @click="recoverSession"
+          >
+            重新登录
+          </AppButton>
+          <AppButton v-if="recovering" @click="cancelRecovery">取消恢复</AppButton>
+        </div>
+      </div>
+
+      <div class="shop-connection-section__credential-action">
+        <AppButton @click="formVisible = true">
           {{ credential.configured ? '更新账号与连接' : '配置账号与连接' }}
         </AppButton>
-        <AppButton
-          :loading="validateSessionMutation.isPending.value"
-          :disabled="!shopSession.configured || recovering"
-          @click="validateSession"
-        >
-          验证会话
-        </AppButton>
-        <AppButton
-          v-if="recoveryAvailable && !recovering"
-          tone="primary"
-          :loading="acquireLeaseMutation.isPending.value"
-          @click="recoverSession"
-        >
-          重新登录
-        </AppButton>
-        <AppButton v-if="recovering" @click="cancelRecovery">取消恢复</AppButton>
       </div>
 
       <CredentialFormDialog
@@ -303,7 +321,67 @@ async function cancelRecovery(): Promise<void> {
   margin-top: var(--space-3);
 }
 
+.shop-connection-section__credential-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.shop-session-card {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  background: var(--bg-subtle);
+}
+
+.shop-session-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.shop-session-card__header h4 {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.shop-session-card__metadata {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shop-session-card__metadata div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.shop-session-card__metadata span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-secondary);
+}
+
+.shop-session-card__metadata strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .shop-connection-section__recovery {
   margin-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .shop-session-card__metadata {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

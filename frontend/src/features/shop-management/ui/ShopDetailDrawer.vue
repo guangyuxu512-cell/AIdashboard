@@ -23,6 +23,7 @@ defineEmits<{
   'update:show': [value: boolean]
   retry: []
   edit: [shop: ShopListItemViewModel]
+  sessionUpdated: []
 }>()
 </script>
 
@@ -87,7 +88,10 @@ defineEmits<{
         </NDescriptions>
       </section>
 
-      <ShopConnectionSection :shop="shop" />
+      <ShopConnectionSection
+        :shop="shop"
+        @session-updated="$emit('sessionUpdated')"
+      />
 
       <ShopDeviceBindingSection :shop="shop" />
 

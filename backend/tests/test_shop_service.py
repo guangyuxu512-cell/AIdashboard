@@ -1,9 +1,13 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
+from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.shops.enums import BindingRole, ShopPlatform
 from app.modules.shops.exceptions import (
     ImmutableShopIdentityError,
@@ -25,15 +29,31 @@ from tests.support import FakeSession
 class FakeShopRepository:
     def __init__(self) -> None:
         self.items: dict[UUID, Shop] = {}
+        self.session_statuses: dict[UUID, ShopSessionStatus] = {}
 
     def list(self, *, offset: int, limit: int) -> list[Shop]:
-        return list(self.items.values())[offset : offset + limit]
+        active = [shop for shop in self.items.values() if shop.deleted_at is None]
+        return active[offset : offset + limit]
 
     def count(self) -> int:
-        return len(self.items)
+        return sum(shop.deleted_at is None for shop in self.items.values())
 
     def get(self, shop_id: UUID) -> Shop | None:
+        shop = self.items.get(shop_id)
+        return shop if shop is not None and shop.deleted_at is None else None
+
+    def get_including_deleted(self, shop_id: UUID) -> Shop | None:
         return self.items.get(shop_id)
+
+    def list_session_statuses(
+        self,
+        shop_ids: list[UUID],
+    ) -> dict[UUID, ShopSessionStatus]:
+        return {
+            shop_id: self.session_statuses[shop_id]
+            for shop_id in shop_ids
+            if shop_id in self.session_statuses
+        }
 
     def add(self, shop: Shop) -> None:
         if shop.shop_id is None:
@@ -80,6 +100,14 @@ class FakeBindingRepository:
     def add(self, binding: ShopDeviceBinding) -> None:
         self.items[(binding.shop_id, binding.device_id)] = binding
 
+    def disable_enabled_by_shop(self, shop_id: UUID) -> int:
+        changed = 0
+        for binding in self.list_by_shop(shop_id):
+            if binding.enabled:
+                binding.enabled = False
+                changed += 1
+        return changed
+
 
 def build_service() -> tuple[
     ShopService,
@@ -120,7 +148,7 @@ def test_shop_create_get_list_and_update() -> None:
         ),
     )
     fetched = service.get(created.shop_id)
-    items, total = service.list(offset=0, limit=20)
+    items, total, session_statuses = service.list(offset=0, limit=20)
     updated = service.update(
         created.shop_id,
         ShopUpdate(display_name="正式店铺 A", enabled=False),
@@ -129,6 +157,7 @@ def test_shop_create_get_list_and_update() -> None:
     assert fetched is created
     assert items == [created]
     assert total == 1
+    assert session_statuses == {}
     assert updated.display_name == "正式店铺 A"
     assert updated.enabled is False
     assert session.commits == 2
@@ -253,3 +282,52 @@ def test_binding_rejects_unknown_device_and_missing_relation() -> None:
             uuid4(),
             ShopDeviceBindingUpdate(enabled=False),
         )
+
+
+def test_list_projects_real_session_status() -> None:
+    service, _, shops, _, user_id, _ = build_service()
+    shop = service.create(
+        ShopCreate(
+            display_name="Session 状态店铺",
+            platform=ShopPlatform.DOUYIN,
+            owner_user_id=user_id,
+        ),
+    )
+    shops.session_statuses[shop.shop_id] = ShopSessionStatus.CAPTURED
+
+    items, total, session_statuses = service.list(offset=0, limit=20)
+
+    assert items == [shop]
+    assert total == 1
+    assert session_statuses == {shop.shop_id: ShopSessionStatus.CAPTURED}
+
+
+def test_soft_remove_excludes_shop_and_disables_bindings() -> None:
+    service, session, shops, bindings, user_id, device_id = build_service()
+    shop = service.create(
+        ShopCreate(
+            display_name="软删除测试店铺",
+            platform=ShopPlatform.DOUYIN,
+            owner_user_id=user_id,
+        ),
+    )
+    service.create_binding(
+        shop.shop_id,
+        ShopDeviceBindingCreate(
+            device_id=device_id,
+            binding_role=BindingRole.PRIMARY,
+        ),
+    )
+
+    service.remove(shop.shop_id)
+
+    stored = shops.get_including_deleted(shop.shop_id)
+    assert stored is shop
+    assert stored.enabled is False
+    assert isinstance(stored.deleted_at, datetime)
+    assert stored.deleted_at.tzinfo is UTC
+    assert bindings.get(shop.shop_id, device_id).enabled is False  # type: ignore[union-attr]
+    assert service.list(offset=0, limit=20) == ([], 0, {})
+    with pytest.raises(ShopNotFoundError):
+        service.get(shop.shop_id)
+    assert session.commits == 3

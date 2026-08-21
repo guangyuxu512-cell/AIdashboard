@@ -84,6 +84,64 @@ function issueWorkerIdentity(deviceName: string): {
   ) as { deviceId: string; token: string }
 }
 
+function seedCapturedSession(shopId: string): void {
+  const script = [
+    'from datetime import UTC, datetime',
+    'from uuid import UUID',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.core.security import get_secret_cipher',
+    'from app.modules.sessions.enums import ShopSessionStatus',
+    'from app.modules.sessions.schemas import StoreShopSessionCommand',
+    'from app.modules.sessions.service import ShopSessionService',
+    `shop_id = UUID(${JSON.stringify(shopId)})`,
+    'with Session(get_database_engine()) as session:',
+    '    ShopSessionService(session, get_secret_cipher()).store_payload(',
+    '        StoreShopSessionCommand(shop_id=shop_id, expected_version=0, status=ShopSessionStatus.CAPTURED, source_device_id=None, captured_at=datetime.now(UTC)),',
+    '        b"stage-shop-soft-delete-session",',
+    '    )',
+  ].join('\n')
+  execFileSync(backendPython, ['-c', script], {
+    cwd: backendDirectory,
+    stdio: 'pipe',
+  })
+}
+
+function inspectSoftRemovedShop(shopId: string, deviceId: string): {
+  shopExists: boolean
+  enabled: boolean
+  deleted: boolean
+  bindingEnabled: boolean
+  credentialExists: boolean
+  sessionExists: boolean
+} {
+  const script = [
+    'import json',
+    'from uuid import UUID',
+    'from sqlalchemy import select',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.modules.credentials.models import ShopCredentialBinding',
+    'from app.modules.sessions.models import ShopSession',
+    'from app.modules.shops.models import Shop, ShopDeviceBinding',
+    `shop_id = UUID(${JSON.stringify(shopId)})`,
+    `device_id = UUID(${JSON.stringify(deviceId)})`,
+    'with Session(get_database_engine()) as session:',
+    '    shop = session.get(Shop, shop_id)',
+    '    binding = session.get(ShopDeviceBinding, (shop_id, device_id))',
+    '    credential_binding = session.scalar(select(ShopCredentialBinding).where(ShopCredentialBinding.shop_id == shop_id))',
+    '    shop_session = session.scalar(select(ShopSession).where(ShopSession.shop_id == shop_id))',
+    '    print(json.dumps({"shopExists": shop is not None, "enabled": bool(shop.enabled) if shop else False, "deleted": shop.deleted_at is not None if shop else False, "bindingEnabled": bool(binding.enabled) if binding else False, "credentialExists": credential_binding is not None, "sessionExists": shop_session is not None}))',
+  ].join('\n')
+  return JSON.parse(
+    execFileSync(backendPython, ['-c', script], {
+      cwd: backendDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  )
+}
+
 test.beforeAll(cleanupRealTestData)
 test.afterAll(cleanupRealTestData)
 
@@ -146,9 +204,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .click()
   await expect(page.getByRole('heading', { name: '账号与连接' })).toBeVisible()
   await expect(
-    page
-      .getByRole('row', { name: /Cookie \/ Session/ })
-      .getByText('未配置', { exact: true }),
+    page.locator('.shop-session-card').getByText('未登录', { exact: true }),
   ).toBeVisible()
   await page.getByRole('button', { name: '配置账号与连接' }).click()
   await page
@@ -163,11 +219,9 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     page.getByRole('row', { name: /登录密码/ }).getByText('已配置'),
   ).toBeVisible()
   await expect(page.getByText('stage-3a-password')).toHaveCount(0)
-  await expect(page.getByText('Cookie / Session')).toBeVisible()
+  await expect(page.getByText('登录会话', { exact: true })).toBeVisible()
   await expect(
-    page
-      .getByRole('row', { name: /Cookie \/ Session/ })
-      .getByText('未配置', { exact: true }),
+    page.locator('.shop-session-card').getByText('未登录', { exact: true }),
   ).toBeVisible()
 
   await page.getByRole('button', { name: '关闭', exact: true }).click()
@@ -328,4 +382,119 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await page.unroute('**/api/v1/devices?page=*')
   await page.getByRole('button', { name: '重新加载' }).click()
   await expect(page.getByText(updatedDeviceName, { exact: true })).toBeVisible()
+})
+
+test('validates the real HuanYu session and restores its enabled state', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  await page.goto('/#/shops')
+  const row = page.getByRole('row').filter({ hasText: 'HuanYu' })
+  await expect(row.getByText('有效', { exact: true })).toBeVisible()
+  const listPayload = await (await page.request.get('/api/v1/shops?page=1&page_size=100')).json()
+  const huanyu = listPayload.items.find(
+    (shop: { display_name: string }) => shop.display_name === 'HuanYu',
+  ) as { shop_id: string; enabled: boolean }
+  expect(huanyu.enabled).toBe(true)
+
+  const before = await (
+    await page.request.get(`/api/v1/shops/${huanyu.shop_id}/session`)
+  ).json()
+  await row.getByRole('button', { name: '查看' }).click()
+  const healthResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/v1/shops/${huanyu.shop_id}/session/health-check`) &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '验证会话' }).click()
+  expect((await healthResponse).ok()).toBe(true)
+  await expect(page.locator('.shop-session-card').getByText('有效')).toBeVisible()
+  const after = await (
+    await page.request.get(`/api/v1/shops/${huanyu.shop_id}/session`)
+  ).json()
+  expect(new Date(after.validated_at).getTime()).toBeGreaterThan(
+    new Date(before.validated_at).getTime(),
+  )
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+
+  try {
+    await row.getByRole('button', { name: '停用', exact: true }).click()
+    await page.reload()
+    let refreshedRow = page.getByRole('row').filter({ hasText: 'HuanYu' })
+    await expect(refreshedRow.getByText('已停用', { exact: true })).toBeVisible()
+    await refreshedRow.getByRole('button', { name: '启用', exact: true }).click()
+    await page.reload()
+    refreshedRow = page.getByRole('row').filter({ hasText: 'HuanYu' })
+    await expect(refreshedRow.getByText('已启用', { exact: true })).toBeVisible()
+  } finally {
+    await page.request.patch(`/api/v1/shops/${huanyu.shop_id}`, {
+      data: { enabled: true },
+    })
+  }
+})
+
+test('persists Shop.enabled and safely soft-removes a dedicated real Shop', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const shopName = `${testPrefix}soft-remove-shop`
+  const deviceName = `${testPrefix}soft-remove-device`
+  const shopResponse = await page.request.post('/api/v1/shops', {
+    data: { display_name: shopName, platform: 'douyin' },
+  })
+  expect(shopResponse.ok()).toBe(true)
+  const shopId = (await shopResponse.json()).shop_id as string
+  const deviceResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(deviceResponse.ok()).toBe(true)
+  const deviceId = (await deviceResponse.json()).device_id as string
+  expect(
+    (
+      await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
+        data: { device_id: deviceId, binding_role: 'primary' },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.post('/api/v1/credentials', {
+        data: {
+          shop_id: shopId,
+          login_identifier: 'stage-soft-remove-account',
+          secret: 'stage-soft-remove-password',
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+  seedCapturedSession(shopId)
+
+  await page.goto('/#/shops')
+  let row = page.getByRole('row').filter({ hasText: shopName })
+  await expect(row.getByText('待验证', { exact: true })).toBeVisible()
+  await row.getByRole('button', { name: '停用', exact: true }).click()
+  await expect(row.getByText('已停用', { exact: true })).toBeVisible()
+  await page.reload()
+  row = page.getByRole('row').filter({ hasText: shopName })
+  await expect(row.getByText('已停用', { exact: true })).toBeVisible()
+  await row.getByRole('button', { name: '启用', exact: true }).click()
+  await page.reload()
+  row = page.getByRole('row').filter({ hasText: shopName })
+  await expect(row.getByText('已启用', { exact: true })).toBeVisible()
+
+  await row.getByRole('button', { name: '移除', exact: true }).click()
+  await page.getByRole('button', { name: '确认移除' }).click()
+  await expect(page.getByText(shopName, { exact: true })).toHaveCount(0)
+  const detailResponse = await page.request.get(`/api/v1/shops/${shopId}`)
+  expect(detailResponse.status()).toBe(404)
+  expect(await detailResponse.json()).toMatchObject({ code: 'SHOP_NOT_FOUND' })
+
+  expect(inspectSoftRemovedShop(shopId, deviceId)).toEqual({
+    shopExists: true,
+    enabled: false,
+    deleted: true,
+    bindingEnabled: false,
+    credentialExists: true,
+    sessionExists: true,
+  })
 })

@@ -30,6 +30,8 @@ PlatformCredential ──< ShopCredentialBinding >── Shop ── ShopSession
 
 Session payload 与密码共用成熟的加密基础设施，但在领域上互相独立。普通 API 只返回元数据，绝不返回 Cookie、payload 或密文。
 
+Shop List 只投影 ShopSession 的状态机器值，不返回 version、Cookie、Token 或 Profile。Shop 被软移除时 Credential、ShopCredentialBinding 与 ShopSession 全部保留；普通业务入口因 Shop 已移除而返回 `SHOP_NOT_FOUND`，内部审计与恢复数据仍可追溯。
+
 ## 4. 并发版本
 
 首次写入必须携带 `expected_version=0`，生成版本 `1`。后续更新以数据库条件更新 `WHERE shop_id = ... AND version = expected_version` 并原子递增。版本不匹配返回冲突，旧设备不能覆盖新 Session。

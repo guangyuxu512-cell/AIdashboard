@@ -8,6 +8,7 @@ import type {
   BackendShopPlatform,
   ShopCreateDto,
   ShopDeviceBindingReadDto,
+  ShopListReadDto,
   ShopReadDto,
   ShopUpdateDto,
 } from './contracts'
@@ -23,7 +24,7 @@ function formatDateTime(value: string): string {
 }
 
 export function mapShopDto(
-  dto: ShopReadDto,
+  dto: ShopReadDto | ShopListReadDto,
   context: ShopMappingContext,
 ): ShopListItemViewModel {
   const owner = context.users.find((user) => user.user_id === dto.owner_user_id)
@@ -54,6 +55,9 @@ export function mapShopDto(
       : '未分配',
     enabled: dto.enabled,
     enabledStatus: dto.enabled ? 'enabled' : 'disabled',
+    loginStatus: 'session_status' in dto
+      ? (dto.session_status ?? 'not_configured')
+      : 'not_configured',
     executionDeviceId: primaryBinding?.device_id ?? null,
     executionDeviceName: primaryBinding
       ? (deviceNames.get(primaryBinding.device_id) ?? '未知设备')

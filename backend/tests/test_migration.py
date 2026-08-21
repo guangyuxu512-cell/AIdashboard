@@ -197,3 +197,26 @@ def test_management_login_session_migration_upgrade_and_downgrade(
     migration.downgrade()
     assert ("drop_constraint", "uq_shops_platform_identity") in recorder.calls
     assert ("drop_column", "shops") in recorder.calls
+
+
+def test_shop_soft_delete_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260822_0008_shop_soft_delete",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls == [
+        ("add_column", "shops"),
+        ("create_index", "ix_shops_deleted_at"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_shops_deleted_at"),
+        ("drop_column", "shops"),
+    ]

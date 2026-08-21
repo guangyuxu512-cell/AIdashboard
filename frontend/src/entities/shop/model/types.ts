@@ -7,6 +7,12 @@ export type ShopPlatform = Extract<PlatformCode, 'douyin' | 'pdd'>
 export type ShopPlatformFilter = 'all' | PlatformCode
 
 export type ShopEnabledStatus = 'enabled' | 'disabled'
+export type ShopLoginStatus =
+  | 'not_configured'
+  | 'captured'
+  | 'valid'
+  | 'invalid'
+  | 'refresh_required'
 export type ShopDeviceBindingRole = 'primary' | 'backup'
 
 export interface ShopDeviceBindingViewModel {
@@ -30,6 +36,7 @@ export interface ShopListItemViewModel {
   ownerName: string
   enabled: boolean
   enabledStatus: ShopEnabledStatus
+  loginStatus: ShopLoginStatus
   executionDeviceId: string | null
   executionDeviceName: string | null
   backupDeviceNames: string[]

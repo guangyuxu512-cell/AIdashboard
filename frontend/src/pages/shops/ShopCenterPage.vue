@@ -7,6 +7,7 @@ import {
   ShopListTable,
   ShopOnboardingDrawer,
   ShopPlatformSwitchBar,
+  ShopRemoveDialog,
   useShopManagement,
 } from '@/features/shop-management'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
@@ -41,7 +42,10 @@ const management = useShopManagement()
         :rows="management.rows.value"
         :loading="management.listLoading.value"
         :error="management.listError.value"
+        :status-changing-shop-id="management.statusChangingShopId.value"
         @view="management.openDetail"
+        @toggle-enabled="management.toggleEnabled"
+        @remove="management.requestRemove"
         @retry="management.retryList"
       />
       <PaginationBar
@@ -58,6 +62,7 @@ const management = useShopManagement()
       :loading="management.detailLoading.value"
       :error="management.detailError.value"
       @edit="management.editFromDetail"
+      @session-updated="management.refreshList"
       @retry="management.retryDetail"
     />
 
@@ -74,6 +79,13 @@ const management = useShopManagement()
       :owner-options-loading="management.ownerOptionsLoading.value"
       :submitting="management.formSubmitting.value"
       @save="management.saveShop"
+    />
+
+    <ShopRemoveDialog
+      v-model:show="management.removeVisible.value"
+      :shop="management.removeShop.value"
+      :submitting="management.removeSubmitting.value"
+      @confirm="management.confirmRemove"
     />
   </div>
 </template>

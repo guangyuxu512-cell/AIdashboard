@@ -5,13 +5,14 @@ import type {
   ShopDeviceBindingCreateDto,
   ShopDeviceBindingReadDto,
   ShopDeviceBindingUpdateDto,
+  ShopListReadDto,
   ShopReadDto,
   ShopUpdateDto,
 } from './contracts'
 
 export const shopApi = {
-  async list(params: PageParams): Promise<PageDto<ShopReadDto>> {
-    const response = await httpClient.get<PageDto<ShopReadDto>>(
+  async list(params: PageParams): Promise<PageDto<ShopListReadDto>> {
+    const response = await httpClient.get<PageDto<ShopListReadDto>>(
       '/api/v1/shops',
       {
         params: { page: params.page, page_size: params.pageSize },
@@ -38,6 +39,10 @@ export const shopApi = {
       data,
     )
     return response.data
+  },
+
+  async remove(shopId: string): Promise<void> {
+    await httpClient.delete(`/api/v1/shops/${shopId}`)
   },
 
   async listBindings(shopId: string): Promise<ShopDeviceBindingReadDto[]> {

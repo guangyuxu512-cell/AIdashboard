@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.shops.enums import BindingRole, ShopPlatform
 
 
@@ -46,8 +47,13 @@ class ShopRead(BaseModel):
     enabled: bool
     owner_user_id: UUID | None
     note: str | None
+    deleted_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class ShopListRead(ShopRead):
+    session_status: ShopSessionStatus | None
 
 
 class ShopDeviceBindingCreate(BaseModel):

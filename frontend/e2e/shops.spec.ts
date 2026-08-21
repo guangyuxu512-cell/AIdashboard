@@ -44,7 +44,8 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByText('海风家居生活馆')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '开启' })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: '分组' })).toHaveCount(0)
-  await expect(page.getByRole('columnheader', { name: '状态' })).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: '登录状态' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '店铺状态' })).toBeVisible()
   await expect(
     page.getByRole('columnheader', { name: '今日订单' }),
   ).toHaveCount(0)
@@ -55,10 +56,20 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByText('批量分配分组')).toHaveCount(0)
   await expect(page.getByText('批量开启')).toHaveCount(0)
   await expect(page.getByText('批量关闭')).toHaveCount(0)
-  await expect(page.getByText('批量删除')).toBeVisible()
+  await expect(page.getByText('批量删除')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '删除' })).toHaveCount(0)
   await expect(
-    page.getByRole('button', { name: '删除' }).first(),
-  ).toBeDisabled()
+    page.getByRole('row').filter({ hasText: '星河服饰旗舰店' }).getByText('已失效'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('row').filter({ hasText: '海风家居生活馆' }).getByText('待验证'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('row').filter({ hasText: '青禾食品旗舰店' }).getByText('有效'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('row').filter({ hasText: '拾光数码工坊' }).getByText('未登录'),
+  ).toBeVisible()
 
   const rowCheckboxes = page.getByRole('checkbox')
   await expect(rowCheckboxes.first()).toBeVisible()
@@ -131,18 +142,14 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   )
   await expect(page.getByRole('heading', { name: '账号与连接' })).toBeVisible()
   await expect(
-    page
-      .getByRole('row', { name: /登录会话/ })
-      .getByText('失效', { exact: true }),
+    page.locator('.shop-session-card').getByText('已失效', { exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: '配置账号与连接' }),
   ).toBeEnabled()
   await expect(page.getByText('登录会话', { exact: true })).toBeVisible()
   await expect(
-    page
-      .getByRole('row', { name: /登录会话/ })
-      .getByText('失效', { exact: true }),
+    page.locator('.shop-session-card').getByText('已失效', { exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: '验证会话' }),
@@ -322,13 +329,13 @@ test('validates an invalid ShopSession and refreshes the compact drawer state', 
   await page.getByRole('button', { name: '查看' }).first().click()
 
   await expect(
-    page.getByRole('row', { name: /登录会话/ }).getByText('失效'),
+    page.locator('.shop-session-card').getByText('已失效'),
   ).toBeVisible()
   await expect(page.getByText('v3', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '验证会话' }).click()
 
   await expect(
-    page.getByRole('row', { name: /登录会话/ }).getByText('有效'),
+    page.locator('.shop-session-card').getByText('有效'),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: '重新登录' })).toHaveCount(0)
 })
@@ -393,8 +400,39 @@ test('reuses Management Profile, shows recovery progress and refreshes version',
   await expect(page.getByText(/已复用本机登录环境/)).toBeVisible()
   await expect(page.getByText('v4', { exact: true })).toBeVisible()
   await expect(
-    page.getByRole('row', { name: /登录会话/ }).getByText('有效'),
+    page.locator('.shop-session-card').getByText('有效'),
   ).toBeVisible()
+})
+
+test('persists the formal Shop enabled state in the list interaction', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  const row = page.getByRole('row').filter({ hasText: '星河服饰旗舰店' })
+  await expect(row.getByText('已启用', { exact: true })).toBeVisible()
+
+  await row.getByRole('button', { name: '停用', exact: true }).click()
+  await expect(row.getByText('已停用', { exact: true })).toBeVisible()
+  await row.getByRole('button', { name: '启用', exact: true }).click()
+  await expect(row.getByText('已启用', { exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '自动化' })).toHaveCount(0)
+})
+
+test('confirms a single-shop soft removal and removes it from the normal list', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  const row = page.getByRole('row').filter({ hasText: '海风家居生活馆' })
+  await row.getByRole('button', { name: '移除', exact: true }).click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('店铺：海风家居生活馆')
+  await expect(dialog.getByText(/设备绑定将停用/)).toBeVisible()
+  await expect(dialog.getByText(/登录凭证、Session/)).toBeVisible()
+  await dialog.getByRole('button', { name: '确认移除' }).click()
+
+  await expect(page.getByText('海风家居生活馆')).toHaveCount(0)
+  await expect(page.getByText('批量移除')).toHaveCount(0)
 })
 
 test('surfaces a refresh lease conflict without opening a login window', async ({

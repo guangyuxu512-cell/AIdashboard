@@ -1,8 +1,10 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     Enum as SqlEnum,
     ForeignKey,
     Index,
@@ -65,6 +67,11 @@ class Shop(TimestampMixin, Base):
         index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
 
 
 class ShopDeviceBinding(TimestampMixin, Base):

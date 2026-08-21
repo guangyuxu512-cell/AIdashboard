@@ -57,6 +57,35 @@ export function useUpdateShopMutation() {
   })
 }
 
+export function useSetShopEnabledMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ shopId, enabled }: { shopId: string; enabled: boolean }) =>
+      shopDataSource.setEnabled(shopId, enabled),
+    onSuccess: (_, variables) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: shopQueryKeys.all }),
+        queryClient.invalidateQueries({
+          queryKey: shopQueryKeys.detail(variables.shopId),
+        }),
+      ]),
+  })
+}
+
+export function useRemoveShopMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (shopId: string) => shopDataSource.remove(shopId),
+    onSuccess: (_, shopId) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: shopQueryKeys.all }),
+        queryClient.removeQueries({
+          queryKey: shopQueryKeys.detail(shopId),
+        }),
+      ]),
+  })
+}
+
 export function useCreateShopDeviceBindingMutation() {
   const queryClient = useQueryClient()
   return useMutation({

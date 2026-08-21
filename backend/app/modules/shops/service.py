@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.repository import DeviceRepository
+from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.shops.enums import BindingRole
 from app.modules.shops.exceptions import (
     ImmutableShopIdentityError,
@@ -40,10 +42,19 @@ class ShopService:
         self.device_repository = device_repository or DeviceRepository(session)
         self.user_repository = user_repository or UserRepository(session)
 
-    def list(self, *, offset: int, limit: int) -> tuple[list[Shop], int]:
+    def list(
+        self,
+        *,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
+        shops = self.shop_repository.list(offset=offset, limit=limit)
         return (
-            self.shop_repository.list(offset=offset, limit=limit),
+            shops,
             self.shop_repository.count(),
+            self.shop_repository.list_session_statuses(
+                [shop.shop_id for shop in shops],
+            ),
         )
 
     def get(self, shop_id: UUID) -> Shop:
@@ -79,6 +90,13 @@ class ShopService:
         self.session.commit()
         self.session.refresh(shop)
         return shop
+
+    def remove(self, shop_id: UUID) -> None:
+        shop = self.get(shop_id)
+        shop.enabled = False
+        shop.deleted_at = datetime.now(UTC)
+        self.binding_repository.disable_enabled_by_shop(shop_id)
+        self.session.commit()
 
     def list_bindings(self, shop_id: UUID) -> list[ShopDeviceBinding]:
         self.get(shop_id)

@@ -34,8 +34,17 @@ def stamp(entity: object) -> object:
 
 
 class ApiShopService:
-    def list(self, *, offset: int, limit: int) -> tuple[list[Shop], int]:
-        return [self.get(SHOP_ID)][offset : offset + limit], 1
+    def list(
+        self,
+        *,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
+        return (
+            [self.get(SHOP_ID)][offset : offset + limit],
+            1,
+            {SHOP_ID: ShopSessionStatus.VALID},
+        )
 
     def get(self, shop_id: UUID) -> Shop:
         if shop_id != SHOP_ID:
@@ -55,6 +64,9 @@ class ApiShopService:
 
     def update(self, shop_id: UUID, data: object) -> Shop:
         return self.get(shop_id)
+
+    def remove(self, shop_id: UUID) -> None:
+        self.get(shop_id)
 
     def list_bindings(self, shop_id: UUID) -> list[ShopDeviceBinding]:
         self.get(shop_id)
@@ -183,11 +195,15 @@ def test_shop_device_and_binding_success_paths() -> None:
     assert device_response.json()["device_id"] == str(DEVICE_ID)
     assert list_response.json()["total"] == 1
     assert list_response.json()["page_size"] == 20
+    assert list_response.json()["items"][0]["session_status"] == "valid"
     assert binding_response.status_code == 201
     assert binding_response.json()["binding_role"] == "primary"
     assert identity_response.status_code == 200
     assert identity_response.json()["shop_display_name"] == "API 店铺"
     assert identity_response.json()["session_status"] == "valid"
+
+    remove_response = request("DELETE", f"/api/v1/shops/{SHOP_ID}")
+    assert remove_response.status_code == 204
 
 
 def test_api_validation_and_business_not_found_error() -> None:

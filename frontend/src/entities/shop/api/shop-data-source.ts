@@ -34,6 +34,8 @@ export interface ShopDataSource {
   get(shopId: string): Promise<ShopListItemViewModel>
   create(input: ShopSaveInput): Promise<ShopListItemViewModel>
   update(shopId: string, input: ShopSaveInput): Promise<ShopListItemViewModel>
+  setEnabled(shopId: string, enabled: boolean): Promise<ShopListItemViewModel>
+  remove(shopId: string): Promise<void>
   createBinding(shopId: string, input: ShopDeviceBindingInput): Promise<void>
   updateBinding(shopId: string, input: ShopDeviceBindingInput): Promise<void>
   listOwnerOptions(): Promise<ShopSelectOption[]>
@@ -118,6 +120,7 @@ export function createMockShopDataSource(): ShopDataSource {
         ownerName: String(owner?.label ?? '未分配'),
         enabled: input.enabled,
         enabledStatus: input.enabled ? 'enabled' : 'disabled',
+        loginStatus: 'not_configured',
         executionDeviceId: null,
         executionDeviceName: null,
         backupDeviceNames: [],
@@ -153,6 +156,23 @@ export function createMockShopDataSource(): ShopDataSource {
       }
       rows[index] = updated
       return { ...updated }
+    },
+    async setEnabled(shopId, enabled) {
+      const index = rows.findIndex((item) => item.shopId === shopId)
+      if (index < 0) throw new Error('店铺不存在')
+      const updated: ShopListItemViewModel = {
+        ...rows[index]!,
+        enabled,
+        enabledStatus: enabled ? 'enabled' : 'disabled',
+        updatedAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
+      }
+      rows[index] = updated
+      return { ...updated }
+    },
+    async remove(shopId) {
+      const index = rows.findIndex((item) => item.shopId === shopId)
+      if (index < 0) throw new Error('店铺不存在')
+      rows.splice(index, 1)
     },
     async createBinding(shopId, input) {
       const shop = rows.find((item) => item.shopId === shopId)
@@ -260,6 +280,17 @@ const realShopDataSource: ShopDataSource = {
       shopApi.listBindings(shopId),
     ])
     return mapShopDto(shop, { ...references, bindings })
+  },
+  async setEnabled(shopId, enabled) {
+    const [shop, references, bindings] = await Promise.all([
+      shopApi.update(shopId, { enabled }),
+      loadMappingReferences(),
+      shopApi.listBindings(shopId),
+    ])
+    return mapShopDto(shop, { ...references, bindings })
+  },
+  async remove(shopId) {
+    await shopApi.remove(shopId)
   },
   async createBinding(shopId, input) {
     await shopApi.createBinding(shopId, {

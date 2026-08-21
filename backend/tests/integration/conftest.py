@@ -67,16 +67,5 @@ def postgresql_engine(postgresql_url: URL) -> Engine:
     command.upgrade(alembic_config, "head")
     assert CORE_TABLES <= set(inspect(engine).get_table_names())
 
-    database_is_at_base = False
-    try:
-        command.downgrade(alembic_config, "base")
-        database_is_at_base = True
-        assert CORE_TABLES.isdisjoint(inspect(engine).get_table_names())
-        command.upgrade(alembic_config, "head")
-        database_is_at_base = False
-    finally:
-        if database_is_at_base:
-            command.upgrade(alembic_config, "head")
-
     assert CORE_TABLES <= set(inspect(engine).get_table_names())
     return engine

@@ -29,7 +29,7 @@ Pydantic Schema / OpenAPI 为权威来源。
 统一前缀为 `/api/v1`：
 
 - `/users`：GET list、GET detail、POST create、PATCH update。
-- `/shops`：GET list、GET detail、POST create、PATCH update。
+- `/shops`：GET list、GET detail、POST create、PATCH update、DELETE soft remove。
 - `/devices`：GET list、GET detail、POST create、PATCH update。
 - `/shops/{shop_id}/device-bindings`：GET list、POST create。
 - `/shops/{shop_id}/device-bindings/{device_id}`：PATCH update/disable。
@@ -49,7 +49,11 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 Pydantic Create、Update、Read Schema 是正式 API Contract。Frontend 的 GMV、Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
 
+Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_status`：没有 ShopSession 时为 `null`，其余值直接来自正式 ShopSession Status，不由 Frontend 猜测。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；对已移除 Shop 的 GET、PATCH、Binding 与 Session 业务访问返回 `SHOP_NOT_FOUND`。`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
+
 带 `platform_shop_id` 的 Shop 已由平台身份识别建立。普通 `ShopUpdate` 不允许修改其 `display_name` 或 `platform`，且 Contract 本身不接受 `platform_shop_id` 更新；负责人、备注和既有 `enabled` 语义不受影响。`Shop.enabled` 不是自动化总开关。
+
+`Shop.enabled=true/false` 分别表示店铺可/不可参与正常系统业务；当前不存在 `automation_enabled`，禁止用 `Shop.enabled` 表达自动化总开关。
 
 ## Credential / Session Metadata Contract
 

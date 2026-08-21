@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import TableToolbar from '@/shared/components/TableToolbar.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
 
 defineProps<{ selectedCount: number }>()
 </script>
@@ -10,13 +9,6 @@ defineProps<{ selectedCount: number }>()
     <span class="shop-batch-toolbar__selection">
       已选择 <strong>{{ selectedCount }}</strong> 家店铺
     </span>
-    <span class="shop-batch-toolbar__placeholder">批量能力待接入</span>
-
-    <template #actions>
-      <AppButton tone="danger" disabled title="店铺删除 API 尚未接入">
-        批量删除
-      </AppButton>
-    </template>
   </TableToolbar>
 </template>
 
@@ -37,8 +29,4 @@ defineProps<{ selectedCount: number }>()
   font-weight: var(--font-weight-semibold);
 }
 
-.shop-batch-toolbar__placeholder {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
-}
 </style>

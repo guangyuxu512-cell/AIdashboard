@@ -11,9 +11,9 @@ export const SHOP_SESSION_STATUS_META: Record<
   ShopSessionStatus,
   ShopSessionStatusMeta
 > = {
-  not_configured: { label: '未配置', tone: 'neutral' },
-  captured: { label: '已采集', tone: 'info' },
+  not_configured: { label: '未登录', tone: 'neutral' },
+  captured: { label: '待验证', tone: 'info' },
   valid: { label: '有效', tone: 'success' },
-  invalid: { label: '失效', tone: 'error' },
+  invalid: { label: '已失效', tone: 'error' },
   refresh_required: { label: '需要刷新', tone: 'warning' },
 }
