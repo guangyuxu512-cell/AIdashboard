@@ -10,7 +10,40 @@ import { apiMode } from '@/shared/api'
 
 export interface DeviceManagementContext {
   inventories: Record<string, YingdaoInventoryViewModel | null>
-  bindingCounts: Record<string, number>
+  bindingCounts: Record<string, number | null>
+}
+
+type InventoryLoader = (
+  deviceId: string,
+) => Promise<YingdaoInventoryViewModel | null>
+
+export async function loadDeviceInventories(
+  deviceIds: string[],
+  loadInventory: InventoryLoader = getYingdaoInventory,
+): Promise<Record<string, YingdaoInventoryViewModel | null>> {
+  const results = await Promise.allSettled(
+    deviceIds.map((deviceId) => loadInventory(deviceId)),
+  )
+  return Object.fromEntries(
+    deviceIds.map((deviceId, index) => [
+      deviceId,
+      results[index]?.status === 'fulfilled'
+        ? results[index].value
+        : null,
+    ]),
+  )
+}
+
+export async function loadDeviceBindingCounts(
+  deviceIds: string[],
+  loader: (ids: string[]) => Promise<Record<string, number>> =
+    loadBindingCounts,
+): Promise<Record<string, number | null>> {
+  try {
+    return await loader(deviceIds)
+  } catch {
+    return Object.fromEntries(deviceIds.map((deviceId) => [deviceId, null]))
+  }
 }
 
 async function loadBindingCounts(
@@ -60,15 +93,13 @@ export function useDeviceManagementContextQuery(
     ]),
     queryFn: async (): Promise<DeviceManagementContext> => {
       const ids = toValue(deviceIds)
-      const inventoryEntries = await Promise.all(
-        ids.map(
-          async (deviceId) =>
-            [deviceId, await getYingdaoInventory(deviceId)] as const,
-        ),
-      )
+      const [inventories, bindingCounts] = await Promise.all([
+        loadDeviceInventories(ids),
+        loadDeviceBindingCounts(ids),
+      ])
       return {
-        inventories: Object.fromEntries(inventoryEntries),
-        bindingCounts: await loadBindingCounts(ids),
+        inventories,
+        bindingCounts,
       }
     },
     enabled: computed(() => toValue(deviceIds).length > 0),

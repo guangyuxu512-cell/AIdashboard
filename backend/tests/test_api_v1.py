@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from httpx import ASGITransport, AsyncClient, Response
 
 from app.main import create_app
-from app.modules.devices.api import get_device_service
+from app.modules.devices.api import get_device_service, get_worker_service
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.shops.api import get_shop_service
@@ -19,6 +19,8 @@ from app.modules.sessions.enums import ShopSessionStatus
 from app.platforms.schemas import PlatformShopIdentityRead
 from app.modules.users.api import get_user_service
 from app.modules.users.models import User
+from app.modules.workers.enums import WorkerConnectionStatus
+from app.modules.workers.schemas import DeviceRuntimeRead
 
 
 SHOP_ID = uuid4()
@@ -134,6 +136,25 @@ class ApiDeviceService:
         return self.get(device_id)
 
 
+class ApiWorkerService:
+    def get_runtime_reads(
+        self,
+        device_ids: list[UUID],
+    ) -> dict[UUID, DeviceRuntimeRead]:
+        now = datetime.now(UTC)
+        return {
+            device_id: DeviceRuntimeRead(
+                device_id=device_id,
+                worker_version="0.1.0",
+                connection_status=WorkerConnectionStatus.OFFLINE,
+                last_seen_at=now,
+                started_at=now,
+                updated_at=now,
+            )
+            for device_id in device_ids
+        }
+
+
 class ApiUserService:
     def list(self, *, offset: int, limit: int) -> tuple[list[User], int]:
         return [self.get(USER_ID)][offset : offset + limit], 1
@@ -157,6 +178,7 @@ def request(method: str, path: str, **kwargs: object) -> Response:
         ApiShopPlatformService
     )
     application.dependency_overrides[get_device_service] = ApiDeviceService
+    application.dependency_overrides[get_worker_service] = ApiWorkerService
     application.dependency_overrides[get_user_service] = ApiUserService
 
     async def send() -> Response:
@@ -204,6 +226,18 @@ def test_shop_device_and_binding_success_paths() -> None:
 
     remove_response = request("DELETE", f"/api/v1/shops/{SHOP_ID}")
     assert remove_response.status_code == 204
+
+
+def test_offline_device_is_a_successful_list_item() -> None:
+    response = request("GET", "/api/v1/devices?page=1&page_size=20")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    item = response.json()["items"][0]
+    assert item["device_id"] == str(DEVICE_ID)
+    assert item["enabled"] is True
+    assert item["worker_runtime"]["connection_status"] == "offline"
+    assert item["worker_runtime"]["last_seen_at"] is not None
 
 
 def test_api_validation_and_business_not_found_error() -> None:

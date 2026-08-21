@@ -74,6 +74,32 @@ describe('device mapper, query and mutation', () => {
     expect(viewModel.memoryUsageDisplay).toBe('—')
   })
 
+  it('maps an offline Worker as a normal device and preserves its last heartbeat', () => {
+    const viewModel = mapDeviceDto({
+      device_id: '00000000-0000-0000-0000-000000000001',
+      display_name: '离线设备',
+      enabled: true,
+      location: null,
+      note: null,
+      worker_runtime: {
+        device_id: '00000000-0000-0000-0000-000000000001',
+        worker_version: '0.1.0',
+        connection_status: 'offline',
+        last_seen_at: '2026-08-19T08:30:00+00:00',
+        started_at: '2026-08-19T08:00:00+00:00',
+        updated_at: '2026-08-19T08:31:00+00:00',
+      },
+      deleted_at: null,
+      created_at: '2026-08-18T10:00:00+00:00',
+      updated_at: '2026-08-18T11:00:00+00:00',
+    })
+
+    expect(viewModel.enabledStatus).toBe('enabled')
+    expect(viewModel.runtimeStatus).toBe('offline')
+    expect(viewModel.currentTaskName).toBeNull()
+    expect(viewModel.lastHeartbeatAtDisplay).not.toBe('未接入')
+  })
+
   it('keeps server pagination in the device query key', () => {
     expect(
       deviceQueryKeys.list({ page: 3, pageSize: 50, filters: emptyFilters }),

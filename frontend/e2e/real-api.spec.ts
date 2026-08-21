@@ -84,6 +84,26 @@ function issueWorkerIdentity(deviceName: string): {
   ) as { deviceId: string; token: string }
 }
 
+function reconcileDeviceOffline(secondsAfterHeartbeat: number): number {
+  const reconcileScript = [
+    'from datetime import UTC, datetime, timedelta',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.modules.workers.service import WorkerService',
+    `seconds = ${secondsAfterHeartbeat}`,
+    'with Session(get_database_engine()) as session:',
+    '    print(WorkerService(session).reconcile_offline_devices(now=datetime.now(UTC) + timedelta(seconds=seconds)))',
+  ].join('\n')
+
+  return Number(
+    execFileSync(backendPython, ['-c', reconcileScript], {
+      cwd: backendDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim(),
+  )
+}
+
 function seedCapturedSession(shopId: string): void {
   const script = [
     'from datetime import UTC, datetime',
@@ -661,4 +681,68 @@ test('protects active Device tasks and revokes every Worker endpoint after soft 
   })
   expect(replacement.ok()).toBe(true)
   expect((await replacement.json()).device_id).not.toBe(deviceId)
+})
+
+test('keeps the same Device row through ONLINE, OFFLINE and ONLINE recovery', async ({
+  page,
+}) => {
+  const deviceName = `${testPrefix}offline-list`
+  const createResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(createResponse.status()).toBe(201)
+  const identity = issueWorkerIdentity(deviceName)
+  const workerHeaders = {
+    Authorization: `Bearer ${identity.token}`,
+    'X-Device-ID': identity.deviceId,
+  }
+  const startedAt = new Date().toISOString()
+
+  expect(
+    (
+      await page.request.post('/api/v1/worker/heartbeat', {
+        headers: workerHeaders,
+        data: { worker_version: '0.1.0', started_at: startedAt },
+      })
+    ).status(),
+  ).toBe(200)
+
+  await page.goto('/#/devices')
+  let row = page.getByRole('row').filter({ hasText: deviceName })
+  await expect(row.getByText('在线', { exact: true })).toBeVisible()
+
+  expect(reconcileDeviceOffline(46)).toBeGreaterThanOrEqual(1)
+  expect(reconcileDeviceOffline(60)).toBe(0)
+  await page.reload()
+  row = page.getByRole('row').filter({ hasText: deviceName })
+  await expect(row.getByText('离线', { exact: true })).toBeVisible()
+  await expect(row.getByText('—', { exact: true }).first()).toBeVisible()
+  await expect(row).not.toContainText('未接入')
+  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
+
+  await page.route('**/api/v1/devices?**', (route) => route.abort())
+  const failedRefresh = page.waitForEvent(
+    'requestfailed',
+    (request) =>
+      request.url().includes('/api/v1/devices?') &&
+      request.method() === 'GET',
+  )
+  await page.getByRole('button', { name: '刷新' }).click()
+  await failedRefresh
+  await expect(row).toBeVisible()
+  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
+  await page.unroute('**/api/v1/devices?**')
+
+  expect(
+    (
+      await page.request.post('/api/v1/worker/heartbeat', {
+        headers: workerHeaders,
+        data: { worker_version: '0.1.0', started_at: startedAt },
+      })
+    ).status(),
+  ).toBe(200)
+  await page.reload()
+  row = page.getByRole('row').filter({ hasText: deviceName })
+  await expect(row.getByText('在线', { exact: true })).toBeVisible()
+  await expect(page.getByText(deviceName, { exact: true })).toHaveCount(1)
 })

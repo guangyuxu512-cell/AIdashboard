@@ -155,7 +155,9 @@ export function useDeviceManagement() {
       .length,
   }))
   const listError = computed(() =>
-    listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
+    listQuery.error.value && !listQuery.data.value
+      ? getErrorMessage(listQuery.error.value)
+      : null,
   )
   const detailError = computed(() =>
     detailQuery.error.value ? getErrorMessage(detailQuery.error.value) : null,
