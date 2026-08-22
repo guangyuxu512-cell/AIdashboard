@@ -109,23 +109,23 @@ Discovery 与 Execution 是两个独立能力。Inventory 必须分别表达
 `discovery_available`、`execution_available`、`execution_version` 和不可执行原因；
 Discovery 成功不能推出 Execution 可用。
 
-Discovery 版本策略与 CLI 版本无关，统一读取当前 Windows 用户下的 ShadowBot 本地
-账号与应用缓存。Execution 只接受精确白名单，禁止版本范围推断：
+账号与应用内容仍统一读取当前 Windows 用户下的 ShadowBot 本地缓存，不依赖 CLI。
+但当前 Worker 发行版的 Provider 与 Execution 环境都固定为影刀 6.3.6；版本不匹配时
+Discovery 也必须明确失败，避免“从一个版本发现、用另一个版本执行”的不确定行为：
 
 | 版本 | Discovery | Execution |
 |---|---|---|
-| 6.3.9 | Local Discovery | UNVERIFIED，禁止执行 |
 | 6.3.6 | Local Discovery | VERIFIED |
-| 6.2.23 | Local Discovery | VERIFIED |
+| 其他版本 | UNSUPPORTED | 禁止执行 |
 
-执行优先级固定为 6.3.6、6.2.23。若只有 6.3.9，Discovery 可以 AVAILABLE，Execution
-必须 UNAVAILABLE，并说明“当前影刀版本不在已验证执行白名单”。
+当前不存在版本优先级和回退链。安装 Root 缺少真实文件版本为 6.3.6 的入口时，返回
+`YINGDAO_VERSION_UNSUPPORTED`，并说明当前 Worker 要求影刀 6.3.6。后续只有在运行中版本
+与当前账号能够可靠关联后，才允许通过新的正式设计恢复多版本支持。
 
-安装 Root 可以同时包含根 `ShadowBot.exe` 与多个 `shadowbot-<version>` 目录，也可以只
-包含多个版本目录。版本目录的真实入口为 `ShadowBot.Shell.exe`，同时兼容旧布局中的
-`ShadowBot.exe`。Discovery 使用根程序版本；没有根程序时使用可解析的最高版本。
-Execution 始终按精确白名单优先选择 6.3.6、再选择 6.2.23，绝不因存在 6.3.9 而改用
-未验证执行版本。
+安装 Root 可以直接指向 6.3.6 目录，也可以指向包含 `shadowbot-6.3.6` 的上级目录。
+版本目录的真实入口为 `ShadowBot.Shell.exe`，同时兼容旧布局中的 `ShadowBot.exe`。
+即使 Root 中同时存在其他版本，Resolver 也只选择文件版本为 6.3.6 的入口，不选择根目录
+中的更高版本，也不回退到更低版本。其他版本可以保留在磁盘，无需由 Worker 删除。
 
 真实启动只允许以 subprocess argument list、`shell=False` 的等价方式直接启动 Resolver
 选中的入口（根 `ShadowBot.exe` 或版本目录 `ShadowBot.Shell.exe`），第二个参数为按 URI 规则编码的

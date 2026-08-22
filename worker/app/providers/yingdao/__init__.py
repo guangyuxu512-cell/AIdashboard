@@ -17,7 +17,7 @@ from app.providers.yingdao.discovery import (
     YingdaoDiscoveryService,
 )
 from app.providers.yingdao.environment import (
-    SUPPORTED_EXECUTION_VERSIONS,
+    REQUIRED_YINGDAO_VERSION,
     YingdaoEnvironment,
     YingdaoVersionResolver,
 )
@@ -31,7 +31,7 @@ from app.providers.yingdao.tasklog import (
 
 __all__ = [
     "RuntimeYingdaoAdapter",
-    "SUPPORTED_EXECUTION_VERSIONS",
+    "REQUIRED_YINGDAO_VERSION",
     "UnavailableYingdaoAdapter",
     "YingdaoAdapter",
     "YingdaoApplication",

@@ -35,18 +35,29 @@ def version_reader(path: Path) -> str:
     return path.parent.name.removeprefix("shadowbot-")
 
 
-@pytest.mark.parametrize("version", ["6.3.6", "6.2.23"])
-def test_version_resolver_allows_only_verified_versions(
-    tmp_path: Path,
-    version: str,
-) -> None:
+def test_version_resolver_allows_required_636(tmp_path: Path) -> None:
     environment = YingdaoVersionResolver(
-        make_installation(tmp_path, version),
+        make_installation(tmp_path, "6.3.6"),
         version_reader=version_reader,
     ).resolve()
 
     assert environment.execution_available is True
-    assert environment.execution_version == version
+    assert environment.provider_version == "6.3.6"
+    assert environment.execution_version == "6.3.6"
+
+
+def test_version_resolver_rejects_previous_6223_version(tmp_path: Path) -> None:
+    environment = YingdaoVersionResolver(
+        make_installation(tmp_path, "6.2.23"),
+        version_reader=version_reader,
+    ).resolve()
+
+    assert environment.provider_version == "6.2.23"
+    assert environment.execution_available is False
+    assert environment.execution_version is None
+    assert environment.execution_unavailable_reason == (
+        "Worker currently requires Yingdao 6.3.6"
+    )
 
 
 def test_version_resolver_denies_639_execution_without_requiring_cli(
@@ -64,7 +75,7 @@ def test_version_resolver_denies_639_execution_without_requiring_cli(
     assert environment.execution_version is None
 
 
-def test_version_resolver_prefers_636_over_6223(tmp_path: Path) -> None:
+def test_version_resolver_selects_636_from_install_root(tmp_path: Path) -> None:
     root = make_installation(tmp_path, "6.2.23")
     preferred = root / "shadowbot-6.3.6"
     preferred.mkdir()
@@ -94,14 +105,14 @@ def test_version_resolver_supports_only_nested_version_directories(
         version_reader=version_reader,
     ).resolve()
 
-    assert environment.provider_version == "6.3.9"
+    assert environment.provider_version == "6.3.6"
     assert environment.execution_version == "6.3.6"
     assert environment.execution_executable_path == (
         root / "shadowbot-6.3.6" / "ShadowBot.Shell.exe"
     )
 
 
-def test_version_resolver_uses_636_with_current_639_and_multiple_versions(
+def test_version_resolver_ignores_other_versions_when_636_is_available(
     tmp_path: Path,
 ) -> None:
     root = make_installation(tmp_path, "6.3.9")
@@ -115,7 +126,7 @@ def test_version_resolver_uses_636_with_current_639_and_multiple_versions(
         version_reader=version_reader,
     ).resolve()
 
-    assert environment.provider_version == "6.3.9"
+    assert environment.provider_version == "6.3.6"
     assert environment.execution_version == "6.3.6"
     assert environment.execution_executable_path == (
         root / "shadowbot-6.3.6" / "ShadowBot.Shell.exe"
@@ -281,7 +292,7 @@ def execution_environment(tmp_path: Path):
     return SimpleNamespace(
         execution_available=True,
         execution_executable_path=executable,
-        execution_version='6.2.23',
+        execution_version='6.3.6',
         execution_unavailable_reason=None,
     )
 

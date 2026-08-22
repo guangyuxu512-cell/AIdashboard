@@ -124,7 +124,7 @@ class YingdaoDiscoveryService:
         from app.providers.yingdao.environment import YingdaoVersionResolver
 
         try:
-            return YingdaoVersionResolver(
+            environment = YingdaoVersionResolver(
                 self.install_root,
                 version_reader=self.version_reader,
             ).resolve()
@@ -138,6 +138,13 @@ class YingdaoDiscoveryService:
                 "YINGDAO_VERSION_UNAVAILABLE",
                 "Yingdao version metadata could not be read",
             ) from error
+        if not environment.execution_available:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_VERSION_UNSUPPORTED",
+                environment.execution_unavailable_reason
+                or "Worker currently requires Yingdao 6.3.6",
+            )
+        return environment
 
     def _read_current_account(self) -> tuple[str, str]:
         users_root = self.data_root / "users"

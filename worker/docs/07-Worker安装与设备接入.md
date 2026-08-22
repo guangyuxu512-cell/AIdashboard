@@ -26,7 +26,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 2. 开发者在 Backend 环境执行 `python -m app.cli.worker_token issue <device_id>`，Token 明文只出现一次。
 3. 将通用 ZIP 复制到目标 Windows 电脑并解压；不要复制服务器 SSH Key。
 4. 双击 `首次配置并启动.cmd`。
-5. 输入 Backend HTTPS URL、Device ID、Device Token；本机装有影刀时可填写 ShadowBot 安装根目录。Worker 与影刀不是由同一 Windows 用户运行时，还要填写影刀用户的本地数据根目录（例如 `C:\Users\目标用户\AppData\Local\ShadowBot`）。
+5. 输入 Backend HTTPS URL、Device ID、Device Token；本机装有影刀时可填写包含影刀 6.3.6 的 ShadowBot 安装根目录。Worker 与影刀不是由同一 Windows 用户运行时，还要填写影刀用户的本地数据根目录（例如 `C:\Users\目标用户\AppData\Local\ShadowBot`）。
 6. 脚本验证配置、加密保存 Token、后台启动 Worker，并显示 Backend 与设备连接状态。
 
 公网 Server URL 默认强制使用 HTTPS。仓库不提供 localhost 默认值；明文 loopback 只允许构建验证显式启用。对于负责人明确批准的可丢弃 DEV 服务器，可改用 `首次配置并启动-开发HTTP.cmd`，但该入口会警告 Token 和任务流量没有传输加密，绝不能用于正式服务器或重要数据。切换 HTTPS 后必须轮换曾通过 HTTP 使用的 Token。
@@ -45,7 +45,9 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。首次配置提供可选覆盖项并保存为 `yingdao_data_root`；配置其他 Windows 用户目录时，运行 Worker 的账号还必须具有只读权限。Discovery 不扫描其他 Windows 用户目录。
 
-同一 Windows 用户下存在多个影刀账号缓存、且影刀没有生成 `username.ini` 当前账号标记时，双击 `配置影刀并重启.cmd`。该入口会列出包含 `user.db3` 的候选 userId，并要求明确选择当前账号；它只更新影刀安装根目录、数据根目录和 userId，保留既有 Device ID 与 DPAPI 加密 Token，不需要重新签发 Token。安装根目录允许同时存在根程序与 `shadowbot-6.2.23`、`shadowbot-6.3.6`、`shadowbot-6.3.9` 等多个版本目录。
+Worker 0.2.3 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。其他版本目录可以继续存在，但 Worker 忽略它们；安装根缺少真实文件版本为 6.3.6 的入口时，配置与 Discovery 明确失败。后续只有在当前版本与账号能够被可靠识别后，才重新引入多版本自动选择。
+
+同一 Windows 用户下存在多个影刀账号缓存、且影刀没有生成 `username.ini` 当前账号标记时，双击 `配置影刀并重启.cmd`。该入口会列出包含 `user.db3` 的候选 userId，并要求明确选择当前账号；它只更新影刀安装根目录、数据根目录和 userId，保留既有 Device ID 与 DPAPI 加密 Token，不需要重新签发 Token。本阶段不按目录时间、应用数量或目录顺序猜测当前账号。
 
 ## 日常控制
 

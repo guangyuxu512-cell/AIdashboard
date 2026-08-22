@@ -25,7 +25,7 @@ from app.worker import Worker
 def create_yingdao_fixture(
     tmp_path: Path,
     *,
-    version: str = "6.2.23",
+    version: str = "6.3.6",
 ) -> tuple[Path, Path, str]:
     install_root = tmp_path / "ShadowBot"
     install_root.mkdir()
@@ -72,7 +72,7 @@ def create_yingdao_fixture(
 def create_service(
     tmp_path: Path,
     *,
-    version: str = "6.2.23",
+    version: str = "6.3.6",
     selected_user_id: str | None = None,
 ) -> tuple[YingdaoDiscoveryService, str]:
     install_root, data_root, user_id = create_yingdao_fixture(
@@ -88,7 +88,7 @@ def create_service(
     return service, user_id
 
 
-def test_6223_discovery_reads_local_current_user_and_non_recycled_apps(
+def test_636_discovery_reads_local_current_user_and_non_recycled_apps(
     tmp_path: Path,
 ) -> None:
     service, user_id = create_service(tmp_path)
@@ -98,7 +98,7 @@ def test_6223_discovery_reads_local_current_user_and_non_recycled_apps(
 
     result = asyncio.run(service.discover())
 
-    assert result.provider_version == "6.2.23"
+    assert result.provider_version == "6.3.6"
     assert result.logged_in is True
     assert result.account_display == "GY00999"
     assert result.account_type is None
@@ -210,6 +210,16 @@ def test_636_discovery_ignores_unlogged_639_cli_and_starts_no_process(
     assert result.execution_version == "6.3.6"
     assert result.user_id == user_id
     assert len(result.applications) == 2
+
+
+def test_discovery_rejects_non_636_installation(tmp_path: Path) -> None:
+    service, _ = create_service(tmp_path, version="6.2.23")
+
+    with pytest.raises(YingdaoDiscoveryError) as error:
+        asyncio.run(service.discover())
+
+    assert error.value.code == "YINGDAO_VERSION_UNSUPPORTED"
+    assert error.value.message == "Worker currently requires Yingdao 6.3.6"
 
 
 def test_discovery_fails_with_diagnostic_when_one_package_is_broken(

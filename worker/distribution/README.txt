@@ -5,13 +5,14 @@ Ecommerce AI Worker for Windows
 1. 在中控台创建独立 Device，并由 Backend CLI 为该 Device 签发一次性 Token。
 2. 双击“首次配置并启动.cmd”。
 3. 输入 Backend HTTPS URL、Device ID、Device Token。
-4. 如果此电脑安装影刀，可同时填写包含 ShadowBot.exe 的安装根目录；Discovery 只读本机 ShadowBot 用户数据，不调用其他版本 CLI。
+4. 如果此电脑安装影刀，可同时填写包含影刀 6.3.6 的安装根目录；Discovery 只读本机 ShadowBot 用户数据，不调用 CLI。
    本地数据根目录默认留空（当前 Windows 用户的 %LOCALAPPDATA%\ShadowBot）；只有 Worker 与影刀使用不同 Windows 用户时才填写实际目录。
 5. 测试 App UUID 默认为空；仅经负责人确认无副作用时才允许显式填写。
 
-多影刀账号/多版本
-- 安装根目录可以同时包含 shadowbot-6.2.23、shadowbot-6.3.6、shadowbot-6.3.9。
-- 同一电脑存在多个账号缓存时，双击“配置影刀并重启.cmd”，按列表明确填写当前 userId。
+当前影刀策略
+- Worker 0.2.3 固定使用影刀 6.3.6，不自动选择或回退其他版本。
+- 其他版本可以留在磁盘，但 Worker 会忽略；安装根缺少 6.3.6 时明确拒绝配置。
+- 同一电脑存在多个账号缓存时，双击“配置影刀并重启.cmd”，按列表明确填写当前 userId；本阶段不猜测当前账号。
 - 该入口保留已有 Device ID 和加密 Token，不要求重新输入 Token。
 
 临时开发HTTP

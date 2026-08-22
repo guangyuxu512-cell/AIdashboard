@@ -114,13 +114,26 @@ function Test-YingdaoInstallRoot([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         return $false
     }
-    if (Test-Path -LiteralPath (Join-Path $Path 'ShadowBot.exe') -PathType Leaf) {
-        return $true
+    $candidates = @(
+        (Join-Path $Path 'ShadowBot.Shell.exe'),
+        (Join-Path $Path 'ShadowBot.exe'),
+        (Join-Path $Path 'shadowbot-6.3.6\ShadowBot.Shell.exe'),
+        (Join-Path $Path 'shadowbot-6.3.6\ShadowBot.exe')
+    )
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            continue
+        }
+        try {
+            $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($candidate).FileVersion
+            if ($fileVersion -match '^6\.3\.6(?:\.0)?(?:\s|$)') {
+                return $true
+            }
+        }
+        catch {
+        }
     }
-    return $null -ne (Get-ChildItem -LiteralPath $Path -Directory -Filter 'shadowbot-*' -ErrorAction SilentlyContinue | Where-Object {
-        (Test-Path -LiteralPath (Join-Path $_.FullName 'ShadowBot.Shell.exe') -PathType Leaf) -or
-        (Test-Path -LiteralPath (Join-Path $_.FullName 'ShadowBot.exe') -PathType Leaf)
-    } | Select-Object -First 1)
+    return $false
 }
 
 function Read-WithDefault([string]$Prompt, [string]$CurrentValue) {
@@ -245,7 +258,7 @@ function Configure-Worker {
         $deviceIdValue = Read-Host 'Device ID'
         $secureToken = Read-Host 'Device Token (input is hidden)' -AsSecureString
         $token = Convert-SecureStringToPlainText $secureToken
-        $yingdaoRoot = Read-Host 'ShadowBot install root (optional)'
+        $yingdaoRoot = Read-Host 'ShadowBot 6.3.6 install root (optional)'
         $yingdaoDataRoot = Read-Host 'ShadowBot local data root (optional; blank uses current Windows user)'
         $yingdaoUserId = Read-Host 'Current Yingdao user ID (optional; digits only)'
         $yingdaoTestAppId = Read-Host 'No-side-effect Yingdao test App UUID (optional)'
@@ -261,8 +274,8 @@ function Configure-Worker {
     if ([string]::IsNullOrWhiteSpace($token)) {
         throw 'Device Token is required.'
     }
-    if ($yingdaoRoot -and -not (Test-Path -LiteralPath $yingdaoRoot -PathType Container)) {
-        throw 'ShadowBot install root does not exist.'
+    if ($yingdaoRoot -and -not (Test-YingdaoInstallRoot $yingdaoRoot)) {
+        throw 'ShadowBot install root must contain Yingdao 6.3.6.'
     }
     if ($yingdaoDataRoot -and -not (Test-Path -LiteralPath $yingdaoDataRoot -PathType Container)) {
         throw 'ShadowBot local data root does not exist.'
@@ -305,13 +318,13 @@ function Configure-Yingdao {
     $currentUserId = Get-ConfigString $config 'yingdao_user_id'
 
     $yingdaoRoot = if ([string]::IsNullOrWhiteSpace($YingdaoInstallRootOverride)) {
-        Read-WithDefault 'ShadowBot install root' $currentInstallRoot
+        Read-WithDefault 'ShadowBot 6.3.6 install root' $currentInstallRoot
     }
     else {
         $YingdaoInstallRootOverride.Trim()
     }
     if (-not (Test-YingdaoInstallRoot $yingdaoRoot)) {
-        throw 'ShadowBot install root must contain root ShadowBot.exe or versioned ShadowBot.Shell.exe.'
+        throw 'ShadowBot install root must contain Yingdao 6.3.6.'
     }
     $yingdaoDataRoot = if ([string]::IsNullOrWhiteSpace($YingdaoDataRootOverride)) {
         Read-WithDefault 'ShadowBot local data root' $currentDataRoot

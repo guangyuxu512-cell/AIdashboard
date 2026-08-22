@@ -5,7 +5,7 @@ from typing import Callable
 from app.providers.yingdao.discovery import read_windows_file_version
 
 
-SUPPORTED_EXECUTION_VERSIONS = ("6.3.6", "6.2.23")
+REQUIRED_YINGDAO_VERSION = "6.3.6"
 
 
 @dataclass(frozen=True)
@@ -30,19 +30,10 @@ class YingdaoVersionResolver:
         self.version_reader = version_reader or read_windows_file_version
 
     def resolve(self) -> YingdaoEnvironment:
-        root_executable = self.install_root / "ShadowBot.exe"
-        candidates = [root_executable] if root_executable.is_file() else []
-        candidates.extend(
-            candidate
-            for directory in self.install_root.glob("shadowbot-*")
-            if (
-                candidate := self._version_executable(directory)
-            ) is not None
-        )
+        candidates = self._executable_candidates()
         if not candidates:
             raise FileNotFoundError("ShadowBot.exe was not found")
 
-        executable_candidates: dict[str, Path] = {}
         versioned_candidates: list[tuple[str, Path]] = []
         for candidate in candidates:
             try:
@@ -50,48 +41,65 @@ class YingdaoVersionResolver:
             except OSError:
                 continue
             versioned_candidates.append((version, candidate))
-            executable_candidates.setdefault(version, candidate)
         if not versioned_candidates:
             raise OSError("ShadowBot version metadata could not be read")
 
-        root_candidate = next(
+        required_candidate = next(
             (
                 item
                 for item in versioned_candidates
-                if item[1] == root_executable
+                if item[0] == REQUIRED_YINGDAO_VERSION
+                and item[1].parent.name.lower()
+                == f"shadowbot-{REQUIRED_YINGDAO_VERSION}"
             ),
             None,
         )
-        provider_version, executable = root_candidate or max(
+        required_candidate = required_candidate or next(
+            (
+                item
+                for item in versioned_candidates
+                if item[0] == REQUIRED_YINGDAO_VERSION
+            ),
+            None,
+        )
+        if required_candidate is not None:
+            _, executable = required_candidate
+            return YingdaoEnvironment(
+                install_root=self.install_root,
+                executable_path=executable,
+                provider_version=REQUIRED_YINGDAO_VERSION,
+                execution_available=True,
+                execution_version=REQUIRED_YINGDAO_VERSION,
+                execution_executable_path=executable,
+                execution_unavailable_reason=None,
+            )
+
+        provider_version, executable = max(
             versioned_candidates,
             key=lambda item: self._version_key(item[0]),
         )
-
-        execution_version = next(
-            (
-                version
-                for version in SUPPORTED_EXECUTION_VERSIONS
-                if version in executable_candidates
-            ),
-            None,
-        )
-        execution_executable = (
-            executable_candidates[execution_version] if execution_version else None
-        )
-
         return YingdaoEnvironment(
             install_root=self.install_root,
             executable_path=executable,
             provider_version=provider_version,
-            execution_available=execution_version is not None,
-            execution_version=execution_version,
-            execution_executable_path=execution_executable,
-            execution_unavailable_reason=(
-                None
-                if execution_version is not None
-                else "当前影刀版本不在已验证执行白名单"
-            ),
+            execution_available=False,
+            execution_version=None,
+            execution_executable_path=None,
+            execution_unavailable_reason="Worker currently requires Yingdao 6.3.6",
         )
+
+    def _executable_candidates(self) -> list[Path]:
+        candidates: list[Path] = []
+        for name in ("ShadowBot.Shell.exe", "ShadowBot.exe"):
+            candidate = self.install_root / name
+            if candidate.is_file():
+                candidates.append(candidate)
+        candidates.extend(
+            candidate
+            for directory in self.install_root.glob("shadowbot-*")
+            if (candidate := self._version_executable(directory)) is not None
+        )
+        return list(dict.fromkeys(candidates))
 
     @staticmethod
     def _version_key(version: str) -> tuple[int, ...]:
