@@ -44,8 +44,8 @@ class YingdaoProviderInventory(BaseModel):
     execution_unavailable_reason: str | None = Field(default=None, max_length=500)
     logged_in: bool
     account_display: str = Field(min_length=1, max_length=200)
-    account_type: str = Field(min_length=1, max_length=64)
-    enterprise_account: bool
+    account_type: str | None = Field(default=None, min_length=1, max_length=64)
+    enterprise_account: bool | None = None
     user_id: str = Field(min_length=1, max_length=200)
     applications: list[ProviderApplicationInventory]
     discovered_at: datetime

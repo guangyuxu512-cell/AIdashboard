@@ -206,6 +206,18 @@ try {
     Write-Host 'Runtime event upload: PASS'
     Write-Host 'OFFLINE and stored-token recovery: PASS'
 }
+catch {
+    Write-Warning "Worker package smoke failed: $($_.Exception.Message)"
+    if (Test-Path -LiteralPath (Join-Path $dataRoot 'logs')) {
+        Get-ChildItem -LiteralPath (Join-Path $dataRoot 'logs') -File | ForEach-Object {
+            Write-Warning "Worker log tail: $($_.Name)"
+            Get-Content -LiteralPath $_.FullName -Tail 40 | ForEach-Object {
+                Write-Warning $_
+            }
+        }
+    }
+    throw
+}
 finally {
     if ($controller -and (Test-Path -LiteralPath $controller)) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Stop 2>$null | Out-Null

@@ -85,6 +85,8 @@ Token、Cookie 和完整认证响应。应用数组作为外部 Provider 最新�
 
 Inventory 同时区分 Discovery 与 Execution：`available` 只表示发现能力，执行能力由
 `execution_available / execution_version / execution_unavailable_reason` 独立表达。
+本地 Discovery 无法从可验证数据得到账号类型或企业标记时，`account_type`
+与 `enterprise_account` 允许为空；Worker 不得猜测或伪造这两个字段。
 
 ## Device Lifecycle API
 

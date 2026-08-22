@@ -237,3 +237,28 @@ def test_provider_inventory_schema_has_no_device_identity_in_request() -> None:
     )
 
     assert "device_id" not in data.model_dump(mode="json")
+
+
+def test_provider_inventory_accepts_unavailable_local_account_classification() -> None:
+    data = ProviderInventoryUpsert.model_validate(
+        {
+            "provider_code": "yingdao",
+            "inventory": {
+                "provider": "yingdao",
+                "available": True,
+                "provider_version": "6.3.6",
+                "execution_available": True,
+                "execution_version": "6.3.6",
+                "logged_in": True,
+                "account_display": "GY00999",
+                "account_type": None,
+                "enterprise_account": None,
+                "user_id": "yingdao-user-test",
+                "applications": [],
+                "discovered_at": "2026-08-22T12:00:00+00:00",
+            },
+        },
+    )
+
+    assert data.inventory.account_type is None
+    assert data.inventory.enterprise_account is None
