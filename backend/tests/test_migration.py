@@ -248,3 +248,26 @@ def test_device_lifecycle_notification_migration_upgrade_and_downgrade(
     assert ("drop_table", "notification_channels") in recorder.calls
     assert recorder.calls.count(("drop_column", "device_runtime")) == 2
     assert ("drop_column", "devices") in recorder.calls
+
+
+def test_task_runtime_event_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260822_0010_task_runtime_events",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls == [
+        ("create_table", "task_events"),
+        ("create_index", "ix_task_events_task_seq"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_task_events_task_seq"),
+        ("drop_table", "task_events"),
+    ]

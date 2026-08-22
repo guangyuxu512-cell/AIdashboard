@@ -3,11 +3,13 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import exists, func, null, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskStatus
-from app.modules.tasks.models import Task
+from app.modules.tasks.models import Task, TaskEvent
+from app.shared.identifiers import generate_id
 
 
 class TaskRepository:
@@ -16,6 +18,71 @@ class TaskRepository:
 
     def get(self, task_id: UUID) -> Task | None:
         return self.session.get(Task, task_id)
+
+    def get_active_for_device(self, device_id: UUID) -> Task | None:
+        return self.session.scalar(
+            select(Task)
+            .where(
+                Task.target_device_id == device_id,
+                Task.status.in_(
+                    [TaskStatus.PENDING.value, TaskStatus.RUNNING.value],
+                ),
+            )
+            .order_by(Task.created_at.asc(), Task.task_id.asc())
+            .limit(1),
+        )
+
+    def get_latest_event(self, task_id: UUID) -> TaskEvent | None:
+        return self.session.scalar(
+            select(TaskEvent)
+            .where(TaskEvent.task_id == task_id)
+            .order_by(TaskEvent.seq.desc())
+            .limit(1),
+        )
+
+    def list_events(
+        self,
+        *,
+        task_id: UUID,
+        after_seq: int,
+        limit: int,
+    ) -> list[TaskEvent]:
+        return list(
+            self.session.scalars(
+                select(TaskEvent)
+                .where(
+                    TaskEvent.task_id == task_id,
+                    TaskEvent.seq > after_seq,
+                )
+                .order_by(TaskEvent.seq.asc())
+                .limit(limit),
+            ),
+        )
+
+    def insert_events(
+        self,
+        *,
+        task_id: UUID,
+        events: list[dict[str, Any]],
+    ) -> int:
+        if not events:
+            return 0
+        values = [
+            {
+                "event_id": generate_id(),
+                "task_id": task_id,
+                **event,
+            }
+            for event in events
+        ]
+        statement = (
+            insert(TaskEvent)
+            .values(values)
+            .on_conflict_do_nothing(constraint="uq_task_events_task_seq")
+            .returning(TaskEvent.seq)
+        )
+        result = self.session.execute(statement)
+        return len(result.scalars().all())
 
     def get_enabled_device(self, device_id: UUID) -> Device | None:
         statement = (

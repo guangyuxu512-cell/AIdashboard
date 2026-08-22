@@ -23,3 +23,9 @@ class TaskInputInvalidError(AppError):
     code = "TASK_INPUT_INVALID"
     message = "Skill 输入不符合契约"
     status_code = 422
+
+
+class TaskEventForbiddenError(AppError):
+    code = "TASK_EVENT_FORBIDDEN"
+    message = "当前 Worker 无权为该任务写入运行事件"
+    status_code = 403

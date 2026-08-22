@@ -10,7 +10,7 @@ from app.modules.devices.models import Device
 from app.modules.notifications.models import NotificationChannel
 from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
-from app.modules.tasks.models import Task
+from app.modules.tasks.models import Task, TaskEvent
 from app.modules.users.models import User
 from app.modules.workers.models import (
     DeviceProviderInventory,
@@ -29,6 +29,7 @@ _MODELS = (
     ShopDeviceBinding,
     ShopSession,
     Task,
+    TaskEvent,
     User,
     WorkerDeviceCredential,
 )

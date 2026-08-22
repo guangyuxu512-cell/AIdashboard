@@ -202,11 +202,14 @@ def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:
     expected = {
         "/api/v1/tasks",
         "/api/v1/tasks/{task_id}",
+        "/api/v1/tasks/active/{device_id}",
+        "/api/v1/tasks/{task_id}/events",
         "/api/v1/worker/heartbeat",
         "/api/v1/worker/tasks/claim",
         "/api/v1/worker/tasks/{task_id}/renew",
         "/api/v1/worker/tasks/{task_id}/complete",
         "/api/v1/worker/tasks/{task_id}/fail",
+        "/api/v1/worker/tasks/{task_id}/events",
         "/api/v1/worker/provider-inventory",
         "/api/v1/devices/{device_id}/provider-inventories",
     }

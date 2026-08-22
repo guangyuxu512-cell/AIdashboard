@@ -14,3 +14,11 @@ class TaskSkillId(StrEnum):
     SYSTEM_SLEEP = "system.sleep"
     YINGDAO_TEST = "yingdao.test"
     YINGDAO_DISCOVER = "yingdao.discover"
+
+
+class TaskEventType(StrEnum):
+    STATUS = "status"
+    LOG = "log"
+    PROGRESS = "progress"
+    COMPLETED = "completed"
+    FAILED = "failed"

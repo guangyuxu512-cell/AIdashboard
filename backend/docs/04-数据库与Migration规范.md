@@ -69,3 +69,9 @@ Migration `20260820_0005_provider_inventory` 增加
 - `notification_channels`：全局通知通道；Webhook URL 仅以 SecretCipher 密文保存。
 
 Migration 对既有 Runtime 按当前 45 秒阈值回填状态，但回填过程不产生通知。
+
+## Task Runtime Event
+
+Migration `20260822_0010_task_runtime_events` 增加 `task_events`。它只保存 Task 运行事件
+流水，不是通用日志平台。`(task_id, seq)` 唯一并建立同序查询索引；metadata 使用受限
+JSONB 对象，不得保存 Cookie、Token、Credential 或完整敏感任务输入。

@@ -83,6 +83,9 @@ Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或
 Token、Cookie 和完整认证响应。应用数组作为外部 Provider 最新快照存入专用 JSONB，
 不是通用业务 JSON，也不是中控台 Skill 注册表。
 
+Inventory 同时区分 Discovery 与 Execution：`available` 只表示发现能力，执行能力由
+`execution_available / execution_version / execution_unavailable_reason` 独立表达。
+
 ## Device Lifecycle API
 
 - `PATCH /api/v1/devices/{device_id}` 的 `enabled` 是执行资格，不是在线状态。
@@ -96,3 +99,13 @@ Token、Cookie 和完整认证响应。应用数组作为外部 Provider 最新�
 - `POST /api/v1/notification-channels/{channel_id}/test`
 
 Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密文。Update 的空 Webhook 表示保留原 Secret；测试消息由 Backend 投递。
+
+## Task Runtime Event API
+
+- `POST /api/v1/worker/tasks/{task_id}/events`：Worker Bearer Token + `X-Device-ID`
+  认证的事件批量写入；认证设备必须等于 Task target，重复 `(task_id, seq)` 幂等忽略。
+- `GET /api/v1/tasks/{task_id}/events?after_seq=<n>&limit=<n>`：只返回 seq 大于游标的有限事件。
+- `GET /api/v1/tasks/active/{device_id}`：返回设备当前 PENDING/RUNNING Task 摘要；没有时 204。
+
+事件 message 和 metadata 在 Worker 与 Backend 双层脱敏。设备主列表与 Inventory 等辅助
+查询保持独立，活动 Task 摘要失败不得改变 Device 主数据成功语义。

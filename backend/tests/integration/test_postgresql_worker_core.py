@@ -8,8 +8,13 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
-from app.modules.tasks.models import Task
-from app.modules.tasks.schemas import TaskComplete, TaskCreate, TaskFail
+from app.modules.tasks.models import Task, TaskEvent
+from app.modules.tasks.schemas import (
+    TaskComplete,
+    TaskCreate,
+    TaskEventBatchWrite,
+    TaskFail,
+)
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import (
     DeviceProviderInventory,
@@ -25,6 +30,15 @@ pytestmark = pytest.mark.integration
 
 def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
     with Session(engine) as session:
+        session.execute(
+            delete(TaskEvent).where(
+                TaskEvent.task_id.in_(
+                    select(Task.task_id).where(
+                        Task.target_device_id.in_(device_ids),
+                    ),
+                ),
+            ),
+        )
         session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
         session.execute(
             delete(DeviceProviderInventory).where(
@@ -168,6 +182,37 @@ def test_worker_identity_runtime_claim_result_and_lost(
                 now=base_time + timedelta(seconds=20),
             )
             assert renewed.lease_until == base_time + timedelta(seconds=80)
+            event_batch = TaskEventBatchWrite.model_validate(
+                {
+                    "events": [
+                        {
+                            "seq": 1,
+                            "event_type": "status",
+                            "level": "worker",
+                            "message": "running",
+                            "event_at": (base_time + timedelta(seconds=20)).isoformat(),
+                            "metadata": {},
+                        },
+                    ],
+                },
+            )
+            assert task_service.append_events(
+                principal_a,
+                echo.task_id,
+                event_batch,
+                now=base_time + timedelta(seconds=20),
+            ).accepted_count == 1
+            assert task_service.append_events(
+                principal_a,
+                echo.task_id,
+                event_batch,
+                now=base_time + timedelta(seconds=20),
+            ).accepted_count == 0
+            assert task_service.list_events(
+                echo.task_id,
+                after_seq=0,
+                limit=10,
+            ).next_after_seq == 1
             completed = task_service.complete(
                 principal_a,
                 echo.task_id,

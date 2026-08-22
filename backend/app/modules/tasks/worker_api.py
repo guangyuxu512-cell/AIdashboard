@@ -8,6 +8,8 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.tasks.schemas import (
     TaskComplete,
+    TaskEventBatchResult,
+    TaskEventBatchWrite,
     TaskFail,
     TaskLeaseRead,
     TaskRead,
@@ -88,3 +90,13 @@ def fail_task(
     service: Annotated[TaskService, Depends(get_worker_task_service)],
 ) -> TaskRead:
     return task_to_read(service.fail(principal, task_id, data))
+
+
+@router.post("/{task_id}/events", response_model=TaskEventBatchResult)
+def append_task_events(
+    task_id: UUID,
+    data: TaskEventBatchWrite,
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[TaskService, Depends(get_worker_task_service)],
+) -> TaskEventBatchResult:
+    return service.append_events(principal, task_id, data)

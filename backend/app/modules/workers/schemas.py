@@ -39,6 +39,9 @@ class YingdaoProviderInventory(BaseModel):
     provider: Literal["yingdao"]
     available: bool
     provider_version: str = Field(min_length=1, max_length=64)
+    execution_available: bool = False
+    execution_version: str | None = Field(default=None, max_length=64)
+    execution_unavailable_reason: str | None = Field(default=None, max_length=500)
     logged_in: bool
     account_display: str = Field(min_length=1, max_length=200)
     account_type: str = Field(min_length=1, max_length=64)
