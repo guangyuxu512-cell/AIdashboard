@@ -4,6 +4,7 @@ import type {
   DeviceStatus,
   YingdaoInventoryViewModel,
 } from '@/entities/device'
+import type { ActiveTaskSummaryReadDto } from '@/entities/task'
 import type { StatusTone } from '@/shared/components/StatusTag.vue'
 
 export interface DeviceFilterViewModel {
@@ -31,12 +32,17 @@ export interface DeviceCurrentExecutionViewModel {
   label: string
   name: string | null
   tone: StatusTone
+  taskId: string | null
+  appName: string | null
+  latestMessage: string | null
+  startedAt: string | null
 }
 
 export interface DeviceManagementRowViewModel extends DeviceListItemViewModel {
   currentExecution: DeviceCurrentExecutionViewModel
   yingdaoInventory: YingdaoInventoryViewModel | null
   boundShopCount: number | null
+  activeTask: ActiveTaskSummaryReadDto | null
 }
 
 export type DeviceRecentExecutionStatus = 'success' | 'failed' | 'lost'

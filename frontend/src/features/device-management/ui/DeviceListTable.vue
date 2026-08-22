@@ -28,6 +28,7 @@ const emit = defineEmits<{
   'toggle-enabled': [device: DeviceManagementRowViewModel]
   remove: [device: DeviceManagementRowViewModel]
   retry: []
+  'view-runtime': [taskId: string]
   'update:checkedRowKeys': [keys: DataTableRowKey[]]
 }>()
 
@@ -66,6 +67,24 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
           }),
           device.currentExecution.name
             ? h('small', device.currentExecution.name)
+            : null,
+          device.currentExecution.latestMessage
+            ? h(
+                'small',
+                { class: 'device-table__step' },
+                device.currentExecution.latestMessage,
+              )
+            : null,
+          device.currentExecution.taskId
+            ? h(
+                AppButton,
+                {
+                  tone: 'text',
+                  onClick: () =>
+                    emit('view-runtime', device.currentExecution.taskId!),
+                },
+                () => '运行详情',
+              )
             : null,
         ]),
       ),
@@ -194,9 +213,14 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
 :deep(.device-table__execution) {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+}
+
+:deep(.device-table__step) {
+  flex-basis: 100%;
 }
 
 :deep(.device-table__execution small) {

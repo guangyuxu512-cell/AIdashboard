@@ -8,6 +8,7 @@ import {
   YingdaoApplicationsDrawer,
   useDeviceManagement,
 } from '@/features/device-management'
+import { TaskRuntimeDrawer } from '@/features/task-runtime'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
@@ -41,6 +42,7 @@ const management = useDeviceManagement()
         @edit="management.openEdit"
         @toggle-enabled="management.toggleEnabled"
         @remove="management.requestRemove"
+        @view-runtime="management.openTaskRuntime"
         @retry="management.retryList"
       />
       <PaginationBar
@@ -75,6 +77,13 @@ const management = useDeviceManagement()
       @edit="management.openEdit"
       @toggle-enabled="management.toggleEnabled"
       @remove="management.requestRemove"
+      @view-runtime="management.openTaskRuntime"
+    />
+
+    <TaskRuntimeDrawer
+      v-model:show="management.runtimeVisible.value"
+      :task-id="management.runtimeTaskId.value"
+      :device-name="management.runtimeDeviceName.value"
     />
 
     <YingdaoApplicationsDrawer

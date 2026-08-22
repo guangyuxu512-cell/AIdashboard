@@ -67,6 +67,9 @@ export interface YingdaoInventoryViewModel {
   available: boolean
   availabilityStatus: Exclude<YingdaoAvailabilityStatus, 'not_detected'>
   providerVersion: string
+  executionAvailable: boolean
+  executionVersion: string
+  executionUnavailableReason: string | null
   loggedIn: boolean
   accountDisplay: string
   accountType: string

@@ -62,6 +62,7 @@
       var(--table-list-row-slot-height) * var(--table-list-page-size) +
       var(--table-divider-width)
   );
+  --task-runtime-log-height: 320px;
 }
 
 :root,

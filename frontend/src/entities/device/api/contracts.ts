@@ -44,6 +44,9 @@ export interface YingdaoProviderInventoryDto {
   provider: 'yingdao'
   available: boolean
   provider_version: string
+  execution_available?: boolean
+  execution_version?: string | null
+  execution_unavailable_reason?: string | null
   logged_in: boolean
   account_display: string
   account_type: string

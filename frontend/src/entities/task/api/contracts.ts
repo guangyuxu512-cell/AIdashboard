@@ -1,18 +1,10 @@
 export type TaskStatusDto =
-  | 'pending'
-  | 'running'
-  | 'success'
-  | 'failed'
-  | 'lost'
+  'pending' | 'running' | 'success' | 'failed' | 'lost'
 
 export interface TaskReadDto {
   task_id: string
   target_device_id: string
-  skill_id:
-    | 'system.echo'
-    | 'system.sleep'
-    | 'yingdao.test'
-    | 'yingdao.discover'
+  skill_id: 'system.echo' | 'system.sleep' | 'yingdao.test' | 'yingdao.discover'
   status: TaskStatusDto
   input: Record<string, unknown>
   result: Record<string, unknown> | null
@@ -29,4 +21,36 @@ export interface TaskCreateDto {
   target_device_id: string
   skill_id: TaskReadDto['skill_id']
   input: Record<string, unknown>
+}
+
+export type TaskEventTypeDto =
+  'status' | 'log' | 'progress' | 'completed' | 'failed'
+
+export interface TaskEventReadDto {
+  event_id: string
+  task_id: string
+  seq: number
+  event_type: TaskEventTypeDto
+  level: string
+  message: string
+  event_at: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface TaskEventListReadDto {
+  task_id: string
+  after_seq: number
+  next_after_seq: number
+  items: TaskEventReadDto[]
+}
+
+export interface ActiveTaskSummaryReadDto {
+  task_id: string
+  target_device_id: string
+  skill_id: TaskReadDto['skill_id']
+  status: 'pending' | 'running'
+  started_at: string | null
+  created_at: string
+  latest_event: TaskEventReadDto | null
 }

@@ -47,6 +47,7 @@ defineEmits<{
   edit: [device: DeviceListItemViewModel]
   'toggle-enabled': [device: DeviceListItemViewModel]
   remove: [device: DeviceListItemViewModel]
+  'view-runtime': [taskId: string]
 }>()
 </script>
 
@@ -88,6 +89,16 @@ defineEmits<{
           <div class="device-overview__item">
             <span>当前执行</span>
             <strong>{{ currentExecution?.name ?? '—' }}</strong>
+            <small v-if="currentExecution?.latestMessage">
+              {{ currentExecution.latestMessage }}
+            </small>
+            <AppButton
+              v-if="currentExecution?.taskId"
+              tone="text"
+              @click="$emit('view-runtime', currentExecution.taskId)"
+            >
+              查看运行详情
+            </AppButton>
           </div>
           <div class="device-overview__item">
             <span>最后心跳</span>
@@ -138,6 +149,20 @@ defineEmits<{
             <div>
               <dt>版本</dt>
               <dd>{{ yingdaoInventory?.providerVersion ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>执行能力</dt>
+              <dd>
+                {{
+                  yingdaoInventory?.executionAvailable
+                    ? `可执行 · ${yingdaoInventory.executionVersion}`
+                    : '不可执行'
+                }}
+              </dd>
+            </div>
+            <div v-if="yingdaoInventory?.executionUnavailableReason">
+              <dt>不可执行原因</dt>
+              <dd>{{ yingdaoInventory.executionUnavailableReason }}</dd>
             </div>
           </dl>
 
@@ -204,7 +229,11 @@ defineEmits<{
 
     <template #footer>
       <div v-if="device" class="device-detail-footer">
-        <AppButton tone="danger" :loading="removing" @click="$emit('remove', device)">
+        <AppButton
+          tone="danger"
+          :loading="removing"
+          @click="$emit('remove', device)"
+        >
           移除设备
         </AppButton>
         <span class="device-detail-footer__spacer" />
@@ -290,6 +319,7 @@ defineEmits<{
 }
 
 .device-overview__item span,
+.device-overview__item small,
 .capability-facts dt,
 .more-information dt,
 .recent-executions span {

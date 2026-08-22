@@ -62,6 +62,10 @@ export function mapYingdaoInventoryDto(
     available: dto.available,
     availabilityStatus: dto.available ? 'available' : 'unavailable',
     providerVersion: dto.provider_version ?? '未知',
+    executionAvailable: dto.inventory.execution_available ?? false,
+    executionVersion: dto.inventory.execution_version ?? '—',
+    executionUnavailableReason:
+      dto.inventory.execution_unavailable_reason ?? null,
     loggedIn: dto.inventory.logged_in,
     accountDisplay: dto.account_display ?? '未知',
     accountType: dto.account_type ?? '未知',

@@ -17,12 +17,17 @@ import {
   useUpdateDeviceMutation,
   deviceQueryKeys,
 } from '@/entities/device'
-import { useCreateTaskMutation, useTaskQuery } from '@/entities/task'
+import {
+  useActiveTasksQuery,
+  useCreateTaskMutation,
+  useTaskQuery,
+} from '@/entities/task'
+import { apiMode } from '@/shared/api'
 import { getErrorMessage } from '@/shared/api'
 
 import { useDeviceManagementContextQuery } from './device-management-context'
+import { resolveDeviceCurrentExecution } from './device-current-execution'
 import type {
-  DeviceCurrentExecutionViewModel,
   DeviceFilterViewModel,
   DeviceFormMode,
   DeviceFormViewModel,
@@ -58,6 +63,8 @@ export function useDeviceManagement() {
   const removeDevice = ref<DeviceListItemViewModel | null>(null)
   const removeVisible = ref(false)
   const refreshTaskId = ref<string | null>(null)
+  const runtimeTaskId = ref<string | null>(null)
+  const runtimeVisible = ref(false)
   const handledRefreshTaskId = ref<string | null>(null)
   const queryClient = useQueryClient()
 
@@ -75,6 +82,10 @@ export function useDeviceManagement() {
     baseRows.value.map((device) => device.deviceId),
   )
   const managementContextQuery = useDeviceManagementContextQuery(deviceIds)
+  const activeTasksQuery = useActiveTasksQuery(
+    deviceIds,
+    computed(() => apiMode === 'real'),
+  )
   const detailQuery = useDeviceDetailQuery(detailDeviceId)
   const providerInventoryQuery =
     useDeviceProviderInventoriesQuery(detailDeviceId)
@@ -85,50 +96,19 @@ export function useDeviceManagement() {
   const setEnabledMutation = useSetDeviceEnabledMutation()
   const removeMutation = useRemoveDeviceMutation()
 
-  function getCurrentExecution(
-    device: DeviceListItemViewModel,
-  ): DeviceCurrentExecutionViewModel {
-    const refreshTask = refreshTaskQuery.data.value
-    if (
-      refreshTask?.target_device_id === device.deviceId &&
-      (refreshTask.status === 'pending' || refreshTask.status === 'running')
-    ) {
-      return {
-        status: refreshTask.status,
-        label: refreshTask.status === 'pending' ? '待执行' : '执行中',
-        name: refreshTask.skill_id,
-        tone: refreshTask.status === 'pending' ? 'warning' : 'info',
-      }
-    }
-    if (device.dataSource === 'real') {
-      return { status: 'unknown', label: '—', name: null, tone: 'neutral' }
-    }
-    if (device.runtimeStatus === 'busy') {
-      return {
-        status: 'running',
-        label: '执行中',
-        name: device.currentTaskName,
-        tone: 'info',
-      }
-    }
-    if (device.currentTaskName) {
-      return {
-        status: 'pending',
-        label: '待执行',
-        name: device.currentTaskName,
-        tone: 'warning',
-      }
-    }
-    return { status: 'idle', label: '空闲', name: null, tone: 'neutral' }
-  }
-
   const rows = computed<DeviceManagementRowViewModel[]>(() => {
     const context = managementContextQuery.data.value
+    const activeTasks = activeTasksQuery.data.value ?? {}
     return baseRows.value.map((device) => ({
       ...device,
-      currentExecution: getCurrentExecution(device),
+      currentExecution: resolveDeviceCurrentExecution(
+        device,
+        activeTasks[device.deviceId] ?? null,
+        refreshTaskQuery.data.value ?? null,
+      ),
       yingdaoInventory: context?.inventories[device.deviceId] ?? null,
       boundShopCount: context?.bindingCounts[device.deviceId] ?? null,
+      activeTask: activeTasks[device.deviceId] ?? null,
     }))
   })
   const visibleRows = computed(() => {
@@ -183,8 +163,19 @@ export function useDeviceManagement() {
   )
   const detailCurrentExecution = computed(() =>
     detailQuery.data.value
-      ? getCurrentExecution(detailQuery.data.value)
+      ? resolveDeviceCurrentExecution(
+          detailQuery.data.value,
+          activeTasksQuery.data.value?.[detailQuery.data.value.deviceId] ??
+            null,
+          refreshTaskQuery.data.value ?? null,
+        )
       : (detailRow.value?.currentExecution ?? null),
+  )
+  const runtimeDeviceName = computed(
+    () =>
+      rows.value.find(
+        (device) => device.currentExecution.taskId === runtimeTaskId.value,
+      )?.deviceName ?? null,
   )
   const detailBoundShopCount = computed(
     () => detailRow.value?.boundShopCount ?? null,
@@ -264,6 +255,11 @@ export function useDeviceManagement() {
 
   function openYingdaoApplications(): void {
     applicationsVisible.value = true
+  }
+
+  function openTaskRuntime(taskId: string): void {
+    runtimeTaskId.value = taskId
+    runtimeVisible.value = true
   }
 
   watch(
@@ -385,6 +381,9 @@ export function useDeviceManagement() {
     page,
     pageSize,
     detailVisible,
+    runtimeVisible,
+    runtimeTaskId,
+    runtimeDeviceName,
     applicationsVisible,
     formVisible,
     formMode,
@@ -426,6 +425,7 @@ export function useDeviceManagement() {
     openCreate,
     openEdit,
     openYingdaoApplications,
+    openTaskRuntime,
     refreshYingdao,
     saveDevice,
     toggleEnabled,
