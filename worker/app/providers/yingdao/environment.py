@@ -12,7 +12,6 @@ SUPPORTED_EXECUTION_VERSIONS = ("6.3.6", "6.2.23")
 class YingdaoEnvironment:
     install_root: Path
     executable_path: Path
-    discovery_cli_path: Path
     provider_version: str
     execution_available: bool
     execution_version: str | None
@@ -58,26 +57,9 @@ class YingdaoVersionResolver:
             executable_candidates[execution_version] if execution_version else None
         )
 
-        cli_639 = (
-            self.install_root / "shadowbot-6.3.9" / "shadowbot.shell-cli.exe"
-        )
-        root_cli = self.install_root / "shadowbot.shell-cli.exe"
-        if cli_639.is_file():
-            discovery_cli = cli_639
-        elif root_cli.is_file():
-            discovery_cli = root_cli
-        else:
-            discovered = sorted(
-                self.install_root.glob("shadowbot-*/shadowbot.shell-cli.exe"),
-            )
-            if not discovered:
-                raise FileNotFoundError("shadowbot.shell-cli.exe was not found")
-            discovery_cli = discovered[-1]
-
         return YingdaoEnvironment(
             install_root=self.install_root,
             executable_path=executable,
-            discovery_cli_path=discovery_cli,
             provider_version=provider_version,
             execution_available=execution_version is not None,
             execution_version=execution_version,

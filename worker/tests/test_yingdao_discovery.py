@@ -22,42 +22,32 @@ from app.skills.registry import SkillProvider
 from app.worker import Worker
 
 
-class StubYingdaoDiscoveryService(YingdaoDiscoveryService):
-    def __init__(self, *args: Any, auth_data: dict[str, Any], **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.auth_data = auth_data
-        self.calls: list[tuple[str, ...]] = []
-
-    async def _run_cli(self, cli_path: Path, *arguments: str) -> dict[str, Any]:
-        self.calls.append(arguments)
-        if arguments == ("system", "health"):
-            return {"ok": True, "data": {"status": "ready"}}
-        if arguments == ("auth", "current"):
-            return {"ok": True, "data": self.auth_data}
-        raise AssertionError(f"Unexpected CLI arguments: {arguments}")
-
-
-def create_yingdao_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
+def create_yingdao_fixture(
+    tmp_path: Path,
+    *,
+    version: str = "6.2.23",
+) -> tuple[Path, Path, str]:
     install_root = tmp_path / "ShadowBot"
     install_root.mkdir()
-    (install_root / "shadowbot.shell-cli.exe").touch()
     (install_root / "ShadowBot.exe").touch()
 
-    user_id = "current-user-123"
+    user_id = "906515367141965826"
     data_root = tmp_path / "local-data"
     user_directory = data_root / "users" / user_id
     user_directory.mkdir(parents=True)
+    (user_directory / "username.ini").write_text("GY00999", encoding="utf-8")
     with sqlite3.connect(user_directory / "user.db3") as connection:
         connection.execute(
             "CREATE TABLE developmentsync_apps_v2 "
-            "(uuid TEXT, name TEXT, isRecycleBin INTEGER, modifyTime INTEGER)",
+            "(uuid TEXT, name TEXT, ownerName TEXT, "
+            "isRecycleBin INTEGER, modifyTime INTEGER)",
         )
         connection.executemany(
-            "INSERT INTO developmentsync_apps_v2 VALUES (?, ?, ?, ?)",
+            "INSERT INTO developmentsync_apps_v2 VALUES (?, ?, ?, ?, ?)",
             [
-                ("app-2", "应用二", 0, 2),
-                ("app-recycled", "已回收", 1, 3),
-                ("app-1", "应用一", 0, 1),
+                ("app-2", "应用二", "GY00999", 0, 2),
+                ("app-recycled", "已回收", "GY00999", 1, 3),
+                ("app-1", "应用一", "GY00999", 0, 1),
             ],
         )
     for app_id, app_name in (("app-1", "应用一"), ("app-2", "应用二")):
@@ -75,46 +65,42 @@ def create_yingdao_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
             ),
             encoding="utf-8",
         )
+    (install_root / f"version-{version}").touch()
     return install_root, data_root, user_id
 
 
 def create_service(
     tmp_path: Path,
     *,
-    logged_in: bool = True,
-) -> tuple[StubYingdaoDiscoveryService, str]:
-    install_root, data_root, user_id = create_yingdao_fixture(tmp_path)
-    service = StubYingdaoDiscoveryService(
+    version: str = "6.2.23",
+) -> tuple[YingdaoDiscoveryService, str]:
+    install_root, data_root, user_id = create_yingdao_fixture(
+        tmp_path,
+        version=version,
+    )
+    service = YingdaoDiscoveryService(
         install_root=install_root,
         data_root=data_root,
-        command_timeout_seconds=1,
-        version_reader=lambda _: "6.2.23",
-        auth_data={
-            "loggedIn": logged_in,
-            "displayName": "GY00999",
-            "accountType": "PersonalBasic",
-            "isEnterprise": False,
-            "userId": user_id,
-        },
+        version_reader=lambda _: version,
     )
     return service, user_id
 
 
-def test_discovery_reads_only_current_user_and_non_recycled_apps(
+def test_6223_discovery_reads_local_current_user_and_non_recycled_apps(
     tmp_path: Path,
 ) -> None:
     service, user_id = create_service(tmp_path)
-    unrelated_user = service.data_root / "users" / "newest-but-not-current"
+    unrelated_user = service.data_root / "users" / "901104047195107330"
     unrelated_user.mkdir(parents=True)
+    (unrelated_user / "user.db3").touch()
 
     result = asyncio.run(service.discover())
 
-    assert service.calls == [("system", "health"), ("auth", "current")]
     assert result.provider_version == "6.2.23"
     assert result.logged_in is True
     assert result.account_display == "GY00999"
-    assert result.account_type == "PersonalBasic"
-    assert result.enterprise_account is False
+    assert result.account_type is None
+    assert result.enterprise_account is None
     assert result.user_id == user_id
     assert [application.app_id for application in result.applications] == [
         "app-2",
@@ -127,16 +113,40 @@ def test_discovery_reads_only_current_user_and_non_recycled_apps(
     )
 
 
-def test_discovery_reports_not_logged_in_without_scanning_users(
+def test_discovery_reports_not_logged_in_without_current_account_marker(
     tmp_path: Path,
 ) -> None:
-    service, _ = create_service(tmp_path, logged_in=False)
+    service, user_id = create_service(tmp_path)
+    (service.data_root / "users" / user_id / "username.ini").unlink()
 
     with pytest.raises(YingdaoDiscoveryError) as error:
         asyncio.run(service.discover())
 
     assert error.value.code == "YINGDAO_NOT_LOGGED_IN"
-    assert service.calls == [("system", "health"), ("auth", "current")]
+
+
+def test_636_discovery_ignores_unlogged_639_cli_and_starts_no_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, user_id = create_service(tmp_path, version="6.3.6")
+    assert service.install_root is not None
+    cli_directory = service.install_root / "shadowbot-6.3.9"
+    cli_directory.mkdir()
+    (cli_directory / "shadowbot.shell-cli.exe").touch()
+
+    async def reject_process_start(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Discovery must not start the 6.3.9 CLI")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", reject_process_start)
+
+    result = asyncio.run(service.discover())
+
+    assert result.provider_version == "6.3.6"
+    assert result.execution_available is True
+    assert result.execution_version == "6.3.6"
+    assert result.user_id == user_id
+    assert len(result.applications) == 2
 
 
 def test_discovery_fails_with_diagnostic_when_one_package_is_broken(

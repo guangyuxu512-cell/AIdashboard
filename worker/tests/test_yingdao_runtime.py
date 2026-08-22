@@ -25,7 +25,6 @@ def make_installation(tmp_path: Path, root_version: str) -> Path:
     root = tmp_path / "ShadowBot"
     root.mkdir()
     (root / "ShadowBot.exe").touch()
-    (root / "shadowbot.shell-cli.exe").touch()
     (root / f"version-{root_version}").touch()
     return root
 
@@ -50,20 +49,17 @@ def test_version_resolver_allows_only_verified_versions(
     assert environment.execution_version == version
 
 
-def test_version_resolver_denies_639_execution_but_keeps_discovery(
+def test_version_resolver_denies_639_execution_without_requiring_cli(
     tmp_path: Path,
 ) -> None:
     root = make_installation(tmp_path, "6.3.9")
-    cli_directory = root / "shadowbot-6.3.9"
-    cli_directory.mkdir()
-    (cli_directory / "shadowbot.shell-cli.exe").touch()
 
     environment = YingdaoVersionResolver(
         root,
         version_reader=version_reader,
     ).resolve()
 
-    assert environment.discovery_cli_path.parent.name == "shadowbot-6.3.9"
+    assert environment.provider_version == "6.3.9"
     assert environment.execution_available is False
     assert environment.execution_version is None
 

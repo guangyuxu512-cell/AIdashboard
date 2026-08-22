@@ -45,19 +45,26 @@ discovered_at。每个 Application 只包含 `app_id`、`app_name`、`package_ve
 执行。固定链路为：
 
 ```text
-system health
-→ 确认 console-restapi = ready
-→ auth current
-→ 使用响应中的 userId
-→ %LOCALAPPDATA%/ShadowBot/users/<userId>/user.db3（SQLite read-only）
+%LOCALAPPDATA%/ShadowBot/users
+→ 读取带 username.ini 与 user.db3 的当前 userId 目录
+→ username.ini（当前账号显示名标记）
+→ user.db3（SQLite read-only）
 → developmentsync_apps_v2 WHERE isRecycleBin = 0
 → apps/<appId>/xbot_robot/package.json
 ```
 
-数据库只读取 uuid、name；package.json 只读取并校验 uuid、name、version、startup。
-禁止扫描 users 目录猜测当前账号，禁止写入影刀数据库。任一 package 损坏会让本次
+当前账号目录必须是纯数字 userId，且同时包含 `username.ini` 与 `user.db3`；Worker
+不会按目录时间、应用数量或任意第一个目录猜测账号。没有唯一当前账号标记时明确失败。
+数据库只读取 uuid、name、ownerName；package.json 只读取并校验 uuid、name、version、startup。
+禁止写入影刀数据库。任一 package 损坏会让本次
 Discovery 以 `YINGDAO_PACKAGE_INVALID` 失败并指出 App ID，不会令 Worker 进程退出，
 也不会静默丢弃应用。
+
+影刀 6.3.6 的登录状态不能被 6.3.9 CLI 复用，因此 Discovery 不启动
+`shadowbot.shell-cli.exe`，不调用 `system health`、`auth current` 或 `console app`，也
+不存在“6.3.9 CLI 优先 + Local DB fallback”。Local Discovery 是唯一正式来源。
+本地数据未提供可验证的账号类型和企业标记时，`account_type` 与
+`enterprise_account` 返回空值，不进行猜测。
 
 当前已在 PersonalBasic 账号完成真实验证。个人账号的企业应用接口 5010 属于
 not applicable，Discovery 不调用该接口，也不记录为系统错误。Enterprise 账号尚未
@@ -94,15 +101,14 @@ Discovery 与 Execution 是两个独立能力。Inventory 必须分别表达
 `discovery_available`、`execution_available`、`execution_version` 和不可执行原因；
 Discovery 成功不能推出 Execution 可用。
 
-Discovery 版本策略：存在 6.3.9 CLI 时可以优先用于已验证的只读命令；没有时继续复用
-当前 `auth current + userId + user.db3 + package.json` 本地发现链。Execution 只接受精确
-白名单，禁止版本范围推断：
+Discovery 版本策略与 CLI 版本无关，统一读取当前 Windows 用户下的 ShadowBot 本地
+账号与应用缓存。Execution 只接受精确白名单，禁止版本范围推断：
 
 | 版本 | Discovery | Execution |
 |---|---|---|
-| 6.3.9 | CLI 存在时可用 | UNVERIFIED，禁止执行 |
-| 6.3.6 | 现有 Discovery 链 | VERIFIED |
-| 6.2.23 | 现有 Discovery 链 | VERIFIED |
+| 6.3.9 | Local Discovery | UNVERIFIED，禁止执行 |
+| 6.3.6 | Local Discovery | VERIFIED |
+| 6.2.23 | Local Discovery | VERIFIED |
 
 执行优先级固定为 6.3.6、6.2.23。若只有 6.3.9，Discovery 可以 AVAILABLE，Execution
 必须 UNAVAILABLE，并说明“当前影刀版本不在已验证执行白名单”。

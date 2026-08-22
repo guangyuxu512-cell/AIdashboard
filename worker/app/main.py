@@ -57,7 +57,6 @@ async def run_worker(settings: WorkerSettings) -> None:
     discovery_service = YingdaoDiscoveryService(
         install_root=settings.yingdao_install_root,
         data_root=settings.yingdao_data_root,
-        command_timeout_seconds=settings.yingdao_command_timeout_seconds,
     )
     yingdao_adapter = (
         RuntimeYingdaoAdapter(

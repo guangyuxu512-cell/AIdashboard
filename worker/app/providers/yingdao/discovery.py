@@ -78,61 +78,22 @@ class YingdaoDiscoveryService:
         *,
         install_root: Path | None,
         data_root: Path | None,
-        command_timeout_seconds: float,
         version_reader: Callable[[Path], str] | None = None,
     ) -> None:
         self.install_root = install_root.resolve() if install_root else None
         self.data_root = data_root.resolve() if data_root else self._default_data_root()
-        self.command_timeout_seconds = command_timeout_seconds
         self.version_reader = version_reader or read_windows_file_version
 
     async def discover(self) -> YingdaoDiscoveryResult:
         environment = self._require_installation()
-        cli_path = environment.discovery_cli_path
-        health = await self._run_cli(cli_path, "system", "health")
-        health_data = health.get("data")
-        if (
-            not health.get("ok")
-            or not isinstance(health_data, dict)
-            or health_data.get("status") != "ready"
-        ):
-            raise YingdaoDiscoveryError(
-                "YINGDAO_NOT_READY",
-                "Yingdao console REST API is not ready",
-            )
-
-        auth = await self._run_cli(cli_path, "auth", "current")
-        auth_data = auth.get("data")
-        if not auth.get("ok") or not isinstance(auth_data, dict):
-            raise YingdaoDiscoveryError(
-                "YINGDAO_AUTH_UNAVAILABLE",
-                "Yingdao current account could not be read",
-            )
-        if auth_data.get("loggedIn") is not True:
-            raise YingdaoDiscoveryError(
-                "YINGDAO_NOT_LOGGED_IN",
-                "Yingdao is not logged in",
-            )
-
-        user_id = auth_data.get("userId")
-        account_display = auth_data.get("displayName") or auth_data.get("userName")
-        account_type = auth_data.get("accountType")
-        enterprise_account = auth_data.get("isEnterprise")
-        if (
-            not isinstance(user_id, str)
-            or not user_id
-            or not isinstance(account_display, str)
-            or not account_display
-            or not isinstance(account_type, str)
-            or not account_type
-            or not isinstance(enterprise_account, bool)
-        ):
-            raise YingdaoDiscoveryError(
-                "YINGDAO_ACCOUNT_INVALID",
-                "Yingdao returned incomplete account metadata",
-            )
-
-        applications = await asyncio.to_thread(self._read_applications, user_id)
+        user_id, marker_display = await asyncio.to_thread(
+            self._read_current_account,
+        )
+        account_display, applications = await asyncio.to_thread(
+            self._read_applications,
+            user_id,
+            marker_display,
+        )
         return YingdaoDiscoveryResult(
             provider_available=True,
             provider_version=environment.provider_version,
@@ -143,8 +104,8 @@ class YingdaoDiscoveryService:
             ),
             logged_in=True,
             account_display=account_display,
-            account_type=account_type,
-            enterprise_account=enterprise_account,
+            account_type=None,
+            enterprise_account=None,
             user_id=user_id,
             applications=applications,
             discovered_at=datetime.now(UTC),
@@ -166,7 +127,7 @@ class YingdaoDiscoveryService:
         except FileNotFoundError as error:
             raise YingdaoDiscoveryError(
                 "YINGDAO_NOT_INSTALLED",
-                "Yingdao executable or CLI was not found",
+                "Yingdao executable was not found",
             ) from error
         except OSError as error:
             raise YingdaoDiscoveryError(
@@ -174,46 +135,56 @@ class YingdaoDiscoveryService:
                 "Yingdao version metadata could not be read",
             ) from error
 
-    async def _run_cli(self, cli_path: Path, *arguments: str) -> dict[str, Any]:
+    def _read_current_account(self) -> tuple[str, str]:
+        users_root = self.data_root / "users"
         try:
-            process = await asyncio.create_subprocess_exec(
-                str(cli_path),
-                *arguments,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(
-                process.communicate(),
-                timeout=self.command_timeout_seconds,
-            )
-        except TimeoutError as error:
-            if "process" in locals() and process.returncode is None:
-                process.kill()
-                await process.wait()
-            raise YingdaoDiscoveryError(
-                "YINGDAO_CLI_TIMEOUT",
-                "Yingdao CLI command timed out",
-            ) from error
+            user_directories = [
+                directory
+                for directory in users_root.iterdir()
+                if directory.is_dir()
+                and directory.name.isdigit()
+                and (directory / "user.db3").is_file()
+                and (directory / "username.ini").is_file()
+            ]
         except OSError as error:
             raise YingdaoDiscoveryError(
-                "YINGDAO_NOT_INSTALLED",
-                "Yingdao CLI could not be started",
+                "YINGDAO_USER_DATA_UNAVAILABLE",
+                "Yingdao local user data could not be read",
             ) from error
-        try:
-            payload = json.loads(stdout.decode("utf-8-sig"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise YingdaoDiscoveryError(
-                "YINGDAO_CLI_RESULT_INVALID",
-                "Yingdao CLI returned invalid JSON",
-            ) from error
-        if not isinstance(payload, dict):
-            raise YingdaoDiscoveryError(
-                "YINGDAO_CLI_RESULT_INVALID",
-                "Yingdao CLI returned a non-object result",
-            )
-        return payload
 
-    def _read_applications(self, user_id: str) -> list[YingdaoApplication]:
+        if not user_directories:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_NOT_LOGGED_IN",
+                "Yingdao current local account marker was not found",
+            )
+        if len(user_directories) != 1:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_ACCOUNT_AMBIGUOUS",
+                "Multiple Yingdao local account markers were found",
+            )
+
+        user_directory = user_directories[0]
+        try:
+            account_display = (user_directory / "username.ini").read_text(
+                encoding="utf-8-sig",
+            ).strip()
+        except (OSError, UnicodeDecodeError) as error:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_ACCOUNT_INVALID",
+                "Yingdao local account metadata could not be read",
+            ) from error
+        if not account_display:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_ACCOUNT_INVALID",
+                "Yingdao local account metadata is empty",
+            )
+        return user_directory.name, account_display
+
+    def _read_applications(
+        self,
+        user_id: str,
+        marker_display: str,
+    ) -> tuple[str, list[YingdaoApplication]]:
         user_directory = self.data_root / "users" / user_id
         database_path = user_directory / "user.db3"
         if not database_path.is_file():
@@ -229,7 +200,7 @@ class YingdaoDiscoveryService:
             connection.row_factory = sqlite3.Row
             try:
                 rows = connection.execute(
-                    "SELECT uuid, name FROM developmentsync_apps_v2 "
+                    "SELECT uuid, name, ownerName FROM developmentsync_apps_v2 "
                     "WHERE isRecycleBin = 0 ORDER BY modifyTime DESC",
                 ).fetchall()
             finally:
@@ -241,14 +212,18 @@ class YingdaoDiscoveryService:
             ) from error
 
         applications: list[YingdaoApplication] = []
+        account_displays: set[str] = set()
         for row in rows:
             app_id = row["uuid"]
             app_name = row["name"]
+            owner_name = row["ownerName"]
             if not isinstance(app_id, str) or not isinstance(app_name, str):
                 raise YingdaoDiscoveryError(
                     "YINGDAO_APPLICATION_INVALID",
                     "Yingdao application metadata is invalid",
                 )
+            if isinstance(owner_name, str) and owner_name.strip():
+                account_displays.add(owner_name.strip())
             package_path = (
                 user_directory
                 / "apps"
@@ -276,7 +251,13 @@ class YingdaoDiscoveryService:
                     f"Yingdao package is invalid for application {app_id}",
                 ) from error
             applications.append(application)
-        return applications
+        if len(account_displays) > 1:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_ACCOUNT_AMBIGUOUS",
+                "Yingdao local applications contain multiple owners",
+            )
+        account_display = next(iter(account_displays), marker_display)
+        return account_display, applications
 
     @staticmethod
     def _default_data_root() -> Path:

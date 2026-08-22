@@ -63,19 +63,13 @@ def resolve_install_root(explicit: Path | None) -> Path:
         if candidate is None:
             continue
         resolved = candidate.expanduser().resolve()
-        if (
-            (resolved / "shadowbot.shell-cli.exe").is_file()
-            and (resolved / "ShadowBot.exe").is_file()
-        ):
+        if (resolved / "ShadowBot.exe").is_file():
             return resolved
     if sys.stdin.isatty():
         value = input("ShadowBot install root: ").strip().strip('"')
         if value:
             resolved = Path(value).expanduser().resolve()
-            if (
-                (resolved / "shadowbot.shell-cli.exe").is_file()
-                and (resolved / "ShadowBot.exe").is_file()
-            ):
+            if (resolved / "ShadowBot.exe").is_file():
                 return resolved
     raise RuntimeError("ShadowBot install root was not found")
 
@@ -219,7 +213,6 @@ async def collect_diagnostic(install_root: Path) -> dict[str, Any]:
     service = YingdaoDiscoveryService(
         install_root=install_root,
         data_root=None,
-        command_timeout_seconds=15,
     )
     discovery = await service.discover()
     if not discovery.user_id:
