@@ -79,6 +79,49 @@ def test_version_resolver_prefers_636_over_6223(tmp_path: Path) -> None:
     assert environment.execution_executable_path == preferred / "ShadowBot.exe"
 
 
+def test_version_resolver_supports_only_nested_version_directories(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "ShadowBot"
+    root.mkdir()
+    for version in ("6.2.23", "6.3.6", "6.3.9"):
+        directory = root / f"shadowbot-{version}"
+        directory.mkdir()
+        (directory / "ShadowBot.Shell.exe").touch()
+
+    environment = YingdaoVersionResolver(
+        root,
+        version_reader=version_reader,
+    ).resolve()
+
+    assert environment.provider_version == "6.3.9"
+    assert environment.execution_version == "6.3.6"
+    assert environment.execution_executable_path == (
+        root / "shadowbot-6.3.6" / "ShadowBot.Shell.exe"
+    )
+
+
+def test_version_resolver_uses_636_with_current_639_and_multiple_versions(
+    tmp_path: Path,
+) -> None:
+    root = make_installation(tmp_path, "6.3.9")
+    for version in ("6.2.23", "6.3.6", "6.3.9"):
+        directory = root / f"shadowbot-{version}"
+        directory.mkdir()
+        (directory / "ShadowBot.Shell.exe").touch()
+
+    environment = YingdaoVersionResolver(
+        root,
+        version_reader=version_reader,
+    ).resolve()
+
+    assert environment.provider_version == "6.3.9"
+    assert environment.execution_version == "6.3.6"
+    assert environment.execution_executable_path == (
+        root / "shadowbot-6.3.6" / "ShadowBot.Shell.exe"
+    )
+
+
 def test_shadowbot_uri_uses_standard_encoding() -> None:
     uri = build_shadowbot_run_uri(
         "app-uuid",

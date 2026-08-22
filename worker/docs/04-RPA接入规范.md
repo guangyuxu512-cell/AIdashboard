@@ -46,7 +46,8 @@ discovered_at。每个 Application 只包含 `app_id`、`app_name`、`package_ve
 
 ```text
 %LOCALAPPDATA%/ShadowBot/users
-→ 优先读取带 username.ini 与 user.db3 的当前 userId 目录
+→ 显式配置 userId 时只读取该账号目录
+→ 未配置时优先读取带 username.ini 与 user.db3 的当前 userId 目录
 → username.ini（明确的当前账号显示名标记）
 → 无 username.ini 时，仅接受唯一 user.db3 且 ownerName 唯一的账号目录
 → user.db3（SQLite read-only）
@@ -54,7 +55,9 @@ discovered_at。每个 Application 只包含 `app_id`、`app_name`、`package_ve
 → apps/<appId>/xbot_robot/package.json
 ```
 
-当前账号目录必须是纯数字 userId 并包含 `user.db3`。`username.ini` 存在时作为最高优先级
+当前账号目录必须是纯数字 userId 并包含 `user.db3`。多账号电脑允许通过 Worker 的
+`yingdao_user_id` 明确选择当前账号，选择后只读取该目录；该配置不包含密码或 Token。
+未显式选择时，`username.ini` 存在则作为最高优先级
 的明确当前账号标记；部分安装未生成该文件时，只允许在当前 Windows 用户下恰好存在一个
 有效账号数据库，且活跃应用的 `ownerName` 唯一时确定账号。Worker 不会按目录时间、应用
 数量或任意第一个目录猜测账号；存在多个无标记账号目录时明确失败。
@@ -71,8 +74,9 @@ Discovery 以 `YINGDAO_PACKAGE_INVALID` 失败并指出 App ID，不会令 Worke
 
 当前已在 PersonalBasic 账号完成真实验证。个人账号的企业应用接口 5010 属于
 not applicable，Discovery 不调用该接口，也不记录为系统错误。Enterprise 账号尚未
-真实验证，不得宣称已支持。安装 Root 和可选数据 Root 进入 Worker Config；发行包首次
-配置会暴露可选数据 Root，默认仍使用启动 Worker 的当前 Windows 用户目录。代码不
+真实验证，不得宣称已支持。安装 Root、可选数据 Root 与可选 userId 进入 Worker Config；
+发行包的影刀专用配置入口会列出本机候选 userId，且不要求重新输入 Device Token。数据 Root
+默认仍使用启动 Worker 的当前 Windows 用户目录。代码不
 硬编码本机路径。
 
 `developmentsync_apps_v2` 是设备本地同步缓存，不是账号云端完整应用索引。同一账号
@@ -117,8 +121,14 @@ Discovery 版本策略与 CLI 版本无关，统一读取当前 Windows 用户�
 执行优先级固定为 6.3.6、6.2.23。若只有 6.3.9，Discovery 可以 AVAILABLE，Execution
 必须 UNAVAILABLE，并说明“当前影刀版本不在已验证执行白名单”。
 
-真实启动只允许以 subprocess argument list、`shell=False` 的等价方式直接启动
-`ShadowBot.exe`，第二个参数为按 URI 规则编码的
+安装 Root 可以同时包含根 `ShadowBot.exe` 与多个 `shadowbot-<version>` 目录，也可以只
+包含多个版本目录。版本目录的真实入口为 `ShadowBot.Shell.exe`，同时兼容旧布局中的
+`ShadowBot.exe`。Discovery 使用根程序版本；没有根程序时使用可解析的最高版本。
+Execution 始终按精确白名单优先选择 6.3.6、再选择 6.2.23，绝不因存在 6.3.9 而改用
+未验证执行版本。
+
+真实启动只允许以 subprocess argument list、`shell=False` 的等价方式直接启动 Resolver
+选中的入口（根 `ShadowBot.exe` 或版本目录 `ShadowBot.Shell.exe`），第二个参数为按 URI 规则编码的
 `shadowbot:Run?robot-uuid=<appUuid>&key=value`。这里禁止的是 cmd 的 `start ""`
 包装形式，不是禁止直接启动 ShadowBot.exe。不得使用 StandaloneLauncher、UI 坐标点击、
 未知 URI 变体或直接运行应用内部脚本。

@@ -9,6 +9,11 @@ Ecommerce AI Worker for Windows
    本地数据根目录默认留空（当前 Windows 用户的 %LOCALAPPDATA%\ShadowBot）；只有 Worker 与影刀使用不同 Windows 用户时才填写实际目录。
 5. 测试 App UUID 默认为空；仅经负责人确认无副作用时才允许显式填写。
 
+多影刀账号/多版本
+- 安装根目录可以同时包含 shadowbot-6.2.23、shadowbot-6.3.6、shadowbot-6.3.9。
+- 同一电脑存在多个账号缓存时，双击“配置影刀并重启.cmd”，按列表明确填写当前 userId。
+- 该入口保留已有 Device ID 和加密 Token，不要求重新输入 Token。
+
 临时开发HTTP
 - 仅在负责人明确接受明文风险时，使用“首次配置并启动-开发HTTP.cmd”。
 - HTTP 会让 Device Token 和任务流量失去传输加密，不得用于正式服务器或重要数据。
@@ -18,6 +23,7 @@ Ecommerce AI Worker for Windows
 - 停止Worker.cmd：只停止状态文件精确记录的本 Worker PID。
 - 查看状态.cmd：显示进程、Backend、Device ID、Server URL 和设备连接状态。
 - 打开Worker状态.cmd：只读显示当前任务、执行阶段和最近运行日志；关闭窗口不影响后台Worker。
+- 配置影刀并重启.cmd：单独更新影刀路径和当前账号，不改变设备身份。
 
 安全说明
 - 公网 Backend URL 必须使用 HTTPS。

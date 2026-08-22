@@ -73,6 +73,7 @@ def create_service(
     tmp_path: Path,
     *,
     version: str = "6.2.23",
+    selected_user_id: str | None = None,
 ) -> tuple[YingdaoDiscoveryService, str]:
     install_root, data_root, user_id = create_yingdao_fixture(
         tmp_path,
@@ -81,6 +82,7 @@ def create_service(
     service = YingdaoDiscoveryService(
         install_root=install_root,
         data_root=data_root,
+        user_id=selected_user_id,
         version_reader=lambda _: version,
     )
     return service, user_id
@@ -139,6 +141,37 @@ def test_discovery_rejects_multiple_databases_without_current_account_marker(
         asyncio.run(service.discover())
 
     assert error.value.code == "YINGDAO_ACCOUNT_AMBIGUOUS"
+
+
+def test_discovery_uses_configured_account_with_multiple_unmarked_databases(
+    tmp_path: Path,
+) -> None:
+    service, user_id = create_service(
+        tmp_path,
+        selected_user_id="906515367141965826",
+    )
+    (service.data_root / "users" / user_id / "username.ini").unlink()
+    unrelated_user = service.data_root / "users" / "901104047195107330"
+    unrelated_user.mkdir(parents=True)
+    (unrelated_user / "user.db3").touch()
+
+    result = asyncio.run(service.discover())
+
+    assert result.user_id == user_id
+    assert result.account_display == "GY00999"
+    assert len(result.applications) == 2
+
+
+def test_discovery_rejects_missing_configured_account(tmp_path: Path) -> None:
+    service, _ = create_service(
+        tmp_path,
+        selected_user_id="901104047195107330",
+    )
+
+    with pytest.raises(YingdaoDiscoveryError) as error:
+        asyncio.run(service.discover())
+
+    assert error.value.code == "YINGDAO_ACCOUNT_NOT_FOUND"
 
 
 def test_discovery_reports_not_logged_in_without_local_user_database(

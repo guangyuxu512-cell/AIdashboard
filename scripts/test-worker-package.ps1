@@ -3,6 +3,7 @@ param(
     [int]$LocalPort = 18080,
     [string]$YingdaoInstallRoot,
     [string]$YingdaoDataRoot,
+    [string]$YingdaoUserId,
     [string]$PublicServerUrl
 )
 
@@ -33,6 +34,17 @@ if ([string]::IsNullOrWhiteSpace($YingdaoInstallRoot)) {
 }
 if ([string]::IsNullOrWhiteSpace($YingdaoDataRoot)) {
     $YingdaoDataRoot = Join-Path $env:LOCALAPPDATA 'ShadowBot'
+}
+if ([string]::IsNullOrWhiteSpace($YingdaoUserId)) {
+    $markedUsers = @(Get-ChildItem -LiteralPath (Join-Path $YingdaoDataRoot 'users') -Directory | Where-Object {
+        $_.Name -match '^\d+$' -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'user.db3') -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'username.ini') -PathType Leaf)
+    })
+    if ($markedUsers.Count -ne 1) {
+        throw 'Package smoke requires one explicit or locally marked Yingdao user ID.'
+    }
+    $YingdaoUserId = $markedUsers[0].Name
 }
 
 function Wait-Condition([scriptblock]$Condition, [int]$TimeoutSeconds, [string]$Message) {
@@ -124,6 +136,7 @@ try {
         device_token = $deviceToken
         yingdao_install_root = $YingdaoInstallRoot
         yingdao_data_root = $YingdaoDataRoot
+        yingdao_user_id = $YingdaoUserId
     } | ConvertTo-Json
     [System.IO.File]::WriteAllText($importPath, $import, [System.Text.UTF8Encoding]::new($false))
     $deviceToken = $null
@@ -132,11 +145,18 @@ try {
     [Environment]::SetEnvironmentVariable('ECOMMERCE_WORKER_DATA_ROOT', $dataRoot, 'Process')
     $configureArguments = @(
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $controller,
-        '-Action', 'Configure', '-ImportConfigPath', $importPath, '-StartAfterConfigure'
+        '-Action', 'Configure', '-ImportConfigPath', $importPath
     )
     $configureArguments += if ($PublicServerUrl) { '-AllowInsecureDevelopment' } else { '-AllowInsecureLoopback' }
     & powershell.exe @configureArguments
-    if ($LASTEXITCODE -ne 0) { throw 'Packaged Worker configuration/start failed.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged Worker configuration failed.' }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller `
+        -Action ConfigureYingdao `
+        -YingdaoInstallRootOverride $YingdaoInstallRoot `
+        -YingdaoDataRootOverride $YingdaoDataRoot `
+        -YingdaoUserIdOverride $YingdaoUserId `
+        -StartAfterConfigure
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged Yingdao configuration/start failed.' }
 
     Wait-Condition {
         $runtime = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime

@@ -78,10 +78,14 @@ class YingdaoDiscoveryService:
         *,
         install_root: Path | None,
         data_root: Path | None,
+        user_id: str | None = None,
         version_reader: Callable[[Path], str] | None = None,
     ) -> None:
         self.install_root = install_root.resolve() if install_root else None
         self.data_root = data_root.resolve() if data_root else self._default_data_root()
+        if user_id is not None and not user_id.isdigit():
+            raise ValueError("Yingdao user ID must contain digits only")
+        self.user_id = user_id
         self.version_reader = version_reader or read_windows_file_version
 
     async def discover(self) -> YingdaoDiscoveryResult:
@@ -137,6 +141,28 @@ class YingdaoDiscoveryService:
 
     def _read_current_account(self) -> tuple[str, str]:
         users_root = self.data_root / "users"
+        if self.user_id is not None:
+            user_directory = users_root / self.user_id
+            if not (user_directory / "user.db3").is_file():
+                raise YingdaoDiscoveryError(
+                    "YINGDAO_ACCOUNT_NOT_FOUND",
+                    "Configured Yingdao account database was not found",
+                )
+            if (user_directory / "username.ini").is_file():
+                return self.user_id, self._read_account_marker(user_directory)
+            account_displays = self._read_database_account_displays(user_directory)
+            if len(account_displays) != 1:
+                code = (
+                    "YINGDAO_ACCOUNT_AMBIGUOUS"
+                    if len(account_displays) > 1
+                    else "YINGDAO_ACCOUNT_INVALID"
+                )
+                raise YingdaoDiscoveryError(
+                    code,
+                    "Configured Yingdao account is not uniquely identified by local applications",
+                )
+            return self.user_id, next(iter(account_displays))
+
         try:
             user_directories = [
                 directory

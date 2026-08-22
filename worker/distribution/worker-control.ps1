@@ -1,8 +1,11 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Configure', 'Start', 'Stop', 'Status')]
+    [ValidateSet('Configure', 'ConfigureYingdao', 'Start', 'Stop', 'Status')]
     [string]$Action,
     [string]$ImportConfigPath,
+    [string]$YingdaoInstallRootOverride,
+    [string]$YingdaoDataRootOverride,
+    [string]$YingdaoUserIdOverride,
     [switch]$StartAfterConfigure,
     [switch]$AllowInsecureLoopback,
     [switch]$AllowInsecureDevelopment
@@ -100,6 +103,40 @@ function Get-WorkerConfig {
     return Get-Content -Raw -Encoding UTF8 -LiteralPath $configPath | ConvertFrom-Json
 }
 
+function Get-ConfigString([object]$Config, [string]$Name) {
+    if ($Config.PSObject.Properties.Name -contains $Name) {
+        return [string]$Config.$Name
+    }
+    return ''
+}
+
+function Test-YingdaoInstallRoot([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return $false
+    }
+    if (Test-Path -LiteralPath (Join-Path $Path 'ShadowBot.exe') -PathType Leaf) {
+        return $true
+    }
+    return $null -ne (Get-ChildItem -LiteralPath $Path -Directory -Filter 'shadowbot-*' -ErrorAction SilentlyContinue | Where-Object {
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'ShadowBot.Shell.exe') -PathType Leaf) -or
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'ShadowBot.exe') -PathType Leaf)
+    } | Select-Object -First 1)
+}
+
+function Read-WithDefault([string]$Prompt, [string]$CurrentValue) {
+    $caption = if ([string]::IsNullOrWhiteSpace($CurrentValue)) {
+        $Prompt
+    }
+    else {
+        "$Prompt [$CurrentValue]"
+    }
+    $value = (Read-Host $caption).Trim()
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $CurrentValue
+    }
+    return $value
+}
+
 function Get-RunningWorkerProcess {
     if (-not (Test-Path -LiteralPath $statePath)) {
         return $null
@@ -162,6 +199,10 @@ function Show-Status {
     Write-Host ('{0,-18} {1}' -f 'Device ID', $config.device_id)
     Write-Host ('{0,-18} {1}' -f 'Server URL', $config.server_url)
     Write-Host ('{0,-18} {1}' -f 'Device Runtime', (Get-DeviceConnection $config))
+    $yingdaoRoot = Get-ConfigString $config 'yingdao_install_root'
+    $yingdaoUserId = Get-ConfigString $config 'yingdao_user_id'
+    Write-Host ('{0,-18} {1}' -f 'Yingdao Root', $(if ($yingdaoRoot) { $yingdaoRoot } else { 'NOT CONFIGURED' }))
+    Write-Host ('{0,-18} {1}' -f 'Yingdao Account', $(if ($yingdaoUserId) { $yingdaoUserId } else { 'AUTO' }))
 }
 
 function Configure-Worker {
@@ -186,6 +227,12 @@ function Configure-Worker {
         else {
             ''
         }
+        $yingdaoUserId = if ($import.PSObject.Properties.Name -contains 'yingdao_user_id') {
+            [string]$import.yingdao_user_id
+        }
+        else {
+            ''
+        }
         $yingdaoTestAppId = if ($import.PSObject.Properties.Name -contains 'yingdao_test_app_id') {
             [string]$import.yingdao_test_app_id
         }
@@ -200,6 +247,7 @@ function Configure-Worker {
         $token = Convert-SecureStringToPlainText $secureToken
         $yingdaoRoot = Read-Host 'ShadowBot install root (optional)'
         $yingdaoDataRoot = Read-Host 'ShadowBot local data root (optional; blank uses current Windows user)'
+        $yingdaoUserId = Read-Host 'Current Yingdao user ID (optional; digits only)'
         $yingdaoTestAppId = Read-Host 'No-side-effect Yingdao test App UUID (optional)'
         $importPath = $null
     }
@@ -219,6 +267,9 @@ function Configure-Worker {
     if ($yingdaoDataRoot -and -not (Test-Path -LiteralPath $yingdaoDataRoot -PathType Container)) {
         throw 'ShadowBot local data root does not exist.'
     }
+    if ($yingdaoUserId -and $yingdaoUserId -notmatch '^\d+$') {
+        throw 'Current Yingdao user ID must contain digits only.'
+    }
 
     Protect-DataDirectory
     $config = [ordered]@{
@@ -227,6 +278,7 @@ function Configure-Worker {
         device_token_protected = Protect-Token $token
         yingdao_install_root = if ($yingdaoRoot) { [System.IO.Path]::GetFullPath($yingdaoRoot) } else { $null }
         yingdao_data_root = if ($yingdaoDataRoot) { [System.IO.Path]::GetFullPath($yingdaoDataRoot) } else { $null }
+        yingdao_user_id = if ($yingdaoUserId) { $yingdaoUserId.Trim() } else { $null }
         yingdao_test_app_id = if ($yingdaoTestAppId) { $yingdaoTestAppId.Trim() } else { $null }
         configured_at_utc = [datetime]::UtcNow.ToString('o')
     }
@@ -237,6 +289,85 @@ function Configure-Worker {
     }
     $token = $null
     Write-Host 'Worker configuration was stored in the current user private data directory.'
+    if ($StartAfterConfigure) {
+        Start-Worker
+    }
+}
+
+function Configure-Yingdao {
+    $config = Get-WorkerConfig
+    $currentInstallRoot = Get-ConfigString $config 'yingdao_install_root'
+    $defaultDataRoot = Join-Path $env:LOCALAPPDATA 'ShadowBot'
+    $currentDataRoot = Get-ConfigString $config 'yingdao_data_root'
+    if ([string]::IsNullOrWhiteSpace($currentDataRoot)) {
+        $currentDataRoot = $defaultDataRoot
+    }
+    $currentUserId = Get-ConfigString $config 'yingdao_user_id'
+
+    $yingdaoRoot = if ([string]::IsNullOrWhiteSpace($YingdaoInstallRootOverride)) {
+        Read-WithDefault 'ShadowBot install root' $currentInstallRoot
+    }
+    else {
+        $YingdaoInstallRootOverride.Trim()
+    }
+    if (-not (Test-YingdaoInstallRoot $yingdaoRoot)) {
+        throw 'ShadowBot install root must contain root ShadowBot.exe or versioned ShadowBot.Shell.exe.'
+    }
+    $yingdaoDataRoot = if ([string]::IsNullOrWhiteSpace($YingdaoDataRootOverride)) {
+        Read-WithDefault 'ShadowBot local data root' $currentDataRoot
+    }
+    else {
+        $YingdaoDataRootOverride.Trim()
+    }
+    $usersRoot = Join-Path $yingdaoDataRoot 'users'
+    if (-not (Test-Path -LiteralPath $usersRoot -PathType Container)) {
+        throw 'ShadowBot local data root does not contain a users directory.'
+    }
+
+    Write-Host 'Local Yingdao account candidates:'
+    $candidateIds = @(Get-ChildItem -LiteralPath $usersRoot -Directory -ErrorAction Stop | Where-Object {
+        $_.Name -match '^\d+$' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'user.db3') -PathType Leaf)
+    } | ForEach-Object {
+        $markerPath = Join-Path $_.FullName 'username.ini'
+        $marker = if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
+            (Get-Content -Raw -Encoding UTF8 -LiteralPath $markerPath).Trim()
+        }
+        else {
+            'no username marker'
+        }
+        Write-Host "  $($_.Name)  ($marker)"
+        $_.Name
+    })
+    if ($candidateIds.Count -eq 0) {
+        throw 'No Yingdao user database was found under the configured data root.'
+    }
+
+    $yingdaoUserId = if ([string]::IsNullOrWhiteSpace($YingdaoUserIdOverride)) {
+        Read-WithDefault 'Current Yingdao user ID' $currentUserId
+    }
+    else {
+        $YingdaoUserIdOverride.Trim()
+    }
+    if ($yingdaoUserId -notmatch '^\d+$') {
+        throw 'Current Yingdao user ID must contain digits only.'
+    }
+    if ($candidateIds -notcontains $yingdaoUserId) {
+        throw 'The selected Yingdao user ID has no local user.db3.'
+    }
+
+    if ($null -ne (Get-RunningWorkerProcess)) {
+        Stop-Worker
+    }
+    $config | Add-Member -NotePropertyName 'yingdao_install_root' -NotePropertyValue ([System.IO.Path]::GetFullPath($yingdaoRoot)) -Force
+    $config | Add-Member -NotePropertyName 'yingdao_data_root' -NotePropertyValue ([System.IO.Path]::GetFullPath($yingdaoDataRoot)) -Force
+    $config | Add-Member -NotePropertyName 'yingdao_user_id' -NotePropertyValue $yingdaoUserId -Force
+    $config | Add-Member -NotePropertyName 'configured_at_utc' -NotePropertyValue ([datetime]::UtcNow.ToString('o')) -Force
+    [System.IO.File]::WriteAllText(
+        $configPath,
+        ($config | ConvertTo-Json),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    Write-Host 'Yingdao configuration updated. Device Token and device identity were preserved.'
     if ($StartAfterConfigure) {
         Start-Worker
     }
@@ -268,6 +399,12 @@ function Start-Worker {
     else {
         $null
     }
+    $configuredYingdaoUserId = if ($config.PSObject.Properties.Name -contains 'yingdao_user_id') {
+        [string]$config.yingdao_user_id
+    }
+    else {
+        $null
+    }
     $environment = [ordered]@{
         WORKER_SERVER_URL = [string]$config.server_url
         WORKER_DEVICE_ID = [string]$config.device_id
@@ -279,6 +416,7 @@ function Start-Worker {
         WORKER_LOG_BACKUP_COUNT = '5'
         WORKER_YINGDAO_INSTALL_ROOT = if ($config.yingdao_install_root) { [string]$config.yingdao_install_root } else { $null }
         WORKER_YINGDAO_DATA_ROOT = if ($configuredYingdaoDataRoot) { $configuredYingdaoDataRoot } else { $null }
+        WORKER_YINGDAO_USER_ID = if ($configuredYingdaoUserId) { $configuredYingdaoUserId } else { $null }
         WORKER_YINGDAO_TEST_APP_ID = if ($configuredYingdaoTestAppId) { $configuredYingdaoTestAppId } else { $null }
     }
     $previous = @{}
@@ -348,6 +486,7 @@ function Stop-Worker {
 
 switch ($Action) {
     'Configure' { Configure-Worker }
+    'ConfigureYingdao' { Configure-Yingdao }
     'Start' { Start-Worker }
     'Stop' { Stop-Worker }
     'Status' { Show-Status }

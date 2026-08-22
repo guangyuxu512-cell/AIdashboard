@@ -45,12 +45,15 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。首次配置提供可选覆盖项并保存为 `yingdao_data_root`；配置其他 Windows 用户目录时，运行 Worker 的账号还必须具有只读权限。Discovery 不扫描其他 Windows 用户目录。
 
+同一 Windows 用户下存在多个影刀账号缓存、且影刀没有生成 `username.ini` 当前账号标记时，双击 `配置影刀并重启.cmd`。该入口会列出包含 `user.db3` 的候选 userId，并要求明确选择当前账号；它只更新影刀安装根目录、数据根目录和 userId，保留既有 Device ID 与 DPAPI 加密 Token，不需要重新签发 Token。安装根目录允许同时存在根程序与 `shadowbot-6.2.23`、`shadowbot-6.3.6`、`shadowbot-6.3.9` 等多个版本目录。
+
 ## 日常控制
 
 - `启动Worker.cmd`：检查配置和精确进程身份；已有实例时不重复启动，随后显示进程、Backend、Device ID、Server URL 与 Device Runtime。
 - `打开Worker状态.cmd`：启动独立只读 Tkinter 状态窗口；关闭窗口不影响后台 Worker。
 - `停止Worker.cmd`：使用状态文件中的 PID、启动时间和 EXE 绝对路径三重校验，只停止本 Worker。
 - `查看状态.cmd`：只读显示运行与连接状态，不显示 Token、Credential 或 Cookie。
+- `配置影刀并重启.cmd`：保留 Device ID 与 Token，只配置影刀安装根目录、数据根目录和当前 userId，然后重启 Worker。
 - `首次配置并启动-开发HTTP.cmd`：显式允许临时公网 HTTP，只用于已批准的可丢弃开发环境。
 
 Worker 进程另以 `Global\\EcommerceAIWorker-<device_id>` Windows Mutex 保证同一电脑同一 Device 单实例，即使绕过控制脚本直接启动第二个 EXE，也会退出。
