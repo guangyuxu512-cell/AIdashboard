@@ -46,15 +46,18 @@ discovered_at。每个 Application 只包含 `app_id`、`app_name`、`package_ve
 
 ```text
 %LOCALAPPDATA%/ShadowBot/users
-→ 读取带 username.ini 与 user.db3 的当前 userId 目录
-→ username.ini（当前账号显示名标记）
+→ 优先读取带 username.ini 与 user.db3 的当前 userId 目录
+→ username.ini（明确的当前账号显示名标记）
+→ 无 username.ini 时，仅接受唯一 user.db3 且 ownerName 唯一的账号目录
 → user.db3（SQLite read-only）
 → developmentsync_apps_v2 WHERE isRecycleBin = 0
 → apps/<appId>/xbot_robot/package.json
 ```
 
-当前账号目录必须是纯数字 userId，且同时包含 `username.ini` 与 `user.db3`；Worker
-不会按目录时间、应用数量或任意第一个目录猜测账号。没有唯一当前账号标记时明确失败。
+当前账号目录必须是纯数字 userId 并包含 `user.db3`。`username.ini` 存在时作为最高优先级
+的明确当前账号标记；部分安装未生成该文件时，只允许在当前 Windows 用户下恰好存在一个
+有效账号数据库，且活跃应用的 `ownerName` 唯一时确定账号。Worker 不会按目录时间、应用
+数量或任意第一个目录猜测账号；存在多个无标记账号目录时明确失败。
 数据库只读取 uuid、name、ownerName；package.json 只读取并校验 uuid、name、version、startup。
 禁止写入影刀数据库。任一 package 损坏会让本次
 Discovery 以 `YINGDAO_PACKAGE_INVALID` 失败并指出 App ID，不会令 Worker 进程退出，
@@ -68,7 +71,8 @@ Discovery 以 `YINGDAO_PACKAGE_INVALID` 失败并指出 App ID，不会令 Worke
 
 当前已在 PersonalBasic 账号完成真实验证。个人账号的企业应用接口 5010 属于
 not applicable，Discovery 不调用该接口，也不记录为系统错误。Enterprise 账号尚未
-真实验证，不得宣称已支持。安装 Root 和可选数据 Root 进入 Worker Config，代码不
+真实验证，不得宣称已支持。安装 Root 和可选数据 Root 进入 Worker Config；发行包首次
+配置会暴露可选数据 Root，默认仍使用启动 Worker 的当前 Windows 用户目录。代码不
 硬编码本机路径。
 
 `developmentsync_apps_v2` 是设备本地同步缓存，不是账号云端完整应用索引。同一账号

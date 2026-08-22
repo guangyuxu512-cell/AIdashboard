@@ -144,7 +144,6 @@ class YingdaoDiscoveryService:
                 if directory.is_dir()
                 and directory.name.isdigit()
                 and (directory / "user.db3").is_file()
-                and (directory / "username.ini").is_file()
             ]
         except OSError as error:
             raise YingdaoDiscoveryError(
@@ -152,18 +151,47 @@ class YingdaoDiscoveryService:
                 "Yingdao local user data could not be read",
             ) from error
 
-        if not user_directories:
-            raise YingdaoDiscoveryError(
-                "YINGDAO_NOT_LOGGED_IN",
-                "Yingdao current local account marker was not found",
-            )
-        if len(user_directories) != 1:
+        marked_directories = [
+            directory
+            for directory in user_directories
+            if (directory / "username.ini").is_file()
+        ]
+        if len(marked_directories) > 1:
             raise YingdaoDiscoveryError(
                 "YINGDAO_ACCOUNT_AMBIGUOUS",
                 "Multiple Yingdao local account markers were found",
             )
+        if marked_directories:
+            user_directory = marked_directories[0]
+            return user_directory.name, self._read_account_marker(user_directory)
+
+        if not user_directories:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_NOT_LOGGED_IN",
+                "Yingdao local user database was not found for this Windows user",
+            )
+        if len(user_directories) != 1:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_ACCOUNT_AMBIGUOUS",
+                "Multiple Yingdao local accounts exist without a current account marker",
+            )
 
         user_directory = user_directories[0]
+        account_displays = self._read_database_account_displays(user_directory)
+        if len(account_displays) != 1:
+            code = (
+                "YINGDAO_ACCOUNT_AMBIGUOUS"
+                if len(account_displays) > 1
+                else "YINGDAO_ACCOUNT_INVALID"
+            )
+            raise YingdaoDiscoveryError(
+                code,
+                "Yingdao local applications do not uniquely identify the current account",
+            )
+        return user_directory.name, next(iter(account_displays))
+
+    @staticmethod
+    def _read_account_marker(user_directory: Path) -> str:
         try:
             account_display = (user_directory / "username.ini").read_text(
                 encoding="utf-8-sig",
@@ -178,7 +206,33 @@ class YingdaoDiscoveryService:
                 "YINGDAO_ACCOUNT_INVALID",
                 "Yingdao local account metadata is empty",
             )
-        return user_directory.name, account_display
+        return account_display
+
+    @staticmethod
+    def _read_database_account_displays(user_directory: Path) -> set[str]:
+        database_path = user_directory / "user.db3"
+        try:
+            connection = sqlite3.connect(
+                f"{database_path.resolve().as_uri()}?mode=ro",
+                uri=True,
+            )
+            try:
+                rows = connection.execute(
+                    "SELECT DISTINCT ownerName FROM developmentsync_apps_v2 "
+                    "WHERE isRecycleBin = 0 AND ownerName IS NOT NULL",
+                ).fetchall()
+            finally:
+                connection.close()
+        except sqlite3.Error as error:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_USER_DATABASE_INVALID",
+                "Yingdao user database could not be read",
+            ) from error
+        return {
+            owner_name.strip()
+            for (owner_name,) in rows
+            if isinstance(owner_name, str) and owner_name.strip()
+        }
 
     def _read_applications(
         self,

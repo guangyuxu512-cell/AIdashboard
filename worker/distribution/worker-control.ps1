@@ -180,6 +180,12 @@ function Configure-Worker {
         else {
             ''
         }
+        $yingdaoDataRoot = if ($import.PSObject.Properties.Name -contains 'yingdao_data_root') {
+            [string]$import.yingdao_data_root
+        }
+        else {
+            ''
+        }
         $yingdaoTestAppId = if ($import.PSObject.Properties.Name -contains 'yingdao_test_app_id') {
             [string]$import.yingdao_test_app_id
         }
@@ -193,6 +199,7 @@ function Configure-Worker {
         $secureToken = Read-Host 'Device Token (input is hidden)' -AsSecureString
         $token = Convert-SecureStringToPlainText $secureToken
         $yingdaoRoot = Read-Host 'ShadowBot install root (optional)'
+        $yingdaoDataRoot = Read-Host 'ShadowBot local data root (optional; blank uses current Windows user)'
         $yingdaoTestAppId = Read-Host 'No-side-effect Yingdao test App UUID (optional)'
         $importPath = $null
     }
@@ -209,6 +216,9 @@ function Configure-Worker {
     if ($yingdaoRoot -and -not (Test-Path -LiteralPath $yingdaoRoot -PathType Container)) {
         throw 'ShadowBot install root does not exist.'
     }
+    if ($yingdaoDataRoot -and -not (Test-Path -LiteralPath $yingdaoDataRoot -PathType Container)) {
+        throw 'ShadowBot local data root does not exist.'
+    }
 
     Protect-DataDirectory
     $config = [ordered]@{
@@ -216,6 +226,7 @@ function Configure-Worker {
         device_id = $deviceId
         device_token_protected = Protect-Token $token
         yingdao_install_root = if ($yingdaoRoot) { [System.IO.Path]::GetFullPath($yingdaoRoot) } else { $null }
+        yingdao_data_root = if ($yingdaoDataRoot) { [System.IO.Path]::GetFullPath($yingdaoDataRoot) } else { $null }
         yingdao_test_app_id = if ($yingdaoTestAppId) { $yingdaoTestAppId.Trim() } else { $null }
         configured_at_utc = [datetime]::UtcNow.ToString('o')
     }
@@ -251,6 +262,12 @@ function Start-Worker {
     else {
         $null
     }
+    $configuredYingdaoDataRoot = if ($config.PSObject.Properties.Name -contains 'yingdao_data_root') {
+        [string]$config.yingdao_data_root
+    }
+    else {
+        $null
+    }
     $environment = [ordered]@{
         WORKER_SERVER_URL = [string]$config.server_url
         WORKER_DEVICE_ID = [string]$config.device_id
@@ -261,6 +278,7 @@ function Start-Worker {
         WORKER_LOG_MAX_BYTES = '5242880'
         WORKER_LOG_BACKUP_COUNT = '5'
         WORKER_YINGDAO_INSTALL_ROOT = if ($config.yingdao_install_root) { [string]$config.yingdao_install_root } else { $null }
+        WORKER_YINGDAO_DATA_ROOT = if ($configuredYingdaoDataRoot) { $configuredYingdaoDataRoot } else { $null }
         WORKER_YINGDAO_TEST_APP_ID = if ($configuredYingdaoTestAppId) { $configuredYingdaoTestAppId } else { $null }
     }
     $previous = @{}

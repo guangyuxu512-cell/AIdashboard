@@ -6,6 +6,7 @@ Ecommerce AI Worker for Windows
 2. 双击“首次配置并启动.cmd”。
 3. 输入 Backend HTTPS URL、Device ID、Device Token。
 4. 如果此电脑安装影刀，可同时填写包含 ShadowBot.exe 的安装根目录；Discovery 只读本机 ShadowBot 用户数据，不调用其他版本 CLI。
+   本地数据根目录默认留空（当前 Windows 用户的 %LOCALAPPDATA%\ShadowBot）；只有 Worker 与影刀使用不同 Windows 用户时才填写实际目录。
 5. 测试 App UUID 默认为空；仅经负责人确认无副作用时才允许显式填写。
 
 临时开发HTTP

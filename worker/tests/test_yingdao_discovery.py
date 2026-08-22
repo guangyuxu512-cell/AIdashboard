@@ -113,11 +113,41 @@ def test_6223_discovery_reads_local_current_user_and_non_recycled_apps(
     )
 
 
-def test_discovery_reports_not_logged_in_without_current_account_marker(
+def test_discovery_uses_unique_database_owner_without_username_marker(
     tmp_path: Path,
 ) -> None:
     service, user_id = create_service(tmp_path)
     (service.data_root / "users" / user_id / "username.ini").unlink()
+
+    result = asyncio.run(service.discover())
+
+    assert result.user_id == user_id
+    assert result.account_display == "GY00999"
+    assert len(result.applications) == 2
+
+
+def test_discovery_rejects_multiple_databases_without_current_account_marker(
+    tmp_path: Path,
+) -> None:
+    service, user_id = create_service(tmp_path)
+    (service.data_root / "users" / user_id / "username.ini").unlink()
+    unrelated_user = service.data_root / "users" / "901104047195107330"
+    unrelated_user.mkdir(parents=True)
+    (unrelated_user / "user.db3").touch()
+
+    with pytest.raises(YingdaoDiscoveryError) as error:
+        asyncio.run(service.discover())
+
+    assert error.value.code == "YINGDAO_ACCOUNT_AMBIGUOUS"
+
+
+def test_discovery_reports_not_logged_in_without_local_user_database(
+    tmp_path: Path,
+) -> None:
+    service, _ = create_service(tmp_path)
+    empty_data_root = tmp_path / "empty-local-data"
+    (empty_data_root / "users").mkdir(parents=True)
+    service.data_root = empty_data_root
 
     with pytest.raises(YingdaoDiscoveryError) as error:
         asyncio.run(service.discover())

@@ -2,6 +2,7 @@ param(
     [string]$SshHost = 'control-center-dev',
     [int]$LocalPort = 18080,
     [string]$YingdaoInstallRoot,
+    [string]$YingdaoDataRoot,
     [string]$PublicServerUrl
 )
 
@@ -29,6 +30,9 @@ $previousDataRoot = [Environment]::GetEnvironmentVariable('ECOMMERCE_WORKER_DATA
 if ([string]::IsNullOrWhiteSpace($YingdaoInstallRoot)) {
     $yingdaoDirectory = '{0}{1}' -f [char]0x5F71, [char]0x5200
     $YingdaoInstallRoot = Join-Path (Join-Path 'D:\' $yingdaoDirectory) 'ShadowBot'
+}
+if ([string]::IsNullOrWhiteSpace($YingdaoDataRoot)) {
+    $YingdaoDataRoot = Join-Path $env:LOCALAPPDATA 'ShadowBot'
 }
 
 function Wait-Condition([scriptblock]$Condition, [int]$TimeoutSeconds, [string]$Message) {
@@ -119,6 +123,7 @@ try {
         device_id = $deviceId
         device_token = $deviceToken
         yingdao_install_root = $YingdaoInstallRoot
+        yingdao_data_root = $YingdaoDataRoot
     } | ConvertTo-Json
     [System.IO.File]::WriteAllText($importPath, $import, [System.Text.UTF8Encoding]::new($false))
     $deviceToken = $null
