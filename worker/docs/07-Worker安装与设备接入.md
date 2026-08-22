@@ -46,6 +46,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 ## 日常控制
 
 - `启动Worker.cmd`：检查配置和精确进程身份；已有实例时不重复启动，随后显示进程、Backend、Device ID、Server URL 与 Device Runtime。
+- `打开Worker状态.cmd`：启动独立只读 Tkinter 状态窗口；关闭窗口不影响后台 Worker。
 - `停止Worker.cmd`：使用状态文件中的 PID、启动时间和 EXE 绝对路径三重校验，只停止本 Worker。
 - `查看状态.cmd`：只读显示运行与连接状态，不显示 Token、Credential 或 Cookie。
 - `首次配置并启动-开发HTTP.cmd`：显式允许临时公网 HTTP，只用于已批准的可丢弃开发环境。

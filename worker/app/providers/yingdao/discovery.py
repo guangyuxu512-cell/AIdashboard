@@ -87,7 +87,8 @@ class YingdaoDiscoveryService:
         self.version_reader = version_reader or read_windows_file_version
 
     async def discover(self) -> YingdaoDiscoveryResult:
-        cli_path, executable_path = self._require_installation()
+        environment = self._require_installation()
+        cli_path = environment.discovery_cli_path
         health = await self._run_cli(cli_path, "system", "health")
         health_data = health.get("data")
         if (
@@ -131,18 +132,15 @@ class YingdaoDiscoveryService:
                 "Yingdao returned incomplete account metadata",
             )
 
-        try:
-            provider_version = self.version_reader(executable_path)
-        except OSError as error:
-            raise YingdaoDiscoveryError(
-                "YINGDAO_VERSION_UNAVAILABLE",
-                "Yingdao version metadata could not be read",
-            ) from error
-
         applications = await asyncio.to_thread(self._read_applications, user_id)
         return YingdaoDiscoveryResult(
             provider_available=True,
-            provider_version=provider_version,
+            provider_version=environment.provider_version,
+            execution_available=environment.execution_available,
+            execution_version=environment.execution_version,
+            execution_unavailable_reason=(
+                environment.execution_unavailable_reason
+            ),
             logged_in=True,
             account_display=account_display,
             account_type=account_type,
@@ -152,20 +150,29 @@ class YingdaoDiscoveryService:
             discovered_at=datetime.now(UTC),
         )
 
-    def _require_installation(self) -> tuple[Path, Path]:
+    def _require_installation(self) -> Any:
         if self.install_root is None:
             raise YingdaoDiscoveryError(
                 "YINGDAO_NOT_INSTALLED",
                 "Yingdao install root is not configured",
             )
-        cli_path = self.install_root / "shadowbot.shell-cli.exe"
-        executable_path = self.install_root / "ShadowBot.exe"
-        if not cli_path.is_file() or not executable_path.is_file():
+        from app.providers.yingdao.environment import YingdaoVersionResolver
+
+        try:
+            return YingdaoVersionResolver(
+                self.install_root,
+                version_reader=self.version_reader,
+            ).resolve()
+        except FileNotFoundError as error:
             raise YingdaoDiscoveryError(
                 "YINGDAO_NOT_INSTALLED",
                 "Yingdao executable or CLI was not found",
-            )
-        return cli_path, executable_path
+            ) from error
+        except OSError as error:
+            raise YingdaoDiscoveryError(
+                "YINGDAO_VERSION_UNAVAILABLE",
+                "Yingdao version metadata could not be read",
+            ) from error
 
     async def _run_cli(self, cli_path: Path, *arguments: str) -> dict[str, Any]:
         try:

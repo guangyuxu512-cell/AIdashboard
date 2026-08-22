@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExecutionStatus(StrEnum):
@@ -43,3 +43,23 @@ class SkillProcessInput(BaseModel):
     task_id: UUID
     skill_id: str
     params: dict[str, Any]
+
+
+class RuntimeEventType(StrEnum):
+    STATUS = "status"
+    LOG = "log"
+    PROGRESS = "progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class RuntimeEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    seq: int = Field(gt=0)
+    task_id: UUID
+    event_type: RuntimeEventType
+    level: str = Field(min_length=1, max_length=16)
+    message: str = Field(max_length=10_000)
+    event_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)

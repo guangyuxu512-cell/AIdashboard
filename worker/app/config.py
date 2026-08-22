@@ -31,6 +31,12 @@ class WorkerSettings(BaseSettings):
     yingdao_install_root: Path | None = None
     yingdao_data_root: Path | None = None
     yingdao_command_timeout_seconds: float = Field(default=15, ge=1, le=60)
+    yingdao_test_app_id: str | None = None
+    event_flush_interval_seconds: float = Field(default=0.4, ge=0.1, le=5)
+    event_batch_size: int = Field(default=30, ge=1, le=100)
+    event_buffer_capacity: int = Field(default=2_000, ge=100, le=20_000)
+    event_flush_retry_count: int = Field(default=3, ge=1, le=10)
+    runtime_status_path: Path = Path("runtime-status.json")
 
 
 @lru_cache

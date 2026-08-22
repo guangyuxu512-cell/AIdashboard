@@ -4,15 +4,26 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
+from app.contracts import (
+    ExecutionResult,
+    ExecutionStatus,
+    RuntimeEventType,
+    WorkerTask,
+)
 from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
+from app.runtime_events import RuntimeEventBus
 from app.skills import registry
 from app.skills.registry import SkillRuntime
 
 
 class PythonExecutor:
-    def __init__(self, runtime_root: Path) -> None:
+    def __init__(
+        self,
+        runtime_root: Path,
+        event_bus: RuntimeEventBus | None = None,
+    ) -> None:
         self.runtime = TaskRuntimeManager(runtime_root)
+        self.event_bus = event_bus or RuntimeEventBus()
 
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = registry.get(task.skill_id)
@@ -35,6 +46,12 @@ class PythonExecutor:
                 "Task runtime directory already exists",
             )
         self.runtime.write_status(paths, status="running")
+        self.event_bus.emit(
+            task.task_id,
+            RuntimeEventType.STATUS,
+            "Python Skill 已开始执行",
+            metadata={"provider": "python", "phase": "running"},
+        )
 
         with (
             paths.stdout.open("wb") as stdout_file,

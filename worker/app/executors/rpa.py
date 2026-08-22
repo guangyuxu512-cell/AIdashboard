@@ -5,7 +5,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
+from app.contracts import (
+    ExecutionResult,
+    ExecutionStatus,
+    RuntimeEventType,
+    WorkerTask,
+)
 from app.providers.yingdao import (
     YingdaoAdapter,
     YingdaoExecutionRequest,
@@ -14,6 +19,7 @@ from app.providers.yingdao import (
     YingdaoTriggerError,
 )
 from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
+from app.runtime_events import RuntimeEventBus
 from app.skills.registry import SkillProvider, SkillRegistry, SkillRuntime
 
 
@@ -23,10 +29,14 @@ class RPAExecutor:
         runtime_root: Path,
         registry: SkillRegistry,
         providers: Mapping[SkillProvider, YingdaoAdapter],
+        event_bus: RuntimeEventBus | None = None,
+        provider_app_ids: Mapping[str, str] | None = None,
     ) -> None:
         self.runtime = TaskRuntimeManager(runtime_root)
         self.registry = registry
         self.providers = providers
+        self.event_bus = event_bus or RuntimeEventBus()
+        self.provider_app_ids = provider_app_ids or {}
 
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = self.registry.get(task.skill_id)
@@ -46,6 +56,12 @@ class RPAExecutor:
             )
 
         self.runtime.write_status(paths, status="running")
+        self.event_bus.emit(
+            task.task_id,
+            RuntimeEventType.STATUS,
+            "RPA 任务正在准备执行",
+            metadata={"phase": "queued"},
+        )
         adapter = self.providers.get(definition.provider)
         request: YingdaoExecutionRequest | None = None
         if adapter is None:
@@ -75,7 +91,10 @@ class RPAExecutor:
                     "RPA provider is unavailable on this Worker",
                 ),
             )
-        if definition.provider_app_id is None:
+        provider_app_id = (
+            self.provider_app_ids.get(task.skill_id) or definition.provider_app_id
+        )
+        if provider_app_id is None:
             return self._finish(
                 paths,
                 self._failure(
@@ -84,7 +103,7 @@ class RPAExecutor:
                 ),
             )
         if not any(
-            app.app_id == definition.provider_app_id
+            app.app_id == provider_app_id
             for app in discovery.applications
         ):
             return self._finish(
@@ -94,10 +113,15 @@ class RPAExecutor:
                     "Mapped RPA application is not available",
                 ),
             )
+        application = next(
+            app for app in discovery.applications if app.app_id == provider_app_id
+        )
         request = YingdaoExecutionRequest(
             task_id=task.task_id,
             skill_id=task.skill_id,
-            app_id=definition.provider_app_id,
+            app_id=provider_app_id,
+            app_name=application.app_name,
+            user_id=discovery.user_id or "",
             params=task.input,
             runtime_directory=paths.directory,
         )
@@ -111,10 +135,10 @@ class RPAExecutor:
                 paths,
                 self._failure("RPA_TIMEOUT", "RPA execution timed out"),
             )
-        except YingdaoTriggerError:
+        except YingdaoTriggerError as error:
             return self._finish(
                 paths,
-                self._failure("RPA_TRIGGER_FAILED", "RPA application trigger failed"),
+                self._failure(error.code, error.message),
             )
         except Exception:
             return self._finish(

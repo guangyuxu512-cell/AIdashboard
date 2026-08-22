@@ -9,7 +9,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$zipPath = Join-Path $projectRoot 'dist\ecommerce-worker-0.1.0-win-x64.zip'
+$workerPython = Join-Path $projectRoot 'worker\.venv\Scripts\python.exe'
+$workerVersion = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
+$zipPath = Join-Path $projectRoot "dist\ecommerce-worker-$workerVersion-win-x64.zip"
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "control-center-worker-smoke-$([guid]::NewGuid().ToString('N'))"
 $extractRoot = Join-Path $temporaryRoot 'package'
 $dataRoot = Join-Path $temporaryRoot 'data'
@@ -86,6 +88,7 @@ try {
         throw 'Worker ZIP text content contains a forbidden secret or database pattern.'
     }
     $controller = Join-Path $extractRoot 'worker-control.ps1'
+    $workerExecutable = Join-Path $extractRoot 'ecommerce-worker\ecommerce-worker.exe'
 
     if (-not $PublicServerUrl) {
         $tunnel = Start-Process -FilePath 'ssh.exe' -ArgumentList @(
@@ -142,6 +145,11 @@ try {
     $secondPid = [int](Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json).pid
     if ($firstPid -ne $secondPid) { throw 'Single-instance control started a duplicate Worker.' }
 
+    $statusProcess = Start-Process -FilePath $workerExecutable -ArgumentList '--status-ui' -PassThru
+    Start-Sleep -Seconds 2
+    if ($statusProcess.HasExited) { throw 'Packaged Worker status UI exited during startup.' }
+    Stop-Process -Id $statusProcess.Id
+
     $echoTask = Invoke-Api 'POST' '/api/v1/tasks' @{
         target_device_id = $deviceId
         skill_id = 'system.echo'
@@ -149,6 +157,10 @@ try {
     }
     $echoResult = Wait-Task ([string]$echoTask.task_id)
     if ($echoResult.result.message -ne 'packaged-worker-ok') { throw 'system.echo returned an unexpected result.' }
+    $echoEvents = Invoke-Api 'GET' "/api/v1/tasks/$($echoTask.task_id)/events?after_seq=0&limit=100"
+    if (@($echoEvents.items).Count -lt 2 -or @($echoEvents.items)[-1].event_type -ne 'completed') {
+        throw 'system.echo runtime events were not persisted through the packaged Worker.'
+    }
 
     $sleepTask = Invoke-Api 'POST' '/api/v1/tasks' @{
         target_device_id = $deviceId
@@ -165,6 +177,10 @@ try {
     $discoveryResult = Wait-Task ([string]$discoveryTask.task_id)
     $applicationCount = @($discoveryResult.result.applications).Count
     if ($discoveryResult.result.available -ne $true) { throw 'yingdao.discover did not report an available provider.' }
+    $discoveryEvents = Invoke-Api 'GET' "/api/v1/tasks/$($discoveryTask.task_id)/events?after_seq=0&limit=100"
+    if (@($discoveryEvents.items).Count -lt 2 -or @($discoveryEvents.items)[-1].event_type -ne 'completed') {
+        throw 'yingdao.discover runtime events were not persisted through the packaged Worker.'
+    }
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Stop
     if ($LASTEXITCODE -ne 0) { throw 'Packaged Worker stop failed.' }
@@ -183,9 +199,11 @@ try {
     Write-Host 'Package clean extraction: PASS'
     Write-Host 'Packaged Worker ONLINE: PASS'
     Write-Host 'Single instance: PASS'
+    Write-Host 'Tkinter status UI: PASS'
     Write-Host 'system.echo: SUCCESS'
     Write-Host 'system.sleep: SUCCESS'
     Write-Host "yingdao.discover: SUCCESS ($applicationCount applications)"
+    Write-Host 'Runtime event upload: PASS'
     Write-Host 'OFFLINE and stored-token recovery: PASS'
 }
 finally {
@@ -193,7 +211,7 @@ finally {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Stop 2>$null | Out-Null
     }
     if ($deviceId -and $deviceId -match '^[0-9a-f-]{36}$') {
-        $cleanupSql = "BEGIN; DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
+        $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
         $cleanupBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($cleanupSql))
         & ssh.exe $SshHost "printf '%s' '$cleanupBase64' | base64 -d | docker exec -i control-center-postgres-dev psql -v ON_ERROR_STOP=1 -U postgres -d control_center_dev" | Out-Null
     }

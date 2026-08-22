@@ -90,20 +90,38 @@ Token、Cookie、变量、流程或选择器。未来完整列表与本机可执
 }
 ```
 
-Adapter 可内部读取 `running/success/failed` 和 step/message，但本阶段只向 Backend
-回传最终 Task 结果。Provider 不可用、应用未映射/不存在、触发失败、超时、非法
-结果及影刀明确失败都必须结束 Task；只有 Worker Lease 失效才进入 LOST。
+Discovery 与 Execution 是两个独立能力。Inventory 必须分别表达
+`discovery_available`、`execution_available`、`execution_version` 和不可执行原因；
+Discovery 成功不能推出 Execution 可用。
 
-## 当前本机调查结果
+Discovery 版本策略：存在 6.3.9 CLI 时可以优先用于已验证的只读命令；没有时继续复用
+当前 `auth current + userId + user.db3 + package.json` 本地发现链。Execution 只接受精确
+白名单，禁止版本范围推断：
 
-本机已安装影刀，并发现旧调度源码使用 `Task_<tag>.json` / `Done_<tag>.txt` 文件
-握手及本地 Tag 映射。但当前交换目录不存在，未发现实际消费 Task 文件并写 Done
-文件的影刀流程；旧 Done 还是无结构文本，不能满足正式 FAILED/Result Contract。
+| 版本 | Discovery | Execution |
+|---|---|---|
+| 6.3.9 | CLI 存在时可用 | UNVERIFIED，禁止执行 |
+| 6.3.6 | 现有 Discovery 链 | VERIFIED |
+| 6.2.23 | 现有 Discovery 链 | VERIFIED |
 
-因此旧格式仍未接入生产 Adapter。只读 Discovery 已正式接入，但真实 App 执行入口、
-`app_id → run`、结构化运行结果仍未确认；生产执行继续由
-UnavailableYingdaoAdapter 明确返回 `RPA_PROVIDER_UNAVAILABLE`。待执行契约真实验证
-后，再实现具体执行 Adapter。
+执行优先级固定为 6.3.6、6.2.23。若只有 6.3.9，Discovery 可以 AVAILABLE，Execution
+必须 UNAVAILABLE，并说明“当前影刀版本不在已验证执行白名单”。
+
+真实启动只允许以 subprocess argument list、`shell=False` 的等价方式直接启动
+`ShadowBot.exe`，第二个参数为按 URI 规则编码的
+`shadowbot:Run?robot-uuid=<appUuid>&key=value`。这里禁止的是 cmd 的 `start ""`
+包装形式，不是禁止直接启动 ShadowBot.exe。不得使用 StandaloneLauncher、UI 坐标点击、
+未知 URI 变体或直接运行应用内部脚本。
+
+同一 Worker 第一版同时最多执行一个影刀任务。启动前必须确认 App UUID 已在本机
+Discovery Inventory 且 package 完整；云端存在但本机未同步时不得执行。Task 的成功
+至少需要关联启动后产生的新 tasklog、匹配目标 App 的真实 started 记录和真实 exited
+记录。启动进程退出或 tasklog 文件存在都不等于成功；失败规则只能来自已验证样本。
+没有安全停止入口时，超时不得杀掉整个 ShadowBot.exe。
+
+RuntimeYingdaoAdapter 通过 Worker Runtime Event Bus 上报状态和 tasklog 增量日志，
+Provider 不直接请求 Backend。默认发行配置不映射任何真实 App；只有显式配置并经人工
+确认无副作用的测试 App 才能进入真实 Run，业务 App 禁止作为工程验证对象。
 
 禁止：
 

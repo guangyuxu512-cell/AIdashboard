@@ -28,6 +28,9 @@ class YingdaoDiscoveryResult(BaseModel):
     provider: Literal["yingdao"] = "yingdao"
     provider_available: bool = Field(serialization_alias="available")
     provider_version: str | None = None
+    execution_available: bool = False
+    execution_version: str | None = None
+    execution_unavailable_reason: str | None = None
     logged_in: bool = False
     account_display: str | None = None
     account_type: str | None = None
@@ -43,6 +46,8 @@ class YingdaoExecutionRequest(BaseModel):
     task_id: UUID
     skill_id: str
     app_id: str
+    app_name: str
+    user_id: str
     params: dict[str, Any]
     runtime_directory: Path
 

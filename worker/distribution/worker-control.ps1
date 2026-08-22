@@ -180,6 +180,12 @@ function Configure-Worker {
         else {
             ''
         }
+        $yingdaoTestAppId = if ($import.PSObject.Properties.Name -contains 'yingdao_test_app_id') {
+            [string]$import.yingdao_test_app_id
+        }
+        else {
+            ''
+        }
     }
     else {
         $serverUrl = Read-Host 'Backend HTTPS URL'
@@ -187,6 +193,7 @@ function Configure-Worker {
         $secureToken = Read-Host 'Device Token (input is hidden)' -AsSecureString
         $token = Convert-SecureStringToPlainText $secureToken
         $yingdaoRoot = Read-Host 'ShadowBot install root (optional)'
+        $yingdaoTestAppId = Read-Host 'No-side-effect Yingdao test App UUID (optional)'
         $importPath = $null
     }
     $serverUrl = Assert-ServerUrl $serverUrl.Trim()
@@ -209,6 +216,7 @@ function Configure-Worker {
         device_id = $deviceId
         device_token_protected = Protect-Token $token
         yingdao_install_root = if ($yingdaoRoot) { [System.IO.Path]::GetFullPath($yingdaoRoot) } else { $null }
+        yingdao_test_app_id = if ($yingdaoTestAppId) { $yingdaoTestAppId.Trim() } else { $null }
         configured_at_utc = [datetime]::UtcNow.ToString('o')
     }
     $json = $config | ConvertTo-Json
@@ -237,15 +245,23 @@ function Start-Worker {
 
     Protect-DataDirectory
     New-Item -ItemType Directory -Path $runtimeRoot, $logRoot -Force | Out-Null
+    $configuredYingdaoTestAppId = if ($config.PSObject.Properties.Name -contains 'yingdao_test_app_id') {
+        [string]$config.yingdao_test_app_id
+    }
+    else {
+        $null
+    }
     $environment = [ordered]@{
         WORKER_SERVER_URL = [string]$config.server_url
         WORKER_DEVICE_ID = [string]$config.device_id
         WORKER_DEVICE_TOKEN = Unprotect-Token ([string]$config.device_token_protected)
         WORKER_RUNTIME_ROOT = $runtimeRoot
+        WORKER_RUNTIME_STATUS_PATH = (Join-Path $dataRoot 'runtime-status.json')
         WORKER_LOG_DIRECTORY = $logRoot
         WORKER_LOG_MAX_BYTES = '5242880'
         WORKER_LOG_BACKUP_COUNT = '5'
         WORKER_YINGDAO_INSTALL_ROOT = if ($config.yingdao_install_root) { [string]$config.yingdao_install_root } else { $null }
+        WORKER_YINGDAO_TEST_APP_ID = if ($configuredYingdaoTestAppId) { $configuredYingdaoTestAppId } else { $null }
     }
     $previous = @{}
     foreach ($name in $environment.Keys) {

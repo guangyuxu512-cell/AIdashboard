@@ -9,6 +9,7 @@ from app.contracts import (
     ExecutionResult,
     ExecutionStatus,
     ProviderInventoryReport,
+    RuntimeEventType,
     WorkerTask,
 )
 from app.providers.yingdao import (
@@ -16,6 +17,7 @@ from app.providers.yingdao import (
     YingdaoDiscoveryResult,
 )
 from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
+from app.runtime_events import RuntimeEventBus
 from app.skills.registry import SkillProvider, SkillRegistry, SkillRuntime
 
 
@@ -29,10 +31,12 @@ class ProviderDiscoveryExecutor:
         runtime_root: Path,
         registry: SkillRegistry,
         providers: Mapping[SkillProvider, ProviderDiscoveryService],
+        event_bus: RuntimeEventBus | None = None,
     ) -> None:
         self.runtime = TaskRuntimeManager(runtime_root)
         self.registry = registry
         self.providers = providers
+        self.event_bus = event_bus or RuntimeEventBus()
 
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = self.registry.get(task.skill_id)
@@ -61,6 +65,15 @@ class ProviderDiscoveryExecutor:
                 "Task runtime directory already exists",
             )
         self.runtime.write_status(paths, status="running")
+        self.event_bus.emit(
+            task.task_id,
+            RuntimeEventType.STATUS,
+            "正在发现 Provider 能力",
+            metadata={
+                "provider": definition.provider.value,
+                "phase": "running",
+            },
+        )
 
         service = self.providers.get(definition.provider)
         if service is None:
