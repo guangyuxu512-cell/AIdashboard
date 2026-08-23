@@ -41,6 +41,11 @@
   --dialog-width-sm: 420px;
   --dialog-width-md: 560px;
   --dialog-width-lg: 720px;
+  --overlay-viewport-safe-gap: var(--space-6);
+  --dialog-max-height: calc(
+    100dvh - var(--layout-topbar-height) - var(--overlay-viewport-safe-gap) -
+      var(--overlay-viewport-safe-gap)
+  );
   --drawer-width-sm: 420px;
   --drawer-width-md: 560px;
   --drawer-width-lg: 720px;

@@ -108,6 +108,7 @@ Frontend 不得猜 URL、DTO 字段、状态枚举、权限码、分页字段、
 - Naive UI Theme Override 优先于覆盖内部 DOM。
 - 页面必须遵守统一 Sidebar / Topbar / PageHeader / PageSection。
 - 页面滚动、表格高度必须遵守布局文档。
+- Dialog/Modal 必须限制在 Viewport 内；动态内容只由 Overlay Body 承担主纵向滚动，Header/Footer 固定，禁止依赖页面主滚动容纳超出视口的弹层内容。
 
 ## 10. 第三方库
 已有库能解决的问题禁止重复造轮子。

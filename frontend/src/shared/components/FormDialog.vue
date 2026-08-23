@@ -25,6 +25,12 @@ defineEmits<{
     @confirm="$emit('submit')"
     @cancel="$emit('cancel')"
   >
+    <template v-if="$slots.description" #description>
+      <slot name="description" />
+    </template>
     <slot />
+    <template v-if="$slots['footer-start']" #footer-start>
+      <slot name="footer-start" />
+    </template>
   </AppDialog>
 </template>

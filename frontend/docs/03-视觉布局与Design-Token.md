@@ -117,6 +117,27 @@ Electron Windows 窗口使用原生 Window Controls Overlay 覆盖现有 54px To
 
 所有 Drawer、Modal 与动态 Dialog 统一 Teleport 到 AppShell 内的 `AppOverlayHost`。该 Host 从 `--layout-topbar-height` 以下覆盖 Workspace，并建立 Fixed Position Containing Block；业务 Overlay 因而不会进入 Custom Title Bar 或 Window Controls Overlay。业务 Drawer 禁止用单页 `top`、`margin-top` 或固定像素修补。
 
+## Overlay / Dialog 滚动
+
+`AppDialog` 是普通 Dialog/Modal 的唯一视口约束入口。默认最大高度由
+`--dialog-max-height` 计算，安全留白统一使用 `--overlay-viewport-safe-gap`；业务组件不得复制
+`100dvh - x` 或自定义另一套安全间距。
+
+标准结构固定为：
+
+```text
+Header（固定）
+↓
+Body（flex: 1; min-height: 0；Naive Scrollbar 单一纵向滚动）
+↓
+Footer（固定）
+```
+
+内容较少时 Dialog 保持自然高度且不显示无意义滚动条；内容超过可用视口时只收缩并滚动
+Body，标题和操作区始终可见。背景 Page 不参与弹层内容滚动。一个 Overlay 默认只能有一个
+主纵向滚动容器；日志、代码等确有独立滚动语义的区域由 Feature 明确设计。Drawer 保持
+现有 `AppDrawer` / `NDrawerContent` 布局，不套用 Dialog 内部结构。
+
 ## Compact Management Fill 链路
 
 需要将列表 Card 填满筛选区以下剩余工作区时，必须使用可收缩 Flex 链：

@@ -359,6 +359,10 @@ dialog-md
 dialog-lg
 ```
 
+`AppDialog` 同时统一 Viewport 最大高度与内部滚动：Header/Footer 固定，Naive UI
+Content Scrollbar 作为唯一 Body 纵向滚动容器。业务 Dialog 只提供内容和可选 Footer
+前置操作，不得自行给整张 Modal 或背景 Page 增加滚动补丁。
+
 ### Drawer
 
 适合：
@@ -533,7 +537,7 @@ description（需要时）
 | `AppRadio`       | `NRadioGroup`  | 统一 button 模式                                 |
 | `AppTable`       | `NDataTable`   | 统一尺寸、边框和滚动入口                         |
 | `AppPagination`  | `NPagination`  | 统一 page/pageSize 事件和页容量                  |
-| `AppDialog`      | `NModal`       | sm / md / lg、统一按钮区                         |
+| `AppDialog`      | `NModal`       | sm / md / lg、固定 Header/Footer、Body 单滚动    |
 | `AppDrawer`      | `NDrawer`      | sm / md / lg、统一内容区                         |
 | `AppTabs`        | `NTabs`        | 统一 medium 与动画                               |
 

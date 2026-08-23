@@ -46,32 +46,98 @@ function cancel(): void {
   <NModal
     :show="show"
     preset="card"
-    :title="title"
+    class="app-dialog"
+    content-scrollable
     :style="{
       width: dialogWidths[size],
       maxWidth: 'calc(100vw - var(--space-8))',
+      maxHeight: 'var(--dialog-max-height)',
     }"
     :bordered="true"
     :mask-closable="false"
     :to="to"
     @update:show="$emit('update:show', $event)"
   >
+    <template #header>
+      <div class="app-dialog__heading">
+        <div class="app-dialog__title">{{ title }}</div>
+        <div v-if="$slots.description" class="app-dialog__description">
+          <slot name="description" />
+        </div>
+      </div>
+    </template>
     <slot />
     <template #footer>
       <div class="app-dialog__footer">
-        <AppButton @click="cancel">{{ negativeText }}</AppButton>
-        <AppButton tone="primary" :loading="loading" @click="$emit('confirm')">
-          {{ positiveText }}
-        </AppButton>
+        <div v-if="$slots['footer-start']" class="app-dialog__footer-start">
+          <slot name="footer-start" />
+        </div>
+        <div class="app-dialog__footer-actions">
+          <AppButton @click="cancel">{{ negativeText }}</AppButton>
+          <AppButton tone="primary" :loading="loading" @click="$emit('confirm')">
+            {{ positiveText }}
+          </AppButton>
+        </div>
       </div>
     </template>
   </NModal>
 </template>
 
-<style scoped>
+<style>
+.app-dialog {
+  overflow: hidden;
+}
+
+.app-dialog > .n-card-header,
+.app-dialog > .n-card__footer {
+  flex: 0 0 auto;
+}
+
+.app-dialog > .n-card__content-scrollbar {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.app-dialog__heading {
+  min-width: 0;
+}
+
+.app-dialog__title {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.app-dialog__description {
+  margin-top: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-body);
+}
+
+.app-dialog__description > :first-child {
+  margin-top: 0;
+}
+
+.app-dialog__description > :last-child {
+  margin-bottom: 0;
+}
+
 .app-dialog__footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.app-dialog__footer-start {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.app-dialog__footer-actions {
+  display: flex;
+  flex: 0 0 auto;
   gap: var(--space-3);
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NForm, NFormItem, useMessage } from 'naive-ui'
-import { computed, reactive, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 
 import {
   useAutomationApplicationConfigQuery,
@@ -33,6 +33,7 @@ const appId = computed(() => props.application?.appId ?? null)
 const query = useAutomationApplicationConfigQuery(appId)
 const mutation = useUpsertAutomationApplicationConfigMutation()
 const form = reactive<{ fields: FieldDraft[] }>({ fields: [] })
+const parameterList = ref<HTMLElement | null>(null)
 const typeOptions = [
   { label: '文本', value: 'text' },
   { label: '数字', value: 'number' },
@@ -56,7 +57,7 @@ watch(
   { immediate: true },
 )
 
-function addField(): void {
+async function addField(): Promise<void> {
   form.fields.push({
     name: '',
     label: '',
@@ -64,6 +65,11 @@ function addField(): void {
     required: false,
     defaultValue: null,
     optionsText: '',
+  })
+  await nextTick()
+  parameterList.value?.lastElementChild?.scrollIntoView({
+    block: 'nearest',
+    behavior: 'smooth',
   })
 }
 
@@ -120,93 +126,104 @@ async function save(): Promise<void> {
     @update:show="$emit('update:show', $event)"
     @submit="save"
   >
-    <p class="parameter-config__description">
+    <template #description>
       参数定义由中控台手工维护；当前不推断影刀应用详情中的输入结构。
-    </p>
+    </template>
     <p v-if="query.error.value" class="parameter-config__error">
       参数配置加载失败：{{ getErrorMessage(query.error.value) }}
     </p>
     <NForm label-placement="top">
-      <div
-        v-for="(field, index) in form.fields"
-        :key="index"
-        class="parameter-config__row"
-      >
-        <NFormItem label="参数名">
-          <AppInput v-model="field.name" placeholder="例如 product_id" />
-        </NFormItem>
-        <NFormItem label="显示名称">
-          <AppInput v-model="field.label" placeholder="例如 商品 ID" />
-        </NFormItem>
-        <NFormItem label="类型">
-          <AppSelect
-            :model-value="field.type"
-            :options="typeOptions"
-            @update:model-value="changeType(field, $event)"
-          />
-        </NFormItem>
-        <NFormItem label="必填">
-          <AppSwitch v-model="field.required" />
-        </NFormItem>
-        <NFormItem v-if="field.type === 'number'" label="默认值">
-          <AppNumberInput
-            :model-value="field.defaultValue as number"
-            clearable
-            @update:model-value="field.defaultValue = $event"
-          />
-        </NFormItem>
-        <NFormItem v-else-if="field.type === 'boolean'" label="默认值">
-          <AppSwitch
-            :model-value="(field.defaultValue as boolean) ?? false"
-            @update:model-value="field.defaultValue = $event"
-          />
-        </NFormItem>
-        <NFormItem v-else-if="field.type === 'select'" label="默认值">
-          <AppSelect
-            :model-value="field.defaultValue as string"
-            :options="parseOptions(field.optionsText).map((value) => ({ label: value, value }))"
-            clearable
-            @update:model-value="field.defaultValue = $event"
-          />
-        </NFormItem>
-        <NFormItem v-else label="默认值">
-          <AppInput
-            :model-value="field.defaultValue as string"
-            clearable
-            @update:model-value="field.defaultValue = $event"
-          />
-        </NFormItem>
-        <NFormItem v-if="field.type === 'select'" label="选项（逗号分隔）">
-          <AppInput v-model="field.optionsText" placeholder="选项A, 选项B" />
-        </NFormItem>
-        <AppButton tone="danger" @click="form.fields.splice(index, 1)">
-          删除参数
-        </AppButton>
+      <div ref="parameterList" class="parameter-config__list">
+        <div
+          v-for="(field, index) in form.fields"
+          :key="index"
+          class="parameter-config__row"
+          data-testid="parameter-config-field"
+        >
+          <NFormItem label="参数名">
+            <AppInput v-model="field.name" placeholder="例如 product_id" />
+          </NFormItem>
+          <NFormItem label="显示名称">
+            <AppInput v-model="field.label" placeholder="例如 商品 ID" />
+          </NFormItem>
+          <NFormItem label="类型">
+            <AppSelect
+              :model-value="field.type"
+              :options="typeOptions"
+              @update:model-value="changeType(field, $event)"
+            />
+          </NFormItem>
+          <NFormItem label="必填">
+            <AppSwitch v-model="field.required" />
+          </NFormItem>
+          <NFormItem v-if="field.type === 'number'" label="默认值">
+            <AppNumberInput
+              :model-value="field.defaultValue as number"
+              clearable
+              @update:model-value="field.defaultValue = $event"
+            />
+          </NFormItem>
+          <NFormItem v-else-if="field.type === 'boolean'" label="默认值">
+            <AppSwitch
+              :model-value="(field.defaultValue as boolean) ?? false"
+              @update:model-value="field.defaultValue = $event"
+            />
+          </NFormItem>
+          <NFormItem v-else-if="field.type === 'select'" label="默认值">
+            <AppSelect
+              :model-value="field.defaultValue as string"
+              :options="parseOptions(field.optionsText).map((value) => ({ label: value, value }))"
+              clearable
+              @update:model-value="field.defaultValue = $event"
+            />
+          </NFormItem>
+          <NFormItem v-else label="默认值">
+            <AppInput
+              :model-value="field.defaultValue as string"
+              clearable
+              @update:model-value="field.defaultValue = $event"
+            />
+          </NFormItem>
+          <NFormItem v-if="field.type === 'select'" label="选项（逗号分隔）">
+            <AppInput v-model="field.optionsText" placeholder="选项A, 选项B" />
+          </NFormItem>
+          <AppButton
+            class="parameter-config__remove"
+            tone="danger"
+            @click="form.fields.splice(index, 1)"
+          >
+            删除参数
+          </AppButton>
+        </div>
       </div>
     </NForm>
-    <AppButton @click="addField">+ 添加参数</AppButton>
+    <template #footer-start>
+      <AppButton @click="addField">+ 添加参数</AppButton>
+    </template>
   </FormDialog>
 </template>
 
 <style scoped>
-.parameter-config__description {
-  margin-bottom: var(--space-4);
-  color: var(--text-secondary);
-}
-
 .parameter-config__error {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
   color: var(--color-error);
 }
 
 .parameter-config__row {
   display: grid;
   align-items: end;
-  margin-bottom: var(--space-4);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.parameter-config__row + .parameter-config__row {
+  margin-top: var(--space-3);
+}
+
+.parameter-config__remove {
+  justify-self: start;
 }
 </style>
