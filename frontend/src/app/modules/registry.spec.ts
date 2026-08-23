@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getNavigationEntries,
   getNavigationModules,
   MODULE_REGISTRY,
   type ModuleDefinition,
@@ -12,6 +13,7 @@ describe('Module Registry Lite', () => {
       'foundation',
       'shop',
       'device',
+      'task',
       'settings',
     ])
   })
@@ -20,13 +22,36 @@ describe('Module Registry Lite', () => {
     expect(getNavigationModules().map((module) => module.moduleCode)).toEqual([
       'shop',
       'device',
+      'task',
       'settings',
     ])
     expect(
       getNavigationModules(MODULE_REGISTRY, { includeDevelopment: true }).map(
         (module) => module.moduleCode,
       ),
-    ).toEqual(['foundation', 'shop', 'device', 'settings'])
+    ).toEqual(['foundation', 'shop', 'device', 'task', 'settings'])
+  })
+
+  it('builds the automation navigation group without an automation route', () => {
+    const entries = getNavigationEntries()
+    const automation = entries.find(
+      (entry) => entry.type === 'group' && entry.groupCode === 'automation',
+    )
+
+    expect(automation).toMatchObject({
+      type: 'group',
+      groupName: '自动化中心',
+    })
+    expect(
+      automation?.type === 'group'
+        ? automation.children.map((module) => module.moduleCode)
+        : [],
+    ).toEqual(['device', 'task'])
+    expect(
+      MODULE_REGISTRY.some(
+        (module) => (module.routePath as string) === '/automation',
+      ),
+    ).toBe(false)
   })
 
   it('does not expose disabled modules', () => {
@@ -54,6 +79,7 @@ describe('Module Registry Lite', () => {
       foundation: null,
       shop: null,
       device: null,
+      task: null,
       settings: null,
     })
   })

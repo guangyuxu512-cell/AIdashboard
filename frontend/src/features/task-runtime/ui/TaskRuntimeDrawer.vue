@@ -35,6 +35,16 @@ const providerDisplay = computed(() => {
         ? provider
         : '—'
 })
+const outcomeDisplay = computed(() => {
+  const task = runtime.task.value
+  if (!task || !runtime.terminal.value) return null
+  if (task.status === 'success') {
+    return task.result ? JSON.stringify(task.result, null, 2) : '任务已成功完成'
+  }
+  return (
+    [task.error_code, task.error_message].filter(Boolean).join(' · ') || '—'
+  )
+})
 
 function onLogScroll(): void {
   const element = logViewport.value
@@ -96,6 +106,10 @@ watch(
           <dd>{{ deviceName ?? runtime.task.value.target_device_id }}</dd>
         </div>
         <div>
+          <dt>执行对象</dt>
+          <dd>{{ runtime.task.value.execution_display_name }}</dd>
+        </div>
+        <div>
           <dt>Skill</dt>
           <dd>{{ runtime.task.value.skill_id }}</dd>
         </div>
@@ -115,9 +129,11 @@ watch(
           <dt>开始时间</dt>
           <dd>
             {{
-              dayjs(
-                runtime.task.value.started_at ?? runtime.task.value.created_at,
-              ).format('YYYY-MM-DD HH:mm:ss')
+              runtime.task.value.started_at
+                ? dayjs(runtime.task.value.started_at).format(
+                    'YYYY-MM-DD HH:mm:ss',
+                  )
+                : '—'
             }}
           </dd>
         </div>
@@ -132,6 +148,13 @@ watch(
           </dd>
         </div>
       </dl>
+
+      <section v-if="outcomeDisplay" class="task-runtime__outcome">
+        <h3>
+          {{ runtime.task.value.status === 'success' ? 'Result' : 'Error' }}
+        </h3>
+        <pre>{{ outcomeDisplay }}</pre>
+      </section>
 
       <section class="task-runtime__logs">
         <header>
@@ -198,6 +221,25 @@ watch(
 
 .task-runtime__logs {
   min-height: 0;
+}
+
+.task-runtime__outcome h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-section-title);
+  font-weight: var(--font-weight-semibold);
+}
+
+.task-runtime__outcome pre {
+  max-height: 160px;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  font-family: monospace;
+  font-size: var(--font-size-secondary);
+  white-space: pre-wrap;
 }
 
 .task-runtime__logs header {

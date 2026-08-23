@@ -19,5 +19,9 @@ export { default as SummaryGrid } from './SummaryGrid.vue'
 export { default as TableToolbar } from './TableToolbar.vue'
 export { default as ThemeSelector } from './ThemeSelector.vue'
 
-export type { AppNavigationItem } from './AppShell.vue'
+export type {
+  AppNavigationGroupItem,
+  AppNavigationItem,
+  AppNavigationModuleItem,
+} from './AppShell.vue'
 export type { StatusTone } from './StatusTag.vue'

@@ -35,8 +35,8 @@ export function useTaskRuntime(taskId: MaybeRefOrGetter<string | null>) {
   })
   const durationDisplay = computed(() => {
     const task = taskQuery.data.value
-    if (!task) return '—'
-    const startedAt = task.started_at ?? task.created_at
+    if (!task?.started_at) return '—'
+    const startedAt = task.started_at
     const endedAt = task.finished_at ?? now.value
     const seconds = Math.max(0, dayjs(endedAt).diff(dayjs(startedAt), 'second'))
     const minutes = Math.floor(seconds / 60)

@@ -209,6 +209,132 @@ function inspectSoftRemovedDevice(deviceId: string): {
 test.beforeAll(cleanupRealTestData)
 test.afterAll(cleanupRealTestData)
 
+test('shows a real Task lifecycle and incremental Runtime Events without list flashing', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const deviceName = `${testPrefix}task-center`
+  const deviceResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(deviceResponse.ok()).toBe(true)
+  const identity = issueWorkerIdentity(deviceName)
+  const workerHeaders = {
+    Authorization: `Bearer ${identity.token}`,
+    'X-Device-ID': identity.deviceId,
+  }
+  const startedAt = new Date().toISOString()
+  expect(
+    (
+      await page.request.post('/api/v1/worker/heartbeat', {
+        headers: workerHeaders,
+        data: { worker_version: '0.4.1', started_at: startedAt },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.put('/api/v1/worker/skill-capabilities', {
+        headers: workerHeaders,
+        data: {
+          skills: [
+            {
+              skill_id: 'system.sleep',
+              display_name: '系统等待',
+              runtime: 'python',
+              provider: null,
+              version: '1.0.0',
+              classification: 'internal',
+            },
+          ],
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+  const createResponse = await page.request.post('/api/v1/tasks', {
+    data: {
+      target_device_id: identity.deviceId,
+      skill_id: 'system.sleep',
+      input: { seconds: 5 },
+    },
+  })
+  expect(createResponse.ok()).toBe(true)
+  const taskId = (await createResponse.json()).task_id as string
+
+  await page.goto('/#/tasks')
+  const row = page.getByRole('row').filter({ hasText: deviceName })
+  await expect(row).toBeVisible()
+  await expect(row.getByText('待执行', { exact: true })).toBeVisible()
+  await expect(row.getByText('—', { exact: true }).first()).toBeVisible()
+
+  const claimResponse = await page.request.post(
+    'http://127.0.0.1:8000/api/v1/worker/tasks/claim',
+    { headers: workerHeaders },
+  )
+  expect(claimResponse.ok()).toBe(true)
+  expect((await claimResponse.json()).task_id).toBe(taskId)
+  const eventAt = new Date().toISOString()
+  expect(
+    (
+      await page.request.post(
+        `http://127.0.0.1:8000/api/v1/worker/tasks/${taskId}/events`,
+        {
+          headers: workerHeaders,
+          data: {
+            events: [
+              {
+                seq: 1,
+                event_type: 'status',
+                level: 'worker',
+                message: '开始安全等待',
+                event_at: eventAt,
+                metadata: { provider: 'python' },
+              },
+              {
+                seq: 2,
+                event_type: 'progress',
+                level: 'worker',
+                message: '正在处理第 3 项',
+                event_at: eventAt,
+                metadata: { current: 3, total: 10 },
+              },
+            ],
+          },
+        },
+      )
+    ).ok(),
+  ).toBe(true)
+
+  await expect(row.getByText('执行中', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(row.getByText('3 / 10', { exact: true })).toBeVisible()
+  await expect(row.getByText('正在处理第 3 项', { exact: true })).toBeVisible()
+  await expect(page.locator('.state-panel')).toHaveCount(0)
+
+  await row.getByRole('button', { name: '详情' }).click()
+  const drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
+  await expect(drawer.getByText('正在处理第 3 项').first()).toBeVisible()
+
+  expect(
+    (
+      await page.request.post(
+        `http://127.0.0.1:8000/api/v1/worker/tasks/${taskId}/complete`,
+        {
+          headers: workerHeaders,
+          data: { result: { slept_seconds: 5 } },
+        },
+      )
+    ).ok(),
+  ).toBe(true)
+  await expect(row.getByText('成功', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(drawer.getByRole('heading', { name: 'Result' })).toBeVisible()
+  await expect(drawer.getByText(/slept_seconds/)).toBeVisible()
+  await expect(page.locator('.state-panel')).toHaveCount(0)
+})
+
 test('issues, rotates and revokes a one-time Worker credential in Device Drawer', async ({
   page,
   context,

@@ -7,12 +7,23 @@ import { useRoute, useRouter } from 'vue-router'
 
 import AppOverlayHost from '@/shared/ui/AppOverlayHost.vue'
 
-export interface AppNavigationItem {
+export interface AppNavigationModuleItem {
+  type: 'module'
   moduleCode: string
   moduleName: string
   routePath: string
   icon: Component
 }
+
+export interface AppNavigationGroupItem {
+  type: 'group'
+  groupCode: string
+  groupName: string
+  icon: Component
+  children: AppNavigationModuleItem[]
+}
+
+export type AppNavigationItem = AppNavigationModuleItem | AppNavigationGroupItem
 
 const props = withDefaults(
   defineProps<{
@@ -29,43 +40,67 @@ const props = withDefaults(
 const route = useRoute()
 const router = useRouter()
 const isDevelopment = import.meta.env.DEV
+const navigationModules = computed(() =>
+  props.navigation.flatMap((item) =>
+    item.type === 'group' ? item.children : [item],
+  ),
+)
+const navigationGroupKeys = computed(() =>
+  props.navigation
+    .filter((item): item is AppNavigationGroupItem => item.type === 'group')
+    .map((item) => item.groupCode),
+)
 
 const activeNavigationKey = computed(
   () =>
-    props.navigation.find((item) => item.routePath === route.path)
+    navigationModules.value.find((item) => item.routePath === route.path)
       ?.moduleCode ?? null,
 )
 
 const activeNavigationLabel = computed(
   () =>
-    props.navigation.find(
+    navigationModules.value.find(
       (item) => item.moduleCode === activeNavigationKey.value,
     )?.moduleName ?? '工作台',
 )
 
 const menuOptions = computed<MenuOption[]>(() =>
-  props.navigation.map((item) => ({
-    key: item.moduleCode,
-    icon: () => h(item.icon, { size: 17, strokeWidth: 1.8 }),
-    label: () =>
-      h(
-        'span',
-        {
-          class: [
-            'app-shell__nav-label',
-            {
-              'app-shell__nav-label--active':
-                item.moduleCode === activeNavigationKey.value,
-            },
-          ],
-        },
-        item.moduleName,
-      ),
-  })),
+  props.navigation.map((item) => {
+    if (item.type === 'group') {
+      return {
+        key: item.groupCode,
+        icon: () => h(item.icon, { size: 17, strokeWidth: 1.8 }),
+        label: item.groupName,
+        children: item.children.map((child) => ({
+          key: child.moduleCode,
+          icon: () => h(child.icon, { size: 17, strokeWidth: 1.8 }),
+          label: child.moduleName,
+        })),
+      }
+    }
+    return {
+      key: item.moduleCode,
+      icon: () => h(item.icon, { size: 17, strokeWidth: 1.8 }),
+      label: () =>
+        h(
+          'span',
+          {
+            class: [
+              'app-shell__nav-label',
+              {
+                'app-shell__nav-label--active':
+                  item.moduleCode === activeNavigationKey.value,
+              },
+            ],
+          },
+          item.moduleName,
+        ),
+    }
+  }),
 )
 
 function navigate(key: string): void {
-  const target = props.navigation.find((item) => item.moduleCode === key)
+  const target = navigationModules.value.find((item) => item.moduleCode === key)
   if (target && target.routePath !== route.path) {
     void router.push(target.routePath)
   }
@@ -87,6 +122,7 @@ function navigate(key: string): void {
           :value="activeNavigationKey"
           :options="menuOptions"
           :indent="12"
+          :default-expanded-keys="navigationGroupKeys"
           @update:value="navigate"
         />
       </nav>

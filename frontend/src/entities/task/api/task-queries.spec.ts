@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { taskApi } from './task-api'
+import { taskDataSource } from './task-data-source'
 import {
   getTaskEventsRefetchInterval,
   loadActiveTasks,
@@ -39,11 +39,13 @@ describe('task queries', () => {
   })
 
   it('degrades one failed active-task lookup without failing the device list', async () => {
-    vi.spyOn(taskApi, 'getActive').mockImplementation(async (deviceId) => {
-      if (deviceId === 'device-failed')
-        throw new Error('auxiliary query failed')
-      return null
-    })
+    vi.spyOn(taskDataSource, 'getActive').mockImplementation(
+      async (deviceId) => {
+        if (deviceId === 'device-failed')
+          throw new Error('auxiliary query failed')
+        return null
+      },
+    )
 
     await expect(
       loadActiveTasks(['device-ok', 'device-failed']),
@@ -63,12 +65,12 @@ describe('task queries', () => {
         latest_event: null,
       },
     } as const
-    vi.spyOn(taskApi, 'getActive').mockRejectedValue(
+    vi.spyOn(taskDataSource, 'getActive').mockRejectedValue(
       new Error('background refresh failed'),
     )
 
-    await expect(
-      loadActiveTasks(['device-failed'], previous),
-    ).resolves.toEqual(previous)
+    await expect(loadActiveTasks(['device-failed'], previous)).resolves.toEqual(
+      previous,
+    )
   })
 })

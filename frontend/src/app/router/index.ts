@@ -5,6 +5,7 @@ import { requireModuleDefinition } from '@/app/modules/registry'
 const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
 const deviceModule = requireModuleDefinition('device')
+const taskModule = requireModuleDefinition('task')
 const settingsModule = requireModuleDefinition('settings')
 
 const router = createRouter({
@@ -27,6 +28,12 @@ const router = createRouter({
       name: deviceModule.routeName,
       component: () => import('@/pages/devices/DeviceCenterPage.vue'),
       meta: { moduleCode: deviceModule.moduleCode },
+    },
+    {
+      path: taskModule.routePath,
+      name: taskModule.routeName,
+      component: () => import('@/pages/tasks/TaskCenterPage.vue'),
+      meta: { moduleCode: taskModule.moduleCode },
     },
     {
       path: settingsModule.routePath,

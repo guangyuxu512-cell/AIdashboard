@@ -6,7 +6,7 @@ import {
 } from '@tanstack/vue-query'
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
-import { taskApi } from './task-api'
+import { taskDataSource, type TaskListParams } from './task-data-source'
 import type {
   ActiveTaskSummaryReadDto,
   TaskEventListReadDto,
@@ -14,10 +14,24 @@ import type {
 } from './contracts'
 
 export const taskQueryKeys = {
+  all: ['tasks'] as const,
+  list: (params: TaskListParams) => ['tasks', 'list', params] as const,
   detail: (taskId: string | null) => ['tasks', 'detail', taskId] as const,
   events: (taskId: string | null) => ['tasks', 'events', taskId] as const,
   activeByDevices: (deviceIds: string[]) =>
     ['tasks', 'active-by-devices', ...deviceIds] as const,
+}
+
+export const TASK_LIST_REFETCH_INTERVAL_MS = 5_000
+
+export function useTaskListQuery(params: MaybeRefOrGetter<TaskListParams>) {
+  return useQuery({
+    queryKey: computed(() => taskQueryKeys.list(toValue(params))),
+    queryFn: () => taskDataSource.list(toValue(params)),
+    refetchInterval:
+      taskDataSource.mode === 'real' ? TASK_LIST_REFETCH_INTERVAL_MS : false,
+    placeholderData: keepPreviousData,
+  })
 }
 
 export function mergeTaskEvents(
@@ -66,7 +80,7 @@ export function useTaskEventsQuery(
         nextAfterSeq = 0
         events = []
       }
-      const page = await taskApi.listEvents(id, nextAfterSeq)
+      const page = await taskDataSource.listEvents(id, nextAfterSeq)
       events = mergeTaskEvents(events, page.items)
       nextAfterSeq = page.next_after_seq
       return { ...page, after_seq: 0, items: [...events] }
@@ -83,7 +97,7 @@ export async function loadActiveTasks(
   previous: Record<string, ActiveTaskSummaryReadDto | null> = {},
 ): Promise<Record<string, ActiveTaskSummaryReadDto | null>> {
   const results = await Promise.allSettled(
-    deviceIds.map((deviceId) => taskApi.getActive(deviceId)),
+    deviceIds.map((deviceId) => taskDataSource.getActive(deviceId)),
   )
   return Object.fromEntries(
     deviceIds.map((deviceId, index) => [
@@ -118,7 +132,7 @@ export function useActiveTasksQuery(
 export function useTaskQuery(taskId: MaybeRefOrGetter<string | null>) {
   return useQuery({
     queryKey: computed(() => taskQueryKeys.detail(toValue(taskId))),
-    queryFn: () => taskApi.get(toValue(taskId)!),
+    queryFn: () => taskDataSource.get(toValue(taskId)!),
     enabled: computed(() => Boolean(toValue(taskId))),
     refetchInterval: (query) => {
       const status = query.state.data?.status
@@ -130,5 +144,10 @@ export function useTaskQuery(taskId: MaybeRefOrGetter<string | null>) {
 }
 
 export function useCreateTaskMutation() {
-  return useMutation({ mutationFn: taskApi.create })
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: taskDataSource.create,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.all }),
+  })
 }

@@ -61,3 +61,23 @@ export interface ActiveTaskSummaryReadDto {
   created_at: string
   latest_event: TaskEventReadDto | null
 }
+
+export interface TaskProgressSummaryReadDto {
+  current: number
+  total: number | null
+}
+
+export interface TaskListItemReadDto {
+  task_id: string
+  target_device_id: string
+  device_display_name: string
+  skill_id: TaskReadDto['skill_id']
+  skill_display_name: string | null
+  execution_display_name: string
+  status: TaskStatusDto
+  progress: TaskProgressSummaryReadDto | null
+  current_message: string | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+}

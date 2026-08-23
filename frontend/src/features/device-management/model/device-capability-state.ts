@@ -4,6 +4,11 @@ import type {
   ProviderApplicationViewModel,
   YingdaoInventoryViewModel,
 } from '@/entities/device'
+export {
+  hasResolvedQueryData,
+  isInitialQueryError,
+  isInitialQueryLoading,
+} from '@/shared/api/query-state'
 
 export interface YingdaoApplicationRunAvailabilityInput {
   device: DeviceListItemViewModel | null
@@ -19,21 +24,6 @@ export interface YingdaoApplicationRunAvailabilityInput {
 export interface YingdaoApplicationRunAvailability {
   enabled: boolean
   disabledReason: string | null
-}
-
-export function hasResolvedQueryData(data: unknown): boolean {
-  return data !== undefined
-}
-
-export function isInitialQueryLoading(
-  isPending: boolean,
-  data: unknown,
-): boolean {
-  return isPending && !hasResolvedQueryData(data)
-}
-
-export function isInitialQueryError(error: unknown, data: unknown): boolean {
-  return Boolean(error) && !hasResolvedQueryData(data)
 }
 
 export function resolveYingdaoApplicationRunAvailability(

@@ -1,5 +1,8 @@
 export * from './api/contracts'
 export * from './api/task-api'
+export * from './api/task-data-source'
+export * from './api/task-mapper'
 export * from './api/task-queries'
+export * from './model/types'
 export * from './model/status-meta'
 export { default as TaskStatusTag } from './ui/TaskStatusTag.vue'

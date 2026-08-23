@@ -14,14 +14,14 @@ import {
 import { RouterView } from 'vue-router'
 
 import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
-import { getNavigationModules } from '@/app/modules/registry'
+import { getNavigationEntries } from '@/app/modules/registry'
 import AppShell from '@/shared/components/AppShell.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import ThemeSelector from '@/shared/components/ThemeSelector.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
 import { useThemeStore } from '@/stores/theme'
 
-const navigation = getNavigationModules(undefined, {
+const navigation = getNavigationEntries(undefined, {
   includeDevelopment: import.meta.env.DEV,
 })
 
