@@ -63,6 +63,12 @@ Token、Cookie、流程内容或完整认证响应。
 没有进程时通过配置覆盖、Windows 安装信息和标准候选目录定位 6.3.6 并启动，等待接口
 就绪有明确超时。若已运行其他版本，Worker 不结束该进程，也不启动第二实例。
 
+ShadowBot 6.3.6 的真实接口样本存在 `Code/Data` 与 `code/data` 两种 Envelope 大小写。
+Session、Application List 和 Application Detail 必须先经过同一个轻量 Normalizer，再读取
+内部字段；缺少 Code 或 Data 属于协议错误，不得默认成功或静默转换为空对象。后台 Provider
+刷新使用的进程与端口查询 CLI 必须通过 Worker 的 Windows 无窗口子进程入口执行并保留
+stdout/stderr 与 Return Code，Heartbeat 本身只进行 HTTP 通信。
+
 Provider 状态固定为 `not_installed / version_unsupported / starting / need_login /
 interface_unreachable / ready`。这些都是可上报 Inventory 状态，不会让 Worker Heartbeat、
 Poll 或其它 Executor 退出。

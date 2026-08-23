@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import ctypes
+import logging
 import os
 import re
 import subprocess
@@ -11,12 +12,15 @@ from typing import Any
 
 import httpx
 
+from app.providers.yingdao.api_response import normalize_shadowbot_api_envelope
 from app.providers.yingdao.environment import (
     REQUIRED_YINGDAO_VERSION,
     read_windows_file_version,
 )
+from app.shared.subprocesses import run_noninteractive_command
 
 _ACCOUNT_PATH = "/api/v1/account/current"
+logger = logging.getLogger(__name__)
 
 
 class YingdaoSessionError(RuntimeError):
@@ -206,7 +210,7 @@ class WindowsYingdaoRuntimeLocator:
     def _list_shadowbot_processes(self) -> list[YingdaoProcess]:
         if os.name != "nt":
             return []
-        result = subprocess.run(
+        result = run_noninteractive_command(
             ["tasklist.exe", "/fo", "csv", "/nh"],
             check=False,
             capture_output=True,
@@ -214,6 +218,13 @@ class WindowsYingdaoRuntimeLocator:
             encoding="utf-8",
             errors="replace",
         )
+        if result.returncode != 0:
+            logger.warning(
+                "ShadowBot process scan failed: return_code=%s stderr=%s",
+                result.returncode,
+                _command_error_summary(result.stderr),
+            )
+            return []
         processes: list[YingdaoProcess] = []
         for row in csv.reader(result.stdout.splitlines()):
             if len(row) < 2 or row[0].lower() not in {
@@ -253,7 +264,7 @@ class WindowsYingdaoRuntimeLocator:
 
     @staticmethod
     def _list_loopback_ports(pids: set[int]) -> list[tuple[int, int]]:
-        result = subprocess.run(
+        result = run_noninteractive_command(
             ["netstat.exe", "-ano", "-p", "tcp"],
             check=False,
             capture_output=True,
@@ -261,6 +272,13 @@ class WindowsYingdaoRuntimeLocator:
             encoding="utf-8",
             errors="replace",
         )
+        if result.returncode != 0:
+            logger.warning(
+                "ShadowBot listener scan failed: return_code=%s stderr=%s",
+                result.returncode,
+                _command_error_summary(result.stderr),
+            )
+            return []
         listeners: list[tuple[int, int]] = []
         pattern = re.compile(r"^\s*TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$", re.I)
         for line in result.stdout.splitlines():
@@ -301,14 +319,34 @@ class YingdaoSessionAdapter:
                 provider_version=endpoint.process.version,
             ) from error
         try:
-            data = _unwrap_payload(payload)
+            envelope = normalize_shadowbot_api_envelope(payload)
         except ValueError as error:
             raise YingdaoSessionError(
                 "YINGDAO_SESSION_INVALID",
                 "影刀 6.3.6 当前会话响应无法解析",
                 provider_version=endpoint.process.version,
             ) from error
-        logged_in = bool(_pick(data, "LoggedIn", "loggedIn"))
+        if envelope.code != 0:
+            raise YingdaoSessionError(
+                "YINGDAO_SESSION_INVALID",
+                f"影刀 6.3.6 当前会话接口返回错误码 {envelope.code}",
+                provider_version=endpoint.process.version,
+            )
+        if not isinstance(envelope.data, dict):
+            raise YingdaoSessionError(
+                "YINGDAO_SESSION_INVALID",
+                "影刀 6.3.6 当前会话响应数据无效",
+                provider_version=endpoint.process.version,
+            )
+        data = envelope.data
+        raw_logged_in = _pick(data, "LoggedIn", "loggedIn")
+        if not isinstance(raw_logged_in, bool):
+            raise YingdaoSessionError(
+                "YINGDAO_SESSION_INVALID",
+                "影刀 6.3.6 当前会话响应缺少登录状态",
+                provider_version=endpoint.process.version,
+            )
+        logged_in = raw_logged_in
         account = YingdaoSessionAccount(
             logged_in=logged_in,
             user_name=_string(_pick(data, "UserName", "userName")),
@@ -332,21 +370,14 @@ class YingdaoSessionAdapter:
         return YingdaoSession(endpoint=endpoint, account=account)
 
 
-def _unwrap_payload(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ValueError("ShadowBot response must be an object")
-    code = value.get("code")
-    if code not in (None, 0):
-        raise ValueError(f"ShadowBot API returned code {code}")
-    data = value.get("data", value)
-    if not isinstance(data, dict):
-        raise ValueError("ShadowBot response data must be an object")
-    return data
-
-
 def _pick(value: dict[str, Any], *keys: str) -> Any:
     return next((value[key] for key in keys if key in value), None)
 
 
 def _string(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _command_error_summary(value: str | None) -> str:
+    summary = " ".join((value or "").split())
+    return summary[:240] or "<empty>"

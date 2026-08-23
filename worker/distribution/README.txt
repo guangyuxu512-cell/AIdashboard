@@ -9,7 +9,8 @@ Ecommerce AI Worker for Windows
 5. 本地数据根目录只用于 tasklog，默认留空使用当前 Windows 用户目录。
 
 当前影刀策略
-- Worker 0.3.1 固定使用影刀 6.3.6，不自动选择或回退其他版本。
+- Worker 0.3.2 固定使用影刀 6.3.6，不自动选择或回退其他版本。
+- 当前会话与云端应用兼容影刀接口已观察到的 Code/Data 和 code/data 包装。
 - Worker 启动并首次心跳成功后会同步本机 Skill Registry 完整快照；网络断开并恢复后会再次同步。
 - 其他版本可以留在磁盘；若其他版本正在运行，Worker 不结束它，也不启动第二实例。
 - 当前账号和云端应用来自 6.3.6 当前会话接口，不读取多个 user.db3 缓存作判断。
@@ -22,7 +23,7 @@ Ecommerce AI Worker for Windows
 日常使用
 - 启动Worker.cmd：检查配置和现有实例后在后台启动。
 - 停止Worker.cmd：只停止状态文件精确记录的本 Worker PID。
-- 查看状态.cmd：显示进程、Backend、Device ID、Server URL 和设备连接状态。
+- 查看状态.cmd：显示进程、Backend、Device ID、Server URL 和设备连接状态；影刀账号以中控台设备能力为准。
 - 打开Worker状态.cmd：只读显示当前任务、执行阶段和最近运行日志；关闭窗口不影响后台Worker。
 - 配置影刀并重启.cmd：单独更新影刀路径覆盖，不改变设备身份。
 

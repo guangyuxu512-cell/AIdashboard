@@ -2,6 +2,7 @@ from typing import Any
 
 import httpx
 
+from app.providers.yingdao.api_response import normalize_shadowbot_api_envelope
 from app.providers.yingdao.contracts import YingdaoApplication
 from app.providers.yingdao.session import YingdaoSession, YingdaoSessionError
 
@@ -18,7 +19,16 @@ class YingdaoApplicationAdapter:
 
     async def list(self, session: YingdaoSession) -> list[YingdaoApplication]:
         payload = await self._get(session, "/api/v1/apps")
-        raw_items = payload.get("items", payload.get("Items", []))
+        if "items" in payload:
+            raw_items = payload["items"]
+        elif "Items" in payload:
+            raw_items = payload["Items"]
+        else:
+            raise YingdaoSessionError(
+                "YINGDAO_APPLICATION_RESPONSE_INVALID",
+                "影刀 6.3.6 云端应用响应缺少应用列表",
+                provider_version=session.endpoint.process.version,
+            )
         if not isinstance(raw_items, list):
             raise YingdaoSessionError(
                 "YINGDAO_APPLICATION_RESPONSE_INVALID",
@@ -61,27 +71,27 @@ class YingdaoApplicationAdapter:
                 "影刀 6.3.6 云端应用接口请求失败",
                 provider_version=session.endpoint.process.version,
             ) from error
-        if not isinstance(payload, dict):
+        try:
+            envelope = normalize_shadowbot_api_envelope(payload)
+        except ValueError as error:
             raise YingdaoSessionError(
                 "YINGDAO_APPLICATION_RESPONSE_INVALID",
                 "影刀 6.3.6 云端应用响应无法解析",
                 provider_version=session.endpoint.process.version,
-            )
-        code = payload.get("code")
-        if code not in (None, 0):
+            ) from error
+        if envelope.code != 0:
             raise YingdaoSessionError(
                 "YINGDAO_APPLICATION_INTERFACE_UNAVAILABLE",
-                f"影刀 6.3.6 云端应用接口返回错误码 {code}",
+                f"影刀 6.3.6 云端应用接口返回错误码 {envelope.code}",
                 provider_version=session.endpoint.process.version,
             )
-        data = payload.get("data", payload)
-        if not isinstance(data, dict):
+        if not isinstance(envelope.data, dict):
             raise YingdaoSessionError(
                 "YINGDAO_APPLICATION_RESPONSE_INVALID",
                 "影刀 6.3.6 云端应用响应数据无效",
                 provider_version=session.endpoint.process.version,
             )
-        return data
+        return envelope.data
 
 
 def _text(value: Any) -> str | None:

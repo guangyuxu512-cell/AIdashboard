@@ -45,7 +45,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录只用于读取实际运行产生的 `task_logs`，不再用于识别账号或云端应用；默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。
 
-Worker 0.3.1 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.3.1 还会在启动与断线重连后同步当前 Skill Registry 完整快照。
+Worker 0.3.2 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.3.2 会在启动与断线重连后同步当前 Skill Registry 完整快照，并兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
 
 当前账号由 6.3.6 的 `/api/v1/account/current` 唯一确定，不需要从多个 `user.db3` 缓存中手工选择 userId。
 
@@ -54,7 +54,7 @@ Worker 0.3.1 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不�
 - `启动Worker.cmd`：检查配置和精确进程身份；已有实例时不重复启动，随后显示进程、Backend、Device ID、Server URL 与 Device Runtime。
 - `打开Worker状态.cmd`：启动独立只读 Tkinter 状态窗口；关闭窗口不影响后台 Worker。
 - `停止Worker.cmd`：使用状态文件中的 PID、启动时间和 EXE 绝对路径三重校验，只停止本 Worker。
-- `查看状态.cmd`：只读显示运行与连接状态，不显示 Token、Credential 或 Cookie。
+- `查看状态.cmd`：只读显示运行与连接状态，不显示 Token、Credential 或 Cookie；影刀账号的权威结果以中控台设备能力为准，不在控制脚本中伪造已登录状态。
 - `配置影刀并重启.cmd`：保留 Device ID 与 Token，只在自动发现失败时覆盖影刀安装根目录或 tasklog 数据根目录，然后重启 Worker。
 - `首次配置并启动-开发HTTP.cmd`：显式允许临时公网 HTTP，只用于已批准的可丢弃开发环境。
 

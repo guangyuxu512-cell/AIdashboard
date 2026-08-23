@@ -213,7 +213,7 @@ function Show-Status {
     Write-Host ('{0,-18} {1}' -f 'Device Runtime', (Get-DeviceConnection $config))
     $yingdaoRoot = Get-ConfigString $config 'yingdao_install_root'
     Write-Host ('{0,-18} {1}' -f 'Yingdao Root', $(if ($yingdaoRoot) { $yingdaoRoot } else { 'NOT CONFIGURED' }))
-    Write-Host ('{0,-18} {1}' -f 'Yingdao Account', 'CURRENT 6.3.6 SESSION')
+    Write-Host ('{0,-18} {1}' -f 'Yingdao Account', 'SEE DEVICE CAPABILITY')
 }
 
 function Configure-Worker {

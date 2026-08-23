@@ -3,7 +3,10 @@ param(
     [int]$LocalPort = 18080,
     [string]$YingdaoInstallRoot,
     [string]$YingdaoDataRoot,
-    [string]$PublicServerUrl
+    [string]$PublicServerUrl,
+    [switch]$SkipYingdaoDiscovery,
+    [ValidateRange(0, 3600)]
+    [int]$SustainedRunSeconds = 0
 )
 
 Set-StrictMode -Version Latest
@@ -121,8 +124,8 @@ try {
         server_url = $serverUrl
         device_id = $deviceId
         device_token = $deviceToken
-        yingdao_install_root = $YingdaoInstallRoot
-        yingdao_data_root = $YingdaoDataRoot
+        yingdao_install_root = if ($SkipYingdaoDiscovery) { '' } else { $YingdaoInstallRoot }
+        yingdao_data_root = if ($SkipYingdaoDiscovery) { '' } else { $YingdaoDataRoot }
     } | ConvertTo-Json
     [System.IO.File]::WriteAllText($importPath, $import, [System.Text.UTF8Encoding]::new($false))
     $deviceToken = $null
@@ -134,14 +137,19 @@ try {
         '-Action', 'Configure', '-ImportConfigPath', $importPath
     )
     $configureArguments += if ($PublicServerUrl) { '-AllowInsecureDevelopment' } else { '-AllowInsecureLoopback' }
+    if ($SkipYingdaoDiscovery) {
+        $configureArguments += '-StartAfterConfigure'
+    }
     & powershell.exe @configureArguments
     if ($LASTEXITCODE -ne 0) { throw 'Packaged Worker configuration failed.' }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller `
-        -Action ConfigureYingdao `
-        -YingdaoInstallRootOverride $YingdaoInstallRoot `
-        -YingdaoDataRootOverride $YingdaoDataRoot `
-        -StartAfterConfigure
-    if ($LASTEXITCODE -ne 0) { throw 'Packaged Yingdao configuration/start failed.' }
+    if (-not $SkipYingdaoDiscovery) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller `
+            -Action ConfigureYingdao `
+            -YingdaoInstallRootOverride $YingdaoInstallRoot `
+            -YingdaoDataRootOverride $YingdaoDataRoot `
+            -StartAfterConfigure
+        if ($LASTEXITCODE -ne 0) { throw 'Packaged Yingdao configuration/start failed.' }
+    }
 
     Wait-Condition {
         $runtime = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime
@@ -188,17 +196,35 @@ try {
     }
     $sleepResult = Wait-Task ([string]$sleepTask.task_id)
 
-    $discoveryTask = Invoke-Api 'POST' '/api/v1/tasks' @{
-        target_device_id = $deviceId
-        skill_id = 'yingdao.discover'
-        input = @{}
+    $applicationCount = $null
+    if (-not $SkipYingdaoDiscovery) {
+        $discoveryTask = Invoke-Api 'POST' '/api/v1/tasks' @{
+            target_device_id = $deviceId
+            skill_id = 'yingdao.discover'
+            input = @{}
+        }
+        $discoveryResult = Wait-Task ([string]$discoveryTask.task_id)
+        $applicationCount = @($discoveryResult.result.applications).Count
+        if ($discoveryResult.result.available -ne $true) { throw 'yingdao.discover did not report an available provider.' }
+        $discoveryEvents = Invoke-Api 'GET' "/api/v1/tasks/$($discoveryTask.task_id)/events?after_seq=0&limit=100"
+        if (@($discoveryEvents.items).Count -lt 2 -or @($discoveryEvents.items)[-1].event_type -ne 'completed') {
+            throw 'yingdao.discover runtime events were not persisted through the packaged Worker.'
+        }
     }
-    $discoveryResult = Wait-Task ([string]$discoveryTask.task_id)
-    $applicationCount = @($discoveryResult.result.applications).Count
-    if ($discoveryResult.result.available -ne $true) { throw 'yingdao.discover did not report an available provider.' }
-    $discoveryEvents = Invoke-Api 'GET' "/api/v1/tasks/$($discoveryTask.task_id)/events?after_seq=0&limit=100"
-    if (@($discoveryEvents.items).Count -lt 2 -or @($discoveryEvents.items)[-1].event_type -ne 'completed') {
-        throw 'yingdao.discover runtime events were not persisted through the packaged Worker.'
+
+    if ($SustainedRunSeconds -gt 0) {
+        $deadline = (Get-Date).AddSeconds($SustainedRunSeconds)
+        while ((Get-Date) -lt $deadline) {
+            $state = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json
+            if ($null -eq (Get-Process -Id ([int]$state.pid) -ErrorAction SilentlyContinue)) {
+                throw 'Packaged Worker exited during the sustained runtime check.'
+            }
+            $runtime = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime
+            if ($null -eq $runtime -or $runtime.connection_status -ne 'online') {
+                throw 'Packaged Worker became OFFLINE during the sustained runtime check.'
+            }
+            Start-Sleep -Seconds ([math]::Min(5, [math]::Max(1, ($deadline - (Get-Date)).TotalSeconds)))
+        }
     }
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Stop
@@ -222,8 +248,16 @@ try {
     Write-Host 'Tkinter status UI: PASS'
     Write-Host 'system.echo: SUCCESS'
     Write-Host 'system.sleep: SUCCESS'
-    Write-Host "yingdao.discover: SUCCESS ($applicationCount applications)"
+    if ($SkipYingdaoDiscovery) {
+        Write-Host 'yingdao.discover: SKIPPED (no local 6.3.6 runtime)'
+    }
+    else {
+        Write-Host "yingdao.discover: SUCCESS ($applicationCount applications)"
+    }
     Write-Host 'Runtime event upload: PASS'
+    if ($SustainedRunSeconds -gt 0) {
+        Write-Host "Sustained package runtime: PASS ($SustainedRunSeconds seconds)"
+    }
     Write-Host 'OFFLINE and stored-token recovery: PASS'
 }
 catch {

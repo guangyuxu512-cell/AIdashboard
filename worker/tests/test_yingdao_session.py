@@ -10,9 +10,12 @@ from app.providers.yingdao import (
     YingdaoApplicationAdapter,
     YingdaoProcess,
     YingdaoRuntimeEndpoint,
+    YingdaoSession,
+    YingdaoSessionAccount,
     YingdaoSessionAdapter,
     YingdaoSessionError,
 )
+from app.providers.yingdao.api_response import normalize_shadowbot_api_envelope
 
 
 class StubLocator:
@@ -30,9 +33,9 @@ def test_current_session_and_cloud_application_contracts() -> None:
             return httpx.Response(
                 200,
                 json={
-                    "code": 0,
-                    "message": "ok",
-                    "data": {
+                    "Code": 0,
+                    "Message": "ok",
+                    "Data": {
                         "LoggedIn": True,
                         "UserName": "GY00999",
                         "DisplayName": "GY00999",
@@ -62,7 +65,7 @@ def test_current_session_and_cloud_application_contracts() -> None:
                 },
             )
         if request.url.path == "/api/v1/apps/app-0/detail":
-            return httpx.Response(200, json={"code": 0, "data": {"appId": "app-0"}})
+            return httpx.Response(200, json={"Code": 0, "Data": {"appId": "app-0"}})
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
@@ -107,7 +110,7 @@ def test_session_reports_need_login() -> None:
         lambda request: httpx.Response(
             200,
             request=request,
-            json={"LoggedIn": False},
+            json={"Code": 0, "Data": {"LoggedIn": False}},
         ),
     )
     adapter = YingdaoSessionAdapter(StubLocator(), transport=transport)  # type: ignore[arg-type]
@@ -116,6 +119,98 @@ def test_session_reports_need_login() -> None:
         asyncio.run(adapter.current())
 
     assert error.value.code == "YINGDAO_NOT_LOGGED_IN"
+
+
+def test_shadowbot_envelope_normalizes_only_observed_case_variants() -> None:
+    upper = normalize_shadowbot_api_envelope(
+        {"Code": 0, "Data": {"LoggedIn": True}},
+    )
+    lower = normalize_shadowbot_api_envelope(
+        {"code": 0, "data": {"loggedIn": True}},
+    )
+
+    assert upper.code == lower.code == 0
+    assert upper.data == {"LoggedIn": True}
+    assert lower.data == {"loggedIn": True}
+
+    with pytest.raises(ValueError, match="code/Code"):
+        normalize_shadowbot_api_envelope({"Data": {}})
+    with pytest.raises(ValueError, match="data/Data"):
+        normalize_shadowbot_api_envelope({"Code": 0})
+
+
+def test_current_session_accepts_observed_camel_case_account_fields() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            request=request,
+            json={
+                "code": 0,
+                "data": {
+                    "loggedIn": True,
+                    "userName": "GY00999",
+                    "displayName": "GY00999",
+                    "userId": "906515367141965826",
+                    "accountType": "PersonalBasic",
+                },
+            },
+        ),
+    )
+    adapter = YingdaoSessionAdapter(StubLocator(), transport=transport)  # type: ignore[arg-type]
+
+    session = asyncio.run(adapter.current())
+
+    assert session.account.logged_in is True
+    assert session.account.user_name == "GY00999"
+
+
+def test_current_session_rejects_missing_login_status() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            request=request,
+            json={"Code": 0, "Data": {"UserName": "GY00999"}},
+        ),
+    )
+    adapter = YingdaoSessionAdapter(StubLocator(), transport=transport)  # type: ignore[arg-type]
+
+    with pytest.raises(YingdaoSessionError) as error:
+        asyncio.run(adapter.current())
+
+    assert error.value.code == "YINGDAO_SESSION_INVALID"
+
+
+def test_application_empty_list_and_error_envelopes_are_distinct() -> None:
+    responses = iter(
+        (
+            {"Code": 0, "Data": {"items": []}},
+            {"code": 5010, "data": None},
+        ),
+    )
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, request=request, json=next(responses)),
+    )
+    session = YingdaoSession(
+        endpoint=YingdaoRuntimeEndpoint(
+            YingdaoProcess(1234, Path("ShadowBot.Shell.exe"), "6.3.6"),
+            "http://127.0.0.1:42500",
+        ),
+        account=YingdaoSessionAccount(
+            True,
+            "GY00999",
+            "GY00999",
+            "906515367141965826",
+            "PersonalBasic",
+            None,
+        ),
+    )
+    adapter = YingdaoApplicationAdapter(transport=transport)
+
+    assert asyncio.run(adapter.list(session)) == []
+    with pytest.raises(YingdaoSessionError) as error:
+        asyncio.run(adapter.list(session))
+
+    assert error.value.code == "YINGDAO_APPLICATION_INTERFACE_UNAVAILABLE"
 
 
 def test_locator_finds_only_exact_636_installation(tmp_path: Path) -> None:
