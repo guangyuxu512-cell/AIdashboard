@@ -8,6 +8,7 @@
 - `system.sleep`
 - `yingdao.test`
 - `yingdao.discover`
+- `yingdao.app.run`
 
 统一输入：
 
@@ -51,8 +52,9 @@ Task → stable skill_id → Skill Registry → runtime → Executor → Provide
 ```
 
 - Skill 是稳定业务能力，不等于影刀 App。
-- Registry 明确 `runtime=python|rpa`。
-- RPA Skill 额外声明 `provider=yingdao`，本地应用 ID 是设备侧映射。
+- Registry 明确 `runtime=python|rpa|discovery`。
+- Provider Skill 通过 Descriptor 声明 `provider=yingdao`；影刀 Application 由
+  `yingdao.app.run` 的 `input.app_id` 选择，不是 Skill，也不是设备侧固定映射。
 - Backend 不得传影刀应用名称、CLI、文件路径或任意命令。
 
 `yingdao.discover` 使用独立 `discovery` Runtime，负责当前 6.3.6 会话与云端应用能力发现；它不经过 Python 子进程，也不启动业务应用。`yingdao.app.run` 是稳定的通用影刀应用执行 Skill，输入只允许 `app_id + params`；它不为每个 App 动态注册 Skill，也不接受可执行文件或命令路径。当前 `yingdao.test` 仅保留兼容测试能力。
@@ -71,5 +73,11 @@ Skill 只负责校验输入、执行、发出进度/日志和返回结果。Skil
 - `version`
 
 Descriptor 只描述 Worker 已实现能力，不暴露影刀 App ID、本地脚本路径或 EXE 路径。
-本阶段不自动上报、不建立 Skill Inventory 表或 Skill Center；待首个真实业务 Skill 接入
-时，再通过正式 Worker ↔ Backend 契约上报。
+Worker 在启动后的首次成功 Heartbeat 以及断线重连后，将当前 Registry 的完整 Descriptor
+快照上报到 `PUT /api/v1/worker/skill-capabilities`。请求不接受 `device_id`，设备身份只来自
+既有 Worker Token 与 `X-Device-ID`。Backend 使用 snapshot replace 同步当前 Device × Skill：
+Registry 中已删除的 Skill 会在下一次同步移除；设备 OFFLINE 时保留最后一次已知能力。
+
+Skill Capability 表达“该 Worker 已实现此 Skill”，不表达当前任务状态，也不替代 Provider
+Inventory。Provider Capability、Skill Capability 与 Provider Application 必须保持三层独立。
+未来 Python Skill 仍通过本地 Registry 注册并进入同一快照，不引入在线安装或 Skill CRUD。

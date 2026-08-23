@@ -5,7 +5,12 @@ from uuid import UUID
 import httpx
 
 from app.config import WorkerSettings
-from app.contracts import ProviderInventoryReport, RuntimeEvent, WorkerTask
+from app.contracts import (
+    ProviderInventoryReport,
+    RuntimeEvent,
+    SkillCapabilitySnapshot,
+    WorkerTask,
+)
 
 
 class WorkerApiError(RuntimeError):
@@ -81,6 +86,16 @@ class WorkerApiClient:
         response = await self.client.post(
             "/api/v1/worker/provider-inventory",
             json=report.model_dump(mode="json"),
+        )
+        self._raise_for_error(response)
+
+    async def report_skill_capabilities(
+        self,
+        snapshot: SkillCapabilitySnapshot,
+    ) -> None:
+        response = await self.client.put(
+            "/api/v1/worker/skill-capabilities",
+            json=snapshot.model_dump(mode="json"),
         )
         self._raise_for_error(response)
 

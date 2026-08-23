@@ -147,6 +147,15 @@ try {
         $runtime = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime
         return $null -ne $runtime -and $runtime.connection_status -eq 'online'
     } 35 'Packaged Worker did not become ONLINE.'
+    Wait-Condition {
+        $skills = @(Invoke-Api 'GET' "/api/v1/devices/$deviceId/skill-capabilities")
+        $skillIds = @($skills | ForEach-Object { $_.skill_id })
+        $missingSkills = @(
+            @('system.echo', 'system.sleep', 'yingdao.app.run') |
+                Where-Object { $_ -notin $skillIds }
+        )
+        return $missingSkills.Count -eq 0
+    } 20 'Packaged Worker did not synchronize its Skill Registry snapshot.'
 
     $statePath = Join-Path $dataRoot 'worker-state.json'
     $firstPid = [int](Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json).pid
@@ -208,6 +217,7 @@ try {
 
     Write-Host 'Package clean extraction: PASS'
     Write-Host 'Packaged Worker ONLINE: PASS'
+    Write-Host 'Skill Registry snapshot: PASS'
     Write-Host 'Single instance: PASS'
     Write-Host 'Tkinter status UI: PASS'
     Write-Host 'system.echo: SUCCESS'
@@ -233,7 +243,7 @@ finally {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Stop 2>$null | Out-Null
     }
     if ($deviceId -and $deviceId -match '^[0-9a-f-]{36}$') {
-        $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
+        $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
         $cleanupBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($cleanupSql))
         & ssh.exe $SshHost "printf '%s' '$cleanupBase64' | base64 -d | docker exec -i control-center-postgres-dev psql -v ON_ERROR_STOP=1 -U postgres -d control_center_dev" | Out-Null
     }

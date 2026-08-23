@@ -106,6 +106,7 @@ async def run_worker(settings: WorkerSettings) -> None:
         event_reporter,
         local_runtime_state,
         provider_discovery=discovery_service,
+        skill_registry=registry,
     )
     await worker.run(stop_event)
 

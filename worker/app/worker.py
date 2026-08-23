@@ -9,6 +9,7 @@ from app.contracts import (
     ExecutionResult,
     ExecutionStatus,
     RuntimeEventType,
+    SkillCapabilitySnapshot,
     WorkerTask,
 )
 from app.executors import Executor
@@ -17,7 +18,7 @@ from app.runtime_events import (
     LocalRuntimeState,
     RuntimeEventBus,
 )
-from app.skills import registry
+from app.skills import SkillRegistry, registry
 from app.version import WORKER_VERSION
 from app.contracts import ProviderInventoryReport
 from app.providers.yingdao.contracts import YingdaoDiscoveryResult
@@ -40,6 +41,7 @@ class Worker:
         event_reporter: BackendEventReporter | None = None,
         local_runtime_state: LocalRuntimeState | None = None,
         provider_discovery: ProviderDiscovery | None = None,
+        skill_registry: SkillRegistry = registry,
     ) -> None:
         self.settings = settings
         self.client = client
@@ -48,8 +50,10 @@ class Worker:
         self.event_reporter = event_reporter
         self.local_runtime_state = local_runtime_state
         self.provider_discovery = provider_discovery
+        self.skill_registry = skill_registry
         self.started_at = datetime.now(UTC)
         self.worker_version = WORKER_VERSION
+        self._skill_snapshot_synced = False
 
     async def run(self, stop_event: asyncio.Event) -> None:
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(stop_event))
@@ -93,23 +97,42 @@ class Worker:
 
     async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
-            try:
-                await self.client.heartbeat(
-                    worker_version=self.worker_version,
-                    started_at=self.started_at,
-                )
-                if self.local_runtime_state is not None:
-                    self.local_runtime_state.set_connection(True)
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:
-                if self.local_runtime_state is not None:
-                    self.local_runtime_state.set_connection(False)
-                logger.warning("Worker heartbeat failed: %s", error)
+            await self._heartbeat_once()
             await self._wait_or_stop(
                 stop_event,
                 self.settings.heartbeat_interval_seconds,
             )
+
+    async def _heartbeat_once(self) -> None:
+        try:
+            await self.client.heartbeat(
+                worker_version=self.worker_version,
+                started_at=self.started_at,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self._skill_snapshot_synced = False
+            if self.local_runtime_state is not None:
+                self.local_runtime_state.set_connection(False)
+            logger.warning("Worker heartbeat failed: %s", error)
+            return
+
+        if self.local_runtime_state is not None:
+            self.local_runtime_state.set_connection(True)
+        if self._skill_snapshot_synced:
+            return
+        try:
+            await self.client.report_skill_capabilities(
+                SkillCapabilitySnapshot(
+                    skills=list(self.skill_registry.descriptors()),
+                ),
+            )
+            self._skill_snapshot_synced = True
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.warning("Skill capability snapshot sync failed: %s", error)
 
     async def _provider_inventory_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -133,7 +156,7 @@ class Worker:
 
     async def _execute_task(self, task: WorkerTask) -> None:
         await self._send_immediate_heartbeat()
-        definition = registry.get(task.skill_id)
+        definition = self.skill_registry.get(task.skill_id)
         if self.local_runtime_state is not None:
             self.local_runtime_state.begin_task(
                 task,

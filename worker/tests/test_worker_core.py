@@ -6,14 +6,24 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import httpx
+from pydantic import BaseModel
 
+from app.client import WorkerApiClient
 from app.config import WorkerSettings
-from app.contracts import ExecutionStatus, WorkerTask
+from app.contracts import (
+    ExecutionResult,
+    ExecutionStatus,
+    SkillCapabilitySnapshot,
+    WorkerTask,
+)
 from app.executors.python import PythonExecutor, build_skill_process_command
 from app.runtime import TaskRuntimePaths
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills.runner import execute
-from app.skills import registry
+from app.skills import SkillDefinition, SkillRegistry, registry
+from app.skills.registry import SkillRuntime
+from app.worker import Worker
 
 
 def test_worker_configuration_defaults() -> None:
@@ -54,6 +64,144 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
         "provider": "yingdao",
         "version": "1",
     }
+
+
+class CapabilityRecordingClient:
+    def __init__(self) -> None:
+        self.heartbeat_error: Exception | None = None
+        self.snapshots: list[list[str]] = []
+
+    async def heartbeat(self, **_: object) -> None:
+        if self.heartbeat_error is not None:
+            raise self.heartbeat_error
+
+    async def report_skill_capabilities(self, snapshot: object) -> None:
+        self.snapshots.append([skill.skill_id for skill in snapshot.skills])
+
+
+class UnusedExecutor:
+    async def execute(self, task: WorkerTask) -> ExecutionResult:
+        del task
+        return ExecutionResult(status=ExecutionStatus.SUCCESS)
+
+
+def build_snapshot_registry(*skill_ids: str) -> SkillRegistry:
+    snapshot_registry = SkillRegistry()
+    for skill_id in skill_ids:
+        snapshot_registry.register(
+            SkillDefinition(
+                skill_id=skill_id,
+                display_name=skill_id,
+                version="1",
+                input_model=BaseModel,
+                runtime=SkillRuntime.PYTHON,
+                timeout_seconds=30,
+                handler=lambda _: {},
+            ),
+        )
+    return snapshot_registry
+
+
+def test_worker_syncs_registry_snapshot_on_start_and_reconnect() -> None:
+    client = CapabilityRecordingClient()
+    settings = WorkerSettings(
+        server_url="https://control.example.test",
+        device_id=uuid4(),
+        device_token="secret-token",
+    )
+    worker = Worker(
+        settings,
+        client,  # type: ignore[arg-type]
+        UnusedExecutor(),
+        skill_registry=build_snapshot_registry("system.echo", "system.sleep"),
+    )
+
+    asyncio.run(worker._heartbeat_once())
+    asyncio.run(worker._heartbeat_once())
+    assert client.snapshots == [["system.echo", "system.sleep"]]
+
+    client.heartbeat_error = RuntimeError("offline")
+    asyncio.run(worker._heartbeat_once())
+    client.heartbeat_error = None
+    asyncio.run(worker._heartbeat_once())
+    assert client.snapshots == [
+        ["system.echo", "system.sleep"],
+        ["system.echo", "system.sleep"],
+    ]
+
+
+def test_worker_capability_payload_uses_authenticated_device_headers() -> None:
+    observed: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed["path"] = request.url.path
+        observed["device_id"] = request.headers.get("X-Device-ID")
+        observed["authorization"] = request.headers.get("Authorization")
+        observed["payload"] = json.loads(request.content)
+        return httpx.Response(200, json=[])
+
+    settings = WorkerSettings(
+        server_url="https://control.example.test",
+        device_id=uuid4(),
+        device_token="secret-token",
+    )
+    http_client = httpx.AsyncClient(
+        base_url="https://control.example.test",
+        transport=httpx.MockTransport(handler),
+        headers={
+            "Authorization": "Bearer secret-token",
+            "X-Device-ID": str(settings.device_id),
+        },
+    )
+    client = WorkerApiClient(settings, http_client)
+    asyncio.run(
+        client.report_skill_capabilities(
+            SkillCapabilitySnapshot(skills=list(registry.descriptors())),
+        ),
+    )
+    asyncio.run(http_client.aclose())
+
+    assert observed["path"] == "/api/v1/worker/skill-capabilities"
+    assert observed["device_id"] == str(settings.device_id)
+    assert observed["authorization"] == "Bearer secret-token"
+    payload = observed["payload"]
+    assert isinstance(payload, dict)
+    assert "device_id" not in payload
+    assert {skill["skill_id"] for skill in payload["skills"]} == {
+        "system.echo",
+        "system.sleep",
+        "yingdao.app.run",
+        "yingdao.test",
+        "yingdao.discover",
+    }
+
+
+def test_worker_snapshot_after_upgrade_contains_only_current_registry_skills() -> None:
+    client = CapabilityRecordingClient()
+    settings = WorkerSettings(
+        server_url="https://control.example.test",
+        device_id=uuid4(),
+        device_token="secret-token",
+    )
+    before_upgrade = Worker(
+        settings,
+        client,  # type: ignore[arg-type]
+        UnusedExecutor(),
+        skill_registry=build_snapshot_registry("system.echo", "removed.skill"),
+    )
+    after_upgrade = Worker(
+        settings,
+        client,  # type: ignore[arg-type]
+        UnusedExecutor(),
+        skill_registry=build_snapshot_registry("system.echo"),
+    )
+
+    asyncio.run(before_upgrade._heartbeat_once())
+    asyncio.run(after_upgrade._heartbeat_once())
+    assert client.snapshots == [
+        ["system.echo", "removed.skill"],
+        ["system.echo"],
+    ]
 
 
 def test_python_process_runner_keeps_echo_sleep_and_blocks_unknown_skills() -> None:

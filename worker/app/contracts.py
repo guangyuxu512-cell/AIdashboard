@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.skills.registry import SkillDescriptor
+
 
 class ExecutionStatus(StrEnum):
     SUCCESS = "success"
@@ -25,6 +27,14 @@ class ProviderInventoryReport(BaseModel):
 
     provider_code: str
     inventory: dict[str, Any]
+
+
+class SkillCapabilitySnapshot(BaseModel):
+    """The complete set of Skills currently registered by this Worker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    skills: list[SkillDescriptor]
 
 
 class ExecutionResult(BaseModel):

@@ -45,7 +45,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录只用于读取实际运行产生的 `task_logs`，不再用于识别账号或云端应用；默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。
 
-Worker 0.3.0 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。
+Worker 0.3.1 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.3.1 还会在启动与断线重连后同步当前 Skill Registry 完整快照。
 
 当前账号由 6.3.6 的 `/api/v1/account/current` 唯一确定，不需要从多个 `user.db3` 缓存中手工选择 userId。
 
