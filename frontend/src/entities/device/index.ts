@@ -13,3 +13,4 @@ export { default as DeviceEnabledStatusTag } from './ui/DeviceEnabledStatusTag.v
 export { default as DeviceConnectionStatusTag } from './ui/DeviceConnectionStatusTag.vue'
 export { default as DeviceIdentity } from './ui/DeviceIdentity.vue'
 export { default as YingdaoAvailabilityStatusTag } from './ui/YingdaoAvailabilityStatusTag.vue'
+export { default as YingdaoProviderStatusTag } from './ui/YingdaoProviderStatusTag.vue'

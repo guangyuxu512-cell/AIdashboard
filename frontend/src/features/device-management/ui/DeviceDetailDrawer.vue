@@ -8,6 +8,7 @@ import {
   type DeviceListItemViewModel,
   type YingdaoInventoryViewModel,
   YingdaoAvailabilityStatusTag,
+  YingdaoProviderStatusTag,
 } from '@/entities/device'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
@@ -115,12 +116,14 @@ defineEmits<{
         <h3>执行能力</h3>
         <DeviceCapabilityCard
           title="影刀 RPA"
-          description="本机影刀环境与已同步应用"
+          description="ShadowBot 6.3.6 当前会话与云端应用"
         >
           <template #status>
-            <YingdaoAvailabilityStatusTag
-              :status="yingdaoInventory?.availabilityStatus ?? 'not_detected'"
+            <YingdaoProviderStatusTag
+              v-if="yingdaoInventory"
+              :status="yingdaoInventory.providerStatus"
             />
+            <YingdaoAvailabilityStatusTag v-else status="not_detected" />
           </template>
 
           <LoadingState
@@ -143,7 +146,7 @@ defineEmits<{
               <dd>{{ yingdaoInventory?.accountType ?? '—' }}</dd>
             </div>
             <div>
-              <dt>本机已同步应用</dt>
+              <dt>当前账号云端应用</dt>
               <dd>{{ yingdaoInventory?.applicationCount ?? '—' }}</dd>
             </div>
             <div>
@@ -163,6 +166,10 @@ defineEmits<{
             <div v-if="yingdaoInventory?.executionUnavailableReason">
               <dt>不可执行原因</dt>
               <dd>{{ yingdaoInventory.executionUnavailableReason }}</dd>
+            </div>
+            <div v-if="yingdaoInventory?.statusReason">
+              <dt>Provider 状态</dt>
+              <dd>{{ yingdaoInventory.statusReason }}</dd>
             </div>
           </dl>
 

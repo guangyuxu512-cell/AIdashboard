@@ -110,7 +110,7 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
     render: (device) => device.yingdaoInventory?.accountDisplay ?? '—',
   },
   {
-    title: '本机已同步应用',
+    title: '云端应用',
     key: 'applicationCount',
     width: 130,
     align: 'center',

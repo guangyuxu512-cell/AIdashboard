@@ -5,6 +5,7 @@ import {
   DEVICE_CAPABILITY_META,
   DEVICE_ENABLED_STATUS_META,
   DEVICE_STATUS_META,
+  YINGDAO_PROVIDER_STATUS_META,
 } from './status-meta'
 
 describe('device metadata', () => {
@@ -18,5 +19,18 @@ describe('device metadata', () => {
     expect(DEVICE_ENABLED_STATUS_META.enabled.label).toBe('已启用')
     expect(DEVICE_CAPABILITY_META.browser.label).toBe('Browser')
     expect(DEVICE_CAPABILITY_AVAILABILITY_META.unavailable.tone).toBe('neutral')
+  })
+
+  it('maps every ShadowBot Provider lifecycle state', () => {
+    expect(YINGDAO_PROVIDER_STATUS_META.not_installed.label).toBe('未安装')
+    expect(YINGDAO_PROVIDER_STATUS_META.version_unsupported.label).toBe(
+      '版本不支持',
+    )
+    expect(YINGDAO_PROVIDER_STATUS_META.starting.label).toBe('正在启动')
+    expect(YINGDAO_PROVIDER_STATUS_META.need_login.label).toBe('需要登录')
+    expect(YINGDAO_PROVIDER_STATUS_META.interface_unreachable.label).toBe(
+      '接口不可达',
+    )
+    expect(YINGDAO_PROVIDER_STATUS_META.ready.label).toBe('已就绪')
   })
 })

@@ -4,7 +4,12 @@ export type TaskStatusDto =
 export interface TaskReadDto {
   task_id: string
   target_device_id: string
-  skill_id: 'system.echo' | 'system.sleep' | 'yingdao.test' | 'yingdao.discover'
+  skill_id:
+    | 'system.echo'
+    | 'system.sleep'
+    | 'yingdao.test'
+    | 'yingdao.discover'
+    | 'yingdao.app.run'
   status: TaskStatusDto
   input: Record<string, unknown>
   result: Record<string, unknown> | null

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { DataTableColumns } from 'naive-ui'
+import { useMessage, type DataTableColumns } from 'naive-ui'
+import { h } from 'vue'
 
 import type { ProviderApplicationViewModel } from '@/entities/device'
 import DataTable from '@/shared/components/DataTable.vue'
@@ -11,18 +12,63 @@ defineProps<{
   applications: ProviderApplicationViewModel[]
 }>()
 
-defineEmits<{ 'update:show': [value: boolean] }>()
+const emit = defineEmits<{
+  'update:show': [value: boolean]
+  configure: [application: ProviderApplicationViewModel]
+  run: [application: ProviderApplicationViewModel]
+}>()
+const message = useMessage()
+
+async function copyAppId(appId: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(appId)
+    message.success('App ID 已复制')
+  } catch {
+    message.error('App ID 复制失败')
+  }
+}
 
 const columns: DataTableColumns<ProviderApplicationViewModel> = [
   { title: '应用名称', key: 'appName', minWidth: 180 },
   {
     title: 'App ID',
     key: 'appId',
-    minWidth: 300,
+    minWidth: 220,
     ellipsis: { tooltip: true },
+    render: (application) =>
+      h('div', { class: 'yingdao-app-id' }, [
+        h('span', application.appId),
+        h(
+          AppButton,
+          { tone: 'text', onClick: () => copyAppId(application.appId) },
+          { default: () => '复制' },
+        ),
+      ]),
   },
-  { title: 'Version', key: 'packageVersion', width: 100 },
-  { title: 'Entrypoint', key: 'entrypoint', width: 120 },
+  {
+    title: '参数配置',
+    key: 'configuration',
+    width: 100,
+    render: (application) =>
+      h(
+        AppButton,
+        { tone: 'text', onClick: () => emit('configure', application) },
+        { default: () => '配置' },
+      ),
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 90,
+    render: (application) =>
+      h('div', { class: 'yingdao-app-actions' }, [
+        h(
+          AppButton,
+          { tone: 'text', onClick: () => emit('run', application) },
+          { default: () => '运行' },
+        ),
+      ]),
+  },
 ]
 </script>
 
@@ -34,13 +80,13 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
     @update:show="$emit('update:show', $event)"
   >
     <p class="yingdao-applications__description">
-      当前设备登录账号已同步到本机的影刀应用；不代表中控台已注册 Skill。
+      当前设备 6.3.6 登录账号可访问的云端应用。参数配置属于中控台配置，运行将创建正式 Task。
     </p>
     <DataTable
       :columns="columns"
       :data="applications"
       :row-key="(row: ProviderApplicationViewModel) => row.appId"
-      :scroll-x="700"
+      :scroll-x="600"
       empty-description="当前账号没有已发现应用"
     />
 
@@ -54,5 +100,19 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
 .yingdao-applications__description {
   margin-bottom: var(--space-4);
   color: var(--color-text-secondary);
+}
+
+:deep(.yingdao-app-id),
+:deep(.yingdao-app-actions) {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+:deep(.yingdao-app-id span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

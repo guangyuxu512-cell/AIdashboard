@@ -8,6 +8,7 @@ import {
   type DeviceListFilters,
   type DeviceListItemViewModel,
   type DeviceSaveInput,
+  type ProviderApplicationViewModel,
   useCreateDeviceMutation,
   useDeviceDetailQuery,
   useDeviceListQuery,
@@ -58,6 +59,9 @@ export function useDeviceManagement() {
   const formInitialValue = ref<DeviceFormViewModel | null>(null)
   const editingDeviceId = ref<string | null>(null)
   const applicationsVisible = ref(false)
+  const applicationConfigVisible = ref(false)
+  const applicationRunVisible = ref(false)
+  const selectedApplication = ref<ProviderApplicationViewModel | null>(null)
   const selectedDeviceIds = ref<string[]>([])
   const statusChangingDeviceId = ref<string | null>(null)
   const removeDevice = ref<DeviceListItemViewModel | null>(null)
@@ -257,6 +261,20 @@ export function useDeviceManagement() {
     applicationsVisible.value = true
   }
 
+  function configureYingdaoApplication(
+    application: ProviderApplicationViewModel,
+  ): void {
+    selectedApplication.value = application
+    applicationConfigVisible.value = true
+  }
+
+  function runYingdaoApplication(
+    application: ProviderApplicationViewModel,
+  ): void {
+    selectedApplication.value = application
+    applicationRunVisible.value = true
+  }
+
   function openTaskRuntime(taskId: string): void {
     runtimeTaskId.value = taskId
     runtimeVisible.value = true
@@ -385,6 +403,10 @@ export function useDeviceManagement() {
     runtimeTaskId,
     runtimeDeviceName,
     applicationsVisible,
+    applicationConfigVisible,
+    applicationRunVisible,
+    selectedApplication,
+    detailDeviceId,
     formVisible,
     formMode,
     formInitialValue,
@@ -425,6 +447,8 @@ export function useDeviceManagement() {
     openCreate,
     openEdit,
     openYingdaoApplications,
+    configureYingdaoApplication,
+    runYingdaoApplication,
     openTaskRuntime,
     refreshYingdao,
     saveDevice,

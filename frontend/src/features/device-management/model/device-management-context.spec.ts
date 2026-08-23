@@ -9,6 +9,8 @@ import {
 
 const inventory: YingdaoInventoryViewModel = {
   availabilityStatus: 'available',
+  providerStatus: 'ready',
+  statusReason: null,
   available: true,
   loggedIn: true,
   enterpriseAccount: false,

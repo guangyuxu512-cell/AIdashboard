@@ -28,7 +28,7 @@ test('uses the shared management list pattern and capability-first drawer', asyn
     '当前执行',
     '影刀',
     '影刀账号',
-    '本机已同步应用',
+    '云端应用',
     '绑定店铺',
     '最后心跳',
     '启用',
@@ -69,6 +69,12 @@ test('uses the shared management list pattern and capability-first drawer', asyn
   await expect(applicationsDrawer).toBeVisible()
   await expect(
     applicationsDrawer.getByText('商品发布（Fixture）', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByRole('columnheader', { name: '参数配置' }),
+  ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByRole('button', { name: '运行' }).first(),
   ).toBeVisible()
   await applicationsDrawer.getByRole('button', { name: '关闭' }).click()
   await drawer.getByRole('button', { name: '关闭' }).click()

@@ -11,6 +11,14 @@ export type DeviceCapabilityAvailability = 'available' | 'unavailable'
 export type YingdaoAvailabilityStatus =
   'available' | 'unavailable' | 'not_detected'
 
+export type YingdaoProviderStatus =
+  | 'not_installed'
+  | 'version_unsupported'
+  | 'starting'
+  | 'need_login'
+  | 'interface_unreachable'
+  | 'ready'
+
 export interface DeviceCapabilityViewModel {
   capability: DeviceCapability
   availability: DeviceCapabilityAvailability
@@ -59,13 +67,14 @@ export interface DeviceSaveInput {
 export interface ProviderApplicationViewModel {
   appId: string
   appName: string
-  packageVersion: string
-  entrypoint: string
+  versionId: string | null
 }
 
 export interface YingdaoInventoryViewModel {
   available: boolean
   availabilityStatus: Exclude<YingdaoAvailabilityStatus, 'not_detected'>
+  providerStatus: YingdaoProviderStatus
+  statusReason: string | null
   providerVersion: string
   executionAvailable: boolean
   executionVersion: string

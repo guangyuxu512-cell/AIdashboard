@@ -6,6 +6,8 @@ import {
   DeviceListTable,
   DeviceRemoveDialog,
   YingdaoApplicationsDrawer,
+  YingdaoApplicationConfigDialog,
+  YingdaoApplicationRunDialog,
   useDeviceManagement,
 } from '@/features/device-management'
 import { TaskRuntimeDrawer } from '@/features/task-runtime'
@@ -89,6 +91,20 @@ const management = useDeviceManagement()
     <YingdaoApplicationsDrawer
       v-model:show="management.applicationsVisible.value"
       :applications="management.yingdaoInventory.value?.applications ?? []"
+      @configure="management.configureYingdaoApplication"
+      @run="management.runYingdaoApplication"
+    />
+
+    <YingdaoApplicationConfigDialog
+      v-model:show="management.applicationConfigVisible.value"
+      :application="management.selectedApplication.value"
+    />
+
+    <YingdaoApplicationRunDialog
+      v-model:show="management.applicationRunVisible.value"
+      :application="management.selectedApplication.value"
+      :device-id="management.detailDeviceId.value"
+      @started="management.openTaskRuntime"
     />
 
     <DeviceFormDialog

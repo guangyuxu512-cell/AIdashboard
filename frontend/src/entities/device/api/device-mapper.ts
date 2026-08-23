@@ -61,6 +61,8 @@ export function mapYingdaoInventoryDto(
   return {
     available: dto.available,
     availabilityStatus: dto.available ? 'available' : 'unavailable',
+    providerStatus: dto.inventory.status,
+    statusReason: dto.inventory.status_reason,
     providerVersion: dto.provider_version ?? '未知',
     executionAvailable: dto.inventory.execution_available ?? false,
     executionVersion: dto.inventory.execution_version ?? '—',
@@ -74,8 +76,7 @@ export function mapYingdaoInventoryDto(
     applications: dto.inventory.applications.map((application) => ({
       appId: application.app_id,
       appName: application.app_name,
-      packageVersion: application.package_version,
-      entrypoint: application.entrypoint,
+      versionId: application.version_id,
     })),
     lastDiscoveredAtDisplay: formatDateTime(dto.last_discovered_at),
   }

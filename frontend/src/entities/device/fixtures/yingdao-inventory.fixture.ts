@@ -4,20 +4,17 @@ const applications = [
   {
     appId: 'app-fixture-product-publish',
     appName: '商品发布（Fixture）',
-    packageVersion: '3',
-    entrypoint: 'main',
+    versionId: '3',
   },
   {
     appId: 'app-fixture-inventory-sync',
     appName: '库存同步（Fixture）',
-    packageVersion: '2',
-    entrypoint: 'main',
+    versionId: '2',
   },
   {
     appId: 'app-fixture-after-sales',
     appName: '售后工单（Fixture）',
-    packageVersion: '1',
-    entrypoint: 'main',
+    versionId: '1',
   },
 ]
 
@@ -39,6 +36,8 @@ function inventory(
   return {
     available: true,
     availabilityStatus: 'available',
+    providerStatus: 'ready',
+    statusReason: null,
     providerVersion: '6.3.6 (Fixture)',
     executionAvailable: true,
     executionVersion: '6.3.6',

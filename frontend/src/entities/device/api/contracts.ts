@@ -36,22 +36,33 @@ export interface DeviceUpdateDto {
 export interface ProviderApplicationInventoryDto {
   app_id: string
   app_name: string
-  package_version: string
-  entrypoint: string
+  version_id: string | null
+  updated_at: string | null
+  app_type: string | null
+  group_id: string | null
 }
 
 export interface YingdaoProviderInventoryDto {
   provider: 'yingdao'
   available: boolean
-  provider_version: string
+  status:
+    | 'not_installed'
+    | 'version_unsupported'
+    | 'starting'
+    | 'need_login'
+    | 'interface_unreachable'
+    | 'ready'
+  status_reason_code: string | null
+  status_reason: string | null
+  provider_version: string | null
   execution_available?: boolean
   execution_version?: string | null
   execution_unavailable_reason?: string | null
   logged_in: boolean
-  account_display: string
+  account_display: string | null
   account_type: string
   enterprise_account: boolean
-  user_id: string
+  user_id: string | null
   applications: ProviderApplicationInventoryDto[]
   discovered_at: string
 }

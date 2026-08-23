@@ -22,6 +22,7 @@ function cleanupRealTestData(): void {
     'from sqlalchemy import delete, select',
     'from sqlalchemy.orm import Session',
     'from app.core.database import get_database_engine',
+    'from app.modules.automation_apps.models import AutomationApplicationConfig',
     'from app.modules.devices.models import Device',
     'from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding',
     'from app.modules.sessions.models import ShopSession',
@@ -30,6 +31,7 @@ function cleanupRealTestData(): void {
     'from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, WorkerDeviceCredential',
     `prefix = ${JSON.stringify(`${testPrefix}%`)}`,
     'with Session(get_database_engine()) as session:',
+    '    session.execute(delete(AutomationApplicationConfig).where(AutomationApplicationConfig.app_id == "stage-3b-1a-app"))',
     '    shop_ids = list(session.scalars(select(Shop.shop_id).where(Shop.display_name.like(prefix))))',
     '    device_ids = list(session.scalars(select(Device.device_id).where(Device.display_name.like(prefix))))',
     '    if shop_ids:',
@@ -343,7 +345,10 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
         inventory: {
           provider: 'yingdao',
           available: true,
-          provider_version: '6.2.23',
+          status: 'ready',
+          provider_version: '6.3.6',
+          execution_available: true,
+          execution_version: '6.3.6',
           logged_in: true,
           account_display: 'GY00999',
           account_type: 'PersonalBasic',
@@ -353,8 +358,10 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
             {
               app_id: 'stage-3b-1a-app',
               app_name: '影刀应用 E2E',
-              package_version: '1',
-              entrypoint: 'main',
+              version_id: '1',
+              updated_at: null,
+              app_type: null,
+              group_id: null,
             },
           ],
           discovered_at: new Date().toISOString(),
@@ -378,7 +385,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(page.getByRole('heading', { name: '执行能力' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '影刀 RPA' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '最近执行' })).toBeVisible()
-  await expect(deviceDrawer.getByText('6.2.23', { exact: true })).toBeVisible()
+  await expect(deviceDrawer.getByText('6.3.6', { exact: true })).toBeVisible()
   await expect(deviceDrawer.getByText('GY00999', { exact: true })).toBeVisible()
   await expect(
     deviceDrawer.getByText('PersonalBasic', { exact: true }),
@@ -387,10 +394,32 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(page.getByText('影刀应用列表', { exact: true })).toBeVisible()
   await expect(page.getByText('影刀应用 E2E', { exact: true })).toBeVisible()
   await expect(page.getByText('stage-3b-1a-app', { exact: true })).toBeVisible()
-  await expect(page.getByText('main', { exact: true })).toBeVisible()
   const applicationsDrawer = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: '影刀应用列表' }),
   })
+  await applicationsDrawer.getByRole('button', { name: '配置' }).click()
+  const configDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', {
+      name: '配置参数 · 影刀应用 E2E',
+    }),
+  })
+  await configDialog.getByRole('button', { name: '添加参数' }).click()
+  await configDialog.getByPlaceholder('例如 product_id').fill('message')
+  await configDialog.getByPlaceholder('例如 商品 ID').fill('测试消息')
+  await configDialog.getByRole('button', { name: '保存' }).click()
+  await expect(configDialog).toHaveCount(0)
+
+  await applicationsDrawer.getByRole('button', { name: '运行' }).click()
+  const runDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '运行应用 · 影刀应用 E2E' }),
+  })
+  await runDialog.getByRole('textbox').fill('hello')
+  await runDialog.getByRole('button', { name: '运行', exact: true }).click()
+  const runtimeDrawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '运行详情' }),
+  })
+  await expect(runtimeDrawer.getByText('yingdao.app.run')).toBeVisible()
+  await runtimeDrawer.getByRole('button', { name: '关闭' }).click()
   await applicationsDrawer
     .getByRole('button', { name: '关闭', exact: true })
     .click()
@@ -600,7 +629,10 @@ test('protects active Device tasks and revokes every Worker endpoint after soft 
     inventory: {
       provider: 'yingdao',
       available: true,
+      status: 'ready',
       provider_version: '6.3.6',
+      execution_available: true,
+      execution_version: '6.3.6',
       logged_in: true,
       account_display: 'E2E',
       account_type: 'PersonalBasic',

@@ -115,7 +115,7 @@ describe('device mapper, query and mutation', () => {
       device_id: '00000000-0000-0000-0000-000000000001',
       provider_code: 'yingdao',
       available: true,
-      provider_version: '6.2.23',
+      provider_version: '6.3.6',
       account_display: 'GY00999',
       account_type: 'PersonalBasic',
       enterprise_account: false,
@@ -124,7 +124,10 @@ describe('device mapper, query and mutation', () => {
       inventory: {
         provider: 'yingdao',
         available: true,
-        provider_version: '6.2.23',
+        status: 'ready',
+        status_reason_code: null,
+        status_reason: null,
+        provider_version: '6.3.6',
         logged_in: true,
         account_display: 'GY00999',
         account_type: 'PersonalBasic',
@@ -134,8 +137,10 @@ describe('device mapper, query and mutation', () => {
           {
             app_id: 'app-1',
             app_name: '应用一',
-            package_version: '1',
-            entrypoint: 'main',
+            version_id: '1',
+            updated_at: null,
+            app_type: null,
+            group_id: null,
           },
         ],
         discovered_at: '2026-08-20T12:00:00+00:00',
@@ -143,14 +148,13 @@ describe('device mapper, query and mutation', () => {
     })
 
     expect(inventory.availabilityStatus).toBe('available')
-    expect(inventory.providerVersion).toBe('6.2.23')
+    expect(inventory.providerVersion).toBe('6.3.6')
     expect(inventory.accountDisplay).toBe('GY00999')
     expect(inventory.applicationCount).toBe(1)
     expect(inventory.applications[0]).toEqual({
       appId: 'app-1',
       appName: '应用一',
-      packageVersion: '1',
-      entrypoint: 'main',
+      versionId: '1',
     })
   })
 
