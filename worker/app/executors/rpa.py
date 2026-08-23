@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Mapping
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,9 @@ from app.runtime_events import RuntimeEventBus
 from app.skills.registry import SkillProvider, SkillRegistry, SkillRuntime
 
 
+logger = logging.getLogger(__name__)
+
+
 class RPAExecutor:
     def __init__(
         self,
@@ -37,6 +41,15 @@ class RPAExecutor:
         self.providers = providers
         self.event_bus = event_bus or RuntimeEventBus()
         self.provider_app_ids = provider_app_ids or {}
+        self._provider_slots = {
+            provider: asyncio.Semaphore(1) for provider in providers
+        }
+        self._deferred_provider_tasks: set[asyncio.Task[None]] = set()
+
+    def can_claim(self) -> bool:
+        """Keep new Tasks pending while a timed-out Provider is still active."""
+
+        return all(not slot.locked() for slot in self._provider_slots.values())
 
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = self.registry.get(task.skill_id)
@@ -132,12 +145,28 @@ class RPAExecutor:
             ),
             runtime_directory=paths.directory,
         )
+        slot = self._provider_slots[definition.provider]
+        await slot.acquire()
+        provider_task = asyncio.create_task(adapter.execute(request))
+        cleanup_deferred = False
         try:
             raw_result = await asyncio.wait_for(
-                adapter.execute(request),
+                asyncio.shield(provider_task),
                 timeout=definition.timeout_seconds,
             )
         except TimeoutError:
+            cleanup_deferred = True
+            deferred = asyncio.create_task(
+                self._drain_provider_execution(
+                    provider_task,
+                    adapter,
+                    request,
+                    slot,
+                    paths.stderr,
+                ),
+            )
+            self._deferred_provider_tasks.add(deferred)
+            deferred.add_done_callback(self._deferred_provider_tasks.discard)
             return self._finish(
                 paths,
                 self._failure("RPA_TIMEOUT", "RPA execution timed out"),
@@ -153,11 +182,12 @@ class RPAExecutor:
                 self._failure("RPA_TRIGGER_FAILED", "RPA application trigger failed"),
             )
         finally:
-            try:
-                await adapter.cleanup(request)
-            except Exception as error:
-                with paths.stderr.open("a", encoding="utf-8") as stderr:
-                    stderr.write(f"RPA cleanup failed: {type(error).__name__}\n")
+            if not cleanup_deferred:
+                if not provider_task.done():
+                    provider_task.cancel()
+                    await asyncio.gather(provider_task, return_exceptions=True)
+                await self._cleanup_provider(adapter, request, paths.stderr)
+                slot.release()
 
         try:
             provider_result = YingdaoExecutionResult.model_validate(raw_result)
@@ -170,6 +200,41 @@ class RPAExecutor:
                 ),
             )
         return self._finish(paths, self._map_result(provider_result))
+
+    async def _drain_provider_execution(
+        self,
+        provider_task: asyncio.Task[Mapping[str, Any]],
+        adapter: YingdaoAdapter,
+        request: YingdaoExecutionRequest,
+        slot: asyncio.Semaphore,
+        stderr_path: Path,
+    ) -> None:
+        try:
+            await provider_task
+        except asyncio.CancelledError:
+            provider_task.cancel()
+            await asyncio.gather(provider_task, return_exceptions=True)
+            raise
+        except Exception as error:
+            logger.warning(
+                "Timed-out RPA provider finished with error type=%s",
+                type(error).__name__,
+            )
+        finally:
+            await self._cleanup_provider(adapter, request, stderr_path)
+            slot.release()
+
+    @staticmethod
+    async def _cleanup_provider(
+        adapter: YingdaoAdapter,
+        request: YingdaoExecutionRequest,
+        stderr_path: Path,
+    ) -> None:
+        try:
+            await adapter.cleanup(request)
+        except Exception as error:
+            with stderr_path.open("a", encoding="utf-8") as stderr:
+                stderr.write(f"RPA cleanup failed: {type(error).__name__}\n")
 
     def _map_result(self, result: YingdaoExecutionResult) -> ExecutionResult:
         if result.status is YingdaoExecutionStatus.SUCCESS:

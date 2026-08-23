@@ -180,6 +180,8 @@ class LocalRuntimeState:
         self.path = path.resolve()
         self.recent_limit = recent_limit
         self._recent_events: deque[dict[str, Any]] = deque(maxlen=recent_limit)
+        self._finished_task_ids: deque[UUID] = deque(maxlen=100)
+        self._finished_task_id_set: set[UUID] = set()
         self._state: dict[str, Any] = {
             "device_id": str(device_id),
             "device_display_name": device_display_name,
@@ -273,15 +275,22 @@ class LocalRuntimeState:
 
     def consume(self, event: RuntimeEvent) -> None:
         metadata = event.metadata
-        self._state.update(
-            {
-                "current_task_id": str(event.task_id),
-                "provider": metadata.get("provider", self._state.get("provider")),
-                "app_name": metadata.get("app_name", self._state.get("app_name")),
-                "phase": metadata.get("phase", self._state.get("phase")),
-                "latest_message": event.message,
-            },
-        )
+        if event.task_id not in self._finished_task_id_set:
+            self._state.update(
+                {
+                    "current_task_id": str(event.task_id),
+                    "provider": metadata.get(
+                        "provider",
+                        self._state.get("provider"),
+                    ),
+                    "app_name": metadata.get(
+                        "app_name",
+                        self._state.get("app_name"),
+                    ),
+                    "phase": metadata.get("phase", self._state.get("phase")),
+                    "latest_message": event.message,
+                },
+            )
         self._recent_events.append(
             {
                 "seq": event.seq,
@@ -298,7 +307,12 @@ class LocalRuntimeState:
         self._state["worker_status"] = "stopped"
         self._write()
 
-    def finish_task(self) -> None:
+    def finish_task(self, task_id: UUID) -> None:
+        if len(self._finished_task_ids) == self._finished_task_ids.maxlen:
+            expired = self._finished_task_ids.popleft()
+            self._finished_task_id_set.discard(expired)
+        self._finished_task_ids.append(task_id)
+        self._finished_task_id_set.add(task_id)
         self._state.update(
             {
                 "current_task_id": None,

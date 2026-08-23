@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from app.skills.sdk import BusinessSkill
 
 
 SkillHandler = Callable[[BaseModel], dict[str, Any]]
@@ -30,7 +35,7 @@ class SkillDescriptor(BaseModel):
     runtime: SkillRuntime
     provider: SkillProvider | None
     version: str
-    classification: SkillClassification
+    classification: SkillClassification = SkillClassification.BUSINESS
 
 
 @dataclass(frozen=True)
@@ -45,12 +50,19 @@ class SkillDefinition:
     provider: SkillProvider | None = None
     provider_app_id: str | None = None
     classification: SkillClassification = SkillClassification.BUSINESS
+    business_skill: BusinessSkill[Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.skill_id or not self.display_name or not self.version:
             raise ValueError("Skill descriptor fields cannot be blank")
-        if self.runtime is SkillRuntime.PYTHON and self.handler is None:
-            raise ValueError("Python Skill requires a local handler")
+        if self.runtime is SkillRuntime.PYTHON:
+            if self.classification is SkillClassification.BUSINESS:
+                if self.business_skill is None or self.handler is not None:
+                    raise ValueError(
+                        "Python Business Skill must use the internal Skill SDK",
+                    )
+            elif self.handler is None or self.business_skill is not None:
+                raise ValueError("Internal Python Skill requires a local handler")
         if self.runtime is SkillRuntime.RPA and self.provider is None:
             raise ValueError("RPA Skill requires a provider")
         if self.runtime is SkillRuntime.DISCOVERY and self.provider is None:

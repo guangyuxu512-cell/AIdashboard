@@ -1,6 +1,8 @@
 import asyncio
+import logging
 import sys
 from pathlib import Path
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -12,8 +14,12 @@ from app.contracts import (
 )
 from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
 from app.runtime_events import RuntimeEventBus
-from app.skills import registry
+from app.skills import SkillRegistry, registry
 from app.skills.registry import SkillRuntime
+from app.skills.sdk.process_events import decode_process_event_line
+
+
+logger = logging.getLogger(__name__)
 
 
 class PythonExecutor:
@@ -21,12 +27,20 @@ class PythonExecutor:
         self,
         runtime_root: Path,
         event_bus: RuntimeEventBus | None = None,
+        *,
+        device_id: UUID,
+        skill_registry: SkillRegistry = registry,
     ) -> None:
         self.runtime = TaskRuntimeManager(runtime_root)
         self.event_bus = event_bus or RuntimeEventBus()
+        self.device_id = device_id
+        self.registry = skill_registry
+
+    def can_claim(self) -> bool:
+        return True
 
     async def execute(self, task: WorkerTask) -> ExecutionResult:
-        definition = registry.get(task.skill_id)
+        definition = self.registry.get(task.skill_id)
         if definition is None:
             return self._failure(
                 "SKILL_NOT_FOUND",
@@ -53,27 +67,43 @@ class PythonExecutor:
             metadata={"provider": "python", "phase": "running"},
         )
 
-        with (
-            paths.stdout.open("wb") as stdout_file,
-            paths.stderr.open("wb") as stderr_file,
-        ):
+        try:
             process = await asyncio.create_subprocess_exec(
-                *build_skill_process_command(task, paths),
-                stdout=stdout_file,
-                stderr=stderr_file,
+                *build_skill_process_command(task, paths, self.device_id),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+        except OSError:
+            return self._finish(
+                paths,
+                self._failure(
+                    "SKILL_PROCESS_START_FAILED",
+                    "Skill process could not be started",
+                ),
+            )
+
+        assert process.stdout is not None
+        assert process.stderr is not None
+        stdout_task = asyncio.create_task(
+            self._forward_stdout(process.stdout, paths.stdout, task),
+        )
+        stderr_task = asyncio.create_task(
+            self._forward_stream(process.stderr, paths.stderr),
+        )
+        timed_out = False
+        process_timeout = definition.timeout_seconds + (
+            1.0 if definition.business_skill is not None else 0.0
+        )
+        try:
             try:
                 await asyncio.wait_for(
                     process.wait(),
-                    timeout=definition.timeout_seconds,
+                    timeout=process_timeout,
                 )
             except TimeoutError:
                 process.kill()
                 await process.wait()
-                return self._finish(
-                    paths,
-                    self._failure("SKILL_TIMEOUT", "Skill execution timed out"),
-                )
+                timed_out = True
             except asyncio.CancelledError:
                 process.terminate()
                 try:
@@ -82,6 +112,14 @@ class PythonExecutor:
                     process.kill()
                     await process.wait()
                 raise
+        finally:
+            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+
+        if timed_out:
+            return self._finish(
+                paths,
+                self._failure("SKILL_TIMEOUT", "Skill execution timed out"),
+            )
 
         if not paths.output.exists():
             return self._finish(
@@ -101,6 +139,50 @@ class PythonExecutor:
                 "Skill process returned an invalid result",
             )
         return self._finish(paths, result)
+
+    async def _forward_stdout(
+        self,
+        stream: asyncio.StreamReader,
+        path: Path,
+        task: WorkerTask,
+    ) -> None:
+        with path.open("ab") as output:
+            while line := await stream.readline():
+                try:
+                    event = decode_process_event_line(line)
+                except (ValidationError, ValueError):
+                    logger.warning(
+                        "Python Skill process emitted an invalid runtime event task=%s",
+                        task.task_id,
+                    )
+                    output.write(line)
+                    output.flush()
+                    continue
+                if event is None:
+                    output.write(line)
+                    output.flush()
+                    continue
+                if event.task_id != task.task_id:
+                    logger.warning(
+                        "Python Skill process event Task ID mismatch task=%s",
+                        task.task_id,
+                    )
+                    continue
+                self.event_bus.emit(
+                    task.task_id,
+                    event.event_type,
+                    event.message,
+                    level=event.level,
+                    event_at=event.event_at,
+                    metadata=event.metadata,
+                )
+
+    @staticmethod
+    async def _forward_stream(stream: asyncio.StreamReader, path: Path) -> None:
+        with path.open("ab") as output:
+            while chunk := await stream.read(64 * 1024):
+                output.write(chunk)
+                output.flush()
 
     def _finish(
         self,
@@ -122,8 +204,14 @@ class PythonExecutor:
 def build_skill_process_command(
     task: WorkerTask,
     paths: TaskRuntimePaths,
+    device_id: UUID,
 ) -> list[str]:
-    arguments = [task.skill_id, str(paths.input), str(paths.output)]
+    arguments = [
+        task.skill_id,
+        str(paths.input),
+        str(paths.output),
+        str(device_id),
+    ]
     if getattr(sys, "frozen", False):
         return [sys.executable, "--skill-runner", *arguments]
     return [sys.executable, "-m", "app.skills.runner", *arguments]

@@ -1,4 +1,6 @@
 import asyncio
+from collections import deque
+from datetime import UTC, datetime, timedelta
 import json
 import os
 import sys
@@ -22,7 +24,12 @@ from app.runtime import TaskRuntimePaths
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills.runner import execute
 from app.skills import SkillDefinition, SkillRegistry, registry
-from app.skills.registry import SkillClassification, SkillRuntime
+from app.skills.registry import (
+    SkillClassification,
+    SkillDescriptor,
+    SkillRuntime,
+)
+from app.skills.sdk import BusinessSkillInput, SkillResult
 from app.worker import Worker
 
 
@@ -73,9 +80,58 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
 
 
 def test_new_skill_definition_defaults_to_business_classification() -> None:
-    descriptor = build_snapshot_registry("refund.sync").descriptors()[0]
+    class Input(BusinessSkillInput):
+        value: int
+
+    class Skill:
+        descriptor = SkillDescriptor(
+            skill_id="demo.default",
+            display_name="Default",
+            runtime=SkillRuntime.PYTHON,
+            provider=None,
+            version="1",
+            classification=SkillClassification.BUSINESS,
+        )
+        input_model = Input
+        timeout_seconds = 1.0
+
+        async def run(self, ctx: object, input: Input) -> SkillResult:
+            del ctx
+            return SkillResult(summary="ok", data={"value": input.value})
+
+    definition = SkillDefinition(
+        skill_id="demo.default",
+        display_name="Default",
+        version="1",
+        input_model=Input,
+        runtime=SkillRuntime.PYTHON,
+        timeout_seconds=1,
+        business_skill=Skill(),
+    )
+    descriptor = definition.descriptor()
 
     assert descriptor.classification is SkillClassification.BUSINESS
+
+
+def test_skill_descriptor_defaults_to_business_and_internal_is_explicit() -> None:
+    business = SkillDescriptor(
+        skill_id="demo.descriptor",
+        display_name="Demo",
+        runtime=SkillRuntime.PYTHON,
+        provider=None,
+        version="1",
+    )
+    internal = SkillDescriptor(
+        skill_id="system.fixture",
+        display_name="Fixture",
+        runtime=SkillRuntime.PYTHON,
+        provider=None,
+        version="1",
+        classification=SkillClassification.INTERNAL,
+    )
+
+    assert business.classification is SkillClassification.BUSINESS
+    assert internal.classification is SkillClassification.INTERNAL
 
 
 class CapabilityRecordingClient:
@@ -92,6 +148,9 @@ class CapabilityRecordingClient:
 
 
 class UnusedExecutor:
+    def can_claim(self) -> bool:
+        return True
+
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         del task
         return ExecutionResult(status=ExecutionStatus.SUCCESS)
@@ -109,6 +168,7 @@ def build_snapshot_registry(*skill_ids: str) -> SkillRegistry:
                 runtime=SkillRuntime.PYTHON,
                 timeout_seconds=30,
                 handler=lambda _: {},
+                classification=SkillClassification.INTERNAL,
             ),
         )
     return snapshot_registry
@@ -261,7 +321,10 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
         input={"message": "hello"},
         lease_until="2026-08-19T12:00:00+00:00",
     )
-    result = asyncio.run(PythonExecutor(tmp_path).execute(task))
+    device_id = uuid4()
+    result = asyncio.run(
+        PythonExecutor(tmp_path, device_id=device_id).execute(task),
+    )
     task_directory = tmp_path / str(task.task_id)
 
     assert result.status is ExecutionStatus.SUCCESS
@@ -279,7 +342,9 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
         "params": {"message": "hello"},
     }
 
-    duplicate = asyncio.run(PythonExecutor(tmp_path).execute(task))
+    duplicate = asyncio.run(
+        PythonExecutor(tmp_path, device_id=device_id).execute(task),
+    )
     assert duplicate.status is ExecutionStatus.FAILED
     assert duplicate.error_code == "RUNTIME_DIRECTORY_EXISTS"
 
@@ -305,7 +370,8 @@ def test_frozen_python_executor_reenters_the_packaged_skill_runner(
     )
     monkeypatch.setattr(sys, "frozen", True, raising=False)  # type: ignore[attr-defined]
 
-    command = build_skill_process_command(task, paths)
+    device_id = uuid4()
+    command = build_skill_process_command(task, paths, device_id)
 
     assert command == [
         sys.executable,
@@ -313,6 +379,112 @@ def test_frozen_python_executor_reenters_the_packaged_skill_runner(
         "system.echo",
         str(paths.input),
         str(paths.output),
+        str(device_id),
+    ]
+
+
+def test_worker_claims_three_tasks_in_order_and_continues_after_failure() -> None:
+    stop_event = asyncio.Event()
+    tasks = deque(
+        WorkerTask(
+            task_id=uuid4(),
+            skill_id="system.echo",
+            input={"message": name},
+            lease_until=datetime.now(UTC) + timedelta(minutes=1),
+        )
+        for name in ("A", "B", "C")
+    )
+    expected_order = [task.task_id for task in tasks]
+
+    class QueueClient:
+        def __init__(self) -> None:
+            self.claimed = []
+            self.terminals = []
+
+        async def heartbeat(self, **_: object) -> None:
+            return None
+
+        async def report_skill_capabilities(self, snapshot: object) -> None:
+            del snapshot
+
+        async def claim(self) -> WorkerTask | None:
+            if not tasks:
+                return None
+            task = tasks.popleft()
+            self.claimed.append(task.task_id)
+            return task
+
+        async def renew(self, task_id: object) -> None:
+            del task_id
+
+        async def complete(self, task_id: object, result: object) -> None:
+            del result
+            self.terminals.append((task_id, "success"))
+            if len(self.terminals) == 3:
+                stop_event.set()
+
+        async def fail(self, task_id: object, **_: object) -> None:
+            self.terminals.append((task_id, "failed"))
+            if len(self.terminals) == 3:
+                stop_event.set()
+
+        async def close(self) -> None:
+            return None
+
+    class SequentialExecutor:
+        def __init__(self) -> None:
+            self.active = 0
+            self.max_active = 0
+            self.executed = []
+
+        def can_claim(self) -> bool:
+            return True
+
+        async def execute(self, task: WorkerTask) -> ExecutionResult:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            self.executed.append(task.task_id)
+            await asyncio.sleep(0.01)
+            self.active -= 1
+            if task.task_id == expected_order[0]:
+                return ExecutionResult(
+                    status=ExecutionStatus.FAILED,
+                    error_code="EXPECTED_TEST_FAILURE",
+                    error_message="expected",
+                )
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS,
+                result={"ok": True},
+            )
+
+    async def scenario() -> tuple[QueueClient, SequentialExecutor]:
+        client = QueueClient()
+        executor = SequentialExecutor()
+        settings = WorkerSettings(
+            server_url="https://control.example.test",
+            device_id=uuid4(),
+            device_token="secret-token",
+            poll_interval_seconds=0.2,
+            heartbeat_interval_seconds=300,
+            lease_renew_interval_seconds=300,
+        )
+        worker = Worker(
+            settings,
+            client,  # type: ignore[arg-type]
+            executor,
+        )
+        await asyncio.wait_for(worker.run(stop_event), timeout=2)
+        return client, executor
+
+    client, executor = asyncio.run(scenario())
+
+    assert client.claimed == expected_order
+    assert executor.executed == expected_order
+    assert executor.max_active == 1
+    assert [status for _, status in client.terminals] == [
+        "failed",
+        "success",
+        "success",
     ]
 
 

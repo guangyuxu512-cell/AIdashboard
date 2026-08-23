@@ -80,7 +80,12 @@ async def run_worker(settings: WorkerSettings) -> None:
     executor = ExecutorRouter(
         registry,
         {
-            SkillRuntime.PYTHON: PythonExecutor(settings.runtime_root, event_bus),
+            SkillRuntime.PYTHON: PythonExecutor(
+                settings.runtime_root,
+                event_bus,
+                device_id=settings.device_id,
+                skill_registry=registry,
+            ),
             SkillRuntime.RPA: RPAExecutor(
                 settings.runtime_root,
                 registry,

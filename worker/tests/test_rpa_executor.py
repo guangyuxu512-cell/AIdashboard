@@ -7,7 +7,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from app.contracts import ExecutionStatus, WorkerTask
+from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
+from app.executors.router import ExecutorRouter
 from app.executors.rpa import RPAExecutor
 from app.providers.yingdao import (
     YingdaoApplication,
@@ -16,6 +17,7 @@ from app.providers.yingdao import (
     YingdaoTriggerError,
 )
 from app.skills.registry import (
+    SkillClassification,
     SkillDefinition,
     SkillProvider,
     SkillRegistry,
@@ -44,6 +46,9 @@ class FakeYingdaoAdapter:
         self.trigger_error = trigger_error
         self.delay = delay
         self.cleanup_calls = 0
+        self.execute_calls: list[str] = []
+        self.active = 0
+        self.max_active = 0
 
     async def discover(self) -> YingdaoDiscoveryResult:
         return self.discovery
@@ -52,12 +57,17 @@ class FakeYingdaoAdapter:
         self,
         request: YingdaoExecutionRequest,
     ) -> Mapping[str, Any]:
-        del request
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        if self.trigger_error:
-            raise YingdaoTriggerError("fake trigger failed")
-        return self.result
+        self.execute_calls.append(str(request.task_id))
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            if self.trigger_error:
+                raise YingdaoTriggerError("fake trigger failed")
+            return self.result
+        finally:
+            self.active -= 1
 
     async def cleanup(self, request: YingdaoExecutionRequest) -> None:
         del request
@@ -95,6 +105,7 @@ def make_executor(
             provider=SkillProvider.YINGDAO,
             provider_app_id=app_id,
             timeout_seconds=timeout,
+            classification=SkillClassification.INTERNAL,
         ),
     )
     return RPAExecutor(
@@ -214,3 +225,180 @@ def test_rpa_explicit_failed_result_uses_worker_error_code(tmp_path: Path) -> No
     assert result.status is ExecutionStatus.FAILED
     assert result.error_code == "RPA_EXECUTION_FAILED"
     assert result.error_message == "Fake application reported failure"
+
+
+def test_yingdao_provider_capacity_serializes_three_tasks(tmp_path: Path) -> None:
+    adapter = FakeYingdaoAdapter(discovery=discovery(), delay=0.01)
+    executor = make_executor(tmp_path, adapter)
+    tasks = [make_task(), make_task(), make_task()]
+
+    async def scenario():
+        return await asyncio.gather(*(executor.execute(task) for task in tasks))
+
+    results = asyncio.run(scenario())
+
+    assert [result.status for result in results] == [
+        ExecutionStatus.SUCCESS,
+        ExecutionStatus.SUCCESS,
+        ExecutionStatus.SUCCESS,
+    ]
+    assert adapter.execute_calls == [str(task.task_id) for task in tasks]
+    assert adapter.max_active == 1
+    assert adapter.cleanup_calls == 3
+    assert executor.can_claim() is True
+
+
+def test_yingdao_failure_releases_slot_for_next_task(tmp_path: Path) -> None:
+    class FailFirstAdapter(FakeYingdaoAdapter):
+        async def execute(
+            self,
+            request: YingdaoExecutionRequest,
+        ) -> Mapping[str, Any]:
+            self.execute_calls.append(str(request.task_id))
+            if len(self.execute_calls) == 1:
+                raise YingdaoTriggerError("first failed")
+            return self.result
+
+    adapter = FailFirstAdapter(discovery=discovery())
+    executor = make_executor(tmp_path, adapter)
+    first, second = make_task(), make_task()
+
+    async def scenario():
+        return await asyncio.gather(
+            executor.execute(first),
+            executor.execute(second),
+        )
+
+    first_result, second_result = asyncio.run(scenario())
+
+    assert first_result.status is ExecutionStatus.FAILED
+    assert second_result.status is ExecutionStatus.SUCCESS
+    assert adapter.execute_calls == [str(first.task_id), str(second.task_id)]
+    assert executor.can_claim() is True
+
+
+def test_timed_out_yingdao_keeps_slot_until_provider_really_returns(
+    tmp_path: Path,
+) -> None:
+    class ControlledAdapter(FakeYingdaoAdapter):
+        def __init__(self) -> None:
+            super().__init__(discovery=discovery())
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def execute(
+            self,
+            request: YingdaoExecutionRequest,
+        ) -> Mapping[str, Any]:
+            self.execute_calls.append(str(request.task_id))
+            self.started.set()
+            await self.release.wait()
+            return self.result
+
+    async def scenario() -> None:
+        adapter = ControlledAdapter()
+        executor = make_executor(tmp_path, adapter, timeout=0.05)
+        first, second = make_task(), make_task()
+
+        first_result = await executor.execute(first)
+        assert first_result.error_code == "RPA_TIMEOUT"
+        assert executor.can_claim() is False
+
+        second_execution = asyncio.create_task(executor.execute(second))
+        await asyncio.sleep(0.06)
+        assert adapter.execute_calls == [str(first.task_id)]
+
+        adapter.release.set()
+        second_result = await asyncio.wait_for(second_execution, timeout=1)
+        await asyncio.sleep(0)
+        assert second_result.status is ExecutionStatus.SUCCESS
+        assert adapter.execute_calls == [str(first.task_id), str(second.task_id)]
+        assert executor.can_claim() is True
+
+    asyncio.run(scenario())
+
+
+def test_yingdao_provider_slot_is_not_a_global_executor_lock(tmp_path: Path) -> None:
+    class ControlledAdapter(FakeYingdaoAdapter):
+        def __init__(self) -> None:
+            super().__init__(discovery=discovery())
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def execute(
+            self,
+            request: YingdaoExecutionRequest,
+        ) -> Mapping[str, Any]:
+            self.execute_calls.append(str(request.task_id))
+            self.started.set()
+            await self.release.wait()
+            return self.result
+
+    class ImmediatePythonExecutor:
+        def can_claim(self) -> bool:
+            return True
+
+        async def execute(self, task: WorkerTask) -> ExecutionResult:
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS,
+                result={"task_id": str(task.task_id)},
+            )
+
+    async def scenario() -> None:
+        adapter = ControlledAdapter()
+        skill_registry = SkillRegistry()
+        skill_registry.register(
+            SkillDefinition(
+                skill_id="yingdao.test",
+                display_name="影刀测试",
+                version="1",
+                input_model=EmptyInput,
+                runtime=SkillRuntime.RPA,
+                provider=SkillProvider.YINGDAO,
+                provider_app_id=FAKE_APP_ID,
+                timeout_seconds=1,
+                classification=SkillClassification.INTERNAL,
+            ),
+        )
+        skill_registry.register(
+            SkillDefinition(
+                skill_id="system.fixture",
+                display_name="Python Fixture",
+                version="1",
+                input_model=EmptyInput,
+                runtime=SkillRuntime.PYTHON,
+                timeout_seconds=1,
+                handler=lambda _: {},
+                classification=SkillClassification.INTERNAL,
+            ),
+        )
+        rpa_executor = RPAExecutor(
+            tmp_path,
+            skill_registry,
+            {SkillProvider.YINGDAO: adapter},
+        )
+        router = ExecutorRouter(
+            skill_registry,
+            {
+                SkillRuntime.RPA: rpa_executor,
+                SkillRuntime.PYTHON: ImmediatePythonExecutor(),
+            },
+        )
+        rpa_task = make_task()
+        python_task = WorkerTask(
+            task_id=uuid4(),
+            skill_id="system.fixture",
+            input={},
+            lease_until="2026-08-20T12:00:00+00:00",
+        )
+
+        running_rpa = asyncio.create_task(router.execute(rpa_task))
+        await adapter.started.wait()
+        python_result = await asyncio.wait_for(router.execute(python_task), timeout=0.1)
+
+        assert python_result.status is ExecutionStatus.SUCCESS
+        assert running_rpa.done() is False
+        adapter.release.set()
+        assert (await running_rpa).status is ExecutionStatus.SUCCESS
+
+    asyncio.run(scenario())

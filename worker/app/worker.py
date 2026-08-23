@@ -71,7 +71,11 @@ class Worker:
         try:
             while not stop_event.is_set():
                 try:
-                    task = await self.client.claim()
+                    task = (
+                        await self.client.claim()
+                        if self.executor.can_claim()
+                        else None
+                    )
                     if task is not None:
                         await self._execute_task(task)
                 except asyncio.CancelledError:
@@ -281,7 +285,7 @@ class Worker:
                     error_message=result.error_message or "Skill execution failed",
                 )
             if self.local_runtime_state is not None:
-                self.local_runtime_state.finish_task()
+                self.local_runtime_state.finish_task(task.task_id)
         finally:
             if not execution_task.done():
                 execution_task.cancel()

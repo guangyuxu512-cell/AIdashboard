@@ -1,0 +1,341 @@
+import asyncio
+from datetime import UTC, datetime
+import io
+from uuid import UUID, uuid4
+
+import pytest
+from pydantic import Field, ValidationError
+
+from app.contracts import ExecutionStatus, RuntimeEventType, SkillProcessInput
+from app.contracts import WorkerTask
+from app.executors.python import PythonExecutor
+from app.runtime_events import RuntimeEventBus
+from app.skills import registry as production_registry
+from app.skills.registry import (
+    SkillClassification,
+    SkillDescriptor,
+    SkillRegistry,
+    SkillRuntime,
+)
+from app.skills.runner import execute_async
+from app.skills.sdk import (
+    BusinessSkillInput,
+    BusinessSkillRunner,
+    SkillContext,
+    SkillExecutionError,
+    SkillResult,
+    register_business_skill,
+)
+from app.skills.sdk.contracts import MAX_SKILL_RESULT_BYTES
+from app.skills.sdk.process_events import (
+    ProcessRuntimeEventWriter,
+    decode_process_event_line,
+)
+
+
+class ProgressInput(BusinessSkillInput):
+    steps: int = Field(gt=0, le=10)
+
+
+class ProgressSkill:
+    descriptor = SkillDescriptor(
+        skill_id="demo.progress",
+        display_name="SDK进度测试",
+        runtime=SkillRuntime.PYTHON,
+        provider=None,
+        version="1",
+        classification=SkillClassification.BUSINESS,
+    )
+    input_model = ProgressInput
+    timeout_seconds = 1.0
+
+    def __init__(self) -> None:
+        self.context: SkillContext | None = None
+
+    async def run(
+        self,
+        ctx: SkillContext,
+        input: ProgressInput,
+    ) -> SkillResult:
+        self.context = ctx
+        ctx.log("开始处理", metadata={"page": 1})
+        ctx.progress(current=input.steps, total=input.steps, message="处理完成")
+        return SkillResult(
+            summary="SDK执行完成",
+            data={"processed": input.steps},
+        )
+
+
+def make_registered(skill: object) -> tuple[SkillRegistry, object]:
+    skill_registry = SkillRegistry()
+    definition = register_business_skill(skill_registry, skill)  # type: ignore[arg-type]
+    return skill_registry, definition
+
+
+def process_input(task_id: UUID, params: dict[str, object]) -> SkillProcessInput:
+    return SkillProcessInput(
+        task_id=task_id,
+        skill_id="demo.progress",
+        params=params,
+    )
+
+
+def test_business_skill_registration_reuses_descriptor_and_registry() -> None:
+    skill = ProgressSkill()
+    skill_registry, definition = make_registered(skill)
+
+    assert definition.descriptor() == skill.descriptor  # type: ignore[attr-defined]
+    assert definition.business_skill is skill  # type: ignore[attr-defined]
+    assert skill_registry.require("demo.progress") is definition
+    assert definition.classification is SkillClassification.BUSINESS  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"steps": {"invalid": True}},
+        {"steps": 2, "unexpected": True},
+    ],
+)
+def test_runner_rejects_missing_wrong_and_extra_input(
+    params: dict[str, object],
+) -> None:
+    skill_registry, definition = make_registered(ProgressSkill())
+    del skill_registry
+    result = asyncio.run(
+        BusinessSkillRunner(
+            device_id=uuid4(),
+            event_bus=RuntimeEventBus(),
+        ).execute(definition, process_input(uuid4(), params)),  # type: ignore[arg-type]
+    )
+
+    assert result.status is ExecutionStatus.FAILED
+    assert result.error_code == "SKILL_INPUT_INVALID"
+
+
+def test_context_log_progress_and_result_use_existing_runtime_contract() -> None:
+    task_id = uuid4()
+    device_id = uuid4()
+    bus = RuntimeEventBus()
+    events = []
+    bus.subscribe(events.append)
+    skill = ProgressSkill()
+    _, definition = make_registered(skill)
+
+    result = asyncio.run(
+        BusinessSkillRunner(device_id=device_id, event_bus=bus).execute(
+            definition,  # type: ignore[arg-type]
+            process_input(task_id, {"steps": 3}),
+        ),
+    )
+
+    assert result.status is ExecutionStatus.SUCCESS
+    assert result.result == {
+        "summary": "SDK执行完成",
+        "data": {"processed": 3},
+    }
+    assert skill.context is not None
+    assert skill.context.task_id == task_id
+    assert skill.context.device_id == device_id
+    assert skill.context.skill_id == "demo.progress"
+    assert skill.context.deadline > datetime.now(UTC)
+    assert skill.context.is_cancelled is False
+    assert [event.event_type for event in events] == [
+        RuntimeEventType.LOG,
+        RuntimeEventType.PROGRESS,
+    ]
+    assert all(event.task_id == task_id for event in events)
+    assert events[0].metadata == {"page": 1, "skill_id": "demo.progress"}
+    assert events[1].metadata == {
+        "skill_id": "demo.progress",
+        "current": 3,
+        "total": 3,
+    }
+
+
+def test_skill_execution_error_keeps_code_retryable_and_safe_event() -> None:
+    class ExpectedFailureSkill(ProgressSkill):
+        async def run(
+            self,
+            ctx: SkillContext,
+            input: ProgressInput,
+        ) -> SkillResult:
+            del ctx, input
+            raise SkillExecutionError(
+                "PLATFORM_TEMPORARILY_UNAVAILABLE",
+                "平台暂时不可用",
+                retryable=True,
+                details={"attempt": 1},
+            )
+
+    bus = RuntimeEventBus()
+    events = []
+    bus.subscribe(events.append)
+    _, definition = make_registered(ExpectedFailureSkill())
+    result = asyncio.run(
+        BusinessSkillRunner(device_id=uuid4(), event_bus=bus).execute(
+            definition,  # type: ignore[arg-type]
+            process_input(uuid4(), {"steps": 1}),
+        ),
+    )
+
+    assert result.status is ExecutionStatus.FAILED
+    assert result.error_code == "PLATFORM_TEMPORARILY_UNAVAILABLE"
+    assert result.error_message == "平台暂时不可用"
+    assert events[-1].metadata["retryable"] is True
+    assert "details" not in events[-1].metadata
+
+
+def test_unexpected_exception_returns_safe_error_and_logs_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class UnexpectedFailureSkill(ProgressSkill):
+        async def run(
+            self,
+            ctx: SkillContext,
+            input: ProgressInput,
+        ) -> SkillResult:
+            del ctx, input
+            raise RuntimeError("token=must-not-reach-task-error")
+
+    _, definition = make_registered(UnexpectedFailureSkill())
+    result = asyncio.run(
+        BusinessSkillRunner(
+            device_id=uuid4(),
+            event_bus=RuntimeEventBus(),
+        ).execute(definition, process_input(uuid4(), {"steps": 1})),  # type: ignore[arg-type]
+    )
+
+    assert result.error_code == "SKILL_EXECUTION_FAILED"
+    assert result.error_message == "Skill execution failed"
+    assert "must-not-reach-task-error" not in caplog.text
+    assert "test_skill_sdk.py" in caplog.text
+    assert "in run" in caplog.text
+
+
+def test_runner_enforces_timeout() -> None:
+    class TimeoutSkill(ProgressSkill):
+        timeout_seconds = 0.01
+
+        async def run(
+            self,
+            ctx: SkillContext,
+            input: ProgressInput,
+        ) -> SkillResult:
+            del ctx, input
+            await asyncio.sleep(1)
+            raise AssertionError
+
+    _, definition = make_registered(TimeoutSkill())
+    result = asyncio.run(
+        BusinessSkillRunner(
+            device_id=uuid4(),
+            event_bus=RuntimeEventBus(),
+        ).execute(definition, process_input(uuid4(), {"steps": 1})),  # type: ignore[arg-type]
+    )
+
+    assert result.status is ExecutionStatus.FAILED
+    assert result.error_code == "SKILL_TIMEOUT"
+
+
+def test_skill_result_is_json_only_and_bounded() -> None:
+    with pytest.raises(ValidationError):
+        SkillResult(summary="too large", data={"payload": "x" * MAX_SKILL_RESULT_BYTES})
+
+    result = SkillResult(summary="ok", data={"count": 2, "valid": True})
+    assert result.model_dump() == {
+        "summary": "ok",
+        "data": {"count": 2, "valid": True},
+    }
+
+
+def test_process_event_transport_round_trips_runtime_event() -> None:
+    stream = io.StringIO()
+    bus = RuntimeEventBus()
+    bus.subscribe(ProcessRuntimeEventWriter(stream))
+    emitted = bus.emit(uuid4(), RuntimeEventType.LOG, "hello", level="info")
+
+    decoded = decode_process_event_line(stream.getvalue().encode("utf-8"))
+
+    assert decoded == emitted
+    assert decode_process_event_line(b"ordinary stdout\n") is None
+
+
+def test_python_executor_forwards_child_events_to_parent_bus(tmp_path) -> None:
+    async def scenario() -> tuple[list[object], str]:
+        task_id = uuid4()
+        task = WorkerTask(
+            task_id=task_id,
+            skill_id="demo.progress",
+            input={"steps": 1},
+            lease_until=datetime.now(UTC),
+        )
+        child_stream = io.StringIO()
+        child_bus = RuntimeEventBus()
+        child_bus.subscribe(ProcessRuntimeEventWriter(child_stream))
+        child_bus.emit(
+            task_id,
+            RuntimeEventType.PROGRESS,
+            "half",
+            metadata={"current": 1, "total": 2},
+        )
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(child_stream.getvalue().encode("utf-8"))
+        reader.feed_data(b"ordinary stdout\n")
+        reader.feed_eof()
+        parent_bus = RuntimeEventBus()
+        received = []
+        parent_bus.subscribe(received.append)
+        output = tmp_path / "stdout.log"
+        output.touch()
+        executor = PythonExecutor(
+            tmp_path,
+            parent_bus,
+            device_id=uuid4(),
+        )
+
+        await executor._forward_stdout(reader, output, task)
+        return received, output.read_text(encoding="utf-8")
+
+    received, stdout = asyncio.run(scenario())
+
+    assert len(received) == 1
+    assert received[0].event_type is RuntimeEventType.PROGRESS  # type: ignore[attr-defined]
+    assert received[0].message == "half"  # type: ignore[attr-defined]
+    assert stdout == "ordinary stdout\n"
+
+
+def test_process_runner_routes_business_skill_through_sdk() -> None:
+    task_id = uuid4()
+    skill_registry, _ = make_registered(ProgressSkill())
+    result = asyncio.run(
+        execute_async(
+            "demo.progress",
+            {
+                "task_id": str(task_id),
+                "skill_id": "demo.progress",
+                "params": {"steps": 2},
+            },
+            device_id=uuid4(),
+            event_bus=RuntimeEventBus(),
+            skill_registry=skill_registry,
+        ),
+    )
+
+    assert result.status is ExecutionStatus.SUCCESS
+    assert result.result == {
+        "summary": "SDK执行完成",
+        "data": {"processed": 2},
+    }
+
+
+def test_demo_skill_is_not_in_production_registry() -> None:
+    descriptors = production_registry.descriptors()
+
+    assert "demo.progress" not in {item.skill_id for item in descriptors}
+    assert sum(
+        item.classification is SkillClassification.BUSINESS
+        for item in descriptors
+    ) == 0

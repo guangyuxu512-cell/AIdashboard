@@ -84,3 +84,13 @@ Worker 只能按 Task 获取必要 Credential/Session。
 Worker 独立运行。
 Electron 只管理其进程生命周期。
 Electron 关闭不能成为 Worker Task 可靠性设计的前提。
+
+## 9. Business Skill 开发硬约束
+- 新增 Worker 业务能力必须以稳定 `skill_id` 注册为 `business` Skill。
+- Python Business Skill 必须使用 `app/skills/sdk/` 内部 SDK 和结构化 Pydantic Input。
+- Business Skill 不得实现 Heartbeat、Poll、Claim、Lease、Task 状态或 Backend Event HTTP。
+- Business Skill 不得直连 PostgreSQL，也不得自行读取 Worker Token 或配置文件。
+- 日志和进度只通过 `SkillContext.log()` / `SkillContext.progress()` 上报。
+- 成功必须返回 `SkillResult`；预期失败必须抛出 `SkillExecutionError`。
+- Executor / Provider 并发由 Worker Runtime 控制，禁止 Skill 内部轮询等待执行槽。
+- 详细契约与示例见 `docs/03-Skill执行规范.md` 和 `examples/demo_progress_skill.py`。

@@ -92,3 +92,136 @@ Inventory。Provider Capability、Skill Capability 与 Provider Application 必�
 Worker 始终上报 `internal + business` 的完整快照；分类只影响普通业务界面的统计与展示，
 不得影响 Task Guard 按 `(device_id, skill_id)` 判断执行资格。未来 Python 业务 Skill 仍通过本地
 Registry 注册为 `business` 并进入同一快照，不引入在线安装或 Skill CRUD。
+
+## Internal Business Skill SDK V1
+
+SDK 位于 `app/skills/sdk/`，是 Worker 仓库内部开发接口，不是独立 pip 包。Python Business
+Skill 的唯一执行链为：
+
+```text
+Task
+→ PythonExecutor（隔离子进程、超时、Runtime目录）
+→ BusinessSkillRunner（Input校验、Context、Result/Error映射）
+→ BusinessSkill.run()
+→ ExecutionResult
+→ 现有Task Runtime
+```
+
+SDK 继续复用现有 `SkillDescriptor` 与 `SkillDefinition`，不建立 V2 Descriptor。一个 Python
+Business Skill 由以下轻量 Contract 组成：
+
+- `descriptor`：`skill_id/display_name/runtime/provider/version/classification`；
+- `input_model`：必须继承 `BusinessSkillInput`；
+- `timeout_seconds`：大于 0；
+- `async run(ctx, input) -> SkillResult`。
+
+`register_business_skill(registry, skill)` 是唯一注册入口。它会校验 `classification=business`、
+`runtime=python`、异步 `run()`、结构化 Input 以及稳定 Skill ID。V1 Python Business Skill 不拥有
+RPA Provider；需要影刀时仍使用已有 Internal Provider Skill/Task Contract。新增正式 Skill 时只需
+新增实现模块，并在 Worker 的单一 Skill 装配入口调用一次注册函数；Capability Snapshot 与 Backend
+Device × Skill 同步无需 Frontend/Backend 硬编码。
+
+Business Skill ID 使用小写点分业务语义，例如 `refund.sync`、`order.sync`、
+`product.check_stock`。禁止文件名、临时版本号、连字符脚本名和无业务含义编号；`.py` 后缀不是
+Skill ID 的一部分。`skill_id` 是手工 Task、未来 Scheduler、飞书触发和 AI Agent 共同引用的
+长期 Contract。
+
+### Input
+
+Input 使用 Pydantic，并继承默认 `extra=forbid` 的 `BusinessSkillInput`。Worker 在进入 `run()` 前
+完成最终校验；缺必填、类型错误或额外字段统一返回 `SKILL_INPUT_INVALID`。Skill 不得使用
+`**kwargs`、环境变量、全局 JSON 或 Frontend 字符串猜参数。Backend 的未来 Skill Catalog 可以
+提前暴露同一 Schema，但不会替代 Worker 运行边界校验。
+
+### SkillContext
+
+V1 Context 只暴露真实能力：
+
+- `task_id / device_id / skill_id`；
+- `timeout_seconds / deadline`；
+- `is_cancelled`：仅表示本地 Runner 的协作式取消/超时状态；当前没有 Backend Cancel Contract；
+- `log(message, level, metadata)`；
+- `progress(current, total?, message?)`。
+
+`ctx.log()` 与 `ctx.progress()` 先进入子进程内的 Runtime Event Bus，再经本地事件桥交回父进程
+已有 Runtime Event Bus，最终复用 EventBuffer、批次、重试、脱敏、Backend Task Events 和
+TaskRuntimeDrawer。业务代码不得直接请求 Event API，也不得管理 task_id、seq、event_at 或重试。
+日志、进度和最终结果是三个独立语义。
+
+V1 不实现 `resources`、通用 Backend Client、Domain Gateway 或 Auth Context。后续确有业务需要
+时由 `SkillContext` 增加正式 Gateway；Business Skill 仍不得拼接 Backend URL/Token、直连
+PostgreSQL、读取数据库 Credential 或自行下发 Cookie。Resource Manager、资料仓、Session 下发
+与 Artifact 另立阶段，不虚构 Task Input Contract。
+
+### Result 与 Error
+
+成功必须返回：
+
+```python
+SkillResult(
+    summary="退款同步完成",
+    data={"fetched": 1023, "created": 200, "updated": 823},
+)
+```
+
+`summary + data` 必须是 JSON 可序列化的小结果，总大小最多 64 KiB。禁止返回成千上万条业务
+记录、图片、完整 Excel 或其他大对象；业务明细应写入未来对应 Backend 领域模块，文件走未来
+Artifact/Resource Contract。
+
+可预期业务失败抛出 `SkillExecutionError(code, message, retryable, details?)`。`code` 使用稳定大写
+下划线格式；`message` 必须是用户安全摘要；`retryable` 目前进入运行事件诊断，不会触发 Worker
+自动重试；`details` 默认不上传，且只能包含明确安全信息。普通 Exception 被 Runner 转换为
+`SKILL_EXECUTION_FAILED`，Task 只收到安全摘要；Worker 本地日志仅记录异常类型与不含异常文本的
+调用栈位置，避免 Token/Cookie/Credential 泄漏。
+
+Task 状态映射保持不变：`SkillResult → SUCCESS`，`SkillExecutionError/输入失败/未知异常/超时
+→ FAILED`。Runner 不新增 `PARTIAL/RETRYING/CANCELLED`。PythonExecutor 仍使用隔离子进程；
+Runner 的协作式超时先尝试取消异步 Skill，父进程超时边界仍可结束失去响应的 Skill 进程。
+SDK 自动复用 PythonExecutor 已有 started Status 和 Worker 的 completed/failed 终态事件，不重复
+制造第二组生命周期事件。
+
+### 开发模板与 Production Registry
+
+模板在 `examples/demo_progress_skill.py`，展示 Input、Descriptor、Business classification、
+`run()`、`ctx.log()`、`ctx.progress()`、`SkillResult` 和 `SkillExecutionError`。模板没有导入
+Production `app.skills` 装配入口，也没有注册副作用，因此正式 Worker 当前 Business Skill 仍为 0。
+
+## Task Queue 与 Executor/Provider 并发
+
+Backend Queue 中可以同时存在多个 PENDING Task；Queue 深度与 Worker Execution Slot 是不同概念。
+当前 Worker Core 的主循环一次 Claim 一个 Task，并等待其 Terminal 后才继续 Poll，因此总体实现
+仍是单活动 Task。这个现有限制没有写入 SDK：Business Skill 不得假设永远只有一个 Task，所有
+Context 与 Runtime 状态都必须按 `task_id` 隔离。
+
+Yingdao Provider V1 的 execution capacity 固定为 1。RPAExecutor 使用 Provider 级 Semaphore，
+ShadowBot Adapter 保留自身互斥作为防御层。Skill 内部不得通过 sleep/poll 等待槽。正常情况下，
+当前单活动 Task 主循环使后续影刀 Task 保持 Backend PENDING；前一 Task SUCCESS 或 FAILED 后释放
+槽并继续下一项。若 Task 已超时但底层影刀调用尚未真正返回，RPAExecutor 返回 FAILED 的同时继续
+占用 Provider 槽；`can_claim()` 暂停新 Claim，直到真实调用退出并完成 cleanup，避免盲目启动第二个
+ShadowBot Application。
+
+当前 Backend Claim API 不能按 Runtime/Provider 选择候选 Task，所以“超时但 Provider 仍活动”
+期间会保守暂停所有新 Claim，包括 Python。未来若开放 Worker 多 Executor 并发，必须先建立
+slot-aware Claim/调度契约，使 Yingdao capacity=1 不限制独立 Python capacity；禁止简单删除
+Provider 槽或改成全局永久锁。Worker 进程崩溃会停止 Claim 并由 Lease 产生 LOST，但内存槽无法
+跨进程保存；在开放自动并发恢复前，还需解决重启后外部 ShadowBot 仍运行时的状态核对。
+
+同一设备三个影刀 Task A/B/C 的 V1 语义：
+
+```text
+A RUNNING；B/C PENDING
+A SUCCESS 或 FAILED → 释放槽 → B RUNNING
+B SUCCESS 或 FAILED → 释放槽 → C RUNNING
+```
+
+当前 Backend 使用 `created_at ASC, task_id ASC` 稳定 Claim。同一个 Task 失败不会阻塞后续 Queue。
+
+## 未来 Scheduler 边界（本轮不实现）
+
+Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Backend 创建普通 PENDING Task，
+后续仍走 Poll → Claim → Lease → Executor。例如 09:00 同时生成 A/B/C 三个目标 PC-11 的影刀
+Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
+
+后续 Scheduler 阶段仍需正式决定：计划启停、时区、cron/每日时间、错过时间是否补跑、设备离线
+行为、是否允许积压、最大积压量、重复触发幂等、优先级和失败重试。本阶段不新增 scheduled_at、
+schedule plan、cron parser、Scheduler 进程或 UI，也不猜这些默认规则。

@@ -14,6 +14,9 @@ class ExecutorRouter:
         self.registry = registry
         self.executors = executors
 
+    def can_claim(self) -> bool:
+        return all(executor.can_claim() for executor in self.executors.values())
+
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = self.registry.get(task.skill_id)
         if definition is None:

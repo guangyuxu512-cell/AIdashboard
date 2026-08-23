@@ -102,3 +102,33 @@ def test_runtime_snapshot_is_atomic_bounded_and_contains_no_secrets(
         "third",
     ]
     assert "must-not-be-snapshotted" not in path.read_text(encoding="utf-8")
+
+
+def test_late_provider_event_does_not_reactivate_finished_local_task(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime-status.json"
+    task_id = uuid4()
+    state = LocalRuntimeState(path=path, device_id=uuid4())
+    bus = RuntimeEventBus()
+    bus.subscribe(state.consume)
+    task = WorkerTask(
+        task_id=task_id,
+        skill_id="yingdao.app.run",
+        input={},
+        lease_until=datetime.now(UTC),
+    )
+    state.begin_task(task, skill_display_name="运行影刀应用")
+    state.finish_task(task_id)
+
+    bus.emit(
+        task_id,
+        RuntimeEventType.LOG,
+        "底层影刀在Task超时后才结束",
+        metadata={"provider": "yingdao", "phase": "failed"},
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["current_task_id"] is None
+    assert payload["phase"] is None
+    assert payload["recent_events"][-1]["message"] == "底层影刀在Task超时后才结束"

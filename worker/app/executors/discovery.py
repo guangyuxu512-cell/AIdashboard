@@ -37,6 +37,9 @@ class ProviderDiscoveryExecutor:
         self.providers = providers
         self.event_bus = event_bus or RuntimeEventBus()
 
+    def can_claim(self) -> bool:
+        return True
+
     async def execute(self, task: WorkerTask) -> ExecutionResult:
         definition = self.registry.get(task.skill_id)
         if definition is None:
