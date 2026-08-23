@@ -27,8 +27,8 @@ function cleanupRealTestData(): void {
     'from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding',
     'from app.modules.sessions.models import ShopSession',
     'from app.modules.shops.models import Shop, ShopDeviceBinding',
-    'from app.modules.tasks.models import Task',
-    'from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, WorkerDeviceCredential',
+    'from app.modules.tasks.models import Task, TaskEvent',
+    'from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential',
     `prefix = ${JSON.stringify(`${testPrefix}%`)}`,
     'with Session(get_database_engine()) as session:',
     '    session.execute(delete(AutomationApplicationConfig).where(AutomationApplicationConfig.app_id == "stage-3b-1a-app"))',
@@ -44,7 +44,10 @@ function cleanupRealTestData(): void {
     '        session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))',
     '    if device_ids:',
     '        session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.device_id.in_(device_ids)))',
+    '        task_ids = select(Task.task_id).where(Task.target_device_id.in_(device_ids))',
+    '        session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))',
     '        session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))',
+    '        session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id.in_(device_ids)))',
     '        session.execute(delete(DeviceProviderInventory).where(DeviceProviderInventory.device_id.in_(device_ids)))',
     '        session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)))',
     '        session.execute(delete(WorkerDeviceCredential).where(WorkerDeviceCredential.device_id.in_(device_ids)))',
@@ -206,6 +209,66 @@ function inspectSoftRemovedDevice(deviceId: string): {
 test.beforeAll(cleanupRealTestData)
 test.afterAll(cleanupRealTestData)
 
+test('issues, rotates and revokes a one-time Worker credential in Device Drawer', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(60_000)
+  const deviceName = `${testPrefix}worker-credential`
+  const created = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(created.ok()).toBe(true)
+
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/#/devices')
+  const row = page.getByRole('row').filter({ hasText: deviceName })
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: '查看' }).click()
+  const drawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: deviceName }),
+  })
+  await expect(drawer.getByRole('heading', { name: 'Worker 凭证' })).toBeVisible()
+  await expect(drawer.getByText('未签发', { exact: true }).first()).toBeVisible()
+
+  await drawer.getByRole('button', { name: '签发 Worker Token' }).click()
+  let tokenDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Worker Token' }),
+  })
+  await expect(tokenDialog.getByText(/仅本次显示/)).toBeVisible()
+  const firstToken = await tokenDialog.locator('input').inputValue()
+  expect(firstToken.length).toBeGreaterThan(32)
+  await tokenDialog.getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('Worker Token 已复制')).toBeVisible()
+  await tokenDialog.getByRole('button', { name: '关闭' }).click()
+  await expect(tokenDialog).toHaveCount(0)
+  await expect(drawer.getByText('已签发', { exact: true }).first()).toBeVisible()
+
+  await drawer.getByRole('button', { name: '轮换 Token' }).click()
+  const rotateDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '确认轮换 Worker Token' }),
+  })
+  await expect(rotateDialog.getByText(/旧 Token 将立即失效/)).toBeVisible()
+  await rotateDialog.getByRole('button', { name: '确认轮换' }).click()
+  tokenDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Worker Token' }),
+  })
+  const secondToken = await tokenDialog.locator('input').inputValue()
+  expect(secondToken).not.toBe(firstToken)
+  await tokenDialog.getByRole('button', { name: '关闭' }).click()
+
+  await drawer.getByRole('button', { name: '撤销凭证' }).click()
+  const revokeDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '确认撤销 Worker 凭证' }),
+  })
+  await expect(revokeDialog.getByText(/无法继续心跳/)).toBeVisible()
+  await revokeDialog.getByRole('button', { name: '确认撤销' }).click()
+  await expect(drawer.getByText('已撤销', { exact: true }).first()).toBeVisible()
+  await expect(
+    drawer.getByRole('button', { name: '签发 Worker Token' }),
+  ).toBeVisible()
+})
+
 test('persists shop and device records through FastAPI and PostgreSQL', async ({
   page,
 }) => {
@@ -327,19 +390,54 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await page
     .getByRole('row')
     .filter({ hasText: deviceName })
-    .getByRole('button', { name: '编辑' })
+    .getByRole('button', { name: '查看' })
     .click()
+  const deviceEditDrawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '运行概览', exact: true }),
+  })
+  await deviceEditDrawer.getByRole('button', { name: '编辑' }).click()
   await page.getByPlaceholder('请输入设备名称').fill(updatedDeviceName)
   await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(updatedDeviceName, { exact: true })).toBeVisible()
+  await deviceEditDrawer
+    .getByRole('button', { name: '关闭', exact: true })
+    .click()
   const workerIdentity = issueWorkerIdentity(updatedDeviceName)
+  const workerHeaders = {
+    Authorization: `Bearer ${workerIdentity.token}`,
+    'X-Device-ID': workerIdentity.deviceId,
+  }
+  const workerStartedAt = new Date().toISOString()
+  const heartbeatResponse = await page.request.post(
+    'http://127.0.0.1:8000/api/v1/worker/heartbeat',
+    {
+      headers: workerHeaders,
+      data: { worker_version: '0.4.0', started_at: workerStartedAt },
+    },
+  )
+  expect(heartbeatResponse.ok()).toBe(true)
+  const skillResponse = await page.request.put(
+    'http://127.0.0.1:8000/api/v1/worker/skill-capabilities',
+    {
+      headers: workerHeaders,
+      data: {
+        skills: [
+          {
+            skill_id: 'yingdao.app.run',
+            display_name: '运行影刀应用',
+            runtime: 'rpa',
+            provider: 'yingdao',
+            version: '1.0.0',
+          },
+        ],
+      },
+    },
+  )
+  expect(skillResponse.ok()).toBe(true)
   const inventoryResponse = await page.request.post(
     'http://127.0.0.1:8000/api/v1/worker/provider-inventory',
     {
-      headers: {
-        Authorization: `Bearer ${workerIdentity.token}`,
-        'X-Device-ID': workerIdentity.deviceId,
-      },
+      headers: workerHeaders,
       data: {
         provider_code: 'yingdao',
         inventory: {
@@ -370,16 +468,17 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     },
   )
   expect(inventoryResponse.ok()).toBe(true)
+  await page.reload()
   await page
     .getByRole('row')
     .filter({ hasText: updatedDeviceName })
     .getByRole('button', { name: '查看' })
     .click()
   const deviceDrawer = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: new RegExp(updatedDeviceName) }),
+    has: page.getByRole('heading', { name: '运行概览', exact: true }),
   })
   await expect(
-    page.getByRole('heading', { name: new RegExp(updatedDeviceName) }),
+    deviceDrawer.getByText(updatedDeviceName, { exact: true }),
   ).toBeVisible()
   await expect(page.getByRole('heading', { name: '运行概览' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '执行能力' })).toBeVisible()
@@ -390,12 +489,13 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(
     deviceDrawer.getByText('PersonalBasic', { exact: true }),
   ).toBeVisible()
-  await page.getByRole('button', { name: '查看应用' }).click()
-  await expect(page.getByText('影刀应用列表', { exact: true })).toBeVisible()
+  await deviceDrawer.getByRole('button', { name: '查看能力' }).click()
   await expect(page.getByText('影刀应用 E2E', { exact: true })).toBeVisible()
   await expect(page.getByText('stage-3b-1a-app', { exact: true })).toBeVisible()
   const applicationsDrawer = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: '影刀应用列表' }),
+    has: page.getByRole('heading', {
+      name: `设备能力 · ${updatedDeviceName}`,
+    }),
   })
   await applicationsDrawer.getByRole('button', { name: '配置' }).click()
   const configDialog = page.getByRole('dialog').filter({
@@ -423,8 +523,11 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await applicationsDrawer
     .getByRole('button', { name: '关闭', exact: true })
     .click()
-  await expect(page.getByText('影刀应用列表', { exact: true })).toHaveCount(0)
-  await deviceDrawer.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(
+    page.getByRole('heading', {
+      name: `设备能力 · ${updatedDeviceName}`,
+    }),
+  ).toHaveCount(0)
 
   await page.getByText('店铺中心', { exact: true }).click()
   await page
@@ -620,7 +723,25 @@ test('protects active Device tasks and revokes every Worker endpoint after soft 
     (
       await page.request.post('/api/v1/worker/heartbeat', {
         headers: workerHeaders,
-        data: { worker_version: '0.1.0', started_at: now },
+        data: { worker_version: '0.4.0', started_at: now },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.put('/api/v1/worker/skill-capabilities', {
+        headers: workerHeaders,
+        data: {
+          skills: [
+            {
+              skill_id: 'system.echo',
+              display_name: '系统回显',
+              runtime: 'python',
+              provider: null,
+              version: '1.0.0',
+            },
+          ],
+        },
       })
     ).ok(),
   ).toBe(true)

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/vue-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import {
@@ -20,6 +20,7 @@ type InventoryLoader = (
 export async function loadDeviceInventories(
   deviceIds: string[],
   loadInventory: InventoryLoader = getYingdaoInventory,
+  previous: Record<string, YingdaoInventoryViewModel | null> = {},
 ): Promise<Record<string, YingdaoInventoryViewModel | null>> {
   const results = await Promise.allSettled(
     deviceIds.map((deviceId) => loadInventory(deviceId)),
@@ -29,7 +30,7 @@ export async function loadDeviceInventories(
       deviceId,
       results[index]?.status === 'fulfilled'
         ? results[index].value
-        : null,
+        : (previous[deviceId] ?? null),
     ]),
   )
 }
@@ -38,11 +39,14 @@ export async function loadDeviceBindingCounts(
   deviceIds: string[],
   loader: (ids: string[]) => Promise<Record<string, number>> =
     loadBindingCounts,
+  previous: Record<string, number | null> = {},
 ): Promise<Record<string, number | null>> {
   try {
     return await loader(deviceIds)
   } catch {
-    return Object.fromEntries(deviceIds.map((deviceId) => [deviceId, null]))
+    return Object.fromEntries(
+      deviceIds.map((deviceId) => [deviceId, previous[deviceId] ?? null]),
+    )
   }
 }
 
@@ -85,6 +89,7 @@ async function loadBindingCounts(
 export function useDeviceManagementContextQuery(
   deviceIds: MaybeRefOrGetter<string[]>,
 ) {
+  const queryClient = useQueryClient()
   return useQuery({
     queryKey: computed(() => [
       'devices',
@@ -93,9 +98,14 @@ export function useDeviceManagementContextQuery(
     ]),
     queryFn: async (): Promise<DeviceManagementContext> => {
       const ids = toValue(deviceIds)
+      const previous = queryClient.getQueryData<DeviceManagementContext>([
+        'devices',
+        'management-context',
+        ...ids,
+      ])
       const [inventories, bindingCounts] = await Promise.all([
-        loadDeviceInventories(ids),
-        loadDeviceBindingCounts(ids),
+        loadDeviceInventories(ids, getYingdaoInventory, previous?.inventories),
+        loadDeviceBindingCounts(ids, loadBindingCounts, previous?.bindingCounts),
       ])
       return {
         inventories,
@@ -104,5 +114,6 @@ export function useDeviceManagementContextQuery(
     },
     enabled: computed(() => toValue(deviceIds).length > 0),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   })
 }

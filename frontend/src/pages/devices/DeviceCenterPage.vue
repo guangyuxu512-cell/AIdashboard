@@ -8,6 +8,8 @@ import {
   DeviceRemoveDialog,
   YingdaoApplicationConfigDialog,
   YingdaoApplicationRunDialog,
+  WorkerCredentialConfirmDialog,
+  WorkerTokenDialog,
   useDeviceManagement,
 } from '@/features/device-management'
 import { TaskRuntimeDrawer } from '@/features/task-runtime'
@@ -72,6 +74,12 @@ const management = useDeviceManagement()
         management.detailDevice.value?.deviceId
       "
       :removing="management.removeSubmitting.value"
+      :worker-credential="management.workerCredential.value"
+      :worker-credential-loading="management.workerCredentialLoading.value"
+      :worker-credential-error="management.workerCredentialError.value"
+      :worker-credential-submitting="
+        management.workerCredentialSubmitting.value
+      "
       @retry="management.retryDetail"
       @retry-provider-inventory="management.retryProviderInventory"
       @refresh-yingdao="management.refreshYingdao"
@@ -80,6 +88,14 @@ const management = useDeviceManagement()
       @toggle-enabled="management.toggleEnabled"
       @remove="management.requestRemove"
       @view-runtime="management.openTaskRuntime"
+      @retry-worker-credential="management.retryWorkerCredential"
+      @issue-worker-credential="management.issueWorkerCredential"
+      @rotate-worker-credential="
+        management.requestWorkerCredentialAction('rotate')
+      "
+      @revoke-worker-credential="
+        management.requestWorkerCredentialAction('revoke')
+      "
     />
 
     <TaskRuntimeDrawer
@@ -136,6 +152,20 @@ const management = useDeviceManagement()
       :device="management.removeDevice.value"
       :submitting="management.removeSubmitting.value"
       @confirm="management.confirmRemove"
+    />
+
+    <WorkerCredentialConfirmDialog
+      v-model:show="management.credentialConfirmVisible.value"
+      :action="management.credentialAction.value"
+      :device-name="management.detailDevice.value?.deviceName"
+      :submitting="management.workerCredentialSubmitting.value"
+      @confirm="management.confirmWorkerCredentialAction"
+    />
+
+    <WorkerTokenDialog
+      :show="management.workerTokenVisible.value"
+      :token="management.oneTimeWorkerToken.value"
+      @update:show="management.setWorkerTokenVisible"
     />
   </div>
 </template>

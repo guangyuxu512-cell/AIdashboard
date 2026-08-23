@@ -12,6 +12,7 @@ from app.modules.workers.enums import WorkerConnectionStatus
 from app.modules.workers.exceptions import (
     WorkerAuthenticationError,
     WorkerCredentialNotFoundError,
+    WorkerCredentialStateConflictError,
 )
 from app.modules.workers.models import (
     DeviceProviderInventory,
@@ -26,7 +27,10 @@ from app.modules.workers.schemas import (
     DeviceSkillCapabilityRead,
     ProviderInventoryUpsert,
     SkillCapabilitySnapshotUpsert,
+    WorkerCredentialRead,
     WorkerHeartbeat,
+    WorkerProvisioningRead,
+    WorkerTokenIssuedRead,
     YingdaoProviderInventory,
 )
 from app.modules.workers.security import (
@@ -57,13 +61,33 @@ class WorkerService:
         self.settings = settings or get_settings()
         self.notification_service = notification_service
 
+    def get_credential(self, device_id: UUID) -> WorkerCredentialRead:
+        if self.repository.get_device(device_id) is None:
+            raise DeviceNotFoundError()
+        credential = self.repository.get_credential(device_id)
+        if credential is None:
+            return WorkerCredentialRead(
+                device_id=device_id,
+                status="not_issued",
+                issued_at=None,
+            )
+        return WorkerCredentialRead(
+            device_id=device_id,
+            status="issued" if credential.enabled else "revoked",
+            issued_at=credential.created_at,
+        )
+
     def issue_token(self, device_id: UUID) -> str:
         device = self.repository.get_device(device_id)
         if device is None:
             raise DeviceNotFoundError()
+        credential = self.repository.get_credential(device_id)
+        if credential is not None and credential.enabled:
+            raise WorkerCredentialStateConflictError(
+                "设备已有有效 Worker 凭证，请使用轮换操作",
+            )
         token = generate_worker_token()
         token_hash = hash_worker_token(token)
-        credential = self.repository.get_credential(device_id)
         if credential is None:
             credential = WorkerDeviceCredential(
                 device_id=device_id,
@@ -77,12 +101,70 @@ class WorkerService:
         self.session.commit()
         return token
 
+    def rotate_token(self, device_id: UUID) -> str:
+        if self.repository.get_device(device_id) is None:
+            raise DeviceNotFoundError()
+        credential = self.repository.get_credential(device_id)
+        if credential is None or not credential.enabled:
+            raise WorkerCredentialStateConflictError(
+                "设备没有可轮换的有效 Worker 凭证",
+            )
+        token = generate_worker_token()
+        credential.token_hash = hash_worker_token(token)
+        self.session.commit()
+        return token
+
+    def issue_credential(self, device_id: UUID) -> WorkerTokenIssuedRead:
+        token = self.issue_token(device_id)
+        credential = self.repository.get_credential(device_id)
+        if credential is None:
+            raise WorkerCredentialNotFoundError()
+        return WorkerTokenIssuedRead(
+            device_id=device_id,
+            status="issued",
+            issued_at=credential.created_at,
+            token=token,
+        )
+
+    def rotate_credential(self, device_id: UUID) -> WorkerTokenIssuedRead:
+        token = self.rotate_token(device_id)
+        credential = self.repository.get_credential(device_id)
+        if credential is None:
+            raise WorkerCredentialNotFoundError()
+        return WorkerTokenIssuedRead(
+            device_id=device_id,
+            status="issued",
+            issued_at=credential.created_at,
+            token=token,
+        )
+
     def disable_token(self, device_id: UUID) -> None:
         credential = self.repository.get_credential(device_id)
         if credential is None:
             raise WorkerCredentialNotFoundError()
         credential.enabled = False
         self.session.commit()
+
+    def authenticate_token(self, token: str) -> WorkerPrincipal:
+        credential = self.repository.get_credential_by_token(token)
+        if (
+            credential is None
+            or not credential.enabled
+            or not verify_worker_token(token, credential.token_hash)
+            or self.repository.get_device(credential.device_id) is None
+        ):
+            raise WorkerAuthenticationError()
+        return WorkerPrincipal(device_id=credential.device_id)
+
+    def get_provisioning(self, principal: WorkerPrincipal) -> WorkerProvisioningRead:
+        device = self.repository.get_device(principal.device_id)
+        if device is None:
+            raise WorkerAuthenticationError()
+        return WorkerProvisioningRead(
+            device_id=device.device_id,
+            device_display_name=device.display_name,
+            device_enabled=device.enabled,
+        )
 
     def authenticate(self, device_id: UUID, token: str) -> WorkerPrincipal:
         device = self.repository.get_device(device_id)

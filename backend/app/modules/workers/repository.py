@@ -14,6 +14,7 @@ from app.modules.workers.models import (
     WorkerDeviceCredential,
 )
 from app.modules.workers.schemas import WorkerSkillDescriptor
+from app.modules.workers.security import hash_worker_token
 
 
 class WorkerRepository:
@@ -31,6 +32,15 @@ class WorkerRepository:
     def get_credential(self, device_id: UUID) -> WorkerDeviceCredential | None:
         statement = select(WorkerDeviceCredential).where(
             WorkerDeviceCredential.device_id == device_id,
+        )
+        return self.session.scalar(statement)
+
+    def get_credential_by_token(
+        self,
+        token: str,
+    ) -> WorkerDeviceCredential | None:
+        statement = select(WorkerDeviceCredential).where(
+            WorkerDeviceCredential.token_hash == hash_worker_token(token),
         )
         return self.session.scalar(statement)
 

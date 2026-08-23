@@ -10,6 +10,7 @@ export interface TaskReadDto {
     | 'yingdao.test'
     | 'yingdao.discover'
     | 'yingdao.app.run'
+  execution_display_name: string
   status: TaskStatusDto
   input: Record<string, unknown>
   result: Record<string, unknown> | null
@@ -54,6 +55,7 @@ export interface ActiveTaskSummaryReadDto {
   task_id: string
   target_device_id: string
   skill_id: TaskReadDto['skill_id']
+  execution_display_name: string
   status: 'pending' | 'running'
   started_at: string | null
   created_at: string

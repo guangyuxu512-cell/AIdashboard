@@ -24,7 +24,11 @@ def main(argv: list[str] | None = None) -> int:
             service.disable_token(args.device_id)
             print(f"Worker token disabled for device {args.device_id}")
             return 0
-        token = service.issue_token(args.device_id)
+        token = (
+            service.rotate_token(args.device_id)
+            if args.command == "rotate"
+            else service.issue_token(args.device_id)
+        )
         print(f"WORKER_DEVICE_ID={args.device_id}")
         print(f"WORKER_DEVICE_TOKEN={token}")
         return 0

@@ -14,7 +14,7 @@ function findRuntimeButton(node: unknown): VNode | null {
     vnode.type === AppButton &&
     typeof (vnode.children as { default?: () => string })?.default ===
       'function' &&
-    (vnode.children as { default: () => string }).default() === '运行详情'
+    (vnode.children as { default: () => string }).default() === '详情'
   ) {
     return vnode
   }
@@ -48,7 +48,7 @@ function findButton(node: unknown, label: string): VNode | null {
 }
 
 describe('DeviceListTable runtime action', () => {
-  it('emits the active task id from 查看运行详情', () => {
+  it('keeps the current execution action compact and emits the task id', () => {
     const row = {
       deviceId: 'device-1',
       currentExecution: {
@@ -74,6 +74,34 @@ describe('DeviceListTable runtime action', () => {
     expect(button).not.toBeNull()
     ;(button?.props?.onClick as () => void)()
     expect(wrapper.emitted('view-runtime')).toEqual([['task-1']])
+  })
+
+  it('uses deviceId as the stable row key and omits the current step', () => {
+    const row = {
+      deviceId: 'device-stable',
+      currentExecution: {
+        label: '执行中',
+        tone: 'info',
+        name: '名称很长但必须保持单行的影刀应用',
+        latestMessage: '上传图片 3/10',
+        taskId: 'task-1',
+      },
+    } as DeviceManagementRowViewModel
+    const wrapper = shallowMount(DeviceListTable, { props: { rows: [row] } })
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    const rowKey = table.props('rowKey') as (
+      value: DeviceManagementRowViewModel,
+    ) => string
+    const columns = table.props('columns') as Array<{
+      key?: string
+      render?: (value: DeviceManagementRowViewModel) => VNode
+    }>
+    const rendered = columns
+      .find((column) => column.key === 'currentExecution')
+      ?.render?.(row)
+
+    expect(rowKey(row)).toBe('device-stable')
+    expect(JSON.stringify(rendered)).not.toContain('上传图片 3/10')
   })
 
   it('replaces the list edit action with the capability entry', () => {

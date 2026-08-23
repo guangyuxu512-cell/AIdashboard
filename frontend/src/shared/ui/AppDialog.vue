@@ -18,6 +18,7 @@ withDefaults(
     size?: OverlaySize
     positiveText?: string
     negativeText?: string
+    showNegative?: boolean
     loading?: boolean
     positiveDisabled?: boolean
     positiveDisabledReason?: string | null
@@ -27,6 +28,7 @@ withDefaults(
     size: 'md',
     positiveText: '确认',
     negativeText: '取消',
+    showNegative: true,
     loading: false,
     positiveDisabled: false,
     positiveDisabledReason: null,
@@ -77,7 +79,7 @@ function cancel(): void {
           <slot name="footer-start" />
         </div>
         <div class="app-dialog__footer-actions">
-          <AppButton @click="cancel">{{ negativeText }}</AppButton>
+          <AppButton v-if="showNegative" @click="cancel">{{ negativeText }}</AppButton>
           <NTooltip
             v-if="positiveDisabled && positiveDisabledReason"
             placement="top"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { h } from 'vue'
-import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
+import { NTooltip, type DataTableColumns, type DataTableRowKey } from 'naive-ui'
 
 import {
   DeviceConnectionStatusTag,
@@ -66,13 +66,18 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
             tone: device.currentExecution.tone,
           }),
           device.currentExecution.name
-            ? h('small', device.currentExecution.name)
-            : null,
-          device.currentExecution.latestMessage
             ? h(
-                'small',
-                { class: 'device-table__step' },
-                device.currentExecution.latestMessage,
+                NTooltip,
+                { placement: 'top' },
+                {
+                  trigger: () =>
+                    h(
+                      'small',
+                      { class: 'device-table__execution-name' },
+                      device.currentExecution.name!,
+                    ),
+                  default: () => device.currentExecution.name!,
+                },
               )
             : null,
           device.currentExecution.taskId
@@ -83,7 +88,7 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
                   onClick: () =>
                     emit('view-runtime', device.currentExecution.taskId!),
                 },
-                () => '运行详情',
+                () => '详情',
               )
             : null,
         ]),
@@ -213,22 +218,27 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
 :deep(.device-table__execution) {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
 }
 
-:deep(.device-table__step) {
-  flex-basis: 100%;
-}
-
-:deep(.device-table__execution small) {
+:deep(.device-table__execution-name) {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+:deep(.device-table__execution > .n-tooltip-trigger) {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 :deep(.device-table__actions) {

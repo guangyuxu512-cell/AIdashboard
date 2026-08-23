@@ -117,6 +117,24 @@ Descriptor 固定包含 `skill_id / display_name / runtime / provider / version`
 - `DELETE /api/v1/devices/{device_id}` 返回 204，但实现为软移除；有活动任务时返回 `409 / DEVICE_HAS_ACTIVE_TASKS`。
 - 已移除 Device 的列表与详情行为和 Shop 软删除一致：普通读取视为不存在。
 
+## Worker Credential / Provisioning API
+
+- `GET /api/v1/devices/{device_id}/worker-credential`：只返回
+  `not_issued / issued / revoked` 与真实签发时间，不返回 Token、Hash、尾号或虚构使用时间。
+- `POST /api/v1/devices/{device_id}/worker-credential/issue`：仅在没有有效凭证时签发；
+  `token` 明文只在该次 `Cache-Control: no-store` 响应返回一次。
+- `POST /api/v1/devices/{device_id}/worker-credential/rotate`：要求当前存在有效凭证，原 Hash
+  立即被新 Hash 替换，旧 Token 不再通过认证；新 Token 同样只返回一次。
+- `POST /api/v1/devices/{device_id}/worker-credential/revoke`：将当前凭证置为无效，不删除
+  Device；之后 Worker Heartbeat、Poll、Capability Sync 均认证失败。
+- `GET /api/v1/worker/provisioning`：首次 GUI 配置专用。只携带 Bearer Worker Token，Backend
+  从 Token Hash 解析该 Token 自己的 Device ID、显示名称和启用状态；不接受客户端声明
+  Device ID，也不能解析其他设备身份。其余 Worker API 仍必须同时使用 Bearer Token 与
+  `X-Device-ID`。
+
+Backend 永远只保存 Token Hash。Frontend 不提供旧 Token 读取；明文只在签发/轮换的短生命
+周期 Dialog 中存在，不进入 Query Cache。
+
 ## Notification Channel API
 
 - `GET/POST /api/v1/notification-channels`
@@ -131,6 +149,8 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
   认证的事件批量写入；认证设备必须等于 Task target，重复 `(task_id, seq)` 幂等忽略。
 - `GET /api/v1/tasks/{task_id}/events?after_seq=<n>&limit=<n>`：只返回 seq 大于游标的有限事件。
 - `GET /api/v1/tasks/active/{device_id}`：返回设备当前 PENDING/RUNNING Task 摘要；没有时 204。
+  摘要包含创建 Task 时固化的 `execution_display_name`，不得要求 Frontend 按 app_id 发起
+  N+1 Application Detail 请求。
 
 事件 message 和 metadata 在 Worker 与 Backend 双层脱敏。设备主列表与 Inventory 等辅助
 查询保持独立，活动 Task 摘要失败不得改变 Device 主数据成功语义。

@@ -35,3 +35,15 @@ def get_worker_principal(
         parsed_device_id,
         authorization.credentials,
     )
+
+
+def get_worker_provisioning_principal(
+    session: Annotated[Session, Depends(get_database_session)],
+    authorization: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(worker_bearer),
+    ],
+) -> WorkerPrincipal:
+    if authorization is None or authorization.scheme.lower() != "bearer":
+        raise WorkerAuthenticationError()
+    return WorkerService(session).authenticate_token(authorization.credentials)

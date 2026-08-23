@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -13,6 +13,8 @@ from app.modules.workers.schemas import (
     DeviceProviderInventoryRead,
     DeviceRuntimeRead,
     DeviceSkillCapabilityRead,
+    WorkerCredentialRead,
+    WorkerTokenIssuedRead,
 )
 from app.modules.workers.service import WorkerService
 from app.shared.pagination import Page, PaginationParams
@@ -105,6 +107,54 @@ def get_device_skill_capabilities(
 ) -> list[DeviceSkillCapabilityRead]:
     service.get(device_id)
     return worker_service.get_skill_capability_reads(device_id)
+
+
+@router.get(
+    "/{device_id}/worker-credential",
+    response_model=WorkerCredentialRead,
+)
+def get_worker_credential(
+    device_id: UUID,
+    service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> WorkerCredentialRead:
+    return service.get_credential(device_id)
+
+
+@router.post(
+    "/{device_id}/worker-credential/issue",
+    response_model=WorkerTokenIssuedRead,
+)
+def issue_worker_credential(
+    device_id: UUID,
+    response: Response,
+    service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> WorkerTokenIssuedRead:
+    response.headers["Cache-Control"] = "no-store"
+    return service.issue_credential(device_id)
+
+
+@router.post(
+    "/{device_id}/worker-credential/rotate",
+    response_model=WorkerTokenIssuedRead,
+)
+def rotate_worker_credential(
+    device_id: UUID,
+    response: Response,
+    service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> WorkerTokenIssuedRead:
+    response.headers["Cache-Control"] = "no-store"
+    return service.rotate_credential(device_id)
+
+
+@router.post(
+    "/{device_id}/worker-credential/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def revoke_worker_credential(
+    device_id: UUID,
+    service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> None:
+    service.disable_token(device_id)
 
 
 @router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)

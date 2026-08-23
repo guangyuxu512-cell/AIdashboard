@@ -70,6 +70,7 @@ def make_service() -> tuple[TaskService, FakeTaskEventRepository, UUID, UUID]:
         task_id=task_id,
         target_device_id=device_id,
         skill_id="yingdao.test",
+        execution_display_name="影刀无副作用测试",
         status=TaskStatus.RUNNING.value,
         input_json={},
         lease_until=now + timedelta(minutes=1),

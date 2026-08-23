@@ -10,15 +10,23 @@ export function resolveDeviceCurrentExecution(
 ): DeviceCurrentExecutionViewModel {
   if (activeTask) {
     const metadata = activeTask.latest_event?.metadata ?? {}
-    const appName =
+    const eventAppName =
       typeof metadata.app_name === 'string' ? metadata.app_name : null
+    const snapshotName = activeTask.execution_display_name?.trim() || null
+    const hasGenericYingdaoSnapshot =
+      activeTask.skill_id === 'yingdao.app.run' &&
+      snapshotName === activeTask.skill_id
+    const displayName =
+      hasGenericYingdaoSnapshot && eventAppName
+        ? eventAppName
+        : snapshotName || eventAppName || activeTask.skill_id
     return {
       status: activeTask.status,
       label: activeTask.status === 'pending' ? '待执行' : '执行中',
-      name: appName ?? activeTask.skill_id,
+      name: displayName,
       tone: activeTask.status === 'pending' ? 'warning' : 'info',
       taskId: activeTask.task_id,
-      appName,
+      appName: eventAppName,
       latestMessage: activeTask.latest_event?.message ?? null,
       startedAt: activeTask.started_at ?? activeTask.created_at,
     }
@@ -30,7 +38,7 @@ export function resolveDeviceCurrentExecution(
     return {
       status: refreshTask.status,
       label: refreshTask.status === 'pending' ? '待执行' : '执行中',
-      name: refreshTask.skill_id,
+      name: refreshTask.execution_display_name || refreshTask.skill_id,
       tone: refreshTask.status === 'pending' ? 'warning' : 'info',
       taskId: refreshTask.task_id,
       appName: null,

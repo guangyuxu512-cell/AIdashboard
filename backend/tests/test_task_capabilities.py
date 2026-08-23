@@ -213,6 +213,7 @@ def test_legacy_ready_provider_inventory_allows_yingdao_app_guard() -> None:
         ),
     )
     assert task.skill_id == "yingdao.app.run"
+    assert task.execution_display_name == "Safe App"
 
 
 def test_yingdao_guard_returns_specific_provider_and_application_errors() -> None:

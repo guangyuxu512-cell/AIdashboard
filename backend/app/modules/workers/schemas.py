@@ -24,6 +24,22 @@ class DeviceRuntimeRead(BaseModel):
     updated_at: datetime
 
 
+class WorkerCredentialRead(BaseModel):
+    device_id: UUID
+    status: Literal["issued", "revoked", "not_issued"]
+    issued_at: datetime | None
+
+
+class WorkerTokenIssuedRead(WorkerCredentialRead):
+    token: str
+
+
+class WorkerProvisioningRead(BaseModel):
+    device_id: UUID
+    device_display_name: str
+    device_enabled: bool
+
+
 class WorkerSkillDescriptor(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

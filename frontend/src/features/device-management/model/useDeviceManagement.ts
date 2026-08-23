@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue'
 
 import {
   deviceDataSource,
+  deviceApi,
   formatRelativeTime,
   type DeviceListFilters,
   type DeviceListItemViewModel,
@@ -14,6 +15,7 @@ import {
   useDeviceListQuery,
   useDeviceProviderInventoriesQuery,
   useDeviceSkillCapabilitiesQuery,
+  useDeviceWorkerCredentialQuery,
   useRemoveDeviceMutation,
   useSetDeviceEnabledMutation,
   useUpdateDeviceMutation,
@@ -72,6 +74,11 @@ export function useDeviceManagement() {
   const statusChangingDeviceId = ref<string | null>(null)
   const removeDevice = ref<DeviceListItemViewModel | null>(null)
   const removeVisible = ref(false)
+  const credentialAction = ref<'rotate' | 'revoke' | null>(null)
+  const credentialConfirmVisible = ref(false)
+  const workerTokenVisible = ref(false)
+  const oneTimeWorkerToken = ref<string | null>(null)
+  const workerCredentialSubmitting = ref(false)
   const refreshTaskId = ref<string | null>(null)
   const runtimeTaskId = ref<string | null>(null)
   const runtimeVisible = ref(false)
@@ -97,6 +104,10 @@ export function useDeviceManagement() {
     computed(() => apiMode === 'real'),
   )
   const detailQuery = useDeviceDetailQuery(detailDeviceId)
+  const workerCredentialQuery = useDeviceWorkerCredentialQuery(
+    detailDeviceId,
+    computed(() => apiMode === 'real'),
+  )
   const providerInventoryQuery =
     useDeviceProviderInventoriesQuery(detailDeviceId)
   const capabilityProviderInventoryQuery =
@@ -416,6 +427,58 @@ export function useDeviceManagement() {
     }
   }
 
+  async function issueWorkerCredential(): Promise<void> {
+    const deviceId = detailDeviceId.value
+    if (!deviceId || apiMode !== 'real') return
+    workerCredentialSubmitting.value = true
+    try {
+      const issued = await deviceApi.issueWorkerCredential(deviceId)
+      oneTimeWorkerToken.value = issued.token
+      workerTokenVisible.value = true
+      await workerCredentialQuery.refetch()
+      message.success('Worker Token 已签发')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    } finally {
+      workerCredentialSubmitting.value = false
+    }
+  }
+
+  function requestWorkerCredentialAction(action: 'rotate' | 'revoke'): void {
+    credentialAction.value = action
+    credentialConfirmVisible.value = true
+  }
+
+  async function confirmWorkerCredentialAction(): Promise<void> {
+    const deviceId = detailDeviceId.value
+    const action = credentialAction.value
+    if (!deviceId || !action || apiMode !== 'real') return
+    workerCredentialSubmitting.value = true
+    try {
+      if (action === 'rotate') {
+        const issued = await deviceApi.rotateWorkerCredential(deviceId)
+        oneTimeWorkerToken.value = issued.token
+        workerTokenVisible.value = true
+        message.success('Worker Token 已轮换，旧 Token 已失效')
+      } else {
+        await deviceApi.revokeWorkerCredential(deviceId)
+        message.success('Worker 凭证已撤销')
+      }
+      credentialConfirmVisible.value = false
+      credentialAction.value = null
+      await workerCredentialQuery.refetch()
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    } finally {
+      workerCredentialSubmitting.value = false
+    }
+  }
+
+  function setWorkerTokenVisible(value: boolean): void {
+    workerTokenVisible.value = value
+    if (!value) oneTimeWorkerToken.value = null
+  }
+
   return {
     filterDraft,
     page,
@@ -439,6 +502,10 @@ export function useDeviceManagement() {
     statusChangingDeviceId,
     removeDevice,
     removeVisible,
+    credentialAction,
+    credentialConfirmVisible,
+    workerTokenVisible,
+    oneTimeWorkerToken,
     total,
     statistics,
     refreshing: computed(
@@ -453,6 +520,24 @@ export function useDeviceManagement() {
     recentExecutions,
     detailLoading: detailQuery.isPending,
     detailError,
+    workerCredential: computed(
+      () => workerCredentialQuery.data.value ?? null,
+    ),
+    workerCredentialLoading: computed(() =>
+      isInitialQueryLoading(
+        workerCredentialQuery.isPending.value,
+        workerCredentialQuery.data.value,
+      ),
+    ),
+    workerCredentialError: computed(() =>
+      isInitialQueryError(
+        workerCredentialQuery.error.value,
+        workerCredentialQuery.data.value,
+      )
+        ? getErrorMessage(workerCredentialQuery.error.value)
+        : null,
+    ),
+    workerCredentialSubmitting,
     yingdaoInventory: computed(() => providerInventoryQuery.data.value ?? null),
     providerInventoryLoading: computed(() =>
       isInitialQueryLoading(
@@ -510,6 +595,7 @@ export function useDeviceManagement() {
     retryList: listQuery.refetch,
     refreshList,
     retryDetail: detailQuery.refetch,
+    retryWorkerCredential: workerCredentialQuery.refetch,
     retryProviderInventory: providerInventoryQuery.refetch,
     retrySkillCapabilities: skillCapabilitiesQuery.refetch,
     retryCapabilityProviderInventory:
@@ -526,5 +612,9 @@ export function useDeviceManagement() {
     toggleEnabled,
     requestRemove,
     confirmRemove,
+    issueWorkerCredential,
+    requestWorkerCredentialAction,
+    confirmWorkerCredentialAction,
+    setWorkerTokenVisible,
   }
 }

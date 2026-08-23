@@ -52,4 +52,24 @@ describe('device management auxiliary context', () => {
       'device-b': null,
     })
   })
+
+  it('keeps cached auxiliary values when a background refresh fails', async () => {
+    const inventoryLoader = vi.fn(async () => {
+      throw new Error('provider unavailable')
+    })
+    const bindingLoader = vi.fn(async () => {
+      throw new Error('binding unavailable')
+    })
+
+    await expect(
+      loadDeviceInventories(['device-a'], inventoryLoader, {
+        'device-a': inventory,
+      }),
+    ).resolves.toEqual({ 'device-a': inventory })
+    await expect(
+      loadDeviceBindingCounts(['device-a'], bindingLoader, {
+        'device-a': 8,
+      }),
+    ).resolves.toEqual({ 'device-a': 8 })
+  })
 })

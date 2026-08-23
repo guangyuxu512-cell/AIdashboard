@@ -7,6 +7,7 @@ import {
   DeviceIdentity,
   type DeviceListItemViewModel,
   type YingdaoInventoryViewModel,
+  type WorkerCredentialReadDto,
   YingdaoAvailabilityStatusTag,
   YingdaoProviderStatusTag,
 } from '@/entities/device'
@@ -22,6 +23,7 @@ import type {
   DeviceRecentExecutionViewModel,
 } from '../model/types'
 import DeviceCapabilityCard from './DeviceCapabilityCard.vue'
+import WorkerCredentialSection from './WorkerCredentialSection.vue'
 
 defineProps<{
   show: boolean
@@ -37,6 +39,10 @@ defineProps<{
   recentExecutions?: DeviceRecentExecutionViewModel[]
   statusChanging?: boolean
   removing?: boolean
+  workerCredential?: WorkerCredentialReadDto | null
+  workerCredentialLoading?: boolean
+  workerCredentialError?: string | null
+  workerCredentialSubmitting?: boolean
 }>()
 
 defineEmits<{
@@ -49,6 +55,10 @@ defineEmits<{
   'toggle-enabled': [device: DeviceListItemViewModel]
   remove: [device: DeviceListItemViewModel]
   'view-runtime': [taskId: string]
+  'retry-worker-credential': []
+  'issue-worker-credential': []
+  'rotate-worker-credential': []
+  'revoke-worker-credential': []
 }>()
 </script>
 
@@ -203,6 +213,17 @@ defineEmits<{
         </ul>
         <EmptyState v-else description="暂无可用的最近执行记录" />
       </section>
+
+      <WorkerCredentialSection
+        :credential="workerCredential ?? null"
+        :loading="workerCredentialLoading"
+        :error="workerCredentialError"
+        :submitting="workerCredentialSubmitting"
+        @retry="$emit('retry-worker-credential')"
+        @issue="$emit('issue-worker-credential')"
+        @rotate="$emit('rotate-worker-credential')"
+        @revoke="$emit('revoke-worker-credential')"
+      />
 
       <section class="device-detail__section device-detail__section--muted">
         <NCollapse>

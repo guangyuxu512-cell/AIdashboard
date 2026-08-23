@@ -125,7 +125,7 @@ def start_worker(
         },
     )
     return subprocess.Popen(
-        [str(WORKER_PYTHON), "-m", "app"],
+        [str(WORKER_PYTHON), "-m", "app", "--worker-core"],
         cwd=WORKER_ROOT,
         env=environment,
         stdout=subprocess.DEVNULL,

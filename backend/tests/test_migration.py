@@ -303,3 +303,22 @@ def test_device_skill_capability_migration(monkeypatch: object) -> None:
     recorder.calls.clear()
     migration.downgrade()
     assert recorder.calls == [("drop_table", "device_skill_capabilities")]
+
+
+def test_task_execution_display_name_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260823_0013_task_execution_display_name",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls == [
+        ("add_column", "tasks"),
+        ("execute", "UPDATE tasks SET execution_display_name = skill_id"),
+        ("alter_column", "tasks"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [("drop_column", "tasks")]

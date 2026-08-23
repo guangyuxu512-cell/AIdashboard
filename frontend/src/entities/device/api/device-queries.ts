@@ -1,10 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { DeviceSaveInput } from '../model/types'
 import { getYingdaoInventory } from './device-provider-data-source'
 import { getDeviceSkillCapabilities } from './device-skill-capability-data-source'
 import { deviceDataSource, type DeviceListParams } from './device-data-source'
+import { deviceApi } from './device-api'
 
 export const deviceQueryKeys = {
   all: ['devices'] as const,
@@ -14,6 +20,23 @@ export const deviceQueryKeys = {
     ['devices', 'provider-inventories', deviceId] as const,
   skillCapabilities: (deviceId: string | null) =>
     ['devices', 'skill-capabilities', deviceId] as const,
+  workerCredential: (deviceId: string | null) =>
+    ['devices', 'worker-credential', deviceId] as const,
+}
+
+export function useDeviceWorkerCredentialQuery(
+  deviceId: MaybeRefOrGetter<string | null>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      deviceQueryKeys.workerCredential(toValue(deviceId)),
+    ),
+    queryFn: () => deviceApi.getWorkerCredential(toValue(deviceId)!),
+    enabled: computed(
+      () => Boolean(toValue(deviceId)) && Boolean(toValue(enabled)),
+    ),
+  })
 }
 
 export function useDeviceProviderInventoriesQuery(
@@ -49,6 +72,7 @@ export function useDeviceListQuery(
     queryFn: () => deviceDataSource.list(toValue(params)),
     enabled: computed(() => toValue(enabled)),
     refetchInterval: deviceDataSource.mode === 'real' ? 15_000 : false,
+    placeholderData: keepPreviousData,
   })
 }
 

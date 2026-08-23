@@ -87,3 +87,12 @@ Migration 对既有 Runtime 按当前 45 秒阈值回填状态，但回填过程
 Migration `20260822_0010_task_runtime_events` 增加 `task_events`。它只保存 Task 运行事件
 流水，不是通用日志平台。`(task_id, seq)` 唯一并建立同序查询索引；metadata 使用受限
 JSONB 对象，不得保存 Cookie、Token、Credential 或完整敏感任务输入。
+
+Migration `20260823_0013_task_execution_display_name` 为 `tasks` 增加非空
+`execution_display_name` 快照。既有 Task 使用 `skill_id` 回填；新 Task 创建时，普通 Skill
+保存 Capability `display_name`，`yingdao.app.run` 保存当时 Provider Inventory 中匹配的
+Application 名称。该字段用于列表与历史稳定展示，Application 后续改名不得反向改变旧 Task。
+
+Worker Token 生命周期继续复用 `worker_device_credentials`，每个 Device 最多一条记录；本轮
+不新增第二套 Token 表或明文列。签发/轮换仅替换 SHA-256 `token_hash`，撤销使用既有
+`enabled=false`，明文永不落库。

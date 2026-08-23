@@ -87,14 +87,16 @@ class TaskService:
             raise TaskInputInvalidError(
                 details=error.errors(include_input=False),
             ) from error
+        execution_display_name = capability.display_name
         if data.skill_id is TaskSkillId.YINGDAO_APP_RUN:
-            input_json = self._validate_yingdao_application_run(
+            input_json, execution_display_name = self._validate_yingdao_application_run(
                 input_json,
                 provider_inventory,
             )
         task = Task(
             target_device_id=data.target_device_id,
             skill_id=data.skill_id.value,
+            execution_display_name=execution_display_name,
             status=TaskStatus.PENDING.value,
             input_json=input_json,
         )
@@ -151,11 +153,19 @@ class TaskService:
         self,
         input_json: dict[str, Any],
         inventory: YingdaoProviderInventory | None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str]:
         if inventory is None:
             raise TaskProviderNotReadyError(details={"provider": "yingdao"})
         app_id = str(input_json["app_id"])
-        if not any(application.app_id == app_id for application in inventory.applications):
+        application = next(
+            (
+                application
+                for application in inventory.applications
+                if application.app_id == app_id
+            ),
+            None,
+        )
+        if application is None:
             raise TaskApplicationNotAvailableError(
                 details={"app_id": app_id},
             )
@@ -167,7 +177,7 @@ class TaskService:
             params = normalize_parameters(schema, input_json.get("params", {}))
         except ValueError as error:
             raise TaskInputInvalidError(str(error)) from error
-        return {"app_id": app_id, "params": params}
+        return {"app_id": app_id, "params": params}, application.app_name
 
     def get(self, task_id: UUID) -> Task:
         task = self.repository.get(task_id)
@@ -184,6 +194,7 @@ class TaskService:
             task_id=task.task_id,
             target_device_id=task.target_device_id,
             skill_id=task.skill_id,
+            execution_display_name=task.execution_display_name,
             status=task.status,
             started_at=task.started_at,
             created_at=task.created_at,

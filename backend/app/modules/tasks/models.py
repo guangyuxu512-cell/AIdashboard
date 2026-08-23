@@ -58,6 +58,10 @@ class Task(TimestampMixin, Base):
         nullable=False,
     )
     skill_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    execution_display_name: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
     status: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
     input_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

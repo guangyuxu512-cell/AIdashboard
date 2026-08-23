@@ -49,4 +49,26 @@ describe('task queries', () => {
       loadActiveTasks(['device-ok', 'device-failed']),
     ).resolves.toEqual({ 'device-ok': null, 'device-failed': null })
   })
+
+  it('keeps the previous active summary when a background lookup fails', async () => {
+    const previous = {
+      'device-failed': {
+        task_id: 'task-1',
+        target_device_id: 'device-failed',
+        skill_id: 'yingdao.app.run',
+        execution_display_name: '原子模式单店模式',
+        status: 'running',
+        started_at: '2026-08-23T12:00:00Z',
+        created_at: '2026-08-23T12:00:00Z',
+        latest_event: null,
+      },
+    } as const
+    vi.spyOn(taskApi, 'getActive').mockRejectedValue(
+      new Error('background refresh failed'),
+    )
+
+    await expect(
+      loadActiveTasks(['device-failed'], previous),
+    ).resolves.toEqual(previous)
+  })
 })

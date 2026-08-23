@@ -89,3 +89,15 @@ export interface DeviceSkillCapabilityReadDto {
   version: string
   updated_at: string
 }
+
+export type WorkerCredentialStatusDto = 'issued' | 'revoked' | 'not_issued'
+
+export interface WorkerCredentialReadDto {
+  device_id: string
+  status: WorkerCredentialStatusDto
+  issued_at: string | null
+}
+
+export interface WorkerTokenIssuedReadDto extends WorkerCredentialReadDto {
+  token: string
+}

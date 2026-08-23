@@ -31,6 +31,7 @@ from app.modules.workers.models import (
     DeviceSkillCapability,
     WorkerDeviceCredential,
 )
+from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.schemas import (
     ProviderInventoryUpsert,
     SkillCapabilitySnapshotUpsert,
@@ -74,6 +75,55 @@ def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
         )
         session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
         session.commit()
+
+
+def test_worker_credential_lifecycle_uses_hash_and_isolates_devices(
+    postgresql_engine: Engine,
+) -> None:
+    device_a = uuid4()
+    device_b = uuid4()
+    device_ids = {device_a, device_b}
+    try:
+        with Session(postgresql_engine) as session:
+            session.add_all(
+                [
+                    Device(device_id=device_a, display_name="credential-a"),
+                    Device(device_id=device_b, display_name="credential-b"),
+                ],
+            )
+            session.commit()
+
+            service = WorkerService(session)
+            first_token = service.issue_token(device_a)
+            credential = session.scalar(
+                select(WorkerDeviceCredential).where(
+                    WorkerDeviceCredential.device_id == device_a,
+                ),
+            )
+            assert credential is not None
+            assert credential.token_hash != first_token
+            assert len(credential.token_hash) == 64
+            principal = service.authenticate_token(first_token)
+            assert principal.device_id == device_a
+            assert service.get_provisioning(principal).device_id == device_a
+            with pytest.raises(WorkerAuthenticationError):
+                service.authenticate(device_b, first_token)
+
+            second_token = service.rotate_token(device_a)
+            assert second_token != first_token
+            with pytest.raises(WorkerAuthenticationError):
+                service.authenticate_token(first_token)
+            assert service.authenticate(device_a, second_token).device_id == device_a
+
+            service.disable_token(device_a)
+            assert service.get_credential(device_a).status == "revoked"
+            with pytest.raises(WorkerAuthenticationError):
+                service.authenticate_token(second_token)
+
+            replacement_token = service.issue_token(device_a)
+            assert service.authenticate_token(replacement_token).device_id == device_a
+    finally:
+        _cleanup(postgresql_engine, device_ids)
 
 
 def test_worker_identity_runtime_claim_result_and_lost(
@@ -465,6 +515,25 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                 ),
             )
             assert task.input_json == {"app_id": app_id, "params": {"message": "hello"}}
+            assert task.execution_display_name == "Worker闭环测试"
+            inventory_record = session.scalar(
+                select(DeviceProviderInventory).where(
+                    DeviceProviderInventory.device_id == device_a,
+                    DeviceProviderInventory.provider_code == "yingdao",
+                ),
+            )
+            assert inventory_record is not None
+            changed_inventory = dict(inventory_record.inventory_payload)
+            changed_applications = [
+                dict(application)
+                for application in changed_inventory["applications"]
+            ]
+            changed_applications[0]["app_name"] = "Worker闭环测试（已改名）"
+            changed_inventory["applications"] = changed_applications
+            inventory_record.inventory_payload = changed_inventory
+            session.commit()
+            session.refresh(task)
+            assert task.execution_display_name == "Worker闭环测试"
             assert task_service.claim(WorkerPrincipal(device_id=device_b)) is None
             assert task_service.claim(WorkerPrincipal(device_id=device_a)) is not None
 

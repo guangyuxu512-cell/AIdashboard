@@ -22,6 +22,7 @@ class TaskRead(BaseModel):
     task_id: UUID
     target_device_id: UUID
     skill_id: TaskSkillId
+    execution_display_name: str
     status: TaskStatus
     input: dict[str, Any]
     result: dict[str, Any] | None
@@ -106,6 +107,7 @@ class ActiveTaskSummaryRead(BaseModel):
     task_id: UUID
     target_device_id: UUID
     skill_id: TaskSkillId
+    execution_display_name: str
     status: TaskStatus
     started_at: datetime | None
     created_at: datetime
@@ -117,6 +119,7 @@ def task_to_read(task: Task) -> TaskRead:
         task_id=task.task_id,
         target_device_id=task.target_device_id,
         skill_id=task.skill_id,
+        execution_display_name=task.execution_display_name,
         status=task.status,
         input=task.input_json,
         result=task.result_json,

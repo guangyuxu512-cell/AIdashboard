@@ -6,6 +6,8 @@ import type {
   DeviceReadDto,
   DeviceSkillCapabilityReadDto,
   DeviceUpdateDto,
+  WorkerCredentialReadDto,
+  WorkerTokenIssuedReadDto,
 } from './contracts'
 
 export const deviceApi = {
@@ -65,5 +67,38 @@ export const deviceApi = {
       `/api/v1/devices/${deviceId}/skill-capabilities`,
     )
     return response.data
+  },
+
+  async getWorkerCredential(
+    deviceId: string,
+  ): Promise<WorkerCredentialReadDto> {
+    const response = await httpClient.get<WorkerCredentialReadDto>(
+      `/api/v1/devices/${deviceId}/worker-credential`,
+    )
+    return response.data
+  },
+
+  async issueWorkerCredential(
+    deviceId: string,
+  ): Promise<WorkerTokenIssuedReadDto> {
+    const response = await httpClient.post<WorkerTokenIssuedReadDto>(
+      `/api/v1/devices/${deviceId}/worker-credential/issue`,
+    )
+    return response.data
+  },
+
+  async rotateWorkerCredential(
+    deviceId: string,
+  ): Promise<WorkerTokenIssuedReadDto> {
+    const response = await httpClient.post<WorkerTokenIssuedReadDto>(
+      `/api/v1/devices/${deviceId}/worker-credential/rotate`,
+    )
+    return response.data
+  },
+
+  async revokeWorkerCredential(deviceId: string): Promise<void> {
+    await httpClient.post(
+      `/api/v1/devices/${deviceId}/worker-credential/revoke`,
+    )
   },
 }

@@ -1,4 +1,9 @@
-import { useMutation, useQuery } from '@tanstack/vue-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/vue-query'
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
 import { taskApi } from './task-api'
@@ -75,6 +80,7 @@ export function useTaskEventsQuery(
 
 export async function loadActiveTasks(
   deviceIds: string[],
+  previous: Record<string, ActiveTaskSummaryReadDto | null> = {},
 ): Promise<Record<string, ActiveTaskSummaryReadDto | null>> {
   const results = await Promise.allSettled(
     deviceIds.map((deviceId) => taskApi.getActive(deviceId)),
@@ -82,7 +88,9 @@ export async function loadActiveTasks(
   return Object.fromEntries(
     deviceIds.map((deviceId, index) => [
       deviceId,
-      results[index]?.status === 'fulfilled' ? results[index].value : null,
+      results[index]?.status === 'fulfilled'
+        ? results[index].value
+        : (previous[deviceId] ?? null),
     ]),
   )
 }
@@ -91,11 +99,19 @@ export function useActiveTasksQuery(
   deviceIds: MaybeRefOrGetter<string[]>,
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
+  const queryClient = useQueryClient()
   return useQuery({
     queryKey: computed(() => taskQueryKeys.activeByDevices(toValue(deviceIds))),
-    queryFn: () => loadActiveTasks(toValue(deviceIds)),
+    queryFn: () => {
+      const ids = toValue(deviceIds)
+      return loadActiveTasks(
+        ids,
+        queryClient.getQueryData(taskQueryKeys.activeByDevices(ids)),
+      )
+    },
     enabled: computed(() => toValue(enabled) && toValue(deviceIds).length > 0),
     refetchInterval: computed(() => (toValue(enabled) ? 1_000 : false)),
+    placeholderData: keepPreviousData,
   })
 }
 
