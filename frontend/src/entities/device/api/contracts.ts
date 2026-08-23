@@ -79,3 +79,13 @@ export interface DeviceProviderInventoryReadDto {
   inventory: YingdaoProviderInventoryDto
   updated_at: string
 }
+
+export interface DeviceSkillCapabilityReadDto {
+  device_id: string
+  skill_id: string
+  display_name: string
+  runtime: 'python' | 'rpa' | 'discovery'
+  provider: string | null
+  version: string
+  updated_at: string
+}

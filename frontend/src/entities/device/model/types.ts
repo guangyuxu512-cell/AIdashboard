@@ -87,3 +87,13 @@ export interface YingdaoInventoryViewModel {
   applications: ProviderApplicationViewModel[]
   lastDiscoveredAtDisplay: string
 }
+
+export interface DeviceSkillCapabilityViewModel {
+  deviceId: string
+  skillId: string
+  displayName: string
+  runtime: 'python' | 'rpa' | 'discovery'
+  provider: string | null
+  version: string
+  updatedAtDisplay: string
+}

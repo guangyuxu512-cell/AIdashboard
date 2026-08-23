@@ -24,7 +24,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   view: [device: DeviceManagementRowViewModel]
-  edit: [device: DeviceManagementRowViewModel]
+  capability: [device: DeviceManagementRowViewModel]
   'toggle-enabled': [device: DeviceManagementRowViewModel]
   remove: [device: DeviceManagementRowViewModel]
   retry: []
@@ -153,8 +153,8 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
           ),
           h(
             AppButton,
-            { tone: 'text', onClick: () => emit('edit', device) },
-            () => '编辑',
+            { tone: 'text', onClick: () => emit('capability', device) },
+            () => '能力',
           ),
           h(
             AppButton,

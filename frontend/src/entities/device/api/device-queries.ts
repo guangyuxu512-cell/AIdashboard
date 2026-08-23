@@ -3,6 +3,7 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { DeviceSaveInput } from '../model/types'
 import { getYingdaoInventory } from './device-provider-data-source'
+import { getDeviceSkillCapabilities } from './device-skill-capability-data-source'
 import { deviceDataSource, type DeviceListParams } from './device-data-source'
 
 export const deviceQueryKeys = {
@@ -11,6 +12,8 @@ export const deviceQueryKeys = {
   detail: (deviceId: string | null) => ['devices', 'detail', deviceId] as const,
   providerInventories: (deviceId: string | null) =>
     ['devices', 'provider-inventories', deviceId] as const,
+  skillCapabilities: (deviceId: string | null) =>
+    ['devices', 'skill-capabilities', deviceId] as const,
 }
 
 export function useDeviceProviderInventoriesQuery(
@@ -21,6 +24,18 @@ export function useDeviceProviderInventoriesQuery(
       deviceQueryKeys.providerInventories(toValue(deviceId)),
     ),
     queryFn: () => getYingdaoInventory(toValue(deviceId)!),
+    enabled: computed(() => Boolean(toValue(deviceId))),
+  })
+}
+
+export function useDeviceSkillCapabilitiesQuery(
+  deviceId: MaybeRefOrGetter<string | null>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      deviceQueryKeys.skillCapabilities(toValue(deviceId)),
+    ),
+    queryFn: () => getDeviceSkillCapabilities(toValue(deviceId)!),
     enabled: computed(() => Boolean(toValue(deviceId))),
   })
 }

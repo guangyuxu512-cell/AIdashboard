@@ -56,13 +56,9 @@ async function mockAutomationConfig(page: Page, initialCount: number) {
 
 async function openAutomationConfig(page: Page) {
   await page.goto('/#/devices')
-  await page.getByRole('button', { name: '查看' }).first().click()
-  const deviceDrawer = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: /杭州-运营机-01/ }),
-  })
-  await deviceDrawer.getByRole('button', { name: '查看应用' }).click()
+  await page.getByRole('button', { name: '能力' }).first().click()
   const applicationsDrawer = page.getByRole('dialog').filter({
-    has: page.getByText('影刀应用列表', { exact: true }),
+    has: page.getByRole('heading', { name: /设备能力 · 杭州-运营机-01/ }),
   })
   const configResponse = page.waitForResponse((response) =>
     response.url().includes('/api/v1/automation-app-configs/yingdao/'),
@@ -148,16 +144,26 @@ test('uses the shared management list pattern and capability-first drawer', asyn
   await expect(drawer.getByText('CPU 摘要')).toHaveCount(0)
   await expect(drawer.getByText('内存摘要')).toHaveCount(0)
   await expect(drawer.getByText('系统', { exact: true })).toHaveCount(0)
-  await expect(drawer.getByRole('button', { name: '查看应用' })).toBeEnabled()
+  await expect(drawer.getByRole('button', { name: '查看能力' })).toBeEnabled()
+  await expect(drawer.getByRole('button', { name: '编辑' })).toBeVisible()
   await expect(
     drawer.getByRole('button', { name: '刷新影刀能力' }),
   ).toBeDisabled()
 
-  await drawer.getByRole('button', { name: '查看应用' }).click()
+  await drawer.getByRole('button', { name: '查看能力' }).click()
   const applicationsDrawer = page.getByRole('dialog').filter({
-    has: page.getByText('影刀应用列表', { exact: true }),
+    has: page.getByRole('heading', { name: /设备能力 · 杭州-运营机-01/ }),
   })
   await expect(applicationsDrawer).toBeVisible()
+  await expect(
+    applicationsDrawer.getByRole('heading', { name: '已注册 Skill' }),
+  ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByRole('heading', { name: '影刀应用' }),
+  ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByText('yingdao.app.run', { exact: true }),
+  ).toBeVisible()
   await expect(
     applicationsDrawer.getByText('商品发布（Fixture）', { exact: true }),
   ).toBeVisible()
@@ -168,7 +174,6 @@ test('uses the shared management list pattern and capability-first drawer', asyn
     applicationsDrawer.getByRole('button', { name: '运行' }).first(),
   ).toBeVisible()
   await applicationsDrawer.getByRole('button', { name: '关闭' }).click()
-  await drawer.getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '添加设备' }).click()
   await expect(

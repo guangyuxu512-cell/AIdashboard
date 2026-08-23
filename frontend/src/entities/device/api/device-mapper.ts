@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import type {
   DeviceListItemViewModel,
   DeviceSaveInput,
+  DeviceSkillCapabilityViewModel,
   YingdaoInventoryViewModel,
 } from '../model/types'
 import { formatRelativeTime } from '../model/display'
@@ -10,6 +11,7 @@ import type {
   DeviceCreateDto,
   DeviceProviderInventoryReadDto,
   DeviceReadDto,
+  DeviceSkillCapabilityReadDto,
   DeviceUpdateDto,
 } from './contracts'
 
@@ -79,5 +81,19 @@ export function mapYingdaoInventoryDto(
       versionId: application.version_id,
     })),
     lastDiscoveredAtDisplay: formatDateTime(dto.last_discovered_at),
+  }
+}
+
+export function mapDeviceSkillCapabilityDto(
+  dto: DeviceSkillCapabilityReadDto,
+): DeviceSkillCapabilityViewModel {
+  return {
+    deviceId: dto.device_id,
+    skillId: dto.skill_id,
+    displayName: dto.display_name,
+    runtime: dto.runtime,
+    provider: dto.provider,
+    version: dto.version,
+    updatedAtDisplay: formatDateTime(dto.updated_at),
   }
 }

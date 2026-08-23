@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import dayjs from 'dayjs'
 
 import { createMockDeviceDataSource } from './device-data-source'
-import { mapDeviceDto, mapYingdaoInventoryDto } from './device-mapper'
+import {
+  mapDeviceDto,
+  mapDeviceSkillCapabilityDto,
+  mapYingdaoInventoryDto,
+} from './device-mapper'
 import { deviceQueryKeys } from './device-queries'
 import { formatRelativeTime } from '../model/display'
 
@@ -108,6 +112,27 @@ describe('device mapper, query and mutation', () => {
       'list',
       { page: 3, pageSize: 50, filters: emptyFilters },
     ])
+  })
+
+  it('maps a Device Skill capability without inventing availability', () => {
+    const capability = mapDeviceSkillCapabilityDto({
+      device_id: '00000000-0000-0000-0000-000000000001',
+      skill_id: 'yingdao.app.run',
+      display_name: '运行影刀应用',
+      runtime: 'rpa',
+      provider: 'yingdao',
+      version: '1',
+      updated_at: '2026-08-23T12:00:00+00:00',
+    })
+
+    expect(capability).toMatchObject({
+      skillId: 'yingdao.app.run',
+      displayName: '运行影刀应用',
+      runtime: 'rpa',
+      provider: 'yingdao',
+      version: '1',
+    })
+    expect('available' in capability).toBe(false)
   })
 
   it('maps the latest Yingdao provider snapshot without exposing secrets', () => {

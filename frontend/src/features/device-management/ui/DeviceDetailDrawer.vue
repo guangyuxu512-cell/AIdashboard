@@ -44,7 +44,7 @@ defineEmits<{
   retry: []
   'retry-provider-inventory': []
   'refresh-yingdao': []
-  'view-yingdao-applications': []
+  'view-capabilities': [device: DeviceListItemViewModel]
   edit: [device: DeviceListItemViewModel]
   'toggle-enabled': [device: DeviceListItemViewModel]
   remove: [device: DeviceListItemViewModel]
@@ -177,9 +177,9 @@ defineEmits<{
             <AppButton
               tone="text"
               :disabled="!yingdaoInventory?.applicationCount"
-              @click="$emit('view-yingdao-applications')"
+              @click="$emit('view-capabilities', device)"
             >
-              查看应用
+              查看能力
             </AppButton>
             <AppButton
               :loading="yingdaoRefreshing"

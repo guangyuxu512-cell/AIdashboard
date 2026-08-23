@@ -4,6 +4,7 @@ import type {
   DeviceCreateDto,
   DeviceProviderInventoryReadDto,
   DeviceReadDto,
+  DeviceSkillCapabilityReadDto,
   DeviceUpdateDto,
 } from './contracts'
 
@@ -53,6 +54,15 @@ export const deviceApi = {
   ): Promise<DeviceProviderInventoryReadDto[]> {
     const response = await httpClient.get<DeviceProviderInventoryReadDto[]>(
       `/api/v1/devices/${deviceId}/provider-inventories`,
+    )
+    return response.data
+  },
+
+  async getSkillCapabilities(
+    deviceId: string,
+  ): Promise<DeviceSkillCapabilityReadDto[]> {
+    const response = await httpClient.get<DeviceSkillCapabilityReadDto[]>(
+      `/api/v1/devices/${deviceId}/skill-capabilities`,
     )
     return response.data
   },

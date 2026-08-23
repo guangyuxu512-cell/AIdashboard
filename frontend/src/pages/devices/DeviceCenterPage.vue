@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import {
   DeviceDetailDrawer,
+  DeviceCapabilityDrawer,
   DeviceFilterBar,
   DeviceFormDialog,
   DeviceListTable,
   DeviceRemoveDialog,
-  YingdaoApplicationsDrawer,
   YingdaoApplicationConfigDialog,
   YingdaoApplicationRunDialog,
   useDeviceManagement,
@@ -41,7 +41,7 @@ const management = useDeviceManagement()
         :error="management.listError.value"
         :status-changing-device-id="management.statusChangingDeviceId.value"
         @view="management.openDetail"
-        @edit="management.openEdit"
+        @capability="management.openCapabilities"
         @toggle-enabled="management.toggleEnabled"
         @remove="management.requestRemove"
         @view-runtime="management.openTaskRuntime"
@@ -75,7 +75,7 @@ const management = useDeviceManagement()
       @retry="management.retryDetail"
       @retry-provider-inventory="management.retryProviderInventory"
       @refresh-yingdao="management.refreshYingdao"
-      @view-yingdao-applications="management.openYingdaoApplications"
+      @view-capabilities="management.openCapabilities"
       @edit="management.openEdit"
       @toggle-enabled="management.toggleEnabled"
       @remove="management.requestRemove"
@@ -88,9 +88,25 @@ const management = useDeviceManagement()
       :device-name="management.runtimeDeviceName.value"
     />
 
-    <YingdaoApplicationsDrawer
-      v-model:show="management.applicationsVisible.value"
-      :applications="management.yingdaoInventory.value?.applications ?? []"
+    <DeviceCapabilityDrawer
+      v-model:show="management.capabilityVisible.value"
+      :device="management.capabilityDevice.value"
+      :skills="management.skillCapabilities.value"
+      :skills-loading="management.skillCapabilitiesLoading.value"
+      :skills-error="management.skillCapabilitiesError.value"
+      :yingdao-inventory="management.capabilityYingdaoInventory.value"
+      :provider-inventory-loading="
+        management.capabilityProviderInventoryLoading.value
+      "
+      :provider-inventory-error="
+        management.capabilityProviderInventoryError.value
+      "
+      :yingdao-refreshing="management.yingdaoRefreshing.value"
+      @retry-skills="management.retrySkillCapabilities"
+      @retry-provider-inventory="
+        management.retryCapabilityProviderInventory
+      "
+      @refresh-yingdao="management.refreshYingdao"
       @configure="management.configureYingdaoApplication"
       @run="management.runYingdaoApplication"
     />
@@ -103,7 +119,7 @@ const management = useDeviceManagement()
     <YingdaoApplicationRunDialog
       v-model:show="management.applicationRunVisible.value"
       :application="management.selectedApplication.value"
-      :device-id="management.detailDeviceId.value"
+      :device-id="management.capabilityDeviceId.value"
       @started="management.openTaskRuntime"
     />
 

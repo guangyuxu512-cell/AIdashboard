@@ -13,6 +13,7 @@ import {
   useDeviceDetailQuery,
   useDeviceListQuery,
   useDeviceProviderInventoriesQuery,
+  useDeviceSkillCapabilitiesQuery,
   useRemoveDeviceMutation,
   useSetDeviceEnabledMutation,
   useUpdateDeviceMutation,
@@ -58,7 +59,8 @@ export function useDeviceManagement() {
   const formMode = ref<DeviceFormMode>('create')
   const formInitialValue = ref<DeviceFormViewModel | null>(null)
   const editingDeviceId = ref<string | null>(null)
-  const applicationsVisible = ref(false)
+  const capabilityDeviceId = ref<string | null>(null)
+  const capabilityVisible = ref(false)
   const applicationConfigVisible = ref(false)
   const applicationRunVisible = ref(false)
   const selectedApplication = ref<ProviderApplicationViewModel | null>(null)
@@ -93,6 +95,10 @@ export function useDeviceManagement() {
   const detailQuery = useDeviceDetailQuery(detailDeviceId)
   const providerInventoryQuery =
     useDeviceProviderInventoriesQuery(detailDeviceId)
+  const capabilityProviderInventoryQuery =
+    useDeviceProviderInventoriesQuery(capabilityDeviceId)
+  const skillCapabilitiesQuery =
+    useDeviceSkillCapabilitiesQuery(capabilityDeviceId)
   const refreshTaskQuery = useTaskQuery(refreshTaskId)
   const createTaskMutation = useCreateTaskMutation()
   const createMutation = useCreateDeviceMutation()
@@ -242,10 +248,13 @@ export function useDeviceManagement() {
   }
 
   async function refreshYingdao(): Promise<void> {
-    if (!detailDeviceId.value || deviceDataSource.mode !== 'real') return
+    const deviceId = capabilityVisible.value
+      ? capabilityDeviceId.value
+      : detailDeviceId.value
+    if (!deviceId || deviceDataSource.mode !== 'real') return
     try {
       const task = await createTaskMutation.mutateAsync({
-        target_device_id: detailDeviceId.value,
+        target_device_id: deviceId,
         skill_id: 'yingdao.discover',
         input: {},
       })
@@ -257,8 +266,10 @@ export function useDeviceManagement() {
     }
   }
 
-  function openYingdaoApplications(): void {
-    applicationsVisible.value = true
+  function openCapabilities(device: DeviceListItemViewModel): void {
+    capabilityDeviceId.value = device.deviceId
+    capabilityVisible.value = true
+    detailVisible.value = false
   }
 
   function configureYingdaoApplication(
@@ -385,6 +396,10 @@ export function useDeviceManagement() {
         detailVisible.value = false
         detailDeviceId.value = null
       }
+      if (capabilityDeviceId.value === device.deviceId) {
+        capabilityVisible.value = false
+        capabilityDeviceId.value = null
+      }
       removeVisible.value = false
       removeDevice.value = null
       if (visibleRows.value.length === 1 && page.value > 1) page.value -= 1
@@ -402,7 +417,8 @@ export function useDeviceManagement() {
     runtimeVisible,
     runtimeTaskId,
     runtimeDeviceName,
-    applicationsVisible,
+    capabilityVisible,
+    capabilityDeviceId,
     applicationConfigVisible,
     applicationRunVisible,
     selectedApplication,
@@ -433,6 +449,31 @@ export function useDeviceManagement() {
     yingdaoInventory: computed(() => providerInventoryQuery.data.value ?? null),
     providerInventoryLoading: providerInventoryQuery.isPending,
     providerInventoryError,
+    capabilityDevice: computed(
+      () =>
+        rows.value.find(
+          (device) => device.deviceId === capabilityDeviceId.value,
+        ) ?? null,
+    ),
+    skillCapabilities: computed(
+      () => skillCapabilitiesQuery.data.value ?? [],
+    ),
+    skillCapabilitiesLoading: skillCapabilitiesQuery.isPending,
+    skillCapabilitiesError: computed(() =>
+      skillCapabilitiesQuery.error.value
+        ? getErrorMessage(skillCapabilitiesQuery.error.value)
+        : null,
+    ),
+    capabilityYingdaoInventory: computed(
+      () => capabilityProviderInventoryQuery.data.value ?? null,
+    ),
+    capabilityProviderInventoryLoading:
+      capabilityProviderInventoryQuery.isPending,
+    capabilityProviderInventoryError: computed(() =>
+      capabilityProviderInventoryQuery.error.value
+        ? getErrorMessage(capabilityProviderInventoryQuery.error.value)
+        : null,
+    ),
     yingdaoRefreshing,
     formSubmitting,
     removeSubmitting: computed(() => removeMutation.isPending.value),
@@ -443,10 +484,13 @@ export function useDeviceManagement() {
     refreshList,
     retryDetail: detailQuery.refetch,
     retryProviderInventory: providerInventoryQuery.refetch,
+    retrySkillCapabilities: skillCapabilitiesQuery.refetch,
+    retryCapabilityProviderInventory:
+      capabilityProviderInventoryQuery.refetch,
     openDetail,
     openCreate,
     openEdit,
-    openYingdaoApplications,
+    openCapabilities,
     configureYingdaoApplication,
     runYingdaoApplication,
     openTaskRuntime,
