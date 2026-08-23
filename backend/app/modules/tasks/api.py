@@ -6,14 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
     TaskCreate,
     TaskEventListRead,
+    TaskListItemRead,
     TaskRead,
     task_to_read,
 )
 from app.modules.tasks.service import TaskService
+from app.shared.pagination import Page, PaginationParams
 
 
 router = APIRouter(
@@ -39,6 +42,23 @@ def create_task(
     service: Annotated[TaskService, Depends(get_task_service)],
 ) -> TaskRead:
     return task_to_read(service.create(data))
+
+
+@router.get("", response_model=Page[TaskListItemRead])
+def list_tasks(
+    service: Annotated[TaskService, Depends(get_task_service)],
+    pagination: Annotated[PaginationParams, Depends()],
+    task_status: Annotated[TaskStatus | None, Query(alias="status")] = None,
+    device_id: Annotated[UUID | None, Query()] = None,
+    search: Annotated[str | None, Query(max_length=500)] = None,
+) -> Page[TaskListItemRead]:
+    return service.list_management_tasks(
+        page=pagination.page,
+        page_size=pagination.page_size,
+        status=task_status,
+        device_id=device_id,
+        search=search,
+    )
 
 
 @router.get(

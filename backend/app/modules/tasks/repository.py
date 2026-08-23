@@ -1,8 +1,9 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import exists, func, null, select, update
+from sqlalchemy import String, and_, cast, exists, func, null, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,17 @@ from app.modules.workers.models import (
     DeviceSkillCapability,
 )
 from app.shared.identifiers import generate_id
+
+
+@dataclass(frozen=True)
+class TaskListRecord:
+    task: Task
+    device_display_name: str
+    skill_display_name: str | None
+    progress_message: str | None
+    progress_metadata: dict[str, Any] | None
+    status_message: str | None
+    log_message: str | None
 
 
 class TaskRepository:
@@ -36,6 +48,99 @@ class TaskRepository:
             .order_by(Task.created_at.asc(), Task.task_id.asc())
             .limit(1),
         )
+
+    def list_management_tasks(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        status: TaskStatus | None,
+        device_id: UUID | None,
+        search: str | None,
+    ) -> tuple[list[TaskListRecord], int]:
+        filters = []
+        if status is not None:
+            filters.append(Task.status == status.value)
+        if device_id is not None:
+            filters.append(Task.target_device_id == device_id)
+        if search:
+            pattern = f"%{search}%"
+            filters.append(
+                or_(
+                    cast(Task.task_id, String).ilike(pattern),
+                    Task.execution_display_name.ilike(pattern),
+                    Task.skill_id.ilike(pattern),
+                ),
+            )
+
+        total = int(
+            self.session.scalar(
+                select(func.count()).select_from(Task).where(*filters),
+            )
+            or 0,
+        )
+        page_task_ids = (
+            select(Task.task_id)
+            .where(*filters)
+            .order_by(Task.created_at.desc(), Task.task_id.desc())
+            .offset(offset)
+            .limit(limit)
+            .subquery("task_management_page")
+        )
+
+        def latest_event_value(event_type: str, column: Any) -> Any:
+            return (
+                select(column)
+                .where(
+                    TaskEvent.task_id == Task.task_id,
+                    TaskEvent.event_type == event_type,
+                )
+                .order_by(TaskEvent.seq.desc())
+                .limit(1)
+                .correlate(Task)
+                .scalar_subquery()
+            )
+
+        statement = (
+            select(
+                Task,
+                Device.display_name.label("device_display_name"),
+                DeviceSkillCapability.display_name.label("skill_display_name"),
+                latest_event_value("progress", TaskEvent.message).label(
+                    "progress_message",
+                ),
+                latest_event_value("progress", TaskEvent.metadata_json).label(
+                    "progress_metadata",
+                ),
+                latest_event_value("status", TaskEvent.message).label(
+                    "status_message",
+                ),
+                latest_event_value("log", TaskEvent.message).label("log_message"),
+            )
+            .join(page_task_ids, page_task_ids.c.task_id == Task.task_id)
+            .join(Device, Device.device_id == Task.target_device_id)
+            .outerjoin(
+                DeviceSkillCapability,
+                and_(
+                    DeviceSkillCapability.device_id == Task.target_device_id,
+                    DeviceSkillCapability.skill_id == Task.skill_id,
+                ),
+            )
+            .order_by(Task.created_at.desc(), Task.task_id.desc())
+        )
+        records = [
+            TaskListRecord(
+                task=row[0],
+                device_display_name=row.device_display_name,
+                skill_display_name=row.skill_display_name,
+                progress_message=row.progress_message,
+                progress_metadata=row.progress_metadata,
+                status_message=row.status_message,
+                log_message=row.log_message,
+            )
+            for row in self.session.execute(statement)
+        ]
+        return records, total
 
     def get_latest_event(self, task_id: UUID) -> TaskEvent | None:
         return self.session.scalar(

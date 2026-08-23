@@ -34,12 +34,15 @@ from app.modules.tasks.schemas import (
     TaskEventBatchWrite,
     TaskEventListRead,
     TaskFail,
+    TaskListItemRead,
+    TaskProgressSummaryRead,
     task_event_to_read,
 )
 from app.modules.tasks.skill_contracts import validate_skill_input
-from app.modules.workers.service import WorkerPrincipal
 from app.modules.workers.models import DeviceSkillCapability
 from app.modules.workers.schemas import YingdaoProviderInventory
+from app.modules.workers.service import WorkerPrincipal
+from app.shared.pagination import Page
 
 
 class TaskService:
@@ -201,6 +204,57 @@ class TaskService:
             latest_event=(
                 task_event_to_read(latest_event) if latest_event is not None else None
             ),
+        )
+
+    def list_management_tasks(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        status: TaskStatus | None,
+        device_id: UUID | None,
+        search: str | None,
+    ) -> Page[TaskListItemRead]:
+        normalized_search = search.strip() if search else None
+        records, total = self.repository.list_management_tasks(
+            offset=(page - 1) * page_size,
+            limit=page_size,
+            status=status,
+            device_id=device_id,
+            search=normalized_search or None,
+        )
+        items = []
+        for record in records:
+            task = record.task
+            progress = _progress_summary(record.progress_metadata)
+            current_message = _task_current_message(
+                status=TaskStatus(task.status),
+                error_message=task.error_message,
+                progress_message=record.progress_message,
+                status_message=record.status_message,
+                log_message=record.log_message,
+            )
+            items.append(
+                TaskListItemRead(
+                    task_id=task.task_id,
+                    target_device_id=task.target_device_id,
+                    device_display_name=record.device_display_name,
+                    skill_id=task.skill_id,
+                    skill_display_name=record.skill_display_name,
+                    execution_display_name=task.execution_display_name,
+                    status=task.status,
+                    progress=progress,
+                    current_message=current_message,
+                    started_at=task.started_at,
+                    finished_at=task.finished_at,
+                    created_at=task.created_at,
+                ),
+            )
+        return Page(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
         )
 
     def list_events(
@@ -412,3 +466,50 @@ def _redact_metadata(value: dict[str, Any]) -> dict[str, Any]:
         return item
 
     return redact(value)
+
+
+def _progress_summary(
+    metadata: dict[str, Any] | None,
+) -> TaskProgressSummaryRead | None:
+    if not isinstance(metadata, dict):
+        return None
+    current = metadata.get("current")
+    total = metadata.get("total")
+    if isinstance(current, bool) or not isinstance(current, int) or current < 0:
+        return None
+    if total is not None:
+        if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+            return None
+        if current > total:
+            return None
+    return TaskProgressSummaryRead(current=current, total=total)
+
+
+def _task_current_message(
+    *,
+    status: TaskStatus,
+    error_message: str | None,
+    progress_message: str | None,
+    status_message: str | None,
+    log_message: str | None,
+) -> str | None:
+    if status in {TaskStatus.FAILED, TaskStatus.LOST} and error_message:
+        return _safe_summary(error_message)
+    for message in (progress_message, status_message, log_message):
+        summary = _safe_summary(message)
+        if summary:
+            return summary
+    if status is TaskStatus.SUCCESS:
+        return "完成"
+    return None
+
+
+def _safe_summary(value: str | None, *, max_length: int = 500) -> str | None:
+    if not value:
+        return None
+    summary = _redact_message(value).strip()
+    if not summary:
+        return None
+    if len(summary) <= max_length:
+        return summary
+    return f"{summary[: max_length - 1]}…"

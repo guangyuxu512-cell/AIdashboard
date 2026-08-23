@@ -16,7 +16,11 @@ from app.modules.shops.enums import BindingRole, ShopPlatform
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.tasks.api import get_task_service
+from app.modules.tasks.enums import TaskStatus
+from app.modules.tasks.schemas import TaskListItemRead
 from app.platforms.schemas import PlatformShopIdentityRead
+from app.shared.pagination import Page
 from app.modules.users.api import get_user_service
 from app.modules.users.models import User
 from app.modules.workers.enums import WorkerConnectionStatus
@@ -171,6 +175,32 @@ class ApiUserService:
         return self.get(user_id)
 
 
+class ApiTaskService:
+    def list_management_tasks(self, **kwargs: object) -> Page[TaskListItemRead]:
+        now = datetime.now(UTC)
+        return Page(
+            items=[
+                TaskListItemRead(
+                    task_id=uuid4(),
+                    target_device_id=DEVICE_ID,
+                    device_display_name="API 设备",
+                    skill_id="system.sleep",
+                    skill_display_name="系统等待",
+                    execution_display_name="安全等待",
+                    status=TaskStatus.RUNNING,
+                    progress={"current": 3, "total": 10},
+                    current_message="正在处理第 3 项",
+                    started_at=now,
+                    finished_at=None,
+                    created_at=now,
+                ),
+            ],
+            total=1,
+            page=int(kwargs["page"]),
+            page_size=int(kwargs["page_size"]),
+        )
+
+
 def request(method: str, path: str, **kwargs: object) -> Response:
     application = create_app()
     application.dependency_overrides[get_shop_service] = ApiShopService
@@ -180,6 +210,7 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[get_device_service] = ApiDeviceService
     application.dependency_overrides[get_worker_service] = ApiWorkerService
     application.dependency_overrides[get_user_service] = ApiUserService
+    application.dependency_overrides[get_task_service] = ApiTaskService
 
     async def send() -> Response:
         transport = ASGITransport(app=application)
@@ -238,6 +269,20 @@ def test_offline_device_is_a_successful_list_item() -> None:
     assert item["enabled"] is True
     assert item["worker_runtime"]["connection_status"] == "offline"
     assert item["worker_runtime"]["last_seen_at"] is not None
+
+
+def test_task_center_list_contract() -> None:
+    response = request(
+        "GET",
+        f"/api/v1/tasks?page=1&page_size=20&status=running&device_id={DEVICE_ID}",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["device_display_name"] == "API 设备"
+    assert payload["items"][0]["progress"] == {"current": 3, "total": 10}
+    assert payload["items"][0]["current_message"] == "正在处理第 3 项"
 
 
 def test_api_validation_and_business_not_found_error() -> None:

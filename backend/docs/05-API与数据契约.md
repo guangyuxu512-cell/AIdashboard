@@ -152,6 +152,9 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
 
 ## Task Runtime Event API
 
+- `GET /api/v1/tasks`：管理端 Task 分页列表，支持 `status / device_id / search`；search 只覆盖
+  Task ID、创建时固化的 `execution_display_name` 与 `skill_id`。默认按
+  `created_at DESC, task_id DESC` 稳定排序，不改变 Worker Claim 的升序执行规则。
 - `POST /api/v1/worker/tasks/{task_id}/events`：Worker Bearer Token + `X-Device-ID`
   认证的事件批量写入；认证设备必须等于 Task target，重复 `(task_id, seq)` 幂等忽略。
 - `GET /api/v1/tasks/{task_id}/events?after_seq=<n>&limit=<n>`：只返回 seq 大于游标的有限事件。
@@ -161,3 +164,9 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
 
 事件 message 和 metadata 在 Worker 与 Backend 双层脱敏。设备主列表与 Inventory 等辅助
 查询保持独立，活动 Task 摘要失败不得改变 Device 主数据成功语义。
+
+Task 列表项只返回当前页展示所需摘要：Task/设备身份、状态、执行名称、Skill 展示名、
+结构化 progress、当前安全消息和时间。它不返回完整 `task_events`。最新 progress/status/log
+通过单页摘要 SQL 取得，禁止每行再请求 Device、Application 或 Events；完整事件只在打开
+Task Runtime Drawer 后继续通过 `after_seq` 接口读取。软删除 Device 仍保留物理记录和历史
+显示名，历史 Task 查询不得因此失败。

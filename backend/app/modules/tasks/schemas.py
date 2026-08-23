@@ -114,6 +114,26 @@ class ActiveTaskSummaryRead(BaseModel):
     latest_event: TaskEventRead | None
 
 
+class TaskProgressSummaryRead(BaseModel):
+    current: int = Field(ge=0)
+    total: int | None = Field(default=None, gt=0)
+
+
+class TaskListItemRead(BaseModel):
+    task_id: UUID
+    target_device_id: UUID
+    device_display_name: str
+    skill_id: TaskSkillId
+    skill_display_name: str | None
+    execution_display_name: str
+    status: TaskStatus
+    progress: TaskProgressSummaryRead | None
+    current_message: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+
+
 def task_to_read(task: Task) -> TaskRead:
     return TaskRead(
         task_id=task.task_id,
