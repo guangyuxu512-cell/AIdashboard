@@ -117,6 +117,7 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                                 "runtime": "python",
                                 "provider": None,
                                 "version": "1",
+                                "classification": "internal",
                             },
                         ],
                     },

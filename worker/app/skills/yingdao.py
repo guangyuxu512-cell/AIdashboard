@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.skills.registry import (
+    SkillClassification,
     SkillDefinition,
     SkillProvider,
     SkillRuntime,
@@ -35,6 +36,7 @@ registry.register(
         provider=SkillProvider.YINGDAO,
         provider_app_id=None,
         timeout_seconds=3600,
+        classification=SkillClassification.INTERNAL,
     ),
 )
 registry.register(
@@ -47,6 +49,7 @@ registry.register(
         provider=SkillProvider.YINGDAO,
         provider_app_id=None,
         timeout_seconds=60,
+        classification=SkillClassification.INTERNAL,
     ),
 )
 registry.register(
@@ -58,5 +61,6 @@ registry.register(
         runtime=SkillRuntime.DISCOVERY,
         provider=SkillProvider.YINGDAO,
         timeout_seconds=60,
+        classification=SkillClassification.INTERNAL,
     ),
 )

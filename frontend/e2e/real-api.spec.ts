@@ -428,6 +428,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
             runtime: 'rpa',
             provider: 'yingdao',
             version: '1.0.0',
+            classification: 'internal',
           },
         ],
       },
@@ -497,6 +498,18 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
       name: `设备能力 · ${updatedDeviceName}`,
     }),
   })
+  await expect(
+    applicationsDrawer.getByRole('heading', { name: '业务 Skill' }),
+  ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByText('暂无业务 Skill', { exact: false }),
+  ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByText('yingdao.app.run', { exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    applicationsDrawer.getByRole('button', { name: '运行' }),
+  ).toBeEnabled()
   await applicationsDrawer.getByRole('button', { name: '配置' }).click()
   const configDialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', {
@@ -739,6 +752,7 @@ test('protects active Device tasks and revokes every Worker endpoint after soft 
               runtime: 'python',
               provider: null,
               version: '1.0.0',
+              classification: 'internal',
             },
           ],
         },

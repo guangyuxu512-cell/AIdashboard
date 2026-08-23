@@ -128,6 +128,10 @@ class DeviceSkillCapability(TimestampMixin, Base):
             "length(trim(skill_version)) > 0",
             name="skill_version_not_blank",
         ),
+        CheckConstraint(
+            "classification IS NULL OR classification IN ('internal', 'business')",
+            name="classification",
+        ),
     )
 
     device_id: Mapped[UUID] = mapped_column(
@@ -140,3 +144,4 @@ class DeviceSkillCapability(TimestampMixin, Base):
     runtime: Mapped[str] = mapped_column(String(32), nullable=False)
     provider_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     skill_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    classification: Mapped[str | None] = mapped_column(String(16), nullable=True)

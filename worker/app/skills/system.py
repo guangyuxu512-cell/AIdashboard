@@ -3,7 +3,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.skills.registry import SkillDefinition, SkillRuntime, registry
+from app.skills.registry import (
+    SkillClassification,
+    SkillDefinition,
+    SkillRuntime,
+    registry,
+)
 
 
 class EchoInput(BaseModel):
@@ -38,6 +43,7 @@ registry.register(
         runtime=SkillRuntime.PYTHON,
         timeout_seconds=30,
         handler=echo_skill,
+        classification=SkillClassification.INTERNAL,
     ),
 )
 registry.register(
@@ -49,5 +55,6 @@ registry.register(
         runtime=SkillRuntime.PYTHON,
         timeout_seconds=330,
         handler=sleep_skill,
+        classification=SkillClassification.INTERNAL,
     ),
 )

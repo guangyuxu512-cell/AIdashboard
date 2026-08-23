@@ -49,12 +49,13 @@ def test_status_and_diagnostics_render_the_runtime_snapshot_without_token() -> N
     state = {
         "device_display_name": "PC-11",
         "device_id": "device-11",
-        "worker_version": "0.4.0",
+        "worker_version": "0.4.1",
         "connection_status": "connected",
         "token_status": "valid",
         "last_heartbeat_at": "2026-08-23T12:00:00+00:00",
         "skill_sync_status": "synced",
         "skill_count": 5,
+        "business_skill_count": 0,
         "provider_status": "ready",
         "provider_version": "6.3.6",
         "provider_account": "GY00999",
@@ -71,6 +72,8 @@ def test_status_and_diagnostics_render_the_runtime_snapshot_without_token() -> N
 
     assert status["current_task"] == "原子模式单店模式 · 执行中"
     assert status["provider_version"] == "6.3.6"
+    assert status["business_skill_count"] == "0"
+    assert "5" not in status["business_skill_count"]
     assert diagnostics["token"] == "有效"
     assert diagnostics["skills"] == "已同步"
     assert "ccw_" not in json.dumps({**status, **diagnostics})

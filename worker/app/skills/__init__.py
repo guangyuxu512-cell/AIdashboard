@@ -1,7 +1,19 @@
-"""Skill implementations are deferred until the skill contract is defined."""
-from app.skills.registry import SkillDefinition, SkillDescriptor, SkillRegistry, registry
+"""Worker Skill Registry and built-in Skill definitions."""
+from app.skills.registry import (
+    SkillClassification,
+    SkillDefinition,
+    SkillDescriptor,
+    SkillRegistry,
+    registry,
+)
 from app.skills import system as _system
 from app.skills import yingdao as _yingdao
 
 
-__all__ = ["SkillDefinition", "SkillDescriptor", "SkillRegistry", "registry"]
+__all__ = [
+    "SkillClassification",
+    "SkillDefinition",
+    "SkillDescriptor",
+    "SkillRegistry",
+    "registry",
+]

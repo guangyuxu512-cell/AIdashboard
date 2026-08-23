@@ -1,13 +1,14 @@
 import asyncio
 import logging
-from typing import Protocol
 from datetime import UTC, datetime
+from typing import Protocol
 
 from app.client import WorkerApiClient, WorkerApiError
 from app.config import WorkerSettings
 from app.contracts import (
     ExecutionResult,
     ExecutionStatus,
+    ProviderInventoryReport,
     RuntimeEventType,
     SkillCapabilitySnapshot,
     WorkerTask,
@@ -19,8 +20,8 @@ from app.runtime_events import (
     RuntimeEventBus,
 )
 from app.skills import SkillRegistry, registry
+from app.skills.registry import SkillClassification
 from app.version import WORKER_VERSION
-from app.contracts import ProviderInventoryReport
 from app.providers.yingdao.contracts import YingdaoDiscoveryResult
 
 
@@ -131,17 +132,23 @@ class Worker:
             self.local_runtime_state.set_connection(True, token_status="valid")
         if self._skill_snapshot_synced:
             return
+        descriptors = list(self.skill_registry.descriptors())
+        business_skill_count = sum(
+            descriptor.classification is SkillClassification.BUSINESS
+            for descriptor in descriptors
+        )
         try:
             await self.client.report_skill_capabilities(
                 SkillCapabilitySnapshot(
-                    skills=list(self.skill_registry.descriptors()),
+                    skills=descriptors,
                 ),
             )
             self._skill_snapshot_synced = True
             if self.local_runtime_state is not None:
                 self.local_runtime_state.set_skill_sync(
                     True,
-                    count=len(list(self.skill_registry.descriptors())),
+                    count=len(descriptors),
+                    business_count=business_skill_count,
                 )
         except asyncio.CancelledError:
             raise
@@ -149,7 +156,8 @@ class Worker:
             if self.local_runtime_state is not None:
                 self.local_runtime_state.set_skill_sync(
                     False,
-                    count=len(list(self.skill_registry.descriptors())),
+                    count=len(descriptors),
+                    business_count=business_skill_count,
                 )
             logger.warning("Skill capability snapshot sync failed: %s", error)
 

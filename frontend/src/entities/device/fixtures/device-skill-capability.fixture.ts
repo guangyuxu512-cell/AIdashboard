@@ -6,6 +6,7 @@ function skill(
   displayName: string,
   runtime: DeviceSkillCapabilityViewModel['runtime'],
   provider: string | null = null,
+  classification: DeviceSkillCapabilityViewModel['classification'] = 'internal',
 ): DeviceSkillCapabilityViewModel {
   return {
     deviceId,
@@ -14,6 +15,7 @@ function skill(
     runtime,
     provider,
     version: '1',
+    classification,
     updatedAtDisplay: '2026-08-23 12:00',
   }
 }

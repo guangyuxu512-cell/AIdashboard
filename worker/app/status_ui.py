@@ -82,7 +82,7 @@ def main() -> int:
         ("provider_version", "ShadowBot 版本"),
         ("provider_account", "账号"),
         ("provider_application_count", "云端应用"),
-        ("skill_count", "Skill"),
+        ("business_skill_count", "业务 Skill"),
         ("current_task", "当前任务"),
         ("duration", "运行时间"),
     )
@@ -411,8 +411,8 @@ def _render_status(state: dict[str, Any], *, running: bool) -> dict[str, str]:
             if state.get("provider_application_count") is not None
             else "—"
         ),
-        "skill_count": (
-            f"已同步 {state.get('skill_count')} 个"
+        "business_skill_count": (
+            str(state.get("business_skill_count", 0))
             if state.get("skill_sync_status") == "synced"
             else "未同步"
         ),

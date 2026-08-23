@@ -5,7 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.workers.enums import ProviderCode, WorkerConnectionStatus
+from app.modules.workers.enums import (
+    LEGACY_INTERNAL_SKILL_IDS,
+    ProviderCode,
+    SkillClassification,
+    WorkerConnectionStatus,
+)
 
 
 class WorkerHeartbeat(BaseModel):
@@ -48,6 +53,20 @@ class WorkerSkillDescriptor(BaseModel):
     runtime: Literal["python", "rpa", "discovery"]
     provider: str | None = Field(default=None, min_length=1, max_length=64)
     version: str = Field(min_length=1, max_length=64)
+    classification: SkillClassification | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def classify_known_legacy_internal_skill(cls, value: object) -> object:
+        if (
+            isinstance(value, dict)
+            and "classification" not in value
+            and value.get("skill_id") in LEGACY_INTERNAL_SKILL_IDS
+        ):
+            migrated = dict(value)
+            migrated["classification"] = SkillClassification.INTERNAL
+            return migrated
+        return value
 
     @model_validator(mode="after")
     def require_provider_for_provider_runtimes(self) -> "WorkerSkillDescriptor":
@@ -76,6 +95,7 @@ class DeviceSkillCapabilityRead(BaseModel):
     runtime: Literal["python", "rpa", "discovery"]
     provider: str | None
     version: str
+    classification: SkillClassification | None
     updated_at: datetime
 
 

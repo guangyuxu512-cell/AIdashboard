@@ -190,6 +190,7 @@ class LocalRuntimeState:
             "last_heartbeat_at": None,
             "skill_sync_status": "not_synced",
             "skill_count": 0,
+            "business_skill_count": 0,
             "provider_status": None,
             "provider_version": None,
             "provider_account": None,
@@ -237,9 +238,16 @@ class LocalRuntimeState:
             self._state["token_status"] = token_status
         self._write()
 
-    def set_skill_sync(self, synced: bool, *, count: int) -> None:
+    def set_skill_sync(
+        self,
+        synced: bool,
+        *,
+        count: int,
+        business_count: int,
+    ) -> None:
         self._state["skill_sync_status"] = "synced" if synced else "not_synced"
         self._state["skill_count"] = count
+        self._state["business_skill_count"] = business_count
         self._write()
 
     def set_provider_inventory(self, inventory: Any) -> None:

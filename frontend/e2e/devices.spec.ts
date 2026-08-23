@@ -156,14 +156,17 @@ test('uses the shared management list pattern and capability-first drawer', asyn
   })
   await expect(applicationsDrawer).toBeVisible()
   await expect(
-    applicationsDrawer.getByRole('heading', { name: '已注册 Skill' }),
+    applicationsDrawer.getByRole('heading', { name: '业务 Skill' }),
   ).toBeVisible()
   await expect(
     applicationsDrawer.getByRole('heading', { name: '影刀应用' }),
   ).toBeVisible()
   await expect(
-    applicationsDrawer.getByText('yingdao.app.run', { exact: true }),
+    applicationsDrawer.getByText('暂无业务 Skill', { exact: false }),
   ).toBeVisible()
+  await expect(
+    applicationsDrawer.getByText('yingdao.app.run', { exact: true }),
+  ).toHaveCount(0)
   await expect(
     applicationsDrawer.getByText('商品发布（Fixture）', { exact: true }),
   ).toBeVisible()

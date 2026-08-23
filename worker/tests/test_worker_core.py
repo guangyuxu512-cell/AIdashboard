@@ -22,7 +22,7 @@ from app.runtime import TaskRuntimePaths
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills.runner import execute
 from app.skills import SkillDefinition, SkillRegistry, registry
-from app.skills.registry import SkillRuntime
+from app.skills.registry import SkillClassification, SkillRuntime
 from app.worker import Worker
 
 
@@ -56,6 +56,7 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
         "runtime": "python",
         "provider": None,
         "version": "1",
+        "classification": "internal",
     }
     assert descriptors["yingdao.discover"].model_dump() == {
         "skill_id": "yingdao.discover",
@@ -63,7 +64,18 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
         "runtime": "discovery",
         "provider": "yingdao",
         "version": "1",
+        "classification": "internal",
     }
+    assert all(
+        descriptor.classification is SkillClassification.INTERNAL
+        for descriptor in descriptors.values()
+    )
+
+
+def test_new_skill_definition_defaults_to_business_classification() -> None:
+    descriptor = build_snapshot_registry("refund.sync").descriptors()[0]
+
+    assert descriptor.classification is SkillClassification.BUSINESS
 
 
 class CapabilityRecordingClient:
@@ -173,6 +185,9 @@ def test_worker_capability_payload_uses_authenticated_device_headers() -> None:
         "yingdao.app.run",
         "yingdao.test",
         "yingdao.discover",
+    }
+    assert {skill["classification"] for skill in payload["skills"]} == {
+        "internal",
     }
 
 

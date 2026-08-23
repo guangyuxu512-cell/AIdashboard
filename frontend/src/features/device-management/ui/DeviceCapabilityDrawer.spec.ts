@@ -6,6 +6,7 @@ import type {
   DeviceSkillCapabilityViewModel,
   YingdaoInventoryViewModel,
 } from '@/entities/device'
+import DataTable from '@/shared/components/DataTable.vue'
 
 import DeviceCapabilityDrawer from './DeviceCapabilityDrawer.vue'
 import YingdaoApplicationsTable from './YingdaoApplicationsTable.vue'
@@ -25,7 +26,17 @@ const runSkill: DeviceSkillCapabilityViewModel = {
   runtime: 'rpa',
   provider: 'yingdao',
   version: '1',
+  classification: 'internal',
   updatedAtDisplay: '2026-08-23 12:00',
+}
+
+const businessSkill: DeviceSkillCapabilityViewModel = {
+  ...runSkill,
+  skillId: 'refund.sync',
+  displayName: '退款同步',
+  runtime: 'python',
+  provider: null,
+  classification: 'business',
 }
 
 const inventory = {
@@ -41,20 +52,23 @@ const inventory = {
 } as YingdaoInventoryViewModel
 
 describe('DeviceCapabilityDrawer', () => {
-  it('keeps registered Skills separate from Yingdao Applications', () => {
+  it('shows only Business Skills and keeps Yingdao Applications separate', () => {
     const wrapper = shallowMount(DeviceCapabilityDrawer, {
       props: {
         show: true,
         device,
-        skills: [runSkill],
+        skills: [runSkill, businessSkill],
         yingdaoInventory: inventory,
       },
       global: { renderStubDefaultSlot: true },
     })
 
-    expect(wrapper.text()).toContain('已注册 Skill')
+    expect(wrapper.text()).toContain('业务 Skill')
     expect(wrapper.text()).toContain('影刀应用')
     expect(wrapper.text()).toContain('不等同于 Skill')
+    expect(wrapper.findComponent(DataTable).props('data')).toEqual([
+      businessSkill,
+    ])
     expect(
       wrapper.findComponent(YingdaoApplicationsTable).props('runDisabledReason'),
     ).toBeNull()
@@ -96,12 +110,12 @@ describe('DeviceCapabilityDrawer', () => {
     expect(wrapper.text()).toContain('影刀 6.3.6 当前需要登录')
   })
 
-  it('renders an Empty State for a successful empty Skill snapshot', () => {
+  it('renders a Business Skill Empty State when only Internal Skills exist', () => {
     const wrapper = shallowMount(DeviceCapabilityDrawer, {
       props: {
         show: true,
         device,
-        skills: [],
+        skills: [runSkill],
         skillsLoading: false,
         skillsError: null,
         yingdaoInventory: inventory,
@@ -111,7 +125,11 @@ describe('DeviceCapabilityDrawer', () => {
 
     expect(
       wrapper.findComponent({ name: 'EmptyState' }).props('description'),
-    ).toContain('暂无已注册 Skill')
+    ).toContain('暂无业务 Skill')
+    expect(
+      wrapper.findComponent({ name: 'EmptyState' }).props('description'),
+    ).toContain('Worker 内部能力不计入业务 Skill')
+    expect(wrapper.findComponent(DataTable).exists()).toBe(false)
     expect(wrapper.text()).not.toContain('加载失败')
   })
 
@@ -120,7 +138,7 @@ describe('DeviceCapabilityDrawer', () => {
       props: {
         show: true,
         device,
-        skills: [runSkill],
+        skills: [runSkill, businessSkill],
         skillsError: null,
         yingdaoInventory: inventory,
       },

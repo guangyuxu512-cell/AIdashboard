@@ -95,9 +95,16 @@ interface_unreachable / ready`。`available` 与执行能力由
   Body 只含 Descriptor 数组，不接受 `device_id`。
 - `GET /api/v1/devices/{device_id}/skill-capabilities`：查询设备最后一次已知 Skill 能力。
 
-Descriptor 固定包含 `skill_id / display_name / runtime / provider / version`。Skill Capability
+Descriptor 固定包含
+`skill_id / display_name / runtime / provider / version / classification`；分类只有
+`internal | business`。Skill Capability
 不等于 Provider Capability，也不等于影刀 Application。`yingdao.app.run` 是通用 Skill，
 具体影刀应用由 Task `input.app_id` 选择；影刀的 9 个 Application 不注册成 9 个 Skill。
+
+`device_skill_capabilities.classification` 是独立、可查询列。新 Worker 必须随完整快照上报；
+兼容旧 Worker 时，Backend 只对现有五个已知内置 Skill 回填 `internal`，无法可靠判断的旧记录
+保留 null，不能猜为 `business`。设备能力读取仍返回完整快照；普通 UI 只展示明确为
+`business` 的记录。
 
 ## Automation Application Config API
 

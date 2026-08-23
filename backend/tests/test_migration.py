@@ -322,3 +322,27 @@ def test_task_execution_display_name_migration(monkeypatch: object) -> None:
     recorder.calls.clear()
     migration.downgrade()
     assert recorder.calls == [("drop_column", "tasks")]
+
+
+def test_skill_classification_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260824_0014_skill_classification",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert [call[0] for call in recorder.calls] == [
+        "add_column",
+        "execute",
+        "create_check_constraint",
+    ]
+    assert "system.echo" in recorder.calls[1][1]
+    assert "yingdao.discover" in recorder.calls[1][1]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_constraint", "ck_device_skill_capabilities_classification"),
+        ("drop_column", "device_skill_capabilities"),
+    ]

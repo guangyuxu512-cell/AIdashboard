@@ -19,12 +19,18 @@ class SkillProvider(StrEnum):
     YINGDAO = "yingdao"
 
 
+class SkillClassification(StrEnum):
+    INTERNAL = "internal"
+    BUSINESS = "business"
+
+
 class SkillDescriptor(BaseModel):
     skill_id: str
     display_name: str
     runtime: SkillRuntime
     provider: SkillProvider | None
     version: str
+    classification: SkillClassification
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,7 @@ class SkillDefinition:
     handler: SkillHandler | None = None
     provider: SkillProvider | None = None
     provider_app_id: str | None = None
+    classification: SkillClassification = SkillClassification.BUSINESS
 
     def __post_init__(self) -> None:
         if not self.skill_id or not self.display_name or not self.version:
@@ -56,6 +63,7 @@ class SkillDefinition:
             runtime=self.runtime,
             provider=self.provider,
             version=self.version,
+            classification=self.classification,
         )
 
 

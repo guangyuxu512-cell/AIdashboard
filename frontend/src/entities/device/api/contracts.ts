@@ -87,6 +87,7 @@ export interface DeviceSkillCapabilityReadDto {
   runtime: 'python' | 'rpa' | 'discovery'
   provider: string | null
   version: string
+  classification: 'internal' | 'business' | null
   updated_at: string
 }
 

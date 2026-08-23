@@ -104,6 +104,11 @@ class FakeWorkerRepository:
                 runtime=skill.runtime,
                 provider_code=skill.provider,
                 skill_version=skill.version,
+                classification=(
+                    skill.classification.value
+                    if skill.classification is not None
+                    else None
+                ),
                 created_at=updated_at,
                 updated_at=updated_at,
             )
@@ -348,6 +353,7 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
                         "runtime": "python",
                         "provider": None,
                         "version": "1",
+                        "classification": "internal",
                     },
                     {
                         "skill_id": "yingdao.app.run",
@@ -355,6 +361,15 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
                         "runtime": "rpa",
                         "provider": "yingdao",
                         "version": "1",
+                        "classification": "internal",
+                    },
+                    {
+                        "skill_id": "refund.sync",
+                        "display_name": "退款同步",
+                        "runtime": "python",
+                        "provider": None,
+                        "version": "1",
+                        "classification": "business",
                     },
                 ],
             },
@@ -363,8 +378,14 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
     assert {item.skill_id for item in first} == {
         "system.echo",
         "yingdao.app.run",
+        "refund.sync",
     }
     assert all(item.device_id == device.device_id for item in first)
+    assert {item.skill_id: item.classification for item in first} == {
+        "refund.sync": "business",
+        "system.echo": "internal",
+        "yingdao.app.run": "internal",
+    }
 
     second = service.sync_skill_capabilities(
         principal,
@@ -377,6 +398,7 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
                         "runtime": "python",
                         "provider": None,
                         "version": "2",
+                        "classification": "internal",
                     },
                 ],
             },
@@ -385,6 +407,32 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
     assert [(item.skill_id, item.display_name, item.version) for item in second] == [
         ("system.echo", "System Echo", "2"),
     ]
+
+
+def test_legacy_snapshot_only_classifies_known_internal_skills() -> None:
+    snapshot = SkillCapabilitySnapshotUpsert.model_validate(
+        {
+            "skills": [
+                {
+                    "skill_id": "system.echo",
+                    "display_name": "Echo",
+                    "runtime": "python",
+                    "provider": None,
+                    "version": "1",
+                },
+                {
+                    "skill_id": "unknown.legacy",
+                    "display_name": "Unknown Legacy",
+                    "runtime": "python",
+                    "provider": None,
+                    "version": "1",
+                },
+            ],
+        },
+    )
+
+    assert snapshot.skills[0].classification == "internal"
+    assert snapshot.skills[1].classification is None
 
 
 def test_provider_inventory_accepts_unavailable_local_account_classification() -> None:

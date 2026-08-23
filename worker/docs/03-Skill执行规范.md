@@ -1,6 +1,14 @@
 # Skill 执行规范
 
-一个 Skill 表示一个明确、稳定的业务执行能力。
+一个 Skill 表示一个明确、稳定的执行能力。`classification` 只分为：
+
+- `internal`：Worker 基础设施、测试或 Provider 运行能力；
+- `business`：用户实际部署的业务脚本能力。
+
+当前 `system.echo`、`system.sleep`、`yingdao.app.run`、`yingdao.test`、
+`yingdao.discover` 均为 `internal`。分类必须在 Registry 定义处显式声明，不根据
+`skill_id` 前缀推断。`SkillDefinition` 默认分类为 `business`，新增 `refund.sync` 等
+业务脚本时应保留或显式确认该分类；Worker 内置能力必须显式改为 `internal`。
 
 当前注册：
 
@@ -71,6 +79,7 @@ Skill 只负责校验输入、执行、发出进度/日志和返回结果。Skil
 - `runtime`
 - `provider`（无 Provider 时为 null）
 - `version`
+- `classification`（`internal | business`）
 
 Descriptor 只描述 Worker 已实现能力，不暴露影刀 App ID、本地脚本路径或 EXE 路径。
 Worker 在启动后的首次成功 Heartbeat 以及断线重连后，将当前 Registry 的完整 Descriptor
@@ -80,4 +89,6 @@ Registry 中已删除的 Skill 会在下一次同步移除；设备 OFFLINE 时�
 
 Skill Capability 表达“该 Worker 已实现此 Skill”，不表达当前任务状态，也不替代 Provider
 Inventory。Provider Capability、Skill Capability 与 Provider Application 必须保持三层独立。
-未来 Python Skill 仍通过本地 Registry 注册并进入同一快照，不引入在线安装或 Skill CRUD。
+Worker 始终上报 `internal + business` 的完整快照；分类只影响普通业务界面的统计与展示，
+不得影响 Task Guard 按 `(device_id, skill_id)` 判断执行资格。未来 Python 业务 Skill 仍通过本地
+Registry 注册为 `business` 并进入同一快照，不引入在线安装或 Skill CRUD。

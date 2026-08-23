@@ -88,6 +88,8 @@ export interface YingdaoInventoryViewModel {
   lastDiscoveredAtDisplay: string
 }
 
+export type SkillClassification = 'internal' | 'business'
+
 export interface DeviceSkillCapabilityViewModel {
   deviceId: string
   skillId: string
@@ -95,5 +97,6 @@ export interface DeviceSkillCapabilityViewModel {
   runtime: 'python' | 'rpa' | 'discovery'
   provider: string | null
   version: string
+  classification: SkillClassification | null
   updatedAtDisplay: string
 }

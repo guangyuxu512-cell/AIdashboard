@@ -368,5 +368,6 @@ class WorkerService:
             runtime=record.runtime,
             provider=record.provider_code,
             version=record.skill_version,
+            classification=record.classification,
             updated_at=record.updated_at,
         )

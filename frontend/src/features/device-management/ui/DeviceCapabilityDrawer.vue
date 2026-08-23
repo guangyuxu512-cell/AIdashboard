@@ -69,6 +69,9 @@ const runAvailability = computed(() =>
 const runUnavailableReason = computed(
   () => runAvailability.value.disabledReason,
 )
+const businessSkills = computed(() =>
+  props.skills.filter((skill) => skill.classification === 'business'),
+)
 
 function skillStatus() {
   if (!props.device?.enabled) return { label: '已安装', tone: 'neutral' as const }
@@ -129,8 +132,8 @@ const skillColumns: DataTableColumns<DeviceSkillCapabilityViewModel> = [
       <section class="device-capability__section">
         <div class="device-capability__section-heading">
           <div>
-            <h3>已注册 Skill</h3>
-            <p>Worker 当前声明的可执行能力；离线时保留最后一次已知快照。</p>
+            <h3>业务 Skill</h3>
+            <p>Worker 当前安装的业务脚本能力；离线时保留最后一次已知快照。</p>
           </div>
         </div>
         <LoadingState v-if="skillsLoading" description="正在读取 Skill 能力…" />
@@ -141,13 +144,13 @@ const skillColumns: DataTableColumns<DeviceSkillCapabilityViewModel> = [
           @retry="$emit('retry-skills')"
         />
         <EmptyState
-          v-else-if="skills.length === 0"
-          description="暂无已注册 Skill。当前 Worker 尚未声明可执行 Skill；支持 Skill Capability 的 Worker 启动或重新连接后会自动同步。"
+          v-else-if="businessSkills.length === 0"
+          description="暂无业务 Skill。当前 Worker 尚未安装业务 Skill。影刀应用及 Worker 内部能力不计入业务 Skill。"
         />
         <DataTable
           v-else
           :columns="skillColumns"
-          :data="skills"
+          :data="businessSkills"
           :row-key="(row: DeviceSkillCapabilityViewModel) => row.skillId"
           :scroll-x="720"
           empty-description="当前 Worker 尚未上报 Skill 能力"

@@ -214,6 +214,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                             "runtime": "python",
                             "provider": None,
                             "version": "1",
+                            "classification": "internal",
                         },
                         {
                             "skill_id": "system.sleep",
@@ -221,6 +222,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                             "runtime": "python",
                             "provider": None,
                             "version": "1",
+                            "classification": "internal",
                         },
                         {
                             "skill_id": "yingdao.test",
@@ -228,6 +230,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                             "runtime": "rpa",
                             "provider": "yingdao",
                             "version": "1",
+                            "classification": "internal",
                         },
                     ],
                 },
@@ -277,6 +280,10 @@ def test_worker_identity_runtime_claim_result_and_lost(
                 item.skill_id
                 for item in worker_service.get_skill_capability_reads(device_a)
             } == {"system.echo", "system.sleep", "yingdao.test"}
+            assert {
+                item.classification
+                for item in worker_service.get_skill_capability_reads(device_a)
+            } == {"internal"}
             with pytest.raises(TaskWorkerOfflineError):
                 TaskService(session, settings=settings).create(
                     TaskCreate(
@@ -460,6 +467,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                                 "runtime": "rpa",
                                 "provider": "yingdao",
                                 "version": "1",
+                                "classification": "internal",
                             },
                         ],
                     },
@@ -477,6 +485,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                                 "runtime": "rpa",
                                 "provider": "yingdao",
                                 "version": "1",
+                                "classification": "internal",
                             },
                         ],
                     },

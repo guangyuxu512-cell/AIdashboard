@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -220,6 +220,11 @@ class WorkerRepository:
                     "runtime": skill.runtime,
                     "provider_code": skill.provider,
                     "skill_version": skill.version,
+                    "classification": (
+                        skill.classification.value
+                        if skill.classification is not None
+                        else None
+                    ),
                     "updated_at": updated_at,
                 }
                 for skill in skills
@@ -235,6 +240,10 @@ class WorkerRepository:
                     "runtime": statement.excluded.runtime,
                     "provider_code": statement.excluded.provider_code,
                     "skill_version": statement.excluded.skill_version,
+                    "classification": func.coalesce(
+                        statement.excluded.classification,
+                        DeviceSkillCapability.classification,
+                    ),
                     "updated_at": statement.excluded.updated_at,
                 },
             )

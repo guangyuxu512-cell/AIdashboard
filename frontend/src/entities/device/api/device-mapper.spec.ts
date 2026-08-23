@@ -122,6 +122,7 @@ describe('device mapper, query and mutation', () => {
       runtime: 'rpa',
       provider: 'yingdao',
       version: '1',
+      classification: 'internal',
       updated_at: '2026-08-23T12:00:00+00:00',
     })
 
@@ -131,6 +132,7 @@ describe('device mapper, query and mutation', () => {
       runtime: 'rpa',
       provider: 'yingdao',
       version: '1',
+      classification: 'internal',
     })
     expect('available' in capability).toBe(false)
   })

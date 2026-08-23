@@ -109,6 +109,7 @@ def capability(
         runtime=runtime,
         provider_code=provider,
         skill_version="1",
+        classification="internal",
     )
 
 
