@@ -1,2 +1,2 @@
 @echo off
-"%~dp0ecommerce-worker\ecommerce-worker.exe" --status-ui
+"%~dp0ecommerce-worker.exe" --status-ui

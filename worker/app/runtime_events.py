@@ -12,6 +12,7 @@ from uuid import UUID
 
 from app.client import WorkerApiClient
 from app.contracts import RuntimeEvent, RuntimeEventType, WorkerTask
+from app.version import WORKER_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,8 @@ class LocalRuntimeState:
         *,
         path: Path,
         device_id: UUID,
+        device_display_name: str | None = None,
+        server_url: str | None = None,
         recent_limit: int = 50,
     ) -> None:
         self.path = path.resolve()
@@ -179,7 +182,19 @@ class LocalRuntimeState:
         self._recent_events: deque[dict[str, Any]] = deque(maxlen=recent_limit)
         self._state: dict[str, Any] = {
             "device_id": str(device_id),
+            "device_display_name": device_display_name,
+            "worker_version": WORKER_VERSION,
+            "server_url": server_url,
             "connection_status": "disconnected",
+            "token_status": "configured",
+            "last_heartbeat_at": None,
+            "skill_sync_status": "not_synced",
+            "skill_count": 0,
+            "provider_status": None,
+            "provider_version": None,
+            "provider_account": None,
+            "provider_application_count": None,
+            "provider_refreshed_at": None,
             "worker_status": "running",
             "current_task_id": None,
             "skill_display_name": None,
@@ -207,9 +222,44 @@ class LocalRuntimeState:
         )
         self._write()
 
-    def set_connection(self, connected: bool) -> None:
+    def set_connection(
+        self,
+        connected: bool,
+        *,
+        token_status: str | None = None,
+    ) -> None:
         self._state["connection_status"] = (
             "connected" if connected else "disconnected"
+        )
+        if connected:
+            self._state["last_heartbeat_at"] = datetime.now(UTC).isoformat()
+        if token_status is not None:
+            self._state["token_status"] = token_status
+        self._write()
+
+    def set_skill_sync(self, synced: bool, *, count: int) -> None:
+        self._state["skill_sync_status"] = "synced" if synced else "not_synced"
+        self._state["skill_count"] = count
+        self._write()
+
+    def set_provider_inventory(self, inventory: Any) -> None:
+        status = getattr(inventory, "status", None)
+        self._state.update(
+            {
+                "provider_status": (
+                    status.value if hasattr(status, "value") else status
+                ),
+                "provider_version": getattr(inventory, "provider_version", None),
+                "provider_account": getattr(inventory, "account_display", None),
+                "provider_application_count": len(
+                    getattr(inventory, "applications", []) or [],
+                ),
+                "provider_refreshed_at": (
+                    getattr(inventory, "discovered_at", None).isoformat()
+                    if getattr(inventory, "discovered_at", None) is not None
+                    else datetime.now(UTC).isoformat()
+                ),
+            },
         )
         self._write()
 

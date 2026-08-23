@@ -1,4 +1,5 @@
 from functools import lru_cache
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -16,6 +17,7 @@ class WorkerSettings(BaseSettings):
     server_url: AnyHttpUrl
     device_id: UUID
     device_token: SecretStr
+    device_display_name: str | None = None
     heartbeat_interval_seconds: float = Field(default=15, ge=1, le=300)
     poll_interval_seconds: float = Field(default=3, ge=0.2, le=60)
     lease_renew_interval_seconds: float = Field(default=20, ge=1, le=300)
@@ -42,4 +44,27 @@ class WorkerSettings(BaseSettings):
 
 @lru_cache
 def get_settings() -> WorkerSettings:
-    return WorkerSettings()  # type: ignore[call-arg]
+    required_environment = (
+        "WORKER_SERVER_URL",
+        "WORKER_DEVICE_ID",
+        "WORKER_DEVICE_TOKEN",
+    )
+    if all(os.environ.get(name) for name in required_environment):
+        return WorkerSettings()  # type: ignore[call-arg]
+
+    from app.local_config import WorkerConfigService
+
+    service = WorkerConfigService()
+    local = service.load()
+    return WorkerSettings(
+        server_url=local.server_url,
+        device_id=local.device_id,
+        device_token=local.device_token,
+        device_display_name=local.device_display_name,
+        runtime_root=service.data_root / "runtime",
+        log_directory=service.data_root / "logs",
+        runtime_status_path=service.data_root / "runtime-status.json",
+        yingdao_install_root=local.yingdao_install_root,
+        yingdao_data_root=local.yingdao_data_root,
+        yingdao_test_app_id=local.yingdao_test_app_id,
+    )

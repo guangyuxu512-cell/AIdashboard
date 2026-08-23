@@ -105,6 +105,40 @@ def test_locator_reports_missing_supported_installation(tmp_path: Path) -> None:
     assert error.value.code == "YINGDAO_NOT_INSTALLED"
 
 
+def test_gui_locator_accepts_only_exact_636_executable(tmp_path: Path) -> None:
+    executable = tmp_path / "ShadowBot.exe"
+    executable.write_bytes(b"fixture")
+    supported = WindowsYingdaoRuntimeLocator(
+        tmp_path,
+        version_reader=lambda _: "6.3.6",
+    )
+    assert supported.validate_supported_executable(executable) == executable.resolve()
+    assert supported.find_supported_executable() == executable.resolve()
+
+    unsupported = WindowsYingdaoRuntimeLocator(
+        tmp_path,
+        version_reader=lambda _: "6.3.9",
+    )
+    with pytest.raises(YingdaoSessionError) as error:
+        unsupported.validate_supported_executable(executable)
+    assert error.value.code == "YINGDAO_VERSION_UNSUPPORTED"
+
+
+def test_gui_locator_reuses_running_636_from_custom_location(tmp_path: Path) -> None:
+    executable = tmp_path / "custom" / "ShadowBot.Shell.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"fixture")
+    locator = WindowsYingdaoRuntimeLocator(
+        None,
+        version_reader=lambda _: "6.3.6",
+    )
+    locator._list_shadowbot_processes = lambda: [  # type: ignore[method-assign]
+        YingdaoProcess(636, executable, "6.3.6"),
+    ]
+
+    assert locator.find_supported_executable() == executable.resolve()
+
+
 def test_session_reports_need_login() -> None:
     transport = httpx.MockTransport(
         lambda request: httpx.Response(

@@ -72,7 +72,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'PyInstaller build failed.'
 }
 
-Copy-Item -LiteralPath (Join-Path $pyInstallerDist 'ecommerce-worker') -Destination $packageRoot -Recurse
+Copy-Item -Path (Join-Path $pyInstallerDist 'ecommerce-worker\*') -Destination $packageRoot -Recurse
 Copy-Item -LiteralPath (Join-Path $workerRoot 'distribution\worker-control.ps1') -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $workerRoot 'distribution\README.txt') -Destination $packageRoot
 $commandFiles = @(Get-ChildItem -LiteralPath (Join-Path $workerRoot 'distribution') -Filter '*.cmd')

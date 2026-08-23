@@ -2,7 +2,6 @@ param(
     [string]$SshHost = 'control-center-dev',
     [int]$LocalPort = 18080,
     [string]$YingdaoInstallRoot,
-    [string]$YingdaoDataRoot,
     [string]$PublicServerUrl,
     [switch]$SkipYingdaoDiscovery,
     [ValidateRange(0, 3600)]
@@ -14,12 +13,12 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workerPython = Join-Path $projectRoot 'worker\.venv\Scripts\python.exe'
+$backendPython = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
 $workerVersion = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
 $zipPath = Join-Path $projectRoot "dist\ecommerce-worker-$workerVersion-win-x64.zip"
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "control-center-worker-smoke-$([guid]::NewGuid().ToString('N'))"
 $extractRoot = Join-Path $temporaryRoot 'package'
 $dataRoot = Join-Path $temporaryRoot 'data'
-$importPath = Join-Path $temporaryRoot 'worker-config.json'
 $serverUrl = if ([string]::IsNullOrWhiteSpace($PublicServerUrl)) {
     "http://127.0.0.1:$LocalPort"
 }
@@ -29,13 +28,12 @@ else {
 $tunnel = $null
 $deviceId = $null
 $controller = $null
+$guiProcess = $null
+$statusProcess = $null
 $previousDataRoot = [Environment]::GetEnvironmentVariable('ECOMMERCE_WORKER_DATA_ROOT', 'Process')
 if ([string]::IsNullOrWhiteSpace($YingdaoInstallRoot)) {
     $yingdaoDirectory = '{0}{1}' -f [char]0x5F71, [char]0x5200
     $YingdaoInstallRoot = Join-Path (Join-Path 'D:\' $yingdaoDirectory) 'ShadowBot'
-}
-if ([string]::IsNullOrWhiteSpace($YingdaoDataRoot)) {
-    $YingdaoDataRoot = Join-Path $env:LOCALAPPDATA 'ShadowBot'
 }
 function Wait-Condition([scriptblock]$Condition, [int]$TimeoutSeconds, [string]$Message) {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -94,7 +92,7 @@ try {
         throw 'Worker ZIP text content contains a forbidden secret or database pattern.'
     }
     $controller = Join-Path $extractRoot 'worker-control.ps1'
-    $workerExecutable = Join-Path $extractRoot 'ecommerce-worker\ecommerce-worker.exe'
+    $workerExecutable = Join-Path $extractRoot 'ecommerce-worker.exe'
 
     if (-not $PublicServerUrl) {
         $tunnel = Start-Process -FilePath 'ssh.exe' -ArgumentList @(
@@ -112,44 +110,35 @@ try {
     }
     $deviceId = [string]$device.device_id
 
-    $tokenOutput = & ssh.exe $SshHost "docker exec control-center-backend-dev python -m app.cli.worker_token issue $deviceId"
-    if ($LASTEXITCODE -ne 0) { throw 'Worker Device Token issue failed.' }
-    $tokenMatch = $tokenOutput | Select-String -Pattern '^WORKER_DEVICE_TOKEN=(.+)$'
-    if ($null -eq $tokenMatch -or $tokenMatch.Matches.Count -ne 1) {
-        throw 'Worker Device Token output was not recognized.'
+    $issuedCredential = Invoke-Api 'POST' "/api/v1/devices/$deviceId/worker-credential/issue"
+    $deviceToken = [string]$issuedCredential.token
+    $provisioning = Invoke-RestMethod `
+        -Uri "$serverUrl/api/v1/worker/provisioning" `
+        -Headers @{ Authorization = "Bearer $deviceToken" } `
+        -TimeoutSec 10
+    if ([string]$provisioning.device_id -ne $deviceId) {
+        throw 'Worker Token resolved an unexpected Device identity.'
     }
-    $deviceToken = $tokenMatch.Matches[0].Groups[1].Value
-
-    $import = [ordered]@{
-        server_url = $serverUrl
-        device_id = $deviceId
-        device_token = $deviceToken
-        yingdao_install_root = if ($SkipYingdaoDiscovery) { '' } else { $YingdaoInstallRoot }
-        yingdao_data_root = if ($SkipYingdaoDiscovery) { '' } else { $YingdaoDataRoot }
-    } | ConvertTo-Json
-    [System.IO.File]::WriteAllText($importPath, $import, [System.Text.UTF8Encoding]::new($false))
-    $deviceToken = $null
-    $tokenOutput = $null
 
     [Environment]::SetEnvironmentVariable('ECOMMERCE_WORKER_DATA_ROOT', $dataRoot, 'Process')
-    $configureArguments = @(
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $controller,
-        '-Action', 'Configure', '-ImportConfigPath', $importPath
-    )
-    $configureArguments += if ($PublicServerUrl) { '-AllowInsecureDevelopment' } else { '-AllowInsecureLoopback' }
-    if ($SkipYingdaoDiscovery) {
-        $configureArguments += '-StartAfterConfigure'
+    $provisionPayload = [ordered]@{
+        server_url = $serverUrl
+        device_token = $deviceToken
+        yingdao_install_root = if ($SkipYingdaoDiscovery) { '' } else { $YingdaoInstallRoot }
+    } | ConvertTo-Json
+    Push-Location (Join-Path $projectRoot 'worker')
+    try {
+        $provisionPayload | & $workerPython -m tools.provisioning_smoke_config
     }
-    & powershell.exe @configureArguments
-    if ($LASTEXITCODE -ne 0) { throw 'Packaged Worker configuration failed.' }
-    if (-not $SkipYingdaoDiscovery) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller `
-            -Action ConfigureYingdao `
-            -YingdaoInstallRootOverride $YingdaoInstallRoot `
-            -YingdaoDataRootOverride $YingdaoDataRoot `
-            -StartAfterConfigure
-        if ($LASTEXITCODE -ne 0) { throw 'Packaged Yingdao configuration/start failed.' }
+    finally {
+        Pop-Location
     }
+    if ($LASTEXITCODE -ne 0) { throw 'Production Config Service provisioning failed.' }
+    $deviceToken = $null
+    $issuedCredential = $null
+    $provisionPayload = $null
+
+    $guiProcess = Start-Process -FilePath $workerExecutable -PassThru
 
     Wait-Condition {
         $runtime = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime
@@ -157,7 +146,15 @@ try {
     } 35 'Packaged Worker did not become ONLINE.'
     Wait-Condition {
         $skills = @(Invoke-Api 'GET' "/api/v1/devices/$deviceId/skill-capabilities")
-        $skillIds = @($skills | ForEach-Object { $_.skill_id })
+        $skillIds = @(
+            foreach ($responseItem in $skills) {
+                foreach ($skill in @($responseItem)) {
+                    if ($skill.PSObject.Properties.Name -contains 'skill_id') {
+                        [string]$skill.skill_id
+                    }
+                }
+            }
+        )
         $missingSkills = @(
             @('system.echo', 'system.sleep', 'yingdao.app.run') |
                 Where-Object { $_ -notin $skillIds }
@@ -167,15 +164,27 @@ try {
 
     $statePath = Join-Path $dataRoot 'worker-state.json'
     $firstPid = [int](Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json).pid
+    Stop-Process -Id $guiProcess.Id
+    $guiProcess = $null
+    Start-Sleep -Seconds 1
+    if ($null -eq (Get-Process -Id $firstPid -ErrorAction SilentlyContinue)) {
+        throw 'Closing the Tkinter GUI stopped the Worker Core.'
+    }
+    $runtimeAfterGuiClose = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime
+    if ($runtimeAfterGuiClose.connection_status -ne 'online') {
+        throw 'Worker became OFFLINE after closing the Tkinter GUI.'
+    }
+
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Start
     if ($LASTEXITCODE -ne 0) { throw 'Second packaged Worker start check failed.' }
     $secondPid = [int](Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json).pid
     if ($firstPid -ne $secondPid) { throw 'Single-instance control started a duplicate Worker.' }
 
-    $statusProcess = Start-Process -FilePath $workerExecutable -ArgumentList '--status-ui' -PassThru
+    $statusProcess = Start-Process -FilePath $workerExecutable -PassThru
     Start-Sleep -Seconds 2
     if ($statusProcess.HasExited) { throw 'Packaged Worker status UI exited during startup.' }
     Stop-Process -Id $statusProcess.Id
+    $statusProcess = $null
 
     $echoTask = Invoke-Api 'POST' '/api/v1/tasks' @{
         target_device_id = $deviceId
@@ -245,7 +254,7 @@ try {
     Write-Host 'Packaged Worker ONLINE: PASS'
     Write-Host 'Skill Registry snapshot: PASS'
     Write-Host 'Single instance: PASS'
-    Write-Host 'Tkinter status UI: PASS'
+    Write-Host 'Tkinter GUI provisioning and close independence: PASS'
     Write-Host 'system.echo: SUCCESS'
     Write-Host 'system.sleep: SUCCESS'
     if ($SkipYingdaoDiscovery) {
@@ -273,13 +282,64 @@ catch {
     throw
 }
 finally {
+    foreach ($process in @($guiProcess, $statusProcess)) {
+        if ($null -ne $process -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+        }
+    }
     if ($controller -and (Test-Path -LiteralPath $controller)) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action Stop 2>$null | Out-Null
     }
     if ($deviceId -and $deviceId -match '^[0-9a-f-]{36}$') {
-        $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
-        $cleanupBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($cleanupSql))
-        & ssh.exe $SshHost "printf '%s' '$cleanupBase64' | base64 -d | docker exec -i control-center-postgres-dev psql -v ON_ERROR_STOP=1 -U postgres -d control_center_dev" | Out-Null
+        $cleanupCompleted = $false
+        if (Test-Path -LiteralPath $backendPython -PathType Leaf) {
+            $cleanupCode = @'
+import os
+from uuid import UUID
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+from app.core.database import get_database_engine
+from app.modules.devices.models import Device
+from app.modules.shops.models import ShopDeviceBinding
+from app.modules.tasks.models import Task, TaskEvent
+from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
+device_id = UUID(os.environ["WORKER_SMOKE_DEVICE_ID"])
+with Session(get_database_engine()) as session:
+    task_ids = select(Task.task_id).where(Task.target_device_id == device_id)
+    session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
+    session.execute(delete(Task).where(Task.target_device_id == device_id))
+    session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == device_id))
+    session.execute(delete(DeviceProviderInventory).where(DeviceProviderInventory.device_id == device_id))
+    session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id == device_id))
+    session.execute(delete(WorkerDeviceCredential).where(WorkerDeviceCredential.device_id == device_id))
+    session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.device_id == device_id))
+    session.execute(delete(Device).where(Device.device_id == device_id))
+    session.commit()
+'@
+            $previousSmokeDeviceId = [Environment]::GetEnvironmentVariable('WORKER_SMOKE_DEVICE_ID', 'Process')
+            try {
+                [Environment]::SetEnvironmentVariable('WORKER_SMOKE_DEVICE_ID', $deviceId, 'Process')
+                Push-Location (Join-Path $projectRoot 'backend')
+                try {
+                    $cleanupCode | & $backendPython -
+                    $cleanupCompleted = $LASTEXITCODE -eq 0
+                }
+                finally {
+                    Pop-Location
+                }
+            }
+            catch {
+                Write-Warning "Local Worker smoke cleanup failed: $($_.Exception.Message)"
+            }
+            finally {
+                [Environment]::SetEnvironmentVariable('WORKER_SMOKE_DEVICE_ID', $previousSmokeDeviceId, 'Process')
+            }
+        }
+        if (-not $cleanupCompleted) {
+            $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
+            $cleanupBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($cleanupSql))
+            & ssh.exe -o BatchMode=yes -o ConnectTimeout=5 $SshHost "printf '%s' '$cleanupBase64' | base64 -d | docker exec -i control-center-postgres-dev psql -v ON_ERROR_STOP=1 -U postgres -d control_center_dev" | Out-Null
+        }
     }
     if ($null -ne $tunnel -and -not $tunnel.HasExited) {
         Stop-Process -Id $tunnel.Id -Force

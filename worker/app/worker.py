@@ -3,7 +3,7 @@ import logging
 from typing import Protocol
 from datetime import UTC, datetime
 
-from app.client import WorkerApiClient
+from app.client import WorkerApiClient, WorkerApiError
 from app.config import WorkerSettings
 from app.contracts import (
     ExecutionResult,
@@ -111,6 +111,15 @@ class Worker:
             )
         except asyncio.CancelledError:
             raise
+        except WorkerApiError as error:
+            self._skill_snapshot_synced = False
+            if self.local_runtime_state is not None:
+                self.local_runtime_state.set_connection(
+                    False,
+                    token_status="invalid" if error.status_code == 401 else None,
+                )
+            logger.warning("Worker heartbeat failed: %s", error)
+            return
         except Exception as error:
             self._skill_snapshot_synced = False
             if self.local_runtime_state is not None:
@@ -119,7 +128,7 @@ class Worker:
             return
 
         if self.local_runtime_state is not None:
-            self.local_runtime_state.set_connection(True)
+            self.local_runtime_state.set_connection(True, token_status="valid")
         if self._skill_snapshot_synced:
             return
         try:
@@ -129,9 +138,19 @@ class Worker:
                 ),
             )
             self._skill_snapshot_synced = True
+            if self.local_runtime_state is not None:
+                self.local_runtime_state.set_skill_sync(
+                    True,
+                    count=len(list(self.skill_registry.descriptors())),
+                )
         except asyncio.CancelledError:
             raise
         except Exception as error:
+            if self.local_runtime_state is not None:
+                self.local_runtime_state.set_skill_sync(
+                    False,
+                    count=len(list(self.skill_registry.descriptors())),
+                )
             logger.warning("Skill capability snapshot sync failed: %s", error)
 
     async def _provider_inventory_loop(self, stop_event: asyncio.Event) -> None:
@@ -139,6 +158,8 @@ class Worker:
             try:
                 if self.provider_discovery is not None:
                     inventory = await self.provider_discovery.discover()
+                    if self.local_runtime_state is not None:
+                        self.local_runtime_state.set_provider_inventory(inventory)
                     await self.client.report_provider_inventory(
                         ProviderInventoryReport(
                             provider_code="yingdao",
@@ -277,7 +298,7 @@ class Worker:
                 started_at=self.started_at,
             )
             if self.local_runtime_state is not None:
-                self.local_runtime_state.set_connection(True)
+                self.local_runtime_state.set_connection(True, token_status="valid")
         except Exception as error:
             if self.local_runtime_state is not None:
                 self.local_runtime_state.set_connection(False)

@@ -87,6 +87,43 @@ class WindowsYingdaoRuntimeLocator:
         async with self._resolution_lock:
             return await self._resolve(start_if_missing=start_if_missing)
 
+    def find_supported_executable(self) -> Path | None:
+        """Locate the supported runtime without starting ShadowBot."""
+        if self.install_root is not None:
+            configured = self._find_supported_executable()
+            if configured is not None:
+                return configured
+        for process in self._list_shadowbot_processes():
+            if process.version != REQUIRED_YINGDAO_VERSION:
+                continue
+            try:
+                return self.validate_supported_executable(process.executable_path)
+            except YingdaoSessionError:
+                continue
+        return self._find_supported_executable()
+
+    def validate_supported_executable(self, executable: Path) -> Path:
+        candidate = executable.resolve()
+        if not candidate.is_file():
+            raise YingdaoSessionError(
+                "YINGDAO_NOT_INSTALLED",
+                "选择的 ShadowBot 可执行文件不存在",
+            )
+        try:
+            version = self.version_reader(candidate)
+        except OSError as error:
+            raise YingdaoSessionError(
+                "YINGDAO_VERSION_UNSUPPORTED",
+                "无法读取 ShadowBot 文件版本",
+            ) from error
+        if version != REQUIRED_YINGDAO_VERSION:
+            raise YingdaoSessionError(
+                "YINGDAO_VERSION_UNSUPPORTED",
+                f"当前 Worker V1 仅支持 ShadowBot {REQUIRED_YINGDAO_VERSION}；选择文件版本为 {version}",
+                provider_version=version,
+            )
+        return candidate
+
     async def _resolve(self, *, start_if_missing: bool) -> YingdaoRuntimeEndpoint:
         processes = await asyncio.to_thread(self._list_shadowbot_processes)
         if processes:
@@ -169,9 +206,8 @@ class WindowsYingdaoRuntimeLocator:
                 if not candidate.is_file():
                     continue
                 try:
-                    if self.version_reader(candidate) == REQUIRED_YINGDAO_VERSION:
-                        return candidate.resolve()
-                except OSError:
+                    return self.validate_supported_executable(candidate)
+                except YingdaoSessionError:
                     continue
         return None
 

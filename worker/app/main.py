@@ -27,6 +27,8 @@ from app.runtime_events import (
 )
 from app.logging_config import configure_logging
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
+from app.local_config import WorkerConfigurationError
+from app.process_control import WorkerProcessState
 from app.skills import registry
 from app.skills.registry import SkillProvider, SkillRuntime
 from app.worker import Worker
@@ -46,6 +48,8 @@ async def run_worker(settings: WorkerSettings) -> None:
     local_runtime_state = LocalRuntimeState(
         path=settings.runtime_status_path,
         device_id=settings.device_id,
+        device_display_name=settings.device_display_name,
+        server_url=str(settings.server_url).rstrip("/"),
     )
     event_bus.subscribe(event_buffer.append)
     event_bus.subscribe(local_runtime_state.consume)
@@ -115,7 +119,9 @@ def main() -> int:
     try:
         settings = get_settings()
         configure_logging(settings)
-        with WorkerSingleInstance(settings.device_id):
+        with WorkerSingleInstance(settings.device_id), WorkerProcessState(
+            settings.device_id,
+        ):
             asyncio.run(run_worker(settings))
     except KeyboardInterrupt:
         return 0
@@ -130,6 +136,10 @@ def main() -> int:
             "Worker configuration is invalid: %s",
             error.errors(include_input=False),
         )
+        return 2
+    except WorkerConfigurationError as error:
+        logging.basicConfig(level=logging.ERROR)
+        logging.getLogger(__name__).error("Worker configuration error: %s", error)
         return 2
     return 0
 

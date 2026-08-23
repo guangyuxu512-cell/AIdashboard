@@ -1,45 +1,42 @@
-Ecommerce AI Worker for Windows
-================================
+Ecommerce AI Worker 0.4.0 for Windows
+======================================
 
-首次接入
-1. 在中控台创建独立 Device，并由 Backend CLI 为该 Device 签发一次性 Token。
-2. 双击“首次配置并启动.cmd”。
-3. 输入 Backend HTTPS URL、Device ID、Device Token。
-4. 影刀路径通常留空，由 Worker 自动发现/启动 6.3.6；自动发现失败时才填写安装根目录覆盖。
-5. 本地数据根目录只用于 tasklog，默认留空使用当前 Windows 用户目录。
+普通首次接入
+1. 在中控台创建 Device，并在设备详情的“Worker 凭证”区域签发 Token。
+2. 解压本 ZIP，双击 ecommerce-worker.exe。
+3. 在“配置”页填写 Backend 地址和一次性显示的 Worker Token。
+4. Worker 自动取得 Device ID；用户不需要填写 UUID。
+5. Worker 自动检测 ShadowBot 6.3.6。自动检测失败时，可选择 ShadowBot.exe；其他版本会被拒绝。
+6. 点击“测试连接”，确认服务器可达且 Token 有效后，点击“保存并启动”。
 
-当前影刀策略
-- Worker 0.3.2 固定使用影刀 6.3.6，不自动选择或回退其他版本。
-- 当前会话与云端应用兼容影刀接口已观察到的 Code/Data 和 code/data 包装。
-- Worker 启动并首次心跳成功后会同步本机 Skill Registry 完整快照；网络断开并恢复后会再次同步。
-- 其他版本可以留在磁盘；若其他版本正在运行，Worker 不结束它，也不启动第二实例。
-- 当前账号和云端应用来自 6.3.6 当前会话接口，不读取多个 user.db3 缓存作判断。
-- 该入口保留已有 Device ID 和加密 Token，不要求重新输入 Token。
+升级已有 Worker
+- 直接替换程序文件并双击 ecommerce-worker.exe。
+- 自动复用 %LOCALAPPDATA%\EcommerceAIWorker\config.json 中原 Device ID、Server 和 DPAPI Token。
+- 不会创建新的 Device UUID，也不要求重新签发 Token。
 
-临时开发HTTP
-- 仅在负责人明确接受明文风险时，使用“首次配置并启动-开发HTTP.cmd”。
-- HTTP 会让 Device Token 和任务流量失去传输加密，不得用于正式服务器或重要数据。
+窗口与后台进程
+- GUI 提供“状态 / 配置 / 诊断”三个页签。
+- 关闭 GUI 不会停止后台 Worker Core。
+- 日常再次双击 ecommerce-worker.exe 可重新打开 GUI。
+- 高级运维 CMD 入口继续保留，但普通首次配置不依赖 PowerShell。
 
-日常使用
-- 启动Worker.cmd：检查配置和现有实例后在后台启动。
-- 停止Worker.cmd：只停止状态文件精确记录的本 Worker PID。
-- 查看状态.cmd：显示进程、Backend、Device ID、Server URL 和设备连接状态；影刀账号以中控台设备能力为准。
-- 打开Worker状态.cmd：只读显示当前任务、执行阶段和最近运行日志；关闭窗口不影响后台Worker。
-- 配置影刀并重启.cmd：单独更新影刀路径覆盖，不改变设备身份。
+ShadowBot 策略
+- Worker 0.4.0 固定支持 ShadowBot 6.3.6。
+- 当前会话、云端应用与执行均来自 6.3.6 本地会话接口。
+- 若其他版本正在运行，Worker 不结束它，也不启动第二个版本，只报告版本不支持。
 
 安全说明
-- 公网 Backend URL 必须使用 HTTPS。
-- Token 由 Windows DPAPI 按当前用户加密，配置保存在
-  %LOCALAPPDATA%\EcommerceAIWorker\config.json。
-- 日志和任务 Runtime 也位于该用户私有目录，不写入发行包目录。
-- 本包不包含 SSH Key、数据库配置、Device ID、Device Token、店铺凭证或 Cookie。
-- 普通执行电脑不需要 SSH、公网 IP、端口映射、Backend、PostgreSQL 或项目源码。
+- 每台设备必须使用独立 Worker Token。
+- Backend 只保存 Token Hash；Token 明文仅在签发或轮换当次显示。
+- Token 在本机使用 Windows DPAPI CurrentUser 加密，不写入明文 JSON、日志或 runtime-status.json。
+- 生产环境必须使用 HTTPS。公网 HTTP 仅允许明确接受风险的临时开发验证。
+- 本包不包含 SSH Key、数据库配置、店铺凭证或 Cookie。
 
 当前能力
 - system.echo
 - system.sleep
-- yingdao.discover（只读；需要本机影刀已安装并登录）
-- yingdao.app.run（运行当前账号可访问的云端应用；参数由中控台配置）
-- yingdao.test（仅在显式配置无副作用测试App UUID，并且存在已验证执行版本时可用）
+- yingdao.discover
+- yingdao.app.run
+- yingdao.test（仅显式配置无副作用测试应用时使用）
 
-不包含 Windows Service、自动更新或浏览器登录。
+本版本不包含 Windows Service、自动更新、设备配对码或自动登录 ShadowBot。

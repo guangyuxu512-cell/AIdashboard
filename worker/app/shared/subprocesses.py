@@ -9,6 +9,10 @@ _IS_WINDOWS = sys.platform == "win32"
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
 
+def windows_no_window_creation_flags() -> int:
+    return _CREATE_NO_WINDOW if _IS_WINDOWS else 0
+
+
 def run_noninteractive_command(
     args: Sequence[str | PathLike[str]],
     **kwargs: Any,

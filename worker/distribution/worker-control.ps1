@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
 
 $packageRoot = $PSScriptRoot
-$workerExecutable = Join-Path $packageRoot 'ecommerce-worker\ecommerce-worker.exe'
+$workerExecutable = Join-Path $packageRoot 'ecommerce-worker.exe'
 $dataRoot = if ($env:ECOMMERCE_WORKER_DATA_ROOT) {
     [System.IO.Path]::GetFullPath($env:ECOMMERCE_WORKER_DATA_ROOT)
 }
@@ -387,6 +387,7 @@ function Start-Worker {
     try {
         $process = Start-Process `
             -FilePath $workerExecutable `
+            -ArgumentList '--worker-core' `
             -WorkingDirectory (Split-Path -Parent $workerExecutable) `
             -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logRoot 'bootstrap.out.log') `
@@ -406,6 +407,7 @@ function Start-Worker {
     $state = [ordered]@{
         pid = $process.Id
         started_at_utc = $process.StartTime.ToUniversalTime().ToString('o')
+        executable_path = [System.IO.Path]::GetFullPath($workerExecutable)
         device_id = [string]$config.device_id
     }
     [System.IO.File]::WriteAllText(
