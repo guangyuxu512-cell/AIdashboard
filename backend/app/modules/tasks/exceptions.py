@@ -25,6 +25,12 @@ class TaskInputInvalidError(AppError):
     status_code = 422
 
 
+class TaskProviderUnavailableError(AppError):
+    code = "TASK_PROVIDER_UNAVAILABLE"
+    message = "目标设备的执行能力当前不可用"
+    status_code = 422
+
+
 class TaskEventForbiddenError(AppError):
     code = "TASK_EVENT_FORBIDDEN"
     message = "当前 Worker 无权为该任务写入运行事件"

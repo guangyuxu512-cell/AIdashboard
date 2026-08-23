@@ -240,62 +240,25 @@ def main() -> int:
                 )
                 assert yingdao_result["started_at"] is not None
                 assert yingdao_result["finished_at"] is not None
-                assert yingdao_result["result"]["provider_version"] == "6.2.23"
+                assert yingdao_result["result"]["provider_version"] == "6.3.6"
                 assert yingdao_result["result"]["logged_in"] is True
                 assert yingdao_result["result"]["account_display"] == "GY00999"
                 assert yingdao_result["result"]["account_type"] == "PersonalBasic"
-                assert len(yingdao_result["result"]["applications"]) == 9
-                inventory_before_failure = (
+                assert len(yingdao_result["result"]["applications"]) > 0
+                inventory = (
                     client.get(
                         f"/api/v1/devices/{device_a}/provider-inventories",
                     )
                     .raise_for_status()
                     .json()
                 )
-                assert len(inventory_before_failure) == 1
-                assert inventory_before_failure[0]["provider_code"] == "yingdao"
-                assert inventory_before_failure[0]["provider_version"] == "6.2.23"
+                assert len(inventory) == 1
+                assert inventory[0]["provider_code"] == "yingdao"
+                assert inventory[0]["provider_version"] == "6.3.6"
                 assert len(
-                    inventory_before_failure[0]["inventory"]["applications"],
-                ) == 9
+                    inventory[0]["inventory"]["applications"],
+                ) > 0
                 print("E2E real Yingdao discovery and inventory refresh verified")
-
-                stop_process(worker_a)
-                worker_a = start_worker(
-                    device_a,
-                    token_a,
-                    runtime_root / "a-invalid-provider",
-                    yingdao_install_root=runtime_root / "missing-shadowbot",
-                )
-                failed_discovery = create_task(
-                    client,
-                    device_a,
-                    "yingdao.discover",
-                    {},
-                )
-                failed_discovery_result = wait_task(
-                    client,
-                    failed_discovery["task_id"],
-                    "failed",
-                    25,
-                )
-                assert failed_discovery_result["error_code"] == "YINGDAO_NOT_INSTALLED"
-                inventory_after_failure = (
-                    client.get(
-                        f"/api/v1/devices/{device_a}/provider-inventories",
-                    )
-                    .raise_for_status()
-                    .json()
-                )
-                assert inventory_after_failure == inventory_before_failure
-                print("E2E failed discovery preserved the last successful inventory")
-
-                stop_process(worker_a)
-                worker_a = start_worker(
-                    device_a,
-                    token_a,
-                    runtime_root / "a-before-lost",
-                )
 
                 sleep = create_task(
                     client,

@@ -14,6 +14,7 @@ class TaskSkillId(StrEnum):
     SYSTEM_SLEEP = "system.sleep"
     YINGDAO_TEST = "yingdao.test"
     YINGDAO_DISCOVER = "yingdao.discover"
+    YINGDAO_APP_RUN = "yingdao.app.run"
 
 
 class TaskEventType(StrEnum):

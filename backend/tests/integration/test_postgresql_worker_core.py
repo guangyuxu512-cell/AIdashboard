@@ -6,8 +6,12 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.modules.automation_apps.models import AutomationApplicationConfig
+from app.modules.automation_apps.schemas import AutomationApplicationConfigUpsert
+from app.modules.automation_apps.service import AutomationApplicationConfigService
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
+from app.modules.tasks.exceptions import TaskInputInvalidError, TaskProviderUnavailableError
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.tasks.schemas import (
     TaskComplete,
@@ -99,7 +103,10 @@ def test_worker_identity_runtime_claim_result_and_lost(
                     "inventory": {
                         "provider": "yingdao",
                         "available": True,
-                        "provider_version": "6.2.23",
+                        "status": "ready",
+                        "provider_version": "6.3.6",
+                        "execution_available": True,
+                        "execution_version": "6.3.6",
                         "logged_in": True,
                         "account_display": "GY00999",
                         "account_type": "PersonalBasic",
@@ -109,8 +116,10 @@ def test_worker_identity_runtime_claim_result_and_lost(
                             {
                                 "app_id": "app-1",
                                 "app_name": "应用一",
-                                "package_version": "1",
-                                "entrypoint": "main",
+                                "version_id": "1",
+                                "updated_at": None,
+                                "app_type": None,
+                                "group_id": None,
                             },
                         ],
                         "discovered_at": base_time.isoformat(),
@@ -256,3 +265,124 @@ def test_worker_identity_runtime_claim_result_and_lost(
             assert failed_rpa.status == TaskStatus.FAILED.value
     finally:
         _cleanup(postgresql_engine, device_ids)
+
+
+def test_yingdao_app_config_and_device_isolated_task_creation(
+    postgresql_engine: Engine,
+) -> None:
+    device_a = uuid4()
+    device_b = uuid4()
+    device_ids = {device_a, device_b}
+    app_id = f"worker-config-{uuid4()}"
+    now = datetime.now(UTC)
+    try:
+        with Session(postgresql_engine) as session:
+            session.add_all(
+                [
+                    Device(device_id=device_a, display_name="yingdao-ready"),
+                    Device(device_id=device_b, display_name="yingdao-not-ready"),
+                ],
+            )
+            session.commit()
+            worker_service = WorkerService(session)
+            worker_service.save_provider_inventory(
+                WorkerPrincipal(device_id=device_a),
+                ProviderInventoryUpsert.model_validate(
+                    {
+                        "provider_code": "yingdao",
+                        "inventory": {
+                            "provider": "yingdao",
+                            "available": True,
+                            "status": "ready",
+                            "provider_version": "6.3.6",
+                            "execution_available": True,
+                            "execution_version": "6.3.6",
+                            "logged_in": True,
+                            "account_display": "GY00999",
+                            "account_type": "PersonalBasic",
+                            "enterprise_account": False,
+                            "user_id": "906515367141965826",
+                            "applications": [
+                                {
+                                    "app_id": app_id,
+                                    "app_name": "Worker闭环测试",
+                                    "version_id": None,
+                                    "updated_at": None,
+                                    "app_type": None,
+                                    "group_id": None,
+                                },
+                            ],
+                            "discovered_at": now.isoformat(),
+                        },
+                    },
+                ),
+                now=now,
+            )
+            config_service = AutomationApplicationConfigService(session)
+            saved = config_service.upsert(
+                "yingdao",
+                app_id,
+                AutomationApplicationConfigUpsert.model_validate(
+                    {
+                        "input_schema": {
+                            "fields": [
+                                {
+                                    "name": "message",
+                                    "label": "测试消息",
+                                    "type": "text",
+                                    "required": True,
+                                    "default_value": "hello",
+                                    "options": [],
+                                },
+                            ],
+                        },
+                    },
+                ),
+            )
+            assert config_service.get("yingdao", app_id) == saved
+
+            task_service = TaskService(session)
+            task = task_service.create(
+                TaskCreate(
+                    target_device_id=device_a,
+                    skill_id=TaskSkillId.YINGDAO_APP_RUN,
+                    input={"app_id": app_id, "params": {}},
+                ),
+            )
+            assert task.input_json == {"app_id": app_id, "params": {"message": "hello"}}
+            assert task_service.claim(WorkerPrincipal(device_id=device_b)) is None
+            assert task_service.claim(WorkerPrincipal(device_id=device_a)) is not None
+
+            with pytest.raises(TaskProviderUnavailableError):
+                task_service.create(
+                    TaskCreate(
+                        target_device_id=device_b,
+                        skill_id=TaskSkillId.YINGDAO_APP_RUN,
+                        input={"app_id": app_id, "params": {}},
+                    ),
+                )
+            with pytest.raises(TaskInputInvalidError):
+                task_service.create(
+                    TaskCreate(
+                        target_device_id=device_a,
+                        skill_id=TaskSkillId.YINGDAO_APP_RUN,
+                        input={"app_id": "not-visible", "params": {}},
+                    ),
+                )
+            with pytest.raises(TaskInputInvalidError):
+                task_service.create(
+                    TaskCreate(
+                        target_device_id=device_a,
+                        skill_id=TaskSkillId.YINGDAO_APP_RUN,
+                        input={"app_id": app_id, "params": {"message": 1}},
+                    ),
+                )
+    finally:
+        _cleanup(postgresql_engine, device_ids)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(AutomationApplicationConfig).where(
+                    AutomationApplicationConfig.app_id == app_id,
+                ),
+            )
+            session.commit()

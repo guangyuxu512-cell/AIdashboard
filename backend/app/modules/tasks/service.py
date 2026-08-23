@@ -7,13 +7,16 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.modules.tasks.enums import TaskStatus
+from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
+from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
+from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.exceptions import (
     TaskEventForbiddenError,
     TaskInputInvalidError,
     TaskNotFoundError,
     TaskStateConflictError,
     TaskTargetDeviceInvalidError,
+    TaskProviderUnavailableError,
 )
 from app.modules.tasks.models import Task
 from app.modules.tasks.repository import TaskRepository
@@ -37,10 +40,17 @@ class TaskService:
         session: Session,
         repository: TaskRepository | None = None,
         settings: Settings | None = None,
+        application_config_repository: (
+            AutomationApplicationConfigRepository | None
+        ) = None,
     ) -> None:
         self.session = session
         self.repository = repository or TaskRepository(session)
         self.settings = settings or get_settings()
+        self.application_config_repository = (
+            application_config_repository
+            or AutomationApplicationConfigRepository(session)
+        )
 
     def create(self, data: TaskCreate) -> Task:
         if self.repository.get_enabled_device(data.target_device_id) is None:
@@ -51,6 +61,11 @@ class TaskService:
             raise TaskInputInvalidError(
                 details=error.errors(include_input=False),
             ) from error
+        if data.skill_id is TaskSkillId.YINGDAO_APP_RUN:
+            input_json = self._validate_yingdao_application_run(
+                data.target_device_id,
+                input_json,
+            )
         task = Task(
             target_device_id=data.target_device_id,
             skill_id=data.skill_id.value,
@@ -61,6 +76,43 @@ class TaskService:
         self.session.commit()
         self.session.refresh(task)
         return task
+
+    def _validate_yingdao_application_run(
+        self,
+        device_id: UUID,
+        input_json: dict[str, Any],
+    ) -> dict[str, Any]:
+        inventory = self.repository.get_provider_inventory(device_id, "yingdao")
+        payload = inventory.inventory_payload if inventory is not None else {}
+        if (
+            inventory is None
+            or not inventory.available
+            or payload.get("status") != "ready"
+            or payload.get("provider_version") != "6.3.6"
+            or payload.get("execution_available") is not True
+            or payload.get("execution_version") != "6.3.6"
+            or payload.get("logged_in") is not True
+        ):
+            raise TaskProviderUnavailableError()
+        app_id = str(input_json["app_id"])
+        applications = payload.get("applications")
+        if not isinstance(applications, list) or not any(
+            isinstance(item, dict) and item.get("app_id") == app_id
+            for item in applications
+        ):
+            raise TaskInputInvalidError(
+                "当前账号无法访问该影刀应用",
+                details={"app_id": app_id},
+            )
+        config = self.application_config_repository.get("yingdao", app_id)
+        schema = AutomationInputSchema.model_validate(
+            config.input_schema if config is not None else {"fields": []},
+        )
+        try:
+            params = normalize_parameters(schema, input_json.get("params", {}))
+        except ValueError as error:
+            raise TaskInputInvalidError(str(error)) from error
+        return {"app_id": app_id, "params": params}
 
     def get(self, task_id: UUID) -> Task:
         task = self.repository.get(task_id)

@@ -77,7 +77,10 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                     inventory_payload={
                         "provider": "yingdao",
                         "available": True,
+                        "status": "ready",
                         "provider_version": "6.3.6",
+                        "execution_available": True,
+                        "execution_version": "6.3.6",
                         "logged_in": True,
                         "account_display": "integration-account",
                         "account_type": "PersonalBasic",

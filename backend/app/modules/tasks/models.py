@@ -30,7 +30,7 @@ class Task(TimestampMixin, Base):
         ),
         CheckConstraint(
             "skill_id IN ('system.echo', 'system.sleep', 'yingdao.test', "
-            "'yingdao.discover')",
+            "'yingdao.discover', 'yingdao.app.run')",
             name="skill_id",
         ),
         CheckConstraint("jsonb_typeof(input_json) = 'object'", name="input_object"),

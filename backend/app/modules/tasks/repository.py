@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
+from app.modules.workers.models import DeviceProviderInventory
 from app.shared.identifiers import generate_id
 
 
@@ -95,6 +96,13 @@ class TaskRepository:
             .with_for_update()
         )
         return self.session.scalar(statement)
+
+    def get_provider_inventory(
+        self,
+        device_id: UUID,
+        provider_code: str,
+    ) -> DeviceProviderInventory | None:
+        return self.session.get(DeviceProviderInventory, (device_id, provider_code))
 
     def has_active_for_device(self, device_id: UUID) -> bool:
         return bool(

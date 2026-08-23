@@ -271,3 +271,20 @@ def test_task_runtime_event_migration_upgrade_and_downgrade(
         ("drop_index", "ix_task_events_task_seq"),
         ("drop_table", "task_events"),
     ]
+
+
+def test_automation_application_config_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260823_0011_automation_application_configs",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert ("create_table", "automation_application_configs") in recorder.calls
+    assert ("drop_constraint", "ck_tasks_skill_id") in recorder.calls
+    assert ("create_check_constraint", "ck_tasks_skill_id") in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert ("drop_table", "automation_application_configs") in recorder.calls

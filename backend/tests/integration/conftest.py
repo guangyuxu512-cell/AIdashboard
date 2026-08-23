@@ -24,6 +24,7 @@ CORE_TABLES = {
     "device_provider_inventory",
     "tasks",
     "notification_channels",
+    "automation_application_configs",
 }
 DESTRUCTIVE_TEST_DATABASE = "control_center_dev"
 

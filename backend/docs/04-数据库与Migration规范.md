@@ -57,10 +57,16 @@ Migration `20260819_0002_auth_domain_foundation` 增加：
 
 Migration `20260820_0005_provider_inventory` 增加
 `device_provider_inventory`。它以 `(device_id, provider_code)` 为复合主键，只保存
-每台设备、每个 Provider 最近一次成功发现快照；失败任务不删除或覆盖旧快照。
+每台设备、每个 Provider 最近一次上报快照。Provider 的未安装、版本不支持、需登录、
+接口不可达和 ready 都是正常 Inventory 状态；上报这些状态不删除 Device Runtime。
 `inventory_payload` 是外部 Provider Inventory 的专用 JSONB，并用对象类型约束，
 不得演变为任意业务数据容器。当前影刀应用数组保留在该快照中，等真实 Skill 与 App
 绑定或版本管理需求出现后再独立建模。
+
+Migration `20260823_0011_automation_application_configs` 增加
+`automation_application_configs`，以 `(provider_code, app_id)` 唯一保存通用自动化应用的
+参数 Schema、默认值、来源和版本。V1 的 `schema_source=manual`，只支持 text/number/
+boolean/select；不得把 Credential、Cookie、流程内容或任意 Provider 原始响应放入该表。
 
 ## 阶段 3D-1 持久结构
 

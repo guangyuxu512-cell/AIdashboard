@@ -8,6 +8,7 @@ from app.main import create_app
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.skill_contracts import validate_skill_input
+from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
 from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
 from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.schemas import ProviderInventoryUpsert, WorkerHeartbeat
@@ -166,6 +167,46 @@ def test_worker_token_hash_and_skill_contracts() -> None:
     ) == {"seconds": 45.0}
     assert validate_skill_input(TaskSkillId.YINGDAO_TEST, {}) == {}
     assert validate_skill_input(TaskSkillId.YINGDAO_DISCOVER, {}) == {}
+    assert validate_skill_input(
+        TaskSkillId.YINGDAO_APP_RUN,
+        {"app_id": "app-1", "params": {"count": 2}},
+    ) == {"app_id": "app-1", "params": {"count": 2}}
+
+
+def test_automation_application_parameters_apply_defaults_and_validate_types() -> None:
+    schema = AutomationInputSchema.model_validate(
+        {
+            "fields": [
+                {
+                    "name": "keyword",
+                    "label": "关键词",
+                    "type": "text",
+                    "required": True,
+                    "default_value": None,
+                    "options": [],
+                },
+                {
+                    "name": "mode",
+                    "label": "模式",
+                    "type": "select",
+                    "required": False,
+                    "default_value": "safe",
+                    "options": ["safe", "fast"],
+                },
+            ],
+        },
+    )
+
+    assert normalize_parameters(schema, {"keyword": "商品"}) == {
+        "keyword": "商品",
+        "mode": "safe",
+    }
+    with pytest.raises(ValueError, match="关键词"):
+        normalize_parameters(schema, {})
+    with pytest.raises(ValueError, match="关键词"):
+        normalize_parameters(schema, {"keyword": ""})
+    with pytest.raises(ValueError, match="模式"):
+        normalize_parameters(schema, {"keyword": "商品", "mode": "invalid"})
 
 
 def test_notification_failure_does_not_rollback_runtime_transition() -> None:
@@ -212,6 +253,7 @@ def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:
         "/api/v1/worker/tasks/{task_id}/events",
         "/api/v1/worker/provider-inventory",
         "/api/v1/devices/{device_id}/provider-inventories",
+        "/api/v1/automation-app-configs/{provider_code}/{app_id}",
     }
     assert expected <= set(paths)
     assert all("command" not in path for path in paths)
@@ -224,7 +266,10 @@ def test_provider_inventory_schema_has_no_device_identity_in_request() -> None:
             "inventory": {
                 "provider": "yingdao",
                 "available": True,
-                "provider_version": "6.2.23",
+                "status": "ready",
+                "provider_version": "6.3.6",
+                "execution_available": True,
+                "execution_version": "6.3.6",
                 "logged_in": True,
                 "account_display": "GY00999",
                 "account_type": "PersonalBasic",
@@ -262,3 +307,34 @@ def test_provider_inventory_accepts_unavailable_local_account_classification() -
 
     assert data.inventory.account_type is None
     assert data.inventory.enterprise_account is None
+
+
+def test_provider_inventory_reads_legacy_application_payload_without_500() -> None:
+    data = ProviderInventoryUpsert.model_validate(
+        {
+            "provider_code": "yingdao",
+            "inventory": {
+                "provider": "yingdao",
+                "available": True,
+                "provider_version": "6.2.23",
+                "logged_in": True,
+                "account_display": "legacy",
+                "account_type": None,
+                "enterprise_account": None,
+                "user_id": "legacy-user",
+                "applications": [
+                    {
+                        "app_id": "legacy-app",
+                        "app_name": "旧应用",
+                        "package_version": "1",
+                        "entrypoint": "main",
+                    },
+                ],
+                "discovered_at": "2026-08-22T12:00:00+00:00",
+            },
+        },
+    )
+
+    assert data.inventory.status == "version_unsupported"
+    assert data.inventory.available is False
+    assert data.inventory.applications[0].version_id == "1"

@@ -78,15 +78,28 @@ Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或
 - `GET /api/v1/devices/{device_id}/provider-inventories`：读取指定设备的最新 Provider
   快照。
 
-当前正式 Provider 为 `yingdao`。影刀 Inventory 只包含版本、登录状态、安全账号元数据、
-当前 userId、未回收应用的 ID/名称/package version/entrypoint 与发现时间；禁止密码、
+当前正式 Provider 为 `yingdao`。影刀 Inventory 只包含状态/原因、版本、登录状态、安全账号元数据、
+当前 userId、当前账号云端应用的 ID/名称/versionId/updateTime/appType/groupId 与发现时间；禁止密码、
 Token、Cookie 和完整认证响应。应用数组作为外部 Provider 最新快照存入专用 JSONB，
 不是通用业务 JSON，也不是中控台 Skill 注册表。
 
-Inventory 同时区分 Discovery 与 Execution：`available` 只表示发现能力，执行能力由
+Inventory 状态使用 `not_installed / version_unsupported / starting / need_login /
+interface_unreachable / ready`。`available` 与执行能力由
 `execution_available / execution_version / execution_unavailable_reason` 独立表达。
 本地 Discovery 无法从可验证数据得到账号类型或企业标记时，`account_type`
 与 `enterprise_account` 允许为空；Worker 不得猜测或伪造这两个字段。
+
+## Automation Application Config API
+
+- `GET /api/v1/automation-app-configs/{provider_code}/{app_id}`：读取应用参数配置，未配置返回 null。
+- `PUT /api/v1/automation-app-configs/{provider_code}/{app_id}`：保存手工参数 Schema。
+
+当前 provider 仅允许 `yingdao`。字段类型为 text/number/boolean/select；Backend 校验字段名、
+重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
+
+`POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
+`{"app_id":"...","params":{...}}`。Backend 必须验证目标 Device 启用、最新影刀 Inventory
+为 ready、执行可用、已登录、App 对当前账号可见，并按已保存 Schema 校验/补齐 params。
 
 ## Device Lifecycle API
 

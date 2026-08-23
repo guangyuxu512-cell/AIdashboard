@@ -232,17 +232,18 @@ class WorkerService:
     def to_provider_inventory_read(
         record: DeviceProviderInventory,
     ) -> DeviceProviderInventoryRead:
+        inventory = YingdaoProviderInventory.model_validate(
+            record.inventory_payload,
+        )
         return DeviceProviderInventoryRead(
             device_id=record.device_id,
             provider_code=record.provider_code,
-            available=record.available,
-            provider_version=record.provider_version,
-            account_display=record.account_display,
-            account_type=record.account_type,
-            enterprise_account=record.enterprise_account,
+            available=inventory.available,
+            provider_version=inventory.provider_version,
+            account_display=inventory.account_display,
+            account_type=inventory.account_type,
+            enterprise_account=inventory.enterprise_account,
             last_discovered_at=record.last_discovered_at,
-            inventory=YingdaoProviderInventory.model_validate(
-                record.inventory_payload,
-            ),
+            inventory=inventory,
             updated_at=record.updated_at,
         )
