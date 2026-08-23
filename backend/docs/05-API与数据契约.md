@@ -89,6 +89,16 @@ interface_unreachable / ready`。`available` 与执行能力由
 本地 Discovery 无法从可验证数据得到账号类型或企业标记时，`account_type`
 与 `enterprise_account` 允许为空；Worker 不得猜测或伪造这两个字段。
 
+## Device Skill Capability Contract
+
+- `PUT /api/v1/worker/skill-capabilities`：认证 Worker 上报本机 Skill Registry 完整快照；
+  Body 只含 Descriptor 数组，不接受 `device_id`。
+- `GET /api/v1/devices/{device_id}/skill-capabilities`：查询设备最后一次已知 Skill 能力。
+
+Descriptor 固定包含 `skill_id / display_name / runtime / provider / version`。Skill Capability
+不等于 Provider Capability，也不等于影刀 Application。`yingdao.app.run` 是通用 Skill，
+具体影刀应用由 Task `input.app_id` 选择；影刀的 9 个 Application 不注册成 9 个 Skill。
+
 ## Automation Application Config API
 
 - `GET /api/v1/automation-app-configs/{provider_code}/{app_id}`：读取应用参数配置，未配置返回 null。

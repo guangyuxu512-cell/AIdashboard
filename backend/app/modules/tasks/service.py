@@ -11,12 +11,18 @@ from app.modules.automation_apps.repository import AutomationApplicationConfigRe
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.exceptions import (
+    TaskApplicationNotAvailableError,
+    TaskDeviceDisabledError,
     TaskEventForbiddenError,
     TaskInputInvalidError,
     TaskNotFoundError,
+    TaskProviderLoginRequiredError,
+    TaskProviderNotReadyError,
+    TaskProviderVersionUnsupportedError,
+    TaskSkillNotAvailableError,
     TaskStateConflictError,
     TaskTargetDeviceInvalidError,
-    TaskProviderUnavailableError,
+    TaskWorkerOfflineError,
 )
 from app.modules.tasks.models import Task
 from app.modules.tasks.repository import TaskRepository
@@ -32,6 +38,8 @@ from app.modules.tasks.schemas import (
 )
 from app.modules.tasks.skill_contracts import validate_skill_input
 from app.modules.workers.service import WorkerPrincipal
+from app.modules.workers.models import DeviceSkillCapability
+from app.modules.workers.schemas import YingdaoProviderInventory
 
 
 class TaskService:
@@ -53,8 +61,26 @@ class TaskService:
         )
 
     def create(self, data: TaskCreate) -> Task:
-        if self.repository.get_enabled_device(data.target_device_id) is None:
+        device = self.repository.get_task_target_device(data.target_device_id)
+        if device is None:
             raise TaskTargetDeviceInvalidError()
+        if not device.enabled:
+            raise TaskDeviceDisabledError()
+        runtime = self.repository.get_device_runtime(data.target_device_id)
+        if runtime is None or runtime.connection_status != "online":
+            raise TaskWorkerOfflineError()
+        capability = self.repository.get_skill_capability(
+            data.target_device_id,
+            data.skill_id.value,
+        )
+        if capability is None:
+            raise TaskSkillNotAvailableError(
+                details={"skill_id": data.skill_id.value},
+            )
+        provider_inventory = self._validate_provider_dependency(
+            data.target_device_id,
+            capability,
+        )
         try:
             input_json = validate_skill_input(data.skill_id, data.input)
         except ValidationError as error:
@@ -63,8 +89,8 @@ class TaskService:
             ) from error
         if data.skill_id is TaskSkillId.YINGDAO_APP_RUN:
             input_json = self._validate_yingdao_application_run(
-                data.target_device_id,
                 input_json,
+                provider_inventory,
             )
         task = Task(
             target_device_id=data.target_device_id,
@@ -77,31 +103,60 @@ class TaskService:
         self.session.refresh(task)
         return task
 
-    def _validate_yingdao_application_run(
+    def _validate_provider_dependency(
         self,
         device_id: UUID,
-        input_json: dict[str, Any],
-    ) -> dict[str, Any]:
-        inventory = self.repository.get_provider_inventory(device_id, "yingdao")
-        payload = inventory.inventory_payload if inventory is not None else {}
+        capability: DeviceSkillCapability,
+    ) -> YingdaoProviderInventory | None:
+        if capability.provider_code is None or capability.runtime == "discovery":
+            return None
+        if capability.provider_code != "yingdao":
+            raise TaskProviderNotReadyError(
+                details={"provider": capability.provider_code},
+            )
+        record = self.repository.get_provider_inventory(
+            device_id,
+            capability.provider_code,
+        )
+        if record is None:
+            raise TaskProviderNotReadyError(details={"provider": "yingdao"})
+        try:
+            inventory = YingdaoProviderInventory.model_validate(
+                record.inventory_payload,
+            )
+        except ValidationError as error:
+            raise TaskProviderNotReadyError(
+                details={"provider": "yingdao", "reason": "invalid_inventory"},
+            ) from error
+        if inventory.status == "need_login" or not inventory.logged_in:
+            raise TaskProviderLoginRequiredError()
         if (
-            inventory is None
+            inventory.status == "version_unsupported"
+            or inventory.provider_version != "6.3.6"
+            or inventory.execution_version != "6.3.6"
+        ):
+            raise TaskProviderVersionUnsupportedError(
+                details={"required_version": "6.3.6"},
+            )
+        if (
+            inventory.status != "ready"
+            or not record.available
             or not inventory.available
-            or payload.get("status") != "ready"
-            or payload.get("provider_version") != "6.3.6"
-            or payload.get("execution_available") is not True
-            or payload.get("execution_version") != "6.3.6"
-            or payload.get("logged_in") is not True
+            or not inventory.execution_available
         ):
-            raise TaskProviderUnavailableError()
+            raise TaskProviderNotReadyError(details={"provider": "yingdao"})
+        return inventory
+
+    def _validate_yingdao_application_run(
+        self,
+        input_json: dict[str, Any],
+        inventory: YingdaoProviderInventory | None,
+    ) -> dict[str, Any]:
+        if inventory is None:
+            raise TaskProviderNotReadyError(details={"provider": "yingdao"})
         app_id = str(input_json["app_id"])
-        applications = payload.get("applications")
-        if not isinstance(applications, list) or not any(
-            isinstance(item, dict) and item.get("app_id") == app_id
-            for item in applications
-        ):
-            raise TaskInputInvalidError(
-                "当前账号无法访问该影刀应用",
+        if not any(application.app_id == app_id for application in inventory.applications):
+            raise TaskApplicationNotAvailableError(
                 details={"app_id": app_id},
             )
         config = self.application_config_repository.get("yingdao", app_id)

@@ -288,3 +288,18 @@ def test_automation_application_config_migration(monkeypatch: object) -> None:
     recorder.calls.clear()
     migration.downgrade()
     assert ("drop_table", "automation_application_configs") in recorder.calls
+
+
+def test_device_skill_capability_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260823_0012_device_skill_capabilities",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls == [("create_table", "device_skill_capabilities")]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [("drop_table", "device_skill_capabilities")]

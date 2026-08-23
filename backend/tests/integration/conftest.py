@@ -22,6 +22,7 @@ CORE_TABLES = {
     "worker_device_credentials",
     "device_runtime",
     "device_provider_inventory",
+    "device_skill_capabilities",
     "tasks",
     "notification_channels",
     "automation_application_configs",

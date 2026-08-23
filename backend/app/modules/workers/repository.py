@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -10,8 +10,10 @@ from app.modules.devices.models import Device
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     WorkerDeviceCredential,
 )
+from app.modules.workers.schemas import WorkerSkillDescriptor
 
 
 class WorkerRepository:
@@ -179,5 +181,64 @@ class WorkerRepository:
             select(DeviceProviderInventory)
             .where(DeviceProviderInventory.device_id == device_id)
             .order_by(DeviceProviderInventory.provider_code.asc())
+        )
+        return list(self.session.scalars(statement))
+
+    def replace_skill_capabilities(
+        self,
+        *,
+        device_id: UUID,
+        skills: list[WorkerSkillDescriptor],
+        updated_at: datetime,
+    ) -> list[DeviceSkillCapability]:
+        skill_ids = [skill.skill_id for skill in skills]
+        delete_statement = delete(DeviceSkillCapability).where(
+            DeviceSkillCapability.device_id == device_id,
+        )
+        if skill_ids:
+            delete_statement = delete_statement.where(
+                DeviceSkillCapability.skill_id.not_in(skill_ids),
+            )
+        self.session.execute(delete_statement)
+
+        if skills:
+            values = [
+                {
+                    "device_id": device_id,
+                    "skill_id": skill.skill_id,
+                    "display_name": skill.display_name,
+                    "runtime": skill.runtime,
+                    "provider_code": skill.provider,
+                    "skill_version": skill.version,
+                    "updated_at": updated_at,
+                }
+                for skill in skills
+            ]
+            statement = insert(DeviceSkillCapability).values(values)
+            statement = statement.on_conflict_do_update(
+                index_elements=[
+                    DeviceSkillCapability.device_id,
+                    DeviceSkillCapability.skill_id,
+                ],
+                set_={
+                    "display_name": statement.excluded.display_name,
+                    "runtime": statement.excluded.runtime,
+                    "provider_code": statement.excluded.provider_code,
+                    "skill_version": statement.excluded.skill_version,
+                    "updated_at": statement.excluded.updated_at,
+                },
+            )
+            self.session.execute(statement)
+
+        return self.get_skill_capabilities(device_id)
+
+    def get_skill_capabilities(
+        self,
+        device_id: UUID,
+    ) -> list[DeviceSkillCapability]:
+        statement = (
+            select(DeviceSkillCapability)
+            .where(DeviceSkillCapability.device_id == device_id)
+            .order_by(DeviceSkillCapability.skill_id.asc())
         )
         return list(self.session.scalars(statement))

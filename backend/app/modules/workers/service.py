@@ -16,13 +16,16 @@ from app.modules.workers.exceptions import (
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     WorkerDeviceCredential,
 )
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.schemas import (
     DeviceProviderInventoryRead,
     DeviceRuntimeRead,
+    DeviceSkillCapabilityRead,
     ProviderInventoryUpsert,
+    SkillCapabilitySnapshotUpsert,
     WorkerHeartbeat,
     YingdaoProviderInventory,
 )
@@ -211,6 +214,30 @@ class WorkerService:
             for record in self.repository.get_provider_inventories(device_id)
         ]
 
+    def sync_skill_capabilities(
+        self,
+        principal: WorkerPrincipal,
+        data: SkillCapabilitySnapshotUpsert,
+        *,
+        now: datetime | None = None,
+    ) -> list[DeviceSkillCapabilityRead]:
+        records = self.repository.replace_skill_capabilities(
+            device_id=principal.device_id,
+            skills=data.skills,
+            updated_at=now or datetime.now(UTC),
+        )
+        self.session.commit()
+        return [self.to_skill_capability_read(record) for record in records]
+
+    def get_skill_capability_reads(
+        self,
+        device_id: UUID,
+    ) -> list[DeviceSkillCapabilityRead]:
+        return [
+            self.to_skill_capability_read(record)
+            for record in self.repository.get_skill_capabilities(device_id)
+        ]
+
     def to_runtime_read(
         self,
         runtime: DeviceRuntime,
@@ -245,5 +272,19 @@ class WorkerService:
             enterprise_account=inventory.enterprise_account,
             last_discovered_at=record.last_discovered_at,
             inventory=inventory,
+            updated_at=record.updated_at,
+        )
+
+    @staticmethod
+    def to_skill_capability_read(
+        record: DeviceSkillCapability,
+    ) -> DeviceSkillCapabilityRead:
+        return DeviceSkillCapabilityRead(
+            device_id=record.device_id,
+            skill_id=record.skill_id,
+            display_name=record.display_name,
+            runtime=record.runtime,
+            provider=record.provider_code,
+            version=record.skill_version,
             updated_at=record.updated_at,
         )

@@ -68,6 +68,12 @@ Migration `20260823_0011_automation_application_configs` 增加
 参数 Schema、默认值、来源和版本。V1 的 `schema_source=manual`，只支持 text/number/
 boolean/select；不得把 Credential、Cookie、流程内容或任意 Provider 原始响应放入该表。
 
+Migration `20260823_0012_device_skill_capabilities` 增加
+`device_skill_capabilities`，以 `(device_id, skill_id)` 为复合主键保存 Worker Registry 的
+最后一次完整快照。`runtime / provider_code / skill_version` 是可查询、可约束的正式列；
+不得用 `skills_json` 代替关系模型。同步采用 snapshot replace，设备离线只保留最后已知记录，
+不删除能力，也不把能力状态混入 Task Runtime。
+
 ## 阶段 3D-1 持久结构
 
 - `devices.deleted_at`：Device 软移除时间，UUID 和历史引用不删除。

@@ -9,9 +9,17 @@ from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.skill_contracts import validate_skill_input
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
-from app.modules.workers.models import DeviceRuntime, WorkerDeviceCredential
+from app.modules.workers.models import (
+    DeviceRuntime,
+    DeviceSkillCapability,
+    WorkerDeviceCredential,
+)
 from app.modules.workers.exceptions import WorkerAuthenticationError
-from app.modules.workers.schemas import ProviderInventoryUpsert, WorkerHeartbeat
+from app.modules.workers.schemas import (
+    ProviderInventoryUpsert,
+    SkillCapabilitySnapshotUpsert,
+    WorkerHeartbeat,
+)
 from app.modules.workers.security import hash_worker_token, verify_worker_token
 from app.modules.workers.service import WorkerPrincipal, WorkerService
 from tests.support import FakeSession
@@ -22,6 +30,7 @@ class FakeWorkerRepository:
         self.device = device
         self.credential: WorkerDeviceCredential | None = None
         self.runtime: DeviceRuntime | None = None
+        self.skill_capabilities: dict[str, DeviceSkillCapability] = {}
 
     def get_device(self, device_id: object) -> Device | None:
         return (
@@ -79,6 +88,41 @@ class FakeWorkerRepository:
         if self.runtime is None:
             return {}
         return {self.runtime.device_id: self.runtime}
+
+    def replace_skill_capabilities(
+        self,
+        *,
+        device_id: object,
+        skills: list[object],
+        updated_at: datetime,
+    ) -> list[DeviceSkillCapability]:
+        self.skill_capabilities = {
+            skill.skill_id: DeviceSkillCapability(
+                device_id=device_id,
+                skill_id=skill.skill_id,
+                display_name=skill.display_name,
+                runtime=skill.runtime,
+                provider_code=skill.provider,
+                skill_version=skill.version,
+                created_at=updated_at,
+                updated_at=updated_at,
+            )
+            for skill in skills
+        }
+        return self.get_skill_capabilities(device_id)
+
+    def get_skill_capabilities(
+        self,
+        device_id: object,
+    ) -> list[DeviceSkillCapability]:
+        return sorted(
+            (
+                capability
+                for capability in self.skill_capabilities.values()
+                if capability.device_id == device_id
+            ),
+            key=lambda capability: capability.skill_id,
+        )
 
 
 class FakeNotificationService:
@@ -252,7 +296,9 @@ def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:
         "/api/v1/worker/tasks/{task_id}/fail",
         "/api/v1/worker/tasks/{task_id}/events",
         "/api/v1/worker/provider-inventory",
+        "/api/v1/worker/skill-capabilities",
         "/api/v1/devices/{device_id}/provider-inventories",
+        "/api/v1/devices/{device_id}/skill-capabilities",
         "/api/v1/automation-app-configs/{provider_code}/{app_id}",
     }
     assert expected <= set(paths)
@@ -282,6 +328,63 @@ def test_provider_inventory_schema_has_no_device_identity_in_request() -> None:
     )
 
     assert "device_id" not in data.model_dump(mode="json")
+
+
+def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
+    device = Device(device_id=uuid4(), display_name="Worker PC", enabled=True)
+    repository = FakeWorkerRepository(device)
+    session = FakeSession()
+    service = WorkerService(session, repository)  # type: ignore[arg-type]
+    principal = WorkerPrincipal(device_id=device.device_id)
+
+    first = service.sync_skill_capabilities(
+        principal,
+        SkillCapabilitySnapshotUpsert.model_validate(
+            {
+                "skills": [
+                    {
+                        "skill_id": "system.echo",
+                        "display_name": "Echo",
+                        "runtime": "python",
+                        "provider": None,
+                        "version": "1",
+                    },
+                    {
+                        "skill_id": "yingdao.app.run",
+                        "display_name": "运行影刀应用",
+                        "runtime": "rpa",
+                        "provider": "yingdao",
+                        "version": "1",
+                    },
+                ],
+            },
+        ),
+    )
+    assert {item.skill_id for item in first} == {
+        "system.echo",
+        "yingdao.app.run",
+    }
+    assert all(item.device_id == device.device_id for item in first)
+
+    second = service.sync_skill_capabilities(
+        principal,
+        SkillCapabilitySnapshotUpsert.model_validate(
+            {
+                "skills": [
+                    {
+                        "skill_id": "system.echo",
+                        "display_name": "System Echo",
+                        "runtime": "python",
+                        "provider": None,
+                        "version": "2",
+                    },
+                ],
+            },
+        ),
+    )
+    assert [(item.skill_id, item.display_name, item.version) for item in second] == [
+        ("system.echo", "System Echo", "2"),
+    ]
 
 
 def test_provider_inventory_accepts_unavailable_local_account_classification() -> None:

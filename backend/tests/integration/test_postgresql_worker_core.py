@@ -11,7 +11,12 @@ from app.modules.automation_apps.schemas import AutomationApplicationConfigUpser
 from app.modules.automation_apps.service import AutomationApplicationConfigService
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
-from app.modules.tasks.exceptions import TaskInputInvalidError, TaskProviderUnavailableError
+from app.modules.tasks.exceptions import (
+    TaskApplicationNotAvailableError,
+    TaskInputInvalidError,
+    TaskProviderNotReadyError,
+    TaskWorkerOfflineError,
+)
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.tasks.schemas import (
     TaskComplete,
@@ -23,9 +28,14 @@ from app.modules.tasks.service import TaskService
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     WorkerDeviceCredential,
 )
-from app.modules.workers.schemas import ProviderInventoryUpsert, WorkerHeartbeat
+from app.modules.workers.schemas import (
+    ProviderInventoryUpsert,
+    SkillCapabilitySnapshotUpsert,
+    WorkerHeartbeat,
+)
 from app.modules.workers.service import WorkerPrincipal, WorkerService
 
 
@@ -44,6 +54,11 @@ def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
             ),
         )
         session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
+        session.execute(
+            delete(DeviceSkillCapability).where(
+                DeviceSkillCapability.device_id.in_(device_ids),
+            ),
+        )
         session.execute(
             delete(DeviceProviderInventory).where(
                 DeviceProviderInventory.device_id.in_(device_ids),
@@ -140,6 +155,55 @@ def test_worker_identity_runtime_claim_result_and_lost(
                 now=base_time,
             )
             assert inventory_b.device_id == device_b
+            skill_snapshot = SkillCapabilitySnapshotUpsert.model_validate(
+                {
+                    "skills": [
+                        {
+                            "skill_id": "system.echo",
+                            "display_name": "Echo",
+                            "runtime": "python",
+                            "provider": None,
+                            "version": "1",
+                        },
+                        {
+                            "skill_id": "system.sleep",
+                            "display_name": "Sleep",
+                            "runtime": "python",
+                            "provider": None,
+                            "version": "1",
+                        },
+                        {
+                            "skill_id": "yingdao.test",
+                            "display_name": "影刀测试",
+                            "runtime": "rpa",
+                            "provider": "yingdao",
+                            "version": "1",
+                        },
+                    ],
+                },
+            )
+            worker_service.sync_skill_capabilities(
+                principal_a,
+                skill_snapshot,
+                now=base_time,
+            )
+            echo_only = SkillCapabilitySnapshotUpsert(
+                skills=[skill_snapshot.skills[0]],
+            )
+            assert [
+                item.skill_id
+                for item in worker_service.sync_skill_capabilities(
+                    principal_a,
+                    echo_only,
+                    now=base_time,
+                )
+            ] == ["system.echo"]
+            worker_service.sync_skill_capabilities(
+                principal_a,
+                skill_snapshot,
+                now=base_time,
+            )
+            assert worker_service.get_skill_capability_reads(device_b) == []
             assert session.scalar(
                 select(DeviceProviderInventory).where(
                     DeviceProviderInventory.device_id == device_a,
@@ -159,7 +223,18 @@ def test_worker_identity_runtime_claim_result_and_lost(
             ) >= 1
             session.refresh(stored_runtime)
             assert stored_runtime.connection_status == "offline"
-            assert stored_runtime.connection_status == "offline"
+            assert {
+                item.skill_id
+                for item in worker_service.get_skill_capability_reads(device_a)
+            } == {"system.echo", "system.sleep", "yingdao.test"}
+            with pytest.raises(TaskWorkerOfflineError):
+                TaskService(session, settings=settings).create(
+                    TaskCreate(
+                        target_device_id=device_a,
+                        skill_id=TaskSkillId.SYSTEM_ECHO,
+                        input={"message": "offline"},
+                    ),
+                )
             restarted = worker_service.heartbeat(
                 principal_a,
                 WorkerHeartbeat(
@@ -285,6 +360,12 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
             )
             session.commit()
             worker_service = WorkerService(session)
+            for device_id in (device_a, device_b):
+                worker_service.heartbeat(
+                    WorkerPrincipal(device_id=device_id),
+                    WorkerHeartbeat(worker_version="0.3.1", started_at=now),
+                    now=now,
+                )
             worker_service.save_provider_inventory(
                 WorkerPrincipal(device_id=device_a),
                 ProviderInventoryUpsert.model_validate(
@@ -314,6 +395,40 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                             ],
                             "discovered_at": now.isoformat(),
                         },
+                    },
+                ),
+                now=now,
+            )
+            worker_service.sync_skill_capabilities(
+                WorkerPrincipal(device_id=device_a),
+                SkillCapabilitySnapshotUpsert.model_validate(
+                    {
+                        "skills": [
+                            {
+                                "skill_id": "yingdao.app.run",
+                                "display_name": "运行影刀应用",
+                                "runtime": "rpa",
+                                "provider": "yingdao",
+                                "version": "1",
+                            },
+                        ],
+                    },
+                ),
+                now=now,
+            )
+            worker_service.sync_skill_capabilities(
+                WorkerPrincipal(device_id=device_b),
+                SkillCapabilitySnapshotUpsert.model_validate(
+                    {
+                        "skills": [
+                            {
+                                "skill_id": "yingdao.app.run",
+                                "display_name": "运行影刀应用",
+                                "runtime": "rpa",
+                                "provider": "yingdao",
+                                "version": "1",
+                            },
+                        ],
                     },
                 ),
                 now=now,
@@ -353,7 +468,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
             assert task_service.claim(WorkerPrincipal(device_id=device_b)) is None
             assert task_service.claim(WorkerPrincipal(device_id=device_a)) is not None
 
-            with pytest.raises(TaskProviderUnavailableError):
+            with pytest.raises(TaskProviderNotReadyError):
                 task_service.create(
                     TaskCreate(
                         target_device_id=device_b,
@@ -361,7 +476,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                         input={"app_id": app_id, "params": {}},
                     ),
                 )
-            with pytest.raises(TaskInputInvalidError):
+            with pytest.raises(TaskApplicationNotAvailableError):
                 task_service.create(
                     TaskCreate(
                         target_device_id=device_a,

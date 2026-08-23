@@ -9,7 +9,11 @@ from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.devices.schemas import DeviceCreate, DeviceRead, DeviceUpdate
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
-from app.modules.workers.schemas import DeviceProviderInventoryRead, DeviceRuntimeRead
+from app.modules.workers.schemas import (
+    DeviceProviderInventoryRead,
+    DeviceRuntimeRead,
+    DeviceSkillCapabilityRead,
+)
 from app.modules.workers.service import WorkerService
 from app.shared.pagination import Page, PaginationParams
 
@@ -88,6 +92,19 @@ def get_device_provider_inventories(
 ) -> list[DeviceProviderInventoryRead]:
     service.get(device_id)
     return worker_service.get_provider_inventory_reads(device_id)
+
+
+@router.get(
+    "/{device_id}/skill-capabilities",
+    response_model=list[DeviceSkillCapabilityRead],
+)
+def get_device_skill_capabilities(
+    device_id: UUID,
+    service: Annotated[DeviceService, Depends(get_device_service)],
+    worker_service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> list[DeviceSkillCapabilityRead]:
+    service.get(device_id)
+    return worker_service.get_skill_capability_reads(device_id)
 
 
 @router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)

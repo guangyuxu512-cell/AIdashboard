@@ -79,7 +79,7 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         assert connection.scalar(text("SELECT 1")) == 1
         assert connection.scalar(text("SHOW server_version"))
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260823_0011"
+            "20260823_0012"
         )
 
     assert EXPECTED_TABLES <= set(inspector.get_table_names())

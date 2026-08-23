@@ -26,6 +26,7 @@ from app.modules.tasks.models import Task
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     WorkerDeviceCredential,
 )
 from app.modules.workers.service import WorkerService
@@ -148,6 +149,11 @@ def cleanup(device_ids: set[UUID]) -> None:
         return
     with Session(get_database_engine()) as session:
         session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
+        session.execute(
+            delete(DeviceSkillCapability).where(
+                DeviceSkillCapability.device_id.in_(device_ids),
+            ),
+        )
         session.execute(
             delete(DeviceProviderInventory).where(
                 DeviceProviderInventory.device_id.in_(device_ids),

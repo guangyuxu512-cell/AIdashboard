@@ -16,6 +16,7 @@ from app.modules.users.models import User
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     WorkerDeviceCredential,
 )
 
@@ -24,6 +25,7 @@ _MODELS = (
     Device,
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     NotificationChannel,
     PlatformCredential,
     Shop,

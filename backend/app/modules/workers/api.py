@@ -11,7 +11,9 @@ from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.schemas import (
     DeviceProviderInventoryRead,
     DeviceRuntimeRead,
+    DeviceSkillCapabilityRead,
     ProviderInventoryUpsert,
+    SkillCapabilitySnapshotUpsert,
     WorkerHeartbeat,
 )
 from app.modules.workers.service import WorkerPrincipal, WorkerService
@@ -56,3 +58,15 @@ def save_provider_inventory(
     service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> DeviceProviderInventoryRead:
     return service.save_provider_inventory(principal, data)
+
+
+@router.put(
+    "/skill-capabilities",
+    response_model=list[DeviceSkillCapabilityRead],
+)
+def sync_skill_capabilities(
+    data: SkillCapabilitySnapshotUpsert,
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> list[DeviceSkillCapabilityRead]:
+    return service.sync_skill_capabilities(principal, data)

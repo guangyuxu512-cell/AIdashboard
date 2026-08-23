@@ -24,6 +24,45 @@ class DeviceRuntimeRead(BaseModel):
     updated_at: datetime
 
 
+class WorkerSkillDescriptor(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    skill_id: str = Field(min_length=1, max_length=200)
+    display_name: str = Field(min_length=1, max_length=200)
+    runtime: Literal["python", "rpa", "discovery"]
+    provider: str | None = Field(default=None, min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def require_provider_for_provider_runtimes(self) -> "WorkerSkillDescriptor":
+        if self.runtime in {"rpa", "discovery"} and self.provider is None:
+            raise ValueError("RPA and discovery Skills require a provider")
+        return self
+
+
+class SkillCapabilitySnapshotUpsert(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    skills: list[WorkerSkillDescriptor] = Field(max_length=256)
+
+    @model_validator(mode="after")
+    def require_unique_skill_ids(self) -> "SkillCapabilitySnapshotUpsert":
+        skill_ids = [skill.skill_id for skill in self.skills]
+        if len(skill_ids) != len(set(skill_ids)):
+            raise ValueError("Skill capability snapshot contains duplicate skill_id")
+        return self
+
+
+class DeviceSkillCapabilityRead(BaseModel):
+    device_id: UUID
+    skill_id: str
+    display_name: str
+    runtime: Literal["python", "rpa", "discovery"]
+    provider: str | None
+    version: str
+    updated_at: datetime
+
+
 class ProviderApplicationInventory(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
-from app.modules.workers.models import DeviceProviderInventory
+from app.modules.workers.models import (
+    DeviceProviderInventory,
+    DeviceRuntime,
+    DeviceSkillCapability,
+)
 from app.shared.identifiers import generate_id
 
 
@@ -96,6 +100,26 @@ class TaskRepository:
             .with_for_update()
         )
         return self.session.scalar(statement)
+
+    def get_task_target_device(self, device_id: UUID) -> Device | None:
+        return self.session.scalar(
+            select(Device)
+            .where(
+                Device.device_id == device_id,
+                Device.deleted_at.is_(None),
+            )
+            .with_for_update(),
+        )
+
+    def get_skill_capability(
+        self,
+        device_id: UUID,
+        skill_id: str,
+    ) -> DeviceSkillCapability | None:
+        return self.session.get(DeviceSkillCapability, (device_id, skill_id))
+
+    def get_device_runtime(self, device_id: UUID) -> DeviceRuntime | None:
+        return self.session.get(DeviceRuntime, device_id)
 
     def get_provider_inventory(
         self,

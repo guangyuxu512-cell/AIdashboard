@@ -20,9 +20,13 @@ from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
+    DeviceSkillCapability,
     WorkerDeviceCredential,
 )
-from app.modules.workers.schemas import WorkerHeartbeat
+from app.modules.workers.schemas import (
+    SkillCapabilitySnapshotUpsert,
+    WorkerHeartbeat,
+)
 from app.modules.workers.service import WorkerService
 
 
@@ -102,6 +106,23 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                 WorkerHeartbeat(worker_version="0.1.0", started_at=now),
                 now=now,
             )
+            worker_service.sync_skill_capabilities(
+                principal,
+                SkillCapabilitySnapshotUpsert.model_validate(
+                    {
+                        "skills": [
+                            {
+                                "skill_id": "system.echo",
+                                "display_name": "Echo",
+                                "runtime": "python",
+                                "provider": None,
+                                "version": "1",
+                            },
+                        ],
+                    },
+                ),
+                now=now,
+            )
 
             task_service = TaskService(session)
             task = task_service.create(
@@ -168,6 +189,11 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
     finally:
         with Session(postgresql_engine) as session:
             session.execute(delete(Task).where(Task.target_device_id == device_id))
+            session.execute(
+                delete(DeviceSkillCapability).where(
+                    DeviceSkillCapability.device_id == device_id,
+                ),
+            )
             session.execute(
                 delete(DeviceProviderInventory).where(
                     DeviceProviderInventory.device_id == device_id,

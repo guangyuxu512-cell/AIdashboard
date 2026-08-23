@@ -19,15 +19,51 @@ class TaskTargetDeviceInvalidError(AppError):
     status_code = 422
 
 
+class TaskDeviceDisabledError(AppError):
+    code = "TASK_DEVICE_DISABLED"
+    message = "目标设备已停用"
+    status_code = 422
+
+
+class TaskWorkerOfflineError(AppError):
+    code = "TASK_WORKER_OFFLINE"
+    message = "目标设备 Worker 当前离线"
+    status_code = 422
+
+
 class TaskInputInvalidError(AppError):
     code = "TASK_INPUT_INVALID"
     message = "Skill 输入不符合契约"
     status_code = 422
 
 
-class TaskProviderUnavailableError(AppError):
-    code = "TASK_PROVIDER_UNAVAILABLE"
-    message = "目标设备的执行能力当前不可用"
+class TaskSkillNotAvailableError(AppError):
+    code = "TASK_SKILL_NOT_AVAILABLE"
+    message = "目标设备未声明所需 Skill"
+    status_code = 422
+
+
+class TaskProviderNotReadyError(AppError):
+    code = "TASK_PROVIDER_NOT_READY"
+    message = "目标设备的 Provider 尚未就绪"
+    status_code = 422
+
+
+class TaskProviderLoginRequiredError(AppError):
+    code = "TASK_PROVIDER_LOGIN_REQUIRED"
+    message = "目标设备的影刀需要登录"
+    status_code = 422
+
+
+class TaskProviderVersionUnsupportedError(AppError):
+    code = "TASK_PROVIDER_VERSION_UNSUPPORTED"
+    message = "目标设备的影刀版本不受支持"
+    status_code = 422
+
+
+class TaskApplicationNotAvailableError(AppError):
+    code = "TASK_APPLICATION_NOT_AVAILABLE"
+    message = "当前影刀账号无法访问该应用"
     status_code = 422
 
 
