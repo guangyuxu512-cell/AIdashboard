@@ -30,8 +30,9 @@ class WorkerSettings(BaseSettings):
     log_backup_count: int = Field(default=5, ge=1, le=20)
     yingdao_install_root: Path | None = None
     yingdao_data_root: Path | None = None
-    yingdao_user_id: str | None = Field(default=None, pattern=r"^\d+$")
     yingdao_test_app_id: str | None = None
+    yingdao_startup_timeout_seconds: float = Field(default=30, ge=5, le=120)
+    provider_inventory_interval_seconds: float = Field(default=60, ge=10, le=3600)
     event_flush_interval_seconds: float = Field(default=0.4, ge=0.1, le=5)
     event_batch_size: int = Field(default=30, ge=1, le=100)
     event_buffer_capacity: int = Field(default=2_000, ge=100, le=20_000)

@@ -38,6 +38,7 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
         "system.sleep",
         "yingdao.test",
         "yingdao.discover",
+        "yingdao.app.run",
     }
     assert descriptors["system.echo"].model_dump() == {
         "skill_id": "system.echo",

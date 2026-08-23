@@ -1,6 +1,5 @@
 from app.providers.yingdao.adapter import (
     RuntimeYingdaoAdapter,
-    UnavailableYingdaoAdapter,
     YingdaoAdapter,
     YingdaoTriggerError,
     build_shadowbot_run_uri,
@@ -11,15 +10,21 @@ from app.providers.yingdao.contracts import (
     YingdaoExecutionRequest,
     YingdaoExecutionResult,
     YingdaoExecutionStatus,
+    YingdaoProviderStatus,
 )
-from app.providers.yingdao.discovery import (
-    YingdaoDiscoveryError,
-    YingdaoDiscoveryService,
-)
+from app.providers.yingdao.applications import YingdaoApplicationAdapter
+from app.providers.yingdao.discovery import YingdaoDiscoveryService
 from app.providers.yingdao.environment import (
     REQUIRED_YINGDAO_VERSION,
-    YingdaoEnvironment,
-    YingdaoVersionResolver,
+)
+from app.providers.yingdao.session import (
+    WindowsYingdaoRuntimeLocator,
+    YingdaoProcess,
+    YingdaoRuntimeEndpoint,
+    YingdaoSession,
+    YingdaoSessionAccount,
+    YingdaoSessionAdapter,
+    YingdaoSessionError,
 )
 from app.providers.yingdao.tasklog import (
     YingdaoTaskLogError,
@@ -32,18 +37,23 @@ from app.providers.yingdao.tasklog import (
 __all__ = [
     "RuntimeYingdaoAdapter",
     "REQUIRED_YINGDAO_VERSION",
-    "UnavailableYingdaoAdapter",
     "YingdaoAdapter",
     "YingdaoApplication",
     "YingdaoDiscoveryResult",
-    "YingdaoDiscoveryError",
     "YingdaoDiscoveryService",
     "YingdaoExecutionRequest",
     "YingdaoExecutionResult",
     "YingdaoExecutionStatus",
+    "YingdaoProviderStatus",
     "YingdaoTriggerError",
-    "YingdaoEnvironment",
-    "YingdaoVersionResolver",
+    "YingdaoApplicationAdapter",
+    "WindowsYingdaoRuntimeLocator",
+    "YingdaoProcess",
+    "YingdaoRuntimeEndpoint",
+    "YingdaoSession",
+    "YingdaoSessionAccount",
+    "YingdaoSessionAdapter",
+    "YingdaoSessionError",
     "YingdaoTaskLogError",
     "YingdaoTaskLogFollower",
     "YingdaoTaskLogParser",

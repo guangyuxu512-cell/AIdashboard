@@ -55,7 +55,7 @@ Task → stable skill_id → Skill Registry → runtime → Executor → Provide
 - RPA Skill 额外声明 `provider=yingdao`，本地应用 ID 是设备侧映射。
 - Backend 不得传影刀应用名称、CLI、文件路径或任意命令。
 
-`yingdao.discover` 使用独立 `discovery` Runtime，只做本机影刀只读能力发现；它不经过 Python 子进程，也不启动影刀应用。当前 `yingdao.test` 已注册为 RPA/Yingdao 测试能力，但真实应用 ID 尚未获得正式
+`yingdao.discover` 使用独立 `discovery` Runtime，负责当前 6.3.6 会话与云端应用能力发现；它不经过 Python 子进程，也不启动业务应用。`yingdao.app.run` 是稳定的通用影刀应用执行 Skill，输入只允许 `app_id + params`；它不为每个 App 动态注册 Skill，也不接受可执行文件或命令路径。当前 `yingdao.test` 仅保留兼容测试能力。
 契约，因此默认映射为空，执行时明确失败而非猜测 App ID。只有负责人明确确认无副作用的测试 App，才允许通过 Worker Config 显式建立设备侧映射。
 
 Skill 只负责校验输入、执行、发出进度/日志和返回结果。Skill、脚本或 RPA 不得自行负责 Heartbeat、Poll、Worker Token、Backend Task 领取、Cookie 管理或 Backend 状态回传；Python、Browser、EXE 等后续 Executor 必须复用 Worker Runtime Event Bus。

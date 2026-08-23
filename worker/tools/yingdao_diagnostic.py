@@ -10,7 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.providers.yingdao import YingdaoDiscoveryError, YingdaoDiscoveryService
+from app.providers.yingdao import (
+    WindowsYingdaoRuntimeLocator,
+    YingdaoApplicationAdapter,
+    YingdaoDiscoveryService,
+    YingdaoSessionAdapter,
+)
 
 
 DIAGNOSTIC_VERSION = "1"
@@ -210,9 +215,12 @@ def collect_local_state(data_root: Path, user_id: str) -> dict[str, Any]:
 
 
 async def collect_diagnostic(install_root: Path) -> dict[str, Any]:
+    session_adapter = YingdaoSessionAdapter(
+        WindowsYingdaoRuntimeLocator(install_root),
+    )
     service = YingdaoDiscoveryService(
-        install_root=install_root,
-        data_root=None,
+        session_adapter=session_adapter,
+        application_adapter=YingdaoApplicationAdapter(),
     )
     discovery = await service.discover()
     if not discovery.user_id:
@@ -252,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(diagnostic, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    except (RuntimeError, OSError, sqlite3.Error, YingdaoDiscoveryError) as error:
+    except (RuntimeError, OSError, sqlite3.Error) as error:
         print(f"Diagnostic failed: {error}", file=sys.stderr)
         return 1
     print(f"Diagnostic completed: {output_path}")

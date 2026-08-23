@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Protocol
 from datetime import UTC, datetime
 
 from app.client import WorkerApiClient
@@ -18,9 +19,15 @@ from app.runtime_events import (
 )
 from app.skills import registry
 from app.version import WORKER_VERSION
+from app.contracts import ProviderInventoryReport
+from app.providers.yingdao.contracts import YingdaoDiscoveryResult
 
 
 logger = logging.getLogger(__name__)
+
+
+class ProviderDiscovery(Protocol):
+    async def discover(self) -> YingdaoDiscoveryResult: ...
 
 
 class Worker:
@@ -32,6 +39,7 @@ class Worker:
         event_bus: RuntimeEventBus | None = None,
         event_reporter: BackendEventReporter | None = None,
         local_runtime_state: LocalRuntimeState | None = None,
+        provider_discovery: ProviderDiscovery | None = None,
     ) -> None:
         self.settings = settings
         self.client = client
@@ -39,6 +47,7 @@ class Worker:
         self.event_bus = event_bus or RuntimeEventBus()
         self.event_reporter = event_reporter
         self.local_runtime_state = local_runtime_state
+        self.provider_discovery = provider_discovery
         self.started_at = datetime.now(UTC)
         self.worker_version = WORKER_VERSION
 
@@ -47,6 +56,11 @@ class Worker:
         reporter_task = (
             asyncio.create_task(self.event_reporter.run(stop_event))
             if self.event_reporter is not None
+            else None
+        )
+        provider_task = (
+            asyncio.create_task(self._provider_inventory_loop(stop_event))
+            if self.provider_discovery is not None
             else None
         )
         try:
@@ -67,12 +81,10 @@ class Worker:
             heartbeat_task.cancel()
             if reporter_task is not None:
                 reporter_task.cancel()
+            if provider_task is not None:
+                provider_task.cancel()
             await asyncio.gather(
-                *(
-                    [heartbeat_task, reporter_task]
-                    if reporter_task is not None
-                    else [heartbeat_task]
-                ),
+                *[task for task in (heartbeat_task, reporter_task, provider_task) if task is not None],
                 return_exceptions=True,
             )
             if self.local_runtime_state is not None:
@@ -97,6 +109,26 @@ class Worker:
             await self._wait_or_stop(
                 stop_event,
                 self.settings.heartbeat_interval_seconds,
+            )
+
+    async def _provider_inventory_loop(self, stop_event: asyncio.Event) -> None:
+        while not stop_event.is_set():
+            try:
+                if self.provider_discovery is not None:
+                    inventory = await self.provider_discovery.discover()
+                    await self.client.report_provider_inventory(
+                        ProviderInventoryReport(
+                            provider_code="yingdao",
+                            inventory=inventory.model_dump(mode="json", by_alias=True),
+                        ),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.warning("Provider inventory refresh failed: %s", error)
+            await self._wait_or_stop(
+                stop_event,
+                self.settings.provider_inventory_interval_seconds,
             )
 
     async def _execute_task(self, task: WorkerTask) -> None:

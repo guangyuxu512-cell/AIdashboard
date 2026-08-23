@@ -134,7 +134,10 @@ class YingdaoTaskLogFollower:
                 event_at=record.event_at,
                 metadata=metadata,
             )
-            if record.message.strip() == f"robot task {self.app_name} started":
+            message = record.message.strip()
+            if message == f"robot task {self.app_name} started" or message.startswith(
+                "开始执行",
+            ):
                 self.started = True
                 self.event_bus.emit(
                     self.task_id,
@@ -142,7 +145,7 @@ class YingdaoTaskLogFollower:
                     f"影刀应用 {self.app_name} 已开始运行",
                     metadata={**metadata, "phase": "running"},
                 )
-            if record.message.strip() == f"robot task {self.app_name} exited":
+            if message == f"robot task {self.app_name} exited" or message == "执行结束":
                 if self.started:
                     self.exited = True
                     self.event_bus.emit(

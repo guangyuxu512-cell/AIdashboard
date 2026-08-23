@@ -14,7 +14,8 @@ from app.providers.yingdao.contracts import (
     YingdaoExecutionStatus,
 )
 from app.providers.yingdao.discovery import YingdaoDiscoveryService
-from app.providers.yingdao.environment import YingdaoVersionResolver
+from app.providers.yingdao.applications import YingdaoApplicationAdapter
+from app.providers.yingdao.session import YingdaoSessionAdapter, YingdaoSessionError
 from app.providers.yingdao.tasklog import (
     YingdaoTaskLogError,
     YingdaoTaskLogFollower,
@@ -45,9 +46,9 @@ def build_shadowbot_run_uri(app_uuid: str, params: Mapping[str, Any]) -> str:
     query: list[tuple[str, str]] = [("robot-uuid", app_uuid)]
     for key, value in params.items():
         encoded_value = (
-            json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-            if isinstance(value, (dict, list))
-            else str(value)
+            value
+            if isinstance(value, str)
+            else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         )
         query.append((str(key), encoded_value))
     return f"shadowbot:Run?{urlencode(query)}"
@@ -58,13 +59,15 @@ class RuntimeYingdaoAdapter:
         self,
         *,
         discovery_service: YingdaoDiscoveryService,
-        install_root: Path,
+        session_adapter: YingdaoSessionAdapter,
+        application_adapter: YingdaoApplicationAdapter,
         data_root: Path,
         event_bus: RuntimeEventBus,
         tasklog_association_timeout_seconds: float = 15,
     ) -> None:
         self.discovery_service = discovery_service
-        self.install_root = install_root.resolve()
+        self.session_adapter = session_adapter
+        self.application_adapter = application_adapter
         self.data_root = data_root.resolve()
         self.event_bus = event_bus
         self.tasklog_association_timeout_seconds = tasklog_association_timeout_seconds
@@ -78,18 +81,28 @@ class RuntimeYingdaoAdapter:
         request: YingdaoExecutionRequest,
     ) -> Mapping[str, Any]:
         async with self._execution_lock:
-            environment = YingdaoVersionResolver(self.install_root).resolve()
-            if (
-                not environment.execution_available
-                or environment.execution_executable_path is None
-            ):
-                raise YingdaoTriggerError(
-                    environment.execution_unavailable_reason
-                    or "Yingdao execution version is unavailable",
-                    code="YINGDAO_EXECUTION_VERSION_UNSUPPORTED",
+            try:
+                session = await self.session_adapter.current(start_if_missing=True)
+                applications = await self.application_adapter.list(session)
+                application = next(
+                    (item for item in applications if item.app_id == request.app_id),
+                    None,
                 )
+                if application is None:
+                    raise YingdaoTriggerError(
+                        "Yingdao application is not available to the current account",
+                        code="YINGDAO_APPLICATION_NOT_FOUND",
+                    )
+                await self.application_adapter.detail(session, request.app_id)
+            except YingdaoSessionError as error:
+                raise YingdaoTriggerError(error.message, code=error.code) from error
 
-            task_logs = self.data_root / "users" / request.user_id / "task_logs"
+            task_logs = (
+                self.data_root
+                / "users"
+                / (session.account.user_id or request.user_id)
+                / "task_logs"
+            )
             if not task_logs.is_dir():
                 raise YingdaoTriggerError(
                     "Yingdao task_logs directory was not found",
@@ -107,7 +120,7 @@ class RuntimeYingdaoAdapter:
                 "app_uuid": request.app_id,
                 "app_name": request.app_name,
                 "phase": "launching",
-                "execution_version": environment.execution_version,
+                "execution_version": session.endpoint.process.version,
             }
             self.event_bus.emit(
                 request.task_id,
@@ -117,7 +130,7 @@ class RuntimeYingdaoAdapter:
             )
             try:
                 process = await asyncio.create_subprocess_exec(
-                    str(environment.execution_executable_path),
+                    str(session.endpoint.process.executable_path),
                     uri,
                 )
             except OSError as error:
@@ -165,7 +178,7 @@ class RuntimeYingdaoAdapter:
                     "app_uuid": request.app_id,
                     "app_name": request.app_name,
                     "yingdao_task_uuid": yingdao_task_uuid,
-                    "execution_version": environment.execution_version,
+                    "execution_version": session.endpoint.process.version,
                 },
             ).model_dump(mode="json")
 
@@ -215,23 +228,6 @@ class RuntimeYingdaoAdapter:
         except (OSError, YingdaoTaskLogError):
             return False
         return any(app_name in record.message for record in records)
-
-    async def cleanup(self, request: YingdaoExecutionRequest) -> None:
-        del request
-
-
-class UnavailableYingdaoAdapter:
-    """Production-safe placeholder until a complete local trigger exists."""
-
-    async def discover(self) -> YingdaoDiscoveryResult:
-        return YingdaoDiscoveryResult(provider_available=False)
-
-    async def execute(
-        self,
-        request: YingdaoExecutionRequest,
-    ) -> Mapping[str, Any]:
-        del request
-        raise YingdaoTriggerError("Yingdao trigger contract is not configured")
 
     async def cleanup(self, request: YingdaoExecutionRequest) -> None:
         del request

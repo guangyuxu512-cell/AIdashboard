@@ -13,13 +13,24 @@ class YingdaoExecutionStatus(StrEnum):
     FAILED = "failed"
 
 
+class YingdaoProviderStatus(StrEnum):
+    NOT_INSTALLED = "not_installed"
+    VERSION_UNSUPPORTED = "version_unsupported"
+    STARTING = "starting"
+    NEED_LOGIN = "need_login"
+    INTERFACE_UNREACHABLE = "interface_unreachable"
+    READY = "ready"
+
+
 class YingdaoApplication(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     app_id: str = Field(min_length=1)
     app_name: str = Field(min_length=1)
-    package_version: str | None = None
-    entrypoint: str | None = None
+    version_id: str | None = None
+    updated_at: str | None = None
+    app_type: str | None = None
+    group_id: str | None = None
 
 
 class YingdaoDiscoveryResult(BaseModel):
@@ -27,6 +38,9 @@ class YingdaoDiscoveryResult(BaseModel):
 
     provider: Literal["yingdao"] = "yingdao"
     provider_available: bool = Field(serialization_alias="available")
+    status: YingdaoProviderStatus
+    status_reason_code: str | None = None
+    status_reason: str | None = None
     provider_version: str | None = None
     execution_available: bool = False
     execution_version: str | None = None
@@ -38,6 +52,20 @@ class YingdaoDiscoveryResult(BaseModel):
     user_id: str | None = None
     applications: list[YingdaoApplication] = Field(default_factory=list)
     discovered_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_legacy_status(cls, value: object) -> object:
+        if isinstance(value, dict) and "status" not in value:
+            return {
+                **value,
+                "status": (
+                    YingdaoProviderStatus.READY
+                    if value.get("provider_available") or value.get("available")
+                    else YingdaoProviderStatus.INTERFACE_UNREACHABLE
+                ),
+            }
+        return value
 
 
 class YingdaoExecutionRequest(BaseModel):

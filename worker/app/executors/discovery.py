@@ -13,7 +13,6 @@ from app.contracts import (
     WorkerTask,
 )
 from app.providers.yingdao import (
-    YingdaoDiscoveryError,
     YingdaoDiscoveryResult,
 )
 from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
@@ -97,8 +96,6 @@ class ProviderDiscoveryExecutor:
                     "Provider discovery timed out",
                 ),
             )
-        except YingdaoDiscoveryError as error:
-            return self._finish(paths, self._failure(error.code, error.message))
         except Exception:
             return self._finish(
                 paths,

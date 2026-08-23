@@ -91,8 +91,11 @@ class RPAExecutor:
                     "RPA provider is unavailable on this Worker",
                 ),
             )
+        dynamic_app_id = task.input.get("app_id")
         provider_app_id = (
-            self.provider_app_ids.get(task.skill_id) or definition.provider_app_id
+            str(dynamic_app_id)
+            if dynamic_app_id is not None
+            else self.provider_app_ids.get(task.skill_id) or definition.provider_app_id
         )
         if provider_app_id is None:
             return self._finish(
@@ -122,7 +125,11 @@ class RPAExecutor:
             app_id=provider_app_id,
             app_name=application.app_name,
             user_id=discovery.user_id or "",
-            params=task.input,
+            params=(
+                task.input.get("params", {})
+                if isinstance(task.input.get("params", {}), dict)
+                else {}
+            ),
             runtime_directory=paths.directory,
         )
         try:

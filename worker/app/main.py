@@ -14,8 +14,10 @@ from app.executors import (
 )
 from app.providers.yingdao import (
     RuntimeYingdaoAdapter,
-    UnavailableYingdaoAdapter,
+    WindowsYingdaoRuntimeLocator,
+    YingdaoApplicationAdapter,
     YingdaoDiscoveryService,
+    YingdaoSessionAdapter,
 )
 from app.runtime_events import (
     BackendEventReporter,
@@ -54,20 +56,22 @@ async def run_worker(settings: WorkerSettings) -> None:
         batch_size=settings.event_batch_size,
         retry_count=settings.event_flush_retry_count,
     )
-    discovery_service = YingdaoDiscoveryService(
-        install_root=settings.yingdao_install_root,
-        data_root=settings.yingdao_data_root,
-        user_id=settings.yingdao_user_id,
+    runtime_locator = WindowsYingdaoRuntimeLocator(
+        settings.yingdao_install_root,
+        startup_timeout_seconds=settings.yingdao_startup_timeout_seconds,
     )
-    yingdao_adapter = (
-        RuntimeYingdaoAdapter(
-            discovery_service=discovery_service,
-            install_root=settings.yingdao_install_root,
-            data_root=discovery_service.data_root,
-            event_bus=event_bus,
-        )
-        if settings.yingdao_install_root is not None
-        else UnavailableYingdaoAdapter()
+    session_adapter = YingdaoSessionAdapter(runtime_locator)
+    application_adapter = YingdaoApplicationAdapter()
+    discovery_service = YingdaoDiscoveryService(
+        session_adapter=session_adapter,
+        application_adapter=application_adapter,
+    )
+    yingdao_adapter = RuntimeYingdaoAdapter(
+        discovery_service=discovery_service,
+        session_adapter=session_adapter,
+        application_adapter=application_adapter,
+        data_root=settings.yingdao_data_root or discovery_service.data_root,
+        event_bus=event_bus,
     )
     executor = ExecutorRouter(
         registry,
@@ -101,6 +105,7 @@ async def run_worker(settings: WorkerSettings) -> None:
         event_bus,
         event_reporter,
         local_runtime_state,
+        provider_discovery=discovery_service,
     )
     await worker.run(stop_event)
 
