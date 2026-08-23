@@ -20,6 +20,7 @@ import LoadingState from '@/shared/components/LoadingState.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
+import { resolveYingdaoApplicationRunAvailability } from '../model/device-capability-state'
 import DeviceCapabilityCard from './DeviceCapabilityCard.vue'
 import YingdaoApplicationsTable from './YingdaoApplicationsTable.vue'
 
@@ -44,9 +45,6 @@ const emit = defineEmits<{
   run: [application: ProviderApplicationViewModel]
 }>()
 
-const hasYingdaoRunSkill = computed(() =>
-  props.skills.some((skill) => skill.skillId === 'yingdao.app.run'),
-)
 const providerReady = computed(
   () =>
     props.yingdaoInventory?.providerStatus === 'ready' &&
@@ -57,15 +55,20 @@ const deviceReady = computed(
     Boolean(props.device?.enabled) &&
     ['online', 'busy'].includes(props.device?.runtimeStatus ?? ''),
 )
-const canRunApplications = computed(
-  () => hasYingdaoRunSkill.value && providerReady.value && deviceReady.value,
+const runAvailability = computed(() =>
+  resolveYingdaoApplicationRunAvailability({
+    device: props.device,
+    skills: props.skills,
+    skillsLoading: props.skillsLoading,
+    skillsError: props.skillsError,
+    inventory: props.yingdaoInventory ?? null,
+    providerLoading: props.providerInventoryLoading,
+    providerError: props.providerInventoryError,
+  }),
 )
-const runUnavailableReason = computed(() => {
-  if (!hasYingdaoRunSkill.value) return '当前 Worker 未声明 yingdao.app.run Skill'
-  if (!providerReady.value) return '影刀 Provider 尚未就绪'
-  if (!deviceReady.value) return '设备离线或已停用，不能创建即时执行任务'
-  return null
-})
+const runUnavailableReason = computed(
+  () => runAvailability.value.disabledReason,
+)
 
 function skillStatus() {
   if (!props.device?.enabled) return { label: '已安装', tone: 'neutral' as const }
@@ -136,6 +139,10 @@ const skillColumns: DataTableColumns<DeviceSkillCapabilityViewModel> = [
           :description="skillsError"
           retryable
           @retry="$emit('retry-skills')"
+        />
+        <EmptyState
+          v-else-if="skills.length === 0"
+          description="暂无已注册 Skill。当前 Worker 尚未声明可执行 Skill；支持 Skill Capability 的 Worker 启动或重新连接后会自动同步。"
         />
         <DataTable
           v-else
@@ -212,7 +219,7 @@ const skillColumns: DataTableColumns<DeviceSkillCapabilityViewModel> = [
         <YingdaoApplicationsTable
           v-if="providerReady"
           :applications="yingdaoInventory?.applications ?? []"
-          :can-run="canRunApplications"
+          :run-disabled-reason="runUnavailableReason"
           @configure="emit('configure', $event)"
           @run="emit('run', $event)"
         />

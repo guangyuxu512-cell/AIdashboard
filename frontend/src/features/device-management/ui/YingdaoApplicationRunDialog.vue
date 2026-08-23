@@ -25,6 +25,21 @@ const appId = computed(() => props.application?.appId ?? null)
 const configQuery = useAutomationApplicationConfigQuery(appId)
 const createTask = useCreateTaskMutation()
 const params = reactive<Record<string, unknown>>({})
+const hasConfigData = computed(() => configQuery.data.value !== undefined)
+const configInitialLoading = computed(
+  () => configQuery.isPending.value && !hasConfigData.value,
+)
+const configInitialError = computed(
+  () => Boolean(configQuery.error.value) && !hasConfigData.value,
+)
+const runDisabledReason = computed(() => {
+  if (!props.application) return '当前 Application 不可用'
+  if (!props.deviceId) return '当前未选择目标设备'
+  if (configInitialLoading.value) return '正在读取参数配置'
+  if (configInitialError.value) return '参数配置加载失败，暂时无法运行'
+  const schema = configQuery.data.value?.input_schema ?? { fields: [] }
+  return validateAutomationParameters(schema, params)
+})
 
 watch(
   [() => props.show, () => configQuery.data.value],
@@ -40,9 +55,8 @@ watch(
 
 async function run(): Promise<void> {
   if (!props.application || !props.deviceId) return
-  if (configQuery.isPending.value) return
-  if (configQuery.error.value) {
-    message.error(getErrorMessage(configQuery.error.value))
+  if (runDisabledReason.value) {
+    message.error(runDisabledReason.value)
     return
   }
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
@@ -71,7 +85,9 @@ async function run(): Promise<void> {
     :show="show"
     :title="`运行应用 · ${application?.appName ?? ''}`"
     positive-text="运行"
-    :loading="createTask.isPending.value || configQuery.isPending.value"
+    :loading="createTask.isPending.value || configInitialLoading"
+    :positive-disabled="Boolean(runDisabledReason)"
+    :positive-disabled-reason="runDisabledReason"
     @update:show="$emit('update:show', $event)"
     @confirm="run"
   >
@@ -108,7 +124,7 @@ async function run(): Promise<void> {
         />
       </NFormItem>
     </NForm>
-    <p v-if="configQuery.error.value" class="application-run__error">
+    <p v-if="configInitialError" class="application-run__error">
       参数配置加载失败：{{ getErrorMessage(configQuery.error.value) }}
     </p>
     <p v-if="!configQuery.data.value?.input_schema.fields.length">

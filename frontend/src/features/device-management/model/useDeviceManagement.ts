@@ -29,6 +29,10 @@ import { getErrorMessage } from '@/shared/api'
 
 import { useDeviceManagementContextQuery } from './device-management-context'
 import { resolveDeviceCurrentExecution } from './device-current-execution'
+import {
+  isInitialQueryError,
+  isInitialQueryLoading,
+} from './device-capability-state'
 import type {
   DeviceFilterViewModel,
   DeviceFormMode,
@@ -153,7 +157,10 @@ export function useDeviceManagement() {
     detailQuery.error.value ? getErrorMessage(detailQuery.error.value) : null,
   )
   const providerInventoryError = computed(() =>
-    providerInventoryQuery.error.value
+    isInitialQueryError(
+      providerInventoryQuery.error.value,
+      providerInventoryQuery.data.value,
+    )
       ? getErrorMessage(providerInventoryQuery.error.value)
       : null,
   )
@@ -447,7 +454,12 @@ export function useDeviceManagement() {
     detailLoading: detailQuery.isPending,
     detailError,
     yingdaoInventory: computed(() => providerInventoryQuery.data.value ?? null),
-    providerInventoryLoading: providerInventoryQuery.isPending,
+    providerInventoryLoading: computed(() =>
+      isInitialQueryLoading(
+        providerInventoryQuery.isPending.value,
+        providerInventoryQuery.data.value,
+      ),
+    ),
     providerInventoryError,
     capabilityDevice: computed(
       () =>
@@ -458,19 +470,34 @@ export function useDeviceManagement() {
     skillCapabilities: computed(
       () => skillCapabilitiesQuery.data.value ?? [],
     ),
-    skillCapabilitiesLoading: skillCapabilitiesQuery.isPending,
+    skillCapabilitiesLoading: computed(() =>
+      isInitialQueryLoading(
+        skillCapabilitiesQuery.isPending.value,
+        skillCapabilitiesQuery.data.value,
+      ),
+    ),
     skillCapabilitiesError: computed(() =>
-      skillCapabilitiesQuery.error.value
+      isInitialQueryError(
+        skillCapabilitiesQuery.error.value,
+        skillCapabilitiesQuery.data.value,
+      )
         ? getErrorMessage(skillCapabilitiesQuery.error.value)
         : null,
     ),
     capabilityYingdaoInventory: computed(
       () => capabilityProviderInventoryQuery.data.value ?? null,
     ),
-    capabilityProviderInventoryLoading:
-      capabilityProviderInventoryQuery.isPending,
+    capabilityProviderInventoryLoading: computed(() =>
+      isInitialQueryLoading(
+        capabilityProviderInventoryQuery.isPending.value,
+        capabilityProviderInventoryQuery.data.value,
+      ),
+    ),
     capabilityProviderInventoryError: computed(() =>
-      capabilityProviderInventoryQuery.error.value
+      isInitialQueryError(
+        capabilityProviderInventoryQuery.error.value,
+        capabilityProviderInventoryQuery.data.value,
+      )
         ? getErrorMessage(capabilityProviderInventoryQuery.error.value)
         : null,
     ),

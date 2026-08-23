@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NModal } from 'naive-ui'
+import { NModal, NTooltip } from 'naive-ui'
 
 import AppButton from './AppButton.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from './overlay-host'
@@ -19,6 +19,8 @@ withDefaults(
     positiveText?: string
     negativeText?: string
     loading?: boolean
+    positiveDisabled?: boolean
+    positiveDisabledReason?: string | null
     to?: string | HTMLElement
   }>(),
   {
@@ -26,6 +28,8 @@ withDefaults(
     positiveText: '确认',
     negativeText: '取消',
     loading: false,
+    positiveDisabled: false,
+    positiveDisabledReason: null,
     to: APP_OVERLAY_HOST_SELECTOR,
   },
 )
@@ -74,7 +78,31 @@ function cancel(): void {
         </div>
         <div class="app-dialog__footer-actions">
           <AppButton @click="cancel">{{ negativeText }}</AppButton>
-          <AppButton tone="primary" :loading="loading" @click="$emit('confirm')">
+          <NTooltip
+            v-if="positiveDisabled && positiveDisabledReason"
+            placement="top"
+          >
+            <template #trigger>
+              <span class="app-dialog__disabled-action">
+                <AppButton
+                  tone="primary"
+                  :loading="loading"
+                  disabled
+                  @click="$emit('confirm')"
+                >
+                  {{ positiveText }}
+                </AppButton>
+              </span>
+            </template>
+            {{ positiveDisabledReason }}
+          </NTooltip>
+          <AppButton
+            v-else
+            tone="primary"
+            :loading="loading"
+            :disabled="positiveDisabled"
+            @click="$emit('confirm')"
+          >
             {{ positiveText }}
           </AppButton>
         </div>
@@ -139,5 +167,9 @@ function cancel(): void {
   display: flex;
   flex: 0 0 auto;
   gap: var(--space-3);
+}
+
+.app-dialog__disabled-action {
+  display: inline-flex;
 }
 </style>

@@ -31,6 +31,7 @@ const runSkill: DeviceSkillCapabilityViewModel = {
 const inventory = {
   providerStatus: 'ready',
   executionAvailable: true,
+  loggedIn: true,
   providerVersion: '6.3.6',
   accountDisplay: 'GY00999',
   applicationCount: 1,
@@ -54,9 +55,9 @@ describe('DeviceCapabilityDrawer', () => {
     expect(wrapper.text()).toContain('已注册 Skill')
     expect(wrapper.text()).toContain('影刀应用')
     expect(wrapper.text()).toContain('不等同于 Skill')
-    expect(wrapper.findComponent(YingdaoApplicationsTable).props('canRun')).toBe(
-      true,
-    )
+    expect(
+      wrapper.findComponent(YingdaoApplicationsTable).props('runDisabledReason'),
+    ).toBeNull()
   })
 
   it('disables application execution when the Worker did not declare the Skill', () => {
@@ -71,9 +72,9 @@ describe('DeviceCapabilityDrawer', () => {
     })
 
     expect(wrapper.text()).toContain('未声明 yingdao.app.run Skill')
-    expect(wrapper.findComponent(YingdaoApplicationsTable).props('canRun')).toBe(
-      false,
-    )
+    expect(
+      wrapper.findComponent(YingdaoApplicationsTable).props('runDisabledReason'),
+    ).toBe('当前 Worker 未声明 yingdao.app.run Skill')
   })
 
   it('does not expose applications when the Provider is not ready', () => {
@@ -92,6 +93,41 @@ describe('DeviceCapabilityDrawer', () => {
     })
 
     expect(wrapper.findComponent(YingdaoApplicationsTable).exists()).toBe(false)
-    expect(wrapper.text()).toContain('影刀 Provider 尚未就绪')
+    expect(wrapper.text()).toContain('影刀 6.3.6 当前需要登录')
+  })
+
+  it('renders an Empty State for a successful empty Skill snapshot', () => {
+    const wrapper = shallowMount(DeviceCapabilityDrawer, {
+      props: {
+        show: true,
+        device,
+        skills: [],
+        skillsLoading: false,
+        skillsError: null,
+        yingdaoInventory: inventory,
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+
+    expect(
+      wrapper.findComponent({ name: 'EmptyState' }).props('description'),
+    ).toContain('暂无已注册 Skill')
+    expect(wrapper.text()).not.toContain('加载失败')
+  })
+
+  it('keeps cached Skills visible during a background refresh failure', () => {
+    const wrapper = shallowMount(DeviceCapabilityDrawer, {
+      props: {
+        show: true,
+        device,
+        skills: [runSkill],
+        skillsError: null,
+        yingdaoInventory: inventory,
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+
+    expect(wrapper.findComponent(YingdaoApplicationsTable).exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('加载失败')
   })
 })

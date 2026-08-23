@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useMessage, type DataTableColumns } from 'naive-ui'
+import { NTooltip, useMessage, type DataTableColumns } from 'naive-ui'
 import { h } from 'vue'
 
 import type { ProviderApplicationViewModel } from '@/entities/device'
@@ -9,9 +9,9 @@ import AppButton from '@/shared/ui/AppButton.vue'
 const props = withDefaults(
   defineProps<{
     applications: ProviderApplicationViewModel[]
-    canRun?: boolean
+    runDisabledReason?: string | null
   }>(),
-  { canRun: true },
+  { runDisabledReason: null },
 )
 
 const emit = defineEmits<{
@@ -27,6 +27,38 @@ async function copyAppId(appId: string): Promise<void> {
   } catch {
     message.error('App ID 复制失败')
   }
+}
+
+function getRunDisabledReason(
+  application: ProviderApplicationViewModel,
+): string | null {
+  if (props.runDisabledReason) return props.runDisabledReason
+  if (!application.appId.trim() || !application.appName.trim()) {
+    return '当前 Application 不可用'
+  }
+  return null
+}
+
+function renderRunButton(application: ProviderApplicationViewModel) {
+  const disabledReason = getRunDisabledReason(application)
+  const button = h(
+    AppButton,
+    {
+      tone: 'text',
+      disabled: Boolean(disabledReason),
+      onClick: () => emit('run', application),
+    },
+    { default: () => '运行' },
+  )
+  if (!disabledReason) return button
+  return h(
+    NTooltip,
+    { placement: 'top' },
+    {
+      trigger: () => h('span', { class: 'yingdao-run-disabled' }, [button]),
+      default: () => disabledReason,
+    },
+  )
 }
 
 const columns: DataTableColumns<ProviderApplicationViewModel> = [
@@ -63,15 +95,7 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
     width: 90,
     render: (application) =>
       h('div', { class: 'yingdao-app-actions' }, [
-        h(
-          AppButton,
-          {
-            tone: 'text',
-            disabled: !props.canRun,
-            onClick: () => emit('run', application),
-          },
-          { default: () => '运行' },
-        ),
+        renderRunButton(application),
       ]),
   },
 ]
@@ -83,7 +107,7 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
     :data="applications"
     :row-key="(row: ProviderApplicationViewModel) => row.appId"
     :scroll-x="600"
-    empty-description="当前账号没有已发现应用"
+    empty-description="暂无可访问的影刀应用"
   />
 </template>
 
@@ -100,5 +124,9 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+:deep(.yingdao-run-disabled) {
+  display: inline-flex;
 }
 </style>
