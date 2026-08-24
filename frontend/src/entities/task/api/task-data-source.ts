@@ -14,6 +14,7 @@ import type {
   TaskReadDto,
 } from './contracts'
 import { taskApi } from './task-api'
+import type { TaskEventApiParams } from './task-api'
 import { mapTaskListItemDto } from './task-mapper'
 
 export interface TaskListParams {
@@ -29,8 +30,7 @@ export interface TaskDataSource {
   getActive(deviceId: string): Promise<ActiveTaskSummaryReadDto | null>
   listEvents(
     taskId: string,
-    afterSeq: number,
-    limit?: number,
+    params?: TaskEventApiParams,
   ): Promise<TaskEventListReadDto>
   create(data: TaskCreateDto): Promise<TaskReadDto>
 }
@@ -51,11 +51,20 @@ function createMockTaskDataSource(): TaskDataSource {
     mode: 'mock',
     async list(params) {
       const search = params.filters.search.trim().toLocaleLowerCase()
+      const createdFrom = params.filters.createdFrom
+        ? Date.parse(params.filters.createdFrom)
+        : null
+      const createdTo = params.filters.createdTo
+        ? Date.parse(params.filters.createdTo)
+        : null
       const filtered = rows.filter(
         (task) =>
           (!params.filters.status || task.status === params.filters.status) &&
           (!params.filters.deviceId ||
             task.target_device_id === params.filters.deviceId) &&
+          (createdFrom === null ||
+            Date.parse(task.created_at) >= createdFrom) &&
+          (createdTo === null || Date.parse(task.created_at) < createdTo) &&
           (!search ||
             [task.task_id, task.execution_display_name, task.skill_id].some(
               (value) => value.toLocaleLowerCase().includes(search),
@@ -93,15 +102,37 @@ function createMockTaskDataSource(): TaskDataSource {
         latest_event: events.at(-1) ?? null,
       }
     },
-    async listEvents(taskId, afterSeq, limit = 100) {
+    async listEvents(taskId, params = {}) {
       getDetail(taskId)
-      const items = (TASK_EVENT_FIXTURE[taskId] ?? [])
-        .filter((item) => item.seq > afterSeq)
-        .slice(0, limit)
+      const limit = params.limit ?? 100
+      const allItems = TASK_EVENT_FIXTURE[taskId] ?? []
+      if (params.afterSeq !== undefined) {
+        const items = allItems
+          .filter((item) => item.seq > params.afterSeq!)
+          .slice(0, limit)
+        return {
+          task_id: taskId,
+          after_seq: params.afterSeq,
+          before_seq: null,
+          next_after_seq: items.at(-1)?.seq ?? params.afterSeq,
+          next_before_seq: null,
+          has_more_before: false,
+          items,
+        }
+      }
+      const candidates = allItems.filter(
+        (item) => params.beforeSeq === undefined || item.seq < params.beforeSeq,
+      )
+      const items = candidates.slice(-limit)
+      const hasMoreBefore = candidates.length > items.length
       return {
         task_id: taskId,
-        after_seq: afterSeq,
-        next_after_seq: items.at(-1)?.seq ?? afterSeq,
+        after_seq: null,
+        before_seq: params.beforeSeq ?? null,
+        next_after_seq: items.at(-1)?.seq ?? 0,
+        next_before_seq:
+          hasMoreBefore && items.length ? (items[0]?.seq ?? null) : null,
+        has_more_before: hasMoreBefore,
         items,
       }
     },
@@ -138,6 +169,8 @@ const realTaskDataSource: TaskDataSource = {
       status: params.filters.status,
       deviceId: params.filters.deviceId,
       search: params.filters.search,
+      createdFrom: params.filters.createdFrom,
+      createdTo: params.filters.createdTo,
     })
     return {
       items: page.items.map(mapTaskListItemDto),

@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { taskDataSource } from './task-data-source'
 import {
   getTaskEventsRefetchInterval,
+  limitTaskEvents,
   loadActiveTasks,
   mergeTaskEvents,
+  taskQueryKeys,
 } from './task-queries'
 import type { TaskEventReadDto } from './contracts'
 
@@ -36,6 +38,30 @@ describe('task queries', () => {
   it('stops event polling for terminal tasks', () => {
     expect(getTaskEventsRefetchInterval(false)).toBe(1_000)
     expect(getTaskEventsRefetchInterval(true)).toBe(false)
+  })
+
+  it('bounds the rendered event window while preserving newest sequence order', () => {
+    const items = Array.from({ length: 1_200 }, (_, index) => event(index + 1))
+
+    expect(limitTaskEvents(items).map((item) => item.seq)).toEqual(
+      Array.from({ length: 1_000 }, (_, index) => index + 201),
+    )
+  })
+
+  it('includes both created boundaries in the Task list query key', () => {
+    const params = {
+      page: 1,
+      pageSize: 10,
+      filters: {
+        status: 'failed' as const,
+        deviceId: 'device-1',
+        search: 'fixture',
+        createdFrom: '2026-08-17T00:00:00.000Z',
+        createdTo: '2026-08-24T00:00:00.000Z',
+      },
+    }
+
+    expect(taskQueryKeys.list(params)).toEqual(['tasks', 'list', params])
   })
 
   it('degrades one failed active-task lookup without failing the device list', async () => {

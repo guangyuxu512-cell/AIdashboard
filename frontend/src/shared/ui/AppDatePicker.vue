@@ -12,6 +12,9 @@ withDefaults(
     width?: FieldWidth
     clearable?: boolean
     disabled?: boolean
+    placeholder?: string
+    startPlaceholder?: string
+    endPlaceholder?: string
   }>(),
   {
     modelValue: null,
@@ -19,6 +22,9 @@ withDefaults(
     width: 'full',
     clearable: true,
     disabled: false,
+    placeholder: undefined,
+    startPlaceholder: undefined,
+    endPlaceholder: undefined,
   },
 )
 
@@ -36,6 +42,9 @@ defineEmits<{
     :type="type"
     :clearable="clearable"
     :disabled="disabled"
+    :placeholder="placeholder"
+    :start-placeholder="startPlaceholder"
+    :end-placeholder="endPlaceholder"
     @update:value="$emit('update:modelValue', $event)"
   />
 </template>

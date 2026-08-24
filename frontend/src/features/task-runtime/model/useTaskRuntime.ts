@@ -16,7 +16,7 @@ export function useTaskRuntime(taskId: MaybeRefOrGetter<string | null>) {
     ['success', 'failed', 'lost'].includes(taskQuery.data.value?.status ?? ''),
   )
   const eventsQuery = useTaskEventsQuery(taskId, terminal)
-  const events = computed(() => eventsQuery.data.value?.items ?? [])
+  const events = eventsQuery.events
   const metadata = computed<Record<string, unknown>>(() =>
     events.value.reduce(
       (result, event) => ({ ...result, ...event.metadata }),
@@ -51,14 +51,27 @@ export function useTaskRuntime(taskId: MaybeRefOrGetter<string | null>) {
     terminal,
     durationDisplay,
     loading: computed(
-      () => taskQuery.isPending.value || eventsQuery.isPending.value,
+      () =>
+        taskQuery.isPending.value ||
+        (eventsQuery.query.isPending.value && events.value.length === 0),
     ),
     error: computed(
-      () => taskQuery.error.value ?? eventsQuery.error.value ?? null,
+      () =>
+        taskQuery.error.value ??
+        (events.value.length === 0 ? eventsQuery.query.error.value : null) ??
+        null,
     ),
     retry: async () => {
-      await Promise.all([taskQuery.refetch(), eventsQuery.refetch()])
+      await Promise.all([taskQuery.refetch(), eventsQuery.query.refetch()])
     },
+    loadEarlier: eventsQuery.loadEarlier,
+    hasEarlier: eventsQuery.hasEarlier,
+    loadingEarlier: eventsQuery.loadingEarlier,
+    historyError: eventsQuery.historyError,
+    historyLimitReached: eventsQuery.historyLimitReached,
+    purgedAt: computed(
+      () => taskQuery.data.value?.runtime_events_purged_at ?? null,
+    ),
     taskId: computed(() => toValue(taskId)),
   }
 }

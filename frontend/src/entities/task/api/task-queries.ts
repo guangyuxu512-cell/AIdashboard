@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/vue-query'
-import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { computed, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
 import { taskDataSource, type TaskListParams } from './task-data-source'
 import type {
@@ -23,6 +23,8 @@ export const taskQueryKeys = {
 }
 
 export const TASK_LIST_REFETCH_INTERVAL_MS = 5_000
+export const TASK_EVENT_PAGE_LIMIT = 100
+export const TASK_EVENT_RENDER_LIMIT = 1_000
 
 export function useTaskListQuery(params: MaybeRefOrGetter<TaskListParams>) {
   return useQuery({
@@ -45,6 +47,13 @@ export function mergeTaskEvents(
   return [...bySequence.values()].sort((left, right) => left.seq - right.seq)
 }
 
+export function limitTaskEvents(
+  items: TaskEventReadDto[],
+  limit = TASK_EVENT_RENDER_LIMIT,
+): TaskEventReadDto[] {
+  return items.length > limit ? items.slice(-limit) : items
+}
+
 export function getTaskEventsRefetchInterval(
   terminal: boolean,
 ): number | false {
@@ -56,40 +65,109 @@ export function useTaskEventsQuery(
   terminal: MaybeRefOrGetter<boolean>,
 ) {
   let currentTaskId: string | null = null
+  let initialized = false
   let nextAfterSeq = 0
-  let events: TaskEventReadDto[] = []
+  const events = ref<TaskEventReadDto[]>([])
+  const hasEarlier = ref(false)
+  const loadingEarlier = ref(false)
+  const historyError = ref<unknown>(null)
 
   watch(
     () => toValue(taskId),
     (value) => {
       if (value !== currentTaskId) {
         currentTaskId = value
+        initialized = false
         nextAfterSeq = 0
-        events = []
+        events.value = []
+        hasEarlier.value = false
+        historyError.value = null
       }
     },
     { immediate: true },
   )
 
-  return useQuery({
+  const query = useQuery({
     queryKey: computed(() => taskQueryKeys.events(toValue(taskId))),
     queryFn: async (): Promise<TaskEventListReadDto> => {
       const id = toValue(taskId)!
       if (id !== currentTaskId) {
         currentTaskId = id
+        initialized = false
         nextAfterSeq = 0
-        events = []
+        events.value = []
+        hasEarlier.value = false
       }
-      const page = await taskDataSource.listEvents(id, nextAfterSeq)
-      events = mergeTaskEvents(events, page.items)
-      nextAfterSeq = page.next_after_seq
-      return { ...page, after_seq: 0, items: [...events] }
+      if (!initialized) {
+        const page = await taskDataSource.listEvents(id, {
+          limit: TASK_EVENT_PAGE_LIMIT,
+        })
+        events.value = page.items
+        nextAfterSeq = page.next_after_seq
+        hasEarlier.value = page.has_more_before
+        initialized = true
+        return { ...page, items: [...events.value] }
+      }
+      const page = await taskDataSource.listEvents(id, {
+        afterSeq: nextAfterSeq,
+        limit: TASK_EVENT_PAGE_LIMIT,
+      })
+      const merged = mergeTaskEvents(events.value, page.items)
+      if (merged.length > TASK_EVENT_RENDER_LIMIT) {
+        events.value = limitTaskEvents(merged)
+        hasEarlier.value = true
+      } else {
+        events.value = merged
+      }
+      nextAfterSeq = Math.max(nextAfterSeq, page.next_after_seq)
+      return { ...page, after_seq: 0, items: [...events.value] }
     },
     enabled: computed(() => Boolean(toValue(taskId))),
     refetchInterval: computed(() =>
       getTaskEventsRefetchInterval(toValue(terminal)),
     ),
   })
+
+  async function loadEarlier(): Promise<void> {
+    const id = toValue(taskId)
+    const oldestSeq = events.value[0]?.seq
+    const capacity = TASK_EVENT_RENDER_LIMIT - events.value.length
+    if (
+      !id ||
+      oldestSeq === undefined ||
+      !hasEarlier.value ||
+      loadingEarlier.value ||
+      capacity <= 0
+    ) {
+      return
+    }
+    loadingEarlier.value = true
+    historyError.value = null
+    try {
+      const page = await taskDataSource.listEvents(id, {
+        beforeSeq: oldestSeq,
+        limit: Math.min(TASK_EVENT_PAGE_LIMIT, capacity),
+      })
+      events.value = mergeTaskEvents(page.items, events.value)
+      hasEarlier.value = page.has_more_before
+    } catch (error) {
+      historyError.value = error
+    } finally {
+      loadingEarlier.value = false
+    }
+  }
+
+  return {
+    query,
+    events: computed(() => events.value),
+    hasEarlier: computed(() => hasEarlier.value),
+    loadingEarlier: computed(() => loadingEarlier.value),
+    historyError: computed(() => historyError.value),
+    historyLimitReached: computed(
+      () => hasEarlier.value && events.value.length >= TASK_EVENT_RENDER_LIMIT,
+    ),
+    loadEarlier,
+  }
 }
 
 export async function loadActiveTasks(

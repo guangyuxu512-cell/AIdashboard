@@ -1,4 +1,5 @@
 import type { SelectOption } from 'naive-ui'
+import dayjs from 'dayjs'
 import { computed, ref } from 'vue'
 
 import { type DeviceListFilters, useDeviceListQuery } from '@/entities/device'
@@ -13,10 +14,55 @@ import {
   isInitialQueryLoading,
 } from '@/shared/api'
 
-import type { TaskFilterViewModel } from './types'
+import type { TaskDatePreset, TaskFilterViewModel } from './types'
 
-function emptyFilters(): TaskFilterViewModel {
-  return { status: null, deviceId: null, search: '' }
+export const DEFAULT_TASK_DATE_PRESET: TaskDatePreset = 'last7Days'
+
+export function createDefaultTaskFilters(): TaskFilterViewModel {
+  return {
+    status: null,
+    deviceId: null,
+    search: '',
+    datePreset: DEFAULT_TASK_DATE_PRESET,
+    customDateRange: null,
+  }
+}
+
+export function resolveTaskListFilters(
+  filters: TaskFilterViewModel,
+  now: number | Date = Date.now(),
+): TaskListFilters {
+  const today = dayjs(now).startOf('day')
+  let createdFrom: string | null = null
+  let createdTo: string | null = null
+
+  if (filters.datePreset === 'today') {
+    createdFrom = today.toISOString()
+    createdTo = today.add(1, 'day').toISOString()
+  } else if (filters.datePreset === 'yesterday') {
+    createdFrom = today.subtract(1, 'day').toISOString()
+    createdTo = today.toISOString()
+  } else if (filters.datePreset === 'last7Days') {
+    createdFrom = today.subtract(6, 'day').toISOString()
+    createdTo = today.add(1, 'day').toISOString()
+  } else if (filters.datePreset === 'last30Days') {
+    createdFrom = today.subtract(29, 'day').toISOString()
+    createdTo = today.add(1, 'day').toISOString()
+  } else if (filters.datePreset === 'custom' && filters.customDateRange) {
+    createdFrom = dayjs(filters.customDateRange[0]).startOf('day').toISOString()
+    createdTo = dayjs(filters.customDateRange[1])
+      .startOf('day')
+      .add(1, 'day')
+      .toISOString()
+  }
+
+  return {
+    status: filters.status,
+    deviceId: filters.deviceId,
+    search: filters.search,
+    createdFrom,
+    createdTo,
+  }
 }
 
 function emptyDeviceFilters(): DeviceListFilters {
@@ -30,8 +76,10 @@ function emptyDeviceFilters(): DeviceListFilters {
 }
 
 export function useTaskManagement() {
-  const filterDraft = ref<TaskFilterViewModel>(emptyFilters())
-  const appliedFilters = ref<TaskListFilters>(emptyFilters())
+  const filterDraft = ref<TaskFilterViewModel>(createDefaultTaskFilters())
+  const appliedFilters = ref<TaskListFilters>(
+    resolveTaskListFilters(filterDraft.value),
+  )
   const page = ref(1)
   const pageSize = ref(10)
   const runtimeTaskId = ref<string | null>(null)
@@ -66,13 +114,13 @@ export function useTaskManagement() {
   )
 
   function query(): void {
-    appliedFilters.value = { ...filterDraft.value }
+    appliedFilters.value = resolveTaskListFilters(filterDraft.value)
     page.value = 1
   }
 
   function resetFilters(): void {
-    filterDraft.value = emptyFilters()
-    appliedFilters.value = emptyFilters()
+    filterDraft.value = createDefaultTaskFilters()
+    appliedFilters.value = resolveTaskListFilters(filterDraft.value)
     page.value = 1
   }
 

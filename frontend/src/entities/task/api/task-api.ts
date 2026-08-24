@@ -15,6 +15,14 @@ export interface TaskListApiParams {
   status: string | null
   deviceId: string | null
   search: string
+  createdFrom: string | null
+  createdTo: string | null
+}
+
+export interface TaskEventApiParams {
+  afterSeq?: number
+  beforeSeq?: number
+  limit?: number
 }
 
 export const taskApi = {
@@ -28,6 +36,8 @@ export const taskApi = {
           status: params.status || undefined,
           device_id: params.deviceId || undefined,
           search: params.search.trim() || undefined,
+          created_from: params.createdFrom || undefined,
+          created_to: params.createdTo || undefined,
         },
       },
     )
@@ -56,12 +66,17 @@ export const taskApi = {
 
   async listEvents(
     taskId: string,
-    afterSeq: number,
-    limit = 100,
+    params: TaskEventApiParams = {},
   ): Promise<TaskEventListReadDto> {
     const response = await httpClient.get<TaskEventListReadDto>(
       `/api/v1/tasks/${taskId}/events`,
-      { params: { after_seq: afterSeq, limit } },
+      {
+        params: {
+          after_seq: params.afterSeq,
+          before_seq: params.beforeSeq,
+          limit: params.limit,
+        },
+      },
     )
     return response.data
   },

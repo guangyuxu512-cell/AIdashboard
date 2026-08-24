@@ -206,6 +206,64 @@ function inspectSoftRemovedDevice(deviceId: string): {
   )
 }
 
+function seedTaskQueryFixtures(deviceId: string): {
+  todayName: string
+  yesterdayName: string
+  oldName: string
+  oldDate: string
+} {
+  const script = [
+    'import json',
+    'from datetime import UTC, datetime, timedelta',
+    'from uuid import UUID, uuid4',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.modules.devices.models import Device',
+    'from app.modules.tasks.enums import TaskStatus',
+    'from app.modules.tasks.models import Task, TaskEvent',
+    `device_id = UUID(${JSON.stringify(deviceId)})`,
+    `name_prefix = ${JSON.stringify(`${testPrefix}query-`)}`,
+    'local_now = datetime.now().astimezone()',
+    'local_noon = local_now.replace(hour=12, minute=0, second=0, microsecond=0)',
+    'def at_day(days_ago):',
+    '    return (local_noon - timedelta(days=days_ago)).astimezone(UTC)',
+    'today_at = at_day(0)',
+    'yesterday_at = at_day(1)',
+    'old_at = at_day(8)',
+    'today_id, yesterday_id, old_id = uuid4(), uuid4(), uuid4()',
+    'today_name = name_prefix + "today-failed"',
+    'yesterday_name = name_prefix + "yesterday-success"',
+    'old_name = name_prefix + "old-success"',
+    'def task(task_id, name, status, created_at, purged_at=None):',
+    '    terminal_at = created_at + timedelta(minutes=1)',
+    '    values = {"task_id": task_id, "target_device_id": device_id, "skill_id": "system.echo", "execution_display_name": name, "status": status.value, "input_json": {"message": name}, "error_code": "REAL_E2E_FAILED" if status is TaskStatus.FAILED else None, "error_message": "safe real e2e error" if status is TaskStatus.FAILED else None, "started_at": created_at, "finished_at": terminal_at, "runtime_events_purged_at": purged_at, "created_at": created_at, "updated_at": terminal_at}',
+    '    if status is TaskStatus.SUCCESS:',
+    '        values["result_json"] = {"message": "kept"}',
+    '    return Task(**values)',
+    'with Session(get_database_engine()) as session:',
+    '    session.add_all([',
+    '        task(today_id, today_name, TaskStatus.FAILED, today_at, datetime.now(UTC)),',
+    '        task(yesterday_id, yesterday_name, TaskStatus.SUCCESS, yesterday_at),',
+    '        task(old_id, old_name, TaskStatus.SUCCESS, old_at),',
+    '    ])',
+    '    session.add_all([',
+    '        TaskEvent(task_id=today_id, seq=101, event_type="log", level="INFO", message="清理后的晚到日志", event_at=today_at, metadata_json={}),',
+    '        TaskEvent(task_id=yesterday_id, seq=1, event_type="status", level="INFO", message="昨日任务完成", event_at=yesterday_at, metadata_json={}),',
+    '        TaskEvent(task_id=old_id, seq=1, event_type="status", level="INFO", message="历史任务完成", event_at=old_at, metadata_json={}),',
+    '    ])',
+    '    session.commit()',
+    'print(json.dumps({"todayName": today_name, "yesterdayName": yesterday_name, "oldName": old_name, "oldDate": old_at.astimezone().date().isoformat()}))',
+  ].join('\n')
+
+  return JSON.parse(
+    execFileSync(backendPython, ['-c', script], {
+      cwd: backendDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  )
+}
+
 test.beforeAll(cleanupRealTestData)
 test.afterAll(cleanupRealTestData)
 
@@ -333,6 +391,96 @@ test('shows a real Task lifecycle and incremental Runtime Events without list fl
   await expect(drawer.getByRole('heading', { name: 'Result' })).toBeVisible()
   await expect(drawer.getByText(/slept_seconds/)).toBeVisible()
   await expect(page.locator('.state-panel')).toHaveCount(0)
+})
+
+test('queries real Tasks by local date combinations and reads bounded retained logs', async ({
+  page,
+}) => {
+  const deviceName = `${testPrefix}task-query-retention`
+  const deviceResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(deviceResponse.ok()).toBe(true)
+  const deviceId = (await deviceResponse.json()).device_id as string
+  const fixtures = seedTaskQueryFixtures(deviceId)
+
+  await page.goto('/#/tasks')
+  const toolbar = page.getByRole('region', { name: '筛选条件' })
+  const selections = toolbar.locator('.n-base-selection')
+  const search = toolbar.getByPlaceholder('搜索 Task ID / 执行对象 / Skill')
+
+  await expect(selections.nth(2)).toContainText('最近 7 天')
+  await search.fill(`${testPrefix}query-`)
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText(fixtures.todayName, { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(fixtures.yesterdayName, { exact: true }),
+  ).toBeVisible()
+  await expect(page.getByText(fixtures.oldName, { exact: true })).toHaveCount(0)
+  await expect(page.getByText('共 2 条', { exact: true })).toBeVisible()
+
+  await selections.nth(2).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '全部时间' })
+    .click()
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText(fixtures.oldName, { exact: true })).toBeVisible()
+  await expect(page.getByText('共 3 条', { exact: true })).toBeVisible()
+
+  await toolbar.getByRole('button', { name: '重置' }).click()
+  await selections.nth(0).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '失败' })
+    .click()
+  await selections.nth(1).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: deviceName })
+    .click()
+  await search.fill(`${testPrefix}query-`)
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText(fixtures.todayName, { exact: true })).toBeVisible()
+  await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
+
+  await toolbar.getByRole('button', { name: '重置' }).click()
+  await selections.nth(2).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '自定义' })
+    .click()
+  const dateInputs = toolbar.locator('.n-date-picker input')
+  await dateInputs.nth(0).fill(fixtures.oldDate)
+  await dateInputs.nth(1).fill(fixtures.oldDate)
+  await dateInputs.nth(1).press('Enter')
+  await search.fill(`${testPrefix}query-`)
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText(fixtures.oldName, { exact: true })).toBeVisible()
+  await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
+
+  await toolbar.getByRole('button', { name: '重置' }).click()
+  await search.fill(fixtures.todayName)
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  const eventRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === 'GET' &&
+      /\/api\/v1\/tasks\/[^/]+\/events/.test(request.url()),
+  )
+  const row = page.getByRole('row').filter({ hasText: fixtures.todayName })
+  await row.getByRole('button', { name: '详情' }).click()
+  const eventRequest = await eventRequestPromise
+  const eventUrl = new URL(eventRequest.url())
+  expect(eventUrl.searchParams.get('limit')).toBe('100')
+  expect(eventUrl.searchParams.has('after_seq')).toBe(false)
+  expect(eventUrl.searchParams.has('before_seq')).toBe(false)
+  const drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
+  await expect(
+    drawer.getByText('部分历史运行日志已按保留策略清理。').first(),
+  ).toBeVisible()
+  await expect(
+    drawer.locator('.task-runtime__log-viewport').getByText('清理后的晚到日志'),
+  ).toBeVisible()
 })
 
 test('issues, rotates and revokes a one-time Worker credential in Device Drawer', async ({

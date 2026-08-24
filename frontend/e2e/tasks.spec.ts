@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-08-24T12:00:00+08:00'))
+})
+
 test('uses the automation navigation group and renders every Task state', async ({
   page,
 }) => {
@@ -77,6 +81,65 @@ test('filters by status, device and stable searchable Task fields', async ({
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 })
 
+test('defaults to seven days and resets from all-time without a second filter row', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.goto('/#/tasks')
+  const toolbar = page.getByRole('region', { name: '筛选条件' })
+  const selections = toolbar.locator('.n-base-selection')
+
+  await expect(selections.nth(2)).toContainText('最近 7 天')
+  await expect(page.getByText('共 6 条', { exact: true })).toBeVisible()
+  await expect(page.getByText('历史审计任务', { exact: true })).toHaveCount(0)
+
+  await selections.nth(2).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '全部时间' })
+    .click()
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText('历史审计任务', { exact: true })).toBeVisible()
+  await expect(page.getByText('共 7 条', { exact: true })).toBeVisible()
+
+  await toolbar.getByRole('button', { name: '重置' }).click()
+  await expect(selections.nth(2)).toContainText('最近 7 天')
+  await expect(page.getByText('历史审计任务', { exact: true })).toHaveCount(0)
+
+  await selections.nth(2).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '昨天' })
+    .click()
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText('暂无任务')).toBeVisible()
+
+  await selections.nth(2).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '今天' })
+    .click()
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText('共 6 条', { exact: true })).toBeVisible()
+
+  await selections.nth(2).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '自定义' })
+    .click()
+  await expect(toolbar.locator('.n-date-picker')).toBeVisible()
+  await toolbar.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText('共 6 条', { exact: true })).toBeVisible()
+
+  const filterRows = await toolbar
+    .locator('.filter-bar__fields')
+    .evaluate((node) => {
+      const children = [...node.children] as HTMLElement[]
+      return new Set(children.map((child) => Math.round(child.offsetTop))).size
+    })
+  expect(filterRows).toBe(1)
+})
+
 test('reuses TaskRuntimeDrawer for pending, running and terminal tasks', async ({
   page,
 }) => {
@@ -108,6 +171,38 @@ test('reuses TaskRuntimeDrawer for pending, running and terminal tasks', async (
   await expect(drawer.locator('pre')).toContainText(
     'RUNTIME_FAILED · 影刀运行时返回失败',
   )
+  await expect(
+    drawer.getByText('该任务的历史运行日志已按保留策略清理。').first(),
+  ).toBeVisible()
+})
+
+test('loads historical Runtime Events incrementally and distinguishes partial purge', async ({
+  page,
+}) => {
+  await page.goto('/#/tasks')
+
+  const successRow = page.getByRole('row').filter({ hasText: '系统回声验证' })
+  await successRow.getByRole('button', { name: '详情' }).click()
+  let drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
+  await expect(drawer.locator('.task-runtime__log-viewport li')).toHaveCount(
+    100,
+  )
+  await drawer.getByRole('button', { name: '加载更早' }).click()
+  await expect(drawer.locator('.task-runtime__log-viewport li')).toHaveCount(
+    200,
+  )
+  await expect(drawer.getByText('历史日志 6', { exact: true })).toBeVisible()
+  await drawer.getByRole('button', { name: '关闭' }).click()
+
+  const lostRow = page.getByRole('row').filter({ hasText: 'Worker 失联验证' })
+  await lostRow.getByRole('button', { name: '详情' }).click()
+  drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
+  await expect(
+    drawer.getByText('部分历史运行日志已按保留策略清理。').first(),
+  ).toBeVisible()
+  await expect(
+    drawer.locator('.task-runtime__log-viewport li').getByText('Worker 已领取任务'),
+  ).toBeVisible()
 })
 
 test('fills remaining space and pins pagination for many, one and empty states', async ({

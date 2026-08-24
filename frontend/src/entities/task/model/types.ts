@@ -4,6 +4,8 @@ export interface TaskListFilters {
   status: TaskStatusDto | null
   deviceId: string | null
   search: string
+  createdFrom: string | null
+  createdTo: string | null
 }
 
 export interface TaskListItemViewModel {

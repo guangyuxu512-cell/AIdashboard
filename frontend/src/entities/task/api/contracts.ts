@@ -19,6 +19,7 @@ export interface TaskReadDto {
   lease_until: string | null
   started_at: string | null
   finished_at: string | null
+  runtime_events_purged_at: string | null
   created_at: string
   updated_at: string
 }
@@ -46,8 +47,11 @@ export interface TaskEventReadDto {
 
 export interface TaskEventListReadDto {
   task_id: string
-  after_seq: number
+  after_seq: number | null
+  before_seq: number | null
   next_after_seq: number
+  next_before_seq: number | null
+  has_more_before: boolean
   items: TaskEventReadDto[]
 }
 

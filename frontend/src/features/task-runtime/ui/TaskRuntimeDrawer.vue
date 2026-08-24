@@ -141,6 +141,18 @@ watch(
           <dt>运行时间</dt>
           <dd>{{ runtime.durationDisplay.value }}</dd>
         </div>
+        <div>
+          <dt>结束时间</dt>
+          <dd>
+            {{
+              runtime.task.value.finished_at
+                ? dayjs(runtime.task.value.finished_at).format(
+                    'YYYY-MM-DD HH:mm:ss',
+                  )
+                : '—'
+            }}
+          </dd>
+        </div>
         <div class="task-runtime__step">
           <dt>当前步骤</dt>
           <dd>
@@ -159,10 +171,44 @@ watch(
       <section class="task-runtime__logs">
         <header>
           <h3>运行日志</h3>
-          <AppButton v-if="!autoFollow" tone="text" @click="scrollToLatest">
-            回到最新
-          </AppButton>
+          <div class="task-runtime__log-actions">
+            <AppButton
+              v-if="
+                runtime.hasEarlier.value && !runtime.historyLimitReached.value
+              "
+              tone="text"
+              :loading="runtime.loadingEarlier.value"
+              @click="runtime.loadEarlier"
+            >
+              加载更早
+            </AppButton>
+            <AppButton v-if="!autoFollow" tone="text" @click="scrollToLatest">
+              回到最新
+            </AppButton>
+          </div>
         </header>
+        <p v-if="runtime.purgedAt.value" class="task-runtime__retention-notice">
+          {{
+            runtime.events.value.length
+              ? '部分历史运行日志已按保留策略清理。'
+              : '该任务的历史运行日志已按保留策略清理。'
+          }}
+          清理时间：{{
+            dayjs(runtime.purgedAt.value).format('YYYY-MM-DD HH:mm:ss')
+          }}
+        </p>
+        <p
+          v-if="runtime.historyLimitReached.value"
+          class="task-runtime__retention-notice"
+        >
+          为保持运行详情流畅，当前最多显示最近 1000 条日志。
+        </p>
+        <p
+          v-if="runtime.historyError.value"
+          class="task-runtime__history-error"
+        >
+          更早日志加载失败，请重试。
+        </p>
         <div
           ref="logViewport"
           class="task-runtime__log-viewport"
@@ -175,7 +221,14 @@ watch(
               <span>{{ event.message }}</span>
             </li>
           </ol>
-          <EmptyState v-else description="暂无运行日志" />
+          <EmptyState
+            v-else
+            :description="
+              runtime.purgedAt.value
+                ? '该任务的历史运行日志已按保留策略清理。'
+                : '暂无运行日志'
+            "
+          />
         </div>
       </section>
     </div>
@@ -252,6 +305,26 @@ watch(
 .task-runtime__logs h3 {
   font-size: var(--font-size-section-title);
   font-weight: var(--font-weight-semibold);
+}
+
+.task-runtime__log-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.task-runtime__retention-notice,
+.task-runtime__history-error {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.task-runtime__history-error {
+  color: var(--color-error);
 }
 
 .task-runtime__log-viewport {

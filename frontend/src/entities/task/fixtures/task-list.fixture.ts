@@ -11,6 +11,7 @@ export const TASK_FIXTURE_IDS = {
   success: '10000000-0000-4000-8000-000000000004',
   failed: '10000000-0000-4000-8000-000000000005',
   lost: '10000000-0000-4000-8000-000000000006',
+  oldSuccess: '10000000-0000-4000-8000-000000000007',
 } as const
 
 export const TASK_LIST_FIXTURE: TaskListItemReadDto[] = [
@@ -98,6 +99,20 @@ export const TASK_LIST_FIXTURE: TaskListItemReadDto[] = [
     finished_at: '2026-08-24T04:41:00+08:00',
     created_at: '2026-08-24T04:39:58+08:00',
   },
+  {
+    task_id: TASK_FIXTURE_IDS.oldSuccess,
+    target_device_id: 'device-fixture-003',
+    device_display_name: '深圳-工作站-03',
+    skill_id: 'system.echo',
+    skill_display_name: '系统回声',
+    execution_display_name: '历史审计任务',
+    status: 'success',
+    progress: null,
+    current_message: '历史执行完成',
+    started_at: '2026-07-01T05:10:11+08:00',
+    finished_at: '2026-07-01T05:10:14+08:00',
+    created_at: '2026-07-01T05:10:09+08:00',
+  },
 ]
 
 export function taskFixtureToDetail(item: TaskListItemReadDto): TaskReadDto {
@@ -122,6 +137,11 @@ export function taskFixtureToDetail(item: TaskListItemReadDto): TaskReadDto {
     lease_until: item.status === 'running' ? '2026-08-24T06:00:00+08:00' : null,
     started_at: item.started_at,
     finished_at: item.finished_at,
+    runtime_events_purged_at:
+      item.task_id === TASK_FIXTURE_IDS.failed ||
+      item.task_id === TASK_FIXTURE_IDS.lost
+        ? '2026-08-24T06:30:00+08:00'
+        : null,
     created_at: item.created_at,
     updated_at: item.finished_at ?? item.started_at ?? item.created_at,
   }
@@ -134,16 +154,19 @@ function event(
   message: string,
   metadata: Record<string, unknown> = {},
 ): TaskEventReadDto {
+  const eventAt = new Date(
+    Date.parse('2026-08-24T05:22:00+08:00') + seq * 1_000,
+  ).toISOString()
   return {
-    event_id: `${taskId.slice(0, -1)}${seq}`,
+    event_id: `${taskId}:event:${seq}`,
     task_id: taskId,
     seq,
     event_type: eventType,
     level: eventType === 'log' ? 'INFO' : 'worker',
     message,
-    event_at: `2026-08-24T05:22:${String(seq).padStart(2, '0')}+08:00`,
+    event_at: eventAt,
     metadata,
-    created_at: `2026-08-24T05:22:${String(seq).padStart(2, '0')}+08:00`,
+    created_at: eventAt,
   }
 }
 
@@ -164,15 +187,17 @@ export const TASK_EVENT_FIXTURE: Record<string, TaskEventReadDto[]> = {
       total: 10,
     }),
   ],
-  [TASK_FIXTURE_IDS.success]: [
-    event(TASK_FIXTURE_IDS.success, 1, 'status', '开始执行'),
-    event(TASK_FIXTURE_IDS.success, 2, 'completed', '执行完成'),
-  ],
-  [TASK_FIXTURE_IDS.failed]: [
-    event(TASK_FIXTURE_IDS.failed, 1, 'status', '开始影刀测试'),
-    event(TASK_FIXTURE_IDS.failed, 2, 'failed', '影刀运行时返回失败'),
-  ],
+  [TASK_FIXTURE_IDS.success]: Array.from({ length: 205 }, (_, index) =>
+    event(
+      TASK_FIXTURE_IDS.success,
+      index + 1,
+      index === 204 ? 'completed' : 'log',
+      index === 204 ? '执行完成' : `历史日志 ${index + 1}`,
+    ),
+  ),
+  [TASK_FIXTURE_IDS.failed]: [],
   [TASK_FIXTURE_IDS.lost]: [
     event(TASK_FIXTURE_IDS.lost, 1, 'status', 'Worker 已领取任务'),
   ],
+  [TASK_FIXTURE_IDS.oldSuccess]: [],
 }
