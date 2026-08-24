@@ -17,6 +17,10 @@ from app.provisioning import ConnectionTestResult, WorkerProvisioningClient
 from app.version import WORKER_VERSION
 
 
+_HEARTBEAT_FRESHNESS_SECONDS = 45
+_CORE_STATUS_FRESHNESS_SECONDS = 90
+
+
 def read_runtime_status(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -77,6 +81,7 @@ def main() -> int:
         ("device_id", "Device ID"),
         ("worker_version", "Worker 版本"),
         ("connection_status", "服务器"),
+        ("last_heartbeat", "最后心跳"),
         ("worker_status", "Worker"),
         ("provider_status", "ShadowBot 状态"),
         ("provider_version", "ShadowBot 版本"),
@@ -391,7 +396,13 @@ def main() -> int:
     return 0
 
 
-def _render_status(state: dict[str, Any], *, running: bool) -> dict[str, str]:
+def _render_status(
+    state: dict[str, Any],
+    *,
+    running: bool,
+    now: datetime | None = None,
+) -> dict[str, str]:
+    observed_at = now or datetime.now(UTC)
     current_task = state.get("app_name") or state.get("skill_display_name") or "空闲"
     if state.get("current_task_id"):
         current_task = f"{current_task} · 执行中"
@@ -400,9 +411,13 @@ def _render_status(state: dict[str, Any], *, running: bool) -> dict[str, str]:
         "device_id": str(state.get("device_id") or "—"),
         "worker_version": str(state.get("worker_version") or WORKER_VERSION),
         "connection_status": (
-            "已连接" if state.get("connection_status") == "connected" else "未连接"
+            "已连接" if _backend_is_healthy(state, observed_at) else "连接异常"
         ),
-        "worker_status": "运行中" if running else "已停止",
+        "last_heartbeat": _relative_time(
+            state.get("last_heartbeat_at"),
+            observed_at,
+        ),
+        "worker_status": _worker_status_label(state, running, observed_at),
         "provider_status": _provider_status_label(state.get("provider_status")),
         "provider_version": str(state.get("provider_version") or "—"),
         "provider_account": str(state.get("provider_account") or "—"),
@@ -421,20 +436,40 @@ def _render_status(state: dict[str, Any], *, running: bool) -> dict[str, str]:
     }
 
 
-def _render_diagnostics(state: dict[str, Any], *, running: bool) -> dict[str, str]:
+def _render_diagnostics(
+    state: dict[str, Any],
+    *,
+    running: bool,
+    now: datetime | None = None,
+) -> dict[str, str]:
+    observed_at = now or datetime.now(UTC)
     provider_status = state.get("provider_status")
+    heartbeat_healthy = _backend_is_healthy(state, observed_at)
+    heartbeat_age = _relative_time(state.get("last_heartbeat_at"), observed_at)
     return {
-        "backend": "正常" if state.get("connection_status") == "connected" else "异常",
+        "backend": "正常" if heartbeat_healthy else "异常",
         "token": {
             "valid": "有效",
             "invalid": "无效",
             "configured": "已配置 / 待验证",
         }.get(str(state.get("token_status")), "未配置"),
-        "heartbeat": "正常" if state.get("last_heartbeat_at") else "异常",
+        "heartbeat": (
+            f"正常 · {heartbeat_age}"
+            if heartbeat_healthy
+            else (
+                f"已过期 · {heartbeat_age}"
+                if heartbeat_age != "—"
+                else "异常"
+            )
+        ),
         "skills": (
             "已同步" if state.get("skill_sync_status") == "synced" else "未同步"
         ),
-        "process": "正常" if running and provider_status else ("运行中" if running else "未运行"),
+        "process": {
+            "运行中": "正常",
+            "状态异常": "状态异常",
+            "已停止": "未运行",
+        }[_worker_status_label(state, running, observed_at)],
         "version": str(state.get("provider_version") or "—"),
         "session": "已登录" if provider_status == "ready" else _provider_status_label(provider_status),
         "applications": str(
@@ -455,6 +490,53 @@ def _provider_status_label(value: object) -> str:
         "interface_unreachable": "接口不可用",
         "starting": "正在启动",
     }.get(str(value), "未检测")
+
+
+def _backend_is_healthy(state: dict[str, Any], now: datetime) -> bool:
+    if state.get("token_status") == "invalid":
+        return False
+    age = _seconds_since(state.get("last_heartbeat_at"), now)
+    return age is not None and age <= _HEARTBEAT_FRESHNESS_SECONDS
+
+
+def _worker_status_label(
+    state: dict[str, Any],
+    running: bool,
+    now: datetime,
+) -> str:
+    if not running:
+        return "已停止"
+    age = _seconds_since(state.get("updated_at"), now)
+    if age is None or age > _CORE_STATUS_FRESHNESS_SECONDS:
+        return "状态异常"
+    return "运行中"
+
+
+def _relative_time(value: object, now: datetime) -> str:
+    seconds = _seconds_since(value, now)
+    if seconds is None:
+        return "—"
+    if seconds < 5:
+        return "刚刚"
+    if seconds < 60:
+        return f"{int(seconds)} 秒前"
+    if seconds < 3600:
+        return f"{int(seconds // 60)} 分钟前"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)} 小时前"
+    return f"{int(seconds // 86400)} 天前"
+
+
+def _seconds_since(value: object, now: datetime) -> float | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        observed_at = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if observed_at.tzinfo is None:
+        return None
+    return max(0.0, (now - observed_at).total_seconds())
 
 
 def _duration(value: object) -> str:

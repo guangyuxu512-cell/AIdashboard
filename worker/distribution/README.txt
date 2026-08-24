@@ -1,4 +1,4 @@
-Ecommerce AI Worker 0.4.1 for Windows
+Ecommerce AI Worker 0.4.2 for Windows
 ======================================
 
 普通首次接入
@@ -21,7 +21,7 @@ Ecommerce AI Worker 0.4.1 for Windows
 - 高级运维 CMD 入口继续保留，但普通首次配置不依赖 PowerShell。
 
 ShadowBot 策略
-- Worker 0.4.1 固定支持 ShadowBot 6.3.6。
+- Worker 0.4.2 固定支持 ShadowBot 6.3.6。
 - 当前会话、云端应用与执行均来自 6.3.6 本地会话接口。
 - 若其他版本正在运行，Worker 不结束它，也不启动第二个版本，只报告版本不支持。
 

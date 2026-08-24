@@ -11,7 +11,7 @@ import pytest
 import httpx
 from pydantic import BaseModel
 
-from app.client import WorkerApiClient
+from app.client import WorkerApiClient, WorkerApiError
 from app.config import WorkerSettings
 from app.contracts import (
     ExecutionResult,
@@ -21,6 +21,7 @@ from app.contracts import (
 )
 from app.executors.python import PythonExecutor, build_skill_process_command
 from app.runtime import TaskRuntimePaths
+from app.runtime_events import LocalRuntimeState
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
 from app.skills.runner import execute
 from app.skills import SkillDefinition, SkillRegistry, registry
@@ -200,6 +201,268 @@ def test_worker_syncs_registry_snapshot_on_start_and_reconnect() -> None:
         ["system.echo", "system.sleep"],
         ["system.echo", "system.sleep"],
     ]
+
+
+def test_heartbeat_loop_continues_after_recoverable_failure() -> None:
+    async def scenario() -> tuple[int, int]:
+        stop_event = asyncio.Event()
+
+        class SequencedClient:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.snapshots = 0
+
+            async def heartbeat(self, **_: object) -> None:
+                self.calls += 1
+                if self.calls == 2:
+                    raise OSError("temporary network failure")
+                if self.calls == 3:
+                    stop_event.set()
+
+            async def report_skill_capabilities(self, snapshot: object) -> None:
+                del snapshot
+                self.snapshots += 1
+
+        class FastHeartbeatWorker(Worker):
+            @staticmethod
+            async def _wait_or_stop(
+                stop_event: asyncio.Event,
+                seconds: float,
+            ) -> None:
+                del stop_event, seconds
+                await asyncio.sleep(0)
+
+        client = SequencedClient()
+        worker = FastHeartbeatWorker(
+            WorkerSettings(
+                server_url="https://control.example.test",
+                device_id=uuid4(),
+                device_token="secret-token",
+            ),
+            client,  # type: ignore[arg-type]
+            UnusedExecutor(),
+            skill_registry=build_snapshot_registry("system.echo"),
+        )
+
+        await worker._heartbeat_loop(stop_event)
+        return client.calls, client.snapshots
+
+    calls, snapshots = asyncio.run(scenario())
+
+    assert calls == 3
+    assert snapshots == 2
+
+
+def test_heartbeat_status_write_failure_does_not_escape_request() -> None:
+    class FailingRuntimeState:
+        def set_connection(self, *_: object, **__: object) -> None:
+            raise PermissionError("runtime status is temporarily locked")
+
+    client = CapabilityRecordingClient()
+    worker = Worker(
+        WorkerSettings(
+            server_url="https://control.example.test",
+            device_id=uuid4(),
+            device_token="secret-token",
+        ),
+        client,  # type: ignore[arg-type]
+        UnusedExecutor(),
+        local_runtime_state=FailingRuntimeState(),  # type: ignore[arg-type]
+    )
+
+    succeeded = asyncio.run(
+        worker._heartbeat_once(sync_skill_capabilities=False),
+    )
+
+    assert succeeded is True
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_heartbeat_authentication_failure_marks_token_invalid(
+    status_code: int,
+    tmp_path: Path,
+) -> None:
+    class AuthenticationFailureClient(CapabilityRecordingClient):
+        async def heartbeat(self, **_: object) -> None:
+            raise WorkerApiError(
+                "WORKER_AUTHENTICATION_FAILED",
+                "Worker identity is invalid",
+                status_code,
+            )
+
+    state_path = tmp_path / "runtime-status.json"
+    worker = Worker(
+        WorkerSettings(
+            server_url="https://control.example.test",
+            device_id=uuid4(),
+            device_token="secret-token",
+        ),
+        AuthenticationFailureClient(),  # type: ignore[arg-type]
+        UnusedExecutor(),
+        local_runtime_state=LocalRuntimeState(
+            path=state_path,
+            device_id=uuid4(),
+        ),
+    )
+
+    succeeded = asyncio.run(
+        worker._heartbeat_once(sync_skill_capabilities=False),
+    )
+    payload = json.loads(state_path.read_text("utf-8"))
+
+    assert succeeded is False
+    assert payload["token_status"] == "invalid"
+
+
+def test_heartbeat_supervisor_restarts_an_unexpectedly_failed_loop_once() -> None:
+    async def scenario() -> tuple[int, int]:
+        stop_event = asyncio.Event()
+        restarted = asyncio.Event()
+
+        class RestartingWorker(Worker):
+            def __init__(self) -> None:
+                super().__init__(
+                    WorkerSettings(
+                        server_url="https://control.example.test",
+                        device_id=uuid4(),
+                        device_token="secret-token",
+                    ),
+                    CapabilityRecordingClient(),  # type: ignore[arg-type]
+                    UnusedExecutor(),
+                )
+                self.launch_count = 0
+                self.active_count = 0
+                self.max_active_count = 0
+
+            async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
+                self.launch_count += 1
+                self.active_count += 1
+                self.max_active_count = max(
+                    self.max_active_count,
+                    self.active_count,
+                )
+                try:
+                    if self.launch_count == 1:
+                        raise RuntimeError("simulated heartbeat loop crash")
+                    restarted.set()
+                    await stop_event.wait()
+                finally:
+                    self.active_count -= 1
+
+            @staticmethod
+            async def _wait_or_stop(
+                stop_event: asyncio.Event,
+                seconds: float,
+            ) -> None:
+                del stop_event, seconds
+                await asyncio.sleep(0)
+
+        worker = RestartingWorker()
+        supervisor = asyncio.create_task(worker._heartbeat_supervisor(stop_event))
+        await asyncio.wait_for(restarted.wait(), timeout=1)
+        stop_event.set()
+        await asyncio.wait_for(supervisor, timeout=1)
+        return worker.launch_count, worker.max_active_count
+
+    launch_count, max_active_count = asyncio.run(scenario())
+
+    assert launch_count == 2
+    assert max_active_count == 1
+
+
+def test_heartbeat_supervisor_recovers_an_unexpected_child_cancellation() -> None:
+    async def scenario() -> tuple[int, int]:
+        stop_event = asyncio.Event()
+        first_started = asyncio.Event()
+        restarted = asyncio.Event()
+
+        class CancellableWorker(Worker):
+            def __init__(self) -> None:
+                super().__init__(
+                    WorkerSettings(
+                        server_url="https://control.example.test",
+                        device_id=uuid4(),
+                        device_token="secret-token",
+                    ),
+                    CapabilityRecordingClient(),  # type: ignore[arg-type]
+                    UnusedExecutor(),
+                )
+                self.launch_count = 0
+                self.active_count = 0
+                self.max_active_count = 0
+
+            async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
+                self.launch_count += 1
+                self.active_count += 1
+                self.max_active_count = max(
+                    self.max_active_count,
+                    self.active_count,
+                )
+                if self.launch_count == 1:
+                    first_started.set()
+                else:
+                    restarted.set()
+                try:
+                    await stop_event.wait()
+                finally:
+                    self.active_count -= 1
+
+            @staticmethod
+            async def _wait_or_stop(
+                stop_event: asyncio.Event,
+                seconds: float,
+            ) -> None:
+                del stop_event, seconds
+                await asyncio.sleep(0)
+
+        worker = CancellableWorker()
+        supervisor = asyncio.create_task(worker._heartbeat_supervisor(stop_event))
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+        assert worker._heartbeat_task is not None
+        worker._heartbeat_task.cancel()
+        await asyncio.wait_for(restarted.wait(), timeout=1)
+        stop_event.set()
+        await asyncio.wait_for(supervisor, timeout=1)
+        return worker.launch_count, worker.max_active_count
+
+    launch_count, max_active_count = asyncio.run(scenario())
+
+    assert launch_count == 2
+    assert max_active_count == 1
+
+
+def test_heartbeat_supervisor_does_not_restart_during_shutdown() -> None:
+    async def scenario() -> int:
+        stop_event = asyncio.Event()
+        started = asyncio.Event()
+
+        class ShutdownWorker(Worker):
+            def __init__(self) -> None:
+                super().__init__(
+                    WorkerSettings(
+                        server_url="https://control.example.test",
+                        device_id=uuid4(),
+                        device_token="secret-token",
+                    ),
+                    CapabilityRecordingClient(),  # type: ignore[arg-type]
+                    UnusedExecutor(),
+                )
+                self.launch_count = 0
+
+            async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
+                self.launch_count += 1
+                started.set()
+                await stop_event.wait()
+
+        worker = ShutdownWorker()
+        supervisor = asyncio.create_task(worker._heartbeat_supervisor(stop_event))
+        await asyncio.wait_for(started.wait(), timeout=1)
+        stop_event.set()
+        await asyncio.wait_for(supervisor, timeout=1)
+        await asyncio.sleep(0)
+        return worker.launch_count
+
+    assert asyncio.run(scenario()) == 1
 
 
 def test_worker_capability_payload_uses_authenticated_device_headers() -> None:

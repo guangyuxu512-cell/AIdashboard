@@ -55,9 +55,14 @@ class Worker:
         self.started_at = datetime.now(UTC)
         self.worker_version = WORKER_VERSION
         self._skill_snapshot_synced = False
+        self._heartbeat_task: asyncio.Task[None] | None = None
+        self._heartbeat_consecutive_failures = 0
 
     async def run(self, stop_event: asyncio.Event) -> None:
-        heartbeat_task = asyncio.create_task(self._heartbeat_loop(stop_event))
+        heartbeat_supervisor_task = asyncio.create_task(
+            self._heartbeat_supervisor(stop_event),
+            name="worker-heartbeat-supervisor",
+        )
         reporter_task = (
             asyncio.create_task(self.event_reporter.run(stop_event))
             if self.event_reporter is not None
@@ -87,18 +92,66 @@ class Worker:
                     self.settings.poll_interval_seconds,
                 )
         finally:
-            heartbeat_task.cancel()
+            heartbeat_supervisor_task.cancel()
             if reporter_task is not None:
                 reporter_task.cancel()
             if provider_task is not None:
                 provider_task.cancel()
             await asyncio.gather(
-                *[task for task in (heartbeat_task, reporter_task, provider_task) if task is not None],
+                *[
+                    task
+                    for task in (
+                        heartbeat_supervisor_task,
+                        reporter_task,
+                        provider_task,
+                    )
+                    if task is not None
+                ],
                 return_exceptions=True,
             )
             if self.local_runtime_state is not None:
                 self.local_runtime_state.stop()
             await self.client.close()
+
+    async def _heartbeat_supervisor(self, stop_event: asyncio.Event) -> None:
+        while not stop_event.is_set():
+            heartbeat_task = asyncio.create_task(
+                self._heartbeat_loop(stop_event),
+                name="worker-heartbeat-loop",
+            )
+            self._heartbeat_task = heartbeat_task
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                current_task = asyncio.current_task()
+                if current_task is not None and current_task.cancelling():
+                    raise
+                if stop_event.is_set():
+                    return
+                logger.error("Worker heartbeat loop was cancelled unexpectedly")
+            except Exception as error:
+                logger.exception(
+                    "Worker heartbeat loop exited unexpectedly: %s",
+                    error,
+                )
+            else:
+                if stop_event.is_set():
+                    return
+                logger.error("Worker heartbeat loop exited unexpectedly")
+            finally:
+                if self._heartbeat_task is heartbeat_task:
+                    self._heartbeat_task = None
+
+            if stop_event.is_set():
+                return
+            logger.warning(
+                "Worker heartbeat loop restarting in %.1f seconds",
+                self.settings.heartbeat_interval_seconds,
+            )
+            await self._wait_or_stop(
+                stop_event,
+                self.settings.heartbeat_interval_seconds,
+            )
 
     async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -108,7 +161,11 @@ class Worker:
                 self.settings.heartbeat_interval_seconds,
             )
 
-    async def _heartbeat_once(self) -> None:
+    async def _heartbeat_once(
+        self,
+        *,
+        sync_skill_capabilities: bool = True,
+    ) -> bool:
         try:
             await self.client.heartbeat(
                 worker_version=self.worker_version,
@@ -117,25 +174,20 @@ class Worker:
         except asyncio.CancelledError:
             raise
         except WorkerApiError as error:
-            self._skill_snapshot_synced = False
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.set_connection(
-                    False,
-                    token_status="invalid" if error.status_code == 401 else None,
-                )
-            logger.warning("Worker heartbeat failed: %s", error)
-            return
+            self._record_heartbeat_failure(
+                error,
+                token_status=(
+                    "invalid" if error.status_code in {401, 403} else None
+                ),
+            )
+            return False
         except Exception as error:
-            self._skill_snapshot_synced = False
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.set_connection(False)
-            logger.warning("Worker heartbeat failed: %s", error)
-            return
+            self._record_heartbeat_failure(error)
+            return False
 
-        if self.local_runtime_state is not None:
-            self.local_runtime_state.set_connection(True, token_status="valid")
-        if self._skill_snapshot_synced:
-            return
+        self._record_heartbeat_success()
+        if not sync_skill_capabilities or self._skill_snapshot_synced:
+            return True
         descriptors = list(self.skill_registry.descriptors())
         business_skill_count = sum(
             descriptor.classification is SkillClassification.BUSINESS
@@ -164,6 +216,52 @@ class Worker:
                     business_count=business_skill_count,
                 )
             logger.warning("Skill capability snapshot sync failed: %s", error)
+        return True
+
+    def _record_heartbeat_failure(
+        self,
+        error: Exception,
+        *,
+        token_status: str | None = None,
+    ) -> None:
+        self._skill_snapshot_synced = False
+        self._heartbeat_consecutive_failures += 1
+        self._set_local_connection(False, token_status=token_status)
+        if (
+            self._heartbeat_consecutive_failures == 1
+            or self._heartbeat_consecutive_failures % 10 == 0
+        ):
+            logger.warning(
+                "Worker heartbeat failed (consecutive=%s): %s",
+                self._heartbeat_consecutive_failures,
+                error,
+            )
+
+    def _record_heartbeat_success(self) -> None:
+        previous_failures = self._heartbeat_consecutive_failures
+        self._heartbeat_consecutive_failures = 0
+        self._set_local_connection(True, token_status="valid")
+        if previous_failures:
+            logger.info(
+                "Worker heartbeat recovered after %s consecutive failure(s)",
+                previous_failures,
+            )
+
+    def _set_local_connection(
+        self,
+        connected: bool,
+        *,
+        token_status: str | None = None,
+    ) -> None:
+        if self.local_runtime_state is None:
+            return
+        try:
+            self.local_runtime_state.set_connection(
+                connected,
+                token_status=token_status,
+            )
+        except Exception as error:
+            logger.warning("Worker runtime status update failed: %s", error)
 
     async def _provider_inventory_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -304,17 +402,7 @@ class Worker:
             await self.client.renew(task.task_id)
 
     async def _send_immediate_heartbeat(self) -> None:
-        try:
-            await self.client.heartbeat(
-                worker_version=self.worker_version,
-                started_at=self.started_at,
-            )
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.set_connection(True, token_status="valid")
-        except Exception as error:
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.set_connection(False)
-            logger.warning("Worker runtime heartbeat failed: %s", error)
+        await self._heartbeat_once(sync_skill_capabilities=False)
 
     @staticmethod
     async def _wait_or_stop(stop_event: asyncio.Event, seconds: float) -> None:

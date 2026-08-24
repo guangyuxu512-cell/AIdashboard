@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -102,6 +103,48 @@ def test_runtime_snapshot_is_atomic_bounded_and_contains_no_secrets(
         "third",
     ]
     assert "must-not-be-snapshotted" not in path.read_text(encoding="utf-8")
+
+
+def test_failed_heartbeat_does_not_advance_last_success_timestamp(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime-status.json"
+    state = LocalRuntimeState(path=path, device_id=uuid4())
+    state.set_connection(True, token_status="valid")
+    successful_at = json.loads(path.read_text("utf-8"))["last_heartbeat_at"]
+
+    state.set_connection(False)
+    failed_payload = json.loads(path.read_text("utf-8"))
+
+    assert failed_payload["connection_status"] == "disconnected"
+    assert failed_payload["last_heartbeat_at"] == successful_at
+
+
+def test_runtime_snapshot_write_failure_is_best_effort_and_recovers(
+    monkeypatch: object,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime-status.json"
+    state = LocalRuntimeState(path=path, device_id=uuid4())
+    original_replace = os.replace
+    attempts = 0
+
+    def flaky_replace(source: object, destination: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("snapshot target is temporarily locked")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", flaky_replace)  # type: ignore[attr-defined]
+
+    state.set_connection(True, token_status="valid")
+    state.set_connection(True, token_status="valid")
+    payload = json.loads(path.read_text("utf-8"))
+
+    assert attempts == 2
+    assert payload["connection_status"] == "connected"
+    assert payload["last_heartbeat_at"] is not None
 
 
 def test_late_provider_event_does_not_reactivate_finished_local_task(

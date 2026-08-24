@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -49,10 +50,11 @@ def test_status_and_diagnostics_render_the_runtime_snapshot_without_token() -> N
     state = {
         "device_display_name": "PC-11",
         "device_id": "device-11",
-        "worker_version": "0.4.1",
+        "worker_version": "0.4.2",
         "connection_status": "connected",
         "token_status": "valid",
         "last_heartbeat_at": "2026-08-23T12:00:00+00:00",
+        "updated_at": "2026-08-23T12:00:00+00:00",
         "skill_sync_status": "synced",
         "skill_count": 5,
         "business_skill_count": 0,
@@ -77,3 +79,52 @@ def test_status_and_diagnostics_render_the_runtime_snapshot_without_token() -> N
     assert diagnostics["token"] == "有效"
     assert diagnostics["skills"] == "已同步"
     assert "ccw_" not in json.dumps({**status, **diagnostics})
+
+
+def test_heartbeat_and_core_health_use_timestamp_freshness() -> None:
+    now = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+    state = {
+        "connection_status": "connected",
+        "token_status": "valid",
+        "last_heartbeat_at": (now - timedelta(seconds=5)).isoformat(),
+        "updated_at": (now - timedelta(seconds=5)).isoformat(),
+    }
+
+    recent = _render_status(state, running=True, now=now)
+    recent_diagnostics = _render_diagnostics(state, running=True, now=now)
+
+    assert recent["connection_status"] == "已连接"
+    assert recent["last_heartbeat"] == "5 秒前"
+    assert recent["worker_status"] == "运行中"
+    assert recent_diagnostics["backend"] == "正常"
+    assert recent_diagnostics["heartbeat"] == "正常 · 5 秒前"
+
+    state["last_heartbeat_at"] = (now - timedelta(seconds=46)).isoformat()
+    stale = _render_status(state, running=True, now=now)
+    stale_diagnostics = _render_diagnostics(state, running=True, now=now)
+
+    assert stale["connection_status"] == "连接异常"
+    assert stale["last_heartbeat"] == "46 秒前"
+    assert stale_diagnostics["backend"] == "异常"
+    assert stale_diagnostics["heartbeat"] == "已过期 · 46 秒前"
+
+    state["last_heartbeat_at"] = now.isoformat()
+    recovered = _render_status(state, running=True, now=now)
+
+    assert recovered["connection_status"] == "已连接"
+    assert recovered["last_heartbeat"] == "刚刚"
+
+
+def test_running_core_with_stale_snapshot_is_reported_as_abnormal() -> None:
+    now = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+    state = {
+        "last_heartbeat_at": now.isoformat(),
+        "updated_at": (now - timedelta(seconds=91)).isoformat(),
+        "token_status": "valid",
+    }
+
+    status = _render_status(state, running=True, now=now)
+    diagnostics = _render_diagnostics(state, running=True, now=now)
+
+    assert status["worker_status"] == "状态异常"
+    assert diagnostics["process"] == "状态异常"

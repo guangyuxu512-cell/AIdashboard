@@ -138,7 +138,7 @@ try {
     $issuedCredential = $null
     $provisionPayload = $null
 
-    $guiProcess = Start-Process -FilePath $workerExecutable -PassThru
+    $guiProcess = Start-Process -FilePath $workerExecutable -WindowStyle Hidden -PassThru
 
     Wait-Condition {
         $runtime = (Invoke-Api 'GET' "/api/v1/devices/$deviceId").worker_runtime
@@ -180,7 +180,7 @@ try {
     $secondPid = [int](Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json).pid
     if ($firstPid -ne $secondPid) { throw 'Single-instance control started a duplicate Worker.' }
 
-    $statusProcess = Start-Process -FilePath $workerExecutable -PassThru
+    $statusProcess = Start-Process -FilePath $workerExecutable -WindowStyle Hidden -PassThru
     Start-Sleep -Seconds 2
     if ($statusProcess.HasExited) { throw 'Packaged Worker status UI exited during startup.' }
     Stop-Process -Id $statusProcess.Id

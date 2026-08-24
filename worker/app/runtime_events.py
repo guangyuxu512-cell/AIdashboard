@@ -182,6 +182,7 @@ class LocalRuntimeState:
         self._recent_events: deque[dict[str, Any]] = deque(maxlen=recent_limit)
         self._finished_task_ids: deque[UUID] = deque(maxlen=100)
         self._finished_task_id_set: set[UUID] = set()
+        self._snapshot_write_failed = False
         self._state: dict[str, Any] = {
             "device_id": str(device_id),
             "device_display_name": device_display_name,
@@ -329,10 +330,24 @@ class LocalRuntimeState:
     def _write(self) -> None:
         self._state["updated_at"] = datetime.now(UTC).isoformat()
         self._state["recent_events"] = list(self._recent_events)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
-        temporary.write_text(
-            json.dumps(self._state, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps(self._state, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            os.replace(temporary, self.path)
+        except OSError as error:
+            if not self._snapshot_write_failed:
+                logger.warning("Local runtime status snapshot write failed: %s", error)
+            self._snapshot_write_failed = True
+        else:
+            if self._snapshot_write_failed:
+                logger.info("Local runtime status snapshot writes recovered")
+            self._snapshot_write_failed = False
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
