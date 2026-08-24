@@ -384,3 +384,21 @@ IPC → typed bridge
 - 错误有处理。
 - 验证通过。
 - 没有无关改动。
+
+---
+
+## 14. 后端业务层级与身份边界（硬规则）
+
+新的管理端业务能力必须遵守：
+
+```text
+API → Service → Repository → Database
+```
+
+- API 只负责 HTTP、DTO、参数解析，以及未来 Authentication / Permission Guard 的插槽；禁止承载核心业务流程、直接完成业务写入或跨 Repository 编排事务。
+- Service 负责业务规则、状态校验、跨 Repository / Domain Service 编排和事务边界。
+- Repository 只负责 Query、Persistence、Lock 与 Pagination；禁止承载权限、UI 语义或跨领域流程。
+- Backend 内部的 Scheduler、Maintenance 和未来 Server Job 也必须调用正式 Service；禁止绕过 Service 直接写业务 Repository 或业务表。
+- Authorization（例如未来 `schedule.manage`）与业务合法性（例如 Device 已停用）必须分离。权限不得进入 Repository，业务合法性不得交给 Frontend 判断。
+- 未来 Data Scope 必须在 API / Query 边界实施；禁止 Backend 返回全量数据后由 Frontend 本地过滤实现数据权限。
+- 员工 User Authentication 与 Worker Device Token 是两套独立 Identity；Worker 不使用员工 JWT，员工管理 API 不使用 Device Token。

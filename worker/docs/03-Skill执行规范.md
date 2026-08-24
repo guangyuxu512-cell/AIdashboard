@@ -216,12 +216,11 @@ B SUCCESS 或 FAILED → 释放槽 → C RUNNING
 
 当前 Backend 使用 `created_at ASC, task_id ASC` 稳定 Claim。同一个 Task 失败不会阻塞后续 Queue。
 
-## 未来 Scheduler 边界（本轮不实现）
+## Scheduler 边界
 
 Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Backend 创建普通 PENDING Task，
 后续仍走 Poll → Claim → Lease → Executor。例如 09:00 同时生成 A/B/C 三个目标 PC-11 的影刀
 Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
 
-后续 Scheduler 阶段仍需正式决定：计划启停、时区、cron/每日时间、错过时间是否补跑、设备离线
-行为、是否允许积压、最大积压量、重复触发幂等、优先级和失败重试。本阶段不新增 scheduled_at、
-schedule plan、cron parser、Scheduler 进程或 UI，也不猜这些默认规则。
+Scheduler V1 的 DAILY、IANA Timezone、COALESCE ONE 和数据库触发幂等全部属于 Backend；
+Worker 0.4.2 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。

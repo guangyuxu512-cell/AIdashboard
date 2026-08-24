@@ -25,6 +25,7 @@ Redis / MinIO 按需求引入。
 | API | 05 |
 | Credential/Session/权限 | 06 + 10 |
 | Task/Worker 通信 | 07 |
+| Scheduler/后台调度 | 07 + 11 |
 | 测试/验证 | 08 |
 | 跨模块重构 | 01 + 02 + 03 + 08 |
 
@@ -101,3 +102,14 @@ DB 访问进入 Repository 或明确的数据访问层。
 AI 是可选分析模块。
 确定性计算先由程序完成。
 AI 不直接修改核心业务事实。
+
+## 11. 业务层级与后台任务（硬规则）
+
+所有新管理能力固定为 `API → Service → Repository → Database`：
+
+- Router 只处理 HTTP Contract、参数和未来 Auth/Permission 依赖，然后调用 Service；不得直接写核心业务表或跨 Repository 编排事务。
+- Service 是业务规则和事务边界的唯一权威，可调用其他正式 Domain Service。
+- Repository 只提供查询、写入、锁、分页等 Persistence 能力，不包含权限、Frontend 文案或跨 Domain 流程。
+- Scheduler、Maintenance 等内部长期任务同样调用正式 Service。例如 Scheduler 必须走 `ScheduleService → TaskService`，不得直接调用 TaskRepository 插入 Task。
+- 未来 Authentication / Permission 插入 API 边界，不要求重写 Service；Data Scope 在 API/Query 边界约束，不允许 Frontend 本地过滤全量数据。
+- User Identity 与 Worker Device Identity 永远分离；Device Token 只认证 Worker，未来员工 JWT 只认证人员管理请求。
