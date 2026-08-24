@@ -123,6 +123,7 @@ describe('device mapper, query and mutation', () => {
       provider: 'yingdao',
       version: '1',
       classification: 'internal',
+      input_schema: null,
       updated_at: '2026-08-23T12:00:00+00:00',
     })
 

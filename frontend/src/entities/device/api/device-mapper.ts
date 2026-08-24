@@ -95,6 +95,7 @@ export function mapDeviceSkillCapabilityDto(
     provider: dto.provider,
     version: dto.version,
     classification: dto.classification,
+    inputSchema: dto.input_schema,
     updatedAtDisplay: formatDateTime(dto.updated_at),
   }
 }

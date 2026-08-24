@@ -17,12 +17,14 @@ withDefaults(
     size?: OverlaySize
     closable?: boolean
     to?: string | HTMLElement
+    bodyContentClass?: string
   }>(),
   {
     title: '',
     size: 'md',
     closable: true,
     to: APP_OVERLAY_HOST_SELECTOR,
+    bodyContentClass: '',
   },
 )
 
@@ -39,7 +41,11 @@ defineEmits<{
     :to="to"
     @update:show="$emit('update:show', $event)"
   >
-    <NDrawerContent :title="title" :closable="closable">
+    <NDrawerContent
+      :title="title"
+      :closable="closable"
+      :body-content-class="bodyContentClass"
+    >
       <template v-if="$slots.header" #header>
         <slot name="header" />
       </template>

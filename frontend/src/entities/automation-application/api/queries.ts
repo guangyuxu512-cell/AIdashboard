@@ -11,13 +11,16 @@ export const automationApplicationQueryKeys = {
 
 export function useAutomationApplicationConfigQuery(
   appId: MaybeRefOrGetter<string | null>,
+  enabled: MaybeRefOrGetter<boolean> = true,
 ) {
   return useQuery({
     queryKey: computed(() =>
       automationApplicationQueryKeys.detail(toValue(appId)),
     ),
     queryFn: () => automationApplicationApi.get(toValue(appId)!),
-    enabled: computed(() => Boolean(toValue(appId))),
+    enabled: computed(
+      () => Boolean(toValue(appId)) && Boolean(toValue(enabled)),
+    ),
   })
 }
 

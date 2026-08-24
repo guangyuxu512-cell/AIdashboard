@@ -13,6 +13,7 @@ import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import { getTimezoneLabel } from '@/shared/utils/timezones'
 import {
   getErrorMessage,
   isInitialQueryError,
@@ -88,6 +89,9 @@ function parameterDisplay(value: unknown): string {
           <NDescriptionsItem label="执行对象">
             {{ schedule.executionName }}
           </NDescriptionsItem>
+          <NDescriptionsItem label="执行类型">
+            {{ schedule.executionTypeDisplay }}
+          </NDescriptionsItem>
           <NDescriptionsItem label="执行设备">
             {{ schedule.deviceName }}
           </NDescriptionsItem>
@@ -95,7 +99,7 @@ function parameterDisplay(value: unknown): string {
             {{ schedule.triggerRuleDisplay }}
           </NDescriptionsItem>
           <NDescriptionsItem label="时区">
-            {{ schedule.timezone }}
+            {{ getTimezoneLabel(schedule.timezone) }}
           </NDescriptionsItem>
           <NDescriptionsItem label="下次执行">
             {{ schedule.nextRunAtDisplay }}
@@ -104,7 +108,7 @@ function parameterDisplay(value: unknown): string {
       </section>
 
       <section>
-        <h3>应用参数</h3>
+        <h3>执行参数</h3>
         <NDescriptions
           v-if="Object.keys(schedule.parameters).length"
           :column="1"
@@ -119,7 +123,7 @@ function parameterDisplay(value: unknown): string {
             {{ parameterDisplay(value) }}
           </NDescriptionsItem>
         </NDescriptions>
-        <EmptyState v-else description="该应用没有配置输入参数" />
+        <EmptyState v-else description="该执行对象没有配置输入参数" />
       </section>
 
       <section>
@@ -154,8 +158,11 @@ function parameterDisplay(value: unknown): string {
       <section>
         <h3>更多信息</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="Application ID">
-            {{ schedule.applicationId }}
+          <NDescriptionsItem
+            v-if="schedule.executionType === 'yingdao_application'"
+            label="Application ID"
+          >
+            {{ schedule.applicationId ?? '—' }}
           </NDescriptionsItem>
           <NDescriptionsItem label="Skill ID">
             {{ schedule.skillId }}

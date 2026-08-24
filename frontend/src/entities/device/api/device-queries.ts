@@ -41,13 +41,16 @@ export function useDeviceWorkerCredentialQuery(
 
 export function useDeviceProviderInventoriesQuery(
   deviceId: MaybeRefOrGetter<string | null>,
+  enabled: MaybeRefOrGetter<boolean> = true,
 ) {
   return useQuery({
     queryKey: computed(() =>
       deviceQueryKeys.providerInventories(toValue(deviceId)),
     ),
     queryFn: () => getYingdaoInventory(toValue(deviceId)!),
-    enabled: computed(() => Boolean(toValue(deviceId))),
+    enabled: computed(
+      () => Boolean(toValue(deviceId)) && Boolean(toValue(enabled)),
+    ),
   })
 }
 

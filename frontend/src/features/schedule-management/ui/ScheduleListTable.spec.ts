@@ -13,6 +13,8 @@ const row: ScheduleListItemViewModel = {
   enabled: true,
   deviceId: 'device-1',
   deviceName: 'PC-11',
+  executionType: 'yingdao_application',
+  executionTypeDisplay: '影刀应用',
   skillId: 'yingdao.app.run',
   executionName: '原子模式单店模式',
   scheduleType: 'daily',

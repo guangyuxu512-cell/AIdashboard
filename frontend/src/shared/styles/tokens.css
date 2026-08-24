@@ -46,6 +46,13 @@
     100dvh - var(--layout-topbar-height) - var(--overlay-viewport-safe-gap) -
       var(--overlay-viewport-safe-gap)
   );
+  --select-menu-max-height: min(
+    280px,
+    calc(
+      100dvh - var(--overlay-viewport-safe-gap) -
+        var(--overlay-viewport-safe-gap)
+    )
+  );
   --drawer-width-sm: 420px;
   --drawer-width-md: 560px;
   --drawer-width-lg: 720px;
@@ -67,7 +74,6 @@
       var(--table-list-row-slot-height) * var(--table-list-page-size) +
       var(--table-divider-width)
   );
-  --task-runtime-log-height: 320px;
 }
 
 :root,

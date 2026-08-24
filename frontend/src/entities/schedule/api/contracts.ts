@@ -1,6 +1,9 @@
 import type { TaskStatusDto } from '@/entities/task'
 
 export type ScheduleTypeDto = 'daily'
+export type ScheduleExecutionTypeDto =
+  | 'yingdao_application'
+  | 'business_skill'
 export type ScheduleRunTriggerResultDto = 'task_created' | 'blocked'
 
 export interface ScheduleRunReadDto {
@@ -21,7 +24,8 @@ export interface ScheduleListItemReadDto {
   enabled: boolean
   target_device_id: string
   device_display_name: string
-  skill_id: 'yingdao.app.run'
+  execution_type: ScheduleExecutionTypeDto
+  skill_id: string
   execution_display_name: string
   schedule_type: ScheduleTypeDto
   local_time: string
@@ -33,14 +37,16 @@ export interface ScheduleListItemReadDto {
 }
 
 export interface ScheduleReadDto extends ScheduleListItemReadDto {
-  application_id: string
+  application_id: string | null
   parameters: Record<string, unknown>
 }
 
 export interface ScheduleCreateDto {
   name: string
   target_device_id: string
-  application_id: string
+  execution_type: ScheduleExecutionTypeDto
+  application_id?: string
+  skill_id?: string
   parameters: Record<string, unknown>
   schedule_type: ScheduleTypeDto
   local_time: string

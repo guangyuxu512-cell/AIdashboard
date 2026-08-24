@@ -150,7 +150,6 @@ test('reuses TaskRuntimeDrawer for pending, running and terminal tasks', async (
   let drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
   await expect(drawer.getByText('待执行', { exact: true })).toBeVisible()
   await expect(drawer.getByText('暂无运行日志')).toBeVisible()
-  await expect(drawer.getByText('—', { exact: true }).first()).toBeVisible()
   await drawer.getByRole('button', { name: '关闭' }).click()
 
   const runningRow = page
@@ -159,7 +158,7 @@ test('reuses TaskRuntimeDrawer for pending, running and terminal tasks', async (
   await runningRow.getByRole('button', { name: '详情' }).click()
   drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
   await expect(drawer.getByText('正在处理第 3 项').first()).toBeVisible()
-  await expect(drawer.getByText('Python', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('3 / 10', { exact: true })).toBeVisible()
   await drawer.getByRole('button', { name: '关闭' }).click()
 
   const failedRow = page
@@ -167,10 +166,9 @@ test('reuses TaskRuntimeDrawer for pending, running and terminal tasks', async (
     .filter({ hasText: '影刀无副作用测试' })
   await failedRow.getByRole('button', { name: '详情' }).click()
   drawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
-  await expect(drawer.getByRole('heading', { name: 'Error' })).toBeVisible()
-  await expect(drawer.locator('pre')).toContainText(
-    'RUNTIME_FAILED · 影刀运行时返回失败',
-  )
+  await expect(drawer.getByRole('heading', { name: '失败原因' })).toBeVisible()
+  await expect(drawer.getByText('影刀运行时返回失败')).toBeVisible()
+  await expect(drawer.getByText('错误码：RUNTIME_FAILED')).toBeVisible()
   await expect(
     drawer.getByText('该任务的历史运行日志已按保留策略清理。').first(),
   ).toBeVisible()

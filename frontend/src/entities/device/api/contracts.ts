@@ -88,6 +88,7 @@ export interface DeviceSkillCapabilityReadDto {
   provider: string | null
   version: string
   classification: 'internal' | 'business' | null
+  input_schema: Record<string, unknown> | null
   updated_at: string
 }
 

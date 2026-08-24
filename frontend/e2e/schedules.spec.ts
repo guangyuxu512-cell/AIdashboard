@@ -78,13 +78,18 @@ test('opens create form with real Device Inventory semantics and saves a mock pl
     .locator('.n-base-select-option')
     .filter({ hasText: '杭州-运营机-01' })
     .click()
-  await dialog.locator('.n-base-selection').nth(1).click()
+  await dialog.locator('.n-base-selection').nth(2).click()
   await page
     .locator('.n-base-select-option')
     .filter({ hasText: '商品发布（Fixture）' })
     .first()
     .click()
-  await expect(dialog.getByText('影刀应用', { exact: true })).toBeVisible()
+  await expect(
+    dialog
+      .locator('.n-base-selection-input__content')
+      .filter({ hasText: '影刀应用' })
+      .first(),
+  ).toBeVisible()
   await expect(
     dialog
       .locator('.n-form-item')
@@ -109,13 +114,63 @@ test('shows schedule detail, history and reuses TaskRuntimeDrawer', async ({
     .getByRole('dialog')
     .filter({ hasText: '每日商品发布（Fixture）' })
 
-  await expect(detail.getByText('Asia/Shanghai')).toBeVisible()
+  await expect(detail.getByText('中国标准时间（上海）')).toBeVisible()
   await expect(detail.getByText('成功', { exact: true })).toBeVisible()
   await expect(detail.getByText('app-fixture-product-publish-1')).toBeVisible()
   await expect(detail.getByText('yingdao.app.run')).toBeVisible()
   await detail.getByRole('button', { name: '运行详情' }).click()
   const runtime = page.getByRole('dialog').filter({ hasText: '运行详情' })
   await expect(runtime.getByText('系统回声验证')).toBeVisible()
+})
+
+test('shows a normal empty state when the selected device has no Business Skill', async ({
+  page,
+}) => {
+  await page.goto('/#/schedules')
+  await page.getByRole('button', { name: '+ 新建计划' }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '新建定时计划' })
+
+  await dialog.locator('.n-base-selection').nth(0).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '杭州-运营机-01' })
+    .click()
+  await dialog.locator('.n-base-selection').nth(1).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '业务 Skill' })
+    .click()
+
+  await expect(
+    dialog.getByText('暂无业务 Skill。当前 Worker 尚未安装业务 Skill。'),
+  ).toBeVisible()
+  await expect(dialog.getByText('加载失败')).toHaveCount(0)
+})
+
+test('keeps the timezone menu inside a 1366×768 viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.goto('/#/schedules')
+  await page.getByRole('button', { name: '+ 新建计划' }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '新建定时计划' })
+  const timezoneField = dialog.locator('.n-form-item').filter({ hasText: '时区' })
+
+  await timezoneField.locator('.n-base-selection').click()
+  const menu = page.locator('.app-select-menu--viewport-safe').last()
+  await expect(menu).toBeVisible()
+
+  const bounds = await menu.boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.y).toBeGreaterThanOrEqual(0)
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(768)
+  const scrollState = await menu.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
+  expect(scrollState.clientHeight).toBeLessThanOrEqual(280)
+  expect(scrollState.scrollHeight).toBeGreaterThanOrEqual(
+    scrollState.clientHeight,
+  )
+  await expect(page.getByText('美国东部时间（纽约）')).toBeAttached()
 })
 
 test('edits, disables, enables and archives a schedule without changing page pattern', async ({

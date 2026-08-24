@@ -1,6 +1,7 @@
 import type { TaskStatusDto } from '@/entities/task'
 
 import type {
+  ScheduleExecutionTypeDto,
   ScheduleRunTriggerResultDto,
   ScheduleTypeDto,
 } from '../api/contracts'
@@ -22,7 +23,9 @@ export interface ScheduleListItemViewModel {
   enabled: boolean
   deviceId: string
   deviceName: string
-  skillId: 'yingdao.app.run'
+  executionType: ScheduleExecutionTypeDto
+  executionTypeDisplay: string
+  skillId: string
   executionName: string
   scheduleType: ScheduleTypeDto
   localTime: string
@@ -38,7 +41,7 @@ export interface ScheduleListItemViewModel {
 }
 
 export interface ScheduleDetailViewModel extends ScheduleListItemViewModel {
-  applicationId: string
+  applicationId: string | null
   parameters: Record<string, unknown>
 }
 
@@ -51,7 +54,9 @@ export interface ScheduleListFilters {
 export interface ScheduleSaveInput {
   name: string
   deviceId: string
-  applicationId: string
+  executionType: ScheduleExecutionTypeDto
+  applicationId: string | null
+  skillId: string | null
   parameters: Record<string, unknown>
   scheduleType: ScheduleTypeDto
   localTime: string

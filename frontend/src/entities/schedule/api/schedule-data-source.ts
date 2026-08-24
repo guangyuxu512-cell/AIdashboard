@@ -53,7 +53,13 @@ function toCreateDto(input: ScheduleSaveInput): ScheduleCreateDto {
   return {
     name: input.name,
     target_device_id: input.deviceId,
-    application_id: input.applicationId,
+    execution_type: input.executionType,
+    ...(input.executionType === 'yingdao_application' && input.applicationId
+      ? { application_id: input.applicationId }
+      : {}),
+    ...(input.executionType === 'business_skill' && input.skillId
+      ? { skill_id: input.skillId }
+      : {}),
     parameters: input.parameters,
     schedule_type: input.scheduleType,
     local_time: input.localTime,
@@ -68,8 +74,14 @@ function toUpdateDto(input: Partial<ScheduleSaveInput>): ScheduleUpdateDto {
     ...(input.deviceId !== undefined
       ? { target_device_id: input.deviceId }
       : {}),
-    ...(input.applicationId !== undefined
+    ...(input.executionType !== undefined
+      ? { execution_type: input.executionType }
+      : {}),
+    ...(input.applicationId !== undefined && input.applicationId !== null
       ? { application_id: input.applicationId }
+      : {}),
+    ...(input.skillId !== undefined && input.skillId !== null
+      ? { skill_id: input.skillId }
       : {}),
     ...(input.parameters !== undefined ? { parameters: input.parameters } : {}),
     ...(input.scheduleType !== undefined
@@ -126,8 +138,15 @@ function createMockScheduleDataSource(): ScheduleDataSource {
         ...toCreateDto(input),
         schedule_id: crypto.randomUUID(),
         device_display_name: input.deviceId,
-        skill_id: 'yingdao.app.run',
-        execution_display_name: input.applicationId,
+        application_id: input.applicationId,
+        skill_id:
+          input.executionType === 'business_skill'
+            ? input.skillId!
+            : 'yingdao.app.run',
+        execution_display_name:
+          input.executionType === 'business_skill'
+            ? input.skillId!
+            : input.applicationId!,
         next_run_at: input.enabled ? now : null,
         latest_run: null,
         created_at: now,
@@ -142,9 +161,18 @@ function createMockScheduleDataSource(): ScheduleDataSource {
       if (dto.name !== undefined) row.name = dto.name
       if (dto.target_device_id !== undefined)
         row.target_device_id = dto.target_device_id
+      if (dto.execution_type !== undefined) {
+        row.execution_type = dto.execution_type
+      }
       if (dto.application_id !== undefined) {
         row.application_id = dto.application_id
+        row.skill_id = 'yingdao.app.run'
         row.execution_display_name = dto.application_id
+      }
+      if (dto.skill_id !== undefined) {
+        row.skill_id = dto.skill_id
+        row.application_id = null
+        row.execution_display_name = dto.skill_id
       }
       if (dto.parameters !== undefined) row.parameters = dto.parameters
       if (dto.schedule_type !== undefined) row.schedule_type = dto.schedule_type

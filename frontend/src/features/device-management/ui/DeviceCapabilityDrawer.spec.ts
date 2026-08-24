@@ -27,6 +27,7 @@ const runSkill: DeviceSkillCapabilityViewModel = {
   provider: 'yingdao',
   version: '1',
   classification: 'internal',
+  inputSchema: null,
   updatedAtDisplay: '2026-08-23 12:00',
 }
 
@@ -37,6 +38,7 @@ const businessSkill: DeviceSkillCapabilityViewModel = {
   runtime: 'python',
   provider: null,
   classification: 'business',
+  inputSchema: null,
 }
 
 const inventory = {

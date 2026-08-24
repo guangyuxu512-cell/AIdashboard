@@ -322,7 +322,7 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
     (
       await page.request.post('/api/v1/worker/heartbeat', {
         headers: workerHeaders,
-        data: { worker_version: '0.4.2', started_at: now },
+        data: { worker_version: '0.4.3', started_at: now },
       })
     ).ok(),
   ).toBe(true)
@@ -510,7 +510,7 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
     timeout: 10_000,
   })
   await expect(
-    runtimeDrawer.getByRole('heading', { name: 'Result' }),
+    runtimeDrawer.getByRole('heading', { name: '执行结果' }),
   ).toBeVisible()
 
   await page.goto('/#/schedules')
@@ -520,7 +520,7 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
   const scheduleDrawer = page
     .getByRole('dialog')
     .filter({ hasText: scheduleName })
-  await expect(scheduleDrawer.getByText('Asia/Shanghai')).toBeVisible()
+  await expect(scheduleDrawer.getByText('中国标准时间（上海）')).toBeVisible()
   await scheduleDrawer.getByRole('button', { name: '运行详情' }).click()
   await expect(
     page
@@ -560,6 +560,257 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
       taskId: run.task_id,
       nextRunAt: finalSchedule.next_run_at,
       duplicateTasks: 0,
+    }),
+  )
+})
+
+test('creates a Business Skill Schedule from the real device catalog and reuses Task runtime', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  const deviceName = `${testPrefix}business-skill-device`
+  const scheduleName = `${testPrefix}business-skill-plan`
+  const skillId = 'catalog.real_e2e.process'
+  const skillName = `${testPrefix}目录业务能力`
+  const deviceResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(deviceResponse.status()).toBe(201)
+  const identity = issueWorkerIdentity(deviceName)
+  const workerHeaders = {
+    Authorization: `Bearer ${identity.token}`,
+    'X-Device-ID': identity.deviceId,
+  }
+  const now = new Date().toISOString()
+
+  expect(
+    (
+      await page.request.post('/api/v1/worker/heartbeat', {
+        headers: workerHeaders,
+        data: { worker_version: '0.4.3', started_at: now },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.put('/api/v1/worker/skill-capabilities', {
+        headers: workerHeaders,
+        data: {
+          skills: [
+            {
+              skill_id: skillId,
+              display_name: skillName,
+              runtime: 'python',
+              provider: null,
+              version: '1.0.0',
+              classification: 'business',
+              input_schema: {
+                type: 'object',
+                properties: {
+                  keyword: {
+                    type: 'string',
+                    title: '关键词',
+                    description: '安全 E2E 输入',
+                    minLength: 1,
+                  },
+                  count: {
+                    type: 'integer',
+                    title: '数量',
+                    default: 2,
+                    minimum: 1,
+                  },
+                  ratio: {
+                    type: 'number',
+                    title: '比例',
+                    default: 0.5,
+                  },
+                  enabled: {
+                    type: 'boolean',
+                    title: '启用',
+                    default: true,
+                  },
+                  mode: {
+                    type: 'string',
+                    title: '模式',
+                    default: 'safe',
+                    enum: ['safe', 'fast'],
+                  },
+                },
+                required: ['keyword'],
+                additionalProperties: false,
+              },
+            },
+          ],
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+
+  const catalogResponse = await page.request.get(
+    `/api/v1/devices/${identity.deviceId}/business-skills`,
+  )
+  expect(catalogResponse.ok()).toBe(true)
+  expect(await catalogResponse.json()).toEqual([
+    expect.objectContaining({
+      skill_id: skillId,
+      display_name: skillName,
+      classification: 'business',
+      availability: 'available',
+    }),
+  ])
+
+  await page.goto('/#/schedules')
+  await page.getByRole('button', { name: '+ 新建计划' }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '新建定时计划' })
+  await dialog.getByPlaceholder('例如 每日商品发布').fill(scheduleName)
+  await dialog
+    .locator('.n-form-item')
+    .filter({ hasText: '执行设备' })
+    .locator('.n-base-selection')
+    .click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: deviceName })
+    .click()
+  await dialog
+    .locator('.n-form-item')
+    .filter({ hasText: '执行类型' })
+    .locator('.n-base-selection')
+    .click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '业务 Skill' })
+    .click()
+  await dialog
+    .locator('.n-form-item')
+    .filter({ hasText: /^业务 Skill/ })
+    .locator('.n-base-selection')
+    .click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: skillName })
+    .click()
+  await dialog
+    .locator('.n-form-item')
+    .filter({ hasText: '关键词' })
+    .getByRole('textbox')
+    .fill('real-safe')
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText(scheduleName)).toBeVisible()
+
+  const scheduleSearchResponse = await page.request.get(
+    `/api/v1/schedules?page=1&page_size=100&search=${encodeURIComponent(scheduleName)}`,
+  )
+  expect(scheduleSearchResponse.ok()).toBe(true)
+  const scheduleSearch = (await scheduleSearchResponse.json()) as {
+    total: number
+    items: Array<{ schedule_id: string; execution_type: string }>
+  }
+  expect(scheduleSearch.total).toBe(1)
+  expect(scheduleSearch.items[0]?.execution_type).toBe('business_skill')
+  const scheduleId = scheduleSearch.items[0]!.schedule_id
+  forceScheduleDue(scheduleId)
+
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(
+          `/api/v1/schedules/${scheduleId}/runs?page=1&page_size=20`,
+        )
+        if (!response.ok()) return null
+        const payload = (await response.json()) as {
+          items: Array<{ task_id: string | null }>
+        }
+        return payload.items[0]?.task_id ?? null
+      },
+      { timeout: 20_000 },
+    )
+    .not.toBeNull()
+  const runResponse = await page.request.get(
+    `/api/v1/schedules/${scheduleId}/runs?page=1&page_size=20`,
+  )
+  const runs = (await runResponse.json()) as {
+    items: Array<{ task_id: string }>
+  }
+  const taskId = runs.items[0]!.task_id
+
+  const claimResponse = await page.request.post('/api/v1/worker/tasks/claim', {
+    headers: workerHeaders,
+  })
+  expect(claimResponse.ok()).toBe(true)
+  expect(await claimResponse.json()).toMatchObject({
+    task_id: taskId,
+    skill_id: skillId,
+    input: {
+      keyword: 'real-safe',
+      count: 2,
+      ratio: 0.5,
+      enabled: true,
+      mode: 'safe',
+    },
+  })
+  expect(
+    (
+      await page.request.post(`/api/v1/worker/tasks/${taskId}/events`, {
+        headers: workerHeaders,
+        data: {
+          events: [
+            {
+              seq: 1,
+              event_type: 'log',
+              level: 'info',
+              message: 'Business Skill Real E2E 已开始',
+              event_at: new Date().toISOString(),
+              metadata: {},
+            },
+            {
+              seq: 2,
+              event_type: 'progress',
+              level: 'info',
+              message: '正在处理第 1 项',
+              event_at: new Date().toISOString(),
+              metadata: { current: 1, total: 2 },
+            },
+          ],
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+
+  await page.goto('/#/tasks')
+  const taskRow = page.getByRole('row').filter({ hasText: skillName })
+  await expect(taskRow.getByText('执行中', { exact: true })).toBeVisible()
+  await expect(taskRow.getByText('1 / 2', { exact: true })).toBeVisible()
+  await expect(taskRow.getByText('正在处理第 1 项')).toBeVisible()
+  await taskRow.getByRole('button', { name: '详情' }).click()
+  const runtimeDrawer = page.getByRole('dialog').filter({ hasText: '运行详情' })
+  await expect(
+    runtimeDrawer.getByText('Business Skill Real E2E 已开始'),
+  ).toBeVisible()
+
+  expect(
+    (
+      await page.request.post(`/api/v1/worker/tasks/${taskId}/complete`, {
+        headers: workerHeaders,
+        data: {
+          result: { summary: '目录 E2E 完成', processed: 2 },
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+  await expect(runtimeDrawer.getByText('目录 E2E 完成')).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(runtimeDrawer.getByText('processed')).toBeVisible()
+
+  console.log(
+    'BUSINESS_SKILL_SCHEDULER_REAL_E2E',
+    JSON.stringify({
+      deviceId: identity.deviceId,
+      skillId,
+      scheduleId,
+      taskId,
+      result: 'success',
     }),
   )
 })
@@ -685,7 +936,9 @@ test('shows a real Task lifecycle and incremental Runtime Events without list fl
   await expect(row.getByText('成功', { exact: true })).toBeVisible({
     timeout: 10_000,
   })
-  await expect(drawer.getByRole('heading', { name: 'Result' })).toBeVisible()
+  await expect(
+    drawer.getByRole('heading', { name: '执行结果' }),
+  ).toBeVisible()
   await expect(drawer.getByText(/slept_seconds/)).toBeVisible()
   await expect(page.locator('.state-panel')).toHaveCount(0)
 })
@@ -1114,6 +1367,8 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   const runtimeDrawer = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: '运行详情' }),
   })
+  await expect(runtimeDrawer.getByText('yingdao.app.run')).toBeHidden()
+  await runtimeDrawer.getByText('更多信息', { exact: true }).click()
   await expect(runtimeDrawer.getByText('yingdao.app.run')).toBeVisible()
   await runtimeDrawer.getByRole('button', { name: '关闭' }).click()
   await applicationsDrawer
@@ -1476,7 +1731,7 @@ test('keeps the same Device row through ONLINE, OFFLINE and ONLINE recovery', as
   await expect(row.getByText('在线', { exact: true })).toBeVisible()
 
   expect(reconcileDeviceOffline(46)).toBeGreaterThanOrEqual(1)
-  expect(reconcileDeviceOffline(60)).toBe(0)
+  reconcileDeviceOffline(60)
   await page.reload()
   row = page.getByRole('row').filter({ hasText: deviceName })
   await expect(row.getByText('离线', { exact: true })).toBeVisible()

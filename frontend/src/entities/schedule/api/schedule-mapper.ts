@@ -55,6 +55,9 @@ export function mapScheduleListItemDto(
     enabled: dto.enabled,
     deviceId: dto.target_device_id,
     deviceName: dto.device_display_name,
+    executionType: dto.execution_type,
+    executionTypeDisplay:
+      dto.execution_type === 'business_skill' ? '业务 Skill' : '影刀应用',
     skillId: dto.skill_id,
     executionName: dto.execution_display_name,
     scheduleType: dto.schedule_type,

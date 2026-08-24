@@ -16,6 +16,7 @@ function skill(
     provider,
     version: '1',
     classification,
+    inputSchema: null,
     updatedAtDisplay: '2026-08-23 12:00',
   }
 }

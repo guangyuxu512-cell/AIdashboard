@@ -98,5 +98,6 @@ export interface DeviceSkillCapabilityViewModel {
   provider: string | null
   version: string
   classification: SkillClassification | null
+  inputSchema: Record<string, unknown> | null
   updatedAtDisplay: string
 }

@@ -15,7 +15,9 @@ describe('mock schedule data source', () => {
     const created = await source.create({
       name: '测试计划',
       deviceId: 'device-fixture-001',
+      executionType: 'yingdao_application',
       applicationId: 'app-fixture-product-publish-1',
+      skillId: null,
       parameters: {},
       scheduleType: 'daily',
       localTime: '10:30',
