@@ -132,6 +132,10 @@ class DeviceSkillCapability(TimestampMixin, Base):
             "classification IS NULL OR classification IN ('internal', 'business')",
             name="classification",
         ),
+        CheckConstraint(
+            "input_schema IS NULL OR jsonb_typeof(input_schema) = 'object'",
+            name="input_schema_object",
+        ),
     )
 
     device_id: Mapped[UUID] = mapped_column(
@@ -145,3 +149,7 @@ class DeviceSkillCapability(TimestampMixin, Base):
     provider_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     skill_version: Mapped[str] = mapped_column(String(64), nullable=False)
     classification: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    input_schema: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True),
+        nullable=True,
+    )

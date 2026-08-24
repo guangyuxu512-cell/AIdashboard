@@ -30,8 +30,7 @@ class Schedule(TimestampMixin, Base):
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
         CheckConstraint("schedule_type IN ('daily')", name="schedule_type"),
         CheckConstraint(
-            "skill_id IN ('system.echo', 'system.sleep', 'yingdao.test', "
-            "'yingdao.discover', 'yingdao.app.run')",
+            "skill_id ~ '^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$'",
             name="skill_id",
         ),
         CheckConstraint(
@@ -72,7 +71,7 @@ class Schedule(TimestampMixin, Base):
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    skill_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
     execution_display_name: Mapped[str] = mapped_column(String(500), nullable=False)
     schedule_type: Mapped[str] = mapped_column(String(16), nullable=False)
     local_time: Mapped[time] = mapped_column(SQLTime(timezone=False), nullable=False)

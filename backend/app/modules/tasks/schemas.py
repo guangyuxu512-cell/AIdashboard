@@ -4,7 +4,12 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.tasks.enums import TaskEventType, TaskSkillId, TaskStatus
+from app.modules.tasks.enums import (
+    TASK_SKILL_ID_MAX_LENGTH,
+    TASK_SKILL_ID_PATTERN,
+    TaskEventType,
+    TaskStatus,
+)
 from app.modules.tasks.models import Task, TaskEvent
 
 
@@ -16,7 +21,11 @@ class TaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_device_id: UUID
-    skill_id: TaskSkillId
+    skill_id: str = Field(
+        min_length=3,
+        max_length=TASK_SKILL_ID_MAX_LENGTH,
+        pattern=TASK_SKILL_ID_PATTERN,
+    )
     input: dict[str, Any]
 
 
@@ -40,7 +49,7 @@ class TaskRead(BaseModel):
 
     task_id: UUID
     target_device_id: UUID
-    skill_id: TaskSkillId
+    skill_id: str
     execution_display_name: str
     status: TaskStatus
     input: dict[str, Any]
@@ -57,7 +66,7 @@ class TaskRead(BaseModel):
 
 class WorkerTaskRead(BaseModel):
     task_id: UUID
-    skill_id: TaskSkillId
+    skill_id: str
     input: dict[str, Any]
     lease_until: datetime
 
@@ -147,7 +156,7 @@ class TaskEventPurgeRead(BaseModel):
 class ActiveTaskSummaryRead(BaseModel):
     task_id: UUID
     target_device_id: UUID
-    skill_id: TaskSkillId
+    skill_id: str
     execution_display_name: str
     status: TaskStatus
     started_at: datetime | None
@@ -164,7 +173,7 @@ class TaskListItemRead(BaseModel):
     task_id: UUID
     target_device_id: UUID
     device_display_name: str
-    skill_id: TaskSkillId
+    skill_id: str
     skill_display_name: str | None
     execution_display_name: str
     status: TaskStatus

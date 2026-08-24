@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.devices.models import Device
 from app.modules.schedules.models import Schedule, ScheduleRun
+from app.modules.schedules.enums import ScheduleExecutionType
 from app.modules.schedules.exceptions import ScheduleNotFoundError
 from app.modules.schedules.repository import ScheduleRepository
 from app.modules.schedules.schemas import ScheduleCreate, ScheduleUpdate
@@ -542,6 +543,184 @@ def test_scheduler_created_task_uses_existing_worker_runtime_lifecycle(
             assert history.items[0].task_status == "success"
             with pytest.raises(ScheduleNotFoundError):
                 service.get(triggered.schedule_id)
+    finally:
+        _cleanup(postgresql_engine, device_id)
+
+
+def test_business_skill_schedule_validates_current_contract_and_uses_task_runtime(
+    postgresql_engine: Engine,
+) -> None:
+    device_id = uuid4()
+    now = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=5)
+    schema = {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "title": "关键词",
+                "minLength": 1,
+            },
+            "limit": {
+                "type": "integer",
+                "title": "数量",
+                "default": 10,
+                "minimum": 1,
+            },
+            "dry_run": {
+                "type": "boolean",
+                "title": "仅验证",
+                "default": True,
+            },
+        },
+        "required": ["keyword"],
+        "additionalProperties": False,
+    }
+    try:
+        with Session(postgresql_engine) as session:
+            session.add(Device(device_id=device_id, display_name="Business Skill 设备"))
+            session.add(
+                DeviceSkillCapability(
+                    device_id=device_id,
+                    skill_id="catalog.fixture.run",
+                    display_name="目录测试能力",
+                    runtime="python",
+                    provider_code=None,
+                    skill_version="1.0.0",
+                    classification="business",
+                    input_schema=schema,
+                ),
+            )
+            session.commit()
+
+        with Session(postgresql_engine) as session:
+            service = ScheduleService(session)
+            created = service.create(
+                ScheduleCreate(
+                    name="业务 Skill 每日计划",
+                    target_device_id=device_id,
+                    execution_type=ScheduleExecutionType.BUSINESS_SKILL,
+                    skill_id="catalog.fixture.run",
+                    parameters={"keyword": "safe"},
+                    local_time=time(9, 30),
+                    timezone="Asia/Shanghai",
+                ),
+                now=now,
+            )
+            assert created.execution_type is ScheduleExecutionType.BUSINESS_SKILL
+            assert created.application_id is None
+            assert created.skill_id == "catalog.fixture.run"
+            assert created.execution_display_name == "目录测试能力"
+            assert created.parameters == {
+                "keyword": "safe",
+                "limit": 10,
+                "dry_run": True,
+            }
+            schedule = session.get(Schedule, created.schedule_id)
+            assert schedule is not None
+            schedule.next_run_at = now
+            session.commit()
+
+        with Session(postgresql_engine) as session:
+            triggered = ScheduleService(session).trigger_next_due(now=now)
+        assert triggered is not None and triggered.task_id is not None
+        principal = WorkerPrincipal(device_id=device_id)
+        with Session(postgresql_engine) as session:
+            claimed = TaskService(session).claim(principal, now=now)
+            assert claimed is not None and claimed.task_id == triggered.task_id
+            assert claimed.input_json == {
+                "keyword": "safe",
+                "limit": 10,
+                "dry_run": True,
+            }
+        with Session(postgresql_engine) as session:
+            accepted = TaskService(session).append_events(
+                principal,
+                triggered.task_id,
+                TaskEventBatchWrite.model_validate(
+                    {
+                        "events": [
+                            {
+                                "seq": 1,
+                                "event_type": "log",
+                                "level": "info",
+                                "message": "开始安全验证",
+                                "event_at": now + timedelta(seconds=1),
+                                "metadata": {},
+                            },
+                            {
+                                "seq": 2,
+                                "event_type": "progress",
+                                "level": "info",
+                                "message": "已处理 1 项",
+                                "event_at": now + timedelta(seconds=2),
+                                "metadata": {"current": 1, "total": 1},
+                            },
+                        ],
+                    },
+                ),
+                now=now + timedelta(seconds=2),
+            )
+            assert accepted.accepted_count == 2
+        with Session(postgresql_engine) as session:
+            completed = TaskService(session).complete(
+                principal,
+                triggered.task_id,
+                TaskComplete(result={"summary": "安全验证完成"}),
+                now=now + timedelta(seconds=3),
+            )
+            assert completed.status == "success"
+
+        skill_removed_at = now + timedelta(days=1)
+        with Session(postgresql_engine) as session:
+            schedule = session.get(Schedule, triggered.schedule_id)
+            capability = session.get(
+                DeviceSkillCapability,
+                (device_id, "catalog.fixture.run"),
+            )
+            assert schedule is not None and capability is not None
+            session.delete(capability)
+            schedule.next_run_at = skill_removed_at
+            session.commit()
+        with Session(postgresql_engine) as session:
+            removed = ScheduleService(session).trigger_next_due(now=skill_removed_at)
+        assert removed is not None and removed.task_id is None
+        with Session(postgresql_engine) as session:
+            run = session.get(ScheduleRun, removed.run_id)
+            assert run is not None
+            assert run.trigger_error_code == "TASK_SKILL_NOT_AVAILABLE"
+
+        schema_changed_at = skill_removed_at + timedelta(days=1)
+        with Session(postgresql_engine) as session:
+            schedule = session.get(Schedule, triggered.schedule_id)
+            assert schedule is not None
+            session.add(
+                DeviceSkillCapability(
+                    device_id=device_id,
+                    skill_id="catalog.fixture.run",
+                    display_name="目录测试能力 V2",
+                    runtime="python",
+                    provider_code=None,
+                    skill_version="2.0.0",
+                    classification="business",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "replacement": {"type": "string"},
+                        },
+                        "required": ["replacement"],
+                        "additionalProperties": False,
+                    },
+                ),
+            )
+            schedule.next_run_at = schema_changed_at
+            session.commit()
+        with Session(postgresql_engine) as session:
+            changed = ScheduleService(session).trigger_next_due(now=schema_changed_at)
+        assert changed is not None and changed.task_id is None
+        with Session(postgresql_engine) as session:
+            run = session.get(ScheduleRun, changed.run_id)
+            assert run is not None
+            assert run.trigger_error_code == "TASK_INPUT_INVALID"
     finally:
         _cleanup(postgresql_engine, device_id)
 

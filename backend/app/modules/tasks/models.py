@@ -30,8 +30,7 @@ class Task(TimestampMixin, Base):
             name="status",
         ),
         CheckConstraint(
-            "skill_id IN ('system.echo', 'system.sleep', 'yingdao.test', "
-            "'yingdao.discover', 'yingdao.app.run')",
+            "skill_id ~ '^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$'",
             name="skill_id",
         ),
         CheckConstraint("jsonb_typeof(input_json) = 'object'", name="input_object"),
@@ -81,7 +80,7 @@ class Task(TimestampMixin, Base):
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    skill_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
     execution_display_name: Mapped[str] = mapped_column(
         String(500),
         nullable=False,

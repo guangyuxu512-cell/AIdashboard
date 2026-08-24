@@ -109,6 +109,7 @@ class FakeWorkerRepository:
                     if skill.classification is not None
                     else None
                 ),
+                input_schema=skill.input_schema,
                 created_at=updated_at,
                 updated_at=updated_at,
             )
@@ -128,6 +129,16 @@ class FakeWorkerRepository:
             ),
             key=lambda capability: capability.skill_id,
         )
+
+    def get_business_skill_capabilities(
+        self,
+        device_id: object,
+    ) -> list[DeviceSkillCapability]:
+        return [
+            capability
+            for capability in self.get_skill_capabilities(device_id)
+            if capability.classification == "business"
+        ]
 
 
 class FakeNotificationService:
@@ -407,6 +418,85 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
     assert [(item.skill_id, item.display_name, item.version) for item in second] == [
         ("system.echo", "System Echo", "2"),
     ]
+
+
+def test_business_skill_catalog_filters_internal_and_reports_schema_state() -> None:
+    device = Device(device_id=uuid4(), display_name="Worker PC", enabled=True)
+    repository = FakeWorkerRepository(device)
+    service = WorkerService(FakeSession(), repository)  # type: ignore[arg-type]
+    principal = WorkerPrincipal(device_id=device.device_id)
+    schema = {
+        "additionalProperties": False,
+        "properties": {
+            "keyword": {
+                "description": "要同步的关键词",
+                "title": "关键词",
+                "type": "string",
+            },
+            "limit": {
+                "default": 10,
+                "title": "数量",
+                "type": "integer",
+            },
+            "dry_run": {
+                "default": True,
+                "title": "仅验证",
+                "type": "boolean",
+            },
+            "mode": {
+                "default": "safe",
+                "enum": ["safe", "fast"],
+                "title": "模式",
+                "type": "string",
+            },
+        },
+        "required": ["keyword"],
+        "title": "RefundSyncInput",
+        "type": "object",
+    }
+    service.sync_skill_capabilities(
+        principal,
+        SkillCapabilitySnapshotUpsert.model_validate(
+            {
+                "skills": [
+                    {
+                        "skill_id": "system.echo",
+                        "display_name": "系统回声",
+                        "runtime": "python",
+                        "provider": None,
+                        "version": "1",
+                        "classification": "internal",
+                    },
+                    {
+                        "skill_id": "refund.sync",
+                        "display_name": "退款同步",
+                        "runtime": "python",
+                        "provider": None,
+                        "version": "2",
+                        "classification": "business",
+                        "input_schema": schema,
+                    },
+                    {
+                        "skill_id": "order.sync",
+                        "display_name": "订单同步",
+                        "runtime": "python",
+                        "provider": None,
+                        "version": "1",
+                        "classification": "business",
+                    },
+                ],
+            },
+        ),
+    )
+
+    catalog = service.get_business_skill_catalog(device.device_id)
+
+    assert [item.skill_id for item in catalog] == ["order.sync", "refund.sync"]
+    assert catalog[0].availability == "schema_unavailable"
+    assert catalog[0].input_schema is None
+    assert catalog[1].availability == "available"
+    assert catalog[1].input_schema == schema
+    assert all(item.classification == "business" for item in catalog)
 
 
 def test_legacy_snapshot_only_classifies_known_internal_skills() -> None:

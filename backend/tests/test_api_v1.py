@@ -18,7 +18,9 @@ from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.schedules.api import get_schedule_service
 from app.modules.schedules.exceptions import ScheduleNotFoundError
+from app.modules.schedules.enums import ScheduleExecutionType
 from app.modules.schedules.schemas import (
+    ScheduleCreate,
     ScheduleListItemRead,
     ScheduleRead,
     ScheduleRunRead,
@@ -35,7 +37,10 @@ from app.shared.pagination import Page
 from app.modules.users.api import get_user_service
 from app.modules.users.models import User
 from app.modules.workers.enums import WorkerConnectionStatus
-from app.modules.workers.schemas import DeviceRuntimeRead
+from app.modules.workers.schemas import (
+    BusinessSkillCatalogItemRead,
+    DeviceRuntimeRead,
+)
 
 
 SHOP_ID = uuid4()
@@ -172,6 +177,32 @@ class ApiWorkerService:
             for device_id in device_ids
         }
 
+    def get_business_skill_catalog(
+        self,
+        device_id: UUID,
+    ) -> list[BusinessSkillCatalogItemRead]:
+        now = datetime.now(UTC)
+        return [
+            BusinessSkillCatalogItemRead(
+                device_id=device_id,
+                skill_id="catalog.fixture.run",
+                display_name="目录测试能力",
+                runtime="python",
+                provider=None,
+                version="1.0.0",
+                classification="business",
+                input_schema={
+                    "type": "object",
+                    "properties": {"keyword": {"type": "string"}},
+                    "required": ["keyword"],
+                    "additionalProperties": False,
+                },
+                availability="available",
+                unavailable_reason=None,
+                updated_at=now,
+            ),
+        ]
+
 
 class ApiUserService:
     def list(self, *, offset: int, limit: int) -> tuple[list[User], int]:
@@ -238,6 +269,8 @@ class ApiTaskService:
 
 
 class ApiScheduleService:
+    last_create_data: ScheduleCreate | None = None
+
     @staticmethod
     def _read() -> ScheduleRead:
         now = datetime.now(UTC)
@@ -247,6 +280,7 @@ class ApiScheduleService:
             enabled=True,
             target_device_id=DEVICE_ID,
             device_display_name="API 设备",
+            execution_type="yingdao_application",
             skill_id="yingdao.app.run",
             execution_display_name="API 影刀应用",
             schedule_type="daily",
@@ -260,8 +294,18 @@ class ApiScheduleService:
             parameters={"keyword": "safe"},
         )
 
-    def create(self, data: object) -> ScheduleRead:
-        del data
+    def create(self, data: ScheduleCreate) -> ScheduleRead:
+        type(self).last_create_data = data
+        if data.execution_type == "business_skill":
+            return self._read().model_copy(
+                update={
+                    "execution_type": ScheduleExecutionType.BUSINESS_SKILL,
+                    "application_id": None,
+                    "skill_id": data.skill_id,
+                    "execution_display_name": "目录测试能力",
+                    "parameters": data.parameters,
+                },
+            )
         return self._read()
 
     def list_management(self, **kwargs: object) -> Page[ScheduleListItemRead]:
@@ -381,6 +425,17 @@ def test_offline_device_is_a_successful_list_item() -> None:
     assert item["worker_runtime"]["last_seen_at"] is not None
 
 
+def test_device_business_skill_catalog_contract() -> None:
+    response = request("GET", f"/api/v1/devices/{DEVICE_ID}/business-skills")
+
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert item["skill_id"] == "catalog.fixture.run"
+    assert item["classification"] == "business"
+    assert item["availability"] == "available"
+    assert item["input_schema"]["required"] == ["keyword"]
+
+
 def test_task_center_list_contract() -> None:
     response = request(
         "GET",
@@ -434,6 +489,31 @@ def test_schedule_management_api_contract() -> None:
     assert update_response.status_code == 200
     assert runs_response.json()["items"][0]["task_status"] == "success"
     assert remove_response.status_code == 204
+
+
+def test_schedule_api_accepts_business_skill_target() -> None:
+    response = request(
+        "POST",
+        "/api/v1/schedules",
+        json={
+            "name": "API 业务 Skill 计划",
+            "target_device_id": str(DEVICE_ID),
+            "execution_type": "business_skill",
+            "skill_id": "catalog.fixture.run",
+            "parameters": {"keyword": "safe"},
+            "schedule_type": "daily",
+            "local_time": "09:30",
+            "timezone": "Asia/Shanghai",
+            "enabled": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["execution_type"] == "business_skill"
+    assert response.json()["application_id"] is None
+    assert response.json()["skill_id"] == "catalog.fixture.run"
+    assert ApiScheduleService.last_create_data is not None
+    assert ApiScheduleService.last_create_data.parameters == {"keyword": "safe"}
 
 
 def test_schedule_api_rejects_cron_and_unknown_timezone() -> None:

@@ -3,6 +3,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.tasks.enums import TaskSkillId
+from app.modules.workers.business_skill_schema import (
+    normalize_business_skill_input,
+)
 
 
 class EchoSkillInput(BaseModel):
@@ -42,7 +45,22 @@ SKILL_INPUT_MODELS: dict[TaskSkillId, type[BaseModel]] = {
 
 
 def validate_skill_input(
-    skill_id: TaskSkillId,
+    skill_id: str | TaskSkillId,
     value: dict[str, Any],
+    *,
+    classification: str | None = None,
+    input_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return SKILL_INPUT_MODELS[skill_id].model_validate(value).model_dump(mode="json")
+    try:
+        known_skill_id = TaskSkillId(skill_id)
+    except ValueError:
+        known_skill_id = None
+    if known_skill_id is not None:
+        return (
+            SKILL_INPUT_MODELS[known_skill_id]
+            .model_validate(value)
+            .model_dump(mode="json")
+        )
+    if classification == "business":
+        return normalize_business_skill_input(input_schema, value)
+    return normalize_business_skill_input(None, value)

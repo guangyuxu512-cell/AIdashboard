@@ -142,6 +142,19 @@ Descriptor 固定包含
 Backend 永远只保存 Token Hash。Frontend 不提供旧 Token 读取；明文只在签发/轮换的短生命
 周期 Dialog 中存在，不进入 Query Cache。
 
+## Business Skill Catalog API
+
+- `GET /api/v1/devices/{device_id}/business-skills`：返回指定 Device 最近一次 Worker Snapshot 中
+  `classification=business` 的 Skill Catalog；Internal Skill 不进入该接口。
+- Catalog 项至少包含稳定 Skill ID、显示名、版本、Runtime、Provider、分类、可用性状态和经
+  Backend 规范化的 Input Schema。它不返回 Python 源码、安装包或动态执行入口。
+- `input_schema` 唯一来源是 Worker Business Skill 的 Pydantic Input Model。旧 Worker 未上报
+  Schema 时正常返回 `schema_unavailable`，不得 500；复杂或超出支持边界的 Schema 返回
+  `schema_unsupported`。调用方不得自行猜参数。
+
+Catalog 是 Device Scope：不同设备可以拥有不同 Business Skill 和版本。它只表达最后已知能力；
+Device 是否在线、启用以及 Task 是否可创建仍由 Task Guard 在保存和触发时判断。
+
 ## Notification Channel API
 
 - `GET/POST /api/v1/notification-channels`

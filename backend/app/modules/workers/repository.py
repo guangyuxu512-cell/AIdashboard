@@ -225,6 +225,7 @@ class WorkerRepository:
                         if skill.classification is not None
                         else None
                     ),
+                    "input_schema": skill.input_schema,
                     "updated_at": updated_at,
                 }
                 for skill in skills
@@ -244,6 +245,7 @@ class WorkerRepository:
                         statement.excluded.classification,
                         DeviceSkillCapability.classification,
                     ),
+                    "input_schema": statement.excluded.input_schema,
                     "updated_at": statement.excluded.updated_at,
                 },
             )
@@ -259,5 +261,22 @@ class WorkerRepository:
             select(DeviceSkillCapability)
             .where(DeviceSkillCapability.device_id == device_id)
             .order_by(DeviceSkillCapability.skill_id.asc())
+        )
+        return list(self.session.scalars(statement))
+
+    def get_business_skill_capabilities(
+        self,
+        device_id: UUID,
+    ) -> list[DeviceSkillCapability]:
+        statement = (
+            select(DeviceSkillCapability)
+            .where(
+                DeviceSkillCapability.device_id == device_id,
+                DeviceSkillCapability.classification == "business",
+            )
+            .order_by(
+                DeviceSkillCapability.display_name.asc(),
+                DeviceSkillCapability.skill_id.asc(),
+            )
         )
         return list(self.session.scalars(statement))

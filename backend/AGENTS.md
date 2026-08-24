@@ -111,5 +111,6 @@ AI 不直接修改核心业务事实。
 - Service 是业务规则和事务边界的唯一权威，可调用其他正式 Domain Service。
 - Repository 只提供查询、写入、锁、分页等 Persistence 能力，不包含权限、Frontend 文案或跨 Domain 流程。
 - Scheduler、Maintenance 等内部长期任务同样调用正式 Service。例如 Scheduler 必须走 `ScheduleService → TaskService`，不得直接调用 TaskRepository 插入 Task。
+- Skill Catalog 是 Business Skill 元数据读取边界；Scheduler、AI、Frontend 不得自行猜测 Skill 参数，必须消费由 Worker Input Model 生成并经 Backend 校验的正式 Schema。
 - 未来 Authentication / Permission 插入 API 边界，不要求重写 Service；Data Scope 在 API/Query 边界约束，不允许 Frontend 本地过滤全量数据。
 - User Identity 与 Worker Device Identity 永远分离；Device Token 只认证 Worker，未来员工 JWT 只认证人员管理请求。

@@ -5,7 +5,11 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
-from app.modules.schedules.enums import ScheduleRunTriggerResult, ScheduleType
+from app.modules.schedules.enums import (
+    ScheduleExecutionType,
+    ScheduleRunTriggerResult,
+    ScheduleType,
+)
 from app.modules.schedules.exceptions import ScheduleNotFoundError
 from app.modules.schedules.models import Schedule, ScheduleRun
 from app.modules.schedules.repository import (
@@ -26,6 +30,7 @@ from app.modules.schedules.time_rules import (
     next_daily_occurrence,
 )
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
+from app.modules.tasks.exceptions import TaskInputInvalidError
 from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
 from app.shared.pagination import Page
@@ -49,9 +54,11 @@ class ScheduleService:
         now: datetime | None = None,
     ) -> ScheduleRead:
         current_time = now or datetime.now(UTC)
-        task_data = _yingdao_task_create(
+        task_data = _task_create(
             target_device_id=data.target_device_id,
+            execution_type=data.execution_type,
             application_id=data.application_id,
+            skill_id=data.skill_id,
             parameters=data.parameters,
         )
         prepared = self.task_service.prepare_scheduled_task(task_data)
@@ -59,7 +66,7 @@ class ScheduleService:
             name=data.name,
             enabled=data.enabled,
             target_device_id=data.target_device_id,
-            skill_id=task_data.skill_id.value,
+            skill_id=task_data.skill_id,
             execution_display_name=prepared.execution_display_name,
             schedule_type=data.schedule_type.value,
             local_time=data.local_time,
@@ -102,19 +109,48 @@ class ScheduleService:
                 "target_device_id",
                 schedule.target_device_id,
             )
-            existing_input = schedule.task_input_json
-            application_id = values.get("application_id", existing_input["app_id"])
-            parameters = values.get("parameters", existing_input.get("params", {}))
-            task_data = _yingdao_task_create(
+            current_execution_type = _execution_type_for_skill(schedule.skill_id)
+            execution_type = values.get(
+                "execution_type",
+                current_execution_type,
+            )
+            if execution_type is ScheduleExecutionType.YINGDAO_APPLICATION:
+                application_id = values.get("application_id")
+                if application_id is None and current_execution_type is execution_type:
+                    application_id = str(schedule.task_input_json["app_id"])
+                if application_id is None:
+                    raise TaskInputInvalidError("请选择影刀应用")
+                skill_id = None
+                existing_parameters = (
+                    schedule.task_input_json.get("params", {})
+                    if current_execution_type is execution_type
+                    else {}
+                )
+            else:
+                skill_id = values.get("skill_id")
+                if skill_id is None and current_execution_type is execution_type:
+                    skill_id = schedule.skill_id
+                if skill_id is None:
+                    raise TaskInputInvalidError("请选择业务 Skill")
+                application_id = None
+                existing_parameters = (
+                    schedule.task_input_json
+                    if current_execution_type is execution_type
+                    else {}
+                )
+            parameters = values.get("parameters", existing_parameters)
+            task_data = _task_create(
                 target_device_id=target_device_id,
+                execution_type=execution_type,
                 application_id=application_id,
+                skill_id=skill_id,
                 parameters=parameters,
             )
             prepared = self.task_service.prepare_scheduled_task(task_data)
 
             schedule.name = values.get("name", schedule.name)
             schedule.target_device_id = target_device_id
-            schedule.skill_id = task_data.skill_id.value
+            schedule.skill_id = task_data.skill_id
             schedule.execution_display_name = prepared.execution_display_name
             schedule.schedule_type = values.get(
                 "schedule_type",
@@ -233,7 +269,7 @@ class ScheduleService:
             task = self.task_service.create_for_schedule(
                 TaskCreate(
                     target_device_id=schedule.target_device_id,
-                    skill_id=TaskSkillId(schedule.skill_id),
+                    skill_id=schedule.skill_id,
                     input=schedule.task_input_json,
                 ),
             )
@@ -256,12 +292,24 @@ class ScheduleService:
         )
 
 
-def _yingdao_task_create(
+def _task_create(
     *,
     target_device_id: UUID,
-    application_id: str,
+    execution_type: ScheduleExecutionType,
+    application_id: str | None,
+    skill_id: str | None,
     parameters: dict[str, Any],
 ) -> TaskCreate:
+    if execution_type is ScheduleExecutionType.BUSINESS_SKILL:
+        if skill_id is None:
+            raise TaskInputInvalidError("请选择业务 Skill")
+        return TaskCreate(
+            target_device_id=target_device_id,
+            skill_id=skill_id,
+            input=parameters,
+        )
+    if application_id is None:
+        raise TaskInputInvalidError("请选择影刀应用")
     return TaskCreate(
         target_device_id=target_device_id,
         skill_id=TaskSkillId.YINGDAO_APP_RUN,
@@ -271,10 +319,19 @@ def _yingdao_task_create(
 
 def _schedule_to_read(record: ScheduleListRecord) -> ScheduleRead:
     schedule = record.schedule
+    execution_type = _execution_type_for_skill(schedule.skill_id)
     return ScheduleRead(
         **_schedule_list_values(record),
-        application_id=str(schedule.task_input_json["app_id"]),
-        parameters=dict(schedule.task_input_json.get("params", {})),
+        application_id=(
+            str(schedule.task_input_json["app_id"])
+            if execution_type is ScheduleExecutionType.YINGDAO_APPLICATION
+            else None
+        ),
+        parameters=(
+            dict(schedule.task_input_json.get("params", {}))
+            if execution_type is ScheduleExecutionType.YINGDAO_APPLICATION
+            else dict(schedule.task_input_json)
+        ),
     )
 
 
@@ -290,7 +347,8 @@ def _schedule_list_values(record: ScheduleListRecord) -> dict[str, Any]:
         "enabled": schedule.enabled,
         "target_device_id": schedule.target_device_id,
         "device_display_name": record.device_display_name,
-        "skill_id": TaskSkillId(schedule.skill_id),
+        "execution_type": _execution_type_for_skill(schedule.skill_id),
+        "skill_id": schedule.skill_id,
         "execution_display_name": schedule.execution_display_name,
         "schedule_type": ScheduleType(schedule.schedule_type),
         "local_time": schedule.local_time,
@@ -320,4 +378,12 @@ def _schedule_run_to_read(record: ScheduleRunRecord) -> ScheduleRunRead:
         trigger_error_code=run.trigger_error_code,
         trigger_error_message=run.trigger_error_message,
         created_at=run.created_at,
+    )
+
+
+def _execution_type_for_skill(skill_id: str) -> ScheduleExecutionType:
+    return (
+        ScheduleExecutionType.YINGDAO_APPLICATION
+        if skill_id == TaskSkillId.YINGDAO_APP_RUN
+        else ScheduleExecutionType.BUSINESS_SKILL
     )

@@ -10,6 +10,7 @@ from app.modules.devices.schemas import DeviceCreate, DeviceRead, DeviceUpdate
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
 from app.modules.workers.schemas import (
+    BusinessSkillCatalogItemRead,
     DeviceProviderInventoryRead,
     DeviceRuntimeRead,
     DeviceSkillCapabilityRead,
@@ -107,6 +108,19 @@ def get_device_skill_capabilities(
 ) -> list[DeviceSkillCapabilityRead]:
     service.get(device_id)
     return worker_service.get_skill_capability_reads(device_id)
+
+
+@router.get(
+    "/{device_id}/business-skills",
+    response_model=list[BusinessSkillCatalogItemRead],
+)
+def get_device_business_skills(
+    device_id: UUID,
+    service: Annotated[DeviceService, Depends(get_device_service)],
+    worker_service: Annotated[WorkerService, Depends(get_worker_service)],
+) -> list[BusinessSkillCatalogItemRead]:
+    service.get(device_id)
+    return worker_service.get_business_skill_catalog(device_id)
 
 
 @router.get(

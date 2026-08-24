@@ -1,6 +1,10 @@
 from enum import StrEnum
 
 
+TASK_SKILL_ID_MAX_LENGTH = 200
+TASK_SKILL_ID_PATTERN = r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$"
+
+
 class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"

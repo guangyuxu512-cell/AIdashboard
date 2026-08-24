@@ -400,3 +400,32 @@ def test_scheduler_v1_migration(monkeypatch: object) -> None:
         ("drop_table", "schedule_runs"),
         ("drop_table", "schedules"),
     ]
+
+
+def test_business_skill_catalog_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260825_0017_business_skill_catalog",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert ("add_column", "device_skill_capabilities") in recorder.calls
+    assert (
+        "create_check_constraint",
+        "ck_device_skill_capabilities_input_schema_object",
+    ) in recorder.calls
+    assert recorder.calls.count(("alter_column", "tasks")) == 1
+    assert recorder.calls.count(("alter_column", "schedules")) == 1
+    assert recorder.calls.count(("drop_constraint", "ck_tasks_skill_id")) == 1
+    assert recorder.calls.count(("drop_constraint", "ck_schedules_skill_id")) == 1
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls.count(("alter_column", "tasks")) == 1
+    assert recorder.calls.count(("alter_column", "schedules")) == 1
+    assert (
+        "drop_constraint",
+        "ck_device_skill_capabilities_input_schema_object",
+    ) in recorder.calls
+    assert ("drop_column", "device_skill_capabilities") in recorder.calls

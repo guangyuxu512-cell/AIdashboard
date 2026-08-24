@@ -4,9 +4,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.modules.schedules.enums import ScheduleRunTriggerResult, ScheduleType
+from app.modules.schedules.enums import (
+    ScheduleExecutionType,
+    ScheduleRunTriggerResult,
+    ScheduleType,
+)
 from app.modules.schedules.time_rules import get_schedule_timezone
-from app.modules.tasks.enums import TaskSkillId, TaskStatus
+from app.modules.tasks.enums import (
+    TASK_SKILL_ID_MAX_LENGTH,
+    TASK_SKILL_ID_PATTERN,
+    TaskStatus,
+)
 
 
 class ScheduleCreate(BaseModel):
@@ -14,12 +22,30 @@ class ScheduleCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     target_device_id: UUID
-    application_id: str = Field(min_length=1, max_length=200)
+    execution_type: ScheduleExecutionType = (
+        ScheduleExecutionType.YINGDAO_APPLICATION
+    )
+    application_id: str | None = Field(default=None, min_length=1, max_length=200)
+    skill_id: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=TASK_SKILL_ID_MAX_LENGTH,
+        pattern=TASK_SKILL_ID_PATTERN,
+    )
     parameters: dict[str, Any] = Field(default_factory=dict)
     schedule_type: ScheduleType = ScheduleType.DAILY
     local_time: time
     timezone: str = Field(min_length=1, max_length=100)
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def validate_execution_target(self) -> "ScheduleCreate":
+        if self.execution_type is ScheduleExecutionType.YINGDAO_APPLICATION:
+            if self.application_id is None or self.skill_id is not None:
+                raise ValueError("Yingdao schedules require only application_id")
+        elif self.skill_id is None or self.application_id is not None:
+            raise ValueError("Business Skill schedules require only skill_id")
+        return self
 
     @field_validator("local_time")
     @classmethod
@@ -40,7 +66,14 @@ class ScheduleUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     target_device_id: UUID | None = None
+    execution_type: ScheduleExecutionType | None = None
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
+    skill_id: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=TASK_SKILL_ID_MAX_LENGTH,
+        pattern=TASK_SKILL_ID_PATTERN,
+    )
     parameters: dict[str, Any] | None = None
     schedule_type: ScheduleType | None = None
     local_time: time | None = None
@@ -70,6 +103,16 @@ class ScheduleUpdate(BaseModel):
         for field_name in self.model_fields_set:
             if getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
+        if "application_id" in self.model_fields_set and "skill_id" in self.model_fields_set:
+            raise ValueError("application_id and skill_id cannot be updated together")
+        if self.execution_type is ScheduleExecutionType.YINGDAO_APPLICATION and (
+            "skill_id" in self.model_fields_set
+        ):
+            raise ValueError("Yingdao schedules cannot select a Business Skill")
+        if self.execution_type is ScheduleExecutionType.BUSINESS_SKILL and (
+            "application_id" in self.model_fields_set
+        ):
+            raise ValueError("Business Skill schedules cannot select an application")
         return self
 
 
@@ -91,7 +134,8 @@ class ScheduleListItemRead(BaseModel):
     enabled: bool
     target_device_id: UUID
     device_display_name: str
-    skill_id: TaskSkillId
+    execution_type: ScheduleExecutionType
+    skill_id: str
     execution_display_name: str
     schedule_type: ScheduleType
     local_time: time
@@ -103,7 +147,7 @@ class ScheduleListItemRead(BaseModel):
 
 
 class ScheduleRead(ScheduleListItemRead):
-    application_id: str
+    application_id: str | None
     parameters: dict[str, Any]
 
 

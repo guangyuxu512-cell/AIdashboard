@@ -12,7 +12,9 @@ from app.modules.tasks.exceptions import (
     TaskProviderLoginRequiredError,
     TaskProviderNotReadyError,
     TaskProviderVersionUnsupportedError,
+    TaskInputInvalidError,
     TaskSkillNotAvailableError,
+    TaskSkillSchemaUnavailableError,
     TaskWorkerOfflineError,
 )
 from app.modules.tasks.schemas import TaskCreate
@@ -101,6 +103,8 @@ def capability(
     *,
     runtime: str = "python",
     provider: str | None = None,
+    classification: str = "internal",
+    input_schema: dict[str, object] | None = None,
 ) -> DeviceSkillCapability:
     return DeviceSkillCapability(
         device_id=device.device_id,
@@ -109,7 +113,8 @@ def capability(
         runtime=runtime,
         provider_code=provider,
         skill_version="1",
-        classification="internal",
+        classification=classification,
+        input_schema=input_schema,
     )
 
 
@@ -302,3 +307,109 @@ def test_discovery_skill_does_not_require_ready_provider() -> None:
         ),
     )
     assert task.skill_id == "yingdao.discover"
+
+
+def test_business_skill_uses_current_device_schema_and_applies_defaults() -> None:
+    device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
+    skill = capability(
+        device,
+        "refund.sync",
+        classification="business",
+        input_schema={
+            "additionalProperties": False,
+            "properties": {
+                "keyword": {"title": "关键词", "type": "string"},
+                "limit": {"default": 10, "title": "数量", "type": "integer"},
+                "ratio": {"default": 0.5, "title": "比例", "type": "number"},
+                "dry_run": {
+                    "default": True,
+                    "title": "仅验证",
+                    "type": "boolean",
+                },
+                "mode": {
+                    "default": "safe",
+                    "enum": ["safe", "fast"],
+                    "title": "模式",
+                    "type": "string",
+                },
+            },
+            "required": ["keyword"],
+            "title": "RefundSyncInput",
+            "type": "object",
+        },
+    )
+
+    task = service_for(device, [skill]).create(
+        TaskCreate(
+            target_device_id=device.device_id,
+            skill_id="refund.sync",
+            input={"keyword": "退款"},
+        ),
+    )
+
+    assert task.execution_display_name == "refund.sync"
+    assert task.input_json == {
+        "keyword": "退款",
+        "limit": 10,
+        "ratio": 0.5,
+        "dry_run": True,
+        "mode": "safe",
+    }
+
+
+def test_business_skill_rejects_invalid_input_and_unusable_schema() -> None:
+    device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
+    schema = {
+        "additionalProperties": False,
+        "properties": {
+            "keyword": {"title": "关键词", "type": "string"},
+        },
+        "required": ["keyword"],
+        "title": "RefundSyncInput",
+        "type": "object",
+    }
+    request = TaskCreate(
+        target_device_id=device.device_id,
+        skill_id="refund.sync",
+        input={},
+    )
+
+    with pytest.raises(TaskInputInvalidError):
+        service_for(
+            device,
+            [
+                capability(
+                    device,
+                    "refund.sync",
+                    classification="business",
+                    input_schema=schema,
+                ),
+            ],
+        ).create(request)
+
+    with pytest.raises(TaskSkillSchemaUnavailableError):
+        service_for(
+            device,
+            [capability(device, "refund.sync", classification="business")],
+        ).create(request)
+
+    with pytest.raises(TaskSkillSchemaUnavailableError):
+        service_for(
+            device,
+            [
+                capability(
+                    device,
+                    "refund.sync",
+                    classification="business",
+                    input_schema={
+                        "additionalProperties": False,
+                        "properties": {
+                            "items": {"title": "项目", "type": "array"},
+                        },
+                        "required": [],
+                        "title": "UnsupportedInput",
+                        "type": "object",
+                    },
+                ),
+            ],
+        ).create(request)

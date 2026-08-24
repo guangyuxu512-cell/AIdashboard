@@ -43,6 +43,12 @@ class TaskSkillNotAvailableError(AppError):
     status_code = 422
 
 
+class TaskSkillSchemaUnavailableError(AppError):
+    code = "TASK_SKILL_SCHEMA_UNAVAILABLE"
+    message = "目标设备未提供可用的业务 Skill 输入契约"
+    status_code = 422
+
+
 class TaskProviderNotReadyError(AppError):
     code = "TASK_PROVIDER_NOT_READY"
     message = "目标设备的 Provider 尚未就绪"

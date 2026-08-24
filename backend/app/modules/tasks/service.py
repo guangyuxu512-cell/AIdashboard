@@ -25,6 +25,7 @@ from app.modules.tasks.exceptions import (
     TaskProviderNotReadyError,
     TaskProviderVersionUnsupportedError,
     TaskSkillNotAvailableError,
+    TaskSkillSchemaUnavailableError,
     TaskStateConflictError,
     TaskTargetDeviceInvalidError,
     TaskWorkerOfflineError,
@@ -46,6 +47,11 @@ from app.modules.tasks.schemas import (
 )
 from app.modules.tasks.skill_contracts import validate_skill_input
 from app.modules.workers.models import DeviceSkillCapability
+from app.modules.workers.business_skill_schema import (
+    BusinessSkillInputValidationError,
+    BusinessSkillSchemaUnavailableError,
+    BusinessSkillSchemaUnsupportedError,
+)
 from app.modules.workers.schemas import YingdaoProviderInventory
 from app.modules.workers.service import WorkerPrincipal
 from app.shared.pagination import Page
@@ -108,7 +114,7 @@ class TaskService:
         )
         task = Task(
             target_device_id=data.target_device_id,
-            skill_id=data.skill_id.value,
+            skill_id=data.skill_id,
             execution_display_name=prepared.execution_display_name,
             status=TaskStatus.PENDING.value,
             input_json=prepared.input_json,
@@ -133,24 +139,38 @@ class TaskService:
                 raise TaskWorkerOfflineError()
         capability = self.repository.get_skill_capability(
             data.target_device_id,
-            data.skill_id.value,
+            data.skill_id,
         )
         if capability is None:
             raise TaskSkillNotAvailableError(
-                details={"skill_id": data.skill_id.value},
+                details={"skill_id": data.skill_id},
             )
         provider_inventory = self._validate_provider_dependency(
             data.target_device_id,
             capability,
         )
         try:
-            input_json = validate_skill_input(data.skill_id, data.input)
+            input_json = validate_skill_input(
+                data.skill_id,
+                data.input,
+                classification=capability.classification,
+                input_schema=capability.input_schema,
+            )
         except ValidationError as error:
             raise TaskInputInvalidError(
                 details=error.errors(include_input=False),
             ) from error
+        except BusinessSkillInputValidationError as error:
+            raise TaskInputInvalidError(str(error)) from error
+        except (
+            BusinessSkillSchemaUnavailableError,
+            BusinessSkillSchemaUnsupportedError,
+        ) as error:
+            raise TaskSkillSchemaUnavailableError(
+                details={"skill_id": data.skill_id, "reason": str(error)},
+            ) from error
         execution_display_name = capability.display_name
-        if data.skill_id is TaskSkillId.YINGDAO_APP_RUN:
+        if data.skill_id == TaskSkillId.YINGDAO_APP_RUN:
             input_json, execution_display_name = self._validate_yingdao_application_run(
                 input_json,
                 provider_inventory,

@@ -22,6 +22,7 @@ from app.modules.workers.models import (
 )
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.schemas import (
+    BusinessSkillCatalogItemRead,
     DeviceProviderInventoryRead,
     DeviceRuntimeRead,
     DeviceSkillCapabilityRead,
@@ -320,6 +321,17 @@ class WorkerService:
             for record in self.repository.get_skill_capabilities(device_id)
         ]
 
+    def get_business_skill_catalog(
+        self,
+        device_id: UUID,
+    ) -> list[BusinessSkillCatalogItemRead]:
+        return [
+            BusinessSkillCatalogItemRead.from_capability(
+                self.to_skill_capability_read(record),
+            )
+            for record in self.repository.get_business_skill_capabilities(device_id)
+        ]
+
     def to_runtime_read(
         self,
         runtime: DeviceRuntime,
@@ -369,5 +381,6 @@ class WorkerService:
             provider=record.provider_code,
             version=record.skill_version,
             classification=record.classification,
+            input_schema=record.input_schema,
             updated_at=record.updated_at,
         )
