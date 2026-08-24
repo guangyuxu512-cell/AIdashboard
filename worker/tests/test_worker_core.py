@@ -65,6 +65,7 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
         "provider": None,
         "version": "1",
         "classification": "internal",
+        "input_schema": None,
     }
     assert descriptors["yingdao.discover"].model_dump() == {
         "skill_id": "yingdao.discover",
@@ -73,6 +74,7 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
         "provider": "yingdao",
         "version": "1",
         "classification": "internal",
+        "input_schema": None,
     }
     assert all(
         descriptor.classification is SkillClassification.INTERNAL
@@ -112,6 +114,7 @@ def test_new_skill_definition_defaults_to_business_classification() -> None:
     descriptor = definition.descriptor()
 
     assert descriptor.classification is SkillClassification.BUSINESS
+    assert descriptor.input_schema == Input.model_json_schema(mode="validation")
 
 
 def test_skill_descriptor_defaults_to_business_and_internal_is_explicit() -> None:

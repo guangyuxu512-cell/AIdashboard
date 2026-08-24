@@ -88,6 +88,7 @@ Electron 关闭不能成为 Worker Task 可靠性设计的前提。
 ## 9. Business Skill 开发硬约束
 - 新增 Worker 业务能力必须以稳定 `skill_id` 注册为 `business` Skill。
 - Python Business Skill 必须使用 `app/skills/sdk/` 内部 SDK 和结构化 Pydantic Input。
+- Business Skill Input Model 是输入 Contract 的唯一 Source of Truth；允许由它生成对外 Schema，禁止为 Frontend、Scheduler 维护第二份手写参数定义。
 - Business Skill 不得实现 Heartbeat、Poll、Claim、Lease、Task 状态或 Backend Event HTTP。
 - Business Skill 不得直连 PostgreSQL，也不得自行读取 Worker Token 或配置文件。
 - 日志和进度只通过 `SkillContext.log()` / `SkillContext.progress()` 上报。

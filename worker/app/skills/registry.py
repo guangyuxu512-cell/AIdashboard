@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+import json
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -12,6 +13,9 @@ if TYPE_CHECKING:
 
 
 SkillHandler = Callable[[BaseModel], dict[str, Any]]
+
+
+BUSINESS_SKILL_INPUT_SCHEMA_MAX_BYTES = 32 * 1024
 
 
 class SkillRuntime(StrEnum):
@@ -36,6 +40,7 @@ class SkillDescriptor(BaseModel):
     provider: SkillProvider | None
     version: str
     classification: SkillClassification = SkillClassification.BUSINESS
+    input_schema: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,11 @@ class SkillDefinition:
             raise ValueError("Discovery Skill requires a provider")
 
     def descriptor(self) -> SkillDescriptor:
+        input_schema = (
+            _build_business_skill_input_schema(self.input_model)
+            if self.classification is SkillClassification.BUSINESS
+            else None
+        )
         return SkillDescriptor(
             skill_id=self.skill_id,
             display_name=self.display_name,
@@ -76,6 +86,7 @@ class SkillDefinition:
             provider=self.provider,
             version=self.version,
             classification=self.classification,
+            input_schema=input_schema,
         )
 
 
@@ -102,3 +113,21 @@ class SkillRegistry:
 
 
 registry = SkillRegistry()
+
+
+def _build_business_skill_input_schema(
+    input_model: type[BaseModel],
+) -> dict[str, Any]:
+    """Generate the public input contract from the SDK Pydantic model."""
+
+    schema = input_model.model_json_schema(mode="validation")
+    payload = json.dumps(
+        schema,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(payload) > BUSINESS_SKILL_INPUT_SCHEMA_MAX_BYTES:
+        raise ValueError(
+            "Business Skill input schema exceeds the 32 KiB capability limit",
+        )
+    return schema

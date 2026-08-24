@@ -56,5 +56,6 @@ def register_business_skill(
         classification=descriptor.classification,
         business_skill=cast(BusinessSkill[Any], skill),
     )
+    definition.descriptor()
     skill_registry.register(definition)
     return definition

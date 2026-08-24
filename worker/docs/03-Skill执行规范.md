@@ -121,6 +121,22 @@ RPA Provider；需要影刀时仍使用已有 Internal Provider Skill/Task Contr
 新增实现模块，并在 Worker 的单一 Skill 装配入口调用一次注册函数；Capability Snapshot 与 Backend
 Device × Skill 同步无需 Frontend/Backend 硬编码。
 
+### Business Skill Catalog Contract
+
+Business Skill 的 Pydantic `input_model` 是输入 Contract 唯一 Source of Truth。注册时由
+`model_json_schema(mode="validation")` 生成 JSON Schema，并随完整 Skill Capability Snapshot
+上报；禁止为 Scheduler、Frontend 或未来 AI Agent 再维护一份手写参数定义。Schema 只描述输入，
+不能替代 Worker 在执行前的 Pydantic 最终校验。
+
+V1 对外 Catalog 支持 `string / integer / number / boolean / enum` 以及
+`required / default / title / description`。复杂对象、数组和无法安全解释的组合 Schema 会被
+Backend 明确标记为不支持，不能静默渲染。单个 Input Schema 的紧凑 JSON 大小上限为 32 KiB；
+超过上限时 Business Skill 注册失败，防止无限元数据进入 Capability Snapshot。
+
+Worker 仍上报 `internal + business` 完整快照，但普通 Business Skill Catalog 只消费
+`classification=business`。旧 Worker 没有 `input_schema` 时保持兼容，Backend 记录最后已知能力并
+标记 Schema unavailable；Scheduler 不得据此猜参数或开放配置。
+
 Business Skill ID 使用小写点分业务语义，例如 `refund.sync`、`order.sync`、
 `product.check_stock`。禁止文件名、临时版本号、连字符脚本名和无业务含义编号；`.py` 后缀不是
 Skill ID 的一部分。`skill_id` 是手工 Task、未来 Scheduler、飞书触发和 AI Agent 共同引用的
@@ -130,8 +146,8 @@ Skill ID 的一部分。`skill_id` 是手工 Task、未来 Scheduler、飞书触
 
 Input 使用 Pydantic，并继承默认 `extra=forbid` 的 `BusinessSkillInput`。Worker 在进入 `run()` 前
 完成最终校验；缺必填、类型错误或额外字段统一返回 `SKILL_INPUT_INVALID`。Skill 不得使用
-`**kwargs`、环境变量、全局 JSON 或 Frontend 字符串猜参数。Backend 的未来 Skill Catalog 可以
-提前暴露同一 Schema，但不会替代 Worker 运行边界校验。
+`**kwargs`、环境变量、全局 JSON 或 Frontend 字符串猜参数。Backend Skill Catalog 提前暴露由
+同一 Input Model 生成的 Schema，但不会替代 Worker 运行边界校验。
 
 ### SkillContext
 
@@ -223,4 +239,4 @@ Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Back
 Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
 
 Scheduler V1 的 DAILY、IANA Timezone、COALESCE ONE 和数据库触发幂等全部属于 Backend；
-Worker 0.4.2 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。
+Worker 0.4.3 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。

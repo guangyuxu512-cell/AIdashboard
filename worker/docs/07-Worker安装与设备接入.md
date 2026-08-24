@@ -49,7 +49,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录只用于读取实际运行产生的 `task_logs`，不再用于识别账号或云端应用；默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。
 
-Worker 0.4.2 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。Locator 依次复用当前配置、当前运行中的 6.3.6、安装注册信息与系统候选位置；手工选择也必须验证真实文件版本等于 6.3.6。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.4.2 会在启动与断线重连后同步带 `internal | business` 分类的完整 Skill Registry 快照，并兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
+Worker 0.4.3 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。Locator 依次复用当前配置、当前运行中的 6.3.6、安装注册信息与系统候选位置；手工选择也必须验证真实文件版本等于 6.3.6。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.4.3 会在启动与断线重连后同步带 `internal | business` 分类的完整 Skill Registry 快照；Business Skill 额外携带由 Pydantic Input Model 生成的有限 Input Schema，并继续兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
 
 当前账号由 6.3.6 的 `/api/v1/account/current` 唯一确定，不需要从多个 `user.db3` 缓存中手工选择 userId。
 

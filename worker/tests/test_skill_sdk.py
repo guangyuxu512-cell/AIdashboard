@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from enum import StrEnum
 import io
 from uuid import UUID, uuid4
 
@@ -12,6 +13,7 @@ from app.executors.python import PythonExecutor
 from app.runtime_events import RuntimeEventBus
 from app.skills import registry as production_registry
 from app.skills.registry import (
+    BUSINESS_SKILL_INPUT_SCHEMA_MAX_BYTES,
     SkillClassification,
     SkillDescriptor,
     SkillRegistry,
@@ -35,6 +37,19 @@ from app.skills.sdk.process_events import (
 
 class ProgressInput(BusinessSkillInput):
     steps: int = Field(gt=0, le=10)
+
+
+class RunMode(StrEnum):
+    SAFE = "safe"
+    FAST = "fast"
+
+
+class CatalogInput(BusinessSkillInput):
+    keyword: str = Field(title="关键词", description="需要处理的关键词")
+    count: int = Field(default=10, title="数量")
+    ratio: float = Field(default=0.5, title="比例")
+    enabled: bool = Field(default=True, title="启用")
+    mode: RunMode = Field(default=RunMode.SAFE, title="模式")
 
 
 class ProgressSkill:
@@ -84,10 +99,51 @@ def test_business_skill_registration_reuses_descriptor_and_registry() -> None:
     skill = ProgressSkill()
     skill_registry, definition = make_registered(skill)
 
-    assert definition.descriptor() == skill.descriptor  # type: ignore[attr-defined]
+    descriptor = definition.descriptor()  # type: ignore[attr-defined]
+    assert descriptor.model_dump(
+        exclude={"input_schema"},
+    ) == skill.descriptor.model_dump(exclude={"input_schema"})  # type: ignore[attr-defined]
+    assert descriptor.input_schema == ProgressInput.model_json_schema(
+        mode="validation",
+    )
     assert definition.business_skill is skill  # type: ignore[attr-defined]
     assert skill_registry.require("demo.progress") is definition
     assert definition.classification is SkillClassification.BUSINESS  # type: ignore[attr-defined]
+
+
+def test_business_skill_descriptor_uses_pydantic_schema_as_single_source() -> None:
+    class CatalogSkill(ProgressSkill):
+        input_model = CatalogInput
+
+    _, definition = make_registered(CatalogSkill())
+    schema = definition.descriptor().input_schema  # type: ignore[attr-defined]
+
+    assert schema is not None
+    assert schema["type"] == "object"
+    assert schema["required"] == ["keyword"]
+    assert schema["properties"]["keyword"] == {
+        "description": "需要处理的关键词",
+        "title": "关键词",
+        "type": "string",
+    }
+    assert schema["properties"]["count"]["type"] == "integer"
+    assert schema["properties"]["ratio"]["type"] == "number"
+    assert schema["properties"]["enabled"]["type"] == "boolean"
+    assert schema["properties"]["mode"]["$ref"] == "#/$defs/RunMode"
+    assert schema["$defs"]["RunMode"]["enum"] == ["safe", "fast"]
+
+
+def test_business_skill_registration_rejects_oversized_input_schema() -> None:
+    class OversizedInput(BusinessSkillInput):
+        payload: str = Field(
+            description="x" * BUSINESS_SKILL_INPUT_SCHEMA_MAX_BYTES,
+        )
+
+    class OversizedSkill(ProgressSkill):
+        input_model = OversizedInput
+
+    with pytest.raises(ValueError, match="32 KiB"):
+        make_registered(OversizedSkill())
 
 
 @pytest.mark.parametrize(
