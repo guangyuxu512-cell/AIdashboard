@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from uuid import UUID, uuid4
 
 from httpx import ASGITransport, AsyncClient, Response
@@ -16,6 +16,13 @@ from app.modules.shops.enums import BindingRole, ShopPlatform
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.schedules.api import get_schedule_service
+from app.modules.schedules.exceptions import ScheduleNotFoundError
+from app.modules.schedules.schemas import (
+    ScheduleListItemRead,
+    ScheduleRead,
+    ScheduleRunRead,
+)
 from app.modules.tasks.api import get_task_service
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
@@ -34,6 +41,9 @@ from app.modules.workers.schemas import DeviceRuntimeRead
 SHOP_ID = uuid4()
 DEVICE_ID = uuid4()
 USER_ID = uuid4()
+SCHEDULE_ID = uuid4()
+SCHEDULE_RUN_ID = uuid4()
+SCHEDULE_TASK_ID = uuid4()
 
 
 def stamp(entity: object) -> object:
@@ -227,6 +237,79 @@ class ApiTaskService:
         )
 
 
+class ApiScheduleService:
+    @staticmethod
+    def _read() -> ScheduleRead:
+        now = datetime.now(UTC)
+        return ScheduleRead(
+            schedule_id=SCHEDULE_ID,
+            name="API 每日计划",
+            enabled=True,
+            target_device_id=DEVICE_ID,
+            device_display_name="API 设备",
+            skill_id="yingdao.app.run",
+            execution_display_name="API 影刀应用",
+            schedule_type="daily",
+            local_time=time(9, 30),
+            timezone="Asia/Shanghai",
+            next_run_at=now,
+            latest_run=None,
+            created_at=now,
+            updated_at=now,
+            application_id="api-yingdao-app",
+            parameters={"keyword": "safe"},
+        )
+
+    def create(self, data: object) -> ScheduleRead:
+        del data
+        return self._read()
+
+    def list_management(self, **kwargs: object) -> Page[ScheduleListItemRead]:
+        detail = self._read()
+        item = ScheduleListItemRead.model_validate(
+            detail.model_dump(exclude={"application_id", "parameters"}),
+        )
+        return Page(
+            items=[item],
+            total=1,
+            page=int(kwargs["page"]),
+            page_size=int(kwargs["page_size"]),
+        )
+
+    def get(self, schedule_id: UUID) -> ScheduleRead:
+        if schedule_id != SCHEDULE_ID:
+            raise ScheduleNotFoundError()
+        return self._read()
+
+    def update(self, schedule_id: UUID, data: object) -> ScheduleRead:
+        del data
+        return self.get(schedule_id)
+
+    def archive(self, schedule_id: UUID) -> None:
+        self.get(schedule_id)
+
+    def list_runs(self, schedule_id: UUID, **kwargs: object) -> Page[ScheduleRunRead]:
+        self.get(schedule_id)
+        now = datetime.now(UTC)
+        return Page(
+            items=[
+                ScheduleRunRead(
+                    run_id=SCHEDULE_RUN_ID,
+                    schedule_id=schedule_id,
+                    scheduled_for=now,
+                    task_id=SCHEDULE_TASK_ID,
+                    task_status="success",
+                    trigger_result="task_created",
+                    trigger_error_code=None,
+                    trigger_error_message=None,
+                    created_at=now,
+                ),
+            ],
+            total=1,
+            page=int(kwargs["page"]),
+            page_size=int(kwargs["page_size"]),
+        )
+
 def request(method: str, path: str, **kwargs: object) -> Response:
     application = create_app()
     application.dependency_overrides[get_shop_service] = ApiShopService
@@ -237,6 +320,7 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[get_worker_service] = ApiWorkerService
     application.dependency_overrides[get_user_service] = ApiUserService
     application.dependency_overrides[get_task_service] = ApiTaskService
+    application.dependency_overrides[get_schedule_service] = ApiScheduleService
 
     async def send() -> Response:
         transport = ASGITransport(app=application)
@@ -309,6 +393,72 @@ def test_task_center_list_contract() -> None:
     assert payload["items"][0]["device_display_name"] == "API 设备"
     assert payload["items"][0]["progress"] == {"current": 3, "total": 10}
     assert payload["items"][0]["current_message"] == "正在处理第 3 项"
+
+
+def test_schedule_management_api_contract() -> None:
+    create_response = request(
+        "POST",
+        "/api/v1/schedules",
+        json={
+            "name": "API 每日计划",
+            "target_device_id": str(DEVICE_ID),
+            "application_id": "api-yingdao-app",
+            "parameters": {"keyword": "safe"},
+            "schedule_type": "daily",
+            "local_time": "09:30",
+            "timezone": "Asia/Shanghai",
+            "enabled": True,
+        },
+    )
+    list_response = request(
+        "GET",
+        f"/api/v1/schedules?page=1&page_size=20&device_id={DEVICE_ID}",
+    )
+    detail_response = request("GET", f"/api/v1/schedules/{SCHEDULE_ID}")
+    update_response = request(
+        "PATCH",
+        f"/api/v1/schedules/{SCHEDULE_ID}",
+        json={"enabled": False},
+    )
+    runs_response = request(
+        "GET",
+        f"/api/v1/schedules/{SCHEDULE_ID}/runs?page=1&page_size=20",
+    )
+    remove_response = request("DELETE", f"/api/v1/schedules/{SCHEDULE_ID}")
+
+    assert create_response.status_code == 201
+    assert create_response.json()["skill_id"] == "yingdao.app.run"
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["device_display_name"] == "API 设备"
+    assert detail_response.json()["application_id"] == "api-yingdao-app"
+    assert update_response.status_code == 200
+    assert runs_response.json()["items"][0]["task_status"] == "success"
+    assert remove_response.status_code == 204
+
+
+def test_schedule_api_rejects_cron_and_unknown_timezone() -> None:
+    base = {
+        "name": "无效计划",
+        "target_device_id": str(DEVICE_ID),
+        "application_id": "api-yingdao-app",
+        "parameters": {},
+        "local_time": "09:30",
+        "timezone": "Asia/Shanghai",
+        "enabled": True,
+    }
+    cron_response = request(
+        "POST",
+        "/api/v1/schedules",
+        json={**base, "schedule_type": "cron"},
+    )
+    timezone_response = request(
+        "POST",
+        "/api/v1/schedules",
+        json={**base, "schedule_type": "daily", "timezone": "Mars/Olympus"},
+    )
+
+    assert cron_response.status_code == 422
+    assert timezone_response.status_code == 422
 
 
 def test_task_center_accepts_aware_half_open_created_range() -> None:

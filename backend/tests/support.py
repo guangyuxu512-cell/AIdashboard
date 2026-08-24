@@ -23,10 +23,13 @@ class FakeSession:
             "device_id",
             "credential_id",
             "session_id",
+            "run_id",
             "task_id",
+            "schedule_id",
         ):
             if hasattr(entity, identifier) and getattr(entity, identifier) is None:
                 setattr(entity, identifier, uuid4())
+                break
         now = datetime.now(UTC)
         if hasattr(entity, "created_at") and getattr(entity, "created_at") is None:
             setattr(entity, "created_at", now)

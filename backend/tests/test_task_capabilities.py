@@ -200,6 +200,27 @@ def test_offline_device_cannot_create_an_immediate_task() -> None:
             ),
         )
 
+
+def test_offline_device_can_prepare_and_create_a_scheduled_task() -> None:
+    device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
+    service = service_for(
+        device,
+        [capability(device, "system.echo")],
+        runtime_status="offline",
+    )
+    request = TaskCreate(
+        target_device_id=device.device_id,
+        skill_id=TaskSkillId.SYSTEM_ECHO,
+        input={"message": "scheduled"},
+    )
+
+    prepared = service.prepare_scheduled_task(request)
+    task = service.create_for_schedule(request)
+
+    assert prepared.execution_display_name == "system.echo"
+    assert task.status == "pending"
+    assert task.input_json == {"message": "scheduled"}
+
 def test_legacy_ready_provider_inventory_allows_yingdao_app_guard() -> None:
     device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
     task = service_for(

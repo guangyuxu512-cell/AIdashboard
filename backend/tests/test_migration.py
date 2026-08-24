@@ -374,3 +374,29 @@ def test_task_query_runtime_retention_migration(monkeypatch: object) -> None:
     assert ("drop_column", "tasks") in recorder.calls
     assert ("create_index", "ix_tasks_status") in recorder.calls
     assert ("create_index", "ix_task_events_task_seq") in recorder.calls
+
+
+def test_scheduler_v1_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260824_0016_scheduler_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "schedules"),
+        ("create_table", "schedule_runs"),
+    ]
+    assert ("create_index", "ix_schedules_due") in recorder.calls
+    assert (
+        "create_index",
+        "ix_schedule_runs_schedule_scheduled",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "schedule_runs"),
+        ("drop_table", "schedules"),
+    ]

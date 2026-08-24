@@ -26,6 +26,8 @@ CORE_TABLES = {
     "tasks",
     "notification_channels",
     "automation_application_configs",
+    "schedules",
+    "schedule_runs",
 }
 DESTRUCTIVE_TEST_DATABASE = "control_center_dev"
 

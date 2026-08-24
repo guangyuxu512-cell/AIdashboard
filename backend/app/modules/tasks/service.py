@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -50,6 +51,12 @@ from app.modules.workers.service import WorkerPrincipal
 from app.shared.pagination import Page
 
 
+@dataclass(frozen=True)
+class PreparedTaskCreation:
+    input_json: dict[str, Any]
+    execution_display_name: str
+
+
 class TaskService:
     def __init__(
         self,
@@ -69,14 +76,61 @@ class TaskService:
         )
 
     def create(self, data: TaskCreate) -> Task:
+        task = self._create_pending(data, require_worker_online=True)
+        self.session.commit()
+        self.session.refresh(task)
+        return task
+
+    def prepare_scheduled_task(self, data: TaskCreate) -> PreparedTaskCreation:
+        """Validate a future Task while allowing its Worker to be offline.
+
+        Schedules still require an enabled Device, declared Skill, ready Provider,
+        available Application and valid input. Worker connectivity is deliberately
+        deferred until the ordinary pending Task is claimed.
+        """
+
+        return self._prepare_creation(data, require_worker_online=False)
+
+    def create_for_schedule(self, data: TaskCreate) -> Task:
+        """Add a validated pending Task without committing the outer transaction."""
+
+        return self._create_pending(data, require_worker_online=False)
+
+    def _create_pending(
+        self,
+        data: TaskCreate,
+        *,
+        require_worker_online: bool,
+    ) -> Task:
+        prepared = self._prepare_creation(
+            data,
+            require_worker_online=require_worker_online,
+        )
+        task = Task(
+            target_device_id=data.target_device_id,
+            skill_id=data.skill_id.value,
+            execution_display_name=prepared.execution_display_name,
+            status=TaskStatus.PENDING.value,
+            input_json=prepared.input_json,
+        )
+        self.repository.add(task)
+        return task
+
+    def _prepare_creation(
+        self,
+        data: TaskCreate,
+        *,
+        require_worker_online: bool,
+    ) -> PreparedTaskCreation:
         device = self.repository.get_task_target_device(data.target_device_id)
         if device is None:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:
             raise TaskDeviceDisabledError()
-        runtime = self.repository.get_device_runtime(data.target_device_id)
-        if runtime is None or runtime.connection_status != "online":
-            raise TaskWorkerOfflineError()
+        if require_worker_online:
+            runtime = self.repository.get_device_runtime(data.target_device_id)
+            if runtime is None or runtime.connection_status != "online":
+                raise TaskWorkerOfflineError()
         capability = self.repository.get_skill_capability(
             data.target_device_id,
             data.skill_id.value,
@@ -101,17 +155,10 @@ class TaskService:
                 input_json,
                 provider_inventory,
             )
-        task = Task(
-            target_device_id=data.target_device_id,
-            skill_id=data.skill_id.value,
-            execution_display_name=execution_display_name,
-            status=TaskStatus.PENDING.value,
+        return PreparedTaskCreation(
             input_json=input_json,
+            execution_display_name=execution_display_name,
         )
-        self.repository.add(task)
-        self.session.commit()
-        self.session.refresh(task)
-        return task
 
     def _validate_provider_dependency(
         self,
