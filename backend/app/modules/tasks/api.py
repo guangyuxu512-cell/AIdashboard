@@ -2,6 +2,8 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import AwareDatetime, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -9,8 +11,13 @@ from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
+    TASK_EVENT_DEFAULT_LIMIT,
+    TASK_EVENT_MAX_LIMIT,
     TaskCreate,
+    TaskCreatedRange,
+    TaskEventCursor,
     TaskEventListRead,
+    TaskEventPurgeRead,
     TaskListItemRead,
     TaskRead,
     task_to_read,
@@ -36,6 +43,37 @@ def get_task_service(
     return TaskService(session)
 
 
+def get_task_created_range(
+    created_from: Annotated[AwareDatetime | None, Query()] = None,
+    created_to: Annotated[AwareDatetime | None, Query()] = None,
+) -> TaskCreatedRange:
+    try:
+        return TaskCreatedRange(
+            created_from=created_from,
+            created_to=created_to,
+        )
+    except ValidationError as error:
+        raise RequestValidationError(error.errors()) from error
+
+
+def get_task_event_cursor(
+    after_seq: Annotated[int | None, Query(ge=0)] = None,
+    before_seq: Annotated[int | None, Query(gt=0)] = None,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=TASK_EVENT_MAX_LIMIT),
+    ] = TASK_EVENT_DEFAULT_LIMIT,
+) -> TaskEventCursor:
+    try:
+        return TaskEventCursor(
+            after_seq=after_seq,
+            before_seq=before_seq,
+            limit=limit,
+        )
+    except ValidationError as error:
+        raise RequestValidationError(error.errors()) from error
+
+
 @router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
 def create_task(
     data: TaskCreate,
@@ -48,6 +86,7 @@ def create_task(
 def list_tasks(
     service: Annotated[TaskService, Depends(get_task_service)],
     pagination: Annotated[PaginationParams, Depends()],
+    created_range: Annotated[TaskCreatedRange, Depends(get_task_created_range)],
     task_status: Annotated[TaskStatus | None, Query(alias="status")] = None,
     device_id: Annotated[UUID | None, Query()] = None,
     search: Annotated[str | None, Query(max_length=500)] = None,
@@ -58,7 +97,19 @@ def list_tasks(
         status=task_status,
         device_id=device_id,
         search=search,
+        created_from=created_range.created_from,
+        created_to=created_range.created_to,
     )
+
+
+@router.post(
+    "/runtime-events/purge-expired",
+    response_model=TaskEventPurgeRead,
+)
+def purge_expired_task_events(
+    service: Annotated[TaskService, Depends(get_task_service)],
+) -> TaskEventPurgeRead:
+    return service.purge_expired_events()
 
 
 @router.get(
@@ -88,7 +139,11 @@ def get_task(
 def list_task_events(
     task_id: UUID,
     service: Annotated[TaskService, Depends(get_task_service)],
-    after_seq: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    cursor: Annotated[TaskEventCursor, Depends(get_task_event_cursor)],
 ) -> TaskEventListRead:
-    return service.list_events(task_id, after_seq=after_seq, limit=limit)
+    return service.list_events(
+        task_id,
+        after_seq=cursor.after_seq,
+        before_seq=cursor.before_seq,
+        limit=cursor.limit,
+    )

@@ -6,6 +6,7 @@ import pytest
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.exceptions import TaskEventForbiddenError
 from app.modules.tasks.models import Task, TaskEvent
+from app.modules.tasks.repository import TaskEventPage
 from app.modules.tasks.schemas import TaskEventBatchWrite
 from app.modules.tasks.service import TaskService
 from app.modules.workers.service import WorkerPrincipal
@@ -45,21 +46,35 @@ class FakeTaskEventRepository:
         self,
         *,
         task_id: UUID,
-        after_seq: int,
+        after_seq: int | None,
+        before_seq: int | None,
         limit: int,
-    ) -> list[TaskEvent]:
-        return [
+    ) -> TaskEventPage:
+        events = [
             event
             for (_, seq), event in sorted(self.events.items())
-            if event.task_id == task_id and seq > after_seq
-        ][:limit]
+            if event.task_id == task_id
+            and (after_seq is None or seq > after_seq)
+            and (before_seq is None or seq < before_seq)
+        ]
+        if after_seq is not None:
+            return TaskEventPage(items=events[:limit], has_more_before=False)
+        return TaskEventPage(
+            items=events[-limit:],
+            has_more_before=len(events) > limit,
+        )
 
     def get_active_for_device(self, device_id: UUID) -> Task | None:
         return self.task if self.task.target_device_id == device_id else None
 
     def get_latest_event(self, task_id: UUID) -> TaskEvent | None:
-        events = self.list_events(task_id=task_id, after_seq=0, limit=100)
-        return events[-1] if events else None
+        page = self.list_events(
+            task_id=task_id,
+            after_seq=0,
+            before_seq=None,
+            limit=100,
+        )
+        return page.items[-1] if page.items else None
 
 
 def make_service() -> tuple[TaskService, FakeTaskEventRepository, UUID, UUID]:
@@ -127,6 +142,58 @@ def test_event_batch_is_idempotent_redacted_and_incremental() -> None:
     first_event = repository.events[(task_id, 1)]
     assert "plain-secret" not in first_event.message
     assert first_event.metadata_json["cookie"] == "[REDACTED]"
+
+
+def test_event_history_uses_bounded_sequence_cursor_in_ascending_order() -> None:
+    service, _, device_id, task_id = make_service()
+    principal = WorkerPrincipal(device_id=device_id)
+    now = datetime.now(UTC)
+    service.append_events(
+        principal,
+        task_id,
+        TaskEventBatchWrite.model_validate(
+            {
+                "events": [
+                    {
+                        "seq": seq,
+                        "event_type": "log",
+                        "level": "INFO",
+                        "message": f"event {seq}",
+                        "event_at": now.isoformat(),
+                        "metadata": {},
+                    }
+                    for seq in range(1, 7)
+                ],
+            },
+        ),
+    )
+
+    latest = service.list_events(
+        task_id,
+        after_seq=None,
+        before_seq=None,
+        limit=2,
+    )
+    earlier = service.list_events(
+        task_id,
+        after_seq=None,
+        before_seq=latest.next_before_seq,
+        limit=2,
+    )
+    incremental = service.list_events(
+        task_id,
+        after_seq=4,
+        before_seq=None,
+        limit=2,
+    )
+
+    assert [event.seq for event in latest.items] == [5, 6]
+    assert latest.has_more_before is True
+    assert latest.next_before_seq == 5
+    assert [event.seq for event in earlier.items] == [3, 4]
+    assert earlier.next_before_seq == 3
+    assert [event.seq for event in incremental.items] == [5, 6]
+    assert incremental.has_more_before is False
 
 
 def test_worker_cannot_write_another_devices_task() -> None:

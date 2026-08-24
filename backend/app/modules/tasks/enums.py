@@ -9,6 +9,14 @@ class TaskStatus(StrEnum):
     LOST = "lost"
 
 
+TERMINAL_TASK_STATUSES = (
+    TaskStatus.SUCCESS,
+    TaskStatus.FAILED,
+    TaskStatus.LOST,
+)
+TERMINAL_TASK_STATUS_VALUES = tuple(status.value for status in TERMINAL_TASK_STATUSES)
+
+
 class TaskSkillId(StrEnum):
     SYSTEM_ECHO = "system.echo"
     SYSTEM_SLEEP = "system.sleep"

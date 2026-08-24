@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
-from app.modules.tasks.enums import TaskSkillId, TaskStatus
+from app.modules.tasks.enums import (
+    TERMINAL_TASK_STATUS_VALUES,
+    TaskSkillId,
+    TaskStatus,
+)
 from app.modules.tasks.exceptions import (
     TaskApplicationNotAvailableError,
     TaskDeviceDisabledError,
@@ -33,6 +37,7 @@ from app.modules.tasks.schemas import (
     TaskEventBatchResult,
     TaskEventBatchWrite,
     TaskEventListRead,
+    TaskEventPurgeRead,
     TaskFail,
     TaskListItemRead,
     TaskProgressSummaryRead,
@@ -214,6 +219,8 @@ class TaskService:
         status: TaskStatus | None,
         device_id: UUID | None,
         search: str | None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
     ) -> Page[TaskListItemRead]:
         normalized_search = search.strip() if search else None
         records, total = self.repository.list_management_tasks(
@@ -222,6 +229,8 @@ class TaskService:
             status=status,
             device_id=device_id,
             search=normalized_search or None,
+            created_from=created_from,
+            created_to=created_to,
         )
         items = []
         for record in records:
@@ -261,22 +270,62 @@ class TaskService:
         self,
         task_id: UUID,
         *,
-        after_seq: int,
+        after_seq: int | None,
+        before_seq: int | None = None,
         limit: int,
     ) -> TaskEventListRead:
         if self.repository.get(task_id) is None:
             raise TaskNotFoundError()
-        events = self.repository.list_events(
+        if after_seq is not None and before_seq is not None:
+            raise ValueError("after_seq and before_seq cannot be used together")
+        page = self.repository.list_events(
             task_id=task_id,
             after_seq=after_seq,
+            before_seq=before_seq,
             limit=limit,
         )
-        items = [task_event_to_read(event) for event in events]
+        items = [task_event_to_read(event) for event in page.items]
         return TaskEventListRead(
             task_id=task_id,
             after_seq=after_seq,
-            next_after_seq=items[-1].seq if items else after_seq,
+            before_seq=before_seq,
+            next_after_seq=(
+                items[-1].seq
+                if items
+                else (after_seq if after_seq is not None else 0)
+            ),
+            next_before_seq=(
+                items[0].seq if items and page.has_more_before else None
+            ),
+            has_more_before=page.has_more_before,
             items=items,
+        )
+
+    def purge_expired_events(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> TaskEventPurgeRead:
+        purged_at = now or datetime.now(UTC)
+        cutoff = purged_at - timedelta(days=self.settings.task_event_retention_days)
+        tasks_purged = 0
+        events_deleted = 0
+        while True:
+            batch = self.repository.purge_expired_event_batch(
+                cutoff=cutoff,
+                purged_at=purged_at,
+                batch_size=self.settings.task_event_retention_batch_size,
+            )
+            if batch.events_deleted == 0:
+                self.session.rollback()
+                break
+            self.session.commit()
+            tasks_purged += batch.tasks_purged
+            events_deleted += batch.events_deleted
+        return TaskEventPurgeRead(
+            cutoff=cutoff,
+            tasks_purged=tasks_purged,
+            events_deleted=events_deleted,
         )
 
     def append_events(
@@ -296,11 +345,7 @@ class TaskService:
             and task.lease_until is not None
             and task.lease_until >= current_time
         )
-        owns_terminal_task = task.status in {
-            TaskStatus.SUCCESS.value,
-            TaskStatus.FAILED.value,
-            TaskStatus.LOST.value,
-        }
+        owns_terminal_task = task.status in TERMINAL_TASK_STATUS_VALUES
         if (
             task.target_device_id != principal.device_id
             or not (owns_running_lease or owns_terminal_task)

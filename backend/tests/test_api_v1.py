@@ -18,7 +18,11 @@ from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.tasks.api import get_task_service
 from app.modules.tasks.enums import TaskStatus
-from app.modules.tasks.schemas import TaskListItemRead
+from app.modules.tasks.schemas import (
+    TaskEventListRead,
+    TaskEventPurgeRead,
+    TaskListItemRead,
+)
 from app.platforms.schemas import PlatformShopIdentityRead
 from app.shared.pagination import Page
 from app.modules.users.api import get_user_service
@@ -176,7 +180,10 @@ class ApiUserService:
 
 
 class ApiTaskService:
+    last_list_arguments: dict[str, object] = {}
+
     def list_management_tasks(self, **kwargs: object) -> Page[TaskListItemRead]:
+        type(self).last_list_arguments = kwargs
         now = datetime.now(UTC)
         return Page(
             items=[
@@ -198,6 +205,25 @@ class ApiTaskService:
             total=1,
             page=int(kwargs["page"]),
             page_size=int(kwargs["page_size"]),
+        )
+
+    def purge_expired_events(self) -> TaskEventPurgeRead:
+        now = datetime.now(UTC)
+        return TaskEventPurgeRead(
+            cutoff=now,
+            tasks_purged=2,
+            events_deleted=15,
+        )
+
+    def list_events(self, task_id: UUID, **kwargs: object) -> TaskEventListRead:
+        return TaskEventListRead(
+            task_id=task_id,
+            after_seq=kwargs["after_seq"],
+            before_seq=kwargs["before_seq"],
+            next_after_seq=int(kwargs["after_seq"] or 0),
+            next_before_seq=None,
+            has_more_before=False,
+            items=[],
         )
 
 
@@ -283,6 +309,66 @@ def test_task_center_list_contract() -> None:
     assert payload["items"][0]["device_display_name"] == "API 设备"
     assert payload["items"][0]["progress"] == {"current": 3, "total": 10}
     assert payload["items"][0]["current_message"] == "正在处理第 3 项"
+
+
+def test_task_center_accepts_aware_half_open_created_range() -> None:
+    response = request(
+        "GET",
+        "/api/v1/tasks?page=1&page_size=20"
+        "&created_from=2026-08-17T00:00:00%2B08:00"
+        "&created_to=2026-08-24T00:00:00%2B08:00",
+    )
+
+    assert response.status_code == 200
+    created_from = ApiTaskService.last_list_arguments["created_from"]
+    created_to = ApiTaskService.last_list_arguments["created_to"]
+    assert isinstance(created_from, datetime)
+    assert isinstance(created_to, datetime)
+    assert created_from.isoformat() == "2026-08-17T00:00:00+08:00"
+    assert created_to.isoformat() == "2026-08-24T00:00:00+08:00"
+
+
+def test_task_center_rejects_invalid_or_naive_created_range() -> None:
+    reversed_response = request(
+        "GET",
+        "/api/v1/tasks?created_from=2026-08-24T00:00:00%2B08:00"
+        "&created_to=2026-08-17T00:00:00%2B08:00",
+    )
+    naive_response = request(
+        "GET",
+        "/api/v1/tasks?created_from=2026-08-17T00:00:00",
+    )
+
+    assert reversed_response.status_code == 422
+    assert naive_response.status_code == 422
+
+
+def test_runtime_event_cursor_and_manual_purge_contracts() -> None:
+    task_id = uuid4()
+    event_response = request(
+        "GET",
+        f"/api/v1/tasks/{task_id}/events?before_seq=101&limit=50",
+    )
+    invalid_cursor_response = request(
+        "GET",
+        f"/api/v1/tasks/{task_id}/events?after_seq=1&before_seq=3",
+    )
+    oversized_response = request(
+        "GET",
+        f"/api/v1/tasks/{task_id}/events?limit=201",
+    )
+    purge_response = request(
+        "POST",
+        "/api/v1/tasks/runtime-events/purge-expired",
+    )
+
+    assert event_response.status_code == 200
+    assert event_response.json()["before_seq"] == 101
+    assert invalid_cursor_response.status_code == 422
+    assert oversized_response.status_code == 422
+    assert purge_response.status_code == 200
+    assert purge_response.json()["tasks_purged"] == 2
+    assert purge_response.json()["events_deleted"] == 15
 
 
 def test_api_validation_and_business_not_found_error() -> None:

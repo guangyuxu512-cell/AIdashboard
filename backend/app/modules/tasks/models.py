@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,6 +44,29 @@ class Task(TimestampMixin, Base):
             "target_device_id",
             "status",
             "created_at",
+            "task_id",
+        ),
+        Index("ix_tasks_created_task", "created_at", "task_id"),
+        Index(
+            "ix_tasks_target_created_task",
+            "target_device_id",
+            "created_at",
+            "task_id",
+        ),
+        Index(
+            "ix_tasks_status_created_task",
+            "status",
+            "created_at",
+            "task_id",
+        ),
+        Index(
+            "ix_tasks_terminal_finished_task",
+            "finished_at",
+            "task_id",
+            postgresql_where=text(
+                "status IN ('success', 'failed', 'lost') "
+                "AND finished_at IS NOT NULL"
+            ),
         ),
         Index("ix_tasks_running_lease", "status", "lease_until"),
     )
@@ -62,7 +86,7 @@ class Task(TimestampMixin, Base):
         String(500),
         nullable=False,
     )
-    status: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(8), nullable=False)
     input_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -79,6 +103,10 @@ class Task(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    runtime_events_purged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class TaskEvent(Base):
@@ -91,7 +119,7 @@ class TaskEvent(Base):
         CheckConstraint("seq > 0", name="positive_seq"),
         CheckConstraint("jsonb_typeof(metadata_json) = 'object'", name="metadata_object"),
         UniqueConstraint("task_id", "seq", name="uq_task_events_task_seq"),
-        Index("ix_task_events_task_seq", "task_id", "seq"),
+        Index("ix_task_events_task_type_seq", "task_id", "event_type", "seq"),
     )
 
     event_id: Mapped[UUID] = mapped_column(

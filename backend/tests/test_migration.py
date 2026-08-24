@@ -346,3 +346,31 @@ def test_skill_classification_migration(monkeypatch: object) -> None:
         ("drop_constraint", "ck_device_skill_capabilities_classification"),
         ("drop_column", "device_skill_capabilities"),
     ]
+
+
+def test_task_query_runtime_retention_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260824_0015_task_query_runtime_retention",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert ("add_column", "tasks") in recorder.calls
+    assert ("create_index", "ix_tasks_created_task") in recorder.calls
+    assert ("create_index", "ix_tasks_target_created_task") in recorder.calls
+    assert ("create_index", "ix_tasks_status_created_task") in recorder.calls
+    assert (
+        "create_index",
+        "ix_tasks_terminal_finished_task",
+    ) in recorder.calls
+    assert (
+        "create_index",
+        "ix_task_events_task_type_seq",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert ("drop_column", "tasks") in recorder.calls
+    assert ("create_index", "ix_tasks_status") in recorder.calls
+    assert ("create_index", "ix_task_events_task_seq") in recorder.calls

@@ -93,6 +93,18 @@ Migration `20260823_0013_task_execution_display_name` 为 `tasks` 增加非空
 保存 Capability `display_name`，`yingdao.app.run` 保存当时 Provider Inventory 中匹配的
 Application 名称。该字段用于列表与历史稳定展示，Application 后续改名不得反向改变旧 Task。
 
+Migration `20260824_0015_task_query_runtime_retention` 将 Task 与 Runtime Event 生命周期正式
+分离：`tasks` 是长期执行历史，`task_events` 是默认保留 90 天的运行明细；日志清理不得删除
+Task、Result 或安全 Error 摘要。`tasks.runtime_events_purged_at` 仅在实际删除过至少一条 Event
+时写入，用于区分“从未产生日志”和“历史日志已清理”。
+
+管理查询按 `created_at DESC, task_id DESC` 稳定排序，并以
+`(created_at, task_id)`、`(target_device_id, created_at, task_id)`、
+`(status, created_at, task_id)` 支持日期、设备和状态组合。Retention 通过 Terminal Task 的
+`finished_at` 部分索引选择小批次，再按 `task_id` 删除 Event；PENDING/RUNNING 永不进入
+Retention。Runtime Summary 使用 `(task_id, event_type, seq)`，实时与历史游标继续依赖
+`(task_id, seq)` 唯一索引。新增索引必须以真实 PostgreSQL EXPLAIN 验证，不能机械扩展排列组合。
+
 Worker Token 生命周期继续复用 `worker_device_credentials`，每个 Device 最多一条记录；本轮
 不新增第二套 Token 表或明文列。签发/轮换仅替换 SHA-256 `token_hash`，撤销使用既有
 `enabled=false`，明文永不落库。

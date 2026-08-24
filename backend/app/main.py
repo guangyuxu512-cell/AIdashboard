@@ -15,6 +15,7 @@ from app.modules.sessions.api import router as sessions_router
 from app.modules.shops.api import router as shops_router
 from app.modules.tasks.api import router as tasks_router
 from app.modules.tasks.reconcile import reconcile_lost_tasks_forever
+from app.modules.tasks.retention import purge_expired_task_events_forever
 from app.modules.tasks.worker_api import router as worker_tasks_router
 from app.modules.users.api import router as users_router
 from app.modules.workers.api import router as workers_router
@@ -26,15 +27,19 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     del application
     reconcile_task = asyncio.create_task(reconcile_lost_tasks_forever())
     offline_reconcile_task = asyncio.create_task(reconcile_offline_devices_forever())
+    retention_task = asyncio.create_task(purge_expired_task_events_forever())
     try:
         yield
     finally:
         reconcile_task.cancel()
         offline_reconcile_task.cancel()
+        retention_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
             await offline_reconcile_task
+        with suppress(asyncio.CancelledError):
+            await retention_task
 
 
 def create_app() -> FastAPI:

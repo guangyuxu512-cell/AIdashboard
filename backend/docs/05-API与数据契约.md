@@ -152,12 +152,19 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
 
 ## Task Runtime Event API
 
-- `GET /api/v1/tasks`：管理端 Task 分页列表，支持 `status / device_id / search`；search 只覆盖
+- `GET /api/v1/tasks`：管理端 Task 分页列表，支持
+  `status / device_id / search / created_from / created_to`；时间语义固定为基于
+  `Task.created_at` 的 `[created_from, created_to)`，两个时间参数都必须带时区。search 只覆盖
   Task ID、创建时固化的 `execution_display_name` 与 `skill_id`。默认按
   `created_at DESC, task_id DESC` 稳定排序，不改变 Worker Claim 的升序执行规则。
 - `POST /api/v1/worker/tasks/{task_id}/events`：Worker Bearer Token + `X-Device-ID`
   认证的事件批量写入；认证设备必须等于 Task target，重复 `(task_id, seq)` 幂等忽略。
-- `GET /api/v1/tasks/{task_id}/events?after_seq=<n>&limit=<n>`：只返回 seq 大于游标的有限事件。
+- `GET /api/v1/tasks/{task_id}/events`：不传游标时读取最近的有限窗口；`before_seq` 向历史方向
+  加载，`after_seq` 向实时方向增量读取，两者互斥。所有响应按 seq 升序，`limit` 服务端上限
+  为 200，不允许一次返回完整历史。
+- `POST /api/v1/tasks/runtime-events/purge-expired`：按当前 Backend Retention 配置立即清理已
+  过期 Terminal Task 的 Runtime Event，返回 `cutoff / tasks_purged / events_deleted`；不得
+  接收任意日期，也不删除 Task。
 - `GET /api/v1/tasks/active/{device_id}`：返回设备当前 PENDING/RUNNING Task 摘要；没有时 204。
   摘要包含创建 Task 时固化的 `execution_display_name`，不得要求 Frontend 按 app_id 发起
   N+1 Application Detail 请求。
@@ -170,3 +177,7 @@ Task 列表项只返回当前页展示所需摘要：Task/设备身份、状态�
 通过单页摘要 SQL 取得，禁止每行再请求 Device、Application 或 Events；完整事件只在打开
 Task Runtime Drawer 后继续通过 `after_seq` 接口读取。软删除 Device 仍保留物理记录和历史
 显示名，历史 Task 查询不得因此失败。
+
+Task Detail 的 `runtime_events_purged_at` 为可空清理标记。Event 为空且标记为空表示从未产生
+日志；Event 为空且标记非空表示历史日志已清理；标记非空但仍有 Event 表示清理后存在晚到
+事件，调用方应展示“部分历史已清理”并继续显示现存 Event。

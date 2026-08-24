@@ -3,12 +3,23 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, exists, func, null, or_, select, update
+from sqlalchemy import (
+    String,
+    and_,
+    cast,
+    delete,
+    exists,
+    func,
+    null,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.modules.devices.models import Device
-from app.modules.tasks.enums import TaskStatus
+from app.modules.tasks.enums import TERMINAL_TASK_STATUS_VALUES, TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.workers.models import (
     DeviceProviderInventory,
@@ -27,6 +38,18 @@ class TaskListRecord:
     progress_metadata: dict[str, Any] | None
     status_message: str | None
     log_message: str | None
+
+
+@dataclass(frozen=True)
+class TaskEventPage:
+    items: list[TaskEvent]
+    has_more_before: bool
+
+
+@dataclass(frozen=True)
+class TaskEventPurgeBatch:
+    tasks_purged: int
+    events_deleted: int
 
 
 class TaskRepository:
@@ -57,12 +80,18 @@ class TaskRepository:
         status: TaskStatus | None,
         device_id: UUID | None,
         search: str | None,
+        created_from: datetime | None,
+        created_to: datetime | None,
     ) -> tuple[list[TaskListRecord], int]:
         filters = []
         if status is not None:
             filters.append(Task.status == status.value)
         if device_id is not None:
             filters.append(Task.target_device_id == device_id)
+        if created_from is not None:
+            filters.append(Task.created_at >= created_from)
+        if created_to is not None:
+            filters.append(Task.created_at < created_to)
         if search:
             pattern = f"%{search}%"
             filters.append(
@@ -154,19 +183,82 @@ class TaskRepository:
         self,
         *,
         task_id: UUID,
-        after_seq: int,
+        after_seq: int | None,
+        before_seq: int | None,
         limit: int,
-    ) -> list[TaskEvent]:
-        return list(
+    ) -> TaskEventPage:
+        if after_seq is not None:
+            items = list(
+                self.session.scalars(
+                    select(TaskEvent)
+                    .where(
+                        TaskEvent.task_id == task_id,
+                        TaskEvent.seq > after_seq,
+                    )
+                    .order_by(TaskEvent.seq.asc())
+                    .limit(limit),
+                ),
+            )
+            return TaskEventPage(items=items, has_more_before=False)
+
+        filters = [TaskEvent.task_id == task_id]
+        if before_seq is not None:
+            filters.append(TaskEvent.seq < before_seq)
+        descending = list(
             self.session.scalars(
                 select(TaskEvent)
-                .where(
-                    TaskEvent.task_id == task_id,
-                    TaskEvent.seq > after_seq,
-                )
-                .order_by(TaskEvent.seq.asc())
-                .limit(limit),
+                .where(*filters)
+                .order_by(TaskEvent.seq.desc())
+                .limit(limit + 1),
             ),
+        )
+        has_more_before = len(descending) > limit
+        return TaskEventPage(
+            items=list(reversed(descending[:limit])),
+            has_more_before=has_more_before,
+        )
+
+    def purge_expired_event_batch(
+        self,
+        *,
+        cutoff: datetime,
+        purged_at: datetime,
+        batch_size: int,
+    ) -> TaskEventPurgeBatch:
+        eligible_task_ids = list(
+            self.session.scalars(
+                select(Task.task_id)
+                .where(
+                    Task.status.in_(TERMINAL_TASK_STATUS_VALUES),
+                    Task.finished_at.is_not(None),
+                    Task.finished_at < cutoff,
+                    exists(
+                        select(TaskEvent.event_id).where(
+                            TaskEvent.task_id == Task.task_id,
+                        ),
+                    ),
+                )
+                .order_by(Task.finished_at.asc(), Task.task_id.asc())
+                .with_for_update(skip_locked=True)
+                .limit(batch_size),
+            ),
+        )
+        if not eligible_task_ids:
+            return TaskEventPurgeBatch(tasks_purged=0, events_deleted=0)
+
+        delete_result = self.session.execute(
+            delete(TaskEvent).where(TaskEvent.task_id.in_(eligible_task_ids)),
+        )
+        events_deleted = delete_result.rowcount
+        if events_deleted:
+            self.session.execute(
+                update(Task)
+                .where(Task.task_id.in_(eligible_task_ids))
+                .values(runtime_events_purged_at=purged_at),
+            )
+        return TaskEventPurgeBatch(
+            tasks_purged=len(eligible_task_ids) if events_deleted else 0,
+            events_deleted=events_deleted,
         )
 
     def insert_events(

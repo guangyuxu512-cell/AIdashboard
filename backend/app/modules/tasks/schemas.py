@@ -2,10 +2,14 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.tasks.enums import TaskEventType, TaskSkillId, TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
+
+
+TASK_EVENT_DEFAULT_LIMIT = 100
+TASK_EVENT_MAX_LIMIT = 200
 
 
 class TaskCreate(BaseModel):
@@ -14,6 +18,21 @@ class TaskCreate(BaseModel):
     target_device_id: UUID
     skill_id: TaskSkillId
     input: dict[str, Any]
+
+
+class TaskCreatedRange(BaseModel):
+    created_from: AwareDatetime | None = None
+    created_to: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_order(self) -> "TaskCreatedRange":
+        if (
+            self.created_from is not None
+            and self.created_to is not None
+            and self.created_from >= self.created_to
+        ):
+            raise ValueError("created_from must be earlier than created_to")
+        return self
 
 
 class TaskRead(BaseModel):
@@ -31,6 +50,7 @@ class TaskRead(BaseModel):
     lease_until: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
+    runtime_events_purged_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -84,6 +104,18 @@ class TaskEventBatchResult(BaseModel):
     highest_seq: int
 
 
+class TaskEventCursor(BaseModel):
+    after_seq: int | None = Field(default=None, ge=0)
+    before_seq: int | None = Field(default=None, gt=0)
+    limit: int = Field(default=TASK_EVENT_DEFAULT_LIMIT, ge=1, le=TASK_EVENT_MAX_LIMIT)
+
+    @model_validator(mode="after")
+    def validate_direction(self) -> "TaskEventCursor":
+        if self.after_seq is not None and self.before_seq is not None:
+            raise ValueError("after_seq and before_seq cannot be used together")
+        return self
+
+
 class TaskEventRead(BaseModel):
     event_id: UUID
     task_id: UUID
@@ -98,9 +130,18 @@ class TaskEventRead(BaseModel):
 
 class TaskEventListRead(BaseModel):
     task_id: UUID
-    after_seq: int
+    after_seq: int | None
+    before_seq: int | None
     next_after_seq: int
+    next_before_seq: int | None
+    has_more_before: bool
     items: list[TaskEventRead]
+
+
+class TaskEventPurgeRead(BaseModel):
+    cutoff: datetime
+    tasks_purged: int
+    events_deleted: int
 
 
 class ActiveTaskSummaryRead(BaseModel):
@@ -148,6 +189,7 @@ def task_to_read(task: Task) -> TaskRead:
         lease_until=task.lease_until,
         started_at=task.started_at,
         finished_at=task.finished_at,
+        runtime_events_purged_at=task.runtime_events_purged_at,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )

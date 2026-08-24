@@ -75,7 +75,33 @@ def test_task_list_maps_structured_progress_and_normalizes_search() -> None:
         "status": TaskStatus.RUNNING,
         "device_id": task.target_device_id,
         "search": "安全等待",
+        "created_from": None,
+        "created_to": None,
     }
+
+
+def test_task_list_forwards_half_open_created_range() -> None:
+    task = make_task(status=TaskStatus.PENDING)
+    repository = FakeTaskListRepository([])
+    service = TaskService(
+        FakeSession(),  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+    )
+    created_from = datetime(2026, 8, 17, tzinfo=UTC)
+    created_to = datetime(2026, 8, 24, tzinfo=UTC)
+
+    service.list_management_tasks(
+        page=1,
+        page_size=10,
+        status=TaskStatus.PENDING,
+        device_id=task.target_device_id,
+        search="fixture",
+        created_from=created_from,
+        created_to=created_to,
+    )
+
+    assert repository.arguments["created_from"] == created_from
+    assert repository.arguments["created_to"] == created_to
 
 
 def test_task_list_rejects_invalid_progress_and_uses_status_then_log() -> None:
