@@ -64,13 +64,27 @@ const activeNavigationLabel = computed(
     )?.moduleName ?? '工作台',
 )
 
+function renderPrimaryNavigationLabel(label: string, active = false) {
+  return () =>
+    h(
+      'span',
+      {
+        class: [
+          'app-shell__nav-label',
+          { 'app-shell__nav-label--active': active },
+        ],
+      },
+      label,
+    )
+}
+
 const menuOptions = computed<MenuOption[]>(() =>
   props.navigation.map((item) => {
     if (item.type === 'group') {
       return {
         key: item.groupCode,
         icon: () => h(item.icon, { size: 17, strokeWidth: 1.8 }),
-        label: item.groupName,
+        label: renderPrimaryNavigationLabel(item.groupName),
         children: item.children.map((child) => ({
           key: child.moduleCode,
           icon: () => h(child.icon, { size: 17, strokeWidth: 1.8 }),
@@ -81,20 +95,10 @@ const menuOptions = computed<MenuOption[]>(() =>
     return {
       key: item.moduleCode,
       icon: () => h(item.icon, { size: 17, strokeWidth: 1.8 }),
-      label: () =>
-        h(
-          'span',
-          {
-            class: [
-              'app-shell__nav-label',
-              {
-                'app-shell__nav-label--active':
-                  item.moduleCode === activeNavigationKey.value,
-              },
-            ],
-          },
-          item.moduleName,
-        ),
+      label: renderPrimaryNavigationLabel(
+        item.moduleName,
+        item.moduleCode === activeNavigationKey.value,
+      ),
     }
   }),
 )
@@ -228,11 +232,13 @@ function navigate(key: string): void {
 }
 
 :deep(.app-shell__nav-label) {
+  box-sizing: border-box;
   display: block;
   width: 100%;
-  padding-left: 10px;
+  padding-left: var(--space-2);
   border-left: 2px solid transparent;
   line-height: var(--line-height-body);
+  text-align: left;
 }
 
 :deep(.app-shell__nav-label--active) {

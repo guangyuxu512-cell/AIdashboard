@@ -24,9 +24,15 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
   await page.getByRole('button', { name: '打开 Dialog' }).click()
   await expect(page.getByText('Dialog 主题验收', { exact: true })).toBeVisible()
   const dialogLayout = await page.evaluate(() => {
-    const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
-    const host = document.querySelector('#app-overlay-host')?.getBoundingClientRect()
-    const wrapper = document.querySelector('.n-modal-body-wrapper')?.getBoundingClientRect()
+    const topbar = document
+      .querySelector('.app-shell__topbar')
+      ?.getBoundingClientRect()
+    const host = document
+      .querySelector('#app-overlay-host')
+      ?.getBoundingClientRect()
+    const wrapper = document
+      .querySelector('.n-modal-body-wrapper')
+      ?.getBoundingClientRect()
     return {
       topbarBottom: topbar?.bottom,
       hostTop: host?.top,
@@ -39,7 +45,9 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
   await page.getByRole('button', { name: '打开 Drawer' }).click()
   await expect(page.getByText('Drawer 主题验收', { exact: true })).toBeVisible()
   const drawerLayout = await page.evaluate(() => {
-    const host = document.querySelector('#app-overlay-host')?.getBoundingClientRect()
+    const host = document
+      .querySelector('#app-overlay-host')
+      ?.getBoundingClientRect()
     const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
     return {
       hostTop: host?.top,
@@ -93,6 +101,87 @@ test('switches and persists light, dark and system themes', async ({
   await expect(page.getByTitle('当前主题：跟随系统')).toBeVisible()
 })
 
+test('keeps every primary navigation row aligned when groups toggle', async ({
+  page,
+}) => {
+  const viewports = [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 1366, height: 768 },
+  ]
+
+  const measure = async () =>
+    page.evaluate(() => {
+      const labels = Array.from(
+        document.querySelectorAll<HTMLElement>('.app-shell__nav-label'),
+      )
+      const rows = labels.map((label) => {
+        const content = label.closest<HTMLElement>('.n-menu-item-content')
+        const icon = content?.querySelector<HTMLElement>(
+          ':scope > .n-menu-item-content__icon',
+        )
+        const arrow = content?.querySelector<HTMLElement>(
+          ':scope > .n-menu-item-content__arrow',
+        )
+        const labelRect = label.getBoundingClientRect()
+        const contentRect = content?.getBoundingClientRect()
+        const iconRect = icon?.getBoundingClientRect()
+        const arrowRect = arrow?.getBoundingClientRect()
+        return {
+          text: label.textContent?.trim(),
+          labelX: labelRect.x,
+          iconCenterX: iconRect ? iconRect.x + iconRect.width / 2 : null,
+          rowHeight: contentRect?.height,
+          arrowLeft: arrowRect?.left ?? null,
+          labelRight: labelRect.right,
+        }
+      })
+      const automation = labels
+        .find((label) => label.textContent?.trim() === '自动化中心')
+        ?.getBoundingClientRect()
+      const child = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.n-submenu-children .n-menu-item-content-header',
+        ),
+      )
+        .find((label) => label.textContent?.trim() === '设备中心')
+        ?.getBoundingClientRect()
+      return {
+        rows,
+        automationX: automation?.x ?? null,
+        childX: child?.x ?? null,
+      }
+    })
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/tasks')
+
+    for (const theme of ['浅色', '深色']) {
+      await page.getByRole('button', { name: '切换主题' }).click()
+      await page.getByText(theme, { exact: true }).click()
+
+      const expanded = await measure()
+      expect(expanded.rows.length).toBeGreaterThanOrEqual(4)
+      expect(new Set(expanded.rows.map((row) => row.labelX)).size).toBe(1)
+      expect(new Set(expanded.rows.map((row) => row.iconCenterX)).size).toBe(1)
+      expect(new Set(expanded.rows.map((row) => row.rowHeight)).size).toBe(1)
+      expect(expanded.childX).toBeGreaterThan(expanded.automationX ?? 0)
+      const groupRow = expanded.rows.find((row) => row.text === '自动化中心')
+      expect(groupRow?.arrowLeft).not.toBeNull()
+      expect(groupRow?.arrowLeft ?? 0).toBeGreaterThanOrEqual(
+        groupRow?.labelRight ?? 0,
+      )
+
+      await page.getByText('自动化中心', { exact: true }).click()
+      const collapsed = await measure()
+      expect(new Set(collapsed.rows.map((row) => row.labelX)).size).toBe(1)
+      expect(new Set(collapsed.rows.map((row) => row.iconCenterX)).size).toBe(1)
+      await page.getByText('自动化中心', { exact: true }).click()
+    }
+  }
+})
+
 for (const viewport of [
   { width: 1920, height: 1080 },
   { width: 1440, height: 900 },
@@ -137,8 +226,12 @@ for (const viewport of [
 
     await page.getByRole('button', { name: '打开 Drawer' }).click()
     const overlay = await page.evaluate(() => {
-      const topbar = document.querySelector('.app-shell__topbar')?.getBoundingClientRect()
-      const drawer = document.querySelector('.n-drawer')?.getBoundingClientRect()
+      const topbar = document
+        .querySelector('.app-shell__topbar')
+        ?.getBoundingClientRect()
+      const drawer = document
+        .querySelector('.n-drawer')
+        ?.getBoundingClientRect()
       return { topbarBottom: topbar?.bottom, drawerTop: drawer?.top }
     })
     expect(overlay.drawerTop).toBe(overlay.topbarBottom)
