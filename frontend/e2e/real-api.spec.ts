@@ -25,6 +25,7 @@ function cleanupRealTestData(): void {
     'from app.modules.automation_apps.models import AutomationApplicationConfig',
     'from app.modules.devices.models import Device',
     'from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding',
+    'from app.modules.schedules.models import Schedule, ScheduleRun',
     'from app.modules.sessions.models import ShopSession',
     'from app.modules.shops.models import Shop, ShopDeviceBinding',
     'from app.modules.tasks.models import Task, TaskEvent',
@@ -32,6 +33,7 @@ function cleanupRealTestData(): void {
     `prefix = ${JSON.stringify(`${testPrefix}%`)}`,
     'with Session(get_database_engine()) as session:',
     '    session.execute(delete(AutomationApplicationConfig).where(AutomationApplicationConfig.app_id == "stage-3b-1a-app"))',
+    '    session.execute(delete(AutomationApplicationConfig).where(AutomationApplicationConfig.app_id.like(prefix)))',
     '    shop_ids = list(session.scalars(select(Shop.shop_id).where(Shop.display_name.like(prefix))))',
     '    device_ids = list(session.scalars(select(Device.device_id).where(Device.display_name.like(prefix))))',
     '    if shop_ids:',
@@ -44,6 +46,10 @@ function cleanupRealTestData(): void {
     '        session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))',
     '    if device_ids:',
     '        session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.device_id.in_(device_ids)))',
+    '        schedule_ids = list(session.scalars(select(Schedule.schedule_id).where(Schedule.target_device_id.in_(device_ids))))',
+    '        if schedule_ids:',
+    '            session.execute(delete(ScheduleRun).where(ScheduleRun.schedule_id.in_(schedule_ids)))',
+    '            session.execute(delete(Schedule).where(Schedule.schedule_id.in_(schedule_ids)))',
     '        task_ids = select(Task.task_id).where(Task.target_device_id.in_(device_ids))',
     '        session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))',
     '        session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))',
@@ -56,6 +62,29 @@ function cleanupRealTestData(): void {
   ].join('\n')
 
   execFileSync(backendPython, ['-c', cleanupScript], {
+    cwd: backendDirectory,
+    stdio: 'pipe',
+  })
+}
+
+function forceScheduleDue(scheduleId: string): void {
+  const script = [
+    'from datetime import UTC, datetime, timedelta',
+    'from uuid import UUID',
+    'from sqlalchemy.orm import Session',
+    'from app.core.database import get_database_engine',
+    'from app.modules.devices.models import Device',
+    'from app.modules.schedules.models import Schedule',
+    'from app.modules.tasks.models import Task',
+    `schedule_id = UUID(${JSON.stringify(scheduleId)})`,
+    'with Session(get_database_engine()) as session:',
+    '    schedule = session.get(Schedule, schedule_id)',
+    '    assert schedule is not None',
+    '    schedule.next_run_at = datetime.now(UTC) - timedelta(seconds=1)',
+    '    session.commit()',
+  ].join('\n')
+
+  execFileSync(backendPython, ['-c', script], {
     cwd: backendDirectory,
     stdio: 'pipe',
   })
@@ -132,7 +161,10 @@ function seedCapturedSession(shopId: string): void {
   })
 }
 
-function inspectSoftRemovedShop(shopId: string, deviceId: string): {
+function inspectSoftRemovedShop(
+  shopId: string,
+  deviceId: string,
+): {
   shopExists: boolean
   enabled: boolean
   deleted: boolean
@@ -266,6 +298,271 @@ function seedTaskQueryFixtures(deviceId: string): {
 
 test.beforeAll(cleanupRealTestData)
 test.afterAll(cleanupRealTestData)
+
+test('creates one real Schedule Run and follows its ordinary Task lifecycle', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  const deviceName = `${testPrefix}scheduler-device`
+  const scheduleName = `${testPrefix}scheduler-plan`
+  const applicationId = `${testPrefix}scheduler-app`
+  const applicationName = `${testPrefix}scheduler-safe-application`
+  const deviceResponse = await page.request.post('/api/v1/devices', {
+    data: { display_name: deviceName },
+  })
+  expect(deviceResponse.status()).toBe(201)
+  const identity = issueWorkerIdentity(deviceName)
+  const workerHeaders = {
+    Authorization: `Bearer ${identity.token}`,
+    'X-Device-ID': identity.deviceId,
+  }
+  const now = new Date().toISOString()
+
+  expect(
+    (
+      await page.request.post('/api/v1/worker/heartbeat', {
+        headers: workerHeaders,
+        data: { worker_version: '0.4.2', started_at: now },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.put('/api/v1/worker/skill-capabilities', {
+        headers: workerHeaders,
+        data: {
+          skills: [
+            {
+              skill_id: 'yingdao.app.run',
+              display_name: '运行影刀应用',
+              runtime: 'rpa',
+              provider: 'yingdao',
+              version: '1.0.0',
+              classification: 'internal',
+            },
+          ],
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.post('/api/v1/worker/provider-inventory', {
+        headers: workerHeaders,
+        data: {
+          provider_code: 'yingdao',
+          inventory: {
+            provider: 'yingdao',
+            available: true,
+            status: 'ready',
+            provider_version: '6.3.6',
+            execution_available: true,
+            execution_version: '6.3.6',
+            logged_in: true,
+            account_display: 'Scheduler E2E',
+            account_type: 'PersonalBasic',
+            enterprise_account: false,
+            user_id: 'scheduler-real-e2e',
+            applications: [
+              {
+                app_id: applicationId,
+                app_name: applicationName,
+                version_id: '1',
+                updated_at: null,
+                app_type: null,
+                group_id: null,
+              },
+            ],
+            discovered_at: now,
+          },
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.put(
+        `/api/v1/automation-app-configs/yingdao/${applicationId}`,
+        {
+          data: {
+            input_schema: {
+              fields: [
+                {
+                  name: 'message',
+                  label: '安全消息',
+                  type: 'text',
+                  required: true,
+                  default_value: null,
+                  options: [],
+                },
+              ],
+            },
+          },
+        },
+      )
+    ).ok(),
+  ).toBe(true)
+
+  const shanghaiPreviousMinute = new Date(Date.now() + 8 * 60 * 60_000 - 60_000)
+  const localTime = `${String(shanghaiPreviousMinute.getUTCHours()).padStart(2, '0')}:${String(shanghaiPreviousMinute.getUTCMinutes()).padStart(2, '0')}`
+  const createScheduleResponse = await page.request.post('/api/v1/schedules', {
+    data: {
+      name: scheduleName,
+      target_device_id: identity.deviceId,
+      application_id: applicationId,
+      parameters: { message: 'scheduler-real-e2e' },
+      schedule_type: 'daily',
+      local_time: localTime,
+      timezone: 'Asia/Shanghai',
+      enabled: true,
+    },
+  })
+  expect(createScheduleResponse.status()).toBe(201)
+  const createdSchedule = (await createScheduleResponse.json()) as {
+    schedule_id: string
+    next_run_at: string
+  }
+  forceScheduleDue(createdSchedule.schedule_id)
+
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(
+          `/api/v1/schedules/${createdSchedule.schedule_id}/runs?page=1&page_size=20`,
+        )
+        if (!response.ok()) return 0
+        return ((await response.json()) as { total: number }).total
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(1)
+  const runsResponse = await page.request.get(
+    `/api/v1/schedules/${createdSchedule.schedule_id}/runs?page=1&page_size=20`,
+  )
+  const runsPayload = (await runsResponse.json()) as {
+    total: number
+    items: Array<{
+      run_id: string
+      scheduled_for: string
+      task_id: string
+      task_status: string
+      trigger_result: string
+    }>
+  }
+  const run = runsPayload.items[0]!
+  expect(run).toMatchObject({
+    task_status: 'pending',
+    trigger_result: 'task_created',
+  })
+
+  await page.goto('/#/schedules')
+  let scheduleRow = page.getByRole('row').filter({ hasText: scheduleName })
+  await expect(scheduleRow.getByText('待执行', { exact: true })).toBeVisible()
+
+  const claimResponse = await page.request.post('/api/v1/worker/tasks/claim', {
+    headers: workerHeaders,
+  })
+  expect(claimResponse.ok()).toBe(true)
+  expect((await claimResponse.json()).task_id).toBe(run.task_id)
+  const eventAt = new Date().toISOString()
+  expect(
+    (
+      await page.request.post(`/api/v1/worker/tasks/${run.task_id}/events`, {
+        headers: workerHeaders,
+        data: {
+          events: [
+            {
+              seq: 1,
+              event_type: 'status',
+              level: 'worker',
+              message: 'Scheduler Real E2E 已开始',
+              event_at: eventAt,
+              metadata: { provider: 'yingdao' },
+            },
+          ],
+        },
+      })
+    ).ok(),
+  ).toBe(true)
+
+  await page.goto('/#/tasks')
+  const taskRow = page.getByRole('row').filter({ hasText: applicationName })
+  await expect(taskRow.getByText('执行中', { exact: true })).toBeVisible()
+  await taskRow.getByRole('button', { name: '详情' }).click()
+  const runtimeDrawer = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: '运行详情' }),
+  })
+  await expect(
+    runtimeDrawer
+      .getByRole('listitem')
+      .getByText('Scheduler Real E2E 已开始', { exact: true }),
+  ).toBeVisible()
+
+  expect(
+    (
+      await page.request.post(`/api/v1/worker/tasks/${run.task_id}/complete`, {
+        headers: workerHeaders,
+        data: { result: { safe: true } },
+      })
+    ).ok(),
+  ).toBe(true)
+  await expect(taskRow.getByText('成功', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(
+    runtimeDrawer.getByRole('heading', { name: 'Result' }),
+  ).toBeVisible()
+
+  await page.goto('/#/schedules')
+  scheduleRow = page.getByRole('row').filter({ hasText: scheduleName })
+  await expect(scheduleRow.getByText('成功', { exact: true })).toBeVisible()
+  await scheduleRow.getByRole('button', { name: '查看' }).click()
+  const scheduleDrawer = page
+    .getByRole('dialog')
+    .filter({ hasText: scheduleName })
+  await expect(scheduleDrawer.getByText('Asia/Shanghai')).toBeVisible()
+  await scheduleDrawer.getByRole('button', { name: '运行详情' }).click()
+  await expect(
+    page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: '运行详情' }) })
+      .getByRole('listitem')
+      .getByText('Scheduler Real E2E 已开始', { exact: true }),
+  ).toBeVisible()
+
+  await page.waitForTimeout(11_000)
+  const finalRunsResponse = await page.request.get(
+    `/api/v1/schedules/${createdSchedule.schedule_id}/runs?page=1&page_size=20`,
+  )
+  const finalRuns = (await finalRunsResponse.json()) as { total: number }
+  expect(finalRuns.total).toBe(1)
+  const finalScheduleResponse = await page.request.get(
+    `/api/v1/schedules/${createdSchedule.schedule_id}`,
+  )
+  const finalSchedule = (await finalScheduleResponse.json()) as {
+    next_run_at: string
+  }
+  expect(new Date(finalSchedule.next_run_at).getTime()).toBeGreaterThan(
+    Date.now() + 20 * 60 * 60_000,
+  )
+  const taskSearchResponse = await page.request.get(
+    `/api/v1/tasks?page=1&page_size=100&search=${encodeURIComponent(applicationName)}`,
+  )
+  expect((await taskSearchResponse.json()).total).toBe(1)
+
+  console.log(
+    'SCHEDULER_REAL_E2E',
+    JSON.stringify({
+      scheduleId: createdSchedule.schedule_id,
+      timezone: 'Asia/Shanghai',
+      scheduledFor: run.scheduled_for,
+      runId: run.run_id,
+      taskId: run.task_id,
+      nextRunAt: finalSchedule.next_run_at,
+      duplicateTasks: 0,
+    }),
+  )
+})
 
 test('shows a real Task lifecycle and incremental Runtime Events without list flashing', async ({
   page,
@@ -412,7 +709,9 @@ test('queries real Tasks by local date combinations and reads bounded retained l
   await expect(selections.nth(2)).toContainText('最近 7 天')
   await search.fill(`${testPrefix}query-`)
   await toolbar.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText(fixtures.todayName, { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(fixtures.todayName, { exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByText(fixtures.yesterdayName, { exact: true }),
   ).toBeVisible()
@@ -441,7 +740,9 @@ test('queries real Tasks by local date combinations and reads bounded retained l
     .click()
   await search.fill(`${testPrefix}query-`)
   await toolbar.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText(fixtures.todayName, { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(fixtures.todayName, { exact: true }),
+  ).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 
   await toolbar.getByRole('button', { name: '重置' }).click()
@@ -502,8 +803,12 @@ test('issues, rotates and revokes a one-time Worker credential in Device Drawer'
   const drawer = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: deviceName }),
   })
-  await expect(drawer.getByRole('heading', { name: 'Worker 凭证' })).toBeVisible()
-  await expect(drawer.getByText('未签发', { exact: true }).first()).toBeVisible()
+  await expect(
+    drawer.getByRole('heading', { name: 'Worker 凭证' }),
+  ).toBeVisible()
+  await expect(
+    drawer.getByText('未签发', { exact: true }).first(),
+  ).toBeVisible()
 
   await drawer.getByRole('button', { name: '签发 Worker Token' }).click()
   let tokenDialog = page.getByRole('dialog').filter({
@@ -516,7 +821,9 @@ test('issues, rotates and revokes a one-time Worker credential in Device Drawer'
   await expect(page.getByText('Worker Token 已复制')).toBeVisible()
   await tokenDialog.getByRole('button', { name: '关闭' }).click()
   await expect(tokenDialog).toHaveCount(0)
-  await expect(drawer.getByText('已签发', { exact: true }).first()).toBeVisible()
+  await expect(
+    drawer.getByText('已签发', { exact: true }).first(),
+  ).toBeVisible()
 
   await drawer.getByRole('button', { name: '轮换 Token' }).click()
   const rotateDialog = page.getByRole('dialog').filter({
@@ -537,7 +844,9 @@ test('issues, rotates and revokes a one-time Worker credential in Device Drawer'
   })
   await expect(revokeDialog.getByText(/无法继续心跳/)).toBeVisible()
   await revokeDialog.getByRole('button', { name: '确认撤销' }).click()
-  await expect(drawer.getByText('已撤销', { exact: true }).first()).toBeVisible()
+  await expect(
+    drawer.getByText('已撤销', { exact: true }).first(),
+  ).toBeVisible()
   await expect(
     drawer.getByRole('button', { name: '签发 Worker Token' }),
   ).toBeVisible()
@@ -869,7 +1178,9 @@ test('validates the real HuanYu session and restores its enabled state', async (
   await page.goto('/#/shops')
   const row = page.getByRole('row').filter({ hasText: 'HuanYu' })
   await expect(row.getByText('有效', { exact: true })).toBeVisible()
-  const listPayload = await (await page.request.get('/api/v1/shops?page=1&page_size=100')).json()
+  const listPayload = await (
+    await page.request.get('/api/v1/shops?page=1&page_size=100')
+  ).json()
   const huanyu = listPayload.items.find(
     (shop: { display_name: string }) => shop.display_name === 'HuanYu',
   ) as { shop_id: string; enabled: boolean }
@@ -881,12 +1192,16 @@ test('validates the real HuanYu session and restores its enabled state', async (
   await row.getByRole('button', { name: '查看' }).click()
   const healthResponse = page.waitForResponse(
     (response) =>
-      response.url().endsWith(`/api/v1/shops/${huanyu.shop_id}/session/health-check`) &&
+      response
+        .url()
+        .endsWith(`/api/v1/shops/${huanyu.shop_id}/session/health-check`) &&
       response.request().method() === 'POST',
   )
   await page.getByRole('button', { name: '验证会话' }).click()
   expect((await healthResponse).ok()).toBe(true)
-  await expect(page.locator('.shop-session-card').getByText('有效')).toBeVisible()
+  await expect(
+    page.locator('.shop-session-card').getByText('有效'),
+  ).toBeVisible()
   const after = await (
     await page.request.get(`/api/v1/shops/${huanyu.shop_id}/session`)
   ).json()
@@ -899,11 +1214,17 @@ test('validates the real HuanYu session and restores its enabled state', async (
     await row.getByRole('button', { name: '停用', exact: true }).click()
     await page.reload()
     let refreshedRow = page.getByRole('row').filter({ hasText: 'HuanYu' })
-    await expect(refreshedRow.getByText('已停用', { exact: true })).toBeVisible()
-    await refreshedRow.getByRole('button', { name: '启用', exact: true }).click()
+    await expect(
+      refreshedRow.getByText('已停用', { exact: true }),
+    ).toBeVisible()
+    await refreshedRow
+      .getByRole('button', { name: '启用', exact: true })
+      .click()
     await page.reload()
     refreshedRow = page.getByRole('row').filter({ hasText: 'HuanYu' })
-    await expect(refreshedRow.getByText('已启用', { exact: true })).toBeVisible()
+    await expect(
+      refreshedRow.getByText('已启用', { exact: true }),
+    ).toBeVisible()
   } finally {
     await page.request.patch(`/api/v1/shops/${huanyu.shop_id}`, {
       data: { enabled: true },
@@ -1068,7 +1389,9 @@ test('protects active Device tasks and revokes every Worker endpoint after soft 
   })
   expect(taskResponse.ok()).toBe(true)
 
-  const protectedRemove = await page.request.delete(`/api/v1/devices/${deviceId}`)
+  const protectedRemove = await page.request.delete(
+    `/api/v1/devices/${deviceId}`,
+  )
   expect(protectedRemove.status()).toBe(409)
   expect(await protectedRemove.json()).toMatchObject({
     code: 'DEVICE_HAS_ACTIVE_TASKS',
@@ -1165,8 +1488,7 @@ test('keeps the same Device row through ONLINE, OFFLINE and ONLINE recovery', as
   const failedRefresh = page.waitForEvent(
     'requestfailed',
     (request) =>
-      request.url().includes('/api/v1/devices?') &&
-      request.method() === 'GET',
+      request.url().includes('/api/v1/devices?') && request.method() === 'GET',
   )
   await page.getByRole('button', { name: '刷新' }).click()
   await failedRefresh

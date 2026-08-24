@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { NForm, NFormItem, useMessage } from 'naive-ui'
-import { computed, reactive, watch } from 'vue'
+import { NForm, useMessage } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
 
 import {
   useAutomationApplicationConfigQuery,
+  AutomationParameterFields,
+  createDefaultAutomationParameters,
   validateAutomationParameters,
 } from '@/entities/automation-application'
 import type { ProviderApplicationViewModel } from '@/entities/device'
 import { useCreateTaskMutation } from '@/entities/task'
 import { getErrorMessage } from '@/shared/api'
-import { AppDialog, AppInput, AppNumberInput, AppSelect, AppSwitch } from '@/shared/ui'
+import { AppDialog } from '@/shared/ui'
 
 const props = defineProps<{
   show: boolean
@@ -24,7 +26,7 @@ const message = useMessage()
 const appId = computed(() => props.application?.appId ?? null)
 const configQuery = useAutomationApplicationConfigQuery(appId)
 const createTask = useCreateTaskMutation()
-const params = reactive<Record<string, unknown>>({})
+const params = ref<Record<string, unknown>>({})
 const hasConfigData = computed(() => configQuery.data.value !== undefined)
 const configInitialLoading = computed(
   () => configQuery.isPending.value && !hasConfigData.value,
@@ -38,17 +40,16 @@ const runDisabledReason = computed(() => {
   if (configInitialLoading.value) return '正在读取参数配置'
   if (configInitialError.value) return '参数配置加载失败，暂时无法运行'
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
-  return validateAutomationParameters(schema, params)
+  return validateAutomationParameters(schema, params.value)
 })
 
 watch(
   [() => props.show, () => configQuery.data.value],
   ([show, config]) => {
     if (!show) return
-    for (const key of Object.keys(params)) delete params[key]
-    for (const field of config?.input_schema.fields ?? []) {
-      if (field.default_value !== null) params[field.name] = field.default_value
-    }
+    params.value = createDefaultAutomationParameters(
+      config?.input_schema ?? { fields: [] },
+    )
   },
   { immediate: true },
 )
@@ -60,7 +61,7 @@ async function run(): Promise<void> {
     return
   }
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
-  const validationError = validateAutomationParameters(schema, params)
+  const validationError = validateAutomationParameters(schema, params.value)
   if (validationError) {
     message.error(validationError)
     return
@@ -69,7 +70,7 @@ async function run(): Promise<void> {
     const task = await createTask.mutateAsync({
       target_device_id: props.deviceId,
       skill_id: 'yingdao.app.run',
-      input: { app_id: props.application.appId, params: { ...params } },
+      input: { app_id: props.application.appId, params: { ...params.value } },
     })
     message.success('影刀应用任务已创建')
     emit('update:show', false)
@@ -92,37 +93,10 @@ async function run(): Promise<void> {
     @confirm="run"
   >
     <NForm label-placement="top">
-      <NFormItem
-        v-for="field in configQuery.data.value?.input_schema.fields ?? []"
-        :key="field.name"
-        :label="field.label"
-        :required="field.required"
-      >
-        <AppNumberInput
-          v-if="field.type === 'number'"
-          :model-value="params[field.name] as number"
-          clearable
-          @update:model-value="params[field.name] = $event"
-        />
-        <AppSwitch
-          v-else-if="field.type === 'boolean'"
-          :model-value="(params[field.name] as boolean) ?? false"
-          @update:model-value="params[field.name] = $event"
-        />
-        <AppSelect
-          v-else-if="field.type === 'select'"
-          :model-value="params[field.name] as string"
-          :options="field.options.map((value) => ({ label: value, value }))"
-          clearable
-          @update:model-value="params[field.name] = $event"
-        />
-        <AppInput
-          v-else
-          :model-value="params[field.name] as string"
-          clearable
-          @update:model-value="params[field.name] = $event"
-        />
-      </NFormItem>
+      <AutomationParameterFields
+        v-model="params"
+        :schema="configQuery.data.value?.input_schema ?? { fields: [] }"
+      />
     </NForm>
     <p v-if="configInitialError" class="application-run__error">
       参数配置加载失败：{{ getErrorMessage(configQuery.error.value) }}

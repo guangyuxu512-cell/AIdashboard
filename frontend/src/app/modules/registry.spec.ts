@@ -14,6 +14,7 @@ describe('Module Registry Lite', () => {
       'shop',
       'device',
       'task',
+      'schedule',
       'settings',
     ])
   })
@@ -23,13 +24,14 @@ describe('Module Registry Lite', () => {
       'shop',
       'device',
       'task',
+      'schedule',
       'settings',
     ])
     expect(
       getNavigationModules(MODULE_REGISTRY, { includeDevelopment: true }).map(
         (module) => module.moduleCode,
       ),
-    ).toEqual(['foundation', 'shop', 'device', 'task', 'settings'])
+    ).toEqual(['foundation', 'shop', 'device', 'task', 'schedule', 'settings'])
   })
 
   it('builds the automation navigation group without an automation route', () => {
@@ -46,7 +48,7 @@ describe('Module Registry Lite', () => {
       automation?.type === 'group'
         ? automation.children.map((module) => module.moduleCode)
         : [],
-    ).toEqual(['device', 'task'])
+    ).toEqual(['device', 'task', 'schedule'])
     expect(
       MODULE_REGISTRY.some(
         (module) => (module.routePath as string) === '/automation',
@@ -80,6 +82,7 @@ describe('Module Registry Lite', () => {
       shop: null,
       device: null,
       task: null,
+      schedule: null,
       settings: null,
     })
   })

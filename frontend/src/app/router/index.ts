@@ -6,6 +6,7 @@ const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
+const scheduleModule = requireModuleDefinition('schedule')
 const settingsModule = requireModuleDefinition('settings')
 
 const router = createRouter({
@@ -36,10 +37,15 @@ const router = createRouter({
       meta: { moduleCode: taskModule.moduleCode },
     },
     {
+      path: scheduleModule.routePath,
+      name: scheduleModule.routeName,
+      component: () => import('@/pages/schedules/ScheduleCenterPage.vue'),
+      meta: { moduleCode: scheduleModule.moduleCode },
+    },
+    {
       path: settingsModule.routePath,
       name: settingsModule.routeName,
-      component: () =>
-        import('@/pages/settings/NotificationSettingsPage.vue'),
+      component: () => import('@/pages/settings/NotificationSettingsPage.vue'),
       meta: { moduleCode: settingsModule.moduleCode },
     },
   ],

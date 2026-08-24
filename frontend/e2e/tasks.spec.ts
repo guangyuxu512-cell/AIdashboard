@@ -22,7 +22,7 @@ test('uses the automation navigation group and renders every Task state', async 
 
   await expect(page).toHaveURL(/#\/tasks$/)
   await expect(page.getByRole('heading', { name: '任务中心' })).toHaveCount(0)
-  await expect(page.getByText('定时计划', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('定时计划', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
 
   for (const column of [
@@ -201,7 +201,9 @@ test('loads historical Runtime Events incrementally and distinguishes partial pu
     drawer.getByText('部分历史运行日志已按保留策略清理。').first(),
   ).toBeVisible()
   await expect(
-    drawer.locator('.task-runtime__log-viewport li').getByText('Worker 已领取任务'),
+    drawer
+      .locator('.task-runtime__log-viewport li')
+      .getByText('Worker 已领取任务'),
   ).toBeVisible()
 })
 

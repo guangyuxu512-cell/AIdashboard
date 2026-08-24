@@ -1,5 +1,6 @@
 import {
   Blocks,
+  CalendarClock,
   ListChecks,
   Monitor,
   Settings,
@@ -100,6 +101,18 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 32,
+  },
+  {
+    moduleCode: 'schedule',
+    moduleName: '定时计划',
+    navigationGroup: 'management',
+    navigationParent: 'automation',
+    routeName: 'schedules',
+    routePath: '/schedules',
+    icon: CalendarClock,
+    enabled: true,
+    permissionCode: null,
+    order: 33,
   },
   {
     moduleCode: 'settings',

@@ -3,8 +3,20 @@ import AppDialog from '@/shared/ui/AppDialog.vue'
 import type { OverlaySize } from '@/shared/ui/types'
 
 withDefaults(
-  defineProps<{ show: boolean; title: string; size?: OverlaySize; submitting?: boolean }>(),
-  { size: 'md', submitting: false },
+  defineProps<{
+    show: boolean
+    title: string
+    size?: OverlaySize
+    submitting?: boolean
+    submitDisabled?: boolean
+    submitDisabledReason?: string | null
+  }>(),
+  {
+    size: 'md',
+    submitting: false,
+    submitDisabled: false,
+    submitDisabledReason: null,
+  },
 )
 
 defineEmits<{
@@ -20,6 +32,8 @@ defineEmits<{
     :title="title"
     :size="size"
     :loading="submitting"
+    :positive-disabled="submitDisabled"
+    :positive-disabled-reason="submitDisabledReason"
     positive-text="保存"
     @update:show="$emit('update:show', $event)"
     @confirm="$emit('submit')"

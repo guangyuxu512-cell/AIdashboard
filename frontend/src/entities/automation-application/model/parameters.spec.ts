@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { validateAutomationParameters } from './parameters'
+import {
+  createDefaultAutomationParameters,
+  validateAutomationParameters,
+} from './parameters'
 
 const schema = {
   fields: [
@@ -24,6 +27,13 @@ const schema = {
 }
 
 describe('validateAutomationParameters', () => {
+  it('builds defaults while preserving existing schedule values', () => {
+    expect(createDefaultAutomationParameters(schema)).toEqual({ count: 1 })
+    expect(
+      createDefaultAutomationParameters(schema, { keyword: '保留', count: 3 }),
+    ).toEqual({ keyword: '保留', count: 3 })
+  })
+
   it('accepts values matching the configured schema', () => {
     expect(
       validateAutomationParameters(schema, { keyword: '商品', count: 2 }),
