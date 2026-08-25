@@ -4,7 +4,10 @@ from datetime import UTC, datetime
 
 from app.core.config import get_settings
 from app.core.database import get_session_factory
+from app.core.security import get_secret_cipher
+from app.modules.credentials.service import CredentialService
 from app.modules.schedules.service import ScheduleService
+from app.modules.tasks.service import TaskService
 
 
 logger = logging.getLogger(__name__)
@@ -16,7 +19,16 @@ def trigger_due_schedules_once(*, now: datetime | None = None) -> int:
     triggered = 0
     for _ in range(settings.schedule_trigger_batch_size):
         with session_factory() as session:
-            result = ScheduleService(session).trigger_next_due(now=now)
+            result = ScheduleService(
+                session,
+                task_service=TaskService(
+                    session,
+                    credential_service=CredentialService(
+                        session,
+                        get_secret_cipher(),
+                    ),
+                ),
+            ).trigger_next_due(now=now)
         if result is None:
             break
         logger.info(

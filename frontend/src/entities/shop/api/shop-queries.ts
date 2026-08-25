@@ -9,6 +9,7 @@ export const shopQueryKeys = {
   list: (params: ShopListParams) => ['shops', 'list', params] as const,
   detail: (shopId: string | null) => ['shops', 'detail', shopId] as const,
   owners: ['shops', 'owners'] as const,
+  selectionOptions: ['shops', 'selection-options'] as const,
 }
 
 export function useShopListQuery(params: MaybeRefOrGetter<ShopListParams>) {
@@ -30,6 +31,13 @@ export function useShopOwnerOptionsQuery() {
   return useQuery({
     queryKey: shopQueryKeys.owners,
     queryFn: () => shopDataSource.listOwnerOptions(),
+  })
+}
+
+export function useShopSelectionOptionsQuery() {
+  return useQuery({
+    queryKey: shopQueryKeys.selectionOptions,
+    queryFn: () => shopDataSource.listSelectionOptions(),
   })
 }
 

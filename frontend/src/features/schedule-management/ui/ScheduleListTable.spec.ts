@@ -12,6 +12,7 @@ const row: ScheduleListItemViewModel = {
   name: '每日商品发布',
   enabled: true,
   deviceId: 'device-1',
+  shopId: 'shop-1',
   deviceName: 'PC-11',
   executionType: 'yingdao_application',
   executionTypeDisplay: '影刀应用',

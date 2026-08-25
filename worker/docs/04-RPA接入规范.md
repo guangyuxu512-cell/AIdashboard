@@ -28,7 +28,9 @@ Bridge：完整覆盖两个 JSON 并确认图片目录；成功后才调用 `Yin
 Preparation 与 ShadowBot Run 位于同一个 Provider 串行边界内，不会被两个影刀 Task 交叉覆盖。
 
 `params.json` 的根对象就是业务参数本身，不增加 context/runtime/resources Envelope；无参数为
-`{}`。`account.json` 只使用正式 Task Account Payload，无 Payload 为 `{}`。两者均 UTF-8、
+`{}`。`account.json` 只使用认证 Claim 下发的正式 Task Account Payload，当前键为
+`shop_id / platform_code / login_identifier / secret / preferred_verification_channel`；无 Payload
+为 `{}`。两者均 UTF-8、
 中文可读、原子替换。完整账号数据不得进入日志、Runtime Event 或 Task Result。现有
 `shadowbot:Run?...` Application Params 保持兼容，不因增加固定文件而删除。
 

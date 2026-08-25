@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BusinessSkillCatalogItemViewModel } from '@/entities/business-skill'
+import { ShopSelector } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import SchemaParameterFields from '@/shared/components/SchemaParameterFields.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
@@ -93,6 +94,9 @@ async function chooseBusinessSkill(
   const selects = wrapper.findAllComponents(AppSelect)
   selects[0]!.vm.$emit('update:modelValue', 'device-1')
   selects[1]!.vm.$emit('update:modelValue', 'business_skill')
+  wrapper
+    .findComponent(ShopSelector)
+    .vm.$emit('update:modelValue', 'shop-fixture-001')
   await flushPromises()
   const businessSelect = wrapper
     .findAllComponents(AppSelect)
@@ -120,6 +124,7 @@ describe('ScheduleFormDialog Business Skill target', () => {
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
       name: '每日目录测试',
       deviceId: 'device-1',
+      shopId: 'shop-fixture-001',
       executionType: 'business_skill',
       applicationId: null,
       skillId: 'catalog.fixture.run',

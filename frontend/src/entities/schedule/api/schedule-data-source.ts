@@ -53,6 +53,7 @@ function toCreateDto(input: ScheduleSaveInput): ScheduleCreateDto {
   return {
     name: input.name,
     target_device_id: input.deviceId,
+    shop_id: input.shopId,
     execution_type: input.executionType,
     ...(input.executionType === 'yingdao_application' && input.applicationId
       ? { application_id: input.applicationId }
@@ -74,6 +75,7 @@ function toUpdateDto(input: Partial<ScheduleSaveInput>): ScheduleUpdateDto {
     ...(input.deviceId !== undefined
       ? { target_device_id: input.deviceId }
       : {}),
+    ...(input.shopId !== undefined ? { shop_id: input.shopId } : {}),
     ...(input.executionType !== undefined
       ? { execution_type: input.executionType }
       : {}),
@@ -161,6 +163,7 @@ function createMockScheduleDataSource(): ScheduleDataSource {
       if (dto.name !== undefined) row.name = dto.name
       if (dto.target_device_id !== undefined)
         row.target_device_id = dto.target_device_id
+      if (dto.shop_id !== undefined) row.shop_id = dto.shop_id
       if (dto.execution_type !== undefined) {
         row.execution_type = dto.execution_type
       }

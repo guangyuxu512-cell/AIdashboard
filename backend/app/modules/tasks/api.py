@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.credentials.service import CredentialService
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
@@ -39,8 +41,12 @@ router = APIRouter(
 
 def get_task_service(
     session: Annotated[Session, Depends(get_database_session)],
+    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> TaskService:
-    return TaskService(session)
+    return TaskService(
+        session,
+        credential_service=CredentialService(session, cipher),
+    )
 
 
 def get_task_created_range(

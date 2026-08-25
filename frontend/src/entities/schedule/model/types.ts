@@ -22,6 +22,7 @@ export interface ScheduleListItemViewModel {
   name: string
   enabled: boolean
   deviceId: string
+  shopId: string | null
   deviceName: string
   executionType: ScheduleExecutionTypeDto
   executionTypeDisplay: string
@@ -54,6 +55,7 @@ export interface ScheduleListFilters {
 export interface ScheduleSaveInput {
   name: string
   deviceId: string
+  shopId: string
   executionType: ScheduleExecutionTypeDto
   applicationId: string | null
   skillId: string | null

@@ -54,6 +54,7 @@ export function mapScheduleListItemDto(
     name: dto.name,
     enabled: dto.enabled,
     deviceId: dto.target_device_id,
+    shopId: dto.shop_id,
     deviceName: dto.device_display_name,
     executionType: dto.execution_type,
     executionTypeDisplay:

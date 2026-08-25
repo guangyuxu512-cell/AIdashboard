@@ -34,16 +34,18 @@ class FakeScheduledTaskService:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.calls = 0
+        self.prepared_data: object | None = None
+        self.created_data: object | None = None
 
     def prepare_scheduled_task(self, data: object) -> PreparedTaskCreation:
-        del data
+        self.prepared_data = data
         return PreparedTaskCreation(
             input_json={"app_id": "safe-app", "params": {}},
             execution_display_name="安全应用",
         )
 
     def create_for_schedule(self, data: object) -> Task:
-        del data
+        self.created_data = data
         self.calls += 1
         if self.error is not None:
             raise self.error
@@ -63,6 +65,7 @@ def due_schedule() -> Schedule:
         name="每日安全任务",
         enabled=True,
         target_device_id=uuid4(),
+        shop_id=UUID("62000000-0000-4000-8000-000000000001"),
         skill_id="yingdao.app.run",
         execution_display_name="安全应用",
         schedule_type="daily",
@@ -89,6 +92,7 @@ def test_due_scan_coalesces_missed_days_and_creates_one_pending_task() -> None:
     assert result.scheduled_for == datetime(2026, 8, 24, 1, 30, tzinfo=UTC)
     assert result.task_id is not None
     assert task_service.calls == 1
+    assert getattr(task_service.created_data, "shop_id") == schedule.shop_id
     assert schedule.next_run_at == datetime(2026, 8, 25, 1, 30, tzinfo=UTC)
     assert session.commits == 1
     assert len(repository.runs) == 1

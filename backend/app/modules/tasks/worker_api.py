@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.credentials.service import CredentialService
 from app.modules.tasks.schemas import (
     TaskComplete,
     TaskEventBatchResult,
@@ -34,8 +36,12 @@ router = APIRouter(
 
 def get_worker_task_service(
     session: Annotated[Session, Depends(get_database_session)],
+    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> TaskService:
-    return TaskService(session)
+    return TaskService(
+        session,
+        credential_service=CredentialService(session, cipher),
+    )
 
 
 @router.post(
@@ -47,14 +53,16 @@ def claim_task(
     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
     service: Annotated[TaskService, Depends(get_worker_task_service)],
 ) -> WorkerTaskRead | Response:
-    task = service.claim(principal)
-    if task is None:
+    claimed = service.claim_with_account(principal)
+    if claimed is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+    task = claimed.task
     return WorkerTaskRead(
         task_id=task.task_id,
         skill_id=task.skill_id,
         input=task.input_json,
         lease_until=task.lease_until,
+        account=claimed.account,
     )
 
 

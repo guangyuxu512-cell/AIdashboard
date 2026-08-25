@@ -90,10 +90,11 @@ Task Account Payload      → account.json
 Task 的字段。任一步失败时 Task 以安全错误结束，且不得调用 ShadowBot Run。
 
 Local Input Bridge 只是跨进程输入适配，不替代现有 ShadowBot Application Params；现有 URI
-参数仍继续传递。当前 Backend Claim 只有 Task `skill_id + input`，Task 没有 Shop/Account 正式
-关联，也没有 Credential 下发 Contract，因此当前真实任务的 `account.json` 为 `{}`、Python
-`ctx.account` 为 `None`。不得把店铺密码、Cookie 或猜测字段硬塞进 Task Input。建立正式关联后，
-只能复用对应 Backend Credential Service 构建最小 Account Payload。
+参数仍继续传递。Task Account Payload V1 由 Backend 在认证 Claim 时根据 `Task.shop_id` 和现有
+Credential 构建，字段固定为 `shop_id / platform_code / login_identifier / secret /
+preferred_verification_channel`，不包含 Cookie/Session，也不进入 Task Input、日志、Runtime Event
+或 Result。RPAExecutor 将该字典完整覆盖到 `account.json`；Python Business Skill 通过
+`ctx.account` 读取。没有 `shop_id` 的兼容 Task 仍分别得到 `{}` 与 `None`。
 
 图片目录当前只定义本机落点和可写性。项目尚无 Server → Worker 图片传输 Contract，因此 V1
 不虚构下载、命名或新图片集合标记，也不会擅自清空任意自定义目录；未来一旦有“本 Task 使用

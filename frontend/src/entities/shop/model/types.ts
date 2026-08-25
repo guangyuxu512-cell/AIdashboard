@@ -72,4 +72,5 @@ export interface ShopSelectOption {
   [key: string]: unknown
   label: string
   value: string
+  disabled?: boolean
 }

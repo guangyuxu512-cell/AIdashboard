@@ -78,7 +78,12 @@ test('opens create form with real Device Inventory semantics and saves a mock pl
     .locator('.n-base-select-option')
     .filter({ hasText: '杭州-运营机-01' })
     .click()
-  await dialog.locator('.n-base-selection').nth(2).click()
+  await dialog.locator('.n-base-selection').nth(1).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '星河服饰旗舰店' })
+    .click()
+  await dialog.locator('.n-base-selection').nth(3).click()
   await page
     .locator('.n-base-select-option')
     .filter({ hasText: '商品发布（Fixture）' })
@@ -136,6 +141,11 @@ test('shows a normal empty state when the selected device has no Business Skill'
     .filter({ hasText: '杭州-运营机-01' })
     .click()
   await dialog.locator('.n-base-selection').nth(1).click()
+  await page
+    .locator('.n-base-select-option')
+    .filter({ hasText: '星河服饰旗舰店' })
+    .click()
+  await dialog.locator('.n-base-selection').nth(2).click()
   await page
     .locator('.n-base-select-option')
     .filter({ hasText: '业务 Skill' })

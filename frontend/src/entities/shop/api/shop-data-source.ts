@@ -39,6 +39,7 @@ export interface ShopDataSource {
   createBinding(shopId: string, input: ShopDeviceBindingInput): Promise<void>
   updateBinding(shopId: string, input: ShopDeviceBindingInput): Promise<void>
   listOwnerOptions(): Promise<ShopSelectOption[]>
+  listSelectionOptions(): Promise<ShopSelectOption[]>
 }
 
 function cloneFixtureRows(): ShopListItemViewModel[] {
@@ -230,6 +231,13 @@ export function createMockShopDataSource(): ShopDataSource {
         value: String(option.value),
       }))
     },
+    async listSelectionOptions() {
+      return rows.map((shop) => ({
+        label: shop.shopName,
+        value: shop.shopId,
+        disabled: !shop.enabled,
+      }))
+    },
   }
 }
 
@@ -310,6 +318,14 @@ const realShopDataSource: ShopDataSource = {
     return users.items.map((user) => ({
       label: user.display_name,
       value: user.user_id,
+    }))
+  },
+  async listSelectionOptions() {
+    const page = await shopApi.list({ page: 1, pageSize: 100 })
+    return page.items.map((shop) => ({
+      label: shop.display_name,
+      value: shop.shop_id,
+      disabled: !shop.enabled,
     }))
   },
 }

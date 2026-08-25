@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.credentials.schemas import TaskAccountPayload
 from app.modules.tasks.enums import (
     TASK_SKILL_ID_MAX_LENGTH,
     TASK_SKILL_ID_PATTERN,
@@ -21,6 +22,7 @@ class TaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_device_id: UUID
+    shop_id: UUID | None = None
     skill_id: str = Field(
         min_length=3,
         max_length=TASK_SKILL_ID_MAX_LENGTH,
@@ -49,6 +51,7 @@ class TaskRead(BaseModel):
 
     task_id: UUID
     target_device_id: UUID
+    shop_id: UUID | None = None
     skill_id: str
     execution_display_name: str
     status: TaskStatus
@@ -69,6 +72,7 @@ class WorkerTaskRead(BaseModel):
     skill_id: str
     input: dict[str, Any]
     lease_until: datetime
+    account: TaskAccountPayload | None = Field(default=None, repr=False)
 
 
 class TaskLeaseRead(BaseModel):
@@ -188,6 +192,7 @@ def task_to_read(task: Task) -> TaskRead:
     return TaskRead(
         task_id=task.task_id,
         target_device_id=task.target_device_id,
+        shop_id=task.shop_id,
         skill_id=task.skill_id,
         execution_display_name=task.execution_display_name,
         status=task.status,

@@ -22,6 +22,7 @@ class ScheduleCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     target_device_id: UUID
+    shop_id: UUID | None = None
     execution_type: ScheduleExecutionType = (
         ScheduleExecutionType.YINGDAO_APPLICATION
     )
@@ -66,6 +67,7 @@ class ScheduleUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     target_device_id: UUID | None = None
+    shop_id: UUID | None = None
     execution_type: ScheduleExecutionType | None = None
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
     skill_id: str | None = Field(
@@ -133,6 +135,7 @@ class ScheduleListItemRead(BaseModel):
     name: str
     enabled: bool
     target_device_id: UUID
+    shop_id: UUID | None = None
     device_display_name: str
     execution_type: ScheduleExecutionType
     skill_id: str

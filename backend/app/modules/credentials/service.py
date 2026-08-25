@@ -18,6 +18,7 @@ from app.modules.credentials.schemas import (
     CredentialCreate,
     CredentialStatusRead,
     CredentialUpdate,
+    TaskAccountPayload,
 )
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.models import Shop
@@ -74,6 +75,31 @@ class CredentialService:
             credential,
             enabled=binding.enabled and credential.enabled,
         )
+
+    def ensure_task_account_available(self, shop_id: UUID) -> None:
+        self._get_active_task_credential(shop_id)
+
+    def build_task_account_payload(self, shop_id: UUID) -> TaskAccountPayload:
+        credential = self._get_active_task_credential(shop_id)
+        return TaskAccountPayload(
+            shop_id=shop_id,
+            platform_code=credential.platform_code,
+            login_identifier=credential.login_identifier,
+            secret=self.cipher.decrypt_text(credential.secret_encrypted),
+            preferred_verification_channel=(
+                credential.preferred_verification_channel
+            ),
+        )
+
+    def _get_active_task_credential(self, shop_id: UUID) -> PlatformCredential:
+        shop = self._get_shop(shop_id)
+        result = self.binding_repository.get_active_by_shop(shop_id)
+        if result is None:
+            raise CredentialNotFoundError()
+        _, credential = result
+        if credential.platform_code != shop.platform:
+            raise InvalidCredentialBindingError()
+        return credential
 
     def create(self, data: CredentialCreate) -> CredentialStatusRead:
         shop = self._get_shop(data.shop_id)

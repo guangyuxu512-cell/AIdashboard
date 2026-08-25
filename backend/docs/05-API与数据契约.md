@@ -165,6 +165,11 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
 
 ## Task Runtime Event API
 
+`POST /api/v1/tasks` 的 `shop_id` 为可空正式店铺上下文；需要店铺账号的即时任务必须明确提交，
+但账号内容不得放进 `input`。`TaskRead` 返回该关系 ID。认证 Worker 调用 Claim 时，Backend 才按
+`Task.shop_id` 读取当前启用且平台匹配的 Credential，并在 Claim 响应的可空 `account` 字段中
+下发本次最小 Payload；普通 Task Read/List、Runtime Event 与 Result 不返回该明文。
+
 - `GET /api/v1/tasks`：管理端 Task 分页列表，支持
   `status / device_id / search / created_from / created_to`；时间语义固定为基于
   `Task.created_at` 的 `[created_from, created_to)`，两个时间参数都必须带时区。search 只覆盖

@@ -7,7 +7,7 @@ from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.exceptions import TaskEventForbiddenError
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.tasks.repository import TaskEventPage
-from app.modules.tasks.schemas import TaskEventBatchWrite
+from app.modules.tasks.schemas import TaskComplete, TaskEventBatchWrite
 from app.modules.tasks.service import TaskService
 from app.modules.workers.service import WorkerPrincipal
 from tests.support import FakeSession
@@ -76,6 +76,27 @@ class FakeTaskEventRepository:
         )
         return page.items[-1] if page.items else None
 
+    def complete(
+        self,
+        *,
+        task_id: UUID,
+        device_id: UUID,
+        now: datetime,
+        result: dict[str, object] | None,
+        error_code: str | None,
+        error_message: str | None,
+        status: TaskStatus,
+    ) -> Task | None:
+        if task_id != self.task.task_id or device_id != self.task.target_device_id:
+            return None
+        self.task.status = status.value
+        self.task.result_json = result
+        self.task.error_code = error_code
+        self.task.error_message = error_message
+        self.task.finished_at = now
+        self.task.lease_until = None
+        return self.task
+
 
 def make_service() -> tuple[TaskService, FakeTaskEventRepository, UUID, UUID]:
     device_id = uuid4()
@@ -110,9 +131,16 @@ def batch() -> TaskEventBatchWrite:
                     "seq": 1,
                     "event_type": "status",
                     "level": "worker",
-                    "message": "launching token=plain-secret",
+                    "message": (
+                        "launching token=plain-secret "
+                        "login_identifier=private-user"
+                    ),
                     "event_at": now.isoformat(),
-                    "metadata": {"app_uuid": "app-1", "cookie": "secret"},
+                    "metadata": {
+                        "app_uuid": "app-1",
+                        "account": {"login_identifier": "private-user"},
+                        "cookie": "secret",
+                    },
                 },
                 {
                     "seq": 2,
@@ -141,7 +169,66 @@ def test_event_batch_is_idempotent_redacted_and_incremental() -> None:
     assert [event.seq for event in page.items] == [2]
     first_event = repository.events[(task_id, 1)]
     assert "plain-secret" not in first_event.message
+    assert "private-user" not in first_event.message
+    assert first_event.metadata_json["account"] == "[REDACTED]"
     assert first_event.metadata_json["cookie"] == "[REDACTED]"
+
+
+def test_event_message_removes_embedded_account_json_payload() -> None:
+    service, repository, device_id, task_id = make_service()
+    now = datetime.now(UTC)
+
+    service.append_events(
+        WorkerPrincipal(device_id=device_id),
+        task_id,
+        TaskEventBatchWrite.model_validate(
+            {
+                "events": [
+                    {
+                        "seq": 1,
+                        "event_type": "log",
+                        "level": "L2",
+                        "message": (
+                            '[主流程:4]{"shop_id":"shop-1",'
+                            '"platform_code":"douyin",'
+                            '"login_identifier":"private-user",'
+                            '"secret":"private-secret",'
+                            '"preferred_verification_channel":"manual"}'
+                        ),
+                        "event_at": now.isoformat(),
+                        "metadata": {},
+                    },
+                ],
+            },
+        ),
+    )
+
+    message = repository.events[(task_id, 1)].message
+    assert message == "[主流程:4][ACCOUNT_PAYLOAD_REDACTED]"
+    assert "shop-1" not in message
+    assert "private-user" not in message
+    assert "private-secret" not in message
+
+
+def test_task_result_redacts_account_payload_recursively() -> None:
+    service, repository, device_id, task_id = make_service()
+
+    completed = service.complete(
+        WorkerPrincipal(device_id=device_id),
+        task_id,
+        TaskComplete(
+            result={
+                "ok": True,
+                "account": {
+                    "login_identifier": "private-user",
+                    "secret": "private-secret",
+                },
+            },
+        ),
+    )
+
+    assert completed.result_json == {"ok": True, "account": "[REDACTED]"}
+    assert repository.task.result_json == completed.result_json
 
 
 def test_event_history_uses_bounded_sequence_cursor_in_ascending_order() -> None:

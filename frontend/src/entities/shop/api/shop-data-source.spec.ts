@@ -20,6 +20,22 @@ describe('shop query and mutation data source', () => {
     ])
   })
 
+  it('provides one shared selector option list and disables inactive shops', async () => {
+    const source = createMockShopDataSource()
+    await source.setEnabled('shop-fixture-001', false)
+
+    const options = await source.listSelectionOptions()
+
+    expect(options).toContainEqual({
+      label: '星河服饰旗舰店',
+      value: 'shop-fixture-001',
+      disabled: true,
+    })
+    expect(options.find((option) => option.value === 'shop-fixture-002')).toEqual(
+      expect.objectContaining({ disabled: false }),
+    )
+  })
+
   it('creates and updates one mock ViewModel through the same mutation boundary', async () => {
     const source = createMockShopDataSource()
     const created = await source.create({

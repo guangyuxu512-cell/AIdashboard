@@ -108,3 +108,8 @@ Retention。Runtime Summary 使用 `(task_id, event_type, seq)`，实时与历�
 Worker Token 生命周期继续复用 `worker_device_credentials`，每个 Device 最多一条记录；本轮
 不新增第二套 Token 表或明文列。签发/轮换仅替换 SHA-256 `token_hash`，撤销使用既有
 `enabled=false`，明文永不落库。
+
+Migration `20260825_0018_task_shop_account_context` 为 `tasks` 与 `schedules` 增加可空
+`shop_id` 外键。它是可查询、可约束的正式关系，不进入 `input_json/task_input_json`；既有记录
+保持 `NULL`，不做猜测回填。账号明文仍不新增数据库列，Task Claim 只在运行时从该 Shop 当前
+启用的 Credential 构建 Payload。

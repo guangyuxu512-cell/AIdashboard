@@ -50,3 +50,15 @@ class CredentialStatusRead(BaseModel):
     enabled: bool
     preferred_verification_channel: VerificationChannel | None
     updated_at: datetime | None
+
+
+class TaskAccountPayload(BaseModel):
+    """Plaintext account context delivered only in an authenticated Task claim."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shop_id: UUID
+    platform_code: ShopPlatform
+    login_identifier: str
+    secret: str = Field(repr=False)
+    preferred_verification_channel: VerificationChannel

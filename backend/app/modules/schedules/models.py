@@ -71,6 +71,11 @@ class Schedule(TimestampMixin, Base):
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
     )
+    shop_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
     execution_display_name: Mapped[str] = mapped_column(String(500), nullable=False)
     schedule_type: Mapped[str] = mapped_column(String(16), nullable=False)

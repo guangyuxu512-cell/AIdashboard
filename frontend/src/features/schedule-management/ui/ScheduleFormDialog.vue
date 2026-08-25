@@ -11,6 +11,7 @@ import {
 } from '@/entities/automation-application'
 import { useBusinessSkillCatalogQuery } from '@/entities/business-skill'
 import { useDeviceProviderInventoriesQuery } from '@/entities/device'
+import { ShopSelector } from '@/entities/shop'
 import type {
   ScheduleDetailViewModel,
   ScheduleExecutionTypeDto,
@@ -53,6 +54,7 @@ const executionTypeOptions: SelectOption[] = [
 const form = reactive({
   name: '',
   deviceId: null as string | null,
+  shopId: null as string | null,
   executionType: 'yingdao_application' as ScheduleExecutionTypeDto,
   applicationId: null as string | null,
   skillId: null as string | null,
@@ -156,6 +158,7 @@ const configInitialError = computed(
 const disabledReason = computed(() => {
   if (!form.name.trim()) return '请填写计划名称'
   if (!form.deviceId) return '请选择执行设备'
+  if (!form.shopId) return '请选择计划使用的店铺账号'
   if (isYingdao.value) {
     if (!form.applicationId) return '请选择影刀应用'
     if (inventoryInitialError.value) return '设备影刀应用读取失败'
@@ -202,6 +205,7 @@ watch(
     parameterSourceKey.value = ''
     form.name = schedule?.name ?? ''
     form.deviceId = schedule?.deviceId ?? null
+    form.shopId = schedule?.shopId ?? null
     form.executionType = schedule?.executionType ?? 'yingdao_application'
     form.applicationId = schedule?.applicationId ?? null
     form.skillId =
@@ -298,6 +302,7 @@ function submit(): void {
   if (
     disabledReason.value ||
     !form.deviceId ||
+    !form.shopId ||
     form.localTimeValue === null
   ) {
     return
@@ -305,6 +310,7 @@ function submit(): void {
   emit('submit', {
     name: form.name.trim(),
     deviceId: form.deviceId,
+    shopId: form.shopId,
     executionType: form.executionType,
     applicationId: isYingdao.value ? form.applicationId : null,
     skillId: isBusinessSkill.value ? form.skillId : null,
@@ -341,6 +347,9 @@ function submit(): void {
           placeholder="请选择设备"
           @update:model-value="changeDevice"
         />
+      </NFormItem>
+      <NFormItem label="店铺账号" required>
+        <ShopSelector v-model="form.shopId" />
       </NFormItem>
       <NFormItem label="执行类型" required>
         <AppSelect

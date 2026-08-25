@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.credentials.service import CredentialService
 from app.modules.schedules.schemas import (
     ScheduleCreate,
     ScheduleListItemRead,
@@ -14,6 +16,7 @@ from app.modules.schedules.schemas import (
     ScheduleUpdate,
 )
 from app.modules.schedules.service import ScheduleService
+from app.modules.tasks.service import TaskService
 from app.shared.pagination import Page, PaginationParams
 
 
@@ -29,8 +32,15 @@ router = APIRouter(
 
 def get_schedule_service(
     session: Annotated[Session, Depends(get_database_session)],
+    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> ScheduleService:
-    return ScheduleService(session)
+    return ScheduleService(
+        session,
+        task_service=TaskService(
+            session,
+            credential_service=CredentialService(session, cipher),
+        ),
+    )
 
 
 @router.post("", response_model=ScheduleRead, status_code=status.HTTP_201_CREATED)

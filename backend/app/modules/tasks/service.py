@@ -1,3 +1,4 @@
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -10,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
+from app.modules.credentials.schemas import TaskAccountPayload
+from app.modules.credentials.service import CredentialService
 from app.modules.tasks.enums import (
     TERMINAL_TASK_STATUS_VALUES,
     TaskSkillId,
@@ -63,6 +66,12 @@ class PreparedTaskCreation:
     execution_display_name: str
 
 
+@dataclass(frozen=True)
+class ClaimedWorkerTask:
+    task: Task
+    account: TaskAccountPayload | None
+
+
 class TaskService:
     def __init__(
         self,
@@ -72,6 +81,7 @@ class TaskService:
         application_config_repository: (
             AutomationApplicationConfigRepository | None
         ) = None,
+        credential_service: CredentialService | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or TaskRepository(session)
@@ -80,6 +90,7 @@ class TaskService:
             application_config_repository
             or AutomationApplicationConfigRepository(session)
         )
+        self.credential_service = credential_service
 
     def create(self, data: TaskCreate) -> Task:
         task = self._create_pending(data, require_worker_online=True)
@@ -114,6 +125,7 @@ class TaskService:
         )
         task = Task(
             target_device_id=data.target_device_id,
+            shop_id=data.shop_id,
             skill_id=data.skill_id,
             execution_display_name=prepared.execution_display_name,
             status=TaskStatus.PENDING.value,
@@ -133,6 +145,10 @@ class TaskService:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:
             raise TaskDeviceDisabledError()
+        if data.shop_id is not None:
+            self._require_credential_service().ensure_task_account_available(
+                data.shop_id,
+            )
         if require_worker_online:
             runtime = self.repository.get_device_runtime(data.target_device_id)
             if runtime is None or runtime.connection_status != "online":
@@ -447,6 +463,40 @@ class TaskService:
         *,
         now: datetime | None = None,
     ) -> Task | None:
+        task = self._claim_without_commit(principal, now=now)
+        self.session.commit()
+        return task
+
+    def claim_with_account(
+        self,
+        principal: WorkerPrincipal,
+        *,
+        now: datetime | None = None,
+    ) -> ClaimedWorkerTask | None:
+        task = self._claim_without_commit(principal, now=now)
+        if task is None:
+            self.session.commit()
+            return None
+        try:
+            account = (
+                self._require_credential_service().build_task_account_payload(
+                    task.shop_id,
+                )
+                if task.shop_id is not None
+                else None
+            )
+        except Exception:
+            self.session.rollback()
+            raise
+        self.session.commit()
+        return ClaimedWorkerTask(task=task, account=account)
+
+    def _claim_without_commit(
+        self,
+        principal: WorkerPrincipal,
+        *,
+        now: datetime | None,
+    ) -> Task | None:
         claimed_at = now or datetime.now(UTC)
         if self.repository.get_enabled_device(principal.device_id) is None:
             self.session.rollback()
@@ -454,13 +504,18 @@ class TaskService:
         lease_until = claimed_at + timedelta(
             seconds=self.settings.worker_task_lease_seconds,
         )
-        task = self.repository.claim_next(
+        return self.repository.claim_next(
             device_id=principal.device_id,
             now=claimed_at,
             lease_until=lease_until,
         )
-        self.session.commit()
-        return task
+
+    def _require_credential_service(self) -> CredentialService:
+        if self.credential_service is None:
+            raise RuntimeError(
+                "CredentialService is required for a shop-scoped Task",
+            )
+        return self.credential_service
 
     def renew(
         self,
@@ -495,7 +550,7 @@ class TaskService:
             principal,
             task_id,
             status=TaskStatus.SUCCESS,
-            result=data.result,
+            result=_redact_metadata(data.result),
             error_code=None,
             error_message=None,
             now=now,
@@ -515,7 +570,7 @@ class TaskService:
             status=TaskStatus.FAILED,
             result=None,
             error_code=data.error_code,
-            error_message=data.error_message,
+            error_message=_redact_message(data.error_message),
             now=now,
         )
 
@@ -553,15 +608,64 @@ class TaskService:
 
 
 _SENSITIVE_MESSAGE = re.compile(
-    r"(?i)\b(password|token|authorization|cookie|secret)\b\s*[:=]\s*[^\s,;]+",
+    r"(?i)(?P<prefix>[\"']?"
+    r"(?:account|login_identifier|preferred_verification_channel|password|token|"
+    r"authorization|cookie|secret)[\"']?\s*[:=]\s*)"
+    r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s,;}]+)",
 )
+_ACCOUNT_PAYLOAD_REQUIRED_KEYS = frozenset({"login_identifier", "secret"})
 _SENSITIVE_KEYS = frozenset(
-    {"password", "token", "authorization", "cookie", "cookies", "secret"},
+    {
+        "account",
+        "authorization",
+        "cookie",
+        "cookies",
+        "login_identifier",
+        "password",
+        "preferred_verification_channel",
+        "secret",
+        "token",
+    },
 )
 
 
 def _redact_message(value: str) -> str:
-    return _SENSITIVE_MESSAGE.sub(lambda match: f"{match.group(1)}=[REDACTED]", value)
+    without_account_payload = _redact_embedded_account_payload(value)
+    return _SENSITIVE_MESSAGE.sub(
+        lambda match: f"{match.group('prefix')}[REDACTED]",
+        without_account_payload,
+    )
+
+
+def _redact_embedded_account_payload(value: str) -> str:
+    """Remove an observed account.json object embedded in external task logs."""
+
+    decoder = json.JSONDecoder()
+    cursor = 0
+    fragments: list[str] = []
+    while True:
+        object_start = value.find("{", cursor)
+        if object_start < 0:
+            fragments.append(value[cursor:])
+            return "".join(fragments)
+        try:
+            payload, consumed = decoder.raw_decode(value[object_start:])
+        except json.JSONDecodeError:
+            fragments.append(value[cursor : object_start + 1])
+            cursor = object_start + 1
+            continue
+        keys = (
+            {str(key).lower() for key in payload}
+            if isinstance(payload, dict)
+            else set()
+        )
+        if _ACCOUNT_PAYLOAD_REQUIRED_KEYS.issubset(keys):
+            fragments.append(value[cursor:object_start])
+            fragments.append("[ACCOUNT_PAYLOAD_REDACTED]")
+            cursor = object_start + consumed
+            continue
+        fragments.append(value[cursor : object_start + 1])
+        cursor = object_start + 1
 
 
 def _redact_metadata(value: dict[str, Any]) -> dict[str, Any]:

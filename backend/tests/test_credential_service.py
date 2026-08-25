@@ -142,5 +142,15 @@ def test_credential_encrypts_updates_and_can_bind_multiple_shops() -> None:
     )
     assert cipher.decrypt_text(credential.secret_encrypted) == "updated-password"
 
+    account = service.build_task_account_payload(first_shop_id)
+    assert account.model_dump(mode="json") == {
+        "shop_id": str(first_shop_id),
+        "platform_code": "douyin",
+        "login_identifier": "new-user",
+        "secret": "updated-password",
+        "preferred_verification_channel": "manual",
+    }
+    assert "updated-password" not in repr(account)
+
     service.bind(second_shop_id, credential.credential_id)
     assert len(bindings.list_by_credential(credential.credential_id)) == 2
