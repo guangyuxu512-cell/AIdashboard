@@ -46,8 +46,10 @@ stderr.log
 artifacts/
 ```
 
-`input.json` 包含 `task_id`、`skill_id`、`params`。已存在的同名运行目录不得被
-覆盖或删除。
+`input.json` 是 Worker 控制的子进程输入。Python Runtime 在原有 `task_id`、`skill_id`、
+`params` 之外还携带可选 `account` 与 `paths.images`，但 Business Skill 只能通过已校验的
+Pydantic Input 和 `SkillContext` 消费这些值；不得自行读取该内部文件。已存在的同名运行目录
+不得被覆盖或删除。
 
 `system.echo` 原样返回 message；`system.sleep` 接受大于 0 且不超过 300 秒的
 seconds。未来业务 Python 脚本仍通过新增稳定 skill_id 并在本地 Registry 注册，
@@ -69,6 +71,38 @@ Task → stable skill_id → Skill Registry → runtime → Executor → Provide
 契约，因此默认映射为空，执行时明确失败而非猜测 App ID。只有负责人明确确认无副作用的测试 App，才允许通过 Worker Config 显式建立设备侧映射。
 
 Skill 只负责校验输入、执行、发出进度/日志和返回结果。Skill、脚本或 RPA 不得自行负责 Heartbeat、Poll、Worker Token、Backend Task 领取、Cookie 管理或 Backend 状态回传；Python、Browser、EXE 等后续 Executor 必须复用 Worker Runtime Event Bus。
+
+## Worker Local Input Bridge V1
+
+外部影刀 Application 无法直接消费 Worker Python 对象，因此统一通过 Worker 配置的三个固定
+本地落点桥接：
+
+```text
+Yingdao Task input.params → params.json
+Task Account Payload      → account.json
+图片                       → images 目录
+```
+
+默认落点位于 `%LOCALAPPDATA%\EcommerceAIWorker\data\`，也可在 Worker GUI 的“本地输入”
+区域修改。每次 `yingdao.app.run` 真正启动 Application 前，RPAExecutor 必须先完整覆盖
+`params.json`，再完整覆盖 `account.json`，并确认图片目录存在且可写。两个 JSON 都使用 UTF-8、
+中文不转义和原子替换；无参数写 `{}`，无 Account Payload 也写 `{}`，绝不合并或保留上一个
+Task 的字段。任一步失败时 Task 以安全错误结束，且不得调用 ShadowBot Run。
+
+Local Input Bridge 只是跨进程输入适配，不替代现有 ShadowBot Application Params；现有 URI
+参数仍继续传递。当前 Backend Claim 只有 Task `skill_id + input`，Task 没有 Shop/Account 正式
+关联，也没有 Credential 下发 Contract，因此当前真实任务的 `account.json` 为 `{}`、Python
+`ctx.account` 为 `None`。不得把店铺密码、Cookie 或猜测字段硬塞进 Task Input。建立正式关联后，
+只能复用对应 Backend Credential Service 构建最小 Account Payload。
+
+图片目录当前只定义本机落点和可写性。项目尚无 Server → Worker 图片传输 Contract，因此 V1
+不虚构下载、命名或新图片集合标记，也不会擅自清空任意自定义目录；未来一旦有“本 Task 使用
+新图片集合”的正式输入，准备阶段必须先清理 Worker 管理的旧集合，再写入新集合。图片目录禁止
+配置为磁盘根目录。
+
+固定文件依赖当前 Worker 单 Active Task 边界。GUI 在 Task RUNNING 时不允许保存并重启配置，
+因此已启动任务不会中途切换路径；任务结束后保存配置并重启，后续 Task 使用新路径。未来若允许
+同一 Worker 并行多个 Local Bridge Task，必须先升级 task-specific workspace，本阶段不得提前实现。
 
 ## SkillDescriptor
 
@@ -155,9 +189,15 @@ V1 Context 只暴露真实能力：
 
 - `task_id / device_id / skill_id`；
 - `timeout_seconds / deadline`；
+- `account`：当前 Task 的只读 Account Payload；没有正式 Payload 时为 `None`；
+- `paths.images`：Worker 配置的固定图片工作目录；
 - `is_cancelled`：仅表示本地 Runner 的协作式取消/超时状态；当前没有 Backend Cancel Contract；
 - `log(message, level, metadata)`；
 - `progress(current, total?, message?)`。
+
+普通业务参数的唯一入口仍是 `run(ctx, input)` 中已通过 Pydantic 校验的 `input`。Python
+Business Skill 禁止读取固定 `params.json`，也不暴露 `ctx.paths.params_json`。账号 Payload
+不得被完整写入日志、Runtime Event 或 Result。
 
 `ctx.log()` 与 `ctx.progress()` 先进入子进程内的 Runtime Event Bus，再经本地事件桥交回父进程
 已有 Runtime Event Bus，最终复用 EventBuffer、批次、重试、脱敏、Backend Task Events 和
@@ -239,4 +279,4 @@ Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Back
 Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
 
 Scheduler V1 的 DAILY、IANA Timezone、COALESCE ONE 和数据库触发幂等全部属于 Backend；
-Worker 0.4.3 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。
+Worker 0.4.4 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。

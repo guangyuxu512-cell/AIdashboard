@@ -12,6 +12,7 @@ from app.contracts import (
     RuntimeEventType,
     WorkerTask,
 )
+from app.local_input import LocalInputPreparationError, LocalInputPreparer
 from app.providers.yingdao import (
     YingdaoAdapter,
     YingdaoExecutionRequest,
@@ -33,12 +34,14 @@ class RPAExecutor:
         runtime_root: Path,
         registry: SkillRegistry,
         providers: Mapping[SkillProvider, YingdaoAdapter],
+        local_input_preparer: LocalInputPreparer,
         event_bus: RuntimeEventBus | None = None,
         provider_app_ids: Mapping[str, str] | None = None,
     ) -> None:
         self.runtime = TaskRuntimeManager(runtime_root)
         self.registry = registry
         self.providers = providers
+        self.local_input_preparer = local_input_preparer
         self.event_bus = event_bus or RuntimeEventBus()
         self.provider_app_ids = provider_app_ids or {}
         self._provider_slots = {
@@ -147,6 +150,18 @@ class RPAExecutor:
         )
         slot = self._provider_slots[definition.provider]
         await slot.acquire()
+        try:
+            await asyncio.to_thread(
+                self.local_input_preparer.prepare,
+                params=request.params,
+                account=task.account,
+            )
+        except LocalInputPreparationError as error:
+            slot.release()
+            return self._finish(
+                paths,
+                self._failure(error.code, error.message),
+            )
         provider_task = asyncio.create_task(adapter.execute(request))
         cleanup_deferred = False
         try:

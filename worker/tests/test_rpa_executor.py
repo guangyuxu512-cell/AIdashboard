@@ -10,6 +10,11 @@ from pydantic import BaseModel, ConfigDict
 from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
 from app.executors.router import ExecutorRouter
 from app.executors.rpa import RPAExecutor
+from app.local_config import LocalInputPaths
+from app.local_input import (
+    LocalInputBridge,
+    LocalInputPreparationError,
+)
 from app.providers.yingdao import (
     YingdaoApplication,
     YingdaoDiscoveryResult,
@@ -47,6 +52,7 @@ class FakeYingdaoAdapter:
         self.delay = delay
         self.cleanup_calls = 0
         self.execute_calls: list[str] = []
+        self.requests: list[YingdaoExecutionRequest] = []
         self.active = 0
         self.max_active = 0
 
@@ -58,6 +64,7 @@ class FakeYingdaoAdapter:
         request: YingdaoExecutionRequest,
     ) -> Mapping[str, Any]:
         self.execute_calls.append(str(request.task_id))
+        self.requests.append(request)
         self.active += 1
         self.max_active = max(self.max_active, self.active)
         try:
@@ -112,14 +119,26 @@ def make_executor(
         runtime_root,
         registry,
         {SkillProvider.YINGDAO: adapter},
+        LocalInputBridge(
+            LocalInputPaths(
+                params_json_path=runtime_root / "local-input" / "params.json",
+                account_json_path=runtime_root / "local-input" / "account.json",
+                images_dir=runtime_root / "local-input" / "images",
+            ),
+        ),
     )
 
 
-def make_task() -> WorkerTask:
+def make_task(
+    *,
+    params: dict[str, Any] | None = None,
+    account: dict[str, Any] | None = None,
+) -> WorkerTask:
     return WorkerTask(
         task_id=uuid4(),
         skill_id="yingdao.test",
-        input={},
+        input={"params": params or {}},
+        account=account,
         lease_until="2026-08-20T12:00:00+00:00",
     )
 
@@ -134,7 +153,10 @@ def test_rpa_executor_parses_success_and_uses_shared_runtime(tmp_path: Path) -> 
         result={"status": "success", "result": {"message": "ok"}},
     )
     executor = make_executor(tmp_path, adapter)
-    task = make_task()
+    task = make_task(
+        params={"关键词": "测试", "count": 2},
+        account={"display_name": "测试账号"},
+    )
 
     result = run(executor, task)
     runtime = tmp_path / str(task.task_id)
@@ -151,6 +173,16 @@ def test_rpa_executor_parses_success_and_uses_shared_runtime(tmp_path: Path) -> 
     assert json.loads((runtime / "status.json").read_text("utf-8"))["status"] == (
         "success"
     )
+    local_input = tmp_path / "local-input"
+    assert json.loads((local_input / "params.json").read_text("utf-8")) == {
+        "关键词": "测试",
+        "count": 2,
+    }
+    assert json.loads((local_input / "account.json").read_text("utf-8")) == {
+        "display_name": "测试账号",
+    }
+    assert (local_input / "images").is_dir()
+    assert adapter.requests[0].params == {"关键词": "测试", "count": 2}
 
 
 def test_rpa_provider_unavailable_finishes_failed(tmp_path: Path) -> None:
@@ -376,6 +408,13 @@ def test_yingdao_provider_slot_is_not_a_global_executor_lock(tmp_path: Path) -> 
             tmp_path,
             skill_registry,
             {SkillProvider.YINGDAO: adapter},
+            LocalInputBridge(
+                LocalInputPaths(
+                    params_json_path=tmp_path / "local-input" / "params.json",
+                    account_json_path=tmp_path / "local-input" / "account.json",
+                    images_dir=tmp_path / "local-input" / "images",
+                ),
+            ),
         )
         router = ExecutorRouter(
             skill_registry,
@@ -402,3 +441,83 @@ def test_yingdao_provider_slot_is_not_a_global_executor_lock(tmp_path: Path) -> 
         assert (await running_rpa).status is ExecutionStatus.SUCCESS
 
     asyncio.run(scenario())
+
+
+def test_yingdao_bridge_overwrites_stale_params_and_account(tmp_path: Path) -> None:
+    adapter = FakeYingdaoAdapter(discovery=discovery())
+    executor = make_executor(tmp_path, adapter)
+
+    first = run(
+        executor,
+        make_task(
+            params={"a": 1},
+            account={"private_marker": "task-a"},
+        ),
+    )
+    second = run(executor, make_task(params={"b": 2}))
+
+    assert first.status is ExecutionStatus.SUCCESS
+    assert second.status is ExecutionStatus.SUCCESS
+    local_input = tmp_path / "local-input"
+    assert json.loads((local_input / "params.json").read_text("utf-8")) == {
+        "b": 2,
+    }
+    assert json.loads((local_input / "account.json").read_text("utf-8")) == {}
+
+
+def test_yingdao_preparation_failure_does_not_launch_application(
+    tmp_path: Path,
+) -> None:
+    class FailingPreparer:
+        def prepare(self, **_: object) -> None:
+            raise LocalInputPreparationError(
+                "LOCAL_PARAMS_FILE_PREPARATION_FAILED",
+                "本地参数文件准备失败",
+            )
+
+    adapter = FakeYingdaoAdapter(discovery=discovery())
+    skill_registry = SkillRegistry()
+    skill_registry.register(
+        SkillDefinition(
+            skill_id="yingdao.test",
+            display_name="影刀测试",
+            version="1",
+            input_model=EmptyInput,
+            runtime=SkillRuntime.RPA,
+            provider=SkillProvider.YINGDAO,
+            provider_app_id=FAKE_APP_ID,
+            timeout_seconds=1,
+            classification=SkillClassification.INTERNAL,
+        ),
+    )
+    executor = RPAExecutor(
+        tmp_path,
+        skill_registry,
+        {SkillProvider.YINGDAO: adapter},
+        FailingPreparer(),
+    )
+
+    result = run(executor, make_task(params={"private_marker": "hidden"}))
+
+    assert result.status is ExecutionStatus.FAILED
+    assert result.error_code == "LOCAL_PARAMS_FILE_PREPARATION_FAILED"
+    assert result.error_message == "本地参数文件准备失败"
+    assert adapter.execute_calls == []
+    assert adapter.cleanup_calls == 0
+
+
+def test_unavailable_images_directory_does_not_launch_application(
+    tmp_path: Path,
+) -> None:
+    images_path = tmp_path / "local-input" / "images"
+    images_path.parent.mkdir(parents=True)
+    images_path.write_text("not a directory", encoding="utf-8")
+    adapter = FakeYingdaoAdapter(discovery=discovery())
+    executor = make_executor(tmp_path, adapter)
+
+    result = run(executor, make_task())
+
+    assert result.status is ExecutionStatus.FAILED
+    assert result.error_code == "LOCAL_IMAGES_DIRECTORY_UNAVAILABLE"
+    assert result.error_message == "图片目录不可用"
+    assert adapter.execute_calls == []

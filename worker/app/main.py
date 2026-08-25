@@ -27,7 +27,8 @@ from app.runtime_events import (
 )
 from app.logging_config import configure_logging
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
-from app.local_config import WorkerConfigurationError
+from app.local_config import LocalInputPaths, WorkerConfigurationError
+from app.local_input import LocalInputBridge
 from app.process_control import WorkerProcessState
 from app.skills import registry
 from app.skills.registry import SkillProvider, SkillRuntime
@@ -77,6 +78,13 @@ async def run_worker(settings: WorkerSettings) -> None:
         data_root=settings.yingdao_data_root or discovery_service.data_root,
         event_bus=event_bus,
     )
+    local_input_bridge = LocalInputBridge(
+        LocalInputPaths(
+            params_json_path=settings.params_json_path,
+            account_json_path=settings.account_json_path,
+            images_dir=settings.images_dir,
+        ),
+    )
     executor = ExecutorRouter(
         registry,
         {
@@ -84,12 +92,14 @@ async def run_worker(settings: WorkerSettings) -> None:
                 settings.runtime_root,
                 event_bus,
                 device_id=settings.device_id,
+                images_dir=settings.images_dir,
                 skill_registry=registry,
             ),
             SkillRuntime.RPA: RPAExecutor(
                 settings.runtime_root,
                 registry,
                 {SkillProvider.YINGDAO: yingdao_adapter},
+                local_input_bridge,
                 event_bus,
                 (
                     {"yingdao.test": settings.yingdao_test_app_id}

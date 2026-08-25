@@ -40,6 +40,9 @@ def test_existing_032_configuration_skips_first_setup() -> None:
         yingdao_install_root=None,
         yingdao_data_root=None,
         yingdao_test_app_id=None,
+        params_json_path=Path("C:/worker/data/params.json"),
+        account_json_path=Path("C:/worker/data/account.json"),
+        images_dir=Path("C:/worker/data/images"),
         configured_at_utc=None,
     )
 
@@ -79,6 +82,26 @@ def test_status_and_diagnostics_render_the_runtime_snapshot_without_token() -> N
     assert diagnostics["token"] == "有效"
     assert diagnostics["skills"] == "已同步"
     assert "ccw_" not in json.dumps({**status, **diagnostics})
+
+
+def test_diagnostics_include_local_input_path_health_without_contents() -> None:
+    diagnostics = _render_diagnostics(
+        {},
+        running=False,
+        local_inputs={
+            "params_json": "可写",
+            "account_json": "不可写",
+            "images_dir": "未创建",
+        },
+    )
+
+    assert diagnostics["params_json"] == "可写"
+    assert diagnostics["account_json"] == "不可写"
+    assert diagnostics["images_dir"] == "未创建"
+    assert "credential-secret" not in json.dumps(
+        diagnostics,
+        ensure_ascii=False,
+    )
 
 
 def test_heartbeat_and_core_health_use_timestamp_freshness() -> None:

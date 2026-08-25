@@ -1,4 +1,4 @@
-Ecommerce AI Worker 0.4.3 for Windows
+Ecommerce AI Worker 0.4.4 for Windows
 ======================================
 
 普通首次接入
@@ -8,6 +8,7 @@ Ecommerce AI Worker 0.4.3 for Windows
 4. Worker 自动取得 Device ID；用户不需要填写 UUID。
 5. Worker 自动检测 ShadowBot 6.3.6。自动检测失败时，可选择 ShadowBot.exe；其他版本会被拒绝。
 6. 点击“测试连接”，确认服务器可达且 Token 有效后，点击“保存并启动”。
+7. “本地输入”默认使用 %LOCALAPPDATA%\EcommerceAIWorker\data 下的 params.json、account.json 和 images；只有影刀应用要求其他固定路径时才需要修改。
 
 升级已有 Worker
 - 直接替换程序文件并双击 ecommerce-worker.exe。
@@ -21,7 +22,7 @@ Ecommerce AI Worker 0.4.3 for Windows
 - 高级运维 CMD 入口继续保留，但普通首次配置不依赖 PowerShell。
 
 ShadowBot 策略
-- Worker 0.4.3 固定支持 ShadowBot 6.3.6。
+- Worker 0.4.4 固定支持 ShadowBot 6.3.6。
 - 当前会话、云端应用与执行均来自 6.3.6 本地会话接口。
 - 若其他版本正在运行，Worker 不结束它，也不启动第二个版本，只报告版本不支持。
 
@@ -31,6 +32,7 @@ ShadowBot 策略
 - Token 在本机使用 Windows DPAPI CurrentUser 加密，不写入明文 JSON、日志或 runtime-status.json。
 - 生产环境必须使用 HTTPS。公网 HTTP 仅允许明确接受风险的临时开发验证。
 - 本包不包含 SSH Key、数据库配置、店铺凭证或 Cookie。
+- account.json 允许作为内部 V1 本地桥接保存明文 Account Payload；请把自定义路径放在受当前 Windows 用户保护的目录，禁止把内容复制到日志或任务结果。
 
 当前能力
 - system.echo

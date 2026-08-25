@@ -553,6 +553,7 @@ def test_python_process_runner_keeps_echo_sleep_and_blocks_unknown_skills() -> N
             "task_id": str(task_id),
             "skill_id": "system.echo",
             "params": {"message": "hello"},
+            "paths": {"images": "fixture-images"},
         },
     )
     sleep = execute(
@@ -561,6 +562,7 @@ def test_python_process_runner_keeps_echo_sleep_and_blocks_unknown_skills() -> N
             "task_id": str(task_id),
             "skill_id": "system.sleep",
             "params": {"seconds": 0.01},
+            "paths": {"images": "fixture-images"},
         },
     )
     unknown = execute(
@@ -569,6 +571,7 @@ def test_python_process_runner_keeps_echo_sleep_and_blocks_unknown_skills() -> N
             "task_id": str(task_id),
             "skill_id": "system.command",
             "params": {"command": "whoami"},
+            "paths": {"images": "fixture-images"},
         },
     )
 
@@ -589,7 +592,11 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
     )
     device_id = uuid4()
     result = asyncio.run(
-        PythonExecutor(tmp_path, device_id=device_id).execute(task),
+        PythonExecutor(
+            tmp_path,
+            device_id=device_id,
+            images_dir=tmp_path / "images",
+        ).execute(task),
     )
     task_directory = tmp_path / str(task.task_id)
 
@@ -606,10 +613,16 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
         "task_id": str(task.task_id),
         "skill_id": "system.echo",
         "params": {"message": "hello"},
+        "paths": {"images": str((tmp_path / "images").resolve())},
+        "account": None,
     }
 
     duplicate = asyncio.run(
-        PythonExecutor(tmp_path, device_id=device_id).execute(task),
+        PythonExecutor(
+            tmp_path,
+            device_id=device_id,
+            images_dir=tmp_path / "images",
+        ).execute(task),
     )
     assert duplicate.status is ExecutionStatus.FAILED
     assert duplicate.error_code == "RUNTIME_DIRECTORY_EXISTS"

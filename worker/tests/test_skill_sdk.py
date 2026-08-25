@@ -2,12 +2,18 @@ import asyncio
 from datetime import UTC, datetime
 from enum import StrEnum
 import io
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import Field, ValidationError
 
-from app.contracts import ExecutionStatus, RuntimeEventType, SkillProcessInput
+from app.contracts import (
+    ExecutionStatus,
+    RuntimeEventType,
+    SkillProcessInput,
+    SkillProcessPaths,
+)
 from app.contracts import WorkerTask
 from app.executors.python import PythonExecutor
 from app.runtime_events import RuntimeEventBus
@@ -66,6 +72,7 @@ class ProgressSkill:
 
     def __init__(self) -> None:
         self.context: SkillContext | None = None
+        self.received_input: ProgressInput | None = None
 
     async def run(
         self,
@@ -73,6 +80,7 @@ class ProgressSkill:
         input: ProgressInput,
     ) -> SkillResult:
         self.context = ctx
+        self.received_input = input
         ctx.log("开始处理", metadata={"page": 1})
         ctx.progress(current=input.steps, total=input.steps, message="处理完成")
         return SkillResult(
@@ -87,11 +95,19 @@ def make_registered(skill: object) -> tuple[SkillRegistry, object]:
     return skill_registry, definition
 
 
-def process_input(task_id: UUID, params: dict[str, object]) -> SkillProcessInput:
+def process_input(
+    task_id: UUID,
+    params: dict[str, object],
+    *,
+    account: dict[str, object] | None = None,
+    images: Path = Path("fixture-images"),
+) -> SkillProcessInput:
     return SkillProcessInput(
         task_id=task_id,
         skill_id="demo.progress",
         params=params,
+        account=account,
+        paths=SkillProcessPaths(images=images),
     )
 
 
@@ -170,7 +186,9 @@ def test_runner_rejects_missing_wrong_and_extra_input(
     assert result.error_code == "SKILL_INPUT_INVALID"
 
 
-def test_context_log_progress_and_result_use_existing_runtime_contract() -> None:
+def test_context_log_progress_and_result_use_existing_runtime_contract(
+    tmp_path: Path,
+) -> None:
     task_id = uuid4()
     device_id = uuid4()
     bus = RuntimeEventBus()
@@ -182,7 +200,12 @@ def test_context_log_progress_and_result_use_existing_runtime_contract() -> None
     result = asyncio.run(
         BusinessSkillRunner(device_id=device_id, event_bus=bus).execute(
             definition,  # type: ignore[arg-type]
-            process_input(task_id, {"steps": 3}),
+            process_input(
+                task_id,
+                {"steps": 3},
+                account={"private_marker": "must-not-leak"},
+                images=tmp_path / "images",
+            ),
         ),
     )
 
@@ -192,11 +215,14 @@ def test_context_log_progress_and_result_use_existing_runtime_contract() -> None
         "data": {"processed": 3},
     }
     assert skill.context is not None
+    assert isinstance(skill.received_input, ProgressInput)
     assert skill.context.task_id == task_id
     assert skill.context.device_id == device_id
     assert skill.context.skill_id == "demo.progress"
     assert skill.context.deadline > datetime.now(UTC)
     assert skill.context.is_cancelled is False
+    assert skill.context.account == {"private_marker": "must-not-leak"}
+    assert skill.context.paths.images == tmp_path / "images"
     assert [event.event_type for event in events] == [
         RuntimeEventType.LOG,
         RuntimeEventType.PROGRESS,
@@ -208,6 +234,10 @@ def test_context_log_progress_and_result_use_existing_runtime_contract() -> None
         "current": 3,
         "total": 3,
     }
+    assert "must-not-leak" not in "".join(
+        event.model_dump_json() for event in events
+    )
+    assert "must-not-leak" not in result.model_dump_json()
 
 
 def test_skill_execution_error_keeps_code_retryable_and_safe_event() -> None:
@@ -350,6 +380,7 @@ def test_python_executor_forwards_child_events_to_parent_bus(tmp_path) -> None:
             tmp_path,
             parent_bus,
             device_id=uuid4(),
+            images_dir=tmp_path / "images",
         )
 
         await executor._forward_stdout(reader, output, task)
@@ -365,7 +396,8 @@ def test_python_executor_forwards_child_events_to_parent_bus(tmp_path) -> None:
 
 def test_process_runner_routes_business_skill_through_sdk() -> None:
     task_id = uuid4()
-    skill_registry, _ = make_registered(ProgressSkill())
+    skill = ProgressSkill()
+    skill_registry, _ = make_registered(skill)
     result = asyncio.run(
         execute_async(
             "demo.progress",
@@ -373,6 +405,8 @@ def test_process_runner_routes_business_skill_through_sdk() -> None:
                 "task_id": str(task_id),
                 "skill_id": "demo.progress",
                 "params": {"steps": 2},
+                "account": {"display_name": "fixture-account"},
+                "paths": {"images": "fixture-images"},
             },
             device_id=uuid4(),
             event_bus=RuntimeEventBus(),
@@ -385,6 +419,10 @@ def test_process_runner_routes_business_skill_through_sdk() -> None:
         "summary": "SDK执行完成",
         "data": {"processed": 2},
     }
+    assert isinstance(skill.received_input, ProgressInput)
+    assert skill.context is not None
+    assert skill.context.account == {"display_name": "fixture-account"}
+    assert skill.context.paths.images == Path("fixture-images")
 
 
 def test_demo_skill_is_not_in_production_registry() -> None:

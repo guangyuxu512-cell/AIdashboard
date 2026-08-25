@@ -12,6 +12,29 @@ RPAExecutor 只负责确认 Provider、校验 Task App ID、执行超时、统�
 和 Runtime 收口。影刀应用执行细节只允许存在于 YingdaoAdapter；只读环境发现由
 独立的 `YingdaoDiscoveryService` 承担，不能借 Discovery 启动应用。
 
+## 影刀本地输入桥接
+
+新影刀 Application 需要普通参数、账号或图片时，统一读取 Worker GUI 配置的：
+
+```text
+params.json
+account.json
+images 目录
+```
+
+不得由每个 Application 自行定义另一套 Worker 路径。RPAExecutor 在取得当前 Task 的
+`input.params`、确认 Provider 与 App 可用、并取得 Provider 执行槽后，先调用 Local Input
+Bridge：完整覆盖两个 JSON 并确认图片目录；成功后才调用 `YingdaoAdapter.execute()`。
+Preparation 与 ShadowBot Run 位于同一个 Provider 串行边界内，不会被两个影刀 Task 交叉覆盖。
+
+`params.json` 的根对象就是业务参数本身，不增加 context/runtime/resources Envelope；无参数为
+`{}`。`account.json` 只使用正式 Task Account Payload，无 Payload 为 `{}`。两者均 UTF-8、
+中文可读、原子替换。完整账号数据不得进入日志、Runtime Event 或 Task Result。现有
+`shadowbot:Run?...` Application Params 保持兼容，不因增加固定文件而删除。
+
+当前尚无 Server → Worker 图片传输 Contract，V1 只保证图片目录存在且可写，不猜测图片来源、
+文件名或集合切换。详细跨 Runtime 规则见 `03-Skill执行规范.md`。
+
 必须支持：
 
 - 外部启动与输入。

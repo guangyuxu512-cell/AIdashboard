@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from app.local_config import (
+    LocalInputPaths,
     LocalWorkerConfig,
     WorkerConfigService,
     WorkerConfigurationError,
+    get_default_local_input_paths,
     get_worker_data_root,
+    inspect_local_input_paths,
 )
 from app.process_control import WorkerProcessController
 from app.providers.yingdao import WindowsYingdaoRuntimeLocator, YingdaoSessionError
@@ -55,8 +58,8 @@ def main() -> int:
 
     root = tk.Tk()
     root.title("电商 AI Worker")
-    root.geometry("760x650")
-    root.minsize(680, 560)
+    root.geometry("800x720")
+    root.minsize(720, 620)
 
     outer = ttk.Frame(root, padding=16)
     outer.pack(fill="both", expand=True)
@@ -118,6 +121,28 @@ def main() -> int:
         value=(config.device_display_name or "") if config else "",
     )
     shadowbot_var = tk.StringVar(value="")
+    default_local_inputs = get_default_local_input_paths(config_service.data_root)
+    params_json_var = tk.StringVar(
+        value=str(
+            config.params_json_path
+            if config is not None
+            else default_local_inputs.params_json_path
+        ),
+    )
+    account_json_var = tk.StringVar(
+        value=str(
+            config.account_json_path
+            if config is not None
+            else default_local_inputs.account_json_path
+        ),
+    )
+    images_dir_var = tk.StringVar(
+        value=str(
+            config.images_dir
+            if config is not None
+            else default_local_inputs.images_dir
+        ),
+    )
     config_result_var = tk.StringVar(
         value="已读取现有配置" if config else "等待首次配置",
     )
@@ -169,6 +194,72 @@ def main() -> int:
         state="readonly",
     ).grid(row=0, column=0, sticky="ew")
     add_config_row(4, "ShadowBot 6.3.6", shadowbot_frame)
+
+    local_input_frame = ttk.LabelFrame(config_tab, text="本地输入", padding=10)
+    local_input_frame.pack(fill="x", pady=(12, 0))
+    local_input_frame.columnconfigure(1, weight=1)
+    local_input_buttons: list[ttk.Button] = []
+
+    def add_local_input_row(
+        row: int,
+        caption: str,
+        variable: Any,
+        command: Any,
+    ) -> None:
+        ttk.Label(local_input_frame, text=caption, width=20).grid(
+            row=row,
+            column=0,
+            sticky="w",
+            pady=5,
+        )
+        ttk.Entry(local_input_frame, textvariable=variable).grid(
+            row=row,
+            column=1,
+            sticky="ew",
+            pady=5,
+        )
+        button = ttk.Button(local_input_frame, text="选择", command=command)
+        button.grid(row=row, column=2, padx=(8, 0), pady=5)
+        local_input_buttons.append(button)
+
+    def choose_json_path(variable: Any, title: str) -> None:
+        current = Path(variable.get().strip())
+        selected = filedialog.asksaveasfilename(
+            title=title,
+            initialdir=str(current.parent),
+            initialfile=current.name,
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("所有文件", "*.*")],
+        )
+        if selected:
+            variable.set(selected)
+
+    def choose_images_directory() -> None:
+        selected = filedialog.askdirectory(
+            title="选择图片工作目录",
+            initialdir=images_dir_var.get().strip(),
+        )
+        if selected:
+            images_dir_var.set(selected)
+
+    add_local_input_row(
+        0,
+        "参数 JSON",
+        params_json_var,
+        lambda: choose_json_path(params_json_var, "选择参数 JSON 路径"),
+    )
+    add_local_input_row(
+        1,
+        "账号 JSON",
+        account_json_var,
+        lambda: choose_json_path(account_json_var, "选择账号 JSON 路径"),
+    )
+    add_local_input_row(
+        2,
+        "图片工作目录",
+        images_dir_var,
+        choose_images_directory,
+    )
     ttk.Label(
         config_tab,
         textvariable=config_result_var,
@@ -197,6 +288,9 @@ def main() -> int:
         ("session", "ShadowBot Session"),
         ("applications", "云端应用"),
         ("provider_refresh", "最近 Provider 刷新"),
+        ("params_json", "参数 JSON"),
+        ("account_json", "账号 JSON"),
+        ("images_dir", "图片工作目录"),
     )
     diagnostic_facts = ttk.Frame(diagnostic_tab)
     diagnostic_facts.pack(fill="x")
@@ -233,7 +327,13 @@ def main() -> int:
 
     def set_busy(busy: bool) -> None:
         state = "disabled" if busy else "normal"
-        for button in (test_button, save_button, detect_button, choose_button):
+        for button in (
+            test_button,
+            save_button,
+            detect_button,
+            choose_button,
+            *local_input_buttons,
+        ):
             button.configure(state=state)
 
     def configured_locator() -> WindowsYingdaoRuntimeLocator:
@@ -311,6 +411,11 @@ def main() -> int:
         if result is None:
             test_connection(save_after=True)
             return
+        if read_runtime_status(status_path).get("current_task_id"):
+            config_result_var.set(
+                "当前任务正在运行；请等待任务结束后再保存配置，避免中断执行",
+            )
+            return
         if not result.ok or result.identity is None:
             if (
                 config is not None
@@ -342,6 +447,18 @@ def main() -> int:
                 ),
                 yingdao_data_root=config.yingdao_data_root if config else None,
                 yingdao_test_app_id=config.yingdao_test_app_id if config else None,
+                params_json_path=_required_path(
+                    params_json_var.get(),
+                    "参数 JSON 路径",
+                ),
+                account_json_path=_required_path(
+                    account_json_var.get(),
+                    "账号 JSON 路径",
+                ),
+                images_dir=_required_path(
+                    images_dir_var.get(),
+                    "图片工作目录",
+                ),
             )
             running = process_controller.restart()
         except (OSError, WorkerConfigurationError) as error:
@@ -380,7 +497,20 @@ def main() -> int:
         logs.delete("1.0", "end")
         logs.insert("end", "\n".join(lines) if lines else "暂无运行日志")
         logs.configure(state="disabled")
-        diagnostics = _render_diagnostics(state, running=running)
+        local_inputs = (
+            LocalInputPaths(
+                params_json_path=config.params_json_path,
+                account_json_path=config.account_json_path,
+                images_dir=config.images_dir,
+            )
+            if config is not None
+            else default_local_inputs
+        )
+        diagnostics = _render_diagnostics(
+            state,
+            running=running,
+            local_inputs=inspect_local_input_paths(local_inputs),
+        )
         for key, label in diagnostic_labels.items():
             label.configure(text=diagnostics.get(key, "—"))
 
@@ -440,13 +570,14 @@ def _render_diagnostics(
     state: dict[str, Any],
     *,
     running: bool,
+    local_inputs: dict[str, str] | None = None,
     now: datetime | None = None,
 ) -> dict[str, str]:
     observed_at = now or datetime.now(UTC)
     provider_status = state.get("provider_status")
     heartbeat_healthy = _backend_is_healthy(state, observed_at)
     heartbeat_age = _relative_time(state.get("last_heartbeat_at"), observed_at)
-    return {
+    diagnostics = {
         "backend": "正常" if heartbeat_healthy else "异常",
         "token": {
             "valid": "有效",
@@ -479,6 +610,15 @@ def _render_diagnostics(
         ),
         "provider_refresh": str(state.get("provider_refreshed_at") or "—"),
     }
+    diagnostics.update(local_inputs or {})
+    return diagnostics
+
+
+def _required_path(value: str, caption: str) -> Path:
+    path = value.strip()
+    if not path:
+        raise WorkerConfigurationError(f"{caption}不能为空")
+    return Path(path)
 
 
 def _provider_status_label(value: object) -> str:

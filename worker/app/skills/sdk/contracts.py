@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
+from pathlib import Path
 import re
 from typing import Any, Generic, Literal, Mapping, Protocol, TypeVar
 from uuid import UUID
@@ -86,6 +87,11 @@ class _CancellationState:
 
 
 @dataclass(frozen=True)
+class SkillContextPaths:
+    images: Path
+
+
+@dataclass(frozen=True)
 class SkillContext:
     task_id: UUID
     device_id: UUID
@@ -93,6 +99,8 @@ class SkillContext:
     timeout_seconds: float
     deadline: datetime
     _event_bus: RuntimeEventBus = field(repr=False)
+    paths: SkillContextPaths
+    account: Mapping[str, JsonValue] | None = field(default=None, repr=False)
     _cancellation: _CancellationState = field(
         default_factory=_CancellationState,
         repr=False,

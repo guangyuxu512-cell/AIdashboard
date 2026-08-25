@@ -6,6 +6,20 @@ from uuid import UUID
 from pydantic import AnyHttpUrl, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.local_config import get_default_local_input_paths
+
+
+def _default_params_json_path() -> Path:
+    return get_default_local_input_paths().params_json_path
+
+
+def _default_account_json_path() -> Path:
+    return get_default_local_input_paths().account_json_path
+
+
+def _default_images_dir() -> Path:
+    return get_default_local_input_paths().images_dir
+
 
 class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -33,6 +47,9 @@ class WorkerSettings(BaseSettings):
     yingdao_install_root: Path | None = None
     yingdao_data_root: Path | None = None
     yingdao_test_app_id: str | None = None
+    params_json_path: Path = Field(default_factory=_default_params_json_path)
+    account_json_path: Path = Field(default_factory=_default_account_json_path)
+    images_dir: Path = Field(default_factory=_default_images_dir)
     yingdao_startup_timeout_seconds: float = Field(default=30, ge=5, le=120)
     provider_inventory_interval_seconds: float = Field(default=60, ge=10, le=3600)
     event_flush_interval_seconds: float = Field(default=0.4, ge=0.1, le=5)
@@ -67,4 +84,7 @@ def get_settings() -> WorkerSettings:
         yingdao_install_root=local.yingdao_install_root,
         yingdao_data_root=local.yingdao_data_root,
         yingdao_test_app_id=local.yingdao_test_app_id,
+        params_json_path=local.params_json_path,
+        account_json_path=local.account_json_path,
+        images_dir=local.images_dir,
     )

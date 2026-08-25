@@ -4,6 +4,7 @@ from app.skills.sdk.contracts import (
     BusinessSkill,
     BusinessSkillInput,
     SkillContext,
+    SkillContextPaths,
     SkillExecutionError,
     SkillResult,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "BusinessSkillInput",
     "BusinessSkillRunner",
     "SkillContext",
+    "SkillContextPaths",
     "SkillExecutionError",
     "SkillResult",
     "register_business_skill",

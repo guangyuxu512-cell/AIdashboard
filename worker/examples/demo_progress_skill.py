@@ -41,7 +41,15 @@ class DemoProgressSkill:
         ctx: SkillContext,
         input: DemoProgressInput,
     ) -> SkillResult:
-        ctx.log("SDK Demo 已开始")
+        account = ctx.account
+        image_dir = ctx.paths.images
+        ctx.log(
+            "SDK Demo 已开始",
+            metadata={
+                "account_available": account is not None,
+                "images_directory_configured": bool(image_dir),
+            },
+        )
         for current in range(1, input.steps + 1):
             if ctx.is_cancelled:
                 raise SkillExecutionError(

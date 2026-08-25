@@ -134,6 +134,13 @@ try {
         Pop-Location
     }
     if ($LASTEXITCODE -ne 0) { throw 'Production Config Service provisioning failed.' }
+    $configPath = Join-Path $dataRoot 'config.json'
+    $storedConfig = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
+    foreach ($requiredLocalInputKey in @('params_json_path', 'account_json_path', 'images_dir')) {
+        if ($storedConfig.PSObject.Properties.Name -notcontains $requiredLocalInputKey) {
+            throw "Worker config is missing $requiredLocalInputKey."
+        }
+    }
     $deviceToken = $null
     $issuedCredential = $null
     $provisionPayload = $null
@@ -193,6 +200,9 @@ try {
     }
     $echoResult = Wait-Task ([string]$echoTask.task_id)
     if ($echoResult.result.message -ne 'packaged-worker-ok') { throw 'system.echo returned an unexpected result.' }
+    if (-not (Test-Path -LiteralPath ([string]$storedConfig.images_dir) -PathType Container)) {
+        throw 'Python Runtime did not prepare the configured images directory.'
+    }
     $echoEvents = Invoke-Api 'GET' "/api/v1/tasks/$($echoTask.task_id)/events?after_seq=0&limit=100"
     if (@($echoEvents.items).Count -lt 2 -or @($echoEvents.items)[-1].event_type -ne 'completed') {
         throw 'system.echo runtime events were not persisted through the packaged Worker.'
@@ -256,6 +266,7 @@ try {
     Write-Host 'Single instance: PASS'
     Write-Host 'Tkinter GUI provisioning and close independence: PASS'
     Write-Host 'system.echo: SUCCESS'
+    Write-Host 'Local input config and Python images path: PASS'
     Write-Host 'system.sleep: SUCCESS'
     if ($SkipYingdaoDiscovery) {
         Write-Host 'yingdao.discover: SKIPPED (no local 6.3.6 runtime)'

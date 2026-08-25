@@ -95,3 +95,11 @@ Electron 关闭不能成为 Worker Task 可靠性设计的前提。
 - 成功必须返回 `SkillResult`；预期失败必须抛出 `SkillExecutionError`。
 - Executor / Provider 并发由 Worker Runtime 控制，禁止 Skill 内部轮询等待执行槽。
 - 详细契约与示例见 `docs/03-Skill执行规范.md` 和 `examples/demo_progress_skill.py`。
+
+## 10. 本地输入桥接硬约束
+- 影刀等外部程序需要固定本地输入时，必须复用 Worker Local Input Bridge，不得由每个 Application 自创路径或写入协议。
+- 普通业务参数、账号 Payload 和图片分别使用配置的 `params.json`、`account.json` 与固定图片工作目录。
+- Python Business Skill 不得为了与外部程序“统一”而读取 `params.json`；业务参数继续使用 Pydantic Input。
+- Python Business Skill 的账号和图片路径只通过 `ctx.account` 与 `ctx.paths.images` 获取。
+- 完整账号 Payload 不得写入日志、Runtime Event 或 Task Result。
+- 没有真实上游契约时，不得提前引入 Resource Manager、Secret Resolver、Task Workspace 或图片传输协议。

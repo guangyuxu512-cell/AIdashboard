@@ -10,8 +10,11 @@ from app.contracts import (
     ExecutionResult,
     ExecutionStatus,
     RuntimeEventType,
+    SkillProcessInput,
+    SkillProcessPaths,
     WorkerTask,
 )
+from app.local_input import LocalInputPreparationError, ensure_images_directory
 from app.runtime import TaskRuntimeExistsError, TaskRuntimeManager, TaskRuntimePaths
 from app.runtime_events import RuntimeEventBus
 from app.skills import SkillRegistry, registry
@@ -29,11 +32,13 @@ class PythonExecutor:
         event_bus: RuntimeEventBus | None = None,
         *,
         device_id: UUID,
+        images_dir: Path,
         skill_registry: SkillRegistry = registry,
     ) -> None:
         self.runtime = TaskRuntimeManager(runtime_root)
         self.event_bus = event_bus or RuntimeEventBus()
         self.device_id = device_id
+        self.images_dir = images_dir.resolve()
         self.registry = skill_registry
 
     def can_claim(self) -> bool:
@@ -59,6 +64,23 @@ class PythonExecutor:
                 "RUNTIME_DIRECTORY_EXISTS",
                 "Task runtime directory already exists",
             )
+        try:
+            ensure_images_directory(self.images_dir)
+        except LocalInputPreparationError as error:
+            return self._finish(
+                paths,
+                self._failure(error.code, error.message),
+            )
+        self.runtime.write_json(
+            paths.input,
+            SkillProcessInput(
+                task_id=task.task_id,
+                skill_id=task.skill_id,
+                params=task.input,
+                account=task.account,
+                paths=SkillProcessPaths(images=self.images_dir),
+            ).model_dump(mode="json"),
+        )
         self.runtime.write_status(paths, status="running")
         self.event_bus.emit(
             task.task_id,

@@ -1,0 +1,135 @@
+import json
+from enum import StrEnum
+from pathlib import Path
+
+import pytest
+
+from app.local_config import LocalInputPaths, write_json_atomic as real_write_json_atomic
+from app.local_input import LocalInputBridge, LocalInputPreparationError
+
+
+class RunMode(StrEnum):
+    SAFE = "safe"
+
+
+def make_bridge(tmp_path: Path) -> LocalInputBridge:
+    return LocalInputBridge(
+        LocalInputPaths(
+            params_json_path=tmp_path / "data" / "params.json",
+            account_json_path=tmp_path / "data" / "account.json",
+            images_dir=tmp_path / "data" / "images",
+        ),
+    )
+
+
+def test_bridge_writes_readable_utf8_json_and_creates_images(
+    tmp_path: Path,
+) -> None:
+    bridge = make_bridge(tmp_path)
+
+    bridge.prepare(
+        params={
+            "关键词": "夏季连衣裙",
+            "enabled": True,
+            "count": 10,
+            "ratio": 0.5,
+            "mode": RunMode.SAFE,
+        },
+        account={"display_name": "测试账号"},
+    )
+
+    params_text = bridge.paths.params_json_path.read_text(encoding="utf-8")
+    account_text = bridge.paths.account_json_path.read_text(encoding="utf-8")
+    assert "夏季连衣裙" in params_text
+    assert "测试账号" in account_text
+    assert json.loads(params_text) == {
+        "关键词": "夏季连衣裙",
+        "enabled": True,
+        "count": 10,
+        "ratio": 0.5,
+        "mode": "safe",
+    }
+    assert json.loads(account_text) == {"display_name": "测试账号"}
+    assert bridge.paths.images_dir.is_dir()
+    assert not list(bridge.paths.params_json_path.parent.glob(".*.tmp"))
+
+
+def test_bridge_fully_overwrites_params_and_stale_account(tmp_path: Path) -> None:
+    bridge = make_bridge(tmp_path)
+    bridge.prepare(
+        params={"a": 1},
+        account={"private_marker": "task-a-secret"},
+    )
+    existing_image = bridge.paths.images_dir / "existing.jpg"
+    existing_image.write_bytes(b"fixture")
+
+    bridge.prepare(params={"b": 2}, account=None)
+
+    assert json.loads(bridge.paths.params_json_path.read_text("utf-8")) == {
+        "b": 2,
+    }
+    assert json.loads(bridge.paths.account_json_path.read_text("utf-8")) == {}
+    assert "task-a-secret" not in bridge.paths.account_json_path.read_text("utf-8")
+    # There is no Server -> Worker image collection contract in V1, so the
+    # generic bridge only guarantees the managed directory and does not guess
+    # whether an existing collection should be removed.
+    assert existing_image.exists()
+
+
+def test_bridge_writes_empty_params_instead_of_reusing_previous_task(
+    tmp_path: Path,
+) -> None:
+    bridge = make_bridge(tmp_path)
+    bridge.prepare(params={"old": True}, account=None)
+
+    bridge.prepare(params={}, account=None)
+
+    assert json.loads(bridge.paths.params_json_path.read_text("utf-8")) == {}
+
+
+def test_bridge_reports_safe_error_without_payload_and_stops_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bridge = make_bridge(tmp_path)
+
+    def fail_write(path: Path, payload: dict[str, object]) -> None:
+        del path, payload
+        raise OSError("private_marker=must-not-escape")
+
+    monkeypatch.setattr("app.local_input.write_json_atomic", fail_write)
+
+    with pytest.raises(LocalInputPreparationError) as captured:
+        bridge.prepare(
+            params={"private_marker": "must-not-escape"},
+            account={"password": "must-not-escape"},
+        )
+
+    assert captured.value.code == "LOCAL_PARAMS_FILE_PREPARATION_FAILED"
+    assert captured.value.message == "本地参数文件准备失败"
+    assert "must-not-escape" not in str(captured.value)
+    assert not bridge.paths.images_dir.exists()
+
+
+def test_bridge_distinguishes_account_write_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bridge = make_bridge(tmp_path)
+    call_count = 0
+
+    def fail_second_write(path: Path, payload: dict[str, object]) -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise OSError("account payload intentionally omitted")
+        real_write_json_atomic(path, payload)
+
+    monkeypatch.setattr("app.local_input.write_json_atomic", fail_second_write)
+
+    with pytest.raises(LocalInputPreparationError) as captured:
+        bridge.prepare(params={"ok": True}, account={"secret": "hidden"})
+
+    assert captured.value.code == "LOCAL_ACCOUNT_FILE_PREPARATION_FAILED"
+    assert captured.value.message == "账号文件准备失败"
+    assert "hidden" not in str(captured.value)
