@@ -312,12 +312,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_engine
 from app.modules.devices.models import Device
 from app.modules.shops.models import ShopDeviceBinding
-from app.modules.tasks.models import Task, TaskEvent
+from app.modules.tasks.models import Task, TaskEvent, TaskShop
 from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
 device_id = UUID(os.environ["WORKER_SMOKE_DEVICE_ID"])
 with Session(get_database_engine()) as session:
     task_ids = select(Task.task_id).where(Task.target_device_id == device_id)
     session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
+    session.execute(delete(TaskShop).where(TaskShop.task_id.in_(task_ids)))
     session.execute(delete(Task).where(Task.target_device_id == device_id))
     session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == device_id))
     session.execute(delete(DeviceProviderInventory).where(DeviceProviderInventory.device_id == device_id))
@@ -347,7 +348,7 @@ with Session(get_database_engine()) as session:
             }
         }
         if (-not $cleanupCompleted) {
-            $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
+            $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM task_shops WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
             $cleanupBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($cleanupSql))
             & ssh.exe -o BatchMode=yes -o ConnectTimeout=5 $SshHost "printf '%s' '$cleanupBase64' | base64 -d | docker exec -i control-center-postgres-dev psql -v ON_ERROR_STOP=1 -U postgres -d control_center_dev" | Out-Null
         }

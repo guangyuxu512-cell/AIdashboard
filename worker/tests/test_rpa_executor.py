@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
+from app.contracts import AccountPayload, ExecutionResult, ExecutionStatus, WorkerTask
 from app.executors.router import ExecutorRouter
 from app.executors.rpa import RPAExecutor
 from app.local_config import LocalInputPaths
@@ -132,14 +132,24 @@ def make_executor(
 def make_task(
     *,
     params: dict[str, Any] | None = None,
-    account: dict[str, Any] | None = None,
+    accounts: list[AccountPayload] | None = None,
 ) -> WorkerTask:
     return WorkerTask(
         task_id=uuid4(),
         skill_id="yingdao.test",
         input={"params": params or {}},
-        account=account,
+        accounts=accounts or [],
         lease_until="2026-08-20T12:00:00+00:00",
+    )
+
+
+def make_account(*, secret: str = "task-secret") -> AccountPayload:
+    return AccountPayload(
+        shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+        platform_code="DOUYIN",
+        login_identifier="测试账号",
+        secret=secret,
+        preferred_verification_channel="SMS",
     )
 
 
@@ -155,7 +165,7 @@ def test_rpa_executor_parses_success_and_uses_shared_runtime(tmp_path: Path) -> 
     executor = make_executor(tmp_path, adapter)
     task = make_task(
         params={"关键词": "测试", "count": 2},
-        account={"display_name": "测试账号"},
+        accounts=[make_account()],
     )
 
     result = run(executor, task)
@@ -179,7 +189,15 @@ def test_rpa_executor_parses_success_and_uses_shared_runtime(tmp_path: Path) -> 
         "count": 2,
     }
     assert json.loads((local_input / "account.json").read_text("utf-8")) == {
-        "display_name": "测试账号",
+        "店铺列表": [
+            {
+                "店铺ID": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+                "平台编码": "DOUYIN",
+                "登录账号": "测试账号",
+                "登录密码": "task-secret",
+                "首选验证方式": "SMS",
+            },
+        ],
     }
     assert (local_input / "images").is_dir()
     assert adapter.requests[0].params == {"关键词": "测试", "count": 2}
@@ -451,7 +469,7 @@ def test_yingdao_bridge_overwrites_stale_params_and_account(tmp_path: Path) -> N
         executor,
         make_task(
             params={"a": 1},
-            account={"private_marker": "task-a"},
+            accounts=[make_account(secret="task-a")],
         ),
     )
     second = run(executor, make_task(params={"b": 2}))
@@ -462,7 +480,9 @@ def test_yingdao_bridge_overwrites_stale_params_and_account(tmp_path: Path) -> N
     assert json.loads((local_input / "params.json").read_text("utf-8")) == {
         "b": 2,
     }
-    assert json.loads((local_input / "account.json").read_text("utf-8")) == {}
+    assert json.loads((local_input / "account.json").read_text("utf-8")) == {
+        "店铺列表": [],
+    }
 
 
 def test_yingdao_preparation_failure_does_not_launch_application(

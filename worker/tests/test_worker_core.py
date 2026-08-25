@@ -614,7 +614,7 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
         "skill_id": "system.echo",
         "params": {"message": "hello"},
         "paths": {"images": str((tmp_path / "images").resolve())},
-        "account": None,
+        "accounts": [],
     }
 
     duplicate = asyncio.run(

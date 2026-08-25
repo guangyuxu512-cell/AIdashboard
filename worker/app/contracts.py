@@ -14,6 +14,16 @@ class ExecutionStatus(StrEnum):
     FAILED = "failed"
 
 
+class AccountPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shop_id: UUID
+    platform_code: str
+    login_identifier: str
+    secret: str = Field(repr=False)
+    preferred_verification_channel: str | None = None
+
+
 class WorkerTask(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -21,7 +31,7 @@ class WorkerTask(BaseModel):
     skill_id: str
     input: dict[str, Any]
     lease_until: datetime
-    account: dict[str, JsonValue] | None = Field(default=None, repr=False)
+    accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
 
 
 class ProviderInventoryReport(BaseModel):
@@ -62,7 +72,7 @@ class SkillProcessInput(BaseModel):
     skill_id: str
     params: dict[str, Any]
     paths: SkillProcessPaths
-    account: dict[str, JsonValue] | None = Field(default=None, repr=False)
+    accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
 
 
 class RuntimeEventType(StrEnum):

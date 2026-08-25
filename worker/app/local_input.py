@@ -1,9 +1,10 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import os
 from pathlib import Path
 import tempfile
 from typing import Any, Protocol
 
+from app.contracts import AccountPayload
 from app.local_config import LocalInputPaths, write_json_atomic
 
 
@@ -19,7 +20,7 @@ class LocalInputPreparer(Protocol):
         self,
         *,
         params: Mapping[str, Any],
-        account: Mapping[str, Any] | None,
+        accounts: Sequence[AccountPayload],
     ) -> None: ...
 
 
@@ -37,7 +38,7 @@ class LocalInputBridge:
         self,
         *,
         params: Mapping[str, Any],
-        account: Mapping[str, Any] | None,
+        accounts: Sequence[AccountPayload],
     ) -> None:
         try:
             write_json_atomic(self.paths.params_json_path, dict(params))
@@ -47,7 +48,21 @@ class LocalInputBridge:
                 "本地参数文件准备失败",
             ) from error
         try:
-            write_json_atomic(self.paths.account_json_path, dict(account or {}))
+            write_json_atomic(
+                self.paths.account_json_path,
+                {
+                    "店铺列表": [
+                        {
+                            "店铺ID": str(account.shop_id),
+                            "平台编码": account.platform_code,
+                            "登录账号": account.login_identifier,
+                            "登录密码": account.secret,
+                            "首选验证方式": account.preferred_verification_channel,
+                        }
+                        for account in accounts
+                    ],
+                },
+            )
         except (OSError, TypeError, ValueError) as error:
             raise LocalInputPreparationError(
                 "LOCAL_ACCOUNT_FILE_PREPARATION_FAILED",

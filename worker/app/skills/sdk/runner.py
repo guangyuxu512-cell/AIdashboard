@@ -64,7 +64,10 @@ class BusinessSkillRunner:
             timeout_seconds=definition.timeout_seconds,
             deadline=datetime.now(UTC) + timedelta(seconds=definition.timeout_seconds),
             _event_bus=self.event_bus,
-            account=process_input.account,
+            accounts=[
+                account.model_dump(mode="json")
+                for account in process_input.accounts
+            ],
             paths=SkillContextPaths(images=process_input.paths.images),
         )
         try:

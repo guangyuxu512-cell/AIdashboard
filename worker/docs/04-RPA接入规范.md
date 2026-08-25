@@ -28,11 +28,30 @@ Bridge：完整覆盖两个 JSON 并确认图片目录；成功后才调用 `Yin
 Preparation 与 ShadowBot Run 位于同一个 Provider 串行边界内，不会被两个影刀 Task 交叉覆盖。
 
 `params.json` 的根对象就是业务参数本身，不增加 context/runtime/resources Envelope；无参数为
-`{}`。`account.json` 只使用认证 Claim 下发的正式 Task Account Payload，当前键为
-`shop_id / platform_code / login_identifier / secret / preferred_verification_channel`；无 Payload
-为 `{}`。两者均 UTF-8、
-中文可读、原子替换。完整账号数据不得进入日志、Runtime Event 或 Task Result。现有
+`{}`。`account.json` 只使用认证 Claim 下发的正式有序 `accounts`，并仅在落盘边界映射为：
+
+```json
+{
+  "店铺列表": [
+    {
+      "店铺ID": "...",
+      "平台编码": "douyin",
+      "登录账号": "...",
+      "登录密码": "...",
+      "首选验证方式": null
+    }
+  ]
+}
+```
+
+无 Payload 固定写 `{"店铺列表":[]}`，不写英文重复字段。`params.json` 与 `account.json` 均
+UTF-8、中文不转义、原子替换并对每个 Task 完整覆盖。完整账号数据不得进入日志、Runtime Event
+或 Task Result。现有
 `shadowbot:Run?...` Application Params 保持兼容，不因增加固定文件而删除。
+
+一个多店铺 Task 只准备一次 `account.json` 并启动一次 ShadowBot Application。Worker 不循环
+店铺、不判断切号或验证码；Application 自行决定串行、切号、单店失败后是否继续，并通过现有
+最终结果 Contract 决定 Task 终态。
 
 当前尚无 Server → Worker 图片传输 Contract，V1 只保证图片目录存在且可写，不猜测图片来源、
 文件名或集合切换。详细跨 Runtime 规则见 `03-Skill执行规范.md`。

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.contracts import AccountPayload
 from app.local_config import LocalInputPaths, write_json_atomic as real_write_json_atomic
 from app.local_input import LocalInputBridge, LocalInputPreparationError
 
@@ -22,6 +23,16 @@ def make_bridge(tmp_path: Path) -> LocalInputBridge:
     )
 
 
+def make_account(*, secret: str = "task-secret") -> AccountPayload:
+    return AccountPayload(
+        shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+        platform_code="DOUYIN",
+        login_identifier="测试账号",
+        secret=secret,
+        preferred_verification_channel="SMS",
+    )
+
+
 def test_bridge_writes_readable_utf8_json_and_creates_images(
     tmp_path: Path,
 ) -> None:
@@ -35,7 +46,7 @@ def test_bridge_writes_readable_utf8_json_and_creates_images(
             "ratio": 0.5,
             "mode": RunMode.SAFE,
         },
-        account={"display_name": "测试账号"},
+        accounts=[make_account()],
     )
 
     params_text = bridge.paths.params_json_path.read_text(encoding="utf-8")
@@ -49,7 +60,18 @@ def test_bridge_writes_readable_utf8_json_and_creates_images(
         "ratio": 0.5,
         "mode": "safe",
     }
-    assert json.loads(account_text) == {"display_name": "测试账号"}
+    assert json.loads(account_text) == {
+        "店铺列表": [
+            {
+                "店铺ID": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+                "平台编码": "DOUYIN",
+                "登录账号": "测试账号",
+                "登录密码": "task-secret",
+                "首选验证方式": "SMS",
+            },
+        ],
+    }
+    assert "login_identifier" not in account_text
     assert bridge.paths.images_dir.is_dir()
     assert not list(bridge.paths.params_json_path.parent.glob(".*.tmp"))
 
@@ -58,17 +80,19 @@ def test_bridge_fully_overwrites_params_and_stale_account(tmp_path: Path) -> Non
     bridge = make_bridge(tmp_path)
     bridge.prepare(
         params={"a": 1},
-        account={"private_marker": "task-a-secret"},
+        accounts=[make_account(secret="task-a-secret")],
     )
     existing_image = bridge.paths.images_dir / "existing.jpg"
     existing_image.write_bytes(b"fixture")
 
-    bridge.prepare(params={"b": 2}, account=None)
+    bridge.prepare(params={"b": 2}, accounts=[])
 
     assert json.loads(bridge.paths.params_json_path.read_text("utf-8")) == {
         "b": 2,
     }
-    assert json.loads(bridge.paths.account_json_path.read_text("utf-8")) == {}
+    assert json.loads(bridge.paths.account_json_path.read_text("utf-8")) == {
+        "店铺列表": [],
+    }
     assert "task-a-secret" not in bridge.paths.account_json_path.read_text("utf-8")
     # There is no Server -> Worker image collection contract in V1, so the
     # generic bridge only guarantees the managed directory and does not guess
@@ -80,9 +104,9 @@ def test_bridge_writes_empty_params_instead_of_reusing_previous_task(
     tmp_path: Path,
 ) -> None:
     bridge = make_bridge(tmp_path)
-    bridge.prepare(params={"old": True}, account=None)
+    bridge.prepare(params={"old": True}, accounts=[])
 
-    bridge.prepare(params={}, account=None)
+    bridge.prepare(params={}, accounts=[])
 
     assert json.loads(bridge.paths.params_json_path.read_text("utf-8")) == {}
 
@@ -102,7 +126,7 @@ def test_bridge_reports_safe_error_without_payload_and_stops_preparation(
     with pytest.raises(LocalInputPreparationError) as captured:
         bridge.prepare(
             params={"private_marker": "must-not-escape"},
-            account={"password": "must-not-escape"},
+            accounts=[make_account(secret="must-not-escape")],
         )
 
     assert captured.value.code == "LOCAL_PARAMS_FILE_PREPARATION_FAILED"
@@ -128,7 +152,7 @@ def test_bridge_distinguishes_account_write_failure(
     monkeypatch.setattr("app.local_input.write_json_atomic", fail_second_write)
 
     with pytest.raises(LocalInputPreparationError) as captured:
-        bridge.prepare(params={"ok": True}, account={"secret": "hidden"})
+        bridge.prepare(params={"ok": True}, accounts=[make_account(secret="hidden")])
 
     assert captured.value.code == "LOCAL_ACCOUNT_FILE_PREPARATION_FAILED"
     assert captured.value.message == "账号文件准备失败"

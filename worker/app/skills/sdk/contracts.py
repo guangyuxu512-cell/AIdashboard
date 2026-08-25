@@ -100,7 +100,10 @@ class SkillContext:
     deadline: datetime
     _event_bus: RuntimeEventBus = field(repr=False)
     paths: SkillContextPaths
-    account: Mapping[str, JsonValue] | None = field(default=None, repr=False)
+    accounts: list[Mapping[str, JsonValue]] = field(
+        default_factory=list,
+        repr=False,
+    )
     _cancellation: _CancellationState = field(
         default_factory=_CancellationState,
         repr=False,

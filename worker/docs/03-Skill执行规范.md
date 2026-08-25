@@ -47,7 +47,7 @@ artifacts/
 ```
 
 `input.json` 是 Worker 控制的子进程输入。Python Runtime 在原有 `task_id`、`skill_id`、
-`params` 之外还携带可选 `account` 与 `paths.images`，但 Business Skill 只能通过已校验的
+`params` 之外还携带有序 `accounts` 与 `paths.images`，但 Business Skill 只能通过已校验的
 Pydantic Input 和 `SkillContext` 消费这些值；不得自行读取该内部文件。已存在的同名运行目录
 不得被覆盖或删除。
 
@@ -86,15 +86,17 @@ Task Account Payload      → account.json
 默认落点位于 `%LOCALAPPDATA%\EcommerceAIWorker\data\`，也可在 Worker GUI 的“本地输入”
 区域修改。每次 `yingdao.app.run` 真正启动 Application 前，RPAExecutor 必须先完整覆盖
 `params.json`，再完整覆盖 `account.json`，并确认图片目录存在且可写。两个 JSON 都使用 UTF-8、
-中文不转义和原子替换；无参数写 `{}`，无 Account Payload 也写 `{}`，绝不合并或保留上一个
-Task 的字段。任一步失败时 Task 以安全错误结束，且不得调用 ShadowBot Run。
+中文不转义和原子替换；无参数写 `{}`，`account.json` 根对象固定为 `店铺列表`，无 Account
+Payload 时写 `{"店铺列表":[]}`，绝不合并或保留上一个 Task 的字段。任一步失败时 Task 以安全
+错误结束，且不得调用 ShadowBot Run。
 
 Local Input Bridge 只是跨进程输入适配，不替代现有 ShadowBot Application Params；现有 URI
-参数仍继续传递。Task Account Payload V1 由 Backend 在认证 Claim 时根据 `Task.shop_id` 和现有
-Credential 构建，字段固定为 `shop_id / platform_code / login_identifier / secret /
-preferred_verification_channel`，不包含 Cookie/Session，也不进入 Task Input、日志、Runtime Event
-或 Result。RPAExecutor 将该字典完整覆盖到 `account.json`；Python Business Skill 通过
-`ctx.account` 读取。没有 `shop_id` 的兼容 Task 仍分别得到 `{}` 与 `None`。
+参数仍继续传递。Backend 在认证 Claim 时按 Task 的有序 Shop 关系构建 `accounts`，每项内部字段
+固定为 `shop_id / platform_code / login_identifier / secret /
+preferred_verification_channel`，不包含 Cookie/Session 或验证码挑战，也不进入 Task Input、日志、
+Runtime Event 或 Result。RPAExecutor 仅在落盘边界映射为 `店铺ID / 平台编码 / 登录账号 /
+登录密码 / 首选验证方式` 并一次完整覆盖 `account.json`；不得同时写英文重复字段。Python
+Business Skill 通过英文 `ctx.accounts` 读取。
 
 图片目录当前只定义本机落点和可写性。项目尚无 Server → Worker 图片传输 Contract，因此 V1
 不虚构下载、命名或新图片集合标记，也不会擅自清空任意自定义目录；未来一旦有“本 Task 使用
@@ -190,7 +192,7 @@ V1 Context 只暴露真实能力：
 
 - `task_id / device_id / skill_id`；
 - `timeout_seconds / deadline`；
-- `account`：当前 Task 的只读 Account Payload；没有正式 Payload 时为 `None`；
+- `accounts`：当前 Task 的有序只读 Account Payload 列表；没有正式 Payload 时为空列表；
 - `paths.images`：Worker 配置的固定图片工作目录；
 - `is_cancelled`：仅表示本地 Runner 的协作式取消/超时状态；当前没有 Backend Cancel Contract；
 - `log(message, level, metadata)`；
@@ -280,4 +282,4 @@ Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Back
 Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
 
 Scheduler V1 的 DAILY、IANA Timezone、COALESCE ONE 和数据库触发幂等全部属于 Backend；
-Worker 0.4.4 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。
+Worker 0.4.5 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。

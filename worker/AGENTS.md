@@ -100,6 +100,15 @@ Electron 关闭不能成为 Worker Task 可靠性设计的前提。
 - 影刀等外部程序需要固定本地输入时，必须复用 Worker Local Input Bridge，不得由每个 Application 自创路径或写入协议。
 - 普通业务参数、账号 Payload 和图片分别使用配置的 `params.json`、`account.json` 与固定图片工作目录。
 - Python Business Skill 不得为了与外部程序“统一”而读取 `params.json`；业务参数继续使用 Pydantic Input。
-- Python Business Skill 的账号和图片路径只通过 `ctx.account` 与 `ctx.paths.images` 获取。
+- Python Business Skill 的账号和图片路径只通过 `ctx.accounts` 与 `ctx.paths.images` 获取。
 - 完整账号 Payload 不得写入日志、Runtime Event 或 Task Result。
 - 没有真实上游契约时，不得提前引入 Resource Manager、Secret Resolver、Task Workspace 或图片传输协议。
+
+## 11. 多店铺任务上下文（硬规则）
+
+- 一个 Task 可以携带多个有序 Shop Account Context；Worker Core 不得按 Shop 拆 Task 或创建子 Task。
+- 同一个 Shop 可以被多台 Device 同时执行，不建立 Shop 全局锁；当前 Worker 仍保持单 Active Task。
+- 多 Shop 的串行、并发、切号与单店失败策略由 Yingdao Application 或 Business Skill 决定。
+- Backend、Worker 内部模型和 `ctx.accounts` 均使用英文 Account 字段。
+- 仅 Local Input Bridge 写 `account.json` 时映射中文字段，根对象固定为 `店铺列表`；无账号时也写空列表。
+- 当前 Account Payload 不包含验证码或登录挑战流程。

@@ -154,7 +154,7 @@ class RPAExecutor:
             await asyncio.to_thread(
                 self.local_input_preparer.prepare,
                 params=request.params,
-                account=task.account,
+                accounts=task.accounts,
             )
         except LocalInputPreparationError as error:
             slot.release()
