@@ -12,7 +12,7 @@ from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.shops.api import get_shop_service
 from app.modules.shops.api import get_shop_platform_service
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
@@ -64,7 +64,10 @@ class ApiShopService:
         *,
         offset: int,
         limit: int,
+        device_id: UUID | None = None,
+        enabled: bool | None = None,
     ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
+        del device_id, enabled
         return (
             [self.get(SHOP_ID)][offset : offset + limit],
             1,
@@ -116,7 +119,6 @@ class ApiShopService:
             ShopDeviceBinding(
                 shop_id=SHOP_ID,
                 device_id=device_id,
-                binding_role=BindingRole.PRIMARY,
                 enabled=True,
             ),
         )  # type: ignore[return-value]
@@ -279,6 +281,7 @@ class ApiScheduleService:
             name="API 每日计划",
             enabled=True,
             target_device_id=DEVICE_ID,
+            shop_ids=[SHOP_ID],
             device_display_name="API 设备",
             execution_type="yingdao_application",
             skill_id="yingdao.app.run",
@@ -389,7 +392,7 @@ def test_shop_device_and_binding_success_paths() -> None:
     binding_response = request(
         "POST",
         f"/api/v1/shops/{SHOP_ID}/device-bindings",
-        json={"device_id": str(DEVICE_ID), "binding_role": "primary"},
+        json={"device_id": str(DEVICE_ID)},
     )
     identity_response = request(
         "GET",
@@ -404,7 +407,8 @@ def test_shop_device_and_binding_success_paths() -> None:
     assert list_response.json()["page_size"] == 20
     assert list_response.json()["items"][0]["session_status"] == "valid"
     assert binding_response.status_code == 201
-    assert binding_response.json()["binding_role"] == "primary"
+    assert binding_response.json()["enabled"] is True
+    assert "binding_role" not in binding_response.json()
     assert identity_response.status_code == 200
     assert identity_response.json()["shop_display_name"] == "API 店铺"
     assert identity_response.json()["session_status"] == "valid"
@@ -457,6 +461,7 @@ def test_schedule_management_api_contract() -> None:
         json={
             "name": "API 每日计划",
             "target_device_id": str(DEVICE_ID),
+            "shop_ids": [str(SHOP_ID)],
             "application_id": "api-yingdao-app",
             "parameters": {"keyword": "safe"},
             "schedule_type": "daily",
@@ -498,6 +503,7 @@ def test_schedule_api_accepts_business_skill_target() -> None:
         json={
             "name": "API 业务 Skill 计划",
             "target_device_id": str(DEVICE_ID),
+            "shop_ids": [str(SHOP_ID)],
             "execution_type": "business_skill",
             "skill_id": "catalog.fixture.run",
             "parameters": {"keyword": "safe"},

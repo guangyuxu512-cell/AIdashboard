@@ -11,7 +11,7 @@ from app.modules.schedules.enums import (
     ScheduleType,
 )
 from app.modules.schedules.exceptions import ScheduleNotFoundError
-from app.modules.schedules.models import Schedule, ScheduleRun
+from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.schedules.repository import (
     ScheduleListRecord,
     ScheduleRepository,
@@ -56,7 +56,7 @@ class ScheduleService:
         current_time = now or datetime.now(UTC)
         task_data = _task_create(
             target_device_id=data.target_device_id,
-            shop_id=data.shop_id,
+            shop_ids=data.shop_ids,
             execution_type=data.execution_type,
             application_id=data.application_id,
             skill_id=data.skill_id,
@@ -67,13 +67,16 @@ class ScheduleService:
             name=data.name,
             enabled=data.enabled,
             target_device_id=data.target_device_id,
-            shop_id=data.shop_id,
             skill_id=task_data.skill_id,
             execution_display_name=prepared.execution_display_name,
             schedule_type=data.schedule_type.value,
             local_time=data.local_time,
             timezone=data.timezone,
             task_input_json=prepared.input_json,
+            shop_links=[
+                ScheduleShop(shop_id=shop_id, position=position)
+                for position, shop_id in enumerate(data.shop_ids)
+            ],
             next_run_at=(
                 next_daily_occurrence(
                     data.local_time,
@@ -111,7 +114,7 @@ class ScheduleService:
                 "target_device_id",
                 schedule.target_device_id,
             )
-            shop_id = values.get("shop_id", schedule.shop_id)
+            shop_ids = values.get("shop_ids", schedule.shop_ids)
             current_execution_type = _execution_type_for_skill(schedule.skill_id)
             execution_type = values.get(
                 "execution_type",
@@ -144,7 +147,7 @@ class ScheduleService:
             parameters = values.get("parameters", existing_parameters)
             task_data = _task_create(
                 target_device_id=target_device_id,
-                shop_id=shop_id,
+                shop_ids=shop_ids,
                 execution_type=execution_type,
                 application_id=application_id,
                 skill_id=skill_id,
@@ -154,7 +157,16 @@ class ScheduleService:
 
             schedule.name = values.get("name", schedule.name)
             schedule.target_device_id = target_device_id
-            schedule.shop_id = shop_id
+            if schedule.shop_ids != shop_ids:
+                # Remove the old ordered set before inserting the replacement.
+                # This also makes pure reordering safe with the unique position
+                # constraint instead of relying on row update order.
+                schedule.shop_links.clear()
+                self.session.flush()
+                schedule.shop_links = [
+                    ScheduleShop(shop_id=shop_id, position=position)
+                    for position, shop_id in enumerate(shop_ids)
+                ]
             schedule.skill_id = task_data.skill_id
             schedule.execution_display_name = prepared.execution_display_name
             schedule.schedule_type = values.get(
@@ -274,7 +286,7 @@ class ScheduleService:
             task = self.task_service.create_for_schedule(
                 TaskCreate(
                     target_device_id=schedule.target_device_id,
-                    shop_id=schedule.shop_id,
+                    shop_ids=schedule.shop_ids,
                     skill_id=schedule.skill_id,
                     input=schedule.task_input_json,
                 ),
@@ -301,7 +313,7 @@ class ScheduleService:
 def _task_create(
     *,
     target_device_id: UUID,
-    shop_id: UUID | None,
+    shop_ids: list[UUID],
     execution_type: ScheduleExecutionType,
     application_id: str | None,
     skill_id: str | None,
@@ -312,7 +324,7 @@ def _task_create(
             raise TaskInputInvalidError("请选择业务 Skill")
         return TaskCreate(
             target_device_id=target_device_id,
-            shop_id=shop_id,
+            shop_ids=shop_ids,
             skill_id=skill_id,
             input=parameters,
         )
@@ -320,7 +332,7 @@ def _task_create(
         raise TaskInputInvalidError("请选择影刀应用")
     return TaskCreate(
         target_device_id=target_device_id,
-        shop_id=shop_id,
+        shop_ids=shop_ids,
         skill_id=TaskSkillId.YINGDAO_APP_RUN,
         input={"app_id": application_id, "params": parameters},
     )
@@ -355,7 +367,7 @@ def _schedule_list_values(record: ScheduleListRecord) -> dict[str, Any]:
         "name": schedule.name,
         "enabled": schedule.enabled,
         "target_device_id": schedule.target_device_id,
-        "shop_id": schedule.shop_id,
+        "shop_ids": schedule.shop_ids,
         "device_display_name": record.device_display_name,
         "execution_type": _execution_type_for_skill(schedule.skill_id),
         "skill_id": schedule.skill_id,

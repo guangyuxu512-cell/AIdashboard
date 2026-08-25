@@ -62,7 +62,7 @@ def claim_task(
         skill_id=task.skill_id,
         input=task.input_json,
         lease_until=task.lease_until,
-        account=claimed.account,
+        accounts=claimed.accounts,
     )
 
 

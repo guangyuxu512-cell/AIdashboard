@@ -2,7 +2,14 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.modules.credentials.schemas import TaskAccountPayload
 from app.modules.tasks.enums import (
@@ -22,13 +29,20 @@ class TaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_device_id: UUID
-    shop_id: UUID | None = None
+    shop_ids: list[UUID] = Field(default_factory=list, max_length=100)
     skill_id: str = Field(
         min_length=3,
         max_length=TASK_SKILL_ID_MAX_LENGTH,
         pattern=TASK_SKILL_ID_PATTERN,
     )
     input: dict[str, Any]
+
+    @field_validator("shop_ids")
+    @classmethod
+    def reject_duplicate_shops(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("shop_ids must not contain duplicates")
+        return value
 
 
 class TaskCreatedRange(BaseModel):
@@ -51,7 +65,7 @@ class TaskRead(BaseModel):
 
     task_id: UUID
     target_device_id: UUID
-    shop_id: UUID | None = None
+    shop_ids: list[UUID]
     skill_id: str
     execution_display_name: str
     status: TaskStatus
@@ -72,7 +86,7 @@ class WorkerTaskRead(BaseModel):
     skill_id: str
     input: dict[str, Any]
     lease_until: datetime
-    account: TaskAccountPayload | None = Field(default=None, repr=False)
+    accounts: list[TaskAccountPayload] = Field(default_factory=list, repr=False)
 
 
 class TaskLeaseRead(BaseModel):
@@ -192,7 +206,7 @@ def task_to_read(task: Task) -> TaskRead:
     return TaskRead(
         task_id=task.task_id,
         target_device_id=task.target_device_id,
-        shop_id=task.shop_id,
+        shop_ids=task.shop_ids,
         skill_id=task.skill_id,
         execution_display_name=task.execution_display_name,
         status=task.status,

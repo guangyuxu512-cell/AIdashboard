@@ -43,6 +43,27 @@ class ShopCredentialBindingRepository:
         )
         return self.session.execute(statement).one_or_none()
 
+    def list_active_by_shops(
+        self,
+        shop_ids: list[UUID],
+    ) -> dict[UUID, tuple[ShopCredentialBinding, PlatformCredential]]:
+        if not shop_ids:
+            return {}
+        rows = self.session.execute(
+            select(ShopCredentialBinding, PlatformCredential)
+            .join(
+                PlatformCredential,
+                PlatformCredential.credential_id
+                == ShopCredentialBinding.credential_id,
+            )
+            .where(
+                ShopCredentialBinding.shop_id.in_(shop_ids),
+                ShopCredentialBinding.enabled.is_(True),
+                PlatformCredential.enabled.is_(True),
+            ),
+        )
+        return {binding.shop_id: (binding, credential) for binding, credential in rows}
+
     def get_latest_by_shop(
         self,
         shop_id: UUID,

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -61,10 +61,14 @@ def get_shop_platform_service(
 def list_shops(
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[ShopService, Depends(get_shop_service)],
+    device_id: Annotated[UUID | None, Query()] = None,
+    enabled: Annotated[bool | None, Query()] = None,
 ) -> Page[ShopListRead]:
     shops, total, session_statuses = service.list(
         offset=pagination.offset,
         limit=pagination.page_size,
+        device_id=device_id,
+        enabled=enabled,
     )
     return Page[ShopListRead](
         items=[

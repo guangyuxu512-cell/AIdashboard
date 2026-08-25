@@ -33,13 +33,13 @@ Credential / Session 与普通业务字段分离并加密。
 | `users` | 最小系统用户身份，供负责人等稳定关系引用 |
 | `shops` | 店铺基础事实、平台、启用状态、可选负责人和备注 |
 | `devices` | 设备身份、启用状态、可选位置和备注 |
-| `shop_device_bindings` | Shop 与 Device 的 PRIMARY/BACKUP 关系及启用状态 |
+| `shop_device_bindings` | Shop 与 Device 的执行资格多对多关系及启用状态 |
 
-核心 ID 使用统一 UUID；核心表使用带时区的 `created_at`、`updated_at`。`shop_device_bindings` 使用 `(shop_id, device_id)` 复合主键防止重复关系，并使用 PostgreSQL 部分唯一索引保证每个 Shop 最多一个启用 PRIMARY。
+核心 ID 使用统一 UUID；核心表使用带时区的 `created_at`、`updated_at`。`shop_device_bindings` 使用 `(shop_id, device_id)` 复合主键防止重复关系。Binding 只表示执行资格，不表达主设备、备用设备或默认唯一设备；同一个 Shop 可以同时绑定多个 Device。
 
 Migration `20260822_0008_shop_soft_delete` 为 `shops` 增加可空 `deleted_at` 与查询索引。`enabled=false` 只表示业务停用，`deleted_at IS NOT NULL` 才表示从正常业务视图移除；软移除不级联删除 Credential、ShopCredentialBinding、ShopSession、Task 或历史数据，`shop_id` 永不复用。
 
-Shop 平台 V1 机器值仅包含 `douyin`、`pdd`；绑定角色机器值为 `primary`、`backup`。
+Shop 平台 V1 机器值仅包含 `douyin`、`pdd`。
 
 ## Authentication Domain V1 数据库
 
@@ -109,7 +109,9 @@ Worker Token 生命周期继续复用 `worker_device_credentials`，每个 Devic
 不新增第二套 Token 表或明文列。签发/轮换仅替换 SHA-256 `token_hash`，撤销使用既有
 `enabled=false`，明文永不落库。
 
-Migration `20260825_0018_task_shop_account_context` 为 `tasks` 与 `schedules` 增加可空
-`shop_id` 外键。它是可查询、可约束的正式关系，不进入 `input_json/task_input_json`；既有记录
-保持 `NULL`，不做猜测回填。账号明文仍不新增数据库列，Task Claim 只在运行时从该 Shop 当前
-启用的 Credential 构建 Payload。
+Migration `20260825_0018_task_shop_account_context` 曾为 `tasks` 与 `schedules` 增加可空单
+`shop_id` 外键。Migration `20260826_0019_multi_shop_task_context` 将它们迁移为有序、规范化的
+`task_shops` 与 `schedule_shops`，把历史非空关系写为 `position=0` 后删除旧列，避免双重权威。
+同一 Migration 同时删除 `shop_device_bindings.binding_role`、角色 Check 和“每店最多一个启用
+PRIMARY”的部分唯一索引；全部既有 PRIMARY/BACKUP 行保留为普通绑定。账号明文仍不新增数据库
+列，Task Claim 只在运行时按关系顺序从各 Shop 当前启用的 Credential 构建 Payload。

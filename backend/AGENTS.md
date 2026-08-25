@@ -114,3 +114,11 @@ AI 不直接修改核心业务事实。
 - Skill Catalog 是 Business Skill 元数据读取边界；Scheduler、AI、Frontend 不得自行猜测 Skill 参数，必须消费由 Worker Input Model 生成并经 Backend 校验的正式 Schema。
 - 未来 Authentication / Permission 插入 API 边界，不要求重写 Service；Data Scope 在 API/Query 边界约束，不允许 Frontend 本地过滤全量数据。
 - User Identity 与 Worker Device Identity 永远分离；Device Token 只认证 Worker，未来员工 JWT 只认证人员管理请求。
+
+## 12. 多店铺任务上下文（硬规则）
+
+- 一个 Task 可以携带有序的多个 Shop Context；Backend 不得按 Shop 自动拆成多个 Task，除非未来业务明确要求新的领域语义。
+- Shop 与 Device 的 Binding 只表示该 Device 对该 Shop 的执行资格，不表示 PRIMARY / BACKUP；同一个 Shop 可以同时绑定并由多台 Device 执行不同任务。
+- 不建立 Shop 全局执行锁。Task 内多 Shop 的串行、并发、切号与单店失败策略由 Application 或 Business Skill 决定。
+- Backend 与 Worker Claim 的 Account Payload 字段保持英文；只有 Worker 落地 `account.json` 时映射为中文，根对象固定为 `店铺列表`。
+- Account Payload 只携带现有账号字段；验证码及登录挑战不属于当前 Contract。

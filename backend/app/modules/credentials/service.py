@@ -79,6 +79,9 @@ class CredentialService:
     def ensure_task_account_available(self, shop_id: UUID) -> None:
         self._get_active_task_credential(shop_id)
 
+    def ensure_task_accounts_available(self, shop_ids: list[UUID]) -> None:
+        self._get_active_task_credentials(shop_ids)
+
     def build_task_account_payload(self, shop_id: UUID) -> TaskAccountPayload:
         credential = self._get_active_task_credential(shop_id)
         return TaskAccountPayload(
@@ -90,6 +93,48 @@ class CredentialService:
                 credential.preferred_verification_channel
             ),
         )
+
+    def build_task_account_payloads(
+        self,
+        shop_ids: list[UUID],
+    ) -> list[TaskAccountPayload]:
+        credentials = self._get_active_task_credentials(shop_ids)
+        return [
+            TaskAccountPayload(
+                shop_id=shop_id,
+                platform_code=credential.platform_code,
+                login_identifier=credential.login_identifier,
+                secret=self.cipher.decrypt_text(credential.secret_encrypted),
+                preferred_verification_channel=(
+                    credential.preferred_verification_channel
+                ),
+            )
+            for shop_id, credential in zip(shop_ids, credentials, strict=True)
+        ]
+
+    def _get_active_task_credentials(
+        self,
+        shop_ids: list[UUID],
+    ) -> list[PlatformCredential]:
+        if not shop_ids:
+            return []
+        shops = {shop.shop_id: shop for shop in self.shop_repository.list_by_ids(shop_ids)}
+        active = self.binding_repository.list_active_by_shops(shop_ids)
+        credentials: list[PlatformCredential] = []
+        for shop_id in shop_ids:
+            shop = shops.get(shop_id)
+            if shop is None:
+                raise ShopNotFoundError(details={"shop_id": str(shop_id)})
+            result = active.get(shop_id)
+            if result is None:
+                raise CredentialNotFoundError(details={"shop_id": str(shop_id)})
+            _, credential = result
+            if credential.platform_code != shop.platform:
+                raise InvalidCredentialBindingError(
+                    details={"shop_id": str(shop_id)},
+                )
+            credentials.append(credential)
+        return credentials
 
     def _get_active_task_credential(self, shop_id: UUID) -> PlatformCredential:
         shop = self._get_shop(shop_id)

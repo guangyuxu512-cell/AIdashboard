@@ -8,7 +8,7 @@ import pytest
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import (
     ImmutableShopIdentityError,
     InvalidDeviceBindingError,
@@ -31,12 +31,32 @@ class FakeShopRepository:
         self.items: dict[UUID, Shop] = {}
         self.session_statuses: dict[UUID, ShopSessionStatus] = {}
 
-    def list(self, *, offset: int, limit: int) -> list[Shop]:
+    def list(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        device_id: UUID | None = None,
+        enabled: bool | None = None,
+    ) -> list[Shop]:
         active = [shop for shop in self.items.values() if shop.deleted_at is None]
+        if enabled is not None:
+            active = [shop for shop in active if shop.enabled is enabled]
+        del device_id
         return active[offset : offset + limit]
 
-    def count(self) -> int:
-        return sum(shop.deleted_at is None for shop in self.items.values())
+    def count(
+        self,
+        *,
+        device_id: UUID | None = None,
+        enabled: bool | None = None,
+    ) -> int:
+        del device_id
+        return sum(
+            shop.deleted_at is None
+            and (enabled is None or shop.enabled is enabled)
+            for shop in self.items.values()
+        )
 
     def get(self, shop_id: UUID) -> Shop | None:
         shop = self.items.get(shop_id)
@@ -78,24 +98,6 @@ class FakeBindingRepository:
 
     def get(self, shop_id: UUID, device_id: UUID) -> ShopDeviceBinding | None:
         return self.items.get((shop_id, device_id))
-
-    def get_enabled_primary(
-        self,
-        shop_id: UUID,
-        *,
-        excluding_device_id: UUID | None = None,
-    ) -> ShopDeviceBinding | None:
-        return next(
-            (
-                binding
-                for binding in self.items.values()
-                if binding.shop_id == shop_id
-                and binding.device_id != excluding_device_id
-                and binding.binding_role == BindingRole.PRIMARY
-                and binding.enabled
-            ),
-            None,
-        )
 
     def add(self, binding: ShopDeviceBinding) -> None:
         self.items[(binding.shop_id, binding.device_id)] = binding
@@ -195,7 +197,7 @@ def test_platform_identified_shop_identity_is_immutable() -> None:
     assert session.commits == 2
 
 
-def test_binding_primary_backup_duplicate_and_disable() -> None:
+def test_binding_many_to_many_duplicate_and_disable() -> None:
     service, _, _, bindings, user_id, primary_device_id = build_service()
     shop = service.create(
         ShopCreate(
@@ -210,35 +212,19 @@ def test_binding_primary_backup_duplicate_and_disable() -> None:
         display_name="备用设备",
     )
 
-    primary = service.create_binding(
+    first = service.create_binding(
         shop.shop_id,
-        ShopDeviceBindingCreate(
-            device_id=primary_device_id,
-            binding_role=BindingRole.PRIMARY,
-        ),
+        ShopDeviceBindingCreate(device_id=primary_device_id),
     )
-    backup = service.create_binding(
+    second = service.create_binding(
         shop.shop_id,
-        ShopDeviceBindingCreate(
-            device_id=backup_device_id,
-            binding_role=BindingRole.BACKUP,
-        ),
+        ShopDeviceBindingCreate(device_id=backup_device_id),
     )
 
     with pytest.raises(InvalidDeviceBindingError):
         service.create_binding(
             shop.shop_id,
-            ShopDeviceBindingCreate(
-                device_id=primary_device_id,
-                binding_role=BindingRole.PRIMARY,
-            ),
-        )
-
-    with pytest.raises(InvalidDeviceBindingError):
-        service.update_binding(
-            shop.shop_id,
-            backup_device_id,
-            ShopDeviceBindingUpdate(binding_role=BindingRole.PRIMARY),
+            ShopDeviceBindingCreate(device_id=primary_device_id),
         )
 
     disabled = service.update_binding(
@@ -246,15 +232,16 @@ def test_binding_primary_backup_duplicate_and_disable() -> None:
         primary_device_id,
         ShopDeviceBindingUpdate(enabled=False),
     )
-    promoted = service.update_binding(
+    unchanged_second = service.update_binding(
         shop.shop_id,
         backup_device_id,
-        ShopDeviceBindingUpdate(binding_role=BindingRole.PRIMARY),
+        ShopDeviceBindingUpdate(enabled=True),
     )
 
-    assert primary.binding_role == BindingRole.PRIMARY
+    assert first.device_id == primary_device_id
+    assert second.device_id == backup_device_id
     assert disabled.enabled is False
-    assert promoted.binding_role == BindingRole.PRIMARY
+    assert unchanged_second.enabled is True
     assert len(bindings.items) == 2
 
 
@@ -271,10 +258,7 @@ def test_binding_rejects_unknown_device_and_missing_relation() -> None:
     with pytest.raises(DeviceNotFoundError):
         service.create_binding(
             shop.shop_id,
-            ShopDeviceBindingCreate(
-                device_id=uuid4(),
-                binding_role=BindingRole.BACKUP,
-            ),
+            ShopDeviceBindingCreate(device_id=uuid4()),
         )
     with pytest.raises(InvalidDeviceBindingError):
         service.update_binding(
@@ -313,10 +297,7 @@ def test_soft_remove_excludes_shop_and_disables_bindings() -> None:
     )
     service.create_binding(
         shop.shop_id,
-        ShopDeviceBindingCreate(
-            device_id=device_id,
-            binding_role=BindingRole.PRIMARY,
-        ),
+        ShopDeviceBindingCreate(device_id=device_id),
     )
 
     service.remove(shop.shop_id)

@@ -10,7 +10,7 @@ from app.modules.credentials.models import PlatformCredential, ShopCredentialBin
 from app.modules.devices.models import Device
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.models import ShopSession
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.shops.repository import ShopRepository
 from app.modules.shops.service import ShopService
@@ -58,7 +58,6 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
                     ShopDeviceBinding(
                         shop_id=shop_id,
                         device_id=device_id,
-                        binding_role=BindingRole.PRIMARY,
                         enabled=True,
                     ),
                     ShopCredentialBinding(

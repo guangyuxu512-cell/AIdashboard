@@ -38,16 +38,18 @@ Shop List 只投影 ShopSession 的状态机器值，不返回 version、Cookie�
 
 ## 5. Worker 下发边界
 
-不提供 Secret 或 Session payload 的普通管理端读取 Route。Task Account Payload V1 只在 Worker
-使用现有 Device Token 与 `X-Device-ID` 成功认证并原子领取一个带 `shop_id` 的 Task 后，通过
-Claim 响应临时下发：`shop_id / platform_code / login_identifier / secret /
-preferred_verification_channel`。字段全部来自现有 Shop/Credential，不猜 username/password/
-cookie 别名；Session/Cookie 不在此 Payload 内。禁止 `GET /all-credentials` 和设备批量下载。
+不提供 Secret 或 Session payload 的普通管理端读取 Route。Multi-Shop Task Account Payload 只在
+Worker 使用现有 Device Token 与 `X-Device-ID` 成功认证并原子领取一个带 `shop_ids` 的 Task 后，
+通过 Claim 的 `accounts` 数组临时下发。每项固定为：`shop_id / platform_code /
+login_identifier / secret / preferred_verification_channel`。字段全部来自现有 Shop/Credential，
+不猜 username/password/cookie 别名；Session/Cookie 与验证码挑战不在此 Payload 内。禁止
+`GET /all-credentials` 和设备批量下载。
 
-Task 创建时只持久化 `shop_id`，不持久化账号明文；Claim 时由 `CredentialService` 读取当前启用
-Binding、校验平台并解密。账号 Payload 不进入 Task input、日志、Runtime Event、Result 或普通
-Read DTO。Worker 0.4.4 将同一字典完整覆盖到影刀 `account.json`，Python Business Skill 只通过
-`ctx.account` 读取；没有 `shop_id` 时分别保持 `{}` 与 `None`。
+Task 只在 `task_shops` 持久化有序关系，不持久化账号明文；Claim 时由 `CredentialService` 批量
+读取当前启用 Binding、校验平台并解密，返回顺序与 Task 关系一致。账号 Payload 不进入 Task
+input、日志、Runtime Event、Result 或普通 Read DTO。Worker 0.4.5 仅在落地边界把英文内部字段
+映射为中文 `account.json`，根对象固定为 `店铺列表`；Python Business Skill 只通过英文
+`ctx.accounts` 读取。没有店铺上下文时两边均得到空列表语义。
 
 Browser Profile 永远保留在设备侧，并按 `Device × Shop` 隔离；服务器集中管理 Credential、Session 与业务数据，不上传完整 Chrome Profile。
 

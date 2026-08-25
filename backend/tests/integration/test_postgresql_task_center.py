@@ -156,7 +156,8 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
         finally:
             event.remove(postgresql_engine, "before_cursor_execute", count_selects)
 
-        assert select_count == 2
+        # Count + page summary + one bounded select-in query for ordered shops.
+        assert select_count == 3
         assert page.total == 3
         assert [item.task_id for item in page.items[:2]] == [task_b, task_a]
         running = next(item for item in page.items if item.task_id == task_a)

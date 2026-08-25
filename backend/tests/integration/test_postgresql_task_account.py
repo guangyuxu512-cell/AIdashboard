@@ -13,8 +13,8 @@ from app.modules.credentials.schemas import CredentialCreate
 from app.modules.credentials.service import CredentialService
 from app.modules.devices.models import Device
 from app.modules.shops.enums import ShopPlatform
-from app.modules.shops.models import Shop
-from app.modules.tasks.models import Task, TaskEvent
+from app.modules.shops.models import Shop, ShopDeviceBinding
+from app.modules.tasks.models import Task, TaskEvent, TaskShop
 from app.modules.tasks.schemas import TaskComplete, TaskCreate
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import (
@@ -62,14 +62,15 @@ def _cleanup(
     engine: Engine,
     *,
     device_id: UUID,
-    shop_id: UUID,
-    credential_id: UUID | None,
+    shop_ids: set[UUID],
+    credential_ids: set[UUID],
 ) -> None:
     with Session(engine) as session:
         task_ids = session.query(Task.task_id).where(
             Task.target_device_id == device_id,
         )
         session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
+        session.execute(delete(TaskShop).where(TaskShop.task_id.in_(task_ids)))
         session.execute(delete(Task).where(Task.target_device_id == device_id))
         session.execute(
             delete(DeviceProviderInventory).where(
@@ -84,16 +85,21 @@ def _cleanup(
         session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id == device_id))
         session.execute(
             delete(ShopCredentialBinding).where(
-                ShopCredentialBinding.shop_id == shop_id,
+                ShopCredentialBinding.shop_id.in_(shop_ids),
             ),
         )
-        if credential_id is not None:
+        session.execute(
+            delete(ShopDeviceBinding).where(
+                ShopDeviceBinding.shop_id.in_(shop_ids),
+            ),
+        )
+        if credential_ids:
             session.execute(
                 delete(PlatformCredential).where(
-                    PlatformCredential.credential_id == credential_id,
+                    PlatformCredential.credential_id.in_(credential_ids),
                 ),
             )
-        session.execute(delete(Shop).where(Shop.shop_id == shop_id))
+        session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))
         session.execute(delete(Device).where(Device.device_id == device_id))
         session.commit()
 
@@ -102,8 +108,8 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
-    shop_id = uuid4()
-    credential_id: UUID | None = None
+    shop_ids = [uuid4(), uuid4()]
+    credential_ids: set[UUID] = set()
     now = datetime.now(UTC)
     cipher = SecretCipher(Fernet.generate_key().decode("ascii"))
     try:
@@ -115,18 +121,21 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                     enabled=True,
                 ),
             )
-            session.add(
-                Shop(
-                    shop_id=shop_id,
-                    display_name="Task Account Fixture Shop",
-                    platform=ShopPlatform.DOUYIN,
-                    enabled=True,
-                ),
+            session.add_all(
+                [
+                    Shop(
+                        shop_id=shop_id,
+                        display_name=f"Task Account Fixture Shop {position}",
+                        platform=ShopPlatform.DOUYIN,
+                        enabled=True,
+                    )
+                    for position, shop_id in enumerate(shop_ids, start=1)
+                ],
             )
             session.add(
                 DeviceRuntime(
                     device_id=device_id,
-                    worker_version="0.4.4",
+                    worker_version="0.4.5",
                     last_seen_at=now,
                     started_at=now,
                     connection_status="online",
@@ -157,18 +166,29 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                     inventory_payload=inventory,
                 ),
             )
+            session.add_all(
+                [
+                    ShopDeviceBinding(
+                        shop_id=shop_id,
+                        device_id=device_id,
+                        enabled=True,
+                    )
+                    for shop_id in shop_ids
+                ],
+            )
             session.commit()
 
             credential_service = CredentialService(session, cipher)
-            credential = credential_service.create(
-                CredentialCreate(
-                    shop_id=shop_id,
-                    login_identifier="task-account-user",
-                    secret=SecretStr("task-account-secret"),
-                ),
-            )
-            credential_id = credential.credential_id
-            assert credential_id is not None
+            for position, shop_id in enumerate(shop_ids, start=1):
+                credential = credential_service.create(
+                    CredentialCreate(
+                        shop_id=shop_id,
+                        login_identifier=f"task-account-user-{position}",
+                        secret=SecretStr(f"task-account-secret-{position}"),
+                    ),
+                )
+                assert credential.credential_id is not None
+                credential_ids.add(credential.credential_id)
 
             task_service = TaskService(
                 session,
@@ -177,12 +197,12 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
             task = task_service.create(
                 TaskCreate(
                     target_device_id=device_id,
-                    shop_id=shop_id,
+                    shop_ids=shop_ids,
                     skill_id="yingdao.app.run",
                     input={"app_id": "task-account-safe-app", "params": {}},
                 ),
             )
-            assert task.shop_id == shop_id
+            assert task.shop_ids == shop_ids
             assert task.input_json == {
                 "app_id": "task-account-safe-app",
                 "params": {},
@@ -194,14 +214,22 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                 now=now,
             )
             assert claimed is not None
-            assert claimed.account is not None
-            assert claimed.account.model_dump(mode="json") == {
-                "shop_id": str(shop_id),
-                "platform_code": "douyin",
-                "login_identifier": "task-account-user",
-                "secret": "task-account-secret",
-                "preferred_verification_channel": "manual",
-            }
+            assert [item.model_dump(mode="json") for item in claimed.accounts] == [
+                {
+                    "shop_id": str(shop_ids[0]),
+                    "platform_code": "douyin",
+                    "login_identifier": "task-account-user-1",
+                    "secret": "task-account-secret-1",
+                    "preferred_verification_channel": "manual",
+                },
+                {
+                    "shop_id": str(shop_ids[1]),
+                    "platform_code": "douyin",
+                    "login_identifier": "task-account-user-2",
+                    "secret": "task-account-secret-2",
+                    "preferred_verification_channel": "manual",
+                },
+            ]
 
             completed = task_service.complete(
                 WorkerPrincipal(device_id=device_id),
@@ -209,19 +237,174 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                 TaskComplete(
                     result={
                         "ok": True,
-                        "account": {"secret": "must-not-persist"},
+                        "店铺列表": [
+                            {"登录账号": "must-not-persist", "登录密码": "secret"},
+                        ],
                     },
                 ),
                 now=now,
             )
             assert completed.result_json == {
                 "ok": True,
-                "account": "[REDACTED]",
+                "店铺列表": "[ACCOUNT_PAYLOAD_REDACTED]",
             }
     finally:
         _cleanup(
             postgresql_engine,
             device_id=device_id,
-            shop_id=shop_id,
-            credential_id=credential_id,
+            shop_ids=set(shop_ids),
+            credential_ids=credential_ids,
         )
+
+
+def test_same_shop_can_run_on_two_bound_devices_without_global_lock(
+    postgresql_engine: Engine,
+) -> None:
+    device_ids = [uuid4(), uuid4()]
+    shop_id = uuid4()
+    credential_ids: set[UUID] = set()
+    now = datetime.now(UTC)
+    cipher = SecretCipher(Fernet.generate_key().decode("ascii"))
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add(
+                Shop(
+                    shop_id=shop_id,
+                    display_name="Shared Shop Fixture",
+                    platform=ShopPlatform.DOUYIN,
+                    enabled=True,
+                ),
+            )
+            session.add_all(
+                [
+                    Device(
+                        device_id=device_id,
+                        display_name=f"Shared Shop Device {position}",
+                        enabled=True,
+                    )
+                    for position, device_id in enumerate(device_ids, start=1)
+                ],
+            )
+            session.add_all(
+                [
+                    DeviceRuntime(
+                        device_id=device_id,
+                        worker_version="0.4.5",
+                        last_seen_at=now,
+                        started_at=now,
+                        connection_status="online",
+                    )
+                    for device_id in device_ids
+                ],
+            )
+            session.add_all(
+                [
+                    DeviceSkillCapability(
+                        device_id=device_id,
+                        skill_id="system.echo",
+                        display_name="System Echo",
+                        runtime="python",
+                        provider_code=None,
+                        skill_version="1",
+                        classification="internal",
+                    )
+                    for device_id in device_ids
+                ],
+            )
+            session.add_all(
+                [
+                    ShopDeviceBinding(
+                        shop_id=shop_id,
+                        device_id=device_id,
+                        enabled=True,
+                    )
+                    for device_id in device_ids
+                ],
+            )
+            session.commit()
+
+            credential_service = CredentialService(session, cipher)
+            credential = credential_service.create(
+                CredentialCreate(
+                    shop_id=shop_id,
+                    login_identifier="shared-shop-user",
+                    secret=SecretStr("shared-shop-secret"),
+                ),
+            )
+            assert credential.credential_id is not None
+            credential_ids.add(credential.credential_id)
+
+            task_service = TaskService(
+                session,
+                credential_service=credential_service,
+            )
+            first_task = task_service.create(
+                TaskCreate(
+                    target_device_id=device_ids[0],
+                    shop_ids=[shop_id],
+                    skill_id="system.echo",
+                    input={"message": "first device"},
+                ),
+            )
+            claimed = task_service.claim_with_account(
+                WorkerPrincipal(device_id=device_ids[0]),
+                now=now,
+            )
+            assert claimed is not None
+            assert claimed.task.task_id == first_task.task_id
+            assert claimed.task.status == "running"
+
+            second_task = task_service.create(
+                TaskCreate(
+                    target_device_id=device_ids[1],
+                    shop_ids=[shop_id],
+                    skill_id="system.echo",
+                    input={"message": "second device"},
+                ),
+            )
+            assert second_task.target_device_id == device_ids[1]
+            assert second_task.shop_ids == [shop_id]
+            assert second_task.status == "pending"
+            assert session.query(Task).filter(
+                Task.task_id.in_([first_task.task_id, second_task.task_id]),
+            ).count() == 2
+    finally:
+        with Session(postgresql_engine) as session:
+            task_ids = session.query(Task.task_id).where(
+                Task.target_device_id.in_(device_ids),
+            )
+            session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
+            session.execute(delete(TaskShop).where(TaskShop.task_id.in_(task_ids)))
+            session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
+            session.execute(
+                delete(DeviceProviderInventory).where(
+                    DeviceProviderInventory.device_id.in_(device_ids),
+                ),
+            )
+            session.execute(
+                delete(DeviceSkillCapability).where(
+                    DeviceSkillCapability.device_id.in_(device_ids),
+                ),
+            )
+            session.execute(
+                delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)),
+            )
+            session.execute(
+                delete(ShopCredentialBinding).where(
+                    ShopCredentialBinding.shop_id == shop_id,
+                ),
+            )
+            session.execute(
+                delete(ShopDeviceBinding).where(
+                    ShopDeviceBinding.shop_id == shop_id,
+                ),
+            )
+            if credential_ids:
+                session.execute(
+                    delete(PlatformCredential).where(
+                        PlatformCredential.credential_id.in_(credential_ids),
+                    ),
+                )
+            session.execute(delete(Shop).where(Shop.shop_id == shop_id))
+            session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
+            session.commit()

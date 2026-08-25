@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.models import ShopSession
@@ -15,24 +15,76 @@ class ShopRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def list(self, *, offset: int, limit: int) -> list[Shop]:
+    def list(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        device_id: UUID | None = None,
+        enabled: bool | None = None,
+    ) -> list[Shop]:
+        filters = [Shop.deleted_at.is_(None)]
+        if enabled is not None:
+            filters.append(Shop.enabled.is_(enabled))
+        statement = select(Shop)
+        if device_id is not None:
+            statement = statement.join(
+                ShopDeviceBinding,
+                ShopDeviceBinding.shop_id == Shop.shop_id,
+            )
+            filters.extend(
+                [
+                    ShopDeviceBinding.device_id == device_id,
+                    ShopDeviceBinding.enabled.is_(True),
+                ],
+            )
         statement = (
-            select(Shop)
-            .where(Shop.deleted_at.is_(None))
+            statement
+            .where(*filters)
             .order_by(Shop.created_at.desc())
             .offset(offset)
             .limit(limit)
         )
         return list(self.session.scalars(statement))
 
-    def count(self) -> int:
+    def count(
+        self,
+        *,
+        device_id: UUID | None = None,
+        enabled: bool | None = None,
+    ) -> int:
+        filters = [Shop.deleted_at.is_(None)]
+        if enabled is not None:
+            filters.append(Shop.enabled.is_(enabled))
+        statement = select(func.count()).select_from(Shop)
+        if device_id is not None:
+            statement = statement.join(
+                ShopDeviceBinding,
+                ShopDeviceBinding.shop_id == Shop.shop_id,
+            )
+            filters.extend(
+                [
+                    ShopDeviceBinding.device_id == device_id,
+                    ShopDeviceBinding.enabled.is_(True),
+                ],
+            )
         return (
             self.session.scalar(
-                select(func.count())
-                .select_from(Shop)
-                .where(Shop.deleted_at.is_(None)),
+                statement.where(*filters),
             )
             or 0
+        )
+
+    def list_by_ids(self, shop_ids: list[UUID]) -> list[Shop]:
+        if not shop_ids:
+            return []
+        return list(
+            self.session.scalars(
+                select(Shop).where(
+                    Shop.shop_id.in_(shop_ids),
+                    Shop.deleted_at.is_(None),
+                ),
+            ),
         )
 
     def get(self, shop_id: UUID) -> Shop | None:
@@ -90,20 +142,22 @@ class ShopDeviceBindingRepository:
     def get(self, shop_id: UUID, device_id: UUID) -> ShopDeviceBinding | None:
         return self.session.get(ShopDeviceBinding, (shop_id, device_id))
 
-    def get_enabled_primary(
+    def list_enabled_shop_ids_for_device(
         self,
-        shop_id: UUID,
-        *,
-        excluding_device_id: UUID | None = None,
-    ) -> ShopDeviceBinding | None:
-        statement = select(ShopDeviceBinding).where(
-            ShopDeviceBinding.shop_id == shop_id,
-            ShopDeviceBinding.binding_role == BindingRole.PRIMARY,
-            ShopDeviceBinding.enabled.is_(True),
+        device_id: UUID,
+        shop_ids: list[UUID],
+    ) -> set[UUID]:
+        if not shop_ids:
+            return set()
+        return set(
+            self.session.scalars(
+                select(ShopDeviceBinding.shop_id).where(
+                    ShopDeviceBinding.device_id == device_id,
+                    ShopDeviceBinding.shop_id.in_(shop_ids),
+                    ShopDeviceBinding.enabled.is_(True),
+                ),
+            ),
         )
-        if excluding_device_id is not None:
-            statement = statement.where(ShopDeviceBinding.device_id != excluding_device_id)
-        return self.session.scalar(statement)
 
     def add(self, binding: ShopDeviceBinding) -> None:
         self.session.add(binding)

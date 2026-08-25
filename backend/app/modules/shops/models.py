@@ -7,18 +7,16 @@ from sqlalchemy import (
     DateTime,
     Enum as SqlEnum,
     ForeignKey,
-    Index,
     String,
     Text,
     UniqueConstraint,
     Uuid,
-    text,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, TimestampMixin
-from app.modules.shops.enums import BindingRole, ShopPlatform, enum_values
+from app.modules.shops.enums import ShopPlatform, enum_values
 from app.shared.identifiers import generate_id
 
 
@@ -76,14 +74,6 @@ class Shop(TimestampMixin, Base):
 
 class ShopDeviceBinding(TimestampMixin, Base):
     __tablename__ = "shop_device_bindings"
-    __table_args__ = (
-        Index(
-            "uq_shop_device_bindings_enabled_primary",
-            "shop_id",
-            unique=True,
-            postgresql_where=text("enabled AND binding_role = 'primary'"),
-        ),
-    )
 
     shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -94,17 +84,6 @@ class ShopDeviceBinding(TimestampMixin, Base):
         Uuid(as_uuid=True),
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         primary_key=True,
-    )
-    binding_role: Mapped[BindingRole] = mapped_column(
-        SqlEnum(
-            BindingRole,
-            name="binding_role",
-            native_enum=False,
-            create_constraint=True,
-            validate_strings=True,
-            values_callable=enum_values,
-        ),
-        nullable=False,
     )
     enabled: Mapped[bool] = mapped_column(
         Boolean,

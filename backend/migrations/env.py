@@ -9,10 +9,10 @@ from app.modules.credentials.models import PlatformCredential, ShopCredentialBin
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.devices.models import Device
 from app.modules.notifications.models import NotificationChannel
-from app.modules.schedules.models import Schedule, ScheduleRun
+from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
-from app.modules.tasks.models import Task, TaskEvent
+from app.modules.tasks.models import Task, TaskEvent, TaskShop
 from app.modules.users.models import User
 from app.modules.workers.models import (
     DeviceProviderInventory,
@@ -30,6 +30,7 @@ _MODELS = (
     NotificationChannel,
     Schedule,
     ScheduleRun,
+    ScheduleShop,
     PlatformCredential,
     Shop,
     ShopCredentialBinding,
@@ -37,6 +38,7 @@ _MODELS = (
     ShopSession,
     Task,
     TaskEvent,
+    TaskShop,
     User,
     WorkerDeviceCredential,
 )

@@ -9,15 +9,17 @@ from sqlalchemy.orm import Session
 
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.devices.models import Device
-from app.modules.schedules.models import Schedule, ScheduleRun
+from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.schedules.enums import ScheduleExecutionType
 from app.modules.schedules.exceptions import ScheduleNotFoundError
 from app.modules.schedules.repository import ScheduleRepository
 from app.modules.schedules.schemas import ScheduleCreate, ScheduleUpdate
 from app.modules.schedules.service import ScheduleService
+from app.modules.shops.enums import ShopPlatform
+from app.modules.shops.models import Shop
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.tasks.schemas import TaskComplete, TaskEventBatchWrite, TaskFail
-from app.modules.tasks.service import TaskService
+from app.modules.tasks.service import PreparedTaskCreation, TaskService
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceSkillCapability,
@@ -26,6 +28,15 @@ from app.modules.workers.service import WorkerPrincipal
 
 
 pytestmark = pytest.mark.integration
+
+
+class _PreparedTaskService:
+    def prepare_scheduled_task(self, data: object) -> PreparedTaskCreation:
+        del data
+        return PreparedTaskCreation(
+            input_json={"message": "safe"},
+            execution_display_name="系统回声验证",
+        )
 
 
 def _ready_inventory(now: datetime) -> dict[str, object]:
@@ -97,6 +108,75 @@ def _cleanup(engine: Engine, device_id: UUID) -> None:
         )
         session.execute(delete(Device).where(Device.device_id == device_id))
         session.commit()
+
+
+def test_schedule_shop_set_can_be_replaced_and_reordered(
+    postgresql_engine: Engine,
+) -> None:
+    device_id = uuid4()
+    schedule_id = uuid4()
+    shop_ids = [uuid4(), uuid4(), uuid4()]
+    now = datetime.now(UTC)
+    try:
+        with Session(postgresql_engine) as session:
+            session.add(Device(device_id=device_id, display_name="多店铺计划设备"))
+            session.add_all(
+                [
+                    Shop(
+                        shop_id=shop_id,
+                        display_name=f"多店铺计划店铺 {position}",
+                        platform=ShopPlatform.DOUYIN,
+                    )
+                    for position, shop_id in enumerate(shop_ids, start=1)
+                ],
+            )
+            session.add(
+                Schedule(
+                    schedule_id=schedule_id,
+                    name="多店铺顺序计划",
+                    enabled=True,
+                    target_device_id=device_id,
+                    shop_links=[
+                        ScheduleShop(shop_id=shop_ids[0], position=0),
+                        ScheduleShop(shop_id=shop_ids[1], position=1),
+                    ],
+                    skill_id="system.echo",
+                    execution_display_name="系统回声验证",
+                    schedule_type="daily",
+                    local_time=time(9, 30),
+                    timezone="Asia/Shanghai",
+                    task_input_json={"message": "safe"},
+                    next_run_at=now + timedelta(days=1),
+                ),
+            )
+            session.commit()
+
+        with Session(postgresql_engine) as session:
+            updated = ScheduleService(
+                session,
+                task_service=_PreparedTaskService(),  # type: ignore[arg-type]
+            ).update(
+                schedule_id,
+                ScheduleUpdate(shop_ids=[shop_ids[1], shop_ids[2]]),
+                now=now,
+            )
+            assert updated.shop_ids == [shop_ids[1], shop_ids[2]]
+
+        with Session(postgresql_engine) as session:
+            schedule = session.get(Schedule, schedule_id)
+            assert schedule is not None
+            assert schedule.shop_ids == [shop_ids[1], shop_ids[2]]
+    finally:
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(ScheduleShop).where(ScheduleShop.schedule_id == schedule_id),
+            )
+            session.execute(
+                delete(Schedule).where(Schedule.schedule_id == schedule_id),
+            )
+            session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))
+            session.execute(delete(Device).where(Device.device_id == device_id))
+            session.commit()
 
 
 def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
@@ -312,7 +392,8 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
             assert page.total == 1
             assert page.items[0].latest_run is not None
             assert page.items[0].latest_run.task_status is not None
-            assert len(statements) == 2
+            # Count + page summary + one bounded select-in query for ordered shops.
+            assert len(statements) == 3
         finally:
             event.remove(
                 postgresql_engine,

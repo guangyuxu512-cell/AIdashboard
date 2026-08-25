@@ -47,7 +47,9 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 错误统一返回 `code`、`message`、`request_id`、可选 `details`。V1 业务错误码包含 `USER_NOT_FOUND`、`SHOP_NOT_FOUND`、`DEVICE_NOT_FOUND`、`INVALID_DEVICE_BINDING`、`IMMUTABLE_SHOP_IDENTITY`；请求校验使用 `VALIDATION_ERROR`，数据库异常统一映射为 `DATABASE_OPERATION_FAILED`。
 
-Pydantic Create、Update、Read Schema 是正式 API Contract。Frontend 的 GMV、Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
+Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
+`shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
+Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
 
 Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_status`：没有 ShopSession 时为 `null`，其余值直接来自正式 ShopSession Status，不由 Frontend 猜测。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；对已移除 Shop 的 GET、PATCH、Binding 与 Session 业务访问返回 `SHOP_NOT_FOUND`。`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
 
@@ -115,8 +117,9 @@ Descriptor 固定包含
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
 
 `POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
-`{"app_id":"...","params":{...}}`。Backend 必须验证目标 Device 启用、最新影刀 Inventory
-为 ready、执行可用、已登录、App 对当前账号可见，并按已保存 Schema 校验/补齐 params。
+`{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。
+Backend 必须验证目标 Device 启用、全部 Shop 有效并与该 Device 存在启用 Binding、账号可用、
+最新影刀 Inventory 为 ready、执行可用、已登录、App 对当前账号可见，并按已保存 Schema校验/补齐 params。
 
 ## Device Lifecycle API
 
@@ -165,10 +168,13 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
 
 ## Task Runtime Event API
 
-`POST /api/v1/tasks` 的 `shop_id` 为可空正式店铺上下文；需要店铺账号的即时任务必须明确提交，
-但账号内容不得放进 `input`。`TaskRead` 返回该关系 ID。认证 Worker 调用 Claim 时，Backend 才按
-`Task.shop_id` 读取当前启用且平台匹配的 Credential，并在 Claim 响应的可空 `account` 字段中
-下发本次最小 Payload；普通 Task Read/List、Runtime Event 与 Result 不返回该明文。
+`POST /api/v1/tasks` 的 `shop_ids` 是有序的正式店铺上下文集合；需要店铺账号的即时任务必须明确
+提交，但账号内容不得放进 `input`。重复 ID 被拒绝，任一 Shop 无效、停用、已移除、未与目标
+Device 有效绑定或缺少可用 Credential 时整次创建失败，不静默跳过。Backend 只创建一个 Task，
+`TaskRead` 返回原顺序的关系 ID。认证 Worker 调用 Claim 时，Backend 才按关系顺序读取当前启用且
+平台匹配的 Credential，并在 Claim 响应的 `accounts` 数组中下发最小 Payload：
+`shop_id / platform_code / login_identifier / secret / preferred_verification_channel`。
+普通 Task Read/List、Runtime Event 与 Result 不返回账号明文。
 
 - `GET /api/v1/tasks`：管理端 Task 分页列表，支持
   `status / device_id / search / created_from / created_to`；时间语义固定为基于

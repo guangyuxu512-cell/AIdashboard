@@ -31,6 +31,18 @@ class TaskWorkerOfflineError(AppError):
     status_code = 422
 
 
+class TaskShopInvalidError(AppError):
+    code = "TASK_SHOP_INVALID"
+    message = "任务包含不存在、已停用或已删除的店铺"
+    status_code = 422
+
+
+class TaskShopDeviceBindingInvalidError(AppError):
+    code = "TASK_SHOP_DEVICE_BINDING_INVALID"
+    message = "任务包含未授权给目标设备的店铺"
+    status_code = 422
+
+
 class TaskInputInvalidError(AppError):
     code = "TASK_INPUT_INVALID"
     message = "Skill 输入不符合契约"

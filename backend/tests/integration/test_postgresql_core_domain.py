@@ -16,7 +16,7 @@ from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import DeviceCreate, DeviceUpdate
 from app.modules.devices.service import DeviceService
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.shops.repository import ShopDeviceBindingRepository, ShopRepository
 from app.modules.shops.schemas import (
@@ -79,7 +79,7 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         assert connection.scalar(text("SELECT 1")) == 1
         assert connection.scalar(text("SHOW server_version"))
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260825_0018"
+            "20260826_0019"
         )
 
     assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -117,24 +117,23 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         for foreign_key in binding_foreign_keys
     } == {(('shop_id',), 'shops'), (('device_id',), 'devices')}
 
-    indexes = {
-        index["name"]: index for index in inspector.get_indexes("shop_device_bindings")
+    binding_columns = {
+        column["name"] for column in inspector.get_columns("shop_device_bindings")
     }
-    primary_index = indexes["uq_shop_device_bindings_enabled_primary"]
-    assert primary_index["unique"] is True
-    assert primary_index["column_names"] == ["shop_id"]
-    predicate = str(primary_index.get("dialect_options", {}).get("postgresql_where", ""))
-    assert "enabled" in predicate
-    assert "binding_role" in predicate
+    assert "binding_role" not in binding_columns
+    assert "uq_shop_device_bindings_enabled_primary" not in {
+        index["name"] for index in inspector.get_indexes("shop_device_bindings")
+    }
+    assert {"task_shops", "schedule_shops"} <= set(inspector.get_table_names())
 
 
 def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None:
     shop_id = uuid4()
     invalid_shop_id = uuid4()
     primary_device_id = uuid4()
-    second_primary_device_id = uuid4()
+    second_device_id = uuid4()
     backup_device_id = uuid4()
-    device_ids = {primary_device_id, second_primary_device_id, backup_device_id}
+    device_ids = {primary_device_id, second_device_id, backup_device_id}
 
     try:
         with Session(postgresql_engine) as session:
@@ -155,7 +154,6 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
                 ShopDeviceBinding(
                     shop_id=uuid4(),
                     device_id=uuid4(),
-                    binding_role=BindingRole.PRIMARY,
                 ),
             )
             with pytest.raises(IntegrityError):
@@ -183,7 +181,6 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
                 ShopDeviceBinding(
                     shop_id=shop_id,
                     device_id=primary_device_id,
-                    binding_role=BindingRole.PRIMARY,
                 ),
             )
             session.commit()
@@ -192,20 +189,16 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
             session.add(
                 ShopDeviceBinding(
                     shop_id=shop_id,
-                    device_id=second_primary_device_id,
-                    binding_role=BindingRole.PRIMARY,
+                    device_id=second_device_id,
                 ),
             )
-            with pytest.raises(IntegrityError):
-                session.commit()
-            session.rollback()
+            session.commit()
 
         with Session(postgresql_engine) as session:
             session.add(
                 ShopDeviceBinding(
                     shop_id=shop_id,
                     device_id=primary_device_id,
-                    binding_role=BindingRole.BACKUP,
                 ),
             )
             with pytest.raises(IntegrityError):
@@ -216,7 +209,6 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
             backup = ShopDeviceBinding(
                 shop_id=shop_id,
                 device_id=backup_device_id,
-                binding_role=BindingRole.BACKUP,
             )
             session.add(backup)
             session.commit()
@@ -283,14 +275,12 @@ def test_repository_service_crud_and_transactions(postgresql_engine: Engine) -> 
                 shop.shop_id,
                 ShopDeviceBindingCreate(
                     device_id=primary.device_id,
-                    binding_role=BindingRole.PRIMARY,
                 ),
             )
             shop_service.create_binding(
                 shop.shop_id,
                 ShopDeviceBindingCreate(
                     device_id=backup.device_id,
-                    binding_role=BindingRole.BACKUP,
                 ),
             )
             assert len(shop_service.list_bindings(shop.shop_id)) == 2
@@ -306,9 +296,9 @@ def test_repository_service_crud_and_transactions(postgresql_engine: Engine) -> 
             changed = shop_service.update_binding(
                 shop.shop_id,
                 backup.device_id,
-                ShopDeviceBindingUpdate(binding_role=BindingRole.PRIMARY),
+                ShopDeviceBindingUpdate(enabled=False),
             )
-            assert changed.binding_role == BindingRole.PRIMARY
+            assert changed.enabled is False
 
         with Session(postgresql_engine) as session:
             session.add(
@@ -388,7 +378,7 @@ async def _exercise_real_api(
         assert shop_update.status_code == 200
         assert shop_update.json()["note"] == f"{TEST_PREFIX}-api-updated"
 
-        for role in ("primary", "backup"):
+        for role in ("first", "second"):
             device_response = await client.post(
                 "/api/v1/devices",
                 json={"display_name": f"{TEST_PREFIX}-api-{role}"},
@@ -413,13 +403,10 @@ async def _exercise_real_api(
         )
         assert device_update.status_code == 200
 
-        for device_id, role in (
-            (primary_device_id, "primary"),
-            (backup_device_id, "backup"),
-        ):
+        for device_id in (primary_device_id, backup_device_id):
             binding_response = await client.post(
                 f"/api/v1/shops/{shop_id}/device-bindings",
-                json={"device_id": str(device_id), "binding_role": role},
+                json={"device_id": str(device_id)},
             )
             assert binding_response.status_code == 201
 
@@ -433,10 +420,10 @@ async def _exercise_real_api(
         assert disable_response.status_code == 200
         change_response = await client.patch(
             f"/api/v1/shops/{shop_id}/device-bindings/{backup_device_id}",
-            json={"binding_role": "primary"},
+            json={"enabled": False},
         )
         assert change_response.status_code == 200
-        assert change_response.json()["binding_role"] == "primary"
+        assert change_response.json()["enabled"] is False
 
         validation = await client.post(
             "/api/v1/shops",

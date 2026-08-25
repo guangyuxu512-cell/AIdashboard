@@ -10,7 +10,7 @@ from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import DeviceCreate, DeviceUpdate
 from app.modules.devices.service import DeviceService
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.models import Task
@@ -64,7 +64,6 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                 ShopDeviceBinding(
                     shop_id=shop_id,
                     device_id=device_id,
-                    binding_role=BindingRole.PRIMARY,
                     enabled=True,
                 ),
             )

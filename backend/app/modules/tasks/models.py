@@ -16,7 +16,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, TimestampMixin
 from app.shared.identifiers import generate_id
@@ -80,10 +80,11 @@ class Task(TimestampMixin, Base):
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    shop_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
-        nullable=True,
+    shop_links: Mapped[list["TaskShop"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="TaskShop.position",
     )
     skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
     execution_display_name: Mapped[str] = mapped_column(
@@ -111,6 +112,32 @@ class Task(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+    @property
+    def shop_ids(self) -> list[UUID]:
+        return [link.shop_id for link in self.shop_links]
+
+
+class TaskShop(Base):
+    __tablename__ = "task_shops"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="position_non_negative"),
+        UniqueConstraint("task_id", "position", name="uq_task_shops_task_position"),
+        Index("ix_task_shops_shop_task", "shop_id", "task_id"),
+    )
+
+    task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tasks.task_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    shop_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    task: Mapped[Task] = relationship(back_populates="shop_links")
 
 
 class TaskEvent(Base):

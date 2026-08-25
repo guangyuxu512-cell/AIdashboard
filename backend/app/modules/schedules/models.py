@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     Time as SQLTime,
@@ -18,7 +19,7 @@ from sqlalchemy import (
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, TimestampMixin
 from app.shared.identifiers import generate_id
@@ -71,10 +72,11 @@ class Schedule(TimestampMixin, Base):
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    shop_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
-        nullable=True,
+    shop_links: Mapped[list["ScheduleShop"]] = relationship(
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ScheduleShop.position",
     )
     skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
     execution_display_name: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -90,6 +92,36 @@ class Schedule(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+    @property
+    def shop_ids(self) -> list[UUID]:
+        return [link.shop_id for link in self.shop_links]
+
+
+class ScheduleShop(Base):
+    __tablename__ = "schedule_shops"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="position_non_negative"),
+        UniqueConstraint(
+            "schedule_id",
+            "position",
+            name="uq_schedule_shops_schedule_position",
+        ),
+        Index("ix_schedule_shops_shop_schedule", "shop_id", "schedule_id"),
+    )
+
+    schedule_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("schedules.schedule_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    shop_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    schedule: Mapped[Schedule] = relationship(back_populates="shop_links")
 
 
 class ScheduleRun(Base):

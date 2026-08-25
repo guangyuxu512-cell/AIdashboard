@@ -210,6 +210,67 @@ def test_event_message_removes_embedded_account_json_payload() -> None:
     assert "private-secret" not in message
 
 
+def test_event_message_removes_embedded_multi_account_payloads() -> None:
+    service, repository, device_id, task_id = make_service()
+    now = datetime.now(UTC)
+
+    messages = [
+        (
+            '[worker]{"accounts":['
+            '{"shop_id":"shop-1","platform_code":"douyin",'
+            '"login_identifier":"user-a","secret":"secret-a",'
+            '"preferred_verification_channel":"manual"},'
+            '{"shop_id":"shop-2","platform_code":"pdd",'
+            '"login_identifier":"user-b","secret":"secret-b",'
+            '"preferred_verification_channel":null}]}'
+        ),
+        (
+            '[主流程:4]{"店铺列表":['
+            '{"店铺ID":"shop-1","平台编码":"douyin",'
+            '"登录账号":"用户甲","登录密码":"密码甲",'
+            '"首选验证方式":"manual"},'
+            '{"店铺ID":"shop-2","平台编码":"pdd",'
+            '"登录账号":"用户乙","登录密码":"密码乙",'
+            '"首选验证方式":null}]}'
+        ),
+    ]
+    service.append_events(
+        WorkerPrincipal(device_id=device_id),
+        task_id,
+        TaskEventBatchWrite.model_validate(
+            {
+                "events": [
+                    {
+                        "seq": index,
+                        "event_type": "log",
+                        "level": "L2",
+                        "message": message,
+                        "event_at": now.isoformat(),
+                        "metadata": {},
+                    }
+                    for index, message in enumerate(messages, start=1)
+                ],
+            },
+        ),
+    )
+
+    stored = [repository.events[(task_id, seq)].message for seq in (1, 2)]
+    assert stored == [
+        "[worker][ACCOUNT_PAYLOAD_REDACTED]",
+        "[主流程:4][ACCOUNT_PAYLOAD_REDACTED]",
+    ]
+    combined = "".join(stored)
+    for sensitive in (
+        "shop-1",
+        "shop-2",
+        "user-a",
+        "secret-a",
+        "用户甲",
+        "密码甲",
+    ):
+        assert sensitive not in combined
+
+
 def test_task_result_redacts_account_payload_recursively() -> None:
     service, repository, device_id, task_id = make_service()
 

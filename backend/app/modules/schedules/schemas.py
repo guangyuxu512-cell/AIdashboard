@@ -22,7 +22,7 @@ class ScheduleCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     target_device_id: UUID
-    shop_id: UUID | None = None
+    shop_ids: list[UUID] = Field(default_factory=list, max_length=100)
     execution_type: ScheduleExecutionType = (
         ScheduleExecutionType.YINGDAO_APPLICATION
     )
@@ -48,6 +48,13 @@ class ScheduleCreate(BaseModel):
             raise ValueError("Business Skill schedules require only skill_id")
         return self
 
+    @field_validator("shop_ids")
+    @classmethod
+    def reject_duplicate_shops(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("shop_ids must not contain duplicates")
+        return value
+
     @field_validator("local_time")
     @classmethod
     def normalize_local_time(cls, value: time) -> time:
@@ -67,7 +74,7 @@ class ScheduleUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     target_device_id: UUID | None = None
-    shop_id: UUID | None = None
+    shop_ids: list[UUID] | None = Field(default=None, max_length=100)
     execution_type: ScheduleExecutionType | None = None
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
     skill_id: str | None = Field(
@@ -117,6 +124,13 @@ class ScheduleUpdate(BaseModel):
             raise ValueError("Business Skill schedules cannot select an application")
         return self
 
+    @field_validator("shop_ids")
+    @classmethod
+    def reject_duplicate_shops(cls, value: list[UUID] | None) -> list[UUID] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("shop_ids must not contain duplicates")
+        return value
+
 
 class ScheduleRunRead(BaseModel):
     run_id: UUID
@@ -135,7 +149,7 @@ class ScheduleListItemRead(BaseModel):
     name: str
     enabled: bool
     target_device_id: UUID
-    shop_id: UUID | None = None
+    shop_ids: list[UUID]
     device_display_name: str
     execution_type: ScheduleExecutionType
     skill_id: str

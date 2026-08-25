@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.shops.enums import BindingRole, ShopPlatform
+from app.modules.shops.enums import ShopPlatform
 
 
 class ShopCreate(BaseModel):
@@ -60,21 +60,19 @@ class ShopDeviceBindingCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: UUID
-    binding_role: BindingRole
     enabled: bool = True
 
 
 class ShopDeviceBindingUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    binding_role: BindingRole | None = None
     enabled: bool | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "ShopDeviceBindingUpdate":
         if not self.model_fields_set:
             raise ValueError("至少提供一个需要更新的字段")
-        for field in ("binding_role", "enabled"):
+        for field in ("enabled",):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} 不能为 null")
         return self
@@ -85,7 +83,6 @@ class ShopDeviceBindingRead(BaseModel):
 
     shop_id: UUID
     device_id: UUID
-    binding_role: BindingRole
     enabled: bool
     created_at: datetime
     updated_at: datetime

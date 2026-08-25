@@ -13,6 +13,10 @@ from app.modules.automation_apps.repository import AutomationApplicationConfigRe
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
 from app.modules.credentials.schemas import TaskAccountPayload
 from app.modules.credentials.service import CredentialService
+from app.modules.shops.repository import (
+    ShopDeviceBindingRepository,
+    ShopRepository,
+)
 from app.modules.tasks.enums import (
     TERMINAL_TASK_STATUS_VALUES,
     TaskSkillId,
@@ -29,11 +33,13 @@ from app.modules.tasks.exceptions import (
     TaskProviderVersionUnsupportedError,
     TaskSkillNotAvailableError,
     TaskSkillSchemaUnavailableError,
+    TaskShopDeviceBindingInvalidError,
+    TaskShopInvalidError,
     TaskStateConflictError,
     TaskTargetDeviceInvalidError,
     TaskWorkerOfflineError,
 )
-from app.modules.tasks.models import Task
+from app.modules.tasks.models import Task, TaskShop
 from app.modules.tasks.repository import TaskRepository
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
@@ -69,7 +75,7 @@ class PreparedTaskCreation:
 @dataclass(frozen=True)
 class ClaimedWorkerTask:
     task: Task
-    account: TaskAccountPayload | None
+    accounts: list[TaskAccountPayload]
 
 
 class TaskService:
@@ -82,6 +88,8 @@ class TaskService:
             AutomationApplicationConfigRepository | None
         ) = None,
         credential_service: CredentialService | None = None,
+        shop_repository: ShopRepository | None = None,
+        shop_device_binding_repository: ShopDeviceBindingRepository | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or TaskRepository(session)
@@ -91,6 +99,10 @@ class TaskService:
             or AutomationApplicationConfigRepository(session)
         )
         self.credential_service = credential_service
+        self.shop_repository = shop_repository or ShopRepository(session)
+        self.shop_device_binding_repository = (
+            shop_device_binding_repository or ShopDeviceBindingRepository(session)
+        )
 
     def create(self, data: TaskCreate) -> Task:
         task = self._create_pending(data, require_worker_online=True)
@@ -125,11 +137,14 @@ class TaskService:
         )
         task = Task(
             target_device_id=data.target_device_id,
-            shop_id=data.shop_id,
             skill_id=data.skill_id,
             execution_display_name=prepared.execution_display_name,
             status=TaskStatus.PENDING.value,
             input_json=prepared.input_json,
+            shop_links=[
+                TaskShop(shop_id=shop_id, position=position)
+                for position, shop_id in enumerate(data.shop_ids)
+            ],
         )
         self.repository.add(task)
         return task
@@ -145,10 +160,7 @@ class TaskService:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:
             raise TaskDeviceDisabledError()
-        if data.shop_id is not None:
-            self._require_credential_service().ensure_task_account_available(
-                data.shop_id,
-            )
+        self._validate_shop_context(data.target_device_id, data.shop_ids)
         if require_worker_online:
             runtime = self.repository.get_device_runtime(data.target_device_id)
             if runtime is None or runtime.connection_status != "online":
@@ -195,6 +207,40 @@ class TaskService:
             input_json=input_json,
             execution_display_name=execution_display_name,
         )
+
+    def _validate_shop_context(
+        self,
+        device_id: UUID,
+        shop_ids: list[UUID],
+    ) -> None:
+        if not shop_ids:
+            return
+        shops_by_id = {
+            shop.shop_id: shop for shop in self.shop_repository.list_by_ids(shop_ids)
+        }
+        invalid_shop_ids = [
+            shop_id
+            for shop_id in shop_ids
+            if shop_id not in shops_by_id or not shops_by_id[shop_id].enabled
+        ]
+        if invalid_shop_ids:
+            raise TaskShopInvalidError(
+                details={"shop_ids": [str(shop_id) for shop_id in invalid_shop_ids]},
+            )
+        enabled_binding_shop_ids = (
+            self.shop_device_binding_repository.list_enabled_shop_ids_for_device(
+                device_id,
+                shop_ids,
+            )
+        )
+        unbound_shop_ids = [
+            shop_id for shop_id in shop_ids if shop_id not in enabled_binding_shop_ids
+        ]
+        if unbound_shop_ids:
+            raise TaskShopDeviceBindingInvalidError(
+                details={"shop_ids": [str(shop_id) for shop_id in unbound_shop_ids]},
+            )
+        self._require_credential_service().ensure_task_accounts_available(shop_ids)
 
     def _validate_provider_dependency(
         self,
@@ -478,18 +524,18 @@ class TaskService:
             self.session.commit()
             return None
         try:
-            account = (
-                self._require_credential_service().build_task_account_payload(
-                    task.shop_id,
+            accounts = (
+                self._require_credential_service().build_task_account_payloads(
+                    task.shop_ids,
                 )
-                if task.shop_id is not None
-                else None
+                if task.shop_ids
+                else []
             )
         except Exception:
             self.session.rollback()
             raise
         self.session.commit()
-        return ClaimedWorkerTask(task=task, account=account)
+        return ClaimedWorkerTask(task=task, accounts=accounts)
 
     def _claim_without_commit(
         self,
@@ -610,10 +656,12 @@ class TaskService:
 _SENSITIVE_MESSAGE = re.compile(
     r"(?i)(?P<prefix>[\"']?"
     r"(?:account|login_identifier|preferred_verification_channel|password|token|"
-    r"authorization|cookie|secret)[\"']?\s*[:=]\s*)"
+    r"authorization|cookie|secret|登录账号|登录密码|首选验证方式)[\"']?\s*[:=]\s*)"
     r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s,;}]+)",
 )
 _ACCOUNT_PAYLOAD_REQUIRED_KEYS = frozenset({"login_identifier", "secret"})
+_CHINESE_ACCOUNT_PAYLOAD_REQUIRED_KEYS = frozenset({"登录账号", "登录密码"})
+_ACCOUNT_CONTAINER_KEYS = frozenset({"accounts", "店铺列表"})
 _SENSITIVE_KEYS = frozenset(
     {
         "account",
@@ -625,6 +673,9 @@ _SENSITIVE_KEYS = frozenset(
         "preferred_verification_channel",
         "secret",
         "token",
+        "登录账号",
+        "登录密码",
+        "首选验证方式",
     },
 )
 
@@ -637,29 +688,48 @@ def _redact_message(value: str) -> str:
     )
 
 
+def _is_account_payload(value: object) -> bool:
+    if isinstance(value, dict):
+        normalized_keys = {str(key).lower() for key in value}
+        if _ACCOUNT_PAYLOAD_REQUIRED_KEYS.issubset(normalized_keys):
+            return True
+        if _CHINESE_ACCOUNT_PAYLOAD_REQUIRED_KEYS.issubset(value.keys()):
+            return True
+        for list_key in ("accounts", "店铺列表"):
+            accounts = value.get(list_key)
+            if isinstance(accounts, list) and any(
+                _is_account_payload(account) for account in accounts
+            ):
+                return True
+        return False
+    return isinstance(value, list) and any(
+        _is_account_payload(account) for account in value
+    )
+
+
 def _redact_embedded_account_payload(value: str) -> str:
-    """Remove an observed account.json object embedded in external task logs."""
+    """Remove observed English or Chinese account payloads from task logs."""
 
     decoder = json.JSONDecoder()
     cursor = 0
     fragments: list[str] = []
     while True:
-        object_start = value.find("{", cursor)
-        if object_start < 0:
+        object_starts = [
+            position
+            for position in (value.find("{", cursor), value.find("[", cursor))
+            if position >= 0
+        ]
+        if not object_starts:
             fragments.append(value[cursor:])
             return "".join(fragments)
+        object_start = min(object_starts)
         try:
             payload, consumed = decoder.raw_decode(value[object_start:])
         except json.JSONDecodeError:
             fragments.append(value[cursor : object_start + 1])
             cursor = object_start + 1
             continue
-        keys = (
-            {str(key).lower() for key in payload}
-            if isinstance(payload, dict)
-            else set()
-        )
-        if _ACCOUNT_PAYLOAD_REQUIRED_KEYS.issubset(keys):
+        if _is_account_payload(payload):
             fragments.append(value[cursor:object_start])
             fragments.append("[ACCOUNT_PAYLOAD_REDACTED]")
             cursor = object_start + consumed
@@ -670,6 +740,8 @@ def _redact_embedded_account_payload(value: str) -> str:
 
 def _redact_metadata(value: dict[str, Any]) -> dict[str, Any]:
     def redact(item: Any, key: str | None = None) -> Any:
+        if key is not None and key.lower() in _ACCOUNT_CONTAINER_KEYS:
+            return "[ACCOUNT_PAYLOAD_REDACTED]"
         if key is not None and key.lower() in _SENSITIVE_KEYS:
             return "[REDACTED]"
         if isinstance(item, dict):

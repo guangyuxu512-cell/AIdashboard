@@ -45,6 +45,18 @@ class OperationRecorder:
     ) -> None:
         self.calls.append(("create_check_constraint", name))
 
+    def create_foreign_key(
+        self,
+        name: str,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.calls.append(("create_foreign_key", name))
+
+    @staticmethod
+    def f(name: str) -> str:
+        return name
+
     def drop_constraint(
         self,
         name: str,
@@ -429,3 +441,34 @@ def test_business_skill_catalog_migration(monkeypatch: object) -> None:
         "ck_device_skill_capabilities_input_schema_object",
     ) in recorder.calls
     assert ("drop_column", "device_skill_capabilities") in recorder.calls
+
+
+def test_multi_shop_task_context_migration(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260826_0019_multi_shop_task_context",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "task_shops"),
+        ("create_table", "schedule_shops"),
+    ]
+    assert ("drop_column", "tasks") in recorder.calls
+    assert ("drop_column", "schedules") in recorder.calls
+    assert ("drop_column", "shop_device_bindings") in recorder.calls
+    assert (
+        "drop_index",
+        "uq_shop_device_bindings_enabled_primary",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert ("add_column", "tasks") in recorder.calls
+    assert ("add_column", "schedules") in recorder.calls
+    assert ("add_column", "shop_device_bindings") in recorder.calls
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "schedule_shops"),
+        ("drop_table", "task_shops"),
+    ]
