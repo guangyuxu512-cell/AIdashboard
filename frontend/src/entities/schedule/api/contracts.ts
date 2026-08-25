@@ -23,7 +23,7 @@ export interface ScheduleListItemReadDto {
   name: string
   enabled: boolean
   target_device_id: string
-  shop_id: string | null
+  shop_ids: string[]
   device_display_name: string
   execution_type: ScheduleExecutionTypeDto
   skill_id: string
@@ -45,7 +45,7 @@ export interface ScheduleReadDto extends ScheduleListItemReadDto {
 export interface ScheduleCreateDto {
   name: string
   target_device_id: string
-  shop_id: string
+  shop_ids: string[]
   execution_type: ScheduleExecutionTypeDto
   application_id?: string
   skill_id?: string

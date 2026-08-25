@@ -11,11 +11,18 @@ import type {
 } from './contracts'
 
 export const shopApi = {
-  async list(params: PageParams): Promise<PageDto<ShopListReadDto>> {
+  async list(
+    params: PageParams & { deviceId?: string; enabled?: boolean },
+  ): Promise<PageDto<ShopListReadDto>> {
     const response = await httpClient.get<PageDto<ShopListReadDto>>(
       '/api/v1/shops',
       {
-        params: { page: params.page, page_size: params.pageSize },
+        params: {
+          page: params.page,
+          page_size: params.pageSize,
+          device_id: params.deviceId,
+          enabled: params.enabled,
+        },
       },
     )
     return response.data

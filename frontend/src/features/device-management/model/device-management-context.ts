@@ -56,8 +56,8 @@ async function loadBindingCounts(
   const counts = Object.fromEntries(deviceIds.map((id) => [id, 0]))
   if (apiMode === 'mock') {
     for (const shop of SHOP_LIST_FIXTURE) {
-      if (shop.executionDeviceId && shop.executionDeviceId in counts) {
-        counts[shop.executionDeviceId]! += 1
+      for (const deviceId of shop.executionDeviceIds) {
+        if (deviceId in counts) counts[deviceId]! += 1
       }
     }
     return counts

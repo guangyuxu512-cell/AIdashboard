@@ -2,7 +2,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ShopSelector } from '@/entities/shop'
+import { ShopMultiSelector } from '@/entities/shop'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 
 import YingdaoApplicationRunDialog from './YingdaoApplicationRunDialog.vue'
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
   error: vi.fn(),
   success: vi.fn(),
+  shops: null as unknown,
 }))
 
 vi.mock('naive-ui', async (importOriginal) => ({
@@ -24,6 +25,11 @@ vi.mock('@/entities/task', async (importOriginal) => ({
     isPending: ref(false),
     mutateAsync: mocks.createTask,
   }),
+}))
+
+vi.mock('@/entities/shop', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/shop')>()),
+  useDeviceShopSelectionOptionsQuery: () => mocks.shops,
 }))
 
 vi.mock('@/entities/automation-application', async (importOriginal) => ({
@@ -42,10 +48,20 @@ beforeEach(() => {
   mocks.createTask.mockResolvedValue({ task_id: 'task-1' })
   mocks.error.mockReset()
   mocks.success.mockReset()
+  mocks.shops = {
+    data: ref(
+      Array.from({ length: 5 }, (_, index) => ({
+        label: `店铺${index + 1}`,
+        value: `shop-${index + 1}`,
+      })),
+    ),
+    isPending: ref(false),
+    error: ref(null),
+  }
 })
 
 describe('YingdaoApplicationRunDialog', () => {
-  it('requires a shop and sends shop_id outside the Task input payload', async () => {
+  it('defaults all bound shops and creates only one multi-shop Task', async () => {
     const wrapper = shallowMount(YingdaoApplicationRunDialog, {
       props: {
         show: true,
@@ -58,14 +74,19 @@ describe('YingdaoApplicationRunDialog', () => {
       },
       global: { renderStubDefaultSlot: true },
     })
+    await flushPromises()
     const dialog = wrapper.findComponent(AppDialog)
-    expect(dialog.props('positiveDisabledReason')).toBe(
-      '请选择本次任务使用的店铺账号',
-    )
+    const selector = wrapper.findComponent(ShopMultiSelector)
+    expect(selector.props('modelValue')).toEqual([
+      'shop-1',
+      'shop-2',
+      'shop-3',
+      'shop-4',
+      'shop-5',
+    ])
+    expect(dialog.props('positiveDisabled')).toBe(false)
 
-    wrapper
-      .findComponent(ShopSelector)
-      .vm.$emit('update:modelValue', 'shop-1')
+    selector.vm.$emit('update:modelValue', ['shop-1', 'shop-3', 'shop-5'])
     await flushPromises()
     expect(dialog.props('positiveDisabled')).toBe(false)
 
@@ -74,10 +95,35 @@ describe('YingdaoApplicationRunDialog', () => {
 
     expect(mocks.createTask).toHaveBeenCalledWith({
       target_device_id: 'device-1',
-      shop_id: 'shop-1',
+      shop_ids: ['shop-1', 'shop-3', 'shop-5'],
       skill_id: 'yingdao.app.run',
       input: { app_id: 'safe-app', params: {} },
     })
     expect(wrapper.emitted('started')).toEqual([['task-1']])
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks execution after all bound shops are deselected', async () => {
+    const wrapper = shallowMount(YingdaoApplicationRunDialog, {
+      props: {
+        show: true,
+        application: {
+          appId: 'safe-app',
+          appName: '安全测试应用',
+          versionId: '1',
+        },
+        deviceId: 'device-1',
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+    wrapper
+      .findComponent(ShopMultiSelector)
+      .vm.$emit('update:modelValue', [])
+    await flushPromises()
+
+    expect(wrapper.findComponent(AppDialog).props('positiveDisabledReason')).toBe(
+      '请至少选择一个本次执行的店铺账号',
+    )
   })
 })

@@ -49,7 +49,6 @@ describe('shop backend DTO mapper', () => {
           {
             shop_id: '00000000-0000-0000-0000-000000000001',
             device_id: '00000000-0000-0000-0000-000000000003',
-            binding_role: 'primary',
             enabled: true,
             created_at: '2026-08-18T10:00:00+00:00',
             updated_at: '2026-08-18T10:00:00+00:00',
@@ -64,7 +63,7 @@ describe('shop backend DTO mapper', () => {
       ownerName: '负责人',
       enabledStatus: 'enabled',
       loginStatus: 'valid',
-      executionDeviceName: '主设备',
+      executionDeviceNames: ['主设备'],
       createdAtDisplay: '2026-08-18 18:00',
       updatedAtDisplay: '2026-08-18 19:00',
       dataSource: 'real',

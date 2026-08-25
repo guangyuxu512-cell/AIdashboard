@@ -11,7 +11,10 @@ import {
 } from '@/entities/automation-application'
 import { useBusinessSkillCatalogQuery } from '@/entities/business-skill'
 import { useDeviceProviderInventoriesQuery } from '@/entities/device'
-import { ShopSelector } from '@/entities/shop'
+import {
+  ShopMultiSelector,
+  useDeviceShopSelectionOptionsQuery,
+} from '@/entities/shop'
 import type {
   ScheduleDetailViewModel,
   ScheduleExecutionTypeDto,
@@ -54,7 +57,7 @@ const executionTypeOptions: SelectOption[] = [
 const form = reactive({
   name: '',
   deviceId: null as string | null,
-  shopId: null as string | null,
+  shopIds: [] as string[],
   executionType: 'yingdao_application' as ScheduleExecutionTypeDto,
   applicationId: null as string | null,
   skillId: null as string | null,
@@ -65,6 +68,8 @@ const form = reactive({
 })
 const initializedKey = ref('')
 const parameterSourceKey = ref('')
+const shopSelectionKey = ref('')
+const shouldDefaultShops = ref(false)
 const isYingdao = computed(
   () => form.executionType === 'yingdao_application',
 )
@@ -75,6 +80,10 @@ const inventoryQuery = useDeviceProviderInventoriesQuery(
   computed(() => form.deviceId),
   isYingdao,
 )
+const shopOptionsQuery = useDeviceShopSelectionOptionsQuery(
+  computed(() => form.deviceId),
+)
+const shopOptions = computed(() => shopOptionsQuery.data.value ?? [])
 const applicationId = computed(() => form.applicationId)
 const configQuery = useAutomationApplicationConfigQuery(
   applicationId,
@@ -158,7 +167,7 @@ const configInitialError = computed(
 const disabledReason = computed(() => {
   if (!form.name.trim()) return '请填写计划名称'
   if (!form.deviceId) return '请选择执行设备'
-  if (!form.shopId) return '请选择计划使用的店铺账号'
+  if (!form.shopIds.length) return '请至少选择一个计划使用的店铺账号'
   if (isYingdao.value) {
     if (!form.applicationId) return '请选择影刀应用'
     if (inventoryInitialError.value) return '设备影刀应用读取失败'
@@ -196,6 +205,8 @@ watch(
     if (!show) {
       initializedKey.value = ''
       parameterSourceKey.value = ''
+      shopSelectionKey.value = ''
+      shouldDefaultShops.value = false
       return
     }
     const key =
@@ -205,7 +216,8 @@ watch(
     parameterSourceKey.value = ''
     form.name = schedule?.name ?? ''
     form.deviceId = schedule?.deviceId ?? null
-    form.shopId = schedule?.shopId ?? null
+    form.shopIds = [...(schedule?.shopIds ?? [])]
+    shouldDefaultShops.value = mode === 'create'
     form.executionType = schedule?.executionType ?? 'yingdao_application'
     form.applicationId = schedule?.applicationId ?? null
     form.skillId =
@@ -218,6 +230,24 @@ watch(
     form.parameters = { ...(schedule?.parameters ?? {}) }
   },
   { immediate: true },
+)
+
+watch(
+  [
+    () => props.show,
+    () => form.deviceId,
+    () => shopOptionsQuery.data.value,
+    () => shouldDefaultShops.value,
+  ],
+  ([show, deviceId, options, shouldDefault]) => {
+    if (!show || !deviceId || options === undefined || !shouldDefault) return
+    if (shopSelectionKey.value === deviceId) return
+    form.shopIds = options
+      .filter((option) => !option.disabled)
+      .map((option) => option.value)
+    shopSelectionKey.value = deviceId
+    shouldDefaultShops.value = false
+  },
 )
 
 watch(
@@ -259,6 +289,9 @@ function changeDevice(value: AppOptionValue | null): void {
   const next = value as string | null
   if (next === form.deviceId) return
   form.deviceId = next
+  form.shopIds = []
+  shopSelectionKey.value = ''
+  shouldDefaultShops.value = Boolean(next)
   resetTarget()
 }
 
@@ -302,7 +335,7 @@ function submit(): void {
   if (
     disabledReason.value ||
     !form.deviceId ||
-    !form.shopId ||
+    !form.shopIds.length ||
     form.localTimeValue === null
   ) {
     return
@@ -310,7 +343,7 @@ function submit(): void {
   emit('submit', {
     name: form.name.trim(),
     deviceId: form.deviceId,
-    shopId: form.shopId,
+    shopIds: [...form.shopIds],
     executionType: form.executionType,
     applicationId: isYingdao.value ? form.applicationId : null,
     skillId: isBusinessSkill.value ? form.skillId : null,
@@ -349,7 +382,12 @@ function submit(): void {
         />
       </NFormItem>
       <NFormItem label="店铺账号" required>
-        <ShopSelector v-model="form.shopId" />
+        <ShopMultiSelector
+          v-model="form.shopIds"
+          :options="shopOptions"
+          :loading="shopOptionsQuery.isPending.value"
+          :disabled="!form.deviceId"
+        />
       </NFormItem>
       <NFormItem label="执行类型" required>
         <AppSelect

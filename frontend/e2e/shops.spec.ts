@@ -172,10 +172,9 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByText('平台店铺名称')).toBeVisible()
   await expect(page.getByText('platform-shop-fixture-001')).toBeVisible()
   await expect(page.getByText('执行设备', { exact: true }).last()).toBeVisible()
-  await expect(page.getByText('主设备', { exact: true })).toBeVisible()
   await expect(page.getByText('杭州-运营机-01').last()).toBeVisible()
 
-  await page.getByRole('button', { name: '更换' }).click()
+  await page.getByRole('button', { name: '+ 绑定设备' }).click()
   await page.getByRole('dialog').last().getByRole('textbox').click()
   await page
     .locator('.n-base-select-option')
@@ -191,11 +190,6 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
     .filter({ hasText: '深圳-工作站-03' })
     .click()
   await page.getByRole('button', { name: '保存' }).click()
-  await expect(
-    page
-      .locator('.shop-device-bindings__label')
-      .filter({ hasText: '备用设备' }),
-  ).toBeVisible()
   await expect(page.getByText('深圳-工作站-03').last()).toBeVisible()
   await page
     .locator('.shop-device-bindings__row')
@@ -204,9 +198,14 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
     .click()
   await expect(
     page
-      .locator('.shop-device-bindings__label')
-      .filter({ hasText: '备用设备' }),
+      .locator('.shop-device-bindings__row')
+      .filter({ hasText: '深圳-工作站-03' }),
   ).toHaveCount(0)
+  await expect(
+    page
+      .locator('.shop-device-bindings__row')
+      .filter({ hasText: '上海-直播机-02' }),
+  ).toBeVisible()
 
   await page
     .locator('.shop-detail-header')

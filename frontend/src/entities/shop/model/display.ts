@@ -6,16 +6,11 @@ export interface ShopExecutionDeviceSummary {
   names: string[]
 }
 
-/**
- * 将现有主/备用绑定映射为列表摘要。只消费 View Model，不扩展 Backend 契约。
- */
+/** 将普通执行资格绑定映射为列表摘要。 */
 export function getShopExecutionDeviceSummary(
   shop: ShopListItemViewModel,
 ): ShopExecutionDeviceSummary {
-  const names = [
-    ...(shop.executionDeviceName ? [shop.executionDeviceName] : []),
-    ...shop.backupDeviceNames,
-  ]
+  const names = shop.executionDeviceNames
 
   return {
     count: names.length,

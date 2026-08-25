@@ -9,7 +9,10 @@ import {
   validateAutomationParameters,
 } from '@/entities/automation-application'
 import type { ProviderApplicationViewModel } from '@/entities/device'
-import { ShopSelector } from '@/entities/shop'
+import {
+  ShopMultiSelector,
+  useDeviceShopSelectionOptionsQuery,
+} from '@/entities/shop'
 import { useCreateTaskMutation } from '@/entities/task'
 import { getErrorMessage } from '@/shared/api'
 import { AppDialog } from '@/shared/ui'
@@ -27,7 +30,12 @@ const message = useMessage()
 const appId = computed(() => props.application?.appId ?? null)
 const configQuery = useAutomationApplicationConfigQuery(appId)
 const createTask = useCreateTaskMutation()
-const shopId = ref<string | null>(null)
+const shopIds = ref<string[]>([])
+const shopSelectionKey = ref('')
+const shopOptionsQuery = useDeviceShopSelectionOptionsQuery(
+  computed(() => props.deviceId),
+)
+const shopOptions = computed(() => shopOptionsQuery.data.value ?? [])
 const params = ref<Record<string, unknown>>({})
 const hasConfigData = computed(() => configQuery.data.value !== undefined)
 const configInitialLoading = computed(
@@ -39,7 +47,7 @@ const configInitialError = computed(
 const runDisabledReason = computed(() => {
   if (!props.application) return '当前 Application 不可用'
   if (!props.deviceId) return '当前未选择目标设备'
-  if (!shopId.value) return '请选择本次任务使用的店铺账号'
+  if (!shopIds.value.length) return '请至少选择一个本次执行的店铺账号'
   if (configInitialLoading.value) return '正在读取参数配置'
   if (configInitialError.value) return '参数配置加载失败，暂时无法运行'
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
@@ -58,15 +66,31 @@ watch(
 )
 
 watch(
-  () => props.show,
-  (show) => {
-    if (show) shopId.value = null
+  [
+    () => props.show,
+    () => props.deviceId,
+    () => props.application?.appId,
+    () => shopOptionsQuery.data.value,
+  ],
+  ([show, deviceId, applicationId, options]) => {
+    if (!show) {
+      shopSelectionKey.value = ''
+      shopIds.value = []
+      return
+    }
+    if (!deviceId || !applicationId || options === undefined) return
+    const key = `${deviceId}:${applicationId}`
+    if (shopSelectionKey.value === key) return
+    shopSelectionKey.value = key
+    shopIds.value = options
+      .filter((option) => !option.disabled)
+      .map((option) => option.value)
   },
   { immediate: true },
 )
 
 async function run(): Promise<void> {
-  if (!props.application || !props.deviceId || !shopId.value) return
+  if (!props.application || !props.deviceId || !shopIds.value.length) return
   if (runDisabledReason.value) {
     message.error(runDisabledReason.value)
     return
@@ -80,7 +104,7 @@ async function run(): Promise<void> {
   try {
     const task = await createTask.mutateAsync({
       target_device_id: props.deviceId,
-      shop_id: shopId.value,
+      shop_ids: [...shopIds.value],
       skill_id: 'yingdao.app.run',
       input: { app_id: props.application.appId, params: { ...params.value } },
     })
@@ -106,7 +130,11 @@ async function run(): Promise<void> {
   >
     <NForm label-placement="top">
       <NFormItem label="店铺账号" required>
-        <ShopSelector v-model="shopId" />
+        <ShopMultiSelector
+          v-model="shopIds"
+          :options="shopOptions"
+          :loading="shopOptionsQuery.isPending.value"
+        />
       </NFormItem>
       <AutomationParameterFields
         v-model="params"

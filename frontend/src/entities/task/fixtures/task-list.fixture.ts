@@ -119,7 +119,7 @@ export function taskFixtureToDetail(item: TaskListItemReadDto): TaskReadDto {
   return {
     task_id: item.task_id,
     target_device_id: item.target_device_id,
-    shop_id: null,
+    shop_ids: [],
     skill_id: item.skill_id,
     execution_display_name: item.execution_display_name,
     status: item.status,

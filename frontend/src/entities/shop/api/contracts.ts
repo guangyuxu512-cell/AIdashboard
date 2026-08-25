@@ -1,5 +1,4 @@
 export type BackendShopPlatform = 'douyin' | 'pdd'
-export type BindingRoleDto = 'primary' | 'backup'
 export type ShopSessionStatusDto =
   | 'not_configured'
   | 'captured'
@@ -43,7 +42,6 @@ export interface ShopUpdateDto {
 export interface ShopDeviceBindingReadDto {
   shop_id: string
   device_id: string
-  binding_role: BindingRoleDto
   enabled: boolean
   created_at: string
   updated_at: string
@@ -51,11 +49,9 @@ export interface ShopDeviceBindingReadDto {
 
 export interface ShopDeviceBindingCreateDto {
   device_id: string
-  binding_role: BindingRoleDto
   enabled: boolean
 }
 
 export interface ShopDeviceBindingUpdateDto {
-  binding_role?: BindingRoleDto
   enabled?: boolean
 }

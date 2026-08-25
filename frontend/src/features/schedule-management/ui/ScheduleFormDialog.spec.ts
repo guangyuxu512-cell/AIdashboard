@@ -3,7 +3,8 @@ import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BusinessSkillCatalogItemViewModel } from '@/entities/business-skill'
-import { ShopSelector } from '@/entities/shop'
+import type { ScheduleDetailViewModel } from '@/entities/schedule'
+import { ShopMultiSelector } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import SchemaParameterFields from '@/shared/components/SchemaParameterFields.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
@@ -15,6 +16,7 @@ const queryMocks = vi.hoisted(() => ({
   business: null as unknown,
   inventory: null as unknown,
   config: null as unknown,
+  shops: null as unknown,
 }))
 
 vi.mock('@/entities/business-skill', async (importOriginal) => ({
@@ -30,6 +32,11 @@ vi.mock('@/entities/device', async (importOriginal) => ({
 vi.mock('@/entities/automation-application', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/automation-application')>()),
   useAutomationApplicationConfigQuery: () => queryMocks.config,
+}))
+
+vi.mock('@/entities/shop', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/shop')>()),
+  useDeviceShopSelectionOptionsQuery: () => queryMocks.shops,
 }))
 
 const skill: BusinessSkillCatalogItemViewModel = {
@@ -74,6 +81,15 @@ beforeEach(() => {
     isPending: ref(false),
     error: ref(null),
   }
+  queryMocks.shops = {
+    data: ref([
+      { label: '店铺一', value: 'shop-fixture-001' },
+      { label: '店铺二', value: 'shop-fixture-002' },
+      { label: '店铺三', value: 'shop-fixture-003' },
+    ]),
+    isPending: ref(false),
+    error: ref(null),
+  }
 })
 
 function mountDialog() {
@@ -88,15 +104,45 @@ function mountDialog() {
   })
 }
 
+const savedSchedule: ScheduleDetailViewModel = {
+  scheduleId: 'schedule-1',
+  name: '已保存计划',
+  enabled: true,
+  deviceId: 'device-1',
+  shopIds: ['shop-fixture-001', 'shop-fixture-003'],
+  deviceName: '设备一',
+  executionType: 'business_skill',
+  executionTypeDisplay: '业务 Skill',
+  skillId: 'catalog.fixture.run',
+  executionName: '目录测试能力',
+  scheduleType: 'daily',
+  localTime: '09:00',
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  triggerRuleDisplay: '每日 09:00',
+  nextRunAt: null,
+  nextRunAtDisplay: '—',
+  latestRun: null,
+  createdAt: '2026-08-26T00:00:00Z',
+  createdAtDisplay: '2026-08-26 08:00',
+  updatedAt: '2026-08-26T00:00:00Z',
+  updatedAtDisplay: '2026-08-26 08:00',
+  applicationId: null,
+  parameters: { keyword: 'saved' },
+}
+
 async function chooseBusinessSkill(
   wrapper: ReturnType<typeof mountDialog>,
 ): Promise<void> {
   const selects = wrapper.findAllComponents(AppSelect)
   selects[0]!.vm.$emit('update:modelValue', 'device-1')
+  await flushPromises()
   selects[1]!.vm.$emit('update:modelValue', 'business_skill')
   wrapper
-    .findComponent(ShopSelector)
-    .vm.$emit('update:modelValue', 'shop-fixture-001')
+    .findComponent(ShopMultiSelector)
+    .vm.$emit('update:modelValue', [
+      'shop-fixture-001',
+      'shop-fixture-003',
+    ])
   await flushPromises()
   const businessSelect = wrapper
     .findAllComponents(AppSelect)
@@ -124,7 +170,7 @@ describe('ScheduleFormDialog Business Skill target', () => {
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
       name: '每日目录测试',
       deviceId: 'device-1',
-      shopId: 'shop-fixture-001',
+      shopIds: ['shop-fixture-001', 'shop-fixture-003'],
       executionType: 'business_skill',
       applicationId: null,
       skillId: 'catalog.fixture.run',
@@ -145,5 +191,28 @@ describe('ScheduleFormDialog Business Skill target', () => {
     expect(wrapper.text()).toContain('当前 Worker 尚未安装业务 Skill')
     expect(wrapper.text()).not.toContain('加载失败')
     expect(wrapper.text()).not.toContain('system.echo')
+  })
+
+  it('keeps the saved shop set when a newly bound shop appears during edit', async () => {
+    ;(
+      queryMocks.shops as {
+        data: { value: Array<{ label: string; value: string }> }
+      }
+    ).data.value.push({ label: '后来绑定店铺', value: 'shop-fixture-004' })
+    const wrapper = shallowMount(ScheduleFormDialog, {
+      props: {
+        show: true,
+        mode: 'edit',
+        schedule: savedSchedule,
+        deviceOptions: [{ label: '设备一', value: 'device-1' }],
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+
+    expect(wrapper.findComponent(ShopMultiSelector).props('modelValue')).toEqual([
+      'shop-fixture-001',
+      'shop-fixture-003',
+    ])
   })
 })

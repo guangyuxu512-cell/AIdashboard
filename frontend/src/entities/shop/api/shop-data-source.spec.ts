@@ -20,19 +20,17 @@ describe('shop query and mutation data source', () => {
     ])
   })
 
-  it('provides one shared selector option list and disables inactive shops', async () => {
+  it('provides only enabled shops through the shared selector source', async () => {
     const source = createMockShopDataSource()
     await source.setEnabled('shop-fixture-001', false)
 
     const options = await source.listSelectionOptions()
 
-    expect(options).toContainEqual({
-      label: '星河服饰旗舰店',
-      value: 'shop-fixture-001',
-      disabled: true,
-    })
+    expect(options.some((option) => option.value === 'shop-fixture-001')).toBe(
+      false,
+    )
     expect(options.find((option) => option.value === 'shop-fixture-002')).toEqual(
-      expect.objectContaining({ disabled: false }),
+      expect.objectContaining({ label: '海风家居生活馆' }),
     )
   })
 
@@ -90,19 +88,17 @@ describe('shop query and mutation data source', () => {
     })
     await source.updateBinding(identified.shopId, {
       deviceId: 'device-fixture-001',
-      bindingRole: 'primary',
       enabled: false,
     })
     await source.createBinding(identified.shopId, {
       deviceId: 'device-fixture-002',
-      bindingRole: 'primary',
       enabled: true,
     })
     const rebound = await source.get(identified.shopId)
 
     expect(updated.shopName).toBe('星河服饰旗舰店')
     expect(updated.platform).toBe('douyin')
-    expect(rebound.executionDeviceId).toBe('device-fixture-002')
+    expect(rebound.executionDeviceIds).toEqual(['device-fixture-002'])
     expect(
       rebound.deviceBindings?.find(
         (binding) => binding.deviceId === 'device-fixture-001',

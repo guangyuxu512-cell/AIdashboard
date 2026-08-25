@@ -59,7 +59,7 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
   },
   {
     title: '执行设备',
-    key: 'executionDeviceName',
+    key: 'executionDeviceNames',
     width: 148,
     align: 'center',
     ellipsis: { tooltip: true },

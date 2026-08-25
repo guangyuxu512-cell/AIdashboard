@@ -31,16 +31,10 @@ export function mapShopDto(
   const deviceNames = new Map(
     context.devices.map((device) => [device.device_id, device.display_name]),
   )
-  const primaryBinding = context.bindings.find(
-    (binding) => binding.enabled && binding.binding_role === 'primary',
-  )
-  const backupDeviceNames = context.bindings
-    .filter((binding) => binding.enabled && binding.binding_role === 'backup')
-    .map((binding) => deviceNames.get(binding.device_id) ?? '未知设备')
+  const activeBindings = context.bindings.filter((binding) => binding.enabled)
   const deviceBindings = context.bindings.map((binding) => ({
     deviceId: binding.device_id,
     deviceName: deviceNames.get(binding.device_id) ?? '未知设备',
-    bindingRole: binding.binding_role,
     enabled: binding.enabled,
   }))
 
@@ -58,11 +52,10 @@ export function mapShopDto(
     loginStatus: 'session_status' in dto
       ? (dto.session_status ?? 'not_configured')
       : 'not_configured',
-    executionDeviceId: primaryBinding?.device_id ?? null,
-    executionDeviceName: primaryBinding
-      ? (deviceNames.get(primaryBinding.device_id) ?? '未知设备')
-      : null,
-    backupDeviceNames,
+    executionDeviceIds: activeBindings.map((binding) => binding.device_id),
+    executionDeviceNames: activeBindings.map(
+      (binding) => deviceNames.get(binding.device_id) ?? '未知设备',
+    ),
     deviceBindings,
     createdAtDisplay: formatDateTime(dto.created_at),
     updatedAtDisplay: formatDateTime(dto.updated_at),

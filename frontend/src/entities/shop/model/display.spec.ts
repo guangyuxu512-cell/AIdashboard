@@ -4,7 +4,7 @@ import { SHOP_LIST_FIXTURE } from '../fixtures/shop-list.fixture'
 import { getShopExecutionDeviceSummary } from './display'
 
 describe('getShopExecutionDeviceSummary', () => {
-  it('summarizes primary and backup device bindings', () => {
+  it('summarizes ordinary execution-qualified device bindings', () => {
     expect(getShopExecutionDeviceSummary(SHOP_LIST_FIXTURE[2])).toEqual({
       count: 3,
       label: '深圳-工作站-03 +2',

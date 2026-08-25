@@ -13,12 +13,9 @@ export type ShopLoginStatus =
   | 'valid'
   | 'invalid'
   | 'refresh_required'
-export type ShopDeviceBindingRole = 'primary' | 'backup'
-
 export interface ShopDeviceBindingViewModel {
   deviceId: string
   deviceName: string
-  bindingRole: ShopDeviceBindingRole
   enabled: boolean
 }
 
@@ -37,9 +34,8 @@ export interface ShopListItemViewModel {
   enabled: boolean
   enabledStatus: ShopEnabledStatus
   loginStatus: ShopLoginStatus
-  executionDeviceId: string | null
-  executionDeviceName: string | null
-  backupDeviceNames: string[]
+  executionDeviceIds: string[]
+  executionDeviceNames: string[]
   deviceBindings?: ShopDeviceBindingViewModel[]
   createdAtDisplay: string
   updatedAtDisplay: string
@@ -64,7 +60,6 @@ export interface ShopSaveInput {
 
 export interface ShopDeviceBindingInput {
   deviceId: string
-  bindingRole: ShopDeviceBindingRole
   enabled: boolean
 }
 

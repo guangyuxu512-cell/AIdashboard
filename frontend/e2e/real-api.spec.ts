@@ -25,10 +25,10 @@ function cleanupRealTestData(): void {
     'from app.modules.automation_apps.models import AutomationApplicationConfig',
     'from app.modules.devices.models import Device',
     'from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding',
-    'from app.modules.schedules.models import Schedule, ScheduleRun',
+    'from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop',
     'from app.modules.sessions.models import ShopSession',
     'from app.modules.shops.models import Shop, ShopDeviceBinding',
-    'from app.modules.tasks.models import Task, TaskEvent',
+    'from app.modules.tasks.models import Task, TaskEvent, TaskShop',
     'from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential',
     `prefix = ${JSON.stringify(`${testPrefix}%`)}`,
     'with Session(get_database_engine()) as session:',
@@ -36,6 +36,20 @@ function cleanupRealTestData(): void {
     '    session.execute(delete(AutomationApplicationConfig).where(AutomationApplicationConfig.app_id.like(prefix)))',
     '    shop_ids = list(session.scalars(select(Shop.shop_id).where(Shop.display_name.like(prefix))))',
     '    device_ids = list(session.scalars(select(Device.device_id).where(Device.display_name.like(prefix))))',
+    '    schedule_ids = set(session.scalars(select(Schedule.schedule_id).where(Schedule.target_device_id.in_(device_ids)))) if device_ids else set()',
+    '    if shop_ids:',
+    '        schedule_ids.update(session.scalars(select(ScheduleShop.schedule_id).where(ScheduleShop.shop_id.in_(shop_ids))))',
+    '    if schedule_ids:',
+    '        session.execute(delete(ScheduleRun).where(ScheduleRun.schedule_id.in_(schedule_ids)))',
+    '        session.execute(delete(ScheduleShop).where(ScheduleShop.schedule_id.in_(schedule_ids)))',
+    '        session.execute(delete(Schedule).where(Schedule.schedule_id.in_(schedule_ids)))',
+    '    task_ids = set(session.scalars(select(Task.task_id).where(Task.target_device_id.in_(device_ids)))) if device_ids else set()',
+    '    if shop_ids:',
+    '        task_ids.update(session.scalars(select(TaskShop.task_id).where(TaskShop.shop_id.in_(shop_ids))))',
+    '    if task_ids:',
+    '        session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))',
+    '        session.execute(delete(TaskShop).where(TaskShop.task_id.in_(task_ids)))',
+    '        session.execute(delete(Task).where(Task.task_id.in_(task_ids)))',
     '    if shop_ids:',
     '        credential_ids = list(session.scalars(select(ShopCredentialBinding.credential_id).where(ShopCredentialBinding.shop_id.in_(shop_ids))))',
     '        session.execute(delete(ShopSession).where(ShopSession.shop_id.in_(shop_ids)))',
@@ -46,13 +60,6 @@ function cleanupRealTestData(): void {
     '        session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))',
     '    if device_ids:',
     '        session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.device_id.in_(device_ids)))',
-    '        schedule_ids = list(session.scalars(select(Schedule.schedule_id).where(Schedule.target_device_id.in_(device_ids))))',
-    '        if schedule_ids:',
-    '            session.execute(delete(ScheduleRun).where(ScheduleRun.schedule_id.in_(schedule_ids)))',
-    '            session.execute(delete(Schedule).where(Schedule.schedule_id.in_(schedule_ids)))',
-    '        task_ids = select(Task.task_id).where(Task.target_device_id.in_(device_ids))',
-    '        session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))',
-    '        session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))',
     '        session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id.in_(device_ids)))',
     '        session.execute(delete(DeviceProviderInventory).where(DeviceProviderInventory.device_id.in_(device_ids)))',
     '        session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)))',
@@ -75,6 +82,7 @@ function forceScheduleDue(scheduleId: string): void {
     'from app.core.database import get_database_engine',
     'from app.modules.devices.models import Device',
     'from app.modules.schedules.models import Schedule',
+    'from app.modules.shops.models import Shop',
     'from app.modules.tasks.models import Task',
     `schedule_id = UUID(${JSON.stringify(scheduleId)})`,
     'with Session(get_database_engine()) as session:',
@@ -251,6 +259,7 @@ function seedTaskQueryFixtures(deviceId: string): {
     'from sqlalchemy.orm import Session',
     'from app.core.database import get_database_engine',
     'from app.modules.devices.models import Device',
+    'from app.modules.shops.models import Shop',
     'from app.modules.tasks.enums import TaskStatus',
     'from app.modules.tasks.models import Task, TaskEvent',
     `device_id = UUID(${JSON.stringify(deviceId)})`,
@@ -379,6 +388,36 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
       })
     ).ok(),
   ).toBe(true)
+  const shopIds: string[] = []
+  for (const position of [1, 2]) {
+    const shopResponse = await page.request.post('/api/v1/shops', {
+      data: {
+        display_name: `${testPrefix}scheduler-shop-${position}`,
+        platform: 'douyin',
+      },
+    })
+    expect(shopResponse.status()).toBe(201)
+    const shopId = ((await shopResponse.json()) as { shop_id: string }).shop_id
+    shopIds.push(shopId)
+    expect(
+      (
+        await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
+          data: { device_id: identity.deviceId },
+        })
+      ).ok(),
+    ).toBe(true)
+    expect(
+      (
+        await page.request.post('/api/v1/credentials', {
+          data: {
+            shop_id: shopId,
+            login_identifier: `${testPrefix}scheduler-account-${position}`,
+            secret: `${testPrefix}scheduler-secret-${position}`,
+          },
+        })
+      ).ok(),
+    ).toBe(true)
+  }
   expect(
     (
       await page.request.put(
@@ -409,6 +448,7 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
     data: {
       name: scheduleName,
       target_device_id: identity.deviceId,
+      shop_ids: shopIds,
       application_id: applicationId,
       parameters: { message: 'scheduler-real-e2e' },
       schedule_type: 'daily',
@@ -463,7 +503,12 @@ test('creates one real Schedule Run and follows its ordinary Task lifecycle', as
     headers: workerHeaders,
   })
   expect(claimResponse.ok()).toBe(true)
-  expect((await claimResponse.json()).task_id).toBe(run.task_id)
+  const claimedTask = (await claimResponse.json()) as {
+    task_id: string
+    accounts: Array<{ shop_id: string }>
+  }
+  expect(claimedTask.task_id).toBe(run.task_id)
+  expect(claimedTask.accounts.map((account) => account.shop_id)).toEqual(shopIds)
   const eventAt = new Date().toISOString()
   expect(
     (
@@ -658,6 +703,32 @@ test('creates a Business Skill Schedule from the real device catalog and reuses 
       availability: 'available',
     }),
   ])
+  const shopResponse = await page.request.post('/api/v1/shops', {
+    data: {
+      display_name: `${testPrefix}business-skill-shop`,
+      platform: 'douyin',
+    },
+  })
+  expect(shopResponse.status()).toBe(201)
+  const shopId = ((await shopResponse.json()) as { shop_id: string }).shop_id
+  expect(
+    (
+      await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
+        data: { device_id: identity.deviceId },
+      })
+    ).ok(),
+  ).toBe(true)
+  expect(
+    (
+      await page.request.post('/api/v1/credentials', {
+        data: {
+          shop_id: shopId,
+          login_identifier: `${testPrefix}business-skill-account`,
+          secret: `${testPrefix}business-skill-secret`,
+        },
+      })
+    ).ok(),
+  ).toBe(true)
 
   await page.goto('/#/schedules')
   await page.getByRole('button', { name: '+ 新建计划' }).click()
@@ -672,6 +743,11 @@ test('creates a Business Skill Schedule from the real device catalog and reuses 
     .locator('.n-base-select-option')
     .filter({ hasText: deviceName })
     .click()
+  await expect(
+    dialog.getByRole('checkbox', {
+      name: `${testPrefix}business-skill-shop`,
+    }),
+  ).toBeChecked()
   await dialog
     .locator('.n-form-item')
     .filter({ hasText: '执行类型' })
@@ -1143,6 +1219,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     data: { display_name: shopName, platform: 'douyin' },
   })
   expect(createResponse.ok()).toBe(true)
+  const shopId = ((await createResponse.json()) as { shop_id: string }).shop_id
   await page.reload()
   await expect(page.getByText(shopName, { exact: true })).toBeVisible()
 
@@ -1239,6 +1316,13 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .getByRole('button', { name: '关闭', exact: true })
     .click()
   const workerIdentity = issueWorkerIdentity(updatedDeviceName)
+  expect(
+    (
+      await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
+        data: { device_id: workerIdentity.deviceId },
+      })
+    ).ok(),
+  ).toBe(true)
   const workerHeaders = {
     Authorization: `Bearer ${workerIdentity.token}`,
     'X-Device-ID': workerIdentity.deviceId,
@@ -1362,7 +1446,14 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   const runDialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: '运行应用 · 影刀应用 E2E' }),
   })
-  await runDialog.getByRole('textbox').fill('hello')
+  await expect(
+    runDialog.getByRole('checkbox', { name: updatedShopName }),
+  ).toBeChecked()
+  await runDialog
+    .locator('.n-form-item')
+    .filter({ hasText: '测试消息' })
+    .getByRole('textbox')
+    .fill('hello')
   await runDialog.getByRole('button', { name: '运行', exact: true }).click()
   const runtimeDrawer = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: '运行详情' }),
@@ -1386,13 +1477,6 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .filter({ hasText: updatedShopName })
     .getByRole('button', { name: '查看' })
     .click()
-  await page.getByRole('button', { name: '绑定设备', exact: true }).click()
-  await page.getByRole('dialog').last().getByRole('textbox').click()
-  await page
-    .locator('.n-base-select-option')
-    .filter({ hasText: updatedDeviceName })
-    .click()
-  await page.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText(updatedDeviceName).last()).toBeVisible()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
@@ -1506,7 +1590,7 @@ test('persists Shop.enabled and safely soft-removes a dedicated real Shop', asyn
   expect(
     (
       await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
-        data: { device_id: deviceId, binding_role: 'primary' },
+        data: { device_id: deviceId },
       })
     ).ok(),
   ).toBe(true)
@@ -1572,7 +1656,7 @@ test('protects active Device tasks and revokes every Worker endpoint after soft 
   expect(
     (
       await page.request.post(`/api/v1/shops/${shopId}/device-bindings`, {
-        data: { device_id: deviceId, binding_role: 'primary' },
+        data: { device_id: deviceId },
       })
     ).ok(),
   ).toBe(true)

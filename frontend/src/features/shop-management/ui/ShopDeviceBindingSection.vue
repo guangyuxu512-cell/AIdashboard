@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, ref } from 'vue'
 import { NForm, NFormItem, useMessage, type SelectOption } from 'naive-ui'
 
 import {
@@ -12,14 +12,12 @@ import {
   useCreateShopDeviceBindingMutation,
   useUpdateShopDeviceBindingMutation,
   type ShopDeviceBindingInput,
-  type ShopDeviceBindingRole,
   type ShopListItemViewModel,
 } from '@/entities/shop'
 import { getErrorMessage } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
-import AppRadio from '@/shared/ui/AppRadio.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOptionValue } from '@/shared/ui/types'
 
@@ -28,7 +26,6 @@ const props = defineProps<{ shop: ShopListItemViewModel }>()
 const message = useMessage()
 const dialogVisible = ref(false)
 const selectedDeviceId = ref<string | null>(null)
-const selectedRole = ref<ShopDeviceBindingRole>('backup')
 const deviceParams = {
   page: 1,
   pageSize: 100,
@@ -48,50 +45,30 @@ const devices = computed(() => deviceQuery.data.value?.items ?? [])
 const activeBindings = computed(() =>
   (props.shop.deviceBindings ?? []).filter((binding) => binding.enabled),
 )
-const primaryBinding = computed(() =>
-  activeBindings.value.find((binding) => binding.bindingRole === 'primary'),
-)
-const backupBindings = computed(() =>
-  activeBindings.value.filter((binding) => binding.bindingRole === 'backup'),
-)
 const submitting = computed(
   () =>
     createBindingMutation.isPending.value ||
     updateBindingMutation.isPending.value,
+)
+const deviceOptions = computed<SelectOption[]>(() =>
+  devices.value.map((device) => ({
+    label: device.deviceName,
+    value: device.deviceId,
+    disabled: activeBindings.value.some(
+      (binding) => binding.deviceId === device.deviceId,
+    ),
+    device,
+  })),
 )
 
 function deviceFor(deviceId: string): DeviceListItemViewModel | undefined {
   return devices.value.find((device) => device.deviceId === deviceId)
 }
 
-function openBinding(role?: ShopDeviceBindingRole): void {
-  selectedRole.value = role ?? (primaryBinding.value ? 'backup' : 'primary')
+function openBinding(): void {
   selectedDeviceId.value = null
   dialogVisible.value = true
 }
-
-const deviceOptions = computed<SelectOption[]>(() =>
-  devices.value.map((device) => {
-    const binding = activeBindings.value.find(
-      (item) => item.deviceId === device.deviceId,
-    )
-    const canPromoteBackup =
-      selectedRole.value === 'primary' && binding?.bindingRole === 'backup'
-    return {
-      label: device.deviceName,
-      value: device.deviceId,
-      disabled: Boolean(binding && !canPromoteBackup),
-      device,
-    }
-  }),
-)
-
-watch(selectedRole, () => {
-  const option = deviceOptions.value.find(
-    (item) => item.value === selectedDeviceId.value,
-  )
-  if (option?.disabled) selectedDeviceId.value = null
-})
 
 function renderDeviceLabel(option: SelectOption) {
   const device = option.device as DeviceListItemViewModel
@@ -114,12 +91,12 @@ async function saveBinding(input: ShopDeviceBindingInput): Promise<void> {
       shopId: props.shop.shopId,
       input,
     })
-  } else {
-    await createBindingMutation.mutateAsync({
-      shopId: props.shop.shopId,
-      input,
-    })
+    return
   }
+  await createBindingMutation.mutateAsync({
+    shopId: props.shop.shopId,
+    input,
+  })
 }
 
 async function submitBinding(): Promise<void> {
@@ -127,61 +104,20 @@ async function submitBinding(): Promise<void> {
     message.warning('请选择设备')
     return
   }
-  const nextBinding: ShopDeviceBindingInput = {
-    deviceId: selectedDeviceId.value,
-    bindingRole: selectedRole.value,
-    enabled: true,
-  }
-  const oldPrimary = primaryBinding.value
-  let oldPrimaryDisabled = false
   try {
-    if (
-      nextBinding.bindingRole === 'primary' &&
-      oldPrimary &&
-      oldPrimary.deviceId !== nextBinding.deviceId
-    ) {
-      await updateBindingMutation.mutateAsync({
-        shopId: props.shop.shopId,
-        input: {
-          deviceId: oldPrimary.deviceId,
-          bindingRole: 'primary',
-          enabled: false,
-        },
-      })
-      oldPrimaryDisabled = true
-    }
-    await saveBinding(nextBinding)
+    await saveBinding({ deviceId: selectedDeviceId.value, enabled: true })
     dialogVisible.value = false
-    message.success(
-      nextBinding.bindingRole === 'primary' ? '主设备已更新' : '备用设备已绑定',
-    )
+    message.success('执行设备已绑定')
   } catch (error) {
-    if (oldPrimaryDisabled && oldPrimary) {
-      try {
-        await updateBindingMutation.mutateAsync({
-          shopId: props.shop.shopId,
-          input: {
-            deviceId: oldPrimary.deviceId,
-            bindingRole: 'primary',
-            enabled: true,
-          },
-        })
-      } catch {
-        message.error('主设备恢复失败，请刷新后检查绑定状态')
-      }
-    }
     message.error(getErrorMessage(error))
   }
 }
 
-async function unbind(
-  deviceId: string,
-  role: ShopDeviceBindingRole,
-): Promise<void> {
+async function unbind(deviceId: string): Promise<void> {
   try {
     await updateBindingMutation.mutateAsync({
       shopId: props.shop.shopId,
-      input: { deviceId, bindingRole: role, enabled: false },
+      input: { deviceId, enabled: false },
     })
     message.success('设备已解绑')
   } catch (error) {
@@ -194,56 +130,28 @@ async function unbind(
   <section class="shop-device-bindings">
     <div class="shop-device-bindings__heading">
       <h3>执行设备</h3>
-      <AppButton tone="text" @click="openBinding()">+ 绑定设备</AppButton>
+      <AppButton tone="text" @click="openBinding">+ 绑定设备</AppButton>
     </div>
 
-    <div v-if="primaryBinding" class="shop-device-bindings__group">
-      <span class="shop-device-bindings__label">主设备</span>
-      <div class="shop-device-bindings__row">
-        <DeviceIdentity :name="primaryBinding.deviceName" />
-        <DeviceConnectionStatusTag
-          :status="
-            deviceFor(primaryBinding.deviceId)?.runtimeStatus ?? 'unavailable'
-          "
-        />
-        <div class="shop-device-bindings__actions">
-          <AppButton tone="text" @click="openBinding('primary')"
-            >更换</AppButton
-          >
-          <AppButton
-            tone="text"
-            @click="unbind(primaryBinding.deviceId, 'primary')"
-          >
-            解绑
-          </AppButton>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="backupBindings.length" class="shop-device-bindings__group">
-      <span class="shop-device-bindings__label">备用设备</span>
-      <div
-        v-for="binding in backupBindings"
-        :key="binding.deviceId"
-        class="shop-device-bindings__row"
-      >
-        <DeviceIdentity :name="binding.deviceName" />
-        <DeviceConnectionStatusTag
-          :status="deviceFor(binding.deviceId)?.runtimeStatus ?? 'unavailable'"
-        />
-        <div class="shop-device-bindings__actions">
-          <AppButton tone="text" @click="unbind(binding.deviceId, 'backup')">
-            解绑
-          </AppButton>
-        </div>
+    <div
+      v-for="binding in activeBindings"
+      :key="binding.deviceId"
+      class="shop-device-bindings__row"
+    >
+      <DeviceIdentity :name="binding.deviceName" />
+      <DeviceConnectionStatusTag
+        :status="deviceFor(binding.deviceId)?.runtimeStatus ?? 'unavailable'"
+      />
+      <div class="shop-device-bindings__actions">
+        <AppButton tone="text" @click="unbind(binding.deviceId)">
+          解绑
+        </AppButton>
       </div>
     </div>
 
     <div v-if="!activeBindings.length" class="shop-device-bindings__empty">
       <span>暂无绑定设备</span>
-      <AppButton tone="primary" @click="openBinding('primary')"
-        >绑定设备</AppButton
-      >
+      <AppButton tone="primary" @click="openBinding">绑定设备</AppButton>
     </div>
 
     <FormDialog
@@ -266,19 +174,9 @@ async function unbind(
             @update:model-value="updateDevice"
           />
         </NFormItem>
-        <NFormItem label="角色">
-          <AppRadio
-            v-model="selectedRole"
-            :options="[
-              { label: '主设备', value: 'primary' },
-              { label: '备用设备', value: 'backup' },
-            ]"
-          />
-        </NFormItem>
         <div class="shop-device-picker__hint">
           <StatusTag label="在线" tone="success" /> 与
-          <StatusTag label="离线" tone="neutral" /> 均可绑定；运行状态来自真实
-          Worker 心跳。
+          <StatusTag label="离线" tone="neutral" /> 均可绑定；绑定只表示该设备有权执行此店铺。
         </div>
       </NForm>
     </FormDialog>
@@ -308,17 +206,6 @@ async function unbind(
   margin: 0;
   font-size: var(--font-size-section-title);
   font-weight: var(--font-weight-semibold);
-}
-
-.shop-device-bindings__group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.shop-device-bindings__label {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
 }
 
 .shop-device-bindings__row {

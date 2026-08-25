@@ -9,7 +9,8 @@ export const shopQueryKeys = {
   list: (params: ShopListParams) => ['shops', 'list', params] as const,
   detail: (shopId: string | null) => ['shops', 'detail', shopId] as const,
   owners: ['shops', 'owners'] as const,
-  selectionOptions: ['shops', 'selection-options'] as const,
+  selectionOptions: (deviceId?: string) =>
+    ['shops', 'selection-options', deviceId ?? 'all'] as const,
 }
 
 export function useShopListQuery(params: MaybeRefOrGetter<ShopListParams>) {
@@ -36,8 +37,20 @@ export function useShopOwnerOptionsQuery() {
 
 export function useShopSelectionOptionsQuery() {
   return useQuery({
-    queryKey: shopQueryKeys.selectionOptions,
+    queryKey: shopQueryKeys.selectionOptions(),
     queryFn: () => shopDataSource.listSelectionOptions(),
+  })
+}
+
+export function useDeviceShopSelectionOptionsQuery(
+  deviceId: MaybeRefOrGetter<string | null>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      shopQueryKeys.selectionOptions(toValue(deviceId) ?? undefined),
+    ),
+    queryFn: () => shopDataSource.listSelectionOptions(toValue(deviceId)!),
+    enabled: computed(() => Boolean(toValue(deviceId))),
   })
 }
 
