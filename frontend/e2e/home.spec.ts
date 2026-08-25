@@ -12,6 +12,14 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
   await page.goto('/')
 
   await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible()
+  await expect(page.getByText('思余AI中控台', { exact: true })).toBeVisible()
+  const brandMark = page.locator('.app-shell__brand-mark')
+  await expect(brandMark).toBeVisible()
+  expect(
+    await brandMark.evaluate((element) =>
+      element instanceof HTMLImageElement ? element.naturalWidth : 0,
+    ),
+  ).toBeGreaterThan(0)
   await expect(
     page.getByRole('heading', { name: 'Design System Playground' }),
   ).toBeVisible()

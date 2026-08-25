@@ -55,6 +55,10 @@ shared/styles/
 Naive UI 统一通过 Theme Override 对接 Token。
 页面统一使用 AppShell、PageHeader、PageSection。
 
+AppShell 默认品牌为“思余AI中控台”。品牌图使用真实 Alpha 透明资产，不携带 Light/Dark 固定
+底板；图像只叠加在 `--bg-sidebar` 上，因此 Light、Dark 与 System 共享同一轮廓并自然跟随主题。
+业务页面不得为品牌图另加不受 Token 控制的背景色。
+
 ## 阶段 0B 已建立 Token
 
 权威文件：`frontend/src/shared/styles/tokens.css`。

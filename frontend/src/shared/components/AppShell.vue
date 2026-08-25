@@ -5,6 +5,7 @@ import { NMenu } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 
+import brandMarkUrl from '@/assets/brand/siyu-ai-mark.png'
 import AppOverlayHost from '@/shared/ui/AppOverlayHost.vue'
 
 export interface AppNavigationModuleItem {
@@ -32,7 +33,7 @@ const props = withDefaults(
     navigation: AppNavigationItem[]
   }>(),
   {
-    appName: '电商 AI 中控台',
+    appName: '思余AI中控台',
     contextLabel: '运营工作台',
   },
 )
@@ -115,7 +116,12 @@ function navigate(key: string): void {
   <div class="app-shell">
     <aside class="app-shell__sidebar">
       <div class="app-shell__brand">
-        <span class="app-shell__brand-mark" aria-hidden="true">控</span>
+        <img
+          class="app-shell__brand-mark"
+          :src="brandMarkUrl"
+          alt=""
+          aria-hidden="true"
+        />
         <div>
           <strong>{{ appName }}</strong>
           <span>{{ contextLabel }}</span>
@@ -193,18 +199,11 @@ function navigate(key: string): void {
 }
 
 .app-shell__brand-mark {
-  display: grid;
-  width: var(--control-height-compact);
+  display: block;
+  width: calc(var(--control-height-compact) + var(--space-2));
   height: var(--control-height-compact);
-  flex: 0 0 var(--control-height-compact);
-  place-items: center;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-control);
-  color: var(--sidebar-text-active);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-card);
-  font-size: var(--font-size-secondary);
-  font-weight: var(--font-weight-semibold);
+  flex: 0 0 calc(var(--control-height-compact) + var(--space-2));
+  object-fit: contain;
 }
 
 .app-shell__brand strong,
