@@ -34,15 +34,19 @@ describe('mobile router', () => {
       '/',
       '/tasks',
       '/tasks/:taskId',
+      '/devices',
+      '/devices/:deviceId',
     ])
   })
 
-  it('registers task list and detail with the frozen public route metadata', () => {
+  it('registers product list and detail routes with frozen public metadata', () => {
     const routes = createMobileRoutes({ runtimeIsDevelopment: false })
 
     for (const routeName of [
       MOBILE_ROUTE_NAMES.tasks,
       MOBILE_ROUTE_NAMES.taskDetail,
+      MOBILE_ROUTE_NAMES.devices,
+      MOBILE_ROUTE_NAMES.deviceDetail,
     ]) {
       const route = routes.find((candidate) => candidate.name === routeName)
       expect(route?.meta).toEqual(
@@ -52,6 +56,14 @@ describe('mobile router', () => {
         }),
       )
     }
+
+    expect(
+      routes.find((route) => route.name === MOBILE_ROUTE_NAMES.devices)?.path,
+    ).toBe('/devices')
+    expect(
+      routes.find((route) => route.name === MOBILE_ROUTE_NAMES.deviceDetail)
+        ?.path,
+    ).toBe('/devices/:deviceId')
   })
 
   it('registers the foundation route only when explicitly enabled', () => {

@@ -28,6 +28,8 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 不复制 Desktop 页面或组件后仅修改 CSS；必须按触控、Safe Area、Sheet/Popup 与手机信息密度重新组合。
 - 没有真实复用或业务需求时不建立万能抽象，也不新增 `components/`、`common/`、`helpers/`、`services/`、`libs/`。
 - Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现，且不得把测试 Fixture 或 Mock DataSource 带入生产代码。
+- Device 的 `enabled`、Worker Runtime/Presence、Provider Inventory 与 Skill Capability 是独立事实；禁止合并成“设备正常”，也禁止根据心跳时间在 Mobile 重算在线状态。
+- Device Center 当前只读；禁止停用、移除、绑定、运行应用、停止任务、重启 Worker 或修改任何 Capability。
 
 ## 完成标准
 

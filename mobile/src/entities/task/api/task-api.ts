@@ -2,6 +2,7 @@ import type { PageDto } from '@/shared/api'
 import { apiClient } from '@/shared/api'
 
 import type {
+  ActiveTaskSummaryReadDto,
   TaskEventListReadDto,
   TaskEventListRequest,
   TaskListItemReadDto,
@@ -25,6 +26,15 @@ export async function getTasks(
 export async function getTask(taskId: string): Promise<TaskReadDto> {
   const response = await apiClient.get<TaskReadDto>(taskPath(taskId))
   return response.data
+}
+
+export async function getActiveTask(
+  deviceId: string,
+): Promise<ActiveTaskSummaryReadDto | null> {
+  const response = await apiClient.get<ActiveTaskSummaryReadDto>(
+    `tasks/active/${encodeURIComponent(deviceId)}`,
+  )
+  return response.status === 204 ? null : response.data
 }
 
 export async function getTaskEvents(

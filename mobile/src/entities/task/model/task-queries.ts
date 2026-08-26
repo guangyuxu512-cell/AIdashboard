@@ -7,19 +7,35 @@ import {
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 
 import type { TaskListRequest } from '../api/contracts'
-import { getTask, getTasks } from '../api/task-api'
+import { getActiveTask, getTask, getTasks } from '../api/task-api'
 import { isTerminalTaskStatus } from './status-meta'
 import { mapTaskListPage } from './task-mapper'
 import type { TaskListFilters, TaskListPage } from './types'
 
 export const TASK_LIST_PAGE_SIZE = 20
 export const TASK_LIST_REFRESH_INTERVAL_MS = 5_000
+export const TASK_ACTIVE_REFRESH_INTERVAL_MS = 5_000
 
 export const taskQueryKeys = {
   all: ['tasks'] as const,
+  activeAll: () => [...taskQueryKeys.all, 'active'] as const,
+  active: (deviceId: string) =>
+    [...taskQueryKeys.activeAll(), deviceId] as const,
   list: (filters: TaskListFilters) =>
     [...taskQueryKeys.all, 'list', filters] as const,
   detail: (taskId: string) => [...taskQueryKeys.all, 'detail', taskId] as const,
+}
+
+export function useActiveTaskQuery(
+  deviceId: MaybeRefOrGetter<string | undefined>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
+  return useQuery({
+    queryKey: computed(() => taskQueryKeys.active(toValue(deviceId) ?? '')),
+    queryFn: () => getActiveTask(toValue(deviceId) ?? ''),
+    enabled: computed(() => Boolean(toValue(deviceId)) && toValue(enabled)),
+    refetchInterval: TASK_ACTIVE_REFRESH_INTERVAL_MS,
+  })
 }
 
 export function getNextTaskPageParam(

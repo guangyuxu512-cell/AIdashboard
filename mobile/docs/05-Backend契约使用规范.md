@@ -94,3 +94,64 @@ Entity 通过 `shared/api` 的 base URL 使用以下相对路径：
 - V1 只读，不调用 Task create，也不存在 Mobile cancel/retry/delete 行为。
 - `result` 只允许读取非空字符串 `summary`；`input` 与其他结果字段不得通用渲染。
 - `error_message` 与 `error_code` 仅按 Backend 已脱敏响应展示，Mobile 不解析内部错误或复制状态机。
+
+## 7. Device Center V1 已冻结只读契约
+
+Device Center 只经 Entity API 和 `shared/api` 读取以下正式接口：
+
+| 方法 | 相对路径                                   | 参数/响应                                                     |
+| ---- | ------------------------------------------ | ------------------------------------------------------------- |
+| GET  | `devices`                                  | `page`、`page_size`；`Page[DeviceRead]`，按 `created_at DESC` |
+| GET  | `devices/{device_id}`                      | `DeviceRead`；不存在或已软移除为 `DEVICE_NOT_FOUND`           |
+| GET  | `tasks/active/{device_id}`                 | `ActiveTaskSummaryRead`；已知设备无活动任务为 204 无 Body     |
+| GET  | `devices/{device_id}/provider-inventories` | `DeviceProviderInventoryRead[]`，无分页                       |
+| GET  | `devices/{device_id}/skill-capabilities`   | `DeviceSkillCapabilityRead[]`，无分页                         |
+
+### Device 与 Runtime
+
+`DeviceRead` 的正式字段为 `device_id`、`display_name`、`enabled`、`location`、
+`note`、`deleted_at`、`worker_runtime`、`created_at`、`updated_at`。
+`worker_runtime` 可为 `null`；非空时包含 `device_id`、`worker_version`、
+`connection_status = online | offline`、`last_seen_at`、`started_at`、`updated_at`。
+
+- `enabled` 只表示能否承接新 Task，不等于在线；停用设备仍可能真实在线。
+- `worker_runtime=null` 表示没有 Runtime 记录，不得猜成 offline。
+- Mobile 直接展示 Backend 持久化的 `connection_status`。心跳默认 15 秒、在线超时默认 45 秒、离线协调默认 10 秒都属于 Backend 可配置实现，API 不返回当前阈值；Mobile 禁止用 `last_seen_at` 重算状态。
+- `last_seen_at` 只用于显示最后心跳时间，DTO 不提供 `offline_since`。
+
+### 当前任务
+
+活动任务仅为 `pending | running`，字段为 `task_id`、`target_device_id`、`skill_id`、
+`execution_display_name`、`status`、`started_at`、`created_at`、`latest_event`。存在多条时
+Backend 按 `created_at ASC, task_id ASC` 返回最早一条；`latest_event` 复用正式 Task Event DTO。
+
+该接口不验证 Device 是否存在，因此只有在 Device List/Detail 已确认设备有效后，204 才能解释为“空闲”。列表没有批量 Current Task API，Mobile 对可见设备独立查询；辅助请求失败不能覆盖 Device 主查询成功状态。点击活动任务必须进入现有 `/tasks/:taskId`，不得复制 Task DTO、状态映射或详情页。
+
+### Provider 与 Skill 快照
+
+Provider Inventory 当前只有 `provider_code = yingdao`。外层字段为 `device_id`、
+`provider_code`、`available`、`provider_version`、`account_display`、`account_type`、
+`enterprise_account`、`last_discovered_at`、`inventory`、`updated_at`。
+影刀 `inventory.status` 仅允许：
+
+```text
+not_installed | version_unsupported | starting | need_login |
+interface_unreachable | ready
+```
+
+`available`、`status`、`execution_available`、`logged_in` 是不同事实；原因、版本和账号按
+正式 DTO 展示，`applications` 只取正式数组长度作为摘要。200 `[]` 表示 API 没有可返回快照，不能解释为 Provider 正常或异常。快照在 Worker 离线后仍保留，且 Contract 没有 freshness TTL。
+
+Skill Capability 字段为 `device_id`、`skill_id`、`display_name`、
+`runtime = python | rpa | discovery`、`provider`、`version`、
+`classification = internal | business | null`、`input_schema`、`updated_at`。
+`classification=null` 是正式兼容状态，不能猜成 business。Skill 快照不代表 Device 在线、启用、Provider ready 或可创建 Task；V1 只在详情按 business/internal/unclassified 计数。
+
+### 查询与 Contract Gap
+
+- Device List 只支持 `page/page_size`，没有搜索或状态筛选；Mobile 不获取全量后伪造服务端搜索。
+- Provider 与 Skill 只在详情加载，列表不发出大数组 N+1 请求。
+- Backend 没有 Device + Current Task + Provider + Skill 聚合接口，也没有 Current Task 批量接口。
+- Provider/Skill 的空数组无法区分“从未上报”和“明确上报空快照”；Provider 没有 freshness 标记。
+- Backend 尚无员工 Auth、JWT、RBAC 或 Data Scope；Worker Device Token 永远不能给 Mobile 使用。
+- V1 不调用 Device 创建、更新、移除、绑定、Credential、Task 创建或任何 Worker 写接口，Backend 本轮不修改。
