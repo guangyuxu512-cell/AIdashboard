@@ -1,25 +1,62 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import {
-  ConfigProvider as VanConfigProvider,
-  NavBar as VanNavBar,
-  Tabbar as VanTabbar,
-  TabbarItem as VanTabbarItem,
-} from 'vant'
+import { ConfigProvider as VanConfigProvider, showToast } from 'vant'
 import { computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import { useThemeStore } from '@/app/stores/theme'
-import { MobileAppShell } from '@/shared/ui'
+import {
+  MobileAppShell,
+  MobileBottomNavigation,
+  MobileDetailHeader,
+  MobileGlobalHeader,
+} from '@/shared/ui'
 
 const route = useRoute()
 const router = useRouter()
 const themeStore = useThemeStore()
 const { resolvedTheme } = storeToRefs(themeStore)
+
 const routeTitle = computed(() => route.meta.title || '移动端')
-const detailBackTarget = computed<RouteLocationRaw | null>(() => {
+const shellLayout = computed(() => route.meta.layout || 'main')
+const isMainLayout = computed(() => shellLayout.value === 'main')
+
+const mainNavigationItems = [
+  {
+    key: 'devices',
+    label: '设备',
+    icon: 'desktop-o',
+    to: { name: MOBILE_ROUTE_NAMES.devices },
+  },
+  {
+    key: 'tasks',
+    label: '任务',
+    icon: 'todo-list-o',
+    to: { name: MOBILE_ROUTE_NAMES.tasks },
+  },
+  {
+    key: 'schedules',
+    label: '计划',
+    icon: 'calendar-o',
+    to: { name: MOBILE_ROUTE_NAMES.schedules },
+  },
+  {
+    key: 'shops',
+    label: '店铺',
+    icon: 'shop-o',
+    to: { name: MOBILE_ROUTE_NAMES.shops },
+  },
+  {
+    key: 'profile',
+    label: '我的',
+    icon: 'user-o',
+    to: { name: MOBILE_ROUTE_NAMES.profile },
+  },
+] as const
+
+const detailBackTarget = computed<RouteLocationRaw>(() => {
   if (route.name === MOBILE_ROUTE_NAMES.taskDetail) {
     const fromDeviceId = route.query.fromDeviceId
     if (typeof fromDeviceId === 'string' && fromDeviceId.length > 0) {
@@ -33,19 +70,15 @@ const detailBackTarget = computed<RouteLocationRaw | null>(() => {
   if (route.name === MOBILE_ROUTE_NAMES.deviceDetail) {
     return { name: MOBILE_ROUTE_NAMES.devices }
   }
-  return null
+  return { name: MOBILE_ROUTE_NAMES.home }
 })
-const showProductNavigation = computed(
-  () =>
-    route.name === MOBILE_ROUTE_NAMES.home ||
-    route.name === MOBILE_ROUTE_NAMES.tasks ||
-    route.name === MOBILE_ROUTE_NAMES.devices,
-)
 
 function goBack(): void {
-  if (detailBackTarget.value) {
-    void router.push(detailBackTarget.value)
-  }
+  void router.push(detailBackTarget.value)
+}
+
+function showNotificationPlaceholder(): void {
+  showToast('通知功能建设中')
 }
 </script>
 
@@ -53,30 +86,17 @@ function goBack(): void {
   <VanConfigProvider :theme="resolvedTheme">
     <MobileAppShell>
       <template #header>
-        <VanNavBar
-          :title="routeTitle"
-          :left-arrow="detailBackTarget !== null"
-          @click-left="goBack"
+        <MobileGlobalHeader
+          v-if="isMainLayout"
+          @notification-click="showNotificationPlaceholder"
         />
+        <MobileDetailHeader v-else :title="routeTitle" @back="goBack" />
       </template>
 
       <RouterView />
 
-      <template v-if="showProductNavigation" #bottom>
-        <VanTabbar route :fixed="false" :safe-area-inset-bottom="false">
-          <VanTabbarItem
-            :to="{ name: MOBILE_ROUTE_NAMES.tasks }"
-            icon="todo-list-o"
-          >
-            任务
-          </VanTabbarItem>
-          <VanTabbarItem
-            :to="{ name: MOBILE_ROUTE_NAMES.devices }"
-            icon="desktop-o"
-          >
-            设备
-          </VanTabbarItem>
-        </VanTabbar>
+      <template v-if="isMainLayout" #bottom>
+        <MobileBottomNavigation :items="mainNavigationItems" />
       </template>
     </MobileAppShell>
   </VanConfigProvider>

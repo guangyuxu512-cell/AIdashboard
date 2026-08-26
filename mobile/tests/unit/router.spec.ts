@@ -13,6 +13,7 @@ describe('mobile router', () => {
       expect(route.meta).toEqual(
         expect.objectContaining({
           title: expect.any(String),
+          layout: expect.stringMatching(/^(main|detail)$/),
           requiresAuth: expect.any(Boolean),
           permission: null,
         }),
@@ -36,6 +37,9 @@ describe('mobile router', () => {
       '/tasks/:taskId',
       '/devices',
       '/devices/:deviceId',
+      '/schedules',
+      '/shops',
+      '/me',
     ])
   })
 
@@ -44,13 +48,29 @@ describe('mobile router', () => {
 
     for (const routeName of [
       MOBILE_ROUTE_NAMES.tasks,
-      MOBILE_ROUTE_NAMES.taskDetail,
       MOBILE_ROUTE_NAMES.devices,
+      MOBILE_ROUTE_NAMES.schedules,
+      MOBILE_ROUTE_NAMES.shops,
+      MOBILE_ROUTE_NAMES.profile,
+    ]) {
+      const route = routes.find((candidate) => candidate.name === routeName)
+      expect(route?.meta).toEqual(
+        expect.objectContaining({
+          layout: 'main',
+          requiresAuth: false,
+          permission: null,
+        }),
+      )
+    }
+
+    for (const routeName of [
+      MOBILE_ROUTE_NAMES.taskDetail,
       MOBILE_ROUTE_NAMES.deviceDetail,
     ]) {
       const route = routes.find((candidate) => candidate.name === routeName)
       expect(route?.meta).toEqual(
         expect.objectContaining({
+          layout: 'detail',
           requiresAuth: false,
           permission: null,
         }),
@@ -66,6 +86,25 @@ describe('mobile router', () => {
     ).toBe('/devices/:deviceId')
   })
 
+  it('reuses one main-layout coming-soon page for unfinished navigation', () => {
+    const routes = createMobileRoutes({ runtimeIsDevelopment: false })
+    const placeholders = [
+      MOBILE_ROUTE_NAMES.schedules,
+      MOBILE_ROUTE_NAMES.shops,
+      MOBILE_ROUTE_NAMES.profile,
+    ].map((name) => routes.find((route) => route.name === name))
+
+    expect(placeholders.map((route) => route?.path)).toEqual([
+      '/schedules',
+      '/shops',
+      '/me',
+    ])
+    expect(placeholders.every((route) => route?.meta?.layout === 'main')).toBe(
+      true,
+    )
+    expect(new Set(placeholders.map((route) => route?.component)).size).toBe(1)
+  })
+
   it('registers the foundation route only when explicitly enabled', () => {
     const developmentRoutes = createMobileRoutes({ includeFoundation: true })
 
@@ -74,6 +113,11 @@ describe('mobile router', () => {
         (route) => route.name === MOBILE_ROUTE_NAMES.foundation,
       )?.path,
     ).toBe('/__foundation')
+    expect(
+      developmentRoutes.find(
+        (route) => route.name === MOBILE_ROUTE_NAMES.foundation,
+      )?.meta?.layout,
+    ).toBe('detail')
   })
 
   it('uses hash history', () => {

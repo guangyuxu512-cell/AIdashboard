@@ -6,6 +6,9 @@ export const MOBILE_ROUTE_NAMES = {
   taskDetail: 'mobile-task-detail',
   devices: 'mobile-devices',
   deviceDetail: 'mobile-device-detail',
+  schedules: 'mobile-schedules',
+  shops: 'mobile-shops',
+  profile: 'mobile-profile',
   foundation: 'mobile-foundation',
 } as const
 
@@ -20,6 +23,7 @@ const homeRoute: RouteRecordRaw = {
   component: () => import('@/pages/HomePage.vue'),
   meta: {
     title: '移动端',
+    layout: 'main',
     requiresAuth: false,
     permission: null,
   },
@@ -32,6 +36,7 @@ const taskRoutes: RouteRecordRaw[] = [
     component: () => import('@/pages/tasks/TaskCenterPage.vue'),
     meta: {
       title: '任务中心',
+      layout: 'main',
       requiresAuth: false,
       permission: null,
     },
@@ -42,6 +47,7 @@ const taskRoutes: RouteRecordRaw[] = [
     component: () => import('@/pages/tasks/TaskDetailPage.vue'),
     meta: {
       title: '任务详情',
+      layout: 'detail',
       requiresAuth: false,
       permission: null,
     },
@@ -55,6 +61,7 @@ const deviceRoutes: RouteRecordRaw[] = [
     component: () => import('@/pages/devices/DeviceCenterPage.vue'),
     meta: {
       title: '设备中心',
+      layout: 'main',
       requiresAuth: false,
       permission: null,
     },
@@ -65,6 +72,45 @@ const deviceRoutes: RouteRecordRaw[] = [
     component: () => import('@/pages/devices/DeviceDetailPage.vue'),
     meta: {
       title: '设备详情',
+      layout: 'detail',
+      requiresAuth: false,
+      permission: null,
+    },
+  },
+]
+
+const comingSoonPage = () => import('@/pages/ComingSoonPage.vue')
+
+const placeholderRoutes: RouteRecordRaw[] = [
+  {
+    path: '/schedules',
+    name: MOBILE_ROUTE_NAMES.schedules,
+    component: comingSoonPage,
+    meta: {
+      title: '定时计划',
+      layout: 'main',
+      requiresAuth: false,
+      permission: null,
+    },
+  },
+  {
+    path: '/shops',
+    name: MOBILE_ROUTE_NAMES.shops,
+    component: comingSoonPage,
+    meta: {
+      title: '店铺',
+      layout: 'main',
+      requiresAuth: false,
+      permission: null,
+    },
+  },
+  {
+    path: '/me',
+    name: MOBILE_ROUTE_NAMES.profile,
+    component: comingSoonPage,
+    meta: {
+      title: '我的',
+      layout: 'main',
       requiresAuth: false,
       permission: null,
     },
@@ -74,7 +120,12 @@ const deviceRoutes: RouteRecordRaw[] = [
 export function createMobileRoutes(
   options: CreateMobileRoutesOptions = {},
 ): RouteRecordRaw[] {
-  const routes = [homeRoute, ...taskRoutes, ...deviceRoutes]
+  const routes = [
+    homeRoute,
+    ...taskRoutes,
+    ...deviceRoutes,
+    ...placeholderRoutes,
+  ]
   const runtimeIsDevelopment =
     options.runtimeIsDevelopment ?? import.meta.env.DEV
   const includeFoundation =
@@ -89,6 +140,7 @@ export function createMobileRoutes(
       component: () => import('@/pages/FoundationPage.vue'),
       meta: {
         title: '移动端基础设施',
+        layout: 'detail',
         requiresAuth: false,
         permission: null,
       },

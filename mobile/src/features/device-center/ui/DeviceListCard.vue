@@ -41,13 +41,9 @@ const heartbeatText = computed(() =>
           />
         </span>
       </span>
-      <span class="device-list-card__fact">
-        <span>运行端版本</span>
-        <span>{{ device.workerRuntime?.workerVersion || '—' }}</span>
-      </span>
-      <span class="device-list-card__fact">
-        <span>最后心跳</span>
-        <span>{{ heartbeatText }}</span>
+      <span class="device-list-card__meta">
+        <span>版本 {{ device.workerRuntime?.workerVersion || '—' }}</span>
+        <span>心跳 {{ heartbeatText }}</span>
       </span>
     </button>
 
@@ -57,6 +53,7 @@ const heartbeatText = computed(() =>
       :initial-error="activeTask.isInitialError.value"
       :background-error="activeTask.isBackgroundError.value"
       :error-message="activeTask.errorMessage.value"
+      compact
       @retry="activeTask.query.refetch"
       @select="emit('selectTask', $event)"
     />
@@ -67,8 +64,8 @@ const heartbeatText = computed(() =>
 .device-list-card {
   display: grid;
   min-width: 0;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-3);
   background: var(--bg-surface);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-card);
@@ -80,17 +77,17 @@ const heartbeatText = computed(() =>
   width: 100%;
   min-width: 0;
   min-height: var(--touch-target-min);
-  gap: var(--space-2);
+  gap: var(--space-1);
   padding: 0;
   color: inherit;
   text-align: left;
-  background: transparent;
+  background: none;
   border: 0;
 }
 
 .device-list-card__heading,
 .device-list-card__tags,
-.device-list-card__fact {
+.device-list-card__meta {
   display: flex;
   min-width: 0;
   gap: var(--space-2);
@@ -100,9 +97,11 @@ const heartbeatText = computed(() =>
 
 .device-list-card__heading strong {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   font-size: var(--font-size-label);
   line-height: var(--line-height-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .device-list-card__tags {
@@ -111,15 +110,20 @@ const heartbeatText = computed(() =>
   justify-content: flex-end;
 }
 
-.device-list-card__fact {
+.device-list-card__meta {
   color: var(--text-secondary);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
 }
 
-.device-list-card__fact span:last-child {
+.device-list-card__meta span {
   min-width: 0;
-  overflow-wrap: anywhere;
-  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-list-card__meta span:last-child {
+  flex: none;
 }
 </style>

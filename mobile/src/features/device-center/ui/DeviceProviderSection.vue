@@ -10,7 +10,6 @@ import {
 } from 'vant'
 
 import {
-  formatDeviceDateTime,
   type DeviceProviderInventoryReadDto,
   YINGDAO_PROVIDER_STATUS_META,
 } from '@/entities/device'
@@ -24,11 +23,6 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{ retry: [] }>()
-
-function booleanText(value: boolean | null): string {
-  if (value === null) return '—'
-  return value ? '是' : '否'
-}
 </script>
 
 <template>
@@ -76,58 +70,16 @@ function booleanText(value: boolean | null): string {
         </VanTag>
       </div>
 
-      <VanCellGroup inset>
-        <VanCell
-          title="提供方可用"
-          :value="booleanText(item.inventory.available)"
-        />
-        <VanCell
-          title="执行接口可用"
-          :value="booleanText(item.inventory.execution_available)"
-        />
-        <VanCell
-          title="已登录"
-          :value="booleanText(item.inventory.logged_in)"
-        />
+      <VanCellGroup data-testid="provider-primary-summary">
         <VanCell title="账号" :value="item.account_display || '—'" />
-        <VanCell title="账号类型" :value="item.account_type || '—'" />
-        <VanCell
-          title="企业账号"
-          :value="booleanText(item.enterprise_account)"
-        />
         <VanCell
           title="提供方版本"
           :value="item.inventory.provider_version || '—'"
         />
         <VanCell
-          title="执行接口版本"
-          :value="item.inventory.execution_version || '—'"
-        />
-        <VanCell
           title="影刀应用数"
           :value="`${item.inventory.applications.length} 个`"
         />
-        <VanCell
-          title="发现时间"
-          :value="formatDeviceDateTime(item.last_discovered_at)"
-        />
-        <VanCell v-if="item.inventory.status_reason" title="状态说明">
-          <template #value>
-            <span class="device-provider-section__long-value">
-              {{ item.inventory.status_reason }}
-            </span>
-          </template>
-        </VanCell>
-        <VanCell
-          v-if="item.inventory.execution_unavailable_reason"
-          title="执行不可用说明"
-        >
-          <template #value>
-            <span class="device-provider-section__long-value">
-              {{ item.inventory.execution_unavailable_reason }}
-            </span>
-          </template>
-        </VanCell>
       </VanCellGroup>
     </article>
   </section>
@@ -167,11 +119,5 @@ function booleanText(value: boolean | null): string {
   gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
-}
-
-.device-provider-section__long-value {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
 }
 </style>

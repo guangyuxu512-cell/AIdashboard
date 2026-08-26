@@ -117,9 +117,9 @@ const emit = defineEmits<{
 
 .device-list {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-6)
+  gap: var(--space-2);
+  padding: var(--space-2)
+    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
     max(var(--layout-page-padding-x), var(--safe-area-left));
 }
 

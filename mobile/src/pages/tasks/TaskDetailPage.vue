@@ -55,7 +55,7 @@ const executionName = computed(() =>
 )
 const progress = computed(() => deriveTaskProgress(runtime.events.value))
 const currentMessage = computed(
-  () => deriveCurrentTaskMessage(runtime.events.value) || '暂无运行信息',
+  () => deriveCurrentTaskMessage(runtime.events.value) || '—',
 )
 const progressPercentage = computed(() => {
   if (!progress.value?.total || progress.value.total <= 0) return 0
@@ -120,7 +120,7 @@ const durationText = computed(() =>
           <TaskStatusTag :status="task.status" />
         </div>
 
-        <VanCellGroup inset>
+        <VanCellGroup>
           <VanCell title="设备">
             <template #value>
               <span v-if="deviceQuery.data.value">
@@ -132,34 +132,28 @@ const durationText = computed(() =>
               <span v-else>加载中</span>
             </template>
           </VanCell>
-          <VanCell
-            title="创建时间"
-            :value="formatTaskDateTime(task.created_at)"
-          />
-          <VanCell
-            title="开始时间"
-            :value="formatTaskDateTime(task.started_at)"
-          />
-          <VanCell
-            title="结束时间"
-            :value="formatTaskDateTime(task.finished_at)"
-          />
-          <VanCell title="运行耗时" :value="durationText" />
-          <VanCell title="店铺数量" :value="`${task.shop_ids.length} 个`" />
+          <VanCell title="运行时间" :value="durationText" />
         </VanCellGroup>
 
         <div class="task-detail-page__runtime-summary">
-          <div class="task-detail-page__runtime-heading">
-            <span>结构化进度</span>
-            <span data-testid="detail-progress-value">{{ progressText }}</span>
+          <div v-if="progress" class="task-detail-page__progress">
+            <div class="task-detail-page__runtime-heading">
+              <span>结构化进度</span>
+              <span data-testid="detail-progress-value">
+                {{ progressText }}
+              </span>
+            </div>
+            <VanProgress
+              v-if="progress.total !== null"
+              :percentage="progressPercentage"
+              :show-pivot="false"
+              stroke-width="8"
+            />
           </div>
-          <VanProgress
-            v-if="progress?.total !== null && progress"
-            :percentage="progressPercentage"
-            :show-pivot="false"
-            stroke-width="8"
-          />
-          <p>{{ currentMessage }}</p>
+          <div class="task-detail-page__current-message">
+            <span>当前信息</span>
+            <p data-testid="detail-current-message">{{ currentMessage }}</p>
+          </div>
         </div>
 
         <TaskOutcomeNotice
@@ -168,25 +162,6 @@ const durationText = computed(() =>
           :error-message="task.error_message"
           :error-code="task.error_code"
         />
-
-        <VanCollapse v-model="expanded">
-          <VanCollapseItem title="更多信息" name="ids">
-            <dl class="task-detail-page__ids">
-              <div>
-                <dt>任务 ID</dt>
-                <dd>{{ task.task_id }}</dd>
-              </div>
-              <div>
-                <dt>技能 ID</dt>
-                <dd>{{ task.skill_id }}</dd>
-              </div>
-              <div>
-                <dt>设备 ID</dt>
-                <dd>{{ task.target_device_id }}</dd>
-              </div>
-            </dl>
-          </VanCollapseItem>
-        </VanCollapse>
       </section>
 
       <TaskRuntimeLog
@@ -207,6 +182,29 @@ const durationText = computed(() =>
         @retry-live="runtime.requestDrain"
         @load-earlier="runtime.loadEarlier"
       />
+
+      <VanCollapse v-model="expanded" data-testid="task-more-information">
+        <VanCollapseItem title="更多信息" name="ids">
+          <VanCellGroup class="task-detail-page__ids">
+            <VanCell
+              title="创建时间"
+              :value="formatTaskDateTime(task.created_at)"
+            />
+            <VanCell
+              title="开始时间"
+              :value="formatTaskDateTime(task.started_at)"
+            />
+            <VanCell
+              title="结束时间"
+              :value="formatTaskDateTime(task.finished_at)"
+            />
+            <VanCell title="店铺数量" :value="`${task.shop_ids.length} 个`" />
+            <VanCell title="任务 ID" :value="task.task_id" />
+            <VanCell title="技能 ID" :value="task.skill_id" />
+            <VanCell title="设备 ID" :value="task.target_device_id" />
+          </VanCellGroup>
+        </VanCollapseItem>
+      </VanCollapse>
     </template>
   </AppPage>
 </template>
@@ -238,7 +236,7 @@ const durationText = computed(() =>
 .task-detail-page__runtime-summary {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-4);
+  padding: var(--space-3);
   background: var(--bg-surface);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-surface);
@@ -250,29 +248,27 @@ const durationText = computed(() =>
   color: var(--text-secondary);
 }
 
-.task-detail-page__runtime-summary p {
-  overflow-wrap: anywhere;
-}
-
-.task-detail-page__ids {
+.task-detail-page__progress,
+.task-detail-page__current-message {
   display: grid;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.task-detail-page__ids div {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  min-width: 0;
   gap: var(--space-2);
 }
 
-.task-detail-page__ids dt {
+.task-detail-page__current-message {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.task-detail-page__current-message > span {
   color: var(--text-secondary);
 }
 
-.task-detail-page__ids dd {
+.task-detail-page__current-message p {
   min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

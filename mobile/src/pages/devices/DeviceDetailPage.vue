@@ -14,7 +14,6 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import {
-  DEVICE_CONNECTION_META,
   DeviceConnectionTag,
   DeviceEnabledTag,
   formatDeviceDateTime,
@@ -22,7 +21,9 @@ import {
 } from '@/entities/device'
 import {
   ActiveTaskSummary,
+  DeviceProviderDetails,
   DeviceProviderSection,
+  DeviceSkillDetails,
   DeviceSkillSummary,
   useDeviceDetail,
 } from '@/features/device-center'
@@ -103,15 +104,7 @@ function openTask(taskId: string): void {
           description="未上报运行端信息"
           data-testid="runtime-unreported"
         />
-        <VanCellGroup v-else inset>
-          <VanCell
-            title="连接状态"
-            :value="
-              DEVICE_CONNECTION_META[
-                detail.device.value.workerRuntime.connectionStatus
-              ].label
-            "
-          />
+        <VanCellGroup v-else>
           <VanCell
             title="运行端版本"
             :value="detail.device.value.workerRuntime.workerVersion"
@@ -122,18 +115,6 @@ function openTask(taskId: string): void {
               formatRelativeHeartbeat(
                 detail.device.value.workerRuntime.lastSeenAt,
               )
-            "
-          />
-          <VanCell
-            title="运行端启动时间"
-            :value="
-              formatDeviceDateTime(detail.device.value.workerRuntime.startedAt)
-            "
-          />
-          <VanCell
-            title="运行端更新时间"
-            :value="
-              formatDeviceDateTime(detail.device.value.workerRuntime.updatedAt)
             "
           />
         </VanCellGroup>
@@ -157,22 +138,56 @@ function openTask(taskId: string): void {
         @retry="detail.capability.query.refetch"
       />
 
-      <VanCollapse v-model="expanded">
+      <VanCollapse v-model="expanded" data-testid="device-more-information">
         <VanCollapseItem title="更多信息" name="device-details">
-          <dl class="device-detail-page__details">
-            <div>
-              <dt>设备 ID</dt>
-              <dd>{{ detail.device.value.deviceId }}</dd>
-            </div>
-            <div>
-              <dt>位置</dt>
-              <dd>{{ detail.device.value.location || '—' }}</dd>
-            </div>
-            <div>
-              <dt>备注</dt>
-              <dd>{{ detail.device.value.note || '—' }}</dd>
-            </div>
-          </dl>
+          <div class="device-detail-page__details">
+            <section>
+              <h3>设备技术信息</h3>
+              <VanCellGroup>
+                <VanCell
+                  title="设备 ID"
+                  :value="detail.device.value.deviceId"
+                />
+                <VanCell
+                  title="位置"
+                  :value="detail.device.value.location || '—'"
+                />
+                <VanCell
+                  title="备注"
+                  :value="detail.device.value.note || '—'"
+                />
+              </VanCellGroup>
+            </section>
+
+            <section v-if="detail.device.value.workerRuntime">
+              <h3>运行端技术信息</h3>
+              <VanCellGroup>
+                <VanCell
+                  title="运行端启动时间"
+                  :value="
+                    formatDeviceDateTime(
+                      detail.device.value.workerRuntime.startedAt,
+                    )
+                  "
+                />
+                <VanCell
+                  title="运行端更新时间"
+                  :value="
+                    formatDeviceDateTime(
+                      detail.device.value.workerRuntime.updatedAt,
+                    )
+                  "
+                />
+              </VanCellGroup>
+            </section>
+
+            <DeviceProviderDetails
+              :inventories="detail.provider.query.data.value"
+            />
+            <DeviceSkillDetails
+              :capabilities="detail.capability.query.data.value"
+            />
+          </div>
         </VanCollapseItem>
       </VanCollapse>
     </template>
@@ -220,23 +235,17 @@ function openTask(taskId: string): void {
 
 .device-detail-page__details {
   display: grid;
-  gap: var(--space-2);
-  margin: 0;
+  gap: var(--space-4);
 }
 
-.device-detail-page__details div {
+.device-detail-page__details section {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  min-width: 0;
   gap: var(--space-2);
 }
 
-.device-detail-page__details dt {
-  color: var(--text-secondary);
-}
-
-.device-detail-page__details dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
+.device-detail-page__details h3 {
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-label);
 }
 </style>

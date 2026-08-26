@@ -16,7 +16,9 @@ import {
   ActiveTaskSummary,
   DeviceInfiniteList,
   DeviceListCard,
+  DeviceProviderDetails,
   DeviceProviderSection,
+  DeviceSkillDetails,
   DeviceSkillSummary,
 } from '@/features/device-center'
 import { apiClient } from '@/shared/api'
@@ -215,8 +217,7 @@ describe('device center UI', () => {
 
     expect(wrapper.text()).toContain('未上报')
     expect(wrapper.text()).not.toContain('离线')
-    expect(wrapper.text()).toContain('运行端版本')
-    expect(wrapper.text()).toContain('—')
+    expect(wrapper.text()).toContain('版本 —')
   })
 
   it.each([
@@ -240,6 +241,26 @@ describe('device center UI', () => {
     expect(wrapper.text()).toContain('正在执行')
     await wrapper.get('button').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['task-running']])
+  })
+
+  it('uses a compact list summary without rendering latest_event', () => {
+    const wrapper = track(
+      mount(ActiveTaskSummary, {
+        props: {
+          task: runningTask,
+          initialLoading: false,
+          initialError: false,
+          backgroundError: false,
+          errorMessage: '当前任务失败',
+          compact: true,
+        },
+      }),
+    )
+
+    expect(wrapper.text()).toContain('同步订单')
+    expect(wrapper.text()).toContain('执行中')
+    expect(wrapper.text()).not.toContain('正在执行')
+    expect(wrapper.text()).not.toContain('当前任务')
   })
 
   it('only claims idle after a successful null Active Task response', () => {
@@ -389,13 +410,27 @@ describe('device center UI', () => {
     )
 
     expect(wrapper.text()).toContain(label)
+    expect(wrapper.text()).toContain('账号测试账号')
+    expect(wrapper.text()).toContain('提供方版本3.4.5')
+    expect(wrapper.text()).toContain('影刀应用数1 个')
+    expect(wrapper.text()).not.toContain('提供方可用')
+  })
+
+  it('renders Provider secondary facts only in the technical details component', () => {
+    const wrapper = track(
+      mount(DeviceProviderDetails, {
+        props: { inventories: [providerInventory('ready')] },
+      }),
+    )
+
+    expect(wrapper.text()).toContain('提供方代码yingdao')
     expect(wrapper.text()).toContain('提供方可用否')
     expect(wrapper.text()).toContain('执行接口可用是')
     expect(wrapper.text()).toContain('已登录否')
-    expect(wrapper.text()).toContain('账号测试账号')
     expect(wrapper.text()).toContain('账号类型enterprise')
     expect(wrapper.text()).toContain('企业账号是')
-    expect(wrapper.text()).toContain('影刀应用数1 个')
+    expect(wrapper.text()).toContain('执行接口版本2.0.0')
+    expect(wrapper.text()).toContain('状态说明状态说明')
   })
 
   it('distinguishes an empty Provider snapshot and preserves cached data on error', async () => {
@@ -478,10 +513,15 @@ describe('device center UI', () => {
         },
       }),
     )
-    expect(summary.text()).toContain('全部能力4 个')
     expect(summary.text()).toContain('业务能力2 个')
     expect(summary.text()).toContain('内部能力1 个')
-    expect(summary.text()).toContain('未分类能力1 个')
+    expect(summary.text()).not.toContain('未分类能力')
+
+    const technicalDetails = track(
+      mount(DeviceSkillDetails, { props: { capabilities } }),
+    )
+    expect(technicalDetails.text()).toContain('能力总数4 个')
+    expect(technicalDetails.text()).toContain('未分类能力1 个')
 
     const empty = track(
       mount(DeviceSkillSummary, {
@@ -522,7 +562,7 @@ describe('device center UI', () => {
       }),
     )
     expect(background.text()).toContain('技能能力后台失败')
-    expect(background.text()).toContain('全部能力4 个')
+    expect(background.text()).toContain('业务能力2 个')
     await background.get('button').trigger('click')
     expect(background.emitted('retry')).toHaveLength(1)
   })

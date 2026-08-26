@@ -32,13 +32,14 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <VanNoticeBar
-    v-if="backgroundError"
-    type="warning"
-    :text="`${errorMessage}，当前展示上次成功加载的数据`"
-    wrapable
-    data-testid="background-error"
-  />
+  <div v-if="backgroundError" class="task-list__background-error">
+    <VanNoticeBar
+      type="warning"
+      :text="`${errorMessage}，当前展示上次成功加载的数据`"
+      wrapable
+      data-testid="background-error"
+    />
+  </div>
 
   <div v-if="initialLoading" class="task-list-state" data-testid="task-loading">
     <VanSkeleton v-for="index in 3" :key="index" title :row="3" />
@@ -106,10 +107,15 @@ const emit = defineEmits<{
 
 .task-list {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-6)
+  gap: var(--space-2);
+  padding: var(--space-2)
+    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
     max(var(--layout-page-padding-x), var(--safe-area-left));
+}
+
+.task-list__background-error {
+  padding-right: max(var(--layout-page-padding-x), var(--safe-area-right));
+  padding-left: max(var(--layout-page-padding-x), var(--safe-area-left));
 }
 
 .task-list__item {
@@ -119,7 +125,7 @@ const emit = defineEmits<{
   padding: 0;
   color: inherit;
   text-align: left;
-  background: transparent;
+  background: none;
   border: 0;
   border-radius: var(--radius-card);
 }

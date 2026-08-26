@@ -66,6 +66,22 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function countCardsInsideMainViewport(
+  page: Page,
+  selector: string,
+): Promise<number> {
+  return page.locator(selector).evaluateAll((elements) => {
+    const main = document
+      .querySelector<HTMLElement>('.mobile-app-shell__main')
+      ?.getBoundingClientRect()
+    if (!main) return 0
+    return elements.filter((element) => {
+      const card = element.getBoundingClientRect()
+      return card.top >= main.top && card.bottom <= main.bottom
+    }).length
+  })
+}
+
 async function scrollMainToBottom(page: Page): Promise<void> {
   await page.locator('.mobile-app-shell__main').evaluate((element) => {
     element.scrollTop = element.scrollHeight
@@ -432,7 +448,7 @@ for (const width of viewportWidths) {
   for (const theme of themes) {
     test(`设备中心 ${width}px ${theme} 主题保持安全区、详情链路与零溢出`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       const consoleErrors = collectConsoleErrors(page)
       await page.setViewportSize({ width, height: 844 })
       await setThemeBeforeNavigation(page, theme)
@@ -446,6 +462,7 @@ for (const width of viewportWidths) {
       await expect(firstCard).toContainText('已停用')
       await expect(firstCard).toContainText('在线')
       await expect(firstCard).toContainText('同步订单')
+      await expect(firstCard).not.toContainText('正在执行订单同步')
 
       const mainButton = firstCard.getByRole('button', {
         name: '查看设备：设备 1',
@@ -453,6 +470,38 @@ for (const width of viewportWidths) {
       expect((await mainButton.boundingBox())?.height).toBeGreaterThanOrEqual(
         44,
       )
+      const taskButton = firstCard.getByRole('button', {
+        name: '查看任务：同步订单',
+      })
+      expect((await taskButton.boundingBox())?.height).toBeGreaterThanOrEqual(
+        44,
+      )
+      expect((await firstCard.boundingBox())?.height).toBeLessThan(150)
+      expect(
+        await countCardsInsideMainViewport(page, '[data-testid="device-card"]'),
+      ).toBeGreaterThanOrEqual(4)
+
+      const titleStyle = await firstCard
+        .locator('.device-list-card__heading strong')
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element)
+          return {
+            overflow: style.overflow,
+            textOverflow: style.textOverflow,
+            whiteSpace: style.whiteSpace,
+          }
+        })
+      expect(titleStyle).toEqual({
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      })
+
+      if (width === 390) {
+        await page.screenshot({
+          path: testInfo.outputPath(`device-list-390-${theme}.png`),
+        })
+      }
 
       const layout = await page.evaluate(() => {
         const style = (selector: string) => {
@@ -469,14 +518,14 @@ for (const width of viewportWidths) {
           tabbarPosition: style('.van-tabbar').position,
         }
       })
-      expect(layout).toEqual({
+      expect(layout).toMatchObject({
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
         footerBottom: safeAreaFixture.bottom,
-        tabbarPosition: 'relative',
       })
+      expect(layout.tabbarPosition).not.toBe('fixed')
       await expectNoHorizontalOverflow(page)
 
       await mainButton.click()
@@ -486,11 +535,33 @@ for (const width of viewportWidths) {
         '账号测试账号',
       )
       await expect(page.getByTestId('provider-inventory')).toContainText(
-        '企业账号是',
+        '提供方版本3.4.5',
       )
       await expect(page.getByTestId('capability-summary')).toContainText(
+        '业务能力1 个',
+      )
+      await expect(page.getByTestId('provider-inventory')).not.toContainText(
+        '企业账号',
+      )
+      await expect(page.getByTestId('capability-summary')).not.toContainText(
         '未分类能力',
       )
+      const moreInformation = page.getByTestId('device-more-information')
+      await expect(
+        moreInformation.locator('.van-collapse-item__content'),
+      ).toBeHidden()
+      if (width === 390 && theme === 'light') {
+        await page.screenshot({
+          path: testInfo.outputPath('device-detail-390-light.png'),
+        })
+      }
+      await moreInformation.getByText('更多信息', { exact: true }).click()
+      await expect(
+        page.getByTestId('provider-technical-details'),
+      ).toContainText('企业账号是')
+      await expect(
+        page.getByTestId('capability-technical-details'),
+      ).toContainText('未分类能力1 个')
       await expect(page.locator('.van-tabbar')).toHaveCount(0)
       const detailSafeArea = await page
         .locator('.app-page')
@@ -618,7 +689,9 @@ test('手动刷新跨过定时边界时暂停后台分页刷新', async ({ page 
     },
   })
   await page.goto('/#/devices')
+  await expect(page.getByTestId('device-card').first()).toBeVisible()
   await scrollMainToBottom(page)
+  await page.clock.runFor(100)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
 
   const requestCountBeforeRefresh = state.deviceListRequests.length

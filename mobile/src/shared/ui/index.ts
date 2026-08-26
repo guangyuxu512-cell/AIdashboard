@@ -1,2 +1,5 @@
 export { default as AppPage } from './AppPage.vue'
 export { default as MobileAppShell } from './MobileAppShell.vue'
+export { default as MobileBottomNavigation } from './MobileBottomNavigation.vue'
+export { default as MobileDetailHeader } from './MobileDetailHeader.vue'
+export { default as MobileGlobalHeader } from './MobileGlobalHeader.vue'

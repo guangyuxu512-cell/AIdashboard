@@ -21,6 +21,8 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Backend 访问只能经 `src/shared/api/` 的唯一 Client，再由 Entity API/DataSource 消费；Page 禁止直接调用 Axios 或拼 URL。
 - Mobile 不复制 Backend Guard、状态机或业务合法性判断，也不重新设计业务状态。
 - Router 只在 `src/app/router/` 注册；Page 禁止动态注册 Route。
+- 一级业务页必须复用唯一 `MobileAppShell`、品牌 Global Header 与五入口 Bottom Navigation；详情页必须复用统一 Detail Header。Page 只提供 MainContent，禁止自行创建全局 Header、返回栏或 Bottom Nav。
+- Bottom Navigation 固定为“设备、任务、计划、店铺、我的”；未开发入口只能进入统一建设中页，禁止借占位实现假业务、假用户或假通知数据。
 - Auth、JWT、RBAC 当前未实现；只能保留 `requiresAuth`、`permission`、Guard 与 Authorization Header 插槽，禁止假登录、假 Token、假角色。
 - Frontend Permission 只控制体验，不构成安全边界；真实 Authorization 必须由 Backend 执行。
 - 未来 Data Scope 必须由 Backend 在 API/Query 边界过滤，禁止 Mobile 获取全量后本地过滤。

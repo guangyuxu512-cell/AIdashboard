@@ -52,6 +52,22 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function countCardsInsideMainViewport(
+  page: Page,
+  selector: string,
+): Promise<number> {
+  return page.locator(selector).evaluateAll((elements) => {
+    const main = document
+      .querySelector<HTMLElement>('.mobile-app-shell__main')
+      ?.getBoundingClientRect()
+    if (!main) return 0
+    return elements.filter((element) => {
+      const card = element.getBoundingClientRect()
+      return card.top >= main.top && card.bottom <= main.bottom
+    }).length
+  })
+}
+
 function taskStatusFor(index: number): TaskStatus {
   const statuses: readonly TaskStatus[] = [
     'running',
@@ -397,7 +413,7 @@ for (const width of viewportWidths) {
   for (const theme of themes) {
     test(`任务中心 ${width}px ${theme} 主题保持完整页面、安全区与零溢出`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       const consoleErrors = collectConsoleErrors(page)
       await page.setViewportSize({ width, height: 844 })
       await setThemeBeforeNavigation(page, theme)
@@ -412,6 +428,36 @@ for (const width of viewportWidths) {
         .first()
         .boundingBox()
       expect(firstCardBox?.height).toBeGreaterThanOrEqual(44)
+      expect(firstCardBox?.height).toBeLessThan(150)
+      await expect(
+        page.locator('.task-list__item').nth(1).locator('.van-progress'),
+      ).toHaveCount(0)
+      expect(
+        await countCardsInsideMainViewport(page, '.task-list__item'),
+      ).toBeGreaterThanOrEqual(4)
+
+      const titleStyle = await page
+        .locator('.task-list-card__heading h2')
+        .first()
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element)
+          return {
+            overflow: style.overflow,
+            textOverflow: style.textOverflow,
+            whiteSpace: style.whiteSpace,
+          }
+        })
+      expect(titleStyle).toEqual({
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      })
+
+      if (width === 390) {
+        await page.screenshot({
+          path: testInfo.outputPath(`task-list-390-${theme}.png`),
+        })
+      }
 
       const layout = await page.evaluate(() => {
         const style = (selector: string) => {
@@ -497,6 +543,15 @@ for (const width of viewportWidths) {
       await page.locator('.task-list__item').first().click()
       await expect(page.getByTestId('task-detail')).toBeVisible()
       await expect(page.getByTestId('runtime-events')).toBeVisible()
+      const moreInformation = page.getByTestId('task-more-information')
+      await expect(
+        moreInformation.locator('.van-collapse-item__content'),
+      ).toBeHidden()
+      if (width === 390 && theme === 'light') {
+        await page.screenshot({
+          path: testInfo.outputPath('task-detail-390-light.png'),
+        })
+      }
       await expect(page.locator('.van-tabbar')).toHaveCount(0)
       await expectNoHorizontalOverflow(page)
       expect(consoleErrors).toEqual([])
@@ -771,7 +826,7 @@ test('非终态详情持续发送 after_seq 增量请求', async ({ page }) => {
   await expect(page.getByTestId('runtime-events')).toBeVisible()
   const duration = page
     .locator('.van-cell')
-    .filter({ hasText: '运行耗时' })
+    .filter({ hasText: '运行时间' })
     .locator('.van-cell__value')
   const firstDuration = await duration.textContent()
   await expect.poll(() => duration.textContent()).not.toBe(firstDuration)
@@ -805,7 +860,10 @@ test('64 字符错误码在 360px 详情中可折行且不横向溢出', async (
   await page.goto('/#/tasks/task-error')
 
   await expect(page.getByText('E'.repeat(64), { exact: true })).toBeVisible()
-  await expect(page.getByTestId('detail-progress-value')).toHaveText('—')
+  await expect(page.getByTestId('detail-progress-value')).toHaveCount(0)
+  await expect(page.getByTestId('detail-current-message')).toHaveText(
+    '纯文本日志 200',
+  )
   await expectNoHorizontalOverflow(page)
   expect(consoleErrors).toEqual([])
 })

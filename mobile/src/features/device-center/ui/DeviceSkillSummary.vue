@@ -55,15 +55,9 @@ const summary = computed(() =>
       description="暂无技能能力记录"
       data-testid="capability-empty"
     />
-    <VanCellGroup
-      v-else-if="capabilities"
-      inset
-      data-testid="capability-summary"
-    >
-      <VanCell title="全部能力" :value="`${summary.total} 个`" />
+    <VanCellGroup v-else-if="capabilities" data-testid="capability-summary">
       <VanCell title="业务能力" :value="`${summary.business} 个`" />
       <VanCell title="内部能力" :value="`${summary.internal} 个`" />
-      <VanCell title="未分类能力" :value="`${summary.unclassified} 个`" />
     </VanCellGroup>
   </section>
 </template>

@@ -7,13 +7,17 @@ import {
 
 import { TaskStatusTag, type ActiveTaskSummaryReadDto } from '@/entities/task'
 
-defineProps<{
-  task: ActiveTaskSummaryReadDto | null | undefined
-  initialLoading: boolean
-  initialError: boolean
-  backgroundError: boolean
-  errorMessage: string
-}>()
+withDefaults(
+  defineProps<{
+    task: ActiveTaskSummaryReadDto | null | undefined
+    initialLoading: boolean
+    initialError: boolean
+    backgroundError: boolean
+    errorMessage: string
+    compact?: boolean
+  }>(),
+  { compact: false },
+)
 
 const emit = defineEmits<{
   retry: []
@@ -22,10 +26,18 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="active-task-summary" aria-label="当前任务">
-    <div class="active-task-summary__heading">
+  <section
+    class="active-task-summary"
+    :class="{ 'active-task-summary--compact': compact }"
+    aria-label="当前任务"
+  >
+    <div v-if="!compact" class="active-task-summary__heading">
       <span>当前任务</span>
       <VanLoading v-if="initialLoading" size="16">加载中</VanLoading>
+    </div>
+
+    <div v-else-if="initialLoading" class="active-task-summary__compact-state">
+      <VanLoading size="16">当前任务加载中</VanLoading>
     </div>
 
     <div v-if="initialError" class="active-task-summary__error">
@@ -51,7 +63,10 @@ const emit = defineEmits<{
           <strong>{{ task.execution_display_name }}</strong>
           <TaskStatusTag :status="task.status" />
         </span>
-        <span v-if="task.latest_event" class="active-task-summary__message">
+        <span
+          v-if="task.latest_event && !compact"
+          class="active-task-summary__message"
+        >
           {{ task.latest_event.message }}
         </span>
       </button>
@@ -103,7 +118,9 @@ const emit = defineEmits<{
 .active-task-summary__task strong,
 .active-task-summary__message {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .active-task-summary__message,
@@ -120,5 +137,16 @@ const emit = defineEmits<{
   align-content: center;
   background: var(--bg-subtle);
   border-radius: var(--radius-control);
+}
+
+.active-task-summary__compact-state {
+  display: flex;
+  min-height: var(--touch-target-min);
+  align-items: center;
+}
+
+.active-task-summary--compact .active-task-summary__task,
+.active-task-summary--compact .active-task-summary__idle {
+  padding: var(--space-2) var(--space-3);
 }
 </style>
