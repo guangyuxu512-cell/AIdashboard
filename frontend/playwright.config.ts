@@ -4,6 +4,7 @@ const apiMode = process.env.PLAYWRIGHT_API_MODE === 'real' ? 'real' : 'mock'
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: '**/production/**',
   use: {
     baseURL: 'http://127.0.0.1:4173',
   },

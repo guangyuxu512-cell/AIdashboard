@@ -11,8 +11,13 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
 
   await page.goto('/')
 
-  await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible()
+  const navigation = page.getByRole('navigation', { name: '主导航' })
+  await expect(navigation).toBeVisible()
   await expect(page.getByText('思余AI中控台', { exact: true })).toBeVisible()
+  await expect(page.getByText('运营工作台', { exact: true })).toHaveCount(0)
+  await expect(
+    navigation.getByText('UI 基础设施', { exact: true }),
+  ).toBeVisible()
   const brandMark = page.locator('.app-shell__brand-mark')
   await expect(brandMark).toBeVisible()
   expect(

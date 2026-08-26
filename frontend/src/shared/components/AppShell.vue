@@ -29,12 +29,10 @@ export type AppNavigationItem = AppNavigationModuleItem | AppNavigationGroupItem
 const props = withDefaults(
   defineProps<{
     appName?: string
-    contextLabel?: string
     navigation: AppNavigationItem[]
   }>(),
   {
     appName: '思余AI中控台',
-    contextLabel: '运营工作台',
   },
 )
 
@@ -122,10 +120,7 @@ function navigate(key: string): void {
           alt=""
           aria-hidden="true"
         />
-        <div>
-          <strong>{{ appName }}</strong>
-          <span>{{ contextLabel }}</span>
-        </div>
+        <strong>{{ appName }}</strong>
       </div>
       <nav class="app-shell__navigation" aria-label="主导航">
         <NMenu
@@ -206,21 +201,11 @@ function navigate(key: string): void {
   object-fit: contain;
 }
 
-.app-shell__brand strong,
-.app-shell__brand span {
-  display: block;
-}
-
 .app-shell__brand strong {
+  display: block;
   color: var(--text-primary);
   font-size: var(--font-size-body);
   line-height: var(--line-height-compact);
-}
-
-.app-shell__brand div > span {
-  margin-top: var(--space-1);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-secondary);
 }
 
 .app-shell__navigation {

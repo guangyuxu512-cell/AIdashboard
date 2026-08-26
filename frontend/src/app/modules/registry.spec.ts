@@ -20,13 +20,11 @@ describe('Module Registry Lite', () => {
   })
 
   it('keeps navigation order stable and development modules explicit', () => {
-    expect(getNavigationModules().map((module) => module.moduleCode)).toEqual([
-      'shop',
-      'device',
-      'task',
-      'schedule',
-      'settings',
-    ])
+    expect(
+      getNavigationModules(MODULE_REGISTRY, {
+        includeDevelopment: false,
+      }).map((module) => module.moduleCode),
+    ).toEqual(['shop', 'device', 'task', 'schedule', 'settings'])
     expect(
       getNavigationModules(MODULE_REGISTRY, { includeDevelopment: true }).map(
         (module) => module.moduleCode,
