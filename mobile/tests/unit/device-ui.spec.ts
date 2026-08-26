@@ -1,8 +1,6 @@
-import { VueQueryPlugin, type QueryClient } from '@tanstack/vue-query'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
-import { createMobileQueryClient } from '@/app/providers/query-client'
 import {
   DeviceConnectionTag,
   DeviceEnabledTag,
@@ -20,11 +18,10 @@ import {
   DeviceProviderSection,
   DeviceSkillDetails,
   DeviceSkillSummary,
+  type DeviceActiveTaskState,
 } from '@/features/device-center'
-import { apiClient } from '@/shared/api'
 
 const wrappers: VueWrapper[] = []
-const queryClients: QueryClient[] = []
 
 const baseDevice: Device = {
   deviceId: 'device-1',
@@ -68,6 +65,7 @@ const runningTask: ActiveTaskSummaryReadDto = {
 
 const listProps = {
   devices: [] as Device[],
+  activeTaskStates: {} as Record<string, DeviceActiveTaskState>,
   initialLoading: false,
   initialError: false,
   backgroundError: false,
@@ -76,6 +74,16 @@ const listProps = {
   refreshing: false,
   loadingMore: false,
   hasMore: false,
+}
+
+const idleActiveTaskState: DeviceActiveTaskState = {
+  task: null,
+  hasSuccessfulData: true,
+  initialLoading: false,
+  initialError: false,
+  backgroundError: false,
+  errorMessage: '当前任务失败',
+  retry: () => undefined,
 }
 
 function providerInventory(
@@ -144,14 +152,9 @@ function track<T extends VueWrapper>(wrapper: T): T {
 }
 
 function mountDeviceCard(device: Device): VueWrapper {
-  const queryClient = createMobileQueryClient()
-  queryClients.push(queryClient)
   return track(
     mount(DeviceListCard, {
-      props: { device },
-      global: {
-        plugins: [[VueQueryPlugin, { queryClient }]],
-      },
+      props: { device, activeTaskState: idleActiveTaskState },
     }),
   )
 }
@@ -159,8 +162,6 @@ function mountDeviceCard(device: Device): VueWrapper {
 describe('device center UI', () => {
   afterEach(async () => {
     for (const wrapper of wrappers.splice(0)) wrapper.unmount()
-    for (const queryClient of queryClients.splice(0)) queryClient.clear()
-    vi.restoreAllMocks()
     await flushPromises()
   })
 
@@ -192,7 +193,6 @@ describe('device center UI', () => {
   ] as const)(
     'shows %s runtime while preserving enabled=%s',
     async (connectionStatus, enabled, connectionLabel, enabledLabel) => {
-      vi.spyOn(apiClient, 'get').mockResolvedValue({ status: 204 })
       const wrapper = mountDeviceCard({
         ...baseDevice,
         enabled,
@@ -211,7 +211,6 @@ describe('device center UI', () => {
   )
 
   it('renders a null Runtime as unreported instead of offline', async () => {
-    vi.spyOn(apiClient, 'get').mockResolvedValue({ status: 204 })
     const wrapper = mountDeviceCard({ ...baseDevice, workerRuntime: null })
     await flushPromises()
 

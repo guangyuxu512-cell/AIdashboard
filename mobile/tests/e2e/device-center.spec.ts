@@ -17,6 +17,12 @@ interface MockApiOptions {
     release: Promise<void>
   }
   failAuxiliary?: boolean
+  holdActiveTaskOnce?: {
+    deviceId: string
+    onStarted: () => void
+    release: Promise<void>
+  }
+  failActiveAfterSuccessDeviceId?: string
 }
 
 interface MockApiState {
@@ -305,6 +311,7 @@ async function installMockApi(
   let devicePage1Succeeded = false
   let devicePage1FailedAfterSuccess = false
   let devicePage1HeldAfterSuccess = false
+  const activeTaskRequestCounts = new Map<string, number>()
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -343,8 +350,24 @@ async function installMockApi(
     if (activeTaskMatch) {
       const deviceId = decodeURIComponent(activeTaskMatch[1] ?? '')
       state.activeTaskRequests.push(url.toString())
+      const activeRequestCount =
+        (activeTaskRequestCounts.get(deviceId) ?? 0) + 1
+      activeTaskRequestCounts.set(deviceId, activeRequestCount)
       if (options.failAuxiliary) {
         return fulfillApiError(route, '当前任务加载失败')
+      }
+      if (
+        options.holdActiveTaskOnce?.deviceId === deviceId &&
+        activeRequestCount === 1
+      ) {
+        options.holdActiveTaskOnce.onStarted()
+        await options.holdActiveTaskOnce.release
+      }
+      if (
+        options.failActiveAfterSuccessDeviceId === deviceId &&
+        activeRequestCount > 1
+      ) {
+        return fulfillApiError(route, '当前任务后台刷新失败')
       }
       if (deviceId === 'device-1' || deviceId === 'device-2') {
         return fulfillJson(route, makeActiveTask(deviceId))
@@ -463,6 +486,24 @@ for (const width of viewportWidths) {
       await expect(firstCard).toContainText('在线')
       await expect(firstCard).toContainText('同步订单')
       await expect(firstCard).not.toContainText('正在执行订单同步')
+      await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
+      await expect(page.getByTestId('overview-online')).toHaveText('18')
+      await expect(page.getByTestId('overview-running')).toHaveText('1')
+      await expect(page.getByTestId('overview-offline')).toHaveText('1')
+      await expect(page.getByTestId('overview-running-hint')).toHaveText(
+        '已确认 20/20 台',
+      )
+      await expect
+        .poll(
+          () =>
+            new Set(
+              state.activeTaskRequests.map((request) =>
+                new URL(request).pathname.split('/').at(-1),
+              ),
+            ).size,
+        )
+        .toBe(20)
+      expect(state.activeTaskRequests).toHaveLength(20)
 
       const mainButton = firstCard.getByRole('button', {
         name: '查看设备：设备 1',
@@ -479,7 +520,7 @@ for (const width of viewportWidths) {
       expect((await firstCard.boundingBox())?.height).toBeLessThan(150)
       expect(
         await countCardsInsideMainViewport(page, '[data-testid="device-card"]'),
-      ).toBeGreaterThanOrEqual(4)
+      ).toBeGreaterThanOrEqual(width >= 390 ? 4 : 3)
 
       const titleStyle = await firstCard
         .locator('.device-list-card__heading strong')
@@ -496,6 +537,39 @@ for (const width of viewportWidths) {
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       })
+
+      const overviewLayout = await page.evaluate(() => {
+        const cards = Array.from(
+          document.querySelectorAll<HTMLElement>('.device-overview__card'),
+        )
+        const tokenColor = (token: string) => {
+          const probe = document.createElement('span')
+          probe.style.color = `var(${token})`
+          document.body.append(probe)
+          const color = window.getComputedStyle(probe).color
+          probe.remove()
+          return color
+        }
+        return {
+          columnCount: window
+            .getComputedStyle(
+              document.querySelector<HTMLElement>('.device-overview__cards')!,
+            )
+            .gridTemplateColumns.split(' ').length,
+          tops: cards.map((card) => card.getBoundingClientRect().top),
+          colors: cards.map(
+            (card) => window.getComputedStyle(card.querySelector('dd')!).color,
+          ),
+          expectedColors: [
+            tokenColor('--status-success'),
+            tokenColor('--status-info'),
+            tokenColor('--text-secondary'),
+          ],
+        }
+      })
+      expect(overviewLayout.columnCount).toBe(3)
+      expect(new Set(overviewLayout.tops.map(Math.round)).size).toBe(1)
+      expect(overviewLayout.colors).toEqual(overviewLayout.expectedColors)
 
       if (width === 390) {
         await page.screenshot({
@@ -600,9 +674,31 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   const consoleErrors = collectConsoleErrors(page)
   await page.setViewportSize({ width: 390, height: 844 })
   const state = await installMockApi(page)
+  const activeRequestCount = (deviceId: string) =>
+    state.activeTaskRequests.filter((request) =>
+      new URL(request).pathname.endsWith(`/${deviceId}`),
+    ).length
+  const firstPageDeviceIds = Array.from(
+    { length: 20 },
+    (_, index) => `device-${index + 1}`,
+  )
+  const secondPageDeviceIds = Array.from(
+    { length: 5 },
+    (_, index) => `device-${index + 21}`,
+  )
   await page.goto('/#/devices')
 
   await expect(page.getByTestId('device-card').first()).toBeVisible()
+  await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
+  await expect(page.getByTestId('overview-online')).toHaveText('18')
+  await expect(page.getByTestId('overview-running')).toHaveText('1')
+  await expect(page.getByTestId('overview-offline')).toHaveText('1')
+  await expect(page.getByTestId('overview-running-hint')).toHaveText(
+    '已确认 20/20 台',
+  )
+  await expect
+    .poll(() => firstPageDeviceIds.map(activeRequestCount))
+    .toEqual(firstPageDeviceIds.map(() => 1))
   const firstRequest = new URL(state.deviceListRequests[0] ?? '')
   expect(firstRequest.searchParams.get('page')).toBe('1')
   expect(firstRequest.searchParams.get('page_size')).toBe('20')
@@ -611,8 +707,28 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
     'page_size',
   ])
 
+  const activeRequestIndexBeforePage2 = state.activeTaskRequests.length
   await scrollMainToBottom(page)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
+  await expect(page.getByText('当前已加载 25 台设备')).toBeVisible()
+  await expect(page.getByTestId('overview-online')).toHaveText('23')
+  await expect(page.getByTestId('overview-running')).toHaveText('1')
+  await expect(page.getByTestId('overview-offline')).toHaveText('1')
+  await expect(page.getByTestId('overview-running-hint')).toHaveText(
+    '已确认 25/25 台',
+  )
+  await expect
+    .poll(() => secondPageDeviceIds.map(activeRequestCount))
+    .toEqual(secondPageDeviceIds.map(() => 1))
+  const newlyObservedDeviceIds = new Set(
+    state.activeTaskRequests
+      .slice(activeRequestIndexBeforePage2)
+      .map((request) => new URL(request).pathname.split('/').at(-1) ?? '')
+      .filter((deviceId) => !firstPageDeviceIds.includes(deviceId)),
+  )
+  expect([...newlyObservedDeviceIds].sort()).toEqual(
+    [...secondPageDeviceIds].sort(),
+  )
   expect(
     state.deviceListRequests.some((request) => {
       const params = new URL(request).searchParams
@@ -636,6 +752,15 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
       .every((request) => new URL(request).searchParams.get('page') === '1'),
   ).toBe(true)
   await expect(page.getByText('设备 25', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
+  await expect(page.getByTestId('overview-online')).toHaveText('18')
+  await page.waitForTimeout(100)
+  const removedObserverRequestCounts =
+    secondPageDeviceIds.map(activeRequestCount)
+  await page.waitForTimeout(5_500)
+  expect(secondPageDeviceIds.map(activeRequestCount)).toEqual(
+    removedObserverRequestCounts,
+  )
 
   await page.getByRole('tab', { name: /任务$/ }).click()
   await expect(page.getByTestId('task-card')).toBeVisible()
@@ -659,6 +784,8 @@ test('设备后台刷新失败保留旧卡片并遵守左右安全区', async ({
   await expect(backgroundError).toContainText('设备后台刷新失败')
   await expect(page.getByTestId('device-card').first()).toBeVisible()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
+  await expect(page.getByText('当前已加载 25 台设备')).toBeVisible()
+  await expect(page.getByTestId('overview-online')).toHaveText('23')
 
   const padding = await backgroundError.evaluate((element) => {
     const style = window.getComputedStyle(element)
@@ -669,6 +796,67 @@ test('设备后台刷新失败保留旧卡片并遵守左右安全区', async ({
     right: safeAreaFixture.right,
   })
   await expectNoHorizontalOverflow(page)
+})
+
+test('Active Task 部分未知时不显示伪零并在补齐后转为精确统计', async ({
+  page,
+}) => {
+  let notifyActiveStarted: () => void = () => undefined
+  const activeStarted = new Promise<void>((resolve) => {
+    notifyActiveStarted = resolve
+  })
+  let releaseActive: () => void = () => undefined
+  const activeRelease = new Promise<void>((resolve) => {
+    releaseActive = resolve
+  })
+
+  await installMockApi(page, {
+    holdActiveTaskOnce: {
+      deviceId: 'device-1',
+      onStarted: notifyActiveStarted,
+      release: activeRelease,
+    },
+  })
+  await page.goto('/#/devices')
+  await activeStarted
+
+  await expect(page.getByTestId('overview-running')).toHaveText('—')
+  await expect(page.getByTestId('overview-running-hint')).toHaveText(
+    '已确认 19/20 台',
+  )
+
+  releaseActive()
+  await expect(page.getByTestId('overview-running')).toHaveText('1')
+  await expect(page.getByTestId('overview-running-hint')).toHaveText(
+    '已确认 20/20 台',
+  )
+})
+
+test('Active Task 缓存背景失败保留运行中数量并提示刷新失败', async ({
+  page,
+}) => {
+  const state = await installMockApi(page, {
+    failActiveAfterSuccessDeviceId: 'device-1',
+  })
+  await page.goto('/#/devices')
+
+  await expect(page.getByTestId('overview-running')).toHaveText('1')
+  await expect(page.getByTestId('overview-running-hint')).toHaveText(
+    '已确认 20/20 台',
+  )
+  await expect
+    .poll(
+      () =>
+        state.activeTaskRequests.filter((request) =>
+          new URL(request).pathname.endsWith('/device-1'),
+        ).length,
+      { timeout: 8_000 },
+    )
+    .toBeGreaterThan(1)
+  await expect(page.getByTestId('overview-running')).toHaveText('1')
+  await expect(page.getByTestId('overview-running-hint')).toHaveText(
+    '部分状态刷新失败',
+  )
 })
 
 test('手动刷新跨过定时边界时暂停后台分页刷新', async ({ page }) => {

@@ -8,17 +8,19 @@ import {
   type Device,
 } from '@/entities/device'
 
-import { useDeviceActiveTask } from '../model/use-device-active-task'
+import type { DeviceActiveTaskState } from '../model/use-device-active-task'
 import ActiveTaskSummary from './ActiveTaskSummary.vue'
 
-const props = defineProps<{ device: Device }>()
+const props = defineProps<{
+  device: Device
+  activeTaskState: DeviceActiveTaskState
+}>()
 
 const emit = defineEmits<{
   selectDevice: [deviceId: string]
   selectTask: [taskId: string]
 }>()
 
-const activeTask = useDeviceActiveTask(() => props.device.deviceId)
 const heartbeatText = computed(() =>
   formatRelativeHeartbeat(props.device.workerRuntime?.lastSeenAt ?? null),
 )
@@ -48,13 +50,13 @@ const heartbeatText = computed(() =>
     </button>
 
     <ActiveTaskSummary
-      :task="activeTask.query.data.value"
-      :initial-loading="activeTask.isInitialLoading.value"
-      :initial-error="activeTask.isInitialError.value"
-      :background-error="activeTask.isBackgroundError.value"
-      :error-message="activeTask.errorMessage.value"
+      :task="activeTaskState.task"
+      :initial-loading="activeTaskState.initialLoading"
+      :initial-error="activeTaskState.initialError"
+      :background-error="activeTaskState.backgroundError"
+      :error-message="activeTaskState.errorMessage"
       compact
-      @retry="activeTask.query.refetch"
+      @retry="activeTaskState.retry"
       @select="emit('selectTask', $event)"
     />
   </article>

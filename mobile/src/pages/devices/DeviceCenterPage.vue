@@ -2,7 +2,11 @@
 import { useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
-import { DeviceInfiniteList, useDeviceCenter } from '@/features/device-center'
+import {
+  DeviceInfiniteList,
+  DeviceOverviewCards,
+  useDeviceCenter,
+} from '@/features/device-center'
 
 const router = useRouter()
 const deviceCenter = useDeviceCenter()
@@ -25,6 +29,8 @@ function openTask(taskId: string, sourceDeviceId: string): void {
 
 <template>
   <div class="device-center-page">
+    <DeviceOverviewCards :overview="deviceCenter.overview.value" />
+
     <div class="device-center-page__toolbar">
       <p>
         {{
@@ -38,6 +44,7 @@ function openTask(taskId: string, sourceDeviceId: string): void {
 
     <DeviceInfiniteList
       :devices="deviceCenter.devices.value"
+      :active-task-states="deviceCenter.activeTaskStates.value"
       :initial-loading="deviceCenter.isInitialLoading.value"
       :initial-error="deviceCenter.isInitialError.value"
       :background-error="deviceCenter.isBackgroundError.value"

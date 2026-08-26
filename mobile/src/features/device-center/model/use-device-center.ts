@@ -5,6 +5,12 @@ import { flattenDevicePages, useDeviceCenterListQuery } from '@/entities/device'
 import { taskQueryKeys } from '@/entities/task'
 import { classifyInfiniteQueryError } from '@/shared/utils/infinite-query-error'
 
+import {
+  summarizeDeviceOverview,
+  type DeviceOverviewDataState,
+} from './device-overview'
+import { useDeviceActiveTasks } from './use-device-active-task'
+
 export function useDeviceCenter() {
   const queryClient = useQueryClient()
   const query = useDeviceCenterListQuery()
@@ -12,6 +18,21 @@ export function useDeviceCenter() {
   const refreshError = ref<unknown>(null)
   const devices = computed(() =>
     flattenDevicePages(query.data.value?.pages ?? []),
+  )
+  const activeTasks = useDeviceActiveTasks(() =>
+    devices.value.map((device) => device.deviceId),
+  )
+  const deviceDataState = computed<DeviceOverviewDataState>(() => {
+    if (query.data.value !== undefined) return 'ready'
+    if (query.isError.value || refreshError.value !== null) return 'error'
+    return 'loading'
+  })
+  const overview = computed(() =>
+    summarizeDeviceOverview(
+      devices.value,
+      activeTasks.states.value,
+      deviceDataState.value,
+    ),
   )
   const errorKind = computed(() =>
     refreshError.value
@@ -78,6 +99,8 @@ export function useDeviceCenter() {
   return {
     query,
     devices,
+    activeTaskStates: activeTasks.states,
+    overview,
     refreshing,
     total: computed(() => query.data.value?.pages[0]?.total),
     errorKind,

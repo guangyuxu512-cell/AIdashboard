@@ -10,10 +10,12 @@ import {
 
 import type { Device } from '@/entities/device'
 
+import type { DeviceActiveTaskState } from '../model/use-device-active-task'
 import DeviceListCard from './DeviceListCard.vue'
 
-defineProps<{
+const props = defineProps<{
   devices: Device[]
+  activeTaskStates: Readonly<Record<string, DeviceActiveTaskState>>
   initialLoading: boolean
   initialError: boolean
   backgroundError: boolean
@@ -23,6 +25,20 @@ defineProps<{
   loadingMore: boolean
   hasMore: boolean
 }>()
+
+const pendingActiveTaskState: DeviceActiveTaskState = {
+  task: undefined,
+  hasSuccessfulData: false,
+  initialLoading: true,
+  initialError: false,
+  backgroundError: false,
+  errorMessage: '当前任务加载失败',
+  retry: () => undefined,
+}
+
+function activeTaskState(deviceId: string): DeviceActiveTaskState {
+  return props.activeTaskStates[deviceId] ?? pendingActiveTaskState
+}
 
 const emit = defineEmits<{
   refresh: []
@@ -83,6 +99,7 @@ const emit = defineEmits<{
           v-for="device in devices"
           :key="device.deviceId"
           :device="device"
+          :active-task-state="activeTaskState(device.deviceId)"
           @select-device="emit('selectDevice', $event)"
           @select-task="emit('selectTask', $event, device.deviceId)"
         />

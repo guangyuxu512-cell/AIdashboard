@@ -24,6 +24,7 @@ export {
   resolveExecutionName,
 } from './model/task-mapper'
 export {
+  getActiveTaskQueryOptions,
   getNextTaskPageParam,
   getTaskListRefetchInterval,
   TASK_ACTIVE_REFRESH_INTERVAL_MS,

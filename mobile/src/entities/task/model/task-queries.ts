@@ -26,16 +26,23 @@ export const taskQueryKeys = {
   detail: (taskId: string) => [...taskQueryKeys.all, 'detail', taskId] as const,
 }
 
-export function useActiveTaskQuery(
+export function getActiveTaskQueryOptions(
   deviceId: MaybeRefOrGetter<string | undefined>,
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
-  return useQuery({
+  return {
     queryKey: computed(() => taskQueryKeys.active(toValue(deviceId) ?? '')),
     queryFn: () => getActiveTask(toValue(deviceId) ?? ''),
     enabled: computed(() => Boolean(toValue(deviceId)) && toValue(enabled)),
     refetchInterval: TASK_ACTIVE_REFRESH_INTERVAL_MS,
-  })
+  }
+}
+
+export function useActiveTaskQuery(
+  deviceId: MaybeRefOrGetter<string | undefined>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
+  return useQuery(getActiveTaskQueryOptions(deviceId, enabled))
 }
 
 export function getNextTaskPageParam(

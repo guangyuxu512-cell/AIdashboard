@@ -24,6 +24,7 @@ import {
   type DeviceSkillCapabilityReadDto,
 } from '@/entities/device'
 import {
+  getActiveTaskQueryOptions,
   getActiveTask,
   TASK_ACTIVE_REFRESH_INTERVAL_MS,
   taskQueryKeys,
@@ -132,6 +133,11 @@ describe('device center formal contract', () => {
       'active',
       'device-1',
     ])
+    const activeOptions = getActiveTaskQueryOptions('device-1')
+    expect(activeOptions.queryKey.value).toEqual(
+      taskQueryKeys.active('device-1'),
+    )
+    expect(activeOptions.refetchInterval).toBe(TASK_ACTIVE_REFRESH_INTERVAL_MS)
   })
 
   it('maps the Device DTO without merging enabled and connection facts', () => {
