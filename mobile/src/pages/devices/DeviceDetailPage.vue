@@ -6,7 +6,6 @@ import {
   Collapse as VanCollapse,
   CollapseItem as VanCollapseItem,
   Empty as VanEmpty,
-  NoticeBar as VanNoticeBar,
   Skeleton as VanSkeleton,
 } from 'vant'
 import { computed, ref } from 'vue'
@@ -56,22 +55,15 @@ function openTask(taskId: string): void {
     <VanEmpty
       v-else-if="detail.isDeviceInitialError.value || !detail.device.value"
       image="error"
-      :description="detail.deviceErrorMessage.value"
+      description="加载失败"
       data-testid="device-detail-error"
     >
       <VanButton type="primary" @click="detail.deviceQuery.refetch()">
-        重新加载
+        重试
       </VanButton>
     </VanEmpty>
 
     <template v-else>
-      <VanNoticeBar
-        v-if="detail.isDeviceBackgroundError.value"
-        class="mobile-notice-bar--warning"
-        :text="`${detail.deviceErrorMessage.value}，当前展示上次成功加载的数据`"
-        wrapable
-      />
-
       <section class="device-detail-page__summary" data-testid="device-detail">
         <div class="device-detail-page__title">
           <h1>{{ detail.device.value.displayName }}</h1>
@@ -89,8 +81,6 @@ function openTask(taskId: string): void {
         :task="detail.activeTask.query.data.value"
         :initial-loading="detail.activeTask.isInitialLoading.value"
         :initial-error="detail.activeTask.isInitialError.value"
-        :background-error="detail.activeTask.isBackgroundError.value"
-        :error-message="detail.activeTask.errorMessage.value"
         @retry="detail.activeTask.query.refetch"
         @select="openTask"
       />
@@ -99,19 +89,19 @@ function openTask(taskId: string): void {
         class="device-detail-page__runtime"
         aria-labelledby="runtime-title"
       >
-        <h2 id="runtime-title">运行端信息</h2>
+        <h2 id="runtime-title">运行端</h2>
         <VanEmpty
           v-if="!detail.device.value.workerRuntime"
-          description="未上报运行端信息"
+          description="未上报"
           data-testid="runtime-unreported"
         />
         <VanCellGroup v-else>
           <VanCell
-            title="运行端版本"
+            title="Worker"
             :value="detail.device.value.workerRuntime.workerVersion"
           />
           <VanCell
-            title="最后心跳"
+            title="心跳"
             :value="
               formatRelativeHeartbeat(
                 detail.device.value.workerRuntime.lastSeenAt,
@@ -125,8 +115,6 @@ function openTask(taskId: string): void {
         :inventories="detail.provider.query.data.value"
         :initial-loading="detail.provider.isInitialLoading.value"
         :initial-error="detail.provider.isInitialError.value"
-        :background-error="detail.provider.isBackgroundError.value"
-        :error-message="detail.provider.errorMessage.value"
         @retry="detail.provider.query.refetch"
       />
 
@@ -134,8 +122,6 @@ function openTask(taskId: string): void {
         :capabilities="detail.capability.query.data.value"
         :initial-loading="detail.capability.isInitialLoading.value"
         :initial-error="detail.capability.isInitialError.value"
-        :background-error="detail.capability.isBackgroundError.value"
-        :error-message="detail.capability.errorMessage.value"
         @retry="detail.capability.query.refetch"
       />
 
@@ -183,9 +169,11 @@ function openTask(taskId: string): void {
             </section>
 
             <DeviceProviderDetails
+              v-if="detail.provider.query.data.value !== undefined"
               :inventories="detail.provider.query.data.value"
             />
             <DeviceSkillDetails
+              v-if="detail.capability.query.data.value !== undefined"
               :capabilities="detail.capability.query.data.value"
             />
           </div>

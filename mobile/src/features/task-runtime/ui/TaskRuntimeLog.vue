@@ -3,8 +3,8 @@ import {
   Button as VanButton,
   Empty as VanEmpty,
   Loading as VanLoading,
-  NoticeBar as VanNoticeBar,
 } from 'vant'
+import { computed } from 'vue'
 
 import type { TaskEventReadDto } from '@/entities/task'
 
@@ -13,18 +13,25 @@ import {
   getRuntimeRetentionState,
 } from '../model/runtime-display'
 
-defineProps<{
+const props = defineProps<{
   events: TaskEventReadDto[]
   initialized: boolean
   purgedAt: string | null
   loading: boolean
   loadingEarlier: boolean
   hasMoreBefore: boolean
-  initialError: string | null
-  backgroundError: string | null
-  earlierError: string | null
+  initialError: boolean
+  backgroundError: boolean
+  earlierError: boolean
   reachedMemoryLimit: boolean
 }>()
+
+const retentionText = computed(
+  () =>
+    RUNTIME_RETENTION_TEXT[
+      getRuntimeRetentionState(props.purgedAt, props.events.length)
+    ],
+)
 
 const emit = defineEmits<{
   retry: []
@@ -51,52 +58,33 @@ function eventTime(value: string): string {
       <span>{{ events.length }} 条</span>
     </div>
 
-    <VanNoticeBar
-      v-if="initialized"
-      :text="
-        RUNTIME_RETENTION_TEXT[
-          getRuntimeRetentionState(purgedAt, events.length)
-        ]
-      "
-      wrapable
-    />
-    <VanNoticeBar
+    <p v-if="initialized && retentionText" class="runtime-log__status">
+      {{ retentionText }}
+    </p>
+    <p
       v-if="reachedMemoryLimit"
-      class="mobile-notice-bar--warning"
-      text="为控制内存，页面最多保留 500 条日志；较早日志可能未展示。"
-      wrapable
+      class="runtime-log__status"
       data-testid="event-limit-notice"
-    />
-    <VanNoticeBar
-      v-if="backgroundError"
-      class="mobile-notice-bar--warning"
-      :text="`${backgroundError}，已保留现有日志`"
-      wrapable
-    />
-    <VanButton
-      v-if="backgroundError"
-      block
-      data-testid="retry-runtime-sync"
-      @click="emit('retryLive')"
     >
-      重试同步
-    </VanButton>
-    <VanNoticeBar
-      v-if="earlierError"
-      class="mobile-notice-bar--warning"
-      :text="earlierError"
-      wrapable
-    />
+      仅显示最近 500 条日志
+    </p>
+    <div v-if="backgroundError" class="runtime-log__inline-error">
+      <span>刷新失败</span>
+      <VanButton data-testid="retry-runtime-sync" @click="emit('retryLive')">
+        重试
+      </VanButton>
+    </div>
+    <p v-if="earlierError" class="runtime-log__status">加载失败</p>
 
     <div v-if="loading && events.length === 0" class="runtime-log__state">
-      <VanLoading>加载日志中</VanLoading>
+      <VanLoading>加载中</VanLoading>
     </div>
     <VanEmpty
       v-else-if="initialError && events.length === 0"
       image="error"
-      :description="initialError"
+      description="加载失败"
     >
-      <VanButton type="primary" @click="emit('retry')">重新加载</VanButton>
+      <VanButton type="primary" @click="emit('retry')">重试</VanButton>
     </VanEmpty>
     <template v-else>
       <VanButton
@@ -106,7 +94,7 @@ function eventTime(value: string): string {
         data-testid="load-earlier-events"
         @click="emit('loadEarlier')"
       >
-        加载更早日志
+        更早日志
       </VanButton>
       <ol
         v-if="events.length"
@@ -153,6 +141,21 @@ function eventTime(value: string): string {
 .runtime-log time {
   color: var(--text-tertiary);
   font-size: var(--font-size-caption);
+}
+
+.runtime-log__status {
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.runtime-log__inline-error {
+  display: flex;
+  min-height: var(--touch-target-min);
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
 }
 
 .runtime-log__state {

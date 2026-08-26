@@ -6,7 +6,6 @@ import {
   Collapse as VanCollapse,
   CollapseItem as VanCollapseItem,
   Empty as VanEmpty,
-  NoticeBar as VanNoticeBar,
   Progress as VanProgress,
   Skeleton as VanSkeleton,
 } from 'vant'
@@ -38,7 +37,7 @@ const task = computed(() => taskQuery.data.value)
 const deviceId = computed(() => task.value?.target_device_id)
 const deviceQuery = useDeviceDetailQuery(deviceId)
 const taskStatus = computed(() => task.value?.status)
-const runtime = useTaskRuntime(taskId, taskStatus)
+const runtime = useTaskRuntime(taskId, taskStatus, () => Boolean(task.value))
 const runtimeNow = useTaskRuntimeClock(
   () => task.value?.started_at ?? null,
   () => task.value?.finished_at ?? null,
@@ -70,14 +69,7 @@ const progressText = computed(() => {
     ? String(progress.value.current)
     : `${progress.value.current} / ${progress.value.total}`
 })
-const runtimeError = computed(() => {
-  const error = runtime.eventQuery.error.value
-  return error instanceof Error ? error.message : null
-})
-const detailErrorMessage = computed(() => {
-  const error = taskQuery.error.value
-  return error instanceof Error ? error.message : '任务详情刷新失败'
-})
+const runtimeRequestFailed = computed(() => runtime.eventQuery.isError.value)
 const durationText = computed(() =>
   formatTaskDuration(
     task.value?.started_at ?? null,
@@ -89,31 +81,15 @@ const durationText = computed(() =>
 
 <template>
   <AppPage class="task-detail-page">
-    <div v-if="taskQuery.isPending.value" data-testid="detail-loading">
+    <div v-if="taskQuery.isLoading.value" data-testid="detail-loading">
       <VanSkeleton title :row="8" />
     </div>
 
-    <VanEmpty
-      v-else-if="!task"
-      image="error"
-      :description="
-        taskQuery.error.value instanceof Error
-          ? taskQuery.error.value.message
-          : '任务详情加载失败'
-      "
-    >
-      <VanButton type="primary" @click="taskQuery.refetch()"
-        >重新加载</VanButton
-      >
+    <VanEmpty v-else-if="!task" image="error" description="加载失败">
+      <VanButton type="primary" @click="taskQuery.refetch()">重试</VanButton>
     </VanEmpty>
 
     <template v-else>
-      <VanNoticeBar
-        v-if="taskQuery.isError.value"
-        class="mobile-notice-bar--warning"
-        :text="`${detailErrorMessage}，当前展示上次成功加载的数据`"
-        wrapable
-      />
       <section class="task-detail-page__summary" data-testid="task-detail">
         <div class="task-detail-page__title">
           <h1>{{ executionName }}</h1>
@@ -128,9 +104,7 @@ const durationText = computed(() =>
               <span v-if="deviceQuery.data.value">
                 {{ deviceQuery.data.value.display_name }}
               </span>
-              <span v-else-if="deviceQuery.isError.value"
-                >设备信息加载失败</span
-              >
+              <span v-else-if="deviceQuery.isError.value">加载失败</span>
               <span v-else>加载中</span>
             </template>
           </VanCell>
@@ -140,7 +114,7 @@ const durationText = computed(() =>
         <div class="task-detail-page__runtime-summary">
           <div v-if="progress" class="task-detail-page__progress">
             <div class="task-detail-page__runtime-heading">
-              <span>结构化进度</span>
+              <span>进度</span>
               <span data-testid="detail-progress-value">
                 {{ progressText }}
               </span>
@@ -170,15 +144,17 @@ const durationText = computed(() =>
         :events="runtime.events.value"
         :initialized="runtime.initialized.value"
         :purged-at="task.runtime_events_purged_at"
-        :loading="runtime.eventQuery.isPending.value"
+        :loading="runtime.eventQuery.isLoading.value"
         :loading-earlier="runtime.loadingEarlier.value"
         :has-more-before="runtime.hasMoreBefore.value"
-        :initial-error="runtime.events.value.length === 0 ? runtimeError : null"
-        :background-error="
-          runtime.backgroundError.value ||
-          (runtime.events.value.length > 0 ? runtimeError : null)
+        :initial-error="
+          runtime.events.value.length === 0 && runtimeRequestFailed
         "
-        :earlier-error="runtime.earlierError.value"
+        :background-error="
+          Boolean(runtime.backgroundError.value) ||
+          (runtime.events.value.length > 0 && runtimeRequestFailed)
+        "
+        :earlier-error="Boolean(runtime.earlierError.value)"
         :reached-memory-limit="runtime.reachedMemoryLimit.value"
         @retry="runtime.eventQuery.refetch"
         @retry-live="runtime.requestDrain"

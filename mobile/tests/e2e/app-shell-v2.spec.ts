@@ -78,7 +78,7 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   await page.goto('/#/devices')
   await applySafeAreaFixture(page)
 
-  await expect(page.getByText('共 20 台设备', { exact: true })).toBeVisible()
+  await expect(page.getByText('20 台设备', { exact: true })).toBeVisible()
 
   await expect(page.getByTestId('mobile-global-header')).toContainText(
     '思余AI中控台',
@@ -189,33 +189,26 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
 
   await page.getByRole('tab', { name: /计划/ }).click()
   await expect(page).toHaveURL(/#\/schedules$/)
-  await expect(
-    page.getByRole('heading', { name: '定时计划', level: 1 }),
-  ).toBeVisible()
   await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: /店铺/ }).click()
   await expect(page).toHaveURL(/#\/shops$/)
-  await expect(
-    page.getByRole('heading', { name: '店铺', level: 1 }),
-  ).toBeVisible()
+  await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: /我的/ }).click()
   await expect(page).toHaveURL(/#\/me$/)
-  await expect(
-    page.getByRole('heading', { name: '我的', level: 1 }),
-  ).toBeVisible()
+  await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
   await expect(page.locator('body')).not.toContainText(/管理员|假账号|假昵称/)
 
   await page.getByRole('button', { name: '通知' }).click()
-  await expect(page.getByText('通知功能建设中', { exact: true })).toBeVisible()
+  await expect(page.locator('.van-toast')).toContainText('功能建设中')
 
-  await page.evaluate(() => {
-    window.localStorage.setItem('control-center.mobile.theme-mode', 'dark')
-  })
-  await page.reload()
   await page.goto('/#/__foundation')
+  await expect(page).toHaveURL(/#\/__foundation$/)
+  await page.getByRole('button', { name: '深色' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.reload()
+  await expect(page).toHaveURL(/#\/__foundation$/)
   await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
 
   const detailHeaderVisual = await page.evaluate(() => {

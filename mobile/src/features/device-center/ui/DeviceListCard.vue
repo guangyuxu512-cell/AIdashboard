@@ -25,7 +25,7 @@ const heartbeatText = computed(() =>
   formatRelativeHeartbeat(props.device.workerRuntime?.lastSeenAt ?? null),
 )
 const updateText = computed(() =>
-  heartbeatText.value === '—' ? '心跳未上报' : `${heartbeatText.value}更新`,
+  heartbeatText.value === '—' ? '未上报' : heartbeatText.value,
 )
 </script>
 
@@ -52,8 +52,6 @@ const updateText = computed(() =>
       :task="activeTaskState.task"
       :initial-loading="activeTaskState.initialLoading"
       :initial-error="activeTaskState.initialError"
-      :background-error="activeTaskState.backgroundError"
-      :error-message="activeTaskState.errorMessage"
       compact
       @retry="activeTaskState.retry"
       @select="emit('selectTask', $event)"

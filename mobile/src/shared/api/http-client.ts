@@ -1,4 +1,4 @@
-import axios, { AxiosHeaders } from 'axios'
+import axios, { AxiosHeaders, type AxiosResponse } from 'axios'
 
 import { getApiAuthHooks } from './auth-hooks'
 import { apiBaseUrl, apiTimeoutMs } from './config'
@@ -64,6 +64,17 @@ export const apiClient = axios.create({
   timeout: apiTimeoutMs,
 })
 
+function hasJsonResponse(response: AxiosResponse): boolean {
+  if (response.status === 204) return true
+
+  const contentType = String(
+    response.headers['content-type'] ?? '',
+  ).toLowerCase()
+  return (
+    contentType.includes('application/json') || contentType.includes('+json')
+  )
+}
+
 apiClient.interceptors.request.use(async (config) => {
   const authorizationHeader = await getApiAuthHooks().getAuthorizationHeader?.()
   if (authorizationHeader) {
@@ -75,7 +86,16 @@ apiClient.interceptors.request.use(async (config) => {
 })
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (hasJsonResponse(response)) return response
+
+    return Promise.reject(
+      new ApiClientError({
+        message: '请求失败，请稍后重试',
+        status: response.status,
+      }),
+    )
+  },
   async (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       await getApiAuthHooks().onUnauthorized?.()

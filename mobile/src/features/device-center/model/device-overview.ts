@@ -24,6 +24,7 @@ export function summarizeDeviceOverview(
   devices: readonly Device[],
   activeTaskStates: Readonly<Record<string, DeviceActiveTaskState>>,
   dataState: DeviceOverviewDataState,
+  totalCount: number = devices.length,
 ): DeviceOverview {
   if (dataState !== 'ready') {
     return {
@@ -38,6 +39,23 @@ export function summarizeDeviceOverview(
       activeBackgroundErrorCount: 0,
       activeInitialErrorCount: 0,
       activeState: dataState,
+    }
+  }
+
+  const loadedCount = devices.length
+  if (loadedCount < totalCount) {
+    return {
+      dataState: 'ready',
+      loadedCount,
+      onlineCount: null,
+      offlineCount: null,
+      unreportedCount: null,
+      runningCount: null,
+      activeConfirmedCount: 0,
+      activeUnknownCount: totalCount,
+      activeBackgroundErrorCount: 0,
+      activeInitialErrorCount: 0,
+      activeState: 'partial',
     }
   }
 
@@ -65,7 +83,6 @@ export function summarizeDeviceOverview(
     if (activeTaskState.initialError) activeInitialErrorCount += 1
   }
 
-  const loadedCount = devices.length
   const activeUnknownCount = loadedCount - activeConfirmedCount
   const activeState: DeviceOverviewActiveState =
     activeUnknownCount === 0
@@ -75,18 +92,13 @@ export function summarizeDeviceOverview(
         : activeInitialErrorCount > 0
           ? 'error'
           : 'loading'
-  const runningCountIsUnknown =
-    loadedCount > 0 &&
-    (activeConfirmedCount === 0 ||
-      (activeUnknownCount > 0 && runningCount === 0))
-
   return {
     dataState: 'ready',
     loadedCount,
     onlineCount,
     offlineCount,
     unreportedCount,
-    runningCount: runningCountIsUnknown ? null : runningCount,
+    runningCount: activeUnknownCount === 0 ? runningCount : null,
     activeConfirmedCount,
     activeUnknownCount,
     activeBackgroundErrorCount,

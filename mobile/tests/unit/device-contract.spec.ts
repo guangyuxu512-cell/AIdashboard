@@ -137,7 +137,9 @@ describe('device center formal contract', () => {
     expect(activeOptions.queryKey.value).toEqual(
       taskQueryKeys.active('device-1'),
     )
-    expect(activeOptions.refetchInterval).toBe(TASK_ACTIVE_REFRESH_INTERVAL_MS)
+    expect(activeOptions.refetchInterval.value).toBe(
+      TASK_ACTIVE_REFRESH_INTERVAL_MS,
+    )
   })
 
   it('maps the Device DTO without merging enabled and connection facts', () => {

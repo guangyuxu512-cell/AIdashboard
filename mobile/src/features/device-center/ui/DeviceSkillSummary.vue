@@ -5,7 +5,6 @@ import {
   CellGroup as VanCellGroup,
   Empty as VanEmpty,
   Loading as VanLoading,
-  NoticeBar as VanNoticeBar,
 } from 'vant'
 import { computed } from 'vue'
 
@@ -18,8 +17,6 @@ const props = defineProps<{
   capabilities: DeviceSkillCapabilityReadDto[] | undefined
   initialLoading: boolean
   initialError: boolean
-  backgroundError: boolean
-  errorMessage: string
 }>()
 
 const emit = defineEmits<{ retry: [] }>()
@@ -30,34 +27,22 @@ const summary = computed(() =>
 
 <template>
   <section class="device-skill-summary" aria-labelledby="skill-summary-title">
-    <h2 id="skill-summary-title">技能能力摘要</h2>
-    <div v-if="backgroundError" class="device-skill-summary__error">
-      <VanNoticeBar
-        class="mobile-notice-bar--warning"
-        :text="`${errorMessage}，已保留上次技能能力快照`"
-        wrapable
-      />
-      <VanButton block @click="emit('retry')">重新加载技能能力</VanButton>
-    </div>
+    <h2 id="skill-summary-title">能力</h2>
 
     <div v-if="initialLoading" class="device-skill-summary__state">
-      <VanLoading>加载技能能力中</VanLoading>
+      <VanLoading>加载中</VanLoading>
     </div>
-    <VanEmpty
-      v-else-if="initialError"
-      image="error"
-      :description="errorMessage"
-    >
-      <VanButton type="primary" @click="emit('retry')">重新加载</VanButton>
+    <VanEmpty v-else-if="initialError" image="error" description="加载失败">
+      <VanButton type="primary" @click="emit('retry')">重试</VanButton>
     </VanEmpty>
     <VanEmpty
       v-else-if="capabilities?.length === 0"
-      description="暂无技能能力记录"
+      description="暂无能力"
       data-testid="capability-empty"
     />
     <VanCellGroup v-else-if="capabilities" data-testid="capability-summary">
-      <VanCell title="业务能力" :value="`${summary.business} 个`" />
-      <VanCell title="内部能力" :value="`${summary.internal} 个`" />
+      <VanCell title="业务" :value="`${summary.business} 个`" />
+      <VanCell title="内部" :value="`${summary.internal} 个`" />
     </VanCellGroup>
   </section>
 </template>
@@ -82,10 +67,5 @@ const summary = computed(() =>
   display: grid;
   min-height: var(--layout-inline-state-min-height);
   place-items: center;
-}
-
-.device-skill-summary__error {
-  display: grid;
-  gap: var(--space-2);
 }
 </style>

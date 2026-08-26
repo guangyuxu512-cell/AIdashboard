@@ -4,7 +4,12 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/vue-query'
-import { computed, type MaybeRefOrGetter, toValue } from 'vue'
+import { computed, type MaybeRefOrGetter, nextTick, ref, toValue } from 'vue'
+
+import {
+  getOnlineRefetchInterval,
+  mobileOnline,
+} from '@/shared/utils/query-connectivity'
 
 import type { TaskListRequest } from '../api/contracts'
 import { getActiveTask, getTask, getTasks } from '../api/task-api'
@@ -30,11 +35,14 @@ export function getActiveTaskQueryOptions(
   deviceId: MaybeRefOrGetter<string | undefined>,
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
+  const refetchInterval = computed(() =>
+    getOnlineRefetchInterval(TASK_ACTIVE_REFRESH_INTERVAL_MS),
+  )
   return {
     queryKey: computed(() => taskQueryKeys.active(toValue(deviceId) ?? '')),
     queryFn: () => getActiveTask(toValue(deviceId) ?? ''),
     enabled: computed(() => Boolean(toValue(deviceId)) && toValue(enabled)),
-    refetchInterval: TASK_ACTIVE_REFRESH_INTERVAL_MS,
+    refetchInterval,
   }
 }
 
@@ -75,9 +83,32 @@ export function getTaskListRefetchInterval(
   return data && data.pages.length > 1 ? false : TASK_LIST_REFRESH_INTERVAL_MS
 }
 
+interface QueryStateWithData<TData> {
+  state: { data: TData | undefined }
+}
+
+function resolveTaskListRefetchInterval(
+  query: QueryStateWithData<InfiniteData<TaskListPage, number>>,
+): number | false {
+  return getTaskListRefetchInterval(query.state.data)
+}
+
+function resolveTaskDetailRefetchInterval(
+  query: QueryStateWithData<Awaited<ReturnType<typeof getTask>>>,
+): number | false {
+  const task = query.state.data
+  return task && !isTerminalTaskStatus(task.status) ? 2_000 : false
+}
+
 export function useTaskListQuery(filters: MaybeRefOrGetter<TaskListFilters>) {
   const queryClient = useQueryClient()
   const queryKey = computed(() => taskQueryKeys.list(toValue(filters)))
+  const manualRefreshing = ref(false)
+  const effectiveRefetchInterval = computed(() =>
+    manualRefreshing.value || !mobileOnline.value
+      ? false
+      : resolveTaskListRefetchInterval,
+  )
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: 1,
@@ -86,38 +117,46 @@ export function useTaskListQuery(filters: MaybeRefOrGetter<TaskListFilters>) {
         await getTasks(toTaskListRequest(toValue(filters), pageParam)),
       ),
     getNextPageParam: getNextTaskPageParam,
-    refetchInterval: (currentQuery) =>
-      getTaskListRefetchInterval(
-        currentQuery.state.data as
-          InfiniteData<TaskListPage, number> | undefined,
-      ),
+    refetchInterval: effectiveRefetchInterval,
   })
 
   async function refreshFromStart(): Promise<void> {
-    queryClient.setQueryData<InfiniteData<TaskListPage, number>>(
-      queryKey.value,
-      (data) => {
-        if (!data || data.pages.length <= 1) return data
-        return {
-          pages: data.pages.slice(0, 1),
-          pageParams: data.pageParams.slice(0, 1),
-        }
-      },
-    )
-    await query.refetch()
+    const filtersSnapshot = { ...toValue(filters) }
+    const queryKeySnapshot = taskQueryKeys.list(filtersSnapshot)
+    manualRefreshing.value = true
+    await nextTick()
+    try {
+      await queryClient.cancelQueries({
+        queryKey: queryKeySnapshot,
+        exact: true,
+      })
+      const firstPage = mapTaskListPage(
+        await getTasks(toTaskListRequest(filtersSnapshot, 1)),
+      )
+      await queryClient.cancelQueries({
+        queryKey: queryKeySnapshot,
+        exact: true,
+      })
+      queryClient.setQueryData<InfiniteData<TaskListPage, number>>(
+        queryKeySnapshot,
+        { pages: [firstPage], pageParams: [1] },
+      )
+    } finally {
+      manualRefreshing.value = false
+    }
   }
 
   return { ...query, refreshFromStart }
 }
 
 export function useTaskDetailQuery(taskId: MaybeRefOrGetter<string>) {
+  const refetchInterval = computed(() =>
+    mobileOnline.value ? resolveTaskDetailRefetchInterval : false,
+  )
   return useQuery({
     queryKey: computed(() => taskQueryKeys.detail(toValue(taskId))),
     queryFn: () => getTask(toValue(taskId)),
     enabled: computed(() => Boolean(toValue(taskId))),
-    refetchInterval: (query) => {
-      const task = query.state.data
-      return task && !isTerminalTaskStatus(task.status) ? 2_000 : false
-    },
+    refetchInterval,
   })
 }

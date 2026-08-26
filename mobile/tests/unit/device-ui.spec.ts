@@ -68,9 +68,7 @@ const listProps = {
   activeTaskStates: {} as Record<string, DeviceActiveTaskState>,
   initialLoading: false,
   initialError: false,
-  backgroundError: false,
   nextPageError: false,
-  errorMessage: '设备请求失败',
   refreshing: false,
   loadingMore: false,
   hasMore: false,
@@ -82,7 +80,6 @@ const idleActiveTaskState: DeviceActiveTaskState = {
   initialLoading: false,
   initialError: false,
   backgroundError: false,
-  errorMessage: '当前任务失败',
   retry: () => undefined,
 }
 
@@ -208,7 +205,10 @@ describe('device center UI', () => {
       expect(wrapper.text()).toContain('1.2.3')
       expect(wrapper.text()).toContain('空闲')
       expect(wrapper.get('.device-list-card__meta').text()).toContain(
-        '更新 · Worker 1.2.3',
+        'Worker 1.2.3',
+      )
+      expect(wrapper.get('.device-list-card__meta').text()).not.toContain(
+        '更新',
       )
     },
   )
@@ -219,7 +219,7 @@ describe('device center UI', () => {
 
     expect(wrapper.text()).toContain('未上报')
     expect(wrapper.text()).not.toContain('离线')
-    expect(wrapper.text()).toContain('心跳未上报 · Worker —')
+    expect(wrapper.text()).toContain('未上报 · Worker —')
   })
 
   it.each([
@@ -232,8 +232,6 @@ describe('device center UI', () => {
           task: { ...runningTask, status },
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: '当前任务失败',
         },
       }),
     )
@@ -252,8 +250,6 @@ describe('device center UI', () => {
           task: runningTask,
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: '当前任务失败',
           compact: true,
         },
       }),
@@ -272,8 +268,6 @@ describe('device center UI', () => {
           task: undefined,
           initialLoading: true,
           initialError: false,
-          backgroundError: false,
-          errorMessage: '当前任务失败',
         },
       }),
     )
@@ -283,8 +277,6 @@ describe('device center UI', () => {
           task: null,
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: '当前任务失败',
         },
       }),
     )
@@ -300,16 +292,11 @@ describe('device center UI', () => {
           task: runningTask,
           initialLoading: false,
           initialError: false,
-          backgroundError: true,
-          errorMessage: '当前任务后台失败',
         },
       }),
     )
-    expect(background.text()).toContain('当前任务后台失败')
     expect(background.text()).toContain('同步订单')
-    expect(background.get('.van-notice-bar').classes()).toContain(
-      'mobile-notice-bar--warning',
-    )
+    expect(background.find('.van-notice-bar').exists()).toBe(false)
 
     const initial = track(
       mount(ActiveTaskSummary, {
@@ -317,17 +304,16 @@ describe('device center UI', () => {
           task: undefined,
           initialLoading: false,
           initialError: true,
-          backgroundError: false,
-          errorMessage: '当前任务初始失败',
         },
       }),
     )
     await initial.get('button').trigger('click')
     expect(initial.emitted('retry')).toHaveLength(1)
+    expect(initial.text()).toContain('加载失败')
     expect(initial.text()).not.toContain('空闲')
   })
 
-  it('covers Device list loading, empty, initial and cached background errors', () => {
+  it('covers Device list loading, empty, initial retry and cached background errors', async () => {
     const loading = track(
       mount(DeviceInfiniteList, {
         props: { ...listProps, initialLoading: true },
@@ -344,7 +330,6 @@ describe('device center UI', () => {
         props: {
           ...listProps,
           devices: [baseDevice],
-          backgroundError: true,
         },
         global: {
           stubs: {
@@ -363,12 +348,15 @@ describe('device center UI', () => {
     expect(initialError.find('[data-testid="device-error"]').exists()).toBe(
       true,
     )
+    expect(initialError.text()).toContain('加载失败')
+    expect(initialError.text()).not.toContain('技术错误')
+    await initialError
+      .get('[data-testid="device-error"] button')
+      .trigger('click')
+    expect(initialError.emitted('retry')).toHaveLength(1)
     expect(
       background.find('[data-testid="device-background-error"]').exists(),
-    ).toBe(true)
-    expect(background.get('.van-notice-bar').classes()).toContain(
-      'mobile-notice-bar--warning',
-    )
+    ).toBe(false)
     expect(background.get('[data-testid="cached-device-card"]').text()).toBe(
       '仓库设备',
     )
@@ -411,16 +399,14 @@ describe('device center UI', () => {
           inventories: [providerInventory(status)],
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: 'Provider 请求失败',
         },
       }),
     )
 
     expect(wrapper.text()).toContain(label)
     expect(wrapper.text()).toContain('账号测试账号')
-    expect(wrapper.text()).toContain('提供方版本3.4.5')
-    expect(wrapper.text()).toContain('影刀应用数1 个')
+    expect(wrapper.text()).toContain('版本3.4.5')
+    expect(wrapper.text()).toContain('应用1 个')
     expect(wrapper.text()).not.toContain('提供方可用')
   })
 
@@ -448,8 +434,6 @@ describe('device center UI', () => {
           inventories: [],
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: 'Provider 请求失败',
         },
       }),
     )
@@ -459,17 +443,13 @@ describe('device center UI', () => {
           inventories: [providerInventory('ready')],
           initialLoading: false,
           initialError: false,
-          backgroundError: true,
-          errorMessage: 'Provider 后台失败',
         },
       }),
     )
 
-    expect(empty.text()).toContain('尚未上报影刀快照')
-    expect(background.text()).toContain('Provider 后台失败')
+    expect(empty.text()).toContain('未上报')
     expect(background.text()).toContain('就绪')
-    await background.get('button').trigger('click')
-    expect(background.emitted('retry')).toHaveLength(1)
+    expect(background.find('button').exists()).toBe(false)
   })
 
   it('keeps Provider loading and initial error distinct from an empty snapshot', async () => {
@@ -479,13 +459,11 @@ describe('device center UI', () => {
           inventories: undefined,
           initialLoading: true,
           initialError: false,
-          backgroundError: false,
-          errorMessage: '影刀快照加载失败',
         },
       }),
     )
-    expect(loading.text()).toContain('加载影刀快照中')
-    expect(loading.text()).not.toContain('尚未上报影刀快照')
+    expect(loading.text()).toContain('加载中')
+    expect(loading.text()).not.toContain('未上报')
 
     const initialError = track(
       mount(DeviceProviderSection, {
@@ -493,14 +471,13 @@ describe('device center UI', () => {
           inventories: undefined,
           initialLoading: false,
           initialError: true,
-          backgroundError: false,
-          errorMessage: '影刀快照加载失败',
         },
       }),
     )
     await initialError.get('button').trigger('click')
     expect(initialError.emitted('retry')).toHaveLength(1)
-    expect(initialError.text()).not.toContain('尚未上报影刀快照')
+    expect(initialError.text()).toContain('加载失败')
+    expect(initialError.text()).not.toContain('影刀快照')
   })
 
   it('counts all three Skill classifications and keeps empty/error states explicit', async () => {
@@ -516,13 +493,11 @@ describe('device center UI', () => {
           capabilities,
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: 'Skill 请求失败',
         },
       }),
     )
-    expect(summary.text()).toContain('业务能力2 个')
-    expect(summary.text()).toContain('内部能力1 个')
+    expect(summary.text()).toContain('业务2 个')
+    expect(summary.text()).toContain('内部1 个')
     expect(summary.text()).not.toContain('未分类能力')
 
     const technicalDetails = track(
@@ -537,12 +512,10 @@ describe('device center UI', () => {
           capabilities: [],
           initialLoading: false,
           initialError: false,
-          backgroundError: false,
-          errorMessage: 'Skill 请求失败',
         },
       }),
     )
-    expect(empty.text()).toContain('暂无技能能力记录')
+    expect(empty.text()).toContain('暂无能力')
 
     const initialError = track(
       mount(DeviceSkillSummary, {
@@ -550,13 +523,12 @@ describe('device center UI', () => {
           capabilities: undefined,
           initialLoading: false,
           initialError: true,
-          backgroundError: false,
-          errorMessage: 'Skill 初始失败',
         },
       }),
     )
     await initialError.get('button').trigger('click')
     expect(initialError.emitted('retry')).toHaveLength(1)
+    expect(initialError.text()).toContain('加载失败')
 
     const background = track(
       mount(DeviceSkillSummary, {
@@ -564,14 +536,10 @@ describe('device center UI', () => {
           capabilities,
           initialLoading: false,
           initialError: false,
-          backgroundError: true,
-          errorMessage: '技能能力后台失败',
         },
       }),
     )
-    expect(background.text()).toContain('技能能力后台失败')
-    expect(background.text()).toContain('业务能力2 个')
-    await background.get('button').trigger('click')
-    expect(background.emitted('retry')).toHaveLength(1)
+    expect(background.text()).toContain('业务2 个')
+    expect(background.find('button').exists()).toBe(false)
   })
 })

@@ -14,6 +14,7 @@ import {
   type TaskEventReadDto,
   type TaskStatusDto,
 } from '@/entities/task'
+import { canRunBackgroundFetch } from '@/shared/utils/query-connectivity'
 
 import {
   mergeTaskEvents,
@@ -36,6 +37,7 @@ export function shouldPollTaskRuntime(
 export function useTaskRuntime(
   taskId: MaybeRefOrGetter<string>,
   status: MaybeRefOrGetter<TaskStatusDto | undefined>,
+  enabled: MaybeRefOrGetter<boolean> = true,
 ) {
   const events = ref<TaskEventReadDto[]>([])
   const initialized = ref(false)
@@ -95,7 +97,11 @@ export function useTaskRuntime(
   }
 
   const drainController = createExclusiveDrainController(
-    () => !disposed && initialized.value && nextAfterSequence.value !== null,
+    () =>
+      !disposed &&
+      toValue(enabled) &&
+      initialized.value &&
+      nextAfterSequence.value !== null,
     runDrain,
   )
 
@@ -108,10 +114,15 @@ export function useTaskRuntime(
     pollTimer = undefined
   }
 
-  function syncPolling(currentStatus: TaskStatusDto | undefined): void {
+  function syncPolling(
+    currentStatus: TaskStatusDto | undefined,
+    isEnabled: boolean,
+  ): void {
     stopPolling()
+    if (!isEnabled) return
     if (shouldPollTaskRuntime(currentStatus)) {
       pollTimer = setInterval(() => {
+        if (!canRunBackgroundFetch()) return
         void requestDrain()
       }, TASK_RUNTIME_POLL_INTERVAL_MS)
       return
@@ -139,7 +150,7 @@ export function useTaskRuntime(
 
   const eventQuery = useQuery({
     queryKey: computed(() => ['tasks', 'runtime-events', toValue(taskId)]),
-    enabled: computed(() => Boolean(toValue(taskId))),
+    enabled: computed(() => Boolean(toValue(taskId)) && toValue(enabled)),
     queryFn: () =>
       getTaskEvents(toValue(taskId), {
         limit: MOBILE_TASK_EVENT_PAGE_SIZE,
@@ -160,8 +171,8 @@ export function useTaskRuntime(
   )
 
   watch(
-    () => toValue(status),
-    (currentStatus) => syncPolling(currentStatus),
+    [() => toValue(status), () => toValue(enabled)] as const,
+    ([currentStatus, isEnabled]) => syncPolling(currentStatus, isEnabled),
     { immediate: true },
   )
 

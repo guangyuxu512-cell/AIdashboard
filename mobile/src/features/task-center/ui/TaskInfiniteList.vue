@@ -3,7 +3,6 @@ import {
   Button as VanButton,
   Empty as VanEmpty,
   List as VanList,
-  NoticeBar as VanNoticeBar,
   PullRefresh as VanPullRefresh,
   Skeleton as VanSkeleton,
 } from 'vant'
@@ -14,9 +13,7 @@ defineProps<{
   tasks: TaskListItem[]
   initialLoading: boolean
   initialError: boolean
-  backgroundError: boolean
   nextPageError: boolean
-  errorMessage: string
   refreshing: boolean
   loadingMore: boolean
   hasMore: boolean
@@ -32,15 +29,6 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div v-if="backgroundError" class="task-list__background-error">
-    <VanNoticeBar
-      class="mobile-notice-bar--warning"
-      :text="`${errorMessage}，当前展示上次成功加载的数据`"
-      wrapable
-      data-testid="background-error"
-    />
-  </div>
-
   <div v-if="initialLoading" class="task-list-state" data-testid="task-loading">
     <VanSkeleton v-for="index in 3" :key="index" title :row="3" />
   </div>
@@ -50,15 +38,15 @@ const emit = defineEmits<{
     class="task-list-state"
     data-testid="task-error"
   >
-    <VanEmpty image="error" :description="errorMessage">
-      <VanButton type="primary" @click="emit('retry')">重新加载</VanButton>
+    <VanEmpty image="error" description="加载失败">
+      <VanButton type="primary" @click="emit('retry')">重试</VanButton>
     </VanEmpty>
   </div>
 
   <VanPullRefresh v-else :model-value="refreshing" @refresh="emit('refresh')">
     <VanEmpty
       v-if="tasks.length === 0"
-      description="当前筛选条件下暂无任务"
+      description="暂无任务"
       data-testid="task-empty"
     />
     <VanList
@@ -84,12 +72,8 @@ const emit = defineEmits<{
         class="task-list__next-error"
         data-testid="task-next-page-error"
       >
-        <VanNoticeBar
-          class="mobile-notice-bar--warning"
-          :text="`${errorMessage}，已保留当前任务`"
-          wrapable
-        />
-        <VanButton block @click="emit('retryLoadMore')">重试加载更多</VanButton>
+        <span>加载失败</span>
+        <VanButton block @click="emit('retryLoadMore')">重试</VanButton>
       </div>
     </VanList>
   </VanPullRefresh>
@@ -111,11 +95,6 @@ const emit = defineEmits<{
   padding: var(--space-2)
     max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
     max(var(--layout-page-padding-x), var(--safe-area-left));
-}
-
-.task-list__background-error {
-  padding-right: max(var(--layout-page-padding-x), var(--safe-area-right));
-  padding-left: max(var(--layout-page-padding-x), var(--safe-area-left));
 }
 
 .task-list__item {

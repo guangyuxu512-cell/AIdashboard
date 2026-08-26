@@ -10,6 +10,8 @@ const safeAreaFixture = {
 } as const
 
 interface MockApiOptions {
+  deviceTotal?: number
+  failDevicePage1Once?: boolean
   failDevicePage2Once?: boolean
   failDevicePage1AfterSuccessOnce?: boolean
   holdDevicePage1AfterSuccessOnce?: {
@@ -340,6 +342,7 @@ async function installMockApi(
     taskDetailRequests: [],
   }
   let devicePage2Failed = false
+  let devicePage1InitialFailed = false
   let devicePage1Succeeded = false
   let devicePage1FailedAfterSuccess = false
   let devicePage1HeldAfterSuccess = false
@@ -451,6 +454,15 @@ async function installMockApi(
       const pageNumber = Number(url.searchParams.get('page') ?? 1)
       const pageSize = Number(url.searchParams.get('page_size') ?? 20)
       if (
+        options.failDevicePage1Once &&
+        pageNumber === 1 &&
+        !devicePage1Succeeded &&
+        !devicePage1InitialFailed
+      ) {
+        devicePage1InitialFailed = true
+        return fulfillApiError(route, 'DATABASE_OPERATION_FAILED')
+      }
+      if (
         options.holdDevicePage1AfterSuccessOnce &&
         pageNumber === 1 &&
         devicePage1Succeeded &&
@@ -478,8 +490,9 @@ async function installMockApi(
         return fulfillApiError(route, '下一页设备加载失败')
       }
       if (pageNumber === 1) devicePage1Succeeded = true
+      const total = options.deviceTotal ?? 25
       const first = (pageNumber - 1) * pageSize + 1
-      const last = Math.min(pageNumber * pageSize, 25)
+      const last = Math.min(pageNumber * pageSize, total)
       return fulfillJson(route, {
         items:
           first > last
@@ -487,7 +500,7 @@ async function installMockApi(
             : Array.from({ length: last - first + 1 }, (_, index) =>
                 makeDevice(first + index),
               ),
-        total: 25,
+        total,
         page: pageNumber,
         page_size: pageSize,
       })
@@ -519,15 +532,12 @@ for (const width of viewportWidths) {
       await expect(firstCard).toContainText('同步订单')
       await expect(firstCard).not.toContainText('正在执行订单同步')
       await expect(firstCard.locator('.device-list-card__meta')).toContainText(
-        /更新 · Worker 1\.0\.1/,
+        /Worker 1\.0\.1/,
       )
-      await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
-      await expect(page.getByTestId('overview-online')).toHaveText('18')
-      await expect(page.getByTestId('overview-running')).toHaveText('1')
-      await expect(page.getByTestId('overview-offline')).toHaveText('1')
-      await expect(page.getByTestId('overview-running-hint')).toHaveText(
-        '已确认 20/20 台',
-      )
+      await expect(page.getByText('25 台设备')).toBeVisible()
+      await expect(page.getByTestId('overview-online')).toHaveText('—')
+      await expect(page.getByTestId('overview-running')).toHaveText('—')
+      await expect(page.getByTestId('overview-offline')).toHaveText('—')
       await expect
         .poll(
           () =>
@@ -696,10 +706,10 @@ for (const width of viewportWidths) {
         '账号测试账号',
       )
       await expect(page.getByTestId('provider-inventory')).toContainText(
-        '提供方版本3.4.5',
+        '版本3.4.5',
       )
       await expect(page.getByTestId('capability-summary')).toContainText(
-        '业务能力1 个',
+        '业务1 个',
       )
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
@@ -810,13 +820,10 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await page.goto('/#/devices')
 
   await expect(page.getByTestId('device-card').first()).toBeVisible()
-  await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
-  await expect(page.getByTestId('overview-online')).toHaveText('18')
-  await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-offline')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 20/20 台',
-  )
+  await expect(page.getByText('25 台设备')).toBeVisible()
+  await expect(page.getByTestId('overview-online')).toHaveText('—')
+  await expect(page.getByTestId('overview-running')).toHaveText('—')
+  await expect(page.getByTestId('overview-offline')).toHaveText('—')
   await expect
     .poll(() => firstPageDeviceIds.map(activeRequestCount))
     .toEqual(firstPageDeviceIds.map(() => 1))
@@ -831,13 +838,10 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   const activeRequestIndexBeforePage2 = state.activeTaskRequests.length
   await scrollMainToBottom(page)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前已加载 25 台设备')).toBeVisible()
+  await expect(page.getByText('25 台设备')).toBeVisible()
   await expect(page.getByTestId('overview-online')).toHaveText('23')
   await expect(page.getByTestId('overview-running')).toHaveText('1')
   await expect(page.getByTestId('overview-offline')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 25/25 台',
-  )
   await expect
     .poll(() => secondPageDeviceIds.map(activeRequestCount))
     .toEqual(secondPageDeviceIds.map(() => 1))
@@ -873,8 +877,8 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
       .every((request) => new URL(request).searchParams.get('page') === '1'),
   ).toBe(true)
   await expect(page.getByText('设备 25', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
-  await expect(page.getByTestId('overview-online')).toHaveText('18')
+  await expect(page.getByText('25 台设备')).toBeVisible()
+  await expect(page.getByTestId('overview-online')).toHaveText('—')
   await page.waitForTimeout(100)
   const removedObserverRequestCounts =
     secondPageDeviceIds.map(activeRequestCount)
@@ -890,7 +894,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   expect(consoleErrors).toEqual([])
 })
 
-test('设备后台刷新失败保留旧卡片并遵守左右安全区', async ({ page }) => {
+test('设备后台刷新失败保留旧卡片且不展示实现原因', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await installMockApi(page, { failDevicePage1AfterSuccessOnce: true })
   await page.goto('/#/devices')
@@ -900,23 +904,30 @@ test('设备后台刷新失败保留旧卡片并遵守左右安全区', async ({
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
 
   await pullToRefresh(page)
-  const backgroundError = page.getByTestId('device-background-error')
-  await expect(backgroundError).toBeVisible()
-  await expect(backgroundError).toContainText('设备后台刷新失败')
+  await expect(page.getByText('刷新失败', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('device-background-error')).toHaveCount(0)
+  await expect(page.getByText('设备后台刷新失败')).toHaveCount(0)
   await expect(page.getByTestId('device-card').first()).toBeVisible()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前已加载 25 台设备')).toBeVisible()
+  await expect(page.getByText('25 台设备')).toBeVisible()
   await expect(page.getByTestId('overview-online')).toHaveText('23')
-
-  const padding = await backgroundError.evaluate((element) => {
-    const style = window.getComputedStyle(element)
-    return { left: style.paddingLeft, right: style.paddingRight }
-  })
-  expect(padding).toEqual({
-    left: safeAreaFixture.left,
-    right: safeAreaFixture.right,
-  })
   await expectNoHorizontalOverflow(page)
+})
+
+test('设备首次请求失败进入简洁错误并可重试成功', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installMockApi(page, { failDevicePage1Once: true })
+  await page.goto('/#/devices')
+
+  const errorState = page.getByTestId('device-error')
+  await expect(errorState).toBeVisible()
+  await expect(errorState).toContainText('加载失败')
+  await expect(errorState).not.toContainText('DATABASE_OPERATION_FAILED')
+  await expect(page.getByTestId('device-loading')).toHaveCount(0)
+
+  await errorState.getByRole('button', { name: '重试' }).click()
+  await expect(page.getByTestId('device-card').first()).toBeVisible()
+  await expect(page.getByTestId('device-error')).toHaveCount(0)
 })
 
 test('Active Task 部分未知时不显示伪零并在补齐后转为精确统计', async ({
@@ -932,6 +943,7 @@ test('Active Task 部分未知时不显示伪零并在补齐后转为精确统�
   })
 
   await installMockApi(page, {
+    deviceTotal: 20,
     holdActiveTaskOnce: {
       deviceId: 'device-1',
       onStarted: notifyActiveStarted,
@@ -942,29 +954,21 @@ test('Active Task 部分未知时不显示伪零并在补齐后转为精确统�
   await activeStarted
 
   await expect(page.getByTestId('overview-running')).toHaveText('—')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 19/20 台',
-  )
 
   releaseActive()
   await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 20/20 台',
-  )
 })
 
 test('Active Task 缓存背景失败保留运行中数量并提示刷新失败', async ({
   page,
 }) => {
   const state = await installMockApi(page, {
+    deviceTotal: 20,
     failActiveAfterSuccessDeviceId: 'device-1',
   })
   await page.goto('/#/devices')
 
   await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 20/20 台',
-  )
   await expect
     .poll(
       () =>
@@ -975,9 +979,7 @@ test('Active Task 缓存背景失败保留运行中数量并提示刷新失败',
     )
     .toBeGreaterThan(1)
   await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '部分状态刷新失败',
-  )
+  await expect(page.getByText('当前任务后台刷新失败')).toHaveCount(0)
 })
 
 test('手动刷新跨过定时边界时暂停后台分页刷新', async ({ page }) => {
@@ -1031,7 +1033,7 @@ test('设备下一页失败只在尾部提示并可显式重试', async ({ page 
   await expect(page.getByTestId('device-background-error')).toHaveCount(0)
   await page
     .getByTestId('device-list-next-page-error')
-    .getByRole('button', { name: '重试加载更多' })
+    .getByRole('button', { name: '重试' })
     .click()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
 })
@@ -1043,9 +1045,10 @@ test('设备详情成功时三类辅助失败各自展示且不覆盖主数据',
 
   await expect(page.getByTestId('device-detail')).toBeVisible()
   await expect(page.getByText('设备 1', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前任务加载失败')).toBeVisible()
-  await expect(page.getByText('影刀快照加载失败')).toBeVisible()
-  await expect(page.getByText('技能能力加载失败')).toBeVisible()
+  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(3)
+  await expect(page.locator('body')).not.toContainText(
+    /影刀快照加载失败|技能能力加载失败/,
+  )
   expect(state.activeTaskRequests.length).toBeGreaterThan(0)
   expect(state.providerRequests).toHaveLength(1)
   expect(state.capabilityRequests).toHaveLength(1)
@@ -1057,9 +1060,7 @@ test('未上报 Runtime 与离线是不同事实', async ({ page }) => {
   await installMockApi(page)
 
   await page.goto('/#/devices/device-3')
-  await expect(page.getByTestId('runtime-unreported')).toContainText(
-    '未上报运行端信息',
-  )
+  await expect(page.getByTestId('runtime-unreported')).toContainText('未上报')
   await expect(page.getByTestId('device-detail')).toContainText('未上报')
   await expect(page.getByTestId('device-detail')).not.toContainText('离线')
 

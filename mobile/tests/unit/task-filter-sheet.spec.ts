@@ -34,7 +34,7 @@ function createDeviceQuery(options: {
     isFetchNextPageError: ref(false),
     isFetchingNextPage: ref(false),
     hasNextPage: ref(false),
-    isPending: ref(false),
+    isLoading: ref(false),
     fetchNextPage: vi.fn(),
     refetch: vi.fn(),
   }
@@ -71,11 +71,12 @@ describe('device filter error states', () => {
     deviceQueryMock.current = query
     const wrapper = await openDevicePicker()
 
-    expect(wrapper.text()).toContain('设备初始加载失败')
+    expect(wrapper.text()).toContain('加载失败')
+    expect(wrapper.text()).not.toContain('设备初始加载失败')
     const retry = wrapper.get(
       '.task-filter-sheet__device-popup .van-empty button',
     )
-    expect(retry.text()).toContain('重新加载')
+    expect(retry.text()).toContain('重试')
     await retry.trigger('click')
     expect(query.refetch).toHaveBeenCalledOnce()
   })
@@ -108,8 +109,8 @@ describe('device filter error states', () => {
     })
     const wrapper = await openDevicePicker()
 
-    expect(wrapper.text()).toContain('设备后台刷新失败，已保留当前设备选项')
+    expect(wrapper.text()).not.toContain('设备后台刷新失败')
     expect(wrapper.text()).toContain('仓库手机')
-    expect(wrapper.text()).not.toContain('重新加载')
+    expect(wrapper.text()).not.toContain('重试')
   })
 })

@@ -12,6 +12,12 @@ const safeAreaFixture = {
 type TaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'lost'
 
 interface MockApiOptions {
+  taskTotal?: number
+  failTaskPage1AfterSuccessOnce?: boolean
+  holdTaskPage1AfterSuccessOnce?: {
+    onStarted: () => void
+    release: Promise<void>
+  }
   failTaskPage2Once?: boolean
   failDevicePage2Once?: boolean
   emptyThenBackgroundFailure?: boolean
@@ -217,6 +223,9 @@ async function installMockApi(
     eventRequests: [],
   }
   let taskPage2Failed = false
+  let taskPage1Succeeded = false
+  let taskPage1FailedAfterSuccess = false
+  let taskPage1HeldAfterSuccess = false
   let devicePage2Failed = false
   let taskListResponseCount = 0
 
@@ -283,6 +292,26 @@ async function installMockApi(
       taskListResponseCount += 1
       const pageNumber = Number(url.searchParams.get('page') ?? 1)
 
+      if (
+        options.holdTaskPage1AfterSuccessOnce &&
+        pageNumber === 1 &&
+        taskPage1Succeeded &&
+        !taskPage1HeldAfterSuccess
+      ) {
+        taskPage1HeldAfterSuccess = true
+        options.holdTaskPage1AfterSuccessOnce.onStarted()
+        await options.holdTaskPage1AfterSuccessOnce.release
+      }
+      if (
+        options.failTaskPage1AfterSuccessOnce &&
+        pageNumber === 1 &&
+        taskPage1Succeeded &&
+        !taskPage1FailedAfterSuccess
+      ) {
+        taskPage1FailedAfterSuccess = true
+        return fulfillApiError(route, '任务刷新失败')
+      }
+
       if (options.emptyThenBackgroundFailure && taskListResponseCount > 1) {
         return fulfillApiError(route, '任务后台刷新失败')
       }
@@ -303,7 +332,12 @@ async function installMockApi(
       const status = url.searchParams.get('status')
       const deviceId = url.searchParams.get('device_id')
       const search = url.searchParams.get('search')?.trim()
-      let filtered = taskItems
+      let filtered =
+        options.taskTotal === undefined
+          ? taskItems
+          : Array.from({ length: options.taskTotal }, (_, index) =>
+              makeTaskListItem(index + 1),
+            )
       if (status) filtered = filtered.filter((task) => task.status === status)
       if (deviceId) {
         filtered = filtered.filter((task) => task.target_device_id === deviceId)
@@ -314,6 +348,7 @@ async function installMockApi(
         )
       }
       const start = (pageNumber - 1) * 20
+      if (pageNumber === 1) taskPage1Succeeded = true
       return fulfillJson(route, {
         items: filtered.slice(start, start + 20),
         total: filtered.length,
@@ -908,7 +943,7 @@ test('任务和设备下一页错误保留已有数据并提供独立重试', as
   await expect(page.getByTestId('background-error')).toHaveCount(0)
   await page
     .getByTestId('task-next-page-error')
-    .getByRole('button', { name: '重试加载更多' })
+    .getByRole('button', { name: '重试' })
     .click()
   await expect(page.getByText('专项同步').first()).toBeVisible()
 
@@ -920,22 +955,85 @@ test('任务和设备下一页错误保留已有数据并提供独立重试', as
   await expect(page.getByTestId('device-next-page-error')).toBeVisible()
   await page
     .getByTestId('device-next-page-error')
-    .getByRole('button', { name: '重试加载更多' })
+    .getByRole('button', { name: '重试' })
     .click()
   await expect(devicePopup.getByText('设备 101', { exact: true })).toBeVisible()
 })
 
-test('成功空缓存后台失败仍展示空态与背景提示', async ({ page }) => {
+test('成功空缓存后台失败仍展示空态且不解释刷新机制', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
-  await installMockApi(page, { emptyThenBackgroundFailure: true })
+  const state = await installMockApi(page, { emptyThenBackgroundFailure: true })
   await page.goto('/#/tasks')
   await expect(page.getByTestId('task-empty')).toBeVisible()
 
-  await expect(page.getByTestId('background-error')).toBeVisible({
-    timeout: 7_000,
-  })
+  await expect
+    .poll(() => state.taskListRequests.length, { timeout: 7_000 })
+    .toBeGreaterThan(1)
+  await expect(page.getByTestId('background-error')).toHaveCount(0)
   await expect(page.getByTestId('task-empty')).toBeVisible()
   await expect(page.getByTestId('task-error')).toHaveCount(0)
+})
+
+test('任务主动刷新失败保留多页缓存并仅提示刷新失败', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await installMockApi(page, {
+    taskTotal: 45,
+    failTaskPage1AfterSuccessOnce: true,
+  })
+  await page.goto('/#/tasks')
+  await expect(page.getByTestId('task-card').first()).toBeVisible()
+  await scrollMainToBottom(page)
+  await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(1)
+
+  const requestCountBeforeRefresh = state.taskListRequests.length
+  await pullToRefresh(page)
+
+  await expect(page.getByText('刷新失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(1)
+  expect(
+    state.taskListRequests
+      .slice(requestCountBeforeRefresh)
+      .map((request) => new URL(request).searchParams.get('page')),
+  ).toEqual(['1'])
+  await expect(page.locator('body')).not.toContainText('任务刷新失败')
+})
+
+test('任务刷新进行中阻止下一页并在成功后收敛为第一页', async ({ page }) => {
+  let notifyRefreshStarted: () => void = () => undefined
+  const refreshStarted = new Promise<void>((resolve) => {
+    notifyRefreshStarted = resolve
+  })
+  let releaseRefresh: () => void = () => undefined
+  const refreshRelease = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  const state = await installMockApi(page, {
+    taskTotal: 45,
+    holdTaskPage1AfterSuccessOnce: {
+      onStarted: notifyRefreshStarted,
+      release: refreshRelease,
+    },
+  })
+  await page.goto('/#/tasks')
+  await expect(page.getByTestId('task-card').first()).toBeVisible()
+  await scrollMainToBottom(page)
+  await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(1)
+
+  const requestCountBeforeRefresh = state.taskListRequests.length
+  await pullToRefresh(page)
+  await refreshStarted
+  await scrollMainToBottom(page)
+  await page.waitForTimeout(200)
+
+  expect(
+    state.taskListRequests
+      .slice(requestCountBeforeRefresh)
+      .map((request) => new URL(request).searchParams.get('page')),
+  ).toEqual(['1'])
+  await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(1)
+
+  releaseRefresh()
+  await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(0)
 })
 
 test('非终态详情持续发送 after_seq 增量请求', async ({ page }) => {

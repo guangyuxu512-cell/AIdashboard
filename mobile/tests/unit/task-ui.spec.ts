@@ -44,9 +44,7 @@ const listProps = {
   tasks: [task],
   initialLoading: false,
   initialError: false,
-  backgroundError: false,
   nextPageError: false,
-  errorMessage: '请求失败',
   refreshing: false,
   loadingMore: false,
   hasMore: false,
@@ -59,9 +57,9 @@ const runtimeProps = {
   loading: false,
   loadingEarlier: false,
   hasMoreBefore: false,
-  initialError: null,
-  backgroundError: null,
-  earlierError: null,
+  initialError: false,
+  backgroundError: false,
+  earlierError: false,
   reachedMemoryLimit: false,
 }
 
@@ -138,11 +136,12 @@ describe('task center UI', () => {
       props: {
         ...listProps,
         tasks: [],
-        backgroundError: true,
       },
     })
 
-    expect(wrapper.find('[data-testid="background-error"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="background-error"]').exists()).toBe(
+      false,
+    )
     expect(wrapper.find('[data-testid="task-empty"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="task-error"]').exists()).toBe(false)
   })
@@ -214,8 +213,8 @@ describe('task center UI', () => {
 
   it('does not show a retention claim before the initial response is known', () => {
     for (const props of [
-      { loading: true, initialError: null },
-      { loading: false, initialError: '初始日志失败' },
+      { loading: true, initialError: false },
+      { loading: false, initialError: true },
     ]) {
       const wrapper = mount(TaskRuntimeLog, {
         props: {
@@ -225,28 +224,27 @@ describe('task center UI', () => {
           initialized: false,
         },
       })
-      for (const text of Object.values(RUNTIME_RETENTION_TEXT)) {
+      for (const text of Object.values(RUNTIME_RETENTION_TEXT).filter(
+        Boolean,
+      )) {
         expect(wrapper.text()).not.toContain(text)
       }
     }
   })
 
   it.each([
-    [null, [] as TaskEventReadDto[], '当前任务尚未产生运行日志'],
-    [null, [runtimeEvent], '当前展示任务保留的运行日志'],
-    ['2026-08-26T01:00:00Z', [], '运行日志已按保留策略清理'],
-    [
-      '2026-08-26T01:00:00Z',
-      [runtimeEvent],
-      '较早日志已清理，当前仅展示保留部分',
-    ],
+    [null, [] as TaskEventReadDto[], '暂无运行日志'],
+    [null, [runtimeEvent], ''],
+    ['2026-08-26T01:00:00Z', [], '运行日志已清理'],
+    ['2026-08-26T01:00:00Z', [runtimeEvent], '较早日志已清理'],
   ] as const)(
     'renders the confirmed retention state for marker %s',
     (purgedAt, events, expected) => {
       const wrapper = mount(TaskRuntimeLog, {
         props: { ...runtimeProps, purgedAt, events: [...events] },
       })
-      expect(wrapper.text()).toContain(expected)
+      if (expected) expect(wrapper.text()).toContain(expected)
+      else expect(wrapper.find('.runtime-log__status').exists()).toBe(false)
       if (events.length > 0) {
         expect(wrapper.find('.runtime-log__meta').exists()).toBe(true)
         expect(wrapper.get('.runtime-log__message').text()).toBe(
@@ -262,7 +260,7 @@ describe('task center UI', () => {
         ...runtimeProps,
         purgedAt: '2026-08-26T01:00:00Z',
         hasMoreBefore: true,
-        backgroundError: '增量失败',
+        backgroundError: true,
       },
     })
 
@@ -270,13 +268,15 @@ describe('task center UI', () => {
     expect(wrapper.emitted('loadEarlier')).toHaveLength(1)
     await wrapper.get('[data-testid="retry-runtime-sync"]').trigger('click')
     expect(wrapper.emitted('retryLive')).toHaveLength(1)
+    expect(wrapper.text()).toContain('刷新失败')
 
     await wrapper.setProps({ reachedMemoryLimit: true })
     expect(wrapper.find('[data-testid="event-limit-notice"]').exists()).toBe(
       true,
     )
-    expect(
-      wrapper.get('[data-testid="event-limit-notice"]').classes(),
-    ).toContain('mobile-notice-bar--warning')
+    expect(wrapper.get('[data-testid="event-limit-notice"]').text()).toBe(
+      '仅显示最近 500 条日志',
+    )
+    expect(wrapper.find('.van-notice-bar').exists()).toBe(false)
   })
 })

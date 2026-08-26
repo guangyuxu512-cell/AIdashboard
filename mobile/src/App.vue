@@ -78,7 +78,7 @@ function goBack(): void {
 }
 
 function showNotificationPlaceholder(): void {
-  showToast('通知功能建设中')
+  showToast('功能建设中')
 }
 </script>
 

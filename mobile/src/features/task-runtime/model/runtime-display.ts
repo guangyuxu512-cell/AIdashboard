@@ -7,10 +7,10 @@ export type RuntimeRetentionState =
   'never-recorded' | 'complete' | 'purged-empty' | 'purged-partial'
 
 export const RUNTIME_RETENTION_TEXT: Record<RuntimeRetentionState, string> = {
-  'never-recorded': '当前任务尚未产生运行日志',
-  complete: '当前展示任务保留的运行日志',
-  'purged-empty': '运行日志已按保留策略清理',
-  'purged-partial': '较早日志已清理，当前仅展示保留部分',
+  'never-recorded': '暂无运行日志',
+  complete: '',
+  'purged-empty': '运行日志已清理',
+  'purged-partial': '较早日志已清理',
 }
 
 export function getRuntimeRetentionState(

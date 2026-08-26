@@ -8,7 +8,6 @@ import {
   List as VanList,
   Loading as VanLoading,
   NavBar as VanNavBar,
-  NoticeBar as VanNoticeBar,
   Picker as VanPicker,
   Popup as VanPopup,
   Search as VanSearch,
@@ -57,10 +56,6 @@ const devices = computed(() => {
 })
 
 const dateLabel = computed(() => formatTaskDateFilterLabel(draft.value))
-const deviceErrorMessage = computed(() => {
-  const error = deviceQuery.error.value
-  return error instanceof Error ? error.message : '设备加载失败，请稍后重试'
-})
 const deviceErrorKind = computed(() =>
   classifyInfiniteQueryError({
     hasSuccessfulData: deviceQuery.data.value !== undefined,
@@ -205,12 +200,6 @@ function apply(): void {
       </template>
     </VanNavBar>
     <VanCell title="全部设备" clickable @click="chooseDevice('', '')" />
-    <VanNoticeBar
-      v-if="deviceErrorKind === 'background'"
-      class="mobile-notice-bar--warning"
-      :text="`${deviceErrorMessage}，已保留当前设备选项`"
-      wrapable
-    />
     <VanList
       v-if="
         deviceQuery.data.value !== undefined && deviceErrorKind !== 'initial'
@@ -234,24 +223,20 @@ function apply(): void {
         class="task-filter-sheet__next-error"
         data-testid="device-next-page-error"
       >
-        <VanNoticeBar
-          class="mobile-notice-bar--warning"
-          :text="`${deviceErrorMessage}，已保留当前设备选项`"
-          wrapable
-        />
-        <VanButton block @click="retryMoreDevices">重试加载更多</VanButton>
+        <span>加载失败</span>
+        <VanButton block @click="retryMoreDevices">重试</VanButton>
       </div>
     </VanList>
-    <div v-if="deviceQuery.isPending.value" class="task-filter-sheet__loading">
+    <div v-if="deviceQuery.isLoading.value" class="task-filter-sheet__loading">
       <VanLoading>加载设备中</VanLoading>
     </div>
     <VanEmpty
       v-else-if="deviceErrorKind === 'initial'"
       image="error"
-      :description="deviceErrorMessage"
+      description="加载失败"
     >
       <VanButton type="primary" @click="deviceQuery.refetch()">
-        重新加载
+        重试
       </VanButton>
     </VanEmpty>
   </VanPopup>

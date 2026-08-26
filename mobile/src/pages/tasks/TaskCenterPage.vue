@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { Button as VanButton, Tab as VanTab, Tabs as VanTabs } from 'vant'
+import {
+  Button as VanButton,
+  showToast,
+  Tab as VanTab,
+  Tabs as VanTabs,
+} from 'vant'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -20,6 +25,10 @@ function openTask(taskId: string): void {
     name: MOBILE_ROUTE_NAMES.taskDetail,
     params: { taskId },
   })
+}
+
+async function refresh(): Promise<void> {
+  if (!(await taskCenter.refresh())) showToast('刷新失败')
 }
 </script>
 
@@ -44,7 +53,9 @@ function openTask(taskId: string): void {
     </div>
 
     <div class="task-center-page__toolbar">
-      <p>共 {{ taskCenter.query.data.value?.pages[0]?.total ?? 0 }} 个任务</p>
+      <p v-if="taskCenter.query.data.value !== undefined">
+        {{ taskCenter.query.data.value.pages[0]?.total ?? 0 }} 个任务
+      </p>
       <VanButton
         icon="filter-o"
         data-testid="open-filter"
@@ -58,13 +69,11 @@ function openTask(taskId: string): void {
       :tasks="taskCenter.tasks.value"
       :initial-loading="taskCenter.isInitialLoading.value"
       :initial-error="taskCenter.isInitialError.value"
-      :background-error="taskCenter.isBackgroundError.value"
       :next-page-error="taskCenter.isNextPageError.value"
-      :error-message="taskCenter.errorMessage.value"
       :refreshing="taskCenter.refreshing.value"
       :loading-more="taskCenter.query.isFetchingNextPage.value"
       :has-more="Boolean(taskCenter.query.hasNextPage.value)"
-      @refresh="taskCenter.refresh"
+      @refresh="refresh"
       @retry="taskCenter.query.refetch"
       @load-more="taskCenter.loadMore"
       @retry-load-more="taskCenter.retryLoadMore"

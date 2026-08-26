@@ -5,7 +5,6 @@ import {
   CellGroup as VanCellGroup,
   Empty as VanEmpty,
   Loading as VanLoading,
-  NoticeBar as VanNoticeBar,
   Tag as VanTag,
 } from 'vant'
 
@@ -18,8 +17,6 @@ defineProps<{
   inventories: DeviceProviderInventoryReadDto[] | undefined
   initialLoading: boolean
   initialError: boolean
-  backgroundError: boolean
-  errorMessage: string
 }>()
 
 const emit = defineEmits<{ retry: [] }>()
@@ -27,29 +24,17 @@ const emit = defineEmits<{ retry: [] }>()
 
 <template>
   <section class="device-provider-section" aria-labelledby="provider-title">
-    <h2 id="provider-title">影刀提供方</h2>
-    <div v-if="backgroundError" class="device-provider-section__error">
-      <VanNoticeBar
-        class="mobile-notice-bar--warning"
-        :text="`${errorMessage}，已保留上次影刀快照`"
-        wrapable
-      />
-      <VanButton block @click="emit('retry')">重新加载影刀快照</VanButton>
-    </div>
+    <h2 id="provider-title">影刀</h2>
 
     <div v-if="initialLoading" class="device-provider-section__state">
-      <VanLoading>加载影刀快照中</VanLoading>
+      <VanLoading>加载中</VanLoading>
     </div>
-    <VanEmpty
-      v-else-if="initialError"
-      image="error"
-      :description="errorMessage"
-    >
-      <VanButton type="primary" @click="emit('retry')">重新加载</VanButton>
+    <VanEmpty v-else-if="initialError" image="error" description="加载失败">
+      <VanButton type="primary" @click="emit('retry')">重试</VanButton>
     </VanEmpty>
     <VanEmpty
       v-else-if="inventories?.length === 0"
-      description="尚未上报影刀快照"
+      description="未上报"
       data-testid="provider-empty"
     />
 
@@ -72,12 +57,9 @@ const emit = defineEmits<{ retry: [] }>()
 
       <VanCellGroup data-testid="provider-primary-summary">
         <VanCell title="账号" :value="item.account_display || '—'" />
+        <VanCell title="版本" :value="item.inventory.provider_version || '—'" />
         <VanCell
-          title="提供方版本"
-          :value="item.inventory.provider_version || '—'"
-        />
-        <VanCell
-          title="影刀应用数"
+          title="应用"
           :value="`${item.inventory.applications.length} 个`"
         />
       </VanCellGroup>
@@ -105,11 +87,6 @@ const emit = defineEmits<{ retry: [] }>()
   display: grid;
   min-height: var(--layout-inline-state-min-height);
   place-items: center;
-}
-
-.device-provider-section__error {
-  display: grid;
-  gap: var(--space-2);
 }
 
 .device-provider-section__inventory {

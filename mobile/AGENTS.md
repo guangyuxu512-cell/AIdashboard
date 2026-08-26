@@ -32,6 +32,19 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现，且不得把测试 Fixture 或 Mock DataSource 带入生产代码。
 - Device 的 `enabled`、Worker Runtime/Presence、Provider Inventory 与 Skill Capability 是独立事实；禁止合并成“设备正常”，也禁止根据心跳时间在 Mobile 重算在线状态。
 - Device Center 当前只读；禁止停用、移除、绑定、运行应用、停止任务、重启 Worker 或修改任何 Capability。
+- 正式 Mobile UI 禁止解释实现；新增页面 Review 必须判断 UI Copy 是否可在不影响用户操作与判断的前提下删除，可以删除就删除。
+
+## Mobile UI 文案规则
+
+- 正式 UI 展示用户需要知道的结果，不解释系统实现。
+- 禁止在正式页面显示开发说明、Contract 说明、统计实现、API 限制或技术边界。
+- 禁止使用长段解释性文案填充页面；状态文案必须简短、直接、可扫描。
+- 能用状态、数字或标题表达时，不增加说明句。
+- 技术信息只进入开发工具、日志、测试，或“更多信息”中的必要技术字段。
+- Error UI 只展示用户可理解的安全摘要，不展示实现原因；Loading 不携带技术解释。
+- Empty 不写产品设计说明，Placeholder 不解释未来架构。
+- 一个状态原则上只使用一个短句或短标签表达。
+- Review 必须检查 UI Copy 是否可以删除而不影响用户操作；可以删除就删除。
 
 ## 完成标准
 

@@ -19,9 +19,7 @@ const summary = computed(() =>
 <template>
   <section class="device-skill-details" aria-label="技能能力技术信息">
     <h3>技能能力技术信息</h3>
-    <p v-if="!capabilities" class="device-skill-details__empty">
-      技能能力明细尚未就绪
-    </p>
+    <p v-if="!capabilities" class="device-skill-details__empty">暂无信息</p>
     <VanCellGroup v-else data-testid="capability-technical-details">
       <VanCell title="能力总数" :value="`${summary.total} 个`" />
       <VanCell title="未分类能力" :value="`${summary.unclassified} 个`" />

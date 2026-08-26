@@ -58,6 +58,48 @@ describe('Mobile API Client', () => {
     expect(authorizationHeader).toBeUndefined()
   })
 
+  it('rejects a Vite HTML fallback instead of leaving domain queries pending', async () => {
+    await expect(
+      apiClient.request({
+        adapter: async (config) => ({
+          data: '<!doctype html><html></html>',
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'text/html' },
+          config,
+        }),
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiClientError',
+      message: '请求失败，请稍后重试',
+      status: 200,
+    })
+  })
+
+  it('accepts a JSON success response and a 204 response', async () => {
+    const jsonResponse = await apiClient.request({
+      adapter: async (config) => ({
+        data: { ok: true },
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        config,
+      }),
+    })
+    const noContentResponse = await apiClient.request({
+      adapter: async (config) => ({
+        data: undefined,
+        status: 204,
+        statusText: 'No Content',
+        headers: {},
+        config,
+      }),
+    })
+
+    expect(jsonResponse.data).toEqual({ ok: true })
+    expect(noContentResponse.status).toBe(204)
+  })
+
   it('keeps Authorization injection behind an explicit provider hook', async () => {
     configureApiAuthHooks({
       getAuthorizationHeader: () => 'FutureAuth credential',

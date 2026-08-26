@@ -32,6 +32,7 @@ export function useDeviceCenter() {
       devices.value,
       activeTasks.states.value,
       deviceDataState.value,
+      query.data.value?.pages[0]?.total ?? devices.value.length,
     ),
   )
   const errorKind = computed(() =>
@@ -45,29 +46,25 @@ export function useDeviceCenter() {
           isFetchNextPageError: query.isFetchNextPageError.value,
         }),
   )
-  const errorMessage = computed(() => {
-    const error = refreshError.value ?? query.error.value
-    return error instanceof Error ? error.message : '设备加载失败，请稍后重试'
-  })
-
   watch(query.dataUpdatedAt, () => {
     refreshError.value = null
   })
 
-  async function refresh(): Promise<void> {
+  async function refresh(): Promise<boolean> {
     refreshing.value = true
     refreshError.value = null
     try {
-      const [deviceRefresh] = await Promise.allSettled([
-        query.refreshFromStart(),
-        queryClient.refetchQueries({
+      await query.refreshFromStart()
+      void queryClient
+        .refetchQueries({
           queryKey: taskQueryKeys.activeAll(),
           type: 'active',
-        }),
-      ])
-      if (deviceRefresh?.status === 'rejected') {
-        refreshError.value = deviceRefresh.reason
-      }
+        })
+        .catch(() => undefined)
+      return true
+    } catch (error) {
+      refreshError.value = error
+      return false
     } finally {
       refreshing.value = false
     }
@@ -104,9 +101,8 @@ export function useDeviceCenter() {
     refreshing,
     total: computed(() => query.data.value?.pages[0]?.total),
     errorKind,
-    errorMessage,
     isInitialLoading: computed(
-      () => query.isPending.value && query.data.value === undefined,
+      () => query.isLoading.value && query.data.value === undefined,
     ),
     isInitialError: computed(() => errorKind.value === 'initial'),
     isBackgroundError: computed(() => errorKind.value === 'background'),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
@@ -25,21 +26,24 @@ function openTask(taskId: string, sourceDeviceId: string): void {
     query: { fromDeviceId: sourceDeviceId },
   })
 }
+
+async function refresh(): Promise<void> {
+  if (!(await deviceCenter.refresh())) showToast('刷新失败')
+}
 </script>
 
 <template>
   <div class="device-center-page">
-    <DeviceOverviewCards :overview="deviceCenter.overview.value" />
+    <DeviceOverviewCards
+      v-if="!deviceCenter.isInitialError.value"
+      :overview="deviceCenter.overview.value"
+    />
 
-    <div class="device-center-page__toolbar">
-      <p>
-        {{
-          deviceCenter.total.value === undefined
-            ? '设备总数 —'
-            : `共 ${deviceCenter.total.value} 台设备`
-        }}
-      </p>
-      <p>每 15 秒刷新</p>
+    <div
+      v-if="deviceCenter.total.value !== undefined"
+      class="device-center-page__toolbar"
+    >
+      <p>{{ deviceCenter.total.value }} 台设备</p>
     </div>
 
     <DeviceInfiniteList
@@ -47,13 +51,11 @@ function openTask(taskId: string, sourceDeviceId: string): void {
       :active-task-states="deviceCenter.activeTaskStates.value"
       :initial-loading="deviceCenter.isInitialLoading.value"
       :initial-error="deviceCenter.isInitialError.value"
-      :background-error="deviceCenter.isBackgroundError.value"
       :next-page-error="deviceCenter.isNextPageError.value"
-      :error-message="deviceCenter.errorMessage.value"
       :refreshing="deviceCenter.refreshing.value"
       :loading-more="deviceCenter.query.isFetchingNextPage.value"
       :has-more="Boolean(deviceCenter.query.hasNextPage.value)"
-      @refresh="deviceCenter.refresh"
+      @refresh="refresh"
       @retry="deviceCenter.query.refetch"
       @load-more="deviceCenter.loadMore"
       @retry-load-more="deviceCenter.retryLoadMore"
@@ -78,9 +80,5 @@ function openTask(taskId: string, sourceDeviceId: string): void {
   justify-content: space-between;
   color: var(--text-secondary);
   background: var(--bg-app);
-}
-
-.device-center-page__toolbar p:last-child {
-  font-size: var(--font-size-caption);
 }
 </style>

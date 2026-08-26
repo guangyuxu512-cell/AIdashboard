@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import {
-  Button as VanButton,
-  Loading as VanLoading,
-  NoticeBar as VanNoticeBar,
-} from 'vant'
+import { Button as VanButton, Loading as VanLoading } from 'vant'
 
 import { TaskStatusTag, type ActiveTaskSummaryReadDto } from '@/entities/task'
 
@@ -12,8 +8,6 @@ withDefaults(
     task: ActiveTaskSummaryReadDto | null | undefined
     initialLoading: boolean
     initialError: boolean
-    backgroundError: boolean
-    errorMessage: string
     compact?: boolean
   }>(),
   { compact: false },
@@ -39,25 +33,15 @@ const emit = defineEmits<{
     </div>
 
     <div v-else-if="initialLoading" class="active-task-summary__compact-state">
-      <VanLoading size="var(--icon-size-small)">当前任务加载中</VanLoading>
+      <VanLoading size="var(--icon-size-small)">加载中</VanLoading>
     </div>
 
     <div v-if="initialError" class="active-task-summary__error">
-      <VanNoticeBar
-        class="mobile-notice-bar--warning"
-        :text="errorMessage"
-        wrapable
-      />
-      <VanButton block @click="emit('retry')">重新加载当前任务</VanButton>
+      <span>加载失败</span>
+      <VanButton block @click="emit('retry')">重试</VanButton>
     </div>
 
     <template v-else-if="!initialLoading">
-      <VanNoticeBar
-        v-if="backgroundError"
-        class="mobile-notice-bar--warning"
-        :text="`${errorMessage}，已保留当前任务状态`"
-        wrapable
-      />
       <button
         v-if="task"
         type="button"
@@ -77,6 +61,7 @@ const emit = defineEmits<{
         </span>
       </button>
       <p v-else-if="task === null" class="active-task-summary__idle">空闲</p>
+      <p v-else class="active-task-summary__idle">—</p>
     </template>
   </section>
 </template>
