@@ -72,10 +72,26 @@ describe('device filter error states', () => {
     const wrapper = await openDevicePicker()
 
     expect(wrapper.text()).toContain('设备初始加载失败')
-    const retry = wrapper.get('.task-filter-sheet__device-popup button')
+    const retry = wrapper.get(
+      '.task-filter-sheet__device-popup .van-empty button',
+    )
     expect(retry.text()).toContain('重新加载')
     await retry.trigger('click')
     expect(query.refetch).toHaveBeenCalledOnce()
+  })
+
+  it('uses a focusable native button for the Device picker return action', async () => {
+    deviceQueryMock.current = createDeviceQuery({
+      data: { pages: [{ items: [] }] },
+    })
+    const wrapper = await openDevicePicker()
+    const back = wrapper.get('button[aria-label="返回"]')
+
+    expect(back.element.tagName).toBe('BUTTON')
+    expect(back.attributes('type')).toBe('button')
+    expect(back.classes()).toContain('task-filter-sheet__device-back')
+    ;(back.element as HTMLButtonElement).focus()
+    expect(document.activeElement).toBe(back.element)
   })
 
   it('keeps successful device options during a background failure', async () => {

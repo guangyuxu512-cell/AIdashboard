@@ -62,14 +62,14 @@ function eventTime(value: string): string {
     />
     <VanNoticeBar
       v-if="reachedMemoryLimit"
-      type="warning"
+      class="mobile-notice-bar--warning"
       text="为控制内存，页面最多保留 500 条日志；较早日志可能未展示。"
       wrapable
       data-testid="event-limit-notice"
     />
     <VanNoticeBar
       v-if="backgroundError"
-      type="warning"
+      class="mobile-notice-bar--warning"
       :text="`${backgroundError}，已保留现有日志`"
       wrapable
     />
@@ -83,7 +83,7 @@ function eventTime(value: string): string {
     </VanButton>
     <VanNoticeBar
       v-if="earlierError"
-      type="warning"
+      class="mobile-notice-bar--warning"
       :text="earlierError"
       wrapable
     />
@@ -114,10 +114,12 @@ function eventTime(value: string): string {
         data-testid="runtime-events"
       >
         <li v-for="event in events" :key="event.seq">
-          <span class="runtime-log__sequence">#{{ event.seq }}</span>
-          <time :datetime="event.event_at">{{
-            eventTime(event.event_at)
-          }}</time>
+          <div class="runtime-log__meta">
+            <span class="runtime-log__sequence">#{{ event.seq }}</span>
+            <time :datetime="event.event_at">{{
+              eventTime(event.event_at)
+            }}</time>
+          </div>
           <span class="runtime-log__message">{{ event.message }}</span>
         </li>
       </ol>
@@ -131,8 +133,8 @@ function eventTime(value: string): string {
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
 }
 
 .runtime-log__heading {
@@ -155,7 +157,7 @@ function eventTime(value: string): string {
 
 .runtime-log__state {
   display: grid;
-  min-height: 120px;
+  min-height: var(--layout-inline-state-min-height);
   place-items: center;
 }
 
@@ -170,11 +172,18 @@ function eventTime(value: string): string {
 
 .runtime-log__items li {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
   gap: var(--space-2);
-  align-items: start;
   padding-bottom: var(--space-2);
   border-bottom: var(--border-width) solid var(--border-subtle);
+}
+
+.runtime-log__meta {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-family-mono);
 }
 
 .runtime-log__message {

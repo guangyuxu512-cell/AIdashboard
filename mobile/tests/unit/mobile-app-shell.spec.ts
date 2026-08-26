@@ -184,8 +184,10 @@ describe('MobileAppShell V2', () => {
     expect(wrapper.getComponent(MobileDetailHeader).props('title')).toBe(
       '设备详情',
     )
+    const backButton = wrapper.get('button[aria-label="返回"]')
+    expect(backButton.attributes('type')).toBe('button')
 
-    wrapper.getComponent(MobileDetailHeader).vm.$emit('back')
+    await backButton.trigger('click')
     await flushPromises()
 
     expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.devices)

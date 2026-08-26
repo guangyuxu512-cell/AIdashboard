@@ -7,6 +7,7 @@
 <style scoped>
 .app-page {
   display: flex;
+  width: 100%;
   min-width: 0;
   min-height: 100%;
   flex-direction: column;

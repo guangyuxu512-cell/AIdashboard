@@ -207,6 +207,9 @@ describe('device center UI', () => {
       expect(wrapper.text()).toContain(enabledLabel)
       expect(wrapper.text()).toContain('1.2.3')
       expect(wrapper.text()).toContain('空闲')
+      expect(wrapper.get('.device-list-card__meta').text()).toContain(
+        '更新 · Worker 1.2.3',
+      )
     },
   )
 
@@ -216,7 +219,7 @@ describe('device center UI', () => {
 
     expect(wrapper.text()).toContain('未上报')
     expect(wrapper.text()).not.toContain('离线')
-    expect(wrapper.text()).toContain('版本 —')
+    expect(wrapper.text()).toContain('心跳未上报 · Worker —')
   })
 
   it.each([
@@ -304,6 +307,9 @@ describe('device center UI', () => {
     )
     expect(background.text()).toContain('当前任务后台失败')
     expect(background.text()).toContain('同步订单')
+    expect(background.get('.van-notice-bar').classes()).toContain(
+      'mobile-notice-bar--warning',
+    )
 
     const initial = track(
       mount(ActiveTaskSummary, {
@@ -360,6 +366,9 @@ describe('device center UI', () => {
     expect(
       background.find('[data-testid="device-background-error"]').exists(),
     ).toBe(true)
+    expect(background.get('.van-notice-bar').classes()).toContain(
+      'mobile-notice-bar--warning',
+    )
     expect(background.get('[data-testid="cached-device-card"]').text()).toBe(
       '仓库设备',
     )

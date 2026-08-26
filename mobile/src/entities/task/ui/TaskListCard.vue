@@ -66,7 +66,7 @@ const currentSummary = computed(() => {
         v-if="task.progress.total !== null"
         :percentage="progressPercentage"
         :show-pivot="false"
-        stroke-width="6"
+        stroke-width="var(--progress-height-compact)"
       />
     </div>
   </article>
@@ -79,9 +79,8 @@ const currentSummary = computed(() => {
   padding: var(--space-3);
   color: var(--text-primary);
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
+  border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
 }
 
 .task-list-card__heading,
@@ -106,6 +105,10 @@ const currentSummary = computed(() => {
 .task-list-card__meta,
 .task-list-card__message,
 .task-list-card__progress-label {
+  color: var(--text-tertiary);
+}
+
+.task-list-card__message {
   color: var(--text-secondary);
 }
 

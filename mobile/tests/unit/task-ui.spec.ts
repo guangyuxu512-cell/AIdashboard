@@ -73,6 +73,9 @@ describe('task center UI', () => {
     expect(wrapper.text()).toContain('执行中')
     expect(wrapper.text()).toContain('3 / 10')
     expect(wrapper.text()).toContain('正在同步')
+    expect(wrapper.get('.van-progress').attributes('style')).toContain(
+      'var(--progress-height-compact)',
+    )
   })
 
   it('omits the whole progress section when structured progress is absent', () => {
@@ -178,10 +181,19 @@ describe('task center UI', () => {
     if (status === 'success') {
       expect(wrapper.text()).toContain('安全摘要')
       expect(wrapper.text()).not.toContain('不得展示')
+      expect(wrapper.get('.van-notice-bar').classes()).toContain(
+        'mobile-notice-bar--success',
+      )
     }
     if (status === 'failed' || status === 'lost') {
       expect(wrapper.text()).toContain('已脱敏错误')
       expect(wrapper.text()).toContain('TASK_FAILED')
+      expect(wrapper.get('.van-notice-bar').classes()).toContain(
+        'mobile-notice-bar--danger',
+      )
+    }
+    if (visible) {
+      expect(wrapper.get('.van-notice-bar').attributes('type')).toBeUndefined()
     }
   })
 
@@ -235,6 +247,12 @@ describe('task center UI', () => {
         props: { ...runtimeProps, purgedAt, events: [...events] },
       })
       expect(wrapper.text()).toContain(expected)
+      if (events.length > 0) {
+        expect(wrapper.find('.runtime-log__meta').exists()).toBe(true)
+        expect(wrapper.get('.runtime-log__message').text()).toBe(
+          runtimeEvent.message,
+        )
+      }
     },
   )
 
@@ -257,5 +275,8 @@ describe('task center UI', () => {
     expect(wrapper.find('[data-testid="event-limit-notice"]').exists()).toBe(
       true,
     )
+    expect(
+      wrapper.get('[data-testid="event-limit-notice"]').classes(),
+    ).toContain('mobile-notice-bar--warning')
   })
 })

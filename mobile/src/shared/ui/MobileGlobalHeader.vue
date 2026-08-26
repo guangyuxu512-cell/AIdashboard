@@ -42,8 +42,7 @@ const emit = defineEmits<{
   padding-right: max(var(--layout-page-padding-x), var(--safe-area-right));
   padding-left: max(var(--layout-page-padding-x), var(--safe-area-left));
   color: var(--text-primary);
-  background: var(--bg-surface);
-  border-bottom: var(--border-width) solid var(--border-subtle);
+  background: var(--bg-surface-raised);
 }
 
 .mobile-global-header__brand {
@@ -75,6 +74,6 @@ const emit = defineEmits<{
 }
 
 .mobile-global-header__notification .van-icon {
-  font-size: var(--font-size-title);
+  font-size: var(--icon-size-default);
 }
 </style>

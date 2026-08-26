@@ -24,6 +24,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+::selection {
+  color: var(--text-primary);
+  background: var(--color-primary-soft);
+}
+
 *,
 *::before,
 *::after {
@@ -35,6 +40,22 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+code,
+pre {
+  font-family: var(--font-family-mono);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible,
+[class*='van-']:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 h1,

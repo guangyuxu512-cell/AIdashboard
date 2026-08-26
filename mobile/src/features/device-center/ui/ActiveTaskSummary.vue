@@ -33,22 +33,28 @@ const emit = defineEmits<{
   >
     <div v-if="!compact" class="active-task-summary__heading">
       <span>当前任务</span>
-      <VanLoading v-if="initialLoading" size="16">加载中</VanLoading>
+      <VanLoading v-if="initialLoading" size="var(--icon-size-small)">
+        加载中
+      </VanLoading>
     </div>
 
     <div v-else-if="initialLoading" class="active-task-summary__compact-state">
-      <VanLoading size="16">当前任务加载中</VanLoading>
+      <VanLoading size="var(--icon-size-small)">当前任务加载中</VanLoading>
     </div>
 
     <div v-if="initialError" class="active-task-summary__error">
-      <VanNoticeBar type="warning" :text="errorMessage" wrapable />
+      <VanNoticeBar
+        class="mobile-notice-bar--warning"
+        :text="errorMessage"
+        wrapable
+      />
       <VanButton block @click="emit('retry')">重新加载当前任务</VanButton>
     </div>
 
     <template v-else-if="!initialLoading">
       <VanNoticeBar
         v-if="backgroundError"
-        type="warning"
+        class="mobile-notice-bar--warning"
         :text="`${errorMessage}，已保留当前任务状态`"
         wrapable
       />
@@ -113,6 +119,12 @@ const emit = defineEmits<{
   background: var(--bg-subtle);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-control);
+}
+
+.active-task-summary__task:focus-visible {
+  border-color: var(--focus-ring-color);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .active-task-summary__task strong,

@@ -5,6 +5,7 @@ import {
   Cell as VanCell,
   CellGroup as VanCellGroup,
   Field as VanField,
+  NoticeBar as VanNoticeBar,
   Popup as VanPopup,
   Tag as VanTag,
 } from 'vant'
@@ -52,6 +53,24 @@ const resolvedThemeLabel = computed(() =>
         <span class="foundation-swatch foundation-swatch--warning">警告</span>
         <span class="foundation-swatch foundation-swatch--danger">危险</span>
       </div>
+      <div class="foundation-surfaces" aria-label="Surface 层级">
+        <span class="foundation-surface foundation-surface--primary"
+          >Primary</span
+        >
+        <span class="foundation-surface foundation-surface--secondary"
+          >Secondary</span
+        >
+        <span class="foundation-surface foundation-surface--raised"
+          >Raised</span
+        >
+      </div>
+      <div class="foundation-type-scale" aria-label="字体层级">
+        <span class="foundation-type-scale__meta">Meta / 12</span>
+        <span>Body / 14</span>
+        <strong class="foundation-type-scale__label">Label / 16</strong>
+        <strong class="foundation-type-scale__title">Title / 20</strong>
+        <strong class="foundation-type-scale__display">26</strong>
+      </div>
     </section>
 
     <section
@@ -72,7 +91,7 @@ const resolvedThemeLabel = computed(() =>
           {{ option.label }}
         </VanButton>
       </div>
-      <VanCellGroup inset>
+      <VanCellGroup>
         <VanCell title="当前解析主题" :value="resolvedThemeLabel" />
       </VanCellGroup>
     </section>
@@ -81,7 +100,7 @@ const resolvedThemeLabel = computed(() =>
       <h2 id="foundation-vant-title" class="foundation-section__title">
         Vant 基础能力
       </h2>
-      <VanCellGroup inset>
+      <VanCellGroup>
         <VanField
           v-model="fieldValue"
           name="foundation-input"
@@ -99,6 +118,11 @@ const resolvedThemeLabel = computed(() =>
           </template>
         </VanCell>
       </VanCellGroup>
+      <div class="foundation-notices" aria-label="NoticeBar 状态映射">
+        <VanNoticeBar class="mobile-notice-bar--success" text="成功提示" />
+        <VanNoticeBar class="mobile-notice-bar--warning" text="警告提示" />
+        <VanNoticeBar class="mobile-notice-bar--danger" text="错误提示" />
+      </div>
       <VanButton
         block
         type="primary"
@@ -124,7 +148,6 @@ const resolvedThemeLabel = computed(() =>
       v-model:show="sheetVisible"
       position="bottom"
       round
-      safe-area-inset-bottom
       class="foundation-sheet"
     >
       <section aria-labelledby="foundation-sheet-title">
@@ -152,11 +175,12 @@ const resolvedThemeLabel = computed(() =>
   background: var(--bg-surface);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
 }
 
 .foundation-page__intro {
   align-items: flex-start;
+  background: var(--bg-surface-raised);
+  box-shadow: var(--shadow-card);
 }
 
 .foundation-page__title {
@@ -180,6 +204,7 @@ const resolvedThemeLabel = computed(() =>
 }
 
 .foundation-swatches,
+.foundation-surfaces,
 .foundation-actions,
 .foundation-tags {
   display: flex;
@@ -187,30 +212,92 @@ const resolvedThemeLabel = computed(() =>
   gap: var(--space-2);
 }
 
+.foundation-notices {
+  display: grid;
+  gap: var(--space-2);
+}
+
 .foundation-swatch {
   min-width: var(--touch-target-min);
   padding: var(--space-2) var(--space-3);
-  color: var(--text-inverse);
+  border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-round);
   font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-caption);
   text-align: center;
 }
 
 .foundation-swatch--primary {
-  background: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .foundation-swatch--success {
-  background: var(--status-success);
+  color: var(--status-success);
+  background: var(--status-success-soft);
 }
 
 .foundation-swatch--warning {
-  background: var(--status-warning);
+  color: var(--status-warning);
+  background: var(--status-warning-soft);
 }
 
 .foundation-swatch--danger {
-  background: var(--status-danger);
+  color: var(--status-danger);
+  background: var(--status-danger-soft);
+}
+
+.foundation-surface {
+  display: grid;
+  min-height: var(--touch-target-min);
+  flex: 1;
+  padding: var(--space-2);
+  place-items: center;
+  color: var(--text-secondary);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-caption);
+}
+
+.foundation-surface--primary {
+  background: var(--bg-surface);
+}
+
+.foundation-surface--secondary {
+  background: var(--bg-subtle);
+}
+
+.foundation-surface--raised {
+  background: var(--bg-surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.foundation-type-scale {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-primary);
+}
+
+.foundation-type-scale__meta {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.foundation-type-scale__label {
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-label);
+}
+
+.foundation-type-scale__title {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+}
+
+.foundation-type-scale__display {
+  font-size: var(--font-size-display);
+  line-height: var(--line-height-display);
 }
 
 .foundation-actions > * {

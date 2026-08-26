@@ -1,12 +1,16 @@
 :root {
   /* Typography */
   --font-family-base:
-    Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,
-    BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    'Segoe UI', system-ui, sans-serif;
+  --font-family-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    monospace;
   --font-size-caption: 12px;
   --font-size-body: 14px;
   --font-size-label: 16px;
   --font-size-title: 20px;
+  --font-size-display: 26px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -14,6 +18,7 @@
   --line-height-body: 22px;
   --line-height-label: 24px;
   --line-height-title: 28px;
+  --line-height-display: 32px;
 
   /* Spacing */
   --space-1: 4px;
@@ -24,26 +29,38 @@
   --space-6: 24px;
   --space-8: 32px;
 
-  /* Touch and controls */
+  /* Touch, icons and progress */
   --touch-target-min: 44px;
   --control-height-default: 44px;
   --control-height-large: 50px;
+  --icon-size-small: 16px;
+  --icon-size-default: 22px;
+  --progress-height-compact: 4px;
+  --progress-height-default: 6px;
   --opacity-disabled: 0.5;
 
-  /* Shape and elevation */
+  /* Shape, borders and focus */
   --border-width: 1px;
-  --radius-control: 8px;
-  --radius-card: 12px;
-  --radius-overlay: 16px;
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-overlay: 20px;
   --radius-round: 999px;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
 
   /* Layout */
   --layout-content-max-width: 430px;
-  --layout-header-height: 46px;
-  --layout-bottom-height: 50px;
+  --layout-header-height: 52px;
+  --layout-bottom-height: 58px;
   --layout-page-padding-x: 16px;
-  --layout-page-padding-y: 12px;
-  --layout-section-gap: 12px;
+  --layout-page-padding-y: 16px;
+  --layout-section-gap: 16px;
+  --layout-readable-max-width: 28rem;
+  --layout-page-state-min-height: 50vh;
+  --layout-inline-state-min-height: 96px;
+  --overlay-height-medium: min(56dvh, 520px);
+  --overlay-height-large: min(70dvh, 620px);
+  --overlay-height-max: 86dvh;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -57,62 +74,84 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-primary: #4f6f91;
-  --color-primary-active: #374f6a;
-  --color-primary-soft: #edf2f7;
-  --text-primary: #222a34;
-  --text-secondary: #5f6a77;
-  --text-tertiary: #87919d;
-  --text-disabled: #aeb6c0;
+  --color-primary: #3f6f9b;
+  --color-primary-strong: #345f87;
+  --color-primary-active: #2b5276;
+  --color-primary-soft: #e9f1f8;
+  --text-primary: #18212b;
+  --text-secondary: #4f5d6b;
+  --text-tertiary: #627183;
+  --text-disabled: #97a1ab;
   --text-inverse: #ffffff;
   --text-selected: var(--color-primary);
-  --bg-app: #eef1f4;
+  --bg-app: #f3f5f7;
   --bg-surface: #ffffff;
-  --bg-surface-hover: #f1f4f7;
+  --bg-subtle: #f7f9fb;
+  --bg-surface-raised: #ffffff;
+  --bg-surface-hover: #edf1f5;
   --bg-selected: var(--color-primary-soft);
-  --bg-subtle: #f6f8fa;
-  --bg-overlay: rgba(22, 28, 36, 0.42);
-  --border-default: #d5dbe3;
-  --border-subtle: rgba(117, 129, 143, 0.18);
-  --status-info: #557a9c;
-  --status-info-soft: #edf3f8;
-  --status-success: #3f7d64;
-  --status-success-soft: #edf6f1;
-  --status-warning: #9a6b2d;
-  --status-warning-soft: #faf3e7;
-  --status-danger: #a65353;
-  --status-danger-soft: #faeeee;
-  --shadow-surface: 0 1px 2px rgb(25 35 48 / 5%), 0 8px 24px rgb(25 35 48 / 5%);
-  --shadow-overlay: 0 20px 56px rgb(20 28 38 / 20%);
+  --bg-overlay: rgba(20, 29, 39, 0.46);
+  --border-default: #d9e0e6;
+  --border-subtle: rgba(42, 56, 72, 0.12);
+  --border-strong: #bcc7d1;
+  --status-info: #356d9b;
+  --status-info-strong: #356d9b;
+  --status-info-soft: #eaf2f9;
+  --status-success: #2f7658;
+  --status-success-strong: #2f7658;
+  --status-success-soft: #eaf5ef;
+  --status-warning: #8a5b19;
+  --status-warning-strong: #805116;
+  --status-warning-soft: #fbf2df;
+  --status-danger: #a0444c;
+  --status-danger-strong: #963b44;
+  --status-danger-soft: #fbecee;
+  --status-neutral: #5f6f82;
+  --status-neutral-soft: #eef1f4;
+  --focus-ring-color: var(--color-primary);
+  --shadow-card: 0 1px 2px rgb(24 33 43 / 5%);
+  --shadow-header: 0 1px 0 rgb(24 33 43 / 8%);
+  --shadow-overlay: 0 18px 48px rgb(20 29 39 / 18%);
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-primary: #6484a3;
-  --color-primary-active: #55738f;
-  --color-primary-soft: #263544;
-  --text-primary: #e4e7eb;
-  --text-secondary: #aab1ba;
-  --text-tertiary: #7f8893;
-  --text-disabled: #5f6872;
+  --color-primary: #8db6dc;
+  --color-primary-strong: #426b91;
+  --color-primary-active: #365b7e;
+  --color-primary-soft: #1b3449;
+  --text-primary: #f1f4f7;
+  --text-secondary: #b8c0c9;
+  --text-tertiary: #94a0ac;
+  --text-disabled: #68737f;
   --text-inverse: #ffffff;
   --text-selected: var(--color-primary);
-  --bg-app: #1a1d21;
-  --bg-surface: #272b31;
-  --bg-surface-hover: #32373e;
+  --bg-app: #11161c;
+  --bg-surface: #192129;
+  --bg-subtle: #202a34;
+  --bg-surface-raised: #25313d;
+  --bg-surface-hover: #283440;
   --bg-selected: var(--color-primary-soft);
-  --bg-subtle: #24282e;
-  --bg-overlay: rgba(7, 9, 12, 0.68);
-  --border-default: #3d434b;
-  --border-subtle: rgba(174, 184, 196, 0.14);
-  --status-info: #7fa1bf;
-  --status-info-soft: #263744;
-  --status-success: #74a48f;
-  --status-success-soft: #263a33;
-  --status-warning: #c29a61;
-  --status-warning-soft: #403527;
-  --status-danger: #c68181;
-  --status-danger-soft: #432d2f;
-  --shadow-surface: 0 1px 2px rgb(0 0 0 / 18%), 0 10px 30px rgb(0 0 0 / 14%);
-  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 42%);
+  --bg-overlay: rgba(4, 7, 10, 0.72);
+  --border-default: #34414e;
+  --border-subtle: rgba(220, 230, 240, 0.1);
+  --border-strong: #475563;
+  --status-info: #83b5de;
+  --status-info-strong: #3d6f98;
+  --status-info-soft: #1b3449;
+  --status-success: #7bc7a2;
+  --status-success-strong: #316d56;
+  --status-success-soft: #1b382d;
+  --status-warning: #e0b56d;
+  --status-warning-strong: #795525;
+  --status-warning-soft: #3e3322;
+  --status-danger: #ee929a;
+  --status-danger-strong: #8b3f48;
+  --status-danger-soft: #44262a;
+  --status-neutral: #a2adb8;
+  --status-neutral-soft: #28323c;
+  --focus-ring-color: var(--color-primary);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 24%);
+  --shadow-header: 0 1px 0 rgb(0 0 0 / 34%);
+  --shadow-overlay: 0 22px 56px rgb(0 0 0 / 46%);
 }

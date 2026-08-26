@@ -34,7 +34,7 @@ const emit = defineEmits<{
 <template>
   <div v-if="backgroundError" class="task-list__background-error">
     <VanNoticeBar
-      type="warning"
+      class="mobile-notice-bar--warning"
       :text="`${errorMessage}，当前展示上次成功加载的数据`"
       wrapable
       data-testid="background-error"
@@ -85,7 +85,7 @@ const emit = defineEmits<{
         data-testid="task-next-page-error"
       >
         <VanNoticeBar
-          type="warning"
+          class="mobile-notice-bar--warning"
           :text="`${errorMessage}，已保留当前任务`"
           wrapable
         />
@@ -99,7 +99,7 @@ const emit = defineEmits<{
 .task-list-state {
   display: grid;
   gap: var(--space-4);
-  min-height: 50vh;
+  min-height: var(--layout-page-state-min-height);
   padding: var(--space-4) max(var(--space-4), var(--safe-area-right))
     var(--space-4) max(var(--space-4), var(--safe-area-left));
   align-content: center;
@@ -131,8 +131,8 @@ const emit = defineEmits<{
 }
 
 .task-list__item:focus-visible {
-  outline: var(--border-width) solid var(--color-primary);
-  outline-offset: var(--space-1);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .task-list__next-error {

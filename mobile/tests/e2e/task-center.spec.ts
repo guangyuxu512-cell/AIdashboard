@@ -40,6 +40,20 @@ async function applySafeAreaFixture(page: Page): Promise<void> {
     root.style.setProperty('--safe-area-bottom', safeArea.bottom)
     root.style.setProperty('--safe-area-left', safeArea.left)
   }, safeAreaFixture)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const style = window.getComputedStyle(document.documentElement)
+        return {
+          top: style.getPropertyValue('--safe-area-top').trim(),
+          right: style.getPropertyValue('--safe-area-right').trim(),
+          bottom: style.getPropertyValue('--safe-area-bottom').trim(),
+          left: style.getPropertyValue('--safe-area-left').trim(),
+        }
+      }),
+    )
+    .toEqual(safeAreaFixture)
 }
 
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
@@ -453,6 +467,40 @@ for (const width of viewportWidths) {
         whiteSpace: 'nowrap',
       })
 
+      const compactProgress = await page
+        .locator('.task-list-card .van-progress')
+        .first()
+        .evaluate((element) => ({
+          height: window.getComputedStyle(element).height,
+          expected: window
+            .getComputedStyle(document.documentElement)
+            .getPropertyValue('--progress-height-compact')
+            .trim(),
+        }))
+      expect(compactProgress.height).toBe(compactProgress.expected)
+
+      const cardSurface = await page
+        .locator('.task-list-card')
+        .first()
+        .evaluate((element) => {
+          const probe = document.createElement('span')
+          probe.style.color = 'var(--bg-surface)'
+          document.body.append(probe)
+          const expectedBackground = window.getComputedStyle(probe).color
+          probe.remove()
+          const style = window.getComputedStyle(element)
+          return {
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            expectedBackground,
+          }
+        })
+      expect(cardSurface).toEqual({
+        background: cardSurface.expectedBackground,
+        shadow: 'none',
+        expectedBackground: cardSurface.expectedBackground,
+      })
+
       if (width === 390) {
         await page.screenshot({
           path: testInfo.outputPath(`task-list-390-${theme}.png`),
@@ -521,6 +569,21 @@ for (const width of viewportWidths) {
         left: safeAreaFixture.left,
       })
       await expectNoHorizontalOverflow(page)
+      await page.getByTestId('device-filter').click()
+      const deviceBack = page.getByRole('button', {
+        name: '返回',
+        exact: true,
+      })
+      await expect(deviceBack).toBeVisible()
+      await deviceBack.focus()
+      await expect(deviceBack).toBeFocused()
+      const deviceBackHeight = (await deviceBack.boundingBox())?.height
+      expect(deviceBackHeight).toBeDefined()
+      expect(Math.round(deviceBackHeight!)).toBeGreaterThanOrEqual(44)
+      await deviceBack.press(theme === 'light' ? 'Enter' : 'Space')
+      await expect(
+        page.locator('.task-filter-sheet__device-popup'),
+      ).toBeHidden()
       await chooseDatePreset(page, '自定义')
       const calendar = page.locator('.task-filter-sheet__calendar')
       await expect(calendar).toBeVisible()
@@ -543,6 +606,63 @@ for (const width of viewportWidths) {
       await page.locator('.task-list__item').first().click()
       await expect(page.getByTestId('task-detail')).toBeVisible()
       await expect(page.getByTestId('runtime-events')).toBeVisible()
+      const detailFlow = await page.evaluate(() => {
+        const currentMessage = document.querySelector<HTMLElement>(
+          '[data-testid="detail-current-message"]',
+        )
+        const firstEvent = document.querySelector<HTMLElement>(
+          '[data-testid="runtime-events"] li',
+        )
+        const meta =
+          firstEvent?.querySelector<HTMLElement>('.runtime-log__meta')
+        const message = firstEvent?.querySelector<HTMLElement>(
+          '.runtime-log__message',
+        )
+        if (!currentMessage || !meta || !message) {
+          throw new Error('任务详情视觉节点不完整')
+        }
+        const currentStyle = window.getComputedStyle(currentMessage)
+        const metaBox = meta.getBoundingClientRect()
+        const messageBox = message.getBoundingClientRect()
+        return {
+          currentWhiteSpace: currentStyle.whiteSpace,
+          currentOverflowWrap: currentStyle.overflowWrap,
+          messageBelowMeta: messageBox.top >= metaBox.bottom,
+        }
+      })
+      expect(detailFlow).toEqual({
+        currentWhiteSpace: 'pre-wrap',
+        currentOverflowWrap: 'anywhere',
+        messageBelowMeta: true,
+      })
+      const detailSurfaces = await page.evaluate(() => {
+        const selectors = ['.task-detail-page__runtime-summary', '.runtime-log']
+        const probe = document.createElement('span')
+        probe.style.color = 'var(--bg-surface)'
+        document.body.append(probe)
+        const expectedBackground = window.getComputedStyle(probe).color
+        probe.remove()
+        return {
+          expectedBackground,
+          backgrounds: selectors.map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).backgroundColor,
+          ),
+          shadows: selectors.map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).boxShadow,
+          ),
+        }
+      })
+      expect(detailSurfaces.backgrounds).toEqual([
+        detailSurfaces.expectedBackground,
+        detailSurfaces.expectedBackground,
+      ])
+      expect(detailSurfaces.shadows).toEqual(['none', 'none'])
       const moreInformation = page.getByTestId('task-more-information')
       await expect(
         moreInformation.locator('.van-collapse-item__content'),

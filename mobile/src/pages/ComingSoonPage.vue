@@ -39,13 +39,13 @@ const title = computed(() => route.meta.title)
 
 .coming-soon-page__message h1 {
   color: var(--text-primary);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-title);
   font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-label);
+  line-height: var(--line-height-title);
 }
 
 .coming-soon-page__message p {
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
 }

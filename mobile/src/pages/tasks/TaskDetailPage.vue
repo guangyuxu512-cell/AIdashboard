@@ -110,7 +110,7 @@ const durationText = computed(() =>
     <template v-else>
       <VanNoticeBar
         v-if="taskQuery.isError.value"
-        type="warning"
+        class="mobile-notice-bar--warning"
         :text="`${detailErrorMessage}，当前展示上次成功加载的数据`"
         wrapable
       />
@@ -119,7 +119,9 @@ const durationText = computed(() =>
           <h1>{{ executionName }}</h1>
           <TaskStatusTag :status="task.status" />
         </div>
+      </section>
 
+      <section class="task-detail-page__core" aria-label="任务核心信息">
         <VanCellGroup>
           <VanCell title="设备">
             <template #value>
@@ -147,7 +149,7 @@ const durationText = computed(() =>
               v-if="progress.total !== null"
               :percentage="progressPercentage"
               :show-pivot="false"
-              stroke-width="8"
+              stroke-width="var(--progress-height-default)"
             />
           </div>
           <div class="task-detail-page__current-message">
@@ -219,6 +221,11 @@ const durationText = computed(() =>
   gap: var(--space-3);
 }
 
+.task-detail-page__core {
+  display: grid;
+  gap: var(--space-3);
+}
+
 .task-detail-page__title {
   display: flex;
   gap: var(--space-3);
@@ -238,8 +245,8 @@ const durationText = computed(() =>
   gap: var(--space-2);
   padding: var(--space-3);
   background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
 }
 
 .task-detail-page__runtime-heading {
@@ -266,9 +273,8 @@ const durationText = computed(() =>
 
 .task-detail-page__current-message p {
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
 }
 </style>

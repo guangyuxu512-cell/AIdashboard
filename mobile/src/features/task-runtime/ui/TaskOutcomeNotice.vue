@@ -21,14 +21,14 @@ const failed = computed(
 <template>
   <VanNoticeBar
     v-if="status === 'success'"
-    type="success"
+    class="mobile-notice-bar--success"
     :text="getTaskResultSummary(result)"
     wrapable
     data-testid="task-result"
   />
   <VanNoticeBar
     v-else-if="failed"
-    type="danger"
+    class="mobile-notice-bar--danger"
     wrapable
     data-testid="task-error-message"
   >
@@ -50,6 +50,7 @@ const failed = computed(
 .task-outcome__error code {
   min-width: 0;
   overflow-wrap: anywhere;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-caption);
   white-space: normal;
 }

@@ -33,7 +33,7 @@ const summary = computed(() =>
     <h2 id="skill-summary-title">技能能力摘要</h2>
     <div v-if="backgroundError" class="device-skill-summary__error">
       <VanNoticeBar
-        type="warning"
+        class="mobile-notice-bar--warning"
         :text="`${errorMessage}，已保留上次技能能力快照`"
         wrapable
       />
@@ -67,6 +67,10 @@ const summary = computed(() =>
   display: grid;
   min-width: 0;
   gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-card);
 }
 
 .device-skill-summary h2 {
@@ -76,7 +80,7 @@ const summary = computed(() =>
 
 .device-skill-summary__state {
   display: grid;
-  min-height: 96px;
+  min-height: var(--layout-inline-state-min-height);
   place-items: center;
 }
 

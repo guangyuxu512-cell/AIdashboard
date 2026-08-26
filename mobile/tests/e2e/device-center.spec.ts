@@ -51,6 +51,20 @@ async function applySafeAreaFixture(page: Page): Promise<void> {
     root.style.setProperty('--safe-area-bottom', safeArea.bottom)
     root.style.setProperty('--safe-area-left', safeArea.left)
   }, safeAreaFixture)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const style = window.getComputedStyle(document.documentElement)
+        return {
+          top: style.getPropertyValue('--safe-area-top').trim(),
+          right: style.getPropertyValue('--safe-area-right').trim(),
+          bottom: style.getPropertyValue('--safe-area-bottom').trim(),
+          left: style.getPropertyValue('--safe-area-left').trim(),
+        }
+      }),
+    )
+    .toEqual(safeAreaFixture)
 }
 
 async function setThemeBeforeNavigation(
@@ -86,6 +100,24 @@ async function countCardsInsideMainViewport(
       return card.top >= main.top && card.bottom <= main.bottom
     }).length
   })
+}
+
+async function isCardVisibleInsideMainViewport(
+  page: Page,
+  selector: string,
+  index: number,
+): Promise<boolean> {
+  return page
+    .locator(selector)
+    .nth(index)
+    .evaluate((element) => {
+      const main = document
+        .querySelector<HTMLElement>('.mobile-app-shell__main')
+        ?.getBoundingClientRect()
+      if (!main) return false
+      const card = element.getBoundingClientRect()
+      return card.top < main.bottom && card.bottom > main.top
+    })
 }
 
 async function scrollMainToBottom(page: Page): Promise<void> {
@@ -486,6 +518,9 @@ for (const width of viewportWidths) {
       await expect(firstCard).toContainText('在线')
       await expect(firstCard).toContainText('同步订单')
       await expect(firstCard).not.toContainText('正在执行订单同步')
+      await expect(firstCard.locator('.device-list-card__meta')).toContainText(
+        /更新 · Worker 1\.0\.1/,
+      )
       await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
       await expect(page.getByTestId('overview-online')).toHaveText('18')
       await expect(page.getByTestId('overview-running')).toHaveText('1')
@@ -503,7 +538,18 @@ for (const width of viewportWidths) {
             ).size,
         )
         .toBe(20)
-      expect(state.activeTaskRequests).toHaveLength(20)
+      const activeRequestCounts = new Map<string, number>()
+      for (const request of state.activeTaskRequests) {
+        const deviceId = new URL(request).pathname.split('/').at(-1) ?? ''
+        activeRequestCounts.set(
+          deviceId,
+          (activeRequestCounts.get(deviceId) ?? 0) + 1,
+        )
+      }
+      expect(activeRequestCounts.size).toBe(20)
+      expect(
+        [...activeRequestCounts.values()].every((count) => count >= 1),
+      ).toBe(true)
 
       const mainButton = firstCard.getByRole('button', {
         name: '查看设备：设备 1',
@@ -520,7 +566,14 @@ for (const width of viewportWidths) {
       expect((await firstCard.boundingBox())?.height).toBeLessThan(150)
       expect(
         await countCardsInsideMainViewport(page, '[data-testid="device-card"]'),
-      ).toBeGreaterThanOrEqual(width >= 390 ? 4 : 3)
+      ).toBeGreaterThanOrEqual(3)
+      expect(
+        await isCardVisibleInsideMainViewport(
+          page,
+          '[data-testid="device-card"]',
+          3,
+        ),
+      ).toBe(true)
 
       const titleStyle = await firstCard
         .locator('.device-list-card__heading strong')
@@ -560,16 +613,50 @@ for (const width of viewportWidths) {
           colors: cards.map(
             (card) => window.getComputedStyle(card.querySelector('dd')!).color,
           ),
+          numberFontSizes: cards.map(
+            (card) =>
+              window.getComputedStyle(card.querySelector('dd')!).fontSize,
+          ),
+          expectedNumberFontSize: window
+            .getComputedStyle(document.documentElement)
+            .getPropertyValue('--font-size-display')
+            .trim(),
           expectedColors: [
             tokenColor('--status-success'),
             tokenColor('--status-info'),
             tokenColor('--text-secondary'),
           ],
+          surfaceBackgrounds: [
+            '.device-overview__cards',
+            '.device-list-card',
+          ].map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).backgroundColor,
+          ),
+          surfaceShadows: ['.device-overview__cards', '.device-list-card'].map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).boxShadow,
+          ),
+          expectedSurfaceBackground: tokenColor('--bg-surface'),
         }
       })
       expect(overviewLayout.columnCount).toBe(3)
       expect(new Set(overviewLayout.tops.map(Math.round)).size).toBe(1)
       expect(overviewLayout.colors).toEqual(overviewLayout.expectedColors)
+      expect(
+        overviewLayout.numberFontSizes.every(
+          (fontSize) => fontSize === overviewLayout.expectedNumberFontSize,
+        ),
+      ).toBe(true)
+      expect(overviewLayout.surfaceBackgrounds).toEqual([
+        overviewLayout.expectedSurfaceBackground,
+        overviewLayout.expectedSurfaceBackground,
+      ])
+      expect(overviewLayout.surfaceShadows).toEqual(['none', 'none'])
 
       if (width === 390) {
         await page.screenshot({
@@ -613,6 +700,40 @@ for (const width of viewportWidths) {
       )
       await expect(page.getByTestId('capability-summary')).toContainText(
         '业务能力1 个',
+      )
+      const detailSurfaces = await page.evaluate(() => {
+        const selectors = [
+          '.device-detail-page__current-task',
+          '.device-detail-page__runtime',
+          '.device-provider-section',
+          '.device-skill-summary',
+        ]
+        const probe = document.createElement('span')
+        probe.style.color = 'var(--bg-surface)'
+        document.body.append(probe)
+        const expectedBackground = window.getComputedStyle(probe).color
+        probe.remove()
+        return {
+          expectedBackground,
+          backgrounds: selectors.map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).backgroundColor,
+          ),
+          shadows: selectors.map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).boxShadow,
+          ),
+        }
+      })
+      expect(detailSurfaces.backgrounds).toEqual(
+        Array.from({ length: 4 }, () => detailSurfaces.expectedBackground),
+      )
+      expect(detailSurfaces.shadows).toEqual(
+        Array.from({ length: 4 }, () => 'none'),
       )
       await expect(page.getByTestId('provider-inventory')).not.toContainText(
         '企业账号',

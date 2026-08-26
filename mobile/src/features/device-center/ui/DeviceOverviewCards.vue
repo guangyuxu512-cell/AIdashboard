@@ -97,6 +97,7 @@ const activeTaskHint = computed(() => {
 .device-overview__scope {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: baseline;
   justify-content: space-between;
@@ -109,30 +110,34 @@ const activeTaskHint = computed(() => {
 
 .device-overview__scope span,
 .device-overview__card small {
+  min-width: 0;
   color: var(--text-tertiary);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
+  overflow-wrap: anywhere;
 }
 
 .device-overview__cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
-  gap: var(--space-2);
   margin: 0;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-card);
 }
 
 .device-overview__card {
   display: grid;
   min-width: 0;
-  min-height: 88px;
   gap: var(--space-1);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   align-content: center;
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
+}
+
+.device-overview__card + .device-overview__card {
+  border-left: var(--border-width) solid var(--border-subtle);
 }
 
 .device-overview__card dt,
@@ -143,14 +148,16 @@ const activeTaskHint = computed(() => {
 
 .device-overview__card dt {
   color: var(--text-secondary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-body);
 }
 
 .device-overview__card dd {
-  font-size: var(--font-size-title);
+  order: -1;
+  font-size: var(--font-size-display);
   font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-title);
+  line-height: var(--line-height-display);
 }
 
 .device-overview__card--online dd {

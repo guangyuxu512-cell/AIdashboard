@@ -36,6 +36,7 @@ defineProps<{
 
 <style scoped>
 .mobile-bottom-navigation {
+  background: var(--bg-surface-raised);
   border-top: var(--border-width) solid var(--border-subtle);
 }
 </style>

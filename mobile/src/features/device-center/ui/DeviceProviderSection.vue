@@ -30,7 +30,7 @@ const emit = defineEmits<{ retry: [] }>()
     <h2 id="provider-title">影刀提供方</h2>
     <div v-if="backgroundError" class="device-provider-section__error">
       <VanNoticeBar
-        type="warning"
+        class="mobile-notice-bar--warning"
         :text="`${errorMessage}，已保留上次影刀快照`"
         wrapable
       />
@@ -90,6 +90,10 @@ const emit = defineEmits<{ retry: [] }>()
   display: grid;
   min-width: 0;
   gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-card);
 }
 
 .device-provider-section h2 {
@@ -99,7 +103,7 @@ const emit = defineEmits<{ retry: [] }>()
 
 .device-provider-section__state {
   display: grid;
-  min-height: 96px;
+  min-height: var(--layout-inline-state-min-height);
   place-items: center;
 }
 

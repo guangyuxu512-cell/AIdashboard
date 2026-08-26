@@ -24,6 +24,9 @@ const emit = defineEmits<{
 const heartbeatText = computed(() =>
   formatRelativeHeartbeat(props.device.workerRuntime?.lastSeenAt ?? null),
 )
+const updateText = computed(() =>
+  heartbeatText.value === '—' ? '心跳未上报' : `${heartbeatText.value}更新`,
+)
 </script>
 
 <template>
@@ -43,10 +46,6 @@ const heartbeatText = computed(() =>
           />
         </span>
       </span>
-      <span class="device-list-card__meta">
-        <span>版本 {{ device.workerRuntime?.workerVersion || '—' }}</span>
-        <span>心跳 {{ heartbeatText }}</span>
-      </span>
     </button>
 
     <ActiveTaskSummary
@@ -59,6 +58,11 @@ const heartbeatText = computed(() =>
       @retry="activeTaskState.retry"
       @select="emit('selectTask', $event)"
     />
+
+    <p class="device-list-card__meta">
+      {{ updateText }} · Worker
+      {{ device.workerRuntime?.workerVersion || '—' }}
+    </p>
   </article>
 </template>
 
@@ -69,9 +73,8 @@ const heartbeatText = computed(() =>
   gap: var(--space-2);
   padding: var(--space-3);
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
+  border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
 }
 
 .device-list-card__main {
@@ -87,9 +90,13 @@ const heartbeatText = computed(() =>
   border: 0;
 }
 
+.device-list-card__main:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 .device-list-card__heading,
-.device-list-card__tags,
-.device-list-card__meta {
+.device-list-card__tags {
   display: flex;
   min-width: 0;
   gap: var(--space-2);
@@ -113,19 +120,12 @@ const heartbeatText = computed(() =>
 }
 
 .device-list-card__meta {
-  color: var(--text-secondary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-}
-
-.device-list-card__meta span {
   min-width: 0;
   overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.device-list-card__meta span:last-child {
-  flex: none;
 }
 </style>

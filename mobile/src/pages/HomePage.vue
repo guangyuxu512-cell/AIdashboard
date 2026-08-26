@@ -31,7 +31,6 @@ import { AppPage } from '@/shared/ui'
   background: var(--bg-surface);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
 }
 
 .home-page__title {
@@ -42,7 +41,7 @@ import { AppPage } from '@/shared/ui'
 }
 
 .home-page__description {
-  max-width: 28em;
+  max-width: var(--layout-readable-max-width);
   color: var(--text-secondary);
 }
 </style>

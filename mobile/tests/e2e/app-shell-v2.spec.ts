@@ -85,6 +85,9 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   )
   await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
   await expect(page.locator('.van-badge--dot')).toHaveCount(0)
+  expect(
+    (await page.getByRole('button', { name: '通知' }).boundingBox())?.height,
+  ).toBeGreaterThanOrEqual(44)
 
   const tabbarItems = page.locator('.van-tabbar-item')
   await expect(tabbarItems).toHaveText(['设备', '任务', '计划', '店铺', '我的'])
@@ -93,6 +96,49 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
       exact: true,
     }),
   ).toBeVisible()
+
+  const chromeVisual = await page.evaluate(() => {
+    const style = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector)
+      if (!element) throw new Error(`未找到壳层视觉节点：${selector}`)
+      return window.getComputedStyle(element)
+    }
+    const tokenColor = (token: string, property: 'color' | 'background') => {
+      const probe = document.createElement('span')
+      probe.style[property] = `var(${token})`
+      document.body.append(probe)
+      const value =
+        window.getComputedStyle(probe)[
+          property === 'color' ? 'color' : 'backgroundColor'
+        ]
+      probe.remove()
+      return value
+    }
+    const root = window.getComputedStyle(document.documentElement)
+    return {
+      headerBackground: style('.mobile-global-header').backgroundColor,
+      bottomBackground: style('.mobile-bottom-navigation').backgroundColor,
+      expectedRaised: tokenColor('--bg-surface-raised', 'background'),
+      activeColor: style('.van-tabbar-item--active').color,
+      inactiveColor: style('.van-tabbar-item:not(.van-tabbar-item--active)')
+        .color,
+      expectedActive: tokenColor('--text-selected', 'color'),
+      expectedInactive: tokenColor('--text-tertiary', 'color'),
+      brandFontSize: style('.mobile-global-header__brand').fontSize,
+      expectedBrandFontSize: root.getPropertyValue('--font-size-label').trim(),
+    }
+  })
+  expect(chromeVisual).toEqual({
+    headerBackground: chromeVisual.expectedRaised,
+    bottomBackground: chromeVisual.expectedRaised,
+    expectedRaised: chromeVisual.expectedRaised,
+    activeColor: chromeVisual.expectedActive,
+    inactiveColor: chromeVisual.expectedInactive,
+    expectedActive: chromeVisual.expectedActive,
+    expectedInactive: chromeVisual.expectedInactive,
+    brandFontSize: chromeVisual.expectedBrandFontSize,
+    expectedBrandFontSize: chromeVisual.expectedBrandFontSize,
+  })
 
   const shellGeometry = await page.evaluate(() => {
     const header = document.querySelector<HTMLElement>(
@@ -163,6 +209,43 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
 
   await page.getByRole('button', { name: '通知' }).click()
   await expect(page.getByText('通知功能建设中', { exact: true })).toBeVisible()
+
+  await page.evaluate(() => {
+    window.localStorage.setItem('control-center.mobile.theme-mode', 'dark')
+  })
+  await page.reload()
+  await page.goto('/#/__foundation')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
+
+  const detailHeaderVisual = await page.evaluate(() => {
+    const navBar = document.querySelector<HTMLElement>(
+      '.mobile-detail-header .van-nav-bar',
+    )
+    if (!navBar) throw new Error('未找到详情返回栏')
+    const probe = document.createElement('span')
+    probe.style.background = 'var(--bg-surface-raised)'
+    document.body.append(probe)
+    const expectedRaised = window.getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return {
+      background: window.getComputedStyle(navBar).backgroundColor,
+      expectedRaised,
+    }
+  })
+  expect(detailHeaderVisual.background).toBe(detailHeaderVisual.expectedRaised)
+
+  const backButton = page.getByRole('button', { name: '返回' })
+  expect((await backButton.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+  await page.keyboard.press('Tab')
+  await expect(backButton).toBeFocused()
+  const backFocus = await backButton.evaluate((element) => {
+    const style = window.getComputedStyle(element)
+    return { style: style.outlineStyle, width: style.outlineWidth }
+  })
+  expect(backFocus).toEqual({ style: 'solid', width: '2px' })
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/#\/$/)
 
   expect(consoleErrors).toEqual([])
 })

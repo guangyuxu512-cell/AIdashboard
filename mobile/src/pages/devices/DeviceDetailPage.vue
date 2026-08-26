@@ -67,7 +67,7 @@ function openTask(taskId: string): void {
     <template v-else>
       <VanNoticeBar
         v-if="detail.isDeviceBackgroundError.value"
-        type="warning"
+        class="mobile-notice-bar--warning"
         :text="`${detail.deviceErrorMessage.value}，当前展示上次成功加载的数据`"
         wrapable
       />
@@ -82,17 +82,18 @@ function openTask(taskId: string): void {
             />
           </div>
         </div>
-
-        <ActiveTaskSummary
-          :task="detail.activeTask.query.data.value"
-          :initial-loading="detail.activeTask.isInitialLoading.value"
-          :initial-error="detail.activeTask.isInitialError.value"
-          :background-error="detail.activeTask.isBackgroundError.value"
-          :error-message="detail.activeTask.errorMessage.value"
-          @retry="detail.activeTask.query.refetch"
-          @select="openTask"
-        />
       </section>
+
+      <ActiveTaskSummary
+        class="device-detail-page__current-task"
+        :task="detail.activeTask.query.data.value"
+        :initial-loading="detail.activeTask.isInitialLoading.value"
+        :initial-error="detail.activeTask.isInitialError.value"
+        :background-error="detail.activeTask.isBackgroundError.value"
+        :error-message="detail.activeTask.errorMessage.value"
+        @retry="detail.activeTask.query.refetch"
+        @select="openTask"
+      />
 
       <section
         class="device-detail-page__runtime"
@@ -204,6 +205,14 @@ function openTask(taskId: string): void {
   display: grid;
   min-width: 0;
   gap: var(--space-3);
+}
+
+.device-detail-page__current-task,
+.device-detail-page__runtime {
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-card);
 }
 
 .device-detail-page__title,

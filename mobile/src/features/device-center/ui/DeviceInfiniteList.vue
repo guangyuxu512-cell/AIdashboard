@@ -57,7 +57,7 @@ const emit = defineEmits<{
     data-testid="device-background-error"
   >
     <VanNoticeBar
-      type="warning"
+      class="mobile-notice-bar--warning"
       :text="`${errorMessage}，当前展示上次成功加载的数据`"
       wrapable
     />
@@ -110,7 +110,7 @@ const emit = defineEmits<{
         data-testid="device-list-next-page-error"
       >
         <VanNoticeBar
-          type="warning"
+          class="mobile-notice-bar--warning"
           :text="`${errorMessage}，已保留当前设备`"
           wrapable
         />
@@ -125,7 +125,7 @@ const emit = defineEmits<{
 <style scoped>
 .device-list-state {
   display: grid;
-  min-height: 50vh;
+  min-height: var(--layout-page-state-min-height);
   gap: var(--space-4);
   padding: var(--space-4) max(var(--space-4), var(--safe-area-right))
     var(--space-4) max(var(--space-4), var(--safe-area-left));
