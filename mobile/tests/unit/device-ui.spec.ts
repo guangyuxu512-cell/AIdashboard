@@ -185,11 +185,11 @@ describe('device center UI', () => {
   })
 
   it.each([
-    ['online', true, '在线', '已启用'],
-    ['offline', false, '离线', '已停用'],
+    ['online', true, '在线'],
+    ['offline', false, '离线'],
   ] as const)(
-    'shows %s runtime while preserving enabled=%s',
-    async (connectionStatus, enabled, connectionLabel, enabledLabel) => {
+    'shows %s runtime without mixing enabled=%s into the compact card',
+    async (connectionStatus, enabled, connectionLabel) => {
       const wrapper = mountDeviceCard({
         ...baseDevice,
         enabled,
@@ -201,9 +201,12 @@ describe('device center UI', () => {
       await flushPromises()
 
       expect(wrapper.text()).toContain(connectionLabel)
-      expect(wrapper.text()).toContain(enabledLabel)
+      expect(wrapper.text()).not.toMatch(/已启用|已停用/)
       expect(wrapper.text()).toContain('1.2.3')
       expect(wrapper.text()).toContain('空闲')
+      expect(wrapper.classes()).toEqual(
+        expect.arrayContaining(['mobile-card', 'mobile-press-surface']),
+      )
       expect(wrapper.get('.device-list-card__meta').text()).toContain(
         'Worker 1.2.3',
       )

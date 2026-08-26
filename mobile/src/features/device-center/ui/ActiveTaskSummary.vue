@@ -45,7 +45,7 @@ const emit = defineEmits<{
       <button
         v-if="task"
         type="button"
-        class="active-task-summary__task"
+        class="active-task-summary__task mobile-pressable"
         :aria-label="`查看任务：${task.execution_display_name}`"
         @click="emit('select', task.task_id)"
       >
@@ -144,6 +144,16 @@ const emit = defineEmits<{
 
 .active-task-summary--compact .active-task-summary__task,
 .active-task-summary--compact .active-task-summary__idle {
-  padding: var(--space-2) var(--space-3);
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.active-task-summary--compact .active-task-summary__idle {
+  min-height: var(--line-height-label);
+}
+
+.active-task-summary--compact .active-task-summary__task:active {
+  background: var(--bg-surface-hover);
 }
 </style>

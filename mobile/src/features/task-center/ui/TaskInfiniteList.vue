@@ -61,7 +61,7 @@ const emit = defineEmits<{
           v-for="task in tasks"
           :key="task.taskId"
           type="button"
-          class="task-list__item"
+          class="task-list__item mobile-pressable mobile-pressable--card"
           @click="emit('select', task.taskId)"
         >
           <TaskListCard :task="task" />
@@ -91,7 +91,7 @@ const emit = defineEmits<{
 
 .task-list {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-card-gap);
   padding: var(--space-2)
     max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
     max(var(--layout-page-padding-x), var(--safe-area-left));

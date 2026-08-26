@@ -65,6 +65,93 @@ p {
   margin: 0;
 }
 
+.mobile-card,
+.mobile-section-surface {
+  min-width: 0;
+  background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.mobile-card {
+  background: var(--bg-surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.mobile-press-surface,
+.mobile-pressable {
+  transform-origin: center;
+  transition:
+    transform var(--duration-press) var(--ease-press),
+    color var(--duration-press) var(--ease-press),
+    background-color var(--duration-press) var(--ease-press),
+    border-color var(--duration-press) var(--ease-press),
+    box-shadow var(--duration-press) var(--ease-press);
+}
+
+.mobile-pressable {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-pressable:active {
+  transform: scale(var(--press-scale-control));
+}
+
+.mobile-pressable--card:active {
+  transform: scale(var(--press-scale-card));
+}
+
+.mobile-pressable--card:active.mobile-card,
+.mobile-pressable--card:active .mobile-card {
+  background: var(--bg-surface-pressed);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-card-pressed);
+}
+
+.mobile-icon-button {
+  position: relative;
+  display: inline-grid;
+  width: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  place-items: center;
+}
+
+.mobile-icon-button::before {
+  position: absolute;
+  inset: var(--space-1);
+  content: '';
+  background: var(--bg-subtle);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-card);
+}
+
+.mobile-icon-button:active {
+  color: var(--text-primary);
+}
+
+.mobile-icon-button:active::before {
+  background: var(--bg-surface-pressed);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-card-pressed);
+}
+
+.mobile-icon-button > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mobile-icon-button .van-icon {
+  font-size: var(--icon-size-default);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -73,5 +160,11 @@ p {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .mobile-press-surface,
+  .mobile-pressable,
+  .mobile-pressable:has(:active) {
+    transform: none !important;
   }
 }

@@ -26,6 +26,7 @@ defineProps<{
     <VanTabbarItem
       v-for="item in items"
       :key="item.key"
+      class="mobile-pressable mobile-pressable--control"
       :to="item.to"
       :icon="item.icon"
     >
@@ -38,5 +39,14 @@ defineProps<{
 .mobile-bottom-navigation {
   background: var(--bg-surface-raised);
   border-top: var(--border-width) solid var(--border-subtle);
+  box-shadow: var(--shadow-tabbar);
+}
+
+.mobile-bottom-navigation :deep(.van-tabbar-item) {
+  color: var(--text-tertiary);
+}
+
+.mobile-bottom-navigation :deep(.van-tabbar-item--active) {
+  color: var(--text-selected);
 }
 </style>

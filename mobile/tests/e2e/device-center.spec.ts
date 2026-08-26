@@ -520,24 +520,38 @@ for (const width of viewportWidths) {
       const consoleErrors = collectConsoleErrors(page)
       await page.setViewportSize({ width, height: 844 })
       await setThemeBeforeNavigation(page, theme)
-      const state = await installMockApi(page)
+      const state = await installMockApi(page, { deviceTotal: 8 })
       await page.goto('/#/devices')
       await applySafeAreaFixture(page)
 
       const firstCard = page.getByTestId('device-card').first()
       await expect(firstCard).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      await expect(firstCard).toContainText('已停用')
+      const themeButton = page.getByTestId('theme-toggle')
+      const bellButton = page.getByRole('button', { name: '通知' })
+      await expect(themeButton).toHaveAttribute(
+        'aria-label',
+        theme === 'light' ? '切换到深色主题' : '切换到浅色主题',
+      )
+      expect((await themeButton.boundingBox())?.height).toBeGreaterThanOrEqual(
+        44,
+      )
+      expect((await bellButton.boundingBox())?.height).toBeGreaterThanOrEqual(
+        44,
+      )
+      expect((await themeButton.boundingBox())!.x).toBeLessThan(
+        (await bellButton.boundingBox())!.x,
+      )
       await expect(firstCard).toContainText('在线')
       await expect(firstCard).toContainText('同步订单')
       await expect(firstCard).not.toContainText('正在执行订单同步')
       await expect(firstCard.locator('.device-list-card__meta')).toContainText(
         /Worker 1\.0\.1/,
       )
-      await expect(page.getByText('25 台设备')).toBeVisible()
-      await expect(page.getByTestId('overview-online')).toHaveText('—')
-      await expect(page.getByTestId('overview-running')).toHaveText('—')
-      await expect(page.getByTestId('overview-offline')).toHaveText('—')
+      await expect(page.getByText('8 台设备')).toBeVisible()
+      await expect(page.getByTestId('overview-online')).toHaveText('6')
+      await expect(page.getByTestId('overview-running')).toHaveText('1')
+      await expect(page.getByTestId('overview-offline')).toHaveText('1')
       await expect
         .poll(
           () =>
@@ -547,7 +561,7 @@ for (const width of viewportWidths) {
               ),
             ).size,
         )
-        .toBe(20)
+        .toBe(8)
       const activeRequestCounts = new Map<string, number>()
       for (const request of state.activeTaskRequests) {
         const deviceId = new URL(request).pathname.split('/').at(-1) ?? ''
@@ -556,7 +570,7 @@ for (const width of viewportWidths) {
           (activeRequestCounts.get(deviceId) ?? 0) + 1,
         )
       }
-      expect(activeRequestCounts.size).toBe(20)
+      expect(activeRequestCounts.size).toBe(8)
       expect(
         [...activeRequestCounts.values()].every((count) => count >= 1),
       ).toBe(true)
@@ -573,7 +587,7 @@ for (const width of viewportWidths) {
       expect((await taskButton.boundingBox())?.height).toBeGreaterThanOrEqual(
         44,
       )
-      expect((await firstCard.boundingBox())?.height).toBeLessThan(150)
+      expect((await firstCard.boundingBox())?.height).toBeLessThan(165)
       expect(
         await countCardsInsideMainViewport(page, '[data-testid="device-card"]'),
       ).toBeGreaterThanOrEqual(3)
@@ -651,7 +665,15 @@ for (const width of viewportWidths) {
                 document.querySelector<HTMLElement>(selector)!,
               ).boxShadow,
           ),
-          expectedSurfaceBackground: tokenColor('--bg-surface'),
+          expectedSurfaceBackground: tokenColor('--bg-surface-raised'),
+          expectedSurfaceShadow: (() => {
+            const probe = document.createElement('span')
+            probe.style.boxShadow = 'var(--shadow-card)'
+            document.body.append(probe)
+            const shadow = window.getComputedStyle(probe).boxShadow
+            probe.remove()
+            return shadow
+          })(),
         }
       })
       expect(overviewLayout.columnCount).toBe(3)
@@ -666,7 +688,53 @@ for (const width of viewportWidths) {
         overviewLayout.expectedSurfaceBackground,
         overviewLayout.expectedSurfaceBackground,
       ])
-      expect(overviewLayout.surfaceShadows).toEqual(['none', 'none'])
+      expect(overviewLayout.surfaceShadows).toEqual([
+        overviewLayout.expectedSurfaceShadow,
+        overviewLayout.expectedSurfaceShadow,
+      ])
+
+      if (width === 390 && theme === 'light') {
+        const meta = firstCard.locator('.device-list-card__meta')
+        const metaBox = await meta.boundingBox()
+        if (!metaBox) throw new Error('未找到设备非交互信息区域')
+        await page.mouse.move(
+          metaBox.x + metaBox.width / 2,
+          metaBox.y + metaBox.height / 2,
+        )
+        await page.mouse.down()
+        await expect
+          .poll(() =>
+            firstCard.evaluate(
+              (element) => window.getComputedStyle(element).transform,
+            ),
+          )
+          .toBe('none')
+        await page.mouse.up()
+
+        const box = await mainButton.boundingBox()
+        if (!box) throw new Error('未找到设备主触控区域')
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+        await page.mouse.down()
+        await expect
+          .poll(() =>
+            firstCard.evaluate(
+              (element) => window.getComputedStyle(element).transform,
+            ),
+          )
+          .not.toBe('none')
+        await page.screenshot({
+          path: testInfo.outputPath('device-card-pressed-390-light.png'),
+        })
+        await page.mouse.move(0, 0)
+        await page.mouse.up()
+        await expect
+          .poll(() =>
+            firstCard.evaluate(
+              (element) => window.getComputedStyle(element).transform,
+            ),
+          )
+          .toBe('none')
+      }
 
       if (width === 390) {
         await page.screenshot({
@@ -701,6 +769,7 @@ for (const width of viewportWidths) {
 
       await mainButton.click()
       await expect(page.getByTestId('device-detail')).toBeVisible()
+      await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
       await expect(page.getByTestId('provider-inventory')).toContainText('就绪')
       await expect(page.getByTestId('provider-inventory')).toContainText(
         '账号测试账号',
@@ -713,18 +782,27 @@ for (const width of viewportWidths) {
       )
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
-          '.device-detail-page__current-task',
-          '.device-detail-page__runtime',
+          '.device-detail-page__summary',
           '.device-provider-section',
           '.device-skill-summary',
         ]
+        const resolveColor = (token: string) => {
+          const probe = document.createElement('span')
+          probe.style.color = `var(${token})`
+          document.body.append(probe)
+          const color = window.getComputedStyle(probe).color
+          probe.remove()
+          return color
+        }
         const probe = document.createElement('span')
-        probe.style.color = 'var(--bg-surface)'
+        probe.style.boxShadow = 'var(--shadow-card)'
         document.body.append(probe)
-        const expectedBackground = window.getComputedStyle(probe).color
+        const expectedCardShadow = window.getComputedStyle(probe).boxShadow
         probe.remove()
         return {
-          expectedBackground,
+          expectedCardBackground: resolveColor('--bg-surface-raised'),
+          expectedSectionBackground: resolveColor('--bg-surface'),
+          expectedCardShadow,
           backgrounds: selectors.map(
             (selector) =>
               window.getComputedStyle(
@@ -739,12 +817,16 @@ for (const width of viewportWidths) {
           ),
         }
       })
-      expect(detailSurfaces.backgrounds).toEqual(
-        Array.from({ length: 4 }, () => detailSurfaces.expectedBackground),
-      )
-      expect(detailSurfaces.shadows).toEqual(
-        Array.from({ length: 4 }, () => 'none'),
-      )
+      expect(detailSurfaces.backgrounds).toEqual([
+        detailSurfaces.expectedCardBackground,
+        detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedSectionBackground,
+      ])
+      expect(detailSurfaces.shadows).toEqual([
+        detailSurfaces.expectedCardShadow,
+        'none',
+        'none',
+      ])
       await expect(page.getByTestId('provider-inventory')).not.toContainText(
         '企业账号',
       )
@@ -1060,11 +1142,16 @@ test('未上报 Runtime 与离线是不同事实', async ({ page }) => {
   await installMockApi(page)
 
   await page.goto('/#/devices/device-3')
-  await expect(page.getByTestId('runtime-unreported')).toContainText('未上报')
   await expect(page.getByTestId('device-detail')).toContainText('未上报')
   await expect(page.getByTestId('device-detail')).not.toContainText('离线')
 
   await page.goto('/#/devices/device-2')
   await expect(page.getByTestId('device-detail')).toContainText('离线')
-  await expect(page.getByTestId('device-detail')).toContainText('已启用')
+  await page
+    .getByTestId('device-more-information')
+    .getByText('更多信息', { exact: true })
+    .click()
+  await expect(page.getByTestId('device-more-information')).toContainText(
+    '已启用',
+  )
 })

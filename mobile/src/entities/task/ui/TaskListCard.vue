@@ -42,7 +42,7 @@ const currentSummary = computed(() => {
 </script>
 
 <template>
-  <article class="task-list-card" data-testid="task-card">
+  <article class="task-list-card mobile-card" data-testid="task-card">
     <div class="task-list-card__heading">
       <h2>{{ task.executionName }}</h2>
       <TaskStatusTag :status="task.status" />
@@ -50,6 +50,7 @@ const currentSummary = computed(() => {
 
     <div class="task-list-card__meta">
       <span>{{ task.deviceDisplayName }}</span>
+      <span aria-hidden="true">·</span>
       <time :datetime="task.createdAt">{{ createdAtText }}</time>
     </div>
 
@@ -75,22 +76,25 @@ const currentSummary = computed(() => {
 <style scoped>
 .task-list-card {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  gap: var(--layout-card-row-gap);
+  padding: var(--layout-card-padding);
   color: var(--text-primary);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-default);
-  border-radius: var(--radius-card);
 }
 
 .task-list-card__heading,
-.task-list-card__meta,
 .task-list-card__progress-label {
   display: flex;
   min-width: 0;
   gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
+}
+
+.task-list-card__meta {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-1);
+  align-items: center;
 }
 
 .task-list-card__heading h2 {
@@ -127,7 +131,9 @@ const currentSummary = computed(() => {
 }
 
 .task-list-card__meta time {
-  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-list-card__progress {

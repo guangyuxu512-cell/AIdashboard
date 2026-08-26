@@ -41,7 +41,7 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: var(--bg-app);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-shell);
   isolation: isolate;
 }
 

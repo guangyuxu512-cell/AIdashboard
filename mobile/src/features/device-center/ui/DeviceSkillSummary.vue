@@ -26,7 +26,10 @@ const summary = computed(() =>
 </script>
 
 <template>
-  <section class="device-skill-summary" aria-labelledby="skill-summary-title">
+  <section
+    class="device-skill-summary mobile-section-surface"
+    aria-labelledby="skill-summary-title"
+  >
     <h2 id="skill-summary-title">能力</h2>
 
     <div v-if="initialLoading" class="device-skill-summary__state">
@@ -53,9 +56,6 @@ const summary = computed(() =>
   min-width: 0;
   gap: var(--space-3);
   padding: var(--space-3);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
 }
 
 .device-skill-summary h2 {
@@ -67,5 +67,10 @@ const summary = computed(() =>
   display: grid;
   min-height: var(--layout-inline-state-min-height);
   place-items: center;
+}
+
+.device-skill-summary :deep(.van-cell-group) {
+  border: 0;
+  border-radius: 0;
 }
 </style>

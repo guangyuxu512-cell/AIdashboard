@@ -52,7 +52,10 @@ function eventTime(value: string): string {
 </script>
 
 <template>
-  <section class="runtime-log" aria-labelledby="runtime-log-title">
+  <section
+    class="runtime-log mobile-section-surface"
+    aria-labelledby="runtime-log-title"
+  >
     <div class="runtime-log__heading">
       <h2 id="runtime-log-title">运行日志</h2>
       <span>{{ events.length }} 条</span>
@@ -120,9 +123,6 @@ function eventTime(value: string): string {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
 }
 
 .runtime-log__heading {

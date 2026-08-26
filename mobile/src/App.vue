@@ -88,6 +88,8 @@ function showNotificationPlaceholder(): void {
       <template #header>
         <MobileGlobalHeader
           v-if="isMainLayout"
+          :resolved-theme="resolvedTheme"
+          @theme-toggle="themeStore.toggleResolvedTheme"
           @notification-click="showNotificationPlaceholder"
         />
         <MobileDetailHeader v-else :title="routeTitle" @back="goBack" />

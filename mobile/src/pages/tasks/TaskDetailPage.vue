@@ -77,6 +77,11 @@ const durationText = computed(() =>
     runtimeNow.value,
   ),
 )
+const deviceText = computed(() => {
+  if (deviceQuery.data.value) return deviceQuery.data.value.display_name
+  if (deviceQuery.isError.value) return '设备加载失败'
+  return '设备加载中'
+})
 </script>
 
 <template>
@@ -90,27 +95,24 @@ const durationText = computed(() =>
     </VanEmpty>
 
     <template v-else>
-      <section class="task-detail-page__summary" data-testid="task-detail">
+      <section
+        class="task-detail-page__summary mobile-card"
+        data-testid="task-detail"
+      >
         <div class="task-detail-page__title">
           <h1>{{ executionName }}</h1>
           <TaskStatusTag :status="task.status" />
         </div>
+        <p class="task-detail-page__meta">
+          {{ deviceText }} ·
+          <span data-testid="task-detail-duration">{{ durationText }}</span>
+        </p>
       </section>
 
-      <section class="task-detail-page__core" aria-label="任务核心信息">
-        <VanCellGroup>
-          <VanCell title="设备">
-            <template #value>
-              <span v-if="deviceQuery.data.value">
-                {{ deviceQuery.data.value.display_name }}
-              </span>
-              <span v-else-if="deviceQuery.isError.value">加载失败</span>
-              <span v-else>加载中</span>
-            </template>
-          </VanCell>
-          <VanCell title="运行时间" :value="durationText" />
-        </VanCellGroup>
-
+      <section
+        class="task-detail-page__core mobile-section-surface"
+        aria-label="任务状态"
+      >
         <div class="task-detail-page__runtime-summary">
           <div v-if="progress" class="task-detail-page__progress">
             <div class="task-detail-page__runtime-heading">
@@ -195,11 +197,13 @@ const durationText = computed(() =>
 .task-detail-page__summary {
   display: grid;
   gap: var(--space-3);
+  padding: var(--space-4);
 }
 
 .task-detail-page__core {
   display: grid;
   gap: var(--space-3);
+  padding: var(--space-4);
 }
 
 .task-detail-page__title {
@@ -216,13 +220,19 @@ const durationText = computed(() =>
   line-height: var(--line-height-title);
 }
 
+.task-detail-page__meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-detail-page__runtime-summary {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
 }
 
 .task-detail-page__runtime-heading {

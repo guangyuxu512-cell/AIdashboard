@@ -14,7 +14,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import {
   DeviceConnectionTag,
-  DeviceEnabledTag,
   formatDeviceDateTime,
   formatRelativeHeartbeat,
 } from '@/entities/device'
@@ -33,6 +32,11 @@ const router = useRouter()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const detail = useDeviceDetail(deviceId)
 const expanded = ref<string[]>([])
+const runtimeMeta = computed(() => {
+  const runtime = detail.device.value?.workerRuntime
+  if (!runtime) return '未上报 · Worker —'
+  return `${formatRelativeHeartbeat(runtime.lastSeenAt)} · Worker ${runtime.workerVersion || '—'}`
+})
 
 function openTask(taskId: string): void {
   void router.push({
@@ -64,51 +68,27 @@ function openTask(taskId: string): void {
     </VanEmpty>
 
     <template v-else>
-      <section class="device-detail-page__summary" data-testid="device-detail">
+      <section
+        class="device-detail-page__summary mobile-card"
+        data-testid="device-detail"
+      >
         <div class="device-detail-page__title">
           <h1>{{ detail.device.value.displayName }}</h1>
           <div class="device-detail-page__tags">
-            <DeviceEnabledTag :enabled="detail.device.value.enabled" />
             <DeviceConnectionTag
               :status="detail.device.value.workerRuntime?.connectionStatus"
             />
           </div>
         </div>
-      </section>
-
-      <ActiveTaskSummary
-        class="device-detail-page__current-task"
-        :task="detail.activeTask.query.data.value"
-        :initial-loading="detail.activeTask.isInitialLoading.value"
-        :initial-error="detail.activeTask.isInitialError.value"
-        @retry="detail.activeTask.query.refetch"
-        @select="openTask"
-      />
-
-      <section
-        class="device-detail-page__runtime"
-        aria-labelledby="runtime-title"
-      >
-        <h2 id="runtime-title">运行端</h2>
-        <VanEmpty
-          v-if="!detail.device.value.workerRuntime"
-          description="未上报"
-          data-testid="runtime-unreported"
+        <ActiveTaskSummary
+          :task="detail.activeTask.query.data.value"
+          :initial-loading="detail.activeTask.isInitialLoading.value"
+          :initial-error="detail.activeTask.isInitialError.value"
+          compact
+          @retry="detail.activeTask.query.refetch"
+          @select="openTask"
         />
-        <VanCellGroup v-else>
-          <VanCell
-            title="Worker"
-            :value="detail.device.value.workerRuntime.workerVersion"
-          />
-          <VanCell
-            title="心跳"
-            :value="
-              formatRelativeHeartbeat(
-                detail.device.value.workerRuntime.lastSeenAt,
-              )
-            "
-          />
-        </VanCellGroup>
+        <p class="device-detail-page__meta">{{ runtimeMeta }}</p>
       </section>
 
       <DeviceProviderSection
@@ -131,6 +111,10 @@ function openTask(taskId: string): void {
             <section>
               <h3>设备技术信息</h3>
               <VanCellGroup>
+                <VanCell
+                  title="启用状态"
+                  :value="detail.device.value.enabled ? '已启用' : '已停用'"
+                />
                 <VanCell
                   title="设备 ID"
                   :value="detail.device.value.deviceId"
@@ -189,18 +173,14 @@ function openTask(taskId: string): void {
 }
 
 .device-detail-page__summary,
-.device-detail-page__runtime {
+.device-detail-page__details section {
   display: grid;
   min-width: 0;
   gap: var(--space-3);
 }
 
-.device-detail-page__current-task,
-.device-detail-page__runtime {
-  padding: var(--space-3);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
+.device-detail-page__summary {
+  padding: var(--space-4);
 }
 
 .device-detail-page__title,
@@ -225,20 +205,19 @@ function openTask(taskId: string): void {
   justify-content: flex-end;
 }
 
-.device-detail-page__runtime h2 {
-  font-size: var(--font-size-label);
-  line-height: var(--line-height-label);
+.device-detail-page__meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .device-detail-page__details {
   display: grid;
   gap: var(--space-4);
-}
-
-.device-detail-page__details section {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-2);
 }
 
 .device-detail-page__details h3 {

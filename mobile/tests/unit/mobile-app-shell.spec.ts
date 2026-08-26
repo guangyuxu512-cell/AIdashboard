@@ -131,17 +131,30 @@ describe('MobileAppShell V2', () => {
     )
   })
 
-  it('provides one global brand header with an empty notification badge', async () => {
+  it('orders the theme action before an empty notification badge', async () => {
     const wrapper = mount(MobileGlobalHeader)
     mountedWrappers.push(wrapper)
 
     expect(wrapper.text()).toContain('思余AI中控台')
-    expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(true)
+    const buttons = wrapper.findAll('button')
+    expect(buttons.map((button) => button.attributes('aria-label'))).toEqual([
+      '切换到深色主题',
+      '通知',
+    ])
+    expect(
+      buttons.every((button) => button.classes('mobile-icon-button')),
+    ).toBe(true)
     expect(wrapper.find('.van-badge--dot').exists()).toBe(false)
 
+    await buttons[0]!.trigger('click')
+    expect(wrapper.emitted('themeToggle')).toHaveLength(1)
     await wrapper.get('button[aria-label="通知"]').trigger('click')
     expect(wrapper.emitted('notificationClick')).toHaveLength(1)
 
+    await wrapper.setProps({ resolvedTheme: 'dark' })
+    expect(
+      wrapper.get('[data-testid="theme-toggle"]').attributes('aria-label'),
+    ).toBe('切换到浅色主题')
     await wrapper.setProps({ notificationDot: true })
     expect(wrapper.find('.van-badge--dot').exists()).toBe(true)
   })

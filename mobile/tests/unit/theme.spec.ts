@@ -96,6 +96,25 @@ describe('useThemeStore', () => {
     store.$dispose()
   })
 
+  it.each([
+    [false, 'dark'],
+    [true, 'light'],
+  ] as const)(
+    'quick toggles system resolved dark=%s to the opposite explicit mode',
+    (systemPrefersDark, expectedMode) => {
+      installMatchMedia(systemPrefersDark)
+      const store = useThemeStore()
+      store.initialize()
+
+      expect(store.mode).toBe('system')
+      store.toggleResolvedTheme()
+
+      expect(store.mode).toBe(expectedMode)
+      expect(store.resolvedTheme).toBe(expectedMode)
+      store.$dispose()
+    },
+  )
+
   it('ignores an invalid stored theme mode', () => {
     window.localStorage.setItem(MOBILE_THEME_STORAGE_KEY, 'unknown')
     installMatchMedia(false)

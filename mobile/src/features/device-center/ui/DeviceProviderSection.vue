@@ -23,8 +23,13 @@ const emit = defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <section class="device-provider-section" aria-labelledby="provider-title">
-    <h2 id="provider-title">影刀</h2>
+  <section
+    class="device-provider-section mobile-section-surface"
+    aria-label="影刀"
+  >
+    <h2 v-if="initialLoading || initialError || inventories?.length === 0">
+      影刀
+    </h2>
 
     <div v-if="initialLoading" class="device-provider-section__state">
       <VanLoading>加载中</VanLoading>
@@ -73,9 +78,6 @@ const emit = defineEmits<{ retry: [] }>()
   min-width: 0;
   gap: var(--space-3);
   padding: var(--space-3);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
 }
 
 .device-provider-section h2 {
@@ -100,5 +102,10 @@ const emit = defineEmits<{ retry: [] }>()
   gap: var(--space-2);
   align-items: center;
   justify-content: space-between;
+}
+
+.device-provider-section :deep(.van-cell-group) {
+  border: 0;
+  border-radius: 0;
 }
 </style>

@@ -15,7 +15,7 @@ const emit = defineEmits<{
     <VanNavBar :title="title" :border="false">
       <template #left>
         <button
-          class="mobile-detail-header__back"
+          class="mobile-detail-header__back mobile-icon-button mobile-pressable"
           type="button"
           aria-label="返回"
           @click="emit('back')"
@@ -41,24 +41,6 @@ const emit = defineEmits<{
 }
 
 .mobile-detail-header__back {
-  display: inline-grid;
-  width: var(--touch-target-min);
-  min-width: var(--touch-target-min);
-  height: var(--touch-target-min);
-  padding: 0;
   color: var(--color-primary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-round);
-  place-items: center;
-}
-
-.mobile-detail-header__back:active {
-  color: var(--color-primary-active);
-  background: var(--bg-surface-hover);
-}
-
-.mobile-detail-header__back .van-icon {
-  font-size: var(--icon-size-small);
 }
 </style>

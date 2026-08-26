@@ -23,6 +23,12 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Router 只在 `src/app/router/` 注册；Page 禁止动态注册 Route。
 - 一级业务页必须复用唯一 `MobileAppShell`、品牌 Global Header 与五入口 Bottom Navigation；详情页必须复用统一 Detail Header。Page 只提供 MainContent，禁止自行创建全局 Header、返回栏或 Bottom Nav。
 - Bottom Navigation 固定为“设备、任务、计划、店铺、我的”；未开发入口只能进入统一建设中页，禁止借占位实现假业务、假用户或假通知数据。
+- Device Card 与 Task Card 必须共享同一套 Mobile Card 语言，包括 Surface、Radius、Border、Shadow、Padding、字阶与 Press Feedback；Feature 禁止自建独立卡片视觉体系。
+- 正式 UI 优先移动端信息层级，不复制 PC Table、Drawer、Topbar 或字段表单布局。
+- Apple-like 视觉只通过克制的 Surface、Radius、Spacing、Typography 与 Motion 建立，不依赖大量 Glass、Blur、Glow 或夸张 3D。
+- Touch Press Feedback 是主要交互反馈；Hover 只能辅助预览，不能承载必要状态或操作。
+- Global Header 固定为品牌、Theme Toggle、Notification Bell；Theme 必须在 Bell 左侧，禁止一级 Page 添加第二层巨大标题栏。
+- Card 与 Icon Button 的 Press 行为优先复用全局 CSS 语义类，禁止为每个 Feature 新建 Wrapper 或 JS Pointer 动画。
 - Auth、JWT、RBAC 当前未实现；只能保留 `requiresAuth`、`permission`、Guard 与 Authorization Header 插槽，禁止假登录、假 Token、假角色。
 - Frontend Permission 只控制体验，不构成安全边界；真实 Authorization 必须由 Backend 执行。
 - 未来 Data Scope 必须由 Backend 在 API/Query 边界过滤，禁止 Mobile 获取全量后本地过滤。

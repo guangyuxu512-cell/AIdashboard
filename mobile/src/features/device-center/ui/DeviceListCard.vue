@@ -3,7 +3,6 @@ import { computed } from 'vue'
 
 import {
   DeviceConnectionTag,
-  DeviceEnabledTag,
   formatRelativeHeartbeat,
   type Device,
 } from '@/entities/device'
@@ -30,7 +29,10 @@ const updateText = computed(() =>
 </script>
 
 <template>
-  <article class="device-list-card" data-testid="device-card">
+  <article
+    class="device-list-card mobile-card mobile-press-surface"
+    data-testid="device-card"
+  >
     <button
       type="button"
       class="device-list-card__main"
@@ -40,7 +42,6 @@ const updateText = computed(() =>
       <span class="device-list-card__heading">
         <strong>{{ device.displayName }}</strong>
         <span class="device-list-card__tags">
-          <DeviceEnabledTag :enabled="device.enabled" />
           <DeviceConnectionTag
             :status="device.workerRuntime?.connectionStatus"
           />
@@ -68,11 +69,16 @@ const updateText = computed(() =>
 .device-list-card {
   display: grid;
   min-width: 0;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-default);
-  border-radius: var(--radius-card);
+  gap: var(--layout-card-row-gap);
+  padding: var(--layout-card-padding);
+}
+
+.device-list-card:has(.device-list-card__main:active),
+.device-list-card:has(.active-task-summary__task:active) {
+  transform: scale(var(--press-scale-card));
+  background: var(--bg-surface-pressed);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-card-pressed);
 }
 
 .device-list-card__main {

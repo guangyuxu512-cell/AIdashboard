@@ -7,7 +7,7 @@ defineProps<{ overview: DeviceOverview }>()
 <template>
   <section class="device-overview" aria-label="设备总览">
     <dl
-      class="device-overview__cards"
+      class="device-overview__cards mobile-card"
       aria-live="polite"
       :aria-busy="overview.dataState === 'loading'"
     >
@@ -15,19 +15,19 @@ defineProps<{ overview: DeviceOverview }>()
         <dd data-testid="overview-online">
           {{ overview.onlineCount ?? '—' }}
         </dd>
-        <dt>在线设备</dt>
+        <dt><span aria-hidden="true" />在线设备</dt>
       </div>
       <div class="device-overview__card device-overview__card--running">
         <dd data-testid="overview-running">
           {{ overview.runningCount ?? '—' }}
         </dd>
-        <dt>运行中</dt>
+        <dt><span aria-hidden="true" />运行中</dt>
       </div>
       <div class="device-overview__card device-overview__card--offline">
         <dd data-testid="overview-offline">
           {{ overview.offlineCount ?? '—' }}
         </dd>
-        <dt>离线设备</dt>
+        <dt><span aria-hidden="true" />离线设备</dt>
       </div>
     </dl>
   </section>
@@ -48,9 +48,6 @@ defineProps<{ overview: DeviceOverview }>()
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-default);
-  border-radius: var(--radius-card);
 }
 
 .device-overview__card {
@@ -72,10 +69,30 @@ defineProps<{ overview: DeviceOverview }>()
 }
 
 .device-overview__card dt {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-body);
+}
+
+.device-overview__card dt span {
+  width: var(--status-dot-size);
+  height: var(--status-dot-size);
+  flex: none;
+  background: currentcolor;
+  border-radius: var(--radius-round);
+  opacity: var(--opacity-muted);
+}
+
+.device-overview__card--online dt span {
+  color: var(--status-success);
+}
+
+.device-overview__card--running dt span {
+  color: var(--status-info);
 }
 
 .device-overview__card dd {

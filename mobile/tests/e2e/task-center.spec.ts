@@ -128,6 +128,7 @@ const taskItems = [
 ]
 
 function makeTaskDetail(taskId: string) {
+  const now = Date.now()
   const isSpecial = taskId === 'task-101'
   const isLongError = taskId === 'task-error'
   const numericId = Number(taskId.replace('task-', '')) || 1
@@ -152,7 +153,12 @@ function makeTaskDetail(taskId: string) {
     error_code: isLongError ? 'E'.repeat(64) : null,
     error_message: isLongError ? '已脱敏的失败原因' : null,
     lease_until: null,
-    started_at: status === 'pending' ? null : '2026-08-26T01:00:00.000Z',
+    started_at:
+      status === 'pending'
+        ? null
+        : status === 'running'
+          ? new Date(now - 90_000).toISOString()
+          : '2026-08-26T01:00:00.000Z',
     finished_at:
       status === 'success' || status === 'failed' || status === 'lost'
         ? '2026-08-26T01:05:00.000Z'
@@ -519,21 +525,28 @@ for (const width of viewportWidths) {
         .first()
         .evaluate((element) => {
           const probe = document.createElement('span')
-          probe.style.color = 'var(--bg-surface)'
+          probe.style.color = 'var(--bg-surface-raised)'
           document.body.append(probe)
           const expectedBackground = window.getComputedStyle(probe).color
           probe.remove()
+          const shadowProbe = document.createElement('span')
+          shadowProbe.style.boxShadow = 'var(--shadow-card)'
+          document.body.append(shadowProbe)
+          const expectedShadow = window.getComputedStyle(shadowProbe).boxShadow
+          shadowProbe.remove()
           const style = window.getComputedStyle(element)
           return {
             background: style.backgroundColor,
             shadow: style.boxShadow,
             expectedBackground,
+            expectedShadow,
           }
         })
       expect(cardSurface).toEqual({
         background: cardSurface.expectedBackground,
-        shadow: 'none',
+        shadow: cardSurface.expectedShadow,
         expectedBackground: cardSurface.expectedBackground,
+        expectedShadow: cardSurface.expectedShadow,
       })
 
       if (width === 390) {
@@ -671,14 +684,28 @@ for (const width of viewportWidths) {
         messageBelowMeta: true,
       })
       const detailSurfaces = await page.evaluate(() => {
-        const selectors = ['.task-detail-page__runtime-summary', '.runtime-log']
+        const selectors = [
+          '.task-detail-page__summary',
+          '.task-detail-page__core',
+          '.runtime-log',
+        ]
+        const resolveColor = (token: string) => {
+          const probe = document.createElement('span')
+          probe.style.color = `var(${token})`
+          document.body.append(probe)
+          const color = window.getComputedStyle(probe).color
+          probe.remove()
+          return color
+        }
         const probe = document.createElement('span')
-        probe.style.color = 'var(--bg-surface)'
+        probe.style.boxShadow = 'var(--shadow-card)'
         document.body.append(probe)
-        const expectedBackground = window.getComputedStyle(probe).color
+        const expectedCardShadow = window.getComputedStyle(probe).boxShadow
         probe.remove()
         return {
-          expectedBackground,
+          expectedCardBackground: resolveColor('--bg-surface-raised'),
+          expectedSectionBackground: resolveColor('--bg-surface'),
+          expectedCardShadow,
           backgrounds: selectors.map(
             (selector) =>
               window.getComputedStyle(
@@ -694,10 +721,15 @@ for (const width of viewportWidths) {
         }
       })
       expect(detailSurfaces.backgrounds).toEqual([
-        detailSurfaces.expectedBackground,
-        detailSurfaces.expectedBackground,
+        detailSurfaces.expectedCardBackground,
+        detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedSectionBackground,
       ])
-      expect(detailSurfaces.shadows).toEqual(['none', 'none'])
+      expect(detailSurfaces.shadows).toEqual([
+        detailSurfaces.expectedCardShadow,
+        'none',
+        'none',
+      ])
       const moreInformation = page.getByTestId('task-more-information')
       await expect(
         moreInformation.locator('.van-collapse-item__content'),
@@ -1042,10 +1074,7 @@ test('非终态详情持续发送 after_seq 增量请求', async ({ page }) => {
   const state = await installMockApi(page)
   await page.goto('/#/tasks/task-1')
   await expect(page.getByTestId('runtime-events')).toBeVisible()
-  const duration = page
-    .locator('.van-cell')
-    .filter({ hasText: '运行时间' })
-    .locator('.van-cell__value')
+  const duration = page.getByTestId('task-detail-duration')
   const firstDuration = await duration.textContent()
   await expect.poll(() => duration.textContent()).not.toBe(firstDuration)
   await expect

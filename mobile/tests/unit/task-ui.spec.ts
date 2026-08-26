@@ -71,6 +71,7 @@ describe('task center UI', () => {
     expect(wrapper.text()).toContain('执行中')
     expect(wrapper.text()).toContain('3 / 10')
     expect(wrapper.text()).toContain('正在同步')
+    expect(wrapper.classes()).toContain('mobile-card')
     expect(wrapper.get('.van-progress').attributes('style')).toContain(
       'var(--progress-height-compact)',
     )
@@ -129,6 +130,18 @@ describe('task center UI', () => {
       props: { ...listProps, tasks: [], initialError: true },
     })
     expect(error.find('[data-testid="task-error"]').exists()).toBe(true)
+  })
+
+  it('uses the shared card press language for task navigation', () => {
+    const wrapper = mount(TaskInfiniteList, { props: listProps })
+    const item = wrapper.get('.task-list__item')
+
+    expect(item.classes()).toEqual(
+      expect.arrayContaining(['mobile-pressable', 'mobile-pressable--card']),
+    )
+    expect(item.get('[data-testid="task-card"]').classes()).toContain(
+      'mobile-card',
+    )
   })
 
   it('keeps a successful empty cache visible during a background error', () => {

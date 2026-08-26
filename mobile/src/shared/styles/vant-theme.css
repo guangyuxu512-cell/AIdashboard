@@ -257,3 +257,34 @@
 .van-theme-dark .van-empty {
   opacity: 1;
 }
+
+.mobile-segmented-tabs .van-tabs__wrap {
+  height: var(--touch-target-min);
+}
+
+.mobile-segmented-tabs .van-tabs__nav {
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--bg-subtle);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.mobile-segmented-tabs .van-tab {
+  min-height: calc(var(--touch-target-min) - var(--space-2));
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  transition:
+    color var(--duration-press) var(--ease-press),
+    background-color var(--duration-press) var(--ease-press),
+    box-shadow var(--duration-press) var(--ease-press);
+}
+
+.mobile-segmented-tabs .van-tab--active {
+  background: var(--bg-surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.mobile-segmented-tabs .van-tabs__line {
+  display: none;
+}

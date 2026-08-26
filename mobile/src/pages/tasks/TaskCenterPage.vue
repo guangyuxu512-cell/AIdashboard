@@ -37,7 +37,7 @@ async function refresh(): Promise<void> {
     <div class="task-center-page__tabs">
       <VanTabs
         v-model:active="taskCenter.status.value"
-        sticky
+        class="mobile-segmented-tabs"
         shrink
         data-testid="status-tabs"
         @change="taskCenter.setStatus"
@@ -94,9 +94,13 @@ async function refresh(): Promise<void> {
 }
 
 .task-center-page__tabs {
-  padding-right: var(--safe-area-right);
-  padding-left: var(--safe-area-left);
-  background: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-2)
+    max(var(--layout-page-padding-x), var(--safe-area-right)) 0
+    max(var(--layout-page-padding-x), var(--safe-area-left));
+  background: var(--bg-app);
 }
 
 .task-center-page__toolbar {

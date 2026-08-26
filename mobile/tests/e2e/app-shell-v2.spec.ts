@@ -83,11 +83,36 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   await expect(page.getByTestId('mobile-global-header')).toContainText(
     '思余AI中控台',
   )
+  const headerButtons = page
+    .getByTestId('mobile-global-header')
+    .getByRole('button')
+  await expect(headerButtons).toHaveCount(2)
+  await expect(headerButtons.nth(0)).toHaveAttribute(
+    'aria-label',
+    /切换到(浅色|深色)主题/,
+  )
+  await expect(headerButtons.nth(1)).toHaveAttribute('aria-label', '通知')
   await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
   await expect(page.locator('.van-badge--dot')).toHaveCount(0)
   expect(
     (await page.getByRole('button', { name: '通知' }).boundingBox())?.height,
   ).toBeGreaterThanOrEqual(44)
+  expect(
+    (await headerButtons.nth(0).boundingBox())?.height,
+  ).toBeGreaterThanOrEqual(44)
+
+  const initialTheme = await page.locator('html').getAttribute('data-theme')
+  await headerButtons.nth(0).click()
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-theme',
+    initialTheme === 'dark' ? 'light' : 'dark',
+  )
+  await headerButtons.nth(0).click()
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-theme',
+    initialTheme ?? 'light',
+  )
+  await page.waitForTimeout(200)
 
   const tabbarItems = page.locator('.van-tabbar-item')
   await expect(tabbarItems).toHaveText(['设备', '任务', '计划', '店铺', '我的'])
@@ -240,5 +265,53 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/#\/$/)
 
+  expect(consoleErrors).toEqual([])
+})
+
+test('System快速切换与Reduced Motion不影响触控操作', async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+  await installShellReadOnlyApi(page)
+  await page.goto('/#/devices')
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  const themeButton = page.getByTestId('theme-toggle')
+  await expect(themeButton).toHaveAttribute('aria-label', '切换到浅色主题')
+
+  const transitionDuration = await themeButton.evaluate(
+    (element) => window.getComputedStyle(element).transitionDuration,
+  )
+  expect(['0.01ms', '1e-05s']).toContain(transitionDuration.split(',')[0])
+
+  await themeButton.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem('control-center.mobile.theme-mode'),
+      ),
+    )
+    .toBe('light')
+
+  const card = page.getByTestId('device-card').first()
+  const cardAction = card.getByRole('button', { name: /查看设备/ })
+  const cardActionBox = await cardAction.boundingBox()
+  if (!cardActionBox) throw new Error('未找到Reduced Motion设备触控区域')
+  await page.mouse.move(
+    cardActionBox.x + cardActionBox.width / 2,
+    cardActionBox.y + cardActionBox.height / 2,
+  )
+  await page.mouse.down()
+  await expect
+    .poll(() =>
+      card.evaluate((element) => window.getComputedStyle(element).transform),
+    )
+    .toBe('none')
+  await page.mouse.move(0, 0)
+  await page.mouse.up()
+
+  await page.getByRole('button', { name: '通知' }).click()
+  await expect(page.locator('.van-toast')).toContainText('功能建设中')
   expect(consoleErrors).toEqual([])
 })
