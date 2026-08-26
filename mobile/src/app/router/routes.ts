@@ -2,6 +2,8 @@ import type { RouteRecordRaw } from 'vue-router'
 
 export const MOBILE_ROUTE_NAMES = {
   home: 'mobile-home',
+  tasks: 'mobile-tasks',
+  taskDetail: 'mobile-task-detail',
   foundation: 'mobile-foundation',
 } as const
 
@@ -21,10 +23,33 @@ const homeRoute: RouteRecordRaw = {
   },
 }
 
+const taskRoutes: RouteRecordRaw[] = [
+  {
+    path: '/tasks',
+    name: MOBILE_ROUTE_NAMES.tasks,
+    component: () => import('@/pages/tasks/TaskCenterPage.vue'),
+    meta: {
+      title: '任务中心',
+      requiresAuth: false,
+      permission: null,
+    },
+  },
+  {
+    path: '/tasks/:taskId',
+    name: MOBILE_ROUTE_NAMES.taskDetail,
+    component: () => import('@/pages/tasks/TaskDetailPage.vue'),
+    meta: {
+      title: '任务详情',
+      requiresAuth: false,
+      permission: null,
+    },
+  },
+]
+
 export function createMobileRoutes(
   options: CreateMobileRoutesOptions = {},
 ): RouteRecordRaw[] {
-  const routes = [homeRoute]
+  const routes = [homeRoute, ...taskRoutes]
   const runtimeIsDevelopment =
     options.runtimeIsDevelopment ?? import.meta.env.DEV
   const includeFoundation =

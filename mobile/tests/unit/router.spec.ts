@@ -30,7 +30,28 @@ describe('mobile router', () => {
         (route) => route.name === MOBILE_ROUTE_NAMES.foundation,
       ),
     ).toBe(false)
-    expect(productionRoutes.map((route) => route.path)).toEqual(['/'])
+    expect(productionRoutes.map((route) => route.path)).toEqual([
+      '/',
+      '/tasks',
+      '/tasks/:taskId',
+    ])
+  })
+
+  it('registers task list and detail with the frozen public route metadata', () => {
+    const routes = createMobileRoutes({ runtimeIsDevelopment: false })
+
+    for (const routeName of [
+      MOBILE_ROUTE_NAMES.tasks,
+      MOBILE_ROUTE_NAMES.taskDetail,
+    ]) {
+      const route = routes.find((candidate) => candidate.name === routeName)
+      expect(route?.meta).toEqual(
+        expect.objectContaining({
+          requiresAuth: false,
+          permission: null,
+        }),
+      )
+    }
   })
 
   it('registers the foundation route only when explicitly enabled', () => {

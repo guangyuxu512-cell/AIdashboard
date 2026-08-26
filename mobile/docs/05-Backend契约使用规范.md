@@ -22,7 +22,7 @@ Backend Pydantic/OpenAPI 始终是最终权威。Contract 不存在时停止实�
 - 数据库异常统一为 HTTP `500` / `DATABASE_OPERATION_FAILED`。
 - 响应使用 `X-Request-ID` 关联请求；`GET /health` 不属于业务 API。
 
-`src/shared/api/` 只固化以上通用边界。领域 DTO 必须在首个真实 Mobile 用例出现后，按对应 Backend Schema 建立；本轮不提前复制整份 OpenAPI。
+`src/shared/api/` 只固化以上通用边界。领域 DTO 在首个真实 Mobile 用例出现后，按对应 Backend Schema 建立；不得复制与当前用例无关的整份 OpenAPI。
 
 ## 3. 已存在的领域 API
 
@@ -62,9 +62,8 @@ Feature / Page
 
 当前 Backend 尚未实现员工登录、JWT 签发/刷新、RBAC、正式 Permission Code 或 Data Scope；现有 User 只是业务人员实体，不是登录身份 Contract。
 
-因此本轮：
+因此当前：
 
-- 不调用真实业务 API。
 - 不创建登录 URL、Token DTO、Current User DTO 或权限码全集。
 - API Client 只保留 Authorization Header 与 HTTP `401` 处理 Hook，默认不注入任何 Header。
 - Router 只保留 `requiresAuth` 与 `permission` Meta 及 Guard 注入点。
@@ -72,3 +71,26 @@ Feature / Page
 - Worker Bearer Token 是 Device Identity，Mobile User Authentication 不得复用 Worker Token。
 
 生产 Mobile 直连 Backend 前，员工身份、401/403、Token 生命周期、权限码和各领域 Data Scope 必须先形成正式 Backend Contract 与测试。
+
+## 6. Task Center V1 已冻结只读契约
+
+Entity 通过 `shared/api` 的 base URL 使用以下相对路径：
+
+| 方法 | 相对路径                 | 查询参数                                                                |
+| ---- | ------------------------ | ----------------------------------------------------------------------- |
+| GET  | `tasks`                  | `page`、`page_size`、`status`、`device_id`、`search`、`created_from/to` |
+| GET  | `tasks/{task_id}`        | 无                                                                      |
+| GET  | `tasks/{task_id}/events` | `after_seq` 或 `before_seq`（互斥）、`limit`（1..200，默认 100）        |
+| GET  | `devices`                | `page`、`page_size`                                                     |
+| GET  | `devices/{device_id}`    | 无                                                                      |
+
+- Task 状态仅为 `pending/running/success/failed/lost`。
+- 列表 DTO 提供安全的 `progress`、`current_message`、`device_display_name`；详情 DTO 不提供这三项。
+- Event 响应按 `seq` 升序，返回 `next_after_seq`、`next_before_seq`、`has_more_before`；事件与 `runtime_events_purged_at` 共同判断保留状态。
+- 结构化进度 Event 的 `metadata.current/total` 只有同时满足以下规则才可展示：`current` 为非布尔整数且大于等于 0；`total` 为 `null`，或为大于 0 的非布尔整数且 `current <= total`。任一字段无效时整条进度无效，禁止纠正、截断或解析日志补值。
+- 当前信息只按 `progress → status → log` 的类型优先级，从各类型最新非空消息中选择；`completed/failed` 不获得 Mobile 自定义优先级。
+- Device 只有服务端分页；Mobile 不得把前 100 条当作完整设备集合。详情深链必须调用 Device Detail 获取显示名称。
+- `created_from/created_to` 是本地自然日转换后的半开区间；“全部时间”必须同时省略两者，禁止发送空字符串或开放区间的一端。
+- V1 只读，不调用 Task create，也不存在 Mobile cancel/retry/delete 行为。
+- `result` 只允许读取非空字符串 `summary`；`input` 与其他结果字段不得通用渲染。
+- `error_message` 与 `error_code` 仅按 Backend 已脱敏响应展示，Mobile 不解析内部错误或复制状态机。

@@ -27,7 +27,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Mobile User Authentication 与 Worker Device Token 永久分离，Mobile 禁止使用 Worker Token。
 - 不复制 Desktop 页面或组件后仅修改 CSS；必须按触控、Safe Area、Sheet/Popup 与手机信息密度重新组合。
 - 没有真实复用或业务需求时不建立万能抽象，也不新增 `components/`、`common/`、`helpers/`、`services/`、`libs/`。
-- 本轮不开发真实业务页面，不修改 Backend/Frontend/Electron/Worker，不运行 Migration，不操作 VPS 或真实 Worker。
+- Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现，且不得把测试 Fixture 或 Mock DataSource 带入生产代码。
 
 ## 完成标准
 
