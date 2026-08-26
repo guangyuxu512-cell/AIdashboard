@@ -5,6 +5,7 @@ export interface TaskReadDto {
   task_id: string
   target_device_id: string
   shop_ids: string[]
+  asset_ids: string[]
   skill_id: string
   execution_display_name: string
   status: TaskStatusDto
@@ -23,6 +24,7 @@ export interface TaskReadDto {
 export interface TaskCreateDto {
   target_device_id: string
   shop_ids?: string[]
+  asset_ids?: string[]
   skill_id: TaskReadDto['skill_id']
   input: Record<string, unknown>
 }

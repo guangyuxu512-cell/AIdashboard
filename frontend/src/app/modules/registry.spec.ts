@@ -12,6 +12,7 @@ describe('Module Registry Lite', () => {
     expect(MODULE_REGISTRY.map((module) => module.moduleCode)).toEqual([
       'foundation',
       'shop',
+      'asset',
       'device',
       'task',
       'schedule',
@@ -24,12 +25,20 @@ describe('Module Registry Lite', () => {
       getNavigationModules(MODULE_REGISTRY, {
         includeDevelopment: false,
       }).map((module) => module.moduleCode),
-    ).toEqual(['shop', 'device', 'task', 'schedule', 'settings'])
+    ).toEqual(['shop', 'asset', 'device', 'task', 'schedule', 'settings'])
     expect(
       getNavigationModules(MODULE_REGISTRY, { includeDevelopment: true }).map(
         (module) => module.moduleCode,
       ),
-    ).toEqual(['foundation', 'shop', 'device', 'task', 'schedule', 'settings'])
+    ).toEqual([
+      'foundation',
+      'shop',
+      'asset',
+      'device',
+      'task',
+      'schedule',
+      'settings',
+    ])
   })
 
   it('builds the automation navigation group without an automation route', () => {
@@ -56,7 +65,7 @@ describe('Module Registry Lite', () => {
 
   it('does not expose disabled modules', () => {
     const disabledDevice: ModuleDefinition = {
-      ...MODULE_REGISTRY[2],
+      ...MODULE_REGISTRY.find((module) => module.moduleCode === 'device')!,
       enabled: false,
     }
 
@@ -78,6 +87,7 @@ describe('Module Registry Lite', () => {
     ).toEqual({
       foundation: null,
       shop: null,
+      asset: null,
       device: null,
       task: null,
       schedule: null,

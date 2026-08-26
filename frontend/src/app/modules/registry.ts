@@ -1,6 +1,7 @@
 import {
   Blocks,
   CalendarClock,
+  Images,
   ListChecks,
   Monitor,
   Settings,
@@ -77,6 +78,18 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 20,
+  },
+  {
+    moduleCode: 'asset',
+    moduleName: '资料库',
+    navigationGroup: 'management',
+    navigationParent: null,
+    routeName: 'assets',
+    routePath: '/assets',
+    icon: Images,
+    enabled: true,
+    permissionCode: null,
+    order: 25,
   },
   {
     moduleCode: 'device',

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ShopMultiSelector } from '@/entities/shop'
+import { AssetMultiSelector } from '@/entities/asset'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 
 import YingdaoApplicationRunDialog from './YingdaoApplicationRunDialog.vue'
@@ -87,6 +88,9 @@ describe('YingdaoApplicationRunDialog', () => {
     expect(dialog.props('positiveDisabled')).toBe(false)
 
     selector.vm.$emit('update:modelValue', ['shop-1', 'shop-3', 'shop-5'])
+    wrapper
+      .findComponent(AssetMultiSelector)
+      .vm.$emit('update:modelValue', ['asset-2', 'asset-1'])
     await flushPromises()
     expect(dialog.props('positiveDisabled')).toBe(false)
 
@@ -96,6 +100,7 @@ describe('YingdaoApplicationRunDialog', () => {
     expect(mocks.createTask).toHaveBeenCalledWith({
       target_device_id: 'device-1',
       shop_ids: ['shop-1', 'shop-3', 'shop-5'],
+      asset_ids: ['asset-2', 'asset-1'],
       skill_id: 'yingdao.app.run',
       input: { app_id: 'safe-app', params: {} },
     })

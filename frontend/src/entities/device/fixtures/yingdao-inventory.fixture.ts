@@ -38,7 +38,7 @@ function inventory(
     availabilityStatus: 'available',
     providerStatus: 'ready',
     statusReason: null,
-    providerVersion: '6.3.6 (Fixture)',
+    providerVersion: '6.3.6',
     executionAvailable: true,
     executionVersion: '6.3.6',
     executionUnavailableReason: null,

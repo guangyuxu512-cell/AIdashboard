@@ -8,6 +8,7 @@ import {
   createDefaultAutomationParameters,
   validateAutomationParameters,
 } from '@/entities/automation-application'
+import { AssetMultiSelector } from '@/entities/asset'
 import type { ProviderApplicationViewModel } from '@/entities/device'
 import {
   ShopMultiSelector,
@@ -31,6 +32,7 @@ const appId = computed(() => props.application?.appId ?? null)
 const configQuery = useAutomationApplicationConfigQuery(appId)
 const createTask = useCreateTaskMutation()
 const shopIds = ref<string[]>([])
+const assetIds = ref<string[]>([])
 const shopSelectionKey = ref('')
 const shopOptionsQuery = useDeviceShopSelectionOptionsQuery(
   computed(() => props.deviceId),
@@ -76,6 +78,7 @@ watch(
     if (!show) {
       shopSelectionKey.value = ''
       shopIds.value = []
+      assetIds.value = []
       return
     }
     if (!deviceId || !applicationId || options === undefined) return
@@ -105,6 +108,7 @@ async function run(): Promise<void> {
     const task = await createTask.mutateAsync({
       target_device_id: props.deviceId,
       shop_ids: [...shopIds.value],
+      asset_ids: [...assetIds.value],
       skill_id: 'yingdao.app.run',
       input: { app_id: props.application.appId, params: { ...params.value } },
     })
@@ -140,6 +144,9 @@ async function run(): Promise<void> {
         v-model="params"
         :schema="configQuery.data.value?.input_schema ?? { fields: [] }"
       />
+      <NFormItem label="使用图片">
+        <AssetMultiSelector v-model="assetIds" />
+      </NFormItem>
     </NForm>
     <p v-if="configInitialError" class="application-run__error">
       参数配置加载失败：{{ getErrorMessage(configQuery.error.value) }}

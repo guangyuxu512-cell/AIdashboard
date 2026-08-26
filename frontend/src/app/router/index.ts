@@ -4,6 +4,7 @@ import { requireModuleDefinition } from '@/app/modules/registry'
 
 const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
+const assetModule = requireModuleDefinition('asset')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
@@ -23,6 +24,12 @@ const router = createRouter({
       name: shopModule.routeName,
       component: () => import('@/pages/shops/ShopCenterPage.vue'),
       meta: { moduleCode: shopModule.moduleCode },
+    },
+    {
+      path: assetModule.routePath,
+      name: assetModule.routeName,
+      component: () => import('@/pages/assets/AssetLibraryPage.vue'),
+      meta: { moduleCode: assetModule.moduleCode },
     },
     {
       path: deviceModule.routePath,
