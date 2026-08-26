@@ -1,4 +1,6 @@
 export type {
+  ActiveTaskStatusDto,
+  ActiveTaskSummaryReadDto,
   TaskEventListReadDto,
   TaskEventListRequest,
   TaskEventReadDto,
@@ -9,7 +11,7 @@ export type {
   TaskReadDto,
   TaskStatusDto,
 } from './api/contracts'
-export { getTask, getTaskEvents, getTasks } from './api/task-api'
+export { getActiveTask, getTask, getTaskEvents, getTasks } from './api/task-api'
 export {
   isTerminalTaskStatus,
   TASK_STATUSES,
@@ -22,12 +24,15 @@ export {
   resolveExecutionName,
 } from './model/task-mapper'
 export {
+  getActiveTaskQueryOptions,
   getNextTaskPageParam,
   getTaskListRefetchInterval,
+  TASK_ACTIVE_REFRESH_INTERVAL_MS,
   TASK_LIST_PAGE_SIZE,
   TASK_LIST_REFRESH_INTERVAL_MS,
   taskQueryKeys,
   toTaskListRequest,
+  useActiveTaskQuery,
   useTaskDetailQuery,
   useTaskListQuery,
 } from './model/task-queries'

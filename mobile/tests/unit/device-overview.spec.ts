@@ -1,0 +1,253 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+
+import type { Device } from '@/entities/device'
+import type { ActiveTaskSummaryReadDto } from '@/entities/task'
+import type { DeviceActiveTaskState } from '@/features/device-center'
+import { DeviceOverviewCards } from '@/features/device-center'
+import { summarizeDeviceOverview } from '@/features/device-center/model/device-overview'
+
+function device(
+  deviceId: string,
+  connectionStatus: 'online' | 'offline' | null,
+): Device {
+  return {
+    deviceId,
+    displayName: deviceId,
+    enabled: true,
+    location: null,
+    note: null,
+    deletedAt: null,
+    workerRuntime:
+      connectionStatus === null
+        ? null
+        : {
+            deviceId,
+            workerVersion: '1.0.0',
+            connectionStatus,
+            lastSeenAt: '2026-08-26T08:59:00.000Z',
+            startedAt: '2026-08-26T08:00:00.000Z',
+            updatedAt: '2026-08-26T08:59:00.000Z',
+          },
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-26T08:59:00.000Z',
+  }
+}
+
+function activeTask(
+  deviceId: string,
+  status: 'pending' | 'running',
+): ActiveTaskSummaryReadDto {
+  return {
+    task_id: `task-${deviceId}`,
+    target_device_id: deviceId,
+    skill_id: 'sync-orders',
+    execution_display_name: '同步订单',
+    status,
+    started_at: status === 'running' ? '2026-08-26T08:00:00.000Z' : null,
+    created_at: '2026-08-26T07:59:00.000Z',
+    latest_event: null,
+  }
+}
+
+function activeState(
+  task: ActiveTaskSummaryReadDto | null | undefined,
+  overrides: Partial<DeviceActiveTaskState> = {},
+): DeviceActiveTaskState {
+  const hasSuccessfulData = task !== undefined
+  return {
+    task,
+    hasSuccessfulData,
+    initialLoading: !hasSuccessfulData,
+    initialError: false,
+    backgroundError: false,
+    errorMessage: '当前任务失败',
+    retry: () => undefined,
+    ...overrides,
+  }
+}
+
+describe('device center overview', () => {
+  it('keeps all three metrics unknown before the Device page succeeds', () => {
+    const overview = summarizeDeviceOverview([], {}, 'loading')
+    const wrapper = mount(DeviceOverviewCards, { props: { overview } })
+
+    expect(overview.onlineCount).toBeNull()
+    expect(overview.offlineCount).toBeNull()
+    expect(overview.runningCount).toBeNull()
+    expect(wrapper.get('[data-testid="overview-online"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="overview-offline"]').text()).toBe('—')
+    expect(wrapper.text()).toContain('当前任务统计中')
+  })
+
+  it('distinguishes an initial Device error from loading in every overview hint', () => {
+    const overview = summarizeDeviceOverview([], {}, 'error')
+    const wrapper = mount(DeviceOverviewCards, { props: { overview } })
+
+    expect(overview.dataState).toBe('error')
+    expect(overview.onlineCount).toBeNull()
+    expect(overview.offlineCount).toBeNull()
+    expect(overview.runningCount).toBeNull()
+    expect(wrapper.get('[data-testid="overview-online"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="overview-offline"]').text()).toBe('—')
+    expect(wrapper.text()).toContain('设备统计不可用')
+    expect(wrapper.text()).toContain('设备加载失败，连接统计不可用')
+    expect(wrapper.text()).toContain('设备加载失败，任务统计不可用')
+    expect(wrapper.text()).not.toContain('加载中')
+  })
+
+  it('counts only loaded connection facts and excludes unreported Runtime from offline', () => {
+    const devices = [
+      device('device-online', 'online'),
+      device('device-offline', 'offline'),
+      device('device-unreported', null),
+    ]
+    const overview = summarizeDeviceOverview(
+      devices,
+      {
+        'device-online': activeState(activeTask('device-online', 'running')),
+        'device-offline': activeState(activeTask('device-offline', 'pending')),
+        'device-unreported': activeState(null),
+      },
+      'ready',
+    )
+    const wrapper = mount(DeviceOverviewCards, { props: { overview } })
+
+    expect(overview).toEqual(
+      expect.objectContaining({
+        loadedCount: 3,
+        onlineCount: 1,
+        offlineCount: 1,
+        unreportedCount: 1,
+        runningCount: 1,
+        activeConfirmedCount: 3,
+        activeUnknownCount: 0,
+      }),
+    )
+    expect(wrapper.findAll('dt').map((item) => item.text())).toEqual([
+      '在线设备',
+      '运行中任务',
+      '离线设备',
+    ])
+    expect(wrapper.text()).toContain('1 台连接状态未上报')
+    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('1')
+  })
+
+  it('shows a partial confirmation hint without treating unknown Active Tasks as zero', () => {
+    const devices = [
+      device('device-1', 'online'),
+      device('device-2', 'online'),
+      device('device-3', 'offline'),
+    ]
+    const overview = summarizeDeviceOverview(
+      devices,
+      {
+        'device-1': activeState(activeTask('device-1', 'running')),
+        'device-2': activeState(undefined, {
+          initialLoading: false,
+          initialError: true,
+        }),
+      },
+      'ready',
+    )
+    const wrapper = mount(DeviceOverviewCards, { props: { overview } })
+
+    expect(overview.activeState).toBe('partial')
+    expect(overview.runningCount).toBe(1)
+    expect(overview.activeConfirmedCount).toBe(1)
+    expect(overview.activeUnknownCount).toBe(2)
+    expect(wrapper.get('[data-testid="overview-running-hint"]').text()).toBe(
+      '已确认 1/3 台',
+    )
+
+    const allUnknown = summarizeDeviceOverview(devices, {}, 'ready')
+    expect(allUnknown.runningCount).toBeNull()
+    expect(allUnknown.activeState).toBe('loading')
+
+    const allFailed = summarizeDeviceOverview(
+      devices,
+      Object.fromEntries(
+        devices.map((item) => [
+          item.deviceId,
+          activeState(undefined, {
+            initialLoading: false,
+            initialError: true,
+          }),
+        ]),
+      ),
+      'ready',
+    )
+    const failedWrapper = mount(DeviceOverviewCards, {
+      props: { overview: allFailed },
+    })
+    expect(allFailed.runningCount).toBeNull()
+    expect(allFailed.activeState).toBe('error')
+    expect(
+      failedWrapper.get('[data-testid="overview-running-hint"]').text(),
+    ).toBe('当前任务统计失败')
+
+    const onlyPendingIsKnown = summarizeDeviceOverview(
+      devices,
+      {
+        'device-1': activeState(activeTask('device-1', 'pending')),
+      },
+      'ready',
+    )
+    expect(onlyPendingIsKnown.runningCount).toBeNull()
+    expect(onlyPendingIsKnown.activeState).toBe('partial')
+  })
+
+  it('keeps cached running data during a background error and marks freshness', () => {
+    const devices = [
+      device('device-1', 'online'),
+      device('device-2', 'offline'),
+    ]
+    const overview = summarizeDeviceOverview(
+      devices,
+      {
+        'device-1': activeState(activeTask('device-1', 'running'), {
+          backgroundError: true,
+        }),
+        'device-2': activeState(null),
+      },
+      'ready',
+    )
+    const wrapper = mount(DeviceOverviewCards, { props: { overview } })
+
+    expect(overview.runningCount).toBe(1)
+    expect(overview.activeConfirmedCount).toBe(2)
+    expect(overview.activeBackgroundErrorCount).toBe(1)
+    expect(wrapper.get('[data-testid="overview-running-hint"]').text()).toBe(
+      '部分状态刷新失败',
+    )
+
+    const partialWithBackgroundError = summarizeDeviceOverview(
+      [...devices, device('device-3', 'online')],
+      {
+        'device-1': activeState(activeTask('device-1', 'running'), {
+          backgroundError: true,
+        }),
+        'device-2': activeState(null),
+      },
+      'ready',
+    )
+    const partialWrapper = mount(DeviceOverviewCards, {
+      props: { overview: partialWithBackgroundError },
+    })
+    expect(
+      partialWrapper.get('[data-testid="overview-running-hint"]').text(),
+    ).toBe('已确认 2/3 台，部分刷新失败')
+  })
+
+  it('shows exact zeros after a successful empty Device page', () => {
+    const overview = summarizeDeviceOverview([], {}, 'ready')
+    const wrapper = mount(DeviceOverviewCards, { props: { overview } })
+
+    expect(overview.activeState).toBe('ready')
+    expect(wrapper.get('[data-testid="overview-online"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="overview-offline"]').text()).toBe('0')
+  })
+})

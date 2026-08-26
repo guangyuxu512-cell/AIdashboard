@@ -81,3 +81,16 @@ export interface TaskEventListRequest {
   before_seq?: number
   limit?: number
 }
+
+export type ActiveTaskStatusDto = Extract<TaskStatusDto, 'pending' | 'running'>
+
+export interface ActiveTaskSummaryReadDto {
+  task_id: string
+  target_device_id: string
+  skill_id: string
+  execution_display_name: string
+  status: ActiveTaskStatusDto
+  started_at: string | null
+  created_at: string
+  latest_event: TaskEventReadDto | null
+}

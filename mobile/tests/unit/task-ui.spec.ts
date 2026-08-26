@@ -75,18 +75,43 @@ describe('task center UI', () => {
     expect(wrapper.text()).toContain('正在同步')
   })
 
-  it('keeps an explicit progress placeholder when structured progress is absent', () => {
+  it('omits the whole progress section when structured progress is absent', () => {
     const wrapper = mount(TaskListCard, {
       props: {
         task: { ...task, progress: null, currentMessage: null },
       },
     })
 
-    const progressLabel = wrapper.get('.task-list-card__progress-label')
-    expect(progressLabel.text()).toContain('进度')
-    expect(progressLabel.text()).toContain('—')
+    expect(wrapper.find('.task-list-card__progress').exists()).toBe(false)
     expect(wrapper.find('.van-progress').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="task-card-message"]').text()).toBe(
+      '正在执行',
+    )
   })
+
+  it.each([
+    ['failed', '任务执行失败'],
+    ['lost', '任务状态已丢失'],
+  ] as const)(
+    'uses a safe short %s summary instead of spreading an error message',
+    (status, expected) => {
+      const wrapper = mount(TaskListCard, {
+        props: {
+          task: {
+            ...task,
+            status,
+            progress: null,
+            currentMessage: 'INTERNAL_STACK_TRACE',
+          },
+        },
+      })
+
+      expect(wrapper.get('[data-testid="task-card-message"]').text()).toBe(
+        expected,
+      )
+      expect(wrapper.text()).not.toContain('INTERNAL_STACK_TRACE')
+    },
+  )
 
   it('covers loading, empty and initial error states', () => {
     const loading = mount(TaskInfiniteList, {

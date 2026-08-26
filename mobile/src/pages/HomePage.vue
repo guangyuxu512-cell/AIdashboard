@@ -10,7 +10,7 @@ import { AppPage } from '@/shared/ui'
       <VanTag type="primary" round>移动端 V1</VanTag>
       <h1 id="home-page-title" class="home-page__title">移动端控制台</h1>
       <p class="home-page__description">
-        任务中心已开放，请从底部“任务”入口查看设备任务与运行日志。
+        任务中心与设备中心已开放，请从底部入口查看任务运行日志与设备状态。
       </p>
     </section>
   </AppPage>

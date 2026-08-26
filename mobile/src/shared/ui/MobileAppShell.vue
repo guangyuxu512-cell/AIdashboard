@@ -1,11 +1,16 @@
 <template>
   <div class="mobile-app-shell">
-    <header v-if="$slots.header" class="mobile-app-shell__header">
+    <header
+      v-if="$slots.header"
+      class="mobile-app-shell__header"
+      data-testid="mobile-shell-header"
+    >
       <slot name="header" />
     </header>
 
     <main
       class="mobile-app-shell__main"
+      data-testid="mobile-shell-main"
       :class="{
         'mobile-app-shell__main--without-header': !$slots.header,
         'mobile-app-shell__main--without-bottom': !$slots.bottom,
@@ -14,7 +19,11 @@
       <slot />
     </main>
 
-    <footer v-if="$slots.bottom" class="mobile-app-shell__bottom">
+    <footer
+      v-if="$slots.bottom"
+      class="mobile-app-shell__bottom"
+      data-testid="mobile-shell-bottom"
+    >
       <slot name="bottom" />
     </footer>
   </div>
@@ -25,6 +34,7 @@
   display: grid;
   width: 100%;
   max-width: var(--layout-content-max-width);
+  height: 100dvh;
   min-height: 100dvh;
   margin-inline: auto;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -64,6 +74,7 @@
 
 @supports not (height: 100dvh) {
   .mobile-app-shell {
+    height: 100vh;
     min-height: 100vh;
   }
 }

@@ -36,7 +36,16 @@
   --van-button-default-height: var(--control-height-default);
   --van-button-large-height: var(--control-height-large);
   --van-nav-bar-height: var(--layout-header-height);
+  --van-nav-bar-background: var(--bg-surface);
+  --van-nav-bar-title-text-color: var(--text-primary);
+  --van-nav-bar-icon-color: var(--text-secondary);
+  --van-nav-bar-text-color: var(--text-secondary);
   --van-tabbar-height: var(--layout-bottom-height);
+  --van-tabbar-background: var(--bg-surface);
+  --van-tabbar-item-text-color: var(--text-secondary);
+  --van-tabbar-item-active-color: var(--text-selected);
+  --van-tabbar-item-active-background: var(--bg-surface);
+  --van-tabbar-item-icon-size: var(--font-size-title);
   --van-overlay-background: var(--bg-overlay);
   --van-popup-background: var(--bg-surface);
   --van-cell-background: var(--bg-surface);
