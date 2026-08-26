@@ -17,7 +17,7 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
   await expect(page.getByText('运营工作台', { exact: true })).toHaveCount(0)
   await expect(
     navigation.getByText('UI 基础设施', { exact: true }),
-  ).toBeVisible()
+  ).toHaveCount(0)
   const brandMark = page.locator('.app-shell__brand-mark')
   await expect(brandMark).toBeVisible()
   expect(
@@ -175,7 +175,7 @@ test('keeps every primary navigation row aligned when groups toggle', async ({
       await page.getByText(theme, { exact: true }).click()
 
       const expanded = await measure()
-      expect(expanded.rows.length).toBeGreaterThanOrEqual(4)
+      expect(expanded.rows.length).toBeGreaterThanOrEqual(3)
       expect(new Set(expanded.rows.map((row) => row.labelX)).size).toBe(1)
       expect(new Set(expanded.rows.map((row) => row.iconCenterX)).size).toBe(1)
       expect(new Set(expanded.rows.map((row) => row.rowHeight)).size).toBe(1)

@@ -21,8 +21,11 @@ import ThemeSelector from '@/shared/components/ThemeSelector.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
 import { useThemeStore } from '@/stores/theme'
 
+const showDevelopmentModules =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_SHOW_DEVELOPMENT_MODULES === 'true'
 const navigation = getNavigationEntries(undefined, {
-  includeDevelopment: import.meta.env.DEV,
+  includeDevelopment: showDevelopmentModules,
 })
 
 const themeStore = useThemeStore()
