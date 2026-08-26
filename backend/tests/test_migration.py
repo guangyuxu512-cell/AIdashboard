@@ -494,3 +494,35 @@ def test_image_asset_migration_upgrade_and_downgrade(monkeypatch: object) -> Non
         ("drop_table", "task_assets"),
         ("drop_table", "assets"),
     ]
+
+
+def test_asset_foundation_v2_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260826_0021_asset_foundation_v2",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls.count(("add_column", "assets")) == 2
+    assert (
+        "drop_constraint",
+        "ck_assets_supported_content_type",
+    ) in recorder.calls
+    assert [
+        call for call in recorder.calls if call[0] == "create_check_constraint"
+    ] == [
+        ("create_check_constraint", "ck_assets_media_type"),
+        ("create_check_constraint", "ck_assets_source_type"),
+        ("create_check_constraint", "ck_assets_content_type_not_blank"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls.count(("drop_column", "assets")) == 2
+    assert (
+        "create_check_constraint",
+        "ck_assets_supported_content_type",
+    ) in recorder.calls

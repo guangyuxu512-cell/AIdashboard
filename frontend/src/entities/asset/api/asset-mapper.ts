@@ -15,11 +15,13 @@ export function mapAssetDto(
 ): AssetListItemViewModel {
   return {
     assetId: dto.asset_id,
+    mediaType: dto.media_type,
     filename: dto.original_filename,
     contentType: dto.content_type,
     sizeBytes: dto.size_bytes,
     sizeDisplay: formatAssetSize(dto.size_bytes),
     sha256: dto.sha256,
+    sourceType: dto.source_type,
     createdAt: dto.created_at,
     createdAtDisplay: dayjs(dto.created_at).format('YYYY-MM-DD HH:mm'),
     contentUrl,

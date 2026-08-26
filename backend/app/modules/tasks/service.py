@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
+from app.modules.assets.enums import AssetMediaType
 from app.modules.assets.models import Asset
 from app.modules.assets.repository import AssetRepository
 from app.modules.credentials.schemas import TaskAccountPayload
@@ -222,13 +223,19 @@ class TaskService:
     def _validate_asset_context(self, asset_ids: list[UUID]) -> None:
         if not asset_ids:
             return
-        existing_ids = {
-            asset.asset_id for asset in self.asset_repository.list_by_ids(asset_ids)
+        assets_by_id = {
+            asset.asset_id: asset
+            for asset in self.asset_repository.list_by_ids(asset_ids)
         }
-        missing_ids = [asset_id for asset_id in asset_ids if asset_id not in existing_ids]
-        if missing_ids:
+        invalid_ids = [
+            asset_id
+            for asset_id in asset_ids
+            if asset_id not in assets_by_id
+            or assets_by_id[asset_id].media_type != AssetMediaType.IMAGE.value
+        ]
+        if invalid_ids:
             raise TaskAssetInvalidError(
-                details={"asset_ids": [str(asset_id) for asset_id in missing_ids]},
+                details={"asset_ids": [str(asset_id) for asset_id in invalid_ids]},
             )
 
     def _validate_shop_context(

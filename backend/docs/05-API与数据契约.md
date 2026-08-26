@@ -212,15 +212,18 @@ Task Detail 的 `runtime_events_purged_at` 为可空清理标记。Event 为空�
 日志；Event 为空且标记非空表示历史日志已清理；标记非空但仍有 Event 表示清理后存在晚到
 事件，调用方应展示“部分历史已清理”并继续显示现存 Event。
 
-## 图片资料库 API
+## 资料库 Asset API
 
 - `POST /api/v1/assets`：单文件 multipart 上传，只接受真实 JPEG、PNG、WebP 内容，受 Backend
-  配置的单文件大小限制；响应返回稳定 Asset 元数据与 SHA-256。
+  配置的单文件大小限制；响应返回稳定 Asset 元数据、`media_type=image`、
+  `source_type=upload` 与 SHA-256。
 - `GET /api/v1/assets`：按文件名搜索并使用统一 `page/page_size` 分页。
 - `GET /api/v1/assets/{asset_id}/content`：Frontend 预览与读取图片的正式接口，不暴露存储路径。
 - `DELETE /api/v1/assets/{asset_id}`：只删除未被 Task 引用的图片；被引用时返回 `ASSET_IN_USE`。
 - `GET /api/v1/worker/tasks/{task_id}/assets/{asset_id}`：仅允许持有现有 Worker 身份的目标设备在
   该 Task 处于 RUNNING 时下载其关联图片；其他设备、其他 Task 或非运行状态均不得读取。
 
-图片上传由 Asset Service 先原子保存文件，再提交数据库元数据；数据库提交失败会清理本次文件。
-客户端不得根据 `storage_key` 猜 Backend 文件系统路径。
+HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 Storage Adapter 原子保存
+文件后提交数据库元数据；数据库提交失败会清理本次新文件。响应不包含 `storage_key`，任何
+客户端都不得猜 Backend 文件系统路径。现有 URL 与 Worker Claim 的图片字段保持兼容，Claim
+不会新增 `media_type / source_type / storage_key`。

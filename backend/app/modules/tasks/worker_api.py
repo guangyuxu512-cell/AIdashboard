@@ -2,13 +2,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response, status
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
-from app.modules.assets.api import get_asset_service
+from app.modules.assets.api import asset_content_response, get_asset_service
 from app.modules.assets.service import AssetService
 from app.modules.credentials.service import CredentialService
 from app.modules.tasks.schemas import (
@@ -85,23 +85,19 @@ def claim_task(
     )
 
 
-@router.get("/{task_id}/assets/{asset_id}", response_class=FileResponse)
+@router.get("/{task_id}/assets/{asset_id}", response_class=StreamingResponse)
 def download_task_asset(
     task_id: UUID,
     asset_id: UUID,
     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
     service: Annotated[AssetService, Depends(get_asset_service)],
-) -> FileResponse:
-    asset, path = service.get_worker_content(
+) -> StreamingResponse:
+    asset, content = service.get_worker_content(
         principal,
         task_id=task_id,
         asset_id=asset_id,
     )
-    return FileResponse(
-        path,
-        media_type=asset.content_type,
-        headers={"Content-Disposition": "inline"},
-    )
+    return asset_content_response(asset.content_type, asset.size_bytes, content)
 
 
 @router.post("/{task_id}/renew", response_model=TaskLeaseRead)

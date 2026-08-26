@@ -1,3 +1,4 @@
+import hashlib
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -5,14 +6,16 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.core.config import Settings
+from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import (
     AssetInUseError,
+    AssetStorageError,
     AssetTooLargeError,
     AssetTypeUnsupportedError,
 )
 from app.modules.assets.models import Asset
 from app.modules.assets.service import AssetService
-from app.modules.assets.storage import AssetStorage
+from app.modules.assets.storage import LocalAssetStorage
 from tests.support import FakeSession
 
 
@@ -61,7 +64,7 @@ def make_service(
         AssetService(
             session,  # type: ignore[arg-type]
             repository,  # type: ignore[arg-type]
-            AssetStorage(tmp_path / "assets", max_bytes),
+            LocalAssetStorage(tmp_path / "assets", max_bytes),
             Settings(asset_storage_dir=tmp_path / "unused"),
         ),
         repository,
@@ -81,10 +84,14 @@ def test_upload_saves_file_hash_and_metadata_before_commit(tmp_path: Path) -> No
 
     assert repository.assets == {asset.asset_id: asset}
     assert asset.original_filename == "test-01.jpg"
+    assert asset.media_type == AssetMediaType.IMAGE.value
+    assert asset.source_type == AssetSourceType.UPLOAD.value
     assert asset.content_type == "image/jpeg"
     assert asset.size_bytes == len(payload)
-    assert len(asset.sha256) == 64
-    assert service.get_content(asset.asset_id)[1].read_bytes() == payload
+    assert asset.sha256 == hashlib.sha256(payload).hexdigest()
+    _, content = service.get_content(asset.asset_id)
+    with content:
+        assert content.read() == payload
     assert session.commits == 1
 
 
@@ -147,6 +154,171 @@ def test_list_supports_filename_search_and_pagination(tmp_path: Path) -> None:
     assert [asset.original_filename for asset in items] == ["second.png"]
 
 
+def test_internal_create_does_not_depend_on_http_upload_file(tmp_path: Path) -> None:
+    service, _, _ = make_service(tmp_path)
+
+    asset = service.create(
+        original_filename="generated.png",
+        content_type="image/png",
+        stream=BytesIO(b"\x89PNG\r\n\x1a\ngenerated"),
+        media_type=AssetMediaType.IMAGE,
+        source_type=AssetSourceType.AI_GENERATED,
+    )
+
+    assert asset.media_type == AssetMediaType.IMAGE.value
+    assert asset.source_type == AssetSourceType.AI_GENERATED.value
+    assert asset.storage_key.endswith(".png")
+
+
+def test_current_asset_creation_does_not_enable_video_upload(tmp_path: Path) -> None:
+    service, repository, _ = make_service(tmp_path)
+
+    with pytest.raises(AssetTypeUnsupportedError):
+        service.create(
+            original_filename="future.mp4",
+            content_type="video/mp4",
+            stream=BytesIO(b"future-video"),
+            media_type=AssetMediaType.VIDEO,
+            source_type=AssetSourceType.IMPORTED,
+        )
+
+    assert repository.assets == {}
+
+
+def test_same_filename_creates_independent_asset_records(tmp_path: Path) -> None:
+    service, _, _ = make_service(tmp_path)
+    payload = b"\xff\xd8\xffsame-content"
+
+    first = service.upload(
+        original_filename="same.jpg",
+        content_type="image/jpeg",
+        stream=BytesIO(payload),
+    )
+    second = service.upload(
+        original_filename="same.jpg",
+        content_type="image/jpeg",
+        stream=BytesIO(payload),
+    )
+
+    assert first.asset_id != second.asset_id
+    assert first.storage_key != second.storage_key
+    assert first.sha256 == second.sha256
+
+
+def test_path_components_are_not_used_as_storage_key(tmp_path: Path) -> None:
+    service, _, _ = make_service(tmp_path)
+
+    asset = service.upload(
+        original_filename="../../outside.png",
+        content_type="image/png",
+        stream=BytesIO(b"\x89PNG\r\n\x1a\nsafe"),
+    )
+
+    assert asset.original_filename == "outside.png"
+    assert "/" not in asset.storage_key
+    assert "\\" not in asset.storage_key
+    assert service.storage.exists(asset.storage_key)
+
+
+def test_storage_failure_does_not_create_asset_row(tmp_path: Path) -> None:
+    invalid_root = tmp_path / "not-a-directory"
+    invalid_root.write_text("occupied", encoding="utf-8")
+    repository = FakeAssetRepository()
+    session = FakeSession()
+    service = AssetService(
+        session,  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        LocalAssetStorage(invalid_root, 1024),
+        Settings(asset_storage_dir=tmp_path / "unused"),
+    )
+
+    with pytest.raises(AssetStorageError):
+        service.upload(
+            original_filename="image.jpg",
+            content_type="image/jpeg",
+            stream=BytesIO(b"\xff\xd8\xffpayload"),
+        )
+
+    assert repository.assets == {}
+    assert session.commits == 0
+
+
+def test_source_stream_failure_is_mapped_without_creating_file(tmp_path: Path) -> None:
+    class FailingStream(BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            del size
+            raise OSError("source unavailable")
+
+    service, repository, session = make_service(tmp_path)
+
+    with pytest.raises(AssetStorageError):
+        service.upload(
+            original_filename="image.jpg",
+            content_type="image/jpeg",
+            stream=FailingStream(),
+        )
+
+    assert repository.assets == {}
+    assert session.commits == 0
+    assert not (tmp_path / "assets").exists()
+
+
+def test_database_failure_removes_newly_stored_file(tmp_path: Path) -> None:
+    class FailingCommitSession(FakeSession):
+        def commit(self) -> None:
+            raise RuntimeError("database unavailable")
+
+    repository = FakeAssetRepository()
+    session = FailingCommitSession()
+    storage = LocalAssetStorage(tmp_path / "assets", 1024)
+    service = AssetService(
+        session,  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        storage,
+        Settings(asset_storage_dir=tmp_path / "unused"),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        service.upload(
+            original_filename="image.jpg",
+            content_type="image/jpeg",
+            stream=BytesIO(b"\xff\xd8\xffpayload"),
+        )
+
+    assert session.rollbacks == 1
+    assert list((tmp_path / "assets").iterdir()) == []
+
+
+def test_refresh_failure_before_commit_removes_newly_stored_file(
+    tmp_path: Path,
+) -> None:
+    class FailingRefreshSession(FakeSession):
+        def refresh(self, entity: object) -> None:
+            del entity
+            raise RuntimeError("database refresh unavailable")
+
+    repository = FakeAssetRepository()
+    session = FailingRefreshSession()
+    storage = LocalAssetStorage(tmp_path / "assets", 1024)
+    service = AssetService(
+        session,  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        storage,
+        Settings(asset_storage_dir=tmp_path / "unused"),
+    )
+
+    with pytest.raises(RuntimeError, match="database refresh unavailable"):
+        service.upload(
+            original_filename="image.jpg",
+            content_type="image/jpeg",
+            stream=BytesIO(b"\xff\xd8\xffpayload"),
+        )
+
+    assert session.commits == 0
+    assert session.rollbacks == 1
+    assert list((tmp_path / "assets").iterdir()) == []
+
+
 def test_delete_is_blocked_when_any_task_references_asset(tmp_path: Path) -> None:
     service, repository, session = make_service(tmp_path)
     asset = service.upload(
@@ -160,7 +332,7 @@ def test_delete_is_blocked_when_any_task_references_asset(tmp_path: Path) -> Non
         service.delete(asset.asset_id)
 
     assert repository.get(asset.asset_id) is asset
-    assert service.get_content(asset.asset_id)[1].is_file()
+    assert service.storage.exists(asset.storage_key)
     assert session.rollbacks == 1
 
 
@@ -171,9 +343,9 @@ def test_delete_unreferenced_asset_removes_row_and_file(tmp_path: Path) -> None:
         content_type="image/jpeg",
         stream=BytesIO(b"\xff\xd8\xffunused"),
     )
-    path = service.get_content(asset.asset_id)[1]
+    storage_key = asset.storage_key
 
     service.delete(asset.asset_id)
 
     assert repository.get(asset.asset_id) is None
-    assert not path.exists()
+    assert not service.storage.exists(storage_key)

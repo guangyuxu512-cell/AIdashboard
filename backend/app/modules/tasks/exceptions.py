@@ -45,7 +45,7 @@ class TaskShopDeviceBindingInvalidError(AppError):
 
 class TaskAssetInvalidError(AppError):
     code = "TASK_ASSET_INVALID"
-    message = "任务包含不存在的图片"
+    message = "任务包含不存在或不支持传输的图片资产"
     status_code = 422
 
 

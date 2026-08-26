@@ -29,18 +29,22 @@ function createMockDataSource(): AssetDataSource {
   const items: AssetReadDto[] = [
     {
       asset_id: '20000000-0000-4000-8000-000000000001',
+      media_type: 'image',
       original_filename: 'test-01.jpg',
       content_type: 'image/jpeg',
       size_bytes: 124_320,
       sha256: 'a'.repeat(64),
+      source_type: 'upload',
       created_at: now,
     },
     {
       asset_id: '20000000-0000-4000-8000-000000000002',
+      media_type: 'image',
       original_filename: 'test-02.png',
       content_type: 'image/png',
       size_bytes: 245_760,
       sha256: 'b'.repeat(64),
+      source_type: 'upload',
       created_at: now,
     },
   ]
@@ -65,10 +69,12 @@ function createMockDataSource(): AssetDataSource {
     async upload(file) {
       const dto: AssetReadDto = {
         asset_id: crypto.randomUUID(),
+        media_type: 'image',
         original_filename: file.name,
-        content_type: file.type as AssetReadDto['content_type'],
+        content_type: file.type,
         size_bytes: file.size,
         sha256: '0'.repeat(64),
+        source_type: 'upload',
         created_at: new Date().toISOString(),
       }
       items.unshift(dto)

@@ -12,6 +12,8 @@ describe('asset data source', () => {
       new File(['fixture'], '售后测试图.png', { type: 'image/png' }),
     )
     expect(uploaded.filename).toBe('售后测试图.png')
+    expect(uploaded.mediaType).toBe('image')
+    expect(uploaded.sourceType).toBe('upload')
 
     const searched = await source.list({
       page: 1,

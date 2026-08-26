@@ -1,16 +1,20 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
 
+from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.models import Asset
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.exceptions import TaskAssetInvalidError
 from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
+from app.modules.tasks.worker_api import claim_task
 from app.modules.workers.models import DeviceSkillCapability
+from app.modules.workers.service import WorkerPrincipal
 from tests.support import FakeSession
 
 
@@ -58,6 +62,8 @@ def make_asset(name: str) -> Asset:
         asset_id=uuid4(),
         original_filename=name,
         storage_key=f"{uuid4().hex}.jpg",
+        media_type=AssetMediaType.IMAGE.value,
+        source_type=AssetSourceType.UPLOAD.value,
         content_type="image/jpeg",
         size_bytes=10,
         sha256="a" * 64,
@@ -109,6 +115,63 @@ def test_missing_asset_rejects_the_whole_task() -> None:
 
     assert repository.tasks == []
     assert captured.value.details == {"asset_ids": [str(missing_id)]}
+
+
+def test_non_image_asset_is_not_added_to_worker_task_contract() -> None:
+    device = Device(device_id=uuid4(), display_name="图片测试设备", enabled=True)
+    future_video = make_asset("future.jpg")
+    future_video.media_type = AssetMediaType.VIDEO.value
+    repository = FakeTaskRepository(device)
+    service = TaskService(
+        FakeSession(),  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        asset_repository=FakeAssetRepository([future_video]),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(TaskAssetInvalidError) as captured:
+        service.create(make_request(device.device_id, [future_video.asset_id]))
+
+    assert repository.tasks == []
+    assert captured.value.details == {"asset_ids": [str(future_video.asset_id)]}
+
+
+def test_worker_claim_asset_contract_remains_v1_compatible() -> None:
+    device_id = uuid4()
+    task_id = uuid4()
+    asset = make_asset("worker.jpg")
+    task = SimpleNamespace(
+        task_id=task_id,
+        skill_id=TaskSkillId.SYSTEM_ECHO,
+        input_json={"message": "asset-contract"},
+        lease_until=datetime.now(UTC),
+    )
+    service = SimpleNamespace(
+        claim_with_account=lambda _principal: SimpleNamespace(
+            task=task,
+            accounts=[],
+            assets=[asset],
+        ),
+    )
+
+    response = claim_task(
+        WorkerPrincipal(device_id=device_id),
+        service,  # type: ignore[arg-type]
+    )
+
+    assert not isinstance(response, type(None))
+    payload = response.assets[0].model_dump(mode="json")  # type: ignore[union-attr]
+    assert set(payload) == {
+        "asset_id",
+        "filename",
+        "position",
+        "content_type",
+        "size_bytes",
+        "sha256",
+        "download_path",
+    }
+    assert payload["download_path"] == (
+        f"/api/v1/worker/tasks/{task_id}/assets/{asset.asset_id}"
+    )
 
 
 def test_duplicate_asset_ids_are_rejected_by_contract() -> None:

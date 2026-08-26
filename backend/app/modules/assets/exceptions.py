@@ -3,7 +3,7 @@ from app.core.exceptions import AppError
 
 class AssetNotFoundError(AppError):
     code = "ASSET_NOT_FOUND"
-    message = "图片不存在"
+    message = "资产不存在"
     status_code = 404
 
 
@@ -21,11 +21,11 @@ class AssetTooLargeError(AppError):
 
 class AssetInUseError(AppError):
     code = "ASSET_IN_USE"
-    message = "图片已被任务引用，无法删除"
+    message = "资产已被任务引用，无法删除"
     status_code = 409
 
 
 class AssetStorageError(AppError):
     code = "ASSET_STORAGE_FAILED"
-    message = "图片文件存储失败"
+    message = "资产文件存储失败"
     status_code = 500

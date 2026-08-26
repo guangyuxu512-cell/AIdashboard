@@ -121,3 +121,10 @@ Migration `20260826_0020_image_assets_v1` 增加 `assets` 与 `task_assets`。`a
 配置的本机目录，不进入 PostgreSQL。`task_assets` 使用 `(task_id, asset_id)` 复合主键，并以
 `(task_id, position)` 唯一约束保存一次 Task 内的图片顺序。被任何现存 Task 引用的 Asset 禁止
 删除，确保历史 Task 关系始终完整；图片集合不得写入 Task JSON 或万能 metadata 字段。
+
+Asset Foundation V2 在原表上补充 `media_type` 与 `source_type`，历史数据基于当前全部为人工
+上传图片的已知事实迁移为 `image / upload`。`media_type` 与 MIME `content_type` 分工：前者是
+稳定业务类别，后者是文件真实内容类型。`assets` 不保存 Shop、Task 执行状态或 AI Job 过程；
+`storage_key` 只属于 Backend Storage 内部事实。V2 移除数据库对三个图片 MIME 的专用约束，
+但当前 Upload 与 Task→Worker images_dir 契约仍只接受经 Service 验证的 IMAGE；VIDEO 只是
+表结构扩展点，尚未开放上传或执行传输。

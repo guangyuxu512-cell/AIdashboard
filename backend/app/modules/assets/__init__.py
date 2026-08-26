@@ -1,1 +1,1 @@
-"""Image asset management domain."""
+"""Media asset management domain."""

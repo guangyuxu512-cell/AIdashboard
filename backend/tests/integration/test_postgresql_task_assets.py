@@ -8,10 +8,11 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetInUseError, AssetNotFoundError
 from app.modules.assets.models import Asset
 from app.modules.assets.service import AssetService
-from app.modules.assets.storage import AssetStorage
+from app.modules.assets.storage import LocalAssetStorage
 from app.modules.devices.models import Device
 from app.modules.tasks.models import Task, TaskAsset
 from app.modules.tasks.schemas import TaskCreate
@@ -49,7 +50,7 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
     device_ids = {device_a, device_b}
     asset_ids: set[UUID] = set()
     now = datetime.now(UTC)
-    storage = AssetStorage(tmp_path / "assets", 1024 * 1024)
+    storage = LocalAssetStorage(tmp_path / "assets", 1024 * 1024)
     settings = Settings(asset_storage_dir=tmp_path / "assets")
     first_payload = b"\xff\xd8\xfffirst-image"
     second_payload = b"\x89PNG\r\n\x1a\nsecond-image"
@@ -95,6 +96,8 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                 stream=BytesIO(second_payload),
             )
             asset_ids.update({first.asset_id, second.asset_id})
+            assert first.media_type == AssetMediaType.IMAGE.value
+            assert first.source_type == AssetSourceType.UPLOAD.value
 
             task_service = TaskService(session)
             task = task_service.create(
@@ -126,11 +129,13 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                 second.asset_id,
                 first.asset_id,
             ]
-            assert asset_service.get_worker_content(
+            _, content = asset_service.get_worker_content(
                 WorkerPrincipal(device_id=device_a),
                 task_id=task.task_id,
                 asset_id=first.asset_id,
-            )[1].read_bytes() == first_payload
+            )
+            with content:
+                assert content.read() == first_payload
             with pytest.raises(AssetNotFoundError):
                 asset_service.get_worker_content(
                     WorkerPrincipal(device_id=device_b),

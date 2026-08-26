@@ -1,8 +1,9 @@
-from typing import Annotated
+from collections.abc import Iterator
+from typing import Annotated, BinaryIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -17,8 +18,8 @@ router = APIRouter(
     tags=["assets"],
     responses={
         **COMMON_ERROR_RESPONSES,
-        404: {"model": ErrorResponse, "description": "图片不存在"},
-        409: {"model": ErrorResponse, "description": "图片正在被任务引用"},
+        404: {"model": ErrorResponse, "description": "资产不存在"},
+        409: {"model": ErrorResponse, "description": "资产正在被任务引用"},
     },
 )
 
@@ -62,17 +63,13 @@ def list_assets(
     )
 
 
-@router.get("/{asset_id}/content", response_class=FileResponse)
+@router.get("/{asset_id}/content", response_class=StreamingResponse)
 def read_asset_content(
     asset_id: UUID,
     service: Annotated[AssetService, Depends(get_asset_service)],
-) -> FileResponse:
-    asset, path = service.get_content(asset_id)
-    return FileResponse(
-        path,
-        media_type=asset.content_type,
-        headers={"Content-Disposition": "inline"},
-    )
+) -> StreamingResponse:
+    asset, content = service.get_content(asset_id)
+    return asset_content_response(asset.content_type, asset.size_bytes, content)
 
 
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -82,3 +79,25 @@ def delete_asset(
 ) -> Response:
     service.delete(asset_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def asset_content_response(
+    content_type: str,
+    size_bytes: int,
+    content: BinaryIO,
+) -> StreamingResponse:
+    def body() -> Iterator[bytes]:
+        try:
+            while chunk := content.read(64 * 1024):
+                yield chunk
+        finally:
+            content.close()
+
+    return StreamingResponse(
+        body(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": "inline",
+            "Content-Length": str(size_bytes),
+        },
+    )
