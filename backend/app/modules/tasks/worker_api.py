@@ -2,11 +2,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.assets.api import get_asset_service
+from app.modules.assets.service import AssetService
 from app.modules.credentials.service import CredentialService
 from app.modules.tasks.schemas import (
     TaskComplete,
@@ -15,6 +18,7 @@ from app.modules.tasks.schemas import (
     TaskFail,
     TaskLeaseRead,
     TaskRead,
+    WorkerTaskAssetRead,
     WorkerTaskRead,
     task_to_read,
 )
@@ -47,6 +51,7 @@ def get_worker_task_service(
 @router.post(
     "/claim",
     response_model=WorkerTaskRead,
+    response_model_exclude_defaults=True,
     responses={204: {"description": "当前设备没有待执行任务"}},
 )
 def claim_task(
@@ -63,6 +68,39 @@ def claim_task(
         input=task.input_json,
         lease_until=task.lease_until,
         accounts=claimed.accounts,
+        assets=[
+            WorkerTaskAssetRead(
+                asset_id=asset.asset_id,
+                filename=asset.original_filename,
+                position=position,
+                content_type=asset.content_type,
+                size_bytes=asset.size_bytes,
+                sha256=asset.sha256,
+                download_path=(
+                    f"/api/v1/worker/tasks/{task.task_id}/assets/{asset.asset_id}"
+                ),
+            )
+            for position, asset in enumerate(claimed.assets)
+        ],
+    )
+
+
+@router.get("/{task_id}/assets/{asset_id}", response_class=FileResponse)
+def download_task_asset(
+    task_id: UUID,
+    asset_id: UUID,
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[AssetService, Depends(get_asset_service)],
+) -> FileResponse:
+    asset, path = service.get_worker_content(
+        principal,
+        task_id=task_id,
+        asset_id=asset_id,
+    )
+    return FileResponse(
+        path,
+        media_type=asset.content_type,
+        headers={"Content-Disposition": "inline"},
     )
 
 

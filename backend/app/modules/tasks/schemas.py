@@ -30,6 +30,7 @@ class TaskCreate(BaseModel):
 
     target_device_id: UUID
     shop_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    asset_ids: list[UUID] = Field(default_factory=list, max_length=100)
     skill_id: str = Field(
         min_length=3,
         max_length=TASK_SKILL_ID_MAX_LENGTH,
@@ -42,6 +43,13 @@ class TaskCreate(BaseModel):
     def reject_duplicate_shops(cls, value: list[UUID]) -> list[UUID]:
         if len(value) != len(set(value)):
             raise ValueError("shop_ids must not contain duplicates")
+        return value
+
+    @field_validator("asset_ids")
+    @classmethod
+    def reject_duplicate_assets(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("asset_ids must not contain duplicates")
         return value
 
 
@@ -66,6 +74,7 @@ class TaskRead(BaseModel):
     task_id: UUID
     target_device_id: UUID
     shop_ids: list[UUID]
+    asset_ids: list[UUID]
     skill_id: str
     execution_display_name: str
     status: TaskStatus
@@ -81,12 +90,23 @@ class TaskRead(BaseModel):
     updated_at: datetime
 
 
+class WorkerTaskAssetRead(BaseModel):
+    asset_id: UUID
+    filename: str
+    position: int = Field(ge=0)
+    content_type: str
+    size_bytes: int = Field(gt=0)
+    sha256: str = Field(min_length=64, max_length=64)
+    download_path: str
+
+
 class WorkerTaskRead(BaseModel):
     task_id: UUID
     skill_id: str
     input: dict[str, Any]
     lease_until: datetime
     accounts: list[TaskAccountPayload] = Field(default_factory=list, repr=False)
+    assets: list[WorkerTaskAssetRead] = Field(default_factory=list)
 
 
 class TaskLeaseRead(BaseModel):
@@ -207,6 +227,7 @@ def task_to_read(task: Task) -> TaskRead:
         task_id=task.task_id,
         target_device_id=task.target_device_id,
         shop_ids=task.shop_ids,
+        asset_ids=task.asset_ids,
         skill_id=task.skill_id,
         execution_display_name=task.execution_display_name,
         status=task.status,

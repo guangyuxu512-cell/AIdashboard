@@ -176,6 +176,12 @@ Device 有效绑定或缺少可用 Credential 时整次创建失败，不静默�
 `shop_id / platform_code / login_identifier / secret / preferred_verification_channel`。
 普通 Task Read/List、Runtime Event 与 Result 不返回账号明文。
 
+同一创建接口的 `asset_ids` 是可空、有序且不可重复的图片关系集合。Backend 必须一次验证全部
+Asset 存在，并仍只创建一个 Task；不得按 Shop 或图片拆分任务，也不得把 Base64、服务端文件
+路径或永久下载 URL 写入 `input`。`TaskRead.asset_ids` 只返回关系 ID。Worker Claim 的 `assets`
+按原顺序返回 `asset_id / filename / position / content_type / size_bytes / sha256 / download_path`；
+无图片时该数组为空。下载路径是短期运行信息，不写回 Task JSON。
+
 - `GET /api/v1/tasks`：管理端 Task 分页列表，支持
   `status / device_id / search / created_from / created_to`；时间语义固定为基于
   `Task.created_at` 的 `[created_from, created_to)`，两个时间参数都必须带时区。search 只覆盖
@@ -205,3 +211,16 @@ Task Runtime Drawer 后继续通过 `after_seq` 接口读取。软删除 Device 
 Task Detail 的 `runtime_events_purged_at` 为可空清理标记。Event 为空且标记为空表示从未产生
 日志；Event 为空且标记非空表示历史日志已清理；标记非空但仍有 Event 表示清理后存在晚到
 事件，调用方应展示“部分历史已清理”并继续显示现存 Event。
+
+## 图片资料库 API
+
+- `POST /api/v1/assets`：单文件 multipart 上传，只接受真实 JPEG、PNG、WebP 内容，受 Backend
+  配置的单文件大小限制；响应返回稳定 Asset 元数据与 SHA-256。
+- `GET /api/v1/assets`：按文件名搜索并使用统一 `page/page_size` 分页。
+- `GET /api/v1/assets/{asset_id}/content`：Frontend 预览与读取图片的正式接口，不暴露存储路径。
+- `DELETE /api/v1/assets/{asset_id}`：只删除未被 Task 引用的图片；被引用时返回 `ASSET_IN_USE`。
+- `GET /api/v1/worker/tasks/{task_id}/assets/{asset_id}`：仅允许持有现有 Worker 身份的目标设备在
+  该 Task 处于 RUNNING 时下载其关联图片；其他设备、其他 Task 或非运行状态均不得读取。
+
+图片上传由 Asset Service 先原子保存文件，再提交数据库元数据；数据库提交失败会清理本次文件。
+客户端不得根据 `storage_key` 猜 Backend 文件系统路径。

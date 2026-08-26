@@ -86,6 +86,12 @@ class Task(TimestampMixin, Base):
         lazy="selectin",
         order_by="TaskShop.position",
     )
+    asset_links: Mapped[list["TaskAsset"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        lazy="select",
+        order_by="TaskAsset.position",
+    )
     skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
     execution_display_name: Mapped[str] = mapped_column(
         String(500),
@@ -117,6 +123,10 @@ class Task(TimestampMixin, Base):
     def shop_ids(self) -> list[UUID]:
         return [link.shop_id for link in self.shop_links]
 
+    @property
+    def asset_ids(self) -> list[UUID]:
+        return [link.asset_id for link in self.asset_links]
+
 
 class TaskShop(Base):
     __tablename__ = "task_shops"
@@ -138,6 +148,28 @@ class TaskShop(Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     task: Mapped[Task] = relationship(back_populates="shop_links")
+
+
+class TaskAsset(Base):
+    __tablename__ = "task_assets"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="position_non_negative"),
+        UniqueConstraint("task_id", "position", name="uq_task_assets_task_position"),
+        Index("ix_task_assets_asset_task", "asset_id", "task_id"),
+    )
+
+    task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tasks.task_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    asset_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("assets.asset_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    task: Mapped[Task] = relationship(back_populates="asset_links")
 
 
 class TaskEvent(Base):

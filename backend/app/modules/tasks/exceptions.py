@@ -43,6 +43,12 @@ class TaskShopDeviceBindingInvalidError(AppError):
     status_code = 422
 
 
+class TaskAssetInvalidError(AppError):
+    code = "TASK_ASSET_INVALID"
+    message = "任务包含不存在的图片"
+    status_code = 422
+
+
 class TaskInputInvalidError(AppError):
     code = "TASK_INPUT_INVALID"
     message = "Skill 输入不符合契约"

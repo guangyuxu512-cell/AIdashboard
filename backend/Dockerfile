@@ -10,7 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+RUN groupadd --system app && useradd --system --gid app --home-dir /app app \
+    && install -d -o app -g app /app/data/assets
 
 COPY pyproject.toml ./
 COPY alembic.ini ./

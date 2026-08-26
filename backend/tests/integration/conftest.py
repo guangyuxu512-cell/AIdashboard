@@ -25,6 +25,8 @@ CORE_TABLES = {
     "device_skill_capabilities",
     "tasks",
     "task_shops",
+    "assets",
+    "task_assets",
     "notification_channels",
     "automation_application_configs",
     "schedules",

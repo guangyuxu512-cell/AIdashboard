@@ -28,3 +28,4 @@ Thumbs.db
 *.log
 .dev-runtime/
 worker/runtime/
+backend/data/assets/

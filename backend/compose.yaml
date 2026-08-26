@@ -12,6 +12,9 @@ services:
     environment:
       UVICORN_HOST: ${BACKEND_BIND_HOST:-127.0.0.1}
       UVICORN_PORT: ${BACKEND_BIND_PORT:-18000}
+      BACKEND_ASSET_STORAGE_DIR: /app/data/assets
+    volumes:
+      - backend-assets:/app/data/assets
     network_mode: host
     restart: unless-stopped
     init: true
@@ -27,3 +30,6 @@ services:
       options:
         max-size: 10m
         max-file: "5"
+
+volumes:
+  backend-assets:

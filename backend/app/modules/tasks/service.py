@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
+from app.modules.assets.models import Asset
+from app.modules.assets.repository import AssetRepository
 from app.modules.credentials.schemas import TaskAccountPayload
 from app.modules.credentials.service import CredentialService
 from app.modules.shops.repository import (
@@ -24,6 +26,7 @@ from app.modules.tasks.enums import (
 )
 from app.modules.tasks.exceptions import (
     TaskApplicationNotAvailableError,
+    TaskAssetInvalidError,
     TaskDeviceDisabledError,
     TaskEventForbiddenError,
     TaskInputInvalidError,
@@ -39,7 +42,7 @@ from app.modules.tasks.exceptions import (
     TaskTargetDeviceInvalidError,
     TaskWorkerOfflineError,
 )
-from app.modules.tasks.models import Task, TaskShop
+from app.modules.tasks.models import Task, TaskAsset, TaskShop
 from app.modules.tasks.repository import TaskRepository
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
@@ -76,6 +79,7 @@ class PreparedTaskCreation:
 class ClaimedWorkerTask:
     task: Task
     accounts: list[TaskAccountPayload]
+    assets: list[Asset]
 
 
 class TaskService:
@@ -90,6 +94,7 @@ class TaskService:
         credential_service: CredentialService | None = None,
         shop_repository: ShopRepository | None = None,
         shop_device_binding_repository: ShopDeviceBindingRepository | None = None,
+        asset_repository: AssetRepository | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or TaskRepository(session)
@@ -103,6 +108,7 @@ class TaskService:
         self.shop_device_binding_repository = (
             shop_device_binding_repository or ShopDeviceBindingRepository(session)
         )
+        self.asset_repository = asset_repository or AssetRepository(session)
 
     def create(self, data: TaskCreate) -> Task:
         task = self._create_pending(data, require_worker_online=True)
@@ -145,6 +151,10 @@ class TaskService:
                 TaskShop(shop_id=shop_id, position=position)
                 for position, shop_id in enumerate(data.shop_ids)
             ],
+            asset_links=[
+                TaskAsset(asset_id=asset_id, position=position)
+                for position, asset_id in enumerate(data.asset_ids)
+            ],
         )
         self.repository.add(task)
         return task
@@ -161,6 +171,7 @@ class TaskService:
         if not device.enabled:
             raise TaskDeviceDisabledError()
         self._validate_shop_context(data.target_device_id, data.shop_ids)
+        self._validate_asset_context(data.asset_ids)
         if require_worker_online:
             runtime = self.repository.get_device_runtime(data.target_device_id)
             if runtime is None or runtime.connection_status != "online":
@@ -207,6 +218,18 @@ class TaskService:
             input_json=input_json,
             execution_display_name=execution_display_name,
         )
+
+    def _validate_asset_context(self, asset_ids: list[UUID]) -> None:
+        if not asset_ids:
+            return
+        existing_ids = {
+            asset.asset_id for asset in self.asset_repository.list_by_ids(asset_ids)
+        }
+        missing_ids = [asset_id for asset_id in asset_ids if asset_id not in existing_ids]
+        if missing_ids:
+            raise TaskAssetInvalidError(
+                details={"asset_ids": [str(asset_id) for asset_id in missing_ids]},
+            )
 
     def _validate_shop_context(
         self,
@@ -531,11 +554,16 @@ class TaskService:
                 if task.shop_ids
                 else []
             )
+            assets_by_id = {
+                asset.asset_id: asset
+                for asset in self.asset_repository.list_by_ids(task.asset_ids)
+            }
+            assets = [assets_by_id[asset_id] for asset_id in task.asset_ids]
         except Exception:
             self.session.rollback()
             raise
         self.session.commit()
-        return ClaimedWorkerTask(task=task, accounts=accounts)
+        return ClaimedWorkerTask(task=task, accounts=accounts, assets=assets)
 
     def _claim_without_commit(
         self,

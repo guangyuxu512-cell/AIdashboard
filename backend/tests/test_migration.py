@@ -472,3 +472,25 @@ def test_multi_shop_task_context_migration(monkeypatch: object) -> None:
         ("drop_table", "schedule_shops"),
         ("drop_table", "task_shops"),
     ]
+
+
+def test_image_asset_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260826_0020_image_assets_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "assets"),
+        ("create_table", "task_assets"),
+    ]
+    assert ("create_index", "ix_task_assets_asset_task") in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "task_assets"),
+        ("drop_table", "assets"),
+    ]

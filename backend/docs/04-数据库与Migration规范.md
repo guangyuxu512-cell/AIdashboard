@@ -115,3 +115,9 @@ Migration `20260825_0018_task_shop_account_context` 曾为 `tasks` 与 `schedule
 同一 Migration 同时删除 `shop_device_bindings.binding_role`、角色 Check 和“每店最多一个启用
 PRIMARY”的部分唯一索引；全部既有 PRIMARY/BACKUP 行保留为普通绑定。账号明文仍不新增数据库
 列，Task Claim 只在运行时按关系顺序从各 Shop 当前启用的 Credential 构建 Payload。
+
+Migration `20260826_0020_image_assets_v1` 增加 `assets` 与 `task_assets`。`assets` 只保存稳定
+图片元数据：原文件名、存储键、内容类型、字节数与 SHA-256；文件本体位于 Backend Settings
+配置的本机目录，不进入 PostgreSQL。`task_assets` 使用 `(task_id, asset_id)` 复合主键，并以
+`(task_id, position)` 唯一约束保存一次 Task 内的图片顺序。被任何现存 Task 引用的 Asset 禁止
+删除，确保历史 Task 关系始终完整；图片集合不得写入 Task JSON 或万能 metadata 字段。

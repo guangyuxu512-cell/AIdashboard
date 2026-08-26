@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.modules.assets.models import Asset
+from app.modules.tasks.models import Task, TaskAsset
+
+
+class AssetRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        search: str | None,
+    ) -> list[Asset]:
+        filters = []
+        if search:
+            filters.append(Asset.original_filename.ilike(f"%{search}%"))
+        return list(
+            self.session.scalars(
+                select(Asset)
+                .where(*filters)
+                .order_by(Asset.created_at.desc(), Asset.asset_id.desc())
+                .offset(offset)
+                .limit(limit),
+            ),
+        )
+
+    def count(self, *, search: str | None) -> int:
+        filters = []
+        if search:
+            filters.append(Asset.original_filename.ilike(f"%{search}%"))
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Asset).where(*filters),
+            )
+            or 0,
+        )
+
+    def get(self, asset_id: UUID) -> Asset | None:
+        return self.session.get(Asset, asset_id)
+
+    def get_for_update(self, asset_id: UUID) -> Asset | None:
+        return self.session.scalar(
+            select(Asset).where(Asset.asset_id == asset_id).with_for_update(),
+        )
+
+    def list_by_ids(self, asset_ids: list[UUID]) -> list[Asset]:
+        if not asset_ids:
+            return []
+        return list(
+            self.session.scalars(select(Asset).where(Asset.asset_id.in_(asset_ids))),
+        )
+
+    def get_for_worker_task(
+        self,
+        *,
+        task_id: UUID,
+        device_id: UUID,
+        asset_id: UUID,
+    ) -> Asset | None:
+        return self.session.scalar(
+            select(Asset)
+            .join(TaskAsset, TaskAsset.asset_id == Asset.asset_id)
+            .join(Task, Task.task_id == TaskAsset.task_id)
+            .where(
+                Task.task_id == task_id,
+                Task.target_device_id == device_id,
+                Task.status == "running",
+                TaskAsset.asset_id == asset_id,
+            ),
+        )
+
+    def is_referenced(self, asset_id: UUID) -> bool:
+        return bool(
+            self.session.scalar(
+                select(func.count())
+                .select_from(TaskAsset)
+                .where(TaskAsset.asset_id == asset_id),
+            ),
+        )
+
+    def add(self, asset: Asset) -> None:
+        self.session.add(asset)
+
+    def delete(self, asset: Asset) -> None:
+        self.session.delete(asset)
