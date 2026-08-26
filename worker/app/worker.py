@@ -23,6 +23,7 @@ from app.skills import SkillRegistry, registry
 from app.skills.registry import SkillClassification
 from app.version import WORKER_VERSION
 from app.providers.yingdao.contracts import YingdaoDiscoveryResult
+from app.task_images import TaskImagePreparer, TaskImagePreparationError
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class Worker:
         local_runtime_state: LocalRuntimeState | None = None,
         provider_discovery: ProviderDiscovery | None = None,
         skill_registry: SkillRegistry = registry,
+        image_preparer: TaskImagePreparer | None = None,
     ) -> None:
         self.settings = settings
         self.client = client
@@ -52,6 +54,7 @@ class Worker:
         self.local_runtime_state = local_runtime_state
         self.provider_discovery = provider_discovery
         self.skill_registry = skill_registry
+        self.image_preparer = image_preparer
         self.started_at = datetime.now(UTC)
         self.worker_version = WORKER_VERSION
         self._skill_snapshot_synced = False
@@ -313,7 +316,7 @@ class Worker:
                 ),
             },
         )
-        execution_task = asyncio.create_task(self.executor.execute(task))
+        execution_task = asyncio.create_task(self._prepare_and_execute(task))
         lease_task = asyncio.create_task(self._renew_lease(task))
         try:
             done, _ = await asyncio.wait(
@@ -395,6 +398,30 @@ class Worker:
                 return_exceptions=True,
             )
             await self._send_immediate_heartbeat()
+
+    async def _prepare_and_execute(self, task: WorkerTask) -> ExecutionResult:
+        if self.image_preparer is not None:
+            self.event_bus.emit(
+                task.task_id,
+                RuntimeEventType.STATUS,
+                "Worker 正在准备任务图片",
+                metadata={"phase": "preparing_images"},
+            )
+            try:
+                prepared = await self.image_preparer.prepare(task)
+            except TaskImagePreparationError as error:
+                return ExecutionResult(
+                    status=ExecutionStatus.FAILED,
+                    error_code=error.code,
+                    error_message=error.message,
+                )
+            self.event_bus.emit(
+                task.task_id,
+                RuntimeEventType.STATUS,
+                "任务图片准备完成",
+                metadata={"phase": "images_ready", "image_count": len(prepared)},
+            )
+        return await self.executor.execute(task)
 
     async def _renew_lease(self, task: WorkerTask) -> None:
         while True:

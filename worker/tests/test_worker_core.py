@@ -32,6 +32,7 @@ from app.skills.registry import (
 )
 from app.skills.sdk import BusinessSkillInput, SkillResult
 from app.worker import Worker
+from app.task_images import TaskImagePreparationError
 
 
 def test_worker_configuration_defaults() -> None:
@@ -765,6 +766,51 @@ def test_worker_claims_three_tasks_in_order_and_continues_after_failure() -> Non
         "success",
         "success",
     ]
+
+
+def test_image_preparation_failure_never_starts_executor() -> None:
+    task = WorkerTask(
+        task_id=uuid4(),
+        skill_id="yingdao.app.run",
+        input={"app_id": "safe-app", "params": {}},
+        lease_until=datetime.now(UTC) + timedelta(minutes=1),
+    )
+
+    class FailingPreparer:
+        async def prepare(self, claimed_task: WorkerTask) -> list[Path]:
+            assert claimed_task is task
+            raise TaskImagePreparationError(
+                "TASK_IMAGE_DOWNLOAD_FAILED",
+                "图片准备失败：test-02.png",
+            )
+
+    class RecordingExecutor(UnusedExecutor):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def execute(self, claimed_task: WorkerTask) -> ExecutionResult:
+            del claimed_task
+            self.calls += 1
+            return ExecutionResult(status=ExecutionStatus.SUCCESS)
+
+    executor = RecordingExecutor()
+    worker = Worker(
+        WorkerSettings(
+            server_url="https://control.example.test",
+            device_id=uuid4(),
+            device_token="secret-token",
+        ),
+        CapabilityRecordingClient(),  # type: ignore[arg-type]
+        executor,
+        image_preparer=FailingPreparer(),  # type: ignore[arg-type]
+    )
+
+    result = asyncio.run(worker._prepare_and_execute(task))
+
+    assert result.status is ExecutionStatus.FAILED
+    assert result.error_code == "TASK_IMAGE_DOWNLOAD_FAILED"
+    assert result.error_message == "图片准备失败：test-02.png"
+    assert executor.calls == 0
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows named mutex")

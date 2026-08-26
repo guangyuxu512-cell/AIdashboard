@@ -66,6 +66,17 @@ class WorkerApiClient:
         self._raise_for_error(response)
         return WorkerTask.model_validate(response.json())
 
+    async def download_task_asset(self, download_path: str) -> bytes:
+        if not download_path.startswith("/api/v1/worker/tasks/"):
+            raise WorkerApiError(
+                "WORKER_ASSET_PATH_INVALID",
+                "Worker asset download path is invalid",
+                0,
+            )
+        response = await self.client.get(download_path)
+        self._raise_for_error(response)
+        return response.content
+
     async def renew(self, task_id: UUID) -> None:
         response = await self.client.post(
             f"/api/v1/worker/tasks/{task_id}/renew",

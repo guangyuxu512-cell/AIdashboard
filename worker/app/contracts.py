@@ -24,6 +24,18 @@ class AccountPayload(BaseModel):
     preferred_verification_channel: str | None = None
 
 
+class TaskAsset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: UUID
+    filename: str
+    position: int = Field(ge=0)
+    content_type: str
+    size_bytes: int = Field(gt=0)
+    sha256: str = Field(min_length=64, max_length=64)
+    download_path: str
+
+
 class WorkerTask(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -32,6 +44,7 @@ class WorkerTask(BaseModel):
     input: dict[str, Any]
     lease_until: datetime
     accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
+    assets: list[TaskAsset] = Field(default_factory=list)
 
 
 class ProviderInventoryReport(BaseModel):

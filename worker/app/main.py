@@ -33,6 +33,7 @@ from app.process_control import WorkerProcessState
 from app.skills import registry
 from app.skills.registry import SkillProvider, SkillRuntime
 from app.worker import Worker
+from app.task_images import TaskImagePreparer
 
 
 async def run_worker(settings: WorkerSettings) -> None:
@@ -126,6 +127,7 @@ async def run_worker(settings: WorkerSettings) -> None:
         local_runtime_state,
         provider_discovery=discovery_service,
         skill_registry=registry,
+        image_preparer=TaskImagePreparer(settings.images_dir, client),
     )
     await worker.run(stop_event)
 

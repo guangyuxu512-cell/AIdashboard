@@ -98,10 +98,12 @@ Runtime Event 或 Result。RPAExecutor 仅在落盘边界映射为 `店铺ID / �
 登录密码 / 首选验证方式` 并一次完整覆盖 `account.json`；不得同时写英文重复字段。Python
 Business Skill 通过英文 `ctx.accounts` 读取。
 
-图片目录当前只定义本机落点和可写性。项目尚无 Server → Worker 图片传输 Contract，因此 V1
-不虚构下载、命名或新图片集合标记，也不会擅自清空任意自定义目录；未来一旦有“本 Task 使用
-新图片集合”的正式输入，准备阶段必须先清理 Worker 管理的旧集合，再写入新集合。图片目录禁止
-配置为磁盘根目录。
+Worker 0.4.6 的 Task Claim 可以携带有序图片清单。统一 Task 图片准备阶段位于 Executor 之前：
+先读取受管文件 Manifest 并只清理上一 Task 由 Worker 写入的文件，再按 position 通过认证 Worker
+API 下载本 Task 图片，校验字节数与 SHA-256，并使用原子写入落到固定 images 目录。同名文件按
+稳定的 `__2`、`__3` 后缀分配，不覆盖同一 Task 的另一张图片。无图片 Task 也会清理上一集合；
+手工放入且不在受管 Manifest 中的文件不会被删除。任一下载、Hash、写入或 Manifest 失败均在
+Executor 前返回安全错误，影刀和 Python Skill都不会启动。图片目录仍禁止配置为磁盘根目录。
 
 固定文件依赖当前 Worker 单 Active Task 边界。GUI 在 Task RUNNING 时不允许保存并重启配置，
 因此已启动任务不会中途切换路径；任务结束后保存配置并重启，后续 Task 使用新路径。未来若允许
@@ -282,4 +284,4 @@ Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Back
 Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
 
 Scheduler V1 的 DAILY、IANA Timezone、COALESCE ONE 和数据库触发幂等全部属于 Backend；
-Worker 0.4.5 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。
+Worker 0.4.6 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。

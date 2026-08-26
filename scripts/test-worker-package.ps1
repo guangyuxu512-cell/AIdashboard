@@ -10,6 +10,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Net.Http
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workerPython = Join-Path $projectRoot 'worker\.venv\Scripts\python.exe'
@@ -27,6 +28,7 @@ else {
 }
 $tunnel = $null
 $deviceId = $null
+$assetIds = @()
 $controller = $null
 $guiProcess = $null
 $statusProcess = $null
@@ -55,6 +57,27 @@ function Invoke-Api([string]$Method, [string]$Path, [object]$Body = $null) {
         $parameters.Body = $Body | ConvertTo-Json -Depth 10 -Compress
     }
     return Invoke-RestMethod @parameters
+}
+
+function Invoke-AssetUpload([string]$Path) {
+    $client = [System.Net.Http.HttpClient]::new()
+    $multipart = [System.Net.Http.MultipartFormDataContent]::new()
+    try {
+        $payload = [System.IO.File]::ReadAllBytes($Path)
+        $content = [System.Net.Http.ByteArrayContent]::new($payload)
+        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('image/png')
+        $multipart.Add($content, 'file', [System.IO.Path]::GetFileName($Path))
+        $response = $client.PostAsync("$serverUrl/api/v1/assets", $multipart).GetAwaiter().GetResult()
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            throw "Asset upload failed with HTTP $([int]$response.StatusCode)."
+        }
+        return $body | ConvertFrom-Json
+    }
+    finally {
+        $multipart.Dispose()
+        $client.Dispose()
+    }
 }
 
 function Wait-Task([string]$TaskId) {
@@ -193,15 +216,40 @@ try {
     Stop-Process -Id $statusProcess.Id
     $statusProcess = $null
 
+    $assetFixtureRoot = Join-Path $temporaryRoot 'asset-fixtures'
+    New-Item -ItemType Directory -Path $assetFixtureRoot -Force | Out-Null
+    $sourceImage = Join-Path $projectRoot 'frontend\src\assets\brand\siyu-ai-mark.png'
+    $firstImage = Join-Path $assetFixtureRoot 'test-01.png'
+    $secondImage = Join-Path $assetFixtureRoot 'test-02.png'
+    Copy-Item -LiteralPath $sourceImage -Destination $firstImage
+    Copy-Item -LiteralPath $sourceImage -Destination $secondImage
+    $firstAsset = Invoke-AssetUpload $firstImage
+    $secondAsset = Invoke-AssetUpload $secondImage
+    $assetIds = @([string]$firstAsset.asset_id, [string]$secondAsset.asset_id)
+
     $echoTask = Invoke-Api 'POST' '/api/v1/tasks' @{
         target_device_id = $deviceId
         skill_id = 'system.echo'
+        asset_ids = $assetIds
         input = @{ message = 'packaged-worker-ok' }
     }
     $echoResult = Wait-Task ([string]$echoTask.task_id)
     if ($echoResult.result.message -ne 'packaged-worker-ok') { throw 'system.echo returned an unexpected result.' }
     if (-not (Test-Path -LiteralPath ([string]$storedConfig.images_dir) -PathType Container)) {
         throw 'Python Runtime did not prepare the configured images directory.'
+    }
+    foreach ($expected in @(
+        @{ name = 'test-01.png'; sha256 = [string]$firstAsset.sha256 },
+        @{ name = 'test-02.png'; sha256 = [string]$secondAsset.sha256 }
+    )) {
+        $preparedPath = Join-Path ([string]$storedConfig.images_dir) $expected.name
+        if (-not (Test-Path -LiteralPath $preparedPath -PathType Leaf)) {
+            throw "Prepared Task image is missing: $($expected.name)"
+        }
+        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $preparedPath).Hash.ToLowerInvariant()
+        if ($actualHash -ne $expected.sha256.ToLowerInvariant()) {
+            throw "Prepared Task image hash mismatch: $($expected.name)"
+        }
     }
     $echoEvents = Invoke-Api 'GET' "/api/v1/tasks/$($echoTask.task_id)/events?after_seq=0&limit=100"
     if (@($echoEvents.items).Count -lt 2 -or @($echoEvents.items)[-1].event_type -ne 'completed') {
@@ -214,6 +262,11 @@ try {
         input = @{ seconds = 0.5 }
     }
     $sleepResult = Wait-Task ([string]$sleepTask.task_id)
+    foreach ($previousName in @('test-01.png', 'test-02.png')) {
+        if (Test-Path -LiteralPath (Join-Path ([string]$storedConfig.images_dir) $previousName)) {
+            throw "A no-image Task retained a previous managed image: $previousName"
+        }
+    }
 
     $applicationCount = $null
     if (-not $SkipYingdaoDiscovery) {
@@ -266,6 +319,8 @@ try {
     Write-Host 'Single instance: PASS'
     Write-Host 'Tkinter GUI provisioning and close independence: PASS'
     Write-Host 'system.echo: SUCCESS'
+    Write-Host 'Task image download and SHA-256 verification: PASS'
+    Write-Host 'No-image Task managed-file cleanup: PASS'
     Write-Host 'Local input config and Python images path: PASS'
     Write-Host 'system.sleep: SUCCESS'
     if ($SkipYingdaoDiscovery) {
@@ -312,12 +367,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_engine
 from app.modules.devices.models import Device
 from app.modules.shops.models import ShopDeviceBinding
-from app.modules.tasks.models import Task, TaskEvent, TaskShop
+from app.modules.tasks.models import Task, TaskAsset, TaskEvent, TaskShop
 from app.modules.workers.models import DeviceProviderInventory, DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
 device_id = UUID(os.environ["WORKER_SMOKE_DEVICE_ID"])
 with Session(get_database_engine()) as session:
     task_ids = select(Task.task_id).where(Task.target_device_id == device_id)
     session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
+    session.execute(delete(TaskAsset).where(TaskAsset.task_id.in_(task_ids)))
     session.execute(delete(TaskShop).where(TaskShop.task_id.in_(task_ids)))
     session.execute(delete(Task).where(Task.target_device_id == device_id))
     session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == device_id))
@@ -348,9 +404,17 @@ with Session(get_database_engine()) as session:
             }
         }
         if (-not $cleanupCompleted) {
-            $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM task_shops WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
+            $cleanupSql = "BEGIN; DELETE FROM task_events WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM task_assets WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM task_shops WHERE task_id IN (SELECT task_id FROM tasks WHERE target_device_id = '$deviceId'); DELETE FROM tasks WHERE target_device_id = '$deviceId'; DELETE FROM device_skill_capabilities WHERE device_id = '$deviceId'; DELETE FROM device_provider_inventory WHERE device_id = '$deviceId'; DELETE FROM device_runtime WHERE device_id = '$deviceId'; DELETE FROM worker_device_credentials WHERE device_id = '$deviceId'; DELETE FROM shop_device_bindings WHERE device_id = '$deviceId'; DELETE FROM devices WHERE device_id = '$deviceId'; COMMIT;"
             $cleanupBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($cleanupSql))
             & ssh.exe -o BatchMode=yes -o ConnectTimeout=5 $SshHost "printf '%s' '$cleanupBase64' | base64 -d | docker exec -i control-center-postgres-dev psql -v ON_ERROR_STOP=1 -U postgres -d control_center_dev" | Out-Null
+        }
+    }
+    foreach ($assetId in $assetIds) {
+        try {
+            Invoke-Api 'DELETE' "/api/v1/assets/$assetId" | Out-Null
+        }
+        catch {
+            Write-Warning "Worker smoke Asset cleanup failed for $assetId."
         }
     }
     if ($null -ne $tunnel -and -not $tunnel.HasExited) {
