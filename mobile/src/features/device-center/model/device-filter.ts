@@ -4,10 +4,10 @@ import type { DeviceOverview } from './device-overview'
 import type { DeviceActiveTaskState } from './use-device-active-task'
 
 export const DEVICE_QUICK_FILTERS = [
-  { value: 'all', label: '全部' },
-  { value: 'online', label: '在线设备' },
-  { value: 'running', label: '运行中' },
-  { value: 'offline', label: '离线设备' },
+  { value: 'all', label: '全部', selectorLabel: '全部' },
+  { value: 'online', label: '在线设备', selectorLabel: '在线' },
+  { value: 'running', label: '运行中', selectorLabel: '运行中' },
+  { value: 'offline', label: '离线设备', selectorLabel: '离线' },
 ] as const
 
 export type DeviceQuickFilter = (typeof DEVICE_QUICK_FILTERS)[number]['value']
@@ -15,8 +15,8 @@ export type DeviceMetricFilter = Exclude<DeviceQuickFilter, 'all'>
 
 export function getDeviceQuickFilterLabel(filter: DeviceQuickFilter): string {
   return (
-    DEVICE_QUICK_FILTERS.find((option) => option.value === filter)?.label ??
-    '全部'
+    DEVICE_QUICK_FILTERS.find((option) => option.value === filter)
+      ?.selectorLabel ?? '全部'
   )
 }
 

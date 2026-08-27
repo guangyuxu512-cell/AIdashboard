@@ -7,6 +7,7 @@ import type { DeviceActiveTaskState } from '@/features/device-center'
 import { DeviceOverviewCards } from '@/features/device-center'
 import {
   filterDevicesByQuickFilter,
+  getDeviceQuickFilterLabel,
   toggleDeviceMetricFilter,
 } from '@/features/device-center/model/device-filter'
 import { summarizeDeviceOverview } from '@/features/device-center/model/device-overview'
@@ -181,6 +182,10 @@ describe('device center overview', () => {
     ).toEqual(['device-offline'])
     expect(toggleDeviceMetricFilter('all', 'online')).toBe('online')
     expect(toggleDeviceMetricFilter('online', 'online')).toBe('all')
+    expect(getDeviceQuickFilterLabel('all')).toBe('全部')
+    expect(getDeviceQuickFilterLabel('online')).toBe('在线')
+    expect(getDeviceQuickFilterLabel('running')).toBe('运行中')
+    expect(getDeviceQuickFilterLabel('offline')).toBe('离线')
 
     const online = wrapper.get('[data-testid="summary-metric-online"]')
     const running = wrapper.get('[data-testid="summary-metric-running"]')

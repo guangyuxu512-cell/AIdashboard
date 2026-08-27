@@ -167,7 +167,7 @@ describe('Mobile Layout shared components', () => {
     const wrapper = mount(MobileListToolbar, {
       props: {
         title: '任务',
-        meta: '54 个',
+        meta: '54个',
         selectorLabel: '全部',
         selectorAriaLabel: '选择任务状态，当前全部',
         filterLabel: '筛选',
@@ -177,8 +177,24 @@ describe('Mobile Layout shared components', () => {
     expect(wrapper.findAll('[data-testid="mobile-list-toolbar"]')).toHaveLength(
       1,
     )
+    const toolbar = wrapper.get('[data-testid="mobile-list-toolbar"]')
+    const identity = wrapper.get('.mobile-list-toolbar__identity')
+    const actions = wrapper.get('.mobile-list-toolbar__actions')
+
+    expect(toolbar.classes()).not.toContain('mobile-card')
+    expect(
+      Array.from(toolbar.element.children).map((element) => element.className),
+    ).toEqual(['mobile-list-toolbar__identity', 'mobile-list-toolbar__actions'])
+    expect(
+      Array.from(identity.element.children).map((element) => element.tagName),
+    ).toEqual(['H1', 'SPAN'])
     expect(wrapper.get('h1').text()).toBe('任务')
-    expect(wrapper.text()).toContain('54 个')
+    expect(identity.text()).toBe('任务54个')
+    expect(
+      Array.from(actions.element.children).map((element) =>
+        element.getAttribute('data-testid'),
+      ),
+    ).toEqual(['mobile-list-selector', 'mobile-list-filter'])
     expect(
       wrapper
         .get('[data-testid="mobile-list-selector"]')

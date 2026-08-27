@@ -470,7 +470,7 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('summary-online')).toHaveText('4')
       await expect(page.getByTestId('summary-running')).toHaveText('0')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
-      await expect(page.getByText('20 台', { exact: true })).toBeVisible()
+      await expect(page.getByText('20台', { exact: true })).toBeVisible()
       await expect(page.getByTestId('mobile-list-selector')).toContainText(
         '全部',
       )
@@ -482,7 +482,7 @@ for (const width of viewportWidths) {
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
       await onlineMetric.click()
       await expect(page.getByTestId('mobile-list-selector')).toContainText(
-        '在线设备',
+        '在线',
       )
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'true')
       await expect(page.getByTestId('device-card')).toHaveCount(4)
@@ -497,10 +497,10 @@ for (const width of viewportWidths) {
         await page.getByTestId('mobile-list-selector').click()
         await page
           .locator('.van-action-sheet__item')
-          .filter({ hasText: /^离线设备$/ })
+          .filter({ hasText: /^离线$/ })
           .click()
         await expect(page.getByTestId('mobile-list-selector')).toContainText(
-          '离线设备',
+          '离线',
         )
         await expect(
           page.getByTestId('summary-metric-offline'),

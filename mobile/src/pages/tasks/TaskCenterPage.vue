@@ -36,7 +36,7 @@ const statusLabel = computed(
 )
 const totalLabel = computed(() => {
   const data = taskCenter.query.data.value
-  return data === undefined ? '—' : `${data.pages[0]?.total ?? 0} 个`
+  return data === undefined ? '—' : `${data.pages[0]?.total ?? 0}个`
 })
 
 function openTask(taskId: string): void {

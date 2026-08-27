@@ -18,7 +18,7 @@ const deviceCenter = useDeviceCenter()
 const quickFilterOpen = ref(false)
 const quickFilterActions = computed(() =>
   DEVICE_QUICK_FILTERS.map((option) => ({
-    name: option.label,
+    name: option.selectorLabel,
     value: option.value,
     disabled: !deviceCenter.filterAvailability.value[option.value],
   })),
@@ -61,7 +61,7 @@ function selectQuickFilter(action: {
       :meta="
         deviceCenter.visibleTotal.value === undefined
           ? '—'
-          : `${deviceCenter.visibleTotal.value} 台`
+          : `${deviceCenter.visibleTotal.value}台`
       "
       :selector-label="deviceCenter.filterLabel.value"
       :selector-aria-label="`选择设备状态，当前${deviceCenter.filterLabel.value}`"

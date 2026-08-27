@@ -578,6 +578,12 @@ for (const width of viewportWidths) {
             '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
           ),
         ).map((element) => element.getBoundingClientRect())
+        const selector = document
+          .querySelector<HTMLElement>('[data-testid="mobile-list-selector"]')!
+          .getBoundingClientRect()
+        const filter = document
+          .querySelector<HTMLElement>('[data-testid="mobile-list-filter"]')!
+          .getBoundingClientRect()
         return {
           headerHeight: style('.mobile-global-header').height,
           toolbarLeft: style('.mobile-list-toolbar').paddingLeft,
@@ -599,6 +605,10 @@ for (const width of viewportWidths) {
                 child.top >= toolbar.top &&
                 child.bottom <= toolbar.bottom,
             ),
+          selectorBeforeFilter: selector.right <= filter.left + 0.5,
+          toolbarBorderWidth: style('.mobile-list-toolbar').borderWidth,
+          toolbarBorderRadius: style('.mobile-list-toolbar').borderRadius,
+          toolbarBoxShadow: style('.mobile-list-toolbar').boxShadow,
           listLeft: style('.task-list').paddingLeft,
           listRight: style('.task-list').paddingRight,
           listOverflowY: style('[data-testid="task-list-scroll"]').overflowY,
@@ -624,6 +634,10 @@ for (const width of viewportWidths) {
         filterHeight: '44px',
         filterVisualHeight: '32px',
         toolbarSingleRow: true,
+        selectorBeforeFilter: true,
+        toolbarBorderWidth: '0px',
+        toolbarBorderRadius: '0px',
+        toolbarBoxShadow: 'none',
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
         listOverflowY: 'auto',
@@ -798,6 +812,43 @@ for (const width of viewportWidths) {
     })
   }
 }
+
+test('360px 工具行单行展示 54 个任务与紧凑可触操作', async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 360, height: 844 })
+  await setThemeBeforeNavigation(page, 'light')
+  await installMockApi(page, { taskTotal: 54 })
+  await page.goto('/#/tasks')
+
+  const toolbar = page.getByTestId('mobile-list-toolbar')
+  await expect(toolbar).toContainText('任务54个')
+  await expect(page.getByTestId('mobile-list-selector')).toContainText('全部')
+  await expect(page.getByTestId('mobile-list-filter')).toContainText('筛选')
+  const geometry = await toolbar.evaluate((element) => {
+    const toolbarBox = element.getBoundingClientRect()
+    const groups = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
+      ),
+    ).map((group) => group.getBoundingClientRect())
+    const controls = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        '[data-testid="mobile-list-selector"], [data-testid="mobile-list-filter"]',
+      ),
+    ).map((control) => control.getBoundingClientRect())
+    return {
+      singleRow: groups.every(
+        (group) =>
+          group.top >= toolbarBox.top && group.bottom <= toolbarBox.bottom,
+      ),
+      touchTargets: controls.map((control) => control.height),
+    }
+  })
+  expect(geometry.singleRow).toBe(true)
+  expect(geometry.touchTargets.every((height) => height >= 44)).toBe(true)
+  await expectNoHorizontalOverflow(page)
+  expect(consoleErrors).toEqual([])
+})
 
 test('20 条以上任务只滚动 Card List，单行 Toolbar 与 Shell 保持原位', async ({
   page,

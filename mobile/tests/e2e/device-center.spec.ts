@@ -555,7 +555,7 @@ for (const width of viewportWidths) {
       await expect(firstCard.locator('.device-list-card__meta')).toContainText(
         /Worker 1\.0\.1/,
       )
-      await expect(page.getByText('8 台', { exact: true })).toBeVisible()
+      await expect(page.getByText('8台', { exact: true })).toBeVisible()
       await expect(page.getByTestId('mobile-list-selector')).toContainText(
         '全部',
       )
@@ -776,6 +776,12 @@ for (const width of viewportWidths) {
             '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
           ),
         ).map((element) => element.getBoundingClientRect())
+        const selector = document
+          .querySelector<HTMLElement>('[data-testid="mobile-list-selector"]')!
+          .getBoundingClientRect()
+        const filter = document
+          .querySelector<HTMLElement>('[data-testid="mobile-list-filter"]')!
+          .getBoundingClientRect()
         return {
           headerHeight: style('.mobile-global-header').height,
           summaryHeight: style('.mobile-summary-strip').height,
@@ -795,6 +801,10 @@ for (const width of viewportWidths) {
             (child) =>
               child.top >= toolbar.top && child.bottom <= toolbar.bottom,
           ),
+          selectorBeforeFilter: selector.right <= filter.left + 0.5,
+          toolbarBorderWidth: style('.mobile-list-toolbar').borderWidth,
+          toolbarBorderRadius: style('.mobile-list-toolbar').borderRadius,
+          toolbarBoxShadow: style('.mobile-list-toolbar').boxShadow,
           listLeft: style('.device-list').paddingLeft,
           listRight: style('.device-list').paddingRight,
           listOverflowY: style('[data-testid="device-list-scroll"]').overflowY,
@@ -817,6 +827,10 @@ for (const width of viewportWidths) {
         filterTouchHeight: '44px',
         filterVisualHeight: '32px',
         toolbarSingleRow: true,
+        selectorBeforeFilter: true,
+        toolbarBorderWidth: '0px',
+        toolbarBorderRadius: '0px',
+        toolbarBoxShadow: 'none',
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
         listOverflowY: 'auto',
@@ -1124,7 +1138,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await page.goto('/#/devices')
 
   await expect(page.getByTestId('device-card').first()).toBeVisible()
-  await expect(page.getByText('25 台', { exact: true })).toBeVisible()
+  await expect(page.getByText('25台', { exact: true })).toBeVisible()
   await expect(page.getByTestId('summary-online')).toHaveText('—')
   await expect(page.getByTestId('summary-running')).toHaveText('—')
   await expect(page.getByTestId('summary-offline')).toHaveText('—')
@@ -1132,7 +1146,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await expect(page.getByTestId('summary-metric-running')).toBeDisabled()
   await expect(page.getByTestId('summary-metric-offline')).toBeDisabled()
   await page.getByTestId('mobile-list-selector').click()
-  for (const label of ['在线设备', '运行中', '离线设备']) {
+  for (const label of ['在线', '运行中', '离线']) {
     await expect(
       page.locator('.van-action-sheet__item').filter({ hasText: label }),
     ).toHaveClass(/van-action-sheet__item--disabled/)
@@ -1152,7 +1166,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   const activeRequestIndexBeforePage2 = state.activeTaskRequests.length
   await scrollDeviceListToBottom(page)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('25 台', { exact: true })).toBeVisible()
+  await expect(page.getByText('25台', { exact: true })).toBeVisible()
   await expect(page.getByTestId('summary-online')).toHaveText('23')
   await expect(page.getByTestId('summary-running')).toHaveText('1')
   await expect(page.getByTestId('summary-offline')).toHaveText('1')
@@ -1160,7 +1174,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await expect(page.getByTestId('summary-metric-running')).toBeEnabled()
   await expect(page.getByTestId('summary-metric-offline')).toBeEnabled()
   await page.getByTestId('mobile-list-selector').click()
-  for (const label of ['在线设备', '运行中', '离线设备']) {
+  for (const label of ['在线', '运行中', '离线']) {
     await expect(
       page.locator('.van-action-sheet__item').filter({ hasText: label }),
     ).not.toHaveClass(/van-action-sheet__item--disabled/)
@@ -1186,9 +1200,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   ).toBe(true)
 
   await page.getByTestId('summary-metric-offline').click()
-  await expect(page.getByTestId('mobile-list-selector')).toContainText(
-    '离线设备',
-  )
+  await expect(page.getByTestId('mobile-list-selector')).toContainText('离线')
   await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -1214,7 +1226,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
       .every((request) => new URL(request).searchParams.get('page') === '1'),
   ).toBe(true)
   await expect(page.getByText('设备 25', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('25 台', { exact: true })).toBeVisible()
+  await expect(page.getByText('25台', { exact: true })).toBeVisible()
   await expect(page.getByTestId('summary-online')).toHaveText('—')
   await page.waitForTimeout(100)
   const removedObserverRequestCounts =
@@ -1246,7 +1258,7 @@ test('设备后台刷新失败保留旧卡片且不展示实现原因', async ({
   await expect(page.getByText('设备后台刷新失败')).toHaveCount(0)
   await expect(page.getByTestId('device-card').first()).toBeVisible()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('25 台', { exact: true })).toBeVisible()
+  await expect(page.getByText('25台', { exact: true })).toBeVisible()
   await expect(page.getByTestId('summary-online')).toHaveText('23')
   await expectNoHorizontalOverflow(page)
 })
