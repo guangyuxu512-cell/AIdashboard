@@ -646,11 +646,20 @@ for (const width of viewportWidths) {
             .gridTemplateColumns.split(' ').length,
           tops: cards.map((card) => card.getBoundingClientRect().top),
           colors: cards.map(
-            (card) => window.getComputedStyle(card.querySelector('dd')!).color,
+            (card) =>
+              window.getComputedStyle(
+                card.querySelector<HTMLElement>(
+                  '.mobile-summary-strip__value',
+                )!,
+              ).color,
           ),
           numberFontSizes: cards.map(
             (card) =>
-              window.getComputedStyle(card.querySelector('dd')!).fontSize,
+              window.getComputedStyle(
+                card.querySelector<HTMLElement>(
+                  '.mobile-summary-strip__value',
+                )!,
+              ).fontSize,
           ),
           expectedNumberFontSize: window
             .getComputedStyle(document.documentElement)
@@ -790,7 +799,7 @@ for (const width of viewportWidths) {
       })
       expect(layout).toMatchObject({
         headerHeight: '52px',
-        summaryHeight: '64px',
+        summaryHeight: '96px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
         toolbarHeight: '44px',

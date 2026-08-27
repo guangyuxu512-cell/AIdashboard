@@ -78,7 +78,7 @@ describe('device center overview', () => {
     expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('—')
     expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('—')
     expect(wrapper.text()).toBe('—在线设备—运行中—离线设备')
-    expect(wrapper.get('dl').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('ul').attributes('aria-busy')).toBe('true')
   })
 
   it('keeps an initial Device error free of implementation explanations', () => {
@@ -124,11 +124,12 @@ describe('device center overview', () => {
         activeUnknownCount: 0,
       }),
     )
-    expect(wrapper.findAll('dt').map((item) => item.text())).toEqual([
-      '在线设备',
-      '运行中',
-      '离线设备',
-    ])
+    expect(
+      wrapper
+        .findAll('.mobile-summary-strip__label')
+        .map((item) => item.text()),
+    ).toEqual(['在线设备', '运行中', '离线设备'])
+    expect(wrapper.findAll('.mobile-summary-strip__icon')).toHaveLength(3)
     expect(wrapper.text()).not.toContain('连接状态')
     expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('1')
   })

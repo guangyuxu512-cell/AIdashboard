@@ -12,23 +12,49 @@ describe('Mobile Layout shared components', () => {
         ariaLabel: '设备总览',
         busy: true,
         items: [
-          { key: 'online', label: '在线设备', value: 3, tone: 'success' },
-          { key: 'running', label: '运行中', value: 1, tone: 'primary' },
-          { key: 'offline', label: '离线设备', value: 1, tone: 'muted' },
+          {
+            key: 'online',
+            label: '在线设备',
+            value: 3,
+            icon: 'desktop-o',
+            tone: 'success',
+          },
+          {
+            key: 'running',
+            label: '运行中',
+            value: 1,
+            icon: 'play-circle-o',
+            tone: 'primary',
+          },
+          {
+            key: 'offline',
+            label: '离线设备',
+            value: 1,
+            icon: 'close',
+            tone: 'muted',
+          },
         ],
       },
     })
 
     expect(wrapper.attributes('aria-label')).toBe('设备总览')
-    expect(wrapper.get('dl').attributes('aria-busy')).toBe('true')
-    expect(wrapper.get('dl').classes()).toContain('mobile-section-surface')
-    expect(wrapper.get('dl').classes()).not.toContain('mobile-card')
+    expect(wrapper.get('ul').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('ul').classes()).toContain('mobile-section-surface')
+    expect(wrapper.get('ul').classes()).not.toContain('mobile-card')
     expect(wrapper.find('button').exists()).toBe(false)
     expect(wrapper.findAll('.mobile-summary-strip__item')).toHaveLength(3)
+    expect(
+      wrapper
+        .findAll('.mobile-summary-strip__label')
+        .map((item) => item.text()),
+    ).toEqual(['在线设备', '运行中', '离线设备'])
+    expect(wrapper.findAll('.mobile-summary-strip__icon')).toHaveLength(3)
     expect(wrapper.get('[data-testid="summary-online"]').text()).toBe('3')
     expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('1')
     expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="summary-online"]').classes()).toEqual([])
+    expect(wrapper.get('[data-testid="summary-online"]').classes()).toEqual([
+      'mobile-summary-strip__value',
+    ])
     expect(
       wrapper
         .get('[data-testid="summary-online"]')
@@ -36,6 +62,48 @@ describe('Mobile Layout shared components', () => {
           'mobile-summary-strip__item--success',
         ),
     ).toBe(true)
+  })
+
+  it('keeps the same summary slots while metric values are unknown', () => {
+    const wrapper = mount(MobileSummaryStrip, {
+      props: {
+        ariaLabel: '设备总览',
+        busy: true,
+        items: [
+          {
+            key: 'online',
+            label: '在线设备',
+            value: '—',
+            icon: 'desktop-o',
+          },
+          {
+            key: 'running',
+            label: '运行中',
+            value: '—',
+            icon: 'play-circle-o',
+          },
+          {
+            key: 'offline',
+            label: '离线设备',
+            value: '—',
+            icon: 'close',
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.get('ul').attributes('aria-busy')).toBe('true')
+    expect(wrapper.findAll('.mobile-summary-strip__item')).toHaveLength(3)
+    expect(
+      wrapper
+        .findAll('.mobile-summary-strip__value')
+        .map((item) => item.text()),
+    ).toEqual(['—', '—', '—'])
+    expect(
+      wrapper
+        .findAll('.mobile-summary-strip__label')
+        .map((item) => item.text()),
+    ).toEqual(['在线设备', '运行中', '离线设备'])
   })
 
   it('keeps title, meta, selector and filter in one toolbar contract', async () => {
@@ -82,7 +150,7 @@ describe('Mobile Layout shared components', () => {
       'utf8',
     )
 
-    expect(tokens).toContain('--layout-summary-height: 64px')
+    expect(tokens).toContain('--layout-summary-height: 96px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
     expect(tokens).toContain('--control-height-compact: 32px')
     expect(tokens).toContain('--touch-target-min: 44px')

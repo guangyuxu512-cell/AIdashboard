@@ -12,18 +12,21 @@ const items = computed(() => [
     key: 'online',
     label: '在线设备',
     value: props.overview.onlineCount ?? '—',
+    icon: 'desktop-o',
     tone: 'success' as const,
   },
   {
     key: 'running',
     label: '运行中',
     value: props.overview.runningCount ?? '—',
+    icon: 'play-circle-o',
     tone: 'primary' as const,
   },
   {
     key: 'offline',
     label: '离线设备',
     value: props.overview.offlineCount ?? '—',
+    icon: 'close',
     tone: 'muted' as const,
   },
 ])

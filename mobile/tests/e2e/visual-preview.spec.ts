@@ -205,6 +205,161 @@ async function expectBottomNavigation(
   return geometry
 }
 
+async function expectSummaryStrip(page: Page) {
+  const strip = page.locator('.mobile-summary-strip')
+  const metrics = strip.locator('.mobile-summary-strip__item')
+
+  await expect(strip).toBeVisible()
+  await expect(metrics).toHaveCount(3)
+  await expect(metrics.locator('.mobile-summary-strip__label')).toHaveText([
+    '在线设备',
+    '运行中',
+    '离线设备',
+  ])
+  await expect(metrics.locator('.mobile-summary-strip__icon')).toHaveCount(3)
+  await expect(strip.locator('button')).toHaveCount(0)
+
+  const geometry = await strip.evaluate((element) => {
+    const surface = element.querySelector<HTMLElement>(
+      '.mobile-summary-strip__surface',
+    )!
+    const slots = Array.from(
+      surface.querySelectorAll<HTMLElement>('.mobile-summary-strip__item'),
+    )
+    const slotBoxes = slots.map((slot) => slot.getBoundingClientRect())
+    const iconBoxes = slots.map((slot) =>
+      slot
+        .querySelector<HTMLElement>('.mobile-summary-strip__icon')!
+        .getBoundingClientRect(),
+    )
+    const numberBoxes = slots.map((slot) =>
+      slot
+        .querySelector<HTMLElement>('.mobile-summary-strip__value')!
+        .getBoundingClientRect(),
+    )
+    const labelBoxes = slots.map((slot) =>
+      slot
+        .querySelector<HTMLElement>('.mobile-summary-strip__label')!
+        .getBoundingClientRect(),
+    )
+    const stripBox = element.getBoundingClientRect()
+    const surfaceBox = surface.getBoundingClientRect()
+    const rootStyle = getComputedStyle(document.documentElement)
+
+    const groups = slotBoxes.map((slot, index) => {
+      const icon = iconBoxes[index]!
+      const number = numberBoxes[index]!
+      const label = labelBoxes[index]!
+      const left = Math.min(icon.left, number.left, label.left)
+      const right = Math.max(icon.right, number.right, label.right)
+      const top = Math.min(icon.top, number.top, label.top)
+      const bottom = Math.max(icon.bottom, number.bottom, label.bottom)
+      return {
+        horizontalCenterDelta:
+          (left + right) / 2 - (slot.left + slot.right) / 2,
+        verticalCenterDelta: (top + bottom) / 2 - (slot.top + slot.bottom) / 2,
+        elementsCentered: [icon, number, label].every(
+          (box) =>
+            Math.abs(box.left + box.width / 2 - (slot.left + slot.width / 2)) <=
+            0.5,
+        ),
+        verticalOrder: icon.bottom <= number.top && number.bottom <= label.top,
+      }
+    })
+
+    const separators = slots.slice(1).map((slot) => {
+      const style = getComputedStyle(slot, '::before')
+      return {
+        width: Number.parseFloat(style.width),
+        height: Number.parseFloat(style.height),
+        top: Number.parseFloat(style.top),
+      }
+    })
+
+    return {
+      stripTop: stripBox.top,
+      stripHeight: stripBox.height,
+      expectedStripHeight: Number.parseFloat(
+        rootStyle.getPropertyValue('--layout-summary-height'),
+      ),
+      surfaceCount: element.querySelectorAll('.mobile-summary-strip__surface')
+        .length,
+      surfaceContainsAllSlots: slots.every(
+        (slot) => slot.parentElement === surface,
+      ),
+      surfaceHeight: surfaceBox.height,
+      slotWidths: slotBoxes.map((slot) => slot.width),
+      slotTops: slotBoxes.map((slot) => slot.top),
+      slotHeights: slotBoxes.map((slot) => slot.height),
+      groups,
+      separators,
+      labelsSingleLine: slots.every((slot) => {
+        const label = slot.querySelector<HTMLElement>(
+          '.mobile-summary-strip__label',
+        )!
+        return (
+          label.getClientRects().length === 1 &&
+          getComputedStyle(label).whiteSpace === 'nowrap'
+        )
+      }),
+      numberEmphasized: slots.every((slot) => {
+        const numberSize = Number.parseFloat(
+          getComputedStyle(
+            slot.querySelector<HTMLElement>('.mobile-summary-strip__value')!,
+          ).fontSize,
+        )
+        const labelSize = Number.parseFloat(
+          getComputedStyle(
+            slot.querySelector<HTMLElement>('.mobile-summary-strip__label')!,
+          ).fontSize,
+        )
+        return numberSize > labelSize
+      }),
+      nonInteractive: slots.every(
+        (slot) => getComputedStyle(slot).cursor !== 'pointer',
+      ),
+      noHorizontalOverflow:
+        surface.scrollWidth <= surface.clientWidth &&
+        document.documentElement.scrollWidth <= window.innerWidth,
+    }
+  })
+
+  expect(geometry.surfaceCount).toBe(1)
+  expect(geometry.surfaceContainsAllSlots).toBe(true)
+  expect(
+    Math.max(...geometry.slotWidths) - Math.min(...geometry.slotWidths),
+  ).toBeLessThanOrEqual(1)
+  expect(new Set(geometry.slotTops.map(Math.round)).size).toBe(1)
+  expect(new Set(geometry.slotHeights.map(Math.round)).size).toBe(1)
+  expect(
+    geometry.groups.every(
+      ({ horizontalCenterDelta }) => Math.abs(horizontalCenterDelta) <= 0.5,
+    ),
+  ).toBe(true)
+  expect(
+    geometry.groups.every(
+      ({ verticalCenterDelta }) => Math.abs(verticalCenterDelta) <= 0.5,
+    ),
+  ).toBe(true)
+  expect(
+    geometry.groups.every(({ elementsCentered }) => elementsCentered),
+  ).toBe(true)
+  expect(geometry.groups.every(({ verticalOrder }) => verticalOrder)).toBe(true)
+  expect(
+    geometry.separators.every(
+      ({ width, height, top }) =>
+        width <= 1 && height < geometry.slotHeights[0]! && top > 0,
+    ),
+  ).toBe(true)
+  expect(geometry.labelsSingleLine).toBe(true)
+  expect(geometry.numberEmphasized).toBe(true)
+  expect(geometry.nonInteractive).toBe(true)
+  expect(geometry.noHorizontalOverflow).toBe(true)
+  expect(geometry.stripHeight).toBe(geometry.expectedStripHeight)
+
+  return geometry
+}
+
 async function expectDetailHeader(
   page: Page,
   title: '设备详情' | '任务详情',
@@ -311,6 +466,7 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('mobile-list-filter')).toContainText('筛选')
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('没有设备', { exact: true })).toHaveCount(0)
+      const summaryGeometry = await expectSummaryStrip(page)
 
       const deviceTypography = await page.evaluate(() => {
         const read = (selector: string) => {
@@ -322,7 +478,7 @@ for (const width of viewportWidths) {
         return {
           brand: read('.mobile-global-header__brand'),
           cardTitle: read('.device-list-card__heading strong'),
-          summaryNumber: read('.mobile-summary-strip__item dd'),
+          summaryNumber: read('.mobile-summary-strip__value'),
           meta: read('.device-list-card__meta'),
         }
       })
@@ -427,6 +583,14 @@ for (const width of viewportWidths) {
           return Math.abs(currentTop - deviceBottomNavigation.navTop)
         })
         .toBeLessThanOrEqual(0.5)
+      await expect
+        .poll(async () => {
+          const currentTop = await page
+            .locator('.mobile-summary-strip')
+            .evaluate((element) => element.getBoundingClientRect().top)
+          return Math.abs(currentTop - summaryGeometry.stripTop)
+        })
+        .toBeLessThanOrEqual(0.5)
       await deviceListScroll.evaluate((element) => {
         element.scrollTop = 0
       })
@@ -442,18 +606,26 @@ for (const width of viewportWidths) {
           )!
           return {
             summaryHeight: style('.mobile-summary-strip').height,
-            summaryInline: Array.from(
+            summaryStacked: Array.from(
               document.querySelectorAll<HTMLElement>(
                 '.mobile-summary-strip__item',
               ),
             ).every((item) => {
-              const value = item.querySelector<HTMLElement>('dd')!
-              const label = item.querySelector<HTMLElement>('dt')!
+              const icon = item.querySelector<HTMLElement>(
+                '.mobile-summary-strip__icon',
+              )!
+              const value = item.querySelector<HTMLElement>(
+                '.mobile-summary-strip__value',
+              )!
+              const label = item.querySelector<HTMLElement>(
+                '.mobile-summary-strip__label',
+              )!
+              const iconBox = icon.getBoundingClientRect()
               const valueBox = value.getBoundingClientRect()
               const labelBox = label.getBoundingClientRect()
               return (
-                valueBox.right <= labelBox.left &&
-                Math.abs(valueBox.bottom - labelBox.bottom) <= 8
+                iconBox.bottom <= valueBox.top &&
+                valueBox.bottom <= labelBox.top
               )
             }),
             toolbarHeight: style('.mobile-list-toolbar').height,
@@ -467,14 +639,23 @@ for (const width of viewportWidths) {
           }
         }),
       ).toEqual({
-        summaryHeight: '64px',
-        summaryInline: true,
+        summaryHeight: '96px',
+        summaryStacked: true,
         toolbarHeight: '44px',
         selectorVisualHeight: '32px',
         scrollbarWidth: 'none',
         scrollable: true,
         documentScrollTop: 0,
       })
+
+      if (width === 390 || (width === 360 && theme === 'light')) {
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `mobile-summary-strip-device-${width}-${theme}.png`,
+          ),
+          clip: { x: 0, y: 0, width, height: 300 },
+        })
+      }
 
       if (width === 390) {
         await page.screenshot({
