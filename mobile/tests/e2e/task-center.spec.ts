@@ -778,7 +778,18 @@ for (const width of viewportWidths) {
           path: testInfo.outputPath('task-detail-390-light.png'),
         })
       }
-      await expect(page.locator('.van-tabbar')).toHaveCount(0)
+      await expect(page.locator('.van-tabbar-item')).toHaveText([
+        '设备',
+        '任务',
+        '计划',
+        '店铺',
+        '我的',
+      ])
+      await expect(
+        page.locator('.van-tabbar-item--active').getByText('任务', {
+          exact: true,
+        }),
+      ).toBeVisible()
       await expectNoHorizontalOverflow(page)
       expect(consoleErrors).toEqual([])
     })

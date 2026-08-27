@@ -150,7 +150,7 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
       expectedActive: tokenColor('--text-selected', 'color'),
       expectedInactive: tokenColor('--text-tertiary', 'color'),
       brandFontSize: style('.mobile-global-header__brand').fontSize,
-      expectedBrandFontSize: root.getPropertyValue('--font-size-label').trim(),
+      expectedBrandFontSize: root.getPropertyValue('--font-size-title').trim(),
     }
   })
   expect(chromeVisual).toEqual({

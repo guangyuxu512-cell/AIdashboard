@@ -7,18 +7,21 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     monospace;
   --font-size-caption: 12px;
+  --font-size-secondary: 13px;
   --font-size-body: 14px;
-  --font-size-label: 16px;
-  --font-size-title: 20px;
-  --font-size-display: 28px;
+  --font-size-label: 15px;
+  --font-size-title: 16px;
+  --font-size-display: 18px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
+  --font-weight-bold: 700;
   --line-height-caption: 18px;
+  --line-height-secondary: 20px;
   --line-height-body: 22px;
-  --line-height-label: 24px;
-  --line-height-title: 28px;
-  --line-height-display: 34px;
+  --line-height-label: 22px;
+  --line-height-title: 24px;
+  --line-height-display: 24px;
 
   /* Spacing */
   --space-1: 4px;

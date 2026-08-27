@@ -60,7 +60,7 @@
   --van-nav-bar-height: var(--layout-detail-header-height);
   --van-nav-bar-background: var(--bg-surface-raised);
   --van-nav-bar-arrow-size: var(--icon-size-small);
-  --van-nav-bar-title-font-size: var(--font-size-label);
+  --van-nav-bar-title-font-size: var(--font-size-title);
   --van-nav-bar-title-text-color: var(--text-primary);
   --van-nav-bar-icon-color: var(--color-primary);
   --van-nav-bar-text-color: var(--text-secondary);
@@ -263,6 +263,7 @@
 }
 
 .mobile-segmented-tabs .van-tabs__nav {
+  width: 100%;
   gap: var(--space-1);
   padding: var(--space-1);
   background: var(--bg-subtle);
@@ -271,8 +272,21 @@
 }
 
 .mobile-segmented-tabs .van-tab {
-  min-height: calc(var(--touch-target-min) - var(--space-2));
+  min-width: 0;
+  min-height: var(--touch-target-min);
+  flex: 1 1 0;
+  padding: 0;
+  color: var(--text-secondary);
+}
+
+.mobile-segmented-tabs .van-tab__text {
+  display: flex;
+  width: 100%;
+  height: calc(var(--touch-target-min) - var(--space-2));
   padding: 0 var(--space-2);
+  align-items: center;
+  justify-content: center;
+  border: var(--border-width) solid transparent;
   border-radius: var(--radius-control);
   transition:
     color var(--duration-press) var(--ease-press),
@@ -281,8 +295,13 @@
 }
 
 .mobile-segmented-tabs .van-tab--active {
+  color: var(--color-primary);
+}
+
+.mobile-segmented-tabs .van-tab--active .van-tab__text {
   background: var(--bg-surface-raised);
-  box-shadow: var(--shadow-card);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-card-pressed);
 }
 
 .mobile-segmented-tabs .van-tabs__line {

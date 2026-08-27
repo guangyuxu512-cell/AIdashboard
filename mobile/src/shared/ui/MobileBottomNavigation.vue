@@ -11,6 +11,7 @@ interface MobileNavigationItem {
 
 defineProps<{
   items: readonly MobileNavigationItem[]
+  activeKey?: string
 }>()
 </script>
 
@@ -18,7 +19,7 @@ defineProps<{
   <VanTabbar
     class="mobile-bottom-navigation"
     data-testid="mobile-bottom-navigation"
-    route
+    :model-value="activeKey"
     :fixed="false"
     :border="false"
     :safe-area-inset-bottom="false"
@@ -26,6 +27,7 @@ defineProps<{
     <VanTabbarItem
       v-for="item in items"
       :key="item.key"
+      :name="item.key"
       class="mobile-pressable mobile-pressable--control"
       :to="item.to"
       :icon="item.icon"

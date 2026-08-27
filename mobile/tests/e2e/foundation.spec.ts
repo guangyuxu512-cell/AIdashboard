@@ -144,20 +144,30 @@ for (const width of viewportWidths) {
 
       const headerStyle = styleFor('.mobile-app-shell__header')
       const mainStyle = styleFor('.mobile-app-shell__main')
+      const bottomStyle = styleFor('.mobile-app-shell__bottom')
       const pageStyle = styleFor('.app-page')
       return {
         headerTop: headerStyle.paddingTop,
         mainBottom: mainStyle.paddingBottom,
+        bottomPadding: bottomStyle.paddingBottom,
         pageRight: pageStyle.paddingRight,
         pageLeft: pageStyle.paddingLeft,
       }
     })
     expect(safeAreaStyles).toEqual({
       headerTop: safeAreaFixture.top,
-      mainBottom: safeAreaFixture.bottom,
+      mainBottom: '0px',
+      bottomPadding: safeAreaFixture.bottom,
       pageRight: safeAreaFixture.right,
       pageLeft: safeAreaFixture.left,
     })
+    await expect(page.locator('.van-tabbar-item')).toHaveText([
+      '设备',
+      '任务',
+      '计划',
+      '店铺',
+      '我的',
+    ])
 
     const openSheetButton = page.getByRole('button', {
       name: '打开底部面板',

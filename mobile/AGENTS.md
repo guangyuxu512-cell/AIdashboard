@@ -93,6 +93,18 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Internal Skill 默认不得作为普通用户核心操作能力展示。
 - 正式 Mobile 滚动容器默认隐藏 Scrollbar，同时保留触控、滚轮、触控板与键盘滚动。
 
+## Mobile Typography & Capability
+
+- Mobile 字体必须使用统一 Typography Scale，业务页面不得自由定义字号或字重体系。
+- Capability 类型选择使用紧凑 Segmented Pattern，不使用 PC/Web 式 Underline Tabs。
+- Count 属于辅助信息，不与 Tab Label 争夺视觉权重。
+- Section Refresh 属于轻量 Icon Action，不使用大文字 Button。
+- Capability 默认显示 5 行，第 6 行后内部滚动。
+- Capability 行保持 `Name + Actions` 稳定结构。
+- 视觉按钮尺寸与 Touch Target 必须分离。
+- 普通详情页面继续保留全局 Bottom Navigation。
+- 只有沉浸式工作流允许隐藏 Bottom Navigation。
+
 ## Visual Development
 
 - Mobile 视觉开发不得依赖真实 Backend 是否在线；需要稳定视觉数据时使用 Development Only Mock DataSource。

@@ -195,10 +195,13 @@ describe('MobileAppShell V2', () => {
     ])
   })
 
-  it('uses one detail header and hides bottom navigation on device detail', async () => {
+  it('keeps one detail header and the five-entry navigation on device detail', async () => {
     const { router, wrapper } = await mountAppAt('/devices/device-1')
 
-    expect(wrapper.find('footer').exists()).toBe(false)
+    expect(wrapper.get('footer').findAllComponents(VanTabbarItem)).toHaveLength(
+      5,
+    )
+    expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe('devices')
     expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
     expect(wrapper.getComponent(MobileDetailHeader).props('title')).toBe(
       '设备详情',
@@ -212,12 +215,15 @@ describe('MobileAppShell V2', () => {
     expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.devices)
   })
 
-  it('returns a task detail to its source device through the shared detail header', async () => {
+  it('keeps task navigation active and returns task detail to its source device', async () => {
     const { router, wrapper } = await mountAppAt(
       '/tasks/task-1?fromDeviceId=device-1',
     )
 
-    expect(wrapper.find('footer').exists()).toBe(false)
+    expect(wrapper.get('footer').findAllComponents(VanTabbarItem)).toHaveLength(
+      5,
+    )
+    expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe('tasks')
     expect(wrapper.getComponent(MobileDetailHeader).props('title')).toBe(
       '任务详情',
     )
@@ -235,6 +241,10 @@ describe('MobileAppShell V2', () => {
   it('returns the development foundation detail shell to home', async () => {
     const { router, wrapper } = await mountAppAt('/__foundation')
 
+    expect(wrapper.get('footer').findAllComponents(VanTabbarItem)).toHaveLength(
+      5,
+    )
+    expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe('')
     wrapper.getComponent(MobileDetailHeader).vm.$emit('back')
     await flushPromises()
 

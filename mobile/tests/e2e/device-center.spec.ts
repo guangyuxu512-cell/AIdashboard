@@ -654,7 +654,7 @@ for (const width of viewportWidths) {
           ),
           expectedNumberFontSize: window
             .getComputedStyle(document.documentElement)
-            .getPropertyValue('--font-size-title')
+            .getPropertyValue('--font-size-display')
             .trim(),
           expectedColors: [
             tokenColor('--status-success'),
@@ -818,9 +818,12 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('device-summary-yingdao')).toContainText(
         '影刀账号测试账号就绪6.3.6',
       )
-      await expect(page.getByTestId('device-capability-tabs')).toContainText(
-        '影刀应用 1Skills 1',
-      )
+      await expect(
+        page.locator('.device-capability-panel__tab-label'),
+      ).toHaveText(['影刀应用', 'Skills'])
+      await expect(
+        page.locator('.device-capability-panel__tab-count'),
+      ).toHaveText(['1', '1'])
       for (const action of ['device-capability-refresh']) {
         expect(
           (await page.getByTestId(action).boundingBox())?.height,
@@ -918,7 +921,18 @@ for (const width of viewportWidths) {
       await expect(
         page.getByTestId('capability-technical-details'),
       ).toContainText('未分类能力1 个')
-      await expect(page.locator('.van-tabbar')).toHaveCount(0)
+      await expect(page.locator('.van-tabbar-item')).toHaveText([
+        '设备',
+        '任务',
+        '计划',
+        '店铺',
+        '我的',
+      ])
+      await expect(
+        page.locator('.van-tabbar-item--active').getByText('设备', {
+          exact: true,
+        }),
+      ).toBeVisible()
       const detailSafeArea = await page
         .locator('.app-page')
         .evaluate((element) => {

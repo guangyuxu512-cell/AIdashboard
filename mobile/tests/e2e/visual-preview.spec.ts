@@ -59,6 +59,27 @@ for (const width of viewportWidths) {
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('没有设备', { exact: true })).toHaveCount(0)
 
+      const deviceTypography = await page.evaluate(() => {
+        const read = (selector: string) => {
+          const style = window.getComputedStyle(
+            document.querySelector<HTMLElement>(selector)!,
+          )
+          return `${style.fontSize}/${style.fontWeight}`
+        }
+        return {
+          brand: read('.mobile-global-header__brand'),
+          cardTitle: read('.device-list-card__heading strong'),
+          summaryNumber: read('.mobile-summary-strip__item dd'),
+          meta: read('.device-list-card__meta'),
+        }
+      })
+      expect(deviceTypography).toEqual({
+        brand: '16px/600',
+        cardTitle: '15px/600',
+        summaryNumber: '18px/700',
+        meta: '12px/400',
+      })
+
       const headerVisual = await page.evaluate(() => {
         const header = document.querySelector<HTMLElement>(
           '[data-testid="mobile-shell-header"]',
@@ -181,8 +202,38 @@ for (const width of viewportWidths) {
       )
       await expect(page.getByTestId('device-capability-panel')).toHaveCSS(
         'height',
-        '200px',
+        '334px',
       )
+      await expect(page.getByTestId('application-list')).toHaveCSS(
+        'scrollbar-width',
+        'none',
+      )
+      const capabilitySelector = await page.evaluate(() => {
+        const selector = document.querySelector<HTMLElement>(
+          '[data-testid="device-capability-tabs"]',
+        )!
+        const tabs = Array.from(
+          selector.querySelectorAll<HTMLElement>('.van-tab'),
+        )
+        const labels = Array.from(
+          selector.querySelectorAll<HTMLElement>(
+            '.device-capability-panel__tab-label',
+          ),
+        )
+        const boxes = tabs.map((tab) => tab.getBoundingClientRect())
+        return {
+          sameRow: boxes[0]!.y === boxes[1]!.y,
+          equalWidth: Math.abs(boxes[0]!.width - boxes[1]!.width) <= 1,
+          labelsSingleLine: labels.every(
+            (label) => label.scrollHeight <= label.clientHeight,
+          ),
+        }
+      })
+      expect(capabilitySelector).toEqual({
+        sameRow: true,
+        equalWidth: true,
+        labelsSingleLine: true,
+      })
       const summaryColumns = await page
         .locator('.device-yingdao-summary__column')
         .evaluateAll((columns) =>
@@ -197,6 +248,18 @@ for (const width of viewportWidths) {
       expect(
         Math.abs(summaryColumns[0]!.width - summaryColumns[1]!.width),
       ).toBeLessThanOrEqual(1)
+      await expect(page.locator('.van-tabbar-item')).toHaveText([
+        '设备',
+        '任务',
+        '计划',
+        '店铺',
+        '我的',
+      ])
+      if (width === 390) {
+        await page.screenshot({
+          path: testInfo.outputPath(`visual-device-detail-390-${theme}.png`),
+        })
+      }
       await expectNoHorizontalOverflow(page)
 
       await page.goBack()
@@ -221,6 +284,12 @@ for (const width of viewportWidths) {
         'scrollbar-width',
         'none',
       )
+      await expect(
+        page.locator('.task-list-card__heading h2').first(),
+      ).toHaveCSS('font-size', '15px')
+      await expect(
+        page.locator('.task-list-card__heading h2').first(),
+      ).toHaveCSS('font-weight', '600')
 
       if (width === 390) {
         await page.screenshot({
@@ -257,9 +326,14 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(page.getByTestId('device-summary-yingdao')).toContainText(
     '影刀账号HuanYu001就绪6.3.6',
   )
-  await expect(page.getByTestId('device-capability-tabs')).toContainText(
-    '影刀应用 8Skills 5',
-  )
+  await expect(page.locator('.device-capability-panel__tab-label')).toHaveText([
+    '影刀应用',
+    'Skills',
+  ])
+  await expect(page.locator('.device-capability-panel__tab-count')).toHaveText([
+    '8',
+    '5',
+  ])
   await expect(page.getByTestId('device-current-task')).toContainText(
     '订单同步',
   )
@@ -270,24 +344,76 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     const list = document.querySelector<HTMLElement>(
       '[data-testid="application-list"]',
     )!
+    const panel = document.querySelector<HTMLElement>(
+      '[data-testid="device-capability-panel"]',
+    )!
+    const header = panel.querySelector<HTMLElement>(
+      '.device-capability-panel__header',
+    )!
+    const selector = panel.querySelector<HTMLElement>(
+      '[data-testid="device-capability-tabs"]',
+    )!
+    const tabs = Array.from(selector.querySelectorAll<HTMLElement>('.van-tab'))
+    const refresh = panel.querySelector<HTMLElement>(
+      '[data-testid="device-capability-refresh"]',
+    )!
     const rows = Array.from(
       list.querySelectorAll<HTMLElement>('[data-testid="application-row"]'),
     )
+    const firstName = rows[0]!.querySelector<HTMLElement>(
+      '.device-capability-panel__name',
+    )!
+    const firstAction = rows[0]!.querySelector<HTMLElement>(
+      '.device-capability-panel__action',
+    )!
+    const firstActionVisual = firstAction.querySelector<HTMLElement>(
+      '.van-button__text > span',
+    )!
     const listBox = list.getBoundingClientRect()
+    const refreshSurface = window.getComputedStyle(refresh, '::before')
+    const headerBox = header.getBoundingClientRect()
+    const selectorBox = selector.getBoundingClientRect()
     return {
-      panelHeight: document
-        .querySelector<HTMLElement>('[data-testid="device-capability-panel"]')!
+      panelHeight: panel.getBoundingClientRect().height,
+      titleFontSize: window.getComputedStyle(
+        panel.querySelector<HTMLElement>('.device-capability-panel__title')!,
+      ).fontSize,
+      titleFontWeight: window.getComputedStyle(
+        panel.querySelector<HTMLElement>('.device-capability-panel__title')!,
+      ).fontWeight,
+      refreshTouchHeight: refresh.getBoundingClientRect().height,
+      refreshVisualWidth: Number.parseFloat(refreshSurface.width),
+      refreshText: refresh.textContent?.trim() ?? '',
+      selectorHeight: selectorBox.height,
+      selectorBelowHeader: headerBox.bottom <= selectorBox.top,
+      equalTabWidths:
+        Math.abs(
+          tabs[0]!.getBoundingClientRect().width -
+            tabs[1]!.getBoundingClientRect().width,
+        ) <= 1,
+      tabVisualHeight: tabs[0]!
+        .querySelector<HTMLElement>('.van-tab__text')!
         .getBoundingClientRect().height,
+      underlineDisplay: window.getComputedStyle(
+        selector.querySelector<HTMLElement>('.van-tabs__line')!,
+      ).display,
+      listHeight: listBox.height,
+      nameFontSize: window.getComputedStyle(firstName).fontSize,
+      nameFontWeight: window.getComputedStyle(firstName).fontWeight,
+      actionTouchHeight: firstAction.getBoundingClientRect().height,
+      actionVisualHeight: firstActionVisual.getBoundingClientRect().height,
+      actionFontSize: window.getComputedStyle(firstActionVisual).fontSize,
+      actionFontWeight: window.getComputedStyle(firstActionVisual).fontWeight,
       rowHeights: rows
-        .slice(0, 4)
+        .slice(0, 6)
         .map((row) => row.getBoundingClientRect().height),
-      threeRowsVisible: rows
-        .slice(0, 3)
+      fiveRowsVisible: rows
+        .slice(0, 5)
         .every(
           (row) => row.getBoundingClientRect().bottom <= listBox.bottom + 1,
         ),
-      fourthRequiresScroll:
-        rows[3]!.getBoundingClientRect().bottom > listBox.bottom + 1,
+      sixthRequiresScroll:
+        rows[5]!.getBoundingClientRect().bottom > listBox.bottom + 1,
       listScrollable: list.scrollHeight > list.clientHeight,
       listScrollbarWidth: window.getComputedStyle(list).scrollbarWidth,
       detailScrollbarWidth: window.getComputedStyle(
@@ -296,10 +422,27 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     }
   })
   expect(layout).toEqual({
-    panelHeight: 200,
-    rowHeights: [44, 44, 44, 44],
-    threeRowsVisible: true,
-    fourthRequiresScroll: true,
+    panelHeight: 334,
+    titleFontSize: '15px',
+    titleFontWeight: '600',
+    refreshTouchHeight: 44,
+    refreshVisualWidth: 32,
+    refreshText: '',
+    selectorHeight: 44,
+    selectorBelowHeader: true,
+    equalTabWidths: true,
+    tabVisualHeight: 36,
+    underlineDisplay: 'none',
+    listHeight: 220,
+    nameFontSize: '14px',
+    nameFontWeight: '500',
+    actionTouchHeight: 44,
+    actionVisualHeight: 28,
+    actionFontSize: '13px',
+    actionFontWeight: '500',
+    rowHeights: [44, 44, 44, 44, 44, 44],
+    fiveRowsVisible: true,
+    sixthRequiresScroll: true,
     listScrollable: true,
     listScrollbarWidth: 'none',
     detailScrollbarWidth: 'none',

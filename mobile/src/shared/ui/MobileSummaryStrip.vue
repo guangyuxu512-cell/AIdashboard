@@ -102,9 +102,9 @@ defineProps({
   flex: none;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--font-size-title);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-title);
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-display);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

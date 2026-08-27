@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Button as VanButton,
+  Icon as VanIcon,
   Loading as VanLoading,
   Tab as VanTab,
   Tabs as VanTabs,
@@ -62,24 +63,40 @@ const skillCount = computed(() =>
     aria-label="能力"
   >
     <div class="device-capability-panel__header">
-      <VanTabs
-        v-model:active="activeTab"
-        shrink
-        class="device-capability-panel__tabs"
-        data-testid="device-capability-tabs"
-      >
-        <VanTab name="applications" :title="`影刀应用 ${applicationCount}`" />
-        <VanTab name="skills" :title="`Skills ${skillCount}`" />
-      </VanTabs>
-      <VanButton
-        class="device-capability-panel__refresh"
+      <h2 class="device-capability-panel__title">能力</h2>
+      <button
+        type="button"
+        class="device-capability-panel__refresh mobile-icon-button mobile-pressable"
         aria-label="刷新能力"
         data-testid="device-capability-refresh"
         @click="emit('refreshCapability')"
       >
-        <span>刷新</span>
-      </VanButton>
+        <VanIcon name="replay" aria-hidden="true" />
+      </button>
     </div>
+
+    <VanTabs
+      v-model:active="activeTab"
+      class="device-capability-panel__tabs mobile-segmented-tabs"
+      data-testid="device-capability-tabs"
+    >
+      <VanTab name="applications">
+        <template #title>
+          <span class="device-capability-panel__tab-label">影刀应用</span>
+          <span class="device-capability-panel__tab-count">
+            {{ applicationCount }}
+          </span>
+        </template>
+      </VanTab>
+      <VanTab name="skills">
+        <template #title>
+          <span class="device-capability-panel__tab-label">Skills</span>
+          <span class="device-capability-panel__tab-count">
+            {{ skillCount }}
+          </span>
+        </template>
+      </VanTab>
+    </VanTabs>
 
     <div
       v-if="activeTab === 'applications'"
@@ -185,61 +202,77 @@ const skillCount = computed(() =>
 <style scoped>
 .device-capability-panel {
   display: grid;
-  height: 200px;
+  height: 334px;
   min-width: 0;
-  gap: var(--space-2);
-  padding: calc(var(--space-2) - var(--border-width)) var(--space-3);
-  grid-template-rows: var(--touch-target-min) minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  grid-template-rows: var(--touch-target-min) var(--touch-target-min) minmax(
+      0,
+      1fr
+    );
   overflow: hidden;
 }
 
 .device-capability-panel__header {
   display: flex;
   min-width: 0;
-  gap: var(--space-1);
   align-items: center;
+  justify-content: space-between;
+}
+
+.device-capability-panel__title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .device-capability-panel__tabs {
   min-width: 0;
-  flex: 1 1 auto;
   overflow: hidden;
 }
 
-.device-capability-panel__tabs :deep(.van-tabs__wrap) {
-  height: var(--touch-target-min);
+.device-capability-panel__tab-label,
+.device-capability-panel__tab-count {
+  display: inline-block;
+  line-height: var(--line-height-secondary);
 }
 
-.device-capability-panel__tabs :deep(.van-tabs__nav) {
-  background: transparent;
+.device-capability-panel__tab-label {
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-medium);
 }
 
-.device-capability-panel__refresh,
-.device-capability-panel__action {
-  height: var(--touch-target-min);
-  padding: 0;
+.device-capability-panel__tab-count {
+  margin-left: var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+.device-capability-panel__tabs
+  :deep(.van-tab--active)
+  .device-capability-panel__tab-count {
   color: var(--text-secondary);
-  background: transparent;
-  border: 0;
 }
 
 .device-capability-panel__refresh {
   flex: none;
+  color: var(--text-secondary);
 }
 
-.device-capability-panel__refresh span,
-.device-capability-panel__action span {
-  display: inline-flex;
-  height: var(--control-height-compact);
-  padding-inline: var(--space-2);
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-control);
-}
-
-.device-capability-panel__refresh span {
+.device-capability-panel__refresh::before {
+  inset: calc((var(--touch-target-min) - var(--control-height-compact)) / 2);
   background: var(--bg-subtle);
   border: var(--border-width) solid var(--border-subtle);
+  box-shadow: var(--shadow-card-pressed);
+}
+
+.device-capability-panel__refresh :deep(.van-icon) {
+  font-size: var(--icon-size-small);
 }
 
 .device-capability-panel__list {
@@ -286,6 +319,26 @@ const skillCount = computed(() =>
   flex: none;
   gap: var(--space-1);
   align-items: center;
+}
+
+.device-capability-panel__action {
+  height: var(--touch-target-min);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+}
+
+.device-capability-panel__action span {
+  display: inline-flex;
+  height: calc(var(--control-height-compact) - var(--space-1));
+  padding-inline: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-secondary);
 }
 
 .device-capability-panel__action span {

@@ -69,9 +69,9 @@ const themeActionLabel = computed(() =>
 
 .mobile-global-header__brand {
   overflow: hidden;
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-title);
   font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-label);
+  line-height: var(--line-height-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

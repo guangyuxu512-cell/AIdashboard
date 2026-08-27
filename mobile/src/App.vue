@@ -22,6 +22,24 @@ const { resolvedTheme } = storeToRefs(themeStore)
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
 const isMainLayout = computed(() => shellLayout.value === 'main')
+const activeNavigationKey = computed(() => {
+  if (
+    route.name === MOBILE_ROUTE_NAMES.devices ||
+    route.name === MOBILE_ROUTE_NAMES.deviceDetail
+  ) {
+    return 'devices'
+  }
+  if (
+    route.name === MOBILE_ROUTE_NAMES.tasks ||
+    route.name === MOBILE_ROUTE_NAMES.taskDetail
+  ) {
+    return 'tasks'
+  }
+  if (route.name === MOBILE_ROUTE_NAMES.schedules) return 'schedules'
+  if (route.name === MOBILE_ROUTE_NAMES.shops) return 'shops'
+  if (route.name === MOBILE_ROUTE_NAMES.profile) return 'profile'
+  return ''
+})
 
 const mainNavigationItems = [
   {
@@ -97,8 +115,11 @@ function showNotificationPlaceholder(): void {
 
       <RouterView />
 
-      <template v-if="isMainLayout" #bottom>
-        <MobileBottomNavigation :items="mainNavigationItems" />
+      <template #bottom>
+        <MobileBottomNavigation
+          :items="mainNavigationItems"
+          :active-key="activeNavigationKey"
+        />
       </template>
     </MobileAppShell>
   </VanConfigProvider>

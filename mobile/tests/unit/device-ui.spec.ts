@@ -532,6 +532,22 @@ describe('device center UI', () => {
         app_type: 'rpa',
         group_id: null,
       },
+      {
+        app_id: 'app-5',
+        app_name: '库存同步',
+        version_id: null,
+        updated_at: null,
+        app_type: 'rpa',
+        group_id: null,
+      },
+      {
+        app_id: 'app-6',
+        app_name: '物流跟踪',
+        version_id: null,
+        updated_at: null,
+        app_type: 'rpa',
+        group_id: null,
+      },
     ]
     const wrapper = track(
       mount(DeviceCapabilityPanel, {
@@ -546,7 +562,18 @@ describe('device center UI', () => {
       }),
     )
 
-    expect(wrapper.findAll('[data-testid="application-row"]')).toHaveLength(4)
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="application-row"]')).toHaveLength(6)
+    expect(wrapper.get('h2').text()).toBe('能力')
+    expect(
+      wrapper.get('[data-testid="device-capability-tabs"]').classes(),
+    ).toContain('mobile-segmented-tabs')
+    expect(wrapper.findAll('.device-capability-panel__tab-label')).toHaveLength(
+      2,
+    )
+    expect(wrapper.findAll('.device-capability-panel__tab-count')).toHaveLength(
+      2,
+    )
     expect(wrapper.text()).toContain('拼多多自动处理售后工单')
     expect(wrapper.text()).not.toContain('app-private-uuid')
     expect(
@@ -554,9 +581,14 @@ describe('device center UI', () => {
     ).toContain('device-capability-panel__name')
     await wrapper.get('[aria-label="配置：订单应用"]').trigger('click')
     await wrapper.get('[aria-label="运行：订单应用"]').trigger('click')
-    await wrapper
-      .get('[data-testid="device-capability-refresh"]')
-      .trigger('click')
+    const refreshButton = wrapper.get(
+      '[data-testid="device-capability-refresh"]',
+    )
+    expect(refreshButton.attributes('type')).toBe('button')
+    expect(refreshButton.classes()).toContain('mobile-icon-button')
+    expect(refreshButton.text()).toBe('')
+    expect(refreshButton.find('.van-icon').exists()).toBe(true)
+    await refreshButton.trigger('click')
     expect(wrapper.emitted('configureApplication')?.[0]?.[0]).toMatchObject({
       app_id: 'app-1',
     })

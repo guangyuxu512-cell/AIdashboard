@@ -86,11 +86,21 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-toolbar-height: 44px')
     expect(tokens).toContain('--control-height-compact: 32px')
     expect(tokens).toContain('--touch-target-min: 44px')
+    expect(tokens).toContain('--font-size-caption: 12px')
+    expect(tokens).toContain('--font-size-secondary: 13px')
+    expect(tokens).toContain('--font-size-body: 14px')
+    expect(tokens).toContain('--font-size-label: 15px')
+    expect(tokens).toContain('--font-size-title: 16px')
+    expect(tokens).toContain('--font-size-display: 18px')
+    expect(tokens).toContain('--font-weight-bold: 700')
     expect(base).toContain('scrollbar-width: none')
     expect(base).toContain('-ms-overflow-style: none')
     expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')
     expect(base).not.toMatch(
       /\.mobile-scroll-container\s*\{[^}]*overflow:\s*hidden/s,
+    )
+    expect(base).toMatch(
+      /h1,\s*h2,\s*h3,\s*strong,\s*b\s*\{\s*font-weight:\s*var\(--font-weight-semibold\)/s,
     )
   })
 
