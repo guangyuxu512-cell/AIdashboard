@@ -799,7 +799,7 @@ for (const width of viewportWidths) {
       })
       expect(layout).toMatchObject({
         headerHeight: '52px',
-        summaryHeight: '96px',
+        summaryHeight: '98px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
         toolbarHeight: '44px',

@@ -639,7 +639,7 @@ for (const width of viewportWidths) {
           }
         }),
       ).toEqual({
-        summaryHeight: '96px',
+        summaryHeight: '98px',
         summaryStacked: true,
         toolbarHeight: '44px',
         selectorVisualHeight: '32px',

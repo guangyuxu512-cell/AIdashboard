@@ -150,7 +150,7 @@ describe('Mobile Layout shared components', () => {
       'utf8',
     )
 
-    expect(tokens).toContain('--layout-summary-height: 96px')
+    expect(tokens).toContain('--layout-summary-height: 98px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
     expect(tokens).toContain('--control-height-compact: 32px')
     expect(tokens).toContain('--touch-target-min: 44px')
