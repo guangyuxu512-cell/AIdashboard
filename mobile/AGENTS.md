@@ -105,6 +105,19 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 普通详情页面继续保留全局 Bottom Navigation。
 - 只有沉浸式工作流允许隐藏 Bottom Navigation。
 
+## Mobile UI 迭代与冻结规则
+
+- Mobile UI 必须按顺序推进：1) Layout / Component Structure；2) Dimensions / Spacing / Typography；3) Color / Surface / Radius / Shadow / Theme；4) Interaction / Press / Motion / Touch；5) Loading / Empty / Error / Toast / Dialog；6) Business Interaction Contract。
+- Stage 1 未经人工验收，不得提前开展跨组件的尺寸微调、配色、质感或动效润色。
+- 核心 UI 一次只定型一个组件；自动验证通过且人工确认后，才允许在 Design System 标记为 `Frozen`。
+- `Frozen` 组件的 Layout、Anatomy、Height、Padding、Typography Role 与 Interaction Contract，
+  未经用户明确要求不得随意修改；发现问题时先报告，不得顺手重构。
+- 新页面必须优先复用已冻结 Pattern、Shared UI、全局 Token 与 Vant，不得在 Page/Feature 自建
+  Typography、Spacing、Color、Radius、Shadow、Press 或 Motion 体系。
+- 自动测试只证明约束与回归，不等同于视觉验收；只有经人工确认的核心组件才能进入 `Frozen`。
+- 视觉尺寸与 Touch Target 是独立职责；不得为了 44px 命中区把视觉控件画成巨大按钮。
+- 正式产品 UI 禁止用业务页面魔法数修补全局 Header、Shell、导航或滚动布局。
+
 ## Visual Development
 
 - Mobile 视觉开发不得依赖真实 Backend 是否在线；需要稳定视觉数据时使用 Development Only Mock DataSource。

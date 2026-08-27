@@ -691,7 +691,10 @@ for (const width of viewportWidths) {
 
       await page.locator('.task-list__item').first().click()
       await expect(page.getByTestId('task-detail')).toBeVisible()
-      await expect(page.locator('.van-nav-bar')).toHaveCSS('height', '50px')
+      await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
+        'height',
+        '50px',
+      )
       await expect(page.getByTestId('runtime-events')).toBeVisible()
       const detailFlow = await page.evaluate(() => {
         const currentMessage = document.querySelector<HTMLElement>(
@@ -1038,7 +1041,10 @@ test('筛选、完整分页、下拉刷新、终态日志补齐与返回形成�
     ),
   ).toBe(true)
 
-  await page.locator('.van-nav-bar__left').click()
+  await page
+    .getByTestId('mobile-detail-header')
+    .getByRole('button', { name: '返回' })
+    .click()
   await expect(page.getByTestId('task-card').first()).toBeVisible()
   await expect(page.locator('.van-tabbar')).toBeVisible()
   await expectNoHorizontalOverflow(page)

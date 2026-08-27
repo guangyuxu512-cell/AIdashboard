@@ -110,6 +110,27 @@ afterEach(async () => {
 })
 
 describe('MobileAppShell V2', () => {
+  it('defines one symmetric shared detail-header anatomy', () => {
+    const wrapper = mount(MobileDetailHeader, {
+      props: { title: '设备详情' },
+    })
+    mountedWrappers.push(wrapper)
+
+    expect(
+      wrapper.get('[data-testid="mobile-detail-header-title"]').text(),
+    ).toBe('设备详情')
+    expect(wrapper.get('button[aria-label="返回"]').attributes('type')).toBe(
+      'button',
+    )
+    expect(wrapper.get('.mobile-detail-header__back-icon').classes()).toContain(
+      'van-icon-arrow-left',
+    )
+    expect(
+      wrapper.get('[data-testid="mobile-detail-header-right"]').text(),
+    ).toBe('')
+    expect(wrapper.find('.mobile-global-header').exists()).toBe(false)
+  })
+
   it('renders the header, default content and bottom slots', () => {
     const wrapper = mount(MobileAppShell, {
       slots: {

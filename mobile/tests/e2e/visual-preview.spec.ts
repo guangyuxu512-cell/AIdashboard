@@ -36,6 +36,90 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function expectDetailHeader(
+  page: Page,
+  title: '设备详情' | '任务详情',
+  activeNavigation: '设备' | '任务',
+): Promise<void> {
+  const header = page.getByTestId('mobile-detail-header')
+  const headerTitle = page.getByTestId('mobile-detail-header-title')
+
+  await expect(header).toBeVisible()
+  await expect(headerTitle).toHaveText(title)
+  await expect(header.locator('.van-icon-arrow-left')).toBeVisible()
+  await expect(page.getByTestId('mobile-global-header')).toHaveCount(0)
+  await expect(
+    page.locator('.van-tabbar-item--active').getByText(activeNavigation, {
+      exact: true,
+    }),
+  ).toBeVisible()
+
+  const geometry = await header.evaluate((element) => {
+    const backButton = element.querySelector<HTMLElement>(
+      'button[aria-label="返回"]',
+    )!
+    const titleElement = element.querySelector<HTMLElement>(
+      '[data-testid="mobile-detail-header-title"]',
+    )!
+    const rightSlot = element.querySelector<HTMLElement>(
+      '[data-testid="mobile-detail-header-right"]',
+    )!
+    const icon = element.querySelector<HTMLElement>('.van-icon-arrow-left')!
+    const rootBox = element.getBoundingClientRect()
+    const backBox = backButton.getBoundingClientRect()
+    const titleBox = titleElement.getBoundingClientRect()
+    const rightBox = rightSlot.getBoundingClientRect()
+    const rootStyle = window.getComputedStyle(element)
+    const titleStyle = window.getComputedStyle(titleElement)
+    const documentStyle = window.getComputedStyle(document.documentElement)
+
+    return {
+      height: rootBox.height,
+      expectedHeight: Number.parseFloat(
+        documentStyle.getPropertyValue('--layout-detail-header-height'),
+      ),
+      backWidth: backBox.width,
+      backHeight: backBox.height,
+      iconSize: Number.parseFloat(window.getComputedStyle(icon).fontSize),
+      expectedIconSize: Number.parseFloat(
+        documentStyle.getPropertyValue('--icon-size-default'),
+      ),
+      titleCenterDelta:
+        titleBox.left + titleBox.width / 2 - (rootBox.left + rootBox.width / 2),
+      leftSlotWidth: backBox.width,
+      rightSlotWidth: rightBox.width,
+      leftInset: backBox.left - rootBox.left,
+      rightInset: rootBox.right - rightBox.right,
+      titleFontSize: titleStyle.fontSize,
+      expectedTitleFontSize: documentStyle
+        .getPropertyValue('--font-size-title')
+        .trim(),
+      titleLineHeight: titleStyle.lineHeight,
+      expectedTitleLineHeight: documentStyle
+        .getPropertyValue('--line-height-title')
+        .trim(),
+      borderBottomWidth: rootStyle.borderBottomWidth,
+      boxShadow: rootStyle.boxShadow,
+    }
+  })
+
+  expect(geometry.height).toBe(geometry.expectedHeight)
+  expect(geometry.backWidth).toBeGreaterThanOrEqual(44)
+  expect(geometry.backHeight).toBeGreaterThanOrEqual(44)
+  expect(geometry.iconSize).toBe(geometry.expectedIconSize)
+  expect(Math.abs(geometry.titleCenterDelta)).toBeLessThanOrEqual(0.5)
+  expect(geometry.leftSlotWidth).toBe(geometry.rightSlotWidth)
+  expect(
+    Math.abs(geometry.leftInset - geometry.rightInset),
+  ).toBeLessThanOrEqual(0.5)
+  expect(geometry.titleFontSize).toBe(geometry.expectedTitleFontSize)
+  expect(geometry.titleLineHeight).toBe(geometry.expectedTitleLineHeight)
+  expect(geometry.borderBottomWidth).toBe('0px')
+  expect(geometry.boxShadow).toBe('none')
+  await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+}
+
 for (const width of viewportWidths) {
   for (const theme of themes) {
     test(`Visual Mock ${width}px ${theme} 稳定展示设备与任务`, async ({
@@ -194,6 +278,7 @@ for (const width of viewportWidths) {
         .getByRole('button', { name: '查看设备：运营', exact: true })
         .click()
       await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
+      await expectDetailHeader(page, '设备详情', '设备')
       await expect(page.getByTestId('device-summary-device')).toContainText(
         '运营',
       )
@@ -259,10 +344,30 @@ for (const width of viewportWidths) {
         await page.screenshot({
           path: testInfo.outputPath(`visual-device-detail-390-${theme}.png`),
         })
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `mobile-detail-header-device-390-${theme}.png`,
+          ),
+        })
       }
       await expectNoHorizontalOverflow(page)
 
-      await page.goBack()
+      await page.goto(
+        '/#/tasks/visual-task-running?fromDeviceId=visual-device-operations',
+      )
+      await expect(page.getByTestId('task-detail')).toContainText('订单同步')
+      await expectDetailHeader(page, '任务详情', '任务')
+      if (width === 390 && theme === 'light') {
+        await page.screenshot({
+          path: testInfo.outputPath('mobile-detail-header-task-390-light.png'),
+        })
+      }
+
+      await page.getByRole('button', { name: '返回' }).click()
+      await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
+      await expectDetailHeader(page, '设备详情', '设备')
+
+      await page.getByRole('button', { name: '返回' }).click()
       await expect(page).toHaveURL(/#\/devices$/)
 
       await page.getByRole('tab', { name: /任务$/ }).click()

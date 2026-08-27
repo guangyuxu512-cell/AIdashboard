@@ -836,7 +836,10 @@ for (const width of viewportWidths) {
         ).toBeGreaterThanOrEqual(44)
       }
       await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
-      await expect(page.locator('.van-nav-bar')).toHaveCSS('height', '50px')
+      await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
+        'height',
+        '50px',
+      )
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
           '[data-testid="device-detail"]',
@@ -981,7 +984,10 @@ for (const width of viewportWidths) {
       await expectNoHorizontalOverflow(page)
       expect(state.taskDetailRequests).toHaveLength(1)
 
-      await page.locator('.van-nav-bar__left').click()
+      await page
+        .getByTestId('mobile-detail-header')
+        .getByRole('button', { name: '返回' })
+        .click()
       await expect(page).toHaveURL(/\/devices\/device-1$/)
       await expect(page.getByTestId('device-detail')).toBeVisible()
       expect(state.methods.every((method) => method === 'GET')).toBe(true)

@@ -238,7 +238,7 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
 
   const detailHeaderVisual = await page.evaluate(() => {
     const navBar = document.querySelector<HTMLElement>(
-      '.mobile-detail-header .van-nav-bar',
+      '[data-testid="mobile-detail-header"]',
     )
     if (!navBar) throw new Error('未找到详情返回栏')
     const probe = document.createElement('span')
