@@ -14,27 +14,67 @@ function taskPath(taskId: string, suffix = ''): string {
   return `tasks/${encodeURIComponent(taskId)}${suffix}`
 }
 
-export async function getTasks(
+export interface TaskDataSource {
+  getTasks(params: TaskListRequest): Promise<PageDto<TaskListItemReadDto>>
+  getTask(taskId: string): Promise<TaskReadDto>
+  getActiveTask(deviceId: string): Promise<ActiveTaskSummaryReadDto | null>
+  getTaskEvents(
+    taskId: string,
+    params: TaskEventListRequest,
+  ): Promise<TaskEventListReadDto>
+}
+
+const realTaskDataSource: TaskDataSource = {
+  async getTasks(params) {
+    const response = await apiClient.get<PageDto<TaskListItemReadDto>>(
+      'tasks',
+      { params },
+    )
+    return response.data
+  },
+  async getTask(taskId) {
+    const response = await apiClient.get<TaskReadDto>(taskPath(taskId))
+    return response.data
+  },
+  async getActiveTask(deviceId) {
+    const response = await apiClient.get<ActiveTaskSummaryReadDto>(
+      `tasks/active/${encodeURIComponent(deviceId)}`,
+    )
+    return response.status === 204 ? null : response.data
+  },
+  async getTaskEvents(taskId, params) {
+    const response = await apiClient.get<TaskEventListReadDto>(
+      taskPath(taskId, '/events'),
+      { params },
+    )
+    return response.data
+  },
+}
+
+let taskDataSource = realTaskDataSource
+
+export function configureTaskDataSource(dataSource: TaskDataSource): void {
+  taskDataSource = dataSource
+}
+
+export function resetTaskDataSource(): void {
+  taskDataSource = realTaskDataSource
+}
+
+export function getTasks(
   params: TaskListRequest,
 ): Promise<PageDto<TaskListItemReadDto>> {
-  const response = await apiClient.get<PageDto<TaskListItemReadDto>>('tasks', {
-    params,
-  })
-  return response.data
+  return taskDataSource.getTasks(params)
 }
 
-export async function getTask(taskId: string): Promise<TaskReadDto> {
-  const response = await apiClient.get<TaskReadDto>(taskPath(taskId))
-  return response.data
+export function getTask(taskId: string): Promise<TaskReadDto> {
+  return taskDataSource.getTask(taskId)
 }
 
-export async function getActiveTask(
+export function getActiveTask(
   deviceId: string,
 ): Promise<ActiveTaskSummaryReadDto | null> {
-  const response = await apiClient.get<ActiveTaskSummaryReadDto>(
-    `tasks/active/${encodeURIComponent(deviceId)}`,
-  )
-  return response.status === 204 ? null : response.data
+  return taskDataSource.getActiveTask(deviceId)
 }
 
 export async function getTaskEvents(
@@ -51,9 +91,5 @@ export async function getTaskEvents(
     throw new RangeError('limit 必须是 1 到 200 的整数')
   }
 
-  const response = await apiClient.get<TaskEventListReadDto>(
-    taskPath(taskId, '/events'),
-    { params },
-  )
-  return response.data
+  return taskDataSource.getTaskEvents(taskId, params)
 }

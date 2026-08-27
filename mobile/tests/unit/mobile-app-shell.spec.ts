@@ -144,6 +144,12 @@ describe('MobileAppShell V2', () => {
     expect(
       buttons.every((button) => button.classes('mobile-icon-button')),
     ).toBe(true)
+    expect(wrapper.findAll('.mobile-header-icon')).toHaveLength(2)
+    expect(
+      wrapper
+        .findAll('.mobile-header-icon')
+        .every((icon) => icon.element.tagName === 'IMG'),
+    ).toBe(true)
     expect(wrapper.find('.van-badge--dot').exists()).toBe(false)
 
     await buttons[0]!.trigger('click')

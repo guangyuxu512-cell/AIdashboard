@@ -51,7 +51,6 @@
   min-width: 0;
   padding-top: var(--safe-area-top);
   background: var(--bg-surface-raised);
-  box-shadow: var(--shadow-header);
 }
 
 .mobile-app-shell__main {

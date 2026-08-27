@@ -13,11 +13,14 @@ export type {
   YingdaoProviderStatusDto,
 } from './api/contracts'
 export {
+  configureDeviceDataSource,
   getDevice,
   getDeviceProviderInventories,
   getDevices,
   getDeviceSkillCapabilities,
+  resetDeviceDataSource,
 } from './api/device-api'
+export type { DeviceDataSource } from './api/device-api'
 export {
   formatDeviceDateTime,
   formatRelativeHeartbeat,

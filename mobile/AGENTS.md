@@ -35,7 +35,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Mobile User Authentication 与 Worker Device Token 永久分离，Mobile 禁止使用 Worker Token。
 - 不复制 Desktop 页面或组件后仅修改 CSS；必须按触控、Safe Area、Sheet/Popup 与手机信息密度重新组合。
 - 没有真实复用或业务需求时不建立万能抽象，也不新增 `components/`、`common/`、`helpers/`、`services/`、`libs/`。
-- Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现，且不得把测试 Fixture 或 Mock DataSource 带入生产代码。
+- Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现。稳定视觉验收数据只能经 Development Only Entity DataSource 注入，Production 不得启用或自动回退 Mock。
 - Device 的 `enabled`、Worker Runtime/Presence、Provider Inventory 与 Skill Capability 是独立事实；禁止合并成“设备正常”，也禁止根据心跳时间在 Mobile 重算在线状态。
 - Device Center 当前只读；禁止停用、移除、绑定、运行应用、停止任务、重启 Worker 或修改任何 Capability。
 - 正式 Mobile UI 禁止解释实现；新增页面 Review 必须判断 UI Copy 是否可在不影响用户操作与判断的前提下删除，可以删除就删除。
@@ -51,6 +51,14 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Empty 不写产品设计说明，Placeholder 不解释未来架构。
 - 一个状态原则上只使用一个短句或短标签表达。
 - Review 必须检查 UI Copy 是否可以删除而不影响用户操作；可以删除就删除。
+
+## Visual Development
+
+- Mobile 视觉开发不得依赖真实 Backend 是否在线；需要稳定视觉数据时使用 Development Only Mock DataSource。
+- 禁止在 Page 硬编码 Mock 数据，Mock 与 Real 必须共用同一 Entity、Query、Mapper、Feature、Page 与 UI。
+- 禁止 Production API 失败后自动 Fallback Mock；真实空数据仍展示正式 Empty，真实失败仍进入正式 Error。
+- Production UI 禁止展示 Mock 实现说明；开发模式只允许通过 Console 等非产品界面确认数据源。
+- 人工视觉验收优先使用稳定 Mock Fixture；Real API Contract、Loading、Error 与 Refresh 属于独立验收阶段。
 
 ## 完成标准
 

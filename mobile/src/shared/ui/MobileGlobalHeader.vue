@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { Badge as VanBadge, Icon as VanIcon } from 'vant'
+import { Badge as VanBadge } from 'vant'
 import { computed } from 'vue'
+
+import notificationIconUrl from '@/assets/icons/notification-bell.svg'
+import themeIconUrl from '@/assets/icons/theme-toggle.svg'
 
 const emit = defineEmits<{
   themeToggle: []
@@ -21,9 +24,6 @@ const props = withDefaults(
 const themeActionLabel = computed(() =>
   props.resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
 )
-const themeActionIcon = computed(() =>
-  props.resolvedTheme === 'dark' ? 'closed-eye' : 'bulb-o',
-)
 </script>
 
 <template>
@@ -38,7 +38,7 @@ const themeActionIcon = computed(() =>
         data-testid="theme-toggle"
         @click="emit('themeToggle')"
       >
-        <VanIcon :name="themeActionIcon" aria-hidden="true" />
+        <img class="mobile-header-icon" :src="themeIconUrl" alt="" />
       </button>
       <button
         class="mobile-icon-button mobile-pressable"
@@ -47,7 +47,7 @@ const themeActionIcon = computed(() =>
         @click="emit('notificationClick')"
       >
         <VanBadge :dot="notificationDot">
-          <VanIcon name="bell" aria-hidden="true" />
+          <img class="mobile-header-icon" :src="notificationIconUrl" alt="" />
         </VanBadge>
       </button>
     </div>
@@ -81,5 +81,12 @@ const themeActionIcon = computed(() =>
   flex: none;
   gap: var(--space-1);
   align-items: center;
+}
+
+.mobile-header-icon {
+  display: block;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  object-fit: contain;
 }
 </style>

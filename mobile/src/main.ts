@@ -3,19 +3,25 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
 import App from './App.vue'
+import { configureMobileDataSources } from './app/providers/mobile-data-sources'
 import { createMobileQueryClient } from './app/providers/query-client'
 import router from './app/router'
 import { useThemeStore } from './app/stores/theme'
 import './app/styles/index.css'
 
-const app = createApp(App)
-const pinia = createPinia()
-const queryClient = createMobileQueryClient()
+async function bootstrap(): Promise<void> {
+  await configureMobileDataSources()
 
-app.use(pinia)
-app.use(router)
-app.use(VueQueryPlugin, { queryClient })
+  const app = createApp(App)
+  const pinia = createPinia()
+  const queryClient = createMobileQueryClient()
 
-useThemeStore(pinia).initialize()
+  app.use(pinia)
+  app.use(router)
+  app.use(VueQueryPlugin, { queryClient })
 
-app.mount('#app')
+  useThemeStore(pinia).initialize()
+  app.mount('#app')
+}
+
+void bootstrap()

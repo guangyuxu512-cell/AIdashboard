@@ -127,10 +127,10 @@ p {
   position: absolute;
   inset: var(--space-1);
   content: '';
-  background: var(--bg-subtle);
+  background: var(--bg-surface-raised);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-control);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-icon-button);
 }
 
 .mobile-icon-button:active {
@@ -140,16 +140,12 @@ p {
 .mobile-icon-button:active::before {
   background: var(--bg-surface-pressed);
   border-color: var(--border-default);
-  box-shadow: var(--shadow-card-pressed);
+  box-shadow: var(--shadow-icon-button-pressed);
 }
 
 .mobile-icon-button > * {
   position: relative;
   z-index: 1;
-}
-
-.mobile-icon-button .van-icon {
-  font-size: var(--icon-size-default);
 }
 
 @media (prefers-reduced-motion: reduce) {
