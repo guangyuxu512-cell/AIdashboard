@@ -29,6 +29,7 @@ defineProps<{
       :key="item.key"
       :name="item.key"
       class="mobile-pressable mobile-pressable--control"
+      :data-testid="`mobile-bottom-navigation-${item.key}`"
       :to="item.to"
       :icon="item.icon"
     >
@@ -45,7 +46,10 @@ defineProps<{
 }
 
 .mobile-bottom-navigation :deep(.van-tabbar-item) {
+  flex: 1 1 20%;
+  min-width: 0;
   color: var(--text-tertiary);
+  white-space: nowrap;
 }
 
 .mobile-bottom-navigation :deep(.van-tabbar-item--active) {

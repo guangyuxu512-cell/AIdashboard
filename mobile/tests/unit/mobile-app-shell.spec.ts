@@ -8,6 +8,7 @@ import App from '@/App.vue'
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import {
   MobileAppShell,
+  MobileBottomNavigation,
   MobileDetailHeader,
   MobileGlobalHeader,
 } from '@/shared/ui'
@@ -206,6 +207,7 @@ describe('MobileAppShell V2', () => {
     const tabbar = wrapper.getComponent(VanTabbar)
     const items = wrapper.findAllComponents(VanTabbarItem)
 
+    expect(wrapper.findAllComponents(MobileBottomNavigation)).toHaveLength(1)
     expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
       '思余AI中控台',
     )
@@ -229,6 +231,37 @@ describe('MobileAppShell V2', () => {
       MOBILE_ROUTE_NAMES.shops,
       MOBILE_ROUTE_NAMES.profile,
     ])
+    expect(items.map((item) => item.attributes('data-testid'))).toEqual([
+      'mobile-bottom-navigation-devices',
+      'mobile-bottom-navigation-tasks',
+      'mobile-bottom-navigation-schedules',
+      'mobile-bottom-navigation-shops',
+      'mobile-bottom-navigation-profile',
+    ])
+    expect(items.every((item) => Boolean(item.props('icon')))).toBe(true)
+  })
+
+  it('maps every main and normal detail route to its navigation item', async () => {
+    const { router, wrapper } = await mountAppAt('/devices')
+    const routes = [
+      ['/devices', 'devices'],
+      ['/devices/device-1', 'devices'],
+      ['/tasks', 'tasks'],
+      ['/tasks/task-1', 'tasks'],
+      ['/schedules', 'schedules'],
+      ['/shops', 'shops'],
+      ['/me', 'profile'],
+    ] as const
+
+    for (const [path, activeKey] of routes) {
+      await router.push(path)
+      await flushPromises()
+
+      expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe(
+        activeKey,
+      )
+      expect(wrapper.findAllComponents(MobileBottomNavigation)).toHaveLength(1)
+    }
   })
 
   it('keeps one detail header and the five-entry navigation on device detail', async () => {

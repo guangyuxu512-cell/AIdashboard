@@ -201,6 +201,79 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   const firstTabBox = await tabbarItems.first().boundingBox()
   expect(firstTabBox?.height).toBeGreaterThanOrEqual(44)
 
+  const bottomNavigationGeometry = await page.evaluate(() => {
+    const nav = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-bottom-navigation"]',
+    )!
+    const footer = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-shell-bottom"]',
+    )!
+    const main = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-shell-main"]',
+    )!
+    const items = Array.from(
+      nav.querySelectorAll<HTMLElement>('.van-tabbar-item'),
+    )
+    const boxes = items.map((item) => item.getBoundingClientRect())
+    const iconBoxes = items.map((item) =>
+      item
+        .querySelector<HTMLElement>('.van-tabbar-item__icon')!
+        .getBoundingClientRect(),
+    )
+    const labelBoxes = items.map((item) =>
+      item
+        .querySelector<HTMLElement>('.van-tabbar-item__text')!
+        .getBoundingClientRect(),
+    )
+    const navBox = nav.getBoundingClientRect()
+    const footerBox = footer.getBoundingClientRect()
+    const mainBox = main.getBoundingClientRect()
+    const expectedHeight = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--layout-bottom-nav-height',
+      ),
+    )
+    return {
+      navHeight: navBox.height,
+      expectedHeight,
+      equalWidth:
+        Math.max(...boxes.map((box) => box.width)) -
+          Math.min(...boxes.map((box) => box.width)) <=
+        1,
+      fillsWidth:
+        Math.abs(boxes[0]!.left - navBox.left) <= 1 &&
+        Math.abs(boxes.at(-1)!.right - navBox.right) <= 1,
+      touchTargets: boxes.every((box) => box.height >= 44),
+      iconsAboveLabels: iconBoxes.every(
+        (icon, index) => icon.bottom <= labelBoxes[index]!.top,
+      ),
+      iconSizes: iconBoxes.map((box) => box.width),
+      singleLine: items.every((item) => item.scrollWidth <= item.clientWidth),
+      shellOwned: footer.contains(nav),
+      mainBeforeFooter: mainBox.bottom <= footerBox.top,
+      navNotFixed: getComputedStyle(nav).position !== 'fixed',
+    }
+  })
+  expect(
+    Math.abs(
+      bottomNavigationGeometry.navHeight -
+        bottomNavigationGeometry.expectedHeight,
+    ),
+  ).toBeLessThanOrEqual(1)
+  expect(bottomNavigationGeometry.equalWidth).toBe(true)
+  expect(bottomNavigationGeometry.fillsWidth).toBe(true)
+  expect(bottomNavigationGeometry.touchTargets).toBe(true)
+  expect(bottomNavigationGeometry.iconsAboveLabels).toBe(true)
+  expect(
+    bottomNavigationGeometry.iconSizes.every(
+      (size) => size >= 20 && size <= 24,
+    ),
+  ).toBe(true)
+  expect(bottomNavigationGeometry.singleLine).toBe(true)
+  expect(bottomNavigationGeometry.shellOwned).toBe(true)
+  expect(bottomNavigationGeometry.mainBeforeFooter).toBe(true)
+  expect(bottomNavigationGeometry.navNotFixed).toBe(true)
+
   await page.getByRole('tab', { name: /任务/ }).click()
   await expect(page).toHaveURL(/#\/tasks$/)
   await expect(
@@ -215,14 +288,29 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   await page.getByRole('tab', { name: /计划/ }).click()
   await expect(page).toHaveURL(/#\/schedules$/)
   await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
+  await expect(
+    page.locator('.van-tabbar-item--active').getByText('计划', {
+      exact: true,
+    }),
+  ).toBeVisible()
 
   await page.getByRole('tab', { name: /店铺/ }).click()
   await expect(page).toHaveURL(/#\/shops$/)
   await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
+  await expect(
+    page.locator('.van-tabbar-item--active').getByText('店铺', {
+      exact: true,
+    }),
+  ).toBeVisible()
 
   await page.getByRole('tab', { name: /我的/ }).click()
   await expect(page).toHaveURL(/#\/me$/)
   await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
+  await expect(
+    page.locator('.van-tabbar-item--active').getByText('我的', {
+      exact: true,
+    }),
+  ).toBeVisible()
   await expect(page.locator('body')).not.toContainText(/管理员|假账号|假昵称/)
 
   await page.getByRole('button', { name: '通知' }).click()

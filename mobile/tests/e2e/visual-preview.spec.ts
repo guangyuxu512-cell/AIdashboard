@@ -90,6 +90,121 @@ async function readGlobalHeaderAnatomy(page: Page) {
   })
 }
 
+async function expectBottomNavigation(
+  page: Page,
+  activeNavigation: '设备' | '任务' | '计划' | '店铺' | '我的',
+) {
+  const nav = page.getByTestId('mobile-bottom-navigation')
+  const items = nav.locator('.van-tabbar-item')
+
+  await expect(nav).toBeVisible()
+  await expect(items).toHaveCount(5)
+  await expect(items).toHaveText(['设备', '任务', '计划', '店铺', '我的'])
+  await expect(
+    nav.locator('.van-tabbar-item--active').getByText(activeNavigation, {
+      exact: true,
+    }),
+  ).toBeVisible()
+
+  const geometry = await nav.evaluate((element) => {
+    const footer = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-shell-bottom"]',
+    )!
+    const main = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-shell-main"]',
+    )!
+    const entries = Array.from(
+      element.querySelectorAll<HTMLElement>('.van-tabbar-item'),
+    )
+    const boxes = entries.map((entry) => entry.getBoundingClientRect())
+    const iconBoxes = entries.map((entry) =>
+      entry
+        .querySelector<HTMLElement>('.van-tabbar-item__icon')!
+        .getBoundingClientRect(),
+    )
+    const labelBoxes = entries.map((entry) =>
+      entry
+        .querySelector<HTMLElement>('.van-tabbar-item__text')!
+        .getBoundingClientRect(),
+    )
+    const navBox = element.getBoundingClientRect()
+    const footerBox = footer.getBoundingClientRect()
+    const mainBox = main.getBoundingClientRect()
+    const rootStyle = getComputedStyle(document.documentElement)
+
+    return {
+      navTop: navBox.top,
+      navHeight: navBox.height,
+      expectedHeight: Number.parseFloat(
+        rootStyle.getPropertyValue('--layout-bottom-nav-height'),
+      ),
+      widths: boxes.map((box) => box.width),
+      touchHeights: boxes.map((box) => box.height),
+      iconSizes: iconBoxes.map((box) => ({
+        width: box.width,
+        height: box.height,
+      })),
+      iconsAboveLabels: iconBoxes.every(
+        (icon, index) => icon.bottom <= labelBoxes[index]!.top,
+      ),
+      iconsCentered: iconBoxes.every(
+        (icon, index) =>
+          Math.abs(
+            icon.left +
+              icon.width / 2 -
+              (boxes[index]!.left + boxes[index]!.width / 2),
+          ) <= 1,
+      ),
+      labelsSingleLine: entries.every((entry, index) => {
+        const label = entry.querySelector<HTMLElement>(
+          '.van-tabbar-item__text',
+        )!
+        const labelStyle = getComputedStyle(label)
+        return (
+          label.getClientRects().length === 1 &&
+          labelStyle.whiteSpace === 'nowrap' &&
+          labelBoxes[index]!.width <= boxes[index]!.width
+        )
+      }),
+      fillsWidth:
+        Math.abs(boxes[0]!.left - navBox.left) <= 1 &&
+        Math.abs(boxes[boxes.length - 1]!.right - navBox.right) <= 1,
+      shellOwned: footer.contains(element),
+      mainBeforeFooter: mainBox.bottom <= footerBox.top,
+      navWithinFooter:
+        navBox.top >= footerBox.top && navBox.bottom <= footerBox.bottom,
+      navNotFixed: getComputedStyle(element).position !== 'fixed',
+      noHorizontalOverflow:
+        document.documentElement.scrollWidth <= window.innerWidth,
+    }
+  })
+
+  expect(
+    Math.max(...geometry.widths) - Math.min(...geometry.widths),
+  ).toBeLessThanOrEqual(1)
+  expect(geometry.touchHeights.every((height) => height >= 44)).toBe(true)
+  expect(
+    geometry.iconSizes.every(
+      ({ width, height }) =>
+        width >= 20 && width <= 24 && height >= 20 && height <= 24,
+    ),
+  ).toBe(true)
+  expect(geometry.iconsAboveLabels).toBe(true)
+  expect(geometry.iconsCentered).toBe(true)
+  expect(geometry.labelsSingleLine).toBe(true)
+  expect(geometry.fillsWidth).toBe(true)
+  expect(geometry.shellOwned).toBe(true)
+  expect(geometry.mainBeforeFooter).toBe(true)
+  expect(geometry.navWithinFooter).toBe(true)
+  expect(geometry.navNotFixed).toBe(true)
+  expect(geometry.noHorizontalOverflow).toBe(true)
+  expect(
+    Math.abs(geometry.navHeight - geometry.expectedHeight),
+  ).toBeLessThanOrEqual(1)
+
+  return geometry
+}
+
 async function expectDetailHeader(
   page: Page,
   title: '设备详情' | '任务详情',
@@ -299,6 +414,22 @@ for (const width of viewportWidths) {
         '店铺',
         '我的',
       ])
+      const deviceBottomNavigation = await expectBottomNavigation(page, '设备')
+      const deviceListScroll = page.getByTestId('device-list-scroll')
+      await deviceListScroll.evaluate((element) => {
+        element.scrollTop = 240
+      })
+      await expect
+        .poll(async () => {
+          const currentTop = await page
+            .getByTestId('mobile-bottom-navigation')
+            .evaluate((element) => element.getBoundingClientRect().top)
+          return Math.abs(currentTop - deviceBottomNavigation.navTop)
+        })
+        .toBeLessThanOrEqual(0.5)
+      await deviceListScroll.evaluate((element) => {
+        element.scrollTop = 0
+      })
       await expectNoHorizontalOverflow(page)
       expect(
         await page.evaluate(() => {
@@ -351,6 +482,11 @@ for (const width of viewportWidths) {
         })
         await page.screenshot({
           path: testInfo.outputPath(
+            `mobile-bottom-navigation-device-list-390-${theme}.png`,
+          ),
+        })
+        await page.screenshot({
+          path: testInfo.outputPath(
             `mobile-global-header-device-390-${theme}.png`,
           ),
           clip: { x: 0, y: 0, width: 390, height: 260 },
@@ -362,6 +498,10 @@ for (const width of viewportWidths) {
         .click()
       await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
       await expectDetailHeader(page, '设备详情', '设备')
+      const deviceDetailBottomNavigation = await expectBottomNavigation(
+        page,
+        '设备',
+      )
       await expect(page.getByTestId('device-summary-device')).toContainText(
         '运营',
       )
@@ -423,10 +563,34 @@ for (const width of viewportWidths) {
         '店铺',
         '我的',
       ])
+      const deviceDetailScroll = page.getByRole('region', {
+        name: '设备详情内容',
+      })
+      await deviceDetailScroll.evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+      await expect
+        .poll(async () => {
+          const currentTop = await page
+            .getByTestId('mobile-bottom-navigation')
+            .evaluate((element) => element.getBoundingClientRect().top)
+          return Math.abs(currentTop - deviceDetailBottomNavigation.navTop)
+        })
+        .toBeLessThanOrEqual(0.5)
+      await deviceDetailScroll.evaluate((element) => {
+        element.scrollTop = 0
+      })
       if (width === 390) {
         await page.screenshot({
           path: testInfo.outputPath(`visual-device-detail-390-${theme}.png`),
         })
+        if (theme === 'light') {
+          await page.screenshot({
+            path: testInfo.outputPath(
+              'mobile-bottom-navigation-device-detail-390-light.png',
+            ),
+          })
+        }
         await page.screenshot({
           path: testInfo.outputPath(
             `mobile-detail-header-device-390-${theme}.png`,
@@ -440,6 +604,7 @@ for (const width of viewportWidths) {
       )
       await expect(page.getByTestId('task-detail')).toContainText('订单同步')
       await expectDetailHeader(page, '任务详情', '任务')
+      await expectBottomNavigation(page, '任务')
       if (width === 390 && theme === 'light') {
         await page.screenshot({
           path: testInfo.outputPath('mobile-detail-header-task-390-light.png'),
@@ -455,6 +620,7 @@ for (const width of viewportWidths) {
 
       await page.getByRole('tab', { name: /任务$/ }).click()
       await expect(page).toHaveURL(/#\/tasks$/)
+      await expectBottomNavigation(page, '任务')
       const taskGlobalHeader = await readGlobalHeaderAnatomy(page)
       expect(taskGlobalHeader).toEqual(deviceGlobalHeader)
       await expect(page.getByTestId('task-card')).toHaveCount(5)
