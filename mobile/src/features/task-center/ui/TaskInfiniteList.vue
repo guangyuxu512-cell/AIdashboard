@@ -43,7 +43,12 @@ const emit = defineEmits<{
     </VanEmpty>
   </div>
 
-  <VanPullRefresh v-else :model-value="refreshing" @refresh="emit('refresh')">
+  <VanPullRefresh
+    v-else
+    class="task-list-refresh"
+    :model-value="refreshing"
+    @refresh="emit('refresh')"
+  >
     <VanEmpty
       v-if="tasks.length === 0"
       description="暂无任务"
@@ -83,10 +88,14 @@ const emit = defineEmits<{
 .task-list-state {
   display: grid;
   gap: var(--space-4);
-  min-height: var(--layout-page-state-min-height);
+  min-height: 100%;
   padding: var(--space-4) max(var(--space-4), var(--safe-area-right))
     var(--space-4) max(var(--space-4), var(--safe-area-left));
   align-content: center;
+}
+
+.task-list-refresh {
+  min-height: 100%;
 }
 
 .task-list {

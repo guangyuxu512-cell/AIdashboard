@@ -56,10 +56,7 @@
 .mobile-app-shell__main {
   min-width: 0;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
 
 .mobile-app-shell__main--without-header {

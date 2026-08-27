@@ -1,24 +1,43 @@
 <script setup lang="ts">
-import {
-  Button as VanButton,
-  showToast,
-  Tab as VanTab,
-  Tabs as VanTabs,
-} from 'vant'
-import { ref } from 'vue'
+import { ActionSheet as VanActionSheet, showToast } from 'vant'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import { TASK_STATUSES, TASK_STATUS_META } from '@/entities/task'
 import {
   TaskFilterSheet,
   TaskInfiniteList,
+  type TaskStatusFilter,
   useTaskCenter,
 } from '@/features/task-center'
-import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
+import { MobileListToolbar } from '@/shared/ui'
+
+interface TaskStatusAction {
+  name: string
+  value: TaskStatusFilter
+}
 
 const router = useRouter()
 const filterOpen = ref(false)
+const statusOpen = ref(false)
 const taskCenter = useTaskCenter()
+const statusActions: TaskStatusAction[] = [
+  { name: '全部', value: 'all' },
+  ...TASK_STATUSES.map((status) => ({
+    name: TASK_STATUS_META[status].label,
+    value: status,
+  })),
+]
+const statusLabel = computed(
+  () =>
+    statusActions.find((action) => action.value === taskCenter.status.value)
+      ?.name ?? '全部',
+)
+const totalLabel = computed(() => {
+  const data = taskCenter.query.data.value
+  return data === undefined ? '—' : `${data.pages[0]?.total ?? 0} 个`
+})
 
 function openTask(taskId: string): void {
   void router.push({
@@ -30,54 +49,49 @@ function openTask(taskId: string): void {
 async function refresh(): Promise<void> {
   if (!(await taskCenter.refresh())) showToast('刷新失败')
 }
+
+function selectStatus(action: TaskStatusAction): void {
+  taskCenter.setStatus(action.value)
+  statusOpen.value = false
+}
 </script>
 
 <template>
-  <div class="task-center-page">
-    <div class="task-center-page__tabs">
-      <VanTabs
-        v-model:active="taskCenter.status.value"
-        class="mobile-segmented-tabs"
-        shrink
-        data-testid="status-tabs"
-        @change="taskCenter.setStatus"
-      >
-        <VanTab title="全部" name="all" />
-        <VanTab
-          v-for="status in TASK_STATUSES"
-          :key="status"
-          :title="TASK_STATUS_META[status].label"
-          :name="status"
-        />
-      </VanTabs>
+  <div class="mobile-list-page">
+    <MobileListToolbar
+      title="任务"
+      :meta="totalLabel"
+      :selector-label="statusLabel"
+      :selector-aria-label="`选择任务状态，当前${statusLabel}`"
+      filter-label="筛选"
+      @selector="statusOpen = true"
+      @filter="filterOpen = true"
+    />
+
+    <div class="mobile-list-page__scroll" data-testid="task-list-scroll">
+      <TaskInfiniteList
+        :tasks="taskCenter.tasks.value"
+        :initial-loading="taskCenter.isInitialLoading.value"
+        :initial-error="taskCenter.isInitialError.value"
+        :next-page-error="taskCenter.isNextPageError.value"
+        :refreshing="taskCenter.refreshing.value"
+        :loading-more="taskCenter.query.isFetchingNextPage.value"
+        :has-more="Boolean(taskCenter.query.hasNextPage.value)"
+        @refresh="refresh"
+        @retry="taskCenter.query.refetch"
+        @load-more="taskCenter.loadMore"
+        @retry-load-more="taskCenter.retryLoadMore"
+        @select="openTask"
+      />
     </div>
 
-    <div class="task-center-page__toolbar">
-      <p v-if="taskCenter.query.data.value !== undefined">
-        {{ taskCenter.query.data.value.pages[0]?.total ?? 0 }} 个任务
-      </p>
-      <VanButton
-        icon="filter-o"
-        data-testid="open-filter"
-        @click="filterOpen = true"
-      >
-        筛选
-      </VanButton>
-    </div>
-
-    <TaskInfiniteList
-      :tasks="taskCenter.tasks.value"
-      :initial-loading="taskCenter.isInitialLoading.value"
-      :initial-error="taskCenter.isInitialError.value"
-      :next-page-error="taskCenter.isNextPageError.value"
-      :refreshing="taskCenter.refreshing.value"
-      :loading-more="taskCenter.query.isFetchingNextPage.value"
-      :has-more="Boolean(taskCenter.query.hasNextPage.value)"
-      @refresh="refresh"
-      @retry="taskCenter.query.refetch"
-      @load-more="taskCenter.loadMore"
-      @retry-load-more="taskCenter.retryLoadMore"
-      @select="openTask"
+    <VanActionSheet
+      v-model:show="statusOpen"
+      :actions="statusActions"
+      cancel-text="取消"
+      close-on-click-action
+      safe-area-inset-bottom
+      @select="selectStatus"
     />
 
     <TaskFilterSheet
@@ -87,31 +101,3 @@ async function refresh(): Promise<void> {
     />
   </div>
 </template>
-
-<style scoped>
-.task-center-page {
-  min-height: 100%;
-}
-
-.task-center-page__tabs {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: var(--space-2)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) 0
-    max(var(--layout-page-padding-x), var(--safe-area-left));
-  background: var(--bg-app);
-}
-
-.task-center-page__toolbar {
-  display: flex;
-  min-height: var(--touch-target-min);
-  padding: var(--space-2)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-2)
-    max(var(--layout-page-padding-x), var(--safe-area-left));
-  align-items: center;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  background: var(--bg-app);
-}
-</style>

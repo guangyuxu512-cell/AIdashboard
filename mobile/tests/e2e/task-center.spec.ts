@@ -72,13 +72,13 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
-async function countCardsInsideMainViewport(
+async function countCardsInsideListViewport(
   page: Page,
   selector: string,
 ): Promise<number> {
   return page.locator(selector).evaluateAll((elements) => {
     const main = document
-      .querySelector<HTMLElement>('.mobile-app-shell__main')
+      .querySelector<HTMLElement>('[data-testid="task-list-scroll"]')
       ?.getBoundingClientRect()
     if (!main) return 0
     return elements.filter((element) => {
@@ -422,8 +422,8 @@ async function chooseDatePreset(page: Page, label: string): Promise<void> {
   await picker.locator('.van-picker__confirm').click()
 }
 
-async function scrollMainToBottom(page: Page): Promise<void> {
-  await page.locator('.mobile-app-shell__main').evaluate((element) => {
+async function scrollTaskListToBottom(page: Page): Promise<void> {
+  await page.getByTestId('task-list-scroll').evaluate((element) => {
     element.scrollTop = element.scrollHeight
     element.dispatchEvent(new Event('scroll'))
   })
@@ -437,7 +437,7 @@ async function scrollDevicePopupToBottom(page: Page): Promise<void> {
 }
 
 async function pullToRefresh(page: Page): Promise<void> {
-  const main = page.locator('.mobile-app-shell__main')
+  const main = page.getByTestId('task-list-scroll')
   await main.evaluate((element) => {
     element.scrollTop = 0
   })
@@ -488,7 +488,7 @@ for (const width of viewportWidths) {
         page.locator('.task-list__item').nth(1).locator('.van-progress'),
       ).toHaveCount(0)
       expect(
-        await countCardsInsideMainViewport(page, '.task-list__item'),
+        await countCardsInsideListViewport(page, '.task-list__item'),
       ).toBeGreaterThanOrEqual(4)
 
       const titleStyle = await page
@@ -570,14 +570,35 @@ for (const width of viewportWidths) {
         const tabbar = document
           .querySelector<HTMLElement>('.van-tabbar')
           ?.getBoundingClientRect()
+        const toolbar = document
+          .querySelector<HTMLElement>('.mobile-list-toolbar')
+          ?.getBoundingClientRect()
+        const toolbarChildren = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
+          ),
+        ).map((element) => element.getBoundingClientRect())
         return {
-          tabsLeft: style('.task-center-page__tabs').paddingLeft,
-          tabsRight: style('.task-center-page__tabs').paddingRight,
-          toolbarLeft: style('.task-center-page__toolbar').paddingLeft,
-          toolbarRight: style('.task-center-page__toolbar').paddingRight,
+          headerHeight: style('.mobile-global-header').height,
+          toolbarLeft: style('.mobile-list-toolbar').paddingLeft,
+          toolbarRight: style('.mobile-list-toolbar').paddingRight,
+          toolbarHeight: style('.mobile-list-toolbar').height,
+          selectorHeight: style('[data-testid="mobile-list-selector"]').height,
+          filterHeight: style('[data-testid="mobile-list-filter"]').height,
+          toolbarSingleRow:
+            toolbarChildren.length === 2 &&
+            toolbarChildren.every(
+              (child) =>
+                toolbar &&
+                child.top >= toolbar.top &&
+                child.bottom <= toolbar.bottom,
+            ),
           listLeft: style('.task-list').paddingLeft,
           listRight: style('.task-list').paddingRight,
+          listOverflowY: style('[data-testid="task-list-scroll"]').overflowY,
+          shellMainOverflowY: style('.mobile-app-shell__main').overflowY,
           footerBottom: style('.mobile-app-shell__bottom').paddingBottom,
+          bottomNavHeight: style('.van-tabbar').height,
           tabbarPosition: style('.van-tabbar').position,
           mainBottom: main?.bottom ?? 0,
           footerTop: footer?.top ?? 0,
@@ -586,13 +607,19 @@ for (const width of viewportWidths) {
         }
       })
       expect(layout).toMatchObject({
-        tabsLeft: safeAreaFixture.left,
-        tabsRight: safeAreaFixture.right,
+        headerHeight: '52px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
+        toolbarHeight: '48px',
+        selectorHeight: '44px',
+        filterHeight: '44px',
+        toolbarSingleRow: true,
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
+        listOverflowY: 'auto',
+        shellMainOverflowY: 'hidden',
         footerBottom: safeAreaFixture.bottom,
+        bottomNavHeight: '58px',
       })
       expect(layout.tabbarPosition).not.toBe('fixed')
       expect(layout.mainBottom).toBeLessThanOrEqual(layout.footerTop + 1)
@@ -600,7 +627,7 @@ for (const width of viewportWidths) {
         layout.footerBottomEdge - 23 + 1,
       )
 
-      await page.getByTestId('open-filter').click()
+      await page.getByTestId('mobile-list-filter').click()
       const filter = page.locator('.task-filter-sheet')
       await expect(filter).toBeVisible()
       const filterSafeArea = await filter.evaluate((element) => {
@@ -653,6 +680,7 @@ for (const width of viewportWidths) {
 
       await page.locator('.task-list__item').first().click()
       await expect(page.getByTestId('task-detail')).toBeVisible()
+      await expect(page.locator('.van-nav-bar')).toHaveCSS('height', '50px')
       await expect(page.getByTestId('runtime-events')).toBeVisible()
       const detailFlow = await page.evaluate(() => {
         const currentMessage = document.querySelector<HTMLElement>(
@@ -746,6 +774,88 @@ for (const width of viewportWidths) {
   }
 }
 
+test('20 条以上任务只滚动 Card List，单行 Toolbar 与 Shell 保持原位', async ({
+  page,
+}, testInfo) => {
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setThemeBeforeNavigation(page, 'light')
+  await installMockApi(page)
+  await page.goto('/#/tasks')
+  await expect(page.getByTestId('task-card').first()).toBeVisible()
+  await expect(page.getByTestId('task-card')).toHaveCount(20)
+
+  const readLayout = () =>
+    page.evaluate(() => {
+      const top = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)!.getBoundingClientRect()
+          .top
+      const scroll = document.querySelector<HTMLElement>(
+        '[data-testid="task-list-scroll"]',
+      )!
+      const toolbar = document
+        .querySelector<HTMLElement>('.mobile-list-toolbar')!
+        .getBoundingClientRect()
+      const controls = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
+        ),
+      ).map((element) => element.getBoundingClientRect())
+      return {
+        headerTop: top('[data-testid="mobile-shell-header"]'),
+        toolbarTop: toolbar.top,
+        bottomTop: top('[data-testid="mobile-shell-bottom"]'),
+        firstCardTop: top('[data-testid="task-card"]'),
+        toolbarSingleRow: controls.every(
+          (control) =>
+            control.top >= toolbar.top && control.bottom <= toolbar.bottom,
+        ),
+        listScrollTop: scroll.scrollTop,
+        shellScrollTop: document.querySelector<HTMLElement>(
+          '.mobile-app-shell__main',
+        )!.scrollTop,
+        documentScrollTop: document.scrollingElement?.scrollTop ?? 0,
+      }
+    })
+
+  const before = await readLayout()
+  expect(before.toolbarSingleRow).toBe(true)
+  await page.screenshot({
+    path: testInfo.outputPath('layout-task-390-light-top.png'),
+  })
+  await page.getByTestId('task-list-scroll').evaluate((element) => {
+    element.scrollTop = 320
+    element.dispatchEvent(new Event('scroll'))
+  })
+  await expect
+    .poll(() =>
+      page
+        .getByTestId('task-list-scroll')
+        .evaluate((element) => element.scrollTop),
+    )
+    .toBeGreaterThan(0)
+  const after = await readLayout()
+
+  expect(after.headerTop).toBeCloseTo(before.headerTop, 1)
+  expect(after.toolbarTop).toBeCloseTo(before.toolbarTop, 1)
+  expect(after.bottomTop).toBeCloseTo(before.bottomTop, 1)
+  expect(after.firstCardTop).toBeLessThan(before.firstCardTop)
+  expect(after.toolbarSingleRow).toBe(true)
+  expect(after.shellScrollTop).toBe(0)
+  expect(after.documentScrollTop).toBe(0)
+  await page.screenshot({
+    path: testInfo.outputPath('layout-task-390-light-mid.png'),
+  })
+
+  await scrollTaskListToBottom(page)
+  await expect(page.getByText('专项同步').first()).toBeVisible()
+  await expect(page.getByTestId('mobile-shell-header')).toBeVisible()
+  await expect(page.getByTestId('mobile-list-toolbar')).toBeVisible()
+  await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  expect(consoleErrors).toEqual([])
+})
+
 test('筛选、完整分页、下拉刷新、终态日志补齐与返回形成闭环', async ({
   page,
 }) => {
@@ -756,23 +866,19 @@ test('筛选、完整分页、下拉刷新、终态日志补齐与返回形成�
   await applySafeAreaFixture(page)
 
   await expect(page.getByTestId('task-card').first()).toBeVisible()
-  expect(await page.locator('.van-tab').allTextContents()).toEqual([
-    '全部',
-    '待执行',
-    '执行中',
-    '成功',
-    '失败',
-    '已丢失',
-  ])
+  await page.getByTestId('mobile-list-selector').click()
+  expect(
+    await page.locator('.van-action-sheet__item').allTextContents(),
+  ).toEqual(['全部', '待执行', '执行中', '成功', '失败', '已丢失'])
   const initialRequest = new URL(state.taskListRequests[0] ?? '')
   expect(initialRequest.searchParams.has('created_from')).toBe(true)
   expect(initialRequest.searchParams.has('created_to')).toBe(true)
 
-  await scrollMainToBottom(page)
+  await scrollTaskListToBottom(page)
   await expect(page.getByText('专项同步').first()).toBeVisible()
 
   await page
-    .locator('.van-tab')
+    .locator('.van-action-sheet__item')
     .filter({ hasText: /^失败$/ })
     .click()
   await expect
@@ -782,12 +888,13 @@ test('筛选、完整分页、下拉刷新、终态日志补齐与返回形成�
     })
     .toBe('failed')
   await expect(page.getByText('失败').last()).toBeVisible()
+  await page.getByTestId('mobile-list-selector').click()
   await page
-    .locator('.van-tab')
+    .locator('.van-action-sheet__item')
     .filter({ hasText: /^全部$/ })
     .click()
 
-  await page.getByTestId('open-filter').click()
+  await page.getByTestId('mobile-list-filter').click()
   await chooseDatePreset(page, '全部时间')
   await page.getByTestId('apply-filter').click()
   await expect
@@ -799,7 +906,7 @@ test('筛选、完整分页、下拉刷新、终态日志补齐与返回形成�
     })
     .toEqual([false, false])
 
-  await page.getByTestId('open-filter').click()
+  await page.getByTestId('mobile-list-filter').click()
   const searchInput = page.locator('.task-filter-sheet .van-search input')
   await searchInput.fill('x'.repeat(501))
   await expect(searchInput).toHaveValue('x'.repeat(500))
@@ -868,7 +975,10 @@ test('筛选、完整分页、下拉刷新、终态日志补齐与返回形成�
   await expect(page.getByText('已安全同步 20 个店铺')).toBeVisible()
   await expect(page.getByText('不得展示')).toHaveCount(0)
   await expect(page.getByTestId('runtime-events')).toContainText('#200')
-  await page.getByText('更多信息', { exact: true }).click()
+  await page
+    .getByTestId('task-more-information')
+    .locator('.van-collapse-item__title')
+    .click()
   await expect(page.getByText('任务 ID', { exact: true })).toBeVisible()
   await expect(page.getByText('技能 ID', { exact: true })).toBeVisible()
   await expect(page.getByText('设备 ID', { exact: true })).toBeVisible()
@@ -918,7 +1028,7 @@ test('六种日期预设使用本地自然日半开区间或完全省略日期�
   ] as const
 
   for (const [label, startOffset, endOffset] of presets) {
-    await page.getByTestId('open-filter').click()
+    await page.getByTestId('mobile-list-filter').click()
     await chooseDatePreset(page, label)
     await page.getByTestId('apply-filter').click()
     await expect
@@ -934,7 +1044,7 @@ test('六种日期预设使用本地自然日半开区间或完全省略日期�
       .toEqual({ from: startOfDay(startOffset), to: startOfDay(endOffset) })
   }
 
-  await page.getByTestId('open-filter').click()
+  await page.getByTestId('mobile-list-filter').click()
   await chooseDatePreset(page, '自定义')
   await expect(page.locator('.van-calendar')).toBeVisible()
   await page.locator('.van-calendar__confirm').click()
@@ -948,7 +1058,7 @@ test('六种日期预设使用本地自然日半开区间或完全省略日期�
     })
     .toEqual([true, true])
 
-  await page.getByTestId('open-filter').click()
+  await page.getByTestId('mobile-list-filter').click()
   await chooseDatePreset(page, '全部时间')
   await page.getByTestId('apply-filter').click()
   await expect
@@ -970,7 +1080,7 @@ test('任务和设备下一页错误保留已有数据并提供独立重试', as
   await page.goto('/#/tasks')
   await expect(page.getByTestId('task-card').first()).toBeVisible()
 
-  await scrollMainToBottom(page)
+  await scrollTaskListToBottom(page)
   await expect(page.getByTestId('task-next-page-error')).toBeVisible()
   await expect(page.getByTestId('background-error')).toHaveCount(0)
   await page
@@ -979,7 +1089,7 @@ test('任务和设备下一页错误保留已有数据并提供独立重试', as
     .click()
   await expect(page.getByText('专项同步').first()).toBeVisible()
 
-  await page.getByTestId('open-filter').click()
+  await page.getByTestId('mobile-list-filter').click()
   await page.getByTestId('device-filter').click()
   const devicePopup = page.locator('.task-filter-sheet__device-popup')
   await expect(devicePopup.getByText('设备 1', { exact: true })).toBeVisible()
@@ -1004,6 +1114,17 @@ test('成功空缓存后台失败仍展示空态且不解释刷新机制', async
   await expect(page.getByTestId('background-error')).toHaveCount(0)
   await expect(page.getByTestId('task-empty')).toBeVisible()
   await expect(page.getByTestId('task-error')).toHaveCount(0)
+  await expect(page.getByTestId('mobile-shell-header')).toBeVisible()
+  await expect(page.getByTestId('mobile-list-toolbar')).toBeVisible()
+  await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
+  expect(
+    await page
+      .getByTestId('task-empty')
+      .evaluate(
+        (element) =>
+          element.closest('[data-testid="task-list-scroll"]') !== null,
+      ),
+  ).toBe(true)
 })
 
 test('任务主动刷新失败保留多页缓存并仅提示刷新失败', async ({ page }) => {
@@ -1014,7 +1135,7 @@ test('任务主动刷新失败保留多页缓存并仅提示刷新失败', async
   })
   await page.goto('/#/tasks')
   await expect(page.getByTestId('task-card').first()).toBeVisible()
-  await scrollMainToBottom(page)
+  await scrollTaskListToBottom(page)
   await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(1)
 
   const requestCountBeforeRefresh = state.taskListRequests.length
@@ -1048,13 +1169,13 @@ test('任务刷新进行中阻止下一页并在成功后收敛为第一页', as
   })
   await page.goto('/#/tasks')
   await expect(page.getByTestId('task-card').first()).toBeVisible()
-  await scrollMainToBottom(page)
+  await scrollTaskListToBottom(page)
   await expect(page.getByText('执行任务 21', { exact: true })).toHaveCount(1)
 
   const requestCountBeforeRefresh = state.taskListRequests.length
   await pullToRefresh(page)
   await refreshStarted
-  await scrollMainToBottom(page)
+  await scrollTaskListToBottom(page)
   await page.waitForTimeout(200)
 
   expect(

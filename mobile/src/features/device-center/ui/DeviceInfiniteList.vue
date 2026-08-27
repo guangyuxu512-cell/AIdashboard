@@ -65,7 +65,12 @@ const emit = defineEmits<{
     </VanEmpty>
   </div>
 
-  <VanPullRefresh v-else :model-value="refreshing" @refresh="emit('refresh')">
+  <VanPullRefresh
+    v-else
+    class="device-list-refresh"
+    :model-value="refreshing"
+    @refresh="emit('refresh')"
+  >
     <VanEmpty
       v-if="devices.length === 0"
       description="没有设备"
@@ -103,11 +108,15 @@ const emit = defineEmits<{
 <style scoped>
 .device-list-state {
   display: grid;
-  min-height: var(--layout-page-state-min-height);
+  min-height: 100%;
   gap: var(--space-4);
   padding: var(--space-4) max(var(--space-4), var(--safe-area-right))
     var(--space-4) max(var(--space-4), var(--safe-area-left));
   align-content: center;
+}
+
+.device-list-refresh {
+  min-height: 100%;
 }
 
 .device-list {

@@ -78,7 +78,7 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   await page.goto('/#/devices')
   await applySafeAreaFixture(page)
 
-  await expect(page.getByText('20 台设备', { exact: true })).toBeVisible()
+  await expect(page.getByText('20 台', { exact: true })).toBeVisible()
 
   await expect(page.getByTestId('mobile-global-header')).toContainText(
     '思余AI中控台',

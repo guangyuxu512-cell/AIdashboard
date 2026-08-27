@@ -48,10 +48,10 @@ for (const width of viewportWidths) {
 
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       await expect(page.getByTestId('device-card')).toHaveCount(5)
-      await expect(page.getByTestId('overview-online')).toHaveText('3')
-      await expect(page.getByTestId('overview-running')).toHaveText('1')
-      await expect(page.getByTestId('overview-offline')).toHaveText('1')
-      await expect(page.getByText('5 台设备')).toBeVisible()
+      await expect(page.getByTestId('summary-online')).toHaveText('3')
+      await expect(page.getByTestId('summary-running')).toHaveText('1')
+      await expect(page.getByTestId('summary-offline')).toHaveText('1')
+      await expect(page.getByText('5 台', { exact: true })).toBeVisible()
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('没有设备', { exact: true })).toHaveCount(0)
 

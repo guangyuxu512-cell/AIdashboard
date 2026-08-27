@@ -58,6 +58,55 @@ afterEach(() => {
 })
 
 describe('Device page loading boundaries', () => {
+  it('keeps the Summary and Toolbar mounted while the Device List loads', async () => {
+    featureMocks.center = {
+      devices: ref([]),
+      activeTaskStates: ref({}),
+      overview: ref({
+        dataState: 'loading',
+        loadedCount: 0,
+        onlineCount: null,
+        offlineCount: null,
+        unreportedCount: 0,
+        runningCount: null,
+        activeConfirmedCount: 0,
+        activeUnknownCount: 0,
+        activeBackgroundErrorCount: 0,
+        activeInitialErrorCount: 0,
+        activeState: 'loading',
+      }),
+      total: ref(undefined),
+      isInitialLoading: ref(true),
+      isInitialError: ref(false),
+      isBackgroundError: ref(false),
+      isNextPageError: ref(false),
+      refreshing: ref(false),
+      query: {
+        isFetchingNextPage: ref(false),
+        hasNextPage: ref(false),
+        refetch: vi.fn(),
+      },
+      refresh: vi.fn(),
+      loadMore: vi.fn(),
+      retryLoadMore: vi.fn(),
+    }
+    const router = await createRouterFor('/devices')
+    const wrapper = mount(DeviceCenterPage, {
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="设备总览"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mobile-list-toolbar"]').text()).toBe(
+      '设备—',
+    )
+    expect(wrapper.find('[data-testid="device-loading"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="device-list-scroll"]').exists()).toBe(
+      true,
+    )
+    wrapper.unmount()
+  })
+
   it('renders a successful Device List while Active Task is still loading', async () => {
     featureMocks.center = {
       devices: ref([device]),

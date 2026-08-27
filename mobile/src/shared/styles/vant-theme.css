@@ -57,7 +57,7 @@
   --van-button-radius: var(--radius-control);
   --van-button-plain-background: var(--bg-surface-raised);
 
-  --van-nav-bar-height: var(--layout-header-height);
+  --van-nav-bar-height: var(--layout-detail-header-height);
   --van-nav-bar-background: var(--bg-surface-raised);
   --van-nav-bar-arrow-size: var(--icon-size-small);
   --van-nav-bar-title-font-size: var(--font-size-label);
@@ -65,7 +65,7 @@
   --van-nav-bar-icon-color: var(--color-primary);
   --van-nav-bar-text-color: var(--text-secondary);
 
-  --van-tabbar-height: var(--layout-bottom-height);
+  --van-tabbar-height: var(--layout-bottom-nav-height);
   --van-tabbar-background: var(--bg-surface-raised);
   --van-tabbar-item-font-size: var(--font-size-caption);
   --van-tabbar-item-text-color: var(--text-tertiary);

@@ -52,6 +52,20 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 一个状态原则上只使用一个短句或短标签表达。
 - Review 必须检查 UI Copy 是否可以删除而不影响用户操作；可以删除就删除。
 
+## Mobile Layout
+
+- 一级列表页面必须使用统一 Mobile List Page Pattern。
+- Global Header、Summary、List Toolbar、Bottom Navigation 不得随业务 Card 列表滚动。
+- 列表页面只有业务 List/Grid 区域作为主滚动容器。
+- List Toolbar 统一承担标题、数量、主选择器和筛选。
+- 状态选择与筛选不得无必要占两行。
+- 页面不得自定义 Header、Toolbar 或 Bottom Navigation 高度。
+- Page Horizontal Padding、Section Gap、Card Gap 必须使用统一 Layout Token。
+- Device、Task、Shop、Schedule 等列表卡必须控制文字行数，避免内容撑高。
+- Card 稳定通过结构、Padding 和行数实现，不通过随意固定死高度。
+- 新列表页面优先复用 `MobileSummaryStrip` 和 `MobileListToolbar`。
+- 不得复制 PC 列表或表格布局到 Mobile。
+
 ## Visual Development
 
 - Mobile 视觉开发不得依赖真实 Backend 是否在线；需要稳定视觉数据时使用 Development Only Mock DataSource。

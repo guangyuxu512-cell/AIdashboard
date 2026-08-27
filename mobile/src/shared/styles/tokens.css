@@ -53,16 +53,18 @@
 
   /* Layout */
   --layout-content-max-width: 430px;
-  --layout-header-height: 56px;
-  --layout-bottom-height: 60px;
+  --layout-header-height: 52px;
+  --layout-detail-header-height: 50px;
+  --layout-summary-height: 80px;
+  --layout-toolbar-height: 48px;
+  --layout-bottom-nav-height: 58px;
   --layout-page-padding-x: 16px;
   --layout-page-padding-y: 16px;
-  --layout-section-gap: 20px;
+  --layout-section-gap: 16px;
   --layout-card-gap: 12px;
   --layout-card-padding: 16px;
   --layout-card-row-gap: 8px;
   --layout-readable-max-width: 28rem;
-  --layout-page-state-min-height: 50vh;
   --layout-inline-state-min-height: 96px;
   --overlay-height-medium: min(56dvh, 520px);
   --overlay-height-large: min(70dvh, 620px);

@@ -74,9 +74,9 @@ describe('device center overview', () => {
     expect(overview.onlineCount).toBeNull()
     expect(overview.offlineCount).toBeNull()
     expect(overview.runningCount).toBeNull()
-    expect(wrapper.get('[data-testid="overview-online"]').text()).toBe('—')
-    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('—')
-    expect(wrapper.get('[data-testid="overview-offline"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-online"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('—')
     expect(wrapper.text()).toBe('—在线设备—运行中—离线设备')
     expect(wrapper.get('dl').attributes('aria-busy')).toBe('true')
   })
@@ -89,9 +89,9 @@ describe('device center overview', () => {
     expect(overview.onlineCount).toBeNull()
     expect(overview.offlineCount).toBeNull()
     expect(overview.runningCount).toBeNull()
-    expect(wrapper.get('[data-testid="overview-online"]').text()).toBe('—')
-    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('—')
-    expect(wrapper.get('[data-testid="overview-offline"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-online"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('—')
     expect(wrapper.text()).toBe('—在线设备—运行中—离线设备')
     expect(wrapper.text()).not.toMatch(/统计|加载|已确认|数据/)
   })
@@ -130,7 +130,7 @@ describe('device center overview', () => {
       '离线设备',
     ])
     expect(wrapper.text()).not.toContain('连接状态')
-    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('1')
+    expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('1')
   })
 
   it('keeps all metrics unknown until every Backend page is loaded', () => {
@@ -181,7 +181,7 @@ describe('device center overview', () => {
     expect(overview.runningCount).toBeNull()
     expect(overview.activeConfirmedCount).toBe(1)
     expect(overview.activeUnknownCount).toBe(2)
-    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('—')
     expect(wrapper.text()).not.toMatch(/已确认|统计|当前已加载/)
 
     const allUnknown = summarizeDeviceOverview(devices, {}, 'ready')
@@ -235,7 +235,7 @@ describe('device center overview', () => {
     expect(overview.runningCount).toBe(1)
     expect(overview.activeConfirmedCount).toBe(2)
     expect(overview.activeBackgroundErrorCount).toBe(1)
-    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('1')
+    expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('1')
     expect(wrapper.text()).not.toMatch(/刷新失败|已确认|保留/)
 
     const partialWithBackgroundError = summarizeDeviceOverview(
@@ -256,8 +256,8 @@ describe('device center overview', () => {
     const wrapper = mount(DeviceOverviewCards, { props: { overview } })
 
     expect(overview.activeState).toBe('ready')
-    expect(wrapper.get('[data-testid="overview-online"]').text()).toBe('0')
-    expect(wrapper.get('[data-testid="overview-running"]').text()).toBe('0')
-    expect(wrapper.get('[data-testid="overview-offline"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="summary-online"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('0')
   })
 })
