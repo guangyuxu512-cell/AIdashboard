@@ -23,7 +23,9 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Router 只在 `src/app/router/` 注册；Page 禁止动态注册 Route。
 - 一级业务页必须复用唯一 `MobileAppShell`、品牌 Global Header 与五入口 Bottom Navigation；详情页必须复用统一 Detail Header。Page 只提供 MainContent，禁止自行创建全局 Header、返回栏或 Bottom Nav。
 - Bottom Navigation 固定为“设备、任务、计划、店铺、我的”；未开发入口只能进入统一建设中页，禁止借占位实现假业务、假用户或假通知数据。
-- Device Card 与 Task Card 必须共享同一套 Mobile Card 语言，包括 Surface、Radius、Border、Shadow、Padding、字阶与 Press Feedback；Feature 禁止自建独立卡片视觉体系。
+- Device Card 与 Task Card 必须共享同一套 Mobile Card 语言和 `Leading Icon + 三行 Main Content + Trailing Chevron` 结构；Feature 禁止自建独立卡片视觉体系或万能业务 Card。
+- List Card 的 Title、State/Time 与 Meta 必须保持单行；冻结的是内容槽位与信息层级，具体正式字段可替换，但 Feature 不得为新增字段擅自增加行数。
+- Task Card 不显示 Progress 或 Current Message；执行过程统一进入 Task Detail 的 Runtime Log。
 - 正式 UI 优先移动端信息层级，不复制 PC Table、Drawer、Topbar 或字段表单布局。
 - Apple-like 视觉只通过克制的 Surface、Radius、Spacing、Typography 与 Motion 建立，不依赖大量 Glass、Blur、Glow 或夸张 3D。
 - Touch Press Feedback 是主要交互反馈；Hover 只能辅助预览，不能承载必要状态或操作。
@@ -84,6 +86,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 ## Device Detail Interaction
 
 - 点击 Device Card 必须进入 Device Detail，禁止默认进入 Task Detail。
+- 点击 Task Card 必须进入 Task Detail；Device / Task Card 右侧必须保留详情 Chevron 槽位。
 - 只有明确点击 Device Detail 的 Current Task 时才进入 Task Detail。
 - Device 与 Yingdao Runtime 摘要采用统一双列 Summary Pattern。
 - 正常产品 UI 优先显示 Application/Skill Name，不显示 UUID。

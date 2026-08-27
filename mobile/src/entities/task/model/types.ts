@@ -8,6 +8,7 @@ export interface TaskListItem {
   targetDeviceId: string
   deviceDisplayName: string
   skillId: string
+  skillDisplayName: string | null
   executionName: string
   status: TaskStatusDto
   progress: TaskProgressSummaryReadDto | null

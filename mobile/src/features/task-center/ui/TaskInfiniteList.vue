@@ -67,6 +67,7 @@ const emit = defineEmits<{
           :key="task.taskId"
           type="button"
           class="task-list__item mobile-pressable mobile-pressable--card"
+          :aria-label="`查看任务：${task.executionName}`"
           @click="emit('select', task.taskId)"
         >
           <TaskListCard :task="task" />

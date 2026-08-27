@@ -468,7 +468,7 @@ for (const width of viewportWidths) {
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       await expect(page.getByTestId('device-card')).toHaveCount(20)
       await expect(page.getByTestId('summary-online')).toHaveText('4')
-      await expect(page.getByTestId('summary-running')).toHaveText('0')
+      await expect(page.getByTestId('summary-running')).toHaveText('1')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
       await expect(page.getByText('20台', { exact: true })).toBeVisible()
       await expect(page.getByTestId('mobile-list-selector')).toContainText(
@@ -519,7 +519,7 @@ for (const width of viewportWidths) {
         }
         return {
           brand: read('.mobile-global-header__brand'),
-          cardTitle: read('.device-list-card__heading strong'),
+          cardTitle: read('[data-testid="device-card-name"]'),
           summaryNumber: read('.mobile-summary-strip__value'),
           meta: read('.device-list-card__meta'),
         }
@@ -530,6 +530,27 @@ for (const width of viewportWidths) {
         summaryNumber: '18px/700',
         meta: '12px/400',
       })
+
+      const visualDeviceCards = page.getByTestId('device-card')
+      await expect(
+        visualDeviceCards.nth(0).getByTestId('device-card-status'),
+      ).toHaveText('执行中')
+      await expect(
+        visualDeviceCards.nth(1).getByTestId('device-card-status'),
+      ).toHaveText('空闲')
+      await expect(
+        visualDeviceCards.nth(2).getByTestId('device-card-status'),
+      ).toHaveText('停用')
+      await expect(
+        visualDeviceCards.nth(3).getByTestId('device-card-runtime'),
+      ).toHaveText('离线')
+      await expect(
+        visualDeviceCards.nth(3).getByTestId('device-card-name'),
+      ).toHaveText('客服自动化工作站（华东售后协同中心）')
+      const deviceCardHeights = await visualDeviceCards.evaluateAll((cards) =>
+        cards.slice(0, 5).map((card) => card.getBoundingClientRect().height),
+      )
+      expect(new Set(deviceCardHeights.map(Math.round)).size).toBe(1)
 
       const headerVisual = await page.evaluate(() => {
         const header = document.querySelector<HTMLElement>(
@@ -715,6 +736,11 @@ for (const width of viewportWidths) {
           clip: { x: 0, y: 0, width: 390, height: 260 },
         })
       }
+      if (width === 360 && theme === 'light') {
+        await page.screenshot({
+          path: testInfo.outputPath('visual-device-360-light.png'),
+        })
+      }
 
       await page
         .getByRole('button', { name: '查看设备：运营', exact: true })
@@ -854,6 +880,12 @@ for (const width of viewportWidths) {
       }
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('暂无任务', { exact: true })).toHaveCount(0)
+      await expect(page.locator('.task-list-card .van-progress')).toHaveCount(0)
+      await expect(page.getByText('3 / 5', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('8 / 12', { exact: true })).toHaveCount(0)
+      await expect(
+        page.getByText('正在处理 HuanYu 店铺', { exact: true }),
+      ).toHaveCount(0)
       await expectNoHorizontalOverflow(page)
       await expect(page.getByTestId('mobile-list-toolbar')).toHaveCSS(
         'height',
@@ -863,16 +895,29 @@ for (const width of viewportWidths) {
         'scrollbar-width',
         'none',
       )
-      await expect(
-        page.locator('.task-list-card__heading h2').first(),
-      ).toHaveCSS('font-size', '15px')
-      await expect(
-        page.locator('.task-list-card__heading h2').first(),
-      ).toHaveCSS('font-weight', '600')
+      await expect(page.getByTestId('task-card-name').first()).toHaveCSS(
+        'font-size',
+        '15px',
+      )
+      await expect(page.getByTestId('task-card-name').first()).toHaveCSS(
+        'font-weight',
+        '600',
+      )
+      const taskCardHeights = await page
+        .getByTestId('task-card')
+        .evaluateAll((cards) =>
+          cards.map((card) => card.getBoundingClientRect().height),
+        )
+      expect(new Set(taskCardHeights.map(Math.round)).size).toBe(1)
 
       if (width === 390) {
         await page.screenshot({
           path: testInfo.outputPath(`visual-task-390-${theme}.png`),
+        })
+      }
+      if (width === 360 && theme === 'light') {
+        await page.screenshot({
+          path: testInfo.outputPath('visual-task-360-light.png'),
         })
       }
 

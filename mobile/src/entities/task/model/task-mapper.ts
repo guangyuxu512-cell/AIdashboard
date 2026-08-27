@@ -19,6 +19,7 @@ export function mapTaskListItem(dto: TaskListItemReadDto): TaskListItem {
     targetDeviceId: dto.target_device_id,
     deviceDisplayName: dto.device_display_name,
     skillId: dto.skill_id,
+    skillDisplayName: dto.skill_display_name,
     executionName: resolveExecutionName(dto),
     status: dto.status,
     progress: dto.progress,

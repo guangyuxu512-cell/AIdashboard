@@ -49,10 +49,10 @@ describe('development-only visual data sources', () => {
     expect(response.items.filter((device) => !device.enabled)).toHaveLength(1)
     expect(
       activeTasks.filter((task) => task?.status === 'running'),
-    ).toHaveLength(0)
+    ).toHaveLength(1)
     expect(
       activeTasks.filter((task) => task?.status === 'pending'),
-    ).toHaveLength(1)
+    ).toHaveLength(0)
   })
 
   it('uses the same detail, provider and capability contracts as real mode', async () => {

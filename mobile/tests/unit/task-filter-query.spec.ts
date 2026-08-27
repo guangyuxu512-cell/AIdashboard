@@ -28,6 +28,7 @@ function page(pageNumber: number, ids: string[], total: number): TaskListPage {
       targetDeviceId: 'device-1',
       deviceDisplayName: '设备',
       skillId: 'skill-1',
+      skillDisplayName: '技能',
       executionName: taskId,
       status: 'pending',
       progress: null,

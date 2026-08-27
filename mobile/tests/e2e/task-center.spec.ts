@@ -484,15 +484,17 @@ for (const width of viewportWidths) {
         .boundingBox()
       expect(firstCardBox?.height).toBeGreaterThanOrEqual(44)
       expect(firstCardBox?.height).toBeLessThan(150)
+      await expect(page.locator('.task-list-card .van-progress')).toHaveCount(0)
+      await expect(page.getByText('1 / 30', { exact: true })).toHaveCount(0)
       await expect(
-        page.locator('.task-list__item').nth(1).locator('.van-progress'),
+        page.getByText('正在处理第 1 项', { exact: true }),
       ).toHaveCount(0)
       expect(
         await countCardsInsideListViewport(page, '.task-list__item'),
       ).toBeGreaterThanOrEqual(4)
 
       const titleStyle = await page
-        .locator('.task-list-card__heading h2')
+        .getByTestId('task-card-name')
         .first()
         .evaluate((element) => {
           const style = window.getComputedStyle(element)
@@ -508,17 +510,37 @@ for (const width of viewportWidths) {
         whiteSpace: 'nowrap',
       })
 
-      const compactProgress = await page
-        .locator('.task-list-card .van-progress')
-        .first()
-        .evaluate((element) => ({
-          height: window.getComputedStyle(element).height,
-          expected: window
-            .getComputedStyle(document.documentElement)
-            .getPropertyValue('--progress-height-compact')
-            .trim(),
-        }))
-      expect(compactProgress.height).toBe(compactProgress.expected)
+      const firstTaskCard = page.getByTestId('task-card').first()
+      const cardAnatomy = await firstTaskCard.evaluate((card) => {
+        const box = (testId: string) =>
+          card
+            .querySelector<HTMLElement>(`[data-testid="${testId}"]`)!
+            .getBoundingClientRect()
+        const root = card.getBoundingClientRect()
+        const leading = box('task-card-leading')
+        const content = box('task-card-name')
+        const chevron = box('task-card-chevron')
+        return {
+          leadingLeft: leading.left,
+          leadingRight: leading.right,
+          contentLeft: content.left,
+          contentRight: content.right,
+          chevronLeft: chevron.left,
+          chevronRight: chevron.right,
+          chevronCenterDelta: Math.abs(
+            chevron.top + chevron.height / 2 - (root.top + root.height / 2),
+          ),
+        }
+      })
+      expect(cardAnatomy.leadingLeft).toBeLessThan(cardAnatomy.contentLeft)
+      expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
+        cardAnatomy.contentLeft,
+      )
+      expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
+        cardAnatomy.chevronLeft,
+      )
+      expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
+      expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
 
       const cardSurface = await page
         .locator('.task-list-card')

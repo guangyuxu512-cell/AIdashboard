@@ -149,10 +149,13 @@ function track<T extends VueWrapper>(wrapper: T): T {
   return wrapper
 }
 
-function mountDeviceCard(device: Device): VueWrapper {
+function mountDeviceCard(
+  device: Device,
+  activeTaskState: DeviceActiveTaskState = idleActiveTaskState,
+): VueWrapper {
   return track(
     mount(DeviceListCard, {
-      props: { device, activeTaskState: idleActiveTaskState },
+      props: { device, activeTaskState },
     }),
   )
 }
@@ -186,25 +189,67 @@ describe('device center UI', () => {
   })
 
   it.each([
-    ['online', true, '在线'],
-    ['offline', false, '离线'],
+    {
+      name: 'online idle',
+      connectionStatus: 'online',
+      enabled: true,
+      activeTaskState: idleActiveTaskState,
+      connectionLabel: '在线',
+      primaryStatus: '空闲',
+    },
+    {
+      name: 'online running',
+      connectionStatus: 'online',
+      enabled: true,
+      activeTaskState: { ...idleActiveTaskState, task: runningTask },
+      connectionLabel: '在线',
+      primaryStatus: '执行中',
+    },
+    {
+      name: 'offline idle',
+      connectionStatus: 'offline',
+      enabled: true,
+      activeTaskState: idleActiveTaskState,
+      connectionLabel: '离线',
+      primaryStatus: '空闲',
+    },
+    {
+      name: 'disabled online',
+      connectionStatus: 'online',
+      enabled: false,
+      activeTaskState: { ...idleActiveTaskState, task: runningTask },
+      connectionLabel: '在线',
+      primaryStatus: '停用',
+    },
   ] as const)(
-    'shows %s runtime without mixing enabled=%s into the compact card',
-    async (connectionStatus, enabled, connectionLabel) => {
-      const wrapper = mountDeviceCard({
-        ...baseDevice,
-        enabled,
-        workerRuntime: {
-          ...baseDevice.workerRuntime!,
-          connectionStatus,
+    'renders the $name Device Card facts without merging their semantics',
+    async ({
+      connectionStatus,
+      enabled,
+      activeTaskState,
+      connectionLabel,
+      primaryStatus,
+    }) => {
+      const wrapper = mountDeviceCard(
+        {
+          ...baseDevice,
+          enabled,
+          workerRuntime: {
+            ...baseDevice.workerRuntime!,
+            connectionStatus,
+          },
         },
-      })
+        activeTaskState,
+      )
       await flushPromises()
 
-      expect(wrapper.text()).toContain(connectionLabel)
-      expect(wrapper.text()).not.toMatch(/已启用|已停用/)
+      expect(wrapper.get('[data-testid="device-card-runtime"]').text()).toBe(
+        connectionLabel,
+      )
+      expect(wrapper.get('[data-testid="device-card-status"]').text()).toBe(
+        primaryStatus,
+      )
       expect(wrapper.text()).toContain('1.2.3')
-      expect(wrapper.text()).toContain('空闲')
       expect(wrapper.classes()).toEqual(
         expect.arrayContaining(['mobile-card', 'mobile-press-surface']),
       )
@@ -213,6 +258,12 @@ describe('device center UI', () => {
       )
       expect(wrapper.get('.device-list-card__meta').text()).not.toContain(
         '更新',
+      )
+      expect(wrapper.find('[data-testid="device-card-leading"]').exists()).toBe(
+        true,
+      )
+      expect(wrapper.find('[data-testid="device-card-chevron"]').exists()).toBe(
+        true,
       )
     },
   )
@@ -223,7 +274,22 @@ describe('device center UI', () => {
 
     expect(wrapper.text()).toContain('未上报')
     expect(wrapper.text()).not.toContain('离线')
-    expect(wrapper.text()).toContain('未上报 · Worker —')
+    expect(
+      wrapper
+        .get('[data-testid="device-card-meta"]')
+        .findAll('span')
+        .map((item) => item.text()),
+    ).toEqual(['未上报', '·', 'Worker —'])
+  })
+
+  it('keeps a long Device name in the fixed name slot', () => {
+    const displayName = '客服自动化工作站（华东售后协同中心）'
+    const wrapper = mountDeviceCard({ ...baseDevice, displayName })
+
+    expect(wrapper.get('[data-testid="device-card-name"]').text()).toBe(
+      displayName,
+    )
+    expect(wrapper.findAll('[data-testid^="device-card-"]')).not.toHaveLength(0)
   })
 
   it('makes the whole Device Card one Device Detail entry without a Task entry', async () => {
@@ -245,6 +311,10 @@ describe('device center UI', () => {
       '查看设备：仓库设备',
     )
     expect(wrapper.find('[aria-label^="查看任务："]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('同步订单')
+    expect(wrapper.get('[data-testid="device-card-status"]').text()).toBe(
+      '执行中',
+    )
     await wrapper.get('button').trigger('click')
     expect(wrapper.emitted('selectDevice')).toEqual([['device-1']])
     expect(wrapper.emitted('selectTask')).toBeUndefined()

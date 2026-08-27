@@ -169,7 +169,7 @@ function makeDevice(index: number) {
   return {
     device_id: `device-${index}`,
     display_name: `设备 ${index}`,
-    enabled: index !== 1,
+    enabled: index !== 4,
     location: index === 1 ? '华东仓' : null,
     note: index === 1 ? '主执行设备' : null,
     deleted_at: null,
@@ -550,7 +550,10 @@ for (const width of viewportWidths) {
         (await bellButton.boundingBox())!.x,
       )
       await expect(firstCard).toContainText('在线')
-      await expect(firstCard).toContainText('同步订单')
+      await expect(firstCard.getByTestId('device-card-status')).toHaveText(
+        '执行中',
+      )
+      await expect(firstCard).not.toContainText('同步订单')
       await expect(firstCard).not.toContainText('正在执行订单同步')
       await expect(firstCard.locator('.device-list-card__meta')).toContainText(
         /Worker 1\.0\.1/,
@@ -618,7 +621,7 @@ for (const width of viewportWidths) {
       ).toBe(true)
 
       const titleStyle = await firstCard
-        .locator('.device-list-card__heading strong')
+        .getByTestId('device-card-name')
         .evaluate((element) => {
           const style = window.getComputedStyle(element)
           return {
@@ -632,6 +635,38 @@ for (const width of viewportWidths) {
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       })
+
+      const cardAnatomy = await firstCard.evaluate((card) => {
+        const box = (testId: string) =>
+          card
+            .querySelector<HTMLElement>(`[data-testid="${testId}"]`)!
+            .getBoundingClientRect()
+        const root = card.getBoundingClientRect()
+        const leading = box('device-card-leading')
+        const content = box('device-card-name')
+        const trailing = box('device-card-status')
+        const chevron = box('device-card-chevron')
+        return {
+          leadingLeft: leading.left,
+          leadingRight: leading.right,
+          contentLeft: content.left,
+          contentRight: content.right,
+          trailingLeft: trailing.left,
+          chevronRight: chevron.right,
+          chevronCenterDelta: Math.abs(
+            chevron.top + chevron.height / 2 - (root.top + root.height / 2),
+          ),
+        }
+      })
+      expect(cardAnatomy.leadingLeft).toBeLessThan(cardAnatomy.contentLeft)
+      expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
+        cardAnatomy.contentLeft,
+      )
+      expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
+        cardAnatomy.trailingLeft,
+      )
+      expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
+      expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
 
       const overviewLayout = await page.evaluate(() => {
         const cards = Array.from(

@@ -19,6 +19,7 @@ const task: TaskListItem = {
   targetDeviceId: 'device-1',
   deviceDisplayName: '仓库手机',
   skillId: 'sync-orders',
+  skillDisplayName: '订单同步',
   executionName: '同步订单',
   status: 'running',
   progress: { current: 3, total: 10 },
@@ -64,38 +65,61 @@ const runtimeProps = {
 }
 
 describe('task center UI', () => {
-  it('renders status, safe list progress and current message on a mobile card', () => {
+  it('renders the frozen list anatomy without progress or current message', () => {
     const wrapper = mount(TaskListCard, { props: { task } })
 
-    expect(wrapper.text()).toContain('同步订单')
-    expect(wrapper.text()).toContain('执行中')
-    expect(wrapper.text()).toContain('3 / 10')
-    expect(wrapper.text()).toContain('正在同步')
-    expect(wrapper.classes()).toContain('mobile-card')
-    expect(wrapper.get('.van-progress').attributes('style')).toContain(
-      'var(--progress-height-compact)',
+    expect(wrapper.find('[data-testid="task-card-leading"]').exists()).toBe(
+      true,
     )
+    expect(wrapper.get('[data-testid="task-card-name"]').text()).toBe(
+      '同步订单',
+    )
+    expect(wrapper.get('[data-testid="task-card-state"]').text()).toContain(
+      '执行中',
+    )
+    expect(
+      wrapper
+        .findAll('[data-testid="task-card-tags"] .van-tag')
+        .map((tag) => tag.text()),
+    ).toEqual(['仓库手机', '订单同步'])
+    expect(wrapper.find('[data-testid="task-card-chevron"]').exists()).toBe(
+      true,
+    )
+    expect(wrapper.find('.van-progress').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('3 / 10')
+    expect(wrapper.text()).not.toContain('正在同步')
+    expect(wrapper.classes()).toContain('mobile-card')
   })
 
-  it('omits the whole progress section when structured progress is absent', () => {
+  it('keeps the same three rows when progress and optional skill meta are absent', () => {
     const wrapper = mount(TaskListCard, {
       props: {
-        task: { ...task, progress: null, currentMessage: null },
+        task: {
+          ...task,
+          skillDisplayName: null,
+          progress: null,
+          currentMessage: null,
+        },
       },
     })
 
-    expect(wrapper.find('.task-list-card__progress').exists()).toBe(false)
     expect(wrapper.find('.van-progress').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="task-card-message"]').text()).toBe(
-      '正在执行',
+    expect(
+      wrapper.findAll('[data-testid="task-card-tags"] .van-tag'),
+    ).toHaveLength(1)
+    expect(wrapper.get('[data-testid="task-card-tags"]').text()).toBe(
+      '仓库手机',
     )
   })
 
   it.each([
-    ['failed', '任务执行失败'],
-    ['lost', '任务状态已丢失'],
+    ['pending', '待执行'],
+    ['running', '执行中'],
+    ['success', '成功'],
+    ['failed', '失败'],
+    ['lost', '已丢失'],
   ] as const)(
-    'uses a safe short %s summary instead of spreading an error message',
+    'renders the formal %s status without spreading runtime or error text',
     (status, expected) => {
       const wrapper = mount(TaskListCard, {
         props: {
@@ -108,10 +132,11 @@ describe('task center UI', () => {
         },
       })
 
-      expect(wrapper.get('[data-testid="task-card-message"]').text()).toBe(
+      expect(wrapper.get('[data-testid="task-card-state"]').text()).toContain(
         expected,
       )
       expect(wrapper.text()).not.toContain('INTERNAL_STACK_TRACE')
+      expect(wrapper.find('.van-progress').exists()).toBe(false)
     },
   )
 
