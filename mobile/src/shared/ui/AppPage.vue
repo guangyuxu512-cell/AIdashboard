@@ -1,5 +1,16 @@
+<script setup lang="ts">
+withDefaults(defineProps<{ label?: string }>(), {
+  label: '页面内容',
+})
+</script>
+
 <template>
-  <div class="app-page">
+  <div
+    class="app-page mobile-scroll-container"
+    role="region"
+    :aria-label="label"
+    tabindex="0"
+  >
     <slot />
   </div>
 </template>

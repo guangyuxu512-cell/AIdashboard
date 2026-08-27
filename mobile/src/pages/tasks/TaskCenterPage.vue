@@ -68,7 +68,12 @@ function selectStatus(action: TaskStatusAction): void {
       @filter="filterOpen = true"
     />
 
-    <div class="mobile-list-page__scroll" data-testid="task-list-scroll">
+    <div
+      class="mobile-list-page__scroll mobile-scroll-container"
+      data-testid="task-list-scroll"
+      aria-label="任务列表"
+      tabindex="0"
+    >
       <TaskInfiniteList
         :tasks="taskCenter.tasks.value"
         :initial-loading="taskCenter.isInitialLoading.value"

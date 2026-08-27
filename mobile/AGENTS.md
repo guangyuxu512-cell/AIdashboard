@@ -37,7 +37,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 没有真实复用或业务需求时不建立万能抽象，也不新增 `components/`、`common/`、`helpers/`、`services/`、`libs/`。
 - Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现。稳定视觉验收数据只能经 Development Only Entity DataSource 注入，Production 不得启用或自动回退 Mock。
 - Device 的 `enabled`、Worker Runtime/Presence、Provider Inventory 与 Skill Capability 是独立事实；禁止合并成“设备正常”，也禁止根据心跳时间在 Mobile 重算在线状态。
-- Device Center 当前只读；禁止停用、移除、绑定、运行应用、停止任务、重启 Worker 或修改任何 Capability。
+- Device Center 当前不执行写操作；详情必须保留运行应用、刷新能力与参数配置的正式入口位置，但未接入 Backend 正式 Contract 前禁止发请求或伪造成功。
 - 正式 Mobile UI 禁止解释实现；新增页面 Review 必须判断 UI Copy 是否可在不影响用户操作与判断的前提下删除，可以删除就删除。
 
 ## Mobile UI 文案规则
@@ -65,6 +65,20 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Card 稳定通过结构、Padding 和行数实现，不通过随意固定死高度。
 - 新列表页面优先复用 `MobileSummaryStrip` 和 `MobileListToolbar`。
 - 不得复制 PC 列表或表格布局到 Mobile。
+
+## Stable Mobile Layout Components
+
+- Mobile 一级列表页面使用统一 List Page Pattern。
+- Header、Summary、List Toolbar、Bottom Navigation 不随业务列表滚动。
+- 正式移动端滚动容器默认隐藏可见 Scrollbar，但必须保留触控、滚轮、触控板与键盘滚动。
+- 工具行禁止套独立大 Card。
+- Selector/Filter 的视觉尺寸与 Touch Target 分离。
+- Summary 是信息容器，不设计成大按钮。
+- Device/Task 卡通过结构和行数保持稳定高度。
+- Device Detail 必须预留正式 Primary Action 区，顺序为运行应用、刷新能力、参数配置。
+- Device 业务动作必须复用 Backend 正式 Contract，不建立 Mobile 专属第二套业务链。
+- 尚未接业务 Contract 的操作不得 Fake Success。
+- 新业务页面不得自行定义 Page Padding、Toolbar Height、Summary Height 或 Bottom Navigation Height。
 
 ## Visual Development
 

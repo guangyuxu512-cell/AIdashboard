@@ -31,6 +31,10 @@ function openTask(taskId: string, sourceDeviceId: string): void {
 async function refresh(): Promise<void> {
   if (!(await deviceCenter.refresh())) showToast('刷新失败')
 }
+
+function showFilterPlaceholder(): void {
+  showToast('功能建设中')
+}
 </script>
 
 <template>
@@ -44,9 +48,19 @@ async function refresh(): Promise<void> {
           ? '—'
           : `${deviceCenter.total.value} 台`
       "
+      selector-label="全部"
+      selector-aria-label="设备范围，当前全部"
+      filter-label="筛选"
+      @selector="showFilterPlaceholder"
+      @filter="showFilterPlaceholder"
     />
 
-    <div class="mobile-list-page__scroll" data-testid="device-list-scroll">
+    <div
+      class="mobile-list-page__scroll mobile-scroll-container"
+      data-testid="device-list-scroll"
+      aria-label="设备列表"
+      tabindex="0"
+    >
       <DeviceInfiniteList
         :devices="deviceCenter.devices.value"
         :active-task-states="deviceCenter.activeTaskStates.value"

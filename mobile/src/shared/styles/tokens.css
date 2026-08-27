@@ -31,6 +31,8 @@
 
   /* Touch, icons and progress */
   --touch-target-min: 44px;
+  --control-height-compact: 32px;
+  --control-height-medium: 40px;
   --control-height-default: 44px;
   --control-height-large: 50px;
   --icon-size-small: 16px;
@@ -55,8 +57,8 @@
   --layout-content-max-width: 430px;
   --layout-header-height: 52px;
   --layout-detail-header-height: 50px;
-  --layout-summary-height: 80px;
-  --layout-toolbar-height: 48px;
+  --layout-summary-height: 72px;
+  --layout-toolbar-height: 44px;
   --layout-bottom-nav-height: 58px;
   --layout-page-padding-x: 16px;
   --layout-page-padding-y: 16px;

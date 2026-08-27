@@ -1,7 +1,9 @@
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { MobileListToolbar, MobileSummaryStrip } from '@/shared/ui'
+import { AppPage, MobileListToolbar, MobileSummaryStrip } from '@/shared/ui'
 
 describe('Mobile Layout shared components', () => {
   it('renders two to four summary metrics through one stable surface', () => {
@@ -19,6 +21,9 @@ describe('Mobile Layout shared components', () => {
 
     expect(wrapper.attributes('aria-label')).toBe('设备总览')
     expect(wrapper.get('dl').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('dl').classes()).toContain('mobile-section-surface')
+    expect(wrapper.get('dl').classes()).not.toContain('mobile-card')
+    expect(wrapper.find('button').exists()).toBe(false)
     expect(wrapper.findAll('.mobile-summary-strip__item')).toHaveLength(3)
     expect(wrapper.get('[data-testid="summary-online"]').text()).toBe('3')
     expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('1')
@@ -64,5 +69,42 @@ describe('Mobile Layout shared components', () => {
     await wrapper.get('[data-testid="mobile-list-filter"]').trigger('click')
     expect(wrapper.emitted('selector')).toHaveLength(1)
     expect(wrapper.emitted('filter')).toHaveLength(1)
+    expect(wrapper.findAll('.mobile-list-toolbar__control')).toHaveLength(2)
+  })
+
+  it('centralizes compact layout sizes and hides scrollbars without disabling scroll', () => {
+    const tokens = readFileSync(
+      resolve(process.cwd(), 'src/shared/styles/tokens.css'),
+      'utf8',
+    )
+    const base = readFileSync(
+      resolve(process.cwd(), 'src/shared/styles/base.css'),
+      'utf8',
+    )
+
+    expect(tokens).toContain('--layout-summary-height: 72px')
+    expect(tokens).toContain('--layout-toolbar-height: 44px')
+    expect(tokens).toContain('--control-height-compact: 32px')
+    expect(tokens).toContain('--touch-target-min: 44px')
+    expect(base).toContain('scrollbar-width: none')
+    expect(base).toContain('-ms-overflow-style: none')
+    expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')
+    expect(base).not.toMatch(
+      /\.mobile-scroll-container\s*\{[^}]*overflow:\s*hidden/s,
+    )
+  })
+
+  it('gives Detail content a named keyboard focus entry', () => {
+    const wrapper = mount(AppPage, {
+      props: { label: '设备详情内容' },
+      slots: { default: '<p>详情</p>' },
+    })
+
+    expect(wrapper.attributes()).toMatchObject({
+      role: 'region',
+      'aria-label': '设备详情内容',
+      tabindex: '0',
+    })
+    expect(wrapper.classes()).toContain('mobile-scroll-container')
   })
 })

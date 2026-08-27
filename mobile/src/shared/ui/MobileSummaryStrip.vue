@@ -31,7 +31,7 @@ defineProps({
 <template>
   <section class="mobile-summary-strip" :aria-label="ariaLabel">
     <dl
-      class="mobile-summary-strip__surface mobile-card"
+      class="mobile-summary-strip__surface mobile-section-surface"
       aria-live="polite"
       :aria-busy="busy"
     >

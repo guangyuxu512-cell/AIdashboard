@@ -168,6 +168,17 @@ p {
   -webkit-overflow-scrolling: touch;
 }
 
+.mobile-scroll-container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.mobile-scroll-container::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

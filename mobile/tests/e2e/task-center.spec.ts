@@ -584,7 +584,13 @@ for (const width of viewportWidths) {
           toolbarRight: style('.mobile-list-toolbar').paddingRight,
           toolbarHeight: style('.mobile-list-toolbar').height,
           selectorHeight: style('[data-testid="mobile-list-selector"]').height,
+          selectorVisualHeight: style(
+            '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
+          ).height,
           filterHeight: style('[data-testid="mobile-list-filter"]').height,
+          filterVisualHeight: style(
+            '[data-testid="mobile-list-filter"] .mobile-list-toolbar__control',
+          ).height,
           toolbarSingleRow:
             toolbarChildren.length === 2 &&
             toolbarChildren.every(
@@ -596,6 +602,8 @@ for (const width of viewportWidths) {
           listLeft: style('.task-list').paddingLeft,
           listRight: style('.task-list').paddingRight,
           listOverflowY: style('[data-testid="task-list-scroll"]').overflowY,
+          listScrollbarWidth: style('[data-testid="task-list-scroll"]')
+            .scrollbarWidth,
           shellMainOverflowY: style('.mobile-app-shell__main').overflowY,
           footerBottom: style('.mobile-app-shell__bottom').paddingBottom,
           bottomNavHeight: style('.van-tabbar').height,
@@ -610,13 +618,16 @@ for (const width of viewportWidths) {
         headerHeight: '52px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
-        toolbarHeight: '48px',
+        toolbarHeight: '44px',
         selectorHeight: '44px',
+        selectorVisualHeight: '32px',
         filterHeight: '44px',
+        filterVisualHeight: '32px',
         toolbarSingleRow: true,
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
         listOverflowY: 'auto',
+        listScrollbarWidth: 'none',
         shellMainOverflowY: 'hidden',
         footerBottom: safeAreaFixture.bottom,
         bottomNavHeight: '58px',
@@ -811,28 +822,46 @@ test('20 条以上任务只滚动 Card List，单行 Toolbar 与 Shell 保持原
             control.top >= toolbar.top && control.bottom <= toolbar.bottom,
         ),
         listScrollTop: scroll.scrollTop,
+        listScrollable: scroll.scrollHeight > scroll.clientHeight,
+        scrollbarWidth: window.getComputedStyle(scroll).scrollbarWidth,
         shellScrollTop: document.querySelector<HTMLElement>(
           '.mobile-app-shell__main',
         )!.scrollTop,
         documentScrollTop: document.scrollingElement?.scrollTop ?? 0,
+        documentScrollable:
+          (document.scrollingElement?.scrollHeight ?? 0) >
+          (document.scrollingElement?.clientHeight ?? 0),
       }
     })
 
   const before = await readLayout()
   expect(before.toolbarSingleRow).toBe(true)
+  expect(before.listScrollable).toBe(true)
+  expect(before.scrollbarWidth).toBe('none')
+  expect(before.documentScrollable).toBe(false)
+  const taskScroll = page.getByTestId('task-list-scroll')
+  await taskScroll.focus()
+  await page.keyboard.press('PageDown')
+  await expect
+    .poll(() => taskScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+  await page.waitForTimeout(500)
+  await taskScroll.evaluate((element) => {
+    element.scrollTop = 0
+    element.blur()
+  })
+  await expect
+    .poll(() => taskScroll.evaluate((element) => element.scrollTop))
+    .toBe(0)
   await page.screenshot({
     path: testInfo.outputPath('layout-task-390-light-top.png'),
   })
-  await page.getByTestId('task-list-scroll').evaluate((element) => {
+  await taskScroll.evaluate((element) => {
     element.scrollTop = 320
     element.dispatchEvent(new Event('scroll'))
   })
   await expect
-    .poll(() =>
-      page
-        .getByTestId('task-list-scroll')
-        .evaluate((element) => element.scrollTop),
-    )
+    .poll(() => taskScroll.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0)
   const after = await readLayout()
 

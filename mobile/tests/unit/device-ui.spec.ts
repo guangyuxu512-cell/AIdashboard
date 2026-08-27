@@ -14,6 +14,7 @@ import {
   ActiveTaskSummary,
   DeviceInfiniteList,
   DeviceListCard,
+  DevicePrimaryActions,
   DeviceProviderDetails,
   DeviceProviderSection,
   DeviceSkillDetails,
@@ -160,6 +161,27 @@ describe('device center UI', () => {
   afterEach(async () => {
     for (const wrapper of wrappers.splice(0)) wrapper.unmount()
     await flushPromises()
+  })
+
+  it('exposes a one-plus-two Device action contract without fake success', async () => {
+    const wrapper = track(mount(DevicePrimaryActions))
+    const buttons = wrapper.findAll('button')
+
+    expect(buttons.map((button) => button.text())).toEqual([
+      '运行应用',
+      '刷新能力',
+      '参数配置',
+    ])
+    await wrapper.get('[data-testid="device-action-run"]').trigger('click')
+    await wrapper.get('[data-testid="device-action-refresh"]').trigger('click')
+    await wrapper
+      .get('[data-testid="device-action-configure"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('runApplication')).toHaveLength(1)
+    expect(wrapper.emitted('refreshCapability')).toHaveLength(1)
+    expect(wrapper.emitted('configureParameters')).toHaveLength(1)
+    expect(wrapper.text()).not.toMatch(/成功|已启动|已刷新|已保存/)
   })
 
   it('renders enabled and connection facts as independent tags', () => {

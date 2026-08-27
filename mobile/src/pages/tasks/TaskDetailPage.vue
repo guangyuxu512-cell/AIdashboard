@@ -85,7 +85,7 @@ const deviceText = computed(() => {
 </script>
 
 <template>
-  <AppPage class="task-detail-page">
+  <AppPage class="task-detail-page" label="任务详情内容">
     <div v-if="taskQuery.isLoading.value" data-testid="detail-loading">
       <VanSkeleton title :row="8" />
     </div>

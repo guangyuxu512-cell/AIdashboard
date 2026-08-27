@@ -556,9 +556,14 @@ for (const width of viewportWidths) {
         /Worker 1\.0\.1/,
       )
       await expect(page.getByText('8 台', { exact: true })).toBeVisible()
+      await expect(page.getByTestId('mobile-list-selector')).toContainText(
+        '全部',
+      )
+      await expect(page.getByTestId('mobile-list-filter')).toContainText('筛选')
       await expect(page.getByTestId('summary-online')).toHaveText('6')
       await expect(page.getByTestId('summary-running')).toHaveText('1')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
+      await expect(page.locator('.mobile-summary-strip button')).toHaveCount(0)
       await expect
         .poll(
           () =>
@@ -677,7 +682,8 @@ for (const width of viewportWidths) {
                 document.querySelector<HTMLElement>(selector)!,
               ).boxShadow,
           ),
-          expectedSurfaceBackground: tokenColor('--bg-surface-raised'),
+          expectedSummaryBackground: tokenColor('--bg-surface'),
+          expectedCardBackground: tokenColor('--bg-surface-raised'),
           expectedSurfaceShadow: (() => {
             const probe = document.createElement('span')
             probe.style.boxShadow = 'var(--shadow-card)'
@@ -697,11 +703,11 @@ for (const width of viewportWidths) {
         ),
       ).toBe(true)
       expect(overviewLayout.surfaceBackgrounds).toEqual([
-        overviewLayout.expectedSurfaceBackground,
-        overviewLayout.expectedSurfaceBackground,
+        overviewLayout.expectedSummaryBackground,
+        overviewLayout.expectedCardBackground,
       ])
       expect(overviewLayout.surfaceShadows).toEqual([
-        overviewLayout.expectedSurfaceShadow,
+        'none',
         overviewLayout.expectedSurfaceShadow,
       ])
 
@@ -760,15 +766,38 @@ for (const width of viewportWidths) {
           if (!element) throw new Error(`未找到布局节点：${selector}`)
           return window.getComputedStyle(element)
         }
+        const toolbar = document
+          .querySelector<HTMLElement>('.mobile-list-toolbar')!
+          .getBoundingClientRect()
+        const toolbarChildren = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
+          ),
+        ).map((element) => element.getBoundingClientRect())
         return {
           headerHeight: style('.mobile-global-header').height,
           summaryHeight: style('.mobile-summary-strip').height,
           toolbarLeft: style('.mobile-list-toolbar').paddingLeft,
           toolbarRight: style('.mobile-list-toolbar').paddingRight,
           toolbarHeight: style('.mobile-list-toolbar').height,
+          selectorTouchHeight: style('[data-testid="mobile-list-selector"]')
+            .height,
+          selectorVisualHeight: style(
+            '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
+          ).height,
+          filterTouchHeight: style('[data-testid="mobile-list-filter"]').height,
+          filterVisualHeight: style(
+            '[data-testid="mobile-list-filter"] .mobile-list-toolbar__control',
+          ).height,
+          toolbarSingleRow: toolbarChildren.every(
+            (child) =>
+              child.top >= toolbar.top && child.bottom <= toolbar.bottom,
+          ),
           listLeft: style('.device-list').paddingLeft,
           listRight: style('.device-list').paddingRight,
           listOverflowY: style('[data-testid="device-list-scroll"]').overflowY,
+          listScrollbarWidth: style('[data-testid="device-list-scroll"]')
+            .scrollbarWidth,
           shellMainOverflowY: style('.mobile-app-shell__main').overflowY,
           footerBottom: style('.mobile-app-shell__bottom').paddingBottom,
           bottomNavHeight: style('.van-tabbar').height,
@@ -777,13 +806,19 @@ for (const width of viewportWidths) {
       })
       expect(layout).toMatchObject({
         headerHeight: '52px',
-        summaryHeight: '80px',
+        summaryHeight: '72px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
-        toolbarHeight: '48px',
+        toolbarHeight: '44px',
+        selectorTouchHeight: '44px',
+        selectorVisualHeight: '32px',
+        filterTouchHeight: '44px',
+        filterVisualHeight: '32px',
+        toolbarSingleRow: true,
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
         listOverflowY: 'auto',
+        listScrollbarWidth: 'none',
         shellMainOverflowY: 'hidden',
         footerBottom: safeAreaFixture.bottom,
         bottomNavHeight: '58px',
@@ -793,6 +828,18 @@ for (const width of viewportWidths) {
 
       await mainButton.click()
       await expect(page.getByTestId('device-detail')).toBeVisible()
+      await expect(page.getByTestId('device-primary-actions')).toContainText(
+        '运行应用刷新能力参数配置',
+      )
+      for (const action of [
+        'device-action-run',
+        'device-action-refresh',
+        'device-action-configure',
+      ]) {
+        expect(
+          (await page.getByTestId(action).boundingBox())?.height,
+        ).toBeGreaterThanOrEqual(44)
+      }
       await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
       await expect(page.locator('.van-nav-bar')).toHaveCSS('height', '50px')
       await expect(page.getByTestId('provider-inventory')).toContainText('就绪')
@@ -808,6 +855,9 @@ for (const width of viewportWidths) {
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
           '.device-detail-page__summary',
+          '[data-testid="device-primary-actions"]',
+          '[data-testid="device-current-task"]',
+          '[data-testid="device-runtime-summary"]',
           '.device-provider-section',
           '.device-skill-summary',
         ]
@@ -846,9 +896,15 @@ for (const width of viewportWidths) {
         detailSurfaces.expectedCardBackground,
         detailSurfaces.expectedSectionBackground,
         detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedSectionBackground,
       ])
       expect(detailSurfaces.shadows).toEqual([
         detailSurfaces.expectedCardShadow,
+        'none',
+        'none',
+        'none',
         'none',
         'none',
       ])
@@ -866,6 +922,21 @@ for (const width of viewportWidths) {
         await page.screenshot({
           path: testInfo.outputPath('device-detail-390-light.png'),
         })
+        const requestCountBeforeActions = state.methods.length
+        for (const action of [
+          'device-action-run',
+          'device-action-refresh',
+          'device-action-configure',
+        ]) {
+          await page.getByTestId(action).click()
+          await expect(
+            page.getByText('功能建设中', { exact: true }).last(),
+          ).toBeVisible()
+        }
+        expect(state.methods).toHaveLength(requestCountBeforeActions)
+        await expect(page.locator('body')).not.toContainText(
+          /应用已启动|能力已刷新|参数已保存/,
+        )
       }
       await moreInformation.getByText('更多信息', { exact: true }).click()
       await expect(
@@ -879,12 +950,38 @@ for (const width of viewportWidths) {
         .locator('.app-page')
         .evaluate((element) => {
           const style = window.getComputedStyle(element)
-          return { left: style.paddingLeft, right: style.paddingRight }
+          return {
+            left: style.paddingLeft,
+            right: style.paddingRight,
+            scrollbarWidth: style.scrollbarWidth,
+          }
         })
       expect(detailSafeArea).toEqual({
         left: safeAreaFixture.left,
         right: safeAreaFixture.right,
+        scrollbarWidth: 'none',
       })
+      if (width === 390 && theme === 'light') {
+        const detailScroll = page.getByRole('region', {
+          name: '设备详情内容',
+        })
+        await detailScroll.evaluate((element) => {
+          element.scrollTop = 0
+        })
+        await detailScroll.focus()
+        await page.keyboard.press('PageDown')
+        await expect
+          .poll(() => detailScroll.evaluate((element) => element.scrollTop))
+          .toBeGreaterThan(0)
+        await page.waitForTimeout(500)
+        await detailScroll.evaluate((element) => {
+          element.scrollTop = 0
+          element.blur()
+        })
+        await expect
+          .poll(() => detailScroll.evaluate((element) => element.scrollTop))
+          .toBe(0)
+      }
       await scrollDetailToBottom(page)
       await expectNoHorizontalOverflow(page)
 
@@ -933,27 +1030,45 @@ test('20 条以上设备只滚动 Card List，固定区域保持原位', async (
         bottomTop: top('[data-testid="mobile-shell-bottom"]'),
         firstCardTop: top('[data-testid="device-card"]'),
         listScrollTop: scroll.scrollTop,
+        listScrollable: scroll.scrollHeight > scroll.clientHeight,
+        scrollbarWidth: window.getComputedStyle(scroll).scrollbarWidth,
         shellScrollTop: document.querySelector<HTMLElement>(
           '.mobile-app-shell__main',
         )!.scrollTop,
         documentScrollTop: document.scrollingElement?.scrollTop ?? 0,
+        documentScrollable:
+          (document.scrollingElement?.scrollHeight ?? 0) >
+          (document.scrollingElement?.clientHeight ?? 0),
       }
     })
 
   const before = await readLayout()
+  expect(before.listScrollable).toBe(true)
+  expect(before.scrollbarWidth).toBe('none')
+  expect(before.documentScrollable).toBe(false)
+  const deviceScroll = page.getByTestId('device-list-scroll')
+  await deviceScroll.focus()
+  await page.keyboard.press('PageDown')
+  await expect
+    .poll(() => deviceScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+  await page.waitForTimeout(500)
+  await deviceScroll.evaluate((element) => {
+    element.scrollTop = 0
+    element.blur()
+  })
+  await expect
+    .poll(() => deviceScroll.evaluate((element) => element.scrollTop))
+    .toBe(0)
   await page.screenshot({
     path: testInfo.outputPath('layout-device-390-light-top.png'),
   })
-  await page.getByTestId('device-list-scroll').evaluate((element) => {
+  await deviceScroll.evaluate((element) => {
     element.scrollTop = 320
     element.dispatchEvent(new Event('scroll'))
   })
   await expect
-    .poll(() =>
-      page
-        .getByTestId('device-list-scroll')
-        .evaluate((element) => element.scrollTop),
-    )
+    .poll(() => deviceScroll.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0)
   const after = await readLayout()
 
@@ -1253,11 +1368,12 @@ test('未上报 Runtime 与离线是不同事实', async ({ page }) => {
 
   await page.goto('/#/devices/device-2')
   await expect(page.getByTestId('device-detail')).toContainText('离线')
+  await expect(page.getByTestId('device-detail')).toContainText('已启用')
   await page
     .getByTestId('device-more-information')
     .getByText('更多信息', { exact: true })
     .click()
-  await expect(page.getByTestId('device-more-information')).toContainText(
+  await expect(page.getByTestId('device-more-information')).not.toContainText(
     '已启用',
   )
 })

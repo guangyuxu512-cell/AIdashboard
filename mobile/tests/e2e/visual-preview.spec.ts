@@ -52,6 +52,10 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('summary-running')).toHaveText('1')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
       await expect(page.getByText('5 台', { exact: true })).toBeVisible()
+      await expect(page.getByTestId('mobile-list-selector')).toContainText(
+        '全部',
+      )
+      await expect(page.getByTestId('mobile-list-filter')).toContainText('筛选')
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('没有设备', { exact: true })).toHaveCount(0)
 
@@ -114,6 +118,35 @@ for (const width of viewportWidths) {
         '我的',
       ])
       await expectNoHorizontalOverflow(page)
+      expect(
+        await page.evaluate(() => {
+          const style = (selector: string) =>
+            window.getComputedStyle(
+              document.querySelector<HTMLElement>(selector)!,
+            )
+          const scroll = document.querySelector<HTMLElement>(
+            '[data-testid="device-list-scroll"]',
+          )!
+          return {
+            summaryHeight: style('.mobile-summary-strip').height,
+            toolbarHeight: style('.mobile-list-toolbar').height,
+            selectorVisualHeight: style(
+              '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
+            ).height,
+            scrollbarWidth: style('[data-testid="device-list-scroll"]')
+              .scrollbarWidth,
+            scrollable: scroll.scrollHeight > scroll.clientHeight,
+            documentScrollTop: document.scrollingElement?.scrollTop ?? 0,
+          }
+        }),
+      ).toEqual({
+        summaryHeight: '72px',
+        toolbarHeight: '44px',
+        selectorVisualHeight: '32px',
+        scrollbarWidth: 'none',
+        scrollable: true,
+        documentScrollTop: 0,
+      })
 
       if (width === 390) {
         await page.screenshot({
@@ -132,6 +165,14 @@ for (const width of viewportWidths) {
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('暂无任务', { exact: true })).toHaveCount(0)
       await expectNoHorizontalOverflow(page)
+      await expect(page.getByTestId('mobile-list-toolbar')).toHaveCSS(
+        'height',
+        '44px',
+      )
+      await expect(page.getByTestId('task-list-scroll')).toHaveCSS(
+        'scrollbar-width',
+        'none',
+      )
 
       if (width === 390) {
         await page.screenshot({
@@ -160,6 +201,52 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await page.getByRole('button', { name: '查看设备：运营' }).click()
   await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
   await expect(page.getByTestId('device-detail')).toContainText('运营')
+  await expect(page.getByTestId('device-primary-actions')).toContainText(
+    '运行应用刷新能力参数配置',
+  )
+  await expect(page.getByTestId('device-current-task')).toContainText(
+    '订单同步',
+  )
+  await expect(
+    page.getByRole('region', { name: '设备详情内容' }),
+  ).toHaveAttribute('tabindex', '0')
+  expect(
+    await page.evaluate(() => ({
+      primary: window.getComputedStyle(
+        document.querySelector<HTMLElement>(
+          '.device-primary-actions__visual--primary',
+        )!,
+      ).height,
+      secondary: window.getComputedStyle(
+        document.querySelector<HTMLElement>(
+          '.device-primary-actions__visual--secondary',
+        )!,
+      ).height,
+      touch: document
+        .querySelector<HTMLElement>('[data-testid="device-action-run"]')!
+        .getBoundingClientRect().height,
+      primaryWiderThanSecondary:
+        document
+          .querySelector<HTMLElement>(
+            '.device-primary-actions__visual--primary',
+          )!
+          .getBoundingClientRect().width >
+        document
+          .querySelector<HTMLElement>(
+            '.device-primary-actions__visual--secondary',
+          )!
+          .getBoundingClientRect().width,
+      scrollbarWidth: window.getComputedStyle(
+        document.querySelector<HTMLElement>('.app-page')!,
+      ).scrollbarWidth,
+    })),
+  ).toEqual({
+    primary: '44px',
+    secondary: '40px',
+    touch: 44,
+    primaryWiderThanSecondary: true,
+    scrollbarWidth: 'none',
+  })
   await expect(page.getByTestId('provider-inventory')).toContainText('就绪')
   await expect(page.getByTestId('capability-summary')).toContainText('业务')
   await page.screenshot({

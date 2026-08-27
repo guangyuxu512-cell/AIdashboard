@@ -43,18 +43,26 @@ const emit = defineEmits<{
         data-testid="mobile-list-selector"
         @click="emit('selector')"
       >
-        <span>{{ selectorLabel }}</span>
-        <VanIcon name="arrow-down" aria-hidden="true" />
+        <span class="mobile-list-toolbar__control">
+          <span class="mobile-list-toolbar__control-label">
+            {{ selectorLabel }}
+          </span>
+          <VanIcon name="arrow-down" aria-hidden="true" />
+        </span>
       </VanButton>
       <VanButton
         v-if="filterLabel"
         class="mobile-list-toolbar__action"
-        icon="filter-o"
         :aria-label="filterAriaLabel || filterLabel"
         data-testid="mobile-list-filter"
         @click="emit('filter')"
       >
-        {{ filterLabel }}
+        <span class="mobile-list-toolbar__control">
+          <VanIcon name="filter-o" aria-hidden="true" />
+          <span class="mobile-list-toolbar__control-label">
+            {{ filterLabel }}
+          </span>
+        </span>
       </VanButton>
     </div>
   </div>
@@ -109,22 +117,42 @@ const emit = defineEmits<{
 
 .mobile-list-toolbar__action {
   height: var(--touch-target-min);
-  padding-inline: var(--space-2);
+  padding: 0;
   color: var(--text-secondary);
-  background: var(--bg-surface);
-  border-color: var(--border-subtle);
+  background: transparent;
+  border: 0;
 }
 
 .mobile-list-toolbar__selector {
   max-width: calc(var(--touch-target-min) + var(--touch-target-min));
 }
 
-.mobile-list-toolbar__selector :deep(.van-button__content) {
+.mobile-list-toolbar__action :deep(.van-button__content) {
+  width: 100%;
   min-width: 0;
-  gap: var(--space-1);
 }
 
-.mobile-list-toolbar__selector span {
+.mobile-list-toolbar__control {
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height-compact);
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-control);
+}
+
+.mobile-list-toolbar__action:active .mobile-list-toolbar__control {
+  background: var(--bg-surface-pressed);
+  border-color: var(--border-default);
+}
+
+.mobile-list-toolbar__control-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
