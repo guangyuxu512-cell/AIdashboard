@@ -58,7 +58,7 @@ const themeActionLabel = computed(() =>
 .mobile-global-header {
   display: flex;
   min-width: 0;
-  min-height: var(--layout-header-height);
+  height: var(--layout-header-height);
   align-items: center;
   justify-content: space-between;
   padding-right: max(var(--layout-page-padding-x), var(--safe-area-right));

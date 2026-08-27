@@ -36,6 +36,60 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function readGlobalHeaderAnatomy(page: Page) {
+  return page.evaluate(() => {
+    const header = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-global-header"]',
+    )!
+    const shellHeader = document.querySelector<HTMLElement>(
+      '[data-testid="mobile-shell-header"]',
+    )!
+    const brand = header.querySelector<HTMLElement>(
+      '.mobile-global-header__brand',
+    )!
+    const actions = header.querySelector<HTMLElement>(
+      '.mobile-global-header__actions',
+    )!
+    const buttons = Array.from(
+      actions.querySelectorAll<HTMLButtonElement>('button'),
+    )
+    const icons = Array.from(actions.querySelectorAll<HTMLImageElement>('img'))
+    const headerBox = header.getBoundingClientRect()
+    const brandBox = brand.getBoundingClientRect()
+    const actionsBox = actions.getBoundingClientRect()
+    const buttonBoxes = buttons.map((button) => button.getBoundingClientRect())
+    const rootStyle = window.getComputedStyle(document.documentElement)
+
+    return {
+      brandText: brand.textContent?.trim() ?? '',
+      headerHeight: headerBox.height,
+      expectedHeaderHeight: Number.parseFloat(
+        rootStyle.getPropertyValue('--layout-header-height'),
+      ),
+      brandBeforeActions: brandBox.right <= actionsBox.left,
+      actionLabels: buttons.map((button) => button.getAttribute('aria-label')),
+      themeBeforeBell: buttonBoxes[0]!.left < buttonBoxes[1]!.left,
+      buttonSizes: buttonBoxes.map(({ width, height }) => ({ width, height })),
+      actionGap: buttonBoxes[1]!.left - buttonBoxes[0]!.right,
+      iconSizes: icons.map((icon) => {
+        const box = icon.getBoundingClientRect()
+        return { width: box.width, height: box.height }
+      }),
+      iconSourcesValid: icons.every(
+        (icon) =>
+          (icon.currentSrc.includes('.svg') ||
+            icon.currentSrc.startsWith('data:image/svg+xml')) &&
+          icon.naturalWidth > 0,
+      ),
+      borderBottomWidth: window.getComputedStyle(header).borderBottomWidth,
+      shellBorderBottomWidth:
+        window.getComputedStyle(shellHeader).borderBottomWidth,
+      boxShadow: window.getComputedStyle(header).boxShadow,
+      shellBoxShadow: window.getComputedStyle(shellHeader).boxShadow,
+    }
+  })
+}
+
 async function expectDetailHeader(
   page: Page,
   title: '设备详情' | '任务详情',
@@ -215,6 +269,29 @@ for (const width of viewportWidths) {
       expect((await themeButton.boundingBox())!.x).toBeLessThan(
         (await bellButton.boundingBox())!.x,
       )
+      const deviceGlobalHeader = await readGlobalHeaderAnatomy(page)
+      expect(deviceGlobalHeader.brandText).toBe('思余AI中控台')
+      expect(deviceGlobalHeader.headerHeight).toBe(
+        deviceGlobalHeader.expectedHeaderHeight,
+      )
+      expect(deviceGlobalHeader.brandBeforeActions).toBe(true)
+      expect(deviceGlobalHeader.actionLabels).toEqual([
+        theme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
+        '通知',
+      ])
+      expect(deviceGlobalHeader.themeBeforeBell).toBe(true)
+      expect(deviceGlobalHeader.buttonSizes).toEqual([
+        { width: 44, height: 44 },
+        { width: 44, height: 44 },
+      ])
+      expect(deviceGlobalHeader.iconSizes[0]).toEqual(
+        deviceGlobalHeader.iconSizes[1],
+      )
+      expect(deviceGlobalHeader.iconSourcesValid).toBe(true)
+      expect(deviceGlobalHeader.borderBottomWidth).toBe('0px')
+      expect(deviceGlobalHeader.shellBorderBottomWidth).toBe('0px')
+      expect(deviceGlobalHeader.boxShadow).toBe('none')
+      expect(deviceGlobalHeader.shellBoxShadow).toBe('none')
       await expect(page.getByRole('tab')).toHaveText([
         '设备',
         '任务',
@@ -271,6 +348,12 @@ for (const width of viewportWidths) {
       if (width === 390) {
         await page.screenshot({
           path: testInfo.outputPath(`visual-device-390-${theme}.png`),
+        })
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `mobile-global-header-device-390-${theme}.png`,
+          ),
+          clip: { x: 0, y: 0, width: 390, height: 260 },
         })
       }
 
@@ -372,6 +455,8 @@ for (const width of viewportWidths) {
 
       await page.getByRole('tab', { name: /任务$/ }).click()
       await expect(page).toHaveURL(/#\/tasks$/)
+      const taskGlobalHeader = await readGlobalHeaderAnatomy(page)
+      expect(taskGlobalHeader).toEqual(deviceGlobalHeader)
       await expect(page.getByTestId('task-card')).toHaveCount(5)
       for (const status of ['执行中', '成功', '失败', '待执行', '已丢失']) {
         await expect(

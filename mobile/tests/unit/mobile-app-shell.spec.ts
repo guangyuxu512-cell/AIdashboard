@@ -186,6 +186,21 @@ describe('MobileAppShell V2', () => {
     expect(wrapper.find('.van-badge--dot').exists()).toBe(true)
   })
 
+  it('reuses one global header across every main route', async () => {
+    const { router, wrapper } = await mountAppAt('/devices')
+
+    for (const path of ['/devices', '/tasks', '/schedules', '/shops', '/me']) {
+      await router.push(path)
+      await flushPromises()
+
+      expect(wrapper.findAllComponents(MobileGlobalHeader)).toHaveLength(1)
+      expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
+        '思余AI中控台',
+      )
+      expect(wrapper.findComponent(MobileDetailHeader).exists()).toBe(false)
+    }
+  })
+
   it('keeps the fixed five-entry order in one non-fixed shell tabbar', async () => {
     const { wrapper } = await mountAppAt('/tasks')
     const tabbar = wrapper.getComponent(VanTabbar)
