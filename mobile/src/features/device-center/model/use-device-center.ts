@@ -9,11 +9,20 @@ import {
   summarizeDeviceOverview,
   type DeviceOverviewDataState,
 } from './device-overview'
+import {
+  filterDevicesByQuickFilter,
+  getDeviceQuickFilterLabel,
+  isDeviceQuickFilterAvailable,
+  toggleDeviceMetricFilter,
+  type DeviceMetricFilter,
+  type DeviceQuickFilter,
+} from './device-filter'
 import { useDeviceActiveTasks } from './use-device-active-task'
 
 export function useDeviceCenter() {
   const queryClient = useQueryClient()
   const query = useDeviceCenterListQuery()
+  const filter = ref<DeviceQuickFilter>('all')
   const refreshing = ref(false)
   const refreshError = ref<unknown>(null)
   const devices = computed(() =>
@@ -35,6 +44,23 @@ export function useDeviceCenter() {
       query.data.value?.pages[0]?.total ?? devices.value.length,
     ),
   )
+  const filterAvailability = computed(() => ({
+    all: true,
+    online: isDeviceQuickFilterAvailable('online', overview.value),
+    running: isDeviceQuickFilterAvailable('running', overview.value),
+    offline: isDeviceQuickFilterAvailable('offline', overview.value),
+  }))
+  const filteredDevices = computed(() =>
+    filterDevicesByQuickFilter(
+      devices.value,
+      activeTasks.states.value,
+      filter.value,
+    ),
+  )
+  const total = computed(() => query.data.value?.pages[0]?.total)
+  const visibleTotal = computed(() =>
+    filter.value === 'all' ? total.value : filteredDevices.value.length,
+  )
   const errorKind = computed(() =>
     refreshError.value
       ? query.data.value === undefined
@@ -49,6 +75,21 @@ export function useDeviceCenter() {
   watch(query.dataUpdatedAt, () => {
     refreshError.value = null
   })
+  watch(
+    () => [filter.value, filterAvailability.value[filter.value]] as const,
+    ([currentFilter, available]) => {
+      if (currentFilter !== 'all' && !available) filter.value = 'all'
+    },
+  )
+
+  function setFilter(nextFilter: DeviceQuickFilter): void {
+    if (filterAvailability.value[nextFilter]) filter.value = nextFilter
+  }
+
+  function toggleMetricFilter(metricFilter: DeviceMetricFilter): void {
+    const nextFilter = toggleDeviceMetricFilter(filter.value, metricFilter)
+    setFilter(nextFilter)
+  }
 
   async function refresh(): Promise<boolean> {
     refreshing.value = true
@@ -96,10 +137,17 @@ export function useDeviceCenter() {
   return {
     query,
     devices,
+    filteredDevices,
     activeTaskStates: activeTasks.states,
     overview,
+    filter,
+    filterLabel: computed(() => getDeviceQuickFilterLabel(filter.value)),
+    filterAvailability,
+    visibleTotal,
+    setFilter,
+    toggleMetricFilter,
     refreshing,
-    total: computed(() => query.data.value?.pages[0]?.total),
+    total,
     errorKind,
     isInitialLoading: computed(
       () => query.isLoading.value && query.data.value === undefined,

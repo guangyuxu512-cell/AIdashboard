@@ -5,6 +5,10 @@ import type { Device } from '@/entities/device'
 import type { ActiveTaskSummaryReadDto } from '@/entities/task'
 import type { DeviceActiveTaskState } from '@/features/device-center'
 import { DeviceOverviewCards } from '@/features/device-center'
+import {
+  filterDevicesByQuickFilter,
+  toggleDeviceMetricFilter,
+} from '@/features/device-center/model/device-filter'
 import { summarizeDeviceOverview } from '@/features/device-center/model/device-overview'
 
 function device(
@@ -79,6 +83,12 @@ describe('device center overview', () => {
     expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('—')
     expect(wrapper.text()).toBe('—在线设备—运行中—离线设备')
     expect(wrapper.get('ul').attributes('aria-busy')).toBe('true')
+    expect(wrapper.findAll('button')).toHaveLength(3)
+    expect(
+      wrapper
+        .findAll('button')
+        .every((button) => button.attributes('disabled') !== undefined),
+    ).toBe(true)
   })
 
   it('keeps an initial Device error free of implementation explanations', () => {
@@ -132,6 +142,54 @@ describe('device center overview', () => {
     expect(wrapper.findAll('.mobile-summary-strip__icon')).toHaveLength(3)
     expect(wrapper.text()).not.toContain('连接状态')
     expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('1')
+  })
+
+  it('maps the three metrics to formal facts and emits the shared quick filter', async () => {
+    const devices = [
+      device('device-online-running', 'online'),
+      device('device-online-idle', 'online'),
+      device('device-offline', 'offline'),
+      device('device-unreported', null),
+    ]
+    const states = {
+      'device-online-running': activeState(
+        activeTask('device-online-running', 'running'),
+      ),
+      'device-online-idle': activeState(null),
+      'device-offline': activeState(activeTask('device-offline', 'pending')),
+      'device-unreported': activeState(null),
+    }
+    const overview = summarizeDeviceOverview(devices, states, 'ready')
+    const wrapper = mount(DeviceOverviewCards, {
+      props: { overview, filter: 'online' },
+    })
+
+    expect(
+      filterDevicesByQuickFilter(devices, states, 'online').map(
+        (item) => item.deviceId,
+      ),
+    ).toEqual(['device-online-running', 'device-online-idle'])
+    expect(
+      filterDevicesByQuickFilter(devices, states, 'running').map(
+        (item) => item.deviceId,
+      ),
+    ).toEqual(['device-online-running'])
+    expect(
+      filterDevicesByQuickFilter(devices, states, 'offline').map(
+        (item) => item.deviceId,
+      ),
+    ).toEqual(['device-offline'])
+    expect(toggleDeviceMetricFilter('all', 'online')).toBe('online')
+    expect(toggleDeviceMetricFilter('online', 'online')).toBe('all')
+
+    const online = wrapper.get('[data-testid="summary-metric-online"]')
+    const running = wrapper.get('[data-testid="summary-metric-running"]')
+    expect(online.attributes('aria-pressed')).toBe('true')
+    expect(running.attributes('aria-pressed')).toBe('false')
+    expect(online.attributes('aria-label')).toContain('点击恢复全部')
+    await online.trigger('click')
+    await running.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['online'], ['running']])
   })
 
   it('keeps all metrics unknown until every Backend page is loaded', () => {

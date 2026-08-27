@@ -10,6 +10,10 @@ interface MobileSummaryItem {
   value: string | number
   icon: string
   tone?: MobileSummaryTone
+  interactive?: boolean
+  selected?: boolean
+  disabled?: boolean
+  ariaLabel?: string
 }
 
 defineProps({
@@ -28,6 +32,10 @@ defineProps({
     default: false,
   },
 })
+
+const emit = defineEmits<{
+  select: [key: string]
+}>()
 </script>
 
 <template>
@@ -43,18 +51,38 @@ defineProps({
         class="mobile-summary-strip__item"
         :class="`mobile-summary-strip__item--${item.tone ?? 'neutral'}`"
       >
-        <VanIcon
-          class="mobile-summary-strip__icon"
-          :name="item.icon"
-          aria-hidden="true"
-        />
-        <strong
-          class="mobile-summary-strip__value"
-          :data-testid="`summary-${item.key}`"
+        <component
+          :is="item.interactive ? 'button' : 'div'"
+          class="mobile-summary-strip__metric"
+          :class="{
+            'mobile-summary-strip__metric--interactive': item.interactive,
+          }"
+          :type="item.interactive ? 'button' : undefined"
+          :disabled="item.interactive ? item.disabled : undefined"
+          :aria-label="item.interactive ? item.ariaLabel : undefined"
+          :aria-pressed="
+            item.interactive && item.selected !== undefined
+              ? item.selected
+              : undefined
+          "
+          :data-testid="`summary-metric-${item.key}`"
+          @click="
+            item.interactive && !item.disabled ? emit('select', item.key) : null
+          "
         >
-          {{ item.value }}
-        </strong>
-        <span class="mobile-summary-strip__label">{{ item.label }}</span>
+          <VanIcon
+            class="mobile-summary-strip__icon"
+            :name="item.icon"
+            aria-hidden="true"
+          />
+          <strong
+            class="mobile-summary-strip__value"
+            :data-testid="`summary-${item.key}`"
+          >
+            {{ item.value }}
+          </strong>
+          <span class="mobile-summary-strip__label">{{ item.label }}</span>
+        </component>
       </li>
     </ul>
   </section>
@@ -85,13 +113,31 @@ defineProps({
 
 .mobile-summary-strip__item {
   position: relative;
-  display: grid;
   min-width: 0;
+}
+
+.mobile-summary-strip__metric {
+  display: grid;
+  width: 100%;
+  height: 100%;
   grid-template-rows: auto auto auto;
   row-gap: var(--space-1);
   padding-inline: var(--space-2);
   align-content: center;
   justify-items: center;
+}
+
+.mobile-summary-strip__metric--interactive {
+  min-height: var(--touch-target-min);
+  appearance: none;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 0;
+}
+
+.mobile-summary-strip__metric--interactive:disabled {
+  opacity: 1;
 }
 
 .mobile-summary-strip__item + .mobile-summary-strip__item::before {

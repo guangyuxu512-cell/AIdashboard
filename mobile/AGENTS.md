@@ -73,7 +73,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 正式移动端滚动容器默认隐藏可见 Scrollbar，但必须保留触控、滚轮、触控板与键盘滚动。
 - 工具行禁止套独立大 Card。
 - Selector/Filter 的视觉尺寸与 Touch Target 分离。
-- Summary 是信息容器，不设计成大按钮。
+- Summary Metric 默认只展示信息；只有明确的筛选或导航职责时才允许可选交互。交互 Metric 必须与页面主控件复用同一状态、保持原有信息结构，并提供至少 44×44px Touch Target。
 - Device/Task 卡通过结构和行数保持稳定高度。
 - Device Detail 必须通过 Capability Panel 固定刷新入口，以及逐 Application/Business Skill 的配置与运行入口。
 - Device 业务动作必须复用 Backend 正式 Contract，不建立 Mobile 专属第二套业务链。

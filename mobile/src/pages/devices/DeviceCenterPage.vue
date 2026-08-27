@@ -1,17 +1,28 @@
 <script setup lang="ts">
-import { showToast } from 'vant'
+import { ActionSheet as VanActionSheet, showToast } from 'vant'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import {
   DeviceInfiniteList,
   DeviceOverviewCards,
+  DEVICE_QUICK_FILTERS,
+  type DeviceQuickFilter,
   useDeviceCenter,
 } from '@/features/device-center'
 import { MobileListToolbar } from '@/shared/ui'
 
 const router = useRouter()
 const deviceCenter = useDeviceCenter()
+const quickFilterOpen = ref(false)
+const quickFilterActions = computed(() =>
+  DEVICE_QUICK_FILTERS.map((option) => ({
+    name: option.label,
+    value: option.value,
+    disabled: !deviceCenter.filterAvailability.value[option.value],
+  })),
+)
 
 function openDevice(deviceId: string): void {
   void router.push({
@@ -27,23 +38,35 @@ async function refresh(): Promise<void> {
 function showFilterPlaceholder(): void {
   showToast('功能建设中')
 }
+
+function selectQuickFilter(action: {
+  name: string
+  value: DeviceQuickFilter
+}): void {
+  deviceCenter.setFilter(action.value)
+  quickFilterOpen.value = false
+}
 </script>
 
 <template>
   <div class="mobile-list-page">
-    <DeviceOverviewCards :overview="deviceCenter.overview.value" />
+    <DeviceOverviewCards
+      :overview="deviceCenter.overview.value"
+      :filter="deviceCenter.filter.value"
+      @select="deviceCenter.toggleMetricFilter"
+    />
 
     <MobileListToolbar
       title="设备"
       :meta="
-        deviceCenter.total.value === undefined
+        deviceCenter.visibleTotal.value === undefined
           ? '—'
-          : `${deviceCenter.total.value} 台`
+          : `${deviceCenter.visibleTotal.value} 台`
       "
-      selector-label="全部"
-      selector-aria-label="设备范围，当前全部"
+      :selector-label="deviceCenter.filterLabel.value"
+      :selector-aria-label="`选择设备状态，当前${deviceCenter.filterLabel.value}`"
       filter-label="筛选"
-      @selector="showFilterPlaceholder"
+      @selector="quickFilterOpen = true"
       @filter="showFilterPlaceholder"
     />
 
@@ -54,7 +77,7 @@ function showFilterPlaceholder(): void {
       tabindex="0"
     >
       <DeviceInfiniteList
-        :devices="deviceCenter.devices.value"
+        :devices="deviceCenter.filteredDevices.value"
         :active-task-states="deviceCenter.activeTaskStates.value"
         :initial-loading="deviceCenter.isInitialLoading.value"
         :initial-error="deviceCenter.isInitialError.value"
@@ -69,5 +92,14 @@ function showFilterPlaceholder(): void {
         @select-device="openDevice"
       />
     </div>
+
+    <VanActionSheet
+      v-model:show="quickFilterOpen"
+      :actions="quickFilterActions"
+      cancel-text="取消"
+      close-on-click-action
+      safe-area-inset-bottom
+      @select="selectQuickFilter"
+    />
   </div>
 </template>

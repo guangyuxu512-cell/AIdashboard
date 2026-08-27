@@ -58,10 +58,67 @@ describe('Mobile Layout shared components', () => {
     expect(
       wrapper
         .get('[data-testid="summary-online"]')
-        .element.parentElement?.classList.contains(
-          'mobile-summary-strip__item--success',
-        ),
+        .element.closest('.mobile-summary-strip__item')
+        ?.classList.contains('mobile-summary-strip__item--success'),
     ).toBe(true)
+  })
+
+  it('supports optional interactive metrics without changing their anatomy', async () => {
+    const wrapper = mount(MobileSummaryStrip, {
+      props: {
+        items: [
+          {
+            key: 'online',
+            label: '在线设备',
+            value: 3,
+            icon: 'desktop-o',
+            interactive: true,
+            selected: true,
+            ariaLabel: '在线设备，当前筛选，点击恢复全部',
+          },
+          {
+            key: 'running',
+            label: '运行中',
+            value: 1,
+            icon: 'play-circle-o',
+            interactive: true,
+            selected: false,
+          },
+          {
+            key: 'offline',
+            label: '离线设备',
+            value: '—',
+            icon: 'close',
+            interactive: true,
+            selected: false,
+            disabled: true,
+          },
+        ],
+      },
+    })
+
+    const buttons = wrapper.findAll(
+      '.mobile-summary-strip__metric--interactive',
+    )
+    expect(buttons).toHaveLength(3)
+    expect(buttons[0]?.element.tagName).toBe('BUTTON')
+    expect(buttons[0]?.attributes()).toMatchObject({
+      type: 'button',
+      'aria-pressed': 'true',
+      'aria-label': '在线设备，当前筛选，点击恢复全部',
+    })
+    expect(buttons[1]?.attributes('aria-pressed')).toBe('false')
+    expect(buttons[2]?.attributes()).toHaveProperty('disabled')
+    expect(buttons[0]?.find('.mobile-summary-strip__icon').exists()).toBe(true)
+    expect(buttons[0]?.find('.mobile-summary-strip__value').text()).toBe('3')
+    expect(buttons[0]?.find('.mobile-summary-strip__label').text()).toBe(
+      '在线设备',
+    )
+
+    await buttons[0]?.trigger('click')
+    await buttons[1]?.trigger('click')
+    await buttons[2]?.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['online'], ['running']])
   })
 
   it('keeps the same summary slots while metric values are unknown', () => {

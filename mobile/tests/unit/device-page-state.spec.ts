@@ -61,6 +61,7 @@ describe('Device page loading boundaries', () => {
   it('keeps the Summary and Toolbar mounted while the Device List loads', async () => {
     featureMocks.center = {
       devices: ref([]),
+      filteredDevices: ref([]),
       activeTaskStates: ref({}),
       overview: ref({
         dataState: 'loading',
@@ -75,7 +76,16 @@ describe('Device page loading boundaries', () => {
         activeInitialErrorCount: 0,
         activeState: 'loading',
       }),
+      filter: ref('all'),
+      filterLabel: ref('全部'),
+      filterAvailability: ref({
+        all: true,
+        online: false,
+        running: false,
+        offline: false,
+      }),
       total: ref(undefined),
+      visibleTotal: ref(undefined),
       isInitialLoading: ref(true),
       isInitialError: ref(false),
       isBackgroundError: ref(false),
@@ -87,6 +97,8 @@ describe('Device page loading boundaries', () => {
         refetch: vi.fn(),
       },
       refresh: vi.fn(),
+      setFilter: vi.fn(),
+      toggleMetricFilter: vi.fn(),
       loadMore: vi.fn(),
       retryLoadMore: vi.fn(),
     }
@@ -110,6 +122,7 @@ describe('Device page loading boundaries', () => {
   it('renders a successful Device List while Active Task is still loading', async () => {
     featureMocks.center = {
       devices: ref([device]),
+      filteredDevices: ref([device]),
       activeTaskStates: ref({
         'device-1': {
           task: undefined,
@@ -133,7 +146,16 @@ describe('Device page loading boundaries', () => {
         activeInitialErrorCount: 0,
         activeState: 'loading',
       }),
+      filter: ref('all'),
+      filterLabel: ref('全部'),
+      filterAvailability: ref({
+        all: true,
+        online: true,
+        running: false,
+        offline: true,
+      }),
       total: ref(1),
+      visibleTotal: ref(1),
       isInitialLoading: ref(false),
       isInitialError: ref(false),
       isBackgroundError: ref(false),
@@ -145,6 +167,8 @@ describe('Device page loading boundaries', () => {
         refetch: vi.fn(),
       },
       refresh: vi.fn(),
+      setFilter: vi.fn(),
+      toggleMetricFilter: vi.fn(),
       loadMore: vi.fn(),
       retryLoadMore: vi.fn(),
     }

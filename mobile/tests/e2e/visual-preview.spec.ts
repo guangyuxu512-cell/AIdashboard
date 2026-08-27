@@ -217,7 +217,7 @@ async function expectSummaryStrip(page: Page) {
     '离线设备',
   ])
   await expect(metrics.locator('.mobile-summary-strip__icon')).toHaveCount(3)
-  await expect(strip.locator('button')).toHaveCount(0)
+  await expect(strip.locator('button')).toHaveCount(3)
 
   const geometry = await strip.evaluate((element) => {
     const surface = element.querySelector<HTMLElement>(
@@ -291,6 +291,14 @@ async function expectSummaryStrip(page: Page) {
       slotWidths: slotBoxes.map((slot) => slot.width),
       slotTops: slotBoxes.map((slot) => slot.top),
       slotHeights: slotBoxes.map((slot) => slot.height),
+      touchHeights: slots.map(
+        (slot) =>
+          slot
+            .querySelector<HTMLElement>(
+              '.mobile-summary-strip__metric--interactive',
+            )!
+            .getBoundingClientRect().height,
+      ),
       groups,
       separators,
       labelsSingleLine: slots.every((slot) => {
@@ -315,8 +323,10 @@ async function expectSummaryStrip(page: Page) {
         )
         return numberSize > labelSize
       }),
-      nonInteractive: slots.every(
-        (slot) => getComputedStyle(slot).cursor !== 'pointer',
+      buttonSemantics: slots.every(
+        (slot) =>
+          slot.querySelector('.mobile-summary-strip__metric')?.tagName ===
+          'BUTTON',
       ),
       noHorizontalOverflow:
         surface.scrollWidth <= surface.clientWidth &&
@@ -353,7 +363,8 @@ async function expectSummaryStrip(page: Page) {
   ).toBe(true)
   expect(geometry.labelsSingleLine).toBe(true)
   expect(geometry.numberEmphasized).toBe(true)
-  expect(geometry.nonInteractive).toBe(true)
+  expect(geometry.buttonSemantics).toBe(true)
+  expect(geometry.touchHeights.every((height) => height >= 44)).toBe(true)
   expect(geometry.noHorizontalOverflow).toBe(true)
   expect(geometry.stripHeight).toBe(geometry.expectedStripHeight)
 
@@ -467,6 +478,37 @@ for (const width of viewportWidths) {
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('没有设备', { exact: true })).toHaveCount(0)
       const summaryGeometry = await expectSummaryStrip(page)
+      const onlineMetric = page.getByTestId('summary-metric-online')
+      await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
+      await onlineMetric.click()
+      await expect(page.getByTestId('mobile-list-selector')).toContainText(
+        '在线设备',
+      )
+      await expect(onlineMetric).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByTestId('device-card')).toHaveCount(4)
+      await onlineMetric.click()
+      await expect(page.getByTestId('mobile-list-selector')).toContainText(
+        '全部',
+      )
+      await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
+      await expect(page.getByTestId('device-card')).toHaveCount(20)
+
+      if (width === 390 && theme === 'light') {
+        await page.getByTestId('mobile-list-selector').click()
+        await page
+          .locator('.van-action-sheet__item')
+          .filter({ hasText: /^离线设备$/ })
+          .click()
+        await expect(page.getByTestId('mobile-list-selector')).toContainText(
+          '离线设备',
+        )
+        await expect(
+          page.getByTestId('summary-metric-offline'),
+        ).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.getByTestId('device-card')).toHaveCount(1)
+        await page.getByTestId('summary-metric-offline').click()
+        await expect(page.getByTestId('device-card')).toHaveCount(20)
+      }
 
       const deviceTypography = await page.evaluate(() => {
         const read = (selector: string) => {

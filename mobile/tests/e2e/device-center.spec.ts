@@ -563,7 +563,16 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('summary-online')).toHaveText('6')
       await expect(page.getByTestId('summary-running')).toHaveText('1')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
-      await expect(page.locator('.mobile-summary-strip button')).toHaveCount(0)
+      await expect(page.locator('.mobile-summary-strip button')).toHaveCount(3)
+      expect(
+        await page
+          .locator('.mobile-summary-strip button')
+          .evaluateAll((buttons) =>
+            buttons.every(
+              (button) => button.getBoundingClientRect().height >= 44,
+            ),
+          ),
+      ).toBe(true)
       await expect
         .poll(
           () =>
@@ -1119,6 +1128,16 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await expect(page.getByTestId('summary-online')).toHaveText('—')
   await expect(page.getByTestId('summary-running')).toHaveText('—')
   await expect(page.getByTestId('summary-offline')).toHaveText('—')
+  await expect(page.getByTestId('summary-metric-online')).toBeDisabled()
+  await expect(page.getByTestId('summary-metric-running')).toBeDisabled()
+  await expect(page.getByTestId('summary-metric-offline')).toBeDisabled()
+  await page.getByTestId('mobile-list-selector').click()
+  for (const label of ['在线设备', '运行中', '离线设备']) {
+    await expect(
+      page.locator('.van-action-sheet__item').filter({ hasText: label }),
+    ).toHaveClass(/van-action-sheet__item--disabled/)
+  }
+  await page.locator('.van-action-sheet__cancel').click()
   await expect
     .poll(() => firstPageDeviceIds.map(activeRequestCount))
     .toEqual(firstPageDeviceIds.map(() => 1))
@@ -1137,6 +1156,16 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await expect(page.getByTestId('summary-online')).toHaveText('23')
   await expect(page.getByTestId('summary-running')).toHaveText('1')
   await expect(page.getByTestId('summary-offline')).toHaveText('1')
+  await expect(page.getByTestId('summary-metric-online')).toBeEnabled()
+  await expect(page.getByTestId('summary-metric-running')).toBeEnabled()
+  await expect(page.getByTestId('summary-metric-offline')).toBeEnabled()
+  await page.getByTestId('mobile-list-selector').click()
+  for (const label of ['在线设备', '运行中', '离线设备']) {
+    await expect(
+      page.locator('.van-action-sheet__item').filter({ hasText: label }),
+    ).not.toHaveClass(/van-action-sheet__item--disabled/)
+  }
+  await page.locator('.van-action-sheet__cancel').click()
   await expect
     .poll(() => secondPageDeviceIds.map(activeRequestCount))
     .toEqual(secondPageDeviceIds.map(() => 1))
@@ -1155,6 +1184,19 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
       return params.get('page') === '2' && params.get('page_size') === '20'
     }),
   ).toBe(true)
+
+  await page.getByTestId('summary-metric-offline').click()
+  await expect(page.getByTestId('mobile-list-selector')).toContainText(
+    '离线设备',
+  )
+  await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await page.getByTestId('summary-metric-offline').click()
+  await expect(page.getByTestId('mobile-list-selector')).toContainText('全部')
+  await expect(page.getByTestId('device-card')).toHaveCount(25)
 
   const requestCountBeforeRefresh = state.deviceListRequests.length
   await pullToRefresh(page)
