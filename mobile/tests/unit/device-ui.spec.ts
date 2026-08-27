@@ -12,13 +12,12 @@ import {
 import type { ActiveTaskSummaryReadDto } from '@/entities/task'
 import {
   ActiveTaskSummary,
+  DeviceCapabilityPanel,
   DeviceInfiniteList,
   DeviceListCard,
-  DevicePrimaryActions,
   DeviceProviderDetails,
-  DeviceProviderSection,
   DeviceSkillDetails,
-  DeviceSkillSummary,
+  DeviceYingdaoSummary,
   type DeviceActiveTaskState,
 } from '@/features/device-center'
 
@@ -87,26 +86,27 @@ const idleActiveTaskState: DeviceActiveTaskState = {
 function providerInventory(
   status: YingdaoProviderStatusDto,
 ): DeviceProviderInventoryReadDto {
+  const ready = status === 'ready'
   return {
     device_id: 'device-1',
     provider_code: 'yingdao',
     available: true,
-    provider_version: '3.4.5',
+    provider_version: ready ? '6.3.6' : '3.4.5',
     account_display: '测试账号',
     account_type: 'enterprise',
     enterprise_account: true,
     last_discovered_at: '2026-08-26T08:00:00.000Z',
     inventory: {
       provider: 'yingdao',
-      available: false,
+      available: ready,
       status,
       status_reason_code: 'REASON',
       status_reason: '状态说明',
-      provider_version: '3.4.5',
-      execution_available: true,
-      execution_version: '2.0.0',
+      provider_version: ready ? '6.3.6' : '3.4.5',
+      execution_available: ready,
+      execution_version: ready ? '6.3.6' : null,
       execution_unavailable_reason: null,
-      logged_in: false,
+      logged_in: ready,
       account_display: '测试账号',
       account_type: 'enterprise',
       enterprise_account: true,
@@ -135,8 +135,8 @@ function capability(
     device_id: 'device-1',
     skill_id: skillId,
     display_name: skillId,
-    runtime: 'rpa',
-    provider: 'yingdao',
+    runtime: classification === 'business' ? 'python' : 'rpa',
+    provider: classification === 'business' ? null : 'yingdao',
     version: '1.0.0',
     classification,
     input_schema: null,
@@ -161,27 +161,6 @@ describe('device center UI', () => {
   afterEach(async () => {
     for (const wrapper of wrappers.splice(0)) wrapper.unmount()
     await flushPromises()
-  })
-
-  it('exposes a one-plus-two Device action contract without fake success', async () => {
-    const wrapper = track(mount(DevicePrimaryActions))
-    const buttons = wrapper.findAll('button')
-
-    expect(buttons.map((button) => button.text())).toEqual([
-      '运行应用',
-      '刷新能力',
-      '参数配置',
-    ])
-    await wrapper.get('[data-testid="device-action-run"]').trigger('click')
-    await wrapper.get('[data-testid="device-action-refresh"]').trigger('click')
-    await wrapper
-      .get('[data-testid="device-action-configure"]')
-      .trigger('click')
-
-    expect(wrapper.emitted('runApplication')).toHaveLength(1)
-    expect(wrapper.emitted('refreshCapability')).toHaveLength(1)
-    expect(wrapper.emitted('configureParameters')).toHaveLength(1)
-    expect(wrapper.text()).not.toMatch(/成功|已启动|已刷新|已保存/)
   })
 
   it('renders enabled and connection facts as independent tags', () => {
@@ -245,6 +224,30 @@ describe('device center UI', () => {
     expect(wrapper.text()).toContain('未上报')
     expect(wrapper.text()).not.toContain('离线')
     expect(wrapper.text()).toContain('未上报 · Worker —')
+  })
+
+  it('makes the whole Device Card one Device Detail entry without a Task entry', async () => {
+    const wrapper = track(
+      mount(DeviceListCard, {
+        props: {
+          device: baseDevice,
+          activeTaskState: {
+            ...idleActiveTaskState,
+            task: runningTask,
+          },
+        },
+      }),
+    )
+
+    expect(wrapper.element.tagName).toBe('ARTICLE')
+    expect(wrapper.findAll('button')).toHaveLength(1)
+    expect(wrapper.get('button').attributes('aria-label')).toBe(
+      '查看设备：仓库设备',
+    )
+    expect(wrapper.find('[aria-label^="查看任务："]').exists()).toBe(false)
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('selectDevice')).toEqual([['device-1']])
+    expect(wrapper.emitted('selectTask')).toBeUndefined()
   })
 
   it.each([
@@ -417,23 +420,32 @@ describe('device center UI', () => {
     ['need_login', '需要登录'],
     ['interface_unreachable', '接口不可达'],
     ['ready', '就绪'],
-  ] as const)('renders Provider status %s', (status, label) => {
-    const wrapper = track(
-      mount(DeviceProviderSection, {
-        props: {
-          inventories: [providerInventory(status)],
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
+  ] as const)(
+    'renders Provider status %s in the dual summary',
+    (status, label) => {
+      const wrapper = track(
+        mount(DeviceYingdaoSummary, {
+          props: {
+            device: baseDevice,
+            inventories: [providerInventory(status)],
+            providerLoading: false,
+            providerError: false,
+          },
+        }),
+      )
 
-    expect(wrapper.text()).toContain(label)
-    expect(wrapper.text()).toContain('账号测试账号')
-    expect(wrapper.text()).toContain('版本3.4.5')
-    expect(wrapper.text()).toContain('应用1 个')
-    expect(wrapper.text()).not.toContain('提供方可用')
-  })
+      expect(
+        wrapper.get('[data-testid="device-summary-device"]').text(),
+      ).toContain('仓库设备')
+      expect(
+        wrapper.get('[data-testid="device-summary-yingdao"]').text(),
+      ).toContain('测试账号')
+      expect(wrapper.text()).toContain(label)
+      expect(wrapper.text()).toContain(status === 'ready' ? '6.3.6' : '3.4.5')
+      expect(wrapper.text()).not.toContain('provider-user-1')
+      expect(wrapper.findAll('.device-yingdao-summary__column')).toHaveLength(2)
+    },
+  )
 
   it('renders Provider secondary facts only in the technical details component', () => {
     const wrapper = track(
@@ -443,128 +455,157 @@ describe('device center UI', () => {
     )
 
     expect(wrapper.text()).toContain('提供方代码yingdao')
-    expect(wrapper.text()).toContain('提供方可用否')
+    expect(wrapper.text()).toContain('提供方可用是')
     expect(wrapper.text()).toContain('执行接口可用是')
-    expect(wrapper.text()).toContain('已登录否')
+    expect(wrapper.text()).toContain('已登录是')
     expect(wrapper.text()).toContain('账号类型enterprise')
     expect(wrapper.text()).toContain('企业账号是')
-    expect(wrapper.text()).toContain('执行接口版本2.0.0')
+    expect(wrapper.text()).toContain('执行接口版本6.3.6')
     expect(wrapper.text()).toContain('状态说明状态说明')
   })
 
-  it('distinguishes an empty Provider snapshot and preserves cached data on error', async () => {
-    const empty = track(
-      mount(DeviceProviderSection, {
-        props: {
-          inventories: [],
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-    const background = track(
-      mount(DeviceProviderSection, {
-        props: {
-          inventories: [providerInventory('ready')],
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-
-    expect(empty.text()).toContain('未上报')
-    expect(background.text()).toContain('就绪')
-    expect(background.find('button').exists()).toBe(false)
-  })
-
-  it('keeps Provider loading and initial error distinct from an empty snapshot', async () => {
+  it('keeps Provider loading, error and empty states inside the Yingdao column', async () => {
     const loading = track(
-      mount(DeviceProviderSection, {
+      mount(DeviceYingdaoSummary, {
         props: {
+          device: baseDevice,
           inventories: undefined,
-          initialLoading: true,
-          initialError: false,
+          providerLoading: true,
+          providerError: false,
         },
       }),
     )
+    const error = track(
+      mount(DeviceYingdaoSummary, {
+        props: {
+          device: baseDevice,
+          inventories: undefined,
+          providerLoading: false,
+          providerError: true,
+        },
+      }),
+    )
+    const empty = track(
+      mount(DeviceYingdaoSummary, {
+        props: {
+          device: baseDevice,
+          inventories: [],
+          providerLoading: false,
+          providerError: false,
+        },
+      }),
+    )
+
     expect(loading.text()).toContain('加载中')
     expect(loading.text()).not.toContain('未上报')
+    await error.get('button').trigger('click')
+    expect(error.emitted('retryProvider')).toHaveLength(1)
+    expect(error.text()).toContain('加载失败')
+    expect(empty.text()).toContain('未上报')
+  })
 
-    const initialError = track(
-      mount(DeviceProviderSection, {
+  it('renders Application names and row actions without exposing Application IDs', async () => {
+    const inventory = providerInventory('ready')
+    inventory.inventory.applications = [
+      ...inventory.inventory.applications,
+      {
+        app_id: 'app-private-uuid',
+        app_name: '拼多多自动处理售后工单',
+        version_id: null,
+        updated_at: null,
+        app_type: 'rpa',
+        group_id: null,
+      },
+      {
+        app_id: 'app-3',
+        app_name: '商品发布',
+        version_id: null,
+        updated_at: null,
+        app_type: 'rpa',
+        group_id: null,
+      },
+      {
+        app_id: 'app-4',
+        app_name: '订单同步',
+        version_id: null,
+        updated_at: null,
+        app_type: 'rpa',
+        group_id: null,
+      },
+    ]
+    const wrapper = track(
+      mount(DeviceCapabilityPanel, {
         props: {
-          inventories: undefined,
-          initialLoading: false,
-          initialError: true,
+          inventories: [inventory],
+          capabilities: [],
+          providerLoading: false,
+          providerError: false,
+          capabilityLoading: false,
+          capabilityError: false,
         },
       }),
     )
-    await initialError.get('button').trigger('click')
-    expect(initialError.emitted('retry')).toHaveLength(1)
-    expect(initialError.text()).toContain('加载失败')
-    expect(initialError.text()).not.toContain('影刀快照')
+
+    expect(wrapper.findAll('[data-testid="application-row"]')).toHaveLength(4)
+    expect(wrapper.text()).toContain('拼多多自动处理售后工单')
+    expect(wrapper.text()).not.toContain('app-private-uuid')
+    expect(
+      wrapper.get('.device-capability-panel__name').attributes('class'),
+    ).toContain('device-capability-panel__name')
+    await wrapper.get('[aria-label="配置：订单应用"]').trigger('click')
+    await wrapper.get('[aria-label="运行：订单应用"]').trigger('click')
+    await wrapper
+      .get('[data-testid="device-capability-refresh"]')
+      .trigger('click')
+    expect(wrapper.emitted('configureApplication')?.[0]?.[0]).toMatchObject({
+      app_id: 'app-1',
+    })
+    expect(wrapper.emitted('runApplication')?.[0]?.[0]).toMatchObject({
+      app_id: 'app-1',
+    })
+    expect(wrapper.emitted('refreshCapability')).toHaveLength(1)
+    expect(wrapper.text()).not.toMatch(/成功|已启动|已刷新|已保存/)
   })
 
-  it('counts all three Skill classifications and keeps empty/error states explicit', async () => {
+  it('shows only Business Skills and hides meaningless Configure actions', async () => {
     const capabilities = [
-      capability('business-1', 'business'),
+      { ...capability('business-1', 'business'), input_schema: {} },
       capability('business-2', 'business'),
       capability('internal-1', 'internal'),
       capability('unknown-1', null),
     ]
-    const summary = track(
-      mount(DeviceSkillSummary, {
+    const wrapper = track(
+      mount(DeviceCapabilityPanel, {
         props: {
+          inventories: [],
           capabilities,
-          initialLoading: false,
-          initialError: false,
+          providerLoading: false,
+          providerError: false,
+          capabilityLoading: false,
+          capabilityError: false,
         },
       }),
     )
-    expect(summary.text()).toContain('业务2 个')
-    expect(summary.text()).toContain('内部1 个')
-    expect(summary.text()).not.toContain('未分类能力')
+
+    await flushPromises()
+    await wrapper.get('.van-tab:nth-child(2)').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="skill-row"]')).toHaveLength(2)
+    expect(wrapper.text()).toContain('business-1')
+    expect(wrapper.text()).toContain('business-2')
+    expect(wrapper.text()).not.toContain('internal-1')
+    expect(wrapper.text()).not.toContain('unknown-1')
+    expect(wrapper.find('[aria-label="配置：business-1"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="配置：business-2"]').exists()).toBe(false)
+    await wrapper.get('[aria-label="运行：business-2"]').trigger('click')
+    expect(wrapper.emitted('runSkill')?.[0]?.[0]).toMatchObject({
+      skill_id: 'business-2',
+    })
 
     const technicalDetails = track(
       mount(DeviceSkillDetails, { props: { capabilities } }),
     )
     expect(technicalDetails.text()).toContain('能力总数4 个')
     expect(technicalDetails.text()).toContain('未分类能力1 个')
-
-    const empty = track(
-      mount(DeviceSkillSummary, {
-        props: {
-          capabilities: [],
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-    expect(empty.text()).toContain('暂无能力')
-
-    const initialError = track(
-      mount(DeviceSkillSummary, {
-        props: {
-          capabilities: undefined,
-          initialLoading: false,
-          initialError: true,
-        },
-      }),
-    )
-    await initialError.get('button').trigger('click')
-    expect(initialError.emitted('retry')).toHaveLength(1)
-    expect(initialError.text()).toContain('加载失败')
-
-    const background = track(
-      mount(DeviceSkillSummary, {
-        props: {
-          capabilities,
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-    expect(background.text()).toContain('业务2 个')
-    expect(background.find('button').exists()).toBe(false)
   })
 })

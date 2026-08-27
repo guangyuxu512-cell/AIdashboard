@@ -82,7 +82,7 @@ describe('Mobile Layout shared components', () => {
       'utf8',
     )
 
-    expect(tokens).toContain('--layout-summary-height: 72px')
+    expect(tokens).toContain('--layout-summary-height: 64px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
     expect(tokens).toContain('--control-height-compact: 32px')
     expect(tokens).toContain('--touch-target-min: 44px')
@@ -94,7 +94,7 @@ describe('Mobile Layout shared components', () => {
     )
   })
 
-  it('gives Detail content a named keyboard focus entry', () => {
+  it('gives Detail content a named keyboard scroll entry', async () => {
     const wrapper = mount(AppPage, {
       props: { label: '设备详情内容' },
       slots: { default: '<p>详情</p>' },
@@ -106,5 +106,14 @@ describe('Mobile Layout shared components', () => {
       tabindex: '0',
     })
     expect(wrapper.classes()).toContain('mobile-scroll-container')
+
+    Object.defineProperty(wrapper.element, 'clientHeight', {
+      configurable: true,
+      value: 200,
+    })
+    await wrapper.trigger('keydown', { key: 'PageDown' })
+    expect(wrapper.element.scrollTop).toBe(160)
+    await wrapper.trigger('keydown', { key: 'PageUp' })
+    expect(wrapper.element.scrollTop).toBe(0)
   })
 })

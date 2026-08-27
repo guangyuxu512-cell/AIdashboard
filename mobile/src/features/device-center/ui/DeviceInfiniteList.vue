@@ -42,7 +42,6 @@ const emit = defineEmits<{
   loadMore: []
   retryLoadMore: []
   selectDevice: [deviceId: string]
-  selectTask: [taskId: string, deviceId: string]
 }>()
 </script>
 
@@ -90,7 +89,6 @@ const emit = defineEmits<{
           :device="device"
           :active-task-state="activeTaskState(device.deviceId)"
           @select-device="emit('selectDevice', $event)"
-          @select-task="emit('selectTask', $event, device.deviceId)"
         />
       </div>
       <div

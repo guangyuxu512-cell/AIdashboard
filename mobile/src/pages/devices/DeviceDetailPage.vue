@@ -13,19 +13,13 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
-import {
-  DeviceConnectionTag,
-  DeviceEnabledTag,
-  formatDeviceDateTime,
-  formatRelativeHeartbeat,
-} from '@/entities/device'
+import { formatDeviceDateTime } from '@/entities/device'
 import {
   ActiveTaskSummary,
-  DevicePrimaryActions,
+  DeviceCapabilityPanel,
   DeviceProviderDetails,
-  DeviceProviderSection,
   DeviceSkillDetails,
-  DeviceSkillSummary,
+  DeviceYingdaoSummary,
   useDeviceDetail,
 } from '@/features/device-center'
 import { AppPage } from '@/shared/ui'
@@ -35,23 +29,6 @@ const router = useRouter()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const detail = useDeviceDetail(deviceId)
 const expanded = ref<string[]>([])
-const runtimeMeta = computed(() => {
-  const runtime = detail.device.value?.workerRuntime
-  if (!runtime) return '未上报 · Worker —'
-  return `${formatRelativeHeartbeat(runtime.lastSeenAt)} · Worker ${runtime.workerVersion || '—'}`
-})
-const currentExecutionText = computed(() => {
-  if (
-    detail.activeTask.isInitialLoading.value ||
-    detail.activeTask.isInitialError.value
-  ) {
-    return '—'
-  }
-
-  const task = detail.activeTask.query.data.value
-  if (task === null) return '空闲'
-  return task?.execution_display_name ?? '—'
-})
 
 function openTask(taskId: string): void {
   void router.push({
@@ -87,32 +64,28 @@ function showActionPlaceholder(): void {
     </VanEmpty>
 
     <template v-else>
-      <section
-        class="device-detail-page__summary mobile-card"
-        data-testid="device-detail"
-      >
-        <div class="device-detail-page__title">
-          <h1>{{ detail.device.value.displayName }}</h1>
-          <div class="device-detail-page__tags">
-            <DeviceConnectionTag
-              :status="detail.device.value.workerRuntime?.connectionStatus"
-            />
-            <DeviceEnabledTag :enabled="detail.device.value.enabled" />
-          </div>
-        </div>
-        <div class="device-detail-page__execution">
-          <span>当前执行</span>
-          <strong data-testid="device-current-execution">
-            {{ currentExecutionText }}
-          </strong>
-        </div>
-        <p class="device-detail-page__meta">{{ runtimeMeta }}</p>
-      </section>
+      <DeviceYingdaoSummary
+        :device="detail.device.value"
+        :inventories="detail.provider.query.data.value"
+        :provider-loading="detail.provider.isInitialLoading.value"
+        :provider-error="detail.provider.isInitialError.value"
+        @retry-provider="detail.provider.query.refetch"
+      />
 
-      <DevicePrimaryActions
-        @run-application="showActionPlaceholder"
+      <DeviceCapabilityPanel
+        :inventories="detail.provider.query.data.value"
+        :capabilities="detail.capability.query.data.value"
+        :provider-loading="detail.provider.isInitialLoading.value"
+        :provider-error="detail.provider.isInitialError.value"
+        :capability-loading="detail.capability.isInitialLoading.value"
+        :capability-error="detail.capability.isInitialError.value"
         @refresh-capability="showActionPlaceholder"
-        @configure-parameters="showActionPlaceholder"
+        @retry-provider="detail.provider.query.refetch"
+        @retry-capability="detail.capability.query.refetch"
+        @configure-application="showActionPlaceholder"
+        @run-application="showActionPlaceholder"
+        @configure-skill="showActionPlaceholder"
+        @run-skill="showActionPlaceholder"
       />
 
       <section
@@ -129,41 +102,6 @@ function showActionPlaceholder(): void {
           @select="openTask"
         />
       </section>
-
-      <section
-        class="device-detail-page__section mobile-section-surface"
-        data-testid="device-runtime-summary"
-      >
-        <h2>运行端</h2>
-        <VanCellGroup>
-          <VanCell
-            title="Worker"
-            :value="detail.device.value.workerRuntime?.workerVersion || '—'"
-          />
-          <VanCell
-            title="最后心跳"
-            :value="
-              formatRelativeHeartbeat(
-                detail.device.value.workerRuntime?.lastSeenAt ?? null,
-              )
-            "
-          />
-        </VanCellGroup>
-      </section>
-
-      <DeviceProviderSection
-        :inventories="detail.provider.query.data.value"
-        :initial-loading="detail.provider.isInitialLoading.value"
-        :initial-error="detail.provider.isInitialError.value"
-        @retry="detail.provider.query.refetch"
-      />
-
-      <DeviceSkillSummary
-        :capabilities="detail.capability.query.data.value"
-        :initial-loading="detail.capability.isInitialLoading.value"
-        :initial-error="detail.capability.isInitialError.value"
-        @retry="detail.capability.query.refetch"
-      />
 
       <VanCollapse v-model="expanded" data-testid="device-more-information">
         <VanCollapseItem title="更多信息" name="device-details">
@@ -182,6 +120,10 @@ function showActionPlaceholder(): void {
                 <VanCell
                   title="备注"
                   :value="detail.device.value.note || '—'"
+                />
+                <VanCell
+                  title="设备更新时间"
+                  :value="formatDeviceDateTime(detail.device.value.updatedAt)"
                 />
               </VanCellGroup>
             </section>
@@ -228,7 +170,6 @@ function showActionPlaceholder(): void {
   padding-bottom: var(--space-6);
 }
 
-.device-detail-page__summary,
 .device-detail-page__section,
 .device-detail-page__details section {
   display: grid;
@@ -236,68 +177,8 @@ function showActionPlaceholder(): void {
   gap: var(--space-3);
 }
 
-.device-detail-page__summary {
-  padding: var(--space-4);
-}
-
 .device-detail-page__section {
   padding: var(--space-3);
-}
-
-.device-detail-page__title,
-.device-detail-page__tags {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-2);
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.device-detail-page__execution {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-2);
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.device-detail-page__execution span {
-  flex: none;
-  color: var(--text-secondary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-}
-
-.device-detail-page__execution strong {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.device-detail-page__title h1 {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-title);
-  line-height: var(--line-height-title);
-}
-
-.device-detail-page__tags {
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.device-detail-page__meta {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .device-detail-page__details {

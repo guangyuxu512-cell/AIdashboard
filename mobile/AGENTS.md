@@ -37,7 +37,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 没有真实复用或业务需求时不建立万能抽象，也不新增 `components/`、`common/`、`helpers/`、`services/`、`libs/`。
 - Foundation 的无业务数据限制仅适用于 `/__foundation`；真实业务页必须依据正式 Backend Contract 实现。稳定视觉验收数据只能经 Development Only Entity DataSource 注入，Production 不得启用或自动回退 Mock。
 - Device 的 `enabled`、Worker Runtime/Presence、Provider Inventory 与 Skill Capability 是独立事实；禁止合并成“设备正常”，也禁止根据心跳时间在 Mobile 重算在线状态。
-- Device Center 当前不执行写操作；详情必须保留运行应用、刷新能力与参数配置的正式入口位置，但未接入 Backend 正式 Contract 前禁止发请求或伪造成功。
+- Device Center 当前不执行写操作；详情必须在 Capability 标题与能力行保留刷新、配置、运行入口，但未接入 Backend 正式 Contract 前禁止发请求或伪造成功。
 - 正式 Mobile UI 禁止解释实现；新增页面 Review 必须判断 UI Copy 是否可在不影响用户操作与判断的前提下删除，可以删除就删除。
 
 ## Mobile UI 文案规则
@@ -75,10 +75,23 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Selector/Filter 的视觉尺寸与 Touch Target 分离。
 - Summary 是信息容器，不设计成大按钮。
 - Device/Task 卡通过结构和行数保持稳定高度。
-- Device Detail 必须预留正式 Primary Action 区，顺序为运行应用、刷新能力、参数配置。
+- Device Detail 必须通过 Capability Panel 固定刷新入口，以及逐 Application/Business Skill 的配置与运行入口。
 - Device 业务动作必须复用 Backend 正式 Contract，不建立 Mobile 专属第二套业务链。
 - 尚未接业务 Contract 的操作不得 Fake Success。
 - 新业务页面不得自行定义 Page Padding、Toolbar Height、Summary Height 或 Bottom Navigation Height。
+
+## Device Detail Interaction
+
+- 点击 Device Card 必须进入 Device Detail，禁止默认进入 Task Detail。
+- 只有明确点击 Device Detail 的 Current Task 时才进入 Task Detail。
+- Device 与 Yingdao Runtime 摘要采用统一双列 Summary Pattern。
+- 正常产品 UI 优先显示 Application/Skill Name，不显示 UUID。
+- Capability 区域固定最大高度，超出内容内部滚动或进入查看全部页。
+- Application/Skill 每行使用稳定的 Name + Actions 结构。
+- Application 参数属于 Application 执行上下文，不做 Device 级全局参数按钮。
+- Run / Configure 必须复用正式 Backend 业务 Contract。
+- Internal Skill 默认不得作为普通用户核心操作能力展示。
+- 正式 Mobile 滚动容器默认隐藏 Scrollbar，同时保留触控、滚轮、触控板与键盘滚动。
 
 ## Visual Development
 

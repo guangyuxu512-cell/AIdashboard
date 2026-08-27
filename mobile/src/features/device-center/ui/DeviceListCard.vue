@@ -17,7 +17,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectDevice: [deviceId: string]
-  selectTask: [taskId: string]
 }>()
 
 const heartbeatText = computed(() =>
@@ -38,24 +37,21 @@ const updateText = computed(() =>
       class="device-list-card__main"
       :aria-label="`查看设备：${device.displayName}`"
       @click="emit('selectDevice', device.deviceId)"
-    >
-      <span class="device-list-card__heading">
-        <strong>{{ device.displayName }}</strong>
-        <span class="device-list-card__tags">
-          <DeviceConnectionTag
-            :status="device.workerRuntime?.connectionStatus"
-          />
-        </span>
+    />
+
+    <span class="device-list-card__heading">
+      <strong>{{ device.displayName }}</strong>
+      <span class="device-list-card__tags">
+        <DeviceConnectionTag :status="device.workerRuntime?.connectionStatus" />
       </span>
-    </button>
+    </span>
 
     <ActiveTaskSummary
       :task="activeTaskState.task"
       :initial-loading="activeTaskState.initialLoading"
       :initial-error="activeTaskState.initialError"
       compact
-      @retry="activeTaskState.retry"
-      @select="emit('selectTask', $event)"
+      :interactive="false"
     />
 
     <p class="device-list-card__meta">
@@ -67,36 +63,36 @@ const updateText = computed(() =>
 
 <style scoped>
 .device-list-card {
-  display: grid;
-  min-width: 0;
-  gap: var(--layout-card-row-gap);
-  padding: var(--layout-card-padding);
-}
-
-.device-list-card:has(.device-list-card__main:active),
-.device-list-card:has(.active-task-summary__task:active) {
-  transform: scale(var(--press-scale-card));
-  background: var(--bg-surface-pressed);
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-card-pressed);
-}
-
-.device-list-card__main {
+  position: relative;
   display: grid;
   width: 100%;
   min-width: 0;
-  min-height: var(--touch-target-min);
-  gap: var(--space-1);
-  padding: 0;
+  gap: var(--layout-card-row-gap);
+  padding: var(--layout-card-padding);
   color: inherit;
   text-align: left;
-  background: none;
+}
+
+.device-list-card__main {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  background: transparent;
   border: 0;
+  border-radius: var(--radius-card);
 }
 
 .device-list-card__main:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
+}
+
+.device-list-card:has(.device-list-card__main:active) {
+  transform: scale(var(--press-scale-card));
+  background: var(--bg-surface-pressed);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-card-pressed);
 }
 
 .device-list-card__heading,

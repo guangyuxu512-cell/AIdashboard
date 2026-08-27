@@ -32,7 +32,7 @@ describe('development-only visual data sources', () => {
     expect(resolveMobileDataMode(false, 'production')).toBe('real')
   })
 
-  it('provides five contract-shaped devices and exact overview facts', async () => {
+  it('provides twenty contract-shaped devices and exact overview facts', async () => {
     await configureMobileDataSources('mock')
     const response = await getDevices({ page: 1, page_size: 20 })
     const statuses = response.items.map(
@@ -42,13 +42,16 @@ describe('development-only visual data sources', () => {
       response.items.map((device) => getActiveTask(device.device_id)),
     )
 
-    expect(response.total).toBe(5)
-    expect(statuses.filter((status) => status === 'online')).toHaveLength(3)
+    expect(response.total).toBe(20)
+    expect(statuses.filter((status) => status === 'online')).toHaveLength(4)
     expect(statuses.filter((status) => status === 'offline')).toHaveLength(1)
-    expect(statuses.filter((status) => status === null)).toHaveLength(1)
+    expect(statuses.filter((status) => status === null)).toHaveLength(15)
     expect(response.items.filter((device) => !device.enabled)).toHaveLength(1)
     expect(
       activeTasks.filter((task) => task?.status === 'running'),
+    ).toHaveLength(0)
+    expect(
+      activeTasks.filter((task) => task?.status === 'pending'),
     ).toHaveLength(1)
   })
 
@@ -62,19 +65,38 @@ describe('development-only visual data sources', () => {
         display_name: '运营',
       }),
     )
-    await expect(getDeviceProviderInventories(deviceId)).resolves.toEqual([
+    const inventories = await getDeviceProviderInventories(deviceId)
+    expect(inventories).toEqual([
       expect.objectContaining({
         device_id: deviceId,
         provider_code: 'yingdao',
         inventory: expect.objectContaining({ status: 'ready' }),
       }),
     ])
-    await expect(getDeviceSkillCapabilities(deviceId)).resolves.toEqual(
+    expect(inventories[0]?.inventory).toEqual(
+      expect.objectContaining({
+        provider_version: '6.3.6',
+        execution_version: '6.3.6',
+      }),
+    )
+    expect(inventories[0]?.inventory.applications).toHaveLength(8)
+
+    const capabilities = await getDeviceSkillCapabilities(deviceId)
+    expect(capabilities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ classification: 'business' }),
         expect.objectContaining({ classification: 'internal' }),
       ]),
     )
+    const businessCapabilities = capabilities.filter(
+      (item) => item.classification === 'business',
+    )
+    expect(businessCapabilities).toHaveLength(5)
+    expect(
+      businessCapabilities.every(
+        (item) => item.runtime === 'python' && item.provider === null,
+      ),
+    ).toBe(true)
   })
 
   it('provides all five task states, detail and runtime events', async () => {

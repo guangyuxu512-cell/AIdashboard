@@ -202,31 +202,33 @@ describe('Device page loading boundaries', () => {
     expect(wrapper.find('[data-testid="device-detail-error"]').exists()).toBe(
       false,
     )
-    expect(wrapper.get('[data-testid="device-primary-actions"]').text()).toBe(
-      '设备操作运行应用刷新能力参数配置',
-    )
+    expect(
+      wrapper.get('[data-testid="device-summary-device"]').text(),
+    ).toContain('Worker 0.4.6')
+    expect(
+      wrapper.find('[data-testid="device-capability-panel"]').exists(),
+    ).toBe(true)
     expect(wrapper.get('[data-testid="device-current-task"]').text()).toContain(
       '当前任务',
     )
-    expect(
-      wrapper.get('[data-testid="device-runtime-summary"]').text(),
-    ).toContain('Worker0.4.6')
     const summary = wrapper.get('[data-testid="device-detail"]').element
-    const actions = wrapper.get(
-      '[data-testid="device-primary-actions"]',
+    const capability = wrapper.get(
+      '[data-testid="device-capability-panel"]',
     ).element
     const currentTask = wrapper.get(
       '[data-testid="device-current-task"]',
     ).element
     expect(
-      summary.compareDocumentPosition(actions) &
+      summary.compareDocumentPosition(capability) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(
-      actions.compareDocumentPosition(currentTask) &
+      capability.compareDocumentPosition(currentTask) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(wrapper.text()).toContain('加载中')
+    await wrapper.get('.van-tab:nth-child(2)').trigger('click')
+    await flushPromises()
     expect(wrapper.text()).toContain('加载失败')
     expect(wrapper.text()).not.toMatch(/Provider 技术错误|Capability 技术错误/)
     wrapper.unmount()

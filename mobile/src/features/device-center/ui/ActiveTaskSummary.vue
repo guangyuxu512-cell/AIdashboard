@@ -9,8 +9,9 @@ withDefaults(
     initialLoading: boolean
     initialError: boolean
     compact?: boolean
+    interactive?: boolean
   }>(),
-  { compact: false },
+  { compact: false, interactive: true },
 )
 
 const emit = defineEmits<{
@@ -36,18 +37,29 @@ const emit = defineEmits<{
       <VanLoading size="var(--icon-size-small)">加载中</VanLoading>
     </div>
 
-    <div v-if="initialError" class="active-task-summary__error">
+    <div v-if="initialError && interactive" class="active-task-summary__error">
       <span>加载失败</span>
       <VanButton block @click="emit('retry')">重试</VanButton>
     </div>
 
+    <p
+      v-else-if="initialError"
+      class="active-task-summary__compact-state active-task-summary__idle"
+    >
+      —
+    </p>
+
     <template v-else-if="!initialLoading">
-      <button
+      <component
         v-if="task"
-        type="button"
+        :is="interactive ? 'button' : 'div'"
+        :type="interactive ? 'button' : undefined"
         class="active-task-summary__task mobile-pressable"
-        :aria-label="`查看任务：${task.execution_display_name}`"
-        @click="emit('select', task.task_id)"
+        :class="{ 'active-task-summary__task--static': !interactive }"
+        :aria-label="
+          interactive ? `查看任务：${task.execution_display_name}` : undefined
+        "
+        @click="interactive && emit('select', task.task_id)"
       >
         <span class="active-task-summary__task-title">
           <strong>{{ task.execution_display_name }}</strong>
@@ -59,7 +71,7 @@ const emit = defineEmits<{
         >
           {{ task.latest_event.message }}
         </span>
-      </button>
+      </component>
       <p v-else-if="task === null" class="active-task-summary__idle">空闲</p>
       <p v-else class="active-task-summary__idle">—</p>
     </template>
@@ -155,5 +167,9 @@ const emit = defineEmits<{
 
 .active-task-summary--compact .active-task-summary__task:active {
   background: var(--bg-surface-hover);
+}
+
+.active-task-summary--compact .active-task-summary__task--static:active {
+  background: transparent;
 }
 </style>

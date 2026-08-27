@@ -273,16 +273,15 @@ export const visualMockTaskDataSource: TaskDataSource = {
   async getActiveTask(deviceId): Promise<ActiveTaskSummaryReadDto | null> {
     if (deviceId !== VISUAL_DEVICE_IDS.operations) return null
     const task = createVisualTaskListItems()[0]!
-    const events = createTaskEvents(task.task_id)
     return {
       task_id: task.task_id,
       target_device_id: task.target_device_id,
       skill_id: task.skill_id,
       execution_display_name: task.execution_display_name,
-      status: 'running',
-      started_at: task.started_at,
+      status: 'pending',
+      started_at: null,
       created_at: task.created_at,
-      latest_event: events.at(-1) ?? null,
+      latest_event: null,
     }
   },
   async getTaskEvents(taskId, params) {

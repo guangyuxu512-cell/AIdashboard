@@ -2,6 +2,16 @@
 withDefaults(defineProps<{ label?: string }>(), {
   label: '页面内容',
 })
+
+function handlePageKey(event: KeyboardEvent): void {
+  if (event.target !== event.currentTarget) return
+  if (event.key !== 'PageDown' && event.key !== 'PageUp') return
+
+  event.preventDefault()
+  const page = event.currentTarget as HTMLElement
+  const distance = Math.max(page.clientHeight * 0.8, 1)
+  page.scrollTop += event.key === 'PageDown' ? distance : -distance
+}
 </script>
 
 <template>
@@ -10,6 +20,7 @@ withDefaults(defineProps<{ label?: string }>(), {
     role="region"
     :aria-label="label"
     tabindex="0"
+    @keydown="handlePageKey"
   >
     <slot />
   </div>

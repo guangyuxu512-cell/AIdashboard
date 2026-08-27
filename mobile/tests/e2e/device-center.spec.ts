@@ -261,7 +261,7 @@ function makeProviderInventory(deviceId: string) {
     device_id: deviceId,
     provider_code: 'yingdao',
     available: true,
-    provider_version: '3.4.5',
+    provider_version: '6.3.6',
     account_display: '测试账号',
     account_type: 'enterprise',
     enterprise_account: true,
@@ -272,9 +272,9 @@ function makeProviderInventory(deviceId: string) {
       status: 'ready',
       status_reason_code: null,
       status_reason: null,
-      provider_version: '3.4.5',
+      provider_version: '6.3.6',
       execution_available: true,
-      execution_version: '2.0.0',
+      execution_version: '6.3.6',
       execution_unavailable_reason: null,
       logged_in: true,
       account_display: '测试账号',
@@ -306,8 +306,8 @@ function makeCapabilities(deviceId: string) {
     device_id: deviceId,
     skill_id: skillId,
     display_name: displayName,
-    runtime: 'rpa',
-    provider: 'yingdao',
+    runtime: classification === 'business' ? 'python' : 'rpa',
+    provider: classification === 'business' ? null : 'yingdao',
     version: '1.0.0',
     classification,
     input_schema: null,
@@ -593,12 +593,9 @@ for (const width of viewportWidths) {
       expect((await mainButton.boundingBox())?.height).toBeGreaterThanOrEqual(
         44,
       )
-      const taskButton = firstCard.getByRole('button', {
-        name: '查看任务：同步订单',
-      })
-      expect((await taskButton.boundingBox())?.height).toBeGreaterThanOrEqual(
-        44,
-      )
+      await expect(
+        firstCard.getByRole('button', { name: '查看任务：同步订单' }),
+      ).toHaveCount(0)
       expect((await firstCard.boundingBox())?.height).toBeLessThan(165)
       expect(
         await countCardsInsideListViewport(page, '[data-testid="device-card"]'),
@@ -657,7 +654,7 @@ for (const width of viewportWidths) {
           ),
           expectedNumberFontSize: window
             .getComputedStyle(document.documentElement)
-            .getPropertyValue('--font-size-display')
+            .getPropertyValue('--font-size-title')
             .trim(),
           expectedColors: [
             tokenColor('--status-success'),
@@ -719,19 +716,6 @@ for (const width of viewportWidths) {
           metaBox.x + metaBox.width / 2,
           metaBox.y + metaBox.height / 2,
         )
-        await page.mouse.down()
-        await expect
-          .poll(() =>
-            firstCard.evaluate(
-              (element) => window.getComputedStyle(element).transform,
-            ),
-          )
-          .toBe('none')
-        await page.mouse.up()
-
-        const box = await mainButton.boundingBox()
-        if (!box) throw new Error('未找到设备主触控区域')
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
         await page.mouse.down()
         await expect
           .poll(() =>
@@ -806,7 +790,7 @@ for (const width of viewportWidths) {
       })
       expect(layout).toMatchObject({
         headerHeight: '52px',
-        summaryHeight: '72px',
+        summaryHeight: '64px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
         toolbarHeight: '44px',
@@ -828,38 +812,33 @@ for (const width of viewportWidths) {
 
       await mainButton.click()
       await expect(page.getByTestId('device-detail')).toBeVisible()
-      await expect(page.getByTestId('device-primary-actions')).toContainText(
-        '运行应用刷新能力参数配置',
+      await expect(page.getByTestId('device-summary-device')).toContainText(
+        /设备 1在线已(启用|停用)Worker \d/,
       )
-      for (const action of [
-        'device-action-run',
-        'device-action-refresh',
-        'device-action-configure',
-      ]) {
+      await expect(page.getByTestId('device-summary-yingdao')).toContainText(
+        '影刀账号测试账号就绪6.3.6',
+      )
+      await expect(page.getByTestId('device-capability-tabs')).toContainText(
+        '影刀应用 1Skills 1',
+      )
+      for (const action of ['device-capability-refresh']) {
         expect(
           (await page.getByTestId(action).boundingBox())?.height,
         ).toBeGreaterThanOrEqual(44)
       }
+      for (const actionName of ['配置：订单应用', '运行：订单应用']) {
+        expect(
+          (await page.getByRole('button', { name: actionName }).boundingBox())
+            ?.height,
+        ).toBeGreaterThanOrEqual(44)
+      }
       await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
       await expect(page.locator('.van-nav-bar')).toHaveCSS('height', '50px')
-      await expect(page.getByTestId('provider-inventory')).toContainText('就绪')
-      await expect(page.getByTestId('provider-inventory')).toContainText(
-        '账号测试账号',
-      )
-      await expect(page.getByTestId('provider-inventory')).toContainText(
-        '版本3.4.5',
-      )
-      await expect(page.getByTestId('capability-summary')).toContainText(
-        '业务1 个',
-      )
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
-          '.device-detail-page__summary',
-          '[data-testid="device-primary-actions"]',
+          '[data-testid="device-detail"]',
+          '[data-testid="device-capability-panel"]',
           '[data-testid="device-current-task"]',
-          '[data-testid="device-runtime-summary"]',
-          '.device-provider-section',
-          '.device-skill-summary',
         ]
         const resolveColor = (token: string) => {
           const probe = document.createElement('span')
@@ -896,24 +875,18 @@ for (const width of viewportWidths) {
         detailSurfaces.expectedCardBackground,
         detailSurfaces.expectedSectionBackground,
         detailSurfaces.expectedSectionBackground,
-        detailSurfaces.expectedSectionBackground,
-        detailSurfaces.expectedSectionBackground,
-        detailSurfaces.expectedSectionBackground,
       ])
       expect(detailSurfaces.shadows).toEqual([
         detailSurfaces.expectedCardShadow,
         'none',
         'none',
-        'none',
-        'none',
-        'none',
       ])
-      await expect(page.getByTestId('provider-inventory')).not.toContainText(
+      await expect(page.getByTestId('device-detail')).not.toContainText(
         '企业账号',
       )
-      await expect(page.getByTestId('capability-summary')).not.toContainText(
-        '未分类能力',
-      )
+      await expect(
+        page.getByTestId('device-capability-panel'),
+      ).not.toContainText('未分类能力')
       const moreInformation = page.getByTestId('device-more-information')
       await expect(
         moreInformation.locator('.van-collapse-item__content'),
@@ -924,11 +897,11 @@ for (const width of viewportWidths) {
         })
         const requestCountBeforeActions = state.methods.length
         for (const action of [
-          'device-action-run',
-          'device-action-refresh',
-          'device-action-configure',
+          page.getByTestId('device-capability-refresh'),
+          page.getByRole('button', { name: '配置：订单应用' }),
+          page.getByRole('button', { name: '运行：订单应用' }),
         ]) {
-          await page.getByTestId(action).click()
+          await action.click()
           await expect(
             page.getByText('功能建设中', { exact: true }).last(),
           ).toBeVisible()
@@ -969,7 +942,7 @@ for (const width of viewportWidths) {
           element.scrollTop = 0
         })
         await detailScroll.focus()
-        await page.keyboard.press('PageDown')
+        await detailScroll.press('PageDown')
         await expect
           .poll(() => detailScroll.evaluate((element) => element.scrollTop))
           .toBeGreaterThan(0)

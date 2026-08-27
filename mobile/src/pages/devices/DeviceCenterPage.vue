@@ -20,14 +20,6 @@ function openDevice(deviceId: string): void {
   })
 }
 
-function openTask(taskId: string, sourceDeviceId: string): void {
-  void router.push({
-    name: MOBILE_ROUTE_NAMES.taskDetail,
-    params: { taskId },
-    query: { fromDeviceId: sourceDeviceId },
-  })
-}
-
 async function refresh(): Promise<void> {
   if (!(await deviceCenter.refresh())) showToast('刷新失败')
 }
@@ -75,7 +67,6 @@ function showFilterPlaceholder(): void {
         @load-more="deviceCenter.loadMore"
         @retry-load-more="deviceCenter.retryLoadMore"
         @select-device="openDevice"
-        @select-task="openTask"
       />
     </div>
   </div>

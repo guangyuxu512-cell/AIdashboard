@@ -42,7 +42,7 @@ defineProps({
         :class="`mobile-summary-strip__item--${item.tone ?? 'neutral'}`"
       >
         <dd :data-testid="`summary-${item.key}`">{{ item.value }}</dd>
-        <dt><span aria-hidden="true" />{{ item.label }}</dt>
+        <dt>{{ item.label }}</dt>
       </div>
     </dl>
   </section>
@@ -70,11 +70,12 @@ defineProps({
 }
 
 .mobile-summary-strip__item {
-  display: grid;
+  display: flex;
   min-width: 0;
   gap: var(--space-1);
-  padding-inline: var(--space-3);
-  align-content: center;
+  padding-inline: var(--space-2);
+  align-items: baseline;
+  justify-content: center;
 }
 
 .mobile-summary-strip__item + .mobile-summary-strip__item {
@@ -88,50 +89,35 @@ defineProps({
 }
 
 .mobile-summary-strip__item dt {
-  display: flex;
-  gap: var(--space-1);
-  align-items: center;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-caption);
   font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-body);
+  line-height: var(--line-height-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.mobile-summary-strip__item dt span {
-  width: var(--status-dot-size);
-  height: var(--status-dot-size);
-  flex: none;
-  color: inherit;
-  background: currentcolor;
-  border-radius: var(--radius-round);
-  opacity: var(--opacity-muted);
 }
 
 .mobile-summary-strip__item dd {
+  flex: none;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--font-size-display);
+  font-size: var(--font-size-title);
   font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-display);
+  line-height: var(--line-height-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mobile-summary-strip__item--primary dd,
-.mobile-summary-strip__item--primary dt span {
+.mobile-summary-strip__item--primary dd {
   color: var(--color-primary);
 }
 
-.mobile-summary-strip__item--success dd,
-.mobile-summary-strip__item--success dt span {
+.mobile-summary-strip__item--success dd {
   color: var(--status-success);
 }
 
-.mobile-summary-strip__item--muted dd,
-.mobile-summary-strip__item--muted dt span {
+.mobile-summary-strip__item--muted dd {
   color: var(--text-secondary);
 }
 </style>

@@ -47,11 +47,11 @@ for (const width of viewportWidths) {
       await page.goto('/#/devices')
 
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      await expect(page.getByTestId('device-card')).toHaveCount(5)
-      await expect(page.getByTestId('summary-online')).toHaveText('3')
-      await expect(page.getByTestId('summary-running')).toHaveText('1')
+      await expect(page.getByTestId('device-card')).toHaveCount(20)
+      await expect(page.getByTestId('summary-online')).toHaveText('4')
+      await expect(page.getByTestId('summary-running')).toHaveText('0')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
-      await expect(page.getByText('5 台', { exact: true })).toBeVisible()
+      await expect(page.getByText('20 台', { exact: true })).toBeVisible()
       await expect(page.getByTestId('mobile-list-selector')).toContainText(
         '全部',
       )
@@ -129,6 +129,20 @@ for (const width of viewportWidths) {
           )!
           return {
             summaryHeight: style('.mobile-summary-strip').height,
+            summaryInline: Array.from(
+              document.querySelectorAll<HTMLElement>(
+                '.mobile-summary-strip__item',
+              ),
+            ).every((item) => {
+              const value = item.querySelector<HTMLElement>('dd')!
+              const label = item.querySelector<HTMLElement>('dt')!
+              const valueBox = value.getBoundingClientRect()
+              const labelBox = label.getBoundingClientRect()
+              return (
+                valueBox.right <= labelBox.left &&
+                Math.abs(valueBox.bottom - labelBox.bottom) <= 8
+              )
+            }),
             toolbarHeight: style('.mobile-list-toolbar').height,
             selectorVisualHeight: style(
               '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
@@ -140,7 +154,8 @@ for (const width of viewportWidths) {
           }
         }),
       ).toEqual({
-        summaryHeight: '72px',
+        summaryHeight: '64px',
+        summaryInline: true,
         toolbarHeight: '44px',
         selectorVisualHeight: '32px',
         scrollbarWidth: 'none',
@@ -153,6 +168,39 @@ for (const width of viewportWidths) {
           path: testInfo.outputPath(`visual-device-390-${theme}.png`),
         })
       }
+
+      await page
+        .getByRole('button', { name: '查看设备：运营', exact: true })
+        .click()
+      await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
+      await expect(page.getByTestId('device-summary-device')).toContainText(
+        '运营',
+      )
+      await expect(page.getByTestId('device-summary-yingdao')).toContainText(
+        'HuanYu001',
+      )
+      await expect(page.getByTestId('device-capability-panel')).toHaveCSS(
+        'height',
+        '200px',
+      )
+      const summaryColumns = await page
+        .locator('.device-yingdao-summary__column')
+        .evaluateAll((columns) =>
+          columns.map((column) => {
+            const box = column.getBoundingClientRect()
+            return { x: box.x, y: box.y, width: box.width }
+          }),
+        )
+      expect(summaryColumns).toHaveLength(2)
+      expect(summaryColumns[0]!.y).toBe(summaryColumns[1]!.y)
+      expect(summaryColumns[0]!.x).toBeLessThan(summaryColumns[1]!.x)
+      expect(
+        Math.abs(summaryColumns[0]!.width - summaryColumns[1]!.width),
+      ).toBeLessThanOrEqual(1)
+      await expectNoHorizontalOverflow(page)
+
+      await page.goBack()
+      await expect(page).toHaveURL(/#\/devices$/)
 
       await page.getByRole('tab', { name: /任务$/ }).click()
       await expect(page).toHaveURL(/#\/tasks$/)
@@ -196,13 +244,21 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await page.setViewportSize({ width: 390, height: 844 })
   await setTheme(page, 'light')
   await page.goto('/#/devices')
-  await expect(page.getByTestId('device-card')).toHaveCount(5)
+  await expect(page.getByTestId('device-card')).toHaveCount(20)
 
-  await page.getByRole('button', { name: '查看设备：运营' }).click()
+  await page
+    .getByRole('button', { name: '查看设备：运营', exact: true })
+    .click()
   await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
   await expect(page.getByTestId('device-detail')).toContainText('运营')
-  await expect(page.getByTestId('device-primary-actions')).toContainText(
-    '运行应用刷新能力参数配置',
+  await expect(page.getByTestId('device-summary-device')).toContainText(
+    '运营在线已启用Worker 0.4.6',
+  )
+  await expect(page.getByTestId('device-summary-yingdao')).toContainText(
+    '影刀账号HuanYu001就绪6.3.6',
+  )
+  await expect(page.getByTestId('device-capability-tabs')).toContainText(
+    '影刀应用 8Skills 5',
   )
   await expect(page.getByTestId('device-current-task')).toContainText(
     '订单同步',
@@ -210,48 +266,97 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(
     page.getByRole('region', { name: '设备详情内容' }),
   ).toHaveAttribute('tabindex', '0')
-  expect(
-    await page.evaluate(() => ({
-      primary: window.getComputedStyle(
-        document.querySelector<HTMLElement>(
-          '.device-primary-actions__visual--primary',
-        )!,
-      ).height,
-      secondary: window.getComputedStyle(
-        document.querySelector<HTMLElement>(
-          '.device-primary-actions__visual--secondary',
-        )!,
-      ).height,
-      touch: document
-        .querySelector<HTMLElement>('[data-testid="device-action-run"]')!
+  const layout = await page.evaluate(() => {
+    const list = document.querySelector<HTMLElement>(
+      '[data-testid="application-list"]',
+    )!
+    const rows = Array.from(
+      list.querySelectorAll<HTMLElement>('[data-testid="application-row"]'),
+    )
+    const listBox = list.getBoundingClientRect()
+    return {
+      panelHeight: document
+        .querySelector<HTMLElement>('[data-testid="device-capability-panel"]')!
         .getBoundingClientRect().height,
-      primaryWiderThanSecondary:
-        document
-          .querySelector<HTMLElement>(
-            '.device-primary-actions__visual--primary',
-          )!
-          .getBoundingClientRect().width >
-        document
-          .querySelector<HTMLElement>(
-            '.device-primary-actions__visual--secondary',
-          )!
-          .getBoundingClientRect().width,
-      scrollbarWidth: window.getComputedStyle(
+      rowHeights: rows
+        .slice(0, 4)
+        .map((row) => row.getBoundingClientRect().height),
+      threeRowsVisible: rows
+        .slice(0, 3)
+        .every(
+          (row) => row.getBoundingClientRect().bottom <= listBox.bottom + 1,
+        ),
+      fourthRequiresScroll:
+        rows[3]!.getBoundingClientRect().bottom > listBox.bottom + 1,
+      listScrollable: list.scrollHeight > list.clientHeight,
+      listScrollbarWidth: window.getComputedStyle(list).scrollbarWidth,
+      detailScrollbarWidth: window.getComputedStyle(
         document.querySelector<HTMLElement>('.app-page')!,
       ).scrollbarWidth,
-    })),
-  ).toEqual({
-    primary: '44px',
-    secondary: '40px',
-    touch: 44,
-    primaryWiderThanSecondary: true,
-    scrollbarWidth: 'none',
+    }
   })
-  await expect(page.getByTestId('provider-inventory')).toContainText('就绪')
-  await expect(page.getByTestId('capability-summary')).toContainText('业务')
+  expect(layout).toEqual({
+    panelHeight: 200,
+    rowHeights: [44, 44, 44, 44],
+    threeRowsVisible: true,
+    fourthRequiresScroll: true,
+    listScrollable: true,
+    listScrollbarWidth: 'none',
+    detailScrollbarWidth: 'none',
+  })
+  await expect(
+    page.getByText('visual-app-orders', { exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByText('visual-device-operations', { exact: true }),
+  ).toBeHidden()
+  await expect(page.getByRole('button', { name: /配置：拼多多/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /运行：拼多多/ })).toBeVisible()
   await page.screenshot({
     path: testInfo.outputPath('visual-device-detail-390-light.png'),
   })
+
+  const applicationList = page.getByTestId('application-list')
+  await applicationList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect
+    .poll(() => applicationList.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+  await page.screenshot({
+    path: testInfo.outputPath('visual-device-capability-scroll-390-light.png'),
+  })
+
+  await page.getByRole('tab', { name: 'Skills 5' }).click()
+  await expect(page.getByTestId('skill-row')).toHaveCount(5)
+  await expect(page.getByText('运行状态检查', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '配置：订单同步' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '运行：库存同步' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '配置：库存同步' }),
+  ).toHaveCount(0)
+  await page.screenshot({
+    path: testInfo.outputPath('visual-device-skills-390-light.png'),
+  })
+
+  await page.getByText('更多信息', { exact: true }).click()
+  const detailScroll = page.getByRole('region', { name: '设备详情内容' })
+  await page.getByRole('tab', { name: '影刀应用 8' }).click()
+  await detailScroll.evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await applicationList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await applicationList.hover()
+  await page.mouse.wheel(0, 800)
+  await expect
+    .poll(() => detailScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
 
   await page.getByRole('button', { name: '查看任务：订单同步' }).click()
   await expect(page).toHaveURL(
