@@ -880,10 +880,10 @@ for (const width of viewportWidths) {
       await mainButton.click()
       await expect(page.getByTestId('device-detail')).toBeVisible()
       await expect(page.getByTestId('device-summary-device')).toContainText(
-        /设备 1在线已(启用|停用)Worker \d/,
+        /设备 1在线执行中Worker \d/,
       )
       await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-        '影刀账号测试账号就绪6.3.6',
+        '影刀账号已登录测试账号Provider 6.3.6',
       )
       await expect(
         page.locator('.device-capability-panel__tab-label'),
@@ -1459,12 +1459,6 @@ test('未上报 Runtime 与离线是不同事实', async ({ page }) => {
 
   await page.goto('/#/devices/device-2')
   await expect(page.getByTestId('device-detail')).toContainText('离线')
-  await expect(page.getByTestId('device-detail')).toContainText('已启用')
-  await page
-    .getByTestId('device-more-information')
-    .getByText('更多信息', { exact: true })
-    .click()
-  await expect(page.getByTestId('device-more-information')).not.toContainText(
-    '已启用',
-  )
+  await expect(page.getByTestId('device-detail')).toContainText('待执行')
+  await expect(page.getByTestId('device-detail')).not.toContainText('未上报')
 })

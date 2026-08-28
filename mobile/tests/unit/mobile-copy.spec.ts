@@ -13,7 +13,7 @@ const productionUiFiles = [
   '../../src/features/device-center/ui/DeviceOverviewCards.vue',
   '../../src/features/device-center/ui/DeviceInfiniteList.vue',
   '../../src/features/device-center/ui/ActiveTaskSummary.vue',
-  '../../src/features/device-center/ui/DeviceYingdaoSummary.vue',
+  '../../src/features/device-center/ui/DeviceRuntimeSummary.vue',
   '../../src/features/device-center/ui/DeviceCapabilityPanel.vue',
   '../../src/features/task-center/ui/TaskInfiniteList.vue',
   '../../src/features/task-center/ui/TaskFilterSheet.vue',

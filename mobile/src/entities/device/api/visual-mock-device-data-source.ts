@@ -64,9 +64,9 @@ export function createVisualDeviceDtos(): DeviceReadDto[] {
       deleted_at: null,
       worker_runtime: createRuntime(
         VISUAL_DEVICE_IDS.support,
-        '0.4.5',
+        '0.4.6',
         'online',
-        1,
+        0,
       ),
       created_at: createdAt,
       updated_at: minutesAgo(1),
@@ -156,7 +156,7 @@ export function createVisualDeviceDtos(): DeviceReadDto[] {
 
 function providerStatus(deviceId: string): YingdaoProviderStatusDto | null {
   if (deviceId === VISUAL_DEVICE_IDS.operations) return 'ready'
-  if (deviceId === VISUAL_DEVICE_IDS.support) return 'need_login'
+  if (deviceId === VISUAL_DEVICE_IDS.support) return 'ready'
   if (deviceId === VISUAL_DEVICE_IDS.marketing) return 'interface_unreachable'
   if (deviceId === VISUAL_DEVICE_IDS.service) return 'starting'
   return null

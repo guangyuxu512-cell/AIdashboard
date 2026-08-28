@@ -18,8 +18,8 @@ import {
   ActiveTaskSummary,
   DeviceCapabilityPanel,
   DeviceProviderDetails,
+  DeviceRuntimeSummary,
   DeviceSkillDetails,
-  DeviceYingdaoSummary,
   useDeviceDetail,
 } from '@/features/device-center'
 import { AppPage } from '@/shared/ui'
@@ -64,8 +64,11 @@ function showActionPlaceholder(): void {
     </VanEmpty>
 
     <template v-else>
-      <DeviceYingdaoSummary
+      <DeviceRuntimeSummary
         :device="detail.device.value"
+        :active-task="detail.activeTask.query.data.value"
+        :active-task-loading="detail.activeTask.isInitialLoading.value"
+        :active-task-error="detail.activeTask.isInitialError.value"
         :inventories="detail.provider.query.data.value"
         :provider-loading="detail.provider.isInitialLoading.value"
         :provider-error="detail.provider.isInitialError.value"

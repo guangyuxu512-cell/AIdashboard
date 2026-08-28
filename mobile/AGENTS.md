@@ -88,7 +88,8 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 点击 Device Card 必须进入 Device Detail，禁止默认进入 Task Detail。
 - 点击 Task Card 必须进入 Task Detail；Device / Task Card 右侧必须保留详情 Chevron 槽位。
 - 只有明确点击 Device Detail 的 Current Task 时才进入 Task Detail。
-- Device 与 Yingdao Runtime 摘要采用统一双列 Summary Pattern。
+- DeviceRuntimeSummary 必须使用一个整体 Card，按 Upper Device → Separator → Lower Yingdao Account
+  上下分区；两段均为左 Icon / 右内容，禁止拆成双 Card、嵌套 Account Card 或抽成通用 Summary。
 - 正常产品 UI 优先显示 Application/Skill Name，不显示 UUID。
 - Capability 区域固定最大高度，超出内容内部滚动或进入查看全部页。
 - Application/Skill 每行使用稳定的 Name + Actions 结构。

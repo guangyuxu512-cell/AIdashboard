@@ -16,8 +16,8 @@ import {
   DeviceInfiniteList,
   DeviceListCard,
   DeviceProviderDetails,
+  DeviceRuntimeSummary,
   DeviceSkillDetails,
-  DeviceYingdaoSummary,
   type DeviceActiveTaskState,
 } from '@/features/device-center'
 
@@ -483,21 +483,56 @@ describe('device center UI', () => {
     expect(wrapper.emitted('retryLoadMore')).toHaveLength(1)
   })
 
+  it('renders one stacked Device Runtime and Yingdao Account summary card', () => {
+    const wrapper = track(
+      mount(DeviceRuntimeSummary, {
+        props: {
+          device: baseDevice,
+          activeTask: null,
+          activeTaskLoading: false,
+          activeTaskError: false,
+          inventories: [providerInventory('ready')],
+          providerLoading: false,
+          providerError: false,
+        },
+      }),
+    )
+
+    expect(wrapper.classes()).toContain('mobile-card')
+    expect(wrapper.findAll('.device-runtime-summary__section')).toHaveLength(2)
+    expect(
+      wrapper.find('[data-testid="device-runtime-summary-separator"]').exists(),
+    ).toBe(true)
+    expect(wrapper.find('[data-testid="device-runtime-icon"]').exists()).toBe(
+      true,
+    )
+    expect(wrapper.find('[data-testid="device-account-icon"]').exists()).toBe(
+      true,
+    )
+    expect(
+      wrapper.get('[data-testid="device-summary-device"]').text(),
+    ).toContain('仓库设备在线空闲Worker 1.2.3')
+    expect(
+      wrapper.get('[data-testid="device-summary-yingdao"]').text(),
+    ).toContain('影刀账号已登录测试账号Provider 6.3.6')
+    expect(wrapper.text()).not.toContain('provider-user-1')
+  })
+
   it.each([
-    ['not_installed', '未安装'],
-    ['version_unsupported', '版本不支持'],
-    ['starting', '启动中'],
-    ['need_login', '需要登录'],
-    ['interface_unreachable', '接口不可达'],
-    ['ready', '就绪'],
+    { enabled: true, activeTask: null, label: '空闲' },
+    { enabled: true, activeTask: runningTask, label: '执行中' },
+    { enabled: false, activeTask: runningTask, label: '停用' },
   ] as const)(
-    'renders Provider status %s in the dual summary',
-    (status, label) => {
+    'maps formal facts to $label',
+    ({ enabled, activeTask, label }) => {
       const wrapper = track(
-        mount(DeviceYingdaoSummary, {
+        mount(DeviceRuntimeSummary, {
           props: {
-            device: baseDevice,
-            inventories: [providerInventory(status)],
+            device: { ...baseDevice, enabled },
+            activeTask,
+            activeTaskLoading: false,
+            activeTaskError: false,
+            inventories: [providerInventory('ready')],
             providerLoading: false,
             providerError: false,
           },
@@ -505,17 +540,40 @@ describe('device center UI', () => {
       )
 
       expect(
-        wrapper.get('[data-testid="device-summary-device"]').text(),
-      ).toContain('仓库设备')
-      expect(
-        wrapper.get('[data-testid="device-summary-yingdao"]').text(),
-      ).toContain('测试账号')
-      expect(wrapper.text()).toContain(label)
-      expect(wrapper.text()).toContain(status === 'ready' ? '6.3.6' : '3.4.5')
-      expect(wrapper.text()).not.toContain('provider-user-1')
-      expect(wrapper.findAll('.device-yingdao-summary__column')).toHaveLength(2)
+        wrapper.get('[data-testid="device-runtime-states"]').text(),
+      ).toContain(label)
     },
   )
+
+  it('keeps long Device and Account names inside their stable content slots', () => {
+    const inventory = providerInventory('ready')
+    const accountName = 'HuanYu001华东售后自动化协同中心企业账号'
+    inventory.account_display = accountName
+    inventory.inventory.account_display = accountName
+    const wrapper = track(
+      mount(DeviceRuntimeSummary, {
+        props: {
+          device: {
+            ...baseDevice,
+            displayName: '客服自动化工作站（华东售后协同中心）',
+          },
+          activeTask: null,
+          activeTaskLoading: false,
+          activeTaskError: false,
+          inventories: [inventory],
+          providerLoading: false,
+          providerError: false,
+        },
+      }),
+    )
+
+    expect(wrapper.get('[data-testid="device-runtime-name"]').text()).toContain(
+      '客服自动化工作站',
+    )
+    expect(wrapper.get('[data-testid="device-account-name"]').text()).toBe(
+      accountName,
+    )
+  })
 
   it('renders Provider secondary facts only in the technical details component', () => {
     const wrapper = track(
@@ -536,9 +594,12 @@ describe('device center UI', () => {
 
   it('keeps Provider loading, error and empty states inside the Yingdao column', async () => {
     const loading = track(
-      mount(DeviceYingdaoSummary, {
+      mount(DeviceRuntimeSummary, {
         props: {
           device: baseDevice,
+          activeTask: null,
+          activeTaskLoading: false,
+          activeTaskError: false,
           inventories: undefined,
           providerLoading: true,
           providerError: false,
@@ -546,9 +607,12 @@ describe('device center UI', () => {
       }),
     )
     const error = track(
-      mount(DeviceYingdaoSummary, {
+      mount(DeviceRuntimeSummary, {
         props: {
           device: baseDevice,
+          activeTask: null,
+          activeTaskLoading: false,
+          activeTaskError: false,
           inventories: undefined,
           providerLoading: false,
           providerError: true,
@@ -556,9 +620,12 @@ describe('device center UI', () => {
       }),
     )
     const empty = track(
-      mount(DeviceYingdaoSummary, {
+      mount(DeviceRuntimeSummary, {
         props: {
           device: baseDevice,
+          activeTask: null,
+          activeTaskLoading: false,
+          activeTaskError: false,
           inventories: [],
           providerLoading: false,
           providerError: false,

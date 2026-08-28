@@ -791,20 +791,40 @@ for (const width of viewportWidths) {
         equalWidth: true,
         labelsSingleLine: true,
       })
-      const summaryColumns = await page
-        .locator('.device-yingdao-summary__column')
-        .evaluateAll((columns) =>
-          columns.map((column) => {
-            const box = column.getBoundingClientRect()
-            return { x: box.x, y: box.y, width: box.width }
+      const summarySections = await page
+        .locator('.device-runtime-summary__section')
+        .evaluateAll((sections) =>
+          sections.map((section) => {
+            const box = section.getBoundingClientRect()
+            const icon = section
+              .querySelector<HTMLElement>('.device-runtime-summary__icon')!
+              .getBoundingClientRect()
+            const content = section
+              .querySelector<HTMLElement>('.device-runtime-summary__content')!
+              .getBoundingClientRect()
+            return {
+              x: box.x,
+              y: box.y,
+              width: box.width,
+              iconRight: icon.right,
+              contentLeft: content.left,
+            }
           }),
         )
-      expect(summaryColumns).toHaveLength(2)
-      expect(summaryColumns[0]!.y).toBe(summaryColumns[1]!.y)
-      expect(summaryColumns[0]!.x).toBeLessThan(summaryColumns[1]!.x)
+      expect(summarySections).toHaveLength(2)
+      expect(summarySections[0]!.y).toBeLessThan(summarySections[1]!.y)
+      expect(summarySections[0]!.x).toBe(summarySections[1]!.x)
       expect(
-        Math.abs(summaryColumns[0]!.width - summaryColumns[1]!.width),
+        Math.abs(summarySections[0]!.width - summarySections[1]!.width),
       ).toBeLessThanOrEqual(1)
+      expect(
+        summarySections.every(
+          (section) => section.iconRight <= section.contentLeft,
+        ),
+      ).toBe(true)
+      await expect(
+        page.getByTestId('device-runtime-summary-separator'),
+      ).toBeVisible()
       await expect(page.locator('.van-tabbar-item')).toHaveText([
         '设备',
         '任务',
@@ -932,6 +952,86 @@ for (const width of viewportWidths) {
   }
 }
 
+for (const fixture of [
+  { width: 390, theme: 'light', file: 'device-runtime-summary-390-light.png' },
+  { width: 360, theme: 'light', file: 'device-runtime-summary-360-light.png' },
+  { width: 390, theme: 'dark', file: 'device-runtime-summary-390-dark.png' },
+] as const) {
+  test(`DeviceRuntimeSummary ${fixture.width}px ${fixture.theme} 保持单卡上下结构`, async ({
+    page,
+  }, testInfo) => {
+    const observation = observePage(page)
+    await page.setViewportSize({ width: fixture.width, height: 844 })
+    await setTheme(page, fixture.theme)
+    await page.goto('/#/devices/visual-device-support')
+
+    const summary = page.getByTestId('device-detail')
+    await expect(summary).toBeVisible()
+    await expect(page.getByTestId('device-summary-device')).toContainText(
+      '售后在线空闲Worker 0.4.6 · 刚刚',
+    )
+    await expect(page.getByTestId('device-summary-yingdao')).toContainText(
+      '影刀账号已登录HuanYu001Provider 6.3.6',
+    )
+    await expect(
+      summary.locator('.device-runtime-summary__section'),
+    ).toHaveCount(2)
+    await expect(
+      page.getByTestId('device-runtime-summary-separator'),
+    ).toBeVisible()
+    await expect(summary.locator('.mobile-card')).toHaveCount(0)
+
+    const anatomy = await summary.evaluate((root) => {
+      const sections = Array.from(
+        root.querySelectorAll<HTMLElement>('.device-runtime-summary__section'),
+      )
+      const textStyle = (testId: string) => {
+        const style = window.getComputedStyle(
+          root.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!,
+        )
+        return {
+          overflow: style.overflow,
+          textOverflow: style.textOverflow,
+          whiteSpace: style.whiteSpace,
+        }
+      }
+      return {
+        stacked:
+          sections[0]!.getBoundingClientRect().bottom <=
+          sections[1]!.getBoundingClientRect().top,
+        iconsLead: sections.every((section) => {
+          const icon = section
+            .querySelector<HTMLElement>('.device-runtime-summary__icon')!
+            .getBoundingClientRect()
+          const content = section
+            .querySelector<HTMLElement>('.device-runtime-summary__content')!
+            .getBoundingClientRect()
+          return icon.right <= content.left
+        }),
+        deviceName: textStyle('device-runtime-name'),
+        accountName: textStyle('device-account-name'),
+      }
+    })
+    expect(anatomy.stacked).toBe(true)
+    expect(anatomy.iconsLead).toBe(true)
+    expect(anatomy.deviceName).toEqual({
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    })
+    expect(anatomy.accountName).toEqual(anatomy.deviceName)
+    await expect(page.getByTestId('device-capability-panel')).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+    await page.screenshot({
+      path: testInfo.outputPath(fixture.file),
+      clip: { x: 0, y: 0, width: fixture.width, height: 430 },
+    })
+
+    expect(observation.apiRequests).toEqual([])
+    expect(observation.consoleErrors).toEqual([])
+  })
+}
+
 test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, testInfo) => {
   const observation = observePage(page)
   await page.setViewportSize({ width: 390, height: 844 })
@@ -945,10 +1045,10 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
   await expect(page.getByTestId('device-detail')).toContainText('运营')
   await expect(page.getByTestId('device-summary-device')).toContainText(
-    '运营在线已启用Worker 0.4.6',
+    '运营在线执行中Worker 0.4.6',
   )
   await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-    '影刀账号HuanYu001就绪6.3.6',
+    '影刀账号已登录HuanYu001Provider 6.3.6',
   )
   await expect(page.locator('.device-capability-panel__tab-label')).toHaveText([
     '影刀应用',
