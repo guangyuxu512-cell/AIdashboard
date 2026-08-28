@@ -31,7 +31,7 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | 卡片内部空间     | `src/shared/styles/tokens.css` | `--layout-card-padding`                                | 16px        | `DeviceCard`、`TaskCard`                   |
 | 卡片图标到正文   | `src/shared/styles/tokens.css` | `--space-3`                                            | 12px        | Device / Task Card、`DeviceRuntimeSummary` |
 | 卡片三行内部间距 | `src/shared/styles/tokens.css` | `--space-1`                                            | 4px         | Device / Task Card 主内容                  |
-| 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 22px | 设备名、任务名、Section 与能力标题         |
+| 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 20px | 设备名、任务名、Section 与能力标题         |
 | 概览横幅高度     | `src/shared/styles/tokens.css` | `--layout-summary-height`                              | 98px        | `MobileSummaryStrip`                       |
 | 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 32px | `MobileListToolbar`、Capability 轻操作     |
 | 能力面板总高度   | `src/shared/styles/tokens.css` | `--layout-capability-panel-height`                     | 334px       | 五行完整显示与第六行起内部滚动             |
@@ -74,14 +74,16 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 
 ### C. Typography（字体排版）
 
-| 字体角色             | Token                                               | 当前值      | 字重    | 主要影响                                              |
-| -------------------- | --------------------------------------------------- | ----------- | ------- | ----------------------------------------------------- |
-| Caption / Meta       | `--font-size-caption` / `--line-height-caption`     | 12px / 18px | 400     | 时间、心跳、Meta、Tag、Summary Label、日志辅助信息    |
-| Secondary            | `--font-size-secondary` / `--line-height-secondary` | 13px / 20px | 400–500 | Device Runtime、Capability Selector 与轻操作          |
-| Body / Action        | `--font-size-body` / `--line-height-body`           | 14px / 22px | 400–500 | 正文、Vant Cell/Button、Capability Name               |
-| Section / Card Title | `--font-size-label` / `--line-height-label`         | 15px / 22px | 600     | Toolbar、Device/Task Card、Section、Capability Header |
-| Brand / Header       | `--font-size-title` / `--line-height-title`         | 16px / 24px | 600     | 品牌、详情 Header、Task Detail 标题                   |
-| Summary Number       | `--font-size-display` / `--line-height-display`     | 18px / 24px | 700     | `MobileSummaryStrip` 数字                             |
+| 字体角色             | Token                                               | 当前值      | 字重 | 主要影响                                              |
+| -------------------- | --------------------------------------------------- | ----------- | ---- | ----------------------------------------------------- |
+| Caption / Meta       | `--font-size-caption` / `--line-height-caption`     | 12px / 16px | 400  | 时间、心跳、Meta、Tag、Summary Label、日志辅助信息    |
+| Secondary            | `--font-size-secondary` / `--line-height-secondary` | 13px / 18px | 400  | Device Runtime 与普通辅助内容                         |
+| Action               | `--font-size-action` / `--line-height-action`       | 13px / 18px | 500  | Vant Button、Toolbar、Capability Selector / Action    |
+| Body                 | `--font-size-body` / `--line-height-body`           | 14px / 20px | 400  | 正文、Vant Cell                                       |
+| Capability Name      | Body Size / Line Height + Medium Weight             | 14px / 20px | 500  | Application / Skill Name                              |
+| Section / Card Title | `--font-size-label` / `--line-height-label`         | 15px / 20px | 600  | Toolbar、Device/Task Card、Section、Capability Header |
+| Brand / Header       | `--font-size-title` / `--line-height-title`         | 16px / 22px | 600  | 品牌、详情 Header、Task Detail 标题                   |
+| Summary Number       | `--font-size-display` / `--line-height-display`     | 18px / 22px | 700  | `MobileSummaryStrip` 数字                             |
 
 字重分别由 `--font-weight-regular`（400）、`--font-weight-medium`（500）、
 `--font-weight-semibold`（600）和 `--font-weight-bold`（700）控制。修改这些全局字重会同时影响所有同角色
@@ -132,7 +134,7 @@ Target。
 | `--space-3`                                                            | 12px                      | 详情 Section 内标题/内容、Task Summary/Core 间距              |
 | `--space-4`                                                            | 16px                      | Task Summary/Core 与 Runtime Log 内边距、Runtime Summary 分区 |
 | `--space-6`                                                            | 24px                      | Device / Task Detail 当前底部内容留白                         |
-| Vant Cell `font / line-height / vertical padding / horizontal padding` | 14px / 22px / 12px / 16px | “更多信息”与筛选列表密度                                      |
+| Vant Cell `font / line-height / vertical padding / horizontal padding` | 14px / 20px / 12px / 16px | “更多信息”与筛选列表密度                                      |
 | Vant Collapse Content Padding                                          | 12px 16px                 | “更多信息”展开内容密度                                        |
 
 ## Vant 4 尺寸映射
@@ -142,12 +144,12 @@ Target。
 
 | Vant 组件        | 真实尺寸映射                                                    | 当前生产用途                                            |
 | ---------------- | --------------------------------------------------------------- | ------------------------------------------------------- |
-| Button           | 默认 44px、大号 50px、Body 14px                                 | Retry、筛选、Capability Actions                         |
-| NavBar           | 高 50px、箭头 16px、标题 16px                                   | Task Filter Sheet 子页面；不是正式 `MobileDetailHeader` |
-| Tabbar           | 高 58px、Icon 22px、文字 12px、图文 Gap 4px                     | `MobileBottomNavigation`                                |
-| Tabs             | Touch/Wrap 44px、文字 14px                                      | `CapabilityPanel` 类型选择器                            |
-| Cell / CellGroup | 字体 14/22px、上下 12px、左右 16px                              | Device/Task More Information、设备筛选                  |
-| Tag              | 字体 12/18px、上下 2px、左右 8px                                | Device/Task 状态与 Meta Tag                             |
+| Button           | 默认 44px、大号 50px、Action 13/18px + Medium                   | Retry、筛选、Capability Actions                         |
+| NavBar           | 高 50px、箭头 16px、标题 16/22px + Semibold                     | Task Filter Sheet 子页面；不是正式 `MobileDetailHeader` |
+| Tabbar           | 高 58px、Icon 22px、文字 12/16px、图文 Gap 4px                  | `MobileBottomNavigation`                                |
+| Tabs             | Touch/Wrap 44px、文字 13/18px + Medium                          | `CapabilityPanel` 类型选择器                            |
+| Cell / CellGroup | 字体 14/20px、上下 12px、左右 16px                              | Device/Task More Information、设备筛选                  |
+| Tag              | 字体 12/16px、上下 2px、左右 8px                                | Device/Task 状态与 Meta Tag                             |
 | Search / Field   | Input 44px、Search 上下 8px/左右 12px                           | Task Filter Sheet                                       |
 | Popup            | Surface 由 Vant Mapping；高度由 overlay Token 和业务 Sheet 组合 | Task Filter 与 Foundation Sheet                         |
 | Calendar         | Header Action 44px、Day 50px、Selected 44px、Confirm 44px       | Task 日期筛选                                           |
@@ -196,20 +198,20 @@ Target。
 - Padding：`--layout-card-padding`；卡间距：列表容器的 `--layout-card-gap`。
 - Leading 到正文：`--space-3`；正文三行 Gap：`--space-1`。
 - Leading Slot / Icon：`--layout-card-leading-icon-slot-width` 22px / Default 22px；Chevron：Small 16px。
-- 标题 / Runtime / Meta：Label 15/22、Secondary 13/20、Caption 12/18。
+- 标题 / Runtime / Meta：Label 15/20、Secondary 13/18、Caption 12/16。
 - 高度自然计算；不增加第四行或改写 Main / Trailing 槽位。
 
 ### TaskCard（任务卡片）
 
 - Padding、列 Gap、正文三行 Gap、Leading Slot / Icon 与 Chevron 与 DeviceCard 相同。
-- Task Name：Label 15/22；Status、Time 与 Meta：Caption 12/18；Tag 由 Vant Tag Mapping 控制。
+- Task Name：Label 15/20；Status、Time 与 Meta：Caption 12/16；Tag 由 Vant Tag Mapping 控制。
 - 高度自然计算；不增加 Progress / Current Message 或改变三行结构。
 
 ### DeviceRuntimeSummary（设备运行摘要）
 
 - 上下分区 Padding：`--space-4`；Icon 到正文：`--space-3`；正文内部 Gap：`--space-1`。
 - 两段 Icon Slot / Icon：`--layout-runtime-summary-icon-slot-width` / `--icon-size-default`，均为 22px；
-  Value：Label 15/22；Label / Meta：Caption 12/18。
+  Value：Label 15/20；Label / Meta：Caption 12/16。
 - Retry Touch：`--touch-target-min`。不要改变 Upper → Separator → Lower 或两段字段层级。
 
 ### CapabilityPanel（能力面板）
@@ -219,8 +221,8 @@ Target。
 - Header 与 Selector 行：`--touch-target-min` 44px；Row 最小高度：
   `--layout-capability-row-min-height` 44px。
 - Row Gap：`--space-2`；Icon Slot / Icon：`--layout-capability-icon-slot-width` 22px / Small 16px。
-- Name：Body 14/22 + Medium；Version：Caption 12/18；Action：Touch 44px、
-  `--control-height-capability-action` 28px、Secondary 13/20。
+- Name：Body 14/20 + Medium；Version：Caption 12/16；Action：Touch 44px、
+  `--control-height-capability-action` 28px、Action 13/18 + Medium。
 - 调整总高度或 Row 密度后仍必须完整显示五行，并从第六行开始只滚动 Rows；Header / Selector 不滚动。
 
 ## 仍保留的局部值或当前无消费

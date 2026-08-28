@@ -278,19 +278,20 @@ function formatSkillVersion(version: string): string | null {
 .device-capability-panel__tab-label,
 .device-capability-panel__tab-count {
   display: inline-block;
-  line-height: var(--line-height-secondary);
 }
 
 .device-capability-panel__tab-label {
-  font-size: var(--font-size-secondary);
+  font-size: var(--font-size-action);
   font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-action);
 }
 
 .device-capability-panel__tab-count {
   margin-left: var(--space-1);
   color: var(--text-tertiary);
   font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-caption);
 }
 
 .device-capability-panel__tabs
@@ -400,9 +401,9 @@ function formatSkillVersion(version: string): string | null {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-control);
-  font-size: var(--font-size-secondary);
+  font-size: var(--font-size-action);
   font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-secondary);
+  line-height: var(--line-height-action);
 }
 
 .device-capability-panel__action span {

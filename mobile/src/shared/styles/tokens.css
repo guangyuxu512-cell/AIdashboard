@@ -7,8 +7,9 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     monospace;
   --font-size-caption: 12px; /* 时间、Meta、Tag 与最弱辅助信息 */
-  --font-size-secondary: 13px; /* 次级状态、轻操作与能力类型标签 */
-  --font-size-body: 14px; /* 正文、Vant Cell/Button 与能力名称 */
+  --font-size-secondary: 13px; /* 次级状态与普通辅助内容 */
+  --font-size-action: 13px; /* Button、Selector 与 Capability 操作文案 */
+  --font-size-body: 14px; /* 正文、Vant Cell 与能力名称 */
   --font-size-label: 15px; /* Toolbar、DeviceCard/TaskCard 与 Section 标题 */
   --font-size-title: 16px; /* 品牌、详情 Header 与任务详情标题 */
   --font-size-display: 18px; /* MobileSummaryStrip（概览横幅）指标数字 */
@@ -16,12 +17,13 @@
   --font-weight-medium: 500; /* 轻操作、标签与能力名称的强调字重 */
   --font-weight-semibold: 600; /* Header、Toolbar 与卡片标题字重 */
   --font-weight-bold: 700; /* 概览指标数字字重 */
-  --line-height-caption: 18px; /* Caption / Meta（说明与辅助信息）行高 */
-  --line-height-secondary: 20px; /* 次级状态与轻操作行高 */
-  --line-height-body: 22px; /* 正文、Cell 与能力名称行高 */
-  --line-height-label: 22px; /* Toolbar、卡片与 Section 标题行高 */
-  --line-height-title: 24px; /* 品牌与详情 Header 标题行高 */
-  --line-height-display: 24px; /* MobileSummaryStrip 指标数字行高 */
+  --line-height-caption: 16px; /* Caption / Meta（说明与辅助信息）紧凑行高 */
+  --line-height-secondary: 18px; /* 次级状态行高 */
+  --line-height-action: 18px; /* 轻量操作文案行高 */
+  --line-height-body: 20px; /* 正文、Cell 与能力名称舒适行高 */
+  --line-height-label: 20px; /* Toolbar、卡片与 Section 标题紧凑行高 */
+  --line-height-title: 22px; /* 品牌与详情 Header 标题行高 */
+  --line-height-display: 22px; /* MobileSummaryStrip 指标数字行高 */
 
   /* Spacing */
   --space-1: 4px; /* 卡片三行、Toolbar 控件与紧凑操作的内部间距 */

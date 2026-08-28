@@ -222,6 +222,10 @@ describe('Mobile Layout shared components', () => {
       resolve(process.cwd(), 'src/shared/styles/base.css'),
       'utf8',
     )
+    const vantTheme = readFileSync(
+      resolve(process.cwd(), 'src/shared/styles/vant-theme.css'),
+      'utf8',
+    )
 
     expect(tokens).toContain('--layout-summary-height: 98px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
@@ -229,11 +233,29 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--touch-target-min: 44px')
     expect(tokens).toContain('--font-size-caption: 12px')
     expect(tokens).toContain('--font-size-secondary: 13px')
+    expect(tokens).toContain('--font-size-action: 13px')
     expect(tokens).toContain('--font-size-body: 14px')
     expect(tokens).toContain('--font-size-label: 15px')
     expect(tokens).toContain('--font-size-title: 16px')
     expect(tokens).toContain('--font-size-display: 18px')
+    expect(tokens).toContain('--line-height-caption: 16px')
+    expect(tokens).toContain('--line-height-secondary: 18px')
+    expect(tokens).toContain('--line-height-action: 18px')
+    expect(tokens).toContain('--line-height-body: 20px')
+    expect(tokens).toContain('--line-height-label: 20px')
+    expect(tokens).toContain('--line-height-title: 22px')
+    expect(tokens).toContain('--line-height-display: 22px')
     expect(tokens).toContain('--font-weight-bold: 700')
+    expect(vantTheme).toContain(
+      '--van-button-default-font-size: var(--font-size-action)',
+    )
+    expect(vantTheme).toContain(
+      '--van-tabbar-item-line-height: var(--line-height-caption)',
+    )
+    expect(vantTheme).toContain('--van-tab-font-size: var(--font-size-action)')
+    expect(vantTheme).toMatch(
+      /\.van-nav-bar\s*\{\s*line-height:\s*var\(--line-height-title\)/s,
+    )
     expect(base).toContain('scrollbar-width: none')
     expect(base).toContain('-ms-overflow-style: none')
     expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')

@@ -36,10 +36,12 @@
   --van-duration-fast: var(--duration-fast);
   --van-duration-base: var(--duration-normal);
 
-  /* Vant Button（按钮）：控制正式页面按钮的默认/大号高度与正文字号。 */
+  /* Vant Button（按钮）：控制正式页面按钮的默认/大号高度与 Action 字体。 */
   --van-button-default-height: var(--control-height-default);
   --van-button-large-height: var(--control-height-large);
-  --van-button-default-font-size: var(--font-size-body);
+  --van-button-default-font-size: var(--font-size-action);
+  --van-button-default-line-height: var(--line-height-action);
+  --van-button-normal-font-size: var(--font-size-action);
   --van-button-default-color: var(--text-primary);
   --van-button-default-background: var(--bg-surface-raised);
   --van-button-default-border-color: var(--border-default);
@@ -71,6 +73,7 @@
   --van-tabbar-height: var(--layout-bottom-nav-height);
   --van-tabbar-background: var(--bg-surface-raised);
   --van-tabbar-item-font-size: var(--font-size-caption);
+  --van-tabbar-item-line-height: var(--line-height-caption);
   --van-tabbar-item-text-color: var(--text-tertiary);
   --van-tabbar-item-active-color: var(--text-selected);
   --van-tabbar-item-active-background: var(--bg-surface-raised);
@@ -81,7 +84,8 @@
   --van-tab-text-color: var(--text-secondary);
   --van-tab-active-text-color: var(--text-selected);
   --van-tab-disabled-text-color: var(--text-disabled);
-  --van-tab-font-size: var(--font-size-body);
+  --van-tab-font-size: var(--font-size-action);
+  --van-tab-line-height: var(--line-height-action);
   --van-tabs-default-color: var(--color-primary);
   --van-tabs-line-height: var(--touch-target-min);
   --van-tabs-nav-background: var(--bg-surface);
@@ -208,6 +212,14 @@
   background: var(--bg-surface);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-card);
+}
+
+.van-button {
+  font-weight: var(--font-weight-medium);
+}
+
+.van-nav-bar {
+  line-height: var(--line-height-title);
 }
 
 .van-tag {
