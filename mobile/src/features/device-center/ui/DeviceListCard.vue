@@ -145,6 +145,7 @@ const primaryStatus = computed(() => {
 
 .device-list-card__leading {
   display: grid;
+  width: var(--layout-card-leading-icon-slot-width);
   flex: none;
   align-self: center;
   color: var(--text-secondary);

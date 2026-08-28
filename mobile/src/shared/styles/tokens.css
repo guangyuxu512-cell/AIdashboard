@@ -38,6 +38,7 @@
   --control-height-medium: 40px;
   --control-height-default: 44px; /* Vant 默认 Button、Search 输入高度 */
   --control-height-large: 50px; /* Vant 大号 Button 与 Calendar 日期行高度 */
+  --control-height-capability-action: 28px; /* Capability 配置/运行操作的内部视觉高度 */
   --icon-size-small: 16px; /* Chevron、能力行图标与轻量状态图标 */
   --icon-size-default: 22px; /* Header、Bottom Nav、Summary 与业务卡主图标 */
   --status-dot-size: 6px;
@@ -69,6 +70,11 @@
   --layout-card-gap: 12px; /* Device/Task 列表中卡片之间的距离 */
   --layout-card-padding: 16px; /* DeviceCard / TaskCard 统一内部留白 */
   --layout-card-row-gap: 8px;
+  --layout-card-leading-icon-slot-width: 22px; /* DeviceCard / TaskCard 左侧图标槽位宽度 */
+  --layout-runtime-summary-icon-slot-width: 22px; /* DeviceRuntimeSummary 上下分区图标槽位宽度 */
+  --layout-capability-panel-height: 334px; /* 能力面板整体高度，保证完整显示5行，第6行开始内部滚动 */
+  --layout-capability-row-min-height: 44px; /* Capability Row（能力行）最小高度 */
+  --layout-capability-icon-slot-width: 22px; /* Capability Row 左侧图标槽位宽度 */
   --layout-readable-max-width: 28rem;
   --layout-inline-state-min-height: 96px;
   --overlay-height-medium: min(56dvh, 520px);

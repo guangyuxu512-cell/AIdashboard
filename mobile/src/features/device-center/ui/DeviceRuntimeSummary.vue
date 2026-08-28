@@ -210,6 +210,7 @@ const yingdaoVersion = computed(
 
 .device-runtime-summary__icon {
   display: grid;
+  width: var(--layout-runtime-summary-icon-slot-width);
   align-self: center;
   color: var(--text-secondary);
   font-size: var(--icon-size-default);

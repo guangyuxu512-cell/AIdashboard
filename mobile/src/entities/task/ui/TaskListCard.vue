@@ -73,6 +73,7 @@ const metaTags = computed(() => {
 
 .task-list-card__leading {
   display: grid;
+  width: var(--layout-card-leading-icon-slot-width);
   color: var(--text-secondary);
   font-size: var(--icon-size-default);
   place-items: center;

@@ -22,33 +22,34 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 
 ## 最常改
 
-| 想调整什么       | 文件                                                      | Token / 位置                                           | 当前值      | 影响                                       |
-| ---------------- | --------------------------------------------------------- | ------------------------------------------------------ | ----------- | ------------------------------------------ |
-| 页面左右留白     | `src/shared/styles/tokens.css`                            | `--layout-page-padding-x`                              | 16px        | Header、Summary、Toolbar、列表与详情页     |
-| 详情页上下留白   | `src/shared/styles/tokens.css`                            | `--layout-page-padding-y`                              | 16px        | `AppPage` 顶部与底部                       |
-| 详情区块间距     | `src/shared/styles/tokens.css`                            | `--layout-section-gap`                                 | 16px        | Device / Task Detail 各业务 Section        |
-| 列表卡片间距     | `src/shared/styles/tokens.css`                            | `--layout-card-gap`                                    | 12px        | Device / Task 列表                         |
-| 卡片内部空间     | `src/shared/styles/tokens.css`                            | `--layout-card-padding`                                | 16px        | `DeviceCard`、`TaskCard`                   |
-| 卡片图标到正文   | `src/shared/styles/tokens.css`                            | `--space-3`                                            | 12px        | Device / Task Card、`DeviceRuntimeSummary` |
-| 卡片三行内部间距 | `src/shared/styles/tokens.css`                            | `--space-1`                                            | 4px         | Device / Task Card 主内容                  |
-| 卡片标题字体     | `src/shared/styles/tokens.css`                            | `--font-size-label` / `--line-height-label`            | 15px / 22px | 设备名、任务名、Section 与能力标题         |
-| 概览横幅高度     | `src/shared/styles/tokens.css`                            | `--layout-summary-height`                              | 98px        | `MobileSummaryStrip`                       |
-| 工具行与紧凑控件 | `src/shared/styles/tokens.css`                            | `--layout-toolbar-height` / `--control-height-compact` | 44px / 32px | `MobileListToolbar`、Capability 轻操作     |
-| 能力面板总高度   | `src/features/device-center/ui/DeviceCapabilityPanel.vue` | `.device-capability-panel`                             | 334px       | 五行完整显示与第六行起内部滚动             |
+| 想调整什么       | 文件                           | Token / 位置                                           | 当前值      | 影响                                       |
+| ---------------- | ------------------------------ | ------------------------------------------------------ | ----------- | ------------------------------------------ |
+| 页面左右留白     | `src/shared/styles/tokens.css` | `--layout-page-padding-x`                              | 16px        | Header、Summary、Toolbar、列表与详情页     |
+| 详情页上下留白   | `src/shared/styles/tokens.css` | `--layout-page-padding-y`                              | 16px        | `AppPage` 顶部与底部                       |
+| 详情区块间距     | `src/shared/styles/tokens.css` | `--layout-section-gap`                                 | 16px        | Device / Task Detail 各业务 Section        |
+| 列表卡片间距     | `src/shared/styles/tokens.css` | `--layout-card-gap`                                    | 12px        | Device / Task 列表                         |
+| 卡片内部空间     | `src/shared/styles/tokens.css` | `--layout-card-padding`                                | 16px        | `DeviceCard`、`TaskCard`                   |
+| 卡片图标到正文   | `src/shared/styles/tokens.css` | `--space-3`                                            | 12px        | Device / Task Card、`DeviceRuntimeSummary` |
+| 卡片三行内部间距 | `src/shared/styles/tokens.css` | `--space-1`                                            | 4px         | Device / Task Card 主内容                  |
+| 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 22px | 设备名、任务名、Section 与能力标题         |
+| 概览横幅高度     | `src/shared/styles/tokens.css` | `--layout-summary-height`                              | 98px        | `MobileSummaryStrip`                       |
+| 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 32px | `MobileListToolbar`、Capability 轻操作     |
+| 能力面板总高度   | `src/shared/styles/tokens.css` | `--layout-capability-panel-height`                     | 334px       | 五行完整显示与第六行起内部滚动             |
 
 ## Stage 2 常调参数
 
 ### A. Layout Dimensions（布局尺寸）
 
-| 参数                                                | 当前值 | 主要影响                                                   |
-| --------------------------------------------------- | ------ | ---------------------------------------------------------- |
-| `--layout-content-max-width`                        | 430px  | `MobileAppShell` 最大内容宽度                              |
-| `--layout-header-height`                            | 52px   | `MobileGlobalHeader` 内容高度，不含顶部 Safe Area          |
-| `--layout-detail-header-height`                     | 50px   | `MobileDetailHeader`；也映射到筛选 Sheet 的 Vant NavBar    |
-| `--layout-summary-height`                           | 98px   | `MobileSummaryStrip` 整体高度                              |
-| `--layout-toolbar-height`                           | 44px   | `MobileListToolbar` 整体高度                               |
-| `--layout-bottom-nav-height`                        | 58px   | Vant Tabbar 与五入口 Bottom Navigation，不含底部 Safe Area |
-| `.device-capability-panel` 的 `height / max-height` | 334px  | `CapabilityPanel` 总高度；当前仍由组件局部样式控制         |
+| 参数                                 | 当前值 | 主要影响                                                   |
+| ------------------------------------ | ------ | ---------------------------------------------------------- |
+| `--layout-content-max-width`         | 430px  | `MobileAppShell` 最大内容宽度                              |
+| `--layout-header-height`             | 52px   | `MobileGlobalHeader` 内容高度，不含顶部 Safe Area          |
+| `--layout-detail-header-height`      | 50px   | `MobileDetailHeader`；也映射到筛选 Sheet 的 Vant NavBar    |
+| `--layout-summary-height`            | 98px   | `MobileSummaryStrip` 整体高度                              |
+| `--layout-toolbar-height`            | 44px   | `MobileListToolbar` 整体高度                               |
+| `--layout-bottom-nav-height`         | 58px   | Vant Tabbar 与五入口 Bottom Navigation，不含底部 Safe Area |
+| `--layout-capability-panel-height`   | 334px  | `CapabilityPanel` 总高度                                   |
+| `--layout-capability-row-min-height` | 44px   | Capability Row 最小高度                                    |
 
 `MobileAppShell` 的 `100dvh`、Safe Area 所有权和 Header / Main / Bottom 三行 Grid 属于冻结的高度链与
 滚动结构，不是 Stage 2 常规调参项。
@@ -88,33 +89,33 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 
 ### D. Icon Dimensions（图标尺寸）
 
-| 图标位置                           | 当前控制位置                                                             | 当前值      |
-| ---------------------------------- | ------------------------------------------------------------------------ | ----------- |
-| Global Header Theme / Bell         | `--icon-size-default`                                                    | 22px        |
-| Detail Header Back                 | `--icon-size-default`                                                    | 22px        |
-| Bottom Navigation Icon             | `vant-theme.css` → `--van-tabbar-item-icon-size` → `--icon-size-default` | 22px        |
-| Summary Metric Icon                | `--icon-size-default`                                                    | 22px        |
-| DeviceCard / TaskCard Leading Icon | `--icon-size-default`                                                    | 22px        |
-| DeviceCard / TaskCard Chevron      | `--icon-size-small`                                                      | 16px        |
-| DeviceRuntimeSummary Icon          | `--icon-size-default`                                                    | 22px        |
-| Capability Row Icon Slot / Icon    | `--icon-size-default` / `--icon-size-small`                              | 22px / 16px |
+| 图标位置                                  | 当前控制位置                                                             | 当前值      |
+| ----------------------------------------- | ------------------------------------------------------------------------ | ----------- |
+| Global Header Theme / Bell                | `--icon-size-default`                                                    | 22px        |
+| Detail Header Back                        | `--icon-size-default`                                                    | 22px        |
+| Bottom Navigation Icon                    | `vant-theme.css` → `--van-tabbar-item-icon-size` → `--icon-size-default` | 22px        |
+| Summary Metric Icon                       | `--icon-size-default`                                                    | 22px        |
+| DeviceCard / TaskCard Leading Slot / Icon | `--layout-card-leading-icon-slot-width` / `--icon-size-default`          | 22px / 22px |
+| DeviceCard / TaskCard Chevron             | `--icon-size-small`                                                      | 16px        |
+| DeviceRuntimeSummary Slot / Icon          | `--layout-runtime-summary-icon-slot-width` / `--icon-size-default`       | 22px / 22px |
+| Capability Row Icon Slot / Icon           | `--layout-capability-icon-slot-width` / `--icon-size-small`              | 22px / 16px |
 
-Header、Summary、Card 与 Runtime 的 Icon Slot 当前跟随图标尺寸或 `auto` Grid 列，没有独立 Slot 宽度
-Token。若 Stage 2 需要分别控制 Slot，先记录为统一收口提案，不能在多个业务组件各写一套数值。最终图标
-图案、描边与资源属于 Stage 3。
+Header 与 Summary 的 Icon Box 继续直接消费图标尺寸；Device/Task Card、DeviceRuntimeSummary 与
+Capability Row 已分别建立稳定 Slot Width Token。最终图标图案、描边与资源属于 Stage 3。
 
 ### E. Controls（控件尺寸）
 
-| 参数                       | 当前值 | 主要影响                                                             |
-| -------------------------- | ------ | -------------------------------------------------------------------- |
-| `--touch-target-min`       | 44px   | Back、Theme、Bell、Summary Metric、Toolbar Action、Capability Action |
-| `--control-height-compact` | 32px   | Toolbar 控件视觉高度、Capability Refresh 视觉区域                    |
-| `--control-height-default` | 44px   | Vant 默认 Button 与 Search Input                                     |
-| `--control-height-large`   | 50px   | Vant 大号 Button 与 Calendar Day                                     |
+| 参数                                 | 当前值 | 主要影响                                                             |
+| ------------------------------------ | ------ | -------------------------------------------------------------------- |
+| `--touch-target-min`                 | 44px   | Back、Theme、Bell、Summary Metric、Toolbar Action、Capability Action |
+| `--control-height-compact`           | 32px   | Toolbar 控件视觉高度、Capability Refresh 视觉区域                    |
+| `--control-height-default`           | 44px   | Vant 默认 Button 与 Search Input                                     |
+| `--control-height-large`             | 50px   | Vant 大号 Button 与 Calendar Day                                     |
+| `--control-height-capability-action` | 28px   | Capability Configure / Run 内部视觉高度                              |
 
 `MobileListToolbar` 的 Action 外层保持 44px Touch Target，内部视觉控件为 32px；Capability Action 外层同样
-保持 44px，文字视觉区域当前由 `calc(var(--control-height-compact) - var(--space-1))` 计算。调整视觉尺寸
-不得压缩 Touch Target。
+保持 44px，文字视觉区域由 `--control-height-capability-action` 独立控制。调整视觉尺寸不得压缩 Touch
+Target。
 
 ### F. Card Dimensions（卡片尺寸）
 
@@ -194,39 +195,40 @@ Token。若 Stage 2 需要分别控制 Slot，先记录为统一收口提案，�
 
 - Padding：`--layout-card-padding`；卡间距：列表容器的 `--layout-card-gap`。
 - Leading 到正文：`--space-3`；正文三行 Gap：`--space-1`。
-- Leading Icon：Default 22px；Chevron：Small 16px。
+- Leading Slot / Icon：`--layout-card-leading-icon-slot-width` 22px / Default 22px；Chevron：Small 16px。
 - 标题 / Runtime / Meta：Label 15/22、Secondary 13/20、Caption 12/18。
 - 高度自然计算；不增加第四行或改写 Main / Trailing 槽位。
 
 ### TaskCard（任务卡片）
 
-- Padding、列 Gap、正文三行 Gap、Leading Icon 与 Chevron 与 DeviceCard 相同。
+- Padding、列 Gap、正文三行 Gap、Leading Slot / Icon 与 Chevron 与 DeviceCard 相同。
 - Task Name：Label 15/22；Status、Time 与 Meta：Caption 12/18；Tag 由 Vant Tag Mapping 控制。
 - 高度自然计算；不增加 Progress / Current Message 或改变三行结构。
 
 ### DeviceRuntimeSummary（设备运行摘要）
 
 - 上下分区 Padding：`--space-4`；Icon 到正文：`--space-3`；正文内部 Gap：`--space-1`。
-- 两段 Icon：`--icon-size-default`；Value：Label 15/22；Label / Meta：Caption 12/18。
+- 两段 Icon Slot / Icon：`--layout-runtime-summary-icon-slot-width` / `--icon-size-default`，均为 22px；
+  Value：Label 15/22；Label / Meta：Caption 12/18。
 - Retry Touch：`--touch-target-min`。不要改变 Upper → Separator → Lower 或两段字段层级。
 
 ### CapabilityPanel（能力面板）
 
-- 总高度：`DeviceCapabilityPanel.vue` 的 `.device-capability-panel`，当前 `334px`，尚未 Token 化。
+- 总高度：`--layout-capability-panel-height`，当前 334px。
 - Panel Padding / Grid Gap：`--space-2` × `--space-3` / `--space-1`。
-- Header 与 Selector 行：`--touch-target-min` 44px；Row 最小高度：同一 Token。
-- Row Gap：`--space-2`；Icon Slot / Icon：Default 22px / Small 16px。
-- Name：Body 14/22 + Medium；Version：Caption 12/18；Action：Touch 44px、视觉约 28px、Secondary 13/20。
+- Header 与 Selector 行：`--touch-target-min` 44px；Row 最小高度：
+  `--layout-capability-row-min-height` 44px。
+- Row Gap：`--space-2`；Icon Slot / Icon：`--layout-capability-icon-slot-width` 22px / Small 16px。
+- Name：Body 14/22 + Medium；Version：Caption 12/18；Action：Touch 44px、
+  `--control-height-capability-action` 28px、Secondary 13/20。
 - 调整总高度或 Row 密度后仍必须完整显示五行，并从第六行开始只滚动 Rows；Header / Selector 不滚动。
 
-## 尚未 Token 化或当前无消费
+## 仍保留的局部值或当前无消费
 
-- `DeviceCapabilityPanel.vue` 的 `334px` 是当前唯一业务组件内直接写入的 Stage 2 `px` 尺寸；下一阶段可
-  评估是否提升为跨组件有意义的 Token，本轮不改造。
-- DeviceCard、TaskCard 与 DeviceRuntimeSummary 的 Leading Icon Slot 使用 `auto` Grid 列，当前没有独立
-  Slot Width Token。
-- Capability Action 的文字视觉高度是局部 `calc(--control-height-compact - --space-1)`，当前没有独立
-  Action Visual Height Token。
+- `mobile/src` 的生产业务组件已不存在直接写入的稳定 Stage 2 `px/rem/vh` 尺寸。
+- Capability Refresh 的 `calc((Touch Target - Compact Control) / 2)` 只负责把视觉控件居中于触控热区；
+  Segmented Selector、Safe Area 与 Summary 中的其余 `calc()` 同样属于局部结构数学，不建立额外 Token。
+- `100%`、`100dvh / 100vh`、`minmax(0, 1fr)`、纯结构性 `0` 与 1px 分隔计算继续留在消费位置。
 - `--layout-card-row-gap: 8px` 已定义但当前 `mobile/src` 没有消费；两类卡片实际使用 `--space-1: 4px`。
 - `--control-height-medium: 40px` 已定义但当前 `mobile/src` 没有消费。
 - `MobileAppShell` 的 `100dvh / 100vh` 回退与 `base.css` 的 320px 最小宽度是平台边界，不是业务组件

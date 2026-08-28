@@ -241,9 +241,8 @@ function formatSkillVersion(version: string): string | null {
 <style scoped>
 .device-capability-panel {
   display: grid;
-  /* CapabilityPanel（能力面板）局部高度；Stage 2 调整时必须保持五行完整、第六行起内部滚动。 */
-  height: 334px;
-  max-height: 334px;
+  height: var(--layout-capability-panel-height);
+  max-height: var(--layout-capability-panel-height);
   min-width: 0;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
@@ -329,15 +328,15 @@ function formatSkillVersion(version: string): string | null {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: var(--touch-target-min);
+  min-height: var(--layout-capability-row-min-height);
   gap: var(--space-2);
   align-items: center;
 }
 
 .device-capability-panel__icon-slot {
   display: grid;
-  width: var(--icon-size-default);
-  flex: 0 0 var(--icon-size-default);
+  width: var(--layout-capability-icon-slot-width);
+  flex: 0 0 var(--layout-capability-icon-slot-width);
   color: var(--text-secondary);
   font-size: var(--icon-size-small);
   place-items: center;
@@ -396,7 +395,7 @@ function formatSkillVersion(version: string): string | null {
 
 .device-capability-panel__action span {
   display: inline-flex;
-  height: calc(var(--control-height-compact) - var(--space-1));
+  height: var(--control-height-capability-action);
   padding-inline: var(--space-2);
   align-items: center;
   justify-content: center;
