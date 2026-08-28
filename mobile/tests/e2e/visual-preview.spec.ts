@@ -36,6 +36,73 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function readCapabilityLayout(page: Page) {
+  return page.getByTestId('device-capability-panel').evaluate((panel) => {
+    const header = panel.querySelector<HTMLElement>(
+      '.device-capability-panel__header',
+    )!
+    const selector = panel.querySelector<HTMLElement>(
+      '[data-testid="device-capability-tabs"]',
+    )!
+    const wrap = selector.querySelector<HTMLElement>('.van-tabs__wrap')!
+    const nav = selector.querySelector<HTMLElement>('.van-tabs__nav')!
+    const tabs = Array.from(selector.querySelectorAll<HTMLElement>('.van-tab'))
+    const labels = Array.from(
+      selector.querySelectorAll<HTMLElement>(
+        '.device-capability-panel__tab-label',
+      ),
+    )
+    const activeSurface = selector.querySelector<HTMLElement>(
+      '.van-tab--active .van-tab__text',
+    )!
+    const list = panel.querySelector<HTMLElement>(
+      '[data-testid="application-list"]',
+    )!
+    const rows = Array.from(
+      list.querySelectorAll<HTMLElement>('[data-testid="application-row"]'),
+    )
+    const headerBox = header.getBoundingClientRect()
+    const selectorBox = selector.getBoundingClientRect()
+    const wrapBox = wrap.getBoundingClientRect()
+    const navBox = nav.getBoundingClientRect()
+    const listBox = list.getBoundingClientRect()
+    const tabBoxes = tabs.map((tab) => tab.getBoundingClientRect())
+    const activeBox = activeSurface.getBoundingClientRect()
+    const within = (child: DOMRect, parent: DOMRect) =>
+      child.top >= parent.top - 1 &&
+      child.right <= parent.right + 1 &&
+      child.bottom <= parent.bottom + 1 &&
+      child.left >= parent.left - 1
+
+    return {
+      headerBeforeSelector: headerBox.bottom <= selectorBox.top,
+      selectorBeforeRows: selectorBox.bottom <= listBox.top,
+      headerOutsideRows: !list.contains(header),
+      selectorOutsideRows: !list.contains(selector),
+      navContained: within(navBox, wrapBox),
+      tabsContained: tabBoxes.every((tab) => within(tab, wrapBox)),
+      activeSurfaceContained: within(activeBox, wrapBox),
+      selectorHasNoInternalOverflow:
+        selector.scrollHeight <= selector.clientHeight &&
+        selector.scrollWidth <= selector.clientWidth,
+      sameRow: tabBoxes[0]!.y === tabBoxes[1]!.y,
+      equalWidth: Math.abs(tabBoxes[0]!.width - tabBoxes[1]!.width) <= 1,
+      touchHeights: tabBoxes.map((tab) => tab.height),
+      labelsSingleLine: labels.every(
+        (label) => label.scrollHeight <= label.clientHeight,
+      ),
+      fiveRowsVisible: rows
+        .slice(0, 5)
+        .every(
+          (row) => row.getBoundingClientRect().bottom <= listBox.bottom + 1,
+        ),
+      sixthRequiresScroll:
+        rows[5]!.getBoundingClientRect().top >= listBox.bottom - 1 &&
+        rows[5]!.getBoundingClientRect().bottom > listBox.bottom + 1,
+    }
+  })
+}
+
 async function readGlobalHeaderAnatomy(page: Page) {
   return page.evaluate(() => {
     const header = document.querySelector<HTMLElement>(
@@ -762,32 +829,25 @@ for (const width of viewportWidths) {
         'scrollbar-width',
         'none',
       )
-      const capabilitySelector = await page.evaluate(() => {
-        const selector = document.querySelector<HTMLElement>(
-          '[data-testid="device-capability-tabs"]',
-        )!
-        const tabs = Array.from(
-          selector.querySelectorAll<HTMLElement>('.van-tab'),
-        )
-        const labels = Array.from(
-          selector.querySelectorAll<HTMLElement>(
-            '.device-capability-panel__tab-label',
-          ),
-        )
-        const boxes = tabs.map((tab) => tab.getBoundingClientRect())
-        return {
-          sameRow: boxes[0]!.y === boxes[1]!.y,
-          equalWidth: Math.abs(boxes[0]!.width - boxes[1]!.width) <= 1,
-          labelsSingleLine: labels.every(
-            (label) => label.scrollHeight <= label.clientHeight,
-          ),
-        }
-      })
-      expect(capabilitySelector).toEqual({
+      const capabilitySelector = await readCapabilityLayout(page)
+      expect(capabilitySelector).toMatchObject({
+        headerBeforeSelector: true,
+        selectorBeforeRows: true,
+        headerOutsideRows: true,
+        selectorOutsideRows: true,
+        navContained: true,
+        tabsContained: true,
+        activeSurfaceContained: true,
+        selectorHasNoInternalOverflow: true,
         sameRow: true,
         equalWidth: true,
         labelsSingleLine: true,
+        fiveRowsVisible: true,
+        sixthRequiresScroll: true,
       })
+      expect(
+        capabilitySelector.touchHeights.every((height) => height >= 44),
+      ).toBe(true)
       const summarySections = await page
         .locator('.device-runtime-summary__section')
         .evaluateAll((sections) =>
@@ -1092,6 +1152,16 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     '订单同步',
   )
   await expect(
+    page.getByTestId('device-current-task').getByTestId('task-card'),
+  ).toBeVisible()
+  await expect(
+    page.getByTestId('device-current-task').getByTestId('task-card-chevron'),
+  ).toBeVisible()
+  await expect(
+    page.getByTestId('device-current-task').locator('.van-progress'),
+  ).toHaveCount(0)
+  await expect(page.locator('.active-task-summary')).toHaveCount(0)
+  await expect(
     page.getByRole('region', { name: '设备详情内容' }),
   ).toHaveAttribute('tabindex', '0')
   const layout = await page.evaluate(() => {
@@ -1229,9 +1299,41 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(page.getByText('2026.08', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /配置：拼多多/ })).toBeVisible()
   await expect(page.getByRole('button', { name: /运行：拼多多/ })).toBeVisible()
+  const frozenStructure = await page.evaluate(() => {
+    const summary = document
+      .querySelector<HTMLElement>('[data-testid="device-detail"]')!
+      .getBoundingClientRect()
+    const panel = document
+      .querySelector<HTMLElement>('[data-testid="device-capability-panel"]')!
+      .getBoundingClientRect()
+    const taskCard = document
+      .querySelector<HTMLElement>(
+        '[data-testid="device-current-task"] [data-testid="task-card"]',
+      )!
+      .getBoundingClientRect()
+    const bottom = document
+      .querySelector<HTMLElement>('[data-testid="mobile-shell-bottom"]')!
+      .getBoundingClientRect()
+    return {
+      summaryStartsInViewport: summary.top >= 0,
+      panelComplete: panel.top >= 0 && panel.bottom <= bottom.top + 1,
+      taskCardComplete: taskCard.top >= 0 && taskCard.bottom <= bottom.top + 1,
+      bottomComplete:
+        bottom.top >= 0 && bottom.bottom <= window.innerHeight + 1,
+    }
+  })
+  expect(frozenStructure).toEqual({
+    summaryStartsInViewport: true,
+    panelComplete: true,
+    taskCardComplete: true,
+    bottomComplete: true,
+  })
   await page.screenshot({
     path: testInfo.outputPath('capability-yingdao-390-light.png'),
     clip: { x: 0, y: 0, width: 390, height: 650 },
+  })
+  await page.screenshot({
+    path: testInfo.outputPath('capability-current-task-390-light.png'),
   })
 
   const applicationList = page.getByTestId('application-list')
@@ -1325,6 +1427,9 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await page.screenshot({
     path: testInfo.outputPath('visual-task-detail-390-light.png'),
   })
+  await page.getByRole('button', { name: '返回' }).click()
+  await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
+  await expect(page.getByTestId('device-current-task-link')).toBeVisible()
 
   expect(observation.apiRequests).toEqual([])
   expect(observation.consoleErrors).toEqual([])
@@ -1392,10 +1497,31 @@ for (const fixture of [
       page.getByText('visual-app-orders', { exact: true }),
     ).toHaveCount(0)
     await expectNoHorizontalOverflow(page)
+    const selectorLayout = await readCapabilityLayout(page)
+    expect(selectorLayout).toMatchObject({
+      headerBeforeSelector: true,
+      selectorBeforeRows: true,
+      headerOutsideRows: true,
+      selectorOutsideRows: true,
+      navContained: true,
+      tabsContained: true,
+      activeSurfaceContained: true,
+      selectorHasNoInternalOverflow: true,
+      fiveRowsVisible: true,
+      sixthRequiresScroll: true,
+    })
+    expect(selectorLayout.touchHeights.every((height) => height >= 44)).toBe(
+      true,
+    )
     await page.screenshot({
       path: testInfo.outputPath(fixture.file),
       clip: { x: 0, y: 0, width: fixture.width, height: 650 },
     })
+    if (fixture.width === 360 && fixture.theme === 'light') {
+      await page.screenshot({
+        path: testInfo.outputPath('capability-current-task-360-light.png'),
+      })
+    }
 
     expect(observation.apiRequests).toEqual([])
     expect(observation.consoleErrors).toEqual([])

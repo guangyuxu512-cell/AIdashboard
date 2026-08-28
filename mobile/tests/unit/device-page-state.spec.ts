@@ -3,7 +3,9 @@ import { ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
+import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import { mapDeviceRead } from '@/entities/device'
+import { TaskListCard, type ActiveTaskSummaryReadDto } from '@/entities/task'
 
 const featureMocks = vi.hoisted(() => ({
   center: null as unknown,
@@ -42,12 +44,68 @@ const device = mapDeviceRead({
   updated_at: '2026-08-27T08:00:00.000Z',
 })
 
+const activeTask = {
+  task_id: 'task-running',
+  target_device_id: 'device-1',
+  skill_id: 'sync-orders',
+  execution_display_name: '同步订单',
+  status: 'running',
+  started_at: '2026-08-27T07:30:00.000Z',
+  created_at: '2026-08-27T07:29:00.000Z',
+  latest_event: null,
+} satisfies ActiveTaskSummaryReadDto
+
+function createDeviceDetailMock(options: {
+  activeTask: ActiveTaskSummaryReadDto | null | undefined
+  activeTaskLoading?: boolean
+  activeTaskError?: boolean
+  providerLoading?: boolean
+  capabilityError?: boolean
+}) {
+  return {
+    device: ref(device),
+    deviceQuery: { refetch: vi.fn() },
+    isDeviceInitialLoading: ref(false),
+    isDeviceInitialError: ref(false),
+    isDeviceBackgroundError: ref(false),
+    activeTask: {
+      query: { data: ref(options.activeTask), refetch: vi.fn() },
+      isInitialLoading: ref(options.activeTaskLoading ?? false),
+      isInitialError: ref(options.activeTaskError ?? false),
+      isBackgroundError: ref(false),
+    },
+    provider: {
+      query: {
+        data: ref(options.providerLoading ? undefined : []),
+        refetch: vi.fn(),
+      },
+      isInitialLoading: ref(options.providerLoading ?? false),
+      isInitialError: ref(false),
+      isBackgroundError: ref(false),
+    },
+    capability: {
+      query: {
+        data: ref(options.capabilityError ? undefined : []),
+        refetch: vi.fn(),
+      },
+      isInitialLoading: ref(false),
+      isInitialError: ref(options.capabilityError ?? false),
+      isBackgroundError: ref(false),
+    },
+  }
+}
+
 function createRouterFor(path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/devices', component: { template: '<div />' } },
       { path: '/devices/:deviceId', component: { template: '<div />' } },
+      {
+        path: '/tasks/:taskId',
+        name: MOBILE_ROUTE_NAMES.taskDetail,
+        component: { template: '<div />' },
+      },
     ],
   })
   return router.push(path).then(() => router)
@@ -186,31 +244,12 @@ describe('Device page loading boundaries', () => {
   })
 
   it('keeps the Device Detail visible while Provider loads and Capability fails', async () => {
-    featureMocks.detail = {
-      device: ref(device),
-      deviceQuery: { refetch: vi.fn() },
-      isDeviceInitialLoading: ref(false),
-      isDeviceInitialError: ref(false),
-      isDeviceBackgroundError: ref(false),
-      activeTask: {
-        query: { data: ref(undefined), refetch: vi.fn() },
-        isInitialLoading: ref(true),
-        isInitialError: ref(false),
-        isBackgroundError: ref(false),
-      },
-      provider: {
-        query: { data: ref(undefined), refetch: vi.fn() },
-        isInitialLoading: ref(true),
-        isInitialError: ref(false),
-        isBackgroundError: ref(false),
-      },
-      capability: {
-        query: { data: ref(undefined), refetch: vi.fn() },
-        isInitialLoading: ref(false),
-        isInitialError: ref(true),
-        isBackgroundError: ref(false),
-      },
-    }
+    featureMocks.detail = createDeviceDetailMock({
+      activeTask: undefined,
+      activeTaskLoading: true,
+      providerLoading: true,
+      capabilityError: true,
+    })
     const router = await createRouterFor('/devices/device-1')
     const wrapper = mount(DeviceDetailPage, {
       global: { plugins: [router] },
@@ -255,6 +294,50 @@ describe('Device page loading boundaries', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('加载失败')
     expect(wrapper.text()).not.toMatch(/Provider 技术错误|Capability 技术错误/)
+    wrapper.unmount()
+  })
+
+  it('renders the frozen Task Card for Device Current Task and keeps route context', async () => {
+    featureMocks.detail = createDeviceDetailMock({ activeTask })
+    const router = await createRouterFor('/devices/device-1')
+    const wrapper = mount(DeviceDetailPage, {
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    const currentTask = wrapper.get('[data-testid="device-current-task"]')
+    expect(currentTask.findComponent(TaskListCard).exists()).toBe(true)
+    expect(currentTask.find('[data-testid="task-card-chevron"]').exists()).toBe(
+      true,
+    )
+    expect(currentTask.find('.van-progress').exists()).toBe(false)
+    expect(currentTask.find('.active-task-summary').exists()).toBe(false)
+
+    await currentTask
+      .get('[data-testid="device-current-task-link"]')
+      .trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.taskDetail)
+    expect(router.currentRoute.value.params.taskId).toBe('task-running')
+    expect(router.currentRoute.value.query.fromDeviceId).toBe('device-1')
+    wrapper.unmount()
+  })
+
+  it('shows idle without rendering a fake Task Card', async () => {
+    featureMocks.detail = createDeviceDetailMock({ activeTask: null })
+    const router = await createRouterFor('/devices/device-1')
+    const wrapper = mount(DeviceDetailPage, {
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    const currentTask = wrapper.get('[data-testid="device-current-task"]')
+    expect(currentTask.text()).toContain('当前任务')
+    expect(currentTask.text()).toContain('空闲')
+    expect(currentTask.findComponent(TaskListCard).exists()).toBe(false)
+    expect(
+      currentTask.find('[data-testid="device-current-task-link"]').exists(),
+    ).toBe(false)
     wrapper.unmount()
   })
 })

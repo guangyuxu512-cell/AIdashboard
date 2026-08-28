@@ -914,7 +914,7 @@ for (const width of viewportWidths) {
         const selectors = [
           '[data-testid="device-detail"]',
           '[data-testid="device-capability-panel"]',
-          '[data-testid="device-current-task"]',
+          '[data-testid="device-current-task"] [data-testid="task-card"]',
         ]
         const resolveColor = (token: string) => {
           const probe = document.createElement('span')
@@ -950,13 +950,18 @@ for (const width of viewportWidths) {
       expect(detailSurfaces.backgrounds).toEqual([
         detailSurfaces.expectedCardBackground,
         detailSurfaces.expectedSectionBackground,
-        detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedCardBackground,
       ])
       expect(detailSurfaces.shadows).toEqual([
         detailSurfaces.expectedCardShadow,
         'none',
-        'none',
+        detailSurfaces.expectedCardShadow,
       ])
+      const currentTask = page.getByTestId('device-current-task')
+      await expect(currentTask.getByTestId('task-card')).toBeVisible()
+      await expect(currentTask.getByTestId('task-card-chevron')).toBeVisible()
+      await expect(currentTask.locator('.van-progress')).toHaveCount(0)
+      await expect(page.locator('.active-task-summary')).toHaveCount(0)
       await expect(page.getByTestId('device-detail')).not.toContainText(
         '企业账号',
       )

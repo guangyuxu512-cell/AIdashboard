@@ -14,12 +14,13 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import { formatDeviceDateTime } from '@/entities/device'
+import { TaskListCard } from '@/entities/task'
 import {
-  ActiveTaskSummary,
   DeviceCapabilityPanel,
   DeviceProviderDetails,
   DeviceRuntimeSummary,
   DeviceSkillDetails,
+  mapDeviceActiveTaskToTaskListItem,
   useDeviceDetail,
 } from '@/features/device-center'
 import { AppPage } from '@/shared/ui'
@@ -29,6 +30,14 @@ const router = useRouter()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const detail = useDeviceDetail(deviceId)
 const expanded = ref<string[]>([])
+const activeTaskCard = computed(() => {
+  const task = detail.activeTask.query.data.value
+  const device = detail.device.value
+
+  return task && device
+    ? mapDeviceActiveTaskToTaskListItem(task, device.displayName)
+    : null
+})
 
 function openTask(taskId: string): void {
   void router.push({
@@ -92,18 +101,43 @@ function showActionPlaceholder(): void {
       />
 
       <section
-        class="device-detail-page__section mobile-section-surface"
+        class="device-detail-page__section"
         data-testid="device-current-task"
       >
         <h2>当前任务</h2>
-        <ActiveTaskSummary
-          :task="detail.activeTask.query.data.value"
-          :initial-loading="detail.activeTask.isInitialLoading.value"
-          :initial-error="detail.activeTask.isInitialError.value"
-          compact
-          @retry="detail.activeTask.query.refetch"
-          @select="openTask"
+        <VanSkeleton
+          v-if="detail.activeTask.isInitialLoading.value"
+          title
+          :row="2"
+          data-testid="device-current-task-loading"
         />
+        <div
+          v-else-if="detail.activeTask.isInitialError.value"
+          class="device-detail-page__current-task-error"
+          data-testid="device-current-task-error"
+        >
+          <span>加载失败</span>
+          <VanButton block @click="detail.activeTask.query.refetch">
+            重试
+          </VanButton>
+        </div>
+        <button
+          v-else-if="activeTaskCard"
+          type="button"
+          class="device-detail-page__task-card mobile-pressable mobile-pressable--card"
+          :aria-label="`查看任务：${activeTaskCard.executionName}`"
+          data-testid="device-current-task-link"
+          @click="openTask(activeTaskCard.taskId)"
+        >
+          <TaskListCard :task="activeTaskCard" />
+        </button>
+        <p
+          v-else-if="detail.activeTask.query.data.value === null"
+          class="device-detail-page__current-task-idle"
+        >
+          空闲
+        </p>
+        <p v-else class="device-detail-page__current-task-idle">—</p>
       </section>
 
       <VanCollapse v-model="expanded" data-testid="device-more-information">
@@ -180,10 +214,6 @@ function showActionPlaceholder(): void {
   gap: var(--space-3);
 }
 
-.device-detail-page__section {
-  padding: var(--space-3);
-}
-
 .device-detail-page__details {
   display: grid;
   gap: var(--space-4);
@@ -198,5 +228,33 @@ function showActionPlaceholder(): void {
 .device-detail-page__section :deep(.van-cell-group) {
   border: 0;
   border-radius: 0;
+}
+
+.device-detail-page__task-card {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-card);
+}
+
+.device-detail-page__task-card:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.device-detail-page__current-task-error {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.device-detail-page__current-task-idle {
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
 }
 </style>

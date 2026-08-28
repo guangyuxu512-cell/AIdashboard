@@ -26,6 +26,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Device Card 与 Task Card 必须共享同一套 Mobile Card 语言和 `Leading Icon + 三行 Main Content + Trailing Chevron` 结构；Feature 禁止自建独立卡片视觉体系或万能业务 Card。
 - List Card 的 Title、State/Time 与 Meta 必须保持单行；冻结的是内容槽位与信息层级，具体正式字段可替换，但 Feature 不得为新增字段擅自增加行数。
 - Task Card 不显示 Progress 或 Current Message；执行过程统一进入 Task Detail 的 Runtime Log。
+- 同一业务实体在不同页面出现时优先复用已冻结领域 UI；Device Detail 的 Current Task 必须直接复用正式 Task Card，Page 只提供最小数据适配与导航上下文，禁止复制第二套任务卡结构。
 - 正式 UI 优先移动端信息层级，不复制 PC Table、Drawer、Topbar 或字段表单布局。
 - Apple-like 视觉只通过克制的 Surface、Radius、Spacing、Typography 与 Motion 建立，不依赖大量 Glass、Blur、Glow 或夸张 3D。
 - Touch Press Feedback 是主要交互反馈；Hover 只能辅助预览，不能承载必要状态或操作。

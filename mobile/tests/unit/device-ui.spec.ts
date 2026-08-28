@@ -11,13 +11,13 @@ import {
 } from '@/entities/device'
 import type { ActiveTaskSummaryReadDto } from '@/entities/task'
 import {
-  ActiveTaskSummary,
   DeviceCapabilityPanel,
   DeviceInfiniteList,
   DeviceListCard,
   DeviceProviderDetails,
   DeviceRuntimeSummary,
   DeviceSkillDetails,
+  mapDeviceActiveTaskToTaskListItem,
   type DeviceActiveTaskState,
 } from '@/features/device-center'
 
@@ -320,95 +320,23 @@ describe('device center UI', () => {
     expect(wrapper.emitted('selectTask')).toBeUndefined()
   })
 
-  it.each([
-    ['pending', '待执行'],
-    ['running', '执行中'],
-  ] as const)('renders a selectable %s Active Task', async (status, label) => {
-    const wrapper = track(
-      mount(ActiveTaskSummary, {
-        props: {
-          task: { ...runningTask, status },
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-
-    expect(wrapper.text()).toContain('同步订单')
-    expect(wrapper.text()).toContain(label)
-    expect(wrapper.text()).toContain('正在执行')
-    await wrapper.get('button').trigger('click')
-    expect(wrapper.emitted('select')).toEqual([['task-running']])
-  })
-
-  it('uses a compact list summary without rendering latest_event', () => {
-    const wrapper = track(
-      mount(ActiveTaskSummary, {
-        props: {
-          task: runningTask,
-          initialLoading: false,
-          initialError: false,
-          compact: true,
-        },
-      }),
-    )
-
-    expect(wrapper.text()).toContain('同步订单')
-    expect(wrapper.text()).toContain('执行中')
-    expect(wrapper.text()).not.toContain('正在执行')
-    expect(wrapper.text()).not.toContain('当前任务')
-  })
-
-  it('only claims idle after a successful null Active Task response', () => {
-    const loading = track(
-      mount(ActiveTaskSummary, {
-        props: {
-          task: undefined,
-          initialLoading: true,
-          initialError: false,
-        },
-      }),
-    )
-    const idle = track(
-      mount(ActiveTaskSummary, {
-        props: {
-          task: null,
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-
-    expect(loading.text()).not.toContain('空闲')
-    expect(idle.text()).toContain('空闲')
-  })
-
-  it('keeps a cached Active Task during a background error and offers initial retry', async () => {
-    const background = track(
-      mount(ActiveTaskSummary, {
-        props: {
-          task: runningTask,
-          initialLoading: false,
-          initialError: false,
-        },
-      }),
-    )
-    expect(background.text()).toContain('同步订单')
-    expect(background.find('.van-notice-bar').exists()).toBe(false)
-
-    const initial = track(
-      mount(ActiveTaskSummary, {
-        props: {
-          task: undefined,
-          initialLoading: false,
-          initialError: true,
-        },
-      }),
-    )
-    await initial.get('button').trigger('click')
-    expect(initial.emitted('retry')).toHaveLength(1)
-    expect(initial.text()).toContain('加载失败')
-    expect(initial.text()).not.toContain('空闲')
+  it('adapts the formal Active Task summary to the frozen Task Card model', () => {
+    expect(
+      mapDeviceActiveTaskToTaskListItem(runningTask, baseDevice.displayName),
+    ).toEqual({
+      taskId: 'task-running',
+      targetDeviceId: 'device-1',
+      deviceDisplayName: '仓库设备',
+      skillId: 'sync-orders',
+      skillDisplayName: null,
+      executionName: '同步订单',
+      status: 'running',
+      progress: null,
+      currentMessage: null,
+      startedAt: '2026-08-26T08:00:00.000Z',
+      finishedAt: null,
+      createdAt: '2026-08-26T07:59:00.000Z',
+    })
   })
 
   it('covers Device list loading, empty, initial retry and cached background errors', async () => {
