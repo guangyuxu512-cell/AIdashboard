@@ -883,8 +883,11 @@ for (const width of viewportWidths) {
         /设备 1在线执行中Worker \d/,
       )
       await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-        '影刀账号已登录测试账号Provider 6.3.6',
+        '影刀账号已登录测试账号 · 6.3.6',
       )
+      await expect(
+        page.getByTestId('device-summary-yingdao'),
+      ).not.toContainText('Provider')
       await expect(
         page.locator('.device-capability-panel__tab-label'),
       ).toHaveText(['影刀应用', 'Skills'])

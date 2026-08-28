@@ -54,6 +54,18 @@ const applicationCount = computed(() =>
 const skillCount = computed(() =>
   props.capabilities === undefined ? '—' : businessSkills.value.length,
 )
+const capabilityIconNames = {
+  application: 'apps-o',
+  skill: 'setting-o',
+} as const
+
+function formatSkillVersion(version: string): string | null {
+  const normalized = version.trim()
+  if (!normalized) return null
+  return normalized.toLowerCase().startsWith('v')
+    ? normalized
+    : `v${normalized}`
+}
 </script>
 
 <template>
@@ -125,9 +137,19 @@ const skillCount = computed(() =>
         class="device-capability-panel__row"
         data-testid="application-row"
       >
-        <strong class="device-capability-panel__name">
-          {{ application.app_name }}
-        </strong>
+        <span
+          class="device-capability-panel__icon-slot"
+          data-testid="capability-icon-slot"
+          data-capability-type="application"
+          aria-hidden="true"
+        >
+          <VanIcon :name="capabilityIconNames.application" />
+        </span>
+        <span class="device-capability-panel__main-content">
+          <strong class="device-capability-panel__name">
+            {{ application.app_name }}
+          </strong>
+        </span>
         <div class="device-capability-panel__actions">
           <VanButton
             class="device-capability-panel__action"
@@ -174,9 +196,26 @@ const skillCount = computed(() =>
         class="device-capability-panel__row"
         data-testid="skill-row"
       >
-        <strong class="device-capability-panel__name">
-          {{ capability.display_name }}
-        </strong>
+        <span
+          class="device-capability-panel__icon-slot"
+          data-testid="capability-icon-slot"
+          data-capability-type="skill"
+          aria-hidden="true"
+        >
+          <VanIcon :name="capabilityIconNames.skill" />
+        </span>
+        <span class="device-capability-panel__main-content">
+          <strong class="device-capability-panel__name">
+            {{ capability.display_name }}
+          </strong>
+          <span
+            v-if="formatSkillVersion(capability.version)"
+            class="device-capability-panel__version"
+            data-testid="capability-version"
+          >
+            {{ formatSkillVersion(capability.version) }}
+          </span>
+        </span>
         <div class="device-capability-panel__actions">
           <VanButton
             v-if="capability.input_schema !== null"
@@ -203,6 +242,7 @@ const skillCount = computed(() =>
 .device-capability-panel {
   display: grid;
   height: 334px;
+  max-height: 334px;
   min-width: 0;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
@@ -293,6 +333,21 @@ const skillCount = computed(() =>
   align-items: center;
 }
 
+.device-capability-panel__icon-slot {
+  display: grid;
+  width: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  color: var(--text-secondary);
+  font-size: var(--icon-size-small);
+  place-items: center;
+}
+
+.device-capability-panel__main-content {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .device-capability-panel__row:not(:last-child)::after {
   position: absolute;
   right: 0;
@@ -305,11 +360,20 @@ const skillCount = computed(() =>
 
 .device-capability-panel__name {
   min-width: 0;
-  flex: 1 1 auto;
   overflow: hidden;
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-capability-panel__version {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

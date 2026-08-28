@@ -514,7 +514,11 @@ describe('device center UI', () => {
     ).toContain('仓库设备在线空闲Worker 1.2.3')
     expect(
       wrapper.get('[data-testid="device-summary-yingdao"]').text(),
-    ).toContain('影刀账号已登录测试账号Provider 6.3.6')
+    ).toContain('影刀账号已登录测试账号 · 6.3.6')
+    expect(wrapper.get('[data-testid="device-account-version"]').text()).toBe(
+      '6.3.6',
+    )
+    expect(wrapper.text()).not.toContain('Provider 6.3.6')
     expect(wrapper.text()).not.toContain('provider-user-1')
   })
 
@@ -572,6 +576,9 @@ describe('device center UI', () => {
     )
     expect(wrapper.get('[data-testid="device-account-name"]').text()).toBe(
       accountName,
+    )
+    expect(wrapper.get('[data-testid="device-account-version"]').text()).toBe(
+      '6.3.6',
     )
   })
 
@@ -713,9 +720,41 @@ describe('device center UI', () => {
     )
     expect(wrapper.text()).toContain('拼多多自动处理售后工单')
     expect(wrapper.text()).not.toContain('app-private-uuid')
+    expect(wrapper.text()).not.toContain('version-1')
+    expect(
+      wrapper.findAll('[data-testid="capability-icon-slot"]'),
+    ).toHaveLength(6)
+    expect(
+      wrapper
+        .findAll('[data-testid="capability-icon-slot"]')
+        .every(
+          (slot) =>
+            slot.attributes('data-capability-type') === 'application' &&
+            slot.find('.van-icon').exists(),
+        ),
+    ).toBe(true)
+    expect(wrapper.find('[data-testid="capability-version"]').exists()).toBe(
+      false,
+    )
     expect(
       wrapper.get('.device-capability-panel__name').attributes('class'),
     ).toContain('device-capability-panel__name')
+    const firstRowChildren = wrapper.get('[data-testid="application-row"]')
+      .element.children
+    expect(firstRowChildren[0]?.classList).toContain(
+      'device-capability-panel__icon-slot',
+    )
+    expect(firstRowChildren[1]?.classList).toContain(
+      'device-capability-panel__main-content',
+    )
+    expect(firstRowChildren[2]?.classList).toContain(
+      'device-capability-panel__actions',
+    )
+    expect(
+      Array.from(firstRowChildren[2]!.querySelectorAll('button')).map(
+        (button) => button.getAttribute('aria-label'),
+      ),
+    ).toEqual(['配置：订单应用', '运行：订单应用'])
     await wrapper.get('[aria-label="配置：订单应用"]').trigger('click')
     await wrapper.get('[aria-label="运行：订单应用"]').trigger('click')
     const refreshButton = wrapper.get(
@@ -738,8 +777,16 @@ describe('device center UI', () => {
 
   it('shows only Business Skills and hides meaningless Configure actions', async () => {
     const capabilities = [
-      { ...capability('business-1', 'business'), input_schema: {} },
-      capability('business-2', 'business'),
+      {
+        ...capability('business-private-uuid', 'business'),
+        display_name: '订单同步',
+        version: '1.3.0',
+        input_schema: {},
+      },
+      {
+        ...capability('business-no-schema-uuid', 'business'),
+        display_name: '库存同步',
+      },
       capability('internal-1', 'internal'),
       capability('unknown-1', null),
     ]
@@ -760,15 +807,30 @@ describe('device center UI', () => {
     await wrapper.get('.van-tab:nth-child(2)').trigger('click')
     await flushPromises()
     expect(wrapper.findAll('[data-testid="skill-row"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('business-1')
-    expect(wrapper.text()).toContain('business-2')
+    expect(wrapper.text()).toContain('订单同步')
+    expect(wrapper.text()).toContain('库存同步')
+    expect(wrapper.text()).toContain('v1.3.0')
+    expect(wrapper.text()).not.toContain('business-private-uuid')
+    expect(wrapper.text()).not.toContain('business-no-schema-uuid')
     expect(wrapper.text()).not.toContain('internal-1')
     expect(wrapper.text()).not.toContain('unknown-1')
-    expect(wrapper.find('[aria-label="配置：business-1"]').exists()).toBe(true)
-    expect(wrapper.find('[aria-label="配置：business-2"]').exists()).toBe(false)
-    await wrapper.get('[aria-label="运行：business-2"]').trigger('click')
+    expect(
+      wrapper.findAll('[data-testid="capability-icon-slot"]'),
+    ).toHaveLength(2)
+    expect(
+      wrapper
+        .findAll('[data-testid="capability-icon-slot"]')
+        .every(
+          (slot) =>
+            slot.attributes('data-capability-type') === 'skill' &&
+            slot.find('.van-icon').exists(),
+        ),
+    ).toBe(true)
+    expect(wrapper.find('[aria-label="配置：订单同步"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="配置：库存同步"]').exists()).toBe(false)
+    await wrapper.get('[aria-label="运行：库存同步"]').trigger('click')
     expect(wrapper.emitted('runSkill')?.[0]?.[0]).toMatchObject({
-      skill_id: 'business-2',
+      skill_id: 'business-no-schema-uuid',
     })
 
     const technicalDetails = track(

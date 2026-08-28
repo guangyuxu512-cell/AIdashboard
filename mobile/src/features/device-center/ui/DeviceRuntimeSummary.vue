@@ -71,10 +71,9 @@ const accountState = computed(() => {
 const accountName = computed(() =>
   yingdao.value ? yingdao.value.account_display || '—' : '—',
 )
-const accountMeta = computed(() => {
-  const version = yingdao.value?.inventory.provider_version
-  return version ? `Provider ${version}` : null
-})
+const yingdaoVersion = computed(
+  () => yingdao.value?.inventory.provider_version || null,
+)
 </script>
 
 <template>
@@ -149,22 +148,32 @@ const accountMeta = computed(() => {
             {{ accountState.label }}
           </VanTag>
         </span>
-        <strong
-          class="device-runtime-summary__value"
-          data-testid="device-account-name"
+        <span
+          class="device-runtime-summary__account-line"
+          data-testid="device-account-line"
         >
-          {{ accountName }}
-        </strong>
-        <span class="device-runtime-summary__account-meta">
-          <span
-            v-if="accountMeta"
-            class="device-runtime-summary__meta"
-            data-testid="device-account-meta"
+          <strong
+            class="device-runtime-summary__value device-runtime-summary__account-name"
+            data-testid="device-account-name"
           >
-            {{ accountMeta }}
-          </span>
+            {{ accountName }}
+          </strong>
+          <template v-if="yingdaoVersion">
+            <span
+              class="device-runtime-summary__account-separator"
+              aria-hidden="true"
+            >
+              ·
+            </span>
+            <span
+              class="device-runtime-summary__account-version"
+              data-testid="device-account-version"
+            >
+              {{ yingdaoVersion }}
+            </span>
+          </template>
           <VanButton
-            v-else-if="providerError"
+            v-if="providerError"
             class="device-runtime-summary__retry"
             @click="emit('retryProvider')"
           >
@@ -215,7 +224,7 @@ const accountMeta = computed(() => {
 
 .device-runtime-summary__heading,
 .device-runtime-summary__states,
-.device-runtime-summary__account-meta {
+.device-runtime-summary__account-line {
   display: flex;
   min-width: 0;
   gap: var(--space-1);
@@ -248,9 +257,21 @@ const accountMeta = computed(() => {
 }
 
 .device-runtime-summary__states,
-.device-runtime-summary__account-meta {
+.device-runtime-summary__account-line {
   min-height: var(--line-height-body);
   overflow: hidden;
+}
+
+.device-runtime-summary__account-name {
+  flex: 0 1 auto;
+}
+
+.device-runtime-summary__account-separator,
+.device-runtime-summary__account-version {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
 }
 
 .device-runtime-summary__retry {

@@ -89,10 +89,11 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - 点击 Task Card 必须进入 Task Detail；Device / Task Card 右侧必须保留详情 Chevron 槽位。
 - 只有明确点击 Device Detail 的 Current Task 时才进入 Task Detail。
 - DeviceRuntimeSummary 必须使用一个整体 Card，按 Upper Device → Separator → Lower Yingdao Account
-  上下分区；两段均为左 Icon / 右内容，禁止拆成双 Card、嵌套 Account Card 或抽成通用 Summary。
+  上下分区；两段均为左 Icon / 右内容，Lower 固定为“影刀账号 + 登录状态”和“账号名称 · 影刀版本”
+  两行，禁止拆成双 Card、嵌套 Account Card 或抽成通用 Summary。
 - 正常产品 UI 优先显示 Application/Skill Name，不显示 UUID。
 - Capability 区域固定最大高度，超出内容内部滚动或进入查看全部页。
-- Application/Skill 每行使用稳定的 Name + Actions 结构。
+- Application/Skill 每行使用稳定的 Icon Slot + Name / Optional Version + Actions 结构。
 - Application 参数属于 Application 执行上下文，不做 Device 级全局参数按钮。
 - Run / Configure 必须复用正式 Backend 业务 Contract。
 - Internal Skill 默认不得作为普通用户核心操作能力展示。
@@ -105,7 +106,8 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Count 属于辅助信息，不与 Tab Label 争夺视觉权重。
 - Section Refresh 属于轻量 Icon Action，不使用大文字 Button。
 - Capability 默认显示 5 行，第 6 行后内部滚动。
-- Capability 行保持 `Name + Actions` 稳定结构。
+- Capability 行保持 `Icon Slot + Name / Optional Version + Actions` 稳定结构，Configure 位于 Run 左侧。
+- Capability 图标必须通过统一 Icon Registry 管理；Feature / Page 禁止按名称散落引用图标资源。
 - 视觉按钮尺寸与 Touch Target 必须分离。
 - 普通详情页面继续保留全局 Bottom Navigation。
 - 只有沉浸式工作流允许隐藏 Bottom Navigation。

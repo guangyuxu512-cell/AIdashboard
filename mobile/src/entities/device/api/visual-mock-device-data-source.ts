@@ -201,7 +201,7 @@ function createProviderInventories(
           ? [
               {
                 app_id: 'visual-app-orders',
-                app_name: '拼多多自动处理售后工单',
+                app_name: '拼多多自动处理售后退款与工单协同流程',
                 version_id: '2026.08',
                 updated_at: minutesAgo(120),
                 app_type: 'rpa',

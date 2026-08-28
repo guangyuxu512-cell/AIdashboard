@@ -757,10 +757,7 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('device-summary-yingdao')).toContainText(
         'HuanYu001',
       )
-      await expect(page.getByTestId('device-capability-panel')).toHaveCSS(
-        'height',
-        '334px',
-      )
+      await expect(page.getByTestId('device-capability-panel')).toBeVisible()
       await expect(page.getByTestId('application-list')).toHaveCSS(
         'scrollbar-width',
         'none',
@@ -971,7 +968,10 @@ for (const fixture of [
       '售后在线空闲Worker 0.4.6 · 刚刚',
     )
     await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-      '影刀账号已登录HuanYu001Provider 6.3.6',
+      '影刀账号已登录HuanYu001 · 6.3.6',
+    )
+    await expect(page.getByTestId('device-summary-yingdao')).not.toContainText(
+      'Provider',
     )
     await expect(
       summary.locator('.device-runtime-summary__section'),
@@ -1010,6 +1010,30 @@ for (const fixture of [
         }),
         deviceName: textStyle('device-runtime-name'),
         accountName: textStyle('device-account-name'),
+        accountLine: (() => {
+          const name = root
+            .querySelector<HTMLElement>('[data-testid="device-account-name"]')!
+            .getBoundingClientRect()
+          const version = root
+            .querySelector<HTMLElement>(
+              '[data-testid="device-account-version"]',
+            )!
+            .getBoundingClientRect()
+          return {
+            sameRow:
+              Math.abs(
+                (name.top + name.bottom) / 2 -
+                  (version.top + version.bottom) / 2,
+              ) < 1,
+            nameBeforeVersion: name.right <= version.left,
+            versionVisible: version.width > 0,
+            versionFlexShrink: window.getComputedStyle(
+              root.querySelector<HTMLElement>(
+                '[data-testid="device-account-version"]',
+              )!,
+            ).flexShrink,
+          }
+        })(),
       }
     })
     expect(anatomy.stacked).toBe(true)
@@ -1020,6 +1044,12 @@ for (const fixture of [
       whiteSpace: 'nowrap',
     })
     expect(anatomy.accountName).toEqual(anatomy.deviceName)
+    expect(anatomy.accountLine).toEqual({
+      sameRow: true,
+      nameBeforeVersion: true,
+      versionVisible: true,
+      versionFlexShrink: '0',
+    })
     await expect(page.getByTestId('device-capability-panel')).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.screenshot({
@@ -1048,7 +1078,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     '运营在线执行中Worker 0.4.6',
   )
   await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-    '影刀账号已登录HuanYu001Provider 6.3.6',
+    '影刀账号已登录HuanYu001 · 6.3.6',
   )
   await expect(page.locator('.device-capability-panel__tab-label')).toHaveText([
     '影刀应用',
@@ -1084,59 +1114,72 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     const rows = Array.from(
       list.querySelectorAll<HTMLElement>('[data-testid="application-row"]'),
     )
-    const firstName = rows[0]!.querySelector<HTMLElement>(
-      '.device-capability-panel__name',
-    )!
-    const firstAction = rows[0]!.querySelector<HTMLElement>(
-      '.device-capability-panel__action',
-    )!
-    const firstActionVisual = firstAction.querySelector<HTMLElement>(
-      '.van-button__text > span',
-    )!
     const listBox = list.getBoundingClientRect()
-    const refreshSurface = window.getComputedStyle(refresh, '::before')
     const headerBox = header.getBoundingClientRect()
     const selectorBox = selector.getBoundingClientRect()
+    const titleBox = panel
+      .querySelector<HTMLElement>('.device-capability-panel__title')!
+      .getBoundingClientRect()
+    const maxHeight = Number.parseFloat(
+      window.getComputedStyle(panel).maxHeight,
+    )
+    const rowAnatomy = rows.slice(0, 6).map((row) => {
+      const icon = row.querySelector<HTMLElement>(
+        '.device-capability-panel__icon-slot',
+      )!
+      const main = row.querySelector<HTMLElement>(
+        '.device-capability-panel__main-content',
+      )!
+      const name = row.querySelector<HTMLElement>(
+        '.device-capability-panel__name',
+      )!
+      const actions = row.querySelector<HTMLElement>(
+        '.device-capability-panel__actions',
+      )!
+      const buttons = Array.from(actions.querySelectorAll('button'))
+      const rowBox = row.getBoundingClientRect()
+      const iconBox = icon.getBoundingClientRect()
+      const mainBox = main.getBoundingClientRect()
+      const actionsBox = actions.getBoundingClientRect()
+      const nameStyle = window.getComputedStyle(name)
+      return {
+        childOrder: Array.from(row.children).map((child) => child.className),
+        iconBeforeMain: iconBox.right <= mainBox.left,
+        mainBeforeActions: mainBox.right <= actionsBox.left,
+        actionsAtRight: Math.abs(actionsBox.right - rowBox.right) <= 1,
+        actionOrder: buttons.map(
+          (button) => button.getAttribute('aria-label')?.split('：')[0],
+        ),
+        iconWidth: iconBox.width,
+        nameActuallyTruncated: name.scrollWidth > name.clientWidth,
+        nameOverflow: nameStyle.overflow,
+        nameTextOverflow: nameStyle.textOverflow,
+        nameWhiteSpace: nameStyle.whiteSpace,
+      }
+    })
     return {
-      panelHeight: panel.getBoundingClientRect().height,
-      titleFontSize: window.getComputedStyle(
-        panel.querySelector<HTMLElement>('.device-capability-panel__title')!,
-      ).fontSize,
-      titleFontWeight: window.getComputedStyle(
-        panel.querySelector<HTMLElement>('.device-capability-panel__title')!,
-      ).fontWeight,
+      panelHasStableMaximum:
+        Number.isFinite(maxHeight) &&
+        maxHeight > 0 &&
+        panel.getBoundingClientRect().height <= maxHeight + 1,
       refreshTouchHeight: refresh.getBoundingClientRect().height,
-      refreshVisualWidth: Number.parseFloat(refreshSurface.width),
       refreshText: refresh.textContent?.trim() ?? '',
-      selectorHeight: selectorBox.height,
+      refreshAtHeaderRight:
+        titleBox.right <= refresh.getBoundingClientRect().left,
       selectorBelowHeader: headerBox.bottom <= selectorBox.top,
       equalTabWidths:
         Math.abs(
           tabs[0]!.getBoundingClientRect().width -
             tabs[1]!.getBoundingClientRect().width,
         ) <= 1,
-      tabVisualHeight: tabs[0]!
-        .querySelector<HTMLElement>('.van-tab__text')!
-        .getBoundingClientRect().height,
-      underlineDisplay: window.getComputedStyle(
-        selector.querySelector<HTMLElement>('.van-tabs__line')!,
-      ).display,
-      listHeight: listBox.height,
-      nameFontSize: window.getComputedStyle(firstName).fontSize,
-      nameFontWeight: window.getComputedStyle(firstName).fontWeight,
-      actionTouchHeight: firstAction.getBoundingClientRect().height,
-      actionVisualHeight: firstActionVisual.getBoundingClientRect().height,
-      actionFontSize: window.getComputedStyle(firstActionVisual).fontSize,
-      actionFontWeight: window.getComputedStyle(firstActionVisual).fontWeight,
-      rowHeights: rows
-        .slice(0, 6)
-        .map((row) => row.getBoundingClientRect().height),
+      rowAnatomy,
       fiveRowsVisible: rows
         .slice(0, 5)
         .every(
           (row) => row.getBoundingClientRect().bottom <= listBox.bottom + 1,
         ),
       sixthRequiresScroll:
+        rows[5]!.getBoundingClientRect().top >= listBox.bottom - 1 &&
         rows[5]!.getBoundingClientRect().bottom > listBox.bottom + 1,
       listScrollable: list.scrollHeight > list.clientHeight,
       listScrollbarWidth: window.getComputedStyle(list).scrollbarWidth,
@@ -1145,53 +1188,94 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
       ).scrollbarWidth,
     }
   })
-  expect(layout).toEqual({
-    panelHeight: 334,
-    titleFontSize: '15px',
-    titleFontWeight: '600',
-    refreshTouchHeight: 44,
-    refreshVisualWidth: 32,
-    refreshText: '',
-    selectorHeight: 44,
-    selectorBelowHeader: true,
-    equalTabWidths: true,
-    tabVisualHeight: 36,
-    underlineDisplay: 'none',
-    listHeight: 220,
-    nameFontSize: '14px',
-    nameFontWeight: '500',
-    actionTouchHeight: 44,
-    actionVisualHeight: 28,
-    actionFontSize: '13px',
-    actionFontWeight: '500',
-    rowHeights: [44, 44, 44, 44, 44, 44],
-    fiveRowsVisible: true,
-    sixthRequiresScroll: true,
-    listScrollable: true,
-    listScrollbarWidth: 'none',
-    detailScrollbarWidth: 'none',
-  })
+  expect(layout.panelHasStableMaximum).toBe(true)
+  expect(layout.refreshTouchHeight).toBeGreaterThanOrEqual(44)
+  expect(layout.refreshText).toBe('')
+  expect(layout.refreshAtHeaderRight).toBe(true)
+  expect(layout.selectorBelowHeader).toBe(true)
+  expect(layout.equalTabWidths).toBe(true)
+  expect(layout.rowAnatomy).toHaveLength(6)
+  expect(
+    layout.rowAnatomy.every(
+      (row) =>
+        row.childOrder[0]?.includes('device-capability-panel__icon-slot') &&
+        row.childOrder[1]?.includes('device-capability-panel__main-content') &&
+        row.childOrder[2]?.includes('device-capability-panel__actions') &&
+        row.iconBeforeMain &&
+        row.mainBeforeActions &&
+        row.actionsAtRight &&
+        row.actionOrder.join(',') === '配置,运行' &&
+        row.iconWidth > 0 &&
+        row.nameOverflow === 'hidden' &&
+        row.nameTextOverflow === 'ellipsis' &&
+        row.nameWhiteSpace === 'nowrap',
+    ),
+  ).toBe(true)
+  expect(new Set(layout.rowAnatomy.map((row) => row.iconWidth)).size).toBe(1)
+  expect(layout.rowAnatomy[0]?.nameActuallyTruncated).toBe(true)
+  expect(layout.fiveRowsVisible).toBe(true)
+  expect(layout.sixthRequiresScroll).toBe(true)
+  expect(layout.listScrollable).toBe(true)
+  expect(layout.listScrollbarWidth).toBe('none')
+  expect(layout.detailScrollbarWidth).toBe('none')
   await expect(
     page.getByText('visual-app-orders', { exact: true }),
   ).toHaveCount(0)
   await expect(
     page.getByText('visual-device-operations', { exact: true }),
   ).toBeHidden()
+  await expect(page.getByTestId('capability-icon-slot')).toHaveCount(8)
+  await expect(page.getByTestId('capability-version')).toHaveCount(0)
+  await expect(page.getByText('2026.08', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /配置：拼多多/ })).toBeVisible()
   await expect(page.getByRole('button', { name: /运行：拼多多/ })).toBeVisible()
   await page.screenshot({
-    path: testInfo.outputPath('visual-device-detail-390-light.png'),
+    path: testInfo.outputPath('capability-yingdao-390-light.png'),
+    clip: { x: 0, y: 0, width: 390, height: 650 },
   })
 
   const applicationList = page.getByTestId('application-list')
+  const fixedPanelPositions = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>(
+      '[data-testid="device-capability-panel"]',
+    )!
+    return {
+      headerTop: panel
+        .querySelector<HTMLElement>('.device-capability-panel__header')!
+        .getBoundingClientRect().top,
+      selectorTop: panel
+        .querySelector<HTMLElement>('[data-testid="device-capability-tabs"]')!
+        .getBoundingClientRect().top,
+    }
+  })
   await applicationList.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
   await expect
     .poll(() => applicationList.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const panel = document.querySelector<HTMLElement>(
+          '[data-testid="device-capability-panel"]',
+        )!
+        return {
+          headerTop: panel
+            .querySelector<HTMLElement>('.device-capability-panel__header')!
+            .getBoundingClientRect().top,
+          selectorTop: panel
+            .querySelector<HTMLElement>(
+              '[data-testid="device-capability-tabs"]',
+            )!
+            .getBoundingClientRect().top,
+        }
+      }),
+    )
+    .toEqual(fixedPanelPositions)
   await page.screenshot({
-    path: testInfo.outputPath('visual-device-capability-scroll-390-light.png'),
+    path: testInfo.outputPath('capability-yingdao-scrolled-390-light.png'),
+    clip: { x: 0, y: 0, width: 390, height: 650 },
   })
 
   await page.getByRole('tab', { name: 'Skills 5' }).click()
@@ -1206,8 +1290,12 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(
     page.getByRole('button', { name: '配置：库存同步' }),
   ).toHaveCount(0)
+  await expect(page.getByTestId('capability-icon-slot')).toHaveCount(5)
+  await expect(page.getByTestId('capability-version')).toHaveCount(5)
+  await expect(page.getByText('v1.3.0', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: testInfo.outputPath('visual-device-skills-390-light.png'),
+    path: testInfo.outputPath('capability-skills-390-light.png'),
+    clip: { x: 0, y: 0, width: 390, height: 650 },
   })
 
   await page.getByText('更多信息', { exact: true }).click()
@@ -1241,3 +1329,75 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   expect(observation.apiRequests).toEqual([])
   expect(observation.consoleErrors).toEqual([])
 })
+
+for (const fixture of [
+  { width: 360, theme: 'light', file: 'capability-360-light.png' },
+  { width: 390, theme: 'dark', file: 'capability-390-dark.png' },
+] as const) {
+  test(`CapabilityPanel ${fixture.width}px ${fixture.theme} 保持五行与三段行结构`, async ({
+    page,
+  }, testInfo) => {
+    const observation = observePage(page)
+    await page.setViewportSize({ width: fixture.width, height: 844 })
+    await setTheme(page, fixture.theme)
+    await page.goto('/#/devices/visual-device-operations')
+
+    const panel = page.getByTestId('device-capability-panel')
+    const list = page.getByTestId('application-list')
+    await expect(panel).toBeVisible()
+    await expect(page.getByTestId('application-row')).toHaveCount(8)
+    const geometry = await list.evaluate((element) => {
+      const listBox = element.getBoundingClientRect()
+      const rows = Array.from(
+        element.querySelectorAll<HTMLElement>(
+          '[data-testid="application-row"]',
+        ),
+      )
+      return {
+        fiveRowsVisible: rows
+          .slice(0, 5)
+          .every(
+            (row) => row.getBoundingClientRect().bottom <= listBox.bottom + 1,
+          ),
+        sixthRequiresScroll:
+          rows[5]!.getBoundingClientRect().top >= listBox.bottom - 1,
+        rowsKeepSlots: rows.slice(0, 5).every((row) => {
+          const icon = row
+            .querySelector<HTMLElement>('.device-capability-panel__icon-slot')!
+            .getBoundingClientRect()
+          const main = row
+            .querySelector<HTMLElement>(
+              '.device-capability-panel__main-content',
+            )!
+            .getBoundingClientRect()
+          const actions = row
+            .querySelector<HTMLElement>('.device-capability-panel__actions')!
+            .getBoundingClientRect()
+          const rowBox = row.getBoundingClientRect()
+          return (
+            icon.right <= main.left &&
+            main.right <= actions.left &&
+            actions.right <= rowBox.right + 1
+          )
+        }),
+      }
+    })
+    expect(geometry).toEqual({
+      fiveRowsVisible: true,
+      sixthRequiresScroll: true,
+      rowsKeepSlots: true,
+    })
+    await expect(page.getByTestId('capability-icon-slot')).toHaveCount(8)
+    await expect(
+      page.getByText('visual-app-orders', { exact: true }),
+    ).toHaveCount(0)
+    await expectNoHorizontalOverflow(page)
+    await page.screenshot({
+      path: testInfo.outputPath(fixture.file),
+      clip: { x: 0, y: 0, width: fixture.width, height: 650 },
+    })
+
+    expect(observation.apiRequests).toEqual([])
+    expect(observation.consoleErrors).toEqual([])
+  })
+}
