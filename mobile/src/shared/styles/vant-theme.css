@@ -36,6 +36,7 @@
   --van-duration-fast: var(--duration-fast);
   --van-duration-base: var(--duration-normal);
 
+  /* Vant Button（按钮）：控制正式页面按钮的默认/大号高度与正文字号。 */
   --van-button-default-height: var(--control-height-default);
   --van-button-large-height: var(--control-height-large);
   --van-button-default-font-size: var(--font-size-body);
@@ -57,6 +58,7 @@
   --van-button-radius: var(--radius-control);
   --van-button-plain-background: var(--bg-surface-raised);
 
+  /* Vant NavBar（导航栏）：用于 Sheet 子流程；正式详情头部由 MobileDetailHeader 控制。 */
   --van-nav-bar-height: var(--layout-detail-header-height);
   --van-nav-bar-background: var(--bg-surface-raised);
   --van-nav-bar-arrow-size: var(--icon-size-small);
@@ -65,6 +67,7 @@
   --van-nav-bar-icon-color: var(--color-primary);
   --van-nav-bar-text-color: var(--text-secondary);
 
+  /* Vant Tabbar（底部导航）：控制五入口高度、图标、文字与图文间距。 */
   --van-tabbar-height: var(--layout-bottom-nav-height);
   --van-tabbar-background: var(--bg-surface-raised);
   --van-tabbar-item-font-size: var(--font-size-caption);
@@ -74,6 +77,7 @@
   --van-tabbar-item-icon-size: var(--icon-size-default);
   --van-tabbar-item-icon-margin-bottom: var(--space-1);
 
+  /* Vant Tabs（标签选择）：控制 CapabilityPanel 类型选择器的高度与字体。 */
   --van-tab-text-color: var(--text-secondary);
   --van-tab-active-text-color: var(--text-selected);
   --van-tab-disabled-text-color: var(--text-disabled);
@@ -85,10 +89,12 @@
   --van-tabs-bottom-bar-height: calc(var(--border-width) * 2);
   --van-tabs-bottom-bar-color: var(--color-primary);
 
+  /* Vant Popup（弹层）：尺寸由业务 Popup 与 overlay Token 组合，视觉属于 Stage 3。 */
   --van-overlay-background: var(--bg-overlay);
   --van-popup-background: var(--bg-surface-raised);
   --van-popup-round-radius: var(--radius-overlay);
 
+  /* Vant Cell（单元格）：控制详情“更多信息”与筛选列表的字体、行高和内边距。 */
   --van-cell-font-size: var(--font-size-body);
   --van-cell-line-height: var(--line-height-body);
   --van-cell-vertical-padding: var(--space-3);
@@ -107,6 +113,7 @@
   --van-collapse-item-content-text-color: var(--text-secondary);
   --van-collapse-item-content-background: var(--bg-subtle);
 
+  /* Vant Tag（标签）：控制 Device/Task 状态与 Meta Tag 的字体、行高和内边距。 */
   --van-tag-padding: calc(var(--space-1) / 2) var(--space-2);
   --van-tag-font-size: var(--font-size-caption);
   --van-tag-line-height: var(--line-height-caption);
@@ -132,6 +139,7 @@
   --van-notice-bar-background: var(--status-info-soft);
   --van-notice-bar-icon-size: var(--icon-size-small);
 
+  /* Vant Search / Field（搜索/输入）：控制任务筛选输入的高度与内边距。 */
   --van-search-padding: var(--space-2) var(--space-3);
   --van-search-background: var(--bg-surface-raised);
   --van-search-content-background: var(--bg-subtle);
@@ -143,6 +151,7 @@
   --van-field-clear-icon-color: var(--text-tertiary);
   --van-field-right-icon-color: var(--text-tertiary);
 
+  /* Vant Calendar（日期选择）：控制任务日期筛选的操作区、日期行与确认按钮尺寸。 */
   --van-calendar-background: var(--bg-surface-raised);
   --van-calendar-popup-height: var(--overlay-height-max);
   --van-calendar-header-shadow: var(--shadow-header);
@@ -162,6 +171,7 @@
   --van-calendar-confirm-button-height: var(--touch-target-min);
   --van-calendar-confirm-button-margin: var(--space-2) 0;
 
+  /* Vant Picker（选择器）：当前保留统一映射，生产页面暂无直接消费。 */
   --van-picker-background: var(--bg-surface-raised);
   --van-picker-toolbar-height: var(--touch-target-min);
   --van-picker-confirm-action-color: var(--color-primary);

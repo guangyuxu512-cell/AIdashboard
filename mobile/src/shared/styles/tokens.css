@@ -6,40 +6,40 @@
   --font-family-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     monospace;
-  --font-size-caption: 12px;
-  --font-size-secondary: 13px;
-  --font-size-body: 14px;
-  --font-size-label: 15px;
-  --font-size-title: 16px;
-  --font-size-display: 18px;
-  --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-  --line-height-caption: 18px;
-  --line-height-secondary: 20px;
-  --line-height-body: 22px;
-  --line-height-label: 22px;
-  --line-height-title: 24px;
-  --line-height-display: 24px;
+  --font-size-caption: 12px; /* 时间、Meta、Tag 与最弱辅助信息 */
+  --font-size-secondary: 13px; /* 次级状态、轻操作与能力类型标签 */
+  --font-size-body: 14px; /* 正文、Vant Cell/Button 与能力名称 */
+  --font-size-label: 15px; /* Toolbar、DeviceCard/TaskCard 与 Section 标题 */
+  --font-size-title: 16px; /* 品牌、详情 Header 与任务详情标题 */
+  --font-size-display: 18px; /* MobileSummaryStrip（概览横幅）指标数字 */
+  --font-weight-regular: 400; /* 正文与辅助信息的常规字重 */
+  --font-weight-medium: 500; /* 轻操作、标签与能力名称的强调字重 */
+  --font-weight-semibold: 600; /* Header、Toolbar 与卡片标题字重 */
+  --font-weight-bold: 700; /* 概览指标数字字重 */
+  --line-height-caption: 18px; /* Caption / Meta（说明与辅助信息）行高 */
+  --line-height-secondary: 20px; /* 次级状态与轻操作行高 */
+  --line-height-body: 22px; /* 正文、Cell 与能力名称行高 */
+  --line-height-label: 22px; /* Toolbar、卡片与 Section 标题行高 */
+  --line-height-title: 24px; /* 品牌与详情 Header 标题行高 */
+  --line-height-display: 24px; /* MobileSummaryStrip 指标数字行高 */
 
   /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
+  --space-1: 4px; /* 卡片三行、Toolbar 控件与紧凑操作的内部间距 */
+  --space-2: 8px; /* Summary 内边距、Toolbar 外部间距与能力行间距 */
+  --space-3: 12px; /* 卡片图标到正文、详情小节与能力面板水平间距 */
+  --space-4: 16px; /* 详情 Surface、运行摘要分区与列表状态区内边距 */
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
 
   /* Touch, icons and progress */
-  --touch-target-min: 44px;
-  --control-height-compact: 32px;
+  --touch-target-min: 44px; /* Touch Target（触控热区）最小尺寸 */
+  --control-height-compact: 32px; /* Toolbar 与 Capability 轻操作的视觉高度 */
   --control-height-medium: 40px;
-  --control-height-default: 44px;
-  --control-height-large: 50px;
-  --icon-size-small: 16px;
-  --icon-size-default: 22px;
+  --control-height-default: 44px; /* Vant 默认 Button、Search 输入高度 */
+  --control-height-large: 50px; /* Vant 大号 Button 与 Calendar 日期行高度 */
+  --icon-size-small: 16px; /* Chevron、能力行图标与轻量状态图标 */
+  --icon-size-default: 22px; /* Header、Bottom Nav、Summary 与业务卡主图标 */
   --status-dot-size: 6px;
   --progress-height-compact: 4px;
   --progress-height-default: 6px;
@@ -57,17 +57,17 @@
   --shadow-shell: 0 0 0 var(--border-width) var(--border-subtle);
 
   /* Layout */
-  --layout-content-max-width: 430px;
-  --layout-header-height: 52px;
-  --layout-detail-header-height: 50px;
-  --layout-summary-height: 98px;
-  --layout-toolbar-height: 44px;
-  --layout-bottom-nav-height: 58px;
-  --layout-page-padding-x: 16px;
-  --layout-page-padding-y: 16px;
-  --layout-section-gap: 16px;
-  --layout-card-gap: 12px;
-  --layout-card-padding: 16px;
+  --layout-content-max-width: 430px; /* MobileAppShell（应用壳）内容最大宽度 */
+  --layout-header-height: 52px; /* 一级页面全局顶部栏内容高度 */
+  --layout-detail-header-height: 50px; /* 设备/任务详情顶部栏内容高度 */
+  --layout-summary-height: 98px; /* MobileSummaryStrip（概览横幅）整体高度 */
+  --layout-toolbar-height: 44px; /* MobileListToolbar（列表工具行）整体高度 */
+  --layout-bottom-nav-height: 58px; /* 底部五入口导航高度，不含底部安全区 */
+  --layout-page-padding-x: 16px; /* Header、列表与详情页统一左右留白 */
+  --layout-page-padding-y: 16px; /* AppPage（详情内容页）上下留白 */
+  --layout-section-gap: 16px; /* 详情页不同业务区块之间的垂直间距 */
+  --layout-card-gap: 12px; /* Device/Task 列表中卡片之间的距离 */
+  --layout-card-padding: 16px; /* DeviceCard / TaskCard 统一内部留白 */
   --layout-card-row-gap: 8px;
   --layout-readable-max-width: 28rem;
   --layout-inline-state-min-height: 96px;

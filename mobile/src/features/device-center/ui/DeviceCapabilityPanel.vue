@@ -241,6 +241,7 @@ function formatSkillVersion(version: string): string | null {
 <style scoped>
 .device-capability-panel {
   display: grid;
+  /* CapabilityPanel（能力面板）局部高度；Stage 2 调整时必须保持五行完整、第六行起内部滚动。 */
   height: 334px;
   max-height: 334px;
   min-width: 0;
