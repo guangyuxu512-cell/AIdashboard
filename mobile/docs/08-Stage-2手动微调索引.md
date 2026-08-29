@@ -133,12 +133,12 @@ Slot（图标槽位）与 Glyph（图形视觉尺寸）始终分离。最终图�
 
 ## 后续阶段
 
-Stage 3A 的 Color、Surface、Text、Status、Selected 与 Dark Hierarchy 已进入 Candidate for Visual Review，尚未
-Frozen；Radius、Border Width / Style、Shadow、Final Icons 仍留给后续显式 Review。
+Stage 3A 的 Color、Surface、Text、Status、Selected 与 Dark Hierarchy 已完成并 Frozen；任何后续颜色改动都必须先
+显式 Unfreeze（解冻）并完成视觉 Review。Radius、Border Width / Style、Shadow、Final Icons 仍留给后续显式 Review。
 
 ## Stage 3A 几何复核记录
 
-Stage 3A 开始前与候选色彩映射落地后，均以 `390 × 844` Light 的真实浏览器页面读取冻结几何。结果为 `0` 尺寸
+Stage 3A 开始前、候选色彩映射落地后与最终颜色冻结时，均以 `390 × 844` Light 的真实浏览器页面读取冻结几何。结果为 `0` 尺寸
 差异：Global Header `52px`、Detail Header `51px`、Summary `96px`、Toolbar `46px`、Bottom Navigation
 `58px`；DeviceCard 为 `15px X / 16px Y` Padding、`52 / 36px` Primary Leading Visual；TaskCard 继续使用相同
 Card Padding 与 Leading Visual 语言；Runtime 为 `17px X / 9px Y`；Capability Panel / Row 为 `372px / 50px`，

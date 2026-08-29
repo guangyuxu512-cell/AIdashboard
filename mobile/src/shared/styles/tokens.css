@@ -128,7 +128,7 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  /* Stage 3A Semantic Color（语义颜色）：颜色值只在此层定义，组件只消费语义。 */
+  /* Stage 3A Frozen Semantic Color（已冻结语义颜色）：颜色值只在此层定义，组件只消费语义。 */
   --color-primary: #3b6f9f;
   --color-primary-strong: #315f8a;
   --color-primary-active: #294f74;
@@ -186,7 +186,7 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  /* Stage 3A Semantic Color（语义颜色）：Dark 维护独立值，不由 Light 反色推导。 */
+  /* Stage 3A Frozen Semantic Color（已冻结语义颜色）：Dark 维护独立值，不由 Light 反色推导。 */
   --color-primary: #91bce3;
   --color-primary-strong: #47759e;
   --color-primary-active: #3b6489;

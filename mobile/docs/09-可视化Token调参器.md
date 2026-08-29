@@ -100,3 +100,6 @@ Header、Bottom Navigation 与无横向溢出。
 正式固化后，重新打开调参器时，尺寸和颜色的默认值与当前值都必须等于正式 Token，对应 Dirty Count 必须为 `0`。
 调参器不替代页面级视觉验收；仍需在 360 / 375 / 390 / 430px、Light / Dark 下检查 Safe Area、45px Touch
 Target、横向溢出、Capability 内部滚动和 Frozen Contract。
+
+Stage 3A 的颜色基线现已 Frozen（已冻结）：Tuner V2 继续作为开发期评审工具，但任何正式颜色变更都必须先显式
+Unfreeze（解冻）并重新完成页面级视觉验收。
