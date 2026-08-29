@@ -44,7 +44,7 @@
   --control-size-icon-button: 34px; /* 图标按钮可见外壳边长，触控区域仍为44px */
   --icon-size-small: 16px; /* Sheet 返回、轻量状态与 Vant 辅助图标 */
   --icon-size-default: 22px; /* Control Icon（操作图标）：Header、Bottom Nav 与通用操作图标 */
-  --icon-size-card-leading: 28px; /* Primary Leading Visual（主业务卡片视觉锚点）的 Glyph 尺寸 */
+  --icon-size-card-leading: 36px; /* Primary Leading Visual（主业务卡片视觉锚点）的 Glyph 尺寸 */
   --icon-size-card-chevron: 16px; /* DeviceCard / TaskCard 右侧详情箭头视觉尺寸 */
   --icon-size-runtime-summary: 22px; /* Runtime Leading Visual（运行摘要视觉区）的 Glyph 尺寸 */
   --icon-size-summary-metric: 20px; /* Summary Icon（概览指标图标）视觉尺寸，低于数字层级 */
@@ -80,7 +80,7 @@
   --layout-card-padding-x: 12px; /* 设备卡与任务卡统一左右内部留白 */
   --layout-card-padding-y: 16px; /* 设备卡与任务卡统一上下内部留白 */
   --layout-card-row-gap: 4px; /* 设备卡与任务卡三行内容间距 */
-  --layout-card-leading-icon-slot-width: 44px; /* Primary Leading Visual 槽位宽度；为未来 Tile 保留容量，不等于 Glyph */
+  --layout-card-leading-icon-slot-width: 52px; /* Primary Leading Visual 槽位宽度；为未来 Tile 保留容量，不等于 Glyph */
   --layout-card-trailing-icon-slot-width: 24px; /* DeviceCard / TaskCard 右侧详情箭头固定槽位宽度，不等于箭头视觉尺寸 */
   --layout-runtime-summary-padding-x: 12px; /* DeviceRuntimeSummary 左右内部留白 */
   --layout-runtime-summary-padding-y: 16px; /* DeviceRuntimeSummary 上下内部留白，内容区比导航更舒展 */

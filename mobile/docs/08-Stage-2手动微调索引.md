@@ -37,7 +37,7 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | 概览横幅高度          | `src/shared/styles/tokens.css` | `--layout-summary-height`                                                 | 96px                     | `MobileSummaryStrip`                       |
 | 概览横幅上下边距      | `src/shared/styles/tokens.css` | `--layout-summary-padding-y`                                              | 8px                      | Summary Surface 与三层 Metric 的呼吸空间   |
 | 工具行与紧凑控件      | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact`                    | 44px / 30px              | `MobileListToolbar`、Capability 轻操作     |
-| 主业务图标槽 / 图形   | `src/shared/styles/tokens.css` | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`      | 44px / 28px              | `DeviceCard`、`TaskCard` 主视觉锚点        |
+| 主业务图标槽 / 图形   | `src/shared/styles/tokens.css` | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`      | 52px / 36px              | `DeviceCard`、`TaskCard` 主视觉锚点        |
 | 运行摘要内边距 / 图标 | `src/shared/styles/tokens.css` | `--layout-runtime-summary-padding-x / y`、Slot / Glyph                    | 12px / 16px、36px / 22px | `DeviceRuntimeSummary`                     |
 | 能力面板总高度 / 行高 | `src/shared/styles/tokens.css` | `--layout-capability-panel-height` / `--layout-capability-row-min-height` | 354px / 48px             | 五行完整显示与第六行起内部滚动             |
 
@@ -60,19 +60,19 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 `MobileAppShell` 的 `100dvh`、Safe Area 所有权和 Header / Main / Bottom 三行 Grid 属于冻结的高度链与
 滚动结构，不是 Stage 2 常规调参项。
 
-### Final Polish B 候选记录（内容 Surface 与 Icon 容量）
+### Final Polish B / Visual Tuning 候选记录（内容 Surface 与 Icon 容量）
 
 Status（状态）: Completed / Candidate for Freeze（已完成 / 待人工确认冻结）。本记录是当前尺寸的权威来源；
 下方 Stage 2C / 2D / 2F 原始结论仅保留为演进记录，若与本节冲突，以本节为准。
 
-| 项目                                | 实测候选                                                        | 推荐候选        | 结论                                                          |
-| ----------------------------------- | --------------------------------------------------------------- | --------------- | ------------------------------------------------------------- |
-| Summary Strip                       | 88px、92px、96px；上下边距均 8px                                | 96px / 8px      | Surface 80px，三层内容上下各约 7px，不变成 Dashboard。        |
-| Runtime Summary Padding Y           | 12px、14px、16px；X 固定 12px                                   | X 12px / Y 16px | 仅舒展上下两段，不扩大左右正文起点。                          |
-| Capability Row / Panel              | 44px / 334px、48px / 354px、52px / 374px                        | 48px / 354px    | 354px 经真实盒模型校验后完整容纳 5 行；第 6 行只在内部滚动。  |
-| Primary Leading Visual              | 32px / 20px、40px / 24px、44px / 28px、48px / 28px、48px / 32px | 44px / 28px     | 明确主业务扫描锚点，同时在 360px 保留名称单行 Ellipsis 空间。 |
-| Runtime Leading Visual              | 32px / 20px、36px / 22px、40px / 24px                           | 36px / 22px     | 低于 Primary Leading Visual，不与主卡片争夺视觉重量。         |
-| Capability / Summary / Control Icon | 28px / 16px、20px、22px                                         | 保持            | 能力列表维持密度；概览数字优先；操作图标不参与本轮放大。      |
+| 项目                                | 实测候选                                                                     | 推荐候选        | 结论                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------- |
+| Summary Strip                       | 88px、92px、96px；上下边距均 8px                                             | 96px / 8px      | Surface 80px，三层内容上下各约 7px，不变成 Dashboard。              |
+| Runtime Summary Padding Y           | 12px、14px、16px；X 固定 12px                                                | X 12px / Y 16px | 仅舒展上下两段，不扩大左右正文起点。                                |
+| Capability Row / Panel              | 44px / 334px、48px / 354px、52px / 374px                                     | 48px / 354px    | 354px 经真实盒模型校验后完整容纳 5 行；第 6 行只在内部滚动。        |
+| Primary Leading Visual              | 32px / 20px、40px / 24px、44px / 28px、48px / 28px、48px / 32px、52px / 36px | 52px / 36px     | 在 390px 中形成明确主视觉锚点，360px 仍保留名称单行 Ellipsis 空间。 |
+| Runtime Leading Visual              | 32px / 20px、36px / 22px、40px / 24px                                        | 36px / 22px     | 低于 Primary Leading Visual，不与主卡片争夺视觉重量。               |
+| Capability / Summary / Control Icon | 28px / 16px、20px、22px                                                      | 保持            | 能力列表维持密度；概览数字优先；操作图标不参与本轮放大。            |
 
 Stage 3 才决定正式图标资源、Tile 背景、颜色、圆角、阴影和最终 SVG / PNG；本节只冻结候选中的尺寸与占位容量，
 不冻结上述视觉属性。
@@ -87,20 +87,20 @@ Stage 3 才决定正式图标资源、Tile 背景、颜色、圆角、阴影和�
 | List Toolbar      | 44px            | 保持；是工具行与 Touch Target 的稳定基线。                                                 |
 | Bottom Navigation | 58px            | 保持；不含 Bottom Safe Area，五入口不拥挤。                                                |
 
-本轮历史结论不再代表当前候选；Final Polish B 已只调整内容型 Surface 和图标容量。Safe Area 与 `100dvh`
+本轮历史结论不再代表当前候选；Final Polish B / Visual Tuning 只调整内容型 Surface 和图标容量。Safe Area 与 `100dvh`
 Shell 高度链仍独立于上述内容高度。
 
-### Stage 2D / Final Polish B 结论（Card / Icon Ratio）
+### Stage 2D / Final Polish B / Visual Tuning 结论（Card / Icon Ratio）
 
 | 区域                          | Slot / Icon 最终值 | 结论                                         |
 | ----------------------------- | ------------------ | -------------------------------------------- |
-| DeviceCard / TaskCard Leading | 44px / 28px        | 主业务扫描锚点，360px 仍保留单行名称空间。   |
+| DeviceCard / TaskCard Leading | 52px / 36px        | 主业务扫描锚点，360px 仍保留单行名称空间。   |
 | DeviceCard / TaskCard Chevron | 24px / 16px        | 保持弱化箭头视觉，同时提供稳定右侧槽位。     |
 | DeviceRuntimeSummary          | 36px / 22px        | 低于主业务卡片的上下分区视觉锚点。           |
 | Capability Row                | 28px / 16px        | 图标保持克制，不挤压名称、版本与 Actions。   |
 | MobileSummaryStrip Metric     | 20px               | 数字继续由 Display + Bold 承担最高信息权重。 |
 
-Header、Detail Header、Bottom Navigation 的 22px Control Icon 映射保持不变。Final Polish B 只调整 Summary、
+Header、Detail Header、Bottom Navigation 的 22px Control Icon 映射保持不变。Final Polish B / Visual Tuning 只调整 Summary、
 Runtime、Capability Row / Panel 与 Primary Leading Visual；Card Padding、Gap、Typography、Control 尺寸均保持。
 
 ### Stage 2E 结论（控件视觉尺寸与触控热区）
@@ -148,7 +148,7 @@ Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio
 - Spacing：`4 / 8 / 12 / 16 / 20 / 24 / 32px`；Page `16 / 12px`、Section `12px`、Card `8 / 12 / 4px`。
 - Dimensions：Global Header `52px`、Detail Header `50px`、Summary `96px`、Toolbar `44px`、Bottom Nav
   `58px`。
-- Card / Icon：Primary Leading Visual `44 / 28px`、Chevron `24 / 16px`、Runtime Leading Visual `36 / 22px`、Capability `28 / 16px`、
+- Card / Icon：Primary Leading Visual `52 / 36px`、Chevron `24 / 16px`、Runtime Leading Visual `36 / 22px`、Capability `28 / 16px`、
   Summary `20px`。
 - Controls：Compact `30px`、Capability Action `28px`、Header Icon Shell `34px`、Touch Target `44×44px`。
 - Detail：Capability Panel `354px`、Row `48px`、Runtime / Task Detail 自然高度；5 行完整、第 6 行起内部滚动。
@@ -202,7 +202,7 @@ Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio
 | Detail Header Back                        | `--icon-size-default`                                                      | 22px        |
 | Bottom Navigation Icon                    | `vant-theme.css` → `--van-tabbar-item-icon-size` → `--icon-size-default`   | 22px        |
 | Summary Metric Icon                       | `--icon-size-summary-metric`                                               | 20px        |
-| Primary Leading Visual Slot / Glyph       | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 44px / 28px |
+| Primary Leading Visual Slot / Glyph       | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 52px / 36px |
 | DeviceCard / TaskCard Chevron Slot / Icon | `--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`      | 24px / 16px |
 | Runtime Leading Visual Slot / Glyph       | `--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary` | 36px / 22px |
 | Capability Row Icon Slot / Icon           | `--layout-capability-icon-slot-width` / `--icon-size-capability-row`       | 28px / 16px |
@@ -312,7 +312,7 @@ Runtime Leading Visual、Capability Icon、Summary Icon 与 Control Icon 已分�
 - Padding：`--layout-card-padding-x` 12px、`--layout-card-padding-y` 16px；卡间距：列表容器的
   `--layout-card-gap` 8px。
 - Leading 到正文：`--space-2` 8px；正文三行 Gap：`--layout-card-row-gap` 4px。
-- Primary Leading Visual Slot / Glyph：`--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`，44px / 28px；
+- Primary Leading Visual Slot / Glyph：`--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`，52px / 36px；
   Chevron Slot / Icon：`--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`，24px / 16px。
 - 标题 / Runtime / Meta：Label 15/20、Secondary 13/18、Caption 12/16。
 - 高度自然计算；不增加第四行或改写 Main / Trailing 槽位。
