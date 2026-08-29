@@ -196,15 +196,15 @@ const yingdaoVersion = computed(
 .device-runtime-summary__section {
   display: grid;
   min-width: 0;
-  padding: var(--space-4);
+  padding: var(--space-3);
   align-items: center;
-  column-gap: var(--space-3);
+  column-gap: var(--space-2);
   grid-template-columns: auto minmax(0, 1fr);
 }
 
 .device-runtime-summary__separator {
   height: var(--border-width);
-  margin-inline: var(--space-4);
+  margin-inline: var(--space-3);
   background: var(--border-subtle);
 }
 

@@ -27,8 +27,8 @@
 
   /* Spacing */
   --space-1: 4px; /* 卡片三行、Toolbar 控件与紧凑操作的内部间距 */
-  --space-2: 8px; /* Summary 内边距、Toolbar 外部间距与能力行间距 */
-  --space-3: 12px; /* 卡片图标到正文、详情小节与能力面板水平间距 */
+  --space-2: 8px; /* 卡片图标到正文、Summary、Toolbar 与能力行间距 */
+  --space-3: 12px; /* 详情小节与能力面板水平间距 */
   --space-4: 16px; /* 详情 Surface、运行摘要分区与列表状态区内边距 */
   --space-5: 20px;
   --space-6: 24px;
@@ -67,11 +67,11 @@
   --layout-toolbar-height: 44px; /* MobileListToolbar（列表工具行）整体高度 */
   --layout-bottom-nav-height: 58px; /* 底部五入口导航高度，不含底部安全区 */
   --layout-page-padding-x: 16px; /* Header、列表与详情页统一左右留白 */
-  --layout-page-padding-y: 16px; /* AppPage（详情内容页）上下留白 */
-  --layout-section-gap: 16px; /* 详情页不同业务区块之间的垂直间距 */
-  --layout-card-gap: 12px; /* Device/Task 列表中卡片之间的距离 */
-  --layout-card-padding: 16px; /* DeviceCard / TaskCard 统一内部留白 */
-  --layout-card-row-gap: 8px;
+  --layout-page-padding-y: 12px; /* AppPage（详情内容页）基础上下留白 */
+  --layout-section-gap: 12px; /* 详情页面主要区块之间的垂直距离 */
+  --layout-card-gap: 8px; /* Device/Task 列表中卡片之间的距离 */
+  --layout-card-padding: 12px; /* 设备卡与任务卡统一内部留白 */
+  --layout-card-row-gap: 4px; /* 设备卡与任务卡三行内容间距 */
   --layout-card-leading-icon-slot-width: 22px; /* DeviceCard / TaskCard 左侧图标槽位宽度 */
   --layout-runtime-summary-icon-slot-width: 22px; /* DeviceRuntimeSummary 上下分区图标槽位宽度 */
   --layout-capability-panel-height: 334px; /* 能力面板整体高度，保证完整显示5行，第6行开始内部滚动 */

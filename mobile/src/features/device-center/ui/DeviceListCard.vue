@@ -114,7 +114,7 @@ const primaryStatus = computed(() => {
   grid-template-columns: auto minmax(0, 1fr) auto;
   width: 100%;
   min-width: 0;
-  column-gap: var(--space-3);
+  column-gap: var(--space-2);
   padding: var(--layout-card-padding);
   align-items: center;
   color: inherit;
@@ -156,7 +156,7 @@ const primaryStatus = computed(() => {
 .device-list-card__content {
   display: grid;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--layout-card-row-gap);
 }
 
 .device-list-card__name,

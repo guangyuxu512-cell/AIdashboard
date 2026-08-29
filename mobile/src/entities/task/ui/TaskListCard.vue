@@ -65,7 +65,7 @@ const metaTags = computed(() => {
 .task-list-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  column-gap: var(--space-3);
+  column-gap: var(--space-2);
   padding: var(--layout-card-padding);
   align-items: center;
   color: var(--text-primary);
@@ -82,7 +82,7 @@ const metaTags = computed(() => {
 .task-list-card__content {
   display: grid;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--layout-card-row-gap);
 }
 
 .task-list-card__name,

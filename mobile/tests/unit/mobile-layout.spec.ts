@@ -226,9 +226,38 @@ describe('Mobile Layout shared components', () => {
       resolve(process.cwd(), 'src/shared/styles/vant-theme.css'),
       'utf8',
     )
+    const deviceCard = readFileSync(
+      resolve(
+        process.cwd(),
+        'src/features/device-center/ui/DeviceListCard.vue',
+      ),
+      'utf8',
+    )
+    const taskCard = readFileSync(
+      resolve(process.cwd(), 'src/entities/task/ui/TaskListCard.vue'),
+      'utf8',
+    )
+    const runtimeSummary = readFileSync(
+      resolve(
+        process.cwd(),
+        'src/features/device-center/ui/DeviceRuntimeSummary.vue',
+      ),
+      'utf8',
+    )
 
+    expect(tokens).toContain('--layout-header-height: 52px')
+    expect(tokens).toContain('--layout-detail-header-height: 50px')
     expect(tokens).toContain('--layout-summary-height: 98px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
+    expect(tokens).toContain('--layout-bottom-nav-height: 58px')
+    expect(tokens).toContain('--layout-page-padding-x: 16px')
+    expect(tokens).toContain('--layout-page-padding-y: 12px')
+    expect(tokens).toContain('--layout-section-gap: 12px')
+    expect(tokens).toContain('--layout-card-gap: 8px')
+    expect(tokens).toContain('--layout-card-padding: 12px')
+    expect(tokens).toContain('--layout-card-row-gap: 4px')
+    expect(tokens).toContain('--layout-capability-panel-height: 334px')
+    expect(tokens).toContain('--layout-capability-row-min-height: 44px')
     expect(tokens).toContain('--control-height-compact: 32px')
     expect(tokens).toContain('--touch-target-min: 44px')
     expect(tokens).toContain('--font-size-caption: 12px')
@@ -256,6 +285,14 @@ describe('Mobile Layout shared components', () => {
     expect(vantTheme).toMatch(
       /\.van-nav-bar\s*\{\s*line-height:\s*var\(--line-height-title\)/s,
     )
+    for (const card of [deviceCard, taskCard]) {
+      expect(card).toContain('column-gap: var(--space-2)')
+      expect(card).toContain('padding: var(--layout-card-padding)')
+      expect(card).toContain('gap: var(--layout-card-row-gap)')
+    }
+    expect(runtimeSummary).toContain('padding: var(--space-3)')
+    expect(runtimeSummary).toContain('column-gap: var(--space-2)')
+    expect(runtimeSummary).toContain('margin-inline: var(--space-3)')
     expect(base).toContain('scrollbar-width: none')
     expect(base).toContain('-ms-overflow-style: none')
     expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')
