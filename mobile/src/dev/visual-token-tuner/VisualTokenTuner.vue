@@ -9,10 +9,19 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
   createVisualTokenTunerRuntime,
+  getVisualColorContrastRatio,
+  type VisualColorTheme,
+  type VisualColorTokenDefinition,
   type VisualTokenDefinition,
+  visualColorTokenRegistry,
+  visualColorTokenTunerGroups,
   visualTokenRegistry,
   visualTokenTunerGroups,
 } from './index'
+
+type TunerMode = 'dimension' | 'color'
+
+const colorThemes = ['light', 'dark'] as const
 
 const props = withDefaults(
   defineProps<{
@@ -25,9 +34,14 @@ const props = withDefaults(
 
 const runtime = createVisualTokenTunerRuntime()
 const enabled = runtime.enabled
+const mode = ref<TunerMode>('dimension')
 const activeGroup = ref(visualTokenTunerGroups[0].key)
+const activeColorGroup = ref(visualColorTokenTunerGroups[0].key)
+const editingTheme = ref<VisualColorTheme>('light')
 const searchText = ref('')
 const values = ref(runtime.readValues())
+const colorValues = ref(runtime.readColorValues())
+const invalidColorValues = ref<Record<string, string>>({})
 const viewportWidth = ref(0)
 const viewportHeight = ref(0)
 
@@ -36,12 +50,18 @@ const viewportLabel = computed(() => {
   if (viewportWidth.value <= 430) return '标准移动端'
   return '宽屏预览'
 })
-const dirtyDefinitions = computed(() =>
-  visualTokenRegistry.filter(
-    (definition) =>
-      Math.abs(valueOf(definition) - definition.defaultValue) >= 0.0001,
-  ),
-)
+const dirtyDefinitions = computed(() => {
+  void values.value
+  return runtime.getDirtyDefinitions()
+})
+const dirtyColorDefinitions = computed(() => {
+  void colorValues.value
+  return runtime.getDirtyColorDefinitions()
+})
+const currentThemeDirtyDefinitions = computed(() => {
+  void colorValues.value
+  return runtime.getDirtyColorDefinitions(editingTheme.value)
+})
 const filteredDefinitions = computed(() => {
   const query = searchText.value.trim().toLocaleLowerCase()
   return visualTokenRegistry.filter((definition) => {
@@ -52,9 +72,21 @@ const filteredDefinitions = computed(() => {
       .includes(query)
   })
 })
+const filteredColorDefinitions = computed(() => {
+  const query = searchText.value.trim().toLocaleLowerCase()
+  return visualColorTokenRegistry.filter((definition) => {
+    if (definition.theme !== editingTheme.value) return false
+    if (!query) return definition.group === activeColorGroup.value
+    return [definition.label, definition.cssVar, definition.description]
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(query)
+  })
+})
 
 function syncValues(): void {
   values.value = runtime.readValues()
+  colorValues.value = runtime.readColorValues()
 }
 
 function updateViewport(): void {
@@ -104,6 +136,83 @@ function resetAll(): void {
   syncValues()
 }
 
+function colorValueOf(definition: VisualColorTokenDefinition): string {
+  return (
+    colorValues.value[definition.theme]?.[definition.cssVar] ??
+    runtime.readColorBaseline(definition)
+  )
+}
+
+function isColorDirty(definition: VisualColorTokenDefinition): boolean {
+  return colorValueOf(definition) !== runtime.readColorBaseline(definition)
+}
+
+function applyColorValue(
+  definition: VisualColorTokenDefinition,
+  nextValue: string,
+): void {
+  if (runtime.setColorValue(definition, nextValue)) {
+    const remaining = { ...invalidColorValues.value }
+    delete remaining[definition.key]
+    invalidColorValues.value = remaining
+    syncValues()
+    return
+  }
+  invalidColorValues.value = {
+    ...invalidColorValues.value,
+    [definition.key]: '请输入 #RRGGBB 格式的颜色。',
+  }
+}
+
+function onColorPickerInput(
+  definition: VisualColorTokenDefinition,
+  event: Event,
+): void {
+  applyColorValue(definition, (event.target as HTMLInputElement).value)
+}
+
+function onColorHexChange(
+  definition: VisualColorTokenDefinition,
+  event: Event,
+): void {
+  applyColorValue(definition, (event.target as HTMLInputElement).value)
+}
+
+function resetColorItem(definition: VisualColorTokenDefinition): void {
+  runtime.resetColorValue(definition)
+  syncValues()
+}
+
+function resetColorTheme(): void {
+  runtime.resetColorTheme(editingTheme.value)
+  syncValues()
+}
+
+function resetAllColors(): void {
+  runtime.resetAllColors()
+  syncValues()
+}
+
+function colorContrastWarning(
+  definition: VisualColorTokenDefinition,
+): string | null {
+  if (!definition.contrastTarget) return null
+  const target = visualColorTokenRegistry.find(
+    (item) =>
+      item.theme === definition.theme &&
+      item.cssVar === definition.contrastTarget?.cssVar,
+  )
+  if (!target) return null
+  const ratio = getVisualColorContrastRatio(
+    colorValueOf(definition),
+    colorValueOf(target),
+  )
+  if (ratio === null || ratio >= definition.contrastTarget.minimumRatio) {
+    return null
+  }
+  return `与 ${definition.contrastTarget.label} 的对比度 ${ratio.toFixed(2)}:1，低于 ${definition.contrastTarget.minimumRatio}:1。`
+}
+
 function closeStandaloneTuner(): void {
   window.close()
 }
@@ -129,7 +238,7 @@ async function copyText(text: string): Promise<void> {
 async function copyCssVariables(): Promise<void> {
   try {
     await copyText(runtime.toCssVariables())
-    showToast('已复制 CSS 变量')
+    showToast('已复制尺寸 CSS')
   } catch {
     showToast('复制失败')
   }
@@ -138,7 +247,25 @@ async function copyCssVariables(): Promise<void> {
 async function copyJson(): Promise<void> {
   try {
     await copyText(runtime.toJson())
-    showToast('已复制 JSON')
+    showToast('已复制尺寸 JSON')
+  } catch {
+    showToast('复制失败')
+  }
+}
+
+async function copyColorCssVariables(): Promise<void> {
+  try {
+    await copyText(runtime.toColorCssVariables())
+    showToast('已复制颜色 CSS')
+  } catch {
+    showToast('复制失败')
+  }
+}
+
+async function copyColorJson(): Promise<void> {
+  try {
+    await copyText(runtime.toColorJson())
+    showToast('已复制颜色 JSON')
   } catch {
     showToast('复制失败')
   }
@@ -184,9 +311,10 @@ onBeforeUnmount(() => {
       <div class="visual-token-tuner__content">
         <header class="visual-token-tuner__header">
           <div class="visual-token-tuner__title-block">
-            <strong>视觉 Token 调参</strong>
+            <strong>视觉 Token 调参 V2</strong>
             <span>
-              已调整 {{ dirtyDefinitions.length }} 项 · {{ viewportWidth }} ×
+              尺寸已调整 {{ dirtyDefinitions.length }} 项 · 颜色已调整
+              {{ dirtyColorDefinitions.length }} 项 · {{ viewportWidth }} ×
               {{ viewportHeight }} · {{ viewportLabel }}
             </span>
           </div>
@@ -201,134 +329,332 @@ onBeforeUnmount(() => {
           </button>
         </header>
 
+        <div
+          class="visual-token-tuner__mode-switch"
+          role="tablist"
+          aria-label="调参类别"
+        >
+          <button
+            class="visual-token-tuner__switch-button"
+            :class="{
+              'visual-token-tuner__switch-button--active': mode === 'dimension',
+            }"
+            type="button"
+            role="tab"
+            :aria-selected="mode === 'dimension'"
+            data-testid="visual-token-tuner-mode-dimension"
+            @click="mode = 'dimension'"
+          >
+            尺寸
+          </button>
+          <button
+            class="visual-token-tuner__switch-button"
+            :class="{
+              'visual-token-tuner__switch-button--active': mode === 'color',
+            }"
+            type="button"
+            role="tab"
+            :aria-selected="mode === 'color'"
+            data-testid="visual-token-tuner-mode-color"
+            @click="mode = 'color'"
+          >
+            颜色
+          </button>
+        </div>
+
         <label class="visual-token-tuner__search">
           <span>搜索参数</span>
           <input
             v-model="searchText"
             type="search"
-            placeholder="例如：图标、内边距、能力"
+            placeholder="例如：图标、表面、状态"
             data-testid="visual-token-tuner-search"
           />
         </label>
 
-        <VanTabs v-model:active="activeGroup" class="visual-token-tuner__tabs">
-          <VanTab
-            v-for="group in visualTokenTunerGroups"
-            :key="group.key"
-            :name="group.key"
-            :title="group.label"
-          />
-        </VanTabs>
-
-        <div class="visual-token-tuner__parameters">
-          <p class="visual-token-tuner__group-description">
-            {{
-              searchText.trim()
-                ? `找到 ${filteredDefinitions.length} 项参数`
-                : visualTokenTunerGroups.find(
-                    (group) => group.key === activeGroup,
-                  )?.description
-            }}
-          </p>
-
-          <p
-            v-if="filteredDefinitions.length === 0"
-            class="visual-token-tuner__empty"
+        <template v-if="mode === 'dimension'">
+          <VanTabs
+            v-model:active="activeGroup"
+            class="visual-token-tuner__tabs"
           >
-            没有匹配的参数
-          </p>
+            <VanTab
+              v-for="group in visualTokenTunerGroups"
+              :key="group.key"
+              :name="group.key"
+              :title="group.label"
+            />
+          </VanTabs>
 
-          <article
-            v-for="definition in filteredDefinitions"
-            :key="definition.key"
-            class="visual-token-tuner__parameter"
-            :data-testid="`visual-token-${definition.key}`"
-          >
-            <div class="visual-token-tuner__parameter-heading">
-              <label :for="`visual-token-number-${definition.key}`">
-                {{ definition.label }}
-              </label>
-              <span v-if="isDirty(definition)">已修改</span>
-            </div>
-            <p>{{ definition.description }}</p>
-
-            <div class="visual-token-tuner__control-row">
-              <input
-                :id="`visual-token-range-${definition.key}`"
-                :aria-label="`${definition.label}滑块`"
-                :value="valueOf(definition)"
-                :min="definition.min"
-                :max="definition.max"
-                :step="definition.step"
-                type="range"
-                :data-testid="`visual-token-range-${definition.key}`"
-                @input="onRangeInput(definition, $event)"
-              />
-              <input
-                :id="`visual-token-number-${definition.key}`"
-                :aria-label="`${definition.label}数值输入`"
-                :value="valueOf(definition)"
-                :min="definition.min"
-                :max="definition.max"
-                :step="definition.step"
-                type="number"
-                inputmode="decimal"
-                :data-testid="`visual-token-number-${definition.key}`"
-                @input="onNumberInput(definition, $event)"
-              />
-              <span class="visual-token-tuner__unit">
-                {{ definition.unit || '—' }}
-              </span>
-              <VanButton
-                size="small"
-                plain
-                :disabled="!isDirty(definition)"
-                :data-testid="`visual-token-reset-${definition.key}`"
-                @click="resetItem(definition)"
-              >
-                恢复
-              </VanButton>
-            </div>
-
-            <div class="visual-token-tuner__value-summary">
-              <span
-                >默认
-                {{ formatValue(definition, definition.defaultValue) }}</span
-              >
-              <span
-                >当前 {{ formatValue(definition, valueOf(definition)) }}</span
-              >
-            </div>
-            <p v-if="warningOf(definition)" class="visual-token-tuner__warning">
-              {{ warningOf(definition) }}
+          <div class="visual-token-tuner__parameters">
+            <p class="visual-token-tuner__group-description">
+              {{
+                searchText.trim()
+                  ? `找到 ${filteredDefinitions.length} 项参数`
+                  : visualTokenTunerGroups.find(
+                      (group) => group.key === activeGroup,
+                    )?.description
+              }}
             </p>
-          </article>
-        </div>
 
-        <footer class="visual-token-tuner__footer">
-          <VanButton
-            plain
-            :disabled="dirtyDefinitions.length === 0"
-            data-testid="visual-token-tuner-reset-all"
-            @click="resetAll"
+            <p
+              v-if="filteredDefinitions.length === 0"
+              class="visual-token-tuner__empty"
+            >
+              没有匹配的参数
+            </p>
+
+            <article
+              v-for="definition in filteredDefinitions"
+              :key="definition.key"
+              class="visual-token-tuner__parameter"
+              :data-testid="`visual-token-${definition.key}`"
+            >
+              <div class="visual-token-tuner__parameter-heading">
+                <label :for="`visual-token-number-${definition.key}`">
+                  {{ definition.label }}
+                </label>
+                <span v-if="isDirty(definition)">已修改</span>
+              </div>
+              <p>{{ definition.description }}</p>
+
+              <div class="visual-token-tuner__control-row">
+                <input
+                  :id="`visual-token-range-${definition.key}`"
+                  :aria-label="`${definition.label}滑块`"
+                  :value="valueOf(definition)"
+                  :min="definition.min"
+                  :max="definition.max"
+                  :step="definition.step"
+                  type="range"
+                  :data-testid="`visual-token-range-${definition.key}`"
+                  @input="onRangeInput(definition, $event)"
+                />
+                <input
+                  :id="`visual-token-number-${definition.key}`"
+                  :aria-label="`${definition.label}数值输入`"
+                  :value="valueOf(definition)"
+                  :min="definition.min"
+                  :max="definition.max"
+                  :step="definition.step"
+                  type="number"
+                  inputmode="decimal"
+                  :data-testid="`visual-token-number-${definition.key}`"
+                  @input="onNumberInput(definition, $event)"
+                />
+                <span class="visual-token-tuner__unit">
+                  {{ definition.unit || '—' }}
+                </span>
+                <VanButton
+                  size="small"
+                  plain
+                  :disabled="!isDirty(definition)"
+                  :data-testid="`visual-token-reset-${definition.key}`"
+                  @click="resetItem(definition)"
+                >
+                  恢复
+                </VanButton>
+              </div>
+
+              <div class="visual-token-tuner__value-summary">
+                <span
+                  >默认
+                  {{ formatValue(definition, definition.defaultValue) }}</span
+                >
+                <span
+                  >当前 {{ formatValue(definition, valueOf(definition)) }}</span
+                >
+              </div>
+              <p
+                v-if="warningOf(definition)"
+                class="visual-token-tuner__warning"
+              >
+                {{ warningOf(definition) }}
+              </p>
+            </article>
+          </div>
+
+          <footer class="visual-token-tuner__footer">
+            <VanButton
+              plain
+              :disabled="dirtyDefinitions.length === 0"
+              data-testid="visual-token-tuner-reset-all"
+              @click="resetAll"
+            >
+              恢复全部尺寸
+            </VanButton>
+            <VanButton
+              plain
+              data-testid="visual-token-tuner-copy-css"
+              @click="copyCssVariables"
+            >
+              复制尺寸 CSS
+            </VanButton>
+            <VanButton
+              plain
+              data-testid="visual-token-tuner-copy-json"
+              @click="copyJson"
+            >
+              复制尺寸 JSON
+            </VanButton>
+          </footer>
+        </template>
+
+        <template v-else>
+          <div
+            class="visual-token-tuner__theme-context"
+            role="tablist"
+            aria-label="颜色编辑主题"
           >
-            恢复全部
-          </VanButton>
-          <VanButton
-            plain
-            data-testid="visual-token-tuner-copy-css"
-            @click="copyCssVariables"
+            <button
+              v-for="theme in colorThemes"
+              :key="theme"
+              class="visual-token-tuner__switch-button"
+              :class="{
+                'visual-token-tuner__switch-button--active':
+                  editingTheme === theme,
+              }"
+              type="button"
+              role="tab"
+              :aria-selected="editingTheme === theme"
+              :data-testid="`visual-token-tuner-theme-${theme}`"
+              @click="editingTheme = theme"
+            >
+              {{ theme === 'light' ? '编辑浅色' : '编辑深色' }}
+            </button>
+          </div>
+
+          <VanTabs
+            v-model:active="activeColorGroup"
+            class="visual-token-tuner__tabs"
           >
-            复制 CSS
-          </VanButton>
-          <VanButton
-            plain
-            data-testid="visual-token-tuner-copy-json"
-            @click="copyJson"
+            <VanTab
+              v-for="group in visualColorTokenTunerGroups"
+              :key="group.key"
+              :name="group.key"
+              :title="group.label"
+            />
+          </VanTabs>
+
+          <div class="visual-token-tuner__parameters">
+            <p class="visual-token-tuner__group-description">
+              {{
+                searchText.trim()
+                  ? `找到 ${filteredColorDefinitions.length} 项颜色参数`
+                  : visualColorTokenTunerGroups.find(
+                      (group) => group.key === activeColorGroup,
+                    )?.description
+              }}
+            </p>
+            <p class="visual-token-tuner__theme-note">
+              当前仅编辑{{ editingTheme === 'light' ? '浅色' : '深色' }}
+              Token；不会修改产品主题设置。
+            </p>
+
+            <p
+              v-if="filteredColorDefinitions.length === 0"
+              class="visual-token-tuner__empty"
+            >
+              没有匹配的颜色参数
+            </p>
+
+            <article
+              v-for="definition in filteredColorDefinitions"
+              :key="definition.key"
+              class="visual-token-tuner__parameter"
+              :data-testid="`visual-token-color-${definition.key}`"
+            >
+              <div class="visual-token-tuner__parameter-heading">
+                <label :for="`visual-token-color-text-${definition.key}`">
+                  {{ definition.label }}
+                </label>
+                <span v-if="isColorDirty(definition)">已修改</span>
+              </div>
+              <p>{{ definition.description }}</p>
+
+              <div class="visual-token-tuner__color-control-row">
+                <input
+                  :id="`visual-token-color-picker-${definition.key}`"
+                  :aria-label="`${definition.label}颜色选择`"
+                  :value="colorValueOf(definition)"
+                  type="color"
+                  :data-testid="`visual-token-color-picker-${definition.key}`"
+                  @input="onColorPickerInput(definition, $event)"
+                />
+                <input
+                  :id="`visual-token-color-text-${definition.key}`"
+                  :aria-label="`${definition.label}十六进制颜色`"
+                  :value="colorValueOf(definition)"
+                  type="text"
+                  inputmode="text"
+                  spellcheck="false"
+                  :data-testid="`visual-token-color-hex-${definition.key}`"
+                  @change="onColorHexChange(definition, $event)"
+                />
+                <VanButton
+                  size="small"
+                  plain
+                  :disabled="!isColorDirty(definition)"
+                  :data-testid="`visual-token-color-reset-${definition.key}`"
+                  @click="resetColorItem(definition)"
+                >
+                  恢复
+                </VanButton>
+              </div>
+
+              <div class="visual-token-tuner__value-summary">
+                <span>默认 {{ runtime.readColorBaseline(definition) }}</span>
+                <span>当前 {{ colorValueOf(definition) }}</span>
+              </div>
+              <p
+                v-if="invalidColorValues[definition.key]"
+                class="visual-token-tuner__warning"
+              >
+                {{ invalidColorValues[definition.key] }}
+              </p>
+              <p
+                v-else-if="colorContrastWarning(definition)"
+                class="visual-token-tuner__warning"
+              >
+                {{ colorContrastWarning(definition) }}
+              </p>
+            </article>
+          </div>
+
+          <footer
+            class="visual-token-tuner__footer visual-token-tuner__footer--color"
           >
-            复制 JSON
-          </VanButton>
-        </footer>
+            <VanButton
+              plain
+              :disabled="currentThemeDirtyDefinitions.length === 0"
+              data-testid="visual-token-tuner-reset-color-theme"
+              @click="resetColorTheme"
+            >
+              恢复本主题
+            </VanButton>
+            <VanButton
+              plain
+              :disabled="dirtyColorDefinitions.length === 0"
+              data-testid="visual-token-tuner-reset-all-colors"
+              @click="resetAllColors"
+            >
+              恢复全部颜色
+            </VanButton>
+            <VanButton
+              plain
+              data-testid="visual-token-tuner-copy-color-css"
+              @click="copyColorCssVariables"
+            >
+              复制颜色 CSS
+            </VanButton>
+            <VanButton
+              plain
+              data-testid="visual-token-tuner-copy-color-json"
+              @click="copyColorJson"
+            >
+              复制颜色 JSON
+            </VanButton>
+          </footer>
+        </template>
       </div>
     </section>
   </div>
@@ -389,7 +715,7 @@ onBeforeUnmount(() => {
   width: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
 }
 
 .visual-token-tuner__header {
@@ -399,7 +725,7 @@ onBeforeUnmount(() => {
   gap: var(--layout-content-gap);
   align-items: center;
   justify-content: space-between;
-  border-bottom: var(--border-width) solid var(--border-subtle);
+  border-bottom: var(--border-width) solid var(--border-divider);
 }
 
 .visual-token-tuner__title-block {
@@ -415,6 +741,7 @@ onBeforeUnmount(() => {
 
 .visual-token-tuner__title-block span,
 .visual-token-tuner__group-description,
+.visual-token-tuner__theme-note,
 .visual-token-tuner__parameter > p,
 .visual-token-tuner__value-summary,
 .visual-token-tuner__warning,
@@ -430,6 +757,32 @@ onBeforeUnmount(() => {
   font-size: var(--font-size-title);
 }
 
+.visual-token-tuner__mode-switch,
+.visual-token-tuner__theme-context {
+  display: grid;
+  padding: var(--layout-content-gap) var(--space-3) 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--layout-compact-gap);
+}
+
+.visual-token-tuner__switch-button {
+  min-height: var(--touch-target-min);
+  padding: 0 var(--layout-content-gap);
+  color: var(--text-secondary);
+  font-size: var(--font-size-action);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-action);
+  background: var(--bg-control);
+  border: var(--border-width) solid var(--border-divider);
+  border-radius: var(--radius-control);
+}
+
+.visual-token-tuner__switch-button--active {
+  color: var(--text-selected);
+  background: var(--bg-selected);
+  border-color: var(--color-primary);
+}
+
 .visual-token-tuner__search {
   display: grid;
   padding: var(--layout-content-gap) var(--space-3);
@@ -440,19 +793,20 @@ onBeforeUnmount(() => {
 }
 
 .visual-token-tuner__search input,
-.visual-token-tuner__control-row input[type='number'] {
+.visual-token-tuner__control-row input[type='number'],
+.visual-token-tuner__color-control-row input[type='text'] {
   min-width: 0;
   height: var(--control-height-compact);
   padding-inline: var(--layout-content-gap);
   color: var(--text-primary);
-  background: var(--bg-subtle);
-  border: var(--border-width) solid var(--border-subtle);
+  background: var(--bg-control);
+  border: var(--border-width) solid var(--border-divider);
   border-radius: var(--radius-control);
 }
 
 .visual-token-tuner__tabs {
   min-width: 0;
-  border-bottom: var(--border-width) solid var(--border-subtle);
+  border-bottom: var(--border-width) solid var(--border-divider);
 }
 
 .visual-token-tuner__parameters {
@@ -462,12 +816,17 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+.visual-token-tuner__theme-note {
+  margin-top: var(--layout-compact-gap);
+  color: var(--text-muted);
+}
+
 .visual-token-tuner__parameter {
   display: grid;
   min-width: 0;
   padding-block: var(--space-3);
   gap: var(--layout-compact-gap);
-  border-bottom: var(--border-width) solid var(--border-subtle);
+  border-bottom: var(--border-width) solid var(--border-divider);
 }
 
 .visual-token-tuner__parameter:first-of-type {
@@ -513,14 +872,34 @@ onBeforeUnmount(() => {
   accent-color: var(--color-primary);
 }
 
+.visual-token-tuner__color-control-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: var(--touch-target-min) minmax(0, 1fr) auto;
+  gap: var(--layout-compact-gap);
+  align-items: center;
+}
+
+.visual-token-tuner__color-control-row input[type='color'] {
+  width: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: var(--layout-compact-gap);
+  cursor: pointer;
+  background: var(--bg-control);
+  border: var(--border-width) solid var(--border-divider);
+  border-radius: var(--radius-control);
+}
+
 .visual-token-tuner__unit {
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
   text-align: center;
 }
 
-.visual-token-tuner__control-row .van-button {
+.visual-token-tuner__control-row .van-button,
+.visual-token-tuner__color-control-row .van-button {
   min-width: var(--touch-target-min);
 }
 
@@ -540,7 +919,11 @@ onBeforeUnmount(() => {
     max(var(--layout-content-gap), var(--safe-area-bottom));
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--layout-compact-gap);
-  border-top: var(--border-width) solid var(--border-subtle);
+  border-top: var(--border-width) solid var(--border-divider);
+}
+
+.visual-token-tuner__footer--color {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .visual-token-tuner__footer .van-button {

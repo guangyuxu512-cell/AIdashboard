@@ -128,26 +128,34 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
+  /* Stage 3A Semantic Color（语义颜色）：颜色值只在此层定义，组件只消费语义。 */
   --color-primary: #3b6f9f;
   --color-primary-strong: #315f8a;
   --color-primary-active: #294f74;
   --color-primary-soft: #e7f0f8;
   --text-primary: #17212b;
   --text-secondary: #4b5a69;
-  --text-tertiary: #5c6d7f;
+  --text-muted: #617286; /* 元信息、时间与最弱但仍需可读的文字。 */
+  --text-tertiary: var(
+    --text-muted
+  ); /* 兼容既有消费者；Muted 是正式最弱可读文本角色。 */
   --text-disabled: #97a1ab;
   --text-inverse: #ffffff;
-  --text-selected: var(--color-primary);
-  --bg-app: #f2f4f7;
+  --text-selected: #3b6f9f;
+  --bg-app: #f4f6f8;
   --bg-surface: #f8fafc;
-  --bg-subtle: #f1f4f7;
+  --bg-subtle: #f1f4f7; /* 次级表面：分组内层、折叠内容与弱容器。 */
+  --bg-control: #eef2f5; /* 输入、选择器与紧凑操作控件表面。 */
   --bg-surface-raised: #ffffff;
   --bg-surface-hover: #edf1f5;
   --bg-surface-pressed: #e8edf2;
-  --bg-selected: var(--color-primary-soft);
+  --bg-selected: #e7f0f8;
   --bg-overlay: rgba(20, 29, 39, 0.46);
   --border-default: #d6dee6;
-  --border-subtle: rgba(35, 51, 68, 0.1);
+  --border-divider: #e4eaf0; /* 行、卡片与内容分区的弱分隔线。 */
+  --border-subtle: var(
+    --border-divider
+  ); /* 兼容既有 Border / Separator 消费者。 */
   --border-strong: #b8c4cf;
   --status-info: #356d9b;
   --status-info-strong: #356d9b;
@@ -178,26 +186,34 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+  /* Stage 3A Semantic Color（语义颜色）：Dark 维护独立值，不由 Light 反色推导。 */
   --color-primary: #91bce3;
   --color-primary-strong: #47759e;
   --color-primary-active: #3b6489;
   --color-primary-soft: #1c354b;
   --text-primary: #f1f4f7;
   --text-secondary: #b8c0c9;
-  --text-tertiary: #a5b0bb;
+  --text-muted: #9ba8b5; /* 元信息、时间与最弱但仍需可读的文字。 */
+  --text-tertiary: var(
+    --text-muted
+  ); /* 兼容既有消费者；Muted 是正式最弱可读文本角色。 */
   --text-disabled: #68737f;
   --text-inverse: #ffffff;
-  --text-selected: var(--color-primary);
-  --bg-app: #10161d;
-  --bg-surface: #18212a;
-  --bg-subtle: #202b35;
+  --text-selected: #91bce3;
+  --bg-app: #101820;
+  --bg-surface: #18222c;
+  --bg-subtle: #1d2934; /* 次级表面：分组内层、折叠内容与弱容器。 */
+  --bg-control: #202b36; /* 输入、选择器与紧凑操作控件表面。 */
   --bg-surface-raised: #222e39;
   --bg-surface-hover: #2a3743;
   --bg-surface-pressed: #2e3b47;
-  --bg-selected: var(--color-primary-soft);
+  --bg-selected: #1c354b;
   --bg-overlay: rgba(4, 7, 10, 0.72);
   --border-default: #354451;
-  --border-subtle: rgba(224, 234, 244, 0.09);
+  --border-divider: #2e3c49; /* 行、卡片与内容分区的弱分隔线。 */
+  --border-subtle: var(
+    --border-divider
+  ); /* 兼容既有 Border / Separator 消费者。 */
   --border-strong: #4a5967;
   --status-info: #83b5de;
   --status-info-strong: #3d6f98;

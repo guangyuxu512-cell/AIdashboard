@@ -8,7 +8,7 @@
 
 Status（状态）: **Completed / Frozen（已完成 / 已冻结）**
 
-本次基线来自已完成的 Visual Token Tuner V1 人工微调。冻结范围为：
+本次基线来自已完成的 Visual Token Tuner V1 人工微调，并在 V2 中保持同一套尺寸默认值。冻结范围为：
 
 - Typography（字体排版）
 - Spacing（间距）
@@ -26,8 +26,8 @@ Final Icon 接入后，只允许通过显式 Optical Alignment Review（视觉�
 ## Visual Token Tuner 基线
 
 `src/dev/visual-token-tuner/visual-token-registry.ts` 的 `defaultValue` 必须与本文件和 `tokens.css` 一致。
-Visual Token Tuner 的“恢复全部”只移除开发态 Runtime Override 与本机临时记录；恢复后默认值、当前值和 Dirty Count
-均应回到正式 Token 基线和 `0`。
+Visual Token Tuner V2 的“恢复全部尺寸”只移除开发态的尺寸 Runtime Override；颜色恢复具有独立入口，不能清除
+Stage 2 尺寸记录。尺寸恢复后默认值、当前值和尺寸 Dirty Count 均应回到正式 Token 基线和 `0`。
 
 `vant-theme.css` 只消费下列稳定语义 Token 或独立的原子刻度映射，没有为本次固化新增第二套 Vant 尺寸常量。
 
@@ -133,7 +133,17 @@ Slot（图标槽位）与 Glyph（图形视觉尺寸）始终分离。最终图�
 
 ## 后续阶段
 
-Stage 3 仍未冻结：Color、Surface、Radius、Border、Shadow、Final Icons、Dark Visual Hierarchy。
+Stage 3A 的 Color、Surface、Text、Status、Selected 与 Dark Hierarchy 已进入 Candidate for Visual Review，尚未
+Frozen；Radius、Border Width / Style、Shadow、Final Icons 仍留给后续显式 Review。
+
+## Stage 3A 几何复核记录
+
+Stage 3A 开始前与候选色彩映射落地后，均以 `390 × 844` Light 的真实浏览器页面读取冻结几何。结果为 `0` 尺寸
+差异：Global Header `52px`、Detail Header `51px`、Summary `96px`、Toolbar `46px`、Bottom Navigation
+`58px`；DeviceCard 为 `15px X / 16px Y` Padding、`52 / 36px` Primary Leading Visual；TaskCard 继续使用相同
+Card Padding 与 Leading Visual 语言；Runtime 为 `17px X / 9px Y`；Capability Panel / Row 为 `372px / 50px`，
+完整 5 行且第 6 行才在内部滚动。360px 与 430px Light、390px Dark 的自动化检查同样没有横向溢出或 Touch
+Target 回退。
 
 Stage 4 仍未冻结：Press、Motion。
 

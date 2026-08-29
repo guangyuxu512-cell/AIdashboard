@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   VISUAL_TOKEN_TUNER_STORAGE_KEY,
   createVisualTokenTunerRuntime,
+  findVisualColorTokenDefinition,
   findVisualTokenDefinition,
+  getVisualColorContrastRatio,
   isVisualTokenTunerEnabled,
   visualTokenRegistry,
   type VisualTokenStorage,
@@ -54,6 +56,18 @@ function getDefinition(key: string) {
   const definition = findVisualTokenDefinition(key)
   if (!definition) throw new Error(`缺少测试 Token：${key}`)
   return definition
+}
+
+function getColorDefinition(key: string) {
+  const definition = findVisualColorTokenDefinition(key)
+  if (!definition) throw new Error(`缺少测试颜色 Token：${key}`)
+  return definition
+}
+
+function readTestColorBaseline(
+  definition: ReturnType<typeof getColorDefinition>,
+): string {
+  return definition.theme === 'light' ? '#f4f6f8' : '#101820'
 }
 
 describe('Visual Token Tuner runtime', () => {
@@ -232,8 +246,77 @@ describe('Visual Token Tuner runtime', () => {
     expect(root.style.getPropertyValue('--space-2')).toBe('')
     expect(root.style.getPropertyValue(definition.cssVar)).toBe('12px')
     expect(storage.values.get(VISUAL_TOKEN_TUNER_STORAGE_KEY)).toBe(
-      JSON.stringify({ [definition.cssVar]: '12px' }),
+      JSON.stringify({
+        version: 2,
+        dimensions: { [definition.cssVar]: '12px' },
+        colors: { light: {}, dark: {} },
+      }),
     )
+  })
+
+  it('按主题隔离保存颜色，恢复颜色不会清除 Stage 2 尺寸覆盖', () => {
+    const root = document.createElement('html')
+    const storage = new MemoryStorage()
+    const dimension = getDefinition('card-padding-y')
+    const lightSurface = getColorDefinition('light-bg-app')
+    const darkSurface = getColorDefinition('dark-bg-app')
+    const runtime = createVisualTokenTunerRuntime({
+      enabled: true,
+      root,
+      storage,
+      getComputedStyle: createComputedStyle(root),
+      getColorBaseline: readTestColorBaseline,
+    })
+
+    runtime.setValue(dimension, 20)
+    expect(runtime.setColorValue(lightSurface, '#e8edf2')).toBe(true)
+    expect(runtime.setColorValue(darkSurface, '#0f151d')).toBe(true)
+
+    expect(runtime.readColorValue(lightSurface)).toBe('#e8edf2')
+    expect(runtime.readColorValue(darkSurface)).toBe('#0f151d')
+    expect(runtime.getDirtyColorDefinitions('light')).toHaveLength(1)
+    expect(runtime.getDirtyColorDefinitions('dark')).toHaveLength(1)
+    expect(runtime.toColorCssVariables()).toContain(
+      ":root[data-theme='light'] {",
+    )
+    expect(runtime.toColorCssVariables()).toContain(
+      ":root[data-theme='dark'] {",
+    )
+    expect(runtime.toColorJson()).toContain('"light"')
+    expect(runtime.toColorJson()).toContain('"dark"')
+
+    runtime.resetColorTheme('light')
+    expect(runtime.readColorValue(lightSurface)).toBe(
+      runtime.readColorBaseline(lightSurface),
+    )
+    expect(runtime.readColorValue(darkSurface)).toBe('#0f151d')
+    expect(runtime.readValue(dimension)).toBe(20)
+
+    runtime.resetAllColors()
+    expect(runtime.getDirtyColorDefinitions()).toHaveLength(0)
+    expect(runtime.readValue(dimension)).toBe(20)
+    expect(storage.values.get(VISUAL_TOKEN_TUNER_STORAGE_KEY)).toContain(
+      '"dimensions":{"--layout-card-padding-y":"20px"}',
+    )
+  })
+
+  it('拒绝无效 HEX，并对可读性对比度提供稳定计算', () => {
+    const root = document.createElement('html')
+    const runtime = createVisualTokenTunerRuntime({
+      enabled: true,
+      root,
+      storage: new MemoryStorage(),
+      getComputedStyle: createComputedStyle(root),
+      getColorBaseline: readTestColorBaseline,
+    })
+    const surface = getColorDefinition('light-bg-app')
+
+    expect(runtime.setColorValue(surface, 'rgb(0, 0, 0)')).toBe(false)
+    expect(runtime.readColorValue(surface)).toBe(
+      runtime.readColorBaseline(surface),
+    )
+    expect(getVisualColorContrastRatio('#000000', '#ffffff')).toBe(21)
+    expect(getVisualColorContrastRatio('#000', '#ffffff')).toBeNull()
   })
 
   it('生产态不读取存储、不注入覆盖，也不启用工具', () => {

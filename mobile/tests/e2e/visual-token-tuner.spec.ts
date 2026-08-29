@@ -41,6 +41,17 @@ async function setRangeValue(locator: Locator, value: number): Promise<void> {
   }, value)
 }
 
+async function setColorPickerValue(
+  locator: Locator,
+  value: string,
+): Promise<void> {
+  await locator.evaluate((element, nextValue) => {
+    const input = element as HTMLInputElement
+    input.value = nextValue
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }, value)
+}
+
 async function rootValue(page: Page, cssVar: string): Promise<string> {
   return page.evaluate((variable) => {
     return window
@@ -73,7 +84,7 @@ async function openExternalTuner(
   return tuner
 }
 
-test.describe('Visual Token Tuner V1', () => {
+test.describe('Visual Token Tuner V2', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('在独立窗口实时调节真实预览、恢复、复制并在刷新后保留', async ({
@@ -405,6 +416,249 @@ test.describe('Visual Token Tuner V1', () => {
     await expect
       .poll(() => rootValue(preview, '--layout-summary-metric-gap'))
       .toBe('2px')
+    expect(previewErrors).toEqual([])
+    expect(tunerErrors).toEqual([])
+  })
+
+  test('V2 按主题隔离颜色覆盖，恢复颜色不影响尺寸覆盖', async ({
+    page: preview,
+    context,
+  }) => {
+    await prepareClipboard(context)
+    const previewErrors = collectConsoleErrors(preview)
+    await preview.setViewportSize({ width: 390, height: 844 })
+    await preview.goto('/#/devices')
+    await preview.evaluate((key) => {
+      window.localStorage.removeItem(key)
+      window.localStorage.setItem('control-center.mobile.theme-mode', 'light')
+    }, storageKey)
+    await preview.reload()
+
+    const tuner = await openExternalTuner(preview, context)
+    const tunerErrors = collectConsoleErrors(tuner)
+
+    await setRangeValue(
+      tuner.getByTestId('visual-token-range-card-padding-y'),
+      20,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('20px')
+
+    await tuner.getByTestId('visual-token-tuner-mode-color').click()
+    await tuner.getByTestId('visual-token-tuner-theme-light').click()
+    const lightAppBackground = tuner.getByTestId(
+      'visual-token-color-hex-light-bg-app',
+    )
+    await lightAppBackground.fill('#e8edf2')
+    await lightAppBackground.press('Tab')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#e8edf2')
+
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#101820')
+
+    await tuner.getByTestId('visual-token-tuner-theme-dark').click()
+    const darkAppBackground = tuner.getByTestId(
+      'visual-token-color-hex-dark-bg-app',
+    )
+    await darkAppBackground.fill('#0f151d')
+    await darkAppBackground.press('Tab')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#0f151d')
+
+    await tuner.getByTestId('visual-token-tuner-copy-color-css').click()
+    await expect
+      .poll(() =>
+        tuner.evaluate(
+          () =>
+            (window as Window & { __visualTokenTunerClipboard?: string })
+              .__visualTokenTunerClipboard ?? '',
+        ),
+      )
+      .toContain(":root[data-theme='light'] {")
+    await tuner.getByTestId('visual-token-tuner-copy-color-json').click()
+    await expect
+      .poll(() =>
+        tuner.evaluate(
+          () =>
+            (window as Window & { __visualTokenTunerClipboard?: string })
+              .__visualTokenTunerClipboard ?? '',
+        ),
+      )
+      .toContain('"dark"')
+
+    await tuner.getByTestId('visual-token-tuner-reset-color-theme').click()
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#101820')
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('20px')
+
+    await tuner.getByTestId('visual-token-tuner-theme-light').click()
+    await tuner.getByTestId('visual-token-tuner-reset-all-colors').click()
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#f4f6f8')
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('20px')
+
+    await tuner.getByTestId('visual-token-tuner-mode-dimension').click()
+    await tuner.getByTestId('visual-token-tuner-reset-all').click()
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('16px')
+    await expectNoHorizontalOverflow(preview)
+    await expectNoHorizontalOverflow(tuner)
+    expect(previewErrors).toEqual([])
+    expect(tunerErrors).toEqual([])
+  })
+
+  test('V2 的颜色语义实时映射到真实页面，并按主题保留与恢复', async ({
+    page: preview,
+    context,
+  }) => {
+    const previewErrors = collectConsoleErrors(preview)
+    await preview.setViewportSize({ width: 390, height: 844 })
+    await preview.goto('/#/devices')
+    await preview.evaluate((key) => {
+      window.localStorage.removeItem(key)
+      window.localStorage.setItem('control-center.mobile.theme-mode', 'light')
+    }, storageKey)
+    await preview.reload()
+
+    const deviceCard = preview.getByTestId('device-card').first()
+    await expect(deviceCard).toBeVisible()
+    const tuner = await openExternalTuner(preview, context)
+    const tunerErrors = collectConsoleErrors(tuner)
+    await tuner.getByTestId('visual-token-tuner-mode-color').click()
+    await tuner.getByTestId('visual-token-tuner-theme-light').click()
+
+    const lightAppBackground = tuner.getByTestId(
+      'visual-token-color-hex-light-bg-app',
+    )
+    await setColorPickerValue(
+      tuner.getByTestId('visual-token-color-picker-light-bg-app'),
+      '#e8edf2',
+    )
+    await expect(lightAppBackground).toHaveValue('#e8edf2')
+    await expect
+      .poll(() =>
+        preview.locator('body').evaluate((element) => {
+          return window.getComputedStyle(element).backgroundColor
+        }),
+      )
+      .toBe('rgb(232, 237, 242)')
+
+    const lightCardSurface = tuner.getByTestId(
+      'visual-token-color-hex-light-bg-surface-raised',
+    )
+    await lightCardSurface.fill('#f0f4f7')
+    await lightCardSurface.press('Tab')
+    await expect
+      .poll(() =>
+        deviceCard.evaluate(
+          (element) => window.getComputedStyle(element).backgroundColor,
+        ),
+      )
+      .toBe('rgb(240, 244, 247)')
+
+    await preview.goto('/#/tasks')
+    const taskCard = preview.getByTestId('task-card').first()
+    await expect(taskCard).toBeVisible()
+    await expect
+      .poll(() =>
+        taskCard.evaluate(
+          (element) => window.getComputedStyle(element).backgroundColor,
+        ),
+      )
+      .toBe('rgb(240, 244, 247)')
+
+    await preview.goto('/#/devices')
+    await expect(deviceCard).toBeVisible()
+    await tuner.getByRole('tab', { name: '文字' }).click()
+    const primaryText = tuner.getByTestId(
+      'visual-token-color-hex-light-text-primary',
+    )
+    await primaryText.fill('#203040')
+    await primaryText.press('Tab')
+    await expect
+      .poll(() =>
+        preview
+          .getByTestId('device-card-name')
+          .first()
+          .evaluate((element) => window.getComputedStyle(element).color),
+      )
+      .toBe('rgb(32, 48, 64)')
+
+    const mutedText = tuner.getByTestId(
+      'visual-token-color-hex-light-text-muted',
+    )
+    await mutedText.fill('#617a8d')
+    await mutedText.press('Tab')
+    await expect
+      .poll(() =>
+        preview
+          .getByTestId('device-card-meta')
+          .first()
+          .evaluate((element) => window.getComputedStyle(element).color),
+      )
+      .toBe('rgb(97, 122, 141)')
+
+    await preview.reload()
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#e8edf2')
+    await expect
+      .poll(() => rootValue(preview, '--bg-surface-raised'))
+      .toBe('#f0f4f7')
+
+    await preview.goto('/#/devices/visual-device-operations')
+    await expect(preview.getByTestId('device-detail')).toBeVisible()
+    await tuner.getByRole('tab', { name: '状态' }).click()
+    const onlineStatus = tuner.getByTestId(
+      'visual-token-color-hex-light-status-success',
+    )
+    await onlineStatus.fill('#247a56')
+    await onlineStatus.press('Tab')
+    const onlineTag = preview
+      .getByTestId('device-runtime-states')
+      .locator('.van-tag--success')
+      .first()
+    await expect(onlineTag).toBeVisible()
+    await expect
+      .poll(() =>
+        onlineTag.evaluate((element) => window.getComputedStyle(element).color),
+      )
+      .toBe('rgb(36, 122, 86)')
+
+    await tuner.getByTestId('visual-token-tuner-theme-dark').click()
+    await tuner.getByRole('tab', { name: '颜色与表面' }).click()
+    const darkAppBackground = tuner.getByTestId(
+      'visual-token-color-hex-dark-bg-app',
+    )
+    await darkAppBackground.fill('#0f151d')
+    await darkAppBackground.press('Tab')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#e8edf2')
+
+    await preview.goto('/#/devices')
+    await expect(deviceCard).toBeVisible()
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#0f151d')
+
+    await tuner.getByTestId('visual-token-tuner-theme-light').click()
+    await tuner.getByTestId('visual-token-tuner-reset-color-theme').click()
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#0f151d')
+
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#f4f6f8')
+
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await tuner.getByTestId('visual-token-tuner-theme-dark').click()
+    await tuner.getByTestId('visual-token-tuner-reset-color-theme').click()
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#101820')
+    await expectNoHorizontalOverflow(preview)
+    await expectNoHorizontalOverflow(tuner)
     expect(previewErrors).toEqual([])
     expect(tunerErrors).toEqual([])
   })

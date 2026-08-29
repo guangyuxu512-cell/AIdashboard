@@ -9,6 +9,11 @@ export type VisualTokenGroupKey =
 
 export type VisualTokenUnit = 'px' | ''
 
+export type VisualColorTokenGroupKey =
+  'surface' | 'text' | 'status' | 'selected'
+
+export type VisualColorTheme = 'light' | 'dark'
+
 export interface VisualTokenGroup {
   key: VisualTokenGroupKey
   label: string
@@ -27,6 +32,41 @@ export interface VisualTokenDefinition {
   unit: VisualTokenUnit
   description: string
   warning?: (value: number) => string | null
+}
+
+export interface VisualColorTokenGroup {
+  key: VisualColorTokenGroupKey
+  label: string
+  description: string
+}
+
+export interface VisualColorContrastTarget {
+  cssVar: `--${string}`
+  minimumRatio: number
+  label: string
+}
+
+export interface VisualColorTokenDefinition {
+  key: string
+  cssVar: `--${string}`
+  label: string
+  group: VisualColorTokenGroupKey
+  theme: VisualColorTheme
+  description: string
+  contrastTarget?: VisualColorContrastTarget
+}
+
+/**
+ * 颜色条目的语义模板只维护一次；Light / Dark 由运行时基于同一模板展开。
+ * Hex 默认值仍只存在于 tokens.css，不在调参器 Registry 复制颜色事实。
+ */
+interface VisualColorTokenTemplate {
+  key: string
+  cssVar: `--${string}`
+  label: string
+  group: VisualColorTokenGroupKey
+  description: string
+  contrastTarget?: VisualColorContrastTarget
 }
 
 export const visualTokenTunerGroups: readonly VisualTokenGroup[] = [
@@ -64,6 +104,29 @@ export const visualTokenTunerGroups: readonly VisualTokenGroup[] = [
     key: 'typography',
     label: '字体',
     description: '复用现有字体角色，不创建第二套 Mobile Typography。',
+  },
+]
+
+export const visualColorTokenTunerGroups: readonly VisualColorTokenGroup[] = [
+  {
+    key: 'surface',
+    label: '颜色与表面',
+    description: '应用、内容区、控件、抬升表面与边界的主题层级。',
+  },
+  {
+    key: 'text',
+    label: '文字',
+    description: '主要、次要、弱化、禁用与选中文字的可读性层级。',
+  },
+  {
+    key: 'status',
+    label: '状态',
+    description: '信息、成功、警告、错误、中性状态的前景与浅表面。',
+  },
+  {
+    key: 'selected',
+    label: '选中',
+    description: '品牌、选中、悬停与按压的反馈表面；不改变交互契约。',
   },
 ]
 
@@ -700,8 +763,270 @@ export const visualTokenRegistry: readonly VisualTokenDefinition[] = [
   },
 ]
 
+const visualColorThemeLabels: Record<VisualColorTheme, string> = {
+  light: '浅色',
+  dark: '深色',
+}
+
+const visualColorTokenTemplates: readonly VisualColorTokenTemplate[] = [
+  {
+    key: 'bg-app',
+    cssVar: '--bg-app',
+    label: '应用背景',
+    group: 'surface',
+    description: '应用与页面主背景。',
+  },
+  {
+    key: 'bg-surface',
+    cssVar: '--bg-surface',
+    label: '主表面',
+    group: 'surface',
+    description: '主要内容与普通容器表面。',
+  },
+  {
+    key: 'bg-subtle',
+    cssVar: '--bg-subtle',
+    label: '次级表面',
+    group: 'surface',
+    description: '分组内层、折叠内容与弱容器的表面。',
+  },
+  {
+    key: 'bg-control',
+    cssVar: '--bg-control',
+    label: '控件表面',
+    group: 'surface',
+    description: '紧凑控件、输入与选择器的底面。',
+  },
+  {
+    key: 'bg-surface-raised',
+    cssVar: '--bg-surface-raised',
+    label: '抬升表面',
+    group: 'surface',
+    description: '顶部栏、底部导航、卡片与弹层的表面。',
+  },
+  {
+    key: 'border-default',
+    cssVar: '--border-default',
+    label: '默认边界',
+    group: 'surface',
+    description: '需要明确边界的默认边界色。',
+  },
+  {
+    key: 'border-divider',
+    cssVar: '--border-divider',
+    label: '分隔线',
+    group: 'surface',
+    description: '卡片、内容区与行间的弱分隔。',
+  },
+  {
+    key: 'text-primary',
+    cssVar: '--text-primary',
+    label: '主要文字',
+    group: 'text',
+    description: '标题、核心数值与主要正文。',
+    contrastTarget: {
+      cssVar: '--bg-surface-raised',
+      minimumRatio: 4.5,
+      label: '抬升表面',
+    },
+  },
+  {
+    key: 'text-secondary',
+    cssVar: '--text-secondary',
+    label: '次要文字',
+    group: 'text',
+    description: '状态、正文辅助内容与次级信息。',
+    contrastTarget: {
+      cssVar: '--bg-surface-raised',
+      minimumRatio: 4.5,
+      label: '抬升表面',
+    },
+  },
+  {
+    key: 'text-muted',
+    cssVar: '--text-muted',
+    label: '弱化文字',
+    group: 'text',
+    description: '元信息、时间与最弱但仍需可读的文字。',
+    contrastTarget: {
+      cssVar: '--bg-surface-raised',
+      minimumRatio: 4.5,
+      label: '抬升表面',
+    },
+  },
+  {
+    key: 'text-disabled',
+    cssVar: '--text-disabled',
+    label: '禁用文字',
+    group: 'text',
+    description: '不可操作与禁用状态。',
+  },
+  {
+    key: 'status-info',
+    cssVar: '--status-info',
+    label: '信息前景',
+    group: 'status',
+    description: '运行中与信息状态的前景色。',
+    contrastTarget: {
+      cssVar: '--status-info-soft',
+      minimumRatio: 4.5,
+      label: '信息表面',
+    },
+  },
+  {
+    key: 'status-info-soft',
+    cssVar: '--status-info-soft',
+    label: '信息表面',
+    group: 'status',
+    description: '运行中与信息状态的浅表面。',
+  },
+  {
+    key: 'status-success',
+    cssVar: '--status-success',
+    label: '成功前景',
+    group: 'status',
+    description: '在线、就绪与成功状态的前景色。',
+    contrastTarget: {
+      cssVar: '--status-success-soft',
+      minimumRatio: 4.5,
+      label: '成功表面',
+    },
+  },
+  {
+    key: 'status-success-soft',
+    cssVar: '--status-success-soft',
+    label: '成功表面',
+    group: 'status',
+    description: '在线、就绪与成功状态的浅表面。',
+  },
+  {
+    key: 'status-warning',
+    cssVar: '--status-warning',
+    label: '警告前景',
+    group: 'status',
+    description: '停用、未登录与警告状态的前景色。',
+    contrastTarget: {
+      cssVar: '--status-warning-soft',
+      minimumRatio: 4.5,
+      label: '警告表面',
+    },
+  },
+  {
+    key: 'status-warning-soft',
+    cssVar: '--status-warning-soft',
+    label: '警告表面',
+    group: 'status',
+    description: '停用、未登录与警告状态的浅表面。',
+  },
+  {
+    key: 'status-danger',
+    cssVar: '--status-danger',
+    label: '错误前景',
+    group: 'status',
+    description: '失败与错误状态的前景色。',
+    contrastTarget: {
+      cssVar: '--status-danger-soft',
+      minimumRatio: 4.5,
+      label: '错误表面',
+    },
+  },
+  {
+    key: 'status-danger-soft',
+    cssVar: '--status-danger-soft',
+    label: '错误表面',
+    group: 'status',
+    description: '失败与错误状态的浅表面。',
+  },
+  {
+    key: 'status-neutral',
+    cssVar: '--status-neutral',
+    label: '中性前景',
+    group: 'status',
+    description: '空闲、离线与未知状态的前景色。',
+    contrastTarget: {
+      cssVar: '--status-neutral-soft',
+      minimumRatio: 4.5,
+      label: '中性表面',
+    },
+  },
+  {
+    key: 'status-neutral-soft',
+    cssVar: '--status-neutral-soft',
+    label: '中性表面',
+    group: 'status',
+    description: '空闲、离线与未知状态的浅表面。',
+  },
+  {
+    key: 'color-primary',
+    cssVar: '--color-primary',
+    label: '品牌主色',
+    group: 'selected',
+    description: '品牌、进度与轻量主要操作。',
+  },
+  {
+    key: 'color-primary-strong',
+    cssVar: '--color-primary-strong',
+    label: '强调主色',
+    group: 'selected',
+    description: '实心主要操作表面。',
+  },
+  {
+    key: 'color-primary-soft',
+    cssVar: '--color-primary-soft',
+    label: '主色浅表面',
+    group: 'selected',
+    description: '主色的轻量浅表面。',
+  },
+  {
+    key: 'text-selected',
+    cssVar: '--text-selected',
+    label: '选中文字',
+    group: 'selected',
+    description: '底部导航、标签页与选中标签文字。',
+  },
+  {
+    key: 'bg-selected',
+    cssVar: '--bg-selected',
+    label: '选中表面',
+    group: 'selected',
+    description: '已选择列表项与侧栏的背景。',
+  },
+  {
+    key: 'bg-surface-hover',
+    cssVar: '--bg-surface-hover',
+    label: '悬停表面',
+    group: 'selected',
+    description: '可交互表面的悬停色。',
+  },
+  {
+    key: 'bg-surface-pressed',
+    cssVar: '--bg-surface-pressed',
+    label: '按压表面',
+    group: 'selected',
+    description: '按压中的表面色；不改变按压行为。',
+  },
+]
+
+/** 同一套语义条目按主题展开，避免维护两份 Light / Dark Registry。 */
+export const visualColorTokenRegistry: readonly VisualColorTokenDefinition[] = (
+  ['light', 'dark'] as const
+).flatMap((theme) =>
+  visualColorTokenTemplates.map((template) => ({
+    ...template,
+    key: `${theme}-${template.key}`,
+    theme,
+    description: `${visualColorThemeLabels[theme]}主题下${template.description}`,
+  })),
+)
+
 export function findVisualTokenDefinition(
   key: string,
 ): VisualTokenDefinition | undefined {
   return visualTokenRegistry.find((definition) => definition.key === key)
+}
+
+export function findVisualColorTokenDefinition(
+  key: string,
+): VisualColorTokenDefinition | undefined {
+  return visualColorTokenRegistry.find((definition) => definition.key === key)
 }
