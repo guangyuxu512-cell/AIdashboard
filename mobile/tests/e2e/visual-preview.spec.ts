@@ -362,6 +362,12 @@ async function expectSummaryStrip(page: Page) {
         (slot) => slot.parentElement === surface,
       ),
       surfaceHeight: surfaceBox.height,
+      surfaceTopBreathing: Math.min(
+        ...iconBoxes.map((icon) => icon.top - surfaceBox.top),
+      ),
+      surfaceBottomBreathing: Math.min(
+        ...labelBoxes.map((label) => surfaceBox.bottom - label.bottom),
+      ),
       slotWidths: slotBoxes.map((slot) => slot.width),
       slotTops: slotBoxes.map((slot) => slot.top),
       slotHeights: slotBoxes.map((slot) => slot.height),
@@ -418,6 +424,8 @@ async function expectSummaryStrip(page: Page) {
 
   expect(geometry.surfaceCount).toBe(1)
   expect(geometry.surfaceContainsAllSlots).toBe(true)
+  expect(geometry.surfaceTopBreathing).toBeGreaterThanOrEqual(6)
+  expect(geometry.surfaceBottomBreathing).toBeGreaterThanOrEqual(6)
   expect(
     Math.max(...geometry.slotWidths) - Math.min(...geometry.slotWidths),
   ).toBeLessThanOrEqual(1)
@@ -679,6 +687,39 @@ for (const width of viewportWidths) {
           cardGap: null,
         },
       ])
+      const primaryLeadingVisualTokens = await page.evaluate(() => {
+        const rootStyle = window.getComputedStyle(document.documentElement)
+        return {
+          slot: Number.parseFloat(
+            rootStyle.getPropertyValue('--layout-card-leading-icon-slot-width'),
+          ),
+          glyph: Number.parseFloat(
+            rootStyle.getPropertyValue('--icon-size-card-leading'),
+          ),
+        }
+      })
+      const deviceLeadingVisuals = await visualDeviceCards.evaluateAll(
+        (cards) =>
+          cards.slice(0, 5).map((card) => {
+            const leading = card.querySelector<HTMLElement>(
+              '[data-testid="device-card-leading"]',
+            )!
+            return {
+              slotWidth: leading.getBoundingClientRect().width,
+              glyphSize: Number.parseFloat(
+                window.getComputedStyle(leading).fontSize,
+              ),
+            }
+          }),
+      )
+      expect(
+        deviceLeadingVisuals.every(
+          (visual) =>
+            Math.abs(visual.slotWidth - primaryLeadingVisualTokens.slot) <= 1 &&
+            visual.glyphSize === primaryLeadingVisualTokens.glyph &&
+            visual.glyphSize < visual.slotWidth,
+        ),
+      ).toBe(true)
 
       const headerVisual = await page.evaluate(() => {
         const header = document.querySelector<HTMLElement>(
@@ -834,7 +875,7 @@ for (const width of viewportWidths) {
           }
         }),
       ).toEqual({
-        summaryHeight: '88px',
+        summaryHeight: '96px',
         summaryStacked: true,
         toolbarHeight: '44px',
         selectorVisualHeight: '30px',
@@ -928,6 +969,10 @@ for (const width of viewportWidths) {
               x: box.x,
               y: box.y,
               width: box.width,
+              paddingTop: window.getComputedStyle(section).paddingTop,
+              paddingRight: window.getComputedStyle(section).paddingRight,
+              paddingBottom: window.getComputedStyle(section).paddingBottom,
+              paddingLeft: window.getComputedStyle(section).paddingLeft,
               iconWidth: icon.width,
               iconFontSize: Number.parseFloat(
                 window.getComputedStyle(
@@ -954,7 +999,13 @@ for (const width of viewportWidths) {
       ).toBe(true)
       expect(
         summarySections.every(
-          (section) => section.iconWidth === 32 && section.iconFontSize === 20,
+          (section) =>
+            section.paddingTop === '16px' &&
+            section.paddingRight === '12px' &&
+            section.paddingBottom === '16px' &&
+            section.paddingLeft === '12px' &&
+            section.iconWidth === 36 &&
+            section.iconFontSize === 22,
         ),
       ).toBe(true)
       await expect(
@@ -1151,6 +1202,29 @@ for (const width of viewportWidths) {
           cardGap: null,
         },
       ])
+      const taskLeadingVisuals = await page
+        .getByTestId('task-card')
+        .evaluateAll((cards) =>
+          cards.map((card) => {
+            const leading = card.querySelector<HTMLElement>(
+              '[data-testid="task-card-leading"]',
+            )!
+            return {
+              slotWidth: leading.getBoundingClientRect().width,
+              glyphSize: Number.parseFloat(
+                window.getComputedStyle(leading).fontSize,
+              ),
+            }
+          }),
+        )
+      expect(
+        taskLeadingVisuals.every(
+          (visual) =>
+            Math.abs(visual.slotWidth - primaryLeadingVisualTokens.slot) <= 1 &&
+            visual.glyphSize === primaryLeadingVisualTokens.glyph &&
+            visual.glyphSize < visual.slotWidth,
+        ),
+      ).toBe(true)
 
       if (width === 390) {
         await page.screenshot({
@@ -1417,6 +1491,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         ),
         iconWidth: iconBox.width,
         iconFontSize: Number.parseFloat(window.getComputedStyle(icon).fontSize),
+        rowHeight: rowBox.height,
         nameActuallyTruncated: name.scrollWidth > name.clientWidth,
         nameOverflow: nameStyle.overflow,
         nameTextOverflow: nameStyle.textOverflow,
@@ -1446,6 +1521,11 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         window
           .getComputedStyle(document.documentElement)
           .getPropertyValue('--layout-capability-panel-height'),
+      ),
+      expectedRowHeight: Number.parseFloat(
+        window
+          .getComputedStyle(document.documentElement)
+          .getPropertyValue('--layout-capability-row-min-height'),
       ),
       fiveRowsFitList:
         rows
@@ -1524,6 +1604,11 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     ),
   ).toBe(true)
   expect(new Set(layout.rowAnatomy.map((row) => row.iconWidth)).size).toBe(1)
+  expect(
+    layout.rowAnatomy.every(
+      (row) => Math.abs(row.rowHeight - layout.expectedRowHeight) <= 1,
+    ),
+  ).toBe(true)
   expect(
     layout.rowAnatomy.every(
       (row) => row.iconWidth === 28 && row.iconFontSize === 16,

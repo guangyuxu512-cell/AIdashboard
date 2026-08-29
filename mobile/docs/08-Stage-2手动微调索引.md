@@ -1,7 +1,7 @@
 # Stage 2 手动微调索引
 
 本文是 Dimensions / Spacing / Typography（尺寸 / 间距 / 字体排版）的定位地图，不是新的设计规则。
-当前数值是已完成 Stage 2 调整后的候选冻结基线；人工确认前不得重新开始无目的调参。修改前先确认
+当前数值是已完成 Stage 2 调整后的候选冻结基线（含 Final Polish B）；人工确认前不得重新开始无目的调参。修改前先确认
 `02-设计系统.md` 的 Frozen Contract（冻结契约）与 Stage 2 Final Candidate Baseline。
 
 ## 冻结边界
@@ -23,20 +23,23 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 
 ## 最常改
 
-| 想调整什么       | 文件                           | Token / 位置                                           | 当前值      | 影响                                       |
-| ---------------- | ------------------------------ | ------------------------------------------------------ | ----------- | ------------------------------------------ |
-| 页面左右留白     | `src/shared/styles/tokens.css` | `--layout-page-padding-x`                              | 16px        | Header、Summary、Toolbar、列表与详情页     |
-| 详情页上下留白   | `src/shared/styles/tokens.css` | `--layout-page-padding-y`                              | 12px        | `AppPage` 基础顶部与底部                   |
-| 详情区块间距     | `src/shared/styles/tokens.css` | `--layout-section-gap`                                 | 12px        | Device / Task Detail 各业务 Section        |
-| 列表卡片间距     | `src/shared/styles/tokens.css` | `--layout-card-gap`                                    | 8px         | Device / Task 列表                         |
-| 卡片水平内边距   | `src/shared/styles/tokens.css` | `--layout-card-padding-x`                              | 12px        | `DeviceCard`、`TaskCard`                   |
-| 卡片垂直内边距   | `src/shared/styles/tokens.css` | `--layout-card-padding-y`                              | 16px        | `DeviceCard`、`TaskCard`                   |
-| 卡片图标到正文   | `src/shared/styles/tokens.css` | `--space-2`                                            | 8px         | Device / Task Card、`DeviceRuntimeSummary` |
-| 卡片三行内部间距 | `src/shared/styles/tokens.css` | `--layout-card-row-gap`                                | 4px         | Device / Task Card 主内容                  |
-| 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 20px | 设备名、任务名、Section 与能力标题         |
-| 概览横幅高度     | `src/shared/styles/tokens.css` | `--layout-summary-height`                              | 88px        | `MobileSummaryStrip`                       |
-| 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 30px | `MobileListToolbar`、Capability 轻操作     |
-| 能力面板总高度   | `src/shared/styles/tokens.css` | `--layout-capability-panel-height`                     | 334px       | 五行完整显示与第六行起内部滚动             |
+| 想调整什么            | 文件                           | Token / 位置                                                              | 当前值                   | 影响                                       |
+| --------------------- | ------------------------------ | ------------------------------------------------------------------------- | ------------------------ | ------------------------------------------ |
+| 页面左右留白          | `src/shared/styles/tokens.css` | `--layout-page-padding-x`                                                 | 16px                     | Header、Summary、Toolbar、列表与详情页     |
+| 详情页上下留白        | `src/shared/styles/tokens.css` | `--layout-page-padding-y`                                                 | 12px                     | `AppPage` 基础顶部与底部                   |
+| 详情区块间距          | `src/shared/styles/tokens.css` | `--layout-section-gap`                                                    | 12px                     | Device / Task Detail 各业务 Section        |
+| 列表卡片间距          | `src/shared/styles/tokens.css` | `--layout-card-gap`                                                       | 8px                      | Device / Task 列表                         |
+| 卡片水平内边距        | `src/shared/styles/tokens.css` | `--layout-card-padding-x`                                                 | 12px                     | `DeviceCard`、`TaskCard`                   |
+| 卡片垂直内边距        | `src/shared/styles/tokens.css` | `--layout-card-padding-y`                                                 | 16px                     | `DeviceCard`、`TaskCard`                   |
+| 卡片图标到正文        | `src/shared/styles/tokens.css` | `--space-2`                                                               | 8px                      | Device / Task Card、`DeviceRuntimeSummary` |
+| 卡片三行内部间距      | `src/shared/styles/tokens.css` | `--layout-card-row-gap`                                                   | 4px                      | Device / Task Card 主内容                  |
+| 卡片标题字体          | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`                               | 15px / 20px              | 设备名、任务名、Section 与能力标题         |
+| 概览横幅高度          | `src/shared/styles/tokens.css` | `--layout-summary-height`                                                 | 96px                     | `MobileSummaryStrip`                       |
+| 概览横幅上下边距      | `src/shared/styles/tokens.css` | `--layout-summary-padding-y`                                              | 8px                      | Summary Surface 与三层 Metric 的呼吸空间   |
+| 工具行与紧凑控件      | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact`                    | 44px / 30px              | `MobileListToolbar`、Capability 轻操作     |
+| 主业务图标槽 / 图形   | `src/shared/styles/tokens.css` | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`      | 44px / 28px              | `DeviceCard`、`TaskCard` 主视觉锚点        |
+| 运行摘要内边距 / 图标 | `src/shared/styles/tokens.css` | `--layout-runtime-summary-padding-x / y`、Slot / Glyph                    | 12px / 16px、36px / 22px | `DeviceRuntimeSummary`                     |
+| 能力面板总高度 / 行高 | `src/shared/styles/tokens.css` | `--layout-capability-panel-height` / `--layout-capability-row-min-height` | 354px / 48px             | 五行完整显示与第六行起内部滚动             |
 
 ## Stage 2 参数定位（候选冻结）
 
@@ -47,16 +50,34 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | `--layout-content-max-width`         | 430px  | `MobileAppShell` 最大内容宽度                              |
 | `--layout-header-height`             | 52px   | `MobileGlobalHeader` 内容高度，不含顶部 Safe Area          |
 | `--layout-detail-header-height`      | 50px   | `MobileDetailHeader`；也映射到筛选 Sheet 的 Vant NavBar    |
-| `--layout-summary-height`            | 88px   | `MobileSummaryStrip` 整体高度                              |
+| `--layout-summary-height`            | 96px   | `MobileSummaryStrip` 整体高度                              |
+| `--layout-summary-padding-y`         | 8px    | Summary Surface 上下边距                                   |
 | `--layout-toolbar-height`            | 44px   | `MobileListToolbar` 整体高度                               |
 | `--layout-bottom-nav-height`         | 58px   | Vant Tabbar 与五入口 Bottom Navigation，不含底部 Safe Area |
-| `--layout-capability-panel-height`   | 334px  | `CapabilityPanel` 总高度                                   |
-| `--layout-capability-row-min-height` | 44px   | Capability Row 最小高度                                    |
+| `--layout-capability-panel-height`   | 354px  | `CapabilityPanel` 总高度                                   |
+| `--layout-capability-row-min-height` | 48px   | Capability Row 最小高度                                    |
 
 `MobileAppShell` 的 `100dvh`、Safe Area 所有权和 Header / Main / Bottom 三行 Grid 属于冻结的高度链与
 滚动结构，不是 Stage 2 常规调参项。
 
-### Stage 2C 结论（全局尺寸比例）
+### Final Polish B 候选记录（内容 Surface 与 Icon 容量）
+
+Status（状态）: Completed / Candidate for Freeze（已完成 / 待人工确认冻结）。本记录是当前尺寸的权威来源；
+下方 Stage 2C / 2D / 2F 原始结论仅保留为演进记录，若与本节冲突，以本节为准。
+
+| 项目                                | 实测候选                                                        | 推荐候选        | 结论                                                          |
+| ----------------------------------- | --------------------------------------------------------------- | --------------- | ------------------------------------------------------------- |
+| Summary Strip                       | 88px、92px、96px；上下边距均 8px                                | 96px / 8px      | Surface 80px，三层内容上下各约 7px，不变成 Dashboard。        |
+| Runtime Summary Padding Y           | 12px、14px、16px；X 固定 12px                                   | X 12px / Y 16px | 仅舒展上下两段，不扩大左右正文起点。                          |
+| Capability Row / Panel              | 44px / 334px、48px / 354px、52px / 374px                        | 48px / 354px    | 354px 经真实盒模型校验后完整容纳 5 行；第 6 行只在内部滚动。  |
+| Primary Leading Visual              | 32px / 20px、40px / 24px、44px / 28px、48px / 28px、48px / 32px | 44px / 28px     | 明确主业务扫描锚点，同时在 360px 保留名称单行 Ellipsis 空间。 |
+| Runtime Leading Visual              | 32px / 20px、36px / 22px、40px / 24px                           | 36px / 22px     | 低于 Primary Leading Visual，不与主卡片争夺视觉重量。         |
+| Capability / Summary / Control Icon | 28px / 16px、20px、22px                                         | 保持            | 能力列表维持密度；概览数字优先；操作图标不参与本轮放大。      |
+
+Stage 3 才决定正式图标资源、Tile 背景、颜色、圆角、阴影和最终 SVG / PNG；本节只冻结候选中的尺寸与占位容量，
+不冻结上述视觉属性。
+
+### Stage 2C 历史结论（全局尺寸比例）
 
 | 区域              | Stage 2C 最终值 | 结论                                                                                       |
 | ----------------- | --------------- | ------------------------------------------------------------------------------------------ |
@@ -66,21 +87,21 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | List Toolbar      | 44px            | 保持；是工具行与 Touch Target 的稳定基线。                                                 |
 | Bottom Navigation | 58px            | 保持；不含 Bottom Safe Area，五入口不拥挤。                                                |
 
-本轮不调整 `--layout-capability-panel-height`、`--layout-capability-row-min-height`、Icon Slot、Control、
-Typography 或 Spacing；Safe Area 与 `100dvh` Shell 高度链继续独立于上述内容高度。
+本轮历史结论不再代表当前候选；Final Polish B 已只调整内容型 Surface 和图标容量。Safe Area 与 `100dvh`
+Shell 高度链仍独立于上述内容高度。
 
-### Stage 2D 结论（Card / Icon Ratio）
+### Stage 2D / Final Polish B 结论（Card / Icon Ratio）
 
 | 区域                          | Slot / Icon 最终值 | 结论                                         |
 | ----------------------------- | ------------------ | -------------------------------------------- |
-| DeviceCard / TaskCard Leading | 32px / 20px        | 图标与正文起点分离，保留单行名称空间。       |
+| DeviceCard / TaskCard Leading | 44px / 28px        | 主业务扫描锚点，360px 仍保留单行名称空间。   |
 | DeviceCard / TaskCard Chevron | 24px / 16px        | 保持弱化箭头视觉，同时提供稳定右侧槽位。     |
-| DeviceRuntimeSummary          | 32px / 20px        | 上下分区图标、正文起点与业务卡保持同一节奏。 |
+| DeviceRuntimeSummary          | 36px / 22px        | 低于主业务卡片的上下分区视觉锚点。           |
 | Capability Row                | 28px / 16px        | 图标保持克制，不挤压名称、版本与 Actions。   |
 | MobileSummaryStrip Metric     | 20px               | 数字继续由 Display + Bold 承担最高信息权重。 |
 
-本轮未调整 Header、Detail Header、Bottom Navigation 的 22px 图标映射，也未修改任一组件高度、Padding、Gap、
-Capability Panel / Row 密度或 Control 尺寸。
+Header、Detail Header、Bottom Navigation 的 22px Control Icon 映射保持不变。Final Polish B 只调整 Summary、
+Runtime、Capability Row / Panel 与 Primary Leading Visual；Card Padding、Gap、Typography、Control 尺寸均保持。
 
 ### Stage 2E 结论（控件视觉尺寸与触控热区）
 
@@ -99,13 +120,13 @@ Row 高度、Color、Radius、Shadow、Press 或 Motion。
 
 ### Stage 2F 结论（详情页纵向密度）
 
-| 区域                 | Stage 2F 最终值 / 结论 | 依据与边界                                                                      |
-| -------------------- | ---------------------- | ------------------------------------------------------------------------------- |
-| DeviceRuntimeSummary | 保持自然高度           | 没有固定 Height / Min Height；继续由 Frozen 两段内容、12px Padding 与行高决定。 |
-| Capability Panel     | 334px                  | 334px 完整显示 5 行；候选 330px 已实测裁切第 5 行，因此不压缩。                 |
-| Capability Row       | 最小 44px              | Configure / Run 各自保留至少 44×44px Touch Target；不以多塞一行换密度。         |
-| Capability List      | 第 6 行起内部滚动      | Header / Selector 固定，只有 Rows 滚动；5 行时无多余滚动范围。                  |
-| Task Detail          | 保持自然高度           | Summary、Core、Runtime Log 无局部固定高度；不删字段、不改顺序或滚动职责。       |
+| 区域                 | Stage 2F 最终值 / 结论 | 依据与边界                                                                             |
+| -------------------- | ---------------------- | -------------------------------------------------------------------------------------- |
+| DeviceRuntimeSummary | 保持自然高度           | 没有固定 Height / Min Height；由 Frozen 两段内容、X 12px / Y 16px Padding 与行高决定。 |
+| Capability Panel     | 354px                  | 真实盒模型校验后完整显示 5 行；不得露出第 6 行。                                       |
+| Capability Row       | 最小 48px              | Configure / Run 各自保留至少 44×44px Touch Target；不以多塞一行换密度。                |
+| Capability List      | 第 6 行起内部滚动      | Header / Selector 固定，只有 Rows 滚动；5 行时无多余滚动范围。                         |
+| Task Detail          | 保持自然高度           | Summary、Core、Runtime Log 无局部固定高度；不删字段、不改顺序或滚动职责。              |
 
 主人工基准为 `390 × 844` 的 Visual Mock viewport：Device Detail 首屏先展示运行摘要与能力区；Task Detail
 首屏先展示 Summary / Core，并使 Runtime Log 标题进入可见区域。360 / 375 / 430px 和 Light / Dark 只验证相同
@@ -117,20 +138,20 @@ Stage 2 Final Baseline 为准。
 Status（状态）: Completed / Candidate for Freeze（已完成 / 待人工确认冻结）
 
 Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio、Controls 与 Detail Density
-放回完整页面复核。390 × 844 Light 的四个主页面和 360 / 375 / 430px Light、390px Dark 均没有明确的尺寸
-比例问题。人工复核随后确认 DeviceCard / TaskCard 的上下留白不足，因此只将共享 Card Padding 拆分为 X / Y，
-并比较 Y `12 / 14 / 16px`：X 固定 `12px`，最终候选为 Y `16px`；其它生产尺寸 Token 不变。按
-`mobile/AGENTS.md`，自动验证与 Review 不替代人工视觉确认；人工确认后才将此状态更新为 `Frozen`。
+放回完整页面复核。390 × 844 Light 的四个主页面和 360 / 375 / 430px Light、390px Dark 已比较 Card Y
+`12 / 14 / 16px`（最终 Y `16px`）与 Final Polish B 的内容 Surface / Icon 候选；当前推荐组合以本文件
+“Final Polish B 候选记录”为准。按 `mobile/AGENTS.md`，自动验证与 Review 不替代人工视觉确认；人工确认后
+才将此状态更新为 `Frozen`。
 
 - Typography：`12 / 13 / 14 / 15 / 16 / 18px` 与对应 `16 / 18 / 20 / 20 / 22 / 22px` Line Height，按
   Regular / Medium / Semibold / Bold 的既定角色消费。
 - Spacing：`4 / 8 / 12 / 16 / 20 / 24 / 32px`；Page `16 / 12px`、Section `12px`、Card `8 / 12 / 4px`。
-- Dimensions：Global Header `52px`、Detail Header `50px`、Summary `88px`、Toolbar `44px`、Bottom Nav
+- Dimensions：Global Header `52px`、Detail Header `50px`、Summary `96px`、Toolbar `44px`、Bottom Nav
   `58px`。
-- Card / Icon：Leading `32 / 20px`、Chevron `24 / 16px`、Runtime `32 / 20px`、Capability `28 / 16px`、
+- Card / Icon：Primary Leading Visual `44 / 28px`、Chevron `24 / 16px`、Runtime Leading Visual `36 / 22px`、Capability `28 / 16px`、
   Summary `20px`。
 - Controls：Compact `30px`、Capability Action `28px`、Header Icon Shell `34px`、Touch Target `44×44px`。
-- Detail：Capability Panel `334px`、Row `44px`、Runtime / Task Detail 自然高度；5 行完整、第 6 行起内部滚动。
+- Detail：Capability Panel `354px`、Row `48px`、Runtime / Task Detail 自然高度；5 行完整、第 6 行起内部滚动。
 
 候选冻结的是这组经页面级验证的默认尺寸基线，不是永久禁止改动。人工确认前不得重新开始无目的调参；只有真实设备、
 正式图标或新增业务页面带来可复现的比例问题时，才可通过显式 Review 调整。人工确认后，该规则以 Frozen Baseline
@@ -138,20 +159,20 @@ Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio
 
 ### B. Spacing（间距）
 
-| 语义                                      | 控制位置                  | 当前值    | 主要影响                                   |
-| ----------------------------------------- | ------------------------- | --------- | ------------------------------------------ |
-| Page Horizontal Padding（页面左右留白）   | `--layout-page-padding-x` | 16px      | Header、Summary、Toolbar、List、`AppPage`  |
-| Page Vertical Padding（页面上下留白）     | `--layout-page-padding-y` | 12px      | `AppPage`                                  |
-| Section Gap（区块间距）                   | `--layout-section-gap`    | 12px      | 详情页一级区块                             |
-| Card Gap（卡片间距）                      | `--layout-card-gap`       | 8px       | Device / Task Infinite List                |
-| Card Padding X（卡片左右内边距）          | `--layout-card-padding-x` | 12px      | `DeviceCard`、`TaskCard`                   |
-| Card Padding Y（卡片上下内边距）          | `--layout-card-padding-y` | 16px      | `DeviceCard`、`TaskCard`                   |
-| Inner Gap（卡片内部间距）                 | `--layout-card-row-gap`   | 4px       | 两类业务卡三行内容                         |
-| Icon Content Gap（图标与正文距离）        | `--space-2`               | 8px       | Device / Task Card、`DeviceRuntimeSummary` |
-| Toolbar Gap（工具行组间距）               | `--space-2` / `--space-1` | 8px / 4px | Toolbar 左右组、Action 与控件内部          |
-| Capability Row Gap（能力行内部间距）      | `--space-2`               | 8px       | Icon Slot、名称与 Actions                  |
-| Runtime Summary Padding（运行摘要内边距） | `--space-3`               | 12px      | DeviceRuntimeSummary 上下分区              |
-| Detail Surface Padding（详情表面内边距）  | `--space-4`               | 16px      | Task Summary/Core 与 Runtime Log           |
+| 语义                                            | 控制位置                                 | 当前值      | 主要影响                                   |
+| ----------------------------------------------- | ---------------------------------------- | ----------- | ------------------------------------------ |
+| Page Horizontal Padding（页面左右留白）         | `--layout-page-padding-x`                | 16px        | Header、Summary、Toolbar、List、`AppPage`  |
+| Page Vertical Padding（页面上下留白）           | `--layout-page-padding-y`                | 12px        | `AppPage`                                  |
+| Section Gap（区块间距）                         | `--layout-section-gap`                   | 12px        | 详情页一级区块                             |
+| Card Gap（卡片间距）                            | `--layout-card-gap`                      | 8px         | Device / Task Infinite List                |
+| Card Padding X（卡片左右内边距）                | `--layout-card-padding-x`                | 12px        | `DeviceCard`、`TaskCard`                   |
+| Card Padding Y（卡片上下内边距）                | `--layout-card-padding-y`                | 16px        | `DeviceCard`、`TaskCard`                   |
+| Inner Gap（卡片内部间距）                       | `--layout-card-row-gap`                  | 4px         | 两类业务卡三行内容                         |
+| Icon Content Gap（图标与正文距离）              | `--space-2`                              | 8px         | Device / Task Card、`DeviceRuntimeSummary` |
+| Toolbar Gap（工具行组间距）                     | `--space-2` / `--space-1`                | 8px / 4px   | Toolbar 左右组、Action 与控件内部          |
+| Capability Row Gap（能力行内部间距）            | `--space-2`                              | 8px         | Icon Slot、名称与 Actions                  |
+| Runtime Summary Padding X / Y（运行摘要内边距） | `--layout-runtime-summary-padding-x / y` | 12px / 16px | DeviceRuntimeSummary 上下分区              |
+| Detail Surface Padding（详情表面内边距）        | `--space-4`                              | 16px        | Task Summary/Core 与 Runtime Log           |
 
 `--space-*` 是全局比例尺，同一个值会影响多个组件。若只想改某个组件，先查看“按组件找参数”，不要
 直接修改全局比例尺后只检查单页。
@@ -181,14 +202,14 @@ Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio
 | Detail Header Back                        | `--icon-size-default`                                                      | 22px        |
 | Bottom Navigation Icon                    | `vant-theme.css` → `--van-tabbar-item-icon-size` → `--icon-size-default`   | 22px        |
 | Summary Metric Icon                       | `--icon-size-summary-metric`                                               | 20px        |
-| DeviceCard / TaskCard Leading Slot / Icon | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 32px / 20px |
+| Primary Leading Visual Slot / Glyph       | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 44px / 28px |
 | DeviceCard / TaskCard Chevron Slot / Icon | `--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`      | 24px / 16px |
-| DeviceRuntimeSummary Slot / Icon          | `--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary` | 32px / 20px |
+| Runtime Leading Visual Slot / Glyph       | `--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary` | 36px / 22px |
 | Capability Row Icon Slot / Icon           | `--layout-capability-icon-slot-width` / `--icon-size-capability-row`       | 28px / 16px |
 
-Header、Detail Header 与 Bottom Navigation 继续直接消费 `--icon-size-default` 22px；Summary、Device/Task
-Card、DeviceRuntimeSummary 与 Capability Row 已分别建立稳定 Icon / Slot Token。最终图标图案、描边与资源属于
-Stage 3。
+Header、Detail Header 与 Bottom Navigation 继续直接消费 `--icon-size-default` 22px。Primary Leading Visual、
+Runtime Leading Visual、Capability Icon、Summary Icon 与 Control Icon 已分别建立语义尺寸角色；最终图标图案、
+描边、Tile 与资源属于 Stage 3。
 
 ### E. Controls（控件尺寸）
 
@@ -222,8 +243,8 @@ Stage 3。
 | `--space-3`                                                            | 12px                      | 详情 Section 内标题/内容、Task Summary/Core 与 Runtime Summary 分区 |
 | `--space-4`                                                            | 16px                      | Task Summary/Core 与 Runtime Log 内边距                             |
 | `--space-6`                                                            | 24px                      | Device / Task Detail 当前底部内容留白                               |
-| `--layout-capability-panel-height`                                     | 334px                     | 5 行 Capability 完整显示；第 6 行起仅内部滚动                       |
-| `--layout-capability-row-min-height`                                   | 44px                      | Capability Row 与 Configure / Run 的触控约束                        |
+| `--layout-capability-panel-height`                                     | 354px                     | 5 行 Capability 完整显示；第 6 行起仅内部滚动                       |
+| `--layout-capability-row-min-height`                                   | 48px                      | Capability Row 与 Configure / Run 的触控约束                        |
 | Vant Cell `font / line-height / vertical padding / horizontal padding` | 14px / 20px / 12px / 16px | “更多信息”与筛选列表密度                                            |
 | Vant Collapse Content Padding                                          | 12px 16px                 | “更多信息”展开内容密度                                              |
 
@@ -271,9 +292,10 @@ Stage 3。
 
 ### MobileSummaryStrip（移动端概览横幅）
 
-- 高度：`--layout-summary-height`；左右留白：`--layout-page-padding-x`。
-- Metric Icon：`--icon-size-default`；Number：Display 字阶 + Bold；Label：Caption + Medium。
-- 三层间距：`--space-1` 4px；Metric 水平 Padding 与 Strip 顶部 Padding：`--space-2` 8px。
+- 高度：`--layout-summary-height` 96px；左右留白：`--layout-page-padding-x`；上下边距：
+  `--layout-summary-padding-y` 8px。
+- Metric Icon：`--icon-size-summary-metric` 20px；Number：Display 字阶 + Bold；Label：Caption + Medium。
+- 三层间距：`--space-1` 4px；96px 高度下 Surface 维持三层上下呼吸空间。
 - 不调整三等分、Icon → Number → Label 顺序或快捷筛选状态边界。
 
 ### MobileListToolbar（移动端列表工具行）
@@ -290,7 +312,7 @@ Stage 3。
 - Padding：`--layout-card-padding-x` 12px、`--layout-card-padding-y` 16px；卡间距：列表容器的
   `--layout-card-gap` 8px。
 - Leading 到正文：`--space-2` 8px；正文三行 Gap：`--layout-card-row-gap` 4px。
-- Leading Slot / Icon：`--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`，32px / 20px；
+- Primary Leading Visual Slot / Glyph：`--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`，44px / 28px；
   Chevron Slot / Icon：`--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`，24px / 16px。
 - 标题 / Runtime / Meta：Label 15/20、Secondary 13/18、Caption 12/16。
 - 高度自然计算；不增加第四行或改写 Main / Trailing 槽位。
@@ -303,18 +325,18 @@ Stage 3。
 
 ### DeviceRuntimeSummary（设备运行摘要）
 
-- 上下分区 Padding：`--space-3` 12px；Icon 到正文：`--space-2` 8px；正文内部 Gap：
+- 上下分区 Padding：`--layout-runtime-summary-padding-x / y` 12px / 16px；Icon 到正文：`--space-2` 8px；正文内部 Gap：
   `--space-1` 4px。
-- 两段 Icon Slot / Icon：`--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary`，32px / 20px；
+- 两段 Runtime Leading Visual Slot / Glyph：`--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary`，36px / 22px；
   Value：Label 15/20；Label / Meta：Caption 12/16。
 - Retry Touch：`--touch-target-min`。不要改变 Upper → Separator → Lower 或两段字段层级。
 
 ### CapabilityPanel（能力面板）
 
-- 总高度：`--layout-capability-panel-height`，当前 334px。
+- 总高度：`--layout-capability-panel-height`，当前 354px。
 - Panel Padding / Grid Gap：垂直 `--space-2` 8px × 水平 `--space-3` 12px / `--space-1` 4px。
 - Header 与 Selector 行：`--touch-target-min` 44px；Row 最小高度：
-  `--layout-capability-row-min-height` 44px。
+  `--layout-capability-row-min-height` 48px。
 - Row Gap：`--space-2` 8px；Actions Gap：`--space-1` 4px；Icon Slot / Icon：
   `--layout-capability-icon-slot-width` / `--icon-size-capability-row`，28px / 16px。
 - Name：Body 14/20 + Medium；Version：Caption 12/16；Action：Touch 44px、

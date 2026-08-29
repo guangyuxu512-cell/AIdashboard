@@ -94,14 +94,15 @@ const emit = defineEmits<{
   min-width: 0;
   height: var(--layout-summary-height);
   flex: none;
-  padding: var(--space-2)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) 0
+  padding: var(--layout-summary-padding-y)
+    max(var(--layout-page-padding-x), var(--safe-area-right))
+    var(--layout-summary-padding-y)
     max(var(--layout-page-padding-x), var(--safe-area-left));
 }
 
 .mobile-summary-strip__surface {
   display: grid;
-  height: calc(100% - var(--space-2));
+  height: 100%;
   min-width: 0;
   margin: 0;
   padding: 0;

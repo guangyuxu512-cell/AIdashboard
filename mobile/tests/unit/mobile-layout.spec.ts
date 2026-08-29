@@ -270,7 +270,8 @@ describe('Mobile Layout shared components', () => {
 
     expect(tokens).toContain('--layout-header-height: 52px')
     expect(tokens).toContain('--layout-detail-header-height: 50px')
-    expect(tokens).toContain('--layout-summary-height: 88px')
+    expect(tokens).toContain('--layout-summary-height: 96px')
+    expect(tokens).toContain('--layout-summary-padding-y: 8px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
     expect(tokens).toContain('--layout-bottom-nav-height: 58px')
     expect(tokens).toContain('--layout-page-padding-x: 16px')
@@ -281,21 +282,23 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-card-padding-y: 16px')
     expect(tokens).not.toContain('--layout-card-padding:')
     expect(tokens).toContain('--layout-card-row-gap: 4px')
-    expect(tokens).toContain('--layout-capability-panel-height: 334px')
-    expect(tokens).toContain('--layout-capability-row-min-height: 44px')
+    expect(tokens).toContain('--layout-capability-panel-height: 354px')
+    expect(tokens).toContain('--layout-capability-row-min-height: 48px')
     expect(tokens).toContain('--control-height-compact: 30px')
     expect(tokens).toContain('--control-size-icon-button: 34px')
     expect(tokens).toContain('--touch-target-min: 44px')
     expect(tokens).toContain('--icon-size-default: 22px')
     expect(tokens).toContain('--icon-size-small: 16px')
-    expect(tokens).toContain('--icon-size-card-leading: 20px')
+    expect(tokens).toContain('--icon-size-card-leading: 28px')
     expect(tokens).toContain('--icon-size-card-chevron: 16px')
-    expect(tokens).toContain('--icon-size-runtime-summary: 20px')
+    expect(tokens).toContain('--icon-size-runtime-summary: 22px')
     expect(tokens).toContain('--icon-size-summary-metric: 20px')
     expect(tokens).toContain('--icon-size-capability-row: 16px')
-    expect(tokens).toContain('--layout-card-leading-icon-slot-width: 32px')
+    expect(tokens).toContain('--layout-card-leading-icon-slot-width: 44px')
     expect(tokens).toContain('--layout-card-trailing-icon-slot-width: 24px')
-    expect(tokens).toContain('--layout-runtime-summary-icon-slot-width: 32px')
+    expect(tokens).toContain('--layout-runtime-summary-padding-x: 12px')
+    expect(tokens).toContain('--layout-runtime-summary-padding-y: 16px')
+    expect(tokens).toContain('--layout-runtime-summary-icon-slot-width: 36px')
     expect(tokens).toContain('--layout-capability-icon-slot-width: 28px')
     expect(tokens).toContain('--font-size-caption: 12px')
     expect(tokens).toContain('--font-size-secondary: 13px')
@@ -340,9 +343,16 @@ describe('Mobile Layout shared components', () => {
       )
       expect(card).toContain('font-size: var(--icon-size-card-chevron)')
     }
-    expect(runtimeSummary).toContain('padding: var(--space-3)')
+    expect(summaryStrip).toContain('padding: var(--layout-summary-padding-y)')
+    expect(summaryStrip).toContain('height: 100%')
+    expect(runtimeSummary).toContain(
+      'padding: var(--layout-runtime-summary-padding-y)',
+    )
+    expect(runtimeSummary).toContain('var(--layout-runtime-summary-padding-x)')
     expect(runtimeSummary).toContain('column-gap: var(--space-2)')
-    expect(runtimeSummary).toContain('margin-inline: var(--space-3)')
+    expect(runtimeSummary).toContain(
+      'margin-inline: var(--layout-runtime-summary-padding-x)',
+    )
     expect(runtimeSummary).toContain(
       'width: var(--layout-runtime-summary-icon-slot-width)',
     )

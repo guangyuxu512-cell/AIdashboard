@@ -196,7 +196,8 @@ const yingdaoVersion = computed(
 .device-runtime-summary__section {
   display: grid;
   min-width: 0;
-  padding: var(--space-3);
+  padding: var(--layout-runtime-summary-padding-y)
+    var(--layout-runtime-summary-padding-x);
   align-items: center;
   column-gap: var(--space-2);
   grid-template-columns: auto minmax(0, 1fr);
@@ -204,7 +205,7 @@ const yingdaoVersion = computed(
 
 .device-runtime-summary__separator {
   height: var(--border-width);
-  margin-inline: var(--space-3);
+  margin-inline: var(--layout-runtime-summary-padding-x);
   background: var(--border-subtle);
 }
 

@@ -676,8 +676,8 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
         cardAnatomy.contentLeft,
       )
-      expect(cardAnatomy.leadingWidth).toBe(32)
-      expect(cardAnatomy.leadingIconSize).toBe(20)
+      expect(cardAnatomy.leadingWidth).toBe(44)
+      expect(cardAnatomy.leadingIconSize).toBe(28)
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
         cardAnatomy.trailingLeft,
       )
@@ -873,7 +873,7 @@ for (const width of viewportWidths) {
       })
       expect(layout).toMatchObject({
         headerHeight: '52px',
-        summaryHeight: '88px',
+        summaryHeight: '96px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
         toolbarHeight: '44px',

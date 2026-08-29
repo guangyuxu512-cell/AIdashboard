@@ -546,8 +546,8 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
         cardAnatomy.contentLeft,
       )
-      expect(cardAnatomy.leadingWidth).toBe(32)
-      expect(cardAnatomy.leadingIconSize).toBe(20)
+      expect(cardAnatomy.leadingWidth).toBe(44)
+      expect(cardAnatomy.leadingIconSize).toBe(28)
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
         cardAnatomy.chevronLeft,
       )
