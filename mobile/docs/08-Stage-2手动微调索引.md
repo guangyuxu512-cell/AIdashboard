@@ -1,7 +1,8 @@
 # Stage 2 手动微调索引
 
 本文是 Dimensions / Spacing / Typography（尺寸 / 间距 / 字体排版）的定位地图，不是新的设计规则。
-当前数值是已完成 Stage 2 调整后的实现基线；修改前先确认 `02-设计系统.md` 的 Frozen Contract（冻结契约）。
+当前数值是已完成 Stage 2 调整后的候选冻结基线；人工确认前不得重新开始无目的调参。修改前先确认
+`02-设计系统.md` 的 Frozen Contract（冻结契约）与 Stage 2 Final Candidate Baseline。
 
 ## 冻结边界
 
@@ -17,8 +18,8 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 - Shell、List、Detail 与 Capability List 的 Scroll Contract（滚动约定）。
 - Touch Target（触控热区）不得低于 44×44px。
 
-改变以上任一项都属于 Unfreeze（解冻），必须先明确提出并重新确认。Stage 2 只调尺寸、间距、字体与
-图标尺寸；颜色、圆角、阴影和图标视觉属于 Stage 3，Press / Motion（按压 / 动效）属于 Stage 4。
+改变以上任一项都属于 Unfreeze（解冻），必须先明确提出并重新确认。已完成的 Stage 2 只收口尺寸、间距、
+字体与图标尺寸；颜色、圆角、阴影和图标视觉属于 Stage 3，Press / Motion（按压 / 动效）属于 Stage 4。
 
 ## 最常改
 
@@ -36,7 +37,7 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 30px | `MobileListToolbar`、Capability 轻操作     |
 | 能力面板总高度   | `src/shared/styles/tokens.css` | `--layout-capability-panel-height`                     | 334px       | 五行完整显示与第六行起内部滚动             |
 
-## Stage 2 常调参数
+## Stage 2 参数定位（候选冻结）
 
 ### A. Layout Dimensions（布局尺寸）
 
@@ -107,8 +108,31 @@ Row 高度、Color、Radius、Shadow、Press 或 Motion。
 
 主人工基准为 `390 × 844` 的 Visual Mock viewport：Device Detail 首屏先展示运行摘要与能力区；Task Detail
 首屏先展示 Summary / Core，并使 Runtime Log 标题进入可见区域。360 / 375 / 430px 和 Light / Dark 只验证相同
-密度语言、无横向溢出、Touch Target 与内部滚动契约。以上是 Stage 2 Baseline，不是永久像素冻结；后续
-Stage 2 Final Review 只能在不改变 Frozen Anatomy、Navigation Contract 与 Scroll Contract 的前提下整体复核。
+密度语言、无横向溢出、Touch Target 与内部滚动契约。以上是 Stage 2F 的详情密度结论；最终冻结状态以随后的
+Stage 2 Final Baseline 为准。
+
+### Stage 2 Final Baseline（第二阶段最终基线）
+
+Status（状态）: Completed / Candidate for Freeze（已完成 / 待人工确认冻结）
+
+Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio、Controls 与 Detail Density
+放回完整页面复核。390 × 844 Light 的四个主页面和 360 / 375 / 430px Light、390px Dark 均没有明确的尺寸
+比例问题；本轮没有修改生产 CSS / Token，因此本索引当前列出的数值就是 Stage 2 Final Candidate Baseline。按
+`mobile/AGENTS.md`，自动验证与 Review 不替代人工视觉确认；人工确认后才将此状态更新为 `Frozen`。
+
+- Typography：`12 / 13 / 14 / 15 / 16 / 18px` 与对应 `16 / 18 / 20 / 20 / 22 / 22px` Line Height，按
+  Regular / Medium / Semibold / Bold 的既定角色消费。
+- Spacing：`4 / 8 / 12 / 16 / 20 / 24 / 32px`；Page `16 / 12px`、Section `12px`、Card `8 / 12 / 4px`。
+- Dimensions：Global Header `52px`、Detail Header `50px`、Summary `88px`、Toolbar `44px`、Bottom Nav
+  `58px`。
+- Card / Icon：Leading `32 / 20px`、Chevron `24 / 16px`、Runtime `32 / 20px`、Capability `28 / 16px`、
+  Summary `20px`。
+- Controls：Compact `30px`、Capability Action `28px`、Header Icon Shell `34px`、Touch Target `44×44px`。
+- Detail：Capability Panel `334px`、Row `44px`、Runtime / Task Detail 自然高度；5 行完整、第 6 行起内部滚动。
+
+候选冻结的是这组经页面级验证的默认尺寸基线，不是永久禁止改动。人工确认前不得重新开始无目的调参；只有真实设备、
+正式图标或新增业务页面带来可复现的比例问题时，才可通过显式 Review 调整。人工确认后，该规则以 Frozen Baseline
+继续执行。Color、Surface、Radius、Border、Shadow、Final Icon、Press 与 Motion 仍属于未冻结的 Stage 3 / 4 范围。
 
 ### B. Spacing（间距）
 
@@ -182,8 +206,9 @@ Stage 3。
 ### F. Card Dimensions（卡片尺寸）
 
 `DeviceCard` 与 `TaskCard` 没有固定 Height Token。当前高度由三行冻结结构、字体行高、
-`--layout-card-padding`、`--layout-card-row-gap` 行间距和内容自然计算。Stage 2 可以统一微调这些数值，
-但不得增加或删除行、改变 Leading / Main / Trailing 槽位，或写死两类卡片高度。
+`--layout-card-padding`、`--layout-card-row-gap` 行间距和内容自然计算。这些数值已纳入 Stage 2 Final Candidate
+Baseline；人工确认前不得继续随意微调，更不得增加或删除行、改变 Leading / Main / Trailing 槽位，或写死两类
+卡片高度。
 
 ### G. Detail Density（详情页密度）
 
