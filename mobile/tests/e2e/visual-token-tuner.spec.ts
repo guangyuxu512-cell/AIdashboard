@@ -7,6 +7,7 @@ import {
 } from '@playwright/test'
 
 const storageKey = 'control-center.mobile.visual-token-tuner-v1'
+const appearanceStorageKey = 'control-center.mobile.visual-token-tuner-v3'
 
 function collectConsoleErrors(page: Page): string[] {
   const errors: string[] = []
@@ -84,7 +85,7 @@ async function openExternalTuner(
   return tuner
 }
 
-test.describe('Visual Token Tuner V2', () => {
+test.describe('Visual Token Tuner V2 / V3', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('在独立窗口实时调节真实预览、恢复、复制并在刷新后保留', async ({
@@ -216,7 +217,15 @@ test.describe('Visual Token Tuner V2', () => {
       )
       .toBe('60px')
 
-    await tuner.getByTestId('visual-token-tuner-reset-all').click()
+    await tuner.getByRole('button', { name: '恢复全部调参' }).click()
+    await expect(tuner.getByTestId('visual-token-tuner-panel')).toContainText(
+      '尺寸已调整 0 项 · 颜色已调整 0 项 · 外观已调整 0 项',
+    )
+    await expect
+      .poll(() =>
+        preview.evaluate((key) => window.localStorage.getItem(key), storageKey),
+      )
+      .toBeNull()
     await expect
       .poll(() => rootValue(preview, '--layout-card-leading-icon-slot-width'))
       .toBe('52px')
@@ -657,6 +666,263 @@ test.describe('Visual Token Tuner V2', () => {
     await tuner.getByTestId('visual-token-tuner-theme-dark').click()
     await tuner.getByTestId('visual-token-tuner-reset-color-theme').click()
     await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#101820')
+    await expectNoHorizontalOverflow(preview)
+    await expectNoHorizontalOverflow(tuner)
+    expect(previewErrors).toEqual([])
+    expect(tunerErrors).toEqual([])
+  })
+
+  test('V3 外观覆盖独立保存，实时作用于 Radius、Border 与 Light / Dark Shadow', async ({
+    page: preview,
+    context,
+  }) => {
+    await prepareClipboard(context)
+    const previewErrors = collectConsoleErrors(preview)
+    await preview.setViewportSize({ width: 390, height: 844 })
+    await preview.goto('/#/devices')
+    await preview.evaluate(
+      ([dimensionKey, appearanceKey]) => {
+        window.localStorage.removeItem(dimensionKey)
+        window.localStorage.removeItem(appearanceKey)
+        window.localStorage.setItem('control-center.mobile.theme-mode', 'light')
+      },
+      [storageKey, appearanceStorageKey],
+    )
+    await preview.reload()
+
+    const card = preview.getByTestId('device-card').first()
+    await expect(card).toBeVisible()
+    const beforeGeometry = await card.evaluate((element) => {
+      const style = window.getComputedStyle(element)
+      const box = element.getBoundingClientRect()
+      return {
+        height: box.height,
+        width: box.width,
+        padding: [
+          style.paddingTop,
+          style.paddingRight,
+          style.paddingBottom,
+          style.paddingLeft,
+        ],
+      }
+    })
+
+    const tuner = await openExternalTuner(preview, context)
+    const tunerErrors = collectConsoleErrors(tuner)
+    await tuner.getByTestId('visual-token-tuner-mode-appearance').click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-radius-card'),
+      22,
+    )
+    await expect.poll(() => rootValue(preview, '--radius-card')).toBe('22px')
+    await expect(card).toHaveCSS('border-radius', '22px')
+    await expect
+      .poll(() =>
+        card.evaluate((element) => {
+          const style = window.getComputedStyle(element)
+          const box = element.getBoundingClientRect()
+          return {
+            height: box.height,
+            width: box.width,
+            padding: [
+              style.paddingTop,
+              style.paddingRight,
+              style.paddingBottom,
+              style.paddingLeft,
+            ],
+          }
+        }),
+      )
+      .toEqual(beforeGeometry)
+
+    await preview.goto('/#/tasks')
+    const taskCard = preview.getByTestId('task-card').first()
+    await expect(taskCard).toBeVisible()
+    await expect(taskCard).toHaveCSS('border-radius', '22px')
+
+    await preview.goto('/#/devices')
+    await expect(card).toBeVisible()
+    await card.locator('.device-list-card__main').click()
+    await expect(preview).toHaveURL(/#\/devices\/[^/]+$/)
+    const runtimeSummary = preview.getByTestId('device-detail')
+    const capabilityPanel = preview.getByTestId('device-capability-panel')
+    await expect(runtimeSummary).toBeVisible()
+    await expect(capabilityPanel).toBeVisible()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-radius-panel'),
+      20,
+    )
+    await expect.poll(() => rootValue(preview, '--radius-panel')).toBe('20px')
+    await expect(runtimeSummary).toHaveCSS('border-radius', '20px')
+    await expect(capabilityPanel).toHaveCSS('border-radius', '20px')
+
+    await preview.goto('/#/devices')
+    await expect(card).toBeVisible()
+    await expect(preview.locator('.mobile-summary-strip__surface')).toHaveCSS(
+      'border-radius',
+      '20px',
+    )
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-radius-control'),
+      14,
+    )
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-radius-tag'),
+      16,
+    )
+    await expect.poll(() => rootValue(preview, '--radius-control')).toBe('14px')
+    await expect.poll(() => rootValue(preview, '--radius-tag')).toBe('16px')
+    await expect(
+      preview
+        .getByTestId('mobile-list-selector')
+        .locator('.mobile-list-toolbar__control'),
+    ).toHaveCSS('border-radius', '14px')
+    await expect(
+      preview
+        .getByTestId('mobile-list-filter')
+        .locator('.mobile-list-toolbar__control'),
+    ).toHaveCSS('border-radius', '14px')
+    await expect(preview.getByTestId('device-card-status').first()).toHaveCSS(
+      'border-radius',
+      '16px',
+    )
+
+    await preview.goto('/#/tasks')
+    await preview.getByTestId('mobile-list-filter').click()
+    const filterSheet = preview.locator('.task-filter-sheet')
+    await expect(filterSheet).toBeVisible()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-radius-overlay'),
+      24,
+    )
+    await expect.poll(() => rootValue(preview, '--radius-overlay')).toBe('24px')
+    await expect(filterSheet).toHaveCSS('border-top-left-radius', '24px')
+    await preview.keyboard.press('Escape')
+
+    await preview.goto('/#/devices')
+    await expect(card).toBeVisible()
+
+    await tuner.getByRole('tab', { name: '边界' }).click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-border-surface-width'),
+      0,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--appearance-border-surface-width'))
+      .toBe('0px')
+    await expect
+      .poll(() =>
+        card.evaluate((element) => element.getBoundingClientRect().height),
+      )
+      .toBe(beforeGeometry.height)
+
+    await tuner.getByRole('tab', { name: '阴影' }).click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-appearance-range-light-shadow-card-blur'),
+      32,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-blur'))
+      .toBe('32px')
+    await expect
+      .poll(() =>
+        card.evaluate((element) => window.getComputedStyle(element).boxShadow),
+      )
+      .toContain('32px')
+    await setRangeValue(
+      tuner.getByTestId(
+        'visual-token-appearance-range-light-shadow-card-opacity',
+      ),
+      12,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-opacity'))
+      .toBe('12%')
+    await expect
+      .poll(() =>
+        card.evaluate((element) => window.getComputedStyle(element).boxShadow),
+      )
+      .toContain('0.12')
+
+    await tuner.getByTestId('visual-token-tuner-appearance-theme-dark').click()
+    await setRangeValue(
+      tuner.getByTestId(
+        'visual-token-appearance-range-dark-shadow-card-opacity',
+      ),
+      30,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-opacity'))
+      .toBe('12%')
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-opacity'))
+      .toBe('30%')
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-opacity'))
+      .toBe('12%')
+
+    await tuner.getByTestId('visual-token-tuner-mode-dimension').click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-range-card-padding-y'),
+      20,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('20px')
+
+    await tuner.getByTestId('visual-token-tuner-mode-color').click()
+    await tuner.getByTestId('visual-token-tuner-theme-light').click()
+    await setColorPickerValue(
+      tuner.getByTestId('visual-token-color-picker-light-bg-app'),
+      '#e8edf2',
+    )
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#e8edf2')
+
+    await tuner.getByTestId('visual-token-tuner-mode-appearance').click()
+    await tuner.getByTestId('visual-token-tuner-appearance-theme-light').click()
+    await tuner.getByTestId('visual-token-tuner-reset-appearance-group').click()
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-opacity'))
+      .toBe('5%')
+    await expect.poll(() => rootValue(preview, '--radius-card')).toBe('22px')
+
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect
+      .poll(() => rootValue(preview, '--shadow-card-opacity'))
+      .toBe('30%')
+    await preview.getByTestId('theme-toggle').click()
+    await expect(preview.locator('html')).toHaveAttribute('data-theme', 'light')
+
+    await preview.reload()
+    await expect.poll(() => rootValue(preview, '--radius-card')).toBe('22px')
+    await expect
+      .poll(() => rootValue(preview, '--appearance-border-surface-width'))
+      .toBe('0px')
+
+    await tuner.getByTestId('visual-token-tuner-reset-stage3b').click()
+    await expect.poll(() => rootValue(preview, '--radius-card')).toBe('18px')
+    await expect.poll(() => rootValue(preview, '--radius-panel')).toBe('18px')
+    await expect.poll(() => rootValue(preview, '--radius-control')).toBe('12px')
+    await expect.poll(() => rootValue(preview, '--radius-tag')).toBe('999px')
+    await expect
+      .poll(() => rootValue(preview, '--appearance-border-surface-width'))
+      .toBe('1px')
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('20px')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#e8edf2')
+
+    await tuner.getByTestId('visual-token-tuner-reset-all').click()
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
+      .toBe('16px')
+    await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#f4f6f8')
+    await expect.poll(() => rootValue(preview, '--radius-card')).toBe('18px')
     await expectNoHorizontalOverflow(preview)
     await expectNoHorizontalOverflow(tuner)
     expect(previewErrors).toEqual([])

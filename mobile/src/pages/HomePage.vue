@@ -23,8 +23,9 @@ import { AppPage } from '@/shared/ui'
   padding: var(--space-6) var(--space-4);
   text-align: center;
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-surface);
 }
 
 .home-page__title {

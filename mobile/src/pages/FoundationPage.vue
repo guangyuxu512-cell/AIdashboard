@@ -173,14 +173,15 @@ const resolvedThemeLabel = computed(() =>
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-surface);
 }
 
 .foundation-page__intro {
   align-items: flex-start;
   background: var(--bg-surface-raised);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--appearance-border-surface), var(--shadow-card);
 }
 
 .foundation-page__title {
@@ -220,8 +221,9 @@ const resolvedThemeLabel = computed(() =>
 .foundation-swatch {
   min-width: var(--touch-target-min);
   padding: var(--layout-content-gap) var(--space-3);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-round);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-tag);
+  box-shadow: var(--appearance-border-control);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-caption);
@@ -255,8 +257,9 @@ const resolvedThemeLabel = computed(() =>
   padding: var(--layout-content-gap);
   place-items: center;
   color: var(--text-secondary);
-  border: var(--border-width) solid var(--border-subtle);
+  border: var(--border-width) solid transparent;
   border-radius: var(--radius-control);
+  box-shadow: var(--appearance-border-control);
   font-size: var(--font-size-caption);
 }
 
@@ -270,7 +273,7 @@ const resolvedThemeLabel = computed(() =>
 
 .foundation-surface--raised {
   background: var(--bg-surface-raised);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--appearance-border-surface), var(--shadow-card);
 }
 
 .foundation-type-scale {

@@ -143,8 +143,9 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: center;
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
+  border: var(--border-width) solid transparent;
   border-radius: var(--radius-control);
+  box-shadow: var(--appearance-border-control);
 }
 
 .mobile-list-toolbar__action:active .mobile-list-toolbar__control {

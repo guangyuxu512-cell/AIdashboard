@@ -566,7 +566,8 @@ for (const width of viewportWidths) {
           const expectedBackground = window.getComputedStyle(probe).color
           probe.remove()
           const shadowProbe = document.createElement('span')
-          shadowProbe.style.boxShadow = 'var(--shadow-card)'
+          shadowProbe.style.boxShadow =
+            'var(--appearance-border-surface), var(--shadow-card)'
           document.body.append(shadowProbe)
           const expectedShadow = window.getComputedStyle(shadowProbe).boxShadow
           shadowProbe.remove()
@@ -793,15 +794,23 @@ for (const width of viewportWidths) {
           probe.remove()
           return color
         }
-        const probe = document.createElement('span')
-        probe.style.boxShadow = 'var(--shadow-card)'
-        document.body.append(probe)
-        const expectedCardShadow = window.getComputedStyle(probe).boxShadow
-        probe.remove()
+        const resolveShadow = (value: string) => {
+          const probe = document.createElement('span')
+          probe.style.boxShadow = value
+          document.body.append(probe)
+          const shadow = window.getComputedStyle(probe).boxShadow
+          probe.remove()
+          return shadow
+        }
         return {
           expectedCardBackground: resolveColor('--bg-surface-raised'),
           expectedSectionBackground: resolveColor('--bg-surface'),
-          expectedCardShadow,
+          expectedPanelShadow: resolveShadow(
+            'var(--appearance-border-surface)',
+          ),
+          expectedCardShadow: resolveShadow(
+            'var(--appearance-border-surface), var(--shadow-card)',
+          ),
           backgrounds: selectors.map(
             (selector) =>
               window.getComputedStyle(
@@ -823,8 +832,8 @@ for (const width of viewportWidths) {
       ])
       expect(detailSurfaces.shadows).toEqual([
         detailSurfaces.expectedCardShadow,
-        'none',
-        'none',
+        detailSurfaces.expectedPanelShadow,
+        detailSurfaces.expectedPanelShadow,
       ])
       const moreInformation = page.getByTestId('task-more-information')
       await expect(

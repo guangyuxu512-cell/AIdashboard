@@ -752,9 +752,18 @@ for (const width of viewportWidths) {
           ),
           expectedSummaryBackground: tokenColor('--bg-surface'),
           expectedCardBackground: tokenColor('--bg-surface-raised'),
-          expectedSurfaceShadow: (() => {
+          expectedPanelShadow: (() => {
             const probe = document.createElement('span')
-            probe.style.boxShadow = 'var(--shadow-card)'
+            probe.style.boxShadow = 'var(--appearance-border-surface)'
+            document.body.append(probe)
+            const shadow = window.getComputedStyle(probe).boxShadow
+            probe.remove()
+            return shadow
+          })(),
+          expectedCardShadow: (() => {
+            const probe = document.createElement('span')
+            probe.style.boxShadow =
+              'var(--appearance-border-surface), var(--shadow-card)'
             document.body.append(probe)
             const shadow = window.getComputedStyle(probe).boxShadow
             probe.remove()
@@ -775,8 +784,8 @@ for (const width of viewportWidths) {
         overviewLayout.expectedCardBackground,
       ])
       expect(overviewLayout.surfaceShadows).toEqual([
-        'none',
-        overviewLayout.expectedSurfaceShadow,
+        overviewLayout.expectedPanelShadow,
+        overviewLayout.expectedCardShadow,
       ])
 
       if (width === 390 && theme === 'light') {
@@ -977,15 +986,23 @@ for (const width of viewportWidths) {
           probe.remove()
           return color
         }
-        const probe = document.createElement('span')
-        probe.style.boxShadow = 'var(--shadow-card)'
-        document.body.append(probe)
-        const expectedCardShadow = window.getComputedStyle(probe).boxShadow
-        probe.remove()
+        const resolveShadow = (value: string) => {
+          const probe = document.createElement('span')
+          probe.style.boxShadow = value
+          document.body.append(probe)
+          const shadow = window.getComputedStyle(probe).boxShadow
+          probe.remove()
+          return shadow
+        }
         return {
           expectedCardBackground: resolveColor('--bg-surface-raised'),
           expectedSectionBackground: resolveColor('--bg-surface'),
-          expectedCardShadow,
+          expectedPanelShadow: resolveShadow(
+            'var(--appearance-border-surface)',
+          ),
+          expectedCardShadow: resolveShadow(
+            'var(--appearance-border-surface), var(--shadow-card)',
+          ),
           backgrounds: selectors.map(
             (selector) =>
               window.getComputedStyle(
@@ -1007,7 +1024,7 @@ for (const width of viewportWidths) {
       ])
       expect(detailSurfaces.shadows).toEqual([
         detailSurfaces.expectedCardShadow,
-        'none',
+        detailSurfaces.expectedPanelShadow,
         detailSurfaces.expectedCardShadow,
       ])
       const currentTask = page.getByTestId('device-current-task')

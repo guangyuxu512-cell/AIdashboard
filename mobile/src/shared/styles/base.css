@@ -77,13 +77,23 @@ b {
 .mobile-section-surface {
   min-width: 0;
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
+  /* 保留 1px 物理边界以锁定 Stage 2 Box Model；Stage 3B 只调可见内描边。 */
+  border: var(--border-width) solid transparent;
 }
 
 .mobile-card {
+  border-radius: var(--radius-card);
   background: var(--bg-surface-raised);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--appearance-border-surface), var(--shadow-card);
+}
+
+.mobile-section-surface {
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-surface);
+}
+
+.mobile-panel-surface {
+  border-radius: var(--radius-panel);
 }
 
 .mobile-press-surface,
@@ -136,9 +146,9 @@ b {
   inset: calc((var(--touch-target-min) - var(--control-size-icon-button)) / 2);
   content: '';
   background: var(--bg-surface-raised);
-  border: var(--border-width) solid var(--border-subtle);
+  border: var(--border-width) solid transparent;
   border-radius: var(--radius-control);
-  box-shadow: var(--shadow-icon-button);
+  box-shadow: var(--appearance-border-control), var(--shadow-icon-button);
 }
 
 .mobile-icon-button:active {

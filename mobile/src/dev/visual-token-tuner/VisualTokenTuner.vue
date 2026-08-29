@@ -8,18 +8,22 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
+  createVisualAppearanceTunerRuntime,
   createVisualTokenTunerRuntime,
   getVisualColorContrastRatio,
+  type VisualAppearanceTokenDefinition,
   type VisualColorTheme,
   type VisualColorTokenDefinition,
   type VisualTokenDefinition,
+  visualAppearanceTokenRegistry,
+  visualAppearanceTokenTunerGroups,
   visualColorTokenRegistry,
   visualColorTokenTunerGroups,
   visualTokenRegistry,
   visualTokenTunerGroups,
 } from './index'
 
-type TunerMode = 'dimension' | 'color'
+type TunerMode = 'dimension' | 'color' | 'appearance'
 
 const colorThemes = ['light', 'dark'] as const
 
@@ -33,14 +37,18 @@ const props = withDefaults(
 )
 
 const runtime = createVisualTokenTunerRuntime()
+const appearanceRuntime = createVisualAppearanceTunerRuntime()
 const enabled = runtime.enabled
 const mode = ref<TunerMode>('dimension')
 const activeGroup = ref(visualTokenTunerGroups[0].key)
 const activeColorGroup = ref(visualColorTokenTunerGroups[0].key)
+const activeAppearanceGroup = ref(visualAppearanceTokenTunerGroups[0].key)
 const editingTheme = ref<VisualColorTheme>('light')
+const editingAppearanceTheme = ref<VisualColorTheme>('light')
 const searchText = ref('')
 const values = ref(runtime.readValues())
 const colorValues = ref(runtime.readColorValues())
+const appearanceValues = ref(appearanceRuntime.readValues())
 const invalidColorValues = ref<Record<string, string>>({})
 const viewportWidth = ref(0)
 const viewportHeight = ref(0)
@@ -61,6 +69,14 @@ const dirtyColorDefinitions = computed(() => {
 const currentThemeDirtyDefinitions = computed(() => {
   void colorValues.value
   return runtime.getDirtyColorDefinitions(editingTheme.value)
+})
+const dirtyAppearanceDefinitions = computed(() => {
+  void appearanceValues.value
+  return appearanceRuntime.getDirtyDefinitions()
+})
+const currentAppearanceThemeDirtyDefinitions = computed(() => {
+  void appearanceValues.value
+  return appearanceRuntime.getDirtyDefinitions(editingAppearanceTheme.value)
 })
 const filteredDefinitions = computed(() => {
   const query = searchText.value.trim().toLocaleLowerCase()
@@ -83,10 +99,27 @@ const filteredColorDefinitions = computed(() => {
       .includes(query)
   })
 })
+const filteredAppearanceDefinitions = computed(() => {
+  const query = searchText.value.trim().toLocaleLowerCase()
+  return visualAppearanceTokenRegistry.filter((definition) => {
+    if (
+      definition.group === 'shadow' &&
+      definition.theme !== editingAppearanceTheme.value
+    ) {
+      return false
+    }
+    if (!query) return definition.group === activeAppearanceGroup.value
+    return [definition.label, definition.cssVar, definition.description]
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(query)
+  })
+})
 
 function syncValues(): void {
   values.value = runtime.readValues()
   colorValues.value = runtime.readColorValues()
+  appearanceValues.value = appearanceRuntime.readValues()
 }
 
 function updateViewport(): void {
@@ -131,8 +164,80 @@ function resetItem(definition: VisualTokenDefinition): void {
   syncValues()
 }
 
-function resetAll(): void {
-  runtime.resetAll()
+function appearanceValueOf(
+  definition: VisualAppearanceTokenDefinition,
+): number {
+  return appearanceValues.value[definition.key] ?? definition.defaultValue
+}
+
+function formatAppearanceValue(
+  definition: VisualAppearanceTokenDefinition,
+  value: number,
+): string {
+  return `${value}${definition.unit}`
+}
+
+function isAppearanceDirty(
+  definition: VisualAppearanceTokenDefinition,
+): boolean {
+  return dirtyAppearanceDefinitions.value.some(
+    (item) => item.key === definition.key,
+  )
+}
+
+function applyAppearanceValue(
+  definition: VisualAppearanceTokenDefinition,
+  value: number,
+): void {
+  appearanceRuntime.setValue(definition, value)
+  syncValues()
+}
+
+function onAppearanceRangeInput(
+  definition: VisualAppearanceTokenDefinition,
+  event: Event,
+): void {
+  applyAppearanceValue(
+    definition,
+    Number((event.target as HTMLInputElement).value),
+  )
+}
+
+function onAppearanceNumberInput(
+  definition: VisualAppearanceTokenDefinition,
+  event: Event,
+): void {
+  const input = event.target as HTMLInputElement
+  if (!Number.isFinite(input.valueAsNumber)) return
+  applyAppearanceValue(definition, input.valueAsNumber)
+}
+
+function resetAppearanceItem(
+  definition: VisualAppearanceTokenDefinition,
+): void {
+  appearanceRuntime.resetValue(definition)
+  syncValues()
+}
+
+function resetAppearanceGroup(): void {
+  appearanceRuntime.resetGroup(
+    activeAppearanceGroup.value,
+    activeAppearanceGroup.value === 'shadow'
+      ? editingAppearanceTheme.value
+      : undefined,
+  )
+  syncValues()
+}
+
+function resetStage3BAppearance(): void {
+  appearanceRuntime.resetAll()
+  syncValues()
+}
+
+/** 只清理开发态 Override；不会改写任何已冻结的正式 Token 基线。 */
+function resetAllTuning(): void {
+  runtime.resetAllOverrides()
+  appearanceRuntime.resetAll()
   syncValues()
 }
 
@@ -271,9 +376,28 @@ async function copyColorJson(): Promise<void> {
   }
 }
 
+async function copyAppearanceCssVariables(): Promise<void> {
+  try {
+    await copyText(appearanceRuntime.toCssVariables())
+    showToast('已复制外观 CSS')
+  } catch {
+    showToast('复制失败')
+  }
+}
+
+async function copyAppearanceJson(): Promise<void> {
+  try {
+    await copyText(appearanceRuntime.toJson())
+    showToast('已复制外观 JSON')
+  } catch {
+    showToast('复制失败')
+  }
+}
+
 onMounted(() => {
   if (!enabled) return
   runtime.restore()
+  appearanceRuntime.restore()
   syncValues()
   updateViewport()
   window.addEventListener('resize', updateViewport)
@@ -311,10 +435,11 @@ onBeforeUnmount(() => {
       <div class="visual-token-tuner__content">
         <header class="visual-token-tuner__header">
           <div class="visual-token-tuner__title-block">
-            <strong>视觉 Token 调参 V2</strong>
+            <strong>视觉 Token 调参 V3</strong>
             <span>
               尺寸已调整 {{ dirtyDefinitions.length }} 项 · 颜色已调整
-              {{ dirtyColorDefinitions.length }} 项 · {{ viewportWidth }} ×
+              {{ dirtyColorDefinitions.length }} 项 · 外观已调整
+              {{ dirtyAppearanceDefinitions.length }} 项 · {{ viewportWidth }} ×
               {{ viewportHeight }} · {{ viewportLabel }}
             </span>
           </div>
@@ -359,6 +484,20 @@ onBeforeUnmount(() => {
             @click="mode = 'color'"
           >
             颜色
+          </button>
+          <button
+            class="visual-token-tuner__switch-button"
+            :class="{
+              'visual-token-tuner__switch-button--active':
+                mode === 'appearance',
+            }"
+            type="button"
+            role="tab"
+            :aria-selected="mode === 'appearance'"
+            data-testid="visual-token-tuner-mode-appearance"
+            @click="mode = 'appearance'"
+          >
+            外观
           </button>
         </div>
 
@@ -476,11 +615,15 @@ onBeforeUnmount(() => {
           <footer class="visual-token-tuner__footer">
             <VanButton
               plain
-              :disabled="dirtyDefinitions.length === 0"
+              :disabled="
+                dirtyDefinitions.length === 0 &&
+                dirtyColorDefinitions.length === 0 &&
+                dirtyAppearanceDefinitions.length === 0
+              "
               data-testid="visual-token-tuner-reset-all"
-              @click="resetAll"
+              @click="resetAllTuning"
             >
-              恢复全部尺寸
+              恢复全部调参
             </VanButton>
             <VanButton
               plain
@@ -499,7 +642,7 @@ onBeforeUnmount(() => {
           </footer>
         </template>
 
-        <template v-else>
+        <template v-else-if="mode === 'color'">
           <div
             class="visual-token-tuner__theme-context"
             role="tablist"
@@ -653,6 +796,212 @@ onBeforeUnmount(() => {
             >
               复制颜色 JSON
             </VanButton>
+            <VanButton
+              plain
+              :disabled="
+                dirtyDefinitions.length === 0 &&
+                dirtyColorDefinitions.length === 0 &&
+                dirtyAppearanceDefinitions.length === 0
+              "
+              data-testid="visual-token-tuner-reset-all"
+              @click="resetAllTuning"
+            >
+              恢复全部调参
+            </VanButton>
+          </footer>
+        </template>
+
+        <template v-else>
+          <div
+            v-if="activeAppearanceGroup === 'shadow'"
+            class="visual-token-tuner__theme-context"
+            role="tablist"
+            aria-label="阴影编辑主题"
+          >
+            <button
+              v-for="theme in colorThemes"
+              :key="theme"
+              class="visual-token-tuner__switch-button"
+              :class="{
+                'visual-token-tuner__switch-button--active':
+                  editingAppearanceTheme === theme,
+              }"
+              type="button"
+              role="tab"
+              :aria-selected="editingAppearanceTheme === theme"
+              :data-testid="`visual-token-tuner-appearance-theme-${theme}`"
+              @click="editingAppearanceTheme = theme"
+            >
+              {{ theme === 'light' ? '编辑浅色阴影' : '编辑深色阴影' }}
+            </button>
+          </div>
+
+          <VanTabs
+            v-model:active="activeAppearanceGroup"
+            class="visual-token-tuner__tabs"
+          >
+            <VanTab
+              v-for="group in visualAppearanceTokenTunerGroups"
+              :key="group.key"
+              :name="group.key"
+              :title="group.label"
+            />
+          </VanTabs>
+
+          <div class="visual-token-tuner__parameters">
+            <p class="visual-token-tuner__group-description">
+              {{
+                searchText.trim()
+                  ? `找到 ${filteredAppearanceDefinitions.length} 项外观参数`
+                  : visualAppearanceTokenTunerGroups.find(
+                      (group) => group.key === activeAppearanceGroup,
+                    )?.description
+              }}
+            </p>
+            <p
+              v-if="activeAppearanceGroup === 'shadow'"
+              class="visual-token-tuner__theme-note"
+            >
+              当前仅编辑{{
+                editingAppearanceTheme === 'light' ? '浅色' : '深色'
+              }}阴影；不会修改产品主题设置。
+            </p>
+
+            <p
+              v-if="filteredAppearanceDefinitions.length === 0"
+              class="visual-token-tuner__empty"
+            >
+              没有匹配的参数
+            </p>
+
+            <article
+              v-for="definition in filteredAppearanceDefinitions"
+              :key="definition.key"
+              class="visual-token-tuner__parameter"
+              :data-testid="`visual-token-appearance-${definition.key}`"
+            >
+              <div class="visual-token-tuner__parameter-heading">
+                <label
+                  :for="`visual-token-appearance-number-${definition.key}`"
+                >
+                  {{ definition.label }}
+                </label>
+                <span v-if="isAppearanceDirty(definition)">已修改</span>
+              </div>
+              <p>{{ definition.description }}</p>
+
+              <div class="visual-token-tuner__control-row">
+                <input
+                  :id="`visual-token-appearance-range-${definition.key}`"
+                  :aria-label="`${definition.label}滑块`"
+                  :value="appearanceValueOf(definition)"
+                  :min="definition.min"
+                  :max="definition.max"
+                  :step="definition.step"
+                  type="range"
+                  :data-testid="`visual-token-appearance-range-${definition.key}`"
+                  @input="onAppearanceRangeInput(definition, $event)"
+                />
+                <input
+                  :id="`visual-token-appearance-number-${definition.key}`"
+                  :aria-label="`${definition.label}数值输入`"
+                  :value="appearanceValueOf(definition)"
+                  :min="definition.min"
+                  :max="definition.max"
+                  :step="definition.step"
+                  type="number"
+                  inputmode="decimal"
+                  :data-testid="`visual-token-appearance-number-${definition.key}`"
+                  @input="onAppearanceNumberInput(definition, $event)"
+                />
+                <span class="visual-token-tuner__unit">
+                  {{ definition.unit || '—' }}
+                </span>
+                <VanButton
+                  size="small"
+                  plain
+                  :disabled="!isAppearanceDirty(definition)"
+                  :data-testid="`visual-token-appearance-reset-${definition.key}`"
+                  @click="resetAppearanceItem(definition)"
+                >
+                  恢复
+                </VanButton>
+              </div>
+
+              <div class="visual-token-tuner__value-summary">
+                <span>
+                  默认
+                  {{
+                    formatAppearanceValue(
+                      definition,
+                      appearanceRuntime.readBaseline(definition),
+                    )
+                  }}
+                </span>
+                <span>
+                  当前
+                  {{
+                    formatAppearanceValue(
+                      definition,
+                      appearanceValueOf(definition),
+                    )
+                  }}
+                </span>
+              </div>
+            </article>
+          </div>
+
+          <footer
+            class="visual-token-tuner__footer visual-token-tuner__footer--appearance"
+          >
+            <VanButton
+              plain
+              :disabled="
+                activeAppearanceGroup === 'shadow'
+                  ? currentAppearanceThemeDirtyDefinitions.length === 0
+                  : !dirtyAppearanceDefinitions.some(
+                      (item) => item.group === activeAppearanceGroup,
+                    )
+              "
+              data-testid="visual-token-tuner-reset-appearance-group"
+              @click="resetAppearanceGroup"
+            >
+              恢复本组
+            </VanButton>
+            <VanButton
+              plain
+              :disabled="dirtyAppearanceDefinitions.length === 0"
+              data-testid="visual-token-tuner-reset-stage3b"
+              @click="resetStage3BAppearance"
+            >
+              恢复 Stage 3B
+            </VanButton>
+            <VanButton
+              plain
+              data-testid="visual-token-tuner-copy-appearance-css"
+              @click="copyAppearanceCssVariables"
+            >
+              复制外观 CSS
+            </VanButton>
+            <VanButton
+              plain
+              data-testid="visual-token-tuner-copy-appearance-json"
+              @click="copyAppearanceJson"
+            >
+              复制外观 JSON
+            </VanButton>
+            <VanButton
+              plain
+              :disabled="
+                dirtyDefinitions.length === 0 &&
+                dirtyColorDefinitions.length === 0 &&
+                dirtyAppearanceDefinitions.length === 0
+              "
+              data-testid="visual-token-tuner-reset-all"
+              @click="resetAllTuning"
+            >
+              恢复全部调参
+            </VanButton>
           </footer>
         </template>
       </div>
@@ -761,8 +1110,15 @@ onBeforeUnmount(() => {
 .visual-token-tuner__theme-context {
   display: grid;
   padding: var(--layout-content-gap) var(--space-3) 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--layout-compact-gap);
+}
+
+.visual-token-tuner__mode-switch {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.visual-token-tuner__theme-context {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .visual-token-tuner__switch-button {
@@ -923,6 +1279,10 @@ onBeforeUnmount(() => {
 }
 
 .visual-token-tuner__footer--color {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.visual-token-tuner__footer--appearance {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 

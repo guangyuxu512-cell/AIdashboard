@@ -11,9 +11,10 @@ import './app/styles/index.css'
 
 async function bootstrap(): Promise<void> {
   if (import.meta.env.DEV && import.meta.env.VITE_VISUAL_TUNER !== 'false') {
-    const { initializeVisualTokenTuner } =
+    const { initializeVisualAppearanceTuner, initializeVisualTokenTuner } =
       await import('@/dev/visual-token-tuner')
     initializeVisualTokenTuner()
+    initializeVisualAppearanceTuner()
   }
 
   await configureMobileDataSources()

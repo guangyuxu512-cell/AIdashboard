@@ -319,6 +319,7 @@ export interface VisualTokenTunerRuntime {
   setValue(definition: VisualTokenDefinition, value: number): void
   resetValue(definition: VisualTokenDefinition): void
   resetAll(): void
+  resetAllOverrides(): void
   readColorBaseline(definition: VisualColorTokenDefinition): string
   readColorValue(definition: VisualColorTokenDefinition): string
   readColorValues(): VisualTokenColorValues
@@ -540,6 +541,15 @@ export function createVisualTokenTunerRuntime(
     persist()
   }
 
+  /** 一次性清理 V2 尺寸与颜色，避免跨窗口同步出现中间状态。 */
+  function resetAllOverrides(): void {
+    if (!isAvailable || !root) return
+    clearRuntimeDimensionOverrides()
+    for (const theme of visualColorThemes) colorOverrides[theme].clear()
+    applyColorRuntimeOverrides()
+    persist()
+  }
+
   function setColorValue(
     definition: VisualColorTokenDefinition,
     value: string,
@@ -690,6 +700,7 @@ export function createVisualTokenTunerRuntime(
     setValue,
     resetValue,
     resetAll,
+    resetAllOverrides,
     readColorBaseline,
     readColorValue,
     readColorValues,

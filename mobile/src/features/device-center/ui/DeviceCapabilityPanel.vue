@@ -308,8 +308,8 @@ function formatSkillVersion(version: string): string | null {
 .device-capability-panel__refresh::before {
   inset: calc((var(--touch-target-min) - var(--control-height-compact)) / 2);
   background: var(--bg-subtle);
-  border: var(--border-width) solid var(--border-subtle);
-  box-shadow: var(--shadow-card-pressed);
+  border: var(--border-width) solid transparent;
+  box-shadow: var(--appearance-border-control), var(--shadow-icon-button);
 }
 
 .device-capability-panel__refresh :deep(.van-icon) {

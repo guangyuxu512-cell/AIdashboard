@@ -31,7 +31,7 @@
   --van-line-height-lg: var(--line-height-label);
   --van-radius-sm: var(--radius-control);
   --van-radius-md: var(--radius-control);
-  --van-radius-lg: var(--radius-card);
+  --van-radius-lg: var(--radius-panel);
   --van-radius-max: var(--radius-round);
   --van-duration-fast: var(--duration-fast);
   --van-duration-base: var(--duration-normal);
@@ -97,6 +97,7 @@
   --van-overlay-background: var(--bg-overlay);
   --van-popup-background: var(--bg-surface-raised);
   --van-popup-round-radius: var(--radius-overlay);
+  --van-dialog-radius: var(--radius-overlay);
 
   /* Vant Cell（单元格）：控制详情“更多信息”与筛选列表的字体、行高和内边距。 */
   --van-cell-font-size: var(--font-size-body);
@@ -111,7 +112,7 @@
   --van-cell-value-color: var(--text-secondary);
   --van-cell-right-icon-color: var(--text-tertiary);
   --van-cell-group-background: var(--bg-surface);
-  --van-cell-group-inset-radius: var(--radius-card);
+  --van-cell-group-inset-radius: var(--radius-panel);
 
   --van-collapse-item-content-padding: var(--space-3) var(--space-4);
   --van-collapse-item-content-text-color: var(--text-secondary);
@@ -122,8 +123,8 @@
     var(--layout-content-gap);
   --van-tag-font-size: var(--font-size-caption);
   --van-tag-line-height: var(--line-height-caption);
-  --van-tag-radius: var(--radius-round);
-  --van-tag-round-radius: var(--radius-round);
+  --van-tag-radius: var(--radius-tag);
+  --van-tag-round-radius: var(--radius-tag);
   --van-tag-default-color: var(--status-neutral);
   --van-tag-primary-color: var(--color-primary);
   --van-tag-success-color: var(--status-success);
@@ -211,8 +212,9 @@
 .van-collapse {
   overflow: hidden;
   background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-surface);
 }
 
 .van-button {
@@ -224,7 +226,8 @@
 }
 
 .van-tag {
-  border: var(--border-width) solid var(--border-subtle);
+  border: var(--border-width) solid transparent;
+  box-shadow: var(--appearance-border-control);
   font-weight: var(--font-weight-medium);
 }
 
@@ -274,7 +277,7 @@
 }
 
 .van-popup {
-  box-shadow: var(--shadow-overlay);
+  box-shadow: var(--appearance-border-overlay), var(--shadow-overlay);
 }
 
 .van-theme-dark .van-empty {
@@ -293,8 +296,8 @@
   padding: 0 var(--layout-compact-gap);
   background: var(--bg-subtle);
   border: 0;
-  border-radius: var(--radius-card);
-  box-shadow: inset 0 0 0 var(--border-width) var(--border-subtle);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-control);
 }
 
 .mobile-segmented-tabs .van-tab {

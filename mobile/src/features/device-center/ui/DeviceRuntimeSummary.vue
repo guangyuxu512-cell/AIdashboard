@@ -78,7 +78,7 @@ const yingdaoVersion = computed(
 
 <template>
   <section
-    class="device-runtime-summary mobile-card"
+    class="device-runtime-summary mobile-card mobile-panel-surface"
     data-testid="device-detail"
     aria-label="设备运行摘要"
   >

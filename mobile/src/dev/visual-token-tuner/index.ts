@@ -14,8 +14,19 @@ export {
   type VisualTokenValues,
 } from './visual-token-runtime'
 export {
+  VISUAL_APPEARANCE_TUNER_STORAGE_KEY,
+  createVisualAppearanceTunerRuntime,
+  initializeVisualAppearanceTuner,
+  type VisualAppearanceRuntimeOptions,
+  type VisualAppearanceTunerRuntime,
+  type VisualAppearanceValues,
+} from './visual-appearance-runtime'
+export {
+  findVisualAppearanceTokenDefinition,
   findVisualColorTokenDefinition,
   findVisualTokenDefinition,
+  visualAppearanceTokenRegistry,
+  visualAppearanceTokenTunerGroups,
   visualColorTokenRegistry,
   visualColorTokenTunerGroups,
   visualTokenRegistry,
@@ -24,6 +35,9 @@ export {
   type VisualColorTokenDefinition,
   type VisualColorTokenGroup,
   type VisualColorTokenGroupKey,
+  type VisualAppearanceTokenDefinition,
+  type VisualAppearanceTokenGroup,
+  type VisualAppearanceTokenGroupKey,
   type VisualTokenDefinition,
   type VisualTokenGroup,
   type VisualTokenGroupKey,

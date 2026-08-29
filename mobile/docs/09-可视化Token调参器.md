@@ -1,4 +1,4 @@
-# Visual Token Tuner V2（可视化 Token 调参器）
+# Visual Token Tuner V3（可视化 Token 调参器）
 
 ## 用途、加载条件与优先级
 
@@ -9,97 +9,105 @@ LocalStorage，也不会向根元素或样式表注入任何覆盖。
 本工具只帮助观察和临时覆盖已经登记的 Token。项目的 [`AGENTS.md`](../AGENTS.md)、
 [`02-设计系统.md`](./02-设计系统.md)、[`08-Stage-2手动微调索引.md`](./08-Stage-2手动微调索引.md)
 以及 Frozen Contract（冻结契约）优先级更高。调参器不能修改 DOM、路由、导航、滚动约定、业务 Contract、
-Radius、Border Width / Style、Shadow、最终 Icon、Press 或 Motion。
+API、DTO、Store 或 Query。
 
-## V2 的双通道能力
+Stage 1 Anatomy / Hierarchy / Navigation / Scroll Contract 与 Stage 2 Geometry 全部 Frozen；Stage 3A 的
+Light / Dark Semantic Color Token 也全部 Frozen。V3 的外观通道只能调 Radius、可见 Border Width / Presence
+与 Shadow 参数；不得调 Color、Surface、Typography、Spacing、Height、Width、Padding、Gap、Icon、Control Size、
+Touch Target、Press、Motion、Gradient、Glass 或 Final Icon。
 
-V2 在 V1 的尺寸调节基础上增量增加颜色调节：
+## V3 的三通道能力
 
-| 通道 | 分组                                                            | 可调内容                                                | 不可调内容                                            |
-| ---- | --------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------- |
-| 尺寸 | Card、Summary、Runtime、Capability、Global、Control、Typography | Stage 2 已登记的语义尺寸 Token                          | 原子 `--space-*`、结构、路由、滚动、Stage 2 未登记值  |
-| 颜色 | 颜色与表面、文字、状态、选中                                    | `tokens.css` 中登记的 Light / Dark Semantic Color Token | PC Token、Page 私有颜色、Gradient、Shadow、Final Icon |
+V3 保留 V2 的尺寸与颜色通道，并增加互相隔离的“外观”通道：
 
-“尺寸”和“颜色”的 Dirty Count（已修改数量）分开显示。尺寸“恢复全部尺寸”仅清除尺寸 Runtime Override；
-颜色“恢复本主题 / 恢复全部颜色”仅清除颜色 Override。因此 Stage 3A 的颜色试验不会抹掉已有的 Stage 2 尺寸试验，
-反之亦然。
+| 通道 | 分组                                                            | 可调内容                                                                                                          | 不可调内容                                              |
+| ---- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 尺寸 | Card、Summary、Runtime、Capability、Global、Control、Typography | Stage 2 已登记的语义尺寸 Token                                                                                    | 原子 `--space-*`、结构、路由、滚动与未登记尺寸          |
+| 颜色 | Surface、Text、Status、Selected                                 | 已登记的 Light / Dark Semantic Color Token                                                                        | PC Token、Page 私有颜色、Gradient、Shadow、Final Icon   |
+| 外观 | Radius、Border、Shadow                                          | Card / Panel / Control / Tag / Popup Radius；可见内描边宽度；Card / Raised / Popup 的 X、Y、Blur、Spread、Opacity | Color、Surface、物理 Box Model、Press、Motion、最终图标 |
 
-颜色 Registry 只保存中文语义、主题、说明与对比度目标；每个颜色项的“默认”值由运行时从已加载的
-`tokens.css` 读取。它不会在 Registry 再维护一份 Hex，确保 `tokens.css` 是 Mobile 颜色唯一事实来源。
-一套语义模板会按 Light / Dark 生成条目，避免维护两段重复的主题 Registry。
+Tuner 顶部始终显示“尺寸已调整 / 颜色已调整 / 外观已调整”的 Dirty Count（已修改数量），让用户知道哪些值
+仍只是本地开发态临时值。Radius 与可见 Border 为共用 Token；Shadow 通过“编辑浅色阴影 / 编辑深色阴影”切换，
+不会改变产品 Theme Store。
 
-## Light / Dark 编辑上下文
+### 外观语义与范围
 
-颜色页提供“编辑浅色 / 编辑深色”。这个选择只决定当前正在编辑哪一套 Token，不调用 Theme Store，也不改变用户
-正在预览的 App Theme。可在真实预览页使用正式 Theme Action 切换 Light / Dark，以确认每套覆盖的实际效果。
+| 外观组 | 语义 Token                                                                                                    | 影响范围                                                                   |
+| ------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Radius | `--radius-card`、`--radius-panel`、`--radius-control`、`--radius-tag`、`--radius-overlay`                     | Card、Panel、紧凑 Control、Tag、Popup / Sheet / Dialog                     |
+| Border | `--appearance-border-surface-width`、`--appearance-border-control-width`、`--appearance-border-overlay-width` | 通过 inset visual border 控制可见边界，不改变 Stage 2 的物理 1px Box Model |
+| Shadow | `--shadow-card-*`、`--shadow-raised-*`、`--shadow-overlay-*`                                                  | Light / Dark 独立的 Content Card、Raised Icon Control、Popup / Sheet 层级  |
 
-颜色 Runtime Override 以主题隔离方式注入：
-
-```css
-:root[data-theme='light'] {
-  --bg-app: #f4f6f8;
-}
-
-:root[data-theme='dark'] {
-  --bg-app: #101820;
-}
-```
-
-因此同一 Token 在 Light 与 Dark 可以同时拥有不同的临时值，切换 App Theme 时不会串色。V2 的颜色输入只接受
-`#RRGGBB`；每项提供颜色选择器、HEX 输入、单项恢复、默认值和当前值。文本与状态前景会在已登记的目标 Surface
-上给出简单的对比度提醒，提醒用于开发期筛查，不替代真实页面的 Light / Dark 人工验收。
+Shadow Color 不开放任意输入；它继续使用 `tokens.css` 内的中性色组合，从而不会触碰 Stage 3A Frozen 的 Surface、
+Border Color、Text 或 Status。Capability Row、Toolbar、Header、Bottom Navigation Item 与普通 Tag 不因 Tuner
+获得私有 Shadow。
 
 ## 如何开启与调节
 
 1. 在 `mobile` 目录运行 `pnpm dev` 或 `pnpm dev:visual`。
-2. 正式预览页右下角出现小型“调参”入口；点击后打开独立的 `/#/__visual-tuner` 开发窗口，预览页不会被 Sheet 或
-   Popup 遮挡。
-3. 独立窗口不渲染产品 Header、Bottom Navigation 或业务页面；它只承载 Token 调节界面。先选“尺寸”或“颜色”，
-   再选择具体分组；颜色通道额外选择 Light / Dark 编辑上下文。
-4. Slider、数值输入或颜色输入会立即修改开发态 Runtime Override，并通过 LocalStorage 事件同步到已打开的真实预览页。
-   预览页无需刷新。
-5. 关闭独立窗口不会清除当前临时值；可继续完整查看 Device / Task 真实预览页。
+2. 真实预览页右下角出现小型“调参”入口；点击后在独立 `/#/__visual-tuner` 开发窗口打开，预览页不会被 Sheet
+   或 Popup 遮挡。
+3. 选择“尺寸 / 颜色 / 外观”。外观通道可选择“圆角 / 边界 / 阴影”；阴影额外选择浅色或深色编辑上下文。
+4. Slider、数值输入或颜色输入立即修改开发态 Runtime Override，并通过 LocalStorage 事件同步到已打开的真实
+   Device / Task 预览页；无需点击保存或刷新页面。
+5. 关闭独立窗口不会清除临时值。要提交正式值，必须由 Codex 回写 `tokens.css`、相关 Mapping、Registry 默认值、
+   文档和测试后再清除 Override。
 
-修改 Capability Row 或 Panel Height 后，必须人工确认仍完整显示 5 行且第 6 行才开始内部滚动。修改颜色后，至少在
-390px Light / Dark 的 Device List、Device Detail、Task List 与 Task Detail 中检查 Surface 层级、Text、Status、
-Header、Bottom Navigation 与无横向溢出。
+调 Radius / Border 后，应确认 DeviceCard / TaskCard、MobileSummaryStrip、DeviceRuntimeSummary、CapabilityPanel、
+Selector / Filter、Tag 与 Popup / Sheet 只改变外观而不改变高度、Padding、Gap、Touch Target 或滚动。调 Shadow 后，
+至少在 390px Light / Dark 的 Device List、Device Detail、Task List、Task Detail 观察 Surface 层级；不得借重阴影
+制造 Card 海、发光、灰边或 Neumorphism。
 
-## 临时保存、恢复与正式落盘
+## 临时保存、隔离与恢复
 
-开发态临时值只保存到浏览器 LocalStorage：`control-center.mobile.visual-token-tuner-v1`。V2 的记录结构为：
+V1/V2 与 V3 使用不同 LocalStorage Key，避免跨阶段污染：
 
-```json
-{
-  "version": 2,
-  "dimensions": { "--layout-card-padding-y": "16px" },
-  "colors": {
-    "light": { "--bg-app": "#f4f6f8" },
-    "dark": { "--bg-app": "#101820" }
-  }
-}
-```
+| 阶段          | Key                                           | 数据                                                                   |
+| ------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
+| V1 / V2       | `control-center.mobile.visual-token-tuner-v1` | `version: 2`，`dimensions` + 按 Light / Dark 分组的 `colors`           |
+| V3 Appearance | `control-center.mobile.visual-token-tuner-v3` | `version: 3`，共用 `common`（Radius / Border）+ 按主题分组的 `shadows` |
 
-旧 V1 的扁平尺寸记录仍可读取，并会在下一次有效保存时升级为 V2；历史 `--space-1` / `--space-2` 覆盖会继续被安全
-忽略和清理，不能重新注入页面。颜色“复制 CSS”输出独立的 Light / Dark 选择器；“复制 JSON”输出分主题对象，
-不会混成一套无主题颜色。
+V3 Runtime CSS 使用独立 `<style>` 节点；Shadow Override 以 `:root[data-theme='light']` 与
+`:root[data-theme='dark']` 分别注入。因此浅色 Shadow 不污染深色，反之亦然；Radius 与 Border 仍只维护一份。
+旧 V1/V2 数据不能被 V3 读取、升级或写入。
 
-浏览器不会写入 `tokens.css`。需要正式采用的值，遵循：
+恢复行为固定如下：
+
+- **恢复单项**：只删除当前一个 Stage 2 / 3A / 3B 临时项。
+- **恢复本组**：恢复当前尺寸组、当前颜色主题或当前外观组；Shadow 只恢复当前编辑主题。
+- **恢复 Stage 3B**：只删除 V3 的 Radius / Border / Shadow Override，不触碰 V2 尺寸或颜色 Override。
+- **恢复全部调参**：清除所有三个开发态 Override 通道；它仍只清理 LocalStorage / Runtime CSS，绝不改写
+  Stage 1、Stage 2、Stage 3A 或正式 `tokens.css` 的基线。
+
+在刷新后，仍存在的 Development Override 会恢复；值等于已加载 `tokens.css` 基线时会自动清理，确保 Dirty Count
+回到 `0`。Production Build 不会初始化任一 Runtime、读取 LocalStorage 或显示调参入口。
+
+## 导出与正式固化
+
+“复制尺寸 CSS / JSON”“复制颜色 CSS / JSON”和“复制外观 CSS / JSON”分别只导出所在通道。外观导出包含共用
+Radius / Border 与按 Light / Dark 分组的 Shadow，不混入无关的尺寸或颜色。
+
+浏览器不会写入 `tokens.css`。正式采用任何值必须遵循：
 
 ```text
 实时调节并人工确认
 ↓
-复制尺寸 / 颜色 CSS 或 JSON
+复制对应通道 CSS 或 JSON
 ↓
-由 Codex 同步 tokens.css、尺寸 Registry defaultValue、颜色 Registry 的语义登记与相关文档
+由 Codex 同步 tokens.css、Vant / Shared Mapping、Registry defaultValue 与文档
 ↓
 清除对应 Runtime Override
 ↓
 按 04-开发验证规范执行验证、Review 与 Commit
 ```
 
-正式固化后，重新打开调参器时，尺寸和颜色的默认值与当前值都必须等于正式 Token，对应 Dirty Count 必须为 `0`。
-调参器不替代页面级视觉验收；仍需在 360 / 375 / 390 / 430px、Light / Dark 下检查 Safe Area、45px Touch
-Target、横向溢出、Capability 内部滚动和 Frozen Contract。
+本次 Stage 状态为：Stage 1 Frozen、Stage 2 Frozen、Stage 3A Frozen、Stage 3B
+**Completed / Candidate for Visual Review（已完成 / 待人工视觉审查）**。在用户明确确认前，Tuner V3 只提供候选
+调参能力；不得自动冻结 Stage 3B，也不得开始 Stage 3C Final Icons 或 Stage 4 Press / Motion。
 
-Stage 3A 的颜色基线现已 Frozen（已冻结）：Tuner V2 继续作为开发期评审工具，但任何正式颜色变更都必须先显式
-Unfreeze（解冻）并重新完成页面级视觉验收。
+## 视觉验收
+
+每次显式外观 Review 至少检查 360 / 375 / 390 / 430px、Light / Dark、Safe Area、45px Touch Target、Console Error、
+Horizontal Overflow 与 Capability 完整 5 行 / 第 6 行内部滚动。重点人工基准为 390 × 844 的 Device List、Device
+Detail、Task List、Task Detail；Before / Candidate 截图只能作为非提交的审查证据，不能覆盖已冻结的 Stage 2 / 3A
+基线证据。

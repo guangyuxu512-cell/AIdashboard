@@ -7,7 +7,7 @@ export type VisualTokenGroupKey =
   | 'control'
   | 'typography'
 
-export type VisualTokenUnit = 'px' | ''
+export type VisualTokenUnit = 'px' | '%' | ''
 
 export type VisualColorTokenGroupKey =
   'surface' | 'text' | 'status' | 'selected'
@@ -54,6 +54,32 @@ export interface VisualColorTokenDefinition {
   theme: VisualColorTheme
   description: string
   contrastTarget?: VisualColorContrastTarget
+}
+
+export type VisualAppearanceTokenGroupKey = 'radius' | 'border' | 'shadow'
+
+export interface VisualAppearanceTokenGroup {
+  key: VisualAppearanceTokenGroupKey
+  label: string
+  description: string
+}
+
+/**
+ * Stage 3B Appearance Token 只描述可见外观，不参与 Stage 2 尺寸、间距或字体基线。
+ * shadow Token 以主题隔离；Radius 与视觉 Border 在 Light / Dark 间共用。
+ */
+export interface VisualAppearanceTokenDefinition {
+  key: string
+  cssVar: `--${string}`
+  label: string
+  group: VisualAppearanceTokenGroupKey
+  defaultValue: number
+  min: number
+  max: number
+  step: number
+  unit: VisualTokenUnit
+  description: string
+  theme?: VisualColorTheme
 }
 
 /**
@@ -129,6 +155,28 @@ export const visualColorTokenTunerGroups: readonly VisualColorTokenGroup[] = [
     description: '品牌、选中、悬停与按压的反馈表面；不改变交互契约。',
   },
 ]
+
+export const visualAppearanceTokenTunerGroups: readonly VisualAppearanceTokenGroup[] =
+  [
+    {
+      key: 'radius',
+      label: '圆角',
+      description:
+        'Card、Panel、Control、Tag 与 Popup / Sheet 共用语义角色；不改变任何组件尺寸。',
+    },
+    {
+      key: 'border',
+      label: '边界',
+      description:
+        '通过内描边控制可见宽度，不改变已冻结的 Box Model、Padding 或可点击热区。',
+    },
+    {
+      key: 'shadow',
+      label: '阴影',
+      description:
+        'Card、Raised Control、Popup / Sheet 的层级阴影；Light 与 Dark 独立保存。',
+    },
+  ]
 
 export const visualTokenRegistry: readonly VisualTokenDefinition[] = [
   {
@@ -763,6 +811,501 @@ export const visualTokenRegistry: readonly VisualTokenDefinition[] = [
   },
 ]
 
+/**
+ * Stage 3B 外观候选值。默认值与 tokens.css 的正式 Appearance Baseline 一致；
+ * Runtime 会优先从已加载的 tokens.css 读取基线，避免把 Registry 当作第二个 Token 来源。
+ */
+export const visualAppearanceTokenRegistry: readonly VisualAppearanceTokenDefinition[] =
+  [
+    {
+      key: 'radius-card',
+      cssVar: '--radius-card',
+      label: '内容卡片圆角',
+      group: 'radius',
+      defaultValue: 18,
+      min: 12,
+      max: 24,
+      step: 1,
+      unit: 'px',
+      description: 'DeviceCard、TaskCard 与摘要 Card 的统一圆角。',
+    },
+    {
+      key: 'radius-panel',
+      cssVar: '--radius-panel',
+      label: '内容面板圆角',
+      group: 'radius',
+      defaultValue: 18,
+      min: 12,
+      max: 24,
+      step: 1,
+      unit: 'px',
+      description: 'Summary、Runtime、Capability 与详情 Section 的统一圆角。',
+    },
+    {
+      key: 'radius-control',
+      cssVar: '--radius-control',
+      label: '控件圆角',
+      group: 'radius',
+      defaultValue: 12,
+      min: 8,
+      max: 18,
+      step: 1,
+      unit: 'px',
+      description: 'Header Icon、Selector、Button 与输入控件的统一圆角。',
+    },
+    {
+      key: 'radius-tag',
+      cssVar: '--radius-tag',
+      label: '标签圆角',
+      group: 'radius',
+      defaultValue: 999,
+      min: 12,
+      max: 999,
+      step: 1,
+      unit: 'px',
+      description: '状态 Tag 与 Meta Tag 的独立圆角角色；999px 保持胶囊形。',
+    },
+    {
+      key: 'radius-overlay',
+      cssVar: '--radius-overlay',
+      label: '弹层圆角',
+      group: 'radius',
+      defaultValue: 22,
+      min: 16,
+      max: 32,
+      step: 1,
+      unit: 'px',
+      description: 'Popup、Sheet 与 Dialog 的顶部圆角，不改变弹层高度。',
+    },
+    {
+      key: 'border-surface-width',
+      cssVar: '--appearance-border-surface-width',
+      label: 'Surface 可见边界',
+      group: 'border',
+      defaultValue: 1,
+      min: 0,
+      max: 2,
+      step: 1,
+      unit: 'px',
+      description: 'Card 与 Panel 的内描边宽度；0px 为无可见边界。',
+    },
+    {
+      key: 'border-control-width',
+      cssVar: '--appearance-border-control-width',
+      label: 'Control 可见边界',
+      group: 'border',
+      defaultValue: 1,
+      min: 0,
+      max: 2,
+      step: 1,
+      unit: 'px',
+      description: '紧凑 Selector、Tag 与 Icon Control 的内描边宽度。',
+    },
+    {
+      key: 'border-overlay-width',
+      cssVar: '--appearance-border-overlay-width',
+      label: 'Popup / Sheet 可见边界',
+      group: 'border',
+      defaultValue: 0,
+      min: 0,
+      max: 2,
+      step: 1,
+      unit: 'px',
+      description:
+        'Popup、Sheet 与 Dialog 的内描边宽度；默认由 Surface 与阴影区分层级。',
+    },
+    {
+      key: 'light-shadow-card-offset-x',
+      cssVar: '--shadow-card-offset-x',
+      label: 'Card 水平偏移',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Content Card 的主阴影水平偏移。',
+    },
+    {
+      key: 'light-shadow-card-offset-y',
+      cssVar: '--shadow-card-offset-y',
+      label: 'Card 垂直偏移',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 8,
+      min: 0,
+      max: 24,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Content Card 的主阴影垂直偏移。',
+    },
+    {
+      key: 'light-shadow-card-blur',
+      cssVar: '--shadow-card-blur',
+      label: 'Card 模糊',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 24,
+      min: 0,
+      max: 48,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Content Card 的主阴影模糊半径。',
+    },
+    {
+      key: 'light-shadow-card-spread',
+      cssVar: '--shadow-card-spread',
+      label: 'Card 扩散',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Content Card 的主阴影扩散。',
+    },
+    {
+      key: 'light-shadow-card-opacity',
+      cssVar: '--shadow-card-opacity',
+      label: 'Card 不透明度',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 5,
+      min: 0,
+      max: 24,
+      step: 1,
+      unit: '%',
+      description: '浅色主题 Content Card 主阴影的不透明度。',
+    },
+    {
+      key: 'light-shadow-raised-offset-x',
+      cssVar: '--shadow-raised-offset-x',
+      label: 'Raised 水平偏移',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Icon Control 的主阴影水平偏移。',
+    },
+    {
+      key: 'light-shadow-raised-offset-y',
+      cssVar: '--shadow-raised-offset-y',
+      label: 'Raised 垂直偏移',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 5,
+      min: 0,
+      max: 20,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Icon Control 的主阴影垂直偏移。',
+    },
+    {
+      key: 'light-shadow-raised-blur',
+      cssVar: '--shadow-raised-blur',
+      label: 'Raised 模糊',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 14,
+      min: 0,
+      max: 36,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Icon Control 的主阴影模糊半径。',
+    },
+    {
+      key: 'light-shadow-raised-spread',
+      cssVar: '--shadow-raised-spread',
+      label: 'Raised 扩散',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 0,
+      min: -6,
+      max: 6,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Icon Control 的主阴影扩散。',
+    },
+    {
+      key: 'light-shadow-raised-opacity',
+      cssVar: '--shadow-raised-opacity',
+      label: 'Raised 不透明度',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 7,
+      min: 0,
+      max: 24,
+      step: 1,
+      unit: '%',
+      description: '浅色主题 Icon Control 主阴影的不透明度。',
+    },
+    {
+      key: 'light-shadow-overlay-offset-x',
+      cssVar: '--shadow-overlay-offset-x',
+      label: 'Popup / Sheet 水平偏移',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Popup / Sheet 阴影水平偏移。',
+    },
+    {
+      key: 'light-shadow-overlay-offset-y',
+      cssVar: '--shadow-overlay-offset-y',
+      label: 'Popup / Sheet 垂直偏移',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 18,
+      min: 0,
+      max: 32,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Popup / Sheet 阴影垂直偏移。',
+    },
+    {
+      key: 'light-shadow-overlay-blur',
+      cssVar: '--shadow-overlay-blur',
+      label: 'Popup / Sheet 模糊',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 48,
+      min: 0,
+      max: 72,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Popup / Sheet 阴影模糊半径。',
+    },
+    {
+      key: 'light-shadow-overlay-spread',
+      cssVar: '--shadow-overlay-spread',
+      label: 'Popup / Sheet 扩散',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '浅色主题 Popup / Sheet 阴影扩散。',
+    },
+    {
+      key: 'light-shadow-overlay-opacity',
+      cssVar: '--shadow-overlay-opacity',
+      label: 'Popup / Sheet 不透明度',
+      group: 'shadow',
+      theme: 'light',
+      defaultValue: 18,
+      min: 0,
+      max: 50,
+      step: 1,
+      unit: '%',
+      description: '浅色主题 Popup / Sheet 阴影不透明度。',
+    },
+    {
+      key: 'dark-shadow-card-offset-x',
+      cssVar: '--shadow-card-offset-x',
+      label: 'Card 水平偏移',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Content Card 的主阴影水平偏移。',
+    },
+    {
+      key: 'dark-shadow-card-offset-y',
+      cssVar: '--shadow-card-offset-y',
+      label: 'Card 垂直偏移',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 10,
+      min: 0,
+      max: 24,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Content Card 的主阴影垂直偏移。',
+    },
+    {
+      key: 'dark-shadow-card-blur',
+      cssVar: '--shadow-card-blur',
+      label: 'Card 模糊',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 28,
+      min: 0,
+      max: 48,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Content Card 的主阴影模糊半径。',
+    },
+    {
+      key: 'dark-shadow-card-spread',
+      cssVar: '--shadow-card-spread',
+      label: 'Card 扩散',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Content Card 的主阴影扩散。',
+    },
+    {
+      key: 'dark-shadow-card-opacity',
+      cssVar: '--shadow-card-opacity',
+      label: 'Card 不透明度',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 16,
+      min: 0,
+      max: 50,
+      step: 1,
+      unit: '%',
+      description: '深色主题 Content Card 主阴影的不透明度。',
+    },
+    {
+      key: 'dark-shadow-raised-offset-x',
+      cssVar: '--shadow-raised-offset-x',
+      label: 'Raised 水平偏移',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Icon Control 的主阴影水平偏移。',
+    },
+    {
+      key: 'dark-shadow-raised-offset-y',
+      cssVar: '--shadow-raised-offset-y',
+      label: 'Raised 垂直偏移',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 5,
+      min: 0,
+      max: 20,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Icon Control 的主阴影垂直偏移。',
+    },
+    {
+      key: 'dark-shadow-raised-blur',
+      cssVar: '--shadow-raised-blur',
+      label: 'Raised 模糊',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 14,
+      min: 0,
+      max: 36,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Icon Control 的主阴影模糊半径。',
+    },
+    {
+      key: 'dark-shadow-raised-spread',
+      cssVar: '--shadow-raised-spread',
+      label: 'Raised 扩散',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 0,
+      min: -6,
+      max: 6,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Icon Control 的主阴影扩散。',
+    },
+    {
+      key: 'dark-shadow-raised-opacity',
+      cssVar: '--shadow-raised-opacity',
+      label: 'Raised 不透明度',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 20,
+      min: 0,
+      max: 50,
+      step: 1,
+      unit: '%',
+      description: '深色主题 Icon Control 主阴影的不透明度。',
+    },
+    {
+      key: 'dark-shadow-overlay-offset-x',
+      cssVar: '--shadow-overlay-offset-x',
+      label: 'Popup / Sheet 水平偏移',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Popup / Sheet 阴影水平偏移。',
+    },
+    {
+      key: 'dark-shadow-overlay-offset-y',
+      cssVar: '--shadow-overlay-offset-y',
+      label: 'Popup / Sheet 垂直偏移',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 22,
+      min: 0,
+      max: 40,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Popup / Sheet 阴影垂直偏移。',
+    },
+    {
+      key: 'dark-shadow-overlay-blur',
+      cssVar: '--shadow-overlay-blur',
+      label: 'Popup / Sheet 模糊',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 56,
+      min: 0,
+      max: 80,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Popup / Sheet 阴影模糊半径。',
+    },
+    {
+      key: 'dark-shadow-overlay-spread',
+      cssVar: '--shadow-overlay-spread',
+      label: 'Popup / Sheet 扩散',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 0,
+      min: -8,
+      max: 8,
+      step: 1,
+      unit: 'px',
+      description: '深色主题 Popup / Sheet 阴影扩散。',
+    },
+    {
+      key: 'dark-shadow-overlay-opacity',
+      cssVar: '--shadow-overlay-opacity',
+      label: 'Popup / Sheet 不透明度',
+      group: 'shadow',
+      theme: 'dark',
+      defaultValue: 46,
+      min: 0,
+      max: 70,
+      step: 1,
+      unit: '%',
+      description: '深色主题 Popup / Sheet 阴影不透明度。',
+    },
+  ]
+
 const visualColorThemeLabels: Record<VisualColorTheme, string> = {
   light: '浅色',
   dark: '深色',
@@ -1023,6 +1566,14 @@ export function findVisualTokenDefinition(
   key: string,
 ): VisualTokenDefinition | undefined {
   return visualTokenRegistry.find((definition) => definition.key === key)
+}
+
+export function findVisualAppearanceTokenDefinition(
+  key: string,
+): VisualAppearanceTokenDefinition | undefined {
+  return visualAppearanceTokenRegistry.find(
+    (definition) => definition.key === key,
+  )
 }
 
 export function findVisualColorTokenDefinition(

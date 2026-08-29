@@ -73,12 +73,23 @@
   --opacity-muted: 0.55;
   --opacity-disabled: 0.5;
 
-  /* Shape, borders and focus */
+  /* Stage 3B Shape / Border：外观层不改变 Stage 2 已冻结的尺寸、Padding、Gap 或 Touch Target。 */
   --border-width: 1px;
   --radius-control: 12px;
   --radius-card: 18px;
+  --radius-panel: 18px;
   --radius-overlay: 22px;
-  --radius-round: 999px;
+  --radius-tag: 999px;
+  --radius-round: var(--radius-tag);
+  --appearance-border-surface-width: 1px; /* Card / Panel 的可见内描边，保持 Box Model 不变。 */
+  --appearance-border-control-width: 1px; /* Selector、Tag 与 Icon Control 的可见内描边。 */
+  --appearance-border-overlay-width: 0px; /* Popup / Sheet 默认仅通过 Surface 与阴影分层。 */
+  --appearance-border-surface: inset 0 0 0
+    var(--appearance-border-surface-width) var(--border-subtle);
+  --appearance-border-control: inset 0 0 0
+    var(--appearance-border-control-width) var(--border-subtle);
+  --appearance-border-overlay: inset 0 0 0
+    var(--appearance-border-overlay-width) var(--border-subtle);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --shadow-shell: 0 0 0 var(--border-width) var(--border-subtle);
@@ -172,16 +183,44 @@
   --status-neutral: #5f6f82;
   --status-neutral-soft: #eef1f4;
   --focus-ring-color: var(--color-primary);
-  --shadow-card: 0 1px 2px rgb(24 33 43 / 5%), 0 8px 24px rgb(24 33 43 / 5%);
+  /* Stage 3B Shadow：Card、Raised Control、Popup / Sheet 的层级彼此独立。 */
+  --shadow-card-contact: 0 1px 2px rgb(24 33 43 / 5%);
+  --shadow-card-offset-x: 0px;
+  --shadow-card-offset-y: 8px;
+  --shadow-card-blur: 24px;
+  --shadow-card-spread: 0px;
+  --shadow-card-opacity: 5%;
+  --shadow-card:
+    var(--shadow-card-contact),
+    var(--shadow-card-offset-x) var(--shadow-card-offset-y)
+      var(--shadow-card-blur) var(--shadow-card-spread)
+      rgb(24 33 43 / var(--shadow-card-opacity));
+  --shadow-raised-contact: 0 1px 2px rgb(24 33 43 / 7%);
+  --shadow-raised-offset-x: 0px;
+  --shadow-raised-offset-y: 5px;
+  --shadow-raised-blur: 14px;
+  --shadow-raised-spread: 0px;
+  --shadow-raised-opacity: 7%;
+  --shadow-raised: var(--shadow-raised-offset-x) var(--shadow-raised-offset-y)
+    var(--shadow-raised-blur) var(--shadow-raised-spread)
+    rgb(24 33 43 / var(--shadow-raised-opacity));
+  --shadow-control-highlight: inset 0 1px 0 rgb(255 255 255 / 88%);
   --shadow-card-pressed: 0 1px 2px rgb(24 33 43 / 4%);
   --shadow-header: 0 1px 0 rgb(24 33 43 / 8%);
   --shadow-icon-button:
-    inset 0 1px 0 rgb(255 255 255 / 88%), 0 1px 2px rgb(24 33 43 / 7%),
-    0 5px 14px rgb(24 33 43 / 7%);
+    var(--shadow-control-highlight), var(--shadow-raised-contact),
+    var(--shadow-raised);
   --shadow-icon-button-pressed:
     inset 0 1px 2px rgb(24 33 43 / 10%), 0 1px 2px rgb(24 33 43 / 4%);
   --shadow-tabbar: 0 -8px 24px rgb(24 33 43 / 5%);
-  --shadow-overlay: 0 18px 48px rgb(20 29 39 / 18%);
+  --shadow-overlay-offset-x: 0px;
+  --shadow-overlay-offset-y: 18px;
+  --shadow-overlay-blur: 48px;
+  --shadow-overlay-spread: 0px;
+  --shadow-overlay-opacity: 18%;
+  --shadow-overlay: var(--shadow-overlay-offset-x)
+    var(--shadow-overlay-offset-y) var(--shadow-overlay-blur)
+    var(--shadow-overlay-spread) rgb(20 29 39 / var(--shadow-overlay-opacity));
 }
 
 :root[data-theme='dark'] {
@@ -230,14 +269,42 @@
   --status-neutral: #a2adb8;
   --status-neutral-soft: #28323c;
   --focus-ring-color: var(--color-primary);
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 22%), 0 10px 28px rgb(0 0 0 / 16%);
+  /* Stage 3B Shadow：Dark 保持独立阴影基线，不从 Light 反推。 */
+  --shadow-card-contact: 0 1px 2px rgb(0 0 0 / 22%);
+  --shadow-card-offset-x: 0px;
+  --shadow-card-offset-y: 10px;
+  --shadow-card-blur: 28px;
+  --shadow-card-spread: 0px;
+  --shadow-card-opacity: 16%;
+  --shadow-card:
+    var(--shadow-card-contact),
+    var(--shadow-card-offset-x) var(--shadow-card-offset-y)
+      var(--shadow-card-blur) var(--shadow-card-spread)
+      rgb(0 0 0 / var(--shadow-card-opacity));
+  --shadow-raised-contact: 0 1px 2px rgb(0 0 0 / 28%);
+  --shadow-raised-offset-x: 0px;
+  --shadow-raised-offset-y: 5px;
+  --shadow-raised-blur: 14px;
+  --shadow-raised-spread: 0px;
+  --shadow-raised-opacity: 20%;
+  --shadow-raised: var(--shadow-raised-offset-x) var(--shadow-raised-offset-y)
+    var(--shadow-raised-blur) var(--shadow-raised-spread)
+    rgb(0 0 0 / var(--shadow-raised-opacity));
+  --shadow-control-highlight: inset 0 1px 0 rgb(255 255 255 / 6%);
   --shadow-card-pressed: 0 1px 2px rgb(0 0 0 / 18%);
   --shadow-header: 0 1px 0 rgb(0 0 0 / 34%);
   --shadow-icon-button:
-    inset 0 1px 0 rgb(255 255 255 / 6%), 0 1px 2px rgb(0 0 0 / 28%),
-    0 5px 14px rgb(0 0 0 / 20%);
+    var(--shadow-control-highlight), var(--shadow-raised-contact),
+    var(--shadow-raised);
   --shadow-icon-button-pressed:
     inset 0 1px 2px rgb(0 0 0 / 36%), 0 1px 2px rgb(0 0 0 / 18%);
   --shadow-tabbar: 0 -10px 28px rgb(0 0 0 / 18%);
-  --shadow-overlay: 0 22px 56px rgb(0 0 0 / 46%);
+  --shadow-overlay-offset-x: 0px;
+  --shadow-overlay-offset-y: 22px;
+  --shadow-overlay-blur: 56px;
+  --shadow-overlay-spread: 0px;
+  --shadow-overlay-opacity: 46%;
+  --shadow-overlay: var(--shadow-overlay-offset-x)
+    var(--shadow-overlay-offset-y) var(--shadow-overlay-blur)
+    var(--shadow-overlay-spread) rgb(0 0 0 / var(--shadow-overlay-opacity));
 }
