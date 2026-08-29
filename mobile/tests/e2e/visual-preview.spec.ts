@@ -616,6 +616,13 @@ for (const width of viewportWidths) {
       })
 
       const visualDeviceCards = page.getByTestId('device-card')
+      const cardPaddingTokens = await page.evaluate(() => {
+        const rootStyle = window.getComputedStyle(document.documentElement)
+        return {
+          x: rootStyle.getPropertyValue('--layout-card-padding-x').trim(),
+          y: rootStyle.getPropertyValue('--layout-card-padding-y').trim(),
+        }
+      })
       await expect(
         visualDeviceCards.nth(0).getByTestId('device-card-status'),
       ).toHaveText('执行中')
@@ -635,6 +642,43 @@ for (const width of viewportWidths) {
         cards.slice(0, 5).map((card) => card.getBoundingClientRect().height),
       )
       expect(new Set(deviceCardHeights.map(Math.round)).size).toBe(1)
+      const deviceCardSpacing = await visualDeviceCards.evaluateAll((cards) =>
+        cards.slice(0, 2).map((card, index, visibleCards) => {
+          const style = window.getComputedStyle(card)
+          const next = visibleCards[index + 1]
+          return {
+            paddingTop: style.paddingTop,
+            paddingRight: style.paddingRight,
+            paddingBottom: style.paddingBottom,
+            paddingLeft: style.paddingLeft,
+            columnGap: style.columnGap,
+            cardGap: next
+              ? Math.round(
+                  next.getBoundingClientRect().top -
+                    card.getBoundingClientRect().bottom,
+                )
+              : null,
+          }
+        }),
+      )
+      expect(deviceCardSpacing).toEqual([
+        {
+          paddingTop: cardPaddingTokens.y,
+          paddingRight: cardPaddingTokens.x,
+          paddingBottom: cardPaddingTokens.y,
+          paddingLeft: cardPaddingTokens.x,
+          columnGap: '8px',
+          cardGap: 8,
+        },
+        {
+          paddingTop: cardPaddingTokens.y,
+          paddingRight: cardPaddingTokens.x,
+          paddingBottom: cardPaddingTokens.y,
+          paddingLeft: cardPaddingTokens.x,
+          columnGap: '8px',
+          cardGap: null,
+        },
+      ])
 
       const headerVisual = await page.evaluate(() => {
         const header = document.querySelector<HTMLElement>(
@@ -1068,6 +1112,45 @@ for (const width of viewportWidths) {
           cards.map((card) => card.getBoundingClientRect().height),
         )
       expect(new Set(taskCardHeights.map(Math.round)).size).toBe(1)
+      const taskCardSpacing = await page
+        .getByTestId('task-card')
+        .evaluateAll((cards) =>
+          cards.slice(0, 2).map((card, index, visibleCards) => {
+            const style = window.getComputedStyle(card)
+            const next = visibleCards[index + 1]
+            return {
+              paddingTop: style.paddingTop,
+              paddingRight: style.paddingRight,
+              paddingBottom: style.paddingBottom,
+              paddingLeft: style.paddingLeft,
+              columnGap: style.columnGap,
+              cardGap: next
+                ? Math.round(
+                    next.getBoundingClientRect().top -
+                      card.getBoundingClientRect().bottom,
+                  )
+                : null,
+            }
+          }),
+        )
+      expect(taskCardSpacing).toEqual([
+        {
+          paddingTop: cardPaddingTokens.y,
+          paddingRight: cardPaddingTokens.x,
+          paddingBottom: cardPaddingTokens.y,
+          paddingLeft: cardPaddingTokens.x,
+          columnGap: '8px',
+          cardGap: 8,
+        },
+        {
+          paddingTop: cardPaddingTokens.y,
+          paddingRight: cardPaddingTokens.x,
+          paddingBottom: cardPaddingTokens.y,
+          paddingLeft: cardPaddingTokens.x,
+          columnGap: '8px',
+          cardGap: null,
+        },
+      ])
 
       if (width === 390) {
         await page.screenshot({
@@ -1242,6 +1325,33 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(
     page.getByTestId('device-current-task').locator('.van-progress'),
   ).toHaveCount(0)
+  const currentTaskCardSpacing = await page
+    .getByTestId('device-current-task')
+    .getByTestId('task-card')
+    .evaluate((card) => {
+      const style = window.getComputedStyle(card)
+      return {
+        paddingTop: style.paddingTop,
+        paddingRight: style.paddingRight,
+        paddingBottom: style.paddingBottom,
+        paddingLeft: style.paddingLeft,
+        columnGap: style.columnGap,
+      }
+    })
+  const currentTaskCardPaddingTokens = await page.evaluate(() => {
+    const rootStyle = window.getComputedStyle(document.documentElement)
+    return {
+      x: rootStyle.getPropertyValue('--layout-card-padding-x').trim(),
+      y: rootStyle.getPropertyValue('--layout-card-padding-y').trim(),
+    }
+  })
+  expect(currentTaskCardSpacing).toEqual({
+    paddingTop: currentTaskCardPaddingTokens.y,
+    paddingRight: currentTaskCardPaddingTokens.x,
+    paddingBottom: currentTaskCardPaddingTokens.y,
+    paddingLeft: currentTaskCardPaddingTokens.x,
+    columnGap: '8px',
+  })
   await expect(page.locator('.active-task-summary')).toHaveCount(0)
   await expect(
     page.getByRole('region', { name: '设备详情内容' }),

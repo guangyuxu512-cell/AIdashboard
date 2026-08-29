@@ -66,7 +66,7 @@ const metaTags = computed(() => {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   column-gap: var(--space-2);
-  padding: var(--layout-card-padding);
+  padding: var(--layout-card-padding-y) var(--layout-card-padding-x);
   align-items: center;
   color: var(--text-primary);
 }

@@ -277,7 +277,9 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-page-padding-y: 12px')
     expect(tokens).toContain('--layout-section-gap: 12px')
     expect(tokens).toContain('--layout-card-gap: 8px')
-    expect(tokens).toContain('--layout-card-padding: 12px')
+    expect(tokens).toContain('--layout-card-padding-x: 12px')
+    expect(tokens).toContain('--layout-card-padding-y: 16px')
+    expect(tokens).not.toContain('--layout-card-padding:')
     expect(tokens).toContain('--layout-card-row-gap: 4px')
     expect(tokens).toContain('--layout-capability-panel-height: 334px')
     expect(tokens).toContain('--layout-capability-row-min-height: 44px')
@@ -325,7 +327,9 @@ describe('Mobile Layout shared components', () => {
     )
     for (const card of [deviceCard, taskCard]) {
       expect(card).toContain('column-gap: var(--space-2)')
-      expect(card).toContain('padding: var(--layout-card-padding)')
+      expect(card).toContain(
+        'padding: var(--layout-card-padding-y) var(--layout-card-padding-x)',
+      )
       expect(card).toContain('gap: var(--layout-card-row-gap)')
       expect(card).toContain(
         'width: var(--layout-card-leading-icon-slot-width)',

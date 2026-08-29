@@ -115,7 +115,7 @@ const primaryStatus = computed(() => {
   width: 100%;
   min-width: 0;
   column-gap: var(--space-2);
-  padding: var(--layout-card-padding);
+  padding: var(--layout-card-padding-y) var(--layout-card-padding-x);
   align-items: center;
   color: inherit;
   text-align: left;

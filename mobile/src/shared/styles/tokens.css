@@ -76,7 +76,8 @@
   --layout-page-padding-y: 12px; /* AppPage（详情内容页）基础上下留白 */
   --layout-section-gap: 12px; /* 详情页面主要区块之间的垂直距离 */
   --layout-card-gap: 8px; /* Device/Task 列表中卡片之间的距离 */
-  --layout-card-padding: 12px; /* 设备卡与任务卡统一内部留白 */
+  --layout-card-padding-x: 12px; /* 设备卡与任务卡统一左右内部留白 */
+  --layout-card-padding-y: 16px; /* 设备卡与任务卡统一上下内部留白 */
   --layout-card-row-gap: 4px; /* 设备卡与任务卡三行内容间距 */
   --layout-card-leading-icon-slot-width: 32px; /* DeviceCard / TaskCard 左侧图标固定槽位宽度，不等于图标视觉尺寸 */
   --layout-card-trailing-icon-slot-width: 24px; /* DeviceCard / TaskCard 右侧详情箭头固定槽位宽度，不等于箭头视觉尺寸 */

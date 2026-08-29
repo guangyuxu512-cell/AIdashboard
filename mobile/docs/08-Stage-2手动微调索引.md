@@ -29,7 +29,8 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | 详情页上下留白   | `src/shared/styles/tokens.css` | `--layout-page-padding-y`                              | 12px        | `AppPage` 基础顶部与底部                   |
 | 详情区块间距     | `src/shared/styles/tokens.css` | `--layout-section-gap`                                 | 12px        | Device / Task Detail 各业务 Section        |
 | 列表卡片间距     | `src/shared/styles/tokens.css` | `--layout-card-gap`                                    | 8px         | Device / Task 列表                         |
-| 卡片内部空间     | `src/shared/styles/tokens.css` | `--layout-card-padding`                                | 12px        | `DeviceCard`、`TaskCard`                   |
+| 卡片水平内边距   | `src/shared/styles/tokens.css` | `--layout-card-padding-x`                              | 12px        | `DeviceCard`、`TaskCard`                   |
+| 卡片垂直内边距   | `src/shared/styles/tokens.css` | `--layout-card-padding-y`                              | 16px        | `DeviceCard`、`TaskCard`                   |
 | 卡片图标到正文   | `src/shared/styles/tokens.css` | `--space-2`                                            | 8px         | Device / Task Card、`DeviceRuntimeSummary` |
 | 卡片三行内部间距 | `src/shared/styles/tokens.css` | `--layout-card-row-gap`                                | 4px         | Device / Task Card 主内容                  |
 | 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 20px | 设备名、任务名、Section 与能力标题         |
@@ -117,7 +118,8 @@ Status（状态）: Completed / Candidate for Freeze（已完成 / 待人工确�
 
 Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio、Controls 与 Detail Density
 放回完整页面复核。390 × 844 Light 的四个主页面和 360 / 375 / 430px Light、390px Dark 均没有明确的尺寸
-比例问题；本轮没有修改生产 CSS / Token，因此本索引当前列出的数值就是 Stage 2 Final Candidate Baseline。按
+比例问题。人工复核随后确认 DeviceCard / TaskCard 的上下留白不足，因此只将共享 Card Padding 拆分为 X / Y，
+并比较 Y `12 / 14 / 16px`：X 固定 `12px`，最终候选为 Y `16px`；其它生产尺寸 Token 不变。按
 `mobile/AGENTS.md`，自动验证与 Review 不替代人工视觉确认；人工确认后才将此状态更新为 `Frozen`。
 
 - Typography：`12 / 13 / 14 / 15 / 16 / 18px` 与对应 `16 / 18 / 20 / 20 / 22 / 22px` Line Height，按
@@ -142,7 +144,8 @@ Final Review 已把 Typography、Spacing、Global Dimensions、Card / Icon Ratio
 | Page Vertical Padding（页面上下留白）     | `--layout-page-padding-y` | 12px      | `AppPage`                                  |
 | Section Gap（区块间距）                   | `--layout-section-gap`    | 12px      | 详情页一级区块                             |
 | Card Gap（卡片间距）                      | `--layout-card-gap`       | 8px       | Device / Task Infinite List                |
-| Card Padding（卡片内边距）                | `--layout-card-padding`   | 12px      | `DeviceCard`、`TaskCard`                   |
+| Card Padding X（卡片左右内边距）          | `--layout-card-padding-x` | 12px      | `DeviceCard`、`TaskCard`                   |
+| Card Padding Y（卡片上下内边距）          | `--layout-card-padding-y` | 16px      | `DeviceCard`、`TaskCard`                   |
 | Inner Gap（卡片内部间距）                 | `--layout-card-row-gap`   | 4px       | 两类业务卡三行内容                         |
 | Icon Content Gap（图标与正文距离）        | `--space-2`               | 8px       | Device / Task Card、`DeviceRuntimeSummary` |
 | Toolbar Gap（工具行组间距）               | `--space-2` / `--space-1` | 8px / 4px | Toolbar 左右组、Action 与控件内部          |
@@ -206,9 +209,9 @@ Stage 3。
 ### F. Card Dimensions（卡片尺寸）
 
 `DeviceCard` 与 `TaskCard` 没有固定 Height Token。当前高度由三行冻结结构、字体行高、
-`--layout-card-padding`、`--layout-card-row-gap` 行间距和内容自然计算。这些数值已纳入 Stage 2 Final Candidate
-Baseline；人工确认前不得继续随意微调，更不得增加或删除行、改变 Leading / Main / Trailing 槽位，或写死两类
-卡片高度。
+`--layout-card-padding-x`、`--layout-card-padding-y` 与 `--layout-card-row-gap` 行间距和内容自然计算。X 固定
+`12px`、Y 候选为 `16px`；这些数值已纳入 Stage 2 Final Candidate Baseline，人工确认前不得继续随意微调，
+更不得增加或删除行、改变 Leading / Main / Trailing 槽位，或写死两类卡片高度。
 
 ### G. Detail Density（详情页密度）
 
@@ -284,7 +287,8 @@ Baseline；人工确认前不得继续随意微调，更不得增加或删除行
 
 ### DeviceCard（设备卡片）
 
-- Padding：`--layout-card-padding` 12px；卡间距：列表容器的 `--layout-card-gap` 8px。
+- Padding：`--layout-card-padding-x` 12px、`--layout-card-padding-y` 16px；卡间距：列表容器的
+  `--layout-card-gap` 8px。
 - Leading 到正文：`--space-2` 8px；正文三行 Gap：`--layout-card-row-gap` 4px。
 - Leading Slot / Icon：`--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`，32px / 20px；
   Chevron Slot / Icon：`--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`，24px / 16px。
@@ -293,7 +297,7 @@ Baseline；人工确认前不得继续随意微调，更不得增加或删除行
 
 ### TaskCard（任务卡片）
 
-- Padding、列 Gap、正文三行 Gap、Leading Slot / Icon 与 Chevron 与 DeviceCard 相同。
+- Padding X / Y、列 Gap、正文三行 Gap、Leading Slot / Icon 与 Chevron 与 DeviceCard 相同。
 - Task Name：Label 15/20；Status、Time 与 Meta：Caption 12/16；Tag 由 Vant Tag Mapping 控制。
 - 高度自然计算；不增加 Progress / Current Message 或改变三行结构。
 
