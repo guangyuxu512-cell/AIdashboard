@@ -453,8 +453,8 @@ async function expectSummaryStrip(page: Page) {
   ).toBe(true)
   expect(geometry.labelsSingleLine).toBe(true)
   expect(geometry.numberEmphasized).toBe(true)
-  expect(geometry.iconSizes.every((size) => size === 20)).toBe(true)
-  expect(geometry.iconFontSizes.every((size) => size === 20)).toBe(true)
+  expect(geometry.iconSizes.every((size) => size === 16)).toBe(true)
+  expect(geometry.iconFontSizes.every((size) => size === 16)).toBe(true)
   expect(geometry.buttonSemantics).toBe(true)
   expect(geometry.touchHeights.every((height) => height >= 44)).toBe(true)
   expect(geometry.noHorizontalOverflow).toBe(true)
@@ -620,7 +620,7 @@ for (const width of viewportWidths) {
         brand: '16px/600',
         cardTitle: '15px/600',
         summaryNumber: '18px/700',
-        meta: '12px/400',
+        meta: '11px/400',
       })
 
       const visualDeviceCards = page.getByTestId('device-card')
@@ -675,7 +675,7 @@ for (const width of viewportWidths) {
           paddingRight: cardPaddingTokens.x,
           paddingBottom: cardPaddingTokens.y,
           paddingLeft: cardPaddingTokens.x,
-          columnGap: '8px',
+          columnGap: '16px',
           cardGap: 8,
         },
         {
@@ -683,7 +683,7 @@ for (const width of viewportWidths) {
           paddingRight: cardPaddingTokens.x,
           paddingBottom: cardPaddingTokens.y,
           paddingLeft: cardPaddingTokens.x,
-          columnGap: '8px',
+          columnGap: '16px',
           cardGap: null,
         },
       ])
@@ -784,12 +784,12 @@ for (const width of viewportWidths) {
       ])
       expect(deviceGlobalHeader.themeBeforeBell).toBe(true)
       expect(deviceGlobalHeader.buttonSizes).toEqual([
-        { width: 44, height: 44 },
-        { width: 44, height: 44 },
+        { width: 45, height: 45 },
+        { width: 45, height: 45 },
       ])
       expect(deviceGlobalHeader.buttonVisualSizes).toEqual([
-        { width: 34, height: 34 },
-        { width: 34, height: 34 },
+        { width: 32, height: 32 },
+        { width: 32, height: 32 },
       ])
       expect(deviceGlobalHeader.iconSizes[0]).toEqual(
         deviceGlobalHeader.iconSizes[1],
@@ -877,8 +877,8 @@ for (const width of viewportWidths) {
       ).toEqual({
         summaryHeight: '96px',
         summaryStacked: true,
-        toolbarHeight: '44px',
-        selectorVisualHeight: '30px',
+        toolbarHeight: '46px',
+        selectorVisualHeight: '26px',
         scrollbarWidth: 'none',
         scrollable: true,
         documentScrollTop: 0,
@@ -1000,12 +1000,12 @@ for (const width of viewportWidths) {
       expect(
         summarySections.every(
           (section) =>
-            section.paddingTop === '16px' &&
-            section.paddingRight === '12px' &&
-            section.paddingBottom === '16px' &&
-            section.paddingLeft === '12px' &&
-            section.iconWidth === 36 &&
-            section.iconFontSize === 22,
+            section.paddingTop === '9px' &&
+            section.paddingRight === '17px' &&
+            section.paddingBottom === '9px' &&
+            section.paddingLeft === '17px' &&
+            section.iconWidth === 48 &&
+            section.iconFontSize === 25,
         ),
       ).toBe(true)
       await expect(
@@ -1143,7 +1143,7 @@ for (const width of viewportWidths) {
       await expectNoHorizontalOverflow(page)
       await expect(page.getByTestId('mobile-list-toolbar')).toHaveCSS(
         'height',
-        '44px',
+        '46px',
       )
       await expect(page.getByTestId('task-list-scroll')).toHaveCSS(
         'scrollbar-width',
@@ -1190,7 +1190,7 @@ for (const width of viewportWidths) {
           paddingRight: cardPaddingTokens.x,
           paddingBottom: cardPaddingTokens.y,
           paddingLeft: cardPaddingTokens.x,
-          columnGap: '8px',
+          columnGap: '16px',
           cardGap: 8,
         },
         {
@@ -1198,7 +1198,7 @@ for (const width of viewportWidths) {
           paddingRight: cardPaddingTokens.x,
           paddingBottom: cardPaddingTokens.y,
           paddingLeft: cardPaddingTokens.x,
-          columnGap: '8px',
+          columnGap: '16px',
           cardGap: null,
         },
       ])
@@ -1424,7 +1424,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     paddingRight: currentTaskCardPaddingTokens.x,
     paddingBottom: currentTaskCardPaddingTokens.y,
     paddingLeft: currentTaskCardPaddingTokens.x,
-    columnGap: '8px',
+    columnGap: '16px',
   })
   await expect(page.locator('.active-task-summary')).toHaveCount(0)
   await expect(
@@ -1574,7 +1574,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   expect(layout.fiveRowsFitList).toBe(true)
   expect(layout.refreshTouchWidth).toBeGreaterThanOrEqual(44)
   expect(layout.refreshTouchHeight).toBeGreaterThanOrEqual(44)
-  expect(layout.refreshVisualSize).toEqual({ width: 30, height: 30 })
+  expect(layout.refreshVisualSize).toEqual({ width: 26, height: 26 })
   expect(layout.refreshText).toBe('')
   expect(layout.refreshAtHeaderRight).toBe(true)
   expect(layout.selectorBelowHeader).toBe(true)
@@ -1611,7 +1611,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   ).toBe(true)
   expect(
     layout.rowAnatomy.every(
-      (row) => row.iconWidth === 28 && row.iconFontSize === 16,
+      (row) => row.iconWidth === 36 && row.iconFontSize === 24,
     ),
   ).toBe(true)
   expect(layout.rowAnatomy[0]?.nameActuallyTruncated).toBe(true)

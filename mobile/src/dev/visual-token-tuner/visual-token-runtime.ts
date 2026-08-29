@@ -234,6 +234,19 @@ export function createVisualTokenTunerRuntime(
     }
 
     const overrides = parseStoredOverrides(rawValue, registry)
+    const hasActiveOverride = registry.some((definition) => {
+      const stored = overrides.get(definition.cssVar)
+      return stored !== undefined && !isDefaultValue(definition, stored)
+    })
+
+    if (!hasActiveOverride && rawValue) {
+      try {
+        storage.removeItem(VISUAL_TOKEN_TUNER_STORAGE_KEY)
+      } catch {
+        // 开发工具的临时保存失败不应影响真实页面预览。
+      }
+    }
+
     for (const definition of registry) {
       const stored = overrides.get(definition.cssVar)
       if (stored === undefined || isDefaultValue(definition, stored)) continue

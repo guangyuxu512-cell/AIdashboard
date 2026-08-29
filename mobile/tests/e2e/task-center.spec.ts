@@ -551,7 +551,7 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
         cardAnatomy.chevronLeft,
       )
-      expect(cardAnatomy.chevronWidth).toBe(24)
+      expect(cardAnatomy.chevronWidth).toBe(22)
       expect(cardAnatomy.chevronIconSize).toBe(16)
       expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
       expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
@@ -666,11 +666,11 @@ for (const width of viewportWidths) {
         headerHeight: '52px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
-        toolbarHeight: '44px',
-        selectorHeight: '44px',
-        selectorVisualHeight: '30px',
-        filterHeight: '44px',
-        filterVisualHeight: '30px',
+        toolbarHeight: '46px',
+        selectorHeight: '45px',
+        selectorVisualHeight: '26px',
+        filterHeight: '45px',
+        filterVisualHeight: '26px',
         toolbarSingleRow: true,
         selectorBeforeFilter: true,
         toolbarBorderWidth: '0px',
@@ -747,7 +747,7 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('task-detail')).toBeVisible()
       await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
         'height',
-        '50px',
+        '51px',
       )
       await expect(page.getByTestId('runtime-events')).toBeVisible()
       const detailFlow = await page.evaluate(() => {

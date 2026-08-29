@@ -276,7 +276,7 @@ test.describe('Visual Token Tuner V1', () => {
     await tuner.getByRole('tab', { name: '能力' }).click()
     await setRangeValue(
       tuner.getByTestId('visual-token-range-capability-panel-height'),
-      374,
+      384,
     )
     await setRangeValue(
       tuner.getByTestId('visual-token-range-capability-row-height'),
@@ -284,7 +284,7 @@ test.describe('Visual Token Tuner V1', () => {
     )
     await expect
       .poll(() => rootValue(preview, '--layout-capability-panel-height'))
-      .toBe('374px')
+      .toBe('384px')
     await expect
       .poll(() => rootValue(preview, '--layout-capability-row-min-height'))
       .toBe('52px')
@@ -314,7 +314,7 @@ test.describe('Visual Token Tuner V1', () => {
     await tuner.getByTestId('visual-token-tuner-reset-all').click()
     await expect
       .poll(() => rootValue(preview, '--layout-capability-panel-height'))
-      .toBe('354px')
+      .toBe('372px')
     await expectNoHorizontalOverflow(preview)
     await expectNoHorizontalOverflow(tuner)
     expect(previewErrors).toEqual([])

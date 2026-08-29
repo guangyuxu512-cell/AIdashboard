@@ -245,7 +245,7 @@ function formatSkillVersion(version: string): string | null {
   max-height: var(--layout-capability-panel-height);
   min-width: 0;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  padding: calc(var(--space-3) + var(--border-width)) var(--space-3);
   grid-template-rows: var(--touch-target-min) var(--touch-target-min) minmax(
       0,
       1fr

@@ -161,6 +161,29 @@ describe('Visual Token Tuner runtime', () => {
     expect(root.style.getPropertyValue(definition.cssVar)).toBe('100px')
   })
 
+  it('固化后的默认值会清理等于新基线的遗留临时记录', () => {
+    const storage = new MemoryStorage()
+    const definition = getDefinition('summary-height')
+    const root = document.createElement('html')
+    const runtime = createVisualTokenTunerRuntime({
+      enabled: true,
+      root,
+      storage,
+      getComputedStyle: createComputedStyle(root),
+    })
+
+    storage.setItem(
+      VISUAL_TOKEN_TUNER_STORAGE_KEY,
+      JSON.stringify({
+        [definition.cssVar]: `${definition.defaultValue}${definition.unit}`,
+      }),
+    )
+    runtime.restore()
+
+    expect(root.style.getPropertyValue(definition.cssVar)).toBe('')
+    expect(storage.values.has(VISUAL_TOKEN_TUNER_STORAGE_KEY)).toBe(false)
+  })
+
   it('生产态不读取存储、不注入覆盖，也不启用工具', () => {
     const root = document.createElement('html')
     const storage = new MemoryStorage()

@@ -8,7 +8,7 @@ Visual Token Tuner 是 `mobile/src/dev/visual-token-tuner/` 中的内部开发�
 
 它只允许临时覆盖已登记的 Stage 2 尺寸、间距、图标容量、控件和 Typography Token。工具不能调整
 颜色、Surface、Radius、Shadow、最终图标、Press、Motion，也不能调整 DOM、路由、导航或滚动约定。
-Stage 1 Frozen Contract 与 Stage 2 Candidate Baseline 仍以
+Stage 1 Frozen Contract 与 Stage 2 Final Frozen Baseline 仍以
 [`02-设计系统.md`](./02-设计系统.md) 和
 [`08-Stage-2手动微调索引.md`](./08-Stage-2手动微调索引.md) 为准。
 
@@ -46,6 +46,9 @@ Viewport 和“已调整”数量。低于 44px 的 Touch Target 会给出提醒
 ↓
 按 04-开发验证规范执行验证、Review 与 Commit
 ```
+
+正式固化后必须同步更新 `tokens.css` 与 Visual Token Registry 的 `defaultValue`，再使用“恢复全部”清除
+临时覆盖。重新打开调参器时，默认值与当前值必须等于正式 Token，Dirty Count 必须为 `0`。
 
 调参器本身不替代页面级视觉验收；仍需在 360 / 375 / 390 / 430px、Light / Dark 下检查 Safe Area、
 触控、横向溢出、Capability 内部滚动和 Frozen Contract。

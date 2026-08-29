@@ -681,7 +681,7 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
         cardAnatomy.trailingLeft,
       )
-      expect(cardAnatomy.chevronWidth).toBe(24)
+      expect(cardAnatomy.chevronWidth).toBe(22)
       expect(cardAnatomy.chevronIconSize).toBe(16)
       expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
       expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
@@ -876,11 +876,11 @@ for (const width of viewportWidths) {
         summaryHeight: '96px',
         toolbarLeft: safeAreaFixture.left,
         toolbarRight: safeAreaFixture.right,
-        toolbarHeight: '44px',
-        selectorTouchHeight: '44px',
-        selectorVisualHeight: '30px',
-        filterTouchHeight: '44px',
-        filterVisualHeight: '30px',
+        toolbarHeight: '46px',
+        selectorTouchHeight: '45px',
+        selectorVisualHeight: '26px',
+        filterTouchHeight: '45px',
+        filterVisualHeight: '26px',
         toolbarSingleRow: true,
         selectorBeforeFilter: true,
         toolbarBorderWidth: '0px',
@@ -937,7 +937,7 @@ for (const width of viewportWidths) {
             height: Number.parseFloat(style.height),
           }
         })
-      expect(refreshVisualSize).toEqual({ width: 30, height: 30 })
+      expect(refreshVisualSize).toEqual({ width: 26, height: 26 })
       const capabilityActionVisualHeights = await page
         .locator(
           '.device-capability-panel__action > .van-button__content > span',
@@ -961,7 +961,7 @@ for (const width of viewportWidths) {
       await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
       await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
         'height',
-        '50px',
+        '51px',
       )
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
