@@ -213,7 +213,7 @@ const yingdaoVersion = computed(
   width: var(--layout-runtime-summary-icon-slot-width);
   align-self: center;
   color: var(--text-secondary);
-  font-size: var(--icon-size-default);
+  font-size: var(--icon-size-runtime-summary);
   place-items: center;
 }
 

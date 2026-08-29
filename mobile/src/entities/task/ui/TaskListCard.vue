@@ -75,7 +75,7 @@ const metaTags = computed(() => {
   display: grid;
   width: var(--layout-card-leading-icon-slot-width);
   color: var(--text-secondary);
-  font-size: var(--icon-size-default);
+  font-size: var(--icon-size-card-leading);
   place-items: center;
 }
 
@@ -121,7 +121,11 @@ const metaTags = computed(() => {
 }
 
 .task-list-card__chevron {
+  display: grid;
+  width: var(--layout-card-trailing-icon-slot-width);
+  justify-self: end;
   color: var(--text-tertiary);
-  font-size: var(--icon-size-small);
+  font-size: var(--icon-size-card-chevron);
+  place-items: center;
 }
 </style>

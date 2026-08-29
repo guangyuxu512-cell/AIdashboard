@@ -159,10 +159,10 @@ const emit = defineEmits<{
 
 .mobile-summary-strip__icon {
   display: grid;
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+  width: var(--icon-size-summary-metric);
+  height: var(--icon-size-summary-metric);
   color: var(--text-secondary);
-  font-size: var(--icon-size-default);
+  font-size: var(--icon-size-summary-metric);
   place-items: center;
 }
 

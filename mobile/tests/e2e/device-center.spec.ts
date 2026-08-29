@@ -646,12 +646,26 @@ for (const width of viewportWidths) {
         const content = box('device-card-name')
         const trailing = box('device-card-status')
         const chevron = box('device-card-chevron')
+        const leadingStyle = window.getComputedStyle(
+          card.querySelector<HTMLElement>(
+            '[data-testid="device-card-leading"]',
+          )!,
+        )
+        const chevronStyle = window.getComputedStyle(
+          card.querySelector<HTMLElement>(
+            '[data-testid="device-card-chevron"]',
+          )!,
+        )
         return {
           leadingLeft: leading.left,
           leadingRight: leading.right,
+          leadingWidth: leading.width,
+          leadingIconSize: Number.parseFloat(leadingStyle.fontSize),
           contentLeft: content.left,
           contentRight: content.right,
           trailingLeft: trailing.left,
+          chevronWidth: chevron.width,
+          chevronIconSize: Number.parseFloat(chevronStyle.fontSize),
           chevronRight: chevron.right,
           chevronCenterDelta: Math.abs(
             chevron.top + chevron.height / 2 - (root.top + root.height / 2),
@@ -662,9 +676,13 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
         cardAnatomy.contentLeft,
       )
+      expect(cardAnatomy.leadingWidth).toBe(32)
+      expect(cardAnatomy.leadingIconSize).toBe(20)
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
         cardAnatomy.trailingLeft,
       )
+      expect(cardAnatomy.chevronWidth).toBe(24)
+      expect(cardAnatomy.chevronIconSize).toBe(16)
       expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
       expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
 

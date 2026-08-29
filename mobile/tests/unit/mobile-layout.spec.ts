@@ -244,6 +244,17 @@ describe('Mobile Layout shared components', () => {
       ),
       'utf8',
     )
+    const capabilityPanel = readFileSync(
+      resolve(
+        process.cwd(),
+        'src/features/device-center/ui/DeviceCapabilityPanel.vue',
+      ),
+      'utf8',
+    )
+    const summaryStrip = readFileSync(
+      resolve(process.cwd(), 'src/shared/ui/MobileSummaryStrip.vue'),
+      'utf8',
+    )
 
     expect(tokens).toContain('--layout-header-height: 52px')
     expect(tokens).toContain('--layout-detail-header-height: 50px')
@@ -260,6 +271,17 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-capability-row-min-height: 44px')
     expect(tokens).toContain('--control-height-compact: 32px')
     expect(tokens).toContain('--touch-target-min: 44px')
+    expect(tokens).toContain('--icon-size-default: 22px')
+    expect(tokens).toContain('--icon-size-small: 16px')
+    expect(tokens).toContain('--icon-size-card-leading: 20px')
+    expect(tokens).toContain('--icon-size-card-chevron: 16px')
+    expect(tokens).toContain('--icon-size-runtime-summary: 20px')
+    expect(tokens).toContain('--icon-size-summary-metric: 20px')
+    expect(tokens).toContain('--icon-size-capability-row: 16px')
+    expect(tokens).toContain('--layout-card-leading-icon-slot-width: 32px')
+    expect(tokens).toContain('--layout-card-trailing-icon-slot-width: 24px')
+    expect(tokens).toContain('--layout-runtime-summary-icon-slot-width: 32px')
+    expect(tokens).toContain('--layout-capability-icon-slot-width: 28px')
     expect(tokens).toContain('--font-size-caption: 12px')
     expect(tokens).toContain('--font-size-secondary: 13px')
     expect(tokens).toContain('--font-size-action: 13px')
@@ -289,10 +311,33 @@ describe('Mobile Layout shared components', () => {
       expect(card).toContain('column-gap: var(--space-2)')
       expect(card).toContain('padding: var(--layout-card-padding)')
       expect(card).toContain('gap: var(--layout-card-row-gap)')
+      expect(card).toContain(
+        'width: var(--layout-card-leading-icon-slot-width)',
+      )
+      expect(card).toContain('font-size: var(--icon-size-card-leading)')
+      expect(card).toContain(
+        'width: var(--layout-card-trailing-icon-slot-width)',
+      )
+      expect(card).toContain('font-size: var(--icon-size-card-chevron)')
     }
     expect(runtimeSummary).toContain('padding: var(--space-3)')
     expect(runtimeSummary).toContain('column-gap: var(--space-2)')
     expect(runtimeSummary).toContain('margin-inline: var(--space-3)')
+    expect(runtimeSummary).toContain(
+      'width: var(--layout-runtime-summary-icon-slot-width)',
+    )
+    expect(runtimeSummary).toContain(
+      'font-size: var(--icon-size-runtime-summary)',
+    )
+    expect(capabilityPanel).toContain(
+      'width: var(--layout-capability-icon-slot-width)',
+    )
+    expect(capabilityPanel).toContain(
+      'font-size: var(--icon-size-capability-row)',
+    )
+    expect(summaryStrip).toContain('width: var(--icon-size-summary-metric)')
+    expect(summaryStrip).toContain('height: var(--icon-size-summary-metric)')
+    expect(summaryStrip).toContain('font-size: var(--icon-size-summary-metric)')
     expect(base).toContain('scrollbar-width: none')
     expect(base).toContain('-ms-overflow-style: none')
     expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')

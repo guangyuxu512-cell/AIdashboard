@@ -358,6 +358,14 @@ async function expectSummaryStrip(page: Page) {
       slotWidths: slotBoxes.map((slot) => slot.width),
       slotTops: slotBoxes.map((slot) => slot.top),
       slotHeights: slotBoxes.map((slot) => slot.height),
+      iconSizes: iconBoxes.map((icon) => icon.width),
+      iconFontSizes: slots.map((slot) =>
+        Number.parseFloat(
+          getComputedStyle(
+            slot.querySelector<HTMLElement>('.mobile-summary-strip__icon')!,
+          ).fontSize,
+        ),
+      ),
       touchHeights: slots.map(
         (slot) =>
           slot
@@ -430,6 +438,8 @@ async function expectSummaryStrip(page: Page) {
   ).toBe(true)
   expect(geometry.labelsSingleLine).toBe(true)
   expect(geometry.numberEmphasized).toBe(true)
+  expect(geometry.iconSizes.every((size) => size === 20)).toBe(true)
+  expect(geometry.iconFontSizes.every((size) => size === 20)).toBe(true)
   expect(geometry.buttonSemantics).toBe(true)
   expect(geometry.touchHeights.every((height) => height >= 44)).toBe(true)
   expect(geometry.noHorizontalOverflow).toBe(true)
@@ -863,6 +873,14 @@ for (const width of viewportWidths) {
               x: box.x,
               y: box.y,
               width: box.width,
+              iconWidth: icon.width,
+              iconFontSize: Number.parseFloat(
+                window.getComputedStyle(
+                  section.querySelector<HTMLElement>(
+                    '.device-runtime-summary__icon',
+                  )!,
+                ).fontSize,
+              ),
               iconRight: icon.right,
               contentLeft: content.left,
             }
@@ -877,6 +895,11 @@ for (const width of viewportWidths) {
       expect(
         summarySections.every(
           (section) => section.iconRight <= section.contentLeft,
+        ),
+      ).toBe(true)
+      expect(
+        summarySections.every(
+          (section) => section.iconWidth === 32 && section.iconFontSize === 20,
         ),
       ).toBe(true)
       await expect(
@@ -906,10 +929,14 @@ for (const width of viewportWidths) {
       await deviceDetailScroll.evaluate((element) => {
         element.scrollTop = 0
       })
-      if (width === 390) {
+      if (width === 390 || (width === 360 && theme === 'light')) {
         await page.screenshot({
-          path: testInfo.outputPath(`visual-device-detail-390-${theme}.png`),
+          path: testInfo.outputPath(
+            `visual-device-detail-${width}-${theme}.png`,
+          ),
         })
+      }
+      if (width === 390) {
         if (theme === 'light') {
           await page.screenshot({
             path: testInfo.outputPath(
@@ -1221,6 +1248,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
           (button) => button.getAttribute('aria-label')?.split('：')[0],
         ),
         iconWidth: iconBox.width,
+        iconFontSize: Number.parseFloat(window.getComputedStyle(icon).fontSize),
         nameActuallyTruncated: name.scrollWidth > name.clientWidth,
         nameOverflow: nameStyle.overflow,
         nameTextOverflow: nameStyle.textOverflow,
@@ -1282,6 +1310,11 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     ),
   ).toBe(true)
   expect(new Set(layout.rowAnatomy.map((row) => row.iconWidth)).size).toBe(1)
+  expect(
+    layout.rowAnatomy.every(
+      (row) => row.iconWidth === 28 && row.iconFontSize === 16,
+    ),
+  ).toBe(true)
   expect(layout.rowAnatomy[0]?.nameActuallyTruncated).toBe(true)
   expect(layout.fiveRowsVisible).toBe(true)
   expect(layout.sixthRequiresScroll).toBe(true)

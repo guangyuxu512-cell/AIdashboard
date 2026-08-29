@@ -339,7 +339,7 @@ function formatSkillVersion(version: string): string | null {
   width: var(--layout-capability-icon-slot-width);
   flex: 0 0 var(--layout-capability-icon-slot-width);
   color: var(--text-secondary);
-  font-size: var(--icon-size-small);
+  font-size: var(--icon-size-capability-row);
   place-items: center;
 }
 

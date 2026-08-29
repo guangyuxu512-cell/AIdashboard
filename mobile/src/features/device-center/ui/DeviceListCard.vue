@@ -149,7 +149,7 @@ const primaryStatus = computed(() => {
   flex: none;
   align-self: center;
   color: var(--text-secondary);
-  font-size: var(--icon-size-default);
+  font-size: var(--icon-size-card-leading);
   place-items: center;
 }
 
@@ -207,9 +207,13 @@ const primaryStatus = computed(() => {
 }
 
 .device-list-card__chevron {
+  display: grid;
+  width: var(--layout-card-trailing-icon-slot-width);
   grid-row: 2;
   align-self: center;
+  justify-self: end;
   color: var(--text-tertiary);
-  font-size: var(--icon-size-small);
+  font-size: var(--icon-size-card-chevron);
+  place-items: center;
 }
 </style>

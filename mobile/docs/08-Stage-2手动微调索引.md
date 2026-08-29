@@ -1,7 +1,7 @@
 # Stage 2 手动微调索引
 
 本文是 Dimensions / Spacing / Typography（尺寸 / 间距 / 字体排版）的定位地图，不是新的设计规则。
-当前数值均为 Stage 1 实现基线；修改前先确认 `02-设计系统.md` 的 Frozen Contract（冻结契约）。
+当前数值是已完成 Stage 2 调整后的实现基线；修改前先确认 `02-设计系统.md` 的 Frozen Contract（冻结契约）。
 
 ## 冻结边界
 
@@ -67,6 +67,19 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 本轮不调整 `--layout-capability-panel-height`、`--layout-capability-row-min-height`、Icon Slot、Control、
 Typography 或 Spacing；Safe Area 与 `100dvh` Shell 高度链继续独立于上述内容高度。
 
+### Stage 2D 结论（Card / Icon Ratio）
+
+| 区域                          | Slot / Icon 最终值 | 结论                                         |
+| ----------------------------- | ------------------ | -------------------------------------------- |
+| DeviceCard / TaskCard Leading | 32px / 20px        | 图标与正文起点分离，保留单行名称空间。       |
+| DeviceCard / TaskCard Chevron | 24px / 16px        | 保持弱化箭头视觉，同时提供稳定右侧槽位。     |
+| DeviceRuntimeSummary          | 32px / 20px        | 上下分区图标、正文起点与业务卡保持同一节奏。 |
+| Capability Row                | 28px / 16px        | 图标保持克制，不挤压名称、版本与 Actions。   |
+| MobileSummaryStrip Metric     | 20px               | 数字继续由 Display + Bold 承担最高信息权重。 |
+
+本轮未调整 Header、Detail Header、Bottom Navigation 的 22px 图标映射，也未修改任一组件高度、Padding、Gap、
+Capability Panel / Row 密度或 Control 尺寸。
+
 ### B. Spacing（间距）
 
 | 语义                                      | 控制位置                  | 当前值    | 主要影响                                   |
@@ -105,19 +118,20 @@ Typography 或 Spacing；Safe Area 与 `100dvh` Shell 高度链继续独立于�
 
 ### D. Icon Dimensions（图标尺寸）
 
-| 图标位置                                  | 当前控制位置                                                             | 当前值      |
-| ----------------------------------------- | ------------------------------------------------------------------------ | ----------- |
-| Global Header Theme / Bell                | `--icon-size-default`                                                    | 22px        |
-| Detail Header Back                        | `--icon-size-default`                                                    | 22px        |
-| Bottom Navigation Icon                    | `vant-theme.css` → `--van-tabbar-item-icon-size` → `--icon-size-default` | 22px        |
-| Summary Metric Icon                       | `--icon-size-default`                                                    | 22px        |
-| DeviceCard / TaskCard Leading Slot / Icon | `--layout-card-leading-icon-slot-width` / `--icon-size-default`          | 22px / 22px |
-| DeviceCard / TaskCard Chevron             | `--icon-size-small`                                                      | 16px        |
-| DeviceRuntimeSummary Slot / Icon          | `--layout-runtime-summary-icon-slot-width` / `--icon-size-default`       | 22px / 22px |
-| Capability Row Icon Slot / Icon           | `--layout-capability-icon-slot-width` / `--icon-size-small`              | 22px / 16px |
+| 图标位置                                  | 当前控制位置                                                               | 当前值      |
+| ----------------------------------------- | -------------------------------------------------------------------------- | ----------- |
+| Global Header Theme / Bell                | `--icon-size-default`                                                      | 22px        |
+| Detail Header Back                        | `--icon-size-default`                                                      | 22px        |
+| Bottom Navigation Icon                    | `vant-theme.css` → `--van-tabbar-item-icon-size` → `--icon-size-default`   | 22px        |
+| Summary Metric Icon                       | `--icon-size-summary-metric`                                               | 20px        |
+| DeviceCard / TaskCard Leading Slot / Icon | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 32px / 20px |
+| DeviceCard / TaskCard Chevron Slot / Icon | `--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`      | 24px / 16px |
+| DeviceRuntimeSummary Slot / Icon          | `--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary` | 32px / 20px |
+| Capability Row Icon Slot / Icon           | `--layout-capability-icon-slot-width` / `--icon-size-capability-row`       | 28px / 16px |
 
-Header 与 Summary 的 Icon Box 继续直接消费图标尺寸；Device/Task Card、DeviceRuntimeSummary 与
-Capability Row 已分别建立稳定 Slot Width Token。最终图标图案、描边与资源属于 Stage 3。
+Header、Detail Header 与 Bottom Navigation 继续直接消费 `--icon-size-default` 22px；Summary、Device/Task
+Card、DeviceRuntimeSummary 与 Capability Row 已分别建立稳定 Icon / Slot Token。最终图标图案、描边与资源属于
+Stage 3。
 
 ### E. Controls（控件尺寸）
 
@@ -213,7 +227,8 @@ Dimension。
 
 - Padding：`--layout-card-padding` 12px；卡间距：列表容器的 `--layout-card-gap` 8px。
 - Leading 到正文：`--space-2` 8px；正文三行 Gap：`--layout-card-row-gap` 4px。
-- Leading Slot / Icon：`--layout-card-leading-icon-slot-width` 22px / Default 22px；Chevron：Small 16px。
+- Leading Slot / Icon：`--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`，32px / 20px；
+  Chevron Slot / Icon：`--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`，24px / 16px。
 - 标题 / Runtime / Meta：Label 15/20、Secondary 13/18、Caption 12/16。
 - 高度自然计算；不增加第四行或改写 Main / Trailing 槽位。
 
@@ -227,7 +242,7 @@ Dimension。
 
 - 上下分区 Padding：`--space-3` 12px；Icon 到正文：`--space-2` 8px；正文内部 Gap：
   `--space-1` 4px。
-- 两段 Icon Slot / Icon：`--layout-runtime-summary-icon-slot-width` / `--icon-size-default`，均为 22px；
+- 两段 Icon Slot / Icon：`--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary`，32px / 20px；
   Value：Label 15/20；Label / Meta：Caption 12/16。
 - Retry Touch：`--touch-target-min`。不要改变 Upper → Separator → Lower 或两段字段层级。
 
@@ -238,7 +253,7 @@ Dimension。
 - Header 与 Selector 行：`--touch-target-min` 44px；Row 最小高度：
   `--layout-capability-row-min-height` 44px。
 - Row Gap：`--space-2` 8px；Actions Gap：`--space-1` 4px；Icon Slot / Icon：
-  `--layout-capability-icon-slot-width` 22px / Small 16px。
+  `--layout-capability-icon-slot-width` / `--icon-size-capability-row`，28px / 16px。
 - Name：Body 14/20 + Medium；Version：Caption 12/16；Action：Touch 44px、
   `--control-height-capability-action` 28px、Action 13/18 + Medium。
 - 调整总高度或 Row 密度后仍必须完整显示五行，并从第六行开始只滚动 Rows；Header / Selector 不滚动。

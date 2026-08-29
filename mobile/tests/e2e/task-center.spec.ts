@@ -520,13 +520,23 @@ for (const width of viewportWidths) {
         const leading = box('task-card-leading')
         const content = box('task-card-name')
         const chevron = box('task-card-chevron')
+        const leadingStyle = window.getComputedStyle(
+          card.querySelector<HTMLElement>('[data-testid="task-card-leading"]')!,
+        )
+        const chevronStyle = window.getComputedStyle(
+          card.querySelector<HTMLElement>('[data-testid="task-card-chevron"]')!,
+        )
         return {
           leadingLeft: leading.left,
           leadingRight: leading.right,
+          leadingWidth: leading.width,
+          leadingIconSize: Number.parseFloat(leadingStyle.fontSize),
           contentLeft: content.left,
           contentRight: content.right,
           chevronLeft: chevron.left,
           chevronRight: chevron.right,
+          chevronWidth: chevron.width,
+          chevronIconSize: Number.parseFloat(chevronStyle.fontSize),
           chevronCenterDelta: Math.abs(
             chevron.top + chevron.height / 2 - (root.top + root.height / 2),
           ),
@@ -536,9 +546,13 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
         cardAnatomy.contentLeft,
       )
+      expect(cardAnatomy.leadingWidth).toBe(32)
+      expect(cardAnatomy.leadingIconSize).toBe(20)
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
         cardAnatomy.chevronLeft,
       )
+      expect(cardAnatomy.chevronWidth).toBe(24)
+      expect(cardAnatomy.chevronIconSize).toBe(16)
       expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
       expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
 
