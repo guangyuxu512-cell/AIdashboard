@@ -32,7 +32,7 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | 卡片图标到正文   | `src/shared/styles/tokens.css` | `--space-2`                                            | 8px         | Device / Task Card、`DeviceRuntimeSummary` |
 | 卡片三行内部间距 | `src/shared/styles/tokens.css` | `--layout-card-row-gap`                                | 4px         | Device / Task Card 主内容                  |
 | 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 20px | 设备名、任务名、Section 与能力标题         |
-| 概览横幅高度     | `src/shared/styles/tokens.css` | `--layout-summary-height`                              | 98px        | `MobileSummaryStrip`                       |
+| 概览横幅高度     | `src/shared/styles/tokens.css` | `--layout-summary-height`                              | 88px        | `MobileSummaryStrip`                       |
 | 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 32px | `MobileListToolbar`、Capability 轻操作     |
 | 能力面板总高度   | `src/shared/styles/tokens.css` | `--layout-capability-panel-height`                     | 334px       | 五行完整显示与第六行起内部滚动             |
 
@@ -45,7 +45,7 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | `--layout-content-max-width`         | 430px  | `MobileAppShell` 最大内容宽度                              |
 | `--layout-header-height`             | 52px   | `MobileGlobalHeader` 内容高度，不含顶部 Safe Area          |
 | `--layout-detail-header-height`      | 50px   | `MobileDetailHeader`；也映射到筛选 Sheet 的 Vant NavBar    |
-| `--layout-summary-height`            | 98px   | `MobileSummaryStrip` 整体高度                              |
+| `--layout-summary-height`            | 88px   | `MobileSummaryStrip` 整体高度                              |
 | `--layout-toolbar-height`            | 44px   | `MobileListToolbar` 整体高度                               |
 | `--layout-bottom-nav-height`         | 58px   | Vant Tabbar 与五入口 Bottom Navigation，不含底部 Safe Area |
 | `--layout-capability-panel-height`   | 334px  | `CapabilityPanel` 总高度                                   |
@@ -53,6 +53,19 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 
 `MobileAppShell` 的 `100dvh`、Safe Area 所有权和 Header / Main / Bottom 三行 Grid 属于冻结的高度链与
 滚动结构，不是 Stage 2 常规调参项。
+
+### Stage 2C 结论（全局尺寸比例）
+
+| 区域              | Stage 2C 最终值 | 结论                                                                                       |
+| ----------------- | --------------- | ------------------------------------------------------------------------------------------ |
+| Global Header     | 52px            | 保持；完整容纳品牌与两个 44px Touch Target。                                               |
+| Detail Header     | 50px            | 保持；返回 Touch Target 与居中标题比例协调。                                               |
+| Summary Strip     | 88px            | 从 98px 调整；实测 98 / 92 / 88 / 84px，84px 已接近三层内容的最小高度，88px 保留舒适留白。 |
+| List Toolbar      | 44px            | 保持；是工具行与 Touch Target 的稳定基线。                                                 |
+| Bottom Navigation | 58px            | 保持；不含 Bottom Safe Area，五入口不拥挤。                                                |
+
+本轮不调整 `--layout-capability-panel-height`、`--layout-capability-row-min-height`、Icon Slot、Control、
+Typography 或 Spacing；Safe Area 与 `100dvh` Shell 高度链继续独立于上述内容高度。
 
 ### B. Spacing（间距）
 

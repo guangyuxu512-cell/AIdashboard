@@ -63,7 +63,7 @@
   --layout-content-max-width: 430px; /* MobileAppShell（应用壳）内容最大宽度 */
   --layout-header-height: 52px; /* 一级页面全局顶部栏内容高度 */
   --layout-detail-header-height: 50px; /* 设备/任务详情顶部栏内容高度 */
-  --layout-summary-height: 98px; /* MobileSummaryStrip（概览横幅）整体高度 */
+  --layout-summary-height: 88px; /* 移动端概览横幅高度，承载图标、数字、标签三层结构 */
   --layout-toolbar-height: 44px; /* MobileListToolbar（列表工具行）整体高度 */
   --layout-bottom-nav-height: 58px; /* 底部五入口导航高度，不含底部安全区 */
   --layout-page-padding-x: 16px; /* Header、列表与详情页统一左右留白 */

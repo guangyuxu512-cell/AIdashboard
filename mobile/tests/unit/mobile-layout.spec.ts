@@ -247,7 +247,7 @@ describe('Mobile Layout shared components', () => {
 
     expect(tokens).toContain('--layout-header-height: 52px')
     expect(tokens).toContain('--layout-detail-header-height: 50px')
-    expect(tokens).toContain('--layout-summary-height: 98px')
+    expect(tokens).toContain('--layout-summary-height: 88px')
     expect(tokens).toContain('--layout-toolbar-height: 44px')
     expect(tokens).toContain('--layout-bottom-nav-height: 58px')
     expect(tokens).toContain('--layout-page-padding-x: 16px')

@@ -769,7 +769,7 @@ for (const width of viewportWidths) {
           }
         }),
       ).toEqual({
-        summaryHeight: '98px',
+        summaryHeight: '88px',
         summaryStacked: true,
         toolbarHeight: '44px',
         selectorVisualHeight: '32px',
@@ -803,9 +803,9 @@ for (const width of viewportWidths) {
           clip: { x: 0, y: 0, width: 390, height: 260 },
         })
       }
-      if (width === 360 && theme === 'light') {
+      if ((width === 360 || width === 430) && theme === 'light') {
         await page.screenshot({
-          path: testInfo.outputPath('visual-device-360-light.png'),
+          path: testInfo.outputPath(`visual-device-${width}-light.png`),
         })
       }
 
