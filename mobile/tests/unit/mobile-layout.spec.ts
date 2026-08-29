@@ -244,6 +244,14 @@ describe('Mobile Layout shared components', () => {
       ),
       'utf8',
     )
+    const taskDetail = readFileSync(
+      resolve(process.cwd(), 'src/pages/tasks/TaskDetailPage.vue'),
+      'utf8',
+    )
+    const runtimeLog = readFileSync(
+      resolve(process.cwd(), 'src/features/task-runtime/ui/TaskRuntimeLog.vue'),
+      'utf8',
+    )
     const capabilityPanel = readFileSync(
       resolve(
         process.cwd(),
@@ -336,6 +344,18 @@ describe('Mobile Layout shared components', () => {
     )
     expect(runtimeSummary).toContain(
       'font-size: var(--icon-size-runtime-summary)',
+    )
+    expect(runtimeSummary).not.toMatch(
+      /\.device-runtime-summary\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
+    )
+    expect(taskDetail).not.toMatch(
+      /\.task-detail-page__summary\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
+    )
+    expect(taskDetail).not.toMatch(
+      /\.task-detail-page__core\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
+    )
+    expect(runtimeLog).not.toMatch(
+      /\.runtime-log\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
     )
     expect(capabilityPanel).toContain(
       'width: var(--layout-capability-icon-slot-width)',

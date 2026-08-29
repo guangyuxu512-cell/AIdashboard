@@ -940,7 +940,10 @@ for (const width of viewportWidths) {
       await deviceDetailScroll.evaluate((element) => {
         element.scrollTop = 0
       })
-      if (width === 390 || (width === 360 && theme === 'light')) {
+      if (
+        width === 390 ||
+        (theme === 'light' && (width === 360 || width === 430))
+      ) {
         await page.screenshot({
           path: testInfo.outputPath(
             `visual-device-detail-${width}-${theme}.png`,
@@ -969,6 +972,47 @@ for (const width of viewportWidths) {
       await expect(page.getByTestId('task-detail')).toContainText('订单同步')
       await expectDetailHeader(page, '任务详情', '任务')
       await expectBottomNavigation(page, '任务')
+      const taskDetailDensity = await page.evaluate(() => {
+        const detail = document.querySelector<HTMLElement>(
+          '[aria-label="任务详情内容"]',
+        )!
+        const summary = document.querySelector<HTMLElement>(
+          '.task-detail-page__summary',
+        )!
+        const core = document.querySelector<HTMLElement>(
+          '.task-detail-page__core',
+        )!
+        const runtimeLog = document.querySelector<HTMLElement>('.runtime-log')!
+        const runtimeHeading = runtimeLog.querySelector<HTMLElement>('h2')!
+        const bottom = document.querySelector<HTMLElement>(
+          '[data-testid="mobile-shell-bottom"]',
+        )!
+        const detailBox = detail.getBoundingClientRect()
+        const summaryBox = summary.getBoundingClientRect()
+        const coreBox = core.getBoundingClientRect()
+        const runtimeBox = runtimeLog.getBoundingClientRect()
+        const headingBox = runtimeHeading.getBoundingClientRect()
+        const bottomBox = bottom.getBoundingClientRect()
+
+        return {
+          startsAtTop:
+            detail.scrollTop === 0 && summaryBox.top >= detailBox.top,
+          summaryBeforeCore: summaryBox.bottom <= coreBox.top,
+          coreBeforeRuntime: coreBox.bottom <= runtimeBox.top,
+          runtimeHeadingInViewport: headingBox.top < bottomBox.top,
+        }
+      })
+      expect(taskDetailDensity).toEqual({
+        startsAtTop: true,
+        summaryBeforeCore: true,
+        coreBeforeRuntime: true,
+        runtimeHeadingInViewport: true,
+      })
+      if (width === 390 || (theme === 'light' && width === 360)) {
+        await page.screenshot({
+          path: testInfo.outputPath(`visual-task-detail-${width}-${theme}.png`),
+        })
+      }
       if (width === 390 && theme === 'light') {
         await page.screenshot({
           path: testInfo.outputPath('mobile-detail-header-task-390-light.png'),
@@ -1231,6 +1275,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     const maxHeight = Number.parseFloat(
       window.getComputedStyle(panel).maxHeight,
     )
+    const panelBox = panel.getBoundingClientRect()
     const rowAnatomy = rows.slice(0, 6).map((row) => {
       const icon = row.querySelector<HTMLElement>(
         '.device-capability-panel__icon-slot',
@@ -1286,6 +1331,20 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         Number.isFinite(maxHeight) &&
         maxHeight > 0 &&
         panel.getBoundingClientRect().height <= maxHeight + 1,
+      panelHeight: panelBox.height,
+      expectedPanelHeight: Number.parseFloat(
+        window
+          .getComputedStyle(document.documentElement)
+          .getPropertyValue('--layout-capability-panel-height'),
+      ),
+      fiveRowsFitList:
+        rows
+          .slice(0, 5)
+          .reduce(
+            (height, row) => height + row.getBoundingClientRect().height,
+            0,
+          ) <=
+        listBox.height + 1,
       refreshTouchWidth: refresh.getBoundingClientRect().width,
       refreshTouchHeight: refresh.getBoundingClientRect().height,
       refreshVisualSize: (() => {
@@ -1321,6 +1380,8 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     }
   })
   expect(layout.panelHasStableMaximum).toBe(true)
+  expect(layout.panelHeight).toBeCloseTo(layout.expectedPanelHeight, 0)
+  expect(layout.fiveRowsFitList).toBe(true)
   expect(layout.refreshTouchWidth).toBeGreaterThanOrEqual(44)
   expect(layout.refreshTouchHeight).toBeGreaterThanOrEqual(44)
   expect(layout.refreshVisualSize).toEqual({ width: 30, height: 30 })
@@ -1471,6 +1532,26 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(page.getByTestId('capability-icon-slot')).toHaveCount(5)
   await expect(page.getByTestId('capability-version')).toHaveCount(5)
   await expect(page.getByText('v1.3.0', { exact: true })).toBeVisible()
+  const fiveSkillRows = await page
+    .getByTestId('skill-list')
+    .evaluate((list) => {
+      const rows = Array.from(
+        list.querySelectorAll<HTMLElement>('[data-testid="skill-row"]'),
+      )
+      const listBox = list.getBoundingClientRect()
+      return {
+        scrollable: list.scrollHeight > list.clientHeight,
+        allRowsVisible: rows.every(
+          (row) => row.getBoundingClientRect().bottom <= listBox.bottom + 1,
+        ),
+        scrollTop: list.scrollTop,
+      }
+    })
+  expect(fiveSkillRows).toEqual({
+    scrollable: false,
+    allRowsVisible: true,
+    scrollTop: 0,
+  })
   await page.screenshot({
     path: testInfo.outputPath('capability-skills-390-light.png'),
     clip: { x: 0, y: 0, width: 390, height: 650 },

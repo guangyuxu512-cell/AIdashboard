@@ -95,6 +95,21 @@ Token；禁止创建 `device-filter-height`、`task-action-height` 等 Feature �
 命中区并遮挡相邻操作。Stage 2E 不调整 Typography、Spacing、Global Dimensions、Icon Ratio、Capability Panel /
 Row 高度、Color、Radius、Shadow、Press 或 Motion。
 
+### Stage 2F 结论（详情页纵向密度）
+
+| 区域                 | Stage 2F 最终值 / 结论 | 依据与边界                                                                      |
+| -------------------- | ---------------------- | ------------------------------------------------------------------------------- |
+| DeviceRuntimeSummary | 保持自然高度           | 没有固定 Height / Min Height；继续由 Frozen 两段内容、12px Padding 与行高决定。 |
+| Capability Panel     | 334px                  | 334px 完整显示 5 行；候选 330px 已实测裁切第 5 行，因此不压缩。                 |
+| Capability Row       | 最小 44px              | Configure / Run 各自保留至少 44×44px Touch Target；不以多塞一行换密度。         |
+| Capability List      | 第 6 行起内部滚动      | Header / Selector 固定，只有 Rows 滚动；5 行时无多余滚动范围。                  |
+| Task Detail          | 保持自然高度           | Summary、Core、Runtime Log 无局部固定高度；不删字段、不改顺序或滚动职责。       |
+
+主人工基准为 `390 × 844` 的 Visual Mock viewport：Device Detail 首屏先展示运行摘要与能力区；Task Detail
+首屏先展示 Summary / Core，并使 Runtime Log 标题进入可见区域。360 / 375 / 430px 和 Light / Dark 只验证相同
+密度语言、无横向溢出、Touch Target 与内部滚动契约。以上是 Stage 2 Baseline，不是永久像素冻结；后续
+Stage 2 Final Review 只能在不改变 Frozen Anatomy、Navigation Contract 与 Scroll Contract 的前提下整体复核。
+
 ### B. Spacing（间距）
 
 | 语义                                      | 控制位置                  | 当前值    | 主要影响                                   |
@@ -179,6 +194,8 @@ Stage 3。
 | `--space-3`                                                            | 12px                      | 详情 Section 内标题/内容、Task Summary/Core 与 Runtime Summary 分区 |
 | `--space-4`                                                            | 16px                      | Task Summary/Core 与 Runtime Log 内边距                             |
 | `--space-6`                                                            | 24px                      | Device / Task Detail 当前底部内容留白                               |
+| `--layout-capability-panel-height`                                     | 334px                     | 5 行 Capability 完整显示；第 6 行起仅内部滚动                       |
+| `--layout-capability-row-min-height`                                   | 44px                      | Capability Row 与 Configure / Run 的触控约束                        |
 | Vant Cell `font / line-height / vertical padding / horizontal padding` | 14px / 20px / 12px / 16px | “更多信息”与筛选列表密度                                            |
 | Vant Collapse Content Padding                                          | 12px 16px                 | “更多信息”展开内容密度                                              |
 
