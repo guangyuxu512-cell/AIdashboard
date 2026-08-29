@@ -625,10 +625,12 @@ for (const width of viewportWidths) {
           toolbarLeft: style('.mobile-list-toolbar').paddingLeft,
           toolbarRight: style('.mobile-list-toolbar').paddingRight,
           toolbarHeight: style('.mobile-list-toolbar').height,
+          selectorWidth: selector.width,
           selectorHeight: style('[data-testid="mobile-list-selector"]').height,
           selectorVisualHeight: style(
             '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
           ).height,
+          filterWidth: filter.width,
           filterHeight: style('[data-testid="mobile-list-filter"]').height,
           filterVisualHeight: style(
             '[data-testid="mobile-list-filter"] .mobile-list-toolbar__control',
@@ -666,9 +668,9 @@ for (const width of viewportWidths) {
         toolbarRight: safeAreaFixture.right,
         toolbarHeight: '44px',
         selectorHeight: '44px',
-        selectorVisualHeight: '32px',
+        selectorVisualHeight: '30px',
         filterHeight: '44px',
-        filterVisualHeight: '32px',
+        filterVisualHeight: '30px',
         toolbarSingleRow: true,
         selectorBeforeFilter: true,
         toolbarBorderWidth: '0px',
@@ -682,6 +684,8 @@ for (const width of viewportWidths) {
         footerBottom: safeAreaFixture.bottom,
         bottomNavHeight: '58px',
       })
+      expect(layout.selectorWidth).toBeGreaterThanOrEqual(44)
+      expect(layout.filterWidth).toBeGreaterThanOrEqual(44)
       expect(layout.tabbarPosition).not.toBe('fixed')
       expect(layout.mainBottom).toBeLessThanOrEqual(layout.footerTop + 1)
       expect(layout.tabbarBottom).toBeLessThanOrEqual(

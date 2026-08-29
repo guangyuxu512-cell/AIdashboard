@@ -133,7 +133,7 @@ b {
 
 .mobile-icon-button::before {
   position: absolute;
-  inset: var(--space-1);
+  inset: calc((var(--touch-target-min) - var(--control-size-icon-button)) / 2);
   content: '';
   background: var(--bg-surface-raised);
   border: var(--border-width) solid var(--border-subtle);

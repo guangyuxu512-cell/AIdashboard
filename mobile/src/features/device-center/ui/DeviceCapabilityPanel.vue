@@ -387,6 +387,7 @@ function formatSkillVersion(version: string): string | null {
 }
 
 .device-capability-panel__action {
+  min-width: var(--touch-target-min);
   height: var(--touch-target-min);
   padding: 0;
   color: var(--text-secondary);

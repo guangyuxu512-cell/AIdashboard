@@ -137,6 +137,13 @@ async function readGlobalHeaderAnatomy(page: Page) {
       actionLabels: buttons.map((button) => button.getAttribute('aria-label')),
       themeBeforeBell: buttonBoxes[0]!.left < buttonBoxes[1]!.left,
       buttonSizes: buttonBoxes.map(({ width, height }) => ({ width, height })),
+      buttonVisualSizes: buttons.map((button) => {
+        const style = window.getComputedStyle(button, '::before')
+        return {
+          width: Number.parseFloat(style.width),
+          height: Number.parseFloat(style.height),
+        }
+      }),
       actionGap: buttonBoxes[1]!.left - buttonBoxes[0]!.right,
       iconSizes: icons.map((icon) => {
         const box = icon.getBoundingClientRect()
@@ -695,6 +702,10 @@ for (const width of viewportWidths) {
         { width: 44, height: 44 },
         { width: 44, height: 44 },
       ])
+      expect(deviceGlobalHeader.buttonVisualSizes).toEqual([
+        { width: 34, height: 34 },
+        { width: 34, height: 34 },
+      ])
       expect(deviceGlobalHeader.iconSizes[0]).toEqual(
         deviceGlobalHeader.iconSizes[1],
       )
@@ -782,7 +793,7 @@ for (const width of viewportWidths) {
         summaryHeight: '88px',
         summaryStacked: true,
         toolbarHeight: '44px',
-        selectorVisualHeight: '32px',
+        selectorVisualHeight: '30px',
         scrollbarWidth: 'none',
         scrollable: true,
         documentScrollTop: 0,
@@ -1233,7 +1244,9 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
       const actions = row.querySelector<HTMLElement>(
         '.device-capability-panel__actions',
       )!
-      const buttons = Array.from(actions.querySelectorAll('button'))
+      const buttons = Array.from(
+        actions.querySelectorAll<HTMLButtonElement>('button'),
+      )
       const rowBox = row.getBoundingClientRect()
       const iconBox = icon.getBoundingClientRect()
       const mainBox = main.getBoundingClientRect()
@@ -1253,6 +1266,19 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         nameOverflow: nameStyle.overflow,
         nameTextOverflow: nameStyle.textOverflow,
         nameWhiteSpace: nameStyle.whiteSpace,
+        actionTargets: buttons.map((button) => {
+          const box = button.getBoundingClientRect()
+          const visual = button.querySelector<HTMLElement>(
+            '.van-button__content > span',
+          )!
+          return {
+            width: box.width,
+            height: box.height,
+            left: box.left,
+            right: box.right,
+            visualHeight: visual.getBoundingClientRect().height,
+          }
+        }),
       }
     })
     return {
@@ -1260,7 +1286,15 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         Number.isFinite(maxHeight) &&
         maxHeight > 0 &&
         panel.getBoundingClientRect().height <= maxHeight + 1,
+      refreshTouchWidth: refresh.getBoundingClientRect().width,
       refreshTouchHeight: refresh.getBoundingClientRect().height,
+      refreshVisualSize: (() => {
+        const style = window.getComputedStyle(refresh, '::before')
+        return {
+          width: Number.parseFloat(style.width),
+          height: Number.parseFloat(style.height),
+        }
+      })(),
       refreshText: refresh.textContent?.trim() ?? '',
       refreshAtHeaderRight:
         titleBox.right <= refresh.getBoundingClientRect().left,
@@ -1287,7 +1321,9 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     }
   })
   expect(layout.panelHasStableMaximum).toBe(true)
+  expect(layout.refreshTouchWidth).toBeGreaterThanOrEqual(44)
   expect(layout.refreshTouchHeight).toBeGreaterThanOrEqual(44)
+  expect(layout.refreshVisualSize).toEqual({ width: 30, height: 30 })
   expect(layout.refreshText).toBe('')
   expect(layout.refreshAtHeaderRight).toBe(true)
   expect(layout.selectorBelowHeader).toBe(true)
@@ -1303,6 +1339,13 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         row.mainBeforeActions &&
         row.actionsAtRight &&
         row.actionOrder.join(',') === '配置,运行' &&
+        row.actionTargets.every(
+          (action) =>
+            action.width >= 44 &&
+            action.height >= 44 &&
+            action.visualHeight === 28,
+        ) &&
+        row.actionTargets[0]!.right <= row.actionTargets[1]!.left + 0.5 &&
         row.iconWidth > 0 &&
         row.nameOverflow === 'hidden' &&
         row.nameTextOverflow === 'ellipsis' &&

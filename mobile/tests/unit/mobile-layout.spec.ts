@@ -251,6 +251,10 @@ describe('Mobile Layout shared components', () => {
       ),
       'utf8',
     )
+    const toolbar = readFileSync(
+      resolve(process.cwd(), 'src/shared/ui/MobileListToolbar.vue'),
+      'utf8',
+    )
     const summaryStrip = readFileSync(
       resolve(process.cwd(), 'src/shared/ui/MobileSummaryStrip.vue'),
       'utf8',
@@ -269,7 +273,8 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-card-row-gap: 4px')
     expect(tokens).toContain('--layout-capability-panel-height: 334px')
     expect(tokens).toContain('--layout-capability-row-min-height: 44px')
-    expect(tokens).toContain('--control-height-compact: 32px')
+    expect(tokens).toContain('--control-height-compact: 30px')
+    expect(tokens).toContain('--control-size-icon-button: 34px')
     expect(tokens).toContain('--touch-target-min: 44px')
     expect(tokens).toContain('--icon-size-default: 22px')
     expect(tokens).toContain('--icon-size-small: 16px')
@@ -299,6 +304,9 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--font-weight-bold: 700')
     expect(vantTheme).toContain(
       '--van-button-default-font-size: var(--font-size-action)',
+    )
+    expect(vantTheme).toContain(
+      '--van-button-default-height: var(--control-height-default)',
     )
     expect(vantTheme).toContain(
       '--van-tabbar-item-line-height: var(--line-height-caption)',
@@ -335,6 +343,17 @@ describe('Mobile Layout shared components', () => {
     expect(capabilityPanel).toContain(
       'font-size: var(--icon-size-capability-row)',
     )
+    expect(capabilityPanel).toContain('min-width: var(--touch-target-min)')
+    expect(capabilityPanel).toContain('height: var(--touch-target-min)')
+    expect(capabilityPanel).toContain(
+      'height: var(--control-height-capability-action)',
+    )
+    expect(toolbar).toContain('min-width: var(--touch-target-min)')
+    expect(toolbar).toContain('height: var(--touch-target-min)')
+    expect(toolbar).toContain('height: var(--control-height-compact)')
+    expect(base).toContain('width: var(--touch-target-min)')
+    expect(base).toContain('height: var(--touch-target-min)')
+    expect(base).toContain('--control-size-icon-button')
     expect(summaryStrip).toContain('width: var(--icon-size-summary-metric)')
     expect(summaryStrip).toContain('height: var(--icon-size-summary-metric)')
     expect(summaryStrip).toContain('font-size: var(--icon-size-summary-metric)')

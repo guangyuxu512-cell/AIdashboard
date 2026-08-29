@@ -33,7 +33,7 @@ Stage 1 已冻结 `MobileDetailHeader`、`MobileGlobalHeader`、`MobileBottomNav
 | 卡片三行内部间距 | `src/shared/styles/tokens.css` | `--layout-card-row-gap`                                | 4px         | Device / Task Card 主内容                  |
 | 卡片标题字体     | `src/shared/styles/tokens.css` | `--font-size-label` / `--line-height-label`            | 15px / 20px | 设备名、任务名、Section 与能力标题         |
 | 概览横幅高度     | `src/shared/styles/tokens.css` | `--layout-summary-height`                              | 88px        | `MobileSummaryStrip`                       |
-| 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 32px | `MobileListToolbar`、Capability 轻操作     |
+| 工具行与紧凑控件 | `src/shared/styles/tokens.css` | `--layout-toolbar-height` / `--control-height-compact` | 44px / 30px | `MobileListToolbar`、Capability 轻操作     |
 | 能力面板总高度   | `src/shared/styles/tokens.css` | `--layout-capability-panel-height`                     | 334px       | 五行完整显示与第六行起内部滚动             |
 
 ## Stage 2 常调参数
@@ -79,6 +79,21 @@ Typography 或 Spacing；Safe Area 与 `100dvh` Shell 高度链继续独立于�
 
 本轮未调整 Header、Detail Header、Bottom Navigation 的 22px 图标映射，也未修改任一组件高度、Padding、Gap、
 Capability Panel / Row 密度或 Control 尺寸。
+
+### Stage 2E 结论（控件视觉尺寸与触控热区）
+
+| 区域                       | Visual Size | Touch Target               | 结论                                                                    |
+| -------------------------- | ----------- | -------------------------- | ----------------------------------------------------------------------- |
+| Toolbar Selector / Filter  | 30px 高     | 各自 44px 高、至少 44px 宽 | 同级、同中心、按内容定宽，360px 保持一行且不重叠。                      |
+| Capability Configure / Run | 28px 高     | 各自至少 44×44px           | 保持轻量文字 Shell，Configure 在 Run 左侧，不改变 Capability Row 高度。 |
+| Capability Refresh         | 30×30px     | 44×44px                    | Header 右侧 Section 级轻操作，不抢占主信息。                            |
+| Global Header Theme / Bell | 34×34px     | 各自 44×44px               | 两者完全同尺寸，在 52px Header 内居中；图标仍为 22px。                  |
+| Vant Default Button        | 44px 高     | 44px                       | 保持标准 CTA / 输入基线，不因紧凑业务控件而全局压缩。                   |
+
+控件的可见 Shell 与点击范围是两套职责：只对明确的 Toolbar、Capability 与 Shared Icon Button 语义应用紧凑
+Token；禁止创建 `device-filter-height`、`task-action-height` 等 Feature 私有 Token，禁止用透明 Overlay 扩大
+命中区并遮挡相邻操作。Stage 2E 不调整 Typography、Spacing、Global Dimensions、Icon Ratio、Capability Panel /
+Row 高度、Color、Radius、Shadow、Press 或 Motion。
 
 ### B. Spacing（间距）
 
@@ -138,15 +153,16 @@ Stage 3。
 | 参数                                 | 当前值 | 主要影响                                                             |
 | ------------------------------------ | ------ | -------------------------------------------------------------------- |
 | `--touch-target-min`                 | 44px   | Back、Theme、Bell、Summary Metric、Toolbar Action、Capability Action |
-| `--control-height-compact`           | 32px   | Toolbar 控件视觉高度、Capability Refresh 视觉区域                    |
+| `--control-height-compact`           | 30px   | Toolbar 控件视觉高度、Capability Refresh 视觉区域                    |
+| `--control-size-icon-button`         | 34px   | Theme / Bell / Detail Back 的可见图标按钮外壳                        |
 | `--control-height-default`           | 44px   | Vant 默认 Button 与 Search Input                                     |
 | `--control-height-large`             | 50px   | Vant 大号 Button 与 Calendar Day                                     |
 | `--control-height-capability-action` | 28px   | Capability Configure / Run 内部视觉高度                              |
 
-`MobileListToolbar` 的 Action 外层保持 44px Touch Target，内部视觉控件为 32px；Capability Action 外层同样
-保持 44px 纵向 Touch Target，文字视觉区域由 `--control-height-capability-action` 独立控制。Capability
-Action 当前约 42px 的横向命中宽度留待 Stage 2E 统一补齐到 44px，本轮不得借 Spacing 修改 Control
-Dimension。
+`MobileListToolbar` 的 Action 外层保持 44px Touch Target，内部视觉控件为 30px；Capability Action 外层
+同样保持至少 44×44px Touch Target，文字视觉区域由 `--control-height-capability-action` 独立控制。Refresh
+使用 30px 可见 Shell；Theme / Bell / Detail Back 通过 `--control-size-icon-button` 使用 34px 可见 Shell，
+但三者外层仍是 44×44px。Capability Action 与 Toolbar Action 的相邻热区必须独立，不得重叠。
 
 ### F. Card Dimensions（卡片尺寸）
 
@@ -191,13 +207,14 @@ Dimension。
 - 高度：`--layout-detail-header-height`。
 - 标题：`--font-size-title`、`--line-height-title`、`--font-weight-semibold`。
 - Back 图标与左右 Slot：`--icon-size-default`、`--touch-target-min`。
+- Back 可见 Icon Button Shell：`--control-size-icon-button`；不改变 Detail Header 高度或三列结构。
 - 左右留白：`--layout-page-padding-x` 与 Safe Area 的 `max()`；不要改变三列对称结构。
 
 ### MobileGlobalHeader（移动端全局顶部栏）
 
 - 高度：`--layout-header-height`。
 - 品牌字体：Title 字阶与 Semibold 字重。
-- Theme / Bell 图标：`--icon-size-default`；触控区：`--touch-target-min`。
+- Theme / Bell 图标：`--icon-size-default`；可见 Icon Button Shell：`--control-size-icon-button`；触控区：`--touch-target-min`。
 - 左右留白：`--layout-page-padding-x`；两操作间距：`--space-1`。
 
 ### MobileBottomNavigation（底部主导航）

@@ -36,11 +36,12 @@
 
   /* Touch, icons and progress */
   --touch-target-min: 44px; /* Touch Target（触控热区）最小尺寸 */
-  --control-height-compact: 32px; /* Toolbar 与 Capability 轻操作的视觉高度 */
+  --control-height-compact: 30px; /* 紧凑型工具控件视觉高度，不等于44px触控热区 */
   --control-height-medium: 40px;
   --control-height-default: 44px; /* Vant 默认 Button、Search 输入高度 */
   --control-height-large: 50px; /* Vant 大号 Button 与 Calendar 日期行高度 */
   --control-height-capability-action: 28px; /* Capability 配置/运行操作的内部视觉高度 */
+  --control-size-icon-button: 34px; /* 图标按钮可见外壳边长，触控区域仍为44px */
   --icon-size-small: 16px; /* Sheet 返回、轻量状态与 Vant 辅助图标 */
   --icon-size-default: 22px; /* Header、Bottom Nav 与通用主图标 */
   --icon-size-card-leading: 20px; /* DeviceCard / TaskCard 左侧图标视觉尺寸 */

@@ -841,11 +841,13 @@ for (const width of viewportWidths) {
           toolbarLeft: style('.mobile-list-toolbar').paddingLeft,
           toolbarRight: style('.mobile-list-toolbar').paddingRight,
           toolbarHeight: style('.mobile-list-toolbar').height,
+          selectorTouchWidth: selector.width,
           selectorTouchHeight: style('[data-testid="mobile-list-selector"]')
             .height,
           selectorVisualHeight: style(
             '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
           ).height,
+          filterTouchWidth: filter.width,
           filterTouchHeight: style('[data-testid="mobile-list-filter"]').height,
           filterVisualHeight: style(
             '[data-testid="mobile-list-filter"] .mobile-list-toolbar__control',
@@ -876,9 +878,9 @@ for (const width of viewportWidths) {
         toolbarRight: safeAreaFixture.right,
         toolbarHeight: '44px',
         selectorTouchHeight: '44px',
-        selectorVisualHeight: '32px',
+        selectorVisualHeight: '30px',
         filterTouchHeight: '44px',
-        filterVisualHeight: '32px',
+        filterVisualHeight: '30px',
         toolbarSingleRow: true,
         selectorBeforeFilter: true,
         toolbarBorderWidth: '0px',
@@ -892,6 +894,8 @@ for (const width of viewportWidths) {
         footerBottom: safeAreaFixture.bottom,
         bottomNavHeight: '58px',
       })
+      expect(layout.selectorTouchWidth).toBeGreaterThanOrEqual(44)
+      expect(layout.filterTouchWidth).toBeGreaterThanOrEqual(44)
       expect(layout.tabbarPosition).not.toBe('fixed')
       await expectNoHorizontalOverflow(page)
 
@@ -913,16 +917,47 @@ for (const width of viewportWidths) {
         page.locator('.device-capability-panel__tab-count'),
       ).toHaveText(['1', '1'])
       for (const action of ['device-capability-refresh']) {
-        expect(
-          (await page.getByTestId(action).boundingBox())?.height,
-        ).toBeGreaterThanOrEqual(44)
+        const box = await page.getByTestId(action).boundingBox()
+        expect(box?.width).toBeGreaterThanOrEqual(44)
+        expect(box?.height).toBeGreaterThanOrEqual(44)
       }
       for (const actionName of ['配置：订单应用', '运行：订单应用']) {
-        expect(
-          (await page.getByRole('button', { name: actionName }).boundingBox())
-            ?.height,
-        ).toBeGreaterThanOrEqual(44)
+        const box = await page
+          .getByRole('button', { name: actionName })
+          .boundingBox()
+        expect(box?.width).toBeGreaterThanOrEqual(44)
+        expect(box?.height).toBeGreaterThanOrEqual(44)
       }
+      const refreshVisualSize = await page
+        .getByTestId('device-capability-refresh')
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element, '::before')
+          return {
+            width: Number.parseFloat(style.width),
+            height: Number.parseFloat(style.height),
+          }
+        })
+      expect(refreshVisualSize).toEqual({ width: 30, height: 30 })
+      const capabilityActionVisualHeights = await page
+        .locator(
+          '.device-capability-panel__action > .van-button__content > span',
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) =>
+            Number.parseFloat(window.getComputedStyle(element).height),
+          ),
+        )
+      expect(capabilityActionVisualHeights).toEqual([28, 28])
+      const capabilityActionBoxes = await Promise.all(
+        ['配置：订单应用', '运行：订单应用'].map(async (name) =>
+          page.getByRole('button', { name }).boundingBox(),
+        ),
+      )
+      const [configureBox, runBox] = capabilityActionBoxes
+      if (!configureBox || !runBox) {
+        throw new Error('未找到能力操作触控区域')
+      }
+      expect(configureBox.x + configureBox.width <= runBox.x + 0.5).toBe(true)
       await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
       await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
         'height',
