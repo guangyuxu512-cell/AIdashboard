@@ -29,7 +29,7 @@ Final Icon 接入后，只允许通过显式 Optical Alignment Review（视觉�
 Visual Token Tuner 的“恢复全部”只移除开发态 Runtime Override 与本机临时记录；恢复后默认值、当前值和 Dirty Count
 均应回到正式 Token 基线和 `0`。
 
-`vant-theme.css` 只消费以下语义 Token，没有为本次固化新增第二套 Vant 尺寸常量。
+`vant-theme.css` 只消费下列稳定语义 Token 或独立的原子刻度映射，没有为本次固化新增第二套 Vant 尺寸常量。
 
 ## 最终正式 Token
 
@@ -49,20 +49,27 @@ Visual Token Tuner 的“恢复全部”只移除开发态 Runtime Override 与�
 
 ### Spacing（间距）
 
-| 语义                          | Token                                    | 正式值      | 主要消费者                                             |
-| ----------------------------- | ---------------------------------------- | ----------- | ------------------------------------------------------ |
-| 紧凑内部间距                  | `--space-1`                              | 2px         | Summary、Runtime、Capability、Header / Bottom Nav 细部 |
-| 共享内容间距                  | `--space-2`                              | 16px        | DeviceCard / TaskCard 主图标到正文，以及共享内容区域   |
-| Page Horizontal / Vertical    | `--layout-page-padding-x / y`            | 16px / 12px | Header、列表、详情页                                   |
-| Section Gap                   | `--layout-section-gap`                   | 24px        | Device / Task Detail 一级区块                          |
-| Card Gap                      | `--layout-card-gap`                      | 8px         | Device / Task 列表                                     |
-| Card Padding X / Y            | `--layout-card-padding-x / y`            | 15px / 16px | DeviceCard、TaskCard                                   |
-| Card Row Gap                  | `--layout-card-row-gap`                  | 5px         | 两类业务卡三行正文                                     |
-| Summary Padding Y             | `--layout-summary-padding-y`             | 7px         | MobileSummaryStrip                                     |
-| Runtime Summary Padding X / Y | `--layout-runtime-summary-padding-x / y` | 17px / 9px  | DeviceRuntimeSummary 上下分区                          |
+| 语义                          | Token                                                       | 正式值                                | 主要消费者                              |
+| ----------------------------- | ----------------------------------------------------------- | ------------------------------------- | --------------------------------------- |
+| 原子间距刻度                  | `--space-1` ～ `--space-8`                                  | 4 / 8 / 12 / 16 / 20 / 24 / 28 / 32px | 比例尺；不作为业务组件或调参器局部入口  |
+| 紧凑通用间距                  | `--layout-compact-gap`                                      | 2px                                   | Header、Tag、轻量状态等非特定紧凑关系   |
+| 标准内容间距                  | `--layout-content-gap`                                      | 16px                                  | Vant 基础映射、通用列表与非特定内容区域 |
+| Card Leading / Content Gap    | `--layout-card-leading-content-gap`                         | 16px                                  | DeviceCard、TaskCard 主视觉到正文       |
+| Summary Metric Gap / Padding  | `--layout-summary-metric-gap / -padding-x`                  | 2px / 16px                            | MobileSummaryStrip 三层 Metric          |
+| Toolbar Group / Inner Gap     | `--layout-toolbar-group-gap / -inner-gap`                   | 16px / 2px                            | MobileListToolbar 左右组与组内元素      |
+| Runtime Leading / Inner Gap   | `--layout-runtime-summary-leading-content-gap / -inner-gap` | 16px / 2px                            | DeviceRuntimeSummary 图标与内容、内部行 |
+| Capability Panel / Row Gap    | `--layout-capability-panel-gap / -row-gap`                  | 2px / 16px                            | CapabilityPanel 区块与 Capability Row   |
+| Page Horizontal / Vertical    | `--layout-page-padding-x / y`                               | 16px / 12px                           | Header、列表、详情页                    |
+| Section Gap                   | `--layout-section-gap`                                      | 24px                                  | Device / Task Detail 一级区块           |
+| Card Gap                      | `--layout-card-gap`                                         | 8px                                   | Device / Task 列表                      |
+| Card Padding X / Y            | `--layout-card-padding-x / y`                               | 15px / 16px                           | DeviceCard、TaskCard                    |
+| Card Row Gap                  | `--layout-card-row-gap`                                     | 5px                                   | 两类业务卡三行正文                      |
+| Summary Padding Y             | `--layout-summary-padding-y`                                | 7px                                   | MobileSummaryStrip                      |
+| Runtime Summary Padding X / Y | `--layout-runtime-summary-padding-x / y`                    | 17px / 9px                            | DeviceRuntimeSummary 上下分区           |
 
-`--space-1` 与 `--space-2` 是全局语义 Token，改动必须同时审计其全部消费者；不得为了某个页面重新定义
-Feature 私有间距 Token。
+原子刻度不直接承载业务语义，也不在 Visual Token Tuner 中作为单个组件的调参项。调参器只暴露 Card、
+Summary、Runtime、Capability 等稳定语义 Token；旧的 `--space-1` / `--space-2` LocalStorage 覆盖会被安全
+忽略并清理，不能重新注入页面。不得为了某个页面重新定义 Feature 私有间距 Token。
 
 ### Global Dimensions（全局尺寸）
 

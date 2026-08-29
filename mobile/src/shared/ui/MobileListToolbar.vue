@@ -75,7 +75,7 @@ const emit = defineEmits<{
   min-width: 0;
   height: var(--layout-toolbar-height);
   flex: none;
-  gap: var(--space-2);
+  gap: var(--layout-toolbar-group-gap);
   padding-right: max(var(--layout-page-padding-x), var(--safe-area-right));
   padding-left: max(var(--layout-page-padding-x), var(--safe-area-left));
   align-items: center;
@@ -86,7 +86,7 @@ const emit = defineEmits<{
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  gap: var(--space-1);
+  gap: var(--layout-toolbar-inner-gap);
   align-items: baseline;
   overflow: hidden;
 }
@@ -111,7 +111,7 @@ const emit = defineEmits<{
   display: flex;
   min-width: 0;
   flex: none;
-  gap: var(--space-1);
+  gap: var(--layout-toolbar-inner-gap);
   align-items: center;
 }
 
@@ -138,8 +138,8 @@ const emit = defineEmits<{
   width: 100%;
   min-width: 0;
   height: var(--control-height-compact);
-  gap: var(--space-1);
-  padding-inline: var(--space-2);
+  gap: var(--layout-toolbar-inner-gap);
+  padding-inline: var(--layout-toolbar-control-padding-x);
   align-items: center;
   justify-content: center;
   background: var(--bg-surface);

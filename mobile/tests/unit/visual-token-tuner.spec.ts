@@ -57,6 +57,26 @@ function getDefinition(key: string) {
 }
 
 describe('Visual Token Tuner runtime', () => {
+  it('只公开语义间距 Token，不把原子刻度当作局部调参控件', () => {
+    expect(
+      visualTokenRegistry.some((definition) =>
+        definition.cssVar.startsWith('--space-'),
+      ),
+    ).toBe(false)
+    expect(getDefinition('card-leading-content-gap').cssVar).toBe(
+      '--layout-card-leading-content-gap',
+    )
+    expect(getDefinition('summary-metric-gap').cssVar).toBe(
+      '--layout-summary-metric-gap',
+    )
+    expect(getDefinition('runtime-leading-content-gap').cssVar).toBe(
+      '--layout-runtime-summary-leading-content-gap',
+    )
+    expect(getDefinition('capability-row-gap').cssVar).toBe(
+      '--layout-capability-row-gap',
+    )
+  })
+
   it('在开发态从实际计算值读取并实时覆盖已登记 Token', () => {
     const root = document.createElement('html')
     const storage = new MemoryStorage()
@@ -182,6 +202,38 @@ describe('Visual Token Tuner runtime', () => {
 
     expect(root.style.getPropertyValue(definition.cssVar)).toBe('')
     expect(storage.values.has(VISUAL_TOKEN_TUNER_STORAGE_KEY)).toBe(false)
+  })
+
+  it('会清理历史原子间距覆盖，且不会重新注入页面', () => {
+    const storage = new MemoryStorage()
+    const definition = getDefinition('card-leading-content-gap')
+    const root = document.createElement('html')
+    const runtime = createVisualTokenTunerRuntime({
+      enabled: true,
+      root,
+      storage,
+      getComputedStyle: createComputedStyle(root),
+    })
+
+    root.style.setProperty('--space-1', '2px')
+    root.style.setProperty('--space-2', '16px')
+    storage.setItem(
+      VISUAL_TOKEN_TUNER_STORAGE_KEY,
+      JSON.stringify({
+        '--space-1': '2px',
+        '--space-2': '16px',
+        [definition.cssVar]: '12px',
+      }),
+    )
+
+    runtime.restore()
+
+    expect(root.style.getPropertyValue('--space-1')).toBe('')
+    expect(root.style.getPropertyValue('--space-2')).toBe('')
+    expect(root.style.getPropertyValue(definition.cssVar)).toBe('12px')
+    expect(storage.values.get(VISUAL_TOKEN_TUNER_STORAGE_KEY)).toBe(
+      JSON.stringify({ [definition.cssVar]: '12px' }),
+    )
   })
 
   it('生产态不读取存储、不注入覆盖，也不启用工具', () => {

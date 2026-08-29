@@ -120,14 +120,14 @@ const emit = defineEmits<{
 .device-list {
   display: grid;
   gap: var(--layout-card-gap);
-  padding: var(--space-2)
+  padding: var(--layout-content-gap)
     max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
     max(var(--layout-page-padding-x), var(--safe-area-left));
 }
 
 .device-list__next-error {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
   padding: 0 max(var(--layout-page-padding-x), var(--safe-area-right))
     var(--space-4) max(var(--layout-page-padding-x), var(--safe-area-left));
 }

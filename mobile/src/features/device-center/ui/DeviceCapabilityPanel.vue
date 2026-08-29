@@ -244,7 +244,7 @@ function formatSkillVersion(version: string): string | null {
   height: var(--layout-capability-panel-height);
   max-height: var(--layout-capability-panel-height);
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--layout-capability-panel-gap);
   padding: calc(var(--space-3) + var(--border-width)) var(--space-3);
   grid-template-rows: var(--touch-target-min) var(--touch-target-min) minmax(
       0,
@@ -287,7 +287,7 @@ function formatSkillVersion(version: string): string | null {
 }
 
 .device-capability-panel__tab-count {
-  margin-left: var(--space-1);
+  margin-left: var(--layout-compact-gap);
   color: var(--text-tertiary);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-regular);
@@ -330,7 +330,7 @@ function formatSkillVersion(version: string): string | null {
   display: flex;
   min-width: 0;
   min-height: var(--layout-capability-row-min-height);
-  gap: var(--space-2);
+  gap: var(--layout-capability-row-gap);
   align-items: center;
 }
 
@@ -382,7 +382,7 @@ function formatSkillVersion(version: string): string | null {
 .device-capability-panel__actions {
   display: flex;
   flex: none;
-  gap: var(--space-1);
+  gap: var(--layout-capability-actions-gap);
   align-items: center;
 }
 
@@ -398,7 +398,7 @@ function formatSkillVersion(version: string): string | null {
 .device-capability-panel__action span {
   display: inline-flex;
   height: var(--control-height-capability-action);
-  padding-inline: var(--space-2);
+  padding-inline: var(--layout-capability-action-padding-x);
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-control);
@@ -419,7 +419,7 @@ function formatSkillVersion(version: string): string | null {
 .device-capability-panel__state {
   display: flex;
   min-height: 100%;
-  gap: var(--space-2);
+  gap: var(--layout-capability-state-gap);
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);

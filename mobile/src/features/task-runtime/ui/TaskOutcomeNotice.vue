@@ -43,7 +43,7 @@ const failed = computed(
 .task-outcome__error {
   display: grid;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--layout-compact-gap);
   white-space: normal;
 }
 

@@ -199,7 +199,7 @@ const yingdaoVersion = computed(
   padding: var(--layout-runtime-summary-padding-y)
     var(--layout-runtime-summary-padding-x);
   align-items: center;
-  column-gap: var(--space-2);
+  column-gap: var(--layout-runtime-summary-leading-content-gap);
   grid-template-columns: auto minmax(0, 1fr);
 }
 
@@ -221,7 +221,7 @@ const yingdaoVersion = computed(
 .device-runtime-summary__content {
   display: grid;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--layout-runtime-summary-inner-gap);
 }
 
 .device-runtime-summary__heading,
@@ -229,7 +229,7 @@ const yingdaoVersion = computed(
 .device-runtime-summary__account-line {
   display: flex;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--layout-runtime-summary-inner-gap);
   align-items: center;
 }
 

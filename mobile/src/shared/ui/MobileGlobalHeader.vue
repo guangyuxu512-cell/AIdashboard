@@ -79,7 +79,7 @@ const themeActionLabel = computed(() =>
 .mobile-global-header__actions {
   display: flex;
   flex: none;
-  gap: var(--space-1);
+  gap: var(--layout-compact-gap);
   align-items: center;
 }
 

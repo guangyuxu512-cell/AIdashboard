@@ -6,7 +6,8 @@ Visual Token Tuner 是 `mobile/src/dev/visual-token-tuner/` 中的内部开发�
 `import.meta.env.DEV` 为真且 `VITE_VISUAL_TUNER !== 'false'` 时加载；Production 不显示入口、
 不读取 LocalStorage，也不会向根元素注入 CSS Variable 覆盖。
 
-它只允许临时覆盖已登记的 Stage 2 尺寸、间距、图标容量、控件和 Typography Token。工具不能调整
+它只允许临时覆盖已登记的 Stage 2 尺寸、**语义间距**、图标容量、控件和 Typography Token。原子间距刻度
+`--space-*` 不会作为调参输入暴露。工具不能调整
 颜色、Surface、Radius、Shadow、最终图标、Press、Motion，也不能调整 DOM、路由、导航或滚动约定。
 Stage 1 Frozen Contract 与 Stage 2 Final Frozen Baseline 仍以
 [`02-设计系统.md`](./02-设计系统.md) 和
@@ -32,7 +33,7 @@ Viewport 和“已调整”数量。低于 44px 的 Touch Target 会给出提醒
 开发态临时值只保存到浏览器 LocalStorage：
 `control-center.mobile.visual-token-tuner-v1`。开发启动时会自动恢复；已打开的预览页和独立调参窗口会监听
 同一存储记录，因此单项“恢复”与“恢复全部”也会立即同步回预览页。“恢复全部”会移除本工具登记的全部覆盖和
-该存储记录。
+该存储记录。历史版本保存在同一记录中的 `--space-1` / `--space-2` 覆盖会被安全忽略并清理，不会重新注入页面。
 
 “复制 CSS”输出完整的 `:root { --token: value; }` 片段，“复制 JSON”输出同一组 Token 的当前值。浏览器
 不会写入 `tokens.css`。需要正式采用的数值应按以下流程处理：

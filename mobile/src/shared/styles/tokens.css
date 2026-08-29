@@ -25,14 +25,32 @@
   --line-height-title: 22px; /* 品牌与详情 Header 标题行高 */
   --line-height-display: 22px; /* MobileSummaryStrip 指标数字行高 */
 
-  /* Spacing */
-  --space-1: 2px; /* Summary、运行摘要、能力与紧凑操作的内部间距 */
-  --space-2: 16px; /* 主卡片图标到正文与共享内容区域的间距 */
-  --space-3: 12px; /* 详情小节间距与能力面板内边距 */
-  --space-4: 16px; /* 详情 Surface、运行摘要分区与列表状态区内边距 */
+  /* Primitive spacing scale（原子间距刻度：不作为业务组件的直接调参入口） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 28px;
   --space-8: 32px;
+
+  /* Semantic spacing（语义间距：冻结组件与调参器只消费这一层） */
+  --layout-compact-gap: 2px; /* 紧凑行内信息与轻量操作的通用微间距 */
+  --layout-content-gap: 16px; /* 非特定业务区块的标准内容间距 */
+  --layout-card-leading-content-gap: 16px; /* DeviceCard / TaskCard 主视觉槽位到正文 */
+  --layout-summary-metric-gap: 2px; /* MobileSummaryStrip 的 Icon → Number → Label 间距 */
+  --layout-summary-metric-padding-x: 16px; /* MobileSummaryStrip 单个 Metric 水平留白 */
+  --layout-toolbar-group-gap: 16px; /* MobileListToolbar 主信息与操作组之间 */
+  --layout-toolbar-inner-gap: 2px; /* MobileListToolbar 标题、操作与控件内部间距 */
+  --layout-toolbar-control-padding-x: 16px; /* MobileListToolbar 紧凑控件水平内边距 */
+  --layout-runtime-summary-leading-content-gap: 16px; /* DeviceRuntimeSummary 图标槽位到正文 */
+  --layout-runtime-summary-inner-gap: 2px; /* DeviceRuntimeSummary 标题、状态与账号行内部间距 */
+  --layout-capability-panel-gap: 2px; /* CapabilityPanel Header、Selector 与列表区之间 */
+  --layout-capability-row-gap: 16px; /* Capability Row 图标槽位、名称与操作区域之间 */
+  --layout-capability-actions-gap: 2px; /* Capability Row 配置与运行操作之间 */
+  --layout-capability-action-padding-x: 16px; /* Capability Row 操作控件水平内边距 */
+  --layout-capability-state-gap: 16px; /* Capability 局部状态图标与文案之间 */
 
   /* Touch, icons and progress */
   --touch-target-min: 45px; /* Touch Target（触控热区）最小尺寸，满足至少44px约束 */

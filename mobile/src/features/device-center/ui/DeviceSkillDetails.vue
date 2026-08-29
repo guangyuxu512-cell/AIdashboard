@@ -31,7 +31,7 @@ const summary = computed(() =>
 .device-skill-details {
   display: grid;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .device-skill-details h3 {

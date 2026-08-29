@@ -7,6 +7,8 @@ import {
 export const VISUAL_TOKEN_TUNER_STORAGE_KEY =
   'control-center.mobile.visual-token-tuner-v1'
 
+const legacyVisualTokenCssVars = ['--space-1', '--space-2'] as const
+
 export interface VisualTokenTunerEnvironment {
   DEV?: boolean
   VITE_VISUAL_TUNER?: string
@@ -186,6 +188,18 @@ export function createVisualTokenTunerRuntime(
     }
   }
 
+  function clearRuntimeOverrides(): void {
+    if (!root) return
+
+    for (const definition of registry) {
+      root.style.removeProperty(definition.cssVar)
+    }
+
+    for (const cssVar of legacyVisualTokenCssVars) {
+      root.style.removeProperty(cssVar)
+    }
+  }
+
   function setValue(definition: VisualTokenDefinition, value: number): void {
     if (!isAvailable || !root || !Number.isFinite(value)) return
 
@@ -209,9 +223,7 @@ export function createVisualTokenTunerRuntime(
 
   function resetAll(): void {
     if (!isAvailable || !root) return
-    for (const definition of registry) {
-      root.style.removeProperty(definition.cssVar)
-    }
+    clearRuntimeOverrides()
     try {
       storage?.removeItem(VISUAL_TOKEN_TUNER_STORAGE_KEY)
     } catch {
@@ -220,17 +232,16 @@ export function createVisualTokenTunerRuntime(
   }
 
   function restore(): void {
-    if (!isAvailable || !root || !storage) return
+    if (!isAvailable || !root) return
+
+    clearRuntimeOverrides()
+    if (!storage) return
 
     let rawValue: string | null
     try {
       rawValue = storage.getItem(VISUAL_TOKEN_TUNER_STORAGE_KEY)
     } catch {
       return
-    }
-
-    for (const definition of registry) {
-      root.style.removeProperty(definition.cssVar)
     }
 
     const overrides = parseStoredOverrides(rawValue, registry)
@@ -254,6 +265,10 @@ export function createVisualTokenTunerRuntime(
         definition.cssVar,
         formatVisualTokenValue(stored, definition.unit),
       )
+    }
+
+    if (hasActiveOverride) {
+      persist()
     }
   }
 

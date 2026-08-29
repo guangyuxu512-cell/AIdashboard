@@ -14,8 +14,8 @@
   --van-background-3: var(--bg-subtle);
   --van-border-color: var(--border-subtle);
   --van-border-width: var(--border-width);
-  --van-padding-base: var(--space-1);
-  --van-padding-xs: var(--space-2);
+  --van-padding-base: var(--layout-compact-gap);
+  --van-padding-xs: var(--layout-content-gap);
   --van-padding-sm: var(--space-3);
   --van-padding-md: var(--space-4);
   --van-padding-lg: var(--space-6);
@@ -78,7 +78,7 @@
   --van-tabbar-item-active-color: var(--text-selected);
   --van-tabbar-item-active-background: var(--bg-surface-raised);
   --van-tabbar-item-icon-size: var(--icon-size-default);
-  --van-tabbar-item-icon-margin-bottom: var(--space-1);
+  --van-tabbar-item-icon-margin-bottom: var(--layout-compact-gap);
 
   /* Vant Tabs（标签选择）：控制 CapabilityPanel 类型选择器的高度与字体。 */
   --van-tab-text-color: var(--text-secondary);
@@ -118,7 +118,8 @@
   --van-collapse-item-content-background: var(--bg-subtle);
 
   /* Vant Tag（标签）：控制 Device/Task 状态与 Meta Tag 的字体、行高和内边距。 */
-  --van-tag-padding: calc(var(--space-1) / 2) var(--space-2);
+  --van-tag-padding: calc(var(--layout-compact-gap) / 2)
+    var(--layout-content-gap);
   --van-tag-font-size: var(--font-size-caption);
   --van-tag-line-height: var(--line-height-caption);
   --van-tag-radius: var(--radius-round);
@@ -136,7 +137,7 @@
 
   --van-notice-bar-height: var(--touch-target-min);
   --van-notice-bar-padding: 0 var(--space-3);
-  --van-notice-bar-wrapable-padding: var(--space-2) var(--space-3);
+  --van-notice-bar-wrapable-padding: var(--layout-content-gap) var(--space-3);
   --van-notice-bar-text-color: var(--status-info);
   --van-notice-bar-font-size: var(--font-size-body);
   --van-notice-bar-line-height: var(--line-height-body);
@@ -144,7 +145,7 @@
   --van-notice-bar-icon-size: var(--icon-size-small);
 
   /* Vant Search / Field（搜索/输入）：控制任务筛选输入的高度与内边距。 */
-  --van-search-padding: var(--space-2) var(--space-3);
+  --van-search-padding: var(--layout-content-gap) var(--space-3);
   --van-search-background: var(--bg-surface-raised);
   --van-search-content-background: var(--bg-subtle);
   --van-search-input-height: var(--control-height-default);
@@ -173,7 +174,7 @@
   --van-calendar-selected-day-color: var(--text-inverse);
   --van-calendar-selected-day-background: var(--color-primary-strong);
   --van-calendar-confirm-button-height: var(--touch-target-min);
-  --van-calendar-confirm-button-margin: var(--space-2) 0;
+  --van-calendar-confirm-button-margin: var(--layout-content-gap) 0;
 
   /* Vant Picker（选择器）：当前保留统一映射，生产页面暂无直接消费。 */
   --van-picker-background: var(--bg-surface-raised);
@@ -288,8 +289,8 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  gap: var(--space-1);
-  padding: 0 var(--space-1);
+  gap: var(--layout-compact-gap);
+  padding: 0 var(--layout-compact-gap);
   background: var(--bg-subtle);
   border: 0;
   border-radius: var(--radius-card);
@@ -308,8 +309,8 @@
 .mobile-segmented-tabs .van-tab__text {
   display: flex;
   width: 100%;
-  height: calc(var(--touch-target-min) - var(--space-2));
-  padding: 0 var(--space-2);
+  height: calc(var(--touch-target-min) - var(--layout-content-gap));
+  padding: 0 var(--layout-content-gap);
   align-items: center;
   justify-content: center;
   border: var(--border-width) solid transparent;

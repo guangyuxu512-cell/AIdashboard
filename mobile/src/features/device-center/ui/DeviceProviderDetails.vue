@@ -73,7 +73,7 @@ function booleanText(value: boolean | null): string {
 .device-provider-details {
   display: grid;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .device-provider-details h3 {

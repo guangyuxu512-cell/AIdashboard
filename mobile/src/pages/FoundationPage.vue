@@ -209,17 +209,17 @@ const resolvedThemeLabel = computed(() =>
 .foundation-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .foundation-notices {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .foundation-swatch {
   min-width: var(--touch-target-min);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--layout-content-gap) var(--space-3);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-round);
   font-size: var(--font-size-caption);
@@ -252,7 +252,7 @@ const resolvedThemeLabel = computed(() =>
   display: grid;
   min-height: var(--touch-target-min);
   flex: 1;
-  padding: var(--space-2);
+  padding: var(--layout-content-gap);
   place-items: center;
   color: var(--text-secondary);
   border: var(--border-width) solid var(--border-subtle);
@@ -275,7 +275,7 @@ const resolvedThemeLabel = computed(() =>
 
 .foundation-type-scale {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--layout-compact-gap);
   color: var(--text-primary);
 }
 

@@ -122,8 +122,8 @@ const emit = defineEmits<{
   width: 100%;
   height: 100%;
   grid-template-rows: auto auto auto;
-  row-gap: var(--space-1);
-  padding-inline: var(--space-2);
+  row-gap: var(--layout-summary-metric-gap);
+  padding-inline: var(--layout-summary-metric-padding-x);
   align-content: center;
   justify-items: center;
 }

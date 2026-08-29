@@ -249,7 +249,7 @@ function showActionPlaceholder(): void {
 
 .device-detail-page__current-task-error {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .device-detail-page__current-task-idle {

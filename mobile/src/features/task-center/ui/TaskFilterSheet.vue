@@ -313,7 +313,7 @@ function apply(): void {
   display: inline-flex;
   min-width: var(--touch-target-min);
   min-height: var(--touch-target-min);
-  padding: 0 var(--space-2);
+  padding: 0 var(--layout-content-gap);
   align-items: center;
   justify-content: center;
   color: var(--color-primary);
@@ -330,7 +330,7 @@ function apply(): void {
 
 .task-filter-sheet__next-error {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
   padding: var(--space-3);
 }
 </style>

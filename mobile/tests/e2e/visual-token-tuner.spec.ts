@@ -320,4 +320,92 @@ test.describe('Visual Token Tuner V1', () => {
     expect(previewErrors).toEqual([])
     expect(tunerErrors).toEqual([])
   })
+
+  test('语义间距控件只影响所属区域，不穿透到其他组件或 Vant', async ({
+    page: preview,
+    context,
+  }) => {
+    const previewErrors = collectConsoleErrors(preview)
+    await preview.setViewportSize({ width: 390, height: 844 })
+    await preview.goto('/#/devices')
+    await preview.evaluate((key) => {
+      window.localStorage.removeItem(key)
+      document.documentElement.style.removeProperty('--space-1')
+      document.documentElement.style.removeProperty('--space-2')
+    }, storageKey)
+    await preview.reload()
+
+    const tuner = await openExternalTuner(preview, context)
+    const tunerErrors = collectConsoleErrors(tuner)
+
+    await tuner.getByRole('tab', { name: '卡片' }).click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-range-card-leading-content-gap'),
+      12,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-leading-content-gap'))
+      .toBe('12px')
+    await expect
+      .poll(() => rootValue(preview, '--layout-toolbar-group-gap'))
+      .toBe('16px')
+    await expect.poll(() => rootValue(preview, '--space-1')).toBe('4px')
+    await expect.poll(() => rootValue(preview, '--space-2')).toBe('8px')
+
+    await tuner.getByRole('tab', { name: '概览' }).click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-range-summary-metric-gap'),
+      6,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--layout-summary-metric-gap'))
+      .toBe('6px')
+    await expect
+      .poll(() => rootValue(preview, '--layout-toolbar-inner-gap'))
+      .toBe('2px')
+    await expect
+      .poll(() =>
+        preview
+          .locator('.mobile-summary-strip__metric')
+          .first()
+          .evaluate((element) => window.getComputedStyle(element).rowGap),
+      )
+      .toBe('6px')
+
+    await preview.goto('/#/devices/visual-device-operations')
+    await tuner.getByRole('tab', { name: '运行摘要' }).click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-range-runtime-leading-content-gap'),
+      12,
+    )
+    await expect
+      .poll(() =>
+        rootValue(preview, '--layout-runtime-summary-leading-content-gap'),
+      )
+      .toBe('12px')
+    await expect
+      .poll(() => rootValue(preview, '--layout-toolbar-inner-gap'))
+      .toBe('2px')
+
+    await tuner.getByRole('tab', { name: '能力' }).click()
+    await setRangeValue(
+      tuner.getByTestId('visual-token-range-capability-row-gap'),
+      12,
+    )
+    await expect
+      .poll(() => rootValue(preview, '--layout-capability-row-gap'))
+      .toBe('12px')
+    await expect.poll(() => rootValue(preview, '--van-padding-xs')).toBe('16px')
+    await expectNoHorizontalOverflow(preview)
+
+    await tuner.getByTestId('visual-token-tuner-reset-all').click()
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-leading-content-gap'))
+      .toBe('16px')
+    await expect
+      .poll(() => rootValue(preview, '--layout-summary-metric-gap'))
+      .toBe('2px')
+    expect(previewErrors).toEqual([])
+    expect(tunerErrors).toEqual([])
+  })
 })

@@ -282,6 +282,22 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-card-padding-y: 16px')
     expect(tokens).not.toContain('--layout-card-padding:')
     expect(tokens).toContain('--layout-card-row-gap: 5px')
+    expect(tokens).toContain('--space-1: 4px')
+    expect(tokens).toContain('--space-2: 8px')
+    expect(tokens).toContain('--space-3: 12px')
+    expect(tokens).toContain('--space-4: 16px')
+    expect(tokens).toContain('--space-5: 20px')
+    expect(tokens).toContain('--space-6: 24px')
+    expect(tokens).toContain('--space-7: 28px')
+    expect(tokens).toContain('--space-8: 32px')
+    expect(tokens).toContain('--layout-card-leading-content-gap: 16px')
+    expect(tokens).toContain('--layout-summary-metric-gap: 2px')
+    expect(tokens).toContain('--layout-toolbar-group-gap: 16px')
+    expect(tokens).toContain('--layout-toolbar-inner-gap: 2px')
+    expect(tokens).toContain(
+      '--layout-runtime-summary-leading-content-gap: 16px',
+    )
+    expect(tokens).toContain('--layout-capability-row-gap: 16px')
     expect(tokens).toContain('--layout-capability-panel-height: 372px')
     expect(tokens).toContain('--layout-capability-row-min-height: 50px')
     expect(tokens).toContain('--control-height-compact: 26px')
@@ -318,6 +334,8 @@ describe('Mobile Layout shared components', () => {
     expect(vantTheme).toContain(
       '--van-button-default-font-size: var(--font-size-action)',
     )
+    expect(vantTheme).toContain('--van-padding-base: var(--layout-compact-gap)')
+    expect(vantTheme).toContain('--van-padding-xs: var(--layout-content-gap)')
     expect(vantTheme).toContain(
       '--van-button-default-height: var(--control-height-default)',
     )
@@ -329,7 +347,9 @@ describe('Mobile Layout shared components', () => {
       /\.van-nav-bar\s*\{\s*line-height:\s*var\(--line-height-title\)/s,
     )
     for (const card of [deviceCard, taskCard]) {
-      expect(card).toContain('column-gap: var(--space-2)')
+      expect(card).toContain(
+        'column-gap: var(--layout-card-leading-content-gap)',
+      )
       expect(card).toContain(
         'padding: var(--layout-card-padding-y) var(--layout-card-padding-x)',
       )
@@ -349,7 +369,9 @@ describe('Mobile Layout shared components', () => {
       'padding: var(--layout-runtime-summary-padding-y)',
     )
     expect(runtimeSummary).toContain('var(--layout-runtime-summary-padding-x)')
-    expect(runtimeSummary).toContain('column-gap: var(--space-2)')
+    expect(runtimeSummary).toContain(
+      'column-gap: var(--layout-runtime-summary-leading-content-gap)',
+    )
     expect(runtimeSummary).toContain(
       'margin-inline: var(--layout-runtime-summary-padding-x)',
     )
@@ -391,6 +413,10 @@ describe('Mobile Layout shared components', () => {
     expect(summaryStrip).toContain('width: var(--icon-size-summary-metric)')
     expect(summaryStrip).toContain('height: var(--icon-size-summary-metric)')
     expect(summaryStrip).toContain('font-size: var(--icon-size-summary-metric)')
+    expect(summaryStrip).toContain('row-gap: var(--layout-summary-metric-gap)')
+    expect(toolbar).toContain('gap: var(--layout-toolbar-group-gap)')
+    expect(toolbar).toContain('gap: var(--layout-toolbar-inner-gap)')
+    expect(capabilityPanel).toContain('gap: var(--layout-capability-row-gap)')
     expect(base).toContain('scrollbar-width: none')
     expect(base).toContain('-ms-overflow-style: none')
     expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')

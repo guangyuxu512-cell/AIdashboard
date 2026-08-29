@@ -152,7 +152,7 @@ function eventTime(value: string): string {
 .runtime-log__inline-error {
   display: flex;
   min-height: var(--touch-target-min);
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
   align-items: center;
   justify-content: space-between;
   color: var(--text-secondary);
@@ -166,7 +166,7 @@ function eventTime(value: string): string {
 
 .runtime-log__items {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -175,15 +175,15 @@ function eventTime(value: string): string {
 
 .runtime-log__items li {
   display: grid;
-  gap: var(--space-2);
-  padding-bottom: var(--space-2);
+  gap: var(--layout-content-gap);
+  padding-bottom: var(--layout-content-gap);
   border-bottom: var(--border-width) solid var(--border-subtle);
 }
 
 .runtime-log__meta {
   display: flex;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
   align-items: center;
   justify-content: space-between;
   font-family: var(--font-family-mono);

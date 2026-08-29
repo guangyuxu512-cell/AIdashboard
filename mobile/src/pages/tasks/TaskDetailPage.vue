@@ -232,7 +232,7 @@ const deviceText = computed(() => {
 
 .task-detail-page__runtime-summary {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .task-detail-page__runtime-heading {
@@ -245,7 +245,7 @@ const deviceText = computed(() => {
 .task-detail-page__current-message {
   display: grid;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .task-detail-page__current-message {
