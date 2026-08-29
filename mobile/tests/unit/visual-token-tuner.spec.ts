@@ -138,6 +138,29 @@ describe('Visual Token Tuner runtime', () => {
     expect(refreshedRuntime.readValue(definition)).toBe(60)
   })
 
+  it('同步恢复会先移除过期覆盖，再应用其他窗口写入的临时值', () => {
+    const storage = new MemoryStorage()
+    const definition = getDefinition('summary-height')
+    const root = document.createElement('html')
+    const runtime = createVisualTokenTunerRuntime({
+      enabled: true,
+      root,
+      storage,
+      getComputedStyle: createComputedStyle(root),
+    })
+
+    root.style.setProperty(definition.cssVar, '104px')
+    runtime.restore()
+    expect(root.style.getPropertyValue(definition.cssVar)).toBe('')
+
+    storage.setItem(
+      VISUAL_TOKEN_TUNER_STORAGE_KEY,
+      JSON.stringify({ [definition.cssVar]: '100px' }),
+    )
+    runtime.restore()
+    expect(root.style.getPropertyValue(definition.cssVar)).toBe('100px')
+  })
+
   it('生产态不读取存储、不注入覆盖，也不启用工具', () => {
     const root = document.createElement('html')
     const storage = new MemoryStorage()

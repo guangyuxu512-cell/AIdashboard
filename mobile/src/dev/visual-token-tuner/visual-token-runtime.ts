@@ -229,6 +229,10 @@ export function createVisualTokenTunerRuntime(
       return
     }
 
+    for (const definition of registry) {
+      root.style.removeProperty(definition.cssVar)
+    }
+
     const overrides = parseStoredOverrides(rawValue, registry)
     for (const definition of registry) {
       const stored = overrides.get(definition.cssVar)
@@ -284,7 +288,22 @@ export function createVisualTokenTunerRuntime(
   }
 }
 
+let hasInstalledVisualTokenTunerSync = false
+
 export function initializeVisualTokenTuner(): void {
   const runtime = createVisualTokenTunerRuntime()
   runtime.restore()
+
+  if (
+    !runtime.enabled ||
+    hasInstalledVisualTokenTunerSync ||
+    typeof window === 'undefined'
+  ) {
+    return
+  }
+
+  window.addEventListener('storage', (event) => {
+    if (event.key === VISUAL_TOKEN_TUNER_STORAGE_KEY) runtime.restore()
+  })
+  hasInstalledVisualTokenTunerSync = true
 }

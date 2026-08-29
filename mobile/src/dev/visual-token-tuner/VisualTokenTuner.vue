@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import {
   Button as VanButton,
-  Popup as VanPopup,
   Tab as VanTab,
   Tabs as VanTabs,
   showToast,
 } from 'vant'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
   createVisualTokenTunerRuntime,
@@ -15,19 +14,23 @@ import {
   visualTokenTunerGroups,
 } from './index'
 
+const props = withDefaults(
+  defineProps<{
+    standalone?: boolean
+  }>(),
+  {
+    standalone: false,
+  },
+)
+
 const runtime = createVisualTokenTunerRuntime()
 const enabled = runtime.enabled
-const isOpen = ref(false)
 const activeGroup = ref(visualTokenTunerGroups[0].key)
 const searchText = ref('')
 const values = ref(runtime.readValues())
 const viewportWidth = ref(0)
 const viewportHeight = ref(0)
 
-const isNarrowViewport = computed(() => viewportWidth.value <= 768)
-const panelPosition = computed<'right' | 'bottom'>(() =>
-  isNarrowViewport.value ? 'bottom' : 'right',
-)
 const viewportLabel = computed(() => {
   if (viewportWidth.value < 375) return '小屏验证'
   if (viewportWidth.value <= 430) return '标准移动端'
@@ -101,6 +104,10 @@ function resetAll(): void {
   syncValues()
 }
 
+function closeStandaloneTuner(): void {
+  window.close()
+}
+
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text)
@@ -137,10 +144,6 @@ async function copyJson(): Promise<void> {
   }
 }
 
-watch(isOpen, (open) => {
-  if (open) syncValues()
-})
-
 onMounted(() => {
   if (!enabled) return
   runtime.restore()
@@ -155,30 +158,30 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="enabled" class="visual-token-tuner">
-    <button
+  <div
+    v-if="enabled"
+    class="visual-token-tuner"
+    :class="{ 'visual-token-tuner--standalone': props.standalone }"
+  >
+    <a
+      v-if="!props.standalone"
       class="visual-token-tuner__entry mobile-icon-button mobile-pressable"
-      type="button"
-      aria-label="打开视觉 Token 调参器"
+      href="#/__visual-tuner"
+      target="_blank"
+      rel="noopener"
+      aria-label="在独立窗口打开视觉 Token 调参器"
       data-testid="visual-token-tuner-entry"
-      @click="isOpen = true"
     >
       <span class="visual-token-tuner__entry-label">调参</span>
-    </button>
+    </a>
 
-    <VanPopup
-      v-model:show="isOpen"
-      class="visual-token-tuner__panel"
-      :class="`visual-token-tuner__panel--${panelPosition}`"
-      :position="panelPosition"
-      :overlay="false"
-      :safe-area-inset-bottom="panelPosition === 'bottom'"
+    <section
+      v-else
+      class="visual-token-tuner__panel visual-token-tuner__panel--standalone"
       data-testid="visual-token-tuner-panel"
+      aria-label="视觉 Token 调参器"
     >
-      <section
-        class="visual-token-tuner__content"
-        aria-label="视觉 Token 调参器"
-      >
+      <div class="visual-token-tuner__content">
         <header class="visual-token-tuner__header">
           <div class="visual-token-tuner__title-block">
             <strong>视觉 Token 调参</strong>
@@ -190,9 +193,9 @@ onBeforeUnmount(() => {
           <button
             class="visual-token-tuner__close mobile-icon-button mobile-pressable"
             type="button"
-            aria-label="关闭视觉 Token 调参器"
+            aria-label="关闭调参窗口"
             data-testid="visual-token-tuner-close"
-            @click="isOpen = false"
+            @click="closeStandaloneTuner"
           >
             <span aria-hidden="true">×</span>
           </button>
@@ -326,8 +329,8 @@ onBeforeUnmount(() => {
             复制 JSON
           </VanButton>
         </footer>
-      </section>
-    </VanPopup>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -348,8 +351,16 @@ onBeforeUnmount(() => {
   }
 }
 
+.visual-token-tuner--standalone {
+  position: static;
+  display: block;
+  min-height: 100dvh;
+  padding-top: var(--safe-area-top);
+}
+
 .visual-token-tuner__entry {
   color: var(--color-primary);
+  text-decoration: none;
 }
 
 .visual-token-tuner__entry-label {
@@ -362,19 +373,15 @@ onBeforeUnmount(() => {
 
 .visual-token-tuner__panel {
   display: flex;
-  max-width: 100vw;
+  max-width: 100%;
   color: var(--text-primary);
   background: var(--bg-surface-raised);
 }
 
-.visual-token-tuner__panel--right {
-  width: min(380px, 100vw);
-  height: 100dvh;
-}
-
-.visual-token-tuner__panel--bottom {
-  width: 100vw;
-  height: min(78dvh, 600px);
+.visual-token-tuner__panel--standalone {
+  width: min(100%, 480px);
+  min-height: calc(100dvh - var(--safe-area-top));
+  margin-inline: auto;
 }
 
 .visual-token-tuner__content {

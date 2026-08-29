@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 
 const storageKey = 'control-center.mobile.visual-token-tuner-v1'
 
@@ -9,6 +15,22 @@ function collectConsoleErrors(page: Page): string[] {
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
+}
+
+async function prepareClipboard(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          ;(
+            window as Window & { __visualTokenTunerClipboard?: string }
+          ).__visualTokenTunerClipboard = text
+          return Promise.resolve()
+        },
+      },
+    })
+  })
 }
 
 async function setRangeValue(locator: Locator, value: number): Promise<void> {
@@ -38,64 +60,72 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function openExternalTuner(
+  preview: Page,
+  context: BrowserContext,
+): Promise<Page> {
+  const externalPage = context.waitForEvent('page')
+  await preview.getByTestId('visual-token-tuner-entry').click()
+  const tuner = await externalPage
+  await tuner.waitForLoadState('domcontentloaded')
+  await expect(tuner).toHaveURL(/#\/__visual-tuner$/)
+  await expect(tuner.getByTestId('visual-token-tuner-panel')).toBeVisible()
+  return tuner
+}
+
 test.describe('Visual Token Tuner V1', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test('在真实 Visual Mock 中实时调节、恢复、复制并在刷新后保留', async ({
-    page,
+  test('在独立窗口实时调节真实预览、恢复、复制并在刷新后保留', async ({
+    page: preview,
+    context,
   }) => {
-    const consoleErrors = collectConsoleErrors(page)
-    await page.addInitScript((key) => {
-      const preparedKey = `${key}.prepared`
-      if (!window.sessionStorage.getItem(preparedKey)) {
-        window.localStorage.removeItem(key)
-        window.sessionStorage.setItem(preparedKey, 'true')
-      }
-      Object.defineProperty(navigator, 'clipboard', {
-        configurable: true,
-        value: {
-          writeText: (text: string) => {
-            ;(
-              window as Window & { __visualTokenTunerClipboard?: string }
-            ).__visualTokenTunerClipboard = text
-            return Promise.resolve()
-          },
-        },
-      })
-    }, storageKey)
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/#/devices')
+    await prepareClipboard(context)
+    const previewErrors = collectConsoleErrors(preview)
+    await preview.setViewportSize({ width: 390, height: 844 })
+    await preview.goto('/#/devices')
+    await preview.evaluate(
+      (key) => window.localStorage.removeItem(key),
+      storageKey,
+    )
+    await preview.reload()
 
-    const entry = page.getByTestId('visual-token-tuner-entry')
+    const entry = preview.getByTestId('visual-token-tuner-entry')
     await expect(entry).toBeVisible()
+    await expect(preview.getByTestId('visual-token-tuner-panel')).toHaveCount(0)
 
     const entryBox = await entry.boundingBox()
-    const profileBox = await page
+    const profileBox = await preview
       .getByTestId('mobile-bottom-navigation-profile')
       .boundingBox()
     expect(entryBox).not.toBeNull()
     expect(profileBox).not.toBeNull()
     expect(entryBox!.y + entryBox!.height).toBeLessThanOrEqual(profileBox!.y)
 
-    const panel = page.getByTestId('visual-token-tuner-panel')
-    await expect(panel).toBeHidden()
-    await entry.click()
-
-    await expect(panel).toBeVisible()
-    await expect(panel).toContainText('已调整 0 项')
-
-    const card = page.getByTestId('device-card').first()
+    const card = preview.getByTestId('device-card').first()
+    await expect(card).toBeVisible()
+    await expectNoHorizontalOverflow(preview)
     const baselinePadding = await card.evaluate(
       (element) => window.getComputedStyle(element).paddingTop,
     )
     expect(baselinePadding).toBe('16px')
 
+    const tuner = await openExternalTuner(preview, context)
+    const tunerErrors = collectConsoleErrors(tuner)
+    await expect(
+      tuner.getByTestId('mobile-bottom-navigation-devices'),
+    ).toHaveCount(0)
+    await expect(tuner.getByTestId('mobile-global-header')).toHaveCount(0)
+    await expect(tuner.getByTestId('visual-token-tuner-panel')).toContainText(
+      '已调整 0 项',
+    )
+
     await setRangeValue(
-      page.getByTestId('visual-token-range-card-padding-y'),
+      tuner.getByTestId('visual-token-range-card-padding-y'),
       20,
     )
     await expect
-      .poll(() => rootValue(page, '--layout-card-padding-y'))
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
       .toBe('20px')
     await expect
       .poll(() =>
@@ -103,55 +133,50 @@ test.describe('Visual Token Tuner V1', () => {
       )
       .toBe('20px')
 
-    const numberInput = page.getByTestId('visual-token-number-card-padding-y')
+    const numberInput = tuner.getByTestId('visual-token-number-card-padding-y')
     await numberInput.fill('18')
     await expect(
-      page.getByTestId('visual-token-range-card-padding-y'),
+      tuner.getByTestId('visual-token-range-card-padding-y'),
     ).toHaveValue('18')
     await expect
-      .poll(() => rootValue(page, '--layout-card-padding-y'))
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
       .toBe('18px')
 
-    await page.getByTestId('visual-token-reset-card-padding-y').click()
+    await tuner.getByTestId('visual-token-reset-card-padding-y').click()
     await expect
-      .poll(() => rootValue(page, '--layout-card-padding-y'))
-      .toBe('16px')
-    await expect
-      .poll(() =>
-        card.evaluate((element) => window.getComputedStyle(element).paddingTop),
-      )
+      .poll(() => rootValue(preview, '--layout-card-padding-y'))
       .toBe('16px')
 
-    await page.getByRole('tab', { name: '概览' }).click()
+    await tuner.getByRole('tab', { name: '概览' }).click()
     await setRangeValue(
-      page.getByTestId('visual-token-range-summary-height'),
+      tuner.getByTestId('visual-token-range-summary-height'),
       104,
     )
     await expect
-      .poll(() => rootValue(page, '--layout-summary-height'))
+      .poll(() => rootValue(preview, '--layout-summary-height'))
       .toBe('104px')
     await expect
       .poll(() =>
-        page
+        preview
           .locator('.mobile-summary-strip')
           .evaluate((element) => window.getComputedStyle(element).height),
       )
       .toBe('104px')
 
-    await page.getByTestId('visual-token-tuner-copy-css').click()
+    await tuner.getByTestId('visual-token-tuner-copy-css').click()
     await expect
       .poll(() =>
-        page.evaluate(
+        tuner.evaluate(
           () =>
             (window as Window & { __visualTokenTunerClipboard?: string })
               .__visualTokenTunerClipboard ?? '',
         ),
       )
       .toContain('--layout-summary-height: 104px;')
-    await page.getByTestId('visual-token-tuner-copy-json').click()
+    await tuner.getByTestId('visual-token-tuner-copy-json').click()
     await expect
       .poll(() =>
-        page.evaluate(
+        tuner.evaluate(
           () =>
             (window as Window & { __visualTokenTunerClipboard?: string })
               .__visualTokenTunerClipboard ?? '',
@@ -159,53 +184,41 @@ test.describe('Visual Token Tuner V1', () => {
       )
       .toContain('"--layout-summary-height": "104px"')
 
-    await page.getByTestId('visual-token-tuner-close').click()
-    await expect(panel).toBeHidden()
-    await expectNoHorizontalOverflow(page)
-
-    await page.getByTestId('visual-token-tuner-entry').click()
-    await expect(
-      page.getByTestId('visual-token-number-summary-height'),
-    ).toHaveValue('104')
-    await page.getByTestId('visual-token-tuner-close').click()
-
-    await page.getByTestId('visual-token-tuner-entry').click()
-    await page.getByRole('tab', { name: '卡片' }).click()
+    await tuner.getByRole('tab', { name: '卡片' }).click()
     await setRangeValue(
-      page.getByTestId('visual-token-range-card-leading-slot'),
+      tuner.getByTestId('visual-token-range-card-leading-slot'),
       60,
     )
-    await page.getByTestId('visual-token-tuner-close').click()
-    await page.reload()
-
     await expect
-      .poll(() => rootValue(page, '--layout-card-leading-icon-slot-width'))
+      .poll(() => rootValue(preview, '--layout-card-leading-icon-slot-width'))
+      .toBe('60px')
+    await preview.reload()
+    await expect
+      .poll(() => rootValue(preview, '--layout-card-leading-icon-slot-width'))
       .toBe('60px')
     await expect
       .poll(() =>
-        page
+        preview
           .getByTestId('device-card-leading')
           .first()
           .evaluate((element) => window.getComputedStyle(element).width),
       )
       .toBe('60px')
 
-    await page.getByTestId('visual-token-tuner-entry').click()
-    await expect(
-      page.getByTestId('visual-token-number-card-leading-slot'),
-    ).toHaveValue('60')
-    await page.getByTestId('visual-token-tuner-reset-all').click()
+    await tuner.getByTestId('visual-token-tuner-reset-all').click()
     await expect
-      .poll(() => rootValue(page, '--layout-card-leading-icon-slot-width'))
+      .poll(() => rootValue(preview, '--layout-card-leading-icon-slot-width'))
       .toBe('52px')
     await expect
-      .poll(() => rootValue(page, '--layout-summary-height'))
+      .poll(() => rootValue(preview, '--layout-summary-height'))
       .toBe('96px')
-
-    expect(consoleErrors).toEqual([])
+    await expectNoHorizontalOverflow(preview)
+    await expectNoHorizontalOverflow(tuner)
+    expect(previewErrors).toEqual([])
+    expect(tunerErrors).toEqual([])
   })
 
-  test('在深色模式以 Token 样式呈现并保持窄屏底部面板可用', async ({
+  test('独立调参页在深色模式使用 Token，且不渲染产品 Shell', async ({
     page,
   }) => {
     const consoleErrors = collectConsoleErrors(page)
@@ -214,60 +227,69 @@ test.describe('Visual Token Tuner V1', () => {
       window.localStorage.setItem('control-center.mobile.theme-mode', 'dark')
     }, storageKey)
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/#/devices')
+    await page.goto('/#/__visual-tuner')
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    await page.getByTestId('visual-token-tuner-entry').click()
     await expect(page.getByTestId('visual-token-tuner-panel')).toBeVisible()
+    await expect(
+      page.getByTestId('mobile-bottom-navigation-devices'),
+    ).toHaveCount(0)
+    await expect(page.getByTestId('mobile-global-header')).toHaveCount(0)
     await expectNoHorizontalOverflow(page)
     expect(consoleErrors).toEqual([])
   })
 
-  test('在设备详情中实时调节运行摘要与能力密度，且保持五行滚动边界', async ({
-    page,
+  test('独立调参页可同步设备详情的运行摘要与能力密度', async ({
+    page: preview,
+    context,
   }) => {
-    const consoleErrors = collectConsoleErrors(page)
-    await page.addInitScript(
+    const previewErrors = collectConsoleErrors(preview)
+    await preview.setViewportSize({ width: 390, height: 844 })
+    await preview.goto('/#/devices/visual-device-operations')
+    await preview.evaluate(
       (key) => window.localStorage.removeItem(key),
       storageKey,
     )
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/#/devices/visual-device-operations')
-    await page.getByTestId('visual-token-tuner-entry').click()
+    await preview.reload()
 
-    await page.getByRole('tab', { name: '运行摘要' }).click()
+    const tuner = await context.newPage()
+    const tunerErrors = collectConsoleErrors(tuner)
+    await tuner.goto('/#/__visual-tuner')
+    await expect(tuner.getByTestId('visual-token-tuner-panel')).toBeVisible()
+
+    await tuner.getByRole('tab', { name: '运行摘要' }).click()
     await setRangeValue(
-      page.getByTestId('visual-token-range-runtime-padding-y'),
+      tuner.getByTestId('visual-token-range-runtime-padding-y'),
       20,
     )
     await expect
-      .poll(() => rootValue(page, '--layout-runtime-summary-padding-y'))
+      .poll(() => rootValue(preview, '--layout-runtime-summary-padding-y'))
       .toBe('20px')
     await expect
       .poll(() =>
-        page.getByTestId('device-summary-device').evaluate((element) => {
+        preview.getByTestId('device-summary-device').evaluate((element) => {
           return window.getComputedStyle(element).paddingTop
         }),
       )
       .toBe('20px')
 
-    await page.getByRole('tab', { name: '能力' }).click()
+    await tuner.getByRole('tab', { name: '能力' }).click()
     await setRangeValue(
-      page.getByTestId('visual-token-range-capability-panel-height'),
+      tuner.getByTestId('visual-token-range-capability-panel-height'),
       374,
     )
     await setRangeValue(
-      page.getByTestId('visual-token-range-capability-row-height'),
+      tuner.getByTestId('visual-token-range-capability-row-height'),
       52,
     )
     await expect
-      .poll(() => rootValue(page, '--layout-capability-panel-height'))
+      .poll(() => rootValue(preview, '--layout-capability-panel-height'))
       .toBe('374px')
     await expect
-      .poll(() => rootValue(page, '--layout-capability-row-min-height'))
+      .poll(() => rootValue(preview, '--layout-capability-row-min-height'))
       .toBe('52px')
 
-    const rowsLayout = await page
+    const rowsLayout = await preview
       .getByTestId('application-list')
       .evaluate((list) => {
         const listBox = list.getBoundingClientRect()
@@ -289,8 +311,13 @@ test.describe('Visual Token Tuner V1', () => {
       sixthRequiresScroll: true,
     })
 
-    await page.getByTestId('visual-token-tuner-close').click()
-    await expectNoHorizontalOverflow(page)
-    expect(consoleErrors).toEqual([])
+    await tuner.getByTestId('visual-token-tuner-reset-all').click()
+    await expect
+      .poll(() => rootValue(preview, '--layout-capability-panel-height'))
+      .toBe('354px')
+    await expectNoHorizontalOverflow(preview)
+    await expectNoHorizontalOverflow(tuner)
+    expect(previewErrors).toEqual([])
+    expect(tunerErrors).toEqual([])
   })
 })

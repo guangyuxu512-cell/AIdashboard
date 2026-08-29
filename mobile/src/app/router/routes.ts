@@ -10,10 +10,12 @@ export const MOBILE_ROUTE_NAMES = {
   shops: 'mobile-shops',
   profile: 'mobile-profile',
   foundation: 'mobile-foundation',
+  visualTokenTuner: 'mobile-visual-token-tuner',
 } as const
 
 export interface CreateMobileRoutesOptions {
   includeFoundation?: boolean
+  includeVisualTokenTuner?: boolean
   runtimeIsDevelopment?: boolean
 }
 
@@ -132,6 +134,11 @@ export function createMobileRoutes(
     import.meta.env.DEV &&
     runtimeIsDevelopment &&
     (options.includeFoundation ?? true)
+  const includeVisualTokenTuner =
+    import.meta.env.DEV &&
+    runtimeIsDevelopment &&
+    import.meta.env.VITE_VISUAL_TUNER !== 'false' &&
+    (options.includeVisualTokenTuner ?? true)
 
   if (includeFoundation) {
     routes.push({
@@ -141,6 +148,21 @@ export function createMobileRoutes(
       meta: {
         title: '移动端基础设施',
         layout: 'detail',
+        requiresAuth: false,
+        permission: null,
+      },
+    })
+  }
+
+  if (includeVisualTokenTuner) {
+    routes.push({
+      path: '/__visual-tuner',
+      name: MOBILE_ROUTE_NAMES.visualTokenTuner,
+      component: () =>
+        import('@/dev/visual-token-tuner/VisualTokenTunerPage.vue'),
+      meta: {
+        title: '视觉 Token 调参器',
+        layout: 'tool',
         requiresAuth: false,
         permission: null,
       },

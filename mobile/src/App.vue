@@ -30,6 +30,7 @@ const { resolvedTheme } = storeToRefs(themeStore)
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
 const isMainLayout = computed(() => shellLayout.value === 'main')
+const isToolLayout = computed(() => shellLayout.value === 'tool')
 const activeNavigationKey = computed(() => {
   if (
     route.name === MOBILE_ROUTE_NAMES.devices ||
@@ -110,7 +111,9 @@ function showNotificationPlaceholder(): void {
 
 <template>
   <VanConfigProvider :theme="resolvedTheme">
-    <MobileAppShell>
+    <RouterView v-if="isToolLayout" />
+
+    <MobileAppShell v-else>
       <template #header>
         <MobileGlobalHeader
           v-if="isMainLayout"
@@ -131,6 +134,9 @@ function showNotificationPlaceholder(): void {
       </template>
     </MobileAppShell>
 
-    <component :is="VisualTokenTuner" v-if="visualTokenTunerEnabled" />
+    <component
+      :is="VisualTokenTuner"
+      v-if="visualTokenTunerEnabled && !isToolLayout"
+    />
   </VanConfigProvider>
 </template>

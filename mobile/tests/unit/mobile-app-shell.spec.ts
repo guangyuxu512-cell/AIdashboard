@@ -29,6 +29,12 @@ function createShellRouter() {
     requiresAuth: false,
     permission: null,
   })
+  const toolMeta = (title: string) => ({
+    title,
+    layout: 'tool' as const,
+    requiresAuth: false,
+    permission: null,
+  })
 
   return createRouter({
     history: createMemoryHistory(),
@@ -86,6 +92,12 @@ function createShellRouter() {
         name: MOBILE_ROUTE_NAMES.foundation,
         component: pageStub,
         meta: detailMeta('移动端基础设施'),
+      },
+      {
+        path: '/__visual-tuner',
+        name: MOBILE_ROUTE_NAMES.visualTokenTuner,
+        component: pageStub,
+        meta: toolMeta('视觉 Token 调参器'),
       },
     ],
   })
@@ -318,6 +330,15 @@ describe('MobileAppShell V2', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.home)
+  })
+
+  it('uses no product shell for the independent development tool route', async () => {
+    const { wrapper } = await mountAppAt('/__visual-tuner')
+
+    expect(wrapper.findComponent(MobileAppShell).exists()).toBe(false)
+    expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
+    expect(wrapper.findComponent(MobileBottomNavigation).exists()).toBe(false)
+    expect(wrapper.text()).toContain('页面内容')
   })
 
   it('omits empty chrome and activates safe-area fallback classes', () => {

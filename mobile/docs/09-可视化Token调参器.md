@@ -15,10 +15,13 @@ Stage 1 Frozen Contract 与 Stage 2 Candidate Baseline 仍以
 ## 如何开启与调节
 
 1. 在 `mobile` 目录运行 `pnpm dev` 或 `pnpm dev:visual`。
-2. 页面右下角出现小型“调参”入口；点击后，宽屏显示右侧面板，窄屏显示底部调参面板。
-3. 选择卡片、概览、运行摘要、能力、全局布局、控件或字体分组；Slider 和数值输入会在 `input` 时立刻
-   修改当前真实页面的根 CSS Variable。
-4. 关闭面板即可无遮挡查看真实页面；关闭不会清除当前临时值。
+2. 正式预览页右下角出现小型“调参”入口；点击后打开独立的 `/#/__visual-tuner` 开发窗口，预览页不会被
+   Sheet 或 Popup 遮挡。
+3. 独立窗口不渲染产品 Header、Bottom Navigation 或业务页面；它只承载卡片、概览、运行摘要、能力、全局布局、
+   控件与字体分组。
+4. Slider 和数值输入会在 `input` 时立刻修改独立窗口的根 CSS Variable，并通过开发态 LocalStorage 事件同步到
+   已打开的真实预览页面。预览页无需刷新。
+5. 关闭独立窗口不会清除当前临时值；可继续完整查看预览页。
 
 面板会读取浏览器当前的 Computed CSS Variable 值，而不是只显示 Registry 默认值；顶部显示当前
 Viewport 和“已调整”数量。低于 44px 的 Touch Target 会给出提醒。修改 Capability Row 或 Panel Height
@@ -27,8 +30,9 @@ Viewport 和“已调整”数量。低于 44px 的 Touch Target 会给出提醒
 ## 临时保存、恢复与正式落盘
 
 开发态临时值只保存到浏览器 LocalStorage：
-`control-center.mobile.visual-token-tuner-v1`。开发启动时会自动恢复；单项“恢复”会移除该项覆盖，
-“恢复全部”会移除本工具登记的全部覆盖和该存储记录。
+`control-center.mobile.visual-token-tuner-v1`。开发启动时会自动恢复；已打开的预览页和独立调参窗口会监听
+同一存储记录，因此单项“恢复”与“恢复全部”也会立即同步回预览页。“恢复全部”会移除本工具登记的全部覆盖和
+该存储记录。
 
 “复制 CSS”输出完整的 `:root { --token: value; }` 片段，“复制 JSON”输出同一组 Token 的当前值。浏览器
 不会写入 `tokens.css`。需要正式采用的数值应按以下流程处理：
