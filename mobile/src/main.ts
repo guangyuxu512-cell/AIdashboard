@@ -10,6 +10,12 @@ import { useThemeStore } from './app/stores/theme'
 import './app/styles/index.css'
 
 async function bootstrap(): Promise<void> {
+  if (import.meta.env.DEV && import.meta.env.VITE_VISUAL_TUNER !== 'false') {
+    const { initializeVisualTokenTuner } =
+      await import('@/dev/visual-token-tuner')
+    initializeVisualTokenTuner()
+  }
+
   await configureMobileDataSources()
 
   const app = createApp(App)

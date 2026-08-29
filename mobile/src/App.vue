@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { ConfigProvider as VanConfigProvider, showToast } from 'vant'
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 
@@ -13,6 +13,14 @@ import {
   MobileDetailHeader,
   MobileGlobalHeader,
 } from '@/shared/ui'
+
+const visualTokenTunerEnabled =
+  import.meta.env.DEV && import.meta.env.VITE_VISUAL_TUNER !== 'false'
+const VisualTokenTuner = visualTokenTunerEnabled
+  ? defineAsyncComponent(
+      () => import('@/dev/visual-token-tuner/VisualTokenTuner.vue'),
+    )
+  : null
 
 const route = useRoute()
 const router = useRouter()
@@ -122,5 +130,7 @@ function showNotificationPlaceholder(): void {
         />
       </template>
     </MobileAppShell>
+
+    <component :is="VisualTokenTuner" v-if="visualTokenTunerEnabled" />
   </VanConfigProvider>
 </template>

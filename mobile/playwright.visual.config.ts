@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: 'visual-preview.spec.ts',
+  testMatch: /visual-(preview|token-tuner)\.spec\.ts/,
   outputDir: 'test-results/visual-preview',
   fullyParallel: true,
   use: {
