@@ -50,11 +50,20 @@ const navigationGroupKeys = computed(() =>
     .map((item) => item.groupCode),
 )
 
-const activeNavigationKey = computed(
-  () =>
+const activeNavigationKey = computed(() => {
+  const routeModuleCode = route.meta.moduleCode
+  if (
+    typeof routeModuleCode === 'string' &&
+    navigationModules.value.some((item) => item.moduleCode === routeModuleCode)
+  ) {
+    return routeModuleCode
+  }
+
+  return (
     navigationModules.value.find((item) => item.routePath === route.path)
-      ?.moduleCode ?? null,
-)
+      ?.moduleCode ?? null
+  )
+})
 
 const activeNavigationLabel = computed(
   () =>

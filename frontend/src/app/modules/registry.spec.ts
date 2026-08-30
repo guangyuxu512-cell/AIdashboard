@@ -13,6 +13,7 @@ describe('Module Registry Lite', () => {
       'foundation',
       'shop',
       'asset',
+      'ai-workbench',
       'device',
       'task',
       'schedule',
@@ -25,7 +26,15 @@ describe('Module Registry Lite', () => {
       getNavigationModules(MODULE_REGISTRY, {
         includeDevelopment: false,
       }).map((module) => module.moduleCode),
-    ).toEqual(['shop', 'asset', 'device', 'task', 'schedule', 'settings'])
+    ).toEqual([
+      'shop',
+      'asset',
+      'ai-workbench',
+      'device',
+      'task',
+      'schedule',
+      'settings',
+    ])
     expect(
       getNavigationModules(MODULE_REGISTRY, { includeDevelopment: true }).map(
         (module) => module.moduleCode,
@@ -34,6 +43,7 @@ describe('Module Registry Lite', () => {
       'foundation',
       'shop',
       'asset',
+      'ai-workbench',
       'device',
       'task',
       'schedule',
@@ -88,6 +98,7 @@ describe('Module Registry Lite', () => {
       foundation: null,
       shop: null,
       asset: null,
+      'ai-workbench': null,
       device: null,
       task: null,
       schedule: null,

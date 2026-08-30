@@ -19,9 +19,19 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(
     page.getByText('统一管理平台店铺、会话状态与执行配置'),
   ).toHaveCount(0)
+  const platformNavigation = page.getByRole('navigation', {
+    name: '店铺平台切换',
+  })
+  await expect(platformNavigation).toBeVisible()
+  await expect(platformNavigation.getByRole('button')).toHaveCount(5)
   await expect(
-    page.getByRole('navigation', { name: '店铺平台切换' }),
-  ).toBeVisible()
+    platformNavigation.getByRole('button', { name: '全部平台' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  for (const platform of ['全部平台', '抖店', '拼多多', '淘宝', '视频号']) {
+    await expect(
+      platformNavigation.getByRole('button', { name: platform }),
+    ).toBeEnabled()
+  }
   await expect(page.getByAltText('全部平台图标')).toBeVisible()
   await expect(page.getByAltText('抖店平台图标').first()).toBeVisible()
   await expect(page.getByAltText('拼多多平台图标').first()).toBeVisible()
@@ -93,10 +103,16 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   expect(compactOrder.filter).toBeLessThan(compactOrder.table)
 
   await page.getByRole('button', { name: '抖店', exact: true }).click()
+  await expect(
+    platformNavigation.getByRole('button', { name: '抖店' }),
+  ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   await expect(page.getByText('海风家居生活馆')).toHaveCount(0)
 
   await page.getByRole('button', { name: '拼多多', exact: true }).click()
+  await expect(
+    platformNavigation.getByRole('button', { name: '拼多多' }),
+  ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('海风家居生活馆')).toBeVisible()
   await expect(page.getByText('星河服饰旗舰店')).toHaveCount(0)
 

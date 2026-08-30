@@ -1,10 +1,12 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 
 import { requireModuleDefinition } from '@/app/modules/registry'
+import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
 const assetModule = requireModuleDefinition('asset')
+const aiWorkbenchModule = requireModuleDefinition('ai-workbench')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
@@ -30,6 +32,24 @@ const router = createRouter({
       name: assetModule.routeName,
       component: () => import('@/pages/assets/AssetLibraryPage.vue'),
       meta: { moduleCode: assetModule.moduleCode },
+    },
+    {
+      path: AI_WORKBENCH_ROUTES.generate.path,
+      name: AI_WORKBENCH_ROUTES.generate.name,
+      component: () => import('@/pages/ai-workbench/AiGeneratePage.vue'),
+      meta: { moduleCode: aiWorkbenchModule.moduleCode },
+    },
+    {
+      path: AI_WORKBENCH_ROUTES.assets.path,
+      name: AI_WORKBENCH_ROUTES.assets.name,
+      component: () => import('@/pages/ai-workbench/AiAssetLibraryPage.vue'),
+      meta: { moduleCode: aiWorkbenchModule.moduleCode },
+    },
+    {
+      path: AI_WORKBENCH_ROUTES.templates.path,
+      name: AI_WORKBENCH_ROUTES.templates.name,
+      component: () => import('@/pages/ai-workbench/AiTemplateLibraryPage.vue'),
+      meta: { moduleCode: aiWorkbenchModule.moduleCode },
     },
     {
       path: deviceModule.routePath,
