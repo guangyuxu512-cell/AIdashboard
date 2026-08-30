@@ -26,17 +26,21 @@ describe('Mobile icon registry', () => {
         'data-icon-role': 'primary',
         'aria-hidden': 'true',
       })
-      expect(wrapper.find('svg.mobile-icon__glyph').exists()).toBe(true)
+      expect(
+        name === 'device'
+          ? wrapper.find('img.mobile-icon__asset').exists()
+          : wrapper.find('svg.mobile-icon__glyph').exists(),
+      ).toBe(true)
       expect(wrapper.classes()).toContain('mobile-icon--tile')
     }
   })
 
-  it('reuses the monitor glyph for the DeviceCard and device detail', () => {
+  it('reuses the original monitor PNG for the DeviceCard and device detail', () => {
     for (const name of ['device', 'runtime-device'] as const) {
       const wrapper = mount(MobileIcon, { props: { name } })
 
-      expect(wrapper.find('svg.mobile-icon__glyph').exists()).toBe(true)
-      expect(resolveMobileIcon(name).source.kind).toBe('component')
+      expect(wrapper.find('img.mobile-icon__asset').exists()).toBe(true)
+      expect(resolveMobileIcon(name).source.kind).toBe('asset')
     }
   })
 
@@ -80,9 +84,9 @@ describe('Mobile icon registry', () => {
 
   it('maps production surfaces to the intended icon role and semantic source', () => {
     const expectations = [
-      ['device', 'primary', 'component'],
+      ['device', 'primary', 'asset'],
       ['task', 'primary', 'component'],
-      ['runtime-device', 'runtime', 'component'],
+      ['runtime-device', 'runtime', 'asset'],
       ['automation', 'runtime', 'vant'],
       ['application', 'capability', 'vant'],
       ['skill', 'capability', 'vant'],

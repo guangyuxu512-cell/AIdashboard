@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 
-import DevicePrimaryGlyph from './glyphs/DevicePrimaryGlyph.vue'
+import deviceMonitorUrl from '@/assets/icons/device-monitor.png'
+
 import NotificationBellGlyph from './glyphs/NotificationBellGlyph.vue'
 import TaskPrimaryGlyph from './glyphs/TaskPrimaryGlyph.vue'
 import ThemeMoonGlyph from './glyphs/ThemeMoonGlyph.vue'
@@ -44,7 +45,7 @@ export const MOBILE_ICON_REGISTRY = {
   device: {
     label: '设备',
     role: 'primary',
-    source: { kind: 'component', component: DevicePrimaryGlyph },
+    source: { kind: 'asset', src: deviceMonitorUrl },
     tone: 'primary',
   },
   task: {
@@ -56,7 +57,7 @@ export const MOBILE_ICON_REGISTRY = {
   'runtime-device': {
     label: '设备运行端',
     role: 'runtime',
-    source: { kind: 'component', component: DevicePrimaryGlyph },
+    source: { kind: 'asset', src: deviceMonitorUrl },
   },
   automation: {
     label: '自动化账号',
