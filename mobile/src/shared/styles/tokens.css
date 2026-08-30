@@ -424,7 +424,8 @@
     #f4f7fb 36%,
     #f2f5fa 100%
   );
-  --device-list-header-background: #fbfcfe;
+  /* Visual V2页面渐变只由AppShell根层绘制，顶部Safe Area/Header透明承接。 */
+  --device-list-header-background: transparent;
   --device-list-search-background: #f1f4f8;
   --device-list-search-border: transparent;
   --device-list-search-shadow: none;
@@ -665,7 +666,7 @@
     radial-gradient(circle at 20% 8%, rgb(26 64 112 / 28%), transparent 24%),
     radial-gradient(circle at 82% 10%, rgb(36 92 164 / 18%), transparent 25%),
     linear-gradient(180deg, #07111d 0%, #081521 100%);
-  --device-list-header-background: #07111d;
+  --device-list-header-background: transparent;
   --device-list-search-background: #182638;
   --device-list-search-border: #27374a;
   --device-list-search-shadow: inset 0 0 0 1px #27374a;

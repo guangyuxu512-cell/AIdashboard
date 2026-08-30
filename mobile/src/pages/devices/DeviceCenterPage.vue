@@ -63,6 +63,5 @@ async function refresh(): Promise<void> {
 <style scoped>
 .device-center-page-v2 {
   color: var(--device-list-text-primary);
-  background: var(--visual-v2-page-background);
 }
 </style>

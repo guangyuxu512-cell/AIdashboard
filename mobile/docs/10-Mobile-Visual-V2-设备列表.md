@@ -104,8 +104,17 @@ Surface、Border、Shadow 也只通过 Semantic Token 解析；Vue 组件不得�
 
 ### Visual V2 Surface / Border Candidate（视觉表面与边界候选）
 
-本表是 `/devices` 当前候选颜色基线，尚未 Frozen。AppShell、顶部 Safe Area、页面内容与底部 Safe Area
-必须消费同一组 Visual V2 Semantic Token，禁止回退到旧 Stage 3A 的 `--bg-*` Surface。
+本表是 `/devices` 当前候选颜色基线，尚未 Frozen。`MobileAppShell` V2 根层是 Page Gradient 的唯一
+绘制者；顶部 Safe Area 容器、`MobilePageHeader` 与 Device Page 内容层必须保持透明并显示同一连续背景，
+禁止各自复制渐变或绘制独立 Header Surface。Search、Summary 与 DeviceCard 继续拥有各自的语义 Surface，
+禁止回退到旧 Stage 3A 的 `--bg-*` Surface。
+
+| Layer（层）                   | Background Ownership（背景归属）                                   |
+| ----------------------------- | ------------------------------------------------------------------ |
+| Visual V2 AppShell Root       | `--visual-v2-page-background`，唯一绘制完整 Light / Dark Page 背景 |
+| Top Safe Area / Page Header   | `--visual-v2-page-header-background: transparent`，透出 Shell 背景 |
+| Device Page / Controls 外部区 | 透明，不重复绘制 Page Gradient                                     |
+| Search / Summary / DeviceCard | 分别消费自己的 Visual V2 Semantic Surface                          |
 
 | Theme | Page Gradient / Safe Area     | Search / Weak Surface | Summary / Card | Card Border | Divider   |
 | ----- | ----------------------------- | --------------------- | -------------- | ----------- | --------- |

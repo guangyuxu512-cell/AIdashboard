@@ -154,7 +154,17 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
     }
     const root = window.getComputedStyle(document.documentElement)
     return {
+      shellBackgroundImage: style('.mobile-app-shell').backgroundImage,
+      safeAreaBackground: style('[data-testid="mobile-shell-header"]')
+        .backgroundColor,
+      safeAreaBackgroundImage: style('[data-testid="mobile-shell-header"]')
+        .backgroundImage,
       headerBackground: style('.mobile-global-header').backgroundColor,
+      headerBackgroundImage: style('.mobile-global-header').backgroundImage,
+      pageBackground: style('.device-center-page-v2').backgroundColor,
+      pageBackgroundImage: style('.device-center-page-v2').backgroundImage,
+      controlsBackground: style('[data-testid="device-list-controls"]')
+        .backgroundColor,
       bottomBackground: style('.mobile-bottom-navigation').backgroundColor,
       expectedHeader: tokenColor(
         '--device-list-header-background',
@@ -181,8 +191,16 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
         .trim(),
     }
   })
+  expect(chromeVisual.shellBackgroundImage).not.toBe('none')
   expect(chromeVisual).toEqual({
+    shellBackgroundImage: chromeVisual.shellBackgroundImage,
+    safeAreaBackground: chromeVisual.expectedHeader,
+    safeAreaBackgroundImage: 'none',
     headerBackground: chromeVisual.expectedHeader,
+    headerBackgroundImage: 'none',
+    pageBackground: chromeVisual.expectedHeader,
+    pageBackgroundImage: 'none',
+    controlsBackground: chromeVisual.expectedHeader,
     bottomBackground: chromeVisual.expectedBottom,
     expectedHeader: chromeVisual.expectedHeader,
     expectedBottom: chromeVisual.expectedBottom,
