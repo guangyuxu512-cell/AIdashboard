@@ -1,4 +1,5 @@
 export { default as AppShell } from './AppShell.vue'
+export { default as ContextSwitchBar } from './ContextSwitchBar.vue'
 export { default as DataTable } from './DataTable.vue'
 export { default as DetailDrawer } from './DetailDrawer.vue'
 export { default as EmptyState } from './EmptyState.vue'
@@ -25,4 +26,5 @@ export type {
   AppNavigationItem,
   AppNavigationModuleItem,
 } from './AppShell.vue'
+export type { ContextSwitchItem } from './ContextSwitchBar.vue'
 export type { StatusTone } from './StatusTag.vue'

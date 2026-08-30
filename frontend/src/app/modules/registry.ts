@@ -5,10 +5,13 @@ import {
   ListChecks,
   Monitor,
   Settings,
+  Sparkles,
   Store,
   Workflow,
 } from '@lucide/vue'
 import type { Component } from 'vue'
+
+import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 export type ModuleNavigationGroup = 'development' | 'management'
 export type ModuleNavigationParent = 'automation'
@@ -90,6 +93,18 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 25,
+  },
+  {
+    moduleCode: 'ai-workbench',
+    moduleName: 'AI工作台',
+    navigationGroup: 'management',
+    navigationParent: null,
+    routeName: AI_WORKBENCH_ROUTES.generate.name,
+    routePath: AI_WORKBENCH_ROUTES.generate.path,
+    icon: Sparkles,
+    enabled: true,
+    permissionCode: null,
+    order: 27,
   },
   {
     moduleCode: 'device',

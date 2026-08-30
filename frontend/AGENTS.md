@@ -107,6 +107,7 @@ Frontend 不得猜 URL、DTO 字段、状态枚举、权限码、分页字段、
 - 不允许页面自行定义另一套字体、间距、圆角、颜色。
 - Naive UI Theme Override 优先于覆盖内部 DOM。
 - 页面必须遵守统一 Sidebar / Topbar / PageHeader / PageSection。
+- 模块导航、Tab、字段或按钮已表达含义时，正式 UI 不再重复页面标题、副标题或功能说明；默认只展示名称、值、状态和操作，Empty State 保持一行，开发解释仅写入注释、AGENTS 或 docs。
 - 页面滚动、表格高度必须遵守布局文档。
 - Dialog/Modal 必须限制在 Viewport 内；动态内容只由 Overlay Body 承担主纵向滚动，Header/Footer 固定，禁止依赖页面主滚动容纳超出视口的弹层内容。
 - Business Skill 参数只能消费 Backend Skill Catalog 的正式 Schema；Frontend 不得按 Skill ID 猜字段，也不得为 Scheduler 手写第二份参数定义。
