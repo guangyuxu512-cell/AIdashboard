@@ -11,11 +11,13 @@ export const MOBILE_ROUTE_NAMES = {
   profile: 'mobile-profile',
   foundation: 'mobile-foundation',
   visualTokenTuner: 'mobile-visual-token-tuner',
+  iconGallery: 'mobile-icon-gallery',
 } as const
 
 export interface CreateMobileRoutesOptions {
   includeFoundation?: boolean
   includeVisualTokenTuner?: boolean
+  includeIconGallery?: boolean
   runtimeIsDevelopment?: boolean
 }
 
@@ -139,6 +141,10 @@ export function createMobileRoutes(
     runtimeIsDevelopment &&
     import.meta.env.VITE_VISUAL_TUNER !== 'false' &&
     (options.includeVisualTokenTuner ?? true)
+  const includeIconGallery =
+    import.meta.env.DEV &&
+    runtimeIsDevelopment &&
+    (options.includeIconGallery ?? true)
 
   if (includeFoundation) {
     routes.push({
@@ -162,6 +168,20 @@ export function createMobileRoutes(
         import('@/dev/visual-token-tuner/VisualTokenTunerPage.vue'),
       meta: {
         title: '视觉 Token 调参器',
+        layout: 'tool',
+        requiresAuth: false,
+        permission: null,
+      },
+    })
+  }
+
+  if (includeIconGallery) {
+    routes.push({
+      path: '/__icons',
+      name: MOBILE_ROUTE_NAMES.iconGallery,
+      component: () => import('@/dev/icon-gallery/IconGalleryPage.vue'),
+      meta: {
+        title: '图标总览',
         layout: 'tool',
         requiresAuth: false,
         permission: null,

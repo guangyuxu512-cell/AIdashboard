@@ -99,6 +99,12 @@ function createShellRouter() {
         component: pageStub,
         meta: toolMeta('视觉 Token 调参器'),
       },
+      {
+        path: '/__icons',
+        name: MOBILE_ROUTE_NAMES.iconGallery,
+        component: pageStub,
+        meta: toolMeta('图标总览'),
+      },
     ],
   })
 }
@@ -135,9 +141,19 @@ describe('MobileAppShell V2', () => {
     expect(wrapper.get('button[aria-label="返回"]').attributes('type')).toBe(
       'button',
     )
-    expect(wrapper.get('.mobile-detail-header__back-icon').classes()).toContain(
-      'van-icon-arrow-left',
-    )
+    expect(
+      wrapper.get('.mobile-detail-header__back-icon').attributes(),
+    ).toMatchObject({
+      'data-icon-key': 'back',
+      'data-icon-role': 'action',
+      'aria-hidden': 'true',
+    })
+    expect(
+      wrapper
+        .get('.mobile-detail-header__back-icon')
+        .find('.van-icon-arrow-left')
+        .exists(),
+    ).toBe(true)
     expect(
       wrapper.get('[data-testid="mobile-detail-header-right"]').text(),
     ).toBe('')
@@ -180,10 +196,8 @@ describe('MobileAppShell V2', () => {
     ).toBe(true)
     expect(wrapper.findAll('.mobile-header-icon')).toHaveLength(2)
     expect(
-      wrapper
-        .findAll('.mobile-header-icon')
-        .every((icon) => icon.element.tagName === 'IMG'),
-    ).toBe(true)
+      wrapper.findAll('.mobile-header-icon .mobile-icon__asset'),
+    ).toHaveLength(2)
     expect(wrapper.find('.van-badge--dot').exists()).toBe(false)
 
     await buttons[0]!.trigger('click')
@@ -250,7 +264,17 @@ describe('MobileAppShell V2', () => {
       'mobile-bottom-navigation-shops',
       'mobile-bottom-navigation-profile',
     ])
-    expect(items.every((item) => Boolean(item.props('icon')))).toBe(true)
+    expect(
+      items.map((item) =>
+        item.find('[data-icon-role="navigation"]').attributes('data-icon-key'),
+      ),
+    ).toEqual([
+      'device-nav',
+      'task-nav',
+      'schedule-nav',
+      'shop-nav',
+      'profile-nav',
+    ])
   })
 
   it('maps every main and normal detail route to its navigation item', async () => {
@@ -332,14 +356,17 @@ describe('MobileAppShell V2', () => {
     expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.home)
   })
 
-  it('uses no product shell for the independent development tool route', async () => {
-    const { wrapper } = await mountAppAt('/__visual-tuner')
+  it.each(['/__visual-tuner', '/__icons'])(
+    'uses no product shell for independent development tool %s',
+    async (path) => {
+      const { wrapper } = await mountAppAt(path)
 
-    expect(wrapper.findComponent(MobileAppShell).exists()).toBe(false)
-    expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
-    expect(wrapper.findComponent(MobileBottomNavigation).exists()).toBe(false)
-    expect(wrapper.text()).toContain('页面内容')
-  })
+      expect(wrapper.findComponent(MobileAppShell).exists()).toBe(false)
+      expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
+      expect(wrapper.findComponent(MobileBottomNavigation).exists()).toBe(false)
+      expect(wrapper.text()).toContain('页面内容')
+    },
+  )
 
   it('omits empty chrome and activates safe-area fallback classes', () => {
     const wrapper = mount(MobileAppShell, {

@@ -2,8 +2,7 @@
 import { Badge as VanBadge } from 'vant'
 import { computed } from 'vue'
 
-import notificationIconUrl from '@/assets/icons/notification-bell.svg'
-import themeIconUrl from '@/assets/icons/theme-toggle.svg'
+import { MobileIcon } from '@/shared/icons'
 
 const emit = defineEmits<{
   themeToggle: []
@@ -38,7 +37,7 @@ const themeActionLabel = computed(() =>
         data-testid="theme-toggle"
         @click="emit('themeToggle')"
       >
-        <img class="mobile-header-icon" :src="themeIconUrl" alt="" />
+        <MobileIcon class="mobile-header-icon" name="theme-toggle" />
       </button>
       <button
         class="mobile-icon-button mobile-pressable"
@@ -47,7 +46,7 @@ const themeActionLabel = computed(() =>
         @click="emit('notificationClick')"
       >
         <VanBadge :dot="notificationDot">
-          <img class="mobile-header-icon" :src="notificationIconUrl" alt="" />
+          <MobileIcon class="mobile-header-icon" name="notification-bell" />
         </VanBadge>
       </button>
     </div>

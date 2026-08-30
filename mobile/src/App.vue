@@ -7,6 +7,7 @@ import type { RouteLocationRaw } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import { useThemeStore } from '@/app/stores/theme'
+import type { MobileIconName } from '@/shared/icons'
 import {
   MobileAppShell,
   MobileBottomNavigation,
@@ -54,31 +55,31 @@ const mainNavigationItems = [
   {
     key: 'devices',
     label: '设备',
-    icon: 'desktop-o',
+    icon: 'device-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.devices },
   },
   {
     key: 'tasks',
     label: '任务',
-    icon: 'todo-list-o',
+    icon: 'task-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.tasks },
   },
   {
     key: 'schedules',
     label: '计划',
-    icon: 'calendar-o',
+    icon: 'schedule-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.schedules },
   },
   {
     key: 'shops',
     label: '店铺',
-    icon: 'shop-o',
+    icon: 'shop-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.shops },
   },
   {
     key: 'profile',
     label: '我的',
-    icon: 'user-o',
+    icon: 'profile-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.profile },
   },
 ] as const

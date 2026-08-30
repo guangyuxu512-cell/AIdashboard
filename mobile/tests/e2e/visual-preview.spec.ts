@@ -746,10 +746,19 @@ for (const width of viewportWidths) {
           boxShadow: headerStyle.boxShadow,
           buttonStyles,
           iconSources: Array.from(
-            document.querySelectorAll<HTMLImageElement>(
+            document.querySelectorAll<HTMLElement>(
               '.mobile-global-header__actions .mobile-header-icon',
             ),
-          ).map((icon) => ({ src: icon.currentSrc, width: icon.naturalWidth })),
+          ).map((icon) => {
+            const asset = icon.querySelector<HTMLImageElement>(
+              '.mobile-icon__asset',
+            )!
+            return {
+              key: icon.dataset.iconKey,
+              src: asset.currentSrc,
+              width: asset.naturalWidth,
+            }
+          }),
         }
       })
       expect(headerVisual.borderBottomWidth).toBe('0px')
@@ -758,6 +767,10 @@ for (const width of viewportWidths) {
       expect(headerVisual.buttonStyles[0]).toEqual(headerVisual.buttonStyles[1])
       expect(headerVisual.buttonStyles[0]?.width).toBeGreaterThanOrEqual(44)
       expect(headerVisual.iconSources).toHaveLength(2)
+      expect(headerVisual.iconSources.map((icon) => icon.key)).toEqual([
+        'theme-toggle',
+        'notification-bell',
+      ])
       expect(
         headerVisual.iconSources.every(
           (icon) =>

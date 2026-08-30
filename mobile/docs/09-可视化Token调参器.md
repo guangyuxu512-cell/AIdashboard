@@ -102,10 +102,10 @@ Radius / Border 与按 Light / Dark 分组的 Shadow，不混入无关的尺寸�
 ```
 
 本次 Stage 状态为：Stage 1 Frozen、Stage 2 Frozen、Stage 3A Frozen、Stage 3B
-**Completed / Frozen（已完成 / 已冻结）**。Tuner V3 的默认值已经与 `tokens.css` 的 Stage 3B 正式基线同步；
-打开调参器时，外观当前值等于默认值且 Dirty Count 为 0，Reset Stage 3B 也只回到这组正式值。后续若需要改变
-Radius、Border 或 Shadow，必须先显式 Unfreeze（解冻）并完成新的视觉 Review；不得开始 Stage 3C Final Icons 或
-Stage 4 Press / Motion。
+**Completed / Frozen（已完成 / 已冻结）**；Stage 3C Final Icons 处于独立的 Candidate for Visual Review（候选人工
+视觉复核），不属于 Tuner V3 的可调通道。Tuner V3 的默认值已经与 `tokens.css` 的 Stage 3B 正式基线同步；打开调参器时，
+外观当前值等于默认值且 Dirty Count 为 0，Reset Stage 3B 也只回到这组正式值。后续若需要改变 Radius、Border 或 Shadow，
+必须先显式 Unfreeze（解冻）并完成新的视觉 Review；不得顺手开始 Stage 4 Press / Motion。
 
 ## 视觉验收
 

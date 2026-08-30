@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   Button as VanButton,
-  Icon as VanIcon,
   Loading as VanLoading,
   Tab as VanTab,
   Tabs as VanTabs,
@@ -13,6 +12,7 @@ import type {
   DeviceSkillCapabilityReadDto,
   ProviderApplicationInventoryReadDto,
 } from '@/entities/device'
+import { MobileIcon } from '@/shared/icons'
 
 const props = defineProps<{
   inventories: DeviceProviderInventoryReadDto[] | undefined
@@ -54,11 +54,6 @@ const applicationCount = computed(() =>
 const skillCount = computed(() =>
   props.capabilities === undefined ? '—' : businessSkills.value.length,
 )
-const capabilityIconNames = {
-  application: 'apps-o',
-  skill: 'setting-o',
-} as const
-
 function formatSkillVersion(version: string): string | null {
   const normalized = version.trim()
   if (!normalized) return null
@@ -83,7 +78,7 @@ function formatSkillVersion(version: string): string | null {
         data-testid="device-capability-refresh"
         @click="emit('refreshCapability')"
       >
-        <VanIcon name="replay" aria-hidden="true" />
+        <MobileIcon name="refresh" />
       </button>
     </div>
 
@@ -143,7 +138,7 @@ function formatSkillVersion(version: string): string | null {
           data-capability-type="application"
           aria-hidden="true"
         >
-          <VanIcon :name="capabilityIconNames.application" />
+          <MobileIcon name="application" />
         </span>
         <span class="device-capability-panel__main-content">
           <strong class="device-capability-panel__name">
@@ -202,7 +197,7 @@ function formatSkillVersion(version: string): string | null {
           data-capability-type="skill"
           aria-hidden="true"
         >
-          <VanIcon :name="capabilityIconNames.skill" />
+          <MobileIcon name="skill" />
         </span>
         <span class="device-capability-panel__main-content">
           <strong class="device-capability-panel__name">
@@ -312,7 +307,7 @@ function formatSkillVersion(version: string): string | null {
   box-shadow: var(--appearance-border-control), var(--shadow-icon-button);
 }
 
-.device-capability-panel__refresh :deep(.van-icon) {
+.device-capability-panel__refresh .mobile-icon {
   font-size: var(--icon-size-small);
 }
 

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { Icon as VanIcon, Tag as VanTag } from 'vant'
+import { Tag as VanTag } from 'vant'
 import { computed } from 'vue'
+
+import { MobileIcon } from '@/shared/icons'
 
 import type { TaskListItem } from '../model/types'
 import TaskStatusTag from './TaskStatusTag.vue'
@@ -35,7 +37,7 @@ const metaTags = computed(() => {
       data-testid="task-card-leading"
       aria-hidden="true"
     >
-      <VanIcon name="todo-list-o" />
+      <MobileIcon name="task" tile />
     </span>
 
     <span class="task-list-card__content">
@@ -52,11 +54,10 @@ const metaTags = computed(() => {
       </span>
     </span>
 
-    <VanIcon
+    <MobileIcon
       class="task-list-card__chevron"
-      name="arrow"
+      name="chevron-right"
       data-testid="task-card-chevron"
-      aria-hidden="true"
     />
   </article>
 </template>

@@ -2,10 +2,12 @@
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from 'vant'
 import type { RouteLocationRaw } from 'vue-router'
 
+import { MobileIcon, type MobileIconName } from '@/shared/icons'
+
 interface MobileNavigationItem {
   key: string
   label: string
-  icon: string
+  icon: MobileIconName
   to: RouteLocationRaw
 }
 
@@ -31,8 +33,10 @@ defineProps<{
       class="mobile-pressable mobile-pressable--control"
       :data-testid="`mobile-bottom-navigation-${item.key}`"
       :to="item.to"
-      :icon="item.icon"
     >
+      <template #icon>
+        <MobileIcon :name="item.icon" />
+      </template>
       {{ item.label }}
     </VanTabbarItem>
   </VanTabbar>

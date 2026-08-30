@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Icon as VanIcon } from 'vant'
 import type { PropType } from 'vue'
+
+import { MobileIcon, type MobileIconName } from '@/shared/icons'
 
 type MobileSummaryTone = 'primary' | 'success' | 'muted' | 'neutral'
 
@@ -8,7 +9,7 @@ interface MobileSummaryItem {
   key: string
   label: string
   value: string | number
-  icon: string
+  icon: MobileIconName
   tone?: MobileSummaryTone
   interactive?: boolean
   selected?: boolean
@@ -70,11 +71,7 @@ const emit = defineEmits<{
             item.interactive && !item.disabled ? emit('select', item.key) : null
           "
         >
-          <VanIcon
-            class="mobile-summary-strip__icon"
-            :name="item.icon"
-            aria-hidden="true"
-          />
+          <MobileIcon class="mobile-summary-strip__icon" :name="item.icon" />
           <strong
             class="mobile-summary-strip__value"
             :data-testid="`summary-${item.key}`"

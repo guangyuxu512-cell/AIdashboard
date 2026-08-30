@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { Button as VanButton, Icon as VanIcon } from 'vant'
+import { Button as VanButton } from 'vant'
+
+import { MobileIcon } from '@/shared/icons'
 
 withDefaults(
   defineProps<{
@@ -47,7 +49,7 @@ const emit = defineEmits<{
           <span class="mobile-list-toolbar__control-label">
             {{ selectorLabel }}
           </span>
-          <VanIcon name="arrow-down" aria-hidden="true" />
+          <MobileIcon name="arrow-down" />
         </span>
       </VanButton>
       <VanButton
@@ -58,7 +60,7 @@ const emit = defineEmits<{
         @click="emit('filter')"
       >
         <span class="mobile-list-toolbar__control">
-          <VanIcon name="filter-o" aria-hidden="true" />
+          <MobileIcon name="filter" />
           <span class="mobile-list-toolbar__control-label">
             {{ filterLabel }}
           </span>
@@ -158,5 +160,9 @@ const emit = defineEmits<{
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-list-toolbar__control .mobile-icon {
+  font-size: var(--icon-size-small);
 }
 </style>

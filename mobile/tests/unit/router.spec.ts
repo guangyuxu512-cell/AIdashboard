@@ -150,6 +150,36 @@ describe('mobile router', () => {
     ).toBe(false)
   })
 
+  it('registers the icon gallery only in the development route table', () => {
+    const developmentRoutes = createMobileRoutes({
+      includeIconGallery: true,
+    })
+    const productionRoutes = createMobileRoutes({
+      runtimeIsDevelopment: false,
+      includeIconGallery: true,
+    })
+
+    expect(
+      developmentRoutes.find(
+        (route) => route.name === MOBILE_ROUTE_NAMES.iconGallery,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        path: '/__icons',
+        meta: expect.objectContaining({
+          layout: 'tool',
+          requiresAuth: false,
+          permission: null,
+        }),
+      }),
+    )
+    expect(
+      productionRoutes.some(
+        (route) => route.name === MOBILE_ROUTE_NAMES.iconGallery,
+      ),
+    ).toBe(false)
+  })
+
   it('uses hash history', () => {
     const router = createMobileRouter({ includeFoundation: false })
 

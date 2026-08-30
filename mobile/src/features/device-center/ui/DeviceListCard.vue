@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Icon as VanIcon, Tag as VanTag } from 'vant'
+import { Tag as VanTag } from 'vant'
 import { computed } from 'vue'
 
 import {
@@ -9,6 +9,7 @@ import {
   type Device,
 } from '@/entities/device'
 import { TASK_STATUS_META } from '@/entities/task'
+import { MobileIcon } from '@/shared/icons'
 
 import type { DeviceActiveTaskState } from '../model/use-device-active-task'
 
@@ -72,7 +73,7 @@ const primaryStatus = computed(() => {
       data-testid="device-card-leading"
       aria-hidden="true"
     >
-      <VanIcon name="desktop-o" />
+      <MobileIcon name="device" tile />
     </span>
 
     <span class="device-list-card__content">
@@ -97,11 +98,10 @@ const primaryStatus = computed(() => {
       >
         {{ primaryStatus.label }}
       </VanTag>
-      <VanIcon
+      <MobileIcon
         class="device-list-card__chevron"
-        name="arrow"
+        name="chevron-right"
         data-testid="device-card-chevron"
-        aria-hidden="true"
       />
     </span>
   </article>

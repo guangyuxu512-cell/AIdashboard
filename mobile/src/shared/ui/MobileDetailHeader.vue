@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Icon as VanIcon } from 'vant'
+import { MobileIcon } from '@/shared/icons'
 
 defineProps<{
   title: string
@@ -22,11 +22,7 @@ const emit = defineEmits<{
       aria-label="返回"
       @click="emit('back')"
     >
-      <VanIcon
-        class="mobile-detail-header__back-icon"
-        name="arrow-left"
-        aria-hidden="true"
-      />
+      <MobileIcon class="mobile-detail-header__back-icon" name="back" />
     </button>
 
     <div

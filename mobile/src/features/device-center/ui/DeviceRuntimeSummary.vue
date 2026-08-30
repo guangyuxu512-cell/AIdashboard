@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  Button as VanButton,
-  Icon as VanIcon,
-  Loading as VanLoading,
-  Tag as VanTag,
-} from 'vant'
+import { Button as VanButton, Loading as VanLoading, Tag as VanTag } from 'vant'
 import { computed } from 'vue'
 
 import {
@@ -17,6 +12,7 @@ import {
   TASK_STATUS_META,
   type ActiveTaskSummaryReadDto,
 } from '@/entities/task'
+import { MobileIcon } from '@/shared/icons'
 
 const props = defineProps<{
   device: Device
@@ -91,7 +87,7 @@ const yingdaoVersion = computed(
         data-testid="device-runtime-icon"
         aria-hidden="true"
       >
-        <VanIcon name="desktop-o" />
+        <MobileIcon name="runtime-device" />
       </span>
       <span class="device-runtime-summary__content">
         <strong
@@ -136,7 +132,7 @@ const yingdaoVersion = computed(
         data-testid="device-account-icon"
         aria-hidden="true"
       >
-        <VanIcon name="manager-o" />
+        <MobileIcon name="automation" />
       </span>
       <span class="device-runtime-summary__content">
         <span class="device-runtime-summary__heading">
