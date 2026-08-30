@@ -56,7 +56,7 @@ export const MOBILE_ICON_REGISTRY = {
   'runtime-device': {
     label: '设备运行端',
     role: 'runtime',
-    source: { kind: 'vant', name: 'desktop-o' },
+    source: { kind: 'component', component: DevicePrimaryGlyph },
   },
   automation: {
     label: '自动化账号',

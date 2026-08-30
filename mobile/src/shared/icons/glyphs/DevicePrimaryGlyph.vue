@@ -6,48 +6,35 @@
     xmlns="http://www.w3.org/2000/svg"
     focusable="false"
   >
-    <rect
-      x="6"
-      y="8"
-      width="36"
-      height="26"
-      rx="8"
+    <path
+      d="M7 9.5C7 7.6 8.6 6 10.5 6H37.5C39.4 6 41 7.6 41 9.5V30.5C41 32.4 39.4 34 37.5 34H10.5C8.6 34 7 32.4 7 30.5V9.5Z"
       fill="currentColor"
       fill-opacity="0.16"
+      stroke="currentColor"
+      stroke-width="3"
+      stroke-linejoin="round"
     />
     <rect
-      x="8.5"
-      y="10.5"
-      width="31"
-      height="21"
-      rx="5.5"
-      stroke="currentColor"
-      stroke-width="3"
+      x="10.5"
+      y="9.5"
+      width="27"
+      height="19"
+      rx="2.5"
+      fill="currentColor"
+      fill-opacity="0.3"
     />
     <path
-      d="M18 39H30"
+      d="M17 42H31"
       stroke="currentColor"
       stroke-width="3"
       stroke-linecap="round"
     />
     <path
-      d="M24 32V39"
+      d="M24 34V42"
       stroke="currentColor"
       stroke-width="3"
       stroke-linecap="round"
     />
-    <path
-      d="M16 17H23"
-      stroke="currentColor"
-      stroke-width="3"
-      stroke-linecap="round"
-    />
-    <path
-      d="M16 23H29"
-      stroke="currentColor"
-      stroke-width="3"
-      stroke-linecap="round"
-    />
-    <circle cx="33" cy="23" r="3" fill="currentColor" />
+    <circle cx="24" cy="31.2" r="1.5" fill="currentColor" />
   </svg>
 </template>

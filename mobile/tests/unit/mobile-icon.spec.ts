@@ -31,6 +31,15 @@ describe('Mobile icon registry', () => {
     }
   })
 
+  it('reuses the monitor glyph for the DeviceCard and device detail', () => {
+    for (const name of ['device', 'runtime-device'] as const) {
+      const wrapper = mount(MobileIcon, { props: { name } })
+
+      expect(wrapper.find('svg.mobile-icon__glyph').exists()).toBe(true)
+      expect(resolveMobileIcon(name).source.kind).toBe('component')
+    }
+  })
+
   it('exposes a readable label only when an icon is not decorative', () => {
     const wrapper = mount(MobileIcon, {
       props: {
@@ -73,7 +82,7 @@ describe('Mobile icon registry', () => {
     const expectations = [
       ['device', 'primary', 'component'],
       ['task', 'primary', 'component'],
-      ['runtime-device', 'runtime', 'vant'],
+      ['runtime-device', 'runtime', 'component'],
       ['automation', 'runtime', 'vant'],
       ['application', 'capability', 'vant'],
       ['skill', 'capability', 'vant'],
