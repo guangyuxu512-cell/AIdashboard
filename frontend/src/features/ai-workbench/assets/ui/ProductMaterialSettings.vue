@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { SelectOption } from 'naive-ui'
 
 import {
   TEMPLATE_GROUP_OPTIONS,
-  UNBOUND_TEMPLATE_GROUP_VALUE,
+  type GenerationMode,
   type ProductMaterialGroup,
 } from '../model/types'
 import { AppSelect, AppSwitch } from '@/shared/ui'
+import type { AppOptionValue } from '@/shared/ui/types'
 
-const props = defineProps<{
+defineProps<{
   product: ProductMaterialGroup
 }>()
 
@@ -17,28 +17,32 @@ const emit = defineEmits<{
   'update:enabled': [value: boolean]
   'update:normalGenerationEnabled': [value: boolean]
   'update:styleReplicationEnabled': [value: boolean]
-  'update:defaultTemplateGroupId': [value: string | null]
+  'update:normalTemplateGroupIds': [value: string[]]
+  'update:styleReplicationTemplateGroupIds': [value: string[]]
 }>()
 
-const templateOptions: SelectOption[] = [
-  { label: '未绑定', value: UNBOUND_TEMPLATE_GROUP_VALUE },
-  ...TEMPLATE_GROUP_OPTIONS.map((option) => ({
-    label: option.label,
-    value: option.id,
-  })),
-]
-
-const templateValue = computed(
-  () => props.product.defaultTemplateGroupId ?? UNBOUND_TEMPLATE_GROUP_VALUE,
-)
-
-function updateTemplate(value: string | number | null): void {
-  emit(
-    'update:defaultTemplateGroupId',
-    value === UNBOUND_TEMPLATE_GROUP_VALUE || value === null
-      ? null
-      : String(value),
+function templateOptions(mode: GenerationMode): SelectOption[] {
+  return TEMPLATE_GROUP_OPTIONS.filter((option) => option.mode === mode).map(
+    (option) => ({
+      label: option.label,
+      value: option.id,
+    }),
   )
+}
+
+const normalTemplateOptions = templateOptions('NORMAL_GENERATION')
+const styleReplicationTemplateOptions = templateOptions('STYLE_REPLICATION')
+
+function templateGroupIds(value: AppOptionValue[]): string[] {
+  return value.map(String)
+}
+
+function updateNormalTemplates(value: AppOptionValue[]): void {
+  emit('update:normalTemplateGroupIds', templateGroupIds(value))
+}
+
+function updateStyleReplicationTemplates(value: AppOptionValue[]): void {
+  emit('update:styleReplicationTemplateGroupIds', templateGroupIds(value))
 }
 </script>
 
@@ -54,33 +58,62 @@ function updateTemplate(value: string | number | null): void {
           @update:model-value="$emit('update:enabled', $event)"
         />
       </label>
-      <label class="product-material-settings__row">
-        <span>普通生图</span>
-        <AppSwitch
-          :model-value="product.normalGenerationEnabled"
-          :disabled="!product.enabled"
-          aria-label="普通生图"
-          @update:model-value="$emit('update:normalGenerationEnabled', $event)"
-        />
-      </label>
-      <label class="product-material-settings__row">
-        <span>风格复刻</span>
-        <AppSwitch
-          :model-value="product.styleReplicationEnabled"
-          :disabled="!product.enabled"
-          aria-label="风格复刻"
-          @update:model-value="$emit('update:styleReplicationEnabled', $event)"
-        />
-      </label>
-      <label class="product-material-settings__field">
-        <span>默认模板组</span>
-        <AppSelect
-          :model-value="templateValue"
-          :options="templateOptions"
-          aria-label="默认模板组"
-          @update:model-value="updateTemplate"
-        />
-      </label>
+      <div class="product-material-settings__mode">
+        <label class="product-material-settings__row">
+          <span>普通生图</span>
+          <AppSwitch
+            :model-value="product.normalGenerationEnabled"
+            :disabled="!product.enabled"
+            aria-label="普通生图"
+            @update:model-value="
+              $emit('update:normalGenerationEnabled', $event)
+            "
+          />
+        </label>
+        <label class="product-material-settings__field">
+          <span>模板组</span>
+          <AppSelect
+            :model-value="product.normalTemplateGroupIds"
+            :options="normalTemplateOptions"
+            :disabled="!product.enabled || !product.normalGenerationEnabled"
+            multiple
+            clearable
+            filterable
+            :max-tag-count="1"
+            placeholder="未绑定"
+            aria-label="普通生图模板组"
+            @update:values="updateNormalTemplates"
+          />
+        </label>
+      </div>
+      <div class="product-material-settings__mode">
+        <label class="product-material-settings__row">
+          <span>风格复刻</span>
+          <AppSwitch
+            :model-value="product.styleReplicationEnabled"
+            :disabled="!product.enabled"
+            aria-label="风格复刻"
+            @update:model-value="
+              $emit('update:styleReplicationEnabled', $event)
+            "
+          />
+        </label>
+        <label class="product-material-settings__field">
+          <span>模板组</span>
+          <AppSelect
+            :model-value="product.styleReplicationTemplateGroupIds"
+            :options="styleReplicationTemplateOptions"
+            :disabled="!product.enabled || !product.styleReplicationEnabled"
+            multiple
+            clearable
+            filterable
+            :max-tag-count="1"
+            placeholder="未绑定"
+            aria-label="风格复刻模板组"
+            @update:values="updateStyleReplicationTemplates"
+          />
+        </label>
+      </div>
     </div>
   </section>
 </template>
@@ -104,6 +137,15 @@ function updateTemplate(value: string | number | null): void {
   min-width: 0;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.product-material-settings__mode {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .product-material-settings__row,

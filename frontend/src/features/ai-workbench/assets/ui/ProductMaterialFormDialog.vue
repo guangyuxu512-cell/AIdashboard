@@ -27,13 +27,11 @@ const schema = z.object({
     .trim()
     .min(1, '请输入产品名称')
     .max(100, '产品名称最多 100 个字符'),
-  sku: z.string().trim().max(100, 'SKU 最多 100 个字符').optional(),
 })
 
 const { defineField, errors, handleSubmit, resetForm, setErrors } =
-  useForm<ProductMaterialGroupInput>({ initialValues: { name: '', sku: '' } })
+  useForm<ProductMaterialGroupInput>({ initialValues: { name: '' } })
 const [name] = defineField('name')
-const [sku] = defineField('sku')
 const title = computed(() =>
   props.mode === 'create' ? '新建产品' : '重命名产品',
 )
@@ -45,7 +43,6 @@ watch(
     resetForm({
       values: {
         name: props.product?.name ?? '',
-        sku: props.product?.sku ?? '',
       },
     })
   },
@@ -57,7 +54,6 @@ const submit = handleSubmit((values) => {
     const fieldErrors = parsed.error.flatten().fieldErrors
     setErrors({
       name: fieldErrors.name?.[0],
-      sku: fieldErrors.sku?.[0],
     })
     return
   }
@@ -85,13 +81,6 @@ const submit = handleSubmit((values) => {
           placeholder="请输入产品名称"
           :maxlength="100"
         />
-      </NFormItem>
-      <NFormItem
-        label="SKU（可选）"
-        :validation-status="errors.sku ? 'error' : undefined"
-        :feedback="errors.sku"
-      >
-        <AppInput v-model="sku" placeholder="请输入 SKU" :maxlength="100" />
       </NFormItem>
     </NForm>
   </AppDialog>

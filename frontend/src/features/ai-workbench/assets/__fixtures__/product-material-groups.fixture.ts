@@ -107,21 +107,36 @@ function createProduct(
   }
 }
 
+const PHONE_STAND_SOURCE_FILENAMES = [
+  '正面.jpg',
+  '侧面.jpg',
+  '折叠态.png',
+  '桌面场景.webp',
+  '包装图.jpg',
+  ...Array.from(
+    { length: 26 },
+    (_, index) => `商品素材-${String(index + 6).padStart(2, '0')}.jpg`,
+  ),
+]
+
 export function createProductMaterialGroupFixtures(): ProductMaterialGroup[] {
   return [
     createProduct({
       id: 'pmg-phone-stand',
       name: '手机支架',
-      sku: 'SJ-ZJ-001',
       enabled: true,
       normalGenerationEnabled: true,
       styleReplicationEnabled: true,
-      defaultTemplateGroupId: 'tg-standard-a',
+      normalTemplateGroupIds: ['normal-standard-set', 'normal-lifestyle-set'],
+      styleReplicationTemplateGroupIds: [
+        'style-competitor-a',
+        'style-scene-replication',
+      ],
       assets: [
         ...createAssets(
           '手机支架',
           'PRODUCT_SOURCE',
-          ['正面.jpg', '侧面.jpg', '折叠态.png', '桌面场景.webp', '包装图.jpg'],
+          PHONE_STAND_SOURCE_FILENAMES,
           ['#526d82', '#27374d'],
         ),
         ...createAssets(
@@ -156,11 +171,11 @@ export function createProductMaterialGroupFixtures(): ProductMaterialGroup[] {
     createProduct({
       id: 'pmg-mug',
       name: '马克杯',
-      sku: 'MK-BW-014',
       enabled: true,
       normalGenerationEnabled: true,
       styleReplicationEnabled: false,
-      defaultTemplateGroupId: 'tg-minimal-main',
+      normalTemplateGroupIds: ['normal-minimal-main'],
+      styleReplicationTemplateGroupIds: ['style-minimal-replication'],
       assets: [
         ...createAssets(
           '马克杯',
@@ -180,11 +195,11 @@ export function createProductMaterialGroupFixtures(): ProductMaterialGroup[] {
     createProduct({
       id: 'pmg-ring',
       name: '戒指',
-      sku: 'JZ-S925-008',
       enabled: false,
       normalGenerationEnabled: true,
       styleReplicationEnabled: true,
-      defaultTemplateGroupId: 'tg-lifestyle',
+      normalTemplateGroupIds: ['normal-lifestyle-set'],
+      styleReplicationTemplateGroupIds: ['style-scene-replication'],
       assets: [
         ...createAssets(
           '戒指',
@@ -218,7 +233,8 @@ export function createProductMaterialGroupFixtures(): ProductMaterialGroup[] {
       enabled: true,
       normalGenerationEnabled: true,
       styleReplicationEnabled: true,
-      defaultTemplateGroupId: 'tg-new-product-detail',
+      normalTemplateGroupIds: ['normal-new-product-detail'],
+      styleReplicationTemplateGroupIds: [],
       assets: [
         ...createAssets(
           '收纳盒',
@@ -237,11 +253,11 @@ export function createProductMaterialGroupFixtures(): ProductMaterialGroup[] {
     createProduct({
       id: 'pmg-thermos',
       name: '保温杯',
-      sku: 'BWB-500-BK',
       enabled: true,
       normalGenerationEnabled: true,
-      styleReplicationEnabled: false,
-      defaultTemplateGroupId: null,
+      styleReplicationEnabled: true,
+      normalTemplateGroupIds: ['normal-standard-set'],
+      styleReplicationTemplateGroupIds: ['style-competitor-a'],
       assets: [
         ...createAssets(
           '保温杯',

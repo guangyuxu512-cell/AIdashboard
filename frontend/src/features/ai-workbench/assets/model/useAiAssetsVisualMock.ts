@@ -1,14 +1,17 @@
 import { computed, ref, watch } from 'vue'
 
-import type {
-  MaterialAssetReference,
-  MaterialRole,
-  ProductMaterialFilter,
-  ProductMaterialGroup,
-  ProductMaterialGroupInput,
+import {
+  TEMPLATE_GROUP_OPTIONS,
+  type GenerationMode,
+  type MaterialAssetReference,
+  type MaterialRole,
+  type ProductMaterialFilter,
+  type ProductMaterialGroup,
+  type ProductMaterialGroupInput,
 } from './types'
 
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+export const MATERIAL_ASSET_PAGE_SIZE = 20
 
 interface VisualMockDependencies {
   createPreviewUrl?: (file: File) => string
@@ -26,12 +29,28 @@ function cloneGroups(
 ): ProductMaterialGroup[] {
   return groups.map((group) => ({
     ...group,
+    normalTemplateGroupIds: [...group.normalTemplateGroupIds],
+    styleReplicationTemplateGroupIds: [
+      ...group.styleReplicationTemplateGroupIds,
+    ],
     assets: group.assets.map((asset) => ({ ...asset })),
   }))
 }
 
 function matches(value: string | undefined, query: string): boolean {
   return value?.toLocaleLowerCase().includes(query) ?? false
+}
+
+function templateGroupIdsForMode(
+  values: readonly string[],
+  mode: GenerationMode,
+): string[] {
+  const allowedIds = new Set(
+    TEMPLATE_GROUP_OPTIONS.filter((option) => option.mode === mode).map(
+      (option) => option.id,
+    ),
+  )
+  return [...new Set(values.filter((value) => allowedIds.has(value)))]
 }
 
 export function useAiAssetsVisualMock(
@@ -41,9 +60,13 @@ export function useAiAssetsVisualMock(
   const groups = ref<ProductMaterialGroup[]>(cloneGroups(initialGroups))
   const selectedProductId = ref<string | null>(groups.value[0]?.id ?? null)
   const selectedAssetId = ref<string | null>(null)
+  const selectedAssetIds = ref<string[]>([])
+  const selectionMode = ref(false)
   const activeRole = ref<MaterialRole>('PRODUCT_SOURCE')
   const searchQuery = ref('')
   const productFilter = ref<ProductMaterialFilter>('all')
+  const currentPage = ref(1)
+  const pageSize = ref(MATERIAL_ASSET_PAGE_SIZE)
   let localIdSequence = 0
 
   const createPreviewUrl =
@@ -62,7 +85,6 @@ export function useAiAssetsVisualMock(
       const queryMatches =
         !query ||
         matches(group.name, query) ||
-        matches(group.sku, query) ||
         group.assets.some((asset) => matches(asset.name, query))
       return statusMatches && queryMatches
     })
@@ -83,18 +105,52 @@ export function useAiAssetsVisualMock(
     )
   })
 
-  const visibleAssets = computed(() => {
+  const filteredAssets = computed(() => {
     const product = selectedProduct.value
     if (!product) return []
     const query = searchQuery.value.trim().toLocaleLowerCase()
-    const productIdentityMatches =
-      !query || matches(product.name, query) || matches(product.sku, query)
+    const productIdentityMatches = !query || matches(product.name, query)
     return product.assets.filter(
       (asset) =>
         asset.role === activeRole.value &&
         (productIdentityMatches || matches(asset.name, query)),
     )
   })
+
+  const totalAssets = computed(() => filteredAssets.value.length)
+  const pageCount = computed(() =>
+    Math.max(1, Math.ceil(totalAssets.value / pageSize.value)),
+  )
+  const visibleAssets = computed(() => {
+    const start = (currentPage.value - 1) * pageSize.value
+    return filteredAssets.value.slice(start, start + pageSize.value)
+  })
+
+  const selectedAssets = computed(() => {
+    const product = selectedProduct.value
+    if (!product) return []
+    const selectedIds = new Set(selectedAssetIds.value)
+    return product.assets.filter((asset) => selectedIds.has(asset.assetId))
+  })
+
+  const currentPageAssetIds = computed(() =>
+    visibleAssets.value.map((asset) => asset.assetId),
+  )
+  const currentPageSelectedCount = computed(() => {
+    const selectedIds = new Set(selectedAssetIds.value)
+    return currentPageAssetIds.value.filter((assetId) =>
+      selectedIds.has(assetId),
+    ).length
+  })
+  const currentPageSelectionChecked = computed(
+    () =>
+      currentPageAssetIds.value.length > 0 &&
+      currentPageSelectedCount.value === currentPageAssetIds.value.length,
+  )
+  const currentPageSelectionIndeterminate = computed(
+    () =>
+      currentPageSelectedCount.value > 0 && !currentPageSelectionChecked.value,
+  )
 
   const roleCounts = computed<Record<MaterialRole, number>>(() => ({
     PRODUCT_SOURCE:
@@ -115,24 +171,48 @@ export function useAiAssetsVisualMock(
     () => !selectedProduct.value?.enabled,
   )
 
+  function clearAssetSelection(): void {
+    selectedAssetIds.value = []
+  }
+
+  function startSelectionMode(): void {
+    if (currentPageAssetIds.value.length === 0) return
+    selectionMode.value = true
+    selectedAssetId.value = null
+  }
+
+  function finishSelectionMode(): void {
+    selectionMode.value = false
+    clearAssetSelection()
+  }
+
+  function resetAssetContext(): void {
+    currentPage.value = 1
+    selectedAssetId.value = null
+    finishSelectionMode()
+  }
+
   watch(
     visibleProducts,
     (products) => {
       if (!products.some((product) => product.id === selectedProductId.value)) {
         selectedProductId.value = products[0]?.id ?? null
-        selectedAssetId.value = null
       }
     },
     { flush: 'sync' },
   )
 
+  watch(selectedProductId, resetAssetContext, { flush: 'sync' })
+  watch(searchQuery, resetAssetContext, { flush: 'sync' })
+
   function selectProduct(productId: string): void {
     if (!groups.value.some((group) => group.id === productId)) return
+    if (selectedProductId.value === productId) return
     selectedProductId.value = productId
-    selectedAssetId.value = null
   }
 
   function selectAsset(assetId: string | null): void {
+    if (selectionMode.value) return
     if (
       assetId &&
       !selectedProduct.value?.assets.some((asset) => asset.assetId === assetId)
@@ -142,9 +222,39 @@ export function useAiAssetsVisualMock(
     selectedAssetId.value = assetId
   }
 
+  function setAssetSelected(assetId: string, selected: boolean): void {
+    if (!selectionMode.value) return
+    if (!currentPageAssetIds.value.includes(assetId)) return
+    const selectedIds = new Set(selectedAssetIds.value)
+    if (selected) selectedIds.add(assetId)
+    else selectedIds.delete(assetId)
+    selectedAssetIds.value = [...selectedIds]
+  }
+
+  function setCurrentPageSelected(selected: boolean): void {
+    if (selected) startSelectionMode()
+    selectedAssetIds.value = selected ? [...currentPageAssetIds.value] : []
+  }
+
   function setActiveRole(role: MaterialRole): void {
     activeRole.value = role
+    resetAssetContext()
+  }
+
+  function setPage(page: number): void {
+    const nextPage = Math.min(Math.max(1, page), pageCount.value)
+    if (nextPage === currentPage.value) return
+    currentPage.value = nextPage
     selectedAssetId.value = null
+    finishSelectionMode()
+  }
+
+  function setPageSize(value: number): void {
+    if (!Number.isInteger(value) || value <= 0 || value === pageSize.value) {
+      return
+    }
+    pageSize.value = value
+    resetAssetContext()
   }
 
   function createProduct(
@@ -155,11 +265,11 @@ export function useAiAssetsVisualMock(
     const product: ProductMaterialGroup = {
       id: `visual-product-${localIdSequence}`,
       name: input.name.trim(),
-      sku: input.sku?.trim() || undefined,
       enabled: true,
       normalGenerationEnabled: true,
       styleReplicationEnabled: false,
-      defaultTemplateGroupId: null,
+      normalTemplateGroupIds: [],
+      styleReplicationTemplateGroupIds: [],
       createdAt: timestamp,
       updatedAt: timestamp,
       assets: [],
@@ -168,8 +278,8 @@ export function useAiAssetsVisualMock(
     searchQuery.value = ''
     productFilter.value = 'all'
     selectedProductId.value = product.id
-    selectedAssetId.value = null
     activeRole.value = 'PRODUCT_SOURCE'
+    resetAssetContext()
     return product
   }
 
@@ -180,7 +290,6 @@ export function useAiAssetsVisualMock(
     const product = groups.value.find((group) => group.id === productId)
     if (!product) return
     product.name = input.name.trim()
-    product.sku = input.sku?.trim() || undefined
     product.updatedAt = now()
   }
 
@@ -197,7 +306,7 @@ export function useAiAssetsVisualMock(
     if (removed) revokeProductObjectUrls(removed)
     if (selectedProductId.value === productId) {
       selectedProductId.value = visibleProducts.value[0]?.id ?? null
-      selectedAssetId.value = null
+      resetAssetContext()
     }
   }
 
@@ -220,10 +329,26 @@ export function useAiAssetsVisualMock(
     selectedProduct.value.updatedAt = now()
   }
 
-  function setDefaultTemplateGroupId(value: string | null): void {
-    if (!selectedProduct.value) return
-    selectedProduct.value.defaultTemplateGroupId = value
-    selectedProduct.value.updatedAt = now()
+  function setNormalTemplateGroupIds(values: readonly string[]): void {
+    const product = selectedProduct.value
+    if (!product?.enabled || !product.normalGenerationEnabled) return
+    product.normalTemplateGroupIds = templateGroupIdsForMode(
+      values,
+      'NORMAL_GENERATION',
+    )
+    product.updatedAt = now()
+  }
+
+  function setStyleReplicationTemplateGroupIds(
+    values: readonly string[],
+  ): void {
+    const product = selectedProduct.value
+    if (!product?.enabled || !product.styleReplicationEnabled) return
+    product.styleReplicationTemplateGroupIds = templateGroupIdsForMode(
+      values,
+      'STYLE_REPLICATION',
+    )
+    product.updatedAt = now()
   }
 
   function uploadFiles(files: readonly File[]): MockUploadResult {
@@ -254,18 +379,35 @@ export function useAiAssetsVisualMock(
       product.updatedAt = now()
       added += 1
     }
+    if (added > 0) resetAssetContext()
     return { added, rejected }
   }
 
-  function deleteAsset(assetId: string): void {
+  function removeAssets(assetIds: readonly string[]): number {
     const product = selectedProduct.value
-    if (!product) return
-    const index = product.assets.findIndex((asset) => asset.assetId === assetId)
-    if (index < 0) return
-    const [removed] = product.assets.splice(index, 1)
-    if (removed?.objectUrl) revokePreviewUrl(removed.previewUrl)
-    if (selectedAssetId.value === assetId) selectedAssetId.value = null
+    if (!product) return 0
+    const ids = new Set(assetIds)
+    const removed = product.assets.filter((asset) => ids.has(asset.assetId))
+    if (removed.length === 0) return 0
+    product.assets = product.assets.filter((asset) => !ids.has(asset.assetId))
+    for (const asset of removed) {
+      if (asset.objectUrl) revokePreviewUrl(asset.previewUrl)
+    }
+    if (selectedAssetId.value && ids.has(selectedAssetId.value)) {
+      selectedAssetId.value = null
+    }
+    clearAssetSelection()
+    currentPage.value = Math.min(currentPage.value, pageCount.value)
     product.updatedAt = now()
+    return removed.length
+  }
+
+  function deleteAsset(assetId: string): void {
+    removeAssets([assetId])
+  }
+
+  function deleteSelectedAssets(): number {
+    return removeAssets(selectedAssetIds.value)
   }
 
   function changeAssetRole(assetId: string, role: MaterialRole): void {
@@ -276,6 +418,7 @@ export function useAiAssetsVisualMock(
     asset.role = role
     activeRole.value = role
     selectedProduct.value!.updatedAt = now()
+    resetAssetContext()
   }
 
   function dispose(): void {
@@ -289,24 +432,44 @@ export function useAiAssetsVisualMock(
     selectedProduct,
     selectedAssetId,
     selectedAsset,
+    selectedAssetIds,
+    selectedAssets,
+    selectionMode,
     activeRole,
     searchQuery,
     productFilter,
+    filteredAssets,
     visibleAssets,
+    totalAssets,
+    currentPage,
+    pageSize,
+    pageCount,
+    currentPageSelectedCount,
+    currentPageSelectionChecked,
+    currentPageSelectionIndeterminate,
     roleCounts,
     childEligibilityDisabled,
     selectProduct,
     selectAsset,
+    startSelectionMode,
+    finishSelectionMode,
+    setAssetSelected,
+    setCurrentPageSelected,
+    clearAssetSelection,
     setActiveRole,
+    setPage,
+    setPageSize,
     createProduct,
     renameProduct,
     deleteProduct,
     setProductEnabled,
     setNormalGenerationEnabled,
     setStyleReplicationEnabled,
-    setDefaultTemplateGroupId,
+    setNormalTemplateGroupIds,
+    setStyleReplicationTemplateGroupIds,
     uploadFiles,
     deleteAsset,
+    deleteSelectedAssets,
     changeAssetRole,
     dispose,
   }

@@ -4,7 +4,6 @@ export { useAiAssetsVisualMock } from './assets/model/useAiAssetsVisualMock'
 export {
   MATERIAL_ROLE_META,
   TEMPLATE_GROUP_OPTIONS,
-  UNBOUND_TEMPLATE_GROUP_VALUE,
 } from './assets/model/types'
 export type {
   GenerationMode,

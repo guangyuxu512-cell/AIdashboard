@@ -1,4 +1,5 @@
 export { default as AppShell } from './AppShell.vue'
+export { default as CompactEntityRow } from './CompactEntityRow.vue'
 export { default as ContextSwitchBar } from './ContextSwitchBar.vue'
 export { default as DataTable } from './DataTable.vue'
 export { default as DetailDrawer } from './DetailDrawer.vue'
@@ -20,6 +21,7 @@ export { default as StatusTag } from './StatusTag.vue'
 export { default as SummaryGrid } from './SummaryGrid.vue'
 export { default as TableToolbar } from './TableToolbar.vue'
 export { default as ThemeSelector } from './ThemeSelector.vue'
+export { default as ThreePaneWorkbench } from './ThreePaneWorkbench.vue'
 
 export type {
   AppNavigationGroupItem,

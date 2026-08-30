@@ -529,11 +529,11 @@ description（需要时）
 | `AppButton`      | `NButton`      | primary / secondary / danger / text，固定 medium |
 | `AppInput`       | `NInput`       | 语义宽度、固定 medium                            |
 | `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium                            |
-| `AppSelect`      | `NSelect`      | 语义宽度、固定 medium                            |
+| `AppSelect`      | `NSelect`      | 语义宽度、固定 medium、单选/多选与标签折叠       |
 | `AppDatePicker`  | `NDatePicker`  | date / daterange、语义宽度                       |
 | `AppTimePicker`  | `NTimePicker`  | 语义宽度、固定 medium                            |
 | `AppSwitch`      | `NSwitch`      | 统一 medium                                      |
-| `AppCheckbox`    | `NCheckbox`    | 统一受控布尔值                                   |
+| `AppCheckbox`    | `NCheckbox`    | 统一受控布尔值与半选态                           |
 | `AppRadio`       | `NRadioGroup`  | 统一 button 模式                                 |
 | `AppTable`       | `NDataTable`   | 统一尺寸、边框和滚动入口                         |
 | `AppPagination`  | `NPagination`  | 统一 page/pageSize 事件和页容量                  |
@@ -558,6 +558,15 @@ description（需要时）
 店铺中心与设备中心共用 `ManagementListSection`。它只封装 `PageSection.fill` 与列表内容的 `flex: 1 / min-height: 0` 链，不替代 `DataTable`、`PaginationBar` 或领域工具栏。普通管理列表不得在 Page 内复制这一布局，也不得使用固定高度或 `100vh - xxx` 修正分页位置。
 
 设备身份图标使用统一图标依赖与 `DeviceIdentity` 领域组件，列表和 Drawer 共享同一 Monitor 图标、尺寸和间距；业务页面禁止散落自绘 SVG。
+
+AI Assets Library V1 验证后增加两个纯页面模式 Primitive：
+
+| 组件                 | Purpose / Slots                                   | 责任                                                                         | 非责任                                            |
+| -------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------- |
+| `ThreePaneWorkbench` | `left` / `main` / `right`                         | Token 化三栏宽度、Surface、Gap、高度收缩、Overflow 与响应式边界              | Product、Asset、Template、Role 或任何业务状态     |
+| `CompactEntityRow`   | `icon` / `title` / `count` / `status` / `actions` | 固定行高、单行 Ellipsis、固定槽位、Hover / Active / Focus 与 Action 点击隔离 | Product、Template Group、SKU、Material 或领域操作 |
+
+`CompactEntityRow` 不固定图标，Folder 等图标必须由 Feature 通过 `icon` Slot 传入。当前 List Header、Empty 和数据管理尚未形成第二个完全相同消费者，不抽取 `CompactEntityList`。
 
 ## 18. Design System V2 公共视觉规则
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Eye, Trash2, X } from '@lucide/vue'
+import { Download, Eye, Trash2, X } from '@lucide/vue'
 import type { SelectOption } from 'naive-ui'
 
 import {
@@ -18,6 +18,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   preview: [asset: MaterialAssetReference]
+  download: [asset: MaterialAssetReference]
   remove: [asset: MaterialAssetReference]
   'update:role': [role: MaterialRole]
 }>()
@@ -125,6 +126,13 @@ function updateRole(value: string | number | null): void {
       <AppButton @click="$emit('preview', asset)">
         <Eye :size="16" />
         预览
+      </AppButton>
+      <AppButton
+        :aria-label="`下载素材 ${asset.name}`"
+        @click="$emit('download', asset)"
+      >
+        <Download :size="16" />
+        下载
       </AppButton>
       <AppButton tone="danger" @click="$emit('remove', asset)">
         <Trash2 :size="16" />

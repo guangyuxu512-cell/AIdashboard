@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppPagination from '@/shared/ui/AppPagination.vue'
+import { STANDARD_PAGE_SIZE_OPTIONS } from '@/shared/ui/pagination'
 
 withDefaults(
   defineProps<{
@@ -9,7 +10,7 @@ withDefaults(
     pageSizes?: number[]
   }>(),
   {
-    pageSizes: () => [10, 20, 50, 100],
+    pageSizes: () => [...STANDARD_PAGE_SIZE_OPTIONS],
   },
 )
 

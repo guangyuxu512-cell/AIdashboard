@@ -14,7 +14,13 @@ export { default as AppTable } from './AppTable.vue'
 export { default as AppTabs } from './AppTabs.vue'
 export { default as AppTimePicker } from './AppTimePicker.vue'
 export * from './overlay-host'
+export { STANDARD_PAGE_SIZE_OPTIONS } from './pagination'
 
 export type { AppButtonTone } from './AppButton.vue'
 export type { AppDateValue } from './AppDatePicker.vue'
-export type { AppOption, AppOptionValue, FieldWidth, OverlaySize } from './types'
+export type {
+  AppOption,
+  AppOptionValue,
+  FieldWidth,
+  OverlaySize,
+} from './types'

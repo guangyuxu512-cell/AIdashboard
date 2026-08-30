@@ -22,11 +22,11 @@ export interface MaterialAssetReference {
 export interface ProductMaterialGroup {
   id: string
   name: string
-  sku?: string
   enabled: boolean
   normalGenerationEnabled: boolean
   styleReplicationEnabled: boolean
-  defaultTemplateGroupId: string | null
+  normalTemplateGroupIds: string[]
+  styleReplicationTemplateGroupIds: string[]
   createdAt: string
   updatedAt: string
   assets: MaterialAssetReference[]
@@ -34,13 +34,12 @@ export interface ProductMaterialGroup {
 
 export interface ProductMaterialGroupInput {
   name: string
-  sku?: string
 }
 
 export interface TemplateGroupOption {
   id: string
   label: string
-  modes: readonly GenerationMode[]
+  mode: GenerationMode
 }
 
 export type ProductMaterialFilter = 'all' | 'enabled' | 'disabled'
@@ -53,25 +52,38 @@ export const MATERIAL_ROLE_META: Record<MaterialRole, { label: string }> = {
 
 export const TEMPLATE_GROUP_OPTIONS: readonly TemplateGroupOption[] = [
   {
-    id: 'tg-standard-a',
+    id: 'normal-standard-set',
     label: '电商标准套图 A',
-    modes: ['NORMAL_GENERATION', 'STYLE_REPLICATION'],
+    mode: 'NORMAL_GENERATION',
   },
   {
-    id: 'tg-minimal-main',
+    id: 'normal-minimal-main',
     label: '极简主图组',
-    modes: ['NORMAL_GENERATION'],
+    mode: 'NORMAL_GENERATION',
   },
   {
-    id: 'tg-lifestyle',
-    label: '生活场景组',
-    modes: ['NORMAL_GENERATION', 'STYLE_REPLICATION'],
+    id: 'normal-lifestyle-set',
+    label: '生活场景套图',
+    mode: 'NORMAL_GENERATION',
   },
   {
-    id: 'tg-new-product-detail',
+    id: 'normal-new-product-detail',
     label: '新品详情套图',
-    modes: ['NORMAL_GENERATION'],
+    mode: 'NORMAL_GENERATION',
+  },
+  {
+    id: 'style-competitor-a',
+    label: '竞品复刻 A',
+    mode: 'STYLE_REPLICATION',
+  },
+  {
+    id: 'style-minimal-replication',
+    label: '极简风格复刻',
+    mode: 'STYLE_REPLICATION',
+  },
+  {
+    id: 'style-scene-replication',
+    label: '场景复刻组',
+    mode: 'STYLE_REPLICATION',
   },
 ] as const
-
-export const UNBOUND_TEMPLATE_GROUP_VALUE = '__unbound__'
