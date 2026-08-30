@@ -1,10 +1,10 @@
 import type { Component } from 'vue'
 
-import notificationBellUrl from '@/assets/icons/notification-bell.svg'
-import themeToggleUrl from '@/assets/icons/theme-toggle.svg'
-
 import DevicePrimaryGlyph from './glyphs/DevicePrimaryGlyph.vue'
+import NotificationBellGlyph from './glyphs/NotificationBellGlyph.vue'
 import TaskPrimaryGlyph from './glyphs/TaskPrimaryGlyph.vue'
+import ThemeMoonGlyph from './glyphs/ThemeMoonGlyph.vue'
+import ThemeSunGlyph from './glyphs/ThemeSunGlyph.vue'
 
 export const MOBILE_ICON_ROLES = [
   'primary',
@@ -140,15 +140,20 @@ export const MOBILE_ICON_REGISTRY = {
     role: 'navigation',
     source: { kind: 'vant', name: 'user-o' },
   },
-  'theme-toggle': {
-    label: '切换主题',
+  'theme-light': {
+    label: '切换到浅色主题',
     role: 'action',
-    source: { kind: 'asset', src: themeToggleUrl },
+    source: { kind: 'component', component: ThemeSunGlyph },
+  },
+  'theme-dark': {
+    label: '切换到深色主题',
+    role: 'action',
+    source: { kind: 'component', component: ThemeMoonGlyph },
   },
   'notification-bell': {
     label: '通知',
     role: 'action',
-    source: { kind: 'asset', src: notificationBellUrl },
+    source: { kind: 'component', component: NotificationBellGlyph },
   },
   filter: {
     label: '筛选',
@@ -232,7 +237,8 @@ export const MOBILE_ICON_GALLERY_GROUPS = [
   {
     label: '操作',
     names: [
-      'theme-toggle',
+      'theme-light',
+      'theme-dark',
       'notification-bell',
       'filter',
       'arrow-down',

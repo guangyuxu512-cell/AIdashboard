@@ -194,10 +194,14 @@ describe('MobileAppShell V2', () => {
     expect(
       buttons.every((button) => button.classes('mobile-icon-button')),
     ).toBe(true)
-    expect(wrapper.findAll('.mobile-header-icon')).toHaveLength(2)
+    const headerIcons = wrapper.findAll('.mobile-header-icon')
+    expect(headerIcons).toHaveLength(2)
+    expect(headerIcons.map((icon) => icon.attributes('data-icon-key'))).toEqual(
+      ['theme-dark', 'notification-bell'],
+    )
     expect(
-      wrapper.findAll('.mobile-header-icon .mobile-icon__asset'),
-    ).toHaveLength(2)
+      headerIcons.every((icon) => icon.find('svg.mobile-icon__glyph').exists()),
+    ).toBe(true)
     expect(wrapper.find('.van-badge--dot').exists()).toBe(false)
 
     await buttons[0]!.trigger('click')
@@ -209,6 +213,7 @@ describe('MobileAppShell V2', () => {
     expect(
       wrapper.get('[data-testid="theme-toggle"]').attributes('aria-label'),
     ).toBe('切换到浅色主题')
+    expect(wrapper.find('[data-icon-key="theme-light"]').exists()).toBe(true)
     await wrapper.setProps({ notificationDot: true })
     expect(wrapper.find('.van-badge--dot').exists()).toBe(true)
   })

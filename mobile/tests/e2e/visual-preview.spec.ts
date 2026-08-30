@@ -120,7 +120,9 @@ async function readGlobalHeaderAnatomy(page: Page) {
     const buttons = Array.from(
       actions.querySelectorAll<HTMLButtonElement>('button'),
     )
-    const icons = Array.from(actions.querySelectorAll<HTMLImageElement>('img'))
+    const icons = Array.from(
+      actions.querySelectorAll<HTMLElement>('.mobile-header-icon'),
+    )
     const headerBox = header.getBoundingClientRect()
     const brandBox = brand.getBoundingClientRect()
     const actionsBox = actions.getBoundingClientRect()
@@ -149,11 +151,8 @@ async function readGlobalHeaderAnatomy(page: Page) {
         const box = icon.getBoundingClientRect()
         return { width: box.width, height: box.height }
       }),
-      iconSourcesValid: icons.every(
-        (icon) =>
-          (icon.currentSrc.includes('.svg') ||
-            icon.currentSrc.startsWith('data:image/svg+xml')) &&
-          icon.naturalWidth > 0,
+      iconGlyphsValid: icons.every((icon) =>
+        Boolean(icon.querySelector('svg.mobile-icon__glyph')),
       ),
       borderBottomWidth: window.getComputedStyle(header).borderBottomWidth,
       shellBorderBottomWidth:
@@ -745,18 +744,18 @@ for (const width of viewportWidths) {
           borderBottomWidth: headerStyle.borderBottomWidth,
           boxShadow: headerStyle.boxShadow,
           buttonStyles,
-          iconSources: Array.from(
+          iconGlyphs: Array.from(
             document.querySelectorAll<HTMLElement>(
               '.mobile-global-header__actions .mobile-header-icon',
             ),
           ).map((icon) => {
-            const asset = icon.querySelector<HTMLImageElement>(
-              '.mobile-icon__asset',
-            )!
+            const box = icon.getBoundingClientRect()
             return {
               key: icon.dataset.iconKey,
-              src: asset.currentSrc,
-              width: asset.naturalWidth,
+              role: icon.dataset.iconRole,
+              glyph: Boolean(icon.querySelector('svg.mobile-icon__glyph')),
+              width: box.width,
+              height: box.height,
             }
           }),
         }
@@ -766,17 +765,18 @@ for (const width of viewportWidths) {
       expect(headerVisual.buttonStyles).toHaveLength(2)
       expect(headerVisual.buttonStyles[0]).toEqual(headerVisual.buttonStyles[1])
       expect(headerVisual.buttonStyles[0]?.width).toBeGreaterThanOrEqual(44)
-      expect(headerVisual.iconSources).toHaveLength(2)
-      expect(headerVisual.iconSources.map((icon) => icon.key)).toEqual([
-        'theme-toggle',
+      expect(headerVisual.iconGlyphs).toHaveLength(2)
+      expect(headerVisual.iconGlyphs.map((icon) => icon.key)).toEqual([
+        theme === 'dark' ? 'theme-light' : 'theme-dark',
         'notification-bell',
       ])
       expect(
-        headerVisual.iconSources.every(
+        headerVisual.iconGlyphs.every(
           (icon) =>
-            (icon.src.includes('.svg') ||
-              icon.src.startsWith('data:image/svg+xml')) &&
-            icon.width > 0,
+            icon.role === 'action' &&
+            icon.glyph &&
+            icon.width > 0 &&
+            icon.height > 0,
         ),
       ).toBe(true)
 
@@ -807,7 +807,7 @@ for (const width of viewportWidths) {
       expect(deviceGlobalHeader.iconSizes[0]).toEqual(
         deviceGlobalHeader.iconSizes[1],
       )
-      expect(deviceGlobalHeader.iconSourcesValid).toBe(true)
+      expect(deviceGlobalHeader.iconGlyphsValid).toBe(true)
       expect(deviceGlobalHeader.borderBottomWidth).toBe('0px')
       expect(deviceGlobalHeader.shellBorderBottomWidth).toBe('0px')
       expect(deviceGlobalHeader.boxShadow).toBe('none')

@@ -2,7 +2,7 @@
 import { Badge as VanBadge } from 'vant'
 import { computed } from 'vue'
 
-import { MobileIcon } from '@/shared/icons'
+import { MobileIcon, type MobileIconName } from '@/shared/icons'
 
 const emit = defineEmits<{
   themeToggle: []
@@ -23,6 +23,10 @@ const props = withDefaults(
 const themeActionLabel = computed(() =>
   props.resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
 )
+
+const themeIconName = computed<MobileIconName>(() =>
+  props.resolvedTheme === 'dark' ? 'theme-light' : 'theme-dark',
+)
 </script>
 
 <template>
@@ -37,7 +41,7 @@ const themeActionLabel = computed(() =>
         data-testid="theme-toggle"
         @click="emit('themeToggle')"
       >
-        <MobileIcon class="mobile-header-icon" name="theme-toggle" />
+        <MobileIcon class="mobile-header-icon" :name="themeIconName" />
       </button>
       <button
         class="mobile-icon-button mobile-pressable"

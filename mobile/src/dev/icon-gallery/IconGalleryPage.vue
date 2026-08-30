@@ -6,10 +6,14 @@ import {
   MOBILE_ICON_GALLERY_GROUPS,
   MOBILE_ICON_REGISTRY,
   MobileIcon,
+  type MobileIconName,
 } from '@/shared/icons'
 
 const themeStore = useThemeStore()
 const primaryIconNames = new Set(['device', 'task'])
+const themeToggleIconName = computed<MobileIconName>(() =>
+  themeStore.resolvedTheme === 'dark' ? 'theme-light' : 'theme-dark',
+)
 
 const groups = computed(() =>
   MOBILE_ICON_GALLERY_GROUPS.map((group) => ({
@@ -47,7 +51,7 @@ function roleLabel(role: string): string {
         aria-label="切换主题"
         @click="themeStore.toggleResolvedTheme"
       >
-        <MobileIcon name="theme-toggle" />
+        <MobileIcon :name="themeToggleIconName" />
       </button>
     </header>
 
