@@ -31,6 +31,7 @@
 
 <style scoped>
 .mobile-app-shell {
+  position: relative;
   display: grid;
   width: 100%;
   max-width: var(--layout-content-max-width);
@@ -40,22 +41,30 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: var(--bg-app);
-  box-shadow: var(--shadow-surface);
+  box-shadow: var(--shadow-shell);
+  isolation: isolate;
+}
+
+.mobile-app-shell--visual-v2 {
+  background: var(--visual-v2-page-background);
 }
 
 .mobile-app-shell__header {
+  position: relative;
+  z-index: 2;
   min-width: 0;
   padding-top: var(--safe-area-top);
-  background: var(--bg-surface);
+  background: var(--bg-surface-raised);
+}
+
+.mobile-app-shell--visual-v2 .mobile-app-shell__header {
+  background: var(--visual-v2-page-header-background);
 }
 
 .mobile-app-shell__main {
   min-width: 0;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
 
 .mobile-app-shell__main--without-header {
@@ -67,9 +76,15 @@
 }
 
 .mobile-app-shell__bottom {
+  position: relative;
+  z-index: 2;
   min-width: 0;
   padding-bottom: var(--safe-area-bottom);
-  background: var(--bg-surface);
+  background: var(--bg-surface-raised);
+}
+
+.mobile-app-shell--visual-v2 .mobile-app-shell__bottom {
+  background: var(--visual-v2-bottom-safe-area-background);
 }
 
 @supports not (height: 100dvh) {

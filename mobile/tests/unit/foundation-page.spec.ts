@@ -28,6 +28,21 @@ describe('FoundationPage', () => {
     expect((wrapper.get('input').element as HTMLInputElement).value).toBe(
       '验证内容',
     )
+    expect(wrapper.text()).toContain('Primary')
+    expect(wrapper.text()).toContain('Secondary')
+    expect(wrapper.text()).toContain('Raised')
+    expect(wrapper.text()).toContain('Meta / 12')
+    expect(wrapper.text()).toContain('Title / 20')
+    expect(wrapper.text()).toContain('26')
+    expect(wrapper.find('.mobile-notice-bar--success').text()).toContain(
+      '成功提示',
+    )
+    expect(wrapper.find('.mobile-notice-bar--warning').text()).toContain(
+      '警告提示',
+    )
+    expect(wrapper.find('.mobile-notice-bar--danger').text()).toContain(
+      '错误提示',
+    )
 
     await wrapper.get('[data-testid="open-foundation-sheet"]').trigger('click')
     expect(wrapper.text()).toContain('底部面板')

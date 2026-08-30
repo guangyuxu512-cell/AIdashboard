@@ -80,6 +80,10 @@ export const useThemeStore = defineStore('mobile-theme', () => {
     mode.value = nextMode
   }
 
+  function toggleResolvedTheme(): void {
+    setMode(resolvedTheme.value === 'dark' ? 'light' : 'dark')
+  }
+
   function initialize(): void {
     if (initialized) return
     initialized = true
@@ -101,5 +105,5 @@ export const useThemeStore = defineStore('mobile-theme', () => {
     if (mediaQuery) removeSystemThemeListener(mediaQuery)
   })
 
-  return { mode, resolvedTheme, setMode, initialize }
+  return { mode, resolvedTheme, setMode, toggleResolvedTheme, initialize }
 })

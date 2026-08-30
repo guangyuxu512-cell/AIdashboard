@@ -1,9 +1,9 @@
 :root {
   --van-base-font: var(--font-family-base);
-  --van-primary-color: var(--color-primary);
-  --van-success-color: var(--status-success);
-  --van-danger-color: var(--status-danger);
-  --van-warning-color: var(--status-warning);
+  --van-primary-color: var(--color-primary-strong);
+  --van-success-color: var(--status-success-strong);
+  --van-danger-color: var(--status-danger-strong);
+  --van-warning-color: var(--status-warning-strong);
   --van-text-color: var(--text-primary);
   --van-text-color-2: var(--text-secondary);
   --van-text-color-3: var(--text-tertiary);
@@ -11,11 +11,11 @@
   --van-active-color: var(--bg-surface-hover);
   --van-background: var(--bg-app);
   --van-background-2: var(--bg-surface);
-  --van-background-3: var(--bg-subtle);
-  --van-border-color: var(--border-default);
+  --van-background-3: var(--bg-control);
+  --van-border-color: var(--border-divider);
   --van-border-width: var(--border-width);
-  --van-padding-base: var(--space-1);
-  --van-padding-xs: var(--space-2);
+  --van-padding-base: var(--layout-compact-gap);
+  --van-padding-xs: var(--layout-content-gap);
   --van-padding-sm: var(--space-3);
   --van-padding-md: var(--space-4);
   --van-padding-lg: var(--space-6);
@@ -31,27 +31,309 @@
   --van-line-height-lg: var(--line-height-label);
   --van-radius-sm: var(--radius-control);
   --van-radius-md: var(--radius-control);
-  --van-radius-lg: var(--radius-card);
+  --van-radius-lg: var(--radius-panel);
   --van-radius-max: var(--radius-round);
+  --van-duration-fast: var(--duration-fast);
+  --van-duration-base: var(--duration-normal);
+
+  /* Vant Button（按钮）：控制正式页面按钮的默认/大号高度与 Action 字体。 */
   --van-button-default-height: var(--control-height-default);
   --van-button-large-height: var(--control-height-large);
-  --van-nav-bar-height: var(--layout-header-height);
-  --van-nav-bar-background: var(--bg-surface);
+  --van-button-default-font-size: var(--font-size-action);
+  --van-button-default-line-height: var(--line-height-action);
+  --van-button-normal-font-size: var(--font-size-action);
+  --van-button-default-color: var(--text-primary);
+  --van-button-default-background: var(--bg-surface-raised);
+  --van-button-default-border-color: var(--border-default);
+  --van-button-primary-color: var(--text-inverse);
+  --van-button-primary-background: var(--color-primary-strong);
+  --van-button-primary-border-color: var(--color-primary-strong);
+  --van-button-success-color: var(--text-inverse);
+  --van-button-success-background: var(--status-success-strong);
+  --van-button-success-border-color: var(--status-success-strong);
+  --van-button-warning-color: var(--text-inverse);
+  --van-button-warning-background: var(--status-warning-strong);
+  --van-button-warning-border-color: var(--status-warning-strong);
+  --van-button-danger-color: var(--text-inverse);
+  --van-button-danger-background: var(--status-danger-strong);
+  --van-button-danger-border-color: var(--status-danger-strong);
+  --van-button-radius: var(--radius-control);
+  --van-button-plain-background: var(--bg-surface-raised);
+
+  /* Vant NavBar（导航栏）：用于 Sheet 子流程；正式详情头部由 MobileDetailHeader 控制。 */
+  --van-nav-bar-height: var(--layout-detail-header-height);
+  --van-nav-bar-background: var(--bg-surface-raised);
+  --van-nav-bar-arrow-size: var(--icon-size-small);
+  --van-nav-bar-title-font-size: var(--font-size-title);
   --van-nav-bar-title-text-color: var(--text-primary);
-  --van-nav-bar-icon-color: var(--text-secondary);
+  --van-nav-bar-icon-color: var(--color-primary);
   --van-nav-bar-text-color: var(--text-secondary);
-  --van-tabbar-height: var(--layout-bottom-height);
-  --van-tabbar-background: var(--bg-surface);
-  --van-tabbar-item-text-color: var(--text-secondary);
-  --van-tabbar-item-active-color: var(--text-selected);
-  --van-tabbar-item-active-background: var(--bg-surface);
-  --van-tabbar-item-icon-size: var(--font-size-title);
-  --van-overlay-background: var(--bg-overlay);
-  --van-popup-background: var(--bg-surface);
-  --van-cell-background: var(--bg-surface);
-  --van-cell-active-color: var(--bg-surface-hover);
-  --van-cell-group-background: var(--bg-surface);
-  --van-tag-primary-color: var(--color-primary);
+
+  /* Vant Tabbar（底部导航）：控制五入口高度、图标、文字与图文间距。 */
+  --van-tabbar-height: var(--layout-bottom-nav-height);
+  --van-tabbar-background: var(--bg-surface-raised);
+  --van-tabbar-item-font-size: var(--typography-v2-bottom-nav-size);
+  --van-tabbar-item-line-height: var(--typography-v2-bottom-nav-line-height);
+  --van-tabbar-item-text-color: var(--visual-v2-bottom-nav-inactive-color);
+  --van-tabbar-item-active-color: var(--visual-v2-bottom-nav-active-color);
+  --van-tabbar-item-active-background: transparent;
+  --van-tabbar-item-icon-size: var(--visual-v2-bottom-nav-icon-size);
+  --van-tabbar-item-icon-margin-bottom: var(--visual-v2-bottom-nav-item-gap);
+
+  /* Vant Tabs（标签选择）：控制 CapabilityPanel 类型选择器的高度与字体。 */
+  --van-tab-text-color: var(--text-secondary);
   --van-tab-active-text-color: var(--text-selected);
+  --van-tab-disabled-text-color: var(--text-disabled);
+  --van-tab-font-size: var(--font-size-action);
+  --van-tab-line-height: var(--line-height-action);
+  --van-tabs-default-color: var(--color-primary);
+  --van-tabs-line-height: var(--touch-target-min);
+  --van-tabs-nav-background: var(--bg-surface);
+  --van-tabs-bottom-bar-width: var(--space-6);
+  --van-tabs-bottom-bar-height: calc(var(--border-width) * 2);
+  --van-tabs-bottom-bar-color: var(--color-primary);
+
+  /* Vant Popup（弹层）：尺寸由业务 Popup 与 overlay Token 组合，视觉属于 Stage 3。 */
+  --van-overlay-background: var(--bg-overlay);
+  --van-popup-background: var(--bg-surface-raised);
+  --van-popup-round-radius: var(--radius-overlay);
+  --van-dialog-radius: var(--radius-overlay);
+
+  /* Vant Cell（单元格）：控制详情“更多信息”与筛选列表的字体、行高和内边距。 */
+  --van-cell-font-size: var(--font-size-body);
+  --van-cell-line-height: var(--line-height-body);
+  --van-cell-vertical-padding: var(--space-3);
+  --van-cell-horizontal-padding: var(--space-4);
+  --van-cell-text-color: var(--text-primary);
+  --van-cell-background: var(--bg-surface);
+  --van-cell-border-color: var(--border-divider);
+  --van-cell-active-color: var(--bg-surface-hover);
+  --van-cell-label-color: var(--text-tertiary);
+  --van-cell-value-color: var(--text-secondary);
+  --van-cell-right-icon-color: var(--text-tertiary);
+  --van-cell-group-background: var(--bg-surface);
+  --van-cell-group-inset-radius: var(--radius-panel);
+
+  --van-collapse-item-content-padding: var(--space-3) var(--space-4);
+  --van-collapse-item-content-text-color: var(--text-secondary);
+  --van-collapse-item-content-background: var(--bg-subtle);
+
+  /* Vant Tag（标签）：控制 Device/Task 状态与 Meta Tag 的字体、行高和内边距。 */
+  --van-tag-padding: calc(var(--layout-compact-gap) / 2)
+    var(--layout-content-gap);
+  --van-tag-font-size: var(--typography-v2-tag-size);
+  --van-tag-line-height: var(--typography-v2-tag-line-height);
+  --van-tag-radius: var(--radius-tag);
+  --van-tag-round-radius: var(--radius-tag);
+  --van-tag-default-color: var(--status-neutral);
+  --van-tag-primary-color: var(--color-primary);
+  --van-tag-success-color: var(--status-success);
+  --van-tag-warning-color: var(--status-warning);
+  --van-tag-danger-color: var(--status-danger);
+
+  --van-progress-height: var(--progress-height-compact);
+  --van-progress-color: var(--color-primary);
+  --van-progress-inactive-color: var(--text-disabled);
+  --van-progress-background: var(--bg-surface-hover);
+
+  --van-notice-bar-height: var(--touch-target-min);
+  --van-notice-bar-padding: 0 var(--space-3);
+  --van-notice-bar-wrapable-padding: var(--layout-content-gap) var(--space-3);
+  --van-notice-bar-text-color: var(--status-info);
+  --van-notice-bar-font-size: var(--font-size-body);
+  --van-notice-bar-line-height: var(--line-height-body);
+  --van-notice-bar-background: var(--status-info-soft);
+  --van-notice-bar-icon-size: var(--icon-size-small);
+
+  /* Vant Search / Field（搜索/输入）：控制任务筛选输入的高度与内边距。 */
+  --van-search-padding: var(--layout-content-gap) var(--space-3);
+  --van-search-background: var(--bg-surface-raised);
+  --van-search-content-background: var(--bg-subtle);
+  --van-search-input-height: var(--control-height-default);
+  --van-search-left-icon-color: var(--text-tertiary);
+  --van-field-label-color: var(--text-secondary);
+  --van-field-input-text-color: var(--text-primary);
+  --van-field-placeholder-text-color: var(--text-tertiary);
+  --van-field-clear-icon-color: var(--text-tertiary);
+  --van-field-right-icon-color: var(--text-tertiary);
+
+  /* Vant Calendar（日期选择）：控制任务日期筛选的操作区、日期行与确认按钮尺寸。 */
+  --van-calendar-background: var(--bg-surface-raised);
+  --van-calendar-popup-height: var(--overlay-height-max);
+  --van-calendar-header-shadow: var(--shadow-header);
+  --van-calendar-header-title-height: var(--touch-target-min);
+  --van-calendar-header-action-width: var(--touch-target-min);
+  --van-calendar-header-action-color: var(--text-primary);
+  --van-calendar-header-action-disabled-color: var(--text-disabled);
+  --van-calendar-month-mark-color: var(--bg-surface-hover);
+  --van-calendar-day-height: var(--control-height-large);
+  --van-calendar-day-disabled-color: var(--text-disabled);
+  --van-calendar-range-edge-color: var(--text-inverse);
+  --van-calendar-range-edge-background: var(--color-primary-strong);
+  --van-calendar-range-middle-color: var(--color-primary);
+  --van-calendar-selected-day-size: var(--touch-target-min);
+  --van-calendar-selected-day-color: var(--text-inverse);
+  --van-calendar-selected-day-background: var(--color-primary-strong);
+  --van-calendar-confirm-button-height: var(--touch-target-min);
+  --van-calendar-confirm-button-margin: var(--layout-content-gap) 0;
+
+  /* Vant Picker（选择器）：当前保留统一映射，生产页面暂无直接消费。 */
+  --van-picker-background: var(--bg-surface-raised);
+  --van-picker-toolbar-height: var(--touch-target-min);
+  --van-picker-confirm-action-color: var(--color-primary);
+  --van-picker-cancel-action-color: var(--text-secondary);
+  --van-picker-option-text-color: var(--text-primary);
+  --van-picker-loading-icon-color: var(--color-primary);
+  --van-picker-loading-mask-color: var(--bg-overlay);
+  --van-picker-mask-color:
+    linear-gradient(var(--bg-surface-raised), transparent),
+    linear-gradient(transparent, var(--bg-surface-raised));
+
+  --van-empty-padding: var(--space-8) 0;
+  --van-empty-image-size: calc(var(--space-8) * 4);
+  --van-empty-description-margin-top: var(--space-4);
+  --van-empty-description-padding: 0 var(--space-6);
+  --van-empty-description-color: var(--text-secondary);
+  --van-empty-description-font-size: var(--font-size-body);
+  --van-empty-description-line-height: var(--line-height-body);
+  --van-empty-bottom-margin-top: var(--space-6);
+
+  --van-loading-text-color: var(--text-secondary);
+  --van-loading-text-font-size: var(--font-size-body);
+  --van-loading-spinner-color: var(--color-primary);
+  --van-loading-spinner-size: var(--icon-size-default);
+  --van-skeleton-avatar-background: var(--bg-surface-hover);
+  --van-skeleton-paragraph-background: var(--bg-surface-hover);
+
   --van-sidebar-selected-background: var(--bg-selected);
+}
+
+.van-cell-group,
+.van-collapse {
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-surface);
+}
+
+.van-button {
+  font-weight: var(--font-weight-medium);
+}
+
+.van-nav-bar {
+  line-height: var(--line-height-title);
+}
+
+.van-tag {
+  border: var(--border-width) solid transparent;
+  box-shadow: var(--appearance-border-control);
+  font-weight: var(--font-weight-medium);
+}
+
+.van-tag--default {
+  color: var(--status-neutral);
+  background: var(--status-neutral-soft);
+}
+
+.van-tag--primary {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.van-tag--success {
+  color: var(--status-success);
+  background: var(--status-success-soft);
+}
+
+.van-tag--warning {
+  color: var(--status-warning);
+  background: var(--status-warning-soft);
+}
+
+.van-tag--danger {
+  color: var(--status-danger);
+  background: var(--status-danger-soft);
+}
+
+.van-notice-bar,
+.van-search__content {
+  border-radius: var(--radius-control);
+}
+
+.van-notice-bar.mobile-notice-bar--success {
+  color: var(--status-success);
+  background: var(--status-success-soft);
+}
+
+.van-notice-bar.mobile-notice-bar--warning {
+  color: var(--status-warning);
+  background: var(--status-warning-soft);
+}
+
+.van-notice-bar.mobile-notice-bar--danger {
+  color: var(--status-danger);
+  background: var(--status-danger-soft);
+}
+
+.van-popup {
+  box-shadow: var(--appearance-border-overlay), var(--shadow-overlay);
+}
+
+.van-theme-dark .van-empty {
+  opacity: 1;
+}
+
+.mobile-segmented-tabs .van-tabs__wrap {
+  height: var(--touch-target-min);
+}
+
+.mobile-segmented-tabs .van-tabs__nav {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  gap: var(--layout-compact-gap);
+  padding: 0 var(--layout-compact-gap);
+  background: var(--bg-subtle);
+  border: 0;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--appearance-border-control);
+}
+
+.mobile-segmented-tabs .van-tab {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex: 1 1 0;
+  padding: 0;
+  color: var(--text-secondary);
+}
+
+.mobile-segmented-tabs .van-tab__text {
+  display: flex;
+  width: 100%;
+  height: calc(var(--touch-target-min) - var(--layout-content-gap));
+  padding: 0 var(--layout-content-gap);
+  align-items: center;
+  justify-content: center;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-control);
+  transition:
+    color var(--duration-press) var(--ease-press),
+    background-color var(--duration-press) var(--ease-press),
+    box-shadow var(--duration-press) var(--ease-press);
+}
+
+.mobile-segmented-tabs .van-tab--active {
+  color: var(--color-primary);
+}
+
+.mobile-segmented-tabs .van-tab--active .van-tab__text {
+  background: var(--bg-surface-raised);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-card-pressed);
+}
+
+.mobile-segmented-tabs .van-tabs__line {
+  display: none;
 }

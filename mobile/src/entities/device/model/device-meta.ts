@@ -5,13 +5,11 @@ import type {
 
 type DeviceTagType = 'primary' | 'success' | 'danger' | 'warning' | 'default'
 
-export type DeviceConnectionDisplayState =
-  DeviceConnectionStatusDto | 'unreported'
+export type DeviceConnectionDisplayState = DeviceConnectionStatusDto
 
 export const DEVICE_CONNECTION_META = {
   online: { label: '在线', tagType: 'success' },
   offline: { label: '离线', tagType: 'danger' },
-  unreported: { label: '未上报', tagType: 'default' },
 } as const satisfies Record<
   DeviceConnectionDisplayState,
   { label: string; tagType: DeviceTagType }
@@ -40,5 +38,6 @@ export const YINGDAO_PROVIDER_STATUS_META = {
 export function getDeviceConnectionDisplayState(
   connectionStatus: DeviceConnectionStatusDto | null | undefined,
 ): DeviceConnectionDisplayState {
-  return connectionStatus ?? 'unreported'
+  // Contract 没有公开 unknown/unreported 状态；缺失连接事实时使用安全离线展示。
+  return connectionStatus ?? 'offline'
 }

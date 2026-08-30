@@ -1,57 +1,90 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { ConfigProvider as VanConfigProvider, showToast } from 'vant'
-import { computed } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
-import { useThemeStore } from '@/app/stores/theme'
+import { useThemeStore, type ThemeMode } from '@/app/stores/theme'
+import type { MobileIconName } from '@/shared/icons'
 import {
   MobileAppShell,
   MobileBottomNavigation,
   MobileDetailHeader,
   MobileGlobalHeader,
+  MobileThemeSettingsSheet,
 } from '@/shared/ui'
+
+const visualTokenTunerEnabled =
+  import.meta.env.DEV && import.meta.env.VITE_VISUAL_TUNER !== 'false'
+const VisualTokenTuner = visualTokenTunerEnabled
+  ? defineAsyncComponent(
+      () => import('@/dev/visual-token-tuner/VisualTokenTuner.vue'),
+    )
+  : null
 
 const route = useRoute()
 const router = useRouter()
 const themeStore = useThemeStore()
-const { resolvedTheme } = storeToRefs(themeStore)
+const { mode, resolvedTheme } = storeToRefs(themeStore)
+const themeSettingsOpen = ref(false)
 
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
 const isMainLayout = computed(() => shellLayout.value === 'main')
+const isToolLayout = computed(() => shellLayout.value === 'tool')
+const globalHeaderPageTitle = computed(() =>
+  route.name === MOBILE_ROUTE_NAMES.devices ? '设备' : undefined,
+)
+const activeNavigationKey = computed(() => {
+  if (
+    route.name === MOBILE_ROUTE_NAMES.devices ||
+    route.name === MOBILE_ROUTE_NAMES.deviceDetail
+  ) {
+    return 'devices'
+  }
+  if (
+    route.name === MOBILE_ROUTE_NAMES.tasks ||
+    route.name === MOBILE_ROUTE_NAMES.taskDetail
+  ) {
+    return 'tasks'
+  }
+  if (route.name === MOBILE_ROUTE_NAMES.schedules) return 'schedules'
+  if (route.name === MOBILE_ROUTE_NAMES.shops) return 'shops'
+  if (route.name === MOBILE_ROUTE_NAMES.profile) return 'profile'
+  return ''
+})
 
 const mainNavigationItems = [
   {
     key: 'devices',
     label: '设备',
-    icon: 'desktop-o',
+    icon: 'device-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.devices },
   },
   {
     key: 'tasks',
     label: '任务',
-    icon: 'todo-list-o',
+    icon: 'task-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.tasks },
   },
   {
     key: 'schedules',
     label: '计划',
-    icon: 'calendar-o',
+    icon: 'schedule-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.schedules },
   },
   {
     key: 'shops',
     label: '店铺',
-    icon: 'shop-o',
+    icon: 'shop-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.shops },
   },
   {
     key: 'profile',
     label: '我的',
-    icon: 'user-o',
+    icon: 'profile-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.profile },
   },
 ] as const
@@ -78,26 +111,58 @@ function goBack(): void {
 }
 
 function showNotificationPlaceholder(): void {
-  showToast('通知功能建设中')
+  showToast('功能建设中')
+}
+
+function selectTheme(nextMode: ThemeMode): void {
+  themeStore.setMode(nextMode)
+  themeSettingsOpen.value = false
 }
 </script>
 
 <template>
   <VanConfigProvider :theme="resolvedTheme">
-    <MobileAppShell>
+    <RouterView v-if="isToolLayout" />
+
+    <MobileAppShell
+      v-else
+      :class="{
+        'mobile-app-shell--visual-v2': Boolean(globalHeaderPageTitle),
+      }"
+    >
       <template #header>
         <MobileGlobalHeader
           v-if="isMainLayout"
+          :resolved-theme="resolvedTheme"
+          :page-title="globalHeaderPageTitle"
+          :menu-enabled="Boolean(globalHeaderPageTitle)"
+          @theme-toggle="themeStore.toggleResolvedTheme"
           @notification-click="showNotificationPlaceholder"
+          @settings-click="themeSettingsOpen = true"
         />
         <MobileDetailHeader v-else :title="routeTitle" @back="goBack" />
       </template>
 
       <RouterView />
 
-      <template v-if="isMainLayout" #bottom>
-        <MobileBottomNavigation :items="mainNavigationItems" />
+      <template #bottom>
+        <MobileBottomNavigation
+          :items="mainNavigationItems"
+          :active-key="activeNavigationKey"
+        />
       </template>
     </MobileAppShell>
+
+    <component
+      :is="VisualTokenTuner"
+      v-if="visualTokenTunerEnabled && !isToolLayout"
+    />
+
+    <MobileThemeSettingsSheet
+      :show="themeSettingsOpen"
+      :mode="mode"
+      @update:show="themeSettingsOpen = $event"
+      @select="selectTheme"
+    />
   </VanConfigProvider>
 </template>

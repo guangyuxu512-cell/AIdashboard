@@ -6,25 +6,21 @@ import {
   Collapse as VanCollapse,
   CollapseItem as VanCollapseItem,
   Empty as VanEmpty,
-  NoticeBar as VanNoticeBar,
   Skeleton as VanSkeleton,
+  showToast,
 } from 'vant'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
+import { formatDeviceDateTime } from '@/entities/device'
+import { TaskListCard } from '@/entities/task'
 import {
-  DeviceConnectionTag,
-  DeviceEnabledTag,
-  formatDeviceDateTime,
-  formatRelativeHeartbeat,
-} from '@/entities/device'
-import {
-  ActiveTaskSummary,
+  DeviceCapabilityPanel,
   DeviceProviderDetails,
-  DeviceProviderSection,
+  DeviceRuntimeSummary,
   DeviceSkillDetails,
-  DeviceSkillSummary,
+  mapDeviceActiveTaskToTaskListItem,
   useDeviceDetail,
 } from '@/features/device-center'
 import { AppPage } from '@/shared/ui'
@@ -34,6 +30,14 @@ const router = useRouter()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const detail = useDeviceDetail(deviceId)
 const expanded = ref<string[]>([])
+const activeTaskCard = computed(() => {
+  const task = detail.activeTask.query.data.value
+  const device = detail.device.value
+
+  return task && device
+    ? mapDeviceActiveTaskToTaskListItem(task, device.displayName)
+    : null
+})
 
 function openTask(taskId: string): void {
   void router.push({
@@ -42,10 +46,14 @@ function openTask(taskId: string): void {
     query: { fromDeviceId: deviceId.value },
   })
 }
+
+function showActionPlaceholder(): void {
+  showToast('功能建设中')
+}
 </script>
 
 <template>
-  <AppPage class="device-detail-page">
+  <AppPage class="device-detail-page" label="设备详情内容">
     <div
       v-if="detail.isDeviceInitialLoading.value"
       data-testid="device-detail-loading"
@@ -56,87 +64,81 @@ function openTask(taskId: string): void {
     <VanEmpty
       v-else-if="detail.isDeviceInitialError.value || !detail.device.value"
       image="error"
-      :description="detail.deviceErrorMessage.value"
+      description="加载失败"
       data-testid="device-detail-error"
     >
       <VanButton type="primary" @click="detail.deviceQuery.refetch()">
-        重新加载
+        重试
       </VanButton>
     </VanEmpty>
 
     <template v-else>
-      <VanNoticeBar
-        v-if="detail.isDeviceBackgroundError.value"
-        type="warning"
-        :text="`${detail.deviceErrorMessage.value}，当前展示上次成功加载的数据`"
-        wrapable
+      <DeviceRuntimeSummary
+        :device="detail.device.value"
+        :active-task="detail.activeTask.query.data.value"
+        :active-task-loading="detail.activeTask.isInitialLoading.value"
+        :active-task-error="detail.activeTask.isInitialError.value"
+        :inventories="detail.provider.query.data.value"
+        :provider-loading="detail.provider.isInitialLoading.value"
+        :provider-error="detail.provider.isInitialError.value"
+        @retry-provider="detail.provider.query.refetch"
       />
 
-      <section class="device-detail-page__summary" data-testid="device-detail">
-        <div class="device-detail-page__title">
-          <h1>{{ detail.device.value.displayName }}</h1>
-          <div class="device-detail-page__tags">
-            <DeviceEnabledTag :enabled="detail.device.value.enabled" />
-            <DeviceConnectionTag
-              :status="detail.device.value.workerRuntime?.connectionStatus"
-            />
-          </div>
-        </div>
-
-        <ActiveTaskSummary
-          :task="detail.activeTask.query.data.value"
-          :initial-loading="detail.activeTask.isInitialLoading.value"
-          :initial-error="detail.activeTask.isInitialError.value"
-          :background-error="detail.activeTask.isBackgroundError.value"
-          :error-message="detail.activeTask.errorMessage.value"
-          @retry="detail.activeTask.query.refetch"
-          @select="openTask"
-        />
-      </section>
+      <DeviceCapabilityPanel
+        :inventories="detail.provider.query.data.value"
+        :capabilities="detail.capability.query.data.value"
+        :provider-loading="detail.provider.isInitialLoading.value"
+        :provider-error="detail.provider.isInitialError.value"
+        :capability-loading="detail.capability.isInitialLoading.value"
+        :capability-error="detail.capability.isInitialError.value"
+        @refresh-capability="showActionPlaceholder"
+        @retry-provider="detail.provider.query.refetch"
+        @retry-capability="detail.capability.query.refetch"
+        @configure-application="showActionPlaceholder"
+        @run-application="showActionPlaceholder"
+        @configure-skill="showActionPlaceholder"
+        @run-skill="showActionPlaceholder"
+      />
 
       <section
-        class="device-detail-page__runtime"
-        aria-labelledby="runtime-title"
+        class="device-detail-page__section"
+        data-testid="device-current-task"
       >
-        <h2 id="runtime-title">运行端信息</h2>
-        <VanEmpty
-          v-if="!detail.device.value.workerRuntime"
-          description="未上报运行端信息"
-          data-testid="runtime-unreported"
+        <h2>当前任务</h2>
+        <VanSkeleton
+          v-if="detail.activeTask.isInitialLoading.value"
+          title
+          :row="2"
+          data-testid="device-current-task-loading"
         />
-        <VanCellGroup v-else>
-          <VanCell
-            title="运行端版本"
-            :value="detail.device.value.workerRuntime.workerVersion"
-          />
-          <VanCell
-            title="最后心跳"
-            :value="
-              formatRelativeHeartbeat(
-                detail.device.value.workerRuntime.lastSeenAt,
-              )
-            "
-          />
-        </VanCellGroup>
+        <div
+          v-else-if="detail.activeTask.isInitialError.value"
+          class="device-detail-page__current-task-error"
+          data-testid="device-current-task-error"
+        >
+          <span>加载失败</span>
+          <VanButton block @click="detail.activeTask.query.refetch">
+            重试
+          </VanButton>
+        </div>
+        <button
+          v-else-if="activeTaskCard"
+          type="button"
+          class="device-detail-page__task-card mobile-pressable mobile-pressable--card"
+          :aria-label="`查看任务：${activeTaskCard.executionName}`"
+          data-testid="device-current-task-link"
+          @click="openTask(activeTaskCard.taskId)"
+        >
+          <TaskListCard :task="activeTaskCard" />
+        </button>
+        <p
+          v-else-if="detail.activeTask.query.data.value === null"
+          class="device-detail-page__current-task-idle"
+        >
+          空闲
+        </p>
+        <p v-else class="device-detail-page__current-task-idle">—</p>
       </section>
-
-      <DeviceProviderSection
-        :inventories="detail.provider.query.data.value"
-        :initial-loading="detail.provider.isInitialLoading.value"
-        :initial-error="detail.provider.isInitialError.value"
-        :background-error="detail.provider.isBackgroundError.value"
-        :error-message="detail.provider.errorMessage.value"
-        @retry="detail.provider.query.refetch"
-      />
-
-      <DeviceSkillSummary
-        :capabilities="detail.capability.query.data.value"
-        :initial-loading="detail.capability.isInitialLoading.value"
-        :initial-error="detail.capability.isInitialError.value"
-        :background-error="detail.capability.isBackgroundError.value"
-        :error-message="detail.capability.errorMessage.value"
-        @retry="detail.capability.query.refetch"
-      />
 
       <VanCollapse v-model="expanded" data-testid="device-more-information">
         <VanCollapseItem title="更多信息" name="device-details">
@@ -155,6 +157,10 @@ function openTask(taskId: string): void {
                 <VanCell
                   title="备注"
                   :value="detail.device.value.note || '—'"
+                />
+                <VanCell
+                  title="设备更新时间"
+                  :value="formatDeviceDateTime(detail.device.value.updatedAt)"
                 />
               </VanCellGroup>
             </section>
@@ -182,9 +188,11 @@ function openTask(taskId: string): void {
             </section>
 
             <DeviceProviderDetails
+              v-if="detail.provider.query.data.value !== undefined"
               :inventories="detail.provider.query.data.value"
             />
             <DeviceSkillDetails
+              v-if="detail.capability.query.data.value !== undefined"
               :capabilities="detail.capability.query.data.value"
             />
           </div>
@@ -199,38 +207,11 @@ function openTask(taskId: string): void {
   padding-bottom: var(--space-6);
 }
 
-.device-detail-page__summary,
-.device-detail-page__runtime {
+.device-detail-page__section,
+.device-detail-page__details section {
   display: grid;
   min-width: 0;
   gap: var(--space-3);
-}
-
-.device-detail-page__title,
-.device-detail-page__tags {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-2);
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.device-detail-page__title h1 {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-title);
-  line-height: var(--line-height-title);
-}
-
-.device-detail-page__tags {
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.device-detail-page__runtime h2 {
-  font-size: var(--font-size-label);
-  line-height: var(--line-height-label);
 }
 
 .device-detail-page__details {
@@ -238,14 +219,42 @@ function openTask(taskId: string): void {
   gap: var(--space-4);
 }
 
-.device-detail-page__details section {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-2);
-}
-
+.device-detail-page__section h2,
 .device-detail-page__details h3 {
   font-size: var(--font-size-label);
   line-height: var(--line-height-label);
+}
+
+.device-detail-page__section :deep(.van-cell-group) {
+  border: 0;
+  border-radius: 0;
+}
+
+.device-detail-page__task-card {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--touch-target-min);
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-card);
+}
+
+.device-detail-page__task-card:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.device-detail-page__current-task-error {
+  display: grid;
+  gap: var(--layout-content-gap);
+}
+
+.device-detail-page__current-task-idle {
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
 }
 </style>

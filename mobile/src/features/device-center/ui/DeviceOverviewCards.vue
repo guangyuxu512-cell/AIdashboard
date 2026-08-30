@@ -1,167 +1,146 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { MobileSummaryStrip } from '@/shared/ui'
+
 import type { DeviceOverview } from '../model/device-overview'
+import type {
+  DeviceMetricFilter,
+  DeviceQuickFilter,
+} from '../model/device-filter'
 
-const props = defineProps<{ overview: DeviceOverview }>()
+const props = withDefaults(
+  defineProps<{
+    overview: DeviceOverview
+    filter?: DeviceQuickFilter
+  }>(),
+  { filter: 'all' },
+)
 
-const loadedText = computed(() => {
-  if (props.overview.dataState === 'loading') return '设备列表加载中'
-  if (props.overview.dataState === 'error') return '设备统计不可用'
-  return `当前已加载 ${props.overview.loadedCount} 台设备`
-})
+const emit = defineEmits<{
+  select: [filter: DeviceMetricFilter]
+}>()
 
-const connectionHint = computed(() => {
-  if (props.overview.dataState === 'loading') return '连接统计等待设备数据'
-  if (props.overview.dataState === 'error') {
-    return '设备加载失败，连接统计不可用'
+function selectMetric(key: string): void {
+  if (
+    key === 'all' ||
+    key === 'online' ||
+    key === 'running' ||
+    key === 'offline'
+  ) {
+    emit('select', key)
   }
-  if (props.overview.unreportedCount) {
-    return `${props.overview.unreportedCount} 台连接状态未上报`
-  }
-  return '连接状态均已上报'
-})
+}
 
-const connectionCardHint = computed(() => {
-  if (props.overview.dataState === 'loading') return '等待设备数据'
-  if (props.overview.dataState === 'error') return '统计不可用'
-  return '当前已加载'
-})
+function metricAriaLabel(filter: DeviceQuickFilter, label: string): string {
+  if (filter === 'all') return `${label}，显示全部设备`
+  if (props.filter === filter) return `${label}，当前筛选，点击恢复全部`
+  return `${label}，点击筛选`
+}
 
-const activeTaskHint = computed(() => {
-  if (props.overview.dataState === 'loading') {
-    return '当前任务统计中'
-  }
-  if (props.overview.dataState === 'error') {
-    return '设备加载失败，任务统计不可用'
-  }
-  if (props.overview.activeState === 'loading') return '当前任务统计中'
-  if (props.overview.activeState === 'error') return '当前任务统计失败'
-
-  const confirmed = `已确认 ${props.overview.activeConfirmedCount}/${props.overview.loadedCount} 台`
-  if (props.overview.activeUnknownCount > 0) {
-    return props.overview.activeBackgroundErrorCount > 0
-      ? `${confirmed}，部分刷新失败`
-      : confirmed
-  }
-  if (props.overview.activeBackgroundErrorCount > 0) {
-    return '部分状态刷新失败'
-  }
-  return confirmed
-})
+const items = computed(() => [
+  {
+    key: 'all',
+    label: '全部设备',
+    value: props.overview.totalCount ?? '—',
+    interactive: true,
+    selected: props.filter === 'all',
+    disabled: props.overview.totalCount === null,
+    ariaLabel: metricAriaLabel('all', '全部设备'),
+  },
+  {
+    key: 'online',
+    label: '在线设备',
+    value: props.overview.onlineCount ?? '—',
+    interactive: true,
+    selected: props.filter === 'online',
+    disabled: props.overview.onlineCount === null,
+    ariaLabel: metricAriaLabel('online', '在线设备'),
+  },
+  {
+    key: 'running',
+    label: '运行中',
+    value: props.overview.runningCount ?? '—',
+    interactive: true,
+    selected: props.filter === 'running',
+    disabled: props.overview.runningCount === null,
+    ariaLabel: metricAriaLabel('running', '运行中'),
+  },
+  {
+    key: 'offline',
+    label: '离线设备',
+    value: props.overview.offlineCount ?? '—',
+    interactive: true,
+    selected: props.filter === 'offline',
+    disabled: props.overview.offlineCount === null,
+    ariaLabel: metricAriaLabel('offline', '离线设备'),
+  },
+])
 </script>
 
 <template>
-  <section class="device-overview" aria-labelledby="device-overview-title">
-    <div class="device-overview__scope">
-      <strong id="device-overview-title">{{ loadedText }}</strong>
-      <span>{{ connectionHint }}</span>
-    </div>
-
-    <dl class="device-overview__cards" aria-live="polite">
-      <div class="device-overview__card device-overview__card--online">
-        <dt>在线设备</dt>
-        <dd data-testid="overview-online">
-          {{ overview.onlineCount ?? '—' }}
-        </dd>
-        <small>{{ connectionCardHint }}</small>
-      </div>
-      <div class="device-overview__card device-overview__card--running">
-        <dt>运行中任务</dt>
-        <dd data-testid="overview-running">
-          {{ overview.runningCount ?? '—' }}
-        </dd>
-        <small data-testid="overview-running-hint">{{ activeTaskHint }}</small>
-      </div>
-      <div class="device-overview__card device-overview__card--offline">
-        <dt>离线设备</dt>
-        <dd data-testid="overview-offline">
-          {{ overview.offlineCount ?? '—' }}
-        </dd>
-        <small>{{ connectionCardHint }}</small>
-      </div>
-    </dl>
-  </section>
+  <div class="device-overview-cards">
+    <MobileSummaryStrip
+      :items="items"
+      aria-label="设备总览"
+      :busy="overview.dataState === 'loading'"
+      @select="selectMetric"
+    />
+  </div>
 </template>
 
 <style scoped>
-.device-overview {
-  display: grid;
+.device-overview-cards {
+  --summary-strip-height: var(--visual-v2-metric-strip-height);
+  --summary-strip-padding-x: 0px;
+  --summary-strip-padding-y: 0px;
+  --summary-strip-safe-area-right: 0px;
+  --summary-strip-safe-area-left: 0px;
+  --summary-strip-radius: var(--visual-v2-metric-strip-radius);
+  --summary-strip-background: var(--visual-v2-metric-strip-background);
+  --summary-strip-border-color: var(--visual-v2-metric-strip-border-color);
+  --summary-strip-shadow: var(--visual-v2-metric-strip-shadow);
+  --summary-strip-divider: var(--visual-v2-metric-strip-divider);
+  --summary-strip-divider-inset: var(--visual-v2-metric-strip-divider-inset);
+  --summary-strip-metric-gap: var(--visual-v2-metric-gap);
+  --summary-strip-metric-padding-top: var(--visual-v2-metric-padding-top);
+  --summary-strip-metric-padding-x: var(--visual-v2-metric-padding-x);
+  --summary-strip-metric-padding-bottom: var(--visual-v2-metric-padding-bottom);
+  --summary-strip-value-size: var(--typography-v2-metric-number-size);
+  --summary-strip-value-weight: var(--typography-v2-metric-number-weight);
+  --summary-strip-value-line-height: var(
+    --typography-v2-metric-number-line-height
+  );
+  --summary-strip-value-letter-spacing: var(
+    --typography-v2-metric-number-letter-spacing
+  );
+  --summary-strip-label-size: var(--typography-v2-metric-label-size);
+  --summary-strip-label-weight: var(--typography-v2-metric-label-weight);
+  --summary-strip-label-line-height: var(
+    --typography-v2-metric-label-line-height
+  );
+  --summary-strip-label-color: var(--visual-v2-metric-label-color);
+  --summary-strip-selected-bottom: var(--visual-v2-metric-selected-bottom);
+  --summary-strip-selected-width: var(--visual-v2-metric-selected-width);
+  --summary-strip-selected-height: var(--visual-v2-metric-selected-height);
+  --summary-strip-selected-color: var(--visual-v2-metric-selected-color);
+  --summary-strip-selected-value-color: var(
+    --visual-v2-metric-selected-value-color
+  );
+  --summary-strip-selected-value-weight: var(
+    --visual-v2-metric-selected-value-weight
+  );
+  --summary-strip-selected-label-color: var(
+    --visual-v2-metric-selected-label-color
+  );
+  --summary-strip-selected-label-weight: var(
+    --visual-v2-metric-selected-label-weight
+  );
+  width: 100%;
   min-width: 0;
-  gap: var(--space-2);
-  padding: var(--space-2)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) 0
-    max(var(--layout-page-padding-x), var(--safe-area-left));
 }
 
-.device-overview__scope {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-2);
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.device-overview__scope strong {
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
-}
-
-.device-overview__scope span,
-.device-overview__card small {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-}
-
-.device-overview__cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  min-width: 0;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.device-overview__card {
-  display: grid;
-  min-width: 0;
-  min-height: 88px;
-  gap: var(--space-1);
-  padding: var(--space-2);
-  align-content: center;
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
-}
-
-.device-overview__card dt,
-.device-overview__card dd {
-  min-width: 0;
-  margin: 0;
-}
-
-.device-overview__card dt {
-  color: var(--text-secondary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-}
-
-.device-overview__card dd {
-  font-size: var(--font-size-title);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-title);
-}
-
-.device-overview__card--online dd {
-  color: var(--status-success);
-}
-
-.device-overview__card--running dd {
-  color: var(--status-info);
-}
-
-.device-overview__card--offline dd {
-  color: var(--text-secondary);
+.device-overview-cards :deep(.mobile-summary-strip__surface) {
+  backdrop-filter: blur(var(--visual-v2-metric-strip-blur));
 }
 </style>

@@ -13,11 +13,14 @@ export type {
   YingdaoProviderStatusDto,
 } from './api/contracts'
 export {
+  configureDeviceDataSource,
   getDevice,
   getDeviceProviderInventories,
   getDevices,
   getDeviceSkillCapabilities,
+  resetDeviceDataSource,
 } from './api/device-api'
+export type { DeviceDataSource } from './api/device-api'
 export {
   formatDeviceDateTime,
   formatRelativeHeartbeat,
@@ -53,5 +56,11 @@ export type {
   DeviceCapabilitySummary,
   DeviceRuntime,
 } from './model/types'
+export type {
+  DeviceArtworkKind,
+  DeviceArtworkState,
+} from './model/device-artwork'
+export { DEVICE_ARTWORK_STATES } from './model/device-artwork'
 export { default as DeviceConnectionTag } from './ui/DeviceConnectionTag.vue'
 export { default as DeviceEnabledTag } from './ui/DeviceEnabledTag.vue'
+export { default as DeviceStatusArtwork } from './ui/DeviceStatusArtwork.vue'

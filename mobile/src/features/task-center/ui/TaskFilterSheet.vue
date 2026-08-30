@@ -8,7 +8,6 @@ import {
   List as VanList,
   Loading as VanLoading,
   NavBar as VanNavBar,
-  NoticeBar as VanNoticeBar,
   Picker as VanPicker,
   Popup as VanPopup,
   Search as VanSearch,
@@ -57,10 +56,6 @@ const devices = computed(() => {
 })
 
 const dateLabel = computed(() => formatTaskDateFilterLabel(draft.value))
-const deviceErrorMessage = computed(() => {
-  const error = deviceQuery.error.value
-  return error instanceof Error ? error.message : '设备加载失败，请稍后重试'
-})
 const deviceErrorKind = computed(() =>
   classifyInfiniteQueryError({
     hasSuccessfulData: deviceQuery.data.value !== undefined,
@@ -192,18 +187,19 @@ function apply(): void {
     round
     class="task-filter-sheet__device-popup"
   >
-    <VanNavBar
-      title="选择设备"
-      left-text="返回"
-      @click-left="showDevices = false"
-    />
+    <VanNavBar title="选择设备">
+      <template #left>
+        <button
+          type="button"
+          class="task-filter-sheet__device-back"
+          aria-label="返回"
+          @click="showDevices = false"
+        >
+          返回
+        </button>
+      </template>
+    </VanNavBar>
     <VanCell title="全部设备" clickable @click="chooseDevice('', '')" />
-    <VanNoticeBar
-      v-if="deviceErrorKind === 'background'"
-      type="warning"
-      :text="`${deviceErrorMessage}，已保留当前设备选项`"
-      wrapable
-    />
     <VanList
       v-if="
         deviceQuery.data.value !== undefined && deviceErrorKind !== 'initial'
@@ -227,24 +223,20 @@ function apply(): void {
         class="task-filter-sheet__next-error"
         data-testid="device-next-page-error"
       >
-        <VanNoticeBar
-          type="warning"
-          :text="`${deviceErrorMessage}，已保留当前设备选项`"
-          wrapable
-        />
-        <VanButton block @click="retryMoreDevices">重试加载更多</VanButton>
+        <span>加载失败</span>
+        <VanButton block @click="retryMoreDevices">重试</VanButton>
       </div>
     </VanList>
-    <div v-if="deviceQuery.isPending.value" class="task-filter-sheet__loading">
+    <div v-if="deviceQuery.isLoading.value" class="task-filter-sheet__loading">
       <VanLoading>加载设备中</VanLoading>
     </div>
     <VanEmpty
       v-else-if="deviceErrorKind === 'initial'"
       image="error"
-      :description="deviceErrorMessage"
+      description="加载失败"
     >
       <VanButton type="primary" @click="deviceQuery.refetch()">
-        重新加载
+        重试
       </VanButton>
     </VanEmpty>
   </VanPopup>
@@ -267,10 +259,6 @@ function apply(): void {
   <VanCalendar
     v-model:show="showCalendar"
     class="task-filter-sheet__calendar"
-    style="
-      padding-right: var(--safe-area-right);
-      padding-left: var(--safe-area-left);
-    "
     type="range"
     switch-mode="month"
     :default-date="[draft.dateRange[0], draft.dateRange[1]]"
@@ -281,7 +269,7 @@ function apply(): void {
 
 <style scoped>
 .task-filter-sheet {
-  min-height: min(56vh, 520px);
+  min-height: var(--overlay-height-medium);
   padding-right: var(--safe-area-right);
   padding-bottom: calc(var(--space-4) + var(--safe-area-bottom));
   padding-left: var(--safe-area-left);
@@ -300,8 +288,8 @@ function apply(): void {
 }
 
 .task-filter-sheet__device-popup {
-  min-height: min(70vh, 620px);
-  max-height: 86vh;
+  min-height: var(--overlay-height-large);
+  max-height: var(--overlay-height-max);
   overflow-y: auto;
   padding-right: var(--safe-area-right);
   padding-bottom: var(--safe-area-bottom);
@@ -317,13 +305,32 @@ function apply(): void {
 
 .task-filter-sheet__loading {
   display: grid;
-  min-height: 96px;
+  min-height: var(--layout-inline-state-min-height);
   place-items: center;
+}
+
+.task-filter-sheet__device-back {
+  display: inline-flex;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: 0 var(--layout-content-gap);
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  font: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+}
+
+:global(.task-filter-sheet__calendar) {
+  padding-right: var(--safe-area-right);
+  padding-left: var(--safe-area-left);
 }
 
 .task-filter-sheet__next-error {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
   padding: var(--space-3);
 }
 </style>

@@ -13,12 +13,7 @@ export interface DeviceActiveTaskState {
   initialLoading: boolean
   initialError: boolean
   backgroundError: boolean
-  errorMessage: string
   retry: () => void
-}
-
-function activeTaskErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : '当前任务加载失败'
 }
 
 export function useDeviceActiveTask(
@@ -27,13 +22,11 @@ export function useDeviceActiveTask(
 ) {
   const query = useActiveTaskQuery(deviceId, enabled)
   const hasSuccessfulData = computed(() => query.data.value !== undefined)
-  const errorMessage = computed(() => activeTaskErrorMessage(query.error.value))
 
   return {
     query,
-    errorMessage,
     isInitialLoading: computed(
-      () => query.isPending.value && !hasSuccessfulData.value,
+      () => query.isLoading.value && !hasSuccessfulData.value,
     ),
     isInitialError: computed(
       () => query.isError.value && !hasSuccessfulData.value,
@@ -61,10 +54,9 @@ export function useDeviceActiveTasks(
           {
             task: undefined,
             hasSuccessfulData: false,
-            initialLoading: true,
+            initialLoading: false,
             initialError: false,
             backgroundError: false,
-            errorMessage: '当前任务加载失败',
             retry: () => undefined,
           } satisfies DeviceActiveTaskState,
         ] as const
@@ -76,10 +68,9 @@ export function useDeviceActiveTasks(
         {
           task: query.data,
           hasSuccessfulData,
-          initialLoading: query.isPending && !hasSuccessfulData,
+          initialLoading: query.isLoading && !hasSuccessfulData,
           initialError: query.isError && !hasSuccessfulData,
           backgroundError: query.isError && hasSuccessfulData,
-          errorMessage: activeTaskErrorMessage(query.error),
           retry: () => {
             void query.refetch()
           },

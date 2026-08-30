@@ -1,118 +1,740 @@
 :root {
   /* Typography */
   --font-family-base:
-    Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,
-    BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-size-caption: 12px;
-  --font-size-body: 14px;
-  --font-size-label: 16px;
-  --font-size-title: 20px;
-  --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --line-height-caption: 18px;
-  --line-height-body: 22px;
-  --line-height-label: 24px;
-  --line-height-title: 28px;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'PingFang SC', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    sans-serif;
+  --font-family-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    monospace;
+  --font-size-caption: 11px; /* 时间、Meta、Tag 与最弱辅助信息 */
+  --font-size-secondary: 12px; /* 次级状态与普通辅助内容 */
+  --font-size-action: 13px; /* Button、Selector 与 Capability 操作文案 */
+  --font-size-body: 14px; /* 正文、Vant Cell 与能力名称 */
+  --font-size-label: 15px; /* Toolbar、DeviceCard/TaskCard 与 Section 标题 */
+  --font-size-title: 16px; /* 品牌、详情 Header 与任务详情标题 */
+  --font-size-display: 18px; /* MobileSummaryStrip（概览横幅）指标数字 */
+  --font-weight-regular: 400; /* 正文与辅助信息的常规字重 */
+  --font-weight-medium: 500; /* 轻操作、标签与能力名称的强调字重 */
+  --font-weight-semibold: 600; /* Header、Toolbar 与卡片标题字重 */
+  --font-weight-bold: 700; /* 概览指标数字字重 */
+  --line-height-caption: 15px; /* Caption / Meta（说明与辅助信息）紧凑行高 */
+  --line-height-secondary: 18px; /* 次级状态行高 */
+  --line-height-action: 18px; /* 轻量操作文案行高 */
+  --line-height-body: 20px; /* 正文、Cell 与能力名称舒适行高 */
+  --line-height-label: 20px; /* Toolbar、卡片与 Section 标题紧凑行高 */
+  --line-height-title: 22px; /* 品牌与详情 Header 标题行高 */
+  --line-height-display: 22px; /* MobileSummaryStrip 指标数字行高 */
 
-  /* Spacing */
+  /* Mobile Visual V2 Semantic Typography（未迁移页面继续消费既有V1角色）。 */
+  --typography-v2-page-title-size: 20px;
+  --typography-v2-page-title-weight: 600;
+  --typography-v2-page-title-line-height: 24px;
+  --typography-v2-page-title-letter-spacing: -0.35px;
+  --typography-v2-detail-title-size: 20px;
+  --typography-v2-detail-title-weight: 600;
+  --typography-v2-detail-title-line-height: 24px;
+  --typography-v2-business-card-title-size: 16.5px;
+  --typography-v2-business-card-title-weight: 600;
+  --typography-v2-business-card-title-line-height: 19.8px;
+  --typography-v2-business-card-title-letter-spacing: -0.2px;
+  --typography-v2-search-size: 16px;
+  --typography-v2-search-weight: 500;
+  --typography-v2-search-line-height: 20px;
+  --typography-v2-status-size: 14px;
+  --typography-v2-status-weight: 500;
+  --typography-v2-status-line-height: 14px;
+  --typography-v2-meta-size: 13px;
+  --typography-v2-meta-weight: 400;
+  --typography-v2-meta-line-height: 13px;
+  --typography-v2-tag-size: 12px;
+  --typography-v2-tag-weight: 500;
+  --typography-v2-tag-line-height: 15px;
+  --typography-v2-metric-number-size: 23px;
+  --typography-v2-metric-number-weight: 600;
+  --typography-v2-metric-number-line-height: 23px;
+  --typography-v2-metric-number-letter-spacing: -0.35px;
+  --typography-v2-metric-label-size: 12.5px;
+  --typography-v2-metric-label-weight: 450;
+  --typography-v2-metric-label-line-height: 14.75px;
+  --typography-v2-bottom-nav-size: 12px;
+  --typography-v2-bottom-nav-weight: 500;
+  --typography-v2-bottom-nav-line-height: 15px;
+
+  /* Primitive spacing scale（原子间距刻度：不作为业务组件的直接调参入口） */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 28px;
   --space-8: 32px;
 
-  /* Touch and controls */
-  --touch-target-min: 44px;
-  --control-height-default: 44px;
-  --control-height-large: 50px;
+  /* Semantic spacing（语义间距：冻结组件与调参器只消费这一层） */
+  --layout-compact-gap: 2px; /* 紧凑行内信息与轻量操作的通用微间距 */
+  --layout-content-gap: 16px; /* 非特定业务区块的标准内容间距 */
+  --layout-card-leading-content-gap: 16px; /* DeviceCard / TaskCard 主视觉槽位到正文 */
+  --layout-summary-metric-gap: 2px; /* MobileSummaryStrip 的 Icon → Number → Label 间距 */
+  --layout-summary-metric-padding-x: 16px; /* MobileSummaryStrip 单个 Metric 水平留白 */
+  --layout-toolbar-group-gap: 16px; /* MobileListToolbar 主信息与操作组之间 */
+  --layout-toolbar-inner-gap: 2px; /* MobileListToolbar 标题、操作与控件内部间距 */
+  --layout-toolbar-control-padding-x: 16px; /* MobileListToolbar 紧凑控件水平内边距 */
+  --layout-runtime-summary-leading-content-gap: 16px; /* DeviceRuntimeSummary 图标槽位到正文 */
+  --layout-runtime-summary-inner-gap: 2px; /* DeviceRuntimeSummary 标题、状态与账号行内部间距 */
+  --layout-capability-panel-gap: 2px; /* CapabilityPanel Header、Selector 与列表区之间 */
+  --layout-capability-row-gap: 16px; /* Capability Row 图标槽位、名称与操作区域之间 */
+  --layout-capability-actions-gap: 2px; /* Capability Row 配置与运行操作之间 */
+  --layout-capability-action-padding-x: 16px; /* Capability Row 操作控件水平内边距 */
+  --layout-capability-state-gap: 16px; /* Capability 局部状态图标与文案之间 */
+
+  /* Touch, icons and progress */
+  --touch-target-min: 45px; /* Touch Target（触控热区）最小尺寸，满足至少44px约束 */
+  --control-height-compact: 26px; /* 紧凑型工具控件视觉高度，不等于触控热区 */
+  --control-height-medium: 40px;
+  --control-height-default: 44px; /* Vant 默认 Button、Search 输入高度 */
+  --control-height-large: 50px; /* Vant 大号 Button 与 Calendar 日期行高度 */
+  --control-height-capability-action: 28px; /* Capability 配置/运行操作的内部视觉高度 */
+  --control-size-icon-button: 32px; /* 图标按钮可见外壳边长，触控区域仍为45px */
+  --icon-size-small: 16px; /* Sheet 返回、轻量状态与 Vant 辅助图标 */
+  --icon-size-default: 22px; /* Control Icon（操作图标）：Header、Bottom Nav 与通用操作图标 */
+  --icon-size-card-leading: 56px; /* Primary Leading Visual（主业务卡片视觉锚点）的 Glyph 尺寸 */
+  --icon-size-card-chevron: 16px; /* DeviceCard / TaskCard 右侧详情箭头视觉尺寸 */
+  --icon-size-runtime-summary: 25px; /* Runtime Leading Visual（运行摘要视觉区）的 Glyph 尺寸 */
+  --icon-size-summary-metric: 16px; /* Summary Icon（概览指标图标）视觉尺寸，低于数字层级 */
+  --icon-size-capability-row: 24px; /* Capability Icon（能力列表图标）视觉尺寸，保持密集列表克制 */
+  --status-dot-size: 6px;
+  --progress-height-compact: 4px;
+  --progress-height-default: 6px;
+  --opacity-muted: 0.55;
   --opacity-disabled: 0.5;
 
-  /* Shape and elevation */
+  /* Stage 3B Shape / Border：外观层不改变 Stage 2 已冻结的尺寸、Padding、Gap 或 Touch Target。 */
   --border-width: 1px;
-  --radius-control: 8px;
-  --radius-card: 12px;
-  --radius-overlay: 16px;
-  --radius-round: 999px;
+  --radius-control: 12px;
+  --radius-card: 18px;
+  --radius-panel: 18px;
+  --radius-overlay: 22px;
+  --radius-tag: 999px;
+  --radius-round: var(--radius-tag);
+  --appearance-border-surface-width: 1px; /* Card / Panel 的可见内描边，保持 Box Model 不变。 */
+  --appearance-border-control-width: 1px; /* Selector、Tag 与 Icon Control 的可见内描边。 */
+  --appearance-border-overlay-width: 0px; /* Popup / Sheet 默认仅通过 Surface 与阴影分层。 */
+  --appearance-border-surface: inset 0 0 0
+    var(--appearance-border-surface-width) var(--border-subtle);
+  --appearance-border-control: inset 0 0 0
+    var(--appearance-border-control-width) var(--border-subtle);
+  --appearance-border-overlay: inset 0 0 0
+    var(--appearance-border-overlay-width) var(--border-subtle);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --shadow-shell: 0 0 0 var(--border-width) var(--border-subtle);
 
   /* Layout */
-  --layout-content-max-width: 430px;
-  --layout-header-height: 46px;
-  --layout-bottom-height: 50px;
-  --layout-page-padding-x: 16px;
-  --layout-page-padding-y: 12px;
-  --layout-section-gap: 12px;
+  --layout-content-max-width: 430px; /* MobileAppShell（应用壳）内容最大宽度 */
+  --layout-header-height: 52px; /* 一级页面全局顶部栏内容高度 */
+  --layout-detail-header-height: 51px; /* 设备/任务详情顶部栏内容高度 */
+  --layout-summary-height: 96px; /* 移动端概览横幅高度，承载图标、数字、标签三层结构 */
+  --layout-summary-padding-y: 7px; /* 概览横幅上下边距，96px 高度下留出指标内部呼吸空间 */
+  --layout-toolbar-height: 46px; /* MobileListToolbar（列表工具行）整体高度 */
+  --layout-bottom-nav-height: 64px; /* Visual V2五入口导航主体高度，不含系统底部安全区 */
+  --layout-page-padding-x: 16px; /* Header、列表与详情页统一左右留白 */
+  --layout-page-padding-y: 12px; /* AppPage（详情内容页）基础上下留白 */
+  --layout-section-gap: 24px; /* 详情页面主要区块之间的垂直距离 */
+  --layout-card-gap: 8px; /* Device/Task 列表中卡片之间的距离 */
+  --layout-card-padding-x: 15px; /* 设备卡与任务卡统一左右内部留白 */
+  --layout-card-padding-y: 16px; /* 设备卡与任务卡统一上下内部留白 */
+  --layout-card-row-gap: 5px; /* 设备卡与任务卡三行内容间距 */
+  --layout-card-leading-icon-slot-width: 72px; /* Primary Leading Visual 槽位宽度；为未来 Tile 保留容量，不等于 Glyph */
+  --layout-card-trailing-icon-slot-width: 22px; /* DeviceCard / TaskCard 右侧详情箭头固定槽位宽度，不等于箭头视觉尺寸 */
+  --layout-runtime-summary-padding-x: 17px; /* DeviceRuntimeSummary 左右内部留白 */
+  --layout-runtime-summary-padding-y: 9px; /* DeviceRuntimeSummary 上下内部留白，内容区比导航更舒展 */
+  --layout-runtime-summary-icon-slot-width: 48px; /* Runtime Leading Visual 槽位宽度，低于主业务卡片 */
+  --layout-capability-panel-height: 372px; /* 能力面板整体高度，保证完整显示5行，第6行开始内部滚动 */
+  --layout-capability-row-min-height: 50px; /* Capability Row（能力行）最小高度 */
+  --layout-capability-icon-slot-width: 36px; /* Capability Icon 槽位宽度，保证应用名称起点统一 */
+  --layout-readable-max-width: 28rem;
+  --layout-inline-state-min-height: 96px;
+
+  /* Mobile Visual V2共享几何；当前仅/devices消费页面级结构。 */
+  --visual-v2-page-header-height: 66px;
+  --visual-v2-page-padding-x: 18px;
+  --visual-v2-page-header-gap: 10px;
+  --visual-v2-page-header-actions-gap: 10px;
+  --visual-v2-page-header-control-size: 40px;
+  --visual-v2-page-action-icon-size: 22px;
+  --visual-v2-page-menu-icon-width: 22px;
+  --visual-v2-page-menu-icon-height: 18px;
+  --visual-v2-search-height: 44px;
+  --visual-v2-search-radius: 22px;
+  --visual-v2-search-padding-x: 16px;
+  --visual-v2-search-icon-size: 22px;
+  --visual-v2-search-icon-gap: 11px;
+  --visual-v2-search-border-width: 1px;
+  --visual-v2-metric-strip-height: 90px;
+  --visual-v2-metric-strip-radius: 18px;
+  --visual-v2-metric-strip-divider-inset: 17px;
+  --visual-v2-metric-strip-blur: 16px;
+  --visual-v2-metric-gap: 7px;
+  --visual-v2-metric-padding-top: 10px;
+  --visual-v2-metric-padding-x: 7px;
+  --visual-v2-metric-padding-bottom: 9px;
+  --visual-v2-metric-selected-bottom: 8px;
+  --visual-v2-metric-selected-width: 22px;
+  --visual-v2-metric-selected-height: 2px;
+  --visual-v2-metric-selected-value-weight: 600;
+  --visual-v2-metric-selected-label-weight: 620;
+  --visual-v2-business-card-meta-icon-size: 13px;
+  --visual-v2-business-card-blur: 14px;
+  --visual-v2-bottom-nav-height: var(--layout-bottom-nav-height);
+  --visual-v2-bottom-nav-padding-top: 8px;
+  --visual-v2-bottom-nav-padding-x: 18px;
+  --visual-v2-bottom-nav-padding-bottom: 8px;
+  --visual-v2-bottom-nav-item-padding-top: 4px;
+  --visual-v2-bottom-nav-item-gap: 4px;
+  --visual-v2-bottom-nav-icon-size: 25px;
+  --visual-v2-bottom-nav-border-width: 1px;
+  --visual-v2-bottom-nav-blur: 20px;
+
+  /* Mobile Visual V2 / Device List：已选择性解冻的/devices，不改动其它页面V1结构。 */
+  --device-list-page-padding-x: 18px; /* 设备列表固定区与滚动列表的水平安全留白。 */
+  --device-list-header-height: var(--visual-v2-page-header-height);
+  --device-list-header-control-size: var(--visual-v2-page-header-control-size);
+  --device-list-title-size: var(--typography-v2-page-title-size);
+  --device-list-title-weight: var(--typography-v2-page-title-weight);
+  --device-list-title-line-height: var(--typography-v2-page-title-line-height);
+  --device-list-title-letter-spacing: var(
+    --typography-v2-page-title-letter-spacing
+  );
+  --device-list-fixed-controls-gap: 14px; /* Search 与四项 Summary 之间的距离。 */
+  --device-list-fixed-padding-top: 0px;
+  --device-list-fixed-padding-bottom: 0px;
+  --device-list-search-height: var(--visual-v2-search-height);
+  --device-list-search-radius: var(--visual-v2-search-radius);
+  --device-list-search-padding-x: var(--visual-v2-search-padding-x);
+  --device-list-search-icon-size: var(--visual-v2-search-icon-size);
+  --device-list-search-icon-gap: var(--visual-v2-search-icon-gap);
+  --device-list-search-font-size: var(--typography-v2-search-size);
+  --device-list-search-font-weight: var(--typography-v2-search-weight);
+  --device-list-search-line-height: var(--typography-v2-search-line-height);
+  --device-list-search-border-width: var(--visual-v2-search-border-width);
+  --device-list-summary-height: var(--visual-v2-metric-strip-height);
+  --device-list-summary-radius: var(--visual-v2-metric-strip-radius);
+  --device-list-summary-divider-inset: var(
+    --visual-v2-metric-strip-divider-inset
+  );
+  --device-list-summary-metric-gap: var(--visual-v2-metric-gap);
+  --device-list-summary-metric-padding-top: var(--visual-v2-metric-padding-top);
+  --device-list-summary-metric-padding-x: var(--visual-v2-metric-padding-x);
+  --device-list-summary-metric-padding-bottom: var(
+    --visual-v2-metric-padding-bottom
+  );
+  --device-list-summary-value-size: var(--typography-v2-metric-number-size);
+  --device-list-summary-value-weight: var(--typography-v2-metric-number-weight);
+  --device-list-summary-value-line-height: var(
+    --typography-v2-metric-number-line-height
+  );
+  --device-list-summary-value-letter-spacing: var(
+    --typography-v2-metric-number-letter-spacing
+  );
+  --device-list-summary-label-size: var(--typography-v2-metric-label-size);
+  --device-list-summary-label-weight: var(--typography-v2-metric-label-weight);
+  --device-list-summary-label-line-height: var(
+    --typography-v2-metric-label-line-height
+  );
+  --device-list-summary-selected-bottom: var(
+    --visual-v2-metric-selected-bottom
+  );
+  --device-list-summary-selected-width: var(--visual-v2-metric-selected-width);
+  --device-list-summary-selected-height: var(
+    --visual-v2-metric-selected-height
+  );
+  --device-list-summary-selected-value-weight: var(
+    --visual-v2-metric-selected-value-weight
+  );
+  --device-list-summary-selected-label-weight: var(
+    --visual-v2-metric-selected-label-weight
+  );
+  --device-list-list-padding-top: 14px; /* Summary 与首张设备卡之间的列表起始留白。 */
+  --device-list-list-padding-bottom: 28px;
+  --device-list-card-gap: 14px;
+  --device-list-card-min-height: 122px;
+  --device-list-card-radius: 17px;
+  --device-list-card-border-width: 1px;
+  --device-list-card-artwork-column: 102px;
+  --device-list-card-chevron-column: 18px;
+  --device-list-card-padding-top: 15px;
+  --device-list-card-padding-right: 17px;
+  --device-list-card-padding-bottom: 15px;
+  --device-list-card-padding-left: 16px;
+  --device-list-card-name-size: var(--typography-v2-business-card-title-size);
+  --device-list-card-name-weight: var(
+    --typography-v2-business-card-title-weight
+  );
+  --device-list-card-name-line-height: var(
+    --typography-v2-business-card-title-line-height
+  );
+  --device-list-card-name-letter-spacing: var(
+    --typography-v2-business-card-title-letter-spacing
+  );
+  --device-list-card-name-gap: 10px;
+  --device-list-card-status-size: var(--typography-v2-status-size);
+  --device-list-card-status-weight: var(--typography-v2-status-weight);
+  --device-list-card-status-line-height: var(
+    --typography-v2-status-line-height
+  );
+  --device-list-card-status-gap: 10px;
+  --device-list-card-meta-size: var(--typography-v2-meta-size);
+  --device-list-card-meta-weight: var(--typography-v2-meta-weight);
+  --device-list-card-meta-line-height: var(--typography-v2-meta-line-height);
+  --device-list-card-inline-gap: 8px;
+  --device-list-status-dot-size: 8px;
+  --device-list-card-chevron-size: 16px;
+  --device-list-artwork-width: 80px;
+  --device-list-artwork-height: 80px;
+  --device-list-artwork-offset-x: -8px;
+
+  /* DeviceStatusArtwork 几何：Kind 与状态共享同一业务插画容器。 */
+  --device-artwork-screen-border-width: 2px;
+  --device-artwork-screen-radius: 4px;
+  --device-artwork-desktop-width: 66px;
+  --device-artwork-desktop-height: 53px;
+  --device-artwork-desktop-screen-height: 43px;
+  --device-artwork-desktop-neck-left: 29px;
+  --device-artwork-desktop-neck-width: 8px;
+  --device-artwork-desktop-neck-height: 6px;
+  --device-artwork-desktop-base-top: 49px;
+  --device-artwork-desktop-base-left: 17px;
+  --device-artwork-desktop-base-width: 32px;
+  --device-artwork-desktop-base-height: 5px;
+  --device-artwork-base-radius: 8px;
+  --device-artwork-laptop-width: 72px;
+  --device-artwork-laptop-height: 49px;
+  --device-artwork-laptop-screen-top: 2px;
+  --device-artwork-laptop-screen-left: 9px;
+  --device-artwork-laptop-screen-width: 54px;
+  --device-artwork-laptop-screen-height: 37px;
+  --device-artwork-laptop-body-inset: 2px;
+  --device-artwork-laptop-body-bottom: 4px;
+  --device-artwork-laptop-body-height: 8px;
+  --device-artwork-laptop-body-radius: 2px 2px 8px 8px;
+  --device-artwork-laptop-perspective: 85px;
+  --device-artwork-laptop-rotation: 56deg;
+  --device-artwork-laptop-shadow-inset: 10px;
+  --device-artwork-laptop-shadow-height: 5px;
+  --device-artwork-ground-shadow-blur: 2px;
+  --device-artwork-server-width: 40px;
+  --device-artwork-server-height: 61px;
+  --device-artwork-server-radius: 6px;
+  --device-artwork-server-vents-top: 10px;
+  --device-artwork-server-vents-inset: 8px;
+  --device-artwork-server-vents-height: 27px;
+  --device-artwork-server-vents-radius: 2px;
+  --device-artwork-server-leds-top: 12px;
+  --device-artwork-server-leds-left: 10px;
+  --device-artwork-server-leds-gap: 4px;
+  --device-artwork-server-led-size: 3px;
+  --device-artwork-server-led-opacity: 0.9;
+  --device-artwork-server-button-bottom: 8px;
+  --device-artwork-server-button-left: 20px;
+  --device-artwork-server-button-size: 5px;
+  --device-artwork-server-button-border-width: 1px;
+  --device-artwork-offline-mark-size: 18px;
+  --device-artwork-offline-mark-border-width: 2px;
+  --device-artwork-offline-line-width: 8px;
+  --device-artwork-offline-line-height: 2px;
+  --device-artwork-corner-top: 7px;
+  --device-artwork-corner-right: 8px;
+  --device-artwork-corner-size: 10px;
+  --device-artwork-pulse-top: 4px;
+  --device-artwork-pulse-right: 5px;
+  --device-artwork-pulse-size: 16px;
+  --device-artwork-pulse-border-width: 1.5px;
+  --device-artwork-online-duration: 1.8s;
+  --device-artwork-running-duration: 2.8s;
+  --device-artwork-running-led-duration: 1.3s;
+  --overlay-height-medium: min(56dvh, 520px);
+  --overlay-height-large: min(70dvh, 620px);
+  --overlay-height-max: 86dvh;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
 
   /* Motion */
+  --duration-press: 140ms;
   --duration-fast: 160ms;
   --duration-normal: 240ms;
+  --ease-press: cubic-bezier(0.2, 0, 0, 1);
+  --press-scale-control: 0.985;
+  --press-scale-card: 0.99;
 }
 
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-primary: #4f6f91;
-  --color-primary-active: #374f6a;
-  --color-primary-soft: #edf2f7;
-  --text-primary: #222a34;
-  --text-secondary: #5f6a77;
-  --text-tertiary: #87919d;
-  --text-disabled: #aeb6c0;
+  /* Stage 3A Frozen Semantic Color（已冻结语义颜色）：颜色值只在此层定义，组件只消费语义。 */
+  --color-primary: #3b6f9f;
+  --color-primary-strong: #315f8a;
+  --color-primary-active: #294f74;
+  --color-primary-soft: #e7f0f8;
+  --text-primary: #17212b;
+  --text-secondary: #4b5a69;
+  --text-muted: #617286; /* 元信息、时间与最弱但仍需可读的文字。 */
+  --text-tertiary: var(
+    --text-muted
+  ); /* 兼容既有消费者；Muted 是正式最弱可读文本角色。 */
+  --text-disabled: #97a1ab;
   --text-inverse: #ffffff;
-  --text-selected: var(--color-primary);
-  --bg-app: #eef1f4;
-  --bg-surface: #ffffff;
-  --bg-surface-hover: #f1f4f7;
-  --bg-selected: var(--color-primary-soft);
-  --bg-subtle: #f6f8fa;
-  --bg-overlay: rgba(22, 28, 36, 0.42);
-  --border-default: #d5dbe3;
-  --border-subtle: rgba(117, 129, 143, 0.18);
-  --status-info: #557a9c;
-  --status-info-soft: #edf3f8;
-  --status-success: #3f7d64;
-  --status-success-soft: #edf6f1;
-  --status-warning: #9a6b2d;
-  --status-warning-soft: #faf3e7;
-  --status-danger: #a65353;
-  --status-danger-soft: #faeeee;
-  --shadow-surface: 0 1px 2px rgb(25 35 48 / 5%), 0 8px 24px rgb(25 35 48 / 5%);
-  --shadow-overlay: 0 20px 56px rgb(20 28 38 / 20%);
+  --text-selected: #3b6f9f;
+  --bg-app: #f4f6f8;
+  --bg-surface: #f8fafc;
+  --bg-subtle: #f1f4f7; /* 次级表面：分组内层、折叠内容与弱容器。 */
+  --bg-control: #eef2f5; /* 输入、选择器与紧凑操作控件表面。 */
+  --bg-surface-raised: #ffffff;
+  --bg-surface-hover: #edf1f5;
+  --bg-surface-pressed: #e8edf2;
+  --bg-selected: #e7f0f8;
+  --bg-overlay: rgba(20, 29, 39, 0.46);
+  --border-default: #d6dee6;
+  --border-divider: #e4eaf0; /* 行、卡片与内容分区的弱分隔线。 */
+  --border-subtle: var(
+    --border-divider
+  ); /* 兼容既有 Border / Separator 消费者。 */
+  --border-strong: #b8c4cf;
+  --status-info: #356d9b;
+  --status-info-strong: #356d9b;
+  --status-info-soft: #eaf2f9;
+  --status-success: #2f7658;
+  --status-success-strong: #2f7658;
+  --status-success-soft: #eaf5ef;
+  --status-warning: #8a5b19;
+  --status-warning-strong: #805116;
+  --status-warning-soft: #fbf2df;
+  --status-danger: #a0444c;
+  --status-danger-strong: #963b44;
+  --status-danger-soft: #fbecee;
+  --status-neutral: #5f6f82;
+  --status-neutral-soft: #eef1f4;
+  /* Mobile Visual V2 / Device List Light：独立于旧页面 Stage 3A / 3B 基线。 */
+  --device-list-text-primary: #0b1730;
+  --device-list-page-background: linear-gradient(
+    180deg,
+    #fbfcfe 0%,
+    #f4f7fb 36%,
+    #f2f5fa 100%
+  );
+  /* Visual V2页面渐变只由AppShell根层绘制，顶部Safe Area/Header透明承接。 */
+  --device-list-header-background: transparent;
+  --device-list-search-background: #f1f4f8;
+  --device-list-search-border: transparent;
+  --device-list-search-shadow: none;
+  --device-list-search-color: #8c98ac;
+  --device-list-search-disabled-color: #a7b1c0;
+  --device-list-search-input-color: #24324a;
+  --device-list-summary-background: #ffffff;
+  --device-list-summary-border: #edf1f6;
+  --device-list-summary-shadow: 0 10px 28px rgb(34 54 84 / 6%);
+  --device-list-summary-divider: #e8edf4;
+  --device-list-summary-label-color: #7c8ba2;
+  --device-list-summary-selected-color: #33435b;
+  --device-list-summary-selected-value-color: #17243a;
+  --device-list-summary-selected-label-color: #55657d;
+  --device-list-card-background: #ffffff;
+  --device-list-card-border: #e7ebf1;
+  --device-list-card-shadow: 0 7px 18px rgb(34 54 84 / 4.5%);
+  --device-list-card-pressed-background: #f8fafc;
+  --device-list-card-pressed-border: #dce3eb;
+  --device-list-card-pressed-shadow: 0 2px 8px rgb(34 54 84 / 4%);
+  --device-list-card-meta-color: #7787a0;
+  --device-list-card-chevron-color: #7787a0;
+  --device-list-status-online: #3f9a7c;
+  --device-list-status-running: #557fae;
+  --device-list-status-offline: #7b8ba3;
+  /* Visual V2共享语义别名：页面只消费这一层，不复制Light颜色到组件。 */
+  --visual-v2-page-text-primary: var(--device-list-text-primary);
+  --visual-v2-page-background: var(--device-list-page-background);
+  --visual-v2-page-header-background: var(--device-list-header-background);
+  --visual-v2-search-background: var(--device-list-search-background);
+  --visual-v2-search-border-color: var(--device-list-search-border);
+  --visual-v2-search-shadow: var(--device-list-search-shadow);
+  --visual-v2-search-placeholder-color: var(--device-list-search-color);
+  --visual-v2-search-disabled-color: var(--device-list-search-disabled-color);
+  --visual-v2-search-input-color: var(--device-list-search-input-color);
+  --visual-v2-metric-strip-background: var(--device-list-summary-background);
+  --visual-v2-metric-strip-border-color: var(--device-list-summary-border);
+  --visual-v2-metric-strip-shadow: var(--device-list-summary-shadow);
+  --visual-v2-metric-strip-divider: var(--device-list-summary-divider);
+  --visual-v2-metric-label-color: var(--device-list-summary-label-color);
+  --visual-v2-metric-selected-color: var(--device-list-summary-selected-color);
+  --visual-v2-metric-selected-value-color: var(
+    --device-list-summary-selected-value-color
+  );
+  --visual-v2-metric-selected-label-color: var(
+    --device-list-summary-selected-label-color
+  );
+  --visual-v2-business-card-background: var(--device-list-card-background);
+  --visual-v2-business-card-border-color: var(--device-list-card-border);
+  --visual-v2-business-card-shadow: var(--device-list-card-shadow);
+  --visual-v2-business-card-pressed-background: var(
+    --device-list-card-pressed-background
+  );
+  --visual-v2-business-card-pressed-border-color: var(
+    --device-list-card-pressed-border
+  );
+  --visual-v2-business-card-pressed-shadow: var(
+    --device-list-card-pressed-shadow
+  );
+  --visual-v2-business-card-meta-color: var(--device-list-card-meta-color);
+  --visual-v2-business-card-chevron-color: var(
+    --device-list-card-chevron-color
+  );
+  --visual-v2-bottom-nav-background: rgb(255 255 255 / 95%);
+  --visual-v2-bottom-safe-area-background: #ffffff;
+  --visual-v2-bottom-nav-border-color: #e5eaf1;
+  --visual-v2-bottom-nav-shadow: none;
+  --visual-v2-bottom-nav-inactive-color: #7d8ba2;
+  --visual-v2-bottom-nav-active-color: #1f73ff;
+  --device-artwork-shadow: drop-shadow(0 5px 10px rgb(0 0 0 / 8%));
+  --device-artwork-frame: #202838;
+  --device-artwork-neck: #526174;
+  --device-artwork-base: #5f6f82;
+  --device-artwork-screen-neutral: linear-gradient(
+    160deg,
+    #99a4b6,
+    #657283 58%,
+    #9da8b8
+  );
+  --device-artwork-screen-online: linear-gradient(
+    160deg,
+    #9fcfc2,
+    #4f9f8b 48%,
+    #477d9b 100%
+  );
+  --device-artwork-screen-running: linear-gradient(
+    160deg,
+    #9bb7d3,
+    #557ca8 56%,
+    #8aa8c5 100%
+  );
+  --device-artwork-screen-offline: linear-gradient(
+    160deg,
+    #99a4b6,
+    #546171 58%,
+    #8d98a9 100%
+  );
+  --device-artwork-screen-inset: inset 0 -7px 0 rgb(7 16 28 / 40%);
+  --device-artwork-screen-glow: radial-gradient(
+    circle at 24% 25%,
+    rgb(255 255 255 / 45%),
+    transparent 36%
+  );
+  --device-artwork-screen-shine: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0%) 0%,
+    rgb(255 255 255 / 34%) 48%,
+    rgb(255 255 255 / 0%) 100%
+  );
+  --device-artwork-online: #4f9d85;
+  --device-artwork-online-ring: rgb(79 157 133 / 42%);
+  --device-artwork-online-corner-shadow: 0 0 0 3px rgb(79 157 133 / 8%);
+  --device-artwork-running: #5d82ad;
+  --device-artwork-running-corner-shadow: 0 0 0 3px rgb(93 130 173 / 8%);
+  --device-artwork-offline-mark-color: rgb(255 255 255 / 62%);
+  --device-artwork-offline-filter: grayscale(0.22) saturate(0.82)
+    brightness(0.92);
+  --device-artwork-laptop-body: linear-gradient(#7e8b9a, #546173);
+  --device-artwork-ground-shadow: rgb(0 0 0 / 14%);
+  --device-artwork-server-neutral: linear-gradient(
+    155deg,
+    #667689,
+    #2d3a4d 68%
+  );
+  --device-artwork-server-online: linear-gradient(155deg, #537d6f, #1f3741 68%);
+  --device-artwork-server-running: linear-gradient(
+    155deg,
+    #60779a,
+    #233756 68%
+  );
+  --device-artwork-server-offline: linear-gradient(
+    155deg,
+    #6e7a89,
+    #273445 68%
+  );
+  --device-artwork-server-inset: inset 0 0 0 1px rgb(255 255 255 / 8%);
+  --device-artwork-server-vents: repeating-linear-gradient(
+    180deg,
+    #202c39 0 3px,
+    #455466 3px 5px
+  );
+  --device-artwork-server-led-neutral: #92a2ba;
+  --device-artwork-server-led-online: #21d091;
+  --device-artwork-server-led-online-shadow: 0 0 6px rgb(33 208 145 / 55%);
+  --device-artwork-server-led-running: #3a8bff;
+  --device-artwork-server-led-running-shadow: 0 0 6px rgb(58 139 255 / 60%);
+  --device-artwork-server-led-offline: #a4b1c4;
+  --device-artwork-server-button: #abc0d7;
+  --focus-ring-color: var(--color-primary);
+  /* Stage 3B Shadow：Card、Raised Control、Popup / Sheet 的层级彼此独立。 */
+  --shadow-card-contact: 0 1px 2px rgb(24 33 43 / 5%);
+  --shadow-card-offset-x: 0px;
+  --shadow-card-offset-y: 8px;
+  --shadow-card-blur: 24px;
+  --shadow-card-spread: 0px;
+  --shadow-card-opacity: 5%;
+  --shadow-card:
+    var(--shadow-card-contact),
+    var(--shadow-card-offset-x) var(--shadow-card-offset-y)
+      var(--shadow-card-blur) var(--shadow-card-spread)
+      rgb(24 33 43 / var(--shadow-card-opacity));
+  --shadow-raised-contact: 0 1px 2px rgb(24 33 43 / 7%);
+  --shadow-raised-offset-x: 0px;
+  --shadow-raised-offset-y: 5px;
+  --shadow-raised-blur: 14px;
+  --shadow-raised-spread: 0px;
+  --shadow-raised-opacity: 7%;
+  --shadow-raised: var(--shadow-raised-offset-x) var(--shadow-raised-offset-y)
+    var(--shadow-raised-blur) var(--shadow-raised-spread)
+    rgb(24 33 43 / var(--shadow-raised-opacity));
+  --shadow-control-highlight: inset 0 1px 0 rgb(255 255 255 / 88%);
+  --shadow-card-pressed: 0 1px 2px rgb(24 33 43 / 4%);
+  --shadow-header: 0 1px 0 rgb(24 33 43 / 8%);
+  --shadow-icon-button:
+    var(--shadow-control-highlight), var(--shadow-raised-contact),
+    var(--shadow-raised);
+  --shadow-icon-button-pressed:
+    inset 0 1px 2px rgb(24 33 43 / 10%), 0 1px 2px rgb(24 33 43 / 4%);
+  --shadow-tabbar: 0 -8px 24px rgb(24 33 43 / 5%);
+  --shadow-overlay-offset-x: 0px;
+  --shadow-overlay-offset-y: 18px;
+  --shadow-overlay-blur: 48px;
+  --shadow-overlay-spread: 0px;
+  --shadow-overlay-opacity: 18%;
+  --shadow-overlay: var(--shadow-overlay-offset-x)
+    var(--shadow-overlay-offset-y) var(--shadow-overlay-blur)
+    var(--shadow-overlay-spread) rgb(20 29 39 / var(--shadow-overlay-opacity));
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-primary: #6484a3;
-  --color-primary-active: #55738f;
-  --color-primary-soft: #263544;
-  --text-primary: #e4e7eb;
-  --text-secondary: #aab1ba;
-  --text-tertiary: #7f8893;
-  --text-disabled: #5f6872;
+  /* Stage 3A Frozen Semantic Color（已冻结语义颜色）：Dark 维护独立值，不由 Light 反色推导。 */
+  --color-primary: #91bce3;
+  --color-primary-strong: #47759e;
+  --color-primary-active: #3b6489;
+  --color-primary-soft: #1c354b;
+  --text-primary: #f1f4f7;
+  --text-secondary: #b8c0c9;
+  --text-muted: #9ba8b5; /* 元信息、时间与最弱但仍需可读的文字。 */
+  --text-tertiary: var(
+    --text-muted
+  ); /* 兼容既有消费者；Muted 是正式最弱可读文本角色。 */
+  --text-disabled: #68737f;
   --text-inverse: #ffffff;
-  --text-selected: var(--color-primary);
-  --bg-app: #1a1d21;
-  --bg-surface: #272b31;
-  --bg-surface-hover: #32373e;
-  --bg-selected: var(--color-primary-soft);
-  --bg-subtle: #24282e;
-  --bg-overlay: rgba(7, 9, 12, 0.68);
-  --border-default: #3d434b;
-  --border-subtle: rgba(174, 184, 196, 0.14);
-  --status-info: #7fa1bf;
-  --status-info-soft: #263744;
-  --status-success: #74a48f;
-  --status-success-soft: #263a33;
-  --status-warning: #c29a61;
-  --status-warning-soft: #403527;
-  --status-danger: #c68181;
-  --status-danger-soft: #432d2f;
-  --shadow-surface: 0 1px 2px rgb(0 0 0 / 18%), 0 10px 30px rgb(0 0 0 / 14%);
-  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 42%);
+  --text-selected: #91bce3;
+  --bg-app: #101820;
+  --bg-surface: #18222c;
+  --bg-subtle: #1d2934; /* 次级表面：分组内层、折叠内容与弱容器。 */
+  --bg-control: #202b36; /* 输入、选择器与紧凑操作控件表面。 */
+  --bg-surface-raised: #222e39;
+  --bg-surface-hover: #2a3743;
+  --bg-surface-pressed: #2e3b47;
+  --bg-selected: #1c354b;
+  --bg-overlay: rgba(4, 7, 10, 0.72);
+  --border-default: #354451;
+  --border-divider: #2e3c49; /* 行、卡片与内容分区的弱分隔线。 */
+  --border-subtle: var(
+    --border-divider
+  ); /* 兼容既有 Border / Separator 消费者。 */
+  --border-strong: #4a5967;
+  --status-info: #83b5de;
+  --status-info-strong: #3d6f98;
+  --status-info-soft: #1b3449;
+  --status-success: #7bc7a2;
+  --status-success-strong: #316d56;
+  --status-success-soft: #1b382d;
+  --status-warning: #e0b56d;
+  --status-warning-strong: #795525;
+  --status-warning-soft: #3e3322;
+  --status-danger: #ee929a;
+  --status-danger-strong: #8b3f48;
+  --status-danger-soft: #44262a;
+  --status-neutral: #a2adb8;
+  --status-neutral-soft: #28323c;
+  /* Mobile Visual V2 / Device List Dark：Dark 值独立维护，不从 Light 反色推导。 */
+  --device-list-text-primary: #f7fbff;
+  --device-list-page-background:
+    radial-gradient(circle at 20% 8%, rgb(26 64 112 / 28%), transparent 24%),
+    radial-gradient(circle at 82% 10%, rgb(36 92 164 / 18%), transparent 25%),
+    linear-gradient(180deg, #07111d 0%, #081521 100%);
+  --device-list-header-background: transparent;
+  --device-list-search-background: #182638;
+  --device-list-search-border: #27374a;
+  --device-list-search-shadow: inset 0 0 0 1px #27374a;
+  --device-list-search-color: #8f9fb4;
+  --device-list-search-disabled-color: #718197;
+  --device-list-search-input-color: #f7fbff;
+  --device-list-summary-background: #101d2d;
+  --device-list-summary-border: #27374a;
+  --device-list-summary-shadow: 0 16px 34px rgb(0 0 0 / 20%);
+  --device-list-summary-divider: #27374a;
+  --device-list-summary-label-color: #97a7bc;
+  --device-list-summary-selected-color: #d4dde9;
+  --device-list-summary-selected-value-color: #f3f6fa;
+  --device-list-summary-selected-label-color: #c3cedc;
+  --device-list-card-background: #101d2d;
+  --device-list-card-border: #27374a;
+  --device-list-card-shadow: 0 10px 24px rgb(0 0 0 / 16%);
+  --device-list-card-pressed-background: rgb(25 39 55 / 98%);
+  --device-list-card-pressed-border: rgb(58 77 101 / 86%);
+  --device-list-card-pressed-shadow: 0 3px 10px rgb(0 0 0 / 20%);
+  --device-list-card-meta-color: #9aa9bd;
+  --device-list-card-chevron-color: #9aa9bd;
+  --device-list-status-online: #62b99b;
+  --device-list-status-running: #83a7cf;
+  --device-list-status-offline: #d6deea;
+  --visual-v2-bottom-nav-background: rgb(8 18 30 / 92%);
+  --visual-v2-bottom-safe-area-background: #081521;
+  --visual-v2-bottom-nav-border-color: #27374a;
+  --visual-v2-bottom-nav-shadow: none;
+  --visual-v2-bottom-nav-inactive-color: #a2afc1;
+  --visual-v2-bottom-nav-active-color: #1f73ff;
+  --focus-ring-color: var(--color-primary);
+  /* Stage 3B Shadow：Dark 保持独立阴影基线，不从 Light 反推。 */
+  --shadow-card-contact: 0 1px 2px rgb(0 0 0 / 22%);
+  --shadow-card-offset-x: 0px;
+  --shadow-card-offset-y: 10px;
+  --shadow-card-blur: 28px;
+  --shadow-card-spread: 0px;
+  --shadow-card-opacity: 16%;
+  --shadow-card:
+    var(--shadow-card-contact),
+    var(--shadow-card-offset-x) var(--shadow-card-offset-y)
+      var(--shadow-card-blur) var(--shadow-card-spread)
+      rgb(0 0 0 / var(--shadow-card-opacity));
+  --shadow-raised-contact: 0 1px 2px rgb(0 0 0 / 28%);
+  --shadow-raised-offset-x: 0px;
+  --shadow-raised-offset-y: 5px;
+  --shadow-raised-blur: 14px;
+  --shadow-raised-spread: 0px;
+  --shadow-raised-opacity: 20%;
+  --shadow-raised: var(--shadow-raised-offset-x) var(--shadow-raised-offset-y)
+    var(--shadow-raised-blur) var(--shadow-raised-spread)
+    rgb(0 0 0 / var(--shadow-raised-opacity));
+  --shadow-control-highlight: inset 0 1px 0 rgb(255 255 255 / 6%);
+  --shadow-card-pressed: 0 1px 2px rgb(0 0 0 / 18%);
+  --shadow-header: 0 1px 0 rgb(0 0 0 / 34%);
+  --shadow-icon-button:
+    var(--shadow-control-highlight), var(--shadow-raised-contact),
+    var(--shadow-raised);
+  --shadow-icon-button-pressed:
+    inset 0 1px 2px rgb(0 0 0 / 36%), 0 1px 2px rgb(0 0 0 / 18%);
+  --shadow-tabbar: 0 -10px 28px rgb(0 0 0 / 18%);
+  --shadow-overlay-offset-x: 0px;
+  --shadow-overlay-offset-y: 22px;
+  --shadow-overlay-blur: 56px;
+  --shadow-overlay-spread: 0px;
+  --shadow-overlay-opacity: 46%;
+  --shadow-overlay: var(--shadow-overlay-offset-x)
+    var(--shadow-overlay-offset-y) var(--shadow-overlay-blur)
+    var(--shadow-overlay-spread) rgb(0 0 0 / var(--shadow-overlay-opacity));
 }

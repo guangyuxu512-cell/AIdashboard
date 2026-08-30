@@ -8,6 +8,7 @@ import App from '@/App.vue'
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import {
   MobileAppShell,
+  MobileBottomNavigation,
   MobileDetailHeader,
   MobileGlobalHeader,
 } from '@/shared/ui'
@@ -25,6 +26,12 @@ function createShellRouter() {
   const detailMeta = (title: string) => ({
     title,
     layout: 'detail' as const,
+    requiresAuth: false,
+    permission: null,
+  })
+  const toolMeta = (title: string) => ({
+    title,
+    layout: 'tool' as const,
     requiresAuth: false,
     permission: null,
   })
@@ -86,6 +93,18 @@ function createShellRouter() {
         component: pageStub,
         meta: detailMeta('移动端基础设施'),
       },
+      {
+        path: '/__visual-tuner',
+        name: MOBILE_ROUTE_NAMES.visualTokenTuner,
+        component: pageStub,
+        meta: toolMeta('视觉 Token 调参器'),
+      },
+      {
+        path: '/__icons',
+        name: MOBILE_ROUTE_NAMES.iconGallery,
+        component: pageStub,
+        meta: toolMeta('图标总览'),
+      },
     ],
   })
 }
@@ -110,6 +129,37 @@ afterEach(async () => {
 })
 
 describe('MobileAppShell V2', () => {
+  it('defines one symmetric shared detail-header anatomy', () => {
+    const wrapper = mount(MobileDetailHeader, {
+      props: { title: '设备详情' },
+    })
+    mountedWrappers.push(wrapper)
+
+    expect(
+      wrapper.get('[data-testid="mobile-detail-header-title"]').text(),
+    ).toBe('设备详情')
+    expect(wrapper.get('button[aria-label="返回"]').attributes('type')).toBe(
+      'button',
+    )
+    expect(
+      wrapper.get('.mobile-detail-header__back-icon').attributes(),
+    ).toMatchObject({
+      'data-icon-key': 'back',
+      'data-icon-role': 'action',
+      'aria-hidden': 'true',
+    })
+    expect(
+      wrapper
+        .get('.mobile-detail-header__back-icon')
+        .find('.van-icon-arrow-left')
+        .exists(),
+    ).toBe(true)
+    expect(
+      wrapper.get('[data-testid="mobile-detail-header-right"]').text(),
+    ).toBe('')
+    expect(wrapper.find('.mobile-global-header').exists()).toBe(false)
+  })
+
   it('renders the header, default content and bottom slots', () => {
     const wrapper = mount(MobileAppShell, {
       slots: {
@@ -131,19 +181,68 @@ describe('MobileAppShell V2', () => {
     )
   })
 
-  it('provides one global brand header with an empty notification badge', async () => {
+  it('orders the theme action before an empty notification badge', async () => {
     const wrapper = mount(MobileGlobalHeader)
     mountedWrappers.push(wrapper)
 
     expect(wrapper.text()).toContain('思余AI中控台')
-    expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(true)
+    const buttons = wrapper.findAll('button')
+    expect(buttons.map((button) => button.attributes('aria-label'))).toEqual([
+      '切换到深色主题',
+      '通知',
+    ])
+    expect(
+      buttons.every((button) => button.classes('mobile-icon-button')),
+    ).toBe(true)
+    const headerIcons = wrapper.findAll('.mobile-header-icon')
+    expect(headerIcons).toHaveLength(2)
+    expect(headerIcons.map((icon) => icon.attributes('data-icon-key'))).toEqual(
+      ['theme-dark', 'notification-bell'],
+    )
+    expect(
+      headerIcons.every((icon) => icon.find('svg.mobile-icon__glyph').exists()),
+    ).toBe(true)
     expect(wrapper.find('.van-badge--dot').exists()).toBe(false)
 
+    await buttons[0]!.trigger('click')
+    expect(wrapper.emitted('themeToggle')).toHaveLength(1)
     await wrapper.get('button[aria-label="通知"]').trigger('click')
     expect(wrapper.emitted('notificationClick')).toHaveLength(1)
 
+    await wrapper.setProps({ resolvedTheme: 'dark' })
+    expect(
+      wrapper.get('[data-testid="theme-toggle"]').attributes('aria-label'),
+    ).toBe('切换到浅色主题')
+    expect(wrapper.find('[data-icon-key="theme-light"]').exists()).toBe(true)
     await wrapper.setProps({ notificationDot: true })
     expect(wrapper.find('.van-badge--dot').exists()).toBe(true)
+  })
+
+  it('reuses one global header across every main route', async () => {
+    const { router, wrapper } = await mountAppAt('/devices')
+
+    for (const path of ['/devices', '/tasks', '/schedules', '/shops', '/me']) {
+      await router.push(path)
+      await flushPromises()
+
+      expect(wrapper.findAllComponents(MobileGlobalHeader)).toHaveLength(1)
+      if (path === '/devices') {
+        expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
+          '设备',
+        )
+        expect(
+          wrapper.getComponent(MobileGlobalHeader).props('pageTitle'),
+        ).toBe('设备')
+      } else {
+        expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
+          '思余AI中控台',
+        )
+        expect(
+          wrapper.getComponent(MobileGlobalHeader).props('pageTitle'),
+        ).toBeUndefined()
+      }
+      expect(wrapper.findComponent(MobileDetailHeader).exists()).toBe(false)
+    }
   })
 
   it('keeps the fixed five-entry order in one non-fixed shell tabbar', async () => {
@@ -151,6 +250,7 @@ describe('MobileAppShell V2', () => {
     const tabbar = wrapper.getComponent(VanTabbar)
     const items = wrapper.findAllComponents(VanTabbarItem)
 
+    expect(wrapper.findAllComponents(MobileBottomNavigation)).toHaveLength(1)
     expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
       '思余AI中控台',
     )
@@ -174,29 +274,78 @@ describe('MobileAppShell V2', () => {
       MOBILE_ROUTE_NAMES.shops,
       MOBILE_ROUTE_NAMES.profile,
     ])
+    expect(items.map((item) => item.attributes('data-testid'))).toEqual([
+      'mobile-bottom-navigation-devices',
+      'mobile-bottom-navigation-tasks',
+      'mobile-bottom-navigation-schedules',
+      'mobile-bottom-navigation-shops',
+      'mobile-bottom-navigation-profile',
+    ])
+    expect(
+      items.map((item) =>
+        item.find('[data-icon-role="navigation"]').attributes('data-icon-key'),
+      ),
+    ).toEqual([
+      'device-nav',
+      'task-nav',
+      'schedule-nav',
+      'shop-nav',
+      'profile-nav',
+    ])
   })
 
-  it('uses one detail header and hides bottom navigation on device detail', async () => {
+  it('maps every main and normal detail route to its navigation item', async () => {
+    const { router, wrapper } = await mountAppAt('/devices')
+    const routes = [
+      ['/devices', 'devices'],
+      ['/devices/device-1', 'devices'],
+      ['/tasks', 'tasks'],
+      ['/tasks/task-1', 'tasks'],
+      ['/schedules', 'schedules'],
+      ['/shops', 'shops'],
+      ['/me', 'profile'],
+    ] as const
+
+    for (const [path, activeKey] of routes) {
+      await router.push(path)
+      await flushPromises()
+
+      expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe(
+        activeKey,
+      )
+      expect(wrapper.findAllComponents(MobileBottomNavigation)).toHaveLength(1)
+    }
+  })
+
+  it('keeps one detail header and the five-entry navigation on device detail', async () => {
     const { router, wrapper } = await mountAppAt('/devices/device-1')
 
-    expect(wrapper.find('footer').exists()).toBe(false)
+    expect(wrapper.get('footer').findAllComponents(VanTabbarItem)).toHaveLength(
+      5,
+    )
+    expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe('devices')
     expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
     expect(wrapper.getComponent(MobileDetailHeader).props('title')).toBe(
       '设备详情',
     )
+    const backButton = wrapper.get('button[aria-label="返回"]')
+    expect(backButton.attributes('type')).toBe('button')
 
-    wrapper.getComponent(MobileDetailHeader).vm.$emit('back')
+    await backButton.trigger('click')
     await flushPromises()
 
     expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.devices)
   })
 
-  it('returns a task detail to its source device through the shared detail header', async () => {
+  it('keeps task navigation active and returns task detail to its source device', async () => {
     const { router, wrapper } = await mountAppAt(
       '/tasks/task-1?fromDeviceId=device-1',
     )
 
-    expect(wrapper.find('footer').exists()).toBe(false)
+    expect(wrapper.get('footer').findAllComponents(VanTabbarItem)).toHaveLength(
+      5,
+    )
+    expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe('tasks')
     expect(wrapper.getComponent(MobileDetailHeader).props('title')).toBe(
       '任务详情',
     )
@@ -214,11 +363,27 @@ describe('MobileAppShell V2', () => {
   it('returns the development foundation detail shell to home', async () => {
     const { router, wrapper } = await mountAppAt('/__foundation')
 
+    expect(wrapper.get('footer').findAllComponents(VanTabbarItem)).toHaveLength(
+      5,
+    )
+    expect(wrapper.getComponent(VanTabbar).props('modelValue')).toBe('')
     wrapper.getComponent(MobileDetailHeader).vm.$emit('back')
     await flushPromises()
 
     expect(router.currentRoute.value.name).toBe(MOBILE_ROUTE_NAMES.home)
   })
+
+  it.each(['/__visual-tuner', '/__icons'])(
+    'uses no product shell for independent development tool %s',
+    async (path) => {
+      const { wrapper } = await mountAppAt(path)
+
+      expect(wrapper.findComponent(MobileAppShell).exists()).toBe(false)
+      expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
+      expect(wrapper.findComponent(MobileBottomNavigation).exists()).toBe(false)
+      expect(wrapper.text()).toContain('页面内容')
+    },
+  )
 
   it('omits empty chrome and activates safe-area fallback classes', () => {
     const wrapper = mount(MobileAppShell, {

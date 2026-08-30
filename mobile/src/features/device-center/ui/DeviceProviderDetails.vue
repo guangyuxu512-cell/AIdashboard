@@ -20,7 +20,7 @@ function booleanText(value: boolean | null): string {
   <section class="device-provider-details" aria-label="提供方技术信息">
     <h3>提供方技术信息</h3>
     <p v-if="!inventories?.length" class="device-provider-details__empty">
-      暂无影刀技术明细
+      暂无信息
     </p>
     <VanCellGroup
       v-for="item in inventories"
@@ -73,7 +73,7 @@ function booleanText(value: boolean | null): string {
 .device-provider-details {
   display: grid;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .device-provider-details h3 {

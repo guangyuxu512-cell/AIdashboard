@@ -11,7 +11,15 @@ export type {
   TaskReadDto,
   TaskStatusDto,
 } from './api/contracts'
-export { getActiveTask, getTask, getTaskEvents, getTasks } from './api/task-api'
+export {
+  configureTaskDataSource,
+  getActiveTask,
+  getTask,
+  getTaskEvents,
+  getTasks,
+  resetTaskDataSource,
+} from './api/task-api'
+export type { TaskDataSource } from './api/task-api'
 export {
   isTerminalTaskStatus,
   TASK_STATUSES,

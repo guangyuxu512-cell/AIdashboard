@@ -13,7 +13,7 @@ describe('mobile router', () => {
       expect(route.meta).toEqual(
         expect.objectContaining({
           title: expect.any(String),
-          layout: expect.stringMatching(/^(main|detail)$/),
+          layout: expect.stringMatching(/^(main|detail|tool)$/),
           requiresAuth: expect.any(Boolean),
           permission: null,
         }),
@@ -118,6 +118,66 @@ describe('mobile router', () => {
         (route) => route.name === MOBILE_ROUTE_NAMES.foundation,
       )?.meta?.layout,
     ).toBe('detail')
+  })
+
+  it('registers the visual tuner only in the development route table', () => {
+    const developmentRoutes = createMobileRoutes({
+      includeVisualTokenTuner: true,
+    })
+    const productionRoutes = createMobileRoutes({
+      runtimeIsDevelopment: false,
+      includeVisualTokenTuner: true,
+    })
+
+    expect(
+      developmentRoutes.find(
+        (route) => route.name === MOBILE_ROUTE_NAMES.visualTokenTuner,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        path: '/__visual-tuner',
+        meta: expect.objectContaining({
+          layout: 'tool',
+          requiresAuth: false,
+          permission: null,
+        }),
+      }),
+    )
+    expect(
+      productionRoutes.some(
+        (route) => route.name === MOBILE_ROUTE_NAMES.visualTokenTuner,
+      ),
+    ).toBe(false)
+  })
+
+  it('registers the icon gallery only in the development route table', () => {
+    const developmentRoutes = createMobileRoutes({
+      includeIconGallery: true,
+    })
+    const productionRoutes = createMobileRoutes({
+      runtimeIsDevelopment: false,
+      includeIconGallery: true,
+    })
+
+    expect(
+      developmentRoutes.find(
+        (route) => route.name === MOBILE_ROUTE_NAMES.iconGallery,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        path: '/__icons',
+        meta: expect.objectContaining({
+          layout: 'tool',
+          requiresAuth: false,
+          permission: null,
+        }),
+      }),
+    )
+    expect(
+      productionRoutes.some(
+        (route) => route.name === MOBILE_ROUTE_NAMES.iconGallery,
+      ),
+    ).toBe(false)
   })
 
   it('uses hash history', () => {

@@ -10,6 +10,8 @@ const safeAreaFixture = {
 } as const
 
 interface MockApiOptions {
+  deviceTotal?: number
+  failDevicePage1Once?: boolean
   failDevicePage2Once?: boolean
   failDevicePage1AfterSuccessOnce?: boolean
   holdDevicePage1AfterSuccessOnce?: {
@@ -51,6 +53,20 @@ async function applySafeAreaFixture(page: Page): Promise<void> {
     root.style.setProperty('--safe-area-bottom', safeArea.bottom)
     root.style.setProperty('--safe-area-left', safeArea.left)
   }, safeAreaFixture)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const style = window.getComputedStyle(document.documentElement)
+        return {
+          top: style.getPropertyValue('--safe-area-top').trim(),
+          right: style.getPropertyValue('--safe-area-right').trim(),
+          bottom: style.getPropertyValue('--safe-area-bottom').trim(),
+          left: style.getPropertyValue('--safe-area-left').trim(),
+        }
+      }),
+    )
+    .toEqual(safeAreaFixture)
 }
 
 async function setThemeBeforeNavigation(
@@ -72,13 +88,13 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
-async function countCardsInsideMainViewport(
+async function countCardsInsideListViewport(
   page: Page,
   selector: string,
 ): Promise<number> {
   return page.locator(selector).evaluateAll((elements) => {
     const main = document
-      .querySelector<HTMLElement>('.mobile-app-shell__main')
+      .querySelector<HTMLElement>('[data-testid="device-list-scroll"]')
       ?.getBoundingClientRect()
     if (!main) return 0
     return elements.filter((element) => {
@@ -88,15 +104,40 @@ async function countCardsInsideMainViewport(
   })
 }
 
-async function scrollMainToBottom(page: Page): Promise<void> {
-  await page.locator('.mobile-app-shell__main').evaluate((element) => {
+async function isCardVisibleInsideListViewport(
+  page: Page,
+  selector: string,
+  index: number,
+): Promise<boolean> {
+  return page
+    .locator(selector)
+    .nth(index)
+    .evaluate((element) => {
+      const main = document
+        .querySelector<HTMLElement>('[data-testid="device-list-scroll"]')
+        ?.getBoundingClientRect()
+      if (!main) return false
+      const card = element.getBoundingClientRect()
+      return card.top < main.bottom && card.bottom > main.top
+    })
+}
+
+async function scrollDeviceListToBottom(page: Page): Promise<void> {
+  await page.getByTestId('device-list-scroll').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    element.dispatchEvent(new Event('scroll'))
+  })
+}
+
+async function scrollDetailToBottom(page: Page): Promise<void> {
+  await page.locator('.app-page').evaluate((element) => {
     element.scrollTop = element.scrollHeight
     element.dispatchEvent(new Event('scroll'))
   })
 }
 
 async function pullToRefresh(page: Page): Promise<void> {
-  const main = page.locator('.mobile-app-shell__main')
+  const main = page.getByTestId('device-list-scroll')
   await main.evaluate((element) => {
     element.scrollTop = 0
   })
@@ -128,7 +169,7 @@ function makeDevice(index: number) {
   return {
     device_id: `device-${index}`,
     display_name: `设备 ${index}`,
-    enabled: index !== 1,
+    enabled: index !== 4,
     location: index === 1 ? '华东仓' : null,
     note: index === 1 ? '主执行设备' : null,
     deleted_at: null,
@@ -220,7 +261,7 @@ function makeProviderInventory(deviceId: string) {
     device_id: deviceId,
     provider_code: 'yingdao',
     available: true,
-    provider_version: '3.4.5',
+    provider_version: '6.3.6',
     account_display: '测试账号',
     account_type: 'enterprise',
     enterprise_account: true,
@@ -231,9 +272,9 @@ function makeProviderInventory(deviceId: string) {
       status: 'ready',
       status_reason_code: null,
       status_reason: null,
-      provider_version: '3.4.5',
+      provider_version: '6.3.6',
       execution_available: true,
-      execution_version: '2.0.0',
+      execution_version: '6.3.6',
       execution_unavailable_reason: null,
       logged_in: true,
       account_display: '测试账号',
@@ -265,8 +306,8 @@ function makeCapabilities(deviceId: string) {
     device_id: deviceId,
     skill_id: skillId,
     display_name: displayName,
-    runtime: 'rpa',
-    provider: 'yingdao',
+    runtime: classification === 'business' ? 'python' : 'rpa',
+    provider: classification === 'business' ? null : 'yingdao',
     version: '1.0.0',
     classification,
     input_schema: null,
@@ -308,6 +349,7 @@ async function installMockApi(
     taskDetailRequests: [],
   }
   let devicePage2Failed = false
+  let devicePage1InitialFailed = false
   let devicePage1Succeeded = false
   let devicePage1FailedAfterSuccess = false
   let devicePage1HeldAfterSuccess = false
@@ -419,6 +461,15 @@ async function installMockApi(
       const pageNumber = Number(url.searchParams.get('page') ?? 1)
       const pageSize = Number(url.searchParams.get('page_size') ?? 20)
       if (
+        options.failDevicePage1Once &&
+        pageNumber === 1 &&
+        !devicePage1Succeeded &&
+        !devicePage1InitialFailed
+      ) {
+        devicePage1InitialFailed = true
+        return fulfillApiError(route, 'DATABASE_OPERATION_FAILED')
+      }
+      if (
         options.holdDevicePage1AfterSuccessOnce &&
         pageNumber === 1 &&
         devicePage1Succeeded &&
@@ -446,8 +497,9 @@ async function installMockApi(
         return fulfillApiError(route, '下一页设备加载失败')
       }
       if (pageNumber === 1) devicePage1Succeeded = true
+      const total = options.deviceTotal ?? 25
       const first = (pageNumber - 1) * pageSize + 1
-      const last = Math.min(pageNumber * pageSize, 25)
+      const last = Math.min(pageNumber * pageSize, total)
       return fulfillJson(route, {
         items:
           first > last
@@ -455,7 +507,7 @@ async function installMockApi(
             : Array.from({ length: last - first + 1 }, (_, index) =>
                 makeDevice(first + index),
               ),
-        total: 25,
+        total,
         page: pageNumber,
         page_size: pageSize,
       })
@@ -475,24 +527,51 @@ for (const width of viewportWidths) {
       const consoleErrors = collectConsoleErrors(page)
       await page.setViewportSize({ width, height: 844 })
       await setThemeBeforeNavigation(page, theme)
-      const state = await installMockApi(page)
+      const state = await installMockApi(page, { deviceTotal: 8 })
       await page.goto('/#/devices')
       await applySafeAreaFixture(page)
 
       const firstCard = page.getByTestId('device-card').first()
       await expect(firstCard).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      await expect(firstCard).toContainText('已停用')
-      await expect(firstCard).toContainText('在线')
-      await expect(firstCard).toContainText('同步订单')
-      await expect(firstCard).not.toContainText('正在执行订单同步')
-      await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
-      await expect(page.getByTestId('overview-online')).toHaveText('18')
-      await expect(page.getByTestId('overview-running')).toHaveText('1')
-      await expect(page.getByTestId('overview-offline')).toHaveText('1')
-      await expect(page.getByTestId('overview-running-hint')).toHaveText(
-        '已确认 20/20 台',
+      const themeButton = page.getByTestId('theme-toggle')
+      const bellButton = page.getByRole('button', { name: '通知' })
+      await expect(themeButton).toHaveAttribute(
+        'aria-label',
+        theme === 'light' ? '切换到深色主题' : '切换到浅色主题',
       )
+      expect((await themeButton.boundingBox())?.height).toBeGreaterThanOrEqual(
+        44,
+      )
+      expect((await bellButton.boundingBox())?.height).toBeGreaterThanOrEqual(
+        44,
+      )
+      expect((await themeButton.boundingBox())!.x).toBeLessThan(
+        (await bellButton.boundingBox())!.x,
+      )
+      await expect(firstCard.getByTestId('device-card-runtime')).toHaveText(
+        '运行中',
+      )
+      await expect(firstCard).not.toContainText('同步订单')
+      await expect(firstCard).not.toContainText('正在执行订单同步')
+      await expect(firstCard.locator('.device-list-card__meta')).toContainText(
+        /心跳 .*已启用/,
+      )
+      await expect(firstCard).not.toContainText('Worker')
+      await expect(page.getByTestId('summary-all')).toHaveText('8')
+      await expect(page.getByTestId('summary-online')).toHaveText('6')
+      await expect(page.getByTestId('summary-running')).toHaveText('1')
+      await expect(page.getByTestId('summary-offline')).toHaveText('1')
+      await expect(page.locator('.mobile-summary-strip button')).toHaveCount(4)
+      expect(
+        await page
+          .locator('.mobile-summary-strip button')
+          .evaluateAll((buttons) =>
+            buttons.every(
+              (button) => button.getBoundingClientRect().height >= 44,
+            ),
+          ),
+      ).toBe(true)
       await expect
         .poll(
           () =>
@@ -502,8 +581,19 @@ for (const width of viewportWidths) {
               ),
             ).size,
         )
-        .toBe(20)
-      expect(state.activeTaskRequests).toHaveLength(20)
+        .toBe(8)
+      const activeRequestCounts = new Map<string, number>()
+      for (const request of state.activeTaskRequests) {
+        const deviceId = new URL(request).pathname.split('/').at(-1) ?? ''
+        activeRequestCounts.set(
+          deviceId,
+          (activeRequestCounts.get(deviceId) ?? 0) + 1,
+        )
+      }
+      expect(activeRequestCounts.size).toBe(8)
+      expect(
+        [...activeRequestCounts.values()].every((count) => count >= 1),
+      ).toBe(true)
 
       const mainButton = firstCard.getByRole('button', {
         name: '查看设备：设备 1',
@@ -511,19 +601,23 @@ for (const width of viewportWidths) {
       expect((await mainButton.boundingBox())?.height).toBeGreaterThanOrEqual(
         44,
       )
-      const taskButton = firstCard.getByRole('button', {
-        name: '查看任务：同步订单',
-      })
-      expect((await taskButton.boundingBox())?.height).toBeGreaterThanOrEqual(
-        44,
-      )
-      expect((await firstCard.boundingBox())?.height).toBeLessThan(150)
+      await expect(
+        firstCard.getByRole('button', { name: '查看任务：同步订单' }),
+      ).toHaveCount(0)
+      expect((await firstCard.boundingBox())?.height).toBeLessThan(165)
       expect(
-        await countCardsInsideMainViewport(page, '[data-testid="device-card"]'),
-      ).toBeGreaterThanOrEqual(width >= 390 ? 4 : 3)
+        await countCardsInsideListViewport(page, '[data-testid="device-card"]'),
+      ).toBeGreaterThanOrEqual(3)
+      expect(
+        await isCardVisibleInsideListViewport(
+          page,
+          '[data-testid="device-card"]',
+          3,
+        ),
+      ).toBe(true)
 
       const titleStyle = await firstCard
-        .locator('.device-list-card__heading strong')
+        .getByTestId('device-card-name')
         .evaluate((element) => {
           const style = window.getComputedStyle(element)
           return {
@@ -538,9 +632,57 @@ for (const width of viewportWidths) {
         whiteSpace: 'nowrap',
       })
 
+      const cardAnatomy = await firstCard.evaluate((card) => {
+        const box = (testId: string) =>
+          card
+            .querySelector<HTMLElement>(`[data-testid="${testId}"]`)!
+            .getBoundingClientRect()
+        const root = card.getBoundingClientRect()
+        const leading = box('device-card-leading')
+        const content = box('device-card-name')
+        const chevron = box('device-card-chevron')
+        const artwork = card
+          .querySelector<HTMLElement>('.device-status-artwork')!
+          .getBoundingClientRect()
+        const chevronStyle = window.getComputedStyle(
+          card.querySelector<HTMLElement>(
+            '[data-testid="device-card-chevron"]',
+          )!,
+        )
+        return {
+          leadingLeft: leading.left,
+          leadingRight: leading.right,
+          leadingWidth: leading.width,
+          artworkWidth: artwork.width,
+          artworkHeight: artwork.height,
+          contentLeft: content.left,
+          contentRight: content.right,
+          chevronWidth: chevron.width,
+          chevronIconSize: Number.parseFloat(chevronStyle.fontSize),
+          chevronRight: chevron.right,
+          chevronCenterDelta: Math.abs(
+            chevron.top + chevron.height / 2 - (root.top + root.height / 2),
+          ),
+        }
+      })
+      expect(cardAnatomy.leadingLeft).toBeLessThan(cardAnatomy.contentLeft)
+      expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
+        cardAnatomy.contentLeft,
+      )
+      expect(cardAnatomy.leadingWidth).toBe(102)
+      expect(cardAnatomy.artworkWidth).toBe(80)
+      expect(cardAnatomy.artworkHeight).toBe(80)
+      expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
+        cardAnatomy.chevronRight,
+      )
+      expect(cardAnatomy.chevronWidth).toBe(16)
+      expect(cardAnatomy.chevronIconSize).toBe(16)
+      expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
+      expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
+
       const overviewLayout = await page.evaluate(() => {
         const cards = Array.from(
-          document.querySelectorAll<HTMLElement>('.device-overview__card'),
+          document.querySelectorAll<HTMLElement>('.mobile-summary-strip__item'),
         )
         const tokenColor = (token: string) => {
           const probe = document.createElement('span')
@@ -553,23 +695,126 @@ for (const width of viewportWidths) {
         return {
           columnCount: window
             .getComputedStyle(
-              document.querySelector<HTMLElement>('.device-overview__cards')!,
+              document.querySelector<HTMLElement>(
+                '.mobile-summary-strip__surface',
+              )!,
             )
             .gridTemplateColumns.split(' ').length,
           tops: cards.map((card) => card.getBoundingClientRect().top),
           colors: cards.map(
-            (card) => window.getComputedStyle(card.querySelector('dd')!).color,
+            (card) =>
+              window.getComputedStyle(
+                card.querySelector<HTMLElement>(
+                  '.mobile-summary-strip__value',
+                )!,
+              ).color,
           ),
-          expectedColors: [
-            tokenColor('--status-success'),
-            tokenColor('--status-info'),
-            tokenColor('--text-secondary'),
-          ],
+          numberFontSizes: cards.map(
+            (card) =>
+              window.getComputedStyle(
+                card.querySelector<HTMLElement>(
+                  '.mobile-summary-strip__value',
+                )!,
+              ).fontSize,
+          ),
+          expectedNumberFontSize: window
+            .getComputedStyle(document.documentElement)
+            .getPropertyValue('--device-list-summary-value-size')
+            .trim(),
+          surfaceBackgrounds: [
+            '.mobile-summary-strip__surface',
+            '.device-list-card',
+          ].map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).backgroundColor,
+          ),
+          surfaceShadows: [
+            '.mobile-summary-strip__surface',
+            '.device-list-card',
+          ].map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).boxShadow,
+          ),
+          expectedSummaryBackground: tokenColor(
+            '--device-list-summary-background',
+          ),
+          expectedCardBackground: tokenColor('--device-list-card-background'),
+          expectedSummaryShadow: (() => {
+            const probe = document.createElement('span')
+            probe.style.boxShadow = 'var(--device-list-summary-shadow)'
+            document.body.append(probe)
+            const shadow = window.getComputedStyle(probe).boxShadow
+            probe.remove()
+            return shadow
+          })(),
+          expectedCardShadow: (() => {
+            const probe = document.createElement('span')
+            probe.style.boxShadow = 'var(--device-list-card-shadow)'
+            document.body.append(probe)
+            const shadow = window.getComputedStyle(probe).boxShadow
+            probe.remove()
+            return shadow
+          })(),
+          summaryToFirstCardGap:
+            document
+              .querySelector<HTMLElement>('.device-list-card')!
+              .getBoundingClientRect().top -
+            document
+              .querySelector<HTMLElement>('.mobile-summary-strip__surface')!
+              .getBoundingClientRect().bottom,
         }
       })
-      expect(overviewLayout.columnCount).toBe(3)
+      expect(overviewLayout.columnCount).toBe(4)
       expect(new Set(overviewLayout.tops.map(Math.round)).size).toBe(1)
-      expect(overviewLayout.colors).toEqual(overviewLayout.expectedColors)
+      expect(new Set(overviewLayout.colors).size).toBeLessThanOrEqual(2)
+      expect(
+        overviewLayout.numberFontSizes.every(
+          (fontSize) => fontSize === overviewLayout.expectedNumberFontSize,
+        ),
+      ).toBe(true)
+      expect(overviewLayout.surfaceBackgrounds).toEqual([
+        overviewLayout.expectedSummaryBackground,
+        overviewLayout.expectedCardBackground,
+      ])
+      expect(overviewLayout.surfaceShadows).toEqual([
+        overviewLayout.expectedSummaryShadow,
+        overviewLayout.expectedCardShadow,
+      ])
+      expect(overviewLayout.summaryToFirstCardGap).toBeCloseTo(14, 1)
+
+      if (width === 390 && theme === 'light') {
+        const meta = firstCard.locator('.device-list-card__meta')
+        const metaBox = await meta.boundingBox()
+        if (!metaBox) throw new Error('未找到设备非交互信息区域')
+        await page.mouse.move(
+          metaBox.x + metaBox.width / 2,
+          metaBox.y + metaBox.height / 2,
+        )
+        await page.mouse.down()
+        await expect
+          .poll(() =>
+            firstCard.evaluate(
+              (element) => window.getComputedStyle(element).transform,
+            ),
+          )
+          .not.toBe('none')
+        await page.screenshot({
+          path: testInfo.outputPath('device-card-pressed-390-light.png'),
+        })
+        await page.mouse.move(0, 0)
+        await page.mouse.up()
+        await expect
+          .poll(() =>
+            firstCard.evaluate(
+              (element) => window.getComputedStyle(element).transform,
+            ),
+          )
+          .toBe('none')
+      }
 
       if (width === 390) {
         await page.screenshot({
@@ -583,43 +828,187 @@ for (const width of viewportWidths) {
           if (!element) throw new Error(`未找到布局节点：${selector}`)
           return window.getComputedStyle(element)
         }
+        const controls = document
+          .querySelector<HTMLElement>('[data-testid="device-list-controls"]')!
+          .getBoundingClientRect()
+        const listScroll = document
+          .querySelector<HTMLElement>('[data-testid="device-list-scroll"]')!
+          .getBoundingClientRect()
+        const metricHeights = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '.mobile-summary-strip__metric',
+          ),
+        ).map((element) => element.getBoundingClientRect().height)
         return {
-          toolbarLeft: style('.device-center-page__toolbar').paddingLeft,
-          toolbarRight: style('.device-center-page__toolbar').paddingRight,
+          headerHeight: style('.mobile-global-header').height,
+          searchHeight: style('.mobile-search-field').height,
+          summaryHeight: style('.mobile-summary-strip').height,
+          controlsLeft: style('[data-testid="device-list-controls"]')
+            .paddingLeft,
+          controlsRight: style('[data-testid="device-list-controls"]')
+            .paddingRight,
+          controlsBeforeList: controls.bottom <= listScroll.top + 0.5,
+          metricHeights,
           listLeft: style('.device-list').paddingLeft,
           listRight: style('.device-list').paddingRight,
+          listOverflowY: style('[data-testid="device-list-scroll"]').overflowY,
+          listScrollbarWidth: style('[data-testid="device-list-scroll"]')
+            .scrollbarWidth,
+          shellMainOverflowY: style('.mobile-app-shell__main').overflowY,
           footerBottom: style('.mobile-app-shell__bottom').paddingBottom,
+          bottomNavHeight: style('.van-tabbar').height,
           tabbarPosition: style('.van-tabbar').position,
         }
       })
       expect(layout).toMatchObject({
-        toolbarLeft: safeAreaFixture.left,
-        toolbarRight: safeAreaFixture.right,
+        headerHeight: '66px',
+        searchHeight: '44px',
+        summaryHeight: '90px',
+        controlsLeft: safeAreaFixture.left,
+        controlsRight: safeAreaFixture.right,
+        controlsBeforeList: true,
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
+        listOverflowY: 'auto',
+        listScrollbarWidth: 'none',
+        shellMainOverflowY: 'hidden',
         footerBottom: safeAreaFixture.bottom,
+        bottomNavHeight: '64px',
       })
+      expect(layout.metricHeights.every((height) => height >= 44)).toBe(true)
       expect(layout.tabbarPosition).not.toBe('fixed')
       await expectNoHorizontalOverflow(page)
 
       await mainButton.click()
       await expect(page.getByTestId('device-detail')).toBeVisible()
-      await expect(page.getByTestId('provider-inventory')).toContainText('就绪')
-      await expect(page.getByTestId('provider-inventory')).toContainText(
-        '账号测试账号',
+      await expect(page.getByTestId('device-summary-device')).toContainText(
+        /设备 1在线执行中Worker \d/,
       )
-      await expect(page.getByTestId('provider-inventory')).toContainText(
-        '提供方版本3.4.5',
+      await expect(page.getByTestId('device-summary-yingdao')).toContainText(
+        '影刀账号已登录测试账号 · 6.3.6',
       )
-      await expect(page.getByTestId('capability-summary')).toContainText(
-        '业务能力1 个',
+      await expect(
+        page.getByTestId('device-summary-yingdao'),
+      ).not.toContainText('Provider')
+      await expect(
+        page.locator('.device-capability-panel__tab-label'),
+      ).toHaveText(['影刀应用', 'Skills'])
+      await expect(
+        page.locator('.device-capability-panel__tab-count'),
+      ).toHaveText(['1', '1'])
+      for (const action of ['device-capability-refresh']) {
+        const box = await page.getByTestId(action).boundingBox()
+        expect(box?.width).toBeGreaterThanOrEqual(44)
+        expect(box?.height).toBeGreaterThanOrEqual(44)
+      }
+      for (const actionName of ['配置：订单应用', '运行：订单应用']) {
+        const box = await page
+          .getByRole('button', { name: actionName })
+          .boundingBox()
+        expect(box?.width).toBeGreaterThanOrEqual(44)
+        expect(box?.height).toBeGreaterThanOrEqual(44)
+      }
+      const refreshVisualSize = await page
+        .getByTestId('device-capability-refresh')
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element, '::before')
+          return {
+            width: Number.parseFloat(style.width),
+            height: Number.parseFloat(style.height),
+          }
+        })
+      expect(refreshVisualSize).toEqual({ width: 26, height: 26 })
+      const capabilityActionVisualHeights = await page
+        .locator(
+          '.device-capability-panel__action > .van-button__content > span',
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) =>
+            Number.parseFloat(window.getComputedStyle(element).height),
+          ),
+        )
+      expect(capabilityActionVisualHeights).toEqual([28, 28])
+      const capabilityActionBoxes = await Promise.all(
+        ['配置：订单应用', '运行：订单应用'].map(async (name) =>
+          page.getByRole('button', { name }).boundingBox(),
+        ),
       )
-      await expect(page.getByTestId('provider-inventory')).not.toContainText(
+      const [configureBox, runBox] = capabilityActionBoxes
+      if (!configureBox || !runBox) {
+        throw new Error('未找到能力操作触控区域')
+      }
+      expect(configureBox.x + configureBox.width <= runBox.x + 0.5).toBe(true)
+      await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
+      await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
+        'height',
+        '51px',
+      )
+      const detailSurfaces = await page.evaluate(() => {
+        const selectors = [
+          '[data-testid="device-detail"]',
+          '[data-testid="device-capability-panel"]',
+          '[data-testid="device-current-task"] [data-testid="task-card"]',
+        ]
+        const resolveColor = (token: string) => {
+          const probe = document.createElement('span')
+          probe.style.color = `var(${token})`
+          document.body.append(probe)
+          const color = window.getComputedStyle(probe).color
+          probe.remove()
+          return color
+        }
+        const resolveShadow = (value: string) => {
+          const probe = document.createElement('span')
+          probe.style.boxShadow = value
+          document.body.append(probe)
+          const shadow = window.getComputedStyle(probe).boxShadow
+          probe.remove()
+          return shadow
+        }
+        return {
+          expectedCardBackground: resolveColor('--bg-surface-raised'),
+          expectedSectionBackground: resolveColor('--bg-surface'),
+          expectedPanelShadow: resolveShadow(
+            'var(--appearance-border-surface)',
+          ),
+          expectedCardShadow: resolveShadow(
+            'var(--appearance-border-surface), var(--shadow-card)',
+          ),
+          backgrounds: selectors.map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).backgroundColor,
+          ),
+          shadows: selectors.map(
+            (selector) =>
+              window.getComputedStyle(
+                document.querySelector<HTMLElement>(selector)!,
+              ).boxShadow,
+          ),
+        }
+      })
+      expect(detailSurfaces.backgrounds).toEqual([
+        detailSurfaces.expectedCardBackground,
+        detailSurfaces.expectedSectionBackground,
+        detailSurfaces.expectedCardBackground,
+      ])
+      expect(detailSurfaces.shadows).toEqual([
+        detailSurfaces.expectedCardShadow,
+        detailSurfaces.expectedPanelShadow,
+        detailSurfaces.expectedCardShadow,
+      ])
+      const currentTask = page.getByTestId('device-current-task')
+      await expect(currentTask.getByTestId('task-card')).toBeVisible()
+      await expect(currentTask.getByTestId('task-card-chevron')).toBeVisible()
+      await expect(currentTask.locator('.van-progress')).toHaveCount(0)
+      await expect(page.locator('.active-task-summary')).toHaveCount(0)
+      await expect(page.getByTestId('device-detail')).not.toContainText(
         '企业账号',
       )
-      await expect(page.getByTestId('capability-summary')).not.toContainText(
-        '未分类能力',
-      )
+      await expect(
+        page.getByTestId('device-capability-panel'),
+      ).not.toContainText('未分类能力')
       const moreInformation = page.getByTestId('device-more-information')
       await expect(
         moreInformation.locator('.van-collapse-item__content'),
@@ -628,6 +1017,21 @@ for (const width of viewportWidths) {
         await page.screenshot({
           path: testInfo.outputPath('device-detail-390-light.png'),
         })
+        const requestCountBeforeActions = state.methods.length
+        for (const action of [
+          page.getByTestId('device-capability-refresh'),
+          page.getByRole('button', { name: '配置：订单应用' }),
+          page.getByRole('button', { name: '运行：订单应用' }),
+        ]) {
+          await action.click()
+          await expect(
+            page.getByText('功能建设中', { exact: true }).last(),
+          ).toBeVisible()
+        }
+        expect(state.methods).toHaveLength(requestCountBeforeActions)
+        await expect(page.locator('body')).not.toContainText(
+          /应用已启动|能力已刷新|参数已保存/,
+        )
       }
       await moreInformation.getByText('更多信息', { exact: true }).click()
       await expect(
@@ -636,18 +1040,55 @@ for (const width of viewportWidths) {
       await expect(
         page.getByTestId('capability-technical-details'),
       ).toContainText('未分类能力1 个')
-      await expect(page.locator('.van-tabbar')).toHaveCount(0)
+      await expect(page.locator('.van-tabbar-item')).toHaveText([
+        '设备',
+        '任务',
+        '计划',
+        '店铺',
+        '我的',
+      ])
+      await expect(
+        page.locator('.van-tabbar-item--active').getByText('设备', {
+          exact: true,
+        }),
+      ).toBeVisible()
       const detailSafeArea = await page
         .locator('.app-page')
         .evaluate((element) => {
           const style = window.getComputedStyle(element)
-          return { left: style.paddingLeft, right: style.paddingRight }
+          return {
+            left: style.paddingLeft,
+            right: style.paddingRight,
+            scrollbarWidth: style.scrollbarWidth,
+          }
         })
       expect(detailSafeArea).toEqual({
         left: safeAreaFixture.left,
         right: safeAreaFixture.right,
+        scrollbarWidth: 'none',
       })
-      await scrollMainToBottom(page)
+      if (width === 390 && theme === 'light') {
+        const detailScroll = page.getByRole('region', {
+          name: '设备详情内容',
+        })
+        await detailScroll.evaluate((element) => {
+          element.scrollTop = 0
+        })
+        await detailScroll.focus()
+        await detailScroll.press('PageDown')
+        await expect
+          .poll(() => detailScroll.evaluate((element) => element.scrollTop))
+          .toBeGreaterThan(0)
+        await page.waitForTimeout(500)
+        await detailScroll.evaluate((element) => {
+          element.scrollTop = 0
+          element.blur()
+        })
+        await expect
+          .poll(() => detailScroll.evaluate((element) => element.scrollTop))
+          .toBe(0)
+      }
+      await scrollDetailToBottom(page)
       await expectNoHorizontalOverflow(page)
 
       await page.getByRole('button', { name: '查看任务：同步订单' }).click()
@@ -659,7 +1100,10 @@ for (const width of viewportWidths) {
       await expectNoHorizontalOverflow(page)
       expect(state.taskDetailRequests).toHaveLength(1)
 
-      await page.locator('.van-nav-bar__left').click()
+      await page
+        .getByTestId('mobile-detail-header')
+        .getByRole('button', { name: '返回' })
+        .click()
       await expect(page).toHaveURL(/\/devices\/device-1$/)
       await expect(page.getByTestId('device-detail')).toBeVisible()
       expect(state.methods.every((method) => method === 'GET')).toBe(true)
@@ -667,6 +1111,156 @@ for (const width of viewportWidths) {
     })
   }
 }
+
+for (const height of [640, 740, 932] as const) {
+  test(`设备列表在 390x${height} 真实高度下分配剩余空间并独立滚动`, async ({
+    page,
+  }) => {
+    const consoleErrors = collectConsoleErrors(page)
+    await page.setViewportSize({ width: 390, height })
+    await setThemeBeforeNavigation(page, 'light')
+    await installMockApi(page, { deviceTotal: 20 })
+    await page.goto('/#/devices')
+    await expect(page.getByTestId('device-card')).toHaveCount(20)
+
+    const before = await page.evaluate(() => {
+      const box = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)!.getBoundingClientRect()
+      const header = box('[data-testid="mobile-shell-header"]')
+      const controls = box('[data-testid="device-list-controls"]')
+      const list = box('[data-testid="device-list-scroll"]')
+      const footer = box('[data-testid="mobile-shell-bottom"]')
+      const scroll = document.querySelector<HTMLElement>(
+        '[data-testid="device-list-scroll"]',
+      )!
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        headerTop: header.top,
+        controlsAfterHeader: controls.top >= header.bottom - 0.5,
+        listAfterControls: list.top >= controls.bottom - 0.5,
+        footerBottom: footer.bottom,
+        listHeight: list.height,
+        listScrollable: scroll.scrollHeight > scroll.clientHeight,
+        documentScrollable:
+          document.documentElement.scrollHeight >
+          document.documentElement.clientHeight,
+        horizontalOverflow:
+          document.documentElement.scrollWidth > window.innerWidth,
+      }
+    })
+
+    expect(before).toMatchObject({
+      viewport: { width: 390, height },
+      headerTop: 0,
+      controlsAfterHeader: true,
+      listAfterControls: true,
+      footerBottom: height,
+      listScrollable: true,
+      documentScrollable: false,
+      horizontalOverflow: false,
+    })
+    expect(before.listHeight).toBeGreaterThan(120)
+
+    const list = page.getByTestId('device-list-scroll')
+    await list.evaluate((element) => {
+      element.scrollTop = 220
+    })
+    await expect
+      .poll(() => list.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0)
+    await expectNoHorizontalOverflow(page)
+    expect(consoleErrors).toEqual([])
+  })
+}
+
+test('20 条以上设备只滚动 Card List，固定区域保持原位', async ({
+  page,
+}, testInfo) => {
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setThemeBeforeNavigation(page, 'light')
+  await installMockApi(page, { deviceTotal: 20 })
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('device-card').first()).toBeVisible()
+  await expect(page.getByTestId('device-card')).toHaveCount(20)
+  await expect(page.getByTestId('summary-running')).not.toHaveText('—')
+
+  const readLayout = () =>
+    page.evaluate(() => {
+      const top = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)!.getBoundingClientRect()
+          .top
+      const scroll = document.querySelector<HTMLElement>(
+        '[data-testid="device-list-scroll"]',
+      )!
+      return {
+        headerTop: top('[data-testid="mobile-shell-header"]'),
+        controlsTop: top('[data-testid="device-list-controls"]'),
+        summaryTop: top('.mobile-summary-strip'),
+        bottomTop: top('[data-testid="mobile-shell-bottom"]'),
+        firstCardTop: top('[data-testid="device-card"]'),
+        listScrollTop: scroll.scrollTop,
+        listScrollable: scroll.scrollHeight > scroll.clientHeight,
+        scrollbarWidth: window.getComputedStyle(scroll).scrollbarWidth,
+        shellScrollTop: document.querySelector<HTMLElement>(
+          '.mobile-app-shell__main',
+        )!.scrollTop,
+        documentScrollTop: document.scrollingElement?.scrollTop ?? 0,
+        documentScrollable:
+          (document.scrollingElement?.scrollHeight ?? 0) >
+          (document.scrollingElement?.clientHeight ?? 0),
+      }
+    })
+
+  const before = await readLayout()
+  expect(before.listScrollable).toBe(true)
+  expect(before.scrollbarWidth).toBe('none')
+  expect(before.documentScrollable).toBe(false)
+  const deviceScroll = page.getByTestId('device-list-scroll')
+  await deviceScroll.focus()
+  await page.keyboard.press('PageDown')
+  await expect
+    .poll(() => deviceScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+  await page.waitForTimeout(500)
+  await deviceScroll.evaluate((element) => {
+    element.scrollTop = 0
+    element.blur()
+  })
+  await expect
+    .poll(() => deviceScroll.evaluate((element) => element.scrollTop))
+    .toBe(0)
+  await page.screenshot({
+    path: testInfo.outputPath('layout-device-390-light-top.png'),
+  })
+  await deviceScroll.evaluate((element) => {
+    element.scrollTop = 320
+    element.dispatchEvent(new Event('scroll'))
+  })
+  await expect
+    .poll(() => deviceScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+  const after = await readLayout()
+
+  expect(after.headerTop).toBeCloseTo(before.headerTop, 1)
+  expect(after.controlsTop).toBeCloseTo(before.controlsTop, 1)
+  expect(after.summaryTop).toBeCloseTo(before.summaryTop, 1)
+  expect(after.bottomTop).toBeCloseTo(before.bottomTop, 1)
+  expect(after.firstCardTop).toBeLessThan(before.firstCardTop)
+  expect(after.shellScrollTop).toBe(0)
+  expect(after.documentScrollTop).toBe(0)
+  await page.screenshot({
+    path: testInfo.outputPath('layout-device-390-light-mid.png'),
+  })
+
+  await scrollDeviceListToBottom(page)
+  await expect(page.getByText('设备 20', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('mobile-shell-header')).toBeVisible()
+  await expect(page.getByTestId('device-list-controls')).toBeVisible()
+  await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  expect(consoleErrors).toEqual([])
+})
 
 test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设备导航', async ({
   page,
@@ -689,13 +1283,14 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await page.goto('/#/devices')
 
   await expect(page.getByTestId('device-card').first()).toBeVisible()
-  await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
-  await expect(page.getByTestId('overview-online')).toHaveText('18')
-  await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-offline')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 20/20 台',
-  )
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
+  await expect(page.getByTestId('summary-online')).toHaveText('—')
+  await expect(page.getByTestId('summary-running')).toHaveText('—')
+  await expect(page.getByTestId('summary-offline')).toHaveText('—')
+  await expect(page.getByTestId('summary-metric-online')).toBeDisabled()
+  await expect(page.getByTestId('summary-metric-running')).toBeDisabled()
+  await expect(page.getByTestId('summary-metric-offline')).toBeDisabled()
+  await expect(page.getByTestId('device-search')).toBeDisabled()
   await expect
     .poll(() => firstPageDeviceIds.map(activeRequestCount))
     .toEqual(firstPageDeviceIds.map(() => 1))
@@ -708,15 +1303,16 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   ])
 
   const activeRequestIndexBeforePage2 = state.activeTaskRequests.length
-  await scrollMainToBottom(page)
+  await scrollDeviceListToBottom(page)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前已加载 25 台设备')).toBeVisible()
-  await expect(page.getByTestId('overview-online')).toHaveText('23')
-  await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-offline')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 25/25 台',
-  )
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
+  await expect(page.getByTestId('summary-online')).toHaveText('23')
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
+  await expect(page.getByTestId('summary-offline')).toHaveText('1')
+  await expect(page.getByTestId('summary-metric-online')).toBeEnabled()
+  await expect(page.getByTestId('summary-metric-running')).toBeEnabled()
+  await expect(page.getByTestId('summary-metric-offline')).toBeEnabled()
+  await expect(page.getByTestId('device-search')).toBeEnabled()
   await expect
     .poll(() => secondPageDeviceIds.map(activeRequestCount))
     .toEqual(secondPageDeviceIds.map(() => 1))
@@ -736,6 +1332,21 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
     }),
   ).toBe(true)
 
+  await page.getByTestId('summary-metric-offline').click()
+  await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await page.getByTestId('summary-metric-offline').click()
+  await expect(page.getByTestId('device-card')).toHaveCount(25)
+
+  await page.getByTestId('device-search').fill('设备 25')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 25')
+  await page.getByTestId('device-search').fill('')
+  await expect(page.getByTestId('device-card')).toHaveCount(25)
+
   const requestCountBeforeRefresh = state.deviceListRequests.length
   await pullToRefresh(page)
   await expect
@@ -752,8 +1363,8 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
       .every((request) => new URL(request).searchParams.get('page') === '1'),
   ).toBe(true)
   await expect(page.getByText('设备 25', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('当前已加载 20 台设备')).toBeVisible()
-  await expect(page.getByTestId('overview-online')).toHaveText('18')
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
+  await expect(page.getByTestId('summary-online')).toHaveText('—')
   await page.waitForTimeout(100)
   const removedObserverRequestCounts =
     secondPageDeviceIds.map(activeRequestCount)
@@ -769,33 +1380,50 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   expect(consoleErrors).toEqual([])
 })
 
-test('设备后台刷新失败保留旧卡片并遵守左右安全区', async ({ page }) => {
+test('设备后台刷新失败保留旧卡片且不展示实现原因', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await installMockApi(page, { failDevicePage1AfterSuccessOnce: true })
   await page.goto('/#/devices')
   await applySafeAreaFixture(page)
   await expect(page.getByTestId('device-card').first()).toBeVisible()
-  await scrollMainToBottom(page)
+  await scrollDeviceListToBottom(page)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
 
   await pullToRefresh(page)
-  const backgroundError = page.getByTestId('device-background-error')
-  await expect(backgroundError).toBeVisible()
-  await expect(backgroundError).toContainText('设备后台刷新失败')
+  await expect(page.getByText('刷新失败', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('device-background-error')).toHaveCount(0)
+  await expect(page.getByText('设备后台刷新失败')).toHaveCount(0)
   await expect(page.getByTestId('device-card').first()).toBeVisible()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前已加载 25 台设备')).toBeVisible()
-  await expect(page.getByTestId('overview-online')).toHaveText('23')
-
-  const padding = await backgroundError.evaluate((element) => {
-    const style = window.getComputedStyle(element)
-    return { left: style.paddingLeft, right: style.paddingRight }
-  })
-  expect(padding).toEqual({
-    left: safeAreaFixture.left,
-    right: safeAreaFixture.right,
-  })
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
+  await expect(page.getByTestId('summary-online')).toHaveText('23')
   await expectNoHorizontalOverflow(page)
+})
+
+test('设备首次请求失败进入简洁错误并可重试成功', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installMockApi(page, { failDevicePage1Once: true })
+  await page.goto('/#/devices')
+
+  const errorState = page.getByTestId('device-error')
+  await expect(errorState).toBeVisible()
+  await expect(errorState).toContainText('加载失败')
+  await expect(errorState).not.toContainText('DATABASE_OPERATION_FAILED')
+  await expect(page.getByTestId('device-loading')).toHaveCount(0)
+  await expect(page.getByTestId('mobile-shell-header')).toBeVisible()
+  await expect(page.locator('.mobile-summary-strip')).toBeVisible()
+  await expect(page.getByTestId('device-list-controls')).toBeVisible()
+  await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
+  expect(
+    await errorState.evaluate(
+      (element) =>
+        element.closest('[data-testid="device-list-scroll"]') !== null,
+    ),
+  ).toBe(true)
+
+  await errorState.getByRole('button', { name: '重试' }).click()
+  await expect(page.getByTestId('device-card').first()).toBeVisible()
+  await expect(page.getByTestId('device-error')).toHaveCount(0)
 })
 
 test('Active Task 部分未知时不显示伪零并在补齐后转为精确统计', async ({
@@ -811,6 +1439,7 @@ test('Active Task 部分未知时不显示伪零并在补齐后转为精确统�
   })
 
   await installMockApi(page, {
+    deviceTotal: 20,
     holdActiveTaskOnce: {
       deviceId: 'device-1',
       onStarted: notifyActiveStarted,
@@ -820,30 +1449,22 @@ test('Active Task 部分未知时不显示伪零并在补齐后转为精确统�
   await page.goto('/#/devices')
   await activeStarted
 
-  await expect(page.getByTestId('overview-running')).toHaveText('—')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 19/20 台',
-  )
+  await expect(page.getByTestId('summary-running')).toHaveText('—')
 
   releaseActive()
-  await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 20/20 台',
-  )
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
 })
 
 test('Active Task 缓存背景失败保留运行中数量并提示刷新失败', async ({
   page,
 }) => {
   const state = await installMockApi(page, {
+    deviceTotal: 20,
     failActiveAfterSuccessDeviceId: 'device-1',
   })
   await page.goto('/#/devices')
 
-  await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '已确认 20/20 台',
-  )
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
   await expect
     .poll(
       () =>
@@ -853,10 +1474,8 @@ test('Active Task 缓存背景失败保留运行中数量并提示刷新失败',
       { timeout: 8_000 },
     )
     .toBeGreaterThan(1)
-  await expect(page.getByTestId('overview-running')).toHaveText('1')
-  await expect(page.getByTestId('overview-running-hint')).toHaveText(
-    '部分状态刷新失败',
-  )
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
+  await expect(page.getByText('当前任务后台刷新失败')).toHaveCount(0)
 })
 
 test('手动刷新跨过定时边界时暂停后台分页刷新', async ({ page }) => {
@@ -878,7 +1497,7 @@ test('手动刷新跨过定时边界时暂停后台分页刷新', async ({ page 
   })
   await page.goto('/#/devices')
   await expect(page.getByTestId('device-card').first()).toBeVisible()
-  await scrollMainToBottom(page)
+  await scrollDeviceListToBottom(page)
   await page.clock.runFor(100)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
 
@@ -905,12 +1524,12 @@ test('设备下一页失败只在尾部提示并可显式重试', async ({ page 
   await page.goto('/#/devices')
   await expect(page.getByTestId('device-card').first()).toBeVisible()
 
-  await scrollMainToBottom(page)
+  await scrollDeviceListToBottom(page)
   await expect(page.getByTestId('device-list-next-page-error')).toBeVisible()
   await expect(page.getByTestId('device-background-error')).toHaveCount(0)
   await page
     .getByTestId('device-list-next-page-error')
-    .getByRole('button', { name: '重试加载更多' })
+    .getByRole('button', { name: '重试' })
     .click()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
 })
@@ -922,27 +1541,28 @@ test('设备详情成功时三类辅助失败各自展示且不覆盖主数据',
 
   await expect(page.getByTestId('device-detail')).toBeVisible()
   await expect(page.getByText('设备 1', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前任务加载失败')).toBeVisible()
-  await expect(page.getByText('影刀快照加载失败')).toBeVisible()
-  await expect(page.getByText('技能能力加载失败')).toBeVisible()
+  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(3)
+  await expect(page.locator('body')).not.toContainText(
+    /影刀快照加载失败|技能能力加载失败/,
+  )
   expect(state.activeTaskRequests.length).toBeGreaterThan(0)
   expect(state.providerRequests).toHaveLength(1)
   expect(state.capabilityRequests).toHaveLength(1)
   await expectNoHorizontalOverflow(page)
 })
 
-test('未上报 Runtime 与离线是不同事实', async ({ page }) => {
+test('Runtime缺失使用离线视觉Fallback且心跳缺失保持独立Meta', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await installMockApi(page)
 
   await page.goto('/#/devices/device-3')
-  await expect(page.getByTestId('runtime-unreported')).toContainText(
-    '未上报运行端信息',
-  )
   await expect(page.getByTestId('device-detail')).toContainText('未上报')
-  await expect(page.getByTestId('device-detail')).not.toContainText('离线')
+  await expect(page.getByTestId('device-detail')).toContainText('离线')
 
   await page.goto('/#/devices/device-2')
   await expect(page.getByTestId('device-detail')).toContainText('离线')
-  await expect(page.getByTestId('device-detail')).toContainText('已启用')
+  await expect(page.getByTestId('device-detail')).toContainText('待执行')
+  await expect(page.getByTestId('device-detail')).not.toContainText('未上报')
 })

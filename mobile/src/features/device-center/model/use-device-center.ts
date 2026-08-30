@@ -9,11 +9,22 @@ import {
   summarizeDeviceOverview,
   type DeviceOverviewDataState,
 } from './device-overview'
+import {
+  filterDevicesByQuickFilter,
+  getDeviceQuickFilterLabel,
+  isDeviceQuickFilterAvailable,
+  searchDevicesByDisplayName,
+  toggleDeviceMetricFilter,
+  type DeviceMetricFilter,
+  type DeviceQuickFilter,
+} from './device-filter'
 import { useDeviceActiveTasks } from './use-device-active-task'
 
 export function useDeviceCenter() {
   const queryClient = useQueryClient()
   const query = useDeviceCenterListQuery()
+  const filter = ref<DeviceQuickFilter>('all')
+  const searchQuery = ref('')
   const refreshing = ref(false)
   const refreshError = ref<unknown>(null)
   const devices = computed(() =>
@@ -32,7 +43,36 @@ export function useDeviceCenter() {
       devices.value,
       activeTasks.states.value,
       deviceDataState.value,
+      query.data.value?.pages[0]?.total ?? devices.value.length,
     ),
+  )
+  const filterAvailability = computed(() => ({
+    all: true,
+    online: isDeviceQuickFilterAvailable('online', overview.value),
+    running: isDeviceQuickFilterAvailable('running', overview.value),
+    offline: isDeviceQuickFilterAvailable('offline', overview.value),
+  }))
+  const total = computed(() => query.data.value?.pages[0]?.total)
+  const hasCompleteDeviceDataset = computed(
+    () =>
+      query.data.value !== undefined &&
+      total.value !== undefined &&
+      devices.value.length >= total.value &&
+      !query.hasNextPage.value,
+  )
+  const searchAvailable = computed(() => hasCompleteDeviceDataset.value)
+  const filteredDevices = computed(() => {
+    const filtered = filterDevicesByQuickFilter(
+      devices.value,
+      activeTasks.states.value,
+      filter.value,
+    )
+    return searchAvailable.value
+      ? searchDevicesByDisplayName(filtered, searchQuery.value)
+      : filtered
+  })
+  const visibleTotal = computed(() =>
+    filter.value === 'all' ? total.value : filteredDevices.value.length,
   )
   const errorKind = computed(() =>
     refreshError.value
@@ -45,29 +85,43 @@ export function useDeviceCenter() {
           isFetchNextPageError: query.isFetchNextPageError.value,
         }),
   )
-  const errorMessage = computed(() => {
-    const error = refreshError.value ?? query.error.value
-    return error instanceof Error ? error.message : '设备加载失败，请稍后重试'
-  })
-
   watch(query.dataUpdatedAt, () => {
     refreshError.value = null
   })
+  watch(
+    () => [filter.value, filterAvailability.value[filter.value]] as const,
+    ([currentFilter, available]) => {
+      if (currentFilter !== 'all' && !available) filter.value = 'all'
+    },
+  )
+  watch(searchAvailable, (available) => {
+    if (!available) searchQuery.value = ''
+  })
 
-  async function refresh(): Promise<void> {
+  function setFilter(nextFilter: DeviceQuickFilter): void {
+    if (filterAvailability.value[nextFilter]) filter.value = nextFilter
+  }
+
+  function toggleMetricFilter(metricFilter: DeviceMetricFilter): void {
+    const nextFilter = toggleDeviceMetricFilter(filter.value, metricFilter)
+    setFilter(nextFilter)
+  }
+
+  async function refresh(): Promise<boolean> {
     refreshing.value = true
     refreshError.value = null
     try {
-      const [deviceRefresh] = await Promise.allSettled([
-        query.refreshFromStart(),
-        queryClient.refetchQueries({
+      await query.refreshFromStart()
+      void queryClient
+        .refetchQueries({
           queryKey: taskQueryKeys.activeAll(),
           type: 'active',
-        }),
-      ])
-      if (deviceRefresh?.status === 'rejected') {
-        refreshError.value = deviceRefresh.reason
-      }
+        })
+        .catch(() => undefined)
+      return true
+    } catch (error) {
+      refreshError.value = error
+      return false
     } finally {
       refreshing.value = false
     }
@@ -99,14 +153,23 @@ export function useDeviceCenter() {
   return {
     query,
     devices,
+    filteredDevices,
     activeTaskStates: activeTasks.states,
     overview,
+    filter,
+    searchQuery,
+    searchAvailable,
+    hasCompleteDeviceDataset,
+    filterLabel: computed(() => getDeviceQuickFilterLabel(filter.value)),
+    filterAvailability,
+    visibleTotal,
+    setFilter,
+    toggleMetricFilter,
     refreshing,
-    total: computed(() => query.data.value?.pages[0]?.total),
+    total,
     errorKind,
-    errorMessage,
     isInitialLoading: computed(
-      () => query.isPending.value && query.data.value === undefined,
+      () => query.isLoading.value && query.data.value === undefined,
     ),
     isInitialError: computed(() => errorKind.value === 'initial'),
     isBackgroundError: computed(() => errorKind.value === 'background'),

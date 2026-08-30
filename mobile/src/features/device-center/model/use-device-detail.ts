@@ -9,10 +9,6 @@ import {
 
 import { useDeviceActiveTask } from './use-device-active-task'
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
-}
-
 export function useDeviceDetail(
   deviceId: MaybeRefOrGetter<string | undefined>,
 ) {
@@ -41,11 +37,8 @@ export function useDeviceDetail(
         : undefined,
     ),
     deviceQuery,
-    deviceErrorMessage: computed(() =>
-      errorMessage(deviceQuery.error.value, '设备详情加载失败'),
-    ),
     isDeviceInitialLoading: computed(
-      () => deviceQuery.isPending.value && !hasDevice.value,
+      () => deviceQuery.isLoading.value && !hasDevice.value,
     ),
     isDeviceInitialError: computed(
       () => deviceQuery.isError.value && !hasDevice.value,
@@ -56,11 +49,8 @@ export function useDeviceDetail(
     activeTask,
     provider: {
       query: providerQuery,
-      errorMessage: computed(() =>
-        errorMessage(providerQuery.error.value, '影刀快照加载失败'),
-      ),
       isInitialLoading: computed(
-        () => providerQuery.isPending.value && !providerHasData.value,
+        () => providerQuery.isLoading.value && !providerHasData.value,
       ),
       isInitialError: computed(
         () => providerQuery.isError.value && !providerHasData.value,
@@ -71,11 +61,8 @@ export function useDeviceDetail(
     },
     capability: {
       query: capabilityQuery,
-      errorMessage: computed(() =>
-        errorMessage(capabilityQuery.error.value, '技能能力加载失败'),
-      ),
       isInitialLoading: computed(
-        () => capabilityQuery.isPending.value && !capabilityHasData.value,
+        () => capabilityQuery.isLoading.value && !capabilityHasData.value,
       ),
       isInitialError: computed(
         () => capabilityQuery.isError.value && !capabilityHasData.value,

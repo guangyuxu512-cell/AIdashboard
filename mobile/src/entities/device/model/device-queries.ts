@@ -7,6 +7,7 @@ import {
 import { computed, type MaybeRefOrGetter, nextTick, ref, toValue } from 'vue'
 
 import type { PageDto } from '@/shared/api'
+import { getOnlineRefetchInterval } from '@/shared/utils/query-connectivity'
 
 import type { DeviceReadDto } from '../api/contracts'
 import {
@@ -53,7 +54,9 @@ function useDeviceInfiniteListQuery(
   const queryKey = deviceQueryKeys.list(pageSize)
   const manualRefreshing = ref(false)
   const effectiveRefetchInterval = computed(() =>
-    manualRefreshing.value ? false : (refetchInterval ?? false),
+    manualRefreshing.value || refetchInterval === undefined
+      ? false
+      : getOnlineRefetchInterval(refetchInterval),
   )
   const query = useInfiniteQuery({
     queryKey,
@@ -104,12 +107,15 @@ export function useDeviceCenterListQuery(
 export function useDeviceDetailQuery(
   deviceId: MaybeRefOrGetter<string | undefined>,
 ) {
+  const refetchInterval = computed(() =>
+    getOnlineRefetchInterval(DEVICE_REFRESH_INTERVAL_MS),
+  )
   return useQuery({
     queryKey: computed(() => deviceQueryKeys.detail(toValue(deviceId) ?? '')),
     queryFn: () => getDevice(toValue(deviceId) ?? ''),
     enabled: computed(() => Boolean(toValue(deviceId))),
     staleTime: 30_000,
-    refetchInterval: DEVICE_REFRESH_INTERVAL_MS,
+    refetchInterval,
   })
 }
 
@@ -117,6 +123,9 @@ export function useDeviceProviderInventoriesQuery(
   deviceId: MaybeRefOrGetter<string | undefined>,
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
+  const refetchInterval = computed(() =>
+    getOnlineRefetchInterval(DEVICE_SNAPSHOT_REFRESH_INTERVAL_MS),
+  )
   return useQuery({
     queryKey: computed(() =>
       deviceQueryKeys.providerInventories(toValue(deviceId) ?? ''),
@@ -124,7 +133,7 @@ export function useDeviceProviderInventoriesQuery(
     queryFn: () => getDeviceProviderInventories(toValue(deviceId) ?? ''),
     enabled: computed(() => Boolean(toValue(deviceId)) && toValue(enabled)),
     staleTime: 30_000,
-    refetchInterval: DEVICE_SNAPSHOT_REFRESH_INTERVAL_MS,
+    refetchInterval,
   })
 }
 
@@ -132,6 +141,9 @@ export function useDeviceSkillCapabilitiesQuery(
   deviceId: MaybeRefOrGetter<string | undefined>,
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
+  const refetchInterval = computed(() =>
+    getOnlineRefetchInterval(DEVICE_SNAPSHOT_REFRESH_INTERVAL_MS),
+  )
   return useQuery({
     queryKey: computed(() =>
       deviceQueryKeys.skillCapabilities(toValue(deviceId) ?? ''),
@@ -139,6 +151,6 @@ export function useDeviceSkillCapabilitiesQuery(
     queryFn: () => getDeviceSkillCapabilities(toValue(deviceId) ?? ''),
     enabled: computed(() => Boolean(toValue(deviceId)) && toValue(enabled)),
     staleTime: 30_000,
-    refetchInterval: DEVICE_SNAPSHOT_REFRESH_INTERVAL_MS,
+    refetchInterval,
   })
 }

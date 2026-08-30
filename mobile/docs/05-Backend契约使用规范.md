@@ -149,9 +149,17 @@ Skill Capability 字段为 `device_id`、`skill_id`、`display_name`、
 
 ### 查询与 Contract Gap
 
-- Device List 只支持 `page/page_size`，没有搜索或状态筛选；Mobile 不获取全量后伪造服务端搜索。
+- Device List 只支持 `page/page_size`，没有 `connection_status`、Active Task 状态、搜索或等价服务端
+  筛选参数；这是 Device 快捷筛选的正式 Contract Gap。Mobile 不得发送自造参数，也不得把当前分页
+  的本地过滤冒充完整筛选。只有 Infinite Query 已加载全部 Backend 页，且相应连接/Active Task 事实
+  已完整确认时，才允许对该完整结果集执行 Device 快捷筛选；否则对应入口必须保持不可用。
 - Provider 与 Skill 只在详情加载，列表不发出大数组 N+1 请求。
 - Backend 没有 Device + Current Task + Provider + Skill 聚合接口，也没有 Current Task 批量接口。
+- Backend 没有正式 Device Kind / Form Factor 字段；Production Device Artwork 只能使用统一 desktop
+  fallback，不得按 `display_name`、location、Worker Version 或 Provider 猜 desktop/laptop/server。
+- `worker_runtime=null` 仍表示 Contract 事实缺失而非 Backend 离线判定。Visual V2 为保证公开 UI 只有
+  online/running/offline 三态，可使用 offline artwork 作为显示 fallback，但不得回写 DTO、参与 Backend
+  统计语义或声称 Backend 返回了 offline；Heartbeat 缺失只显示独立 Meta。
 - Provider/Skill 的空数组无法区分“从未上报”和“明确上报空快照”；Provider 没有 freshness 标记。
 - Backend 尚无员工 Auth、JWT、RBAC 或 Data Scope；Worker Device Token 永远不能给 Mobile 使用。
 - V1 不调用 Device 创建、更新、移除、绑定、Credential、Task 创建或任何 Worker 写接口，Backend 本轮不修改。

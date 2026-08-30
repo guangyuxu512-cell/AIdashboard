@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:visual": "vite --mode visual --host 127.0.0.1 --port 5175 --strictPort",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:visual": "playwright test --config playwright.visual.config.ts"
   },
   "dependencies": {
     "@tanstack/vue-query": "^5.66.8",

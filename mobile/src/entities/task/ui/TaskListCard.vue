@@ -1,25 +1,13 @@
 <script setup lang="ts">
-import { Progress as VanProgress } from 'vant'
+import { Tag as VanTag } from 'vant'
 import { computed } from 'vue'
+
+import { MobileIcon } from '@/shared/icons'
 
 import type { TaskListItem } from '../model/types'
 import TaskStatusTag from './TaskStatusTag.vue'
 
 const props = defineProps<{ task: TaskListItem }>()
-
-const progressPercentage = computed(() => {
-  const progress = props.task.progress
-  if (!progress?.total || progress.total <= 0) return 0
-  return Math.min(100, Math.max(0, (progress.current / progress.total) * 100))
-})
-
-const progressText = computed(() => {
-  const progress = props.task.progress
-  if (!progress) return null
-  return progress.total === null
-    ? `已处理 ${progress.current}`
-    : `${progress.current} / ${progress.total}`
-})
 
 const createdAtText = computed(() =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -28,117 +16,117 @@ const createdAtText = computed(() =>
   }).format(new Date(props.task.createdAt)),
 )
 
-const currentSummary = computed(() => {
-  if (props.task.status === 'failed') return '任务执行失败'
-  if (props.task.status === 'lost') return '任务状态已丢失'
-
-  const message = props.task.currentMessage?.trim()
-  if (message) return message
-
-  if (props.task.status === 'pending') return '等待执行'
-  if (props.task.status === 'running') return '正在执行'
-  return '任务已成功完成'
+const metaTags = computed(() => {
+  const deviceName = props.task.deviceDisplayName.trim() || '—'
+  const skillName = props.task.skillDisplayName?.trim()
+  return [
+    deviceName,
+    skillName &&
+    skillName !== deviceName &&
+    skillName !== props.task.executionName.trim()
+      ? skillName
+      : null,
+  ].filter((value): value is string => Boolean(value))
 })
 </script>
 
 <template>
-  <article class="task-list-card" data-testid="task-card">
-    <div class="task-list-card__heading">
-      <h2>{{ task.executionName }}</h2>
-      <TaskStatusTag :status="task.status" />
-    </div>
+  <article class="task-list-card mobile-card" data-testid="task-card">
+    <span
+      class="task-list-card__leading"
+      data-testid="task-card-leading"
+      aria-hidden="true"
+    >
+      <MobileIcon name="task" tile />
+    </span>
 
-    <div class="task-list-card__meta">
-      <span>{{ task.deviceDisplayName }}</span>
-      <time :datetime="task.createdAt">{{ createdAtText }}</time>
-    </div>
+    <span class="task-list-card__content">
+      <h2 class="task-list-card__name" data-testid="task-card-name">
+        {{ task.executionName }}
+      </h2>
+      <span class="task-list-card__state" data-testid="task-card-state">
+        <TaskStatusTag :status="task.status" />
+        <span aria-hidden="true">·</span>
+        <time :datetime="task.createdAt">{{ createdAtText }}</time>
+      </span>
+      <span class="task-list-card__tags" data-testid="task-card-tags">
+        <VanTag v-for="tag in metaTags" :key="tag" plain>{{ tag }}</VanTag>
+      </span>
+    </span>
 
-    <p class="task-list-card__message" data-testid="task-card-message">
-      {{ currentSummary }}
-    </p>
-
-    <div v-if="task.progress" class="task-list-card__progress">
-      <div class="task-list-card__progress-label">
-        <span>进度</span>
-        <span>{{ progressText }}</span>
-      </div>
-      <VanProgress
-        v-if="task.progress.total !== null"
-        :percentage="progressPercentage"
-        :show-pivot="false"
-        stroke-width="6"
-      />
-    </div>
+    <MobileIcon
+      class="task-list-card__chevron"
+      name="chevron-right"
+      data-testid="task-card-chevron"
+    />
   </article>
 </template>
 
 <style scoped>
 .task-list-card {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  color: var(--text-primary);
-  background: var(--bg-surface);
-  border: var(--border-width) solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
-}
-
-.task-list-card__heading,
-.task-list-card__meta,
-.task-list-card__progress-label {
-  display: flex;
-  min-width: 0;
-  gap: var(--space-2);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--layout-card-leading-content-gap);
+  padding: var(--layout-card-padding-y) var(--layout-card-padding-x);
   align-items: center;
-  justify-content: space-between;
+  color: var(--text-primary);
 }
 
-.task-list-card__heading h2 {
+.task-list-card__leading {
+  display: grid;
+  width: var(--layout-card-leading-icon-slot-width);
+  color: var(--text-secondary);
+  font-size: var(--icon-size-card-leading);
+  place-items: center;
+}
+
+.task-list-card__content {
+  display: grid;
+  min-width: 0;
+  gap: var(--layout-card-row-gap);
+}
+
+.task-list-card__name,
+.task-list-card__state,
+.task-list-card__tags {
   min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+}
+
+.task-list-card__state,
+.task-list-card__tags {
+  display: flex;
+  gap: var(--layout-compact-gap);
+  align-items: center;
+}
+
+.task-list-card__name {
   font-size: var(--font-size-label);
   line-height: var(--line-height-label);
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.task-list-card__meta,
-.task-list-card__message,
-.task-list-card__progress-label {
-  color: var(--text-secondary);
-}
-
-.task-list-card__meta {
+.task-list-card__state {
+  color: var(--text-tertiary);
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
 }
 
-.task-list-card__meta span,
-.task-list-card__meta time,
-.task-list-card__message {
+.task-list-card__state time,
+.task-list-card__tags .van-tag {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.task-list-card__meta time {
-  flex: none;
-}
-
-.task-list-card__progress {
+.task-list-card__chevron {
   display: grid;
-  gap: var(--space-2);
-}
-
-.task-list-card__progress-label {
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-}
-
-.task-list-card__message {
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
+  width: var(--layout-card-trailing-icon-slot-width);
+  justify-self: end;
+  color: var(--text-tertiary);
+  font-size: var(--icon-size-card-chevron);
+  place-items: center;
 }
 </style>

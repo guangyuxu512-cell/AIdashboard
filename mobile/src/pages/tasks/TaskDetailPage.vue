@@ -6,7 +6,6 @@ import {
   Collapse as VanCollapse,
   CollapseItem as VanCollapseItem,
   Empty as VanEmpty,
-  NoticeBar as VanNoticeBar,
   Progress as VanProgress,
   Skeleton as VanSkeleton,
 } from 'vant'
@@ -38,7 +37,7 @@ const task = computed(() => taskQuery.data.value)
 const deviceId = computed(() => task.value?.target_device_id)
 const deviceQuery = useDeviceDetailQuery(deviceId)
 const taskStatus = computed(() => task.value?.status)
-const runtime = useTaskRuntime(taskId, taskStatus)
+const runtime = useTaskRuntime(taskId, taskStatus, () => Boolean(task.value))
 const runtimeNow = useTaskRuntimeClock(
   () => task.value?.started_at ?? null,
   () => task.value?.finished_at ?? null,
@@ -70,14 +69,7 @@ const progressText = computed(() => {
     ? String(progress.value.current)
     : `${progress.value.current} / ${progress.value.total}`
 })
-const runtimeError = computed(() => {
-  const error = runtime.eventQuery.error.value
-  return error instanceof Error ? error.message : null
-})
-const detailErrorMessage = computed(() => {
-  const error = taskQuery.error.value
-  return error instanceof Error ? error.message : '任务详情刷新失败'
-})
+const runtimeRequestFailed = computed(() => runtime.eventQuery.isError.value)
 const durationText = computed(() =>
   formatTaskDuration(
     task.value?.started_at ?? null,
@@ -85,60 +77,46 @@ const durationText = computed(() =>
     runtimeNow.value,
   ),
 )
+const deviceText = computed(() => {
+  if (deviceQuery.data.value) return deviceQuery.data.value.display_name
+  if (deviceQuery.isError.value) return '设备加载失败'
+  return '设备加载中'
+})
 </script>
 
 <template>
-  <AppPage class="task-detail-page">
-    <div v-if="taskQuery.isPending.value" data-testid="detail-loading">
+  <AppPage class="task-detail-page" label="任务详情内容">
+    <div v-if="taskQuery.isLoading.value" data-testid="detail-loading">
       <VanSkeleton title :row="8" />
     </div>
 
-    <VanEmpty
-      v-else-if="!task"
-      image="error"
-      :description="
-        taskQuery.error.value instanceof Error
-          ? taskQuery.error.value.message
-          : '任务详情加载失败'
-      "
-    >
-      <VanButton type="primary" @click="taskQuery.refetch()"
-        >重新加载</VanButton
-      >
+    <VanEmpty v-else-if="!task" image="error" description="加载失败">
+      <VanButton type="primary" @click="taskQuery.refetch()">重试</VanButton>
     </VanEmpty>
 
     <template v-else>
-      <VanNoticeBar
-        v-if="taskQuery.isError.value"
-        type="warning"
-        :text="`${detailErrorMessage}，当前展示上次成功加载的数据`"
-        wrapable
-      />
-      <section class="task-detail-page__summary" data-testid="task-detail">
+      <section
+        class="task-detail-page__summary mobile-card"
+        data-testid="task-detail"
+      >
         <div class="task-detail-page__title">
           <h1>{{ executionName }}</h1>
           <TaskStatusTag :status="task.status" />
         </div>
+        <p class="task-detail-page__meta">
+          {{ deviceText }} ·
+          <span data-testid="task-detail-duration">{{ durationText }}</span>
+        </p>
+      </section>
 
-        <VanCellGroup>
-          <VanCell title="设备">
-            <template #value>
-              <span v-if="deviceQuery.data.value">
-                {{ deviceQuery.data.value.display_name }}
-              </span>
-              <span v-else-if="deviceQuery.isError.value"
-                >设备信息加载失败</span
-              >
-              <span v-else>加载中</span>
-            </template>
-          </VanCell>
-          <VanCell title="运行时间" :value="durationText" />
-        </VanCellGroup>
-
+      <section
+        class="task-detail-page__core mobile-section-surface"
+        aria-label="任务状态"
+      >
         <div class="task-detail-page__runtime-summary">
           <div v-if="progress" class="task-detail-page__progress">
             <div class="task-detail-page__runtime-heading">
-              <span>结构化进度</span>
+              <span>进度</span>
               <span data-testid="detail-progress-value">
                 {{ progressText }}
               </span>
@@ -147,7 +125,7 @@ const durationText = computed(() =>
               v-if="progress.total !== null"
               :percentage="progressPercentage"
               :show-pivot="false"
-              stroke-width="8"
+              stroke-width="var(--progress-height-default)"
             />
           </div>
           <div class="task-detail-page__current-message">
@@ -168,15 +146,17 @@ const durationText = computed(() =>
         :events="runtime.events.value"
         :initialized="runtime.initialized.value"
         :purged-at="task.runtime_events_purged_at"
-        :loading="runtime.eventQuery.isPending.value"
+        :loading="runtime.eventQuery.isLoading.value"
         :loading-earlier="runtime.loadingEarlier.value"
         :has-more-before="runtime.hasMoreBefore.value"
-        :initial-error="runtime.events.value.length === 0 ? runtimeError : null"
-        :background-error="
-          runtime.backgroundError.value ||
-          (runtime.events.value.length > 0 ? runtimeError : null)
+        :initial-error="
+          runtime.events.value.length === 0 && runtimeRequestFailed
         "
-        :earlier-error="runtime.earlierError.value"
+        :background-error="
+          Boolean(runtime.backgroundError.value) ||
+          (runtime.events.value.length > 0 && runtimeRequestFailed)
+        "
+        :earlier-error="Boolean(runtime.earlierError.value)"
         :reached-memory-limit="runtime.reachedMemoryLimit.value"
         @retry="runtime.eventQuery.refetch"
         @retry-live="runtime.requestDrain"
@@ -217,6 +197,13 @@ const durationText = computed(() =>
 .task-detail-page__summary {
   display: grid;
   gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.task-detail-page__core {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
 }
 
 .task-detail-page__title {
@@ -233,13 +220,19 @@ const durationText = computed(() =>
   line-height: var(--line-height-title);
 }
 
+.task-detail-page__meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-detail-page__runtime-summary {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--bg-surface);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-surface);
+  gap: var(--layout-content-gap);
 }
 
 .task-detail-page__runtime-heading {
@@ -252,7 +245,7 @@ const durationText = computed(() =>
 .task-detail-page__current-message {
   display: grid;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--layout-content-gap);
 }
 
 .task-detail-page__current-message {
@@ -266,9 +259,8 @@ const durationText = computed(() =>
 
 .task-detail-page__current-message p {
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
 }
 </style>

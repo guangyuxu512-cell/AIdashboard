@@ -89,6 +89,7 @@ describe('task contract and mapper', () => {
       expect.objectContaining({
         taskId: 'task-1',
         executionName: '同步近七日订单',
+        skillDisplayName: '同步订单',
         status: 'running',
       }),
     )

@@ -35,8 +35,8 @@ describe('ComingSoonPage', () => {
       })
       await flushPromises()
 
-      expect(wrapper.get('h1').text()).toBe(title)
-      expect(wrapper.text()).toContain('功能建设中')
+      expect(wrapper.text()).toBe('功能建设中')
+      expect(wrapper.text()).not.toContain(title)
       expect(wrapper.text()).not.toMatch(/管理员|通知数|99\+/)
 
       wrapper.unmount()

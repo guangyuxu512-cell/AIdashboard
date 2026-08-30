@@ -3,7 +3,6 @@ import {
   Button as VanButton,
   Empty as VanEmpty,
   List as VanList,
-  NoticeBar as VanNoticeBar,
   PullRefresh as VanPullRefresh,
   Skeleton as VanSkeleton,
 } from 'vant'
@@ -18,9 +17,7 @@ const props = defineProps<{
   activeTaskStates: Readonly<Record<string, DeviceActiveTaskState>>
   initialLoading: boolean
   initialError: boolean
-  backgroundError: boolean
   nextPageError: boolean
-  errorMessage: string
   refreshing: boolean
   loadingMore: boolean
   hasMore: boolean
@@ -29,10 +26,9 @@ const props = defineProps<{
 const pendingActiveTaskState: DeviceActiveTaskState = {
   task: undefined,
   hasSuccessfulData: false,
-  initialLoading: true,
+  initialLoading: false,
   initialError: false,
   backgroundError: false,
-  errorMessage: '当前任务加载失败',
   retry: () => undefined,
 }
 
@@ -46,23 +42,10 @@ const emit = defineEmits<{
   loadMore: []
   retryLoadMore: []
   selectDevice: [deviceId: string]
-  selectTask: [taskId: string, deviceId: string]
 }>()
 </script>
 
 <template>
-  <div
-    v-if="backgroundError"
-    class="device-list__background-error"
-    data-testid="device-background-error"
-  >
-    <VanNoticeBar
-      type="warning"
-      :text="`${errorMessage}，当前展示上次成功加载的数据`"
-      wrapable
-    />
-  </div>
-
   <div
     v-if="initialLoading"
     class="device-list-state"
@@ -76,15 +59,20 @@ const emit = defineEmits<{
     class="device-list-state"
     data-testid="device-error"
   >
-    <VanEmpty image="error" :description="errorMessage">
-      <VanButton type="primary" @click="emit('retry')">重新加载</VanButton>
+    <VanEmpty image="error" description="加载失败">
+      <VanButton type="primary" @click="emit('retry')">重试</VanButton>
     </VanEmpty>
   </div>
 
-  <VanPullRefresh v-else :model-value="refreshing" @refresh="emit('refresh')">
+  <VanPullRefresh
+    v-else
+    class="device-list-refresh"
+    :model-value="refreshing"
+    @refresh="emit('refresh')"
+  >
     <VanEmpty
       v-if="devices.length === 0"
-      description="暂无设备"
+      description="没有设备"
       data-testid="device-empty"
     />
     <VanList
@@ -101,7 +89,6 @@ const emit = defineEmits<{
           :device="device"
           :active-task-state="activeTaskState(device.deviceId)"
           @select-device="emit('selectDevice', $event)"
-          @select-task="emit('selectTask', $event, device.deviceId)"
         />
       </div>
       <div
@@ -109,14 +96,8 @@ const emit = defineEmits<{
         class="device-list__next-error"
         data-testid="device-list-next-page-error"
       >
-        <VanNoticeBar
-          type="warning"
-          :text="`${errorMessage}，已保留当前设备`"
-          wrapable
-        />
-        <VanButton block @click="emit('retryLoadMore')">
-          重试加载更多
-        </VanButton>
+        <span>加载失败</span>
+        <VanButton block @click="emit('retryLoadMore')">重试</VanButton>
       </div>
     </VanList>
   </VanPullRefresh>
@@ -125,30 +106,31 @@ const emit = defineEmits<{
 <style scoped>
 .device-list-state {
   display: grid;
-  min-height: 50vh;
+  min-height: 100%;
   gap: var(--space-4);
-  padding: var(--space-4) max(var(--space-4), var(--safe-area-right))
-    var(--space-4) max(var(--space-4), var(--safe-area-left));
+  padding: var(--space-4)
+    max(var(--device-list-page-padding-x), var(--safe-area-right))
+    var(--space-4) max(var(--device-list-page-padding-x), var(--safe-area-left));
   align-content: center;
+}
+
+.device-list-refresh {
+  min-height: 100%;
 }
 
 .device-list {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-2)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
-    max(var(--layout-page-padding-x), var(--safe-area-left));
-}
-
-.device-list__background-error {
-  padding-right: max(var(--layout-page-padding-x), var(--safe-area-right));
-  padding-left: max(var(--layout-page-padding-x), var(--safe-area-left));
+  gap: var(--device-list-card-gap);
+  padding: var(--device-list-list-padding-top)
+    max(var(--device-list-page-padding-x), var(--safe-area-right))
+    var(--device-list-list-padding-bottom)
+    max(var(--device-list-page-padding-x), var(--safe-area-left));
 }
 
 .device-list__next-error {
   display: grid;
-  gap: var(--space-2);
-  padding: 0 max(var(--layout-page-padding-x), var(--safe-area-right))
-    var(--space-4) max(var(--layout-page-padding-x), var(--safe-area-left));
+  gap: var(--layout-content-gap);
+  padding: 0 max(var(--device-list-page-padding-x), var(--safe-area-right))
+    var(--space-4) max(var(--device-list-page-padding-x), var(--safe-area-left));
 }
 </style>
