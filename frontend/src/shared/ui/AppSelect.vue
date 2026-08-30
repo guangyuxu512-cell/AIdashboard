@@ -3,11 +3,11 @@ import { NSelect } from 'naive-ui'
 import type { SelectFilter, SelectOption, SelectProps } from 'naive-ui'
 import { computed } from 'vue'
 
-import type { AppOptionValue, FieldWidth } from './types'
+import type { AppOptionValue, AppSelectValue, FieldWidth } from './types'
 
 const props = withDefaults(
   defineProps<{
-    modelValue?: AppOptionValue | null
+    modelValue?: AppSelectValue | null
     options: SelectOption[]
     placeholder?: string
     width?: FieldWidth
@@ -15,6 +15,8 @@ const props = withDefaults(
     filterable?: boolean
     loading?: boolean
     disabled?: boolean
+    multiple?: boolean
+    maxTagCount?: number | 'responsive'
     renderLabel?: SelectProps['renderLabel']
     filter?: SelectFilter
     menuProps?: SelectProps['menuProps']
@@ -29,6 +31,8 @@ const props = withDefaults(
     filterable: false,
     loading: false,
     disabled: false,
+    multiple: false,
+    maxTagCount: undefined,
     renderLabel: undefined,
     filter: undefined,
     menuProps: undefined,
@@ -45,9 +49,18 @@ const mergedMenuProps = computed<SelectProps['menuProps']>(() => ({
   ],
 }))
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: AppOptionValue | null]
+  'update:values': [value: AppOptionValue[]]
 }>()
+
+function updateValue(value: AppSelectValue | null): void {
+  if (props.multiple) {
+    emit('update:values', Array.isArray(value) ? value : [])
+    return
+  }
+  if (!Array.isArray(value)) emit('update:modelValue', value)
+}
 </script>
 
 <template>
@@ -62,11 +75,13 @@ defineEmits<{
     :filterable="filterable"
     :loading="loading"
     :disabled="disabled"
+    :multiple="multiple"
+    :max-tag-count="maxTagCount"
     :render-label="renderLabel"
     :filter="filter"
     :menu-props="mergedMenuProps"
     :placement="placement"
-    @update:value="$emit('update:modelValue', $event)"
+    @update:value="updateValue"
   />
 </template>
 

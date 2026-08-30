@@ -4,6 +4,8 @@ export type OverlaySize = 'sm' | 'md' | 'lg'
 
 export type AppOptionValue = string | number
 
+export type AppSelectValue = AppOptionValue | AppOptionValue[]
+
 export interface AppOption {
   label: string
   value: AppOptionValue

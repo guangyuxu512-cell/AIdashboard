@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { NPagination } from 'naive-ui'
 
+import { STANDARD_PAGE_SIZE_OPTIONS } from './pagination'
+
 withDefaults(
   defineProps<{
     page: number
@@ -11,7 +13,7 @@ withDefaults(
     disabled?: boolean
   }>(),
   {
-    pageSizes: () => [10, 20, 50, 100],
+    pageSizes: () => [...STANDARD_PAGE_SIZE_OPTIONS],
     showSizePicker: true,
     disabled: false,
   },

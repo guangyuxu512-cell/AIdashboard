@@ -4,10 +4,12 @@ import { NCheckbox } from 'naive-ui'
 withDefaults(
   defineProps<{
     modelValue?: boolean
+    indeterminate?: boolean
     disabled?: boolean
   }>(),
   {
     modelValue: false,
+    indeterminate: false,
     disabled: false,
   },
 )
@@ -20,6 +22,7 @@ defineEmits<{
 <template>
   <NCheckbox
     :checked="modelValue"
+    :indeterminate="indeterminate"
     :disabled="disabled"
     @update:checked="$emit('update:modelValue', $event)"
   >
