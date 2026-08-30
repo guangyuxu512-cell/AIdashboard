@@ -84,12 +84,16 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   const headerButtons = page
     .getByTestId('mobile-global-header')
     .getByRole('button')
-  await expect(headerButtons).toHaveCount(2)
+  await expect(headerButtons).toHaveCount(3)
   await expect(headerButtons.nth(0)).toHaveAttribute(
+    'aria-label',
+    '打开主题设置',
+  )
+  await expect(headerButtons.nth(1)).toHaveAttribute(
     'aria-label',
     /切换到(浅色|深色)主题/,
   )
-  await expect(headerButtons.nth(1)).toHaveAttribute('aria-label', '通知')
+  await expect(headerButtons.nth(2)).toHaveAttribute('aria-label', '通知')
   await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
   await expect(page.locator('.van-badge--dot')).toHaveCount(0)
   expect(
@@ -101,11 +105,22 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
 
   const initialTheme = await page.locator('html').getAttribute('data-theme')
   await headerButtons.nth(0).click()
+  await expect(page.getByRole('dialog')).toContainText(
+    '浅色主题深色主题跟随系统',
+  )
+  await page
+    .getByRole('button', {
+      name: initialTheme === 'dark' ? '深色主题' : '浅色主题',
+    })
+    .click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await headerButtons.nth(1).click()
   await expect(page.locator('html')).toHaveAttribute(
     'data-theme',
     initialTheme === 'dark' ? 'light' : 'dark',
   )
-  await headerButtons.nth(0).click()
+  await headerButtons.nth(1).click()
   await expect(page.locator('html')).toHaveAttribute(
     'data-theme',
     initialTheme ?? 'light',
@@ -145,13 +160,22 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
         '--device-list-header-background',
         'background',
       ),
-      expectedRaised: tokenColor('--bg-surface-raised', 'background'),
+      expectedBottom: tokenColor(
+        '--visual-v2-bottom-nav-background',
+        'background',
+      ),
       activeColor: style('.van-tabbar-item--active').color,
       inactiveColor: style('.van-tabbar-item:not(.van-tabbar-item--active)')
         .color,
-      expectedActive: tokenColor('--text-selected', 'color'),
-      expectedInactive: tokenColor('--text-tertiary', 'color'),
-      brandFontSize: style('.mobile-global-header__page-title').fontSize,
+      expectedActive: tokenColor(
+        '--visual-v2-bottom-nav-active-color',
+        'color',
+      ),
+      expectedInactive: tokenColor(
+        '--visual-v2-bottom-nav-inactive-color',
+        'color',
+      ),
+      brandFontSize: style('.mobile-page-header__title').fontSize,
       expectedBrandFontSize: root
         .getPropertyValue('--device-list-title-size')
         .trim(),
@@ -159,9 +183,9 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   })
   expect(chromeVisual).toEqual({
     headerBackground: chromeVisual.expectedHeader,
-    bottomBackground: chromeVisual.expectedRaised,
+    bottomBackground: chromeVisual.expectedBottom,
     expectedHeader: chromeVisual.expectedHeader,
-    expectedRaised: chromeVisual.expectedRaised,
+    expectedBottom: chromeVisual.expectedBottom,
     activeColor: chromeVisual.expectedActive,
     inactiveColor: chromeVisual.expectedInactive,
     expectedActive: chromeVisual.expectedActive,
@@ -238,6 +262,21 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
         '--layout-bottom-nav-height',
       ),
     )
+    const expectedPaddingX = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--visual-v2-bottom-nav-padding-x',
+      ),
+    )
+    const safeAreaLeft = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--safe-area-left',
+      ),
+    )
+    const safeAreaRight = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--safe-area-right',
+      ),
+    )
     return {
       navHeight: navBox.height,
       expectedHeight,
@@ -245,9 +284,17 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
         Math.max(...boxes.map((box) => box.width)) -
           Math.min(...boxes.map((box) => box.width)) <=
         1,
-      fillsWidth:
-        Math.abs(boxes[0]!.left - navBox.left) <= 1 &&
-        Math.abs(boxes.at(-1)!.right - navBox.right) <= 1,
+      fillsInsetTrack:
+        Math.abs(
+          boxes[0]!.left -
+            navBox.left -
+            Math.max(expectedPaddingX, safeAreaLeft),
+        ) <= 1 &&
+        Math.abs(
+          navBox.right -
+            boxes.at(-1)!.right -
+            Math.max(expectedPaddingX, safeAreaRight),
+        ) <= 1,
       touchTargets: boxes.every((box) => box.height >= 44),
       iconsAboveLabels: iconBoxes.every(
         (icon, index) => icon.bottom <= labelBoxes[index]!.top,
@@ -266,12 +313,12 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
     ),
   ).toBeLessThanOrEqual(1)
   expect(bottomNavigationGeometry.equalWidth).toBe(true)
-  expect(bottomNavigationGeometry.fillsWidth).toBe(true)
+  expect(bottomNavigationGeometry.fillsInsetTrack).toBe(true)
   expect(bottomNavigationGeometry.touchTargets).toBe(true)
   expect(bottomNavigationGeometry.iconsAboveLabels).toBe(true)
   expect(
     bottomNavigationGeometry.iconSizes.every(
-      (size) => size >= 20 && size <= 24,
+      (size) => size >= 24 && size <= 26,
     ),
   ).toBe(true)
   expect(bottomNavigationGeometry.singleLine).toBe(true)

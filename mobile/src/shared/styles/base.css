@@ -17,6 +17,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-app);
   font-family: var(--font-family-base);
+  font-synthesis: none;
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-body);
@@ -79,6 +80,20 @@ b {
   background: var(--bg-surface);
   /* 保留 1px 物理边界以锁定 Stage 2 Box Model；Stage 3B 只调可见内描边。 */
   border: var(--border-width) solid transparent;
+}
+
+/* Visual V2 共享业务卡片仅定义 Surface / Press / Trailing 语言，不接管业务结构。 */
+.mobile-business-card-surface-v2 {
+  background: var(--visual-v2-business-card-background);
+  border-color: var(--visual-v2-business-card-border-color);
+  box-shadow: var(--visual-v2-business-card-shadow);
+}
+
+.mobile-business-card-surface-v2:has(button:active),
+.mobile-business-card-surface-v2:active {
+  background: var(--visual-v2-business-card-pressed-background);
+  border-color: var(--visual-v2-business-card-pressed-border-color);
+  box-shadow: var(--visual-v2-business-card-pressed-shadow);
 }
 
 .mobile-card {

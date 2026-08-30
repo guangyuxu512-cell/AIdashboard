@@ -2,6 +2,8 @@ import type { Component } from 'vue'
 
 import deviceMonitorUrl from '@/assets/icons/device-monitor.png'
 
+import HeartbeatGlyph from './glyphs/HeartbeatGlyph.vue'
+import MenuGlyph from './glyphs/MenuGlyph.vue'
 import NotificationBellGlyph from './glyphs/NotificationBellGlyph.vue'
 import TaskPrimaryGlyph from './glyphs/TaskPrimaryGlyph.vue'
 import ThemeMoonGlyph from './glyphs/ThemeMoonGlyph.vue'
@@ -156,6 +158,17 @@ export const MOBILE_ICON_REGISTRY = {
     role: 'action',
     source: { kind: 'component', component: NotificationBellGlyph },
   },
+  menu: {
+    label: '打开设置',
+    role: 'action',
+    source: { kind: 'component', component: MenuGlyph },
+  },
+  heartbeat: {
+    label: '心跳',
+    role: 'status',
+    source: { kind: 'component', component: HeartbeatGlyph },
+    tone: 'muted',
+  },
   filter: {
     label: '筛选',
     role: 'action',
@@ -246,6 +259,8 @@ export const MOBILE_ICON_GALLERY_GROUPS = [
       'theme-light',
       'theme-dark',
       'notification-bell',
+      'menu',
+      'heartbeat',
       'filter',
       'search',
       'arrow-down',

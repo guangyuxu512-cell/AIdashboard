@@ -3,10 +3,12 @@ import { Badge as VanBadge } from 'vant'
 import { computed } from 'vue'
 
 import { MobileIcon, type MobileIconName } from '@/shared/icons'
+import MobilePageHeader from './MobilePageHeader.vue'
 
 const emit = defineEmits<{
   themeToggle: []
   notificationClick: []
+  settingsClick: []
 }>()
 
 const props = withDefaults(
@@ -14,6 +16,7 @@ const props = withDefaults(
     notificationDot?: boolean
     resolvedTheme?: 'light' | 'dark'
     pageTitle?: string
+    menuEnabled?: boolean
   }>(),
   {
     notificationDot: false,
@@ -31,20 +34,51 @@ const themeIconName = computed<MobileIconName>(() =>
 </script>
 
 <template>
-  <div
-    class="mobile-global-header"
-    :class="{ 'mobile-global-header--page': pageTitle }"
-    data-testid="mobile-global-header"
+  <MobilePageHeader
+    v-if="pageTitle"
+    class="mobile-global-header mobile-global-header--page"
+    :title="pageTitle"
+    test-id="mobile-global-header"
+    title-test-id="mobile-global-page-title"
   >
-    <span v-if="pageTitle" class="mobile-global-header__leading" />
-    <strong
-      v-if="pageTitle"
-      class="mobile-global-header__page-title"
-      data-testid="mobile-global-page-title"
-    >
-      {{ pageTitle }}
-    </strong>
-    <strong v-else class="mobile-global-header__brand">思余AI中控台</strong>
+    <template #left-action>
+      <button
+        v-if="menuEnabled"
+        class="mobile-page-header__menu mobile-pressable"
+        type="button"
+        aria-label="打开主题设置"
+        data-testid="mobile-header-menu"
+        @click="emit('settingsClick')"
+      >
+        <MobileIcon name="menu" />
+      </button>
+    </template>
+
+    <template #right-actions>
+      <button
+        class="mobile-page-header__action mobile-icon-button mobile-pressable"
+        type="button"
+        :aria-label="themeActionLabel"
+        data-testid="theme-toggle"
+        @click="emit('themeToggle')"
+      >
+        <MobileIcon class="mobile-header-icon" :name="themeIconName" />
+      </button>
+      <button
+        class="mobile-page-header__action mobile-icon-button mobile-pressable"
+        type="button"
+        aria-label="通知"
+        @click="emit('notificationClick')"
+      >
+        <VanBadge :dot="notificationDot">
+          <MobileIcon class="mobile-header-icon" name="notification-bell" />
+        </VanBadge>
+      </button>
+    </template>
+  </MobilePageHeader>
+
+  <div v-else class="mobile-global-header" data-testid="mobile-global-header">
+    <strong class="mobile-global-header__brand">思余AI中控台</strong>
 
     <div class="mobile-global-header__actions">
       <button
@@ -71,7 +105,7 @@ const themeIconName = computed<MobileIconName>(() =>
 </template>
 
 <style scoped>
-.mobile-global-header {
+.mobile-global-header:not(.mobile-global-header--page) {
   display: flex;
   min-width: 0;
   height: var(--layout-header-height);
@@ -92,45 +126,41 @@ const themeIconName = computed<MobileIconName>(() =>
   white-space: nowrap;
 }
 
-.mobile-global-header--page {
-  height: var(--device-list-header-height);
-  padding-right: max(var(--device-list-page-padding-x), var(--safe-area-right));
-  padding-left: max(var(--device-list-page-padding-x), var(--safe-area-left));
-  background: var(--device-list-header-background);
-  color: var(--device-list-text-primary);
-  font-family: var(--device-list-font-family);
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  display: grid;
-}
-
-.mobile-global-header__leading {
-  min-width: 0;
-}
-
-.mobile-global-header__page-title {
-  overflow: hidden;
-  font-size: var(--device-list-title-size);
-  font-weight: var(--device-list-title-weight);
-  line-height: var(--device-list-title-line-height);
-  letter-spacing: var(--device-list-title-letter-spacing);
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-global-header--page .mobile-global-header__actions {
-  justify-self: end;
-}
-
-.mobile-global-header--page :deep(.mobile-icon-button) {
-  --control-size-icon-button: var(--device-list-header-control-size);
-}
-
 .mobile-global-header__actions {
   display: flex;
   flex: none;
   gap: var(--layout-compact-gap);
   align-items: center;
+}
+
+.mobile-page-header__menu {
+  display: grid;
+  width: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  color: var(--visual-v2-page-text-primary);
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  place-items: center;
+}
+
+.mobile-page-header__menu .mobile-icon {
+  width: var(--visual-v2-page-menu-icon-width);
+  height: var(--visual-v2-page-menu-icon-height);
+  font-size: var(--visual-v2-page-menu-icon-width);
+}
+
+.mobile-page-header__action {
+  --control-size-icon-button: var(--visual-v2-page-header-control-size);
+}
+
+:deep(.mobile-page-header .mobile-header-icon) {
+  width: var(--visual-v2-page-action-icon-size);
+  height: var(--visual-v2-page-action-icon-size);
+  font-size: var(--visual-v2-page-action-icon-size);
 }
 
 .mobile-header-icon {

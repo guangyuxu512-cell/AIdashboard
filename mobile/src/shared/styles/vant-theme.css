@@ -72,13 +72,13 @@
   /* Vant Tabbar（底部导航）：控制五入口高度、图标、文字与图文间距。 */
   --van-tabbar-height: var(--layout-bottom-nav-height);
   --van-tabbar-background: var(--bg-surface-raised);
-  --van-tabbar-item-font-size: var(--font-size-caption);
-  --van-tabbar-item-line-height: var(--line-height-caption);
-  --van-tabbar-item-text-color: var(--text-tertiary);
-  --van-tabbar-item-active-color: var(--text-selected);
-  --van-tabbar-item-active-background: var(--bg-surface-raised);
-  --van-tabbar-item-icon-size: var(--icon-size-default);
-  --van-tabbar-item-icon-margin-bottom: var(--layout-compact-gap);
+  --van-tabbar-item-font-size: var(--typography-v2-bottom-nav-size);
+  --van-tabbar-item-line-height: var(--typography-v2-bottom-nav-line-height);
+  --van-tabbar-item-text-color: var(--visual-v2-bottom-nav-inactive-color);
+  --van-tabbar-item-active-color: var(--visual-v2-bottom-nav-active-color);
+  --van-tabbar-item-active-background: transparent;
+  --van-tabbar-item-icon-size: var(--visual-v2-bottom-nav-icon-size);
+  --van-tabbar-item-icon-margin-bottom: var(--visual-v2-bottom-nav-item-gap);
 
   /* Vant Tabs（标签选择）：控制 CapabilityPanel 类型选择器的高度与字体。 */
   --van-tab-text-color: var(--text-secondary);
@@ -121,8 +121,8 @@
   /* Vant Tag（标签）：控制 Device/Task 状态与 Meta Tag 的字体、行高和内边距。 */
   --van-tag-padding: calc(var(--layout-compact-gap) / 2)
     var(--layout-content-gap);
-  --van-tag-font-size: var(--font-size-caption);
-  --van-tag-line-height: var(--line-height-caption);
+  --van-tag-font-size: var(--typography-v2-tag-size);
+  --van-tag-line-height: var(--typography-v2-tag-line-height);
   --van-tag-radius: var(--radius-tag);
   --van-tag-round-radius: var(--radius-tag);
   --van-tag-default-color: var(--status-neutral);

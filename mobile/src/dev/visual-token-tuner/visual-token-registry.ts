@@ -548,7 +548,7 @@ export const visualTokenRegistry: readonly VisualTokenDefinition[] = [
     cssVar: '--layout-bottom-nav-height',
     label: '底部导航高度',
     group: 'global',
-    defaultValue: 58,
+    defaultValue: 64,
     min: 54,
     max: 68,
     step: 1,

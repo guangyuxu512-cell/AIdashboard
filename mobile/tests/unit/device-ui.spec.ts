@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   DeviceConnectionTag,
+  DEVICE_ARTWORK_STATES,
   DeviceEnabledTag,
   DeviceStatusArtwork,
   type Device,
@@ -179,7 +180,7 @@ describe('device center UI', () => {
     const offline = track(
       mount(DeviceConnectionTag, { props: { status: 'offline' } }),
     )
-    const unreported = track(
+    const missingConnection = track(
       mount(DeviceConnectionTag, { props: { status: null } }),
     )
 
@@ -187,7 +188,7 @@ describe('device center UI', () => {
     expect(disabled.text()).toBe('已停用')
     expect(online.text()).toBe('在线')
     expect(offline.text()).toBe('离线')
-    expect(unreported.text()).toBe('未上报')
+    expect(missingConnection.text()).toBe('离线')
   })
 
   it.each([
@@ -277,18 +278,17 @@ describe('device center UI', () => {
     },
   )
 
-  it('renders a null Runtime as unreported instead of offline', async () => {
+  it('uses the safe offline visual fallback when Runtime is missing', async () => {
     const wrapper = mountDeviceCard({ ...baseDevice, workerRuntime: null })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('未上报')
-    expect(wrapper.text()).not.toContain('离线')
-    expect(
-      wrapper
-        .get('[data-testid="device-card-meta"]')
-        .findAll('span')
-        .map((item) => item.text()),
-    ).toEqual(['心跳未上报', '·', '已启用'])
+    expect(wrapper.get('[data-testid="device-card-runtime"]').text()).toBe(
+      '离线',
+    )
+    expect(wrapper.get('[data-testid="device-card-meta"]').text()).toContain(
+      '心跳未上报·已启用',
+    )
+    expect(wrapper.find('.device-list-card__heartbeat').exists()).toBe(true)
   })
 
   it('keeps a long Device name in the fixed name slot', () => {
@@ -330,13 +330,9 @@ describe('device center UI', () => {
   })
 
   it('renders every formal artwork kind and state without inferring kind from names', () => {
+    expect(DEVICE_ARTWORK_STATES).toEqual(['online', 'running', 'offline'])
     for (const kind of ['desktop', 'laptop', 'server'] as const) {
-      for (const state of [
-        'online',
-        'running',
-        'offline',
-        'unreported',
-      ] as const) {
+      for (const state of DEVICE_ARTWORK_STATES) {
         const wrapper = track(
           mount(DeviceStatusArtwork, { props: { kind, state } }),
         )
@@ -371,7 +367,37 @@ describe('device center UI', () => {
         { ...baseDevice, workerRuntime: null },
         idleActiveTaskState,
       ),
-    ).toBe('unreported')
+    ).toBe('offline')
+  })
+
+  it('keeps heartbeat and enabled facts independent from the three-state visual model', async () => {
+    const freshEnabled = mountDeviceCard(baseDevice)
+    const missingDisabled = mountDeviceCard({
+      ...baseDevice,
+      enabled: false,
+      workerRuntime: {
+        ...baseDevice.workerRuntime!,
+        lastSeenAt: 'not-a-date',
+      },
+    })
+    await flushPromises()
+
+    expect(
+      freshEnabled
+        .get('[data-testid="device-status-artwork"]')
+        .attributes('data-device-artwork-state'),
+    ).toBe('online')
+    expect(
+      missingDisabled
+        .get('[data-testid="device-status-artwork"]')
+        .attributes('data-device-artwork-state'),
+    ).toBe('online')
+    expect(
+      freshEnabled.get('[data-testid="device-card-meta"]').text(),
+    ).toContain('已启用')
+    expect(
+      missingDisabled.get('[data-testid="device-card-meta"]').text(),
+    ).toContain('心跳未上报·已停用')
   })
 
   it('adapts the formal Active Task summary to the frozen Task Card model', () => {

@@ -43,10 +43,10 @@ describe('development-only visual data sources', () => {
     )
 
     expect(response.total).toBe(20)
-    expect(statuses.filter((status) => status === 'online')).toHaveLength(4)
-    expect(statuses.filter((status) => status === 'offline')).toHaveLength(1)
-    expect(statuses.filter((status) => status === null)).toHaveLength(15)
-    expect(response.items.filter((device) => !device.enabled)).toHaveLength(1)
+    expect(statuses.filter((status) => status === 'online')).toHaveLength(8)
+    expect(statuses.filter((status) => status === 'offline')).toHaveLength(12)
+    expect(statuses.filter((status) => status === null)).toHaveLength(0)
+    expect(response.items.filter((device) => !device.enabled)).toHaveLength(3)
     expect(
       activeTasks.filter((task) => task?.status === 'running'),
     ).toHaveLength(1)

@@ -40,7 +40,7 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 
 <template>
   <article
-    class="device-list-card mobile-press-surface"
+    class="device-list-card mobile-business-card-surface-v2 mobile-press-surface"
     :class="`device-list-card--${visualState}`"
     data-testid="device-card"
   >
@@ -72,6 +72,7 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
         <span>{{ visualStateLabel }}</span>
       </span>
       <span class="device-list-card__meta" data-testid="device-card-meta">
+        <MobileIcon class="device-list-card__heartbeat" name="heartbeat" />
         <span>{{ heartbeatMeta }}</span>
         <span aria-hidden="true">·</span>
         <span>{{ enabledMeta }}</span>
@@ -99,11 +100,12 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
   overflow: hidden;
   color: var(--device-list-text-primary);
   text-align: left;
-  background: var(--device-list-card-background);
+  background: var(--visual-v2-business-card-background);
   border: var(--device-list-card-border-width) solid
-    var(--device-list-card-border);
+    var(--visual-v2-business-card-border-color);
   border-radius: var(--device-list-card-radius);
-  box-shadow: var(--device-list-card-shadow);
+  box-shadow: var(--visual-v2-business-card-shadow);
+  backdrop-filter: blur(var(--visual-v2-business-card-blur));
   grid-template-columns:
     var(--device-list-card-artwork-column) minmax(0, 1fr)
     var(--device-list-card-chevron-column);
@@ -126,9 +128,9 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 }
 
 .device-list-card:has(.device-list-card__main:active) {
-  background: var(--device-list-card-pressed-background);
-  border-color: var(--device-list-card-pressed-border);
-  box-shadow: var(--device-list-card-pressed-shadow);
+  background: var(--visual-v2-business-card-pressed-background);
+  border-color: var(--visual-v2-business-card-pressed-border-color);
+  box-shadow: var(--visual-v2-business-card-pressed-shadow);
   transform: scale(var(--press-scale-card));
 }
 
@@ -159,10 +161,10 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
   display: block;
   margin: 0 0 var(--device-list-card-name-gap);
   overflow: hidden;
-  font-size: var(--device-list-card-name-size);
-  font-weight: var(--device-list-card-name-weight);
-  line-height: var(--device-list-card-name-line-height);
-  letter-spacing: var(--device-list-card-name-letter-spacing);
+  font-size: var(--typography-v2-business-card-title-size);
+  font-weight: var(--typography-v2-business-card-title-weight);
+  line-height: var(--typography-v2-business-card-title-line-height);
+  letter-spacing: var(--typography-v2-business-card-title-letter-spacing);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -178,9 +180,9 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 .device-list-card__runtime {
   gap: var(--device-list-card-inline-gap);
   margin-bottom: var(--device-list-card-status-gap);
-  font-size: var(--device-list-card-status-size);
-  font-weight: var(--device-list-card-status-weight);
-  line-height: var(--device-list-card-status-line-height);
+  font-size: var(--typography-v2-status-size);
+  font-weight: var(--typography-v2-status-weight);
+  line-height: var(--typography-v2-status-line-height);
 }
 
 .device-list-card__runtime--online {
@@ -195,10 +197,6 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
   color: var(--device-list-status-offline);
 }
 
-.device-list-card__runtime--unreported {
-  color: var(--device-list-status-unreported);
-}
-
 .device-list-card__state-dot {
   width: var(--device-list-status-dot-size);
   height: var(--device-list-status-dot-size);
@@ -209,10 +207,17 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 
 .device-list-card__meta {
   gap: var(--device-list-card-inline-gap);
-  color: var(--device-list-card-meta-color);
-  font-size: var(--device-list-card-meta-size);
-  font-weight: var(--device-list-card-meta-weight);
-  line-height: var(--device-list-card-meta-line-height);
+  color: var(--visual-v2-business-card-meta-color);
+  font-size: var(--typography-v2-meta-size);
+  font-weight: var(--typography-v2-meta-weight);
+  line-height: var(--typography-v2-meta-line-height);
+}
+
+.device-list-card__heartbeat {
+  width: var(--visual-v2-business-card-meta-icon-size);
+  height: var(--visual-v2-business-card-meta-icon-size);
+  flex: none;
+  font-size: var(--visual-v2-business-card-meta-icon-size);
 }
 
 .device-list-card__meta span {
@@ -226,7 +231,7 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
   z-index: 1;
   width: var(--device-list-card-chevron-size);
   height: var(--device-list-card-chevron-size);
-  color: var(--device-list-card-chevron-color);
+  color: var(--visual-v2-business-card-chevron-color);
   font-size: var(--device-list-card-chevron-size);
   justify-self: end;
 }

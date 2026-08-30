@@ -154,12 +154,12 @@ describe('device center formal contract', () => {
         }),
       }),
     )
-    expect(getDeviceConnectionDisplayState(null)).toBe('unreported')
-    expect(getDeviceConnectionDisplayState(undefined)).toBe('unreported')
+    expect(getDeviceConnectionDisplayState(null)).toBe('offline')
+    expect(getDeviceConnectionDisplayState(undefined)).toBe('offline')
     expect(getDeviceConnectionDisplayState('offline')).toBe('offline')
     expect(DEVICE_ENABLED_META.disabled.label).toBe('已停用')
     expect(DEVICE_CONNECTION_META.online.label).toBe('在线')
-    expect(DEVICE_CONNECTION_META.unreported.label).toBe('未上报')
+    expect('unreported' in DEVICE_CONNECTION_META).toBe(false)
   })
 
   it('keeps backend order while deduplicating device_id across pages', () => {

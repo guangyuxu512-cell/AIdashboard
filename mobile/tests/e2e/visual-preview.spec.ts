@@ -112,10 +112,10 @@ async function readGlobalHeaderAnatomy(page: Page) {
       '[data-testid="mobile-shell-header"]',
     )!
     const headline = header.querySelector<HTMLElement>(
-      '.mobile-global-header__brand, .mobile-global-header__page-title',
+      '.mobile-global-header__brand, .mobile-page-header__title',
     )!
     const actions = header.querySelector<HTMLElement>(
-      '.mobile-global-header__actions',
+      '.mobile-global-header__actions, .mobile-page-header__actions',
     )!
     const buttons = Array.from(
       actions.querySelectorAll<HTMLButtonElement>('button'),
@@ -216,6 +216,9 @@ async function expectBottomNavigation(
       expectedHeight: Number.parseFloat(
         rootStyle.getPropertyValue('--layout-bottom-nav-height'),
       ),
+      expectedPaddingX: Number.parseFloat(
+        rootStyle.getPropertyValue('--visual-v2-bottom-nav-padding-x'),
+      ),
       widths: boxes.map((box) => box.width),
       touchHeights: boxes.map((box) => box.height),
       iconSizes: iconBoxes.map((box) => ({
@@ -244,9 +247,21 @@ async function expectBottomNavigation(
           labelBoxes[index]!.width <= boxes[index]!.width
         )
       }),
-      fillsWidth:
-        Math.abs(boxes[0]!.left - navBox.left) <= 1 &&
-        Math.abs(boxes[boxes.length - 1]!.right - navBox.right) <= 1,
+      fillsInsetTrack:
+        Math.abs(
+          boxes[0]!.left -
+            navBox.left -
+            Number.parseFloat(
+              rootStyle.getPropertyValue('--visual-v2-bottom-nav-padding-x'),
+            ),
+        ) <= 1 &&
+        Math.abs(
+          navBox.right -
+            boxes[boxes.length - 1]!.right -
+            Number.parseFloat(
+              rootStyle.getPropertyValue('--visual-v2-bottom-nav-padding-x'),
+            ),
+        ) <= 1,
       shellOwned: footer.contains(element),
       mainBeforeFooter: mainBox.bottom <= footerBox.top,
       navWithinFooter:
@@ -264,13 +279,13 @@ async function expectBottomNavigation(
   expect(
     geometry.iconSizes.every(
       ({ width, height }) =>
-        width >= 20 && width <= 24 && height >= 20 && height <= 24,
+        width >= 24 && width <= 26 && height >= 24 && height <= 26,
     ),
   ).toBe(true)
   expect(geometry.iconsAboveLabels).toBe(true)
   expect(geometry.iconsCentered).toBe(true)
   expect(geometry.labelsSingleLine).toBe(true)
-  expect(geometry.fillsWidth).toBe(true)
+  expect(geometry.fillsInsetTrack).toBe(true)
   expect(geometry.shellOwned).toBe(true)
   expect(geometry.mainBeforeFooter).toBe(true)
   expect(geometry.navWithinFooter).toBe(true)
@@ -549,9 +564,9 @@ for (const width of viewportWidths) {
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       await expect(page.getByTestId('device-card')).toHaveCount(20)
       await expect(page.getByTestId('summary-all')).toHaveText('20')
-      await expect(page.getByTestId('summary-online')).toHaveText('4')
+      await expect(page.getByTestId('summary-online')).toHaveText('8')
       await expect(page.getByTestId('summary-running')).toHaveText('1')
-      await expect(page.getByTestId('summary-offline')).toHaveText('1')
+      await expect(page.getByTestId('summary-offline')).toHaveText('12')
       await expect(page.getByTestId('device-search')).toBeEnabled()
       await expect(page.getByTestId('summary-metric-all')).toHaveAttribute(
         'aria-pressed',
@@ -564,7 +579,7 @@ for (const width of viewportWidths) {
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
       await onlineMetric.click()
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'true')
-      await expect(page.getByTestId('device-card')).toHaveCount(4)
+      await expect(page.getByTestId('device-card')).toHaveCount(8)
       await onlineMetric.click()
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
       await expect(page.getByTestId('summary-metric-all')).toHaveAttribute(
@@ -578,7 +593,7 @@ for (const width of viewportWidths) {
         await expect(
           page.getByTestId('summary-metric-offline'),
         ).toHaveAttribute('aria-pressed', 'true')
-        await expect(page.getByTestId('device-card')).toHaveCount(1)
+        await expect(page.getByTestId('device-card')).toHaveCount(12)
         await page.getByTestId('summary-metric-offline').click()
         await expect(page.getByTestId('device-card')).toHaveCount(20)
 
@@ -599,7 +614,7 @@ for (const width of viewportWidths) {
           return `${style.fontSize}/${style.fontWeight}`
         }
         return {
-          brand: read('.mobile-global-header__page-title'),
+          brand: read('.mobile-page-header__title'),
           cardTitle: read('[data-testid="device-card-name"]'),
           summaryNumber: read('.mobile-summary-strip__value'),
           meta: read('.device-list-card__meta'),
@@ -713,7 +728,7 @@ for (const width of viewportWidths) {
         )!
         const buttons = Array.from(
           document.querySelectorAll<HTMLElement>(
-            '.mobile-global-header__actions .mobile-icon-button',
+            '.mobile-page-header__actions .mobile-icon-button',
           ),
         )
         const buttonStyles = buttons.map((button) => {
@@ -733,7 +748,7 @@ for (const width of viewportWidths) {
           buttonStyles,
           iconGlyphs: Array.from(
             document.querySelectorAll<HTMLElement>(
-              '.mobile-global-header__actions .mobile-header-icon',
+              '.mobile-page-header__actions .mobile-header-icon',
             ),
           ).map((icon) => {
             const box = icon.getBoundingClientRect()
@@ -860,7 +875,7 @@ for (const width of viewportWidths) {
             }),
             controlsHeight: style('[data-testid="device-list-controls"]')
               .height,
-            searchHeight: style('.device-list-controls__search').height,
+            searchHeight: style('.mobile-search-field').height,
             scrollbarWidth: style('[data-testid="device-list-scroll"]')
               .scrollbarWidth,
             scrollable: scroll.scrollHeight > scroll.clientHeight,

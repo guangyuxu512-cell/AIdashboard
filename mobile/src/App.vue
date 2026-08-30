@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { ConfigProvider as VanConfigProvider, showToast } from 'vant'
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
-import { useThemeStore } from '@/app/stores/theme'
+import { useThemeStore, type ThemeMode } from '@/app/stores/theme'
 import type { MobileIconName } from '@/shared/icons'
 import {
   MobileAppShell,
   MobileBottomNavigation,
   MobileDetailHeader,
   MobileGlobalHeader,
+  MobileThemeSettingsSheet,
 } from '@/shared/ui'
 
 const visualTokenTunerEnabled =
@@ -26,7 +27,8 @@ const VisualTokenTuner = visualTokenTunerEnabled
 const route = useRoute()
 const router = useRouter()
 const themeStore = useThemeStore()
-const { resolvedTheme } = storeToRefs(themeStore)
+const { mode, resolvedTheme } = storeToRefs(themeStore)
+const themeSettingsOpen = ref(false)
 
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
@@ -111,6 +113,11 @@ function goBack(): void {
 function showNotificationPlaceholder(): void {
   showToast('功能建设中')
 }
+
+function selectTheme(nextMode: ThemeMode): void {
+  themeStore.setMode(nextMode)
+  themeSettingsOpen.value = false
+}
 </script>
 
 <template>
@@ -123,8 +130,10 @@ function showNotificationPlaceholder(): void {
           v-if="isMainLayout"
           :resolved-theme="resolvedTheme"
           :page-title="globalHeaderPageTitle"
+          :menu-enabled="Boolean(globalHeaderPageTitle)"
           @theme-toggle="themeStore.toggleResolvedTheme"
           @notification-click="showNotificationPlaceholder"
+          @settings-click="themeSettingsOpen = true"
         />
         <MobileDetailHeader v-else :title="routeTitle" @back="goBack" />
       </template>
@@ -142,6 +151,13 @@ function showNotificationPlaceholder(): void {
     <component
       :is="VisualTokenTuner"
       v-if="visualTokenTunerEnabled && !isToolLayout"
+    />
+
+    <MobileThemeSettingsSheet
+      :show="themeSettingsOpen"
+      :mode="mode"
+      @update:show="themeSettingsOpen = $event"
+      @select="selectTheme"
     />
   </VanConfigProvider>
 </template>

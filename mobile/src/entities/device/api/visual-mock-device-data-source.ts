@@ -90,7 +90,7 @@ export function createVisualDeviceDtos(): DeviceReadDto[] {
     {
       device_id: VISUAL_DEVICE_IDS.service,
       display_name: '客服自动化工作站（华东售后协同中心）',
-      enabled: true,
+      enabled: false,
       location: '客服一组',
       note: null,
       deleted_at: null,
@@ -106,11 +106,16 @@ export function createVisualDeviceDtos(): DeviceReadDto[] {
     {
       device_id: VISUAL_DEVICE_IDS.data,
       display_name: '数据中心',
-      enabled: true,
+      enabled: false,
       location: null,
       note: null,
       deleted_at: null,
-      worker_runtime: null,
+      worker_runtime: createRuntime(
+        VISUAL_DEVICE_IDS.data,
+        '0.4.5',
+        'offline',
+        120,
+      ),
       created_at: createdAt,
       updated_at: minutesAgo(120),
     },
@@ -143,8 +148,12 @@ export function createVisualDeviceDtos(): DeviceReadDto[] {
         location: null,
         note: null,
         deleted_at: null,
-        worker_runtime:
-          index === 0 ? createRuntime(deviceId, '0.4.6', 'online', 2) : null,
+        worker_runtime: createRuntime(
+          deviceId,
+          index % 4 === 0 ? '0.4.6' : '0.4.5',
+          index % 3 === 0 ? 'online' : 'offline',
+          index + 2,
+        ),
         created_at: createdAt,
         updated_at: minutesAgo(index + 2),
       }

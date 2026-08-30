@@ -91,56 +91,56 @@ const items = computed(() => [
 
 <style scoped>
 .device-overview-cards {
-  --summary-strip-height: var(--device-list-summary-height);
+  --summary-strip-height: var(--visual-v2-metric-strip-height);
   --summary-strip-padding-x: 0px;
   --summary-strip-padding-y: 0px;
   --summary-strip-safe-area-right: 0px;
   --summary-strip-safe-area-left: 0px;
-  --summary-strip-radius: var(--device-list-summary-radius);
-  --summary-strip-background: var(--device-list-summary-background);
-  --summary-strip-border-color: var(--device-list-summary-border);
-  --summary-strip-shadow: var(--device-list-summary-shadow);
-  --summary-strip-divider: var(--device-list-summary-divider);
-  --summary-strip-divider-inset: var(--device-list-summary-divider-inset);
-  --summary-strip-metric-gap: var(--device-list-summary-metric-gap);
-  --summary-strip-metric-padding-top: var(
-    --device-list-summary-metric-padding-top
-  );
-  --summary-strip-metric-padding-x: var(--device-list-summary-metric-padding-x);
-  --summary-strip-metric-padding-bottom: var(
-    --device-list-summary-metric-padding-bottom
-  );
-  --summary-strip-value-size: var(--device-list-summary-value-size);
-  --summary-strip-value-weight: var(--device-list-summary-value-weight);
+  --summary-strip-radius: var(--visual-v2-metric-strip-radius);
+  --summary-strip-background: var(--visual-v2-metric-strip-background);
+  --summary-strip-border-color: var(--visual-v2-metric-strip-border-color);
+  --summary-strip-shadow: var(--visual-v2-metric-strip-shadow);
+  --summary-strip-divider: var(--visual-v2-metric-strip-divider);
+  --summary-strip-divider-inset: var(--visual-v2-metric-strip-divider-inset);
+  --summary-strip-metric-gap: var(--visual-v2-metric-gap);
+  --summary-strip-metric-padding-top: var(--visual-v2-metric-padding-top);
+  --summary-strip-metric-padding-x: var(--visual-v2-metric-padding-x);
+  --summary-strip-metric-padding-bottom: var(--visual-v2-metric-padding-bottom);
+  --summary-strip-value-size: var(--typography-v2-metric-number-size);
+  --summary-strip-value-weight: var(--typography-v2-metric-number-weight);
   --summary-strip-value-line-height: var(
-    --device-list-summary-value-line-height
+    --typography-v2-metric-number-line-height
   );
   --summary-strip-value-letter-spacing: var(
-    --device-list-summary-value-letter-spacing
+    --typography-v2-metric-number-letter-spacing
   );
-  --summary-strip-label-size: var(--device-list-summary-label-size);
-  --summary-strip-label-weight: var(--device-list-summary-label-weight);
+  --summary-strip-label-size: var(--typography-v2-metric-label-size);
+  --summary-strip-label-weight: var(--typography-v2-metric-label-weight);
   --summary-strip-label-line-height: var(
-    --device-list-summary-label-line-height
+    --typography-v2-metric-label-line-height
   );
-  --summary-strip-label-color: var(--device-list-summary-label-color);
-  --summary-strip-selected-bottom: var(--device-list-summary-selected-bottom);
-  --summary-strip-selected-width: var(--device-list-summary-selected-width);
-  --summary-strip-selected-height: var(--device-list-summary-selected-height);
-  --summary-strip-selected-color: var(--device-list-summary-selected-color);
+  --summary-strip-label-color: var(--visual-v2-metric-label-color);
+  --summary-strip-selected-bottom: var(--visual-v2-metric-selected-bottom);
+  --summary-strip-selected-width: var(--visual-v2-metric-selected-width);
+  --summary-strip-selected-height: var(--visual-v2-metric-selected-height);
+  --summary-strip-selected-color: var(--visual-v2-metric-selected-color);
   --summary-strip-selected-value-color: var(
-    --device-list-summary-selected-value-color
+    --visual-v2-metric-selected-value-color
   );
   --summary-strip-selected-value-weight: var(
-    --device-list-summary-selected-value-weight
+    --visual-v2-metric-selected-value-weight
   );
   --summary-strip-selected-label-color: var(
-    --device-list-summary-selected-label-color
+    --visual-v2-metric-selected-label-color
   );
   --summary-strip-selected-label-weight: var(
-    --device-list-summary-selected-label-weight
+    --visual-v2-metric-selected-label-weight
   );
   width: 100%;
   min-width: 0;
+}
+
+.device-overview-cards :deep(.mobile-summary-strip__surface) {
+  backdrop-filter: blur(var(--visual-v2-metric-strip-blur));
 }
 </style>

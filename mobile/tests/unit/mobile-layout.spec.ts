@@ -273,7 +273,7 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--layout-summary-height: 96px')
     expect(tokens).toContain('--layout-summary-padding-y: 7px')
     expect(tokens).toContain('--layout-toolbar-height: 46px')
-    expect(tokens).toContain('--layout-bottom-nav-height: 58px')
+    expect(tokens).toContain('--layout-bottom-nav-height: 64px')
     expect(tokens).toContain('--layout-page-padding-x: 16px')
     expect(tokens).toContain('--layout-page-padding-y: 12px')
     expect(tokens).toContain('--layout-section-gap: 24px')
@@ -340,7 +340,7 @@ describe('Mobile Layout shared components', () => {
       '--van-button-default-height: var(--control-height-default)',
     )
     expect(vantTheme).toContain(
-      '--van-tabbar-item-line-height: var(--line-height-caption)',
+      '--van-tabbar-item-line-height: var(--typography-v2-bottom-nav-line-height)',
     )
     expect(vantTheme).toContain('--van-tab-font-size: var(--font-size-action)')
     expect(vantTheme).toMatch(
@@ -366,8 +366,12 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--device-list-card-artwork-column: 102px')
     expect(tokens).toContain('--device-list-card-gap: 14px')
     expect(tokens).toContain('--device-list-list-padding-top: 14px')
-    expect(tokens).toContain('--device-list-summary-height: 90px')
-    expect(tokens).toContain('--device-list-search-height: 44px')
+    expect(tokens).toContain(
+      '--device-list-summary-height: var(--visual-v2-metric-strip-height)',
+    )
+    expect(tokens).toContain(
+      '--device-list-search-height: var(--visual-v2-search-height)',
+    )
     expect(deviceCard).toContain(
       'min-height: var(--device-list-card-min-height)',
     )

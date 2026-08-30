@@ -841,7 +841,7 @@ for (const width of viewportWidths) {
         ).map((element) => element.getBoundingClientRect().height)
         return {
           headerHeight: style('.mobile-global-header').height,
-          searchHeight: style('.device-list-controls__search').height,
+          searchHeight: style('.mobile-search-field').height,
           summaryHeight: style('.mobile-summary-strip').height,
           controlsLeft: style('[data-testid="device-list-controls"]')
             .paddingLeft,
@@ -873,7 +873,7 @@ for (const width of viewportWidths) {
         listScrollbarWidth: 'none',
         shellMainOverflowY: 'hidden',
         footerBottom: safeAreaFixture.bottom,
-        bottomNavHeight: '58px',
+        bottomNavHeight: '64px',
       })
       expect(layout.metricHeights.every((height) => height >= 44)).toBe(true)
       expect(layout.tabbarPosition).not.toBe('fixed')
@@ -1551,13 +1551,15 @@ test('设备详情成功时三类辅助失败各自展示且不覆盖主数据',
   await expectNoHorizontalOverflow(page)
 })
 
-test('未上报 Runtime 与离线是不同事实', async ({ page }) => {
+test('Runtime缺失使用离线视觉Fallback且心跳缺失保持独立Meta', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await installMockApi(page)
 
   await page.goto('/#/devices/device-3')
   await expect(page.getByTestId('device-detail')).toContainText('未上报')
-  await expect(page.getByTestId('device-detail')).not.toContainText('离线')
+  await expect(page.getByTestId('device-detail')).toContainText('离线')
 
   await page.goto('/#/devices/device-2')
   await expect(page.getByTestId('device-detail')).toContainText('离线')

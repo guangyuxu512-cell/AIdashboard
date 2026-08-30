@@ -1,8 +1,9 @@
 :root {
   /* Typography */
   --font-family-base:
-    Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
-    'Segoe UI', system-ui, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'PingFang SC', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    sans-serif;
   --font-family-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     monospace;
@@ -24,6 +25,41 @@
   --line-height-label: 20px; /* Toolbar、卡片与 Section 标题紧凑行高 */
   --line-height-title: 22px; /* 品牌与详情 Header 标题行高 */
   --line-height-display: 22px; /* MobileSummaryStrip 指标数字行高 */
+
+  /* Mobile Visual V2 Semantic Typography（未迁移页面继续消费既有V1角色）。 */
+  --typography-v2-page-title-size: 20px;
+  --typography-v2-page-title-weight: 600;
+  --typography-v2-page-title-line-height: 24px;
+  --typography-v2-page-title-letter-spacing: -0.35px;
+  --typography-v2-detail-title-size: 20px;
+  --typography-v2-detail-title-weight: 600;
+  --typography-v2-detail-title-line-height: 24px;
+  --typography-v2-business-card-title-size: 16.5px;
+  --typography-v2-business-card-title-weight: 600;
+  --typography-v2-business-card-title-line-height: 19.8px;
+  --typography-v2-business-card-title-letter-spacing: -0.2px;
+  --typography-v2-search-size: 16px;
+  --typography-v2-search-weight: 500;
+  --typography-v2-search-line-height: 20px;
+  --typography-v2-status-size: 14px;
+  --typography-v2-status-weight: 500;
+  --typography-v2-status-line-height: 14px;
+  --typography-v2-meta-size: 13px;
+  --typography-v2-meta-weight: 400;
+  --typography-v2-meta-line-height: 13px;
+  --typography-v2-tag-size: 12px;
+  --typography-v2-tag-weight: 500;
+  --typography-v2-tag-line-height: 15px;
+  --typography-v2-metric-number-size: 23px;
+  --typography-v2-metric-number-weight: 600;
+  --typography-v2-metric-number-line-height: 23px;
+  --typography-v2-metric-number-letter-spacing: -0.35px;
+  --typography-v2-metric-label-size: 12.5px;
+  --typography-v2-metric-label-weight: 450;
+  --typography-v2-metric-label-line-height: 14.75px;
+  --typography-v2-bottom-nav-size: 12px;
+  --typography-v2-bottom-nav-weight: 500;
+  --typography-v2-bottom-nav-line-height: 15px;
 
   /* Primitive spacing scale（原子间距刻度：不作为业务组件的直接调参入口） */
   --space-1: 4px;
@@ -101,7 +137,7 @@
   --layout-summary-height: 96px; /* 移动端概览横幅高度，承载图标、数字、标签三层结构 */
   --layout-summary-padding-y: 7px; /* 概览横幅上下边距，96px 高度下留出指标内部呼吸空间 */
   --layout-toolbar-height: 46px; /* MobileListToolbar（列表工具行）整体高度 */
-  --layout-bottom-nav-height: 58px; /* 底部五入口导航高度，不含底部安全区 */
+  --layout-bottom-nav-height: 64px; /* Visual V2五入口导航主体高度，不含系统底部安全区 */
   --layout-page-padding-x: 16px; /* Header、列表与详情页统一左右留白 */
   --layout-page-padding-y: 12px; /* AppPage（详情内容页）基础上下留白 */
   --layout-section-gap: 24px; /* 详情页面主要区块之间的垂直距离 */
@@ -120,49 +156,105 @@
   --layout-readable-max-width: 28rem;
   --layout-inline-state-min-height: 96px;
 
-  /* Mobile Visual V2 / Device List：仅用于已选择性解冻的 /devices，不改动其它页面冻结尺寸。 */
-  --device-list-font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
-    'PingFang SC', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
-    sans-serif;
+  /* Mobile Visual V2共享几何；当前仅/devices消费页面级结构。 */
+  --visual-v2-page-header-height: 66px;
+  --visual-v2-page-padding-x: 18px;
+  --visual-v2-page-header-gap: 10px;
+  --visual-v2-page-header-actions-gap: 10px;
+  --visual-v2-page-header-control-size: 40px;
+  --visual-v2-page-action-icon-size: 22px;
+  --visual-v2-page-menu-icon-width: 22px;
+  --visual-v2-page-menu-icon-height: 18px;
+  --visual-v2-search-height: 44px;
+  --visual-v2-search-radius: 22px;
+  --visual-v2-search-padding-x: 16px;
+  --visual-v2-search-icon-size: 22px;
+  --visual-v2-search-icon-gap: 11px;
+  --visual-v2-search-border-width: 1px;
+  --visual-v2-metric-strip-height: 90px;
+  --visual-v2-metric-strip-radius: 18px;
+  --visual-v2-metric-strip-divider-inset: 17px;
+  --visual-v2-metric-strip-blur: 16px;
+  --visual-v2-metric-gap: 7px;
+  --visual-v2-metric-padding-top: 10px;
+  --visual-v2-metric-padding-x: 7px;
+  --visual-v2-metric-padding-bottom: 9px;
+  --visual-v2-metric-selected-bottom: 8px;
+  --visual-v2-metric-selected-width: 22px;
+  --visual-v2-metric-selected-height: 2px;
+  --visual-v2-metric-selected-value-weight: 600;
+  --visual-v2-metric-selected-label-weight: 620;
+  --visual-v2-business-card-meta-icon-size: 13px;
+  --visual-v2-business-card-blur: 14px;
+  --visual-v2-bottom-nav-height: var(--layout-bottom-nav-height);
+  --visual-v2-bottom-nav-padding-top: 8px;
+  --visual-v2-bottom-nav-padding-x: 18px;
+  --visual-v2-bottom-nav-padding-bottom: 8px;
+  --visual-v2-bottom-nav-item-padding-top: 4px;
+  --visual-v2-bottom-nav-item-gap: 4px;
+  --visual-v2-bottom-nav-icon-size: 25px;
+  --visual-v2-bottom-nav-border-width: 1px;
+  --visual-v2-bottom-nav-blur: 20px;
+
+  /* Mobile Visual V2 / Device List：已选择性解冻的/devices，不改动其它页面V1结构。 */
   --device-list-page-padding-x: 18px; /* 设备列表固定区与滚动列表的水平安全留白。 */
-  --device-list-header-height: 66px; /* 设备一级页 Header 内容高度，不含顶部 Safe Area。 */
-  --device-list-header-control-size: 40px; /* 设备页 Header 图标按钮可见尺寸，触控热区仍不少于44px。 */
-  --device-list-title-size: 20px;
-  --device-list-title-weight: 600;
-  --device-list-title-line-height: 24px;
-  --device-list-title-letter-spacing: -0.35px;
+  --device-list-header-height: var(--visual-v2-page-header-height);
+  --device-list-header-control-size: var(--visual-v2-page-header-control-size);
+  --device-list-title-size: var(--typography-v2-page-title-size);
+  --device-list-title-weight: var(--typography-v2-page-title-weight);
+  --device-list-title-line-height: var(--typography-v2-page-title-line-height);
+  --device-list-title-letter-spacing: var(
+    --typography-v2-page-title-letter-spacing
+  );
   --device-list-fixed-controls-gap: 14px; /* Search 与四项 Summary 之间的距离。 */
   --device-list-fixed-padding-top: 0px;
   --device-list-fixed-padding-bottom: 0px;
-  --device-list-search-height: 44px;
-  --device-list-search-radius: 22px;
-  --device-list-search-padding-x: 16px;
-  --device-list-search-icon-size: 22px;
-  --device-list-search-icon-gap: 11px;
-  --device-list-search-font-size: 16px;
-  --device-list-search-font-weight: 500;
-  --device-list-search-line-height: 20px;
-  --device-list-search-border-width: 1px;
-  --device-list-summary-height: 90px;
-  --device-list-summary-radius: 18px;
-  --device-list-summary-divider-inset: 17px;
-  --device-list-summary-metric-gap: 7px;
-  --device-list-summary-metric-padding-top: 10px;
-  --device-list-summary-metric-padding-x: 7px;
-  --device-list-summary-metric-padding-bottom: 9px;
-  --device-list-summary-value-size: 23px;
-  --device-list-summary-value-weight: 600;
-  --device-list-summary-value-line-height: 23px;
-  --device-list-summary-value-letter-spacing: -0.35px;
-  --device-list-summary-label-size: 12.5px;
-  --device-list-summary-label-weight: 450;
-  --device-list-summary-label-line-height: 14.75px;
-  --device-list-summary-selected-bottom: 8px;
-  --device-list-summary-selected-width: 22px;
-  --device-list-summary-selected-height: 2px;
-  --device-list-summary-selected-value-weight: 600;
-  --device-list-summary-selected-label-weight: 620;
+  --device-list-search-height: var(--visual-v2-search-height);
+  --device-list-search-radius: var(--visual-v2-search-radius);
+  --device-list-search-padding-x: var(--visual-v2-search-padding-x);
+  --device-list-search-icon-size: var(--visual-v2-search-icon-size);
+  --device-list-search-icon-gap: var(--visual-v2-search-icon-gap);
+  --device-list-search-font-size: var(--typography-v2-search-size);
+  --device-list-search-font-weight: var(--typography-v2-search-weight);
+  --device-list-search-line-height: var(--typography-v2-search-line-height);
+  --device-list-search-border-width: var(--visual-v2-search-border-width);
+  --device-list-summary-height: var(--visual-v2-metric-strip-height);
+  --device-list-summary-radius: var(--visual-v2-metric-strip-radius);
+  --device-list-summary-divider-inset: var(
+    --visual-v2-metric-strip-divider-inset
+  );
+  --device-list-summary-metric-gap: var(--visual-v2-metric-gap);
+  --device-list-summary-metric-padding-top: var(--visual-v2-metric-padding-top);
+  --device-list-summary-metric-padding-x: var(--visual-v2-metric-padding-x);
+  --device-list-summary-metric-padding-bottom: var(
+    --visual-v2-metric-padding-bottom
+  );
+  --device-list-summary-value-size: var(--typography-v2-metric-number-size);
+  --device-list-summary-value-weight: var(--typography-v2-metric-number-weight);
+  --device-list-summary-value-line-height: var(
+    --typography-v2-metric-number-line-height
+  );
+  --device-list-summary-value-letter-spacing: var(
+    --typography-v2-metric-number-letter-spacing
+  );
+  --device-list-summary-label-size: var(--typography-v2-metric-label-size);
+  --device-list-summary-label-weight: var(--typography-v2-metric-label-weight);
+  --device-list-summary-label-line-height: var(
+    --typography-v2-metric-label-line-height
+  );
+  --device-list-summary-selected-bottom: var(
+    --visual-v2-metric-selected-bottom
+  );
+  --device-list-summary-selected-width: var(--visual-v2-metric-selected-width);
+  --device-list-summary-selected-height: var(
+    --visual-v2-metric-selected-height
+  );
+  --device-list-summary-selected-value-weight: var(
+    --visual-v2-metric-selected-value-weight
+  );
+  --device-list-summary-selected-label-weight: var(
+    --visual-v2-metric-selected-label-weight
+  );
   --device-list-list-padding-top: 14px; /* Summary 与首张设备卡之间的列表起始留白。 */
   --device-list-list-padding-bottom: 28px;
   --device-list-card-gap: 14px;
@@ -175,18 +267,26 @@
   --device-list-card-padding-right: 17px;
   --device-list-card-padding-bottom: 15px;
   --device-list-card-padding-left: 16px;
-  --device-list-card-name-size: 16.5px;
-  --device-list-card-name-weight: 600;
-  --device-list-card-name-line-height: 19.8px;
-  --device-list-card-name-letter-spacing: -0.2px;
+  --device-list-card-name-size: var(--typography-v2-business-card-title-size);
+  --device-list-card-name-weight: var(
+    --typography-v2-business-card-title-weight
+  );
+  --device-list-card-name-line-height: var(
+    --typography-v2-business-card-title-line-height
+  );
+  --device-list-card-name-letter-spacing: var(
+    --typography-v2-business-card-title-letter-spacing
+  );
   --device-list-card-name-gap: 10px;
-  --device-list-card-status-size: 14px;
-  --device-list-card-status-weight: 500;
-  --device-list-card-status-line-height: 14px;
+  --device-list-card-status-size: var(--typography-v2-status-size);
+  --device-list-card-status-weight: var(--typography-v2-status-weight);
+  --device-list-card-status-line-height: var(
+    --typography-v2-status-line-height
+  );
   --device-list-card-status-gap: 10px;
-  --device-list-card-meta-size: 13px;
-  --device-list-card-meta-weight: 400;
-  --device-list-card-meta-line-height: 13px;
+  --device-list-card-meta-size: var(--typography-v2-meta-size);
+  --device-list-card-meta-weight: var(--typography-v2-meta-weight);
+  --device-list-card-meta-line-height: var(--typography-v2-meta-line-height);
   --device-list-card-inline-gap: 8px;
   --device-list-status-dot-size: 8px;
   --device-list-card-chevron-size: 16px;
@@ -350,7 +450,48 @@
   --device-list-status-online: #3f9a7c;
   --device-list-status-running: #557fae;
   --device-list-status-offline: #7b8ba3;
-  --device-list-status-unreported: #7b8ba3;
+  /* Visual V2共享语义别名：页面只消费这一层，不复制Light颜色到组件。 */
+  --visual-v2-page-text-primary: var(--device-list-text-primary);
+  --visual-v2-page-header-background: var(--device-list-header-background);
+  --visual-v2-search-background: var(--device-list-search-background);
+  --visual-v2-search-border-color: var(--device-list-search-border);
+  --visual-v2-search-shadow: var(--device-list-search-shadow);
+  --visual-v2-search-placeholder-color: var(--device-list-search-color);
+  --visual-v2-search-disabled-color: var(--device-list-search-disabled-color);
+  --visual-v2-search-input-color: var(--device-list-search-input-color);
+  --visual-v2-metric-strip-background: var(--device-list-summary-background);
+  --visual-v2-metric-strip-border-color: var(--device-list-summary-border);
+  --visual-v2-metric-strip-shadow: var(--device-list-summary-shadow);
+  --visual-v2-metric-strip-divider: var(--device-list-summary-divider);
+  --visual-v2-metric-label-color: var(--device-list-summary-label-color);
+  --visual-v2-metric-selected-color: var(--device-list-summary-selected-color);
+  --visual-v2-metric-selected-value-color: var(
+    --device-list-summary-selected-value-color
+  );
+  --visual-v2-metric-selected-label-color: var(
+    --device-list-summary-selected-label-color
+  );
+  --visual-v2-business-card-background: var(--device-list-card-background);
+  --visual-v2-business-card-border-color: var(--device-list-card-border);
+  --visual-v2-business-card-shadow: var(--device-list-card-shadow);
+  --visual-v2-business-card-pressed-background: var(
+    --device-list-card-pressed-background
+  );
+  --visual-v2-business-card-pressed-border-color: var(
+    --device-list-card-pressed-border
+  );
+  --visual-v2-business-card-pressed-shadow: var(
+    --device-list-card-pressed-shadow
+  );
+  --visual-v2-business-card-meta-color: var(--device-list-card-meta-color);
+  --visual-v2-business-card-chevron-color: var(
+    --device-list-card-chevron-color
+  );
+  --visual-v2-bottom-nav-background: rgb(255 255 255 / 95%);
+  --visual-v2-bottom-nav-border-color: #e5eaf1;
+  --visual-v2-bottom-nav-shadow: none;
+  --visual-v2-bottom-nav-inactive-color: #7d8ba2;
+  --visual-v2-bottom-nav-active-color: #1f73ff;
   --device-artwork-shadow: drop-shadow(0 5px 10px rgb(0 0 0 / 8%));
   --device-artwork-frame: #202838;
   --device-artwork-neck: #526174;
@@ -548,7 +689,11 @@
   --device-list-status-online: #62b99b;
   --device-list-status-running: #83a7cf;
   --device-list-status-offline: #d6deea;
-  --device-list-status-unreported: #9aa9bd;
+  --visual-v2-bottom-nav-background: rgb(8 18 30 / 92%);
+  --visual-v2-bottom-nav-border-color: rgb(36 55 79 / 86%);
+  --visual-v2-bottom-nav-shadow: none;
+  --visual-v2-bottom-nav-inactive-color: #a2afc1;
+  --visual-v2-bottom-nav-active-color: #1f73ff;
   --focus-ring-color: var(--color-primary);
   /* Stage 3B Shadow：Dark 保持独立阴影基线，不从 Light 反推。 */
   --shadow-card-contact: 0 1px 2px rgb(0 0 0 / 22%);

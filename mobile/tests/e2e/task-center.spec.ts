@@ -683,7 +683,7 @@ for (const width of viewportWidths) {
         listScrollbarWidth: 'none',
         shellMainOverflowY: 'hidden',
         footerBottom: safeAreaFixture.bottom,
-        bottomNavHeight: '58px',
+        bottomNavHeight: '64px',
       })
       expect(layout.selectorWidth).toBeGreaterThanOrEqual(44)
       expect(layout.filterWidth).toBeGreaterThanOrEqual(44)
