@@ -2,7 +2,7 @@
 
 > `/devices` 已进入 Mobile Visual V2 选择性迁移，旧 Device V1 的 Summary、Toolbar、Card 与 Primary
 > Leading Visual 数值不再约束该列表页；它们仍约束未迁移的 TaskCard、详情和其它既有组件。Visual V2
-> 当前为 Candidate for Final Visual Review，完整覆盖条款见
+> 当前共享基础范围已完成 Freeze Audit 并 Frozen，完整覆盖条款见
 > [`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。禁止用本索引旧值回写 Visual V2。
 
 本文记录 Mobile Stage 2 的唯一正式尺寸基线。正式值以
@@ -169,16 +169,16 @@ Stage 4 仍未冻结：Press、Motion。
 
 ## Mobile Visual V2 Selective Override（选择性覆盖）
 
-`/devices` 已通过显式 Selective Unfreeze 进入 Visual V2。以下值是 Device List 与共享 V2 Pattern 的候选
+`/devices` 已通过显式 Selective Unfreeze 进入 Visual V2。以下值是 Device List 与共享 V2 Pattern 的正式冻结
 覆盖，不改写本文件中未迁移 V1 页面历史：Page Header 66px、Search 44px、Metric Strip 90px、DeviceCard
 最小 122px / Gap 14px / Grid 102px + `minmax(0, 1fr)` + 18px、Artwork 80×80px、Bottom Navigation
 64px 主体 / 25px Icon / 12px Label。Global Font Family 与 `--typography-v2-*` 也只在迁移组件中消费；
 未迁移 Task、Detail、Schedule、Shop、Me 继续保持 V1 Frozen Geometry。
 
-Visual V2 的完整 Token、共享 Candidate 与三态 Device 规则见
+Visual V2 的完整 Token、共享 Foundation 状态与三态 Device 规则见
 [`02-设计系统.md`](./02-设计系统.md) 和
-[`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。当前状态是
-**Completed / Candidate for Final Visual Review**，不得自动 Frozen。
+[`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。当前审计范围状态是
+**Completed / Frozen**；`MobileListToolbar V2` 因 `/devices` 未实际使用，仍为 Shared Candidate。
 
 ## 验证
 

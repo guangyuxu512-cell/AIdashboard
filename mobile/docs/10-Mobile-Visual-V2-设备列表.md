@@ -2,16 +2,17 @@
 
 ## 状态与参考
 
-状态：**Completed / Candidate for Final Visual Review（已完成 / 候选最终人工视觉复核）**，尚未 Frozen。
+状态：**Completed / Frozen（已完成 / 已冻结）**。冻结范围是本文列出的 Visual V2 Shared Foundation
+（共享基础）以及 DeviceCard / DeviceStatusArtwork 业务基线，不扩展到 Backend、Query 或其它页面迁移。
 
 本轮只迁移正式 `/devices` 列表页与全局共用 Bottom Navigation 的 V2 视觉。视觉规格来自本机参考文件：
 `C:\Users\Administrator\Desktop\device-mobile-iphone13pro-vant4-heartbeat-enabled.html`。该 HTML 只提供
 视觉比例、层级、间距和 Light / Dark 方向；生产代码不加载 CDN，不复制 Mock 数据、假状态栏、手机外框、
 Home Indicator、Prototype Theme Store、Button 模拟路由或假通知红点。
 
-## Selective Unfreeze（选择性解冻）
+## Selective Unfreeze Closure（选择性解冻收口）
 
-本轮明确解冻并迁移：
+此前明确解冻并完成迁移：
 
 - `/devices` 页面组合与 Device List 的一级页 Header；
 - Hamburger → 正式 Theme / Settings Sheet，以及既有 Theme 快捷切换；
@@ -19,6 +20,9 @@ Home Indicator、Prototype Theme Store、Button 模拟路由或假通知红点�
 - `MobileBottomNavigation` 的 V2 视觉，Router 顺序与 Active Contract 不变；
 - Mobile 全局系统 Font Family 与 V2 Typography Role；
 - 上述稳定 Pattern 的共享组件和 Semantic Token。
+
+本次 Freeze Audit（冻结审计）确认实现与人工确认规范一致，上述范围重新 Frozen。未来确需改变 Anatomy、
+Hierarchy、Navigation Contract、Scroll Contract 或视觉基线时必须显式 Unfreeze，禁止在其它阶段顺手修改。
 
 未解冻：Backend Contract、DTO、Query Key、Router Contract、Auth/Permission、Device Detail、Task List / Detail、
 Schedule、Shop、Me、Capability、Worker 与数据库。旧 Stage 1～3 记录继续作为未迁移组件的 V1 Frozen 历史；
@@ -45,18 +49,25 @@ Metric Strip 之间维护两份。
 
 ## Shared V2 Baseline（共享 V2 基线）
 
-| Pattern           | 正式入口                                                           | 边界                                                               |
-| ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| Page Header       | `shared/ui/MobilePageHeader.vue`                                   | Left / centered title / right actions；不替代 `MobileDetailHeader` |
-| Search Field      | `shared/ui/MobileSearchField.vue`                                  | 通用输入与 ARIA；不拼 Backend 参数、不内置业务筛选                 |
-| Metric Strip      | `shared/ui/MobileSummaryStrip.vue`                                 | 3 / 4 项、selected、disabled、click；不写 Device / Task 分支       |
-| List Toolbar      | `shared/ui/MobileListToolbar.vue`                                  | Title / Meta / Selector / Filter；当前 Device 组合不重复渲染       |
-| Bottom Navigation | `shared/ui/MobileBottomNavigation.vue`                             | 五等分 Router Navigation、Active 与 Safe Area                      |
-| Business Surface  | `.mobile-business-card-surface-v2` + `--visual-v2-business-card-*` | 只共享 Surface / Border / Shadow / Press，不抽万能 Card            |
-| DeviceCard        | `features/device-center/ui/DeviceListCard.vue`                     | Device 独有 Anatomy、三态和详情导航                                |
-| Device Artwork    | `entities/device/ui/DeviceStatusArtwork.vue`                       | 业务插画，独立于普通 Icon Registry                                 |
+| Pattern                  | 正式入口                                                           | 边界                                                                              | 状态          |
+| ------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ------------- |
+| Global Font Family       | `tokens.css` 的 `--font-family-base`                               | 全 Mobile 统一系统字体栈                                                          | **Frozen**    |
+| Typography Roles         | `tokens.css` 的 `--typography-v2-*`                                | V2 组件只消费 Semantic Typography Token                                           | **Frozen**    |
+| Main Page Shell          | `MobileAppShell.vue` + `.mobile-list-page*`                        | 真实 Viewport、四向 Safe Area、固定顶部/底部与中间独立滚动                        | **Frozen**    |
+| Page Header              | `shared/ui/MobilePageHeader.vue`                                   | Left / centered title / right actions；不写死 Device，不替代 `MobileDetailHeader` | **Frozen**    |
+| Search Field             | `shared/ui/MobileSearchField.vue`                                  | 44px、通用输入与 ARIA；不拼 Backend 参数、不内置业务筛选                          | **Frozen**    |
+| Metric Strip             | `shared/ui/MobileSummaryStrip.vue`                                 | 3 / 4 项、Number / Label、selected、disabled、click；不写业务分支                 | **Frozen**    |
+| Bottom Navigation        | `shared/ui/MobileBottomNavigation.vue`                             | 设备 / 任务 / 计划 / 店铺 / 我的五等分、Router Active 与 Safe Area                | **Frozen**    |
+| Business Card Surface    | `.mobile-business-card-surface-v2` + `--visual-v2-business-card-*` | 共享 Surface / Border / Radius / Shadow / Touch / Trailing / Gap，不抽万能 Card   | **Frozen**    |
+| DeviceCard               | `features/device-center/ui/DeviceListCard.vue`                     | Device 独有 Anatomy、三态事实与详情导航                                           | **Frozen**    |
+| DeviceStatusArtwork      | `entities/device/ui/DeviceStatusArtwork.vue`                       | 设备业务插画，只公开 Online / Running / Offline，独立于普通 Icon Registry         | **Frozen**    |
+| Page Background Language | `tokens.css` + `MobileAppShell.vue`                                | Shell 唯一绘制连续背景，Safe Area / Header 透明，Search / Summary / Card 独立绘制 | **Frozen**    |
+| MobileListToolbar V2     | `shared/ui/MobileListToolbar.vue`                                  | `/devices` 未实际使用，等待真实列表场景验证                                       | **Candidate** |
 
-这些 Pattern 均为 **Candidate for Freeze（候选冻结）**，等待用户最终人工确认；不得自动迁移其它页面。
+Task、Shop、Schedule 后续迁移必须优先复用 Global Typography、Main Page Shell、Page Header、Search Field、
+Metric Strip、Bottom Navigation 与 Business Card Surface。页面可以自行提供业务 Metric、业务 Card、筛选逻辑、
+搜索 Contract 与 Query；DeviceCard / DeviceStatusArtwork 不得复制成其它实体结构。禁止创建 UniversalDashboard、
+万能 Page Schema、万能 BusinessCard 或低代码 UI Engine。
 
 ## Global Typography V2（全局字体排版）
 
@@ -102,9 +113,9 @@ Metric Strip 之间维护两份。
 几何只来自 `--typography-v2-*`、`--visual-v2-*`、`--device-list-*` 与 `--device-artwork-*`。Light / Dark
 Surface、Border、Shadow 也只通过 Semantic Token 解析；Vue 组件不得散落 Hex、Radius、Shadow 或同义尺寸。
 
-### Visual V2 Surface / Border Candidate（视觉表面与边界候选）
+### Visual V2 Surface / Border Frozen Baseline（视觉表面与边界冻结基线）
 
-本表是 `/devices` 当前候选颜色基线，尚未 Frozen。`MobileAppShell` V2 根层是 Page Gradient 的唯一
+本表是 `/devices` 当前 Frozen 颜色基线。`MobileAppShell` V2 根层是 Page Gradient 的唯一
 绘制者；顶部 Safe Area 容器、`MobilePageHeader` 与 Device Page 内容层必须保持透明并显示同一连续背景，
 禁止各自复制渐变或绘制独立 Header Surface。Search、Summary 与 DeviceCard 继续拥有各自的语义 Surface，
 禁止回退到旧 Stage 3A 的 `--bg-*` Surface。
