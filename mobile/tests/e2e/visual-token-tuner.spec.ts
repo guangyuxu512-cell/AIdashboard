@@ -228,7 +228,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .toBeNull()
     await expect
       .poll(() => rootValue(preview, '--layout-card-leading-icon-slot-width'))
-      .toBe('52px')
+      .toBe('72px')
     await expect
       .poll(() => rootValue(preview, '--layout-summary-height'))
       .toBe('96px')

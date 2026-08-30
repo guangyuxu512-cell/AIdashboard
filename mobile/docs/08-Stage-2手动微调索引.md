@@ -6,22 +6,31 @@
 
 ## 状态与冻结范围
 
-Status（状态）: **Completed / Frozen（已完成 / 已冻结）**
+Status（状态）: **Completed / Candidate for Visual Review（已完成 / 候选人工视觉复核）**
 
 本次基线来自已完成的 Visual Token Tuner V1 人工微调，并在 V2 中保持同一套尺寸默认值。冻结范围为：
 
 - Typography（字体排版）
 - Spacing（间距）
 - Global Dimensions（全局尺寸）
-- Card / Icon Ratio（卡片与图标比例）
+- Card / Icon Ratio（卡片与图标比例，当前仅此项经显式 Scoped Unfreeze 解冻）
 - Controls（控件尺寸）
 - Detail Density（详情密度）
 
 Stage 1 的 Anatomy（结构）、Hierarchy（层级）、Navigation Contract（导航约定）和 Scroll Contract（滚动约定）
 继续保持 Frozen。不得通过修改 DOM、组件顺序、Grid / Flex 槽位、路由、Bottom Navigation 或滚动归属来调整本基线。
 
-Final Icon 接入后，只允许通过显式 Optical Alignment Review（视觉光学校正）评审 1～2px 的对齐问题；这不重新开放
-整个 Stage 2。任何更大尺寸或比例调整都必须先明确 Unfreeze（解冻）。
+除本次明确记录的 Card / Icon Ratio 复核外，Final Icon 接入后仍只允许通过显式 Optical Alignment Review（视觉光学校正）
+评审 1～2px 的对齐问题；任何更大尺寸或比例调整都必须先明确 Unfreeze（解冻）。
+
+## Scoped Unfreeze：Card / Icon Ratio
+
+用户在透明显示器 PNG 接入后的真实 Device List 审查中，明确要求放大主视觉占比。解冻范围仅为
+`--layout-card-leading-icon-slot-width` 与 `--icon-size-card-leading`：当前候选为 `72px / 56px`，用于
+DeviceCard 与 TaskCard 共享的 Primary Leading Visual。调参器的对应上限同步扩展为 `80px / 64px`。
+
+不解冻 Card Padding、Card Gap、Row Gap、Leading / Content Gap、三行正文、Trailing Chevron、Header、Navigation、
+Scroll Contract、Theme 或任意 Stage 3A / 3B Token。候选值必须完成新的人工视觉确认后才能重新标记为 Frozen。
 
 ## Visual Token Tuner 基线
 
@@ -91,7 +100,7 @@ Summary、Runtime、Capability 等稳定语义 Token；旧的 `--space-1` / `--s
 
 | 语义                                | Token                                                                      | 正式值      | 主要消费者                          |
 | ----------------------------------- | -------------------------------------------------------------------------- | ----------- | ----------------------------------- |
-| Primary Leading Visual Slot / Glyph | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 52px / 36px | DeviceCard、TaskCard                |
+| Primary Leading Visual Slot / Glyph | `--layout-card-leading-icon-slot-width` / `--icon-size-card-leading`       | 72px / 56px | DeviceCard、TaskCard                |
 | Chevron Slot / Glyph                | `--layout-card-trailing-icon-slot-width` / `--icon-size-card-chevron`      | 22px / 16px | DeviceCard、TaskCard                |
 | Summary Icon                        | `--icon-size-summary-metric`                                               | 16px        | MobileSummaryStrip                  |
 | Runtime Slot / Glyph                | `--layout-runtime-summary-icon-slot-width` / `--icon-size-runtime-summary` | 48px / 25px | DeviceRuntimeSummary                |
@@ -118,7 +127,7 @@ Slot（图标槽位）与 Glyph（图形视觉尺寸）始终分离。最终图�
 - `MobileBottomNavigation`：保持 58px、五等分与 Safe Area 所有权；Caption 通过 Vant 映射消费 11px / 15px。
 - `MobileSummaryStrip`：保持 96px、7px Y Padding、16px Icon、Icon → Number → Label 和三等分结构。
 - `MobileListToolbar`：保持单行工具行结构，46px 高度、26px 可见控件、45px 触控区。
-- `DeviceCard` / `TaskCard`：保持三行 Main Content、15px X / 16px Y Padding、5px Row Gap、52px / 36px 主视觉、22px Chevron Slot。
+- `DeviceCard` / `TaskCard`：保持三行 Main Content、15px X / 16px Y Padding、5px Row Gap、72px / 56px 候选主视觉、22px Chevron Slot。
 - `DeviceRuntimeSummary`：保持上下两段结构，17px X / 9px Y Padding、48px / 25px 视觉槽位与图标。
 - `CapabilityPanel`：保持 372px、X 12px / Y 13px 内边距、50px Row、36px / 24px 图标、前 5 行完整可见和第 6 行起内部滚动。
 
@@ -143,8 +152,9 @@ Press / Motion 仍留给后续显式 Review。
 
 Stage 3A 开始前、候选色彩映射落地后与最终颜色冻结时，均以 `390 × 844` Light 的真实浏览器页面读取冻结几何。结果为 `0` 尺寸
 差异：Global Header `52px`、Detail Header `51px`、Summary `96px`、Toolbar `46px`、Bottom Navigation
-`58px`；DeviceCard 为 `15px X / 16px Y` Padding、`52 / 36px` Primary Leading Visual；TaskCard 继续使用相同
-Card Padding 与 Leading Visual 语言；Runtime 为 `17px X / 9px Y`；Capability Panel / Row 为 `372px / 50px`，
+`58px`；当时 DeviceCard / TaskCard 为 `15px X / 16px Y` Padding、`52 / 36px` Primary Leading Visual。该记录已被
+本次显式 Scoped Unfreeze 的 `72 / 56px` 候选替代；其余 Card Padding、Leading / Content Gap、Runtime
+`17 / 9px` 与 Capability Panel / Row `372px / 50px` 保持不变，
 完整 5 行且第 6 行才在内部滚动。360px 与 430px Light、390px Dark 的自动化检查同样没有横向溢出或 Touch
 Target 回退。
 

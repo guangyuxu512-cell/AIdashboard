@@ -11,7 +11,8 @@ LocalStorage，也不会向根元素或样式表注入任何覆盖。
 以及 Frozen Contract（冻结契约）优先级更高。调参器不能修改 DOM、路由、导航、滚动约定、业务 Contract、
 API、DTO、Store 或 Query。
 
-Stage 1 Anatomy / Hierarchy / Navigation / Scroll Contract 与 Stage 2 Geometry 全部 Frozen；Stage 3A 的
+Stage 1 Anatomy / Hierarchy / Navigation / Scroll Contract 与 Stage 2 Geometry 均 Frozen，唯有已记录的
+Card / Icon Ratio Scoped Unfreeze（共享 Primary Leading Visual `72 / 56px` 候选）例外；Stage 3A 的
 Light / Dark Semantic Color Token 也全部 Frozen。V3 的外观通道只能调 Radius、可见 Border Width / Presence
 与 Shadow 参数；不得调 Color、Surface、Typography、Spacing、Height、Width、Padding、Gap、Icon、Control Size、
 Touch Target、Press、Motion、Gradient、Glass 或 Final Icon。
@@ -101,7 +102,7 @@ Radius / Border 与按 Light / Dark 分组的 Shadow，不混入无关的尺寸�
 按 04-开发验证规范执行验证、Review 与 Commit
 ```
 
-本次 Stage 状态为：Stage 1 Frozen、Stage 2 Frozen、Stage 3A Frozen、Stage 3B
+本次 Stage 状态为：Stage 1 Frozen、Stage 2 除 Card / Icon Ratio Scoped Unfreeze 外 Frozen、Stage 3A Frozen、Stage 3B
 **Completed / Frozen（已完成 / 已冻结）**；Stage 3C Final Icons 处于独立的 Candidate for Visual Review（候选人工
 视觉复核），不属于 Tuner V3 的可调通道。Tuner V3 的默认值已经与 `tokens.css` 的 Stage 3B 正式基线同步；打开调参器时，
 外观当前值等于默认值且 Dirty Count 为 0，Reset Stage 3B 也只回到这组正式值。后续若需要改变 Radius、Border 或 Shadow，
