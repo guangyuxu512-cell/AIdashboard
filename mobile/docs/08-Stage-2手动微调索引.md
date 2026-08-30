@@ -134,9 +134,9 @@ Slot（图标槽位）与 Glyph（图形视觉尺寸）始终分离。最终图�
 ## 后续阶段
 
 Stage 3A 的 Color、Surface、Text、Status、Selected 与 Dark Hierarchy 已完成并 Frozen；任何后续颜色改动都必须先
-显式 Unfreeze（解冻）并完成视觉 Review。Stage 3B 已建立 Radius、Border Presence / Visual Width 与 Light / Dark
-Shadow 候选体系，当前状态为 **Completed / Candidate for Visual Review（已完成 / 待人工视觉审查）**；它绝不重新开放
-本索引的尺寸基线。Stage 3C Final Icons 与 Stage 4 Press / Motion 仍留给后续显式 Review。
+显式 Unfreeze（解冻）并完成视觉 Review。Stage 3B 已冻结 Radius、Border Presence / Visual Width 与 Light / Dark
+Shadow 正式体系，当前状态为 **Completed / Frozen（已完成 / 已冻结）**；它绝不重新开放本索引的尺寸基线。Stage 3C
+Final Icons 与 Stage 4 Press / Motion 仍留给后续显式 Review。
 
 ## Stage 3A 几何复核记录
 

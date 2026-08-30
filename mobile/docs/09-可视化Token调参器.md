@@ -102,12 +102,14 @@ Radius / Border 与按 Light / Dark 分组的 Shadow，不混入无关的尺寸�
 ```
 
 本次 Stage 状态为：Stage 1 Frozen、Stage 2 Frozen、Stage 3A Frozen、Stage 3B
-**Completed / Candidate for Visual Review（已完成 / 待人工视觉审查）**。在用户明确确认前，Tuner V3 只提供候选
-调参能力；不得自动冻结 Stage 3B，也不得开始 Stage 3C Final Icons 或 Stage 4 Press / Motion。
+**Completed / Frozen（已完成 / 已冻结）**。Tuner V3 的默认值已经与 `tokens.css` 的 Stage 3B 正式基线同步；
+打开调参器时，外观当前值等于默认值且 Dirty Count 为 0，Reset Stage 3B 也只回到这组正式值。后续若需要改变
+Radius、Border 或 Shadow，必须先显式 Unfreeze（解冻）并完成新的视觉 Review；不得开始 Stage 3C Final Icons 或
+Stage 4 Press / Motion。
 
 ## 视觉验收
 
 每次显式外观 Review 至少检查 360 / 375 / 390 / 430px、Light / Dark、Safe Area、45px Touch Target、Console Error、
 Horizontal Overflow 与 Capability 完整 5 行 / 第 6 行内部滚动。重点人工基准为 390 × 844 的 Device List、Device
-Detail、Task List、Task Detail；Before / Candidate 截图只能作为非提交的审查证据，不能覆盖已冻结的 Stage 2 / 3A
-基线证据。
+Detail、Task List、Task Detail；Before / Frozen Baseline 截图只能作为非提交的审查证据，不能覆盖已冻结的 Stage 2 /
+3A 基线证据。
