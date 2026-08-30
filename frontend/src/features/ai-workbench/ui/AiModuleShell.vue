@@ -13,7 +13,8 @@ import AiModuleNavigation from './AiModuleNavigation.vue'
 
 <style scoped>
 .ai-module-shell {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .ai-module-shell__content {
