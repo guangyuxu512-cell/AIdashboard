@@ -163,7 +163,7 @@
   --device-list-summary-selected-height: 2px;
   --device-list-summary-selected-value-weight: 600;
   --device-list-summary-selected-label-weight: 620;
-  --device-list-list-padding-top: 0px;
+  --device-list-list-padding-top: 14px; /* Summary 与首张设备卡之间的列表起始留白。 */
   --device-list-list-padding-bottom: 28px;
   --device-list-card-gap: 14px;
   --device-list-card-min-height: 122px;

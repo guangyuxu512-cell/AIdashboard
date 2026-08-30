@@ -759,6 +759,13 @@ for (const width of viewportWidths) {
             probe.remove()
             return shadow
           })(),
+          summaryToFirstCardGap:
+            document
+              .querySelector<HTMLElement>('.device-list-card')!
+              .getBoundingClientRect().top -
+            document
+              .querySelector<HTMLElement>('.mobile-summary-strip__surface')!
+              .getBoundingClientRect().bottom,
         }
       })
       expect(overviewLayout.columnCount).toBe(4)
@@ -777,6 +784,7 @@ for (const width of viewportWidths) {
         overviewLayout.expectedSummaryShadow,
         overviewLayout.expectedCardShadow,
       ])
+      expect(overviewLayout.summaryToFirstCardGap).toBeCloseTo(14, 1)
 
       if (width === 390 && theme === 'light') {
         const meta = firstCard.locator('.device-list-card__meta')

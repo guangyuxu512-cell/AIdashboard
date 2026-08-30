@@ -58,6 +58,7 @@ AppShell
 | Search                | 44px；圆角 22px                                         |
 | Summary               | 90px；圆角 18px；四等分                                 |
 | Metric Number / Label | 23px / 600；12.5px / 450                                |
+| Summary → First Card  | 14px 列表起始留白                                       |
 | Device Card           | 最小 122px；圆角 17px；列表间距 14px                    |
 | Card Grid             | 102px Artwork / `minmax(0, 1fr)` Content / 18px Chevron |
 | Card Padding          | Top 15 / Right 17 / Bottom 15 / Left 16px               |

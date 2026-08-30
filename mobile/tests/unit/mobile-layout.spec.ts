@@ -365,6 +365,7 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain('--device-list-card-min-height: 122px')
     expect(tokens).toContain('--device-list-card-artwork-column: 102px')
     expect(tokens).toContain('--device-list-card-gap: 14px')
+    expect(tokens).toContain('--device-list-list-padding-top: 14px')
     expect(tokens).toContain('--device-list-summary-height: 90px')
     expect(tokens).toContain('--device-list-search-height: 44px')
     expect(deviceCard).toContain(
