@@ -13,6 +13,7 @@ const props = withDefaults(
   defineProps<{
     notificationDot?: boolean
     resolvedTheme?: 'light' | 'dark'
+    pageTitle?: string
   }>(),
   {
     notificationDot: false,
@@ -30,8 +31,20 @@ const themeIconName = computed<MobileIconName>(() =>
 </script>
 
 <template>
-  <div class="mobile-global-header" data-testid="mobile-global-header">
-    <strong class="mobile-global-header__brand">思余AI中控台</strong>
+  <div
+    class="mobile-global-header"
+    :class="{ 'mobile-global-header--page': pageTitle }"
+    data-testid="mobile-global-header"
+  >
+    <span v-if="pageTitle" class="mobile-global-header__leading" />
+    <strong
+      v-if="pageTitle"
+      class="mobile-global-header__page-title"
+      data-testid="mobile-global-page-title"
+    >
+      {{ pageTitle }}
+    </strong>
+    <strong v-else class="mobile-global-header__brand">思余AI中控台</strong>
 
     <div class="mobile-global-header__actions">
       <button
@@ -77,6 +90,40 @@ const themeIconName = computed<MobileIconName>(() =>
   line-height: var(--line-height-title);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-global-header--page {
+  height: var(--device-list-header-height);
+  padding-right: max(var(--device-list-page-padding-x), var(--safe-area-right));
+  padding-left: max(var(--device-list-page-padding-x), var(--safe-area-left));
+  background: var(--device-list-header-background);
+  color: var(--device-list-text-primary);
+  font-family: var(--device-list-font-family);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: grid;
+}
+
+.mobile-global-header__leading {
+  min-width: 0;
+}
+
+.mobile-global-header__page-title {
+  overflow: hidden;
+  font-size: var(--device-list-title-size);
+  font-weight: var(--device-list-title-weight);
+  line-height: var(--device-list-title-line-height);
+  letter-spacing: var(--device-list-title-letter-spacing);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-global-header--page .mobile-global-header__actions {
+  justify-self: end;
+}
+
+.mobile-global-header--page :deep(.mobile-icon-button) {
+  --control-size-icon-button: var(--device-list-header-control-size);
 }
 
 .mobile-global-header__actions {

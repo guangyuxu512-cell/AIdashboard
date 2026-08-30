@@ -120,7 +120,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     const baselinePadding = await card.evaluate(
       (element) => window.getComputedStyle(element).paddingTop,
     )
-    expect(baselinePadding).toBe('16px')
+    expect(baselinePadding).toBe('15px')
 
     const tuner = await openExternalTuner(preview, context)
     const tunerErrors = collectConsoleErrors(tuner)
@@ -143,7 +143,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .poll(() =>
         card.evaluate((element) => window.getComputedStyle(element).paddingTop),
       )
-      .toBe('20px')
+      .toBe('15px')
 
     const numberInput = tuner.getByTestId('visual-token-number-card-padding-y')
     await numberInput.fill('18')
@@ -173,7 +173,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           .locator('.mobile-summary-strip')
           .evaluate((element) => window.getComputedStyle(element).height),
       )
-      .toBe('104px')
+      .toBe('90px')
 
     await tuner.getByTestId('visual-token-tuner-copy-css').click()
     await expect
@@ -215,7 +215,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           .first()
           .evaluate((element) => window.getComputedStyle(element).width),
       )
-      .toBe('60px')
+      .toBe('102px')
 
     await tuner.getByRole('button', { name: '恢复全部调参' }).click()
     await expect(tuner.getByTestId('visual-token-tuner-panel')).toContainText(
@@ -390,7 +390,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           .first()
           .evaluate((element) => window.getComputedStyle(element).rowGap),
       )
-      .toBe('6px')
+      .toBe('7px')
 
     await preview.goto('/#/devices/visual-device-operations')
     await tuner.getByRole('tab', { name: '运行摘要' }).click()
@@ -522,7 +522,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     expect(tunerErrors).toEqual([])
   })
 
-  test('V2 的颜色语义实时映射到真实页面，并按主题保留与恢复', async ({
+  test('全局颜色调参保留独立 Device Visual V2，并继续映射未迁移页面', async ({
     page: preview,
     context,
   }) => {
@@ -537,6 +537,15 @@ test.describe('Visual Token Tuner V2 / V3', () => {
 
     const deviceCard = preview.getByTestId('device-card').first()
     await expect(deviceCard).toBeVisible()
+    const deviceVisualBaseline = await deviceCard.evaluate((element) => ({
+      background: window.getComputedStyle(element).backgroundColor,
+      title: window.getComputedStyle(
+        element.querySelector<HTMLElement>('[data-testid="device-card-name"]')!,
+      ).color,
+      meta: window.getComputedStyle(
+        element.querySelector<HTMLElement>('[data-testid="device-card-meta"]')!,
+      ).color,
+    }))
     const tuner = await openExternalTuner(preview, context)
     const tunerErrors = collectConsoleErrors(tuner)
     await tuner.getByTestId('visual-token-tuner-mode-color').click()
@@ -569,7 +578,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           (element) => window.getComputedStyle(element).backgroundColor,
         ),
       )
-      .toBe('rgb(240, 244, 247)')
+      .toBe(deviceVisualBaseline.background)
 
     await preview.goto('/#/tasks')
     const taskCard = preview.getByTestId('task-card').first()
@@ -597,7 +606,19 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           .first()
           .evaluate((element) => window.getComputedStyle(element).color),
       )
+      .toBe(deviceVisualBaseline.title)
+
+    await preview.goto('/#/tasks')
+    await expect
+      .poll(() =>
+        preview
+          .getByTestId('task-card-name')
+          .first()
+          .evaluate((element) => window.getComputedStyle(element).color),
+      )
       .toBe('rgb(32, 48, 64)')
+    await preview.goto('/#/devices')
+    await expect(deviceCard).toBeVisible()
 
     const mutedText = tuner.getByTestId(
       'visual-token-color-hex-light-text-muted',
@@ -611,7 +632,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           .first()
           .evaluate((element) => window.getComputedStyle(element).color),
       )
-      .toBe('rgb(97, 122, 141)')
+      .toBe(deviceVisualBaseline.meta)
 
     await preview.reload()
     await expect.poll(() => rootValue(preview, '--bg-app')).toBe('#e8edf2')
@@ -715,7 +736,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       22,
     )
     await expect.poll(() => rootValue(preview, '--radius-card')).toBe('22px')
-    await expect(card).toHaveCSS('border-radius', '22px')
+    await expect(card).toHaveCSS('border-radius', '17px')
     await expect
       .poll(() =>
         card.evaluate((element) => {
@@ -739,6 +760,9 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     const taskCard = preview.getByTestId('task-card').first()
     await expect(taskCard).toBeVisible()
     await expect(taskCard).toHaveCSS('border-radius', '22px')
+    const taskCardHeight = await taskCard.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    )
 
     await preview.goto('/#/devices')
     await expect(card).toBeVisible()
@@ -760,7 +784,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     await expect(card).toBeVisible()
     await expect(preview.locator('.mobile-summary-strip__surface')).toHaveCSS(
       'border-radius',
-      '20px',
+      '18px',
     )
     await setRangeValue(
       tuner.getByTestId('visual-token-appearance-range-radius-control'),
@@ -772,6 +796,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     )
     await expect.poll(() => rootValue(preview, '--radius-control')).toBe('14px')
     await expect.poll(() => rootValue(preview, '--radius-tag')).toBe('16px')
+    await preview.goto('/#/tasks')
     await expect(
       preview
         .getByTestId('mobile-list-selector')
@@ -782,12 +807,9 @@ test.describe('Visual Token Tuner V2 / V3', () => {
         .getByTestId('mobile-list-filter')
         .locator('.mobile-list-toolbar__control'),
     ).toHaveCSS('border-radius', '14px')
-    await expect(preview.getByTestId('device-card-status').first()).toHaveCSS(
-      'border-radius',
-      '16px',
-    )
-
-    await preview.goto('/#/tasks')
+    await expect(
+      preview.locator('.task-list-card__state .van-tag').first(),
+    ).toHaveCSS('border-radius', '16px')
     await preview.getByTestId('mobile-list-filter').click()
     const filterSheet = preview.locator('.task-filter-sheet')
     await expect(filterSheet).toBeVisible()
@@ -797,10 +819,10 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     )
     await expect.poll(() => rootValue(preview, '--radius-overlay')).toBe('24px')
     await expect(filterSheet).toHaveCSS('border-top-left-radius', '24px')
-    await preview.keyboard.press('Escape')
+    await preview.locator('.van-overlay').click({ position: { x: 5, y: 5 } })
+    await expect(filterSheet).toBeHidden()
 
-    await preview.goto('/#/devices')
-    await expect(card).toBeVisible()
+    await expect(taskCard).toBeVisible()
 
     await tuner.getByRole('tab', { name: '边界' }).click()
     await setRangeValue(
@@ -812,9 +834,9 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .toBe('0px')
     await expect
       .poll(() =>
-        card.evaluate((element) => element.getBoundingClientRect().height),
+        taskCard.evaluate((element) => element.getBoundingClientRect().height),
       )
-      .toBe(beforeGeometry.height)
+      .toBe(taskCardHeight)
 
     await tuner.getByRole('tab', { name: '阴影' }).click()
     await setRangeValue(
@@ -826,7 +848,9 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .toBe('32px')
     await expect
       .poll(() =>
-        card.evaluate((element) => window.getComputedStyle(element).boxShadow),
+        taskCard.evaluate(
+          (element) => window.getComputedStyle(element).boxShadow,
+        ),
       )
       .toContain('32px')
     await setRangeValue(
@@ -840,7 +864,9 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .toBe('12%')
     await expect
       .poll(() =>
-        card.evaluate((element) => window.getComputedStyle(element).boxShadow),
+        taskCard.evaluate(
+          (element) => window.getComputedStyle(element).boxShadow,
+        ),
       )
       .toContain('0.12')
 

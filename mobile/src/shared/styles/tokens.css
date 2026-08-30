@@ -119,6 +119,140 @@
   --layout-capability-icon-slot-width: 36px; /* Capability Icon 槽位宽度，保证应用名称起点统一 */
   --layout-readable-max-width: 28rem;
   --layout-inline-state-min-height: 96px;
+
+  /* Mobile Visual V2 / Device List：仅用于已选择性解冻的 /devices，不改动其它页面冻结尺寸。 */
+  --device-list-font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'PingFang SC', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    sans-serif;
+  --device-list-page-padding-x: 18px; /* 设备列表固定区与滚动列表的水平安全留白。 */
+  --device-list-header-height: 66px; /* 设备一级页 Header 内容高度，不含顶部 Safe Area。 */
+  --device-list-header-control-size: 40px; /* 设备页 Header 图标按钮可见尺寸，触控热区仍不少于44px。 */
+  --device-list-title-size: 20px;
+  --device-list-title-weight: 600;
+  --device-list-title-line-height: 24px;
+  --device-list-title-letter-spacing: -0.35px;
+  --device-list-fixed-controls-gap: 14px; /* Search 与四项 Summary 之间的距离。 */
+  --device-list-fixed-padding-top: 0px;
+  --device-list-fixed-padding-bottom: 0px;
+  --device-list-search-height: 44px;
+  --device-list-search-radius: 22px;
+  --device-list-search-padding-x: 16px;
+  --device-list-search-icon-size: 22px;
+  --device-list-search-icon-gap: 11px;
+  --device-list-search-font-size: 16px;
+  --device-list-search-font-weight: 500;
+  --device-list-search-line-height: 20px;
+  --device-list-search-border-width: 1px;
+  --device-list-summary-height: 90px;
+  --device-list-summary-radius: 18px;
+  --device-list-summary-divider-inset: 17px;
+  --device-list-summary-metric-gap: 7px;
+  --device-list-summary-metric-padding-top: 10px;
+  --device-list-summary-metric-padding-x: 7px;
+  --device-list-summary-metric-padding-bottom: 9px;
+  --device-list-summary-value-size: 23px;
+  --device-list-summary-value-weight: 600;
+  --device-list-summary-value-line-height: 23px;
+  --device-list-summary-value-letter-spacing: -0.35px;
+  --device-list-summary-label-size: 12.5px;
+  --device-list-summary-label-weight: 450;
+  --device-list-summary-label-line-height: 14.75px;
+  --device-list-summary-selected-bottom: 8px;
+  --device-list-summary-selected-width: 22px;
+  --device-list-summary-selected-height: 2px;
+  --device-list-summary-selected-value-weight: 600;
+  --device-list-summary-selected-label-weight: 620;
+  --device-list-list-padding-top: 0px;
+  --device-list-list-padding-bottom: 28px;
+  --device-list-card-gap: 14px;
+  --device-list-card-min-height: 122px;
+  --device-list-card-radius: 17px;
+  --device-list-card-border-width: 1px;
+  --device-list-card-artwork-column: 102px;
+  --device-list-card-chevron-column: 18px;
+  --device-list-card-padding-top: 15px;
+  --device-list-card-padding-right: 17px;
+  --device-list-card-padding-bottom: 15px;
+  --device-list-card-padding-left: 16px;
+  --device-list-card-name-size: 16.5px;
+  --device-list-card-name-weight: 600;
+  --device-list-card-name-line-height: 19.8px;
+  --device-list-card-name-letter-spacing: -0.2px;
+  --device-list-card-name-gap: 10px;
+  --device-list-card-status-size: 14px;
+  --device-list-card-status-weight: 500;
+  --device-list-card-status-line-height: 14px;
+  --device-list-card-status-gap: 10px;
+  --device-list-card-meta-size: 13px;
+  --device-list-card-meta-weight: 400;
+  --device-list-card-meta-line-height: 13px;
+  --device-list-card-inline-gap: 8px;
+  --device-list-status-dot-size: 8px;
+  --device-list-card-chevron-size: 16px;
+  --device-list-artwork-width: 80px;
+  --device-list-artwork-height: 80px;
+  --device-list-artwork-offset-x: -8px;
+
+  /* DeviceStatusArtwork 几何：Kind 与状态共享同一业务插画容器。 */
+  --device-artwork-screen-border-width: 2px;
+  --device-artwork-screen-radius: 4px;
+  --device-artwork-desktop-width: 66px;
+  --device-artwork-desktop-height: 53px;
+  --device-artwork-desktop-screen-height: 43px;
+  --device-artwork-desktop-neck-left: 29px;
+  --device-artwork-desktop-neck-width: 8px;
+  --device-artwork-desktop-neck-height: 6px;
+  --device-artwork-desktop-base-top: 49px;
+  --device-artwork-desktop-base-left: 17px;
+  --device-artwork-desktop-base-width: 32px;
+  --device-artwork-desktop-base-height: 5px;
+  --device-artwork-base-radius: 8px;
+  --device-artwork-laptop-width: 72px;
+  --device-artwork-laptop-height: 49px;
+  --device-artwork-laptop-screen-top: 2px;
+  --device-artwork-laptop-screen-left: 9px;
+  --device-artwork-laptop-screen-width: 54px;
+  --device-artwork-laptop-screen-height: 37px;
+  --device-artwork-laptop-body-inset: 2px;
+  --device-artwork-laptop-body-bottom: 4px;
+  --device-artwork-laptop-body-height: 8px;
+  --device-artwork-laptop-body-radius: 2px 2px 8px 8px;
+  --device-artwork-laptop-perspective: 85px;
+  --device-artwork-laptop-rotation: 56deg;
+  --device-artwork-laptop-shadow-inset: 10px;
+  --device-artwork-laptop-shadow-height: 5px;
+  --device-artwork-ground-shadow-blur: 2px;
+  --device-artwork-server-width: 40px;
+  --device-artwork-server-height: 61px;
+  --device-artwork-server-radius: 6px;
+  --device-artwork-server-vents-top: 10px;
+  --device-artwork-server-vents-inset: 8px;
+  --device-artwork-server-vents-height: 27px;
+  --device-artwork-server-vents-radius: 2px;
+  --device-artwork-server-leds-top: 12px;
+  --device-artwork-server-leds-left: 10px;
+  --device-artwork-server-leds-gap: 4px;
+  --device-artwork-server-led-size: 3px;
+  --device-artwork-server-led-opacity: 0.9;
+  --device-artwork-server-button-bottom: 8px;
+  --device-artwork-server-button-left: 20px;
+  --device-artwork-server-button-size: 5px;
+  --device-artwork-server-button-border-width: 1px;
+  --device-artwork-offline-mark-size: 18px;
+  --device-artwork-offline-mark-border-width: 2px;
+  --device-artwork-offline-line-width: 8px;
+  --device-artwork-offline-line-height: 2px;
+  --device-artwork-corner-top: 7px;
+  --device-artwork-corner-right: 8px;
+  --device-artwork-corner-size: 10px;
+  --device-artwork-pulse-top: 4px;
+  --device-artwork-pulse-right: 5px;
+  --device-artwork-pulse-size: 16px;
+  --device-artwork-pulse-border-width: 1.5px;
+  --device-artwork-online-duration: 1.8s;
+  --device-artwork-running-duration: 2.8s;
+  --device-artwork-running-led-duration: 1.3s;
   --overlay-height-medium: min(56dvh, 520px);
   --overlay-height-large: min(70dvh, 620px);
   --overlay-height-max: 86dvh;
@@ -182,6 +316,120 @@
   --status-danger-soft: #fbecee;
   --status-neutral: #5f6f82;
   --status-neutral-soft: #eef1f4;
+  /* Mobile Visual V2 / Device List Light：独立于旧页面 Stage 3A / 3B 基线。 */
+  --device-list-text-primary: #0b1730;
+  --device-list-page-background: linear-gradient(
+    180deg,
+    #fafbfd 0%,
+    #f5f7fb 36%,
+    #f1f4f8 100%
+  );
+  --device-list-header-background: #fafbfd;
+  --device-list-search-background: #f1f4f8;
+  --device-list-search-border: transparent;
+  --device-list-search-shadow: none;
+  --device-list-search-color: #8c98ac;
+  --device-list-search-disabled-color: #a7b1c0;
+  --device-list-search-input-color: #24324a;
+  --device-list-summary-background: rgb(255 255 255 / 98%);
+  --device-list-summary-border: #edf1f6;
+  --device-list-summary-shadow: 0 10px 28px rgb(34 54 84 / 6%);
+  --device-list-summary-divider: #e9eef5;
+  --device-list-summary-label-color: #7c8ba2;
+  --device-list-summary-selected-color: #33435b;
+  --device-list-summary-selected-value-color: #17243a;
+  --device-list-summary-selected-label-color: #55657d;
+  --device-list-card-background: #ffffff;
+  --device-list-card-border: #e7ebf1;
+  --device-list-card-shadow: 0 7px 18px rgb(34 54 84 / 4.5%);
+  --device-list-card-pressed-background: #f8fafc;
+  --device-list-card-pressed-border: #dce3eb;
+  --device-list-card-pressed-shadow: 0 2px 8px rgb(34 54 84 / 4%);
+  --device-list-card-meta-color: #7787a0;
+  --device-list-card-chevron-color: #7787a0;
+  --device-list-status-online: #3f9a7c;
+  --device-list-status-running: #557fae;
+  --device-list-status-offline: #7b8ba3;
+  --device-list-status-unreported: #7b8ba3;
+  --device-artwork-shadow: drop-shadow(0 5px 10px rgb(0 0 0 / 8%));
+  --device-artwork-frame: #202838;
+  --device-artwork-neck: #526174;
+  --device-artwork-base: #5f6f82;
+  --device-artwork-screen-neutral: linear-gradient(
+    160deg,
+    #99a4b6,
+    #657283 58%,
+    #9da8b8
+  );
+  --device-artwork-screen-online: linear-gradient(
+    160deg,
+    #9fcfc2,
+    #4f9f8b 48%,
+    #477d9b 100%
+  );
+  --device-artwork-screen-running: linear-gradient(
+    160deg,
+    #9bb7d3,
+    #557ca8 56%,
+    #8aa8c5 100%
+  );
+  --device-artwork-screen-offline: linear-gradient(
+    160deg,
+    #99a4b6,
+    #546171 58%,
+    #8d98a9 100%
+  );
+  --device-artwork-screen-inset: inset 0 -7px 0 rgb(7 16 28 / 40%);
+  --device-artwork-screen-glow: radial-gradient(
+    circle at 24% 25%,
+    rgb(255 255 255 / 45%),
+    transparent 36%
+  );
+  --device-artwork-screen-shine: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0%) 0%,
+    rgb(255 255 255 / 34%) 48%,
+    rgb(255 255 255 / 0%) 100%
+  );
+  --device-artwork-online: #4f9d85;
+  --device-artwork-online-ring: rgb(79 157 133 / 42%);
+  --device-artwork-online-corner-shadow: 0 0 0 3px rgb(79 157 133 / 8%);
+  --device-artwork-running: #5d82ad;
+  --device-artwork-running-corner-shadow: 0 0 0 3px rgb(93 130 173 / 8%);
+  --device-artwork-offline-mark-color: rgb(255 255 255 / 62%);
+  --device-artwork-offline-filter: grayscale(0.22) saturate(0.82)
+    brightness(0.92);
+  --device-artwork-laptop-body: linear-gradient(#7e8b9a, #546173);
+  --device-artwork-ground-shadow: rgb(0 0 0 / 14%);
+  --device-artwork-server-neutral: linear-gradient(
+    155deg,
+    #667689,
+    #2d3a4d 68%
+  );
+  --device-artwork-server-online: linear-gradient(155deg, #537d6f, #1f3741 68%);
+  --device-artwork-server-running: linear-gradient(
+    155deg,
+    #60779a,
+    #233756 68%
+  );
+  --device-artwork-server-offline: linear-gradient(
+    155deg,
+    #6e7a89,
+    #273445 68%
+  );
+  --device-artwork-server-inset: inset 0 0 0 1px rgb(255 255 255 / 8%);
+  --device-artwork-server-vents: repeating-linear-gradient(
+    180deg,
+    #202c39 0 3px,
+    #455466 3px 5px
+  );
+  --device-artwork-server-led-neutral: #92a2ba;
+  --device-artwork-server-led-online: #21d091;
+  --device-artwork-server-led-online-shadow: 0 0 6px rgb(33 208 145 / 55%);
+  --device-artwork-server-led-running: #3a8bff;
+  --device-artwork-server-led-running-shadow: 0 0 6px rgb(58 139 255 / 60%);
+  --device-artwork-server-led-offline: #a4b1c4;
+  --device-artwork-server-button: #abc0d7;
   --focus-ring-color: var(--color-primary);
   /* Stage 3B Shadow：Card、Raised Control、Popup / Sheet 的层级彼此独立。 */
   --shadow-card-contact: 0 1px 2px rgb(24 33 43 / 5%);
@@ -268,6 +516,39 @@
   --status-danger-soft: #44262a;
   --status-neutral: #a2adb8;
   --status-neutral-soft: #28323c;
+  /* Mobile Visual V2 / Device List Dark：Dark 值独立维护，不从 Light 反色推导。 */
+  --device-list-text-primary: #f7fbff;
+  --device-list-page-background:
+    radial-gradient(circle at 20% 8%, rgb(26 64 112 / 28%), transparent 24%),
+    radial-gradient(circle at 82% 10%, rgb(36 92 164 / 18%), transparent 25%),
+    linear-gradient(180deg, #05101b 0%, #06111e 35%, #07121f 100%);
+  --device-list-header-background: #05101b;
+  --device-list-search-background: rgb(22 36 53 / 92%);
+  --device-list-search-border: rgb(41 59 84 / 80%);
+  --device-list-search-shadow: inset 0 0 0 1px rgb(41 59 84 / 80%);
+  --device-list-search-color: #8f9fb4;
+  --device-list-search-disabled-color: #718197;
+  --device-list-search-input-color: #f7fbff;
+  --device-list-summary-background: rgb(15 28 43 / 90%);
+  --device-list-summary-border: rgb(39 58 82 / 78%);
+  --device-list-summary-shadow: 0 16px 34px rgb(0 0 0 / 20%);
+  --device-list-summary-divider: rgb(55 74 100 / 76%);
+  --device-list-summary-label-color: #97a7bc;
+  --device-list-summary-selected-color: #d4dde9;
+  --device-list-summary-selected-value-color: #f3f6fa;
+  --device-list-summary-selected-label-color: #c3cedc;
+  --device-list-card-background: rgb(18 30 44 / 96%);
+  --device-list-card-border: rgb(42 59 80 / 78%);
+  --device-list-card-shadow: 0 10px 24px rgb(0 0 0 / 16%);
+  --device-list-card-pressed-background: rgb(25 39 55 / 98%);
+  --device-list-card-pressed-border: rgb(58 77 101 / 86%);
+  --device-list-card-pressed-shadow: 0 3px 10px rgb(0 0 0 / 20%);
+  --device-list-card-meta-color: #9aa9bd;
+  --device-list-card-chevron-color: #9aa9bd;
+  --device-list-status-online: #62b99b;
+  --device-list-status-running: #83a7cf;
+  --device-list-status-offline: #d6deea;
+  --device-list-status-unreported: #9aa9bd;
   --focus-ring-color: var(--color-primary);
   /* Stage 3B Shadow：Dark 保持独立阴影基线，不从 Light 反推。 */
   --shadow-card-contact: 0 1px 2px rgb(0 0 0 / 22%);

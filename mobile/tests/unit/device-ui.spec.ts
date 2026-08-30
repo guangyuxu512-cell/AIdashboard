@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   DeviceConnectionTag,
   DeviceEnabledTag,
+  DeviceStatusArtwork,
   type Device,
   type DeviceProviderInventoryReadDto,
   type DeviceSkillCapabilityReadDto,
@@ -17,6 +18,7 @@ import {
   DeviceProviderDetails,
   DeviceRuntimeSummary,
   DeviceSkillDetails,
+  getDeviceVisualState,
   mapDeviceActiveTaskToTaskListItem,
   type DeviceActiveTaskState,
 } from '@/features/device-center'
@@ -194,32 +196,36 @@ describe('device center UI', () => {
       connectionStatus: 'online',
       enabled: true,
       activeTaskState: idleActiveTaskState,
-      connectionLabel: '在线',
-      primaryStatus: '空闲',
+      visualLabel: '在线',
+      visualState: 'online',
+      enabledLabel: '已启用',
     },
     {
       name: 'online running',
       connectionStatus: 'online',
       enabled: true,
       activeTaskState: { ...idleActiveTaskState, task: runningTask },
-      connectionLabel: '在线',
-      primaryStatus: '执行中',
+      visualLabel: '运行中',
+      visualState: 'running',
+      enabledLabel: '已启用',
     },
     {
       name: 'offline idle',
       connectionStatus: 'offline',
       enabled: true,
       activeTaskState: idleActiveTaskState,
-      connectionLabel: '离线',
-      primaryStatus: '空闲',
+      visualLabel: '离线',
+      visualState: 'offline',
+      enabledLabel: '已启用',
     },
     {
       name: 'disabled online',
       connectionStatus: 'online',
       enabled: false,
       activeTaskState: { ...idleActiveTaskState, task: runningTask },
-      connectionLabel: '在线',
-      primaryStatus: '停用',
+      visualLabel: '运行中',
+      visualState: 'running',
+      enabledLabel: '已停用',
     },
   ] as const)(
     'renders the $name Device Card facts without merging their semantics',
@@ -227,8 +233,9 @@ describe('device center UI', () => {
       connectionStatus,
       enabled,
       activeTaskState,
-      connectionLabel,
-      primaryStatus,
+      visualLabel,
+      visualState,
+      enabledLabel,
     }) => {
       const wrapper = mountDeviceCard(
         {
@@ -244,21 +251,23 @@ describe('device center UI', () => {
       await flushPromises()
 
       expect(wrapper.get('[data-testid="device-card-runtime"]').text()).toBe(
-        connectionLabel,
+        visualLabel,
       )
-      expect(wrapper.get('[data-testid="device-card-status"]').text()).toBe(
-        primaryStatus,
-      )
-      expect(wrapper.text()).toContain('1.2.3')
       expect(wrapper.classes()).toEqual(
-        expect.arrayContaining(['mobile-card', 'mobile-press-surface']),
+        expect.arrayContaining([
+          'mobile-press-surface',
+          `device-list-card--${visualState}`,
+        ]),
       )
       expect(wrapper.get('.device-list-card__meta').text()).toContain(
-        'Worker 1.2.3',
+        enabledLabel,
       )
-      expect(wrapper.get('.device-list-card__meta').text()).not.toContain(
-        '更新',
-      )
+      expect(wrapper.text()).not.toContain('Worker')
+      expect(
+        wrapper
+          .get('[data-device-artwork-kind="desktop"]')
+          .attributes('data-device-artwork-state'),
+      ).toBe(visualState)
       expect(wrapper.find('[data-testid="device-card-leading"]').exists()).toBe(
         true,
       )
@@ -279,7 +288,7 @@ describe('device center UI', () => {
         .get('[data-testid="device-card-meta"]')
         .findAll('span')
         .map((item) => item.text()),
-    ).toEqual(['未上报', '·', 'Worker —'])
+    ).toEqual(['心跳未上报', '·', '已启用'])
   })
 
   it('keeps a long Device name in the fixed name slot', () => {
@@ -312,12 +321,57 @@ describe('device center UI', () => {
     )
     expect(wrapper.find('[aria-label^="查看任务："]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('同步订单')
-    expect(wrapper.get('[data-testid="device-card-status"]').text()).toBe(
-      '执行中',
+    expect(wrapper.get('[data-testid="device-card-runtime"]').text()).toBe(
+      '运行中',
     )
     await wrapper.get('button').trigger('click')
     expect(wrapper.emitted('selectDevice')).toEqual([['device-1']])
     expect(wrapper.emitted('selectTask')).toBeUndefined()
+  })
+
+  it('renders every formal artwork kind and state without inferring kind from names', () => {
+    for (const kind of ['desktop', 'laptop', 'server'] as const) {
+      for (const state of [
+        'online',
+        'running',
+        'offline',
+        'unreported',
+      ] as const) {
+        const wrapper = track(
+          mount(DeviceStatusArtwork, { props: { kind, state } }),
+        )
+        expect(wrapper.attributes('data-device-artwork-kind')).toBe(kind)
+        expect(wrapper.attributes('data-device-artwork-state')).toBe(state)
+      }
+    }
+  })
+
+  it('derives artwork state from formal connection and Active Task facts', () => {
+    expect(getDeviceVisualState(baseDevice, idleActiveTaskState)).toBe('online')
+    expect(
+      getDeviceVisualState(baseDevice, {
+        ...idleActiveTaskState,
+        task: runningTask,
+      }),
+    ).toBe('running')
+    expect(
+      getDeviceVisualState(
+        {
+          ...baseDevice,
+          workerRuntime: {
+            ...baseDevice.workerRuntime!,
+            connectionStatus: 'offline',
+          },
+        },
+        { ...idleActiveTaskState, task: runningTask },
+      ),
+    ).toBe('offline')
+    expect(
+      getDeviceVisualState(
+        { ...baseDevice, workerRuntime: null },
+        idleActiveTaskState,
+      ),
+    ).toBe('unreported')
   })
 
   it('adapts the formal Active Task summary to the frozen Task Card model', () => {

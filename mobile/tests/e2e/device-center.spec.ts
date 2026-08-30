@@ -549,24 +549,20 @@ for (const width of viewportWidths) {
       expect((await themeButton.boundingBox())!.x).toBeLessThan(
         (await bellButton.boundingBox())!.x,
       )
-      await expect(firstCard).toContainText('在线')
-      await expect(firstCard.getByTestId('device-card-status')).toHaveText(
-        '执行中',
+      await expect(firstCard.getByTestId('device-card-runtime')).toHaveText(
+        '运行中',
       )
       await expect(firstCard).not.toContainText('同步订单')
       await expect(firstCard).not.toContainText('正在执行订单同步')
       await expect(firstCard.locator('.device-list-card__meta')).toContainText(
-        /Worker 1\.0\.1/,
+        /心跳 .*已启用/,
       )
-      await expect(page.getByText('8台', { exact: true })).toBeVisible()
-      await expect(page.getByTestId('mobile-list-selector')).toContainText(
-        '全部',
-      )
-      await expect(page.getByTestId('mobile-list-filter')).toContainText('筛选')
+      await expect(firstCard).not.toContainText('Worker')
+      await expect(page.getByTestId('summary-all')).toHaveText('8')
       await expect(page.getByTestId('summary-online')).toHaveText('6')
       await expect(page.getByTestId('summary-running')).toHaveText('1')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
-      await expect(page.locator('.mobile-summary-strip button')).toHaveCount(3)
+      await expect(page.locator('.mobile-summary-strip button')).toHaveCount(4)
       expect(
         await page
           .locator('.mobile-summary-strip button')
@@ -644,13 +640,10 @@ for (const width of viewportWidths) {
         const root = card.getBoundingClientRect()
         const leading = box('device-card-leading')
         const content = box('device-card-name')
-        const trailing = box('device-card-status')
         const chevron = box('device-card-chevron')
-        const leadingStyle = window.getComputedStyle(
-          card.querySelector<HTMLElement>(
-            '[data-testid="device-card-leading"]',
-          )!,
-        )
+        const artwork = card
+          .querySelector<HTMLElement>('.device-status-artwork')!
+          .getBoundingClientRect()
         const chevronStyle = window.getComputedStyle(
           card.querySelector<HTMLElement>(
             '[data-testid="device-card-chevron"]',
@@ -660,10 +653,10 @@ for (const width of viewportWidths) {
           leadingLeft: leading.left,
           leadingRight: leading.right,
           leadingWidth: leading.width,
-          leadingIconSize: Number.parseFloat(leadingStyle.fontSize),
+          artworkWidth: artwork.width,
+          artworkHeight: artwork.height,
           contentLeft: content.left,
           contentRight: content.right,
-          trailingLeft: trailing.left,
           chevronWidth: chevron.width,
           chevronIconSize: Number.parseFloat(chevronStyle.fontSize),
           chevronRight: chevron.right,
@@ -676,12 +669,13 @@ for (const width of viewportWidths) {
       expect(cardAnatomy.leadingRight).toBeLessThanOrEqual(
         cardAnatomy.contentLeft,
       )
-      expect(cardAnatomy.leadingWidth).toBe(72)
-      expect(cardAnatomy.leadingIconSize).toBe(56)
+      expect(cardAnatomy.leadingWidth).toBe(102)
+      expect(cardAnatomy.artworkWidth).toBe(80)
+      expect(cardAnatomy.artworkHeight).toBe(80)
       expect(cardAnatomy.contentRight).toBeLessThanOrEqual(
-        cardAnatomy.trailingLeft,
+        cardAnatomy.chevronRight,
       )
-      expect(cardAnatomy.chevronWidth).toBe(22)
+      expect(cardAnatomy.chevronWidth).toBe(16)
       expect(cardAnatomy.chevronIconSize).toBe(16)
       expect(cardAnatomy.chevronRight).toBeGreaterThan(cardAnatomy.contentRight)
       expect(cardAnatomy.chevronCenterDelta).toBeLessThanOrEqual(1)
@@ -725,13 +719,8 @@ for (const width of viewportWidths) {
           ),
           expectedNumberFontSize: window
             .getComputedStyle(document.documentElement)
-            .getPropertyValue('--font-size-display')
+            .getPropertyValue('--device-list-summary-value-size')
             .trim(),
-          expectedColors: [
-            tokenColor('--status-success'),
-            tokenColor('--color-primary'),
-            tokenColor('--text-secondary'),
-          ],
           surfaceBackgrounds: [
             '.mobile-summary-strip__surface',
             '.device-list-card',
@@ -750,11 +739,13 @@ for (const width of viewportWidths) {
                 document.querySelector<HTMLElement>(selector)!,
               ).boxShadow,
           ),
-          expectedSummaryBackground: tokenColor('--bg-surface'),
-          expectedCardBackground: tokenColor('--bg-surface-raised'),
-          expectedPanelShadow: (() => {
+          expectedSummaryBackground: tokenColor(
+            '--device-list-summary-background',
+          ),
+          expectedCardBackground: tokenColor('--device-list-card-background'),
+          expectedSummaryShadow: (() => {
             const probe = document.createElement('span')
-            probe.style.boxShadow = 'var(--appearance-border-surface)'
+            probe.style.boxShadow = 'var(--device-list-summary-shadow)'
             document.body.append(probe)
             const shadow = window.getComputedStyle(probe).boxShadow
             probe.remove()
@@ -762,8 +753,7 @@ for (const width of viewportWidths) {
           })(),
           expectedCardShadow: (() => {
             const probe = document.createElement('span')
-            probe.style.boxShadow =
-              'var(--appearance-border-surface), var(--shadow-card)'
+            probe.style.boxShadow = 'var(--device-list-card-shadow)'
             document.body.append(probe)
             const shadow = window.getComputedStyle(probe).boxShadow
             probe.remove()
@@ -771,9 +761,9 @@ for (const width of viewportWidths) {
           })(),
         }
       })
-      expect(overviewLayout.columnCount).toBe(3)
+      expect(overviewLayout.columnCount).toBe(4)
       expect(new Set(overviewLayout.tops.map(Math.round)).size).toBe(1)
-      expect(overviewLayout.colors).toEqual(overviewLayout.expectedColors)
+      expect(new Set(overviewLayout.colors).size).toBeLessThanOrEqual(2)
       expect(
         overviewLayout.numberFontSizes.every(
           (fontSize) => fontSize === overviewLayout.expectedNumberFontSize,
@@ -784,7 +774,7 @@ for (const width of viewportWidths) {
         overviewLayout.expectedCardBackground,
       ])
       expect(overviewLayout.surfaceShadows).toEqual([
-        overviewLayout.expectedPanelShadow,
+        overviewLayout.expectedSummaryShadow,
         overviewLayout.expectedCardShadow,
       ])
 
@@ -830,45 +820,27 @@ for (const width of viewportWidths) {
           if (!element) throw new Error(`未找到布局节点：${selector}`)
           return window.getComputedStyle(element)
         }
-        const toolbar = document
-          .querySelector<HTMLElement>('.mobile-list-toolbar')!
+        const controls = document
+          .querySelector<HTMLElement>('[data-testid="device-list-controls"]')!
           .getBoundingClientRect()
-        const toolbarChildren = Array.from(
+        const listScroll = document
+          .querySelector<HTMLElement>('[data-testid="device-list-scroll"]')!
+          .getBoundingClientRect()
+        const metricHeights = Array.from(
           document.querySelectorAll<HTMLElement>(
-            '.mobile-list-toolbar__identity, .mobile-list-toolbar__actions',
+            '.mobile-summary-strip__metric',
           ),
-        ).map((element) => element.getBoundingClientRect())
-        const selector = document
-          .querySelector<HTMLElement>('[data-testid="mobile-list-selector"]')!
-          .getBoundingClientRect()
-        const filter = document
-          .querySelector<HTMLElement>('[data-testid="mobile-list-filter"]')!
-          .getBoundingClientRect()
+        ).map((element) => element.getBoundingClientRect().height)
         return {
           headerHeight: style('.mobile-global-header').height,
+          searchHeight: style('.device-list-controls__search').height,
           summaryHeight: style('.mobile-summary-strip').height,
-          toolbarLeft: style('.mobile-list-toolbar').paddingLeft,
-          toolbarRight: style('.mobile-list-toolbar').paddingRight,
-          toolbarHeight: style('.mobile-list-toolbar').height,
-          selectorTouchWidth: selector.width,
-          selectorTouchHeight: style('[data-testid="mobile-list-selector"]')
-            .height,
-          selectorVisualHeight: style(
-            '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
-          ).height,
-          filterTouchWidth: filter.width,
-          filterTouchHeight: style('[data-testid="mobile-list-filter"]').height,
-          filterVisualHeight: style(
-            '[data-testid="mobile-list-filter"] .mobile-list-toolbar__control',
-          ).height,
-          toolbarSingleRow: toolbarChildren.every(
-            (child) =>
-              child.top >= toolbar.top && child.bottom <= toolbar.bottom,
-          ),
-          selectorBeforeFilter: selector.right <= filter.left + 0.5,
-          toolbarBorderWidth: style('.mobile-list-toolbar').borderWidth,
-          toolbarBorderRadius: style('.mobile-list-toolbar').borderRadius,
-          toolbarBoxShadow: style('.mobile-list-toolbar').boxShadow,
+          controlsLeft: style('[data-testid="device-list-controls"]')
+            .paddingLeft,
+          controlsRight: style('[data-testid="device-list-controls"]')
+            .paddingRight,
+          controlsBeforeList: controls.bottom <= listScroll.top + 0.5,
+          metricHeights,
           listLeft: style('.device-list').paddingLeft,
           listRight: style('.device-list').paddingRight,
           listOverflowY: style('[data-testid="device-list-scroll"]').overflowY,
@@ -881,20 +853,12 @@ for (const width of viewportWidths) {
         }
       })
       expect(layout).toMatchObject({
-        headerHeight: '52px',
-        summaryHeight: '96px',
-        toolbarLeft: safeAreaFixture.left,
-        toolbarRight: safeAreaFixture.right,
-        toolbarHeight: '46px',
-        selectorTouchHeight: '45px',
-        selectorVisualHeight: '26px',
-        filterTouchHeight: '45px',
-        filterVisualHeight: '26px',
-        toolbarSingleRow: true,
-        selectorBeforeFilter: true,
-        toolbarBorderWidth: '0px',
-        toolbarBorderRadius: '0px',
-        toolbarBoxShadow: 'none',
+        headerHeight: '66px',
+        searchHeight: '44px',
+        summaryHeight: '90px',
+        controlsLeft: safeAreaFixture.left,
+        controlsRight: safeAreaFixture.right,
+        controlsBeforeList: true,
         listLeft: safeAreaFixture.left,
         listRight: safeAreaFixture.right,
         listOverflowY: 'auto',
@@ -903,8 +867,7 @@ for (const width of viewportWidths) {
         footerBottom: safeAreaFixture.bottom,
         bottomNavHeight: '58px',
       })
-      expect(layout.selectorTouchWidth).toBeGreaterThanOrEqual(44)
-      expect(layout.filterTouchWidth).toBeGreaterThanOrEqual(44)
+      expect(layout.metricHeights.every((height) => height >= 44)).toBe(true)
       expect(layout.tabbarPosition).not.toBe('fixed')
       await expectNoHorizontalOverflow(page)
 
@@ -1141,6 +1104,67 @@ for (const width of viewportWidths) {
   }
 }
 
+for (const height of [640, 740, 932] as const) {
+  test(`设备列表在 390x${height} 真实高度下分配剩余空间并独立滚动`, async ({
+    page,
+  }) => {
+    const consoleErrors = collectConsoleErrors(page)
+    await page.setViewportSize({ width: 390, height })
+    await setThemeBeforeNavigation(page, 'light')
+    await installMockApi(page, { deviceTotal: 20 })
+    await page.goto('/#/devices')
+    await expect(page.getByTestId('device-card')).toHaveCount(20)
+
+    const before = await page.evaluate(() => {
+      const box = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)!.getBoundingClientRect()
+      const header = box('[data-testid="mobile-shell-header"]')
+      const controls = box('[data-testid="device-list-controls"]')
+      const list = box('[data-testid="device-list-scroll"]')
+      const footer = box('[data-testid="mobile-shell-bottom"]')
+      const scroll = document.querySelector<HTMLElement>(
+        '[data-testid="device-list-scroll"]',
+      )!
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        headerTop: header.top,
+        controlsAfterHeader: controls.top >= header.bottom - 0.5,
+        listAfterControls: list.top >= controls.bottom - 0.5,
+        footerBottom: footer.bottom,
+        listHeight: list.height,
+        listScrollable: scroll.scrollHeight > scroll.clientHeight,
+        documentScrollable:
+          document.documentElement.scrollHeight >
+          document.documentElement.clientHeight,
+        horizontalOverflow:
+          document.documentElement.scrollWidth > window.innerWidth,
+      }
+    })
+
+    expect(before).toMatchObject({
+      viewport: { width: 390, height },
+      headerTop: 0,
+      controlsAfterHeader: true,
+      listAfterControls: true,
+      footerBottom: height,
+      listScrollable: true,
+      documentScrollable: false,
+      horizontalOverflow: false,
+    })
+    expect(before.listHeight).toBeGreaterThan(120)
+
+    const list = page.getByTestId('device-list-scroll')
+    await list.evaluate((element) => {
+      element.scrollTop = 220
+    })
+    await expect
+      .poll(() => list.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0)
+    await expectNoHorizontalOverflow(page)
+    expect(consoleErrors).toEqual([])
+  })
+}
+
 test('20 条以上设备只滚动 Card List，固定区域保持原位', async ({
   page,
 }, testInfo) => {
@@ -1163,8 +1187,8 @@ test('20 条以上设备只滚动 Card List，固定区域保持原位', async (
       )!
       return {
         headerTop: top('[data-testid="mobile-shell-header"]'),
+        controlsTop: top('[data-testid="device-list-controls"]'),
         summaryTop: top('.mobile-summary-strip'),
-        toolbarTop: top('.mobile-list-toolbar'),
         bottomTop: top('[data-testid="mobile-shell-bottom"]'),
         firstCardTop: top('[data-testid="device-card"]'),
         listScrollTop: scroll.scrollTop,
@@ -1211,8 +1235,8 @@ test('20 条以上设备只滚动 Card List，固定区域保持原位', async (
   const after = await readLayout()
 
   expect(after.headerTop).toBeCloseTo(before.headerTop, 1)
+  expect(after.controlsTop).toBeCloseTo(before.controlsTop, 1)
   expect(after.summaryTop).toBeCloseTo(before.summaryTop, 1)
-  expect(after.toolbarTop).toBeCloseTo(before.toolbarTop, 1)
   expect(after.bottomTop).toBeCloseTo(before.bottomTop, 1)
   expect(after.firstCardTop).toBeLessThan(before.firstCardTop)
   expect(after.shellScrollTop).toBe(0)
@@ -1224,7 +1248,7 @@ test('20 条以上设备只滚动 Card List，固定区域保持原位', async (
   await scrollDeviceListToBottom(page)
   await expect(page.getByText('设备 20', { exact: true })).toBeVisible()
   await expect(page.getByTestId('mobile-shell-header')).toBeVisible()
-  await expect(page.getByTestId('mobile-list-toolbar')).toBeVisible()
+  await expect(page.getByTestId('device-list-controls')).toBeVisible()
   await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
   await expectNoHorizontalOverflow(page)
   expect(consoleErrors).toEqual([])
@@ -1251,20 +1275,14 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await page.goto('/#/devices')
 
   await expect(page.getByTestId('device-card').first()).toBeVisible()
-  await expect(page.getByText('25台', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
   await expect(page.getByTestId('summary-online')).toHaveText('—')
   await expect(page.getByTestId('summary-running')).toHaveText('—')
   await expect(page.getByTestId('summary-offline')).toHaveText('—')
   await expect(page.getByTestId('summary-metric-online')).toBeDisabled()
   await expect(page.getByTestId('summary-metric-running')).toBeDisabled()
   await expect(page.getByTestId('summary-metric-offline')).toBeDisabled()
-  await page.getByTestId('mobile-list-selector').click()
-  for (const label of ['在线', '运行中', '离线']) {
-    await expect(
-      page.locator('.van-action-sheet__item').filter({ hasText: label }),
-    ).toHaveClass(/van-action-sheet__item--disabled/)
-  }
-  await page.locator('.van-action-sheet__cancel').click()
+  await expect(page.getByTestId('device-search')).toBeDisabled()
   await expect
     .poll(() => firstPageDeviceIds.map(activeRequestCount))
     .toEqual(firstPageDeviceIds.map(() => 1))
@@ -1279,20 +1297,14 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   const activeRequestIndexBeforePage2 = state.activeTaskRequests.length
   await scrollDeviceListToBottom(page)
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('25台', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
   await expect(page.getByTestId('summary-online')).toHaveText('23')
   await expect(page.getByTestId('summary-running')).toHaveText('1')
   await expect(page.getByTestId('summary-offline')).toHaveText('1')
   await expect(page.getByTestId('summary-metric-online')).toBeEnabled()
   await expect(page.getByTestId('summary-metric-running')).toBeEnabled()
   await expect(page.getByTestId('summary-metric-offline')).toBeEnabled()
-  await page.getByTestId('mobile-list-selector').click()
-  for (const label of ['在线', '运行中', '离线']) {
-    await expect(
-      page.locator('.van-action-sheet__item').filter({ hasText: label }),
-    ).not.toHaveClass(/van-action-sheet__item--disabled/)
-  }
-  await page.locator('.van-action-sheet__cancel').click()
+  await expect(page.getByTestId('device-search')).toBeEnabled()
   await expect
     .poll(() => secondPageDeviceIds.map(activeRequestCount))
     .toEqual(secondPageDeviceIds.map(() => 1))
@@ -1313,14 +1325,18 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   ).toBe(true)
 
   await page.getByTestId('summary-metric-offline').click()
-  await expect(page.getByTestId('mobile-list-selector')).toContainText('离线')
   await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
     'aria-pressed',
     'true',
   )
   await expect(page.getByTestId('device-card')).toHaveCount(1)
   await page.getByTestId('summary-metric-offline').click()
-  await expect(page.getByTestId('mobile-list-selector')).toContainText('全部')
+  await expect(page.getByTestId('device-card')).toHaveCount(25)
+
+  await page.getByTestId('device-search').fill('设备 25')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 25')
+  await page.getByTestId('device-search').fill('')
   await expect(page.getByTestId('device-card')).toHaveCount(25)
 
   const requestCountBeforeRefresh = state.deviceListRequests.length
@@ -1339,7 +1355,7 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
       .every((request) => new URL(request).searchParams.get('page') === '1'),
   ).toBe(true)
   await expect(page.getByText('设备 25', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('25台', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
   await expect(page.getByTestId('summary-online')).toHaveText('—')
   await page.waitForTimeout(100)
   const removedObserverRequestCounts =
@@ -1371,7 +1387,7 @@ test('设备后台刷新失败保留旧卡片且不展示实现原因', async ({
   await expect(page.getByText('设备后台刷新失败')).toHaveCount(0)
   await expect(page.getByTestId('device-card').first()).toBeVisible()
   await expect(page.getByText('设备 25', { exact: true })).toBeVisible()
-  await expect(page.getByText('25台', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('summary-all')).toHaveText('25')
   await expect(page.getByTestId('summary-online')).toHaveText('23')
   await expectNoHorizontalOverflow(page)
 })
@@ -1388,7 +1404,7 @@ test('设备首次请求失败进入简洁错误并可重试成功', async ({ pa
   await expect(page.getByTestId('device-loading')).toHaveCount(0)
   await expect(page.getByTestId('mobile-shell-header')).toBeVisible()
   await expect(page.locator('.mobile-summary-strip')).toBeVisible()
-  await expect(page.getByTestId('mobile-list-toolbar')).toBeVisible()
+  await expect(page.getByTestId('device-list-controls')).toBeVisible()
   await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
   expect(
     await errorState.evaluate(

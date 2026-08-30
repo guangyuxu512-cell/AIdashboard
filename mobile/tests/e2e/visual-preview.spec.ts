@@ -111,8 +111,8 @@ async function readGlobalHeaderAnatomy(page: Page) {
     const shellHeader = document.querySelector<HTMLElement>(
       '[data-testid="mobile-shell-header"]',
     )!
-    const brand = header.querySelector<HTMLElement>(
-      '.mobile-global-header__brand',
+    const headline = header.querySelector<HTMLElement>(
+      '.mobile-global-header__brand, .mobile-global-header__page-title',
     )!
     const actions = header.querySelector<HTMLElement>(
       '.mobile-global-header__actions',
@@ -124,18 +124,23 @@ async function readGlobalHeaderAnatomy(page: Page) {
       actions.querySelectorAll<HTMLElement>('.mobile-header-icon'),
     )
     const headerBox = header.getBoundingClientRect()
-    const brandBox = brand.getBoundingClientRect()
+    const headlineBox = headline.getBoundingClientRect()
     const actionsBox = actions.getBoundingClientRect()
     const buttonBoxes = buttons.map((button) => button.getBoundingClientRect())
     const rootStyle = window.getComputedStyle(document.documentElement)
 
     return {
-      brandText: brand.textContent?.trim() ?? '',
+      brandText: headline.textContent?.trim() ?? '',
+      isPageHeader: header.classList.contains('mobile-global-header--page'),
       headerHeight: headerBox.height,
       expectedHeaderHeight: Number.parseFloat(
-        rootStyle.getPropertyValue('--layout-header-height'),
+        rootStyle.getPropertyValue(
+          header.classList.contains('mobile-global-header--page')
+            ? '--device-list-header-height'
+            : '--layout-header-height',
+        ),
       ),
-      brandBeforeActions: brandBox.right <= actionsBox.left,
+      brandBeforeActions: headlineBox.right <= actionsBox.left,
       actionLabels: buttons.map((button) => button.getAttribute('aria-label')),
       themeBeforeBell: buttonBoxes[0]!.left < buttonBoxes[1]!.left,
       buttonSizes: buttonBoxes.map(({ width, height }) => ({ width, height })),
@@ -283,14 +288,15 @@ async function expectSummaryStrip(page: Page) {
   const metrics = strip.locator('.mobile-summary-strip__item')
 
   await expect(strip).toBeVisible()
-  await expect(metrics).toHaveCount(3)
+  await expect(metrics).toHaveCount(4)
   await expect(metrics.locator('.mobile-summary-strip__label')).toHaveText([
+    '全部设备',
     '在线设备',
     '运行中',
     '离线设备',
   ])
-  await expect(metrics.locator('.mobile-summary-strip__icon')).toHaveCount(3)
-  await expect(strip.locator('button')).toHaveCount(3)
+  await expect(metrics.locator('.mobile-summary-strip__icon')).toHaveCount(0)
+  await expect(strip.locator('button')).toHaveCount(4)
 
   const geometry = await strip.evaluate((element) => {
     const surface = element.querySelector<HTMLElement>(
@@ -300,11 +306,6 @@ async function expectSummaryStrip(page: Page) {
       surface.querySelectorAll<HTMLElement>('.mobile-summary-strip__item'),
     )
     const slotBoxes = slots.map((slot) => slot.getBoundingClientRect())
-    const iconBoxes = slots.map((slot) =>
-      slot
-        .querySelector<HTMLElement>('.mobile-summary-strip__icon')!
-        .getBoundingClientRect(),
-    )
     const numberBoxes = slots.map((slot) =>
       slot
         .querySelector<HTMLElement>('.mobile-summary-strip__value')!
@@ -320,23 +321,22 @@ async function expectSummaryStrip(page: Page) {
     const rootStyle = getComputedStyle(document.documentElement)
 
     const groups = slotBoxes.map((slot, index) => {
-      const icon = iconBoxes[index]!
       const number = numberBoxes[index]!
       const label = labelBoxes[index]!
-      const left = Math.min(icon.left, number.left, label.left)
-      const right = Math.max(icon.right, number.right, label.right)
-      const top = Math.min(icon.top, number.top, label.top)
-      const bottom = Math.max(icon.bottom, number.bottom, label.bottom)
+      const left = Math.min(number.left, label.left)
+      const right = Math.max(number.right, label.right)
+      const top = Math.min(number.top, label.top)
+      const bottom = Math.max(number.bottom, label.bottom)
       return {
         horizontalCenterDelta:
           (left + right) / 2 - (slot.left + slot.right) / 2,
         verticalCenterDelta: (top + bottom) / 2 - (slot.top + slot.bottom) / 2,
-        elementsCentered: [icon, number, label].every(
+        elementsCentered: [number, label].every(
           (box) =>
             Math.abs(box.left + box.width / 2 - (slot.left + slot.width / 2)) <=
             0.5,
         ),
-        verticalOrder: icon.bottom <= number.top && number.bottom <= label.top,
+        verticalOrder: number.bottom <= label.top,
       }
     })
 
@@ -353,7 +353,7 @@ async function expectSummaryStrip(page: Page) {
       stripTop: stripBox.top,
       stripHeight: stripBox.height,
       expectedStripHeight: Number.parseFloat(
-        rootStyle.getPropertyValue('--layout-summary-height'),
+        rootStyle.getPropertyValue('--device-list-summary-height'),
       ),
       surfaceCount: element.querySelectorAll('.mobile-summary-strip__surface')
         .length,
@@ -362,7 +362,7 @@ async function expectSummaryStrip(page: Page) {
       ),
       surfaceHeight: surfaceBox.height,
       surfaceTopBreathing: Math.min(
-        ...iconBoxes.map((icon) => icon.top - surfaceBox.top),
+        ...numberBoxes.map((number) => number.top - surfaceBox.top),
       ),
       surfaceBottomBreathing: Math.min(
         ...labelBoxes.map((label) => surfaceBox.bottom - label.bottom),
@@ -370,14 +370,6 @@ async function expectSummaryStrip(page: Page) {
       slotWidths: slotBoxes.map((slot) => slot.width),
       slotTops: slotBoxes.map((slot) => slot.top),
       slotHeights: slotBoxes.map((slot) => slot.height),
-      iconSizes: iconBoxes.map((icon) => icon.width),
-      iconFontSizes: slots.map((slot) =>
-        Number.parseFloat(
-          getComputedStyle(
-            slot.querySelector<HTMLElement>('.mobile-summary-strip__icon')!,
-          ).fontSize,
-        ),
-      ),
       touchHeights: slots.map(
         (slot) =>
           slot
@@ -452,8 +444,6 @@ async function expectSummaryStrip(page: Page) {
   ).toBe(true)
   expect(geometry.labelsSingleLine).toBe(true)
   expect(geometry.numberEmphasized).toBe(true)
-  expect(geometry.iconSizes.every((size) => size === 16)).toBe(true)
-  expect(geometry.iconFontSizes.every((size) => size === 16)).toBe(true)
   expect(geometry.buttonSemantics).toBe(true)
   expect(geometry.touchHeights.every((height) => height >= 44)).toBe(true)
   expect(geometry.noHorizontalOverflow).toBe(true)
@@ -558,46 +548,46 @@ for (const width of viewportWidths) {
 
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       await expect(page.getByTestId('device-card')).toHaveCount(20)
+      await expect(page.getByTestId('summary-all')).toHaveText('20')
       await expect(page.getByTestId('summary-online')).toHaveText('4')
       await expect(page.getByTestId('summary-running')).toHaveText('1')
       await expect(page.getByTestId('summary-offline')).toHaveText('1')
-      await expect(page.getByText('20台', { exact: true })).toBeVisible()
-      await expect(page.getByTestId('mobile-list-selector')).toContainText(
-        '全部',
+      await expect(page.getByTestId('device-search')).toBeEnabled()
+      await expect(page.getByTestId('summary-metric-all')).toHaveAttribute(
+        'aria-pressed',
+        'true',
       )
-      await expect(page.getByTestId('mobile-list-filter')).toContainText('筛选')
       await expect(page.getByText('加载失败', { exact: true })).toHaveCount(0)
       await expect(page.getByText('没有设备', { exact: true })).toHaveCount(0)
       const summaryGeometry = await expectSummaryStrip(page)
       const onlineMetric = page.getByTestId('summary-metric-online')
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
       await onlineMetric.click()
-      await expect(page.getByTestId('mobile-list-selector')).toContainText(
-        '在线',
-      )
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'true')
       await expect(page.getByTestId('device-card')).toHaveCount(4)
       await onlineMetric.click()
-      await expect(page.getByTestId('mobile-list-selector')).toContainText(
-        '全部',
-      )
       await expect(onlineMetric).toHaveAttribute('aria-pressed', 'false')
+      await expect(page.getByTestId('summary-metric-all')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
       await expect(page.getByTestId('device-card')).toHaveCount(20)
 
       if (width === 390 && theme === 'light') {
-        await page.getByTestId('mobile-list-selector').click()
-        await page
-          .locator('.van-action-sheet__item')
-          .filter({ hasText: /^离线$/ })
-          .click()
-        await expect(page.getByTestId('mobile-list-selector')).toContainText(
-          '离线',
-        )
+        await page.getByTestId('summary-metric-offline').click()
         await expect(
           page.getByTestId('summary-metric-offline'),
         ).toHaveAttribute('aria-pressed', 'true')
         await expect(page.getByTestId('device-card')).toHaveCount(1)
         await page.getByTestId('summary-metric-offline').click()
+        await expect(page.getByTestId('device-card')).toHaveCount(20)
+
+        await page.getByTestId('device-search').fill('客服自动化')
+        await expect(page.getByTestId('device-card')).toHaveCount(1)
+        await expect(page.getByTestId('device-card-name')).toHaveText(
+          '客服自动化工作站（华东售后协同中心）',
+        )
+        await page.getByTestId('device-search').fill('')
         await expect(page.getByTestId('device-card')).toHaveCount(20)
       }
 
@@ -609,36 +599,32 @@ for (const width of viewportWidths) {
           return `${style.fontSize}/${style.fontWeight}`
         }
         return {
-          brand: read('.mobile-global-header__brand'),
+          brand: read('.mobile-global-header__page-title'),
           cardTitle: read('[data-testid="device-card-name"]'),
           summaryNumber: read('.mobile-summary-strip__value'),
           meta: read('.device-list-card__meta'),
         }
       })
       expect(deviceTypography).toEqual({
-        brand: '16px/600',
-        cardTitle: '15px/600',
-        summaryNumber: '18px/700',
-        meta: '11px/400',
+        brand: '20px/600',
+        cardTitle: '16.5px/600',
+        summaryNumber: '23px/600',
+        meta: '13px/400',
       })
 
       const visualDeviceCards = page.getByTestId('device-card')
-      const cardPaddingTokens = await page.evaluate(() => {
-        const rootStyle = window.getComputedStyle(document.documentElement)
-        return {
-          x: rootStyle.getPropertyValue('--layout-card-padding-x').trim(),
-          y: rootStyle.getPropertyValue('--layout-card-padding-y').trim(),
-        }
-      })
       await expect(
-        visualDeviceCards.nth(0).getByTestId('device-card-status'),
-      ).toHaveText('执行中')
+        visualDeviceCards.nth(0).getByTestId('device-card-runtime'),
+      ).toHaveText('运行中')
       await expect(
-        visualDeviceCards.nth(1).getByTestId('device-card-status'),
-      ).toHaveText('空闲')
+        visualDeviceCards.nth(1).getByTestId('device-card-runtime'),
+      ).toHaveText('在线')
       await expect(
-        visualDeviceCards.nth(2).getByTestId('device-card-status'),
-      ).toHaveText('停用')
+        visualDeviceCards.nth(2).getByTestId('device-card-runtime'),
+      ).toHaveText('在线')
+      await expect(
+        visualDeviceCards.nth(2).getByTestId('device-card-meta'),
+      ).toContainText('已停用')
       await expect(
         visualDeviceCards.nth(3).getByTestId('device-card-runtime'),
       ).toHaveText('离线')
@@ -670,19 +656,19 @@ for (const width of viewportWidths) {
       )
       expect(deviceCardSpacing).toEqual([
         {
-          paddingTop: cardPaddingTokens.y,
-          paddingRight: cardPaddingTokens.x,
-          paddingBottom: cardPaddingTokens.y,
-          paddingLeft: cardPaddingTokens.x,
-          columnGap: '16px',
-          cardGap: 8,
+          paddingTop: '15px',
+          paddingRight: '17px',
+          paddingBottom: '15px',
+          paddingLeft: '16px',
+          columnGap: 'normal',
+          cardGap: 14,
         },
         {
-          paddingTop: cardPaddingTokens.y,
-          paddingRight: cardPaddingTokens.x,
-          paddingBottom: cardPaddingTokens.y,
-          paddingLeft: cardPaddingTokens.x,
-          columnGap: '16px',
+          paddingTop: '15px',
+          paddingRight: '17px',
+          paddingBottom: '15px',
+          paddingLeft: '16px',
+          columnGap: 'normal',
           cardGap: null,
         },
       ])
@@ -690,10 +676,10 @@ for (const width of viewportWidths) {
         const rootStyle = window.getComputedStyle(document.documentElement)
         return {
           slot: Number.parseFloat(
-            rootStyle.getPropertyValue('--layout-card-leading-icon-slot-width'),
+            rootStyle.getPropertyValue('--device-list-card-artwork-column'),
           ),
-          glyph: Number.parseFloat(
-            rootStyle.getPropertyValue('--icon-size-card-leading'),
+          artwork: Number.parseFloat(
+            rootStyle.getPropertyValue('--device-list-artwork-width'),
           ),
         }
       })
@@ -703,11 +689,12 @@ for (const width of viewportWidths) {
             const leading = card.querySelector<HTMLElement>(
               '[data-testid="device-card-leading"]',
             )!
+            const artwork = leading.querySelector<HTMLElement>(
+              '[data-testid="device-status-artwork"]',
+            )!
             return {
               slotWidth: leading.getBoundingClientRect().width,
-              glyphSize: Number.parseFloat(
-                window.getComputedStyle(leading).fontSize,
-              ),
+              artworkWidth: artwork.getBoundingClientRect().width,
             }
           }),
       )
@@ -715,8 +702,8 @@ for (const width of viewportWidths) {
         deviceLeadingVisuals.every(
           (visual) =>
             Math.abs(visual.slotWidth - primaryLeadingVisualTokens.slot) <= 1 &&
-            visual.glyphSize === primaryLeadingVisualTokens.glyph &&
-            visual.glyphSize < visual.slotWidth,
+            visual.artworkWidth === primaryLeadingVisualTokens.artwork &&
+            visual.artworkWidth < visual.slotWidth,
         ),
       ).toBe(true)
 
@@ -786,7 +773,8 @@ for (const width of viewportWidths) {
         (await bellButton.boundingBox())!.x,
       )
       const deviceGlobalHeader = await readGlobalHeaderAnatomy(page)
-      expect(deviceGlobalHeader.brandText).toBe('思余AI中控台')
+      expect(deviceGlobalHeader.brandText).toBe('设备')
+      expect(deviceGlobalHeader.isPageHeader).toBe(true)
       expect(deviceGlobalHeader.headerHeight).toBe(
         deviceGlobalHeader.expectedHeaderHeight,
       )
@@ -801,8 +789,8 @@ for (const width of viewportWidths) {
         { width: 45, height: 45 },
       ])
       expect(deviceGlobalHeader.buttonVisualSizes).toEqual([
-        { width: 32, height: 32 },
-        { width: 32, height: 32 },
+        { width: 40, height: 40 },
+        { width: 40, height: 40 },
       ])
       expect(deviceGlobalHeader.iconSizes[0]).toEqual(
         deviceGlobalHeader.iconSizes[1],
@@ -860,27 +848,19 @@ for (const width of viewportWidths) {
                 '.mobile-summary-strip__item',
               ),
             ).every((item) => {
-              const icon = item.querySelector<HTMLElement>(
-                '.mobile-summary-strip__icon',
-              )!
               const value = item.querySelector<HTMLElement>(
                 '.mobile-summary-strip__value',
               )!
               const label = item.querySelector<HTMLElement>(
                 '.mobile-summary-strip__label',
               )!
-              const iconBox = icon.getBoundingClientRect()
               const valueBox = value.getBoundingClientRect()
               const labelBox = label.getBoundingClientRect()
-              return (
-                iconBox.bottom <= valueBox.top &&
-                valueBox.bottom <= labelBox.top
-              )
+              return valueBox.bottom <= labelBox.top
             }),
-            toolbarHeight: style('.mobile-list-toolbar').height,
-            selectorVisualHeight: style(
-              '[data-testid="mobile-list-selector"] .mobile-list-toolbar__control',
-            ).height,
+            controlsHeight: style('[data-testid="device-list-controls"]')
+              .height,
+            searchHeight: style('.device-list-controls__search').height,
             scrollbarWidth: style('[data-testid="device-list-scroll"]')
               .scrollbarWidth,
             scrollable: scroll.scrollHeight > scroll.clientHeight,
@@ -888,10 +868,10 @@ for (const width of viewportWidths) {
           }
         }),
       ).toEqual({
-        summaryHeight: '96px',
+        summaryHeight: '90px',
         summaryStacked: true,
-        toolbarHeight: '46px',
-        selectorVisualHeight: '26px',
+        controlsHeight: '148px',
+        searchHeight: '44px',
         scrollbarWidth: 'none',
         scrollable: true,
         documentScrollTop: 0,
@@ -1138,7 +1118,12 @@ for (const width of viewportWidths) {
       await expect(page).toHaveURL(/#\/tasks$/)
       await expectBottomNavigation(page, '任务')
       const taskGlobalHeader = await readGlobalHeaderAnatomy(page)
-      expect(taskGlobalHeader).toEqual(deviceGlobalHeader)
+      expect(taskGlobalHeader.brandText).toBe('思余AI中控台')
+      expect(taskGlobalHeader.isPageHeader).toBe(false)
+      expect(taskGlobalHeader.actionLabels).toEqual(
+        deviceGlobalHeader.actionLabels,
+      )
+      expect(taskGlobalHeader.iconSizes).toEqual(deviceGlobalHeader.iconSizes)
       await expect(page.getByTestId('task-card')).toHaveCount(5)
       for (const status of ['执行中', '成功', '失败', '待执行', '已丢失']) {
         await expect(
@@ -1197,20 +1182,37 @@ for (const width of viewportWidths) {
             }
           }),
         )
+      const taskCardTokens = await page.evaluate(() => {
+        const rootStyle = window.getComputedStyle(document.documentElement)
+        return {
+          paddingX: rootStyle
+            .getPropertyValue('--layout-card-padding-x')
+            .trim(),
+          paddingY: rootStyle
+            .getPropertyValue('--layout-card-padding-y')
+            .trim(),
+          slot: Number.parseFloat(
+            rootStyle.getPropertyValue('--layout-card-leading-icon-slot-width'),
+          ),
+          glyph: Number.parseFloat(
+            rootStyle.getPropertyValue('--icon-size-card-leading'),
+          ),
+        }
+      })
       expect(taskCardSpacing).toEqual([
         {
-          paddingTop: cardPaddingTokens.y,
-          paddingRight: cardPaddingTokens.x,
-          paddingBottom: cardPaddingTokens.y,
-          paddingLeft: cardPaddingTokens.x,
+          paddingTop: taskCardTokens.paddingY,
+          paddingRight: taskCardTokens.paddingX,
+          paddingBottom: taskCardTokens.paddingY,
+          paddingLeft: taskCardTokens.paddingX,
           columnGap: '16px',
           cardGap: 8,
         },
         {
-          paddingTop: cardPaddingTokens.y,
-          paddingRight: cardPaddingTokens.x,
-          paddingBottom: cardPaddingTokens.y,
-          paddingLeft: cardPaddingTokens.x,
+          paddingTop: taskCardTokens.paddingY,
+          paddingRight: taskCardTokens.paddingX,
+          paddingBottom: taskCardTokens.paddingY,
+          paddingLeft: taskCardTokens.paddingX,
           columnGap: '16px',
           cardGap: null,
         },
@@ -1233,8 +1235,8 @@ for (const width of viewportWidths) {
       expect(
         taskLeadingVisuals.every(
           (visual) =>
-            Math.abs(visual.slotWidth - primaryLeadingVisualTokens.slot) <= 1 &&
-            visual.glyphSize === primaryLeadingVisualTokens.glyph &&
+            Math.abs(visual.slotWidth - taskCardTokens.slot) <= 1 &&
+            visual.glyphSize === taskCardTokens.glyph &&
             visual.glyphSize < visual.slotWidth,
         ),
       ).toBe(true)

@@ -226,9 +226,21 @@ describe('MobileAppShell V2', () => {
       await flushPromises()
 
       expect(wrapper.findAllComponents(MobileGlobalHeader)).toHaveLength(1)
-      expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
-        '思余AI中控台',
-      )
+      if (path === '/devices') {
+        expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
+          '设备',
+        )
+        expect(
+          wrapper.getComponent(MobileGlobalHeader).props('pageTitle'),
+        ).toBe('设备')
+      } else {
+        expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
+          '思余AI中控台',
+        )
+        expect(
+          wrapper.getComponent(MobileGlobalHeader).props('pageTitle'),
+        ).toBeUndefined()
+      }
       expect(wrapper.findComponent(MobileDetailHeader).exists()).toBe(false)
     }
   })

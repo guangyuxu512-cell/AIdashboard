@@ -13,6 +13,7 @@ import {
   filterDevicesByQuickFilter,
   getDeviceQuickFilterLabel,
   isDeviceQuickFilterAvailable,
+  searchDevicesByDisplayName,
   toggleDeviceMetricFilter,
   type DeviceMetricFilter,
   type DeviceQuickFilter,
@@ -23,6 +24,7 @@ export function useDeviceCenter() {
   const queryClient = useQueryClient()
   const query = useDeviceCenterListQuery()
   const filter = ref<DeviceQuickFilter>('all')
+  const searchQuery = ref('')
   const refreshing = ref(false)
   const refreshError = ref<unknown>(null)
   const devices = computed(() =>
@@ -50,14 +52,25 @@ export function useDeviceCenter() {
     running: isDeviceQuickFilterAvailable('running', overview.value),
     offline: isDeviceQuickFilterAvailable('offline', overview.value),
   }))
-  const filteredDevices = computed(() =>
-    filterDevicesByQuickFilter(
+  const total = computed(() => query.data.value?.pages[0]?.total)
+  const hasCompleteDeviceDataset = computed(
+    () =>
+      query.data.value !== undefined &&
+      total.value !== undefined &&
+      devices.value.length >= total.value &&
+      !query.hasNextPage.value,
+  )
+  const searchAvailable = computed(() => hasCompleteDeviceDataset.value)
+  const filteredDevices = computed(() => {
+    const filtered = filterDevicesByQuickFilter(
       devices.value,
       activeTasks.states.value,
       filter.value,
-    ),
-  )
-  const total = computed(() => query.data.value?.pages[0]?.total)
+    )
+    return searchAvailable.value
+      ? searchDevicesByDisplayName(filtered, searchQuery.value)
+      : filtered
+  })
   const visibleTotal = computed(() =>
     filter.value === 'all' ? total.value : filteredDevices.value.length,
   )
@@ -81,6 +94,9 @@ export function useDeviceCenter() {
       if (currentFilter !== 'all' && !available) filter.value = 'all'
     },
   )
+  watch(searchAvailable, (available) => {
+    if (!available) searchQuery.value = ''
+  })
 
   function setFilter(nextFilter: DeviceQuickFilter): void {
     if (filterAvailability.value[nextFilter]) filter.value = nextFilter
@@ -141,6 +157,9 @@ export function useDeviceCenter() {
     activeTaskStates: activeTasks.states,
     overview,
     filter,
+    searchQuery,
+    searchAvailable,
+    hasCompleteDeviceDataset,
     filterLabel: computed(() => getDeviceQuickFilterLabel(filter.value)),
     filterAvailability,
     visibleTotal,

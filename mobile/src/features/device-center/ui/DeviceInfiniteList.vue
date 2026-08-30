@@ -108,8 +108,9 @@ const emit = defineEmits<{
   display: grid;
   min-height: 100%;
   gap: var(--space-4);
-  padding: var(--space-4) max(var(--space-4), var(--safe-area-right))
-    var(--space-4) max(var(--space-4), var(--safe-area-left));
+  padding: var(--space-4)
+    max(var(--device-list-page-padding-x), var(--safe-area-right))
+    var(--space-4) max(var(--device-list-page-padding-x), var(--safe-area-left));
   align-content: center;
 }
 
@@ -119,16 +120,17 @@ const emit = defineEmits<{
 
 .device-list {
   display: grid;
-  gap: var(--layout-card-gap);
-  padding: var(--layout-content-gap)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
-    max(var(--layout-page-padding-x), var(--safe-area-left));
+  gap: var(--device-list-card-gap);
+  padding: var(--device-list-list-padding-top)
+    max(var(--device-list-page-padding-x), var(--safe-area-right))
+    var(--device-list-list-padding-bottom)
+    max(var(--device-list-page-padding-x), var(--safe-area-left));
 }
 
 .device-list__next-error {
   display: grid;
   gap: var(--layout-content-gap);
-  padding: 0 max(var(--layout-page-padding-x), var(--safe-area-right))
-    var(--space-4) max(var(--layout-page-padding-x), var(--safe-area-left));
+  padding: 0 max(var(--device-list-page-padding-x), var(--safe-area-right))
+    var(--space-4) max(var(--device-list-page-padding-x), var(--safe-area-left));
 }
 </style>

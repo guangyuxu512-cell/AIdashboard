@@ -1,28 +1,16 @@
 <script setup lang="ts">
-import { ActionSheet as VanActionSheet, showToast } from 'vant'
-import { computed, ref } from 'vue'
+import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
 import {
   DeviceInfiniteList,
-  DeviceOverviewCards,
-  DEVICE_QUICK_FILTERS,
-  type DeviceQuickFilter,
+  DeviceListControls,
   useDeviceCenter,
 } from '@/features/device-center'
-import { MobileListToolbar } from '@/shared/ui'
 
 const router = useRouter()
 const deviceCenter = useDeviceCenter()
-const quickFilterOpen = ref(false)
-const quickFilterActions = computed(() =>
-  DEVICE_QUICK_FILTERS.map((option) => ({
-    name: option.selectorLabel,
-    value: option.value,
-    disabled: !deviceCenter.filterAvailability.value[option.value],
-  })),
-)
 
 function openDevice(deviceId: string): void {
   void router.push({
@@ -34,40 +22,17 @@ function openDevice(deviceId: string): void {
 async function refresh(): Promise<void> {
   if (!(await deviceCenter.refresh())) showToast('刷新失败')
 }
-
-function showFilterPlaceholder(): void {
-  showToast('功能建设中')
-}
-
-function selectQuickFilter(action: {
-  name: string
-  value: DeviceQuickFilter
-}): void {
-  deviceCenter.setFilter(action.value)
-  quickFilterOpen.value = false
-}
 </script>
 
 <template>
-  <div class="mobile-list-page">
-    <DeviceOverviewCards
+  <div class="mobile-list-page device-center-page-v2">
+    <DeviceListControls
       :overview="deviceCenter.overview.value"
       :filter="deviceCenter.filter.value"
-      @select="deviceCenter.toggleMetricFilter"
-    />
-
-    <MobileListToolbar
-      title="设备"
-      :meta="
-        deviceCenter.visibleTotal.value === undefined
-          ? '—'
-          : `${deviceCenter.visibleTotal.value}台`
-      "
-      :selector-label="deviceCenter.filterLabel.value"
-      :selector-aria-label="`选择设备状态，当前${deviceCenter.filterLabel.value}`"
-      filter-label="筛选"
-      @selector="quickFilterOpen = true"
-      @filter="showFilterPlaceholder"
+      :search-query="deviceCenter.searchQuery.value"
+      :search-available="deviceCenter.searchAvailable.value"
+      @select-filter="deviceCenter.toggleMetricFilter"
+      @update-search-query="deviceCenter.searchQuery.value = $event"
     />
 
     <div
@@ -92,14 +57,13 @@ function selectQuickFilter(action: {
         @select-device="openDevice"
       />
     </div>
-
-    <VanActionSheet
-      v-model:show="quickFilterOpen"
-      :actions="quickFilterActions"
-      cancel-text="取消"
-      close-on-click-action
-      safe-area-inset-bottom
-      @select="selectQuickFilter"
-    />
   </div>
 </template>
+
+<style scoped>
+.device-center-page-v2 {
+  color: var(--device-list-text-primary);
+  font-family: var(--device-list-font-family);
+  background: var(--device-list-page-background);
+}
+</style>

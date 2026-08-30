@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { Tag as VanTag } from 'vant'
 import { computed } from 'vue'
 
 import {
-  DEVICE_CONNECTION_META,
+  DeviceStatusArtwork,
   formatRelativeHeartbeat,
-  getDeviceConnectionDisplayState,
   type Device,
 } from '@/entities/device'
-import { TASK_STATUS_META } from '@/entities/task'
 import { MobileIcon } from '@/shared/icons'
 
+import {
+  DEVICE_VISUAL_STATE_LABELS,
+  getDeviceVisualState,
+} from '../model/device-visual'
 import type { DeviceActiveTaskState } from '../model/use-device-active-task'
 
 const props = defineProps<{
@@ -22,43 +23,25 @@ const emit = defineEmits<{
   selectDevice: [deviceId: string]
 }>()
 
+const visualState = computed(() =>
+  getDeviceVisualState(props.device, props.activeTaskState),
+)
+const visualStateLabel = computed(
+  () => DEVICE_VISUAL_STATE_LABELS[visualState.value],
+)
 const heartbeatText = computed(() =>
   formatRelativeHeartbeat(props.device.workerRuntime?.lastSeenAt ?? null),
 )
-const updateText = computed(() =>
-  heartbeatText.value === '—' ? '未上报' : heartbeatText.value,
+const heartbeatMeta = computed(() =>
+  heartbeatText.value === '—' ? '心跳未上报' : `心跳 ${heartbeatText.value}`,
 )
-const connectionLabel = computed(
-  () =>
-    DEVICE_CONNECTION_META[
-      getDeviceConnectionDisplayState(
-        props.device.workerRuntime?.connectionStatus,
-      )
-    ].label,
-)
-const primaryStatus = computed(() => {
-  if (!props.device.enabled) {
-    return { label: '停用', tagType: 'warning' as const }
-  }
-  if (props.activeTaskState.initialLoading) {
-    return { label: '加载中', tagType: 'default' as const }
-  }
-  if (props.activeTaskState.initialError) {
-    return { label: '—', tagType: 'default' as const }
-  }
-  if (props.activeTaskState.task) {
-    return TASK_STATUS_META[props.activeTaskState.task.status]
-  }
-  if (props.activeTaskState.task === null) {
-    return { label: '空闲', tagType: 'default' as const }
-  }
-  return { label: '—', tagType: 'default' as const }
-})
+const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停用'))
 </script>
 
 <template>
   <article
-    class="device-list-card mobile-card mobile-press-surface"
+    class="device-list-card mobile-press-surface"
+    :class="`device-list-card--${visualState}`"
     data-testid="device-card"
   >
     <button
@@ -73,37 +56,33 @@ const primaryStatus = computed(() => {
       data-testid="device-card-leading"
       aria-hidden="true"
     >
-      <MobileIcon name="device" tile />
+      <DeviceStatusArtwork kind="desktop" :state="visualState" />
     </span>
 
     <span class="device-list-card__content">
       <strong class="device-list-card__name" data-testid="device-card-name">
         {{ device.displayName }}
       </strong>
-      <span class="device-list-card__runtime" data-testid="device-card-runtime">
-        {{ connectionLabel }}
+      <span
+        class="device-list-card__runtime"
+        :class="`device-list-card__runtime--${visualState}`"
+        data-testid="device-card-runtime"
+      >
+        <i class="device-list-card__state-dot" aria-hidden="true" />
+        <span>{{ visualStateLabel }}</span>
       </span>
       <span class="device-list-card__meta" data-testid="device-card-meta">
-        <span>{{ updateText }}</span>
+        <span>{{ heartbeatMeta }}</span>
         <span aria-hidden="true">·</span>
-        <span>Worker {{ device.workerRuntime?.workerVersion || '—' }}</span>
+        <span>{{ enabledMeta }}</span>
       </span>
     </span>
 
-    <span class="device-list-card__trailing">
-      <VanTag
-        :type="primaryStatus.tagType"
-        round
-        data-testid="device-card-status"
-      >
-        {{ primaryStatus.label }}
-      </VanTag>
-      <MobileIcon
-        class="device-list-card__chevron"
-        name="chevron-right"
-        data-testid="device-card-chevron"
-      />
-    </span>
+    <MobileIcon
+      class="device-list-card__chevron"
+      name="chevron-right"
+      data-testid="device-card-chevron"
+    />
   </article>
 </template>
 
@@ -111,80 +90,129 @@ const primaryStatus = computed(() => {
 .device-list-card {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
   width: 100%;
   min-width: 0;
-  column-gap: var(--layout-card-leading-content-gap);
-  padding: var(--layout-card-padding-y) var(--layout-card-padding-x);
-  align-items: center;
-  color: inherit;
+  min-height: var(--device-list-card-min-height);
+  padding: var(--device-list-card-padding-top)
+    var(--device-list-card-padding-right) var(--device-list-card-padding-bottom)
+    var(--device-list-card-padding-left);
+  overflow: hidden;
+  color: var(--device-list-text-primary);
   text-align: left;
+  background: var(--device-list-card-background);
+  border: var(--device-list-card-border-width) solid
+    var(--device-list-card-border);
+  border-radius: var(--device-list-card-radius);
+  box-shadow: var(--device-list-card-shadow);
+  grid-template-columns:
+    var(--device-list-card-artwork-column) minmax(0, 1fr)
+    var(--device-list-card-chevron-column);
+  align-items: center;
 }
 
 .device-list-card__main {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   inset: 0;
   padding: 0;
   background: transparent;
   border: 0;
-  border-radius: var(--radius-card);
+  border-radius: var(--device-list-card-radius);
 }
 
 .device-list-card__main:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
+  outline-offset: calc(var(--focus-ring-offset) * -1);
 }
 
 .device-list-card:has(.device-list-card__main:active) {
+  background: var(--device-list-card-pressed-background);
+  border-color: var(--device-list-card-pressed-border);
+  box-shadow: var(--device-list-card-pressed-shadow);
   transform: scale(var(--press-scale-card));
-  background: var(--bg-surface-pressed);
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-card-pressed);
 }
 
 .device-list-card__leading {
-  display: grid;
-  width: var(--layout-card-leading-icon-slot-width);
-  flex: none;
-  align-self: center;
-  color: var(--text-secondary);
-  font-size: var(--icon-size-card-leading);
-  place-items: center;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: var(--device-list-artwork-height);
+  align-items: center;
+  justify-content: center;
+  transform: translateX(var(--device-list-artwork-offset-x));
 }
 
 .device-list-card__content {
-  display: grid;
+  position: relative;
+  z-index: 1;
+  display: block;
   min-width: 0;
-  gap: var(--layout-card-row-gap);
 }
 
 .device-list-card__name,
 .device-list-card__runtime,
 .device-list-card__meta {
   min-width: 0;
+}
+
+.device-list-card__name {
+  display: block;
+  margin: 0 0 var(--device-list-card-name-gap);
   overflow: hidden;
+  font-size: var(--device-list-card-name-size);
+  font-weight: var(--device-list-card-name-weight);
+  line-height: var(--device-list-card-name-line-height);
+  letter-spacing: var(--device-list-card-name-letter-spacing);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.device-list-card__name {
-  font-size: var(--font-size-label);
-  line-height: var(--line-height-label);
+.device-list-card__runtime,
+.device-list-card__meta {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .device-list-card__runtime {
-  color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
-  line-height: var(--line-height-secondary);
+  gap: var(--device-list-card-inline-gap);
+  margin-bottom: var(--device-list-card-status-gap);
+  font-size: var(--device-list-card-status-size);
+  font-weight: var(--device-list-card-status-weight);
+  line-height: var(--device-list-card-status-line-height);
+}
+
+.device-list-card__runtime--online {
+  color: var(--device-list-status-online);
+}
+
+.device-list-card__runtime--running {
+  color: var(--device-list-status-running);
+}
+
+.device-list-card__runtime--offline {
+  color: var(--device-list-status-offline);
+}
+
+.device-list-card__runtime--unreported {
+  color: var(--device-list-status-unreported);
+}
+
+.device-list-card__state-dot {
+  width: var(--device-list-status-dot-size);
+  height: var(--device-list-status-dot-size);
+  flex: none;
+  background: currentcolor;
+  border-radius: 50%;
 }
 
 .device-list-card__meta {
-  display: flex;
-  gap: var(--layout-compact-gap);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
+  gap: var(--device-list-card-inline-gap);
+  color: var(--device-list-card-meta-color);
+  font-size: var(--device-list-card-meta-size);
+  font-weight: var(--device-list-card-meta-weight);
+  line-height: var(--device-list-card-meta-line-height);
 }
 
 .device-list-card__meta span {
@@ -193,27 +221,13 @@ const primaryStatus = computed(() => {
   white-space: nowrap;
 }
 
-.device-list-card__trailing {
-  display: grid;
-  min-width: 0;
-  align-self: stretch;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  justify-items: end;
-}
-
-.device-list-card__trailing .van-tag {
-  grid-row: 1;
-  align-self: start;
-}
-
 .device-list-card__chevron {
-  display: grid;
-  width: var(--layout-card-trailing-icon-slot-width);
-  grid-row: 2;
-  align-self: center;
+  position: relative;
+  z-index: 1;
+  width: var(--device-list-card-chevron-size);
+  height: var(--device-list-card-chevron-size);
+  color: var(--device-list-card-chevron-color);
+  font-size: var(--device-list-card-chevron-size);
   justify-self: end;
-  color: var(--text-tertiary);
-  font-size: var(--icon-size-card-chevron);
-  place-items: center;
 }
 </style>

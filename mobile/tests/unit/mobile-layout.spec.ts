@@ -346,24 +346,36 @@ describe('Mobile Layout shared components', () => {
     expect(vantTheme).toMatch(
       /\.van-nav-bar\s*\{\s*line-height:\s*var\(--line-height-title\)/s,
     )
-    for (const card of [deviceCard, taskCard]) {
-      expect(card).toContain(
-        'column-gap: var(--layout-card-leading-content-gap)',
-      )
-      expect(card).toContain(
-        'padding: var(--layout-card-padding-y) var(--layout-card-padding-x)',
-      )
-      expect(card).toContain('gap: var(--layout-card-row-gap)')
-      expect(card).toContain(
-        'width: var(--layout-card-leading-icon-slot-width)',
-      )
-      expect(card).toContain('font-size: var(--icon-size-card-leading)')
-      expect(card).toContain(
-        'width: var(--layout-card-trailing-icon-slot-width)',
-      )
-      expect(card).toContain('font-size: var(--icon-size-card-chevron)')
-    }
-    expect(summaryStrip).toContain('padding: var(--layout-summary-padding-y)')
+    expect(taskCard).toContain(
+      'column-gap: var(--layout-card-leading-content-gap)',
+    )
+    expect(taskCard).toContain(
+      'padding: var(--layout-card-padding-y) var(--layout-card-padding-x)',
+    )
+    expect(taskCard).toContain('gap: var(--layout-card-row-gap)')
+    expect(taskCard).toContain(
+      'width: var(--layout-card-leading-icon-slot-width)',
+    )
+    expect(taskCard).toContain('font-size: var(--icon-size-card-leading)')
+    expect(taskCard).toContain(
+      'width: var(--layout-card-trailing-icon-slot-width)',
+    )
+    expect(taskCard).toContain('font-size: var(--icon-size-card-chevron)')
+
+    expect(tokens).toContain('--device-list-card-min-height: 122px')
+    expect(tokens).toContain('--device-list-card-artwork-column: 102px')
+    expect(tokens).toContain('--device-list-card-gap: 14px')
+    expect(tokens).toContain('--device-list-summary-height: 90px')
+    expect(tokens).toContain('--device-list-search-height: 44px')
+    expect(deviceCard).toContain(
+      'min-height: var(--device-list-card-min-height)',
+    )
+    expect(deviceCard).toContain('var(--device-list-card-artwork-column)')
+    expect(deviceCard).toContain('padding: var(--device-list-card-padding-top)')
+    expect(deviceCard).toContain('height: var(--device-list-artwork-height)')
+    expect(summaryStrip).toContain(
+      'var(--summary-strip-padding-y, var(--layout-summary-padding-y))',
+    )
     expect(summaryStrip).toContain('height: 100%')
     expect(runtimeSummary).toContain(
       'padding: var(--layout-runtime-summary-padding-y)',

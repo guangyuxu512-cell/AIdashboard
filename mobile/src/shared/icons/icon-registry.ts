@@ -161,6 +161,11 @@ export const MOBILE_ICON_REGISTRY = {
     role: 'action',
     source: { kind: 'vant', name: 'filter-o' },
   },
+  search: {
+    label: '搜索',
+    role: 'action',
+    source: { kind: 'vant', name: 'search' },
+  },
   'arrow-down': {
     label: '展开选择',
     role: 'action',
@@ -242,6 +247,7 @@ export const MOBILE_ICON_GALLERY_GROUPS = [
       'theme-dark',
       'notification-bell',
       'filter',
+      'search',
       'arrow-down',
       'refresh',
       'back',

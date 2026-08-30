@@ -78,11 +78,9 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
   await page.goto('/#/devices')
   await applySafeAreaFixture(page)
 
-  await expect(page.getByText('20台', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('summary-all')).toHaveText('20')
 
-  await expect(page.getByTestId('mobile-global-header')).toContainText(
-    '思余AI中控台',
-  )
+  await expect(page.getByTestId('mobile-global-header')).toContainText('设备')
   const headerButtons = page
     .getByTestId('mobile-global-header')
     .getByRole('button')
@@ -143,19 +141,26 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
     return {
       headerBackground: style('.mobile-global-header').backgroundColor,
       bottomBackground: style('.mobile-bottom-navigation').backgroundColor,
+      expectedHeader: tokenColor(
+        '--device-list-header-background',
+        'background',
+      ),
       expectedRaised: tokenColor('--bg-surface-raised', 'background'),
       activeColor: style('.van-tabbar-item--active').color,
       inactiveColor: style('.van-tabbar-item:not(.van-tabbar-item--active)')
         .color,
       expectedActive: tokenColor('--text-selected', 'color'),
       expectedInactive: tokenColor('--text-tertiary', 'color'),
-      brandFontSize: style('.mobile-global-header__brand').fontSize,
-      expectedBrandFontSize: root.getPropertyValue('--font-size-title').trim(),
+      brandFontSize: style('.mobile-global-header__page-title').fontSize,
+      expectedBrandFontSize: root
+        .getPropertyValue('--device-list-title-size')
+        .trim(),
     }
   })
   expect(chromeVisual).toEqual({
-    headerBackground: chromeVisual.expectedRaised,
+    headerBackground: chromeVisual.expectedHeader,
     bottomBackground: chromeVisual.expectedRaised,
+    expectedHeader: chromeVisual.expectedHeader,
     expectedRaised: chromeVisual.expectedRaised,
     activeColor: chromeVisual.expectedActive,
     inactiveColor: chromeVisual.expectedInactive,

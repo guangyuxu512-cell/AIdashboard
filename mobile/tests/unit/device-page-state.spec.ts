@@ -123,6 +123,7 @@ describe('Device page loading boundaries', () => {
       activeTaskStates: ref({}),
       overview: ref({
         dataState: 'loading',
+        totalCount: null,
         loadedCount: 0,
         onlineCount: null,
         offlineCount: null,
@@ -135,6 +136,8 @@ describe('Device page loading boundaries', () => {
         activeState: 'loading',
       }),
       filter: ref('all'),
+      searchQuery: ref(''),
+      searchAvailable: ref(false),
       filterLabel: ref('全部'),
       filterAvailability: ref({
         all: true,
@@ -167,9 +170,12 @@ describe('Device page loading boundaries', () => {
     await flushPromises()
 
     expect(wrapper.find('[aria-label="设备总览"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="mobile-list-toolbar"]').text()).toBe(
-      '设备—全部筛选',
+    expect(wrapper.find('[data-testid="mobile-list-toolbar"]').exists()).toBe(
+      false,
     )
+    expect(
+      wrapper.get('[data-testid="device-search"]').attributes(),
+    ).toHaveProperty('disabled')
     expect(wrapper.find('[data-testid="device-loading"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="device-list-scroll"]').exists()).toBe(
       true,
@@ -193,6 +199,7 @@ describe('Device page loading boundaries', () => {
       }),
       overview: ref({
         dataState: 'ready',
+        totalCount: 1,
         loadedCount: 1,
         onlineCount: 1,
         offlineCount: 0,
@@ -205,6 +212,8 @@ describe('Device page loading boundaries', () => {
         activeState: 'loading',
       }),
       filter: ref('all'),
+      searchQuery: ref(''),
+      searchAvailable: ref(true),
       filterLabel: ref('全部'),
       filterAvailability: ref({
         all: true,
@@ -237,7 +246,9 @@ describe('Device page loading boundaries', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="device-list"]').text()).toContain('运营')
-    expect(wrapper.text()).toContain('加载中')
+    expect(wrapper.get('[data-testid="device-card-runtime"]').text()).toBe(
+      '在线',
+    )
     expect(wrapper.find('[data-testid="device-loading"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('技术错误不得展示')
     wrapper.unmount()

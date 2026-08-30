@@ -9,7 +9,7 @@ interface MobileSummaryItem {
   key: string
   label: string
   value: string | number
-  icon: MobileIconName
+  icon?: MobileIconName
   tone?: MobileSummaryTone
   interactive?: boolean
   selected?: boolean
@@ -40,7 +40,13 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="mobile-summary-strip" :aria-label="ariaLabel">
+  <section
+    class="mobile-summary-strip"
+    :class="{
+      'mobile-summary-strip--without-icons': items.every((item) => !item.icon),
+    }"
+    :aria-label="ariaLabel"
+  >
     <ul
       class="mobile-summary-strip__surface mobile-section-surface"
       aria-live="polite"
@@ -71,7 +77,11 @@ const emit = defineEmits<{
             item.interactive && !item.disabled ? emit('select', item.key) : null
           "
         >
-          <MobileIcon class="mobile-summary-strip__icon" :name="item.icon" />
+          <MobileIcon
+            v-if="item.icon"
+            class="mobile-summary-strip__icon"
+            :name="item.icon"
+          />
           <strong
             class="mobile-summary-strip__value"
             :data-testid="`summary-${item.key}`"
@@ -89,12 +99,18 @@ const emit = defineEmits<{
 .mobile-summary-strip {
   width: 100%;
   min-width: 0;
-  height: var(--layout-summary-height);
+  height: var(--summary-strip-height, var(--layout-summary-height));
   flex: none;
-  padding: var(--layout-summary-padding-y)
-    max(var(--layout-page-padding-x), var(--safe-area-right))
-    var(--layout-summary-padding-y)
-    max(var(--layout-page-padding-x), var(--safe-area-left));
+  padding: var(--summary-strip-padding-y, var(--layout-summary-padding-y))
+    max(
+      var(--summary-strip-padding-x, var(--layout-page-padding-x)),
+      var(--summary-strip-safe-area-right, var(--safe-area-right))
+    )
+    var(--summary-strip-padding-y, var(--layout-summary-padding-y))
+    max(
+      var(--summary-strip-padding-x, var(--layout-page-padding-x)),
+      var(--summary-strip-safe-area-left, var(--safe-area-left))
+    );
 }
 
 .mobile-summary-strip__surface {
@@ -107,6 +123,10 @@ const emit = defineEmits<{
   grid-auto-flow: column;
   list-style: none;
   overflow: hidden;
+  background: var(--summary-strip-background, var(--bg-surface));
+  border-color: var(--summary-strip-border-color, transparent);
+  border-radius: var(--summary-strip-radius, var(--radius-panel));
+  box-shadow: var(--summary-strip-shadow, var(--shadow-card));
 }
 
 .mobile-summary-strip__item {
@@ -138,6 +158,17 @@ const emit = defineEmits<{
   opacity: 1;
 }
 
+.mobile-summary-strip--without-icons .mobile-summary-strip__metric {
+  grid-template-rows: auto auto;
+  row-gap: var(--summary-strip-metric-gap, var(--layout-summary-metric-gap));
+  padding: var(--summary-strip-metric-padding-top, 0)
+    var(
+      --summary-strip-metric-padding-x,
+      var(--layout-summary-metric-padding-x)
+    )
+    var(--summary-strip-metric-padding-bottom, 0);
+}
+
 .mobile-summary-strip__item + .mobile-summary-strip__item::before {
   position: absolute;
   top: var(--space-4);
@@ -148,11 +179,42 @@ const emit = defineEmits<{
   content: '';
 }
 
+.mobile-summary-strip--without-icons
+  .mobile-summary-strip__item
+  + .mobile-summary-strip__item::before {
+  top: var(--summary-strip-divider-inset, var(--space-4));
+  bottom: var(--summary-strip-divider-inset, var(--space-4));
+  background: var(--summary-strip-divider, var(--border-subtle));
+}
+
+.mobile-summary-strip--without-icons
+  .mobile-summary-strip__metric--interactive[aria-pressed='true']::after {
+  position: absolute;
+  bottom: var(--summary-strip-selected-bottom, var(--space-2));
+  left: 50%;
+  width: var(--summary-strip-selected-width, var(--space-6));
+  height: var(--summary-strip-selected-height, var(--border-width));
+  background: var(--summary-strip-selected-color, var(--text-primary));
+  border-radius: var(--radius-round);
+  content: '';
+  transform: translateX(-50%);
+}
+
 .mobile-summary-strip__icon,
 .mobile-summary-strip__value,
 .mobile-summary-strip__label {
   min-width: 0;
   margin: 0;
+}
+
+.mobile-summary-strip--without-icons .mobile-summary-strip__label {
+  color: var(--summary-strip-label-color, var(--text-secondary));
+  font-size: var(--summary-strip-label-size, var(--font-size-caption));
+  font-weight: var(--summary-strip-label-weight, var(--font-weight-medium));
+  line-height: var(
+    --summary-strip-label-line-height,
+    var(--line-height-caption)
+  );
 }
 
 .mobile-summary-strip__icon {
@@ -182,6 +244,38 @@ const emit = defineEmits<{
   line-height: var(--line-height-display);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-summary-strip--without-icons .mobile-summary-strip__value {
+  color: var(--summary-strip-value-color, var(--text-primary));
+  font-size: var(--summary-strip-value-size, var(--font-size-display));
+  font-weight: var(--summary-strip-value-weight, var(--font-weight-semibold));
+  line-height: var(
+    --summary-strip-value-line-height,
+    var(--line-height-display)
+  );
+  letter-spacing: var(--summary-strip-value-letter-spacing, normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-summary-strip--without-icons
+  .mobile-summary-strip__metric--interactive[aria-pressed='true']
+  .mobile-summary-strip__value {
+  color: var(--summary-strip-selected-value-color, var(--text-primary));
+  font-weight: var(
+    --summary-strip-selected-value-weight,
+    var(--font-weight-semibold)
+  );
+}
+
+.mobile-summary-strip--without-icons
+  .mobile-summary-strip__metric--interactive[aria-pressed='true']
+  .mobile-summary-strip__label {
+  color: var(--summary-strip-selected-label-color, var(--text-secondary));
+  font-weight: var(
+    --summary-strip-selected-label-weight,
+    var(--font-weight-semibold)
+  );
 }
 
 .mobile-summary-strip__item--primary .mobile-summary-strip__value {

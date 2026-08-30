@@ -6,7 +6,12 @@ export {
   DEVICE_QUICK_FILTERS,
   getDeviceQuickFilterLabel,
   isDeviceQuickFilterAvailable,
+  searchDevicesByDisplayName,
 } from './model/device-filter'
+export {
+  DEVICE_VISUAL_STATE_LABELS,
+  getDeviceVisualState,
+} from './model/device-visual'
 export type {
   DeviceMetricFilter,
   DeviceQuickFilter,
@@ -14,6 +19,7 @@ export type {
 export { useDeviceDetail } from './model/use-device-detail'
 export { default as DeviceInfiniteList } from './ui/DeviceInfiniteList.vue'
 export { default as DeviceListCard } from './ui/DeviceListCard.vue'
+export { default as DeviceListControls } from './ui/DeviceListControls.vue'
 export { default as DeviceOverviewCards } from './ui/DeviceOverviewCards.vue'
 export { default as DeviceCapabilityPanel } from './ui/DeviceCapabilityPanel.vue'
 export { default as DeviceProviderDetails } from './ui/DeviceProviderDetails.vue'

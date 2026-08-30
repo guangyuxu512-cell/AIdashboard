@@ -32,6 +32,9 @@ const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
 const isMainLayout = computed(() => shellLayout.value === 'main')
 const isToolLayout = computed(() => shellLayout.value === 'tool')
+const globalHeaderPageTitle = computed(() =>
+  route.name === MOBILE_ROUTE_NAMES.devices ? '设备' : undefined,
+)
 const activeNavigationKey = computed(() => {
   if (
     route.name === MOBILE_ROUTE_NAMES.devices ||
@@ -119,6 +122,7 @@ function showNotificationPlaceholder(): void {
         <MobileGlobalHeader
           v-if="isMainLayout"
           :resolved-theme="resolvedTheme"
+          :page-title="globalHeaderPageTitle"
           @theme-toggle="themeStore.toggleResolvedTheme"
           @notification-click="showNotificationPlaceholder"
         />

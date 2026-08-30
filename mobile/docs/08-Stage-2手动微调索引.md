@@ -1,5 +1,10 @@
 # Stage 2 手动微调索引
 
+> `/devices` 已进入 Mobile Visual V2 选择性迁移，旧 Device V1 的 Summary、Toolbar、Card 与 Primary
+> Leading Visual 数值不再约束该列表页；它们仍约束未迁移的 TaskCard、详情和其它既有组件。Visual V2
+> 当前为 Candidate for Visual Review，完整覆盖条款见
+> [`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。禁止用本索引旧值回写 Visual V2。
+
 本文记录 Mobile Stage 2 的唯一正式尺寸基线。正式值以
 `src/shared/styles/tokens.css` 为权威来源；本文件用于说明 Token 的职责、消费者与冻结边界，不能创建
 第二套值。

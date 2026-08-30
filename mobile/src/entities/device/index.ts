@@ -56,5 +56,10 @@ export type {
   DeviceCapabilitySummary,
   DeviceRuntime,
 } from './model/types'
+export type {
+  DeviceArtworkKind,
+  DeviceArtworkState,
+} from './model/device-artwork'
 export { default as DeviceConnectionTag } from './ui/DeviceConnectionTag.vue'
 export { default as DeviceEnabledTag } from './ui/DeviceEnabledTag.vue'
+export { default as DeviceStatusArtwork } from './ui/DeviceStatusArtwork.vue'

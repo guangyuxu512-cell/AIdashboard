@@ -8,6 +8,7 @@ export type DeviceOverviewDataState = 'loading' | 'error' | 'ready'
 
 export interface DeviceOverview {
   dataState: DeviceOverviewDataState
+  totalCount: number | null
   loadedCount: number
   onlineCount: number | null
   offlineCount: number | null
@@ -29,6 +30,7 @@ export function summarizeDeviceOverview(
   if (dataState !== 'ready') {
     return {
       dataState,
+      totalCount: null,
       loadedCount: 0,
       onlineCount: null,
       offlineCount: null,
@@ -46,6 +48,7 @@ export function summarizeDeviceOverview(
   if (loadedCount < totalCount) {
     return {
       dataState: 'ready',
+      totalCount,
       loadedCount,
       onlineCount: null,
       offlineCount: null,
@@ -77,7 +80,12 @@ export function summarizeDeviceOverview(
     if (!activeTaskState) continue
     if (activeTaskState.hasSuccessfulData) {
       activeConfirmedCount += 1
-      if (activeTaskState.task?.status === 'running') runningCount += 1
+      if (
+        connectionStatus === 'online' &&
+        activeTaskState.task?.status === 'running'
+      ) {
+        runningCount += 1
+      }
     }
     if (activeTaskState.backgroundError) activeBackgroundErrorCount += 1
     if (activeTaskState.initialError) activeInitialErrorCount += 1
@@ -94,6 +102,7 @@ export function summarizeDeviceOverview(
           : 'loading'
   return {
     dataState: 'ready',
+    totalCount,
     loadedCount,
     onlineCount,
     offlineCount,

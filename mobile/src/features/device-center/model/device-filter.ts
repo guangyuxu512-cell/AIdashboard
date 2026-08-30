@@ -11,7 +11,7 @@ export const DEVICE_QUICK_FILTERS = [
 ] as const
 
 export type DeviceQuickFilter = (typeof DEVICE_QUICK_FILTERS)[number]['value']
-export type DeviceMetricFilter = Exclude<DeviceQuickFilter, 'all'>
+export type DeviceMetricFilter = DeviceQuickFilter
 
 export function getDeviceQuickFilterLabel(filter: DeviceQuickFilter): string {
   return (
@@ -34,7 +34,20 @@ export function toggleDeviceMetricFilter(
   current: DeviceQuickFilter,
   selected: DeviceMetricFilter,
 ): DeviceQuickFilter {
+  if (selected === 'all') return 'all'
   return current === selected ? 'all' : selected
+}
+
+export function searchDevicesByDisplayName(
+  devices: readonly Device[],
+  searchQuery: string,
+): Device[] {
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return [...devices]
+
+  return devices.filter((device) =>
+    device.displayName.toLocaleLowerCase().includes(normalizedQuery),
+  )
 }
 
 export function filterDevicesByQuickFilter(
@@ -54,6 +67,7 @@ export function filterDevicesByQuickFilter(
     )
   }
   return devices.filter((device) => {
+    if (device.workerRuntime?.connectionStatus !== 'online') return false
     const activeTaskState = activeTaskStates[device.deviceId]
     return (
       activeTaskState?.hasSuccessfulData === true &&
