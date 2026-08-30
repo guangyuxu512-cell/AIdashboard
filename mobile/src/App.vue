@@ -124,7 +124,12 @@ function selectTheme(nextMode: ThemeMode): void {
   <VanConfigProvider :theme="resolvedTheme">
     <RouterView v-if="isToolLayout" />
 
-    <MobileAppShell v-else>
+    <MobileAppShell
+      v-else
+      :class="{
+        'mobile-app-shell--visual-v2': Boolean(globalHeaderPageTitle),
+      }"
+    >
       <template #header>
         <MobileGlobalHeader
           v-if="isMainLayout"

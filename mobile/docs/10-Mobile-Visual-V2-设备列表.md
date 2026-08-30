@@ -102,6 +102,20 @@ Metric Strip 之间维护两份。
 几何只来自 `--typography-v2-*`、`--visual-v2-*`、`--device-list-*` 与 `--device-artwork-*`。Light / Dark
 Surface、Border、Shadow 也只通过 Semantic Token 解析；Vue 组件不得散落 Hex、Radius、Shadow 或同义尺寸。
 
+### Visual V2 Surface / Border Candidate（视觉表面与边界候选）
+
+本表是 `/devices` 当前候选颜色基线，尚未 Frozen。AppShell、顶部 Safe Area、页面内容与底部 Safe Area
+必须消费同一组 Visual V2 Semantic Token，禁止回退到旧 Stage 3A 的 `--bg-*` Surface。
+
+| Theme | Page Gradient / Safe Area     | Search / Weak Surface | Summary / Card | Card Border | Divider   |
+| ----- | ----------------------------- | --------------------- | -------------- | ----------- | --------- |
+| Light | `#FBFCFE → #F4F7FB → #F2F5FA` | `#F1F4F8`             | `#FFFFFF`      | `#E7EBF1`   | `#E8EDF4` |
+| Dark  | `#07111D → #081521`           | `#182638`             | `#101D2D`      | `#27374A`   | `#27374A` |
+
+Bottom Navigation 保留参考 HTML 的半透明 Surface：Light 为 `rgb(255 255 255 / 95%)`，Dark 为
+`rgb(8 18 30 / 92%)`；其 Safe Area 使用对应不透明底色 `#FFFFFF` / `#081521`，避免真机刘海与 Home
+Indicator 区域露出旧主题 Surface。
+
 ## Device Visual Status（三态设备视觉状态）
 
 公开状态只允许：

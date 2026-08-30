@@ -45,12 +45,20 @@
   isolation: isolate;
 }
 
+.mobile-app-shell--visual-v2 {
+  background: var(--visual-v2-page-background);
+}
+
 .mobile-app-shell__header {
   position: relative;
   z-index: 2;
   min-width: 0;
   padding-top: var(--safe-area-top);
   background: var(--bg-surface-raised);
+}
+
+.mobile-app-shell--visual-v2 .mobile-app-shell__header {
+  background: var(--visual-v2-page-header-background);
 }
 
 .mobile-app-shell__main {
@@ -73,6 +81,10 @@
   min-width: 0;
   padding-bottom: var(--safe-area-bottom);
   background: var(--bg-surface-raised);
+}
+
+.mobile-app-shell--visual-v2 .mobile-app-shell__bottom {
+  background: var(--visual-v2-bottom-safe-area-background);
 }
 
 @supports not (height: 100dvh) {

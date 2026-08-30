@@ -420,21 +420,21 @@
   --device-list-text-primary: #0b1730;
   --device-list-page-background: linear-gradient(
     180deg,
-    #fafbfd 0%,
-    #f5f7fb 36%,
-    #f1f4f8 100%
+    #fbfcfe 0%,
+    #f4f7fb 36%,
+    #f2f5fa 100%
   );
-  --device-list-header-background: #fafbfd;
+  --device-list-header-background: #fbfcfe;
   --device-list-search-background: #f1f4f8;
   --device-list-search-border: transparent;
   --device-list-search-shadow: none;
   --device-list-search-color: #8c98ac;
   --device-list-search-disabled-color: #a7b1c0;
   --device-list-search-input-color: #24324a;
-  --device-list-summary-background: rgb(255 255 255 / 98%);
+  --device-list-summary-background: #ffffff;
   --device-list-summary-border: #edf1f6;
   --device-list-summary-shadow: 0 10px 28px rgb(34 54 84 / 6%);
-  --device-list-summary-divider: #e9eef5;
+  --device-list-summary-divider: #e8edf4;
   --device-list-summary-label-color: #7c8ba2;
   --device-list-summary-selected-color: #33435b;
   --device-list-summary-selected-value-color: #17243a;
@@ -452,6 +452,7 @@
   --device-list-status-offline: #7b8ba3;
   /* Visual V2共享语义别名：页面只消费这一层，不复制Light颜色到组件。 */
   --visual-v2-page-text-primary: var(--device-list-text-primary);
+  --visual-v2-page-background: var(--device-list-page-background);
   --visual-v2-page-header-background: var(--device-list-header-background);
   --visual-v2-search-background: var(--device-list-search-background);
   --visual-v2-search-border-color: var(--device-list-search-border);
@@ -488,6 +489,7 @@
     --device-list-card-chevron-color
   );
   --visual-v2-bottom-nav-background: rgb(255 255 255 / 95%);
+  --visual-v2-bottom-safe-area-background: #ffffff;
   --visual-v2-bottom-nav-border-color: #e5eaf1;
   --visual-v2-bottom-nav-shadow: none;
   --visual-v2-bottom-nav-inactive-color: #7d8ba2;
@@ -662,24 +664,24 @@
   --device-list-page-background:
     radial-gradient(circle at 20% 8%, rgb(26 64 112 / 28%), transparent 24%),
     radial-gradient(circle at 82% 10%, rgb(36 92 164 / 18%), transparent 25%),
-    linear-gradient(180deg, #05101b 0%, #06111e 35%, #07121f 100%);
-  --device-list-header-background: #05101b;
-  --device-list-search-background: rgb(22 36 53 / 92%);
-  --device-list-search-border: rgb(41 59 84 / 80%);
-  --device-list-search-shadow: inset 0 0 0 1px rgb(41 59 84 / 80%);
+    linear-gradient(180deg, #07111d 0%, #081521 100%);
+  --device-list-header-background: #07111d;
+  --device-list-search-background: #182638;
+  --device-list-search-border: #27374a;
+  --device-list-search-shadow: inset 0 0 0 1px #27374a;
   --device-list-search-color: #8f9fb4;
   --device-list-search-disabled-color: #718197;
   --device-list-search-input-color: #f7fbff;
-  --device-list-summary-background: rgb(15 28 43 / 90%);
-  --device-list-summary-border: rgb(39 58 82 / 78%);
+  --device-list-summary-background: #101d2d;
+  --device-list-summary-border: #27374a;
   --device-list-summary-shadow: 0 16px 34px rgb(0 0 0 / 20%);
-  --device-list-summary-divider: rgb(55 74 100 / 76%);
+  --device-list-summary-divider: #27374a;
   --device-list-summary-label-color: #97a7bc;
   --device-list-summary-selected-color: #d4dde9;
   --device-list-summary-selected-value-color: #f3f6fa;
   --device-list-summary-selected-label-color: #c3cedc;
-  --device-list-card-background: rgb(18 30 44 / 96%);
-  --device-list-card-border: rgb(42 59 80 / 78%);
+  --device-list-card-background: #101d2d;
+  --device-list-card-border: #27374a;
   --device-list-card-shadow: 0 10px 24px rgb(0 0 0 / 16%);
   --device-list-card-pressed-background: rgb(25 39 55 / 98%);
   --device-list-card-pressed-border: rgb(58 77 101 / 86%);
@@ -690,7 +692,8 @@
   --device-list-status-running: #83a7cf;
   --device-list-status-offline: #d6deea;
   --visual-v2-bottom-nav-background: rgb(8 18 30 / 92%);
-  --visual-v2-bottom-nav-border-color: rgb(36 55 79 / 86%);
+  --visual-v2-bottom-safe-area-background: #081521;
+  --visual-v2-bottom-nav-border-color: #27374a;
   --visual-v2-bottom-nav-shadow: none;
   --visual-v2-bottom-nav-inactive-color: #a2afc1;
   --visual-v2-bottom-nav-active-color: #1f73ff;
