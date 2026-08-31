@@ -6,6 +6,11 @@ import { MobileIcon } from '@/shared/icons'
 import { MobileBusinessCardFrame } from '@/shared/ui'
 
 import { TASK_STATUS_META } from '../model/status-meta'
+import {
+  formatTaskDuration,
+  getTaskCardTags,
+  resolveTaskArtwork,
+} from '../model/task-card'
 import type { TaskListItem } from '../model/types'
 import TaskStatusTag from './TaskStatusTag.vue'
 
@@ -13,9 +18,10 @@ const props = withDefaults(
   defineProps<{
     task: TaskListItem
     visualV2?: boolean
+    metaMode?: 'context' | 'tags'
     buttonTestId?: string
   }>(),
-  { buttonTestId: undefined, visualV2: false },
+  { buttonTestId: undefined, metaMode: 'context', visualV2: false },
 )
 
 const emit = defineEmits<{
@@ -23,6 +29,9 @@ const emit = defineEmits<{
 }>()
 
 const statusMeta = computed(() => TASK_STATUS_META[props.task.status])
+const artwork = computed(() => resolveTaskArtwork(props.task.status))
+const durationText = computed(() => formatTaskDuration(props.task))
+const cardTags = computed(() => getTaskCardTags(props.task))
 const taskTimestamp = computed(
   () => props.task.startedAt ?? props.task.createdAt,
 )
@@ -72,8 +81,12 @@ const legacyMetaTags = computed(() => {
     @activate="emit('select', task.taskId)"
   >
     <template #leading>
-      <span class="task-list-card-v2__artwork" data-testid="task-card-leading">
-        <MobileIcon name="task" />
+      <span
+        class="task-list-card-v2__artwork"
+        :class="`task-list-card-v2__artwork--${artwork.state}`"
+        data-testid="task-card-leading"
+      >
+        <MobileIcon :name="artwork.icon" />
       </span>
     </template>
 
@@ -87,11 +100,28 @@ const legacyMetaTags = computed(() => {
       <span class="task-list-card-v2__state" data-testid="task-card-state">
         <i class="task-list-card-v2__state-dot" aria-hidden="true" />
         <span>{{ statusMeta.label }}</span>
+        <template v-if="durationText">
+          <span aria-hidden="true">·</span>
+          <span class="task-list-card-v2__duration">{{ durationText }}</span>
+        </template>
       </span>
     </template>
 
     <template #meta>
-      <span class="task-list-card-v2__meta" data-testid="task-card-meta">
+      <span
+        v-if="metaMode === 'tags'"
+        class="task-list-card-v2__tags"
+        data-testid="task-card-tags"
+      >
+        <VanTag
+          v-for="tag in cardTags"
+          :key="tag"
+          class="task-list-card-v2__tag"
+        >
+          {{ tag }}
+        </VanTag>
+      </span>
+      <span v-else class="task-list-card-v2__meta" data-testid="task-card-meta">
         <span>{{ taskTimeLabel }} {{ taskTimeText }}</span>
         <span aria-hidden="true">·</span>
         <span>{{ deviceName }}</span>
@@ -141,11 +171,29 @@ const legacyMetaTags = computed(() => {
   display: grid;
   width: var(--visual-v2-task-artwork-size);
   height: var(--visual-v2-task-artwork-size);
-  color: var(--color-primary);
-  background: var(--visual-v2-detail-weak-background);
-  border: var(--border-width) solid var(--visual-v2-detail-weak-border-color);
+  border: var(--border-width) solid currentcolor;
   border-radius: var(--visual-v2-task-artwork-radius);
   place-items: center;
+}
+
+.task-list-card-v2__artwork--running {
+  color: var(--status-success);
+  background: var(--status-success-soft);
+}
+
+.task-list-card-v2__artwork--pending {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.task-list-card-v2__artwork--error {
+  color: var(--status-danger);
+  background: var(--status-danger-soft);
+}
+
+.task-list-card-v2__artwork--done {
+  color: var(--status-neutral);
+  background: var(--status-neutral-soft);
 }
 
 .task-list-card-v2__artwork .mobile-icon {
@@ -169,10 +217,17 @@ const legacyMetaTags = computed(() => {
 }
 
 .task-list-card-v2__state,
-.task-list-card-v2__meta {
+.task-list-card-v2__meta,
+.task-list-card-v2__tags {
   display: flex;
   gap: var(--visual-v2-business-card-inline-gap);
   align-items: center;
+}
+
+.task-list-card-v2__duration {
+  color: var(--visual-v2-business-card-meta-color);
+  font-size: var(--typography-v2-meta-size);
+  font-weight: var(--typography-v2-meta-weight);
 }
 
 .task-list-card-v2__state-dot {
@@ -202,6 +257,27 @@ const legacyMetaTags = computed(() => {
 
 .task-list-card-v2__meta {
   color: var(--visual-v2-business-card-meta-color);
+}
+
+.task-list-card-v2__tags {
+  min-height: var(--control-height-compact);
+  overflow: hidden;
+}
+
+.task-list-card-v2__tag {
+  max-width: 100%;
+  min-height: var(--control-height-compact);
+  padding-inline: var(--space-3);
+  overflow: hidden;
+  color: var(--visual-v2-business-card-meta-color);
+  font-size: var(--typography-v2-tag-size);
+  font-weight: var(--typography-v2-tag-weight);
+  line-height: var(--typography-v2-tag-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--visual-v2-detail-weak-background);
+  border: 0;
+  border-radius: var(--radius-control);
 }
 
 .task-list-card--legacy {
