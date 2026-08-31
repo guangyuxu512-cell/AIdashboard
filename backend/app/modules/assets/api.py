@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Annotated, BinaryIO
+from typing import Annotated, Any, BinaryIO, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
@@ -8,19 +8,29 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import get_actor_context
 from app.modules.assets.schemas import AssetRead
 from app.modules.assets.service import AssetService
 from app.shared.pagination import Page, PaginationParams
 
 
-router = APIRouter(
-    prefix="/api/v1/assets",
-    tags=["assets"],
-    responses={
-        **COMMON_ERROR_RESPONSES,
+ASSET_ERROR_RESPONSES = cast(
+    dict[int | str, dict[str, Any]],
+    COMMON_ERROR_RESPONSES.copy(),
+)
+ASSET_ERROR_RESPONSES.update(
+    {
         404: {"model": ErrorResponse, "description": "资产不存在"},
         409: {"model": ErrorResponse, "description": "资产正在被任务引用"},
     },
+)
+
+
+router = APIRouter(
+    prefix="/api/v1/assets",
+    tags=["assets"],
+    responses=ASSET_ERROR_RESPONSES,
 )
 
 
@@ -33,10 +43,12 @@ def get_asset_service(
 @router.post("", response_model=AssetRead, status_code=status.HTTP_201_CREATED)
 def upload_asset(
     file: Annotated[UploadFile, File()],
+    actor: Annotated[ActorContext, Depends(get_actor_context)],
     service: Annotated[AssetService, Depends(get_asset_service)],
 ) -> AssetRead:
     return AssetRead.model_validate(
         service.upload(
+            actor=actor,
             original_filename=file.filename,
             content_type=file.content_type,
             stream=file.file,
@@ -46,11 +58,13 @@ def upload_asset(
 
 @router.get("", response_model=Page[AssetRead])
 def list_assets(
+    actor: Annotated[ActorContext, Depends(get_actor_context)],
     service: Annotated[AssetService, Depends(get_asset_service)],
     pagination: Annotated[PaginationParams, Depends()],
     search: Annotated[str | None, Query(max_length=255)] = None,
 ) -> Page[AssetRead]:
     items, total = service.list(
+        actor=actor,
         page=pagination.page,
         page_size=pagination.page_size,
         search=search,
@@ -66,18 +80,20 @@ def list_assets(
 @router.get("/{asset_id}/content", response_class=StreamingResponse)
 def read_asset_content(
     asset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_actor_context)],
     service: Annotated[AssetService, Depends(get_asset_service)],
 ) -> StreamingResponse:
-    asset, content = service.get_content(asset_id)
+    asset, content = service.get_content(actor, asset_id)
     return asset_content_response(asset.content_type, asset.size_bytes, content)
 
 
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset(
     asset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_actor_context)],
     service: Annotated[AssetService, Depends(get_asset_service)],
 ) -> Response:
-    service.delete(asset_id)
+    service.delete(actor, asset_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

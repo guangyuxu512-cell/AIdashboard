@@ -8,6 +8,9 @@ from httpx import ASGITransport, AsyncClient, Response
 
 from app.core.database import get_database_session
 from app.main import create_app
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import get_actor_context
+from app.modules.access.enums import DataScope
 from app.modules.assets.api import get_asset_service
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetNotFoundError, AssetStorageError
@@ -15,6 +18,16 @@ from app.modules.assets.models import Asset
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.service import WorkerPrincipal
 from tests.support import FakeSession
+
+
+ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="素材接口用户",
+    team_id=uuid4(),
+    membership_id=uuid4(),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class ApiAssetService:
@@ -26,6 +39,7 @@ class ApiAssetService:
     def upload(
         self,
         *,
+        actor: ActorContext,
         original_filename: str | None,
         content_type: str | None,
         stream: object,
@@ -37,6 +51,8 @@ class ApiAssetService:
         now = datetime.now(UTC)
         asset = Asset(
             asset_id=asset_id,
+            team_id=actor.team_id,
+            created_by_user_id=actor.user_id,
             original_filename=original_filename or "unnamed.png",
             storage_key=path.name,
             media_type=AssetMediaType.IMAGE.value,
@@ -53,11 +69,16 @@ class ApiAssetService:
     def list(
         self,
         *,
+        actor: ActorContext,
         page: int,
         page_size: int,
         search: str | None,
     ) -> tuple[list[Asset], int]:
-        values = list(self.assets.values())
+        values = [
+            asset
+            for asset in self.assets.values()
+            if actor.data_scope is DataScope.ALL or asset.team_id == actor.team_id
+        ]
         if search:
             values = [
                 asset
@@ -67,15 +88,25 @@ class ApiAssetService:
         start = (page - 1) * page_size
         return values[start : start + page_size], len(values)
 
-    def get_content(self, asset_id: UUID) -> tuple[Asset, BinaryIO]:
+    def get_content(
+        self,
+        actor: ActorContext,
+        asset_id: UUID,
+    ) -> tuple[Asset, BinaryIO]:
         asset = self.assets.get(asset_id)
-        if asset is None:
+        if asset is None or (
+            actor.data_scope is not DataScope.ALL and asset.team_id != actor.team_id
+        ):
             raise AssetNotFoundError()
         return asset, (self.root / asset.storage_key).open("rb")
 
-    def delete(self, asset_id: UUID) -> None:
+    def delete(self, actor: ActorContext, asset_id: UUID) -> None:
         asset = self.assets.pop(asset_id, None)
-        if asset is None:
+        if asset is None or (
+            actor.data_scope is not DataScope.ALL and asset.team_id != actor.team_id
+        ):
+            if asset is not None:
+                self.assets[asset.asset_id] = asset
             raise AssetNotFoundError()
         (self.root / asset.storage_key).unlink()
 
@@ -89,7 +120,10 @@ class ApiAssetService:
         del task_id
         if self.allowed_device_id != principal.device_id:
             raise AssetNotFoundError()
-        return self.get_content(asset_id)
+        asset = self.assets.get(asset_id)
+        if asset is None:
+            raise AssetNotFoundError()
+        return asset, (self.root / asset.storage_key).open("rb")
 
 
 def request(
@@ -97,11 +131,14 @@ def request(
     method: str,
     path: str,
     principal: WorkerPrincipal | None = None,
+    actor: ActorContext | None = ACTOR,
     **kwargs: object,
 ) -> Response:
     application = create_app()
     application.dependency_overrides[get_asset_service] = lambda: service
     application.dependency_overrides[get_database_session] = lambda: FakeSession()
+    if actor is not None:
+        application.dependency_overrides[get_actor_context] = lambda: actor
     if principal is not None:
         application.dependency_overrides[get_worker_principal] = lambda: principal
 
@@ -157,6 +194,56 @@ def test_asset_upload_requires_multipart_file(tmp_path: Path) -> None:
     assert response.status_code == 422
 
 
+def test_human_asset_api_requires_authenticated_actor(tmp_path: Path) -> None:
+    response = request(
+        ApiAssetService(tmp_path),
+        "GET",
+        "/api/v1/assets",
+        actor=None,
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "HUMAN_AUTHENTICATION_REQUIRED"
+
+
+def test_cross_team_asset_id_is_not_disclosed_or_deleted(tmp_path: Path) -> None:
+    service = ApiAssetService(tmp_path)
+    upload = request(
+        service,
+        "POST",
+        "/api/v1/assets",
+        files={"file": ("private.png", b"\x89PNG\r\n\x1a\nprivate", "image/png")},
+    )
+    asset_id = upload.json()["asset_id"]
+    other_team_actor = ActorContext(
+        user_id=uuid4(),
+        user_display_name="其它团队用户",
+        team_id=uuid4(),
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
+
+    content = request(
+        service,
+        "GET",
+        f"/api/v1/assets/{asset_id}/content",
+        actor=other_team_actor,
+    )
+    removed = request(
+        service,
+        "DELETE",
+        f"/api/v1/assets/{asset_id}",
+        actor=other_team_actor,
+    )
+
+    assert content.status_code == 404
+    assert removed.status_code == 404
+    assert content.json()["code"] == "ASSET_NOT_FOUND"
+    assert removed.json()["code"] == "ASSET_NOT_FOUND"
+    assert UUID(asset_id) in service.assets
+
+
 def test_worker_download_keeps_authenticated_v1_http_contract(tmp_path: Path) -> None:
     service = ApiAssetService(tmp_path)
     device_id = uuid4()
@@ -202,7 +289,12 @@ def test_worker_download_keeps_authenticated_v1_http_contract(tmp_path: Path) ->
 
 def test_storage_errors_do_not_leak_backend_path(tmp_path: Path) -> None:
     class FailingContentService(ApiAssetService):
-        def get_content(self, asset_id: UUID) -> tuple[Asset, BinaryIO]:
+        def get_content(
+            self,
+            actor: ActorContext,
+            asset_id: UUID,
+        ) -> tuple[Asset, BinaryIO]:
+            del actor
             del asset_id
             raise AssetStorageError()
 

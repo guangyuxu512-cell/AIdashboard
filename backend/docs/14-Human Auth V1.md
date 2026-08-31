@@ -183,10 +183,10 @@ Topbar 在 Theme 控件旁显示当前用户菜单，其中包括当前用户、
 
 ## 12. 当前业务接入边界
 
-Human Auth V1 打通认证、HumanPrincipal、ActorContext 与 Access API，但本阶段不为 Asset、Task、
-Schedule、Shop 或 AI Job 增加 Ownership 字段，也不把所有既有业务 Router 半迁移到新 Scope。
-Frontend Guard 只改善交互，不是安全边界。各业务领域必须在后续 Ownership 阶段通过正式
-`API → Service → Repository` 接入 ActorContext 与 DataScopePolicy。
+Human Auth V1 打通认证、HumanPrincipal、ActorContext 与 Access API；Asset Scope V1 已作为首个
+业务接入，通过正式 `API → Service → Repository` 使用 ActorContext 与 DataScopePolicy。Task、
+Schedule、Shop 与 AI Job 仍未迁移，禁止因为 Asset 已接入就推断其它领域已具备数据隔离。
+Frontend Guard 只改善交互，不是安全边界。
 
 未来 Access Management 位于“系统设置 → 用户与权限”，但 V1 不实现新增成员、Team 管理、
 Membership 管理或权限编辑页面。

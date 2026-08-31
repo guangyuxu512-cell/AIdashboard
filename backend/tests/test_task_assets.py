@@ -54,12 +54,16 @@ class FakeAssetRepository:
         self.assets = {asset.asset_id: asset for asset in assets}
 
     def list_by_ids(self, asset_ids: list[UUID]) -> list[Asset]:
-        return [self.assets[asset_id] for asset_id in asset_ids if asset_id in self.assets]
+        return [
+            self.assets[asset_id] for asset_id in asset_ids if asset_id in self.assets
+        ]
 
 
 def make_asset(name: str) -> Asset:
     return Asset(
         asset_id=uuid4(),
+        team_id=uuid4(),
+        created_by_user_id=None,
         original_filename=name,
         storage_key=f"{uuid4().hex}.jpg",
         media_type=AssetMediaType.IMAGE.value,

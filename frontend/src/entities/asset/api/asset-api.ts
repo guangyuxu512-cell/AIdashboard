@@ -17,6 +17,17 @@ export function getAssetContentUrl(assetId: string): string {
   return path
 }
 
+export async function fetchAssetContent(
+  contentUrl: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await httpClient.get<Blob>(contentUrl, {
+    responseType: 'blob',
+    signal,
+  })
+  return response.data
+}
+
 export const assetApi = {
   async list(params: AssetListApiParams): Promise<PageDto<AssetReadDto>> {
     const response = await httpClient.get<PageDto<AssetReadDto>>(
