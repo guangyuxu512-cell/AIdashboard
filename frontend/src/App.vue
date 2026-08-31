@@ -55,9 +55,6 @@ const naiveThemeOverrides = computed(() =>
         <NNotificationProvider>
           <NMessageProvider>
             <div v-if="isAuthLayout" class="auth-layout">
-              <div class="auth-layout__actions">
-                <ThemeSelector />
-              </div>
               <RouterView />
             </div>
             <AppShell v-else :navigation="navigation">
@@ -81,12 +78,5 @@ const naiveThemeOverrides = computed(() =>
   width: 100%;
   height: 100%;
   min-height: 0;
-}
-
-.auth-layout__actions {
-  position: absolute;
-  z-index: 1;
-  top: var(--space-3);
-  right: var(--space-4);
 }
 </style>
