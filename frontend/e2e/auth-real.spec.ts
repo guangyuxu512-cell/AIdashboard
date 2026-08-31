@@ -85,6 +85,7 @@ test('real login restores the HttpOnly session and logout revokes it', async ({
 }) => {
   await page.goto('/#/shops')
   await expect(page).toHaveURL(/#\/login\?redirect=\/shops/)
+  await expect(page.getByRole('alert')).toHaveCount(0)
 
   await page.getByLabel('内部登录账号').fill(loginName)
   await page.getByLabel('密码').fill(password)
@@ -97,7 +98,12 @@ test('real login restores the HttpOnly session and logout revokes it', async ({
   const sessionCookie = (await context.cookies()).find(
     (cookie) => cookie.name === 'siyu_human_session',
   )
-  expect(sessionCookie?.httpOnly).toBe(true)
+  expect(sessionCookie).toMatchObject({
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: false,
+    path: '/api/v1',
+  })
 
   await page.reload()
   await expect(page).toHaveURL(/#\/shops$/)
@@ -106,6 +112,7 @@ test('real login restores the HttpOnly session and logout revokes it', async ({
   ).toContainText('认证回归人员')
 
   await page.getByRole('button', { name: '当前用户菜单' }).click()
+  await expect(page.getByText('当前团队：默认团队')).toBeVisible()
   await page.getByText('退出登录', { exact: true }).click()
   await expect(page).toHaveURL(/#\/login$/)
   expect(

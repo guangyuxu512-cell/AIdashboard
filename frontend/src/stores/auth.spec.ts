@@ -133,6 +133,25 @@ describe('Human Auth Store', () => {
     expect(auth.restoreError).toBeNull()
   })
 
+  it('treats a missing human session as an expected anonymous state', async () => {
+    const auth = useAuthStore()
+    auth.setDataSource(
+      dataSource({
+        error: new ApiError({
+          code: 'HUMAN_AUTHENTICATION_REQUIRED',
+          message: '需要有效的管理端用户身份',
+          status: 401,
+        }),
+      }),
+    )
+
+    await auth.initialize()
+
+    expect(auth.status).toBe('anonymous')
+    expect(auth.currentUser).toBeNull()
+    expect(auth.restoreError).toBeNull()
+  })
+
   it('clears the current user team preference after a successful logout', async () => {
     const authCleared = vi.fn()
     configureAuthEffects({ onAuthCleared: authCleared })
