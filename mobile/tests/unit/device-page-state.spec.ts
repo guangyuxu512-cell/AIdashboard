@@ -267,7 +267,7 @@ describe('Device page loading boundaries', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="device-detail"]').text()).toContain(
+    expect(wrapper.get('[data-testid="device-detail-hero"]').text()).toContain(
       '运营',
     )
     expect(wrapper.find('[data-testid="device-detail-loading"]').exists()).toBe(
@@ -276,16 +276,16 @@ describe('Device page loading boundaries', () => {
     expect(wrapper.find('[data-testid="device-detail-error"]').exists()).toBe(
       false,
     )
-    expect(
-      wrapper.get('[data-testid="device-summary-device"]').text(),
-    ).toContain('Worker 0.4.6')
+    expect(wrapper.get('[data-testid="device-hero-meta"]').text()).toContain(
+      'Worker 0.4.6',
+    )
     expect(
       wrapper.find('[data-testid="device-capability-panel"]').exists(),
     ).toBe(true)
     expect(wrapper.get('[data-testid="device-current-task"]').text()).toContain(
       '当前任务',
     )
-    const summary = wrapper.get('[data-testid="device-detail"]').element
+    const summary = wrapper.get('[data-testid="device-detail-hero"]').element
     const capability = wrapper.get(
       '[data-testid="device-capability-panel"]',
     ).element
@@ -293,11 +293,11 @@ describe('Device page loading boundaries', () => {
       '[data-testid="device-current-task"]',
     ).element
     expect(
-      summary.compareDocumentPosition(capability) &
+      summary.compareDocumentPosition(currentTask) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(
-      capability.compareDocumentPosition(currentTask) &
+      currentTask.compareDocumentPosition(capability) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(wrapper.text()).toContain('加载中')
@@ -349,6 +349,26 @@ describe('Device page loading boundaries', () => {
     expect(
       currentTask.find('[data-testid="device-current-task-link"]').exists(),
     ).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('refreshes the real Provider and Capability queries together', async () => {
+    const detail = createDeviceDetailMock({ activeTask: null })
+    featureMocks.detail = detail
+    const router = await createRouterFor('/devices/device-1')
+    const wrapper = mount(DeviceDetailPage, {
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    await wrapper
+      .get('[data-testid="device-capability-refresh"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(detail.provider.query.refetch).toHaveBeenCalledTimes(1)
+    expect(detail.capability.query.refetch).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).not.toMatch(/已刷新|刷新成功/)
     wrapper.unmount()
   })
 })

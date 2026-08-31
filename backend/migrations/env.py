@@ -5,9 +5,10 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.core.database import Base
-from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
+from app.modules.access.models import Team, TeamMembership
 from app.modules.assets.models import Asset
 from app.modules.automation_apps.models import AutomationApplicationConfig
+from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.devices.models import Device
 from app.modules.notifications.models import NotificationChannel
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
@@ -42,6 +43,8 @@ _MODELS = (
     TaskAsset,
     TaskEvent,
     TaskShop,
+    Team,
+    TeamMembership,
     User,
     WorkerDeviceCredential,
 )

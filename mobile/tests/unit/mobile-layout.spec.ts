@@ -237,6 +237,10 @@ describe('Mobile Layout shared components', () => {
       resolve(process.cwd(), 'src/entities/task/ui/TaskListCard.vue'),
       'utf8',
     )
+    const businessCardFrame = readFileSync(
+      resolve(process.cwd(), 'src/shared/ui/MobileBusinessCardFrame.vue'),
+      'utf8',
+    )
     const runtimeSummary = readFileSync(
       resolve(
         process.cwd(),
@@ -346,24 +350,33 @@ describe('Mobile Layout shared components', () => {
     expect(vantTheme).toMatch(
       /\.van-nav-bar\s*\{\s*line-height:\s*var\(--line-height-title\)/s,
     )
-    expect(taskCard).toContain(
-      'column-gap: var(--layout-card-leading-content-gap)',
+    expect(tokens).toContain('--visual-v2-business-card-min-height: 122px')
+    expect(tokens).toContain('--visual-v2-business-card-leading-column: 102px')
+    expect(tokens).toContain('--visual-v2-business-card-padding-top: 15px')
+    expect(tokens).toContain('--visual-v2-business-card-padding-right: 17px')
+    expect(tokens).toContain('--visual-v2-business-card-padding-bottom: 15px')
+    expect(tokens).toContain('--visual-v2-business-card-padding-left: 16px')
+    expect(tokens).toContain('--visual-v2-business-card-trailing-column: 18px')
+    expect(businessCardFrame).toContain(
+      'min-height: var(--visual-v2-business-card-min-height)',
     )
-    expect(taskCard).toContain(
-      'padding: var(--layout-card-padding-y) var(--layout-card-padding-x)',
+    expect(businessCardFrame).toContain(
+      'var(--visual-v2-business-card-leading-column)',
     )
-    expect(taskCard).toContain('gap: var(--layout-card-row-gap)')
-    expect(taskCard).toContain(
-      'width: var(--layout-card-leading-icon-slot-width)',
+    expect(businessCardFrame).toContain(
+      'var(--visual-v2-business-card-trailing-column)',
     )
-    expect(taskCard).toContain('font-size: var(--icon-size-card-leading)')
-    expect(taskCard).toContain(
-      'width: var(--layout-card-trailing-icon-slot-width)',
+    expect(businessCardFrame).toContain(
+      'padding: var(--visual-v2-business-card-padding-top)',
     )
-    expect(taskCard).toContain('font-size: var(--icon-size-card-chevron)')
+    expect(taskCard).toContain('<MobileBusinessCardFrame')
+    expect(taskCard).toContain('width: var(--visual-v2-task-artwork-size)')
+    expect(deviceCard).toContain('<MobileBusinessCardFrame')
 
-    expect(tokens).toContain('--device-list-card-min-height: 122px')
-    expect(tokens).toContain('--device-list-card-artwork-column: 102px')
+    expect(tokens).toContain(
+      '--device-list-card-min-height: var(--visual-v2-business-card-min-height)',
+    )
+    expect(tokens).toContain('--device-list-card-artwork-column: var(')
     expect(tokens).toContain('--device-list-card-gap: 14px')
     expect(tokens).toContain('--device-list-list-padding-top: 14px')
     expect(tokens).toContain(
@@ -372,12 +385,7 @@ describe('Mobile Layout shared components', () => {
     expect(tokens).toContain(
       '--device-list-search-height: var(--visual-v2-search-height)',
     )
-    expect(deviceCard).toContain(
-      'min-height: var(--device-list-card-min-height)',
-    )
-    expect(deviceCard).toContain('var(--device-list-card-artwork-column)')
-    expect(deviceCard).toContain('padding: var(--device-list-card-padding-top)')
-    expect(deviceCard).toContain('height: var(--device-list-artwork-height)')
+    expect(deviceCard).toContain('height: 100%')
     expect(summaryStrip).toContain(
       'var(--summary-strip-padding-y, var(--layout-summary-padding-y))',
     )
@@ -411,15 +419,15 @@ describe('Mobile Layout shared components', () => {
       /\.runtime-log\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
     )
     expect(capabilityPanel).toContain(
-      'width: var(--layout-capability-icon-slot-width)',
+      'width: var(--visual-v2-detail-capability-icon-size)',
     )
     expect(capabilityPanel).toContain(
-      'font-size: var(--icon-size-capability-row)',
+      'font-size: var(--visual-v2-detail-capability-glyph-size)',
     )
     expect(capabilityPanel).toContain('min-width: var(--touch-target-min)')
     expect(capabilityPanel).toContain('height: var(--touch-target-min)')
     expect(capabilityPanel).toContain(
-      'height: var(--control-height-capability-action)',
+      'height: var(--visual-v2-detail-capability-action-visual-height)',
     )
     expect(toolbar).toContain('min-width: var(--touch-target-min)')
     expect(toolbar).toContain('height: var(--touch-target-min)')
@@ -433,7 +441,9 @@ describe('Mobile Layout shared components', () => {
     expect(summaryStrip).toContain('row-gap: var(--layout-summary-metric-gap)')
     expect(toolbar).toContain('gap: var(--layout-toolbar-group-gap)')
     expect(toolbar).toContain('gap: var(--layout-toolbar-inner-gap)')
-    expect(capabilityPanel).toContain('gap: var(--layout-capability-row-gap)')
+    expect(capabilityPanel).toContain(
+      'gap: var(--visual-v2-detail-capability-row-gap)',
+    )
     expect(base).toContain('scrollbar-width: none')
     expect(base).toContain('-ms-overflow-style: none')
     expect(base).toContain('.mobile-scroll-container::-webkit-scrollbar')

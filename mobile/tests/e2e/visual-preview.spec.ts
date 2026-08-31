@@ -472,6 +472,7 @@ async function expectDetailHeader(
   title: '设备详情' | '任务详情',
   activeNavigation: '设备' | '任务',
 ): Promise<void> {
+  const visualV2 = title === '设备详情'
   const header = page.getByTestId('mobile-detail-header')
   const headerTitle = page.getByTestId('mobile-detail-header-title')
 
@@ -485,7 +486,7 @@ async function expectDetailHeader(
     }),
   ).toBeVisible()
 
-  const geometry = await header.evaluate((element) => {
+  const geometry = await header.evaluate((element, useVisualV2) => {
     const backButton = element.querySelector<HTMLElement>(
       'button[aria-label="返回"]',
     )!
@@ -507,13 +508,21 @@ async function expectDetailHeader(
     return {
       height: rootBox.height,
       expectedHeight: Number.parseFloat(
-        documentStyle.getPropertyValue('--layout-detail-header-height'),
+        documentStyle.getPropertyValue(
+          useVisualV2
+            ? '--visual-v2-detail-header-height'
+            : '--layout-detail-header-height',
+        ),
       ),
       backWidth: backBox.width,
       backHeight: backBox.height,
       iconSize: Number.parseFloat(window.getComputedStyle(icon).fontSize),
       expectedIconSize: Number.parseFloat(
-        documentStyle.getPropertyValue('--icon-size-default'),
+        documentStyle.getPropertyValue(
+          useVisualV2
+            ? '--visual-v2-detail-header-icon-size'
+            : '--icon-size-default',
+        ),
       ),
       titleCenterDelta:
         titleBox.left + titleBox.width / 2 - (rootBox.left + rootBox.width / 2),
@@ -523,16 +532,24 @@ async function expectDetailHeader(
       rightInset: rootBox.right - rightBox.right,
       titleFontSize: titleStyle.fontSize,
       expectedTitleFontSize: documentStyle
-        .getPropertyValue('--font-size-title')
+        .getPropertyValue(
+          useVisualV2
+            ? '--typography-v2-detail-title-size'
+            : '--font-size-title',
+        )
         .trim(),
       titleLineHeight: titleStyle.lineHeight,
       expectedTitleLineHeight: documentStyle
-        .getPropertyValue('--line-height-title')
+        .getPropertyValue(
+          useVisualV2
+            ? '--typography-v2-detail-title-line-height'
+            : '--line-height-title',
+        )
         .trim(),
       borderBottomWidth: rootStyle.borderBottomWidth,
       boxShadow: rootStyle.boxShadow,
     }
-  })
+  }, visualV2)
 
   expect(geometry.height).toBe(geometry.expectedHeight)
   expect(geometry.backWidth).toBeGreaterThanOrEqual(44)
@@ -547,6 +564,9 @@ async function expectDetailHeader(
   expect(geometry.titleLineHeight).toBe(geometry.expectedTitleLineHeight)
   expect(geometry.borderBottomWidth).toBe('0px')
   expect(geometry.boxShadow).toBe('none')
+  if (visualV2) {
+    await expect(page.getByRole('button', { name: '更多信息' })).toBeVisible()
+  }
   await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
   await expectNoHorizontalOverflow(page)
 }
@@ -932,12 +952,28 @@ for (const width of viewportWidths) {
         page,
         '设备',
       )
-      await expect(page.getByTestId('device-summary-device')).toContainText(
+      const detailHero = page.getByTestId('device-detail-hero')
+      await expect(detailHero.getByTestId('device-hero-name')).toHaveText(
         '运营',
       )
-      await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-        'HuanYu001',
+      await expect(detailHero.getByTestId('device-hero-status')).toHaveText(
+        '运行中',
       )
+      await expect(
+        detailHero.getByTestId('device-hero-heartbeat'),
+      ).toContainText('最后心跳：')
+      await expect(detailHero.getByTestId('device-hero-meta')).toContainText(
+        'Worker 0.4.6',
+      )
+      await expect(detailHero.getByTestId('device-hero-meta')).toContainText(
+        '影刀 6.3.6',
+      )
+      await expect(
+        detailHero.getByTestId('device-status-artwork'),
+      ).toHaveAttribute('data-device-artwork-variant', 'hero')
+      await expect(
+        detailHero.getByTestId('device-status-artwork'),
+      ).toHaveAttribute('data-device-artwork-state', 'running')
       await expect(page.getByTestId('device-capability-panel')).toBeVisible()
       await expect(page.getByTestId('application-list')).toHaveCSS(
         'scrollbar-width',
@@ -949,7 +985,6 @@ for (const width of viewportWidths) {
         selectorBeforeRows: true,
         headerOutsideRows: true,
         selectorOutsideRows: true,
-        navContained: true,
         tabsContained: true,
         activeSurfaceContained: true,
         selectorHasNoInternalOverflow: true,
@@ -962,63 +997,50 @@ for (const width of viewportWidths) {
       expect(
         capabilitySelector.touchHeights.every((height) => height >= 44),
       ).toBe(true)
-      const summarySections = await page
-        .locator('.device-runtime-summary__section')
-        .evaluateAll((sections) =>
-          sections.map((section) => {
-            const box = section.getBoundingClientRect()
-            const icon = section
-              .querySelector<HTMLElement>('.device-runtime-summary__icon')!
-              .getBoundingClientRect()
-            const content = section
-              .querySelector<HTMLElement>('.device-runtime-summary__content')!
-              .getBoundingClientRect()
-            return {
-              x: box.x,
-              y: box.y,
-              width: box.width,
-              paddingTop: window.getComputedStyle(section).paddingTop,
-              paddingRight: window.getComputedStyle(section).paddingRight,
-              paddingBottom: window.getComputedStyle(section).paddingBottom,
-              paddingLeft: window.getComputedStyle(section).paddingLeft,
-              iconWidth: icon.width,
-              iconFontSize: Number.parseFloat(
-                window.getComputedStyle(
-                  section.querySelector<HTMLElement>(
-                    '.device-runtime-summary__icon',
-                  )!,
-                ).fontSize,
-              ),
-              iconRight: icon.right,
-              contentLeft: content.left,
-            }
-          }),
-        )
-      expect(summarySections).toHaveLength(2)
-      expect(summarySections[0]!.y).toBeLessThan(summarySections[1]!.y)
-      expect(summarySections[0]!.x).toBe(summarySections[1]!.x)
-      expect(
-        Math.abs(summarySections[0]!.width - summarySections[1]!.width),
-      ).toBeLessThanOrEqual(1)
-      expect(
-        summarySections.every(
-          (section) => section.iconRight <= section.contentLeft,
-        ),
-      ).toBe(true)
-      expect(
-        summarySections.every(
-          (section) =>
-            section.paddingTop === '9px' &&
-            section.paddingRight === '17px' &&
-            section.paddingBottom === '9px' &&
-            section.paddingLeft === '17px' &&
-            section.iconWidth === 48 &&
-            section.iconFontSize === 25,
-        ),
-      ).toBe(true)
-      await expect(
-        page.getByTestId('device-runtime-summary-separator'),
-      ).toBeVisible()
+      const heroGeometry = await detailHero.evaluate((hero) => {
+        const root = hero.getBoundingClientRect()
+        const artwork = hero
+          .querySelector<HTMLElement>('.device-detail-hero__artwork')!
+          .getBoundingClientRect()
+        const content = hero
+          .querySelector<HTMLElement>('.device-detail-hero__content')!
+          .getBoundingClientRect()
+        const name = hero.querySelector<HTMLElement>(
+          '[data-testid="device-hero-name"]',
+        )!
+        const nameStyle = window.getComputedStyle(name)
+        const rootStyle = window.getComputedStyle(hero)
+        const documentStyle = window.getComputedStyle(document.documentElement)
+        return {
+          minHeight: Number.parseFloat(rootStyle.minHeight),
+          expectedMinHeight: Number.parseFloat(
+            documentStyle.getPropertyValue(
+              '--visual-v2-detail-hero-min-height',
+            ),
+          ),
+          artworkBeforeContent: artwork.right <= content.left,
+          nameOverflow: nameStyle.overflow,
+          nameTextOverflow: nameStyle.textOverflow,
+          nameWhiteSpace: nameStyle.whiteSpace,
+          titleSize: nameStyle.fontSize,
+          expectedTitleSize: documentStyle
+            .getPropertyValue('--typography-v2-detail-hero-title-size')
+            .trim(),
+          fitsViewport: root.left >= 0 && root.right <= window.innerWidth + 1,
+        }
+      })
+      expect(heroGeometry).toEqual({
+        minHeight: heroGeometry.expectedMinHeight,
+        expectedMinHeight: heroGeometry.expectedMinHeight,
+        artworkBeforeContent: true,
+        nameOverflow: 'hidden',
+        nameTextOverflow: 'ellipsis',
+        nameWhiteSpace: 'nowrap',
+        titleSize: heroGeometry.expectedTitleSize,
+        expectedTitleSize: heroGeometry.expectedTitleSize,
+        fitsViewport: true,
+      })
+      await expect(page.locator('.device-runtime-summary')).toHaveCount(0)
       await expect(page.locator('.van-tabbar-item')).toHaveText([
         '设备',
         '任务',
@@ -1279,11 +1301,11 @@ for (const width of viewportWidths) {
 }
 
 for (const fixture of [
-  { width: 390, theme: 'light', file: 'device-runtime-summary-390-light.png' },
-  { width: 360, theme: 'light', file: 'device-runtime-summary-360-light.png' },
-  { width: 390, theme: 'dark', file: 'device-runtime-summary-390-dark.png' },
+  { width: 390, theme: 'light', file: 'device-detail-hero-390-light.png' },
+  { width: 360, theme: 'light', file: 'device-detail-hero-360-light.png' },
+  { width: 390, theme: 'dark', file: 'device-detail-hero-390-dark.png' },
 ] as const) {
-  test(`DeviceRuntimeSummary ${fixture.width}px ${fixture.theme} 保持单卡上下结构`, async ({
+  test(`DeviceDetailHero ${fixture.width}px ${fixture.theme} 保持真实状态与响应式结构`, async ({
     page,
   }, testInfo) => {
     const observation = observePage(page)
@@ -1291,95 +1313,69 @@ for (const fixture of [
     await setTheme(page, fixture.theme)
     await page.goto('/#/devices/visual-device-support')
 
-    const summary = page.getByTestId('device-detail')
-    await expect(summary).toBeVisible()
-    await expect(page.getByTestId('device-summary-device')).toContainText(
-      '售后在线空闲Worker 0.4.6 · 刚刚',
+    const hero = page.getByTestId('device-detail-hero')
+    await expect(hero).toBeVisible()
+    await expect(hero.getByTestId('device-hero-name')).toHaveText('售后')
+    await expect(hero.getByTestId('device-hero-status')).toHaveText('在线')
+    await expect(hero.getByTestId('device-hero-heartbeat')).toContainText(
+      '最后心跳：',
     )
-    await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-      '影刀账号已登录HuanYu001 · 6.3.6',
+    await expect(hero.getByTestId('device-hero-meta')).toContainText(
+      'Worker 0.4.6',
     )
-    await expect(page.getByTestId('device-summary-yingdao')).not.toContainText(
-      'Provider',
+    await expect(hero.getByTestId('device-hero-meta')).toContainText(
+      '影刀 6.3.6',
     )
-    await expect(
-      summary.locator('.device-runtime-summary__section'),
-    ).toHaveCount(2)
-    await expect(
-      page.getByTestId('device-runtime-summary-separator'),
-    ).toBeVisible()
-    await expect(summary.locator('.mobile-card')).toHaveCount(0)
+    await expect(hero).not.toContainText(/HuanYu001|Provider|GY00099|5\.36\.1/)
 
-    const anatomy = await summary.evaluate((root) => {
-      const sections = Array.from(
-        root.querySelectorAll<HTMLElement>('.device-runtime-summary__section'),
+    const anatomy = await hero.evaluate((root) => {
+      const rootBox = root.getBoundingClientRect()
+      const artwork = root
+        .querySelector<HTMLElement>('.device-detail-hero__artwork')!
+        .getBoundingClientRect()
+      const content = root
+        .querySelector<HTMLElement>('.device-detail-hero__content')!
+        .getBoundingClientRect()
+      const name = root.querySelector<HTMLElement>(
+        '[data-testid="device-hero-name"]',
+      )!
+      const nameStyle = window.getComputedStyle(name)
+      const metaItems = Array.from(
+        root.querySelectorAll<HTMLElement>('.device-detail-hero__meta-item'),
       )
-      const textStyle = (testId: string) => {
-        const style = window.getComputedStyle(
-          root.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!,
-        )
-        return {
-          overflow: style.overflow,
-          textOverflow: style.textOverflow,
-          whiteSpace: style.whiteSpace,
-        }
-      }
       return {
-        stacked:
-          sections[0]!.getBoundingClientRect().bottom <=
-          sections[1]!.getBoundingClientRect().top,
-        iconsLead: sections.every((section) => {
-          const icon = section
-            .querySelector<HTMLElement>('.device-runtime-summary__icon')!
-            .getBoundingClientRect()
-          const content = section
-            .querySelector<HTMLElement>('.device-runtime-summary__content')!
-            .getBoundingClientRect()
-          return icon.right <= content.left
-        }),
-        deviceName: textStyle('device-runtime-name'),
-        accountName: textStyle('device-account-name'),
-        accountLine: (() => {
-          const name = root
-            .querySelector<HTMLElement>('[data-testid="device-account-name"]')!
-            .getBoundingClientRect()
-          const version = root
-            .querySelector<HTMLElement>(
-              '[data-testid="device-account-version"]',
-            )!
-            .getBoundingClientRect()
-          return {
-            sameRow:
-              Math.abs(
-                (name.top + name.bottom) / 2 -
-                  (version.top + version.bottom) / 2,
-              ) < 1,
-            nameBeforeVersion: name.right <= version.left,
-            versionVisible: version.width > 0,
-            versionFlexShrink: window.getComputedStyle(
-              root.querySelector<HTMLElement>(
-                '[data-testid="device-account-version"]',
-              )!,
-            ).flexShrink,
-          }
-        })(),
+        artworkBeforeContent: artwork.right <= content.left,
+        artworkVerticallyCentered:
+          Math.abs(
+            artwork.top +
+              artwork.height / 2 -
+              (content.top + content.height / 2),
+          ) <= 1,
+        deviceName: {
+          overflow: nameStyle.overflow,
+          textOverflow: nameStyle.textOverflow,
+          whiteSpace: nameStyle.whiteSpace,
+        },
+        metaCount: metaItems.length,
+        metaSingleLine: metaItems.every(
+          (item) => item.scrollHeight <= item.clientHeight,
+        ),
+        withinViewport:
+          rootBox.left >= 0 && rootBox.right <= window.innerWidth + 1,
       }
     })
-    expect(anatomy.stacked).toBe(true)
-    expect(anatomy.iconsLead).toBe(true)
     expect(anatomy.deviceName).toEqual({
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
     })
-    expect(anatomy.accountName).toEqual(anatomy.deviceName)
-    expect(anatomy.accountLine).toEqual({
-      sameRow: true,
-      nameBeforeVersion: true,
-      versionVisible: true,
-      versionFlexShrink: '0',
-    })
+    expect(anatomy.artworkBeforeContent).toBe(true)
+    expect(anatomy.artworkVerticallyCentered).toBe(true)
+    expect(anatomy.metaCount).toBe(2)
+    expect(anatomy.metaSingleLine).toBe(true)
+    expect(anatomy.withinViewport).toBe(true)
     await expect(page.getByTestId('device-capability-panel')).toBeVisible()
+    await expect(page.locator('.device-runtime-summary')).toHaveCount(0)
     await expectNoHorizontalOverflow(page)
     await page.screenshot({
       path: testInfo.outputPath(fixture.file),
@@ -1403,11 +1399,13 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     .click()
   await expect(page).toHaveURL(/#\/devices\/visual-device-operations$/)
   await expect(page.getByTestId('device-detail')).toContainText('运营')
-  await expect(page.getByTestId('device-summary-device')).toContainText(
-    '运营在线执行中Worker 0.4.6',
+  await expect(page.getByTestId('device-hero-status')).toHaveText('运行中')
+  await expect(page.getByTestId('device-hero-meta')).toContainText(
+    'Worker 0.4.6',
   )
-  await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-    '影刀账号已登录HuanYu001 · 6.3.6',
+  await expect(page.getByTestId('device-hero-meta')).toContainText('影刀 6.3.6')
+  await expect(page.getByTestId('device-detail-hero')).not.toContainText(
+    /HuanYu001|GY00099|5\.36\.1/,
   )
   await expect(page.locator('.device-capability-panel__tab-label')).toHaveText([
     '影刀应用',
@@ -1442,19 +1440,29 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
         columnGap: style.columnGap,
       }
     })
-  const currentTaskCardPaddingTokens = await page.evaluate(() => {
+  const currentTaskCardTokens = await page.evaluate(() => {
     const rootStyle = window.getComputedStyle(document.documentElement)
     return {
-      x: rootStyle.getPropertyValue('--layout-card-padding-x').trim(),
-      y: rootStyle.getPropertyValue('--layout-card-padding-y').trim(),
+      top: rootStyle
+        .getPropertyValue('--visual-v2-business-card-padding-top')
+        .trim(),
+      right: rootStyle
+        .getPropertyValue('--visual-v2-business-card-padding-right')
+        .trim(),
+      bottom: rootStyle
+        .getPropertyValue('--visual-v2-business-card-padding-bottom')
+        .trim(),
+      left: rootStyle
+        .getPropertyValue('--visual-v2-business-card-padding-left')
+        .trim(),
     }
   })
   expect(currentTaskCardSpacing).toEqual({
-    paddingTop: currentTaskCardPaddingTokens.y,
-    paddingRight: currentTaskCardPaddingTokens.x,
-    paddingBottom: currentTaskCardPaddingTokens.y,
-    paddingLeft: currentTaskCardPaddingTokens.x,
-    columnGap: '16px',
+    paddingTop: currentTaskCardTokens.top,
+    paddingRight: currentTaskCardTokens.right,
+    paddingBottom: currentTaskCardTokens.bottom,
+    paddingLeft: currentTaskCardTokens.left,
+    columnGap: 'normal',
   })
   await expect(page.locator('.active-task-summary')).toHaveCount(0)
   await expect(
@@ -1486,10 +1494,6 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     const titleBox = panel
       .querySelector<HTMLElement>('.device-capability-panel__title')!
       .getBoundingClientRect()
-    const maxHeight = Number.parseFloat(
-      window.getComputedStyle(panel).maxHeight,
-    )
-    const panelBox = panel.getBoundingClientRect()
     const rowAnatomy = rows.slice(0, 6).map((row) => {
       const icon = row.querySelector<HTMLElement>(
         '.device-capability-panel__icon-slot',
@@ -1520,7 +1524,11 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
           (button) => button.getAttribute('aria-label')?.split('：')[0],
         ),
         iconWidth: iconBox.width,
-        iconFontSize: Number.parseFloat(window.getComputedStyle(icon).fontSize),
+        iconFontSize: Number.parseFloat(
+          window.getComputedStyle(
+            icon.querySelector<HTMLElement>('.mobile-icon')!,
+          ).fontSize,
+        ),
         rowHeight: rowBox.height,
         nameActuallyTruncated: name.scrollWidth > name.clientWidth,
         nameOverflow: nameStyle.overflow,
@@ -1542,20 +1550,10 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
       }
     })
     return {
-      panelHasStableMaximum:
-        Number.isFinite(maxHeight) &&
-        maxHeight > 0 &&
-        panel.getBoundingClientRect().height <= maxHeight + 1,
-      panelHeight: panelBox.height,
-      expectedPanelHeight: Number.parseFloat(
-        window
-          .getComputedStyle(document.documentElement)
-          .getPropertyValue('--layout-capability-panel-height'),
-      ),
       expectedRowHeight: Number.parseFloat(
         window
           .getComputedStyle(document.documentElement)
-          .getPropertyValue('--layout-capability-row-min-height'),
+          .getPropertyValue('--visual-v2-detail-capability-row-height'),
       ),
       fiveRowsFitList:
         rows
@@ -1599,13 +1597,12 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
       ).scrollbarWidth,
     }
   })
-  expect(layout.panelHasStableMaximum).toBe(true)
-  expect(layout.panelHeight).toBeCloseTo(layout.expectedPanelHeight, 0)
   expect(layout.fiveRowsFitList).toBe(true)
   expect(layout.refreshTouchWidth).toBeGreaterThanOrEqual(44)
   expect(layout.refreshTouchHeight).toBeGreaterThanOrEqual(44)
-  expect(layout.refreshVisualSize).toEqual({ width: 26, height: 26 })
-  expect(layout.refreshText).toBe('')
+  expect(layout.refreshVisualSize.height).toBe(34)
+  expect(layout.refreshVisualSize.width).toBeGreaterThanOrEqual(44)
+  expect(layout.refreshText).toBe('刷新')
   expect(layout.refreshAtHeaderRight).toBe(true)
   expect(layout.selectorBelowHeader).toBe(true)
   expect(layout.equalTabWidths).toBe(true)
@@ -1624,7 +1621,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
           (action) =>
             action.width >= 44 &&
             action.height >= 44 &&
-            action.visualHeight === 28,
+            action.visualHeight === 34,
         ) &&
         row.actionTargets[0]!.right <= row.actionTargets[1]!.left + 0.5 &&
         row.iconWidth > 0 &&
@@ -1641,7 +1638,7 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   ).toBe(true)
   expect(
     layout.rowAnatomy.every(
-      (row) => row.iconWidth === 36 && row.iconFontSize === 24,
+      (row) => row.iconWidth === 38 && row.iconFontSize === 20,
     ),
   ).toBe(true)
   expect(layout.rowAnatomy[0]?.nameActuallyTruncated).toBe(true)
@@ -1662,8 +1659,14 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
   await expect(page.getByRole('button', { name: /配置：拼多多/ })).toBeVisible()
   await expect(page.getByRole('button', { name: /运行：拼多多/ })).toBeVisible()
   const frozenStructure = await page.evaluate(() => {
-    const summary = document
+    const detail = document
       .querySelector<HTMLElement>('[data-testid="device-detail"]')!
+      .getBoundingClientRect()
+    const detailScroll = document.querySelector<HTMLElement>(
+      '[data-testid="device-detail"]',
+    )!
+    const hero = document
+      .querySelector<HTMLElement>('[data-testid="device-detail-hero"]')!
       .getBoundingClientRect()
     const panel = document
       .querySelector<HTMLElement>('[data-testid="device-capability-panel"]')!
@@ -1677,16 +1680,20 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
       .querySelector<HTMLElement>('[data-testid="mobile-shell-bottom"]')!
       .getBoundingClientRect()
     return {
-      summaryStartsInViewport: summary.top >= 0,
-      panelComplete: panel.top >= 0 && panel.bottom <= bottom.top + 1,
+      detailStartsInViewport: detail.top >= 0,
+      detailScrollable: detailScroll.scrollHeight > detailScroll.clientHeight,
+      heroBeforeTask: hero.bottom <= taskCard.top,
+      taskBeforePanel: taskCard.bottom <= panel.top,
       taskCardComplete: taskCard.top >= 0 && taskCard.bottom <= bottom.top + 1,
       bottomComplete:
         bottom.top >= 0 && bottom.bottom <= window.innerHeight + 1,
     }
   })
   expect(frozenStructure).toEqual({
-    summaryStartsInViewport: true,
-    panelComplete: true,
+    detailStartsInViewport: true,
+    detailScrollable: true,
+    heroBeforeTask: true,
+    taskBeforePanel: true,
     taskCardComplete: true,
     bottomComplete: true,
   })
@@ -1782,7 +1789,13 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     clip: { x: 0, y: 0, width: 390, height: 650 },
   })
 
-  await page.getByText('更多信息', { exact: true }).click()
+  await page.getByRole('button', { name: '更多信息' }).click()
+  await expect(page.getByTestId('device-more-sheet')).toBeVisible()
+  await expect(page.getByTestId('device-more-sheet')).not.toContainText(
+    /设备配置|更多设置/,
+  )
+  await page.getByRole('button', { name: '关闭更多信息' }).click()
+  await expect(page.getByTestId('device-more-sheet')).toBeHidden()
   const detailScroll = page.getByRole('region', { name: '设备详情内容' })
   await page.getByRole('tab', { name: '影刀应用 8' }).click()
   await detailScroll.evaluate((element) => {
@@ -1885,7 +1898,6 @@ for (const fixture of [
       selectorBeforeRows: true,
       headerOutsideRows: true,
       selectorOutsideRows: true,
-      navContained: true,
       tabsContained: true,
       activeSurfaceContained: true,
       selectorHasNoInternalOverflow: true,

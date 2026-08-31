@@ -14,8 +14,10 @@ import {
 import type { ActiveTaskSummaryReadDto } from '@/entities/task'
 import {
   DeviceCapabilityPanel,
+  DeviceDetailHero,
   DeviceInfiniteList,
   DeviceListCard,
+  DeviceMoreSheet,
   DeviceProviderDetails,
   DeviceRuntimeSummary,
   DeviceSkillDetails,
@@ -340,6 +342,90 @@ describe('device center UI', () => {
         expect(wrapper.attributes('data-device-artwork-state')).toBe(state)
       }
     }
+  })
+
+  it('adds a Hero presentation without changing the default List variant', () => {
+    const list = track(
+      mount(DeviceStatusArtwork, {
+        props: { kind: 'desktop', state: 'online' },
+      }),
+    )
+    const hero = track(
+      mount(DeviceStatusArtwork, {
+        props: { kind: 'desktop', state: 'running', variant: 'hero' },
+      }),
+    )
+
+    expect(list.attributes('data-device-artwork-variant')).toBe('list')
+    expect(list.classes()).toContain('device-status-artwork--list')
+    expect(hero.attributes('data-device-artwork-variant')).toBe('hero')
+    expect(hero.classes()).toContain('device-status-artwork--hero')
+  })
+
+  it('renders Device Hero from formal Device, Active Task, heartbeat and Provider facts', () => {
+    const wrapper = track(
+      mount(DeviceDetailHero, {
+        props: {
+          device: baseDevice,
+          activeTaskState: { ...idleActiveTaskState, task: runningTask },
+          inventories: [providerInventory('ready')],
+        },
+      }),
+    )
+
+    expect(wrapper.get('[data-testid="device-hero-name"]').text()).toBe(
+      '仓库设备',
+    )
+    expect(wrapper.get('[data-testid="device-hero-status"]').text()).toBe(
+      '运行中',
+    )
+    expect(wrapper.get('[data-testid="device-hero-heartbeat"]').text()).toMatch(
+      /^最后心跳：/,
+    )
+    expect(wrapper.get('[data-testid="device-hero-meta"]').text()).toContain(
+      'Worker 1.2.3',
+    )
+    expect(wrapper.get('[data-testid="device-hero-meta"]').text()).toContain(
+      '影刀 6.3.6',
+    )
+    expect(
+      wrapper
+        .get('[data-testid="device-status-artwork"]')
+        .attributes('data-device-artwork-state'),
+    ).toBe('running')
+    expect(
+      wrapper
+        .get('[data-testid="device-status-artwork"]')
+        .attributes('data-device-artwork-variant'),
+    ).toBe('hero')
+    expect(wrapper.text()).not.toMatch(/GY00099|5\.36\.1/)
+  })
+
+  it('keeps Device Hero offline when the formal connection state is offline', () => {
+    const wrapper = track(
+      mount(DeviceDetailHero, {
+        props: {
+          device: {
+            ...baseDevice,
+            workerRuntime: {
+              ...baseDevice.workerRuntime!,
+              connectionStatus: 'offline',
+            },
+          },
+          activeTaskState: { ...idleActiveTaskState, task: runningTask },
+          inventories: [],
+        },
+      }),
+    )
+
+    expect(wrapper.get('[data-testid="device-hero-status"]').text()).toBe(
+      '离线',
+    )
+    expect(
+      wrapper
+        .get('[data-testid="device-status-artwork"]')
+        .attributes('data-device-artwork-state'),
+    ).toBe('offline')
   })
 
   it('derives artwork state from formal connection and Active Task facts', () => {
@@ -716,10 +802,10 @@ describe('device center UI', () => {
 
     await flushPromises()
     expect(wrapper.findAll('[data-testid="application-row"]')).toHaveLength(6)
-    expect(wrapper.get('h2').text()).toBe('能力')
+    expect(wrapper.get('h2').text()).toBe('能力面板')
     expect(
       wrapper.get('[data-testid="device-capability-tabs"]').classes(),
-    ).toContain('mobile-segmented-tabs')
+    ).toContain('device-capability-panel__tabs')
     expect(wrapper.findAll('.device-capability-panel__tab-label')).toHaveLength(
       2,
     )
@@ -769,8 +855,8 @@ describe('device center UI', () => {
       '[data-testid="device-capability-refresh"]',
     )
     expect(refreshButton.attributes('type')).toBe('button')
-    expect(refreshButton.classes()).toContain('mobile-icon-button')
-    expect(refreshButton.text()).toBe('')
+    expect(refreshButton.classes()).toContain('mobile-pressable')
+    expect(refreshButton.text()).toBe('刷新')
     expect(refreshButton.find('.van-icon').exists()).toBe(true)
     await refreshButton.trigger('click')
     expect(wrapper.emitted('configureApplication')?.[0]?.[0]).toMatchObject({
@@ -846,5 +932,33 @@ describe('device center UI', () => {
     )
     expect(technicalDetails.text()).toContain('能力总数4 个')
     expect(technicalDetails.text()).toContain('未分类能力1 个')
+  })
+
+  it('keeps the More Sheet read-only and exposes only real Device facts', async () => {
+    const wrapper = track(
+      mount(DeviceMoreSheet, {
+        props: {
+          show: true,
+          device: { ...baseDevice, location: '上海', note: '主运行端' },
+          inventories: [providerInventory('ready')],
+          capabilities: [
+            capability('business-1', 'business'),
+            capability('internal-1', 'internal'),
+          ],
+        },
+      }),
+    )
+
+    expect(wrapper.get('[data-testid="device-more-sheet"]').text()).toContain(
+      '更多信息',
+    )
+    expect(wrapper.text()).toContain('device-1')
+    expect(wrapper.text()).toContain('Worker版本1.2.3')
+    expect(wrapper.text()).toContain('上海')
+    expect(wrapper.text()).toContain('主运行端')
+    expect(wrapper.text()).not.toMatch(/设备配置|更多设置|GY00099|5\.36\.1/)
+
+    await wrapper.get('[aria-label="关闭更多信息"]').trigger('click')
+    expect(wrapper.emitted('update:show')).toEqual([[false]])
   })
 })

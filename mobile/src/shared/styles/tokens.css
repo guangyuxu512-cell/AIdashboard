@@ -34,6 +34,19 @@
   --typography-v2-detail-title-size: 20px;
   --typography-v2-detail-title-weight: 600;
   --typography-v2-detail-title-line-height: 24px;
+  --typography-v2-detail-hero-title-size: 22px;
+  --typography-v2-detail-hero-title-weight: 600;
+  --typography-v2-detail-hero-title-line-height: 26px;
+  --typography-v2-detail-hero-title-letter-spacing: -0.35px;
+  --typography-v2-detail-hero-status-size: 16px;
+  --typography-v2-detail-hero-status-weight: 500;
+  --typography-v2-detail-hero-status-line-height: 16px;
+  --typography-v2-detail-hero-meta-size: 14px;
+  --typography-v2-detail-hero-meta-weight: 400;
+  --typography-v2-detail-hero-meta-line-height: 18px;
+  --typography-v2-detail-section-title-size: 17px;
+  --typography-v2-detail-section-title-weight: 600;
+  --typography-v2-detail-section-title-line-height: 20px;
   --typography-v2-business-card-title-size: 16.5px;
   --typography-v2-business-card-title-weight: 600;
   --typography-v2-business-card-title-line-height: 19.8px;
@@ -186,6 +199,76 @@
   --visual-v2-metric-selected-label-weight: 620;
   --visual-v2-business-card-meta-icon-size: 13px;
   --visual-v2-business-card-blur: 14px;
+  --visual-v2-business-card-min-height: 122px;
+  --visual-v2-business-card-radius: 17px;
+  --visual-v2-business-card-border-width: 1px;
+  --visual-v2-business-card-leading-column: 102px;
+  --visual-v2-business-card-trailing-column: 18px;
+  --visual-v2-business-card-padding-top: 15px;
+  --visual-v2-business-card-padding-right: 17px;
+  --visual-v2-business-card-padding-bottom: 15px;
+  --visual-v2-business-card-padding-left: 16px;
+  --visual-v2-business-card-leading-height: 80px;
+  --visual-v2-business-card-title-gap: 10px;
+  --visual-v2-business-card-status-gap: 10px;
+  --visual-v2-business-card-inline-gap: 8px;
+  --visual-v2-business-card-status-dot-size: 8px;
+  --visual-v2-business-card-chevron-size: 16px;
+  --visual-v2-task-artwork-size: 54px;
+  --visual-v2-task-artwork-icon-size: 28px;
+  --visual-v2-task-artwork-radius: 15px;
+  --visual-v2-detail-header-height: 66px;
+  --visual-v2-detail-header-padding-x: 18px;
+  --visual-v2-detail-header-action-slot: 48px;
+  --visual-v2-detail-header-icon-size: 28px;
+  --visual-v2-detail-content-padding-top: 12px;
+  --visual-v2-detail-content-padding-x: 18px;
+  --visual-v2-detail-content-padding-bottom: 28px;
+  --visual-v2-detail-section-gap: 16px;
+  --visual-v2-detail-section-title-gap: 10px;
+  --visual-v2-detail-hero-min-height: 214px;
+  --visual-v2-detail-hero-padding-top: 24px;
+  --visual-v2-detail-hero-padding-right: 22px;
+  --visual-v2-detail-hero-padding-bottom: 20px;
+  --visual-v2-detail-hero-padding-left: 22px;
+  --visual-v2-detail-hero-leading-column: 138px;
+  --visual-v2-detail-hero-main-gap: 20px;
+  --visual-v2-detail-hero-artwork-height: 122px;
+  --visual-v2-detail-hero-artwork-scale: 1.7273;
+  --visual-v2-detail-hero-title-gap: 18px;
+  --visual-v2-detail-hero-status-gap: 9px;
+  --visual-v2-detail-hero-status-bottom-gap: 15px;
+  --visual-v2-detail-hero-status-dot-size: 11px;
+  --visual-v2-detail-hero-meta-top-gap: 22px;
+  --visual-v2-detail-hero-meta-padding-top: 18px;
+  --visual-v2-detail-hero-meta-gap: 8px;
+  --visual-v2-detail-hero-meta-inline-gap: 7px;
+  --visual-v2-detail-hero-meta-icon-size: 18px;
+  --visual-v2-detail-capability-padding-top: 18px;
+  --visual-v2-detail-capability-padding-x: 18px;
+  --visual-v2-detail-capability-padding-bottom: 16px;
+  --visual-v2-detail-capability-header-height: 34px;
+  --visual-v2-detail-capability-header-gap: 6px;
+  --visual-v2-detail-capability-tabs-height: 44px;
+  --visual-v2-detail-capability-tabs-bottom-gap: 10px;
+  --visual-v2-detail-capability-row-height: 66px;
+  --visual-v2-detail-capability-list-height: calc(
+    var(--visual-v2-detail-capability-row-height) * 5
+  );
+  --visual-v2-detail-capability-row-gap: 10px;
+  --visual-v2-detail-capability-icon-slot: 44px;
+  --visual-v2-detail-capability-icon-size: 38px;
+  --visual-v2-detail-capability-glyph-size: 20px;
+  --visual-v2-detail-capability-action-visual-height: 34px;
+  --visual-v2-detail-capability-action-padding-x: 11px;
+  --visual-v2-detail-capability-action-gap: 4px;
+  --visual-v2-detail-sheet-handle-width: 36px;
+  --visual-v2-detail-sheet-handle-height: 4px;
+  --visual-v2-detail-sheet-handle-margin-top: 8px;
+  --visual-v2-detail-sheet-padding-top: 12px;
+  --visual-v2-detail-sheet-padding-x: 18px;
+  --visual-v2-detail-sheet-padding-bottom: 24px;
+  --visual-v2-detail-sheet-title-gap: 12px;
   --visual-v2-bottom-nav-height: var(--layout-bottom-nav-height);
   --visual-v2-bottom-nav-padding-top: 8px;
   --visual-v2-bottom-nav-padding-x: 18px;
@@ -258,15 +341,23 @@
   --device-list-list-padding-top: 14px; /* Summary 与首张设备卡之间的列表起始留白。 */
   --device-list-list-padding-bottom: 28px;
   --device-list-card-gap: 14px;
-  --device-list-card-min-height: 122px;
-  --device-list-card-radius: 17px;
-  --device-list-card-border-width: 1px;
-  --device-list-card-artwork-column: 102px;
-  --device-list-card-chevron-column: 18px;
-  --device-list-card-padding-top: 15px;
-  --device-list-card-padding-right: 17px;
-  --device-list-card-padding-bottom: 15px;
-  --device-list-card-padding-left: 16px;
+  --device-list-card-min-height: var(--visual-v2-business-card-min-height);
+  --device-list-card-radius: var(--visual-v2-business-card-radius);
+  --device-list-card-border-width: var(--visual-v2-business-card-border-width);
+  --device-list-card-artwork-column: var(
+    --visual-v2-business-card-leading-column
+  );
+  --device-list-card-chevron-column: var(
+    --visual-v2-business-card-trailing-column
+  );
+  --device-list-card-padding-top: var(--visual-v2-business-card-padding-top);
+  --device-list-card-padding-right: var(
+    --visual-v2-business-card-padding-right
+  );
+  --device-list-card-padding-bottom: var(
+    --visual-v2-business-card-padding-bottom
+  );
+  --device-list-card-padding-left: var(--visual-v2-business-card-padding-left);
   --device-list-card-name-size: var(--typography-v2-business-card-title-size);
   --device-list-card-name-weight: var(
     --typography-v2-business-card-title-weight
@@ -277,19 +368,19 @@
   --device-list-card-name-letter-spacing: var(
     --typography-v2-business-card-title-letter-spacing
   );
-  --device-list-card-name-gap: 10px;
+  --device-list-card-name-gap: var(--visual-v2-business-card-title-gap);
   --device-list-card-status-size: var(--typography-v2-status-size);
   --device-list-card-status-weight: var(--typography-v2-status-weight);
   --device-list-card-status-line-height: var(
     --typography-v2-status-line-height
   );
-  --device-list-card-status-gap: 10px;
+  --device-list-card-status-gap: var(--visual-v2-business-card-status-gap);
   --device-list-card-meta-size: var(--typography-v2-meta-size);
   --device-list-card-meta-weight: var(--typography-v2-meta-weight);
   --device-list-card-meta-line-height: var(--typography-v2-meta-line-height);
-  --device-list-card-inline-gap: 8px;
-  --device-list-status-dot-size: 8px;
-  --device-list-card-chevron-size: 16px;
+  --device-list-card-inline-gap: var(--visual-v2-business-card-inline-gap);
+  --device-list-status-dot-size: var(--visual-v2-business-card-status-dot-size);
+  --device-list-card-chevron-size: var(--visual-v2-business-card-chevron-size);
   --device-list-artwork-width: 80px;
   --device-list-artwork-height: 80px;
   --device-list-artwork-offset-x: -8px;
@@ -489,6 +580,18 @@
   --visual-v2-business-card-chevron-color: var(
     --device-list-card-chevron-color
   );
+  --visual-v2-detail-surface-background: var(--device-list-card-background);
+  --visual-v2-detail-surface-border-color: var(--device-list-card-border);
+  --visual-v2-detail-surface-shadow: var(--device-list-card-shadow);
+  --visual-v2-detail-weak-background: var(--device-list-search-background);
+  --visual-v2-detail-weak-border-color: var(--device-list-search-border);
+  --visual-v2-detail-divider-color: var(--device-list-summary-divider);
+  --visual-v2-detail-meta-color: var(--device-list-card-meta-color);
+  --visual-v2-detail-status-online: var(--device-list-status-online);
+  --visual-v2-detail-status-running: var(--device-list-status-running);
+  --visual-v2-detail-status-offline: var(--device-list-status-offline);
+  --visual-v2-detail-sheet-background: var(--device-list-card-background);
+  --visual-v2-detail-sheet-handle-color: var(--device-list-summary-divider);
   --visual-v2-bottom-nav-background: rgb(255 255 255 / 95%);
   --visual-v2-bottom-safe-area-background: #ffffff;
   --visual-v2-bottom-nav-border-color: #e5eaf1;
