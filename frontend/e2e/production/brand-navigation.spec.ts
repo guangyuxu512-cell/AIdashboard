@@ -43,3 +43,14 @@ test('keeps the production brand compact and hides development navigation', asyn
   expect(layout.brandAlignment).toBe('center')
   expect(runtimeErrors).toEqual([])
 })
+
+test('keeps the template visual fixture out of production', async ({
+  page,
+}) => {
+  await page.goto('/#/ai-workbench/templates?visualMock=1')
+
+  await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
+  await expect(page.getByText('电商标准套图 A', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('竞品复刻 A', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('极简白底', { exact: true })).toHaveCount(0)
+})
