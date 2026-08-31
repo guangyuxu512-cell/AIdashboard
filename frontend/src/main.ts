@@ -5,7 +5,10 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './app/router'
 import { installAuthGuard } from './app/router/auth-guard'
-import { queryClient } from './app/providers/query-client'
+import {
+  queryClient,
+  resetQueriesForActorContextChange,
+} from './app/providers/query-client'
 import { configureHumanRequestContext } from './shared/api'
 import { configureAuthEffects, useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
@@ -17,7 +20,7 @@ const pinia = createPinia()
 app.use(pinia)
 const authStore = useAuthStore(pinia)
 configureAuthEffects({
-  onTeamChanged: () => void queryClient.invalidateQueries(),
+  onTeamChanged: () => void resetQueriesForActorContextChange(),
   onAuthCleared: () => queryClient.clear(),
 })
 configureHumanRequestContext({
