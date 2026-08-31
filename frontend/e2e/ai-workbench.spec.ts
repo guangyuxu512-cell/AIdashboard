@@ -131,8 +131,9 @@ test('keeps the three AI pages route-backed, compact and explanation-free', asyn
     .click()
   await expect(page).toHaveURL(/#\/ai-workbench\/templates$/)
   await expect(page.getByPlaceholder('搜索模板')).toBeVisible()
-  await expect(page.getByRole('button', { name: '分类' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '新建模板' })).toBeVisible()
+  await page.getByLabel('生成模式').click()
+  await expect(page.locator('.n-base-select-menu:visible')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '新建模板组' })).toBeDisabled()
   await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
   await page.reload()
   await expect(
