@@ -13,6 +13,8 @@ from app.core.database import get_database_engine
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 CORE_TABLES = {
     "users",
+    "teams",
+    "team_memberships",
     "shops",
     "devices",
     "shop_device_bindings",

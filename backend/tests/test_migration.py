@@ -1,4 +1,5 @@
 import importlib
+from uuid import uuid4
 
 
 class OperationRecorder:
@@ -526,3 +527,60 @@ def test_asset_foundation_v2_migration_upgrade_and_downgrade(
         "create_check_constraint",
         "ck_assets_supported_content_type",
     ) in recorder.calls
+
+
+def test_access_foundation_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260831_0022_access_foundation_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        migration,
+        "_backfill_default_team",
+        lambda: recorder.calls.append(("execute", "default_team_backfill")),
+    )
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "teams"),
+        ("create_table", "team_memberships"),
+    ]
+    assert (
+        "create_index",
+        "ix_team_memberships_active_user",
+    ) in recorder.calls
+    assert (
+        "create_index",
+        "ix_team_memberships_active_team",
+    ) in recorder.calls
+    assert ("execute", "default_team_backfill") in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "team_memberships"),
+        ("drop_table", "teams"),
+    ]
+
+
+def test_access_default_team_backfill_rows_cover_empty_single_and_multiple_users() -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260831_0022_access_foundation_v1",
+    )
+    team_id = uuid4()
+    user_ids = [uuid4(), uuid4()]
+
+    assert migration._membership_rows([], team_id=team_id) == []
+    single = migration._membership_rows(user_ids[:1], team_id=team_id)
+    multiple = migration._membership_rows(user_ids, team_id=team_id)
+
+    assert len(single) == 1
+    assert len(multiple) == 2
+    assert {row["user_id"] for row in multiple} == set(user_ids)
+    assert all(row["team_id"] == team_id for row in multiple)
+    assert all(row["role_code"] == "member" for row in multiple)
+    assert all(row["data_scope"] == "team" for row in multiple)
+    assert all(row["enabled"] is True for row in multiple)

@@ -47,6 +47,24 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 错误统一返回 `code`、`message`、`request_id`、可选 `details`。V1 业务错误码包含 `USER_NOT_FOUND`、`SHOP_NOT_FOUND`、`DEVICE_NOT_FOUND`、`INVALID_DEVICE_BINDING`、`IMMUTABLE_SHOP_IDENTITY`；请求校验使用 `VALIDATION_ERROR`，数据库异常统一映射为 `DATABASE_OPERATION_FAILED`。
 
+## Access Foundation V1 Contract
+
+- `GET /api/v1/access/me`：返回当前请求解析后的 ActorContext。
+- `GET /api/v1/access/me/teams`：返回当前 Human User 的 Team/Membership 摘要，供未来 Team
+  Switcher 使用；该接口不要求先选定 Active Team。
+- `X-Team-ID`：用户有多个 Active Membership 时的 Team Context Header。Header 只是选择请求，
+  Backend 必须验证当前 User 拥有对应启用 Membership 且 Team 启用。
+
+Actor DTO 只包含 `user_id / user_display_name / team_id / membership_id / role_code /
+data_scope`。My Teams DTO 只包含 Team 名称和状态、Membership ID/状态、Role 与 Scope，不返回
+ORM 或任何凭证字段。多 Team 未选择返回 `TEAM_CONTEXT_REQUIRED`；非成员、停用 Membership 或
+停用 Team 返回 `TEAM_ACCESS_DENIED`；无 Active Membership 返回 `TEAM_MEMBERSHIP_REQUIRED`。
+
+当前 `users` 表没有 username、login_name、email、password hash 等可靠 Human Login Identifier，
+项目也没有 Human Session。因此 `get_human_principal` 当前默认 fail closed 并返回
+`HUMAN_AUTHENTICATION_REQUIRED`，不接受可伪造的 User-ID Header。接入正式 Human Auth 后只需替换
+该认证依赖；ActorContext、Team 选择与 API Contract 保持不变。
+
 Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
 Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
