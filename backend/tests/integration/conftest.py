@@ -15,6 +15,7 @@ CORE_TABLES = {
     "users",
     "teams",
     "team_memberships",
+    "human_sessions",
     "shops",
     "devices",
     "shop_device_bindings",

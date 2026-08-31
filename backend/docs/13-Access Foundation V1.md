@@ -81,14 +81,14 @@ ALL 只影响读取过滤，不代表 Create 可以没有 Team。未来任何 Te
 
 ## 5. Human Auth 现状
 
-审计确认当前 User 只有 `user_id / display_name / enabled`，不存在稳定唯一登录标识、密码 Hash 或
-Human Session。现有 `modules/authentication` 是店铺平台登录接入，不是 Human Auth；Worker Bearer
-Token 只属于执行平面。
+Human Auth V1 已在 `modules/human_auth` 建立企业内部人员认证。User 使用规范化 `login_name` 与
+Argon2 `password_hash`，登录成功后创建服务端人员会话（Human Session）。客户端只持有 HttpOnly
+Cookie 中的随机 Token，数据库只保存 Token 的 SHA-256 Hash。
 
-因此本阶段没有自创新 username/email，也没有建立不可登录的伪 Session 表。`get_human_principal`
-是正式、安全的认证接入缝，当前默认返回 `HUMAN_AUTHENTICATION_REQUIRED`，且不接受任意
-`X-User-ID`。一旦产品确定 Human Login Identifier Contract，可在该边界实现最小 Human Session，
-无需改变 ActorContext 或业务 Service。
+`get_human_principal` 现在从固定 Cookie 解析会话，校验会话存在、未撤销、未过期、User 仍存在且
+启用，再返回 `HumanPrincipal(user_id, display_name)`。它不接受 `X-User-ID` 等可伪造身份 Header。
+现有 `modules/authentication` 仍是店铺平台登录接入；Worker Bearer Token 仍只属于执行平面。完整契约
+见 `14-Human Auth V1.md`。
 
 ## 6. API
 
@@ -97,7 +97,7 @@ Token 只属于执行平面。
   启用状态。
 
 My Teams 是选择 Team 的 Bootstrap API，因此它只要求有效 HumanPrincipal，不要求预先解析 Active
-Team。两个 API 在 Human Auth 接入前都会安全返回 401。
+Team。缺少或无效 Human Session 时两个 API 均安全返回 401。
 
 ## 7. 默认团队迁移
 

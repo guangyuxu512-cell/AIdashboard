@@ -1,7 +1,10 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, PostgresDsn, SecretStr
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +17,25 @@ class Settings(BaseSettings):
 
     database_url: PostgresDsn | None = None
     encryption_key: SecretStr | None = None
+    runtime_environment: Literal["development", "test", "production"] = "development"
+    cors_allowed_origins: list[str] = Field(default_factory=list)
+    human_session_ttl_seconds: int = Field(
+        default=7 * 24 * 60 * 60,
+        ge=5 * 60,
+        le=30 * 24 * 60 * 60,
+    )
+    human_session_cookie_name: str = Field(
+        default="siyu_human_session",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    human_session_cookie_secure: bool = False
+    human_session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    human_session_cookie_path: str = Field(
+        default="/api/v1",
+        pattern=r"^/[^\s]*$",
+    )
     asset_storage_dir: Path = Path("data/assets")
     asset_max_upload_bytes: int = Field(
         default=10 * 1024 * 1024,
@@ -42,6 +64,44 @@ class Settings(BaseSettings):
         ge=60,
         le=3600,
     )
+
+    @model_validator(mode="after")
+    def validate_human_auth_transport(self) -> "Settings":
+        normalized_origins: list[str] = []
+        for origin in self.cors_allowed_origins:
+            normalized = origin.strip().rstrip("/")
+            if normalized == "*":
+                raise ValueError("Credential CORS不允许使用通配Origin")
+            parsed = urlsplit(normalized)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("CORS配置必须是完整且不含路径的HTTP Origin")
+            try:
+                parsed.port
+            except ValueError as error:
+                raise ValueError("CORS Origin端口无效") from error
+            normalized_origins.append(
+                f"{parsed.scheme.lower()}://{parsed.netloc.lower()}",
+            )
+        if len(set(normalized_origins)) != len(normalized_origins):
+            raise ValueError("CORS Origin不能重复")
+        if self.human_session_cookie_samesite == "none" and not (
+            self.human_session_cookie_secure
+        ):
+            raise ValueError("SameSite=None要求Secure Cookie")
+        if self.runtime_environment == "production" and not (
+            self.human_session_cookie_secure
+        ):
+            raise ValueError("生产环境必须启用Human Session Secure Cookie")
+        self.cors_allowed_origins = normalized_origins
+        return self
 
 
 @lru_cache

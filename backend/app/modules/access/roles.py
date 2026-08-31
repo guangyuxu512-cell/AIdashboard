@@ -1,1 +1,2 @@
 DEFAULT_ROLE_CODE = "member"
+DEFAULT_TEAM_NAME = "默认团队"

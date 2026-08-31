@@ -60,10 +60,12 @@ data_scope`。My Teams DTO 只包含 Team 名称和状态、Membership ID/状态
 ORM 或任何凭证字段。多 Team 未选择返回 `TEAM_CONTEXT_REQUIRED`；非成员、停用 Membership 或
 停用 Team 返回 `TEAM_ACCESS_DENIED`；无 Active Membership 返回 `TEAM_MEMBERSHIP_REQUIRED`。
 
-当前 `users` 表没有 username、login_name、email、password hash 等可靠 Human Login Identifier，
-项目也没有 Human Session。因此 `get_human_principal` 当前默认 fail closed 并返回
-`HUMAN_AUTHENTICATION_REQUIRED`，不接受可伪造的 User-ID Header。接入正式 Human Auth 后只需替换
-该认证依赖；ActorContext、Team 选择与 API Contract 保持不变。
+Human Auth V1 已为 `users` 增加可空 `login_name/password_hash`，并以服务端人员会话识别
+`HumanPrincipal`。`POST /api/v1/auth/login` 建立 HttpOnly Cookie，`POST /api/v1/auth/logout`
+撤销当前会话，`GET /api/v1/auth/me` 只返回当前人员最小摘要。现有通用 `UserRead` 不返回
+`login_name/password_hash`；后续 Access Management 必须使用独立、受权限保护的管理 Contract。
+`get_human_principal` 不接受可伪造的 User-ID Header；ActorContext、Team 选择与既有 Access API
+Contract 保持不变。
 
 Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
