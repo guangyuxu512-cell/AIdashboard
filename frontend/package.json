@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "dev:real": "vite --host 127.0.0.1 --mode real",
-    "build": "pnpm run typecheck && vite build",
+    "build": "pnpm run typecheck && vite build --mode real",
+    "build:test-production": "pnpm run typecheck && vite build --mode mock",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",

@@ -3,7 +3,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import get_settings
 from app.core.exceptions import install_exception_handlers
 from app.core.health import router as health_router
 from app.modules.access.api import router as access_router
@@ -12,6 +14,7 @@ from app.modules.assets.api import router as assets_router
 from app.modules.automation_apps.api import router as automation_apps_router
 from app.modules.credentials.api import router as credentials_router
 from app.modules.devices.api import router as devices_router
+from app.modules.human_auth.api import router as human_auth_router
 from app.modules.notifications.api import router as notifications_router
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
@@ -51,12 +54,30 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     application = FastAPI(
         title="Ecommerce AI Control Center Backend",
         lifespan=lifespan,
     )
+    if settings.cors_allowed_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"],
+            allow_headers=[
+                "Accept",
+                "Authorization",
+                "Content-Type",
+                "X-Device-ID",
+                "X-Request-ID",
+                "X-Team-ID",
+            ],
+            expose_headers=["X-Request-ID"],
+        )
     install_exception_handlers(application)
     application.include_router(health_router)
+    application.include_router(human_auth_router)
     application.include_router(access_router)
     application.include_router(authentication_router)
     application.include_router(assets_router)

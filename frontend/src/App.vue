@@ -11,11 +11,12 @@ import {
   NNotificationProvider,
   zhCN,
 } from 'naive-ui'
-import { RouterView } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 
 import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
 import { getNavigationEntries } from '@/app/modules/registry'
 import AppShell from '@/shared/components/AppShell.vue'
+import CurrentUserMenu from '@/features/human-auth/ui/CurrentUserMenu.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import ThemeSelector from '@/shared/components/ThemeSelector.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
@@ -29,7 +30,9 @@ const navigation = getNavigationEntries(undefined, {
 })
 
 const themeStore = useThemeStore()
+const route = useRoute()
 const isDevelopment = import.meta.env.DEV
+const isAuthLayout = computed(() => route.meta.layout === 'auth')
 const naiveTheme = computed(() =>
   themeStore.resolvedTheme === 'dark' ? darkTheme : null,
 )
@@ -51,10 +54,17 @@ const naiveThemeOverrides = computed(() =>
       <NDialogProvider :to="APP_OVERLAY_HOST_SELECTOR">
         <NNotificationProvider>
           <NMessageProvider>
-            <AppShell :navigation="navigation">
+            <div v-if="isAuthLayout" class="auth-layout">
+              <div class="auth-layout__actions">
+                <ThemeSelector />
+              </div>
+              <RouterView />
+            </div>
+            <AppShell v-else :navigation="navigation">
               <template #topbar-actions>
                 <StatusTag v-if="isDevelopment" label="开发" />
                 <ThemeSelector />
+                <CurrentUserMenu />
               </template>
               <RouterView />
             </AppShell>
@@ -64,3 +74,19 @@ const naiveThemeOverrides = computed(() =>
     </NLoadingBarProvider>
   </NConfigProvider>
 </template>
+
+<style scoped>
+.auth-layout {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.auth-layout__actions {
+  position: absolute;
+  z-index: 1;
+  top: var(--space-3);
+  right: var(--space-4);
+}
+</style>

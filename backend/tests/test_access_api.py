@@ -65,6 +65,7 @@ def request(
     if authenticated:
         application.dependency_overrides[get_human_principal] = lambda: HumanPrincipal(
             user_id=USER_ID,
+            display_name="API 用户",
         )
         application.dependency_overrides[get_actor_context_service] = (
             ApiActorContextService

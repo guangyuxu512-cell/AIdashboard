@@ -1,14 +1,18 @@
+from typing import Annotated
+
+from fastapi import Depends, Request
+
 from app.modules.access.contracts import HumanPrincipal
-from app.modules.access.exceptions import HumanAuthenticationRequiredError
+from app.modules.human_auth.dependencies import get_human_auth_service
+from app.modules.human_auth.service import HumanAuthService
 
 
-def get_human_principal() -> HumanPrincipal:
-    """Fail-closed seam for the future Human Session authenticator.
+def get_human_principal(
+    request: Request,
+    service: Annotated[HumanAuthService, Depends(get_human_auth_service)],
+) -> HumanPrincipal:
+    """从固定HttpOnly Cookie解析人员身份，不接受可伪造身份Header。"""
 
-    The current User model has no stable login identifier and the project has no
-    Human Session contract. Tests and a future authentication adapter may
-    override this dependency; request headers are deliberately not accepted as
-    user identity.
-    """
-
-    raise HumanAuthenticationRequiredError()
+    return service.resolve_principal(
+        request.cookies.get(service.settings.human_session_cookie_name),
+    )

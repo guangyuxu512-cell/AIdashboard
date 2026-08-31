@@ -588,3 +588,34 @@ def test_access_default_team_backfill_rows_cover_empty_single_and_multiple_users
     assert all(row["role_code"] == "member" for row in multiple)
     assert all(row["data_scope"] == "team" for row in multiple)
     assert all(row["enabled"] is True for row in multiple)
+
+
+def test_human_auth_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260831_0023_human_auth_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    migration.upgrade()
+    assert recorder.calls.count(("add_column", "users")) == 2
+    assert (
+        "create_check_constraint",
+        "ck_users_login_name_normalized",
+    ) in recorder.calls
+    assert ("create_unique_constraint", "uq_users_login_name") in recorder.calls
+    assert ("create_table", "human_sessions") in recorder.calls
+    assert ("create_index", "ix_human_sessions_token_hash") in recorder.calls
+    assert ("create_index", "ix_human_sessions_user_id") in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_human_sessions_user_id"),
+        ("drop_index", "ix_human_sessions_token_hash"),
+        ("drop_table", "human_sessions"),
+        ("drop_constraint", "uq_users_login_name"),
+        ("drop_constraint", "ck_users_login_name_normalized"),
+        ("drop_column", "users"),
+        ("drop_column", "users"),
+    ]
