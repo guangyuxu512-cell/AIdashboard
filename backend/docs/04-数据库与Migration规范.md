@@ -132,8 +132,8 @@ Asset Foundation V2 在原表上补充 `media_type` 与 `source_type`，历史�
 ## Access Foundation V1 数据库
 
 Migration `20260831_0022_access_foundation_v1` 增加 `teams` 与 `team_memberships`。
-Membership 使用独立 UUID 主键、`UNIQUE(team_id, user_id)`、两个 Active Lookup 部分索引，
-并以 RESTRICT 外键关联 Team 与 User。`data_scope` 的数据库 Check 只允许
+Membership 使用独立 UUID 主键、`UNIQUE(team_id, user_id)`、User Membership 查询索引与两个
+Active Lookup 部分索引，并以 RESTRICT 外键关联 Team 与 User。`data_scope` 的数据库 Check 只允许
 `self / team / all`；`role_code` 是非空可扩展字符串，当前默认 Registry 只有 `member`。
 
 Migration 创建一个“默认团队”，并把升级时已经存在的全部 User 各回填一条启用 Membership：

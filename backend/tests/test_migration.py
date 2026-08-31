@@ -550,6 +550,10 @@ def test_access_foundation_migration_upgrade_and_downgrade(
     ]
     assert (
         "create_index",
+        "ix_team_memberships_user_id",
+    ) in recorder.calls
+    assert (
+        "create_index",
         "ix_team_memberships_active_user",
     ) in recorder.calls
     assert (

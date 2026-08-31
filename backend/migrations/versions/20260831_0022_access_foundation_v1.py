@@ -155,6 +155,12 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
+        "ix_team_memberships_user_id",
+        "team_memberships",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_index(
         "ix_team_memberships_active_user",
         "team_memberships",
         ["user_id"],
@@ -178,6 +184,10 @@ def downgrade() -> None:
     )
     op.drop_index(
         "ix_team_memberships_active_user",
+        table_name="team_memberships",
+    )
+    op.drop_index(
+        "ix_team_memberships_user_id",
         table_name="team_memberships",
     )
     op.drop_table("team_memberships")

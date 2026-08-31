@@ -67,6 +67,7 @@ def test_postgresql_access_schema_constraints_and_services(
     membership_indexes = {
         index["name"]: index for index in inspector.get_indexes("team_memberships")
     }
+    assert "ix_team_memberships_user_id" in membership_indexes
     assert "ix_team_memberships_active_user" in membership_indexes
     assert "ix_team_memberships_active_team" in membership_indexes
     assert (

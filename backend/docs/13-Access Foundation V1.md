@@ -34,7 +34,8 @@ Organization 或 Department。
 - `created_at / updated_at`
 
 同一 `(team_id, user_id)` 只能存在一条关系。Team 与 Membership 通过 enabled 停用；本阶段不提供
-Hard Delete 流程。
+Hard Delete 流程。User 的全部 Membership 查询使用普通 `user_id` 索引；Active User/Team 查询
+使用部分索引，避免未来在每个 Service 重复扫描关系表。
 
 Role 与 Data Scope 必须分开：Role 为未来动作权限保留，Scope 决定可见数据范围。当前唯一默认
 Role Code 是可扩展字符串 `member`，没有 roles/permissions 表。

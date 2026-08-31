@@ -53,6 +53,7 @@ class TeamMembership(TimestampMixin, Base):
             "user_id",
             name="uq_team_memberships_team_user",
         ),
+        Index("ix_team_memberships_user_id", "user_id"),
         Index(
             "ix_team_memberships_active_user",
             "user_id",
