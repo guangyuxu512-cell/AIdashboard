@@ -2,9 +2,8 @@
 
 ## 状态与参考
 
-状态：**Completed / Candidate for Visual Review（已完成 / 候选人工视觉复核）**。本文只覆盖
-`/devices/:deviceId` 的 Visual V2 页面组合、详情专属组件和本轮新增共享候选；未经人工确认不得标记
-Frozen（已冻结）。
+状态：**Completed / Frozen（已完成 / 已冻结）**。本文只覆盖 `/devices/:deviceId` 的 Visual V2 页面组合、
+详情专属组件，以及由本页完成真实场景验证的共享模式。
 
 详情视觉参考为本机文件 `C:\Users\Administrator\Desktop\设备卡详情.html`。参考 HTML 只决定详情页的
 Composition（页面组合）、比例、层级和 Light 方向；生产实现不复制假 9:41、信号/Wi-Fi/电池、Home
@@ -14,9 +13,9 @@ Indicator、固定 428×926 Phone Shell、CDN、Mock Device/Task/Application、P
 优先级固定为：已冻结的 Mobile Visual V2 Shared Foundation → 本文详情 Composition → 正式 Backend / Query
 Contract → 旧 Mobile V1 Device Detail。业务事实永远不被视觉稿覆盖。
 
-## Selective Unfreeze（选择性解冻）
+## Selective Unfreeze Closure（选择性解冻收口）
 
-本轮显式解冻并迁移：
+以下范围曾显式解冻并迁移，现已完成人工确认并重新冻结：
 
 - Device Detail Page Composition；
 - 旧 `DeviceRuntimeSummary` V1 在 `/devices/:deviceId` 的页面职责；
@@ -27,6 +26,12 @@ Contract → 旧 Mobile V1 Device Detail。业务事实永远不被视觉稿覆�
 未解冻：`/devices` 列表、`DeviceCard V2`、`MobileAppShell V2`、Page Background V2、Global Typography
 Foundation、`MobileBottomNavigation V2`、Router、Query Key、Backend Contract、Auth/Permission、Task List /
 Task Detail、Worker 与数据库。
+
+本次冻结包括：`/devices/:deviceId` Composition、`MobileDetailHeader V2`、`DeviceDetailHero V2`、
+`MobileBusinessCardFrame V2`、`TaskCard V2` 共享三行骨架、`DeviceCapabilityPanel V2` 视觉结构、
+`DeviceStatusArtwork` hero variant、Current Task → TaskCard V2 复用关系、详情主滚动区、Bottom Navigation V2
+复用关系，以及 Light / Dark Visual V2 映射。后续若需改变 Anatomy、Hierarchy、Geometry、Navigation、Scroll
+或 Theme Mapping，必须先明确提出 Unfreeze 并重新完成人工验收。
 
 ## Prototype → Production Mapping
 
@@ -71,13 +76,13 @@ AppShell Page Background 绘制；Bottom Navigation 独立拥有 Bottom Safe Are
 - Mobile Icon Registry 的 Back、More、Refresh、Chevron、Task 与 Capability Glyph；
 - Light / Dark / System Theme Store 与 Semantic Color Token。
 
-## New Shared V2 Candidates（新增共享候选）
+## Frozen Shared V2 Patterns（已冻结共享模式）
 
-| Pattern               | 文件                                    | 职责与复用边界                                                                              | 状态                     |
-| --------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------ |
-| MobileDetailHeader V2 | `shared/ui/MobileDetailHeader.vue`      | Left / Center Title / Right Action、透明背景；业务页只注册 Action                           | **Candidate for Freeze** |
-| BusinessCardFrame V2  | `shared/ui/MobileBusinessCardFrame.vue` | Surface、102px Leading Column、三行 Main Content、18px Trailing、触控与对齐；不包含业务状态 | **Candidate for Freeze** |
-| TaskCard V2           | `entities/task/ui/TaskListCard.vue`     | 复用正式 Task 状态与 Meta；由调用方显式开启 V2，本轮不迁移 `/tasks`                         | **Candidate for Freeze** |
+| Pattern               | 文件                                    | 职责与复用边界                                                                              | 状态       |
+| --------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- | ---------- |
+| MobileDetailHeader V2 | `shared/ui/MobileDetailHeader.vue`      | Left / Center Title / Right Action、透明背景；业务页只注册 Action                           | **Frozen** |
+| BusinessCardFrame V2  | `shared/ui/MobileBusinessCardFrame.vue` | Surface、102px Leading Column、三行 Main Content、18px Trailing、触控与对齐；不包含业务状态 | **Frozen** |
+| TaskCard V2           | `entities/task/ui/TaskListCard.vue`     | 复用正式 Task 状态与 Meta；由调用方显式开启 V2，本轮不迁移 `/tasks`                         | **Frozen** |
 
 `BusinessCardFrame V2` 不是万能业务 Card。Device、Task 与未来 Shop 继续在自己的 Entity / Feature 中处理
 Artwork、状态和业务字段；Shared 不出现 `deviceMode/taskMode/shopMode` 分支。为抽取 Frame 而做的
@@ -99,7 +104,7 @@ Device Feature 组件，不使用 `BusinessCardFrame V2`。
 当前 Backend 没有 Device Kind 与用户编号 Contract，因此 Production 继续使用 `desktop` fallback；不显示
 Prototype 的 `GY00099`，不把 UUID 当用户编号，也不根据设备名、IP 或版本猜 Kind。
 
-Hero 几何候选：214px Min Height，`24 / 22 / 20 / 22px` 四向 Padding，138px Leading Column，122px
+Hero 冻结几何：214px Min Height，`24 / 22 / 20 / 22px` 四向 Padding，138px Leading Column，122px
 Artwork Height；详情 Section Gap 为16px。所有值只存在于 `tokens.css` 的 Visual V2 Detail Semantic Token。
 
 ## Business Card Unification（业务卡片统一）
@@ -189,5 +194,6 @@ Backend、Worker 与数据库在本轮保持 0 修改。
   原有列表视觉均不回归；
 - 质量：Console Error = 0、Horizontal Overflow = 0、组件无颜色字面量、Production 无 Mock。
 
-本轮结束后 `MobileDetailHeader V2`、`BusinessCardFrame V2`、`TaskCard V2`、`DeviceDetailHero V2` 与
-`CapabilityPanel V2` 仍为 Candidate。人工确认前不得自动 Frozen，也不得开始 Task List Visual V2。
+`MobileDetailHeader V2`、`BusinessCardFrame V2`、`TaskCard V2`、`DeviceDetailHero V2` 与
+`CapabilityPanel V2` 已随 Device Detail Visual V2 完成人工确认并冻结。冻结不新增 Backend 写操作、不改变
+Query / Router，也不自动迁移 `/tasks`；Task List Visual V2 必须在独立分支和独立任务中开始。
