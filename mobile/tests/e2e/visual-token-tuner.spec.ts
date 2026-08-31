@@ -259,7 +259,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     expect(consoleErrors).toEqual([])
   })
 
-  test('独立调参页可同步设备详情的运行摘要与能力密度', async ({
+  test('旧版密度 Token 不穿透已迁移的 Visual V2 设备详情', async ({
     page: preview,
     context,
   }) => {
@@ -277,6 +277,19 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     await tuner.goto('/#/__visual-tuner')
     await expect(tuner.getByTestId('visual-token-tuner-panel')).toBeVisible()
 
+    const visualV2Baseline = await preview.evaluate(() => {
+      const hero = document.querySelector<HTMLElement>(
+        '[data-testid="device-detail-hero"]',
+      )!
+      const row = document.querySelector<HTMLElement>(
+        '[data-testid="application-row"]',
+      )!
+      return {
+        heroPaddingTop: window.getComputedStyle(hero).paddingTop,
+        capabilityRowHeight: row.getBoundingClientRect().height,
+      }
+    })
+
     await tuner.getByRole('tab', { name: '运行摘要' }).click()
     await setRangeValue(
       tuner.getByTestId('visual-token-range-runtime-padding-y'),
@@ -287,11 +300,11 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .toBe('20px')
     await expect
       .poll(() =>
-        preview.getByTestId('device-summary-device').evaluate((element) => {
+        preview.getByTestId('device-detail-hero').evaluate((element) => {
           return window.getComputedStyle(element).paddingTop
         }),
       )
-      .toBe('20px')
+      .toBe(visualV2Baseline.heroPaddingTop)
 
     await tuner.getByRole('tab', { name: '能力' }).click()
     await setRangeValue(
@@ -317,6 +330,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           list.querySelectorAll<HTMLElement>('[data-testid="application-row"]'),
         )
         return {
+          firstRowHeight: rows[0]!.getBoundingClientRect().height,
           fiveRowsVisible: rows
             .slice(0, 5)
             .every(
@@ -327,6 +341,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
         }
       })
     expect(rowsLayout).toEqual({
+      firstRowHeight: visualV2Baseline.capabilityRowHeight,
       fiveRowsVisible: true,
       sixthRequiresScroll: true,
     })
@@ -335,6 +350,9 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     await expect
       .poll(() => rootValue(preview, '--layout-capability-panel-height'))
       .toBe('372px')
+    await expect
+      .poll(() => rootValue(preview, '--layout-runtime-summary-padding-y'))
+      .toBe('9px')
     await expectNoHorizontalOverflow(preview)
     await expectNoHorizontalOverflow(tuner)
     expect(previewErrors).toEqual([])
@@ -640,22 +658,28 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .poll(() => rootValue(preview, '--bg-surface-raised'))
       .toBe('#f0f4f7')
 
-    await preview.goto('/#/devices/visual-device-operations')
-    await expect(preview.getByTestId('device-detail')).toBeVisible()
+    await preview.evaluate(() => {
+      window.location.hash = '/tasks/visual-task-success'
+    })
+    await expect(preview).toHaveURL(/#\/tasks\/visual-task-success$/)
+    await expect(preview.getByTestId('task-detail')).toBeVisible({
+      timeout: 10_000,
+    })
     await tuner.getByRole('tab', { name: '状态' }).click()
     const onlineStatus = tuner.getByTestId(
       'visual-token-color-hex-light-status-success',
     )
     await onlineStatus.fill('#247a56')
     await onlineStatus.press('Tab')
-    const onlineTag = preview
-      .getByTestId('device-runtime-states')
+    const successTag = preview
+      .getByTestId('task-detail')
       .locator('.van-tag--success')
-      .first()
-    await expect(onlineTag).toBeVisible()
+    await expect(successTag).toBeVisible()
     await expect
       .poll(() =>
-        onlineTag.evaluate((element) => window.getComputedStyle(element).color),
+        successTag.evaluate(
+          (element) => window.getComputedStyle(element).color,
+        ),
       )
       .toBe('rgb(36, 122, 86)')
 
@@ -766,19 +790,21 @@ test.describe('Visual Token Tuner V2 / V3', () => {
 
     await preview.goto('/#/devices')
     await expect(card).toBeVisible()
-    await card.locator('.device-list-card__main').click()
+    await card.getByRole('button').click()
     await expect(preview).toHaveURL(/#\/devices\/[^/]+$/)
-    const runtimeSummary = preview.getByTestId('device-detail')
+    const detailPage = preview.getByTestId('device-detail')
+    const detailHero = preview.getByTestId('device-detail-hero')
     const capabilityPanel = preview.getByTestId('device-capability-panel')
-    await expect(runtimeSummary).toBeVisible()
+    await expect(detailPage).toBeVisible()
+    await expect(detailHero).toBeVisible()
     await expect(capabilityPanel).toBeVisible()
     await setRangeValue(
       tuner.getByTestId('visual-token-appearance-range-radius-panel'),
       20,
     )
     await expect.poll(() => rootValue(preview, '--radius-panel')).toBe('20px')
-    await expect(runtimeSummary).toHaveCSS('border-radius', '20px')
-    await expect(capabilityPanel).toHaveCSS('border-radius', '20px')
+    await expect(detailHero).toHaveCSS('border-radius', '18px')
+    await expect(capabilityPanel).toHaveCSS('border-radius', '18px')
 
     await preview.goto('/#/devices')
     await expect(card).toBeVisible()

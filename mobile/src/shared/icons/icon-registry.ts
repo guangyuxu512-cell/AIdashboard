@@ -204,6 +204,11 @@ export const MOBILE_ICON_REGISTRY = {
     role: 'action',
     source: { kind: 'vant', name: 'cross' },
   },
+  more: {
+    label: '更多',
+    role: 'action',
+    source: { kind: 'vant', name: 'ellipsis' },
+  },
   configure: {
     label: '配置',
     role: 'action',
@@ -268,6 +273,7 @@ export const MOBILE_ICON_GALLERY_GROUPS = [
       'back',
       'chevron-right',
       'close',
+      'more',
     ],
   },
 ] as const satisfies ReadonlyArray<{
