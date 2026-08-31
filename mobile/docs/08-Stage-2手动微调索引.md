@@ -1,9 +1,10 @@
 # Stage 2 手动微调索引
 
-> `/devices` 已进入 Mobile Visual V2 选择性迁移，旧 Device V1 的 Summary、Toolbar、Card 与 Primary
-> Leading Visual 数值不再约束该列表页；它们仍约束未迁移的 TaskCard、详情和其它既有组件。Visual V2
-> 当前共享基础范围已完成 Freeze Audit 并 Frozen，完整覆盖条款见
-> [`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。禁止用本索引旧值回写 Visual V2。
+> `/devices` 与 Visual V2 Shared Foundation 已完成 Freeze Audit 并 Frozen；`/devices/:deviceId` 已完成
+> Device Detail Visual V2 工程化迁移并处于 Candidate for Visual Review。旧 Device V1 的 Summary、Toolbar、
+> Card、Primary Leading Visual、DeviceRuntimeSummary 与 Capability 尺寸不再约束这两个已迁移页面。
+> 列表权威条款见 [`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)，详情候选条款见
+> [`11-Mobile-Visual-V2-设备详情.md`](./11-Mobile-Visual-V2-设备详情.md)。禁止用本索引旧值回写 Visual V2。
 
 本文记录 Mobile Stage 2 的唯一正式尺寸基线。正式值以
 `src/shared/styles/tokens.css` 为权威来源；本文件用于说明 Token 的职责、消费者与冻结边界，不能创建
@@ -101,7 +102,10 @@ Summary、Runtime、Capability 等稳定语义 Token；旧的 `--space-1` / `--s
 
 视觉 Shell 与 Touch Target 是不同职责。不得为了紧凑视觉缩小 45px 操作热区，也不得以扩大的热区改写既有布局结构。
 
-### Card / Icon Ratio（卡片与图标比例）
+### Card / Icon Ratio（卡片与图标比例，V1 历史）
+
+下表继续约束未迁移 V1 页面；Visual V2 Device List / Detail 必须读取本文末尾的 Selective Override 和
+对应 10/11 号文档。
 
 | 语义                                | Token                                                                      | 正式值      | 主要消费者                          |
 | ----------------------------------- | -------------------------------------------------------------------------- | ----------- | ----------------------------------- |
@@ -115,7 +119,9 @@ Summary、Runtime、Capability 等稳定语义 Token；旧的 `--space-1` / `--s
 Slot（图标槽位）与 Glyph（图形视觉尺寸）始终分离。最终图标资源、Tile、颜色和描边属于 Stage 3，不能通过调整本表的
 结构关系提前实现。
 
-### Detail Density（详情密度）
+### Detail Density（详情密度，V1 历史）
+
+下表的 Runtime Summary 与372/50px Capability 值不再约束 Device Detail V2。
 
 | Token / 规则                         | 正式值                             | 约束                                          |
 | ------------------------------------ | ---------------------------------- | --------------------------------------------- |
@@ -125,7 +131,7 @@ Slot（图标槽位）与 Glyph（图形视觉尺寸）始终分离。最终图�
 | Capability List                      | 前 5 行完整可见；第 6 行起内部滚动 | 不露出半行，不把 Header / Selector 移入滚动区 |
 | DeviceRuntimeSummary / Task Detail   | 自然高度                           | 不改 Upper → Separator → Lower 与详情字段层级 |
 
-## 组件定位
+## 组件定位（V1 历史）
 
 - `MobileDetailHeader`：使用 51px 详情头部、45px Touch Target 与 32px 可见图标外壳；不得改变三列对称结构。
 - `MobileGlobalHeader`：保持 52px，高度链、Safe Area 和品牌 / Theme / Bell 顺序均冻结。
@@ -173,12 +179,19 @@ Stage 4 仍未冻结：Press、Motion。
 覆盖，不改写本文件中未迁移 V1 页面历史：Page Header 66px、Search 44px、Metric Strip 90px、DeviceCard
 最小 122px / Gap 14px / Grid 102px + `minmax(0, 1fr)` + 18px、Artwork 80×80px、Bottom Navigation
 64px 主体 / 25px Icon / 12px Label。Global Font Family 与 `--typography-v2-*` 也只在迁移组件中消费；
-未迁移 Task、Detail、Schedule、Shop、Me 继续保持 V1 Frozen Geometry。
+未迁移 Task List / Detail、Schedule、Shop、Me 继续保持 V1 Frozen Geometry。
+
+`/devices/:deviceId` 另经显式 Selective Unfreeze 使用 Device Detail V2 候选：Detail Header 66px、Detail
+Section Gap 16px、Hero Min Height 214px、Business Card 122px / 102-1fr-18 Grid、Capability Row 66px / List
+330px。旧 Runtime 17/9px、48/25px与旧 Capability 372/50px只保留为 V1 历史，不得覆盖详情 V2。
+`/tasks` 仍使用原列表视觉；只有 Device Current Task 显式消费 TaskCard V2。
 
 Visual V2 的完整 Token、共享 Foundation 状态与三态 Device 规则见
 [`02-设计系统.md`](./02-设计系统.md) 和
 [`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。当前审计范围状态是
 **Completed / Frozen**；`MobileListToolbar V2` 因 `/devices` 未实际使用，仍为 Shared Candidate。
+Device Detail V2 的完整 Token 与候选状态见
+[`11-Mobile-Visual-V2-设备详情.md`](./11-Mobile-Visual-V2-设备详情.md)，当前不得自动 Frozen。
 
 ## 验证
 

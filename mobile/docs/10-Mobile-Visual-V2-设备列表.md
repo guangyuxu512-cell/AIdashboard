@@ -24,9 +24,11 @@ Home Indicator、Prototype Theme Store、Button 模拟路由或假通知红点�
 本次 Freeze Audit（冻结审计）确认实现与人工确认规范一致，上述范围重新 Frozen。未来确需改变 Anatomy、
 Hierarchy、Navigation Contract、Scroll Contract 或视觉基线时必须显式 Unfreeze，禁止在其它阶段顺手修改。
 
-未解冻：Backend Contract、DTO、Query Key、Router Contract、Auth/Permission、Device Detail、Task List / Detail、
-Schedule、Shop、Me、Capability、Worker 与数据库。旧 Stage 1～3 记录继续作为未迁移组件的 V1 Frozen 历史；
-本文件只对显式列出的 Visual V2 条款具有覆盖权。
+本次列表冻结未解冻 Backend Contract、DTO、Query Key、Router Contract、Auth/Permission、Task List / Detail、
+Schedule、Shop、Me、Worker 与数据库。Device Detail 后续已通过独立 Selective Unfreeze 完成 Visual V2
+工程化迁移，但仍是 Candidate for Visual Review，其权威条款见
+[`11-Mobile-Visual-V2-设备详情.md`](./11-Mobile-Visual-V2-设备详情.md)。本文件只对设备列表及显式列出的共享
+Visual V2 条款具有覆盖权。
 
 ## 正式页面组合
 

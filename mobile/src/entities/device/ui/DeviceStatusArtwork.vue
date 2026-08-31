@@ -8,8 +8,9 @@ withDefaults(
   defineProps<{
     kind?: DeviceArtworkKind
     state: DeviceArtworkState
+    variant?: 'list' | 'hero'
   }>(),
-  { kind: 'desktop' },
+  { kind: 'desktop', variant: 'list' },
 )
 </script>
 
@@ -19,9 +20,11 @@ withDefaults(
     :class="[
       `device-status-artwork--${kind}`,
       `device-status-artwork--${state}`,
+      `device-status-artwork--${variant}`,
     ]"
     :data-device-artwork-kind="kind"
     :data-device-artwork-state="state"
+    :data-device-artwork-variant="variant"
     data-testid="device-status-artwork"
     aria-hidden="true"
   >
@@ -70,6 +73,17 @@ withDefaults(
   width: var(--device-list-artwork-width);
   height: var(--device-list-artwork-height);
   place-items: center;
+}
+
+.device-status-artwork--hero {
+  width: var(--visual-v2-detail-hero-leading-column);
+  height: var(--visual-v2-detail-hero-artwork-height);
+}
+
+.device-status-artwork--hero > .device-status-artwork__desktop,
+.device-status-artwork--hero > .device-status-artwork__laptop,
+.device-status-artwork--hero > .device-status-artwork__server {
+  transform: scale(var(--visual-v2-detail-hero-artwork-scale));
 }
 
 .device-status-artwork__desktop,

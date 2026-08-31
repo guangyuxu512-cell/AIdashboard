@@ -160,6 +160,31 @@ describe('MobileAppShell V2', () => {
     expect(wrapper.find('.mobile-global-header').exists()).toBe(false)
   })
 
+  it('supports the Visual V2 right-action slot without changing header anatomy', async () => {
+    const wrapper = mount(MobileDetailHeader, {
+      props: {
+        title: '设备详情',
+        visualV2: true,
+        rightAction: {
+          label: '更多信息',
+          icon: 'more',
+          run: () => undefined,
+        },
+      },
+    })
+    mountedWrappers.push(wrapper)
+
+    expect(wrapper.classes()).toContain('mobile-detail-header--visual-v2')
+    expect(wrapper.get('[aria-label="更多信息"]').attributes('type')).toBe(
+      'button',
+    )
+    expect(
+      wrapper.find('[aria-label="更多信息"] [data-icon-key="more"]').exists(),
+    ).toBe(true)
+    await wrapper.get('[aria-label="更多信息"]').trigger('click')
+    expect(wrapper.emitted('right')).toHaveLength(1)
+  })
+
   it('renders the header, default content and bottom slots', () => {
     const wrapper = mount(MobileAppShell, {
       slots: {

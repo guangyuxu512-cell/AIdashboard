@@ -14,6 +14,7 @@ import {
   MobileDetailHeader,
   MobileGlobalHeader,
   MobileThemeSettingsSheet,
+  provideMobileDetailHeaderAction,
 } from '@/shared/ui'
 
 const visualTokenTunerEnabled =
@@ -29,6 +30,7 @@ const router = useRouter()
 const themeStore = useThemeStore()
 const { mode, resolvedTheme } = storeToRefs(themeStore)
 const themeSettingsOpen = ref(false)
+const detailHeader = provideMobileDetailHeaderAction()
 
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
@@ -37,6 +39,12 @@ const isToolLayout = computed(() => shellLayout.value === 'tool')
 const globalHeaderPageTitle = computed(() =>
   route.name === MOBILE_ROUTE_NAMES.devices ? '设备' : undefined,
 )
+const isVisualV2Route = computed(
+  () =>
+    route.name === MOBILE_ROUTE_NAMES.devices ||
+    route.name === MOBILE_ROUTE_NAMES.deviceDetail,
+)
+const detailHeaderAction = computed(() => detailHeader.action.value)
 const activeNavigationKey = computed(() => {
   if (
     route.name === MOBILE_ROUTE_NAMES.devices ||
@@ -114,6 +122,10 @@ function showNotificationPlaceholder(): void {
   showToast('功能建设中')
 }
 
+function runDetailHeaderAction(): void {
+  detailHeaderAction.value?.run()
+}
+
 function selectTheme(nextMode: ThemeMode): void {
   themeStore.setMode(nextMode)
   themeSettingsOpen.value = false
@@ -127,7 +139,7 @@ function selectTheme(nextMode: ThemeMode): void {
     <MobileAppShell
       v-else
       :class="{
-        'mobile-app-shell--visual-v2': Boolean(globalHeaderPageTitle),
+        'mobile-app-shell--visual-v2': isVisualV2Route,
       }"
     >
       <template #header>
@@ -140,7 +152,14 @@ function selectTheme(nextMode: ThemeMode): void {
           @notification-click="showNotificationPlaceholder"
           @settings-click="themeSettingsOpen = true"
         />
-        <MobileDetailHeader v-else :title="routeTitle" @back="goBack" />
+        <MobileDetailHeader
+          v-else
+          :title="routeTitle"
+          :visual-v2="isVisualV2Route"
+          :right-action="detailHeaderAction"
+          @back="goBack"
+          @right="runDetailHeaderAction"
+        />
       </template>
 
       <RouterView />

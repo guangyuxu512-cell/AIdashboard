@@ -14,14 +14,18 @@ import type {
 } from '@/entities/device'
 import { MobileIcon } from '@/shared/icons'
 
-const props = defineProps<{
-  inventories: DeviceProviderInventoryReadDto[] | undefined
-  capabilities: DeviceSkillCapabilityReadDto[] | undefined
-  providerLoading: boolean
-  providerError: boolean
-  capabilityLoading: boolean
-  capabilityError: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    inventories: DeviceProviderInventoryReadDto[] | undefined
+    capabilities: DeviceSkillCapabilityReadDto[] | undefined
+    providerLoading: boolean
+    providerError: boolean
+    capabilityLoading: boolean
+    capabilityError: boolean
+    refreshing?: boolean
+  }>(),
+  { refreshing: false },
+)
 
 const emit = defineEmits<{
   refreshCapability: []
@@ -54,6 +58,7 @@ const applicationCount = computed(() =>
 const skillCount = computed(() =>
   props.capabilities === undefined ? '—' : businessSkills.value.length,
 )
+
 function formatSkillVersion(version: string): string | null {
   const normalized = version.trim()
   if (!normalized) return null
@@ -65,26 +70,35 @@ function formatSkillVersion(version: string): string | null {
 
 <template>
   <section
-    class="device-capability-panel mobile-section-surface"
+    class="device-capability-panel"
     data-testid="device-capability-panel"
-    aria-label="能力"
+    aria-label="能力面板"
   >
     <div class="device-capability-panel__header">
-      <h2 class="device-capability-panel__title">能力</h2>
+      <h2 class="device-capability-panel__title">能力面板</h2>
       <button
         type="button"
-        class="device-capability-panel__refresh mobile-icon-button mobile-pressable"
+        class="device-capability-panel__refresh mobile-pressable"
+        :disabled="refreshing"
+        :aria-busy="refreshing"
         aria-label="刷新能力"
         data-testid="device-capability-refresh"
         @click="emit('refreshCapability')"
       >
-        <MobileIcon name="refresh" />
+        <MobileIcon
+          class="device-capability-panel__refresh-icon"
+          :class="{
+            'device-capability-panel__refresh-icon--active': refreshing,
+          }"
+          name="refresh"
+        />
+        <span>刷新</span>
       </button>
     </div>
 
     <VanTabs
       v-model:active="activeTab"
-      class="device-capability-panel__tabs mobile-segmented-tabs"
+      class="device-capability-panel__tabs"
       data-testid="device-capability-tabs"
     >
       <VanTab name="applications">
@@ -151,14 +165,14 @@ function formatSkillVersion(version: string): string | null {
             :aria-label="`配置：${application.app_name}`"
             @click="emit('configureApplication', application)"
           >
-            <span>配置</span>
+            <span class="device-capability-panel__action-label">配置</span>
           </VanButton>
           <VanButton
             class="device-capability-panel__action device-capability-panel__action--run"
             :aria-label="`运行：${application.app_name}`"
             @click="emit('runApplication', application)"
           >
-            <span>运行</span>
+            <span class="device-capability-panel__action-label">运行</span>
           </VanButton>
         </div>
       </div>
@@ -218,14 +232,14 @@ function formatSkillVersion(version: string): string | null {
             :aria-label="`配置：${capability.display_name}`"
             @click="emit('configureSkill', capability)"
           >
-            <span>配置</span>
+            <span class="device-capability-panel__action-label">配置</span>
           </VanButton>
           <VanButton
             class="device-capability-panel__action device-capability-panel__action--run"
             :aria-label="`运行：${capability.display_name}`"
             @click="emit('runSkill', capability)"
           >
-            <span>运行</span>
+            <span class="device-capability-panel__action-label">运行</span>
           </VanButton>
         </div>
       </div>
@@ -236,21 +250,24 @@ function formatSkillVersion(version: string): string | null {
 <style scoped>
 .device-capability-panel {
   display: grid;
-  height: var(--layout-capability-panel-height);
-  max-height: var(--layout-capability-panel-height);
   min-width: 0;
-  gap: var(--layout-capability-panel-gap);
-  padding: calc(var(--space-3) + var(--border-width)) var(--space-3);
-  grid-template-rows: var(--touch-target-min) var(--touch-target-min) minmax(
-      0,
-      1fr
-    );
+  padding: var(--visual-v2-detail-capability-padding-top)
+    var(--visual-v2-detail-capability-padding-x)
+    var(--visual-v2-detail-capability-padding-bottom);
   overflow: hidden;
+  color: var(--visual-v2-page-text-primary);
+  background: var(--visual-v2-detail-surface-background);
+  border: var(--visual-v2-business-card-border-width) solid
+    var(--visual-v2-detail-surface-border-color);
+  border-radius: var(--visual-v2-metric-strip-radius);
+  box-shadow: var(--visual-v2-detail-surface-shadow);
 }
 
 .device-capability-panel__header {
   display: flex;
   min-width: 0;
+  height: var(--visual-v2-detail-capability-header-height);
+  margin-bottom: var(--visual-v2-detail-capability-header-gap);
   align-items: center;
   justify-content: space-between;
 }
@@ -258,16 +275,95 @@ function formatSkillVersion(version: string): string | null {
 .device-capability-panel__title {
   min-width: 0;
   overflow: hidden;
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-label);
+  font-size: var(--typography-v2-detail-section-title-size);
+  font-weight: var(--typography-v2-detail-section-title-weight);
+  line-height: var(--typography-v2-detail-section-title-line-height);
+  letter-spacing: var(--typography-v2-business-card-title-letter-spacing);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.device-capability-panel__refresh {
+  position: relative;
+  display: inline-flex;
+  min-width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0 var(--visual-v2-detail-capability-action-padding-x);
+  gap: var(--visual-v2-detail-capability-action-gap);
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-action);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-action);
+}
+
+.device-capability-panel__refresh::before {
+  position: absolute;
+  inset-block: calc(
+    (
+        var(--touch-target-min) -
+          var(--visual-v2-detail-capability-action-visual-height)
+      ) /
+      2
+  );
+  inset-inline: 0;
+  content: '';
+  background: var(--visual-v2-detail-surface-background);
+  border: var(--border-width) solid var(--visual-v2-detail-weak-border-color);
+  border-radius: var(--radius-control);
+}
+
+.device-capability-panel__refresh > * {
+  position: relative;
+  z-index: 1;
+}
+
+.device-capability-panel__refresh-icon {
+  font-size: var(--icon-size-small);
+}
+
+.device-capability-panel__refresh-icon--active {
+  animation: device-capability-refresh var(--duration-normal) linear infinite;
+}
+
 .device-capability-panel__tabs {
   min-width: 0;
+  margin-bottom: var(--visual-v2-detail-capability-tabs-bottom-gap);
   overflow: hidden;
+}
+
+.device-capability-panel__tabs :deep(.van-tabs__wrap) {
+  position: relative;
+  height: var(--visual-v2-detail-capability-tabs-height);
+}
+
+.device-capability-panel__tabs :deep(.van-tabs__wrap)::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: var(--border-width);
+  pointer-events: none;
+  content: '';
+  background: var(--visual-v2-detail-divider-color);
+}
+
+.device-capability-panel__tabs :deep(.van-tabs__nav) {
+  background: transparent;
+}
+
+.device-capability-panel__tabs :deep(.van-tabs__line) {
+  height: calc(var(--border-width) * 2);
+  background: var(--color-primary);
+}
+
+.device-capability-panel__tabs :deep(.van-tabs__content) {
+  display: none;
 }
 
 .device-capability-panel__tab-label,
@@ -276,72 +372,39 @@ function formatSkillVersion(version: string): string | null {
 }
 
 .device-capability-panel__tab-label {
-  font-size: var(--font-size-action);
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-action);
+  line-height: var(--line-height-body);
 }
 
 .device-capability-panel__tab-count {
-  margin-left: var(--layout-compact-gap);
+  margin-left: var(--space-1);
   color: var(--text-tertiary);
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-secondary);
   font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-caption);
-}
-
-.device-capability-panel__tabs
-  :deep(.van-tab--active)
-  .device-capability-panel__tab-count {
-  color: var(--text-secondary);
-}
-
-.device-capability-panel__refresh {
-  flex: none;
-  color: var(--text-secondary);
-}
-
-.device-capability-panel__refresh::before {
-  inset: calc((var(--touch-target-min) - var(--control-height-compact)) / 2);
-  background: var(--bg-subtle);
-  border: var(--border-width) solid transparent;
-  box-shadow: var(--appearance-border-control), var(--shadow-icon-button);
-}
-
-.device-capability-panel__refresh .mobile-icon {
-  font-size: var(--icon-size-small);
+  line-height: var(--line-height-secondary);
 }
 
 .device-capability-panel__list {
   min-width: 0;
+  height: var(--visual-v2-detail-capability-list-height);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: auto;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
 
 .device-capability-panel__row {
   position: relative;
-  display: flex;
+  display: grid;
   min-width: 0;
-  min-height: var(--layout-capability-row-min-height);
-  gap: var(--layout-capability-row-gap);
+  min-height: var(--visual-v2-detail-capability-row-height);
+  gap: var(--visual-v2-detail-capability-row-gap);
+  grid-template-columns:
+    var(--visual-v2-detail-capability-icon-slot) minmax(0, 1fr)
+    auto;
   align-items: center;
-}
-
-.device-capability-panel__icon-slot {
-  display: grid;
-  width: var(--layout-capability-icon-slot-width);
-  flex: 0 0 var(--layout-capability-icon-slot-width);
-  color: var(--text-secondary);
-  font-size: var(--icon-size-capability-row);
-  place-items: center;
-}
-
-.device-capability-panel__main-content {
-  display: grid;
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
 .device-capability-panel__row:not(:last-child)::after {
@@ -351,33 +414,57 @@ function formatSkillVersion(version: string): string | null {
   left: 0;
   height: var(--border-width);
   content: '';
-  background: var(--border-subtle);
+  background: var(--visual-v2-detail-divider-color);
 }
 
-.device-capability-panel__name {
+.device-capability-panel__icon-slot {
+  display: grid;
+  width: var(--visual-v2-detail-capability-icon-size);
+  height: var(--visual-v2-detail-capability-icon-size);
+  color: var(--text-secondary);
+  background: var(--visual-v2-detail-weak-background);
+  border: var(--border-width) solid var(--visual-v2-detail-weak-border-color);
+  border-radius: var(--radius-control);
+  place-items: center;
+}
+
+.device-capability-panel__icon-slot .mobile-icon {
+  width: var(--visual-v2-detail-capability-glyph-size);
+  height: var(--visual-v2-detail-capability-glyph-size);
+  font-size: var(--visual-v2-detail-capability-glyph-size);
+}
+
+.device-capability-panel__main-content {
+  display: grid;
   min-width: 0;
-  overflow: hidden;
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-body);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: var(--space-1);
 }
 
+.device-capability-panel__name,
 .device-capability-panel__version {
   min-width: 0;
   overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.device-capability-panel__name {
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-label);
+}
+
+.device-capability-panel__version {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-secondary);
 }
 
 .device-capability-panel__actions {
   display: flex;
   flex: none;
-  gap: var(--layout-capability-actions-gap);
+  gap: var(--visual-v2-detail-capability-action-gap);
   align-items: center;
 }
 
@@ -390,25 +477,23 @@ function formatSkillVersion(version: string): string | null {
   border: 0;
 }
 
-.device-capability-panel__action span {
+.device-capability-panel__action-label {
   display: inline-flex;
-  height: var(--control-height-capability-action);
-  padding-inline: var(--layout-capability-action-padding-x);
+  height: var(--visual-v2-detail-capability-action-visual-height);
+  padding-inline: var(--visual-v2-detail-capability-action-padding-x);
   align-items: center;
   justify-content: center;
+  background: var(--visual-v2-detail-surface-background);
+  border: var(--border-width) solid var(--visual-v2-detail-weak-border-color);
   border-radius: var(--radius-control);
   font-size: var(--font-size-action);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-action);
 }
 
-.device-capability-panel__action span {
-  color: var(--text-secondary);
-}
-
-.device-capability-panel__action--run span {
+.device-capability-panel__action--run .device-capability-panel__action-label {
   color: var(--color-primary);
-  background: var(--color-primary-soft);
+  background: var(--visual-v2-detail-weak-background);
 }
 
 .device-capability-panel__state {
@@ -418,5 +503,11 @@ function formatSkillVersion(version: string): string | null {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
+}
+
+@keyframes device-capability-refresh {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

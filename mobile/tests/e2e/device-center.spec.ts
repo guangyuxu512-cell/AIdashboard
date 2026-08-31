@@ -881,15 +881,19 @@ for (const width of viewportWidths) {
 
       await mainButton.click()
       await expect(page.getByTestId('device-detail')).toBeVisible()
-      await expect(page.getByTestId('device-summary-device')).toContainText(
-        /设备 1在线执行中Worker \d/,
+      const hero = page.getByTestId('device-detail-hero')
+      await expect(hero.getByTestId('device-hero-name')).toHaveText('设备 1')
+      await expect(hero.getByTestId('device-hero-status')).toHaveText('运行中')
+      await expect(hero.getByTestId('device-hero-heartbeat')).toContainText(
+        '最后心跳：',
       )
-      await expect(page.getByTestId('device-summary-yingdao')).toContainText(
-        '影刀账号已登录测试账号 · 6.3.6',
+      await expect(hero.getByTestId('device-hero-meta')).toContainText(
+        /Worker \d/,
       )
-      await expect(
-        page.getByTestId('device-summary-yingdao'),
-      ).not.toContainText('Provider')
+      await expect(hero.getByTestId('device-hero-meta')).toContainText(
+        '影刀 6.3.6',
+      )
+      await expect(hero).not.toContainText(/GY00099|5\.36\.1|Provider/)
       await expect(
         page.locator('.device-capability-panel__tab-label'),
       ).toHaveText(['影刀应用', 'Skills'])
@@ -917,7 +921,8 @@ for (const width of viewportWidths) {
             height: Number.parseFloat(style.height),
           }
         })
-      expect(refreshVisualSize).toEqual({ width: 26, height: 26 })
+      expect(refreshVisualSize.height).toBe(34)
+      expect(refreshVisualSize.width).toBeGreaterThanOrEqual(44)
       const capabilityActionVisualHeights = await page
         .locator(
           '.device-capability-panel__action > .van-button__content > span',
@@ -927,7 +932,7 @@ for (const width of viewportWidths) {
             Number.parseFloat(window.getComputedStyle(element).height),
           ),
         )
-      expect(capabilityActionVisualHeights).toEqual([28, 28])
+      expect(capabilityActionVisualHeights).toEqual([34, 34])
       const capabilityActionBoxes = await Promise.all(
         ['配置：订单应用', '运行：订单应用'].map(async (name) =>
           page.getByRole('button', { name }).boundingBox(),
@@ -939,13 +944,14 @@ for (const width of viewportWidths) {
       }
       expect(configureBox.x + configureBox.width <= runBox.x + 0.5).toBe(true)
       await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
+      await expect(page.getByRole('button', { name: '更多信息' })).toBeVisible()
       await expect(page.getByTestId('mobile-detail-header')).toHaveCSS(
         'height',
-        '51px',
+        '66px',
       )
       const detailSurfaces = await page.evaluate(() => {
         const selectors = [
-          '[data-testid="device-detail"]',
+          '[data-testid="device-detail-hero"]',
           '[data-testid="device-capability-panel"]',
           '[data-testid="device-current-task"] [data-testid="task-card"]',
         ]
@@ -966,13 +972,17 @@ for (const width of viewportWidths) {
           return shadow
         }
         return {
-          expectedCardBackground: resolveColor('--bg-surface-raised'),
-          expectedSectionBackground: resolveColor('--bg-surface'),
-          expectedPanelShadow: resolveShadow(
-            'var(--appearance-border-surface)',
+          expectedDetailBackground: resolveColor(
+            '--visual-v2-detail-surface-background',
           ),
-          expectedCardShadow: resolveShadow(
-            'var(--appearance-border-surface), var(--shadow-card)',
+          expectedBusinessBackground: resolveColor(
+            '--visual-v2-business-card-background',
+          ),
+          expectedDetailShadow: resolveShadow(
+            'var(--visual-v2-detail-surface-shadow)',
+          ),
+          expectedBusinessShadow: resolveShadow(
+            'var(--visual-v2-business-card-shadow)',
           ),
           backgrounds: selectors.map(
             (selector) =>
@@ -989,14 +999,14 @@ for (const width of viewportWidths) {
         }
       })
       expect(detailSurfaces.backgrounds).toEqual([
-        detailSurfaces.expectedCardBackground,
-        detailSurfaces.expectedSectionBackground,
-        detailSurfaces.expectedCardBackground,
+        detailSurfaces.expectedDetailBackground,
+        detailSurfaces.expectedDetailBackground,
+        detailSurfaces.expectedBusinessBackground,
       ])
       expect(detailSurfaces.shadows).toEqual([
-        detailSurfaces.expectedCardShadow,
-        detailSurfaces.expectedPanelShadow,
-        detailSurfaces.expectedCardShadow,
+        detailSurfaces.expectedDetailShadow,
+        detailSurfaces.expectedDetailShadow,
+        detailSurfaces.expectedBusinessShadow,
       ])
       const currentTask = page.getByTestId('device-current-task')
       await expect(currentTask.getByTestId('task-card')).toBeVisible()
@@ -1009,17 +1019,22 @@ for (const width of viewportWidths) {
       await expect(
         page.getByTestId('device-capability-panel'),
       ).not.toContainText('未分类能力')
-      const moreInformation = page.getByTestId('device-more-information')
-      await expect(
-        moreInformation.locator('.van-collapse-item__content'),
-      ).toBeHidden()
       if (width === 390 && theme === 'light') {
         await page.screenshot({
           path: testInfo.outputPath('device-detail-390-light.png'),
         })
+        const providerRequestsBeforeRefresh = state.providerRequests.length
+        const capabilityRequestsBeforeRefresh = state.capabilityRequests.length
+        await page.getByTestId('device-capability-refresh').click()
+        await expect
+          .poll(() => state.providerRequests.length)
+          .toBeGreaterThan(providerRequestsBeforeRefresh)
+        await expect
+          .poll(() => state.capabilityRequests.length)
+          .toBeGreaterThan(capabilityRequestsBeforeRefresh)
+
         const requestCountBeforeActions = state.methods.length
         for (const action of [
-          page.getByTestId('device-capability-refresh'),
           page.getByRole('button', { name: '配置：订单应用' }),
           page.getByRole('button', { name: '运行：订单应用' }),
         ]) {
@@ -1033,13 +1048,18 @@ for (const width of viewportWidths) {
           /应用已启动|能力已刷新|参数已保存/,
         )
       }
-      await moreInformation.getByText('更多信息', { exact: true }).click()
+      await page.getByRole('button', { name: '更多信息' }).click()
+      const moreInformation = page.getByTestId('device-more-sheet')
+      await expect(moreInformation).toBeVisible()
       await expect(
         page.getByTestId('provider-technical-details'),
       ).toContainText('企业账号是')
       await expect(
         page.getByTestId('capability-technical-details'),
       ).toContainText('未分类能力1 个')
+      await expect(moreInformation).not.toContainText(/设备配置|更多设置/)
+      await page.getByRole('button', { name: '关闭更多信息' }).click()
+      await expect(moreInformation).toBeHidden()
       await expect(page.locator('.van-tabbar-item')).toHaveText([
         '设备',
         '任务',
@@ -1541,7 +1561,9 @@ test('设备详情成功时三类辅助失败各自展示且不覆盖主数据',
 
   await expect(page.getByTestId('device-detail')).toBeVisible()
   await expect(page.getByText('设备 1', { exact: true })).toBeVisible()
-  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(3)
+  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(2)
+  await page.getByRole('tab', { name: /Skills/ }).click()
+  await expect(page.getByText('加载失败', { exact: true })).toHaveCount(2)
   await expect(page.locator('body')).not.toContainText(
     /影刀快照加载失败|技能能力加载失败/,
   )

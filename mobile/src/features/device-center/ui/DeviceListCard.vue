@@ -7,6 +7,7 @@ import {
   type Device,
 } from '@/entities/device'
 import { MobileIcon } from '@/shared/icons'
+import { MobileBusinessCardFrame } from '@/shared/ui'
 
 import {
   DEVICE_VISUAL_STATE_LABELS,
@@ -39,30 +40,27 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 </script>
 
 <template>
-  <article
-    class="device-list-card mobile-business-card-surface-v2 mobile-press-surface"
+  <MobileBusinessCardFrame
+    class="device-list-card"
     :class="`device-list-card--${visualState}`"
+    :label="`查看设备：${device.displayName}`"
+    chevron-test-id="device-card-chevron"
     data-testid="device-card"
+    @activate="emit('selectDevice', device.deviceId)"
   >
-    <button
-      type="button"
-      class="device-list-card__main"
-      :aria-label="`查看设备：${device.displayName}`"
-      @click="emit('selectDevice', device.deviceId)"
-    />
+    <template #leading>
+      <span class="device-list-card__leading" data-testid="device-card-leading">
+        <DeviceStatusArtwork kind="desktop" :state="visualState" />
+      </span>
+    </template>
 
-    <span
-      class="device-list-card__leading"
-      data-testid="device-card-leading"
-      aria-hidden="true"
-    >
-      <DeviceStatusArtwork kind="desktop" :state="visualState" />
-    </span>
-
-    <span class="device-list-card__content">
-      <strong class="device-list-card__name" data-testid="device-card-name">
+    <template #title>
+      <span class="device-list-card__name" data-testid="device-card-name">
         {{ device.displayName }}
-      </strong>
+      </span>
+    </template>
+
+    <template #status>
       <span
         class="device-list-card__runtime"
         :class="`device-list-card__runtime--${visualState}`"
@@ -71,100 +69,38 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
         <i class="device-list-card__state-dot" aria-hidden="true" />
         <span>{{ visualStateLabel }}</span>
       </span>
+    </template>
+
+    <template #meta>
       <span class="device-list-card__meta" data-testid="device-card-meta">
         <MobileIcon class="device-list-card__heartbeat" name="heartbeat" />
         <span>{{ heartbeatMeta }}</span>
         <span aria-hidden="true">·</span>
         <span>{{ enabledMeta }}</span>
       </span>
-    </span>
-
-    <MobileIcon
-      class="device-list-card__chevron"
-      name="chevron-right"
-      data-testid="device-card-chevron"
-    />
-  </article>
+    </template>
+  </MobileBusinessCardFrame>
 </template>
 
 <style scoped>
-.device-list-card {
-  position: relative;
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  min-height: var(--device-list-card-min-height);
-  padding: var(--device-list-card-padding-top)
-    var(--device-list-card-padding-right) var(--device-list-card-padding-bottom)
-    var(--device-list-card-padding-left);
-  overflow: hidden;
-  color: var(--device-list-text-primary);
-  text-align: left;
-  background: var(--visual-v2-business-card-background);
-  border: var(--device-list-card-border-width) solid
-    var(--visual-v2-business-card-border-color);
-  border-radius: var(--device-list-card-radius);
-  box-shadow: var(--visual-v2-business-card-shadow);
-  backdrop-filter: blur(var(--visual-v2-business-card-blur));
-  grid-template-columns:
-    var(--device-list-card-artwork-column) minmax(0, 1fr)
-    var(--device-list-card-chevron-column);
-  align-items: center;
-}
-
-.device-list-card__main {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: var(--device-list-card-radius);
-}
-
-.device-list-card__main:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: calc(var(--focus-ring-offset) * -1);
-}
-
-.device-list-card:has(.device-list-card__main:active) {
-  background: var(--visual-v2-business-card-pressed-background);
-  border-color: var(--visual-v2-business-card-pressed-border-color);
-  box-shadow: var(--visual-v2-business-card-pressed-shadow);
-  transform: scale(var(--press-scale-card));
-}
-
 .device-list-card__leading {
-  position: relative;
-  z-index: 1;
   display: flex;
-  height: var(--device-list-artwork-height);
+  width: 100%;
+  height: 100%;
   align-items: center;
   justify-content: center;
   transform: translateX(var(--device-list-artwork-offset-x));
 }
 
-.device-list-card__content {
-  position: relative;
-  z-index: 1;
-  display: block;
-  min-width: 0;
-}
-
-.device-list-card__name,
-.device-list-card__runtime,
-.device-list-card__meta {
-  min-width: 0;
+.device-list-card {
+  color: var(--device-list-text-primary);
+  backdrop-filter: blur(var(--visual-v2-business-card-blur));
 }
 
 .device-list-card__name {
   display: block;
-  margin: 0 0 var(--device-list-card-name-gap);
+  min-width: 0;
   overflow: hidden;
-  font-size: var(--typography-v2-business-card-title-size);
-  font-weight: var(--typography-v2-business-card-title-weight);
-  line-height: var(--typography-v2-business-card-title-line-height);
-  letter-spacing: var(--typography-v2-business-card-title-letter-spacing);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -172,17 +108,14 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 .device-list-card__runtime,
 .device-list-card__meta {
   display: flex;
+  min-width: 0;
   overflow: hidden;
   align-items: center;
   white-space: nowrap;
 }
 
 .device-list-card__runtime {
-  gap: var(--device-list-card-inline-gap);
-  margin-bottom: var(--device-list-card-status-gap);
-  font-size: var(--typography-v2-status-size);
-  font-weight: var(--typography-v2-status-weight);
-  line-height: var(--typography-v2-status-line-height);
+  gap: var(--visual-v2-business-card-inline-gap);
 }
 
 .device-list-card__runtime--online {
@@ -206,11 +139,8 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 }
 
 .device-list-card__meta {
-  gap: var(--device-list-card-inline-gap);
+  gap: var(--visual-v2-business-card-inline-gap);
   color: var(--visual-v2-business-card-meta-color);
-  font-size: var(--typography-v2-meta-size);
-  font-weight: var(--typography-v2-meta-weight);
-  line-height: var(--typography-v2-meta-line-height);
 }
 
 .device-list-card__heartbeat {
@@ -224,15 +154,5 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.device-list-card__chevron {
-  position: relative;
-  z-index: 1;
-  width: var(--device-list-card-chevron-size);
-  height: var(--device-list-card-chevron-size);
-  color: var(--visual-v2-business-card-chevron-color);
-  font-size: var(--device-list-card-chevron-size);
-  justify-self: end;
 }
 </style>

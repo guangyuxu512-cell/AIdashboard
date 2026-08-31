@@ -65,7 +65,7 @@ const runtimeProps = {
 }
 
 describe('task center UI', () => {
-  it('renders the frozen list anatomy without progress or current message', () => {
+  it('keeps the current Task List card anatomy unchanged', () => {
     const wrapper = mount(TaskListCard, { props: { task } })
 
     expect(wrapper.find('[data-testid="task-card-leading"]').exists()).toBe(
@@ -110,6 +110,24 @@ describe('task center UI', () => {
     expect(wrapper.get('[data-testid="task-card-tags"]').text()).toBe(
       '仓库手机',
     )
+  })
+
+  it('renders the candidate TaskCard V2 through the same business component', async () => {
+    const wrapper = mount(TaskListCard, {
+      props: { task, visualV2: true, buttonTestId: 'current-task-link' },
+    })
+
+    expect(wrapper.classes()).toContain('mobile-business-card-frame')
+    expect(wrapper.get('[data-testid="task-card-state"]').text()).toBe('执行中')
+    expect(wrapper.get('[data-testid="task-card-meta"]').text()).toContain(
+      '开始',
+    )
+    expect(wrapper.get('[data-testid="task-card-meta"]').text()).toContain(
+      '仓库手机',
+    )
+    expect(wrapper.find('.van-tag').exists()).toBe(false)
+    await wrapper.get('[data-testid="current-task-link"]').trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['task-1']])
   })
 
   it.each([
