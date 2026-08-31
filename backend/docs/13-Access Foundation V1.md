@@ -118,12 +118,12 @@ Worker 继续只通过 Device Token 与 `X-Device-ID` 认证。未来 Human User
 
 ## 9. Phase B
 
-本阶段没有给任何现有业务实体增加 Ownership。后续顺序：
+B1 Asset Scope 已在 `15-Asset Scope V1.md` 中落地：Asset 使用 `team_id / created_by_user_id`，Human
+List、Content、Delete 与内部 Reference Lookup 都通过本策略生成 SQL Predicate。后续仍为：
 
-1. B1 Asset Scope
-2. B2 Task / Schedule Scope
-3. B3 Shop Scope
-4. AI Image Ownership Integration
+1. B2 Task / Schedule Scope
+2. B3 Shop Scope
+3. AI Image Ownership Integration
 
 未来 Team Scoped Entity 统一使用：
 

@@ -1,10 +1,14 @@
-from collections.abc import Iterator
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
 from typing import BinaryIO
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.modules.access.contracts import ActorContext
+from app.modules.assets.contracts import AssetOwnership
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import (
     AssetInUseError,
@@ -42,6 +46,7 @@ class AssetService:
     def upload(
         self,
         *,
+        actor: ActorContext,
         original_filename: str | None,
         content_type: str | None,
         stream: BinaryIO,
@@ -52,6 +57,10 @@ class AssetService:
             stream=stream,
             media_type=AssetMediaType.IMAGE,
             source_type=AssetSourceType.UPLOAD,
+            ownership=AssetOwnership(
+                team_id=actor.team_id,
+                created_by_user_id=actor.user_id,
+            ),
         )
 
     def create(
@@ -62,6 +71,7 @@ class AssetService:
         stream: BinaryIO,
         media_type: AssetMediaType,
         source_type: AssetSourceType,
+        ownership: AssetOwnership,
     ) -> Asset:
         if media_type is not AssetMediaType.IMAGE:
             raise AssetTypeUnsupportedError()
@@ -83,6 +93,8 @@ class AssetService:
         )
         asset = Asset(
             asset_id=asset_id,
+            team_id=ownership.team_id,
+            created_by_user_id=ownership.created_by_user_id,
             original_filename=filename,
             storage_key=stored.storage_key,
             media_type=media_type.value,
@@ -105,6 +117,7 @@ class AssetService:
     def list(
         self,
         *,
+        actor: ActorContext,
         page: int,
         page_size: int,
         search: str | None,
@@ -112,17 +125,41 @@ class AssetService:
         normalized_search = search.strip() if search else None
         return (
             self.repository.list(
+                actor=actor,
                 offset=(page - 1) * page_size,
                 limit=page_size,
                 search=normalized_search or None,
             ),
-            self.repository.count(search=normalized_search or None),
+            self.repository.count(
+                actor=actor,
+                search=normalized_search or None,
+            ),
         )
 
-    def get_content(self, asset_id: UUID) -> tuple[Asset, BinaryIO]:
-        asset = self.repository.get(asset_id)
+    def get_for_actor(self, actor: ActorContext, asset_id: UUID) -> Asset:
+        asset = self.repository.get_for_actor(actor=actor, asset_id=asset_id)
         if asset is None:
             raise AssetNotFoundError()
+        return asset
+
+    def list_accessible_by_ids(
+        self,
+        actor: ActorContext,
+        asset_ids: Sequence[UUID],
+    ) -> Sequence[Asset]:
+        """供未来可信业务 Service 校验 Reference Asset，Scope 始终落在 SQL。"""
+
+        return self.repository.list_by_ids_for_actor(
+            actor=actor,
+            asset_ids=asset_ids,
+        )
+
+    def get_content(
+        self,
+        actor: ActorContext,
+        asset_id: UUID,
+    ) -> tuple[Asset, BinaryIO]:
+        asset = self.get_for_actor(actor, asset_id)
         if not self.storage.exists(asset.storage_key):
             raise AssetStorageError()
         return asset, self.storage.open(asset.storage_key)
@@ -145,8 +182,11 @@ class AssetService:
             raise AssetStorageError()
         return asset, self.storage.open(asset.storage_key)
 
-    def delete(self, asset_id: UUID) -> None:
-        asset = self.repository.get_for_update(asset_id)
+    def delete(self, actor: ActorContext, asset_id: UUID) -> None:
+        asset = self.repository.get_for_actor_for_update(
+            actor=actor,
+            asset_id=asset_id,
+        )
         if asset is None:
             raise AssetNotFoundError()
         if self.repository.is_referenced(asset_id):

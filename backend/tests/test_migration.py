@@ -1,6 +1,8 @@
 import importlib
 from uuid import uuid4
 
+import pytest
+
 
 class OperationRecorder:
     def __init__(self) -> None:
@@ -570,7 +572,9 @@ def test_access_foundation_migration_upgrade_and_downgrade(
     ]
 
 
-def test_access_default_team_backfill_rows_cover_empty_single_and_multiple_users() -> None:
+def test_access_default_team_backfill_rows_cover_empty_single_and_multiple_users() -> (
+    None
+):
     migration = importlib.import_module(
         "migrations.versions.20260831_0022_access_foundation_v1",
     )
@@ -619,3 +623,84 @@ def test_human_auth_migration_upgrade_and_downgrade(monkeypatch: object) -> None
         ("drop_column", "users"),
         ("drop_column", "users"),
     ]
+
+
+def test_asset_scope_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260901_0024_asset_scope_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        migration,
+        "_backfill_asset_team",
+        lambda: recorder.calls.append(("execute", "asset_team_backfill")),
+    )
+
+    migration.upgrade()
+    assert recorder.calls.count(("add_column", "assets")) == 2
+    assert ("execute", "asset_team_backfill") in recorder.calls
+    assert ("alter_column", "assets") in recorder.calls
+    assert (
+        "create_foreign_key",
+        "fk_assets_team_id_teams",
+    ) in recorder.calls
+    assert (
+        "create_foreign_key",
+        "fk_assets_created_by_user_id_users",
+    ) in recorder.calls
+    assert (
+        "create_index",
+        "ix_assets_team_created_asset",
+    ) in recorder.calls
+    assert (
+        "create_index",
+        "ix_assets_team_creator_created_asset",
+    ) in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_assets_team_creator_created_asset"),
+        ("drop_index", "ix_assets_team_created_asset"),
+        ("drop_constraint", "fk_assets_created_by_user_id_users"),
+        ("drop_constraint", "fk_assets_team_id_teams"),
+        ("drop_column", "assets"),
+        ("drop_column", "assets"),
+    ]
+
+
+def test_asset_scope_backfill_requires_exactly_one_default_team(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260901_0024_asset_scope_v1",
+    )
+
+    class ScalarRows:
+        def __init__(self, rows: list[object]) -> None:
+            self.rows = rows
+
+        def scalars(self) -> "ScalarRows":
+            return self
+
+        def all(self) -> list[object]:
+            return self.rows
+
+    class Connection:
+        def __init__(self, rows: list[object]) -> None:
+            self.rows = rows
+
+        def execute(self, statement: object) -> ScalarRows:
+            del statement
+            return ScalarRows(self.rows)
+
+    for rows in ([], [uuid4(), uuid4()]):
+        connection = Connection(rows)
+        monkeypatch.setattr(
+            migration.op,
+            "get_bind",
+            lambda connection=connection: connection,
+        )
+        with pytest.raises(RuntimeError, match="唯一的默认团队"):
+            migration._backfill_asset_team()
