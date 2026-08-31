@@ -128,3 +128,18 @@ Asset Foundation V2 在原表上补充 `media_type` 与 `source_type`，历史�
 `storage_key` 只属于 Backend Storage 内部事实。V2 移除数据库对三个图片 MIME 的专用约束，
 但当前 Upload 与 Task→Worker images_dir 契约仍只接受经 Service 验证的 IMAGE；VIDEO 只是
 表结构扩展点，尚未开放上传或执行传输。
+
+## Access Foundation V1 数据库
+
+Migration `20260831_0022_access_foundation_v1` 增加 `teams` 与 `team_memberships`。
+Membership 使用独立 UUID 主键、`UNIQUE(team_id, user_id)`、User Membership 查询索引与两个
+Active Lookup 部分索引，并以 RESTRICT 外键关联 Team 与 User。`data_scope` 的数据库 Check 只允许
+`self / team / all`；`role_code` 是非空可扩展字符串，当前默认 Registry 只有 `member`。
+
+Migration 创建一个“默认团队”，并把升级时已经存在的全部 User 各回填一条启用 Membership：
+`role_code=member, data_scope=team`。空 users 表同样可以升级。任何旧用户都不会自动获得 ALL。
+Team 与 Membership 以 `enabled` 停用，不以 Hard Delete 作为主要生命周期操作。
+
+Phase A 不修改 Shop、Asset、Task、Schedule 或 AI Job 的 Ownership。后续 Team Scoped 业务表的
+统一语义是 `team_id=数据归属团队`、`created_by_user_id=创建者`；现有
+`Shop.owner_user_id` 仍只表示负责人，不承担权限边界。

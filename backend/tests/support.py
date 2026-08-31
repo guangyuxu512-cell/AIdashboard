@@ -19,6 +19,8 @@ class FakeSession:
     def refresh(self, entity: object) -> None:
         for identifier in (
             "user_id",
+            "team_id",
+            "membership_id",
             "shop_id",
             "device_id",
             "credential_id",
