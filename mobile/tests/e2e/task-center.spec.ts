@@ -369,6 +369,16 @@ for (const viewport of viewports) {
         const title = card.querySelector<HTMLElement>(
           '[data-testid="task-card-name"]',
         )!
+        const content = card.querySelector<HTMLElement>(
+          '.mobile-business-card-frame__content',
+        )!
+        const titleRow = card.querySelector<HTMLElement>(
+          '.mobile-business-card-frame__title',
+        )!
+        const statusRow = card.querySelector<HTMLElement>(
+          '.mobile-business-card-frame__status',
+        )!
+        const tag = card.querySelector<HTMLElement>('.task-list-card-v2__tag')!
         const scroll = document.querySelector<HTMLElement>(
           '[data-testid="task-list-scroll"]',
         )!
@@ -377,10 +387,13 @@ for (const viewport of viewports) {
           '.mobile-app-shell__main',
         )!
         const cardStyle = window.getComputedStyle(card)
+        const cardBox = card.getBoundingClientRect()
+        const contentBox = content.getBoundingClientRect()
         const artworkBox = artwork.getBoundingClientRect()
         const titleStyle = window.getComputedStyle(title)
+        const tagStyle = window.getComputedStyle(tag)
         return {
-          cardHeight: card.getBoundingClientRect().height,
+          cardHeight: cardBox.height,
           cardMinHeight: cardStyle.minHeight,
           cardPadding: [
             cardStyle.paddingTop,
@@ -389,6 +402,22 @@ for (const viewport of viewports) {
             cardStyle.paddingLeft,
           ],
           artwork: [artworkBox.width, artworkBox.height],
+          contentWhitespace: [
+            Number((contentBox.top - cardBox.top).toFixed(1)),
+            Number((cardBox.bottom - contentBox.bottom).toFixed(1)),
+          ],
+          rhythmGaps: [
+            window.getComputedStyle(titleRow).marginBottom,
+            window.getComputedStyle(statusRow).marginBottom,
+          ],
+          tag: {
+            height: tag.getBoundingClientRect().height,
+            clientHeight: tag.clientHeight,
+            scrollHeight: tag.scrollHeight,
+            overflow: tagStyle.overflow,
+            textOverflow: tagStyle.textOverflow,
+            whiteSpace: tagStyle.whiteSpace,
+          },
           listGap: window.getComputedStyle(list).rowGap,
           listOverflowY: window.getComputedStyle(scroll).overflowY,
           shellOverflowY: window.getComputedStyle(shellMain).overflowY,
@@ -401,10 +430,20 @@ for (const viewport of viewports) {
           },
         }
       })
-      expect(geometry.cardHeight).toBeGreaterThanOrEqual(122)
+      expect(geometry.cardHeight).toBe(122)
       expect(geometry.cardMinHeight).toBe('122px')
       expect(geometry.cardPadding).toEqual(['15px', '17px', '15px', '16px'])
       expect(geometry.artwork).toEqual([60, 60])
+      expect(geometry.contentWhitespace).toEqual([26.1, 26.1])
+      expect(geometry.rhythmGaps).toEqual(['5px', '5px'])
+      expect(geometry.tag).toEqual({
+        height: 26,
+        clientHeight: 26,
+        scrollHeight: 26,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      })
       expect(geometry.listGap).toBe('14px')
       expect(geometry.listOverflowY).toBe('auto')
       expect(geometry.shellOverflowY).toBe('hidden')

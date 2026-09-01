@@ -70,6 +70,8 @@ TaskCard 复用 `TaskListCard.vue` 与 Frozen `MobileBusinessCardFrame.vue`，�
 | Padding        | `15px 17px 15px 16px`         |
 | Radius         | 17px                          |
 | Status Artwork | 60px，内部 Registry Icon 30px |
+| Title Gap      | 5px                           |
+| Status Gap     | 5px                           |
 | List Gap       | 14px                          |
 
 三行固定为 Title → Status + Optional Duration → Contract Tags。Title 单行省略；Tag 最多两枚且不能挤压

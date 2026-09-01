@@ -216,6 +216,14 @@ const legacyMetaTags = computed(() => {
   display: block;
 }
 
+.task-list-card--visual-v2 :deep(.mobile-business-card-frame__title) {
+  margin-bottom: var(--visual-v2-task-card-title-gap);
+}
+
+.task-list-card--visual-v2 :deep(.mobile-business-card-frame__status) {
+  margin-bottom: var(--visual-v2-task-card-status-gap);
+}
+
 .task-list-card-v2__state,
 .task-list-card-v2__meta,
 .task-list-card-v2__tags {

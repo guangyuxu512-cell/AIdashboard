@@ -217,6 +217,8 @@
   --visual-v2-task-artwork-size: 60px; /* TaskCard状态Artwork视觉尺寸，不改变共享102px Leading列。 */
   --visual-v2-task-artwork-icon-size: 30px; /* Artwork内部Registry状态图标尺寸。 */
   --visual-v2-task-artwork-radius: 16px; /* Task Artwork圆角，沿用V2业务视觉语言。 */
+  --visual-v2-task-card-title-gap: 5px; /* TaskCard标题到状态行的候选纵向节奏，不影响Frozen DeviceCard。 */
+  --visual-v2-task-card-status-gap: 5px; /* TaskCard状态行到Tag行的候选纵向节奏。 */
   --visual-v2-list-context-height: 48px; /* 列表查询上下文卡的轻量高度。 */
   --visual-v2-list-context-padding-x: 16px; /* 列表查询上下文卡左右留白。 */
   --visual-v2-list-context-radius: 15px; /* 列表查询上下文卡圆角。 */
