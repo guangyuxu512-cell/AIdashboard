@@ -251,13 +251,14 @@ describe('MobileAppShell V2', () => {
       await flushPromises()
 
       expect(wrapper.findAllComponents(MobileGlobalHeader)).toHaveLength(1)
-      if (path === '/devices') {
+      if (path === '/devices' || path === '/tasks') {
+        const expectedTitle = path === '/devices' ? '设备' : '任务'
         expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
-          '设备',
+          expectedTitle,
         )
         expect(
           wrapper.getComponent(MobileGlobalHeader).props('pageTitle'),
-        ).toBe('设备')
+        ).toBe(expectedTitle)
       } else {
         expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
           '思余AI中控台',
@@ -276,9 +277,7 @@ describe('MobileAppShell V2', () => {
     const items = wrapper.findAllComponents(VanTabbarItem)
 
     expect(wrapper.findAllComponents(MobileBottomNavigation)).toHaveLength(1)
-    expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
-      '思余AI中控台',
-    )
+    expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain('任务')
     expect(wrapper.findComponent(MobileDetailHeader).exists()).toBe(false)
     expect(tabbar.props('fixed')).toBe(false)
     expect(tabbar.props('safeAreaInsetBottom')).toBe(false)

@@ -7,7 +7,7 @@ import {
   type TaskListItem,
   type TaskStatusDto,
 } from '@/entities/task'
-import { TaskInfiniteList } from '@/features/task-center'
+import { TaskInfiniteList, TaskListControls } from '@/features/task-center'
 import {
   RUNTIME_RETENTION_TEXT,
   TaskOutcomeNotice,
@@ -65,6 +65,35 @@ const runtimeProps = {
 }
 
 describe('task center UI', () => {
+  it('renders the four formal totals and shares the selected metric event', async () => {
+    const wrapper = mount(TaskListControls, {
+      props: {
+        searchQuery: '',
+        filter: 'all',
+        totals: { running: 2, pending: 3, exception: 4, completed: 5 },
+        metricsBusy: false,
+        resultLabel: '任务',
+        resultCount: '14个',
+        dateLabel: '近7天',
+      },
+    })
+
+    expect(
+      wrapper
+        .findAll('.mobile-summary-strip__metric')
+        .map((metric) => metric.text()),
+    ).toEqual(['2运行中', '3待运行', '4异常', '5已完成'])
+    expect(wrapper.get('[data-testid="task-context-count"]').text()).toBe(
+      '14个',
+    )
+    expect(wrapper.get('[data-testid="task-context-date"]').text()).toBe(
+      '近7天',
+    )
+
+    await wrapper.get('button[aria-label="异常，点击筛选"]').trigger('click')
+    expect(wrapper.emitted('selectFilter')).toEqual([['exception']])
+  })
+
   it('keeps the current Task List card anatomy unchanged', () => {
     const wrapper = mount(TaskListCard, { props: { task } })
 
@@ -118,7 +147,9 @@ describe('task center UI', () => {
     })
 
     expect(wrapper.classes()).toContain('mobile-business-card-frame')
-    expect(wrapper.get('[data-testid="task-card-state"]').text()).toBe('执行中')
+    expect(wrapper.get('[data-testid="task-card-state"]').text()).toContain(
+      '执行中',
+    )
     expect(wrapper.get('[data-testid="task-card-meta"]').text()).toContain(
       '开始',
     )
@@ -129,6 +160,54 @@ describe('task center UI', () => {
     await wrapper.get('[data-testid="current-task-link"]').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['task-1']])
   })
+
+  it('uses formal status artwork, real duration and contract-backed list tags', () => {
+    const wrapper = mount(TaskListCard, {
+      props: {
+        visualV2: true,
+        metaMode: 'tags',
+        task: {
+          ...task,
+          status: 'success',
+          startedAt: '2026-08-26T00:00:00Z',
+          finishedAt: '2026-08-26T00:06:00Z',
+        },
+      },
+    })
+
+    expect(
+      wrapper.get('[data-testid="task-card-leading"]').classes(),
+    ).toContain('task-list-card-v2__artwork--done')
+    expect(wrapper.get('[data-testid="task-card-state"]').text()).toContain(
+      '成功·6分钟',
+    )
+    expect(
+      wrapper
+        .findAll('[data-testid="task-card-tags"] .van-tag')
+        .map((tag) => tag.text()),
+    ).toEqual(['订单同步'])
+    expect(wrapper.text()).not.toContain('Provider')
+    expect(wrapper.text()).not.toContain('仓库手机')
+  })
+
+  it.each([
+    ['pending', 'task-list-card-v2__artwork--pending'],
+    ['running', 'task-list-card-v2__artwork--running'],
+    ['failed', 'task-list-card-v2__artwork--error'],
+    ['lost', 'task-list-card-v2__artwork--error'],
+    ['success', 'task-list-card-v2__artwork--done'],
+  ] as const)(
+    'maps %s into the confirmed artwork state',
+    (status, className) => {
+      const wrapper = mount(TaskListCard, {
+        props: { task: { ...task, status }, visualV2: true, metaMode: 'tags' },
+      })
+
+      expect(
+        wrapper.get('[data-testid="task-card-leading"]').classes(),
+      ).toContain(className)
+    },
+  )
 
   it.each([
     ['pending', '待执行'],
@@ -177,13 +256,16 @@ describe('task center UI', () => {
 
   it('uses the shared card press language for task navigation', () => {
     const wrapper = mount(TaskInfiniteList, { props: listProps })
-    const item = wrapper.get('.task-list__item')
+    const card = wrapper.get('[data-testid="task-card"]')
 
-    expect(item.classes()).toEqual(
-      expect.arrayContaining(['mobile-pressable', 'mobile-pressable--card']),
+    expect(card.classes()).toEqual(
+      expect.arrayContaining([
+        'mobile-business-card-surface-v2',
+        'mobile-press-surface',
+      ]),
     )
-    expect(item.get('[data-testid="task-card"]').classes()).toContain(
-      'mobile-card',
+    expect(card.get('button').attributes('aria-label')).toBe(
+      '查看任务：同步订单',
     )
   })
 
