@@ -2,8 +2,8 @@
 
 ## 状态与范围
 
-`/tasks` 当前状态为 **Completed / Candidate for Visual Review（已完成 / 候选人工视觉复核）**。
-本规范记录 Task List Visual V2 的正式组合、真实 Backend 映射和视觉候选边界；不冻结页面，不迁移
+`/tasks` 当前状态为 **Completed / Frozen（已完成 / 已冻结）**。
+本规范记录 Task List Visual V2 经人工视觉确认后的正式组合、真实 Backend 映射和冻结边界；本轮不迁移
 Task Detail，也不开放 Device List / Detail 已冻结的 Geometry、Navigation 或 Scroll Contract。
 
 参考源是用户提供的 `任务卡.html`。只迁移其信息层级、比例、密度和移动端列表方向；不迁移假手机状态栏、
@@ -52,8 +52,8 @@ Backend 没有 Stats API 且一个列表请求只接收一个状态，因此当�
 
 ## Context Card（查询上下文卡）
 
-Shared Candidate 为 `MobileListContextCard.vue`，只负责 `label + count + contextLabel` 排版，不知道 Task、
-Status、Date 或 Query。正式候选值为 48px Min Height、15px Radius、16px Horizontal Padding，并只消费
+Shared Frozen Pattern 为 `MobileListContextCard.vue`，只负责 `label + count + contextLabel` 排版，不知道 Task、
+Status、Date 或 Query。正式值为 48px Min Height、15px Radius、16px Horizontal Padding，并只消费
 Visual V2 Semantic Surface / Border Token。
 
 示例：`任务 26个 · 近7天`、`运行中 8个 · 近7天`、`异常任务 3个 · 今天`、`任务 5个 · 8月31日`。
@@ -63,20 +63,26 @@ Visual V2 Semantic Surface / Border Token。
 
 TaskCard 复用 `TaskListCard.vue` 与 Frozen `MobileBusinessCardFrame.vue`，不得建立第二套 `.task-card`。
 
-| Geometry       | 值                            |
-| -------------- | ----------------------------- |
-| Minimum Height | 122px                         |
-| Grid           | `102px minmax(0, 1fr) 18px`   |
-| Padding        | `15px 17px 15px 16px`         |
-| Radius         | 17px                          |
-| Status Artwork | 60px，内部 Registry Icon 30px |
-| Title Gap      | 5px                           |
-| Status Gap     | 5px                           |
-| List Gap       | 14px                          |
+| Geometry            | 值                            |
+| ------------------- | ----------------------------- |
+| Min / Actual Height | 122px                         |
+| Grid                | `102px minmax(0, 1fr) 18px`   |
+| Padding             | `15px 17px 15px 16px`         |
+| Radius              | 17px                          |
+| Status Artwork      | 60px，内部 Registry Icon 30px |
+| Title Gap           | 5px                           |
+| Status Gap          | 5px                           |
+| List Gap            | 14px                          |
 
 三行固定为 Title → Status + Optional Duration → Contract Tags。Title 单行省略；Tag 最多两枚且不能挤压
-Trailing Chevron。当前真实 DTO 只有 `skill_display_name` 可作为业务 Tag，因此正式实现最多显示这一枚；
-Provider / Runtime Type 和 Application Display Name 不存在时保持缺席。
+Trailing Chevron，也不能换行或撑高 122px Card。两个 Tag Slot 的长期语义依次为执行方式 / Provider Type
+（例如未来正式 Contract 支持的影刀 RPA / Skills）与具体 Application / Skill 名称；槽位不构成数据 Contract。
+当前真实 DTO 只有 `skill_display_name` 可作为业务 Tag，因此正式实现最多显示这一枚；Provider / Runtime Type
+和 Application Display Name 不存在时保持缺席，禁止 Fake。长内容按当前单行 Ellipsis / Clip 处理。
+
+390×844 Browser 冻结实测：DeviceCard 与 TaskCard 外框实际高度均为 122px；Device 内容栈 66.8px、上下留白
+27.6px / 27.6px，Task 内容栈 69.8px、上下留白 26.1px / 26.1px。约 1.5px 内部视觉密度差属于业务内容差异，
+不继续做 1px 级光学校正。
 
 Artwork 只按正式 Task Status 解析：Running 使用 Success Semantic Token，Pending 使用 Primary，Failed / Lost
 使用 Danger，Success 使用 Neutral。图标只能来自 Mobile Icon Registry；组件禁止硬编码 Hex、RGB 或 SVG Path。
@@ -92,15 +98,19 @@ Task List 使用 `metaMode=tags`；Device Detail Current Task 继续使用默认
 - Backend 没有 Task Stats API；五状态 Total Query 是当前只读 Contract 的明确代价，不伪造聚合接口。
 - Backend 单次只支持一个 `status`；异常必须保持 FAILED / LOST 两条正式语义，不能新增 `error` 状态。
 
-## Shared / Candidate / Frozen
+## Frozen Scope（冻结范围）
 
 继续复用的 Frozen Foundation：MobileAppShell V2、MobilePageHeader V2、MobileSearchField V2、
 MobileSummaryStrip V2、MobileBottomNavigation V2、Typography V2、Page Background、Business Card Surface 与
 MobileBusinessCardFrame Geometry。
 
-本轮 Candidate：Task List Visual V2、`MobileListContextCard V2`、TaskCard V2 List Presentation
-（Status Artwork / Duration / Tags）。DeviceCard、Device Detail Current Task、Bottom Navigation、Safe Area、
-Router 和独立滚动契约均保持 Frozen 0 变化。只有用户完成人工 Visual Review 后才能另行提出 Freeze。
+本轮正式 Frozen：Task List Visual V2 页面 Composition、TaskListCard V2、Task Artwork 状态视觉规则、Task Tag
+Meta Slot 规则、四项 Metrics 映射、日期筛选结构、`MobileListContextCard V2`、Task List 独立滚动规则、Light /
+Dark 视觉映射与响应式基线。DeviceCard、Device Detail Current Task、Bottom Navigation、Safe Area、Router 和
+共享 Frame 均保持 Frozen，且无非预期变化。`MobileListToolbar V2` 因 `/tasks` 没有使用继续保持 Candidate。
+
+后续改变上述冻结对象的 Anatomy、Hierarchy、Geometry、Navigation、Scroll、Theme Mapping 或响应式基线前，
+必须明确提出 Unfreeze 并重新完成人工验收；本次冻结不扩展到 Task Detail。
 
 ## Validation Baseline（验收基线）
 
