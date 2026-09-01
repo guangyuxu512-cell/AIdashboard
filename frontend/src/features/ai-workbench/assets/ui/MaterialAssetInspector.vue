@@ -8,6 +8,7 @@ import {
   type MaterialAssetReference,
   type MaterialRole,
 } from '../model/types'
+import { GENERATION_MODE_META } from '../../shared/model/generation-mode'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton, AppSelect } from '@/shared/ui'
 
@@ -52,9 +53,8 @@ const sizeDisplay = computed(() => {
 const sourceDisplay = computed(() => {
   if (props.asset.sourceType === 'LOCAL_UPLOAD') return '本地上传'
   if (props.asset.sourceType === 'MATERIAL_IMPORT') return '素材导入'
-  return props.asset.generationMode === 'STYLE_REPLICATION'
-    ? '风格复刻'
-    : '普通生图'
+  return GENERATION_MODE_META[props.asset.generationMode ?? 'NORMAL_GENERATION']
+    .label
 })
 
 function updateRole(value: string | number | null): void {

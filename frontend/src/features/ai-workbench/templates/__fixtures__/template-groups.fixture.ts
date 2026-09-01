@@ -19,8 +19,14 @@ interface TemplateFixtureInput {
   count?: number
   variables?: string[]
   prompt?: string
-  negativePrompt?: string
   enabled?: boolean
+}
+
+const DEFAULT_PROMPT_RESTRICTIONS = '避免模糊、变形、多余文字和低清晰度'
+
+function withPromptRestrictions(prompt: string): string {
+  const normalized = prompt.trim().replace(/[。.]$/, '')
+  return `${normalized}，${DEFAULT_PROMPT_RESTRICTIONS}。`
 }
 
 function template(input: TemplateFixtureInput): PromptTemplate {
@@ -33,10 +39,10 @@ function template(input: TemplateFixtureInput): PromptTemplate {
     size: input.size ?? '1:1',
     count: input.count ?? 1,
     variables: input.variables ?? ['product_name', 'selling_points'],
-    prompt:
+    prompt: withPromptRestrictions(
       input.prompt ??
-      '{product_name}，突出{selling_points}，商品主体清晰，画面干净。',
-    negativePrompt: input.negativePrompt ?? '模糊，变形，多余文字，低清晰度。',
+        '{product_name}，突出{selling_points}，商品主体清晰，画面干净。',
+    ),
     sortOrder: input.sortOrder,
     createdAt: FIXTURE_TIMESTAMP,
     updatedAt: FIXTURE_TIMESTAMP,

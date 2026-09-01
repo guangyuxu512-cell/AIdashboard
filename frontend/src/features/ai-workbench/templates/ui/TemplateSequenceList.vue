@@ -5,6 +5,7 @@ import { NDropdown } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 
 import {
+  TEMPLATE_OUTPUT_ROLE_META,
   type PromptTemplate,
   type TemplateGroup,
   type TemplateOutputRole,
@@ -37,8 +38,8 @@ const emit = defineEmits<{
 }>()
 
 const createOptions: DropdownOption[] = [
-  { key: 'MAIN_IMAGE', label: '主图' },
-  { key: 'DETAIL_IMAGE', label: '详情' },
+  { key: 'MAIN_IMAGE', label: TEMPLATE_OUTPUT_ROLE_META.MAIN_IMAGE.label },
+  { key: 'DETAIL_IMAGE', label: TEMPLATE_OUTPUT_ROLE_META.DETAIL_IMAGE.label },
 ]
 
 const roleCounts = computed(() => {
@@ -59,8 +60,14 @@ const roleFilterItems = computed<
     key: 'ALL',
     label: `全部 ${props.group?.templates.length ?? 0}`,
   },
-  { key: 'MAIN_IMAGE', label: `主图 ${roleCounts.value.main}` },
-  { key: 'DETAIL_IMAGE', label: `详情 ${roleCounts.value.detail}` },
+  {
+    key: 'MAIN_IMAGE',
+    label: `${TEMPLATE_OUTPUT_ROLE_META.MAIN_IMAGE.label} ${roleCounts.value.main}`,
+  },
+  {
+    key: 'DETAIL_IMAGE',
+    label: `${TEMPLATE_OUTPUT_ROLE_META.DETAIL_IMAGE.label} ${roleCounts.value.detail}`,
+  },
 ])
 
 const templateIdsByRole = computed<Record<TemplateOutputRole, string[]>>(() => {

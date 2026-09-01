@@ -161,10 +161,15 @@ test('completes the template library V1 visual interactions', async ({
   await expect(editor).toBeVisible()
   await expect(editor.getByLabel('输出类型')).toHaveCount(0)
   await expect(editor.getByText('输出类型', { exact: true })).toHaveCount(0)
+  await expect(editor.getByText('Prompt', { exact: true })).toHaveCount(0)
+  await expect(
+    editor.getByText('Negative Prompt', { exact: true }),
+  ).toHaveCount(0)
+  await expect(editor.getByLabel('提示词').locator('textarea')).toHaveCount(1)
   await editor
-    .getByLabel('Prompt', { exact: true })
+    .getByLabel('提示词', { exact: true })
     .locator('textarea')
-    .fill('更新后的视觉测试 Prompt')
+    .fill('更新后的视觉测试提示词')
   await chooseSelectOption(page, editor.getByLabel('比例'), '16:9')
   await editor.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText('已保存', { exact: true })).toBeVisible()
@@ -180,7 +185,7 @@ test('completes the template library V1 visual interactions', async ({
   await expect(editor.getByLabel('比例')).toContainText('1:1')
   await templateNameInput.fill('视觉主图模板')
   await editor
-    .getByLabel('Prompt', { exact: true })
+    .getByLabel('提示词', { exact: true })
     .locator('textarea')
     .fill('{product_name} 视觉测试')
   await editor.getByRole('button', { name: '保存' }).click()

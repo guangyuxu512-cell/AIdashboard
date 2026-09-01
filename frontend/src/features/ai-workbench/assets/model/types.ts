@@ -1,9 +1,11 @@
+import type { GenerationMode } from '../../shared/model/generation-mode'
+
+export type { GenerationMode }
+
 export type MaterialRole = 'PRODUCT_SOURCE' | 'STYLE_REFERENCE' | 'AI_OUTPUT'
 
 export type MaterialAssetSourceType =
   'LOCAL_UPLOAD' | 'MATERIAL_IMPORT' | 'AI_GENERATION'
-
-export type GenerationMode = 'NORMAL_GENERATION' | 'STYLE_REPLICATION'
 
 export interface MaterialAssetReference {
   assetId: string

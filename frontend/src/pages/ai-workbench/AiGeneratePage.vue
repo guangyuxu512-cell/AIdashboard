@@ -1,110 +1,50 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
+
+import { AiManagementToolbar, AiModuleShell } from '@/features/ai-workbench'
 import {
-  AiModuleShell,
-  AiWorkbenchLayout,
-  AiWorkspaceEmptyState,
-} from '@/features/ai-workbench'
-import { AppButton, AppInput, AppRadio } from '@/shared/ui'
+  GENERATION_WORK_MODE_META,
+  type GenerationWorkMode,
+} from '@/features/ai-workbench/generation/model/types'
+import { useAiGenerationRuntime } from '@/features/ai-workbench/generation/model/useAiGenerationRuntime'
+import BatchGenerationPanel from '@/features/ai-workbench/generation/ui/BatchGenerationPanel.vue'
+import InstantGenerationPanel from '@/features/ai-workbench/generation/ui/InstantGenerationPanel.vue'
+import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
 
-const generationModeOptions = [
-  { label: '智能生成', value: 'smart' },
-  { label: '风格参考', value: 'reference' },
+const { generationStore } = useAiGenerationRuntime()
+const { workMode } = storeToRefs(generationStore)
+
+const workModeOptions = [
+  { label: GENERATION_WORK_MODE_META.INSTANT.label, key: 'INSTANT' },
+  { label: GENERATION_WORK_MODE_META.BATCH.label, key: 'BATCH' },
 ]
 
-const outputTypeOptions = [
-  { label: '主图', value: 'main-image' },
-  { label: '主图 + 详情', value: 'main-and-detail' },
-]
+function setWorkMode(value: string): void {
+  generationStore.setWorkMode(value as GenerationWorkMode)
+}
 </script>
 
 <template>
   <AiModuleShell>
-    <AiWorkbenchLayout>
-      <template #operation>
-        <div class="ai-generate-page__operation-stack">
-          <section
-            class="ai-generate-page__field"
-            aria-labelledby="ai-material-label"
-          >
-            <strong id="ai-material-label">素材</strong>
-            <AppButton block disabled>选择素材</AppButton>
-          </section>
-
-          <section
-            class="ai-generate-page__field"
-            aria-labelledby="ai-mode-label"
-          >
-            <strong id="ai-mode-label">生成模式</strong>
-            <AppRadio
-              model-value="smart"
-              :options="generationModeOptions"
-              disabled
-            />
-          </section>
-
-          <section
-            class="ai-generate-page__field"
-            aria-labelledby="ai-output-label"
-          >
-            <strong id="ai-output-label">输出类型</strong>
-            <AppRadio
-              model-value="main-image"
-              :options="outputTypeOptions"
-              disabled
-            />
-          </section>
-
-          <section
-            class="ai-generate-page__field"
-            aria-labelledby="ai-prompt-label"
-          >
-            <strong id="ai-prompt-label">提示词 / 模板</strong>
-            <AppInput
-              type="textarea"
-              placeholder="请输入提示词或选择模板"
-              disabled
-            />
-          </section>
-
-          <div class="ai-generate-page__actions" aria-label="生成操作">
-            <AppButton block tone="primary" disabled>开始生成</AppButton>
-          </div>
-        </div>
-      </template>
-
-      <template #workspace>
-        <AiWorkspaceEmptyState title="暂无生成结果" />
-      </template>
-    </AiWorkbenchLayout>
+    <AiManagementToolbar label="生成工作方式">
+      <span class="ai-generate-page__work-mode-label">工作方式</span>
+      <ContextSwitchBar
+        label="生成工作方式"
+        appearance="bare"
+        :active-key="workMode"
+        :items="workModeOptions"
+        @select="setWorkMode"
+      />
+    </AiManagementToolbar>
+    <InstantGenerationPanel v-if="workMode === 'INSTANT'" />
+    <BatchGenerationPanel v-else />
   </AiModuleShell>
 </template>
 
 <style scoped>
-.ai-generate-page__operation-stack,
-.ai-generate-page__field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.ai-generate-page__operation-stack {
-  min-height: 0;
-  flex: 1;
-  gap: var(--space-5);
-}
-
-.ai-generate-page__field {
-  gap: var(--space-2);
-}
-
-.ai-generate-page__field strong {
-  color: var(--text-primary);
-  font-size: var(--font-size-body);
+.ai-generate-page__work-mode-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
   font-weight: var(--font-weight-medium);
-}
-
-.ai-generate-page__actions {
-  margin-top: auto;
-  padding-top: var(--space-1);
 }
 </style>

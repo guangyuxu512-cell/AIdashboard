@@ -44,13 +44,22 @@ test('keeps the production brand compact and hides development navigation', asyn
   expect(runtimeErrors).toEqual([])
 })
 
-test('keeps the template visual fixture out of production', async ({
-  page,
-}) => {
+test('keeps every AI visual fixture out of production', async ({ page }) => {
   await page.goto('/#/ai-workbench/templates?visualMock=1')
 
   await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
   await expect(page.getByText('电商标准套图 A', { exact: true })).toHaveCount(0)
   await expect(page.getByText('竞品复刻 A', { exact: true })).toHaveCount(0)
   await expect(page.getByText('极简白底', { exact: true })).toHaveCount(0)
+
+  await page.goto('/#/ai-workbench/generate?visualMock=1')
+  await expect(page.getByText('暂无生成结果', { exact: true })).toBeVisible()
+  await expect(page.getByText('手机支架', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '生成', exact: true }),
+  ).toBeDisabled()
+
+  await page.goto('/#/ai-workbench/records?visualMock=1')
+  await expect(page.getByText('暂无生成记录', { exact: true })).toBeVisible()
+  await expect(page.getByText('张三', { exact: true })).toHaveCount(0)
 })

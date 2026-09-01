@@ -11,37 +11,28 @@ const removedCopy = [
   '沉淀可复用的创作模板，统一组织画面要求与输出结构。',
 ]
 
-async function expectCompactAiLayout(page: Page): Promise<void> {
+async function expectShellBoundaries(page: Page): Promise<void> {
   const layout = await page.evaluate(() => {
-    const nestedScrollers = Array.from(
-      document.querySelectorAll<HTMLElement>('.ai-module-shell *'),
-    ).filter((element) => {
-      const style = getComputedStyle(element)
-      return (
-        ['auto', 'scroll'].includes(style.overflowY) &&
-        element.scrollHeight > element.clientHeight + 1
-      )
-    })
-
+    const main = document.querySelector<HTMLElement>('.app-shell__content')!
     return {
       bodyOverflow: getComputedStyle(document.body).overflow,
-      mainOverflowY: getComputedStyle(
-        document.querySelector('.app-shell__content') as HTMLElement,
-      ).overflowY,
-      nestedScrollerCount: nestedScrollers.length,
-      documentHasHorizontalOverflow:
+      documentHorizontalOverflow:
         document.documentElement.scrollWidth >
         document.documentElement.clientWidth,
-      bodyHasHorizontalOverflow:
+      bodyHorizontalOverflow:
         document.body.scrollWidth > document.body.clientWidth,
+      mainHorizontalOverflow: main.scrollWidth > main.clientWidth,
+      mainVerticalOverflow: main.scrollHeight > main.clientHeight,
     }
   })
 
-  expect(layout.bodyOverflow).toBe('hidden')
-  expect(layout.mainOverflowY).toBe('auto')
-  expect(layout.nestedScrollerCount).toBe(0)
-  expect(layout.documentHasHorizontalOverflow).toBe(false)
-  expect(layout.bodyHasHorizontalOverflow).toBe(false)
+  expect(layout).toEqual({
+    bodyOverflow: 'hidden',
+    documentHorizontalOverflow: false,
+    bodyHorizontalOverflow: false,
+    mainHorizontalOverflow: false,
+    mainVerticalOverflow: false,
+  })
 }
 
 async function expectNoExplanatoryCopy(page: Page): Promise<void> {
@@ -49,14 +40,12 @@ async function expectNoExplanatoryCopy(page: Page): Promise<void> {
   await expect(page.locator('.ai-module-shell .page-header')).toHaveCount(0)
   await expect(page.getByText('操作区', { exact: true })).toHaveCount(0)
   await expect(page.getByText('工作区', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('预览', { exact: true })).toHaveCount(0)
-
   for (const copy of removedCopy) {
     await expect(page.getByText(copy, { exact: true })).toHaveCount(0)
   }
 }
 
-test('keeps the three AI pages route-backed, compact and explanation-free', async ({
+test('keeps the four AI pages route-backed, compact and explanation-free', async ({
   page,
 }) => {
   const runtimeErrors: string[] = []
@@ -72,7 +61,7 @@ test('keeps the three AI pages route-backed, compact and explanation-free', asyn
     name: 'AI 功能入口',
   })
   await expect(moduleNavigation).toBeVisible()
-  await expect(moduleNavigation.getByRole('button')).toHaveCount(3)
+  await expect(moduleNavigation.getByRole('button')).toHaveCount(4)
   await expect(
     moduleNavigation.getByRole('button', { name: 'AI生图' }),
   ).toHaveAttribute('aria-pressed', 'true')
@@ -82,48 +71,55 @@ test('keeps the three AI pages route-backed, compact and explanation-free', asyn
   await expect(
     moduleNavigation.getByRole('button', { name: '模板库' }),
   ).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.getByText('平台切换', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('region', { name: '生成设置' })).toBeVisible()
   await expect(
-    page.getByRole('region', { name: '生成结果', exact: true }),
-  ).toBeVisible()
-  await expect(page.getByText('素材', { exact: true })).toBeVisible()
-  await expect(page.getByText('生成模式', { exact: true })).toBeVisible()
-  await expect(page.getByText('输出类型', { exact: true })).toBeVisible()
-  await expect(page.getByText('提示词 / 模板', { exact: true })).toBeVisible()
+    moduleNavigation.getByRole('button', { name: '生成记录' }),
+  ).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByText('平台切换', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '生成工作方式' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '即时生成配置' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '即时生成结果' })).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: '生成工作方式' })
+      .getByRole('button', { name: '即时生成' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    page
+      .getByRole('navigation', { name: '生成模式' })
+      .getByRole('button', { name: '普通生图' }),
+  ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('暂无生成结果', { exact: true })).toBeVisible()
 
   const columns = await page.evaluate(() => {
     const operation = document
-      .querySelector('[aria-label="生成设置"]')
+      .querySelector('[aria-label="即时生成配置"]')
       ?.getBoundingClientRect()
     const workspace = document
-      .querySelector('[aria-label="生成结果"]')
+      .querySelector('[aria-label="即时生成结果"]')
       ?.getBoundingClientRect()
-    return { operationLeft: operation?.left, workspaceLeft: workspace?.left }
+    const configScroller = document.querySelector<HTMLElement>(
+      '.instant-generation-pane__scroll',
+    )!
+    return {
+      operationLeft: operation?.left,
+      workspaceLeft: workspace?.left,
+      configUsesLocalScroll:
+        configScroller.scrollHeight > configScroller.clientHeight,
+    }
   })
   expect(columns.operationLeft).toBeLessThan(columns.workspaceLeft ?? 0)
+  expect(columns.configUsesLocalScroll).toBe(true)
 
   await expectNoExplanatoryCopy(page)
-  await expectCompactAiLayout(page)
+  await expectShellBoundaries(page)
 
   await moduleNavigation.getByRole('button', { name: '素材库' }).click()
   await expect(page).toHaveURL(/#\/ai-workbench\/assets$/)
-  await expect(
-    moduleNavigation.getByRole('button', { name: '素材库' }),
-  ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByPlaceholder('搜索素材')).toBeVisible()
-  await expect(page.getByRole('button', { name: '筛选' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '上传素材' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '上传素材' })).toBeDisabled()
   await expect(page.getByText('暂无素材', { exact: true })).toBeVisible()
-  await page.reload()
-  await expect(
-    page
-      .getByRole('navigation', { name: 'AI 功能入口' })
-      .getByRole('button', { name: '素材库' }),
-  ).toHaveAttribute('aria-pressed', 'true')
   await expectNoExplanatoryCopy(page)
-  await expectCompactAiLayout(page)
+  await expectShellBoundaries(page)
 
   await page
     .getByRole('navigation', { name: 'AI 功能入口' })
@@ -131,22 +127,23 @@ test('keeps the three AI pages route-backed, compact and explanation-free', asyn
     .click()
   await expect(page).toHaveURL(/#\/ai-workbench\/templates$/)
   await expect(page.getByPlaceholder('搜索模板')).toBeVisible()
-  await page.getByLabel('生成模式').click()
-  await expect(page.locator('.n-base-select-menu:visible')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '新建模板组' })).toBeDisabled()
   await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
-  await page.reload()
-  await expect(
-    page
-      .getByRole('navigation', { name: 'AI 功能入口' })
-      .getByRole('button', { name: '模板库' }),
-  ).toHaveAttribute('aria-pressed', 'true')
   await expectNoExplanatoryCopy(page)
-  await expectCompactAiLayout(page)
+  await expectShellBoundaries(page)
+
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: '生成记录' })
+    .click()
+  await expect(page).toHaveURL(/#\/ai-workbench\/records$/)
+  await expect(page.getByText('暂无生成记录', { exact: true })).toBeVisible()
+  await expectNoExplanatoryCopy(page)
+  await expectShellBoundaries(page)
   expect(runtimeErrors).toEqual([])
 })
 
-test('renders the compact AI workbench in light and dark themes', async ({
+test('renders the AI generation workbench in light and dark themes', async ({
   page,
 }) => {
   await page.goto('/#/ai-workbench/generate')
@@ -155,11 +152,11 @@ test('renders the compact AI workbench in light and dark themes', async ({
   await page.getByText('深色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.getByText('暂无生成结果', { exact: true })).toBeVisible()
-  await expectCompactAiLayout(page)
+  await expectShellBoundaries(page)
 
   await page.getByRole('button', { name: '切换主题' }).click()
   await page.getByText('浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.getByText('暂无生成结果', { exact: true })).toBeVisible()
-  await expectCompactAiLayout(page)
+  await expectShellBoundaries(page)
 })

@@ -6,6 +6,7 @@ import type { DropdownOption } from 'naive-ui'
 import type { ProductMaterialGroup } from '../model/types'
 import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
 
 defineProps<{
@@ -62,13 +63,10 @@ function selectAction(
           <Folder :size="18" />
         </template>
         <template #status>
-          <span
-            class="product-material-sidebar__status"
-            :class="{
-              'product-material-sidebar__status--enabled': product.enabled,
-            }"
-            :aria-label="product.enabled ? '启用' : '停用'"
-            role="status"
+          <StatusTag
+            appearance="dot"
+            :label="product.enabled ? '启用' : '停用'"
+            :tone="product.enabled ? 'success' : 'neutral'"
           />
         </template>
         <template #actions>
@@ -121,20 +119,5 @@ function selectAction(
 
 .product-material-sidebar__list::-webkit-scrollbar {
   display: none;
-}
-
-.product-material-sidebar__status {
-  display: block;
-  width: var(--space-2);
-  height: var(--space-2);
-  justify-self: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  background: transparent;
-}
-
-.product-material-sidebar__status--enabled {
-  border-color: var(--status-success);
-  background: var(--status-success);
 }
 </style>
