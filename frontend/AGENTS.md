@@ -4,6 +4,8 @@
 约束 `frontend/` 下所有 Vue Renderer 代码。
 修改前必须先读取根 `AGENTS.md`。
 
+分支、Two-Gate、Worktree、端口与本地材料规则由根 `AGENTS.md` 和 `docs/engineering/` 统一定义；本文件不重复工程流程，且只以当前 Worktree 的规则快照为准。
+
 ## 2. 固定技术栈
 - Vue 3
 - TypeScript

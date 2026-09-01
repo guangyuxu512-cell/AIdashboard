@@ -3,6 +3,8 @@
 ## 1. 边界
 Electron 是桌面 Host，不是业务后端，也不是 Worker。
 
+分支、Two-Gate、Worktree、端口隔离与本地材料规则由根 `AGENTS.md` 和 `docs/engineering/` 统一定义；本文件只约束 Electron 模块实现，并以当前 Worktree 的文档为准。
+
 负责：
 - BrowserWindow
 - App lifecycle

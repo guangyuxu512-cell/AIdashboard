@@ -4,6 +4,8 @@
 
 Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也不承载 Backend 业务规则。
 
+分支、Two-Gate、Worktree、端口隔离与本地材料规则由根 `AGENTS.md` 和 `docs/engineering/` 统一定义；本文件只约束 Mobile 模块实现，并以当前 Worktree 的文档为准。既有冻结的 Mobile UI 约束不因工程流程变更而放宽。
+
 固定使用 Vue 3、TypeScript、Vite、Vue Router、Pinia、Vant、Axios、TanStack Vue Query、Vitest、Playwright、ESLint、Prettier 与根 pnpm workspace。
 
 处理任务时依次读取：根 `AGENTS.md`、本文件、`docs/00-文档索引.md`，再按索引读取专项文档和检查现有实现。

@@ -3,6 +3,8 @@
 ## 1. 定位
 Backend 是服务器业务核心。
 
+工程分支、Two-Gate、Worktree、运行隔离与 Migration Slot 统一遵循根 `AGENTS.md` 及 `docs/engineering/`。本文件只补充 Backend 模块约束；执行任务时以当前 Worktree 的文档为准。
+
 固定：
 - Python
 - FastAPI

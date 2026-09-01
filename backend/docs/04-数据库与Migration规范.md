@@ -51,7 +51,7 @@ Migration `20260819_0002_auth_domain_foundation` 增加：
 | `shop_credential_bindings` | Credential 与 Shop 的可扩展关系；每 Shop 最多一个启用关系 |
 | `shop_sessions` | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload |
 
-外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只允许在可随时重建的 `control_center_dev` 执行。
+外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只能在可随时重建且已登记的非生产数据库执行：Feature 使用其临时/Feature DB，Integration 使用 `control_center_integration`，Main smoke 使用 `control_center_dev`。Migration Slot、升级/降级和 Gate 规则见根 `docs/engineering/03-数据库与Migration协作规范.md`。
 
 ## Device Provider Inventory
 
