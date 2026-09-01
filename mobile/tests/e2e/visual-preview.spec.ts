@@ -576,7 +576,6 @@ for (const width of viewportWidths) {
     test(`Visual Mock ${width}px ${theme} 稳定展示设备与任务`, async ({
       page,
     }, testInfo) => {
-      test.setTimeout(60_000)
       const observation = observePage(page)
       await page.setViewportSize({ width, height: 844 })
       await setTheme(page, theme)
@@ -1095,9 +1094,7 @@ for (const width of viewportWidths) {
       await page.goto(
         '/#/tasks/visual-task-running?fromDeviceId=visual-device-operations',
       )
-      await expect(page.getByTestId('task-detail')).toContainText('订单同步', {
-        timeout: 10_000,
-      })
+      await expect(page.getByTestId('task-detail')).toContainText('订单同步')
       await expectDetailHeader(page, '任务详情', '任务')
       await expectBottomNavigation(page, '任务')
       const taskDetailDensity = await page.evaluate(() => {
@@ -1153,22 +1150,17 @@ for (const width of viewportWidths) {
 
       await page.getByRole('button', { name: '返回' }).click()
       await expect(page).toHaveURL(/#\/devices$/)
-      await expect(page.getByTestId('device-card').first()).toBeVisible()
 
       await page.getByRole('tab', { name: /任务$/ }).click()
-      await expect(page).toHaveURL(/#\/tasks$/, { timeout: 10_000 })
+      await expect(page).toHaveURL(/#\/tasks$/)
       await expectBottomNavigation(page, '任务')
       const taskGlobalHeader = await readGlobalHeaderAnatomy(page)
-      expect(taskGlobalHeader.brandText).toBe('任务')
-      expect(taskGlobalHeader.isPageHeader).toBe(true)
+      expect(taskGlobalHeader.brandText).toBe('思余AI中控台')
+      expect(taskGlobalHeader.isPageHeader).toBe(false)
       expect(taskGlobalHeader.actionLabels).toEqual(
         deviceGlobalHeader.actionLabels,
       )
       expect(taskGlobalHeader.iconSizes).toEqual(deviceGlobalHeader.iconSizes)
-      await expect(page.getByTestId('mobile-header-menu')).toHaveAttribute(
-        'aria-label',
-        '筛选运行日期',
-      )
       await expect(page.getByTestId('task-card')).toHaveCount(5)
       for (const status of ['执行中', '成功', '失败', '待执行', '已丢失']) {
         await expect(
@@ -1184,11 +1176,9 @@ for (const width of viewportWidths) {
         page.getByText('正在处理 HuanYu 店铺', { exact: true }),
       ).toHaveCount(0)
       await expectNoHorizontalOverflow(page)
-      await expect(page.getByTestId('mobile-list-toolbar')).toHaveCount(0)
-      await expect(page.getByTestId('task-list-controls')).toBeVisible()
-      await expect(page.getByTestId('mobile-list-context-card')).toHaveCSS(
-        'min-height',
-        '48px',
+      await expect(page.getByTestId('mobile-list-toolbar')).toHaveCSS(
+        'height',
+        '46px',
       )
       await expect(page.getByTestId('task-list-scroll')).toHaveCSS(
         'scrollbar-width',
@@ -1196,7 +1186,7 @@ for (const width of viewportWidths) {
       )
       await expect(page.getByTestId('task-card-name').first()).toHaveCSS(
         'font-size',
-        '16.5px',
+        '15px',
       )
       await expect(page.getByTestId('task-card-name').first()).toHaveCSS(
         'font-weight',
@@ -1232,46 +1222,35 @@ for (const width of viewportWidths) {
       const taskCardTokens = await page.evaluate(() => {
         const rootStyle = window.getComputedStyle(document.documentElement)
         return {
-          paddingTop: rootStyle
-            .getPropertyValue('--visual-v2-business-card-padding-top')
+          paddingX: rootStyle
+            .getPropertyValue('--layout-card-padding-x')
             .trim(),
-          paddingRight: rootStyle
-            .getPropertyValue('--visual-v2-business-card-padding-right')
+          paddingY: rootStyle
+            .getPropertyValue('--layout-card-padding-y')
             .trim(),
-          paddingBottom: rootStyle
-            .getPropertyValue('--visual-v2-business-card-padding-bottom')
-            .trim(),
-          paddingLeft: rootStyle
-            .getPropertyValue('--visual-v2-business-card-padding-left')
-            .trim(),
-          leadingColumn: Number.parseFloat(
-            rootStyle.getPropertyValue(
-              '--visual-v2-business-card-leading-column',
-            ),
+          slot: Number.parseFloat(
+            rootStyle.getPropertyValue('--layout-card-leading-icon-slot-width'),
           ),
-          artwork: Number.parseFloat(
-            rootStyle.getPropertyValue('--visual-v2-task-artwork-size'),
-          ),
-          icon: Number.parseFloat(
-            rootStyle.getPropertyValue('--visual-v2-task-artwork-icon-size'),
+          glyph: Number.parseFloat(
+            rootStyle.getPropertyValue('--icon-size-card-leading'),
           ),
         }
       })
       expect(taskCardSpacing).toEqual([
         {
-          paddingTop: taskCardTokens.paddingTop,
-          paddingRight: taskCardTokens.paddingRight,
-          paddingBottom: taskCardTokens.paddingBottom,
-          paddingLeft: taskCardTokens.paddingLeft,
-          columnGap: 'normal',
-          cardGap: 14,
+          paddingTop: taskCardTokens.paddingY,
+          paddingRight: taskCardTokens.paddingX,
+          paddingBottom: taskCardTokens.paddingY,
+          paddingLeft: taskCardTokens.paddingX,
+          columnGap: '16px',
+          cardGap: 8,
         },
         {
-          paddingTop: taskCardTokens.paddingTop,
-          paddingRight: taskCardTokens.paddingRight,
-          paddingBottom: taskCardTokens.paddingBottom,
-          paddingLeft: taskCardTokens.paddingLeft,
-          columnGap: 'normal',
+          paddingTop: taskCardTokens.paddingY,
+          paddingRight: taskCardTokens.paddingX,
+          paddingBottom: taskCardTokens.paddingY,
+          paddingLeft: taskCardTokens.paddingX,
+          columnGap: '16px',
           cardGap: null,
         },
       ])
@@ -1279,28 +1258,23 @@ for (const width of viewportWidths) {
         .getByTestId('task-card')
         .evaluateAll((cards) =>
           cards.map((card) => {
-            const slot = card.querySelector<HTMLElement>(
-              '[data-testid="business-card-leading"]',
-            )!
             const leading = card.querySelector<HTMLElement>(
               '[data-testid="task-card-leading"]',
             )!
-            const icon = leading.querySelector<HTMLElement>('.mobile-icon')!
             return {
-              slotWidth: slot.getBoundingClientRect().width,
-              artworkSize: leading.getBoundingClientRect().width,
-              iconSize: icon.getBoundingClientRect().width,
+              slotWidth: leading.getBoundingClientRect().width,
+              glyphSize: Number.parseFloat(
+                window.getComputedStyle(leading).fontSize,
+              ),
             }
           }),
         )
       expect(
         taskLeadingVisuals.every(
           (visual) =>
-            Math.abs(visual.slotWidth - taskCardTokens.leadingColumn) <= 1 &&
-            visual.artworkSize === taskCardTokens.artwork &&
-            visual.iconSize === taskCardTokens.icon &&
-            visual.iconSize < visual.artworkSize &&
-            visual.artworkSize < visual.slotWidth,
+            Math.abs(visual.slotWidth - taskCardTokens.slot) <= 1 &&
+            visual.glyphSize === taskCardTokens.glyph &&
+            visual.glyphSize < visual.slotWidth,
         ),
       ).toBe(true)
 

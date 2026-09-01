@@ -17,12 +17,10 @@ const props = withDefaults(
     resolvedTheme?: 'light' | 'dark'
     pageTitle?: string
     menuEnabled?: boolean
-    menuActionLabel?: string
   }>(),
   {
     notificationDot: false,
     resolvedTheme: 'light',
-    menuActionLabel: '打开主题设置',
   },
 )
 
@@ -48,7 +46,7 @@ const themeIconName = computed<MobileIconName>(() =>
         v-if="menuEnabled"
         class="mobile-page-header__menu mobile-pressable"
         type="button"
-        :aria-label="menuActionLabel"
+        aria-label="打开主题设置"
         data-testid="mobile-header-menu"
         @click="emit('settingsClick')"
       >

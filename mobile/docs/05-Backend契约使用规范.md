@@ -95,30 +95,6 @@ Entity 通过 `shared/api` 的 base URL 使用以下相对路径：
 - `result` 只允许读取非空字符串 `summary`；`input` 与其他结果字段不得通用渲染。
 - `error_message` 与 `error_code` 仅按 Backend 已脱敏响应展示，Mobile 不解析内部错误或复制状态机。
 
-### Task List Visual V2 查询与 Contract Gap
-
-`GET tasks` 正式支持 `page`、`page_size`、单个 `status`、`device_id`、`search`、
-`created_from` 与 `created_to`。Visual V2 只使用 `search`、日期半开区间和以下状态映射：
-
-| Mobile 筛选 | Backend 查询                          |
-| ----------- | ------------------------------------- |
-| 运行中      | `running`                             |
-| 待运行      | `pending`                             |
-| 异常        | `failed` 与 `lost` 两条正式查询流合并 |
-| 已完成      | `success`                             |
-
-- Backend 当前没有 Task Stats / Summary API，也不支持一个请求传多个状态。四项 Metric 因此分别使用
-  `page=1&page_size=1` 读取正式 `total`；异常为 `failed.total + lost.total`，不可用时显示 `—`，不得回退为
-  当前页数组计数。
-- 异常列表分别分页读取 `failed` 与 `lost`，按正式 `created_at` 合并去重；Context Card 数量同样为两条
-  查询的正式 `total` 之和。Mobile 聚合只属于 View Model，不改变 Backend Enum。
-- 默认“近7天”表示当前本地自然日加前6个自然日；指定日期转换为该日开始到下一日开始的半开区间；
-  “全部”同时省略 `created_from` 和 `created_to`。
-- Task List DTO 不含 Provider Type、Runtime Type、Application ID 或 Application Display Name。列表 Tag 只能
-  使用真实存在的 `skill_display_name`；原型中的 Provider / RPA Tag 属于 Contract Gap，不得猜测或从名称推断。
-- Duration 只在正式 `started_at` 与 `finished_at`（或 Running 的当前时间）形成有效正区间时显示；不能从
-  `current_message`、Event 文本或状态估算。
-
 ## 7. Device Center V1 已冻结只读契约
 
 Device Center 只经 Entity API 和 `shared/api` 读取以下正式接口：

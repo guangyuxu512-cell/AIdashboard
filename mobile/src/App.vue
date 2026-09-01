@@ -15,7 +15,6 @@ import {
   MobileGlobalHeader,
   MobileThemeSettingsSheet,
   provideMobileDetailHeaderAction,
-  provideMobileMainHeaderAction,
 } from '@/shared/ui'
 
 const visualTokenTunerEnabled =
@@ -32,24 +31,18 @@ const themeStore = useThemeStore()
 const { mode, resolvedTheme } = storeToRefs(themeStore)
 const themeSettingsOpen = ref(false)
 const detailHeader = provideMobileDetailHeaderAction()
-const mainHeader = provideMobileMainHeaderAction()
 
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
 const isMainLayout = computed(() => shellLayout.value === 'main')
 const isToolLayout = computed(() => shellLayout.value === 'tool')
 const globalHeaderPageTitle = computed(() =>
-  route.name === MOBILE_ROUTE_NAMES.devices
-    ? '设备'
-    : route.name === MOBILE_ROUTE_NAMES.tasks
-      ? '任务'
-      : undefined,
+  route.name === MOBILE_ROUTE_NAMES.devices ? '设备' : undefined,
 )
 const isVisualV2Route = computed(
   () =>
     route.name === MOBILE_ROUTE_NAMES.devices ||
-    route.name === MOBILE_ROUTE_NAMES.deviceDetail ||
-    route.name === MOBILE_ROUTE_NAMES.tasks,
+    route.name === MOBILE_ROUTE_NAMES.deviceDetail,
 )
 const detailHeaderAction = computed(() => detailHeader.action.value)
 const activeNavigationKey = computed(() => {
@@ -137,14 +130,6 @@ function selectTheme(nextMode: ThemeMode): void {
   themeStore.setMode(nextMode)
   themeSettingsOpen.value = false
 }
-
-function runMainHeaderAction(): void {
-  if (mainHeader.action.value) {
-    mainHeader.action.value.run()
-    return
-  }
-  themeSettingsOpen.value = true
-}
 </script>
 
 <template>
@@ -163,10 +148,9 @@ function runMainHeaderAction(): void {
           :resolved-theme="resolvedTheme"
           :page-title="globalHeaderPageTitle"
           :menu-enabled="Boolean(globalHeaderPageTitle)"
-          :menu-action-label="mainHeader.action.value?.label ?? '打开主题设置'"
           @theme-toggle="themeStore.toggleResolvedTheme"
           @notification-click="showNotificationPlaceholder"
-          @settings-click="runMainHeaderAction"
+          @settings-click="themeSettingsOpen = true"
         />
         <MobileDetailHeader
           v-else

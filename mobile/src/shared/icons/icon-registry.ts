@@ -179,11 +179,6 @@ export const MOBILE_ICON_REGISTRY = {
     role: 'action',
     source: { kind: 'vant', name: 'search' },
   },
-  calendar: {
-    label: '日期',
-    role: 'action',
-    source: { kind: 'vant', name: 'calendar-o' },
-  },
   'arrow-down': {
     label: '展开选择',
     role: 'action',
@@ -273,7 +268,6 @@ export const MOBILE_ICON_GALLERY_GROUPS = [
       'heartbeat',
       'filter',
       'search',
-      'calendar',
       'arrow-down',
       'refresh',
       'back',

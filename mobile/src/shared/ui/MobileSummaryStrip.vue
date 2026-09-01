@@ -3,7 +3,7 @@ import type { PropType } from 'vue'
 
 import { MobileIcon, type MobileIconName } from '@/shared/icons'
 
-type MobileSummaryTone = 'primary' | 'success' | 'danger' | 'muted' | 'neutral'
+type MobileSummaryTone = 'primary' | 'success' | 'muted' | 'neutral'
 
 interface MobileSummaryItem {
   key: string
@@ -284,10 +284,6 @@ const emit = defineEmits<{
 
 .mobile-summary-strip__item--success .mobile-summary-strip__value {
   color: var(--status-success);
-}
-
-.mobile-summary-strip__item--danger .mobile-summary-strip__value {
-  color: var(--status-danger);
 }
 
 .mobile-summary-strip__item--muted .mobile-summary-strip__value {

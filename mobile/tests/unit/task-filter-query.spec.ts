@@ -7,7 +7,6 @@ import {
   getTaskListRefetchInterval,
   TASK_LIST_REFRESH_INTERVAL_MS,
   toTaskListRequest,
-  toTaskTotalRequest,
   type TaskListPage,
 } from '@/entities/task'
 import {
@@ -16,8 +15,6 @@ import {
   createDefaultTaskFilterDraft,
   createTaskDateRange,
   createTaskPresetDateRange,
-  formatTaskDateFilterLabel,
-  TASK_STATUS_FILTER_OPTIONS,
 } from '@/features/task-center'
 import { classifyInfiniteQueryError } from '@/shared/utils/infinite-query-error'
 
@@ -75,6 +72,12 @@ describe('task filters and infinite paging', () => {
       new Date(2026, 7, 26),
       new Date(2026, 7, 27),
     ],
+    [
+      'last-30-days',
+      new Date(2026, 6, 28),
+      new Date(2026, 7, 26),
+      new Date(2026, 7, 27),
+    ],
   ] as const)(
     'creates the exact %s local natural-day preset',
     (preset, start, end, exclusiveEnd) => {
@@ -85,15 +88,17 @@ describe('task filters and infinite paging', () => {
     },
   )
 
-  it('normalizes a custom single day and emits frozen snake_case params', () => {
+  it('normalizes a custom range and emits frozen snake_case params', () => {
     const dateRange = createTaskDateRange(
       new Date(2026, 6, 1, 18),
-      new Date(2026, 6, 1, 20),
+      new Date(2026, 6, 3, 20),
     )
     const filters = buildTaskListFilters(
       'failed',
       {
         search: '  订单  ',
+        deviceId: 'device-8',
+        deviceName: '设备八',
         datePreset: 'custom',
         dateRange: [dateRange.start, dateRange.endInclusive],
       },
@@ -104,40 +109,11 @@ describe('task filters and infinite paging', () => {
       page: 3,
       page_size: 20,
       status: 'failed',
+      device_id: 'device-8',
       search: '订单',
       created_from: dateRange.createdFrom,
       created_to: dateRange.createdTo,
     })
-  })
-
-  it('uses one-item formal list requests for complete status totals', () => {
-    const draft = createDefaultTaskFilterDraft(now)
-    draft.search = '  售后  '
-    const filters = buildTaskListFilters('running', draft, now)
-
-    expect(toTaskTotalRequest(filters)).toEqual({
-      page: 1,
-      page_size: 1,
-      status: 'running',
-      search: '售后',
-      created_from: createDefaultTaskDateRange(now).createdFrom,
-      created_to: createDefaultTaskDateRange(now).createdTo,
-    })
-  })
-
-  it('maps the four metrics to formal backend status semantics', () => {
-    expect(
-      TASK_STATUS_FILTER_OPTIONS.map(({ value, statuses }) => [
-        value,
-        [...statuses],
-      ]),
-    ).toEqual([
-      ['all', []],
-      ['running', ['running']],
-      ['pending', ['pending']],
-      ['exception', ['failed', 'lost']],
-      ['completed', ['success']],
-    ])
   })
 
   it('omits both date parameters for all time', () => {
@@ -147,16 +123,6 @@ describe('task filters and infinite paging', () => {
     expect(
       toTaskListRequest(buildTaskListFilters('all', draft, now), 1),
     ).toEqual({ page: 1, page_size: 20 })
-  })
-
-  it('uses the confirmed Chinese custom-date context label', () => {
-    expect(
-      formatTaskDateFilterLabel({
-        search: '',
-        datePreset: 'custom',
-        dateRange: [new Date(2026, 7, 31), new Date(2026, 7, 31)],
-      }),
-    ).toBe('8月31日')
   })
 
   it('keeps backend page order while deduplicating task_id', () => {

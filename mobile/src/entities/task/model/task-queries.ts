@@ -20,7 +20,6 @@ import type { TaskListFilters, TaskListPage } from './types'
 export const TASK_LIST_PAGE_SIZE = 20
 export const TASK_LIST_REFRESH_INTERVAL_MS = 5_000
 export const TASK_ACTIVE_REFRESH_INTERVAL_MS = 5_000
-export const TASK_METRIC_REFRESH_INTERVAL_MS = 15_000
 
 export const taskQueryKeys = {
   all: ['tasks'] as const,
@@ -29,8 +28,6 @@ export const taskQueryKeys = {
     [...taskQueryKeys.activeAll(), deviceId] as const,
   list: (filters: TaskListFilters) =>
     [...taskQueryKeys.all, 'list', filters] as const,
-  total: (filters: TaskListFilters) =>
-    [...taskQueryKeys.all, 'total', filters] as const,
   detail: (taskId: string) => [...taskQueryKeys.all, 'detail', taskId] as const,
 }
 
@@ -80,13 +77,6 @@ export function toTaskListRequest(
   }
 }
 
-export function toTaskTotalRequest(filters: TaskListFilters): TaskListRequest {
-  return {
-    ...toTaskListRequest(filters, 1),
-    page_size: 1,
-  }
-}
-
 export function getTaskListRefetchInterval(
   data: InfiniteData<TaskListPage, number> | undefined,
 ): number | false {
@@ -110,10 +100,7 @@ function resolveTaskDetailRefetchInterval(
   return task && !isTerminalTaskStatus(task.status) ? 2_000 : false
 }
 
-export function useTaskListQuery(
-  filters: MaybeRefOrGetter<TaskListFilters>,
-  enabled: MaybeRefOrGetter<boolean> = true,
-) {
+export function useTaskListQuery(filters: MaybeRefOrGetter<TaskListFilters>) {
   const queryClient = useQueryClient()
   const queryKey = computed(() => taskQueryKeys.list(toValue(filters)))
   const manualRefreshing = ref(false)
@@ -124,7 +111,6 @@ export function useTaskListQuery(
   )
   const query = useInfiniteQuery({
     queryKey,
-    enabled: computed(() => toValue(enabled)),
     initialPageParam: 1,
     queryFn: async ({ pageParam }) =>
       mapTaskListPage(
@@ -161,24 +147,6 @@ export function useTaskListQuery(
   }
 
   return { ...query, refreshFromStart }
-}
-
-export function useTaskTotalQuery(
-  filters: MaybeRefOrGetter<TaskListFilters>,
-  enabled: MaybeRefOrGetter<boolean> = true,
-) {
-  const refetchInterval = computed(() =>
-    toValue(enabled) && mobileOnline.value
-      ? TASK_METRIC_REFRESH_INTERVAL_MS
-      : false,
-  )
-  return useQuery({
-    queryKey: computed(() => taskQueryKeys.total(toValue(filters))),
-    queryFn: async () =>
-      (await getTasks(toTaskTotalRequest(toValue(filters)))).total,
-    enabled: computed(() => toValue(enabled)),
-    refetchInterval,
-  })
 }
 
 export function useTaskDetailQuery(taskId: MaybeRefOrGetter<string>) {
