@@ -668,7 +668,11 @@ test.describe('Visual Token Tuner V2 / V3', () => {
       .poll(() => rootValue(preview, '--bg-surface-raised'))
       .toBe('#f0f4f7')
 
-    await preview.goto('/#/tasks/visual-task-success')
+    // Force a document navigation: a same-document hash goto can race while
+    // the external tuner window and parallel visual workers are active.
+    await preview.goto(
+      '/?visual-fixture=task-success#/tasks/visual-task-success',
+    )
     await expect(preview).toHaveURL(/#\/tasks\/visual-task-success$/)
     await expect(preview.getByTestId('task-detail')).toBeVisible({
       timeout: 10_000,
