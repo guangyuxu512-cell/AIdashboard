@@ -1,6 +1,7 @@
 import type { Pinia } from 'pinia'
 import type { Router } from 'vue-router'
 
+import { getModuleDefinition } from '@/app/modules/registry'
 import { resolveSafeRedirect } from '@/features/human-auth/model/navigation'
 import { useAuthStore } from '@/stores/auth'
 
@@ -31,6 +32,24 @@ export function installAuthGuard(router: Router, pinia: Pinia): void {
         name: 'login',
         query: { redirect: target.fullPath, select_team: '1' },
       }
+    }
+    if (
+      target.meta.requiresAccessAdministrator &&
+      !auth.isAccessAdministrator
+    ) {
+      return { name: 'permission-denied' }
+    }
+    const moduleCode = target.meta.moduleCode
+    const module =
+      typeof moduleCode === 'string'
+        ? getModuleDefinition(moduleCode)
+        : undefined
+    if (
+      module?.navigationGroup !== 'development' &&
+      module &&
+      !auth.allowedModuleCodes.has(module.moduleCode)
+    ) {
+      return { name: 'permission-denied' }
     }
     return true
   })

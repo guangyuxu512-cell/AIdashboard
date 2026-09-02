@@ -59,3 +59,39 @@ class InvalidDataScopeError(AppError):
     code = "INVALID_DATA_SCOPE"
     message = "数据范围配置无效"
     status_code = 500
+
+
+class AccessAdministrationForbiddenError(AppError):
+    code = "ACCESS_ADMINISTRATION_FORBIDDEN"
+    message = "当前用户无权管理用户与权限"
+    status_code = 403
+
+
+class ModuleAccessDeniedError(AppError):
+    code = "MODULE_ACCESS_DENIED"
+    message = "当前用户无权使用此功能模块"
+    status_code = 403
+
+
+class InvalidModuleAccessError(AppError):
+    code = "INVALID_MODULE_ACCESS"
+    message = "功能模块权限配置无效"
+    status_code = 422
+
+
+class LastAccessAdministratorRequiredError(AppError):
+    code = "LAST_ACCESS_ADMINISTRATOR_REQUIRED"
+    message = "系统至少需要保留一名可管理用户与权限的管理员"
+    status_code = 409
+
+
+class AccessAdministratorMembershipUnavailableError(AppError):
+    code = "ACCESS_ADMINISTRATOR_MEMBERSHIP_UNAVAILABLE"
+    message = "只能为启用用户、启用团队中的启用成员关系授予权限管理员"
+    status_code = 409
+
+
+class AccessMemberCredentialNotConfiguredError(AppError):
+    code = "ACCESS_MEMBER_CREDENTIAL_NOT_CONFIGURED"
+    message = "该员工尚未配置登录账号，无法重置密码"
+    status_code = 409

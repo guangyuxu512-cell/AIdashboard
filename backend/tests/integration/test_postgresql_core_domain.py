@@ -12,6 +12,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.main import create_app
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import get_access_administrator
+from app.modules.access.enums import DataScope
 from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import DeviceCreate, DeviceUpdate
@@ -79,7 +82,7 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         assert connection.scalar(text("SELECT 1")) == 1
         assert connection.scalar(text("SHOW server_version"))
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260831_0022"
+            "20260902_0025"
         )
 
     assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -326,6 +329,14 @@ async def _exercise_real_api(
     device_ids: set[UUID],
 ) -> None:
     application = create_app()
+    application.dependency_overrides[get_access_administrator] = lambda: ActorContext(
+        user_id=uuid4(),
+        user_display_name="Core Domain API Administrator",
+        team_id=uuid4(),
+        membership_id=uuid4(),
+        role_code="access_admin",
+        data_scope=DataScope.ALL,
+    )
     transport = ASGITransport(app=application)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

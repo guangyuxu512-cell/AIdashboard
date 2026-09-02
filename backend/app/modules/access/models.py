@@ -1,13 +1,16 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     String,
     UniqueConstraint,
     Uuid,
+    func,
     text,
     true,
 )
@@ -98,4 +101,22 @@ class TeamMembership(TimestampMixin, Base):
         nullable=False,
         default=True,
         server_default=true(),
+    )
+
+
+class MembershipModuleAccess(Base):
+    """One allowed PC module for one TeamMembership."""
+
+    __tablename__ = "membership_module_accesses"
+
+    membership_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("team_memberships.membership_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    module_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )

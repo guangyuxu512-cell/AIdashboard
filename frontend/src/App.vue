@@ -21,15 +21,19 @@ import StatusTag from '@/shared/components/StatusTag.vue'
 import ThemeSelector from '@/shared/components/ThemeSelector.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
 import { useThemeStore } from '@/stores/theme'
+import { useAuthStore } from '@/stores/auth'
 
 const showDevelopmentModules =
   import.meta.env.DEV &&
   import.meta.env.VITE_SHOW_DEVELOPMENT_MODULES === 'true'
-const navigation = getNavigationEntries(undefined, {
-  includeDevelopment: showDevelopmentModules,
-})
-
 const themeStore = useThemeStore()
+const authStore = useAuthStore()
+const navigation = computed(() =>
+  getNavigationEntries(undefined, {
+    includeDevelopment: showDevelopmentModules,
+    allowedModuleCodes: authStore.allowedModuleCodes,
+  }),
+)
 const route = useRoute()
 const isDevelopment = import.meta.env.DEV
 const isAuthLayout = computed(() => route.meta.layout === 'auth')
