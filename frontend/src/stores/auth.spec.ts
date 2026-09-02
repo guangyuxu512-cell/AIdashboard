@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import type {
+  CurrentModuleAccess,
   CurrentHumanUser,
   HumanAuthDataSource,
   HumanTeamMembership,
@@ -34,12 +35,17 @@ function team(id: string, name: string): HumanTeamMembership {
 function dataSource(
   options: {
     currentUser?: CurrentHumanUser
+    moduleAccess?: CurrentModuleAccess
     teams?: HumanTeamMembership[]
     error?: unknown
   } = {},
 ): HumanAuthDataSource {
   const current = options.currentUser ?? user
   const memberships = options.teams ?? [team('team-1', '默认团队')]
+  const moduleAccess = options.moduleAccess ?? {
+    moduleCodes: ['asset'],
+    isAccessAdministrator: false,
+  }
   return {
     login: vi.fn().mockResolvedValue(current),
     logout: vi.fn().mockResolvedValue(undefined),
@@ -47,6 +53,7 @@ function dataSource(
       ? vi.fn().mockRejectedValue(options.error)
       : vi.fn().mockResolvedValue(current),
     listMyTeams: vi.fn().mockResolvedValue(memberships),
+    getCurrentModuleAccess: vi.fn().mockResolvedValue(moduleAccess),
   }
 }
 
@@ -71,6 +78,8 @@ describe('Human Auth Store', () => {
     expect(auth.activeTeamId).toBe('team-1')
     expect(auth.currentTeam?.teamName).toBe('默认团队')
     expect(auth.requiresTeamSelection).toBe(false)
+    expect(auth.allowedModuleCodes).toEqual(new Set(['asset']))
+    expect(auth.isAccessAdministrator).toBe(false)
   })
 
   it('requires an explicit first selection for multiple teams and persists it', async () => {

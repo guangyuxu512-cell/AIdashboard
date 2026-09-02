@@ -143,3 +143,12 @@ Team 与 Membership 以 `enabled` 停用，不以 Hard Delete 作为主要生命
 Phase A 不修改 Shop、Asset、Task、Schedule 或 AI Job 的 Ownership。后续 Team Scoped 业务表的
 统一语义是 `team_id=数据归属团队`、`created_by_user_id=创建者`；现有
 `Shop.owner_user_id` 仍只表示负责人，不承担权限边界。
+
+## Access Management V1 数据库
+
+Migration `20260902_0025_access_management_v1` 增加
+`membership_module_accesses`，以 `(membership_id, module_code)` 复合主键保存一条 Team
+Membership 可访问的正式 PC 模块。它通过 `RESTRICT` 外键依附 `team_memberships`，不新增密码、
+Token、角色继承或任意 JSON 权限列。升级时为既有 Membership 回填当前正式模块代码以保持兼容；
+不自动改变角色、Data Scope 或授予 `access_admin`。人员、Team、Membership 均维持启停模型，
+不通过本期 Migration 增加 Hard Delete。

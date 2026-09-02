@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_database_engine
 from app.core.exceptions import AppError
+from app.modules.access.service import AccessManagementService
 from app.modules.human_auth.passwords import PasswordPolicyError, PasswordService
 from app.modules.human_auth.service import HumanAuthService
 
@@ -29,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     credentials.add_argument("user_id", type=UUID)
     credentials.add_argument("--login-name", required=True)
+
+    grant_access_administrator = subparsers.add_parser(
+        "grant-access-administrator",
+        help="为一条启用成员关系授予用户与权限管理员身份",
+    )
+    grant_access_administrator.add_argument("membership_id", type=UUID)
     return parser
 
 
@@ -43,8 +50,19 @@ def _read_confirmed_password() -> str:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        password = _read_confirmed_password()
         with Session(get_database_engine()) as session:
+            if args.command == "grant-access-administrator":
+                AccessManagementService(
+                    session,
+                    PasswordService(),
+                ).grant_access_administrator(args.membership_id)
+                print(
+                    "权限管理员已授予: "
+                    f"membership_id={args.membership_id}",
+                )
+                return 0
+
+            password = _read_confirmed_password()
             service = HumanAuthService(
                 session,
                 get_settings(),

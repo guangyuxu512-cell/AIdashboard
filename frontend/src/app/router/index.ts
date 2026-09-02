@@ -88,6 +88,17 @@ const router = createRouter({
       component: () => import('@/pages/settings/NotificationSettingsPage.vue'),
       meta: { moduleCode: settingsModule.moduleCode },
     },
+    {
+      path: '/settings/users',
+      name: 'access-management',
+      component: () => import('@/pages/settings/AccessManagementPage.vue'),
+      meta: { requiresAccessAdministrator: true },
+    },
+    {
+      path: '/permission-denied',
+      name: 'permission-denied',
+      component: () => import('@/pages/PermissionDeniedPage.vue'),
+    },
   ],
 })
 

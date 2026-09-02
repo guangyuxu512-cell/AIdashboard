@@ -9,9 +9,8 @@ from httpx import ASGITransport, AsyncClient, Response
 from app.core.database import get_database_session
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_actor_context
 from app.modules.access.enums import DataScope
-from app.modules.assets.api import get_asset_service
+from app.modules.assets.api import get_asset_authorized_actor, get_asset_service
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetNotFoundError, AssetStorageError
 from app.modules.assets.models import Asset
@@ -138,7 +137,7 @@ def request(
     application.dependency_overrides[get_asset_service] = lambda: service
     application.dependency_overrides[get_database_session] = lambda: FakeSession()
     if actor is not None:
-        application.dependency_overrides[get_actor_context] = lambda: actor
+        application.dependency_overrides[get_asset_authorized_actor] = lambda: actor
     if principal is not None:
         application.dependency_overrides[get_worker_principal] = lambda: principal
 

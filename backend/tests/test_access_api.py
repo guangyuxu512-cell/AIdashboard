@@ -12,7 +12,10 @@ from app.modules.access.contracts import (
     HumanPrincipal,
     TeamMembershipSummary,
 )
-from app.modules.access.dependencies import get_actor_context_service
+from app.modules.access.dependencies import (
+    get_actor_context,
+    get_actor_context_service,
+)
 from app.modules.access.enums import DataScope
 
 
@@ -123,3 +126,38 @@ def test_my_teams_does_not_require_an_active_team_selection() -> None:
             "membership_enabled": True,
         },
     ]
+
+
+def test_access_management_routes_fail_closed_without_human_authentication() -> None:
+    response = request(
+        "GET",
+        "/api/v1/access-management/members",
+        authenticated=False,
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "HUMAN_AUTHENTICATION_REQUIRED"
+
+
+def test_access_management_routes_require_the_access_administrator_role() -> None:
+    application = create_app()
+    application.dependency_overrides[get_actor_context] = lambda: ActorContext(
+        user_id=USER_ID,
+        user_display_name="普通成员",
+        team_id=TEAM_ID,
+        membership_id=MEMBERSHIP_ID,
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
+
+    async def send() -> Response:
+        transport = ASGITransport(app=application)
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            return await client.get("/api/v1/access-management/members")
+
+    response = asyncio.run(send())
+    assert response.status_code == 403
+    assert response.json()["code"] == "ACCESS_ADMINISTRATION_FORBIDDEN"
