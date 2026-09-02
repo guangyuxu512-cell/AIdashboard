@@ -6,6 +6,8 @@ PostgreSQL 结构演进只能通过 SQLAlchemy Model 与 Alembic Migration 完�
 
 数据库按角色严格隔离：Feature 使用可重建的临时/Feature DB，Integration 只使用 `control_center_integration`，Main smoke 只使用 `control_center_dev`，未来生产必须独立。连接串、密码、密钥和数据导出不得提交。
 
+Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据库管理员身份创建和删除 Feature DB，并在工程登记表中记录实际分配。Feature Agent 不拥有 `CREATEDB` 权限，且不得自行创建、删除或改用 `control_center_dev`、`control_center_integration`；Feature Worktree 只能使用本地忽略的连接配置访问其已分配的 Feature DB。
+
 ## 2. Migration Slot
 
 同一时刻只有一个活跃的 Migration Slot。需要结构变更的 Feature 在开始前向 Integrator 申请并登记：
@@ -28,7 +30,7 @@ PostgreSQL 结构演进只能通过 SQLAlchemy Model 与 Alembic Migration 完�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `feat/access-management-v1` | `reserved` | Access Management V1；具体结构由 Feature 审计后定义 | 无 | `20260902_0025_access_management_v1` | Feature DB provisioning pending；开始前必须从 `20260901_0024` 空库基线升级验证 |
+| `feat/access-management-v1` | `reserved` | Access Management V1；具体结构由 Feature 审计后定义 | 无 | `20260902_0025_access_management_v1` | `control_center_feat_access` 已由 Integrator 分配；已从空库升级至 `20260901_0024`，Feature 开始前仍须按 Gate 1 验证其新 Migration |
 
 ## 3. Feature Gate 1
 
