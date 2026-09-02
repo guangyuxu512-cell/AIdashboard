@@ -10,6 +10,7 @@ from app.modules.assets.models import Asset
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.devices.models import Device
+from app.modules.human_auth.models import HumanSession
 from app.modules.notifications.models import NotificationChannel
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
@@ -30,6 +31,7 @@ _MODELS = (
     DeviceProviderInventory,
     DeviceRuntime,
     DeviceSkillCapability,
+    HumanSession,
     NotificationChannel,
     Schedule,
     ScheduleRun,

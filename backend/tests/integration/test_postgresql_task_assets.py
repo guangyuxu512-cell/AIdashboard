@@ -8,6 +8,11 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team
+from app.modules.access.roles import DEFAULT_TEAM_NAME
+from app.modules.assets.contracts import AssetOwnership
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetInUseError, AssetNotFoundError
 from app.modules.assets.models import Asset
@@ -58,8 +63,12 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
         with Session(postgresql_engine, expire_on_commit=False) as session:
             session.add_all(
                 [
-                    Device(device_id=device_a, display_name="Asset Device A", enabled=True),
-                    Device(device_id=device_b, display_name="Asset Device B", enabled=True),
+                    Device(
+                        device_id=device_a, display_name="Asset Device A", enabled=True
+                    ),
+                    Device(
+                        device_id=device_b, display_name="Asset Device B", enabled=True
+                    ),
                     DeviceRuntime(
                         device_id=device_a,
                         worker_version="0.4.6",
@@ -85,15 +94,37 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                 storage=storage,
                 settings=settings,
             )
-            first = asset_service.upload(
+            default_team = session.scalar(
+                select(Team).where(Team.name == DEFAULT_TEAM_NAME),
+            )
+            assert default_team is not None
+            ownership = AssetOwnership(
+                team_id=default_team.team_id,
+                created_by_user_id=None,
+            )
+            actor = ActorContext(
+                user_id=uuid4(),
+                user_display_name="Task Asset集成测试",
+                team_id=default_team.team_id,
+                membership_id=uuid4(),
+                role_code="member",
+                data_scope=DataScope.TEAM,
+            )
+            first = asset_service.create(
                 original_filename="same.jpg",
                 content_type="image/jpeg",
                 stream=BytesIO(first_payload),
+                media_type=AssetMediaType.IMAGE,
+                source_type=AssetSourceType.UPLOAD,
+                ownership=ownership,
             )
-            second = asset_service.upload(
+            second = asset_service.create(
                 original_filename="same.png",
                 content_type="image/png",
                 stream=BytesIO(second_payload),
+                media_type=AssetMediaType.IMAGE,
+                source_type=AssetSourceType.UPLOAD,
+                ownership=ownership,
             )
             asset_ids.update({first.asset_id, second.asset_id})
             assert first.media_type == AssetMediaType.IMAGE.value
@@ -143,6 +174,6 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                     asset_id=first.asset_id,
                 )
             with pytest.raises(AssetInUseError):
-                asset_service.delete(first.asset_id)
+                asset_service.delete(actor, first.asset_id)
     finally:
         _cleanup(postgresql_engine, device_ids, asset_ids)

@@ -224,6 +224,7 @@ def test_postgresql_access_http_resolves_active_team(
         application = create_app()
         application.dependency_overrides[get_human_principal] = lambda: HumanPrincipal(
             user_id=user.user_id,
+            display_name=user.display_name,
         )
         transport = ASGITransport(app=application)
         async with AsyncClient(

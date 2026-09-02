@@ -3,6 +3,8 @@
 ## 1. 定位
 Worker 是运行在执行电脑上的常驻执行代理。
 
+分支、Two-Gate、Worktree、运行隔离与本地材料规则由根 `AGENTS.md` 和 `docs/engineering/` 统一定义；本文件只约束 Worker 模块实现，并以当前 Worktree 的文档为准。
+
 负责：
 - 注册设备
 - Heartbeat

@@ -16,6 +16,9 @@ class TeamRepository:
     def get(self, team_id: UUID) -> Team | None:
         return self.session.get(Team, team_id)
 
+    def get_by_name(self, name: str) -> Team | None:
+        return self.session.scalar(select(Team).where(Team.name == name))
+
     def add(self, team: Team) -> None:
         self.session.add(team)
 

@@ -6,7 +6,8 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4174',
   },
   webServer: {
-    command: 'pnpm exec vite preview --host 127.0.0.1 --port 4174',
+    command:
+      'pnpm run build:test-production && pnpm exec vite preview --host 127.0.0.1 --port 4174',
     url: 'http://127.0.0.1:4174',
     reuseExistingServer: false,
   },

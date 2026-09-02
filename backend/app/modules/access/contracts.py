@@ -9,6 +9,7 @@ class HumanPrincipal:
     """Authenticated management-plane identity before Team resolution."""
 
     user_id: UUID
+    display_name: str
 
 
 @dataclass(frozen=True, slots=True)

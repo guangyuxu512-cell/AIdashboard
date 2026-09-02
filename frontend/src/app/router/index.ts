@@ -16,6 +16,12 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/pages/auth/LoginPage.vue'),
+      meta: { public: true, layout: 'auth' },
+    },
+    {
       path: foundationModule.routePath,
       name: foundationModule.routeName,
       component: () => import('@/pages/HomePage.vue'),

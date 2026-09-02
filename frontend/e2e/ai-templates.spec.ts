@@ -165,10 +165,9 @@ test('completes the template library V1 visual interactions', async ({
   await expect(
     editor.getByText('Negative Prompt', { exact: true }),
   ).toHaveCount(0)
-  await expect(editor.getByLabel('提示词').locator('textarea')).toHaveCount(1)
+  await expect(editor.getByLabel('提示词', { exact: true })).toHaveCount(1)
   await editor
     .getByLabel('提示词', { exact: true })
-    .locator('textarea')
     .fill('更新后的视觉测试提示词')
   await chooseSelectOption(page, editor.getByLabel('比例'), '16:9')
   await editor.getByRole('button', { name: '保存' }).click()
@@ -180,13 +179,12 @@ test('completes the template library V1 visual interactions', async ({
 
   await sequenceHeader.getByRole('button', { name: '添加模板' }).click()
   await visibleDropdownMenu(page).getByText('主图', { exact: true }).click()
-  const templateNameInput = editor.getByLabel('模板名称').locator('input')
+  const templateNameInput = editor.getByLabel('模板名称')
   await expect(templateNameInput).toHaveValue('新建模板')
   await expect(editor.getByLabel('比例')).toContainText('1:1')
   await templateNameInput.fill('视觉主图模板')
   await editor
     .getByLabel('提示词', { exact: true })
-    .locator('textarea')
     .fill('{product_name} 视觉测试')
   await editor.getByRole('button', { name: '保存' }).click()
   await expect(sequence.locator('.pagination-bar')).toContainText('共 25 条')
@@ -328,7 +326,7 @@ test('completes the template library V1 visual interactions', async ({
   await expect(detailRows).toHaveCount(1)
   await expect(sequenceRows.first()).toContainText('竞品主图复刻')
 
-  await toolbar.getByLabel('搜索模板').locator('input').fill('竞品详情复刻')
+  await toolbar.getByLabel('搜索模板').fill('竞品详情复刻')
   await expect(sequenceRows).toHaveCount(1)
   await expect(sequenceRows.first()).toContainText('竞品详情复刻')
   await expect(

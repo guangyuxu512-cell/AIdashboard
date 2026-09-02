@@ -1,5 +1,6 @@
 from typing import Any
 
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql import ColumnElement, Select
 
 from app.modules.access.contracts import ActorContext
@@ -14,8 +15,8 @@ class DataScopePolicy:
     def apply(
         statement: Select[Any],
         *,
-        team_id_column: ColumnElement[Any],
-        created_by_user_id_column: ColumnElement[Any],
+        team_id_column: ColumnElement[Any] | InstrumentedAttribute[Any],
+        created_by_user_id_column: ColumnElement[Any] | InstrumentedAttribute[Any],
         actor: ActorContext,
     ) -> Select[Any]:
         scope = actor.data_scope

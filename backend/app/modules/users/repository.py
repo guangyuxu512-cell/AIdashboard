@@ -20,5 +20,9 @@ class UserRepository:
     def get(self, user_id: UUID) -> User | None:
         return self.session.get(User, user_id)
 
+    def get_by_login_name(self, login_name: str) -> User | None:
+        statement = select(User).where(User.login_name == login_name)
+        return self.session.scalar(statement)
+
     def add(self, user: User) -> None:
         self.session.add(user)

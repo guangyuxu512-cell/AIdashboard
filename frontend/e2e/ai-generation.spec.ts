@@ -175,7 +175,7 @@ test('uses registry-driven input slots and one editable generation config', asyn
   expect(emptySlotBox?.height).toBeGreaterThanOrEqual(160)
 
   const generationConfig = config.getByTestId('instant-generation-config')
-  const promptInput = generationConfig.getByLabel('提示词').locator('textarea')
+  const promptInput = generationConfig.getByLabel('提示词')
   await expect(generationConfig).toBeVisible()
   await expect(promptInput).toHaveCount(1)
   await expect(config.getByText('Prompt', { exact: true })).toHaveCount(0)
@@ -264,9 +264,7 @@ test('uses registry-driven input slots and one editable generation config', asyn
     .getByRole('button', { name: 'AI生图' })
     .click()
   const restoredConfig = page.getByRole('region', { name: '即时生成配置' })
-  await expect(
-    restoredConfig.getByLabel('提示词').locator('textarea'),
-  ).toHaveValue(manualPrompt)
+  await expect(restoredConfig.getByLabel('提示词')).toHaveValue(manualPrompt)
   await restoredConfig
     .getByRole('navigation', { name: '生成模式' })
     .getByRole('button', { name: '风格复刻' })
@@ -340,7 +338,7 @@ test('renders stable instant result slots with preview and isolated retry', asyn
   const assetDialog = page.getByRole('dialog')
   await assetDialog.getByRole('button', { name: '选择素材 正面.jpg' }).click()
   await assetDialog.getByRole('button', { name: '选择', exact: true }).click()
-  await config.getByLabel('提示词').locator('textarea').fill('即时结果预览测试')
+  await config.getByLabel('提示词').fill('即时结果预览测试')
   const countInput = config.getByLabel('生成数量').locator('input')
   await countInput.fill('4')
   await countInput.press('Tab')
@@ -495,7 +493,7 @@ test('uses templates as editable fill sources and records the final config', asy
   const templateSelect = config.getByLabel('生成模板')
   await chooseSelectOption(page, templateSelect, '极简白底')
   const editableConfig = config.getByTestId('instant-generation-config')
-  const promptInput = editableConfig.getByLabel('提示词').locator('textarea')
+  const promptInput = editableConfig.getByLabel('提示词')
   const outputFormat = editableConfig.getByRole('navigation', {
     name: '输出格式',
   })
@@ -560,9 +558,7 @@ test('uses templates as editable fill sources and records the final config', asy
     .click()
   await page.getByRole('button', { name: '选择模板 极简白底' }).click()
   const editor = page.getByRole('region', { name: '模板编辑' })
-  await expect(editor.getByLabel('提示词').locator('textarea')).toHaveValue(
-    templatePrompt,
-  )
+  await expect(editor.getByLabel('提示词')).toHaveValue(templatePrompt)
   await expect(editor.getByText('Prompt', { exact: true })).toHaveCount(0)
   await expect(
     editor.getByText('Negative Prompt', { exact: true }),
@@ -573,9 +569,7 @@ test('uses templates as editable fill sources and records the final config', asy
     .getByRole('button', { name: 'AI生图' })
     .click()
   const restoredConfig = page.getByRole('region', { name: '即时生成配置' })
-  await expect(
-    restoredConfig.getByLabel('提示词').locator('textarea'),
-  ).toHaveValue(finalPrompt)
+  await expect(restoredConfig.getByLabel('提示词')).toHaveValue(finalPrompt)
   await expect(restoredConfig.getByTestId('template-summary')).toHaveCount(0)
   await restoredConfig
     .getByRole('navigation', { name: '生成模式' })
@@ -589,9 +583,7 @@ test('uses templates as editable fill sources and records the final config', asy
   await expect(restoredConfig.getByLabel('生成模板')).not.toContainText(
     '极简白底',
   )
-  await expect(
-    restoredConfig.getByLabel('提示词').locator('textarea'),
-  ).toHaveValue(finalPrompt)
+  await expect(restoredConfig.getByLabel('提示词')).toHaveValue(finalPrompt)
   expect(runtimeErrors).toEqual([])
 })
 
@@ -968,7 +960,7 @@ test('filters, paginates and opens generation record details in both themes', as
   await drawer.getByRole('button', { name: '关闭' }).click()
 
   await chooseSelectOption(page, page.getByLabel('任务状态'), '全部状态')
-  const recordSearch = page.getByLabel('搜索生成记录').locator('input')
+  const recordSearch = page.getByLabel('搜索生成记录')
   await recordSearch.fill('张三')
   await expect(rows.first()).toContainText('张三')
   await recordSearch.fill('')
@@ -1068,9 +1060,7 @@ test('keeps every generation interaction stable in light and dark themes', async
     .getByLabel('生成模板')
     .locator('.n-base-clear')
     .click({ force: true })
-  await expect(
-    instantConfig.getByLabel('提示词').locator('textarea'),
-  ).toBeVisible()
+  await expect(instantConfig.getByLabel('提示词')).toBeVisible()
   await instantConfig
     .getByRole('button', { name: '素材库', exact: true })
     .click()

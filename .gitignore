@@ -29,3 +29,7 @@ Thumbs.db
 .dev-runtime/
 worker/runtime/
 backend/data/assets/
+
+# Worktree-local documentation, notes and drafts; versioned engineering docs stay in docs/engineering/.
+docs/_local/
+docs/_drafts/
