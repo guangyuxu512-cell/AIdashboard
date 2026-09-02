@@ -1,6 +1,6 @@
 # AI Workbench Backend Contract V2
 
-> - 状态：管理数据契约已确认，存在一项 Migration 前阻塞问题
+> - 状态：管理数据契约已冻结，Migration 前业务问题已清零
 > - 确认日期：2026-09-02
 > - 范围：AI Template Library、AI Assets / Product Material Group 的 Backend Management Persistence Foundation
 
@@ -252,7 +252,7 @@ detach 只删除 `MaterialGroupAsset` 关系，不删除 Asset 本体或 Storage
 - 关闭生成模式或停用模板组不删除绑定。
 - replace/update 必须在 Service 中完成模式、Team 和可访问父聚合校验，并在一个事务内替换关系集合。
 
-关系使用标准关系模型，不以 JSON ID 数组保存。唯一性至少保证同一产品素材组内模板组不重复，以及同一产品素材组、模式和位置不重复；`position` 必须非负。字段与事务模式复用现有有序关系的正式 Pattern。物理主键、外键 `ondelete` 和索引在获得 Migration Slot、同步最新 Green `dev` 并解决第 15 节问题后确定。
+关系使用标准关系模型，不以 JSON ID 数组保存。唯一性至少保证同一产品素材组内模板组不重复，以及同一产品素材组、模式和位置不重复；`position` 必须非负。字段与事务模式复用现有有序关系的正式 Pattern。`template_group_id` 外键使用项目现有 `RESTRICT` 语义，禁止 `ON DELETE CASCADE`；数据库只做完整性兜底，业务删除规则由 Service 实施。物理主键和其他索引在获得 Migration Slot 并同步最新 Green `dev` 后按正式 Model 规范确定。
 
 ## 11. 删除语义
 
@@ -270,7 +270,30 @@ detach 只删除 `MaterialGroupAsset` 关系，不删除 Asset 本体或 Storage
 
 ### 11.4 TemplateGroup
 
-当前模板 Visual Mock 删除组时会删除本地组及其子模板，但 Template Mock 与 Product Material Mock 是两个独立 Store，无法证明一个已被 `MaterialGroupTemplateBinding` 引用的模板组应当被拒绝删除，还是应在同一事务内先移除绑定。该行为是第 15 节唯一 Migration 前阻塞问题。
+删除与停用是两种独立操作：
+
+- `enabled = false` 只停用模板组，保留组内 PromptTemplate 和全部 `MaterialGroupTemplateBinding`。
+- 删除前，Service 必须检查是否存在任何引用该 TemplateGroup 的 `MaterialGroupTemplateBinding`。
+- 存在 Binding 时拒绝删除；调用方必须先显式解除全部绑定，再重新发起删除。
+- 拒绝删除不得修改 TemplateGroup、PromptTemplate 或 Binding。
+- 不存在 Binding 时允许删除 TemplateGroup 及其所属 PromptTemplate；具体事务和锁定方式由正式 Service 实现。
+- 删除 TemplateGroup 不得自动 detach，不得通过 ORM cascade 或数据库 `ON DELETE CASCADE` 静默删除 Binding。
+
+`MaterialGroupTemplateBinding.template_group_id` 外键采用 `RESTRICT`，作为并发和遗漏检查下的数据完整性保护。Service 的显式引用检查及领域错误才是正式业务边界，不能把删除规则委托给数据库异常。
+
+### 11.5 Error Semantic Audit
+
+Existing reusable TemplateGroup error semantic：`NONE`。
+
+当前项目没有通用 `ResourceInUseError`，也没有 TemplateGroup 专属错误。现有 `AssetInUseError`（`ASSET_IN_USE`）与 `DeviceHasActiveTasksError`（`DEVICE_HAS_ACTIVE_TASKS`）证明正式模式为：资源仍被引用或当前状态不可删除时，使用领域专属 `AppError` 和 HTTP 409。它们的类、错误码和消息属于各自 Domain，不得直接复用于 TemplateGroup。
+
+本场景复用：
+
+- 统一 `AppError` / `ErrorResponse` Envelope。
+- HTTP 409 Conflict 状态语义。
+- Service 在拒绝前回滚或保持事务无修改的模式。
+
+最小能力缺口：正式 AI API 实现前，在 AI Domain 内增加一个且仅一个“TemplateGroup 仍被 Binding 引用”的领域错误，固定单一 code 与产品消息。当前 Branch 没有可据以确认的正式 code，本 Docs-only 阶段不猜错误码。该命名不影响 Migration 表结构、外键或核心关系设计。
 
 ## 12. API 能力清单
 
@@ -282,7 +305,7 @@ detach 只删除 `MaterialGroupAsset` 关系，不删除 Asset 本体或 Storage
 - detail：返回可访问组及其模板序列。
 - create：由 ActorContext 写 Ownership。
 - update：名称和启用状态；不修改模式。
-- delete：遵守第 11、15 节。
+- delete：有 Binding 时返回第 11.5 节的 409 语义；无 Binding 时删除。
 
 ### 12.2 Prompt Template
 
@@ -324,7 +347,7 @@ AI API 的最终资源路径和 DTO 名称尚无现存模块事实，本轮不�
 - 创建/更新 DTO 不接受 Ownership、Storage 或内部 Asset 字段。
 - Read DTO 只返回前端业务所需投影，不返回 `storage_key`、bucket、Secret 或数据库实现细节。
 
-AI 聚合自身的具体 Not Found / Conflict 错误码名称尚未存在，本轮不发明；必须在 API 实现前按统一 `AppError` 规范正式定义。该命名不影响管理表 Migration 设计。
+AI 聚合自身的具体 Not Found 错误码名称尚未存在，本轮不发明；TemplateGroup 被引用时的 Conflict 语义已在第 11.5 节冻结。具体领域 code 必须在 API 实现前按统一 `AppError` 规范正式定义，其命名不影响管理表 Migration 设计。
 
 ### 13.3 Service
 
@@ -372,24 +395,30 @@ Repository 只负责 SQLAlchemy 查询、锁、写入、计数、排序、分页
 - Normal / Style 模式绑定校验和同 Team 校验。
 - Template Binding replace 去重后仍保留首次出现顺序，并返回连续稳定的 `position`。
 - 关闭产品、生成模式或模板组不清除既有关系。
+- 停用被绑定 TemplateGroup 后 Binding 仍存在。
+- 删除被任一 ProductMaterialGroup 绑定的 TemplateGroup 返回统一 409 语义，且不修改组、模板或绑定。
+- 显式解除全部 Binding 后可删除 TemplateGroup；删除过程不会自动 detach 或依赖级联清理。
 - PromptTemplate create/delete/duplicate 所需数据与 reorder 的连续稳定顺序。
 - Template / Product list 的过滤、Scoped total 和 Pagination 一致。
 - 删除 ProductMaterialGroup 后 Asset 本体仍存在。
 - DTO 不接受 Ownership，不返回 Storage 内部字段。
 
-## 15. Blocking Question
+## 15. Frozen TemplateGroup Delete Decision
 
-**删除仍被 ProductMaterialGroup 绑定的 TemplateGroup 时采用哪一种正式行为？**
+状态：`FROZEN`
 
-- 阻止删除并返回统一 Conflict；或
-- 在同一事务内删除所有 `MaterialGroupTemplateBinding` 后再删除模板组与子模板。
+- 有任何 Binding：拒绝删除。
+- 无 Binding：允许删除。
+- 必须先显式解除绑定，删除操作本身不 detach。
+- 禁止 ORM 或数据库级联删除 Binding。
+- Disable 只修改 `enabled`，不清除 Binding。
 
-当前冻结的两个 Visual Mock Store 相互独立，现有 Backend 也没有该业务关系，无法从真实代码、测试或 Contract 判定。该选择会直接决定外键 `ondelete`、Service 删除事务和错误契约，因此在创建 Migration 前必须由产品 / 架构确认，本文不设默认答案。
+该决策与 ProductMaterialGroup 删除自身聚合关系的语义不冲突：ProductMaterialGroup 删除时由其 Service 显式处理自己的 Binding；TemplateGroup 删除不能反向替其他聚合自动解除关系。
 
 ## 16. Readiness
 
-`READY FOR MIGRATION SLOT: NO`
+`READY FOR MIGRATION SLOT: YES`
 
-真实阻塞仅为第 15 节的 TemplateGroup 被绑定时删除语义。除此之外，管理数据字段、枚举、Ownership、Scope、Asset same-Team 关系、Enabled 保留语义、排序、API 能力和分层接法均已确认。
+当前不存在仍会影响管理数据表结构、外键或核心业务关系的未决问题。管理数据字段、枚举、Ownership、Scope、Asset same-Team 关系、Enabled 保留语义、排序、删除规则、API 能力和分层接法均已确认。
 
-当前仍没有 AI Migration Slot，也没有 AI Feature DB。阻塞问题确认后，下一步才是申请 Migration Slot 与 Feature DB；本轮没有创建或占用二者。
+当前仍没有 AI Migration Slot，也没有 AI Feature DB。下一步是按正式工程流程申请 Migration Slot 与 Feature DB；本轮没有创建或占用二者。
