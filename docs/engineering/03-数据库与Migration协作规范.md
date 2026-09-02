@@ -24,7 +24,11 @@ PostgreSQL 结构演进只能通过 SQLAlchemy Model 与 Alembic Migration 完�
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前 Phase 仅建立规范，尚未分配活跃 Slot。
+当前唯一 Slot：
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| `feat/access-management-v1` | `reserved` | Access Management V1；具体结构由 Feature 审计后定义 | 无 | `20260902_0025_access_management_v1` | Feature DB provisioning pending；开始前必须从 `20260901_0024` 空库基线升级验证 |
 
 ## 3. Feature Gate 1
 
