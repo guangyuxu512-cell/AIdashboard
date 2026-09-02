@@ -54,6 +54,10 @@ Border Color、Text 或 Status。Capability Row、Toolbar、Header、Bottom Navi
 5. 关闭独立窗口不会清除临时值。要提交正式值，必须由 Codex 回写 `tokens.css`、相关 Mapping、Registry 默认值、
    文档和测试后再清除 Override。
 
+自动化验收必须运行 `pnpm test:e2e:visual`，由正式 Visual Playwright 配置独占启动
+`NODE_ENV=development + Vite mode=visual` 的 Mobile Server。不得把本 Suite 指向 Production Build、普通 Real
+Mode Server、Integration Frontend 或已经存在的开发端口；这些运行时不会提供同一 Development Visual Contract。
+
 调 Radius / Border 后，应确认 DeviceCard / TaskCard、MobileSummaryStrip、DeviceRuntimeSummary、CapabilityPanel、
 Selector / Filter、Tag 与 Popup / Sheet 只改变外观而不改变高度、Padding、Gap、Touch Target 或滚动。调 Shadow 后，
 至少在 390px Light / Dark 的 Device List、Device Detail、Task List、Task Detail 观察 Surface 层级；不得借重阴影
