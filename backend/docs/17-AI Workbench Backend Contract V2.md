@@ -1,6 +1,6 @@
 # AI Workbench Backend Contract V2
 
-> - 状态：管理数据契约已冻结，Migration 前业务问题已清零
+> - 状态：管理数据契约已冻结，Backend Foundation V1 已实现
 > - 确认日期：2026-09-02
 > - 范围：AI Template Library、AI Assets / Product Material Group 的 Backend Management Persistence Foundation
 
@@ -13,7 +13,7 @@
 
 V2 的业务事实来自当前冻结的 Frontend Types、Visual Mock 行为和 Tests；Backend 接法来自当前正式的 Access、Asset、API、Service、Repository、DTO、分页和错误处理模式。Access/Ownership 关系规则同时接受已经进入 `dev` 的提交 `54993baca7b4600df930c997bb5c542659764f22`。
 
-本文只确认拿到 Migration Slot 后要实现的管理数据契约，不创建 Migration、数据库、SQLAlchemy Model、Repository、Service 或 API。
+本文冻结管理数据契约；Backend Foundation V1 已按该契约实现 Model、Migration、Repository、Service、DTO 与 Human API。
 
 ## 2. 本阶段边界
 
@@ -338,7 +338,7 @@ Existing reusable TemplateGroup error semantic：`NONE`。
 - 使用现有 `COMMON_ERROR_RESPONSES` 与统一错误 Envelope。
 - 不在 Handler 内写 SQL、操作 ORM Entity 或实现 Scope 过滤。
 
-AI API 的最终资源路径和 DTO 名称尚无现存模块事实，本轮不写死；实现时按当时最新 Backend 模块注册模式确认。
+AI Human API 已按现有资源路由模式注册为 `/api/v1/ai-workbench`，DTO 位于 AI Workbench 模块的独立 Schema 层。
 
 ### 13.2 DTO
 
@@ -347,7 +347,7 @@ AI API 的最终资源路径和 DTO 名称尚无现存模块事实，本轮不�
 - 创建/更新 DTO 不接受 Ownership、Storage 或内部 Asset 字段。
 - Read DTO 只返回前端业务所需投影，不返回 `storage_key`、bucket、Secret 或数据库实现细节。
 
-AI 聚合自身的具体 Not Found 错误码名称尚未存在，本轮不发明；TemplateGroup 被引用时的 Conflict 语义已在第 11.5 节冻结。具体领域 code 必须在 API 实现前按统一 `AppError` 规范正式定义，其命名不影响管理表 Migration 设计。
+AI 聚合 Not Found 错误分别为 `TEMPLATE_GROUP_NOT_FOUND`、`PROMPT_TEMPLATE_NOT_FOUND` 与 `PRODUCT_MATERIAL_GROUP_NOT_FOUND`。TemplateGroup 被引用时使用单一 `TEMPLATE_GROUP_IN_USE / 409`；全部错误继续使用统一 `AppError` / `ErrorResponse`。
 
 ### 13.3 Service
 
@@ -365,7 +365,7 @@ Repository 只负责 SQLAlchemy 查询、锁、写入、计数、排序、分页
 
 ### 13.5 Model 与 Migration
 
-获得 Migration Slot 后使用当前项目的 SQLAlchemy 2、稳定 UUID、`TimestampMixin`、显式约束与查询驱动索引模式。只为以下真实查询设计约束和索引：
+本次 Migration 使用当前项目的 SQLAlchemy 2、稳定 UUID、`TimestampMixin`、显式约束与查询驱动索引模式。只为以下真实查询设计约束和索引：
 
 - Team / Creator Scoped 聚合列表。
 - TemplateGroup 的子模板顺序。
@@ -374,9 +374,9 @@ Repository 只负责 SQLAlchemy 查询、锁、写入、计数、排序、分页
 
 不得预先为所有字段加索引，不得自编号 Revision，不得连接 `control_center_dev` 或 `control_center_integration` 做 Feature 写入。
 
-## 14. 实施与测试计划
+## 14. 实施与测试
 
-获得 Migration Slot、Feature DB 并解决第 15 节后，最小实施顺序为：
+Backend Foundation V1 已按以下顺序实施：
 
 1. 从最新 Green `dev` 确认 Alembic Head、正式 Access / Asset API 和模块命名。
 2. 创建五类管理数据 Model / 关系及唯一约束、外键和必要索引。
@@ -417,8 +417,9 @@ Repository 只负责 SQLAlchemy 查询、锁、写入、计数、排序、分页
 
 ## 16. Readiness
 
-`READY FOR MIGRATION SLOT: YES`
+`READY FOR GATE 2: YES`
 
-当前不存在仍会影响管理数据表结构、外键或核心业务关系的未决问题。管理数据字段、枚举、Ownership、Scope、Asset same-Team 关系、Enabled 保留语义、排序、删除规则、API 能力和分层接法均已确认。
+当前不存在仍会影响管理数据表结构、外键或核心业务关系的未决问题。管理数据字段、枚举、Ownership、Scope、Asset same-Team 关系、Enabled 保留语义、排序、删除规则、API 能力和分层接法均已实现并验证。
 
-当前仍没有 AI Migration Slot，也没有 AI Feature DB。下一步是按正式工程流程申请 Migration Slot 与 Feature DB；本轮没有创建或占用二者。
+正式 Migration Slot 为 `20260903_0026_ai_workbench_backend_foundation_v1`，Feature DB 为
+`control_center_feat_ai_backend`。该 Slot 在 0026 进入 Green `dev` 前继续由本 Feature 占用。

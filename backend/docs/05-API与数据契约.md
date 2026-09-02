@@ -3,6 +3,7 @@
 Pydantic Schema / OpenAPI 为权威来源。
 
 原则：
+
 - 请求/响应字段明确。
 - 枚举明确。
 - 错误码明确。
@@ -279,3 +280,34 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 文件后提交数据库元数据；数据库提交失败会清理本次新文件。响应不包含 `storage_key`，任何
 客户端都不得猜 Backend 文件系统路径。现有 URL 与 Worker Claim 的图片字段保持兼容，Claim
 不会新增 `media_type / source_type / storage_key`。
+
+## AI Workbench Backend Foundation V1 API
+
+统一前缀为 `/api/v1/ai-workbench`，全部为 Human API，并同时要求有效 `ActorContext` 与
+`ai-workbench` Module Access：
+
+- `GET/POST /template-groups`：按 Scope 分页查询或创建模板组。
+- `GET/PATCH/DELETE /template-groups/{template_group_id}`：读取、编辑或删除模板组。
+- `POST /template-groups/{template_group_id}/prompt-templates`：创建提示词模板。
+- `PATCH/DELETE /template-groups/{template_group_id}/prompt-templates/{prompt_template_id}`：
+  编辑或删除提示词模板。
+- `POST /template-groups/{template_group_id}/prompt-templates/{prompt_template_id}/duplicate`：
+  复制模板并归一序列。
+- `PUT /template-groups/{template_group_id}/prompt-templates/reorder`：同角色内重排模板。
+- `GET/POST /product-material-groups`：按 Scope 分页查询或创建商品素材组。
+- `GET/PATCH/DELETE /product-material-groups/{material_group_id}`：读取、编辑或删除商品素材组。
+- `POST /product-material-groups/{material_group_id}/assets` 与
+  `DELETE /product-material-groups/{material_group_id}/assets/{asset_id}`：建立或解除 Asset 关系。
+- `PUT /product-material-groups/{material_group_id}/template-bindings/{mode}`：按模式原子替换有序模板绑定。
+
+列表复用 `Page[T]`、`page` 与 `page_size`；TemplateGroup 和 ProductMaterialGroup 的 Ownership
+只从 ActorContext 写入，Create/Update DTO 不接受 Team、Creator 或 Data Scope。Asset 关系通过
+现有 AssetService Scoped Lookup 校验；不存在、不可读或错误 Team 均返回
+`ASSET_NOT_FOUND / 404`。模板组仍被 Binding 引用时返回
+`TEMPLATE_GROUP_IN_USE / 409`。其余 AI 管理领域错误沿用统一 `AppError` Envelope，包括
+`TEMPLATE_GROUP_NOT_FOUND`、`PROMPT_TEMPLATE_NOT_FOUND`、
+`PRODUCT_MATERIAL_GROUP_NOT_FOUND`、`TEMPLATE_SEQUENCE_INVALID`、
+`TEMPLATE_BINDING_INVALID` 与 `MATERIAL_ASSET_ROLE_INVALID`。
+
+商品素材组详情中的 Asset 使用现有安全 `AssetRead` 投影，不返回 `storage_key`、bucket、绝对路径、
+厂商 URL 或 Storage 凭据。本阶段没有 GenerationJob、Provider、Queue 或 Worker API。

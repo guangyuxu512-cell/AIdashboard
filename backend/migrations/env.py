@@ -6,6 +6,13 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import get_settings
 from app.core.database import Base
 from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
+from app.modules.ai_workbench.models import (
+    MaterialGroupAsset,
+    MaterialGroupTemplateBinding,
+    ProductMaterialGroup,
+    PromptTemplate,
+    TemplateGroup,
+)
 from app.modules.assets.models import Asset
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
@@ -27,6 +34,11 @@ from app.modules.workers.models import (
 _MODELS = (
     AutomationApplicationConfig,
     Asset,
+    MaterialGroupAsset,
+    MaterialGroupTemplateBinding,
+    ProductMaterialGroup,
+    PromptTemplate,
+    TemplateGroup,
     Device,
     DeviceProviderInventory,
     DeviceRuntime,
