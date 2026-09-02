@@ -5,11 +5,13 @@ import {
   TaskListCard,
   type TaskEventReadDto,
   type TaskListItem,
+  type TaskReadDto,
   type TaskStatusDto,
 } from '@/entities/task'
 import { TaskInfiniteList, TaskListControls } from '@/features/task-center'
 import {
   RUNTIME_RETENTION_TEXT,
+  TaskDetailCard,
   TaskOutcomeNotice,
   TaskRuntimeLog,
 } from '@/features/task-runtime'
@@ -39,6 +41,26 @@ const runtimeEvent: TaskEventReadDto = {
   event_at: '2026-08-26T00:00:00Z',
   metadata: {},
   created_at: '2026-08-26T00:00:00Z',
+}
+
+const taskDetail: TaskReadDto = {
+  task_id: 'task-1',
+  target_device_id: 'device-1',
+  shop_ids: [],
+  asset_ids: [],
+  skill_id: 'sync-orders',
+  execution_display_name: '同步订单',
+  status: 'running',
+  input: {},
+  result: null,
+  error_code: null,
+  error_message: null,
+  lease_until: null,
+  started_at: '2026-08-26T00:00:00Z',
+  finished_at: null,
+  runtime_events_purged_at: null,
+  created_at: '2026-08-25T23:59:00Z',
+  updated_at: '2026-08-26T00:00:00Z',
 }
 
 const listProps = {
@@ -208,6 +230,89 @@ describe('task center UI', () => {
       ).toContain(className)
     },
   )
+
+  it('renders a contract-backed Task Detail card without list behavior or prototype fields', () => {
+    const wrapper = mount(TaskDetailCard, {
+      props: {
+        task: taskDetail,
+        deviceName: '仓库设备',
+        deviceState: 'ready',
+        now: new Date('2026-08-26T00:03:00Z'),
+      },
+    })
+
+    expect(wrapper.get('[data-testid="task-detail-title"]').text()).toBe(
+      '同步订单',
+    )
+    expect(wrapper.get('[data-testid="task-detail-status"]').text()).toContain(
+      '执行中·3分钟',
+    )
+    expect(
+      wrapper.get('[data-testid="task-detail-artwork"]').classes(),
+    ).toContain('task-detail-summary__artwork--running')
+    expect(
+      wrapper.get('[data-testid="task-detail-info-started"]').text(),
+    ).toContain('开始时间')
+    expect(wrapper.get('[data-testid="task-detail-info-device"]').text()).toBe(
+      '执行设备仓库设备',
+    )
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('触发方式')
+    expect(wrapper.text()).not.toContain('执行账号')
+    expect(wrapper.text()).not.toContain('sync-orders')
+    expect(wrapper.text()).not.toContain('device-1')
+  })
+
+  it('keeps secondary device loading local and only renders safe outcome facts', () => {
+    const loading = mount(TaskDetailCard, {
+      props: {
+        task: taskDetail,
+        deviceState: 'loading',
+        now: new Date('2026-08-26T00:03:00Z'),
+      },
+    })
+    expect(loading.get('[data-testid="task-detail-title"]').text()).toBe(
+      '同步订单',
+    )
+    expect(loading.get('[data-testid="task-detail-info-device"]').text()).toBe(
+      '执行设备加载中',
+    )
+
+    const failed = mount(TaskDetailCard, {
+      props: {
+        task: {
+          ...taskDetail,
+          status: 'failed',
+          finished_at: '2026-08-26T00:04:00Z',
+          error_code: 'PRIVATE_ERROR_CODE',
+          error_message: '账号会话不可用',
+        },
+        deviceName: '仓库设备',
+        deviceState: 'ready',
+      },
+    })
+    expect(failed.get('[data-testid="task-detail-info-error"]').text()).toBe(
+      '失败原因账号会话不可用',
+    )
+    expect(failed.text()).not.toContain('PRIVATE_ERROR_CODE')
+
+    const success = mount(TaskDetailCard, {
+      props: {
+        task: {
+          ...taskDetail,
+          status: 'success',
+          finished_at: '2026-08-26T00:04:00Z',
+          result: { summary: '已同步 24 笔订单', private_data: '不得显示' },
+        },
+        deviceName: '仓库设备',
+        deviceState: 'ready',
+      },
+    })
+    expect(success.get('[data-testid="task-detail-info-result"]').text()).toBe(
+      '执行结果已同步 24 笔订单',
+    )
+    expect(success.text()).not.toContain('不得显示')
+  })
 
   it.each([
     ['pending', '待执行'],
@@ -384,9 +489,12 @@ describe('task center UI', () => {
       if (expected) expect(wrapper.text()).toContain(expected)
       else expect(wrapper.find('.runtime-log__status').exists()).toBe(false)
       if (events.length > 0) {
-        expect(wrapper.find('.runtime-log__meta').exists()).toBe(true)
+        expect(wrapper.find('.runtime-log__event').exists()).toBe(true)
         expect(wrapper.get('.runtime-log__message').text()).toBe(
           runtimeEvent.message,
+        )
+        expect(wrapper.get('time').attributes('datetime')).toBe(
+          runtimeEvent.event_at,
         )
       }
     },
@@ -413,8 +521,25 @@ describe('task center UI', () => {
       true,
     )
     expect(wrapper.get('[data-testid="event-limit-notice"]').text()).toBe(
-      '仅显示最近 500 条日志',
+      '部分日志未显示',
     )
     expect(wrapper.find('.van-notice-bar').exists()).toBe(false)
+  })
+
+  it('keeps the log header fixed outside the only internal scroll region', () => {
+    const wrapper = mount(TaskRuntimeLog, {
+      props: runtimeProps,
+    })
+
+    expect(wrapper.get('.runtime-log').element.children[0]).toBe(
+      wrapper.get('.runtime-log__heading').element,
+    )
+    expect(wrapper.get('.runtime-log').element.children[1]).toBe(
+      wrapper.get('[data-testid="runtime-log-scroll"]').element,
+    )
+    expect(wrapper.get('[data-testid="runtime-events"]').text()).toContain(
+      runtimeEvent.message,
+    )
+    expect(wrapper.text()).not.toContain('#2')
   })
 })

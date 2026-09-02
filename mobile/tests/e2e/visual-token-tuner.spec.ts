@@ -683,13 +683,11 @@ test.describe('Visual Token Tuner V2 / V3', () => {
     )
     await onlineStatus.fill('#247a56')
     await onlineStatus.press('Tab')
-    const successTag = preview
-      .getByTestId('task-detail')
-      .locator('.van-tag--success')
-    await expect(successTag).toBeVisible()
+    const successStatus = preview.getByTestId('task-detail-status')
+    await expect(successStatus).toBeVisible()
     await expect
       .poll(() =>
-        successTag.evaluate(
+        successStatus.evaluate(
           (element) => window.getComputedStyle(element).color,
         ),
       )
@@ -898,7 +896,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           (element) => window.getComputedStyle(element).boxShadow,
         ),
       )
-      .toContain('32px')
+      .toBe(taskCardShadow)
     await setRangeValue(
       tuner.getByTestId(
         'visual-token-appearance-range-light-shadow-card-opacity',
@@ -914,7 +912,7 @@ test.describe('Visual Token Tuner V2 / V3', () => {
           (element) => window.getComputedStyle(element).boxShadow,
         ),
       )
-      .toContain('0.12')
+      .toBe(taskCardShadow)
 
     await tuner.getByTestId('visual-token-tuner-appearance-theme-dark').click()
     await setRangeValue(

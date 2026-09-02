@@ -472,7 +472,7 @@ async function expectDetailHeader(
   title: '设备详情' | '任务详情',
   activeNavigation: '设备' | '任务',
 ): Promise<void> {
-  const visualV2 = title === '设备详情'
+  const visualV2 = true
   const header = page.getByTestId('mobile-detail-header')
   const headerTitle = page.getByTestId('mobile-detail-header-title')
 
@@ -564,7 +564,7 @@ async function expectDetailHeader(
   expect(geometry.titleLineHeight).toBe(geometry.expectedTitleLineHeight)
   expect(geometry.borderBottomWidth).toBe('0px')
   expect(geometry.boxShadow).toBe('none')
-  if (visualV2) {
+  if (title === '设备详情') {
     await expect(page.getByRole('button', { name: '更多信息' })).toBeVisible()
   }
   await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
@@ -1104,37 +1104,44 @@ for (const width of viewportWidths) {
         const detail = document.querySelector<HTMLElement>(
           '[aria-label="任务详情内容"]',
         )!
-        const summary = document.querySelector<HTMLElement>(
-          '.task-detail-page__summary',
-        )!
-        const core = document.querySelector<HTMLElement>(
-          '.task-detail-page__core',
+        const card = document.querySelector<HTMLElement>(
+          '[data-testid="task-detail"]',
         )!
         const runtimeLog = document.querySelector<HTMLElement>('.runtime-log')!
-        const runtimeHeading = runtimeLog.querySelector<HTMLElement>('h2')!
+        const runtimeHeading = runtimeLog.querySelector<HTMLElement>(
+          '.runtime-log__heading',
+        )!
+        const runtimeScroll = runtimeLog.querySelector<HTMLElement>(
+          '[data-testid="runtime-log-scroll"]',
+        )!
         const bottom = document.querySelector<HTMLElement>(
           '[data-testid="mobile-shell-bottom"]',
         )!
         const detailBox = detail.getBoundingClientRect()
-        const summaryBox = summary.getBoundingClientRect()
-        const coreBox = core.getBoundingClientRect()
+        const cardBox = card.getBoundingClientRect()
         const runtimeBox = runtimeLog.getBoundingClientRect()
         const headingBox = runtimeHeading.getBoundingClientRect()
         const bottomBox = bottom.getBoundingClientRect()
 
         return {
-          startsAtTop:
-            detail.scrollTop === 0 && summaryBox.top >= detailBox.top,
-          summaryBeforeCore: summaryBox.bottom <= coreBox.top,
-          coreBeforeRuntime: coreBox.bottom <= runtimeBox.top,
+          startsAtTop: detail.scrollTop === 0 && cardBox.top >= detailBox.top,
+          cardBeforeRuntime: cardBox.bottom <= runtimeBox.top,
           runtimeHeadingInViewport: headingBox.top < bottomBox.top,
+          pageOverflowY: window.getComputedStyle(detail).overflowY,
+          runtimeOverflowY: window.getComputedStyle(runtimeScroll).overflowY,
+          headingOutsideScroll: !runtimeScroll.contains(runtimeHeading),
+          documentScrollable:
+            document.documentElement.scrollHeight > window.innerHeight,
         }
       })
       expect(taskDetailDensity).toEqual({
         startsAtTop: true,
-        summaryBeforeCore: true,
-        coreBeforeRuntime: true,
+        cardBeforeRuntime: true,
         runtimeHeadingInViewport: true,
+        pageOverflowY: 'hidden',
+        runtimeOverflowY: 'auto',
+        headingOutsideScroll: true,
+        documentScrollable: false,
       })
       if (width === 390 || (theme === 'light' && width === 360)) {
         await page.screenshot({
@@ -1841,7 +1848,10 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     /#\/tasks\/visual-task-running\?fromDeviceId=visual-device-operations$/,
   )
   await expect(page.getByTestId('task-detail')).toContainText('订单同步')
-  await expect(page.getByTestId('detail-progress-value')).toHaveText('3 / 5')
+  await expect(page.getByTestId('detail-progress-value')).toHaveCount(0)
+  await expect(page.getByTestId('task-detail-info-device')).toContainText(
+    '运营',
+  )
   await expect(page.getByTestId('runtime-events')).toContainText(
     '正在处理 HuanYu 店铺',
   )
