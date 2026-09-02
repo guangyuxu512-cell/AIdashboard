@@ -79,6 +79,14 @@ ALL 只影响读取过滤，不代表 Create 可以没有 Team。未来任何 Te
 明确 Active Team。单实体 Detail 的默认实现也应使用 `entity_id + scope predicate` 同一个 SQL，
 避免泄漏记录是否存在。
 
+ALL 仅扩大列表、详情与可信内部读取的范围；它不是跨 Team 创建、更新、删除、转移或建立业务关系的
+特权。任何 Team Scoped Entity 及其业务关系写入都必须以其明确的归属 Team 为边界，不能因为 Actor
+拥有 ALL 而绕过该边界。
+
+未来 Product Material Group 是 Team Scoped Entity：其关联的每个 Asset 必须与 Product Material Group
+属于同一 Team（`product_material_group.team_id = asset.team_id`）。跨 Team Asset 即使可被 ALL Actor
+读取，也禁止作为该 Group 的业务关联；不得建立跨 Team 的 Asset 业务关系。
+
 ## 5. Human Auth 现状
 
 Human Auth V1 已在 `modules/human_auth` 建立企业内部人员认证。User 使用规范化 `login_name` 与
