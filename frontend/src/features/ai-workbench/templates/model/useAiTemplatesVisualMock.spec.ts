@@ -38,6 +38,20 @@ function roleIds(
 }
 
 describe('useAiTemplatesVisualMock', () => {
+  it('uses one shared generation config and preserves fixture restrictions', () => {
+    const template = createTemplateGroupFixtures()[0]!.templates[0]!
+
+    expect('negativePrompt' in template).toBe(false)
+    expect(template.prompt).toContain('避免模糊、变形、多余文字和低清晰度')
+    expect(template).toMatchObject({
+      outputRole: 'MAIN_IMAGE',
+      outputFormat: 'SINGLE',
+      size: '1:1',
+      count: 1,
+      variables: ['product_name', 'selling_points'],
+    })
+  })
+
   it('strictly isolates groups by generation mode and resets the template selection', () => {
     const library = createLibrary()
 
@@ -152,7 +166,6 @@ describe('useAiTemplatesVisualMock', () => {
       count: 1,
       variables: ['product_name'],
       prompt: '{product_name}',
-      negativePrompt: '',
     })
     expect(library.selectedTemplateId.value).toBe(mainTemplate.id)
     expect(library.selectedGroup.value!.templates).toHaveLength(
@@ -182,7 +195,6 @@ describe('useAiTemplatesVisualMock', () => {
       count: 8,
       variables: [' product_name ', 'selling_points', 'product_name'],
       prompt: '  使用 {product_name} 和 {selling_points}  ',
-      negativePrompt: '  模糊，变形  ',
     }
     library.updateTemplate(created.id, update)
     expect(library.selectedTemplate.value).toMatchObject({
@@ -195,7 +207,6 @@ describe('useAiTemplatesVisualMock', () => {
       count: 8,
       variables: ['product_name', 'selling_points'],
       prompt: '使用 {product_name} 和 {selling_points}',
-      negativePrompt: '模糊，变形',
       updatedAt: NOW,
     })
 
@@ -226,7 +237,6 @@ describe('useAiTemplatesVisualMock', () => {
       count: 8,
       variables: ['product_name', 'selling_points'],
       prompt: '使用 {product_name} 和 {selling_points}',
-      negativePrompt: '模糊，变形',
     })
 
     const duplicate = library.duplicateTemplate(created.id)!
@@ -240,7 +250,6 @@ describe('useAiTemplatesVisualMock', () => {
       count: 8,
       variables: ['product_name', 'selling_points'],
       prompt: '使用 {product_name} 和 {selling_points}',
-      negativePrompt: '模糊，变形',
       sortOrder: created.sortOrder + 1,
     })
     expect(duplicate.variables).not.toBe(created.variables)

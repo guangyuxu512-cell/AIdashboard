@@ -10,6 +10,7 @@ import {
   AiWorkspaceEmptyState,
 } from '@/features/ai-workbench'
 import { isAiTemplatesVisualMockEnabled } from '@/features/ai-workbench/templates/model/visual-mock-gate'
+import { GENERATION_MODE_META } from '@/features/ai-workbench/templates/model/types'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 
 const route = useRoute()
@@ -24,8 +25,14 @@ const AiTemplateLibraryVisualMock = import.meta.env.DEV
   : null
 
 const normalModeOptions = [
-  { value: 'NORMAL_GENERATION', label: '普通生图' },
-  { value: 'STYLE_REPLICATION', label: '风格复刻' },
+  {
+    value: 'NORMAL_GENERATION',
+    label: GENERATION_MODE_META.NORMAL_GENERATION.label,
+  },
+  {
+    value: 'STYLE_REPLICATION',
+    label: GENERATION_MODE_META.STYLE_REPLICATION.label,
+  },
 ]
 </script>
 

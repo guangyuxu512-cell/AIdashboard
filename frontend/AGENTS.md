@@ -75,6 +75,9 @@ src/
 有组件必须使用，禁止重新手写同类组件。
 已有 PageHeader、PageSection、DataTable、StatusTag、EmptyState、LoadingState、ErrorState、ConfirmDialog、ShopSelector、DeviceSelector 时，不得创建第二套近似版本。
 
+- Feature 禁止创建新的基础控件或交互 Primitive；Shared / Design System 已能满足时，禁止用原生 HTML + CSS + JS 重做。
+- 上述硬规则覆盖 Button、Input、Textarea、Select、Segmented Control、Tabs、Checkbox、Switch、Dropdown、Dialog、Pagination、Upload；业务组件只允许组合现有 Shared Primitive 或既定 UI Library 组件。
+
 ## 6. 抽象
 以下必须抽象：
 - 两个以上页面重复的 UI 结构。

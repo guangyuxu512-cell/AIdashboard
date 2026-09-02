@@ -7,11 +7,19 @@ export interface ContextSwitchItem {
   disabled?: boolean
 }
 
-defineProps<{
-  items: readonly ContextSwitchItem[]
-  activeKey: string
-  label: string
-}>()
+export type ContextSwitchBarAppearance = 'framed' | 'bare'
+
+withDefaults(
+  defineProps<{
+    items: readonly ContextSwitchItem[]
+    activeKey: string
+    label: string
+    appearance?: ContextSwitchBarAppearance
+  }>(),
+  {
+    appearance: 'framed',
+  },
+)
 
 const emit = defineEmits<{
   select: [key: string]
@@ -25,7 +33,11 @@ function select(item: ContextSwitchItem): void {
 </script>
 
 <template>
-  <nav class="context-switch-bar" :aria-label="label">
+  <nav
+    :class="['context-switch-bar', `context-switch-bar--${appearance}`]"
+    :aria-label="label"
+    :data-appearance="appearance"
+  >
     <AppButton
       v-for="item in items"
       :key="item.key"
@@ -52,8 +64,11 @@ function select(item: ContextSwitchItem): void {
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
   overflow-x: auto;
+}
+
+.context-switch-bar--framed {
+  padding: var(--space-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   background: var(--bg-surface);

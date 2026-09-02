@@ -39,6 +39,10 @@ withDefaults(
     minmax(0, 1fr);
 }
 
+.ai-workbench-layout > :deep(.page-section) {
+  overflow: hidden;
+}
+
 @media (max-width: 1100px) {
   .ai-workbench-layout {
     grid-template-columns: minmax(0, 1fr);

@@ -23,6 +23,8 @@ describe('ContextSwitchBar', () => {
     })
 
     expect(wrapper.get('nav').attributes('aria-label')).toBe('上下文切换')
+    expect(wrapper.get('nav').attributes('data-appearance')).toBe('framed')
+    expect(wrapper.get('nav').classes()).toContain('context-switch-bar--framed')
     expect(wrapper.findAll('[data-icon-key]')).toHaveLength(3)
 
     const buttons = wrapper.findAll('button')
@@ -34,5 +36,24 @@ describe('ContextSwitchBar', () => {
     await buttons[2]?.trigger('click')
 
     expect(wrapper.emitted('select')).toEqual([['second']])
+  })
+
+  it('supports a bare group surface without changing button behavior', () => {
+    const wrapper = mount(ContextSwitchBar, {
+      props: {
+        label: '短选项',
+        appearance: 'bare',
+        activeKey: 'first',
+        items: [
+          { key: 'first', label: '第一项' },
+          { key: 'second', label: '第二项' },
+        ],
+      },
+    })
+
+    expect(wrapper.get('nav').attributes('data-appearance')).toBe('bare')
+    expect(wrapper.get('nav').classes()).toContain('context-switch-bar--bare')
+    expect(wrapper.get('button[aria-pressed="true"]')).toBeTruthy()
+    expect(wrapper.get('button[aria-pressed="false"]')).toBeTruthy()
   })
 })

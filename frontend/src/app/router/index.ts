@@ -58,6 +58,13 @@ const router = createRouter({
       meta: { moduleCode: aiWorkbenchModule.moduleCode },
     },
     {
+      path: AI_WORKBENCH_ROUTES.records.path,
+      name: AI_WORKBENCH_ROUTES.records.name,
+      component: () =>
+        import('@/pages/ai-workbench/AiGenerationRecordsPage.vue'),
+      meta: { moduleCode: aiWorkbenchModule.moduleCode },
+    },
+    {
       path: deviceModule.routePath,
       name: deviceModule.routeName,
       component: () => import('@/pages/devices/DeviceCenterPage.vue'),

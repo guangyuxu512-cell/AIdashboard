@@ -121,6 +121,9 @@ test('completes the AI assets library V1 visual interactions', async ({
   await expectRoleTotal(page, '商品素材', 31)
   await expectRoleTotal(page, '复刻参考', 3)
   await expectRoleTotal(page, 'AI成品', 6)
+  await expect(
+    page.getByRole('navigation', { name: '素材角色' }),
+  ).toHaveAttribute('data-appearance', 'bare')
   await expect(page.getByRole('button', { name: '上传素材' })).toBeDisabled()
   await page
     .getByRole('navigation', { name: '素材角色' })

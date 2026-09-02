@@ -5,6 +5,8 @@ import { NDropdown } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 
 import { TEMPLATE_OUTPUT_ROLE_META, type PromptTemplate } from '../model/types'
+import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
 
 const props = defineProps<{
@@ -36,94 +38,56 @@ function selectAction(key: string | number): void {
 </script>
 
 <template>
-  <article
+  <CompactEntityRow
     class="template-sequence-row"
-    :class="{ 'template-sequence-row--active': active }"
+    :title="template.name"
+    :count="TEMPLATE_OUTPUT_ROLE_META[template.outputRole].label"
+    :active="active"
+    :select-label="`选择模板 ${template.name}`"
     :data-template-id="template.id"
     :data-output-role="template.outputRole"
     :data-sort-order="template.sortOrder"
-    @click="$emit('select')"
+    @select="$emit('select')"
   >
-    <button
-      class="template-sequence-row__select"
-      type="button"
-      :aria-label="`选择模板 ${template.name}`"
-      :aria-pressed="active"
-    >
+    <template #icon>
       <span class="template-sequence-row__order">{{ template.sortOrder }}</span>
-      <strong class="template-sequence-row__name" :title="template.name">
-        {{ template.name }}
-      </strong>
+    </template>
+    <template #title>
+      <span class="template-sequence-row__title-content">
+        <span class="template-sequence-row__name" :title="template.name">
+          {{ template.name }}
+        </span>
+        <small class="template-sequence-row__size">{{ template.size }}</small>
+      </span>
+    </template>
+    <template #count>
       <span class="template-sequence-row__role">
         {{ TEMPLATE_OUTPUT_ROLE_META[template.outputRole].label }}
       </span>
-      <span class="template-sequence-row__size">{{ template.size }}</span>
-      <span
-        class="template-sequence-row__status"
-        :class="{ 'template-sequence-row__status--enabled': template.enabled }"
-        :aria-label="template.enabled ? '启用' : '停用'"
-        role="status"
+    </template>
+    <template #status>
+      <StatusTag
+        appearance="dot"
+        :label="template.enabled ? '启用' : '停用'"
+        :tone="template.enabled ? 'success' : 'neutral'"
       />
-    </button>
-    <div class="template-sequence-row__actions" @click.stop>
+    </template>
+    <template #actions>
       <NDropdown trigger="click" :options="menuOptions" @select="selectAction">
         <AppButton tone="text" :aria-label="`${template.name}操作`">
           <MoreHorizontal :size="16" />
         </AppButton>
       </NDropdown>
-    </div>
-  </article>
+    </template>
+  </CompactEntityRow>
 </template>
 
 <style scoped>
-.template-sequence-row {
-  display: grid;
-  width: 100%;
-  height: var(--table-list-row-slot-height);
+.template-sequence-row__title-content {
+  display: flex;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) var(--control-height-default);
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1) 0 var(--space-2);
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  cursor: pointer;
-}
-
-.template-sequence-row + .template-sequence-row {
-  margin-top: var(--space-1);
-}
-
-.template-sequence-row:hover {
-  background: var(--bg-surface-hover);
-}
-
-.template-sequence-row--active {
-  border-color: var(--border-default);
-  background: var(--color-primary-soft);
-}
-
-.template-sequence-row__select {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  grid-template-columns:
-    var(--control-height-compact)
-    minmax(0, 1fr)
-    var(--control-height-default)
-    var(--control-height-large)
-    var(--space-3);
   align-items: center;
   gap: var(--space-2);
-  padding: 0;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: inherit;
-  background: transparent;
 }
 
 .template-sequence-row__order {
@@ -134,9 +98,8 @@ function selectAction(key: string | number): void {
 
 .template-sequence-row__name {
   min-width: 0;
+  flex: 1;
   overflow: hidden;
-  color: var(--text-primary);
-  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -153,27 +116,7 @@ function selectAction(key: string | number): void {
 
 .template-sequence-row__size {
   color: var(--text-secondary);
-  text-align: right;
-}
-
-.template-sequence-row__status {
-  display: block;
-  width: var(--space-2);
-  height: var(--space-2);
-  justify-self: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  background: transparent;
-}
-
-.template-sequence-row__status--enabled {
-  border-color: var(--status-success);
-  background: var(--status-success);
-}
-
-.template-sequence-row__actions {
-  display: grid;
-  height: 100%;
-  place-items: center;
+  font-weight: var(--font-weight-regular);
+  white-space: nowrap;
 }
 </style>
