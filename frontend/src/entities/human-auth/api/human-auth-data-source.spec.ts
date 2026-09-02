@@ -54,4 +54,22 @@ describe('Human Auth Data Source', () => {
       },
     ])
   })
+
+  it('reads module access separately from the login identity contract', async () => {
+    const get = vi.spyOn(httpClient, 'get').mockResolvedValue({
+      data: {
+        module_codes: ['asset', 'settings'],
+        is_access_administrator: true,
+      },
+    })
+    const source = createHumanAuthDataSource('real')
+
+    await expect(source.getCurrentModuleAccess()).resolves.toEqual({
+      moduleCodes: ['asset', 'settings'],
+      isAccessAdministrator: true,
+    })
+    expect(get).toHaveBeenCalledWith(
+      '/api/v1/access-management/me/module-access',
+    )
+  })
 })

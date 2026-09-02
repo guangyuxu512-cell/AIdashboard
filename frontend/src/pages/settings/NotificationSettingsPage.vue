@@ -16,6 +16,7 @@ import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import SystemSettingsNavigation from '@/features/system-settings/ui/SystemSettingsNavigation.vue'
 
 const settings = useNotificationSettings()
 
@@ -26,6 +27,7 @@ function channelLabel(channel: NotificationChannelViewModel): string {
 
 <template>
   <div class="page-container notification-settings-page">
+    <SystemSettingsNavigation />
     <PageHeader
       title="通知配置"
       description="配置系统级 Webhook 通知通道与设备上下线事件开关。"
@@ -59,7 +61,9 @@ function channelLabel(channel: NotificationChannelViewModel): string {
             }"
             @click="settings.selectChannel(channel.channelId)"
           >
-            <span class="notification-channel-item__icon"><Bell :size="17" /></span>
+            <span class="notification-channel-item__icon"
+              ><Bell :size="17"
+            /></span>
             <span class="notification-channel-item__copy">
               <strong>{{ channel.name }}</strong>
               <small>{{ channelLabel(channel) }}</small>
@@ -79,7 +83,9 @@ function channelLabel(channel: NotificationChannelViewModel): string {
         <section class="notification-settings-editor">
           <header>
             <div>
-              <h2>{{ settings.creating.value ? '新增通知通道' : '编辑通知通道' }}</h2>
+              <h2>
+                {{ settings.creating.value ? '新增通知通道' : '编辑通知通道' }}
+              </h2>
               <p>Webhook 明文不会从服务端返回，编辑时留空即可保留原配置。</p>
             </div>
             <StatusTag

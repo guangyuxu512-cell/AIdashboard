@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from app.modules.access.enums import DataScope
@@ -33,3 +34,26 @@ class TeamMembershipSummary:
     role_code: str
     data_scope: DataScope
     membership_enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ManagedMembership:
+    membership_id: UUID
+    team_id: UUID
+    team_name: str
+    team_enabled: bool
+    role_code: str
+    data_scope: DataScope
+    enabled: bool
+    module_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ManagedMember:
+    user_id: UUID
+    display_name: str
+    login_name: str | None
+    enabled: bool
+    memberships: tuple[ManagedMembership, ...]
+    created_at: datetime
+    updated_at: datetime

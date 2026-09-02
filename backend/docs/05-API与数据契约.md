@@ -67,6 +67,38 @@ Human Auth V1 已为 `users` 增加可空 `login_name/password_hash`，并以服
 `get_human_principal` 不接受可伪造的 User-ID Header；ActorContext、Team 选择与既有 Access API
 Contract 保持不变。
 
+## Access Management V1 Contract
+
+统一前缀为 `/api/v1/access-management`。`GET /me/module-access` 需要有效的 Human
+ActorContext，返回当前选中 Membership 的 `module_codes` 和
+`is_access_administrator`，不返回 User、Team、密码或会话内部字段。
+
+以下人员、Team 与 Membership 管理接口均要求当前选中 Membership 的
+`role_code=access_admin`：
+
+- `GET/POST /members`：分页查询（可按显示名或登录账号 search）与创建人员。
+- `GET/PATCH /members/{user_id}`：读取人员管理视图、启用或停用人员。
+- `POST /members/{user_id}/password`：重置密码并撤销该人员全部 Human Session。
+- `POST /members/{user_id}/memberships`、`PATCH /memberships/{membership_id}`：新增或更新
+  Team Membership、数据范围、启用状态、角色与模块访问。
+- `GET/POST /teams`、`PATCH /teams/{team_id}`：读取、创建和更新 Team；不提供 Hard Delete。
+
+历史 `/api/v1/users` Core Domain 路由也改为 `access_admin` 才可调用，防止它成为新人员管理边界的
+绕过入口；PC 管理端必须使用上列 Access Management Contract，不以旧 `UserRead` 管理登录凭据或
+Membership。
+
+人员创建请求只在写入期接收 `password`，响应的人员、Membership 与 Team DTO 永不包含密码、
+Password Hash、Cookie 或 Session Token。管理角色只有 `member` 和 `access_admin`；模块代码只能
+是当前 PC Module Registry 的 `shop / asset / ai-workbench / device / task / schedule / settings`，
+不接受 development-only `foundation` 或未知值。模块代码重复、未知角色及空 PATCH 均由
+`VALIDATION_ERROR` 拒绝。
+
+管理边界失败使用 `HUMAN_AUTHENTICATION_REQUIRED`、
+`ACCESS_ADMINISTRATION_FORBIDDEN`、`MODULE_ACCESS_DENIED`、
+`LAST_ACCESS_ADMINISTRATOR_REQUIRED`、`TEAM_DISABLED`、`TEAM_MEMBERSHIP_CONFLICT` 等正式错误码。
+当前唯一已具备 Human API 的业务模块“资料库”在全部 Human 路由上执行 `asset` 模块授权；其他
+尚未迁移到 Human Management Plane 的历史 API 不被伪装成已受本轮模块鉴权保护。
+
 Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
 Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。

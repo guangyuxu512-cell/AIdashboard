@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import {
   humanAuthDataSource,
   type CurrentHumanUser,
+  type CurrentModuleAccess,
   type HumanAuthDataSource,
   type HumanLoginInput,
   type HumanTeamMembership,
@@ -61,6 +62,7 @@ export const useAuthStore = defineStore('auth', () => {
   const currentUser = ref<CurrentHumanUser | null>(null)
   const teams = ref<HumanTeamMembership[]>([])
   const activeTeamId = ref<string | null>(null)
+  const currentModuleAccess = ref<CurrentModuleAccess | null>(null)
   const restoreError = ref<string | null>(null)
   let initialization: Promise<void> | null = null
   let dataSource: HumanAuthDataSource = humanAuthDataSource
@@ -79,6 +81,12 @@ export const useAuthStore = defineStore('auth', () => {
   const requiresTeamSelection = computed(
     () => isAuthenticated.value && currentTeam.value === null,
   )
+  const allowedModuleCodes = computed(
+    () => new Set(currentModuleAccess.value?.moduleCodes ?? []),
+  )
+  const isAccessAdministrator = computed(
+    () => currentModuleAccess.value?.isAccessAdministrator === true,
+  )
 
   function applyAuthenticatedSession(
     user: CurrentHumanUser,
@@ -94,6 +102,7 @@ export const useAuthStore = defineStore('auth', () => {
       available.find((item) => item.teamId === storedTeamId)?.teamId ??
       (available.length === 1 ? (available[0]?.teamId ?? null) : null)
     if (activeTeamId.value) persistTeamId(user.userId, activeTeamId.value)
+    currentModuleAccess.value = null
     restoreError.value = null
     status.value = 'authenticated'
   }
@@ -105,6 +114,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentUser.value = null
     teams.value = []
     activeTeamId.value = null
+    currentModuleAccess.value = null
     status.value = 'anonymous'
     authEffects.onAuthCleared()
   }
@@ -118,10 +128,12 @@ export const useAuthStore = defineStore('auth', () => {
         const user = await dataSource.getCurrentUser()
         const memberships = await dataSource.listMyTeams()
         applyAuthenticatedSession(user, memberships)
+        await refreshModuleAccess()
       } catch (error) {
         currentUser.value = null
         teams.value = []
         activeTeamId.value = null
+        currentModuleAccess.value = null
         status.value = 'anonymous'
         restoreError.value = isHumanSessionError(error)
           ? null
@@ -139,6 +151,7 @@ export const useAuthStore = defineStore('auth', () => {
     const user = await dataSource.login(input)
     const memberships = await dataSource.listMyTeams()
     applyAuthenticatedSession(user, memberships)
+    await refreshModuleAccess()
   }
 
   async function logout(): Promise<void> {
@@ -147,13 +160,22 @@ export const useAuthStore = defineStore('auth', () => {
     clearAuthState(true)
   }
 
-  function selectTeam(teamId: string): void {
+  async function selectTeam(teamId: string): Promise<void> {
     const membership = activeTeams.value.find((item) => item.teamId === teamId)
     if (!membership || !currentUser.value) return
     if (activeTeamId.value === teamId) return
     activeTeamId.value = teamId
     persistTeamId(currentUser.value.userId, teamId)
     authEffects.onTeamChanged()
+    await refreshModuleAccess()
+  }
+
+  async function refreshModuleAccess(): Promise<void> {
+    if (!isAuthenticated.value || !activeTeamId.value) {
+      currentModuleAccess.value = null
+      return
+    }
+    currentModuleAccess.value = await dataSource.getCurrentModuleAccess()
   }
 
   function expireSession(): void {
@@ -171,15 +193,19 @@ export const useAuthStore = defineStore('auth', () => {
     currentUser,
     teams,
     activeTeamId,
+    currentModuleAccess,
     restoreError,
     isAuthenticated,
     activeTeams,
     currentTeam,
     requiresTeamSelection,
+    allowedModuleCodes,
+    isAccessAdministrator,
     initialize,
     login,
     logout,
     selectTeam,
+    refreshModuleAccess,
     expireSession,
     setDataSource,
   }

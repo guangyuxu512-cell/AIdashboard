@@ -670,6 +670,74 @@ def test_asset_scope_migration_upgrade_and_downgrade(monkeypatch: object) -> Non
     ]
 
 
+def test_access_management_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260902_0025_access_management_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        migration,
+        "_backfill_existing_memberships",
+        lambda: recorder.calls.append(("execute", "module_access_backfill")),
+    )
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "membership_module_accesses"),
+    ]
+    assert ("execute", "module_access_backfill") in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [("drop_table", "membership_module_accesses")]
+
+
+def test_access_management_backfill_grants_only_current_formal_modules(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260902_0025_access_management_v1",
+    )
+    membership_ids = [uuid4(), uuid4()]
+
+    class ScalarRows:
+        def scalars(self) -> list[object]:
+            return membership_ids
+
+    class Connection:
+        inserted_rows: list[dict[str, object]] | None = None
+
+        def execute(
+            self,
+            statement: object,
+            parameters: list[dict[str, object]] | None = None,
+        ) -> ScalarRows:
+            del statement
+            if parameters is not None:
+                self.inserted_rows = parameters
+            return ScalarRows()
+
+    connection = Connection()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: connection)
+
+    migration._backfill_existing_memberships()
+
+    assert connection.inserted_rows is not None
+    assert len(connection.inserted_rows) == len(membership_ids) * len(
+        migration.BACKFILL_MODULE_CODES,
+    )
+    assert {row["membership_id"] for row in connection.inserted_rows} == set(
+        membership_ids,
+    )
+    assert {row["module_code"] for row in connection.inserted_rows} == set(
+        migration.BACKFILL_MODULE_CODES,
+    )
+    assert "foundation" not in migration.BACKFILL_MODULE_CODES
+
+
 def test_asset_scope_backfill_requires_exactly_one_default_team(
     monkeypatch: object,
 ) -> None:
