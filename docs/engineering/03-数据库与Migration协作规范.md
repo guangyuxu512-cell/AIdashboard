@@ -28,7 +28,13 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前无活跃 Slot。最近释放记录：
+当前唯一 Slot：
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| `feat/ai-backend-foundation-v1` | `reserved` | AI Workbench Backend Foundation V1：TemplateGroup、PromptTemplate、ProductMaterialGroup 与两类关系 | `20260902_0025_access_management_v1` | `20260903_0026_ai_workbench_backend_foundation_v1` | `control_center_feat_ai_backend` 已由 Integrator 从空库升级至 `20260902_0025`；Feature Owner 才可创建该 Revision 的 Migration |
+
+最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
