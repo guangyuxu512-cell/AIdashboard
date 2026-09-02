@@ -83,13 +83,17 @@ defineEmits<{
             <NDescriptionsItem label="提示词">
               {{ record.detail.effectiveConfig.prompt || '—' }}
             </NDescriptionsItem>
-            <NDescriptionsItem label="参数">
+            <NDescriptionsItem label="输出格式">
               {{
                 GENERATION_OUTPUT_FORMAT_META[
                   record.detail.effectiveConfig.outputFormat
                 ].label
               }}
-              · {{ record.detail.effectiveConfig.size }} ·
+            </NDescriptionsItem>
+            <NDescriptionsItem label="比例">
+              {{ record.detail.effectiveConfig.size }}
+            </NDescriptionsItem>
+            <NDescriptionsItem label="数量">
               {{ record.detail.effectiveConfig.count }} 张
             </NDescriptionsItem>
           </NDescriptions>
@@ -99,6 +103,7 @@ defineEmits<{
           <InstantResultGrid
             :results="record.detail.results"
             :show-actions="false"
+            show-asset-library-status
             @download="$emit('download')"
           />
         </section>

@@ -102,17 +102,7 @@ function selectAsset(source: GenerationSourceImageView): void {
 }
 
 function upload(slot: GenerationInputSlotDefinition, files: File[]): void {
-  generationStore.addInstantSources(
-    slot.key,
-    files.map((file) => ({
-      id: `local-${slot.key}-${file.name}-${file.size}-${file.lastModified}`,
-      name: file.name,
-      previewUrl: URL.createObjectURL(file),
-      role: slot.acceptedMaterialRole,
-      sourceType: 'LOCAL_UPLOAD',
-      objectUrl: true,
-    })),
-  )
+  generationStore.addInstantUploadFiles(slot.key, files)
 }
 
 function setMode(value: string): void {
@@ -147,11 +137,14 @@ function download(): void {
 
 function openSaveDialog(result: GenerationExecutionResultView): void {
   saveResultId.value = result.id
-  saveProductId.value =
-    instantDraft.value.inputs.PRODUCT_IMAGES.find((image) => image.productId)
-      ?.productId ??
-    saveProductOptions.value[0]?.value ??
-    null
+  const sourceProductId = generationStore.getInstantResultSourceProductId(
+    result.id,
+  )
+  saveProductId.value = saveProductOptions.value.some(
+    (option) => option.value === sourceProductId,
+  )
+    ? sourceProductId
+    : null
   saveDialogVisible.value = true
 }
 
@@ -305,7 +298,7 @@ function retryResult(result: GenerationExecutionResultView): void {
   <AppDialog
     v-model:show="saveDialogVisible"
     title="保存到素材库"
-    positive-text="保存"
+    positive-text="保存到素材库"
     :positive-disabled="!saveProductId"
     @confirm="saveResult"
   >

@@ -8,7 +8,7 @@ import { AiWorkbenchLayout } from '@/features/ai-workbench'
 import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
-import { AppButton, AppSelect } from '@/shared/ui'
+import { AppButton, AppDialog, AppSelect } from '@/shared/ui'
 
 import type { BatchTemplateExecutionIdentity } from '../model/batch-execution'
 import {
@@ -16,6 +16,7 @@ import {
   GENERATION_MODE_REGISTRY,
 } from '../model/generation-mode-registry'
 import {
+  BATCH_SKIP_REASON_META,
   GENERATION_OUTPUT_RANGE_META,
   type BatchTemplateExecutionView,
   type BatchProductScope,
@@ -39,6 +40,7 @@ const {
 } = storeToRefs(generationStore)
 const message = useMessage()
 const productPickerVisible = ref(false)
+const preflightProblemsVisible = ref(false)
 
 const modeOptions = GENERATION_MODE_ORDER.map((key) => ({
   label: GENERATION_MODE_REGISTRY[key].label,
@@ -245,7 +247,16 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
             class="batch-preflight"
             data-testid="batch-preflight"
           >
-            <strong>执行检查</strong>
+            <header class="batch-preflight__header">
+              <strong>执行检查</strong>
+              <AppButton
+                v-if="batchPreflight.issues.length"
+                tone="text"
+                @click="preflightProblemsVisible = true"
+              >
+                查看问题
+              </AppButton>
+            </header>
             <dl class="batch-preflight__stats">
               <div>
                 <dt>产品</dt>
@@ -293,7 +304,9 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
       <div class="batch-workspace-pane">
         <BatchExecutionViewer
           :execution="batchExecution"
-          :preflight-issues="batchChecked ? batchPreflight.issues : []"
+          :preflight-issues="
+            batchExecution && batchChecked ? batchPreflight.issues : []
+          "
           @download-all="download"
           @download-template="downloadTemplate"
           @retry="retryTemplate"
@@ -308,6 +321,20 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
     :selected-product-ids="batchDraft.selectedProductIds"
     @confirm="generationStore.setBatchSelectedProducts"
   />
+  <AppDialog
+    v-model:show="preflightProblemsVisible"
+    title="执行问题"
+    positive-text="关闭"
+    :show-negative="false"
+    @confirm="preflightProblemsVisible = false"
+  >
+    <ul class="batch-preflight-problems">
+      <li v-for="issue in batchPreflight.issues" :key="issue.productId">
+        <strong>{{ issue.productName }}</strong>
+        <span>{{ BATCH_SKIP_REASON_META[issue.reason].label }}</span>
+      </li>
+    </ul>
+  </AppDialog>
 </template>
 
 <style scoped>
@@ -399,6 +426,15 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
   margin: 0;
 }
 
+.batch-preflight__header {
+  display: flex;
+  min-width: 0;
+  min-height: var(--control-height-default);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .batch-preflight {
   display: flex;
   min-width: 0;
@@ -423,6 +459,34 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
   color: var(--text-primary);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
+}
+
+.batch-preflight-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batch-preflight-problems li {
+  display: grid;
+  min-width: 0;
+  min-height: var(--table-row-height);
+  align-items: center;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  grid-template-columns: minmax(var(--field-width-xs), 0.45fr) minmax(0, 1fr);
+}
+
+.batch-preflight-problems li strong,
+.batch-preflight-problems li span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-preflight-problems li span {
+  color: var(--text-secondary);
 }
 
 @media (max-width: 1100px) {

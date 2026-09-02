@@ -105,6 +105,18 @@ describe('AI generation visual store: generation records', () => {
     }
   })
 
+  it('keeps saved and unsaved instant results distinguishable in records', () => {
+    const results = createStore().records.flatMap((record) =>
+      record.detail.kind === 'INSTANT'
+        ? record.detail.results.filter((result) => result.status === 'SUCCESS')
+        : [],
+    )
+    expect(results.some((result) => Boolean(result.savedToProductId))).toBe(
+      true,
+    )
+    expect(results.some((result) => !result.savedToProductId)).toBe(true)
+  })
+
   it('snapshots the manual effective config', () => {
     const store = createStore()
     readyInstant(store)
@@ -246,6 +258,27 @@ describe('AI generation visual store: generation records', () => {
     )!
     expect(store.retryFailedRecord(record.id)).toBe(true)
     expect(record.status).toBe('SUCCESS')
+  })
+
+  it('archives batch results that succeed after a record retry', () => {
+    const store = createStore()
+    const record = store.records.find(
+      (candidate) =>
+        candidate.detail.kind === 'BATCH' &&
+        (candidate.status === 'FAILED' ||
+          candidate.status === 'PARTIAL_FAILED'),
+    )!
+    expect(store.retryFailedRecord(record.id)).toBe(true)
+    expect(record.detail.kind).toBe('BATCH')
+    if (record.detail.kind === 'BATCH') {
+      for (const product of record.detail.results) {
+        for (const result of product.groups.flatMap((group) =>
+          group.templates.flatMap((template) => template.results),
+        )) {
+          expect(result.savedToProductId).toBe(product.productId)
+        }
+      }
+    }
   })
 
   it('places a newly generated record first by timestamp', () => {

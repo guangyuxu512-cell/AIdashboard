@@ -223,4 +223,36 @@ describe('AI generation visual store: batch generation', () => {
     expect(product.groups[0]!.templates[0]!.templateId).toBeTruthy()
     expect(product.groups[0]!.templates[0]!.results.length).toBeGreaterThan(0)
   })
+
+  it('archives every successful batch result to its source product', () => {
+    const store = createStore()
+    const record = store.startBatchGeneration()!
+    const results = store.batchResults.flatMap((product) =>
+      product.groups.flatMap((group) =>
+        group.templates.flatMap((template) =>
+          template.results.map((result) => ({ product, result })),
+        ),
+      ),
+    )
+
+    expect(results.some(({ result }) => result.status === 'SUCCESS')).toBe(true)
+    for (const { product, result } of results) {
+      expect(result.savedToProductId).toBe(
+        result.status === 'SUCCESS' ? product.productId : undefined,
+      )
+    }
+    expect(record.detail.kind).toBe('BATCH')
+    if (record.detail.kind === 'BATCH') {
+      expect(
+        record.detail.results
+          .flatMap((product) =>
+            product.groups.flatMap((group) =>
+              group.templates.flatMap((template) => template.results),
+            ),
+          )
+          .filter((result) => result.status === 'SUCCESS')
+          .every((result) => Boolean(result.savedToProductId)),
+      ).toBe(true)
+    }
+  })
 })

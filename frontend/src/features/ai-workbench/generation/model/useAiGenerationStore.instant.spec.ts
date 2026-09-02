@@ -369,16 +369,40 @@ describe('AI generation visual store: instant generation', () => {
     )
   })
 
-  it('marks a visual result as saved without writing Assets fixtures', () => {
+  it('keeps the record before save and syncs only its material membership', () => {
     const store = createStore()
     readyInstant(store)
-    store.generateInstant()
+    const record = store.generateInstant()!
     const result = store.instantResults[0]!
     const product = store.products[0]!
     const assetCount = product.assets.length
+    expect(result.savedToProductId).toBeUndefined()
+    expect(store.records.some((candidate) => candidate.id === record.id)).toBe(
+      true,
+    )
     expect(store.saveInstantResult(result.id, product.id)).toBe(true)
     expect(result.savedToProductId).toBe(product.id)
+    expect(record.detail.kind).toBe('INSTANT')
+    if (record.detail.kind === 'INSTANT') {
+      expect(record.detail.results[0]!.savedToProductId).toBe(product.id)
+    }
+    expect(store.saveInstantResult(result.id, product.id)).toBe(false)
     expect(product.assets).toHaveLength(assetCount)
+  })
+
+  it('keeps the save target tied to the generated input snapshot', () => {
+    const store = createStore()
+    const source = productSource(store)
+    readyInstant(store)
+    store.generateInstant()
+    const result = store.instantResults[0]!
+
+    store.removeInstantSource('PRODUCT_IMAGES', source.id)
+
+    expect(store.instantDraft.inputs.PRODUCT_IMAGES).toEqual([])
+    expect(store.getInstantResultSourceProductId(result.id)).toBe(
+      source.productId,
+    )
   })
 
   it('records the effective config and template source only after generation', () => {

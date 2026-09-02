@@ -63,6 +63,14 @@ async function expectBareSwitchBar(control: Locator): Promise<void> {
   expect(await inactiveButtons.count()).toBeGreaterThan(0)
 }
 
+async function openSaveToAssets(page: Page, card: Locator): Promise<void> {
+  await card.getByRole('button', { name: /更多操作/ }).click()
+  await page
+    .locator('.n-dropdown-option:visible')
+    .getByText('保存到素材库', { exact: true })
+    .click()
+}
+
 test('keeps every generation short option group unframed in both themes', async ({
   page,
 }) => {
@@ -207,6 +215,24 @@ test('uses registry-driven input slots and one editable generation config', asyn
   await expect(productSurface.getByAltText('临时商品图.png')).toBeVisible()
   await expect(productSlot.getByRole('button', { name: '上传' })).toHaveCount(0)
 
+  await config.getByRole('button', { name: '生成', exact: true }).click()
+  const temporaryResultGrid = page.getByTestId('instant-result-grid')
+  const temporarySuccessCard = temporaryResultGrid
+    .locator('[data-result-status="SUCCESS"]')
+    .first()
+  await openSaveToAssets(page, temporarySuccessCard)
+  const temporarySaveDialog = page.getByRole('dialog')
+  await expect(temporarySaveDialog.getByLabel('目标产品素材组')).toContainText(
+    '选择产品',
+  )
+  await expect(
+    temporarySaveDialog.getByRole('button', {
+      name: '保存到素材库',
+      exact: true,
+    }),
+  ).toBeDisabled()
+  await temporarySaveDialog.getByRole('button', { name: '取消' }).click()
+
   await productSlot.getByRole('button', { name: '素材库', exact: true }).click()
   const assetDialog = page.getByRole('dialog')
   await expect(
@@ -238,15 +264,23 @@ test('uses registry-driven input slots and one editable generation config', asyn
   await expect(
     resultGrid.getByRole('button', { name: '下载' }).first(),
   ).toBeVisible()
-  await expect(
-    resultGrid.getByRole('button', { name: '保存到素材库' }).first(),
-  ).toBeVisible()
-  await resultGrid.getByRole('button', { name: '保存到素材库' }).first().click()
+  const firstSuccessCard = resultGrid
+    .locator('[data-result-status="SUCCESS"]')
+    .first()
+  await productSlot.getByRole('button', { name: '移除 正面.jpg' }).click()
+  await expect(productSurface.getByAltText('正面.jpg')).toHaveCount(0)
+  await openSaveToAssets(page, firstSuccessCard)
   const saveDialog = page.getByRole('dialog')
   await expect(saveDialog.getByLabel('目标产品素材组')).toContainText(
     '手机支架',
   )
-  await saveDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await saveDialog
+    .getByRole('button', { name: '保存到素材库', exact: true })
+    .click()
+  await expect(firstSuccessCard).toContainText('已加入素材库')
+  await expect(
+    firstSuccessCard.getByRole('button', { name: /更多操作/ }),
+  ).toHaveCount(0)
 
   await moduleNavigation.getByRole('button', { name: '生成记录' }).click()
   const recordRows = page.locator('.n-data-table-tbody .n-data-table-tr')
@@ -254,7 +288,10 @@ test('uses registry-driven input slots and one editable generation config', asyn
   const recordDrawer = page.getByRole('dialog')
   await expect(recordDrawer).toContainText(manualPrompt)
   await expect(recordDrawer).toContainText('未使用')
-  await expect(recordDrawer).toContainText('四宫格 · 3:4 · 2 张')
+  await expect(recordDrawer).toContainText('四宫格')
+  await expect(recordDrawer).toContainText('3:4')
+  await expect(recordDrawer).toContainText('2 张')
+  await expect(recordDrawer).toContainText('已加入素材库')
   await expect(recordDrawer.getByText('提示词', { exact: true })).toBeVisible()
   await expect(recordDrawer.getByText('Prompt', { exact: true })).toHaveCount(0)
   await recordDrawer.getByRole('button', { name: '关闭' }).click()
@@ -322,6 +359,175 @@ test('uses registry-driven input slots and one editable generation config', asyn
   expect(runtimeErrors).toEqual([])
 })
 
+test('keeps local-upload Record previews alive across Draft cleanup and routes', async ({
+  page,
+}) => {
+  const runtimeErrors = collectRuntimeErrors(page)
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.goto('/#/ai-workbench/generate?visualMock=1')
+
+  const moduleNavigation = page.getByRole('navigation', {
+    name: 'AI 功能入口',
+  })
+  const config = page.getByRole('region', { name: '即时生成配置' })
+  const productSlot = config.locator('[data-input-slot="PRODUCT_IMAGES"]')
+  const productSurface = productSlot.locator('.generation-input-slot__surface')
+  const productChooserPromise = page.waitForEvent('filechooser')
+  await productSurface.click()
+  const productChooser = await productChooserPromise
+  await productChooser.setFiles({
+    name: '生命周期商品图.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  const productPreview = productSurface.getByAltText('生命周期商品图.png')
+  await expect(productPreview).toBeVisible()
+  await expect
+    .poll(() =>
+      productPreview.evaluate(
+        (image) => (image as HTMLImageElement).naturalWidth,
+      ),
+    )
+    .toBeGreaterThan(0)
+  await config.getByLabel('提示词').fill('Object URL 生命周期回归')
+  await config.getByRole('button', { name: '生成', exact: true }).click()
+
+  await moduleNavigation.getByRole('button', { name: '生成记录' }).click()
+  await expect(page).toHaveURL(/#\/ai-workbench\/records\?visualMock=1$/)
+  let recordRows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await recordRows.first().getByRole('button', { name: '查看' }).click()
+  let recordDrawer = page.getByRole('dialog')
+  await expect(recordDrawer).toContainText('生命周期商品图.png')
+  let recordResultPreview = recordDrawer
+    .getByTestId('instant-result-grid')
+    .locator('img')
+    .first()
+  await expect
+    .poll(() =>
+      recordResultPreview.evaluate(
+        (image) => (image as HTMLImageElement).naturalWidth,
+      ),
+    )
+    .toBeGreaterThan(0)
+  await recordDrawer.getByRole('button', { name: '关闭' }).click()
+
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: 'AI生图' })
+    .click()
+  const restoredConfig = page.getByRole('region', { name: '即时生成配置' })
+  await expect(restoredConfig.getByAltText('生命周期商品图.png')).toBeVisible()
+  const generationMode = restoredConfig.getByRole('navigation', {
+    name: '生成模式',
+  })
+  await generationMode.getByRole('button', { name: '风格复刻' }).click()
+  const referenceSlot = restoredConfig.locator(
+    '[data-input-slot="REFERENCE_IMAGES"]',
+  )
+  const referenceChooserPromise = page.waitForEvent('filechooser')
+  await referenceSlot.locator('.generation-input-slot__surface').click()
+  const referenceChooser = await referenceChooserPromise
+  await referenceChooser.setFiles({
+    name: '生命周期参考图.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  await expect(referenceSlot.getByAltText('生命周期参考图.png')).toBeVisible()
+  await restoredConfig
+    .getByRole('button', { name: '生成', exact: true })
+    .click()
+
+  await generationMode.getByRole('button', { name: '普通生图' }).click()
+  await expect(
+    restoredConfig.locator('[data-input-slot="REFERENCE_IMAGES"]'),
+  ).toHaveCount(0)
+  await restoredConfig
+    .getByRole('button', { name: '移除 生命周期商品图.png' })
+    .click()
+  await expect(restoredConfig.getByAltText('生命周期商品图.png')).toHaveCount(0)
+
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: '生成记录' })
+    .click()
+  recordRows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await recordRows.first().getByRole('button', { name: '查看' }).click()
+  recordDrawer = page.getByRole('dialog')
+  await expect(recordDrawer).toContainText('生命周期商品图.png')
+  await expect(recordDrawer).toContainText('生命周期参考图.png')
+  recordResultPreview = recordDrawer
+    .getByTestId('instant-result-grid')
+    .locator('img')
+    .first()
+  await expect
+    .poll(() =>
+      recordResultPreview.evaluate(
+        (image) => (image as HTMLImageElement).naturalWidth,
+      ),
+    )
+    .toBeGreaterThan(0)
+  await recordDrawer.getByRole('button', { name: '关闭' }).click()
+
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: 'AI生图' })
+    .click()
+  const resetConfig = page.getByRole('region', { name: '即时生成配置' })
+  const resetSurface = resetConfig
+    .locator('[data-input-slot="PRODUCT_IMAGES"]')
+    .locator('.generation-input-slot__surface')
+  const resetChooserPromise = page.waitForEvent('filechooser')
+  await resetSurface.click()
+  const resetChooser = await resetChooserPromise
+  await resetChooser.setFiles({
+    name: '待重置商品图.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  await expect(resetConfig.getByAltText('待重置商品图.png')).toBeVisible()
+
+  await page.evaluate(() => {
+    window.location.hash = '/ai-workbench/generate'
+  })
+  await expect(page).toHaveURL(/#\/ai-workbench\/generate$/)
+  await expect(
+    page
+      .getByRole('region', { name: '即时生成配置' })
+      .getByAltText('待重置商品图.png'),
+  ).toHaveCount(0)
+
+  await page.evaluate(() => {
+    window.location.hash = '/ai-workbench/records?visualMock=1'
+  })
+  await expect(page).toHaveURL(/#\/ai-workbench\/records\?visualMock=1$/)
+  recordRows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await recordRows.first().getByRole('button', { name: '查看' }).click()
+  recordDrawer = page.getByRole('dialog')
+  await expect(recordDrawer).toContainText('生命周期商品图.png')
+  await expect(recordDrawer).toContainText('生命周期参考图.png')
+  recordResultPreview = recordDrawer
+    .getByTestId('instant-result-grid')
+    .locator('img')
+    .first()
+  await expect
+    .poll(() =>
+      recordResultPreview.evaluate(
+        (image) => (image as HTMLImageElement).naturalWidth,
+      ),
+    )
+    .toBeGreaterThan(0)
+  expect(runtimeErrors).toEqual([])
+})
+
 test('renders stable instant result slots with preview and isolated retry', async ({
   page,
 }) => {
@@ -376,15 +582,13 @@ test('renders stable instant result slots with preview and isolated retry', asyn
     successCard.getByRole('button', { name: /下载 生成结果-01/ }),
   ).toBeVisible()
   await expect(
-    successCard.getByRole('button', { name: /保存到素材库 生成结果-01/ }),
+    successCard.getByRole('button', { name: /更多操作 生成结果-01/ }),
   ).toBeVisible()
-  await successCard
-    .getByRole('button', { name: /保存到素材库 生成结果-01/ })
-    .click()
+  await openSaveToAssets(page, successCard)
   const saveDialog = page.getByRole('dialog')
-  await expect(
-    saveDialog.getByText('保存到素材库', { exact: true }),
-  ).toBeVisible()
+  await expect(saveDialog.locator('.app-dialog__title')).toHaveText(
+    '保存到素材库',
+  )
   await saveDialog.getByRole('button', { name: '取消' }).click()
   await expect(summary.getByRole('button', { name: '下载全部' })).toBeEnabled()
 
@@ -549,7 +753,10 @@ test('uses templates as editable fill sources and records the final config', asy
   const recordDrawer = page.getByRole('dialog')
   await expect(recordDrawer).toContainText('极简白底')
   await expect(recordDrawer).toContainText(finalPrompt)
-  await expect(recordDrawer).toContainText('四宫格 · 3:4 · 2 张')
+  await expect(recordDrawer).toContainText('四宫格')
+  await expect(recordDrawer).toContainText('3:4')
+  await expect(recordDrawer).toContainText('2 张')
+  await expect(recordDrawer).toContainText('未加入素材库')
   await recordDrawer.getByRole('button', { name: '关闭' }).click()
 
   await page
@@ -708,6 +915,11 @@ test('completes batch configuration and the master-detail execution viewer', asy
   await expect(viewer).toBeVisible()
   await expect(summary).toContainText('执行结果')
   await expect(viewer.getByTestId('batch-execution-progress')).toBeVisible()
+  await expect(viewer.getByTestId('batch-archived-count').first()).toBeVisible()
+  await expect(viewer).toContainText('已归档')
+  await expect(
+    viewer.getByRole('button', { name: /保存到素材库/ }),
+  ).toHaveCount(0)
   for (const label of ['成功', '生成中', '等待中', '失败']) {
     await expect(runtimeStats.getByText(label, { exact: true })).toBeVisible()
   }
@@ -951,6 +1163,10 @@ test('filters, paginates and opens generation record details in both themes', as
   await expect(
     drawer.getByTestId('batch-result-tree').locator('details'),
   ).not.toHaveCount(0)
+  await expect(drawer).toContainText('已加入素材库')
+  await expect(
+    drawer.getByRole('button', { name: /保存到素材库/ }),
+  ).toHaveCount(0)
   await expect(drawer.getByRole('button', { name: '重试失败项' })).toBeVisible()
   await drawer.getByRole('button', { name: '重试失败项' }).click()
   await expect(drawer).toContainText('成功')
@@ -1078,6 +1294,26 @@ test('keeps every generation interaction stable in light and dark themes', async
   }))
   expect(layout).toEqual({
     documentHorizontalOverflow: false,
+    mainVerticalOverflow: false,
+  })
+
+  await page.setViewportSize({ width: 1280, height: 768 })
+  await expect(page.getByRole('region', { name: '即时生成配置' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '即时生成结果' })).toBeVisible()
+  const narrowLayout = await page.evaluate(() => ({
+    documentHorizontalOverflow:
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+    documentVerticalOverflow:
+      document.documentElement.scrollHeight >
+      document.documentElement.clientHeight,
+    mainVerticalOverflow:
+      document.querySelector('main')!.scrollHeight >
+      document.querySelector('main')!.clientHeight,
+  }))
+  expect(narrowLayout).toEqual({
+    documentHorizontalOverflow: false,
+    documentVerticalOverflow: false,
     mainVerticalOverflow: false,
   })
   expect(runtimeErrors).toEqual([])

@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { cloneGenerationConfig } from '../../shared/model/generation-config'
@@ -14,6 +14,7 @@ import {
   refreshInstantExecutionView,
   retryInstantExecutionResult,
 } from './instant-execution'
+import { createGenerationObjectUrlRegistry } from './generation-object-url-registry'
 import { getGenerationModeDefinition } from './generation-mode-registry'
 import type {
   BatchExecutionView,
@@ -177,7 +178,75 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
   const recordsPage = ref(1)
   const recordsPageSize = ref(DEFAULT_PAGE_SIZE)
   const activeInstantRecordId = ref<string | null>(null)
+  const objectUrlRegistry = createGenerationObjectUrlRegistry()
   let localSequence = 0
+
+  function draftObjectUrlOwner(
+    slotKey: GenerationInputSlotKey,
+    sourceId: string,
+  ): string {
+    return `draft:${slotKey}:${sourceId}`
+  }
+
+  function recordObjectUrlOwner(
+    recordId: string,
+    slotKey: GenerationInputSlotKey,
+    sourceId: string,
+  ): string {
+    return `record:${recordId}:${slotKey}:${sourceId}`
+  }
+
+  function releaseDraftSourceObjectUrl(
+    slotKey: GenerationInputSlotKey,
+    source: GenerationSourceImageView,
+  ): void {
+    objectUrlRegistry.release(
+      source.previewUrl,
+      draftObjectUrlOwner(slotKey, source.id),
+    )
+  }
+
+  function releaseInstantDraftObjectUrls(): void {
+    for (const slotKey of Object.keys(
+      instantDraft.value.inputs,
+    ) as GenerationInputSlotKey[]) {
+      for (const source of instantDraft.value.inputs[slotKey]) {
+        releaseDraftSourceObjectUrl(slotKey, source)
+      }
+    }
+  }
+
+  function retainRecordObjectUrls(record: GenerationRecordView): void {
+    if (record.detail.kind !== 'INSTANT') return
+    for (const slot of record.detail.inputSlots) {
+      for (const source of slot.images) {
+        objectUrlRegistry.retain(
+          source.previewUrl,
+          recordObjectUrlOwner(record.id, slot.key, source.id),
+        )
+      }
+    }
+  }
+
+  function releaseRecordObjectUrls(record: GenerationRecordView): void {
+    if (record.detail.kind !== 'INSTANT') return
+    for (const slot of record.detail.inputSlots) {
+      for (const source of slot.images) {
+        objectUrlRegistry.release(
+          source.previewUrl,
+          recordObjectUrlOwner(record.id, slot.key, source.id),
+        )
+      }
+    }
+  }
+
+  function disposeGenerationObjectUrls(): void {
+    releaseInstantDraftObjectUrls()
+    sourceRecords.value.forEach(releaseRecordObjectUrls)
+    objectUrlRegistry.disposeAll()
+  }
+
+  onScopeDispose(disposeGenerationObjectUrls)
 
   const products = computed(() =>
     visualMockActive.value ? sourceProducts.value : [],
@@ -406,10 +475,15 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     visualMockLoaded.value = true
   }
 
+  function resetInstantDraft(): void {
+    releaseInstantDraftObjectUrls()
+    instantDraft.value = createInstantDraft()
+  }
+
   function setVisualMockActive(value: boolean): void {
     if (!value && visualMockActive.value) {
       workMode.value = 'INSTANT'
-      instantDraft.value = createInstantDraft()
+      resetInstantDraft()
       instantExecution.value = null
       activeInstantRecordId.value = null
       batchDraft.value = createBatchDraft()
@@ -437,7 +511,11 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     for (const slotKey of Object.keys(
       instantDraft.value.inputs,
     ) as GenerationInputSlotKey[]) {
-      if (!allowedSlots.has(slotKey)) instantDraft.value.inputs[slotKey] = []
+      if (allowedSlots.has(slotKey)) continue
+      instantDraft.value.inputs[slotKey].forEach((source) =>
+        releaseDraftSourceObjectUrl(slotKey, source),
+      )
+      instantDraft.value.inputs[slotKey] = []
     }
     clearInstantTemplate()
   }
@@ -455,14 +533,65 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     )
     sources
       .filter((source) => source.role === slot.acceptedMaterialRole)
-      .forEach((source) => current.set(source.id, { ...source }))
+      .forEach((source) => {
+        const previous = current.get(source.id)
+        if (previous && previous.previewUrl !== source.previewUrl) {
+          releaseDraftSourceObjectUrl(slotKey, previous)
+        }
+        if (objectUrlRegistry.isManaged(source.previewUrl)) {
+          objectUrlRegistry.retain(
+            source.previewUrl,
+            draftObjectUrlOwner(slotKey, source.id),
+          )
+        }
+        current.set(source.id, { ...source })
+      })
     instantDraft.value.inputs[slotKey] = [...current.values()]
+  }
+
+  function addInstantUploadFiles(
+    slotKey: GenerationInputSlotKey,
+    files: readonly File[],
+  ): void {
+    const slot = instantModeDefinition.value.inputSlots.find(
+      (candidate) => candidate.key === slotKey,
+    )
+    if (!slot) return
+    const current = new Map(
+      instantDraft.value.inputs[slotKey].map((source) => [source.id, source]),
+    )
+    for (const file of files) {
+      const sourceId = `local-${slot.key}-${file.name}-${file.size}-${file.lastModified}`
+      const previous = current.get(sourceId)
+      if (previous) {
+        releaseDraftSourceObjectUrl(slotKey, previous)
+        current.delete(sourceId)
+        instantDraft.value.inputs[slotKey] = [...current.values()]
+      }
+      const previewUrl = objectUrlRegistry.create(
+        file,
+        draftObjectUrlOwner(slotKey, sourceId),
+      )
+      current.set(sourceId, {
+        id: sourceId,
+        name: file.name,
+        previewUrl,
+        role: slot.acceptedMaterialRole,
+        sourceType: 'LOCAL_UPLOAD',
+        objectUrl: true,
+      })
+      instantDraft.value.inputs[slotKey] = [...current.values()]
+    }
   }
 
   function removeInstantSource(
     slotKey: GenerationInputSlotKey,
     sourceId: string,
   ): void {
+    const source = instantDraft.value.inputs[slotKey].find(
+      (candidate) => candidate.id === sourceId,
+    )
+    if (source) releaseDraftSourceObjectUrl(slotKey, source)
     instantDraft.value.inputs[slotKey] = instantDraft.value.inputs[
       slotKey
     ].filter((source) => source.id !== sourceId)
@@ -581,6 +710,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     outputRole: GenerationResultView['outputRole'] = 'MAIN_IMAGE',
     size: GenerationSize = instantEffectiveConfig.value.size,
     status: GenerationResultView['status'] = 'SUCCESS',
+    savedToProductId?: string,
   ): GenerationResultView {
     localSequence += 1
     return {
@@ -590,6 +720,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
       status,
       outputRole,
       size,
+      ...(status === 'SUCCESS' && savedToProductId ? { savedToProductId } : {}),
     }
   }
 
@@ -638,6 +769,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
         results: execution.results,
       },
     }
+    retainRecordObjectUrls(record)
     sourceRecords.value.push(record)
     activeInstantRecordId.value = record.id
     return record
@@ -695,12 +827,28 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     if (
       !result ||
       result.status !== 'SUCCESS' ||
+      result.savedToProductId !== undefined ||
       !products.value.some((product) => product.id === productId)
     ) {
       return false
     }
     result.savedToProductId = productId
+    syncActiveInstantRecord()
     return true
+  }
+
+  function getInstantResultSourceProductId(resultId: string): string | null {
+    const record = sourceRecords.value.find(
+      (candidate) =>
+        candidate.detail.kind === 'INSTANT' &&
+        candidate.detail.results.some((result) => result.id === resultId),
+    )
+    if (!record || record.detail.kind !== 'INSTANT') return null
+    return (
+      record.detail.inputSlots
+        .find((slot) => slot.key === 'PRODUCT_IMAGES')
+        ?.images.find((image) => image.productId)?.productId ?? null
+    )
   }
 
   function markBatchDirty(): void {
@@ -777,6 +925,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
               template.outputRole,
               template.size,
               resultIndex % 17 === 0 ? 'FAILED' : 'SUCCESS',
+              plan.productId,
             )
           })
           return {
@@ -829,6 +978,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
                           previewUrl: nextPreviewUrl(
                             productIndex + currentTemplateIndex + resultIndex,
                           ),
+                          savedToProductId: plan.productId,
                         }
                       : {}),
                     ...(status === 'FAILED'
@@ -949,13 +1099,15 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
         refreshInstantExecutionView(instantExecution.value)
       }
     } else {
-      const results = record.detail.results.flatMap((product) =>
-        product.groups.flatMap((group) =>
+      const results = record.detail.results.flatMap((product) => {
+        const productResults = product.groups.flatMap((group) =>
           group.templates.flatMap((template) => template.results),
-        ),
-      )
-      results.forEach((result) => {
-        result.status = 'SUCCESS'
+        )
+        productResults.forEach((result) => {
+          result.status = 'SUCCESS'
+          result.savedToProductId = product.productId
+        })
+        return productResults
       })
       record.detail.successCount = results.length
       record.detail.failedCount = 0
@@ -1007,10 +1159,12 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     visibleRecords,
     recordsPageCount,
     initializeVisualMock,
+    resetInstantDraft,
     setVisualMockActive,
     setWorkMode,
     setInstantMode,
     addInstantSources,
+    addInstantUploadFiles,
     removeInstantSource,
     clearInstantTemplate,
     applyInstantTemplate,
@@ -1023,6 +1177,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     retryInstantResult,
     completeInstantResult,
     saveInstantResult,
+    getInstantResultSourceProductId,
     setBatchMode,
     setBatchProductScope,
     setBatchSelectedProducts,

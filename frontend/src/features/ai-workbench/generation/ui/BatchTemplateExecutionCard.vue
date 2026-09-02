@@ -103,7 +103,12 @@ function retry(): void {
     </div>
 
     <footer class="batch-template-execution-card__footer">
-      <span>{{ template.completedCount }} / {{ template.totalCount }}</span>
+      <span class="batch-template-execution-card__meta">
+        <span>{{ template.completedCount }} / {{ template.totalCount }}</span>
+        <span v-if="successCount" data-testid="batch-archived-count">
+          已归档 {{ successCount }}
+        </span>
+      </span>
       <span class="batch-template-execution-card__actions">
         <AppButton
           v-if="failedCount"
@@ -142,6 +147,7 @@ function retry(): void {
 
 .batch-template-execution-card__header,
 .batch-template-execution-card__footer,
+.batch-template-execution-card__meta,
 .batch-template-execution-card__actions,
 .batch-template-execution-card__results {
   display: flex;
@@ -165,6 +171,7 @@ function retry(): void {
 }
 
 .batch-template-execution-card__results,
+.batch-template-execution-card__meta,
 .batch-template-execution-card__actions {
   gap: var(--space-2);
 }
@@ -194,7 +201,7 @@ function retry(): void {
   height: 100%;
 }
 
-.batch-template-execution-card__footer > span:first-child {
+.batch-template-execution-card__meta {
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
   font-variant-numeric: tabular-nums;

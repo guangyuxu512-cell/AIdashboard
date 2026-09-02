@@ -6,9 +6,11 @@ withDefaults(
   defineProps<{
     results: readonly GenerationExecutionResultView[]
     showActions?: boolean
+    showAssetLibraryStatus?: boolean
   }>(),
   {
     showActions: true,
+    showAssetLibraryStatus: false,
   },
 )
 
@@ -26,6 +28,7 @@ defineEmits<{
       :key="result.id"
       :result="result"
       :show-actions="showActions"
+      :show-asset-library-status="showAssetLibraryStatus"
       @download="$emit('download', $event)"
       @save="$emit('save', $event)"
       @retry="$emit('retry', $event)"
