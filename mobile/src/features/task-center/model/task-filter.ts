@@ -1,22 +1,35 @@
 import type { TaskListFilters, TaskStatusDto } from '@/entities/task'
 
-export type TaskStatusFilter = 'all' | TaskStatusDto
+export type TaskStatusFilter =
+  'all' | 'running' | 'pending' | 'exception' | 'completed'
+
 export type TaskDatePreset =
-  'today' | 'yesterday' | 'last-7-days' | 'last-30-days' | 'custom' | 'all-time'
+  'today' | 'yesterday' | 'last-7-days' | 'custom' | 'all-time'
 
 export const TASK_DATE_PRESET_OPTIONS = [
   { text: '今天', value: 'today' },
   { text: '昨天', value: 'yesterday' },
-  { text: '最近 7 天', value: 'last-7-days' },
-  { text: '最近 30 天', value: 'last-30-days' },
-  { text: '自定义', value: 'custom' },
-  { text: '全部时间', value: 'all-time' },
-] as const satisfies readonly { text: string; value: TaskDatePreset }[]
+  { text: '近7天', value: 'last-7-days' },
+  { text: '全部', value: 'all-time' },
+] as const satisfies readonly {
+  text: string
+  value: Exclude<TaskDatePreset, 'custom'>
+}[]
+
+export const TASK_STATUS_FILTER_OPTIONS = [
+  { label: '任务', value: 'all', statuses: [] },
+  { label: '运行中', value: 'running', statuses: ['running'] },
+  { label: '待运行', value: 'pending', statuses: ['pending'] },
+  { label: '异常任务', value: 'exception', statuses: ['failed', 'lost'] },
+  { label: '已完成', value: 'completed', statuses: ['success'] },
+] as const satisfies readonly {
+  label: string
+  value: TaskStatusFilter
+  statuses: readonly TaskStatusDto[]
+}[]
 
 export interface TaskFilterDraft {
   search: string
-  deviceId: string | undefined
-  deviceName: string
   datePreset: TaskDatePreset
   dateRange: readonly [Date, Date]
 }
@@ -72,8 +85,6 @@ export function createTaskPresetDateRange(
     }
     case 'last-7-days':
       return createTaskDateRange(shiftLocalDays(today, -6), today)
-    case 'last-30-days':
-      return createTaskDateRange(shiftLocalDays(today, -29), today)
   }
 }
 
@@ -89,16 +100,46 @@ export function formatTaskDateRange(range: readonly [Date, Date]): string {
   return `${formatter.format(range[0])} - ${formatter.format(range[1])}`
 }
 
+export function formatTaskDateInput(value: Date): string {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function parseTaskDateInput(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+    ? date
+    : null
+}
+
 export function formatTaskDateFilterLabel(draft: TaskFilterDraft): string {
-  if (draft.datePreset === 'custom') return formatTaskDateRange(draft.dateRange)
+  if (draft.datePreset === 'custom') {
+    const date = draft.dateRange[0]
+    return `${date.getMonth() + 1}月${date.getDate()}日`
+  }
   return (
     TASK_DATE_PRESET_OPTIONS.find((option) => option.value === draft.datePreset)
-      ?.text ?? '最近 7 天'
+      ?.text ?? '近7天'
   )
 }
 
-export function buildTaskListFilters(
-  status: TaskStatusFilter,
+export function getTaskStatusFilterOption(status: TaskStatusFilter) {
+  return (
+    TASK_STATUS_FILTER_OPTIONS.find((option) => option.value === status) ??
+    TASK_STATUS_FILTER_OPTIONS[0]
+  )
+}
+
+export function buildTaskBaseFilters(
   draft: TaskFilterDraft,
   now = new Date(),
 ): TaskListFilters {
@@ -107,16 +148,25 @@ export function buildTaskListFilters(
     draft.datePreset === 'all-time'
       ? null
       : draft.datePreset === 'custom'
-        ? createTaskDateRange(draft.dateRange[0], draft.dateRange[1])
+        ? createTaskDateRange(draft.dateRange[0], draft.dateRange[0])
         : createTaskPresetDateRange(draft.datePreset, now)
 
   return {
-    ...(status === 'all' ? {} : { status }),
-    ...(draft.deviceId ? { deviceId: draft.deviceId } : {}),
     ...(search ? { search } : {}),
     ...(range
       ? { createdFrom: range.createdFrom, createdTo: range.createdTo }
       : {}),
+  }
+}
+
+export function buildTaskListFilters(
+  status: TaskStatusDto | 'all',
+  draft: TaskFilterDraft,
+  now = new Date(),
+): TaskListFilters {
+  return {
+    ...buildTaskBaseFilters(draft, now),
+    ...(status === 'all' ? {} : { status }),
   }
 }
 
@@ -126,8 +176,6 @@ export function createDefaultTaskFilterDraft(
   const range = createDefaultTaskDateRange(now)
   return {
     search: '',
-    deviceId: undefined,
-    deviceName: '',
     datePreset: 'last-7-days',
     dateRange: [range.start, range.endInclusive],
   }

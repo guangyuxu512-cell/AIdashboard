@@ -17,6 +17,7 @@ defineProps<{
   refreshing: boolean
   loadingMore: boolean
   hasMore: boolean
+  emptyDescription?: string
 }>()
 
 const emit = defineEmits<{
@@ -51,7 +52,7 @@ const emit = defineEmits<{
   >
     <VanEmpty
       v-if="tasks.length === 0"
-      description="暂无任务"
+      :description="emptyDescription || '暂无任务'"
       data-testid="task-empty"
     />
     <VanList
@@ -62,16 +63,14 @@ const emit = defineEmits<{
       @load="emit('loadMore')"
     >
       <div class="task-list" data-testid="task-list">
-        <button
-          v-for="task in tasks"
-          :key="task.taskId"
-          type="button"
-          class="task-list__item mobile-pressable mobile-pressable--card"
-          :aria-label="`查看任务：${task.executionName}`"
-          @click="emit('select', task.taskId)"
-        >
-          <TaskListCard :task="task" />
-        </button>
+        <div v-for="task in tasks" :key="task.taskId" class="task-list__item">
+          <TaskListCard
+            :task="task"
+            visual-v2
+            meta-mode="tags"
+            @select="emit('select', $event)"
+          />
+        </div>
       </div>
       <div
         v-if="nextPageError"
@@ -101,27 +100,16 @@ const emit = defineEmits<{
 
 .task-list {
   display: grid;
-  gap: var(--layout-card-gap);
-  padding: var(--layout-content-gap)
-    max(var(--layout-page-padding-x), var(--safe-area-right)) var(--space-4)
-    max(var(--layout-page-padding-x), var(--safe-area-left));
+  gap: var(--task-list-card-gap);
+  padding: var(--task-list-list-padding-top)
+    max(var(--task-list-page-padding-x), var(--safe-area-right))
+    var(--task-list-list-padding-bottom)
+    max(var(--task-list-page-padding-x), var(--safe-area-left));
 }
 
 .task-list__item {
   width: 100%;
   min-width: 0;
-  min-height: var(--touch-target-min);
-  padding: 0;
-  color: inherit;
-  text-align: left;
-  background: none;
-  border: 0;
-  border-radius: var(--radius-card);
-}
-
-.task-list__item:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
 }
 
 .task-list__next-error {
