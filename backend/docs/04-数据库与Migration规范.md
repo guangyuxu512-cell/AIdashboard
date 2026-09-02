@@ -3,37 +3,43 @@
 数据库渐进式演进，不要求一次设计所有表。
 
 新需求先判断：
+
 - 新属性
 - 新实体
 - 新关系
 
 ## 主键
+
 使用稳定 ID，禁止名称主键。
 
 ## 多对多
+
 明确可能多对多时使用关系表。
 例如 `shop_device_binding`。
 
 ## Migration
+
 所有结构变化通过 Alembic。
 禁止直接手改正式 DB。
 
 ## 索引
+
 根据实际查询条件补索引，不无依据创建大量索引。
 
 ## 敏感数据
+
 Credential / Session 与普通业务字段分离并加密。
 
 ## Core Domain V1 数据库
 
 首个正式业务 Migration：`20260818_0001_core_domain_v1`。
 
-| 表 | 职责 |
-|---|---|
-| `users` | 最小系统用户身份，供负责人等稳定关系引用 |
-| `shops` | 店铺基础事实、平台、启用状态、可选负责人和备注 |
-| `devices` | 设备身份、启用状态、可选位置和备注 |
-| `shop_device_bindings` | Shop 与 Device 的执行资格多对多关系及启用状态 |
+| 表                     | 职责                                           |
+| ---------------------- | ---------------------------------------------- |
+| `users`                | 最小系统用户身份，供负责人等稳定关系引用       |
+| `shops`                | 店铺基础事实、平台、启用状态、可选负责人和备注 |
+| `devices`              | 设备身份、启用状态、可选位置和备注             |
+| `shop_device_bindings` | Shop 与 Device 的执行资格多对多关系及启用状态  |
 
 核心 ID 使用统一 UUID；核心表使用带时区的 `created_at`、`updated_at`。`shop_device_bindings` 使用 `(shop_id, device_id)` 复合主键防止重复关系。Binding 只表示执行资格，不表达主设备、备用设备或默认唯一设备；同一个 Shop 可以同时绑定多个 Device。
 
@@ -45,11 +51,11 @@ Shop 平台 V1 机器值仅包含 `douyin`、`pdd`。
 
 Migration `20260819_0002_auth_domain_foundation` 增加：
 
-| 表 | 职责 |
-|---|---|
-| `platform_credentials` | 平台、统一登录标识、加密 Secret、验证码渠道与启用状态 |
+| 表                         | 职责                                                      |
+| -------------------------- | --------------------------------------------------------- |
+| `platform_credentials`     | 平台、统一登录标识、加密 Secret、验证码渠道与启用状态     |
 | `shop_credential_bindings` | Credential 与 Shop 的可扩展关系；每 Shop 最多一个启用关系 |
-| `shop_sessions` | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload |
+| `shop_sessions`            | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload   |
 
 外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只能在可随时重建且已登记的非生产数据库执行：Feature 使用其临时/Feature DB，Integration 使用 `control_center_integration`，Main smoke 使用 `control_center_dev`。Migration Slot、升级/降级和 Gate 规则见根 `docs/engineering/03-数据库与Migration协作规范.md`。
 
@@ -152,3 +158,24 @@ Membership 可访问的正式 PC 模块。它通过 `RESTRICT` 外键依附 `tea
 Token、角色继承或任意 JSON 权限列。升级时为既有 Membership 回填当前正式模块代码以保持兼容；
 不自动改变角色、Data Scope 或授予 `access_admin`。人员、Team、Membership 均维持启停模型，
 不通过本期 Migration 增加 Hard Delete。
+
+## AI Workbench Backend Foundation V1 数据库
+
+Migration `20260903_0026_ai_workbench_backend_foundation_v1` 增加：
+
+| 表                                 | 职责                                           |
+| ---------------------------------- | ---------------------------------------------- |
+| `template_groups`                  | Team Scoped 模板组聚合根                       |
+| `prompt_templates`                 | 模板组内主图优先、详情随后的连续提示词模板序列 |
+| `product_material_groups`          | Team Scoped 商品素材组聚合根                   |
+| `material_group_assets`            | 商品素材组与统一 `assets` 的角色关系           |
+| `material_group_template_bindings` | 商品素材组按生成模式绑定模板组的有序关系       |
+
+聚合根使用 `team_id / created_by_user_id` 接入现有 Access & Ownership Foundation；关系表不复制
+Ownership。模板顺序为组内从 1 开始的连续 `sort_order`，模板绑定位置为模式内从 0 开始的连续
+`position`。Prompt 只保存一个 `prompt`，变量名集合使用受数组 Check 约束的 JSONB。
+
+全部关系外键使用 `RESTRICT`。删除 ProductMaterialGroup 时由 Service/ORM 明确删除该聚合自己的
+Asset 与 Template Binding 关系，但不删除 Asset 本体。删除 TemplateGroup 前由 Service 检查反向
+Binding；仍被引用时返回领域冲突，不自动解除关系，也不依赖数据库 Cascade。0026 不创建
+GenerationJob、Provider 或 Queue 表。

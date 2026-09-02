@@ -772,3 +772,40 @@ def test_asset_scope_backfill_requires_exactly_one_default_team(
         )
         with pytest.raises(RuntimeError, match="唯一的默认团队"):
             migration._backfill_asset_team()
+
+
+def test_ai_workbench_foundation_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260903_0026_ai_workbench_backend_foundation_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260903_0026"
+    assert migration.down_revision == "20260902_0025"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "template_groups"),
+        ("create_table", "product_material_groups"),
+        ("create_table", "prompt_templates"),
+        ("create_table", "material_group_assets"),
+        ("create_table", "material_group_template_bindings"),
+    ]
+    assert not {
+        "generation_jobs",
+        "generation_items",
+        "provider_configs",
+        "queue_tasks",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "material_group_template_bindings"),
+        ("drop_table", "material_group_assets"),
+        ("drop_table", "prompt_templates"),
+        ("drop_table", "product_material_groups"),
+        ("drop_table", "template_groups"),
+    ]
