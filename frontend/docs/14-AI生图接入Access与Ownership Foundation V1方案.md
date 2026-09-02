@@ -1,8 +1,8 @@
 # AI生图接入中控台 Access & Ownership Foundation V1 方案
 
-> 中文正式名称：**访问控制与数据归属底座 V1**  
-> 英文正式名称：**Access & Ownership Foundation V1**  
-> 方案日期：2026-09-01  
+> 中文正式名称：**访问控制与数据归属底座 V1**
+> 英文正式名称：**Access & Ownership Foundation V1**
+> 方案日期：2026-09-01
 > 范围：只设计 AI 生图接入现有中控台底座的方案，不修改生产代码、不创建 Migration、不开始 Backend 实现。
 
 ## 1. 当前 AI 状态
@@ -405,5 +405,5 @@ Task Scope、Schedule Scope、Shop Scope、Mobile Auth、完整 Access Managemen
 
 本次仅新增方案文档和索引，不修改生产代码。
 
-**Production Code：0 变化。**  
+**Production Code：0 变化。**
 **Migration：0 新增。**
