@@ -32,7 +32,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `feat/logging-audit-v1` | `reserved` | Logging & Audit V1；仅为后续正式 Audit Schema 预留 | `20260903_0027_ai_generation_execution_v1` | `20260904_0028_logging_audit_v1` | Integrator 已创建空的 `control_center_feat_audit` 并升级至 `20260903_0027`；尚未创建 `0028` Migration，后续由 Feature Owner 按正式 Schema 实现并验证 upgrade/downgrade |
+| `feat/logging-audit-v1` | `rejected`（仍由该 Feature 独占） | Logging & Audit V1 Candidate `6ff4f8b` 的 Gate 2B 被拒绝：JSONB `null` 违反 `details_object` 约束 | `20260903_0027_ai_generation_execution_v1` | `20260904_0028_logging_audit_v1` | `control_center_feat_audit` 保留供 Feature 修复；Integration DB 已从 `0028` 回退至 `0027`，修复后沿用本 Revision 重新验证 upgrade/downgrade |
 
 最近释放记录：
 
