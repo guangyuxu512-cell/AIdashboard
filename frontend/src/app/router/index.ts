@@ -95,12 +95,6 @@ const router = createRouter({
       meta: { requiresAccessAdministrator: true },
     },
     {
-      path: '/settings/audit-logs',
-      name: 'audit-logs',
-      component: () => import('@/pages/settings/AuditLogPage.vue'),
-      meta: { requiresAccessAdministrator: true },
-    },
-    {
       path: '/permission-denied',
       name: 'permission-denied',
       component: () => import('@/pages/PermissionDeniedPage.vue'),

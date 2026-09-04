@@ -16,7 +16,6 @@ from app.modules.access.exceptions import (
     LastAccessAdministratorRequiredError,
     ModuleAccessDeniedError,
 )
-from app.modules.human_auth.exceptions import HumanLoginNameConflictError
 from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
 from app.modules.access.module_access import ModuleCode
 from app.modules.access.schemas import (
@@ -28,7 +27,6 @@ from app.modules.access.schemas import (
     TeamCreate,
 )
 from app.modules.access.service import AccessManagementService, ModuleAccessService
-from app.modules.audit.enums import AuditAction, AuditTargetType
 from app.modules.human_auth.models import HumanSession
 from app.modules.human_auth.passwords import PasswordService
 from app.modules.users.models import User
@@ -200,63 +198,3 @@ def test_module_access_fails_closed_for_a_membership_without_a_grant(
         module_service.require_module_access(actor, ModuleCode.SETTINGS)
         with pytest.raises(ModuleAccessDeniedError):
             module_service.require_module_access(actor, ModuleCode.ASSET)
-
-
-def test_access_management_records_minimal_audit_data_only_after_success(
-    database: tuple[sessionmaker[Session], PasswordService],
-) -> None:
-    class AuditRecorder:
-        def __init__(self) -> None:
-            self.records: list[dict[str, object]] = []
-
-        def record_access_management_action(self, **kwargs: object) -> None:
-            self.records.append(kwargs)
-
-    factory, password_service = database
-    recorder = AuditRecorder()
-    with factory() as session:
-        service = AccessManagementService(
-            session,
-            password_service,
-            audit_log_service=recorder,  # type: ignore[arg-type]
-        )
-        team = service.create_team(TeamCreate(name="审计管理团队"))
-        administrator = service.create_member(
-            create_member_input(
-                team.team_id,
-                login_name="audit-admin",
-                role_code="access_admin",
-            ),
-        )
-        admin_membership = administrator.memberships[0]
-        actor = ActorContext(
-            user_id=administrator.user_id,
-            user_display_name=administrator.display_name,
-            team_id=admin_membership.team_id,
-            membership_id=admin_membership.membership_id,
-            role_code=admin_membership.role_code,
-            data_scope=admin_membership.data_scope,
-        )
-
-        created = service.create_member(
-            create_member_input(team.team_id, login_name="audited-member"),
-            actor=actor,
-            request_id="request-audit-create-member",
-        )
-
-        assert len(recorder.records) == 1
-        record = recorder.records[0]
-        assert record["request_id"] == "request-audit-create-member"
-        assert record["actor"] == actor
-        assert record["action"] is AuditAction.CREATE_MEMBER
-        assert record["target_type"] is AuditTargetType.USER
-        assert record["target_id"] == created.user_id
-        assert TEST_PASSWORD not in repr(record["details"])
-
-        with pytest.raises(HumanLoginNameConflictError):
-            service.create_member(
-                create_member_input(team.team_id, login_name="audited-member"),
-                actor=actor,
-                request_id="request-audit-failed",
-            )
-        assert len(recorder.records) == 1

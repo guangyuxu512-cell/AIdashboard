@@ -11,27 +11,18 @@ const auth = useAuthStore()
 
 const items = computed(() => [
   ...(auth.isAccessAdministrator
-    ? [
-        { key: 'users', label: '用户与权限' },
-        { key: 'audit-logs', label: '操作日志' },
-      ]
+    ? [{ key: 'users', label: '用户与权限' }]
     : []),
   ...(auth.allowedModuleCodes.has('settings')
     ? [{ key: 'notifications', label: '通知配置' }]
     : []),
 ])
 
-const activeKey = computed(() => {
-  if (route.name === 'access-management') return 'users'
-  if (route.name === 'audit-logs') return 'audit-logs'
-  return 'notifications'
-})
+const activeKey = computed(() =>
+  route.name === 'access-management' ? 'users' : 'notifications',
+)
 
 function select(key: string): void {
-  if (key === 'audit-logs') {
-    void router.push({ name: 'audit-logs' })
-    return
-  }
   void router.push({
     name: key === 'users' ? 'access-management' : 'notification-settings',
   })

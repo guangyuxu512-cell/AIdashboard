@@ -8,10 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.exceptions import install_exception_handlers
 from app.core.health import router as health_router
-from app.core.logging import RequestLoggingMiddleware
 from app.modules.access.api import router as access_router
 from app.modules.access.management_api import router as access_management_router
-from app.modules.audit.api import router as audit_log_router
 from app.modules.ai_workbench.api import router as ai_workbench_router
 from app.modules.authentication.api import router as authentication_router
 from app.modules.assets.api import router as assets_router
@@ -79,13 +77,11 @@ def create_app() -> FastAPI:
             ],
             expose_headers=["X-Request-ID"],
         )
-    application.add_middleware(RequestLoggingMiddleware)
     install_exception_handlers(application)
     application.include_router(health_router)
     application.include_router(human_auth_router)
     application.include_router(access_router)
     application.include_router(access_management_router)
-    application.include_router(audit_log_router)
     application.include_router(ai_workbench_router)
     application.include_router(authentication_router)
     application.include_router(assets_router)

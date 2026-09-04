@@ -6,7 +6,6 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import get_settings
 from app.core.database import Base
 from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
-from app.modules.audit.models import AuditLog
 from app.modules.ai_workbench.models import (
     GenerationItem,
     GenerationItemAsset,
@@ -38,7 +37,6 @@ from app.modules.workers.models import (
 _MODELS = (
     AutomationApplicationConfig,
     Asset,
-    AuditLog,
     GenerationItem,
     GenerationItemAsset,
     GenerationJob,
