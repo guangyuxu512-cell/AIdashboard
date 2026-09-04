@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -47,6 +48,8 @@ from app.modules.access.schemas import (
     TeamMembershipUpdate,
     TeamUpdate,
 )
+from app.modules.audit.enums import AuditAction, AuditTargetType
+from app.modules.audit.service import AuditLogService
 from app.modules.human_auth.passwords import PasswordService
 from app.modules.human_auth.repository import HumanSessionRepository
 from app.modules.human_auth.exceptions import HumanLoginNameConflictError
@@ -274,6 +277,7 @@ class AccessManagementService:
         module_access_repository: MembershipModuleAccessRepository | None = None,
         management_repository: AccessManagementRepository | None = None,
         human_session_repository: HumanSessionRepository | None = None,
+        audit_log_service: AuditLogService | None = None,
     ) -> None:
         self.session = session
         self.password_service = password_service
@@ -291,6 +295,7 @@ class AccessManagementService:
         self.human_session_repository = (
             human_session_repository or HumanSessionRepository(session)
         )
+        self.audit_log_service = audit_log_service or AuditLogService(session)
 
     def list_members(
         self,
@@ -317,7 +322,13 @@ class AccessManagementService:
         memberships = self.membership_repository.list_for_user(user_id)
         return self._managed_members([user], memberships)[0]
 
-    def create_member(self, data: AccessMemberCreate) -> ManagedMember:
+    def create_member(
+        self,
+        data: AccessMemberCreate,
+        *,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
+    ) -> ManagedMember:
         if self.user_repository.get_by_login_name(data.login_name) is not None:
             raise HumanLoginNameConflictError()
         self._require_enabled_team(data.membership.team_id)
@@ -346,14 +357,35 @@ class AccessManagementService:
                 membership.membership_id,
                 data.membership.module_codes,
             )
+            self._record_audit(
+                actor=actor,
+                request_id=request_id,
+                action=AuditAction.CREATE_MEMBER,
+                target_type=AuditTargetType.USER,
+                target_id=user.user_id,
+                details={
+                    "membership_id": str(membership.membership_id),
+                    "membership_team_id": str(membership.team_id),
+                },
+            )
             self.session.commit()
         except IntegrityError as error:
             self.session.rollback()
             raise HumanLoginNameConflictError() from error
         return self.get_member(user.user_id)
 
-    def update_member(self, user_id: UUID, data: AccessMemberUpdate) -> ManagedMember:
+    def update_member(
+        self,
+        user_id: UUID,
+        data: AccessMemberUpdate,
+        *,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
+    ) -> ManagedMember:
         user = self._get_user(user_id)
+        changes: dict[str, dict[str, bool]] = {}
+        if user.enabled != data.enabled:
+            changes["enabled"] = {"from": user.enabled, "to": data.enabled}
         if data.enabled is False and user.enabled:
             if self.management_repository.user_has_active_access_administrator_membership(
                 user_id,
@@ -369,10 +401,26 @@ class AccessManagementService:
                 revoked_at=datetime.now(UTC),
             )
         user.enabled = data.enabled
+        if changes:
+            self._record_audit(
+                actor=actor,
+                request_id=request_id,
+                action=AuditAction.UPDATE_MEMBER,
+                target_type=AuditTargetType.USER,
+                target_id=user.user_id,
+                details={"changes": changes},
+            )
         self.session.commit()
         return self.get_member(user_id)
 
-    def reset_member_password(self, user_id: UUID, *, password: str) -> ManagedMember:
+    def reset_member_password(
+        self,
+        user_id: UUID,
+        *,
+        password: str,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
+    ) -> ManagedMember:
         user = self._get_user(user_id)
         if user.login_name is None:
             raise AccessMemberCredentialNotConfiguredError()
@@ -381,6 +429,13 @@ class AccessManagementService:
             user_id,
             revoked_at=datetime.now(UTC),
         )
+        self._record_audit(
+            actor=actor,
+            request_id=request_id,
+            action=AuditAction.RESET_MEMBER_PASSWORD,
+            target_type=AuditTargetType.USER,
+            target_id=user.user_id,
+        )
         self.session.commit()
         return self.get_member(user_id)
 
@@ -388,6 +443,9 @@ class AccessManagementService:
         self,
         user_id: UUID,
         data: AccessMembershipCreate,
+        *,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
     ) -> ManagedMember:
         user = self._get_user(user_id)
         if not user.enabled:
@@ -412,6 +470,17 @@ class AccessManagementService:
         try:
             self.session.flush()
             self._replace_module_codes(membership.membership_id, data.module_codes)
+            self._record_audit(
+                actor=actor,
+                request_id=request_id,
+                action=AuditAction.CREATE_MEMBERSHIP,
+                target_type=AuditTargetType.MEMBERSHIP,
+                target_id=membership.membership_id,
+                details={
+                    "user_id": str(membership.user_id),
+                    "membership_team_id": str(membership.team_id),
+                },
+            )
             self.session.commit()
         except IntegrityError as error:
             self.session.rollback()
@@ -422,6 +491,9 @@ class AccessManagementService:
         self,
         membership_id: UUID,
         data: AccessMembershipUpdate,
+        *,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
     ) -> ManagedMember:
         membership = self.membership_repository.get(membership_id)
         if membership is None:
@@ -447,31 +519,78 @@ class AccessManagementService:
         ):
             raise LastAccessAdministratorRequiredError()
 
+        changes: dict[str, dict[str, object]] = {}
         for field_name in ("role_code", "data_scope", "enabled"):
             if field_name not in data.model_fields_set:
                 continue
             value = getattr(data, field_name)
-            setattr(
-                membership,
-                field_name,
-                value.value if field_name == "data_scope" else value,
-            )
+            next_value = value.value if field_name == "data_scope" else value
+            previous_value = getattr(membership, field_name)
+            if previous_value != next_value:
+                changes[field_name] = {
+                    "from": previous_value,
+                    "to": next_value,
+                }
+            setattr(membership, field_name, next_value)
         if "module_codes" in data.model_fields_set:
+            current_codes = set(
+                self.module_access_repository.list_codes_for_memberships(
+                    [membership_id],
+                ).get(membership_id, []),
+            )
+            next_codes = {
+                module_code.value for module_code in (data.module_codes or [])
+            }
+            if current_codes != next_codes:
+                changes["module_codes"] = {
+                    "added": sorted(next_codes - current_codes),
+                    "removed": sorted(current_codes - next_codes),
+                }
             self._replace_module_codes(membership_id, data.module_codes or [])
+        if changes:
+            self._record_audit(
+                actor=actor,
+                request_id=request_id,
+                action=AuditAction.UPDATE_MEMBERSHIP,
+                target_type=AuditTargetType.MEMBERSHIP,
+                target_id=membership.membership_id,
+                details={"changes": changes},
+            )
         self.session.commit()
         return self.get_member(membership.user_id)
 
     def list_teams(self) -> list[Team]:
         return self.team_repository.list()
 
-    def create_team(self, data: TeamCreate) -> Team:
+    def create_team(
+        self,
+        data: TeamCreate,
+        *,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
+    ) -> Team:
         team = Team(**data.model_dump())
         self.team_repository.add(team)
+        self.session.flush()
+        self._record_audit(
+            actor=actor,
+            request_id=request_id,
+            action=AuditAction.CREATE_TEAM,
+            target_type=AuditTargetType.TEAM,
+            target_id=team.team_id,
+        )
         self.session.commit()
         self.session.refresh(team)
         return team
 
-    def update_team(self, team_id: UUID, data: TeamUpdate) -> Team:
+    def update_team(
+        self,
+        team_id: UUID,
+        data: TeamUpdate,
+        *,
+        actor: ActorContext | None = None,
+        request_id: str | None = None,
+    ) -> Team:
         team = self.team_repository.get(team_id)
         if team is None:
             raise TeamNotFoundError()
@@ -485,8 +604,21 @@ class AccessManagementService:
                 == 0
             ):
                 raise LastAccessAdministratorRequiredError()
+        changes: dict[str, dict[str, object]] = {}
         for field_name, value in data.model_dump(exclude_unset=True).items():
+            previous_value = getattr(team, field_name)
+            if previous_value != value:
+                changes[field_name] = {"from": previous_value, "to": value}
             setattr(team, field_name, value)
+        if changes:
+            self._record_audit(
+                actor=actor,
+                request_id=request_id,
+                action=AuditAction.UPDATE_TEAM,
+                target_type=AuditTargetType.TEAM,
+                target_id=team.team_id,
+                details={"changes": changes},
+            )
         self.session.commit()
         self.session.refresh(team)
         return team
@@ -564,4 +696,25 @@ class AccessManagementService:
         self.module_access_repository.replace_codes(
             membership_id,
             [module_code.value for module_code in module_codes],
+        )
+
+    def _record_audit(
+        self,
+        *,
+        actor: ActorContext | None,
+        request_id: str | None,
+        action: AuditAction,
+        target_type: AuditTargetType,
+        target_id: UUID,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if actor is None or request_id is None:
+            return
+        self.audit_log_service.record_access_management_action(
+            request_id=request_id,
+            actor=actor,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
         )

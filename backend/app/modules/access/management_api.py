@@ -1,9 +1,10 @@
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.logging.request import get_request_id
 from app.modules.access.contracts import ActorContext, ManagedMember
 from app.modules.access.dependencies import (
     get_access_administrator,
@@ -118,33 +119,51 @@ def get_member(
 @router.post("/members", response_model=AccessMemberRead, status_code=status.HTTP_201_CREATED)
 def create_member(
     data: AccessMemberCreate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> AccessMemberRead:
-    return _member_read(service.create_member(data))
+    return _member_read(
+        service.create_member(
+            data,
+            actor=actor,
+            request_id=get_request_id(request),
+        ),
+    )
 
 
 @router.patch("/members/{user_id}", response_model=AccessMemberRead)
 def update_member(
     user_id: UUID,
     data: AccessMemberUpdate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> AccessMemberRead:
-    return _member_read(service.update_member(user_id, data))
+    return _member_read(
+        service.update_member(
+            user_id,
+            data,
+            actor=actor,
+            request_id=get_request_id(request),
+        ),
+    )
 
 
 @router.post("/members/{user_id}/password", response_model=AccessMemberRead)
 def reset_member_password(
     user_id: UUID,
     data: AccessMemberPasswordReset,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> AccessMemberRead:
     return _member_read(
         service.reset_member_password(
             user_id,
             password=data.password.get_secret_value(),
+            actor=actor,
+            request_id=get_request_id(request),
         ),
     )
 
@@ -153,20 +172,36 @@ def reset_member_password(
 def create_membership(
     user_id: UUID,
     data: AccessMembershipCreate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> AccessMemberRead:
-    return _member_read(service.create_membership(user_id, data))
+    return _member_read(
+        service.create_membership(
+            user_id,
+            data,
+            actor=actor,
+            request_id=get_request_id(request),
+        ),
+    )
 
 
 @router.patch("/memberships/{membership_id}", response_model=AccessMemberRead)
 def update_membership(
     membership_id: UUID,
     data: AccessMembershipUpdate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> AccessMemberRead:
-    return _member_read(service.update_membership(membership_id, data))
+    return _member_read(
+        service.update_membership(
+            membership_id,
+            data,
+            actor=actor,
+            request_id=get_request_id(request),
+        ),
+    )
 
 
 @router.get("/teams", response_model=list[TeamRead])
@@ -180,17 +215,32 @@ def list_teams(
 @router.post("/teams", response_model=TeamRead, status_code=status.HTTP_201_CREATED)
 def create_team(
     data: TeamCreate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> TeamRead:
-    return TeamRead.model_validate(service.create_team(data))
+    return TeamRead.model_validate(
+        service.create_team(
+            data,
+            actor=actor,
+            request_id=get_request_id(request),
+        ),
+    )
 
 
 @router.patch("/teams/{team_id}", response_model=TeamRead)
 def update_team(
     team_id: UUID,
     data: TeamUpdate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    request: Request,
+    actor: Annotated[ActorContext, Depends(get_access_administrator)],
     service: Annotated[AccessManagementService, Depends(get_access_management_service)],
 ) -> TeamRead:
-    return TeamRead.model_validate(service.update_team(team_id, data))
+    return TeamRead.model_validate(
+        service.update_team(
+            team_id,
+            data,
+            actor=actor,
+            request_id=get_request_id(request),
+        ),
+    )
