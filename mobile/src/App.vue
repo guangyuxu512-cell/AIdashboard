@@ -49,7 +49,8 @@ const isVisualV2Route = computed(
   () =>
     route.name === MOBILE_ROUTE_NAMES.devices ||
     route.name === MOBILE_ROUTE_NAMES.deviceDetail ||
-    route.name === MOBILE_ROUTE_NAMES.tasks,
+    route.name === MOBILE_ROUTE_NAMES.tasks ||
+    route.name === MOBILE_ROUTE_NAMES.taskDetail,
 )
 const detailHeaderAction = computed(() => detailHeader.action.value)
 const activeNavigationKey = computed(() => {

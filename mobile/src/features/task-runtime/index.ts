@@ -24,6 +24,7 @@ export type {
   TaskEventDrainResult,
   TaskEventDrainStopReason,
 } from './model/runtime-drain'
+export type { TaskDetailDeviceState } from './model/task-detail-display'
 export {
   shouldPollTaskRuntime,
   TASK_RUNTIME_POLL_INTERVAL_MS,
@@ -34,4 +35,7 @@ export {
   useTaskRuntimeClock,
 } from './model/use-task-runtime-clock'
 export { default as TaskOutcomeNotice } from './ui/TaskOutcomeNotice.vue'
+export { default as TaskDetailCard } from './ui/TaskDetailCard.vue'
+export { default as TaskDetailInfo } from './ui/TaskDetailInfo.vue'
+export { default as TaskDetailSummary } from './ui/TaskDetailSummary.vue'
 export { default as TaskRuntimeLog } from './ui/TaskRuntimeLog.vue'
