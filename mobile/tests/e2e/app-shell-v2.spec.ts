@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { createMobileAuthApiFixture } from './auth-api-fixture'
+
 const safeAreaFixture = {
   top: '19px',
   right: '22px',
@@ -27,7 +29,9 @@ async function applySafeAreaFixture(page: Page): Promise<void> {
 }
 
 async function installShellReadOnlyApi(page: Page): Promise<void> {
+  const auth = createMobileAuthApiFixture()
   await page.route('**/api/v1/**', async (route) => {
+    if (await auth.handle(route)) return
     const request = route.request()
     if (request.method() !== 'GET') {
       await route.fulfill({ status: 405 })
@@ -375,7 +379,9 @@ test('AppShell V2统一品牌栏、五入口导航与建设中页', async ({ pag
 
   await page.getByRole('tab', { name: /我的/ }).click()
   await expect(page).toHaveURL(/#\/me$/)
-  await expect(page.getByText('功能建设中', { exact: true })).toBeVisible()
+  await expect(page.getByText('移动端测试人员', { exact: true })).toBeVisible()
+  await expect(page.getByText('默认团队', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible()
   await expect(
     page.locator('.van-tabbar-item--active').getByText('我的', {
       exact: true,

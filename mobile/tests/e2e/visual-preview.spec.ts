@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { installAuthenticatedMobileSession } from './auth-api-fixture'
+
 const viewportWidths = [360, 375, 390, 430] as const
 const themes = ['light', 'dark'] as const
 
@@ -13,12 +15,22 @@ function observePage(page: Page) {
   })
   page.on('pageerror', (error) => consoleErrors.push(error.message))
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.startsWith('/api/')) {
+    const path = new URL(request.url()).pathname
+    const isAuthBootstrap = [
+      '/api/v1/auth/me',
+      '/api/v1/access/me/teams',
+      '/api/v1/access-management/me/module-access',
+    ].includes(path)
+    if (path.startsWith('/api/') && !isAuthBootstrap) {
       apiRequests.push(request.url())
     }
   })
   return { consoleErrors, consoleInfo, apiRequests }
 }
+
+test.beforeEach(async ({ page }) => {
+  await installAuthenticatedMobileSession(page)
+})
 
 async function setTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
   await page.addInitScript((mode) => {

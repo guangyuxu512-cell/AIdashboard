@@ -1,6 +1,6 @@
 import axios, { AxiosHeaders, type AxiosResponse } from 'axios'
 
-import { getApiAuthHooks } from './auth-hooks'
+import { getHumanRequestContext } from './auth-hooks'
 import { apiBaseUrl, apiTimeoutMs } from './config'
 import type { ApiErrorDetailsDto, ApiErrorResponseDto } from './contracts'
 
@@ -25,6 +25,12 @@ export class ApiClientError extends Error {
     this.details = options.details ?? null
   }
 }
+
+const HUMAN_SESSION_ERROR_CODES = new Set([
+  'HUMAN_AUTHENTICATION_REQUIRED',
+  'HUMAN_SESSION_INVALID',
+  'HUMAN_USER_DISABLED',
+])
 
 function isApiErrorResponse(value: unknown): value is ApiErrorResponseDto {
   if (!value || typeof value !== 'object') return false
@@ -62,6 +68,7 @@ export function normalizeApiError(error: unknown): ApiClientError {
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
   timeout: apiTimeoutMs,
+  withCredentials: true,
 })
 
 function hasJsonResponse(response: AxiosResponse): boolean {
@@ -75,11 +82,11 @@ function hasJsonResponse(response: AxiosResponse): boolean {
   )
 }
 
-apiClient.interceptors.request.use(async (config) => {
-  const authorizationHeader = await getApiAuthHooks().getAuthorizationHeader?.()
-  if (authorizationHeader) {
+apiClient.interceptors.request.use((config) => {
+  const activeTeamId = getHumanRequestContext().getActiveTeamId?.()
+  if (activeTeamId) {
     const headers = AxiosHeaders.from(config.headers)
-    headers.set('Authorization', authorizationHeader)
+    headers.set('X-Team-ID', activeTeamId)
     config.headers = headers
   }
   return config
@@ -97,9 +104,18 @@ apiClient.interceptors.response.use(
     )
   },
   async (error: unknown) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      await getApiAuthHooks().onUnauthorized?.()
+    const apiError = normalizeApiError(error)
+    if (apiError.code && HUMAN_SESSION_ERROR_CODES.has(apiError.code)) {
+      await getHumanRequestContext().onSessionInvalid?.()
     }
-    return Promise.reject(normalizeApiError(error))
+    return Promise.reject(apiError)
   },
 )
+
+export function isHumanSessionError(error: unknown): boolean {
+  return (
+    error instanceof ApiClientError &&
+    error.code !== null &&
+    HUMAN_SESSION_ERROR_CODES.has(error.code)
+  )
+}

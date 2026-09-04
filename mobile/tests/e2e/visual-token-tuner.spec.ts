@@ -6,8 +6,14 @@ import {
   type Page,
 } from '@playwright/test'
 
+import { installAuthenticatedMobileSession } from './auth-api-fixture'
+
 const storageKey = 'control-center.mobile.visual-token-tuner-v1'
 const appearanceStorageKey = 'control-center.mobile.visual-token-tuner-v3'
+
+test.beforeEach(async ({ page }) => {
+  await installAuthenticatedMobileSession(page)
+})
 
 function collectConsoleErrors(page: Page): string[] {
   const errors: string[] = []

@@ -1,14 +1,16 @@
-export interface ApiAuthHooks {
-  getAuthorizationHeader?: () => Promise<string | null> | string | null
-  onUnauthorized?: () => Promise<void> | void
+export interface HumanRequestContext {
+  getActiveTeamId?: () => string | null
+  onSessionInvalid?: () => Promise<void> | void
 }
 
-let authHooks: ApiAuthHooks = {}
+let humanRequestContext: HumanRequestContext = {}
 
-export function configureApiAuthHooks(hooks: ApiAuthHooks): void {
-  authHooks = hooks
+export function configureHumanRequestContext(
+  context: HumanRequestContext,
+): void {
+  humanRequestContext = context
 }
 
-export function getApiAuthHooks(): Readonly<ApiAuthHooks> {
-  return authHooks
+export function getHumanRequestContext(): Readonly<HumanRequestContext> {
+  return humanRequestContext
 }
