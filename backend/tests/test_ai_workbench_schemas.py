@@ -10,7 +10,15 @@ from app.modules.ai_workbench.enums import (
     OutputFormat,
     OutputRole,
 )
+from app.modules.ai_workbench.limits import (
+    MAX_GENERATION_ITEMS,
+    MAX_GENERATION_SELECTION_IDS,
+)
 from app.modules.ai_workbench.schemas import (
+    BatchGenerationSubmit,
+    GenerationItemArchiveRequest,
+    GenerationRetryRequest,
+    InstantGenerationSubmit,
     MaterialGroupAssetAttach,
     ProductMaterialGroupCreate,
     PromptTemplateCreate,
@@ -95,3 +103,138 @@ def test_prompt_variables_reject_blank_and_excess_values() -> None:
 def test_public_asset_attach_rejects_ai_output_role() -> None:
     with pytest.raises(ValidationError):
         MaterialGroupAssetAttach(asset_id=uuid4(), role=MaterialRole.AI_OUTPUT)
+
+
+def test_instant_generation_submit_freezes_supported_input_contract() -> None:
+    product_asset_id = uuid4()
+    reference_asset_id = uuid4()
+    data = InstantGenerationSubmit.model_validate(
+        {
+            "work_mode": "INSTANT",
+            "submission_key": " stable-key ",
+            "mode": "STYLE_REPLICATION",
+            "product_asset_ids": [str(product_asset_id)],
+            "reference_asset_ids": [str(reference_asset_id)],
+            "prompt": " 完整提示词 ",
+            "output_format": "SINGLE",
+            "size": "1:1",
+            "count": 2,
+        },
+    )
+
+    assert data.submission_key == "stable-key"
+    assert data.prompt == "完整提示词"
+    assert data.product_asset_ids == [product_asset_id]
+    assert data.reference_asset_ids == [reference_asset_id]
+    assert "output_role" not in InstantGenerationSubmit.model_fields
+    for forbidden_field in ("team_id", "provider_id", "model_id", "external_task_id"):
+        with pytest.raises(ValidationError):
+            InstantGenerationSubmit.model_validate(
+                {
+                    **data.model_dump(mode="json"),
+                    forbidden_field: "forbidden",
+                },
+            )
+
+
+def test_generation_submit_rejects_invalid_mode_inputs_and_duplicate_ids() -> None:
+    asset_id = uuid4()
+    base = {
+        "work_mode": "INSTANT",
+        "submission_key": "key",
+        "mode": "NORMAL_GENERATION",
+        "product_asset_ids": [str(asset_id)],
+        "prompt": "商品主图",
+        "output_format": "SINGLE",
+        "size": "1:1",
+        "count": 1,
+    }
+    with pytest.raises(ValidationError):
+        InstantGenerationSubmit.model_validate(
+            {**base, "reference_asset_ids": [str(uuid4())]},
+        )
+    with pytest.raises(ValidationError):
+        InstantGenerationSubmit.model_validate(
+            {**base, "product_asset_ids": [str(asset_id), str(asset_id)]},
+        )
+
+    with pytest.raises(ValidationError):
+        BatchGenerationSubmit.model_validate(
+            {
+                "work_mode": "BATCH",
+                "submission_key": "key",
+                "mode": "NORMAL_GENERATION",
+                "product_scope": "SELECTED",
+                "template_source": "PRODUCT_CONFIGURED",
+            },
+        )
+
+    with pytest.raises(ValidationError):
+        InstantGenerationSubmit.model_validate(
+            {
+                **base,
+                "product_asset_ids": [
+                    str(uuid4())
+                    for _ in range(MAX_GENERATION_SELECTION_IDS + 1)
+                ],
+            },
+        )
+
+    with pytest.raises(ValidationError):
+        BatchGenerationSubmit.model_validate(
+            {
+                "work_mode": "BATCH",
+                "submission_key": "too-many-products",
+                "mode": "NORMAL_GENERATION",
+                "product_scope": "SELECTED",
+                "selected_product_ids": [
+                    str(uuid4())
+                    for _ in range(MAX_GENERATION_SELECTION_IDS + 1)
+                ],
+                "template_source": "PRODUCT_CONFIGURED",
+            },
+        )
+    with pytest.raises(ValidationError):
+        BatchGenerationSubmit.model_validate(
+            {
+                "work_mode": "BATCH",
+                "submission_key": "key",
+                "mode": "NORMAL_GENERATION",
+                "product_scope": "ALL_ENABLED",
+                "template_source": "CURRENT_SELECTION",
+            },
+        )
+
+
+def test_generation_retry_request_requires_unique_items() -> None:
+    item_id = uuid4()
+    with pytest.raises(ValidationError):
+        GenerationRetryRequest.model_validate(
+            {
+                "items": [
+                    {"item_id": str(item_id), "expected_attempt_count": 1},
+                    {"item_id": str(item_id), "expected_attempt_count": 1},
+                ],
+            },
+        )
+
+    with pytest.raises(ValidationError):
+        GenerationRetryRequest.model_validate(
+            {
+                "items": [
+                    {
+                        "item_id": str(uuid4()),
+                        "expected_attempt_count": 1,
+                    }
+                    for _ in range(MAX_GENERATION_ITEMS + 1)
+                ],
+            },
+        )
+
+    with pytest.raises(ValidationError):
+        GenerationItemArchiveRequest.model_validate(
+            {
+                "material_group_id": str(uuid4()),
+                "team_id": str(uuid4()),
+            },
+        )

@@ -7,6 +7,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.ai_workbench.enums import GenerationMode, MaterialRole, OutputRole
 from app.modules.ai_workbench.exceptions import (
     MaterialAssetRoleInvalidError,
+    ProductMaterialGroupHasActiveGenerationJobsError,
     ProductMaterialGroupNotFoundError,
     PromptTemplateNotFoundError,
     TemplateBindingInvalidError,
@@ -22,6 +23,7 @@ from app.modules.ai_workbench.models import (
     TemplateGroup,
 )
 from app.modules.ai_workbench.repository import (
+    GenerationRepository,
     ProductMaterialGroupRepository,
     TemplateRepository,
 )
@@ -54,12 +56,16 @@ class AiWorkbenchService:
         *,
         template_repository: TemplateRepository | None = None,
         material_group_repository: ProductMaterialGroupRepository | None = None,
+        generation_repository: GenerationRepository | None = None,
         asset_service: AssetService | None = None,
     ) -> None:
         self.session = session
         self.template_repository = template_repository or TemplateRepository(session)
         self.material_group_repository = (
             material_group_repository or ProductMaterialGroupRepository(session)
+        )
+        self.generation_repository = generation_repository or GenerationRepository(
+            session,
         )
         self.asset_service = asset_service or AssetService(session)
 
@@ -346,7 +352,18 @@ class AiWorkbenchService:
         actor: ActorContext,
         material_group_id: UUID,
     ) -> None:
+        if not self.material_group_repository.exists_in_write_scope(
+            actor=actor,
+            material_group_id=material_group_id,
+        ):
+            raise ProductMaterialGroupNotFoundError()
+        self.generation_repository.lock_material_group_references(material_group_id)
         group = self._material_group_for_write(actor, material_group_id)
+        if self.generation_repository.has_active_jobs_for_material_group(
+            material_group_id,
+        ):
+            self.session.rollback()
+            raise ProductMaterialGroupHasActiveGenerationJobsError()
         self.material_group_repository.delete_group(group)
         self.session.commit()
 

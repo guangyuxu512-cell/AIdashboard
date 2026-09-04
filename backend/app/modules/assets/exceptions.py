@@ -21,7 +21,7 @@ class AssetTooLargeError(AppError):
 
 class AssetInUseError(AppError):
     code = "ASSET_IN_USE"
-    message = "资产已被任务引用，无法删除"
+    message = "资产正在被业务记录引用，无法删除"
     status_code = 409
 
 

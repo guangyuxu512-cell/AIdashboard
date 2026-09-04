@@ -7,6 +7,9 @@ from app.core.config import get_settings
 from app.core.database import Base
 from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
 from app.modules.ai_workbench.models import (
+    GenerationItem,
+    GenerationItemAsset,
+    GenerationJob,
     MaterialGroupAsset,
     MaterialGroupTemplateBinding,
     ProductMaterialGroup,
@@ -34,6 +37,9 @@ from app.modules.workers.models import (
 _MODELS = (
     AutomationApplicationConfig,
     Asset,
+    GenerationItem,
+    GenerationItemAsset,
+    GenerationJob,
     MaterialGroupAsset,
     MaterialGroupTemplateBinding,
     ProductMaterialGroup,
