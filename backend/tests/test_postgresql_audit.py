@@ -16,6 +16,7 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.access.schemas import (
     AccessMemberMembershipCreate,
     AccessMemberCreate,
+    TeamCreate,
 )
 from app.modules.access.service import AccessManagementService
 from app.modules.audit.enums import AuditAction
@@ -87,7 +88,7 @@ def _cleanup(
     session: Session,
     *,
     user_ids: list[UUID],
-    team_id: UUID,
+    team_ids: list[UUID],
 ) -> None:
     membership_ids = list(
         session.scalars(
@@ -109,7 +110,7 @@ def _cleanup(
         delete(TeamMembership).where(TeamMembership.user_id.in_(user_ids)),
     )
     session.execute(delete(User).where(User.user_id.in_(user_ids)))
-    session.execute(delete(Team).where(Team.team_id == team_id))
+    session.execute(delete(Team).where(Team.team_id.in_(team_ids)))
     session.commit()
 
 
@@ -120,6 +121,7 @@ def test_access_management_audit_is_atomic_and_minimal() -> None:
     created_user_id: UUID | None = None
     actor_user_id: UUID | None = None
     team_id: UUID | None = None
+    created_team_id: UUID | None = None
 
     with Session(engine, expire_on_commit=False) as session:
         try:
@@ -150,7 +152,39 @@ def test_access_management_audit_is_atomic_and_minimal() -> None:
             assert audit_log.action == AuditAction.CREATE_MEMBER.value
             assert audit_log.actor_user_id == actor.user_id
             assert audit_log.target_id == created.user_id
+            assert audit_log.details == {
+                "membership_id": str(created.memberships[0].membership_id),
+                "membership_team_id": str(team_id),
+            }
             assert TEST_PASSWORD not in repr(audit_log.details)
+
+            team_request_id = f"audit-integration-team-{suffix}"
+            created_team = service.create_team(
+                TeamCreate(name=f"审计新增团队-{suffix}"),
+                actor=actor,
+                request_id=team_request_id,
+            )
+            created_team_id = created_team.team_id
+            team_audit_log = session.scalar(
+                select(AuditLog).where(AuditLog.request_id == team_request_id),
+            )
+            assert team_audit_log is not None
+            assert team_audit_log.action == AuditAction.CREATE_TEAM.value
+            assert team_audit_log.details == {}
+
+            password_request_id = f"audit-integration-password-{suffix}"
+            service.reset_member_password(
+                created.user_id,
+                password="audit-integration-new-password",
+                actor=actor,
+                request_id=password_request_id,
+            )
+            password_audit_log = session.scalar(
+                select(AuditLog).where(AuditLog.request_id == password_request_id),
+            )
+            assert password_audit_log is not None
+            assert password_audit_log.action == AuditAction.RESET_MEMBER_PASSWORD.value
+            assert password_audit_log.details == {}
 
             audit_count = session.scalar(select(func.count()).select_from(AuditLog))
             service.list_members(offset=0, limit=20, search=None)
@@ -181,5 +215,8 @@ def test_access_management_audit_is_atomic_and_minimal() -> None:
                         actor_user_id,
                         *([] if created_user_id is None else [created_user_id]),
                     ],
-                    team_id=team_id,
+                    team_ids=[
+                        team_id,
+                        *([] if created_team_id is None else [created_team_id]),
+                    ],
                 )

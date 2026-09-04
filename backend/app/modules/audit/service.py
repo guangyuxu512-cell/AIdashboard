@@ -38,7 +38,7 @@ class AuditLogService:
                 action=action.value,
                 target_type=target_type.value,
                 target_id=target_id,
-                details=details,
+                details={} if details is None else details,
             ),
         )
 
