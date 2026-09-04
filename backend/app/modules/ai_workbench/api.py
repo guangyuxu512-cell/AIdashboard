@@ -9,9 +9,33 @@ from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
-from app.modules.ai_workbench.enums import GenerationMode
-from app.modules.ai_workbench.models import ProductMaterialGroup, TemplateGroup
+from app.modules.ai_workbench.enums import (
+    GenerationJobStatus,
+    GenerationMode,
+    GenerationWorkMode,
+)
+from app.modules.ai_workbench.generation_service import (
+    GenerationService,
+    generation_counts,
+    generation_input_summary,
+)
+from app.modules.ai_workbench.models import (
+    GenerationItem,
+    GenerationJob,
+    ProductMaterialGroup,
+    TemplateGroup,
+)
+from app.modules.ai_workbench.repository import GenerationCounts, GenerationInputSummary
 from app.modules.ai_workbench.schemas import (
+    GenerationCountsRead,
+    GenerationItemArchiveRequest,
+    GenerationItemAssetRead,
+    GenerationItemRead,
+    GenerationInputSummaryRead,
+    GenerationJobRead,
+    GenerationJobSummaryRead,
+    GenerationRetryRequest,
+    GenerationSubmit,
     MaterialGroupAssetAttach,
     MaterialGroupAssetRead,
     MaterialGroupTemplateBindingRead,
@@ -63,6 +87,12 @@ def get_ai_workbench_service(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> AiWorkbenchService:
     return AiWorkbenchService(session)
+
+
+def get_generation_service(
+    session: Annotated[Session, Depends(get_database_session)],
+) -> GenerationService:
+    return GenerationService(session)
 
 
 def _template_group_read(group: TemplateGroup) -> TemplateGroupRead:
@@ -122,6 +152,213 @@ def _product_material_group_read(
             MaterialGroupTemplateBindingRead.model_validate(binding)
             for binding in bindings
         ],
+    )
+
+
+def _generation_counts_read(counts: GenerationCounts) -> GenerationCountsRead:
+    return GenerationCountsRead(
+        total_count=counts.total_count,
+        pending_count=counts.pending_count,
+        running_count=counts.running_count,
+        success_count=counts.success_count,
+        failed_count=counts.failed_count,
+    )
+
+
+def _generation_job_summary_read(
+    job: GenerationJob,
+    counts: GenerationCounts,
+    input_summary: GenerationInputSummary,
+) -> GenerationJobSummaryRead:
+    return GenerationJobSummaryRead(
+        generation_job_id=job.generation_job_id,
+        work_mode=job.work_mode,
+        mode=job.mode,
+        status=job.status,
+        input_summary=GenerationInputSummaryRead(
+            count=input_summary.count,
+            primary_name=input_summary.primary_name,
+        ),
+        created_by_display_name=job.created_by_display_name,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        **_generation_counts_read(counts).model_dump(),
+    )
+
+
+def _generation_item_read(item: GenerationItem) -> GenerationItemRead:
+    role_order = {"PRODUCT_SOURCE": 0, "STYLE_REFERENCE": 1}
+    input_assets = sorted(
+        item.input_assets,
+        key=lambda link: (
+            role_order[link.input_role],
+            link.position,
+            str(link.asset_id),
+        ),
+    )
+    return GenerationItemRead(
+        generation_item_id=item.generation_item_id,
+        position=item.position,
+        status=item.status,
+        final_prompt=item.final_prompt,
+        output_role=item.output_role,
+        output_format=item.output_format,
+        size=item.size,
+        source_product_position=item.source_product_position,
+        source_template_group_position=item.source_template_group_position,
+        source_prompt_template_position=item.source_prompt_template_position,
+        output_ordinal=item.output_ordinal,
+        source_product_material_group_id=item.source_product_material_group_id,
+        source_template_group_id=item.source_template_group_id,
+        source_prompt_template_id=item.source_prompt_template_id,
+        product_name_snapshot=item.product_name_snapshot,
+        template_group_name_snapshot=item.template_group_name_snapshot,
+        prompt_template_name_snapshot=item.prompt_template_name_snapshot,
+        attempt_count=item.attempt_count,
+        last_failure_code=item.last_failure_code,
+        last_failure_message=item.last_failure_message,
+        last_failed_at=item.last_failed_at,
+        started_at=item.started_at,
+        finished_at=item.finished_at,
+        archived_material_group_id=item.archived_material_group_id,
+        archived_material_group_name_snapshot=(
+            item.archived_material_group_name_snapshot
+        ),
+        archived_at=item.archived_at,
+        input_assets=[
+            GenerationItemAssetRead(
+                input_role=link.input_role,
+                position=link.position,
+                asset=AssetRead.model_validate(link.asset),
+            )
+            for link in input_assets
+        ],
+        output_asset=(
+            AssetRead.model_validate(item.output_asset)
+            if item.output_asset is not None
+            else None
+        ),
+    )
+
+
+def _generation_job_read(job: GenerationJob) -> GenerationJobRead:
+    counts = generation_counts(job.items)
+    summary = _generation_job_summary_read(
+        job,
+        counts,
+        generation_input_summary(job),
+    )
+    return GenerationJobRead(
+        **summary.model_dump(),
+        submission_key=job.submission_key,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        items=[
+            _generation_item_read(item)
+            for item in sorted(
+                job.items,
+                key=lambda candidate: (
+                    candidate.position,
+                    str(candidate.generation_item_id),
+                ),
+            )
+        ],
+    )
+
+
+@router.post(
+    "/generation-jobs",
+    response_model=GenerationJobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_generation(
+    data: GenerationSubmit,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[GenerationService, Depends(get_generation_service)],
+) -> GenerationJobRead:
+    return _generation_job_read(service.submit(actor, data))
+
+
+@router.get(
+    "/generation-jobs",
+    response_model=Page[GenerationJobSummaryRead],
+)
+def list_generation_jobs(
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[GenerationService, Depends(get_generation_service)],
+    pagination: Annotated[PaginationParams, Depends()],
+    work_mode: GenerationWorkMode | None = None,
+    mode: GenerationMode | None = None,
+    generation_status: Annotated[
+        GenerationJobStatus | None,
+        Query(alias="status"),
+    ] = None,
+) -> Page[GenerationJobSummaryRead]:
+    jobs, total = service.list(
+        actor=actor,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        work_mode=work_mode,
+        mode=mode,
+        status=generation_status,
+    )
+    return Page(
+        items=[
+            _generation_job_summary_read(job, counts, input_summary)
+            for job, counts, input_summary in jobs
+        ],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
+
+
+@router.get(
+    "/generation-jobs/{generation_job_id}",
+    response_model=GenerationJobRead,
+)
+def get_generation_job(
+    generation_job_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[GenerationService, Depends(get_generation_service)],
+) -> GenerationJobRead:
+    return _generation_job_read(service.get(actor, generation_job_id))
+
+
+@router.post(
+    "/generation-jobs/{generation_job_id}/retry-failed-items",
+    response_model=GenerationJobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_failed_generation_items(
+    generation_job_id: UUID,
+    data: GenerationRetryRequest,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[GenerationService, Depends(get_generation_service)],
+) -> GenerationJobRead:
+    return _generation_job_read(
+        service.retry_failed_items(actor, generation_job_id, data),
+    )
+
+
+@router.post(
+    "/generation-jobs/{generation_job_id}/items/{generation_item_id}/archive",
+    response_model=GenerationJobRead,
+)
+def archive_instant_generation_item(
+    generation_job_id: UUID,
+    generation_item_id: UUID,
+    data: GenerationItemArchiveRequest,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[GenerationService, Depends(get_generation_service)],
+) -> GenerationJobRead:
+    return _generation_job_read(
+        service.archive_instant_item(
+            actor,
+            generation_job_id,
+            generation_item_id,
+            data,
+        ),
     )
 
 

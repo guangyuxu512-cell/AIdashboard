@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.policy import DataScopePolicy
+from app.modules.ai_workbench.models import (
+    GenerationItem,
+    GenerationItemAsset,
+    MaterialGroupAsset,
+)
 from app.modules.assets.models import Asset
 from app.modules.tasks.models import Task, TaskAsset
 
@@ -104,6 +109,22 @@ class AssetRepository:
         )
         return list(self.session.scalars(statement))
 
+    def list_by_ids_for_actor_for_update(
+        self,
+        *,
+        actor: ActorContext,
+        asset_ids: Sequence[UUID],
+    ) -> Sequence[Asset]:
+        if not asset_ids:
+            return []
+        statement = DataScopePolicy.apply(
+            select(Asset).where(Asset.asset_id.in_(asset_ids)),
+            team_id_column=Asset.team_id,
+            created_by_user_id_column=Asset.created_by_user_id,
+            actor=actor,
+        )
+        return list(self.session.scalars(statement.with_for_update()))
+
     def list_by_ids(self, asset_ids: Sequence[UUID]) -> Sequence[Asset]:
         if not asset_ids:
             return []
@@ -131,12 +152,18 @@ class AssetRepository:
         )
 
     def is_referenced(self, asset_id: UUID) -> bool:
-        return bool(
+        reference_columns = (
+            TaskAsset.asset_id,
+            MaterialGroupAsset.asset_id,
+            GenerationItemAsset.asset_id,
+            GenerationItem.output_asset_id,
+        )
+        return any(
             self.session.scalar(
-                select(func.count())
-                .select_from(TaskAsset)
-                .where(TaskAsset.asset_id == asset_id),
-            ),
+                select(column).where(column == asset_id).limit(1),
+            )
+            is not None
+            for column in reference_columns
         )
 
     def add(self, asset: Asset) -> None:
