@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
+from app.core.logging.request import set_request_team_id, set_request_user_id
 from app.modules.access.auth import get_human_principal
 from app.modules.access.contracts import ActorContext, HumanPrincipal
 from app.modules.access.exceptions import AccessAdministrationForbiddenError
@@ -42,6 +43,7 @@ def get_access_management_service(
 
 
 def get_actor_context(
+    request: Request,
     principal: Annotated[HumanPrincipal, Depends(get_human_principal)],
     service: Annotated[ActorContextService, Depends(get_actor_context_service)],
     requested_team_id: Annotated[
@@ -49,10 +51,13 @@ def get_actor_context(
         Header(alias=TEAM_CONTEXT_HEADER),
     ] = None,
 ) -> ActorContext:
-    return service.resolve(
+    actor = service.resolve(
         user_id=principal.user_id,
         requested_team_id=requested_team_id,
     )
+    set_request_user_id(request, actor.user_id)
+    set_request_team_id(request, actor.team_id)
+    return actor
 
 
 def get_access_administrator(
