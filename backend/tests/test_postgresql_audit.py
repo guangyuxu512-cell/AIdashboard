@@ -16,6 +16,7 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.access.schemas import (
     AccessMemberMembershipCreate,
     AccessMemberCreate,
+    TeamCreate,
 )
 from app.modules.access.service import AccessManagementService
 from app.modules.audit.enums import AuditAction
@@ -151,6 +152,10 @@ def test_access_management_audit_is_atomic_and_minimal() -> None:
             assert audit_log.action == AuditAction.CREATE_MEMBER.value
             assert audit_log.actor_user_id == actor.user_id
             assert audit_log.target_id == created.user_id
+            assert audit_log.details == {
+                "membership_id": str(created.memberships[0].membership_id),
+                "membership_team_id": str(team_id),
+            }
             assert TEST_PASSWORD not in repr(audit_log.details)
 
             team_request_id = f"audit-integration-team-{suffix}"
