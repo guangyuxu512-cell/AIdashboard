@@ -14,6 +14,7 @@ from app.modules.ai_workbench.enums import (
     OutputRole,
 )
 from app.modules.ai_workbench.exceptions import (
+    ProductMaterialGroupHasActiveGenerationJobsError,
     ProductMaterialGroupNotFoundError,
     TemplateBindingInvalidError,
     TemplateGroupInUseError,
@@ -212,6 +213,19 @@ class FakeProductMaterialGroupRepository:
         group = self.groups.get(material_group_id)
         return group if group is not None and visible(group, actor) else None
 
+    def exists_in_write_scope(
+        self,
+        *,
+        actor: ActorContext,
+        material_group_id: UUID,
+    ) -> bool:
+        group = self.groups.get(material_group_id)
+        return (
+            group is not None
+            and group.team_id == actor.team_id
+            and visible(group, actor)
+        )
+
     def get_group_for_write(
         self,
         *,
@@ -286,6 +300,18 @@ class FakeAssetService:
         ]
 
 
+class FakeGenerationRepository:
+    def __init__(self) -> None:
+        self.active_material_group_ids: set[UUID] = set()
+        self.locked_material_group_ids: list[UUID] = []
+
+    def lock_material_group_references(self, material_group_id: UUID) -> None:
+        self.locked_material_group_ids.append(material_group_id)
+
+    def has_active_jobs_for_material_group(self, material_group_id: UUID) -> bool:
+        return material_group_id in self.active_material_group_ids
+
+
 def make_service() -> tuple[
     AiWorkbenchService,
     FakeTemplateRepository,
@@ -301,6 +327,7 @@ def make_service() -> tuple[
         session,  # type: ignore[arg-type]
         template_repository=templates,  # type: ignore[arg-type]
         material_group_repository=materials,  # type: ignore[arg-type]
+        generation_repository=FakeGenerationRepository(),  # type: ignore[arg-type]
         asset_service=assets,  # type: ignore[arg-type]
     )
     return service, templates, materials, assets, session
@@ -519,6 +546,41 @@ def test_product_material_group_crud_disable_and_delete_leave_assets() -> None:
     service.delete_product_material_group(current_actor, group.material_group_id)
     assert group.material_group_id not in materials.groups
     assert asset.asset_id in assets.assets
+
+
+def test_product_material_group_delete_rejects_active_generation_jobs() -> None:
+    service, _, materials, _, session = make_service()
+    current_actor = actor()
+    group = create_material_group(service, current_actor)
+    generation_repository = service.generation_repository
+    assert isinstance(generation_repository, FakeGenerationRepository)
+    generation_repository.active_material_group_ids.add(group.material_group_id)
+
+    with pytest.raises(ProductMaterialGroupHasActiveGenerationJobsError):
+        service.delete_product_material_group(current_actor, group.material_group_id)
+
+    assert group.material_group_id in materials.groups
+    assert generation_repository.locked_material_group_ids == [group.material_group_id]
+    assert session.rollbacks == 1
+
+
+def test_product_material_group_delete_rejects_cross_team_before_locks() -> None:
+    service, _, materials, _, _ = make_service()
+    foreign_group = create_material_group(
+        service,
+        actor(user_id=USER_B, team_id=TEAM_B),
+    )
+    generation_repository = service.generation_repository
+    assert isinstance(generation_repository, FakeGenerationRepository)
+
+    with pytest.raises(ProductMaterialGroupNotFoundError):
+        service.delete_product_material_group(
+            actor(scope=DataScope.ALL),
+            foreign_group.material_group_id,
+        )
+
+    assert foreign_group.material_group_id in materials.groups
+    assert generation_repository.locked_material_group_ids == []
 
 
 def test_asset_attach_enforces_scope_team_role_and_deduplicates() -> None:

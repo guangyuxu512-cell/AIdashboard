@@ -45,7 +45,7 @@ from app.modules.users.models import User
 
 
 pytestmark = pytest.mark.integration
-FEATURE_DATABASE = "control_center_feat_ai_backend"
+FEATURE_DATABASE = "control_center_feat_ai_generation"
 AI_TABLES = {
     "template_groups",
     "prompt_templates",
@@ -65,7 +65,7 @@ def ai_postgresql_engine() -> Engine:
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT current_database()")) == FEATURE_DATABASE
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260903_0026"
+            "20260903_0027"
         )
     assert AI_TABLES <= set(inspect(engine).get_table_names())
     return engine

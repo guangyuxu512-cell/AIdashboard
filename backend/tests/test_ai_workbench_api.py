@@ -17,14 +17,19 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.ai_workbench.api import (
     get_ai_workbench_authorized_actor,
     get_ai_workbench_service,
+    get_generation_service,
 )
-from app.modules.ai_workbench.enums import GenerationMode
+from app.modules.ai_workbench.enums import GenerationMode, GenerationWorkMode
 from app.modules.ai_workbench.exceptions import TemplateGroupInUseError
 from app.modules.ai_workbench.models import (
+    GenerationItem,
+    GenerationItemAsset,
+    GenerationJob,
     MaterialGroupAsset,
     ProductMaterialGroup,
     TemplateGroup,
 )
+from app.modules.ai_workbench.repository import GenerationCounts, GenerationInputSummary
 from app.modules.ai_workbench.schemas import (
     ProductMaterialGroupCreate,
     TemplateGroupCreate,
@@ -149,6 +154,120 @@ class ApiModuleAccessService:
             raise ModuleAccessDeniedError()
 
 
+class ApiGenerationService:
+    def __init__(self) -> None:
+        self.job: GenerationJob | None = None
+
+    def submit(self, actor: ActorContext, data: object) -> GenerationJob:
+        product_asset_id = data.product_asset_ids[0]  # type: ignore[attr-defined]
+        asset = Asset(
+            asset_id=product_asset_id,
+            team_id=actor.team_id,
+            created_by_user_id=actor.user_id,
+            original_filename="source.png",
+            storage_key="private/source.png",
+            media_type=AssetMediaType.IMAGE.value,
+            source_type=AssetSourceType.UPLOAD.value,
+            content_type="image/png",
+            size_bytes=32,
+            sha256="c" * 64,
+        )
+        stamp(asset)
+        job_id = uuid4()
+        item_id = uuid4()
+        item = GenerationItem(
+            generation_item_id=item_id,
+            generation_job_id=job_id,
+            position=0,
+            status="PENDING",
+            final_prompt=data.prompt,  # type: ignore[attr-defined]
+            output_role="MAIN_IMAGE",
+            output_format=data.output_format.value,  # type: ignore[attr-defined]
+            size=data.size.value,  # type: ignore[attr-defined]
+            output_ordinal=0,
+            attempt_count=1,
+        )
+        item.input_assets = [
+            GenerationItemAsset(
+                generation_item_id=item_id,
+                input_role="PRODUCT_SOURCE",
+                position=0,
+                asset_id=asset.asset_id,
+                asset=asset,
+            ),
+        ]
+        stamp(item)
+        job = GenerationJob(
+            generation_job_id=job_id,
+            team_id=actor.team_id,
+            created_by_user_id=actor.user_id,
+            created_by_display_name=actor.user_display_name,
+            work_mode=GenerationWorkMode.INSTANT.value,
+            mode=GenerationMode.NORMAL_GENERATION.value,
+            status="PENDING",
+            submission_key=data.submission_key,  # type: ignore[attr-defined]
+            submission_fingerprint="d" * 64,
+            items=[item],
+        )
+        stamp(job)
+        self.job = job
+        return job
+
+    def list(
+        self,
+        **kwargs: object,
+    ) -> tuple[
+        list[tuple[GenerationJob, GenerationCounts, GenerationInputSummary]],
+        int,
+    ]:
+        del kwargs
+        assert self.job is not None
+        return [
+            (
+                self.job,
+                GenerationCounts(total_count=1, pending_count=1),
+                GenerationInputSummary(count=1, primary_name="source.png"),
+            ),
+        ], 1
+
+    def get(
+        self,
+        actor: ActorContext,
+        generation_job_id: UUID,
+    ) -> GenerationJob:
+        del actor
+        assert self.job is not None
+        assert self.job.generation_job_id == generation_job_id
+        return self.job
+
+    def retry_failed_items(
+        self,
+        actor: ActorContext,
+        generation_job_id: UUID,
+        data: object,
+    ) -> GenerationJob:
+        del actor, data
+        return self.get(ACTOR, generation_job_id)
+
+    def archive_instant_item(
+        self,
+        actor: ActorContext,
+        generation_job_id: UUID,
+        generation_item_id: UUID,
+        data: object,
+    ) -> GenerationJob:
+        job = self.get(actor, generation_job_id)
+        item = next(
+            item
+            for item in job.items
+            if item.generation_item_id == generation_item_id
+        )
+        item.archived_material_group_id = data.material_group_id  # type: ignore[attr-defined]
+        item.archived_material_group_name_snapshot = "归档商品"
+        item.archived_at = datetime.now(UTC)
+        return job
+
+
 def request(
     service: ApiAiWorkbenchService,
     method: str,
@@ -156,10 +275,15 @@ def request(
     *,
     actor: ActorContext | None = ACTOR,
     module_access: ApiModuleAccessService | None = None,
+    generation_service: ApiGenerationService | None = None,
     **kwargs: object,
 ) -> Response:
     application = create_app()
     application.dependency_overrides[get_ai_workbench_service] = lambda: service
+    if generation_service is not None:
+        application.dependency_overrides[get_generation_service] = (
+            lambda: generation_service
+        )
     application.dependency_overrides[get_database_session] = lambda: FakeSession()
     if module_access is None:
         if actor is not None:
@@ -200,6 +324,12 @@ def test_ai_workbench_routes_are_registered_as_resource_apis() -> None:
         "/api/v1/ai-workbench/product-material-groups/{material_group_id}/assets/{asset_id}",
         "/api/v1/ai-workbench/product-material-groups/{material_group_id}/"
         "template-bindings/{mode}",
+        "/api/v1/ai-workbench/generation-jobs",
+        "/api/v1/ai-workbench/generation-jobs/{generation_job_id}",
+        "/api/v1/ai-workbench/generation-jobs/{generation_job_id}/"
+        "retry-failed-items",
+        "/api/v1/ai-workbench/generation-jobs/{generation_job_id}/items/"
+        "{generation_item_id}/archive",
     } <= set(paths)
 
 
@@ -239,6 +369,95 @@ def test_ai_workbench_api_create_list_pagination_and_ownership_input() -> None:
     assert rejected.json()["code"] == "VALIDATION_ERROR"
 
 
+def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection() -> None:
+    service = ApiAiWorkbenchService()
+    generation_service = ApiGenerationService()
+    asset_id = uuid4()
+
+    response = request(
+        service,
+        "POST",
+        "/api/v1/ai-workbench/generation-jobs",
+        generation_service=generation_service,
+        json={
+            "work_mode": "INSTANT",
+            "submission_key": "api-submit-1",
+            "mode": "NORMAL_GENERATION",
+            "product_asset_ids": [str(asset_id)],
+            "prompt": "完整商品主图提示词",
+            "output_format": "SINGLE",
+            "size": "1:1",
+            "count": 1,
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "PENDING"
+    assert payload["total_count"] == 1
+    assert payload["pending_count"] == 1
+    assert payload["items"][0]["status"] == "PENDING"
+    assert payload["input_summary"] == {
+        "count": 1,
+        "primary_name": "source.png",
+    }
+    assert payload["items"][0]["input_assets"][0]["asset"]["asset_id"] == str(
+        asset_id,
+    )
+    assert "storage_key" not in response.text
+    assert "provider" not in response.text.casefold()
+
+    listing = request(
+        service,
+        "GET",
+        "/api/v1/ai-workbench/generation-jobs?page=1&page_size=20",
+        generation_service=generation_service,
+    )
+    assert listing.status_code == 200
+    assert listing.json()["total"] == 1
+    assert listing.json()["items"][0]["input_summary"] == {
+        "count": 1,
+        "primary_name": "source.png",
+    }
+    job_id = payload["generation_job_id"]
+    detail = request(
+        service,
+        "GET",
+        f"/api/v1/ai-workbench/generation-jobs/{job_id}",
+        generation_service=generation_service,
+    )
+    assert detail.status_code == 200
+    assert detail.json()["generation_job_id"] == job_id
+    retry = request(
+        service,
+        "POST",
+        f"/api/v1/ai-workbench/generation-jobs/{job_id}/retry-failed-items",
+        generation_service=generation_service,
+        json={
+            "items": [
+                {
+                    "item_id": payload["items"][0]["generation_item_id"],
+                    "expected_attempt_count": 1,
+                },
+            ],
+        },
+    )
+    assert retry.status_code == 202
+    archive_group_id = uuid4()
+    archived = request(
+        service,
+        "POST",
+        f"/api/v1/ai-workbench/generation-jobs/{job_id}/items/"
+        f"{payload['items'][0]['generation_item_id']}/archive",
+        generation_service=generation_service,
+        json={"material_group_id": str(archive_group_id)},
+    )
+    assert archived.status_code == 200
+    assert archived.json()["items"][0]["archived_material_group_id"] == str(
+        archive_group_id,
+    )
+
+
 def test_ai_workbench_human_api_requires_authentication_and_module_access() -> None:
     service = ApiAiWorkbenchService()
     unauthenticated = request(
@@ -270,6 +489,17 @@ def test_ai_workbench_human_api_requires_authentication_and_module_access() -> N
     )
     assert allowed.status_code == 200
     assert allowed_service.checked == [ModuleCode.AI_WORKBENCH]
+
+    generation_denied_service = ApiModuleAccessService(allowed=False)
+    generation_denied = request(
+        service,
+        "GET",
+        "/api/v1/ai-workbench/generation-jobs",
+        module_access=generation_denied_service,
+    )
+    assert generation_denied.status_code == 403
+    assert generation_denied.json()["code"] == "MODULE_ACCESS_DENIED"
+    assert generation_denied_service.checked == [ModuleCode.AI_WORKBENCH]
 
 
 def test_product_material_detail_uses_safe_asset_projection() -> None:

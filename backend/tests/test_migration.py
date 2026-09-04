@@ -809,3 +809,38 @@ def test_ai_workbench_foundation_migration_upgrade_and_downgrade(
         ("drop_table", "product_material_groups"),
         ("drop_table", "template_groups"),
     ]
+
+
+def test_ai_generation_execution_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260903_0027_ai_generation_execution_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260903_0027"
+    assert migration.down_revision == "20260903_0026"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "generation_jobs"),
+        ("create_table", "generation_items"),
+        ("create_table", "generation_item_assets"),
+    ]
+    assert not {
+        "provider_configs",
+        "model_registry",
+        "generation_attempts",
+        "generation_history",
+        "queue_tasks",
+        "webhooks",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "generation_item_assets"),
+        ("drop_table", "generation_items"),
+        ("drop_table", "generation_jobs"),
+    ]
