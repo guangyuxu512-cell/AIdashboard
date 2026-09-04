@@ -28,7 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前没有活跃 Migration Slot（FREE）。
+当前活跃 Migration Slot：
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| `feat/logging-audit-v1` | `reserved` | Logging & Audit V1；仅为后续正式 Audit Schema 预留 | `20260903_0027_ai_generation_execution_v1` | `20260904_0028_logging_audit_v1` | Integrator 已创建空的 `control_center_feat_audit` 并升级至 `20260903_0027`；尚未创建 `0028` Migration，后续由 Feature Owner 按正式 Schema 实现并验证 upgrade/downgrade |
 
 最近释放记录：
 
