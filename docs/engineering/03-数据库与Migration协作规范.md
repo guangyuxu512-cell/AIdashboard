@@ -28,16 +28,13 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`feat/ai-provider-v1`（`rejected`，仍由该 Feature 占用，等待修复后复审）。
-
-| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
-|---|---|---|---|---|---|
-| `feat/ai-provider-v1` | `rejected`（occupied） | AI Provider V1：为真实 ToAPIs / `gpt-image-2` Provider 的持久化 External Task Reference 预留结构变更；不建设 Model Registry 或 Provider 配置表 | `20260905_0029_device_task_human_access_v1` | `20260905_0030_ai_provider_v1` | Gate 2A 于 Candidate `5164387` 拒绝：外部 Task 创建成功但 `external_task_id` 持久化前的进程中断会导致重启重复创建。Feature Owner 须补足可恢复幂等边界后，在保留的 `control_center_feat_ai_provider` 验证并重新交接 |
+当前活跃 Migration Slot：无。
 
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/ai-provider-v1` | `released` | AI Provider V1 已合入 Green `dev`；ToAPIs / `gpt-image-2` 的 External Task Reference 在 Create 前持久化 Durable Intent，未知 Create Outcome fail closed | `20260905_0029_device_task_human_access_v1` | `20260905_0030_ai_provider_v1` | Gate 2 Retry 已在 `control_center_integration` 验证 `0029 → 0030 → 0029 → 0030`，含真实 Normal Generation；`control_center_feat_ai_provider` 已由 Integrator 回收 |
 | `feat/device-task-human-access-v1` | `released` | Device / Schedule / Task Human Access V1 已合入 Green `dev` | `20260904_0028_logging_audit_v1` | `20260905_0029_device_task_human_access_v1` | Gate 2 已在 `control_center_integration` 验证 `0028 → 0029 → 0028 → 0029`，并验证单 Team 历史数据动态回填；`control_center_feat_device_task_human_access` 已由 Integrator 回收 |
 | `feat/logging-audit-v1` | `released` | Logging & Audit V1 已合入 Green `dev`；重试修复将缺失的审计 `details` 规范化为 JSON 对象 | `20260903_0027_ai_generation_execution_v1` | `20260904_0028_logging_audit_v1` | Gate 2 Retry 已在 `control_center_integration` 验证 `0027 → 0028`；`control_center_feat_audit` 已由 Integrator 回收 |
 | `feat/ai-generation-execution-v1` | `released` | AI Generation Execution V1 已合入 Green `dev` | `20260903_0026_ai_workbench_backend_foundation_v1` | `20260903_0027_ai_generation_execution_v1` | Gate 2 已在 `control_center_integration` 验证 `0026 → 0027 → 0026 → 0027`；`control_center_feat_ai_generation` 已由 Integrator 回收 |
