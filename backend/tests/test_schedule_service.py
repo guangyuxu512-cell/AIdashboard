@@ -44,13 +44,21 @@ class FakeScheduledTaskService:
             execution_display_name="安全应用",
         )
 
-    def create_for_schedule(self, data: object) -> Task:
+    def create_for_schedule(
+        self,
+        data: object,
+        *,
+        team_id: UUID,
+        created_by_user_id: UUID | None,
+    ) -> Task:
         self.created_data = data
         self.calls += 1
         if self.error is not None:
             raise self.error
         return Task(
             task_id=uuid4(),
+            team_id=team_id,
+            created_by_user_id=created_by_user_id,
             target_device_id=uuid4(),
             skill_id="yingdao.app.run",
             execution_display_name="安全应用",
@@ -63,6 +71,8 @@ def due_schedule() -> Schedule:
     shop_id = UUID("62000000-0000-4000-8000-000000000001")
     return Schedule(
         schedule_id=UUID("61000000-0000-4000-8000-000000000001"),
+        team_id=UUID("60000000-0000-4000-8000-000000000001"),
+        created_by_user_id=UUID("60000000-0000-4000-8000-000000000002"),
         name="每日安全任务",
         enabled=True,
         target_device_id=uuid4(),

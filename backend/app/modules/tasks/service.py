@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.modules.access.contracts import ActorContext
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
 from app.modules.assets.enums import AssetMediaType
@@ -111,13 +112,23 @@ class TaskService:
         )
         self.asset_repository = asset_repository or AssetRepository(session)
 
-    def create(self, data: TaskCreate) -> Task:
-        task = self._create_pending(data, require_worker_online=True)
+    def create(self, data: TaskCreate, actor: ActorContext) -> Task:
+        task = self._create_pending(
+            data,
+            require_worker_online=True,
+            team_id=actor.team_id,
+            created_by_user_id=actor.user_id,
+        )
         self.session.commit()
         self.session.refresh(task)
         return task
 
-    def prepare_scheduled_task(self, data: TaskCreate) -> PreparedTaskCreation:
+    def prepare_scheduled_task(
+        self,
+        data: TaskCreate,
+        *,
+        team_id: UUID,
+    ) -> PreparedTaskCreation:
         """Validate a future Task while allowing its Worker to be offline.
 
         Schedules still require an enabled Device, declared Skill, ready Provider,
@@ -125,24 +136,44 @@ class TaskService:
         deferred until the ordinary pending Task is claimed.
         """
 
-        return self._prepare_creation(data, require_worker_online=False)
+        return self._prepare_creation(
+            data,
+            require_worker_online=False,
+            team_id=team_id,
+        )
 
-    def create_for_schedule(self, data: TaskCreate) -> Task:
+    def create_for_schedule(
+        self,
+        data: TaskCreate,
+        *,
+        team_id: UUID,
+        created_by_user_id: UUID | None,
+    ) -> Task:
         """Add a validated pending Task without committing the outer transaction."""
 
-        return self._create_pending(data, require_worker_online=False)
+        return self._create_pending(
+            data,
+            require_worker_online=False,
+            team_id=team_id,
+            created_by_user_id=created_by_user_id,
+        )
 
     def _create_pending(
         self,
         data: TaskCreate,
         *,
         require_worker_online: bool,
+        team_id: UUID,
+        created_by_user_id: UUID | None,
     ) -> Task:
         prepared = self._prepare_creation(
             data,
             require_worker_online=require_worker_online,
+            team_id=team_id,
         )
         task = Task(
+            team_id=team_id,
+            created_by_user_id=created_by_user_id,
             target_device_id=data.target_device_id,
             skill_id=data.skill_id,
             execution_display_name=prepared.execution_display_name,
@@ -165,14 +196,18 @@ class TaskService:
         data: TaskCreate,
         *,
         require_worker_online: bool,
+        team_id: UUID,
     ) -> PreparedTaskCreation:
-        device = self.repository.get_task_target_device(data.target_device_id)
+        device = self.repository.get_task_target_device(
+            data.target_device_id,
+            team_id=team_id,
+        )
         if device is None:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:
             raise TaskDeviceDisabledError()
         self._validate_shop_context(data.target_device_id, data.shop_ids)
-        self._validate_asset_context(data.asset_ids)
+        self._validate_asset_context(data.asset_ids, team_id=team_id)
         if require_worker_online:
             runtime = self.repository.get_device_runtime(data.target_device_id)
             if runtime is None or runtime.connection_status != "online":
@@ -220,7 +255,12 @@ class TaskService:
             execution_display_name=execution_display_name,
         )
 
-    def _validate_asset_context(self, asset_ids: list[UUID]) -> None:
+    def _validate_asset_context(
+        self,
+        asset_ids: list[UUID],
+        *,
+        team_id: UUID,
+    ) -> None:
         if not asset_ids:
             return
         assets_by_id = {
@@ -232,6 +272,7 @@ class TaskService:
             for asset_id in asset_ids
             if asset_id not in assets_by_id
             or assets_by_id[asset_id].media_type != AssetMediaType.IMAGE.value
+            or assets_by_id[asset_id].team_id != team_id
         ]
         if invalid_ids:
             raise TaskAssetInvalidError(
@@ -346,14 +387,21 @@ class TaskService:
             raise TaskInputInvalidError(str(error)) from error
         return {"app_id": app_id, "params": params}, application.app_name
 
-    def get(self, task_id: UUID) -> Task:
-        task = self.repository.get(task_id)
+    def get(self, actor: ActorContext, task_id: UUID) -> Task:
+        task = self.repository.get_for_actor(actor=actor, task_id=task_id)
         if task is None:
             raise TaskNotFoundError()
         return task
 
-    def get_active_summary(self, device_id: UUID) -> ActiveTaskSummaryRead | None:
-        task = self.repository.get_active_for_device(device_id)
+    def get_active_summary(
+        self,
+        actor: ActorContext,
+        device_id: UUID,
+    ) -> ActiveTaskSummaryRead | None:
+        task = self.repository.get_active_for_device(
+            actor=actor,
+            device_id=device_id,
+        )
         if task is None:
             return None
         latest_event = self.repository.get_latest_event(task.task_id)
@@ -373,6 +421,7 @@ class TaskService:
     def list_management_tasks(
         self,
         *,
+        actor: ActorContext,
         page: int,
         page_size: int,
         status: TaskStatus | None,
@@ -383,6 +432,7 @@ class TaskService:
     ) -> Page[TaskListItemRead]:
         normalized_search = search.strip() if search else None
         records, total = self.repository.list_management_tasks(
+            actor=actor,
             offset=(page - 1) * page_size,
             limit=page_size,
             status=status,
@@ -427,13 +477,14 @@ class TaskService:
 
     def list_events(
         self,
+        actor: ActorContext,
         task_id: UUID,
         *,
         after_seq: int | None,
         before_seq: int | None = None,
         limit: int,
     ) -> TaskEventListRead:
-        if self.repository.get(task_id) is None:
+        if self.repository.get_for_actor(actor=actor, task_id=task_id) is None:
             raise TaskNotFoundError()
         if after_seq is not None and before_seq is not None:
             raise ValueError("after_seq and before_seq cannot be used together")
@@ -474,6 +525,35 @@ class TaskService:
                 cutoff=cutoff,
                 purged_at=purged_at,
                 batch_size=self.settings.task_event_retention_batch_size,
+            )
+            if batch.events_deleted == 0:
+                self.session.rollback()
+                break
+            self.session.commit()
+            tasks_purged += batch.tasks_purged
+            events_deleted += batch.events_deleted
+        return TaskEventPurgeRead(
+            cutoff=cutoff,
+            tasks_purged=tasks_purged,
+            events_deleted=events_deleted,
+        )
+
+    def purge_expired_events_for_actor(
+        self,
+        actor: ActorContext,
+        *,
+        now: datetime | None = None,
+    ) -> TaskEventPurgeRead:
+        purged_at = now or datetime.now(UTC)
+        cutoff = purged_at - timedelta(days=self.settings.task_event_retention_days)
+        tasks_purged = 0
+        events_deleted = 0
+        while True:
+            batch = self.repository.purge_expired_event_batch(
+                cutoff=cutoff,
+                purged_at=purged_at,
+                batch_size=self.settings.task_event_retention_batch_size,
+                actor=actor,
             )
             if batch.events_deleted == 0:
                 self.session.rollback()

@@ -47,6 +47,19 @@ class Task(TimestampMixin, Base):
         ),
         Index("ix_tasks_created_task", "created_at", "task_id"),
         Index(
+            "ix_tasks_team_created_task",
+            "team_id",
+            "created_at",
+            "task_id",
+        ),
+        Index(
+            "ix_tasks_team_creator_created_task",
+            "team_id",
+            "created_by_user_id",
+            "created_at",
+            "task_id",
+        ),
+        Index(
             "ix_tasks_target_created_task",
             "target_device_id",
             "created_at",
@@ -74,6 +87,16 @@ class Task(TimestampMixin, Base):
         Uuid(as_uuid=True),
         primary_key=True,
         default=generate_id,
+    )
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
+        nullable=True,
     )
     target_device_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),

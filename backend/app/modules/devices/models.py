@@ -1,7 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, String, Text, Uuid, true
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    Uuid,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, TimestampMixin
@@ -12,12 +22,35 @@ class Device(TimestampMixin, Base):
     __tablename__ = "devices"
     __table_args__ = (
         CheckConstraint("length(trim(display_name)) > 0", name="display_name_not_blank"),
+        Index(
+            "ix_devices_team_created_device",
+            "team_id",
+            "created_at",
+            "device_id",
+        ),
+        Index(
+            "ix_devices_team_creator_created_device",
+            "team_id",
+            "created_by_user_id",
+            "created_at",
+            "device_id",
+        ),
     )
 
     device_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         primary_key=True,
         default=generate_id,
+    )
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
+        nullable=True,
     )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     enabled: Mapped[bool] = mapped_column(

@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.credentials.service import CredentialService
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
@@ -37,6 +40,9 @@ router = APIRouter(
         409: {"model": ErrorResponse, "description": "任务状态冲突"},
     },
 )
+
+
+get_task_authorized_actor = require_module_access(ModuleCode.TASK)
 
 
 def get_task_service(
@@ -83,13 +89,15 @@ def get_task_event_cursor(
 @router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
 def create_task(
     data: TaskCreate,
+    actor: Annotated[ActorContext, Depends(get_task_authorized_actor)],
     service: Annotated[TaskService, Depends(get_task_service)],
 ) -> TaskRead:
-    return task_to_read(service.create(data))
+    return task_to_read(service.create(data, actor))
 
 
 @router.get("", response_model=Page[TaskListItemRead])
 def list_tasks(
+    actor: Annotated[ActorContext, Depends(get_task_authorized_actor)],
     service: Annotated[TaskService, Depends(get_task_service)],
     pagination: Annotated[PaginationParams, Depends()],
     created_range: Annotated[TaskCreatedRange, Depends(get_task_created_range)],
@@ -98,6 +106,7 @@ def list_tasks(
     search: Annotated[str | None, Query(max_length=500)] = None,
 ) -> Page[TaskListItemRead]:
     return service.list_management_tasks(
+        actor=actor,
         page=pagination.page,
         page_size=pagination.page_size,
         status=task_status,
@@ -113,9 +122,10 @@ def list_tasks(
     response_model=TaskEventPurgeRead,
 )
 def purge_expired_task_events(
+    actor: Annotated[ActorContext, Depends(get_task_authorized_actor)],
     service: Annotated[TaskService, Depends(get_task_service)],
 ) -> TaskEventPurgeRead:
-    return service.purge_expired_events()
+    return service.purge_expired_events_for_actor(actor)
 
 
 @router.get(
@@ -125,9 +135,10 @@ def purge_expired_task_events(
 )
 def get_active_task(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_task_authorized_actor)],
     service: Annotated[TaskService, Depends(get_task_service)],
 ) -> ActiveTaskSummaryRead | Response:
-    summary = service.get_active_summary(device_id)
+    summary = service.get_active_summary(actor, device_id)
     if summary is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     return summary
@@ -136,18 +147,21 @@ def get_active_task(
 @router.get("/{task_id}", response_model=TaskRead)
 def get_task(
     task_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_task_authorized_actor)],
     service: Annotated[TaskService, Depends(get_task_service)],
 ) -> TaskRead:
-    return task_to_read(service.get(task_id))
+    return task_to_read(service.get(actor, task_id))
 
 
 @router.get("/{task_id}/events", response_model=TaskEventListRead)
 def list_task_events(
     task_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_task_authorized_actor)],
     service: Annotated[TaskService, Depends(get_task_service)],
     cursor: Annotated[TaskEventCursor, Depends(get_task_event_cursor)],
 ) -> TaskEventListRead:
     return service.list_events(
+        actor,
         task_id,
         after_seq=cursor.after_seq,
         before_seq=cursor.before_seq,

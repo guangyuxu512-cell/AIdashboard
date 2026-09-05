@@ -7,7 +7,13 @@ from uuid import UUID, uuid4
 from httpx import ASGITransport, AsyncClient, Response
 
 from app.main import create_app
-from app.modules.devices.api import get_worker_service as get_device_worker_service
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.devices.api import (
+    get_device_authorized_actor,
+    get_device_service,
+    get_worker_service as get_device_worker_service,
+)
 from app.modules.workers.api import get_worker_service as get_worker_api_service
 from app.modules.workers.auth import get_worker_provisioning_principal
 from app.modules.workers.schemas import (
@@ -19,6 +25,14 @@ from app.modules.workers.service import WorkerPrincipal
 
 
 DEVICE_ID = uuid4()
+ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="Worker Credential 测试人员",
+    team_id=uuid4(),
+    membership_id=uuid4(),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class ApiWorkerCredentialService:
@@ -63,6 +77,16 @@ class ApiWorkerCredentialService:
         )
 
 
+class ApiDeviceAccessService:
+    def get(self, actor: ActorContext, device_id: UUID) -> object:
+        assert actor == ACTOR
+        assert device_id == DEVICE_ID
+        return object()
+
+    def get_for_write(self, actor: ActorContext, device_id: UUID) -> object:
+        return self.get(actor, device_id)
+
+
 def request(
     application: object,
     method: str,
@@ -81,6 +105,8 @@ def test_worker_token_is_only_returned_by_issue_and_rotate_responses() -> None:
     application = create_app()
     service = ApiWorkerCredentialService()
     application.dependency_overrides[get_device_worker_service] = lambda: service
+    application.dependency_overrides[get_device_service] = ApiDeviceAccessService
+    application.dependency_overrides[get_device_authorized_actor] = lambda: ACTOR
 
     issued = request(
         application,

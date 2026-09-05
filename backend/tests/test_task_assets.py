@@ -5,6 +5,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.models import Asset
 from app.modules.devices.models import Device
@@ -16,6 +18,16 @@ from app.modules.tasks.worker_api import claim_task
 from app.modules.workers.models import DeviceSkillCapability
 from app.modules.workers.service import WorkerPrincipal
 from tests.support import FakeSession
+
+
+ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="任务图片测试人员",
+    team_id=uuid4(),
+    membership_id=uuid4(),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class FakeTaskRepository:
@@ -32,7 +44,13 @@ class FakeTaskRepository:
             classification="internal",
         )
 
-    def get_task_target_device(self, device_id: UUID) -> Device | None:
+    def get_task_target_device(
+        self,
+        device_id: UUID,
+        *,
+        team_id: UUID | None = None,
+    ) -> Device | None:
+        del team_id
         return self.device if device_id == self.device.device_id else None
 
     def get_device_runtime(self, device_id: UUID) -> object | None:
@@ -62,7 +80,7 @@ class FakeAssetRepository:
 def make_asset(name: str) -> Asset:
     return Asset(
         asset_id=uuid4(),
-        team_id=uuid4(),
+        team_id=ACTOR.team_id,
         created_by_user_id=None,
         original_filename=name,
         storage_key=f"{uuid4().hex}.jpg",
@@ -94,7 +112,7 @@ def test_one_task_keeps_ordered_asset_relationships() -> None:
     )
     ordered_ids = [third.asset_id, first.asset_id, second.asset_id]
 
-    task = service.create(make_request(device.device_id, ordered_ids))
+    task = service.create(make_request(device.device_id, ordered_ids), ACTOR)
 
     assert repository.tasks == [task]
     assert task.asset_ids == ordered_ids
@@ -115,6 +133,7 @@ def test_missing_asset_rejects_the_whole_task() -> None:
     with pytest.raises(TaskAssetInvalidError) as captured:
         service.create(
             make_request(device.device_id, [existing.asset_id, missing_id]),
+            ACTOR,
         )
 
     assert repository.tasks == []
@@ -133,7 +152,7 @@ def test_non_image_asset_is_not_added_to_worker_task_contract() -> None:
     )
 
     with pytest.raises(TaskAssetInvalidError) as captured:
-        service.create(make_request(device.device_id, [future_video.asset_id]))
+        service.create(make_request(device.device_id, [future_video.asset_id]), ACTOR)
 
     assert repository.tasks == []
     assert captured.value.details == {"asset_ids": [str(future_video.asset_id)]}

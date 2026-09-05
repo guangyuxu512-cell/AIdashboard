@@ -150,6 +150,10 @@ Phase A 不修改 Shop、Asset、Task、Schedule 或 AI Job 的 Ownership。后�
 统一语义是 `team_id=数据归属团队`、`created_by_user_id=创建者`；现有
 `Shop.owner_user_id` 仍只表示负责人，不承担权限边界。
 
+Migration `20260905_0029_device_task_human_access_v1` 将这对字段加到 `devices`、`schedules` 与
+`tasks`，使用 `RESTRICT` 外键、Team/创建者查询索引和 `team_id NOT NULL`。升级时仅在数据库恰有一个
+Team 时回填既有记录的 Team；无法可靠归属的历史创建者保持 `NULL`，多 Team 的歧义数据拒绝迁移。
+
 ## Access Management V1 数据库
 
 Migration `20260902_0025_access_management_v1` 增加

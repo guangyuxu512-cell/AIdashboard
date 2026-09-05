@@ -4,6 +4,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
 from app.modules.credentials.exceptions import CredentialNotFoundError
 from app.modules.devices.models import Device
 from app.modules.shops.enums import ShopPlatform
@@ -17,6 +19,16 @@ from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import DeviceSkillCapability
 from tests.support import FakeSession
+
+
+ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="多店铺任务测试人员",
+    team_id=uuid4(),
+    membership_id=uuid4(),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class FakeTaskRepository:
@@ -33,7 +45,13 @@ class FakeTaskRepository:
             classification="internal",
         )
 
-    def get_task_target_device(self, device_id: UUID) -> Device | None:
+    def get_task_target_device(
+        self,
+        device_id: UUID,
+        *,
+        team_id: UUID | None = None,
+    ) -> Device | None:
+        del team_id
         return self.device if device_id == self.device.device_id else None
 
     def get_device_runtime(self, device_id: UUID) -> object | None:
@@ -138,7 +156,7 @@ def test_five_shops_create_one_task_and_preserve_user_order() -> None:
     service, repository, credentials, device = make_service(shops)
     ordered_shop_ids = [shop.shop_id for shop in reversed(shops)]
 
-    task = service.create(request(device.device_id, ordered_shop_ids))
+    task = service.create(request(device.device_id, ordered_shop_ids), ACTOR)
 
     assert repository.tasks == [task]
     assert task.shop_ids == ordered_shop_ids
@@ -161,7 +179,7 @@ def test_missing_or_disabled_shop_rejects_the_whole_task(missing: bool) -> None:
     service, repository, _, device = make_service(shops)
 
     with pytest.raises(TaskShopInvalidError) as captured:
-        service.create(request(device.device_id, [valid.shop_id, invalid_id]))
+        service.create(request(device.device_id, [valid.shop_id, invalid_id]), ACTOR)
 
     assert repository.tasks == []
     assert captured.value.details == {"shop_ids": [str(invalid_id)]}
@@ -175,7 +193,7 @@ def test_one_unbound_shop_rejects_the_whole_task() -> None:
     )
 
     with pytest.raises(TaskShopDeviceBindingInvalidError) as captured:
-        service.create(request(device.device_id, [first.shop_id, second.shop_id]))
+        service.create(request(device.device_id, [first.shop_id, second.shop_id]), ACTOR)
 
     assert repository.tasks == []
     assert captured.value.details == {"shop_ids": [str(second.shop_id)]}
@@ -189,6 +207,6 @@ def test_one_missing_credential_rejects_the_whole_task() -> None:
     )
 
     with pytest.raises(CredentialNotFoundError):
-        service.create(request(device.device_id, [first.shop_id, second.shop_id]))
+        service.create(request(device.device_id, [first.shop_id, second.shop_id]), ACTOR)
 
     assert repository.tasks == []
