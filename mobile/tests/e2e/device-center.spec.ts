@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
+import { createMobileAuthApiFixture } from './auth-api-fixture'
+
 const viewportWidths = [360, 375, 390, 430] as const
 const themes = ['light', 'dark'] as const
 const safeAreaFixture = {
@@ -340,6 +342,7 @@ async function installMockApi(
   page: Page,
   options: MockApiOptions = {},
 ): Promise<MockApiState> {
+  const auth = createMobileAuthApiFixture()
   const state: MockApiState = {
     methods: [],
     deviceListRequests: [],
@@ -356,6 +359,7 @@ async function installMockApi(
   const activeTaskRequestCounts = new Map<string, number>()
 
   await page.route('**/api/v1/**', async (route) => {
+    if (await auth.handle(route)) return
     const request = route.request()
     const method = request.method()
     const url = new URL(request.url())

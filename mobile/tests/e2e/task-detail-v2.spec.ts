@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
+import { createMobileAuthApiFixture } from './auth-api-fixture'
+
 const viewports = [
   { width: 360, height: 640 },
   { width: 375, height: 740 },
@@ -132,10 +134,12 @@ async function installTaskDetailApi(
   page: Page,
   options: MockOptions = {},
 ): Promise<void> {
+  const auth = createMobileAuthApiFixture()
   let eventsFailureUsed = false
   let taskFailureUsed = false
 
   await page.route('**/api/v1/**', async (route) => {
+    if (await auth.handle(route)) return
     const url = new URL(route.request().url())
     const path = url.pathname.replace(/^.*\/api\/v1\//, '')
 

@@ -1,6 +1,8 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 export const MOBILE_ROUTE_NAMES = {
+  login: 'mobile-login',
+  permissionDenied: 'mobile-permission-denied',
   home: 'mobile-home',
   tasks: 'mobile-tasks',
   taskDetail: 'mobile-task-detail',
@@ -28,7 +30,31 @@ const homeRoute: RouteRecordRaw = {
   meta: {
     title: '移动端',
     layout: 'main',
+    requiresAuth: true,
+    permission: null,
+  },
+}
+
+const loginRoute: RouteRecordRaw = {
+  path: '/login',
+  name: MOBILE_ROUTE_NAMES.login,
+  component: () => import('@/pages/auth/MobileLoginPage.vue'),
+  meta: {
+    title: '登录',
+    layout: 'auth',
     requiresAuth: false,
+    permission: null,
+  },
+}
+
+const permissionDeniedRoute: RouteRecordRaw = {
+  path: '/permission-denied',
+  name: MOBILE_ROUTE_NAMES.permissionDenied,
+  component: () => import('@/pages/PermissionDeniedPage.vue'),
+  meta: {
+    title: '无权访问',
+    layout: 'auth',
+    requiresAuth: true,
     permission: null,
   },
 }
@@ -41,8 +67,8 @@ const taskRoutes: RouteRecordRaw[] = [
     meta: {
       title: '任务中心',
       layout: 'main',
-      requiresAuth: false,
-      permission: null,
+      requiresAuth: true,
+      permission: 'task',
     },
   },
   {
@@ -52,8 +78,8 @@ const taskRoutes: RouteRecordRaw[] = [
     meta: {
       title: '任务详情',
       layout: 'detail',
-      requiresAuth: false,
-      permission: null,
+      requiresAuth: true,
+      permission: 'task',
     },
   },
 ]
@@ -66,8 +92,8 @@ const deviceRoutes: RouteRecordRaw[] = [
     meta: {
       title: '设备中心',
       layout: 'main',
-      requiresAuth: false,
-      permission: null,
+      requiresAuth: true,
+      permission: 'device',
     },
   },
   {
@@ -77,8 +103,8 @@ const deviceRoutes: RouteRecordRaw[] = [
     meta: {
       title: '设备详情',
       layout: 'detail',
-      requiresAuth: false,
-      permission: null,
+      requiresAuth: true,
+      permission: 'device',
     },
   },
 ]
@@ -93,8 +119,8 @@ const placeholderRoutes: RouteRecordRaw[] = [
     meta: {
       title: '定时计划',
       layout: 'main',
-      requiresAuth: false,
-      permission: null,
+      requiresAuth: true,
+      permission: 'schedule',
     },
   },
   {
@@ -104,18 +130,18 @@ const placeholderRoutes: RouteRecordRaw[] = [
     meta: {
       title: '店铺',
       layout: 'main',
-      requiresAuth: false,
-      permission: null,
+      requiresAuth: true,
+      permission: 'shop',
     },
   },
   {
     path: '/me',
     name: MOBILE_ROUTE_NAMES.profile,
-    component: comingSoonPage,
+    component: () => import('@/pages/profile/ProfilePage.vue'),
     meta: {
       title: '我的',
       layout: 'main',
-      requiresAuth: false,
+      requiresAuth: true,
       permission: null,
     },
   },
@@ -125,10 +151,12 @@ export function createMobileRoutes(
   options: CreateMobileRoutesOptions = {},
 ): RouteRecordRaw[] {
   const routes = [
+    loginRoute,
     homeRoute,
     ...taskRoutes,
     ...deviceRoutes,
     ...placeholderRoutes,
+    permissionDeniedRoute,
   ]
   const runtimeIsDevelopment =
     options.runtimeIsDevelopment ?? import.meta.env.DEV
