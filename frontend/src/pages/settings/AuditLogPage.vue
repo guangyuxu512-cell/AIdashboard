@@ -200,13 +200,27 @@ function reset(): void {
 }
 
 .audit-log-page__toolbar {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .audit-log-page__toolbar :deep(.table-toolbar__actions) {
-  flex-wrap: wrap;
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .audit-log-page__toolbar {
+    flex-wrap: wrap;
+  }
+
+  .audit-log-page__toolbar :deep(.table-toolbar__actions) {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 .audit-log-page__title {
