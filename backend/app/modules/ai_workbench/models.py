@@ -619,6 +619,11 @@ class GenerationItem(TimestampMixin, Base):
         foreign_keys=[output_asset_id],
         lazy="selectin",
     )
+    provider_execution: Mapped["GenerationProviderExecution | None"] = relationship(
+        back_populates="item",
+        lazy="selectin",
+        uselist=False,
+    )
 
 
 class GenerationItemAsset(Base):
@@ -664,3 +669,37 @@ class GenerationItemAsset(Base):
     )
     item: Mapped[GenerationItem] = relationship(back_populates="input_assets")
     asset: Mapped[Asset] = relationship(lazy="joined")
+
+
+class GenerationProviderExecution(TimestampMixin, Base):
+    __tablename__ = "generation_provider_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "provider_code = 'toapis'",
+            name="provider_code",
+        ),
+        CheckConstraint(
+            "external_task_id IS NULL OR length(trim(external_task_id)) > 0",
+            name="external_task_id_not_blank",
+        ),
+        CheckConstraint("attempt_count > 0", name="attempt_count_positive"),
+        UniqueConstraint(
+            "provider_code",
+            "external_task_id",
+            name="uq_generation_provider_executions_provider_task",
+        ),
+    )
+
+    generation_item_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "generation_items.generation_item_id",
+            name="fk_generation_provider_executions_generation_item",
+            ondelete="RESTRICT",
+        ),
+        primary_key=True,
+    )
+    provider_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    item: Mapped[GenerationItem] = relationship(back_populates="provider_execution")

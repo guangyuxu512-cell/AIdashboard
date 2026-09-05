@@ -13,6 +13,9 @@ from app.modules.access.api import router as access_router
 from app.modules.access.management_api import router as access_management_router
 from app.modules.audit.api import router as audit_log_router
 from app.modules.ai_workbench.api import router as ai_workbench_router
+from app.modules.ai_workbench.generation_executor import (
+    execute_generation_items_forever,
+)
 from app.modules.authentication.api import router as authentication_router
 from app.modules.assets.api import router as assets_router
 from app.modules.automation_apps.api import router as automation_apps_router
@@ -36,10 +39,16 @@ from app.modules.workers.reconcile import reconcile_offline_devices_forever
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     del application
+    settings = get_settings()
     reconcile_task = asyncio.create_task(reconcile_lost_tasks_forever())
     offline_reconcile_task = asyncio.create_task(reconcile_offline_devices_forever())
     retention_task = asyncio.create_task(purge_expired_task_events_forever())
     schedule_task = asyncio.create_task(trigger_due_schedules_forever())
+    generation_task = (
+        asyncio.create_task(execute_generation_items_forever())
+        if settings.toapis_api_key is not None
+        else None
+    )
     try:
         yield
     finally:
@@ -47,6 +56,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         offline_reconcile_task.cancel()
         retention_task.cancel()
         schedule_task.cancel()
+        if generation_task is not None:
+            generation_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -55,6 +66,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await retention_task
         with suppress(asyncio.CancelledError):
             await schedule_task
+        if generation_task is not None:
+            with suppress(asyncio.CancelledError):
+                await generation_task
 
 
 def create_app() -> FastAPI:

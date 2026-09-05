@@ -322,6 +322,12 @@ Compare-and-Set：
 Attempt/Event Sourcing。Expected Count 与行锁为 Retry 提供持久幂等与并发保护，不新增 Retry Request 表或
 通用幂等框架。
 
+唯一例外是 Provider Create 已经开始、但 External Task ID 未能确认并持久化的
+`PROVIDER_CREATE_OUTCOME_UNKNOWN`。该状态无法证明外部任务未创建，标准 Failed Item Retry 必须返回 HTTP
+409 且不得增加 `attempt_count`，避免重复生成或重复计费；后续只有在 Provider 提供可验证的幂等恢复能力或新增
+明确的人工处置契约后才能开放。Create POST 后的超时、连接中断、无效响应或缺少 Task ID 均属于该状态；
+Provider 明确拒绝创建不属于该状态。
+
 批量 FAILED Item 重试前还必须确认 `source_product_material_group_id` 非空，且来源组仍存在于当前 Team；
 否则复用 `PRODUCT_MATERIAL_GROUP_NOT_FOUND` 拒绝本次重试并保持 Item 不变。Frozen Snapshot 不用于重建已
 删除的商品组。该限制只影响删除来源组后的新重试，不改变删除前已完成 Item、输出 Asset 或历史记录。
@@ -450,6 +456,9 @@ Provider、输出校验、Storage 或归档失败发生在 Job 已返回之后�
 - `last_failure_code`：稳定、非 Provider 私有的分类；
 - `last_failure_message`：可安全展示的摘要；
 - `last_failed_at`。
+
+Provider Execution 已存在但当前 Attempt 的 External Task ID 为空时，以
+`PROVIDER_CREATE_OUTCOME_UNKNOWN` 记录安全失败摘要；恢复与标准 Retry 均不得再次调用 Provider Create。
 
 完整 Stack Trace、认证 Header、Secret、Provider 原始请求/响应和敏感图片 Payload 只允许进入受控内部日志，
 不进入公开 DTO 或业务表。本文不建设新的 Logging/Audit 系统。

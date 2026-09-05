@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Load, Session, noload, selectinload
 from sqlalchemy.sql import Select
 
@@ -21,6 +21,7 @@ from app.modules.ai_workbench.models import (
     GenerationItem,
     GenerationItemAsset,
     GenerationJob,
+    GenerationProviderExecution,
     MaterialGroupAsset,
     MaterialGroupTemplateBinding,
     ProductMaterialGroup,
@@ -810,9 +811,38 @@ class GenerationRepository:
                     GenerationItemAsset.asset,
                 ),
                 selectinload(GenerationItem.job),
+                selectinload(GenerationItem.provider_execution),
             )
             .with_for_update(),
         )
+
+    def next_item_id_for_provider_execution(self) -> UUID | None:
+        return self.session.scalar(
+            select(GenerationItem.generation_item_id)
+            .where(
+                GenerationItem.status.in_(
+                    [
+                        GenerationItemStatus.PENDING.value,
+                        GenerationItemStatus.RUNNING.value,
+                    ],
+                ),
+            )
+            .order_by(
+                case(
+                    (GenerationItem.status == GenerationItemStatus.RUNNING.value, 0),
+                    else_=1,
+                ),
+                GenerationItem.created_at,
+                GenerationItem.generation_item_id,
+            )
+            .limit(1),
+        )
+
+    def add_provider_execution(
+        self,
+        execution: GenerationProviderExecution,
+    ) -> None:
+        self.session.add(execution)
 
     def material_groups_exist_for_team(
         self,

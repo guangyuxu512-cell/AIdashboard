@@ -875,3 +875,32 @@ def test_logging_audit_migration_upgrade_and_downgrade(
         ("drop_index", "ix_audit_logs_created_log"),
         ("drop_table", "audit_logs"),
     ]
+
+
+def test_ai_provider_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260905_0030_ai_provider_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260905_0030"
+    assert migration.down_revision == "20260905_0029"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "generation_provider_executions"),
+    ]
+    assert not {
+        "providers",
+        "models",
+        "generation_attempts",
+        "provider_payloads",
+        "provider_history",
+        "queue_tasks",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_table", "generation_provider_executions"),
+    ]

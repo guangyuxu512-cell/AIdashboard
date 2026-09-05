@@ -154,6 +154,19 @@ Migration `20260905_0029_device_task_human_access_v1` 将这对字段加到 `dev
 `tasks`，使用 `RESTRICT` 外键、Team/创建者查询索引和 `team_id NOT NULL`。升级时仅在数据库恰有一个
 Team 时回填既有记录的 Team；无法可靠归属的历史创建者保持 `NULL`，多 Team 的歧义数据拒绝迁移。
 
+## AI Provider V1 数据库
+
+Migration `20260905_0030_ai_provider_v1` 增加 `generation_provider_executions`。该表以
+`generation_item_id` 为主键，一条 GenerationItem 最多保存一个当前 Provider Execution；只记录
+`provider_code / external_task_id / attempt_count / created_at / updated_at`。Retry 为新 Attempt 重置并复用同一行，
+不建立 Attempt 历史。`external_task_id` 可空，仅用于调用 Provider 前已经提交的 Durable Create Intent；创建
+成功后立即更新同一行。恢复时当前 Attempt 的空 Task ID 必须 Fail Closed，不得再次 Create。
+`attempt_count` 与 GenerationItem 当前次数共同保护旧 Provider 结果不得回写。
+
+0030 不修改 `generation_jobs / generation_items`，不创建 Provider、Model、Payload、History 或 Queue 表，
+也不保存 Provider 结果 URL。V1 的 Provider Code 只允许 `toapis`；Provider 配置和 Secret 只来自 Backend
+运行环境。
+
 ## Access Management V1 数据库
 
 Migration `20260902_0025_access_management_v1` 增加

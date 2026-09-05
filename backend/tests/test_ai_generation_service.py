@@ -25,6 +25,7 @@ from app.modules.ai_workbench.exceptions import (
     GenerationPlanTooLargeError,
     GenerationRetryConflictError,
     GenerationSubmissionConflictError,
+    ProviderCreateOutcomeUnknownError,
     ProductMaterialGroupNotFoundError,
 )
 from app.modules.ai_workbench.generation_service import (
@@ -34,6 +35,7 @@ from app.modules.ai_workbench.generation_service import (
     generation_input_summary,
 )
 from app.modules.ai_workbench.limits import (
+    MAX_GENERATION_ITEM_INPUT_ASSETS,
     MAX_GENERATION_ITEMS,
     MAX_GENERATION_SELECTION_IDS,
 )
@@ -588,6 +590,141 @@ def test_submit_rejects_unreadable_or_cross_team_assets_even_for_all_scope() -> 
     assert session.rollbacks == 1
 
 
+@pytest.mark.parametrize(
+    ("mode", "product_count", "reference_count"),
+    [
+        (GenerationMode.NORMAL_GENERATION, 17, 0),
+        (GenerationMode.STYLE_REPLICATION, 15, 2),
+    ],
+)
+def test_instant_submit_rejects_more_than_sixteen_item_inputs(
+    mode: GenerationMode,
+    product_count: int,
+    reference_count: int,
+) -> None:
+    service, generations, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product_ids = [
+        assets.add(team_id=TEAM_A, created_by_user_id=USER_A).asset_id
+        for _ in range(product_count)
+    ]
+    reference_ids = [
+        assets.add(team_id=TEAM_A, created_by_user_id=USER_A).asset_id
+        for _ in range(reference_count)
+    ]
+    assert len(product_ids) + len(reference_ids) > MAX_GENERATION_ITEM_INPUT_ASSETS
+
+    with pytest.raises(GenerationPlanTooLargeError):
+        service.submit(
+            current_actor,
+            InstantGenerationSubmit(
+                work_mode=GenerationWorkMode.INSTANT,
+                submission_key=f"too-many-inputs-{mode.value}",
+                mode=mode,
+                product_asset_ids=product_ids,
+                reference_asset_ids=reference_ids,
+                prompt="完整提示词",
+                output_format="SINGLE",  # type: ignore[arg-type]
+                size="1:1",  # type: ignore[arg-type]
+                count=1,
+            ),
+        )
+
+    assert generations.jobs == {}
+
+
+def test_batch_submit_rejects_more_than_sixteen_inputs_per_item() -> None:
+    service, generations, templates, materials, assets, _ = make_service()
+    current_actor = actor()
+    product = add_material_group(
+        materials,
+        current_actor=current_actor,
+        mode=GenerationMode.STYLE_REPLICATION,
+    )
+    for _ in range(MAX_GENERATION_ITEM_INPUT_ASSETS):
+        attach(
+            product,
+            assets.add(team_id=TEAM_A, created_by_user_id=USER_A),
+            MaterialRole.PRODUCT_SOURCE,
+        )
+    attach(
+        product,
+        assets.add(team_id=TEAM_A, created_by_user_id=USER_A),
+        MaterialRole.STYLE_REFERENCE,
+    )
+    template_group = add_template_group(
+        templates,
+        current_actor=current_actor,
+        mode=GenerationMode.STYLE_REPLICATION,
+    )
+    add_prompt(template_group, role=OutputRole.MAIN_IMAGE, count=1)
+    product.template_bindings.append(
+        MaterialGroupTemplateBinding(
+            material_group_id=product.material_group_id,
+            template_group_id=template_group.template_group_id,
+            generation_mode=GenerationMode.STYLE_REPLICATION.value,
+            position=0,
+        ),
+    )
+
+    with pytest.raises(GenerationPlanTooLargeError):
+        service.submit(
+            current_actor,
+            BatchGenerationSubmit(
+                work_mode=GenerationWorkMode.BATCH,
+                submission_key="batch-too-many-item-inputs",
+                mode=GenerationMode.STYLE_REPLICATION,
+                product_scope="SELECTED",  # type: ignore[arg-type]
+                selected_product_ids=[product.material_group_id],
+                template_source="PRODUCT_CONFIGURED",  # type: ignore[arg-type]
+                output_range="ALL",  # type: ignore[arg-type]
+            ),
+        )
+
+    assert generations.jobs == {}
+
+
+@pytest.mark.parametrize(
+    ("mode", "product_count", "reference_count"),
+    [
+        (GenerationMode.NORMAL_GENERATION, 16, 0),
+        (GenerationMode.STYLE_REPLICATION, 15, 1),
+    ],
+)
+def test_instant_submit_accepts_sixteen_item_inputs(
+    mode: GenerationMode,
+    product_count: int,
+    reference_count: int,
+) -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product_ids = [
+        assets.add(team_id=TEAM_A, created_by_user_id=USER_A).asset_id
+        for _ in range(product_count)
+    ]
+    reference_ids = [
+        assets.add(team_id=TEAM_A, created_by_user_id=USER_A).asset_id
+        for _ in range(reference_count)
+    ]
+
+    job = service.submit(
+        current_actor,
+        InstantGenerationSubmit(
+            work_mode=GenerationWorkMode.INSTANT,
+            submission_key=f"sixteen-inputs-{mode.value}",
+            mode=mode,
+            product_asset_ids=product_ids,
+            reference_asset_ids=reference_ids,
+            prompt="完整提示词",
+            output_format="SINGLE",  # type: ignore[arg-type]
+            size="1:1",  # type: ignore[arg-type]
+            count=1,
+        ),
+    )
+
+    assert len(job.items[0].input_assets) == MAX_GENERATION_ITEM_INPUT_ASSETS
+
+
 def test_instant_template_source_does_not_change_literal_prompt_or_main_role() -> None:
     service, _, templates, _, assets, _ = make_service()
     current_actor = actor()
@@ -902,6 +1039,40 @@ def test_item_completion_uses_job_ownership_and_retry_is_compare_and_set() -> No
                 },
             ),
         )
+
+
+def test_retry_rejects_unknown_provider_create_outcome_without_mutation() -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    job = service.submit(
+        current_actor,
+        instant_data(product.asset_id, key="unknown-create-outcome", count=1),
+    )
+    item = job.items[0]
+    failed = service.fail_item(
+        item.generation_item_id,
+        failure_code=ProviderCreateOutcomeUnknownError.code,
+        failure_message=ProviderCreateOutcomeUnknownError.message,
+    )
+    retry = GenerationRetryRequest.model_validate(
+        {
+            "items": [
+                {
+                    "item_id": str(item.generation_item_id),
+                    "expected_attempt_count": 1,
+                },
+            ],
+        },
+    )
+
+    with pytest.raises(ProviderCreateOutcomeUnknownError):
+        service.retry_failed_items(current_actor, failed.generation_job_id, retry)
+
+    unchanged = service.get(current_actor, failed.generation_job_id).items[0]
+    assert unchanged.status == GenerationItemStatus.FAILED.value
+    assert unchanged.attempt_count == 1
+    assert unchanged.last_failure_code == ProviderCreateOutcomeUnknownError.code
 
 
 def test_batch_retry_rejects_deleted_source_group_without_mutation() -> None:

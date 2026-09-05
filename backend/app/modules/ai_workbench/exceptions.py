@@ -1,4 +1,8 @@
 from app.core.exceptions import AppError
+from app.modules.ai_workbench.provider import (
+    PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE,
+    PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE,
+)
 
 
 class TemplateGroupNotFoundError(AppError):
@@ -82,6 +86,12 @@ class GenerationRetryConflictError(AppError):
 class GenerationItemStateConflictError(AppError):
     code = "GENERATION_ITEM_STATE_CONFLICT"
     message = "生成项当前状态不允许该操作"
+    status_code = 409
+
+
+class ProviderCreateOutcomeUnknownError(AppError):
+    code = PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE
+    message = PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE
     status_code = 409
 
 
