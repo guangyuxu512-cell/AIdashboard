@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { NDatePicker } from 'naive-ui'
 
-import type { FieldWidth } from './types'
-
 export type AppDateValue = number | [number, number] | null
 
 withDefaults(
   defineProps<{
     modelValue?: AppDateValue
     type?: 'date' | 'daterange'
-    width?: FieldWidth
     clearable?: boolean
     disabled?: boolean
     placeholder?: string
@@ -19,7 +16,6 @@ withDefaults(
   {
     modelValue: null,
     type: 'date',
-    width: 'full',
     clearable: true,
     disabled: false,
     placeholder: undefined,
@@ -35,8 +31,8 @@ defineEmits<{
 
 <template>
   <NDatePicker
-    class="app-field"
-    :class="`app-field--${width}`"
+    class="app-date-picker"
+    :class="{ 'app-date-picker--range': type === 'daterange' }"
     size="medium"
     :value="modelValue"
     :type="type"
@@ -48,3 +44,15 @@ defineEmits<{
     @update:value="$emit('update:modelValue', $event)"
   />
 </template>
+
+<style scoped>
+.app-date-picker {
+  width: var(--date-picker-width-single);
+  flex: 0 0 var(--date-picker-width-single);
+}
+
+.app-date-picker--range {
+  width: var(--date-picker-width-range);
+  flex-basis: var(--date-picker-width-range);
+}
+</style>

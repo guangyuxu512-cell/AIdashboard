@@ -111,16 +111,14 @@ const search = computed({
         placeholder="创建时间"
       />
     </FilterField>
-    <FilterField v-if="datePreset === 'custom'" width="md">
-      <AppDatePicker
-        v-model="customDateRange"
-        type="daterange"
-        width="md"
-        :clearable="false"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-      />
-    </FilterField>
+    <AppDatePicker
+      v-if="datePreset === 'custom'"
+      v-model="customDateRange"
+      type="daterange"
+      :clearable="false"
+      start-placeholder="开始日期"
+      end-placeholder="结束日期"
+    />
     <FilterField width="md">
       <AppInput
         v-model="search"

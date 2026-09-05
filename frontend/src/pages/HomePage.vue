@@ -129,7 +129,7 @@ const columns: DataTableColumns<FoundationRow> = [
           :options="layerOptions"
           placeholder="选择层级"
         />
-        <AppDatePicker v-model="selectedDate" width="md" />
+        <AppDatePicker v-model="selectedDate" />
         <AppSwitch v-model="enabled" />
         <template #actions>
           <AppButton tone="text">重置</AppButton>
