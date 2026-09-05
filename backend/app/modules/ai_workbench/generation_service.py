@@ -32,6 +32,7 @@ from app.modules.ai_workbench.exceptions import (
     GenerationJobNotFoundError,
     GenerationPlanInvalidError,
     GenerationPlanTooLargeError,
+    ProviderCreateOutcomeUnknownError,
     GenerationRetryConflictError,
     GenerationSubmissionConflictError,
     ProductMaterialGroupNotFoundError,
@@ -110,6 +111,7 @@ class GenerationExecution:
     size: GenerationSize
     input_assets: tuple[GenerationExecutionInput, ...]
     external_task_id: str | None
+    provider_task_create_required: bool
 
 
 def generation_counts(items: Sequence[GenerationItem]) -> GenerationCounts:
@@ -330,6 +332,11 @@ class GenerationService:
                     or item.status != GenerationItemStatus.FAILED.value
                 ):
                     raise GenerationRetryConflictError()
+                if (
+                    item.last_failure_code
+                    == ProviderCreateOutcomeUnknownError.code
+                ):
+                    raise ProviderCreateOutcomeUnknownError()
                 actionable.append(item)
 
             if not actionable:
@@ -445,6 +452,9 @@ class GenerationService:
         *,
         provider_code: str,
     ) -> GenerationExecution | None:
+        normalized_provider = provider_code.strip()
+        if not normalized_provider or len(normalized_provider) > 32:
+            raise ValueError("provider_code must contain 1 to 32 characters")
         generation_item_id = (
             self.generation_repository.next_item_id_for_provider_execution()
         )
@@ -469,16 +479,28 @@ class GenerationService:
                 self._sync_job_status(item.job, now=now)
 
             execution = item.provider_execution
-            external_task_id = None
-            if (
-                execution is not None
-                and execution.provider_code == provider_code
-                and execution.attempt_count == item.attempt_count
-            ):
-                external_task_id = execution.external_task_id
+            provider_task_create_required = False
+            if execution is None:
+                execution = GenerationProviderExecution(
+                    generation_item_id=item.generation_item_id,
+                    provider_code=normalized_provider,
+                    external_task_id=None,
+                    attempt_count=item.attempt_count,
+                )
+                item.provider_execution = execution
+                self.generation_repository.add_provider_execution(execution)
+                provider_task_create_required = True
+            elif execution.attempt_count != item.attempt_count:
+                execution.provider_code = normalized_provider
+                execution.external_task_id = None
+                execution.attempt_count = item.attempt_count
+                provider_task_create_required = True
+            elif execution.provider_code != normalized_provider:
+                raise GenerationItemStateConflictError()
             snapshot = self._execution_snapshot(
                 item,
-                external_task_id=external_task_id,
+                external_task_id=execution.external_task_id,
+                provider_task_create_required=provider_task_create_required,
             )
             self.session.commit()
             return snapshot
@@ -507,18 +529,18 @@ class GenerationService:
                 raise GenerationItemStateConflictError()
             execution = item.provider_execution
             if execution is None:
-                execution = GenerationProviderExecution(
-                    generation_item_id=item.generation_item_id,
-                    provider_code=normalized_provider,
-                    external_task_id=normalized_task_id,
-                    attempt_count=expected_attempt_count,
-                )
-                item.provider_execution = execution
-                self.generation_repository.add_provider_execution(execution)
-            else:
-                execution.provider_code = normalized_provider
-                execution.external_task_id = normalized_task_id
-                execution.attempt_count = expected_attempt_count
+                raise GenerationItemStateConflictError()
+            if (
+                execution.provider_code != normalized_provider
+                or execution.attempt_count != expected_attempt_count
+            ):
+                raise GenerationItemStateConflictError()
+            if execution.external_task_id is not None:
+                if execution.external_task_id == normalized_task_id:
+                    self.session.rollback()
+                    return
+                raise GenerationItemStateConflictError()
+            execution.external_task_id = normalized_task_id
             self.session.commit()
         except Exception:
             self.session.rollback()
@@ -1046,6 +1068,7 @@ class GenerationService:
         item: GenerationItem,
         *,
         external_task_id: str | None,
+        provider_task_create_required: bool,
     ) -> GenerationExecution:
         role_order = {
             GenerationInputRole.PRODUCT_SOURCE.value: 0,
@@ -1080,6 +1103,7 @@ class GenerationService:
                 for link in links
             ),
             external_task_id=external_task_id,
+            provider_task_create_required=provider_task_create_required,
         )
 
     def _get_execution_job(self, generation_job_id: UUID) -> GenerationJob:

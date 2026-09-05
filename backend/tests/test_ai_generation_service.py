@@ -25,6 +25,7 @@ from app.modules.ai_workbench.exceptions import (
     GenerationPlanTooLargeError,
     GenerationRetryConflictError,
     GenerationSubmissionConflictError,
+    ProviderCreateOutcomeUnknownError,
     ProductMaterialGroupNotFoundError,
 )
 from app.modules.ai_workbench.generation_service import (
@@ -1038,6 +1039,40 @@ def test_item_completion_uses_job_ownership_and_retry_is_compare_and_set() -> No
                 },
             ),
         )
+
+
+def test_retry_rejects_unknown_provider_create_outcome_without_mutation() -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    job = service.submit(
+        current_actor,
+        instant_data(product.asset_id, key="unknown-create-outcome", count=1),
+    )
+    item = job.items[0]
+    failed = service.fail_item(
+        item.generation_item_id,
+        failure_code=ProviderCreateOutcomeUnknownError.code,
+        failure_message=ProviderCreateOutcomeUnknownError.message,
+    )
+    retry = GenerationRetryRequest.model_validate(
+        {
+            "items": [
+                {
+                    "item_id": str(item.generation_item_id),
+                    "expected_attempt_count": 1,
+                },
+            ],
+        },
+    )
+
+    with pytest.raises(ProviderCreateOutcomeUnknownError):
+        service.retry_failed_items(current_actor, failed.generation_job_id, retry)
+
+    unchanged = service.get(current_actor, failed.generation_job_id).items[0]
+    assert unchanged.status == GenerationItemStatus.FAILED.value
+    assert unchanged.attempt_count == 1
+    assert unchanged.last_failure_code == ProviderCreateOutcomeUnknownError.code
 
 
 def test_batch_retry_rejects_deleted_source_group_without_mutation() -> None:

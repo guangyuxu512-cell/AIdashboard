@@ -22,7 +22,7 @@ def upgrade() -> None:
         "generation_provider_executions",
         sa.Column("generation_item_id", sa.Uuid(), nullable=False),
         sa.Column("provider_code", sa.String(length=32), nullable=False),
-        sa.Column("external_task_id", sa.String(length=255), nullable=False),
+        sa.Column("external_task_id", sa.String(length=255), nullable=True),
         sa.Column("attempt_count", sa.Integer(), nullable=False),
         sa.Column(
             "created_at",
@@ -41,7 +41,7 @@ def upgrade() -> None:
             name="provider_code",
         ),
         sa.CheckConstraint(
-            "length(trim(external_task_id)) > 0",
+            "external_task_id IS NULL OR length(trim(external_task_id)) > 0",
             name="external_task_id_not_blank",
         ),
         sa.CheckConstraint(

@@ -158,8 +158,10 @@ Team 时回填既有记录的 Team；无法可靠归属的历史创建者保持 
 
 Migration `20260905_0030_ai_provider_v1` 增加 `generation_provider_executions`。该表以
 `generation_item_id` 为主键，一条 GenerationItem 最多保存一个当前 Provider Execution；只记录
-`provider_code / external_task_id / attempt_count / created_at / updated_at`。Retry 创建新外部任务后更新同一行，
-不建立 Attempt 历史。`attempt_count` 与 GenerationItem 当前次数共同保护旧 Provider 结果不得回写。
+`provider_code / external_task_id / attempt_count / created_at / updated_at`。Retry 为新 Attempt 重置并复用同一行，
+不建立 Attempt 历史。`external_task_id` 可空，仅用于调用 Provider 前已经提交的 Durable Create Intent；创建
+成功后立即更新同一行。恢复时当前 Attempt 的空 Task ID 必须 Fail Closed，不得再次 Create。
+`attempt_count` 与 GenerationItem 当前次数共同保护旧 Provider 结果不得回写。
 
 0030 不修改 `generation_jobs / generation_items`，不创建 Provider、Model、Payload、History 或 Queue 表，
 也不保存 Provider 结果 URL。V1 的 Provider Code 只允许 `toapis`；Provider 配置和 Secret 只来自 Backend

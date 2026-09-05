@@ -21,7 +21,10 @@ from app.modules.ai_workbench.enums import (
     OutputFormat,
     OutputRole,
 )
-from app.modules.ai_workbench.exceptions import GenerationItemStateConflictError
+from app.modules.ai_workbench.exceptions import (
+    GenerationItemStateConflictError,
+    ProviderCreateOutcomeUnknownError,
+)
 from app.modules.ai_workbench.generation_executor import GenerationExecutor
 from app.modules.ai_workbench.generation_service import (
     GenerationExecution,
@@ -32,6 +35,8 @@ from app.modules.ai_workbench.provider import (
     GenerationProviderInput,
     GenerationProviderRequest,
     ImageProviderFailure,
+    PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE,
+    PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE,
 )
 from app.modules.assets.storage import StoredAsset
 
@@ -111,6 +116,7 @@ def test_toapis_upload_create_poll_and_download_use_verified_contract(
             )
         if request.url.path == "/v1/images/generations":
             assert request.method == "POST"
+            assert "idempotency-key" not in request.headers
             body = json.loads(request.content)
             assert body == {
                 "model": "gpt-image-2",
@@ -171,6 +177,106 @@ def test_toapis_upload_create_poll_and_download_use_verified_contract(
         "/v1/images/generations/task-001",
         "/output.png",
     ]
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "timeout",
+        "connection_lost",
+        "invalid_json",
+        "missing_task_id",
+        "boolean_task_id",
+        "http_503",
+        "unexpected_exception",
+    ],
+)
+def test_toapis_ambiguous_create_response_fails_with_unknown_outcome(
+    scenario: str,
+) -> None:
+    create_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal create_calls
+        if request.url.path == "/v1/uploads/images":
+            return httpx.Response(
+                200,
+                json={"data": {"url": "https://files.toapis.com/input.png"}},
+            )
+        assert request.url.path == "/v1/images/generations"
+        create_calls += 1
+        if scenario == "timeout":
+            raise httpx.ReadTimeout("ambiguous create timeout", request=request)
+        if scenario == "connection_lost":
+            raise httpx.ReadError("ambiguous create connection loss", request=request)
+        if scenario == "invalid_json":
+            return httpx.Response(200, content=b"not-json")
+        if scenario == "missing_task_id":
+            return httpx.Response(200, json={"data": {"status": "queued"}})
+        if scenario == "boolean_task_id":
+            return httpx.Response(200, json={"data": {"id": True}})
+        if scenario == "unexpected_exception":
+            raise RuntimeError("unexpected post-response failure")
+        return httpx.Response(503, json={"error": {"code": "unavailable"}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = toapis_provider(client)
+        with pytest.raises(ImageProviderFailure) as captured:
+            provider.create_task(provider_request())
+
+    assert create_calls == 1
+    assert captured.value.failure_code == PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE
+    assert captured.value.safe_message == PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE
+    assert captured.value.retryable is False
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_code", "expected_message"),
+    [
+        (400, "PROVIDER_REQUEST_REJECTED", "图片生成服务拒绝了请求"),
+        (401, "PROVIDER_AUTHENTICATION_FAILED", "图片生成服务认证失败"),
+        (429, "PROVIDER_RATE_LIMITED", "图片生成服务请求过于频繁"),
+    ],
+)
+def test_toapis_explicit_create_rejection_remains_an_ordinary_failure(
+    status_code: int,
+    expected_code: str,
+    expected_message: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/uploads/images":
+            return httpx.Response(
+                200,
+                json={"data": {"url": "https://files.toapis.com/input.png"}},
+            )
+        assert request.url.path == "/v1/images/generations"
+        return httpx.Response(
+            status_code,
+            json={"error": {"code": "explicit_rejection"}},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = toapis_provider(client)
+        with pytest.raises(ImageProviderFailure) as captured:
+            provider.create_task(provider_request())
+
+    assert captured.value.failure_code == expected_code
+    assert captured.value.safe_message == expected_message
+
+
+def test_toapis_upload_failure_is_not_a_create_outcome_unknown() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/uploads/images"
+        raise httpx.ReadTimeout("upload timeout", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = toapis_provider(client)
+        with pytest.raises(ImageProviderFailure) as captured:
+            provider.create_task(provider_request())
+
+    assert captured.value.failure_code == "PROVIDER_TIMEOUT"
+    assert captured.value.failure_code != PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE
+    assert captured.value.retryable is True
 
 
 @pytest.mark.parametrize(
@@ -323,6 +429,8 @@ class FakeExecutionService:
         self,
         executions: list[GenerationExecution],
         events: list[str],
+        *,
+        record_error: BaseException | None = None,
     ) -> None:
         self.executions = executions
         self.events = events
@@ -330,6 +438,7 @@ class FakeExecutionService:
         self.recorded: list[tuple[int, str]] = []
         self.completed_attempts: list[int] = []
         self.failures: list[tuple[int, str, str]] = []
+        self.record_error = record_error
 
     def prepare_next_provider_execution(
         self,
@@ -351,6 +460,8 @@ class FakeExecutionService:
         if expected_attempt_count != self.current_attempt:
             raise GenerationItemStateConflictError()
         self.events.append("record")
+        if self.record_error is not None:
+            raise self.record_error
         self.recorded.append((expected_attempt_count, external_task_id))
 
     def complete_item(
@@ -391,15 +502,24 @@ class FakeExecutionService:
 class FakeProvider:
     provider_code = "toapis"
 
-    def __init__(self, outcomes: list[object], events: list[str]) -> None:
+    def __init__(
+        self,
+        outcomes: list[object],
+        events: list[str],
+        *,
+        create_failure: ImageProviderFailure | None = None,
+    ) -> None:
         self.outcomes = outcomes
         self.events = events
+        self.create_failure = create_failure
         self.created_requests: list[GenerationProviderRequest] = []
         self.waited_task_ids: list[str] = []
 
     def create_task(self, request: GenerationProviderRequest) -> str:
         self.events.append("create")
         self.created_requests.append(request)
+        if self.create_failure is not None:
+            raise self.create_failure
         return f"task-attempt-{len(self.created_requests)}"
 
     def wait_for_image(self, external_task_id: str) -> GeneratedProviderImage:
@@ -415,6 +535,7 @@ def execution(
     *,
     attempt_count: int,
     external_task_id: str | None,
+    provider_task_create_required: bool,
     mode: GenerationMode = GenerationMode.NORMAL_GENERATION,
 ) -> GenerationExecution:
     return GenerationExecution(
@@ -437,6 +558,7 @@ def execution(
             ),
         ),
         external_task_id=external_task_id,
+        provider_task_create_required=provider_task_create_required,
     )
 
 
@@ -462,7 +584,11 @@ def executor(
 
 def test_pending_item_creates_and_persists_task_before_polling_then_succeeds() -> None:
     events: list[str] = []
-    item = execution(attempt_count=1, external_task_id=None)
+    item = execution(
+        attempt_count=1,
+        external_task_id=None,
+        provider_task_create_required=True,
+    )
     service = FakeExecutionService([item], events)
     provider = FakeProvider([provider_image()], events)
 
@@ -476,7 +602,11 @@ def test_pending_item_creates_and_persists_task_before_polling_then_succeeds() -
 
 def test_running_item_resumes_persisted_task_without_duplicate_creation() -> None:
     events: list[str] = []
-    item = execution(attempt_count=1, external_task_id="persisted-task")
+    item = execution(
+        attempt_count=1,
+        external_task_id="persisted-task",
+        provider_task_create_required=False,
+    )
     service = FakeExecutionService([item], events)
     provider = FakeProvider([provider_image()], events)
 
@@ -489,7 +619,11 @@ def test_running_item_resumes_persisted_task_without_duplicate_creation() -> Non
 
 def test_provider_failure_marks_current_item_failed_with_safe_fields() -> None:
     events: list[str] = []
-    item = execution(attempt_count=1, external_task_id="failed-task")
+    item = execution(
+        attempt_count=1,
+        external_task_id="failed-task",
+        provider_task_create_required=False,
+    )
     service = FakeExecutionService([item], events)
     provider = FakeProvider(
         [
@@ -511,11 +645,16 @@ def test_provider_failure_marks_current_item_failed_with_safe_fields() -> None:
 
 def test_retry_replaces_current_task_and_stale_attempt_cannot_write_back() -> None:
     events: list[str] = []
-    stale = execution(attempt_count=1, external_task_id="old-task")
+    stale = execution(
+        attempt_count=1,
+        external_task_id="old-task",
+        provider_task_create_required=False,
+    )
     retry = replace(
         stale,
         attempt_count=2,
         external_task_id=None,
+        provider_task_create_required=True,
     )
     service = FakeExecutionService([stale, retry], events)
     service.current_attempt = 2
@@ -530,3 +669,118 @@ def test_retry_replaces_current_task_and_stale_attempt_cannot_write_back() -> No
     assert service.recorded == [(2, "task-attempt-1")]
     assert service.completed_attempts == [2]
     assert provider.waited_task_ids == ["old-task", "task-attempt-1"]
+
+
+def test_unknown_create_outcome_fails_closed_without_duplicate_creation() -> None:
+    events: list[str] = []
+    item = execution(
+        attempt_count=1,
+        external_task_id=None,
+        provider_task_create_required=False,
+    )
+    service = FakeExecutionService([item], events)
+    provider = FakeProvider([], events)
+
+    assert executor(service, provider).execute_next() is True
+
+    assert provider.created_requests == []
+    assert provider.waited_task_ids == []
+    assert service.failures == [
+        (
+            1,
+            ProviderCreateOutcomeUnknownError.code,
+            ProviderCreateOutcomeUnknownError.message,
+        ),
+    ]
+
+
+def test_task_id_persistence_failure_is_recorded_as_unknown_outcome() -> None:
+    events: list[str] = []
+    item = execution(
+        attempt_count=1,
+        external_task_id=None,
+        provider_task_create_required=True,
+    )
+    service = FakeExecutionService(
+        [item],
+        events,
+        record_error=RuntimeError("simulated persistence failure"),
+    )
+    provider = FakeProvider([], events)
+
+    assert executor(service, provider).execute_next() is True
+
+    assert len(provider.created_requests) == 1
+    assert provider.waited_task_ids == []
+    assert service.failures == [
+        (
+            1,
+            ProviderCreateOutcomeUnknownError.code,
+            ProviderCreateOutcomeUnknownError.message,
+        ),
+    ]
+
+
+def test_ambiguous_provider_create_failure_is_not_treated_as_retryable() -> None:
+    events: list[str] = []
+    item = execution(
+        attempt_count=1,
+        external_task_id=None,
+        provider_task_create_required=True,
+    )
+    service = FakeExecutionService([item], events)
+    provider = FakeProvider(
+        [],
+        events,
+        create_failure=ImageProviderFailure(
+            PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE,
+            PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE,
+            retryable=False,
+        ),
+    )
+
+    assert executor(service, provider).execute_next() is True
+
+    assert len(provider.created_requests) == 1
+    assert provider.waited_task_ids == []
+    assert service.recorded == []
+    assert service.failures == [
+        (
+            1,
+            ProviderCreateOutcomeUnknownError.code,
+            ProviderCreateOutcomeUnknownError.message,
+        ),
+    ]
+
+
+def test_crash_after_create_does_not_create_again_during_recovery() -> None:
+    events: list[str] = []
+    item = execution(
+        attempt_count=1,
+        external_task_id=None,
+        provider_task_create_required=True,
+    )
+    crash_service = FakeExecutionService(
+        [item],
+        events,
+        record_error=SystemExit("simulated process interruption"),
+    )
+    provider = FakeProvider([provider_image()], events)
+
+    with pytest.raises(SystemExit, match="simulated process interruption"):
+        executor(crash_service, provider).execute_next()
+
+    recovered = replace(item, provider_task_create_required=False)
+    recovery_service = FakeExecutionService([recovered], events)
+    recovery_provider = FakeProvider([], events)
+    assert executor(recovery_service, recovery_provider).execute_next() is True
+
+    assert len(provider.created_requests) == 1
+    assert recovery_provider.created_requests == []
+    assert recovery_service.failures == [
+        (
+            1,
+            ProviderCreateOutcomeUnknownError.code,
+            ProviderCreateOutcomeUnknownError.message,
+        ),
+    ]

@@ -54,11 +54,36 @@ CONTENT_TYPES = {
 }
 
 
-def test_real_toapis_normal_and_style_generation_create_owned_assets(
+@pytest.mark.parametrize(
+    ("mode", "reference_image_env", "prompt"),
+    [
+        (
+            GenerationMode.NORMAL_GENERATION,
+            None,
+            "保持输入商品的真实外观、材质和结构，生成一张干净白底、主体居中的"
+            "电商商品主图，不添加文字、标志或水印。",
+        ),
+        (
+            GenerationMode.STYLE_REPLICATION,
+            "AI_PROVIDER_REAL_STYLE_IMAGE",
+            "保持第一张图片中商品的真实外观、颜色、材质和结构，参考第二张图片的"
+            "构图与光影风格，生成一张无文字、无标志、无水印的电商主图。",
+        ),
+    ],
+    ids=["normal", "style"],
+)
+def test_real_toapis_generation_creates_owned_asset(
     tmp_path: Path,
+    mode: GenerationMode,
+    reference_image_env: str | None,
+    prompt: str,
 ) -> None:
     product_path = _configured_image("AI_PROVIDER_REAL_PRODUCT_IMAGE")
-    style_path = _configured_image("AI_PROVIDER_REAL_STYLE_IMAGE")
+    style_path = (
+        _configured_image(reference_image_env)
+        if reference_image_env is not None
+        else None
+    )
     base_settings = get_settings()
     assert base_settings.toapis_api_key is not None
     engine = get_database_engine()
@@ -129,41 +154,27 @@ def test_real_toapis_normal_and_style_generation_create_owned_assets(
                 settings=settings,
             )
             product_asset = _upload(assets, actor, product_path)
-            style_asset = _upload(assets, actor, style_path)
+            style_asset = (
+                _upload(assets, actor, style_path)
+                if style_path is not None
+                else None
+            )
 
-        normal_job_id = _submit(
+        job_id = _submit(
             factory,
             service_factory,
             actor,
             product_asset_id=product_asset.asset_id,
-            reference_asset_ids=[],
-            mode=GenerationMode.NORMAL_GENERATION,
-            key=f"stage-2a1-real-normal-{uuid4()}",
-            prompt=(
-                "保持输入商品的真实外观、材质和结构，生成一张干净白底、主体居中的"
-                "电商商品主图，不添加文字、标志或水印。"
+            reference_asset_ids=(
+                [style_asset.asset_id] if style_asset is not None else []
             ),
+            mode=mode,
+            key=f"stage-2a1-real-{mode.value.lower()}-{uuid4()}",
+            prompt=prompt,
         )
-        job_ids.append(normal_job_id)
+        job_ids.append(job_id)
         assert executor.execute_next() is True
-        _assert_success(factory, storage, normal_job_id, team_id, user_id)
-
-        style_job_id = _submit(
-            factory,
-            service_factory,
-            actor,
-            product_asset_id=product_asset.asset_id,
-            reference_asset_ids=[style_asset.asset_id],
-            mode=GenerationMode.STYLE_REPLICATION,
-            key=f"stage-2a1-real-style-{uuid4()}",
-            prompt=(
-                "保持第一张图片中商品的真实外观、颜色、材质和结构，参考第二张图片的"
-                "构图与光影风格，生成一张无文字、无标志、无水印的电商主图。"
-            ),
-        )
-        job_ids.append(style_job_id)
-        assert executor.execute_next() is True
-        _assert_success(factory, storage, style_job_id, team_id, user_id)
+        _assert_success(factory, storage, job_id, team_id, user_id)
     finally:
         _cleanup(factory, storage, job_ids, team_id, user_id)
 
@@ -264,6 +275,9 @@ def _assert_success(
         assert job.status == GenerationJobStatus.SUCCESS.value
         assert execution.provider_code == "toapis"
         assert execution.attempt_count == item.attempt_count == 1
+        assert execution.external_task_id
+        assert not hasattr(execution, "provider_payload")
+        assert not hasattr(execution, "result_url")
         assert output.team_id == team_id
         assert output.created_by_user_id == user_id
         assert storage.exists(output.storage_key)

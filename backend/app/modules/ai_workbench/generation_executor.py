@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.database import get_session_factory
 from app.integrations.image_generation import ToApisImageProvider
-from app.modules.ai_workbench.exceptions import GenerationItemStateConflictError
+from app.modules.ai_workbench.exceptions import (
+    GenerationItemStateConflictError,
+    ProviderCreateOutcomeUnknownError,
+)
 from app.modules.ai_workbench.generation_service import (
     GenerationExecution,
     GenerationService,
@@ -52,11 +55,21 @@ class GenerationExecutor:
         if execution is None:
             return False
 
+        provider_create_unpersisted = False
         try:
             external_task_id = execution.external_task_id
             if external_task_id is None:
+                if not execution.provider_task_create_required:
+                    self._fail_if_current(
+                        execution,
+                        failure_code=ProviderCreateOutcomeUnknownError.code,
+                        failure_message=ProviderCreateOutcomeUnknownError.message,
+                    )
+                    return True
                 external_task_id = self._create_provider_task(execution)
+                provider_create_unpersisted = True
                 self._record_provider_task(execution, external_task_id)
+                provider_create_unpersisted = False
             image = self._provider.wait_for_image(external_task_id)
             try:
                 self._complete(execution, image)
@@ -92,8 +105,16 @@ class GenerationExecutor:
             )
             self._fail_if_current(
                 execution,
-                failure_code="GENERATION_EXECUTION_FAILED",
-                failure_message="图片生成执行失败",
+                failure_code=(
+                    ProviderCreateOutcomeUnknownError.code
+                    if provider_create_unpersisted
+                    else "GENERATION_EXECUTION_FAILED"
+                ),
+                failure_message=(
+                    ProviderCreateOutcomeUnknownError.message
+                    if provider_create_unpersisted
+                    else "图片生成执行失败"
+                ),
             )
         return True
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -20,7 +21,10 @@ from app.modules.ai_workbench.enums import (
     GenerationWorkMode,
     OutputFormat,
 )
-from app.modules.ai_workbench.exceptions import GenerationItemStateConflictError
+from app.modules.ai_workbench.exceptions import (
+    GenerationItemStateConflictError,
+    ProviderCreateOutcomeUnknownError,
+)
 from app.modules.ai_workbench.generation_executor import GenerationExecutor
 from app.modules.ai_workbench.generation_service import GenerationService
 from app.modules.ai_workbench.models import (
@@ -64,9 +68,11 @@ def provider_postgresql_engine() -> Engine:
         )
     inspector = inspect(engine)
     assert "generation_provider_executions" in inspector.get_table_names()
-    assert {column["name"] for column in inspector.get_columns(
-        "generation_provider_executions",
-    )} == {
+    columns = {
+        column["name"]: column
+        for column in inspector.get_columns("generation_provider_executions")
+    }
+    assert set(columns) == {
         "generation_item_id",
         "provider_code",
         "external_task_id",
@@ -74,6 +80,7 @@ def provider_postgresql_engine() -> Engine:
         "created_at",
         "updated_at",
     }
+    assert columns["external_task_id"]["nullable"] is True
     assert inspector.get_pk_constraint("generation_provider_executions")[
         "constrained_columns"
     ] == ["generation_item_id"]
@@ -88,18 +95,26 @@ class FakeProvider:
         *,
         task_id: str,
         failure: ImageProviderFailure | None = None,
+        create_failure: ImageProviderFailure | None = None,
+        before_create: Callable[[], None] | None = None,
     ) -> None:
         self.task_id = task_id
         self.failure = failure
+        self.create_failure = create_failure
+        self.before_create = before_create
         self.create_calls = 0
         self.waited_task_ids: list[str] = []
         self.requests: list[GenerationProviderRequest] = []
 
     def create_task(self, request: GenerationProviderRequest) -> str:
+        if self.before_create is not None:
+            self.before_create()
         self.create_calls += 1
         self.requests.append(request)
         assert request.input_images
         assert all(image.stream.read(8) == b"\x89PNG\r\n\x1a\n" for image in request.input_images)
+        if self.create_failure is not None:
+            raise self.create_failure
         return self.task_id
 
     def wait_for_image(self, external_task_id: str) -> GeneratedProviderImage:
@@ -111,6 +126,18 @@ class FakeProvider:
             content_type="image/png",
             stream=BytesIO(PNG_BYTES),
         )
+
+
+class CrashBeforeTaskIdPersistenceService(GenerationService):
+    def record_provider_execution(
+        self,
+        generation_item_id: UUID,
+        *,
+        expected_attempt_count: int,
+        provider_code: str,
+        external_task_id: str,
+    ) -> None:
+        raise SystemExit("stage-2a1 simulated process interruption")
 
 
 def current_actor(*, user_id: UUID, team_id: UUID) -> ActorContext:
@@ -242,6 +269,15 @@ def test_provider_execution_persistence_recovery_retry_and_asset_ownership(
             prepared = service.prepare_next_provider_execution(provider_code="toapis")
             assert prepared is not None
             assert prepared.generation_item_id == recovery_item_id
+            assert prepared.provider_task_create_required is True
+            assert prepared.external_task_id is None
+        with factory() as session:
+            intent = session.get(GenerationProviderExecution, recovery_item_id)
+            assert intent is not None
+            assert intent.attempt_count == 1
+            assert intent.external_task_id is None
+        with factory() as session:
+            service = service_factory(session)
             service.record_provider_execution(
                 recovery_item_id,
                 expected_attempt_count=1,
@@ -259,6 +295,173 @@ def test_provider_execution_persistence_recovery_retry_and_asset_ownership(
         assert recovery_executor.execute_next() is True
         assert recovery_provider.create_calls == 0
         assert recovery_provider.waited_task_ids == ["stage-2a1-task-resume"]
+
+        with factory() as session:
+            crash_job = service_factory(session).submit(
+                actor,
+                submit_request(input_asset_id, key="stage-2a1-provider-crash"),
+            )
+            job_ids.append(crash_job.generation_job_id)
+            crash_item_id = crash_job.items[0].generation_item_id
+
+        def crash_service_factory(session: Session) -> GenerationService:
+            return CrashBeforeTaskIdPersistenceService(
+                session,
+                asset_service=AssetService(
+                    session,
+                    storage=storage,
+                    settings=settings,
+                ),
+            )
+
+        def assert_durable_intent_before_create() -> None:
+            with factory() as session:
+                intent = session.get(GenerationProviderExecution, crash_item_id)
+                assert intent is not None
+                assert intent.attempt_count == 1
+                assert intent.external_task_id is None
+
+        crash_provider = FakeProvider(
+            task_id="stage-2a1-task-crash-window",
+            before_create=assert_durable_intent_before_create,
+        )
+        crash_executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=crash_service_factory,
+            provider=crash_provider,
+            storage=storage,
+        )
+        with pytest.raises(
+            SystemExit,
+            match="stage-2a1 simulated process interruption",
+        ):
+            crash_executor.execute_next()
+        assert crash_provider.create_calls == 1
+
+        with factory() as session:
+            crashed_item = session.get(GenerationItem, crash_item_id)
+            crash_intent = session.get(GenerationProviderExecution, crash_item_id)
+            assert crashed_item is not None
+            assert crash_intent is not None
+            assert crashed_item.status == GenerationItemStatus.RUNNING.value
+            assert crash_intent.attempt_count == crashed_item.attempt_count == 1
+            assert crash_intent.external_task_id is None
+
+        fail_closed_provider = FakeProvider(task_id="must-not-be-created")
+        fail_closed_executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=service_factory,
+            provider=fail_closed_provider,
+            storage=storage,
+        )
+        assert fail_closed_executor.execute_next() is True
+        assert fail_closed_provider.create_calls == 0
+        assert fail_closed_provider.waited_task_ids == []
+
+        with factory() as session:
+            crashed_item = session.get(GenerationItem, crash_item_id)
+            crash_intent = session.get(GenerationProviderExecution, crash_item_id)
+            crashed_job = session.get(
+                GenerationJob,
+                crashed_item.generation_job_id if crashed_item else None,
+            )
+            assert crashed_item is not None
+            assert crash_intent is not None
+            assert crashed_job is not None
+            assert crashed_item.status == GenerationItemStatus.FAILED.value
+            assert (
+                crashed_item.last_failure_code
+                == ProviderCreateOutcomeUnknownError.code
+            )
+            assert (
+                crashed_item.last_failure_message
+                == ProviderCreateOutcomeUnknownError.message
+            )
+            assert crashed_job.status == GenerationJobStatus.FAILED.value
+            assert crash_intent.external_task_id is None
+            with pytest.raises(ProviderCreateOutcomeUnknownError):
+                service_factory(session).retry_failed_items(
+                    actor,
+                    crashed_job.generation_job_id,
+                    GenerationRetryRequest.model_validate(
+                        {
+                            "items": [
+                                {
+                                    "item_id": str(crash_item_id),
+                                    "expected_attempt_count": 1,
+                                },
+                            ],
+                        },
+                    ),
+                )
+            session.refresh(crashed_item)
+            assert crashed_item.status == GenerationItemStatus.FAILED.value
+            assert crashed_item.attempt_count == 1
+
+        with factory() as session:
+            ambiguous_job = service_factory(session).submit(
+                actor,
+                submit_request(input_asset_id, key="stage-2a1-provider-ambiguous"),
+            )
+            job_ids.append(ambiguous_job.generation_job_id)
+            ambiguous_item_id = ambiguous_job.items[0].generation_item_id
+
+        ambiguous_provider = FakeProvider(
+            task_id="stage-2a1-remote-task-created-without-response",
+            create_failure=ImageProviderFailure(
+                ProviderCreateOutcomeUnknownError.code,
+                ProviderCreateOutcomeUnknownError.message,
+                retryable=False,
+            ),
+        )
+        ambiguous_executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=service_factory,
+            provider=ambiguous_provider,
+            storage=storage,
+        )
+        assert ambiguous_executor.execute_next() is True
+        assert ambiguous_provider.create_calls == 1
+
+        no_repeat_provider = FakeProvider(task_id="must-not-be-created")
+        no_repeat_executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=service_factory,
+            provider=no_repeat_provider,
+            storage=storage,
+        )
+        assert no_repeat_executor.execute_next() is False
+        assert no_repeat_provider.create_calls == 0
+
+        with factory() as session:
+            ambiguous_item = session.get(GenerationItem, ambiguous_item_id)
+            ambiguous_intent = session.get(
+                GenerationProviderExecution,
+                ambiguous_item_id,
+            )
+            assert ambiguous_item is not None
+            assert ambiguous_intent is not None
+            assert ambiguous_item.status == GenerationItemStatus.FAILED.value
+            assert (
+                ambiguous_item.last_failure_code
+                == ProviderCreateOutcomeUnknownError.code
+            )
+            assert ambiguous_intent.external_task_id is None
+            with pytest.raises(ProviderCreateOutcomeUnknownError):
+                service_factory(session).retry_failed_items(
+                    actor,
+                    ambiguous_job.generation_job_id,
+                    GenerationRetryRequest.model_validate(
+                        {
+                            "items": [
+                                {
+                                    "item_id": str(ambiguous_item_id),
+                                    "expected_attempt_count": 1,
+                                },
+                            ],
+                        },
+                    ),
+                )
 
         with factory() as session:
             failed_job = service_factory(session).submit(

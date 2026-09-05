@@ -679,7 +679,7 @@ class GenerationProviderExecution(TimestampMixin, Base):
             name="provider_code",
         ),
         CheckConstraint(
-            "length(trim(external_task_id)) > 0",
+            "external_task_id IS NULL OR length(trim(external_task_id)) > 0",
             name="external_task_id_not_blank",
         ),
         CheckConstraint("attempt_count > 0", name="attempt_count_positive"),
@@ -700,6 +700,6 @@ class GenerationProviderExecution(TimestampMixin, Base):
         primary_key=True,
     )
     provider_code: Mapped[str] = mapped_column(String(32), nullable=False)
-    external_task_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False)
     item: Mapped[GenerationItem] = relationship(back_populates="provider_execution")

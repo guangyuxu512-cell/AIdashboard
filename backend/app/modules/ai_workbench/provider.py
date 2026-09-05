@@ -12,6 +12,12 @@ from app.modules.ai_workbench.enums import (
 )
 
 
+PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE = "PROVIDER_CREATE_OUTCOME_UNKNOWN"
+PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE = (
+    "外部任务创建结果无法确认，需要人工决定是否重试"
+)
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationProviderInput:
     asset_id: UUID

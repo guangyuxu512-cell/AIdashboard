@@ -17,6 +17,8 @@ from app.modules.ai_workbench.provider import (
     GenerationProviderInput,
     GenerationProviderRequest,
     ImageProviderFailure,
+    PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE,
+    PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE,
 )
 
 
@@ -34,6 +36,13 @@ CONTENT_TYPE_SUFFIXES = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+DEFINITIVE_CREATE_REJECTION_CODES = frozenset(
+    {
+        "PROVIDER_AUTHENTICATION_FAILED",
+        "PROVIDER_RATE_LIMITED",
+        "PROVIDER_REQUEST_REJECTED",
+    },
+)
 
 
 class ToApisImageProvider:
@@ -69,35 +78,46 @@ class ToApisImageProvider:
         self._monotonic = monotonic_fn
 
     def create_task(self, request: GenerationProviderRequest) -> str:
-        with self._client_scope() as client:
-            image_urls = [
-                self._upload_image(client, image)
-                for image in request.input_images
-            ]
-            body: dict[str, Any] = {
-                "model": self._model_code,
-                "prompt": request.final_prompt,
-                "size": request.size.value,
-                "resolution": self._resolution,
-                "quality": self._quality,
-                "n": 1,
-                "response_format": "url",
-            }
-            if image_urls:
-                body["image_urls"] = image_urls
-            payload = self._request_json(
-                client,
-                "POST",
-                f"{self._base_url}{GENERATE_PATH}",
-                json=body,
-            )
-        external_task_id = _task_id(payload)
+        create_request_started = False
+        external_task_id: str | None = None
+        try:
+            with self._client_scope() as client:
+                image_urls = [
+                    self._upload_image(client, image)
+                    for image in request.input_images
+                ]
+                body: dict[str, Any] = {
+                    "model": self._model_code,
+                    "prompt": request.final_prompt,
+                    "size": request.size.value,
+                    "resolution": self._resolution,
+                    "quality": self._quality,
+                    "n": 1,
+                    "response_format": "url",
+                }
+                if image_urls:
+                    body["image_urls"] = image_urls
+                create_request_started = True
+                payload = self._request_json(
+                    client,
+                    "POST",
+                    f"{self._base_url}{GENERATE_PATH}",
+                    json=body,
+                )
+                external_task_id = _task_id(payload)
+        except ImageProviderFailure as error:
+            if (
+                not create_request_started
+                or error.failure_code in DEFINITIVE_CREATE_REJECTION_CODES
+            ):
+                raise
+            raise _create_outcome_unknown_failure() from None
+        except Exception:
+            if create_request_started:
+                raise _create_outcome_unknown_failure() from None
+            raise
         if external_task_id is None:
-            raise ImageProviderFailure(
-                "PROVIDER_RESPONSE_INVALID",
-                "图片生成服务返回了无效任务信息",
-                retryable=False,
-            )
+            raise _create_outcome_unknown_failure()
         return external_task_id
 
     def wait_for_image(self, external_task_id: str) -> GeneratedProviderImage:
@@ -349,11 +369,21 @@ def _task_id(payload: dict[str, Any]) -> str | None:
         data.get("task_id") if isinstance(data, dict) else None,
     ]
     for value in candidates:
+        if isinstance(value, bool):
+            continue
         if isinstance(value, (str, int)):
             normalized = str(value).strip()
             if normalized and len(normalized) <= 255 and not normalized.isspace():
                 return normalized
     return None
+
+
+def _create_outcome_unknown_failure() -> ImageProviderFailure:
+    return ImageProviderFailure(
+        PROVIDER_CREATE_OUTCOME_UNKNOWN_CODE,
+        PROVIDER_CREATE_OUTCOME_UNKNOWN_MESSAGE,
+        retryable=False,
+    )
 
 
 def _task_payload(payload: dict[str, Any]) -> dict[str, Any]:
