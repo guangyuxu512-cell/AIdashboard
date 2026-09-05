@@ -30,7 +30,9 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-无（`FREE`）。
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| `feat/device-task-human-access-v1` | `reserved` | Device & Task Human Access V1；仅预留，尚未创建 Migration 文件 | `20260904_0028_logging_audit_v1` | `20260905_0029_device_task_human_access_v1` | Feature DB 已从空库升级至 `20260904_0028`；Feature Owner 在 Gate 1 前负责验证 `upgrade` 及所需的 `downgrade` |
 
 最近释放记录：
 
