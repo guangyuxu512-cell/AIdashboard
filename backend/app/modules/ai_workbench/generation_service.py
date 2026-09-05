@@ -19,9 +19,11 @@ from app.modules.ai_workbench.enums import (
     GenerationItemStatus,
     GenerationJobStatus,
     GenerationMode,
+    GenerationSize,
     GenerationOutputRange,
     GenerationWorkMode,
     MaterialRole,
+    OutputFormat,
     OutputRole,
 )
 from app.modules.ai_workbench.exceptions import (
@@ -38,6 +40,7 @@ from app.modules.ai_workbench.exceptions import (
 )
 from app.modules.ai_workbench.limits import (
     MAX_GENERATION_INPUT_ASSETS,
+    MAX_GENERATION_ITEM_INPUT_ASSETS,
     MAX_GENERATION_ITEMS,
     MAX_GENERATION_SELECTION_IDS,
 )
@@ -45,6 +48,7 @@ from app.modules.ai_workbench.models import (
     GenerationItem,
     GenerationItemAsset,
     GenerationJob,
+    GenerationProviderExecution,
     MaterialGroupAsset,
     ProductMaterialGroup,
     PromptTemplate,
@@ -82,6 +86,30 @@ class PlannedProduct:
     product_sources: tuple[MaterialGroupAsset, ...]
     style_references: tuple[MaterialGroupAsset, ...]
     template_groups: tuple[TemplateGroup, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationExecutionInput:
+    asset_id: UUID
+    original_filename: str
+    content_type: str
+    storage_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationExecution:
+    generation_item_id: UUID
+    generation_job_id: UUID
+    attempt_count: int
+    team_id: UUID
+    created_by_user_id: UUID
+    mode: GenerationMode
+    final_prompt: str
+    output_role: OutputRole
+    output_format: OutputFormat
+    size: GenerationSize
+    input_assets: tuple[GenerationExecutionInput, ...]
+    external_task_id: str | None
 
 
 def generation_counts(items: Sequence[GenerationItem]) -> GenerationCounts:
@@ -412,12 +440,97 @@ class GenerationService:
             raise
         return self._get_execution_job(job_id)
 
+    def prepare_next_provider_execution(
+        self,
+        *,
+        provider_code: str,
+    ) -> GenerationExecution | None:
+        generation_item_id = (
+            self.generation_repository.next_item_id_for_provider_execution()
+        )
+        if generation_item_id is None:
+            self.session.rollback()
+            return None
+        try:
+            item = self._execution_item(generation_item_id)
+            if item.status not in {
+                GenerationItemStatus.PENDING.value,
+                GenerationItemStatus.RUNNING.value,
+            }:
+                self.session.rollback()
+                return None
+            now = datetime.now(UTC)
+            if item.status == GenerationItemStatus.PENDING.value:
+                item.status = GenerationItemStatus.RUNNING.value
+                item.started_at = now
+                item.finished_at = None
+                if item.job.started_at is None:
+                    item.job.started_at = now
+                self._sync_job_status(item.job, now=now)
+
+            execution = item.provider_execution
+            external_task_id = None
+            if (
+                execution is not None
+                and execution.provider_code == provider_code
+                and execution.attempt_count == item.attempt_count
+            ):
+                external_task_id = execution.external_task_id
+            snapshot = self._execution_snapshot(
+                item,
+                external_task_id=external_task_id,
+            )
+            self.session.commit()
+            return snapshot
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def record_provider_execution(
+        self,
+        generation_item_id: UUID,
+        *,
+        expected_attempt_count: int,
+        provider_code: str,
+        external_task_id: str,
+    ) -> None:
+        normalized_provider = provider_code.strip()
+        normalized_task_id = external_task_id.strip()
+        if not normalized_provider or len(normalized_provider) > 32:
+            raise ValueError("provider_code must contain 1 to 32 characters")
+        if not normalized_task_id or len(normalized_task_id) > 255:
+            raise ValueError("external_task_id must contain 1 to 255 characters")
+        try:
+            item = self._execution_item(generation_item_id)
+            self._assert_current_attempt(item, expected_attempt_count)
+            if item.status != GenerationItemStatus.RUNNING.value:
+                raise GenerationItemStateConflictError()
+            execution = item.provider_execution
+            if execution is None:
+                execution = GenerationProviderExecution(
+                    generation_item_id=item.generation_item_id,
+                    provider_code=normalized_provider,
+                    external_task_id=normalized_task_id,
+                    attempt_count=expected_attempt_count,
+                )
+                item.provider_execution = execution
+                self.generation_repository.add_provider_execution(execution)
+            else:
+                execution.provider_code = normalized_provider
+                execution.external_task_id = normalized_task_id
+                execution.attempt_count = expected_attempt_count
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+
     def fail_item(
         self,
         generation_item_id: UUID,
         *,
         failure_code: str,
         failure_message: str,
+        expected_attempt_count: int | None = None,
     ) -> GenerationJob:
         normalized_code = failure_code.strip()
         normalized_message = failure_message.strip()
@@ -427,6 +540,7 @@ class GenerationService:
             raise ValueError("failure_message must contain 1 to 2000 characters")
         try:
             item = self._execution_item(generation_item_id)
+            self._assert_current_attempt(item, expected_attempt_count)
             if item.status not in {
                 GenerationItemStatus.PENDING.value,
                 GenerationItemStatus.RUNNING.value,
@@ -455,9 +569,11 @@ class GenerationService:
         original_filename: str | None,
         content_type: str | None,
         stream: BinaryIO,
+        expected_attempt_count: int | None = None,
     ) -> GenerationJob:
         try:
             item = self._execution_item(generation_item_id)
+            self._assert_current_attempt(item, expected_attempt_count)
             if item.status == GenerationItemStatus.SUCCESS.value:
                 if item.output_asset_id is None:
                     raise GenerationItemStateConflictError()
@@ -523,6 +639,7 @@ class GenerationService:
                 generation_item_id,
                 failure_code=OUTPUT_PERSISTENCE_FAILURE_CODE,
                 failure_message=OUTPUT_PERSISTENCE_FAILURE_MESSAGE,
+                expected_attempt_count=expected_attempt_count,
             )
             raise
         return self._get_execution_job(job_id)
@@ -532,6 +649,11 @@ class GenerationService:
         actor: ActorContext,
         data: InstantGenerationSubmit,
     ) -> list[GenerationItem]:
+        if (
+            len(data.product_asset_ids) + len(data.reference_asset_ids)
+            > MAX_GENERATION_ITEM_INPUT_ASSETS
+        ):
+            raise GenerationPlanTooLargeError()
         assets = self._locked_assets(
             actor,
             [*data.product_asset_ids, *data.reference_asset_ids],
@@ -680,6 +802,11 @@ class GenerationService:
             )
             if not selected_groups:
                 continue
+            input_count = len(product_sources) + (
+                1 if data.mode is GenerationMode.STYLE_REPLICATION else 0
+            )
+            if input_count > MAX_GENERATION_ITEM_INPUT_ASSETS:
+                raise GenerationPlanTooLargeError()
             planned_products.append(
                 PlannedProduct(
                     product=product,
@@ -902,6 +1029,58 @@ class GenerationService:
         if item is None:
             raise GenerationItemNotFoundError()
         return item
+
+    @staticmethod
+    def _assert_current_attempt(
+        item: GenerationItem,
+        expected_attempt_count: int | None,
+    ) -> None:
+        if (
+            expected_attempt_count is not None
+            and item.attempt_count != expected_attempt_count
+        ):
+            raise GenerationItemStateConflictError()
+
+    @staticmethod
+    def _execution_snapshot(
+        item: GenerationItem,
+        *,
+        external_task_id: str | None,
+    ) -> GenerationExecution:
+        role_order = {
+            GenerationInputRole.PRODUCT_SOURCE.value: 0,
+            GenerationInputRole.STYLE_REFERENCE.value: 1,
+        }
+        links = sorted(
+            item.input_assets,
+            key=lambda link: (
+                role_order[link.input_role],
+                link.position,
+                str(link.asset_id),
+            ),
+        )
+        return GenerationExecution(
+            generation_item_id=item.generation_item_id,
+            generation_job_id=item.generation_job_id,
+            attempt_count=item.attempt_count,
+            team_id=item.job.team_id,
+            created_by_user_id=item.job.created_by_user_id,
+            mode=GenerationMode(item.job.mode),
+            final_prompt=item.final_prompt,
+            output_role=OutputRole(item.output_role),
+            output_format=OutputFormat(item.output_format),
+            size=GenerationSize(item.size),
+            input_assets=tuple(
+                GenerationExecutionInput(
+                    asset_id=link.asset_id,
+                    original_filename=link.asset.original_filename,
+                    content_type=link.asset.content_type,
+                    storage_key=link.asset.storage_key,
+                )
+                for link in links
+            ),
+            external_task_id=external_task_id,
+        )
 
     def _get_execution_job(self, generation_job_id: UUID) -> GenerationJob:
         job = self.generation_repository.get_job_by_id(generation_job_id)

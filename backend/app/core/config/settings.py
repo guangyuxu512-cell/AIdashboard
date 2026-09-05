@@ -4,7 +4,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, PostgresDsn, SecretStr
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,6 +64,47 @@ class Settings(BaseSettings):
         ge=60,
         le=3600,
     )
+    ai_generation_scan_interval_seconds: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=60,
+    )
+    toapis_api_key: SecretStr | None = None
+    toapis_base_url: str = "https://toapis.cn"
+    toapis_model_code: Literal["gpt-image-2"] = "gpt-image-2"
+    toapis_resolution: Literal["1k", "2k", "4k"] = "2k"
+    toapis_quality: Literal["low", "medium", "high"] = "low"
+    toapis_poll_interval_seconds: float = Field(default=5.0, ge=0.1, le=60)
+    toapis_poll_timeout_seconds: int = Field(default=180, ge=10, le=3600)
+    toapis_request_timeout_seconds: int = Field(default=180, ge=10, le=600)
+
+    @field_validator("toapis_api_key", mode="before")
+    @classmethod
+    def normalize_optional_toapis_api_key(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("toapis_base_url")
+    @classmethod
+    def validate_toapis_base_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        parsed = urlsplit(normalized)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("ToAPIs Base URL必须是不含路径的HTTPS Origin")
+        try:
+            parsed.port
+        except ValueError as error:
+            raise ValueError("ToAPIs Base URL端口无效") from error
+        return normalized
 
     @model_validator(mode="after")
     def validate_human_auth_transport(self) -> "Settings":
