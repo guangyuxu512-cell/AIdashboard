@@ -127,11 +127,14 @@ Worker 继续只通过 Device Token 与 `X-Device-ID` 认证。未来 Human User
 ## 9. Phase B
 
 B1 Asset Scope 已在 `15-Asset Scope V1.md` 中落地：Asset 使用 `team_id / created_by_user_id`，Human
-List、Content、Delete 与内部 Reference Lookup 都通过本策略生成 SQL Predicate。后续仍为：
+List、Content、Delete 与内部 Reference Lookup 都通过本策略生成 SQL Predicate。B2 Device、Schedule 与
+Task Scope 已在 Migration `20260905_0029_device_task_human_access_v1` 落地：三者使用同一对 Ownership
+字段；全部 Human 路由同时要求 Human Session、`X-Team-ID` 解析的 ActorContext 与对应模块访问。
+Schedule 触发的 Task 继承 Schedule 的 Team 与业务发起人。Task Runtime Event 在返回前先验证 Task
+可读；Worker 认证与执行链保持独立。后续仍为：
 
-1. B2 Task / Schedule Scope
-2. B3 Shop Scope
-3. AI Image Ownership Integration
+1. B3 Shop Scope
+2. AI Image Ownership Integration
 
 未来 Team Scoped Entity 统一使用：
 

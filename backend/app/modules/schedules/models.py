@@ -53,12 +53,35 @@ class Schedule(TimestampMixin, Base):
             "schedule_id",
         ),
         Index("ix_schedules_created_schedule", "created_at", "schedule_id"),
+        Index(
+            "ix_schedules_team_created_schedule",
+            "team_id",
+            "created_at",
+            "schedule_id",
+        ),
+        Index(
+            "ix_schedules_team_creator_created_schedule",
+            "team_id",
+            "created_by_user_id",
+            "created_at",
+            "schedule_id",
+        ),
     )
 
     schedule_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         primary_key=True,
         default=generate_id,
+    )
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     enabled: Mapped[bool] = mapped_column(

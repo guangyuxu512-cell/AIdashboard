@@ -1,11 +1,23 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.models import Task
 from app.modules.tasks.repository import TaskListRecord
 from app.modules.tasks.service import TaskService
 from tests.support import FakeSession
+
+
+ACTOR = ActorContext(
+    user_id=UUID("10000000-0000-4000-8000-000000000001"),
+    user_display_name="任务中心测试人员",
+    team_id=UUID("20000000-0000-4000-8000-000000000001"),
+    membership_id=UUID("30000000-0000-4000-8000-000000000001"),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class FakeTaskListRepository:
@@ -57,6 +69,7 @@ def test_task_list_maps_structured_progress_and_normalizes_search() -> None:
     )
 
     page = service.list_management_tasks(
+        actor=ACTOR,
         page=2,
         page_size=20,
         status=TaskStatus.RUNNING,
@@ -70,6 +83,7 @@ def test_task_list_maps_structured_progress_and_normalizes_search() -> None:
     assert page.items[0].progress.total == 10
     assert page.items[0].current_message == "正在处理第 3 项"
     assert repository.arguments == {
+        "actor": ACTOR,
         "offset": 20,
         "limit": 20,
         "status": TaskStatus.RUNNING,
@@ -91,6 +105,7 @@ def test_task_list_forwards_half_open_created_range() -> None:
     created_to = datetime(2026, 8, 24, tzinfo=UTC)
 
     service.list_management_tasks(
+        actor=ACTOR,
         page=1,
         page_size=10,
         status=TaskStatus.PENDING,
@@ -125,6 +140,7 @@ def test_task_list_rejects_invalid_progress_and_uses_status_then_log() -> None:
     )
 
     page = service.list_management_tasks(
+        actor=ACTOR,
         page=1,
         page_size=10,
         status=None,
@@ -170,6 +186,7 @@ def test_terminal_task_uses_redacted_error_and_success_fallback() -> None:
     )
 
     page = service.list_management_tasks(
+        actor=ACTOR,
         page=1,
         page_size=10,
         status=None,

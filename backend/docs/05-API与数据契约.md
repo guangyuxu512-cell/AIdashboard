@@ -97,8 +97,10 @@ Password Hash、Cookie 或 Session Token。管理角色只有 `member` 和 `acce
 管理边界失败使用 `HUMAN_AUTHENTICATION_REQUIRED`、
 `ACCESS_ADMINISTRATION_FORBIDDEN`、`MODULE_ACCESS_DENIED`、
 `LAST_ACCESS_ADMINISTRATOR_REQUIRED`、`TEAM_DISABLED`、`TEAM_MEMBERSHIP_CONFLICT` 等正式错误码。
-当前唯一已具备 Human API 的业务模块“资料库”在全部 Human 路由上执行 `asset` 模块授权；其他
-尚未迁移到 Human Management Plane 的历史 API 不被伪装成已受本轮模块鉴权保护。
+资料库、Device、Task 与 Schedule 的全部 Human 路由分别执行 `asset`、`device`、`task`、`schedule`
+模块授权，并使用 ActorContext 的 `SELF / TEAM / ALL` 读取范围。它们的 Create DTO 不接受 Team 或
+创建者；这两个 Ownership 字段只从 ActorContext 或可信 Schedule 继承。其他尚未迁移到 Human
+Management Plane 的历史 API 不被伪装成已受本轮模块鉴权保护。
 
 Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
@@ -176,6 +178,9 @@ Backend 必须验证目标 Device 启用、全部 Shop 有效并与该 Device �
 
 ## Device Lifecycle API
 
+- 全部 `/api/v1/devices` Human 路由要求 Human Session、`device` 模块访问与 ActorContext Scope；创建
+  Device 固定归属当前 Team 与当前人员。详情、辅助 Device 查询和写入都不能用直接 ID 绕过 Scope，ALL
+  也不允许跨 Team 写入。
 - `PATCH /api/v1/devices/{device_id}` 的 `enabled` 是执行资格，不是在线状态。
 - `DELETE /api/v1/devices/{device_id}` 返回 204，但实现为软移除；有活动任务时返回 `409 / DEVICE_HAS_ACTIVE_TASKS`。
 - 已移除 Device 的列表与详情行为和 Shop 软删除一致：普通读取视为不存在。
@@ -220,6 +225,10 @@ Device 是否在线、启用以及 Task 是否可创建仍由 Task Guard 在保�
 Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密文。Update 的空 Webhook 表示保留原 Secret；测试消息由 Backend 投递。
 
 ## Task Runtime Event API
+
+全部 `/api/v1/tasks` Human 路由要求 Human Session、`task` 模块访问与 ActorContext Scope；即时创建
+Task 固定归属当前 Team 与当前人员，且目标 Device 与关联 Asset 必须在该 Team。`GET /events` 在读取
+事件前先以相同 Scope 查询 Task。Schedule 生成的 Task 继承 Schedule 的 Team 与业务发起人。
 
 `POST /api/v1/tasks` 的 `shop_ids` 是有序的正式店铺上下文集合；需要店铺账号的即时任务必须明确
 提交，但账号内容不得放进 `input`。重复 ID 被拒绝，任一 Shop 无效、停用、已移除、未与目标
