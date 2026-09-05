@@ -81,6 +81,10 @@ Frontend 的 Module Access 只控制入口和 Route 体验。真实安全边界�
 `require_module_access(...)` 及服务端 Data Scope。Worker Bearer Token 是 Device Identity，
 Mobile Human Authentication 不得复用 Worker Token。
 
+当前 Device 与 Task 的列表、详情和从属只读接口均已注入对应 Module Access 与
+`ActorContext`。Backend 依据 Membership 的 `SELF | TEAM | ALL` 执行查询范围；Task Runtime Events
+在返回前复用同一 Task 可读性检查。跨 Team 资源使用领域 `404`，不得由 Mobile 拉取全量后本地过滤。
+
 ## 6. Task Center V1 已冻结只读契约
 
 Entity 通过 `shared/api` 的 base URL 使用以下相对路径：
@@ -194,7 +198,7 @@ Skill Capability 字段为 `device_id`、`skill_id`、`display_name`、
   online/running/offline 三态，可使用 offline artwork 作为显示 fallback，但不得回写 DTO、参与 Backend
   统计语义或声称 Backend 返回了 offline；Heartbeat 缺失只显示独立 Meta。
 - Provider/Skill 的空数组无法区分“从未上报”和“明确上报空快照”；Provider 没有 freshness 标记。
-- Human Auth、Team Context 与 Module Access 已存在，但当前 Device/Task 旧 API 尚未接入
-  `require_module_access('device' | 'task')` 或基于 Actor Context 的 Data Scope。这是服务端
-  Authorization Contract Gap；Mobile 隐藏入口不能补上该安全边界。
+- Human Auth、Team Context、Module Access 及 Device / Task 的 Actor Context Data Scope 已在 Backend
+  正式收口；真实 PostgreSQL 与 Browser E2E 必须持续验证无模块权限为 `403`、跨 Team Device / Task /
+  Runtime Events 不泄露资源。Mobile 入口隐藏仍只属于体验边界，不能替代 Backend Guard。
 - V1 不调用 Device 创建、更新、移除、绑定、Credential、Task 创建或任何 Worker 写接口，Backend 本轮不修改。

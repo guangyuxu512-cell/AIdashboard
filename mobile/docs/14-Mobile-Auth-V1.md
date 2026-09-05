@@ -83,9 +83,14 @@ Data Scope。Mobile 不复制 Role 或 Data Scope 算法。
 单/多 Team、`X-Team-ID`、device/task 有权和无权、360/375/390/430 Light/Dark、
 44px Touch Target、Console/Page Error 与横向溢出。
 
-## 已知 Backend Contract Gap
+## Backend 授权闭环
 
-Human Auth / Access Management 本身已有正式 Contract，但当前 Device 与 Task 旧 Router 未注入
-`require_module_access('device' | 'task')`，也未按 Actor Context 实施服务端 Data Scope。
-本 Feature 不修改 Backend；该 Gap 必须由 Backend Feature 单独收口，在此之前不得将 Mobile
-入口隐藏宣称为安全授权。
+当前 Green Backend 已在 Device 与 Task Router 接入对应 `require_module_access(...)` 和
+`ActorContext`。Device / Task 的列表、详情与从属只读接口按 Membership 的 `SELF | TEAM | ALL`
+执行 Data Scope；Task Runtime Events 在返回前验证同一 Task 的可读权限。Mobile 仍只消费 Contract，
+不复制权限算法，也不把 Frontend Route Guard 宣称为安全边界。
+
+`tests/e2e/mobile-auth-real-backend.spec.ts` 使用环境门控的一次性隔离 PostgreSQL 与真实 Vite Proxy，
+不拦截 `/api/v1`。Candidate 必须验证无模块权限的 `403 MODULE_ACCESS_DENIED`、跨 Team Device / Task /
+Runtime Events 的领域 `404`、真实 `X-Team-ID`、HttpOnly Session 恢复与服务端 Logout。Mobile Auth V1
+不包含任何 Backend Production Change。
