@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.exceptions import TaskEventForbiddenError
 from app.modules.tasks.models import Task, TaskEvent
@@ -20,6 +22,15 @@ class FakeTaskEventRepository:
 
     def get(self, task_id: UUID) -> Task | None:
         return self.task if task_id == self.task.task_id else None
+
+    def get_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        task_id: UUID,
+    ) -> Task | None:
+        del actor
+        return self.get(task_id)
 
     def insert_events(
         self,
@@ -64,7 +75,13 @@ class FakeTaskEventRepository:
             has_more_before=len(events) > limit,
         )
 
-    def get_active_for_device(self, device_id: UUID) -> Task | None:
+    def get_active_for_device(
+        self,
+        *,
+        actor: ActorContext,
+        device_id: UUID,
+    ) -> Task | None:
+        del actor
         return self.task if self.task.target_device_id == device_id else None
 
     def get_latest_event(self, task_id: UUID) -> TaskEvent | None:
@@ -122,6 +139,16 @@ def make_service() -> tuple[TaskService, FakeTaskEventRepository, UUID, UUID]:
     return service, repository, device_id, task_id
 
 
+ACTOR = ActorContext(
+    user_id=UUID("10000000-0000-4000-8000-000000000001"),
+    user_display_name="任务事件测试人员",
+    team_id=UUID("20000000-0000-4000-8000-000000000001"),
+    membership_id=UUID("30000000-0000-4000-8000-000000000001"),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
+
+
 def batch() -> TaskEventBatchWrite:
     now = datetime.now(UTC)
     return TaskEventBatchWrite.model_validate(
@@ -161,7 +188,7 @@ def test_event_batch_is_idempotent_redacted_and_incremental() -> None:
 
     first = service.append_events(principal, task_id, batch())
     duplicate = service.append_events(principal, task_id, batch())
-    page = service.list_events(task_id, after_seq=1, limit=10)
+    page = service.list_events(ACTOR, task_id, after_seq=1, limit=10)
 
     assert first.accepted_count == 2
     assert duplicate.accepted_count == 0
@@ -317,18 +344,21 @@ def test_event_history_uses_bounded_sequence_cursor_in_ascending_order() -> None
     )
 
     latest = service.list_events(
+        ACTOR,
         task_id,
         after_seq=None,
         before_seq=None,
         limit=2,
     )
     earlier = service.list_events(
+        ACTOR,
         task_id,
         after_seq=None,
         before_seq=latest.next_before_seq,
         limit=2,
     )
     incremental = service.list_events(
+        ACTOR,
         task_id,
         after_seq=4,
         before_seq=None,
@@ -359,7 +389,7 @@ def test_active_summary_uses_latest_runtime_event() -> None:
     service, _, device_id, task_id = make_service()
     service.append_events(WorkerPrincipal(device_id=device_id), task_id, batch())
 
-    summary = service.get_active_summary(device_id)
+    summary = service.get_active_summary(ACTOR, device_id)
 
     assert summary is not None
     assert summary.task_id == task_id

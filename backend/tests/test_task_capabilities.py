@@ -4,6 +4,8 @@ from uuid import uuid4
 
 import pytest
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.exceptions import (
@@ -21,6 +23,16 @@ from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import DeviceProviderInventory, DeviceSkillCapability
 from tests.support import FakeSession
+
+
+ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="任务能力测试人员",
+    team_id=uuid4(),
+    membership_id=uuid4(),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class FakeTaskCapabilityRepository:
@@ -57,7 +69,13 @@ class FakeTaskCapabilityRepository:
         self.tasks: list[object] = []
         self.runtime_status = runtime_status
 
-    def get_task_target_device(self, device_id: object) -> Device | None:
+    def get_task_target_device(
+        self,
+        device_id: object,
+        *,
+        team_id: object | None = None,
+    ) -> Device | None:
+        del team_id
         if device_id == self.device.device_id and self.device.deleted_at is None:
             return self.device
         return None
@@ -177,6 +195,7 @@ def test_system_skill_requires_device_capability_and_disabled_is_distinct() -> N
                 skill_id=TaskSkillId.SYSTEM_ECHO,
                 input={"message": "hello"},
             ),
+            ACTOR,
         )
 
     device.enabled = False
@@ -187,6 +206,7 @@ def test_system_skill_requires_device_capability_and_disabled_is_distinct() -> N
                 skill_id=TaskSkillId.SYSTEM_ECHO,
                 input={"message": "hello"},
             ),
+            ACTOR,
         )
 
 
@@ -203,6 +223,7 @@ def test_offline_device_cannot_create_an_immediate_task() -> None:
                 skill_id=TaskSkillId.SYSTEM_ECHO,
                 input={"message": "hello"},
             ),
+            ACTOR,
         )
 
 
@@ -219,8 +240,12 @@ def test_offline_device_can_prepare_and_create_a_scheduled_task() -> None:
         input={"message": "scheduled"},
     )
 
-    prepared = service.prepare_scheduled_task(request)
-    task = service.create_for_schedule(request)
+    prepared = service.prepare_scheduled_task(request, team_id=ACTOR.team_id)
+    task = service.create_for_schedule(
+        request,
+        team_id=ACTOR.team_id,
+        created_by_user_id=ACTOR.user_id,
+    )
 
     assert prepared.execution_display_name == "system.echo"
     assert task.status == "pending"
@@ -238,6 +263,7 @@ def test_legacy_ready_provider_inventory_allows_yingdao_app_guard() -> None:
             skill_id=TaskSkillId.YINGDAO_APP_RUN,
             input={"app_id": "safe-app", "params": {}},
         ),
+        ACTOR,
     )
     assert task.skill_id == "yingdao.app.run"
     assert task.execution_display_name == "Safe App"
@@ -258,7 +284,7 @@ def test_yingdao_guard_returns_specific_provider_and_application_errors() -> Non
     )
 
     with pytest.raises(TaskProviderNotReadyError):
-        service_for(device, [skill]).create(request)
+        service_for(device, [skill]).create(request, ACTOR)
 
     login = ready_inventory()
     login.update(
@@ -270,7 +296,7 @@ def test_yingdao_guard_returns_specific_provider_and_application_errors() -> Non
         user_id=None,
     )
     with pytest.raises(TaskProviderLoginRequiredError):
-        service_for(device, [skill], login).create(request)
+        service_for(device, [skill], login).create(request, ACTOR)
 
     unsupported = ready_inventory()
     unsupported.update(
@@ -281,10 +307,13 @@ def test_yingdao_guard_returns_specific_provider_and_application_errors() -> Non
         execution_version=None,
     )
     with pytest.raises(TaskProviderVersionUnsupportedError):
-        service_for(device, [skill], unsupported).create(request)
+        service_for(device, [skill], unsupported).create(request, ACTOR)
 
     with pytest.raises(TaskApplicationNotAvailableError):
-        service_for(device, [skill], ready_inventory(include_app=False)).create(request)
+        service_for(device, [skill], ready_inventory(include_app=False)).create(
+            request,
+            ACTOR,
+        )
 
 
 def test_discovery_skill_does_not_require_ready_provider() -> None:
@@ -305,6 +334,7 @@ def test_discovery_skill_does_not_require_ready_provider() -> None:
             skill_id=TaskSkillId.YINGDAO_DISCOVER,
             input={},
         ),
+        ACTOR,
     )
     assert task.skill_id == "yingdao.discover"
 
@@ -345,6 +375,7 @@ def test_business_skill_uses_current_device_schema_and_applies_defaults() -> Non
             skill_id="refund.sync",
             input={"keyword": "退款"},
         ),
+        ACTOR,
     )
 
     assert task.execution_display_name == "refund.sync"
@@ -385,13 +416,13 @@ def test_business_skill_rejects_invalid_input_and_unusable_schema() -> None:
                     input_schema=schema,
                 ),
             ],
-        ).create(request)
+        ).create(request, ACTOR)
 
     with pytest.raises(TaskSkillSchemaUnavailableError):
         service_for(
             device,
             [capability(device, "refund.sync", classification="business")],
-        ).create(request)
+        ).create(request, ACTOR)
 
     with pytest.raises(TaskSkillSchemaUnavailableError):
         service_for(
@@ -412,4 +443,4 @@ def test_business_skill_rejects_invalid_input_and_unusable_schema() -> None:
                     },
                 ),
             ],
-        ).create(request)
+        ).create(request, ACTOR)

@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.devices.schemas import DeviceCreate, DeviceRead, DeviceUpdate
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
@@ -31,6 +34,9 @@ router = APIRouter(
 )
 
 
+get_device_authorized_actor = require_module_access(ModuleCode.DEVICE)
+
+
 def get_device_service(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> DeviceService:
@@ -54,11 +60,16 @@ def to_device_read(
 
 @router.get("", response_model=Page[DeviceRead])
 def list_devices(
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[DeviceService, Depends(get_device_service)],
     worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> Page[DeviceRead]:
-    devices, total = service.list(offset=pagination.offset, limit=pagination.page_size)
+    devices, total = service.list(
+        actor=actor,
+        offset=pagination.offset,
+        limit=pagination.page_size,
+    )
     runtimes = worker_service.get_runtime_reads(
         [device.device_id for device in devices],
     )
@@ -76,10 +87,11 @@ def list_devices(
 @router.get("/{device_id}", response_model=DeviceRead)
 def get_device(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
     worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> DeviceRead:
-    device = service.get(device_id)
+    device = service.get(actor, device_id)
     runtime = worker_service.get_runtime_reads([device_id]).get(device_id)
     return to_device_read(device, runtime)
 
@@ -90,10 +102,11 @@ def get_device(
 )
 def get_device_provider_inventories(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
     worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> list[DeviceProviderInventoryRead]:
-    service.get(device_id)
+    service.get(actor, device_id)
     return worker_service.get_provider_inventory_reads(device_id)
 
 
@@ -103,10 +116,11 @@ def get_device_provider_inventories(
 )
 def get_device_skill_capabilities(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
     worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> list[DeviceSkillCapabilityRead]:
-    service.get(device_id)
+    service.get(actor, device_id)
     return worker_service.get_skill_capability_reads(device_id)
 
 
@@ -116,10 +130,11 @@ def get_device_skill_capabilities(
 )
 def get_device_business_skills(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
     worker_service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> list[BusinessSkillCatalogItemRead]:
-    service.get(device_id)
+    service.get(actor, device_id)
     return worker_service.get_business_skill_catalog(device_id)
 
 
@@ -129,8 +144,11 @@ def get_device_business_skills(
 )
 def get_worker_credential(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    device_service: Annotated[DeviceService, Depends(get_device_service)],
     service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> WorkerCredentialRead:
+    device_service.get(actor, device_id)
     return service.get_credential(device_id)
 
 
@@ -141,8 +159,11 @@ def get_worker_credential(
 def issue_worker_credential(
     device_id: UUID,
     response: Response,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    device_service: Annotated[DeviceService, Depends(get_device_service)],
     service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> WorkerTokenIssuedRead:
+    device_service.get_for_write(actor, device_id)
     response.headers["Cache-Control"] = "no-store"
     return service.issue_credential(device_id)
 
@@ -154,8 +175,11 @@ def issue_worker_credential(
 def rotate_worker_credential(
     device_id: UUID,
     response: Response,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    device_service: Annotated[DeviceService, Depends(get_device_service)],
     service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> WorkerTokenIssuedRead:
+    device_service.get_for_write(actor, device_id)
     response.headers["Cache-Control"] = "no-store"
     return service.rotate_credential(device_id)
 
@@ -166,31 +190,37 @@ def rotate_worker_credential(
 )
 def revoke_worker_credential(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    device_service: Annotated[DeviceService, Depends(get_device_service)],
     service: Annotated[WorkerService, Depends(get_worker_service)],
 ) -> None:
+    device_service.get_for_write(actor, device_id)
     service.disable_token(device_id)
 
 
 @router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)
 def create_device(
     data: DeviceCreate,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> DeviceRead:
-    return to_device_read(service.create(data), None)
+    return to_device_read(service.create(actor, data), None)
 
 
 @router.patch("/{device_id}", response_model=DeviceRead)
 def update_device(
     device_id: UUID,
     data: DeviceUpdate,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> DeviceRead:
-    return to_device_read(service.update(device_id, data), None)
+    return to_device_read(service.update(actor, device_id, data), None)
 
 
 @router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_device(
     device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> None:
-    service.remove(device_id)
+    service.remove(actor, device_id)

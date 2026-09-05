@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.policy import DataScopePolicy
 from app.modules.devices.models import Device
 from app.modules.schedules.models import Schedule, ScheduleRun
 from app.modules.tasks.models import Task
@@ -34,26 +36,54 @@ class ScheduleRepository:
     def add_run(self, run: ScheduleRun) -> None:
         self.session.add(run)
 
-    def get(self, schedule_id: UUID) -> Schedule | None:
-        return self.session.scalar(
+    def get_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        schedule_id: UUID,
+    ) -> Schedule | None:
+        statement = DataScopePolicy.apply(
             select(Schedule).where(
                 Schedule.schedule_id == schedule_id,
                 Schedule.deleted_at.is_(None),
             ),
+            team_id_column=Schedule.team_id,
+            created_by_user_id_column=Schedule.created_by_user_id,
+            actor=actor,
         )
+        return self.session.scalar(statement)
 
-    def get_including_deleted(self, schedule_id: UUID) -> Schedule | None:
-        return self.session.get(Schedule, schedule_id)
+    def get_including_deleted_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        schedule_id: UUID,
+    ) -> Schedule | None:
+        statement = DataScopePolicy.apply(
+            select(Schedule).where(Schedule.schedule_id == schedule_id),
+            team_id_column=Schedule.team_id,
+            created_by_user_id_column=Schedule.created_by_user_id,
+            actor=actor,
+        )
+        return self.session.scalar(statement)
 
-    def get_for_update(self, schedule_id: UUID) -> Schedule | None:
-        return self.session.scalar(
+    def get_for_actor_for_update(
+        self,
+        *,
+        actor: ActorContext,
+        schedule_id: UUID,
+    ) -> Schedule | None:
+        statement = DataScopePolicy.apply(
             select(Schedule)
             .where(
                 Schedule.schedule_id == schedule_id,
                 Schedule.deleted_at.is_(None),
-            )
-            .with_for_update(),
+            ),
+            team_id_column=Schedule.team_id,
+            created_by_user_id_column=Schedule.created_by_user_id,
+            actor=actor,
         )
+        return self.session.scalar(statement.with_for_update())
 
     def get_next_due(self, *, now: datetime) -> Schedule | None:
         return self.session.scalar(
@@ -72,6 +102,7 @@ class ScheduleRepository:
     def list_management(
         self,
         *,
+        actor: ActorContext,
         offset: int,
         limit: int,
         enabled: bool | None,
@@ -93,15 +124,20 @@ class ScheduleRepository:
                 ),
             )
 
-        total = int(
-            self.session.scalar(
-                select(func.count()).select_from(Schedule).where(*filters),
-            )
-            or 0,
+        total_statement = DataScopePolicy.apply(
+            select(func.count()).select_from(Schedule).where(*filters),
+            team_id_column=Schedule.team_id,
+            created_by_user_id_column=Schedule.created_by_user_id,
+            actor=actor,
         )
+        total = int(self.session.scalar(total_statement) or 0)
         page_schedule_ids = (
-            select(Schedule.schedule_id)
-            .where(*filters)
+            DataScopePolicy.apply(
+                select(Schedule.schedule_id).where(*filters),
+                team_id_column=Schedule.team_id,
+                created_by_user_id_column=Schedule.created_by_user_id,
+                actor=actor,
+            )
             .order_by(Schedule.created_at.desc(), Schedule.schedule_id.desc())
             .offset(offset)
             .limit(limit)
@@ -142,7 +178,12 @@ class ScheduleRepository:
         ]
         return records, total
 
-    def get_record(self, schedule_id: UUID) -> ScheduleListRecord | None:
+    def get_record_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        schedule_id: UUID,
+    ) -> ScheduleListRecord | None:
         latest_run_id = (
             select(ScheduleRun.run_id)
             .where(ScheduleRun.schedule_id == Schedule.schedule_id)
@@ -151,7 +192,7 @@ class ScheduleRepository:
             .correlate(Schedule)
             .scalar_subquery()
         )
-        statement = (
+        statement = DataScopePolicy.apply(
             select(
                 Schedule,
                 Device.display_name.label("device_display_name"),
@@ -164,7 +205,10 @@ class ScheduleRepository:
             .where(
                 Schedule.schedule_id == schedule_id,
                 Schedule.deleted_at.is_(None),
-            )
+            ),
+            team_id_column=Schedule.team_id,
+            created_by_user_id_column=Schedule.created_by_user_id,
+            actor=actor,
         )
         row = self.session.execute(statement).one_or_none()
         if row is None:
