@@ -72,4 +72,23 @@ describe('Human Auth Data Source', () => {
       '/api/v1/access-management/me/module-access',
     )
   })
+
+  it('uses an administrator fixture for Mock visual review without changing member login access', async () => {
+    const source = createHumanAuthDataSource('mock')
+
+    await expect(source.getCurrentModuleAccess()).resolves.toMatchObject({
+      moduleCodes: expect.arrayContaining(['settings']),
+      isAccessAdministrator: true,
+    })
+
+    await source.login({
+      loginName: 'operator',
+      password: 'safe-test-password',
+    })
+
+    await expect(source.getCurrentModuleAccess()).resolves.toMatchObject({
+      moduleCodes: expect.arrayContaining(['settings']),
+      isAccessAdministrator: false,
+    })
+  })
 })

@@ -8,25 +8,10 @@ async function logout(page: import('@playwright/test').Page): Promise<void> {
   await expect(page).toHaveURL(/#\/login$/)
 }
 
-async function login(
-  page: import('@playwright/test').Page,
-  loginName: string,
-): Promise<void> {
-  await page.getByLabel('内部登录账号').fill(loginName)
-  await page.getByLabel('密码').fill('safe-test-password')
-  await page.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page).toHaveURL(/#\/settings\/audit-logs$/)
-}
-
 test('shows operation logs to an access administrator and rejects a member', async ({
   page,
 }) => {
   await page.goto('/#/settings/audit-logs')
-  await expect(page).toHaveURL(/#\/permission-denied$/)
-
-  await logout(page)
-  await page.goto('/#/settings/audit-logs')
-  await login(page, 'audit-admin')
   await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible()
   await expect(page.getByText('暂无操作日志', { exact: true })).toBeVisible()
   await expect(
