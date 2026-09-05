@@ -27,9 +27,18 @@ test('shows operation logs to an access administrator and rejects a member', asy
   await logout(page)
   await page.goto('/#/settings/audit-logs')
   await login(page, 'audit-admin')
-  await expect(page.getByText('操作日志', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible()
   await expect(page.getByText('暂无操作日志', { exact: true })).toBeVisible()
-  await expect(page.getByText('用户与权限', { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: '系统设置主导航' })
+      .getByText('系统设置', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: '系统设置' })
+      .getByRole('button', { name: '用户与权限' }),
+  ).toBeVisible()
 
   await logout(page)
   await page.goto('/#/settings/audit-logs')
