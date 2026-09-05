@@ -530,7 +530,7 @@ description（需要时）
 | `AppInput`       | `NInput`       | 语义宽度、固定 medium                            |
 | `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium                            |
 | `AppSelect`      | `NSelect`      | 语义宽度、固定 medium、单选/多选与标签折叠       |
-| `AppDatePicker`  | `NDatePicker`  | date / daterange、语义宽度                       |
+| `AppDatePicker`  | `NDatePicker`  | 固定 medium（34px）；single 156px、daterange 236px |
 | `AppTimePicker`  | `NTimePicker`  | 语义宽度、固定 medium                            |
 | `AppSwitch`      | `NSwitch`      | 统一 medium                                      |
 | `AppCheckbox`    | `NCheckbox`    | 统一受控布尔值与半选态                           |

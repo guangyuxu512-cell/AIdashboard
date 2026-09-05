@@ -14,13 +14,12 @@ import {
   AccessTeamFormDialog,
   useAccessManagement,
 } from '@/features/access-management'
-import SystemSettingsNavigation from '@/features/system-settings/ui/SystemSettingsNavigation.vue'
+import SettingsLayout from '@/features/system-settings/ui/SettingsLayout.vue'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
 import DataTable from '@/shared/components/DataTable.vue'
-import FilterBar from '@/shared/components/FilterBar.vue'
-import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
+import TableToolbar from '@/shared/components/TableToolbar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 
@@ -83,40 +82,47 @@ function openCreateTeam(): void {
 </script>
 
 <template>
-  <div class="page-container access-management-page">
-    <SystemSettingsNavigation />
-    <ContextSwitchBar
-      :items="managementTabs"
-      :active-key="management.activeTab.value"
-      label="用户与权限"
-      @select="selectTab"
-    />
-
-    <template v-if="management.activeTab.value === 'members'">
-      <FilterBar>
-        <AppInput
-          v-model="management.searchDraft.value"
-          placeholder="搜索显示名或登录账号"
-          width="lg"
-          clearable
-          @keyup.enter="management.query"
+  <SettingsLayout>
+    <div class="access-management-page">
+      <TableToolbar class="access-management-page__toolbar">
+        <ContextSwitchBar
+          appearance="bare"
+          :items="managementTabs"
+          :active-key="management.activeTab.value"
+          label="成员与团队管理"
+          @select="selectTab"
         />
         <template #actions>
-          <AppButton @click="management.reset">重置</AppButton>
-          <AppButton tone="primary" @click="management.query">查询</AppButton>
-        </template>
-        <template #primary-action>
-          <AppButton
-            tone="primary"
-            @click="management.memberFormVisible.value = true"
-          >
+          <template v-if="management.activeTab.value === 'members'">
+            <AppInput
+              v-model="management.searchDraft.value"
+              aria-label="成员搜索"
+              placeholder="搜索显示名或登录账号"
+              width="lg"
+              clearable
+              @keyup.enter="management.query"
+            />
+            <AppButton @click="management.reset">重置</AppButton>
+            <AppButton tone="primary" @click="management.query">查询</AppButton>
+            <AppButton
+              tone="primary"
+              @click="management.memberFormVisible.value = true"
+            >
+              <Plus :size="16" />
+              新增成员
+            </AppButton>
+          </template>
+          <AppButton v-else tone="primary" @click="openCreateTeam">
             <Plus :size="16" />
-            新增成员
+            新增团队
           </AppButton>
         </template>
-      </FilterBar>
+      </TableToolbar>
 
-      <ManagementListSection>
+      <div
+        v-if="management.activeTab.value === 'members'"
+        class="access-management-page__table"
+      >
         <AccessMemberListTable
           :rows="management.members.value"
           :loading="management.membersLoading.value"
@@ -132,19 +138,9 @@ function openCreateTeam(): void {
           :item-count="management.total.value"
           @update:page-size="management.setPageSize"
         />
-      </ManagementListSection>
-    </template>
+      </div>
 
-    <template v-else>
-      <FilterBar>
-        <template #primary-action>
-          <AppButton tone="primary" @click="openCreateTeam">
-            <Plus :size="16" />
-            新增团队
-          </AppButton>
-        </template>
-      </FilterBar>
-      <ManagementListSection>
+      <div v-else class="access-management-page__table">
         <DataTable
           :columns="teamColumns"
           :data="management.teams.value"
@@ -154,50 +150,50 @@ function openCreateTeam(): void {
           empty-description="暂无团队"
           @retry="management.retryTeams"
         />
-      </ManagementListSection>
-    </template>
+      </div>
 
-    <AccessMemberFormDialog
-      :show="management.memberFormVisible.value"
-      :teams="management.teams.value"
-      :module-options="moduleOptions"
-      :submitting="management.createMemberPending.value"
-      @update:show="management.memberFormVisible.value = $event"
-      @save="management.createMember"
-    />
-    <AccessMemberDrawer
-      :show="Boolean(management.selectedMember.value)"
-      :member="management.selectedMember.value"
-      :status-changing="Boolean(management.togglingUserId.value)"
-      @update:show="!$event && (management.selectedMember.value = null)"
-      @toggle-enabled="management.toggleMemberEnabled"
-      @reset-password="management.passwordFormVisible.value = true"
-      @create-membership="management.openCreateMembership"
-      @edit-membership="management.openEditMembership($event.membershipId)"
-    />
-    <AccessMembershipFormDialog
-      :show="management.membershipFormVisible.value"
-      :membership="currentMembership"
-      :teams="management.teams.value"
-      :module-options="moduleOptions"
-      :submitting="management.membershipPending.value"
-      @update:show="management.membershipFormVisible.value = $event"
-      @save="management.saveMembership"
-    />
-    <AccessPasswordResetDialog
-      :show="management.passwordFormVisible.value"
-      :submitting="management.passwordPending.value"
-      @update:show="management.passwordFormVisible.value = $event"
-      @save="management.resetPassword"
-    />
-    <AccessTeamFormDialog
-      :show="management.teamFormVisible.value"
-      :team="management.selectedTeam.value"
-      :submitting="management.teamPending.value"
-      @update:show="management.teamFormVisible.value = $event"
-      @save="management.saveTeam"
-    />
-  </div>
+      <AccessMemberFormDialog
+        :show="management.memberFormVisible.value"
+        :teams="management.teams.value"
+        :module-options="moduleOptions"
+        :submitting="management.createMemberPending.value"
+        @update:show="management.memberFormVisible.value = $event"
+        @save="management.createMember"
+      />
+      <AccessMemberDrawer
+        :show="Boolean(management.selectedMember.value)"
+        :member="management.selectedMember.value"
+        :status-changing="Boolean(management.togglingUserId.value)"
+        @update:show="!$event && (management.selectedMember.value = null)"
+        @toggle-enabled="management.toggleMemberEnabled"
+        @reset-password="management.passwordFormVisible.value = true"
+        @create-membership="management.openCreateMembership"
+        @edit-membership="management.openEditMembership($event.membershipId)"
+      />
+      <AccessMembershipFormDialog
+        :show="management.membershipFormVisible.value"
+        :membership="currentMembership"
+        :teams="management.teams.value"
+        :module-options="moduleOptions"
+        :submitting="management.membershipPending.value"
+        @update:show="management.membershipFormVisible.value = $event"
+        @save="management.saveMembership"
+      />
+      <AccessPasswordResetDialog
+        :show="management.passwordFormVisible.value"
+        :submitting="management.passwordPending.value"
+        @update:show="management.passwordFormVisible.value = $event"
+        @save="management.resetPassword"
+      />
+      <AccessTeamFormDialog
+        :show="management.teamFormVisible.value"
+        :team="management.selectedTeam.value"
+        :submitting="management.teamPending.value"
+        @update:show="management.teamFormVisible.value = $event"
+        @save="management.saveTeam"
+      />
+    </div>
+  </SettingsLayout>
 </template>
 
 <style scoped>
@@ -206,6 +202,38 @@ function openCreateTeam(): void {
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+
+.access-management-page__toolbar {
+  flex-wrap: nowrap;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.access-management-page__toolbar :deep(.table-toolbar__actions) {
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .access-management-page__toolbar {
+    flex-wrap: wrap;
+  }
+
+  .access-management-page__toolbar :deep(.table-toolbar__actions) {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+.access-management-page__table {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 </style>

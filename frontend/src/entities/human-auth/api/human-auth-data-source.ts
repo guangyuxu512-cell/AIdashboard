@@ -93,7 +93,7 @@ function createRealHumanAuthDataSource(): HumanAuthDataSource {
 function createMockHumanAuthDataSource(): HumanAuthDataSource {
   let currentUser: CurrentHumanUser | null = {
     userId: '00000000-0000-4000-8000-000000000001',
-    displayName: '开发预览',
+    displayName: '管理员预览',
   }
   let teams: HumanTeamMembership[] = [
     {
@@ -106,7 +106,7 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
       membershipEnabled: true,
     },
   ]
-  let isAccessAdministrator = false
+  let isAccessAdministrator = true
 
   const requireUser = (): CurrentHumanUser => {
     if (!currentUser) {
