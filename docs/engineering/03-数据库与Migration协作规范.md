@@ -28,7 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无。
+当前活跃 Migration Slot：`feat/ai-model-management-v1`（reserved）。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| `feat/ai-model-management-v1` | `reserved` | AI Model Management V1；仅预留后续模型管理持久化变更，不包含 Provider、Secret 或 Generation Execution 变更 | `20260905_0030_ai_provider_v1` | `20260906_0031_ai_model_management_v1` | `control_center_feat_ai_model_management` 已由 Integrator 从空库迁移至 `20260905_0030`；具体 Migration 由 Feature Owner 编写、验证与回滚 |
 
 最近释放记录：
 
