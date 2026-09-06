@@ -25,6 +25,7 @@ const props = defineProps<{
   initialValue: ShopFormViewModel | null
   ownerOptions: SelectOption[]
   ownerOptionsLoading?: boolean
+  showOwnerField?: boolean
   submitting?: boolean
 }>()
 
@@ -175,6 +176,7 @@ const submit = handleSubmit((values) => {
           </div>
         </NFormItem>
         <NFormItem
+          v-if="showOwnerField"
           label="负责人"
           :validation-status="errors.ownerUserId ? 'error' : undefined"
           :feedback="errors.ownerUserId"

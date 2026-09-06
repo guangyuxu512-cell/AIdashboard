@@ -12,7 +12,10 @@
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "cross-env PLAYWRIGHT_API_MODE=mock playwright test --project=mock --project=visual",
+    "test:e2e:mock": "cross-env PLAYWRIGHT_API_MODE=mock playwright test --project=mock",
+    "test:e2e:real": "cross-env PLAYWRIGHT_API_MODE=real playwright test --project=real",
+    "test:e2e:visual": "cross-env PLAYWRIGHT_API_MODE=mock playwright test --project=visual"
   },
   "dependencies": {
     "@lucide/vue": "^1.33.0",
