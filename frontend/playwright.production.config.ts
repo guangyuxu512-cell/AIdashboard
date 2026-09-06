@@ -7,7 +7,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'pnpm run build:test-production && pnpm exec vite preview --host 127.0.0.1 --port 4174',
+      'pnpm run build:visual-mock && pnpm exec vite preview --host 127.0.0.1 --port 4174',
     url: 'http://127.0.0.1:4174',
     reuseExistingServer: false,
   },

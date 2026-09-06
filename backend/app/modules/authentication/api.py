@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.authentication.schemas import (
     CompleteManagementOnboardingCommand,
     ManagementOnboardingResult,
@@ -23,6 +26,9 @@ router = APIRouter(
 )
 
 
+get_shop_authorized_actor = require_module_access(ModuleCode.SHOP)
+
+
 def get_management_onboarding_service(
     session: Annotated[Session, Depends(get_database_session)],
     cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
@@ -37,6 +43,7 @@ def get_management_onboarding_service(
 )
 def complete_management_onboarding(
     command: CompleteManagementOnboardingCommand,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[
         ManagementOnboardingService,
         Depends(get_management_onboarding_service),

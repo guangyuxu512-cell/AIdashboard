@@ -16,8 +16,11 @@ from app.modules.devices.api import (
 )
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
-from app.modules.shops.api import get_shop_service
-from app.modules.shops.api import get_shop_platform_service
+from app.modules.shops.api import (
+    get_shop_authorized_actor,
+    get_shop_platform_service,
+    get_shop_service,
+)
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.models import Shop, ShopDeviceBinding
@@ -427,6 +430,7 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[get_device_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_task_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_schedule_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
 
     async def send() -> Response:
         transport = ASGITransport(app=application)

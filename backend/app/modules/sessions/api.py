@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.sessions.auth_context import ShopSessionAccessor
 from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.refresh_service import ShopSessionRefreshService
@@ -29,6 +32,9 @@ router = APIRouter(
         404: {"model": ErrorResponse, "description": "店铺不存在"},
     },
 )
+
+
+get_shop_authorized_actor = require_module_access(ModuleCode.SHOP)
 
 
 def get_shop_session_service(
@@ -65,6 +71,7 @@ def get_shop_session_refresh_service(
 @router.get("/{shop_id}/session", response_model=ShopSessionMetadataRead)
 def get_shop_session_metadata(
     shop_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[ShopSessionService, Depends(get_shop_session_service)],
 ) -> ShopSessionMetadataRead:
     return service.get_metadata(shop_id)
@@ -81,6 +88,7 @@ def get_shop_session_metadata(
 )
 def validate_shop_session(
     shop_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[
         ShopSessionHealthService,
         Depends(get_shop_session_health_service),
@@ -96,6 +104,7 @@ def validate_shop_session(
 )
 def acquire_shop_session_refresh_lease(
     shop_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[
         ShopSessionRefreshService,
         Depends(get_shop_session_refresh_service),
@@ -111,6 +120,7 @@ def acquire_shop_session_refresh_lease(
 def release_shop_session_refresh_lease(
     shop_id: UUID,
     lease_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[
         ShopSessionRefreshService,
         Depends(get_shop_session_refresh_service),
@@ -133,6 +143,7 @@ def release_shop_session_refresh_lease(
 def complete_shop_session_refresh(
     shop_id: UUID,
     command: CompleteShopSessionRefreshCommand,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[
         ShopSessionRefreshService,
         Depends(get_shop_session_refresh_service),

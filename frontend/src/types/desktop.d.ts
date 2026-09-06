@@ -40,6 +40,7 @@ declare global {
       managementLogin?: {
         open(input: {
           platform: 'douyin'
+          teamId: string
           attemptId?: string
           recovery?: {
             shopId: string

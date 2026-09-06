@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session } from 'electron'
+import { app, BrowserWindow, session, type Session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -27,6 +27,8 @@ import type {
 interface LoginAttempt {
   attemptId: string
   platform: ManagementLoginPlatform
+  teamId: string
+  appSession: Session
   partition: string
   window: BrowserWindow | null
   status: ManagementLoginStatus
@@ -79,6 +81,9 @@ export class ManagementLoginService {
     if (attempt && attempt.platform !== input.platform) {
       throw new Error('登录尝试与平台不匹配')
     }
+    if (attempt && attempt.teamId !== input.teamId) {
+      throw new Error('登录尝试与当前团队不匹配')
+    }
     if (!attempt) {
       const mapping = input.recovery
         ? await this.loadProfileMapping(input.recovery.shopId, input.platform)
@@ -87,6 +92,8 @@ export class ManagementLoginService {
       attempt = {
         attemptId,
         platform: input.platform,
+        teamId: input.teamId,
+        appSession: parent.webContents.session,
         partition: profile.partition,
         window: null,
         status: 'opened',
@@ -226,7 +233,7 @@ export class ManagementLoginService {
     }
     const response = await fetch(this.backendEndpoint(), {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: await this.authorizedHeaders(attempt),
       body: JSON.stringify({
         platform: attempt.identity.platform,
         platform_shop_id: attempt.identity.platformShopId,
@@ -288,7 +295,7 @@ export class ManagementLoginService {
       this.backendUrl(`/api/v1/shops/${attempt.recovery.shopId}/session/refresh`),
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: await this.authorizedHeaders(attempt),
         body: JSON.stringify({
           lease_id: attempt.recovery.leaseId,
           expected_version: attempt.recovery.expectedVersion,
@@ -410,6 +417,27 @@ export class ManagementLoginService {
     return this.backendUrl('/api/v1/shop-onboarding/complete')
   }
 
+  private async authorizedHeaders(
+    attempt: LoginAttempt,
+  ): Promise<Record<string, string>> {
+    const url = this.backendUrl('/api/v1/auth/me')
+    const cookieName =
+      process.env.CONTROL_CENTER_HUMAN_SESSION_COOKIE_NAME ??
+      'siyu_human_session'
+    const [sessionCookie] = await attempt.appSession.cookies.get({
+      url,
+      name: cookieName,
+    })
+    if (!sessionCookie) {
+      throw new Error('管理端人员登录已失效，请重新登录')
+    }
+    return {
+      'content-type': 'application/json',
+      cookie: `${sessionCookie.name}=${sessionCookie.value}`,
+      'x-team-id': attempt.teamId,
+    }
+  }
+
   private async releaseRecoveryLease(attempt: LoginAttempt): Promise<void> {
     if (!attempt.recovery) return
     const { shopId, leaseId } = attempt.recovery
@@ -419,7 +447,7 @@ export class ManagementLoginService {
         this.backendUrl(
           `/api/v1/shops/${shopId}/session/refresh-lease/${leaseId}`,
         ),
-        { method: 'DELETE' },
+        { method: 'DELETE', headers: await this.authorizedHeaders(attempt) },
       )
     } catch {
       // Lease is expiring server-side; cancellation remains best effort offline.

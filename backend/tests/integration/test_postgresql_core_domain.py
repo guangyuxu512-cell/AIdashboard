@@ -15,10 +15,12 @@ from app.main import create_app
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import get_access_administrator
 from app.modules.access.enums import DataScope
+from app.modules.devices.api import get_device_authorized_actor
 from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import DeviceCreate, DeviceUpdate
 from app.modules.devices.service import DeviceService
+from app.modules.shops.api import get_shop_authorized_actor
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.shops.repository import ShopDeviceBindingRepository, ShopRepository
@@ -335,6 +337,22 @@ async def _exercise_real_api(
         team_id=uuid4(),
         membership_id=uuid4(),
         role_code="access_admin",
+        data_scope=DataScope.ALL,
+    )
+    application.dependency_overrides[get_shop_authorized_actor] = lambda: ActorContext(
+        user_id=uuid4(),
+        user_display_name="Core Domain API Shop Operator",
+        team_id=uuid4(),
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.ALL,
+    )
+    application.dependency_overrides[get_device_authorized_actor] = lambda: ActorContext(
+        user_id=uuid4(),
+        user_display_name="Core Domain API Device Operator",
+        team_id=uuid4(),
+        membership_id=uuid4(),
+        role_code="member",
         data_scope=DataScope.ALL,
     )
     transport = ASGITransport(app=application)

@@ -99,8 +99,10 @@ Password Hash、Cookie 或 Session Token。管理角色只有 `member` 和 `acce
 `LAST_ACCESS_ADMINISTRATOR_REQUIRED`、`TEAM_DISABLED`、`TEAM_MEMBERSHIP_CONFLICT` 等正式错误码。
 资料库、Device、Task 与 Schedule 的全部 Human 路由分别执行 `asset`、`device`、`task`、`schedule`
 模块授权，并使用 ActorContext 的 `SELF / TEAM / ALL` 读取范围。它们的 Create DTO 不接受 Team 或
-创建者；这两个 Ownership 字段只从 ActorContext 或可信 Schedule 继承。其他尚未迁移到 Human
-Management Plane 的历史 API 不被伪装成已受本轮模块鉴权保护。
+创建者；这两个 Ownership 字段只从 ActorContext 或可信 Schedule 继承。Shop、Credential、Shop
+Session 与 Shop Onboarding 管理路由同样要求 Human Session、ActorContext 与 `shop` 模块访问；当前
+Shop 尚未建立 Ownership Scope。Automation Application Config 要求 `device` 模块访问，Notification
+Channel 管理与 Webhook 测试要求 `settings` 模块访问。Worker / Device Token 路由不使用 Human Guard。
 
 Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
@@ -125,6 +127,9 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 - `POST /api/v1/shops/{shop_id}/session/refresh`：仅供 Electron Main 提交内存中的新 Session；Renderer 不接触 payload。
 
 Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或密文。密码只存在于 Create/Update 写请求，Update 的空字符串表示保留现有密码。Session payload 的写入目前只属于内部 Service Contract，不开放普通 Frontend Route。
+
+Electron Main 进行店铺接入或 Session 恢复时，从其受控的应用会话读取 HttpOnly Human Cookie 并附加当前
+`X-Team-ID`；Cookie 不经过 Renderer，也不接受 Renderer 传入的 Raw Session Token。
 
 ## Device Provider Inventory Contract
 
@@ -170,6 +175,7 @@ Descriptor 固定包含
 
 当前 provider 仅允许 `yingdao`。字段类型为 text/number/boolean/select；Backend 校验字段名、
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
+所有读取与保存均要求 Human Session、ActorContext 与 `device` 模块访问。
 
 `POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
 `{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。
@@ -223,6 +229,7 @@ Device 是否在线、启用以及 Task 是否可创建仍由 Task Guard 在保�
 - `POST /api/v1/notification-channels/{channel_id}/test`
 
 Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密文。Update 的空 Webhook 表示保留原 Secret；测试消息由 Backend 投递。
+所有读取、配置与测试均要求 Human Session、ActorContext 与 `settings` 模块访问。
 
 ## Task Runtime Event API
 
