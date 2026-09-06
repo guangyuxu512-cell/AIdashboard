@@ -38,6 +38,51 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await expect(page.getByAltText('淘宝平台图标')).toBeVisible()
   await expect(page.getByAltText('视频号平台图标')).toBeVisible()
 
+  const platformCellAlignment = await page
+    .locator('.n-data-table-tbody .platform-display')
+    .evaluateAll((displays) =>
+      displays.map((display) => {
+        const iconSlot = display.querySelector<HTMLElement>(
+          '.platform-display__icon-slot',
+        )
+        const icon = iconSlot?.querySelector<HTMLElement>('.platform-icon')
+        const label = display.querySelector<HTMLElement>(
+          '.platform-display__label',
+        )
+        const displayRect = display.getBoundingClientRect()
+        const iconSlotRect = iconSlot?.getBoundingClientRect()
+        const iconRect = icon?.getBoundingClientRect()
+        const labelRect = label?.getBoundingClientRect()
+        return {
+          iconSlotWidth: Math.round(iconSlotRect?.width ?? 0),
+          iconCenterOffset: Math.round(
+            (iconRect?.left ?? 0) + (iconRect?.width ?? 0) / 2 -
+              ((iconSlotRect?.left ?? 0) + (iconSlotRect?.width ?? 0) / 2),
+          ),
+          labelOffset: Math.round((labelRect?.left ?? 0) - displayRect.left),
+          gap: Math.round(
+            (labelRect?.left ?? 0) -
+              ((iconSlotRect?.left ?? 0) + (iconSlotRect?.width ?? 0)),
+          ),
+          labelTextAlign: label ? getComputedStyle(label).textAlign : null,
+        }
+      }),
+    )
+  expect(platformCellAlignment.length).toBeGreaterThan(1)
+  expect(
+    new Set(platformCellAlignment.map((item) => item.iconSlotWidth)).size,
+  ).toBe(1)
+  expect(
+    new Set(platformCellAlignment.map((item) => item.iconCenterOffset)).size,
+  ).toBe(1)
+  expect(new Set(platformCellAlignment.map((item) => item.labelOffset)).size).toBe(
+    1,
+  )
+  expect(new Set(platformCellAlignment.map((item) => item.gap)).size).toBe(1)
+  expect(
+    platformCellAlignment.every((item) => item.labelTextAlign === 'left'),
+  ).toBe(true)
+
   const filterBar = page.getByRole('region', { name: '筛选条件' })
   await expect(filterBar).toBeVisible()
   await expect(page.getByPlaceholder('搜索店铺名称')).toBeVisible()

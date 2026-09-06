@@ -69,7 +69,7 @@ export const MODULE_REGISTRY = [
     navigationGroup: 'development',
     navigationParent: null,
     routeName: 'home',
-    routePath: '/',
+    routePath: '/foundation',
     icon: Blocks,
     enabled: true,
     permissionCode: null,
