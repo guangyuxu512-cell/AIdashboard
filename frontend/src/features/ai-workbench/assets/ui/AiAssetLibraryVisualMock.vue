@@ -7,6 +7,7 @@ import { useMessage } from 'naive-ui'
 
 import { createProductMaterialGroupFixtures } from '../__fixtures__/product-material-groups.fixture'
 import {
+  TEMPLATE_GROUP_OPTIONS,
   type MaterialAssetReference,
   type MaterialRole,
   type ProductMaterialFilter,
@@ -316,6 +317,7 @@ onBeforeUnmount(library.dispose)
             <ProductMaterialSettings
               v-else-if="selectedProduct"
               :product="selectedProduct"
+              :template-group-options="TEMPLATE_GROUP_OPTIONS"
               @update:enabled="library.setProductEnabled"
               @update:normal-generation-enabled="
                 library.setNormalGenerationEnabled

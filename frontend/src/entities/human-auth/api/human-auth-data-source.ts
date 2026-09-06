@@ -1,6 +1,7 @@
 import { apiMode, ApiError, httpClient, type ApiMode } from '@/shared/api'
 
 import type {
+  CurrentModuleAccess,
   CurrentHumanUser,
   HumanLoginInput,
   HumanTeamMembership,
@@ -21,11 +22,17 @@ interface HumanTeamMembershipDto {
   membership_enabled: boolean
 }
 
+interface CurrentModuleAccessDto {
+  module_codes: string[]
+  is_access_administrator: boolean
+}
+
 export interface HumanAuthDataSource {
   login(input: HumanLoginInput): Promise<CurrentHumanUser>
   logout(): Promise<void>
   getCurrentUser(): Promise<CurrentHumanUser>
   listMyTeams(): Promise<HumanTeamMembership[]>
+  getCurrentModuleAccess(): Promise<CurrentModuleAccess>
 }
 
 function mapUser(dto: CurrentHumanUserDto): CurrentHumanUser {
@@ -41,6 +48,13 @@ function mapTeam(dto: HumanTeamMembershipDto): HumanTeamMembership {
     roleCode: dto.role_code,
     dataScope: dto.data_scope,
     membershipEnabled: dto.membership_enabled,
+  }
+}
+
+function mapModuleAccess(dto: CurrentModuleAccessDto): CurrentModuleAccess {
+  return {
+    moduleCodes: [...dto.module_codes],
+    isAccessAdministrator: dto.is_access_administrator,
   }
 }
 
@@ -67,13 +81,19 @@ function createRealHumanAuthDataSource(): HumanAuthDataSource {
       )
       return response.data.map(mapTeam)
     },
+    async getCurrentModuleAccess() {
+      const response = await httpClient.get<CurrentModuleAccessDto>(
+        '/api/v1/access-management/me/module-access',
+      )
+      return mapModuleAccess(response.data)
+    },
   }
 }
 
 function createMockHumanAuthDataSource(): HumanAuthDataSource {
   let currentUser: CurrentHumanUser | null = {
     userId: '00000000-0000-4000-8000-000000000001',
-    displayName: '开发预览',
+    displayName: '管理员预览',
   }
   let teams: HumanTeamMembership[] = [
     {
@@ -86,6 +106,7 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
       membershipEnabled: true,
     },
   ]
+  let isAccessAdministrator = true
 
   const requireUser = (): CurrentHumanUser => {
     if (!currentUser) {
@@ -115,6 +136,10 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
         userId: '00000000-0000-4000-8000-000000000001',
         displayName: multipleTeams ? '多团队测试人员' : '测试人员',
       }
+      isAccessAdministrator = input.loginName
+        .trim()
+        .toLowerCase()
+        .includes('admin')
       teams = [
         {
           membershipId: '00000000-0000-4000-8000-000000000011',
@@ -144,6 +169,7 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
     async logout() {
       currentUser = null
       teams = []
+      isAccessAdministrator = false
     },
     async getCurrentUser() {
       return requireUser()
@@ -151,6 +177,21 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
     async listMyTeams() {
       requireUser()
       return [...teams]
+    },
+    async getCurrentModuleAccess() {
+      requireUser()
+      return {
+        moduleCodes: [
+          'shop',
+          'asset',
+          'ai-workbench',
+          'device',
+          'task',
+          'schedule',
+          'settings',
+        ],
+        isAccessAdministrator,
+      }
     },
   }
 }

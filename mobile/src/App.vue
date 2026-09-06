@@ -6,6 +6,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
+import { useAuthStore } from '@/app/stores/auth'
 import { useThemeStore, type ThemeMode } from '@/app/stores/theme'
 import type { MobileIconName } from '@/shared/icons'
 import {
@@ -15,6 +16,7 @@ import {
   MobileGlobalHeader,
   MobileThemeSettingsSheet,
   provideMobileDetailHeaderAction,
+  provideMobileMainHeaderAction,
 } from '@/shared/ui'
 
 const visualTokenTunerEnabled =
@@ -27,22 +29,31 @@ const VisualTokenTuner = visualTokenTunerEnabled
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const { mode, resolvedTheme } = storeToRefs(themeStore)
 const themeSettingsOpen = ref(false)
 const detailHeader = provideMobileDetailHeaderAction()
+const mainHeader = provideMobileMainHeaderAction()
 
 const routeTitle = computed(() => route.meta.title || '移动端')
 const shellLayout = computed(() => route.meta.layout || 'main')
 const isMainLayout = computed(() => shellLayout.value === 'main')
+const isAuthLayout = computed(() => shellLayout.value === 'auth')
 const isToolLayout = computed(() => shellLayout.value === 'tool')
 const globalHeaderPageTitle = computed(() =>
-  route.name === MOBILE_ROUTE_NAMES.devices ? '设备' : undefined,
+  route.name === MOBILE_ROUTE_NAMES.devices
+    ? '设备'
+    : route.name === MOBILE_ROUTE_NAMES.tasks
+      ? '任务'
+      : undefined,
 )
 const isVisualV2Route = computed(
   () =>
     route.name === MOBILE_ROUTE_NAMES.devices ||
-    route.name === MOBILE_ROUTE_NAMES.deviceDetail,
+    route.name === MOBILE_ROUTE_NAMES.deviceDetail ||
+    route.name === MOBILE_ROUTE_NAMES.tasks ||
+    route.name === MOBILE_ROUTE_NAMES.taskDetail,
 )
 const detailHeaderAction = computed(() => detailHeader.action.value)
 const activeNavigationKey = computed(() => {
@@ -63,39 +74,61 @@ const activeNavigationKey = computed(() => {
   if (route.name === MOBILE_ROUTE_NAMES.profile) return 'profile'
   return ''
 })
+const showBottomNavigation = computed(
+  () =>
+    Boolean(activeNavigationKey.value) ||
+    route.name === MOBILE_ROUTE_NAMES.home ||
+    route.name === MOBILE_ROUTE_NAMES.foundation,
+)
 
-const mainNavigationItems = [
+const allMainNavigationItems = [
   {
     key: 'devices',
     label: '设备',
     icon: 'device-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.devices },
+    permission: 'device',
   },
   {
     key: 'tasks',
     label: '任务',
     icon: 'task-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.tasks },
+    permission: 'task',
   },
   {
     key: 'schedules',
     label: '计划',
     icon: 'schedule-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.schedules },
+    permission: 'schedule',
   },
   {
     key: 'shops',
     label: '店铺',
     icon: 'shop-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.shops },
+    permission: 'shop',
   },
   {
     key: 'profile',
     label: '我的',
     icon: 'profile-nav' satisfies MobileIconName,
     to: { name: MOBILE_ROUTE_NAMES.profile },
+    permission: null,
   },
 ] as const
+
+const mainNavigationItems = computed(() => {
+  if (route.name === MOBILE_ROUTE_NAMES.foundation) {
+    return allMainNavigationItems
+  }
+  return allMainNavigationItems.filter(
+    (item) =>
+      item.permission === null ||
+      authStore.allowedModuleCodes.has(item.permission),
+  )
+})
 
 const detailBackTarget = computed<RouteLocationRaw>(() => {
   if (route.name === MOBILE_ROUTE_NAMES.taskDetail) {
@@ -130,11 +163,19 @@ function selectTheme(nextMode: ThemeMode): void {
   themeStore.setMode(nextMode)
   themeSettingsOpen.value = false
 }
+
+function runMainHeaderAction(): void {
+  if (mainHeader.action.value) {
+    mainHeader.action.value.run()
+    return
+  }
+  themeSettingsOpen.value = true
+}
 </script>
 
 <template>
   <VanConfigProvider :theme="resolvedTheme">
-    <RouterView v-if="isToolLayout" />
+    <RouterView v-if="isToolLayout || isAuthLayout" />
 
     <MobileAppShell
       v-else
@@ -148,9 +189,10 @@ function selectTheme(nextMode: ThemeMode): void {
           :resolved-theme="resolvedTheme"
           :page-title="globalHeaderPageTitle"
           :menu-enabled="Boolean(globalHeaderPageTitle)"
+          :menu-action-label="mainHeader.action.value?.label ?? '打开主题设置'"
           @theme-toggle="themeStore.toggleResolvedTheme"
           @notification-click="showNotificationPlaceholder"
-          @settings-click="themeSettingsOpen = true"
+          @settings-click="runMainHeaderAction"
         />
         <MobileDetailHeader
           v-else
@@ -166,6 +208,7 @@ function selectTheme(nextMode: ThemeMode): void {
 
       <template #bottom>
         <MobileBottomNavigation
+          v-if="showBottomNavigation"
           :items="mainNavigationItems"
           :active-key="activeNavigationKey"
         />
@@ -174,10 +217,11 @@ function selectTheme(nextMode: ThemeMode): void {
 
     <component
       :is="VisualTokenTuner"
-      v-if="visualTokenTunerEnabled && !isToolLayout"
+      v-if="visualTokenTunerEnabled && !isToolLayout && !isAuthLayout"
     />
 
     <MobileThemeSettingsSheet
+      v-if="!isToolLayout && !isAuthLayout"
       :show="themeSettingsOpen"
       :mode="mode"
       @update:show="themeSettingsOpen = $event"

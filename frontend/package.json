@@ -4,15 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "dev:real": "vite --host 127.0.0.1 --mode real",
-    "build": "pnpm run typecheck && vite build --mode real",
-    "build:test-production": "pnpm run typecheck && vite build --mode mock",
+    "dev": "cross-env VITE_API_MODE=mock vite --host 127.0.0.1 --mode mock",
+    "dev:real": "cross-env VITE_API_MODE=real vite --host 127.0.0.1 --mode real",
+    "build": "pnpm run typecheck && cross-env VITE_API_MODE=real vite build --mode production",
+    "build:visual-mock": "pnpm run typecheck && cross-env VITE_API_MODE=mock vite build --mode mock",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "cross-env PLAYWRIGHT_API_MODE=mock playwright test --project=mock --project=visual",
+    "test:e2e:mock": "cross-env PLAYWRIGHT_API_MODE=mock playwright test --project=mock",
+    "test:e2e:real": "cross-env PLAYWRIGHT_API_MODE=real playwright test --project=real",
+    "test:e2e:visual": "cross-env PLAYWRIGHT_API_MODE=mock playwright test --project=visual"
   },
   "dependencies": {
     "@lucide/vue": "^1.33.0",
@@ -35,6 +38,7 @@
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.3.0",
     "@vue/test-utils": "^2.4.6",
+    "cross-env": "^7.0.3",
     "eslint": "^9.19.0",
     "eslint-plugin-vue": "^9.32.0",
     "jsdom": "^26.0.0",

@@ -12,7 +12,10 @@ test('keeps the production brand compact and hides development navigation', asyn
   await page.setViewportSize({ width: 1366, height: 768 })
   await page.goto('/')
 
-  const navigation = page.getByRole('navigation', { name: '主导航' })
+  const navigation = page.getByRole('navigation', {
+    name: '主导航',
+    exact: true,
+  })
   await expect(navigation).toBeVisible()
   await expect(page.getByText('思余AI中控台', { exact: true })).toBeVisible()
   await expect(page.getByText('运营工作台', { exact: true })).toHaveCount(0)
@@ -44,13 +47,21 @@ test('keeps the production brand compact and hides development navigation', asyn
   expect(runtimeErrors).toEqual([])
 })
 
-test('keeps the template visual fixture out of production', async ({
+test('keeps every AI visual fixture out of a production-like build', async ({
   page,
 }) => {
   await page.goto('/#/ai-workbench/templates?visualMock=1')
 
-  await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '模板库工具栏' })).toBeVisible()
   await expect(page.getByText('电商标准套图 A', { exact: true })).toHaveCount(0)
   await expect(page.getByText('竞品复刻 A', { exact: true })).toHaveCount(0)
   await expect(page.getByText('极简白底', { exact: true })).toHaveCount(0)
+
+  await page.goto('/#/ai-workbench/generate?visualMock=1')
+  await expect(page.getByRole('navigation', { name: 'AI 功能入口' })).toBeVisible()
+  await expect(page.getByText('手机支架', { exact: true })).toHaveCount(0)
+
+  await page.goto('/#/ai-workbench/records?visualMock=1')
+  await expect(page.getByLabel('生成记录列表')).toBeVisible()
+  await expect(page.getByText('张三', { exact: true })).toHaveCount(0)
 })

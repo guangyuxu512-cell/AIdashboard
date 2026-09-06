@@ -3,37 +3,43 @@
 数据库渐进式演进，不要求一次设计所有表。
 
 新需求先判断：
+
 - 新属性
 - 新实体
 - 新关系
 
 ## 主键
+
 使用稳定 ID，禁止名称主键。
 
 ## 多对多
+
 明确可能多对多时使用关系表。
 例如 `shop_device_binding`。
 
 ## Migration
+
 所有结构变化通过 Alembic。
 禁止直接手改正式 DB。
 
 ## 索引
+
 根据实际查询条件补索引，不无依据创建大量索引。
 
 ## 敏感数据
+
 Credential / Session 与普通业务字段分离并加密。
 
 ## Core Domain V1 数据库
 
 首个正式业务 Migration：`20260818_0001_core_domain_v1`。
 
-| 表 | 职责 |
-|---|---|
-| `users` | 最小系统用户身份，供负责人等稳定关系引用 |
-| `shops` | 店铺基础事实、平台、启用状态、可选负责人和备注 |
-| `devices` | 设备身份、启用状态、可选位置和备注 |
-| `shop_device_bindings` | Shop 与 Device 的执行资格多对多关系及启用状态 |
+| 表                     | 职责                                           |
+| ---------------------- | ---------------------------------------------- |
+| `users`                | 最小系统用户身份，供负责人等稳定关系引用       |
+| `shops`                | 店铺基础事实、平台、启用状态、可选负责人和备注 |
+| `devices`              | 设备身份、启用状态、可选位置和备注             |
+| `shop_device_bindings` | Shop 与 Device 的执行资格多对多关系及启用状态  |
 
 核心 ID 使用统一 UUID；核心表使用带时区的 `created_at`、`updated_at`。`shop_device_bindings` 使用 `(shop_id, device_id)` 复合主键防止重复关系。Binding 只表示执行资格，不表达主设备、备用设备或默认唯一设备；同一个 Shop 可以同时绑定多个 Device。
 
@@ -45,13 +51,13 @@ Shop 平台 V1 机器值仅包含 `douyin`、`pdd`。
 
 Migration `20260819_0002_auth_domain_foundation` 增加：
 
-| 表 | 职责 |
-|---|---|
-| `platform_credentials` | 平台、统一登录标识、加密 Secret、验证码渠道与启用状态 |
+| 表                         | 职责                                                      |
+| -------------------------- | --------------------------------------------------------- |
+| `platform_credentials`     | 平台、统一登录标识、加密 Secret、验证码渠道与启用状态     |
 | `shop_credential_bindings` | Credential 与 Shop 的可扩展关系；每 Shop 最多一个启用关系 |
-| `shop_sessions` | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload |
+| `shop_sessions`            | 每 Shop 当前 Session 元数据、乐观并发版本与加密 payload   |
 
-外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只允许在可随时重建的 `control_center_dev` 执行。
+外键统一 `RESTRICT`，避免无意级联删除认证事实。Session 版本必须为正整数，更新由 Service 使用条件更新原子递增。真实迁移闭环只能在可随时重建且已登记的非生产数据库执行：Feature 使用其临时/Feature DB，Integration 使用 `control_center_integration`，Main smoke 使用 `control_center_dev`。Migration Slot、升级/降级和 Gate 规则见根 `docs/engineering/03-数据库与Migration协作规范.md`。
 
 ## Device Provider Inventory
 
@@ -143,3 +149,50 @@ Team 与 Membership 以 `enabled` 停用，不以 Hard Delete 作为主要生命
 Phase A 不修改 Shop、Asset、Task、Schedule 或 AI Job 的 Ownership。后续 Team Scoped 业务表的
 统一语义是 `team_id=数据归属团队`、`created_by_user_id=创建者`；现有
 `Shop.owner_user_id` 仍只表示负责人，不承担权限边界。
+
+Migration `20260905_0029_device_task_human_access_v1` 将这对字段加到 `devices`、`schedules` 与
+`tasks`，使用 `RESTRICT` 外键、Team/创建者查询索引和 `team_id NOT NULL`。升级时仅在数据库恰有一个
+Team 时回填既有记录的 Team；无法可靠归属的历史创建者保持 `NULL`，多 Team 的歧义数据拒绝迁移。
+
+## AI Provider V1 数据库
+
+Migration `20260905_0030_ai_provider_v1` 增加 `generation_provider_executions`。该表以
+`generation_item_id` 为主键，一条 GenerationItem 最多保存一个当前 Provider Execution；只记录
+`provider_code / external_task_id / attempt_count / created_at / updated_at`。Retry 为新 Attempt 重置并复用同一行，
+不建立 Attempt 历史。`external_task_id` 可空，仅用于调用 Provider 前已经提交的 Durable Create Intent；创建
+成功后立即更新同一行。恢复时当前 Attempt 的空 Task ID 必须 Fail Closed，不得再次 Create。
+`attempt_count` 与 GenerationItem 当前次数共同保护旧 Provider 结果不得回写。
+
+0030 不修改 `generation_jobs / generation_items`，不创建 Provider、Model、Payload、History 或 Queue 表，
+也不保存 Provider 结果 URL。V1 的 Provider Code 只允许 `toapis`；Provider 配置和 Secret 只来自 Backend
+运行环境。
+
+## Access Management V1 数据库
+
+Migration `20260902_0025_access_management_v1` 增加
+`membership_module_accesses`，以 `(membership_id, module_code)` 复合主键保存一条 Team
+Membership 可访问的正式 PC 模块。它通过 `RESTRICT` 外键依附 `team_memberships`，不新增密码、
+Token、角色继承或任意 JSON 权限列。升级时为既有 Membership 回填当前正式模块代码以保持兼容；
+不自动改变角色、Data Scope 或授予 `access_admin`。人员、Team、Membership 均维持启停模型，
+不通过本期 Migration 增加 Hard Delete。
+
+## AI Workbench Backend Foundation V1 数据库
+
+Migration `20260903_0026_ai_workbench_backend_foundation_v1` 增加：
+
+| 表                                 | 职责                                           |
+| ---------------------------------- | ---------------------------------------------- |
+| `template_groups`                  | Team Scoped 模板组聚合根                       |
+| `prompt_templates`                 | 模板组内主图优先、详情随后的连续提示词模板序列 |
+| `product_material_groups`          | Team Scoped 商品素材组聚合根                   |
+| `material_group_assets`            | 商品素材组与统一 `assets` 的角色关系           |
+| `material_group_template_bindings` | 商品素材组按生成模式绑定模板组的有序关系       |
+
+聚合根使用 `team_id / created_by_user_id` 接入现有 Access & Ownership Foundation；关系表不复制
+Ownership。模板顺序为组内从 1 开始的连续 `sort_order`，模板绑定位置为模式内从 0 开始的连续
+`position`。Prompt 只保存一个 `prompt`，变量名集合使用受数组 Check 约束的 JSONB。
+
+全部关系外键使用 `RESTRICT`。删除 ProductMaterialGroup 时由 Service/ORM 明确删除该聚合自己的
+Asset 与 Template Binding 关系，但不删除 Asset 本体。删除 TemplateGroup 前由 Service 检查反向
+Binding；仍被引用时返回领域冲突，不自动解除关系，也不依赖数据库 Cascade。0026 不创建
+GenerationJob、Provider 或 Queue 表。

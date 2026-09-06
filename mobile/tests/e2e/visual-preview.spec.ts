@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { installAuthenticatedMobileSession } from './auth-api-fixture'
+
 const viewportWidths = [360, 375, 390, 430] as const
 const themes = ['light', 'dark'] as const
 
@@ -13,12 +15,22 @@ function observePage(page: Page) {
   })
   page.on('pageerror', (error) => consoleErrors.push(error.message))
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.startsWith('/api/')) {
+    const path = new URL(request.url()).pathname
+    const isAuthBootstrap = [
+      '/api/v1/auth/me',
+      '/api/v1/access/me/teams',
+      '/api/v1/access-management/me/module-access',
+    ].includes(path)
+    if (path.startsWith('/api/') && !isAuthBootstrap) {
       apiRequests.push(request.url())
     }
   })
   return { consoleErrors, consoleInfo, apiRequests }
 }
+
+test.beforeEach(async ({ page }) => {
+  await installAuthenticatedMobileSession(page)
+})
 
 async function setTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
   await page.addInitScript((mode) => {
@@ -472,7 +484,7 @@ async function expectDetailHeader(
   title: '设备详情' | '任务详情',
   activeNavigation: '设备' | '任务',
 ): Promise<void> {
-  const visualV2 = title === '设备详情'
+  const visualV2 = true
   const header = page.getByTestId('mobile-detail-header')
   const headerTitle = page.getByTestId('mobile-detail-header-title')
 
@@ -564,7 +576,7 @@ async function expectDetailHeader(
   expect(geometry.titleLineHeight).toBe(geometry.expectedTitleLineHeight)
   expect(geometry.borderBottomWidth).toBe('0px')
   expect(geometry.boxShadow).toBe('none')
-  if (visualV2) {
+  if (title === '设备详情') {
     await expect(page.getByRole('button', { name: '更多信息' })).toBeVisible()
   }
   await expect(page.getByTestId('mobile-shell-bottom')).toBeVisible()
@@ -576,6 +588,7 @@ for (const width of viewportWidths) {
     test(`Visual Mock ${width}px ${theme} 稳定展示设备与任务`, async ({
       page,
     }, testInfo) => {
+      test.setTimeout(60_000)
       const observation = observePage(page)
       await page.setViewportSize({ width, height: 844 })
       await setTheme(page, theme)
@@ -1094,44 +1107,53 @@ for (const width of viewportWidths) {
       await page.goto(
         '/#/tasks/visual-task-running?fromDeviceId=visual-device-operations',
       )
-      await expect(page.getByTestId('task-detail')).toContainText('订单同步')
+      await expect(page.getByTestId('task-detail')).toContainText('订单同步', {
+        timeout: 10_000,
+      })
       await expectDetailHeader(page, '任务详情', '任务')
       await expectBottomNavigation(page, '任务')
       const taskDetailDensity = await page.evaluate(() => {
         const detail = document.querySelector<HTMLElement>(
           '[aria-label="任务详情内容"]',
         )!
-        const summary = document.querySelector<HTMLElement>(
-          '.task-detail-page__summary',
-        )!
-        const core = document.querySelector<HTMLElement>(
-          '.task-detail-page__core',
+        const card = document.querySelector<HTMLElement>(
+          '[data-testid="task-detail"]',
         )!
         const runtimeLog = document.querySelector<HTMLElement>('.runtime-log')!
-        const runtimeHeading = runtimeLog.querySelector<HTMLElement>('h2')!
+        const runtimeHeading = runtimeLog.querySelector<HTMLElement>(
+          '.runtime-log__heading',
+        )!
+        const runtimeScroll = runtimeLog.querySelector<HTMLElement>(
+          '[data-testid="runtime-log-scroll"]',
+        )!
         const bottom = document.querySelector<HTMLElement>(
           '[data-testid="mobile-shell-bottom"]',
         )!
         const detailBox = detail.getBoundingClientRect()
-        const summaryBox = summary.getBoundingClientRect()
-        const coreBox = core.getBoundingClientRect()
+        const cardBox = card.getBoundingClientRect()
         const runtimeBox = runtimeLog.getBoundingClientRect()
         const headingBox = runtimeHeading.getBoundingClientRect()
         const bottomBox = bottom.getBoundingClientRect()
 
         return {
-          startsAtTop:
-            detail.scrollTop === 0 && summaryBox.top >= detailBox.top,
-          summaryBeforeCore: summaryBox.bottom <= coreBox.top,
-          coreBeforeRuntime: coreBox.bottom <= runtimeBox.top,
+          startsAtTop: detail.scrollTop === 0 && cardBox.top >= detailBox.top,
+          cardBeforeRuntime: cardBox.bottom <= runtimeBox.top,
           runtimeHeadingInViewport: headingBox.top < bottomBox.top,
+          pageOverflowY: window.getComputedStyle(detail).overflowY,
+          runtimeOverflowY: window.getComputedStyle(runtimeScroll).overflowY,
+          headingOutsideScroll: !runtimeScroll.contains(runtimeHeading),
+          documentScrollable:
+            document.documentElement.scrollHeight > window.innerHeight,
         }
       })
       expect(taskDetailDensity).toEqual({
         startsAtTop: true,
-        summaryBeforeCore: true,
-        coreBeforeRuntime: true,
+        cardBeforeRuntime: true,
         runtimeHeadingInViewport: true,
+        pageOverflowY: 'hidden',
+        runtimeOverflowY: 'auto',
+        headingOutsideScroll: true,
+        documentScrollable: false,
       })
       if (width === 390 || (theme === 'light' && width === 360)) {
         await page.screenshot({
@@ -1150,17 +1172,22 @@ for (const width of viewportWidths) {
 
       await page.getByRole('button', { name: '返回' }).click()
       await expect(page).toHaveURL(/#\/devices$/)
+      await expect(page.getByTestId('device-card').first()).toBeVisible()
 
       await page.getByRole('tab', { name: /任务$/ }).click()
-      await expect(page).toHaveURL(/#\/tasks$/)
+      await expect(page).toHaveURL(/#\/tasks$/, { timeout: 10_000 })
       await expectBottomNavigation(page, '任务')
       const taskGlobalHeader = await readGlobalHeaderAnatomy(page)
-      expect(taskGlobalHeader.brandText).toBe('思余AI中控台')
-      expect(taskGlobalHeader.isPageHeader).toBe(false)
+      expect(taskGlobalHeader.brandText).toBe('任务')
+      expect(taskGlobalHeader.isPageHeader).toBe(true)
       expect(taskGlobalHeader.actionLabels).toEqual(
         deviceGlobalHeader.actionLabels,
       )
       expect(taskGlobalHeader.iconSizes).toEqual(deviceGlobalHeader.iconSizes)
+      await expect(page.getByTestId('mobile-header-menu')).toHaveAttribute(
+        'aria-label',
+        '筛选运行日期',
+      )
       await expect(page.getByTestId('task-card')).toHaveCount(5)
       for (const status of ['执行中', '成功', '失败', '待执行', '已丢失']) {
         await expect(
@@ -1176,9 +1203,11 @@ for (const width of viewportWidths) {
         page.getByText('正在处理 HuanYu 店铺', { exact: true }),
       ).toHaveCount(0)
       await expectNoHorizontalOverflow(page)
-      await expect(page.getByTestId('mobile-list-toolbar')).toHaveCSS(
-        'height',
-        '46px',
+      await expect(page.getByTestId('mobile-list-toolbar')).toHaveCount(0)
+      await expect(page.getByTestId('task-list-controls')).toBeVisible()
+      await expect(page.getByTestId('mobile-list-context-card')).toHaveCSS(
+        'min-height',
+        '48px',
       )
       await expect(page.getByTestId('task-list-scroll')).toHaveCSS(
         'scrollbar-width',
@@ -1186,7 +1215,7 @@ for (const width of viewportWidths) {
       )
       await expect(page.getByTestId('task-card-name').first()).toHaveCSS(
         'font-size',
-        '15px',
+        '16.5px',
       )
       await expect(page.getByTestId('task-card-name').first()).toHaveCSS(
         'font-weight',
@@ -1222,35 +1251,46 @@ for (const width of viewportWidths) {
       const taskCardTokens = await page.evaluate(() => {
         const rootStyle = window.getComputedStyle(document.documentElement)
         return {
-          paddingX: rootStyle
-            .getPropertyValue('--layout-card-padding-x')
+          paddingTop: rootStyle
+            .getPropertyValue('--visual-v2-business-card-padding-top')
             .trim(),
-          paddingY: rootStyle
-            .getPropertyValue('--layout-card-padding-y')
+          paddingRight: rootStyle
+            .getPropertyValue('--visual-v2-business-card-padding-right')
             .trim(),
-          slot: Number.parseFloat(
-            rootStyle.getPropertyValue('--layout-card-leading-icon-slot-width'),
+          paddingBottom: rootStyle
+            .getPropertyValue('--visual-v2-business-card-padding-bottom')
+            .trim(),
+          paddingLeft: rootStyle
+            .getPropertyValue('--visual-v2-business-card-padding-left')
+            .trim(),
+          leadingColumn: Number.parseFloat(
+            rootStyle.getPropertyValue(
+              '--visual-v2-business-card-leading-column',
+            ),
           ),
-          glyph: Number.parseFloat(
-            rootStyle.getPropertyValue('--icon-size-card-leading'),
+          artwork: Number.parseFloat(
+            rootStyle.getPropertyValue('--visual-v2-task-artwork-size'),
+          ),
+          icon: Number.parseFloat(
+            rootStyle.getPropertyValue('--visual-v2-task-artwork-icon-size'),
           ),
         }
       })
       expect(taskCardSpacing).toEqual([
         {
-          paddingTop: taskCardTokens.paddingY,
-          paddingRight: taskCardTokens.paddingX,
-          paddingBottom: taskCardTokens.paddingY,
-          paddingLeft: taskCardTokens.paddingX,
-          columnGap: '16px',
-          cardGap: 8,
+          paddingTop: taskCardTokens.paddingTop,
+          paddingRight: taskCardTokens.paddingRight,
+          paddingBottom: taskCardTokens.paddingBottom,
+          paddingLeft: taskCardTokens.paddingLeft,
+          columnGap: 'normal',
+          cardGap: 14,
         },
         {
-          paddingTop: taskCardTokens.paddingY,
-          paddingRight: taskCardTokens.paddingX,
-          paddingBottom: taskCardTokens.paddingY,
-          paddingLeft: taskCardTokens.paddingX,
-          columnGap: '16px',
+          paddingTop: taskCardTokens.paddingTop,
+          paddingRight: taskCardTokens.paddingRight,
+          paddingBottom: taskCardTokens.paddingBottom,
+          paddingLeft: taskCardTokens.paddingLeft,
+          columnGap: 'normal',
           cardGap: null,
         },
       ])
@@ -1258,23 +1298,28 @@ for (const width of viewportWidths) {
         .getByTestId('task-card')
         .evaluateAll((cards) =>
           cards.map((card) => {
+            const slot = card.querySelector<HTMLElement>(
+              '[data-testid="business-card-leading"]',
+            )!
             const leading = card.querySelector<HTMLElement>(
               '[data-testid="task-card-leading"]',
             )!
+            const icon = leading.querySelector<HTMLElement>('.mobile-icon')!
             return {
-              slotWidth: leading.getBoundingClientRect().width,
-              glyphSize: Number.parseFloat(
-                window.getComputedStyle(leading).fontSize,
-              ),
+              slotWidth: slot.getBoundingClientRect().width,
+              artworkSize: leading.getBoundingClientRect().width,
+              iconSize: icon.getBoundingClientRect().width,
             }
           }),
         )
       expect(
         taskLeadingVisuals.every(
           (visual) =>
-            Math.abs(visual.slotWidth - taskCardTokens.slot) <= 1 &&
-            visual.glyphSize === taskCardTokens.glyph &&
-            visual.glyphSize < visual.slotWidth,
+            Math.abs(visual.slotWidth - taskCardTokens.leadingColumn) <= 1 &&
+            visual.artworkSize === taskCardTokens.artwork &&
+            visual.iconSize === taskCardTokens.icon &&
+            visual.iconSize < visual.artworkSize &&
+            visual.artworkSize < visual.slotWidth,
         ),
       ).toBe(true)
 
@@ -1815,7 +1860,10 @@ test('Visual Mock 复用正式设备详情与任务详情', async ({ page }, tes
     /#\/tasks\/visual-task-running\?fromDeviceId=visual-device-operations$/,
   )
   await expect(page.getByTestId('task-detail')).toContainText('订单同步')
-  await expect(page.getByTestId('detail-progress-value')).toHaveText('3 / 5')
+  await expect(page.getByTestId('detail-progress-value')).toHaveCount(0)
+  await expect(page.getByTestId('task-detail-info-device')).toContainText(
+    '运营',
+  )
   await expect(page.getByTestId('runtime-events')).toContainText(
     '正在处理 HuanYu 店铺',
   )

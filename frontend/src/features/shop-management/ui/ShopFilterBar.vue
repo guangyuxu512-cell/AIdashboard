@@ -19,6 +19,7 @@ const props = defineProps<{
   modelValue: ShopFilterViewModel
   ownerOptions: SelectOption[]
   ownerOptionsLoading?: boolean
+  showOwnerFilter?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -67,7 +68,7 @@ const keyword = computed({
         placeholder="全部状态"
       />
     </FilterField>
-    <FilterField>
+    <FilterField v-if="showOwnerFilter">
       <AppSelect
         v-model="ownerUserId"
         width="sm"

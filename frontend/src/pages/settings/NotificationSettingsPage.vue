@@ -16,6 +16,7 @@ import PageHeader from '@/shared/components/PageHeader.vue'
 import PageSection from '@/shared/components/PageSection.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import SettingsLayout from '@/features/system-settings/ui/SettingsLayout.vue'
 
 const settings = useNotificationSettings()
 
@@ -25,93 +26,103 @@ function channelLabel(channel: NotificationChannelViewModel): string {
 </script>
 
 <template>
-  <div class="page-container notification-settings-page">
-    <PageHeader
-      title="通知配置"
-      description="配置系统级 Webhook 通知通道与设备上下线事件开关。"
-    >
-      <template #actions>
-        <AppButton tone="primary" @click="settings.startCreate">
-          <Plus :size="16" />
-          新增通道
-        </AppButton>
-      </template>
-    </PageHeader>
+  <SettingsLayout>
+    <div class="notification-settings-page">
+      <PageHeader
+        title="通知配置"
+        description="配置系统级 Webhook 通知通道与设备上下线事件开关。"
+      >
+        <template #actions>
+          <AppButton tone="primary" @click="settings.startCreate">
+            <Plus :size="16" />
+            新增通道
+          </AppButton>
+        </template>
+      </PageHeader>
 
-    <PageSection fill>
-      <LoadingState v-if="settings.channelsQuery.isPending.value" />
-      <ErrorState
-        v-else-if="settings.channelsQuery.isError.value"
-        retryable
-        :description="'无法加载通知配置，请检查服务连接。'"
-        @retry="settings.channelsQuery.refetch()"
-      />
-      <div v-else class="notification-settings-layout">
-        <aside class="notification-settings-list" aria-label="通知通道列表">
-          <button
-            v-for="channel in settings.channels.value"
-            :key="channel.channelId"
-            type="button"
-            class="notification-channel-item"
-            :class="{
-              'notification-channel-item--active':
-                channel.channelId === settings.selectedChannelId.value,
-            }"
-            @click="settings.selectChannel(channel.channelId)"
-          >
-            <span class="notification-channel-item__icon"><Bell :size="17" /></span>
-            <span class="notification-channel-item__copy">
-              <strong>{{ channel.name }}</strong>
-              <small>{{ channelLabel(channel) }}</small>
-            </span>
-            <StatusTag
-              :label="channel.enabled ? '已启用' : '已停用'"
-              :tone="channel.enabled ? 'success' : 'neutral'"
+      <PageSection fill>
+        <LoadingState v-if="settings.channelsQuery.isPending.value" />
+        <ErrorState
+          v-else-if="settings.channelsQuery.isError.value"
+          retryable
+          :description="'无法加载通知配置，请检查服务连接。'"
+          @retry="settings.channelsQuery.refetch()"
+        />
+        <div v-else class="notification-settings-layout">
+          <aside class="notification-settings-list" aria-label="通知通道列表">
+            <button
+              v-for="channel in settings.channels.value"
+              :key="channel.channelId"
+              type="button"
+              class="notification-channel-item"
+              :class="{
+                'notification-channel-item--active':
+                  channel.channelId === settings.selectedChannelId.value,
+              }"
+              @click="settings.selectChannel(channel.channelId)"
+            >
+              <span class="notification-channel-item__icon"
+                ><Bell :size="17"
+              /></span>
+              <span class="notification-channel-item__copy">
+                <strong>{{ channel.name }}</strong>
+                <small>{{ channelLabel(channel) }}</small>
+              </span>
+              <StatusTag
+                :label="channel.enabled ? '已启用' : '已停用'"
+                :tone="channel.enabled ? 'success' : 'neutral'"
+              />
+            </button>
+            <EmptyState
+              v-if="!settings.channels.value.length"
+              title="尚未配置通知通道"
+              description="新增飞书或企业微信群机器人 Webhook 通道。"
             />
-          </button>
-          <EmptyState
-            v-if="!settings.channels.value.length"
-            title="尚未配置通知通道"
-            description="新增飞书或企业微信群机器人 Webhook 通道。"
-          />
-        </aside>
+          </aside>
 
-        <section class="notification-settings-editor">
-          <header>
-            <div>
-              <h2>{{ settings.creating.value ? '新增通知通道' : '编辑通知通道' }}</h2>
-              <p>Webhook 明文不会从服务端返回，编辑时留空即可保留原配置。</p>
-            </div>
-            <StatusTag
-              v-if="settings.selectedChannel.value?.webhookConfigured"
-              label="Webhook 已配置"
-              tone="success"
+          <section class="notification-settings-editor">
+            <header>
+              <div>
+                <h2>
+                  {{ settings.creating.value ? '新增通知通道' : '编辑通知通道' }}
+                </h2>
+                <p>Webhook 明文不会从服务端返回，编辑时留空即可保留原配置。</p>
+              </div>
+              <StatusTag
+                v-if="settings.selectedChannel.value?.webhookConfigured"
+                label="Webhook 已配置"
+                tone="success"
+              />
+            </header>
+            <NotificationChannelForm
+              v-if="settings.creating.value || settings.selectedChannel.value"
+              :key="settings.selectedChannelId.value ?? 'new'"
+              :channel="settings.selectedChannel.value"
+              :creating="settings.creating.value"
+              :saving="settings.saving.value"
+              :testing="settings.testing.value"
+              @save="settings.save"
+              @test="settings.sendTest"
             />
-          </header>
-          <NotificationChannelForm
-            v-if="settings.creating.value || settings.selectedChannel.value"
-            :key="settings.selectedChannelId.value ?? 'new'"
-            :channel="settings.selectedChannel.value"
-            :creating="settings.creating.value"
-            :saving="settings.saving.value"
-            :testing="settings.testing.value"
-            @save="settings.save"
-            @test="settings.sendTest"
-          />
-          <EmptyState
-            v-else
-            title="选择或新增通知通道"
-            description="通道配置用于系统级事件通知。"
-          />
-        </section>
-      </div>
-    </PageSection>
-  </div>
+            <EmptyState
+              v-else
+              title="选择或新增通知通道"
+              description="通道配置用于系统级事件通知。"
+            />
+          </section>
+        </div>
+      </PageSection>
+    </div>
+  </SettingsLayout>
 </template>
 
 <style scoped>
 .notification-settings-page {
+  display: flex;
+  height: 100%;
   min-height: 100%;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .notification-settings-layout {

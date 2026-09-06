@@ -79,6 +79,14 @@ ALL 只影响读取过滤，不代表 Create 可以没有 Team。未来任何 Te
 明确 Active Team。单实体 Detail 的默认实现也应使用 `entity_id + scope predicate` 同一个 SQL，
 避免泄漏记录是否存在。
 
+ALL 仅扩大列表、详情与可信内部读取的范围；它不是跨 Team 创建、更新、删除、转移或建立业务关系的
+特权。任何 Team Scoped Entity 及其业务关系写入都必须以其明确的归属 Team 为边界，不能因为 Actor
+拥有 ALL 而绕过该边界。
+
+未来 Product Material Group 是 Team Scoped Entity：其关联的每个 Asset 必须与 Product Material Group
+属于同一 Team（`product_material_group.team_id = asset.team_id`）。跨 Team Asset 即使可被 ALL Actor
+读取，也禁止作为该 Group 的业务关联；不得建立跨 Team 的 Asset 业务关系。
+
 ## 5. Human Auth 现状
 
 Human Auth V1 已在 `modules/human_auth` 建立企业内部人员认证。User 使用规范化 `login_name` 与
@@ -119,11 +127,14 @@ Worker 继续只通过 Device Token 与 `X-Device-ID` 认证。未来 Human User
 ## 9. Phase B
 
 B1 Asset Scope 已在 `15-Asset Scope V1.md` 中落地：Asset 使用 `team_id / created_by_user_id`，Human
-List、Content、Delete 与内部 Reference Lookup 都通过本策略生成 SQL Predicate。后续仍为：
+List、Content、Delete 与内部 Reference Lookup 都通过本策略生成 SQL Predicate。B2 Device、Schedule 与
+Task Scope 已在 Migration `20260905_0029_device_task_human_access_v1` 落地：三者使用同一对 Ownership
+字段；全部 Human 路由同时要求 Human Session、`X-Team-ID` 解析的 ActorContext 与对应模块访问。
+Schedule 触发的 Task 继承 Schedule 的 Team 与业务发起人。Task Runtime Event 在返回前先验证 Task
+可读；Worker 认证与执行链保持独立。后续仍为：
 
-1. B2 Task / Schedule Scope
-2. B3 Shop Scope
-3. AI Image Ownership Integration
+1. B3 Shop Scope
+2. AI Image Ownership Integration
 
 未来 Team Scoped Entity 统一使用：
 

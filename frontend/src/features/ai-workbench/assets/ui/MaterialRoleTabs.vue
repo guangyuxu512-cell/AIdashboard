@@ -35,6 +35,7 @@ function updateRole(role: string): void {
   <ContextSwitchBar
     class="material-role-tabs"
     label="素材角色"
+    appearance="bare"
     :items="items"
     :active-key="modelValue"
     @select="updateRole"
@@ -44,9 +45,5 @@ function updateRole(role: string): void {
 <style scoped>
 .material-role-tabs {
   flex: 0 0 auto;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }
 </style>

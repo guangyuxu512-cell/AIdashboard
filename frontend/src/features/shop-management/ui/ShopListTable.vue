@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h } from 'vue'
+import { computed, h } from 'vue'
 import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 
 import {
@@ -18,6 +18,8 @@ const props = defineProps<{
   error?: string | null
   checkedRowKeys?: string[]
   statusChangingShopId?: string | null
+  showOwner?: boolean
+  showDeviceSummary?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +30,7 @@ const emit = defineEmits<{
   'update:checkedRowKeys': [keys: string[]]
 }>()
 
-const columns: DataTableColumns<ShopListItemViewModel> = [
+const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
   { type: 'selection', width: 46 },
   {
     title: '店铺名称',
@@ -51,23 +53,31 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
     align: 'center',
     render: (shop) => h(ShopSessionStatusTag, { status: shop.loginStatus }),
   },
-  {
-    title: '负责人',
-    key: 'ownerName',
-    width: 82,
-    align: 'center',
-  },
-  {
-    title: '执行设备',
-    key: 'executionDeviceNames',
-    width: 148,
-    align: 'center',
-    ellipsis: { tooltip: true },
-    render: (shop) => {
-      const summary = getShopExecutionDeviceSummary(shop)
-      return h('span', { title: summary.names.join('、') }, summary.label)
-    },
-  },
+  ...(props.showOwner
+    ? [
+        {
+          title: '负责人',
+          key: 'ownerName',
+          width: 82,
+          align: 'center' as const,
+        },
+      ]
+    : []),
+  ...(props.showDeviceSummary
+    ? [
+        {
+          title: '执行设备',
+          key: 'executionDeviceNames',
+          width: 148,
+          align: 'center' as const,
+          ellipsis: { tooltip: true },
+          render: (shop: ShopListItemViewModel) => {
+            const summary = getShopExecutionDeviceSummary(shop)
+            return h('span', { title: summary.names.join('、') }, summary.label)
+          },
+        },
+      ]
+    : []),
   {
     title: '店铺状态',
     key: 'enabledStatus',
@@ -118,7 +128,7 @@ const columns: DataTableColumns<ShopListItemViewModel> = [
         ),
       ]),
   },
-]
+])
 
 function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
   emit(

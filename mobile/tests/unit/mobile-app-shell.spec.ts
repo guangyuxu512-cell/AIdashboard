@@ -6,6 +6,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import App from '@/App.vue'
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
+import { useAuthStore } from '@/app/stores/auth'
+import type { HumanAuthDataSource } from '@/entities/human-auth'
 import {
   MobileAppShell,
   MobileBottomNavigation,
@@ -35,10 +37,22 @@ function createShellRouter() {
     requiresAuth: false,
     permission: null,
   })
+  const authMeta = (title: string) => ({
+    title,
+    layout: 'auth' as const,
+    requiresAuth: false,
+    permission: null,
+  })
 
   return createRouter({
     history: createMemoryHistory(),
     routes: [
+      {
+        path: '/login',
+        name: MOBILE_ROUTE_NAMES.login,
+        component: pageStub,
+        meta: authMeta('登录'),
+      },
       {
         path: '/',
         name: MOBILE_ROUTE_NAMES.home,
@@ -109,12 +123,45 @@ function createShellRouter() {
   })
 }
 
-async function mountAppAt(path: string) {
+function shellAuthDataSource(moduleCodes: string[]): HumanAuthDataSource {
+  return {
+    login: async () => ({ userId: 'user-1', displayName: '测试人员' }),
+    logout: async () => undefined,
+    getCurrentUser: async () => ({
+      userId: 'user-1',
+      displayName: '测试人员',
+    }),
+    listMyTeams: async () => [
+      {
+        membershipId: 'membership-1',
+        teamId: 'team-1',
+        teamName: '默认团队',
+        teamEnabled: true,
+        roleCode: 'member',
+        dataScope: 'team',
+        membershipEnabled: true,
+      },
+    ],
+    getCurrentModuleAccess: async () => ({
+      moduleCodes,
+      isAccessAdministrator: false,
+    }),
+  }
+}
+
+async function mountAppAt(
+  path: string,
+  moduleCodes = ['device', 'task', 'schedule', 'shop'],
+) {
   const router = createShellRouter()
+  const pinia = createPinia()
+  const auth = useAuthStore(pinia)
+  auth.setDataSource(shellAuthDataSource(moduleCodes))
+  await auth.initialize()
   await router.push(path)
   await router.isReady()
   const wrapper = mount(App, {
-    global: { plugins: [createPinia(), router] },
+    global: { plugins: [pinia, router] },
   })
   mountedWrappers.push(wrapper)
   return { router, wrapper }
@@ -251,13 +298,14 @@ describe('MobileAppShell V2', () => {
       await flushPromises()
 
       expect(wrapper.findAllComponents(MobileGlobalHeader)).toHaveLength(1)
-      if (path === '/devices') {
+      if (path === '/devices' || path === '/tasks') {
+        const expectedTitle = path === '/devices' ? '设备' : '任务'
         expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
-          '设备',
+          expectedTitle,
         )
         expect(
           wrapper.getComponent(MobileGlobalHeader).props('pageTitle'),
-        ).toBe('设备')
+        ).toBe(expectedTitle)
       } else {
         expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
           '思余AI中控台',
@@ -276,9 +324,7 @@ describe('MobileAppShell V2', () => {
     const items = wrapper.findAllComponents(VanTabbarItem)
 
     expect(wrapper.findAllComponents(MobileBottomNavigation)).toHaveLength(1)
-    expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain(
-      '思余AI中控台',
-    )
+    expect(wrapper.getComponent(MobileGlobalHeader).text()).toContain('任务')
     expect(wrapper.findComponent(MobileDetailHeader).exists()).toBe(false)
     expect(tabbar.props('fixed')).toBe(false)
     expect(tabbar.props('safeAreaInsetBottom')).toBe(false)
@@ -316,6 +362,17 @@ describe('MobileAppShell V2', () => {
       'schedule-nav',
       'shop-nav',
       'profile-nav',
+    ])
+  })
+
+  it('hides module navigation entries that the active membership cannot access', async () => {
+    const { wrapper } = await mountAppAt('/me', ['task'])
+    const items = wrapper.findAllComponents(VanTabbarItem)
+
+    expect(items.map((item) => item.text())).toEqual(['任务', '我的'])
+    expect(items.map((item) => item.attributes('data-testid'))).toEqual([
+      'mobile-bottom-navigation-tasks',
+      'mobile-bottom-navigation-profile',
     ])
   })
 
@@ -409,6 +466,15 @@ describe('MobileAppShell V2', () => {
       expect(wrapper.text()).toContain('页面内容')
     },
   )
+
+  it('uses no product shell on the authentication layout', async () => {
+    const { wrapper } = await mountAppAt('/login')
+
+    expect(wrapper.findComponent(MobileAppShell).exists()).toBe(false)
+    expect(wrapper.findComponent(MobileGlobalHeader).exists()).toBe(false)
+    expect(wrapper.findComponent(MobileBottomNavigation).exists()).toBe(false)
+    expect(wrapper.text()).toContain('页面内容')
+  })
 
   it('omits empty chrome and activates safe-area fallback classes', () => {
     const wrapper = mount(MobileAppShell, {

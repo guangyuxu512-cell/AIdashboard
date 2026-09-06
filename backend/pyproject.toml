@@ -32,5 +32,5 @@ include = ["app*"]
 testpaths = ["tests"]
 addopts = "-q -m 'not integration'"
 markers = [
-    "integration: requires the dedicated control_center_dev PostgreSQL database",
+    "integration: requires an explicitly guarded dedicated PostgreSQL database",
 ]

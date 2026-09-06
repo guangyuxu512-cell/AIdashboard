@@ -530,7 +530,7 @@ description（需要时）
 | `AppInput`       | `NInput`       | 语义宽度、固定 medium                            |
 | `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium                            |
 | `AppSelect`      | `NSelect`      | 语义宽度、固定 medium、单选/多选与标签折叠       |
-| `AppDatePicker`  | `NDatePicker`  | date / daterange、语义宽度                       |
+| `AppDatePicker`  | `NDatePicker`  | 固定 medium（34px）；single 156px、daterange 236px |
 | `AppTimePicker`  | `NTimePicker`  | 语义宽度、固定 medium                            |
 | `AppSwitch`      | `NSwitch`      | 统一 medium                                      |
 | `AppCheckbox`    | `NCheckbox`    | 统一受控布尔值与半选态                           |
@@ -567,6 +567,10 @@ AI Assets Library V1 验证后增加两个纯页面模式 Primitive：
 | `CompactEntityRow`   | `icon` / `title` / `count` / `status` / `actions` | 固定行高、单行 Ellipsis、固定槽位、Hover / Active / Focus 与 Action 点击隔离 | Product、Template Group、SKU、Material 或领域操作 |
 
 `CompactEntityRow` 不固定图标，Folder 等图标必须由 Feature 通过 `icon` Slot 传入。当前 List Header、Empty 和数据管理尚未形成第二个完全相同消费者，不抽取 `CompactEntityList`。
+
+`StatusTag` 默认继续使用轻量 Tag；固定状态槽只需要启用/停用等紧凑指示时使用 `appearance="dot"`，并继续通过 `label + tone` 提供可访问名称与语义颜色。Feature 不得重复实现状态圆点及其颜色 CSS。
+
+`ContextSwitchBar` 默认使用 `appearance="framed"` 承担模块或平台导航 Surface；嵌入表单、Header 或 Toolbar 的短选项组使用 `appearance="bare"`，只移除组级 Padding、Border、Background 与 Radius，按钮本身仍由 `AppButton` 统一提供 Active、Hover、Focus、尺寸和 Token。Feature 不得通过覆盖 CSS 自行去框。
 
 ## 18. Design System V2 公共视觉规则
 

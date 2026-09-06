@@ -670,6 +670,74 @@ def test_asset_scope_migration_upgrade_and_downgrade(monkeypatch: object) -> Non
     ]
 
 
+def test_access_management_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260902_0025_access_management_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        migration,
+        "_backfill_existing_memberships",
+        lambda: recorder.calls.append(("execute", "module_access_backfill")),
+    )
+
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "membership_module_accesses"),
+    ]
+    assert ("execute", "module_access_backfill") in recorder.calls
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [("drop_table", "membership_module_accesses")]
+
+
+def test_access_management_backfill_grants_only_current_formal_modules(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260902_0025_access_management_v1",
+    )
+    membership_ids = [uuid4(), uuid4()]
+
+    class ScalarRows:
+        def scalars(self) -> list[object]:
+            return membership_ids
+
+    class Connection:
+        inserted_rows: list[dict[str, object]] | None = None
+
+        def execute(
+            self,
+            statement: object,
+            parameters: list[dict[str, object]] | None = None,
+        ) -> ScalarRows:
+            del statement
+            if parameters is not None:
+                self.inserted_rows = parameters
+            return ScalarRows()
+
+    connection = Connection()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: connection)
+
+    migration._backfill_existing_memberships()
+
+    assert connection.inserted_rows is not None
+    assert len(connection.inserted_rows) == len(membership_ids) * len(
+        migration.BACKFILL_MODULE_CODES,
+    )
+    assert {row["membership_id"] for row in connection.inserted_rows} == set(
+        membership_ids,
+    )
+    assert {row["module_code"] for row in connection.inserted_rows} == set(
+        migration.BACKFILL_MODULE_CODES,
+    )
+    assert "foundation" not in migration.BACKFILL_MODULE_CODES
+
+
 def test_asset_scope_backfill_requires_exactly_one_default_team(
     monkeypatch: object,
 ) -> None:
@@ -704,3 +772,207 @@ def test_asset_scope_backfill_requires_exactly_one_default_team(
         )
         with pytest.raises(RuntimeError, match="唯一的默认团队"):
             migration._backfill_asset_team()
+
+
+def test_ai_workbench_foundation_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260903_0026_ai_workbench_backend_foundation_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260903_0026"
+    assert migration.down_revision == "20260902_0025"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "template_groups"),
+        ("create_table", "product_material_groups"),
+        ("create_table", "prompt_templates"),
+        ("create_table", "material_group_assets"),
+        ("create_table", "material_group_template_bindings"),
+    ]
+    assert not {
+        "generation_jobs",
+        "generation_items",
+        "provider_configs",
+        "queue_tasks",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "material_group_template_bindings"),
+        ("drop_table", "material_group_assets"),
+        ("drop_table", "prompt_templates"),
+        ("drop_table", "product_material_groups"),
+        ("drop_table", "template_groups"),
+    ]
+
+
+def test_ai_generation_execution_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260903_0027_ai_generation_execution_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260903_0027"
+    assert migration.down_revision == "20260903_0026"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "generation_jobs"),
+        ("create_table", "generation_items"),
+        ("create_table", "generation_item_assets"),
+    ]
+    assert not {
+        "provider_configs",
+        "model_registry",
+        "generation_attempts",
+        "generation_history",
+        "queue_tasks",
+        "webhooks",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert [call for call in recorder.calls if call[0] == "drop_table"] == [
+        ("drop_table", "generation_item_assets"),
+        ("drop_table", "generation_items"),
+        ("drop_table", "generation_jobs"),
+    ]
+
+
+def test_logging_audit_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260904_0028_logging_audit_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260904_0028"
+    assert migration.down_revision == "20260903_0027"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "audit_logs"),
+    ]
+    assert {
+        "ix_audit_logs_created_log",
+        "ix_audit_logs_actor_created_log",
+        "ix_audit_logs_action_created_log",
+    } <= {name for operation, name in recorder.calls if operation == "create_index"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_audit_logs_action_created_log"),
+        ("drop_index", "ix_audit_logs_actor_created_log"),
+        ("drop_index", "ix_audit_logs_created_log"),
+        ("drop_table", "audit_logs"),
+    ]
+
+
+def test_ai_provider_migration_upgrade_and_downgrade(monkeypatch: object) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260905_0030_ai_provider_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260905_0030"
+    assert migration.down_revision == "20260905_0029"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "generation_provider_executions"),
+    ]
+    assert not {
+        "providers",
+        "models",
+        "generation_attempts",
+        "provider_payloads",
+        "provider_history",
+        "queue_tasks",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_table", "generation_provider_executions"),
+    ]
+
+
+def test_ai_model_management_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260906_0031_ai_model_management_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260906_0031"
+    assert migration.down_revision == "20260905_0030"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "ai_models"),
+    ]
+    assert (
+        "create_index",
+        "uq_ai_models_enabled_default",
+    ) in recorder.calls
+    assert not {
+        "providers",
+        "provider_configs",
+        "generation_jobs",
+        "generation_items",
+        "generation_provider_executions",
+        "assets",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+    assert len([call for call in recorder.calls if call[0] == "execute"]) == 1
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "uq_ai_models_enabled_default"),
+        ("drop_table", "ai_models"),
+    ]
+
+
+def test_ai_workbench_real_api_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260906_0032_ai_workbench_real_api_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+    monkeypatch.setattr(migration, "_resolve_legacy_model_id", uuid4)
+
+    assert migration.revision == "20260906_0032"
+    assert migration.down_revision == "20260906_0031"
+    migration.upgrade()
+    assert [operation for operation, _ in recorder.calls] == [
+        "add_column",
+        "execute",
+        "alter_column",
+        "create_foreign_key",
+        "create_index",
+    ]
+    assert recorder.calls[0] == ("add_column", "generation_jobs")
+    assert recorder.calls[3:] == [
+        ("create_foreign_key", "fk_generation_jobs_model_id_ai_models"),
+        ("create_index", "ix_generation_jobs_model_id"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_generation_jobs_model_id"),
+        ("drop_constraint", "fk_generation_jobs_model_id_ai_models"),
+        ("drop_column", "generation_jobs"),
+    ]

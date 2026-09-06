@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.modules.access.contracts import ActorContext
 from app.modules.schedules.enums import (
     ScheduleExecutionType,
     ScheduleRunTriggerResult,
@@ -50,6 +51,7 @@ class ScheduleService:
     def create(
         self,
         data: ScheduleCreate,
+        actor: ActorContext,
         *,
         now: datetime | None = None,
     ) -> ScheduleRead:
@@ -62,8 +64,13 @@ class ScheduleService:
             skill_id=data.skill_id,
             parameters=data.parameters,
         )
-        prepared = self.task_service.prepare_scheduled_task(task_data)
+        prepared = self.task_service.prepare_scheduled_task(
+            task_data,
+            team_id=actor.team_id,
+        )
         schedule = Schedule(
+            team_id=actor.team_id,
+            created_by_user_id=actor.user_id,
             name=data.name,
             enabled=data.enabled,
             target_device_id=data.target_device_id,
@@ -90,18 +97,22 @@ class ScheduleService:
         self.repository.add(schedule)
         self.session.commit()
         self.session.refresh(schedule)
-        return self.get(schedule.schedule_id)
+        return self.get(actor, schedule.schedule_id)
 
     def update(
         self,
         schedule_id: UUID,
         data: ScheduleUpdate,
+        actor: ActorContext,
         *,
         now: datetime | None = None,
     ) -> ScheduleRead:
         current_time = now or datetime.now(UTC)
-        schedule = self.repository.get_for_update(schedule_id)
-        if schedule is None:
+        schedule = self.repository.get_for_actor_for_update(
+            actor=actor,
+            schedule_id=schedule_id,
+        )
+        if schedule is None or schedule.team_id != actor.team_id:
             raise ScheduleNotFoundError()
 
         values = data.model_dump(exclude_unset=True)
@@ -153,7 +164,10 @@ class ScheduleService:
                 skill_id=skill_id,
                 parameters=parameters,
             )
-            prepared = self.task_service.prepare_scheduled_task(task_data)
+            prepared = self.task_service.prepare_scheduled_task(
+                task_data,
+                team_id=schedule.team_id,
+            )
 
             schedule.name = values.get("name", schedule.name)
             schedule.target_device_id = target_device_id
@@ -188,24 +202,31 @@ class ScheduleService:
             )
 
         self.session.commit()
-        return self.get(schedule_id)
+        return self.get(actor, schedule_id)
 
     def archive(
         self,
         schedule_id: UUID,
+        actor: ActorContext,
         *,
         now: datetime | None = None,
     ) -> None:
-        schedule = self.repository.get_for_update(schedule_id)
-        if schedule is None:
+        schedule = self.repository.get_for_actor_for_update(
+            actor=actor,
+            schedule_id=schedule_id,
+        )
+        if schedule is None or schedule.team_id != actor.team_id:
             raise ScheduleNotFoundError()
         schedule.enabled = False
         schedule.next_run_at = None
         schedule.deleted_at = now or datetime.now(UTC)
         self.session.commit()
 
-    def get(self, schedule_id: UUID) -> ScheduleRead:
-        record = self.repository.get_record(schedule_id)
+    def get(self, actor: ActorContext, schedule_id: UUID) -> ScheduleRead:
+        record = self.repository.get_record_for_actor(
+            actor=actor,
+            schedule_id=schedule_id,
+        )
         if record is None:
             raise ScheduleNotFoundError()
         return _schedule_to_read(record)
@@ -213,6 +234,7 @@ class ScheduleService:
     def list_management(
         self,
         *,
+        actor: ActorContext,
         page: int,
         page_size: int,
         enabled: bool | None,
@@ -221,6 +243,7 @@ class ScheduleService:
     ) -> Page[ScheduleListItemRead]:
         normalized_search = search.strip() if search else None
         records, total = self.repository.list_management(
+            actor=actor,
             offset=(page - 1) * page_size,
             limit=page_size,
             enabled=enabled,
@@ -237,11 +260,15 @@ class ScheduleService:
     def list_runs(
         self,
         schedule_id: UUID,
+        actor: ActorContext,
         *,
         page: int,
         page_size: int,
     ) -> Page[ScheduleRunRead]:
-        if self.repository.get_including_deleted(schedule_id) is None:
+        if self.repository.get_including_deleted_for_actor(
+            actor=actor,
+            schedule_id=schedule_id,
+        ) is None:
             raise ScheduleNotFoundError()
         records, total = self.repository.list_runs(
             schedule_id,
@@ -290,6 +317,8 @@ class ScheduleService:
                     skill_id=schedule.skill_id,
                     input=schedule.task_input_json,
                 ),
+                team_id=schedule.team_id,
+                created_by_user_id=schedule.created_by_user_id,
             )
             self.session.flush()
             run.task_id = task.task_id

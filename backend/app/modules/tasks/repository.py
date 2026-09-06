@@ -18,6 +18,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.policy import DataScopePolicy
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TERMINAL_TASK_STATUS_VALUES, TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
@@ -59,15 +61,40 @@ class TaskRepository:
     def get(self, task_id: UUID) -> Task | None:
         return self.session.get(Task, task_id)
 
-    def get_active_for_device(self, device_id: UUID) -> Task | None:
-        return self.session.scalar(
+    def get_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        task_id: UUID,
+    ) -> Task | None:
+        statement = DataScopePolicy.apply(
+            select(Task).where(Task.task_id == task_id),
+            team_id_column=Task.team_id,
+            created_by_user_id_column=Task.created_by_user_id,
+            actor=actor,
+        )
+        return self.session.scalar(statement)
+
+    def get_active_for_device(
+        self,
+        *,
+        actor: ActorContext,
+        device_id: UUID,
+    ) -> Task | None:
+        statement = DataScopePolicy.apply(
             select(Task)
             .where(
                 Task.target_device_id == device_id,
                 Task.status.in_(
                     [TaskStatus.PENDING.value, TaskStatus.RUNNING.value],
                 ),
-            )
+            ),
+            team_id_column=Task.team_id,
+            created_by_user_id_column=Task.created_by_user_id,
+            actor=actor,
+        )
+        return self.session.scalar(
+            statement
             .order_by(Task.created_at.asc(), Task.task_id.asc())
             .limit(1),
         )
@@ -75,6 +102,7 @@ class TaskRepository:
     def list_management_tasks(
         self,
         *,
+        actor: ActorContext,
         offset: int,
         limit: int,
         status: TaskStatus | None,
@@ -102,15 +130,20 @@ class TaskRepository:
                 ),
             )
 
-        total = int(
-            self.session.scalar(
-                select(func.count()).select_from(Task).where(*filters),
-            )
-            or 0,
+        total_statement = DataScopePolicy.apply(
+            select(func.count()).select_from(Task).where(*filters),
+            team_id_column=Task.team_id,
+            created_by_user_id_column=Task.created_by_user_id,
+            actor=actor,
         )
+        total = int(self.session.scalar(total_statement) or 0)
         page_task_ids = (
-            select(Task.task_id)
-            .where(*filters)
+            DataScopePolicy.apply(
+                select(Task.task_id).where(*filters),
+                team_id_column=Task.team_id,
+                created_by_user_id_column=Task.created_by_user_id,
+                actor=actor,
+            )
             .order_by(Task.created_at.desc(), Task.task_id.desc())
             .offset(offset)
             .limit(limit)
@@ -224,20 +257,28 @@ class TaskRepository:
         cutoff: datetime,
         purged_at: datetime,
         batch_size: int,
+        actor: ActorContext | None = None,
     ) -> TaskEventPurgeBatch:
+        eligible_statement = select(Task.task_id).where(
+            Task.status.in_(TERMINAL_TASK_STATUS_VALUES),
+            Task.finished_at.is_not(None),
+            Task.finished_at < cutoff,
+            exists(
+                select(TaskEvent.event_id).where(
+                    TaskEvent.task_id == Task.task_id,
+                ),
+            ),
+        )
+        if actor is not None:
+            eligible_statement = DataScopePolicy.apply(
+                eligible_statement.where(Task.team_id == actor.team_id),
+                team_id_column=Task.team_id,
+                created_by_user_id_column=Task.created_by_user_id,
+                actor=actor,
+            )
         eligible_task_ids = list(
             self.session.scalars(
-                select(Task.task_id)
-                .where(
-                    Task.status.in_(TERMINAL_TASK_STATUS_VALUES),
-                    Task.finished_at.is_not(None),
-                    Task.finished_at < cutoff,
-                    exists(
-                        select(TaskEvent.event_id).where(
-                            TaskEvent.task_id == Task.task_id,
-                        ),
-                    ),
-                )
+                eligible_statement
                 .order_by(Task.finished_at.asc(), Task.task_id.asc())
                 .with_for_update(skip_locked=True)
                 .limit(batch_size),
@@ -298,13 +339,21 @@ class TaskRepository:
         )
         return self.session.scalar(statement)
 
-    def get_task_target_device(self, device_id: UUID) -> Device | None:
+    def get_task_target_device(
+        self,
+        device_id: UUID,
+        *,
+        team_id: UUID | None = None,
+    ) -> Device | None:
+        filters = [
+            Device.device_id == device_id,
+            Device.deleted_at.is_(None),
+        ]
+        if team_id is not None:
+            filters.append(Device.team_id == team_id)
         return self.session.scalar(
             select(Device)
-            .where(
-                Device.device_id == device_id,
-                Device.deleted_at.is_(None),
-            )
+            .where(*filters)
             .with_for_update(),
         )
 

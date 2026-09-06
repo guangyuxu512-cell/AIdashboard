@@ -19,3 +19,8 @@ export interface HumanLoginInput {
   loginName: string
   password: string
 }
+
+export interface CurrentModuleAccess {
+  moduleCodes: string[]
+  isAccessAdministrator: boolean
+}

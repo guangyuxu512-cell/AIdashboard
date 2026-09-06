@@ -16,6 +16,7 @@ export interface ManagementLoginIdentity {
 
 export interface ManagementLoginOpenInput {
   platform: ManagementLoginPlatform
+  teamId: string
   attemptId?: string
   recovery?: {
     shopId: string
@@ -102,8 +103,9 @@ export function isManagementLoginOpenInput(
   if (!value || typeof value !== 'object') return false
   const input = value as Record<string, unknown>
   return (
-    hasOnlyKeys(input, ['platform', 'attemptId', 'recovery']) &&
+    hasOnlyKeys(input, ['platform', 'teamId', 'attemptId', 'recovery']) &&
     isManagementLoginPlatform(input.platform) &&
+    isUuid(input.teamId) &&
     (input.attemptId === undefined || isUuid(input.attemptId)) &&
     (input.recovery === undefined || isManagementLoginRecovery(input.recovery))
   )

@@ -417,6 +417,27 @@ def test_refresh_failure_before_commit_removes_newly_stored_file(
     assert list((tmp_path / "assets").iterdir()) == []
 
 
+def test_transactional_asset_stage_compensates_when_outer_business_write_fails(
+    tmp_path: Path,
+) -> None:
+    service, _, session = make_service(tmp_path)
+
+    with pytest.raises(RuntimeError, match="item binding failed"):
+        with service.stage_for_transaction(
+            original_filename="generated.png",
+            content_type="image/png",
+            stream=BytesIO(b"\x89PNG\r\n\x1a\ngenerated"),
+            media_type=AssetMediaType.IMAGE,
+            source_type=AssetSourceType.AI_GENERATED,
+            ownership=HUMAN_OWNERSHIP,
+        ):
+            raise RuntimeError("item binding failed")
+
+    assert session.commits == 0
+    assert session.rollbacks == 1
+    assert list((tmp_path / "assets").iterdir()) == []
+
+
 def test_delete_is_blocked_when_any_task_references_asset(tmp_path: Path) -> None:
     service, repository, session = make_service(tmp_path)
     asset = service.upload(

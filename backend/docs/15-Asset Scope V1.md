@@ -55,6 +55,18 @@ Scope 先于 Search、Count、Order 与 Pagination 应用，所以 `total` 只�
 Content 不签发公开 URL，也不返回 `storage_key`。PC 通过统一 Axios Client 获取 Blob，确保多 Team
 请求携带 HttpOnly Cookie 与 `X-Team-ID`；不能让普通 `<img src>` 绕过 Active Team Context。
 
+### 跨 Team 业务关系契约
+
+ALL 只扩大 Asset 的读取范围，不扩大写入或关联范围。未来 Product Material Group 自身必须带有明确
+`team_id`；创建或更新其素材关联时，每个 Asset 都必须以 `asset.team_id =
+product_material_group.team_id` 验证。不得把通用的 ALL Scoped Reference Lookup 当成该写入校验，
+也不得建立跨 Team Asset 业务关系。
+
+该校验复用既有错误语义，不新增“跨 Team 关联”错误码：不存在、无权读取或不属于目标 Group Team 的
+Asset ID 一律按 `ASSET_NOT_FOUND`（404）处理，以保持 Detail/Reference Lookup 不泄漏 Asset 是否
+存在。`X-Team-ID` 不是 Actor 可用 Team 时继续使用 `TEAM_ACCESS_DENIED`（403）；未知 Scope 继续
+Fail Closed 并使用 `INVALID_DATA_SCOPE`（500）。
+
 ## 5. Worker 边界
 
 Worker 不是 Human ActorContext。既有执行链保持：

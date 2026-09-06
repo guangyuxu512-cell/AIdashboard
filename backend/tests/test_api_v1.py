@@ -7,16 +7,28 @@ from uuid import UUID, uuid4
 from httpx import ASGITransport, AsyncClient, Response
 
 from app.main import create_app
-from app.modules.devices.api import get_device_service, get_worker_service
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.devices.api import (
+    get_device_authorized_actor,
+    get_device_service,
+    get_worker_service,
+)
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
-from app.modules.shops.api import get_shop_service
-from app.modules.shops.api import get_shop_platform_service
+from app.modules.shops.api import (
+    get_shop_authorized_actor,
+    get_shop_platform_service,
+    get_shop_service,
+)
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.schedules.api import get_schedule_service
+from app.modules.schedules.api import (
+    get_schedule_authorized_actor,
+    get_schedule_service,
+)
 from app.modules.schedules.exceptions import ScheduleNotFoundError
 from app.modules.schedules.enums import ScheduleExecutionType
 from app.modules.schedules.schemas import (
@@ -25,7 +37,7 @@ from app.modules.schedules.schemas import (
     ScheduleRead,
     ScheduleRunRead,
 )
-from app.modules.tasks.api import get_task_service
+from app.modules.tasks.api import get_task_authorized_actor, get_task_service
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
     TaskEventListRead,
@@ -49,6 +61,16 @@ USER_ID = uuid4()
 SCHEDULE_ID = uuid4()
 SCHEDULE_RUN_ID = uuid4()
 SCHEDULE_TASK_ID = uuid4()
+TEAM_ID = uuid4()
+MEMBERSHIP_ID = uuid4()
+API_ACTOR = ActorContext(
+    user_id=USER_ID,
+    user_display_name="API 用户",
+    team_id=TEAM_ID,
+    membership_id=MEMBERSHIP_ID,
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 def stamp(entity: object) -> object:
@@ -138,10 +160,17 @@ class ApiShopPlatformService:
 
 
 class ApiDeviceService:
-    def list(self, *, offset: int, limit: int) -> tuple[list[Device], int]:
-        return [self.get(DEVICE_ID)][offset : offset + limit], 1
+    def list(
+        self,
+        *,
+        actor: ActorContext,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[Device], int]:
+        return [self.get(actor, DEVICE_ID)][offset : offset + limit], 1
 
-    def get(self, device_id: UUID) -> Device:
+    def get(self, actor: ActorContext, device_id: UUID) -> Device:
+        del actor
         if device_id != DEVICE_ID:
             raise DeviceNotFoundError()
         return stamp(
@@ -154,11 +183,19 @@ class ApiDeviceService:
             ),
         )  # type: ignore[return-value]
 
-    def create(self, data: object) -> Device:
-        return self.get(DEVICE_ID)
+    def get_for_write(self, actor: ActorContext, device_id: UUID) -> Device:
+        return self.get(actor, device_id)
 
-    def update(self, device_id: UUID, data: object) -> Device:
-        return self.get(device_id)
+    def create(self, actor: ActorContext, data: object) -> Device:
+        del data
+        return self.get(actor, DEVICE_ID)
+
+    def update(self, actor: ActorContext, device_id: UUID, data: object) -> Device:
+        del data
+        return self.get(actor, device_id)
+
+    def remove(self, actor: ActorContext, device_id: UUID) -> None:
+        self.get(actor, device_id)
 
 
 class ApiWorkerService:
@@ -250,7 +287,11 @@ class ApiTaskService:
             page_size=int(kwargs["page_size"]),
         )
 
-    def purge_expired_events(self) -> TaskEventPurgeRead:
+    def purge_expired_events_for_actor(
+        self,
+        actor: ActorContext,
+    ) -> TaskEventPurgeRead:
+        del actor
         now = datetime.now(UTC)
         return TaskEventPurgeRead(
             cutoff=now,
@@ -258,7 +299,13 @@ class ApiTaskService:
             events_deleted=15,
         )
 
-    def list_events(self, task_id: UUID, **kwargs: object) -> TaskEventListRead:
+    def list_events(
+        self,
+        actor: ActorContext,
+        task_id: UUID,
+        **kwargs: object,
+    ) -> TaskEventListRead:
+        del actor
         return TaskEventListRead(
             task_id=task_id,
             after_seq=kwargs["after_seq"],
@@ -297,7 +344,8 @@ class ApiScheduleService:
             parameters={"keyword": "safe"},
         )
 
-    def create(self, data: ScheduleCreate) -> ScheduleRead:
+    def create(self, data: ScheduleCreate, actor: ActorContext) -> ScheduleRead:
+        del actor
         type(self).last_create_data = data
         if data.execution_type == "business_skill":
             return self._read().model_copy(
@@ -323,20 +371,31 @@ class ApiScheduleService:
             page_size=int(kwargs["page_size"]),
         )
 
-    def get(self, schedule_id: UUID) -> ScheduleRead:
+    def get(self, actor: ActorContext, schedule_id: UUID) -> ScheduleRead:
+        del actor
         if schedule_id != SCHEDULE_ID:
             raise ScheduleNotFoundError()
         return self._read()
 
-    def update(self, schedule_id: UUID, data: object) -> ScheduleRead:
+    def update(
+        self,
+        schedule_id: UUID,
+        data: object,
+        actor: ActorContext,
+    ) -> ScheduleRead:
         del data
-        return self.get(schedule_id)
+        return self.get(actor, schedule_id)
 
-    def archive(self, schedule_id: UUID) -> None:
-        self.get(schedule_id)
+    def archive(self, schedule_id: UUID, actor: ActorContext) -> None:
+        self.get(actor, schedule_id)
 
-    def list_runs(self, schedule_id: UUID, **kwargs: object) -> Page[ScheduleRunRead]:
-        self.get(schedule_id)
+    def list_runs(
+        self,
+        schedule_id: UUID,
+        actor: ActorContext,
+        **kwargs: object,
+    ) -> Page[ScheduleRunRead]:
+        self.get(actor, schedule_id)
         now = datetime.now(UTC)
         return Page(
             items=[
@@ -368,6 +427,10 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[get_user_service] = ApiUserService
     application.dependency_overrides[get_task_service] = ApiTaskService
     application.dependency_overrides[get_schedule_service] = ApiScheduleService
+    application.dependency_overrides[get_device_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[get_task_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[get_schedule_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
 
     async def send() -> Response:
         transport = ASGITransport(app=application)

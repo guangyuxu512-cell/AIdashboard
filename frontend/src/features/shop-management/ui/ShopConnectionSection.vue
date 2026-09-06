@@ -20,6 +20,7 @@ import {
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import { getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 import CredentialFormDialog from './CredentialFormDialog.vue'
@@ -43,6 +44,7 @@ const recoveryStatus = ref<ManagementLoginStatusResult | null>(null)
 const recoveryError = ref<string | null>(null)
 const recovering = ref(false)
 const activeLease = ref<{ shopId: string; leaseId: string } | null>(null)
+const authStore = useAuthStore()
 let stopRecoveryPolling: (() => void) | undefined
 
 const credential = computed(() => credentialQuery.data.value ?? null)
@@ -131,6 +133,10 @@ async function recoverSession(): Promise<void> {
     recoveryError.value = '请在 Electron 中控台中恢复登录会话'
     return
   }
+  if (!authStore.activeTeamId) {
+    recoveryError.value = '请先选择当前团队'
+    return
+  }
   recovering.value = true
   recoveryError.value = null
   try {
@@ -138,6 +144,7 @@ async function recoverSession(): Promise<void> {
     activeLease.value = { shopId: lease.shopId, leaseId: lease.leaseId }
     recoveryStatus.value = await window.desktop.managementLogin.open({
       platform: props.shop.platform as 'douyin',
+      teamId: authStore.activeTeamId,
       recovery: {
         shopId: lease.shopId,
         leaseId: lease.leaseId,

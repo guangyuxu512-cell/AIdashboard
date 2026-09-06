@@ -415,9 +415,10 @@ describe('Mobile Layout shared components', () => {
     expect(taskDetail).not.toMatch(
       /\.task-detail-page__core\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
     )
-    expect(runtimeLog).not.toMatch(
-      /\.runtime-log\s*\{[^}]*\n\s*(?:min-|max-)?height\s*:/s,
-    )
+    expect(runtimeLog).toContain('min-height: 0')
+    expect(runtimeLog).toContain('flex: 1 1 auto')
+    expect(runtimeLog).toContain('overflow-y: auto')
+    expect(runtimeLog).toContain('data-testid="runtime-log-scroll"')
     expect(capabilityPanel).toContain(
       'width: var(--visual-v2-detail-capability-icon-size)',
     )

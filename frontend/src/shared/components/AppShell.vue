@@ -39,6 +39,17 @@ const props = withDefaults(
 const route = useRoute()
 const router = useRouter()
 const isDevelopment = import.meta.env.DEV
+const primaryNavigation = computed(() =>
+  props.navigation.filter(
+    (item) => item.type === 'group' || item.moduleCode !== 'settings',
+  ),
+)
+const settingsNavigation = computed(() =>
+  props.navigation.filter(
+    (item): item is AppNavigationModuleItem =>
+      item.type === 'module' && item.moduleCode === 'settings',
+  ),
+)
 const navigationModules = computed(() =>
   props.navigation.flatMap((item) =>
     item.type === 'group' ? item.children : [item],
@@ -86,8 +97,10 @@ function renderPrimaryNavigationLabel(label: string, active = false) {
     )
 }
 
-const menuOptions = computed<MenuOption[]>(() =>
-  props.navigation.map((item) => {
+function createMenuOptions(
+  navigation: AppNavigationItem[],
+): MenuOption[] {
+  return navigation.map((item) => {
     if (item.type === 'group') {
       return {
         key: item.groupCode,
@@ -108,7 +121,14 @@ const menuOptions = computed<MenuOption[]>(() =>
         item.moduleCode === activeNavigationKey.value,
       ),
     }
-  }),
+  })
+}
+
+const menuOptions = computed<MenuOption[]>(() =>
+  createMenuOptions(primaryNavigation.value),
+)
+const settingsMenuOptions = computed<MenuOption[]>(() =>
+  createMenuOptions(settingsNavigation.value),
 )
 
 function navigate(key: string): void {
@@ -144,6 +164,18 @@ function navigate(key: string): void {
         <span />
         开发预览
       </div>
+      <nav
+        v-if="settingsMenuOptions.length"
+        class="app-shell__settings-navigation"
+        aria-label="系统设置主导航"
+      >
+        <NMenu
+          :value="activeNavigationKey"
+          :options="settingsMenuOptions"
+          :indent="12"
+          @update:value="navigate"
+        />
+      </nav>
     </aside>
 
     <section class="app-shell__workspace">
@@ -245,6 +277,12 @@ function navigate(key: string): void {
   padding: var(--space-3) var(--space-4);
   color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
+}
+
+.app-shell__settings-navigation {
+  flex: 0 0 auto;
+  padding: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .app-shell__sidebar-footer span {

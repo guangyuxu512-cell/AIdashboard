@@ -18,8 +18,10 @@ const meta = computed(() => getPlatformDefinition(props.code))
 
 <template>
   <span v-if="meta" class="platform-display">
-    <PlatformIcon :code="code" />
-    <span v-if="label">{{ meta.label }}</span>
+    <span class="platform-display__icon-slot" aria-hidden="true">
+      <PlatformIcon :code="code" />
+    </span>
+    <span v-if="label" class="platform-display__label">{{ meta.label }}</span>
     <span v-if="supportLabel" class="platform-display__support">
       {{ supportLabel }}
     </span>
@@ -33,6 +35,18 @@ const meta = computed(() => getPlatformDefinition(props.code))
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
+}
+
+.platform-display__icon-slot {
+  display: inline-grid;
+  width: var(--space-5);
+  flex: 0 0 var(--space-5);
+  place-items: center;
+}
+
+.platform-display__label {
+  min-width: 0;
+  text-align: left;
 }
 
 .platform-display__support {

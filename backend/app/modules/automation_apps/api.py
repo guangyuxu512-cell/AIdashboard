@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.automation_apps.schemas import (
     AutomationApplicationConfigRead,
     AutomationApplicationConfigUpsert,
@@ -17,6 +20,9 @@ router = APIRouter(
     tags=["automation-app-configs"],
     responses=COMMON_ERROR_RESPONSES,
 )
+
+
+get_device_authorized_actor = require_module_access(ModuleCode.DEVICE)
 
 
 def get_service(
@@ -32,6 +38,7 @@ def get_service(
 def get_config(
     provider_code: Literal["yingdao"],
     app_id: str,
+    _actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[AutomationApplicationConfigService, Depends(get_service)],
 ) -> AutomationApplicationConfigRead | None:
     return service.get(provider_code, app_id)
@@ -45,6 +52,7 @@ def upsert_config(
     provider_code: Literal["yingdao"],
     app_id: str,
     data: AutomationApplicationConfigUpsert,
+    _actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[AutomationApplicationConfigService, Depends(get_service)],
 ) -> AutomationApplicationConfigRead:
     return service.upsert(provider_code, app_id, data)

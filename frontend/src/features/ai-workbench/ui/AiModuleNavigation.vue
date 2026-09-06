@@ -28,7 +28,11 @@ function navigate(routeName: string): void {
   )
 
   if (destination && destination.name !== route.name) {
-    void router.push({ name: destination.name })
+    const query =
+      import.meta.env.DEV && route.query.visualMock === '1'
+        ? { visualMock: '1' }
+        : undefined
+    void router.push({ name: destination.name, query })
   }
 }
 </script>

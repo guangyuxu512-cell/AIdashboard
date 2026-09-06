@@ -1,5 +1,6 @@
 import { h } from 'vue'
-import { NConfigProvider } from 'naive-ui'
+import { NConfigProvider, NMessageProvider } from 'naive-ui'
+import { createPinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import {
   createMemoryHistory,
@@ -26,16 +27,27 @@ describe('AI workbench shell', () => {
       {
         render: () =>
           h(NConfigProvider, null, {
-            default: () => h(AiGeneratePage),
+            default: () =>
+              h(NMessageProvider, null, {
+                default: () => h(AiGeneratePage),
+              }),
           }),
       },
-      { global: { plugins: [router] } },
+      {
+        global: {
+          plugins: [createPinia(), router],
+          stubs: {
+            AiGenerationReal: { template: '<div>暂无生成结果</div>' },
+          },
+        },
+      },
     )
 
-    expect(wrapper.findAll('.ai-module-navigation button')).toHaveLength(3)
+    expect(wrapper.findAll('.ai-module-navigation button')).toHaveLength(4)
     expect(wrapper.text()).toContain('AI生图')
     expect(wrapper.text()).toContain('素材库')
     expect(wrapper.text()).toContain('模板库')
+    expect(wrapper.text()).toContain('生成记录')
     expect(wrapper.find('h1').exists()).toBe(false)
     expect(wrapper.find('.page-header').exists()).toBe(false)
     expect(wrapper.text()).not.toContain(

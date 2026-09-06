@@ -257,7 +257,6 @@ export function useAiTemplatesVisualMock(
       count: 1,
       variables: ['product_name'],
       prompt: '{product_name}',
-      negativePrompt: '',
       sortOrder: group.templates.length + 1,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -298,7 +297,6 @@ export function useAiTemplatesVisualMock(
       count: input.count,
       variables,
       prompt: input.prompt.trim(),
-      negativePrompt: input.negativePrompt.trim(),
       updatedAt: now(),
     })
     group.updatedAt = template.updatedAt

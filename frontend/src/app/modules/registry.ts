@@ -47,6 +47,11 @@ export interface GroupNavigationEntry extends NavigationGroupDefinition {
 
 export type NavigationEntry = ModuleNavigationEntry | GroupNavigationEntry
 
+export interface ModuleNavigationOptions {
+  includeDevelopment?: boolean
+  allowedModuleCodes?: ReadonlySet<string> | null
+}
+
 export const NAVIGATION_GROUP_REGISTRY = [
   {
     groupCode: 'automation',
@@ -180,21 +185,24 @@ export function requireModuleDefinition(
 
 export function getNavigationModules(
   registry: ReadonlyArray<ModuleDefinition> = MODULE_REGISTRY,
-  options: { includeDevelopment?: boolean } = {},
+  options: ModuleNavigationOptions = {},
 ): ModuleDefinition[] {
   return registry
     .filter(
       (module) =>
         module.enabled &&
         (options.includeDevelopment ||
-          module.navigationGroup !== 'development'),
+          module.navigationGroup !== 'development') &&
+        (module.navigationGroup === 'development' ||
+          options.allowedModuleCodes == null ||
+          options.allowedModuleCodes.has(module.moduleCode)),
     )
     .sort((left, right) => left.order - right.order)
 }
 
 export function getNavigationEntries(
   registry: ReadonlyArray<ModuleDefinition> = MODULE_REGISTRY,
-  options: { includeDevelopment?: boolean } = {},
+  options: ModuleNavigationOptions = {},
   groups: ReadonlyArray<NavigationGroupDefinition> = NAVIGATION_GROUP_REGISTRY,
 ): NavigationEntry[] {
   const modules = getNavigationModules(registry, options)
@@ -210,4 +218,14 @@ export function getNavigationEntries(
   }
 
   return entries.sort((left, right) => left.order - right.order)
+}
+
+export function getModuleAccessOptions(): Array<{
+  value: string
+  label: string
+}> {
+  return getNavigationModules(MODULE_REGISTRY).map((module) => ({
+    value: module.moduleCode,
+    label: module.moduleName,
+  }))
 }

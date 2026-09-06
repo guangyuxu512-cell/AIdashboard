@@ -183,9 +183,11 @@ Topbar 在 Theme 控件旁显示当前用户菜单，其中包括当前用户、
 
 ## 12. 当前业务接入边界
 
-Human Auth V1 打通认证、HumanPrincipal、ActorContext 与 Access API；Asset Scope V1 已作为首个
-业务接入，通过正式 `API → Service → Repository` 使用 ActorContext 与 DataScopePolicy。Task、
-Schedule、Shop 与 AI Job 仍未迁移，禁止因为 Asset 已接入就推断其它领域已具备数据隔离。
+Human Auth V1 打通认证、HumanPrincipal、ActorContext 与 Access API；Asset、Device、Task 与 Schedule
+按各自既有模块规则使用 ActorContext 与 DataScopePolicy。Shop、Credential、Shop Session 与 Shop
+Onboarding 管理路由使用 Human Session、ActorContext 与 `shop` 模块访问，但尚未建立 Shop Ownership
+Scope；不得把该模块防护误解为数据隔离。Automation Application Config 与 Notification Channel 分别使用
+`device` 与 `settings` 模块访问。Worker Token 链保持独立，不能套用 Human Guard。
 Frontend Guard 只改善交互，不是安全边界。
 
 未来 Access Management 位于“系统设置 → 用户与权限”，但 V1 不实现新增成员、Team 管理、

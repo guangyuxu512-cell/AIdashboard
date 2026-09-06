@@ -1,116 +1,84 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { nextTick, ref } from 'vue'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDefaultTaskFilterDraft } from '@/features/task-center'
+import {
+  createDefaultTaskFilterDraft,
+  TaskFilterSheet,
+  type TaskFilterDraft,
+} from '@/features/task-center'
 
-const deviceQueryMock = vi.hoisted(() => ({
-  current: null as unknown,
-}))
 const mountedWrappers: VueWrapper[] = []
+const now = new Date(2026, 7, 26, 12, 0, 0)
 
-vi.mock('@/entities/device', () => ({
-  useDeviceListQuery: () => deviceQueryMock.current,
-}))
-
-import { TaskFilterSheet } from '@/features/task-center'
-
-function createDeviceQuery(options: {
-  data?: {
-    pages: Array<{
-      items: Array<{
-        device_id: string
-        display_name: string
-      }>
-    }>
-  }
-  error?: Error
-  isError?: boolean
-}) {
-  return {
-    data: ref(options.data),
-    error: ref(options.error ?? null),
-    isError: ref(options.isError ?? false),
-    isFetchNextPageError: ref(false),
-    isFetchingNextPage: ref(false),
-    hasNextPage: ref(false),
-    isLoading: ref(false),
-    fetchNextPage: vi.fn(),
-    refetch: vi.fn(),
-  }
-}
-
-async function openDevicePicker() {
+function mountSheet(
+  filters: TaskFilterDraft = createDefaultTaskFilterDraft(now),
+) {
   const wrapper = mount(TaskFilterSheet, {
-    props: {
-      modelValue: true,
-      filters: createDefaultTaskFilterDraft(new Date(2026, 7, 26, 12, 0, 0)),
-    },
+    props: { modelValue: true, filters },
     attachTo: document.body,
   })
   mountedWrappers.push(wrapper)
-  await wrapper.get('[data-testid="device-filter"]').trigger('click')
-  await nextTick()
   return wrapper
 }
 
-describe('device filter error states', () => {
-  afterEach(async () => {
+describe('task run-date filter sheet', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+  })
+
+  afterEach(() => {
     for (const wrapper of mountedWrappers.splice(0)) wrapper.unmount()
-    // Vant safe-area placeholders schedule three post-mount measurements.
-    // Let them settle while jsdom's window is still available.
-    await new Promise((resolve) => setTimeout(resolve, 350))
     document.body.innerHTML = ''
+    vi.useRealTimers()
   })
 
-  it('shows a full retry state when the initial device request fails', async () => {
-    const query = createDeviceQuery({
-      error: new Error('设备初始加载失败'),
-      isError: true,
-    })
-    deviceQueryMock.current = query
-    const wrapper = await openDevicePicker()
+  it('offers only the four confirmed quick presets and no legacy device filter', () => {
+    const wrapper = mountSheet()
 
-    expect(wrapper.text()).toContain('加载失败')
-    expect(wrapper.text()).not.toContain('设备初始加载失败')
-    const retry = wrapper.get(
-      '.task-filter-sheet__device-popup .van-empty button',
+    expect(
+      wrapper
+        .findAll('[data-testid^="task-date-preset-"]')
+        .map((button) => button.text()),
+    ).toEqual(['今天', '昨天', '近7天', '全部'])
+    expect(wrapper.text()).not.toContain('设备')
+    expect(wrapper.find('[data-testid="device-filter"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="task-date-range"]').exists()).toBe(false)
+  })
+
+  it('applies a quick preset immediately and closes the sheet', async () => {
+    const wrapper = mountSheet()
+    await wrapper.get('[data-testid="task-date-preset-today"]').trigger('click')
+
+    const applied = wrapper.emitted('apply')?.[0]?.[0] as TaskFilterDraft
+    expect(applied.datePreset).toBe('today')
+    expect(applied.dateRange).toEqual([
+      new Date(2026, 7, 26),
+      new Date(2026, 7, 26),
+    ])
+    expect(wrapper.emitted('update:modelValue')).toContainEqual([false])
+  })
+
+  it('restores and applies one custom local date instead of a range', async () => {
+    const customDate = new Date(2026, 7, 18)
+    const wrapper = mountSheet({
+      search: '',
+      datePreset: 'custom',
+      dateRange: [customDate, customDate],
+    })
+    const input = wrapper.get<HTMLInputElement>(
+      '[data-testid="task-custom-date"]',
     )
-    expect(retry.text()).toContain('重试')
-    await retry.trigger('click')
-    expect(query.refetch).toHaveBeenCalledOnce()
-  })
 
-  it('uses a focusable native button for the Device picker return action', async () => {
-    deviceQueryMock.current = createDeviceQuery({
-      data: { pages: [{ items: [] }] },
-    })
-    const wrapper = await openDevicePicker()
-    const back = wrapper.get('button[aria-label="返回"]')
+    expect(input.element.value).toBe('2026-08-18')
+    await input.setValue('2026-08-21')
+    await wrapper.get('[data-testid="apply-task-custom-date"]').trigger('click')
 
-    expect(back.element.tagName).toBe('BUTTON')
-    expect(back.attributes('type')).toBe('button')
-    expect(back.classes()).toContain('task-filter-sheet__device-back')
-    ;(back.element as HTMLButtonElement).focus()
-    expect(document.activeElement).toBe(back.element)
-  })
-
-  it('keeps successful device options during a background failure', async () => {
-    deviceQueryMock.current = createDeviceQuery({
-      data: {
-        pages: [
-          {
-            items: [{ device_id: 'device-1', display_name: '仓库手机' }],
-          },
-        ],
-      },
-      error: new Error('设备后台刷新失败'),
-      isError: true,
-    })
-    const wrapper = await openDevicePicker()
-
-    expect(wrapper.text()).not.toContain('设备后台刷新失败')
-    expect(wrapper.text()).toContain('仓库手机')
-    expect(wrapper.text()).not.toContain('重试')
+    const applied = wrapper.emitted('apply')?.[0]?.[0] as TaskFilterDraft
+    expect(applied.datePreset).toBe('custom')
+    expect(applied.dateRange).toEqual([
+      new Date(2026, 7, 21),
+      new Date(2026, 7, 21),
+    ])
   })
 })

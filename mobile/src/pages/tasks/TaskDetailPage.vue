@@ -1,29 +1,17 @@
 <script setup lang="ts">
 import {
   Button as VanButton,
-  Cell as VanCell,
-  CellGroup as VanCellGroup,
-  Collapse as VanCollapse,
-  CollapseItem as VanCollapseItem,
   Empty as VanEmpty,
-  Progress as VanProgress,
   Skeleton as VanSkeleton,
 } from 'vant'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useDeviceDetailQuery } from '@/entities/device'
+import { useTaskDetailQuery } from '@/entities/task'
 import {
-  resolveExecutionName,
-  TaskStatusTag,
-  useTaskDetailQuery,
-} from '@/entities/task'
-import {
-  deriveCurrentTaskMessage,
-  deriveTaskProgress,
-  formatTaskDateTime,
-  formatTaskDuration,
-  TaskOutcomeNotice,
+  TaskDetailCard,
+  type TaskDetailDeviceState,
   TaskRuntimeLog,
   useTaskRuntime,
   useTaskRuntimeClock,
@@ -42,106 +30,45 @@ const runtimeNow = useTaskRuntimeClock(
   () => task.value?.started_at ?? null,
   () => task.value?.finished_at ?? null,
 )
-const expanded = ref<string[]>([])
-
-const executionName = computed(() =>
-  task.value
-    ? resolveExecutionName({
-        execution_display_name: task.value.execution_display_name,
-        skill_id: task.value.skill_id,
-      })
-    : '',
-)
-const progress = computed(() => deriveTaskProgress(runtime.events.value))
-const currentMessage = computed(
-  () => deriveCurrentTaskMessage(runtime.events.value) || '—',
-)
-const progressPercentage = computed(() => {
-  if (!progress.value?.total || progress.value.total <= 0) return 0
-  return Math.min(
-    100,
-    Math.max(0, (progress.value.current / progress.value.total) * 100),
-  )
-})
-const progressText = computed(() => {
-  if (!progress.value) return '—'
-  return progress.value.total === null
-    ? String(progress.value.current)
-    : `${progress.value.current} / ${progress.value.total}`
-})
 const runtimeRequestFailed = computed(() => runtime.eventQuery.isError.value)
-const durationText = computed(() =>
-  formatTaskDuration(
-    task.value?.started_at ?? null,
-    task.value?.finished_at ?? null,
-    runtimeNow.value,
-  ),
-)
-const deviceText = computed(() => {
-  if (deviceQuery.data.value) return deviceQuery.data.value.display_name
-  if (deviceQuery.isError.value) return '设备加载失败'
-  return '设备加载中'
+const deviceState = computed<TaskDetailDeviceState>(() => {
+  if (deviceQuery.data.value) return 'ready'
+  if (deviceQuery.isError.value) return 'error'
+  return 'loading'
 })
 </script>
 
 <template>
-  <AppPage class="task-detail-page" label="任务详情内容">
-    <div v-if="taskQuery.isLoading.value" data-testid="detail-loading">
-      <VanSkeleton title :row="8" />
+  <AppPage
+    class="task-detail-page"
+    label="任务详情内容"
+    data-testid="task-detail-page"
+  >
+    <div
+      v-if="taskQuery.isLoading.value"
+      class="task-detail-page__initial-state"
+      data-testid="detail-loading"
+    >
+      <VanSkeleton title :row="6" />
     </div>
 
-    <VanEmpty v-else-if="!task" image="error" description="加载失败">
+    <VanEmpty
+      v-else-if="!task"
+      class="task-detail-page__initial-state"
+      image="error"
+      description="加载失败"
+      data-testid="task-detail-error"
+    >
       <VanButton type="primary" @click="taskQuery.refetch()">重试</VanButton>
     </VanEmpty>
 
-    <template v-else>
-      <section
-        class="task-detail-page__summary mobile-card"
-        data-testid="task-detail"
-      >
-        <div class="task-detail-page__title">
-          <h1>{{ executionName }}</h1>
-          <TaskStatusTag :status="task.status" />
-        </div>
-        <p class="task-detail-page__meta">
-          {{ deviceText }} ·
-          <span data-testid="task-detail-duration">{{ durationText }}</span>
-        </p>
-      </section>
-
-      <section
-        class="task-detail-page__core mobile-section-surface"
-        aria-label="任务状态"
-      >
-        <div class="task-detail-page__runtime-summary">
-          <div v-if="progress" class="task-detail-page__progress">
-            <div class="task-detail-page__runtime-heading">
-              <span>进度</span>
-              <span data-testid="detail-progress-value">
-                {{ progressText }}
-              </span>
-            </div>
-            <VanProgress
-              v-if="progress.total !== null"
-              :percentage="progressPercentage"
-              :show-pivot="false"
-              stroke-width="var(--progress-height-default)"
-            />
-          </div>
-          <div class="task-detail-page__current-message">
-            <span>当前信息</span>
-            <p data-testid="detail-current-message">{{ currentMessage }}</p>
-          </div>
-        </div>
-
-        <TaskOutcomeNotice
-          :status="task.status"
-          :result="task.result"
-          :error-message="task.error_message"
-          :error-code="task.error_code"
-        />
-      </section>
-
+    <div v-else class="task-detail-page__content">
+      <TaskDetailCard
+        :task="task"
+        :device-name="deviceQuery.data.value?.display_name"
+        :device-state="deviceState"
+        :now="runtimeNow"
+      />
       <TaskRuntimeLog
         :events="runtime.events.value"
         :initialized="runtime.initialized.value"
@@ -162,105 +89,33 @@ const deviceText = computed(() => {
         @retry-live="runtime.requestDrain"
         @load-earlier="runtime.loadEarlier"
       />
-
-      <VanCollapse v-model="expanded" data-testid="task-more-information">
-        <VanCollapseItem title="更多信息" name="ids">
-          <VanCellGroup class="task-detail-page__ids">
-            <VanCell
-              title="创建时间"
-              :value="formatTaskDateTime(task.created_at)"
-            />
-            <VanCell
-              title="开始时间"
-              :value="formatTaskDateTime(task.started_at)"
-            />
-            <VanCell
-              title="结束时间"
-              :value="formatTaskDateTime(task.finished_at)"
-            />
-            <VanCell title="店铺数量" :value="`${task.shop_ids.length} 个`" />
-            <VanCell title="任务 ID" :value="task.task_id" />
-            <VanCell title="技能 ID" :value="task.skill_id" />
-            <VanCell title="设备 ID" :value="task.target_device_id" />
-          </VanCellGroup>
-        </VanCollapseItem>
-      </VanCollapse>
-    </template>
+    </div>
   </AppPage>
 </template>
 
 <style scoped>
-.task-detail-page {
-  padding-bottom: var(--space-6);
-}
-
-.task-detail-page__summary {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-}
-
-.task-detail-page__core {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-}
-
-.task-detail-page__title {
-  display: flex;
-  gap: var(--space-3);
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.task-detail-page__title h1 {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-title);
-  line-height: var(--line-height-title);
-}
-
-.task-detail-page__meta {
-  min-width: 0;
+.task-detail-page.app-page {
+  gap: 0;
+  padding: var(--visual-v2-detail-content-padding-top)
+    max(var(--visual-v2-detail-content-padding-x), var(--safe-area-right))
+    var(--visual-v2-detail-content-padding-bottom)
+    max(var(--visual-v2-detail-content-padding-x), var(--safe-area-left));
   overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--visual-v2-page-text-primary);
+  background: transparent;
 }
 
-.task-detail-page__runtime-summary {
-  display: grid;
-  gap: var(--layout-content-gap);
-}
-
-.task-detail-page__runtime-heading {
+.task-detail-page.app-page > .task-detail-page__content {
   display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-}
-
-.task-detail-page__progress,
-.task-detail-page__current-message {
-  display: grid;
   min-width: 0;
-  gap: var(--layout-content-gap);
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--visual-v2-detail-section-gap);
+  overflow: hidden;
 }
 
-.task-detail-page__current-message {
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-}
-
-.task-detail-page__current-message > span {
-  color: var(--text-secondary);
-}
-
-.task-detail-page__current-message p {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  text-align: right;
-  white-space: pre-wrap;
+.task-detail-page__initial-state {
+  min-height: var(--layout-inline-state-min-height);
 }
 </style>

@@ -4,12 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   apiClient,
   ApiClientError,
-  configureApiAuthHooks,
+  configureHumanRequestContext,
   normalizeApiError,
 } from '@/shared/api'
 
 afterEach(() => {
-  configureApiAuthHooks({})
+  configureHumanRequestContext({})
 })
 
 describe('Mobile API Client', () => {
@@ -39,7 +39,7 @@ describe('Mobile API Client', () => {
     })
   })
 
-  it('does not inject authorization before a real Auth provider is configured', async () => {
+  it('uses credentialed requests without injecting a Worker or JWT authorization header', async () => {
     let authorizationHeader: unknown
 
     await apiClient.request({
@@ -55,6 +55,7 @@ describe('Mobile API Client', () => {
       },
     })
 
+    expect(apiClient.defaults.withCredentials).toBe(true)
     expect(authorizationHeader).toBeUndefined()
   })
 
@@ -100,15 +101,15 @@ describe('Mobile API Client', () => {
     expect(noContentResponse.status).toBe(204)
   })
 
-  it('keeps Authorization injection behind an explicit provider hook', async () => {
-    configureApiAuthHooks({
-      getAuthorizationHeader: () => 'FutureAuth credential',
+  it('injects the selected team centrally', async () => {
+    configureHumanRequestContext({
+      getActiveTeamId: () => 'team-1',
     })
-    let authorizationHeader: unknown
+    let teamHeader: unknown
 
     await apiClient.request({
       adapter: async (config) => {
-        authorizationHeader = config.headers.get('Authorization')
+        teamHeader = config.headers.get('X-Team-ID')
         return {
           data: null,
           status: 204,
@@ -119,12 +120,12 @@ describe('Mobile API Client', () => {
       },
     })
 
-    expect(authorizationHeader).toBe('FutureAuth credential')
+    expect(teamHeader).toBe('team-1')
   })
 
-  it('calls the reserved unauthorized hook for an HTTP 401 response', async () => {
-    const onUnauthorized = vi.fn()
-    configureApiAuthHooks({ onUnauthorized })
+  it('expires auth only for formal Human Session error codes', async () => {
+    const onSessionInvalid = vi.fn()
+    configureHumanRequestContext({ onSessionInvalid })
 
     await expect(
       apiClient.request({
@@ -133,12 +134,35 @@ describe('Mobile API Client', () => {
             isAxiosError: true,
             response: {
               status: 401,
-              data: null,
+              data: {
+                code: 'HUMAN_SESSION_INVALID',
+                message: '登录会话已失效，请重新登录',
+                request_id: 'session-request',
+              },
             },
           }),
       }),
     ).rejects.toBeInstanceOf(ApiClientError)
 
-    expect(onUnauthorized).toHaveBeenCalledOnce()
+    expect(onSessionInvalid).toHaveBeenCalledOnce()
+
+    await expect(
+      apiClient.request({
+        adapter: async () =>
+          Promise.reject({
+            isAxiosError: true,
+            response: {
+              status: 401,
+              data: {
+                code: 'HUMAN_LOGIN_FAILED',
+                message: '登录账号或密码错误',
+                request_id: 'login-request',
+              },
+            },
+          }),
+      }),
+    ).rejects.toBeInstanceOf(ApiClientError)
+
+    expect(onSessionInvalid).toHaveBeenCalledOnce()
   })
 })

@@ -1,4 +1,4 @@
-import { shallowMount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import { createTemplateGroupFixtures } from '../__fixtures__/template-groups.fixture'
@@ -10,7 +10,7 @@ describe('TemplateSequenceRow', () => {
   it('shows role and size in fixed lightweight text slots', async () => {
     const templates = createTemplateGroupFixtures()[0]!.templates
     const template = templates[0]!
-    const wrapper = shallowMount(TemplateSequenceRow, {
+    const wrapper = mount(TemplateSequenceRow, {
       props: {
         template,
         active: false,
@@ -31,9 +31,11 @@ describe('TemplateSequenceRow', () => {
     expect(wrapper.get('.template-sequence-row__size').text()).toBe('3:4')
     expect(wrapper.attributes('data-output-role')).toBe('DETAIL_IMAGE')
 
-    expect(templateSequenceRowSource).not.toMatch(/StatusTag|AppTag|NTag/)
-    expect(templateSequenceRowSource).toMatch(
-      /\.template-sequence-row\s*{[^}]*height:\s*var\(--table-list-row-slot-height\);/s,
-    )
+    expect(templateSequenceRowSource).toContain('appearance="dot"')
+    expect(wrapper.get('.status-tag__dot').attributes()).toMatchObject({
+      'aria-label': detailTemplate.enabled ? '启用' : '停用',
+      role: 'status',
+    })
+    expect(templateSequenceRowSource).toContain('CompactEntityRow')
   })
 })

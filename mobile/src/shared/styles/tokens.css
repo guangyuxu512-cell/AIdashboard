@@ -214,9 +214,19 @@
   --visual-v2-business-card-inline-gap: 8px;
   --visual-v2-business-card-status-dot-size: 8px;
   --visual-v2-business-card-chevron-size: 16px;
-  --visual-v2-task-artwork-size: 54px;
-  --visual-v2-task-artwork-icon-size: 28px;
-  --visual-v2-task-artwork-radius: 15px;
+  --visual-v2-task-artwork-size: 60px; /* TaskCard状态Artwork视觉尺寸，不改变共享102px Leading列。 */
+  --visual-v2-task-artwork-icon-size: 30px; /* Artwork内部Registry状态图标尺寸。 */
+  --visual-v2-task-artwork-radius: 16px; /* Task Artwork圆角，沿用V2业务视觉语言。 */
+  --visual-v2-task-card-title-gap: 5px; /* TaskCard标题到状态行的候选纵向节奏，不影响Frozen DeviceCard。 */
+  --visual-v2-task-card-status-gap: 5px; /* TaskCard状态行到Tag行的候选纵向节奏。 */
+  --visual-v2-list-context-height: 48px; /* 列表查询上下文卡的轻量高度。 */
+  --visual-v2-list-context-padding-x: 16px; /* 列表查询上下文卡左右留白。 */
+  --visual-v2-list-context-radius: 15px; /* 列表查询上下文卡圆角。 */
+  --visual-v2-list-context-background: var(--visual-v2-detail-weak-background);
+  --visual-v2-list-context-border-color: var(
+    --visual-v2-detail-weak-border-color
+  );
+  --visual-v2-list-context-shadow: none;
   --visual-v2-detail-header-height: 66px;
   --visual-v2-detail-header-padding-x: 18px;
   --visual-v2-detail-header-action-slot: 48px;
@@ -384,6 +394,13 @@
   --device-list-artwork-width: 80px;
   --device-list-artwork-height: 80px;
   --device-list-artwork-offset-x: -8px;
+
+  /* Mobile Visual V2 / Task List：仅组合已冻结共享组件与任务列表专属上下文。 */
+  --task-list-page-padding-x: var(--visual-v2-page-padding-x);
+  --task-list-fixed-controls-gap: 14px;
+  --task-list-list-padding-top: 14px;
+  --task-list-list-padding-bottom: 28px;
+  --task-list-card-gap: 14px;
 
   /* DeviceStatusArtwork 几何：Kind 与状态共享同一业务插画容器。 */
   --device-artwork-screen-border-width: 2px;

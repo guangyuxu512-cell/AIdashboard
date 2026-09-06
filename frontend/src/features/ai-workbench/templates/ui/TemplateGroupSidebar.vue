@@ -6,6 +6,7 @@ import type { DropdownOption } from 'naive-ui'
 import type { TemplateGroup } from '../model/types'
 import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
 
 defineProps<{
@@ -59,13 +60,10 @@ function selectAction(group: TemplateGroup, key: string | number): void {
           <Folder :size="18" />
         </template>
         <template #status>
-          <span
-            class="template-group-sidebar__status"
-            :class="{
-              'template-group-sidebar__status--enabled': group.enabled,
-            }"
-            :aria-label="group.enabled ? '启用' : '停用'"
-            role="status"
+          <StatusTag
+            appearance="dot"
+            :label="group.enabled ? '启用' : '停用'"
+            :tone="group.enabled ? 'success' : 'neutral'"
           />
         </template>
         <template #actions>
@@ -118,19 +116,5 @@ function selectAction(group: TemplateGroup, key: string | number): void {
 
 .template-group-sidebar__list::-webkit-scrollbar {
   display: none;
-}
-
-.template-group-sidebar__status {
-  display: block;
-  width: var(--space-2);
-  height: var(--space-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  background: transparent;
-}
-
-.template-group-sidebar__status--enabled {
-  border-color: var(--status-success);
-  background: var(--status-success);
 }
 </style>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from typing import BinaryIO
 from uuid import UUID
 
@@ -73,6 +74,34 @@ class AssetService:
         source_type: AssetSourceType,
         ownership: AssetOwnership,
     ) -> Asset:
+        with self.stage_for_transaction(
+            original_filename=original_filename,
+            content_type=content_type,
+            stream=stream,
+            media_type=media_type,
+            source_type=source_type,
+            ownership=ownership,
+        ) as asset:
+            self.session.commit()
+        return asset
+
+    @contextmanager
+    def stage_for_transaction(
+        self,
+        *,
+        original_filename: str | None,
+        content_type: str | None,
+        stream: BinaryIO,
+        media_type: AssetMediaType,
+        source_type: AssetSourceType,
+        ownership: AssetOwnership,
+    ) -> Iterator[Asset]:
+        """Stage an Asset inside a trusted caller-owned database transaction.
+
+        The caller must commit before leaving the context. Any exception rolls the
+        shared transaction back and removes the newly stored file.
+        """
+
         if media_type is not AssetMediaType.IMAGE:
             raise AssetTypeUnsupportedError()
         filename, suffix = normalize_original_filename(original_filename)
@@ -107,12 +136,11 @@ class AssetService:
             self.repository.add(asset)
             self.session.flush()
             self.session.refresh(asset)
-            self.session.commit()
+            yield asset
         except Exception:
             self.session.rollback()
             self.storage.delete(stored.storage_key)
             raise
-        return asset
 
     def list(
         self,
@@ -150,6 +178,18 @@ class AssetService:
         """供未来可信业务 Service 校验 Reference Asset，Scope 始终落在 SQL。"""
 
         return self.repository.list_by_ids_for_actor(
+            actor=actor,
+            asset_ids=asset_ids,
+        )
+
+    def list_accessible_by_ids_for_update(
+        self,
+        actor: ActorContext,
+        asset_ids: Sequence[UUID],
+    ) -> Sequence[Asset]:
+        """Scoped lookup with row locks for relationship-creating transactions."""
+
+        return self.repository.list_by_ids_for_actor_for_update(
             actor=actor,
             asset_ids=asset_ids,
         )

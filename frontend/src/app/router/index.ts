@@ -58,6 +58,13 @@ const router = createRouter({
       meta: { moduleCode: aiWorkbenchModule.moduleCode },
     },
     {
+      path: AI_WORKBENCH_ROUTES.records.path,
+      name: AI_WORKBENCH_ROUTES.records.name,
+      component: () =>
+        import('@/pages/ai-workbench/AiGenerationRecordsPage.vue'),
+      meta: { moduleCode: aiWorkbenchModule.moduleCode },
+    },
+    {
       path: deviceModule.routePath,
       name: deviceModule.routeName,
       component: () => import('@/pages/devices/DeviceCenterPage.vue'),
@@ -80,6 +87,29 @@ const router = createRouter({
       name: settingsModule.routeName,
       component: () => import('@/pages/settings/NotificationSettingsPage.vue'),
       meta: { moduleCode: settingsModule.moduleCode },
+    },
+    {
+      path: '/settings/users',
+      name: 'access-management',
+      component: () => import('@/pages/settings/AccessManagementPage.vue'),
+      meta: { requiresAccessAdministrator: true },
+    },
+    {
+      path: '/settings/audit-logs',
+      name: 'audit-logs',
+      component: () => import('@/pages/settings/AuditLogPage.vue'),
+      meta: { requiresAccessAdministrator: true },
+    },
+    {
+      path: '/settings/ai-models',
+      name: 'ai-model-management',
+      component: () => import('@/pages/settings/AiModelManagementPage.vue'),
+      meta: { requiresAccessAdministrator: true },
+    },
+    {
+      path: '/permission-denied',
+      name: 'permission-denied',
+      component: () => import('@/pages/PermissionDeniedPage.vue'),
     },
   ],
 })

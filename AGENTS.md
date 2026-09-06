@@ -1,5 +1,36 @@
 # AGENTS.md
 
+## 0. 工程工作流总则（Two-Gate）
+
+本文件同时是仓库工程治理的最高规则；模块 `AGENTS.md` 只保留各自的技术边界，并引用本节。完整操作流程、环境登记与数据库协作细则见：
+
+- `docs/engineering/01-开发集成与发布流程.md`
+- `docs/engineering/02-工程环境与工作树登记表.md`
+- `docs/engineering/03-数据库与Migration协作规范.md`
+
+### Branch 与 Worktree 角色
+
+- `main` 仅保存已发布或已确认稳定的版本；只能由通过 Release Gate 的 Green `dev` 合入。
+- `dev` 是唯一集成线，也是 Green `dev` 的唯一来源；Feature 只能通过 Integration Worktree 按 `--no-ff` 合入。
+- 新业务在 `feat/*`，紧急线上修复在 `hotfix/*`；不得建立长期 `qa/*`、`test/*`、`review/*` 等平行集成线。
+- 新 Feature 从最新 Green `dev` 创建，且一个 Worktree 只绑定一个分支。已有 AI、Mobile 长期分支按登记表保留，不因本规则补做 rebase、重建或改名。
+- 当前工作树中的 `AGENTS.md` 和 `docs/` 才是该分支的规则快照；禁止把其他 Worktree 的文件当作当前分支事实。
+
+### Two-Gate、问题归属与共享历史
+
+- Gate 1 由 Feature Owner 完成：自检、测试、文档/契约同步、提交，并以正式 Handoff 交给 Integrator。
+- Gate 2 只在 Integration Worktree 执行：读取候选提交、做集成验证、解决真实冲突并决定接受或拒绝。候选本身的业务 Bug、缺测试或契约缺口必须退回原 Feature Owner；Integrator 不代为开发业务修复。
+- Gate 2 通过后只允许 `git merge --no-ff feat/*` 合入 `dev`。集成后 `dev` 失败时，应拒绝候选或在共享历史上 `git revert`，禁止 `reset`、改写历史、未审查的 rebase/cherry-pick。
+- Release Gate 要求 Green `dev`、验证证据和发布说明完整；未经该 Gate 不得合入 `main`。
+
+### 数据库、运行环境与本地材料
+
+- Schema 变化由 Feature Owner 编写 Alembic Migration；同一时刻只能有一个登记的 Migration Slot。Integrator 负责分配 Slot、验证候选，不替代 Feature 编写新 Migration。
+- Feature 使用自己的可重建临时/Feature 数据库；Integration 只写 `control_center_integration`；Main smoke 只写 `control_center_dev`；未来生产环境必须独立。不得混用或把凭据写入 Git。
+- 固定运行隔离：Main `8000/5173`、Integration `8100/5180`、AI 前端 `5174`、SSH Tunnel `35433`。Vite 必须显式端口并启用 `--strictPort`。Mobile 端口以当前 `mobile` 配置为准，不能因历史记录把 `5175` 视为永久保留端口。Integration Electron 如需联调只指向 `5180`，且不启动第二个 Electron。
+- `.dev-runtime/` 是 Main 偏置运行管理器，记录的 PID 必须结合真实进程校验，过期记录不是唯一事实。临时脚本、日志、截图、build/test artifact、PID 与本机密钥必须清理或被 Git 忽略，并在 Gate 1、Gate 2 检查。
+- `AGENTS.override.md` 仅可作为 Worktree 本地覆盖文件，必须通过该 Worktree 的 `.codex/git-exclude` 忽略，禁止提交。版本化临时文档目录规则由 `.gitignore` 统一定义。
+
 ## 1. 项目定位
 
 本项目是“电商 AI 中控台 / 电商自动化控制平台”。

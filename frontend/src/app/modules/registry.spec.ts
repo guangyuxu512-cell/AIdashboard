@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getModuleAccessOptions,
   getNavigationEntries,
   getNavigationModules,
   MODULE_REGISTRY,
@@ -104,5 +105,22 @@ describe('Module Registry Lite', () => {
       schedule: null,
       settings: null,
     })
+  })
+
+  it('derives personnel module authorization choices and navigation from the same registry', () => {
+    expect(getModuleAccessOptions().map((option) => option.value)).toEqual([
+      'shop',
+      'asset',
+      'ai-workbench',
+      'device',
+      'task',
+      'schedule',
+      'settings',
+    ])
+    expect(
+      getNavigationModules(MODULE_REGISTRY, {
+        allowedModuleCodes: new Set(['asset', 'settings']),
+      }).map((module) => module.moduleCode),
+    ).toEqual(['asset', 'settings'])
   })
 })

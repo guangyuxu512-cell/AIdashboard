@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_actor_context
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.assets.schemas import AssetRead
 from app.modules.assets.service import AssetService
 from app.shared.pagination import Page, PaginationParams
@@ -34,6 +35,9 @@ router = APIRouter(
 )
 
 
+get_asset_authorized_actor = require_module_access(ModuleCode.ASSET)
+
+
 def get_asset_service(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> AssetService:
@@ -43,7 +47,7 @@ def get_asset_service(
 @router.post("", response_model=AssetRead, status_code=status.HTTP_201_CREATED)
 def upload_asset(
     file: Annotated[UploadFile, File()],
-    actor: Annotated[ActorContext, Depends(get_actor_context)],
+    actor: Annotated[ActorContext, Depends(get_asset_authorized_actor)],
     service: Annotated[AssetService, Depends(get_asset_service)],
 ) -> AssetRead:
     return AssetRead.model_validate(
@@ -58,7 +62,7 @@ def upload_asset(
 
 @router.get("", response_model=Page[AssetRead])
 def list_assets(
-    actor: Annotated[ActorContext, Depends(get_actor_context)],
+    actor: Annotated[ActorContext, Depends(get_asset_authorized_actor)],
     service: Annotated[AssetService, Depends(get_asset_service)],
     pagination: Annotated[PaginationParams, Depends()],
     search: Annotated[str | None, Query(max_length=255)] = None,
@@ -80,7 +84,7 @@ def list_assets(
 @router.get("/{asset_id}/content", response_class=StreamingResponse)
 def read_asset_content(
     asset_id: UUID,
-    actor: Annotated[ActorContext, Depends(get_actor_context)],
+    actor: Annotated[ActorContext, Depends(get_asset_authorized_actor)],
     service: Annotated[AssetService, Depends(get_asset_service)],
 ) -> StreamingResponse:
     asset, content = service.get_content(actor, asset_id)
@@ -90,7 +94,7 @@ def read_asset_content(
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset(
     asset_id: UUID,
-    actor: Annotated[ActorContext, Depends(get_actor_context)],
+    actor: Annotated[ActorContext, Depends(get_asset_authorized_actor)],
     service: Annotated[AssetService, Depends(get_asset_service)],
 ) -> Response:
     service.delete(actor, asset_id)

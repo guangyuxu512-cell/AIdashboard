@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MaterialAssetReference } from '../model/types'
+import { AssetContentImage } from '@/entities/asset'
 import EmptyState from '@/shared/components/EmptyState.vue'
 
 const props = defineProps<{
@@ -51,7 +52,7 @@ function activate(assetId: string): void {
       @click="activate(asset.assetId)"
     >
       <span class="material-asset-card__preview">
-        <img :src="asset.previewUrl" :alt="asset.name" loading="lazy" />
+        <AssetContentImage :src="asset.previewUrl" :alt="asset.name" />
       </span>
       <span class="material-asset-card__name" :title="asset.name">
         {{ asset.name }}

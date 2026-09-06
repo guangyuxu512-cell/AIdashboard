@@ -69,7 +69,7 @@ AppShell 默认品牌为“思余AI中控台”。品牌图使用真实 Alpha �
 | 文本/表面 | `--color-text-*`、`--color-bg-*`、`--color-border-*`                                          |
 | 排版      | `--font-family-base`、`--font-size-*`、`--font-weight-*`、`--line-height-*`                   |
 | 间距      | `--space-1` 至 `--space-8`                                                                    |
-| 控件      | `--control-height-*`、`--field-width-*`                                                       |
+| 控件      | `--control-height-*`、`--field-width-*`、`--date-picker-width-*`                              |
 | 圆角/阴影 | `--radius-*`、`--shadow-*`                                                                    |
 | 弹层      | `--dialog-width-*`、`--drawer-width-*`                                                        |
 | 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`    |

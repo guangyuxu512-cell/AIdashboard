@@ -38,8 +38,7 @@ const schema = z.object({
   size: z.enum(TEMPLATE_SIZE_OPTIONS),
   count: z.number().int().min(1, '数量不能小于 1').max(8),
   variables: z.array(z.string().trim().min(1)).max(20),
-  prompt: z.string().trim().min(1, '请输入 Prompt').max(5000),
-  negativePrompt: z.string().max(2000),
+  prompt: z.string().trim().min(1, '请输入提示词').max(5000),
 })
 
 function valuesFromTemplate(template: PromptTemplate): PromptTemplateInput {
@@ -51,7 +50,6 @@ function valuesFromTemplate(template: PromptTemplate): PromptTemplateInput {
     count: template.count,
     variables: [...template.variables],
     prompt: template.prompt,
-    negativePrompt: template.negativePrompt,
   }
 }
 
@@ -67,7 +65,6 @@ const [size] = defineField('size')
 const [count] = defineField('count')
 const [variables] = defineField('variables')
 const [prompt] = defineField('prompt')
-const [negativePrompt] = defineField('negativePrompt')
 
 const outputFormatOptions = Object.entries(TEMPLATE_OUTPUT_FORMAT_META).map(
   ([value, meta]) => ({ value, label: meta.label }),
@@ -111,7 +108,6 @@ const submit = handleSubmit((values) => {
       count: fieldErrors.count?.[0],
       variables: fieldErrors.variables?.[0],
       prompt: fieldErrors.prompt?.[0],
-      negativePrompt: fieldErrors.negativePrompt?.[0],
     })
     return
   }
@@ -192,7 +188,7 @@ const submit = handleSubmit((values) => {
       </NFormItem>
 
       <NFormItem
-        label="Prompt"
+        label="提示词"
         :validation-status="errors.prompt ? 'error' : undefined"
         :feedback="errors.prompt"
       >
@@ -201,21 +197,7 @@ const submit = handleSubmit((values) => {
           class="template-editor__textarea template-editor__textarea--prompt"
           type="textarea"
           :maxlength="5000"
-          aria-label="Prompt"
-        />
-      </NFormItem>
-
-      <NFormItem
-        label="Negative Prompt"
-        :validation-status="errors.negativePrompt ? 'error' : undefined"
-        :feedback="errors.negativePrompt"
-      >
-        <AppInput
-          v-model="negativePrompt"
-          class="template-editor__textarea"
-          type="textarea"
-          :maxlength="2000"
-          aria-label="Negative Prompt"
+          aria-label="提示词"
         />
       </NFormItem>
 

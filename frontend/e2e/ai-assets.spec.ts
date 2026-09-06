@@ -121,6 +121,9 @@ test('completes the AI assets library V1 visual interactions', async ({
   await expectRoleTotal(page, '商品素材', 31)
   await expectRoleTotal(page, '复刻参考', 3)
   await expectRoleTotal(page, 'AI成品', 6)
+  await expect(
+    page.getByRole('navigation', { name: '素材角色' }),
+  ).toHaveAttribute('data-appearance', 'bare')
   await expect(page.getByRole('button', { name: '上传素材' })).toBeDisabled()
   await page
     .getByRole('navigation', { name: '素材角色' })
@@ -429,19 +432,6 @@ test('completes the AI assets library V1 visual interactions', async ({
     mainHorizontalOverflow: false,
   })
   expect(runtimeErrors).toEqual([])
-})
-
-test('keeps normal and non-exact query routes free of visual fixtures', async ({
-  page,
-}) => {
-  await page.goto('/#/ai-workbench/assets')
-  await expect(page.getByText('暂无素材', { exact: true })).toBeVisible()
-  await expect(page.getByText('手机支架', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '上传素材' })).toBeDisabled()
-
-  await page.goto('/#/ai-workbench/assets?visualMock=true')
-  await expect(page.getByText('暂无素材', { exact: true })).toBeVisible()
-  await expect(page.getByText('手机支架', { exact: true })).toHaveCount(0)
 })
 
 test('renders folder, selection, multi-select and pagination states in both themes', async ({

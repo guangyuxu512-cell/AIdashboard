@@ -3,6 +3,7 @@
 Pydantic Schema / OpenAPI 为权威来源。
 
 原则：
+
 - 请求/响应字段明确。
 - 枚举明确。
 - 错误码明确。
@@ -67,6 +68,42 @@ Human Auth V1 已为 `users` 增加可空 `login_name/password_hash`，并以服
 `get_human_principal` 不接受可伪造的 User-ID Header；ActorContext、Team 选择与既有 Access API
 Contract 保持不变。
 
+## Access Management V1 Contract
+
+统一前缀为 `/api/v1/access-management`。`GET /me/module-access` 需要有效的 Human
+ActorContext，返回当前选中 Membership 的 `module_codes` 和
+`is_access_administrator`，不返回 User、Team、密码或会话内部字段。
+
+以下人员、Team 与 Membership 管理接口均要求当前选中 Membership 的
+`role_code=access_admin`：
+
+- `GET/POST /members`：分页查询（可按显示名或登录账号 search）与创建人员。
+- `GET/PATCH /members/{user_id}`：读取人员管理视图、启用或停用人员。
+- `POST /members/{user_id}/password`：重置密码并撤销该人员全部 Human Session。
+- `POST /members/{user_id}/memberships`、`PATCH /memberships/{membership_id}`：新增或更新
+  Team Membership、数据范围、启用状态、角色与模块访问。
+- `GET/POST /teams`、`PATCH /teams/{team_id}`：读取、创建和更新 Team；不提供 Hard Delete。
+
+历史 `/api/v1/users` Core Domain 路由也改为 `access_admin` 才可调用，防止它成为新人员管理边界的
+绕过入口；PC 管理端必须使用上列 Access Management Contract，不以旧 `UserRead` 管理登录凭据或
+Membership。
+
+人员创建请求只在写入期接收 `password`，响应的人员、Membership 与 Team DTO 永不包含密码、
+Password Hash、Cookie 或 Session Token。管理角色只有 `member` 和 `access_admin`；模块代码只能
+是当前 PC Module Registry 的 `shop / asset / ai-workbench / device / task / schedule / settings`，
+不接受 development-only `foundation` 或未知值。模块代码重复、未知角色及空 PATCH 均由
+`VALIDATION_ERROR` 拒绝。
+
+管理边界失败使用 `HUMAN_AUTHENTICATION_REQUIRED`、
+`ACCESS_ADMINISTRATION_FORBIDDEN`、`MODULE_ACCESS_DENIED`、
+`LAST_ACCESS_ADMINISTRATOR_REQUIRED`、`TEAM_DISABLED`、`TEAM_MEMBERSHIP_CONFLICT` 等正式错误码。
+资料库、Device、Task 与 Schedule 的全部 Human 路由分别执行 `asset`、`device`、`task`、`schedule`
+模块授权，并使用 ActorContext 的 `SELF / TEAM / ALL` 读取范围。它们的 Create DTO 不接受 Team 或
+创建者；这两个 Ownership 字段只从 ActorContext 或可信 Schedule 继承。Shop、Credential、Shop
+Session 与 Shop Onboarding 管理路由同样要求 Human Session、ActorContext 与 `shop` 模块访问；当前
+Shop 尚未建立 Ownership Scope。Automation Application Config 要求 `device` 模块访问，Notification
+Channel 管理与 Webhook 测试要求 `settings` 模块访问。Worker / Device Token 路由不使用 Human Guard。
+
 Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Binding 只包含
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
 Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
@@ -90,6 +127,9 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 - `POST /api/v1/shops/{shop_id}/session/refresh`：仅供 Electron Main 提交内存中的新 Session；Renderer 不接触 payload。
 
 Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或密文。密码只存在于 Create/Update 写请求，Update 的空字符串表示保留现有密码。Session payload 的写入目前只属于内部 Service Contract，不开放普通 Frontend Route。
+
+Electron Main 进行店铺接入或 Session 恢复时，从其受控的应用会话读取 HttpOnly Human Cookie 并附加当前
+`X-Team-ID`；Cookie 不经过 Renderer，也不接受 Renderer 传入的 Raw Session Token。
 
 ## Device Provider Inventory Contract
 
@@ -135,6 +175,7 @@ Descriptor 固定包含
 
 当前 provider 仅允许 `yingdao`。字段类型为 text/number/boolean/select；Backend 校验字段名、
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
+所有读取与保存均要求 Human Session、ActorContext 与 `device` 模块访问。
 
 `POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
 `{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。
@@ -143,6 +184,9 @@ Backend 必须验证目标 Device 启用、全部 Shop 有效并与该 Device �
 
 ## Device Lifecycle API
 
+- 全部 `/api/v1/devices` Human 路由要求 Human Session、`device` 模块访问与 ActorContext Scope；创建
+  Device 固定归属当前 Team 与当前人员。详情、辅助 Device 查询和写入都不能用直接 ID 绕过 Scope，ALL
+  也不允许跨 Team 写入。
 - `PATCH /api/v1/devices/{device_id}` 的 `enabled` 是执行资格，不是在线状态。
 - `DELETE /api/v1/devices/{device_id}` 返回 204，但实现为软移除；有活动任务时返回 `409 / DEVICE_HAS_ACTIVE_TASKS`。
 - 已移除 Device 的列表与详情行为和 Shop 软删除一致：普通读取视为不存在。
@@ -185,8 +229,13 @@ Device 是否在线、启用以及 Task 是否可创建仍由 Task Guard 在保�
 - `POST /api/v1/notification-channels/{channel_id}/test`
 
 Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密文。Update 的空 Webhook 表示保留原 Secret；测试消息由 Backend 投递。
+所有读取、配置与测试均要求 Human Session、ActorContext 与 `settings` 模块访问。
 
 ## Task Runtime Event API
+
+全部 `/api/v1/tasks` Human 路由要求 Human Session、`task` 模块访问与 ActorContext Scope；即时创建
+Task 固定归属当前 Team 与当前人员，且目标 Device 与关联 Asset 必须在该 Team。`GET /events` 在读取
+事件前先以相同 Scope 查询 Task。Schedule 生成的 Task 继承 Schedule 的 Team 与业务发起人。
 
 `POST /api/v1/tasks` 的 `shop_ids` 是有序的正式店铺上下文集合；需要店铺账号的即时任务必须明确
 提交，但账号内容不得放进 `input`。重复 ID 被拒绝，任一 Shop 无效、停用、已移除、未与目标
@@ -247,3 +296,34 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 文件后提交数据库元数据；数据库提交失败会清理本次新文件。响应不包含 `storage_key`，任何
 客户端都不得猜 Backend 文件系统路径。现有 URL 与 Worker Claim 的图片字段保持兼容，Claim
 不会新增 `media_type / source_type / storage_key`。
+
+## AI Workbench Backend Foundation V1 API
+
+统一前缀为 `/api/v1/ai-workbench`，全部为 Human API，并同时要求有效 `ActorContext` 与
+`ai-workbench` Module Access：
+
+- `GET/POST /template-groups`：按 Scope 分页查询或创建模板组。
+- `GET/PATCH/DELETE /template-groups/{template_group_id}`：读取、编辑或删除模板组。
+- `POST /template-groups/{template_group_id}/prompt-templates`：创建提示词模板。
+- `PATCH/DELETE /template-groups/{template_group_id}/prompt-templates/{prompt_template_id}`：
+  编辑或删除提示词模板。
+- `POST /template-groups/{template_group_id}/prompt-templates/{prompt_template_id}/duplicate`：
+  复制模板并归一序列。
+- `PUT /template-groups/{template_group_id}/prompt-templates/reorder`：同角色内重排模板。
+- `GET/POST /product-material-groups`：按 Scope 分页查询或创建商品素材组。
+- `GET/PATCH/DELETE /product-material-groups/{material_group_id}`：读取、编辑或删除商品素材组。
+- `POST /product-material-groups/{material_group_id}/assets` 与
+  `DELETE /product-material-groups/{material_group_id}/assets/{asset_id}`：建立或解除 Asset 关系。
+- `PUT /product-material-groups/{material_group_id}/template-bindings/{mode}`：按模式原子替换有序模板绑定。
+
+列表复用 `Page[T]`、`page` 与 `page_size`；TemplateGroup 和 ProductMaterialGroup 的 Ownership
+只从 ActorContext 写入，Create/Update DTO 不接受 Team、Creator 或 Data Scope。Asset 关系通过
+现有 AssetService Scoped Lookup 校验；不存在、不可读或错误 Team 均返回
+`ASSET_NOT_FOUND / 404`。模板组仍被 Binding 引用时返回
+`TEMPLATE_GROUP_IN_USE / 409`。其余 AI 管理领域错误沿用统一 `AppError` Envelope，包括
+`TEMPLATE_GROUP_NOT_FOUND`、`PROMPT_TEMPLATE_NOT_FOUND`、
+`PRODUCT_MATERIAL_GROUP_NOT_FOUND`、`TEMPLATE_SEQUENCE_INVALID`、
+`TEMPLATE_BINDING_INVALID` 与 `MATERIAL_ASSET_ROLE_INVALID`。
+
+商品素材组详情中的 Asset 使用现有安全 `AssetRead` 投影，不返回 `storage_key`、bucket、绝对路径、
+厂商 URL 或 Storage 凭据。本阶段没有 GenerationJob、Provider、Queue 或 Worker API。

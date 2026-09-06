@@ -21,6 +21,12 @@ export {
 } from './api/task-api'
 export type { TaskDataSource } from './api/task-api'
 export {
+  formatTaskDuration,
+  getTaskCardTags,
+  resolveTaskArtwork,
+} from './model/task-card'
+export type { TaskArtworkMeta, TaskArtworkState } from './model/task-card'
+export {
   isTerminalTaskStatus,
   TASK_STATUSES,
   TASK_STATUS_META,
@@ -38,11 +44,14 @@ export {
   TASK_ACTIVE_REFRESH_INTERVAL_MS,
   TASK_LIST_PAGE_SIZE,
   TASK_LIST_REFRESH_INTERVAL_MS,
+  TASK_METRIC_REFRESH_INTERVAL_MS,
   taskQueryKeys,
   toTaskListRequest,
+  toTaskTotalRequest,
   useActiveTaskQuery,
   useTaskDetailQuery,
   useTaskListQuery,
+  useTaskTotalQuery,
 } from './model/task-queries'
 export type { TaskListFilters, TaskListItem, TaskListPage } from './model/types'
 export { default as TaskListCard } from './ui/TaskListCard.vue'

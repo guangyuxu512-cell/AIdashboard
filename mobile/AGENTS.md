@@ -4,6 +4,8 @@
 
 Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也不承载 Backend 业务规则。
 
+分支、Two-Gate、Worktree、端口隔离与本地材料规则由根 `AGENTS.md` 和 `docs/engineering/` 统一定义；本文件只约束 Mobile 模块实现，并以当前 Worktree 的文档为准。既有冻结的 Mobile UI 约束不因工程流程变更而放宽。
+
 固定使用 Vue 3、TypeScript、Vite、Vue Router、Pinia、Vant、Axios、TanStack Vue Query、Vitest、Playwright、ESLint、Prettier 与根 pnpm workspace。
 
 处理任务时依次读取：根 `AGENTS.md`、本文件、`docs/00-文档索引.md`，再按索引读取专项文档和检查现有实现。
@@ -21,8 +23,8 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Backend 访问只能经 `src/shared/api/` 的唯一 Client，再由 Entity API/DataSource 消费；Page 禁止直接调用 Axios 或拼 URL。
 - Mobile 不复制 Backend Guard、状态机或业务合法性判断，也不重新设计业务状态。
 - Router 只在 `src/app/router/` 注册；Page 禁止动态注册 Route。
-- 一级业务页必须复用唯一 `MobileAppShell`、品牌 Global Header 与五入口 Bottom Navigation；详情页必须复用统一 Detail Header。Page 只提供 MainContent，禁止自行创建全局 Header、返回栏或 Bottom Nav。
-- Bottom Navigation 固定为“设备、任务、计划、店铺、我的”；未开发入口只能进入统一建设中页，禁止借占位实现假业务、假用户或假通知数据。
+- 一级业务页必须复用唯一 `MobileAppShell`、品牌 Global Header 与五入口注册表驱动的 Bottom Navigation；详情页必须复用统一 Detail Header。Page 只提供 MainContent，禁止自行创建全局 Header、返回栏或 Bottom Nav。
+- Bottom Navigation 的注册顺序固定为“设备、任务、计划、店铺、我的”；前四项必须按当前 Team 的 Module Access 显示，“我的”作为账号与退出入口保留。未开发但有权的入口只能进入统一建设中页，禁止假业务、假用户或假通知数据。
 - Device Card 与 Task Card 必须共享同一套 Mobile Card 语言和 `Leading Icon + 三行 Main Content + Trailing Chevron` 结构；Feature 禁止自建独立卡片视觉体系或万能业务 Card。
 - List Card 的 Title、State/Time 与 Meta 必须保持单行；冻结的是内容槽位与信息层级，具体正式字段可替换，但 Feature 不得为新增字段擅自增加行数。
 - Task Card 不显示 Progress 或 Current Message；执行过程统一进入 Task Detail 的 Runtime Log。
@@ -32,7 +34,7 @@ Mobile 是独立的手机 Web Frontend，不是 PC Frontend 的复制版，也�
 - Touch Press Feedback 是主要交互反馈；Hover 只能辅助预览，不能承载必要状态或操作。
 - Global Header 固定为品牌、Theme Toggle、Notification Bell；Theme 必须在 Bell 左侧，禁止一级 Page 添加第二层巨大标题栏。
 - Card 与 Icon Button 的 Press 行为优先复用全局 CSS 语义类，禁止为每个 Feature 新建 Wrapper 或 JS Pointer 动画。
-- Auth、JWT、RBAC 当前未实现；只能保留 `requiresAuth`、`permission`、Guard 与 Authorization Header 插槽，禁止假登录、假 Token、假角色。
+- Mobile Human Auth 必须复用 Backend 既有 HttpOnly Session Cookie、`/auth/me`、Team Membership、`X-Team-ID` 与 Module Access；禁止 JWT、Worker Token、第二套 Auth Store、假登录或在 localStorage 保存 Session/Token。localStorage 只允许保存当前用户选中的 Team 偏好。
 - Frontend Permission 只控制体验，不构成安全边界；真实 Authorization 必须由 Backend 执行。
 - 未来 Data Scope 必须由 Backend 在 API/Query 边界过滤，禁止 Mobile 获取全量后本地过滤。
 - Mobile User Authentication 与 Worker Device Token 永久分离，Mobile 禁止使用 Worker Token。

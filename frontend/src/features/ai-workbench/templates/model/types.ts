@@ -1,26 +1,38 @@
-export type GenerationMode = 'NORMAL_GENERATION' | 'STYLE_REPLICATION'
+import {
+  GENERATION_OUTPUT_FORMAT_META,
+  GENERATION_SIZE_OPTIONS,
+  type GenerationConfig,
+  type GenerationOutputFormat,
+  type GenerationSize,
+} from '../../shared/model/generation-config'
+import {
+  GENERATION_MODE_META,
+  type GenerationMode,
+} from '../../shared/model/generation-mode'
+import {
+  GENERATION_OUTPUT_ROLE_META,
+  type GenerationOutputRole,
+} from '../../shared/model/generation-output'
 
-export type TemplateOutputRole = 'MAIN_IMAGE' | 'DETAIL_IMAGE'
+export { GENERATION_MODE_META }
+export type { GenerationMode }
+
+export type TemplateOutputRole = GenerationOutputRole
 
 export type TemplateRoleFilter = 'ALL' | TemplateOutputRole
 
-export type TemplateOutputFormat = 'SINGLE' | 'COLLAGE_2X2'
+export type TemplateOutputFormat = GenerationOutputFormat
 
-export const TEMPLATE_SIZE_OPTIONS = ['1:1', '3:4', '4:3', '16:9'] as const
+export const TEMPLATE_SIZE_OPTIONS = GENERATION_SIZE_OPTIONS
 
-export type TemplateSize = (typeof TEMPLATE_SIZE_OPTIONS)[number]
+export type TemplateSize = GenerationSize
 
-export interface PromptTemplate {
+export interface PromptTemplate extends GenerationConfig {
   id: string
   name: string
   enabled: boolean
   outputRole: TemplateOutputRole
-  outputFormat: TemplateOutputFormat
-  size: TemplateSize
-  count: number
   variables: string[]
-  prompt: string
-  negativePrompt: string
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -46,23 +58,6 @@ export type PromptTemplateInput = Omit<
   'id' | 'outputRole' | 'sortOrder' | 'createdAt' | 'updatedAt'
 >
 
-export const GENERATION_MODE_META: Record<GenerationMode, { label: string }> = {
-  NORMAL_GENERATION: { label: '普通生图' },
-  STYLE_REPLICATION: { label: '风格复刻' },
-}
+export const TEMPLATE_OUTPUT_ROLE_META = GENERATION_OUTPUT_ROLE_META
 
-export const TEMPLATE_OUTPUT_ROLE_META: Record<
-  TemplateOutputRole,
-  { label: string }
-> = {
-  MAIN_IMAGE: { label: '主图' },
-  DETAIL_IMAGE: { label: '详情' },
-}
-
-export const TEMPLATE_OUTPUT_FORMAT_META: Record<
-  TemplateOutputFormat,
-  { label: string }
-> = {
-  SINGLE: { label: '单图' },
-  COLLAGE_2X2: { label: '四宫格' },
-}
+export const TEMPLATE_OUTPUT_FORMAT_META = GENERATION_OUTPUT_FORMAT_META

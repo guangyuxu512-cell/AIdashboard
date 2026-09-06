@@ -5,11 +5,13 @@ import {
   TaskListCard,
   type TaskEventReadDto,
   type TaskListItem,
+  type TaskReadDto,
   type TaskStatusDto,
 } from '@/entities/task'
-import { TaskInfiniteList } from '@/features/task-center'
+import { TaskInfiniteList, TaskListControls } from '@/features/task-center'
 import {
   RUNTIME_RETENTION_TEXT,
+  TaskDetailCard,
   TaskOutcomeNotice,
   TaskRuntimeLog,
 } from '@/features/task-runtime'
@@ -41,6 +43,26 @@ const runtimeEvent: TaskEventReadDto = {
   created_at: '2026-08-26T00:00:00Z',
 }
 
+const taskDetail: TaskReadDto = {
+  task_id: 'task-1',
+  target_device_id: 'device-1',
+  shop_ids: [],
+  asset_ids: [],
+  skill_id: 'sync-orders',
+  execution_display_name: '同步订单',
+  status: 'running',
+  input: {},
+  result: null,
+  error_code: null,
+  error_message: null,
+  lease_until: null,
+  started_at: '2026-08-26T00:00:00Z',
+  finished_at: null,
+  runtime_events_purged_at: null,
+  created_at: '2026-08-25T23:59:00Z',
+  updated_at: '2026-08-26T00:00:00Z',
+}
+
 const listProps = {
   tasks: [task],
   initialLoading: false,
@@ -65,6 +87,35 @@ const runtimeProps = {
 }
 
 describe('task center UI', () => {
+  it('renders the four formal totals and shares the selected metric event', async () => {
+    const wrapper = mount(TaskListControls, {
+      props: {
+        searchQuery: '',
+        filter: 'all',
+        totals: { running: 2, pending: 3, exception: 4, completed: 5 },
+        metricsBusy: false,
+        resultLabel: '任务',
+        resultCount: '14个',
+        dateLabel: '近7天',
+      },
+    })
+
+    expect(
+      wrapper
+        .findAll('.mobile-summary-strip__metric')
+        .map((metric) => metric.text()),
+    ).toEqual(['2运行中', '3待运行', '4异常', '5已完成'])
+    expect(wrapper.get('[data-testid="task-context-count"]').text()).toBe(
+      '14个',
+    )
+    expect(wrapper.get('[data-testid="task-context-date"]').text()).toBe(
+      '近7天',
+    )
+
+    await wrapper.get('button[aria-label="异常，点击筛选"]').trigger('click')
+    expect(wrapper.emitted('selectFilter')).toEqual([['exception']])
+  })
+
   it('keeps the current Task List card anatomy unchanged', () => {
     const wrapper = mount(TaskListCard, { props: { task } })
 
@@ -118,7 +169,9 @@ describe('task center UI', () => {
     })
 
     expect(wrapper.classes()).toContain('mobile-business-card-frame')
-    expect(wrapper.get('[data-testid="task-card-state"]').text()).toBe('执行中')
+    expect(wrapper.get('[data-testid="task-card-state"]').text()).toContain(
+      '执行中',
+    )
     expect(wrapper.get('[data-testid="task-card-meta"]').text()).toContain(
       '开始',
     )
@@ -128,6 +181,137 @@ describe('task center UI', () => {
     expect(wrapper.find('.van-tag').exists()).toBe(false)
     await wrapper.get('[data-testid="current-task-link"]').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['task-1']])
+  })
+
+  it('uses formal status artwork, real duration and contract-backed list tags', () => {
+    const wrapper = mount(TaskListCard, {
+      props: {
+        visualV2: true,
+        metaMode: 'tags',
+        task: {
+          ...task,
+          status: 'success',
+          startedAt: '2026-08-26T00:00:00Z',
+          finishedAt: '2026-08-26T00:06:00Z',
+        },
+      },
+    })
+
+    expect(
+      wrapper.get('[data-testid="task-card-leading"]').classes(),
+    ).toContain('task-list-card-v2__artwork--done')
+    expect(wrapper.get('[data-testid="task-card-state"]').text()).toContain(
+      '成功·6分钟',
+    )
+    expect(
+      wrapper
+        .findAll('[data-testid="task-card-tags"] .van-tag')
+        .map((tag) => tag.text()),
+    ).toEqual(['订单同步'])
+    expect(wrapper.text()).not.toContain('Provider')
+    expect(wrapper.text()).not.toContain('仓库手机')
+  })
+
+  it.each([
+    ['pending', 'task-list-card-v2__artwork--pending'],
+    ['running', 'task-list-card-v2__artwork--running'],
+    ['failed', 'task-list-card-v2__artwork--error'],
+    ['lost', 'task-list-card-v2__artwork--error'],
+    ['success', 'task-list-card-v2__artwork--done'],
+  ] as const)(
+    'maps %s into the confirmed artwork state',
+    (status, className) => {
+      const wrapper = mount(TaskListCard, {
+        props: { task: { ...task, status }, visualV2: true, metaMode: 'tags' },
+      })
+
+      expect(
+        wrapper.get('[data-testid="task-card-leading"]').classes(),
+      ).toContain(className)
+    },
+  )
+
+  it('renders a contract-backed Task Detail card without list behavior or prototype fields', () => {
+    const wrapper = mount(TaskDetailCard, {
+      props: {
+        task: taskDetail,
+        deviceName: '仓库设备',
+        deviceState: 'ready',
+        now: new Date('2026-08-26T00:03:00Z'),
+      },
+    })
+
+    expect(wrapper.get('[data-testid="task-detail-title"]').text()).toBe(
+      '同步订单',
+    )
+    expect(wrapper.get('[data-testid="task-detail-status"]').text()).toContain(
+      '执行中·3分钟',
+    )
+    expect(
+      wrapper.get('[data-testid="task-detail-artwork"]').classes(),
+    ).toContain('task-detail-summary__artwork--running')
+    expect(
+      wrapper.get('[data-testid="task-detail-info-started"]').text(),
+    ).toContain('开始时间')
+    expect(wrapper.get('[data-testid="task-detail-info-device"]').text()).toBe(
+      '执行设备仓库设备',
+    )
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('触发方式')
+    expect(wrapper.text()).not.toContain('执行账号')
+    expect(wrapper.text()).not.toContain('sync-orders')
+    expect(wrapper.text()).not.toContain('device-1')
+  })
+
+  it('keeps secondary device loading local and only renders safe outcome facts', () => {
+    const loading = mount(TaskDetailCard, {
+      props: {
+        task: taskDetail,
+        deviceState: 'loading',
+        now: new Date('2026-08-26T00:03:00Z'),
+      },
+    })
+    expect(loading.get('[data-testid="task-detail-title"]').text()).toBe(
+      '同步订单',
+    )
+    expect(loading.get('[data-testid="task-detail-info-device"]').text()).toBe(
+      '执行设备加载中',
+    )
+
+    const failed = mount(TaskDetailCard, {
+      props: {
+        task: {
+          ...taskDetail,
+          status: 'failed',
+          finished_at: '2026-08-26T00:04:00Z',
+          error_code: 'PRIVATE_ERROR_CODE',
+          error_message: '账号会话不可用',
+        },
+        deviceName: '仓库设备',
+        deviceState: 'ready',
+      },
+    })
+    expect(failed.get('[data-testid="task-detail-info-error"]').text()).toBe(
+      '失败原因账号会话不可用',
+    )
+    expect(failed.text()).not.toContain('PRIVATE_ERROR_CODE')
+
+    const success = mount(TaskDetailCard, {
+      props: {
+        task: {
+          ...taskDetail,
+          status: 'success',
+          finished_at: '2026-08-26T00:04:00Z',
+          result: { summary: '已同步 24 笔订单', private_data: '不得显示' },
+        },
+        deviceName: '仓库设备',
+        deviceState: 'ready',
+      },
+    })
+    expect(success.get('[data-testid="task-detail-info-result"]').text()).toBe(
+      '执行结果已同步 24 笔订单',
+    )
+    expect(success.text()).not.toContain('不得显示')
   })
 
   it.each([
@@ -177,13 +361,16 @@ describe('task center UI', () => {
 
   it('uses the shared card press language for task navigation', () => {
     const wrapper = mount(TaskInfiniteList, { props: listProps })
-    const item = wrapper.get('.task-list__item')
+    const card = wrapper.get('[data-testid="task-card"]')
 
-    expect(item.classes()).toEqual(
-      expect.arrayContaining(['mobile-pressable', 'mobile-pressable--card']),
+    expect(card.classes()).toEqual(
+      expect.arrayContaining([
+        'mobile-business-card-surface-v2',
+        'mobile-press-surface',
+      ]),
     )
-    expect(item.get('[data-testid="task-card"]').classes()).toContain(
-      'mobile-card',
+    expect(card.get('button').attributes('aria-label')).toBe(
+      '查看任务：同步订单',
     )
   })
 
@@ -302,9 +489,12 @@ describe('task center UI', () => {
       if (expected) expect(wrapper.text()).toContain(expected)
       else expect(wrapper.find('.runtime-log__status').exists()).toBe(false)
       if (events.length > 0) {
-        expect(wrapper.find('.runtime-log__meta').exists()).toBe(true)
+        expect(wrapper.find('.runtime-log__event').exists()).toBe(true)
         expect(wrapper.get('.runtime-log__message').text()).toBe(
           runtimeEvent.message,
+        )
+        expect(wrapper.get('time').attributes('datetime')).toBe(
+          runtimeEvent.event_at,
         )
       }
     },
@@ -331,8 +521,25 @@ describe('task center UI', () => {
       true,
     )
     expect(wrapper.get('[data-testid="event-limit-notice"]').text()).toBe(
-      '仅显示最近 500 条日志',
+      '部分日志未显示',
     )
     expect(wrapper.find('.van-notice-bar').exists()).toBe(false)
+  })
+
+  it('keeps the log header fixed outside the only internal scroll region', () => {
+    const wrapper = mount(TaskRuntimeLog, {
+      props: runtimeProps,
+    })
+
+    expect(wrapper.get('.runtime-log').element.children[0]).toBe(
+      wrapper.get('.runtime-log__heading').element,
+    )
+    expect(wrapper.get('.runtime-log').element.children[1]).toBe(
+      wrapper.get('[data-testid="runtime-log-scroll"]').element,
+    )
+    expect(wrapper.get('[data-testid="runtime-events"]').text()).toContain(
+      runtimeEvent.message,
+    )
+    expect(wrapper.text()).not.toContain('#2')
   })
 })
