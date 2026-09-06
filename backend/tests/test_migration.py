@@ -904,3 +904,40 @@ def test_ai_provider_migration_upgrade_and_downgrade(monkeypatch: object) -> Non
     assert recorder.calls == [
         ("drop_table", "generation_provider_executions"),
     ]
+
+
+def test_ai_model_management_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260906_0031_ai_model_management_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260906_0031"
+    assert migration.down_revision == "20260905_0030"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "ai_models"),
+    ]
+    assert (
+        "create_index",
+        "uq_ai_models_enabled_default",
+    ) in recorder.calls
+    assert not {
+        "providers",
+        "provider_configs",
+        "generation_jobs",
+        "generation_items",
+        "generation_provider_executions",
+        "assets",
+    } & {name for operation, name in recorder.calls if operation == "create_table"}
+    assert len([call for call in recorder.calls if call[0] == "execute"]) == 1
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "uq_ai_models_enabled_default"),
+        ("drop_table", "ai_models"),
+    ]

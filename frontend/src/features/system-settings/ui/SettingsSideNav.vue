@@ -6,9 +6,13 @@ import AppButton from '@/shared/ui/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 
 interface SettingsNavigationItem {
-  key: 'users' | 'audit-logs' | 'notifications'
+  key: 'users' | 'audit-logs' | 'ai-models' | 'notifications'
   label: string
-  routeName: 'access-management' | 'audit-logs' | 'notification-settings'
+  routeName:
+    | 'access-management'
+    | 'audit-logs'
+    | 'ai-model-management'
+    | 'notification-settings'
 }
 
 const route = useRoute()
@@ -27,6 +31,11 @@ const items = computed<SettingsNavigationItem[]>(() => [
           key: 'audit-logs' as const,
           label: '操作日志',
           routeName: 'audit-logs' as const,
+        },
+        {
+          key: 'ai-models' as const,
+          label: 'AI 模型管理',
+          routeName: 'ai-model-management' as const,
         },
       ]
     : []),

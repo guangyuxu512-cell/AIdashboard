@@ -25,6 +25,97 @@ from app.modules.assets.models import Asset
 from app.shared.identifiers import generate_id
 
 
+class AiModel(TimestampMixin, Base):
+    __tablename__ = "ai_models"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(display_name)) > 0",
+            name="display_name_not_blank",
+        ),
+        CheckConstraint(
+            "length(trim(model_code)) > 0",
+            name="model_code_not_blank",
+        ),
+        CheckConstraint(
+            "provider_code = 'toapis'",
+            name="provider_code",
+        ),
+        CheckConstraint(
+            "NOT is_default OR enabled",
+            name="default_enabled",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(capabilities) = 'array' "
+            "AND jsonb_array_length(capabilities) > 0",
+            name="capabilities_array",
+        ),
+        CheckConstraint(
+            "capabilities <@ '[\"NORMAL_GENERATION\", "
+            "\"STYLE_REPLICATION\"]'::jsonb",
+            name="capabilities_allowed",
+        ),
+        CheckConstraint(
+            "max_input_images >= 0",
+            name="max_input_images_non_negative",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(supported_sizes) = 'array' "
+            "AND jsonb_array_length(supported_sizes) > 0",
+            name="supported_sizes_array",
+        ),
+        CheckConstraint(
+            "supported_sizes <@ '[\"1:1\", \"3:4\", \"4:3\", "
+            "\"16:9\"]'::jsonb",
+            name="supported_sizes_allowed",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(supported_resolutions) = 'array' "
+            "AND jsonb_array_length(supported_resolutions) > 0",
+            name="supported_resolutions_array",
+        ),
+        CheckConstraint(
+            "supported_resolutions <@ '[\"1k\", \"2k\", \"4k\"]'::jsonb",
+            name="supported_resolutions_allowed",
+        ),
+        UniqueConstraint(
+            "provider_code",
+            "model_code",
+            name="uq_ai_models_provider_model_code",
+        ),
+        Index(
+            "uq_ai_models_enabled_default",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+    )
+
+    model_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=generate_id,
+    )
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
+    capabilities: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    max_input_images: Mapped[int] = mapped_column(Integer, nullable=False)
+    supported_sizes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    supported_resolutions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+
+
 class TemplateGroup(TimestampMixin, Base):
     __tablename__ = "template_groups"
     __table_args__ = (

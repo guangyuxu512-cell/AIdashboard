@@ -16,6 +16,10 @@ from app.modules.ai_workbench.api import router as ai_workbench_router
 from app.modules.ai_workbench.generation_executor import (
     execute_generation_items_forever,
 )
+from app.modules.ai_workbench.model_catalog_api import (
+    admin_router as ai_model_admin_router,
+    catalog_router as ai_model_catalog_router,
+)
 from app.modules.authentication.api import router as authentication_router
 from app.modules.assets.api import router as assets_router
 from app.modules.automation_apps.api import router as automation_apps_router
@@ -101,6 +105,8 @@ def create_app() -> FastAPI:
     application.include_router(access_management_router)
     application.include_router(audit_log_router)
     application.include_router(ai_workbench_router)
+    application.include_router(ai_model_admin_router)
+    application.include_router(ai_model_catalog_router)
     application.include_router(authentication_router)
     application.include_router(assets_router)
     application.include_router(automation_apps_router)

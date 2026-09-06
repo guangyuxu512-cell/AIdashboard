@@ -8,6 +8,7 @@ from app.core.database import Base
 from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
 from app.modules.audit.models import AuditLog
 from app.modules.ai_workbench.models import (
+    AiModel,
     GenerationItem,
     GenerationItemAsset,
     GenerationJob,
@@ -37,6 +38,7 @@ from app.modules.workers.models import (
 )
 
 _MODELS = (
+    AiModel,
     AutomationApplicationConfig,
     Asset,
     AuditLog,
