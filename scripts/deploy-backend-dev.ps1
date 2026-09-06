@@ -53,7 +53,7 @@ try {
     foreach ($file in @('Dockerfile', '.dockerignore', 'compose.yaml', 'pyproject.toml', 'alembic.ini')) {
         Copy-Item -LiteralPath (Join-Path $backendRoot $file) -Destination $stagingRoot
     }
-    foreach ($directory in @('app', 'migrations', 'deploy')) {
+    foreach ($directory in @('app', 'migrations', 'deploy', 'douyin-signer')) {
         Copy-Item -LiteralPath (Join-Path $backendRoot $directory) -Destination $stagingRoot -Recurse
     }
     & tar.exe -czf $archivePath -C $stagingRoot .
@@ -79,7 +79,7 @@ try {
                 $values[$Matches[1]] = $Matches[2]
             }
         }
-        foreach ($required in @('BACKEND_DATABASE_URL', 'BACKEND_ENCRYPTION_KEY')) {
+        foreach ($required in @('BACKEND_DATABASE_URL', 'BACKEND_ENCRYPTION_KEY', 'BACKEND_DOUYIN_SIGNER_API_KEY')) {
             if (-not $values.ContainsKey($required) -or [string]::IsNullOrWhiteSpace($values[$required])) {
                 throw "$required is missing from backend/.env."
             }
@@ -92,6 +92,7 @@ try {
         $serverEnvironmentLines = @(
             "BACKEND_DATABASE_URL=$serverDatabaseUrl",
             "BACKEND_ENCRYPTION_KEY=$($values['BACKEND_ENCRYPTION_KEY'])",
+            "BACKEND_DOUYIN_SIGNER_API_KEY=$($values['BACKEND_DOUYIN_SIGNER_API_KEY'])",
             'BACKEND_WORKER_ONLINE_TIMEOUT_SECONDS=45',
             'BACKEND_WORKER_TASK_LEASE_SECONDS=60',
             'BACKEND_WORKER_RECONCILE_INTERVAL_SECONDS=10'

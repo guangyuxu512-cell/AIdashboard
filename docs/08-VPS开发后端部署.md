@@ -10,11 +10,11 @@ Worker / Frontend
 已有 Nginx
         ↓ 127.0.0.1:18000
 control-center-backend-dev
-        ↓ host network / 127.0.0.1:35433
-control-center-postgres-dev:5432（现有回环端口映射）
+        ├── 127.0.0.1:8787（仅内部）→ control-center-douyin-signer-dev
+        └── host network / 127.0.0.1:35433 → control-center-postgres-dev:5432（现有回环端口映射）
 ```
 
-Backend 和 PostgreSQL 的内部端口不得绑定公网。Worker 只访问 Backend API，不访问 PostgreSQL，也不需要 SSH。
+Backend、Douyin Signer 和 PostgreSQL 的内部端口不得绑定公网。Worker 只访问 Backend API，不访问 PostgreSQL 或 Douyin Signer，也不需要 SSH。
 
 ## 服务器结构
 
@@ -26,10 +26,11 @@ Backend 和 PostgreSQL 的内部端口不得绑定公网。Worker 只访问 Back
     ├── compose.yaml
     ├── Dockerfile
     ├── app/
+    ├── douyin-signer/
     └── migrations/
 ```
 
-Backend 容器名固定为 `control-center-backend-dev`，使用 Python 3.12、非 root 用户、只读根文件系统、`restart: unless-stopped`，Docker JSON 日志轮转为 10 MiB × 5。审计发现 PostgreSQL 的 `pg_hba.conf` 只允许宿主机来源并拒绝其他容器网段，因此采用方案 B：Backend 使用 host network，但 Uvicorn 强制只绑定 `127.0.0.1:18000`，数据库使用现有 `127.0.0.1:35433` 回环绑定。不修改 PostgreSQL 认证规则、容器或数据卷。
+Backend 容器名固定为 `control-center-backend-dev`，使用 Python 3.12、非 root 用户、只读根文件系统、`restart: unless-stopped`，Docker JSON 日志轮转为 10 MiB × 5。Douyin Signer 容器名固定为 `control-center-douyin-signer-dev`，同样使用 host network，但只绑定 `127.0.0.1:8787`，并要求 `BACKEND_DOUYIN_SIGNER_API_KEY` 非空才会启动。审计发现 PostgreSQL 的 `pg_hba.conf` 只允许宿主机来源并拒绝其他容器网段，因此采用方案 B：Backend 使用 host network，但 Uvicorn 强制只绑定 `127.0.0.1:18000`，数据库使用现有 `127.0.0.1:35433` 回环绑定。不修改 PostgreSQL 认证规则、容器或数据卷。
 
 ## 部署与更新
 

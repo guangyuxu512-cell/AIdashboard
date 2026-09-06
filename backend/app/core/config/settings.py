@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     toapis_poll_interval_seconds: float = Field(default=5.0, ge=0.1, le=60)
     toapis_poll_timeout_seconds: int = Field(default=180, ge=10, le=3600)
     toapis_request_timeout_seconds: int = Field(default=180, ge=10, le=600)
+    douyin_signer_url: str = "http://127.0.0.1:8787"
+    douyin_signer_api_key: SecretStr | None = None
+    douyin_signer_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
 
     @field_validator("toapis_api_key", mode="before")
     @classmethod
@@ -103,6 +106,36 @@ class Settings(BaseSettings):
             parsed.port
         except ValueError as error:
             raise ValueError("ToAPIs Base URL端口无效") from error
+        return normalized
+
+    @field_validator("douyin_signer_api_key", mode="before")
+    @classmethod
+    def normalize_optional_douyin_signer_api_key(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("douyin_signer_url")
+    @classmethod
+    def validate_douyin_signer_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        parsed = urlsplit(normalized)
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname != "127.0.0.1"
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Douyin Signer URL必须是本机回环HTTP Origin")
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise ValueError("Douyin Signer URL端口无效") from error
+        if port is None:
+            raise ValueError("Douyin Signer URL必须显式指定端口")
         return normalized
 
     @model_validator(mode="after")

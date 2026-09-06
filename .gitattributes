@@ -2,3 +2,7 @@
 
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Audited upstream signer runtime files must retain their exact byte sequence.
+backend/douyin-signer/sign_once.js -text
+backend/douyin-signer/vendor/a_bogus.js -text whitespace=-trailing-space
