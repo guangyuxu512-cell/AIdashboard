@@ -592,6 +592,7 @@ test('renders compact Shop and Device pages in light and dark themes', async ({
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
 
+  await page.getByText('自动化中心', { exact: true }).click()
   await page.getByText('设备中心', { exact: true }).click()
   await page.getByRole('button', { name: '切换主题' }).click()
   await page.getByText('深色', { exact: true }).click()
