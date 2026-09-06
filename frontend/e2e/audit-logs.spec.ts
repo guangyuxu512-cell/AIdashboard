@@ -19,11 +19,25 @@ test('shows operation logs to an access administrator and rejects a member', asy
       .getByRole('navigation', { name: '系统设置主导航' })
       .getByText('系统设置', { exact: true }),
   ).toBeVisible()
-  await expect(
-    page
-      .getByRole('navigation', { name: '系统设置' })
-      .getByRole('button', { name: '用户与权限' }),
-  ).toBeVisible()
+  const settingsNavigation = page.getByRole('navigation', { name: '系统设置' })
+  for (const item of [
+    '用户与权限',
+    '操作日志',
+    'AI 模型管理',
+    '通知配置',
+  ]) {
+    await expect(
+      settingsNavigation.getByRole('button', { name: item, exact: true }),
+    ).toBeVisible()
+  }
+  await settingsNavigation
+    .getByRole('button', { name: '用户与权限', exact: true })
+    .click()
+  await expect(page).toHaveURL(/#\/settings\/users$/)
+  await settingsNavigation
+    .getByRole('button', { name: '操作日志', exact: true })
+    .click()
+  await expect(page).toHaveURL(/#\/settings\/audit-logs$/)
 
   await logout(page)
   await page.goto('/#/settings/audit-logs')

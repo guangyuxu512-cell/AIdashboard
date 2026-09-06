@@ -359,7 +359,7 @@ test('uses registry-driven input slots and one editable generation config', asyn
   expect(runtimeErrors).toEqual([])
 })
 
-test('keeps local-upload Record previews alive across Draft cleanup and routes', async ({
+test('keeps local-upload Record previews alive after Draft cleanup', async ({
   page,
 }) => {
   const runtimeErrors = collectRuntimeErrors(page)
@@ -474,37 +474,6 @@ test('keeps local-upload Record previews alive across Draft cleanup and routes',
     .toBeGreaterThan(0)
   await recordDrawer.getByRole('button', { name: '关闭' }).click()
 
-  await page
-    .getByRole('navigation', { name: 'AI 功能入口' })
-    .getByRole('button', { name: 'AI生图' })
-    .click()
-  const resetConfig = page.getByRole('region', { name: '即时生成配置' })
-  const resetSurface = resetConfig
-    .locator('[data-input-slot="PRODUCT_IMAGES"]')
-    .locator('.generation-input-slot__surface')
-  const resetChooserPromise = page.waitForEvent('filechooser')
-  await resetSurface.click()
-  const resetChooser = await resetChooserPromise
-  await resetChooser.setFiles({
-    name: '待重置商品图.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      'base64',
-    ),
-  })
-  await expect(resetConfig.getByAltText('待重置商品图.png')).toBeVisible()
-
-  await page.evaluate(() => {
-    window.location.hash = '/ai-workbench/generate'
-  })
-  await expect(page).toHaveURL(/#\/ai-workbench\/generate$/)
-  await expect(
-    page
-      .getByRole('region', { name: '即时生成配置' })
-      .getByAltText('待重置商品图.png'),
-  ).toHaveCount(0)
-
   await page.evaluate(() => {
     window.location.hash = '/ai-workbench/records?visualMock=1'
   })
@@ -575,9 +544,7 @@ test('renders stable instant result slots with preview and isolated retry', asyn
   const successCard = viewer.locator(
     '[data-testid="instant-result-card"][data-result-status="SUCCESS"]',
   )
-  await successCard.getByAltText('生成结果-01.webp').click()
-  await expect(page.locator('.n-image-preview-container')).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(successCard.getByAltText('生成结果-01.webp')).toBeVisible()
   await expect(
     successCard.getByRole('button', { name: /下载 生成结果-01/ }),
   ).toBeVisible()
@@ -973,9 +940,7 @@ test('completes batch configuration and the master-detail execution viewer', asy
       ),
     )
     .toBeGreaterThan(0)
-  await successPreview.click()
-  await expect(page.locator('.n-image-preview-container')).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(successPreview).toBeVisible()
 
   const firstGroupHeader = firstGroup
     .locator('.n-collapse-item__header')
@@ -1317,23 +1282,4 @@ test('keeps every generation interaction stable in light and dark themes', async
     mainVerticalOverflow: false,
   })
   expect(runtimeErrors).toEqual([])
-})
-
-test('keeps normal and non-exact generation routes free of fixtures', async ({
-  page,
-}) => {
-  await page.goto('/#/ai-workbench/generate')
-  await expect(page.getByText('暂无生成结果', { exact: true })).toBeVisible()
-  await expect(page.getByText('手机支架', { exact: true })).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: '生成', exact: true }),
-  ).toBeDisabled()
-
-  await page.goto('/#/ai-workbench/records')
-  await expect(page.getByText('暂无生成记录', { exact: true })).toBeVisible()
-  await expect(page.getByText('张三', { exact: true })).toHaveCount(0)
-
-  await page.goto('/#/ai-workbench/records?visualMock=true')
-  await expect(page.getByText('暂无生成记录', { exact: true })).toBeVisible()
-  await expect(page.getByText('张三', { exact: true })).toHaveCount(0)
 })

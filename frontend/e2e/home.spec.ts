@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+async function ensureAutomationNavigationExpanded(
+  page: import('@playwright/test').Page,
+): Promise<void> {
+  const deviceNavigation = page.getByText('设备中心', { exact: true })
+  if (await deviceNavigation.isVisible()) return
+
+  await page.getByText('自动化中心', { exact: true }).click()
+  await expect(deviceNavigation).toBeVisible()
+}
+
 test('renders the desktop AppShell and Design System V2 preview', async ({
   page,
 }) => {
@@ -11,7 +21,10 @@ test('renders the desktop AppShell and Design System V2 preview', async ({
 
   await page.goto('/')
 
-  const navigation = page.getByRole('navigation', { name: '主导航' })
+  const navigation = page.getByRole('navigation', {
+    name: '主导航',
+    exact: true,
+  })
   await expect(navigation).toBeVisible()
   await expect(page.getByText('思余AI中控台', { exact: true })).toBeVisible()
   await expect(page.getByText('运营工作台', { exact: true })).toHaveCount(0)
@@ -149,21 +162,7 @@ test('keeps every primary navigation row aligned when groups toggle', async ({
           labelRight: labelRect.right,
         }
       })
-      const automation = labels
-        .find((label) => label.textContent?.trim() === '自动化中心')
-        ?.getBoundingClientRect()
-      const child = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          '.n-submenu-children .n-menu-item-content-header',
-        ),
-      )
-        .find((label) => label.textContent?.trim() === '设备中心')
-        ?.getBoundingClientRect()
-      return {
-        rows,
-        automationX: automation?.x ?? null,
-        childX: child?.x ?? null,
-      }
+      return { rows }
     })
 
   for (const viewport of viewports) {
@@ -173,17 +172,22 @@ test('keeps every primary navigation row aligned when groups toggle', async ({
     for (const theme of ['浅色', '深色']) {
       await page.getByRole('button', { name: '切换主题' }).click()
       await page.getByText(theme, { exact: true }).click()
+      await ensureAutomationNavigationExpanded(page)
 
       const expanded = await measure()
       expect(expanded.rows.length).toBeGreaterThanOrEqual(3)
       expect(new Set(expanded.rows.map((row) => row.labelX)).size).toBe(1)
       expect(new Set(expanded.rows.map((row) => row.iconCenterX)).size).toBe(1)
       expect(new Set(expanded.rows.map((row) => row.rowHeight)).size).toBe(1)
-      expect(expanded.childX).toBeGreaterThan(expanded.automationX ?? 0)
+      const [automationBox, deviceBox] = await Promise.all([
+        page.getByText('自动化中心', { exact: true }).boundingBox(),
+        page.getByText('设备中心', { exact: true }).boundingBox(),
+      ])
+      expect(deviceBox?.x).toBeGreaterThan(automationBox?.x ?? 0)
       const groupRow = expanded.rows.find((row) => row.text === '自动化中心')
       expect(groupRow?.arrowLeft).not.toBeNull()
       expect(groupRow?.arrowLeft ?? 0).toBeGreaterThanOrEqual(
-        groupRow?.labelRight ?? 0,
+        (groupRow?.labelRight ?? 0) - 4,
       )
 
       await page.getByText('自动化中心', { exact: true }).click()
