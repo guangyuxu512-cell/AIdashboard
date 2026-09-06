@@ -17,6 +17,7 @@ test('uses the automation navigation group and renders every Task state', async 
 
   await page.goto('/#/shops')
   await expect(page.getByText('自动化中心', { exact: true })).toBeVisible()
+  await page.getByText('自动化中心', { exact: true }).click()
   await expect(page.getByText('设备中心', { exact: true })).toBeVisible()
   await page.getByText('任务中心', { exact: true }).click()
 
