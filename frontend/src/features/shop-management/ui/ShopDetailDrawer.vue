@@ -17,8 +17,6 @@ defineProps<{
   shop: ShopListItemViewModel | null
   loading?: boolean
   error?: string | null
-  showOwner?: boolean
-  showDeviceBindings?: boolean
 }>()
 
 defineEmits<{
@@ -64,7 +62,7 @@ defineEmits<{
           <NDescriptionsItem label="平台">
             <PlatformDisplay :code="shop.platform" />
           </NDescriptionsItem>
-          <NDescriptionsItem v-if="showOwner" label="负责人">{{
+          <NDescriptionsItem label="负责人">{{
             shop.ownerName
           }}</NDescriptionsItem>
           <NDescriptionsItem label="平台店铺 ID">
@@ -95,7 +93,7 @@ defineEmits<{
         @session-updated="$emit('sessionUpdated')"
       />
 
-      <ShopDeviceBindingSection v-if="showDeviceBindings" :shop="shop" />
+      <ShopDeviceBindingSection :shop="shop" />
 
       <section class="shop-detail__section">
         <h3>操作记录</h3>

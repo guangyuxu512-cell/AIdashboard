@@ -27,7 +27,6 @@ test('registers Schedule Center under Automation and renders the compact list', 
 
   await page.goto('/#/shops')
   await expect(page.getByText('自动化中心', { exact: true })).toBeVisible()
-  await page.getByText('自动化中心', { exact: true }).click()
   await page.getByText('定时计划', { exact: true }).click()
 
   await expect(page).toHaveURL(/#\/schedules$/)

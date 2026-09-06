@@ -4,43 +4,9 @@ const apiMode = process.env.PLAYWRIGHT_API_MODE === 'real' ? 'real' : 'mock'
 const backendPort = process.env.PLAYWRIGHT_BACKEND_PORT ?? '8000'
 const frontendPort = process.env.PLAYWRIGHT_FRONTEND_PORT ?? '4173'
 
-const productionTestFiles = ['**/production/**']
-const realTestFiles = [
-  '**/auth-real.spec.ts',
-  '**/real-api.spec.ts',
-  '**/ai-workbench-real-backend.spec.ts',
-]
-const visualTestFiles = [
-  '**/ai-assets.spec.ts',
-  '**/ai-generation.spec.ts',
-  '**/ai-templates.spec.ts',
-  '**/home.spec.ts',
-]
-
 export default defineConfig({
   testDir: './e2e',
-  projects:
-    apiMode === 'real'
-      ? [
-          {
-            name: 'real',
-            testMatch: realTestFiles,
-          },
-        ]
-      : [
-          {
-            name: 'mock',
-            testIgnore: [
-              ...productionTestFiles,
-              ...realTestFiles,
-              ...visualTestFiles,
-            ],
-          },
-          {
-            name: 'visual',
-            testMatch: visualTestFiles,
-          },
-        ],
+  testIgnore: '**/production/**',
   use: {
     baseURL: `http://127.0.0.1:${frontendPort}`,
   },

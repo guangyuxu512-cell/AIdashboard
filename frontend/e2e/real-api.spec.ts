@@ -16,11 +16,6 @@ const backendPython = path.join(
   'python.exe',
 )
 const testPrefix = 'stage-2b-e2e-'
-const teamId = '51111111-1111-4111-8111-111111111111'
-const userId = '52222222-2222-4222-8222-222222222222'
-const membershipId = '53333333-3333-4333-8333-333333333333'
-const loginName = 'real-api-e2e'
-const password = 'real-api-e2e-password'
 
 function cleanupRealTestData(): void {
   const cleanupScript = [
@@ -79,87 +74,16 @@ function cleanupRealTestData(): void {
   })
 }
 
-function seedRealHumanAccess(): void {
-  const script = [
-    'from uuid import UUID',
-    'from sqlalchemy import delete',
-    'from sqlalchemy.orm import Session',
-    'from app.core.database import get_database_engine',
-    'from app.modules.access.enums import DataScope',
-    'from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership',
-    'from app.modules.human_auth.passwords import PasswordService',
-    'from app.modules.users.models import User',
-    `team_id = UUID(${JSON.stringify(teamId)})`,
-    `user_id = UUID(${JSON.stringify(userId)})`,
-    `membership_id = UUID(${JSON.stringify(membershipId)})`,
-    `password = ${JSON.stringify(password)}`,
-    'with Session(get_database_engine()) as session:',
-    '    session.execute(delete(MembershipModuleAccess).where(MembershipModuleAccess.membership_id == membership_id))',
-    '    session.execute(delete(TeamMembership).where(TeamMembership.membership_id == membership_id))',
-    '    session.execute(delete(User).where(User.user_id == user_id))',
-    '    session.execute(delete(Team).where(Team.team_id == team_id))',
-    '    session.add(Team(team_id=team_id, name="Real API E2E Team", enabled=True))',
-    '    session.add(User(user_id=user_id, display_name="Real API E2E", login_name="real-api-e2e", password_hash=PasswordService().hash_password(password), enabled=True))',
-    '    session.flush()',
-    '    session.add(TeamMembership(membership_id=membership_id, team_id=team_id, user_id=user_id, role_code="member", data_scope=DataScope.TEAM, enabled=True))',
-    '    session.flush()',
-    '    session.add_all([',
-    '        MembershipModuleAccess(membership_id=membership_id, module_code="asset"),',
-    '        MembershipModuleAccess(membership_id=membership_id, module_code="device"),',
-    '        MembershipModuleAccess(membership_id=membership_id, module_code="shop"),',
-    '        MembershipModuleAccess(membership_id=membership_id, module_code="schedule"),',
-    '        MembershipModuleAccess(membership_id=membership_id, module_code="task"),',
-    '    ])',
-    '    session.commit()',
-  ].join('\n')
-
-  execFileSync(backendPython, ['-c', script], {
-    cwd: backendDirectory,
-    stdio: 'pipe',
-  })
-}
-
-function cleanupRealHumanAccess(): void {
-  const script = [
-    'from uuid import UUID',
-    'from sqlalchemy import delete',
-    'from sqlalchemy.orm import Session',
-    'from app.core.database import get_database_engine',
-    'from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership',
-    'from app.modules.audit.models import AuditLog',
-    'from app.modules.human_auth.models import HumanSession',
-    'from app.modules.users.models import User',
-    `team_id = UUID(${JSON.stringify(teamId)})`,
-    `user_id = UUID(${JSON.stringify(userId)})`,
-    `membership_id = UUID(${JSON.stringify(membershipId)})`,
-    'with Session(get_database_engine()) as session:',
-    '    session.execute(delete(AuditLog).where(AuditLog.actor_user_id == user_id))',
-    '    session.execute(delete(HumanSession).where(HumanSession.user_id == user_id))',
-    '    session.execute(delete(MembershipModuleAccess).where(MembershipModuleAccess.membership_id == membership_id))',
-    '    session.execute(delete(TeamMembership).where(TeamMembership.membership_id == membership_id))',
-    '    session.execute(delete(User).where(User.user_id == user_id))',
-    '    session.execute(delete(Team).where(Team.team_id == team_id))',
-    '    session.commit()',
-  ].join('\n')
-
-  execFileSync(backendPython, ['-c', script], {
-    cwd: backendDirectory,
-    stdio: 'pipe',
-  })
-}
-
 function forceScheduleDue(scheduleId: string): void {
   const script = [
     'from datetime import UTC, datetime, timedelta',
     'from uuid import UUID',
     'from sqlalchemy.orm import Session',
     'from app.core.database import get_database_engine',
-    'from app.modules.access.models import Team',
     'from app.modules.devices.models import Device',
     'from app.modules.schedules.models import Schedule',
     'from app.modules.shops.models import Shop',
     'from app.modules.tasks.models import Task',
-    'from app.modules.users.models import User',
     `schedule_id = UUID(${JSON.stringify(scheduleId)})`,
     'with Session(get_database_engine()) as session:',
     '    schedule = session.get(Schedule, schedule_id)',
@@ -334,15 +258,11 @@ function seedTaskQueryFixtures(deviceId: string): {
     'from uuid import UUID, uuid4',
     'from sqlalchemy.orm import Session',
     'from app.core.database import get_database_engine',
-    'from app.modules.access.models import Team',
     'from app.modules.devices.models import Device',
     'from app.modules.shops.models import Shop',
     'from app.modules.tasks.enums import TaskStatus',
     'from app.modules.tasks.models import Task, TaskEvent',
-    'from app.modules.users.models import User',
     `device_id = UUID(${JSON.stringify(deviceId)})`,
-    `team_id = UUID(${JSON.stringify(teamId)})`,
-    `user_id = UUID(${JSON.stringify(userId)})`,
     `name_prefix = ${JSON.stringify(`${testPrefix}query-`)}`,
     'local_now = datetime.now().astimezone()',
     'local_noon = local_now.replace(hour=12, minute=0, second=0, microsecond=0)',
@@ -357,7 +277,7 @@ function seedTaskQueryFixtures(deviceId: string): {
     'old_name = name_prefix + "old-success"',
     'def task(task_id, name, status, created_at, purged_at=None):',
     '    terminal_at = created_at + timedelta(minutes=1)',
-    '    values = {"task_id": task_id, "team_id": team_id, "created_by_user_id": user_id, "target_device_id": device_id, "skill_id": "system.echo", "execution_display_name": name, "status": status.value, "input_json": {"message": name}, "error_code": "REAL_E2E_FAILED" if status is TaskStatus.FAILED else None, "error_message": "safe real e2e error" if status is TaskStatus.FAILED else None, "started_at": created_at, "finished_at": terminal_at, "runtime_events_purged_at": purged_at, "created_at": created_at, "updated_at": terminal_at}',
+    '    values = {"task_id": task_id, "target_device_id": device_id, "skill_id": "system.echo", "execution_display_name": name, "status": status.value, "input_json": {"message": name}, "error_code": "REAL_E2E_FAILED" if status is TaskStatus.FAILED else None, "error_message": "safe real e2e error" if status is TaskStatus.FAILED else None, "started_at": created_at, "finished_at": terminal_at, "runtime_events_purged_at": purged_at, "created_at": created_at, "updated_at": terminal_at}',
     '    if status is TaskStatus.SUCCESS:',
     '        values["result_json"] = {"message": "kept"}',
     '    return Task(**values)',
@@ -385,29 +305,8 @@ function seedTaskQueryFixtures(deviceId: string): {
   )
 }
 
-test.beforeAll(() => {
-  cleanupRealTestData()
-  cleanupRealHumanAccess()
-  seedRealHumanAccess()
-})
-test.afterAll(() => {
-  cleanupRealTestData()
-  cleanupRealHumanAccess()
-})
-test.beforeEach(async ({ page }) => {
-  const response = await page.request.post('/api/v1/auth/login', {
-    data: { login_name: loginName, password },
-  })
-  expect(response.status()).toBe(200)
-})
-
-test('rejects an anonymous Device create request', async ({ request }) => {
-  const response = await request.post('/api/v1/devices', {
-    data: { display_name: `${testPrefix}anonymous-device` },
-  })
-
-  expect(response.status()).toBe(401)
-})
+test.beforeAll(cleanupRealTestData)
+test.afterAll(cleanupRealTestData)
 
 test('creates one real Schedule Run and follows its ordinary Task lifecycle', async ({
   page,
@@ -1285,7 +1184,7 @@ test('issues, rotates and revokes a one-time Worker credential in Device Drawer'
 test('persists shop and device records through FastAPI and PostgreSQL', async ({
   page,
 }) => {
-  test.setTimeout(90_000)
+  test.setTimeout(60_000)
   const runtimeErrors: string[] = []
   let collectRuntimeErrors = true
   page.on('console', (message) => {
@@ -1389,7 +1288,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(page.getByText('updated-password')).toHaveCount(0)
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
-  await page.goto('/#/devices')
+  await page.getByText('设备中心', { exact: true }).click()
   await expect(page.getByRole('button', { name: '添加设备' })).toBeVisible()
   const deviceName = `${testPrefix}device`
   const updatedDeviceName = `${testPrefix}device-updated`
@@ -1412,9 +1311,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await deviceEditDrawer.getByRole('button', { name: '编辑' }).click()
   await page.getByPlaceholder('请输入设备名称').fill(updatedDeviceName)
   await page.getByRole('button', { name: '保存' }).click()
-  await expect(
-    page.getByRole('main').getByText(updatedDeviceName, { exact: true }),
-  ).toBeVisible()
+  await expect(page.getByText(updatedDeviceName, { exact: true })).toBeVisible()
   await deviceEditDrawer
     .getByRole('button', { name: '关闭', exact: true })
     .click()
@@ -1533,25 +1430,15 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(
     applicationsDrawer.getByRole('button', { name: '运行' }),
   ).toBeEnabled()
-  const configResponse = page.waitForResponse(
-    (response) =>
-      response
-        .url()
-        .endsWith('/api/v1/automation-app-configs/yingdao/stage-3b-1a-app') &&
-      response.request().method() === 'GET',
-  )
   await applicationsDrawer.getByRole('button', { name: '配置' }).click()
-  expect((await configResponse).ok()).toBe(true)
   const configDialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', {
       name: '配置参数 · 影刀应用 E2E',
     }),
   })
   await configDialog.getByRole('button', { name: '添加参数' }).click()
-  const parameterField = configDialog.getByTestId('parameter-config-field')
-  await expect(parameterField).toHaveCount(1)
-  await parameterField.getByPlaceholder('例如 product_id').fill('message')
-  await parameterField.getByPlaceholder('例如 商品 ID').fill('测试消息')
+  await configDialog.getByPlaceholder('例如 product_id').fill('message')
+  await configDialog.getByPlaceholder('例如 商品 ID').fill('测试消息')
   await configDialog.getByRole('button', { name: '保存' }).click()
   await expect(configDialog).toHaveCount(0)
 
@@ -1601,7 +1488,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
     .click()
   await expect(page.getByText(updatedDeviceName).last()).toBeVisible()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.goto('/#/devices')
+  await page.getByText('设备中心', { exact: true }).click()
 
   const layout = await page.evaluate(() => ({
     documentHasHorizontalOverflow:
@@ -1621,6 +1508,67 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await page.unroute('**/api/v1/devices?page=*')
   await page.getByRole('button', { name: '重新加载' }).click()
   await expect(page.getByText(updatedDeviceName, { exact: true })).toBeVisible()
+})
+
+test('validates the real HuanYu session and restores its enabled state', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  await page.goto('/#/shops')
+  const row = page.getByRole('row').filter({ hasText: 'HuanYu' })
+  await expect(row.getByText('有效', { exact: true })).toBeVisible()
+  const listPayload = await (
+    await page.request.get('/api/v1/shops?page=1&page_size=100')
+  ).json()
+  const huanyu = listPayload.items.find(
+    (shop: { display_name: string }) => shop.display_name === 'HuanYu',
+  ) as { shop_id: string; enabled: boolean }
+  expect(huanyu.enabled).toBe(true)
+
+  const before = await (
+    await page.request.get(`/api/v1/shops/${huanyu.shop_id}/session`)
+  ).json()
+  await row.getByRole('button', { name: '查看' }).click()
+  const healthResponse = page.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .endsWith(`/api/v1/shops/${huanyu.shop_id}/session/health-check`) &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '验证会话' }).click()
+  expect((await healthResponse).ok()).toBe(true)
+  await expect(
+    page.locator('.shop-session-card').getByText('有效'),
+  ).toBeVisible()
+  const after = await (
+    await page.request.get(`/api/v1/shops/${huanyu.shop_id}/session`)
+  ).json()
+  expect(new Date(after.validated_at).getTime()).toBeGreaterThan(
+    new Date(before.validated_at).getTime(),
+  )
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+
+  try {
+    await row.getByRole('button', { name: '停用', exact: true }).click()
+    await page.reload()
+    let refreshedRow = page.getByRole('row').filter({ hasText: 'HuanYu' })
+    await expect(
+      refreshedRow.getByText('已停用', { exact: true }),
+    ).toBeVisible()
+    await refreshedRow
+      .getByRole('button', { name: '启用', exact: true })
+      .click()
+    await page.reload()
+    refreshedRow = page.getByRole('row').filter({ hasText: 'HuanYu' })
+    await expect(
+      refreshedRow.getByText('已启用', { exact: true }),
+    ).toBeVisible()
+  } finally {
+    await page.request.patch(`/api/v1/shops/${huanyu.shop_id}`, {
+      data: { enabled: true },
+    })
+  }
 })
 
 test('persists Shop.enabled and safely soft-removes a dedicated real Shop', async ({

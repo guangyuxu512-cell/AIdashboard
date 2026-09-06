@@ -99,7 +99,6 @@ test('uses the shared management list pattern and capability-first drawer', asyn
   page.on('pageerror', (error) => runtimeErrors.push(error.message))
 
   await page.goto('/#/shops')
-  await page.getByText('自动化中心', { exact: true }).click()
   await page.getByText('设备中心', { exact: true }).click()
 
   await expect(page).toHaveURL(/#\/devices$/)

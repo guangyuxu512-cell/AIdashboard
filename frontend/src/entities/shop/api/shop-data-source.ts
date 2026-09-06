@@ -26,21 +26,12 @@ export interface ShopListParams {
   page: number
   pageSize: number
   filters: ShopListFilters
-  referenceOptions?: ShopReferenceOptions
-}
-
-export interface ShopReferenceOptions {
-  includeOwners: boolean
-  includeDevices: boolean
 }
 
 export interface ShopDataSource {
   readonly mode: ApiMode
   list(params: ShopListParams): Promise<PageResult<ShopListItemViewModel>>
-  get(
-    shopId: string,
-    referenceOptions?: ShopReferenceOptions,
-  ): Promise<ShopListItemViewModel>
+  get(shopId: string): Promise<ShopListItemViewModel>
   create(input: ShopSaveInput): Promise<ShopListItemViewModel>
   update(shopId: string, input: ShopSaveInput): Promise<ShopListItemViewModel>
   setEnabled(shopId: string, enabled: boolean): Promise<ShopListItemViewModel>
@@ -204,7 +195,8 @@ export function createMockShopDataSource(): ShopDataSource {
             shop.enabled &&
             (!deviceId ||
               shop.deviceBindings?.some(
-                (binding) => binding.deviceId === deviceId && binding.enabled,
+                (binding) =>
+                  binding.deviceId === deviceId && binding.enabled,
               )),
         )
         .map((shop) => ({
@@ -215,16 +207,12 @@ export function createMockShopDataSource(): ShopDataSource {
   }
 }
 
-async function loadMappingReferences(options?: ShopReferenceOptions) {
+async function loadMappingReferences() {
   const [users, devices] = await Promise.all([
-    options?.includeOwners
-      ? userApi.list({ page: 1, pageSize: 100 })
-      : Promise.resolve(null),
-    options?.includeDevices
-      ? deviceApi.list({ page: 1, pageSize: 100 })
-      : Promise.resolve(null),
+    userApi.list({ page: 1, pageSize: 100 }),
+    deviceApi.list({ page: 1, pageSize: 100 }),
   ])
-  return { users: users?.items ?? [], devices: devices?.items ?? [] }
+  return { users: users.items, devices: devices.items }
 }
 
 const realShopDataSource: ShopDataSource = {
@@ -232,7 +220,7 @@ const realShopDataSource: ShopDataSource = {
   async list(params) {
     const [page, references] = await Promise.all([
       shopApi.list(params),
-      loadMappingReferences(params.referenceOptions),
+      loadMappingReferences(),
     ])
     const bindings = await Promise.all(
       page.items.map((shop) => shopApi.listBindings(shop.shop_id)),
@@ -246,31 +234,34 @@ const realShopDataSource: ShopDataSource = {
       pageSize: page.page_size,
     }
   },
-  async get(shopId, referenceOptions) {
+  async get(shopId) {
     const [shop, references, bindings] = await Promise.all([
       shopApi.get(shopId),
-      loadMappingReferences(referenceOptions),
+      loadMappingReferences(),
       shopApi.listBindings(shopId),
     ])
     return mapShopDto(shop, { ...references, bindings })
   },
   async create(input) {
     const shop = await shopApi.create(mapShopCreateInput(input))
-    return mapShopDto(shop, { users: [], devices: [], bindings: [] })
+    const references = await loadMappingReferences()
+    return mapShopDto(shop, { ...references, bindings: [] })
   },
   async update(shopId, input) {
-    const [shop, bindings] = await Promise.all([
+    const [shop, references, bindings] = await Promise.all([
       shopApi.update(shopId, mapShopUpdateInput(input)),
+      loadMappingReferences(),
       shopApi.listBindings(shopId),
     ])
-    return mapShopDto(shop, { users: [], devices: [], bindings })
+    return mapShopDto(shop, { ...references, bindings })
   },
   async setEnabled(shopId, enabled) {
-    const [shop, bindings] = await Promise.all([
+    const [shop, references, bindings] = await Promise.all([
       shopApi.update(shopId, { enabled }),
+      loadMappingReferences(),
       shopApi.listBindings(shopId),
     ])
-    return mapShopDto(shop, { users: [], devices: [], bindings })
+    return mapShopDto(shop, { ...references, bindings })
   },
   async remove(shopId) {
     await shopApi.remove(shopId)

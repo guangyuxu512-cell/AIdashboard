@@ -2,11 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { ShopDeviceBindingInput, ShopSaveInput } from '../model/types'
-import {
-  shopDataSource,
-  type ShopListParams,
-  type ShopReferenceOptions,
-} from './shop-data-source'
+import { shopDataSource, type ShopListParams } from './shop-data-source'
 
 export const shopQueryKeys = {
   all: ['shops'] as const,
@@ -24,26 +20,18 @@ export function useShopListQuery(params: MaybeRefOrGetter<ShopListParams>) {
   })
 }
 
-export function useShopDetailQuery(
-  shopId: MaybeRefOrGetter<string | null>,
-  referenceOptions: MaybeRefOrGetter<ShopReferenceOptions>,
-) {
+export function useShopDetailQuery(shopId: MaybeRefOrGetter<string | null>) {
   return useQuery({
-    queryKey: computed(() => [
-      ...shopQueryKeys.detail(toValue(shopId)),
-      toValue(referenceOptions),
-    ]),
-    queryFn: () =>
-      shopDataSource.get(toValue(shopId)!, toValue(referenceOptions)),
+    queryKey: computed(() => shopQueryKeys.detail(toValue(shopId))),
+    queryFn: () => shopDataSource.get(toValue(shopId)!),
     enabled: computed(() => Boolean(toValue(shopId))),
   })
 }
 
-export function useShopOwnerOptionsQuery(enabled: MaybeRefOrGetter<boolean>) {
+export function useShopOwnerOptionsQuery() {
   return useQuery({
     queryKey: shopQueryKeys.owners,
     queryFn: () => shopDataSource.listOwnerOptions(),
-    enabled: computed(() => toValue(enabled)),
   })
 }
 

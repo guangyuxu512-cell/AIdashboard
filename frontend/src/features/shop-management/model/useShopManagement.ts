@@ -6,7 +6,6 @@ import {
   type ShopListFilters,
   type ShopListItemViewModel,
   type ShopPlatformFilter,
-  type ShopReferenceOptions,
   type ShopSaveInput,
   useCreateShopMutation,
   useRemoveShopMutation,
@@ -17,7 +16,6 @@ import {
   useUpdateShopMutation,
 } from '@/entities/shop'
 import { getErrorMessage } from '@/shared/api'
-import { useAuthStore } from '@/stores/auth'
 
 import type {
   ShopFilterViewModel,
@@ -35,7 +33,6 @@ function createEmptyFilters(): ShopFilterViewModel {
 
 export function useShopManagement() {
   const message = useMessage()
-  const auth = useAuthStore()
   const filterDraft = ref<ShopFilterViewModel>(createEmptyFilters())
   const appliedFilters = ref<ShopListFilters>(createEmptyFilters())
   const selectedPlatform = ref<ShopPlatformFilter>('all')
@@ -53,23 +50,16 @@ export function useShopManagement() {
   const removeShop = ref<ShopListItemViewModel | null>(null)
   const removeVisible = ref(false)
 
-  const canManageOwners = computed(() => auth.isAccessAdministrator)
-  const canReadDevices = computed(() => auth.allowedModuleCodes.has('device'))
-  const referenceOptions = computed<ShopReferenceOptions>(() => ({
-    includeOwners: canManageOwners.value,
-    includeDevices: canReadDevices.value,
-  }))
   const listParams = computed(() => ({
     page: page.value,
     pageSize: pageSize.value,
     // Backend V1 only accepts pagination. All visible filters are applied to
     // the already-loaded page and must never become invented query params.
     filters: createEmptyFilters(),
-    referenceOptions: referenceOptions.value,
   }))
   const listQuery = useShopListQuery(listParams)
-  const detailQuery = useShopDetailQuery(detailShopId, referenceOptions)
-  const ownerOptionsQuery = useShopOwnerOptionsQuery(canManageOwners)
+  const detailQuery = useShopDetailQuery(detailShopId)
+  const ownerOptionsQuery = useShopOwnerOptionsQuery()
   const createMutation = useCreateShopMutation()
   const updateMutation = useUpdateShopMutation()
   const setEnabledMutation = useSetShopEnabledMutation()
@@ -246,8 +236,6 @@ export function useShopManagement() {
     total,
     ownerOptions: computed(() => ownerOptionsQuery.data.value ?? []),
     ownerOptionsLoading: ownerOptionsQuery.isPending,
-    canManageOwners,
-    canReadDevices,
     dataSourceDescription:
       shopDataSource.mode === 'real'
         ? '数据来自 FastAPI；平台与筛选条件仅筛选当前页。'

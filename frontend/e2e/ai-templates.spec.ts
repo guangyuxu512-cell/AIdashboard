@@ -524,3 +524,19 @@ test('keeps standard pagination fixed and the three-pane layout bounded', async 
 
   expect(runtimeErrors).toEqual([])
 })
+
+test('keeps normal and non-exact visual mock routes fixture-free', async ({
+  page,
+}) => {
+  await page.goto('/#/ai-workbench/templates')
+  await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
+  await expect(page.getByText('电商标准套图 A', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('极简白底', { exact: true })).toHaveCount(0)
+  await page.getByLabel('生成模式').click()
+  await expect(visibleSelectMenu(page)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '新建模板组' })).toBeDisabled()
+
+  await page.goto('/#/ai-workbench/templates?visualMock=true')
+  await expect(page.getByText('暂无模板', { exact: true })).toBeVisible()
+  await expect(page.getByText('电商标准套图 A', { exact: true })).toHaveCount(0)
+})
