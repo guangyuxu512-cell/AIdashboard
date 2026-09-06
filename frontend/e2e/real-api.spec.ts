@@ -1051,7 +1051,7 @@ test('shows a real Task lifecycle and incremental Runtime Events without list fl
   await expect(row.getByText('—', { exact: true }).first()).toBeVisible()
 
   const claimResponse = await page.request.post(
-    'http://127.0.0.1:8000/api/v1/worker/tasks/claim',
+    '/api/v1/worker/tasks/claim',
     { headers: workerHeaders },
   )
   expect(claimResponse.ok()).toBe(true)
@@ -1060,7 +1060,7 @@ test('shows a real Task lifecycle and incremental Runtime Events without list fl
   expect(
     (
       await page.request.post(
-        `http://127.0.0.1:8000/api/v1/worker/tasks/${taskId}/events`,
+        `/api/v1/worker/tasks/${taskId}/events`,
         {
           headers: workerHeaders,
           data: {
@@ -1102,7 +1102,7 @@ test('shows a real Task lifecycle and incremental Runtime Events without list fl
   expect(
     (
       await page.request.post(
-        `http://127.0.0.1:8000/api/v1/worker/tasks/${taskId}/complete`,
+        `/api/v1/worker/tasks/${taskId}/complete`,
         {
           headers: workerHeaders,
           data: { result: { slept_seconds: 5 } },
@@ -1432,7 +1432,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   }
   const workerStartedAt = new Date().toISOString()
   const heartbeatResponse = await page.request.post(
-    'http://127.0.0.1:8000/api/v1/worker/heartbeat',
+    '/api/v1/worker/heartbeat',
     {
       headers: workerHeaders,
       data: { worker_version: '0.4.0', started_at: workerStartedAt },
@@ -1440,7 +1440,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   )
   expect(heartbeatResponse.ok()).toBe(true)
   const skillResponse = await page.request.put(
-    'http://127.0.0.1:8000/api/v1/worker/skill-capabilities',
+    '/api/v1/worker/skill-capabilities',
     {
       headers: workerHeaders,
       data: {
@@ -1459,7 +1459,7 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   )
   expect(skillResponse.ok()).toBe(true)
   const inventoryResponse = await page.request.post(
-    'http://127.0.0.1:8000/api/v1/worker/provider-inventory',
+    '/api/v1/worker/provider-inventory',
     {
       headers: workerHeaders,
       data: {
