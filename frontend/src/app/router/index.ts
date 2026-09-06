@@ -16,6 +16,10 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
+      path: '/',
+      redirect: shopModule.routePath,
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/pages/auth/LoginPage.vue'),
