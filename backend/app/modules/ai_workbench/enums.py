@@ -64,6 +64,17 @@ class GenerationSize(StrEnum):
     WIDESCREEN = "16:9"
 
 
+class AiModelCapability(StrEnum):
+    NORMAL_GENERATION = "NORMAL_GENERATION"
+    STYLE_REPLICATION = "STYLE_REPLICATION"
+
+
+class AiModelResolution(StrEnum):
+    ONE_K = "1k"
+    TWO_K = "2k"
+    FOUR_K = "4k"
+
+
 class MaterialRole(StrEnum):
     PRODUCT_SOURCE = "PRODUCT_SOURCE"
     STYLE_REFERENCE = "STYLE_REFERENCE"

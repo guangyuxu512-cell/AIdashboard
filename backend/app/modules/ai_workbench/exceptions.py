@@ -5,6 +5,30 @@ from app.modules.ai_workbench.provider import (
 )
 
 
+class AiModelNotFoundError(AppError):
+    code = "AI_MODEL_NOT_FOUND"
+    message = "AI模型不存在"
+    status_code = 404
+
+
+class AiModelIdentityConflictError(AppError):
+    code = "AI_MODEL_IDENTITY_CONFLICT"
+    message = "Provider下已存在相同模型Code"
+    status_code = 409
+
+
+class AiModelDefaultConflictError(AppError):
+    code = "AI_MODEL_DEFAULT_CONFLICT"
+    message = "请先设置另一个已启用模型为默认模型"
+    status_code = 409
+
+
+class AiModelProviderUnsupportedError(AppError):
+    code = "AI_MODEL_PROVIDER_UNSUPPORTED"
+    message = "当前Provider不受支持"
+    status_code = 422
+
+
 class TemplateGroupNotFoundError(AppError):
     code = "TEMPLATE_GROUP_NOT_FOUND"
     message = "模板组不存在"

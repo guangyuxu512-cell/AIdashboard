@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 import SettingsSideNav from './SettingsSideNav.vue'
 
 const push = vi.fn()
+const authState = vi.hoisted(() => ({
+  isAccessAdministrator: true,
+  allowedModuleCodes: new Set(['settings']),
+}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ name: 'audit-logs' }),
@@ -11,10 +15,7 @@ vi.mock('vue-router', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({
-    isAccessAdministrator: true,
-    allowedModuleCodes: new Set(['settings']),
-  }),
+  useAuthStore: () => authState,
 }))
 
 describe('SettingsSideNav', () => {
@@ -26,6 +27,7 @@ describe('SettingsSideNav', () => {
     expect(buttons.map((button) => button.text())).toEqual([
       '用户与权限',
       '操作日志',
+      'AI 模型管理',
       '通知配置',
     ])
     expect(wrapper.get('button[aria-current="page"]').text()).toBe('操作日志')
@@ -33,5 +35,16 @@ describe('SettingsSideNav', () => {
     await buttons[0]?.trigger('click')
 
     expect(push).toHaveBeenCalledWith({ name: 'access-management' })
+  })
+
+  it('hides administrator settings from ordinary members', () => {
+    authState.isAccessAdministrator = false
+
+    const wrapper = mount(SettingsSideNav)
+
+    expect(wrapper.findAll('button').map((button) => button.text())).toEqual([
+      '通知配置',
+    ])
+    authState.isAccessAdministrator = true
   })
 })

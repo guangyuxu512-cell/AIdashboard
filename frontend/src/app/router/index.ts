@@ -101,6 +101,12 @@ const router = createRouter({
       meta: { requiresAccessAdministrator: true },
     },
     {
+      path: '/settings/ai-models',
+      name: 'ai-model-management',
+      component: () => import('@/pages/settings/AiModelManagementPage.vue'),
+      meta: { requiresAccessAdministrator: true },
+    },
+    {
       path: '/permission-denied',
       name: 'permission-denied',
       component: () => import('@/pages/PermissionDeniedPage.vue'),
