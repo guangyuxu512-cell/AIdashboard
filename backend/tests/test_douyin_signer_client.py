@@ -98,9 +98,14 @@ def test_client_classifies_unsafe_or_invalid_responses(
             )
 
 
-def test_settings_limit_signer_to_loopback_and_mask_api_key() -> None:
+def test_settings_allow_internal_loopback_or_service_dns_and_mask_api_key() -> None:
+    assert Settings(_env_file=None).douyin_signer_url == "http://127.0.0.1:8787"
+
     configured = settings(douyin_signer_url="http://127.0.0.1:8787/")
+    docker_service = settings(douyin_signer_url="http://douyin-signer:8787/")
+
     assert configured.douyin_signer_url == "http://127.0.0.1:8787"
+    assert docker_service.douyin_signer_url == "http://douyin-signer:8787"
     assert TEST_API_KEY not in repr(configured)
     with pytest.raises(ValidationError):
-        settings(douyin_signer_url="https://signer.example.com")
+        settings(douyin_signer_url="http://douyin-signer:8787/sign")

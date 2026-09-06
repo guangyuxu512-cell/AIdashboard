@@ -121,15 +121,15 @@ class Settings(BaseSettings):
         normalized = value.strip().rstrip("/")
         parsed = urlsplit(normalized)
         if (
-            parsed.scheme != "http"
-            or parsed.hostname != "127.0.0.1"
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
             or parsed.path
             or parsed.query
             or parsed.fragment
         ):
-            raise ValueError("Douyin Signer URL必须是本机回环HTTP Origin")
+            raise ValueError("Douyin Signer URL必须是不含路径的HTTP Origin")
         try:
             port = parsed.port
         except ValueError as error:
