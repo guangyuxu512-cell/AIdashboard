@@ -28,16 +28,13 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`feat/ai-workbench-real-api-v1`（reserved）。
-
-| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
-|---|---|---|---|---|---|
-| `feat/ai-workbench-real-api-v1` | `reserved` | AI Workbench Real API V1；仅预留后续 Real API 契约所需的持久化变更，不包含 Provider、Model Management 或 Secret Management | `20260906_0031_ai_model_management_v1` | `20260906_0032_ai_workbench_real_api_v1` | `control_center_feat_ai_workbench_real_api` 已由 Integrator 从空库迁移至 `20260906_0031`；具体 Migration 由 Feature Owner 编写、验证与回滚 |
+当前活跃 Migration Slot：无。
 
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/ai-workbench-real-api-v1` | `released` | AI Workbench Real API V1 已合入 Green `dev`；正式工作台改用 Model Catalog、Generation / Template / Material / Asset API，不在 Production 回退 Visual Mock | `20260906_0031_ai_model_management_v1` | `20260906_0032_ai_workbench_real_api_v1` | Gate 2 已在 `control_center_integration` 验证 `0031 → 0032 → 0031 → 0032`，并完成一次真实 Normal Generation；`control_center_feat_ai_workbench_real_api` 已由 Integrator 回收 |
 | `feat/ai-model-management-v1` | `released` | AI Model Management V1 已合入 Green `dev`；全局最小模型目录、唯一且启用的默认模型，以及 `access_admin` 管理与 `ai-workbench` enabled Catalog 读取边界 | `20260905_0030_ai_provider_v1` | `20260906_0031_ai_model_management_v1` | Gate 2 已在 `control_center_integration` 验证 `0030 → 0031`；`control_center_feat_ai_model_management` 已由 Integrator 回收 |
 | `feat/ai-provider-v1` | `released` | AI Provider V1 已合入 Green `dev`；ToAPIs / `gpt-image-2` 的 External Task Reference 在 Create 前持久化 Durable Intent，未知 Create Outcome fail closed | `20260905_0029_device_task_human_access_v1` | `20260905_0030_ai_provider_v1` | Gate 2 Retry 已在 `control_center_integration` 验证 `0029 → 0030 → 0029 → 0030`，含真实 Normal Generation；`control_center_feat_ai_provider` 已由 Integrator 回收 |
 | `feat/device-task-human-access-v1` | `released` | Device / Schedule / Task Human Access V1 已合入 Green `dev` | `20260904_0028_logging_audit_v1` | `20260905_0029_device_task_human_access_v1` | Gate 2 已在 `control_center_integration` 验证 `0028 → 0029 → 0028 → 0029`，并验证单 Team 历史数据动态回填；`control_center_feat_device_task_human_access` 已由 Integrator 回收 |
