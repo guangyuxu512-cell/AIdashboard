@@ -1,7 +1,10 @@
 import { shallowMount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
-import type { ProductMaterialGroup } from '../model/types'
+import {
+  TEMPLATE_GROUP_OPTIONS,
+  type ProductMaterialGroup,
+} from '../model/types'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppSwitch from '@/shared/ui/AppSwitch.vue'
 
@@ -30,7 +33,10 @@ function createProduct(
 
 function mountSettings(overrides: Partial<ProductMaterialGroup> = {}) {
   return shallowMount(ProductMaterialSettings, {
-    props: { product: createProduct(overrides) },
+    props: {
+      product: createProduct(overrides),
+      templateGroupOptions: TEMPLATE_GROUP_OPTIONS,
+    },
   })
 }
 

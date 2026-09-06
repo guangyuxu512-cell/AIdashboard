@@ -19,8 +19,10 @@ from app.modules.ai_workbench.enums import (
     OutputRole,
 )
 from app.modules.ai_workbench.exceptions import (
+    AiModelNotFoundError,
     GenerationItemStateConflictError,
     GenerationJobNotFoundError,
+    GenerationModelIncompatibleError,
     GenerationPlanInvalidError,
     GenerationPlanTooLargeError,
     GenerationRetryConflictError,
@@ -40,15 +42,21 @@ from app.modules.ai_workbench.limits import (
     MAX_GENERATION_SELECTION_IDS,
 )
 from app.modules.ai_workbench.models import (
+    AiModel,
     GenerationItem,
     GenerationJob,
+    GenerationProviderExecution,
     MaterialGroupAsset,
     MaterialGroupTemplateBinding,
     ProductMaterialGroup,
     PromptTemplate,
     TemplateGroup,
 )
-from app.modules.ai_workbench.repository import GenerationCounts, GenerationInputSummary
+from app.modules.ai_workbench.repository import (
+    GenerationCounts,
+    GenerationInputSummary,
+    GenerationRepository,
+)
 from app.modules.ai_workbench.schemas import (
     BatchGenerationSubmit,
     GenerationItemArchiveRequest,
@@ -67,6 +75,11 @@ TEAM_B = uuid4()
 USER_A = uuid4()
 USER_A2 = uuid4()
 USER_B = uuid4()
+MODEL_ID = uuid4()
+
+
+def test_generation_repository_detail_loads_include_job_model() -> None:
+    assert GenerationRepository._detail_options()
 
 
 def actor(
@@ -222,6 +235,29 @@ class FakeGenerationRepository:
             None,
         )
 
+    def next_item_id_for_provider_execution(self) -> UUID | None:
+        return next(
+            (
+                item.generation_item_id
+                for job in self.jobs.values()
+                for item in job.items
+                if item.status
+                in {
+                    GenerationItemStatus.PENDING.value,
+                    GenerationItemStatus.RUNNING.value,
+                }
+            ),
+            None,
+        )
+
+    def add_provider_execution(
+        self,
+        execution: GenerationProviderExecution,
+    ) -> None:
+        item = self.get_item_for_execution(execution.generation_item_id)
+        assert item is not None
+        item.provider_execution = execution
+
     def get_item_for_job_for_update(
         self,
         *,
@@ -349,6 +385,14 @@ class FakeMaterialGroupRepository:
         return group
 
 
+class FakeAiModelRepository:
+    def __init__(self) -> None:
+        self.models: dict[UUID, AiModel] = {}
+
+    def get(self, model_id: UUID) -> AiModel | None:
+        return self.models.get(model_id)
+
+
 class FakeAssetService:
     def __init__(self) -> None:
         self.assets: dict[UUID, Asset] = {}
@@ -435,12 +479,31 @@ def make_service() -> tuple[
     materials = FakeMaterialGroupRepository()
     assets = FakeAssetService()
     generations = FakeGenerationRepository(materials.groups)
+    models = FakeAiModelRepository()
+    model = AiModel(
+        model_id=MODEL_ID,
+        display_name="GPT Image 2",
+        model_code="gpt-image-2",
+        provider_code="toapis",
+        enabled=True,
+        is_default=True,
+        capabilities=[
+            GenerationMode.NORMAL_GENERATION.value,
+            GenerationMode.STYLE_REPLICATION.value,
+        ],
+        max_input_images=MAX_GENERATION_ITEM_INPUT_ASSETS,
+        supported_sizes=["1:1", "3:4", "4:3", "16:9"],
+        supported_resolutions=["1k", "2k", "4k"],
+    )
+    stamp(model)
+    models.models[model.model_id] = model
     session = FakeSession()
     service = GenerationService(
         session,  # type: ignore[arg-type]
         generation_repository=generations,  # type: ignore[arg-type]
         template_repository=templates,  # type: ignore[arg-type]
         material_group_repository=materials,  # type: ignore[arg-type]
+        model_repository=models,  # type: ignore[arg-type]
         asset_service=assets,  # type: ignore[arg-type]
     )
     return service, generations, templates, materials, assets, session
@@ -452,10 +515,12 @@ def instant_data(
     key: str = "instant-key",
     prompt: str = "完整商品主图提示词",
     count: int = 2,
+    model_id: UUID = MODEL_ID,
 ) -> InstantGenerationSubmit:
     return InstantGenerationSubmit(
         work_mode=GenerationWorkMode.INSTANT,
         submission_key=key,
+        model_id=model_id,
         mode=GenerationMode.NORMAL_GENERATION,
         product_asset_ids=[product_asset_id],
         prompt=prompt,
@@ -558,6 +623,8 @@ def test_instant_submit_creates_pending_items_and_is_persistently_idempotent() -
     assert all(item.output_role == OutputRole.MAIN_IMAGE.value for item in job.items)
     assert all(item.output_asset_id is None for item in job.items)
     assert all(item.attempt_count == 1 for item in job.items)
+    assert job.model_id == MODEL_ID
+    assert job.model.model_code == "gpt-image-2"
     assert all(
         [link.asset_id for link in item.input_assets] == [product.asset_id]
         for item in job.items
@@ -575,6 +642,103 @@ def test_instant_submit_creates_pending_items_and_is_persistently_idempotent() -
         service.submit(
             current_actor,
             instant_data(product.asset_id, prompt="另一个提示词"),
+        )
+
+
+def test_new_submission_requires_an_enabled_compatible_model() -> None:
+    service, generations, _, _, assets, session = make_service()
+    current_actor = actor()
+    product = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    models = service.model_repository
+    assert isinstance(models, FakeAiModelRepository)
+    model = models.get(MODEL_ID)
+    assert model is not None
+
+    with pytest.raises(AiModelNotFoundError):
+        service.submit(
+            current_actor,
+            instant_data(product.asset_id, key="missing-model", model_id=uuid4()),
+        )
+
+    model.enabled = False
+    with pytest.raises(GenerationModelIncompatibleError):
+        service.submit(current_actor, instant_data(product.asset_id, key="disabled"))
+
+    model.enabled = True
+    model.capabilities = [GenerationMode.STYLE_REPLICATION.value]
+    with pytest.raises(GenerationModelIncompatibleError):
+        service.submit(current_actor, instant_data(product.asset_id, key="capability"))
+
+    assert generations.jobs == {}
+    assert session.rollbacks == 3
+
+
+def test_new_submission_enforces_model_input_and_size_capabilities() -> None:
+    service, generations, _, _, assets, _ = make_service()
+    current_actor = actor()
+    first = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    second = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    models = service.model_repository
+    assert isinstance(models, FakeAiModelRepository)
+    model = models.get(MODEL_ID)
+    assert model is not None
+
+    model.max_input_images = 1
+    with pytest.raises(GenerationModelIncompatibleError):
+        service.submit(
+            current_actor,
+            InstantGenerationSubmit(
+                work_mode=GenerationWorkMode.INSTANT,
+                submission_key="model-input-limit",
+                model_id=MODEL_ID,
+                mode=GenerationMode.NORMAL_GENERATION,
+                product_asset_ids=[first.asset_id, second.asset_id],
+                prompt="完整提示词",
+                output_format="SINGLE",  # type: ignore[arg-type]
+                size="1:1",  # type: ignore[arg-type]
+                count=1,
+            ),
+        )
+
+    model.max_input_images = 2
+    model.supported_sizes = ["3:4"]
+    with pytest.raises(GenerationModelIncompatibleError):
+        service.submit(current_actor, instant_data(first.asset_id, key="model-size"))
+
+    assert generations.jobs == {}
+
+
+def test_submission_fingerprint_includes_model_id() -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    service.submit(current_actor, instant_data(product.asset_id, key="model-key"))
+    models = service.model_repository
+    assert isinstance(models, FakeAiModelRepository)
+    other_model_id = uuid4()
+    other_model = AiModel(
+        model_id=other_model_id,
+        display_name="GPT Image 2 Secondary",
+        model_code="gpt-image-2-secondary",
+        provider_code="toapis",
+        enabled=True,
+        is_default=False,
+        capabilities=[GenerationMode.NORMAL_GENERATION.value],
+        max_input_images=6,
+        supported_sizes=["1:1"],
+        supported_resolutions=["1k"],
+    )
+    stamp(other_model)
+    models.models[other_model_id] = other_model
+
+    with pytest.raises(GenerationSubmissionConflictError):
+        service.submit(
+            current_actor,
+            instant_data(
+                product.asset_id,
+                key="model-key",
+                model_id=other_model_id,
+            ),
         )
 
 
@@ -620,6 +784,7 @@ def test_instant_submit_rejects_more_than_sixteen_item_inputs(
             InstantGenerationSubmit(
                 work_mode=GenerationWorkMode.INSTANT,
                 submission_key=f"too-many-inputs-{mode.value}",
+                model_id=MODEL_ID,
                 mode=mode,
                 product_asset_ids=product_ids,
                 reference_asset_ids=reference_ids,
@@ -673,6 +838,7 @@ def test_batch_submit_rejects_more_than_sixteen_inputs_per_item() -> None:
             BatchGenerationSubmit(
                 work_mode=GenerationWorkMode.BATCH,
                 submission_key="batch-too-many-item-inputs",
+                model_id=MODEL_ID,
                 mode=GenerationMode.STYLE_REPLICATION,
                 product_scope="SELECTED",  # type: ignore[arg-type]
                 selected_product_ids=[product.material_group_id],
@@ -712,6 +878,7 @@ def test_instant_submit_accepts_sixteen_item_inputs(
         InstantGenerationSubmit(
             work_mode=GenerationWorkMode.INSTANT,
             submission_key=f"sixteen-inputs-{mode.value}",
+            model_id=MODEL_ID,
             mode=mode,
             product_asset_ids=product_ids,
             reference_asset_ids=reference_ids,
@@ -788,6 +955,7 @@ def test_batch_plan_uses_frozen_templates_roles_and_ordered_asset_relations() ->
         BatchGenerationSubmit(
             work_mode=GenerationWorkMode.BATCH,
             submission_key="batch-key",
+            model_id=MODEL_ID,
             mode=GenerationMode.STYLE_REPLICATION,
             product_scope="SELECTED",  # type: ignore[arg-type]
             selected_product_ids=[product.material_group_id],
@@ -831,6 +999,7 @@ def test_batch_submit_requires_at_least_one_executable_item() -> None:
             BatchGenerationSubmit(
                 work_mode=GenerationWorkMode.BATCH,
                 submission_key="empty-plan",
+                model_id=MODEL_ID,
                 mode=GenerationMode.NORMAL_GENERATION,
                 product_scope="ALL_ENABLED",  # type: ignore[arg-type]
                 template_source="PRODUCT_CONFIGURED",  # type: ignore[arg-type]
@@ -856,6 +1025,7 @@ def test_batch_plan_limits_all_enabled_products_and_expanded_items() -> None:
             BatchGenerationSubmit(
                 work_mode=GenerationWorkMode.BATCH,
                 submission_key="too-many-products",
+                model_id=MODEL_ID,
                 mode=GenerationMode.NORMAL_GENERATION,
                 product_scope="ALL_ENABLED",  # type: ignore[arg-type]
                 template_source="PRODUCT_CONFIGURED",  # type: ignore[arg-type]
@@ -892,6 +1062,7 @@ def test_batch_plan_limits_all_enabled_products_and_expanded_items() -> None:
             BatchGenerationSubmit(
                 work_mode=GenerationWorkMode.BATCH,
                 submission_key="too-many-items",
+                model_id=MODEL_ID,
                 mode=GenerationMode.NORMAL_GENERATION,
                 product_scope="SELECTED",  # type: ignore[arg-type]
                 selected_product_ids=[product.material_group_id],
@@ -1075,6 +1246,47 @@ def test_retry_rejects_unknown_provider_create_outcome_without_mutation() -> Non
     assert unchanged.last_failure_code == ProviderCreateOutcomeUnknownError.code
 
 
+def test_disabled_model_does_not_change_accepted_job_retry_or_execution() -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    job = service.submit(
+        current_actor,
+        instant_data(product.asset_id, key="accepted-model", count=1),
+    )
+    item = job.items[0]
+    service.fail_item(
+        item.generation_item_id,
+        failure_code="PROVIDER_REJECTED",
+        failure_message="生成失败",
+    )
+    models = service.model_repository
+    assert isinstance(models, FakeAiModelRepository)
+    model = models.get(MODEL_ID)
+    assert model is not None
+    model.enabled = False
+
+    retried = service.retry_failed_items(
+        current_actor,
+        job.generation_job_id,
+        GenerationRetryRequest.model_validate(
+            {
+                "items": [
+                    {
+                        "item_id": str(item.generation_item_id),
+                        "expected_attempt_count": 1,
+                    },
+                ],
+            },
+        ),
+    )
+    assert retried.model_id == MODEL_ID
+    prepared = service.prepare_next_provider_execution()
+    assert prepared is not None
+    assert prepared.model_code == "gpt-image-2"
+    assert prepared.provider_code == "toapis"
+
+
 def test_batch_retry_rejects_deleted_source_group_without_mutation() -> None:
     service, _, templates, materials, assets, _ = make_service()
     current_actor = actor()
@@ -1104,6 +1316,7 @@ def test_batch_retry_rejects_deleted_source_group_without_mutation() -> None:
         BatchGenerationSubmit(
             work_mode=GenerationWorkMode.BATCH,
             submission_key="deleted-source",
+            model_id=MODEL_ID,
             mode=GenerationMode.NORMAL_GENERATION,
             product_scope="SELECTED",  # type: ignore[arg-type]
             selected_product_ids=[product.material_group_id],

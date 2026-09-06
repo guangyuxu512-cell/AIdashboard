@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { NImage } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 
+import { AssetContentImage } from '@/entities/asset'
 import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { AppDialog, AppSelect } from '@/shared/ui'
@@ -108,13 +108,10 @@ function confirm(): void {
           @select="selectedAssetId = asset.id"
         >
           <template #icon>
-            <NImage
+            <AssetContentImage
+              class="generation-asset-picker__thumbnail"
               :src="asset.previewUrl"
               :alt="asset.name"
-              width="30"
-              height="30"
-              object-fit="cover"
-              preview-disabled
             />
           </template>
         </CompactEntityRow>
@@ -135,5 +132,12 @@ function confirm(): void {
 .generation-asset-picker__list {
   max-height: calc(var(--dialog-max-height) - var(--field-width-md));
   overflow-y: auto;
+}
+
+.generation-asset-picker__thumbnail {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
 }
 </style>

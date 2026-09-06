@@ -49,6 +49,9 @@ from app.modules.assets.storage import LocalAssetStorage
 from app.modules.users.models import User
 
 
+MODEL_ID = UUID("13b4f558-cd56-4f11-99fc-c64275e14031")
+
+
 pytestmark = pytest.mark.integration
 FEATURE_DATABASE = "control_center_feat_ai_provider"
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + (b"stage-2a1-provider" * 8)
@@ -155,6 +158,7 @@ def submit_request(asset_id: UUID, *, key: str) -> InstantGenerationSubmit:
     return InstantGenerationSubmit(
         work_mode=GenerationWorkMode.INSTANT,
         submission_key=key,
+        model_id=MODEL_ID,
         mode=GenerationMode.NORMAL_GENERATION,
         product_asset_ids=[asset_id],
         prompt="stage-2a1 完整 Literal Prompt",
@@ -266,7 +270,7 @@ def test_provider_execution_persistence_recovery_retry_and_asset_ownership(
             recovery_item_id = recovery_job.items[0].generation_item_id
         with factory() as session:
             service = service_factory(session)
-            prepared = service.prepare_next_provider_execution(provider_code="toapis")
+            prepared = service.prepare_next_provider_execution()
             assert prepared is not None
             assert prepared.generation_item_id == recovery_item_id
             assert prepared.provider_task_create_required is True

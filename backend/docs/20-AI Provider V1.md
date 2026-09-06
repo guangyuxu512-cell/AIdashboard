@@ -3,8 +3,9 @@
 > - 状态：`IMPLEMENTED`
 > - 日期：2026-09-05
 > - Provider：ToAPIs
-> - Model：`gpt-image-2`
+> - Initial Model：`gpt-image-2`
 > - Migration：`20260905_0030_ai_provider_v1`
+> - Current model selection：自 `20260906_0032_ai_workbench_real_api_v1` 起由 `GenerationJob.model_id → AI Model Catalog` 提供 `model_code`
 
 ## 1. Scope
 
@@ -23,21 +24,21 @@ PENDING Item
 ```
 
 本实现复用 Generation Execution V1 的 Job、Item、输入关系、Retry、状态派生、Asset、Storage 与 Ownership。
-Frontend、Human Submit DTO 与生成记录 DTO 不增加 Provider/Model 字段。
+Provider V1 初次交付时 Frontend、Human Submit DTO 与生成记录 DTO 不增加 Provider/Model 字段；后续 Real API V1 只增加公开的 `model_id` 选择与模型展示投影，仍不公开 Provider 配置。
 
 ## 2. Provider Adapter
 
 ToAPIs Adapter 是单一薄适配层：
 
 - `POST /v1/uploads/images`，multipart 字段为 `file`，`purpose=generation`；
-- `POST /v1/images/generations`，提交 `gpt-image-2`、Literal `final_prompt`、`size`、服务器配置的
+- `POST /v1/images/generations`，提交 Model Catalog 解析出的 `model_code`、Literal `final_prompt`、`size`、服务器配置的
   `resolution / quality`、`n=1`、`response_format=url` 与上传后的 `image_urls`；
 - `GET /v1/images/generations/{task_id}`，轮询到成功或失败；
 - 成功只读取 `result.data[].url`，下载后立即交给 Asset Foundation；
 - 失败把 Provider `error.code` 映射为受控领域码和固定产品文案；原始 `error.message` 不落库、不记录日志、
   不返回 Frontend。
 
-Bearer API Key、Base URL、Model、Resolution、Quality、Poll Interval 与 Timeout 只来自 Backend Settings。
+Bearer API Key、Base URL、Resolution、Quality、Poll Interval 与 Timeout 只来自 Backend Settings；Model 来自已接受 Job 关联的 Model Catalog。
 API Key 不进入数据库、Frontend、业务错误或日志。
 
 截至 2026-09-06，[ToAPIs 官方 `gpt-image-2` 创建接口文档](https://docs.toapis.com/docs/cn/api-reference/images/gpt-image-2/generation)

@@ -6,9 +6,10 @@ import {
   Image as ImageIcon,
   RotateCcw,
 } from '@lucide/vue'
-import { NImage, NSpin } from 'naive-ui'
+import { NSpin } from 'naive-ui'
 import { computed } from 'vue'
 
+import { AssetContentImage } from '@/entities/asset'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
 
@@ -78,14 +79,11 @@ function retry(): void {
         :data-result-status="result.status"
         :aria-label="`${template.templateName} 结果 ${index + 1} ${result.status}`"
       >
-        <NImage
+        <AssetContentImage
           v-if="result.status === 'SUCCESS' && result.previewUrl"
           class="batch-template-result__preview"
           :src="result.previewUrl"
           :alt="`${template.templateName} 结果 ${index + 1}`"
-          width="100%"
-          height="100%"
-          object-fit="cover"
         />
         <ImageIcon
           v-else-if="result.status === 'SUCCESS'"

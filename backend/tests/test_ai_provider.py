@@ -52,6 +52,7 @@ def provider_request(
 ) -> GenerationProviderRequest:
     return GenerationProviderRequest(
         generation_item_id=uuid4(),
+        model_code="gpt-image-2",
         mode=mode,
         final_prompt="保持这段完整提示词，不做拼接 {{literal}}",
         output_role=OutputRole.MAIN_IMAGE,
@@ -76,7 +77,6 @@ def toapis_provider(
     return ToApisImageProvider(
         api_key=SecretStr(SECRET),
         base_url="https://toapis.com",
-        model_code="gpt-image-2",
         resolution="2k",
         quality="low",
         poll_interval_seconds=0,
@@ -440,12 +440,7 @@ class FakeExecutionService:
         self.failures: list[tuple[int, str, str]] = []
         self.record_error = record_error
 
-    def prepare_next_provider_execution(
-        self,
-        *,
-        provider_code: str,
-    ) -> GenerationExecution | None:
-        assert provider_code == "toapis"
+    def prepare_next_provider_execution(self) -> GenerationExecution | None:
         return self.executions.pop(0) if self.executions else None
 
     def record_provider_execution(
@@ -544,6 +539,8 @@ def execution(
         attempt_count=attempt_count,
         team_id=uuid4(),
         created_by_user_id=uuid4(),
+        provider_code="toapis",
+        model_code="gpt-image-2",
         mode=mode,
         final_prompt="完整 Literal Prompt",
         output_role=OutputRole.MAIN_IMAGE,

@@ -253,6 +253,7 @@ class InstantGenerationSubmit(BaseModel):
 
     work_mode: Literal[GenerationWorkMode.INSTANT] = GenerationWorkMode.INSTANT
     submission_key: str = Field(min_length=1, max_length=128)
+    model_id: UUID
     mode: GenerationMode
     product_asset_ids: list[UUID] = Field(
         min_length=1,
@@ -293,6 +294,7 @@ class BatchGenerationSubmit(BaseModel):
 
     work_mode: Literal[GenerationWorkMode.BATCH] = GenerationWorkMode.BATCH
     submission_key: str = Field(min_length=1, max_length=128)
+    model_id: UUID
     mode: GenerationMode
     product_scope: BatchProductScope
     selected_product_ids: list[UUID] = Field(
@@ -424,6 +426,9 @@ class GenerationItemRead(BaseModel):
 
 class GenerationJobSummaryRead(GenerationCountsRead):
     generation_job_id: UUID
+    model_id: UUID
+    model_code: str
+    model_display_name: str
     work_mode: GenerationWorkMode
     mode: GenerationMode
     status: GenerationJobStatus

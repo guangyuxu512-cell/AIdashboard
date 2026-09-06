@@ -7,10 +7,11 @@ import {
   MoreHorizontal,
   RotateCcw,
 } from '@lucide/vue'
-import { NDropdown, NImage, NSpin } from 'naive-ui'
+import { NDropdown, NSpin } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import { computed } from 'vue'
 
+import { AssetContentImage } from '@/entities/asset'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
 
@@ -59,14 +60,11 @@ function selectMoreAction(key: string | number): void {
     :data-result-status="result.status"
   >
     <div class="instant-result-card__preview">
-      <NImage
+      <AssetContentImage
         v-if="result.status === 'SUCCESS' && result.previewUrl"
         class="instant-result-card__image"
         :src="result.previewUrl"
         :alt="resultLabel"
-        width="100%"
-        height="100%"
-        object-fit="cover"
       />
       <ImageIcon
         v-else-if="result.status === 'SUCCESS'"
@@ -168,6 +166,7 @@ function selectMoreAction(key: string | number): void {
 .instant-result-card__image {
   width: 100%;
   height: 100%;
+  object-fit: cover;
 }
 
 .instant-result-card__state {

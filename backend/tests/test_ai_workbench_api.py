@@ -22,6 +22,7 @@ from app.modules.ai_workbench.api import (
 from app.modules.ai_workbench.enums import GenerationMode, GenerationWorkMode
 from app.modules.ai_workbench.exceptions import TemplateGroupInUseError
 from app.modules.ai_workbench.models import (
+    AiModel,
     GenerationItem,
     GenerationItemAsset,
     GenerationJob,
@@ -197,10 +198,25 @@ class ApiGenerationService:
             ),
         ]
         stamp(item)
+        model = AiModel(
+            model_id=data.model_id,  # type: ignore[attr-defined]
+            display_name="GPT Image 2",
+            model_code="gpt-image-2",
+            provider_code="toapis",
+            enabled=True,
+            is_default=True,
+            capabilities=["NORMAL_GENERATION", "STYLE_REPLICATION"],
+            max_input_images=6,
+            supported_sizes=["1:1", "3:4", "4:3", "16:9"],
+            supported_resolutions=["1k", "2k", "4k"],
+        )
+        stamp(model)
         job = GenerationJob(
             generation_job_id=job_id,
             team_id=actor.team_id,
             created_by_user_id=actor.user_id,
+            model_id=model.model_id,
+            model=model,
             created_by_display_name=actor.user_display_name,
             work_mode=GenerationWorkMode.INSTANT.value,
             mode=GenerationMode.NORMAL_GENERATION.value,
@@ -373,6 +389,7 @@ def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection()
     service = ApiAiWorkbenchService()
     generation_service = ApiGenerationService()
     asset_id = uuid4()
+    model_id = uuid4()
 
     response = request(
         service,
@@ -382,6 +399,7 @@ def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection()
         json={
             "work_mode": "INSTANT",
             "submission_key": "api-submit-1",
+            "model_id": str(model_id),
             "mode": "NORMAL_GENERATION",
             "product_asset_ids": [str(asset_id)],
             "prompt": "完整商品主图提示词",
@@ -394,6 +412,9 @@ def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection()
     assert response.status_code == 202
     payload = response.json()
     assert payload["status"] == "PENDING"
+    assert payload["model_id"] == str(model_id)
+    assert payload["model_code"] == "gpt-image-2"
+    assert payload["model_display_name"] == "GPT Image 2"
     assert payload["total_count"] == 1
     assert payload["pending_count"] == 1
     assert payload["items"][0]["status"] == "PENDING"
@@ -415,6 +436,8 @@ def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection()
     )
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
+    assert listing.json()["items"][0]["model_id"] == str(model_id)
+    assert listing.json()["items"][0]["model_display_name"] == "GPT Image 2"
     assert listing.json()["items"][0]["input_summary"] == {
         "count": 1,
         "primary_name": "source.png",

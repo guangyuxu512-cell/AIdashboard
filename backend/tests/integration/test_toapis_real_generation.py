@@ -38,6 +38,9 @@ from app.modules.assets.validation import detect_image_content_type
 from app.modules.users.models import User
 
 
+MODEL_ID = UUID("13b4f558-cd56-4f11-99fc-c64275e14031")
+
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
@@ -194,7 +197,6 @@ def _provider(settings: Settings) -> ToApisImageProvider:
     return ToApisImageProvider(
         api_key=settings.toapis_api_key,
         base_url=settings.toapis_base_url,
-        model_code=settings.toapis_model_code,
         resolution=settings.toapis_resolution,
         quality=settings.toapis_quality,
         poll_interval_seconds=settings.toapis_poll_interval_seconds,
@@ -236,6 +238,7 @@ def _submit(
             InstantGenerationSubmit(
                 work_mode=GenerationWorkMode.INSTANT,
                 submission_key=key,
+                model_id=MODEL_ID,
                 mode=mode,
                 product_asset_ids=[product_asset_id],
                 reference_asset_ids=reference_asset_ids,

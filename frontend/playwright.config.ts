@@ -15,6 +15,12 @@ export default defineConfig({
       command: `pnpm exec vite --host 127.0.0.1 --port ${frontendPort} --strictPort --mode ${apiMode}`,
       url: `http://127.0.0.1:${frontendPort}`,
       reuseExistingServer: false,
+      env: {
+        VITE_API_MODE: apiMode,
+        ...(apiMode === 'real'
+          ? { VITE_API_PROXY_TARGET: `http://127.0.0.1:${backendPort}` }
+          : {}),
+      },
     },
     ...(apiMode === 'real'
       ? [

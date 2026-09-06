@@ -114,6 +114,10 @@ class AiModel(TimestampMixin, Base):
     max_input_images: Mapped[int] = mapped_column(Integer, nullable=False)
     supported_sizes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     supported_resolutions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    generation_jobs: Mapped[list["GenerationJob"]] = relationship(
+        back_populates="model",
+        lazy="raise",
+    )
 
 
 class TemplateGroup(TimestampMixin, Base):
@@ -467,6 +471,16 @@ class GenerationJob(TimestampMixin, Base):
         ForeignKey("users.user_id", ondelete="RESTRICT"),
         nullable=False,
     )
+    model_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "ai_models.model_id",
+            name="fk_generation_jobs_model_id_ai_models",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        index=True,
+    )
     created_by_display_name: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
@@ -493,6 +507,10 @@ class GenerationJob(TimestampMixin, Base):
         back_populates="job",
         lazy="selectin",
         order_by="GenerationItem.position",
+    )
+    model: Mapped[AiModel] = relationship(
+        back_populates="generation_jobs",
+        lazy="joined",
     )
 
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Download, RefreshCw, Save } from '@lucide/vue'
 
+import { AssetContentImage } from '@/entities/asset'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
@@ -40,7 +41,7 @@ defineEmits<{
       :key="result.id"
       class="generation-result-card"
     >
-      <img :src="result.previewUrl" :alt="result.name" />
+      <AssetContentImage :src="result.previewUrl" :alt="result.name" />
       <div class="generation-result-card__meta">
         <strong>{{ result.name }}</strong>
         <StatusTag

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Images, X } from '@lucide/vue'
-import { NImage, NUpload, NUploadDragger } from 'naive-ui'
+import { NUpload, NUploadDragger } from 'naive-ui'
 import type { UploadSettledFileInfo } from 'naive-ui'
 
+import { AssetContentImage } from '@/entities/asset'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { AppButton } from '@/shared/ui'
 
@@ -67,12 +68,10 @@ function upload({ file }: { file: UploadSettledFileInfo }): boolean {
             @click.stop
           >
             <span class="generation-input-slot__preview">
-              <NImage
+              <AssetContentImage
+                class="generation-input-slot__content-image"
                 :src="image.previewUrl"
                 :alt="image.name"
-                width="100%"
-                height="100%"
-                object-fit="cover"
               />
             </span>
             <span>{{ image.name }}</span>
@@ -160,6 +159,13 @@ function upload({ file }: { file: UploadSettledFileInfo }): boolean {
   min-height: 0;
   aspect-ratio: 1;
   overflow: hidden;
+}
+
+.generation-input-slot__content-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .generation-input-slot__image > span {
