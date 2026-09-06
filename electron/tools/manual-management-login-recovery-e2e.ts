@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, type Session } from 'electron'
 import path from 'node:path'
 
 import { ManagementLoginService } from '../services'
@@ -19,6 +19,13 @@ interface RefreshLease {
 
 const configuredBackend =
   process.env.CONTROL_CENTER_BACKEND_URL || 'http://127.0.0.1:8000'
+const teamId = requireEnvironmentValue('CONTROL_CENTER_TEAM_ID')
+const humanSessionToken = requireEnvironmentValue(
+  'CONTROL_CENTER_HUMAN_SESSION_TOKEN',
+)
+const humanSessionCookieName =
+  process.env.CONTROL_CENTER_HUMAN_SESSION_COOKIE_NAME ??
+  'siyu_human_session'
 const service = new ManagementLoginService()
 
 app.setPath(
@@ -36,17 +43,30 @@ void app.whenReady().then(async () => {
     },
   })
   try {
-    const shops = await requestJson<ShopPage>('/api/v1/shops?page=1&page_size=100')
+    await parent.webContents.session.cookies.set({
+      url: new URL('/api/v1/auth/me', configuredBackend).toString(),
+      name: humanSessionCookieName,
+      value: humanSessionToken,
+      path: '/api/v1',
+      httpOnly: true,
+      secure: new URL(configuredBackend).protocol === 'https:',
+    })
+    const shops = await requestJson<ShopPage>(
+      parent.webContents.session,
+      '/api/v1/shops?page=1&page_size=100',
+    )
     const shop = shops.items.find(
       (item) => item.display_name === 'HuanYu' && item.platform === 'douyin',
     )
     if (!shop) throw new Error('HuanYu shop not found')
     const lease = await requestJson<RefreshLease>(
+      parent.webContents.session,
       `/api/v1/shops/${shop.shop_id}/session/refresh-lease`,
       { method: 'POST' },
     )
     let status = await service.open(parent, {
       platform: 'douyin',
+      teamId,
       recovery: {
         shopId: shop.shop_id,
         leaseId: lease.lease_id,
@@ -85,10 +105,26 @@ void app.whenReady().then(async () => {
 })
 
 async function requestJson<T>(
+  appSession: Session,
   pathname: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(new URL(pathname, configuredBackend), init)
+  const response = await appSession.fetch(
+    new URL(pathname, configuredBackend).toString(),
+    {
+    ...init,
+    headers: {
+      ...init?.headers,
+      'x-team-id': teamId,
+    },
+    },
+  )
   if (!response.ok) throw new Error(`Backend HTTP ${response.status}`)
   return (await response.json()) as T
+}
+
+function requireEnvironmentValue(name: string): string {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required for authenticated recovery`)
+  return value
 }

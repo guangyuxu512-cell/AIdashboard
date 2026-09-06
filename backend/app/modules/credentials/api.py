@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.credentials.schemas import (
     CredentialCreate,
     CredentialStatusRead,
@@ -26,6 +29,9 @@ router = APIRouter(
 )
 
 
+get_shop_authorized_actor = require_module_access(ModuleCode.SHOP)
+
+
 def get_credential_service(
     session: Annotated[Session, Depends(get_database_session)],
     cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
@@ -39,6 +45,7 @@ def get_credential_service(
 )
 def get_shop_credential_status(
     shop_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[CredentialService, Depends(get_credential_service)],
 ) -> CredentialStatusRead:
     return service.get_status_for_shop(shop_id)
@@ -51,6 +58,7 @@ def get_shop_credential_status(
 )
 def create_credential(
     data: CredentialCreate,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[CredentialService, Depends(get_credential_service)],
 ) -> CredentialStatusRead:
     return service.create(data)
@@ -63,6 +71,7 @@ def create_credential(
 def update_credential(
     credential_id: UUID,
     data: CredentialUpdate,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[CredentialService, Depends(get_credential_service)],
 ) -> CredentialStatusRead:
     return service.update(credential_id, data)
@@ -74,6 +83,7 @@ def update_credential(
 )
 def disable_credential(
     credential_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[CredentialService, Depends(get_credential_service)],
 ) -> CredentialStatusRead:
     return service.disable(credential_id)

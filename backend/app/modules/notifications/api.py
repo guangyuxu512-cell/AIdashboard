@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
+from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import require_module_access
+from app.modules.access.module_access import ModuleCode
 from app.modules.notifications.schemas import (
     NotificationChannelCreate,
     NotificationChannelRead,
@@ -28,6 +31,9 @@ router = APIRouter(
 )
 
 
+get_settings_authorized_actor = require_module_access(ModuleCode.SETTINGS)
+
+
 def get_notification_service(
     session: Annotated[Session, Depends(get_database_session)],
     cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
@@ -37,6 +43,7 @@ def get_notification_service(
 
 @router.get("", response_model=list[NotificationChannelRead])
 def list_notification_channels(
+    _actor: Annotated[ActorContext, Depends(get_settings_authorized_actor)],
     service: Annotated[NotificationService, Depends(get_notification_service)],
 ) -> list[NotificationChannelRead]:
     return service.list_channels()
@@ -49,6 +56,7 @@ def list_notification_channels(
 )
 def create_notification_channel(
     data: NotificationChannelCreate,
+    _actor: Annotated[ActorContext, Depends(get_settings_authorized_actor)],
     service: Annotated[NotificationService, Depends(get_notification_service)],
 ) -> NotificationChannelRead:
     return service.create_channel(data)
@@ -58,6 +66,7 @@ def create_notification_channel(
 def update_notification_channel(
     channel_id: UUID,
     data: NotificationChannelUpdate,
+    _actor: Annotated[ActorContext, Depends(get_settings_authorized_actor)],
     service: Annotated[NotificationService, Depends(get_notification_service)],
 ) -> NotificationChannelRead:
     return service.update_channel(channel_id, data)
@@ -66,6 +75,7 @@ def update_notification_channel(
 @router.post("/{channel_id}/test", response_model=NotificationTestRead)
 def test_notification_channel(
     channel_id: UUID,
+    _actor: Annotated[ActorContext, Depends(get_settings_authorized_actor)],
     service: Annotated[NotificationService, Depends(get_notification_service)],
 ) -> NotificationTestRead:
     service.send_test(channel_id, now=datetime.now(UTC))

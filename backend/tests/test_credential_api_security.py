@@ -7,10 +7,15 @@ from uuid import UUID, uuid4
 from httpx import ASGITransport, AsyncClient, Response
 
 from app.main import create_app
-from app.modules.credentials.api import get_credential_service
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.credentials.api import get_credential_service, get_shop_authorized_actor
 from app.modules.credentials.enums import VerificationChannel
 from app.modules.credentials.schemas import CredentialStatusRead
-from app.modules.sessions.api import get_shop_session_service
+from app.modules.sessions.api import (
+    get_shop_authorized_actor as get_session_shop_authorized_actor,
+    get_shop_session_service,
+)
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.schemas import ShopSessionMetadataRead
 from app.modules.shops.enums import ShopPlatform
@@ -18,6 +23,14 @@ from app.modules.shops.enums import ShopPlatform
 
 SHOP_ID = uuid4()
 CREDENTIAL_ID = uuid4()
+API_ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="Credential API operator",
+    team_id=uuid4(),
+    membership_id=uuid4(),
+    role_code="member",
+    data_scope=DataScope.TEAM,
+)
 
 
 class ApiCredentialService:
@@ -65,6 +78,10 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application = create_app()
     application.dependency_overrides[get_credential_service] = ApiCredentialService
     application.dependency_overrides[get_shop_session_service] = ApiSessionService
+    application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[get_session_shop_authorized_actor] = (
+        lambda: API_ACTOR
+    )
 
     async def send() -> Response:
         transport = ASGITransport(app=application)

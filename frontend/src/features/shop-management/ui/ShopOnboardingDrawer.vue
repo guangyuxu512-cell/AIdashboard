@@ -18,6 +18,7 @@ import {
   type PlatformCode,
 } from '@/entities/platform'
 import { getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppDrawer from '@/shared/ui/AppDrawer.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
@@ -48,6 +49,7 @@ const completedResult = ref<ManagementLoginCompleteResult | null>(null)
 const actionError = ref<string | null>(null)
 const openingLogin = ref(false)
 const completing = ref(false)
+const authStore = useAuthStore()
 let stopLoginPolling: (() => void) | undefined
 
 const selectedPlatformMeta = computed(() =>
@@ -139,11 +141,16 @@ async function openLogin(): Promise<void> {
     actionError.value = '请在 Electron 中控台中完成管理端登录'
     return
   }
+  if (!authStore.activeTeamId) {
+    actionError.value = '请先选择当前团队'
+    return
+  }
   openingLogin.value = true
   actionError.value = null
   try {
     loginStatus.value = await window.desktop.managementLogin.open({
       platform: selectedPlatform.value,
+      teamId: authStore.activeTeamId,
       attemptId: loginStatus.value?.attemptId,
     })
     startPolling()

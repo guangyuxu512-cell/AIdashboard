@@ -14,14 +14,19 @@ import {
 const attemptId = '00000000-0000-4000-8000-000000000001'
 
 test('management login IPC only accepts registered platform and typed attempt', () => {
-  assert.equal(isManagementLoginOpenInput({ platform: 'douyin' }), true)
+  const teamId = '00000000-0000-4000-8000-000000000004'
   assert.equal(
-    isManagementLoginOpenInput({ platform: 'douyin', attemptId }),
+    isManagementLoginOpenInput({ platform: 'douyin', teamId }),
+    true,
+  )
+  assert.equal(
+    isManagementLoginOpenInput({ platform: 'douyin', teamId, attemptId }),
     true,
   )
   assert.equal(
     isManagementLoginOpenInput({
       platform: 'douyin',
+      teamId,
       recovery: {
         shopId: '00000000-0000-4000-8000-000000000002',
         leaseId: '00000000-0000-4000-8000-000000000003',
@@ -30,11 +35,16 @@ test('management login IPC only accepts registered platform and typed attempt', 
     }),
     true,
   )
-  assert.equal(isManagementLoginOpenInput({ platform: 'pdd' }), false)
+  assert.equal(isManagementLoginOpenInput({ platform: 'pdd', teamId }), false)
   assert.equal(
-    isManagementLoginOpenInput({ platform: 'douyin', attemptId: '../profile' }),
+    isManagementLoginOpenInput({
+      platform: 'douyin',
+      teamId,
+      attemptId: '../profile',
+    }),
     false,
   )
+  assert.equal(isManagementLoginOpenInput({ platform: 'douyin' }), false)
 })
 
 test('management login recovery reuses only a valid local profile mapping', () => {
