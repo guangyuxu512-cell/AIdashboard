@@ -8,7 +8,7 @@
 
 AI Model Management V1 建立一个全局模型目录，为系统管理员维护模型能力，并为 AI 工作台提供启用模型读取边界。V1 只有 `ai_models` 一个实体，不建立 Provider 表、Secret 管理、价格、余额、健康评分、权重、优先级、Team Binding 或版本历史。
 
-模型目录尚不参与 Generation Submit 或 Provider 执行选择。现有 ToAPIs Adapter 继续读取服务器配置；GenerationJob、GenerationItem、GenerationProviderExecution 与 Asset Schema 均不改变。
+Model Management V1 初次交付时只建立目录。自 `20260906_0032_ai_workbench_real_api_v1` 起，Generation Submit 必填 `model_id`，GenerationJob 保存该关联，执行与 Retry 从 Catalog 读取稳定的 `provider_code / model_code`；GenerationItem 不重复保存模型字段。完整执行语义以《18-AI Generation Execution Contract V1》为准。
 
 ## 2. Model Catalog
 

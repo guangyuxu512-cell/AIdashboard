@@ -108,10 +108,12 @@ def test_public_asset_attach_rejects_ai_output_role() -> None:
 def test_instant_generation_submit_freezes_supported_input_contract() -> None:
     product_asset_id = uuid4()
     reference_asset_id = uuid4()
+    model_id = uuid4()
     data = InstantGenerationSubmit.model_validate(
         {
             "work_mode": "INSTANT",
             "submission_key": " stable-key ",
+            "model_id": str(model_id),
             "mode": "STYLE_REPLICATION",
             "product_asset_ids": [str(product_asset_id)],
             "reference_asset_ids": [str(reference_asset_id)],
@@ -126,8 +128,14 @@ def test_instant_generation_submit_freezes_supported_input_contract() -> None:
     assert data.prompt == "完整提示词"
     assert data.product_asset_ids == [product_asset_id]
     assert data.reference_asset_ids == [reference_asset_id]
+    assert data.model_id == model_id
     assert "output_role" not in InstantGenerationSubmit.model_fields
-    for forbidden_field in ("team_id", "provider_id", "model_id", "external_task_id"):
+    for forbidden_field in (
+        "team_id",
+        "provider_id",
+        "model_code",
+        "external_task_id",
+    ):
         with pytest.raises(ValidationError):
             InstantGenerationSubmit.model_validate(
                 {
@@ -142,6 +150,7 @@ def test_generation_submit_rejects_invalid_mode_inputs_and_duplicate_ids() -> No
     base = {
         "work_mode": "INSTANT",
         "submission_key": "key",
+        "model_id": str(uuid4()),
         "mode": "NORMAL_GENERATION",
         "product_asset_ids": [str(asset_id)],
         "prompt": "商品主图",

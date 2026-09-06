@@ -62,6 +62,8 @@ export type BatchSkipReason =
   | 'MODE_DISABLED'
   | 'GROUP_DISABLED'
   | 'NO_ENABLED_TEMPLATES'
+  | 'MODEL_INPUT_LIMIT'
+  | 'MODEL_SIZE_UNSUPPORTED'
 
 export interface GenerationSourceImageView {
   id: string
@@ -370,6 +372,8 @@ export const BATCH_SKIP_REASON_META: Record<
   MODE_DISABLED: { label: '产品生成模式未启用' },
   GROUP_DISABLED: { label: '模板组停用' },
   NO_ENABLED_TEMPLATES: { label: '所有模板均停用' },
+  MODEL_INPUT_LIMIT: { label: '输入图片超过当前模型上限' },
+  MODEL_SIZE_UNSUPPORTED: { label: '模板比例不受当前模型支持' },
 }
 
 export const GENERATION_SIZE_OPTIONS = SHARED_GENERATION_SIZE_OPTIONS

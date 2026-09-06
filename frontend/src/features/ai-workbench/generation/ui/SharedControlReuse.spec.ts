@@ -13,6 +13,8 @@ import instantResultViewerSource from './InstantResultViewer.vue?raw'
 import instantSummarySource from './InstantExecutionSummary.vue?raw'
 import instantSource from './InstantGenerationPanel.vue?raw'
 import generatePageSource from '../../../../pages/ai-workbench/AiGeneratePage.vue?raw'
+import generationRealSource from './AiGenerationReal.vue?raw'
+import generationVisualMockSource from './AiGenerationVisualMock.vue?raw'
 
 function occurrences(source: string, value: string): number {
   return source.split(value).length - 1
@@ -29,29 +31,35 @@ describe('AI generation shared control reuse contracts', () => {
     expect(batchSource).toContain(
       "import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'",
     )
-    expect(generatePageSource).toContain(
+    expect(generationRealSource).toContain(
+      "import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'",
+    )
+    expect(generationVisualMockSource).toContain(
       "import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'",
     )
 
     expect(occurrences(instantSource, '<ContextSwitchBar')).toBe(2)
     expect(occurrences(batchSource, '<ContextSwitchBar')).toBe(4)
-    expect(occurrences(generatePageSource, '<ContextSwitchBar')).toBe(1)
+    expect(occurrences(generationRealSource, '<ContextSwitchBar')).toBe(1)
+    expect(occurrences(generationVisualMockSource, '<ContextSwitchBar')).toBe(1)
     expect(occurrences(instantSource, 'appearance="bare"')).toBe(2)
     expect(occurrences(batchSource, 'appearance="bare"')).toBe(4)
-    expect(occurrences(generatePageSource, 'appearance="bare"')).toBe(1)
+    expect(occurrences(generationRealSource, 'appearance="bare"')).toBe(1)
+    expect(occurrences(generationVisualMockSource, 'appearance="bare"')).toBe(1)
     expect(aiNavigationSource).not.toContain('appearance="bare"')
-    expect(`${instantSource}${batchSource}${generatePageSource}`).not.toContain(
-      'AppRadio',
-    )
+    expect(
+      `${instantSource}${batchSource}${generationRealSource}${generationVisualMockSource}`,
+    ).not.toContain('AppRadio')
   })
 
   it('uses the shared bare appearance instead of feature frame overrides', () => {
     expect(materialRoleTabsSource).toContain('appearance="bare"')
     expect(materialRoleTabsSource).not.toContain('border: 0')
     expect(materialRoleTabsSource).not.toContain('background: transparent')
-    expect(`${instantSource}${batchSource}${generatePageSource}`).not.toMatch(
-      /context-switch-bar[\s\S]*(border|background|border-radius)/,
-    )
+    expect(
+      `${instantSource}${batchSource}${generationRealSource}${generationVisualMockSource}`,
+    ).not.toMatch(/context-switch-bar[\s\S]*(border|background|border-radius)/)
+    expect(generatePageSource).toContain('AiGenerationReal')
   })
 
   it('covers every required short value selector with the shared contract', () => {
@@ -100,7 +108,7 @@ describe('AI generation shared control reuse contracts', () => {
     expect(batchViewerSource).toContain('StatusTag')
     expect(batchProductTaskRowSource).toContain('CompactEntityRow')
     expect(batchProductTaskRowSource).toContain('NProgress')
-    expect(batchTemplateCardSource).toContain('NImage')
+    expect(batchTemplateCardSource).toContain('AssetContentImage')
     expect(batchTemplateCardSource).toContain('NSpin')
     expect(batchTemplateCardSource).toContain('AppButton')
     expect(batchTemplateCardSource).toContain('StatusTag')
@@ -117,7 +125,7 @@ describe('AI generation shared control reuse contracts', () => {
     expect(instantSummarySource).toContain('NProgress')
     expect(instantSummarySource).toContain('StatusTag')
     expect(instantSummarySource).toContain('AppButton')
-    expect(instantResultCardSource).toContain('NImage')
+    expect(instantResultCardSource).toContain('AssetContentImage')
     expect(instantResultCardSource).toContain('NSpin')
     expect(instantResultCardSource).toContain('NDropdown')
     expect(instantResultCardSource).toContain('StatusTag')

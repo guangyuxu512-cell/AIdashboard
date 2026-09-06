@@ -33,7 +33,14 @@ describe('AI workbench shell', () => {
               }),
           }),
       },
-      { global: { plugins: [createPinia(), router] } },
+      {
+        global: {
+          plugins: [createPinia(), router],
+          stubs: {
+            AiGenerationReal: { template: '<div>暂无生成结果</div>' },
+          },
+        },
+      },
     )
 
     expect(wrapper.findAll('.ai-module-navigation button')).toHaveLength(4)

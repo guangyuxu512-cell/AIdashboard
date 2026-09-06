@@ -1,21 +1,19 @@
 <script setup lang="ts">
-import { Upload } from '@lucide/vue'
 import { computed, defineAsyncComponent } from 'vue'
 import { useRoute } from 'vue-router'
 
-import {
-  AiManagementLayout,
-  AiManagementToolbar,
-  AiModuleShell,
-  AiWorkspaceEmptyState,
-} from '@/features/ai-workbench'
+import { AiModuleShell } from '@/features/ai-workbench'
 import { isAiAssetsVisualMockEnabled } from '@/features/ai-workbench/assets/model/visual-mock-gate'
-import { AppButton, AppInput } from '@/shared/ui'
+import AiAssetLibraryReal from '@/features/ai-workbench/assets/ui/AiAssetLibraryReal.vue'
 
-const route = useRoute()
-const visualMockEnabled = computed(() =>
-  isAiAssetsVisualMockEnabled(import.meta.env.DEV, route.query.visualMock),
-)
+const visualMockEnabled = import.meta.env.DEV
+  ? (() => {
+      const route = useRoute()
+      return computed(() =>
+        isAiAssetsVisualMockEnabled(true, route.query.visualMock),
+      )
+    })()
+  : null
 const AiAssetLibraryVisualMock = import.meta.env.DEV
   ? defineAsyncComponent(
       () =>
@@ -29,21 +27,6 @@ const AiAssetLibraryVisualMock = import.meta.env.DEV
     <AiAssetLibraryVisualMock
       v-if="visualMockEnabled && AiAssetLibraryVisualMock"
     />
-    <template v-else>
-      <AiManagementToolbar label="素材库工具栏">
-        <AppInput width="lg" placeholder="搜索素材" disabled />
-        <template #actions>
-          <AppButton disabled>筛选</AppButton>
-          <AppButton tone="primary" disabled>
-            <Upload :size="16" />
-            上传素材
-          </AppButton>
-        </template>
-      </AiManagementToolbar>
-
-      <AiManagementLayout label="素材列表">
-        <AiWorkspaceEmptyState title="暂无素材" />
-      </AiManagementLayout>
-    </template>
+    <AiAssetLibraryReal v-else />
   </AiModuleShell>
 </template>

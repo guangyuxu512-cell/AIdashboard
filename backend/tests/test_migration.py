@@ -941,3 +941,38 @@ def test_ai_model_management_migration_upgrade_and_downgrade(
         ("drop_index", "uq_ai_models_enabled_default"),
         ("drop_table", "ai_models"),
     ]
+
+
+def test_ai_workbench_real_api_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260906_0032_ai_workbench_real_api_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+    monkeypatch.setattr(migration, "_resolve_legacy_model_id", uuid4)
+
+    assert migration.revision == "20260906_0032"
+    assert migration.down_revision == "20260906_0031"
+    migration.upgrade()
+    assert [operation for operation, _ in recorder.calls] == [
+        "add_column",
+        "execute",
+        "alter_column",
+        "create_foreign_key",
+        "create_index",
+    ]
+    assert recorder.calls[0] == ("add_column", "generation_jobs")
+    assert recorder.calls[3:] == [
+        ("create_foreign_key", "fk_generation_jobs_model_id_ai_models"),
+        ("create_index", "ix_generation_jobs_model_id"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("drop_index", "ix_generation_jobs_model_id"),
+        ("drop_constraint", "fk_generation_jobs_model_id_ai_models"),
+        ("drop_column", "generation_jobs"),
+    ]

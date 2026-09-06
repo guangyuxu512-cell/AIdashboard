@@ -101,6 +101,12 @@ class GenerationPlanTooLargeError(AppError):
     status_code = 422
 
 
+class GenerationModelIncompatibleError(AppError):
+    code = "GENERATION_MODEL_INCOMPATIBLE"
+    message = "当前模型不支持本次生成配置"
+    status_code = 422
+
+
 class GenerationRetryConflictError(AppError):
     code = "GENERATION_RETRY_CONFLICT"
     message = "生成项当前状态或尝试次数不允许重试"

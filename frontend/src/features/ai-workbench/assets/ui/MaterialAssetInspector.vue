@@ -8,6 +8,7 @@ import {
   type MaterialAssetReference,
   type MaterialRole,
 } from '../model/types'
+import { AssetContentImage } from '@/entities/asset'
 import { GENERATION_MODE_META } from '../../shared/model/generation-mode'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton, AppSelect } from '@/shared/ui'
@@ -79,7 +80,11 @@ function updateRole(value: string | number | null): void {
       :aria-label="`预览 ${asset.name}`"
       @click="$emit('preview', asset)"
     >
-      <img :src="asset.previewUrl" :alt="asset.name" />
+      <AssetContentImage
+        :src="asset.previewUrl"
+        :alt="asset.name"
+        loading="eager"
+      />
     </button>
 
     <strong class="material-asset-inspector__filename" :title="asset.name">

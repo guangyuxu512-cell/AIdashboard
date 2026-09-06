@@ -27,6 +27,8 @@ from app.modules.ai_workbench.enums import (
     OutputRole,
 )
 from app.modules.ai_workbench.exceptions import (
+    AiModelNotFoundError,
+    GenerationModelIncompatibleError,
     GenerationItemNotFoundError,
     GenerationItemStateConflictError,
     GenerationJobNotFoundError,
@@ -46,6 +48,7 @@ from app.modules.ai_workbench.limits import (
     MAX_GENERATION_SELECTION_IDS,
 )
 from app.modules.ai_workbench.models import (
+    AiModel,
     GenerationItem,
     GenerationItemAsset,
     GenerationJob,
@@ -55,6 +58,7 @@ from app.modules.ai_workbench.models import (
     PromptTemplate,
     TemplateGroup,
 )
+from app.modules.ai_workbench.model_catalog_repository import AiModelRepository
 from app.modules.ai_workbench.repository import (
     GenerationCounts,
     GenerationInputSummary,
@@ -104,6 +108,8 @@ class GenerationExecution:
     attempt_count: int
     team_id: UUID
     created_by_user_id: UUID
+    provider_code: str
+    model_code: str
     mode: GenerationMode
     final_prompt: str
     output_role: OutputRole
@@ -188,6 +194,7 @@ class GenerationService:
         generation_repository: GenerationRepository | None = None,
         template_repository: TemplateRepository | None = None,
         material_group_repository: ProductMaterialGroupRepository | None = None,
+        model_repository: AiModelRepository | None = None,
         asset_service: AssetService | None = None,
     ) -> None:
         self.session = session
@@ -198,6 +205,7 @@ class GenerationService:
         self.material_group_repository = (
             material_group_repository or ProductMaterialGroupRepository(session)
         )
+        self.model_repository = model_repository or AiModelRepository(session)
         self.asset_service = asset_service or AssetService(session)
 
     def submit(
@@ -215,14 +223,18 @@ class GenerationService:
             return self._resolve_existing_submission(existing, fingerprint)
 
         try:
+            model = self._model_for_new_submission(data.model_id, data.mode)
             if isinstance(data, InstantGenerationSubmit):
                 items = self._plan_instant(actor, data)
             else:
                 items = self._plan_batch(actor, data)
+            self._validate_model_plan(model, items)
             job = GenerationJob(
                 generation_job_id=items[0].generation_job_id,
                 team_id=actor.team_id,
                 created_by_user_id=actor.user_id,
+                model_id=model.model_id,
+                model=model,
                 created_by_display_name=actor.user_display_name,
                 work_mode=data.work_mode.value,
                 mode=data.mode.value,
@@ -449,20 +461,18 @@ class GenerationService:
 
     def prepare_next_provider_execution(
         self,
-        *,
-        provider_code: str,
     ) -> GenerationExecution | None:
-        normalized_provider = provider_code.strip()
-        if not normalized_provider or len(normalized_provider) > 32:
-            raise ValueError("provider_code must contain 1 to 32 characters")
         generation_item_id = (
             self.generation_repository.next_item_id_for_provider_execution()
         )
         if generation_item_id is None:
             self.session.rollback()
             return None
+        item = self._execution_item(generation_item_id)
+        normalized_provider = item.job.model.provider_code.strip()
+        if not normalized_provider or len(normalized_provider) > 32:
+            raise ValueError("provider_code must contain 1 to 32 characters")
         try:
-            item = self._execution_item(generation_item_id)
             if item.status not in {
                 GenerationItemStatus.PENDING.value,
                 GenerationItemStatus.RUNNING.value,
@@ -1088,6 +1098,8 @@ class GenerationService:
             attempt_count=item.attempt_count,
             team_id=item.job.team_id,
             created_by_user_id=item.job.created_by_user_id,
+            provider_code=item.job.model.provider_code,
+            model_code=item.job.model.model_code,
             mode=GenerationMode(item.job.mode),
             final_prompt=item.final_prompt,
             output_role=OutputRole(item.output_role),
@@ -1105,6 +1117,30 @@ class GenerationService:
             external_task_id=external_task_id,
             provider_task_create_required=provider_task_create_required,
         )
+
+    def _model_for_new_submission(
+        self,
+        model_id: UUID,
+        mode: GenerationMode,
+    ) -> AiModel:
+        model = self.model_repository.get(model_id)
+        if model is None:
+            raise AiModelNotFoundError()
+        if not model.enabled or mode.value not in model.capabilities:
+            raise GenerationModelIncompatibleError()
+        return model
+
+    @staticmethod
+    def _validate_model_plan(
+        model: AiModel,
+        items: Sequence[GenerationItem],
+    ) -> None:
+        if any(
+            len(item.input_assets) > model.max_input_images
+            or item.size not in model.supported_sizes
+            for item in items
+        ):
+            raise GenerationModelIncompatibleError()
 
     def _get_execution_job(self, generation_job_id: UUID) -> GenerationJob:
         job = self.generation_repository.get_job_by_id(generation_job_id)

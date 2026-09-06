@@ -172,6 +172,9 @@ def _generation_job_summary_read(
 ) -> GenerationJobSummaryRead:
     return GenerationJobSummaryRead(
         generation_job_id=job.generation_job_id,
+        model_id=job.model_id,
+        model_code=job.model.model_code,
+        model_display_name=job.model.display_name,
         work_mode=job.work_mode,
         mode=job.mode,
         status=job.status,

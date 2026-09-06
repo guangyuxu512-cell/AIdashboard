@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import case, delete, func, select
-from sqlalchemy.orm import Load, Session, noload, selectinload
+from sqlalchemy.orm import Load, Session, joinedload, noload, selectinload
 from sqlalchemy.sql import Select
 
 from app.modules.access.contracts import ActorContext
@@ -443,6 +443,7 @@ class GenerationRepository:
     @staticmethod
     def _detail_options() -> tuple[Load, ...]:
         return (
+            joinedload(GenerationJob.model),
             selectinload(GenerationJob.items)
             .selectinload(GenerationItem.input_assets)
             .joinedload(GenerationItemAsset.asset),
@@ -491,7 +492,10 @@ class GenerationRepository:
             mode=mode,
             status=status,
         )
-        statement = statement.options(noload(GenerationJob.items))
+        statement = statement.options(
+            noload(GenerationJob.items),
+            joinedload(GenerationJob.model),
+        )
         return list(
             self.session.scalars(
                 statement.order_by(
@@ -801,7 +805,7 @@ class GenerationRepository:
         self.session.scalar(
             select(GenerationJob)
             .where(GenerationJob.generation_job_id == generation_job_id)
-            .with_for_update(),
+            .with_for_update(of=GenerationJob),
         )
         return self.session.scalar(
             select(GenerationItem)
@@ -811,6 +815,7 @@ class GenerationRepository:
                     GenerationItemAsset.asset,
                 ),
                 selectinload(GenerationItem.job),
+                selectinload(GenerationItem.job).joinedload(GenerationJob.model),
                 selectinload(GenerationItem.provider_execution),
             )
             .with_for_update(),

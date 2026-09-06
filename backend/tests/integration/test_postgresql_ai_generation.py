@@ -68,6 +68,7 @@ from app.modules.users.models import User
 
 pytestmark = pytest.mark.integration
 FEATURE_DATABASE = "control_center_feat_ai_generation"
+MODEL_ID = UUID("13b4f558-cd56-4f11-99fc-c64275e14031")
 GENERATION_TABLES = {
     "generation_jobs",
     "generation_items",
@@ -138,6 +139,7 @@ def instant_submit(
     return InstantGenerationSubmit(
         work_mode=GenerationWorkMode.INSTANT,
         submission_key=key,
+        model_id=MODEL_ID,
         mode=GenerationMode.NORMAL_GENERATION,
         product_asset_ids=[asset_id],
         prompt=prompt,
@@ -201,6 +203,7 @@ def batch_submit(material_group_id: UUID, *, key: str) -> BatchGenerationSubmit:
     return BatchGenerationSubmit(
         work_mode=GenerationWorkMode.BATCH,
         submission_key=key,
+        model_id=MODEL_ID,
         mode=GenerationMode.NORMAL_GENERATION,
         product_scope=BatchProductScope.SELECTED,
         selected_product_ids=[material_group_id],

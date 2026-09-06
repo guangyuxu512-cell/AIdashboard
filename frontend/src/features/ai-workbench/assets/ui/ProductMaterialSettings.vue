@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import type { SelectOption } from 'naive-ui'
+import { computed } from 'vue'
 
 import {
-  TEMPLATE_GROUP_OPTIONS,
   type GenerationMode,
   type ProductMaterialGroup,
+  type TemplateGroupOption,
 } from '../model/types'
 import { AppSelect, AppSwitch } from '@/shared/ui'
 import type { AppOptionValue } from '@/shared/ui/types'
 
-defineProps<{
+const props = defineProps<{
   product: ProductMaterialGroup
+  templateGroupOptions: readonly TemplateGroupOption[]
 }>()
 
 const emit = defineEmits<{
@@ -22,16 +24,20 @@ const emit = defineEmits<{
 }>()
 
 function templateOptions(mode: GenerationMode): SelectOption[] {
-  return TEMPLATE_GROUP_OPTIONS.filter((option) => option.mode === mode).map(
-    (option) => ({
+  return props.templateGroupOptions
+    .filter((option) => option.mode === mode)
+    .map((option) => ({
       label: option.label,
       value: option.id,
-    }),
-  )
+    }))
 }
 
-const normalTemplateOptions = templateOptions('NORMAL_GENERATION')
-const styleReplicationTemplateOptions = templateOptions('STYLE_REPLICATION')
+const normalTemplateOptions = computed(() =>
+  templateOptions('NORMAL_GENERATION'),
+)
+const styleReplicationTemplateOptions = computed(() =>
+  templateOptions('STYLE_REPLICATION'),
+)
 
 function templateGroupIds(value: AppOptionValue[]): string[] {
   return value.map(String)

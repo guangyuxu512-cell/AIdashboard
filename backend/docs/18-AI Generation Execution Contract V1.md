@@ -1,8 +1,8 @@
 # AI Generation Execution Contract V1
 
 > - 状态：`FROZEN`
-> - 审计日期：2026-09-03
-> - 基线：Green `origin/dev` `cf88d4c675a4e278d4f5ebe2745f8ef840ac7ac2`
+> - 审计日期：2026-09-06
+> - 基线：Green `origin/dev` `d637be61deb9604006df28b8caa4cb435689ecea`
 > - 范围：AI Workbench 图片生成的 Job、Item、输入、输出、状态、历史及服务器执行边界
 > - Readiness：`READY FOR MIGRATION SLOT = YES`
 
@@ -12,11 +12,16 @@
 
 - 已实现的 AI Workbench Backend Foundation V1；
 - 已实现的 Access、Module Access、Asset Scope 与 Asset Storage；
+- 已实现的 ToAPIs Provider V1 与 AI Model Management V1；
 - 已冻结的 Frontend AI Generation Workspace / Generation Records V1；
 - 当前真实 Model、Repository、Service、DTO、API 与 Tests。
 
 本文不把 Development-only Fixture、浏览器 Object URL、模拟状态或临时 ID 变成 Backend Contract。
 本文不实现 Production Code、Migration、Provider、Queue、Polling、Webhook、Frontend Real API 或真实生图。
+
+2026-09-06 的模型选择修订取代 Provider V1 与 AI Model Management V1 实现阶段中“目录尚不参与
+Submit/Execution”的边界记录。两份已实现文档继续作为其各自 Feature 的交付快照；其 Provider
+恢复、Secret、Asset 与 Catalog 管理规则不变。后续 Real API 实现以本文修订后的 Model 链路为准。
 
 ## 2. Existing Foundation
 
@@ -35,16 +40,18 @@ MaterialGroupTemplateBinding`。
 
 `PromptTemplate.count` 当前为 `1–8`，且只有一个 `prompt`。Generation Execution 不增加
 `negative_prompt`，也不创建第二套 Mode、Role、Format、Size、User、Team、Scope 或文件系统。
-当前 Frontend `GenerationConfig` 只有 `prompt / outputFormat / size / count`；没有已冻结的模型、Provider、
-清晰度或质量参数，因此这些参数不进入提交或持久化 Schema。
+当前 Frontend `GenerationConfig` 继续只表达 `prompt / outputFormat / size / count`；模型选择是一次
+Generation Submit 的必填上下文，不进入 PromptTemplate 或 `GenerationConfig`。Resolution 和 Quality
+继续使用现有服务器运行配置，Frontend 不提交这两个字段。
 
 V1 不建设 Prompt 变量系统。`PromptTemplate.prompt` 始终是完整 Literal Text；既有
 `PromptTemplate.variables` 管理字段不参与 Generation Execution，不进入生成请求或执行 Snapshot，Prompt 中的
 花括号和类似占位符的文本也不解析、不替换、不转义。
 
-V1 不建设 Model Registry。Frontend/API 不选择或提交 Provider/Model；服务端运行配置根据当前图片生成业务
-Capability 解析实际 Provider/Model。GenerationJob/Item 不持久化 `provider_id / provider_name / model_id`
-或 Provider Payload。
+V1 复用已有唯一 AI Model Catalog，不建设第二套 Model Registry。Frontend/API 必须显式选择并
+提交 `model_id`；公开 DTO 不接受 `provider_code / model_code` 或 Provider Credential。
+`GenerationJob` 持久化所选 `model_id`，`GenerationItem` 不重复保存。执行时通过该关联读取
+Catalog 中稳定的 `provider_code / model_code`，不保存 Model Snapshot 或 Provider Payload。
 
 ## 3. Job / Item 模型语义
 
@@ -55,13 +62,14 @@ Capability 解析实际 Provider/Model。GenerationJob/Item 不持久化 `provid
 - `INSTANT / BATCH` 工作方式；
 - `NORMAL_GENERATION / STYLE_REPLICATION` 业务模式；
 - `team_id / created_by_user_id` Ownership；
+- 本次提交明确选定的 `model_id`；
 - 创建、开始、完成时间与整体状态；
 - 本次提交的稳定幂等标识与规范化请求指纹；
 - 从全部 Item 派生的总数、成功数、运行数、等待数与失败数；
 - 作为生成记录的 Source of Truth。
 
-Job/Item 不保存 Provider/Model 标识、Provider 原始 Payload、Storage Key、浏览器预览 URL 或通用
-Task/Worker 字段。
+Job 只保存 Catalog `model_id`，不重复保存 `model_code / provider_code`；Item 不保存模型标识。
+Job/Item 都不保存 Provider 原始 Payload、Storage Key、浏览器预览 URL 或通用 Task/Worker 字段。
 
 ### 3.2 GenerationItem
 
@@ -85,14 +93,16 @@ Job 承担一次提交、Ownership、列表与整体进度；Item 承担独立�
 
 ### 4.1 通用提交规则
 
-Human Submit API 必须先解析 `ActorContext` 并校验 `ai-workbench` Module Access。公开 DTO 不接受
-`team_id`、`created_by_user_id`、`data_scope`、Provider/Model、Provider Credential 或 Storage 字段。
+Human Submit API 必须先解析 `ActorContext` 并校验 `ai-workbench` Module Access。公开 DTO 必须接受
+`model_id`，但不接受 `team_id`、`created_by_user_id`、`data_scope`、`provider_code`、`model_code`、
+Provider Credential 或 Storage 字段。
 
 提交采用异步业务语义：Backend 完成同步校验、计划展开和 Snapshot 后创建 Job/Items，立即返回 Job；
 HTTP 不等待 Provider 完成全部图片。
 
 创建请求必须带客户端生成的稳定 `submission_key`。Job 同时保存 `submission_fingerprint`，它是排除
-`submission_key` 后，对规范化用户提交 DTO 计算的稳定摘要；有序 ID、枚举与最终用户输入均参与摘要，
+`submission_key` 后，对规范化用户提交 DTO 计算的稳定摘要；`model_id`、有序 ID、枚举与最终
+用户输入均参与摘要，
 服务端随后解析出的 Product、Binding、Template 或 Item 计划不参与摘要。唯一性范围为当前
 `team_id + created_by_user_id + submission_key`：相同 Key 与相同 Fingerprint 返回原 Job，不重新解析
 数据库现状；相同 Key 与不同 Fingerprint 返回 Conflict。HTTP `request_id` 仅用于链路关联，不等价于
@@ -104,6 +114,7 @@ Idempotency Framework。
 当前可确定的提交语义为：
 
 - `work_mode = INSTANT`；
+- 必填 `model_id`；
 - `mode`；
 - 有序 `product_asset_ids`；
 - 风格复刻时有序 `reference_asset_ids`；
@@ -124,6 +135,7 @@ PromptTemplate 来源标识，也不继承该模板的 Role。
 当前可确定的用户选择语义为：
 
 - `work_mode = BATCH`；
+- 必填 `model_id`；
 - `mode`；
 - 产品范围：全部已启用或显式选择的 Product Material Group IDs；
 - 模板来源：产品已配置 Binding 或本次显式选择的 Template Group IDs；
@@ -141,17 +153,49 @@ Asset Role 或 Item 列表。Frontend Preflight Skip 与 Runtime Item Failure �
 不创建 Item，不进入运行失败数；至少存在一个可执行 Item 才创建 Job。Create 响应可以返回本次同步解析的
 Skip 摘要供当前界面展示，但该摘要不是 Provider 失败，也不替代 Job/Item 历史。
 
+### 4.4 模型选择与提交校验
+
+Frontend 只从 `GET /api/v1/ai-workbench/models` 返回的已启用模型中选择 `model_id`。
+Default Model 只用于 Frontend 初始选中；Backend 不得在请求缺少 `model_id` 时暗中回退到
+当前默认模型。
+
+Backend 在创建任何新 Job 前必须以 `model_id` 解析 Model Catalog，并同步校验：
+
+- 模型存在；
+- `enabled = true`；
+- `capabilities` 包含本次 `GenerationMode`；
+- 展开后每个 Item 的实际输入图片数量不超过 `max_input_images`；
+- Item 的 `size` 属于 `supported_sizes`。
+
+任一校验失败都必须 Fail Closed，不创建 Job/Item。其中输入图片数量必须在 Backend 完成
+每个 Item 计划后按 Item 校验，不能信任 Frontend 统计，也不能用整个 Job 的图片总数代替。
+既有系统级安全上限继续作为独立上界；对当前选定模型，还必须满足更具体的 `max_input_images`，
+Provider Adapter 不重复建设该业务校验。
+Resolution 继续按现有服务器配置处理，本 Contract 不增加 Resolution Submit 字段或 Frontend 选择器。
+
 ## 5. Input Snapshot 语义
 
 Job 被接受后必须使用提交时的稳定执行事实。之后修改或停用 PromptTemplate、TemplateGroup、
-ProductMaterialGroup Binding、MaterialGroupAsset Role 或生成模式开关，不改变已提交 Item。
+ProductMaterialGroup Binding、MaterialGroupAsset Role 或生成模式开关，不改变已提交 Item。所选
+Model 后续被停用同样不影响已接受 Job 的执行或重试。
 
 ### 5.1 仅保存正式引用
 
 - 输入图片保存为 Item 与 Asset 的有序关系；Asset 仍是文件事实唯一来源。
 - Item 成功后只以 `output_asset_id` 关联正式 Asset。
+- Job 以必填 `model_id` 关联唯一 AI Model Catalog；执行与重试始终沿用该关联。
+  该字段是指向 `ai_models.model_id` 的非空 Foreign Key，删除语义固定为 `ON DELETE RESTRICT`；
+  不允许 Cascade 或 `ON DELETE SET NULL` 破坏已接受 Job 的模型身份。
 - PromptTemplate、TemplateGroup 与 ProductMaterialGroup 的 ID 只作为可空来源追踪，不允许执行时重新读取
   最新配置。
+
+Model Catalog V1 不提供 Hard Delete，`model_code / provider_code` 创建后不可修改。因此 Job 只保存
+`model_id` 就能保持稳定执行身份，不新增 Model Snapshot 表，也不在 Item 重复模型字段。
+
+在该非空关联首次进入 Schema 时，历史 GenerationJob 的模型身份已由当时唯一正式执行路径
+`toapis / gpt-image-2` 确定。Migration 必须精确解析该 Catalog 记录并用其 `model_id` 回填历史 Job，
+再建立非空 Foreign Key；不得使用“当前默认模型”作为动态回退。目标 Catalog 记录缺失或不唯一时
+Migration 必须 Fail Closed。
 
 来源实体删除后，历史仍由 Snapshot 保持可读。PromptTemplate、TemplateGroup 与 ProductMaterialGroup 的
 Provenance FK 均为 nullable、`ON DELETE SET NULL`，不得通过 Cascade 删除 Job/Item。其中批量 Item 的
@@ -177,7 +221,7 @@ Provenance FK 均为 nullable、`ON DELETE SET NULL`，不得通过 Cascade 删�
 - 当前 Tab、筛选、分页、折叠、选中 Card、Dialog 状态；
 - Frontend 派生文案和百分比；
 - Provider 临时下载 URL、认证 Header、Secret、Stack Trace 或完整原始 Payload；
-- Provider/Model 标识、Prompt 变量名及变量值；
+- `provider_id / provider_name`、重复的 `model_code / provider_code`、Model Snapshot、Prompt 变量名及变量值；
 - Preflight 控件的临时 Draft 和重复的模板/Asset JSON。
 
 ## 6. Asset 输入
@@ -332,6 +376,10 @@ Provider 明确拒绝创建不属于该状态。
 否则复用 `PRODUCT_MATERIAL_GROUP_NOT_FOUND` 拒绝本次重试并保持 Item 不变。Frozen Snapshot 不用于重建已
 删除的商品组。该限制只影响删除来源组后的新重试，不改变删除前已完成 Item、输出 Asset 或历史记录。
 
+重试必须使用原 `GenerationJob.model_id`，即使该模型已被停用，也不重新选择当前默认模型，
+不将重试改投到其他模型。`enabled`、Capability、输入上限和 Size 校验只决定新 Job 能否被接受；
+已接受 Job 使用其已冻结的 Item 执行事实和原模型关联。
+
 ## 11. Cancel
 
 V1 不支持取消。当前 Frontend 没有生成任务取消入口，也没有 Provider 取消能力的正式证据，因此状态机不含
@@ -342,6 +390,7 @@ V1 不支持取消。当前 Frontend 没有生成任务取消入口，也没有 
 Generation Execution Service 面向未来 Adapter 提供每个 Item 的标准业务输入：
 
 - 稳定 Item ID；
+- 从 `GenerationJob.model_id` 关联的 Catalog 记录解析出的稳定 `model_code`；
 - `GenerationMode`；
 - 完整 Literal `final_prompt`；
 - `OutputRole / OutputFormat / GenerationSize`；
@@ -352,13 +401,23 @@ Adapter 标准返回只有两类：
 - 成功：一个受支持的图片文件流/字节流、文件名建议与真实 Content Type；
 - 失败：稳定分类、可安全展示的消息，以及仅供执行策略使用的可重试判断。
 
-Provider/Model 由服务端当前运行配置根据图片生成业务 Capability 决定，不是 Human Submit 输入，也不是
-GenerationJob/Item 历史字段。Provider 名称、模型 ID、请求字段、任务 ID、临时 URL、Webhook Payload 和原始
-错误均不得进入 Generation Execution 业务 Schema；Provider Credential 只能来自 Backend 安全配置。
+Provider Routing 必须从 `GenerationJob.model_id` 开始：Backend 读取完整 Catalog 记录，取得创建后
+不可修改的 `provider_code / model_code`，再将执行交给对应 Adapter。当前唯一路由为：
 
-未来真实 Provider 如果需要 External Task Reference 才能异步恢复，由独立 Provider Adapter Feature 根据其
-真实能力最小增加在 Adapter Execution 边界，不提前加入本 Contract 的 GenerationJob/Item Schema，也不得
-伪装成用户可写字段。
+```text
+provider_code = toapis
+↓
+ToAPIs Adapter(model_code = Catalog.model_code)
+```
+
+这是单一显式路由，不建设 Provider Routing Engine、Plugin Framework 或第二套 Model Registry。
+`provider_code / model_code` 不由 Frontend 提交，也不在 Job/Item 重复持久化。已接受 Job 解析 Catalog 时
+不以当前 `enabled` 拒绝原模型执行。Provider Credential、Base URL、Resolution 和 Quality 继续只来自
+Backend 安全配置。
+
+Provider Execution 边界可继续保存真实异步恢复必需的 `provider_code / external_task_id`；它们不是
+Human Submit 字段，也不替代 Job 的模型关联。Provider 临时 URL、Webhook Payload 和原始错误仍不得进入
+GenerationJob/Item 业务 Schema。
 
 ## 13. Async / Progress
 
@@ -387,6 +446,7 @@ Backend ↔ Provider 的同步调用、Provider Polling 或 Webhook 由后续 Ad
 列表最小投影：
 
 - Job ID、工作方式、Mode、整体状态；
+- `model_id` 及通过 Model Catalog 关联得到的必要模型展示信息；
 - `created_at / created_by`；
 - 总数、成功数、失败数与必要输入摘要。
 
@@ -401,6 +461,14 @@ Backend ↔ Provider 的同步调用、Provider Polling 或 Webhook 由后续 Ad
 
 创建人名称、Product/Group/Template 名称均使用提交时 Snapshot，避免后续改名改变历史。百分比、状态文案与
 `resultSummary` 由正式字段派生，不作为客户端可写事实。Provider 原始 Payload 不属于生成记录。
+
+模型展示优先由 Job `model_id` 关联完整 Catalog 读投影，不要求 Frontend 用仅返回已启用模型的
+业务目录反查历史 Job，也不为此新增 Model Snapshot 或 `GenerationHistory`。模型停用后，旧 Job 仍必须
+可读、可展示并按原模型重试。
+
+V1 Generation Record List 不增加全文搜索 Contract。真实 API 已支持的分页、Work Mode、Generation
+Mode 和 Status 过滤保持不变；Frontend 从 Visual Mock 切换时必须收敛或移除无对应服务端语义的
+记录搜索框，不得对单个服务端分页做伪全量本地搜索。
 
 ## 15. Ownership / Scope
 
@@ -434,6 +502,9 @@ Team。异步执行从持久 Job Ownership 创建 Asset，不信任 Provider，�
 ### 17.1 同步 API 错误
 
 - Human Auth、Team Context、Module Access：复用现有统一错误。
+- `model_id` 不存在：复用 `AI_MODEL_NOT_FOUND / 404`。
+- 模型未启用、Capability 不支持 Mode、输入数量超过 `max_input_images` 或 Size 不受支持：使用统一
+  Validation/Error Envelope，且不创建 Job/Item。
 - 输入 Asset 不存在、不可读、错误 Team：复用 `ASSET_NOT_FOUND / 404`。
 - ProductMaterialGroup、TemplateGroup、PromptTemplate 来源无效：优先复用 AI Workbench 现有 Not Found
   与 Binding 校验语义。
@@ -477,10 +548,10 @@ Device Skill。两类执行面只共享正式 Access、Asset、HTTP、错误与�
 
 本轮只冻结 Contract，明确不实现：
 
-- SQLAlchemy `GenerationJob / GenerationItem` Model；
+- SQLAlchemy `GenerationJob.model_id` 或其他 Production Model 修改；
 - Alembic Migration、Migration Slot、Feature DB 或任何数据库写入；
 - Repository、Service、DTO、API Production Code；
-- Provider Adapter、Provider Credential、Model Registry 或真实模型调用；
+- Provider Routing Engine、Plugin Framework、第二套 Model Registry、Model Snapshot 或 Provider Credential 管理；
 - Queue、Scheduler、Celery、Redis、RabbitMQ、Kafka、Webhook、SSE 或 WebSocket；
 - Windows Worker / Device Task 集成；
 - Cancel、整 Job Retry、Attempt、Step、Workflow、Event Sourcing 或 Generic Job Engine；
@@ -492,11 +563,19 @@ Device Skill。两类执行面只共享正式 Access、Asset、HTTP、错误与�
 
 ### D1. Model / Provider
 
-- V1 不建设 Model Registry。
-- Frontend/API 不选择或提交 Provider/Model。
-- GenerationJob/Item 不保存 Provider/Model 标识或 Payload。
-- 服务端运行配置按图片生成业务 Capability 决定实际 Provider/Model。
-- 未来 External Task Reference 只在有真实异步 Provider 证据时进入独立 Adapter Execution 边界。
+- Frontend 从业务 Model Catalog 选择模型，Instant/Batch Submit 都必须显式提交 `model_id`。
+- Default Model 只用于 Frontend 默认选中；Backend 缺少 `model_id` 时不自动回退。
+- 新 Job 提交必须校验 Model 存在且已启用、Capability 支持 Mode、每个 Item 输入数量不超过
+  `max_input_images`，且 Size 受支持。
+- `GenerationJob` 保存 `model_id`；`GenerationItem` 不重复保存，Job/Item 不重复保存
+  `provider_code / model_code`。
+- `GenerationJob.model_id` 是指向 `ai_models.model_id` 的非空、`ON DELETE RESTRICT` Foreign Key；历史 Job 精确回填为
+  `toapis / gpt-image-2` Catalog 记录，不按当前默认模型猜测。
+- 执行与 Retry 通过原 Job `model_id` 解析 Catalog 中稳定的 `provider_code / model_code`；后续
+  Disable 不改投默认模型。
+- 当前 `provider_code = toapis` 显式路由到已有 ToAPIs Adapter；不建设 Provider Routing Engine、Plugin
+  Framework、第二套 Model Registry 或 Model Snapshot。
+- Resolution 与 Quality 继续使用现有 Backend 安全运行配置，不进入 Human Submit。
 
 ### D2. Prompt Literal Text
 
@@ -520,8 +599,9 @@ Device Skill。两类执行面只共享正式 Access、Asset、HTTP、错误与�
 
 ### Remaining Blocking Questions
 
-`NONE`。当前 Job/Item、输入关系、输出 Asset、状态、重试、归档、Ownership 与 Provenance 语义足以进入
-Generation Execution 的下一次 Migration Schema Review；具体 SQL 类型、约束名和索引仍须在取得正式 Slot 后
+`NONE`。当前 Job/Item、Model Catalog 关联与历史回填、输入关系、输出 Asset、状态、重试、归档、
+Ownership 与 Provenance 语义足以进入 Generation Execution 的下一次 Migration Schema Review；具体 SQL
+类型、约束名和索引仍须在取得正式 Slot 后
 遵循当时最新 Green `dev` 与 Migration 规范确定，不构成业务 Contract 阻塞。
 
 - 本文状态：`FROZEN`。

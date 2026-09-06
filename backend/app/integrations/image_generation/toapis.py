@@ -53,7 +53,6 @@ class ToApisImageProvider:
         *,
         api_key: SecretStr,
         base_url: str,
-        model_code: str,
         resolution: str,
         quality: str,
         poll_interval_seconds: float,
@@ -66,7 +65,6 @@ class ToApisImageProvider:
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
-        self._model_code = model_code
         self._resolution = resolution
         self._quality = quality
         self._poll_interval_seconds = poll_interval_seconds
@@ -87,7 +85,7 @@ class ToApisImageProvider:
                     for image in request.input_images
                 ]
                 body: dict[str, Any] = {
-                    "model": self._model_code,
+                    "model": request.model_code,
                     "prompt": request.final_prompt,
                     "size": request.size.value,
                     "resolution": self._resolution,

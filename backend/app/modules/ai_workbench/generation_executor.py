@@ -55,6 +55,14 @@ class GenerationExecutor:
         if execution is None:
             return False
 
+        if execution.provider_code != self._provider.provider_code:
+            self._fail_if_current(
+                execution,
+                failure_code="GENERATION_PROVIDER_UNSUPPORTED",
+                failure_message="当前生成模型暂不支持执行",
+            )
+            return True
+
         provider_create_unpersisted = False
         try:
             external_task_id = execution.external_task_id
@@ -120,9 +128,7 @@ class GenerationExecutor:
 
     def _prepare_next(self) -> GenerationExecution | None:
         with self._session_factory() as session:
-            return self._service_factory(session).prepare_next_provider_execution(
-                provider_code=self._provider.provider_code,
-            )
+            return self._service_factory(session).prepare_next_provider_execution()
 
     def _create_provider_task(self, execution: GenerationExecution) -> str:
         with ExitStack() as stack:
@@ -140,6 +146,7 @@ class GenerationExecutor:
             return self._provider.create_task(
                 GenerationProviderRequest(
                     generation_item_id=execution.generation_item_id,
+                    model_code=execution.model_code,
                     mode=execution.mode,
                     final_prompt=execution.final_prompt,
                     output_role=execution.output_role,
@@ -158,7 +165,7 @@ class GenerationExecutor:
             self._service_factory(session).record_provider_execution(
                 execution.generation_item_id,
                 expected_attempt_count=execution.attempt_count,
-                provider_code=self._provider.provider_code,
+                provider_code=execution.provider_code,
                 external_task_id=external_task_id,
             )
 
@@ -226,7 +233,6 @@ def build_generation_executor(settings: Settings | None = None) -> GenerationExe
         provider=ToApisImageProvider(
             api_key=resolved_settings.toapis_api_key,
             base_url=resolved_settings.toapis_base_url,
-            model_code=resolved_settings.toapis_model_code,
             resolution=resolved_settings.toapis_resolution,
             quality=resolved_settings.toapis_quality,
             poll_interval_seconds=resolved_settings.toapis_poll_interval_seconds,

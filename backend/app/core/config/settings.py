@@ -71,7 +71,6 @@ class Settings(BaseSettings):
     )
     toapis_api_key: SecretStr | None = None
     toapis_base_url: str = "https://toapis.cn"
-    toapis_model_code: Literal["gpt-image-2"] = "gpt-image-2"
     toapis_resolution: Literal["1k", "2k", "4k"] = "2k"
     toapis_quality: Literal["low", "medium", "high"] = "low"
     toapis_poll_interval_seconds: float = Field(default=5.0, ge=0.1, le=60)
