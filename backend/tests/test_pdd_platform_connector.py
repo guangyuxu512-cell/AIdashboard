@@ -44,6 +44,14 @@ def auth_context(cookie_value: str = "sensitive-pdd-cookie") -> ShopSessionAuthC
                 secure=True,
                 httpOnly=True,
             ),
+            StoredSessionCookie(
+                name="JSESSIONID",
+                value=SecretStr("sensitive-pdd-session"),
+                domain="mms.pinduoduo.com",
+                path="/earth",
+                secure=True,
+                httpOnly=True,
+            ),
         ),
     )
 
@@ -60,13 +68,15 @@ def test_pdd_identity_uses_verified_contract_and_fixed_result_paths(
         assert request.content == b"{}"
         assert request.headers["anti-content"] == "synthetic-anti-content"
         assert request.headers["origin"] == "https://mms.pinduoduo.com"
-        assert f"pdd_user_id={secret}" in request.headers["cookie"]
+        assert request.headers["cookie"] == (
+            f"pdd_user_id={secret}; JSESSIONID=sensitive-pdd-session"
+        )
         return httpx.Response(
             200,
             request=request,
             json={
                 "success": True,
-                "error_code": 1_000_000,
+                "errorCode": 1_000_000,
                 "result": {"mallId": "mall-1", "mallName": "PDD Shop"},
             },
         )
@@ -92,7 +102,7 @@ def test_pdd_identity_rejects_platform_failure_and_http_authentication() -> None
         return httpx.Response(
             200,
             request=request,
-            json={"success": False, "error_code": 43001, "error_msg": "denied"},
+            json={"success": False, "errorCode": 43001, "errorMsg": "denied"},
         )
 
     with httpx.Client(transport=httpx.MockTransport(platform_failure)) as client:

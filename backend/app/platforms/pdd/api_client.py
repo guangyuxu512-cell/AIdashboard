@@ -14,7 +14,7 @@ from app.platforms.exceptions import (
 )
 from app.platforms.pdd.endpoints import PddEndpoint
 from app.platforms.pdd.signer import PddAntiContentSigner, PddAntiContentSignerError
-from app.platforms.session_cookies import response_cookie_updates, to_httpx_cookies
+from app.platforms.session_cookies import response_cookie_updates
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,16 @@ class PddApiClient:
         try:
             anti_content = self.signer.generate()
         except PddAntiContentSignerError as error:
-            raise PlatformRequestFailedError() from error
+            raise PlatformRequestFailedError(
+                details={"failure_stage": "signer"},
+            ) from error
 
         headers = dict(endpoint.headers)
         headers["anti-content"] = anti_content.get_secret_value()
+        # Electron has already selected the cookies applicable to this exact
+        # PDD endpoint. Preserve that browser session context as one Cookie
+        # header instead of applying a second client-side domain/path filter.
+        headers["cookie"] = _cookie_header(cookies)
         try:
             if self.client is not None:
                 response = self._request(self.client, endpoint, headers, cookies)
@@ -59,22 +65,33 @@ class PddApiClient:
                 ) as client:
                     response = self._request(client, endpoint, headers, cookies)
         except httpx.TimeoutException as error:
-            raise PlatformRequestTimeoutError() from error
+            raise PlatformRequestTimeoutError(
+                details={"failure_stage": "http_transport"},
+            ) from error
         except httpx.RequestError as error:
-            raise PlatformRequestFailedError() from error
+            raise PlatformRequestFailedError(
+                details={"failure_stage": "http_transport"},
+            ) from error
 
         if response.status_code in {401, 403}:
             raise PlatformAuthenticationInvalidError()
         if response.status_code >= 400:
             raise PlatformRequestFailedError(
-                details={"platform_http_status": response.status_code},
+                details={
+                    "failure_stage": "http_response",
+                    "platform_http_status": response.status_code,
+                },
             )
         try:
             payload = response.json()
         except ValueError as error:
-            raise PlatformResponseInvalidError() from error
+            raise PlatformResponseInvalidError(
+                details={"failure_stage": "json_parse"},
+            ) from error
         if not isinstance(payload, dict):
-            raise PlatformResponseInvalidError()
+            raise PlatformResponseInvalidError(
+                details={"failure_stage": "json_shape"},
+            )
         return PddApiResponse(
             payload=payload,
             cookie_updates=response_cookie_updates(response),
@@ -91,7 +108,12 @@ class PddApiClient:
             endpoint.method,
             endpoint.url,
             headers=headers,
-            cookies=to_httpx_cookies(cookies),
             json={},
         )
         return client.send(request)
+
+
+def _cookie_header(cookies: tuple[StoredSessionCookie, ...]) -> str:
+    return "; ".join(
+        f"{cookie.name}={cookie.value.get_secret_value()}" for cookie in cookies
+    )

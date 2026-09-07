@@ -37,6 +37,19 @@ class CompleteManagementOnboardingCommand(BaseModel):
         return self
 
 
+class VerifyPddManagementLoginCommand(BaseModel):
+    """Ephemeral PDD identity preflight; it never persists the session payload."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    session_payload_base64: SecretStr = Field(min_length=1)
+
+
+class PddManagementLoginIdentityResult(BaseModel):
+    platform_shop_id: str = Field(min_length=1, max_length=128)
+    shop_display_name: str = Field(min_length=1, max_length=100)
+
+
 class ManagementOnboardingResult(BaseModel):
     shop: ShopRead
     credential: CredentialStatusRead

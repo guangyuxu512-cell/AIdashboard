@@ -13,7 +13,10 @@ from app.core.database import Base
 from app.core.security import SecretCipher
 from app.modules.access.models import Team
 from app.modules.authentication.exceptions import ShopOnboardingConflictError
-from app.modules.authentication.schemas import CompleteManagementOnboardingCommand
+from app.modules.authentication.schemas import (
+    CompleteManagementOnboardingCommand,
+    VerifyPddManagementLoginCommand,
+)
 from app.modules.authentication.service import ManagementOnboardingService
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.devices.models import Device
@@ -107,6 +110,12 @@ def pdd_command() -> CompleteManagementOnboardingCommand:
     )
 
 
+def pdd_identity_command() -> VerifyPddManagementLoginCommand:
+    return VerifyPddManagementLoginCommand(
+        session_payload_base64=pdd_command().session_payload_base64,
+    )
+
+
 def test_management_onboarding_is_atomic_and_encrypts_sensitive_data() -> None:
     cipher = SecretCipher(Fernet.generate_key().decode("ascii"))
     with create_test_session() as session:
@@ -176,6 +185,28 @@ def test_pdd_onboarding_derives_identity_before_the_atomic_write() -> None:
             session.scalar(select(func.count()).select_from(ShopCredentialBinding))
             == 1
         )
+
+
+def test_pdd_identity_preflight_uses_fixed_identity_and_writes_nothing() -> None:
+    cipher = SecretCipher(Fernet.generate_key().decode("ascii"))
+    connector = PddConnectorStub()
+    with create_test_session() as session:
+        result = ManagementOnboardingService(
+            session,
+            cipher,
+            pdd_connector=connector,  # type: ignore[arg-type]
+        ).verify_pdd_identity(pdd_identity_command())
+
+        assert result.platform_shop_id == "pdd-mall-1"
+        assert result.shop_display_name == "真实拼多多店铺"
+        assert connector.cookies is not None
+        assert connector.cookies[0].name == "pdd_user_id"
+        assert session.scalar(select(func.count()).select_from(Shop)) == 0
+        assert (
+            session.scalar(select(func.count()).select_from(PlatformCredential))
+            == 0
+        )
+        assert session.scalar(select(func.count()).select_from(ShopSession)) == 0
 
 
 def test_pdd_identity_failure_creates_no_partial_onboarding_records() -> None:

@@ -12,6 +12,8 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.authentication.schemas import (
     CompleteManagementOnboardingCommand,
     ManagementOnboardingResult,
+    PddManagementLoginIdentityResult,
+    VerifyPddManagementLoginCommand,
 )
 from app.modules.authentication.service import ManagementOnboardingService
 
@@ -50,3 +52,18 @@ def complete_management_onboarding(
     ],
 ) -> ManagementOnboardingResult:
     return service.complete(command)
+
+
+@router.post(
+    "/pdd/identity",
+    response_model=PddManagementLoginIdentityResult,
+)
+def verify_pdd_management_login_identity(
+    command: VerifyPddManagementLoginCommand,
+    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    service: Annotated[
+        ManagementOnboardingService,
+        Depends(get_management_onboarding_service),
+    ],
+) -> PddManagementLoginIdentityResult:
+    return service.verify_pdd_identity(command)

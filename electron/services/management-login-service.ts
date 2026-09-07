@@ -1,5 +1,5 @@
 import { app, BrowserWindow, session, type Session } from 'electron'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
@@ -40,9 +40,12 @@ interface LoginAttempt {
   expiresAt: ReturnType<typeof setTimeout> | null
   recovery: ManagementLoginOpenInput['recovery'] | null
   profileReused: boolean
+  lastPddVerificationFailureFingerprint: string | null
+  lastPddVerificationFailureAt: number | null
 }
 
 const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
+const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
 
 interface OnboardingApiResponse {
   shop: {
@@ -64,6 +67,11 @@ interface RefreshApiResponse {
   version: number
   validated_at: string
   cookie_updates_applied: number
+}
+
+interface PddIdentityApiResponse {
+  platform_shop_id: string
+  shop_display_name: string
 }
 
 export class ManagementLoginService {
@@ -106,6 +114,8 @@ export class ManagementLoginService {
         expiresAt: null,
         recovery: input.recovery ?? null,
         profileReused: profile.profileReused,
+        lastPddVerificationFailureFingerprint: null,
+        lastPddVerificationFailureAt: null,
       }
       this.attempts.set(attemptId, attempt)
     }
@@ -117,6 +127,10 @@ export class ManagementLoginService {
       throw new Error('登录尝试与 Session 恢复上下文不匹配')
     }
     if (attempt.window && !attempt.window.isDestroyed()) {
+      if (attempt.platform === 'pdd') {
+        attempt.lastPddVerificationFailureFingerprint = null
+        attempt.lastPddVerificationFailureAt = null
+      }
       if (attempt.status === 'failed') {
         attempt.status = 'waiting'
         attempt.message = '重新检测登录状态'
@@ -146,6 +160,8 @@ export class ManagementLoginService {
     loginWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     attempt.window = loginWindow
     attempt.identity = null
+    attempt.lastPddVerificationFailureFingerprint = null
+    attempt.lastPddVerificationFailureAt = null
     attempt.systemCloseRequested = false
     this.clearCapturedSession(attempt)
     this.armAttemptTimeout(attempt)
@@ -204,11 +220,54 @@ export class ManagementLoginService {
             capturedSession.payload.fill(0)
             return this.toStatus(attempt)
           }
+          let identity = detection.identity
+          if (attempt.platform === 'pdd') {
+            const fingerprint = sessionFingerprint(capturedSession)
+            if (
+              attempt.lastPddVerificationFailureFingerprint === fingerprint &&
+              attempt.lastPddVerificationFailureAt !== null &&
+              Date.now() - attempt.lastPddVerificationFailureAt <
+                PDD_IDENTITY_RETRY_INTERVAL_MS
+            ) {
+              capturedSession.payload.fill(0)
+              attempt.message = '正在等待下一次拼多多店铺身份验证'
+              return this.toStatus(attempt)
+            }
+            try {
+              identity = await this.verifyPddIdentity(attempt, capturedSession)
+            } catch (error) {
+              capturedSession.payload.fill(0)
+              if (attempt.window !== loginWindow || loginWindow.isDestroyed()) {
+                return this.toStatus(attempt)
+              }
+              attempt.identity = null
+              attempt.lastPddVerificationFailureFingerprint = fingerprint
+              attempt.lastPddVerificationFailureAt = Date.now()
+              attempt.status = 'waiting'
+              attempt.message = `尚未通过拼多多店铺身份验证，请继续在登录窗口完成登录（${safeErrorMessage(error)}）`
+              return this.toStatus(attempt)
+            }
+            attempt.lastPddVerificationFailureFingerprint = null
+            attempt.lastPddVerificationFailureAt = null
+          }
+          if (!identity) {
+            capturedSession.payload.fill(0)
+            attempt.message = '尚未识别有效店铺身份，请继续完成平台登录'
+            return this.toStatus(attempt)
+          }
+          if (
+            attempt.status !== 'waiting' ||
+            attempt.window !== loginWindow ||
+            loginWindow.isDestroyed()
+          ) {
+            capturedSession.payload.fill(0)
+            return this.toStatus(attempt)
+          }
           this.clearCapturedSession(attempt)
-          attempt.identity = detection.identity
+          attempt.identity = identity
           attempt.capturedSession = capturedSession
           attempt.status = 'identified'
-          attempt.message = '已自动识别店铺并采集登录会话，登录窗口已关闭'
+          attempt.message = '已验证店铺身份并采集登录会话，登录窗口已关闭'
           attempt.systemCloseRequested = true
           loginWindow.close()
         } else {
@@ -238,7 +297,7 @@ export class ManagementLoginService {
       headers: await this.authorizedHeaders(attempt),
       body: JSON.stringify({
         platform: attempt.platform,
-        ...(attempt.identity
+        ...(attempt.platform === 'douyin' && attempt.identity
           ? {
               platform_shop_id: attempt.identity.platformShopId,
               shop_display_name: attempt.identity.shopDisplayName,
@@ -423,6 +482,34 @@ export class ManagementLoginService {
     return this.backendUrl('/api/v1/shop-onboarding/complete')
   }
 
+  private async verifyPddIdentity(
+    attempt: LoginAttempt,
+    capturedSession: CapturedManagementSession,
+  ): Promise<ManagementLoginIdentity> {
+    const response = await fetch(
+      this.backendUrl('/api/v1/shop-onboarding/pdd/identity'),
+      {
+        method: 'POST',
+        headers: await this.authorizedHeaders(attempt),
+        body: JSON.stringify({
+          session_payload_base64: capturedSession.payload.toString('base64'),
+        }),
+      },
+    )
+    if (!response.ok) throw new Error(await safeBackendError(response))
+    const result = (await response.json()) as PddIdentityApiResponse
+    const platformShopId = result.platform_shop_id?.trim()
+    const shopDisplayName = result.shop_display_name?.trim()
+    if (!platformShopId || !shopDisplayName) {
+      throw new Error('服务器返回的拼多多店铺身份不完整')
+    }
+    return {
+      platform: 'pdd',
+      platformShopId,
+      shopDisplayName,
+    }
+  }
+
   private async authorizedHeaders(
     attempt: LoginAttempt,
   ): Promise<Record<string, string>> {
@@ -502,6 +589,20 @@ export class ManagementLoginService {
     await fs.writeFile(temporaryPath, JSON.stringify(mappings, null, 2), 'utf8')
     await fs.rename(temporaryPath, filePath)
   }
+}
+
+function sessionFingerprint(capturedSession: CapturedManagementSession): string {
+  // `capturedAt` is intentionally refreshed on every capture. It must not be
+  // part of the failure fingerprint, or a stable failed session would trigger
+  // a new signed platform request on every status poll.
+  const payload = JSON.parse(capturedSession.payload.toString('utf8')) as Record<
+    string,
+    unknown
+  >
+  delete payload.capturedAt
+  return createHash('sha256')
+    .update(JSON.stringify(payload))
+    .digest('base64url')
 }
 
 function safeErrorMessage(error: unknown): string {

@@ -7,7 +7,16 @@ import type {
   PlatformLoginDetectionResult,
 } from './platform-auth-adapter'
 
-const pddSessionUrl = 'https://mms.pinduoduo.com/'
+// Cookie capture must match the exact PDD endpoint that the backend calls to
+// verify the merchant. A root-path query omits cookies with a narrower path
+// scope such as `/earth`.
+const pddMerchantIdentityUrl =
+  'https://mms.pinduoduo.com/earth/api/merchant/queryMerchantInfoByMallId'
+
+// These are present in the manually verified PDD management session, while an
+// unauthenticated PDD window only receives generic device/browser cookies.
+// They only gate the server preflight; the identity API remains the authority.
+const pddAuthenticatedCookieNames = new Set(['JSESSIONID', 'PASS_ID'])
 
 export class PddPlatformAuthAdapter implements PlatformAuthAdapter {
   readonly platformCode = 'pdd' as const
@@ -18,12 +27,12 @@ export class PddPlatformAuthAdapter implements PlatformAuthAdapter {
     loginSession: Session,
     _webContentsId: number,
   ): Promise<PlatformLoginDetectionResult> {
-    const cookies = await this.getMmsCookies(loginSession)
-    if (cookies.length === 0) {
+    const cookies = await this.getIdentityCookies(loginSession)
+    if (!hasAuthenticatedPddSession(cookies)) {
       return {
         identity: null,
         readyForCapture: false,
-        message: '尚未检测到适用于拼多多管理端的登录会话',
+        message: '尚未检测到拼多多管理端有效登录会话',
       }
     }
     return {
@@ -38,8 +47,8 @@ export class PddPlatformAuthAdapter implements PlatformAuthAdapter {
     _webContentsId: number,
     identity: ManagementLoginIdentity | null,
   ): Promise<CapturedManagementSession> {
-    const cookies = await this.getMmsCookies(loginSession)
-    if (cookies.length === 0) {
+    const cookies = await this.getIdentityCookies(loginSession)
+    if (!hasAuthenticatedPddSession(cookies)) {
       throw new Error('拼多多登录会话尚未完整建立')
     }
     const capturedAt = new Date().toISOString()
@@ -56,10 +65,16 @@ export class PddPlatformAuthAdapter implements PlatformAuthAdapter {
     return { payload, capturedAt, cookieCount: cookies.length }
   }
 
-  private getMmsCookies(loginSession: Session): Promise<Cookie[]> {
-    // Electron scopes this query to cookies applicable to the PDD management host.
-    return loginSession.cookies.get({ url: pddSessionUrl })
+  private getIdentityCookies(loginSession: Session): Promise<Cookie[]> {
+    // Electron scopes this query to cookies applicable to the actual identity
+    // endpoint, including any PDD cookies whose path is narrower than `/`.
+    return loginSession.cookies.get({ url: pddMerchantIdentityUrl })
   }
+}
+
+function hasAuthenticatedPddSession(cookies: Cookie[]): boolean {
+  const names = new Set(cookies.map((cookie) => cookie.name))
+  return [...pddAuthenticatedCookieNames].every((name) => names.has(name))
 }
 
 function toSerializableCookie(cookie: Cookie): Record<string, unknown> {

@@ -7,6 +7,7 @@ from uuid import UUID
 
 import httpx
 
+from app.core.exceptions import AppError
 from app.modules.sessions.auth_context import ShopSessionAuthContext, StoredSessionCookie
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.exceptions import PlatformRequestFailedError, PlatformResponseInvalidError
@@ -59,8 +60,18 @@ class PddPlatformConnector:
         self,
         cookies: tuple[StoredSessionCookie, ...],
     ) -> PlatformShopIdentity:
-        response = self.api_client.request_json(MERCHANT_IDENTITY_ENDPOINT, cookies)
-        return self._parse_response(response.payload, response.cookie_updates)
+        try:
+            response = self.api_client.request_json(MERCHANT_IDENTITY_ENDPOINT, cookies)
+            return self._parse_response(response.payload, response.cookie_updates)
+        except AppError as error:
+            details = error.details if isinstance(error.details, dict) else {}
+            logger.warning(
+                "pdd_identity_preflight_failed error_code=%s failure_stage=%s platform_code=%s",
+                error.code,
+                details.get("failure_stage", "unknown"),
+                details.get("platform_code", "unknown"),
+            )
+            raise
 
     @staticmethod
     def _parse_response(
@@ -68,21 +79,30 @@ class PddPlatformConnector:
         cookie_updates: tuple[StoredSessionCookie, ...],
     ) -> PlatformShopIdentity:
         platform_success = payload.get("success")
-        platform_code = payload.get("error_code")
+        platform_code = payload.get("errorCode")
         if platform_success is not True or platform_code not in {
             PDD_SUCCESS_CODE,
             str(PDD_SUCCESS_CODE),
         }:
             raise PlatformRequestFailedError(
-                details={"platform_code": _safe_scalar(platform_code)},
+                details={
+                    "failure_stage": "platform_response",
+                    "platform_code": _safe_scalar(platform_code),
+                },
             )
         result = payload.get("result")
         if not isinstance(result, dict):
-            raise PlatformResponseInvalidError()
+            raise PlatformResponseInvalidError(
+                details={"failure_stage": "identity_parse"},
+            )
+        # `result` is the verified identity object. Keep these fixed paths;
+        # do not recursively guess fields from other platform response shapes.
         platform_shop_id = str(result.get("mallId") or "").strip()
         shop_display_name = str(result.get("mallName") or "").strip()
         if not platform_shop_id or not shop_display_name:
-            raise PlatformResponseInvalidError()
+            raise PlatformResponseInvalidError(
+                details={"failure_stage": "identity_parse"},
+            )
         return PlatformShopIdentity(
             platform_shop_id=platform_shop_id,
             shop_display_name=shop_display_name,

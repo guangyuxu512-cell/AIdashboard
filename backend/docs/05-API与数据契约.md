@@ -125,6 +125,9 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 - `POST /api/v1/shops/{shop_id}/session/refresh-lease`：获取可过期恢复租约和当前 `expected_version`。
 - `DELETE /api/v1/shops/{shop_id}/session/refresh-lease/{lease_id}`：取消并释放当前客户端持有的租约。
 - `POST /api/v1/shops/{shop_id}/session/refresh`：仅供 Electron Main 提交内存中的新 Session；Renderer 不接触 payload。
+- `POST /api/v1/shop-onboarding/pdd/identity`：首次接入的 Electron Main 将内存中的 PDD Cookie
+  payload 交给固定平台接口预检；只返回已验证的 `platform_shop_id / shop_display_name`，不创建任何
+  Shop、Credential 或 ShopSession。
 
 Credential Read 不含密码、密文；Session Read 不含 Cookie、payload 或密文。密码只存在于 Create/Update 写请求，Update 的空字符串表示保留现有密码。Session payload 的写入目前只属于内部 Service Contract，不开放普通 Frontend Route。
 

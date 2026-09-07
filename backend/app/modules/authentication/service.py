@@ -15,6 +15,8 @@ from app.modules.authentication.exceptions import (
 from app.modules.authentication.schemas import (
     CompleteManagementOnboardingCommand,
     ManagementOnboardingResult,
+    PddManagementLoginIdentityResult,
+    VerifyPddManagementLoginCommand,
 )
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.credentials.schemas import CredentialStatusRead
@@ -129,6 +131,19 @@ class ManagementOnboardingService:
             ),
         )
 
+    def verify_pdd_identity(
+        self,
+        command: VerifyPddManagementLoginCommand,
+    ) -> PddManagementLoginIdentityResult:
+        """Verify an Electron-captured PDD session without writing any records."""
+        identity = self._fetch_pdd_identity(
+            self._decode_payload(command.session_payload_base64),
+        )
+        return PddManagementLoginIdentityResult(
+            platform_shop_id=identity.platform_shop_id,
+            shop_display_name=identity.shop_display_name,
+        )
+
     @staticmethod
     def _decode_payload(value: SecretStr) -> bytes:
         try:
@@ -150,21 +165,24 @@ class ManagementOnboardingService:
             return command.platform_shop_id, command.shop_display_name
 
         if command.platform is ShopPlatform.PDD:
-            try:
-                captured = StoredManagementSessionPayload.model_validate(
-                    json.loads(payload),
-                )
-            except (
-                UnicodeDecodeError,
-                json.JSONDecodeError,
-                ValidationError,
-            ) as error:
-                raise InvalidSessionPayloadError() from error
-            if captured.platform is not ShopPlatform.PDD:
-                raise InvalidSessionPayloadError()
-            identity = self.pdd_connector.fetch_identity_from_cookies(
-                tuple(captured.cookies),
-            )
+            identity = self._fetch_pdd_identity(payload)
             return identity.platform_shop_id, identity.shop_display_name
 
         raise InvalidSessionPayloadError()
+
+    def _fetch_pdd_identity(self, payload: bytes):
+        try:
+            captured = StoredManagementSessionPayload.model_validate(
+                json.loads(payload),
+            )
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValidationError,
+        ) as error:
+            raise InvalidSessionPayloadError() from error
+        if captured.platform is not ShopPlatform.PDD:
+            raise InvalidSessionPayloadError()
+        return self.pdd_connector.fetch_identity_from_cookies(
+            tuple(captured.cookies),
+        )
