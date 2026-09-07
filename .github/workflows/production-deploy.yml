@@ -1,0 +1,74 @@
+name: Production Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: Full published origin/main commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-center-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy published main commit
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify explicit published main commit
+        env:
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+        run: |
+          test "${DEPLOY_SHA}" = "$(printf '%s' "${DEPLOY_SHA}" | tr '[:upper:]' '[:lower:]')"
+          printf '%s' "${DEPLOY_SHA}" | grep -Eq '^[0-9a-f]{40}$'
+          git fetch origin main
+          test "${DEPLOY_SHA}" = "$(git rev-parse origin/main)"
+      - name: Configure deployment SSH
+        env:
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+          PRODUCTION_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_PRIVATE_KEY }}
+          PRODUCTION_SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "${PRODUCTION_DEPLOY_HOST}"
+          test -n "${PRODUCTION_DEPLOY_USER}"
+          test -n "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
+          test -n "${PRODUCTION_SSH_KNOWN_HOSTS}"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "${PRODUCTION_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add - <<< "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
+          printf 'SSH_AUTH_SOCK=%s\n' "${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
+          printf 'SSH_AGENT_PID=%s\n' "${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
+      - name: Package reviewed release source
+        env:
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+        run: |
+          archive_path="${RUNNER_TEMP}/control-center-production-${DEPLOY_SHA}.tar.gz"
+          tar --exclude-vcs --exclude='node_modules' --exclude='dist' --exclude='.env' --exclude='.env.*' \
+            -czf "${archive_path}" backend frontend deploy/production scripts/remote-deploy-production.sh
+          printf 'RELEASE_ARCHIVE=%s\n' "${archive_path}" >> "${GITHUB_ENV}"
+      - name: Upload and deploy release
+        env:
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+        run: |
+          remote_archive="/tmp/control-center-production-${DEPLOY_SHA}.tar.gz"
+          remote_script="/tmp/control-center-production-deploy-${DEPLOY_SHA}.sh"
+          remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
+          ssh -o StrictHostKeyChecking=yes "${remote_target}" "install -d -m 0750 /opt/ecommerce-control-center/production"
+          scp -o StrictHostKeyChecking=yes "${RELEASE_ARCHIVE}" "${remote_target}:${remote_archive}"
+          scp -o StrictHostKeyChecking=yes scripts/remote-deploy-production.sh "${remote_target}:${remote_script}"
+          ssh -o StrictHostKeyChecking=yes "${remote_target}" \
+            "chmod 0700 '${remote_script}' && '${remote_script}' '/opt/ecommerce-control-center/production' '${remote_archive}' '${DEPLOY_SHA}'; status=\$?; rm -f -- '${remote_script}'; exit \$status"

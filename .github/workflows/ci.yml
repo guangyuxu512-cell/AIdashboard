@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: control_center_ci
+          POSTGRES_USER: control_center_ci
+          POSTGRES_PASSWORD: control_center_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U control_center_ci -d control_center_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend test dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+      - name: Migrate disposable CI database and run backend tests
+        working-directory: backend
+        run: |
+          export BACKEND_DATABASE_URL='postgresql+psycopg://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_ci'
+          export BACKEND_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          python -m alembic upgrade head
+          python -m pytest -q
+
+  frontend-real-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.19.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck and build frontend in Real mode
+        run: pnpm --filter @control-center/frontend build
+
+  container-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate remote production deployment script syntax
+        run: bash -n scripts/remote-deploy-production.sh
+      - name: Build production backend image
+        run: docker build --tag control-center-backend-ci:${{ github.sha }} backend
+      - name: Verify PDD Node runtime and verified source
+        run: |
+          docker run --rm --entrypoint sh control-center-backend-ci:${{ github.sha }} -c \
+            'node --version && test -f /app/app/platforms/pdd/vendor/anti_content.js && python -c "from app.platforms.pdd.signer import PddAntiContentSigner; PddAntiContentSigner().generate()"'
+      - name: Build production frontend image
+        run: docker build --tag control-center-frontend-ci:${{ github.sha }} --file frontend/Dockerfile .
+      - name: Validate production compose contract
+        run: |
+          DEPLOYMENT_IMAGE_TAG=${{ github.sha }} \
+          BACKEND_DATABASE_URL=postgresql+psycopg://placeholder:placeholder@127.0.0.1:35433/control_center_prod \
+          BACKEND_ENCRYPTION_KEY=placeholder \
+          BACKEND_DOUYIN_SIGNER_API_KEY=placeholder \
+          BACKEND_TOAPIS_API_KEY=placeholder \
+          BACKEND_DOUYIN_SIGNER_URL=http://127.0.0.1:8788 \
+          BACKEND_HUMAN_SESSION_COOKIE_SECURE=true \
+          PRODUCTION_DOMAIN=example.invalid \
+          PRODUCTION_TLS_CERTIFICATE_PATH=/tmp/fullchain.pem \
+          PRODUCTION_TLS_CERTIFICATE_KEY_PATH=/tmp/privkey.pem \
+          PRODUCTION_NGINX_VHOST_DIR=/tmp \
+          PRODUCTION_ENV_FILE="$(pwd)/deploy/production/.env.example" \
+          docker compose --env-file deploy/production/.env.example -f deploy/production/compose.yaml config -q
