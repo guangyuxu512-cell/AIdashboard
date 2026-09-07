@@ -1,0 +1,17 @@
+.git/
+.github/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.venv/
+**/.venv/
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+coverage/
+.dev-runtime/
+**/__pycache__/
+**/*.py[cod]

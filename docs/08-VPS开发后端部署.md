@@ -2,7 +2,7 @@
 
 ## 定位与拓扑
 
-该部署只属于 DEV / STAGING，使用 `control_center_dev`，不是 Production，也不会创建 `control_center_prod`。
+该部署只属于 DEV / STAGING，使用 `control_center_dev`，不是 Production，也不会创建 `control_center_prod`。正式生产部署、独立数据库、静态 Frontend、GitHub Actions 与回滚约定见 [09-Production部署与发布.md](09-Production部署与发布.md)。
 
 ```text
 Worker / Frontend
