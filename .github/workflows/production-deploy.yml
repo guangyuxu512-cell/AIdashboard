@@ -32,6 +32,8 @@ jobs:
           printf '%s' "${DEPLOY_SHA}" | grep -Eq '^[0-9a-f]{40}$'
           git fetch origin main
           test "${DEPLOY_SHA}" = "$(git rev-parse origin/main)"
+          git checkout --detach "${DEPLOY_SHA}"
+          test "${DEPLOY_SHA}" = "$(git rev-parse HEAD)"
       - name: Configure deployment SSH
         env:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
