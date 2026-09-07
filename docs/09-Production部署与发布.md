@@ -30,7 +30,7 @@ Backend → control-center-backend-prod-assets Docker volume
 ```
 
 - Production Backend、Signer 与 Frontend 都只监听主机回环地址；不得直接发布 Docker 端口。
-- 公网入口仅由现有 BaoTa Nginx vhost 管理。首次部署前必须有真实域名与已签发证书，不能以 IP 或明文 HTTP 代替。
+- 公网入口仅由现有 BaoTa Nginx vhost 管理。本部署的明确决策是直接使用 VPS 公网 IPv4，而非 DNS 域名。Let’s Encrypt 的 IP 证书必须使用 `shortlived` profile，约 160 小时有效；因此 `control-center-production-ip-acme-renew.timer` 每日运行两次，续期后由 host Nginx reload 读取新证书。明文 HTTP 只用于 ACME HTTP-01 challenge 和 HTTPS 重定向，不能作为应用入口。
 - `control-center-backend-prod-assets` 是正式持久卷，独立于开发环境的 `control-center-backend-dev_backend-assets`。正常更新与回滚不删除该卷。
 - PDD 签名继续由 Backend 中现有的隔离 Node 子进程执行。`backend/Dockerfile` 安装 Node.js，且随 `app/platforms/pdd/vendor/anti_content.js` 一起打包；不引入第二套 PDD 服务。
 - Douyin Signer 仍是独立的、只绑定回环地址的容器，生产端口为 `8788`，与开发端口 `8787` 隔离。
@@ -52,9 +52,11 @@ Backend → control-center-backend-prod-assets Docker volume
 - `BACKEND_DOUYIN_SIGNER_API_KEY` 与回环 `BACKEND_DOUYIN_SIGNER_URL`。
 - `BACKEND_TOAPIS_API_KEY` 及其已确认的 ToAPIs 配置。
 - `BACKEND_HUMAN_SESSION_COOKIE_SECURE=true`。
-- `PRODUCTION_DOMAIN`、证书与私钥路径、BaoTa `PRODUCTION_NGINX_VHOST_DIR`。
+- `PRODUCTION_DOMAIN`：真实公网 IPv4。该既有变量名被保留，因为 Nginx 可以用 IP 作为 `server_name`。
+- `PRODUCTION_ACME_EMAIL`、`PRODUCTION_ACME_CERT_NAME`、Certbot image 与 ACME state/webroot 路径。
+- IP 证书与私钥路径、BaoTa `PRODUCTION_NGINX_VHOST_DIR`。
 
-部署脚本在 build、迁移或覆盖 Nginx 前验证这些条件，并拒绝将 Backend 指向 `control_center_dev`。
+部署脚本在 build、迁移或覆盖 Nginx 前验证这些条件，并拒绝将 Backend 指向 `control_center_dev`。首次应用部署前，先手动触发 `Production Provision Public-IP TLS` 工作流，输入当前 `origin/main` 的完整 SHA；它会严格 checkout 该 SHA、以 Certbot 5.8 的 `--ip-address` + `--preferred-profile shortlived` 申请证书，并启用续期 timer。证书阶段会先配置只返回 `503` 的 HTTPS bootstrap vhost，再由 GitHub Runner 直接访问公网 IP 并校验证书；正常 `Production Deploy` 成功后才替换为应用反向代理。该步骤需要公网端口 80 对外可达以及有效的 ACME 联系邮箱。
 
 ## 数据库与首位管理员
 
@@ -94,6 +96,8 @@ CI：`.github/workflows/ci.yml`
 
 Workflow 使用部署专用 SSH key 上传 source archive，远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/Frontend health，并在健康后原子切换 Nginx vhost。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
 
+`Production Provision Public-IP TLS` 使用同一套 SSH Secrets，但只负责公共 IP 证书、Nginx ACME challenge vhost 与续期 timer；它不创建数据库、不启动应用容器，也不替代 `Production Deploy`。
+
 ## 回滚与备份
 
 - 新容器健康或 Nginx 配置失败时，远程脚本恢复上一个 release 目录与已知容器版本；不会删除 Asset 卷。
@@ -112,4 +116,4 @@ Workflow 使用部署专用 SSH key 上传 source archive，远程脚本构建�
 5. Asset 上传后重启服务仍可读取；
 6. 配置齐全时，一次最小 ToAPIs 生成；人工平台登录需要在真实页面完成，并如实标记未覆盖项。
 
-真实域名、TLS 证书和首位管理员身份目前尚未配置；在这些前置条件具备前，任何结果只能标记为“代码已发布”，不能标记为“生产已部署”。
+公网 IP 已确定为部署入口；但首次验收仍需要 IP 证书、ACME 联系邮箱、首位管理员身份和生产 ToAPIs 配置。在这些前置条件具备前，任何结果只能标记为“代码已发布”，不能标记为“生产已部署”。

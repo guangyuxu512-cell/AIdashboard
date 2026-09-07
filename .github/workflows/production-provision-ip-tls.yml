@@ -1,0 +1,85 @@
+name: Production Provision Public-IP TLS
+
+on:
+  workflow_dispatch:
+    inputs:
+      provision_sha:
+        description: Full published origin/main commit SHA that contains the provisioning tooling
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-center-production-ip-tls
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Provision and schedule public-IP TLS renewal
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify explicit published main commit
+        env:
+          PROVISION_SHA: ${{ inputs.provision_sha }}
+        run: |
+          test "${PROVISION_SHA}" = "$(printf '%s' "${PROVISION_SHA}" | tr '[:upper:]' '[:lower:]')"
+          printf '%s' "${PROVISION_SHA}" | grep -Eq '^[0-9a-f]{40}$'
+          git fetch origin main
+          test "${PROVISION_SHA}" = "$(git rev-parse origin/main)"
+          git checkout --detach "${PROVISION_SHA}"
+          test "${PROVISION_SHA}" = "$(git rev-parse HEAD)"
+      - name: Configure deployment SSH
+        env:
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+          PRODUCTION_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_PRIVATE_KEY }}
+          PRODUCTION_SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "${PRODUCTION_DEPLOY_HOST}"
+          test -n "${PRODUCTION_DEPLOY_USER}"
+          test -n "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
+          test -n "${PRODUCTION_SSH_KNOWN_HOSTS}"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "${PRODUCTION_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add - <<< "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
+          printf 'SSH_AUTH_SOCK=%s\n' "${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
+          printf 'SSH_AGENT_PID=%s\n' "${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
+      - name: Package reviewed public-IP TLS tooling
+        env:
+          PROVISION_SHA: ${{ inputs.provision_sha }}
+        run: |
+          bundle_path="${RUNNER_TEMP}/control-center-production-ip-tls-${PROVISION_SHA}.tar.gz"
+          tar --exclude-vcs --exclude='.env' --exclude='.env.*' \
+            -czf "${bundle_path}" \
+            deploy/production \
+            scripts/production-env.sh scripts/remote-provision-production-ip-tls.sh
+          printf 'PROVISION_BUNDLE=%s\n' "${bundle_path}" >> "${GITHUB_ENV}"
+      - name: Upload and provision public-IP TLS
+        env:
+          PROVISION_SHA: ${{ inputs.provision_sha }}
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+        run: |
+          remote_root="/opt/ecommerce-control-center/production"
+          remote_bundle="/tmp/control-center-production-ip-tls-${PROVISION_SHA}.tar.gz"
+          remote_bundle_dir="/tmp/control-center-production-ip-tls-${PROVISION_SHA}"
+          remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
+          ssh -o StrictHostKeyChecking=yes "${remote_target}" "install -d -m 0750 '${remote_root}'"
+          scp -o StrictHostKeyChecking=yes "${PROVISION_BUNDLE}" "${remote_target}:${remote_bundle}"
+          ssh -o StrictHostKeyChecking=yes "${remote_target}" \
+            "install -d -m 0700 '${remote_bundle_dir}' && tar -xzf '${remote_bundle}' -C '${remote_bundle_dir}' && chmod 0700 '${remote_bundle_dir}/scripts/remote-provision-production-ip-tls.sh' && '${remote_bundle_dir}/scripts/remote-provision-production-ip-tls.sh' '${remote_root}'; status=\$?; rm -rf -- '${remote_bundle}' '${remote_bundle_dir}'; exit \$status"
+      - name: Verify the public IP certificate from the GitHub runner
+        env:
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+        run: |
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --retry 3 --retry-connrefused --connect-timeout 15 "https://${PRODUCTION_DEPLOY_HOST}/")"
+          test "${status}" = "503"

@@ -1,0 +1,24 @@
+server {
+    listen 80;
+    server_name ${PRODUCTION_DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root ${PRODUCTION_ACME_WEBROOT_DIR};
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name ${PRODUCTION_DOMAIN};
+
+    ssl_certificate ${PRODUCTION_TLS_CERTIFICATE_PATH};
+    ssl_certificate_key ${PRODUCTION_TLS_CERTIFICATE_KEY_PATH};
+
+    return 503;
+}

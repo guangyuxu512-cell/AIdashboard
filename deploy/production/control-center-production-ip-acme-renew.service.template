@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew the control center public-IP TLS certificate
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ecommerce-control-center/production/acme/renew.sh /opt/ecommerce-control-center/production
