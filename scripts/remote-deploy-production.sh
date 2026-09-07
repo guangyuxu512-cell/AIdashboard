@@ -18,101 +18,15 @@ if [[ ! -f "$archive_path" ]]; then
     exit 2
 fi
 
-environment_file="$remote_root/.env"
-if [[ ! -f "$environment_file" ]]; then
-    echo "Production environment file is missing" >&2
-    exit 2
-fi
-
-read_environment_value() {
-    local key="$1"
-    local line=""
-    line="$(grep -m1 -E "^${key}=" "$environment_file" || true)"
-    if [[ -z "$line" ]]; then
-        return 1
-    fi
-    local value="${line#*=}"
-    if [[ "$value" =~ ^\".*\"$ || "$value" =~ ^\'.*\'$ ]]; then
-        value="${value:1:${#value}-2}"
-    fi
-    printf '%s' "$value"
-}
-
-# Do not source the server .env: a database password may legitimately contain
-# shell metacharacters. Docker Compose reads that file itself; this script only
-# reads the specific deployment facts it must validate or render.
-load_required_environment_value() {
-    local key="$1"
-    local value=""
-    if ! value="$(read_environment_value "$key")" || [[ -z "$value" ]]; then
-        echo "Production environment is missing $key" >&2
-        exit 2
-    fi
-    printf -v "$key" '%s' "$value"
-}
-
-required_environment=(
-    BACKEND_DATABASE_URL
-    BACKEND_ENCRYPTION_KEY
-    BACKEND_DOUYIN_SIGNER_API_KEY
-    BACKEND_DOUYIN_SIGNER_URL
-    BACKEND_TOAPIS_API_KEY
-    PRODUCTION_DOMAIN
-    PRODUCTION_TLS_CERTIFICATE_PATH
-    PRODUCTION_TLS_CERTIFICATE_KEY_PATH
-    PRODUCTION_NGINX_VHOST_DIR
-)
-for key in "${required_environment[@]}"; do
-    load_required_environment_value "$key"
-done
-
-BACKEND_HUMAN_SESSION_COOKIE_SECURE="$(read_environment_value BACKEND_HUMAN_SESSION_COOKIE_SECURE || true)"
-BACKEND_BIND_PORT="$(read_environment_value BACKEND_BIND_PORT || printf '18001')"
-DOUYIN_SIGNER_BIND_PORT="$(read_environment_value DOUYIN_SIGNER_BIND_PORT || printf '8788')"
-FRONTEND_BIND_PORT="$(read_environment_value FRONTEND_BIND_PORT || printf '18080')"
-export PRODUCTION_DOMAIN PRODUCTION_TLS_CERTIFICATE_PATH PRODUCTION_TLS_CERTIFICATE_KEY_PATH
-export BACKEND_BIND_PORT DOUYIN_SIGNER_BIND_PORT FRONTEND_BIND_PORT
-
-if [[ "$BACKEND_DATABASE_URL" != *"/control_center_prod"* ]]; then
-    echo "Production backend must target the independent control_center_prod database" >&2
-    exit 2
-fi
-if [[ "${BACKEND_HUMAN_SESSION_COOKIE_SECURE:-}" != "true" ]]; then
-    echo "Production human session cookies must be secure" >&2
-    exit 2
-fi
-if [[ "${BACKEND_DOUYIN_SIGNER_URL}" != "http://127.0.0.1:${DOUYIN_SIGNER_BIND_PORT:-8788}" ]]; then
-    echo "Production Douyin signer must remain on its configured loopback port" >&2
-    exit 2
-fi
-if [[ ! -f "$PRODUCTION_TLS_CERTIFICATE_PATH" || ! -f "$PRODUCTION_TLS_CERTIFICATE_KEY_PATH" ]]; then
-    echo "Production TLS certificate files are unavailable" >&2
-    exit 2
-fi
-if [[ ! -d "$PRODUCTION_NGINX_VHOST_DIR" ]]; then
-    echo "Configured production Nginx vhost directory is unavailable" >&2
-    exit 2
-fi
-
-for command in curl docker envsubst nginx tar; do
-    if ! command -v "$command" >/dev/null 2>&1; then
-        echo "Production host is missing required command: $command" >&2
-        exit 2
-    fi
-done
-if ! docker compose version >/dev/null 2>&1; then
-    echo "Production host requires Docker Compose v2" >&2
-    exit 2
-fi
-
 release_directory="$remote_root/releases/$release_sha"
 previous_release=""
 deployment_succeeded=false
-nginx_target="$PRODUCTION_NGINX_VHOST_DIR/control-center-production.conf"
+environment_file=""
+nginx_target=""
 nginx_backup=""
 
 restore_previous_release() {
-    if [[ -z "$previous_release" || ! -d "$previous_release" ]]; then
+    if [[ -z "$environment_file" || -z "$previous_release" || ! -d "$previous_release" ]]; then
         return
     fi
     local previous_sha
@@ -162,12 +76,73 @@ for required_path in \
     frontend/Dockerfile \
     frontend/deploy/default.conf.template \
     deploy/production/compose.yaml \
-    deploy/production/host-nginx.conf.template; do
+    deploy/production/host-nginx.conf.template \
+    scripts/production-env.sh; do
     if [[ ! -e "$release_directory/$required_path" ]]; then
         echo "Production release is missing $required_path" >&2
         exit 2
     fi
 done
+
+source "$release_directory/scripts/production-env.sh"
+environment_file="$remote_root/.env"
+production_env_open "$environment_file"
+
+required_environment=(
+    BACKEND_DATABASE_URL
+    BACKEND_ENCRYPTION_KEY
+    BACKEND_DOUYIN_SIGNER_API_KEY
+    BACKEND_DOUYIN_SIGNER_URL
+    BACKEND_TOAPIS_API_KEY
+    PRODUCTION_DOMAIN
+    PRODUCTION_TLS_CERTIFICATE_PATH
+    PRODUCTION_TLS_CERTIFICATE_KEY_PATH
+    PRODUCTION_NGINX_VHOST_DIR
+    PRODUCTION_ACME_WEBROOT_DIR
+)
+for key in "${required_environment[@]}"; do
+    production_env_load_required "$key"
+done
+
+BACKEND_HUMAN_SESSION_COOKIE_SECURE="$(production_env_read BACKEND_HUMAN_SESSION_COOKIE_SECURE || true)"
+BACKEND_BIND_PORT="$(production_env_read BACKEND_BIND_PORT || printf '18001')"
+DOUYIN_SIGNER_BIND_PORT="$(production_env_read DOUYIN_SIGNER_BIND_PORT || printf '8788')"
+FRONTEND_BIND_PORT="$(production_env_read FRONTEND_BIND_PORT || printf '18080')"
+export PRODUCTION_DOMAIN PRODUCTION_TLS_CERTIFICATE_PATH PRODUCTION_TLS_CERTIFICATE_KEY_PATH PRODUCTION_ACME_WEBROOT_DIR
+export BACKEND_BIND_PORT DOUYIN_SIGNER_BIND_PORT FRONTEND_BIND_PORT
+nginx_target="$PRODUCTION_NGINX_VHOST_DIR/control-center-production.conf"
+
+if [[ "$BACKEND_DATABASE_URL" != *"/control_center_prod"* ]]; then
+    echo "Production backend must target the independent control_center_prod database" >&2
+    exit 2
+fi
+if [[ "${BACKEND_HUMAN_SESSION_COOKIE_SECURE:-}" != "true" ]]; then
+    echo "Production human session cookies must be secure" >&2
+    exit 2
+fi
+if [[ "${BACKEND_DOUYIN_SIGNER_URL}" != "http://127.0.0.1:${DOUYIN_SIGNER_BIND_PORT:-8788}" ]]; then
+    echo "Production Douyin signer must remain on its configured loopback port" >&2
+    exit 2
+fi
+if [[ ! -f "$PRODUCTION_TLS_CERTIFICATE_PATH" || ! -f "$PRODUCTION_TLS_CERTIFICATE_KEY_PATH" ]]; then
+    echo "Production TLS certificate files are unavailable; run the public-IP TLS provisioning workflow first" >&2
+    exit 2
+fi
+if [[ ! -d "$PRODUCTION_NGINX_VHOST_DIR" ]]; then
+    echo "Configured production Nginx vhost directory is unavailable" >&2
+    exit 2
+fi
+
+for command in curl docker envsubst nginx tar; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "Production host is missing required command: $command" >&2
+        exit 2
+    fi
+done
+if ! docker compose version >/dev/null 2>&1; then
+    echo "Production host requires Docker Compose v2" >&2
+    exit 2
+fi
 
 export DEPLOYMENT_IMAGE_TAG="$release_sha"
 export PRODUCTION_ENV_FILE="$environment_file"
@@ -199,7 +174,7 @@ curl --fail --silent --show-error "http://127.0.0.1:${BACKEND_BIND_PORT:-18001}/
 curl --fail --silent --show-error "http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}/" >/dev/null
 
 rendered_nginx="$release_directory/.control-center-production.conf"
-envsubst '$PRODUCTION_DOMAIN $PRODUCTION_TLS_CERTIFICATE_PATH $PRODUCTION_TLS_CERTIFICATE_KEY_PATH $FRONTEND_BIND_PORT' \
+envsubst '$PRODUCTION_DOMAIN $PRODUCTION_TLS_CERTIFICATE_PATH $PRODUCTION_TLS_CERTIFICATE_KEY_PATH $PRODUCTION_ACME_WEBROOT_DIR $FRONTEND_BIND_PORT' \
     < "$release_directory/deploy/production/host-nginx.conf.template" \
     > "$rendered_nginx"
 
