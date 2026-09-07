@@ -62,7 +62,8 @@ jobs:
             .dockerignore \
             package.json pnpm-lock.yaml pnpm-workspace.yaml \
             electron/package.json mobile/package.json \
-            backend frontend deploy/production scripts/remote-deploy-production.sh
+            backend frontend deploy/production \
+            scripts/production-env.sh scripts/remote-deploy-production.sh
           printf 'RELEASE_ARCHIVE=%s\n' "${archive_path}" >> "${GITHUB_ENV}"
       - name: Upload and deploy release
         env:

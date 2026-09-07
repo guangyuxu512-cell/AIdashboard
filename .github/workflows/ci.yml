@@ -63,7 +63,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate remote production deployment script syntax
-        run: bash -n scripts/remote-deploy-production.sh
+        run: |
+          bash -n scripts/production-env.sh
+          bash -n scripts/remote-deploy-production.sh
+          bash -n scripts/remote-provision-production-ip-tls.sh
+          bash -n deploy/production/acme-auth-hook.sh
+          bash -n deploy/production/acme-cleanup-hook.sh
+          bash -n deploy/production/renew-production-ip-certificate.sh
       - name: Build production backend image
         run: docker build --tag control-center-backend-ci:${{ github.sha }} backend
       - name: Verify PDD Node runtime and verified source
@@ -81,7 +87,8 @@ jobs:
             .dockerignore \
             package.json pnpm-lock.yaml pnpm-workspace.yaml \
             electron/package.json mobile/package.json \
-            backend frontend deploy/production scripts/remote-deploy-production.sh
+            backend frontend deploy/production \
+            scripts/production-env.sh scripts/remote-deploy-production.sh
           mkdir -p "${release_dir}"
           tar -xzf "${archive_path}" -C "${release_dir}"
           test -f "${release_dir}/package.json"
@@ -89,6 +96,7 @@ jobs:
           test -f "${release_dir}/pnpm-workspace.yaml"
           test -f "${release_dir}/electron/package.json"
           test -f "${release_dir}/mobile/package.json"
+          test -f "${release_dir}/scripts/production-env.sh"
           docker build --tag control-center-release-frontend-ci:${{ github.sha }} --file "${release_dir}/frontend/Dockerfile" "${release_dir}"
       - name: Validate production compose contract
         run: |
