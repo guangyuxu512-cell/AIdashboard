@@ -33,7 +33,7 @@ describe('Platform Registry', () => {
       getPlatformOnboardingOptions()
         .filter((item) => !item.disabled)
         .map((item) => item.value),
-    ).toEqual(['douyin'])
+    ).toEqual(['douyin', 'pdd'])
   })
 
   it('makes a newly registered platform visible to every derived data source', () => {

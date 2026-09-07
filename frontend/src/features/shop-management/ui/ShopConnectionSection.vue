@@ -71,7 +71,7 @@ const verificationChannelLabel = computed(() => {
 const recoveryAvailable = computed(
   () =>
     shopSession.value?.configured &&
-    props.shop.platform === 'douyin' &&
+    (props.shop.platform === 'douyin' || props.shop.platform === 'pdd') &&
     (shopSession.value.status === 'invalid' ||
       shopSession.value.status === 'refresh_required'),
 )
@@ -129,6 +129,9 @@ async function validateSession(): Promise<void> {
 }
 
 async function recoverSession(): Promise<void> {
+  if (props.shop.platform !== 'douyin' && props.shop.platform !== 'pdd') {
+    return
+  }
   if (!window.desktop?.managementLogin) {
     recoveryError.value = '请在 Electron 中控台中恢复登录会话'
     return
@@ -143,7 +146,7 @@ async function recoverSession(): Promise<void> {
     const lease = await acquireLeaseMutation.mutateAsync()
     activeLease.value = { shopId: lease.shopId, leaseId: lease.leaseId }
     recoveryStatus.value = await window.desktop.managementLogin.open({
-      platform: props.shop.platform as 'douyin',
+      platform: props.shop.platform,
       teamId: authStore.activeTeamId,
       recovery: {
         shopId: lease.shopId,

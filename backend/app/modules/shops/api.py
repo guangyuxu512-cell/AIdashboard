@@ -13,7 +13,6 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.sessions.auth_context import ShopSessionAccessor
 from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.service import ShopSessionService
-from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.platform_service import ShopPlatformService
 from app.modules.shops.schemas import (
     ShopCreate,
@@ -25,7 +24,7 @@ from app.modules.shops.schemas import (
     ShopUpdate,
 )
 from app.modules.shops.service import ShopService
-from app.platforms.douyin import DouyinPlatformConnector
+from app.platforms.registry import create_platform_connectors
 from app.platforms.schemas import PlatformShopIdentityRead
 from app.shared.pagination import Page, PaginationParams
 
@@ -57,7 +56,7 @@ def get_shop_platform_service(
     health_service = ShopSessionHealthService(
         session,
         ShopSessionAccessor(session, cipher),
-        {ShopPlatform.DOUYIN: DouyinPlatformConnector()},
+        create_platform_connectors(),
         session_service=ShopSessionService(session, cipher),
     )
     return ShopPlatformService(health_service)

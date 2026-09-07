@@ -27,6 +27,10 @@ if [[ ! -f "$remote_root/.env" ]]; then
     echo "Server environment file is missing" >&2
     exit 2
 fi
+if ! grep -qE '^BACKEND_DOUYIN_SIGNER_API_KEY=.+$' "$remote_root/.env"; then
+    echo "Server environment is missing the Douyin Signer API key" >&2
+    exit 2
+fi
 
 release_directory="$remote_root/releases/$release_id"
 deployment_succeeded=false
@@ -65,7 +69,7 @@ printf 'BACKEND_IMAGE_TAG=%s\nBACKEND_BIND_HOST=%s\nBACKEND_BIND_PORT=%s\n' \
     "$release_id" "$bind_host" "$bind_port" > "$release_directory/.deploy.env"
 chmod 0640 "$release_directory/.deploy.env"
 
-for required in Dockerfile compose.yaml pyproject.toml alembic.ini app migrations; do
+for required in Dockerfile compose.yaml pyproject.toml alembic.ini app migrations douyin-signer; do
     if [[ ! -e "$release_directory/$required" ]]; then
         echo "Release is missing $required" >&2
         exit 2
@@ -73,7 +77,7 @@ for required in Dockerfile compose.yaml pyproject.toml alembic.ini app migration
 done
 
 compose=(docker compose --env-file "$release_directory/.deploy.env" -f "$release_directory/compose.yaml")
-"${compose[@]}" build backend
+"${compose[@]}" build douyin-signer backend
 "${compose[@]}" run --rm backend python -m alembic upgrade head
 
 ln -sfn "$release_directory" "$remote_root/current"

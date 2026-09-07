@@ -11,7 +11,7 @@ declare global {
     attemptId: string
     status: ManagementLoginStatus
     identity: {
-      platform: 'douyin'
+      platform: 'douyin' | 'pdd'
       platformShopId: string
       shopDisplayName: string
     } | null
@@ -39,7 +39,7 @@ declare global {
       }
       managementLogin?: {
         open(input: {
-          platform: 'douyin'
+          platform: 'douyin' | 'pdd'
           teamId: string
           attemptId?: string
           recovery?: {
