@@ -14,6 +14,7 @@ import type {
   ManagementLoginRefreshResult,
 } from '../types'
 import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
+import { PddPlatformAuthAdapter } from './pdd-platform-auth-adapter'
 import { shouldPreserveCapturedLogin } from './management-login-lifecycle'
 import {
   parseManagementLoginProfile,
@@ -69,6 +70,7 @@ export class ManagementLoginService {
   private readonly attempts = new Map<string, LoginAttempt>()
   private readonly adapters = new Map<ManagementLoginPlatform, PlatformAuthAdapter>([
     ['douyin', new DouyinPlatformAuthAdapter()],
+    ['pdd', new PddPlatformAuthAdapter()],
   ])
 
   async open(
@@ -127,7 +129,7 @@ export class ManagementLoginService {
       cache: true,
     })
     const loginWindow = new BrowserWindow({
-      title: '抖店登录',
+      title: adapter.loginWindowTitle,
       width: 1180,
       height: 820,
       minWidth: 900,
@@ -188,7 +190,7 @@ export class ManagementLoginService {
           loginWindow.webContents.session,
           loginWindow.webContents.id,
         )
-        if (detection.identity) {
+        if (detection.readyForCapture) {
           const capturedSession = await adapter.captureSession(
             loginWindow.webContents.session,
             loginWindow.webContents.id,
@@ -228,16 +230,20 @@ export class ManagementLoginService {
   ): Promise<ManagementLoginCompleteResult> {
     const attempt = this.requireAttempt(input.attemptId)
     if (attempt.recovery) throw new Error('Session 恢复不能调用首次接入命令')
-    if (!attempt.identity || !attempt.capturedSession) {
+    if (!attempt.capturedSession) {
       throw new Error('尚未识别有效店铺登录会话')
     }
     const response = await fetch(this.backendEndpoint(), {
       method: 'POST',
       headers: await this.authorizedHeaders(attempt),
       body: JSON.stringify({
-        platform: attempt.identity.platform,
-        platform_shop_id: attempt.identity.platformShopId,
-        shop_display_name: attempt.identity.shopDisplayName,
+        platform: attempt.platform,
+        ...(attempt.identity
+          ? {
+              platform_shop_id: attempt.identity.platformShopId,
+              shop_display_name: attempt.identity.shopDisplayName,
+            }
+          : {}),
         login_identifier: input.loginIdentifier.trim(),
         secret: input.secret,
         preferred_verification_channel: input.preferredVerificationChannel,
@@ -288,7 +294,7 @@ export class ManagementLoginService {
   async refresh(attemptId: string): Promise<ManagementLoginRefreshResult> {
     const attempt = this.requireAttempt(attemptId)
     if (!attempt.recovery) throw new Error('当前登录尝试不是 Session 恢复')
-    if (!attempt.identity || !attempt.capturedSession) {
+    if (!attempt.capturedSession) {
       throw new Error('尚未识别有效店铺登录会话')
     }
     const response = await fetch(

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from base64 import b64decode
+import json
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 from app.core.security import SecretCipher, mask_login_identifier
 from app.modules.authentication.exceptions import (
@@ -17,11 +19,14 @@ from app.modules.authentication.schemas import (
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.credentials.schemas import CredentialStatusRead
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.auth_context import StoredManagementSessionPayload
 from app.modules.sessions.models import ShopSession
 from app.modules.sessions.schemas import ShopSessionMetadataRead
 from app.modules.shops.models import Shop
 from app.modules.shops.repository import ShopRepository
 from app.modules.shops.schemas import ShopRead
+from app.modules.shops.enums import ShopPlatform
+from app.platforms.pdd import PddPlatformConnector
 
 
 class ManagementOnboardingService:
@@ -32,10 +37,12 @@ class ManagementOnboardingService:
         session: Session,
         cipher: SecretCipher,
         shop_repository: ShopRepository | None = None,
+        pdd_connector: PddPlatformConnector | None = None,
     ) -> None:
         self.session = session
         self.cipher = cipher
         self.shop_repository = shop_repository or ShopRepository(session)
+        self.pdd_connector = pdd_connector or PddPlatformConnector()
 
     def complete(
         self,
@@ -43,17 +50,21 @@ class ManagementOnboardingService:
     ) -> ManagementOnboardingResult:
         if command.expected_version != 0:
             raise ShopOnboardingConflictError("首次接入的 Session 版本必须从 0 开始")
+        payload = self._decode_payload(command.session_payload_base64)
+        platform_shop_id, shop_display_name = self._resolve_shop_identity(
+            command,
+            payload,
+        )
         if self.shop_repository.get_by_platform_identity(
             command.platform,
-            command.platform_shop_id,
+            platform_shop_id,
         ) is not None:
             raise ShopOnboardingConflictError()
 
-        payload = self._decode_payload(command.session_payload_base64)
         shop = Shop(
-            display_name=command.shop_display_name,
+            display_name=shop_display_name,
             platform=command.platform,
-            platform_shop_id=command.platform_shop_id,
+            platform_shop_id=platform_shop_id,
             enabled=True,
         )
         credential = PlatformCredential(
@@ -127,3 +138,33 @@ class ManagementOnboardingService:
         if not payload:
             raise InvalidSessionPayloadError()
         return payload
+
+    def _resolve_shop_identity(
+        self,
+        command: CompleteManagementOnboardingCommand,
+        payload: bytes,
+    ) -> tuple[str, str]:
+        if command.platform is ShopPlatform.DOUYIN:
+            if not command.platform_shop_id or not command.shop_display_name:
+                raise InvalidSessionPayloadError()
+            return command.platform_shop_id, command.shop_display_name
+
+        if command.platform is ShopPlatform.PDD:
+            try:
+                captured = StoredManagementSessionPayload.model_validate(
+                    json.loads(payload),
+                )
+            except (
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                ValidationError,
+            ) as error:
+                raise InvalidSessionPayloadError() from error
+            if captured.platform is not ShopPlatform.PDD:
+                raise InvalidSessionPayloadError()
+            identity = self.pdd_connector.fetch_identity_from_cookies(
+                tuple(captured.cookies),
+            )
+            return identity.platform_shop_id, identity.shop_display_name
+
+        raise InvalidSessionPayloadError()

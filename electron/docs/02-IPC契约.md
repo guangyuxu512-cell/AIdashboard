@@ -52,6 +52,6 @@ management-login:refresh
 management-login:close
 ```
 
-`open` 只接受已注册平台、可选 UUID attempt ID，以及白名单化的 Session 恢复上下文（shop、lease、expected version）；`get-status` 只返回状态、真实店铺身份与 Cookie 数量等非敏感元数据；`complete` 完成首次接入；`refresh` 由 Main 将 Adapter 持有的新 payload 直接提交 Backend 并触发服务器立即验证；`close` 关闭尝试、清除 Main 内存 payload 并释放恢复租约。
+`open` 只接受已注册的 `douyin` 或 `pdd` 平台、可选 UUID attempt ID，以及白名单化的 Session 恢复上下文（shop、lease、expected version）；`get-status` 只返回状态、可用时的真实店铺身份与 Cookie 数量等非敏感元数据；`complete` 完成首次接入；`refresh` 由 Main 将 Adapter 持有的新 payload 直接提交 Backend 并触发服务器立即验证；`close` 关闭尝试、清除 Main 内存 payload 并释放恢复租约。
 
-Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。
+Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。拼多多 Adapter 只采集适用于 `mms.pinduoduo.com` 的 Cookie，其店铺身份由 Backend 验证，不在 IPC 传递。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。

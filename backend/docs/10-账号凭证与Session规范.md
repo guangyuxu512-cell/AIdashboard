@@ -57,6 +57,8 @@ Browser Profile 永远保留在设备侧，并按 `Device × Shop` 隔离；服�
 
 阶段 3C-1 的完成命令由 Electron Main 在 Adapter 已确认身份并采集 payload 后调用。Backend 在单个数据库事务内创建 Shop、PlatformCredential、ShopCredentialBinding 与 ShopSession；失败全部回滚。Shop 使用 `(platform, platform_shop_id)` 唯一约束避免同一平台店铺重复接入。
 
+拼多多 V1 的身份来源例外于抖店：Electron Main 只采集适用于 `mms.pinduoduo.com` 的登录 Cookie，不将店铺 ID 或名称交给 Renderer 推断。Backend 在任何数据库写入前，以独立 Node 子进程生成当次 `anti-content`，调用固定的 `POST /earth/api/merchant/queryMerchantInfoByMallId`（Body 为 `{}`），且仅接受平台成功码 `1000000` 的 `result.mallId` 与 `result.mallName`。完成命令不得携带 PDD 的平台店铺身份字段；无法验证时整个原子接入失败，不创建部分记录。
+
 平台接入建立后，`display_name` 与 `platform_shop_id` 共同属于外部平台真实身份，不允许普通 Shop Update 修改；本阶段不新增内部别名。平台登录窗口在采集完成后可由 Electron Main 自动关闭，但 Backend 只在用户确认完成时接收一次原子接入请求。
 
 ## 7. 审计与后续实现
@@ -72,6 +74,8 @@ Session 状态，也不触发自动登录。Backend 请求不读取 Management L
 ## 8. 健康检查、Cookie 更新与恢复租约
 
 `ShopSessionHealthService` 是解密后验证、身份匹配和状态更新的唯一边界。抖店 V1 使用已验证的 `shop_info_v2`；最近验证时间仍处于 `BACKEND_SHOP_SESSION_VALIDATION_FRESHNESS_SECONDS` 窗口时，后续业务可直接使用，超出窗口才按需先验证。没有全店铺 Cron。
+
+拼多多 V1 健康验证复用上述唯一边界与同一固定 merchant identity endpoint；每次请求仅在平台层生成并使用当次 `anti-content`，不记录 Cookie 或签名值。
 
 Cookie 到期时间只用于预警，不阻止权威平台请求。HTTPX 响应真实提供 `Set-Cookie` 时，Accessor 按 name/domain/path 合并，保留 HttpOnly、Secure、SameSite 和 expires，随后加密并通过 `expected_version` 写入新版本；没有 Cookie 更新时只更新验证状态和时间。
 

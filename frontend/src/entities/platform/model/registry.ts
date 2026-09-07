@@ -52,9 +52,9 @@ export const PLATFORM_REGISTRY = [
     capabilities: {
       legacyShopCreate: 'available',
       credentialManagement: 'available',
-      shopOnboarding: 'planned',
-      authentication: 'planned',
-      sessionCapture: 'planned',
+      shopOnboarding: 'available',
+      authentication: 'available',
+      sessionCapture: 'available',
       dataFetch: 'planned',
       rpa: 'planned',
     },

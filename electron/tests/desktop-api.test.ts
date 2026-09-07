@@ -35,7 +35,7 @@ test('management login IPC only accepts registered platform and typed attempt', 
     }),
     true,
   )
-  assert.equal(isManagementLoginOpenInput({ platform: 'pdd', teamId }), false)
+  assert.equal(isManagementLoginOpenInput({ platform: 'pdd', teamId }), true)
   assert.equal(
     isManagementLoginOpenInput({
       platform: 'douyin',

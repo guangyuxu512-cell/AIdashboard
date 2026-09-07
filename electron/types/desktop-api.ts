@@ -1,5 +1,5 @@
 export type DesktopResolvedTheme = 'light' | 'dark'
-export type ManagementLoginPlatform = 'douyin'
+export type ManagementLoginPlatform = 'douyin' | 'pdd'
 export type ManagementLoginStatus =
   | 'opened'
   | 'waiting'
@@ -94,7 +94,7 @@ export function isDesktopResolvedTheme(
 export function isManagementLoginPlatform(
   value: unknown,
 ): value is ManagementLoginPlatform {
-  return value === 'douyin'
+  return value === 'douyin' || value === 'pdd'
 }
 
 export function isManagementLoginOpenInput(

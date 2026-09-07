@@ -20,8 +20,7 @@ from app.modules.sessions.schemas import (
     ShopSessionRefreshLeaseRead,
 )
 from app.modules.sessions.service import ShopSessionService
-from app.modules.shops.enums import ShopPlatform
-from app.platforms.douyin import DouyinPlatformConnector
+from app.platforms.registry import create_platform_connectors
 
 
 router = APIRouter(
@@ -50,7 +49,7 @@ def get_shop_session_health_service(
     return ShopSessionHealthService(
         session,
         ShopSessionAccessor(session, cipher),
-        {ShopPlatform.DOUYIN: DouyinPlatformConnector()},
+        create_platform_connectors(),
         session_service=ShopSessionService(session, cipher),
     )
 
@@ -62,7 +61,7 @@ def get_shop_session_refresh_service(
     health_service = ShopSessionHealthService(
         session,
         ShopSessionAccessor(session, cipher),
-        {ShopPlatform.DOUYIN: DouyinPlatformConnector()},
+        create_platform_connectors(),
         session_service=ShopSessionService(session, cipher),
     )
     return ShopSessionRefreshService(session, cipher, health_service)

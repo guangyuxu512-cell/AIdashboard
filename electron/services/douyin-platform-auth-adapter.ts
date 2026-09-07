@@ -36,6 +36,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
   readonly platformCode = 'douyin' as const
   readonly loginUrl =
     'https://compass.jinritemai.com/shop/search/drainage-terms'
+  readonly loginWindowTitle = '抖店登录'
 
   async detectLoginStatus(
     loginSession: Session,
@@ -43,7 +44,11 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
   ): Promise<PlatformLoginDetectionResult> {
     const contents = webContents.fromId(webContentsId)
     if (!contents || contents.isDestroyed()) {
-      return { identity: null, message: '登录窗口已经关闭' }
+      return {
+        identity: null,
+        readyForCapture: false,
+        message: '登录窗口已经关闭',
+      }
     }
     const cookies = await this.getPlatformCookies(loginSession)
 
@@ -127,6 +132,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
           platformShopId,
           shopDisplayName,
         },
+        readyForCapture: true,
         message: '已从平台账号接口识别店铺',
       }
     }
@@ -137,6 +143,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
       : `平台账号接口 ${probe.endpointHost} HTTP ${probe.status}${responseShape ? `，结构：${responseShape}` : ''}`
     return {
       identity: null,
+      readyForCapture: false,
       message: `${diagnostic}；平台 Cookie ${cookies.length} 个，正在继续识别`,
     }
   }
@@ -144,8 +151,11 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
   async captureSession(
     loginSession: Session,
     webContentsId: number,
-    identity: ManagementLoginIdentity,
+    identity: ManagementLoginIdentity | null,
   ): Promise<CapturedManagementSession> {
+    if (!identity) {
+      throw new Error('抖店登录身份尚未识别')
+    }
     const cookies = await this.getPlatformCookies(loginSession)
     if (cookies.length === 0) {
       throw new Error('抖店登录会话尚未完整建立')
