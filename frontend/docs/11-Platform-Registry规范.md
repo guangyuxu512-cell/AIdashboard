@@ -96,6 +96,8 @@ ShopSession
 
 平台 Adapter 决定当前需要哪类 Challenge；统一 UI 只展示 Challenge；Provider 决定验证码如何获得。不得为不同平台复制验证码 UI。
 
+拼多多 V1 已接入管理端人工登录与 Session 采集；Electron 只采集适用于 `mms.pinduoduo.com` 的 Cookie，店铺身份由 Backend 平台接口验证，Renderer 不接收 Cookie、签名值或平台身份解析细节。商品、评价等业务数据拉取仍不属于当前接入能力。
+
 正式 Challenge Contract 类型为：
 
 ```text

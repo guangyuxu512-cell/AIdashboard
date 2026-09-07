@@ -23,6 +23,7 @@ from app.platforms.exceptions import (
     PlatformRequestTimeoutError,
     PlatformResponseInvalidError,
 )
+from app.platforms.session_cookies import response_cookie_updates, to_httpx_cookies
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ class DouyinApiClient:
         query: Mapping[str, str | int | bool] | None = None,
         body: Mapping[str, Any] | None = None,
     ) -> DouyinApiResponse:
-        cookies = _cookies(auth_context)
+        cookies = to_httpx_cookies(auth_context.cookies)
         headers = dict(endpoint.headers)
         params = dict(query or {})
         try:
@@ -100,7 +101,7 @@ class DouyinApiClient:
             raise PlatformResponseInvalidError()
         return DouyinApiResponse(
             payload=payload,
-            cookie_updates=_response_cookie_updates(response),
+            cookie_updates=response_cookie_updates(response),
         )
 
     def _request(
@@ -162,49 +163,8 @@ class DouyinApiClient:
         return client.send(signed_request)
 
 
-def _cookies(auth_context: ShopSessionAuthContext) -> httpx.Cookies:
-    cookies = httpx.Cookies()
-    for cookie in auth_context.cookies:
-        if cookie.domain:
-            cookies.set(
-                cookie.name,
-                cookie.value.get_secret_value(),
-                domain=cookie.domain,
-                path=cookie.path,
-            )
-        else:
-            cookies.set(
-                cookie.name,
-                cookie.value.get_secret_value(),
-                path=cookie.path,
-            )
-    return cookies
-
-
 def _cookie_header(auth_context: ShopSessionAuthContext) -> str:
     return "; ".join(
         f"{cookie.name}={cookie.value.get_secret_value()}"
         for cookie in auth_context.cookies
     )
-
-
-def _response_cookie_updates(
-    response: httpx.Response,
-) -> tuple[StoredSessionCookie, ...]:
-    updates: list[StoredSessionCookie] = []
-    for cookie in response.cookies.jar:
-        rest = {str(key).lower(): value for key, value in cookie._rest.items()}
-        same_site = rest.get("samesite")
-        updates.append(
-            StoredSessionCookie(
-                name=cookie.name,
-                value=SecretStr(cookie.value),
-                domain=cookie.domain or None,
-                path=cookie.path or "/",
-                secure=cookie.secure,
-                httpOnly="httponly" in rest,
-                sameSite=str(same_site) if same_site is not None else None,
-                expirationDate=float(cookie.expires) if cookie.expires is not None else None,
-            ),
-        )
-    return tuple(updates)

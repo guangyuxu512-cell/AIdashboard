@@ -21,7 +21,10 @@ from app.modules.authentication.api import (
     get_shop_authorized_actor as get_onboarding_shop_authorized_actor,
     router as onboarding_router,
 )
-from app.modules.authentication.schemas import ManagementOnboardingResult
+from app.modules.authentication.schemas import (
+    ManagementOnboardingResult,
+    PddManagementLoginIdentityResult,
+)
 from app.modules.automation_apps.api import (
     get_device_authorized_actor as get_automation_device_authorized_actor,
     get_service as get_automation_service,
@@ -154,6 +157,16 @@ class ManagementOnboardingServiceStub:
             ),
         )
 
+    def verify_pdd_identity(
+        self,
+        command: object,
+    ) -> PddManagementLoginIdentityResult:
+        del command
+        return PddManagementLoginIdentityResult(
+            platform_shop_id="release-p0-pdd-shop",
+            shop_display_name="Release P0 PDD Shop",
+        )
+
 
 def shop_read() -> ShopRead:
     now = datetime.now(UTC)
@@ -250,6 +263,12 @@ MANAGEMENT_OPERATIONS = [
         },
         ModuleCode.SHOP,
     ),
+    (
+        "POST",
+        "/api/v1/shop-onboarding/pdd/identity",
+        {"json": {"session_payload_base64": "eA=="}},
+        ModuleCode.SHOP,
+    ),
 ]
 
 
@@ -288,6 +307,7 @@ def test_management_operations_enforce_their_existing_module_access(
         (*MANAGEMENT_OPERATIONS[3], 200),
         (*MANAGEMENT_OPERATIONS[4], 200),
         (*MANAGEMENT_OPERATIONS[5], 201),
+        (*MANAGEMENT_OPERATIONS[6], 200),
     ],
 )
 def test_authorized_module_users_can_complete_management_operations(
@@ -312,7 +332,7 @@ def test_authorized_module_users_can_complete_management_operations(
         (credentials_router, get_credential_shop_authorized_actor, 4),
         (notifications_router, get_settings_authorized_actor, 4),
         (automation_router, get_automation_device_authorized_actor, 2),
-        (onboarding_router, get_onboarding_shop_authorized_actor, 1),
+        (onboarding_router, get_onboarding_shop_authorized_actor, 2),
     ],
 )
 def test_every_release_p0_management_handler_declares_its_guard(

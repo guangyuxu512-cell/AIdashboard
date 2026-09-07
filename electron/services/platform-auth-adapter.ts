@@ -13,12 +13,14 @@ export interface CapturedManagementSession {
 
 export interface PlatformLoginDetectionResult {
   identity: ManagementLoginIdentity | null
+  readyForCapture: boolean
   message: string
 }
 
 export interface PlatformAuthAdapter {
   readonly platformCode: ManagementLoginPlatform
   readonly loginUrl: string
+  readonly loginWindowTitle: string
   detectLoginStatus(
     session: Session,
     webContentsId: number,
@@ -26,6 +28,6 @@ export interface PlatformAuthAdapter {
   captureSession(
     session: Session,
     webContentsId: number,
-    identity: ManagementLoginIdentity,
+    identity: ManagementLoginIdentity | null,
   ): Promise<CapturedManagementSession>
 }

@@ -59,7 +59,7 @@ const selectedPlatformMeta = computed(() =>
 )
 const loginAvailable = computed(
   () =>
-    selectedPlatform.value === 'douyin' &&
+    (selectedPlatform.value === 'douyin' || selectedPlatform.value === 'pdd') &&
     selectedPlatformMeta.value?.capabilities.shopOnboarding === 'available' &&
     selectedPlatformMeta.value.capabilities.authentication === 'available' &&
     selectedPlatformMeta.value.capabilities.sessionCapture === 'available',
@@ -136,7 +136,10 @@ function validateCredential(): boolean {
 }
 
 async function openLogin(): Promise<void> {
-  if (!loginAvailable.value || selectedPlatform.value !== 'douyin') return
+  if (!loginAvailable.value || !selectedPlatform.value) return
+  if (selectedPlatform.value !== 'douyin' && selectedPlatform.value !== 'pdd') {
+    return
+  }
   if (!window.desktop?.managementLogin) {
     actionError.value = '请在 Electron 中控台中完成管理端登录'
     return
@@ -185,7 +188,6 @@ function stopPolling(): void {
 async function completeOnboarding(): Promise<void> {
   if (
     !loginStatus.value?.attemptId ||
-    !loginStatus.value.identity ||
     !loginStatus.value.sessionCaptured ||
     !window.desktop?.managementLogin
   ) {
@@ -340,12 +342,19 @@ function updateShow(show: boolean): void {
               v-if="loginStatus?.identity"
               :code="loginStatus.identity.platform"
             />
+            <span v-else>{{ selectedPlatformMeta?.label ?? '—' }}</span>
           </NDescriptionsItem>
           <NDescriptionsItem label="平台店铺名称">
-            {{ loginStatus?.identity?.shopDisplayName ?? '—' }}
+            {{
+              loginStatus?.identity?.shopDisplayName ??
+              '将在完成接入时由服务器验证'
+            }}
           </NDescriptionsItem>
           <NDescriptionsItem label="平台店铺 ID">
-            {{ loginStatus?.identity?.platformShopId ?? '—' }}
+            {{
+              loginStatus?.identity?.platformShopId ??
+              '将在完成接入时由服务器验证'
+            }}
           </NDescriptionsItem>
           <NDescriptionsItem label="登录状态">已识别</NDescriptionsItem>
           <NDescriptionsItem label="登录会话">
