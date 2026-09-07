@@ -146,6 +146,12 @@ install -d -m 0750 "$remote_root" "$remote_root/releases" "$release_directory"
 tar -xzf "$archive_path" -C "$release_directory"
 
 for required_path in \
+    .dockerignore \
+    package.json \
+    pnpm-lock.yaml \
+    pnpm-workspace.yaml \
+    electron/package.json \
+    mobile/package.json \
     backend/Dockerfile \
     backend/compose.yaml \
     backend/pyproject.toml \

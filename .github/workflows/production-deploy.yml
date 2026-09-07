@@ -56,7 +56,11 @@ jobs:
         run: |
           archive_path="${RUNNER_TEMP}/control-center-production-${DEPLOY_SHA}.tar.gz"
           tar --exclude-vcs --exclude='node_modules' --exclude='dist' --exclude='.env' --exclude='.env.*' \
-            -czf "${archive_path}" backend frontend deploy/production scripts/remote-deploy-production.sh
+            -czf "${archive_path}" \
+            .dockerignore \
+            package.json pnpm-lock.yaml pnpm-workspace.yaml \
+            electron/package.json mobile/package.json \
+            backend frontend deploy/production scripts/remote-deploy-production.sh
           printf 'RELEASE_ARCHIVE=%s\n' "${archive_path}" >> "${GITHUB_ENV}"
       - name: Upload and deploy release
         env:
