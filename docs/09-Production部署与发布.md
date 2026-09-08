@@ -145,9 +145,16 @@ BACKEND_ASSET_STORAGE_VOLUME_SOURCE=/mnt/control-center-assets
 ```
 
 `BACKEND_ASSET_STORAGE_DIR` 在容器内仍固定为 `/app/data/assets`。Compose 将上述宿主挂载路径绑定到该
-容器路径；发布脚本在 Alembic 前执行 storage 预检。标识缺失、挂载消失或权限不足会使预检失败；即使
-运行期发生该类故障，Asset API 也会返回明确的 `ASSET_STORAGE_UNAVAILABLE`（503），不会自动退回
-本地卷。
+容器路径；发布预检分为两个独立层次，缺一不可：
+
+1. **宿主机挂载检查**：`mounted` 模式要求 `BACKEND_ASSET_STORAGE_VOLUME_SOURCE` 是绝对路径，并由
+   `findmnt` 确认为 CIFS/NFS 网络文件系统。这发生在 Docker build/run 之前；普通 VPS 本地目录即使
+   含有正确标识文件也会被拒绝。
+2. **应用目录检查**：随后一次性 Backend 容器以实际 `app` UID/GID 读取绑定后的
+   `/app/data/assets`，验证标识文件精确字节和读、写、执行权限。
+
+两项检查都在 Alembic 前完成。标识缺失、挂载消失或权限不足会使预检失败；即使运行期发生该类故障，Asset
+API 也会返回明确的 `ASSET_STORAGE_UNAVAILABLE`（503），不会自动退回本地卷。
 
 切换前必须对现有 named volume 和 NAS 目标分别建立文件清单（相对 `storage_key`、大小、SHA-256），
 在停写窗口内复制旧 Asset 到 NAS，并复核数量、大小、散列和代表性历史 Asset 的正式读取。旧 named

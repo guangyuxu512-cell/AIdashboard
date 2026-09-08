@@ -147,8 +147,10 @@ test_certificate="$test_root/fullchain.pem"
 test_certificate_key="$test_root/privkey.pem"
 test_nginx_vhost_dir="$test_root/nginx"
 test_acme_webroot="$test_root/acme-webroot"
+mounted_asset_source="$test_root/mounted-assets"
 touch "$test_certificate" "$test_certificate_key"
-mkdir -p "$test_nginx_vhost_dir" "$test_acme_webroot"
+mkdir -p "$test_nginx_vhost_dir" "$test_acme_webroot" "$mounted_asset_source"
+printf 'control-center-asset-storage-v1\n' > "$mounted_asset_source/.control-center-asset-storage-v1"
 cat > "$remote_root/.env" <<EOF
 BACKEND_DATABASE_URL=postgresql+psycopg://placeholder:placeholder@127.0.0.1:35433/control_center_prod
 BACKEND_ENCRYPTION_KEY=placeholder
@@ -161,6 +163,8 @@ PRODUCTION_TLS_CERTIFICATE_PATH=$test_certificate
 PRODUCTION_TLS_CERTIFICATE_KEY_PATH=$test_certificate_key
 PRODUCTION_NGINX_VHOST_DIR=$test_nginx_vhost_dir
 PRODUCTION_ACME_WEBROOT_DIR=$test_acme_webroot
+BACKEND_ASSET_STORAGE_MODE=mounted
+BACKEND_ASSET_STORAGE_VOLUME_SOURCE=$mounted_asset_source
 EOF
 
 cat > "$fake_bin/tar" <<'EOF'
@@ -189,7 +193,12 @@ if [[ "$*" == *" run --rm backend python -m alembic upgrade head" ]]; then
 fi
 exit 0
 EOF
-chmod 0700 "$fake_bin/docker" "$fake_bin/tar"
+cat > "$fake_bin/findmnt" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "${TEST_FINDMNT_FSTYPE:-cifs}"
+EOF
+chmod 0700 "$fake_bin/docker" "$fake_bin/tar" "$fake_bin/findmnt"
 
 migration_sha="4444444444444444444444444444444444444444"
 migration_release="$remote_root/releases/$migration_sha"
@@ -197,6 +206,7 @@ migration_archive="$test_root/migration.tar.gz"
 touch "$migration_archive"
 : > "$docker_log"
 export TEST_RELEASE_SOURCE="$migration_source"
+export TEST_FINDMNT_FSTYPE=cifs
 
 set +e
 PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$migration_archive" "$migration_sha" > "$test_root/migration.out" 2>&1
@@ -210,5 +220,28 @@ set -e
 [[ -f "$historical_release/marker" ]]
 grep -F -- 'run --rm --no-deps backend python -c' "$docker_log"
 grep -Fqx 'compose --project-name control-center-production --env-file /opt/ecommerce-control-center/production/.env -f /opt/ecommerce-control-center/production/releases/4444444444444444444444444444444444444444/deploy/production/compose.yaml run --rm backend python -m alembic upgrade head' "$docker_log"
+
+local_asset_source="$test_root/local-assets"
+mkdir -p "$local_asset_source"
+printf 'control-center-asset-storage-v1\n' > "$local_asset_source/.control-center-asset-storage-v1"
+sed -i "s|^BACKEND_ASSET_STORAGE_VOLUME_SOURCE=.*|BACKEND_ASSET_STORAGE_VOLUME_SOURCE=$local_asset_source|" "$remote_root/.env"
+export TEST_FINDMNT_FSTYPE=ext4
+
+local_source_sha="5555555555555555555555555555555555555555"
+local_source_release="$remote_root/releases/$local_source_sha"
+local_source_archive="$test_root/local-source.tar.gz"
+touch "$local_source_archive"
+: > "$docker_log"
+
+set +e
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$local_source_archive" "$local_source_sha" > "$test_root/local-source.out" 2>&1
+local_source_status=$?
+set -e
+
+[[ "$local_source_status" -ne 0 ]]
+[[ ! -e "$local_source_release" ]]
+grep -Fqx 'Mounted asset storage host source is not a supported network mount' "$test_root/local-source.out"
+! grep -F ' build ' "$docker_log"
+! grep -F ' run --rm' "$docker_log"
 
 echo 'Production release cleanup ownership regression passed'
