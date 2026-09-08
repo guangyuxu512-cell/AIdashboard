@@ -29,7 +29,10 @@ nginx_backup=""
 
 restore_previous_release() {
     if [[ -z "$environment_file" || -z "$previous_release" || ! -d "$previous_release" ]]; then
-        return
+        # This function is called from the EXIT trap after a failed deployment.
+        # Do not let a bare return reuse that failure status and short-circuit the
+        # remaining cleanup for the release created by this attempt.
+        return 0
     fi
     local previous_sha
     previous_sha="$(basename "$previous_release")"

@@ -39,7 +39,15 @@ cat > "$fake_bin/tar" <<'EOF'
 #!/usr/bin/env bash
 exit 99
 EOF
-chmod 0700 "$fake_bin/docker" "$fake_bin/tar"
+cat > "$fake_bin/nginx" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$fake_bin/envsubst" <<'EOF'
+#!/usr/bin/env bash
+cat
+EOF
+chmod 0700 "$fake_bin/docker" "$fake_bin/tar" "$fake_bin/nginx" "$fake_bin/envsubst"
 export TEST_DOCKER_LOG="$docker_log"
 
 historical_sha="1111111111111111111111111111111111111111"
@@ -83,5 +91,101 @@ set -e
 [[ -f "$historical_release/marker" ]]
 [[ "$(readlink -f "$remote_root/current")" == "$historical_release" ]]
 [[ ! -s "$docker_log" ]]
+
+rm -- "$remote_root/current"
+
+migration_source="$test_root/migration-source"
+mkdir -p \
+    "$migration_source/electron" \
+    "$migration_source/mobile" \
+    "$migration_source/backend/app" \
+    "$migration_source/backend/migrations" \
+    "$migration_source/backend/douyin-signer" \
+    "$migration_source/frontend/deploy" \
+    "$migration_source/deploy/production" \
+    "$migration_source/scripts"
+touch \
+    "$migration_source/.dockerignore" \
+    "$migration_source/package.json" \
+    "$migration_source/pnpm-lock.yaml" \
+    "$migration_source/pnpm-workspace.yaml" \
+    "$migration_source/electron/package.json" \
+    "$migration_source/mobile/package.json" \
+    "$migration_source/backend/Dockerfile" \
+    "$migration_source/backend/compose.yaml" \
+    "$migration_source/backend/pyproject.toml" \
+    "$migration_source/backend/alembic.ini" \
+    "$migration_source/frontend/Dockerfile" \
+    "$migration_source/frontend/deploy/default.conf.template" \
+    "$migration_source/deploy/production/compose.yaml" \
+    "$migration_source/deploy/production/host-nginx.conf.template"
+cp "$repository_root/scripts/production-env.sh" "$migration_source/scripts/production-env.sh"
+
+test_certificate="$test_root/fullchain.pem"
+test_certificate_key="$test_root/privkey.pem"
+test_nginx_vhost_dir="$test_root/nginx"
+test_acme_webroot="$test_root/acme-webroot"
+touch "$test_certificate" "$test_certificate_key"
+mkdir -p "$test_nginx_vhost_dir" "$test_acme_webroot"
+cat > "$remote_root/.env" <<EOF
+BACKEND_DATABASE_URL=postgresql+psycopg://placeholder:placeholder@127.0.0.1:35433/control_center_prod
+BACKEND_ENCRYPTION_KEY=placeholder
+BACKEND_HUMAN_SESSION_COOKIE_SECURE=true
+BACKEND_DOUYIN_SIGNER_API_KEY=placeholder
+BACKEND_DOUYIN_SIGNER_URL=http://127.0.0.1:8788
+BACKEND_TOAPIS_API_KEY=placeholder
+PRODUCTION_DOMAIN=203.0.113.1
+PRODUCTION_TLS_CERTIFICATE_PATH=$test_certificate
+PRODUCTION_TLS_CERTIFICATE_KEY_PATH=$test_certificate_key
+PRODUCTION_NGINX_VHOST_DIR=$test_nginx_vhost_dir
+PRODUCTION_ACME_WEBROOT_DIR=$test_acme_webroot
+EOF
+
+cat > "$fake_bin/tar" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+destination=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -C)
+            destination="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+cp -a "$TEST_RELEASE_SOURCE/." "$destination/"
+EOF
+cat > "$fake_bin/docker" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$TEST_DOCKER_LOG"
+if [[ "$*" == *" run --rm backend python -m alembic upgrade head" ]]; then
+    exit 61
+fi
+exit 0
+EOF
+chmod 0700 "$fake_bin/docker" "$fake_bin/tar"
+
+migration_sha="4444444444444444444444444444444444444444"
+migration_release="$remote_root/releases/$migration_sha"
+migration_archive="$test_root/migration.tar.gz"
+touch "$migration_archive"
+: > "$docker_log"
+export TEST_RELEASE_SOURCE="$migration_source"
+
+set +e
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$migration_archive" "$migration_sha" > "$test_root/migration.out" 2>&1
+migration_status=$?
+set -e
+
+[[ "$migration_status" -eq 61 ]]
+[[ ! -e "$migration_release" ]]
+[[ ! -e "$remote_root/current" ]]
+[[ -d "$historical_release" ]]
+[[ -f "$historical_release/marker" ]]
+grep -Fqx 'compose --project-name control-center-production --env-file /opt/ecommerce-control-center/production/.env -f /opt/ecommerce-control-center/production/releases/4444444444444444444444444444444444444444/deploy/production/compose.yaml run --rm backend python -m alembic upgrade head' "$docker_log"
 
 echo 'Production release cleanup ownership regression passed'
