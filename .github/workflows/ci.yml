@@ -80,6 +80,31 @@ jobs:
             'node --version && test -f /app/app/platforms/pdd/vendor/anti_content.js && python -c "from app.platforms.pdd.signer import PddAntiContentSigner; PddAntiContentSigner().generate()"'
       - name: Build production frontend image
         run: docker build --tag control-center-frontend-ci:${{ github.sha }} --file frontend/Dockerfile .
+      - name: Verify production frontend starts with a read-only root filesystem
+        run: |
+          container_name="control-center-frontend-ci-${{ github.run_id }}"
+          cleanup() {
+            docker rm --force "${container_name}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach --name "${container_name}" --network host --read-only \
+            --tmpfs /etc/nginx/conf.d:size=1m,mode=0755 \
+            --tmpfs /var/cache/nginx:size=16m,mode=1777 \
+            --tmpfs /var/run:size=1m,mode=1777 \
+            --tmpfs /tmp:size=16m,mode=1777 \
+            --env FRONTEND_BIND_HOST=127.0.0.1 \
+            --env FRONTEND_BIND_PORT=18080 \
+            --env BACKEND_BIND_PORT=18001 \
+            --env 'NGINX_ENVSUBST_FILTER=^(FRONTEND_BIND_HOST|FRONTEND_BIND_PORT|BACKEND_BIND_PORT)$' \
+            control-center-frontend-ci:${{ github.sha }} >/dev/null
+          for _ in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18080/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "${container_name}" >&2
+          exit 1
       - name: Validate packaged release frontend build context
         run: |
           archive_path="${RUNNER_TEMP}/control-center-release-context.tar.gz"
