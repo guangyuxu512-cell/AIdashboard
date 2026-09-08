@@ -148,8 +148,9 @@ BACKEND_ASSET_STORAGE_VOLUME_SOURCE=/mnt/control-center-assets
 容器路径；发布预检分为两个独立层次，缺一不可：
 
 1. **宿主机挂载检查**：`mounted` 模式要求 `BACKEND_ASSET_STORAGE_VOLUME_SOURCE` 是绝对路径，并由
-   `findmnt` 确认为 CIFS/NFS 网络文件系统。这发生在 Docker build/run 之前；普通 VPS 本地目录即使
-   含有正确标识文件也会被拒绝。
+   `findmnt` 返回至少一个真实的 `cifs`、`nfs` 或 `nfs4` 文件系统条目。这发生在 Docker build/run
+   之前；普通 VPS 本地目录即使含有正确标识文件也会被拒绝。systemd automount 可能同时返回 `autofs`
+   占位项和已触发的 CIFS/NFS 项；仅存在 `autofs` 不能通过预检。
 2. **应用目录检查**：随后一次性 Backend 容器以实际 `app` UID/GID 读取绑定后的
    `/app/data/assets`，验证标识文件精确字节和读、写、执行权限。
 
