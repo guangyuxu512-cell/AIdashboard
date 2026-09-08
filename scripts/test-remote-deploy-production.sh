@@ -75,6 +75,28 @@ grep -Fqx 'Production release already exists for this commit' "$test_root/existi
 [[ "$(readlink -f "$remote_root/current")" == "$historical_release" ]]
 [[ ! -s "$docker_log" ]]
 
+active_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+active_release="$remote_root/releases/$active_sha"
+mkdir -p "$active_release"
+printf 'active release marker\n' > "$active_release/marker"
+active_archive="$test_root/active.tar.gz"
+touch "$active_archive"
+ln -sfn "$active_release" "$remote_root/current"
+
+set +e
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$active_archive" "$active_sha" > "$test_root/active.out" 2>&1
+active_status=$?
+set -e
+
+[[ "$active_status" -eq 0 ]]
+grep -Fqx 'Production release is already active for this commit; skipping' "$test_root/active.out"
+[[ -d "$active_release" ]]
+[[ -f "$active_release/marker" ]]
+[[ ! -e "$active_archive" ]]
+[[ "$(readlink -f "$remote_root/current")" == "$active_release" ]]
+[[ ! -s "$docker_log" ]]
+ln -sfn "$historical_release" "$remote_root/current"
+
 new_sha="3333333333333333333333333333333333333333"
 new_release="$remote_root/releases/$new_sha"
 new_archive="$test_root/new.tar.gz"
