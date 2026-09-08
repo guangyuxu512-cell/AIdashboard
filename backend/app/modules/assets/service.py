@@ -229,8 +229,17 @@ class AssetService:
         if self.repository.is_referenced(asset_id):
             self.session.rollback()
             raise AssetInUseError()
-        self.repository.delete(asset)
-        self.session.commit()
+        try:
+            self.storage.verify_ready()
+        except Exception:
+            self.session.rollback()
+            raise
+        try:
+            self.repository.delete(asset)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
         self.storage.delete(asset.storage_key)
 
 

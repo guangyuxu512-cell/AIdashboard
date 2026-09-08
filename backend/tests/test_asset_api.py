@@ -334,3 +334,33 @@ def test_mounted_storage_unavailable_is_explicit_and_does_not_leak_path(
     assert response.status_code == 503
     assert response.json()["code"] == "ASSET_STORAGE_UNAVAILABLE"
     assert str(tmp_path) not in response.text
+
+
+def test_delete_mounted_storage_unavailable_keeps_asset_and_file(
+    tmp_path: Path,
+) -> None:
+    class UnavailableDeleteService(ApiAssetService):
+        def delete(self, actor: ActorContext, asset_id: UUID) -> None:
+            asset = self.assets.get(asset_id)
+            if asset is None or (
+                actor.data_scope is not DataScope.ALL and asset.team_id != actor.team_id
+            ):
+                raise AssetNotFoundError()
+            raise AssetStorageUnavailableError()
+
+    service = UnavailableDeleteService(tmp_path)
+    upload = request(
+        service,
+        "POST",
+        "/api/v1/assets",
+        files={"file": ("mounted.png", b"\x89PNG\r\n\x1a\nfixture", "image/png")},
+    )
+    asset_id = UUID(upload.json()["asset_id"])
+    asset = service.assets[asset_id]
+
+    response = request(service, "DELETE", f"/api/v1/assets/{asset_id}")
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "ASSET_STORAGE_UNAVAILABLE"
+    assert asset_id in service.assets
+    assert (tmp_path / asset.storage_key).read_bytes() == b"\x89PNG\r\n\x1a\nfixture"

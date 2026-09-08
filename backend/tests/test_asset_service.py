@@ -13,12 +13,18 @@ from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import (
     AssetInUseError,
     AssetStorageError,
+    AssetStorageUnavailableError,
     AssetTooLargeError,
     AssetTypeUnsupportedError,
 )
 from app.modules.assets.models import Asset
 from app.modules.assets.service import AssetService
-from app.modules.assets.storage import LocalAssetStorage
+from app.modules.assets.storage import (
+    MOUNTED_STORAGE_MARKER_CONTENT,
+    MOUNTED_STORAGE_MARKER_NAME,
+    LocalAssetStorage,
+    MountedAssetStorage,
+)
 from tests.support import FakeSession
 
 
@@ -456,8 +462,74 @@ def test_delete_is_blocked_when_any_task_references_asset(tmp_path: Path) -> Non
     assert session.rollbacks == 1
 
 
+def test_delete_unavailable_mounted_storage_keeps_asset_and_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "mounted-assets"
+    root.mkdir()
+    marker = root / MOUNTED_STORAGE_MARKER_NAME
+    marker.write_bytes(MOUNTED_STORAGE_MARKER_CONTENT)
+    repository = FakeAssetRepository()
+    session = FakeSession()
+    storage = MountedAssetStorage(root, 1024)
+    service = AssetService(
+        session,  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        storage,
+        Settings(asset_storage_dir=tmp_path / "unused"),
+    )
+    payload = b"\xff\xd8\xffunavailable"
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="unavailable.jpg",
+        content_type="image/jpeg",
+        stream=BytesIO(payload),
+    )
+    marker.unlink()
+
+    with pytest.raises(AssetStorageUnavailableError):
+        service.delete(ACTOR, asset.asset_id)
+
+    assert repository.get(asset.asset_id) is asset
+    assert (root / asset.storage_key).read_bytes() == payload
+    assert session.commits == 1
+    assert session.rollbacks == 1
+
+
+def test_delete_storage_failure_is_reported_after_database_commit(
+    tmp_path: Path,
+) -> None:
+    class FailingDeleteStorage(LocalAssetStorage):
+        def delete(self, storage_key: str) -> None:
+            del storage_key
+            raise AssetStorageError()
+
+    repository = FakeAssetRepository()
+    session = FakeSession()
+    storage = FailingDeleteStorage(tmp_path / "assets", 1024)
+    service = AssetService(
+        session,  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        storage,
+        Settings(asset_storage_dir=tmp_path / "unused"),
+    )
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="delete-failure.jpg",
+        content_type="image/jpeg",
+        stream=BytesIO(b"\xff\xd8\xffdelete-failure"),
+    )
+
+    with pytest.raises(AssetStorageError):
+        service.delete(ACTOR, asset.asset_id)
+
+    assert repository.get(asset.asset_id) is None
+    assert storage.exists(asset.storage_key)
+    assert session.commits == 2
+
+
 def test_delete_unreferenced_asset_removes_row_and_file(tmp_path: Path) -> None:
-    service, repository, _ = make_service(tmp_path)
+    service, repository, session = make_service(tmp_path)
     asset = service.upload(
         actor=ACTOR,
         original_filename="unused.jpg",
@@ -470,3 +542,4 @@ def test_delete_unreferenced_asset_removes_row_and_file(tmp_path: Path) -> None:
 
     assert repository.get(asset.asset_id) is None
     assert not service.storage.exists(storage_key)
+    assert session.commits == 2

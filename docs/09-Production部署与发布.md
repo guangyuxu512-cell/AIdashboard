@@ -105,9 +105,9 @@ python -m app.cli.human_auth bootstrap --display-name <display-name> --login-nam
 
 主线发布前由 Production 运维完成以下准备，不能把 SMB/NFS 文件共享端口公开到互联网：
 
-1. 在 NAS 创建独立的中控台 Asset 共享文件夹及仅供 VPS 使用的服务账号；不复用、修改或清理其他共享目录。当前 Gate 1 已创建的共享名为 `control_center_assets`，路径为 `/volume1/control_center_assets`，SMB 浏览隐藏且 ACL 仅向 `@administrators` 授予 RW；生产接通时应新增非管理员服务账号 `control_center_vps_assets`，仅对该共享授予 RW。
-2. 仅经已经验证的私有网络，使 VPS 以 SMB3/CIFS 挂载该共享目录到固定宿主路径 `/mnt/control-center-assets`。凭据放在 VPS 的 root-only credentials 文件，不进入仓库、Compose、shell history 或日志。Gate 1 实测当前 VPS 与 NAS 没有可用的 SMB/NFS 私网链路；不得将 445 或 2049 暴露到公网。Main 应先建立受控的 host-to-host WireGuard-compatible overlay（优先采用已批准的 Tailscale/WireGuard 方案），再从 VPS 到 NAS overlay 地址验证 TCP 445。
-3. 以实际 Backend image 的 `app` UID/GID 配置挂载权限，确认该身份对挂载点有读、写、执行权限。不要以 root 成功的检查替代容器身份检查。
+1. NAS 已创建独立的中控台 Asset 共享文件夹，VPS 使用专用非管理员服务账号；不复用、修改或清理其他共享目录。当前共享名为 `control_center_assets`，路径为 `/volume1/control_center_assets`，SMB 浏览隐藏；服务账号只取得该共享所需的 RW 权限。
+2. VPS 与 NAS 已通过私有 Overlay 网络连通，并以 SMB3/CIFS 将该共享挂载到固定宿主路径 `/mnt/control-center-assets`。CIFS 凭据位于 VPS root-only credentials 文件，不进入仓库、Compose、shell history 或日志；445 或 2049 没有公开到互联网。
+3. 已以实际 Backend image 的 `app` UID/GID 配置并验证挂载权限，确认该身份对挂载点有读、写、执行权限。不要以 root 成功的检查替代容器身份检查。
 4. 在挂载根目录创建唯一标识文件；文件内容为 `control-center-asset-storage-v1` 后紧跟一个 LF（`0x0A`）：
 
    ```text
@@ -118,7 +118,7 @@ python -m app.cli.human_auth bootstrap --display-name <display-name> --login-nam
    先用独立测试目录验证写入、读取、SHA-256 内容校验与删除；不得用已有业务图片作探针。
 5. 复核 `findmnt -T /mnt/control-center-assets`（或等价命令）确认它是真实网络挂载，而不是 VPS 本地空目录，并以容器的 `app` 身份执行一次存储预检。
 
-在已通过私网连通验证的 Debian/Ubuntu VPS 上，Main 按如下顺序准备挂载；`<nas-overlay-ip>`、服务账号密码和 credentials 文件内容只存在 VPS，不写入本仓库：
+如需在新的 Debian/Ubuntu VPS 重建该挂载，Main 按如下顺序准备；`<nas-overlay-ip>`、服务账号密码和 credentials 文件内容只存在 VPS，不写入本仓库：
 
 ```sh
 sudo apt-get install -y cifs-utils
@@ -135,7 +135,7 @@ sudo chmod 0600 /etc/samba/credentials/control-center-assets
 //<nas-overlay-ip>/control_center_assets /mnt/control-center-assets cifs credentials=/etc/samba/credentials/control-center-assets,vers=3.1.1,seal,uid=999,gid=999,file_mode=0660,dir_mode=0770,rw,nosuid,nodev,noexec,_netdev,x-systemd.automount 0 0
 ```
 
-随后执行 `sudo systemctl daemon-reload`、`sudo mount /mnt/control-center-assets`，再次检查 `findmnt -T`、标识文件和以 UID/GID `999:999` 的写读删。挂载、ACL、CIFS 客户端或端口验证任一失败时，保持 `local` 模式，不设置 NAS 环境变量。
+已完成隔离 Candidate 容器的标识、读写、SHA-256、容器重建后读取，以及持久 fstab 卸载/重新挂载后的再次读取验证。实际 VPS 重启后的 automount 验证尚未覆盖；在该验证与 Release Gate 前，生产保持 `local` 模式，不设置 NAS 环境变量。
 
 满足前置条件后，VPS root-only `.env` 增加以下非秘密部署配置，再发布包含该配置的精确 main SHA：
 
