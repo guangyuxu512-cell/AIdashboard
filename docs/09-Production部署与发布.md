@@ -10,10 +10,15 @@
 Feature Gate 1
 → Integration Gate 2 / Green dev
 → Release Gate / main
-→ GitHub Actions 手动 Production Deploy
+→ GitHub Actions Production Deploy
 ```
 
-本轮的 `Production Deploy` 工作流只接受明确等于当前 `origin/main` 的完整 40 位提交 SHA。首次生产验收前，不启用 main push 自动部署；启用自动部署必须走新的 Feature、Gate 1、Gate 2 和 Release Gate。
+`Production Deploy` 同时提供手动和自动入口，二者共享同一个并发组与远程部署链路：
+
+- 手动入口 `workflow_dispatch` 保留，仍只接受明确等于当前 `origin/main` 的完整 40 位小写 SHA。
+- 自动入口只监听本仓库 `main` 的 `CI` 工作流完成事件；只有该事件是 `push`、分支是 `main`、且 CI 结论为 `success` 时才进入部署 Job。`dev`、Feature、Pull Request、失败和取消的 CI 都不会触发生产部署。
+- 自动入口以 `workflow_run.head_sha` 作为唯一候选，部署前重新读取 `origin/main`。若该 SHA 在排队期间已不是当前 `origin/main`，工作流以“已跳过过期的 CI 候选”成功结束；绝不能改为部署较新的、尚未由这次 CI 验证的 HEAD。
+- 若服务器 `current` 已指向同一 SHA 的 release，自动与手动入口都会明确跳过，不上传、不删除既有 release，也不重复执行 Migration 或首次管理员初始化。已存在但并非 `current` 的同 SHA release 继续被保护并拒绝覆盖，必须以新的 main SHA 发布。
 
 ## 拓扑与隔离
 
@@ -100,9 +105,9 @@ CI：`.github/workflows/ci.yml`
 - Production Backend Docker build，并在容器内验证 Node、PDD `anti_content.js` 与签名调用；
 - Production Frontend Docker build 与 Compose 契约校验。
 
-手动部署：`.github/workflows/production-deploy.yml`
+生产部署：`.github/workflows/production-deploy.yml`
 
-仅 `workflow_dispatch`，需要输入当前已发布的 main SHA。它使用以下 GitHub Actions Secrets（只记录名称）：
+手动 `workflow_dispatch` 需要输入当前已发布的 main SHA；自动入口仅接收本仓库 `main` 的成功 `CI` push 事件。两种入口都使用以下 GitHub Actions Secrets（只记录名称）：
 
 - `PRODUCTION_DEPLOY_HOST`
 - `PRODUCTION_DEPLOY_USER`
@@ -111,7 +116,9 @@ CI：`.github/workflows/ci.yml`
 
 Workflow 使用部署专用 SSH key 上传 source archive，远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/Frontend health，并在健康后原子切换 Nginx vhost。容器启动后，Backend 与 Frontend HTTP 就绪检查最多等待 45 秒，避免将正常的异步启动误判为失败。远程 archive 和脚本名以 GitHub run ID / attempt 隔离，避免相同 SHA 的不同尝试覆盖或清理彼此的临时材料。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
 
-远程脚本拒绝已存在的同 SHA release，并保留该目录、历史 release 与 `current` 指向的目录。失败清理只能移除本次创建且尚未成为 `current` 的 release；不得以重试为由删除已存在目录。遇到已存在 release 时，先保留现场并通过新的 Feature / Gate / main 发布修复后，再以新的 main SHA 重新部署。
+自动入口的 SHA 判定在 `scripts/resolve-production-deploy-target.sh` 中执行，并有独立回归覆盖当前主线、过期 CI 候选与手动过期 SHA。此 helper 只决定是否部署，不读取生产凭据，也不连接生产服务器。
+
+远程脚本会把 `current` 已指向的同 SHA release 视为已成功上线并无副作用跳过；除此之外仍拒绝已存在的同 SHA release，并保留该目录、历史 release 与 `current` 指向的目录。失败清理只能移除本次创建且尚未成为 `current` 的 release；不得以重试为由删除已存在目录。遇到已存在而未激活的 release 时，先保留现场并通过新的 Feature / Gate / main 发布修复后，再以新的 main SHA 重新部署。
 
 `Production Provision Public-IP TLS` 使用同一套 SSH Secrets，但只负责公共 IP 证书、Nginx ACME challenge vhost 与续期 timer；它不创建数据库、不启动应用容器，也不替代 `Production Deploy`。
 

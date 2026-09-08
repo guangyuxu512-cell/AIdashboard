@@ -65,6 +65,7 @@ jobs:
       - name: Validate remote production deployment script syntax
         run: |
           bash -n scripts/production-env.sh
+          bash -n scripts/resolve-production-deploy-target.sh
           bash -n scripts/remote-deploy-production.sh
           bash -n scripts/remote-provision-production-ip-tls.sh
           bash -n deploy/production/acme-auth-hook.sh
@@ -72,6 +73,10 @@ jobs:
           bash -n deploy/production/renew-production-ip-certificate.sh
       - name: Test production release cleanup ownership
         run: bash scripts/test-remote-deploy-production.sh
+      - name: Test production deployment target resolution
+        run: bash scripts/test-resolve-production-deploy-target.sh
+      - name: Test production deployment workflow trigger contract
+        run: bash scripts/test-production-deploy-workflow.sh
       - name: Build production backend image
         run: docker build --tag control-center-backend-ci:${{ github.sha }} backend
       - name: Verify PDD Node runtime and verified source
