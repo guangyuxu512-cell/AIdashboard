@@ -185,10 +185,21 @@ wait_for_health() {
     return 1
 }
 
+wait_for_http() {
+    local url="$1"
+    for _ in $(seq 1 45); do
+        if curl --fail --silent --show-error "$url" >/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 wait_for_health control-center-douyin-signer-prod
 wait_for_health control-center-backend-prod
-curl --fail --silent --show-error "http://127.0.0.1:${BACKEND_BIND_PORT:-18001}/health" >/dev/null
-curl --fail --silent --show-error "http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}/" >/dev/null
+wait_for_http "http://127.0.0.1:${BACKEND_BIND_PORT:-18001}/health"
+wait_for_http "http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}/"
 
 rendered_nginx="$release_directory/.control-center-production.conf"
 envsubst '$PRODUCTION_DOMAIN $PRODUCTION_TLS_CERTIFICATE_PATH $PRODUCTION_TLS_CERTIFICATE_KEY_PATH $PRODUCTION_ACME_WEBROOT_DIR $FRONTEND_BIND_PORT' \
