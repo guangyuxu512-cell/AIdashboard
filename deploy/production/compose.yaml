@@ -73,7 +73,7 @@ services:
       FRONTEND_BIND_HOST: ${FRONTEND_BIND_HOST:-127.0.0.1}
       FRONTEND_BIND_PORT: ${FRONTEND_BIND_PORT:-18080}
       BACKEND_BIND_PORT: ${BACKEND_BIND_PORT:-18001}
-      NGINX_ENVSUBST_FILTER: FRONTEND_BIND_HOST FRONTEND_BIND_PORT BACKEND_BIND_PORT
+      NGINX_ENVSUBST_FILTER: '^(FRONTEND_BIND_HOST|FRONTEND_BIND_PORT|BACKEND_BIND_PORT)$'
     depends_on:
       backend:
         condition: service_healthy
@@ -82,6 +82,7 @@ services:
     init: true
     read_only: true
     tmpfs:
+      - /etc/nginx/conf.d:size=1m,mode=0755
       - /var/cache/nginx:size=16m,mode=1777
       - /var/run:size=1m,mode=1777
       - /tmp:size=16m,mode=1777
