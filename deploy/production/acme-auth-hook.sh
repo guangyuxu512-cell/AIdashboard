@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 : "${ACME_WEBROOT:?ACME_WEBROOT is required}"
 : "${CERTBOT_TOKEN:?CERTBOT_TOKEN is required}"
