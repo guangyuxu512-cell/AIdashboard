@@ -80,6 +80,6 @@ jobs:
         env:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
         run: |
-          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+          status="$(curl --silent --show-error --head --output /dev/null --write-out '%{http_code}' \
             --retry 3 --retry-connrefused --connect-timeout 15 "https://${PRODUCTION_DEPLOY_HOST}/")"
           test "${status}" = "503"
