@@ -36,12 +36,13 @@ services:
     environment:
       UVICORN_HOST: ${BACKEND_BIND_HOST:-127.0.0.1}
       UVICORN_PORT: ${BACKEND_BIND_PORT:-18000}
+      BACKEND_ASSET_STORAGE_MODE: ${BACKEND_ASSET_STORAGE_MODE:-local}
       BACKEND_ASSET_STORAGE_DIR: /app/data/assets
     depends_on:
       douyin-signer:
         condition: service_healthy
     volumes:
-      - backend-assets:/app/data/assets
+      - "${BACKEND_ASSET_STORAGE_VOLUME_SOURCE:-backend-assets}:/app/data/assets"
     network_mode: host
     restart: unless-stopped
     init: true
