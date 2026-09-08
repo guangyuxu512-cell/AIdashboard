@@ -189,16 +189,17 @@ verify_mounted_asset_storage_host_mount() {
     fi
 
     local filesystem_type
-    filesystem_type="$(findmnt --noheadings --output FSTYPE --target "$BACKEND_ASSET_STORAGE_VOLUME_SOURCE")"
-    case "$filesystem_type" in
-        cifs|nfs|nfs4)
-            return 0
-            ;;
-        *)
-            echo "Mounted asset storage host source is not a supported network mount" >&2
-            return 1
-            ;;
-    esac
+    while IFS= read -r filesystem_type; do
+        filesystem_type="${filesystem_type//[[:space:]]/}"
+        case "$filesystem_type" in
+            cifs|nfs|nfs4)
+                return 0
+                ;;
+        esac
+    done < <(findmnt --noheadings --output FSTYPE --target "$BACKEND_ASSET_STORAGE_VOLUME_SOURCE")
+
+    echo "Mounted asset storage host source is not a supported network mount" >&2
+    return 1
 }
 
 verify_mounted_asset_storage_host_mount
