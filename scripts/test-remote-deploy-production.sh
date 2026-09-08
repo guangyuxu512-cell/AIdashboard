@@ -56,7 +56,7 @@ existing_archive="$test_root/existing.tar.gz"
 touch "$existing_archive"
 
 set +e
-PATH="$fake_bin:$PATH" "$deployment_script" "$remote_root" "$existing_archive" "$existing_sha" > "$test_root/existing.out" 2>&1
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$existing_archive" "$existing_sha" > "$test_root/existing.out" 2>&1
 existing_status=$?
 set -e
 
@@ -73,7 +73,7 @@ new_archive="$test_root/new.tar.gz"
 touch "$new_archive"
 
 set +e
-PATH="$fake_bin:$PATH" "$deployment_script" "$remote_root" "$new_archive" "$new_sha" > "$test_root/new.out" 2>&1
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$new_archive" "$new_sha" > "$test_root/new.out" 2>&1
 new_status=$?
 set -e
 
