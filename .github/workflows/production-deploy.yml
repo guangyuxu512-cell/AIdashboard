@@ -68,11 +68,12 @@ jobs:
       - name: Upload and deploy release
         env:
           DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          DEPLOYMENT_ATTEMPT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
         run: |
-          remote_archive="/tmp/control-center-production-${DEPLOY_SHA}.tar.gz"
-          remote_script="/tmp/control-center-production-deploy-${DEPLOY_SHA}.sh"
+          remote_archive="/tmp/control-center-production-${DEPLOY_SHA}-${DEPLOYMENT_ATTEMPT_ID}.tar.gz"
+          remote_script="/tmp/control-center-production-deploy-${DEPLOY_SHA}-${DEPLOYMENT_ATTEMPT_ID}.sh"
           remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
           ssh -o StrictHostKeyChecking=yes "${remote_target}" "install -d -m 0750 /opt/ecommerce-control-center/production"
           scp -o StrictHostKeyChecking=yes "${RELEASE_ARCHIVE}" "${remote_target}:${remote_archive}"

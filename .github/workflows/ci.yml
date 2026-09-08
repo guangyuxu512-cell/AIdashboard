@@ -70,6 +70,8 @@ jobs:
           bash -n deploy/production/acme-auth-hook.sh
           bash -n deploy/production/acme-cleanup-hook.sh
           bash -n deploy/production/renew-production-ip-certificate.sh
+      - name: Test production release cleanup ownership
+        run: bash scripts/test-remote-deploy-production.sh
       - name: Build production backend image
         run: docker build --tag control-center-backend-ci:${{ github.sha }} backend
       - name: Verify PDD Node runtime and verified source

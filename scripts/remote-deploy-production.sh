@@ -21,6 +21,8 @@ fi
 release_directory="$remote_root/releases/$release_sha"
 previous_release=""
 deployment_succeeded=false
+release_directory_created=false
+deployment_runtime_changed=false
 environment_file=""
 nginx_target=""
 nginx_backup=""
@@ -39,11 +41,21 @@ restore_previous_release() {
     ln -sfn "$previous_release" "$remote_root/current"
 }
 
+release_directory_is_current() {
+    local active_release
+    active_release="$(readlink -f "$remote_root/current" 2>/dev/null || true)"
+    [[ "$active_release" == "$release_directory" ]]
+}
+
 cleanup() {
     rm -f -- "$archive_path"
     if [[ "$deployment_succeeded" != "true" ]]; then
-        restore_previous_release
-        rm -rf -- "$release_directory"
+        if [[ "$deployment_runtime_changed" == "true" ]]; then
+            restore_previous_release
+        fi
+        if [[ "$release_directory_created" == "true" ]] && ! release_directory_is_current; then
+            rm -rf -- "$release_directory"
+        fi
     fi
 }
 trap cleanup EXIT
@@ -57,6 +69,7 @@ if [[ -e "$release_directory" ]]; then
 fi
 
 install -d -m 0750 "$remote_root" "$remote_root/releases" "$release_directory"
+release_directory_created=true
 tar -xzf "$archive_path" -C "$release_directory"
 
 for required_path in \
@@ -149,6 +162,7 @@ export PRODUCTION_ENV_FILE="$environment_file"
 compose=(docker compose --project-name control-center-production --env-file "$environment_file" -f "$release_directory/deploy/production/compose.yaml")
 "${compose[@]}" config -q
 "${compose[@]}" build douyin-signer backend frontend
+deployment_runtime_changed=true
 "${compose[@]}" run --rm backend python -m alembic upgrade head
 
 ln -sfn "$release_directory" "$remote_root/current"
