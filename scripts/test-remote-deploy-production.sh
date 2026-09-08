@@ -196,7 +196,7 @@ EOF
 cat > "$fake_bin/findmnt" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "${TEST_FINDMNT_FSTYPE:-cifs}"
+printf '%s\n' "${TEST_FINDMNT_FSTYPES:-cifs}"
 EOF
 chmod 0700 "$fake_bin/docker" "$fake_bin/tar" "$fake_bin/findmnt"
 
@@ -206,7 +206,7 @@ migration_archive="$test_root/migration.tar.gz"
 touch "$migration_archive"
 : > "$docker_log"
 export TEST_RELEASE_SOURCE="$migration_source"
-export TEST_FINDMNT_FSTYPE=cifs
+export TEST_FINDMNT_FSTYPES=$'autofs\ncifs'
 
 set +e
 PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$migration_archive" "$migration_sha" > "$test_root/migration.out" 2>&1
@@ -225,7 +225,7 @@ local_asset_source="$test_root/local-assets"
 mkdir -p "$local_asset_source"
 printf 'control-center-asset-storage-v1\n' > "$local_asset_source/.control-center-asset-storage-v1"
 sed -i "s|^BACKEND_ASSET_STORAGE_VOLUME_SOURCE=.*|BACKEND_ASSET_STORAGE_VOLUME_SOURCE=$local_asset_source|" "$remote_root/.env"
-export TEST_FINDMNT_FSTYPE=ext4
+export TEST_FINDMNT_FSTYPES=ext4
 
 local_source_sha="5555555555555555555555555555555555555555"
 local_source_release="$remote_root/releases/$local_source_sha"
@@ -243,5 +243,43 @@ set -e
 grep -Fqx 'Mounted asset storage host source is not a supported network mount' "$test_root/local-source.out"
 ! grep -F ' build ' "$docker_log"
 ! grep -F ' run --rm' "$docker_log"
+
+sed -i "s|^BACKEND_ASSET_STORAGE_VOLUME_SOURCE=.*|BACKEND_ASSET_STORAGE_VOLUME_SOURCE=$mounted_asset_source|" "$remote_root/.env"
+export TEST_FINDMNT_FSTYPES=autofs
+
+bare_autofs_sha="6666666666666666666666666666666666666666"
+bare_autofs_release="$remote_root/releases/$bare_autofs_sha"
+bare_autofs_archive="$test_root/bare-autofs.tar.gz"
+touch "$bare_autofs_archive"
+: > "$docker_log"
+
+set +e
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$bare_autofs_archive" "$bare_autofs_sha" > "$test_root/bare-autofs.out" 2>&1
+bare_autofs_status=$?
+set -e
+
+[[ "$bare_autofs_status" -ne 0 ]]
+[[ ! -e "$bare_autofs_release" ]]
+grep -Fqx 'Mounted asset storage host source is not a supported network mount' "$test_root/bare-autofs.out"
+! grep -F ' build ' "$docker_log"
+! grep -F ' run --rm' "$docker_log"
+
+export TEST_FINDMNT_FSTYPES=nfs4
+
+nfs_sha="7777777777777777777777777777777777777777"
+nfs_release="$remote_root/releases/$nfs_sha"
+nfs_archive="$test_root/nfs.tar.gz"
+touch "$nfs_archive"
+: > "$docker_log"
+
+set +e
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$nfs_archive" "$nfs_sha" > "$test_root/nfs.out" 2>&1
+nfs_status=$?
+set -e
+
+[[ "$nfs_status" -eq 61 ]]
+[[ ! -e "$nfs_release" ]]
+grep -F -- 'run --rm --no-deps backend python -c' "$docker_log"
+grep -Fqx "compose --project-name control-center-production --env-file /opt/ecommerce-control-center/production/.env -f /opt/ecommerce-control-center/production/releases/$nfs_sha/deploy/production/compose.yaml run --rm backend python -m alembic upgrade head" "$docker_log"
 
 echo 'Production release cleanup ownership regression passed'
