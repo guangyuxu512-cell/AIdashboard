@@ -67,6 +67,11 @@ if [[ -L "$remote_root/current" ]]; then
     previous_release="$(readlink -f "$remote_root/current")"
 fi
 if [[ -e "$release_directory" ]]; then
+    active_release="$(readlink -f "$remote_root/current" 2>/dev/null || true)"
+    if [[ "$active_release" == "$release_directory" ]]; then
+        echo "Production release is already active for this commit; skipping"
+        exit 0
+    fi
     echo "Production release already exists for this commit" >&2
     exit 2
 fi

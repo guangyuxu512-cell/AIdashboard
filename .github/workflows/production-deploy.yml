@@ -7,6 +7,10 @@ on:
         description: Full published origin/main commit SHA to deploy
         required: true
         type: string
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
 
 permissions:
   contents: read
@@ -18,23 +22,37 @@ concurrency:
 jobs:
   deploy:
     name: Deploy published main commit
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verify explicit published main commit
+      - name: Resolve CI-verified production deployment target
+        id: deploy_target
         env:
-          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          CI_DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          test "${DEPLOY_SHA}" = "$(printf '%s' "${DEPLOY_SHA}" | tr '[:upper:]' '[:lower:]')"
-          printf '%s' "${DEPLOY_SHA}" | grep -Eq '^[0-9a-f]{40}$'
-          git fetch origin main
-          test "${DEPLOY_SHA}" = "$(git rev-parse origin/main)"
+          bash scripts/resolve-production-deploy-target.sh \
+            "${EVENT_NAME}" \
+            "${MANUAL_DEPLOY_SHA}" \
+            "${CI_DEPLOY_SHA}"
+      - name: Checkout exact CI-verified deployment target
+        if: steps.deploy_target.outputs.should_deploy == 'true'
+        env:
+          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
+        run: |
           git checkout --detach "${DEPLOY_SHA}"
           test "${DEPLOY_SHA}" = "$(git rev-parse HEAD)"
       - name: Configure deployment SSH
+        if: steps.deploy_target.outputs.should_deploy == 'true'
         env:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
@@ -53,8 +71,9 @@ jobs:
           printf 'SSH_AUTH_SOCK=%s\n' "${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
           printf 'SSH_AGENT_PID=%s\n' "${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
       - name: Package reviewed release source
+        if: steps.deploy_target.outputs.should_deploy == 'true'
         env:
-          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
         run: |
           archive_path="${RUNNER_TEMP}/control-center-production-${DEPLOY_SHA}.tar.gz"
           tar --exclude-vcs --exclude='node_modules' --exclude='dist' --exclude='.env' --exclude='.env.*' \
@@ -65,9 +84,30 @@ jobs:
             backend frontend deploy/production \
             scripts/production-env.sh scripts/remote-deploy-production.sh
           printf 'RELEASE_ARCHIVE=%s\n' "${archive_path}" >> "${GITHUB_ENV}"
-      - name: Upload and deploy release
+      - name: Skip already active production release
+        id: active_release
+        if: steps.deploy_target.outputs.should_deploy == 'true'
         env:
-          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+        run: |
+          remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
+          active_release="$(ssh -o StrictHostKeyChecking=yes "${remote_target}" \
+            "readlink -f /opt/ecommerce-control-center/production/current 2>/dev/null || true")"
+          expected_release="/opt/ecommerce-control-center/production/releases/${DEPLOY_SHA}"
+          if [ "${active_release}" = "${expected_release}" ]; then
+            echo 'already_deployed=true' >> "${GITHUB_OUTPUT}"
+            echo "Production release ${DEPLOY_SHA} is already active; skipping deployment."
+          else
+            echo 'already_deployed=false' >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Upload and deploy release
+        if: >-
+          steps.deploy_target.outputs.should_deploy == 'true' &&
+          steps.active_release.outputs.already_deployed != 'true'
+        env:
+          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
           DEPLOYMENT_ATTEMPT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
