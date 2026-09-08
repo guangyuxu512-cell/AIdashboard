@@ -60,7 +60,21 @@ Backend → control-center-backend-prod-assets Docker volume
 
 ## 数据库与首位管理员
 
-生产数据库与应用角色必须在当前 VPS 的 PostgreSQL 实例中创建，但不得影响 `control_center_dev`、`control_center_integration` 或任何现有卷。创建步骤只允许使用现有 PostgreSQL 管理通道，并在交互式 `psql` 中设置应用角色密码；不要把密码放到 shell history、GitHub workflow、文档或聊天中。
+生产数据库与应用角色必须在当前 VPS 的 PostgreSQL 实例中创建，但不得影响 `control_center_dev`、`control_center_integration` 或任何现有卷。创建步骤只允许使用现有 PostgreSQL 管理通道，并在交互式 `psql` 中设置应用角色密码；不要把密码放到 shell history、GitHub workflow、文档或聊天中。应用角色在 `control_center_prod` 的 `public` schema 必须具备 `USAGE` 和 `CREATE`，以便 Alembic 在空生产库创建版本表和正式 Schema；保留 schema owner 与其他数据库授权不变：
+
+```sql
+GRANT USAGE, CREATE ON SCHEMA public TO control_center_prod_app;
+```
+
+部署前应以应用角色核对当前数据库、当前账号及这两项 schema 权限：
+
+```sql
+SELECT
+  current_database(),
+  current_user,
+  has_schema_privilege(current_user, 'public', 'USAGE'),
+  has_schema_privilege(current_user, 'public', 'CREATE');
+```
 
 生产 `.env` 配置完成后，运行正式 Alembic：
 
