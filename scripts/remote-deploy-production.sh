@@ -170,6 +170,8 @@ export PRODUCTION_ENV_FILE="$environment_file"
 compose=(docker compose --project-name control-center-production --env-file "$environment_file" -f "$release_directory/deploy/production/compose.yaml")
 "${compose[@]}" config -q
 "${compose[@]}" build douyin-signer backend frontend
+"${compose[@]}" run --rm --no-deps backend python -c \
+    "from app.core.config import get_settings; from app.modules.assets.storage import verify_asset_storage; verify_asset_storage(get_settings()); print('asset-storage=ready')"
 deployment_runtime_changed=true
 "${compose[@]}" run --rm backend python -m alembic upgrade head
 

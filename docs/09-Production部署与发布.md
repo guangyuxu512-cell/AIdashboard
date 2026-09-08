@@ -31,13 +31,13 @@ Browser HTTPS
   → PostgreSQL :127.0.0.1:35433 / control_center_prod
 
 Backend → Douyin Signer :127.0.0.1:8788
-Backend → control-center-backend-prod-assets Docker volume
+Backend → existing Docker Asset volume (local mode) / verified NAS mount (mounted mode)
 ```
 
 - Production Backend、Signer 与 Frontend 都只监听主机回环地址；不得直接发布 Docker 端口。
 - Frontend 保持只读根文件系统；Nginx 官方入口运行时渲染的 `/etc/nginx/conf.d`、缓存、运行时和临时目录使用受限 `tmpfs`，不得因此放宽整个容器的写入权限。`NGINX_ENVSUBST_FILTER` 使用变量名正则，只允许渲染 `FRONTEND_BIND_HOST`、`FRONTEND_BIND_PORT` 与 `BACKEND_BIND_PORT`。
 - 公网入口仅由现有 BaoTa Nginx vhost 管理。本部署的明确决策是直接使用 VPS 公网 IPv4，而非 DNS 域名。Let’s Encrypt 的 IP 证书必须使用 `shortlived` profile，约 160 小时有效；因此 `control-center-production-ip-acme-renew.timer` 每日运行两次，续期后由 host Nginx reload 读取新证书。明文 HTTP 只用于 ACME HTTP-01 challenge 和 HTTPS 重定向，不能作为应用入口。
-- `control-center-backend-prod-assets` 是正式持久卷，独立于开发环境的 `control-center-backend-dev_backend-assets`。正常更新与回滚不删除该卷。
+- `control-center-backend-prod-assets` 是正式持久卷，独立于开发环境的 `control-center-backend-dev_backend-assets`。正常更新与回滚不删除该卷；切换 NAS 后它仍保留，作为切换前资产的回退来源。
 - PDD 签名继续由 Backend 中现有的隔离 Node 子进程执行。`backend/Dockerfile` 安装 Node.js，且随 `app/platforms/pdd/vendor/anti_content.js` 一起打包；不引入第二套 PDD 服务。
 - Douyin Signer 仍是独立的、只绑定回环地址的容器，生产端口为 `8788`，与开发端口 `8787` 隔离。
 
@@ -95,6 +95,65 @@ python -m app.cli.human_auth bootstrap --display-name <display-name> --login-nam
 ```
 
 该初始化只允许空 `users` 表执行一次；不要通过 Seed、直接 SQL 或临时账号绕开它。
+
+## NAS Asset Storage（启用前置条件）
+
+默认 `BACKEND_ASSET_STORAGE_MODE=local` 继续使用
+`control-center-backend-prod-assets` named volume。启用 NAS 时，NAS 只保存文件；数据库仍是 VPS 上的
+`control_center_prod` PostgreSQL，Asset 表、`asset_id`、`storage_key`、鉴权 API 和 Frontend Blob
+读取契约均不改变。
+
+主线发布前由 Production 运维完成以下准备，不能把 SMB/NFS 文件共享端口公开到互联网：
+
+1. 在 NAS 创建独立的中控台 Asset 共享文件夹及仅供 VPS 使用的服务账号；不复用、修改或清理其他共享目录。当前 Gate 1 已创建的共享名为 `control_center_assets`，路径为 `/volume1/control_center_assets`，SMB 浏览隐藏且 ACL 仅向 `@administrators` 授予 RW；生产接通时应新增非管理员服务账号 `control_center_vps_assets`，仅对该共享授予 RW。
+2. 仅经已经验证的私有网络，使 VPS 以 SMB3/CIFS 挂载该共享目录到固定宿主路径 `/mnt/control-center-assets`。凭据放在 VPS 的 root-only credentials 文件，不进入仓库、Compose、shell history 或日志。Gate 1 实测当前 VPS 与 NAS 没有可用的 SMB/NFS 私网链路；不得将 445 或 2049 暴露到公网。Main 应先建立受控的 host-to-host WireGuard-compatible overlay（优先采用已批准的 Tailscale/WireGuard 方案），再从 VPS 到 NAS overlay 地址验证 TCP 445。
+3. 以实际 Backend image 的 `app` UID/GID 配置挂载权限，确认该身份对挂载点有读、写、执行权限。不要以 root 成功的检查替代容器身份检查。
+4. 在挂载根目录创建唯一标识文件；文件内容为 `control-center-asset-storage-v1` 后紧跟一个 LF（`0x0A`）：
+
+   ```text
+   .control-center-asset-storage-v1
+   control-center-asset-storage-v1
+   ```
+
+   先用独立测试目录验证写入、读取、SHA-256 内容校验与删除；不得用已有业务图片作探针。
+5. 复核 `findmnt -T /mnt/control-center-assets`（或等价命令）确认它是真实网络挂载，而不是 VPS 本地空目录，并以容器的 `app` 身份执行一次存储预检。
+
+在已通过私网连通验证的 Debian/Ubuntu VPS 上，Main 按如下顺序准备挂载；`<nas-overlay-ip>`、服务账号密码和 credentials 文件内容只存在 VPS，不写入本仓库：
+
+```sh
+sudo apt-get install -y cifs-utils
+sudo install -d -m 0750 /etc/samba/credentials /mnt/control-center-assets
+sudoedit /etc/samba/credentials/control-center-assets
+# username=control_center_vps_assets
+# password=<NAS service-account password>
+sudo chmod 0600 /etc/samba/credentials/control-center-assets
+```
+
+写入 root 管理的 `/etc/fstab` 前，先用一次临时 mount 和 `findmnt` 验证 overlay 来源。正式条目应使用 SMB3 加密、容器 `app` 身份和 systemd automount，例如：
+
+```fstab
+//<nas-overlay-ip>/control_center_assets /mnt/control-center-assets cifs credentials=/etc/samba/credentials/control-center-assets,vers=3.1.1,seal,uid=999,gid=999,file_mode=0660,dir_mode=0770,rw,nosuid,nodev,noexec,_netdev,x-systemd.automount 0 0
+```
+
+随后执行 `sudo systemctl daemon-reload`、`sudo mount /mnt/control-center-assets`，再次检查 `findmnt -T`、标识文件和以 UID/GID `999:999` 的写读删。挂载、ACL、CIFS 客户端或端口验证任一失败时，保持 `local` 模式，不设置 NAS 环境变量。
+
+满足前置条件后，VPS root-only `.env` 增加以下非秘密部署配置，再发布包含该配置的精确 main SHA：
+
+```text
+BACKEND_ASSET_STORAGE_MODE=mounted
+BACKEND_ASSET_STORAGE_VOLUME_SOURCE=/mnt/control-center-assets
+```
+
+`BACKEND_ASSET_STORAGE_DIR` 在容器内仍固定为 `/app/data/assets`。Compose 将上述宿主挂载路径绑定到该
+容器路径；发布脚本在 Alembic 前执行 storage 预检。标识缺失、挂载消失或权限不足会使预检失败；即使
+运行期发生该类故障，Asset API 也会返回明确的 `ASSET_STORAGE_UNAVAILABLE`（503），不会自动退回
+本地卷。
+
+切换前必须对现有 named volume 和 NAS 目标分别建立文件清单（相对 `storage_key`、大小、SHA-256），
+在停写窗口内复制旧 Asset 到 NAS，并复核数量、大小、散列和代表性历史 Asset 的正式读取。旧 named
+volume 必须保留。切换后新增文件只在 NAS；因此不能仅将环境变量改回 `local` 作为回退。若必须回退，
+先将切换后新增的 NAS 文件按 `storage_key` 复制并校验到旧 volume，或继续保持 NAS 挂载可读，再恢复
+先前 release。没有完成该数据步骤不得宣称回退安全。
 
 ## GitHub Actions
 

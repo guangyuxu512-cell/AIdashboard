@@ -208,6 +208,7 @@ set -e
 [[ ! -e "$remote_root/current" ]]
 [[ -d "$historical_release" ]]
 [[ -f "$historical_release/marker" ]]
+grep -F -- 'run --rm --no-deps backend python -c' "$docker_log"
 grep -Fqx 'compose --project-name control-center-production --env-file /opt/ecommerce-control-center/production/.env -f /opt/ecommerce-control-center/production/releases/4444444444444444444444444444444444444444/deploy/production/compose.yaml run --rm backend python -m alembic upgrade head' "$docker_log"
 
 echo 'Production release cleanup ownership regression passed'

@@ -29,3 +29,9 @@ class AssetStorageError(AppError):
     code = "ASSET_STORAGE_FAILED"
     message = "资产文件存储失败"
     status_code = 500
+
+
+class AssetStorageUnavailableError(AssetStorageError):
+    code = "ASSET_STORAGE_UNAVAILABLE"
+    message = "资产存储挂载不可用"
+    status_code = 503

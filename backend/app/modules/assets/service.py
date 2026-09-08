@@ -19,7 +19,7 @@ from app.modules.assets.exceptions import (
 )
 from app.modules.assets.models import Asset
 from app.modules.assets.repository import AssetRepository
-from app.modules.assets.storage import AssetStorage, LocalAssetStorage
+from app.modules.assets.storage import AssetStorage, create_asset_storage
 from app.modules.assets.validation import (
     normalize_original_filename,
     validate_image_content,
@@ -39,10 +39,7 @@ class AssetService:
         self.session = session
         self.repository = repository or AssetRepository(session)
         resolved_settings = settings or get_settings()
-        self.storage: AssetStorage = storage or LocalAssetStorage(
-            resolved_settings.asset_storage_dir,
-            resolved_settings.asset_max_upload_bytes,
-        )
+        self.storage: AssetStorage = storage or create_asset_storage(resolved_settings)
 
     def upload(
         self,
