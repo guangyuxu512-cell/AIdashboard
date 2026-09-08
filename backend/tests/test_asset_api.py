@@ -12,7 +12,11 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.assets.api import get_asset_authorized_actor, get_asset_service
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
-from app.modules.assets.exceptions import AssetNotFoundError, AssetStorageError
+from app.modules.assets.exceptions import (
+    AssetNotFoundError,
+    AssetStorageError,
+    AssetStorageUnavailableError,
+)
 from app.modules.assets.models import Asset
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.service import WorkerPrincipal
@@ -306,3 +310,57 @@ def test_storage_errors_do_not_leak_backend_path(tmp_path: Path) -> None:
     assert response.status_code == 500
     assert response.json()["code"] == "ASSET_STORAGE_FAILED"
     assert str(tmp_path) not in response.text
+
+
+def test_mounted_storage_unavailable_is_explicit_and_does_not_leak_path(
+    tmp_path: Path,
+) -> None:
+    class UnavailableContentService(ApiAssetService):
+        def get_content(
+            self,
+            actor: ActorContext,
+            asset_id: UUID,
+        ) -> tuple[Asset, BinaryIO]:
+            del actor
+            del asset_id
+            raise AssetStorageUnavailableError()
+
+    response = request(
+        UnavailableContentService(tmp_path),
+        "GET",
+        f"/api/v1/assets/{uuid4()}/content",
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "ASSET_STORAGE_UNAVAILABLE"
+    assert str(tmp_path) not in response.text
+
+
+def test_delete_mounted_storage_unavailable_keeps_asset_and_file(
+    tmp_path: Path,
+) -> None:
+    class UnavailableDeleteService(ApiAssetService):
+        def delete(self, actor: ActorContext, asset_id: UUID) -> None:
+            asset = self.assets.get(asset_id)
+            if asset is None or (
+                actor.data_scope is not DataScope.ALL and asset.team_id != actor.team_id
+            ):
+                raise AssetNotFoundError()
+            raise AssetStorageUnavailableError()
+
+    service = UnavailableDeleteService(tmp_path)
+    upload = request(
+        service,
+        "POST",
+        "/api/v1/assets",
+        files={"file": ("mounted.png", b"\x89PNG\r\n\x1a\nfixture", "image/png")},
+    )
+    asset_id = UUID(upload.json()["asset_id"])
+    asset = service.assets[asset_id]
+
+    response = request(service, "DELETE", f"/api/v1/assets/{asset_id}")
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "ASSET_STORAGE_UNAVAILABLE"
+    assert asset_id in service.assets
+    assert (tmp_path / asset.storage_key).read_bytes() == b"\x89PNG\r\n\x1a\nfixture"

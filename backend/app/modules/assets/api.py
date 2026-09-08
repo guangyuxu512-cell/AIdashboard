@@ -24,6 +24,7 @@ ASSET_ERROR_RESPONSES.update(
     {
         404: {"model": ErrorResponse, "description": "资产不存在"},
         409: {"model": ErrorResponse, "description": "资产正在被任务引用"},
+        503: {"model": ErrorResponse, "description": "资产存储挂载不可用"},
     },
 )
 

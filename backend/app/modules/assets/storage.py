@@ -7,10 +7,16 @@ import tempfile
 from typing import BinaryIO, Protocol
 from uuid import UUID
 
+from app.core.config import Settings
 from app.modules.assets.exceptions import (
     AssetStorageError,
+    AssetStorageUnavailableError,
     AssetTooLargeError,
 )
+
+
+MOUNTED_STORAGE_MARKER_NAME = ".control-center-asset-storage-v1"
+MOUNTED_STORAGE_MARKER_CONTENT = b"control-center-asset-storage-v1\n"
 
 
 @dataclass(frozen=True)
@@ -21,6 +27,8 @@ class StoredAsset:
 
 
 class AssetStorage(Protocol):
+    def verify_ready(self) -> None: ...
+
     def store(
         self,
         *,
@@ -53,7 +61,7 @@ class LocalAssetStorage:
         temporary_path: Path | None = None
         final_path = self._path_for(storage_key)
         try:
-            self.root.mkdir(parents=True, exist_ok=True)
+            self._prepare_root_for_store()
             descriptor, temporary_name = tempfile.mkstemp(
                 prefix=f".{asset_id.hex}-",
                 suffix=".upload",
@@ -108,8 +116,69 @@ class LocalAssetStorage:
         except OSError as error:
             raise AssetStorageError() from error
 
+    def verify_ready(self) -> None:
+        try:
+            self._prepare_root_for_store()
+        except OSError as error:
+            raise AssetStorageError() from error
+
+    def _prepare_root_for_store(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+
     def _path_for(self, storage_key: str) -> Path:
         candidate = (self.root / storage_key).resolve()
         if candidate.parent != self.root:
             raise AssetStorageError()
         return candidate
+
+
+class MountedAssetStorage(LocalAssetStorage):
+    """Asset storage rooted at an already-mounted, verified host directory."""
+
+    def _prepare_root_for_store(self) -> None:
+        self._assert_mount_ready()
+
+    def verify_ready(self) -> None:
+        self._assert_mount_ready()
+
+    def open(self, storage_key: str) -> BinaryIO:
+        self._assert_mount_ready()
+        return super().open(storage_key)
+
+    def delete(self, storage_key: str) -> None:
+        self._assert_mount_ready()
+        super().delete(storage_key)
+
+    def exists(self, storage_key: str) -> bool:
+        self._assert_mount_ready()
+        return super().exists(storage_key)
+
+    def _assert_mount_ready(self) -> None:
+        try:
+            marker_path = self.root / MOUNTED_STORAGE_MARKER_NAME
+            if (
+                not self.root.is_dir()
+                or marker_path.read_bytes() != MOUNTED_STORAGE_MARKER_CONTENT
+                or not os.access(self.root, os.R_OK | os.W_OK | os.X_OK)
+            ):
+                raise AssetStorageUnavailableError()
+        except AssetStorageUnavailableError:
+            raise
+        except OSError as error:
+            raise AssetStorageUnavailableError() from error
+
+
+def create_asset_storage(settings: Settings) -> AssetStorage:
+    storage_type = (
+        MountedAssetStorage
+        if settings.asset_storage_mode == "mounted"
+        else LocalAssetStorage
+    )
+    return storage_type(
+        settings.asset_storage_dir,
+        settings.asset_max_upload_bytes,
+    )
+
+
+def verify_asset_storage(settings: Settings) -> None:
+    create_asset_storage(settings).verify_ready()

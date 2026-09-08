@@ -36,6 +36,7 @@ class Settings(BaseSettings):
         default="/api/v1",
         pattern=r"^/[^\s]*$",
     )
+    asset_storage_mode: Literal["local", "mounted"] = "local"
     asset_storage_dir: Path = Path("data/assets")
     asset_max_upload_bytes: int = Field(
         default=10 * 1024 * 1024,

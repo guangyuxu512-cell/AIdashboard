@@ -129,6 +129,8 @@ BACKEND_HUMAN_SESSION_COOKIE_SECURE="$(production_env_read BACKEND_HUMAN_SESSION
 BACKEND_BIND_PORT="$(production_env_read BACKEND_BIND_PORT || printf '18001')"
 DOUYIN_SIGNER_BIND_PORT="$(production_env_read DOUYIN_SIGNER_BIND_PORT || printf '8788')"
 FRONTEND_BIND_PORT="$(production_env_read FRONTEND_BIND_PORT || printf '18080')"
+BACKEND_ASSET_STORAGE_MODE="$(production_env_read BACKEND_ASSET_STORAGE_MODE || printf 'local')"
+BACKEND_ASSET_STORAGE_VOLUME_SOURCE="$(production_env_read BACKEND_ASSET_STORAGE_VOLUME_SOURCE || true)"
 export PRODUCTION_DOMAIN PRODUCTION_TLS_CERTIFICATE_PATH PRODUCTION_TLS_CERTIFICATE_KEY_PATH PRODUCTION_ACME_WEBROOT_DIR
 export BACKEND_BIND_PORT DOUYIN_SIGNER_BIND_PORT FRONTEND_BIND_PORT
 nginx_target="$PRODUCTION_NGINX_VHOST_DIR/control-center-production.conf"
@@ -165,11 +167,49 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 2
 fi
 
+verify_mounted_asset_storage_host_mount() {
+    if [[ "$BACKEND_ASSET_STORAGE_MODE" == "local" ]]; then
+        return 0
+    fi
+    if [[ "$BACKEND_ASSET_STORAGE_MODE" != "mounted" ]]; then
+        echo "Production asset storage mode must be local or mounted" >&2
+        return 1
+    fi
+    if [[ -z "$BACKEND_ASSET_STORAGE_VOLUME_SOURCE" || "$BACKEND_ASSET_STORAGE_VOLUME_SOURCE" != /* ]]; then
+        echo "Mounted asset storage requires an absolute host mount source" >&2
+        return 1
+    fi
+    if [[ ! -d "$BACKEND_ASSET_STORAGE_VOLUME_SOURCE" ]]; then
+        echo "Mounted asset storage host source is unavailable" >&2
+        return 1
+    fi
+    if ! command -v findmnt >/dev/null 2>&1; then
+        echo "Mounted asset storage requires findmnt on the production host" >&2
+        return 1
+    fi
+
+    local filesystem_type
+    filesystem_type="$(findmnt --noheadings --output FSTYPE --target "$BACKEND_ASSET_STORAGE_VOLUME_SOURCE")"
+    case "$filesystem_type" in
+        cifs|nfs|nfs4)
+            return 0
+            ;;
+        *)
+            echo "Mounted asset storage host source is not a supported network mount" >&2
+            return 1
+            ;;
+    esac
+}
+
+verify_mounted_asset_storage_host_mount
+
 export DEPLOYMENT_IMAGE_TAG="$release_sha"
 export PRODUCTION_ENV_FILE="$environment_file"
 compose=(docker compose --project-name control-center-production --env-file "$environment_file" -f "$release_directory/deploy/production/compose.yaml")
 "${compose[@]}" config -q
 "${compose[@]}" build douyin-signer backend frontend
+"${compose[@]}" run --rm --no-deps backend python -c \
+    "from app.core.config import get_settings; from app.modules.assets.storage import verify_asset_storage; verify_asset_storage(get_settings()); print('asset-storage=ready')"
 deployment_runtime_changed=true
 "${compose[@]}" run --rm backend python -m alembic upgrade head
 

@@ -28,7 +28,7 @@ from app.modules.ai_workbench.provider import (
 )
 from app.modules.assets.exceptions import AssetStorageError
 from app.modules.assets.service import AssetService
-from app.modules.assets.storage import AssetStorage, LocalAssetStorage
+from app.modules.assets.storage import AssetStorage, create_asset_storage
 
 
 logger = logging.getLogger(__name__)
@@ -212,10 +212,7 @@ def build_generation_executor(settings: Settings | None = None) -> GenerationExe
     resolved_settings = settings or get_settings()
     if resolved_settings.toapis_api_key is None:
         raise RuntimeError("BACKEND_TOAPIS_API_KEY is required for AI generation")
-    storage = LocalAssetStorage(
-        resolved_settings.asset_storage_dir,
-        resolved_settings.asset_max_upload_bytes,
-    )
+    storage = create_asset_storage(resolved_settings)
 
     def service_factory(session: Session) -> GenerationService:
         return GenerationService(
