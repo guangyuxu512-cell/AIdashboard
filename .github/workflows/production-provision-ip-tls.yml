@@ -68,13 +68,15 @@ jobs:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
         run: |
+          set -euo pipefail
           remote_root="/opt/ecommerce-control-center/production"
           remote_bundle="/tmp/control-center-production-ip-tls-${PROVISION_SHA}.tar.gz"
           remote_bundle_dir="/tmp/control-center-production-ip-tls-${PROVISION_SHA}"
           remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
-          ssh -o StrictHostKeyChecking=yes "${remote_target}" "install -d -m 0750 '${remote_root}'"
-          scp -o StrictHostKeyChecking=yes "${PROVISION_BUNDLE}" "${remote_target}:${remote_bundle}"
-          ssh -o StrictHostKeyChecking=yes "${remote_target}" \
+          ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
+          ssh "${ssh_options[@]}" "${remote_target}" "install -d -m 0750 '${remote_root}'"
+          scp "${ssh_options[@]}" "${PROVISION_BUNDLE}" "${remote_target}:${remote_bundle}"
+          ssh "${ssh_options[@]}" "${remote_target}" \
             "install -d -m 0700 '${remote_bundle_dir}' && tar -xzf '${remote_bundle}' -C '${remote_bundle_dir}' && chmod 0700 '${remote_bundle_dir}/scripts/remote-provision-production-ip-tls.sh' && '${remote_bundle_dir}/scripts/remote-provision-production-ip-tls.sh' '${remote_root}'; status=\$?; rm -rf -- '${remote_bundle}' '${remote_bundle_dir}'; exit \$status"
       - name: Verify the public IP certificate from the GitHub runner
         env:
