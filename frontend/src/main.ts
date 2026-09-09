@@ -1,6 +1,6 @@
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia } from 'pinia'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 
 import App from './App.vue'
 import router from './app/router'
@@ -23,14 +23,39 @@ const authStore = useAuthStore(pinia)
 const aiWorkbenchSessionStore = useAiWorkbenchSessionStore(pinia)
 configureAuthEffects({
   onTeamChanged: () => {
-    aiWorkbenchSessionStore.resetForActorContextChange()
+    aiWorkbenchSessionStore.clearActiveActorContext()
     void resetQueriesForActorContextChange()
   },
   onAuthCleared: () => {
-    aiWorkbenchSessionStore.resetForActorContextChange()
+    aiWorkbenchSessionStore.clearActiveActorContext()
     queryClient.clear()
   },
+  onAuthRestoreRejected: () => {
+    aiWorkbenchSessionStore.clearLastPersistedActorContext()
+  },
 })
+watch(
+  [
+    () => authStore.status,
+    () => authStore.currentUser?.userId ?? null,
+    () => authStore.activeTeamId,
+    () => authStore.currentModuleAccess,
+  ],
+  ([status, userId, teamId, moduleAccess]) => {
+    if (
+      status === 'authenticated' &&
+      userId &&
+      teamId &&
+      moduleAccess?.moduleCodes.includes('ai-workbench')
+    ) {
+      if (!aiWorkbenchSessionStore.hasActiveActorContext) {
+        aiWorkbenchSessionStore.activateActorContext({ userId, teamId })
+      }
+      void aiWorkbenchSessionStore.resumePendingSubmissions()
+    }
+  },
+  { immediate: true, flush: 'post' },
+)
 configureHumanRequestContext({
   getActiveTeamId: () => authStore.activeTeamId,
   onSessionInvalid: () => {

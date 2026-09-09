@@ -64,6 +64,7 @@ describe('Human Auth Store', () => {
     configureAuthEffects({
       onTeamChanged: () => undefined,
       onAuthCleared: () => undefined,
+      onAuthRestoreRejected: () => undefined,
     })
   })
 
@@ -124,6 +125,8 @@ describe('Human Auth Store', () => {
   })
 
   it('treats an invalid server session as anonymous without local isLoggedIn state', async () => {
+    const restoreRejected = vi.fn()
+    configureAuthEffects({ onAuthRestoreRejected: restoreRejected })
     const auth = useAuthStore()
     auth.setDataSource(
       dataSource({
@@ -140,6 +143,7 @@ describe('Human Auth Store', () => {
     expect(auth.status).toBe('anonymous')
     expect(auth.currentUser).toBeNull()
     expect(auth.restoreError).toBeNull()
+    expect(restoreRejected).toHaveBeenCalledTimes(1)
   })
 
   it('treats a missing human session as an expected anonymous state', async () => {

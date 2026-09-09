@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query'
-import { CheckCircle2, Folder, Play } from '@lucide/vue'
+import { CheckCircle2, Folder, Play, Trash2 } from '@lucide/vue'
 import { useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -17,6 +17,8 @@ import { getErrorMessage } from '@/shared/api'
 import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
+import ErrorState from '@/shared/components/ErrorState.vue'
+import LoadingState from '@/shared/components/LoadingState.vue'
 import { AppButton, AppDialog, AppSelect } from '@/shared/ui'
 
 import type { BatchTemplateExecutionIdentity } from '../model/batch-execution'
@@ -64,9 +66,12 @@ const {
   batchChecked,
   batchCurrentJobId: currentJobId,
   batchSubmitting: submitting,
+  batchSubmissionKey: submissionKey,
+  batchSubmissionRecoveryError: submissionRecoveryError,
 } = storeToRefs(sessionStore)
 const productPickerVisible = ref(false)
 const preflightProblemsVisible = ref(false)
+const clearDialogVisible = ref(false)
 
 const jobQuery = useGenerationJobQuery(currentJobId, { poll: true })
 
@@ -211,6 +216,21 @@ const preflight = computed<BatchPreflightView>(() => {
 const execution = computed(() =>
   jobQuery.data.value ? mapBatchExecution(jobQuery.data.value) : null,
 )
+const jobError = computed(() => jobQuery.error.value)
+const restoringJob = computed(
+  () => Boolean(currentJobId.value) && jobQuery.isPending.value,
+)
+const restoringSubmission = computed(
+  () => !currentJobId.value && Boolean(submissionKey.value) && submitting.value,
+)
+const currentJobIsActive = computed(() => {
+  const status = jobQuery.data.value?.status
+  return (
+    status === 'PENDING' ||
+    status === 'RUNNING' ||
+    (!currentJobId.value && Boolean(submissionKey.value))
+  )
+})
 const hasModelCapabilityIssue = computed(() =>
   preflight.value.issues.some(
     (issue) =>
@@ -317,7 +337,8 @@ async function start(): Promise<void> {
     !selectedModel.value ||
     preflight.value.generationItemCount === 0 ||
     hasModelCapabilityIssue.value ||
-    submitting.value
+    submitting.value ||
+    submissionKey.value
   ) {
     return
   }
@@ -341,6 +362,28 @@ async function start(): Promise<void> {
   } catch (error) {
     message.error(getErrorMessage(error))
   }
+}
+
+function reloadJob(): void {
+  void jobQuery.refetch()
+}
+
+function retrySubmissionRecovery(): void {
+  void sessionStore
+    .resumeBatchSubmission()
+    .catch((error) => message.error(getErrorMessage(error)))
+}
+
+function clearCurrentTask(): void {
+  const clearedJobId = sessionStore.clearBatch()
+  clearDialogVisible.value = false
+  if (clearedJobId) {
+    const queryKey = aiWorkbenchQueryKeys.generationJob(clearedJobId)
+    void queryClient
+      .cancelQueries({ queryKey, exact: true })
+      .finally(() => queryClient.removeQueries({ queryKey, exact: true }))
+  }
+  message.success('已清空当前批量生成')
 }
 
 async function downloadResult(
@@ -554,6 +597,13 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
           </section>
         </div>
         <footer class="batch-generation-pane__footer">
+          <AppButton
+            class="batch-generation-pane__clear"
+            @click="clearDialogVisible = true"
+          >
+            <Trash2 :size="15" />
+            清空当前任务
+          </AppButton>
           <AppButton @click="runPreflight">
             <CheckCircle2 :size="16" />
             执行检查
@@ -565,7 +615,8 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
               !selectedModel ||
               preflight.generationItemCount === 0 ||
               hasModelCapabilityIssue ||
-              submitting
+              submitting ||
+              Boolean(submissionKey)
             "
             @click="start"
           >
@@ -578,7 +629,27 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
 
     <template #workspace>
       <div class="batch-workspace-pane">
+        <ErrorState
+          v-if="jobError"
+          title="任务读取失败"
+          :description="getErrorMessage(jobError)"
+          retryable
+          @retry="reloadJob"
+        />
+        <LoadingState v-else-if="restoringJob" description="正在恢复生成任务" />
+        <LoadingState
+          v-else-if="restoringSubmission"
+          description="正在恢复生成任务回执"
+        />
+        <ErrorState
+          v-else-if="submissionRecoveryError"
+          title="任务回执恢复失败"
+          :description="submissionRecoveryError"
+          retryable
+          @retry="retrySubmissionRecovery"
+        />
         <BatchExecutionViewer
+          v-else
           :execution="execution"
           :preflight-issues="execution && batchChecked ? preflight.issues : []"
           @download-all="downloadAll"
@@ -608,6 +679,19 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
         <span>{{ BATCH_SKIP_REASON_META[issue.reason].label }}</span>
       </li>
     </ul>
+  </AppDialog>
+  <AppDialog
+    v-model:show="clearDialogVisible"
+    title="清空当前任务"
+    size="sm"
+    positive-text="清空"
+    @confirm="clearCurrentTask"
+  >
+    <p>将清空当前批量生成的草稿、任务引用和本地结果展示。</p>
+    <p v-if="currentJobIsActive">
+      运行中的后台任务不会取消，仍可在生成记录中查看。
+    </p>
+    <p v-else>生成记录、素材和文件不会被删除。</p>
   </AppDialog>
 </template>
 
@@ -657,6 +741,10 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
   justify-content: flex-end;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
+}
+
+.batch-generation-pane__clear {
+  margin-right: auto;
 }
 
 .batch-generation-field {

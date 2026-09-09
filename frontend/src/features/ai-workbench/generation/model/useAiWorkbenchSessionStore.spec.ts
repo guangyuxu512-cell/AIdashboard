@@ -6,7 +6,11 @@ import {
   type GenerationJobReadDto,
 } from '@/entities/ai-workbench'
 
-import { useAiWorkbenchSessionStore } from './useAiWorkbenchSessionStore'
+import {
+  AI_WORKBENCH_ACTIVE_CONTEXT_STORAGE_KEY,
+  aiWorkbenchSessionStorageKey,
+  useAiWorkbenchSessionStore,
+} from './useAiWorkbenchSessionStore'
 
 function generationJob(
   id: string,
@@ -74,6 +78,7 @@ const batchSubmission = {
 
 describe('AI Workbench session state', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     setActivePinia(createPinia())
     vi.restoreAllMocks()
   })
@@ -179,6 +184,7 @@ describe('AI Workbench session state', () => {
       .mockReturnValueOnce(oldReceipt.promise)
       .mockResolvedValueOnce(generationJob('job-new-context'))
     const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-old', teamId: 'team-old' })
     store.instantPrompt = '旧身份草稿'
     store.instantInputs.PRODUCT_IMAGES = [
       {
@@ -193,7 +199,7 @@ describe('AI Workbench session state', () => {
     store.batchCurrentJobId = 'job-old'
 
     const oldSubmission = store.submitInstant(instantSubmission)
-    store.resetForActorContextChange()
+    store.replaceActorContext({ userId: 'user-new', teamId: 'team-new' })
 
     expect(store.workMode).toBe('INSTANT')
     expect(store.instantPrompt).toBe('')
@@ -211,5 +217,168 @@ describe('AI Workbench session state', () => {
 
     expect(submit).toHaveBeenCalledTimes(2)
     expect(store.instantCurrentJobId).toBe('job-new-context')
+    expect(
+      window.localStorage.getItem(
+        aiWorkbenchSessionStorageKey('user-new', 'team-new'),
+      ),
+    ).not.toContain('job-old-response')
+  })
+
+  it('persists both drafts by actor and restores asset ids without browser URLs', () => {
+    const storageKey = aiWorkbenchSessionStorageKey('user-1', 'team-1')
+    const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    store.workMode = 'BATCH'
+    store.instantPrompt = '刷新后保留'
+    store.instantSelectedModelId = 'model-instant'
+    store.instantAppliedTemplateId = 'template-instant'
+    store.instantInputs.PRODUCT_IMAGES = [
+      {
+        id: 'asset-1',
+        name: '商品图.png',
+        previewUrl: 'blob:must-not-persist',
+        objectUrl: true,
+        role: 'PRODUCT_SOURCE',
+        sourceType: 'LOCAL_UPLOAD',
+      },
+    ]
+    store.instantCurrentJobId = 'job-instant'
+    store.batchSelectedModelId = 'model-batch'
+    store.batchSelectedProductIds = ['product-1']
+    store.batchSelectedTemplateGroupIds = ['group-1']
+    store.batchCurrentJobId = 'job-batch'
+
+    const raw = window.localStorage.getItem(storageKey)
+    expect(raw).not.toBeNull()
+    expect(raw).not.toContain('blob:must-not-persist')
+    expect(raw).not.toContain('objectUrl')
+    expect(
+      window.localStorage.getItem(AI_WORKBENCH_ACTIVE_CONTEXT_STORAGE_KEY),
+    ).toBe(storageKey)
+
+    setActivePinia(createPinia())
+    const restored = useAiWorkbenchSessionStore()
+    restored.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+
+    expect(restored.workMode).toBe('BATCH')
+    expect(restored.instantPrompt).toBe('刷新后保留')
+    expect(restored.instantInputs.PRODUCT_IMAGES).toEqual([
+      {
+        id: 'asset-1',
+        name: '商品图.png',
+        previewUrl: '/api/v1/assets/asset-1/content',
+        role: 'PRODUCT_SOURCE',
+        sourceType: 'LOCAL_UPLOAD',
+      },
+    ])
+    expect(restored.instantCurrentJobId).toBe('job-instant')
+    expect(restored.batchSelectedProductIds).toEqual(['product-1'])
+    expect(restored.batchCurrentJobId).toBe('job-batch')
+  })
+
+  it('restores a known job with reads only and does not submit again', () => {
+    const submit = vi.spyOn(aiWorkbenchApi, 'submitGeneration')
+    const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    store.instantCurrentJobId = 'known-job'
+
+    setActivePinia(createPinia())
+    const restored = useAiWorkbenchSessionStore()
+    restored.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+
+    expect(restored.instantCurrentJobId).toBe('known-job')
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('reuses the persisted submission key when a receipt was not returned', async () => {
+    const submit = vi
+      .spyOn(aiWorkbenchApi, 'submitGeneration')
+      .mockRejectedValueOnce(new Error('receipt lost'))
+      .mockResolvedValueOnce(generationJob('recovered-job'))
+    const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+
+    await expect(store.submitInstant(instantSubmission)).rejects.toThrow(
+      'receipt lost',
+    )
+    const firstRequest = submit.mock.calls[0]?.[0]
+
+    setActivePinia(createPinia())
+    const restored = useAiWorkbenchSessionStore()
+    restored.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    await restored.resumePendingSubmissions()
+
+    expect(submit).toHaveBeenCalledTimes(2)
+    expect(submit.mock.calls[1]?.[0]).toEqual(firstRequest)
+    expect(restored.instantCurrentJobId).toBe('recovered-job')
+    expect(restored.instantSubmissionKey).toBeNull()
+  })
+
+  it('clears only the selected work mode and rejects its late receipt', async () => {
+    const receipt = deferred<GenerationJobReadDto>()
+    vi.spyOn(aiWorkbenchApi, 'submitGeneration').mockReturnValue(
+      receipt.promise,
+    )
+    const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    store.batchSelectedProductIds = ['product-kept']
+    store.batchCurrentJobId = 'batch-kept'
+    store.instantPrompt = '将被清空'
+
+    const pending = store.submitInstant(instantSubmission)
+    store.clearInstant()
+    receipt.resolve(generationJob('late-job'))
+
+    await expect(pending).resolves.toBeNull()
+    expect(store.instantPrompt).toBe('')
+    expect(store.instantCurrentJobId).toBeNull()
+    expect(store.instantSubmissionKey).toBeNull()
+    expect(store.batchSelectedProductIds).toEqual(['product-kept'])
+    expect(store.batchCurrentJobId).toBe('batch-kept')
+
+    setActivePinia(createPinia())
+    const restored = useAiWorkbenchSessionStore()
+    restored.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    expect(restored.instantCurrentJobId).toBeNull()
+    expect(restored.instantPrompt).toBe('')
+    expect(restored.batchCurrentJobId).toBe('batch-kept')
+  })
+
+  it('clears the previous actor storage when identity context changes', () => {
+    const firstKey = aiWorkbenchSessionStorageKey('user-1', 'team-1')
+    const secondKey = aiWorkbenchSessionStorageKey('user-1', 'team-2')
+    const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    store.instantPrompt = '旧团队草稿'
+    expect(window.localStorage.getItem(firstKey)).not.toBeNull()
+
+    store.replaceActorContext({ userId: 'user-1', teamId: 'team-2' })
+    expect(window.localStorage.getItem(firstKey)).toBeNull()
+    expect(store.instantPrompt).toBe('')
+    store.instantPrompt = '新团队草稿'
+    expect(window.localStorage.getItem(secondKey)).not.toBeNull()
+
+    store.clearActiveActorContext()
+    expect(window.localStorage.getItem(secondKey)).toBeNull()
+    expect(
+      window.localStorage.getItem(AI_WORKBENCH_ACTIVE_CONTEXT_STORAGE_KEY),
+    ).toBeNull()
+  })
+
+  it('removes the last persisted actor after initial session restoration is rejected', () => {
+    const storageKey = aiWorkbenchSessionStorageKey('user-1', 'team-1')
+    const store = useAiWorkbenchSessionStore()
+    store.activateActorContext({ userId: 'user-1', teamId: 'team-1' })
+    store.instantPrompt = '失效会话草稿'
+    expect(window.localStorage.getItem(storageKey)).not.toBeNull()
+
+    setActivePinia(createPinia())
+    const freshStore = useAiWorkbenchSessionStore()
+    freshStore.clearLastPersistedActorContext()
+
+    expect(window.localStorage.getItem(storageKey)).toBeNull()
+    expect(
+      window.localStorage.getItem(AI_WORKBENCH_ACTIVE_CONTEXT_STORAGE_KEY),
+    ).toBeNull()
   })
 })

@@ -18,11 +18,13 @@ export type AuthStatus = 'idle' | 'restoring' | 'authenticated' | 'anonymous'
 interface AuthEffects {
   onTeamChanged: () => void
   onAuthCleared: () => void
+  onAuthRestoreRejected: () => void
 }
 
 const authEffects: AuthEffects = {
   onTeamChanged: () => undefined,
   onAuthCleared: () => undefined,
+  onAuthRestoreRejected: () => undefined,
 }
 
 export function configureAuthEffects(effects: Partial<AuthEffects>): void {
@@ -130,14 +132,14 @@ export const useAuthStore = defineStore('auth', () => {
         applyAuthenticatedSession(user, memberships)
         await refreshModuleAccess()
       } catch (error) {
+        const sessionRejected = isHumanSessionError(error)
         currentUser.value = null
         teams.value = []
         activeTeamId.value = null
         currentModuleAccess.value = null
         status.value = 'anonymous'
-        restoreError.value = isHumanSessionError(error)
-          ? null
-          : getErrorMessage(error)
+        restoreError.value = sessionRejected ? null : getErrorMessage(error)
+        if (sessionRejected) authEffects.onAuthRestoreRejected()
       }
     })()
     try {
@@ -165,6 +167,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!membership || !currentUser.value) return
     if (activeTeamId.value === teamId) return
     activeTeamId.value = teamId
+    currentModuleAccess.value = null
     persistTeamId(currentUser.value.userId, teamId)
     authEffects.onTeamChanged()
     await refreshModuleAccess()
