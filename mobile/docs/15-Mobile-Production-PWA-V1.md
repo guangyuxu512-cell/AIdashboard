@@ -16,7 +16,7 @@
 - Vite `production` build 的 `base` 固定为 `/mobile/`；Development 与 Visual Mock 仍使用 `/`。
 - Vue Router 使用 `createWebHashHistory(import.meta.env.BASE_URL)`，确保生产导航始终停留在 `/mobile/#/...`。
 - 既有 Frontend Docker image 同时构建 PC 与 Mobile；Mobile 输出复制到 Nginx 的 `/usr/share/nginx/html/mobile`，不新增容器、外部端口或反向代理层。
-- `/mobile` 必须以 `308` 重定向到 `/mobile/`；`/mobile/` 与非静态子路径回退到 Mobile `index.html`。
+- `/mobile` 必须以 `308` 和相对 `Location: /mobile/` 重定向，不能暴露内部 HTTP scheme 或 `18080` 上游端口；`/mobile/` 与非静态子路径回退到 Mobile `index.html`。
 - `/mobile/assets/`、`/mobile/icons/` 与 Manifest 的缺失文件必须返回 `404`，不能回退到 PC 或 Mobile HTML。
 - PC 根路由与 `/api/` 代理保持原有行为，不得由 Mobile fallback 接管。
 

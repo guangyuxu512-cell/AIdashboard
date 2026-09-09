@@ -52,5 +52,8 @@ grep -Fq 'exit \$status' "$workflow_path"
 grep -Fq 'exit \$status' "$tls_workflow_path"
 grep -Fq 'mobile/public/manifest.webmanifest' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'verify_mobile_frontend' "$repository_root/scripts/remote-deploy-production.sh"
+grep -Fq 'absolute_redirect off;' "$repository_root/frontend/deploy/default.conf.template"
+grep -Fq '308 with the proxy-safe relative Location /mobile/' "$repository_root/scripts/remote-deploy-production.sh"
+grep -Fq "^Location: /mobile/\$" "$repository_root/.github/workflows/ci.yml"
 
 echo 'Production deployment workflow trigger and SSH keepalive regressions passed'
