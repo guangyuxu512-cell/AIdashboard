@@ -145,6 +145,7 @@ def test_credential_encrypts_updates_and_can_bind_multiple_shops() -> None:
     account = service.build_task_account_payload(first_shop_id)
     assert account.model_dump(mode="json") == {
         "shop_id": str(first_shop_id),
+        "shop_name": "店铺-1",
         "platform_code": "douyin",
         "login_identifier": "new-user",
         "secret": "updated-password",

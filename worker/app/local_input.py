@@ -54,6 +54,7 @@ class LocalInputBridge:
                     "店铺列表": [
                         {
                             "店铺ID": str(account.shop_id),
+                            "店铺名称": account.shop_name,
                             "平台编码": account.platform_code,
                             "登录账号": account.login_identifier,
                             "登录密码": account.secret,

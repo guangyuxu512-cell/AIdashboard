@@ -115,6 +115,7 @@ def process_input(
 def account_payload(*, secret: str = "must-not-leak") -> AccountPayload:
     return AccountPayload(
         shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+        shop_name="中文店铺",
         platform_code="DOUYIN",
         login_identifier="fixture-account",
         secret=secret,
@@ -235,6 +236,7 @@ def test_context_log_progress_and_result_use_existing_runtime_contract(
     assert skill.context.accounts == [
         {
             "shop_id": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+            "shop_name": "中文店铺",
             "platform_code": "DOUYIN",
             "login_identifier": "fixture-account",
             "secret": "must-not-leak",

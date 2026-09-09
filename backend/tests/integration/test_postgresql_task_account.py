@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from cryptography.fernet import Fernet
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
@@ -125,22 +125,21 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                 [
                     Shop(
                         shop_id=shop_id,
-                        display_name=f"Task Account Fixture Shop {position}",
+                        display_name="中文同名店铺",
                         platform=ShopPlatform.DOUYIN,
                         enabled=True,
                     )
                     for position, shop_id in enumerate(shop_ids, start=1)
                 ],
             )
-            session.add(
-                DeviceRuntime(
-                    device_id=device_id,
-                    worker_version="0.4.5",
-                    last_seen_at=now,
-                    started_at=now,
-                    connection_status="online",
-                ),
+            runtime = DeviceRuntime(
+                device_id=device_id,
+                worker_version="0.4.5",
+                last_seen_at=now,
+                started_at=now,
+                connection_status="online",
             )
+            session.add(runtime)
             session.add(
                 DeviceSkillCapability(
                     device_id=device_id,
@@ -217,6 +216,7 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
             assert [item.model_dump(mode="json") for item in claimed.accounts] == [
                 {
                     "shop_id": str(shop_ids[0]),
+                    "shop_name": None,
                     "platform_code": "douyin",
                     "login_identifier": "task-account-user-1",
                     "secret": "task-account-secret-1",
@@ -224,12 +224,27 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                 },
                 {
                     "shop_id": str(shop_ids[1]),
+                    "shop_name": None,
                     "platform_code": "douyin",
                     "login_identifier": "task-account-user-2",
                     "secret": "task-account-secret-2",
                     "preferred_verification_channel": "manual",
                 },
             ]
+
+            class LegacyWorkerAccountPayload(BaseModel):
+                model_config = ConfigDict(extra="forbid")
+
+                shop_id: str
+                platform_code: str
+                login_identifier: str
+                secret: str
+                preferred_verification_channel: str
+
+            for account in claimed.accounts:
+                LegacyWorkerAccountPayload.model_validate(
+                    account.model_dump(mode="json", exclude_defaults=True),
+                )
 
             completed = task_service.complete(
                 WorkerPrincipal(device_id=device_id),
@@ -248,6 +263,34 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                 "ok": True,
                 "店铺列表": "[ACCOUNT_PAYLOAD_REDACTED]",
             }
+
+            runtime.worker_version = "0.4.7"
+            session.commit()
+            upgraded_task = task_service.create(
+                TaskCreate(
+                    target_device_id=device_id,
+                    shop_ids=shop_ids,
+                    skill_id="yingdao.app.run",
+                    input={"app_id": "task-account-safe-app", "params": {}},
+                ),
+            )
+            upgraded_claimed = task_service.claim_with_account(
+                WorkerPrincipal(device_id=device_id),
+                now=now,
+            )
+            assert upgraded_claimed is not None
+            assert upgraded_claimed.task.task_id == upgraded_task.task_id
+            assert [item.model_dump(mode="json") for item in upgraded_claimed.accounts] == [
+                {
+                    "shop_id": str(shop_id),
+                    "shop_name": "中文同名店铺",
+                    "platform_code": "douyin",
+                    "login_identifier": f"task-account-user-{position}",
+                    "secret": f"task-account-secret-{position}",
+                    "preferred_verification_channel": "manual",
+                }
+                for position, shop_id in enumerate(shop_ids, start=1)
+            ]
     finally:
         _cleanup(
             postgresql_engine,

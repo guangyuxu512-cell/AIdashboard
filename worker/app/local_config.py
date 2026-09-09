@@ -12,6 +12,9 @@ from uuid import UUID
 from pydantic import SecretStr
 
 
+DEFAULT_PRODUCTION_SERVER_URL = "https://119.29.188.118"
+
+
 class WorkerConfigurationError(RuntimeError):
     pass
 

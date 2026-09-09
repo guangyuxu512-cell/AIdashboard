@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.contracts import AccountPayload
+from app.contracts import AccountPayload, WorkerTask
 from app.local_config import LocalInputPaths, write_json_atomic as real_write_json_atomic
 from app.local_input import LocalInputBridge, LocalInputPreparationError
 
@@ -23,9 +23,15 @@ def make_bridge(tmp_path: Path) -> LocalInputBridge:
     )
 
 
-def make_account(*, secret: str = "task-secret") -> AccountPayload:
+def make_account(
+    *,
+    shop_id: str = "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+    shop_name: str | None = "中文店铺",
+    secret: str = "task-secret",
+) -> AccountPayload:
     return AccountPayload(
-        shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+        shop_id=shop_id,
+        shop_name=shop_name,
         platform_code="DOUYIN",
         login_identifier="测试账号",
         secret=secret,
@@ -64,6 +70,7 @@ def test_bridge_writes_readable_utf8_json_and_creates_images(
         "店铺列表": [
             {
                 "店铺ID": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+                "店铺名称": "中文店铺",
                 "平台编码": "DOUYIN",
                 "登录账号": "测试账号",
                 "登录密码": "task-secret",
@@ -74,6 +81,51 @@ def test_bridge_writes_readable_utf8_json_and_creates_images(
     assert "login_identifier" not in account_text
     assert bridge.paths.images_dir.is_dir()
     assert not list(bridge.paths.params_json_path.parent.glob(".*.tmp"))
+
+
+def test_bridge_preserves_order_and_duplicate_shop_names(tmp_path: Path) -> None:
+    bridge = make_bridge(tmp_path)
+    bridge.prepare(
+        params={},
+        accounts=[
+            make_account(
+                shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+                shop_name="同名店铺",
+            ),
+            make_account(
+                shop_id="423fac66-4b82-4ed0-8077-24a60aaf4bf6",
+                shop_name="同名店铺",
+            ),
+        ],
+    )
+
+    shops = json.loads(bridge.paths.account_json_path.read_text("utf-8"))["店铺列表"]
+    assert [(item["店铺ID"], item["店铺名称"]) for item in shops] == [
+        ("7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b", "同名店铺"),
+        ("423fac66-4b82-4ed0-8077-24a60aaf4bf6", "同名店铺"),
+    ]
+
+
+def test_new_worker_accepts_the_prior_account_contract_without_shop_name() -> None:
+    task = WorkerTask.model_validate(
+        {
+            "task_id": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+            "skill_id": "system.echo",
+            "input": {"message": "compatibility"},
+            "lease_until": "2026-09-10T12:00:00+00:00",
+            "accounts": [
+                {
+                    "shop_id": "423fac66-4b82-4ed0-8077-24a60aaf4bf6",
+                    "platform_code": "douyin",
+                    "login_identifier": "legacy-account",
+                    "secret": "not-logged",
+                    "preferred_verification_channel": "manual",
+                },
+            ],
+        },
+    )
+
+    assert task.accounts[0].shop_name is None
 
 
 def test_bridge_fully_overwrites_params_and_stale_account(tmp_path: Path) -> None:

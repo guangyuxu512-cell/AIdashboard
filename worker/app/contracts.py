@@ -18,6 +18,7 @@ class AccountPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     shop_id: UUID
+    shop_name: str | None = None
     platform_code: str
     login_identifier: str
     secret: str = Field(repr=False)

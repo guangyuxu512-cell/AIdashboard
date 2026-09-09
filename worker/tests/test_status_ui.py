@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from pydantic import SecretStr
 
-from app.local_config import LocalWorkerConfig
+from app.local_config import DEFAULT_PRODUCTION_SERVER_URL, LocalWorkerConfig
 from app.status_ui import (
     _render_diagnostics,
     _render_status,
@@ -29,6 +29,7 @@ def test_tkinter_is_available_and_status_ui_reads_snapshot_only(
     assert read_runtime_status(path)["device_id"] == "device-a"
     assert read_runtime_status(tmp_path / "missing.json") == {}
     assert should_open_configuration(None) is True
+    assert DEFAULT_PRODUCTION_SERVER_URL == "https://119.29.188.118"
 
 
 def test_existing_032_configuration_skips_first_setup() -> None:

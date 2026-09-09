@@ -1,11 +1,13 @@
 import json
 import os
+from queue import Empty, SimpleQueue
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from app.local_config import (
+    DEFAULT_PRODUCTION_SERVER_URL,
     LocalInputPaths,
     LocalWorkerConfig,
     WorkerConfigService,
@@ -17,6 +19,7 @@ from app.local_config import (
 from app.process_control import WorkerProcessController
 from app.providers.yingdao import WindowsYingdaoRuntimeLocator, YingdaoSessionError
 from app.provisioning import ConnectionTestResult, WorkerProvisioningClient
+from app.status_tray import WorkerStatusTray
 from app.version import WORKER_VERSION
 
 
@@ -60,6 +63,41 @@ def main() -> int:
     root.title("电商 AI Worker")
     root.geometry("800x720")
     root.minsize(720, 620)
+
+    tray_actions: SimpleQueue[str] = SimpleQueue()
+
+    def restore_status_window() -> None:
+        root.deiconify()
+        root.state("normal")
+        root.lift()
+        root.focus_force()
+
+    def queue_tray_action(action: str) -> None:
+        tray_actions.put(action)
+
+    status_tray = WorkerStatusTray(
+        on_open=lambda: queue_tray_action("open"),
+        on_open_logs=lambda: queue_tray_action("logs"),
+        on_exit_status_ui=lambda: queue_tray_action("exit"),
+    )
+
+    def hide_to_tray() -> None:
+        if status_tray.start():
+            root.withdraw()
+            return
+        # A Worker must remain operable even if the Windows tray is unavailable.
+        restore_status_window()
+
+    def hide_after_minimize() -> None:
+        if root.winfo_exists() and root.state() == "iconic":
+            hide_to_tray()
+
+    def on_root_unmap(event: Any) -> None:
+        if event.widget is root:
+            root.after_idle(hide_after_minimize)
+
+    root.bind("<Unmap>", on_root_unmap)
+    root.protocol("WM_DELETE_WINDOW", hide_to_tray)
 
     outer = ttk.Frame(root, padding=16)
     outer.pack(fill="both", expand=True)
@@ -112,7 +150,7 @@ def main() -> int:
     logs = ScrolledText(status_tab, height=11, wrap="word", state="disabled")
     logs.pack(fill="both", expand=True)
 
-    server_var = tk.StringVar(value=config.server_url if config else "")
+    configured_server_url = config.server_url if config else DEFAULT_PRODUCTION_SERVER_URL
     token_var = tk.StringVar(
         value=config.device_token.get_secret_value() if config else "",
     )
@@ -162,7 +200,11 @@ def main() -> int:
         )
         widget.grid(row=row, column=1, sticky="ew", pady=6)
 
-    add_config_row(0, "Backend 地址", ttk.Entry(config_form, textvariable=server_var))
+    add_config_row(
+        0,
+        "服务器",
+        ttk.Label(config_form, text="由发行包统一配置；连接状态见“状态”页"),
+    )
     token_frame = ttk.Frame(config_form)
     token_frame.columnconfigure(0, weight=1)
     token_entry = ttk.Entry(token_frame, textvariable=token_var, show="•")
@@ -387,11 +429,10 @@ def main() -> int:
     def test_connection(*, save_after: bool = False) -> None:
         set_busy(True)
         config_result_var.set("正在测试服务器与 Worker Token…")
-        server_url = server_var.get().strip()
         token = token_var.get().strip()
 
         def work() -> None:
-            result = provisioning_client.test(server_url, token)
+            result = provisioning_client.test(configured_server_url, token)
 
             def finish() -> None:
                 config_result_var.set(result.message)
@@ -420,7 +461,7 @@ def main() -> int:
             if (
                 config is not None
                 and result.code in {"BACKEND_UNREACHABLE", "BACKEND_TIMEOUT", "TLS_FAILED"}
-                and server_var.get().strip().rstrip("/") == config.server_url
+                and configured_server_url.rstrip("/") == config.server_url
                 and token_var.get() == config.device_token.get_secret_value()
                 and messagebox.askyesno(
                     "服务器暂时不可达",
@@ -436,7 +477,7 @@ def main() -> int:
             identity_name = result.identity.device_display_name
         try:
             config = config_service.save(
-                server_url=server_var.get().strip(),
+                server_url=configured_server_url,
                 device_id=identity_device_id,
                 device_token=token_var.get(),
                 device_display_name=identity_name,
@@ -515,6 +556,19 @@ def main() -> int:
             label.configure(text=diagnostics.get(key, "—"))
 
     def refresh_periodically() -> None:
+        while True:
+            try:
+                action = tray_actions.get_nowait()
+            except Empty:
+                break
+            if action == "open":
+                restore_status_window()
+            elif action == "logs":
+                open_logs()
+            elif action == "exit":
+                status_tray.stop()
+                root.destroy()
+                return
         refresh()
         root.after(1000, refresh_periodically)
 

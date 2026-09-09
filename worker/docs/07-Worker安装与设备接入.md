@@ -28,7 +28,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 2. 在 Device Drawer 的“Worker 凭证”区域签发独立 Token；明文只在该次 Dialog 显示，立即复制到目标电脑。
 3. 将通用 ZIP 复制到目标 Windows 电脑并解压；不要复制服务器 SSH Key、项目源码或其他设备配置。
 4. 双击 ZIP 根目录的 `ecommerce-worker.exe`。没有有效配置时程序自动打开“配置”页，不启动无限失败重试。
-5. 输入 Backend HTTPS URL 和 Worker Token。GUI 通过 Token 解析只读 Device ID/设备名称，用户不得手填 UUID。
+5. 输入 Worker Token。普通 GUI 使用发行包内置的生产 HTTPS 地址，不显示或编辑公网地址；GUI 通过 Token 解析只读 Device ID/设备名称，用户不得手填 UUID。已有配置继续复用其原 Server URL；高级运维入口仍可显式配置其他 HTTPS 环境。
 6. GUI 复用正式 `WindowsYingdaoRuntimeLocator` 自动检测 ShadowBot 6.3.6；自动检测失败时才选择 `ShadowBot.exe`，且必须通过精确版本校验。
 7. 点击“测试连接”，确认服务器可达且 Token 有效；点击“保存并启动”后，配置由正式 Config Service 保存并启动长期运行的 Worker Core。
 8. Worker 上线后自动 Heartbeat、同步 Skill Capability 并刷新 Yingdao Provider。
@@ -53,17 +53,23 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录只用于读取实际运行产生的 `task_logs`，不再用于识别账号或云端应用；默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。
 
-`data` 下三个本地输入落点是 Worker 0.4.6 默认值，可在 GUI“配置 → 本地输入”分别改为其他
+`data` 下三个本地输入落点是 Worker 0.4.7 默认值，可在 GUI“配置 → 本地输入”分别改为其他
 `params.json`、`account.json` 与图片目录。保存时检查 JSON 父目录和图片目录可创建、可写，图片
 目录不能是磁盘根目录。旧 0.4.3 `config.json` 没有这些键时自动使用默认值，不要求重新填写
 Backend、Token、Device ID 或 ShadowBot 路径。Task 正在运行时 GUI 拒绝保存/重启配置，避免
 中断当前执行；任务结束后保存的新路径用于后续 Task。
 
-Worker 0.4.6 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。Locator 依次复用当前配置、当前运行中的 6.3.6、安装注册信息与系统候选位置；手工选择也必须验证真实文件版本等于 6.3.6。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.4.6 会在启动与断线重连后同步带 `internal | business` 分类的完整 Skill Registry 快照；Business Skill 额外携带由 Pydantic Input Model 生成的有限 Input Schema，并继续兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
+Worker 0.4.7 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。Locator 依次复用当前配置、当前运行中的 6.3.6、安装注册信息与系统候选位置；手工选择也必须验证真实文件版本等于 6.3.6。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.4.7 会在启动与断线重连后同步带 `internal | business` 分类的完整 Skill Registry 快照；Business Skill 额外携带由 Pydantic Input Model 生成的有限 Input Schema，并继续兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
 
-0.4.6 在普通 Executor 前增加统一 Task 图片准备：Claim 图片清单只通过现有 Worker Token 下载到
+0.4.7 在普通 Executor 前增加统一 Task 图片准备：Claim 图片清单只通过现有 Worker Token 下载到
 配置的 images 目录，校验大小与 SHA-256 后才允许执行；空图片任务同样清理上一 Task 的受管图片。
 旧 Device ID、Token 与本地输入路径继续复用，升级不要求重新注册设备。
+
+0.4.7 的 Task Account Payload 新增可选 `shop_name`，并在本地 `account.json` 写为“店铺名称”；
+原 `店铺列表` 根对象、店铺 ID、账号和验证字段保持不变。Backend 通过已上报的 Worker 版本只向
+0.4.7+ 下发该额外字段，旧版与未知版本继续领取原 Contract；新 0.4.7 包也可领取旧 Backend 的
+不含名称 Claim。因此先发布兼容 Backend、再在空闲时替换 Windows 包即可，不需要中断 Lease 或
+重新签发 Device Token。本 Feature 不涉及数据库 Schema 或 Migration。
 
 当前账号由 6.3.6 的 `/api/v1/account/current` 唯一确定，不需要从多个 `user.db3` 缓存中手工选择 userId。
 
@@ -72,10 +78,10 @@ Worker 0.4.6 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不�
 `ecommerce-worker.exe` 默认打开现有 Tkinter GUI：
 
 - 状态：设备、Device ID、Worker/服务器状态、ShadowBot 状态/版本/账号/应用数、Skill 同步、当前任务、运行时间与最近脱敏日志。
-- 配置：Backend 地址、默认掩码的 Worker Token、只读设备身份、ShadowBot 6.3.6 路径，以及可浏览选择的参数 JSON、账号 JSON、图片工作目录；支持测试连接、自动检测、严格手工选择和保存重连。
+- 配置：默认掩码的 Worker Token、只读设备身份、ShadowBot 6.3.6 路径，以及可浏览选择的参数 JSON、账号 JSON、图片工作目录；普通界面不显示 Backend 公网地址，支持测试连接、自动检测、严格手工选择和保存重连。
 - 诊断：Backend、Token、Heartbeat、Skill 同步、ShadowBot 进程/版本/Session、应用数、最近 Provider 刷新及三个本地输入落点的可写状态；只显示路径健康，不显示账号文件内容。
 
-GUI 只是本机配置与观察入口，不是 Worker Core 的运行前提。已有有效配置时 GUI 会确保 Core 已启动；关闭 GUI 后 Core 继续后台运行。Core 通过不含 Token 的 `worker-state.json` 记录 PID、启动时间、EXE 路径和 Device ID，用于精确识别与停止。
+GUI 只是本机配置与观察入口，不是 Worker Core 的运行前提。已有有效配置时 GUI 会确保 Core 已启动；最小化或关闭窗口会转入 Windows 托盘，托盘可以打开状态、打开日志或退出状态界面，三者均不停止 Core。Core 通过不含 Token 的 `worker-state.json` 记录 PID、启动时间、EXE 路径和 Device ID，用于精确识别与停止。托盘初始化失败时 GUI 保持可见。
 
 - `启动Worker.cmd`：检查配置和精确进程身份；已有实例时不重复启动，随后显示进程、Backend、Device ID、Server URL 与 Device Runtime。
 - `打开Worker状态.cmd`：打开同一个 Tkinter 状态/配置/诊断窗口；关闭窗口不影响后台 Worker。
