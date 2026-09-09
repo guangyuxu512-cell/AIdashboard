@@ -197,7 +197,6 @@ function result(
   previewUrl: string,
   status: 'SUCCESS' | 'FAILED' = 'SUCCESS',
   size: GenerationResultView['size'] = '1:1',
-  savedToProductId?: string,
 ): GenerationResultView {
   return {
     id,
@@ -206,7 +205,6 @@ function result(
     status,
     outputRole: 'MAIN_IMAGE',
     size,
-    ...(status === 'SUCCESS' && savedToProductId ? { savedToProductId } : {}),
   }
 }
 
@@ -240,7 +238,6 @@ function batchHierarchy(
                   previewUrls[index + 1] ?? previewUrls[0] ?? '',
                   resultStatus,
                   template.size,
-                  'pmg-phone-stand',
                 ),
               ),
             },
@@ -360,7 +357,6 @@ function createRecordFixtures(
             '',
           status === 'FAILED' ? 'FAILED' : 'SUCCESS',
           effectiveConfig.size,
-          status !== 'FAILED' && index % 4 === 0 ? product?.id : undefined,
         ),
         slotIndex: offset,
       }),

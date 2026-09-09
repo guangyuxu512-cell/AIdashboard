@@ -15,7 +15,6 @@ defineProps<{
 defineEmits<{
   downloadAll: []
   download: [result: GenerationExecutionResultView]
-  save: [result: GenerationExecutionResultView]
   retry: [result: GenerationExecutionResultView]
 }>()
 </script>
@@ -34,7 +33,6 @@ defineEmits<{
         v-if="execution"
         :results="execution.results"
         @download="$emit('download', $event)"
-        @save="$emit('save', $event)"
         @retry="$emit('retry', $event)"
       />
       <EmptyState v-else description="暂无生成结果" />

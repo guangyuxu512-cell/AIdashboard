@@ -103,9 +103,6 @@ function retry(): void {
     <footer class="batch-template-execution-card__footer">
       <span class="batch-template-execution-card__meta">
         <span>{{ template.completedCount }} / {{ template.totalCount }}</span>
-        <span v-if="successCount" data-testid="batch-archived-count">
-          已归档 {{ successCount }}
-        </span>
       </span>
       <span class="batch-template-execution-card__actions">
         <AppButton
