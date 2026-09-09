@@ -8,6 +8,7 @@ const productionTestFiles = ['**/production/**']
 const realTestFiles = [
   '**/auth-real.spec.ts',
   '**/real-api.spec.ts',
+  '**/ai-workbench-real-api.spec.ts',
   '**/ai-workbench-real-backend.spec.ts',
 ]
 const visualTestFiles = [

@@ -6,13 +6,7 @@ import { storeToRefs } from 'pinia'
 
 import { AiWorkbenchLayout } from '@/features/ai-workbench'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
-import {
-  AppButton,
-  AppDialog,
-  AppInput,
-  AppNumberInput,
-  AppSelect,
-} from '@/shared/ui'
+import { AppButton, AppInput, AppNumberInput, AppSelect } from '@/shared/ui'
 
 import {
   GENERATION_MODE_ORDER,
@@ -50,9 +44,6 @@ const message = useMessage()
 
 const assetPickerVisible = ref(false)
 const assetPickerSlotKey = ref<GenerationInputSlotKey>('PRODUCT_IMAGES')
-const saveDialogVisible = ref(false)
-const saveResultId = ref<string | null>(null)
-const saveProductId = ref<string | null>(null)
 
 const modeOptions = GENERATION_MODE_ORDER.map((value) => ({
   label: GENERATION_MODE_REGISTRY[value].label,
@@ -69,11 +60,6 @@ const sizeOptions = GENERATION_SIZE_OPTIONS.map((value) => ({
   label: value,
   value,
 }))
-const saveProductOptions = computed(() =>
-  products.value
-    .filter((product) => product.enabled)
-    .map((product) => ({ label: product.name, value: product.id })),
-)
 const templateOptions = computed(() =>
   instantTemplateGroups.value.map((group) => ({
     type: 'group' as const,
@@ -133,30 +119,6 @@ function generate(): void {
 
 function download(): void {
   message.success('下载任务已创建')
-}
-
-function openSaveDialog(result: GenerationExecutionResultView): void {
-  saveResultId.value = result.id
-  const sourceProductId = generationStore.getInstantResultSourceProductId(
-    result.id,
-  )
-  saveProductId.value = saveProductOptions.value.some(
-    (option) => option.value === sourceProductId,
-  )
-    ? sourceProductId
-    : null
-  saveDialogVisible.value = true
-}
-
-function saveResult(): void {
-  if (
-    saveResultId.value &&
-    saveProductId.value &&
-    generationStore.saveInstantResult(saveResultId.value, saveProductId.value)
-  ) {
-    saveDialogVisible.value = false
-    message.success('已保存到素材库')
-  }
 }
 
 function retryResult(result: GenerationExecutionResultView): void {
@@ -283,7 +245,6 @@ function retryResult(result: GenerationExecutionResultView): void {
         :execution="instantExecution"
         @download-all="download"
         @download="download"
-        @save="openSaveDialog"
         @retry="retryResult"
       />
     </template>
@@ -295,20 +256,6 @@ function retryResult(result: GenerationExecutionResultView): void {
     :role="assetPickerDefinition.acceptedMaterialRole"
     @confirm="selectAsset"
   />
-  <AppDialog
-    v-model:show="saveDialogVisible"
-    title="保存到素材库"
-    positive-text="保存到素材库"
-    :positive-disabled="!saveProductId"
-    @confirm="saveResult"
-  >
-    <AppSelect
-      v-model="saveProductId"
-      :options="saveProductOptions"
-      placeholder="选择产品"
-      aria-label="目标产品素材组"
-    />
-  </AppDialog>
 </template>
 
 <style scoped>

@@ -63,14 +63,6 @@ async function expectBareSwitchBar(control: Locator): Promise<void> {
   expect(await inactiveButtons.count()).toBeGreaterThan(0)
 }
 
-async function openSaveToAssets(page: Page, card: Locator): Promise<void> {
-  await card.getByRole('button', { name: /更多操作/ }).click()
-  await page
-    .locator('.n-dropdown-option:visible')
-    .getByText('保存到素材库', { exact: true })
-    .click()
-}
-
 test('keeps every generation short option group unframed in both themes', async ({
   page,
 }) => {
@@ -220,18 +212,10 @@ test('uses registry-driven input slots and one editable generation config', asyn
   const temporarySuccessCard = temporaryResultGrid
     .locator('[data-result-status="SUCCESS"]')
     .first()
-  await openSaveToAssets(page, temporarySuccessCard)
-  const temporarySaveDialog = page.getByRole('dialog')
-  await expect(temporarySaveDialog.getByLabel('目标产品素材组')).toContainText(
-    '选择产品',
-  )
   await expect(
-    temporarySaveDialog.getByRole('button', {
-      name: '保存到素材库',
-      exact: true,
-    }),
-  ).toBeDisabled()
-  await temporarySaveDialog.getByRole('button', { name: '取消' }).click()
+    temporarySuccessCard.getByRole('button', { name: /更多操作/ }),
+  ).toHaveCount(0)
+  await expect(page.getByText('保存到素材库', { exact: true })).toHaveCount(0)
 
   await productSlot.getByRole('button', { name: '素材库', exact: true }).click()
   const assetDialog = page.getByRole('dialog')
@@ -269,18 +253,10 @@ test('uses registry-driven input slots and one editable generation config', asyn
     .first()
   await productSlot.getByRole('button', { name: '移除 正面.jpg' }).click()
   await expect(productSurface.getByAltText('正面.jpg')).toHaveCount(0)
-  await openSaveToAssets(page, firstSuccessCard)
-  const saveDialog = page.getByRole('dialog')
-  await expect(saveDialog.getByLabel('目标产品素材组')).toContainText(
-    '手机支架',
-  )
-  await saveDialog
-    .getByRole('button', { name: '保存到素材库', exact: true })
-    .click()
-  await expect(firstSuccessCard).toContainText('已加入素材库')
   await expect(
     firstSuccessCard.getByRole('button', { name: /更多操作/ }),
   ).toHaveCount(0)
+  await expect(firstSuccessCard).not.toContainText('素材库')
 
   await moduleNavigation.getByRole('button', { name: '生成记录' }).click()
   const recordRows = page.locator('.n-data-table-tbody .n-data-table-tr')
@@ -291,7 +267,7 @@ test('uses registry-driven input slots and one editable generation config', asyn
   await expect(recordDrawer).toContainText('四宫格')
   await expect(recordDrawer).toContainText('3:4')
   await expect(recordDrawer).toContainText('2 张')
-  await expect(recordDrawer).toContainText('已加入素材库')
+  await expect(recordDrawer).not.toContainText('素材库')
   await expect(recordDrawer.getByText('提示词', { exact: true })).toBeVisible()
   await expect(recordDrawer.getByText('Prompt', { exact: true })).toHaveCount(0)
   await recordDrawer.getByRole('button', { name: '关闭' }).click()
@@ -550,13 +526,8 @@ test('renders stable instant result slots with preview and isolated retry', asyn
   ).toBeVisible()
   await expect(
     successCard.getByRole('button', { name: /更多操作 生成结果-01/ }),
-  ).toBeVisible()
-  await openSaveToAssets(page, successCard)
-  const saveDialog = page.getByRole('dialog')
-  await expect(saveDialog.locator('.app-dialog__title')).toHaveText(
-    '保存到素材库',
-  )
-  await saveDialog.getByRole('button', { name: '取消' }).click()
+  ).toHaveCount(0)
+  await expect(page.getByText('保存到素材库', { exact: true })).toHaveCount(0)
   await expect(summary.getByRole('button', { name: '下载全部' })).toBeEnabled()
 
   await expect(summary).toHaveAttribute(
@@ -723,7 +694,7 @@ test('uses templates as editable fill sources and records the final config', asy
   await expect(recordDrawer).toContainText('四宫格')
   await expect(recordDrawer).toContainText('3:4')
   await expect(recordDrawer).toContainText('2 张')
-  await expect(recordDrawer).toContainText('未加入素材库')
+  await expect(recordDrawer).not.toContainText('素材库')
   await recordDrawer.getByRole('button', { name: '关闭' }).click()
 
   await page
@@ -882,8 +853,8 @@ test('completes batch configuration and the master-detail execution viewer', asy
   await expect(viewer).toBeVisible()
   await expect(summary).toContainText('执行结果')
   await expect(viewer.getByTestId('batch-execution-progress')).toBeVisible()
-  await expect(viewer.getByTestId('batch-archived-count').first()).toBeVisible()
-  await expect(viewer).toContainText('已归档')
+  await expect(viewer.getByTestId('batch-archived-count')).toHaveCount(0)
+  await expect(viewer).not.toContainText('已归档')
   await expect(
     viewer.getByRole('button', { name: /保存到素材库/ }),
   ).toHaveCount(0)
@@ -1128,7 +1099,7 @@ test('filters, paginates and opens generation record details in both themes', as
   await expect(
     drawer.getByTestId('batch-result-tree').locator('details'),
   ).not.toHaveCount(0)
-  await expect(drawer).toContainText('已加入素材库')
+  await expect(drawer).not.toContainText('素材库')
   await expect(
     drawer.getByRole('button', { name: /保存到素材库/ }),
   ).toHaveCount(0)

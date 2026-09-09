@@ -105,16 +105,15 @@ describe('AI generation visual store: generation records', () => {
     }
   })
 
-  it('keeps saved and unsaved instant results distinguishable in records', () => {
+  it('keeps material membership out of instant record results', () => {
     const results = createStore().records.flatMap((record) =>
       record.detail.kind === 'INSTANT'
         ? record.detail.results.filter((result) => result.status === 'SUCCESS')
         : [],
     )
-    expect(results.some((result) => Boolean(result.savedToProductId))).toBe(
+    expect(results.every((result) => !('savedToProductId' in result))).toBe(
       true,
     )
-    expect(results.some((result) => !result.savedToProductId)).toBe(true)
   })
 
   it('snapshots the manual effective config', () => {
@@ -260,7 +259,7 @@ describe('AI generation visual store: generation records', () => {
     expect(record.status).toBe('SUCCESS')
   })
 
-  it('archives batch results that succeed after a record retry', () => {
+  it('keeps retried batch results outside material membership', () => {
     const store = createStore()
     const record = store.records.find(
       (candidate) =>
@@ -275,7 +274,7 @@ describe('AI generation visual store: generation records', () => {
         for (const result of product.groups.flatMap((group) =>
           group.templates.flatMap((template) => template.results),
         )) {
-          expect(result.savedToProductId).toBe(product.productId)
+          expect(result).not.toHaveProperty('savedToProductId')
         }
       }
     }

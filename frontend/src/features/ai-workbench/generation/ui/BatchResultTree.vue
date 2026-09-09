@@ -77,12 +77,6 @@ defineEmits<{
                     :label="GENERATION_RESULT_STATUS_META[item.status].label"
                     :tone="GENERATION_RESULT_STATUS_META[item.status].tone"
                   />
-                  <span
-                    v-if="item.status === 'SUCCESS' && item.savedToProductId"
-                    class="batch-result-tree__asset-status"
-                  >
-                    已加入素材库
-                  </span>
                   <AppButton
                     tone="text"
                     :aria-label="`下载 ${item.name}`"
@@ -209,11 +203,6 @@ defineEmits<{
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.batch-result-tree__asset-status {
-  color: var(--text-tertiary);
   white-space: nowrap;
 }
 </style>

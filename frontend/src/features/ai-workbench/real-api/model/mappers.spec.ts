@@ -222,7 +222,7 @@ describe('AI Workbench real API mappers', () => {
     expect(mapGenerationRecord(dto)).toMatchObject({ status: viewStatus })
   })
 
-  it('uses only formal Asset content URLs for successful results and keeps archive facts', () => {
+  it('uses only formal Asset content URLs for successful results', () => {
     const dto = job('SUCCESS', ['SUCCESS'])
     const execution = mapInstantExecution(dto)
 
@@ -234,10 +234,10 @@ describe('AI Workbench real API mappers', () => {
           assetId: 'asset-0',
           previewUrl: '/api/v1/assets/asset-0/content',
           thumbnailUrl: '/api/v1/assets/asset-0/thumbnail',
-          savedToProductId: 'material-1',
         },
       ],
     })
+    expect(execution.results[0]).not.toHaveProperty('savedToProductId')
     expect(JSON.stringify(execution)).not.toContain('toapis')
     expect(JSON.stringify(execution)).not.toContain('providerUrl')
   })

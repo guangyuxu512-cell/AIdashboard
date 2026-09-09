@@ -438,6 +438,7 @@ function replaceBindings(
           </AppButton>
         </NDropdown>
         <NUpload
+          class="ai-assets-real__upload"
           accept="image/jpeg,image/png,image/webp"
           multiple
           :show-file-list="false"
@@ -707,5 +708,10 @@ function replaceBindings(
   margin: 0 auto;
   border-radius: var(--radius-card);
   object-fit: contain;
+}
+
+.ai-assets-real__upload {
+  width: auto;
+  flex: 0 0 auto;
 }
 </style>

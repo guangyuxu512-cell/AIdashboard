@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, RefreshCw, Save } from '@lucide/vue'
+import { Download, RefreshCw } from '@lucide/vue'
 
 import { AssetContentImage } from '@/entities/asset'
 import EmptyState from '@/shared/components/EmptyState.vue'
@@ -14,18 +14,15 @@ import {
 withDefaults(
   defineProps<{
     results: GenerationResultView[]
-    showSave?: boolean
     showRegenerate?: boolean
   }>(),
   {
-    showSave: true,
     showRegenerate: true,
   },
 )
 
 defineEmits<{
   download: [result: GenerationResultView]
-  save: [result: GenerationResultView]
   regenerate: [result: GenerationResultView]
 }>()
 </script>
@@ -60,15 +57,6 @@ defineEmits<{
         >
           <Download :size="15" />
           下载
-        </AppButton>
-        <AppButton
-          v-if="showSave"
-          tone="text"
-          aria-label="保存到素材库"
-          @click="$emit('save', result)"
-        >
-          <Save :size="15" />
-          保存
         </AppButton>
         <AppButton
           v-if="showRegenerate"
