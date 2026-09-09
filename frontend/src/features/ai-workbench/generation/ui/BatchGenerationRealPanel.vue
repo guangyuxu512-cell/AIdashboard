@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { useMutation, useQueryClient } from '@tanstack/vue-query'
+import { useQueryClient } from '@tanstack/vue-query'
 import { CheckCircle2, Folder, Play } from '@lucide/vue'
 import { useMessage } from 'naive-ui'
+import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 import { fetchAssetContent } from '@/entities/asset/api/asset-api'
@@ -28,14 +29,11 @@ import {
   GENERATION_OUTPUT_RANGE_META,
   type BatchPreflightIssueView,
   type BatchPreflightView,
-  type BatchProductScope,
   type BatchTemplateExecutionView,
-  type BatchTemplateSource,
-  type GenerationMode,
-  type GenerationOutputRange,
   type GenerationProductView,
   type GenerationTemplateGroupView,
 } from '../model/types'
+import { useAiWorkbenchSessionStore } from '../model/useAiWorkbenchSessionStore'
 import type { WorkbenchModelView } from '../../real-api/model/mappers'
 import { mapBatchExecution } from '../../real-api/model/mappers'
 import {
@@ -54,38 +52,23 @@ const props = defineProps<{
 
 const message = useMessage()
 const queryClient = useQueryClient()
-const mode = ref<GenerationMode>('NORMAL_GENERATION')
-const selectedModelId = ref<string | null>(null)
-const productScope = ref<BatchProductScope>('ALL_ENABLED')
-const selectedProductIds = ref<string[]>([])
-const templateSource = ref<BatchTemplateSource>('PRODUCT_CONFIGURED')
-const selectedTemplateGroupIds = ref<string[]>([])
-const outputRange = ref<GenerationOutputRange>('ALL')
-const batchChecked = ref(false)
-const currentJobId = ref<string | null>(null)
+const sessionStore = useAiWorkbenchSessionStore()
+const {
+  batchMode: mode,
+  batchSelectedModelId: selectedModelId,
+  batchProductScope: productScope,
+  batchSelectedProductIds: selectedProductIds,
+  batchTemplateSource: templateSource,
+  batchSelectedTemplateGroupIds: selectedTemplateGroupIds,
+  batchOutputRange: outputRange,
+  batchChecked,
+  batchCurrentJobId: currentJobId,
+  batchSubmitting: submitting,
+} = storeToRefs(sessionStore)
 const productPickerVisible = ref(false)
 const preflightProblemsVisible = ref(false)
 
 const jobQuery = useGenerationJobQuery(currentJobId, { poll: true })
-const submitMutation = useMutation({
-  mutationFn: () =>
-    aiWorkbenchApi.submitGeneration({
-      work_mode: 'BATCH',
-      submission_key: crypto.randomUUID(),
-      model_id: selectedModelId.value!,
-      mode: mode.value,
-      product_scope: productScope.value,
-      selected_product_ids:
-        productScope.value === 'SELECTED' ? selectedProductIds.value : [],
-      template_source: templateSource.value,
-      selected_template_group_ids:
-        templateSource.value === 'CURRENT_SELECTION'
-          ? selectedTemplateGroupIds.value
-          : [],
-      output_range: outputRange.value,
-    }),
-  onSuccess: (job) => setJob(job),
-})
 
 const compatibleModels = computed(() =>
   compatibleWorkbenchModels(props.models, mode.value),
@@ -328,20 +311,36 @@ function runPreflight(): void {
   if (preflight.value.issues.length) preflightProblemsVisible.value = true
 }
 
-function start(): void {
+async function start(): Promise<void> {
   if (
     !batchChecked.value ||
     !selectedModel.value ||
     preflight.value.generationItemCount === 0 ||
     hasModelCapabilityIssue.value ||
-    submitMutation.isPending.value
+    submitting.value
   ) {
     return
   }
-  submitMutation.mutate(undefined, {
-    onSuccess: () => message.success('批量生成已创建'),
-    onError: (error) => message.error(getErrorMessage(error)),
-  })
+  try {
+    const job = await sessionStore.submitBatch({
+      model_id: selectedModelId.value!,
+      mode: mode.value,
+      product_scope: productScope.value,
+      selected_product_ids:
+        productScope.value === 'SELECTED' ? selectedProductIds.value : [],
+      template_source: templateSource.value,
+      selected_template_group_ids:
+        templateSource.value === 'CURRENT_SELECTION'
+          ? selectedTemplateGroupIds.value
+          : [],
+      output_range: outputRange.value,
+    })
+    if (!job) return
+    setJob(job)
+    message.success('批量生成已创建')
+  } catch (error) {
+    message.error(getErrorMessage(error))
+  }
 }
 
 async function downloadResult(
@@ -566,7 +565,7 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
               !selectedModel ||
               preflight.generationItemCount === 0 ||
               hasModelCapabilityIssue ||
-              submitMutation.isPending.value
+              submitting
             "
             @click="start"
           >

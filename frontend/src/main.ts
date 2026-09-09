@@ -9,6 +9,7 @@ import {
   queryClient,
   resetQueriesForActorContextChange,
 } from './app/providers/query-client'
+import { useAiWorkbenchSessionStore } from './features/ai-workbench/generation/model/useAiWorkbenchSessionStore'
 import { configureHumanRequestContext } from './shared/api'
 import { configureAuthEffects, useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
@@ -19,9 +20,16 @@ const pinia = createPinia()
 
 app.use(pinia)
 const authStore = useAuthStore(pinia)
+const aiWorkbenchSessionStore = useAiWorkbenchSessionStore(pinia)
 configureAuthEffects({
-  onTeamChanged: () => void resetQueriesForActorContextChange(),
-  onAuthCleared: () => queryClient.clear(),
+  onTeamChanged: () => {
+    aiWorkbenchSessionStore.resetForActorContextChange()
+    void resetQueriesForActorContextChange()
+  },
+  onAuthCleared: () => {
+    aiWorkbenchSessionStore.resetForActorContextChange()
+    queryClient.clear()
+  },
 })
 configureHumanRequestContext({
   getActiveTeamId: () => authStore.activeTeamId,
