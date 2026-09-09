@@ -26,7 +26,19 @@ Model / Template / Material Catalog
 
 Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FAILED` 立即停止。记录列表仅在当前页存在非终态 Job 时轮询。失败重试与即时结果归档都调用 Backend 正式 API，Frontend 不自行改写 Item 状态。
 
-## 4. Visual Mock Boundary
+## 4. Navigation State Retention
+
+同一次登录、同一 Team 内，AI 生图生产页使用 Pinia 保留页面导航期间的客户端状态：
+
+- 即时生成与批量生成分别保留草稿、当前 `generation_job_id` 和必要的提交中状态。
+- 提交请求在页面离开后继续由同一个会话 Store 承接；返回页面只恢复原任务 ID，不再次提交生成请求。
+- Job 详情、结果与轮询仍由 TanStack Vue Query 和正式 API 管理，不复制到 Pinia。
+- 草稿图片只保留 Asset ID 与正式内容地址；鉴权读取后创建的 Blob URL 按图片组件生命周期释放。
+- 退出登录、会话失效或切换 Team 时同步清理两种生成模式的状态；清理前发出的异步响应不得回写新身份。
+
+本能力仅覆盖当前浏览器页面运行期的路由往返，不使用本地持久化，不提供跨刷新、跨浏览器或跨登录恢复。
+
+## 5. Visual Mock Boundary
 
 Visual Mock 仅在 Development 且查询参数精确为 `visualMock=1` 时动态加载，用于冻结视觉与交互测试。Production Build 默认且唯一运行 Real API 页面，不提供 Fixture fallback。
 

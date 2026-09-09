@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { useMutation, useQueryClient } from '@tanstack/vue-query'
+import { useQueryClient } from '@tanstack/vue-query'
 import { Sparkles } from '@lucide/vue'
 import { useMessage } from 'naive-ui'
+import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 import {
@@ -35,13 +36,13 @@ import {
   GENERATION_OUTPUT_FORMAT_META,
   type GenerationExecutionResultView,
   type GenerationInputSlotKey,
-  type GenerationMode,
   type GenerationOutputFormat,
   type GenerationProductView,
   type GenerationSize,
   type GenerationSourceImageView,
   type GenerationTemplateGroupView,
 } from '../model/types'
+import { useAiWorkbenchSessionStore } from '../model/useAiWorkbenchSessionStore'
 import type { WorkbenchModelView } from '../../real-api/model/mappers'
 import { mapInstantExecution } from '../../real-api/model/mappers'
 import {
@@ -63,20 +64,19 @@ const props = defineProps<{
 
 const message = useMessage()
 const queryClient = useQueryClient()
-const mode = ref<GenerationMode>('NORMAL_GENERATION')
-const selectedModelId = ref<string | null>(null)
-const inputs = ref<Record<GenerationInputSlotKey, GenerationSourceImageView[]>>(
-  {
-    PRODUCT_IMAGES: [],
-    REFERENCE_IMAGES: [],
-  },
-)
-const appliedTemplateId = ref<string | null>(null)
-const prompt = ref('')
-const outputFormat = ref<GenerationOutputFormat>('SINGLE')
-const size = ref<GenerationSize>('1:1')
-const count = ref(1)
-const currentJobId = ref<string | null>(null)
+const sessionStore = useAiWorkbenchSessionStore()
+const {
+  instantMode: mode,
+  instantSelectedModelId: selectedModelId,
+  instantInputs: inputs,
+  instantAppliedTemplateId: appliedTemplateId,
+  instantPrompt: prompt,
+  instantOutputFormat: outputFormat,
+  instantSize: size,
+  instantCount: count,
+  instantCurrentJobId: currentJobId,
+  instantSubmitting: submitting,
+} = storeToRefs(sessionStore)
 const assetPickerVisible = ref(false)
 const assetPickerSlotKey = ref<GenerationInputSlotKey>('PRODUCT_IMAGES')
 const saveDialogVisible = ref(false)
@@ -84,25 +84,6 @@ const saveResultId = ref<string | null>(null)
 const saveProductId = ref<string | null>(null)
 
 const jobQuery = useGenerationJobQuery(currentJobId, { poll: true })
-const submitMutation = useMutation({
-  mutationFn: () =>
-    aiWorkbenchApi.submitGeneration({
-      work_mode: 'INSTANT',
-      submission_key: crypto.randomUUID(),
-      model_id: selectedModelId.value!,
-      mode: mode.value,
-      product_asset_ids: inputs.value.PRODUCT_IMAGES.map((image) => image.id),
-      reference_asset_ids: inputs.value.REFERENCE_IMAGES.map(
-        (image) => image.id,
-      ),
-      prompt_template_id: appliedTemplateId.value,
-      prompt: prompt.value.trim(),
-      output_format: outputFormat.value,
-      size: size.value,
-      count: count.value,
-    }),
-  onSuccess: (job) => setJob(job),
-})
 
 const modeDefinition = computed(() => GENERATION_MODE_REGISTRY[mode.value])
 const compatibleModels = computed(() =>
@@ -173,7 +154,7 @@ const canGenerate = computed(
       currentInputCount.value,
     ) &&
     isWorkbenchModelSizeSupported(selectedModel.value, size.value) &&
-    !submitMutation.isPending.value,
+    !submitting.value,
 )
 const saveProductOptions = computed(() =>
   props.products
@@ -323,12 +304,28 @@ function setSize(value: string | number | null): void {
   }
 }
 
-function generate(): void {
+async function generate(): Promise<void> {
   if (!canGenerate.value) return
-  submitMutation.mutate(undefined, {
-    onSuccess: () => message.success('生成任务已创建'),
-    onError: (error) => message.error(getErrorMessage(error)),
-  })
+  try {
+    const job = await sessionStore.submitInstant({
+      model_id: selectedModelId.value!,
+      mode: mode.value,
+      product_asset_ids: inputs.value.PRODUCT_IMAGES.map((image) => image.id),
+      reference_asset_ids: inputs.value.REFERENCE_IMAGES.map(
+        (image) => image.id,
+      ),
+      prompt_template_id: appliedTemplateId.value,
+      prompt: prompt.value.trim(),
+      output_format: outputFormat.value,
+      size: size.value,
+      count: count.value,
+    })
+    if (!job) return
+    setJob(job)
+    message.success('生成任务已创建')
+  } catch (error) {
+    message.error(getErrorMessage(error))
+  }
 }
 
 async function downloadResult(
