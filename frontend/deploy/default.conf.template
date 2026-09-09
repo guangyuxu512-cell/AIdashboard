@@ -15,6 +15,7 @@ server {
     }
 
     location = /mobile {
+        absolute_redirect off;
         return 308 /mobile/;
     }
 

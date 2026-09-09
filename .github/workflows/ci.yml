@@ -128,8 +128,14 @@ jobs:
           printf '%s' "${mobile_document}" | grep -Eq '/mobile/assets/[^" ]+\.js'
           printf '%s' "${mobile_document}" | grep -Eq '/mobile/assets/[^" ]+\.css'
 
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile)" = '308'
-          test "$(curl --silent --output /dev/null --write-out '%{redirect_url}' http://127.0.0.1:18080/mobile)" = 'http://127.0.0.1:18080/mobile/'
+          mobile_redirect_headers="$(
+            curl --fail --silent --show-error --head \
+              --header 'Host: 119.29.188.118' \
+              --header 'X-Forwarded-Proto: https' \
+              http://127.0.0.1:18080/mobile | tr -d '\r'
+          )"
+          printf '%s\n' "${mobile_redirect_headers}" | grep -Fq 'HTTP/1.1 308'
+          printf '%s\n' "${mobile_redirect_headers}" | grep -Eqi '^Location: /mobile/$'
           curl --fail --silent --show-error http://127.0.0.1:18080/mobile/manifest.webmanifest >/dev/null
           curl --fail --silent --show-error http://127.0.0.1:18080/mobile/icons/icon-192.png >/dev/null
           curl --fail --silent --show-error http://127.0.0.1:18080/mobile/icons/icon-512.png >/dev/null
