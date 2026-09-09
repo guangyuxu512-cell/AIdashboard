@@ -57,6 +57,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck and build frontend in Real mode
         run: pnpm --filter @control-center/frontend build
+      - name: Validate and build Mobile production output
+        run: |
+          pnpm --filter @control-center/mobile lint
+          pnpm --filter @control-center/mobile test
+          pnpm --filter @control-center/mobile build
 
   container-runtime:
     runs-on: ubuntu-latest
@@ -85,7 +90,7 @@ jobs:
             'node --version && test -f /app/app/platforms/pdd/vendor/anti_content.js && python -c "from app.platforms.pdd.signer import PddAntiContentSigner; PddAntiContentSigner().generate()"'
       - name: Build production frontend image
         run: docker build --tag control-center-frontend-ci:${{ github.sha }} --file frontend/Dockerfile .
-      - name: Verify production frontend starts with a read-only root filesystem
+      - name: Verify PC and Mobile production entries with a read-only root filesystem
         run: |
           container_name="control-center-frontend-ci-${{ github.run_id }}"
           cleanup() {
@@ -104,12 +109,44 @@ jobs:
             control-center-frontend-ci:${{ github.sha }} >/dev/null
           for _ in $(seq 1 20); do
             if curl --fail --silent http://127.0.0.1:18080/ >/dev/null; then
-              exit 0
+              frontend_ready=true
+              break
             fi
             sleep 1
           done
-          docker logs "${container_name}" >&2
-          exit 1
+          if [ "${frontend_ready:-false}" != 'true' ]; then
+            docker logs "${container_name}" >&2
+            exit 1
+          fi
+
+          pc_document="$(curl --fail --silent --show-error http://127.0.0.1:18080/)"
+          mobile_document="$(curl --fail --silent --show-error http://127.0.0.1:18080/mobile/)"
+          mobile_deep_document="$(curl --fail --silent --show-error http://127.0.0.1:18080/mobile/deep-link)"
+          test "${pc_document}" != "${mobile_document}"
+          test "${mobile_document}" = "${mobile_deep_document}"
+          printf '%s' "${mobile_document}" | grep -Fq '/mobile/manifest.webmanifest'
+          printf '%s' "${mobile_document}" | grep -Eq '/mobile/assets/[^" ]+\.js'
+          printf '%s' "${mobile_document}" | grep -Eq '/mobile/assets/[^" ]+\.css'
+
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile)" = '308'
+          test "$(curl --silent --output /dev/null --write-out '%{redirect_url}' http://127.0.0.1:18080/mobile)" = 'http://127.0.0.1:18080/mobile/'
+          curl --fail --silent --show-error http://127.0.0.1:18080/mobile/manifest.webmanifest >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:18080/mobile/icons/icon-192.png >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:18080/mobile/icons/icon-512.png >/dev/null
+
+          mapfile -t mobile_assets < <(printf '%s' "${mobile_document}" | grep -Eo '/mobile/assets/[^" ]+\.(css|js)' | sort -u)
+          test "${#mobile_assets[@]}" -ge 2
+          for asset_path in "${mobile_assets[@]}"; do
+            curl --fail --silent --show-error "http://127.0.0.1:18080${asset_path}" >/dev/null
+          done
+
+          curl --silent --head http://127.0.0.1:18080/mobile/ | tr -d '\r' | grep -Fqi 'Cache-Control: no-store, no-cache, must-revalidate'
+          curl --silent --head http://127.0.0.1:18080/mobile/manifest.webmanifest | tr -d '\r' | grep -Fqi 'Content-Type: application/manifest+json'
+          curl --silent --head "http://127.0.0.1:18080${mobile_assets[0]}" | tr -d '\r' | grep -Fqi 'Cache-Control: public, max-age=31536000, immutable'
+
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile/assets/missing.js)" = '404'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile/icons/missing.png)" = '404'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/api/health)" = '502'
       - name: Validate packaged release frontend build context
         run: |
           archive_path="${RUNNER_TEMP}/control-center-release-context.tar.gz"
@@ -118,8 +155,8 @@ jobs:
             -czf "${archive_path}" \
             .dockerignore \
             package.json pnpm-lock.yaml pnpm-workspace.yaml \
-            electron/package.json mobile/package.json \
-            backend frontend deploy/production \
+            electron/package.json \
+            backend frontend mobile deploy/production \
             scripts/production-env.sh scripts/remote-deploy-production.sh
           mkdir -p "${release_dir}"
           tar -xzf "${archive_path}" -C "${release_dir}"
@@ -128,6 +165,12 @@ jobs:
           test -f "${release_dir}/pnpm-workspace.yaml"
           test -f "${release_dir}/electron/package.json"
           test -f "${release_dir}/mobile/package.json"
+          test -f "${release_dir}/mobile/index.html"
+          test -f "${release_dir}/mobile/vite.config.ts"
+          test -f "${release_dir}/mobile/src/main.ts"
+          test -f "${release_dir}/mobile/public/manifest.webmanifest"
+          test -f "${release_dir}/mobile/public/icons/icon-192.png"
+          test -f "${release_dir}/mobile/public/icons/icon-512.png"
           test -f "${release_dir}/scripts/production-env.sh"
           docker build --tag control-center-release-frontend-ci:${{ github.sha }} --file "${release_dir}/frontend/Dockerfile" "${release_dir}"
       - name: Validate production compose contract
