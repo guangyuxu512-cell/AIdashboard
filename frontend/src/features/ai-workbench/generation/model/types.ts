@@ -69,6 +69,7 @@ export interface GenerationSourceImageView {
   id: string
   name: string
   previewUrl: string
+  thumbnailUrl?: string
   role: GenerationSourceRole
   sourceType: GenerationSourceType
   productId?: string
@@ -131,6 +132,7 @@ export interface GenerationResultView {
   id: string
   name: string
   previewUrl: string
+  thumbnailUrl?: string
   status: GenerationResultStatus
   outputRole: Exclude<GenerationOutputRange, 'ALL'>
   size: GenerationSize
@@ -143,6 +145,7 @@ export interface GenerationExecutionResultView {
   name?: string
   status: GenerationExecutionResultStatus
   previewUrl?: string
+  thumbnailUrl?: string
   assetId?: string
   outputRole?: Exclude<GenerationOutputRange, 'ALL'>
   size?: GenerationSize

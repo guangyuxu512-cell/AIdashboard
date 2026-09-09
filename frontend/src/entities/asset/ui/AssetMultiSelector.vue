@@ -37,6 +37,7 @@ const selectedRows = computed(() => {
       assetId,
       filename: assetId,
       contentUrl: '',
+      thumbnailUrl: '',
     },
   )
 })
@@ -73,7 +74,7 @@ const columns: DataTableColumns<AssetListItemViewModel> = [
     key: 'thumbnail',
     width: 80,
     render: (asset) =>
-      h(AssetThumbnail, { src: asset.contentUrl, alt: asset.filename }),
+      h(AssetThumbnail, { src: asset.thumbnailUrl, alt: asset.filename }),
   },
   { title: '文件名', key: 'filename', ellipsis: { tooltip: true } },
   { title: '大小', key: 'sizeDisplay', width: 100, align: 'center' },
@@ -106,8 +107,8 @@ const columns: DataTableColumns<AssetListItemViewModel> = [
         class="asset-multi-selector__selected-item"
       >
         <AssetThumbnail
-          v-if="asset.contentUrl"
-          :src="asset.contentUrl"
+          v-if="asset.thumbnailUrl"
+          :src="asset.thumbnailUrl"
           :alt="asset.filename"
         />
         <span :title="asset.filename">{{ asset.filename }}</span>

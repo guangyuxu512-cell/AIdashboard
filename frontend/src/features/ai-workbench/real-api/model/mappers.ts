@@ -1,4 +1,7 @@
-import { getAssetContentUrl } from '@/entities/asset/api/asset-api'
+import {
+  getAssetContentUrl,
+  getAssetThumbnailUrl,
+} from '@/entities/asset/api/asset-api'
 import type {
   AiModelCatalogReadDto,
   GenerationItemReadDto,
@@ -118,6 +121,7 @@ export function mapProductMaterialGroup(
       sourceType: sourceType(link.asset.source_type),
       role: link.role,
       previewUrl: getAssetContentUrl(link.asset.asset_id),
+      thumbnailUrl: getAssetThumbnailUrl(link.asset.asset_id),
       sizeBytes: link.asset.size_bytes,
     })),
   }
@@ -141,6 +145,7 @@ export function mapGenerationProduct(
       id: asset.assetId,
       name: asset.name,
       previewUrl: asset.previewUrl,
+      thumbnailUrl: asset.thumbnailUrl,
       role:
         asset.role === 'STYLE_REFERENCE' ? 'STYLE_REFERENCE' : 'PRODUCT_SOURCE',
       sourceType: 'ASSET_LIBRARY',
@@ -186,6 +191,9 @@ function executionResult(
     status,
     previewUrl: item.output_asset
       ? getAssetContentUrl(item.output_asset.asset_id)
+      : undefined,
+    thumbnailUrl: item.output_asset
+      ? getAssetThumbnailUrl(item.output_asset.asset_id)
       : undefined,
     assetId: item.output_asset?.asset_id,
     outputRole: item.output_role,
@@ -331,6 +339,7 @@ function sourceImage(
       id: link.asset.asset_id,
       name: link.asset.original_filename,
       previewUrl: getAssetContentUrl(link.asset.asset_id),
+      thumbnailUrl: getAssetThumbnailUrl(link.asset.asset_id),
       role,
       sourceType: 'ASSET_LIBRARY',
     }))
@@ -358,6 +367,7 @@ function batchRecordResults(
             id: result.id,
             name: result.name ?? template.templateName,
             previewUrl: result.previewUrl ?? '',
+            thumbnailUrl: result.thumbnailUrl,
             status: result.status as 'SUCCESS' | 'FAILED',
             outputRole: result.outputRole ?? template.outputRole,
             size: result.size ?? '1:1',

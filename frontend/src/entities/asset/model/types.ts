@@ -14,4 +14,5 @@ export interface AssetListItemViewModel {
   createdAt: string
   createdAtDisplay: string
   contentUrl: string
+  thumbnailUrl: string
 }

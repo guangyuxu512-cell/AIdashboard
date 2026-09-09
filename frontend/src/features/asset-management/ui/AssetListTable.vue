@@ -26,7 +26,7 @@ const columns: DataTableColumns<AssetListItemViewModel> = [
     key: 'thumbnail',
     width: 90,
     render: (asset) =>
-      centered(h(AssetThumbnail, { src: asset.contentUrl, alt: asset.filename })),
+      centered(h(AssetThumbnail, { src: asset.thumbnailUrl, alt: asset.filename })),
   },
   { title: '文件名', key: 'filename', ellipsis: { tooltip: true } },
   { title: '大小', key: 'sizeDisplay', width: 120, align: 'center' },

@@ -16,6 +16,7 @@ describe('asset mapper', () => {
         created_at: '2026-08-26T00:00:00Z',
       },
       '/api/v1/assets/20000000-0000-4000-8000-000000000001/content',
+      '/api/v1/assets/20000000-0000-4000-8000-000000000001/thumbnail',
     )
 
     expect(asset).toMatchObject({
@@ -24,6 +25,8 @@ describe('asset mapper', () => {
       contentType: 'image/png',
       contentUrl:
         '/api/v1/assets/20000000-0000-4000-8000-000000000001/content',
+      thumbnailUrl:
+        '/api/v1/assets/20000000-0000-4000-8000-000000000001/thumbnail',
     })
   })
 })

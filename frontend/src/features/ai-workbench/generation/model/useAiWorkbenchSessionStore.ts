@@ -2,7 +2,10 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { z } from 'zod'
 
-import { getAssetContentUrl } from '@/entities/asset/api/asset-api'
+import {
+  getAssetContentUrl,
+  getAssetThumbnailUrl,
+} from '@/entities/asset/api/asset-api'
 import {
   aiWorkbenchApi,
   type BatchGenerationSubmitDto,
@@ -173,6 +176,7 @@ function restoredSourceImage(
   return {
     ...source,
     previewUrl: getAssetContentUrl(source.id),
+    thumbnailUrl: getAssetThumbnailUrl(source.id),
   }
 }
 

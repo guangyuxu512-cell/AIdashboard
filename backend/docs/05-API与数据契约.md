@@ -291,6 +291,9 @@ Task Detail 的 `runtime_events_purged_at` 为可空清理标记。Event 为空�
   `source_type=upload` 与 SHA-256。
 - `GET /api/v1/assets`：按文件名搜索并使用统一 `page/page_size` 分页。
 - `GET /api/v1/assets/{asset_id}/content`：Frontend 预览与读取图片的正式接口，不暴露存储路径。
+- `GET /api/v1/assets/{asset_id}/thumbnail`：同一 Human Auth、`asset` Module Access 与 Asset Scope
+  下的卡片缩略图接口。响应固定为 WebP，最大边长 320px；它不是下载接口，也不替代原图
+  `content`。
 - `DELETE /api/v1/assets/{asset_id}`：只删除未被 Task 引用的图片；被引用时返回 `ASSET_IN_USE`。
 - `GET /api/v1/worker/tasks/{task_id}/assets/{asset_id}`：仅允许持有现有 Worker 身份的目标设备在
   该 Task 处于 RUNNING 时下载其关联图片；其他设备、其他 Task 或非运行状态均不得读取。
@@ -299,6 +302,11 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 文件后提交数据库元数据；数据库提交失败会清理本次新文件。响应不包含 `storage_key`，任何
 客户端都不得猜 Backend 文件系统路径。现有 URL 与 Worker Claim 的图片字段保持兼容，Claim
 不会新增 `media_type / source_type / storage_key`。
+
+`content` 保持原始 MIME、原始字节、原始 SHA-256 与下载/放大查看/AI 输入语义。`thumbnail`
+只服务小尺寸 UI，使用 `Cache-Control: private` 且按 `Cookie, X-Team-ID` 变化；Frontend 必须通过
+统一 Axios Client 获取 Blob，不能把受保护路径直接交给普通 `<img>`。缩略图暂不可用时返回
+`ASSET_THUMBNAIL_UNAVAILABLE / 503`，不改变已经成功保存的 Asset 或 AI Generation Item 状态。
 
 ## AI Workbench Backend Foundation V1 API
 
