@@ -82,7 +82,7 @@ function retry(): void {
         <AssetContentImage
           v-if="result.status === 'SUCCESS' && result.previewUrl"
           class="batch-template-result__preview"
-          :src="result.previewUrl"
+          :src="result.thumbnailUrl ?? result.previewUrl"
           :alt="`${template.templateName} 结果 ${index + 1}`"
         />
         <ImageIcon

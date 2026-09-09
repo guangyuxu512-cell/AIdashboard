@@ -9,6 +9,7 @@ import {
   assetApi,
   fetchAssetContent,
   getAssetContentUrl,
+  getAssetThumbnailUrl,
 } from '@/entities/asset/api/asset-api'
 import {
   aiWorkbenchApi,
@@ -287,6 +288,7 @@ function upload(slot: GenerationInputSlotDefinition, files: File[]): void {
           id: asset.asset_id,
           name: asset.original_filename,
           previewUrl: getAssetContentUrl(asset.asset_id),
+          thumbnailUrl: getAssetThumbnailUrl(asset.asset_id),
           role: slot.acceptedMaterialRole,
           sourceType: 'LOCAL_UPLOAD',
         })),

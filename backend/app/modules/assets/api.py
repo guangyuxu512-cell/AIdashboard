@@ -13,6 +13,7 @@ from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
 from app.modules.assets.schemas import AssetRead
 from app.modules.assets.service import AssetService
+from app.modules.assets.thumbnails import THUMBNAIL_CONTENT_TYPE
 from app.shared.pagination import Page, PaginationParams
 
 
@@ -24,7 +25,7 @@ ASSET_ERROR_RESPONSES.update(
     {
         404: {"model": ErrorResponse, "description": "资产不存在"},
         409: {"model": ErrorResponse, "description": "资产正在被任务引用"},
-        503: {"model": ErrorResponse, "description": "资产存储挂载不可用"},
+        503: {"model": ErrorResponse, "description": "资产存储或缩略图不可用"},
     },
 )
 
@@ -92,6 +93,21 @@ def read_asset_content(
     return asset_content_response(asset.content_type, asset.size_bytes, content)
 
 
+@router.get("/{asset_id}/thumbnail", response_class=StreamingResponse)
+def read_asset_thumbnail(
+    asset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_asset_authorized_actor)],
+    service: Annotated[AssetService, Depends(get_asset_service)],
+) -> StreamingResponse:
+    _asset, content, size_bytes = service.get_thumbnail(actor, asset_id)
+    return asset_content_response(
+        THUMBNAIL_CONTENT_TYPE,
+        size_bytes,
+        content,
+        cache_control="private, max-age=3600",
+    )
+
+
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset(
     asset_id: UUID,
@@ -106,6 +122,8 @@ def asset_content_response(
     content_type: str,
     size_bytes: int,
     content: BinaryIO,
+    *,
+    cache_control: str | None = None,
 ) -> StreamingResponse:
     def body() -> Iterator[bytes]:
         try:
@@ -114,11 +132,16 @@ def asset_content_response(
         finally:
             content.close()
 
+    headers = {
+        "Content-Disposition": "inline",
+        "Content-Length": str(size_bytes),
+    }
+    if cache_control is not None:
+        headers["Cache-Control"] = cache_control
+        headers["Vary"] = "Cookie, X-Team-ID"
+
     return StreamingResponse(
         body(),
         media_type=content_type,
-        headers={
-            "Content-Disposition": "inline",
-            "Content-Length": str(size_bytes),
-        },
+        headers=headers,
     )

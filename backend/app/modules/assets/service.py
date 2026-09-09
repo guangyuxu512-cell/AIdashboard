@@ -15,11 +15,17 @@ from app.modules.assets.exceptions import (
     AssetInUseError,
     AssetNotFoundError,
     AssetStorageError,
+    AssetThumbnailUnavailableError,
     AssetTypeUnsupportedError,
 )
 from app.modules.assets.models import Asset
 from app.modules.assets.repository import AssetRepository
 from app.modules.assets.storage import AssetStorage, create_asset_storage
+from app.modules.assets.thumbnails import (
+    THUMBNAIL_SUFFIX,
+    render_image_thumbnail,
+    thumbnail_storage_key,
+)
 from app.modules.assets.validation import (
     normalize_original_filename,
     validate_image_content,
@@ -117,6 +123,17 @@ class AssetService:
             suffix=suffix,
             chunks=_stream_chunks(stream, header),
         )
+        thumbnail_key = thumbnail_storage_key(asset_id)
+        try:
+            self._create_thumbnail(
+                asset_id=asset_id,
+                original_storage_key=stored.storage_key,
+            )
+        except (AssetStorageError, AssetThumbnailUnavailableError):
+            # The original file is the Asset fact. A thumbnail can be retried on
+            # its first authorized read without changing a successful upload or
+            # AI generation into a permanently running task.
+            pass
         asset = Asset(
             asset_id=asset_id,
             team_id=ownership.team_id,
@@ -137,6 +154,7 @@ class AssetService:
         except Exception:
             self.session.rollback()
             self.storage.delete(stored.storage_key)
+            self.storage.delete(thumbnail_key)
             raise
 
     def list(
@@ -201,6 +219,30 @@ class AssetService:
             raise AssetStorageError()
         return asset, self.storage.open(asset.storage_key)
 
+    def get_thumbnail(
+        self,
+        actor: ActorContext,
+        asset_id: UUID,
+    ) -> tuple[Asset, BinaryIO, int]:
+        asset = self.get_for_actor(actor, asset_id)
+        key = thumbnail_storage_key(asset.asset_id)
+        if not self.storage.exists(key):
+            self._create_thumbnail(
+                asset_id=asset.asset_id,
+                original_storage_key=asset.storage_key,
+            )
+        if not self.storage.exists(key):
+            raise AssetThumbnailUnavailableError()
+
+        content = self.storage.open(key)
+        try:
+            size = content.seek(0, 2)
+            content.seek(0)
+        except OSError as error:
+            content.close()
+            raise AssetStorageError() from error
+        return asset, content, size
+
     def get_worker_content(
         self,
         principal: WorkerPrincipal,
@@ -241,6 +283,21 @@ class AssetService:
             self.session.rollback()
             raise
         self.storage.delete(asset.storage_key)
+        self.storage.delete(thumbnail_storage_key(asset.asset_id))
+
+    def _create_thumbnail(
+        self,
+        *,
+        asset_id: UUID,
+        original_storage_key: str,
+    ) -> None:
+        with self.storage.open(original_storage_key) as source:
+            thumbnail = render_image_thumbnail(source)
+        self.storage.store(
+            asset_id=asset_id,
+            suffix=THUMBNAIL_SUFFIX,
+            chunks=[thumbnail],
+        )
 
 
 def _stream_chunks(stream: BinaryIO, header: bytes) -> Iterator[bytes]:

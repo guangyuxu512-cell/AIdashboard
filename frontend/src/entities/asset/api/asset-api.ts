@@ -9,12 +9,20 @@ export interface AssetListApiParams {
   search: string
 }
 
-export function getAssetContentUrl(assetId: string): string {
-  const path = `/api/v1/assets/${encodeURIComponent(assetId)}/content`
+function getAssetUrl(assetId: string, resource: 'content' | 'thumbnail'): string {
+  const path = `/api/v1/assets/${encodeURIComponent(assetId)}/${resource}`
   if (/^https?:\/\//i.test(apiBaseUrl)) {
     return new URL(path, apiBaseUrl).toString()
   }
   return path
+}
+
+export function getAssetContentUrl(assetId: string): string {
+  return getAssetUrl(assetId, 'content')
+}
+
+export function getAssetThumbnailUrl(assetId: string): string {
+  return getAssetUrl(assetId, 'thumbnail')
 }
 
 export async function fetchAssetContent(

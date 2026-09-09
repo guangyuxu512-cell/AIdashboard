@@ -35,3 +35,9 @@ class AssetStorageUnavailableError(AssetStorageError):
     code = "ASSET_STORAGE_UNAVAILABLE"
     message = "资产存储挂载不可用"
     status_code = 503
+
+
+class AssetThumbnailUnavailableError(AppError):
+    code = "ASSET_THUMBNAIL_UNAVAILABLE"
+    message = "图片缩略图暂不可用"
+    status_code = 503

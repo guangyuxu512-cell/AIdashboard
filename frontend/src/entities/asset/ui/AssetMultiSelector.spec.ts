@@ -29,6 +29,7 @@ const rows = [
     createdAt: '2026-08-26T00:00:00Z',
     createdAtDisplay: '2026-08-26 08:00',
     contentUrl: '/api/v1/assets/asset-1/content',
+    thumbnailUrl: '/api/v1/assets/asset-1/thumbnail',
   },
   {
     assetId: 'asset-2',
@@ -42,6 +43,7 @@ const rows = [
     createdAt: '2026-08-26T00:01:00Z',
     createdAtDisplay: '2026-08-26 08:01',
     contentUrl: '/api/v1/assets/asset-2/content',
+    thumbnailUrl: '/api/v1/assets/asset-2/thumbnail',
   },
 ]
 

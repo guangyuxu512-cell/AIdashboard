@@ -70,7 +70,7 @@ function upload({ file }: { file: UploadSettledFileInfo }): boolean {
             <span class="generation-input-slot__preview">
               <AssetContentImage
                 class="generation-input-slot__content-image"
-                :src="image.previewUrl"
+                :src="image.thumbnailUrl ?? image.previewUrl"
                 :alt="image.name"
               />
             </span>

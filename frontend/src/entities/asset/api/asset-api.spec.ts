@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { httpClient } from '@/shared/api'
 
-import { fetchAssetContent } from './asset-api'
+import {
+  fetchAssetContent,
+  getAssetContentUrl,
+  getAssetThumbnailUrl,
+} from './asset-api'
 
 describe('asset content api', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -19,5 +23,12 @@ describe('asset content api', () => {
       responseType: 'blob',
       signal: controller.signal,
     })
+  })
+
+  it('keeps original and thumbnail routes explicitly separate', () => {
+    expect(getAssetContentUrl('asset-1')).toBe('/api/v1/assets/asset-1/content')
+    expect(getAssetThumbnailUrl('asset-1')).toBe(
+      '/api/v1/assets/asset-1/thumbnail',
+    )
   })
 })

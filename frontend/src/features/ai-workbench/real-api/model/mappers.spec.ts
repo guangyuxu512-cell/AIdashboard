@@ -233,6 +233,7 @@ describe('AI Workbench real API mappers', () => {
         {
           assetId: 'asset-0',
           previewUrl: '/api/v1/assets/asset-0/content',
+          thumbnailUrl: '/api/v1/assets/asset-0/thumbnail',
           savedToProductId: 'material-1',
         },
       ],
