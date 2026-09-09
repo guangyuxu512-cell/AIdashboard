@@ -1,10 +1,12 @@
 import json
 import os
+from dataclasses import dataclass
 from queue import Empty, SimpleQueue
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from app.local_config import (
     DEFAULT_PRODUCTION_SERVER_URL,
@@ -16,7 +18,7 @@ from app.local_config import (
     get_worker_data_root,
     inspect_local_input_paths,
 )
-from app.process_control import WorkerProcessController
+from app.process_control import WorkerProcessController, WorkerProcessInfo
 from app.providers.yingdao import WindowsYingdaoRuntimeLocator, YingdaoSessionError
 from app.provisioning import ConnectionTestResult, WorkerProvisioningClient
 from app.status_tray import WorkerStatusTray
@@ -25,6 +27,67 @@ from app.version import WORKER_VERSION
 
 _HEARTBEAT_FRESHNESS_SECONDS = 45
 _CORE_STATUS_FRESHNESS_SECONDS = 90
+
+
+@dataclass(frozen=True)
+class WorkerConfigurationApplyResult:
+    config: LocalWorkerConfig
+    core_running: bool
+
+
+def apply_provisioned_worker_configuration(
+    *,
+    config_service: WorkerConfigService,
+    process_controller: WorkerProcessController,
+    current_task_id: object | None,
+    server_url: str,
+    device_id: UUID,
+    device_token: str,
+    device_display_name: str | None,
+    yingdao_install_root: Path | None,
+    yingdao_data_root: Path | None,
+    yingdao_test_app_id: str | None,
+    params_json_path: Path,
+    account_json_path: Path,
+    images_dir: Path,
+) -> WorkerConfigurationApplyResult:
+    """Apply a provisioned identity without leaving an old Core authenticated.
+
+    Provisioning establishes the device identity; this function only switches the
+    local Core while it is idle.  It intentionally does not claim distributed
+    atomicity with the backend: a failed stop leaves the old configuration intact,
+    and a failed new start leaves the Core stopped instead of reviving the old
+    identity.
+    """
+    if current_task_id:
+        raise WorkerConfigurationError(
+            "当前任务正在运行；请等待任务结束后再保存配置，避免中断执行",
+        )
+
+    previous_core = process_controller.running()
+    if previous_core is not None and not process_controller.stop():
+        raise WorkerConfigurationError(
+            "现有 Worker 未能停止；未保存新的设备身份",
+        )
+
+    config = config_service.save(
+        server_url=server_url,
+        device_id=device_id,
+        device_token=device_token,
+        device_display_name=device_display_name,
+        yingdao_install_root=yingdao_install_root,
+        yingdao_data_root=yingdao_data_root,
+        yingdao_test_app_id=yingdao_test_app_id,
+        params_json_path=params_json_path,
+        account_json_path=account_json_path,
+        images_dir=images_dir,
+    )
+    running = process_controller.start()
+    if running is not None and running.device_id != config.device_id:
+        # A stale Core must never keep sending heartbeats under a replaced config.
+        process_controller.stop()
+        running = None
+    return WorkerConfigurationApplyResult(config=config, core_running=running is not None)
 
 
 def read_runtime_status(path: Path) -> dict[str, Any]:
@@ -435,7 +498,7 @@ def main() -> int:
             result = provisioning_client.test(configured_server_url, token)
 
             def finish() -> None:
-                config_result_var.set(result.message)
+                config_result_var.set(f"{result.message}（{result.code}）")
                 if result.identity is not None:
                     device_id_var.set(str(result.identity.device_id))
                     device_name_var.set(result.identity.device_display_name)
@@ -451,11 +514,6 @@ def main() -> int:
         nonlocal config
         if result is None:
             test_connection(save_after=True)
-            return
-        if read_runtime_status(status_path).get("current_task_id"):
-            config_result_var.set(
-                "当前任务正在运行；请等待任务结束后再保存配置，避免中断执行",
-            )
             return
         if not result.ok or result.identity is None:
             if (
@@ -476,7 +534,10 @@ def main() -> int:
             identity_device_id = result.identity.device_id
             identity_name = result.identity.device_display_name
         try:
-            config = config_service.save(
+            applied = apply_provisioned_worker_configuration(
+                config_service=config_service,
+                process_controller=process_controller,
+                current_task_id=read_runtime_status(status_path).get("current_task_id"),
                 server_url=configured_server_url,
                 device_id=identity_device_id,
                 device_token=token_var.get(),
@@ -501,16 +562,16 @@ def main() -> int:
                     "图片工作目录",
                 ),
             )
-            running = process_controller.restart()
         except (OSError, WorkerConfigurationError) as error:
             config_result_var.set(f"配置保存失败：{error}")
             return
+        config = applied.config
         device_id_var.set(str(config.device_id))
         device_name_var.set(config.device_display_name or "")
         config_result_var.set(
             "配置已保存，Worker 已启动"
-            if running is not None
-            else "配置已保存，但 Worker 未能启动；请查看日志"
+            if applied.core_running
+            else "配置已保存，但 Worker 未能以新身份启动；旧 Core 已停止，请查看日志"
         )
         notebook.select(status_tab)
 
