@@ -123,7 +123,7 @@ class AssetService:
             suffix=suffix,
             chunks=_stream_chunks(stream, header),
         )
-        thumbnail_key = thumbnail_storage_key(asset_id)
+        thumbnail_key = thumbnail_storage_key(stored.storage_key)
         try:
             self._create_thumbnail(
                 asset_id=asset_id,
@@ -225,7 +225,7 @@ class AssetService:
         asset_id: UUID,
     ) -> tuple[Asset, BinaryIO, int]:
         asset = self.get_for_actor(actor, asset_id)
-        key = thumbnail_storage_key(asset.asset_id)
+        key = thumbnail_storage_key(asset.storage_key)
         if not self.storage.exists(key):
             self._create_thumbnail(
                 asset_id=asset.asset_id,
@@ -283,7 +283,7 @@ class AssetService:
             self.session.rollback()
             raise
         self.storage.delete(asset.storage_key)
-        self.storage.delete(thumbnail_storage_key(asset.asset_id))
+        self.storage.delete(thumbnail_storage_key(asset.storage_key))
 
     def _create_thumbnail(
         self,
@@ -297,6 +297,7 @@ class AssetService:
             asset_id=asset_id,
             suffix=THUMBNAIL_SUFFIX,
             chunks=[thumbnail],
+            storage_key=thumbnail_storage_key(original_storage_key),
         )
 
 

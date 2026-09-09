@@ -1,11 +1,13 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import hashlib
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import tempfile
 from typing import BinaryIO, Protocol
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from app.core.config import Settings
 from app.modules.assets.exceptions import (
@@ -17,6 +19,8 @@ from app.modules.assets.exceptions import (
 
 MOUNTED_STORAGE_MARKER_NAME = ".control-center-asset-storage-v1"
 MOUNTED_STORAGE_MARKER_CONTENT = b"control-center-asset-storage-v1\n"
+ASSET_STORAGE_TIMEZONE_NAME = "Asia/Shanghai"
+_ASSET_STORAGE_TIMEZONE = ZoneInfo(ASSET_STORAGE_TIMEZONE_NAME)
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,7 @@ class AssetStorage(Protocol):
         asset_id: UUID,
         suffix: str,
         chunks: Iterable[bytes],
+        storage_key: str | None = None,
     ) -> StoredAsset: ...
 
     def open(self, storage_key: str) -> BinaryIO: ...
@@ -55,8 +60,9 @@ class LocalAssetStorage:
         asset_id: UUID,
         suffix: str,
         chunks: Iterable[bytes],
+        storage_key: str | None = None,
     ) -> StoredAsset:
-        storage_key = f"{asset_id.hex}{suffix}"
+        storage_key = storage_key or asset_storage_key(asset_id, suffix)
         descriptor = -1
         temporary_path: Path | None = None
         final_path = self._path_for(storage_key)
@@ -82,6 +88,7 @@ class LocalAssetStorage:
                     output.write(chunk)
                 output.flush()
                 os.fsync(output.fileno())
+            final_path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path.replace(final_path)
             return StoredAsset(
                 storage_key=storage_key,
@@ -106,7 +113,9 @@ class LocalAssetStorage:
 
     def delete(self, storage_key: str) -> None:
         try:
-            self._path_for(storage_key).unlink(missing_ok=True)
+            path = self._path_for(storage_key)
+            path.unlink(missing_ok=True)
+            self._remove_empty_parent_directories(path.parent)
         except OSError as error:
             raise AssetStorageError() from error
 
@@ -126,10 +135,60 @@ class LocalAssetStorage:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path_for(self, storage_key: str) -> Path:
-        candidate = (self.root / storage_key).resolve()
-        if candidate.parent != self.root:
+        if not _is_supported_storage_key(storage_key):
+            raise AssetStorageError()
+        candidate = (self.root / PurePosixPath(storage_key)).resolve()
+        if self.root not in candidate.parents:
             raise AssetStorageError()
         return candidate
+
+    def _remove_empty_parent_directories(self, directory: Path) -> None:
+        while directory != self.root:
+            try:
+                directory.rmdir()
+            except OSError:
+                return
+            directory = directory.parent
+
+
+def asset_storage_key(
+    asset_id: UUID,
+    suffix: str,
+    *,
+    written_at: datetime | None = None,
+) -> str:
+    """Return a stable dated key for a new original Asset file."""
+
+    instant = written_at or datetime.now(UTC)
+    if instant.tzinfo is None:
+        raise ValueError("Asset storage timestamp must include a timezone")
+    date_directory = instant.astimezone(_ASSET_STORAGE_TIMEZONE).strftime("%Y/%m/%d")
+    return f"{date_directory}/{asset_id.hex}{suffix}"
+
+
+def _is_supported_storage_key(storage_key: str) -> bool:
+    if not storage_key or "\\" in storage_key:
+        return False
+    path = PurePosixPath(storage_key)
+    parts = path.parts
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in parts):
+        return False
+    if len(parts) == 1:
+        return True
+    if not (
+        len(parts) == 4
+        and len(parts[0]) == 4
+        and all(part.isdigit() for part in parts[:3])
+        and len(parts[1]) == 2
+        and len(parts[2]) == 2
+        and bool(parts[3])
+    ):
+        return False
+    try:
+        datetime(int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return False
+    return True
 
 
 class MountedAssetStorage(LocalAssetStorage):

@@ -226,13 +226,16 @@ def test_asset_thumbnail_is_smaller_webp_while_original_stays_intact(
     with original_content:
         original_payload = original_content.read()
     assert thumbnail_asset.asset_id == asset.asset_id
+    assert Path(thumbnail_storage_key(asset.storage_key)).parent == Path(
+        asset.storage_key,
+    ).parent
     assert thumbnail_size == len(thumbnail_payload)
     assert thumbnail_size < len(payload)
     assert original_payload == payload
     assert hashlib.sha256(original_payload).hexdigest() == asset.sha256
 
 
-def test_legacy_asset_thumbnail_is_created_on_first_authorized_read(
+def test_missing_thumbnail_is_created_on_first_authorized_read(
     tmp_path: Path,
 ) -> None:
     service, _, _ = make_service(tmp_path, max_bytes=1024 * 1024)
@@ -242,7 +245,7 @@ def test_legacy_asset_thumbnail_is_created_on_first_authorized_read(
         content_type="image/png",
         stream=BytesIO(image_payload()),
     )
-    thumbnail_key = thumbnail_storage_key(asset.asset_id)
+    thumbnail_key = thumbnail_storage_key(asset.storage_key)
     service.storage.delete(thumbnail_key)
     assert not service.storage.exists(thumbnail_key)
 
@@ -250,6 +253,40 @@ def test_legacy_asset_thumbnail_is_created_on_first_authorized_read(
     with thumbnail:
         assert thumbnail.read()
     assert service.storage.exists(thumbnail_key)
+
+
+def test_legacy_flat_asset_and_its_thumbnail_remain_readable(tmp_path: Path) -> None:
+    service, repository, _ = make_service(tmp_path, max_bytes=1024 * 1024)
+    asset_id = uuid4()
+    original_key = f"{asset_id.hex}.png"
+    payload = image_payload()
+    service.storage.store(
+        asset_id=asset_id,
+        suffix=".png",
+        chunks=[payload],
+        storage_key=original_key,
+    )
+    asset = Asset(
+        asset_id=asset_id,
+        team_id=ACTOR.team_id,
+        created_by_user_id=ACTOR.user_id,
+        original_filename="legacy.png",
+        storage_key=original_key,
+        media_type=AssetMediaType.IMAGE.value,
+        source_type=AssetSourceType.IMPORTED.value,
+        content_type="image/png",
+        size_bytes=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    repository.add(asset)
+
+    _, original = service.get_content(ACTOR, asset_id)
+    with original:
+        assert original.read() == payload
+    _, thumbnail, _ = service.get_thumbnail(ACTOR, asset_id)
+    with thumbnail:
+        assert thumbnail.read()
+    assert service.storage.exists(thumbnail_storage_key(original_key))
 
 
 def test_ai_generated_asset_uses_the_same_thumbnail_lifecycle(tmp_path: Path) -> None:
@@ -263,7 +300,11 @@ def test_ai_generated_asset_uses_the_same_thumbnail_lifecycle(tmp_path: Path) ->
         ownership=SYSTEM_OWNERSHIP,
     )
 
-    assert service.storage.exists(thumbnail_storage_key(asset.asset_id))
+    assert len(Path(asset.storage_key).parts) == 4
+    assert Path(thumbnail_storage_key(asset.storage_key)).parent == Path(
+        asset.storage_key,
+    ).parent
+    assert service.storage.exists(thumbnail_storage_key(asset.storage_key))
     _, thumbnail, _ = service.get_thumbnail(ACTOR, asset.asset_id)
     with thumbnail:
         assert thumbnail.read()
@@ -282,7 +323,7 @@ def test_thumbnail_render_failure_keeps_a_successful_original_asset(
 
     assert session.commits == 1
     assert service.storage.exists(asset.storage_key)
-    assert not service.storage.exists(thumbnail_storage_key(asset.asset_id))
+    assert not service.storage.exists(thumbnail_storage_key(asset.storage_key))
     with pytest.raises(AssetThumbnailUnavailableError):
         service.get_thumbnail(ACTOR, asset.asset_id)
 
@@ -472,7 +513,9 @@ def test_path_components_are_not_used_as_storage_key(tmp_path: Path) -> None:
     )
 
     assert asset.original_filename == "outside.png"
-    assert "/" not in asset.storage_key
+    assert asset.storage_key.endswith(f"/{asset.asset_id.hex}.png")
+    assert asset.storage_key.count("/") == 3
+    assert ".." not in asset.storage_key
     assert "\\" not in asset.storage_key
     assert service.storage.exists(asset.storage_key)
 
@@ -627,7 +670,7 @@ def test_delete_removes_original_and_derived_thumbnail(tmp_path: Path) -> None:
         content_type="image/png",
         stream=BytesIO(image_payload()),
     )
-    thumbnail_key = thumbnail_storage_key(asset.asset_id)
+    thumbnail_key = thumbnail_storage_key(asset.storage_key)
     assert service.storage.exists(asset.storage_key)
     assert service.storage.exists(thumbnail_key)
 

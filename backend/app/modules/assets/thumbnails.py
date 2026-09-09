@@ -1,6 +1,6 @@
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import BinaryIO
-from uuid import UUID
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -12,10 +12,11 @@ THUMBNAIL_SUFFIX = ".thumbnail.webp"
 THUMBNAIL_CONTENT_TYPE = "image/webp"
 
 
-def thumbnail_storage_key(asset_id: UUID) -> str:
+def thumbnail_storage_key(original_storage_key: str) -> str:
     """Return the stable, non-public storage key for one Asset thumbnail."""
 
-    return f"{asset_id.hex}{THUMBNAIL_SUFFIX}"
+    path = PurePosixPath(original_storage_key)
+    return str(path.with_name(f"{path.stem}{THUMBNAIL_SUFFIX}"))
 
 
 def render_image_thumbnail(source: BinaryIO) -> bytes:
