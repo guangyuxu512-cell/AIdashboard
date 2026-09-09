@@ -52,7 +52,10 @@ function activate(assetId: string): void {
       @click="activate(asset.assetId)"
     >
       <span class="material-asset-card__preview">
-        <AssetContentImage :src="asset.previewUrl" :alt="asset.name" />
+        <AssetContentImage
+          :src="asset.thumbnailUrl ?? asset.previewUrl"
+          :alt="asset.name"
+        />
       </span>
       <span class="material-asset-card__name" :title="asset.name">
         {{ asset.name }}

@@ -1,7 +1,11 @@
 import { apiMode, type ApiMode, type PageResult } from '@/shared/api'
 
 import type { AssetListItemViewModel } from '../model/types'
-import { assetApi, getAssetContentUrl } from './asset-api'
+import {
+  assetApi,
+  getAssetContentUrl,
+  getAssetThumbnailUrl,
+} from './asset-api'
 import { mapAssetDto } from './asset-mapper'
 import type { AssetReadDto } from './contracts'
 
@@ -60,7 +64,7 @@ function createMockDataSource(): AssetDataSource {
       return {
         items: filtered
           .slice(start, start + params.pageSize)
-          .map((item) => mapAssetDto(item, MOCK_THUMBNAIL)),
+          .map((item) => mapAssetDto(item, MOCK_THUMBNAIL, MOCK_THUMBNAIL)),
         total: filtered.length,
         page: params.page,
         pageSize: params.pageSize,
@@ -78,7 +82,7 @@ function createMockDataSource(): AssetDataSource {
         created_at: new Date().toISOString(),
       }
       items.unshift(dto)
-      return mapAssetDto(dto, MOCK_THUMBNAIL)
+      return mapAssetDto(dto, MOCK_THUMBNAIL, MOCK_THUMBNAIL)
     },
     async remove(assetId) {
       const index = items.findIndex((item) => item.asset_id === assetId)
@@ -93,7 +97,11 @@ const realDataSource: AssetDataSource = {
     const page = await assetApi.list(params)
     return {
       items: page.items.map((item) =>
-        mapAssetDto(item, getAssetContentUrl(item.asset_id)),
+        mapAssetDto(
+          item,
+          getAssetContentUrl(item.asset_id),
+          getAssetThumbnailUrl(item.asset_id),
+        ),
       ),
       total: page.total,
       page: page.page,
@@ -102,7 +110,11 @@ const realDataSource: AssetDataSource = {
   },
   async upload(file) {
     const dto = await assetApi.upload(file)
-    return mapAssetDto(dto, getAssetContentUrl(dto.asset_id))
+    return mapAssetDto(
+      dto,
+      getAssetContentUrl(dto.asset_id),
+      getAssetThumbnailUrl(dto.asset_id),
+    )
   },
   remove: assetApi.remove,
 }

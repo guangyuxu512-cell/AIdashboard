@@ -16,6 +16,7 @@ from app.modules.assets.exceptions import (
     AssetNotFoundError,
     AssetStorageError,
     AssetStorageUnavailableError,
+    AssetThumbnailUnavailableError,
 )
 from app.modules.assets.models import Asset
 from app.modules.workers.auth import get_worker_principal
@@ -103,6 +104,20 @@ class ApiAssetService:
             raise AssetNotFoundError()
         return asset, (self.root / asset.storage_key).open("rb")
 
+    def get_thumbnail(
+        self,
+        actor: ActorContext,
+        asset_id: UUID,
+    ) -> tuple[Asset, BinaryIO, int]:
+        asset = self.assets.get(asset_id)
+        if asset is None or (
+            actor.data_scope is not DataScope.ALL and asset.team_id != actor.team_id
+        ):
+            raise AssetNotFoundError()
+        thumbnail = self.root / f"{asset_id}.thumbnail.webp"
+        thumbnail.write_bytes(b"thumbnail")
+        return asset, thumbnail.open("rb"), thumbnail.stat().st_size
+
     def delete(self, actor: ActorContext, asset_id: UUID) -> None:
         asset = self.assets.pop(asset_id, None)
         if asset is None or (
@@ -185,6 +200,14 @@ def test_asset_api_upload_list_read_and_delete(tmp_path: Path) -> None:
     assert content.content == b"\x89PNG\r\n\x1a\nfixture"
     assert content.headers["content-type"] == "image/png"
 
+    thumbnail = request(service, "GET", f"/api/v1/assets/{asset_id}/thumbnail")
+    assert thumbnail.status_code == 200
+    assert thumbnail.content == b"thumbnail"
+    assert thumbnail.headers["content-type"] == "image/webp"
+    assert thumbnail.headers["content-length"] == str(len(b"thumbnail"))
+    assert thumbnail.headers["cache-control"] == "private, max-age=3600"
+    assert thumbnail.headers["vary"] == "Cookie, X-Team-ID"
+
     removed = request(service, "DELETE", f"/api/v1/assets/{asset_id}")
     assert removed.status_code == 204
     missing = request(service, "GET", f"/api/v1/assets/{asset_id}/content")
@@ -241,6 +264,13 @@ def test_cross_team_asset_id_is_not_disclosed_or_deleted(tmp_path: Path) -> None
     )
 
     assert content.status_code == 404
+    thumbnail = request(
+        service,
+        "GET",
+        f"/api/v1/assets/{asset_id}/thumbnail",
+        actor=other_team_actor,
+    )
+    assert thumbnail.status_code == 404
     assert removed.status_code == 404
     assert content.json()["code"] == "ASSET_NOT_FOUND"
     assert removed.json()["code"] == "ASSET_NOT_FOUND"
@@ -325,6 +355,15 @@ def test_mounted_storage_unavailable_is_explicit_and_does_not_leak_path(
             del asset_id
             raise AssetStorageUnavailableError()
 
+        def get_thumbnail(
+            self,
+            actor: ActorContext,
+            asset_id: UUID,
+        ) -> tuple[Asset, BinaryIO, int]:
+            del actor
+            del asset_id
+            raise AssetStorageUnavailableError()
+
     response = request(
         UnavailableContentService(tmp_path),
         "GET",
@@ -333,6 +372,38 @@ def test_mounted_storage_unavailable_is_explicit_and_does_not_leak_path(
 
     assert response.status_code == 503
     assert response.json()["code"] == "ASSET_STORAGE_UNAVAILABLE"
+    assert str(tmp_path) not in response.text
+
+    thumbnail = request(
+        UnavailableContentService(tmp_path),
+        "GET",
+        f"/api/v1/assets/{uuid4()}/thumbnail",
+    )
+    assert thumbnail.status_code == 503
+    assert thumbnail.json()["code"] == "ASSET_STORAGE_UNAVAILABLE"
+
+
+def test_thumbnail_failure_is_explicit_without_exposing_storage_details(
+    tmp_path: Path,
+) -> None:
+    class UnavailableThumbnailService(ApiAssetService):
+        def get_thumbnail(
+            self,
+            actor: ActorContext,
+            asset_id: UUID,
+        ) -> tuple[Asset, BinaryIO, int]:
+            del actor
+            del asset_id
+            raise AssetThumbnailUnavailableError()
+
+    response = request(
+        UnavailableThumbnailService(tmp_path),
+        "GET",
+        f"/api/v1/assets/{uuid4()}/thumbnail",
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "ASSET_THUMBNAIL_UNAVAILABLE"
     assert str(tmp_path) not in response.text
 
 

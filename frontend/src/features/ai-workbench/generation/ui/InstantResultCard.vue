@@ -63,7 +63,7 @@ function selectMoreAction(key: string | number): void {
       <AssetContentImage
         v-if="result.status === 'SUCCESS' && result.previewUrl"
         class="instant-result-card__image"
-        :src="result.previewUrl"
+        :src="result.thumbnailUrl ?? result.previewUrl"
         :alt="resultLabel"
       />
       <ImageIcon

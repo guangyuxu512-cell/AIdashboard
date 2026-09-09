@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from PIL import Image
 
 from app.core.config import Settings
 from app.modules.access.contracts import ActorContext
@@ -12,8 +13,10 @@ from app.modules.assets.contracts import AssetOwnership
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import (
     AssetInUseError,
+    AssetNotFoundError,
     AssetStorageError,
     AssetStorageUnavailableError,
+    AssetThumbnailUnavailableError,
     AssetTooLargeError,
     AssetTypeUnsupportedError,
 )
@@ -24,6 +27,10 @@ from app.modules.assets.storage import (
     MOUNTED_STORAGE_MARKER_NAME,
     LocalAssetStorage,
     MountedAssetStorage,
+)
+from app.modules.assets.thumbnails import (
+    THUMBNAIL_MAX_DIMENSION,
+    thumbnail_storage_key,
 )
 from tests.support import FakeSession
 
@@ -153,6 +160,20 @@ def make_service(
     )
 
 
+def image_payload(
+    *,
+    width: int = 640,
+    height: int = 320,
+    image_format: str = "PNG",
+) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (width, height), color=(20, 100, 180)).save(
+        output,
+        format=image_format,
+    )
+    return output.getvalue()
+
+
 def test_upload_saves_file_hash_and_metadata_before_commit(tmp_path: Path) -> None:
     service, repository, session = make_service(tmp_path)
     payload = b"\xff\xd8\xff" + b"safe-test-image"
@@ -177,6 +198,142 @@ def test_upload_saves_file_hash_and_metadata_before_commit(tmp_path: Path) -> No
     with content:
         assert content.read() == payload
     assert session.commits == 1
+
+
+def test_asset_thumbnail_is_smaller_webp_while_original_stays_intact(
+    tmp_path: Path,
+) -> None:
+    service, _, _ = make_service(tmp_path, max_bytes=1024 * 1024)
+    payload = image_payload(width=960, height=480)
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="large-source.png",
+        content_type="image/png",
+        stream=BytesIO(payload),
+    )
+
+    thumbnail_asset, thumbnail_content, thumbnail_size = service.get_thumbnail(
+        ACTOR,
+        asset.asset_id,
+    )
+    with thumbnail_content:
+        thumbnail_payload = thumbnail_content.read()
+    with Image.open(BytesIO(thumbnail_payload)) as thumbnail:
+        assert thumbnail.format == "WEBP"
+        assert max(thumbnail.size) == THUMBNAIL_MAX_DIMENSION
+
+    _, original_content = service.get_content(ACTOR, asset.asset_id)
+    with original_content:
+        original_payload = original_content.read()
+    assert thumbnail_asset.asset_id == asset.asset_id
+    assert thumbnail_size == len(thumbnail_payload)
+    assert thumbnail_size < len(payload)
+    assert original_payload == payload
+    assert hashlib.sha256(original_payload).hexdigest() == asset.sha256
+
+
+def test_legacy_asset_thumbnail_is_created_on_first_authorized_read(
+    tmp_path: Path,
+) -> None:
+    service, _, _ = make_service(tmp_path, max_bytes=1024 * 1024)
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="legacy.png",
+        content_type="image/png",
+        stream=BytesIO(image_payload()),
+    )
+    thumbnail_key = thumbnail_storage_key(asset.asset_id)
+    service.storage.delete(thumbnail_key)
+    assert not service.storage.exists(thumbnail_key)
+
+    _, thumbnail, _ = service.get_thumbnail(ACTOR, asset.asset_id)
+    with thumbnail:
+        assert thumbnail.read()
+    assert service.storage.exists(thumbnail_key)
+
+
+def test_ai_generated_asset_uses_the_same_thumbnail_lifecycle(tmp_path: Path) -> None:
+    service, _, _ = make_service(tmp_path, max_bytes=1024 * 1024)
+    asset = service.create(
+        original_filename="generated.png",
+        content_type="image/png",
+        stream=BytesIO(image_payload()),
+        media_type=AssetMediaType.IMAGE,
+        source_type=AssetSourceType.AI_GENERATED,
+        ownership=SYSTEM_OWNERSHIP,
+    )
+
+    assert service.storage.exists(thumbnail_storage_key(asset.asset_id))
+    _, thumbnail, _ = service.get_thumbnail(ACTOR, asset.asset_id)
+    with thumbnail:
+        assert thumbnail.read()
+
+
+def test_thumbnail_render_failure_keeps_a_successful_original_asset(
+    tmp_path: Path,
+) -> None:
+    service, _, session = make_service(tmp_path)
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="legacy-header-only.jpg",
+        content_type="image/jpeg",
+        stream=BytesIO(b"\xff\xd8\xffnot-a-decodable-image"),
+    )
+
+    assert session.commits == 1
+    assert service.storage.exists(asset.storage_key)
+    assert not service.storage.exists(thumbnail_storage_key(asset.asset_id))
+    with pytest.raises(AssetThumbnailUnavailableError):
+        service.get_thumbnail(ACTOR, asset.asset_id)
+
+
+def test_thumbnail_lookup_keeps_asset_scope_isolation(tmp_path: Path) -> None:
+    service, _, _ = make_service(tmp_path, max_bytes=1024 * 1024)
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="private.png",
+        content_type="image/png",
+        stream=BytesIO(image_payload()),
+    )
+    other_team_actor = ActorContext(
+        user_id=uuid4(),
+        user_display_name="其它团队用户",
+        team_id=uuid4(),
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
+
+    with pytest.raises(AssetNotFoundError):
+        service.get_thumbnail(other_team_actor, asset.asset_id)
+
+
+def test_mounted_thumbnail_unavailable_keeps_original_file(tmp_path: Path) -> None:
+    root = tmp_path / "mounted-assets"
+    root.mkdir()
+    marker = root / MOUNTED_STORAGE_MARKER_NAME
+    marker.write_bytes(MOUNTED_STORAGE_MARKER_CONTENT)
+    repository = FakeAssetRepository()
+    service = AssetService(
+        FakeSession(),  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        MountedAssetStorage(root, 1024 * 1024),
+        Settings(asset_storage_dir=tmp_path / "unused"),
+    )
+    payload = image_payload()
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="mounted.png",
+        content_type="image/png",
+        stream=BytesIO(payload),
+    )
+    marker.unlink()
+
+    with pytest.raises(AssetStorageUnavailableError):
+        service.get_thumbnail(ACTOR, asset.asset_id)
+
+    assert repository.get(asset.asset_id) is asset
+    assert (root / asset.storage_key).read_bytes() == payload
 
 
 @pytest.mark.parametrize(
@@ -460,6 +617,25 @@ def test_delete_is_blocked_when_any_task_references_asset(tmp_path: Path) -> Non
     assert repository.get(asset.asset_id) is asset
     assert service.storage.exists(asset.storage_key)
     assert session.rollbacks == 1
+
+
+def test_delete_removes_original_and_derived_thumbnail(tmp_path: Path) -> None:
+    service, repository, _ = make_service(tmp_path, max_bytes=1024 * 1024)
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename="delete.png",
+        content_type="image/png",
+        stream=BytesIO(image_payload()),
+    )
+    thumbnail_key = thumbnail_storage_key(asset.asset_id)
+    assert service.storage.exists(asset.storage_key)
+    assert service.storage.exists(thumbnail_key)
+
+    service.delete(ACTOR, asset.asset_id)
+
+    assert repository.get(asset.asset_id) is None
+    assert not service.storage.exists(asset.storage_key)
+    assert not service.storage.exists(thumbnail_key)
 
 
 def test_delete_unavailable_mounted_storage_keeps_asset_and_file(

@@ -110,7 +110,7 @@ function confirm(): void {
           <template #icon>
             <AssetContentImage
               class="generation-asset-picker__thumbnail"
-              :src="asset.previewUrl"
+              :src="asset.thumbnailUrl ?? asset.previewUrl"
               :alt="asset.name"
             />
           </template>

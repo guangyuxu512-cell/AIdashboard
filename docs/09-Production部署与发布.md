@@ -157,10 +157,12 @@ BACKEND_ASSET_STORAGE_VOLUME_SOURCE=/mnt/control-center-assets
 两项检查都在 Alembic 前完成。标识缺失、挂载消失或权限不足会使预检失败；即使运行期发生该类故障，Asset
 API 也会返回明确的 `ASSET_STORAGE_UNAVAILABLE`（503），不会自动退回本地卷。
 
-切换前必须对现有 named volume 和 NAS 目标分别建立文件清单（相对 `storage_key`、大小、SHA-256），
-在停写窗口内复制旧 Asset 到 NAS，并复核数量、大小、散列和代表性历史 Asset 的正式读取。旧 named
-volume 必须保留。切换后新增文件只在 NAS；因此不能仅将环境变量改回 `local` 作为回退。若必须回退，
-先将切换后新增的 NAS 文件按 `storage_key` 复制并校验到旧 volume，或继续保持 NAS 挂载可读，再恢复
+切换前必须对现有 named volume 和 NAS 目标分别建立文件清单（原图以相对 `storage_key`、大小、SHA-256
+核对；已存在的派生缩略图以 `<asset_id-hex>.thumbnail.webp` 单独清单核对）。在停写窗口内复制旧 Asset
+到 NAS，并复核数量、大小、散列和代表性历史 Asset 的正式读取。缺失的旧缩略图可以在后续受权限访问时
+按原图重新生成，不能把它当作 Asset 丢失。旧 named volume 必须保留。切换后新增文件只在 NAS；因此不能
+仅将环境变量改回 `local` 作为回退。若必须回退，先将切换后新增的 NAS 文件按 `storage_key` 及已存在的
+派生缩略图复制并校验到旧 volume，或继续保持 NAS 挂载可读，再恢复
 先前 release。没有完成该数据步骤不得宣称回退安全。
 
 ## GitHub Actions

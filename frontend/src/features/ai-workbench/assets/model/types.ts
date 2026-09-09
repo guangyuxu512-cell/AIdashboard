@@ -14,6 +14,7 @@ export interface MaterialAssetReference {
   sourceType: MaterialAssetSourceType
   role: MaterialRole
   previewUrl: string
+  thumbnailUrl?: string
   width?: number
   height?: number
   sizeBytes?: number

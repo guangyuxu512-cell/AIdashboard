@@ -12,6 +12,7 @@ export function formatAssetSize(sizeBytes: number): string {
 export function mapAssetDto(
   dto: AssetReadDto,
   contentUrl: string,
+  thumbnailUrl: string,
 ): AssetListItemViewModel {
   return {
     assetId: dto.asset_id,
@@ -25,5 +26,6 @@ export function mapAssetDto(
     createdAt: dto.created_at,
     createdAtDisplay: dayjs(dto.created_at).format('YYYY-MM-DD HH:mm'),
     contentUrl,
+    thumbnailUrl,
   }
 }

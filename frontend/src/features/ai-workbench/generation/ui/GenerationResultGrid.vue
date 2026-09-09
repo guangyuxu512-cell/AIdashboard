@@ -41,7 +41,10 @@ defineEmits<{
       :key="result.id"
       class="generation-result-card"
     >
-      <AssetContentImage :src="result.previewUrl" :alt="result.name" />
+      <AssetContentImage
+        :src="result.thumbnailUrl ?? result.previewUrl"
+        :alt="result.name"
+      />
       <div class="generation-result-card__meta">
         <strong>{{ result.name }}</strong>
         <StatusTag
@@ -99,7 +102,7 @@ defineEmits<{
   background: var(--bg-surface-solid);
 }
 
-.generation-result-card > img {
+.generation-result-card > :deep(.asset-content-image) {
   display: block;
   width: 100%;
   aspect-ratio: 1;
