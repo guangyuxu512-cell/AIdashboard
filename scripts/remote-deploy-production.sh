@@ -253,8 +253,22 @@ wait_for_http() {
 verify_mobile_frontend() {
     local frontend_origin="http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}"
     local mobile_document
+    local mobile_redirect_headers
     local asset_path
     local -a asset_paths
+
+    mobile_redirect_headers="$(
+        curl --fail --silent --show-error --head \
+            --header "Host: ${PRODUCTION_DOMAIN}" \
+            --header 'X-Forwarded-Proto: https' \
+            "$frontend_origin/mobile" |
+            tr -d '\r'
+    )"
+    if ! printf '%s\n' "$mobile_redirect_headers" | grep -Eq '^HTTP/[0-9.]+ 308' ||
+        ! printf '%s\n' "$mobile_redirect_headers" | grep -Eqi '^Location: /mobile/$'; then
+        echo "Mobile /mobile must return 308 with the proxy-safe relative Location /mobile/" >&2
+        return 1
+    fi
 
     mobile_document="$(curl --fail --silent --show-error "$frontend_origin/mobile/")"
     if ! printf '%s' "$mobile_document" | grep -Eq '/mobile/assets/[^" ]+\.js' ||
