@@ -710,6 +710,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     outputRole: GenerationResultView['outputRole'] = 'MAIN_IMAGE',
     size: GenerationSize = instantEffectiveConfig.value.size,
     status: GenerationResultView['status'] = 'SUCCESS',
+    savedToProductId?: string,
   ): GenerationResultView {
     localSequence += 1
     return {
@@ -719,6 +720,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
       status,
       outputRole,
       size,
+      ...(status === 'SUCCESS' && savedToProductId ? { savedToProductId } : {}),
     }
   }
 
@@ -818,6 +820,37 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     return true
   }
 
+  function saveInstantResult(resultId: string, productId: string): boolean {
+    const result = instantExecution.value?.results.find(
+      (candidate) => candidate.id === resultId,
+    )
+    if (
+      !result ||
+      result.status !== 'SUCCESS' ||
+      result.savedToProductId !== undefined ||
+      !products.value.some((product) => product.id === productId)
+    ) {
+      return false
+    }
+    result.savedToProductId = productId
+    syncActiveInstantRecord()
+    return true
+  }
+
+  function getInstantResultSourceProductId(resultId: string): string | null {
+    const record = sourceRecords.value.find(
+      (candidate) =>
+        candidate.detail.kind === 'INSTANT' &&
+        candidate.detail.results.some((result) => result.id === resultId),
+    )
+    if (!record || record.detail.kind !== 'INSTANT') return null
+    return (
+      record.detail.inputSlots
+        .find((slot) => slot.key === 'PRODUCT_IMAGES')
+        ?.images.find((image) => image.productId)?.productId ?? null
+    )
+  }
+
   function markBatchDirty(): void {
     batchChecked.value = false
   }
@@ -892,6 +925,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
               template.outputRole,
               template.size,
               resultIndex % 17 === 0 ? 'FAILED' : 'SUCCESS',
+              plan.productId,
             )
           })
           return {
@@ -944,6 +978,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
                           previewUrl: nextPreviewUrl(
                             productIndex + currentTemplateIndex + resultIndex,
                           ),
+                          savedToProductId: plan.productId,
                         }
                       : {}),
                     ...(status === 'FAILED'
@@ -1070,6 +1105,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
         )
         productResults.forEach((result) => {
           result.status = 'SUCCESS'
+          result.savedToProductId = product.productId
         })
         return productResults
       })
@@ -1140,6 +1176,8 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     completeInstantPendingResults,
     retryInstantResult,
     completeInstantResult,
+    saveInstantResult,
+    getInstantResultSourceProductId,
     setBatchMode,
     setBatchProductScope,
     setBatchSelectedProducts,

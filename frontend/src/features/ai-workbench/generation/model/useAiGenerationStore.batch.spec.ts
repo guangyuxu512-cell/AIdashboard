@@ -224,7 +224,7 @@ describe('AI generation visual store: batch generation', () => {
     expect(product.groups[0]!.templates[0]!.results.length).toBeGreaterThan(0)
   })
 
-  it('keeps successful batch results outside product material membership', () => {
+  it('archives every successful batch result to its source product', () => {
     const store = createStore()
     const record = store.startBatchGeneration()!
     const results = store.batchResults.flatMap((product) =>
@@ -236,8 +236,10 @@ describe('AI generation visual store: batch generation', () => {
     )
 
     expect(results.some(({ result }) => result.status === 'SUCCESS')).toBe(true)
-    for (const { result } of results) {
-      expect(result).not.toHaveProperty('savedToProductId')
+    for (const { product, result } of results) {
+      expect(result.savedToProductId).toBe(
+        result.status === 'SUCCESS' ? product.productId : undefined,
+      )
     }
     expect(record.detail.kind).toBe('BATCH')
     if (record.detail.kind === 'BATCH') {
@@ -248,7 +250,8 @@ describe('AI generation visual store: batch generation', () => {
               group.templates.flatMap((template) => template.results),
             ),
           )
-          .every((result) => !('savedToProductId' in result)),
+          .filter((result) => result.status === 'SUCCESS')
+          .every((result) => Boolean(result.savedToProductId)),
       ).toBe(true)
     }
   })

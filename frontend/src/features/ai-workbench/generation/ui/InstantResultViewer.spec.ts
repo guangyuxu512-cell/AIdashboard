@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { NDropdown } from 'naive-ui'
 import { describe, expect, it } from 'vitest'
 
 import { createInstantExecutionView } from '../model/instant-execution'
@@ -53,7 +54,7 @@ describe('InstantResultViewer', () => {
     ])
   })
 
-  it('keeps successful results focused on download without material archive UI', () => {
+  it('names the material action explicitly and replaces it after save', async () => {
     const result = {
       id: 'success-result',
       slotIndex: 0,
@@ -65,10 +66,35 @@ describe('InstantResultViewer', () => {
       props: { result },
       global: { stubs: { teleport: true } },
     })
-    expect(wrapper.find('[aria-label="下载 生成结果-01.webp"]').exists()).toBe(
-      true,
-    )
-    expect(wrapper.text()).not.toContain('素材库')
-    expect(wrapper.find('[aria-label^="更多操作"]').exists()).toBe(false)
+    const dropdown = wrapper.getComponent(NDropdown)
+    expect(dropdown.props('options')).toEqual([
+      { key: 'save-to-assets', label: '保存到素材库' },
+    ])
+    await dropdown.vm.$emit('select', 'save-to-assets')
+    expect(wrapper.emitted('save')?.[0]).toEqual([result])
+
+    await wrapper.setProps({
+      result: { ...result, savedToProductId: 'pmg-phone-stand' },
+    })
+    expect(wrapper.text()).toContain('已加入素材库')
+    expect(wrapper.findComponent(NDropdown).exists()).toBe(false)
+  })
+
+  it('shows the material membership in record-only result cards', () => {
+    const wrapper = mount(InstantResultCard, {
+      props: {
+        result: {
+          id: 'unsaved-result',
+          slotIndex: 0,
+          status: 'SUCCESS',
+          previewUrl: 'preview',
+        },
+        showActions: false,
+        showAssetLibraryStatus: true,
+      },
+      global: { stubs: { teleport: true } },
+    })
+    expect(wrapper.text()).toContain('未加入素材库')
+    expect(wrapper.findComponent(NDropdown).exists()).toBe(false)
   })
 })

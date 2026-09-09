@@ -4,9 +4,11 @@ import {
   Clock3,
   Download,
   Image as ImageIcon,
+  MoreHorizontal,
   RotateCcw,
 } from '@lucide/vue'
-import { NSpin } from 'naive-ui'
+import { NDropdown, NSpin } from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
 import { computed } from 'vue'
 
 import { AssetContentImage } from '@/entities/asset'
@@ -22,20 +24,31 @@ const props = withDefaults(
   defineProps<{
     result: GenerationExecutionResultView
     showActions?: boolean
+    showAssetLibraryStatus?: boolean
   }>(),
   {
     showActions: true,
+    showAssetLibraryStatus: false,
   },
 )
 
-defineEmits<{
+const emit = defineEmits<{
   download: [result: GenerationExecutionResultView]
+  save: [result: GenerationExecutionResultView]
   retry: [result: GenerationExecutionResultView]
 }>()
 
 const resultLabel = computed(
   () => props.result.name ?? `生成结果 ${props.result.slotIndex + 1}`,
 )
+
+const moreOptions: DropdownOption[] = [
+  { key: 'save-to-assets', label: '保存到素材库' },
+]
+
+function selectMoreAction(key: string | number): void {
+  if (key === 'save-to-assets') emit('save', props.result)
+}
 </script>
 
 <template>
@@ -96,6 +109,16 @@ const resultLabel = computed(
           <Download :size="14" />
           下载
         </AppButton>
+        <NDropdown
+          v-if="!result.savedToProductId"
+          trigger="click"
+          :options="moreOptions"
+          @select="selectMoreAction"
+        >
+          <AppButton tone="text" :aria-label="`更多操作 ${resultLabel}`">
+            <MoreHorizontal :size="16" />
+          </AppButton>
+        </NDropdown>
       </template>
       <AppButton
         v-else-if="showActions && result.status === 'FAILED'"
@@ -106,6 +129,15 @@ const resultLabel = computed(
         <RotateCcw :size="14" />
         重试
       </AppButton>
+      <span
+        v-if="
+          result.status === 'SUCCESS' &&
+          (showAssetLibraryStatus || result.savedToProductId)
+        "
+        class="instant-result-card__asset-status"
+      >
+        {{ result.savedToProductId ? '已加入素材库' : '未加入素材库' }}
+      </span>
     </footer>
   </article>
 </template>
@@ -175,5 +207,12 @@ const resultLabel = computed(
   gap: var(--space-1);
   padding: 0 var(--space-2) var(--space-1);
   border-top: 1px solid var(--border-subtle);
+}
+
+.instant-result-card__asset-status {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  white-space: nowrap;
 }
 </style>

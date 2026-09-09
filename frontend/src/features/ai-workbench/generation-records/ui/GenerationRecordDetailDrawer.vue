@@ -103,6 +103,7 @@ defineEmits<{
           <InstantResultGrid
             :results="record.detail.results"
             :show-actions="false"
+            show-asset-library-status
             @download="$emit('download')"
           />
         </section>

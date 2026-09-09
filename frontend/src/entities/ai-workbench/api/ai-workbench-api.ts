@@ -308,4 +308,15 @@ export const aiWorkbenchApi = {
     )
     return response.data
   },
+  async archiveGenerationItem(
+    jobId: string,
+    itemId: string,
+    materialGroupId: string,
+  ): Promise<GenerationJobReadDto> {
+    const response = await httpClient.post<GenerationJobReadDto>(
+      `${basePath}/generation-jobs/${jobId}/items/${itemId}/archive`,
+      { material_group_id: materialGroupId },
+    )
+    return response.data
+  },
 }

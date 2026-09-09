@@ -136,6 +136,7 @@ export interface GenerationResultView {
   status: GenerationResultStatus
   outputRole: Exclude<GenerationOutputRange, 'ALL'>
   size: GenerationSize
+  savedToProductId?: string
 }
 
 export interface GenerationExecutionResultView {
@@ -148,6 +149,7 @@ export interface GenerationExecutionResultView {
   assetId?: string
   outputRole?: Exclude<GenerationOutputRange, 'ALL'>
   size?: GenerationSize
+  savedToProductId?: string
   errorCode?: string
   errorMessage?: string
 }

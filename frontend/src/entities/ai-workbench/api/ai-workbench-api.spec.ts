@@ -170,7 +170,7 @@ describe('AI Workbench API client', () => {
     expect(remove).toHaveBeenCalledTimes(2)
   })
 
-  it('submits model_id and uses real polling and retry endpoints', async () => {
+  it('submits model_id and uses real polling, retry and archive endpoints', async () => {
     const submittedJob = { generation_job_id: 'job-1' }
     const post = vi
       .spyOn(httpClient, 'post')
@@ -203,6 +203,7 @@ describe('AI Workbench API client', () => {
     await aiWorkbenchApi.retryGenerationItems('job-1', {
       items: [{ item_id: 'item-1', expected_attempt_count: 1 }],
     })
+    await aiWorkbenchApi.archiveGenerationItem('job-1', 'item-1', 'material-1')
 
     expect(post).toHaveBeenNthCalledWith(
       1,
@@ -230,6 +231,11 @@ describe('AI Workbench API client', () => {
       2,
       '/api/v1/ai-workbench/generation-jobs/job-1/retry-failed-items',
       { items: [{ item_id: 'item-1', expected_attempt_count: 1 }] },
+    )
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/ai-workbench/generation-jobs/job-1/items/item-1/archive',
+      { material_group_id: 'material-1' },
     )
   })
 })

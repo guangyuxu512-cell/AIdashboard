@@ -10,7 +10,7 @@ Model / Template / Material Catalog
 → GenerationJob 202
 → Job Detail Polling
 → GenerationItem + Asset
-→ Result / Record / Retry
+→ Result / Record / Retry / Archive
 ```
 
 模型下拉框只展示支持当前 Mode 的启用模型，优先选择 `is_default=true`，并使用 `max_input_images / supported_sizes` 约束输入与尺寸。Backend 始终是最终校验边界。
@@ -24,7 +24,7 @@ Model / Template / Material Catalog
 
 ## 3. Polling And Terminal States
 
-Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FAILED` 立即停止。记录列表仅在当前页存在非终态 Job 时轮询。失败重试调用 Backend 正式 API，Frontend 不自行改写 Item 状态。
+Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FAILED` 立即停止。记录列表仅在当前页存在非终态 Job 时轮询。失败重试与即时结果归档都调用 Backend 正式 API，Frontend 不自行改写 Item 状态。
 
 工作台停留原页面或重新获得浏览器焦点时，非终态 Job 必须继续从 Detail Query 获取权威状态；
 `PENDING → RUNNING → SUCCESS` 后直接使用返回的 `items[].output_asset` 展示图片。Detail 读取失败时显示
@@ -51,7 +51,6 @@ Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FA
 - `SUCCESS / PARTIAL_FAILED` 刷新或重新打开后仍以后端 Job 为事实来源。已知 Job ID 只发起读取；Submit 回执中断只能以持久化的原请求和原 `submission_key` 恢复。
 - 清空批量任务后，旧 Query 或迟到响应不得回写；即时草稿、生成记录和 Asset 不受影响。Job Detail 读取失败必须显示可重试 Error State，不得保留旧 `RUNNING` 结果持续转圈。
 - 当前下载实现逐个通过正式 Asset Content API 读取成功结果原图，再交给浏览器下载；模板下载和“下载全部”都是对该单图能力的逐件调用。V1 没有 ZIP 或按产品/模板组文件夹打包 API，也不声称已支持按组文件夹下载。
-- 素材库仅承载用户上传或主动关联的产品参考图。生成结果已由 GenerationJob、GenerationItem 与输出 Asset 持久化，页面保留预览、下载、历史和恢复，但不显示素材库归属状态、不提供保存入口，也不调用生成结果归档 API。既有历史关联不在本阶段删除或迁移；旧归档接口的数据库失败仍待 Backend 单独调查。
 - 自动化验收使用正式 Real 页面、真实 Query 链路与受控 API 响应，不接入 Visual Mock 执行状态。生产付费批量任务的完整闭环仍需在发布后使用一次正常任务验收。
 
 ## 6. Visual Mock Boundary

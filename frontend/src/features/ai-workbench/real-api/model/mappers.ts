@@ -198,6 +198,7 @@ function executionResult(
     assetId: item.output_asset?.asset_id,
     outputRole: item.output_role,
     size: item.size,
+    savedToProductId: item.archived_material_group_id ?? undefined,
     errorCode: item.last_failure_code ?? undefined,
     errorMessage: item.last_failure_message ?? undefined,
   }
@@ -370,6 +371,7 @@ function batchRecordResults(
             status: result.status as 'SUCCESS' | 'FAILED',
             outputRole: result.outputRole ?? template.outputRole,
             size: result.size ?? '1:1',
+            savedToProductId: result.savedToProductId,
           })),
       })),
     })),
