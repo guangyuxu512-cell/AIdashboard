@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
 
 import { AiManagementToolbar } from '@/features/ai-workbench'
 import { getErrorMessage } from '@/shared/api'
@@ -11,11 +12,13 @@ import {
   GENERATION_WORK_MODE_META,
   type GenerationWorkMode,
 } from '../model/types'
+import { useAiWorkbenchSessionStore } from '../model/useAiWorkbenchSessionStore'
 import { useGenerationCatalogs } from '../../real-api/model/useWorkbenchCatalogs'
 import BatchGenerationRealPanel from './BatchGenerationRealPanel.vue'
 import InstantGenerationRealPanel from './InstantGenerationRealPanel.vue'
 
-const workMode = ref<GenerationWorkMode>('INSTANT')
+const sessionStore = useAiWorkbenchSessionStore()
+const { workMode } = storeToRefs(sessionStore)
 const catalogs = useGenerationCatalogs()
 const models = computed(catalogs.models)
 const products = computed(catalogs.products)
