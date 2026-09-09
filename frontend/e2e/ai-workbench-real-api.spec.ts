@@ -15,17 +15,24 @@ test.skip(
 const modelId = '11111111-1111-4111-8111-111111111111'
 const alternateModelId = '11111111-1111-4111-8111-111111111112'
 const groupId = '22222222-2222-4222-8222-222222222222'
+const detailGroupId = '22222222-2222-4222-8222-222222222223'
 const templateId = '33333333-3333-4333-8333-333333333333'
+const detailTemplateId = '33333333-3333-4333-8333-333333333334'
 const materialGroupId = '44444444-4444-4444-8444-444444444444'
+const secondMaterialGroupId = '44444444-4444-4444-8444-444444444445'
 const inputAssetId = '55555555-5555-4555-8555-555555555555'
+const secondInputAssetId = '55555555-5555-4555-8555-555555555556'
 const jobId = '66666666-6666-4666-8666-666666666666'
 const itemId = '77777777-7777-4777-8777-777777777777'
 const outputAssetId = '88888888-8888-4888-8888-888888888888'
 const timestamp = '2026-09-06T00:00:00Z'
 
+type ControlledJobStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'PARTIAL_FAILED'
+
 interface WorkbenchApiOptions {
   controlledJob?: boolean
   submissionGate?: Promise<void>
+  batchScenario?: boolean
 }
 
 const templateGroup: TemplateGroupReadDto = {
@@ -47,6 +54,32 @@ const templateGroup: TemplateGroupReadDto = {
       count: 1,
       variables: [],
       prompt: '一件商品放在干净的白色背景上',
+      sort_order: 0,
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+  ],
+}
+
+const detailTemplateGroup: TemplateGroupReadDto = {
+  template_group_id: detailGroupId,
+  name: '场景详情套图',
+  mode: 'NORMAL_GENERATION',
+  enabled: true,
+  created_at: timestamp,
+  updated_at: timestamp,
+  prompt_templates: [
+    {
+      prompt_template_id: detailTemplateId,
+      template_group_id: detailGroupId,
+      name: '细节展示',
+      enabled: true,
+      output_role: 'DETAIL_IMAGE',
+      output_format: 'SINGLE',
+      size: '3:4',
+      count: 1,
+      variables: [],
+      prompt: '展示商品材质与关键细节',
       sort_order: 0,
       created_at: timestamp,
       updated_at: timestamp,
@@ -84,6 +117,55 @@ const materialGroup: ProductMaterialGroupReadDto = {
       template_group_id: groupId,
       generation_mode: 'NORMAL_GENERATION',
       position: 0,
+      created_at: timestamp,
+    },
+    {
+      material_group_id: materialGroupId,
+      template_group_id: detailGroupId,
+      generation_mode: 'NORMAL_GENERATION',
+      position: 1,
+      created_at: timestamp,
+    },
+  ],
+}
+
+const secondMaterialGroup: ProductMaterialGroupReadDto = {
+  material_group_id: secondMaterialGroupId,
+  name: '马克杯',
+  enabled: true,
+  normal_generation_enabled: true,
+  style_replication_enabled: false,
+  created_at: timestamp,
+  updated_at: timestamp,
+  assets: [
+    {
+      role: 'PRODUCT_SOURCE',
+      created_at: timestamp,
+      asset: {
+        asset_id: secondInputAssetId,
+        media_type: 'image',
+        original_filename: '马克杯商品图.png',
+        content_type: 'image/png',
+        size_bytes: 144,
+        sha256: 'c'.repeat(64),
+        source_type: 'upload',
+        created_at: timestamp,
+      },
+    },
+  ],
+  template_bindings: [
+    {
+      material_group_id: secondMaterialGroupId,
+      template_group_id: groupId,
+      generation_mode: 'NORMAL_GENERATION',
+      position: 0,
+      created_at: timestamp,
+    },
+    {
+      material_group_id: secondMaterialGroupId,
+      template_group_id: detailGroupId,
+      generation_mode: 'NORMAL_GENERATION',
+      position: 1,
       created_at: timestamp,
     },
   ],
@@ -179,12 +261,179 @@ function generationJob(
   }
 }
 
+const batchItemFixtures = [
+  {
+    itemId: '77777777-7777-4777-8777-777777777771',
+    outputAssetId: '88888888-8888-4888-8888-888888888881',
+    outputFilename: '手机支架-主图.png',
+    productId: materialGroupId,
+    productName: materialGroup.name,
+    inputAsset: materialGroup.assets[0]!.asset,
+    productPosition: 0,
+    templateGroupId: groupId,
+    templateGroupName: templateGroup.name,
+    templateGroupPosition: 0,
+    templateId,
+    templateName: '纯白主图',
+    outputRole: 'MAIN_IMAGE' as const,
+    size: '1:1' as const,
+  },
+  {
+    itemId: '77777777-7777-4777-8777-777777777772',
+    outputAssetId: '88888888-8888-4888-8888-888888888882',
+    outputFilename: '手机支架-详情.png',
+    productId: materialGroupId,
+    productName: materialGroup.name,
+    inputAsset: materialGroup.assets[0]!.asset,
+    productPosition: 0,
+    templateGroupId: detailGroupId,
+    templateGroupName: detailTemplateGroup.name,
+    templateGroupPosition: 1,
+    templateId: detailTemplateId,
+    templateName: '细节展示',
+    outputRole: 'DETAIL_IMAGE' as const,
+    size: '3:4' as const,
+  },
+  {
+    itemId: '77777777-7777-4777-8777-777777777773',
+    outputAssetId: '88888888-8888-4888-8888-888888888883',
+    outputFilename: '马克杯-主图.png',
+    productId: secondMaterialGroupId,
+    productName: secondMaterialGroup.name,
+    inputAsset: secondMaterialGroup.assets[0]!.asset,
+    productPosition: 1,
+    templateGroupId: groupId,
+    templateGroupName: templateGroup.name,
+    templateGroupPosition: 0,
+    templateId,
+    templateName: '纯白主图',
+    outputRole: 'MAIN_IMAGE' as const,
+    size: '1:1' as const,
+  },
+  {
+    itemId: '77777777-7777-4777-8777-777777777774',
+    outputAssetId: '88888888-8888-4888-8888-888888888884',
+    outputFilename: '马克杯-详情.png',
+    productId: secondMaterialGroupId,
+    productName: secondMaterialGroup.name,
+    inputAsset: secondMaterialGroup.assets[0]!.asset,
+    productPosition: 1,
+    templateGroupId: detailGroupId,
+    templateGroupName: detailTemplateGroup.name,
+    templateGroupPosition: 1,
+    templateId: detailTemplateId,
+    templateName: '细节展示',
+    outputRole: 'DETAIL_IMAGE' as const,
+    size: '3:4' as const,
+  },
+] as const
+
+function batchGenerationItem(
+  fixture: (typeof batchItemFixtures)[number],
+  position: number,
+  status: GenerationItemReadDto['status'],
+): GenerationItemReadDto {
+  const successful = status === 'SUCCESS'
+  const failed = status === 'FAILED'
+  return {
+    generation_item_id: fixture.itemId,
+    position,
+    status,
+    final_prompt:
+      fixture.outputRole === 'MAIN_IMAGE'
+        ? '一件商品放在干净的白色背景上'
+        : '展示商品材质与关键细节',
+    output_role: fixture.outputRole,
+    output_format: 'SINGLE',
+    size: fixture.size,
+    source_product_position: fixture.productPosition,
+    source_template_group_position: fixture.templateGroupPosition,
+    source_prompt_template_position: 0,
+    output_ordinal: 0,
+    source_product_material_group_id: fixture.productId,
+    source_template_group_id: fixture.templateGroupId,
+    source_prompt_template_id: fixture.templateId,
+    product_name_snapshot: fixture.productName,
+    template_group_name_snapshot: fixture.templateGroupName,
+    prompt_template_name_snapshot: fixture.templateName,
+    attempt_count: 1,
+    last_failure_code: failed ? 'PROVIDER_FAILED' : null,
+    last_failure_message: failed ? '生成服务暂时不可用' : null,
+    last_failed_at: failed ? timestamp : null,
+    started_at: status === 'PENDING' ? null : timestamp,
+    finished_at: successful || failed ? timestamp : null,
+    archived_material_group_id: successful ? fixture.productId : null,
+    archived_material_group_name_snapshot: successful
+      ? fixture.productName
+      : null,
+    archived_at: successful ? timestamp : null,
+    input_assets: [
+      {
+        input_role: 'PRODUCT_SOURCE',
+        position: 0,
+        asset: fixture.inputAsset,
+      },
+    ],
+    output_asset: successful
+      ? {
+          asset_id: fixture.outputAssetId,
+          media_type: 'image',
+          original_filename: fixture.outputFilename,
+          content_type: 'image/png',
+          size_bytes: 256 + position,
+          sha256: String(position + 1).repeat(64),
+          source_type: 'ai_generated',
+          created_at: timestamp,
+        }
+      : null,
+  }
+}
+
+function batchGenerationJob(status: ControlledJobStatus): GenerationJobReadDto {
+  const itemStatuses: GenerationItemReadDto['status'][] =
+    status === 'SUCCESS'
+      ? ['SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS']
+      : status === 'PARTIAL_FAILED'
+        ? ['SUCCESS', 'FAILED', 'SUCCESS', 'FAILED']
+        : status === 'RUNNING'
+          ? ['SUCCESS', 'RUNNING', 'PENDING', 'PENDING']
+          : ['PENDING', 'PENDING', 'PENDING', 'PENDING']
+  const items = batchItemFixtures.map((fixture, index) =>
+    batchGenerationItem(fixture, index, itemStatuses[index]!),
+  )
+  const count = (itemStatus: GenerationItemReadDto['status']) =>
+    items.filter((item) => item.status === itemStatus).length
+  return {
+    generation_job_id: jobId,
+    submission_key: 'batch-real-api-e2e',
+    model_id: modelId,
+    model_code: 'gpt-image-2',
+    model_display_name: 'GPT Image 2',
+    work_mode: 'BATCH',
+    mode: 'NORMAL_GENERATION',
+    status,
+    input_summary: { count: 2, primary_name: '2 个产品' },
+    created_by_display_name: '开发管理员',
+    created_at: timestamp,
+    updated_at: timestamp,
+    started_at: status === 'PENDING' ? null : timestamp,
+    finished_at:
+      status === 'SUCCESS' || status === 'PARTIAL_FAILED' ? timestamp : null,
+    total_count: items.length,
+    pending_count: count('PENDING'),
+    running_count: count('RUNNING'),
+    success_count: count('SUCCESS'),
+    failed_count: count('FAILED'),
+    items,
+  }
+}
+
 async function installWorkbenchApi(
   page: Page,
   options: WorkbenchApiOptions = {},
 ) {
   let phase: 'initial' | 'retry' | 'success' = 'initial'
-  let controlledJobStatus: 'PENDING' | 'RUNNING' | 'SUCCESS' = 'PENDING'
+  let controlledJobStatus: ControlledJobStatus = 'PENDING'
   let pollCount = 0
   let submitCount = 0
   let jobDetailCount = 0
@@ -197,8 +446,18 @@ async function installWorkbenchApi(
   const submittedBodies: Record<string, unknown>[] = []
   let retryBody: Record<string, unknown> | null = null
   let archiveBody: Record<string, unknown> | null = null
+  const assetContentRequests: string[] = []
+  const destructiveRequests: string[] = []
+
+  page.on('request', (request) => {
+    if (request.method() === 'DELETE') {
+      destructiveRequests.push(request.url())
+    }
+  })
 
   await page.route('**/api/v1/assets/*/content', async (route) => {
+    const segments = new URL(route.request().url()).pathname.split('/')
+    assetContentRequests.push(segments.at(-2) ?? '')
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -255,19 +514,20 @@ async function installWorkbenchApi(
       return
     }
     if (path.endsWith('/template-groups') && method === 'GET') {
+      const groups = options.batchScenario
+        ? [templateGroup, detailTemplateGroup]
+        : [templateGroup]
       await route.fulfill({
         json: {
-          items: [
-            {
-              template_group_id: groupId,
-              name: templateGroup.name,
-              mode: templateGroup.mode,
-              enabled: true,
-              created_at: timestamp,
-              updated_at: timestamp,
-            },
-          ],
-          total: 1,
+          items: groups.map((group) => ({
+            template_group_id: group.template_group_id,
+            name: group.name,
+            mode: group.mode,
+            enabled: true,
+            created_at: timestamp,
+            updated_at: timestamp,
+          })),
+          total: groups.length,
           page: 1,
           page_size: Number(url.searchParams.get('page_size') ?? 20),
         },
@@ -278,21 +538,29 @@ async function installWorkbenchApi(
       await route.fulfill({ json: templateGroup })
       return
     }
+    if (
+      path.endsWith(`/template-groups/${detailGroupId}`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({ json: detailTemplateGroup })
+      return
+    }
     if (path.endsWith('/product-material-groups') && method === 'GET') {
+      const groups = options.batchScenario
+        ? [materialGroup, secondMaterialGroup]
+        : [materialGroup]
       await route.fulfill({
         json: {
-          items: [
-            {
-              material_group_id: materialGroupId,
-              name: materialGroup.name,
-              enabled: true,
-              normal_generation_enabled: true,
-              style_replication_enabled: false,
-              created_at: timestamp,
-              updated_at: timestamp,
-            },
-          ],
-          total: 1,
+          items: groups.map((group) => ({
+            material_group_id: group.material_group_id,
+            name: group.name,
+            enabled: true,
+            normal_generation_enabled: true,
+            style_replication_enabled: false,
+            created_at: timestamp,
+            updated_at: timestamp,
+          })),
+          total: groups.length,
           page: 1,
           page_size: Number(url.searchParams.get('page_size') ?? 20),
         },
@@ -306,6 +574,13 @@ async function installWorkbenchApi(
       await route.fulfill({ json: materialGroup })
       return
     }
+    if (
+      path.endsWith(`/product-material-groups/${secondMaterialGroupId}`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({ json: secondMaterialGroup })
+      return
+    }
     if (path.endsWith('/generation-jobs') && method === 'POST') {
       submitCount += 1
       submittedBody = request.postDataJSON() as Record<string, unknown>
@@ -314,12 +589,20 @@ async function installWorkbenchApi(
       if (options.submissionGate) await options.submissionGate
       await route.fulfill({
         status: 202,
-        json: generationJob('PENDING', 'PENDING'),
+        json: options.batchScenario
+          ? batchGenerationJob('PENDING')
+          : generationJob('PENDING', 'PENDING'),
       })
       return
     }
     if (path.endsWith('/generation-jobs') && method === 'GET') {
-      const completed = generationJob('SUCCESS', 'SUCCESS', 2, true)
+      const completed = options.batchScenario
+        ? batchGenerationJob(
+            controlledJobStatus === 'PARTIAL_FAILED'
+              ? 'PARTIAL_FAILED'
+              : 'SUCCESS',
+          )
+        : generationJob('SUCCESS', 'SUCCESS', 2, true)
       await route.fulfill({
         json: {
           items: [completed],
@@ -349,6 +632,10 @@ async function installWorkbenchApi(
         return
       }
       if (options.controlledJob) {
+        if (options.batchScenario) {
+          await route.fulfill({ json: batchGenerationJob(controlledJobStatus) })
+          return
+        }
         const itemStatus =
           controlledJobStatus === 'SUCCESS'
             ? 'SUCCESS'
@@ -410,7 +697,9 @@ async function installWorkbenchApi(
     heldJobDetailCount: () => heldJobDetailCount,
     retryBody: () => retryBody,
     archiveBody: () => archiveBody,
-    setControlledJobStatus: (status: 'PENDING' | 'RUNNING' | 'SUCCESS') => {
+    assetContentRequests: () => [...assetContentRequests],
+    destructiveRequests: () => [...destructiveRequests],
+    setControlledJobStatus: (status: ControlledJobStatus) => {
       controlledJobStatus = status
     },
     failControlledJobDetail: (value: boolean) => {
@@ -443,6 +732,53 @@ async function selectInstantSource(page: Page): Promise<void> {
     .getByRole('dialog')
     .getByRole('button', { name: '选择', exact: true })
     .click()
+}
+
+async function submitControlledBatch(page: Page): Promise<void> {
+  await page.goto('/#/ai-workbench/generate')
+  await page.getByRole('button', { name: '批量生成', exact: true }).click()
+  await expect(page.getByLabel('批量生成模型')).toBeVisible()
+  const productList = page.getByTestId('batch-product-list')
+  await expect(productList).toContainText('手机支架')
+  await expect(productList).toContainText('马克杯')
+  await page.getByRole('button', { name: '执行检查', exact: true }).click()
+  const preflight = page.getByTestId('batch-preflight')
+  await expect(preflight).toBeVisible()
+  await expect(preflight.locator('dd')).toHaveText(['2', '2', '0', '4', '4'])
+  await page.getByRole('button', { name: '开始生成', exact: true }).click()
+}
+
+async function selectBatchProduct(page: Page, productName: string) {
+  await page
+    .getByRole('button', {
+      name: `查看产品任务 ${productName}`,
+      exact: true,
+    })
+    .click()
+  const detail = page.getByTestId('batch-product-result-detail')
+  await expect(detail).toContainText(productName)
+  await expect(
+    detail.getByText(templateGroup.name, { exact: true }),
+  ).toBeVisible()
+  await expect(
+    detail.getByText(detailTemplateGroup.name, { exact: true }),
+  ).toBeVisible()
+  return detail
+}
+
+async function expandBatchTemplateGroup(
+  page: Page,
+  templateGroupName: string,
+): Promise<void> {
+  const detail = page.getByTestId('batch-product-result-detail')
+  const group = detail
+    .getByTestId('batch-template-group')
+    .filter({ hasText: templateGroupName })
+  const content = group.locator('.n-collapse-item__content-wrapper')
+  if (!(await content.isVisible())) {
+    await group.getByText(templateGroupName, { exact: true }).click()
+  }
+  await expect(content).toBeVisible()
 }
 
 test('runs the production workbench through submit, polling, retry, result, archive and records', async ({
@@ -915,4 +1251,349 @@ test('clears retained workbench state on logout and team change', async ({
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await page.goto('/#/ai-workbench/generate')
   await expect(page.getByLabel('提示词')).toHaveValue('')
+})
+
+test('recovers one multi-product batch job through refresh and renders grouped results in place', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    batchScenario: true,
+  })
+  const runtimeErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') runtimeErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => runtimeErrors.push(error.message))
+
+  await submitControlledBatch(page)
+  await expect.poll(calls.submitCount).toBe(1)
+  await expect.poll(calls.submittedBody).toMatchObject({
+    work_mode: 'BATCH',
+    model_id: modelId,
+    mode: 'NORMAL_GENERATION',
+    product_scope: 'ALL_ENABLED',
+    selected_product_ids: [],
+    template_source: 'PRODUCT_CONFIGURED',
+    selected_template_group_ids: [],
+    output_range: 'ALL',
+  })
+
+  calls.setControlledJobStatus('RUNNING')
+  const summary = page.getByTestId('batch-execution-summary')
+  await expect(summary).toContainText('生成中', { timeout: 10_000 })
+  await expect(summary).toContainText('1 / 4')
+  await expect(page.getByTestId('batch-product-task-row')).toHaveCount(2)
+  const detailReadsBeforeRefresh = calls.jobDetailCount()
+
+  await page.reload()
+  await expect(page.getByLabel('批量生成模型')).toBeVisible()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '生成中',
+    { timeout: 10_000 },
+  )
+  await expect(page.getByTestId('batch-product-task-row')).toHaveCount(2)
+  await expect
+    .poll(calls.jobDetailCount)
+    .toBeGreaterThan(detailReadsBeforeRefresh)
+  expect(calls.submitCount()).toBe(1)
+
+  calls.setControlledJobStatus('SUCCESS')
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '已完成',
+    { timeout: 10_000 },
+  )
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '4 / 4',
+  )
+
+  let detail = await selectBatchProduct(page, materialGroup.name)
+  await expandBatchTemplateGroup(page, templateGroup.name)
+  await expect(
+    detail
+      .locator(`[data-template-id="${templateId}"]`)
+      .getByAltText('纯白主图 结果 1'),
+  ).toBeVisible()
+  await expandBatchTemplateGroup(page, detailTemplateGroup.name)
+  await expect(
+    detail
+      .locator(`[data-template-id="${detailTemplateId}"]`)
+      .getByAltText('细节展示 结果 1'),
+  ).toBeVisible()
+
+  detail = await selectBatchProduct(page, secondMaterialGroup.name)
+  await expandBatchTemplateGroup(page, templateGroup.name)
+  await expect(
+    detail
+      .locator(`[data-template-id="${templateId}"]`)
+      .getByAltText('纯白主图 结果 1'),
+  ).toBeVisible()
+  await expandBatchTemplateGroup(page, detailTemplateGroup.name)
+  await expect(
+    detail
+      .locator(`[data-template-id="${detailTemplateId}"]`)
+      .getByAltText('细节展示 结果 1'),
+  ).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '4 / 4',
+    { timeout: 10_000 },
+  )
+  await expect(page.getByTestId('batch-product-task-row')).toHaveCount(2)
+  await page.goto('about:blank')
+  await page.goto('/#/ai-workbench/generate')
+  await expect(page.getByLabel('批量生成模型')).toBeVisible()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '4 / 4',
+    { timeout: 10_000 },
+  )
+  expect(calls.submitCount()).toBe(1)
+
+  detail = await selectBatchProduct(page, materialGroup.name)
+  await expandBatchTemplateGroup(page, templateGroup.name)
+  const outputAssetIds = new Set<string>(
+    batchItemFixtures.map((fixture) => fixture.outputAssetId),
+  )
+  const outputRequestCount = () =>
+    calls
+      .assetContentRequests()
+      .filter((assetId) => outputAssetIds.has(assetId)).length
+  const requestsBeforeTemplateDownload = outputRequestCount()
+  const templateDownload = page.waitForEvent('download')
+  await detail
+    .getByRole('button', { name: '下载 纯白主图', exact: true })
+    .click()
+  await templateDownload
+  await expect.poll(outputRequestCount).toBe(requestsBeforeTemplateDownload + 1)
+
+  const downloadedFilenames: string[] = []
+  page.on('download', (download) => {
+    downloadedFilenames.push(download.suggestedFilename())
+  })
+  const requestsBeforeDownloadAll = outputRequestCount()
+  const perAssetRequestsBeforeDownloadAll = new Map(
+    [...outputAssetIds].map((assetId) => [
+      assetId,
+      calls.assetContentRequests().filter((candidate) => candidate === assetId)
+        .length,
+    ]),
+  )
+  await page.getByRole('button', { name: '下载全部', exact: true }).click()
+  await expect.poll(outputRequestCount).toBe(requestsBeforeDownloadAll + 4)
+  for (const assetId of outputAssetIds) {
+    await expect
+      .poll(
+        () =>
+          calls
+            .assetContentRequests()
+            .filter((candidate) => candidate === assetId).length,
+      )
+      .toBe((perAssetRequestsBeforeDownloadAll.get(assetId) ?? 0) + 1)
+  }
+  await expect.poll(() => downloadedFilenames.length).toBe(4)
+  expect(downloadedFilenames.every((name) => name.endsWith('.png'))).toBe(true)
+  expect(downloadedFilenames.some((name) => name.endsWith('.zip'))).toBe(false)
+  expect(runtimeErrors).toEqual([])
+})
+
+test('restores partial-failed batch hierarchy and its actions after refresh and reopening', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    batchScenario: true,
+  })
+
+  await submitControlledBatch(page)
+  await expect.poll(calls.submitCount).toBe(1)
+  calls.setControlledJobStatus('PARTIAL_FAILED')
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '部分失败',
+    { timeout: 10_000 },
+  )
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '4 / 4',
+  )
+
+  await page.reload()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '部分失败',
+    { timeout: 10_000 },
+  )
+  await page.goto('about:blank')
+  await page.goto('/#/ai-workbench/generate')
+  await expect(page.getByLabel('批量生成模型')).toBeVisible()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '部分失败',
+    { timeout: 10_000 },
+  )
+
+  for (const productName of [materialGroup.name, secondMaterialGroup.name]) {
+    const detail = await selectBatchProduct(page, productName)
+    await expandBatchTemplateGroup(page, detailTemplateGroup.name)
+    const failedCard = detail.locator(
+      `[data-template-id="${detailTemplateId}"]`,
+    )
+    await expect(
+      failedCard.locator('[data-result-status="FAILED"]'),
+    ).toBeVisible()
+    await expect(
+      failedCard.getByRole('button', {
+        name: '重试 细节展示',
+        exact: true,
+      }),
+    ).toBeVisible()
+    await expandBatchTemplateGroup(page, templateGroup.name)
+    const successCard = detail.locator(`[data-template-id="${templateId}"]`)
+    await expect(
+      successCard.getByRole('button', {
+        name: '下载 纯白主图',
+        exact: true,
+      }),
+    ).toBeVisible()
+  }
+  await expect(
+    page.getByRole('button', { name: '下载全部', exact: true }),
+  ).toBeVisible()
+  expect(calls.submitCount()).toBe(1)
+})
+
+test('reuses the original batch request and submission key when refresh interrupts its receipt', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const gate = releaseGate()
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    batchScenario: true,
+    submissionGate: gate.promise,
+  })
+
+  await submitControlledBatch(page)
+  await expect.poll(calls.submitCount).toBe(1)
+  await page.reload()
+  await expect.poll(calls.submitCount).toBe(2)
+  expect(calls.submittedBodies()[1]).toEqual(calls.submittedBodies()[0])
+  expect(
+    new Set(calls.submittedBodies().map((body) => body.submission_key)).size,
+  ).toBe(1)
+
+  calls.setControlledJobStatus('RUNNING')
+  gate.release()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '生成中',
+    { timeout: 10_000 },
+  )
+  const submitCountAfterReceipt = calls.submitCount()
+  await page.reload()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '生成中',
+    { timeout: 10_000 },
+  )
+  expect(calls.submitCount()).toBe(submitCountAfterReceipt)
+  expect(
+    new Set(calls.submittedBodies().map((body) => body.submission_key)).size,
+  ).toBe(1)
+})
+
+test('clears only the batch task and rejects its late response without deleting history or assets', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    batchScenario: true,
+  })
+  const detailGate = releaseGate()
+
+  await page.goto('/#/ai-workbench/generate')
+  await page.getByLabel('提示词').fill('即时草稿不受批量清空影响')
+  await page.getByRole('button', { name: '批量生成', exact: true }).click()
+  await page.getByRole('button', { name: '执行检查', exact: true }).click()
+  await page.getByRole('button', { name: '开始生成', exact: true }).click()
+  await expect.poll(calls.submitCount).toBe(1)
+  calls.setControlledJobStatus('RUNNING')
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '生成中',
+    { timeout: 10_000 },
+  )
+
+  calls.holdNextJobDetail(detailGate.promise)
+  calls.setControlledJobStatus('SUCCESS')
+  await expect.poll(calls.heldJobDetailCount).toBe(1)
+  await page.getByRole('button', { name: '清空当前任务', exact: true }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '清空当前任务' })
+  await expect(dialog).toContainText(
+    '运行中的后台任务不会取消，仍可在生成记录中查看',
+  )
+  await dialog.getByRole('button', { name: '清空', exact: true }).click()
+  detailGate.release()
+
+  await expect(page.getByTestId('batch-execution-viewer')).toContainText(
+    '暂无生成结果',
+  )
+  await expect(page.getByTestId('batch-product-task-row')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByTestId('batch-execution-viewer')).toContainText(
+    '暂无生成结果',
+  )
+  await page.getByRole('button', { name: '即时生成', exact: true }).click()
+  await expect(page.getByLabel('提示词')).toHaveValue(
+    '即时草稿不受批量清空影响',
+  )
+
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: '生成记录' })
+    .click()
+  const records = page.getByLabel('生成记录列表')
+  await expect(records).toContainText('批量生成')
+  await records.getByRole('button', { name: '查看', exact: true }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer).toContainText(materialGroup.name)
+  await expect(drawer).toContainText(secondMaterialGroup.name)
+  await expect(drawer).toContainText(templateGroup.name)
+  await expect(drawer).toContainText(detailTemplateGroup.name)
+  expect(calls.destructiveRequests()).toEqual([])
+  expect(calls.submitCount()).toBe(1)
+})
+
+test('shows a retryable batch read error instead of keeping stale running results', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    batchScenario: true,
+  })
+
+  await submitControlledBatch(page)
+  await expect.poll(calls.submitCount).toBe(1)
+  calls.setControlledJobStatus('RUNNING')
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '生成中',
+    { timeout: 10_000 },
+  )
+
+  calls.failControlledJobDetail(true)
+  await expect(page.getByText('任务读取失败', { exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(page.getByText('生成任务暂时无法读取')).toBeVisible()
+  await expect(page.getByTestId('batch-execution-viewer')).toHaveCount(0)
+
+  calls.setControlledJobStatus('SUCCESS')
+  calls.failControlledJobDetail(false)
+  await page.getByRole('button', { name: '重新加载', exact: true }).click()
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '已完成',
+    { timeout: 10_000 },
+  )
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '4 / 4',
+  )
+  expect(calls.submitCount()).toBe(1)
 })

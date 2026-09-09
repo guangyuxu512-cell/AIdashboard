@@ -45,7 +45,15 @@ Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FA
 
 本能力覆盖当前浏览器内的路由往返、刷新与页面重新打开，不提供跨浏览器或跨身份共享，也不建设数据库草稿系统或全站 KeepAlive。
 
-## 5. Visual Mock Boundary
+## 5. Batch Recovery Acceptance
+
+- 批量页面以同一 `generation_job_id` 恢复运行中任务，继续通过 Job Detail Query 轮询；终态返回后按 Item 中的产品、模板组、模板快照与 `output_asset` 原地渲染分组结果。
+- `SUCCESS / PARTIAL_FAILED` 刷新或重新打开后仍以后端 Job 为事实来源。已知 Job ID 只发起读取；Submit 回执中断只能以持久化的原请求和原 `submission_key` 恢复。
+- 清空批量任务后，旧 Query 或迟到响应不得回写；即时草稿、生成记录和 Asset 不受影响。Job Detail 读取失败必须显示可重试 Error State，不得保留旧 `RUNNING` 结果持续转圈。
+- 当前下载实现逐个通过正式 Asset Content API 读取成功结果原图，再交给浏览器下载；模板下载和“下载全部”都是对该单图能力的逐件调用。V1 没有 ZIP 或按产品/模板组文件夹打包 API，也不声称已支持按组文件夹下载。
+- 自动化验收使用正式 Real 页面、真实 Query 链路与受控 API 响应，不接入 Visual Mock 执行状态。生产付费批量任务的完整闭环仍需在发布后使用一次正常任务验收。
+
+## 6. Visual Mock Boundary
 
 Visual Mock 仅在 Development 且查询参数精确为 `visualMock=1` 时动态加载，用于冻结视觉与交互测试。Production Build 默认且唯一运行 Real API 页面，不提供 Fixture fallback。
 
