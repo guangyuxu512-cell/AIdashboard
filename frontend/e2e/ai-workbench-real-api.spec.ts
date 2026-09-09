@@ -438,24 +438,25 @@ async function installWorkbenchApi(
   let submitCount = 0
   let jobDetailCount = 0
   let heldJobDetailCount = 0
-  let archived = false
   let expireNextRequest = false
   let failJobDetail = false
   let nextJobDetailGate: Promise<void> | null = null
   let submittedBody: Record<string, unknown> | null = null
   const submittedBodies: Record<string, unknown>[] = []
   let retryBody: Record<string, unknown> | null = null
-  let archiveBody: Record<string, unknown> | null = null
+  const archiveRequests: string[] = []
   const assetContentRequests: string[] = []
   const destructiveRequests: string[] = []
 
   page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
     if (request.method() === 'DELETE') {
       destructiveRequests.push(request.url())
     }
+    if (path.endsWith('/archive')) archiveRequests.push(path)
   })
 
-  await page.route('**/api/v1/assets/*/content', async (route) => {
+  const fulfillAssetImage = async (route: Parameters<Page['route']>[1]) => {
     const segments = new URL(route.request().url()).pathname.split('/')
     assetContentRequests.push(segments.at(-2) ?? '')
     await route.fulfill({
@@ -466,7 +467,9 @@ async function installWorkbenchApi(
         'base64',
       ),
     })
-  })
+  }
+  await page.route('**/api/v1/assets/*/content', fulfillAssetImage)
+  await page.route('**/api/v1/assets/*/thumbnail', fulfillAssetImage)
 
   await page.route('**/api/v1/ai-workbench/**', async (route) => {
     const request = route.request()
@@ -643,7 +646,7 @@ async function installWorkbenchApi(
               ? 'RUNNING'
               : 'PENDING'
         await route.fulfill({
-          json: generationJob(controlledJobStatus, itemStatus, 1, archived),
+          json: generationJob(controlledJobStatus, itemStatus),
         })
         return
       }
@@ -674,15 +677,6 @@ async function installWorkbenchApi(
       })
       return
     }
-    if (path.endsWith(`/items/${itemId}/archive`) && method === 'POST') {
-      archiveBody = request.postDataJSON() as Record<string, unknown>
-      phase = 'success'
-      archived = true
-      await route.fulfill({
-        json: generationJob('SUCCESS', 'SUCCESS', 2, true),
-      })
-      return
-    }
     await route.fulfill({
       status: 500,
       json: { code: 'UNHANDLED_TEST_ROUTE', message: `${method} ${path}` },
@@ -696,7 +690,7 @@ async function installWorkbenchApi(
     jobDetailCount: () => jobDetailCount,
     heldJobDetailCount: () => heldJobDetailCount,
     retryBody: () => retryBody,
-    archiveBody: () => archiveBody,
+    archiveRequests: () => [...archiveRequests],
     assetContentRequests: () => [...assetContentRequests],
     destructiveRequests: () => [...destructiveRequests],
     setControlledJobStatus: (status: ControlledJobStatus) => {
@@ -781,7 +775,150 @@ async function expandBatchTemplateGroup(
   await expect(content).toBeVisible()
 }
 
-test('runs the production workbench through submit, polling, retry, result, archive and records', async ({
+async function readManagementToolbarLayout(
+  page: Page,
+  options: {
+    label: string
+    searchLabel: string
+    secondaryControlSelector: string
+    primaryActionText: string
+  },
+) {
+  const toolbar = page.getByRole('region', { name: options.label })
+  await expect(toolbar).toBeVisible()
+
+  return toolbar.evaluate((element, selectors) => {
+    const leading = element.querySelector<HTMLElement>(
+      '.table-toolbar__leading',
+    )
+    const actions = element.querySelector<HTMLElement>(
+      '.table-toolbar__actions',
+    )
+    const search = element.querySelector<HTMLElement>(
+      `[aria-label="${selectors.searchLabel}"]`,
+    )
+    const secondary = element.querySelector<HTMLElement>(
+      selectors.secondaryControlSelector,
+    )
+    const primary = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('button'),
+    ).find((button) =>
+      button.textContent?.trim().includes(selectors.primaryActionText),
+    )
+
+    if (!leading || !actions || !search || !secondary || !primary) {
+      throw new Error('管理工具栏控件未完整渲染')
+    }
+
+    const rect = (node: HTMLElement) => {
+      const bounds = node.getBoundingClientRect()
+      return {
+        top: bounds.top,
+        height: bounds.height,
+        centerY: bounds.top + bounds.height / 2,
+      }
+    }
+    const bounds = element.getBoundingClientRect()
+
+    return {
+      toolbar: {
+        height: bounds.height,
+        overflows: element.scrollWidth > element.clientWidth,
+      },
+      leading: rect(leading),
+      actions: rect(actions),
+      search: rect(search),
+      secondary: rect(secondary),
+      primary: rect(primary),
+      pageOverflows:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+    }
+  }, options)
+}
+
+function expectCompactToolbar(
+  layout: Awaited<ReturnType<typeof readManagementToolbarLayout>>,
+): void {
+  expect(layout.toolbar.overflows).toBe(false)
+  expect(layout.pageOverflows).toBe(false)
+  expect(Math.abs(layout.leading.top - layout.actions.top)).toBeLessThanOrEqual(
+    1,
+  )
+  expect(
+    Math.abs(layout.search.centerY - layout.secondary.centerY),
+  ).toBeLessThanOrEqual(1)
+  expect(
+    Math.abs(layout.search.centerY - layout.primary.centerY),
+  ).toBeLessThanOrEqual(1)
+  expect(layout.toolbar.height).toBeLessThanOrEqual(layout.search.height + 32)
+}
+
+test('keeps real material and template toolbars compact, aligned and responsive', async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') runtimeErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => runtimeErrors.push(error.message))
+  await installWorkbenchApi(page)
+
+  const assetToolbar = {
+    label: '素材库工具栏',
+    searchLabel: '搜索素材',
+    secondaryControlSelector: '[aria-label^="筛选："]',
+    primaryActionText: '上传素材',
+  }
+
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/ai-workbench/assets')
+    expectCompactToolbar(await readManagementToolbarLayout(page, assetToolbar))
+  }
+
+  await page.getByRole('button', { name: '切换主题' }).click()
+  await page.getByText('浅色', { exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  expectCompactToolbar(await readManagementToolbarLayout(page, assetToolbar))
+  await page.getByRole('button', { name: '切换主题' }).click()
+  await page.getByText('深色', { exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expectCompactToolbar(await readManagementToolbarLayout(page, assetToolbar))
+
+  await page.setViewportSize({ width: 760, height: 768 })
+  const narrowAssetToolbar = await readManagementToolbarLayout(
+    page,
+    assetToolbar,
+  )
+  expect(narrowAssetToolbar.toolbar.overflows).toBe(false)
+  expect(narrowAssetToolbar.actions.top).toBeGreaterThan(
+    narrowAssetToolbar.leading.top,
+  )
+  expect(
+    Math.abs(
+      narrowAssetToolbar.secondary.centerY - narrowAssetToolbar.primary.centerY,
+    ),
+  ).toBeLessThanOrEqual(1)
+
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.goto('/#/ai-workbench/templates')
+  expectCompactToolbar(
+    await readManagementToolbarLayout(page, {
+      label: '模板库工具栏',
+      searchLabel: '搜索模板',
+      secondaryControlSelector: '[aria-label="生成模式"]',
+      primaryActionText: '新建模板组',
+    }),
+  )
+
+  expect(runtimeErrors).toEqual([])
+})
+
+test('runs the production workbench through submit, polling, retry, result and records without archive requests', async ({
   page,
 }) => {
   test.setTimeout(45_000)
@@ -827,24 +964,11 @@ test('runs the production workbench through submit, polling, retry, result, arch
   await expect(successCard).toBeVisible({ timeout: 10_000 })
   await expect(successCard.getByAltText('真实结果.png')).toBeVisible()
 
-  await successCard.getByRole('button', { name: /更多操作/ }).click()
-  await page
-    .locator('.n-dropdown-option:visible')
-    .getByText('保存到素材库', { exact: true })
-    .click()
-  await page.getByLabel('目标产品素材组').click()
-  await page
-    .locator('.n-base-select-option:visible')
-    .getByText('手机支架', { exact: true })
-    .click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: '保存到素材库', exact: true })
-    .click()
-  await expect.poll(calls.archiveBody).toEqual({
-    material_group_id: materialGroupId,
-  })
-  await expect(successCard).toContainText('已加入素材库')
+  await expect(
+    successCard.getByRole('button', { name: /更多操作/ }),
+  ).toHaveCount(0)
+  await expect(page.getByText('保存到素材库', { exact: true })).toHaveCount(0)
+  await expect(successCard).not.toContainText('素材库')
 
   await page
     .getByRole('navigation', { name: 'AI 功能入口' })
@@ -855,7 +979,8 @@ test('runs the production workbench through submit, polling, retry, result, arch
   await page.getByRole('button', { name: '查看' }).click()
   const drawer = page.getByRole('dialog')
   await expect(drawer).toContainText('一件商品放在干净的白色背景上')
-  await expect(drawer).toContainText('已加入素材库')
+  await expect(drawer).not.toContainText('素材库')
+  expect(calls.archiveRequests()).toEqual([])
   expect(runtimeErrors).toEqual([])
 })
 
@@ -935,23 +1060,11 @@ test('restores a running job after refresh and a completed result after reopenin
   const download = page.waitForEvent('download')
   await restoredCard.getByRole('button', { name: /下载 真实结果/ }).click()
   await download
-  await restoredCard.getByRole('button', { name: /更多操作/ }).click()
-  await page
-    .locator('.n-dropdown-option:visible')
-    .getByText('保存到素材库', { exact: true })
-    .click()
-  await page.getByLabel('目标产品素材组').click()
-  await page
-    .locator('.n-base-select-option:visible')
-    .getByText('手机支架', { exact: true })
-    .click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: '保存到素材库', exact: true })
-    .click()
-  await expect.poll(calls.archiveBody).toEqual({
-    material_group_id: materialGroupId,
-  })
+  await expect(
+    restoredCard.getByRole('button', { name: /更多操作/ }),
+  ).toHaveCount(0)
+  await expect(page.getByText('保存到素材库', { exact: true })).toHaveCount(0)
+  expect(calls.archiveRequests()).toEqual([])
   expect(calls.submitCount()).toBe(1)
 })
 
@@ -1195,23 +1308,11 @@ test('resumes one delayed task after navigation and keeps completed result actio
   const download = page.waitForEvent('download')
   await restoredCard.getByRole('button', { name: /下载 真实结果/ }).click()
   await download
-  await restoredCard.getByRole('button', { name: /更多操作/ }).click()
-  await page
-    .locator('.n-dropdown-option:visible')
-    .getByText('保存到素材库', { exact: true })
-    .click()
-  await page.getByLabel('目标产品素材组').click()
-  await page
-    .locator('.n-base-select-option:visible')
-    .getByText('手机支架', { exact: true })
-    .click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: '保存到素材库', exact: true })
-    .click()
-  await expect.poll(calls.archiveBody).toEqual({
-    material_group_id: materialGroupId,
-  })
+  await expect(
+    restoredCard.getByRole('button', { name: /更多操作/ }),
+  ).toHaveCount(0)
+  await expect(page.getByText('保存到素材库', { exact: true })).toHaveCount(0)
+  expect(calls.archiveRequests()).toEqual([])
   expect(calls.submitCount()).toBe(1)
 })
 
