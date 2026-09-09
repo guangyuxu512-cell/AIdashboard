@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query'
-import { Sparkles } from '@lucide/vue'
+import { Sparkles, Trash2 } from '@lucide/vue'
 import { useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -19,6 +19,8 @@ import type { GenerationJobReadDto } from '@/entities/ai-workbench'
 import { AiWorkbenchLayout } from '@/features/ai-workbench'
 import { getErrorMessage } from '@/shared/api'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
+import ErrorState from '@/shared/components/ErrorState.vue'
+import LoadingState from '@/shared/components/LoadingState.vue'
 import {
   AppButton,
   AppDialog,
@@ -76,10 +78,13 @@ const {
   instantCount: count,
   instantCurrentJobId: currentJobId,
   instantSubmitting: submitting,
+  instantSubmissionKey: submissionKey,
+  instantSubmissionRecoveryError: submissionRecoveryError,
 } = storeToRefs(sessionStore)
 const assetPickerVisible = ref(false)
 const assetPickerSlotKey = ref<GenerationInputSlotKey>('PRODUCT_IMAGES')
 const saveDialogVisible = ref(false)
+const clearDialogVisible = ref(false)
 const saveResultId = ref<string | null>(null)
 const saveProductId = ref<string | null>(null)
 
@@ -142,6 +147,21 @@ const assetPickerDefinition = computed(
 const execution = computed(() =>
   jobQuery.data.value ? mapInstantExecution(jobQuery.data.value) : null,
 )
+const jobError = computed(() => jobQuery.error.value)
+const restoringJob = computed(
+  () => Boolean(currentJobId.value) && jobQuery.isPending.value,
+)
+const restoringSubmission = computed(
+  () => !currentJobId.value && Boolean(submissionKey.value) && submitting.value,
+)
+const currentJobIsActive = computed(() => {
+  const status = jobQuery.data.value?.status
+  return (
+    status === 'PENDING' ||
+    status === 'RUNNING' ||
+    (!currentJobId.value && Boolean(submissionKey.value))
+  )
+})
 const canGenerate = computed(
   () =>
     Boolean(selectedModel.value) &&
@@ -154,7 +174,8 @@ const canGenerate = computed(
       currentInputCount.value,
     ) &&
     isWorkbenchModelSizeSupported(selectedModel.value, size.value) &&
-    !submitting.value,
+    !submitting.value &&
+    !submissionKey.value,
 )
 const saveProductOptions = computed(() =>
   props.products
@@ -328,6 +349,28 @@ async function generate(): Promise<void> {
   }
 }
 
+function reloadJob(): void {
+  void jobQuery.refetch()
+}
+
+function retrySubmissionRecovery(): void {
+  void sessionStore
+    .resumeInstantSubmission()
+    .catch((error) => message.error(getErrorMessage(error)))
+}
+
+function clearCurrentTask(): void {
+  const clearedJobId = sessionStore.clearInstant()
+  clearDialogVisible.value = false
+  if (clearedJobId) {
+    const queryKey = aiWorkbenchQueryKeys.generationJob(clearedJobId)
+    void queryClient
+      .cancelQueries({ queryKey, exact: true })
+      .finally(() => queryClient.removeQueries({ queryKey, exact: true }))
+  }
+  message.success('已清空当前即时生成')
+}
+
 async function downloadResult(
   result: GenerationExecutionResultView,
 ): Promise<void> {
@@ -497,8 +540,12 @@ function saveResult(): void {
           </div>
         </div>
         <footer class="instant-generation-pane__footer">
+          <AppButton @click="clearDialogVisible = true">
+            <Trash2 :size="15" />
+            清空当前任务
+          </AppButton>
           <AppButton
-            block
+            class="instant-generation-pane__generate"
             tone="primary"
             :disabled="!canGenerate"
             @click="generate"
@@ -511,7 +558,27 @@ function saveResult(): void {
     </template>
 
     <template #workspace>
+      <ErrorState
+        v-if="jobError"
+        title="任务读取失败"
+        :description="getErrorMessage(jobError)"
+        retryable
+        @retry="reloadJob"
+      />
+      <LoadingState v-else-if="restoringJob" description="正在恢复生成任务" />
+      <LoadingState
+        v-else-if="restoringSubmission"
+        description="正在恢复生成任务回执"
+      />
+      <ErrorState
+        v-else-if="submissionRecoveryError"
+        title="任务回执恢复失败"
+        :description="submissionRecoveryError"
+        retryable
+        @retry="retrySubmissionRecovery"
+      />
       <InstantResultViewer
+        v-else
         :execution="execution"
         @download-all="downloadAll"
         @download="downloadResult"
@@ -540,6 +607,19 @@ function saveResult(): void {
       placeholder="选择产品"
       aria-label="目标产品素材组"
     />
+  </AppDialog>
+  <AppDialog
+    v-model:show="clearDialogVisible"
+    title="清空当前任务"
+    size="sm"
+    positive-text="清空"
+    @confirm="clearCurrentTask"
+  >
+    <p>将清空当前即时生成的草稿、任务引用和本地结果展示。</p>
+    <p v-if="currentJobIsActive">
+      运行中的后台任务不会取消，仍可在生成记录中查看。
+    </p>
+    <p v-else>生成记录、素材和文件不会被删除。</p>
   </AppDialog>
 </template>
 
@@ -581,9 +661,17 @@ function saveResult(): void {
 }
 
 .instant-generation-pane__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   flex: 0 0 auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
+}
+
+.instant-generation-pane__generate {
+  min-width: 0;
+  flex: 1;
 }
 
 .instant-generation-field {

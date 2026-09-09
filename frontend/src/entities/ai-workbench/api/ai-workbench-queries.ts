@@ -122,6 +122,9 @@ export function useGenerationJobQuery(
           return generationJobPollingInterval(query.state.data?.status)
         }
       : false,
+    refetchIntervalInBackground: options.poll === true,
+    refetchOnWindowFocus: options.poll === true,
+    refetchOnReconnect: options.poll === true,
   })
 }
 

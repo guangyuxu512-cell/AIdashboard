@@ -187,9 +187,14 @@ async function installWorkbenchApi(
   let controlledJobStatus: 'PENDING' | 'RUNNING' | 'SUCCESS' = 'PENDING'
   let pollCount = 0
   let submitCount = 0
+  let jobDetailCount = 0
+  let heldJobDetailCount = 0
   let archived = false
   let expireNextRequest = false
+  let failJobDetail = false
+  let nextJobDetailGate: Promise<void> | null = null
   let submittedBody: Record<string, unknown> | null = null
+  const submittedBodies: Record<string, unknown>[] = []
   let retryBody: Record<string, unknown> | null = null
   let archiveBody: Record<string, unknown> | null = null
 
@@ -304,6 +309,7 @@ async function installWorkbenchApi(
     if (path.endsWith('/generation-jobs') && method === 'POST') {
       submitCount += 1
       submittedBody = request.postDataJSON() as Record<string, unknown>
+      submittedBodies.push(submittedBody)
       pollCount = 0
       if (options.submissionGate) await options.submissionGate
       await route.fulfill({
@@ -325,6 +331,23 @@ async function installWorkbenchApi(
       return
     }
     if (path.endsWith(`/generation-jobs/${jobId}`) && method === 'GET') {
+      jobDetailCount += 1
+      const detailGate = nextJobDetailGate
+      nextJobDetailGate = null
+      if (detailGate) {
+        heldJobDetailCount += 1
+        await detailGate
+      }
+      if (failJobDetail) {
+        await route.fulfill({
+          status: 503,
+          json: {
+            code: 'GENERATION_JOB_READ_UNAVAILABLE',
+            message: '生成任务暂时无法读取',
+          },
+        })
+        return
+      }
       if (options.controlledJob) {
         const itemStatus =
           controlledJobStatus === 'SUCCESS'
@@ -382,10 +405,19 @@ async function installWorkbenchApi(
   return {
     submitCount: () => submitCount,
     submittedBody: () => submittedBody,
+    submittedBodies: () => [...submittedBodies],
+    jobDetailCount: () => jobDetailCount,
+    heldJobDetailCount: () => heldJobDetailCount,
     retryBody: () => retryBody,
     archiveBody: () => archiveBody,
     setControlledJobStatus: (status: 'PENDING' | 'RUNNING' | 'SUCCESS') => {
       controlledJobStatus = status
+    },
+    failControlledJobDetail: (value: boolean) => {
+      failJobDetail = value
+    },
+    holdNextJobDetail: (gate: Promise<void>) => {
+      nextJobDetailGate = gate
     },
     expireSessionOnNextRequest: () => {
       expireNextRequest = true
@@ -491,6 +523,173 @@ test('runs the production workbench through submit, polling, retry, result, arch
   expect(runtimeErrors).toEqual([])
 })
 
+test('updates results in place and never masks a detail read error with a stale spinner', async ({
+  page,
+}) => {
+  test.setTimeout(45_000)
+  const calls = await installWorkbenchApi(page, { controlledJob: true })
+
+  await page.goto('/#/ai-workbench/generate')
+  await selectInstantSource(page)
+  await page.getByLabel('提示词').fill('原地轮询自动出图')
+  await page.getByRole('button', { name: '生成', exact: true }).click()
+  await expect.poll(calls.submitCount).toBe(1)
+  await expect(page.locator('[data-result-status="WAITING"]')).toBeVisible()
+
+  calls.setControlledJobStatus('RUNNING')
+  await expect(page.locator('[data-result-status="RUNNING"]')).toBeVisible({
+    timeout: 10_000,
+  })
+
+  calls.failControlledJobDetail(true)
+  await expect(page.getByText('任务读取失败', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(page.getByText('生成任务暂时无法读取')).toBeVisible()
+  await expect(page.locator('[data-result-status="RUNNING"]')).toHaveCount(0)
+
+  calls.setControlledJobStatus('SUCCESS')
+  calls.failControlledJobDetail(false)
+  const successCard = page.locator('[data-result-status="SUCCESS"]')
+  await expect(successCard).toBeVisible({ timeout: 10_000 })
+  await expect(successCard.getByAltText('真实结果.png')).toBeVisible()
+  expect(calls.submitCount()).toBe(1)
+})
+
+test('restores a running job after refresh and a completed result after reopening', async ({
+  page,
+}) => {
+  test.setTimeout(45_000)
+  const calls = await installWorkbenchApi(page, { controlledJob: true })
+
+  await page.goto('/#/ai-workbench/generate')
+  await selectInstantSource(page)
+  await page.getByLabel('提示词').fill('刷新与重开恢复')
+  await page.getByRole('button', { name: '生成', exact: true }).click()
+  await expect.poll(calls.submitCount).toBe(1)
+  calls.setControlledJobStatus('RUNNING')
+  await expect(page.locator('[data-result-status="RUNNING"]')).toBeVisible({
+    timeout: 10_000,
+  })
+  const detailReadsBeforeRefresh = calls.jobDetailCount()
+
+  await page.reload()
+  await expect(page.getByLabel('提示词')).toHaveValue('刷新与重开恢复')
+  await expect(page.getByAltText('商品图.png')).toBeVisible()
+  await expect(page.locator('[data-result-status="RUNNING"]')).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect
+    .poll(calls.jobDetailCount)
+    .toBeGreaterThan(detailReadsBeforeRefresh)
+  expect(calls.submitCount()).toBe(1)
+
+  calls.setControlledJobStatus('SUCCESS')
+  const successCard = page.locator('[data-result-status="SUCCESS"]')
+  await expect(successCard).toBeVisible({ timeout: 10_000 })
+  await expect(successCard.getByAltText('真实结果.png')).toBeVisible()
+
+  await page.goto('about:blank')
+  await page.goto('/#/ai-workbench/generate')
+  await expect(page.getByLabel('提示词')).toHaveValue('刷新与重开恢复')
+  await expect(
+    page.locator('[data-result-status="SUCCESS"]').getByAltText('真实结果.png'),
+  ).toBeVisible({ timeout: 10_000 })
+  const restoredCard = page.locator('[data-result-status="SUCCESS"]')
+  const download = page.waitForEvent('download')
+  await restoredCard.getByRole('button', { name: /下载 真实结果/ }).click()
+  await download
+  await restoredCard.getByRole('button', { name: /更多操作/ }).click()
+  await page
+    .locator('.n-dropdown-option:visible')
+    .getByText('保存到素材库', { exact: true })
+    .click()
+  await page.getByLabel('目标产品素材组').click()
+  await page
+    .locator('.n-base-select-option:visible')
+    .getByText('手机支架', { exact: true })
+    .click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: '保存到素材库', exact: true })
+    .click()
+  await expect.poll(calls.archiveBody).toEqual({
+    material_group_id: materialGroupId,
+  })
+  expect(calls.submitCount()).toBe(1)
+})
+
+test('reuses one submission key when refresh interrupts the submit receipt', async ({
+  page,
+}) => {
+  test.setTimeout(45_000)
+  const gate = releaseGate()
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    submissionGate: gate.promise,
+  })
+
+  await page.goto('/#/ai-workbench/generate')
+  await selectInstantSource(page)
+  await page.getByLabel('提示词').fill('回执中断幂等恢复')
+  await page.getByRole('button', { name: '生成', exact: true }).click()
+  await expect.poll(calls.submitCount).toBe(1)
+
+  await page.reload()
+  await expect.poll(calls.submitCount).toBe(2)
+  const submissionKeys = calls
+    .submittedBodies()
+    .map((body) => body.submission_key)
+  expect(new Set(submissionKeys).size).toBe(1)
+  expect(calls.submittedBodies()[1]).toEqual(calls.submittedBodies()[0])
+
+  calls.setControlledJobStatus('RUNNING')
+  gate.release()
+  await expect(page.locator('[data-result-status="RUNNING"]')).toBeVisible({
+    timeout: 10_000,
+  })
+  expect(
+    new Set(calls.submittedBodies().map((body) => body.submission_key)).size,
+  ).toBe(1)
+})
+
+test('clears a running instant task without allowing its late response to return', async ({
+  page,
+}) => {
+  test.setTimeout(45_000)
+  const calls = await installWorkbenchApi(page, { controlledJob: true })
+  const detailGate = releaseGate()
+
+  await page.goto('/#/ai-workbench/generate')
+  await selectInstantSource(page)
+  await page.getByLabel('提示词').fill('清空后不得回写')
+  await page.getByRole('button', { name: '生成', exact: true }).click()
+  await expect.poll(calls.submitCount).toBe(1)
+  calls.setControlledJobStatus('RUNNING')
+  await expect(page.locator('[data-result-status="RUNNING"]')).toBeVisible({
+    timeout: 10_000,
+  })
+
+  calls.holdNextJobDetail(detailGate.promise)
+  calls.setControlledJobStatus('SUCCESS')
+  await expect.poll(calls.heldJobDetailCount).toBe(1)
+  await page.getByRole('button', { name: '清空当前任务', exact: true }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '清空当前任务' })
+  await expect(dialog).toContainText(
+    '运行中的后台任务不会取消，仍可在生成记录中查看',
+  )
+  await dialog.getByRole('button', { name: '清空', exact: true }).click()
+  detailGate.release()
+
+  await expect(page.getByLabel('提示词')).toHaveValue('')
+  await expect(page.locator('[data-result-status]')).toHaveCount(0)
+  await expect(page.getByText('暂无生成结果')).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('提示词')).toHaveValue('')
+  await expect(page.locator('[data-result-status]')).toHaveCount(0)
+  expect(calls.submitCount()).toBe(1)
+})
+
 test('renders template and material management from formal API DTOs', async ({
   page,
 }) => {
@@ -584,6 +783,7 @@ test('retains instant and batch drafts across work-mode and route navigation', a
     .getByRole('button', { name: 'AI生图' })
     .click()
   await expect(page).toHaveURL(/#\/ai-workbench\/generate$/)
+  await page.reload()
 
   await expect(page.getByAltText('商品图.png')).toBeVisible()
   await expect(page.getByLabel('提示词')).toHaveValue('导航恢复专用提示词')
@@ -593,6 +793,11 @@ test('retains instant and batch drafts across work-mode and route navigation', a
   await expect(
     page.getByRole('button', { name: '仅主图', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('batch-preflight')).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('批量生成模型')).toBeVisible()
+  await expect(page.getByTestId('batch-product-list')).toContainText('手机支架')
+  await expect(page.getByLabel('本次模板组')).toContainText('电商标准套图')
   await expect(page.getByTestId('batch-preflight')).toBeVisible()
 })
 
@@ -694,6 +899,8 @@ test('clears retained workbench state on logout and team change', async ({
   await page.getByLabel('提示词').fill('切换团队前草稿')
   await page.getByRole('button', { name: '当前用户菜单' }).click()
   await page.getByText('切换至 默认团队', { exact: true }).click()
+  await expect(page.getByLabel('提示词')).toHaveValue('')
+  await page.reload()
   await expect(page.getByLabel('提示词')).toHaveValue('')
 
   await page.getByLabel('提示词').fill('会话失效前草稿')
