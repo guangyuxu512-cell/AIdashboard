@@ -92,8 +92,10 @@ jobs:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
         run: |
+          set -euo pipefail
           remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
-          active_release="$(ssh -o StrictHostKeyChecking=yes "${remote_target}" \
+          ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
+          active_release="$(ssh "${ssh_options[@]}" "${remote_target}" \
             "readlink -f /opt/ecommerce-control-center/production/current 2>/dev/null || true")"
           expected_release="/opt/ecommerce-control-center/production/releases/${DEPLOY_SHA}"
           if [ "${active_release}" = "${expected_release}" ]; then
@@ -112,11 +114,13 @@ jobs:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
         run: |
+          set -euo pipefail
           remote_archive="/tmp/control-center-production-${DEPLOY_SHA}-${DEPLOYMENT_ATTEMPT_ID}.tar.gz"
           remote_script="/tmp/control-center-production-deploy-${DEPLOY_SHA}-${DEPLOYMENT_ATTEMPT_ID}.sh"
           remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
-          ssh -o StrictHostKeyChecking=yes "${remote_target}" "install -d -m 0750 /opt/ecommerce-control-center/production"
-          scp -o StrictHostKeyChecking=yes "${RELEASE_ARCHIVE}" "${remote_target}:${remote_archive}"
-          scp -o StrictHostKeyChecking=yes scripts/remote-deploy-production.sh "${remote_target}:${remote_script}"
-          ssh -o StrictHostKeyChecking=yes "${remote_target}" \
+          ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
+          ssh "${ssh_options[@]}" "${remote_target}" "install -d -m 0750 /opt/ecommerce-control-center/production"
+          scp "${ssh_options[@]}" "${RELEASE_ARCHIVE}" "${remote_target}:${remote_archive}"
+          scp "${ssh_options[@]}" scripts/remote-deploy-production.sh "${remote_target}:${remote_script}"
+          ssh "${ssh_options[@]}" "${remote_target}" \
             "chmod 0700 '${remote_script}' && '${remote_script}' '/opt/ecommerce-control-center/production' '${remote_archive}' '${DEPLOY_SHA}'; status=\$?; rm -f -- '${remote_script}'; exit \$status"
