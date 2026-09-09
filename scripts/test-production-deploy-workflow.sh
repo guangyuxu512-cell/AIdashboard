@@ -3,6 +3,7 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow_path="$repository_root/.github/workflows/production-deploy.yml"
+tls_workflow_path="$repository_root/.github/workflows/production-provision-ip-tls.yml"
 
 required_fragments=(
     $'  workflow_run:\n    workflows: [CI]\n    branches: [main]\n    types: [completed]'
@@ -23,4 +24,30 @@ for fragment in "${required_fragments[@]}"; do
     fi
 done
 
-echo 'Production deployment workflow trigger contract regression passed'
+keepalive_options='ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)'
+
+assert_keepalive_transport_contract() {
+    local workflow_path="$1"
+    local expected_option_blocks="$2"
+    local expected_transports="$3"
+    local expected_fail_fast_blocks="$4"
+    local option_blocks transports fail_fast_blocks
+
+    option_blocks="$(grep -Fc -- "$keepalive_options" "$workflow_path" || true)"
+    transports="$(grep -Ec '(ssh|scp) "\$\{ssh_options\[@\]\}"' "$workflow_path" || true)"
+    fail_fast_blocks="$(grep -Fc -- 'set -euo pipefail' "$workflow_path" || true)"
+
+    test "$option_blocks" = "$expected_option_blocks"
+    test "$transports" = "$expected_transports"
+    test "$fail_fast_blocks" = "$expected_fail_fast_blocks"
+}
+
+assert_keepalive_transport_contract "$workflow_path" 2 5 2
+assert_keepalive_transport_contract "$tls_workflow_path" 1 3 1
+
+grep -Fq 'status=\$?; rm -f --' "$workflow_path"
+grep -Fq 'status=\$?; rm -rf --' "$tls_workflow_path"
+grep -Fq 'exit \$status' "$workflow_path"
+grep -Fq 'exit \$status' "$tls_workflow_path"
+
+echo 'Production deployment workflow trigger and SSH keepalive regressions passed'
