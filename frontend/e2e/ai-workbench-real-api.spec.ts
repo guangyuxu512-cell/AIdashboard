@@ -8,7 +8,7 @@ import type {
 } from '../src/entities/ai-workbench'
 
 test.skip(
-  process.env.PLAYWRIGHT_API_MODE === 'real',
+  process.env.PLAYWRIGHT_API_MODE !== 'real',
   'Intercepted Real API UI contract coverage',
 )
 
@@ -447,6 +447,97 @@ async function installWorkbenchApi(
   const archiveRequests: string[] = []
   const assetContentRequests: string[] = []
   const destructiveRequests: string[] = []
+  let authenticated = true
+  let loginName = 'administrator-preview'
+
+  const currentUser = () => ({
+    user_id: '00000000-0000-4000-8000-000000000001',
+    display_name: loginName.includes('multi')
+      ? '多团队测试人员'
+      : loginName.includes('administrator')
+        ? '管理员预览'
+        : '测试人员',
+  })
+  const currentTeams = () => [
+    {
+      membership_id: '00000000-0000-4000-8000-000000000011',
+      team_id: '00000000-0000-4000-8000-000000000021',
+      team_name: '默认团队',
+      team_enabled: true,
+      role_code: 'member',
+      data_scope: 'team',
+      membership_enabled: true,
+    },
+    ...(loginName.includes('multi')
+      ? [
+          {
+            membership_id: '00000000-0000-4000-8000-000000000012',
+            team_id: '00000000-0000-4000-8000-000000000022',
+            team_name: '运营团队',
+            team_enabled: true,
+            role_code: 'member',
+            data_scope: 'team',
+            membership_enabled: true,
+          },
+        ]
+      : []),
+  ]
+  const requireAuthenticated = async (
+    route: Parameters<Page['route']>[1],
+    data: unknown,
+  ) => {
+    if (!authenticated) {
+      await route.fulfill({
+        status: 401,
+        json: {
+          code: 'HUMAN_SESSION_INVALID',
+          message: '登录会话已失效，请重新登录',
+        },
+      })
+      return false
+    }
+    await route.fulfill({ json: data })
+    return true
+  }
+
+  await page.route('**/api/v1/auth/me', async (route) => {
+    await requireAuthenticated(route, currentUser())
+  })
+  await page.route('**/api/v1/access/me/teams', async (route) => {
+    await requireAuthenticated(route, currentTeams())
+  })
+  await page.route(
+    '**/api/v1/access-management/me/module-access',
+    async (route) => {
+      await requireAuthenticated(route, {
+        module_codes: [
+          'shop',
+          'asset',
+          'ai-workbench',
+          'device',
+          'task',
+          'schedule',
+          'settings',
+        ],
+        is_access_administrator: true,
+      })
+    },
+  )
+  await page.route('**/api/v1/auth/login', async (route) => {
+    const body = route.request().postDataJSON() as {
+      login_name?: unknown
+    }
+    loginName =
+      typeof body.login_name === 'string' && body.login_name.trim()
+        ? body.login_name.trim().toLowerCase()
+        : 'operator'
+    authenticated = true
+    await route.fulfill({ json: currentUser() })
+  })
+  await page.route('**/api/v1/auth/logout', async (route) => {
+    authenticated = false
+    await route.fulfill({ status: 204 })
+  })
 
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname
@@ -1320,6 +1411,13 @@ test('clears retained workbench state on logout and team change', async ({
   page,
 }) => {
   const calls = await installWorkbenchApi(page)
+  const waitForModuleAccess = () =>
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          '/api/v1/access-management/me/module-access' &&
+        response.status() === 200,
+    )
   await page.goto('/#/ai-workbench/generate')
   await page.getByLabel('提示词').fill('登出前草稿')
   await page.getByRole('button', { name: '当前用户菜单' }).click()
@@ -1329,13 +1427,17 @@ test('clears retained workbench state on logout and team change', async ({
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await page.locator('.login-card .n-base-selection').click()
   await page.getByText('运营团队', { exact: true }).click()
+  const selectedOperationsTeam = waitForModuleAccess()
   await page.getByRole('button', { name: '进入中控台' }).click()
+  await selectedOperationsTeam
   await page.goto('/#/ai-workbench/generate')
   await expect(page.getByLabel('提示词')).toHaveValue('')
 
   await page.getByLabel('提示词').fill('切换团队前草稿')
   await page.getByRole('button', { name: '当前用户菜单' }).click()
+  const selectedDefaultTeam = waitForModuleAccess()
   await page.getByText('切换至 默认团队', { exact: true }).click()
+  await selectedDefaultTeam
   await expect(page.getByLabel('提示词')).toHaveValue('')
   await page.reload()
   await expect(page.getByLabel('提示词')).toHaveValue('')
