@@ -15,6 +15,7 @@ required_fragments=(
     "steps.active_release.outputs.already_deployed != 'true'"
     "cancel-in-progress: false"
     "bash scripts/resolve-production-deploy-target.sh"
+    "backend frontend mobile deploy/production"
 )
 
 for fragment in "${required_fragments[@]}"; do
@@ -49,5 +50,7 @@ grep -Fq 'status=\$?; rm -f --' "$workflow_path"
 grep -Fq 'status=\$?; rm -rf --' "$tls_workflow_path"
 grep -Fq 'exit \$status' "$workflow_path"
 grep -Fq 'exit \$status' "$tls_workflow_path"
+grep -Fq 'mobile/public/manifest.webmanifest' "$repository_root/scripts/remote-deploy-production.sh"
+grep -Fq 'verify_mobile_frontend' "$repository_root/scripts/remote-deploy-production.sh"
 
 echo 'Production deployment workflow trigger and SSH keepalive regressions passed'

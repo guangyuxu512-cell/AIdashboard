@@ -26,6 +26,8 @@ Feature Gate 1
 Browser HTTPS
   → BaoTa host Nginx :443
   → Frontend :127.0.0.1:18080
+      → PC `/`
+      → Mobile `/mobile/`
   → /api/ reverse proxy
   → Backend :127.0.0.1:18001
   → PostgreSQL :127.0.0.1:35433 / control_center_prod
@@ -36,6 +38,7 @@ Backend → existing Docker Asset volume (local mode) / verified NAS mount (moun
 
 - Production Backend、Signer 与 Frontend 都只监听主机回环地址；不得直接发布 Docker 端口。
 - Frontend 保持只读根文件系统；Nginx 官方入口运行时渲染的 `/etc/nginx/conf.d`、缓存、运行时和临时目录使用受限 `tmpfs`，不得因此放宽整个容器的写入权限。`NGINX_ENVSUBST_FILTER` 使用变量名正则，只允许渲染 `FRONTEND_BIND_HOST`、`FRONTEND_BIND_PORT` 与 `BACKEND_BIND_PORT`。
+- 同一个 Frontend image 同时提供 PC 根入口与 Mobile `/mobile/`，不新增容器或端口。`/mobile` 重定向到 `/mobile/`；Mobile SPA fallback 只在 `/mobile/` 内生效，缺失的 Mobile JS、CSS、Manifest 或图标必须返回 `404`，不能回退到 PC `index.html`。`/api/` 继续使用同一 Backend proxy。
 - 公网入口仅由现有 BaoTa Nginx vhost 管理。本部署的明确决策是直接使用 VPS 公网 IPv4，而非 DNS 域名。Let’s Encrypt 的 IP 证书必须使用 `shortlived` profile，约 160 小时有效；因此 `control-center-production-ip-acme-renew.timer` 每日运行两次，续期后由 host Nginx reload 读取新证书。明文 HTTP 只用于 ACME HTTP-01 challenge 和 HTTPS 重定向，不能作为应用入口。
 - `control-center-backend-prod-assets` 是正式持久卷，独立于开发环境的 `control-center-backend-dev_backend-assets`。正常更新与回滚不删除该卷；切换 NAS 后它仍保留，作为切换前资产的回退来源。
 - PDD 签名继续由 Backend 中现有的隔离 Node 子进程执行。`backend/Dockerfile` 安装 Node.js，且随 `app/platforms/pdd/vendor/anti_content.js` 一起打包；不引入第二套 PDD 服务。
@@ -171,8 +174,9 @@ CI：`.github/workflows/ci.yml`
 
 - Backend pytest；
 - Frontend Real typecheck/build；
+- Mobile lint、unit、typecheck 与 `/mobile/` production build；
 - Production Backend Docker build，并在容器内验证 Node、PDD `anti_content.js` 与签名调用；
-- Production Frontend Docker build 与 Compose 契约校验。
+- Production Frontend Docker build，在只读根文件系统下验证 PC `/`、Mobile `/mobile/`、Manifest、安装图标、hash 静态资源与缺失资源 `404`，并校验 Compose 契约。
 
 生产部署：`.github/workflows/production-deploy.yml`
 
@@ -183,7 +187,7 @@ CI：`.github/workflows/ci.yml`
 - `PRODUCTION_DEPLOY_SSH_PRIVATE_KEY`
 - `PRODUCTION_SSH_KNOWN_HOSTS`
 
-Workflow 使用部署专用 SSH key 上传 source archive，远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/Frontend health，并在健康后原子切换 Nginx vhost。容器启动后，Backend 与 Frontend HTTP 就绪检查最多等待 45 秒，避免将正常的异步启动误判为失败。远程 archive 和脚本名以 GitHub run ID / attempt 隔离，避免相同 SHA 的不同尝试覆盖或清理彼此的临时材料。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
+Workflow 使用部署专用 SSH key 上传 source archive；archive 必须包含完整 `mobile/` build context，不能只包含 package manifest。远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/PC Frontend 与 Mobile `/mobile/` 的 HTML、Manifest、图标和实际 hash JS/CSS，并在健康后原子切换 Nginx vhost。容器启动后，Backend 与 Frontend HTTP 就绪检查最多等待 45 秒，避免将正常的异步启动误判为失败。远程 archive 和脚本名以 GitHub run ID / attempt 隔离，避免相同 SHA 的不同尝试覆盖或清理彼此的临时材料。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
 
 生产 release 与 Public-IP TLS provisioning 的每条 Runner SSH/SCP 调用都使用 OpenSSH `ServerAliveInterval=30` 与 `ServerAliveCountMax=3`，同时继续严格校验 `known_hosts`。这只让客户端在远端构建等无输出阶段保持连接；不会忽略 SSH/SCP 或远端脚本的非零退出码，远端脚本仍将其退出状态返回给 Workflow。曾观察到 `client_loop: send disconnect: Broken pipe` 时，只能将其视为连接断开的证据；未取得网络空闲超时的直接证据前，不得将其记录为已确认根因。
 
@@ -214,5 +218,6 @@ Workflow 使用部署专用 SSH key 上传 source archive，远程脚本构建�
 4. Douyin Signer health、PDD Node signer 运行；
 5. Asset 上传后重启服务仍可读取；
 6. 配置齐全时，一次最小 ToAPIs 生成；人工平台登录需要在真实页面完成，并如实标记未覆盖项。
+7. PC 根入口与 Mobile `https://119.29.188.118/mobile/` 同时可用；Mobile 正式账号登录、刷新恢复、Team/Module Access 与退出正常，Manifest 和安装图标可读取。添加至主屏幕、独立窗口启动、关闭重开与版本刷新必须由真实支持的手机浏览器验收；浏览器模拟视口不能冒充真机安装通过。
 
 公网 IP 已确定为部署入口；但首次验收仍需要 IP 证书、ACME 联系邮箱、首位管理员身份和生产 ToAPIs 配置。在这些前置条件具备前，任何结果只能标记为“代码已发布”，不能标记为“生产已部署”。

@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
     : undefined
 
   return {
+    base: mode === 'production' ? '/mobile/' : '/',
     plugins: [vue()],
     resolve: {
       alias: {

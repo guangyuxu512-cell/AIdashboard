@@ -119,7 +119,8 @@ rm -- "$remote_root/current"
 migration_source="$test_root/migration-source"
 mkdir -p \
     "$migration_source/electron" \
-    "$migration_source/mobile" \
+    "$migration_source/mobile/public/icons" \
+    "$migration_source/mobile/src" \
     "$migration_source/backend/app" \
     "$migration_source/backend/migrations" \
     "$migration_source/backend/douyin-signer" \
@@ -133,6 +134,14 @@ touch \
     "$migration_source/pnpm-workspace.yaml" \
     "$migration_source/electron/package.json" \
     "$migration_source/mobile/package.json" \
+    "$migration_source/mobile/index.html" \
+    "$migration_source/mobile/vite.config.ts" \
+    "$migration_source/mobile/src/main.ts" \
+    "$migration_source/mobile/public/manifest.webmanifest" \
+    "$migration_source/mobile/public/icons/icon-192.png" \
+    "$migration_source/mobile/public/icons/icon-512.png" \
+    "$migration_source/mobile/public/icons/icon-maskable-512.png" \
+    "$migration_source/mobile/public/icons/apple-touch-icon.png" \
     "$migration_source/backend/Dockerfile" \
     "$migration_source/backend/compose.yaml" \
     "$migration_source/backend/pyproject.toml" \

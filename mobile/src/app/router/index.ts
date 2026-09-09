@@ -6,7 +6,7 @@ export function createMobileRouter(
   options: CreateMobileRoutesOptions = {},
 ): Router {
   return createRouter({
-    history: createWebHashHistory(),
+    history: createWebHashHistory(import.meta.env.BASE_URL),
     routes: createMobileRoutes(options),
   })
 }

@@ -14,6 +14,44 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    location = /mobile {
+        return 308 /mobile/;
+    }
+
+    location = /mobile/index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        try_files $uri =404;
+    }
+
+    location = /mobile/manifest.webmanifest {
+        default_type application/manifest+json;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    location ^~ /mobile/assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    location ^~ /mobile/icons/ {
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    location ~* ^/mobile/.*\.(?:css|gif|ico|jpe?g|js|map|mjs|otf|png|svg|ttf|webp|woff2?)$ {
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    location /mobile/ {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        try_files $uri $uri/ /mobile/index.html;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
