@@ -26,17 +26,24 @@ Model / Template / Material Catalog
 
 Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FAILED` 立即停止。记录列表仅在当前页存在非终态 Job 时轮询。失败重试与即时结果归档都调用 Backend 正式 API，Frontend 不自行改写 Item 状态。
 
+工作台停留原页面或重新获得浏览器焦点时，非终态 Job 必须继续从 Detail Query 获取权威状态；
+`PENDING → RUNNING → SUCCESS` 后直接使用返回的 `items[].output_asset` 展示图片。Detail 读取失败时显示
+正式 Error State 与重新加载入口，不得继续用最后一份 `RUNNING` 缓存伪装成仍在生成。正常失败与
+`PARTIAL_FAILED` 继续按 Backend Item 状态展示，Frontend 不伪造终态。
+
 ## 4. Navigation State Retention
 
-同一次登录、同一 Team 内，AI 生图生产页使用 Pinia 保留页面导航期间的客户端状态：
+同一浏览器、同一登录账号与同一 Team 内，AI 生图生产页使用 Pinia 与浏览器持久化保留客户端状态：
 
-- 即时生成与批量生成分别保留草稿、当前 `generation_job_id` 和必要的提交中状态。
-- 提交请求在页面离开后继续由同一个会话 Store 承接；返回页面只恢复原任务 ID，不再次提交生成请求。
+- 即时生成与批量生成分别保留草稿、输入 Asset ID、当前 `generation_job_id` 和必要的提交中状态；工作方式也随当前 Actor Context 保存。
+- 路由切换由同一个 Store 承接；刷新或重新打开时必须先完成 Auth 与 Active Team 恢复，再按 `user_id + team_id` 加载对应状态。
+- 已知 `generation_job_id` 的恢复只重新读取 Job Detail，不再次提交。若刷新发生在 Submit 回执返回前，只能复用持久化的原请求与原 `submission_key`，依赖 Backend 正式幂等契约取回同一 Job。
 - Job 详情、结果与轮询仍由 TanStack Vue Query 和正式 API 管理，不复制到 Pinia。
-- 草稿图片只保留 Asset ID 与正式内容地址；鉴权读取后创建的 Blob URL 按图片组件生命周期释放。
-- 退出登录、会话失效或切换 Team 时同步清理两种生成模式的状态；清理前发出的异步响应不得回写新身份。
+- 草稿图片只持久化 Asset ID 与必要展示摘要；正式内容地址在恢复时重建，鉴权读取后创建的 Blob URL 按图片组件生命周期释放。Cookie、Token、图片二进制与 Provider 数据不得进入浏览器持久化。
+- 退出登录、会话失效或切换 Team 时同步删除原身份状态；普通刷新初始化不得触发退出清理，清理前发出的异步响应不得回写新身份。
+- “清空当前任务”只清除当前工作方式的草稿、任务引用、结果展示与本地持久记录。它不取消后台任务，也不删除生成记录、Asset 或 Storage 文件；即时与批量互不清理。
 
-本能力仅覆盖当前浏览器页面运行期的路由往返，不使用本地持久化，不提供跨刷新、跨浏览器或跨登录恢复。
+本能力覆盖当前浏览器内的路由往返、刷新与页面重新打开，不提供跨浏览器或跨身份共享，也不建设数据库草稿系统或全站 KeepAlive。
 
 ## 5. Visual Mock Boundary
 
