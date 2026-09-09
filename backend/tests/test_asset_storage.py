@@ -1,4 +1,5 @@
 import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from app.modules.assets.storage import (
     MOUNTED_STORAGE_MARKER_NAME,
     LocalAssetStorage,
     MountedAssetStorage,
+    asset_storage_key,
     create_asset_storage,
 )
 
@@ -29,6 +31,7 @@ def test_local_storage_store_open_exists_delete_and_atomic_cleanup(
 
     assert stored.size_bytes == len(b"first-second")
     assert stored.sha256 == hashlib.sha256(b"first-second").hexdigest()
+    assert len(Path(stored.storage_key).parts) == 4
     assert storage.exists(stored.storage_key)
     with storage.open(stored.storage_key) as content:
         assert content.read() == b"first-second"
@@ -36,6 +39,34 @@ def test_local_storage_store_open_exists_delete_and_atomic_cleanup(
 
     storage.delete(stored.storage_key)
     assert not storage.exists(stored.storage_key)
+
+
+def test_date_directory_uses_asia_shanghai_and_keeps_legacy_keys_readable(
+    tmp_path: Path,
+) -> None:
+    storage = LocalAssetStorage(tmp_path / "assets", 1024)
+    asset_id = uuid4()
+    storage_key = asset_storage_key(
+        asset_id,
+        ".png",
+        written_at=datetime(2026, 9, 9, 16, 0, tzinfo=UTC),
+    )
+
+    assert storage_key == f"2026/09/10/{asset_id.hex}.png"
+    stored = storage.store(
+        asset_id=asset_id,
+        suffix=".png",
+        chunks=[b"dated"],
+        storage_key=storage_key,
+    )
+    assert stored.storage_key == storage_key
+    assert (tmp_path / "assets" / storage_key).read_bytes() == b"dated"
+
+    legacy_key = f"{uuid4().hex}.png"
+    legacy_path = tmp_path / "assets" / legacy_key
+    legacy_path.write_bytes(b"legacy")
+    with storage.open(legacy_key) as content:
+        assert content.read() == b"legacy"
 
 
 def test_local_storage_cleans_temporary_file_when_size_limit_fails(
@@ -49,7 +80,15 @@ def test_local_storage_cleans_temporary_file_when_size_limit_fails(
     assert list((tmp_path / "assets").iterdir()) == []
 
 
-@pytest.mark.parametrize("storage_key", ["../outside.png", "nested/file.png"])
+@pytest.mark.parametrize(
+    "storage_key",
+    [
+        "../outside.png",
+        "nested/file.png",
+        "2026/09/09/../outside.png",
+        "2026/99/99/not-a-real-date.png",
+    ],
+)
 def test_local_storage_rejects_keys_outside_its_root(
     tmp_path: Path,
     storage_key: str,

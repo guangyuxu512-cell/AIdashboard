@@ -199,6 +199,10 @@ Workflow 使用部署专用 SSH key 上传 source archive，远程脚本构建�
 - Alembic 只向前执行。若新 Migration 不具备应用级向后兼容性，不能把 Git 回滚当成数据库回滚；必须按该 Migration 的明确回滚方案处理。
 - 生产 PostgreSQL 必须在首次迁移前按当前服务器既有 PostgreSQL 备份方式单独备份，并记录路径、大小、SHA-256 与可读性验证。备份不进入仓库。
 - 生产图片依赖 Docker named volume；PostgreSQL 备份不替代 Asset 卷备份。后续运维需按宿主机卷备份策略同时覆盖数据库和该卷。
+- 日期目录 Feature 之后的新 Asset `storage_key` 使用 `Asia/Shanghai` 日期目录；历史扁平 key 不迁移，
+  仍由新版本读取。日期目录前的旧 Backend 不能读取新 key，因此只要生产已写入新路径文件，不能将
+  应用直接回退到日期目录前的 release；必须改用包含新旧 key 读取能力的兼容 release，并保留 Asset
+  volume / NAS 文件。NAS 日期目录不是浏览器按产品或模板组下载文件夹功能。
 
 ## 首次生产验收
 
