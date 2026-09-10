@@ -16,6 +16,11 @@ const getManagementLoginStatusChannel = 'management-login:get-status'
 const completeManagementLoginChannel = 'management-login:complete'
 const refreshManagementLoginChannel = 'management-login:refresh'
 const closeManagementLoginChannel = 'management-login:close'
+const trustedRendererOrigins = new Set([
+  'https://119.29.188.118',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5180',
+])
 
 function isDesktopResolvedTheme(value: unknown): value is DesktopResolvedTheme {
   return value === 'light' || value === 'dark'
@@ -47,4 +52,6 @@ const desktopApi: DesktopApi = {
   },
 }
 
-contextBridge.exposeInMainWorld('desktop', desktopApi)
+if (trustedRendererOrigins.has(window.location.origin)) {
+  contextBridge.exposeInMainWorld('desktop', desktopApi)
+}
