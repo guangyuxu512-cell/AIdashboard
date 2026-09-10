@@ -20,6 +20,10 @@ interface MockApiOptions {
     onStarted: () => void
     release: Promise<void>
   }
+  holdDevicePage2Once?: {
+    onStarted: () => void
+    release: Promise<void>
+  }
   failAuxiliary?: boolean
   holdActiveTaskOnce?: {
     deviceId: string
@@ -27,6 +31,8 @@ interface MockApiOptions {
     release: Promise<void>
   }
   failActiveAfterSuccessDeviceId?: string
+  failActiveOnceDeviceId?: string
+  clearActiveAfterSuccessDeviceId?: string
 }
 
 interface MockApiState {
@@ -356,6 +362,7 @@ async function installMockApi(
   let devicePage1Succeeded = false
   let devicePage1FailedAfterSuccess = false
   let devicePage1HeldAfterSuccess = false
+  let devicePage2Held = false
   const activeTaskRequestCounts = new Map<string, number>()
 
   await page.route('**/api/v1/**', async (route) => {
@@ -403,6 +410,12 @@ async function installMockApi(
         return fulfillApiError(route, '当前任务加载失败')
       }
       if (
+        options.failActiveOnceDeviceId === deviceId &&
+        activeRequestCount === 1
+      ) {
+        return fulfillApiError(route, '当前任务加载失败')
+      }
+      if (
         options.holdActiveTaskOnce?.deviceId === deviceId &&
         activeRequestCount === 1
       ) {
@@ -414,6 +427,12 @@ async function installMockApi(
         activeRequestCount > 1
       ) {
         return fulfillApiError(route, '当前任务后台刷新失败')
+      }
+      if (
+        options.clearActiveAfterSuccessDeviceId === deviceId &&
+        activeRequestCount > 1
+      ) {
+        return route.fulfill({ status: 204, body: '' })
       }
       if (deviceId === 'device-1' || deviceId === 'device-2') {
         return fulfillJson(route, makeActiveTask(deviceId))
@@ -499,6 +518,11 @@ async function installMockApi(
       ) {
         devicePage2Failed = true
         return fulfillApiError(route, '下一页设备加载失败')
+      }
+      if (options.holdDevicePage2Once && pageNumber === 2 && !devicePage2Held) {
+        devicePage2Held = true
+        options.holdDevicePage2Once.onStarted()
+        await options.holdDevicePage2Once.release
       }
       if (pageNumber === 1) devicePage1Succeeded = true
       const total = options.deviceTotal ?? 25
@@ -1311,10 +1335,10 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await expect(page.getByTestId('summary-online')).toHaveText('—')
   await expect(page.getByTestId('summary-running')).toHaveText('—')
   await expect(page.getByTestId('summary-offline')).toHaveText('—')
-  await expect(page.getByTestId('summary-metric-online')).toBeDisabled()
-  await expect(page.getByTestId('summary-metric-running')).toBeDisabled()
-  await expect(page.getByTestId('summary-metric-offline')).toBeDisabled()
-  await expect(page.getByTestId('device-search')).toBeDisabled()
+  await expect(page.getByTestId('summary-metric-online')).toBeEnabled()
+  await expect(page.getByTestId('summary-metric-running')).toBeEnabled()
+  await expect(page.getByTestId('summary-metric-offline')).toBeEnabled()
+  await expect(page.getByTestId('device-search')).toBeEnabled()
   await expect
     .poll(() => firstPageDeviceIds.map(activeRequestCount))
     .toEqual(firstPageDeviceIds.map(() => 1))
@@ -1402,6 +1426,177 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   await page.getByRole('tab', { name: /设备$/ }).click()
   await expect(page.getByTestId('device-card').first()).toBeVisible()
   expect(consoleErrors).toEqual([])
+})
+
+test('未完成分页时点击快捷筛选会补齐全量结果并给出明确反馈', async ({
+  page,
+}) => {
+  let notifyPage2Started: () => void = () => undefined
+  const page2Started = new Promise<void>((resolve) => {
+    notifyPage2Started = resolve
+  })
+  let releasePage2: () => void = () => undefined
+  const page2Release = new Promise<void>((resolve) => {
+    releasePage2 = resolve
+  })
+  const consoleErrors = collectConsoleErrors(page)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await installMockApi(page, {
+    holdDevicePage2Once: {
+      onStarted: notifyPage2Started,
+      release: page2Release,
+    },
+  })
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('device-card')).toHaveCount(20)
+
+  await page.getByTestId('summary-metric-offline').tap()
+  await page2Started
+  await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-filter-preparing')).toContainText(
+    '正在筛选',
+  )
+
+  releasePage2()
+  await expect(page.getByTestId('summary-online')).toHaveText('23')
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
+  await expect(page.getByTestId('summary-offline')).toHaveText('1')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 2')
+  await expect(page.getByTestId('device-card').first()).toContainText('离线')
+
+  expect(
+    state.deviceListRequests.some((request) => {
+      const params = new URL(request).searchParams
+      return params.get('page') === '2' && params.get('page_size') === '20'
+    }),
+  ).toBe(true)
+  expect(
+    state.deviceListRequests.every((request) =>
+      [...new URL(request).searchParams.keys()].every((key) =>
+        ['page', 'page_size'].includes(key),
+      ),
+    ),
+  ).toBe(true)
+
+  await page.getByTestId('summary-metric-offline').tap()
+  await expect(page.getByTestId('device-card')).toHaveCount(25)
+  await page.getByTestId('summary-metric-online').tap()
+  await expect(page.getByTestId('device-card')).toHaveCount(23)
+  await page.getByTestId('summary-metric-running').tap()
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 1')
+  await page.getByTestId('summary-metric-running').tap()
+  await expect(page.getByTestId('device-card')).toHaveCount(25)
+
+  await page.getByTestId('summary-metric-online').tap()
+  await page.getByTestId('device-search').fill('设备 25')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 25')
+  await page.getByTestId('device-search').fill('')
+  await expect(page.getByTestId('device-card')).toHaveCount(23)
+  await page.getByTestId('summary-metric-online').tap()
+
+  await page.getByTestId('summary-metric-offline').tap()
+  const requestCountBeforeRefresh = state.deviceListRequests.length
+  await pullToRefresh(page)
+  await expect
+    .poll(() => state.deviceListRequests.length)
+    .toBeGreaterThan(requestCountBeforeRefresh)
+  await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 2')
+  expect(
+    state.deviceListRequests
+      .slice(requestCountBeforeRefresh)
+      .some((request) => new URL(request).searchParams.get('page') === '2'),
+  ).toBe(true)
+
+  await expectNoHorizontalOverflow(page)
+  expect(consoleErrors).toEqual([])
+})
+
+test('计数为零的快捷筛选仍可选中并展示正式空态', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 })
+  await installMockApi(page, { deviceTotal: 1 })
+  await page.goto('/#/devices')
+
+  await expect(page.getByTestId('summary-offline')).toHaveText('0')
+  await expect(page.getByTestId('summary-metric-offline')).toBeEnabled()
+  await page.getByTestId('summary-metric-offline').tap()
+  await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-empty')).toContainText('没有设备')
+
+  await page.getByTestId('summary-metric-offline').tap()
+  await expect(page.getByTestId('summary-metric-all')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+})
+
+test('运行中筛选随后台 Active Task 事实更新且保留选中态', async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page)
+  const state = await installMockApi(page, {
+    deviceTotal: 1,
+    clearActiveAfterSuccessDeviceId: 'device-1',
+  })
+  await page.goto('/#/devices')
+
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
+  await page.getByTestId('summary-metric-running').tap()
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect
+    .poll(
+      () =>
+        state.activeTaskRequests.filter((request) =>
+          new URL(request).pathname.endsWith('/device-1'),
+        ).length,
+      { timeout: 8_000 },
+    )
+    .toBeGreaterThan(1)
+
+  await expect(page.getByTestId('summary-running')).toHaveText('0')
+  await expect(page.getByTestId('summary-metric-running')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-empty')).toBeVisible()
+  expect(consoleErrors).toEqual([])
+})
+
+test('运行中事实首次失败时筛选可显式重试并得到完整结果', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installMockApi(page, {
+    deviceTotal: 1,
+    failActiveOnceDeviceId: 'device-1',
+  })
+  await page.goto('/#/devices')
+
+  await expect(page.getByTestId('summary-running')).toHaveText('—')
+  await page.getByTestId('summary-metric-running').tap()
+  await expect(page.getByTestId('device-filter-error')).toContainText(
+    '筛选失败',
+  )
+
+  await page
+    .getByTestId('device-filter-error')
+    .getByRole('button', { name: '重试' })
+    .click()
+  await expect(page.getByTestId('device-filter-error')).toHaveCount(0)
+  await expect(page.getByTestId('summary-running')).toHaveText('1')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('运行中')
 })
 
 test('设备后台刷新失败保留旧卡片且不展示实现原因', async ({ page }) => {
@@ -1542,6 +1737,31 @@ test('手动刷新跨过定时边界时暂停后台分页刷新', async ({ page 
   await expect(page.getByText('设备 25', { exact: true })).toHaveCount(0)
 })
 
+test('筛选补齐下一页失败时不展示局部结果并可显式重试', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await installMockApi(page, { failDevicePage2Once: true })
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('device-card')).toHaveCount(20)
+
+  await page.getByTestId('summary-metric-offline').tap()
+  await expect(page.getByTestId('summary-metric-offline')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByTestId('device-filter-error')).toContainText(
+    '筛选失败',
+  )
+  await expect(page.getByTestId('device-card')).toHaveCount(0)
+
+  await page
+    .getByTestId('device-filter-error')
+    .getByRole('button', { name: '重试' })
+    .click()
+  await expect(page.getByTestId('device-filter-error')).toHaveCount(0)
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 2')
+})
+
 test('设备下一页失败只在尾部提示并可显式重试', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await installMockApi(page, { failDevicePage2Once: true })
@@ -1577,15 +1797,30 @@ test('设备详情成功时三类辅助失败各自展示且不覆盖主数据',
   await expectNoHorizontalOverflow(page)
 })
 
-test('Runtime缺失使用离线视觉Fallback且心跳缺失保持独立Meta', async ({
-  page,
-}) => {
+test('Runtime缺失显示未连接且不会混入正式离线筛选', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await installMockApi(page)
+  await installMockApi(page, { deviceTotal: 3 })
+
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('summary-offline')).toHaveText('1')
+  const unreportedCard = page
+    .getByTestId('device-card')
+    .filter({ hasText: '设备 3' })
+  await expect(unreportedCard.getByTestId('device-card-runtime')).toHaveText(
+    '未连接',
+  )
+  await expect(
+    unreportedCard.getByTestId('device-status-artwork'),
+  ).toHaveAttribute('data-device-artwork-state', 'offline')
+  await page.getByTestId('summary-metric-offline').tap()
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  await expect(page.getByTestId('device-card').first()).toContainText('设备 2')
+  await expect(page.getByTestId('device-list')).not.toContainText('设备 3')
 
   await page.goto('/#/devices/device-3')
   await expect(page.getByTestId('device-detail')).toContainText('未上报')
-  await expect(page.getByTestId('device-detail')).toContainText('离线')
+  await expect(page.getByTestId('device-detail')).toContainText('未连接')
+  await expect(page.getByTestId('device-detail')).not.toContainText('离线')
 
   await page.goto('/#/devices/device-2')
   await expect(page.getByTestId('device-detail')).toContainText('离线')

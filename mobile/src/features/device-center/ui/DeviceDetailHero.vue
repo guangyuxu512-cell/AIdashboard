@@ -10,7 +10,7 @@ import {
 import { MobileIcon, type MobileIconName } from '@/shared/icons'
 
 import {
-  DEVICE_VISUAL_STATE_LABELS,
+  getDeviceRuntimeDisplayLabel,
   getDeviceVisualState,
 } from '../model/device-visual'
 import type { DeviceActiveTaskState } from '../model/use-device-active-task'
@@ -24,8 +24,8 @@ const props = defineProps<{
 const visualState = computed(() =>
   getDeviceVisualState(props.device, props.activeTaskState),
 )
-const visualStateLabel = computed(
-  () => DEVICE_VISUAL_STATE_LABELS[visualState.value],
+const runtimeLabel = computed(() =>
+  getDeviceRuntimeDisplayLabel(props.device, props.activeTaskState),
 )
 const heartbeatText = computed(() =>
   formatRelativeHeartbeat(props.device.workerRuntime?.lastSeenAt ?? null),
@@ -89,7 +89,7 @@ const metaItems = computed<
           data-testid="device-hero-status"
         >
           <i class="device-detail-hero__status-dot" aria-hidden="true" />
-          <span>{{ visualStateLabel }}</span>
+          <span>{{ runtimeLabel }}</span>
         </div>
         <p
           class="device-detail-hero__heartbeat"

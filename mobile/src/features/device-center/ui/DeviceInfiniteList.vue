@@ -3,6 +3,7 @@ import {
   Button as VanButton,
   Empty as VanEmpty,
   List as VanList,
+  Loading as VanLoading,
   PullRefresh as VanPullRefresh,
   Skeleton as VanSkeleton,
 } from 'vant'
@@ -17,6 +18,8 @@ const props = defineProps<{
   activeTaskStates: Readonly<Record<string, DeviceActiveTaskState>>
   initialLoading: boolean
   initialError: boolean
+  filterPreparing?: boolean
+  filterError?: boolean
   nextPageError: boolean
   refreshing: boolean
   loadingMore: boolean
@@ -41,6 +44,7 @@ const emit = defineEmits<{
   retry: []
   loadMore: []
   retryLoadMore: []
+  retryFilter: []
   selectDevice: [deviceId: string]
 }>()
 </script>
@@ -61,6 +65,24 @@ const emit = defineEmits<{
   >
     <VanEmpty image="error" description="加载失败">
       <VanButton type="primary" @click="emit('retry')">重试</VanButton>
+    </VanEmpty>
+  </div>
+
+  <div
+    v-else-if="filterPreparing"
+    class="device-list-state device-list-state--filter"
+    data-testid="device-filter-preparing"
+  >
+    <VanLoading>正在筛选</VanLoading>
+  </div>
+
+  <div
+    v-else-if="filterError"
+    class="device-list-state"
+    data-testid="device-filter-error"
+  >
+    <VanEmpty image="error" description="筛选失败">
+      <VanButton type="primary" @click="emit('retryFilter')"> 重试 </VanButton>
     </VanEmpty>
   </div>
 
@@ -112,6 +134,10 @@ const emit = defineEmits<{
     max(var(--device-list-page-padding-x), var(--safe-area-right))
     var(--space-4) max(var(--device-list-page-padding-x), var(--safe-area-left));
   align-content: center;
+}
+
+.device-list-state--filter {
+  justify-items: center;
 }
 
 .device-list-refresh {

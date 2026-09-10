@@ -138,6 +138,8 @@ describe('Device page loading boundaries', () => {
       filter: ref('all'),
       searchQuery: ref(''),
       searchAvailable: ref(false),
+      isFilterPreparing: ref(false),
+      filterPreparationError: ref(null),
       filterLabel: ref('全部'),
       filterAvailability: ref({
         all: true,
@@ -160,6 +162,8 @@ describe('Device page loading boundaries', () => {
       refresh: vi.fn(),
       setFilter: vi.fn(),
       toggleMetricFilter: vi.fn(),
+      setSearchQuery: vi.fn(),
+      retryFilterPreparation: vi.fn(),
       loadMore: vi.fn(),
       retryLoadMore: vi.fn(),
     }
@@ -214,6 +218,8 @@ describe('Device page loading boundaries', () => {
       filter: ref('all'),
       searchQuery: ref(''),
       searchAvailable: ref(true),
+      isFilterPreparing: ref(false),
+      filterPreparationError: ref(null),
       filterLabel: ref('全部'),
       filterAvailability: ref({
         all: true,
@@ -236,6 +242,8 @@ describe('Device page loading boundaries', () => {
       refresh: vi.fn(),
       setFilter: vi.fn(),
       toggleMetricFilter: vi.fn(),
+      setSearchQuery: vi.fn(),
+      retryFilterPreparation: vi.fn(),
       loadMore: vi.fn(),
       retryLoadMore: vi.fn(),
     }

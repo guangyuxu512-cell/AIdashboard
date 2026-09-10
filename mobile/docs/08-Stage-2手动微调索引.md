@@ -186,7 +186,7 @@ Section Gap 16px、Hero Min Height 214px、Business Card 122px / 102-1fr-18 Grid
 330px。旧 Runtime 17/9px、48/25px与旧 Capability 372/50px只保留为 V1 历史，不得覆盖详情 V2。
 `/tasks` 仍使用原列表视觉；只有 Device Current Task 显式消费 TaskCard V2。
 
-Visual V2 的完整 Token、共享 Foundation 状态与三态 Device 规则见
+Visual V2 的完整 Token、共享 Foundation 状态与 Device 展示状态规则见
 [`02-设计系统.md`](./02-设计系统.md) 和
 [`10-Mobile-Visual-V2-设备列表.md`](./10-Mobile-Visual-V2-设备列表.md)。当前审计范围状态是
 **Completed / Frozen**；`MobileListToolbar V2` 因 `/devices` 未实际使用，仍为 Shared Candidate。

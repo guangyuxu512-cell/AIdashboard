@@ -235,6 +235,15 @@ describe('device center overview', () => {
     expect(wrapper.get('[data-testid="summary-all"]').text()).toBe('3')
     expect(wrapper.text()).toBe('3全部设备—在线设备—运行中—离线设备')
     expect(wrapper.text()).not.toMatch(/分页|统计|已加载/)
+    expect(
+      wrapper.get('[data-testid="summary-metric-online"]').attributes(),
+    ).not.toHaveProperty('disabled')
+    expect(
+      wrapper.get('[data-testid="summary-metric-running"]').attributes(),
+    ).not.toHaveProperty('disabled')
+    expect(
+      wrapper.get('[data-testid="summary-metric-offline"]').attributes(),
+    ).not.toHaveProperty('disabled')
   })
 
   it('keeps partial Active Task counts honest without rendering a scope explanation', () => {
@@ -339,5 +348,8 @@ describe('device center overview', () => {
     expect(wrapper.get('[data-testid="summary-running"]').text()).toBe('0')
     expect(wrapper.get('[data-testid="summary-offline"]').text()).toBe('0')
     expect(wrapper.get('[data-testid="summary-all"]').text()).toBe('0')
+    expect(
+      wrapper.get('[data-testid="summary-metric-offline"]').attributes(),
+    ).not.toHaveProperty('disabled')
   })
 })

@@ -26,6 +26,7 @@ export {
   formatRelativeHeartbeat,
 } from './model/device-display'
 export {
+  DEVICE_CONNECTION_DISPLAY_META,
   DEVICE_CONNECTION_META,
   DEVICE_ENABLED_META,
   getDeviceConnectionDisplayState,
