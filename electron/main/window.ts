@@ -1,13 +1,19 @@
 import { BrowserWindow, nativeTheme } from 'electron'
 import path from 'node:path'
 
+import { isTrustedRendererUrl } from '../config/runtime'
 import type { DesktopResolvedTheme } from '../types'
 
-const frontendDevServerUrl = process.env.FRONTEND_DEV_SERVER_URL
 const titleBarHeight = 54
 const titleBarSymbolColors: Record<DesktopResolvedTheme, string> = {
   light: '#222a34',
   dark: '#e4e7eb',
+}
+
+interface MainWindowOptions {
+  rendererUrl: string
+  trustedRendererOrigin: string
+  allowDevTools: boolean
 }
 
 export function setTitleBarTheme(
@@ -23,12 +29,12 @@ export function setTitleBarTheme(
   })
 }
 
-export function createMainWindow(): BrowserWindow {
+export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   const initialTheme: DesktopResolvedTheme = nativeTheme.shouldUseDarkColors
     ? 'dark'
     : 'light'
   const window = new BrowserWindow({
-    title: '电商 AI 中控台',
+    title: '思余AI中控台',
     width: 1280,
     height: 800,
     minWidth: 960,
@@ -49,20 +55,45 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      devTools: options.allowDevTools,
+      navigateOnDragDrop: false,
+      webviewTag: false,
       preload: path.join(__dirname, '../preload/index.js'),
     },
   })
 
   window.once('ready-to-show', () => window.show())
+  window.webContents.on(
+    'did-fail-load',
+    (_event, _code, _description, _url, isMainFrame) => {
+      if (isMainFrame && !window.isDestroyed()) window.show()
+    },
+  )
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (
+      !isTrustedRendererUrl(navigationUrl, options.trustedRendererOrigin)
+    ) {
+      event.preventDefault()
+    }
+  })
+  window.webContents.on('will-redirect', (event, navigationUrl) => {
+    if (
+      !isTrustedRendererUrl(navigationUrl, options.trustedRendererOrigin)
+    ) {
+      event.preventDefault()
+    }
+  })
+  window.webContents.session.setPermissionCheckHandler(() => false)
+  window.webContents.session.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => callback(false),
+  )
 
-  if (frontendDevServerUrl) {
-    void window.loadURL(frontendDevServerUrl)
-  } else {
-    void window.loadFile(
-      path.resolve(__dirname, '../../../frontend/dist/index.html'),
-    )
-  }
+  void window.loadURL(options.rendererUrl).catch(() => {
+    if (!window.isDestroyed()) window.show()
+  })
 
   return window
 }
