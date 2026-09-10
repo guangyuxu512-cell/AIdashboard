@@ -47,7 +47,7 @@ assert_keepalive_transport_contract() {
     test "$fail_fast_blocks" = "$expected_fail_fast_blocks"
 }
 
-assert_keepalive_transport_contract "$workflow_path" 2 5 2
+assert_keepalive_transport_contract "$workflow_path" 2 5 3
 assert_keepalive_transport_contract "$tls_workflow_path" 1 3 1
 
 grep -Fq 'status=\$?; rm -f --' "$workflow_path"
