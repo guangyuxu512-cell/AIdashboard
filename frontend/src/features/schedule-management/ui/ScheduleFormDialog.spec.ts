@@ -215,4 +215,39 @@ describe('ScheduleFormDialog Business Skill target', () => {
       'shop-fixture-003',
     ])
   })
+
+  it('keeps an explicit empty selection when the bound shop list refreshes', async () => {
+    const wrapper = mountDialog()
+    await chooseBusinessSkill(wrapper)
+    wrapper
+      .findComponent(AppInput)
+      .vm.$emit('update:modelValue', '无店铺计划')
+    wrapper
+      .findComponent(SchemaParameterFields)
+      .vm.$emit('update:modelValue', { keyword: 'safe' })
+
+    const shopSelector = wrapper.findComponent(ShopMultiSelector)
+    shopSelector.vm.$emit('update:modelValue', [])
+    ;(
+      queryMocks.shops as {
+        data: { value: Array<{ label: string; value: string }> }
+      }
+    ).data.value = [
+      { label: '店铺一', value: 'shop-fixture-001' },
+      { label: '店铺二', value: 'shop-fixture-002' },
+      { label: '新增绑定店铺', value: 'shop-fixture-004' },
+    ]
+    await flushPromises()
+
+    expect(shopSelector.props('modelValue')).toEqual([])
+    const dialog = wrapper.findComponent(FormDialog)
+    expect(dialog.props('submitDisabled')).toBe(false)
+    dialog.vm.$emit('submit')
+
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      shopIds: [],
+      executionType: 'business_skill',
+      skillId: 'catalog.fixture.run',
+    })
+  })
 })

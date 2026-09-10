@@ -109,6 +109,24 @@ def test_due_scan_coalesces_missed_days_and_creates_one_pending_task() -> None:
     assert len(repository.runs) == 1
 
 
+def test_due_scan_preserves_an_explicit_empty_shop_context() -> None:
+    schedule = due_schedule()
+    schedule.shop_links = []
+    repository = FakeScheduleRepository(schedule)
+    task_service = FakeScheduledTaskService()
+    session = FakeSession()
+
+    result = ScheduleService(
+        session,  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        task_service,  # type: ignore[arg-type]
+    ).trigger_next_due(now=datetime(2026, 8, 24, 12, 0, tzinfo=UTC))
+
+    assert result is not None
+    assert result.trigger_result is ScheduleRunTriggerResult.TASK_CREATED
+    assert getattr(task_service.created_data, "shop_ids") == []
+
+
 def test_guard_failure_records_blocked_occurrence_and_advances_schedule() -> None:
     schedule = due_schedule()
     repository = FakeScheduleRepository(schedule)
