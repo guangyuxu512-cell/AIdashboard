@@ -49,7 +49,6 @@ const configInitialError = computed(
 const runDisabledReason = computed(() => {
   if (!props.application) return '当前 Application 不可用'
   if (!props.deviceId) return '当前未选择目标设备'
-  if (!shopIds.value.length) return '请至少选择一个本次执行的店铺账号'
   if (configInitialLoading.value) return '正在读取参数配置'
   if (configInitialError.value) return '参数配置加载失败，暂时无法运行'
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
@@ -93,7 +92,7 @@ watch(
 )
 
 async function run(): Promise<void> {
-  if (!props.application || !props.deviceId || !shopIds.value.length) return
+  if (!props.application || !props.deviceId) return
   if (runDisabledReason.value) {
     message.error(runDisabledReason.value)
     return
@@ -133,7 +132,7 @@ async function run(): Promise<void> {
     @confirm="run"
   >
     <NForm label-placement="top">
-      <NFormItem label="店铺账号" required>
+      <NFormItem label="店铺账号（可选）">
         <ShopMultiSelector
           v-model="shopIds"
           :options="shopOptions"

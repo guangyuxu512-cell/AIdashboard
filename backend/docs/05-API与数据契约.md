@@ -185,6 +185,8 @@ Descriptor 固定包含
 `{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。
 Backend 必须验证目标 Device 启用、全部 Shop 有效并与该 Device 存在启用 Binding、账号可用、
 最新影刀 Inventory 为 ready、执行可用、已登录、App 对当前账号可见，并按已保存 Schema校验/补齐 params。
+`shop_ids` 允许为空；只有非空集合才执行 Shop、Binding 与 Credential 校验，空集合在认证 Claim 中
+返回 `accounts=[]`。
 
 ## Device Lifecycle API
 
@@ -241,13 +243,13 @@ Read Contract 只返回 `webhook_configured`，永不返回 Webhook URL 或密�
 Task 固定归属当前 Team 与当前人员，且目标 Device 与关联 Asset 必须在该 Team。`GET /events` 在读取
 事件前先以相同 Scope 查询 Task。Schedule 生成的 Task 继承 Schedule 的 Team 与业务发起人。
 
-`POST /api/v1/tasks` 的 `shop_ids` 是有序的正式店铺上下文集合；需要店铺账号的即时任务必须明确
-提交，但账号内容不得放进 `input`。重复 ID 被拒绝，任一 Shop 无效、停用、已移除、未与目标
-Device 有效绑定或缺少可用 Credential 时整次创建失败，不静默跳过。Backend 只创建一个 Task，
-`TaskRead` 返回原顺序的关系 ID。认证 Worker 调用 Claim 时，Backend 才按关系顺序读取当前启用且
-平台匹配的 Credential，并在 Claim 响应的 `accounts` 数组中下发最小 Payload：
+`POST /api/v1/tasks` 的 `shop_ids` 是有序的正式店铺上下文集合，也可显式为 `[]`；需要店铺账号的
+即时任务必须明确提交非空集合，但账号内容不得放进 `input`。重复 ID 被拒绝。仅非空集合中任一
+Shop 无效、停用、已移除、未与目标 Device 有效绑定或缺少可用 Credential 时整次创建失败，不静默
+跳过。Backend 只创建一个 Task，`TaskRead` 返回原顺序的关系 ID。认证 Worker 调用 Claim 时，Backend
+才按关系顺序读取当前启用且平台匹配的 Credential，并在 Claim 响应的 `accounts` 数组中下发最小 Payload：
 `shop_id / platform_code / login_identifier / secret / preferred_verification_channel`。
-普通 Task Read/List、Runtime Event 与 Result 不返回账号明文。
+无店铺上下文的 Claim 返回 `accounts=[]`。普通 Task Read/List、Runtime Event 与 Result 不返回账号明文。
 
 同一创建接口的 `asset_ids` 是可空、有序且不可重复的图片关系集合。Backend 必须一次验证全部
 Asset 存在，并仍只创建一个 Task；不得按 Shop 或图片拆分任务，也不得把 Base64、服务端文件

@@ -167,7 +167,6 @@ const configInitialError = computed(
 const disabledReason = computed(() => {
   if (!form.name.trim()) return '请填写计划名称'
   if (!form.deviceId) return '请选择执行设备'
-  if (!form.shopIds.length) return '请至少选择一个计划使用的店铺账号'
   if (isYingdao.value) {
     if (!form.applicationId) return '请选择影刀应用'
     if (inventoryInitialError.value) return '设备影刀应用读取失败'
@@ -295,6 +294,11 @@ function changeDevice(value: AppOptionValue | null): void {
   resetTarget()
 }
 
+function changeShopIds(value: string[]): void {
+  form.shopIds = value
+  shouldDefaultShops.value = false
+}
+
 function changeExecutionType(value: AppOptionValue | null): void {
   if (value !== 'yingdao_application' && value !== 'business_skill') return
   if (value === form.executionType) return
@@ -335,7 +339,6 @@ function submit(): void {
   if (
     disabledReason.value ||
     !form.deviceId ||
-    !form.shopIds.length ||
     form.localTimeValue === null
   ) {
     return
@@ -381,12 +384,13 @@ function submit(): void {
           @update:model-value="changeDevice"
         />
       </NFormItem>
-      <NFormItem label="店铺账号" required>
+      <NFormItem label="店铺账号（可选）">
         <ShopMultiSelector
-          v-model="form.shopIds"
+          :model-value="form.shopIds"
           :options="shopOptions"
           :loading="shopOptionsQuery.isPending.value"
           :disabled="!form.deviceId"
+          @update:model-value="changeShopIds"
         />
       </NFormItem>
       <NFormItem label="执行类型" required>

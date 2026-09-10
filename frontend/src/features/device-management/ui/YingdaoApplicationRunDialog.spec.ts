@@ -108,7 +108,7 @@ describe('YingdaoApplicationRunDialog', () => {
     expect(mocks.createTask).toHaveBeenCalledTimes(1)
   })
 
-  it('blocks execution after all bound shops are deselected', async () => {
+  it('creates a no-shop Task after all bound shops are explicitly deselected', async () => {
     const wrapper = shallowMount(YingdaoApplicationRunDialog, {
       props: {
         show: true,
@@ -127,8 +127,17 @@ describe('YingdaoApplicationRunDialog', () => {
       .vm.$emit('update:modelValue', [])
     await flushPromises()
 
-    expect(wrapper.findComponent(AppDialog).props('positiveDisabledReason')).toBe(
-      '请至少选择一个本次执行的店铺账号',
-    )
+    const dialog = wrapper.findComponent(AppDialog)
+    expect(dialog.props('positiveDisabled')).toBe(false)
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(mocks.createTask).toHaveBeenCalledWith({
+      target_device_id: 'device-1',
+      shop_ids: [],
+      asset_ids: [],
+      skill_id: 'yingdao.app.run',
+      input: { app_id: 'safe-app', params: {} },
+    })
   })
 })
