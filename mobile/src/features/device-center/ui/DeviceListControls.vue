@@ -10,6 +10,7 @@ defineProps<{
   filter: DeviceQuickFilter
   searchQuery: string
   searchAvailable: boolean
+  filterPreparing?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +37,7 @@ const emit = defineEmits<{
     <DeviceOverviewCards
       :overview="overview"
       :filter="filter"
+      :preparing="filterPreparing"
       @select="emit('selectFilter', $event)"
     />
   </section>

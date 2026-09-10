@@ -319,6 +319,7 @@ class ApiTaskService:
 
 class ApiScheduleService:
     last_create_data: ScheduleCreate | None = None
+    last_list_kwargs: dict[str, object] | None = None
 
     @staticmethod
     def _read() -> ScheduleRead:
@@ -336,6 +337,8 @@ class ApiScheduleService:
             schedule_type="daily",
             local_time=time(9, 30),
             timezone="Asia/Shanghai",
+            local_date=None,
+            weekdays=[],
             next_run_at=now,
             latest_run=None,
             created_at=now,
@@ -360,6 +363,7 @@ class ApiScheduleService:
         return self._read()
 
     def list_management(self, **kwargs: object) -> Page[ScheduleListItemRead]:
+        type(self).last_list_kwargs = dict(kwargs)
         detail = self._read()
         item = ScheduleListItemRead.model_validate(
             detail.model_dump(exclude={"application_id", "parameters"}),
@@ -551,6 +555,8 @@ def test_schedule_management_api_contract() -> None:
 
     assert create_response.status_code == 201
     assert create_response.json()["skill_id"] == "yingdao.app.run"
+    assert create_response.json()["local_date"] is None
+    assert create_response.json()["weekdays"] == []
     assert list_response.status_code == 200
     assert list_response.json()["items"][0]["device_display_name"] == "API 设备"
     assert detail_response.json()["application_id"] == "api-yingdao-app"
@@ -585,6 +591,55 @@ def test_schedule_api_accepts_business_skill_target() -> None:
     assert ApiScheduleService.last_create_data.parameters == {"keyword": "safe"}
 
 
+def test_schedule_api_accepts_once_and_weekly_rules() -> None:
+    base = {
+        "name": "重复规则计划",
+        "target_device_id": str(DEVICE_ID),
+        "application_id": "api-yingdao-app",
+        "parameters": {},
+        "local_time": "09:30",
+        "timezone": "Asia/Shanghai",
+        "enabled": True,
+    }
+    once_response = request(
+        "POST",
+        "/api/v1/schedules",
+        json={
+            **base,
+            "schedule_type": "once",
+            "local_date": "2026-08-26",
+            "weekdays": [],
+        },
+    )
+    weekly_response = request(
+        "POST",
+        "/api/v1/schedules",
+        json={
+            **base,
+            "schedule_type": "weekly",
+            "local_date": None,
+            "weekdays": [1, 3, 5],
+        },
+    )
+    invalid_once = request(
+        "POST",
+        "/api/v1/schedules",
+        json={**base, "schedule_type": "once", "weekdays": []},
+    )
+    invalid_weekly = request(
+        "POST",
+        "/api/v1/schedules",
+        json={**base, "schedule_type": "weekly", "weekdays": []},
+    )
+
+    assert once_response.status_code == 201
+    assert weekly_response.status_code == 201
+    assert ApiScheduleService.last_create_data is not None
+    assert ApiScheduleService.last_create_data.weekdays == [1, 3, 5]
+    assert invalid_once.status_code == 422
+    assert invalid_weekly.status_code == 422
+
+
 def test_schedule_api_rejects_cron_and_unknown_timezone() -> None:
     base = {
         "name": "无效计划",
@@ -608,6 +663,24 @@ def test_schedule_api_rejects_cron_and_unknown_timezone() -> None:
 
     assert cron_response.status_code == 422
     assert timezone_response.status_code == 422
+
+
+def test_schedule_api_passes_occurrence_date_and_view_timezone_together() -> None:
+    response = request(
+        "GET",
+        "/api/v1/schedules?page=1&page_size=20"
+        "&occurrence_date=2026-08-24&view_timezone=Asia%2FShanghai",
+    )
+    missing_timezone = request(
+        "GET",
+        "/api/v1/schedules?page=1&page_size=20&occurrence_date=2026-08-24",
+    )
+
+    assert response.status_code == 200
+    assert ApiScheduleService.last_list_kwargs is not None
+    assert str(ApiScheduleService.last_list_kwargs["occurrence_date"]) == "2026-08-24"
+    assert ApiScheduleService.last_list_kwargs["view_timezone"] == "Asia/Shanghai"
+    assert missing_timezone.status_code == 422
 
 
 def test_task_center_accepts_aware_half_open_created_range() -> None:

@@ -28,7 +28,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无。
+当前活跃 Migration Slot：`active` — `feat/pc-schedule-date-recurrence-v1`，`20260911_0033_pc_schedule_date_recurrence_v1`，基于 `20260906_0032_ai_workbench_real_api_v1`。Migration 增加 Schedule 的 `local_date`、`weekdays`、一次/每日/每周约束；Feature DB 已验证 `0032 → 0033 → 0032 → 0033`。降级在存在 once/weekly 数据时 fail closed，避免丢失规则语义。
 
 最近释放记录：
 

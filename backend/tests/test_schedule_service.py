@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 from uuid import UUID, uuid4
 
 from app.modules.schedules.enums import ScheduleRunTriggerResult
@@ -155,3 +155,25 @@ def test_no_due_schedule_rolls_back_read_transaction() -> None:
 
     assert result is None
     assert session.rollbacks == 1
+
+
+def test_one_time_due_schedule_advances_to_no_next_run() -> None:
+    schedule = due_schedule()
+    schedule.schedule_type = "once"
+    schedule.local_date = date(2026, 8, 24)
+    schedule.weekdays = []
+    schedule.next_run_at = datetime(2026, 8, 24, 1, 30, tzinfo=UTC)
+    repository = FakeScheduleRepository(schedule)
+    task_service = FakeScheduledTaskService()
+
+    result = ScheduleService(
+        FakeSession(),  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        task_service,  # type: ignore[arg-type]
+    ).trigger_next_due(now=datetime(2026, 8, 24, 12, 0, tzinfo=UTC))
+
+    assert result is not None
+    assert result.scheduled_for == datetime(2026, 8, 24, 1, 30, tzinfo=UTC)
+    assert schedule.next_run_at is None
+    assert task_service.calls == 1
+    assert repository.get_next_due(now=datetime(2026, 8, 25, 12, 0, tzinfo=UTC)) is None

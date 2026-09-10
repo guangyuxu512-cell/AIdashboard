@@ -287,6 +287,20 @@ Task Detail 的 `runtime_events_purged_at` 为可空清理标记。Event 为空�
 日志；Event 为空且标记非空表示历史日志已清理；标记非空但仍有 Event 表示清理后存在晚到
 事件，调用方应展示“部分历史已清理”并继续显示现存 Event。
 
+## Schedule API
+
+全部 `/api/v1/schedules` 路由要求 Human Session、`schedule` Module Access 与 ActorContext Scope。
+Create 不接收 Team 或创建者；Backend 从 ActorContext 保存 Ownership。`schedule_type` 只能为
+`once / daily / weekly`：一次性规则要求 `local_date` 且 `weekdays=[]`，每日规则要求
+`local_date=null` 且 `weekdays=[]`，每周规则要求 `local_date=null` 与不重复的 ISO weekday
+数组（`1=周一` 至 `7=周日`）。`local_time` 不含 offset，`timezone` 是 IANA ID，`next_run_at` 是
+Backend 计算的 UTC Instant。
+
+`GET /api/v1/schedules` 在既有 `enabled / device_id / search / page / page_size` 外支持成对的
+`occurrence_date=YYYY-MM-DD` 和 `view_timezone=<IANA timezone>`。缺任一参数或无效时区返回 422；
+筛选范围是该本地日期转换的 UTC `[start, end)`，匹配该范围内的 `ScheduleRun.scheduled_for` 或
+`Schedule.next_run_at`，然后才计算 total 和 page。详情、下载及触发状态不以此参数改变。
+
 ## 资料库 Asset API
 
 - `POST /api/v1/assets`：单文件 multipart 上传，只接受真实 JPEG、PNG、WebP 内容，受 Backend

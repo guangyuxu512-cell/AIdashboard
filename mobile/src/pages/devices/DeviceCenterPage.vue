@@ -31,8 +31,9 @@ async function refresh(): Promise<void> {
       :filter="deviceCenter.filter.value"
       :search-query="deviceCenter.searchQuery.value"
       :search-available="deviceCenter.searchAvailable.value"
+      :filter-preparing="deviceCenter.isFilterPreparing.value"
       @select-filter="deviceCenter.toggleMetricFilter"
-      @update-search-query="deviceCenter.searchQuery.value = $event"
+      @update-search-query="deviceCenter.setSearchQuery"
     />
 
     <div
@@ -46,6 +47,8 @@ async function refresh(): Promise<void> {
         :active-task-states="deviceCenter.activeTaskStates.value"
         :initial-loading="deviceCenter.isInitialLoading.value"
         :initial-error="deviceCenter.isInitialError.value"
+        :filter-preparing="deviceCenter.isFilterPreparing.value"
+        :filter-error="deviceCenter.filterPreparationError.value !== null"
         :next-page-error="deviceCenter.isNextPageError.value"
         :refreshing="deviceCenter.refreshing.value"
         :loading-more="deviceCenter.query.isFetchingNextPage.value"
@@ -54,6 +57,7 @@ async function refresh(): Promise<void> {
         @retry="deviceCenter.query.refetch"
         @load-more="deviceCenter.loadMore"
         @retry-load-more="deviceCenter.retryLoadMore"
+        @retry-filter="deviceCenter.retryFilterPreparation"
         @select-device="openDevice"
       />
     </div>

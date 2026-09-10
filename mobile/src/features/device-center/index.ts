@@ -10,6 +10,7 @@ export {
 } from './model/device-filter'
 export {
   DEVICE_VISUAL_STATE_LABELS,
+  getDeviceRuntimeDisplayLabel,
   getDeviceVisualState,
 } from './model/device-visual'
 export type {

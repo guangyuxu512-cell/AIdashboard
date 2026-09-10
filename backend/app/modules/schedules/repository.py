@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
@@ -108,6 +108,8 @@ class ScheduleRepository:
         enabled: bool | None,
         device_id: UUID | None,
         search: str | None,
+        occurrence_start: datetime | None = None,
+        occurrence_end: datetime | None = None,
     ) -> tuple[list[ScheduleListRecord], int]:
         filters = [Schedule.deleted_at.is_(None)]
         if enabled is not None:
@@ -121,6 +123,25 @@ class ScheduleRepository:
                     cast(Schedule.schedule_id, String).ilike(pattern),
                     Schedule.name.ilike(pattern),
                     Schedule.execution_display_name.ilike(pattern),
+                ),
+            )
+        if occurrence_start is not None and occurrence_end is not None:
+            run_in_selected_view_date = (
+                select(ScheduleRun.run_id)
+                .where(
+                    ScheduleRun.schedule_id == Schedule.schedule_id,
+                    ScheduleRun.scheduled_for >= occurrence_start,
+                    ScheduleRun.scheduled_for < occurrence_end,
+                )
+                .exists()
+            )
+            filters.append(
+                or_(
+                    run_in_selected_view_date,
+                    and_(
+                        Schedule.next_run_at >= occurrence_start,
+                        Schedule.next_run_at < occurrence_end,
+                    ),
                 ),
             )
 

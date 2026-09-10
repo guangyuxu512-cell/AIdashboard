@@ -2,7 +2,9 @@ from enum import StrEnum
 
 
 class ScheduleType(StrEnum):
+    ONCE = "once"
     DAILY = "daily"
+    WEEKLY = "weekly"
 
 
 class ScheduleExecutionType(StrEnum):

@@ -31,6 +31,8 @@ export interface ScheduleListItemViewModel {
   scheduleType: ScheduleTypeDto
   localTime: string
   timezone: string
+  localDate: string | null
+  weekdays: number[]
   triggerRuleDisplay: string
   nextRunAt: string | null
   nextRunAtDisplay: string
@@ -50,6 +52,8 @@ export interface ScheduleListFilters {
   enabled: boolean | null
   deviceId: string | null
   search: string
+  occurrenceDate: string | null
+  viewTimezone: string | null
 }
 
 export interface ScheduleSaveInput {
@@ -63,5 +67,7 @@ export interface ScheduleSaveInput {
   scheduleType: ScheduleTypeDto
   localTime: string
   timezone: string
+  localDate: string | null
+  weekdays: number[]
   enabled: boolean
 }

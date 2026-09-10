@@ -18,6 +18,7 @@ import {
   isInitialQueryError,
   isInitialQueryLoading,
 } from '@/shared/api'
+import { getBrowserTimezone } from '@/shared/utils/timezones'
 
 import type { ScheduleFilterViewModel } from './types'
 
@@ -32,11 +33,43 @@ function emptyDeviceFilters(): DeviceListFilters {
 }
 
 export function createDefaultScheduleFilters(): ScheduleFilterViewModel {
-  return { enabled: null, deviceId: null, search: '' }
+  return {
+    enabled: null,
+    deviceId: null,
+    search: '',
+    occurrenceMode: 'all',
+    selectedOccurrenceDate: null,
+  }
+}
+
+function formatLocalDate(value: number, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value))
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
 }
 
 function toListFilters(filters: ScheduleFilterViewModel): ScheduleListFilters {
-  return { ...filters }
+  const viewTimezone = getBrowserTimezone()
+  const selectedValue =
+    filters.occurrenceMode === 'today'
+      ? Date.now()
+      : filters.occurrenceMode === 'selected'
+        ? filters.selectedOccurrenceDate
+        : null
+  return {
+    enabled: filters.enabled,
+    deviceId: filters.deviceId,
+    search: filters.search,
+    occurrenceDate:
+      selectedValue === null ? null : formatLocalDate(selectedValue, viewTimezone),
+    viewTimezone: selectedValue === null ? null : viewTimezone,
+  }
 }
 
 export function useScheduleManagement() {

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -11,7 +11,10 @@ from app.modules.schedules.enums import (
     ScheduleRunTriggerResult,
     ScheduleType,
 )
-from app.modules.schedules.exceptions import ScheduleNotFoundError
+from app.modules.schedules.exceptions import (
+    ScheduleNotFoundError,
+    ScheduleRuleInvalidError,
+)
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.schedules.repository import (
     ScheduleListRecord,
@@ -27,8 +30,10 @@ from app.modules.schedules.schemas import (
     ScheduleUpdate,
 )
 from app.modules.schedules.time_rules import (
-    latest_daily_occurrence,
-    next_daily_occurrence,
+    latest_schedule_occurrence,
+    next_schedule_occurrence,
+    validate_schedule_rule,
+    view_date_utc_bounds,
 )
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.exceptions import TaskInputInvalidError
@@ -79,15 +84,20 @@ class ScheduleService:
             schedule_type=data.schedule_type.value,
             local_time=data.local_time,
             timezone=data.timezone,
+            local_date=data.local_date,
+            weekdays=list(data.weekdays),
             task_input_json=prepared.input_json,
             shop_links=[
                 ScheduleShop(shop_id=shop_id, position=position)
                 for position, shop_id in enumerate(data.shop_ids)
             ],
             next_run_at=(
-                next_daily_occurrence(
-                    data.local_time,
-                    data.timezone,
+                next_schedule_occurrence(
+                    data.schedule_type,
+                    local_date=data.local_date,
+                    local_time=data.local_time,
+                    weekdays=data.weekdays,
+                    timezone_name=data.timezone,
                     after=current_time,
                 )
                 if data.enabled
@@ -169,6 +179,25 @@ class ScheduleService:
                 team_id=schedule.team_id,
             )
 
+            schedule_type = values.get(
+                "schedule_type",
+                ScheduleType(schedule.schedule_type),
+            )
+            local_date = values.get("local_date", schedule.local_date)
+            weekdays = values.get("weekdays", list(schedule.weekdays))
+            if schedule_type is not ScheduleType.ONCE:
+                local_date = None
+            if schedule_type is not ScheduleType.WEEKLY:
+                weekdays = []
+            try:
+                local_date, weekdays = validate_schedule_rule(
+                    schedule_type,
+                    local_date,
+                    weekdays,
+                )
+            except ValueError as error:
+                raise ScheduleRuleInvalidError() from error
+
             schedule.name = values.get("name", schedule.name)
             schedule.target_device_id = target_device_id
             if schedule.shop_ids != shop_ids:
@@ -183,18 +212,20 @@ class ScheduleService:
                 ]
             schedule.skill_id = task_data.skill_id
             schedule.execution_display_name = prepared.execution_display_name
-            schedule.schedule_type = values.get(
-                "schedule_type",
-                ScheduleType(schedule.schedule_type),
-            ).value
+            schedule.schedule_type = schedule_type.value
             schedule.local_time = values.get("local_time", schedule.local_time)
             schedule.timezone = values.get("timezone", schedule.timezone)
+            schedule.local_date = local_date
+            schedule.weekdays = weekdays
             schedule.task_input_json = prepared.input_json
             schedule.enabled = values.get("enabled", schedule.enabled)
             schedule.next_run_at = (
-                next_daily_occurrence(
-                    schedule.local_time,
-                    schedule.timezone,
+                next_schedule_occurrence(
+                    schedule_type,
+                    local_date=schedule.local_date,
+                    local_time=schedule.local_time,
+                    weekdays=schedule.weekdays,
+                    timezone_name=schedule.timezone,
                     after=current_time,
                 )
                 if schedule.enabled
@@ -240,7 +271,18 @@ class ScheduleService:
         enabled: bool | None,
         device_id: UUID | None,
         search: str | None,
+        occurrence_date: date | None = None,
+        view_timezone: str | None = None,
     ) -> Page[ScheduleListItemRead]:
+        if (occurrence_date is None) != (view_timezone is None):
+            raise ValueError("occurrence_date and view_timezone must be supplied together")
+        occurrence_start: datetime | None = None
+        occurrence_end: datetime | None = None
+        if occurrence_date is not None and view_timezone is not None:
+            occurrence_start, occurrence_end = view_date_utc_bounds(
+                occurrence_date,
+                view_timezone,
+            )
         normalized_search = search.strip() if search else None
         records, total = self.repository.list_management(
             actor=actor,
@@ -249,6 +291,8 @@ class ScheduleService:
             enabled=enabled,
             device_id=device_id,
             search=normalized_search or None,
+            occurrence_start=occurrence_start,
+            occurrence_end=occurrence_end,
         )
         return Page(
             items=[_schedule_to_list_item(record) for record in records],
@@ -293,14 +337,21 @@ class ScheduleService:
             self.session.rollback()
             return None
 
-        scheduled_for = latest_daily_occurrence(
-            schedule.local_time,
-            schedule.timezone,
+        schedule_type = ScheduleType(schedule.schedule_type)
+        scheduled_for = latest_schedule_occurrence(
+            schedule_type,
+            local_date=getattr(schedule, "local_date", None),
+            local_time=schedule.local_time,
+            weekdays=getattr(schedule, "weekdays", []) or [],
+            timezone_name=schedule.timezone,
             at_or_before=current_time,
         )
-        schedule.next_run_at = next_daily_occurrence(
-            schedule.local_time,
-            schedule.timezone,
+        schedule.next_run_at = next_schedule_occurrence(
+            schedule_type,
+            local_date=getattr(schedule, "local_date", None),
+            local_time=schedule.local_time,
+            weekdays=getattr(schedule, "weekdays", []) or [],
+            timezone_name=schedule.timezone,
             after=current_time,
         )
         run = ScheduleRun(
@@ -404,6 +455,8 @@ def _schedule_list_values(record: ScheduleListRecord) -> dict[str, Any]:
         "schedule_type": ScheduleType(schedule.schedule_type),
         "local_time": schedule.local_time,
         "timezone": schedule.timezone,
+        "local_date": schedule.local_date,
+        "weekdays": list(schedule.weekdays),
         "next_run_at": schedule.next_run_at,
         "latest_run": (
             _schedule_run_to_read(

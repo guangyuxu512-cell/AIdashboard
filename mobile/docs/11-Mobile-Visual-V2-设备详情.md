@@ -39,7 +39,7 @@ Task Detail、Worker 与数据库。
 | -------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `detail-header`      | `shared/ui/MobileDetailHeader.vue` V2                          | Left Action + 真居中 Title + Right Action；透明承接 AppShell 背景 |
 | `device-hero`        | `features/device-center/ui/DeviceDetailHero.vue`               | 详情专属业务 Hero，不放大 DeviceCard                              |
-| `monitor`            | `entities/device/ui/DeviceStatusArtwork.vue` 的 `hero` variant | 复用公开三态插画，不复制第二套 Monitor                            |
+| `monitor`            | `entities/device/ui/DeviceStatusArtwork.vue` 的 `hero` variant | 复用 Online / Running / Offline 三态插画，不复制第二套 Monitor    |
 | `entity-card`        | 正式 `entities/task/ui/TaskListCard.vue` 的显式 V2 模式        | 真实 Active Task；无局部 Task Card 副本                           |
 | `capability`         | 正式 `features/device-center/ui/DeviceCapabilityPanel.vue` V2  | 复用 Provider / Skill Query 与业务映射                            |
 | `bottom-nav`         | 已冻结 `MobileBottomNavigation V2`                             | Router 决定设备入口 Active                                        |
@@ -186,7 +186,7 @@ Backend、Worker 与数据库在本轮保持 0 修改。
   Bottom Navigation 设备入口 Active；
 - 状态：Device Initial Loading / Error、Active Task Loading / Error / Idle、Provider / Capability Loading /
   Error 与背景刷新互相独立；
-- 数据：三态复用、真实 Heartbeat、真实 Worker / Provider Version、Business Skill 分类、无 Prototype 字段；
+- 数据：连接/运行展示状态复用、真实 Heartbeat、真实 Worker / Provider Version、Business Skill 分类、无 Prototype 字段；
 - Capability：Tabs、真实 Refresh GET、无写请求、五行完整、第六行内部滚动、外层详情继续可滚；
 - 响应式：360 / 375 / 390 / 428 / 430px，640 / 740 / 844 / 926 / 932px，Light / Dark；
 - 长文本：Device / Task / Capability Name 单行 Ellipsis，Actions 与 Chevron 保持可见；
