@@ -189,6 +189,10 @@ const metaItems = computed<
   color: var(--visual-v2-detail-status-offline);
 }
 
+.device-detail-hero--unreported .device-detail-hero__status {
+  color: var(--text-secondary);
+}
+
 .device-detail-hero__status-dot {
   width: var(--visual-v2-detail-hero-status-dot-size);
   height: var(--visual-v2-detail-hero-status-dot-size);

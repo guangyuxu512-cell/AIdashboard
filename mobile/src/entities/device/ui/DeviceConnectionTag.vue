@@ -4,7 +4,7 @@ import { computed } from 'vue'
 
 import type { DeviceConnectionStatusDto } from '../api/contracts'
 import {
-  DEVICE_CONNECTION_META,
+  DEVICE_CONNECTION_DISPLAY_META,
   getDeviceConnectionDisplayState,
 } from '../model/device-meta'
 
@@ -13,7 +13,10 @@ const props = defineProps<{
 }>()
 
 const meta = computed(
-  () => DEVICE_CONNECTION_META[getDeviceConnectionDisplayState(props.status)],
+  () =>
+    DEVICE_CONNECTION_DISPLAY_META[
+      getDeviceConnectionDisplayState(props.status)
+    ],
 )
 </script>
 

@@ -13,8 +13,9 @@ const props = withDefaults(
   defineProps<{
     overview: DeviceOverview
     filter?: DeviceQuickFilter
+    preparing?: boolean
   }>(),
-  { filter: 'all' },
+  { filter: 'all', preparing: false },
 )
 
 const emit = defineEmits<{
@@ -45,7 +46,7 @@ const items = computed(() => [
     value: props.overview.totalCount ?? '—',
     interactive: true,
     selected: props.filter === 'all',
-    disabled: props.overview.totalCount === null,
+    disabled: props.overview.dataState !== 'ready',
     ariaLabel: metricAriaLabel('all', '全部设备'),
   },
   {
@@ -54,7 +55,7 @@ const items = computed(() => [
     value: props.overview.onlineCount ?? '—',
     interactive: true,
     selected: props.filter === 'online',
-    disabled: props.overview.onlineCount === null,
+    disabled: props.overview.dataState !== 'ready',
     ariaLabel: metricAriaLabel('online', '在线设备'),
   },
   {
@@ -63,7 +64,7 @@ const items = computed(() => [
     value: props.overview.runningCount ?? '—',
     interactive: true,
     selected: props.filter === 'running',
-    disabled: props.overview.runningCount === null,
+    disabled: props.overview.dataState !== 'ready',
     ariaLabel: metricAriaLabel('running', '运行中'),
   },
   {
@@ -72,7 +73,7 @@ const items = computed(() => [
     value: props.overview.offlineCount ?? '—',
     interactive: true,
     selected: props.filter === 'offline',
-    disabled: props.overview.offlineCount === null,
+    disabled: props.overview.dataState !== 'ready',
     ariaLabel: metricAriaLabel('offline', '离线设备'),
   },
 ])
@@ -83,7 +84,7 @@ const items = computed(() => [
     <MobileSummaryStrip
       :items="items"
       aria-label="设备总览"
-      :busy="overview.dataState === 'loading'"
+      :busy="overview.dataState === 'loading' || preparing"
       @select="selectMetric"
     />
   </div>

@@ -6,6 +6,7 @@ export const DEVICE_VISUAL_STATE_LABELS = {
   online: '在线',
   running: '运行中',
   offline: '离线',
+  unreported: '未连接',
 } as const satisfies Record<DeviceArtworkState, string>
 
 export function getDeviceVisualState(
@@ -23,6 +24,6 @@ export function getDeviceVisualState(
   }
   if (connectionStatus === 'online') return 'online'
 
-  // Backend 当前允许 Runtime 为空，但没有第四种公开设备状态；视觉层安全降级为离线。
-  return 'offline'
+  // Runtime 缺失代表没有连接事实，只能展示为“未连接”，不能伪造成 Backend offline。
+  return 'unreported'
 }

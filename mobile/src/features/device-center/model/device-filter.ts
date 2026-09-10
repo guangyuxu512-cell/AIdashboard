@@ -25,9 +25,7 @@ export function isDeviceQuickFilterAvailable(
   overview: DeviceOverview,
 ): boolean {
   if (filter === 'all') return true
-  if (filter === 'online') return overview.onlineCount !== null
-  if (filter === 'offline') return overview.offlineCount !== null
-  return overview.runningCount !== null
+  return overview.dataState === 'ready'
 }
 
 export function toggleDeviceMetricFilter(

@@ -130,6 +130,10 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
   color: var(--device-list-status-offline);
 }
 
+.device-list-card__runtime--unreported {
+  color: var(--text-secondary);
+}
+
 .device-list-card__state-dot {
   width: var(--device-list-status-dot-size);
   height: var(--device-list-status-dot-size);

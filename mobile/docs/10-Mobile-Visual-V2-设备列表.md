@@ -61,7 +61,7 @@ Metric Strip 之间维护两份。
 | Metric Strip             | `shared/ui/MobileSummaryStrip.vue`                                 | 3 / 4 项、Number / Label、selected、disabled、click；不写业务分支                 | **Frozen**    |
 | Bottom Navigation        | `shared/ui/MobileBottomNavigation.vue`                             | 设备 / 任务 / 计划 / 店铺 / 我的五等分、Router Active 与 Safe Area                | **Frozen**    |
 | Business Card Surface    | `.mobile-business-card-surface-v2` + `--visual-v2-business-card-*` | 共享 Surface / Border / Radius / Shadow / Touch / Trailing / Gap，不抽万能 Card   | **Frozen**    |
-| DeviceCard               | `features/device-center/ui/DeviceListCard.vue`                     | Device 独有 Anatomy、三态事实与详情导航                                           | **Frozen**    |
+| DeviceCard               | `features/device-center/ui/DeviceListCard.vue`                     | Device 独有 Anatomy、连接/运行事实与详情导航                                      | **Frozen**    |
 | DeviceStatusArtwork      | `entities/device/ui/DeviceStatusArtwork.vue`                       | 设备业务插画，只公开 Online / Running / Offline，独立于普通 Icon Registry         | **Frozen**    |
 | Page Background Language | `tokens.css` + `MobileAppShell.vue`                                | Shell 唯一绘制连续背景，Safe Area / Header 透明，Search / Summary / Card 独立绘制 | **Frozen**    |
 | MobileListToolbar V2     | `shared/ui/MobileListToolbar.vue`                                  | `/devices` 未实际使用，等待真实列表场景验证                                       | **Candidate** |
@@ -138,20 +138,22 @@ Bottom Navigation 保留参考 HTML 的半透明 Surface：Light 为 `rgb(255 25
 `rgb(8 18 30 / 92%)`；其 Safe Area 使用对应不透明底色 `#FFFFFF` / `#081521`，避免真机刘海与 Home
 Indicator 区域露出旧主题 Surface。
 
-## Device Visual Status（三态设备视觉状态）
+## Device Visual Status（设备视觉状态）
 
-公开状态只允许：
+展示状态固定为：
 
 1. `connection_status=offline` → `offline` / 离线；
 2. `connection_status=online` 且正式 Active Task `status=running` → `running` / 运行中；
 3. `connection_status=online` 且无 Running Task → `online` / 在线。
+4. `worker_runtime=null` → `unreported` / 未连接。
 
-`all` 是 Aggregate Metric / Filter Entry，不是状态。公开 Status Registry、DeviceCard、Artwork State 与 UI
-均不存在 `unreported`。Backend 允许 `worker_runtime=null`，但没有第四种公开设备状态；列表使用 Offline
-Visual Fallback 以保证确定 UI 状态，不改写 DTO，也不把该 fallback 当作 Backend 返回的离线事实。
+`all` 是 Aggregate Metric / Filter Entry，不是状态。`unreported` 只是缺少 Runtime 事实时的 Mobile
+Presentation State（展示状态），不是 Backend `connection_status` 新值；正式 UI 显示“未连接”，不得显示成
+“离线”，不得改写 DTO，也不得计入离线统计或筛选。本次只选择性解冻状态语义与对应 Loading/Error 状态，
+DeviceCard / Artwork 的 Frozen Anatomy、Geometry、Color、Navigation 与 Scroll Contract 均保持不变。
 
 Heartbeat 只读取正式 `worker_runtime.last_seen_at` 并复用 Relative Time Formatter；缺失时第三行显示
-“心跳未上报”。Heartbeat 的新鲜度不会改变三态，Mobile 不依据时间差发明在线阈值。
+“心跳未上报”。Heartbeat 的新鲜度不会改变展示状态，Mobile 不依据时间差发明在线阈值。
 
 `enabled` 只读取正式 `Device.enabled`，显示“已启用 / 已停用”；它不改变连接、Active Task、Artwork 或状态。
 DeviceCard 第三行固定为 `Heartbeat Icon + 心跳相对时间 + · + 启用状态`，不再展示 Worker Version。
@@ -173,9 +175,11 @@ Summary 顺序固定为：全部设备、在线设备、运行中、离线设备
 Backend Device List 只支持 `page`、`page_size`，没有服务端 Search、Connection Status 或 Active Task 筛选：
 
 - “全部设备”读取 Backend `total`；
-- 在线、运行中、离线只在所有 Device 分页与 Active Task 事实完整后给出全量数字并启用筛选；
-- Search 只在全部分页加载完成后启用，只按正式 `display_name` 本地匹配；
-- 不完整时显示 `—` / disabled，不过滤当前页冒充全量，也不发送 `search`、`keyword`、`q` 或 `name`；
+- 在线、运行中、离线只在所有 Device 分页及对应 Active Task 事实完整后给出全量数字；
+- 首屏 Device List 成功后四项 Metric 与 Search 即可操作；筛选/搜索意图出现时，Mobile 通过正式
+  `page/page_size` 可控补齐剩余分页，补齐期间保持唯一 Filter State 的选中反馈并显示“正在筛选”；
+- 补齐失败显示“筛选失败 / 重试”，不渲染局部分页过滤结果；再次点击当前 Metric 恢复全部，0 条结果仍可选中并显示“没有设备”；
+- Search 只按正式 `display_name` 本地匹配，并与同一个 `DeviceQuickFilter` 组合；不发送 `search`、`keyword`、`q` 或 `name`；
 - 服务端 Search、聚合统计、批量 Active Task 与 Device Kind 均记录为 Contract Gap，本轮不改 Backend。
 
 ## Theme、Settings 与 Navigation
@@ -201,11 +205,11 @@ Bottom Navigation 固定顺序：设备、任务、计划、店铺、我的，Ac
 
 ## 验收
 
-- Visual Mock：20 台设备，覆盖 Online + Enabled、Online + Disabled、Running + Enabled、Offline + Disabled、
-  不同 Heartbeat 与长名称；公开状态只有三种；
+- Real Page Fixture：超过一页设备，覆盖 Online Idle、Online Running、正式 Offline、Runtime Unreported、
+  不同 Heartbeat、长名称与 0 条筛选结果；
 - 交互：Theme Sheet、Theme Quick Toggle、四项 Metric、再次点击恢复全部、完整数据 Search、Card → Detail、
   五入口 Router Navigation；
-- 数据：部分分页禁用伪全量 Search / Filter，全部事实完成后才启用；
+- 数据：部分分页点击后可控补齐、准备/失败反馈、全量后过滤、搜索组合、下拉刷新与 Active Task 后台更新；
 - 视口：360 / 375 / 390 / 430px，Light / Dark；高度 640 / 740 / 844 / 932px；
 - 滚动：20 Card 只滚动 List；Header、Search、Summary、Bottom Navigation 不位移；
 - 质量：Console Error = 0、Horizontal Overflow = 0、四向 Safe Area 有效、Production 无 Prototype 内容。

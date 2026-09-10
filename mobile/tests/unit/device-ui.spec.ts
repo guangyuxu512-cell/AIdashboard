@@ -190,7 +190,7 @@ describe('device center UI', () => {
     expect(disabled.text()).toBe('已停用')
     expect(online.text()).toBe('在线')
     expect(offline.text()).toBe('离线')
-    expect(missingConnection.text()).toBe('离线')
+    expect(missingConnection.text()).toBe('未连接')
   })
 
   it.each([
@@ -280,12 +280,12 @@ describe('device center UI', () => {
     },
   )
 
-  it('uses the safe offline visual fallback when Runtime is missing', async () => {
+  it('shows an explicit unreported state when Runtime is missing', async () => {
     const wrapper = mountDeviceCard({ ...baseDevice, workerRuntime: null })
     await flushPromises()
 
     expect(wrapper.get('[data-testid="device-card-runtime"]').text()).toBe(
-      '离线',
+      '未连接',
     )
     expect(wrapper.get('[data-testid="device-card-meta"]').text()).toContain(
       '心跳未上报·已启用',
@@ -332,7 +332,12 @@ describe('device center UI', () => {
   })
 
   it('renders every formal artwork kind and state without inferring kind from names', () => {
-    expect(DEVICE_ARTWORK_STATES).toEqual(['online', 'running', 'offline'])
+    expect(DEVICE_ARTWORK_STATES).toEqual([
+      'online',
+      'running',
+      'offline',
+      'unreported',
+    ])
     for (const kind of ['desktop', 'laptop', 'server'] as const) {
       for (const state of DEVICE_ARTWORK_STATES) {
         const wrapper = track(
@@ -453,7 +458,7 @@ describe('device center UI', () => {
         { ...baseDevice, workerRuntime: null },
         idleActiveTaskState,
       ),
-    ).toBe('offline')
+    ).toBe('unreported')
   })
 
   it('keeps heartbeat and enabled facts independent from the three-state visual model', async () => {
@@ -517,6 +522,16 @@ describe('device center UI', () => {
         props: { ...listProps, initialError: true },
       }),
     )
+    const filterPreparing = track(
+      mount(DeviceInfiniteList, {
+        props: { ...listProps, filterPreparing: true },
+      }),
+    )
+    const filterError = track(
+      mount(DeviceInfiniteList, {
+        props: { ...listProps, filterError: true },
+      }),
+    )
     const background = track(
       mount(DeviceInfiniteList, {
         props: {
@@ -542,10 +557,16 @@ describe('device center UI', () => {
     )
     expect(initialError.text()).toContain('加载失败')
     expect(initialError.text()).not.toContain('技术错误')
+    expect(filterPreparing.text()).toContain('正在筛选')
+    expect(filterError.text()).toContain('筛选失败')
     await initialError
       .get('[data-testid="device-error"] button')
       .trigger('click')
     expect(initialError.emitted('retry')).toHaveLength(1)
+    await filterError
+      .get('[data-testid="device-filter-error"] button')
+      .trigger('click')
+    expect(filterError.emitted('retryFilter')).toHaveLength(1)
     expect(
       background.find('[data-testid="device-background-error"]').exists(),
     ).toBe(false)

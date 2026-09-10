@@ -13,7 +13,7 @@ export interface DeviceActiveTaskState {
   initialLoading: boolean
   initialError: boolean
   backgroundError: boolean
-  retry: () => void
+  retry: () => Promise<unknown> | void
 }
 
 export function useDeviceActiveTask(
@@ -71,9 +71,7 @@ export function useDeviceActiveTasks(
           initialLoading: query.isLoading && !hasSuccessfulData,
           initialError: query.isError && !hasSuccessfulData,
           backgroundError: query.isError && hasSuccessfulData,
-          retry: () => {
-            void query.refetch()
-          },
+          retry: () => query.refetch(),
         } satisfies DeviceActiveTaskState,
       ] as const
     })
