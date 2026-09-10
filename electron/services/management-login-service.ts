@@ -76,10 +76,23 @@ interface PddIdentityApiResponse {
 
 export class ManagementLoginService {
   private readonly attempts = new Map<string, LoginAttempt>()
+  private readonly backendBaseUrl: string
+  private readonly allowDevTools: boolean
   private readonly adapters = new Map<ManagementLoginPlatform, PlatformAuthAdapter>([
     ['douyin', new DouyinPlatformAuthAdapter()],
     ['pdd', new PddPlatformAuthAdapter()],
   ])
+
+  constructor(options?: {
+    backendBaseUrl?: string
+    allowDevTools?: boolean
+  }) {
+    this.backendBaseUrl =
+      options?.backendBaseUrl ??
+      process.env.CONTROL_CENTER_BACKEND_URL ??
+      'http://127.0.0.1:8000/'
+    this.allowDevTools = options?.allowDevTools ?? true
+  }
 
   async open(
     parent: BrowserWindow,
@@ -142,6 +155,10 @@ export class ManagementLoginService {
     const loginSession = session.fromPartition(attempt.partition, {
       cache: true,
     })
+    loginSession.setPermissionCheckHandler(() => false)
+    loginSession.setPermissionRequestHandler(
+      (_webContents, _permission, callback) => callback(false),
+    )
     const loginWindow = new BrowserWindow({
       title: adapter.loginWindowTitle,
       width: 1180,
@@ -154,6 +171,11 @@ export class ManagementLoginService {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        devTools: this.allowDevTools,
+        navigateOnDragDrop: false,
+        webviewTag: false,
         session: loginSession,
       },
     })
@@ -468,9 +490,7 @@ export class ManagementLoginService {
   }
 
   private backendUrl(pathname: string): string {
-    const configured =
-      process.env.CONTROL_CENTER_BACKEND_URL || 'http://127.0.0.1:8000'
-    const url = new URL(pathname, configured)
+    const url = new URL(pathname, this.backendBaseUrl)
     const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost'
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
       throw new Error('管理端登录只允许连接 HTTPS Backend 或本机 Backend')
