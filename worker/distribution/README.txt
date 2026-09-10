@@ -1,4 +1,4 @@
-Ecommerce AI Worker 0.4.8 for Windows
+Ecommerce AI Worker 0.4.9 for Windows
 ======================================
 
 普通首次接入
@@ -22,7 +22,7 @@ Ecommerce AI Worker 0.4.8 for Windows
 - 高级运维 CMD 入口继续保留，但普通首次配置不依赖 PowerShell。
 
 ShadowBot 策略
-- Worker 0.4.8 固定支持 ShadowBot 6.3.6。
+- Worker 0.4.9 固定支持 ShadowBot 6.3.6。
 - Task 图片会先下载并校验到配置的 images 目录，全部成功后才启动执行器。
 - 当前会话、云端应用与执行均来自 6.3.6 本地会话接口。
 - 若其他版本正在运行，Worker 不结束它，也不启动第二个版本，只报告版本不支持。
@@ -34,7 +34,7 @@ ShadowBot 策略
 - 生产环境必须使用 HTTPS。公网 HTTP 仅允许明确接受风险的临时开发验证。
 - 本包不包含 SSH Key、数据库配置、店铺凭证或 Cookie。
 - account.json 允许作为内部 V1 本地桥接保存明文 Account Payload；请把自定义路径放在受当前 Windows 用户保护的目录，禁止把内容复制到日志或任务结果。
-- 0.4.7 引入、0.4.8 继续兼容的 Task Account Payload 会写入“店铺名称”；该字段仅来自当前 Task 关联店铺，不会授予全量店铺读取权限，也不写入日志。
+- 0.4.7 引入、0.4.9 继续兼容的 Task Account Payload 会写入“店铺名称”；该字段仅来自当前 Task 关联店铺，不会授予全量店铺读取权限，也不写入日志。
 - 使用新 Token 重新接入时，Worker 先停止空闲的旧 Core，才保存 Provisioning 返回的新 Device 身份并启动新 Core；任务运行中或旧 Core 无法停止时不会切换身份。
 
 当前能力

@@ -16,6 +16,10 @@ required_fragments=(
     "cancel-in-progress: false"
     "bash scripts/resolve-production-deploy-target.sh"
     "backend frontend mobile deploy/production"
+    "Verify public Backend health contract"
+    'https://${PRODUCTION_DEPLOY_HOST}/health'
+    '^content-type=application/json'
+    'public /health did not return the Backend contract'
 )
 
 for fragment in "${required_fragments[@]}"; do

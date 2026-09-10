@@ -30,7 +30,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 4. 双击 ZIP 根目录的 `ecommerce-worker.exe`。没有有效配置时程序自动打开“配置”页，不启动无限失败重试。
 5. 输入 Worker Token。普通 GUI 使用发行包内置的生产 HTTPS 地址，不显示或编辑公网地址；GUI 通过 Token 解析只读 Device ID/设备名称，用户不得手填 UUID。已有配置继续复用其原 Server URL；高级运维入口仍可显式配置其他 HTTPS 环境。
 6. GUI 复用正式 `WindowsYingdaoRuntimeLocator` 自动检测 ShadowBot 6.3.6；自动检测失败时才选择 `ShadowBot.exe`，且必须通过精确版本校验。
-7. 点击“测试连接”，确认服务器可达且 Token 有效；点击“保存并启动”后，配置由正式 Config Service 保存并启动长期运行的 Worker Core。
+7. 点击“测试连接”，确认服务器可达且 Token 有效；点击“保存并启动”后，配置由正式 Config Service 保存并启动长期运行的 Worker Core。若显示 `HEALTH_RESPONSE_INVALID`（健康检查格式错误），说明该地址没有返回 Backend 的 JSON 健康契约；若显示 `PROVISIONING_RESPONSE_INVALID`（设备接入信息解析错误），则健康检查已通过但接入响应不是正式 Device Contract。两者都不能靠手填 Device ID 解决。
 8. Worker 上线后自动 Heartbeat、同步 Skill Capability 并刷新 Yingdao Provider。
 
 普通接入不要求 PowerShell、编辑 JSON 或首次配置 CMD。发行包保留 CMD/PowerShell 入口仅供高级运维与兼容，不作为产品主流程。公网 Server URL 应使用 HTTPS；负责人明确批准的可丢弃开发服务器可临时使用 HTTP，但 Token 和任务流量没有传输加密，切换 HTTPS 后必须轮换曾通过 HTTP 使用的 Token。
@@ -53,7 +53,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 影刀本地数据根目录只用于读取实际运行产生的 `task_logs`，不再用于识别账号或云端应用；默认是启动 Worker 的 `%LOCALAPPDATA%\ShadowBot`。
 
-`data` 下三个本地输入落点是 Worker 0.4.8 默认值，可在 GUI“配置 → 本地输入”分别改为其他
+`data` 下三个本地输入落点是 Worker 0.4.9 默认值，可在 GUI“配置 → 本地输入”分别改为其他
 `params.json`、`account.json` 与图片目录。保存时检查 JSON 父目录和图片目录可创建、可写，图片
 目录不能是磁盘根目录。旧 0.4.3 `config.json` 没有这些键时自动使用默认值，不要求重新填写
 Backend、Token、Device ID 或 ShadowBot 路径。Task 正在运行时 GUI 拒绝保存/重启配置，避免
@@ -62,15 +62,15 @@ Provisioning 解析 Token 的 Device ID/设备名称；仅在旧 Core 已确认�
 旧 Core 停止失败时保留旧配置，不会让已运行的旧身份继续 Heartbeat；新 Core 未能以新身份启动时则
 保持 Core 停止并提示查看日志。
 
-Worker 0.4.8 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。Locator 依次复用当前配置、当前运行中的 6.3.6、安装注册信息与系统候选位置；手工选择也必须验证真实文件版本等于 6.3.6。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.4.8 会在启动与断线重连后同步带 `internal | business` 分类的完整 Skill Registry 快照；Business Skill 额外携带由 Pydantic Input Model 生成的有限 Input Schema，并继续兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
+Worker 0.4.9 的正式 Provider 与 Execution 版本固定为影刀 6.3.6，不自动选择或回退 6.2.23、6.3.9 等其他版本。Locator 依次复用当前配置、当前运行中的 6.3.6、安装注册信息与系统候选位置；手工选择也必须验证真实文件版本等于 6.3.6。其他版本目录可以继续存在；若其他版本正在运行，Worker 不结束它，也不启动第二实例，只上报版本不支持。0.4.9 会在启动与断线重连后同步带 `internal | business` 分类的完整 Skill Registry 快照；Business Skill 额外携带由 Pydantic Input Model 生成的有限 Input Schema，并继续兼容当前会话 API 已真实观察到的 `Code/Data` 与 `code/data` Envelope。
 
-0.4.8 延续普通 Executor 前的统一 Task 图片准备：Claim 图片清单只通过现有 Worker Token 下载到
+0.4.9 延续普通 Executor 前的统一 Task 图片准备：Claim 图片清单只通过现有 Worker Token 下载到
 配置的 images 目录，校验大小与 SHA-256 后才允许执行；空图片任务同样清理上一 Task 的受管图片。
 旧 Device ID、Token 与本地输入路径继续复用，升级不要求重新注册设备。
 
-0.4.7 引入、0.4.8 继续兼容的 Task Account Payload 带可选 `shop_name`，并在本地 `account.json` 写为“店铺名称”；
+0.4.7 引入、0.4.9 继续兼容的 Task Account Payload 带可选 `shop_name`，并在本地 `account.json` 写为“店铺名称”；
 原 `店铺列表` 根对象、店铺 ID、账号和验证字段保持不变。Backend 通过已上报的 Worker 版本只向
-0.4.7+ 下发该额外字段，旧版与未知版本继续领取原 Contract；新 0.4.7 包也可领取旧 Backend 的
+0.4.7+ 下发该额外字段，旧版与未知版本继续领取原 Contract；新 0.4.9 包也可领取旧 Backend 的
 不含名称 Claim。因此先发布兼容 Backend、再在空闲时替换 Windows 包即可，不需要中断 Lease 或
 重新签发 Device Token。本 Feature 不涉及数据库 Schema 或 Migration。
 

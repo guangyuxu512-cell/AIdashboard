@@ -16,6 +16,7 @@ Pydantic Schema / OpenAPI 为权威来源。
 ## 工程健康检查
 
 `GET /health` 是不依赖数据库的工程级健康检查，不属于业务 API。
+生产 Host Nginx 必须将精确 `/health` 转发到 Backend，不能落入 Frontend SPA fallback。
 
 成功响应：
 

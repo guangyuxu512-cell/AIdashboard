@@ -3,9 +3,15 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 deployment_script="$repository_root/scripts/remote-deploy-production.sh"
+host_nginx_template="$repository_root/deploy/production/host-nginx.conf.template"
 remote_root="/opt/ecommerce-control-center/production"
 test_root="$(mktemp -d)"
 test_root_created=false
+
+# Worker provisioning needs the Backend health JSON, never the Frontend SPA fallback.
+grep -Fqx '    location = /health {' "$host_nginx_template"
+grep -Fqx '        proxy_pass http://127.0.0.1:${BACKEND_BIND_PORT};' "$host_nginx_template"
+grep -Fq '$BACKEND_BIND_PORT $FRONTEND_BIND_PORT' "$deployment_script"
 
 cleanup_test_root() {
     rm -rf -- "$test_root"
