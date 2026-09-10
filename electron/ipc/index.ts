@@ -1,5 +1,11 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import {
+  BrowserWindow,
+  ipcMain,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron'
 
+import { isTrustedRendererUrl } from '../config/runtime'
 import { setTitleBarTheme } from '../main/window'
 import { ManagementLoginService } from '../services'
 import {
@@ -12,8 +18,10 @@ import {
 
 export function registerIpcHandlers(
   managementLoginService: ManagementLoginService,
+  trustedRendererOrigin: string,
 ): void {
   ipcMain.on(desktopIpcChannels.setTitleBarTheme, (event, theme: unknown) => {
+    if (!isTrustedIpcSender(event, trustedRendererOrigin)) return
     if (!isDesktopResolvedTheme(theme)) return
 
     const window = BrowserWindow.fromWebContents(event.sender)
@@ -25,6 +33,7 @@ export function registerIpcHandlers(
   ipcMain.handle(
     desktopIpcChannels.openManagementLogin,
     async (event, input: unknown) => {
+      assertTrustedIpcSender(event, trustedRendererOrigin)
       if (!isManagementLoginOpenInput(input)) throw new Error('登录参数无效')
       const parent = BrowserWindow.fromWebContents(event.sender)
       if (!parent) throw new Error('主窗口不存在')
@@ -34,30 +43,53 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     desktopIpcChannels.refreshManagementLogin,
-    (_event, attemptId: unknown) => {
+    (event, attemptId: unknown) => {
+      assertTrustedIpcSender(event, trustedRendererOrigin)
       if (!isUuid(attemptId)) throw new Error('登录尝试参数无效')
       return managementLoginService.refresh(attemptId)
     },
   )
   ipcMain.handle(
     desktopIpcChannels.getManagementLoginStatus,
-    (_event, attemptId: unknown) => {
+    (event, attemptId: unknown) => {
+      assertTrustedIpcSender(event, trustedRendererOrigin)
       if (!isUuid(attemptId)) throw new Error('登录尝试标识无效')
       return managementLoginService.getStatus(attemptId)
     },
   )
   ipcMain.handle(
     desktopIpcChannels.completeManagementLogin,
-    (_event, input: unknown) => {
+    (event, input: unknown) => {
+      assertTrustedIpcSender(event, trustedRendererOrigin)
       if (!isManagementLoginCompleteInput(input)) throw new Error('接入参数无效')
       return managementLoginService.complete(input)
     },
   )
   ipcMain.handle(
     desktopIpcChannels.closeManagementLogin,
-    async (_event, attemptId: unknown) => {
+    async (event, attemptId: unknown) => {
+      assertTrustedIpcSender(event, trustedRendererOrigin)
       if (!isUuid(attemptId)) return
       await managementLoginService.close(attemptId)
     },
   )
+}
+
+function isTrustedIpcSender(
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  trustedRendererOrigin: string,
+): boolean {
+  return (
+    event.senderFrame === event.sender.mainFrame &&
+    isTrustedRendererUrl(event.senderFrame.url, trustedRendererOrigin)
+  )
+}
+
+function assertTrustedIpcSender(
+  event: IpcMainInvokeEvent,
+  trustedRendererOrigin: string,
+): void {
+  if (!isTrustedIpcSender(event, trustedRendererOrigin)) {
+    throw new Error('IPC 来源页面不受信任')
+  }
 }

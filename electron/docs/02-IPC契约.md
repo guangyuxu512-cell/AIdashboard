@@ -28,6 +28,10 @@ window.desktop.worker.getStatus()
 
 禁止向 Renderer 暴露通用 `ipcRenderer.send`。
 
+所有 Desktop IPC 仅接受主窗口主 Frame 且 URL Origin 与该窗口启动时固定的受信任 Renderer Origin
+一致的 sender。Preload 的 Origin 白名单只是第一层；Main sender 校验不得省略。跨 Origin 页面、
+子 Frame 和平台登录 BrowserWindow 均不能调用 Desktop IPC。
+
 ## Appearance
 
 ```text
