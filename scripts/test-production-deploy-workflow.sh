@@ -16,6 +16,10 @@ required_fragments=(
     "cancel-in-progress: false"
     "bash scripts/resolve-production-deploy-target.sh"
     "backend frontend mobile deploy/production"
+    "Verify public Backend health contract"
+    'https://${PRODUCTION_DEPLOY_HOST}/health'
+    '^content-type=application/json'
+    'public /health did not return the Backend contract'
 )
 
 for fragment in "${required_fragments[@]}"; do
@@ -43,7 +47,7 @@ assert_keepalive_transport_contract() {
     test "$fail_fast_blocks" = "$expected_fail_fast_blocks"
 }
 
-assert_keepalive_transport_contract "$workflow_path" 2 5 2
+assert_keepalive_transport_contract "$workflow_path" 2 5 3
 assert_keepalive_transport_contract "$tls_workflow_path" 1 3 1
 
 grep -Fq 'status=\$?; rm -f --' "$workflow_path"

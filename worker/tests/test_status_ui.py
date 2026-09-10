@@ -1,17 +1,108 @@
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import SecretStr
 
-from app.local_config import LocalWorkerConfig
+from app.local_config import (
+    DEFAULT_PRODUCTION_SERVER_URL,
+    LocalWorkerConfig,
+    WorkerConfigurationError,
+)
+from app.process_control import WorkerProcessInfo
 from app.status_ui import (
     _render_diagnostics,
     _render_status,
+    apply_provisioned_worker_configuration,
     read_runtime_status,
     should_open_configuration,
 )
+
+
+class _ConfigServiceStub:
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.saved: dict[str, object] | None = None
+
+    def save(self, **kwargs: object) -> LocalWorkerConfig:
+        self.calls.append("save")
+        self.saved = kwargs
+        return LocalWorkerConfig(
+            server_url=str(kwargs["server_url"]),
+            device_id=kwargs["device_id"],  # type: ignore[arg-type]
+            device_token=SecretStr(str(kwargs["device_token"])),
+            device_display_name=kwargs["device_display_name"],  # type: ignore[arg-type]
+            yingdao_install_root=kwargs["yingdao_install_root"],  # type: ignore[arg-type]
+            yingdao_data_root=kwargs["yingdao_data_root"],  # type: ignore[arg-type]
+            yingdao_test_app_id=kwargs["yingdao_test_app_id"],  # type: ignore[arg-type]
+            params_json_path=kwargs["params_json_path"],  # type: ignore[arg-type]
+            account_json_path=kwargs["account_json_path"],  # type: ignore[arg-type]
+            images_dir=kwargs["images_dir"],  # type: ignore[arg-type]
+            configured_at_utc=None,
+        )
+
+
+class _ProcessControllerStub:
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        running: WorkerProcessInfo | None,
+        stop_result: bool = True,
+        start_result: WorkerProcessInfo | None = None,
+    ) -> None:
+        self.calls = calls
+        self._running = running
+        self.stop_result = stop_result
+        self.start_result = start_result
+
+    def running(self) -> WorkerProcessInfo | None:
+        self.calls.append("running")
+        return self._running
+
+    def stop(self) -> bool:
+        self.calls.append("stop")
+        if self.stop_result:
+            self._running = None
+        return self.stop_result
+
+    def start(self) -> WorkerProcessInfo | None:
+        self.calls.append("start")
+        self._running = self.start_result
+        return self.start_result
+
+
+def _process_info(device_id: UUID) -> WorkerProcessInfo:
+    return WorkerProcessInfo(
+        pid=1234,
+        started_at_utc=datetime(2026, 9, 10, tzinfo=UTC),
+        executable_path=Path("C:/worker/ecommerce-worker.exe"),
+        device_id=device_id,
+    )
+
+
+def _apply_provisioned_identity(
+    *,
+    config_service: _ConfigServiceStub,
+    process_controller: _ProcessControllerStub,
+    current_task_id: object | None = None,
+):
+    return apply_provisioned_worker_configuration(
+        config_service=config_service,  # type: ignore[arg-type]
+        process_controller=process_controller,  # type: ignore[arg-type]
+        current_task_id=current_task_id,
+        server_url="https://119.29.188.118",
+        device_id=UUID("0a4f2291-0000-4000-8000-000000000001"),
+        device_token="test-worker-token",
+        device_display_name="中控台设备",
+        yingdao_install_root=Path("C:/ShadowBot"),
+        yingdao_data_root=Path("C:/ShadowBot/data"),
+        yingdao_test_app_id="app-1",
+        params_json_path=Path("C:/worker/data/params.json"),
+        account_json_path=Path("C:/worker/data/account.json"),
+        images_dir=Path("C:/worker/data/images"),
+    )
 
 
 def test_tkinter_is_available_and_status_ui_reads_snapshot_only(
@@ -29,6 +120,7 @@ def test_tkinter_is_available_and_status_ui_reads_snapshot_only(
     assert read_runtime_status(path)["device_id"] == "device-a"
     assert read_runtime_status(tmp_path / "missing.json") == {}
     assert should_open_configuration(None) is True
+    assert DEFAULT_PRODUCTION_SERVER_URL == "https://119.29.188.118"
 
 
 def test_existing_032_configuration_skips_first_setup() -> None:
@@ -47,6 +139,96 @@ def test_existing_032_configuration_skips_first_setup() -> None:
     )
 
     assert should_open_configuration(legacy) is False
+
+
+def test_reenrollment_stops_old_core_before_saving_new_provisioned_identity() -> None:
+    calls: list[str] = []
+    config_service = _ConfigServiceStub(calls)
+    old_device_id = UUID("9b7644ca-0000-4000-8000-000000000001")
+    new_device_id = UUID("0a4f2291-0000-4000-8000-000000000001")
+    process_controller = _ProcessControllerStub(
+        calls,
+        running=_process_info(old_device_id),
+        start_result=_process_info(new_device_id),
+    )
+
+    applied = _apply_provisioned_identity(
+        config_service=config_service,
+        process_controller=process_controller,
+    )
+
+    assert calls == ["running", "stop", "save", "start"]
+    assert applied.core_running is True
+    assert applied.config.device_id == new_device_id
+    assert config_service.saved is not None
+    assert config_service.saved["yingdao_data_root"] == Path("C:/ShadowBot/data")
+    assert config_service.saved["params_json_path"] == Path("C:/worker/data/params.json")
+    assert config_service.saved["account_json_path"] == Path("C:/worker/data/account.json")
+    assert config_service.saved["images_dir"] == Path("C:/worker/data/images")
+
+
+def test_reenrollment_preserves_old_identity_when_a_task_is_running() -> None:
+    calls: list[str] = []
+    config_service = _ConfigServiceStub(calls)
+    process_controller = _ProcessControllerStub(
+        calls,
+        running=_process_info(UUID("9b7644ca-0000-4000-8000-000000000001")),
+    )
+
+    try:
+        _apply_provisioned_identity(
+            config_service=config_service,
+            process_controller=process_controller,
+            current_task_id="task-1",
+        )
+    except WorkerConfigurationError as error:
+        assert "当前任务正在运行" in str(error)
+    else:
+        raise AssertionError("Expected active task to block identity switching")
+
+    assert calls == []
+    assert config_service.saved is None
+
+
+def test_reenrollment_does_not_save_new_identity_when_old_core_wont_stop() -> None:
+    calls: list[str] = []
+    config_service = _ConfigServiceStub(calls)
+    process_controller = _ProcessControllerStub(
+        calls,
+        running=_process_info(UUID("9b7644ca-0000-4000-8000-000000000001")),
+        stop_result=False,
+    )
+
+    try:
+        _apply_provisioned_identity(
+            config_service=config_service,
+            process_controller=process_controller,
+        )
+    except WorkerConfigurationError as error:
+        assert "未能停止" in str(error)
+    else:
+        raise AssertionError("Expected failed old-Core stop to preserve configuration")
+
+    assert calls == ["running", "stop"]
+    assert config_service.saved is None
+
+
+def test_reenrollment_stops_a_core_that_starts_with_the_wrong_identity() -> None:
+    calls: list[str] = []
+    config_service = _ConfigServiceStub(calls)
+    process_controller = _ProcessControllerStub(
+        calls,
+        running=None,
+        start_result=_process_info(UUID("9b7644ca-0000-4000-8000-000000000001")),
+    )
+
+    applied = _apply_provisioned_identity(
+        config_service=config_service,
+        process_controller=process_controller,
+    )
+
+    assert applied.core_running is False
+    assert calls == ["running", "save", "start", "stop"]
 
 
 def test_status_and_diagnostics_render_the_runtime_snapshot_without_token() -> None:

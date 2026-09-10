@@ -51,3 +51,40 @@ def test_provisioning_distinguishes_invalid_token_and_server_errors() -> None:
         transport=httpx.MockTransport(unavailable),
     ).test("https://control.example.test", "ccw_token")
     assert unreachable.code == "BACKEND_UNREACHABLE"
+
+
+def test_provisioning_reports_html_health_as_a_health_format_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/health"
+        return httpx.Response(
+            200,
+            text="<!doctype html><html><body>Frontend</body></html>",
+            headers={"content-type": "text/html"},
+        )
+
+    result = WorkerProvisioningClient(
+        transport=httpx.MockTransport(handler),
+    ).test("https://control.example.test", "ccw_token")
+
+    assert result.ok is False
+    assert result.code == "HEALTH_RESPONSE_INVALID"
+    assert result.message == "健康检查格式错误"
+
+
+def test_provisioning_reports_malformed_device_payload_separately() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(
+            200,
+            text="<!doctype html><html><body>Frontend</body></html>",
+            headers={"content-type": "text/html"},
+        )
+
+    result = WorkerProvisioningClient(
+        transport=httpx.MockTransport(handler),
+    ).test("https://control.example.test", "ccw_token")
+
+    assert result.ok is False
+    assert result.code == "PROVISIONING_RESPONSE_INVALID"
+    assert result.message == "设备接入信息解析错误"

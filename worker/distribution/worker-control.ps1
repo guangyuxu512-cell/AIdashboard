@@ -246,7 +246,7 @@ function Configure-Worker {
         }
     }
     else {
-        $serverUrl = Read-Host 'Backend HTTPS URL'
+        $serverUrl = Read-WithDefault 'Backend HTTPS URL' 'https://119.29.188.118'
         $deviceIdValue = Read-Host 'Device ID'
         $secureToken = Read-Host 'Device Token (input is hidden)' -AsSecureString
         $token = Convert-SecureStringToPlainText $secureToken

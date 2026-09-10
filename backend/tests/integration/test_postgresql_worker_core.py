@@ -5,6 +5,9 @@ import pytest
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team
 from app.core.config import Settings
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.automation_apps.schemas import AutomationApplicationConfigUpsert
@@ -25,6 +28,7 @@ from app.modules.tasks.schemas import (
     TaskFail,
 )
 from app.modules.tasks.service import TaskService
+from app.modules.users.models import User
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
@@ -43,7 +47,13 @@ from app.modules.workers.service import WorkerPrincipal, WorkerService
 pytestmark = pytest.mark.integration
 
 
-def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
+def _cleanup(
+    engine: Engine,
+    device_ids: set[UUID],
+    *,
+    team_id: UUID,
+    user_id: UUID,
+) -> None:
     with Session(engine) as session:
         session.execute(
             delete(TaskEvent).where(
@@ -74,7 +84,22 @@ def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
             ),
         )
         session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
+        session.execute(delete(User).where(User.user_id == user_id))
+        session.execute(delete(Team).where(Team.team_id == team_id))
         session.commit()
+
+
+def _fixture_actor() -> tuple[UUID, UUID, ActorContext]:
+    team_id = uuid4()
+    user_id = uuid4()
+    return team_id, user_id, ActorContext(
+        user_id=user_id,
+        user_display_name="Worker Integration User",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
 
 
 def test_worker_credential_lifecycle_uses_hash_and_isolates_devices(
@@ -83,12 +108,26 @@ def test_worker_credential_lifecycle_uses_hash_and_isolates_devices(
     device_a = uuid4()
     device_b = uuid4()
     device_ids = {device_a, device_b}
+    team_id, user_id, _ = _fixture_actor()
     try:
         with Session(postgresql_engine) as session:
             session.add_all(
                 [
-                    Device(device_id=device_a, display_name="credential-a"),
-                    Device(device_id=device_b, display_name="credential-b"),
+                    Team(team_id=team_id, name="Worker Credential Integration Team"),
+                    User(
+                        user_id=user_id,
+                        display_name="Worker Credential Integration User",
+                    ),
+                    Device(
+                        device_id=device_a,
+                        team_id=team_id,
+                        display_name="credential-a",
+                    ),
+                    Device(
+                        device_id=device_b,
+                        team_id=team_id,
+                        display_name="credential-b",
+                    ),
                 ],
             )
             session.commit()
@@ -123,7 +162,12 @@ def test_worker_credential_lifecycle_uses_hash_and_isolates_devices(
             replacement_token = service.issue_token(device_a)
             assert service.authenticate_token(replacement_token).device_id == device_a
     finally:
-        _cleanup(postgresql_engine, device_ids)
+        _cleanup(
+            postgresql_engine,
+            device_ids,
+            team_id=team_id,
+            user_id=user_id,
+        )
 
 
 def test_worker_identity_runtime_claim_result_and_lost(
@@ -131,6 +175,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
 ) -> None:
     device_ids = {uuid4(), uuid4()}
     device_a, device_b = tuple(device_ids)
+    team_id, user_id, actor = _fixture_actor()
     base_time = datetime.now(UTC)
     settings = Settings(
         worker_online_timeout_seconds=45,
@@ -141,8 +186,21 @@ def test_worker_identity_runtime_claim_result_and_lost(
         with Session(postgresql_engine) as session:
             session.add_all(
                 [
-                    Device(device_id=device_a, display_name="worker-lite-a"),
-                    Device(device_id=device_b, display_name="worker-lite-b"),
+                    Team(team_id=team_id, name="Worker Core Integration Team"),
+                    User(
+                        user_id=user_id,
+                        display_name="Worker Core Integration User",
+                    ),
+                    Device(
+                        device_id=device_a,
+                        team_id=team_id,
+                        display_name="worker-lite-a",
+                    ),
+                    Device(
+                        device_id=device_b,
+                        team_id=team_id,
+                        display_name="worker-lite-b",
+                    ),
                 ],
             )
             session.commit()
@@ -291,6 +349,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                         skill_id=TaskSkillId.SYSTEM_ECHO,
                         input={"message": "offline"},
                     ),
+                    actor,
                 )
             restarted = worker_service.heartbeat(
                 principal_a,
@@ -309,6 +368,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                     skill_id=TaskSkillId.SYSTEM_ECHO,
                     input={"message": "hello"},
                 ),
+                actor,
             )
             assert echo.status == TaskStatus.PENDING.value
             assert task_service.claim(principal_b, now=base_time) is None
@@ -350,6 +410,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                 now=base_time + timedelta(seconds=20),
             ).accepted_count == 0
             assert task_service.list_events(
+                actor,
                 echo.task_id,
                 after_seq=0,
                 limit=10,
@@ -369,6 +430,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                     skill_id=TaskSkillId.SYSTEM_SLEEP,
                     input={"seconds": 45},
                 ),
+                actor,
             )
             assert task_service.claim(principal_a, now=base_time) is not None
             assert task_service.reconcile_expired(
@@ -384,6 +446,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
                     skill_id=TaskSkillId.YINGDAO_TEST,
                     input={},
                 ),
+                actor,
             )
             assert task_service.claim(principal_a) is not None
             failed_rpa = task_service.fail(
@@ -396,7 +459,12 @@ def test_worker_identity_runtime_claim_result_and_lost(
             )
             assert failed_rpa.status == TaskStatus.FAILED.value
     finally:
-        _cleanup(postgresql_engine, device_ids)
+        _cleanup(
+            postgresql_engine,
+            device_ids,
+            team_id=team_id,
+            user_id=user_id,
+        )
 
 
 def test_yingdao_app_config_and_device_isolated_task_creation(
@@ -405,14 +473,28 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
     device_a = uuid4()
     device_b = uuid4()
     device_ids = {device_a, device_b}
+    team_id, user_id, actor = _fixture_actor()
     app_id = f"worker-config-{uuid4()}"
     now = datetime.now(UTC)
     try:
         with Session(postgresql_engine) as session:
             session.add_all(
                 [
-                    Device(device_id=device_a, display_name="yingdao-ready"),
-                    Device(device_id=device_b, display_name="yingdao-not-ready"),
+                    Team(team_id=team_id, name="Worker App Integration Team"),
+                    User(
+                        user_id=user_id,
+                        display_name="Worker App Integration User",
+                    ),
+                    Device(
+                        device_id=device_a,
+                        team_id=team_id,
+                        display_name="yingdao-ready",
+                    ),
+                    Device(
+                        device_id=device_b,
+                        team_id=team_id,
+                        display_name="yingdao-not-ready",
+                    ),
                 ],
             )
             session.commit()
@@ -522,6 +604,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                     skill_id=TaskSkillId.YINGDAO_APP_RUN,
                     input={"app_id": app_id, "params": {}},
                 ),
+                actor,
             )
             assert task.input_json == {"app_id": app_id, "params": {"message": "hello"}}
             assert task.execution_display_name == "Worker闭环测试"
@@ -553,6 +636,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                         skill_id=TaskSkillId.YINGDAO_APP_RUN,
                         input={"app_id": app_id, "params": {}},
                     ),
+                    actor,
                 )
             with pytest.raises(TaskApplicationNotAvailableError):
                 task_service.create(
@@ -561,6 +645,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                         skill_id=TaskSkillId.YINGDAO_APP_RUN,
                         input={"app_id": "not-visible", "params": {}},
                     ),
+                    actor,
                 )
             with pytest.raises(TaskInputInvalidError):
                 task_service.create(
@@ -569,9 +654,15 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                         skill_id=TaskSkillId.YINGDAO_APP_RUN,
                         input={"app_id": app_id, "params": {"message": 1}},
                     ),
+                    actor,
                 )
     finally:
-        _cleanup(postgresql_engine, device_ids)
+        _cleanup(
+            postgresql_engine,
+            device_ids,
+            team_id=team_id,
+            user_id=user_id,
+        )
         with Session(postgresql_engine) as session:
             session.execute(
                 delete(AutomationApplicationConfig).where(

@@ -84,6 +84,19 @@ class ClaimedWorkerTask:
     assets: list[Asset]
 
 
+_SHOP_NAME_MINIMUM_WORKER_VERSION = (0, 4, 7)
+
+
+def _supports_task_account_shop_name(worker_version: str | None) -> bool:
+    """Only send the additive account field to Workers that can parse it."""
+    if not worker_version:
+        return False
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", worker_version)
+    if match is None:
+        return False
+    return tuple(int(part) for part in match.groups()) >= _SHOP_NAME_MINIMUM_WORKER_VERSION
+
+
 class TaskService:
     def __init__(
         self,
@@ -634,9 +647,13 @@ class TaskService:
             self.session.commit()
             return None
         try:
+            runtime = self.repository.get_device_runtime(principal.device_id)
             accounts = (
                 self._require_credential_service().build_task_account_payloads(
                     task.shop_ids,
+                    include_shop_name=_supports_task_account_shop_name(
+                        getattr(runtime, "worker_version", None),
+                    ),
                 )
                 if task.shop_ids
                 else []
