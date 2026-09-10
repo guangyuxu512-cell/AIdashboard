@@ -1,4 +1,5 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
+import { NCheckboxGroup } from 'naive-ui'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -8,6 +9,7 @@ import { ShopMultiSelector } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import SchemaParameterFields from '@/shared/components/SchemaParameterFields.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import AppRadio from '@/shared/ui/AppRadio.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 
 import ScheduleFormDialog from './ScheduleFormDialog.vue'
@@ -118,6 +120,8 @@ const savedSchedule: ScheduleDetailViewModel = {
   scheduleType: 'daily',
   localTime: '09:00',
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  localDate: null,
+  weekdays: [],
   triggerRuleDisplay: '每日 09:00',
   nextRunAt: null,
   nextRunAtDisplay: '—',
@@ -248,6 +252,33 @@ describe('ScheduleFormDialog Business Skill target', () => {
       shopIds: [],
       executionType: 'business_skill',
       skillId: 'catalog.fixture.run',
+    })
+  })
+
+  it('requires and emits the selected ISO weekdays for a weekly plan', async () => {
+    const wrapper = mountDialog()
+    await chooseBusinessSkill(wrapper)
+    wrapper
+      .findComponent(AppInput)
+      .vm.$emit('update:modelValue', '每周目录测试')
+    wrapper
+      .findComponent(SchemaParameterFields)
+      .vm.$emit('update:modelValue', { keyword: 'safe' })
+    wrapper.findComponent(AppRadio).vm.$emit('update:modelValue', 'weekly')
+    await flushPromises()
+
+    const weekdays = wrapper.findComponent(NCheckboxGroup)
+    expect(weekdays.exists()).toBe(true)
+    expect(wrapper.findComponent(FormDialog).props('submitDisabled')).toBe(true)
+    weekdays.vm.$emit('update:value', [1, 3, 5])
+    await flushPromises()
+    expect(wrapper.findComponent(FormDialog).props('submitDisabled')).toBe(false)
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      scheduleType: 'weekly',
+      localDate: null,
+      weekdays: [1, 3, 5],
     })
   })
 })

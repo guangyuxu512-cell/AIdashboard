@@ -65,6 +65,8 @@ function toCreateDto(input: ScheduleSaveInput): ScheduleCreateDto {
     schedule_type: input.scheduleType,
     local_time: input.localTime,
     timezone: input.timezone,
+    local_date: input.localDate,
+    weekdays: [...input.weekdays],
     enabled: input.enabled,
   }
 }
@@ -91,8 +93,36 @@ function toUpdateDto(input: Partial<ScheduleSaveInput>): ScheduleUpdateDto {
       : {}),
     ...(input.localTime !== undefined ? { local_time: input.localTime } : {}),
     ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+    ...(input.localDate !== undefined ? { local_date: input.localDate } : {}),
+    ...(input.weekdays !== undefined ? { weekdays: [...input.weekdays] } : {}),
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
   }
+}
+
+function formatOccurrenceDate(value: string, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value))
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+function matchesOccurrenceDate(
+  item: ScheduleReadDto,
+  filters: ScheduleListFilters,
+): boolean {
+  const { occurrenceDate, viewTimezone } = filters
+  if (!occurrenceDate || !viewTimezone) return true
+  return [item.latest_run?.scheduled_for, item.next_run_at].some(
+    (value) =>
+      value !== null &&
+      value !== undefined &&
+      formatOccurrenceDate(value, viewTimezone) === occurrenceDate,
+  )
 }
 
 function createMockScheduleDataSource(): ScheduleDataSource {
@@ -119,7 +149,8 @@ function createMockScheduleDataSource(): ScheduleDataSource {
           (!search ||
             [item.name, item.execution_display_name, item.schedule_id].some(
               (value) => value.toLocaleLowerCase().includes(search),
-            )),
+            )) &&
+          matchesOccurrenceDate(item, params.filters),
       )
       const start = (params.page - 1) * params.pageSize
       return {
@@ -181,6 +212,8 @@ function createMockScheduleDataSource(): ScheduleDataSource {
       if (dto.schedule_type !== undefined) row.schedule_type = dto.schedule_type
       if (dto.local_time !== undefined) row.local_time = dto.local_time
       if (dto.timezone !== undefined) row.timezone = dto.timezone
+      if (dto.local_date !== undefined) row.local_date = dto.local_date
+      if (dto.weekdays !== undefined) row.weekdays = [...dto.weekdays]
       if (dto.enabled !== undefined) {
         row.enabled = dto.enabled
         row.next_run_at = dto.enabled ? new Date().toISOString() : null
@@ -212,6 +245,8 @@ const realScheduleDataSource: ScheduleDataSource = {
       enabled: params.filters.enabled,
       deviceId: params.filters.deviceId,
       search: params.filters.search,
+      occurrenceDate: params.filters.occurrenceDate,
+      viewTimezone: params.filters.viewTimezone,
     })
     return {
       items: page.items.map(mapScheduleListItemDto),

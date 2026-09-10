@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SelectOption } from 'naive-ui'
-import { NForm, NFormItem } from 'naive-ui'
+import { NCheckbox, NCheckboxGroup, NForm, NFormItem } from 'naive-ui'
 import { computed, reactive, ref, watch } from 'vue'
 
 import {
@@ -19,11 +19,19 @@ import type {
   ScheduleDetailViewModel,
   ScheduleExecutionTypeDto,
   ScheduleSaveInput,
+  ScheduleTypeDto,
 } from '@/entities/schedule'
 import { getErrorMessage } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import SchemaParameterFields from '@/shared/components/SchemaParameterFields.vue'
-import { AppInput, AppSelect, AppSwitch, AppTimePicker } from '@/shared/ui'
+import {
+  AppDatePicker,
+  AppInput,
+  AppRadio,
+  AppSelect,
+  AppSwitch,
+  AppTimePicker,
+} from '@/shared/ui'
 import type { AppOptionValue } from '@/shared/ui/types'
 import {
   createDefaultSchemaParameters,
@@ -54,6 +62,20 @@ const executionTypeOptions: SelectOption[] = [
   { label: '影刀应用', value: 'yingdao_application' },
   { label: '业务 Skill', value: 'business_skill' },
 ]
+const scheduleTypeOptions = [
+  { label: '一次', value: 'once' },
+  { label: '每天', value: 'daily' },
+  { label: '每周', value: 'weekly' },
+]
+const weekdayOptions = [
+  { label: '周一', value: 1 },
+  { label: '周二', value: 2 },
+  { label: '周三', value: 3 },
+  { label: '周四', value: 4 },
+  { label: '周五', value: 5 },
+  { label: '周六', value: 6 },
+  { label: '周日', value: 7 },
+]
 const form = reactive({
   name: '',
   deviceId: null as string | null,
@@ -61,6 +83,9 @@ const form = reactive({
   executionType: 'yingdao_application' as ScheduleExecutionTypeDto,
   applicationId: null as string | null,
   skillId: null as string | null,
+  scheduleType: 'daily' as ScheduleTypeDto,
+  localDateValue: null as number | null,
+  weekdays: [] as number[],
   localTimeValue: null as number | null,
   timezone: currentTimezone,
   enabled: true,
@@ -193,7 +218,13 @@ const disabledReason = computed(() => {
     )
     if (error) return error
   }
-  if (form.localTimeValue === null) return '请选择每日执行时间'
+  if (form.scheduleType === 'once' && form.localDateValue === null) {
+    return '请选择一次执行日期'
+  }
+  if (form.scheduleType === 'weekly' && !form.weekdays.length) {
+    return '请选择每周执行日'
+  }
+  if (form.localTimeValue === null) return '请选择执行时间'
   if (!form.timezone) return '请选择时区'
   return null
 })
@@ -221,6 +252,11 @@ watch(
     form.applicationId = schedule?.applicationId ?? null
     form.skillId =
       schedule?.executionType === 'business_skill' ? schedule.skillId : null
+    form.scheduleType = schedule?.scheduleType ?? 'daily'
+    form.localDateValue = schedule?.localDate
+      ? localDateToValue(schedule.localDate)
+      : null
+    form.weekdays = [...(schedule?.weekdays ?? [])]
     form.localTimeValue = schedule
       ? localTimeToValue(schedule.localTime)
       : localTimeToValue('09:00')
@@ -318,6 +354,13 @@ function changeBusinessSkill(value: AppOptionValue | null): void {
   parameterSourceKey.value = ''
 }
 
+function changeScheduleType(value: AppOptionValue | null): void {
+  if (value !== 'once' && value !== 'daily' && value !== 'weekly') return
+  form.scheduleType = value
+  if (value !== 'once') form.localDateValue = null
+  if (value !== 'weekly') form.weekdays = []
+}
+
 function resetTarget(): void {
   form.applicationId = null
   form.skillId = null
@@ -333,6 +376,16 @@ function localTimeToValue(value: string): number {
 function valueToLocalTime(value: number): string {
   const date = new Date(value)
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function localDateToValue(value: string): number {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1).getTime()
+}
+
+function valueToLocalDate(value: number): string {
+  const date = new Date(value)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 function submit(): void {
@@ -351,9 +404,14 @@ function submit(): void {
     applicationId: isYingdao.value ? form.applicationId : null,
     skillId: isBusinessSkill.value ? form.skillId : null,
     parameters: { ...form.parameters },
-    scheduleType: 'daily',
+    scheduleType: form.scheduleType,
     localTime: valueToLocalTime(form.localTimeValue),
     timezone: form.timezone,
+    localDate:
+      form.scheduleType === 'once' && form.localDateValue !== null
+        ? valueToLocalDate(form.localDateValue)
+        : null,
+    weekdays: form.scheduleType === 'weekly' ? [...form.weekdays] : [],
     enabled: form.enabled,
   })
 }
@@ -426,8 +484,25 @@ function submit(): void {
           @update:model-value="changeBusinessSkill"
         />
       </NFormItem>
-      <NFormItem label="触发规则">
-        <AppInput model-value="每天" disabled />
+      <NFormItem label="触发规则" required>
+        <AppRadio
+          :model-value="form.scheduleType"
+          :options="scheduleTypeOptions"
+          @update:model-value="changeScheduleType"
+        />
+      </NFormItem>
+      <NFormItem v-if="form.scheduleType === 'once'" label="执行日期" required>
+        <AppDatePicker v-model="form.localDateValue" :clearable="false" />
+      </NFormItem>
+      <NFormItem v-if="form.scheduleType === 'weekly'" label="每周执行日" required>
+        <NCheckboxGroup v-model:value="form.weekdays" class="schedule-form__weekdays">
+          <NCheckbox
+            v-for="weekday in weekdayOptions"
+            :key="weekday.value"
+            :value="weekday.value"
+            :label="weekday.label"
+          />
+        </NCheckboxGroup>
       </NFormItem>
       <NFormItem label="执行时间" required>
         <AppTimePicker v-model="form.localTimeValue" :clearable="false" />
@@ -526,6 +601,12 @@ function submit(): void {
 
 .schedule-form__parameters .schedule-form__error {
   color: var(--color-error);
+}
+
+.schedule-form__weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
 }
 
 @media (max-width: 720px) {

@@ -21,6 +21,8 @@ const row: ScheduleListItemViewModel = {
   scheduleType: 'daily',
   localTime: '09:30',
   timezone: 'Asia/Shanghai',
+  localDate: null,
+  weekdays: [],
   triggerRuleDisplay: '每天 09:30',
   nextRunAt: '2026-08-25T01:30:00Z',
   nextRunAtDisplay: '2026-08-25 09:30',

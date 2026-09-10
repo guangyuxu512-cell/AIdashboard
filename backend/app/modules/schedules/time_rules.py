@@ -1,6 +1,8 @@
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.modules.schedules.enums import ScheduleType
+
 
 def get_schedule_timezone(value: str) -> ZoneInfo:
     try:
@@ -73,6 +75,157 @@ def latest_daily_occurrence(
         if occurrence <= boundary:
             return occurrence
     raise ValueError("Unable to determine latest daily occurrence")
+
+
+def normalize_weekdays(value: list[int]) -> list[int]:
+    if any(isinstance(day, bool) or not isinstance(day, int) for day in value):
+        raise ValueError("weekdays must contain integer ISO weekdays")
+    if any(day < 1 or day > 7 for day in value):
+        raise ValueError("weekdays must contain ISO weekdays from 1 through 7")
+    if len(value) != len(set(value)):
+        raise ValueError("weekdays must not contain duplicates")
+    return sorted(value)
+
+
+def validate_schedule_rule(
+    schedule_type: ScheduleType,
+    local_date: date | None,
+    weekdays: list[int],
+) -> tuple[date | None, list[int]]:
+    normalized_weekdays = normalize_weekdays(weekdays)
+    if schedule_type is ScheduleType.ONCE:
+        if local_date is None or normalized_weekdays:
+            raise ValueError("Once schedules require local_date and no weekdays")
+        return local_date, []
+    if schedule_type is ScheduleType.DAILY:
+        if local_date is not None or normalized_weekdays:
+            raise ValueError("Daily schedules cannot include local_date or weekdays")
+        return None, []
+    if schedule_type is ScheduleType.WEEKLY:
+        if local_date is not None or not normalized_weekdays:
+            raise ValueError("Weekly schedules require weekdays and no local_date")
+        return None, normalized_weekdays
+    raise ValueError("Unknown schedule type")
+
+
+def next_weekly_occurrence(
+    local_time: time,
+    weekdays: list[int],
+    timezone_name: str,
+    *,
+    after: datetime,
+) -> datetime:
+    after_utc = _aware_utc(after)
+    timezone = get_schedule_timezone(timezone_name)
+    local_day = after_utc.astimezone(timezone).date()
+    selected_days = set(normalize_weekdays(weekdays))
+    for day_offset in range(8):
+        candidate_day = local_day + timedelta(days=day_offset)
+        if candidate_day.isoweekday() not in selected_days:
+            continue
+        occurrence = resolve_daily_local_time(candidate_day, local_time, timezone)
+        if occurrence > after_utc:
+            return occurrence
+    raise ValueError("Unable to determine next weekly occurrence")
+
+
+def latest_weekly_occurrence(
+    local_time: time,
+    weekdays: list[int],
+    timezone_name: str,
+    *,
+    at_or_before: datetime,
+) -> datetime:
+    boundary = _aware_utc(at_or_before)
+    timezone = get_schedule_timezone(timezone_name)
+    local_day = boundary.astimezone(timezone).date()
+    selected_days = set(normalize_weekdays(weekdays))
+    for day_offset in range(8):
+        candidate_day = local_day - timedelta(days=day_offset)
+        if candidate_day.isoweekday() not in selected_days:
+            continue
+        occurrence = resolve_daily_local_time(candidate_day, local_time, timezone)
+        if occurrence <= boundary:
+            return occurrence
+    raise ValueError("Unable to determine latest weekly occurrence")
+
+
+def next_schedule_occurrence(
+    schedule_type: ScheduleType,
+    *,
+    local_date: date | None,
+    local_time: time,
+    weekdays: list[int],
+    timezone_name: str,
+    after: datetime,
+) -> datetime | None:
+    rule_date, rule_weekdays = validate_schedule_rule(
+        schedule_type,
+        local_date,
+        weekdays,
+    )
+    if schedule_type is ScheduleType.DAILY:
+        return next_daily_occurrence(local_time, timezone_name, after=after)
+    if schedule_type is ScheduleType.WEEKLY:
+        return next_weekly_occurrence(
+            local_time,
+            rule_weekdays,
+            timezone_name,
+            after=after,
+        )
+    assert rule_date is not None
+    occurrence = resolve_daily_local_time(
+        rule_date,
+        local_time,
+        get_schedule_timezone(timezone_name),
+    )
+    return occurrence if occurrence > _aware_utc(after) else None
+
+
+def latest_schedule_occurrence(
+    schedule_type: ScheduleType,
+    *,
+    local_date: date | None,
+    local_time: time,
+    weekdays: list[int],
+    timezone_name: str,
+    at_or_before: datetime,
+) -> datetime:
+    rule_date, rule_weekdays = validate_schedule_rule(
+        schedule_type,
+        local_date,
+        weekdays,
+    )
+    if schedule_type is ScheduleType.DAILY:
+        return latest_daily_occurrence(
+            local_time,
+            timezone_name,
+            at_or_before=at_or_before,
+        )
+    if schedule_type is ScheduleType.WEEKLY:
+        return latest_weekly_occurrence(
+            local_time,
+            rule_weekdays,
+            timezone_name,
+            at_or_before=at_or_before,
+        )
+    assert rule_date is not None
+    occurrence = resolve_daily_local_time(
+        rule_date,
+        local_time,
+        get_schedule_timezone(timezone_name),
+    )
+    if occurrence > _aware_utc(at_or_before):
+        raise ValueError("One-time schedule is not due")
+    return occurrence
+
+
+def view_date_utc_bounds(value: date, timezone_name: str) -> tuple[datetime, datetime]:
+    timezone = get_schedule_timezone(timezone_name)
+    return (
+        resolve_daily_local_time(value, time.min, timezone),
+        resolve_daily_local_time(value + timedelta(days=1), time.min, timezone),
+    )
 
 
 def _aware_utc(value: datetime) -> datetime:

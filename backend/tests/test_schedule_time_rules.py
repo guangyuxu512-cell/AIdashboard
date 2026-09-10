@@ -1,12 +1,17 @@
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 
 import pytest
 
 from app.modules.schedules.time_rules import (
+    latest_schedule_occurrence,
     latest_daily_occurrence,
+    next_schedule_occurrence,
     next_daily_occurrence,
+    next_weekly_occurrence,
     resolve_daily_local_time,
+    view_date_utc_bounds,
 )
+from app.modules.schedules.enums import ScheduleType
 from zoneinfo import ZoneInfo
 
 
@@ -62,3 +67,48 @@ def test_naive_boundary_is_rejected() -> None:
             "Asia/Shanghai",
             after=datetime(2026, 8, 24, 0, 0),
         )
+
+
+def test_weekly_rule_uses_multiple_iso_weekdays() -> None:
+    result = next_weekly_occurrence(
+        time(9, 30),
+        [1, 3, 5],
+        "Asia/Shanghai",
+        after=datetime(2026, 8, 24, 2, 0, tzinfo=UTC),
+    )
+
+    assert result == datetime(2026, 8, 26, 1, 30, tzinfo=UTC)
+
+
+def test_one_time_rule_does_not_produce_a_second_occurrence() -> None:
+    occurrence = datetime(2026, 8, 24, 1, 30, tzinfo=UTC)
+    assert next_schedule_occurrence(
+        ScheduleType.ONCE,
+        local_date=date(2026, 8, 24),
+        local_time=time(9, 30),
+        weekdays=[],
+        timezone_name="Asia/Shanghai",
+        after=datetime(2026, 8, 24, 0, 0, tzinfo=UTC),
+    ) == occurrence
+    assert next_schedule_occurrence(
+        ScheduleType.ONCE,
+        local_date=date(2026, 8, 24),
+        local_time=time(9, 30),
+        weekdays=[],
+        timezone_name="Asia/Shanghai",
+        after=occurrence,
+    ) is None
+    assert latest_schedule_occurrence(
+        ScheduleType.ONCE,
+        local_date=date(2026, 8, 24),
+        local_time=time(9, 30),
+        weekdays=[],
+        timezone_name="Asia/Shanghai",
+        at_or_before=occurrence,
+    ) == occurrence
+
+
+def test_view_date_bounds_use_the_selected_iana_timezone() -> None:
+    start, end = view_date_utc_bounds(date(2026, 8, 24), "Asia/Shanghai")
+    assert start == datetime(2026, 8, 23, 16, 0, tzinfo=UTC)
+    assert end == datetime(2026, 8, 24, 16, 0, tzinfo=UTC)

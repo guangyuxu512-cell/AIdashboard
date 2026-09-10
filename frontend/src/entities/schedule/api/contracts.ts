@@ -1,6 +1,6 @@
 import type { TaskStatusDto } from '@/entities/task'
 
-export type ScheduleTypeDto = 'daily'
+export type ScheduleTypeDto = 'once' | 'daily' | 'weekly'
 export type ScheduleExecutionTypeDto =
   | 'yingdao_application'
   | 'business_skill'
@@ -31,6 +31,8 @@ export interface ScheduleListItemReadDto {
   schedule_type: ScheduleTypeDto
   local_time: string
   timezone: string
+  local_date: string | null
+  weekdays: number[]
   next_run_at: string | null
   latest_run: ScheduleRunReadDto | null
   created_at: string
@@ -53,6 +55,8 @@ export interface ScheduleCreateDto {
   schedule_type: ScheduleTypeDto
   local_time: string
   timezone: string
+  local_date: string | null
+  weekdays: number[]
   enabled: boolean
 }
 

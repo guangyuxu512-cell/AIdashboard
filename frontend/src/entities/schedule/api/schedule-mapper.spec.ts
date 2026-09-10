@@ -22,4 +22,23 @@ describe('schedule mapper', () => {
     expect(result.nextRunAtDisplay).toBe('—')
     expect(result.latestRun).toBeNull()
   })
+
+  it('maps once and weekly rules without using next_run_at as the rule source', () => {
+    const once = mapScheduleListItemDto({
+      ...SCHEDULE_LIST_FIXTURE[0]!,
+      schedule_type: 'once',
+      local_date: '2026-08-26',
+      weekdays: [],
+      next_run_at: null,
+    })
+    const weekly = mapScheduleListItemDto({
+      ...SCHEDULE_LIST_FIXTURE[0]!,
+      schedule_type: 'weekly',
+      local_date: null,
+      weekdays: [1, 3, 5],
+    })
+
+    expect(once.triggerRuleDisplay).toBe('一次 2026-08-26 09:30')
+    expect(weekly.triggerRuleDisplay).toBe('每周一、三、五 09:30')
+  })
 })

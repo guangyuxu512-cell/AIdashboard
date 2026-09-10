@@ -14,6 +14,8 @@ export interface ScheduleListApiParams {
   enabled: boolean | null
   deviceId: string | null
   search: string
+  occurrenceDate: string | null
+  viewTimezone: string | null
 }
 
 export const scheduleApi = {
@@ -29,6 +31,8 @@ export const scheduleApi = {
           enabled: params.enabled ?? undefined,
           device_id: params.deviceId || undefined,
           search: params.search.trim() || undefined,
+          occurrence_date: params.occurrenceDate ?? undefined,
+          view_timezone: params.viewTimezone ?? undefined,
         },
       },
     )
