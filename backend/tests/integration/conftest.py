@@ -36,7 +36,14 @@ CORE_TABLES = {
     "schedule_shops",
     "schedule_runs",
 }
-DESTRUCTIVE_TEST_DATABASE = "control_center_dev"
+FEATURE_DATABASE_PREFIX = "control_center_feat_"
+INTEGRATION_DATABASE = "control_center_integration"
+
+
+def _is_allowed_integration_database(database: str | None) -> bool:
+    return database == INTEGRATION_DATABASE or bool(
+        database and database.startswith(FEATURE_DATABASE_PREFIX),
+    )
 
 
 def _alembic_config() -> Config:
@@ -57,10 +64,10 @@ def postgresql_url() -> URL:
     url = make_url(str(database_url))
     if not url.drivername.startswith("postgresql"):
         pytest.fail("PostgreSQL integration tests refuse non-PostgreSQL databases")
-    if url.database != DESTRUCTIVE_TEST_DATABASE:
+    if not _is_allowed_integration_database(url.database):
         pytest.fail(
-            "Destructive migration tests only run against the dedicated "
-            f"{DESTRUCTIVE_TEST_DATABASE} database",
+            "PostgreSQL integration tests only run against a dedicated "
+            "Feature database or control_center_integration",
         )
     return url
 
@@ -72,7 +79,9 @@ def postgresql_engine(postgresql_url: URL) -> Engine:
 
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT 1")) == 1
-        assert connection.scalar(text("SELECT current_database()")) == DESTRUCTIVE_TEST_DATABASE
+        assert _is_allowed_integration_database(
+            connection.scalar(text("SELECT current_database()")),
+        )
 
     alembic_config = _alembic_config()
     command.current(alembic_config)
