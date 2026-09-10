@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,6 +15,10 @@ from app.modules.credentials.models import PlatformCredential, ShopCredentialBin
 from app.modules.credentials.schemas import CredentialCreate
 from app.modules.credentials.service import CredentialService
 from app.modules.devices.models import Device
+from app.modules.schedules.enums import ScheduleExecutionType
+from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
+from app.modules.schedules.schemas import ScheduleCreate, ScheduleUpdate
+from app.modules.schedules.service import ScheduleService
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.tasks.models import Task, TaskEvent, TaskShop
@@ -72,6 +76,16 @@ def _cleanup(
     user_id: UUID,
 ) -> None:
     with Session(engine) as session:
+        schedule_ids = session.query(Schedule.schedule_id).where(
+            Schedule.target_device_id == device_id,
+        )
+        session.execute(
+            delete(ScheduleRun).where(ScheduleRun.schedule_id.in_(schedule_ids)),
+        )
+        session.execute(
+            delete(ScheduleShop).where(ScheduleShop.schedule_id.in_(schedule_ids)),
+        )
+        session.execute(delete(Schedule).where(Schedule.target_device_id == device_id))
         task_ids = session.query(Task.task_id).where(
             Task.target_device_id == device_id,
         )
@@ -331,6 +345,183 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
             device_id=device_id,
             shop_ids=set(shop_ids),
             credential_ids=credential_ids,
+            team_id=team_id,
+            user_id=user_id,
+        )
+
+
+def test_no_shop_task_claim_returns_an_empty_account_payload(
+    postgresql_engine: Engine,
+) -> None:
+    device_id = uuid4()
+    team_id = uuid4()
+    user_id = uuid4()
+    actor = _actor(team_id=team_id, user_id=user_id)
+    now = datetime.now(UTC)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="No Shop Task Integration Team"),
+                    User(
+                        user_id=user_id,
+                        display_name="No Shop Task Integration User",
+                    ),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="No Shop Task Fixture Device",
+                        enabled=True,
+                    ),
+                    DeviceRuntime(
+                        device_id=device_id,
+                        worker_version="0.4.7",
+                        last_seen_at=now,
+                        started_at=now,
+                        connection_status="online",
+                    ),
+                    DeviceSkillCapability(
+                        device_id=device_id,
+                        skill_id="system.echo",
+                        display_name="System Echo",
+                        runtime="python",
+                        provider_code=None,
+                        skill_version="1",
+                        classification="internal",
+                    ),
+                ],
+            )
+            session.commit()
+
+            task_service = TaskService(session)
+            task = task_service.create(
+                TaskCreate(
+                    target_device_id=device_id,
+                    shop_ids=[],
+                    skill_id="system.echo",
+                    input={"message": "no shop context"},
+                ),
+                actor,
+            )
+            assert task.shop_ids == []
+
+            claimed = task_service.claim_with_account(
+                WorkerPrincipal(device_id=device_id),
+                now=now,
+            )
+            assert claimed is not None
+            assert claimed.task.task_id == task.task_id
+            assert claimed.accounts == []
+    finally:
+        _cleanup(
+            postgresql_engine,
+            device_id=device_id,
+            shop_ids=set(),
+            credential_ids=set(),
+            team_id=team_id,
+            user_id=user_id,
+        )
+
+
+def test_no_shop_schedule_create_edit_and_trigger_keep_accounts_empty(
+    postgresql_engine: Engine,
+) -> None:
+    device_id = uuid4()
+    team_id = uuid4()
+    user_id = uuid4()
+    actor = _actor(team_id=team_id, user_id=user_id)
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="No Shop Schedule Integration Team"),
+                    User(
+                        user_id=user_id,
+                        display_name="No Shop Schedule Integration User",
+                    ),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="No Shop Schedule Fixture Device",
+                        enabled=True,
+                    ),
+                    DeviceRuntime(
+                        device_id=device_id,
+                        worker_version="0.4.7",
+                        last_seen_at=now,
+                        started_at=now,
+                        connection_status="online",
+                    ),
+                    DeviceSkillCapability(
+                        device_id=device_id,
+                        skill_id="system.echo",
+                        display_name="System Echo",
+                        runtime="python",
+                        provider_code=None,
+                        skill_version="1",
+                        classification="business",
+                        input_schema={
+                            "type": "object",
+                            "properties": {"message": {"type": "string"}},
+                            "required": ["message"],
+                            "additionalProperties": False,
+                        },
+                    ),
+                ],
+            )
+            session.commit()
+
+            schedules = ScheduleService(session)
+            created = schedules.create(
+                ScheduleCreate(
+                    name="No Shop Schedule",
+                    target_device_id=device_id,
+                    shop_ids=[],
+                    execution_type=ScheduleExecutionType.BUSINESS_SKILL,
+                    skill_id="system.echo",
+                    parameters={"message": "no shop context"},
+                    local_time=time(9, 0),
+                    timezone="Asia/Shanghai",
+                ),
+                actor,
+                now=now,
+            )
+            assert created.shop_ids == []
+
+            edited = schedules.update(
+                created.schedule_id,
+                ScheduleUpdate(shop_ids=[]),
+                actor,
+                now=now,
+            )
+            assert edited.shop_ids == []
+
+            schedule = session.get(Schedule, created.schedule_id)
+            assert schedule is not None
+            schedule.next_run_at = now
+            session.commit()
+
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            triggered = ScheduleService(session).trigger_next_due(now=now)
+            assert triggered is not None
+            assert triggered.task_id is not None
+            task = session.get(Task, triggered.task_id)
+            assert task is not None
+            assert task.shop_ids == []
+            claimed = TaskService(session).claim_with_account(
+                WorkerPrincipal(device_id=device_id),
+                now=now,
+            )
+            assert claimed is not None
+            assert claimed.task.task_id == task.task_id
+            assert claimed.accounts == []
+    finally:
+        _cleanup(
+            postgresql_engine,
+            device_id=device_id,
+            shop_ids=set(),
+            credential_ids=set(),
             team_id=team_id,
             user_id=user_id,
         )

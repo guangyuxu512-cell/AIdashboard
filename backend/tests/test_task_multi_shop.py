@@ -164,6 +164,17 @@ def test_five_shops_create_one_task_and_preserve_user_order() -> None:
     assert credentials.checked == ordered_shop_ids
 
 
+def test_no_shop_task_preserves_an_empty_context_without_credentials() -> None:
+    service, repository, credentials, device = make_service([])
+
+    task = service.create(request(device.device_id, []), ACTOR)
+
+    assert repository.tasks == [task]
+    assert task.shop_ids == []
+    assert task.shop_links == []
+    assert credentials.checked == []
+
+
 def test_duplicate_shop_ids_are_rejected_by_the_create_contract() -> None:
     shop_id = uuid4()
     with pytest.raises(ValidationError, match="must not contain duplicates"):
