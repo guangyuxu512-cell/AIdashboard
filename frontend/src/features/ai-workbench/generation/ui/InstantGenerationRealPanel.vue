@@ -84,10 +84,7 @@ const {
 } = storeToRefs(sessionStore)
 const assetPickerVisible = ref(false)
 const assetPickerSlotKey = ref<GenerationInputSlotKey>('PRODUCT_IMAGES')
-const saveDialogVisible = ref(false)
 const clearDialogVisible = ref(false)
-const saveResultId = ref<string | null>(null)
-const saveProductId = ref<string | null>(null)
 
 const jobQuery = useGenerationJobQuery(currentJobId, { poll: true })
 
@@ -178,12 +175,6 @@ const canGenerate = computed(
     !submitting.value &&
     !submissionKey.value,
 )
-const saveProductOptions = computed(() =>
-  props.products
-    .filter((product) => product.enabled)
-    .map((product) => ({ label: product.name, value: product.id })),
-)
-
 const modeOptions = GENERATION_MODE_ORDER.map((value) => ({
   label: GENERATION_MODE_REGISTRY[value].label,
   key: value,
@@ -422,28 +413,6 @@ function retryResult(result: GenerationExecutionResultView): void {
     })
     .catch((error) => message.error(getErrorMessage(error)))
 }
-
-function openSaveDialog(result: GenerationExecutionResultView): void {
-  saveResultId.value = result.id
-  saveProductId.value = null
-  saveDialogVisible.value = true
-}
-
-function saveResult(): void {
-  const jobId = currentJobId.value
-  if (!jobId || !saveResultId.value || !saveProductId.value) return
-  void aiWorkbenchApi
-    .archiveGenerationItem(jobId, saveResultId.value, saveProductId.value)
-    .then((job) => {
-      setJob(job)
-      saveDialogVisible.value = false
-      void queryClient.invalidateQueries({
-        queryKey: aiWorkbenchQueryKeys.materials,
-      })
-      message.success('已保存到素材库')
-    })
-    .catch((error) => message.error(getErrorMessage(error)))
-}
 </script>
 
 <template>
@@ -584,7 +553,6 @@ function saveResult(): void {
         :execution="execution"
         @download-all="downloadAll"
         @download="downloadResult"
-        @save="openSaveDialog"
         @retry="retryResult"
       />
     </template>
@@ -596,20 +564,6 @@ function saveResult(): void {
     :role="assetPickerDefinition.acceptedMaterialRole"
     @confirm="selectAsset"
   />
-  <AppDialog
-    v-model:show="saveDialogVisible"
-    title="保存到素材库"
-    positive-text="保存到素材库"
-    :positive-disabled="!saveProductId"
-    @confirm="saveResult"
-  >
-    <AppSelect
-      v-model="saveProductId"
-      :options="saveProductOptions"
-      placeholder="选择产品"
-      aria-label="目标产品素材组"
-    />
-  </AppDialog>
   <AppDialog
     v-model:show="clearDialogVisible"
     title="清空当前任务"

@@ -9,13 +9,9 @@ withDefaults(defineProps<{ label?: string }>(), {
 <template>
   <section class="ai-management-toolbar" :aria-label="label">
     <TableToolbar class="ai-management-toolbar__layout">
-      <div class="ai-management-toolbar__leading">
-        <slot />
-      </div>
+      <slot />
       <template #actions>
-        <div class="ai-management-toolbar__actions">
-          <slot name="actions" />
-        </div>
+        <slot name="actions" />
       </template>
     </TableToolbar>
   </section>
@@ -31,18 +27,32 @@ withDefaults(defineProps<{ label?: string }>(), {
   box-shadow: var(--shadow-card);
 }
 
-.ai-management-toolbar__layout,
-.ai-management-toolbar__leading,
-.ai-management-toolbar__actions {
-  display: flex;
+.ai-management-toolbar__layout {
   min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
-.ai-management-toolbar__layout,
-.ai-management-toolbar__leading,
-.ai-management-toolbar__actions {
+.ai-management-toolbar__layout :deep(.table-toolbar__leading),
+.ai-management-toolbar__layout :deep(.table-toolbar__actions) {
+  min-width: 0;
+  gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+.ai-management-toolbar__layout :deep(.table-toolbar__leading) {
+  flex: 1 1 var(--field-width-lg);
+}
+
+.ai-management-toolbar__layout :deep(.table-toolbar__actions) {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .ai-management-toolbar__layout :deep(.table-toolbar__actions) {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
 }
 </style>
