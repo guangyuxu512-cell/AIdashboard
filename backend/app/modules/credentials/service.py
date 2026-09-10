@@ -82,10 +82,17 @@ class CredentialService:
     def ensure_task_accounts_available(self, shop_ids: list[UUID]) -> None:
         self._get_active_task_credentials(shop_ids)
 
-    def build_task_account_payload(self, shop_id: UUID) -> TaskAccountPayload:
+    def build_task_account_payload(
+        self,
+        shop_id: UUID,
+        *,
+        include_shop_name: bool = True,
+    ) -> TaskAccountPayload:
+        shop = self._get_shop(shop_id)
         credential = self._get_active_task_credential(shop_id)
         return TaskAccountPayload(
             shop_id=shop_id,
+            shop_name=shop.display_name if include_shop_name else None,
             platform_code=credential.platform_code,
             login_identifier=credential.login_identifier,
             secret=self.cipher.decrypt_text(credential.secret_encrypted),
@@ -97,11 +104,22 @@ class CredentialService:
     def build_task_account_payloads(
         self,
         shop_ids: list[UUID],
+        *,
+        include_shop_name: bool = True,
     ) -> list[TaskAccountPayload]:
         credentials = self._get_active_task_credentials(shop_ids)
+        shop_names = (
+            {
+                shop.shop_id: shop.display_name
+                for shop in self.shop_repository.list_by_ids(shop_ids)
+            }
+            if include_shop_name
+            else {}
+        )
         return [
             TaskAccountPayload(
                 shop_id=shop_id,
+                shop_name=shop_names.get(shop_id),
                 platform_code=credential.platform_code,
                 login_identifier=credential.login_identifier,
                 secret=self.cipher.decrypt_text(credential.secret_encrypted),

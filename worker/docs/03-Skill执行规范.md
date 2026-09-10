@@ -92,13 +92,19 @@ Payload 时写 `{"店铺列表":[]}`，绝不合并或保留上一个 Task 的�
 
 Local Input Bridge 只是跨进程输入适配，不替代现有 ShadowBot Application Params；现有 URI
 参数仍继续传递。Backend 在认证 Claim 时按 Task 的有序 Shop 关系构建 `accounts`，每项内部字段
-固定为 `shop_id / platform_code / login_identifier / secret /
+固定为 `shop_id / shop_name / platform_code / login_identifier / secret /
 preferred_verification_channel`，不包含 Cookie/Session 或验证码挑战，也不进入 Task Input、日志、
-Runtime Event 或 Result。RPAExecutor 仅在落盘边界映射为 `店铺ID / 平台编码 / 登录账号 /
+Runtime Event 或 Result。RPAExecutor 仅在落盘边界映射为 `店铺ID / 店铺名称 / 平台编码 / 登录账号 /
 登录密码 / 首选验证方式` 并一次完整覆盖 `account.json`；不得同时写英文重复字段。Python
 Business Skill 通过英文 `ctx.accounts` 读取。
 
-Worker 0.4.6 的 Task Claim 可以携带有序图片清单。统一 Task 图片准备阶段位于 Executor 之前：
+`shop_name` 是 0.4.7 增加的可选字段，名称仅来自该 Task 已关联的 Shop 记录，保持 Task 原有
+Shop 顺序，并不授权 Worker 读取全量店铺。Backend 仅在 DeviceRuntime 报告 0.4.7 或更高版本时
+在 Claim 中下发该字段；旧版或未知版本收到原字段集合，以兼容旧 Worker 的 `extra="forbid"`。
+新 Worker 对没有 `shop_name` 的旧 Backend Claim 保持兼容。推荐顺序是先发布兼容 Backend，再在当前
+Task 结束后升级 Windows 包；不要求强制重启或替换正在执行的 Worker。
+
+Worker 0.4.7 的 Task Claim 可以携带有序图片清单。统一 Task 图片准备阶段位于 Executor 之前：
 先读取受管文件 Manifest 并只清理上一 Task 由 Worker 写入的文件，再按 position 通过认证 Worker
 API 下载本 Task 图片，校验字节数与 SHA-256，并使用原子写入落到固定 images 目录。同名文件按
 稳定的 `__2`、`__3` 后缀分配，不覆盖同一 Task 的另一张图片。无图片 Task 也会清理上一集合；
@@ -284,4 +290,4 @@ Scheduler 不连接 Worker，也不调用 ShadowBot。时间到后只通过 Back
 Task，PC-11 capacity=1 时按稳定 Claim 顺序依次运行，Scheduler 不等待每个应用结束。
 
 Scheduler V1 的 DAILY、IANA Timezone、COALESCE ONE 和数据库触发幂等全部属于 Backend；
-Worker 0.4.6 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。
+Worker 0.4.7 不读取 Schedule、不保存 Cron、也不知道 Task 来源。它仍只认识普通 Task Contract。

@@ -59,6 +59,9 @@ def test_config_service_uses_one_atomic_config_and_reuses_legacy_shape(
     service.path.write_text(json.dumps(payload), encoding="utf-8")
     legacy = service.load()
     assert legacy.device_id == device_id
+    # The service's existing URL normalization removes only the trailing slash;
+    # it must not replace a previously configured environment address.
+    assert legacy.server_url == "https://control.example.test"
     assert legacy.device_display_name is None
     assert legacy.params_json_path == defaults.params_json_path
     assert legacy.account_json_path == defaults.account_json_path

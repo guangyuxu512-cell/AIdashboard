@@ -25,6 +25,7 @@ Feature Gate 1
 ```text
 Browser HTTPS
   → BaoTa host Nginx :443
+  → exact `/health` → Backend :127.0.0.1:18001
   → Frontend :127.0.0.1:18080
       → PC `/`
       → Mobile `/mobile/`
@@ -38,7 +39,7 @@ Backend → existing Docker Asset volume (local mode) / verified NAS mount (moun
 
 - Production Backend、Signer 与 Frontend 都只监听主机回环地址；不得直接发布 Docker 端口。
 - Frontend 保持只读根文件系统；Nginx 官方入口运行时渲染的 `/etc/nginx/conf.d`、缓存、运行时和临时目录使用受限 `tmpfs`，不得因此放宽整个容器的写入权限。`NGINX_ENVSUBST_FILTER` 使用变量名正则，只允许渲染 `FRONTEND_BIND_HOST`、`FRONTEND_BIND_PORT` 与 `BACKEND_BIND_PORT`。
-- 同一个 Frontend image 同时提供 PC 根入口与 Mobile `/mobile/`，不新增容器或端口。`/mobile` 以代理安全的相对 `Location: /mobile/` 重定向，禁止泄漏内部 HTTP scheme 或 `18080` 上游端口；Mobile SPA fallback 只在 `/mobile/` 内生效，缺失的 Mobile JS、CSS、Manifest 或图标必须返回 `404`，不能回退到 PC `index.html`。`/api/` 继续使用同一 Backend proxy。
+- 同一个 Frontend image 同时提供 PC 根入口与 Mobile `/mobile/`，不新增容器或端口。`/mobile` 以代理安全的相对 `Location: /mobile/` 重定向，禁止泄漏内部 HTTP scheme 或 `18080` 上游端口；Mobile SPA fallback 只在 `/mobile/` 内生效，缺失的 Mobile JS、CSS、Manifest 或图标必须返回 `404`，不能回退到 PC `index.html`。`/api/` 继续使用同一 Backend proxy；Host Nginx 的精确 `/health` 直接代理到 Backend，避免被 PC SPA fallback 返回 HTML，供 Worker 在不携带 Token 的第一步健康检查使用。
 - 公网入口仅由现有 BaoTa Nginx vhost 管理。本部署的明确决策是直接使用 VPS 公网 IPv4，而非 DNS 域名。Let’s Encrypt 的 IP 证书必须使用 `shortlived` profile，约 160 小时有效；因此 `control-center-production-ip-acme-renew.timer` 每日运行两次，续期后由 host Nginx reload 读取新证书。明文 HTTP 只用于 ACME HTTP-01 challenge 和 HTTPS 重定向，不能作为应用入口。
 - `control-center-backend-prod-assets` 是正式持久卷，独立于开发环境的 `control-center-backend-dev_backend-assets`。正常更新与回滚不删除该卷；切换 NAS 后它仍保留，作为切换前资产的回退来源。
 - PDD 签名继续由 Backend 中现有的隔离 Node 子进程执行。`backend/Dockerfile` 安装 Node.js，且随 `app/platforms/pdd/vendor/anti_content.js` 一起打包；不引入第二套 PDD 服务。
@@ -187,7 +188,7 @@ CI：`.github/workflows/ci.yml`
 - `PRODUCTION_DEPLOY_SSH_PRIVATE_KEY`
 - `PRODUCTION_SSH_KNOWN_HOSTS`
 
-Workflow 使用部署专用 SSH key 上传 source archive；archive 必须包含完整 `mobile/` build context，不能只包含 package manifest。远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/PC Frontend 与 Mobile `/mobile/` 的 HTML、Manifest、图标和实际 hash JS/CSS，并在健康后原子切换 Nginx vhost。容器启动后，Backend 与 Frontend HTTP 就绪检查最多等待 45 秒，避免将正常的异步启动误判为失败。远程 archive 和脚本名以 GitHub run ID / attempt 隔离，避免相同 SHA 的不同尝试覆盖或清理彼此的临时材料。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
+Workflow 使用部署专用 SSH key 上传 source archive；archive 必须包含完整 `mobile/` build context，不能只包含 package manifest。远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/PC Frontend 与 Mobile `/mobile/` 的 HTML、Manifest、图标和实际 hash JS/CSS，并在健康后原子切换 Nginx vhost。随后 GitHub Runner 从公网验证 `https://<production-host>/health` 的 `application/json` 与精确 Backend `{ "status": "ok" }` 契约，防止 Worker 被 SPA HTML 误导。容器启动后，Backend 与 Frontend HTTP 就绪检查最多等待 45 秒，避免将正常的异步启动误判为失败。远程 archive 和脚本名以 GitHub run ID / attempt 隔离，避免相同 SHA 的不同尝试覆盖或清理彼此的临时材料。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
 
 生产 release 与 Public-IP TLS provisioning 的每条 Runner SSH/SCP 调用都使用 OpenSSH `ServerAliveInterval=30` 与 `ServerAliveCountMax=3`，同时继续严格校验 `known_hosts`。这只让客户端在远端构建等无输出阶段保持连接；不会忽略 SSH/SCP 或远端脚本的非零退出码，远端脚本仍将其退出状态返回给 Workflow。曾观察到 `client_loop: send disconnect: Broken pipe` 时，只能将其视为连接断开的证据；未取得网络空闲超时的直接证据前，不得将其记录为已确认根因。
 

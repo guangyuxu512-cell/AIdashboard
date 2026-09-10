@@ -146,6 +146,7 @@ def make_task(
 def make_account(*, secret: str = "task-secret") -> AccountPayload:
     return AccountPayload(
         shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+        shop_name="测试店铺",
         platform_code="DOUYIN",
         login_identifier="测试账号",
         secret=secret,
@@ -192,6 +193,7 @@ def test_rpa_executor_parses_success_and_uses_shared_runtime(tmp_path: Path) -> 
         "店铺列表": [
             {
                 "店铺ID": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
+                "店铺名称": "测试店铺",
                 "平台编码": "DOUYIN",
                 "登录账号": "测试账号",
                 "登录密码": "task-secret",

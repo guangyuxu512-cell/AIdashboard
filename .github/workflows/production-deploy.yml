@@ -124,3 +124,23 @@ jobs:
           scp "${ssh_options[@]}" scripts/remote-deploy-production.sh "${remote_target}:${remote_script}"
           ssh "${ssh_options[@]}" "${remote_target}" \
             "chmod 0700 '${remote_script}' && '${remote_script}' '/opt/ecommerce-control-center/production' '${remote_archive}' '${DEPLOY_SHA}'; status=\$?; rm -f -- '${remote_script}'; exit \$status"
+      - name: Verify public Backend health contract
+        if: steps.deploy_target.outputs.should_deploy == 'true'
+        env:
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          response_body="${RUNNER_TEMP}/control-center-public-health.json"
+          trap 'rm -f -- "${response_body}"' EXIT
+          curl --fail --silent --show-error --retry 3 --retry-connrefused --connect-timeout 15 \
+            --output "${response_body}" \
+            --write-out 'content-type=%{content_type}\n' \
+            "https://${PRODUCTION_DEPLOY_HOST}/health" | grep -Eqi '^content-type=application/json'
+          python3 - "${response_body}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              if json.load(stream) != {"status": "ok"}:
+                  raise SystemExit("public /health did not return the Backend contract")
+          PY
