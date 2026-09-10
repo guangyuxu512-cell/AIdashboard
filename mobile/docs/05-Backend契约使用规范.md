@@ -195,9 +195,9 @@ Skill Capability 字段为 `device_id`、`skill_id`、`display_name`、
 - Backend 没有 Device + Current Task + Provider + Skill 聚合接口，也没有 Current Task 批量接口。
 - Backend 没有正式 Device Kind / Form Factor 字段；Production Device Artwork 只能使用统一 desktop
   fallback，不得按 `display_name`、location、Worker Version 或 Provider 猜 desktop/laptop/server。
-- `worker_runtime=null` 仍表示 Contract 事实缺失而非 Backend 离线判定。Visual V2 使用 `unreported`
-  Presentation State 并显示“未连接”，不得回写 DTO、参与 Backend Offline 统计/筛选或声称 Backend 返回了
-  offline；Heartbeat 缺失只显示独立 Meta。
+- `worker_runtime=null` 仍表示 Contract 事实缺失而非 Backend 离线判定。Visual V2 的独立 Connection Display
+  Meta 使用 `unreported` 并显示“未连接”，不得回写 DTO、参与 Backend Offline 统计/筛选或声称 Backend
+  返回了 offline；Frozen Artwork 仍使用既有 offline fallback，且不得扩展第四个 Artwork State。
 - Provider/Skill 的空数组无法区分“从未上报”和“明确上报空快照”；Provider 没有 freshness 标记。
 - Human Auth、Team Context、Module Access 及 Device / Task 的 Actor Context Data Scope 已在 Backend
   正式收口；真实 PostgreSQL 与 Browser E2E 必须持续验证无模块权限为 `403`、跨 Team Device / Task /

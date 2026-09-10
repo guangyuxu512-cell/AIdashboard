@@ -140,17 +140,17 @@ Indicator 区域露出旧主题 Surface。
 
 ## Device Visual Status（设备视觉状态）
 
-展示状态固定为：
+公开 Artwork 状态固定为：
 
 1. `connection_status=offline` → `offline` / 离线；
 2. `connection_status=online` 且正式 Active Task `status=running` → `running` / 运行中；
 3. `connection_status=online` 且无 Running Task → `online` / 在线。
-4. `worker_runtime=null` → `unreported` / 未连接。
 
-`all` 是 Aggregate Metric / Filter Entry，不是状态。`unreported` 只是缺少 Runtime 事实时的 Mobile
-Presentation State（展示状态），不是 Backend `connection_status` 新值；正式 UI 显示“未连接”，不得显示成
-“离线”，不得改写 DTO，也不得计入离线统计或筛选。本次只选择性解冻状态语义与对应 Loading/Error 状态，
-DeviceCard / Artwork 的 Frozen Anatomy、Geometry、Color、Navigation 与 Scroll Contract 均保持不变。
+`all` 是 Aggregate Metric / Filter Entry，不是状态。公开 Artwork Registry 不增加 `unreported`；
+`worker_runtime=null` 时，Frozen Artwork 继续使用 `offline` visual fallback，但独立 Connection Display Meta 使用
+`unreported` 并在正式 UI 显示“未连接”。该文字展示态不是 Backend `connection_status` 或 Artwork State，
+不得改写 DTO，也不得计入离线统计或筛选。本次筛选修复不改变 DeviceCard / Artwork 的 Frozen Anatomy、
+Geometry、Color、Navigation 与 Scroll Contract。
 
 Heartbeat 只读取正式 `worker_runtime.last_seen_at` 并复用 Relative Time Formatter；缺失时第三行显示
 “心跳未上报”。Heartbeat 的新鲜度不会改变展示状态，Mobile 不依据时间差发明在线阈值。

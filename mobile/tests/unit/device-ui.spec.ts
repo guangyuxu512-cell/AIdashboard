@@ -21,6 +21,7 @@ import {
   DeviceProviderDetails,
   DeviceRuntimeSummary,
   DeviceSkillDetails,
+  getDeviceRuntimeDisplayLabel,
   getDeviceVisualState,
   mapDeviceActiveTaskToTaskListItem,
   type DeviceActiveTaskState,
@@ -280,7 +281,7 @@ describe('device center UI', () => {
     },
   )
 
-  it('shows an explicit unreported state when Runtime is missing', async () => {
+  it('shows an explicit unreported connection label when Runtime is missing', async () => {
     const wrapper = mountDeviceCard({ ...baseDevice, workerRuntime: null })
     await flushPromises()
 
@@ -332,12 +333,7 @@ describe('device center UI', () => {
   })
 
   it('renders every formal artwork kind and state without inferring kind from names', () => {
-    expect(DEVICE_ARTWORK_STATES).toEqual([
-      'online',
-      'running',
-      'offline',
-      'unreported',
-    ])
+    expect(DEVICE_ARTWORK_STATES).toEqual(['online', 'running', 'offline'])
     for (const kind of ['desktop', 'laptop', 'server'] as const) {
       for (const state of DEVICE_ARTWORK_STATES) {
         const wrapper = track(
@@ -458,7 +454,13 @@ describe('device center UI', () => {
         { ...baseDevice, workerRuntime: null },
         idleActiveTaskState,
       ),
-    ).toBe('unreported')
+    ).toBe('offline')
+    expect(
+      getDeviceRuntimeDisplayLabel(
+        { ...baseDevice, workerRuntime: null },
+        idleActiveTaskState,
+      ),
+    ).toBe('未连接')
   })
 
   it('keeps heartbeat and enabled facts independent from the three-state visual model', async () => {

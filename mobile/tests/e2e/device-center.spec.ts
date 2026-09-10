@@ -1811,7 +1811,7 @@ test('Runtime缺失显示未连接且不会混入正式离线筛选', async ({ p
   )
   await expect(
     unreportedCard.getByTestId('device-status-artwork'),
-  ).toHaveAttribute('data-device-artwork-state', 'unreported')
+  ).toHaveAttribute('data-device-artwork-state', 'offline')
   await page.getByTestId('summary-metric-offline').tap()
   await expect(page.getByTestId('device-card')).toHaveCount(1)
   await expect(page.getByTestId('device-card').first()).toContainText('设备 2')

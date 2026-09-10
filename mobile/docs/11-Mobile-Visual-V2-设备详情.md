@@ -39,7 +39,7 @@ Task Detail、Worker 与数据库。
 | -------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `detail-header`      | `shared/ui/MobileDetailHeader.vue` V2                          | Left Action + 真居中 Title + Right Action；透明承接 AppShell 背景 |
 | `device-hero`        | `features/device-center/ui/DeviceDetailHero.vue`               | 详情专属业务 Hero，不放大 DeviceCard                              |
-| `monitor`            | `entities/device/ui/DeviceStatusArtwork.vue` 的 `hero` variant | 复用连接/运行展示状态插画，不复制第二套 Monitor                   |
+| `monitor`            | `entities/device/ui/DeviceStatusArtwork.vue` 的 `hero` variant | 复用 Online / Running / Offline 三态插画，不复制第二套 Monitor    |
 | `entity-card`        | 正式 `entities/task/ui/TaskListCard.vue` 的显式 V2 模式        | 真实 Active Task；无局部 Task Card 副本                           |
 | `capability`         | 正式 `features/device-center/ui/DeviceCapabilityPanel.vue` V2  | 复用 Provider / Skill Query 与业务映射                            |
 | `bottom-nav`         | 已冻结 `MobileBottomNavigation V2`                             | Router 决定设备入口 Active                                        |
@@ -72,7 +72,7 @@ AppShell Page Background 绘制；Bottom Navigation 独立拥有 Bottom Safe Are
 - Global Font Family V2 与既有 Typography V2 基础角色；
 - `MobileBottomNavigation V2`、五入口顺序、Router Active 与触控契约；
 - Business Card Surface V2 的 Surface / Border / Radius / Shadow / Press 语言；
-- `DeviceStatusArtwork V2` 的 Online / Running / Offline / Unreported 展示语义；
+- `DeviceStatusArtwork V2` 的 Online / Running / Offline 三态语义；
 - Mobile Icon Registry 的 Back、More、Refresh、Chevron、Task 与 Capability Glyph；
 - Light / Dark / System Theme Store 与 Semantic Color Token。
 

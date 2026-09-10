@@ -10,7 +10,7 @@ import { MobileIcon } from '@/shared/icons'
 import { MobileBusinessCardFrame } from '@/shared/ui'
 
 import {
-  DEVICE_VISUAL_STATE_LABELS,
+  getDeviceRuntimeDisplayLabel,
   getDeviceVisualState,
 } from '../model/device-visual'
 import type { DeviceActiveTaskState } from '../model/use-device-active-task'
@@ -27,8 +27,8 @@ const emit = defineEmits<{
 const visualState = computed(() =>
   getDeviceVisualState(props.device, props.activeTaskState),
 )
-const visualStateLabel = computed(
-  () => DEVICE_VISUAL_STATE_LABELS[visualState.value],
+const runtimeLabel = computed(() =>
+  getDeviceRuntimeDisplayLabel(props.device, props.activeTaskState),
 )
 const heartbeatText = computed(() =>
   formatRelativeHeartbeat(props.device.workerRuntime?.lastSeenAt ?? null),
@@ -67,7 +67,7 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
         data-testid="device-card-runtime"
       >
         <i class="device-list-card__state-dot" aria-hidden="true" />
-        <span>{{ visualStateLabel }}</span>
+        <span>{{ runtimeLabel }}</span>
       </span>
     </template>
 
@@ -128,10 +128,6 @@ const enabledMeta = computed(() => (props.device.enabled ? '已启用' : '已停
 
 .device-list-card__runtime--offline {
   color: var(--device-list-status-offline);
-}
-
-.device-list-card__runtime--unreported {
-  color: var(--text-secondary);
 }
 
 .device-list-card__state-dot {
