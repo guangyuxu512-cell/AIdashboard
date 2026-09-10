@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Any
 from uuid import UUID
 
@@ -9,7 +9,11 @@ from app.modules.schedules.enums import (
     ScheduleRunTriggerResult,
     ScheduleType,
 )
-from app.modules.schedules.time_rules import get_schedule_timezone
+from app.modules.schedules.time_rules import (
+    get_schedule_timezone,
+    normalize_weekdays,
+    validate_schedule_rule,
+)
 from app.modules.tasks.enums import (
     TASK_SKILL_ID_MAX_LENGTH,
     TASK_SKILL_ID_PATTERN,
@@ -37,6 +41,8 @@ class ScheduleCreate(BaseModel):
     schedule_type: ScheduleType = ScheduleType.DAILY
     local_time: time
     timezone: str = Field(min_length=1, max_length=100)
+    local_date: date | None = None
+    weekdays: list[int] = Field(default_factory=list, max_length=7)
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -46,6 +52,11 @@ class ScheduleCreate(BaseModel):
                 raise ValueError("Yingdao schedules require only application_id")
         elif self.skill_id is None or self.application_id is not None:
             raise ValueError("Business Skill schedules require only skill_id")
+        self.local_date, self.weekdays = validate_schedule_rule(
+            self.schedule_type,
+            self.local_date,
+            self.weekdays,
+        )
         return self
 
     @field_validator("shop_ids")
@@ -68,6 +79,11 @@ class ScheduleCreate(BaseModel):
         get_schedule_timezone(value)
         return value
 
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int]) -> list[int]:
+        return normalize_weekdays(value)
+
 
 class ScheduleUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -87,6 +103,8 @@ class ScheduleUpdate(BaseModel):
     schedule_type: ScheduleType | None = None
     local_time: time | None = None
     timezone: str | None = Field(default=None, min_length=1, max_length=100)
+    local_date: date | None = None
+    weekdays: list[int] | None = Field(default=None, max_length=7)
     enabled: bool | None = None
 
     @field_validator("local_time")
@@ -110,7 +128,7 @@ class ScheduleUpdate(BaseModel):
         if not self.model_fields_set:
             raise ValueError("At least one field must be provided")
         for field_name in self.model_fields_set:
-            if getattr(self, field_name) is None:
+            if field_name != "local_date" and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
         if "application_id" in self.model_fields_set and "skill_id" in self.model_fields_set:
             raise ValueError("application_id and skill_id cannot be updated together")
@@ -130,6 +148,11 @@ class ScheduleUpdate(BaseModel):
         if value is not None and len(value) != len(set(value)):
             raise ValueError("shop_ids must not contain duplicates")
         return value
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
+        return normalize_weekdays(value) if value is not None else None
 
 
 class ScheduleRunRead(BaseModel):
@@ -157,6 +180,8 @@ class ScheduleListItemRead(BaseModel):
     schedule_type: ScheduleType
     local_time: time
     timezone: str
+    local_date: date | None = None
+    weekdays: list[int] = Field(default_factory=list)
     next_run_at: datetime | None
     latest_run: ScheduleRunRead | None
     created_at: datetime

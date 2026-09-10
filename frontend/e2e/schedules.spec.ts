@@ -95,11 +95,8 @@ test('opens create form with real Device Inventory semantics and saves a mock pl
       .first(),
   ).toBeVisible()
   await expect(
-    dialog
-      .locator('.n-form-item')
-      .filter({ hasText: '触发规则' })
-      .getByRole('textbox'),
-  ).toHaveValue('每天')
+    dialog.getByRole('radio', { name: '每天' }),
+  ).toBeChecked()
   await dialog.getByRole('button', { name: '保存' }).click()
 
   await expect(page.getByText('每日测试计划')).toBeVisible()

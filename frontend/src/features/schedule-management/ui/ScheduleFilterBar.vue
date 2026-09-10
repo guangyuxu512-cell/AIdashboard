@@ -5,7 +5,9 @@ import { computed } from 'vue'
 import FilterBar from '@/shared/components/FilterBar.vue'
 import FilterField from '@/shared/components/FilterField.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import AppDatePicker from '@/shared/ui/AppDatePicker.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import AppRadio from '@/shared/ui/AppRadio.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOptionValue } from '@/shared/ui/types'
 
@@ -27,6 +29,11 @@ const emit = defineEmits<{
 const enabledOptions: SelectOption[] = [
   { label: '已开启', value: 'enabled' },
   { label: '已停用', value: 'disabled' },
+]
+const occurrenceOptions = [
+  { label: '全部日期', value: 'all' },
+  { label: '今天', value: 'today' },
+  { label: '指定日期', value: 'selected' },
 ]
 
 function update<Key extends keyof ScheduleFilterViewModel>(
@@ -55,6 +62,25 @@ const search = computed({
   get: () => props.modelValue.search,
   set: (value: string) => update('search', value),
 })
+const occurrenceMode = computed({
+  get: () => props.modelValue.occurrenceMode,
+  set: (value: AppOptionValue | null) => {
+    if (value !== 'all' && value !== 'today' && value !== 'selected') return
+    emit('update:modelValue', {
+      ...props.modelValue,
+      occurrenceMode: value,
+      selectedOccurrenceDate:
+        value === 'selected' && props.modelValue.selectedOccurrenceDate === null
+          ? Date.now()
+          : props.modelValue.selectedOccurrenceDate,
+    })
+  },
+})
+const selectedOccurrenceDate = computed({
+  get: () => props.modelValue.selectedOccurrenceDate,
+  set: (value: number | [number, number] | null) =>
+    update('selectedOccurrenceDate', typeof value === 'number' ? value : null),
+})
 </script>
 
 <template>
@@ -78,6 +104,12 @@ const search = computed({
         :loading="deviceOptionsLoading"
         placeholder="全部设备"
       />
+    </FilterField>
+    <FilterField width="md">
+      <AppRadio v-model="occurrenceMode" :options="occurrenceOptions" />
+    </FilterField>
+    <FilterField v-if="occurrenceMode === 'selected'" width="sm">
+      <AppDatePicker v-model="selectedOccurrenceDate" placeholder="选择发生日期" />
     </FilterField>
     <FilterField width="md">
       <AppInput

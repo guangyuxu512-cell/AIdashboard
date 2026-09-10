@@ -8,9 +8,30 @@ describe('mock schedule data source', () => {
     const enabled = await source.list({
       page: 1,
       pageSize: 10,
-      filters: { enabled: true, deviceId: null, search: '' },
+      filters: {
+        enabled: true,
+        deviceId: null,
+        search: '',
+        occurrenceDate: null,
+        viewTimezone: null,
+      },
     })
     expect(enabled.items).toHaveLength(1)
+
+    const selectedDate = await source.list({
+      page: 1,
+      pageSize: 10,
+      filters: {
+        enabled: null,
+        deviceId: null,
+        search: '',
+        occurrenceDate: '2026-08-25',
+        viewTimezone: 'Asia/Shanghai',
+      },
+    })
+    expect(selectedDate.items.map((item) => item.scheduleId)).toEqual([
+      '60000000-0000-4000-8000-000000000001',
+    ])
 
     const created = await source.create({
       name: '测试计划',
@@ -23,6 +44,8 @@ describe('mock schedule data source', () => {
       scheduleType: 'daily',
       localTime: '10:30',
       timezone: 'Asia/Shanghai',
+      localDate: null,
+      weekdays: [],
       enabled: true,
     })
     expect(created.triggerRuleDisplay).toBe('每天 10:30')

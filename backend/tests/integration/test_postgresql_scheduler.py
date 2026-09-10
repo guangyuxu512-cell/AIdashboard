@@ -7,6 +7,9 @@ from sqlalchemy import Engine, delete, event, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.devices.models import Device
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
@@ -20,6 +23,7 @@ from app.modules.shops.models import Shop
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.tasks.schemas import TaskComplete, TaskEventBatchWrite, TaskFail
 from app.modules.tasks.service import PreparedTaskCreation, TaskService
+from app.modules.users.models import User
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceSkillCapability,
@@ -31,8 +35,13 @@ pytestmark = pytest.mark.integration
 
 
 class _PreparedTaskService:
-    def prepare_scheduled_task(self, data: object) -> PreparedTaskCreation:
-        del data
+    def prepare_scheduled_task(
+        self,
+        data: object,
+        *,
+        team_id: UUID,
+    ) -> PreparedTaskCreation:
+        del data, team_id
         return PreparedTaskCreation(
             input_json={"message": "safe"},
             execution_display_name="系统回声验证",
@@ -69,7 +78,26 @@ def _ready_inventory(now: datetime) -> dict[str, object]:
     }
 
 
-def _cleanup(engine: Engine, device_id: UUID) -> None:
+def _fixture_actor() -> tuple[UUID, UUID, ActorContext]:
+    team_id = uuid4()
+    user_id = uuid4()
+    return team_id, user_id, ActorContext(
+        user_id=user_id,
+        user_display_name="Scheduler Integration User",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
+
+
+def _cleanup(
+    engine: Engine,
+    device_id: UUID,
+    *,
+    team_id: UUID,
+    user_id: UUID,
+) -> None:
     with Session(engine) as session:
         schedule_ids = list(
             session.scalars(
@@ -107,6 +135,8 @@ def _cleanup(engine: Engine, device_id: UUID) -> None:
             ),
         )
         session.execute(delete(Device).where(Device.device_id == device_id))
+        session.execute(delete(User).where(User.user_id == user_id))
+        session.execute(delete(Team).where(Team.team_id == team_id))
         session.commit()
 
 
@@ -114,12 +144,26 @@ def test_schedule_shop_set_can_be_replaced_and_reordered(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
+    team_id, user_id, actor = _fixture_actor()
     schedule_id = uuid4()
     shop_ids = [uuid4(), uuid4(), uuid4()]
     now = datetime.now(UTC)
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="多店铺计划设备"))
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="Scheduler Shop Set Team"),
+                    User(
+                        user_id=user_id,
+                        display_name="Scheduler Shop Set User",
+                    ),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="多店铺计划设备",
+                    ),
+                ],
+            )
             session.add_all(
                 [
                     Shop(
@@ -133,6 +177,7 @@ def test_schedule_shop_set_can_be_replaced_and_reordered(
             session.add(
                 Schedule(
                     schedule_id=schedule_id,
+                    team_id=team_id,
                     name="多店铺顺序计划",
                     enabled=True,
                     target_device_id=device_id,
@@ -158,6 +203,7 @@ def test_schedule_shop_set_can_be_replaced_and_reordered(
             ).update(
                 schedule_id,
                 ScheduleUpdate(shop_ids=[shop_ids[1], shop_ids[2]]),
+                actor,
                 now=now,
             )
             assert updated.shop_ids == [shop_ids[1], shop_ids[2]]
@@ -176,6 +222,8 @@ def test_schedule_shop_set_can_be_replaced_and_reordered(
             )
             session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))
             session.execute(delete(Device).where(Device.device_id == device_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.execute(delete(Team).where(Team.team_id == team_id))
             session.commit()
 
 
@@ -183,11 +231,22 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
+    team_id, user_id, actor = _fixture_actor()
     schedule_id: UUID | None = None
     now = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="Scheduler 设备"))
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="Scheduler Daily Team"),
+                    User(user_id=user_id, display_name="Scheduler Daily User"),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="Scheduler 设备",
+                    ),
+                ],
+            )
             session.add(
                 DeviceSkillCapability(
                     device_id=device_id,
@@ -246,12 +305,14 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
                     local_time=time(9, 30),
                     timezone="Asia/Shanghai",
                 ),
+                actor,
                 now=now,
             )
             schedule_id = created.schedule_id
             disabled = ScheduleService(session).update(
                 schedule_id,
                 ScheduleUpdate(enabled=False),
+                actor,
                 now=now,
             )
             assert disabled.enabled is False
@@ -264,6 +325,7 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
                     timezone="Asia/Tokyo",
                     enabled=True,
                 ),
+                actor,
                 now=now,
             )
             assert edited.name == "每日安全计划（已编辑）"
@@ -282,6 +344,7 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
                     local_time=time(9, 30),
                     timezone="Asia/Shanghai",
                 ),
+                actor,
                 now=now,
             )
             assert restored.next_run_at == datetime(
@@ -383,6 +446,7 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
         try:
             with Session(postgresql_engine) as session:
                 page = ScheduleService(session).list_management(
+                    actor=actor,
                     page=1,
                     page_size=20,
                     enabled=None,
@@ -513,7 +577,141 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
             assert invalid_run is not None
             assert invalid_run.trigger_error_code == "TASK_INPUT_INVALID"
     finally:
-        _cleanup(postgresql_engine, device_id)
+        _cleanup(
+            postgresql_engine,
+            device_id,
+            team_id=team_id,
+            user_id=user_id,
+        )
+
+
+def test_occurrence_date_filter_uses_runs_or_next_run_in_the_selected_timezone(
+    postgresql_engine: Engine,
+) -> None:
+    device_id = uuid4()
+    team_id, user_id, actor = _fixture_actor()
+    selected_date = datetime(2026, 8, 25, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    selected_occurrence = selected_date.astimezone(UTC) + timedelta(hours=1)
+    next_day_occurrence = selected_occurrence + timedelta(days=1)
+    once_id = uuid4()
+    weekly_id = uuid4()
+    disabled_id = uuid4()
+    outside_id = uuid4()
+    try:
+        with Session(postgresql_engine) as session:
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="Schedule Date Filter Team"),
+                    User(user_id=user_id, display_name="Schedule Date Filter User"),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="Schedule Date Filter Device",
+                    ),
+                    Schedule(
+                        schedule_id=once_id,
+                        team_id=team_id,
+                        name="One-time selected date",
+                        enabled=True,
+                        target_device_id=device_id,
+                        skill_id="system.echo",
+                        execution_display_name="System Echo",
+                        schedule_type="once",
+                        local_time=time(9, 0),
+                        timezone="Asia/Shanghai",
+                        local_date=selected_date.date(),
+                        weekdays=[],
+                        task_input_json={"message": "once"},
+                        next_run_at=selected_occurrence,
+                    ),
+                    Schedule(
+                        schedule_id=weekly_id,
+                        team_id=team_id,
+                        name="Weekly selected date",
+                        enabled=True,
+                        target_device_id=device_id,
+                        skill_id="system.echo",
+                        execution_display_name="System Echo",
+                        schedule_type="weekly",
+                        local_time=time(9, 0),
+                        timezone="Asia/Shanghai",
+                        local_date=None,
+                        weekdays=[2],
+                        task_input_json={"message": "weekly"},
+                        next_run_at=selected_occurrence,
+                    ),
+                    Schedule(
+                        schedule_id=disabled_id,
+                        team_id=team_id,
+                        name="Disabled schedule with selected run",
+                        enabled=False,
+                        target_device_id=device_id,
+                        skill_id="system.echo",
+                        execution_display_name="System Echo",
+                        schedule_type="daily",
+                        local_time=time(9, 0),
+                        timezone="Asia/Shanghai",
+                        local_date=None,
+                        weekdays=[],
+                        task_input_json={"message": "disabled"},
+                        next_run_at=None,
+                    ),
+                    Schedule(
+                        schedule_id=outside_id,
+                        team_id=team_id,
+                        name="Outside selected date",
+                        enabled=True,
+                        target_device_id=device_id,
+                        skill_id="system.echo",
+                        execution_display_name="System Echo",
+                        schedule_type="daily",
+                        local_time=time(9, 0),
+                        timezone="Asia/Shanghai",
+                        local_date=None,
+                        weekdays=[],
+                        task_input_json={"message": "outside"},
+                        next_run_at=next_day_occurrence,
+                    ),
+                    ScheduleRun(
+                        schedule_id=disabled_id,
+                        scheduled_for=selected_occurrence,
+                        trigger_result="blocked",
+                    ),
+                ],
+            )
+            session.commit()
+
+        with Session(postgresql_engine) as session:
+            page = ScheduleService(session).list_management(
+                actor=actor,
+                page=1,
+                page_size=20,
+                enabled=None,
+                device_id=device_id,
+                search=None,
+                occurrence_date=selected_date.date(),
+                view_timezone="Asia/Shanghai",
+            )
+
+        assert page.total == 3
+        assert {item.schedule_id for item in page.items} == {
+            once_id,
+            weekly_id,
+            disabled_id,
+        }
+        by_id = {item.schedule_id: item for item in page.items}
+        assert by_id[once_id].local_date == selected_date.date()
+        assert by_id[weekly_id].weekdays == [2]
+        assert by_id[disabled_id].enabled is False
+        assert by_id[disabled_id].latest_run is not None
+        assert by_id[disabled_id].latest_run.scheduled_for == selected_occurrence
+    finally:
+        _cleanup(
+            postgresql_engine,
+            device_id,
+            team_id=team_id,
+            user_id=user_id,
+        )
 
 
 def test_scheduler_created_task_uses_existing_worker_runtime_lifecycle(
@@ -522,13 +720,24 @@ def test_scheduler_created_task_uses_existing_worker_runtime_lifecycle(
     """Exercise a safe internal Task through the ordinary claim/event/complete path."""
 
     device_id = uuid4()
+    team_id, user_id, actor = _fixture_actor()
     now = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=5)
     local_time = (
         now.astimezone(ZoneInfo("Asia/Shanghai")).time().replace(tzinfo=None)
     )
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="Scheduler E2E 设备"))
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="Scheduler Runtime Team"),
+                    User(user_id=user_id, display_name="Scheduler Runtime User"),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="Scheduler E2E 设备",
+                    ),
+                ],
+            )
             session.add(
                 DeviceSkillCapability(
                     device_id=device_id,
@@ -542,6 +751,7 @@ def test_scheduler_created_task_uses_existing_worker_runtime_lifecycle(
             )
             session.add(
                 Schedule(
+                    team_id=team_id,
                     name="Scheduler 安全闭环",
                     enabled=True,
                     target_device_id=device_id,
@@ -618,20 +828,35 @@ def test_scheduler_created_task_uses_existing_worker_runtime_lifecycle(
 
         with Session(postgresql_engine) as session:
             service = ScheduleService(session)
-            service.archive(triggered.schedule_id, now=now + timedelta(seconds=3))
-            history = service.list_runs(triggered.schedule_id, page=1, page_size=20)
+            service.archive(
+                triggered.schedule_id,
+                actor,
+                now=now + timedelta(seconds=3),
+            )
+            history = service.list_runs(
+                triggered.schedule_id,
+                actor,
+                page=1,
+                page_size=20,
+            )
             assert history.total == 1
             assert history.items[0].task_status == "success"
             with pytest.raises(ScheduleNotFoundError):
-                service.get(triggered.schedule_id)
+                service.get(actor, triggered.schedule_id)
     finally:
-        _cleanup(postgresql_engine, device_id)
+        _cleanup(
+            postgresql_engine,
+            device_id,
+            team_id=team_id,
+            user_id=user_id,
+        )
 
 
 def test_business_skill_schedule_validates_current_contract_and_uses_task_runtime(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
+    team_id, user_id, actor = _fixture_actor()
     now = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=5)
     schema = {
         "type": "object",
@@ -658,7 +883,17 @@ def test_business_skill_schedule_validates_current_contract_and_uses_task_runtim
     }
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="Business Skill 设备"))
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="Scheduler Skill Team"),
+                    User(user_id=user_id, display_name="Scheduler Skill User"),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="Business Skill 设备",
+                    ),
+                ],
+            )
             session.add(
                 DeviceSkillCapability(
                     device_id=device_id,
@@ -685,6 +920,7 @@ def test_business_skill_schedule_validates_current_contract_and_uses_task_runtim
                     local_time=time(9, 30),
                     timezone="Asia/Shanghai",
                 ),
+                actor,
                 now=now,
             )
             assert created.execution_type is ScheduleExecutionType.BUSINESS_SKILL
@@ -803,13 +1039,19 @@ def test_business_skill_schedule_validates_current_contract_and_uses_task_runtim
             assert run is not None
             assert run.trigger_error_code == "TASK_INPUT_INVALID"
     finally:
-        _cleanup(postgresql_engine, device_id)
+        _cleanup(
+            postgresql_engine,
+            device_id,
+            team_id=team_id,
+            user_id=user_id,
+        )
 
 
 def test_same_time_schedules_create_tasks_in_stable_order_and_failure_does_not_block(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
+    team_id, user_id, _ = _fixture_actor()
     now = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=5)
     local_time = (
         now.astimezone(ZoneInfo("Asia/Shanghai")).time().replace(tzinfo=None)
@@ -821,7 +1063,17 @@ def test_same_time_schedules_create_tasks_in_stable_order_and_failure_does_not_b
     ]
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="Scheduler Queue 设备"))
+            session.add_all(
+                [
+                    Team(team_id=team_id, name="Scheduler Queue Team"),
+                    User(user_id=user_id, display_name="Scheduler Queue User"),
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name="Scheduler Queue 设备",
+                    ),
+                ],
+            )
             session.add(
                 DeviceSkillCapability(
                     device_id=device_id,
@@ -837,6 +1089,7 @@ def test_same_time_schedules_create_tasks_in_stable_order_and_failure_does_not_b
                 session.add(
                     Schedule(
                         schedule_id=schedule_id,
+                        team_id=team_id,
                         name=f"Queue {index}",
                         enabled=True,
                         target_device_id=device_id,
@@ -882,4 +1135,9 @@ def test_same_time_schedules_create_tasks_in_stable_order_and_failure_does_not_b
             third = session.get(Task, triggered[2].task_id)
             assert third is not None and third.status == "pending"
     finally:
-        _cleanup(postgresql_engine, device_id)
+        _cleanup(
+            postgresql_engine,
+            device_id,
+            team_id=team_id,
+            user_id=user_id,
+        )

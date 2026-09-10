@@ -1,10 +1,11 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date as SQLDate,
     DateTime,
     ForeignKey,
     Index,
@@ -29,7 +30,23 @@ class Schedule(TimestampMixin, Base):
     __tablename__ = "schedules"
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
-        CheckConstraint("schedule_type IN ('daily')", name="schedule_type"),
+        CheckConstraint(
+            "schedule_type IN ('once', 'daily', 'weekly')",
+            name="schedule_type",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(weekdays) = 'array'",
+            name="weekdays_array",
+        ),
+        CheckConstraint(
+            "(schedule_type = 'once' AND local_date IS NOT NULL "
+            "AND jsonb_array_length(weekdays) = 0) OR "
+            "(schedule_type = 'daily' AND local_date IS NULL "
+            "AND jsonb_array_length(weekdays) = 0) OR "
+            "(schedule_type = 'weekly' AND local_date IS NULL "
+            "AND jsonb_array_length(weekdays) > 0)",
+            name="rule_fields",
+        ),
         CheckConstraint(
             "skill_id ~ '^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$'",
             name="skill_id",
@@ -106,6 +123,13 @@ class Schedule(TimestampMixin, Base):
     schedule_type: Mapped[str] = mapped_column(String(16), nullable=False)
     local_time: Mapped[time] = mapped_column(SQLTime(timezone=False), nullable=False)
     timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    local_date: Mapped[date | None] = mapped_column(SQLDate, nullable=True)
+    weekdays: Mapped[list[int]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
     task_input_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     next_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

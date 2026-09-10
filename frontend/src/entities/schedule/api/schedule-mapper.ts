@@ -29,6 +29,31 @@ export function normalizeLocalTime(value: string): string {
   return value.slice(0, 5)
 }
 
+const weekdayLabels: Record<number, string> = {
+  1: '一',
+  2: '二',
+  3: '三',
+  4: '四',
+  5: '五',
+  6: '六',
+  7: '日',
+}
+
+function formatTriggerRule(
+  scheduleType: ScheduleListItemReadDto['schedule_type'],
+  localDate: string | null,
+  weekdays: number[],
+  localTime: string,
+): string {
+  if (scheduleType === 'once') {
+    return `一次 ${localDate ?? '—'} ${localTime}`
+  }
+  if (scheduleType === 'weekly') {
+    return `每周${weekdays.map((day) => weekdayLabels[day] ?? day).join('、')} ${localTime}`
+  }
+  return `每天 ${localTime}`
+}
+
 export function mapScheduleRunDto(
   dto: ScheduleRunReadDto,
   timezone: string,
@@ -64,7 +89,14 @@ export function mapScheduleListItemDto(
     scheduleType: dto.schedule_type,
     localTime,
     timezone: dto.timezone,
-    triggerRuleDisplay: `每天 ${localTime}`,
+    localDate: dto.local_date,
+    weekdays: [...dto.weekdays],
+    triggerRuleDisplay: formatTriggerRule(
+      dto.schedule_type,
+      dto.local_date,
+      dto.weekdays,
+      localTime,
+    ),
     nextRunAt: dto.next_run_at,
     nextRunAtDisplay: formatInstant(dto.next_run_at, dto.timezone),
     latestRun: dto.latest_run
