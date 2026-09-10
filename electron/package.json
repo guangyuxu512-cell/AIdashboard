@@ -1,20 +1,29 @@
 {
   "name": "@control-center/electron",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "思余AI电商自动化控制平台 Windows 桌面端",
   "main": "dist/main/index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test dist/tests/desktop-api.test.js",
+    "package:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/build-windows-release.ps1",
+    "pack:win": "pnpm run build && electron-builder --config electron-builder.config.cjs --dir --win --x64 --publish never",
+    "test": "pnpm run build && node tools/run-tests.mjs",
     "test:recovery-e2e": "pnpm run build && electron dist/tools/manual-management-login-recovery-e2e.js",
     "dev": "pnpm run build && cross-env FRONTEND_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "start": "electron ."
   },
   "devDependencies": {
+    "@electron/fuses": "2.1.3",
     "@types/node": "^20.17.19",
     "cross-env": "^7.0.3",
-    "electron": "^34.2.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.16.1",
     "typescript": "~5.7.3"
   }
 }
