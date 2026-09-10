@@ -125,9 +125,19 @@ describe('YingdaoApplicationRunDialog', () => {
     wrapper
       .findComponent(ShopMultiSelector)
       .vm.$emit('update:modelValue', [])
+    ;(
+      mocks.shops as {
+        data: { value: Array<{ label: string; value: string }> }
+      }
+    ).data.value = [
+      { label: '刷新后的店铺', value: 'shop-refreshed' },
+    ]
     await flushPromises()
 
     const dialog = wrapper.findComponent(AppDialog)
+    expect(wrapper.findComponent(ShopMultiSelector).props('modelValue')).toEqual(
+      [],
+    )
     expect(dialog.props('positiveDisabled')).toBe(false)
     dialog.vm.$emit('confirm')
     await flushPromises()
