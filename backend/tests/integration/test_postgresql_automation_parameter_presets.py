@@ -45,6 +45,7 @@ from app.modules.workers.models import (
     DeviceRuntime,
     DeviceSkillCapability,
 )
+from app.modules.workers.service import WorkerPrincipal
 
 
 pytestmark = pytest.mark.integration
@@ -361,13 +362,23 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                 actor,
             )
             assert task.input_json["params"] == {
-                "format_version": 1,
-                "common_parameters": {"标题": "公共标题", "数量": 0, "启用": False},
-                "shop_parameters": {
+                "格式版本": 1,
+                "公共参数": {"标题": "公共标题", "数量": 0, "启用": False},
+                "店铺参数": {
                     str(shop_a): {"标题": "公共标题", "数量": 0, "启用": False},
                     str(shop_b): {"标题": "店铺 B 标题", "数量": 0, "启用": False},
                 },
             }
+            assert task.parameter_preset_id == preset.preset_id
+            assert task.parameter_preset_version == preset.version
+            claimed = TaskService(
+                session,
+                credential_service=credential_service,
+            ).claim_with_account(WorkerPrincipal(device_id=device_id), now=now)
+            assert claimed is not None
+            assert claimed.task.task_id == task.task_id
+            assert claimed.task.input_json["params"] == task.input_json["params"]
+            assert [account.shop_id for account in claimed.accounts] == [shop_a, shop_b]
 
             schedule = ScheduleService(
                 session,
@@ -389,11 +400,12 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                 actor,
                 now=now,
             )
-            presets.update(
+            updated_preset = presets.update(
                 actor=actor,
                 app_id=app_id,
                 preset_id=preset.preset_id,
                 data=AutomationParameterPresetUpdate(
+                    expected_version=preset.version,
                     common_parameters={"标题": "后续标题", "数量": 0, "启用": False},
                 ),
             )
@@ -412,8 +424,10 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert triggered is not None and triggered.task_id is not None
             scheduled_task = session.get(Task, triggered.task_id)
             assert scheduled_task is not None
-            assert scheduled_task.input_json["params"]["shop_parameters"][str(shop_a)]["标题"] == "后续标题"
-            assert task.input_json["params"]["shop_parameters"][str(shop_a)]["标题"] == "公共标题"
+            assert scheduled_task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "后续标题"
+            assert task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "公共标题"
+            assert scheduled_task.parameter_preset_id == preset.preset_id
+            assert scheduled_task.parameter_preset_version == updated_preset.version
     finally:
         _cleanup(
             postgresql_engine,
@@ -444,4 +458,11 @@ def test_postgresql_preset_schema_has_team_scope_and_schedule_reference(
     assert any(
         key["name"] == "fk_schedules_parameter_preset_id_automation_parameter_presets"
         for key in inspector.get_foreign_keys("schedules")
+    )
+    assert "parameter_preset_version" in {
+        column["name"] for column in inspector.get_columns("tasks")
+    }
+    assert any(
+        key["name"] == "fk_tasks_parameter_preset_id_automation_parameter_presets"
+        for key in inspector.get_foreign_keys("tasks")
     )

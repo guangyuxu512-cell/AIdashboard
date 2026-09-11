@@ -35,6 +35,11 @@ class Task(TimestampMixin, Base):
         ),
         CheckConstraint("jsonb_typeof(input_json) = 'object'", name="input_object"),
         CheckConstraint(
+            "(parameter_preset_id IS NULL AND parameter_preset_version IS NULL) OR "
+            "(parameter_preset_id IS NOT NULL AND parameter_preset_version > 0)",
+            name="parameter_preset_snapshot",
+        ),
+        CheckConstraint(
             "result_json IS NULL OR jsonb_typeof(result_json) = 'object'",
             name="result_object",
         ),
@@ -102,6 +107,15 @@ class Task(TimestampMixin, Base):
         Uuid(as_uuid=True),
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    parameter_preset_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("automation_parameter_presets.preset_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    parameter_preset_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
     )
     shop_links: Mapped[list["TaskShop"]] = relationship(
         back_populates="task",

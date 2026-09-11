@@ -37,6 +37,7 @@ export interface AutomationParameterPresetDto {
   name: string
   common_parameters: Record<string, unknown>
   shop_overrides: Record<string, Record<string, unknown>>
+  version: number
   created_at: string
   updated_at: string
 }
@@ -45,4 +46,9 @@ export interface AutomationParameterPresetSaveDto {
   name: string
   common_parameters: Record<string, unknown>
   shop_overrides: Record<string, Record<string, unknown>>
+}
+
+export interface AutomationParameterPresetUpdateDto
+  extends AutomationParameterPresetSaveDto {
+  expected_version: number
 }

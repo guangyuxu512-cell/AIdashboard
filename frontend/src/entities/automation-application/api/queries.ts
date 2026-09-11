@@ -5,6 +5,7 @@ import { automationApplicationApi } from './automation-application-api'
 import type {
   AutomationApplicationConfigUpsertDto,
   AutomationParameterPresetSaveDto,
+  AutomationParameterPresetUpdateDto,
 } from './contracts'
 
 export const automationApplicationQueryKeys = {
@@ -39,10 +40,14 @@ export function useSaveAutomationParameterPresetMutation() {
     }: {
       appId: string
       presetId: string | null
-      data: AutomationParameterPresetSaveDto
+      data: AutomationParameterPresetSaveDto | AutomationParameterPresetUpdateDto
     }) =>
       presetId
-        ? automationApplicationApi.updatePreset(appId, presetId, data)
+        ? automationApplicationApi.updatePreset(
+            appId,
+            presetId,
+            data as AutomationParameterPresetUpdateDto,
+          )
         : automationApplicationApi.createPreset(appId, data),
     onSuccess: (_, variables) =>
       queryClient.invalidateQueries({

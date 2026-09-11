@@ -36,6 +36,7 @@ def upgrade() -> None:
             postgresql.JSONB(astext_type=sa.Text()),
             nullable=False,
         ),
+        sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -63,6 +64,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "jsonb_typeof(shop_overrides) = 'object'",
             name=op.f("ck_automation_parameter_presets_shop_overrides_object"),
+        ),
+        sa.CheckConstraint(
+            "version > 0",
+            name=op.f("ck_automation_parameter_presets_positive_version"),
         ),
         sa.ForeignKeyConstraint(
             ["team_id"],
@@ -108,10 +113,36 @@ def upgrade() -> None:
         ["preset_id"],
         ondelete="RESTRICT",
     )
+    op.add_column("tasks", sa.Column("parameter_preset_id", sa.Uuid(), nullable=True))
+    op.add_column(
+        "tasks",
+        sa.Column("parameter_preset_version", sa.Integer(), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_tasks_parameter_preset_id_automation_parameter_presets",
+        "tasks",
+        "automation_parameter_presets",
+        ["parameter_preset_id"],
+        ["preset_id"],
+        ondelete="RESTRICT",
+    )
+    op.create_check_constraint(
+        "ck_tasks_parameter_preset_snapshot",
+        "tasks",
+        "(parameter_preset_id IS NULL AND parameter_preset_version IS NULL) OR "
+        "(parameter_preset_id IS NOT NULL AND parameter_preset_version > 0)",
+    )
 
 
 def downgrade() -> None:
     connection = op.get_bind()
+    linked_task_count = connection.scalar(
+        sa.text("SELECT count(*) FROM tasks WHERE parameter_preset_id IS NOT NULL"),
+    )
+    if linked_task_count:
+        raise RuntimeError(
+            "Cannot downgrade automation parameter presets while tasks reference a preset",
+        )
     linked_schedule_count = connection.scalar(
         sa.text(
             "SELECT count(*) FROM schedules WHERE parameter_preset_id IS NOT NULL",
@@ -121,6 +152,18 @@ def downgrade() -> None:
         raise RuntimeError(
             "Cannot downgrade automation parameter presets while schedules reference a preset",
         )
+    op.drop_constraint(
+        "ck_tasks_parameter_preset_snapshot",
+        "tasks",
+        type_="check",
+    )
+    op.drop_constraint(
+        "fk_tasks_parameter_preset_id_automation_parameter_presets",
+        "tasks",
+        type_="foreignkey",
+    )
+    op.drop_column("tasks", "parameter_preset_version")
+    op.drop_column("tasks", "parameter_preset_id")
     op.drop_constraint(
         "fk_schedules_parameter_preset_id_automation_parameter_presets",
         "schedules",

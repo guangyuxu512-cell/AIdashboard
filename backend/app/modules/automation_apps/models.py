@@ -74,6 +74,7 @@ class AutomationParameterPreset(TimestampMixin, Base):
             "jsonb_typeof(shop_overrides) = 'object'",
             name="shop_overrides_object",
         ),
+        CheckConstraint("version > 0", name="positive_version"),
         UniqueConstraint("team_id", "app_id", "name", name="uq_automation_preset_team_app_name"),
         Index(
             "ix_automation_preset_team_app_created",
@@ -113,3 +114,4 @@ class AutomationParameterPreset(TimestampMixin, Base):
         JSONB,
         nullable=False,
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

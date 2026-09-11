@@ -304,6 +304,7 @@ class ApiAutomationParameterPresetService:
             name=name,
             common_parameters={"商品列表": "", "数量": 0, "启用": False},
             shop_overrides={SHOP_ID: {"数量": 0, "启用": False}},
+            version=1,
             created_at=now,
             updated_at=now,
         )
@@ -948,7 +949,7 @@ def test_automation_parameter_preset_api_contract() -> None:
     update_response = request(
         "PATCH",
         f"{base_path}/{ApiAutomationParameterPresetService.preset_id}",
-        json={"name": "店铺覆盖（已更新）"},
+        json={"name": "店铺覆盖（已更新）", "expected_version": 1},
     )
     copy_response = request(
         "POST",

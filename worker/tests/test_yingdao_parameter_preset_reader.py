@@ -24,7 +24,7 @@ def test_reader_supports_legacy_flat_and_materialized_shop_parameters(
     reader = _load_reader()
     params_path = tmp_path / "params.json"
     params_path.write_text(
-        json.dumps({"format_version": 1, "common_parameters": {"标题": "公共"}, "shop_parameters": {"shop-a": {"标题": "店铺 A", "数量": 0}}}, ensure_ascii=False),
+        json.dumps({"格式版本": 1, "公共参数": {"标题": "公共"}, "店铺参数": {"shop-a": {"标题": "店铺 A", "数量": 0}}}, ensure_ascii=False),
         encoding="utf-8",
     )
 
@@ -40,3 +40,40 @@ def test_reader_supports_legacy_flat_and_materialized_shop_parameters(
     assert reader.read_yingdao_parameters(params_path, shop_id="shop-a") == {
         "旧参数": False,
     }
+
+
+def test_reader_resolves_a_single_account_without_falling_back_for_many(
+    tmp_path: Path,
+) -> None:
+    reader = _load_reader()
+    params_path = tmp_path / "params.json"
+    account_path = tmp_path / "account.json"
+    params_path.write_text(
+        json.dumps(
+            {
+                "格式版本": 1,
+                "公共参数": {"页码": 1},
+                "店铺参数": {"shop-a": {"页码": 2}},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    account_path.write_text(
+        json.dumps({"店铺列表": [{"店铺ID": "shop-a"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert reader.read_yingdao_parameters(
+        params_path,
+        account_json_path=account_path,
+    ) == {"页码": 2}
+
+    account_path.write_text(
+        json.dumps(
+            {"店铺列表": [{"店铺ID": "shop-a"}, {"店铺ID": "shop-b"}]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="当前店铺ID"):
+        reader.read_yingdao_parameters(params_path, account_json_path=account_path)

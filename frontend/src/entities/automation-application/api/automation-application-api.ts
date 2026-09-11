@@ -5,6 +5,7 @@ import type {
   AutomationApplicationConfigUpsertDto,
   AutomationParameterPresetDto,
   AutomationParameterPresetSaveDto,
+  AutomationParameterPresetUpdateDto,
 } from './contracts'
 
 export const automationApplicationApi = {
@@ -47,7 +48,7 @@ export const automationApplicationApi = {
   async updatePreset(
     appId: string,
     presetId: string,
-    data: AutomationParameterPresetSaveDto,
+    data: AutomationParameterPresetUpdateDto,
   ): Promise<AutomationParameterPresetDto> {
     const response = await httpClient.patch<AutomationParameterPresetDto>(
       `/api/v1/automation-app-configs/yingdao/${encodeURIComponent(appId)}/parameter-presets/${encodeURIComponent(presetId)}`,

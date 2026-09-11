@@ -123,15 +123,17 @@ class AutomationParameterPresetCreate(BaseModel):
 class AutomationParameterPresetUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    expected_version: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     common_parameters: dict[str, Any] | None = None
     shop_overrides: dict[UUID, dict[str, Any]] | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "AutomationParameterPresetUpdate":
-        if not self.model_fields_set:
+        changed_fields = self.model_fields_set - {"expected_version"}
+        if not changed_fields:
             raise ValueError("至少提供一个需要更新的字段")
-        for name in self.model_fields_set:
+        for name in changed_fields:
             if getattr(self, name) is None:
                 raise ValueError(f"{name} 不能为 null")
         return self
@@ -153,6 +155,7 @@ class AutomationParameterPresetRead(BaseModel):
     name: str
     common_parameters: dict[str, Any]
     shop_overrides: dict[UUID, dict[str, Any]]
+    version: int
     created_at: datetime
     updated_at: datetime
 
@@ -226,9 +229,9 @@ def build_parameter_preset_snapshot(
         for shop_id, values in shop_overrides.items()
     }
     return {
-        "format_version": 1,
-        "common_parameters": normalized_common,
-        "shop_parameters": {
+        "格式版本": 1,
+        "公共参数": normalized_common,
+        "店铺参数": {
             str(shop_id): normalize_parameters(
                 schema,
                 {**normalized_common, **normalized_overrides.get(str(shop_id), {})},

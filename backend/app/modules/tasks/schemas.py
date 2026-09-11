@@ -76,6 +76,8 @@ class TaskRead(BaseModel):
     target_device_id: UUID
     shop_ids: list[UUID]
     asset_ids: list[UUID]
+    parameter_preset_id: UUID | None
+    parameter_preset_version: int | None
     skill_id: str
     execution_display_name: str
     status: TaskStatus
@@ -229,6 +231,8 @@ def task_to_read(task: Task) -> TaskRead:
         target_device_id=task.target_device_id,
         shop_ids=task.shop_ids,
         asset_ids=task.asset_ids,
+        parameter_preset_id=task.parameter_preset_id,
+        parameter_preset_version=task.parameter_preset_version,
         skill_id=task.skill_id,
         execution_display_name=task.execution_display_name,
         status=task.status,

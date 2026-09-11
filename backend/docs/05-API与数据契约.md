@@ -198,16 +198,19 @@ text/number/boolean/select 类型。
 路由。预设只归属于创建时的 ActorContext Team；服务端在列表、详情、修改、复制和运行取快照时均再次
 确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
 
-每个预设保存 `name`、`common_parameters` 和以 `shop_id` 为键的 `shop_overrides`。公共参数是完整参数，
+每个预设保存 `name`、`common_parameters`、以 `shop_id` 为键的 `shop_overrides` 和递增 `version`。更新必须
+携带当前 Read DTO 的 `expected_version`；版本不一致返回 `409 / AUTOMATION_PARAMETER_PRESET_VERSION_CONFLICT`，
+客户端保留草稿并刷新后由用户决定如何处理。公共参数是完整参数，
 店铺覆盖只保存与公共参数不同的字段；合并/字段校验只使用该应用已保存的 Schema，必须保留合法的 `0`、
 `false` 和空字符串。预设服务通过既有 Shop 查询和 `shop` 模块授权核验每个 `shop_id`。当前 Shop 尚未
-建立 Team Ownership Scope，因此这复用的是现行正式 Shop 可见范围，不能把 Device Binding 当作人员授权。
-Credential、Cookie 和账号明文永不保存进预设。
+建立 Team Ownership Scope，因此这复用的是现行正式 Shop 可见范围；Target Device Binding 仅是本次执行资格
+检查，不能被表述或实现为新的 Shop 人员归属授权。Credential、Cookie 和账号明文永不保存进预设。
 
 `POST /api/v1/tasks` 选择预设时只提交 `parameter_preset_id`；Backend 在既有 Device、Shop 启用状态、
 Binding 与 Credential 校验成功后，才物化本次选中 Shop 的合并结果。Task `input.params` 保存不可变快照：
-`{"format_version":1,"common_parameters":{...},"shop_parameters":{"<shop_id>":{...}}}`。手工参数模式
-继续保存原平铺对象。Worker 不做继承、合并或授权判断。
+`{"格式版本":1,"公共参数":{...},"店铺参数":{"<shop_id>":{...}}}`，并在 Task 行保存
+`parameter_preset_id` 与 `parameter_preset_version`。手工参数模式继续保存原平铺对象且两个 Task 字段均为
+`NULL`。Worker 不做继承、合并或授权判断。
 
 `POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
 `{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。

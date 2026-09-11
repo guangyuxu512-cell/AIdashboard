@@ -168,9 +168,9 @@ def test_bridge_preserves_backend_materialized_parameter_preset_envelope(
 ) -> None:
     bridge = make_bridge(tmp_path)
     envelope = {
-        "format_version": 1,
-        "common_parameters": {"标题": "公共", "启用": False},
-        "shop_parameters": {
+        "格式版本": 1,
+        "公共参数": {"标题": "公共", "启用": False},
+        "店铺参数": {
             "shop-a": {"标题": "店铺 A", "数量": 0},
         },
     }

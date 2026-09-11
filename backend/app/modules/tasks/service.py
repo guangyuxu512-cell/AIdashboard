@@ -76,6 +76,8 @@ from app.shared.pagination import Page
 class PreparedTaskCreation:
     input_json: dict[str, Any]
     execution_display_name: str
+    parameter_preset_id: UUID | None = None
+    parameter_preset_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -201,6 +203,8 @@ class TaskService:
             team_id=team_id,
             created_by_user_id=created_by_user_id,
             target_device_id=data.target_device_id,
+            parameter_preset_id=prepared.parameter_preset_id,
+            parameter_preset_version=prepared.parameter_preset_version,
             skill_id=data.skill_id,
             execution_display_name=prepared.execution_display_name,
             status=TaskStatus.PENDING.value,
@@ -278,7 +282,11 @@ class TaskService:
             ) from error
         execution_display_name = capability.display_name
         if data.skill_id == TaskSkillId.YINGDAO_APP_RUN:
-            input_json, execution_display_name = self._validate_yingdao_application_run(
+            (
+                input_json,
+                execution_display_name,
+                parameter_preset_version,
+            ) = self._validate_yingdao_application_run(
                 input_json,
                 provider_inventory,
                 parameter_preset_id=data.parameter_preset_id,
@@ -289,6 +297,12 @@ class TaskService:
         return PreparedTaskCreation(
             input_json=input_json,
             execution_display_name=execution_display_name,
+            parameter_preset_id=data.parameter_preset_id,
+            parameter_preset_version=(
+                parameter_preset_version
+                if data.parameter_preset_id is not None
+                else None
+            ),
         )
 
     def _validate_asset_context(
@@ -402,7 +416,7 @@ class TaskService:
         team_id: UUID,
         actor: ActorContext | None,
         shop_ids: list[UUID],
-    ) -> tuple[dict[str, Any], str]:
+    ) -> tuple[dict[str, Any], str, int | None]:
         if inventory is None:
             raise TaskProviderNotReadyError(details={"provider": "yingdao"})
         app_id = str(input_json["app_id"])
@@ -434,7 +448,8 @@ class TaskService:
                     shop_ids=shop_ids,
                 )
             )
-            params = snapshot
+            params = snapshot.parameters
+            preset_version = snapshot.preset_version
         else:
             config = self.application_config_repository.get("yingdao", app_id)
             schema = AutomationInputSchema.model_validate(
@@ -444,7 +459,8 @@ class TaskService:
                 params = normalize_parameters(schema, input_json.get("params", {}))
             except ValueError as error:
                 raise TaskInputInvalidError(str(error)) from error
-        return {"app_id": app_id, "params": params}, application.app_name
+            preset_version = None
+        return {"app_id": app_id, "params": params}, application.app_name, preset_version
 
     def get(self, actor: ActorContext, task_id: UUID) -> Task:
         task = self.repository.get_for_actor(actor=actor, task_id=task_id)

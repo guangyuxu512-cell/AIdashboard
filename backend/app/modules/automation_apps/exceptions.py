@@ -13,6 +13,12 @@ class AutomationParameterPresetConflictError(AppError):
     status_code = 409
 
 
+class AutomationParameterPresetVersionConflictError(AppError):
+    code = "AUTOMATION_PARAMETER_PRESET_VERSION_CONFLICT"
+    message = "参数预设已被其他成员更新，请刷新后重新编辑"
+    status_code = 409
+
+
 class AutomationParameterPresetInvalidError(AppError):
     code = "AUTOMATION_PARAMETER_PRESET_INVALID"
     message = "参数预设不符合当前应用参数契约"

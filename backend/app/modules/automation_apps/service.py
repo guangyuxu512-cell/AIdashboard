@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -10,6 +14,7 @@ from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetConflictError,
     AutomationParameterPresetInvalidError,
     AutomationParameterPresetNotFoundError,
+    AutomationParameterPresetVersionConflictError,
 )
 from app.modules.automation_apps.models import (
     AutomationApplicationConfig,
@@ -33,6 +38,15 @@ from app.modules.automation_apps.schemas import (
 )
 from app.modules.shops.repository import ShopRepository
 from app.shared.identifiers import generate_id
+
+
+@dataclass(frozen=True)
+class ParameterPresetSnapshot:
+    """A resolved preset whose values are safe to persist on exactly one Task."""
+
+    preset_id: UUID
+    preset_version: int
+    parameters: dict[str, Any]
 
 
 class AutomationApplicationConfigService:
@@ -167,6 +181,7 @@ class AutomationParameterPresetService:
             name=data.name,
             common_parameters=common_parameters,
             shop_overrides=shop_overrides,
+            version=1,
         )
         self.preset_repository.add(preset)
         self._commit(preset)
@@ -187,6 +202,9 @@ class AutomationParameterPresetService:
             preset_id=preset_id,
             for_update=True,
         )
+        if preset.version != data.expected_version:
+            self.session.rollback()
+            raise AutomationParameterPresetVersionConflictError()
         values = data.model_dump(exclude_unset=True)
         name = values.get("name", preset.name)
         common_parameters, shop_overrides = self._normalize_payload(
@@ -205,6 +223,7 @@ class AutomationParameterPresetService:
         preset.name = name
         preset.common_parameters = common_parameters
         preset.shop_overrides = shop_overrides
+        preset.version += 1
         self._commit(preset)
         return self._to_read(preset)
 
@@ -235,6 +254,7 @@ class AutomationParameterPresetService:
                 shop_id: dict(values)
                 for shop_id, values in source.shop_overrides.items()
             },
+            version=1,
         )
         self.preset_repository.add(preset)
         self._commit(preset)
@@ -247,7 +267,7 @@ class AutomationParameterPresetService:
         app_id: str,
         preset_id: object,
         shop_ids: list[object],
-    ) -> dict[str, object]:
+    ) -> ParameterPresetSnapshot:
         self._require_shop_access(actor)
         preset = self._get_for_actor(actor=actor, app_id=app_id, preset_id=preset_id)
         self._ensure_selected_shops_exist(shop_ids)
@@ -260,7 +280,7 @@ class AutomationParameterPresetService:
         app_id: str,
         preset_id: object,
         shop_ids: list[object],
-    ) -> dict[str, object]:
+    ) -> ParameterPresetSnapshot:
         preset = self.preset_repository.get_for_team(
             team_id=team_id,
             app_id=app_id,
@@ -299,13 +319,17 @@ class AutomationParameterPresetService:
         self,
         preset: AutomationParameterPreset,
         shop_ids: list[object],
-    ) -> dict[str, object]:
+    ) -> ParameterPresetSnapshot:
         try:
-            return build_parameter_preset_snapshot(
-                self._schema(preset.app_id),
-                common_parameters=preset.common_parameters,
-                shop_overrides=preset.shop_overrides,
-                shop_ids=shop_ids,  # type: ignore[arg-type]
+            return ParameterPresetSnapshot(
+                preset_id=preset.preset_id,
+                preset_version=preset.version,
+                parameters=build_parameter_preset_snapshot(
+                    self._schema(preset.app_id),
+                    common_parameters=preset.common_parameters,
+                    shop_overrides=preset.shop_overrides,
+                    shop_ids=shop_ids,  # type: ignore[arg-type]
+                ),
             )
         except ValueError as error:
             raise AutomationParameterPresetInvalidError(str(error)) from error

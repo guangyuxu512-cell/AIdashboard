@@ -9,6 +9,7 @@ from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetNotFoundError,
+    AutomationParameterPresetVersionConflictError,
 )
 from app.modules.automation_apps.models import AutomationParameterPreset
 from app.modules.automation_apps.schemas import (
@@ -237,6 +238,7 @@ def test_preset_keeps_false_zero_and_empty_string_and_snapshots_selected_shops()
         app_id="safe-app",
         preset_id=created.preset_id,
         data=AutomationParameterPresetUpdate(
+            expected_version=created.version,
             shop_overrides={shop_a: {"标题": "店铺 A 更新"}},
         ),
     )
@@ -247,10 +249,10 @@ def test_preset_keeps_false_zero_and_empty_string_and_snapshots_selected_shops()
         preset_id=created.preset_id,
         shop_ids=[shop_a],
     )
-    assert snapshot == {
-        "format_version": 1,
-        "common_parameters": created.common_parameters,
-        "shop_parameters": {
+    assert snapshot.parameters == {
+        "格式版本": 1,
+        "公共参数": created.common_parameters,
+        "店铺参数": {
             str(shop_a): {
                 "标题": "店铺 A 更新",
                 "数量": 0,
@@ -259,7 +261,20 @@ def test_preset_keeps_false_zero_and_empty_string_and_snapshots_selected_shops()
             },
         },
     }
-    assert str(shop_b) not in snapshot["shop_parameters"]
+    assert str(shop_b) not in snapshot.parameters["店铺参数"]
+    assert snapshot.preset_id == created.preset_id
+    assert snapshot.preset_version == updated.version
+
+    with pytest.raises(AutomationParameterPresetVersionConflictError):
+        service.update(
+            actor=actor_context,
+            app_id="safe-app",
+            preset_id=created.preset_id,
+            data=AutomationParameterPresetUpdate(
+                expected_version=created.version,
+                common_parameters={"标题": "过期写入"},
+            ),
+        )
 
 
 def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> None:
@@ -286,6 +301,7 @@ def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> N
             name="其他团队预设",
             common_parameters={"标题": "不可见"},
             shop_overrides={},
+            version=1,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         ),
@@ -304,7 +320,10 @@ def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> N
         actor=own_actor,
         app_id="safe-app",
         preset_id=own.preset_id,
-        data=AutomationParameterPresetUpdate(common_parameters={"标题": "已修改"}),
+        data=AutomationParameterPresetUpdate(
+            expected_version=own.version,
+            common_parameters={"标题": "已修改"},
+        ),
     )
     assert copied.common_parameters == {"标题": "原始", "数量": 1, "启用": True, "备注": "默认备注"}
 

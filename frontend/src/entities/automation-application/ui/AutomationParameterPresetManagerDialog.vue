@@ -46,6 +46,7 @@ const draft = reactive({
   name: '',
   commonParameters: {} as Record<string, unknown>,
   shopOverrides: {} as Record<string, Record<string, unknown>>,
+  expectedVersion: null as number | null,
 })
 
 const presets = computed(() => presetsQuery.data.value ?? [])
@@ -63,6 +64,9 @@ const commonError = computed(() =>
 const saveDisabledReason = computed(() => {
   if (!props.appId) return '请先选择影刀应用'
   if (!draft.name.trim()) return '请输入预设名称'
+  if (selectedPresetId.value && draft.expectedVersion === null) {
+    return '预设版本加载中，请稍后再保存'
+  }
   return commonError.value
 })
 
@@ -92,6 +96,7 @@ function startCreate(): void {
   draft.name = ''
   draft.commonParameters = createDefaultAutomationParameters(props.schema)
   draft.shopOverrides = {}
+  draft.expectedVersion = null
   overrideShopIds.value = []
   copyName.value = ''
 }
@@ -107,6 +112,7 @@ function selectPreset(value: unknown): void {
   draft.name = preset.name
   draft.commonParameters = { ...preset.common_parameters }
   draft.shopOverrides = cloneOverrides(preset.shop_overrides)
+  draft.expectedVersion = preset.version
   overrideShopIds.value = Object.keys(preset.shop_overrides)
   copyName.value = `${preset.name} 副本`
 }
@@ -161,11 +167,18 @@ async function save(): Promise<void> {
     const preset = await savePreset.mutateAsync({
       appId: props.appId,
       presetId: selectedPresetId.value,
-      data: {
+      data: selectedPresetId.value
+        ? {
+            name: draft.name.trim(),
+            common_parameters: { ...draft.commonParameters },
+            shop_overrides: cloneOverrides(draft.shopOverrides),
+            expected_version: draft.expectedVersion!,
+          }
+        : {
         name: draft.name.trim(),
         common_parameters: { ...draft.commonParameters },
         shop_overrides: cloneOverrides(draft.shopOverrides),
-      },
+          },
     })
     selectPreset(preset.preset_id)
     message.success('参数预设已保存')
