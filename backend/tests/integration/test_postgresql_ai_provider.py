@@ -593,6 +593,83 @@ def test_provider_execution_persistence_recovery_retry_and_asset_ownership(
             with storage.open(recovered_output.storage_key) as output_stream:
                 assert output_stream.read() == PNG_BYTES
 
+        # A remote result download failure is different from output persistence,
+        # but it has the same durable recovery boundary: the task id is known,
+        # so the next retry must read it again without another Create POST.
+        with factory() as session:
+            download_failure_job = service_factory(session).submit(
+                actor,
+                submit_request(
+                    input_asset_id,
+                    key="stage-2a1-provider-download-recovery",
+                ),
+            )
+            job_ids.append(download_failure_job.generation_job_id)
+            download_failure_item_id = download_failure_job.items[0].generation_item_id
+
+        download_failure_provider = FakeProvider(
+            task_id="stage-2a1-task-download-recovery",
+            failure=ImageProviderFailure(
+                "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE",
+                "生成图片下载失败",
+                retryable=True,
+            ),
+        )
+        download_failure_executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=service_factory,
+            provider=download_failure_provider,
+            storage=storage,
+        )
+        assert download_failure_executor.execute_next() is True
+        assert download_failure_provider.create_calls == 1
+
+        with factory() as session:
+            failed_item = session.get(GenerationItem, download_failure_item_id)
+            failed_execution = session.get(
+                GenerationProviderExecution,
+                download_failure_item_id,
+            )
+            assert failed_item is not None
+            assert failed_execution is not None
+            assert failed_item.status == GenerationItemStatus.FAILED.value
+            assert (
+                failed_item.last_failure_code
+                == "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE"
+            )
+            assert failed_item.attempt_count == failed_execution.attempt_count == 1
+            assert (
+                failed_execution.external_task_id
+                == "stage-2a1-task-download-recovery"
+            )
+            service_factory(session).retry_failed_items(
+                actor,
+                download_failure_job.generation_job_id,
+                GenerationRetryRequest.model_validate(
+                    {
+                        "items": [
+                            {
+                                "item_id": str(download_failure_item_id),
+                                "expected_attempt_count": 1,
+                            },
+                        ],
+                    },
+                ),
+            )
+
+        download_recovery_provider = FakeProvider(task_id="must-not-be-created")
+        download_recovery_executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=service_factory,
+            provider=download_recovery_provider,
+            storage=storage,
+        )
+        assert download_recovery_executor.execute_next() is True
+        assert download_recovery_provider.create_calls == 0
+        assert download_recovery_provider.waited_task_ids == [
+            "stage-2a1-task-download-recovery",
+        ]
+
         with factory() as session:
             crash_job = service_factory(session).submit(
                 actor,
