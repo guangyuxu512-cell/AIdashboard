@@ -39,6 +39,7 @@ describe('mock schedule data source', () => {
       shopIds: ['shop-fixture-001'],
       executionType: 'yingdao_application',
       applicationId: 'app-fixture-product-publish-1',
+      parameterPresetId: null,
       skillId: null,
       parameters: {},
       scheduleType: 'daily',

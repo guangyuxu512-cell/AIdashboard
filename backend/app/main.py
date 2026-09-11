@@ -23,6 +23,9 @@ from app.modules.ai_workbench.model_catalog_api import (
 from app.modules.authentication.api import router as authentication_router
 from app.modules.assets.api import router as assets_router
 from app.modules.automation_apps.api import router as automation_apps_router
+from app.modules.automation_apps.presets_api import (
+    router as automation_parameter_presets_router,
+)
 from app.modules.credentials.api import router as credentials_router
 from app.modules.devices.api import router as devices_router
 from app.modules.human_auth.api import router as human_auth_router
@@ -110,6 +113,7 @@ def create_app() -> FastAPI:
     application.include_router(authentication_router)
     application.include_router(assets_router)
     application.include_router(automation_apps_router)
+    application.include_router(automation_parameter_presets_router)
     application.include_router(users_router)
     application.include_router(shops_router)
     application.include_router(devices_router)

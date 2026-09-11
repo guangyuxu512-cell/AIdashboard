@@ -41,6 +41,7 @@ export interface ScheduleListItemReadDto {
 
 export interface ScheduleReadDto extends ScheduleListItemReadDto {
   application_id: string | null
+  parameter_preset_id: string | null
   parameters: Record<string, unknown>
 }
 
@@ -50,6 +51,7 @@ export interface ScheduleCreateDto {
   shop_ids: string[]
   execution_type: ScheduleExecutionTypeDto
   application_id?: string
+  parameter_preset_id?: string | null
   skill_id?: string
   parameters: Record<string, unknown>
   schedule_type: ScheduleTypeDto

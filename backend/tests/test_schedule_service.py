@@ -37,7 +37,14 @@ class FakeScheduledTaskService:
         self.prepared_data: object | None = None
         self.created_data: object | None = None
 
-    def prepare_scheduled_task(self, data: object) -> PreparedTaskCreation:
+    def prepare_scheduled_task(
+        self,
+        data: object,
+        *,
+        team_id: UUID,
+        actor: object | None = None,
+    ) -> PreparedTaskCreation:
+        del team_id, actor
         self.prepared_data = data
         return PreparedTaskCreation(
             input_json={"app_id": "safe-app", "params": {}},
@@ -50,7 +57,9 @@ class FakeScheduledTaskService:
         *,
         team_id: UUID,
         created_by_user_id: UUID | None,
+        actor: object | None = None,
     ) -> Task:
+        del actor
         self.created_data = data
         self.calls += 1
         if self.error is not None:

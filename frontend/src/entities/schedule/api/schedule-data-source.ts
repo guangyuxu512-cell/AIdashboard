@@ -58,6 +58,9 @@ function toCreateDto(input: ScheduleSaveInput): ScheduleCreateDto {
     ...(input.executionType === 'yingdao_application' && input.applicationId
       ? { application_id: input.applicationId }
       : {}),
+    ...(input.executionType === 'yingdao_application' && input.parameterPresetId
+      ? { parameter_preset_id: input.parameterPresetId }
+      : {}),
     ...(input.executionType === 'business_skill' && input.skillId
       ? { skill_id: input.skillId }
       : {}),
@@ -83,6 +86,9 @@ function toUpdateDto(input: Partial<ScheduleSaveInput>): ScheduleUpdateDto {
       : {}),
     ...(input.applicationId !== undefined && input.applicationId !== null
       ? { application_id: input.applicationId }
+      : {}),
+    ...(input.parameterPresetId !== undefined
+      ? { parameter_preset_id: input.parameterPresetId }
       : {}),
     ...(input.skillId !== undefined && input.skillId !== null
       ? { skill_id: input.skillId }
@@ -172,6 +178,7 @@ function createMockScheduleDataSource(): ScheduleDataSource {
         schedule_id: crypto.randomUUID(),
         device_display_name: input.deviceId,
         application_id: input.applicationId,
+        parameter_preset_id: input.parameterPresetId,
         skill_id:
           input.executionType === 'business_skill'
             ? input.skillId!
@@ -202,6 +209,9 @@ function createMockScheduleDataSource(): ScheduleDataSource {
         row.application_id = dto.application_id
         row.skill_id = 'yingdao.app.run'
         row.execution_display_name = dto.application_id
+      }
+      if (dto.parameter_preset_id !== undefined) {
+        row.parameter_preset_id = dto.parameter_preset_id
       }
       if (dto.skill_id !== undefined) {
         row.skill_id = dto.skill_id

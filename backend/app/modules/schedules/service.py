@@ -66,12 +66,14 @@ class ScheduleService:
             shop_ids=data.shop_ids,
             execution_type=data.execution_type,
             application_id=data.application_id,
+            parameter_preset_id=data.parameter_preset_id,
             skill_id=data.skill_id,
             parameters=data.parameters,
         )
         prepared = self.task_service.prepare_scheduled_task(
             task_data,
             team_id=actor.team_id,
+            actor=actor,
         )
         schedule = Schedule(
             team_id=actor.team_id,
@@ -79,6 +81,7 @@ class ScheduleService:
             name=data.name,
             enabled=data.enabled,
             target_device_id=data.target_device_id,
+            parameter_preset_id=data.parameter_preset_id,
             skill_id=task_data.skill_id,
             execution_display_name=prepared.execution_display_name,
             schedule_type=data.schedule_type.value,
@@ -148,18 +151,40 @@ class ScheduleService:
                 if application_id is None:
                     raise TaskInputInvalidError("请选择影刀应用")
                 skill_id = None
+                existing_preset_id = (
+                    schedule.parameter_preset_id
+                    if current_execution_type is execution_type
+                    and application_id == schedule.task_input_json.get("app_id")
+                    else None
+                )
+                parameter_preset_id = values.get(
+                    "parameter_preset_id",
+                    existing_preset_id,
+                )
                 existing_parameters = (
                     schedule.task_input_json.get("params", {})
                     if current_execution_type is execution_type
                     else {}
                 )
+                if (
+                    existing_preset_id is not None
+                    and parameter_preset_id is None
+                    and "parameters" not in values
+                ):
+                    # A preset Task stores a versioned Worker envelope instead of
+                    # manual fields.  Clearing the preset must not feed that
+                    # envelope back into manual-schema validation.
+                    existing_parameters = {}
             else:
+                if values.get("parameter_preset_id") is not None:
+                    raise TaskInputInvalidError("业务 Skill 不支持影刀参数预设")
                 skill_id = values.get("skill_id")
                 if skill_id is None and current_execution_type is execution_type:
                     skill_id = schedule.skill_id
                 if skill_id is None:
                     raise TaskInputInvalidError("请选择业务 Skill")
                 application_id = None
+                parameter_preset_id = None
                 existing_parameters = (
                     schedule.task_input_json
                     if current_execution_type is execution_type
@@ -171,12 +196,14 @@ class ScheduleService:
                 shop_ids=shop_ids,
                 execution_type=execution_type,
                 application_id=application_id,
+                parameter_preset_id=parameter_preset_id,
                 skill_id=skill_id,
                 parameters=parameters,
             )
             prepared = self.task_service.prepare_scheduled_task(
                 task_data,
                 team_id=schedule.team_id,
+                actor=actor,
             )
 
             schedule_type = values.get(
@@ -200,6 +227,7 @@ class ScheduleService:
 
             schedule.name = values.get("name", schedule.name)
             schedule.target_device_id = target_device_id
+            schedule.parameter_preset_id = parameter_preset_id
             if schedule.shop_ids != shop_ids:
                 # Remove the old ordered set before inserting the replacement.
                 # This also makes pure reordering safe with the unique position
@@ -367,6 +395,7 @@ class ScheduleService:
                     shop_ids=schedule.shop_ids,
                     skill_id=schedule.skill_id,
                     input=schedule.task_input_json,
+                    parameter_preset_id=schedule.parameter_preset_id,
                 ),
                 team_id=schedule.team_id,
                 created_by_user_id=schedule.created_by_user_id,
@@ -396,6 +425,7 @@ def _task_create(
     shop_ids: list[UUID],
     execution_type: ScheduleExecutionType,
     application_id: str | None,
+    parameter_preset_id: UUID | None,
     skill_id: str | None,
     parameters: dict[str, Any],
 ) -> TaskCreate:
@@ -415,6 +445,7 @@ def _task_create(
         shop_ids=shop_ids,
         skill_id=TaskSkillId.YINGDAO_APP_RUN,
         input={"app_id": application_id, "params": parameters},
+        parameter_preset_id=parameter_preset_id,
     )
 
 
@@ -428,6 +459,7 @@ def _schedule_to_read(record: ScheduleListRecord) -> ScheduleRead:
             if execution_type is ScheduleExecutionType.YINGDAO_APPLICATION
             else None
         ),
+        parameter_preset_id=schedule.parameter_preset_id,
         parameters=(
             dict(schedule.task_input_json.get("params", {}))
             if execution_type is ScheduleExecutionType.YINGDAO_APPLICATION

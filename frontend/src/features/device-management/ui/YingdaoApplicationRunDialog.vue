@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import {
   useAutomationApplicationConfigQuery,
   AutomationParameterFields,
+  AutomationParameterPresetSelector,
   createDefaultAutomationParameters,
   validateAutomationParameters,
 } from '@/entities/automation-application'
@@ -39,6 +40,7 @@ const shopOptionsQuery = useDeviceShopSelectionOptionsQuery(
 )
 const shopOptions = computed(() => shopOptionsQuery.data.value ?? [])
 const params = ref<Record<string, unknown>>({})
+const parameterPresetId = ref<string | null>(null)
 const hasConfigData = computed(() => configQuery.data.value !== undefined)
 const configInitialLoading = computed(
   () => configQuery.isPending.value && !hasConfigData.value,
@@ -52,13 +54,28 @@ const runDisabledReason = computed(() => {
   if (configInitialLoading.value) return '正在读取参数配置'
   if (configInitialError.value) return '参数配置加载失败，暂时无法运行'
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
+  if (parameterPresetId.value) return null
   return validateAutomationParameters(schema, params.value)
 })
 
 watch(
-  [() => props.show, () => configQuery.data.value],
-  ([show, config]) => {
+  [
+    () => props.show,
+    () => props.application?.appId,
+    () => props.deviceId,
+    () => configQuery.data.value,
+  ],
+  ([show, applicationId, deviceId, config], previous) => {
     if (!show) return
+    if (
+      previous &&
+      previous[0] === show &&
+      previous[1] === applicationId &&
+      previous[2] === deviceId
+    ) {
+      return
+    }
+    parameterPresetId.value = null
     params.value = createDefaultAutomationParameters(
       config?.input_schema ?? { fields: [] },
     )
@@ -98,7 +115,9 @@ async function run(): Promise<void> {
     return
   }
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
-  const validationError = validateAutomationParameters(schema, params.value)
+  const validationError = parameterPresetId.value
+    ? null
+    : validateAutomationParameters(schema, params.value)
   if (validationError) {
     message.error(validationError)
     return
@@ -110,6 +129,9 @@ async function run(): Promise<void> {
       asset_ids: [...assetIds.value],
       skill_id: 'yingdao.app.run',
       input: { app_id: props.application.appId, params: { ...params.value } },
+      ...(parameterPresetId.value
+        ? { parameter_preset_id: parameterPresetId.value }
+        : {}),
     })
     message.success('影刀应用任务已创建')
     emit('update:show', false)
@@ -139,7 +161,16 @@ async function run(): Promise<void> {
           :loading="shopOptionsQuery.isPending.value"
         />
       </NFormItem>
+      <AutomationParameterPresetSelector
+        v-model="parameterPresetId"
+        :app-id="appId"
+        :shop-ids="shopIds"
+        :shop-options="shopOptions"
+        :schema="configQuery.data.value?.input_schema ?? { fields: [] }"
+        :disabled="configInitialLoading"
+      />
       <AutomationParameterFields
+        v-if="!parameterPresetId"
         v-model="params"
         :schema="configQuery.data.value?.input_schema ?? { fields: [] }"
       />

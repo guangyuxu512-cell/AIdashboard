@@ -10,6 +10,7 @@ const props = defineProps<{
   schema: AutomationInputSchemaDto
   modelValue: Record<string, unknown>
   disabled?: boolean
+  preserveEmptyString?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +25,7 @@ const fields = computed(() => mapAutomationParameterFields(props.schema))
     :fields="fields"
     :model-value="modelValue"
     :disabled="disabled"
+    :preserve-empty-string="preserveEmptyString"
     @update:model-value="emit('update:modelValue', $event)"
   />
 </template>

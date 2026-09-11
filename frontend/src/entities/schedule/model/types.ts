@@ -45,6 +45,7 @@ export interface ScheduleListItemViewModel {
 
 export interface ScheduleDetailViewModel extends ScheduleListItemViewModel {
   applicationId: string | null
+  parameterPresetId: string | null
   parameters: Record<string, unknown>
 }
 
@@ -62,6 +63,7 @@ export interface ScheduleSaveInput {
   shopIds: string[]
   executionType: ScheduleExecutionTypeDto
   applicationId: string | null
+  parameterPresetId: string | null
   skillId: string | null
   parameters: Record<string, unknown>
   scheduleType: ScheduleTypeDto
