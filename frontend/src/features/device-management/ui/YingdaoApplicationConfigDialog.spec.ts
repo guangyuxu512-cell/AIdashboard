@@ -154,7 +154,16 @@ describe('YingdaoApplicationConfigDialog', () => {
     expect(feedback).toContain('状态的默认值不符合select类型')
   })
 
-  it('maps server field details back to the row and preserves the open draft', async () => {
+  it('maps the duplicate-name details emitted by the API to both affected rows', async () => {
+    mocks.query = {
+      data: ref({
+        input_schema: {
+          fields: [configField(), configField({ name: '商品编号' })],
+        },
+      }),
+      isPending: ref(false),
+      error: ref(null),
+    }
     mocks.mutateAsync.mockRejectedValue(
       new ApiError({
         code: 'VALIDATION_ERROR',
@@ -162,7 +171,11 @@ describe('YingdaoApplicationConfigDialog', () => {
         details: [
           {
             loc: ['body', 'input_schema', 'fields', 0, 'name'],
-            msg: '参数名已被占用',
+            msg: '参数名不能重复',
+          },
+          {
+            loc: ['body', 'input_schema', 'fields', 1, 'name'],
+            msg: '参数名不能重复',
           },
         ],
       }),
@@ -173,9 +186,12 @@ describe('YingdaoApplicationConfigDialog', () => {
     wrapper.findComponent(FormDialog).vm.$emit('submit')
     await flushPromises()
 
-    expect(wrapper.findAllComponents(NFormItem)[0]!.props('feedback')).toBe(
-      '参数名已被占用',
-    )
+    expect(
+      wrapper
+        .findAllComponents(NFormItem)
+        .map((item) => item.props('feedback'))
+        .filter((feedback) => feedback === '参数名不能重复'),
+    ).toHaveLength(2)
     expect(wrapper.findAllComponents(AppInput)[0]!.props('modelValue')).toBe(
       '商品列表',
     )

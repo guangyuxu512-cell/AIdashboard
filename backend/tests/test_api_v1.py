@@ -888,7 +888,12 @@ def test_automation_application_config_api_rejects_duplicate_or_invalid_names() 
 
     assert duplicate_response.status_code == 422
     assert duplicate_response.json()["code"] == "VALIDATION_ERROR"
-    assert duplicate_response.json()["details"]
+    duplicate_details = duplicate_response.json()["details"]
+    assert [detail["loc"] for detail in duplicate_details] == [
+        ["body", "input_schema", "fields", 0, "name"],
+        ["body", "input_schema", "fields", 1, "name"],
+    ]
+    assert [detail["msg"] for detail in duplicate_details] == ["参数名不能重复", "参数名不能重复"]
     assert invalid_response.status_code == 422
     assert invalid_response.json()["code"] == "VALIDATION_ERROR"
     assert invalid_response.json()["details"]
