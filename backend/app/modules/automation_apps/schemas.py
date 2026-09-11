@@ -112,6 +112,13 @@ class AutomationApplicationConfigRead(BaseModel):
     updated_at: datetime
 
 
+class YingdaoApplicationOptionRead(BaseModel):
+    """A minimal human-facing option from an already visible Device inventory."""
+
+    app_id: str
+    app_name: str
+
+
 class AutomationParameterPresetCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

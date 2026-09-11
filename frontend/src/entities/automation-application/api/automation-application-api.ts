@@ -3,12 +3,21 @@ import { httpClient } from '@/shared/api'
 import type {
   AutomationApplicationConfigDto,
   AutomationApplicationConfigUpsertDto,
+  AutomationParameterPresetListParams,
   AutomationParameterPresetDto,
   AutomationParameterPresetSaveDto,
   AutomationParameterPresetUpdateDto,
+  YingdaoApplicationOptionDto,
 } from './contracts'
 
 export const automationApplicationApi = {
+  async listYingdaoApplications(): Promise<YingdaoApplicationOptionDto[]> {
+    const response = await httpClient.get<YingdaoApplicationOptionDto[]>(
+      '/api/v1/automation-app-configs/yingdao/applications',
+    )
+    return response.data
+  },
+
   async get(appId: string): Promise<AutomationApplicationConfigDto | null> {
     const response = await httpClient.get<AutomationApplicationConfigDto | null>(
       `/api/v1/automation-app-configs/yingdao/${encodeURIComponent(appId)}`,
@@ -30,6 +39,21 @@ export const automationApplicationApi = {
   async listPresets(appId: string): Promise<AutomationParameterPresetDto[]> {
     const response = await httpClient.get<AutomationParameterPresetDto[]>(
       `/api/v1/automation-app-configs/yingdao/${encodeURIComponent(appId)}/parameter-presets`,
+    )
+    return response.data
+  },
+
+  async listAllPresets(
+    params: AutomationParameterPresetListParams = {},
+  ): Promise<AutomationParameterPresetDto[]> {
+    const response = await httpClient.get<AutomationParameterPresetDto[]>(
+      '/api/v1/automation-parameter-presets',
+      {
+        params: {
+          ...(params.appId ? { app_id: params.appId } : {}),
+          ...(params.query?.trim() ? { q: params.query.trim() } : {}),
+        },
+      },
     )
     return response.data
   },

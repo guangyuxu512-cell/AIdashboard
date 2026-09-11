@@ -10,6 +10,7 @@ const aiWorkbenchModule = requireModuleDefinition('ai-workbench')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
+const parameterPresetModule = requireModuleDefinition('parameter-preset')
 const settingsModule = requireModuleDefinition('settings')
 
 const router = createRouter({
@@ -85,6 +86,13 @@ const router = createRouter({
       name: scheduleModule.routeName,
       component: () => import('@/pages/schedules/ScheduleCenterPage.vue'),
       meta: { moduleCode: scheduleModule.moduleCode },
+    },
+    {
+      path: parameterPresetModule.routePath,
+      name: parameterPresetModule.routeName,
+      component: () =>
+        import('@/pages/parameter-presets/ParameterPresetLibraryPage.vue'),
+      meta: { moduleCode: parameterPresetModule.moduleCode },
     },
     {
       path: settingsModule.routePath,

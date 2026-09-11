@@ -91,6 +91,35 @@ class AutomationParameterPresetRepository:
             ),
         )
 
+    def list_all_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str | None = None,
+        name_query: str | None = None,
+    ) -> list[AutomationParameterPreset]:
+        statement = select(AutomationParameterPreset)
+        if app_id is not None:
+            statement = statement.where(AutomationParameterPreset.app_id == app_id)
+        if name_query:
+            statement = statement.where(
+                AutomationParameterPreset.name.ilike(f"%{name_query}%"),
+            )
+        statement = DataScopePolicy.apply(
+            statement,
+            team_id_column=AutomationParameterPreset.team_id,
+            created_by_user_id_column=AutomationParameterPreset.created_by_user_id,
+            actor=actor,
+        )
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    AutomationParameterPreset.updated_at.desc(),
+                    AutomationParameterPreset.preset_id.asc(),
+                ),
+            ),
+        )
+
     def exists_name(
         self,
         *,
