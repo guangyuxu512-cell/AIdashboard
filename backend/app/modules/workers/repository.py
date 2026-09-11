@@ -194,6 +194,27 @@ class WorkerRepository:
         )
         return list(self.session.scalars(statement))
 
+    def get_provider_inventories_for_devices(
+        self,
+        device_ids: list[UUID],
+        *,
+        provider_code: str,
+    ) -> list[DeviceProviderInventory]:
+        if not device_ids:
+            return []
+        statement = (
+            select(DeviceProviderInventory)
+            .where(
+                DeviceProviderInventory.device_id.in_(device_ids),
+                DeviceProviderInventory.provider_code == provider_code,
+            )
+            .order_by(
+                DeviceProviderInventory.device_id.asc(),
+                DeviceProviderInventory.updated_at.desc(),
+            )
+        )
+        return list(self.session.scalars(statement))
+
     def replace_skill_capabilities(
         self,
         *,

@@ -1,6 +1,7 @@
 import {
   Blocks,
   CalendarClock,
+  SlidersHorizontal,
   Images,
   ListChecks,
   Monitor,
@@ -18,6 +19,8 @@ export type ModuleNavigationParent = 'automation'
 
 export interface ModuleDefinition<Code extends string = string> {
   moduleCode: Code
+  /** Existing Backend permission used for this distinct UI route, if any. */
+  accessModuleCode: string | null
   moduleName: string
   navigationGroup: ModuleNavigationGroup
   navigationParent: ModuleNavigationParent | null
@@ -65,6 +68,7 @@ export const NAVIGATION_GROUP_REGISTRY = [
 export const MODULE_REGISTRY = [
   {
     moduleCode: 'foundation',
+    accessModuleCode: null,
     moduleName: 'UI 基础设施',
     navigationGroup: 'development',
     navigationParent: null,
@@ -77,6 +81,7 @@ export const MODULE_REGISTRY = [
   },
   {
     moduleCode: 'shop',
+    accessModuleCode: null,
     moduleName: '店铺中心',
     navigationGroup: 'management',
     navigationParent: null,
@@ -89,6 +94,7 @@ export const MODULE_REGISTRY = [
   },
   {
     moduleCode: 'asset',
+    accessModuleCode: null,
     moduleName: '资料库',
     navigationGroup: 'management',
     navigationParent: null,
@@ -101,6 +107,7 @@ export const MODULE_REGISTRY = [
   },
   {
     moduleCode: 'ai-workbench',
+    accessModuleCode: null,
     moduleName: 'AI工作台',
     navigationGroup: 'management',
     navigationParent: null,
@@ -113,6 +120,7 @@ export const MODULE_REGISTRY = [
   },
   {
     moduleCode: 'device',
+    accessModuleCode: null,
     moduleName: '设备中心',
     navigationGroup: 'management',
     navigationParent: 'automation',
@@ -125,6 +133,7 @@ export const MODULE_REGISTRY = [
   },
   {
     moduleCode: 'task',
+    accessModuleCode: null,
     moduleName: '任务中心',
     navigationGroup: 'management',
     navigationParent: 'automation',
@@ -137,6 +146,7 @@ export const MODULE_REGISTRY = [
   },
   {
     moduleCode: 'schedule',
+    accessModuleCode: null,
     moduleName: '定时计划',
     navigationGroup: 'management',
     navigationParent: 'automation',
@@ -148,7 +158,23 @@ export const MODULE_REGISTRY = [
     order: 33,
   },
   {
+    moduleCode: 'parameter-preset',
+    // The API uses the existing Device ActorContext guard.  This does not
+    // create a Backend `parameter-preset` permission or expose new data.
+    accessModuleCode: 'device',
+    moduleName: '参数配置',
+    navigationGroup: 'management',
+    navigationParent: 'automation',
+    routeName: 'parameter-presets',
+    routePath: '/parameter-presets',
+    icon: SlidersHorizontal,
+    enabled: true,
+    permissionCode: null,
+    order: 34,
+  },
+  {
     moduleCode: 'settings',
+    accessModuleCode: null,
     moduleName: '系统设置',
     navigationGroup: 'management',
     navigationParent: null,
@@ -183,6 +209,10 @@ export function requireModuleDefinition(
   return definition
 }
 
+export function getModuleAccessCode(module: ModuleDefinition): string {
+  return module.accessModuleCode ?? module.moduleCode
+}
+
 export function getNavigationModules(
   registry: ReadonlyArray<ModuleDefinition> = MODULE_REGISTRY,
   options: ModuleNavigationOptions = {},
@@ -195,7 +225,7 @@ export function getNavigationModules(
           module.navigationGroup !== 'development') &&
         (module.navigationGroup === 'development' ||
           options.allowedModuleCodes == null ||
-          options.allowedModuleCodes.has(module.moduleCode)),
+          options.allowedModuleCodes.has(getModuleAccessCode(module))),
     )
     .sort((left, right) => left.order - right.order)
 }
@@ -224,8 +254,10 @@ export function getModuleAccessOptions(): Array<{
   value: string
   label: string
 }> {
-  return getNavigationModules(MODULE_REGISTRY).map((module) => ({
-    value: module.moduleCode,
-    label: module.moduleName,
-  }))
+  return getNavigationModules(MODULE_REGISTRY)
+    .filter((module) => module.accessModuleCode === null)
+    .map((module) => ({
+      value: module.moduleCode,
+      label: module.moduleName,
+    }))
 }
