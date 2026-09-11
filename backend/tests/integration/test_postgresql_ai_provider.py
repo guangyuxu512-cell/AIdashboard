@@ -17,11 +17,15 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.models import Team
 from app.modules.ai_workbench.enums import (
+    BatchProductScope,
+    BatchTemplateSource,
     GenerationItemStatus,
     GenerationJobStatus,
     GenerationMode,
     GenerationWorkMode,
+    MaterialRole,
     OutputFormat,
+    OutputRole,
 )
 from app.modules.ai_workbench.exceptions import (
     GenerationItemStateConflictError,
@@ -34,6 +38,11 @@ from app.modules.ai_workbench.models import (
     GenerationItemAsset,
     GenerationJob,
     GenerationProviderExecution,
+    MaterialGroupAsset,
+    MaterialGroupTemplateBinding,
+    ProductMaterialGroup,
+    PromptTemplate,
+    TemplateGroup,
 )
 from app.modules.ai_workbench.provider import (
     GeneratedProviderImage,
@@ -41,6 +50,7 @@ from app.modules.ai_workbench.provider import (
     ImageProviderFailure,
 )
 from app.modules.ai_workbench.schemas import (
+    BatchGenerationSubmit,
     GenerationRetryRequest,
     InstantGenerationSubmit,
 )
@@ -225,6 +235,20 @@ def _clear_provider_test_residue(engine: Engine) -> None:
                     select(Asset.asset_id).where(Asset.team_id.in_(team_ids)),
                 ),
             )
+            material_group_ids = list(
+                session.scalars(
+                    select(ProductMaterialGroup.material_group_id).where(
+                        ProductMaterialGroup.team_id.in_(team_ids),
+                    ),
+                ),
+            )
+            template_group_ids = list(
+                session.scalars(
+                    select(TemplateGroup.template_group_id).where(
+                        TemplateGroup.team_id.in_(team_ids),
+                    ),
+                ),
+            )
             job_ids = list(
                 session.scalars(
                     select(GenerationJob.generation_job_id).where(
@@ -269,6 +293,39 @@ def _clear_provider_test_residue(engine: Engine) -> None:
                 session.execute(
                     delete(GenerationJob).where(
                         GenerationJob.generation_job_id.in_(job_ids),
+                    ),
+                )
+            if material_group_ids:
+                session.execute(
+                    delete(MaterialGroupAsset).where(
+                        MaterialGroupAsset.material_group_id.in_(
+                            material_group_ids,
+                        ),
+                    ),
+                )
+                session.execute(
+                    delete(MaterialGroupTemplateBinding).where(
+                        MaterialGroupTemplateBinding.material_group_id.in_(
+                            material_group_ids,
+                        ),
+                    ),
+                )
+                session.execute(
+                    delete(ProductMaterialGroup).where(
+                        ProductMaterialGroup.material_group_id.in_(
+                            material_group_ids,
+                        ),
+                    ),
+                )
+            if template_group_ids:
+                session.execute(
+                    delete(PromptTemplate).where(
+                        PromptTemplate.template_group_id.in_(template_group_ids),
+                    ),
+                )
+                session.execute(
+                    delete(TemplateGroup).where(
+                        TemplateGroup.template_group_id.in_(template_group_ids),
                     ),
                 )
             session.execute(delete(Asset).where(Asset.team_id.in_(team_ids)))
@@ -982,3 +1039,146 @@ def test_postgresql_executor_runs_two_distinct_items_concurrently(
             session.commit()
         for asset_row in asset_rows:
             storage.delete(asset_row.storage_key)
+
+
+def test_normal_batch_provider_receives_the_frozen_product_fidelity_snapshot(
+    provider_postgresql_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    engine = provider_postgresql_engine
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    settings = Settings(
+        _env_file=None,
+        asset_storage_dir=tmp_path / "assets",
+        asset_max_upload_bytes=1024 * 1024,
+    )
+    storage = LocalAssetStorage(
+        settings.asset_storage_dir,
+        settings.asset_max_upload_bytes,
+    )
+    source_storage_key: str | None = None
+    user_id = uuid4()
+    team_id = uuid4()
+    actor = current_actor(user_id=user_id, team_id=team_id)
+
+    def service_factory(session: Session) -> GenerationService:
+        return GenerationService(
+            session,
+            asset_service=AssetService(
+                session,
+                storage=storage,
+                settings=settings,
+            ),
+        )
+
+    try:
+        with factory() as session:
+            session.add(
+                User(
+                    user_id=user_id,
+                    display_name="stage-2a1 normal batch capture",
+                    enabled=True,
+                ),
+            )
+            session.add(
+                Team(
+                    team_id=team_id,
+                    name="stage-2a1 normal batch capture Team",
+                    enabled=True,
+                ),
+            )
+            session.commit()
+            source_asset = AssetService(
+                session,
+                storage=storage,
+                settings=settings,
+            ).upload(
+                actor=actor,
+                original_filename="source.png",
+                content_type="image/png",
+                stream=BytesIO(PNG_BYTES),
+            )
+            source_storage_key = source_asset.storage_key
+            material_group = ProductMaterialGroup(
+                team_id=team_id,
+                created_by_user_id=user_id,
+                name="stage-2a1 source product",
+            )
+            template_group = TemplateGroup(
+                team_id=team_id,
+                created_by_user_id=user_id,
+                name="stage-2a1 normal templates",
+                mode=GenerationMode.NORMAL_GENERATION.value,
+            )
+            session.add_all([material_group, template_group])
+            session.flush()
+            session.add_all(
+                [
+                    MaterialGroupAsset(
+                        material_group_id=material_group.material_group_id,
+                        asset_id=source_asset.asset_id,
+                        role=MaterialRole.PRODUCT_SOURCE.value,
+                    ),
+                    MaterialGroupTemplateBinding(
+                        material_group_id=material_group.material_group_id,
+                        template_group_id=template_group.template_group_id,
+                        generation_mode=GenerationMode.NORMAL_GENERATION.value,
+                        position=0,
+                    ),
+                    PromptTemplate(
+                        template_group_id=template_group.template_group_id,
+                        name="stage-2a1 literal template",
+                        output_role=OutputRole.MAIN_IMAGE.value,
+                        output_format=OutputFormat.SINGLE.value,
+                        size="1:1",
+                        count=1,
+                        variables=[],
+                        prompt="创意模板中可能存在与产品原图冲突的描述",
+                        sort_order=1,
+                    ),
+                ],
+            )
+            session.commit()
+
+        with factory() as session:
+            job = service_factory(session).submit(
+                actor,
+                BatchGenerationSubmit(
+                    work_mode=GenerationWorkMode.BATCH,
+                    submission_key="stage-2a1-normal-batch-provider-capture",
+                    model_id=MODEL_ID,
+                    mode=GenerationMode.NORMAL_GENERATION,
+                    product_scope=BatchProductScope.SELECTED,
+                    selected_product_ids=[material_group.material_group_id],
+                    template_source=BatchTemplateSource.PRODUCT_CONFIGURED,
+                ),
+            )
+            generation_item_id = job.items[0].generation_item_id
+            frozen_final_prompt = job.items[0].final_prompt
+
+        provider = FakeProvider(task_id="stage-2a1-normal-batch-provider-capture")
+        executor = GenerationExecutor(
+            session_factory=factory,
+            service_factory=service_factory,
+            provider=provider,
+            storage=storage,
+        )
+        assert executor.execute_next() is True
+        assert len(provider.requests) == 1
+        request = provider.requests[0]
+        assert request.generation_item_id == generation_item_id
+        assert request.final_prompt == frozen_final_prompt
+        assert "产品原图真实性优先" in request.final_prompt
+        assert [image.asset_id for image in request.input_images] == [
+            source_asset.asset_id,
+        ]
+
+        with factory() as session:
+            item = session.get(GenerationItem, generation_item_id)
+            assert item is not None
+            assert item.status == GenerationItemStatus.SUCCESS.value
+            assert item.final_prompt == request.final_prompt
+    finally:
+        _clear_provider_test_residue(engine)
+        if source_storage_key and storage.exists(source_storage_key):
+            storage.delete(source_storage_key)
