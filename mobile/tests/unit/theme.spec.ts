@@ -5,6 +5,7 @@ import { MOBILE_THEME_STORAGE_KEY, useThemeStore } from '@/app/stores/theme'
 
 interface MatchMediaController {
   setMatches(matches: boolean): void
+  setMatchesWithoutEvent(matches: boolean): void
 }
 
 function installMatchMedia(initialMatches: boolean): MatchMediaController {
@@ -40,7 +41,31 @@ function installMatchMedia(initialMatches: boolean): MatchMediaController {
       matches = nextMatches
       listener?.({ matches: nextMatches } as MediaQueryListEvent)
     },
+    setMatchesWithoutEvent(nextMatches: boolean) {
+      matches = nextMatches
+    },
   }
+}
+
+function installThemeMetadata(): void {
+  const themeColorMeta = document.createElement('meta')
+  themeColorMeta.name = 'theme-color'
+  themeColorMeta.dataset.mobileThemeColor = ''
+  themeColorMeta.content = '#fbfcfe'
+  document.head.append(themeColorMeta)
+
+  const appleStatusBarMeta = document.createElement('meta')
+  appleStatusBarMeta.name = 'apple-mobile-web-app-status-bar-style'
+  appleStatusBarMeta.content = 'default'
+  document.head.append(appleStatusBarMeta)
+
+  const themeTokens = document.createElement('style')
+  themeTokens.dataset.testThemeTokens = ''
+  themeTokens.textContent = `
+    :root[data-theme='light'] { --mobile-browser-theme-color: #fbfcfe; }
+    :root[data-theme='dark'] { --mobile-browser-theme-color: #07111d; }
+  `
+  document.head.append(themeTokens)
 }
 
 describe('useThemeStore', () => {
@@ -50,6 +75,13 @@ describe('useThemeStore', () => {
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.classList.remove('van-theme-dark')
     document.documentElement.style.removeProperty('color-scheme')
+    document
+      .querySelectorAll('[data-mobile-theme-color], [data-test-theme-tokens]')
+      .forEach((element) => element.remove())
+    document
+      .querySelectorAll('meta[name="apple-mobile-web-app-status-bar-style"]')
+      .forEach((element) => element.remove())
+    installThemeMetadata()
   })
 
   afterEach(() => {
@@ -68,6 +100,16 @@ describe('useThemeStore', () => {
     expect(document.documentElement.classList.contains('van-theme-dark')).toBe(
       true,
     )
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="theme-color"][data-mobile-theme-color]',
+      )?.content,
+    ).toBe('#07111d')
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="apple-mobile-web-app-status-bar-style"]',
+      )?.content,
+    ).toBe('black-translucent')
     store.$dispose()
   })
 
@@ -81,6 +123,49 @@ describe('useThemeStore', () => {
     expect(window.localStorage.getItem(MOBILE_THEME_STORAGE_KEY)).toBe('dark')
     expect(store.resolvedTheme).toBe('dark')
     expect(document.documentElement.dataset.theme).toBe('dark')
+    store.$dispose()
+  })
+
+  it('synchronizes browser chrome after background resume and orientation changes', () => {
+    const matchMedia = installMatchMedia(false)
+    const store = useThemeStore()
+    store.initialize()
+
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="theme-color"][data-mobile-theme-color]',
+      )?.content,
+    ).toBe('#fbfcfe')
+
+    matchMedia.setMatchesWithoutEvent(true)
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    expect(store.resolvedTheme).toBe('dark')
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="theme-color"][data-mobile-theme-color]',
+      )?.content,
+    ).toBe('#07111d')
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="apple-mobile-web-app-status-bar-style"]',
+      )?.content,
+    ).toBe('black-translucent')
+
+    matchMedia.setMatchesWithoutEvent(false)
+    window.dispatchEvent(new Event('orientationchange'))
+
+    expect(store.resolvedTheme).toBe('light')
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="theme-color"][data-mobile-theme-color]',
+      )?.content,
+    ).toBe('#fbfcfe')
+    expect(
+      document.querySelector<HTMLMetaElement>(
+        'meta[name="apple-mobile-web-app-status-bar-style"]',
+      )?.content,
+    ).toBe('default')
     store.$dispose()
   })
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { showToast } from 'vant'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -43,8 +42,8 @@ function openTask(taskId: string): void {
   })
 }
 
-async function refresh(): Promise<void> {
-  if (!(await taskCenter.refresh())) showToast('刷新失败')
+async function refresh(): Promise<boolean> {
+  return taskCenter.refresh()
 }
 </script>
 
@@ -73,11 +72,10 @@ async function refresh(): Promise<void> {
         :initial-loading="taskCenter.isInitialLoading.value"
         :initial-error="taskCenter.isInitialError.value"
         :next-page-error="taskCenter.isNextPageError.value"
-        :refreshing="taskCenter.refreshing.value"
+        :on-refresh="refresh"
         :loading-more="taskCenter.isFetchingNextPage.value"
         :has-more="taskCenter.hasNextPage.value"
         :empty-description="taskCenter.emptyDescription.value"
-        @refresh="refresh"
         @retry="taskCenter.retry"
         @load-more="taskCenter.loadMore"
         @retry-load-more="taskCenter.retryLoadMore"

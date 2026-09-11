@@ -3,25 +3,29 @@ import {
   Button as VanButton,
   Empty as VanEmpty,
   List as VanList,
-  PullRefresh as VanPullRefresh,
   Skeleton as VanSkeleton,
 } from 'vant'
 
 import { type TaskListItem, TaskListCard } from '@/entities/task'
+import { MobilePullRefresh } from '@/shared/ui'
 
-defineProps<{
-  tasks: TaskListItem[]
-  initialLoading: boolean
-  initialError: boolean
-  nextPageError: boolean
-  refreshing: boolean
-  loadingMore: boolean
-  hasMore: boolean
-  emptyDescription?: string
-}>()
+withDefaults(
+  defineProps<{
+    tasks: TaskListItem[]
+    initialLoading: boolean
+    initialError: boolean
+    nextPageError: boolean
+    loadingMore: boolean
+    hasMore: boolean
+    emptyDescription?: string
+    onRefresh?: () => Promise<boolean>
+  }>(),
+  {
+    onRefresh: async () => false,
+  },
+)
 
 const emit = defineEmits<{
-  refresh: []
   retry: []
   loadMore: []
   retryLoadMore: []
@@ -44,12 +48,7 @@ const emit = defineEmits<{
     </VanEmpty>
   </div>
 
-  <VanPullRefresh
-    v-else
-    class="task-list-refresh"
-    :model-value="refreshing"
-    @refresh="emit('refresh')"
-  >
+  <MobilePullRefresh v-else class="task-list-refresh" :refresh="onRefresh">
     <VanEmpty
       v-if="tasks.length === 0"
       :description="emptyDescription || '暂无任务'"
@@ -81,7 +80,7 @@ const emit = defineEmits<{
         <VanButton block @click="emit('retryLoadMore')">重试</VanButton>
       </div>
     </VanList>
-  </VanPullRefresh>
+  </MobilePullRefresh>
 </template>
 
 <style scoped>
