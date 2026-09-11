@@ -123,10 +123,20 @@ async function selectNumberParameterType(
   await menu.getByText('数字', { exact: true }).click()
 }
 
+async function savePresetAndWait(page: Page, dialog: Locator): Promise<void> {
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes('/parameter-presets') &&
+      ['POST', 'PATCH'].includes(response.request().method()),
+  )
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  expect([200, 201]).toContain((await responsePromise).status())
+}
+
 test.beforeAll(seedFixture)
 test.afterAll(cleanupFixture)
 
-test('creates fields from a zero-schema app, preserves the preset draft, and reads it back', async ({
+test('saves a preset repeatedly, restores its shop inheritance, and opens a copied draft', async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000)
@@ -138,9 +148,9 @@ test('creates fields from a zero-schema app, preserves the preset draft, and rea
   await expect(page).toHaveURL(/#\/parameter-presets$/)
 
   await page.getByRole('button', { name: '+ 新建配置' }).click()
-  const presetDialog = page
-    .locator('.app-dialog')
-    .filter({ hasText: '管理参数预设' })
+  const presetDialog = page.locator('.app-dialog').filter({
+    has: page.locator('input[name="automation-parameter-preset-name"]'),
+  })
   const applicationSelect = presetDialog.locator('.n-base-selection').first()
   await expect(applicationSelect).not.toHaveClass(/n-base-selection--disabled/)
   await applicationSelect.click()
@@ -154,7 +164,7 @@ test('creates fields from a zero-schema app, preserves the preset draft, and rea
     path: testInfo.outputPath('01-zero-schema-preset-draft.png'),
     fullPage: true,
   })
-  await presetDialog.getByRole('button', { name: '配置字段' }).click()
+  await presetDialog.getByRole('button', { name: '管理字段' }).click()
 
   const schemaDialog = page
     .locator('.app-dialog')
@@ -177,98 +187,156 @@ test('creates fields from a zero-schema app, preserves the preset draft, and rea
 
   await expect(presetName).toHaveValue('日常采集')
   await expect(presetDialog).toContainText('当前应用已有 2 个共用参数字段')
-  const publicParameterInputs = presetDialog
-    .getByRole('heading', { name: '公共参数' })
-    .locator('..')
-    .locator('.n-input-number input')
+  await presetDialog.locator('.n-tabs-tab', { hasText: '公共参数' }).click()
+  const publicParameterInputs = presetDialog.locator('.n-input-number input')
   await publicParameterInputs.nth(0).fill('1')
   await publicParameterInputs.nth(1).fill('20')
-  await presetDialog.getByRole('checkbox', { name: '甲店' }).click()
-  await presetDialog.getByRole('checkbox', { name: '乙店' }).click()
-  await expect(presetDialog).toContainText('本店生效值先继承公共参数')
-  const shopA = presetDialog
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '甲店' })
-  const shopB = presetDialog
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '乙店' })
-  await shopA.locator('.n-input-number input').first().fill('2')
-  await shopB.locator('.n-input-number input').first().fill('3')
-  await expect(shopA).toContainText('恢复继承 · 页码')
-  await expect(shopB).toContainText('恢复继承 · 页码')
   await page.screenshot({
-    path: testInfo.outputPath('03-shop-override-editing.png'),
+    path: testInfo.outputPath('03-public-parameters.png'),
     fullPage: true,
   })
-  await presetDialog.getByRole('button', { name: '保存', exact: true }).click()
+
+  await presetDialog.locator('.n-tabs-tab', { hasText: '店铺差异' }).click()
+  await presetDialog.getByRole('checkbox', { name: '甲店' }).click()
+  await presetDialog.getByRole('checkbox', { name: '乙店' }).click()
+  await presetDialog.getByRole('button', { name: /甲店/ }).click()
+  const shopEditor = presetDialog.locator('.preset-manager__shop-editor')
+  await shopEditor.locator('.n-input-number input').first().fill('2')
+  await expect(shopEditor).toContainText('恢复继承 · 页码')
+  await presetDialog.getByRole('button', { name: /乙店/ }).click()
+  await shopEditor.locator('.n-input-number input').first().fill('3')
+  await expect(shopEditor).toContainText('恢复继承 · 页码')
+  await page.screenshot({
+    path: testInfo.outputPath('04-shop-override-editing.png'),
+    fullPage: true,
+  })
+  await savePresetAndWait(page, presetDialog)
+  await expect(presetDialog).toBeVisible()
+  await shopEditor.locator('.n-input-number input').first().fill('5')
+  await savePresetAndWait(page, presetDialog)
+  await expect(presetDialog).toBeVisible()
+  await shopEditor.getByRole('button', { name: '恢复继承 · 页码' }).click()
+  await savePresetAndWait(page, presetDialog)
+  await expect(presetDialog).toBeVisible()
+  await presetDialog.getByRole('button', { name: '取消', exact: true }).click()
   await expect(presetDialog).toHaveCount(0)
 
   await expect(page.getByText('日常采集', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: testInfo.outputPath('04-preset-list-readback.png'),
+    path: testInfo.outputPath('05-preset-list-readback.png'),
     fullPage: true,
   })
   await page.reload()
   await expect(page.getByText('日常采集', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '编辑', exact: true }).click()
-  const reopened = page
-    .locator('.app-dialog')
-    .filter({ hasText: '管理参数预设' })
+  const reopened = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
   await expect(
     reopened.locator('input[name="automation-parameter-preset-name"]'),
   ).toHaveValue('日常采集')
   await expect(reopened).toContainText('当前应用已有 2 个共用参数字段')
-  const reopenedPublic = reopened
-    .getByRole('heading', { name: '公共参数' })
-    .locator('..')
-    .locator('.n-input-number input')
+  await reopened.locator('.n-tabs-tab', { hasText: '公共参数' }).click()
+  const reopenedPublic = reopened.locator('.n-input-number input')
   await expect(reopenedPublic.nth(0)).toHaveValue('1')
   await expect(reopenedPublic.nth(1)).toHaveValue('20')
-  const reopenedShopA = reopened
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '甲店' })
-  const reopenedShopB = reopened
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '乙店' })
-  await expect(reopenedShopA.locator('.n-input-number input').first()).toHaveValue('2')
-  await expect(reopenedShopB.locator('.n-input-number input').first()).toHaveValue('3')
-
-  await reopenedShopB.locator('.n-input-number input').first().fill('5')
-  await reopened.getByRole('button', { name: '保存', exact: true }).click()
+  await reopened.locator('.n-tabs-tab', { hasText: '店铺差异' }).click()
+  await reopened.getByRole('button', { name: /甲店/ }).click()
+  const reopenedShopEditor = reopened.locator('.preset-manager__shop-editor')
+  await expect(
+    reopenedShopEditor.locator('.n-input-number input').first(),
+  ).toHaveValue('2')
+  await reopened.getByRole('button', { name: /乙店/ }).click()
+  await expect(
+    reopenedShopEditor.locator('.n-input-number input').first(),
+  ).toHaveValue('1')
+  await page.screenshot({
+    path: testInfo.outputPath('06-reopened-shop-inheritance.png'),
+    fullPage: true,
+  })
+  await reopened.getByRole('button', { name: '取消', exact: true }).click()
   await expect(reopened).toHaveCount(0)
-  await page.getByRole('button', { name: '编辑', exact: true }).click()
-  const resetDialog = page
-    .locator('.app-dialog')
-    .filter({ hasText: '管理参数预设' })
-  const resetShopA = resetDialog
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '甲店' })
-  const resetShopB = resetDialog
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '乙店' })
-  await expect(resetShopA.locator('.n-input-number input').first()).toHaveValue('2')
-  await expect(resetShopB.locator('.n-input-number input').first()).toHaveValue('5')
-  await resetShopB.getByRole('button', { name: '恢复继承 · 页码' }).click()
-  await expect(resetShopB.getByRole('button', { name: '恢复继承 · 页码' })).toHaveCount(0)
-  await resetDialog.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(resetDialog).toHaveCount(0)
-  await page.getByRole('button', { name: '编辑', exact: true }).click()
-  const finalDialog = page
-    .locator('.app-dialog')
-    .filter({ hasText: '管理参数预设' })
-  const inheritedShopB = finalDialog
-    .locator('.preset-manager__shop')
-    .filter({ hasText: '乙店' })
-  await expect(inheritedShopB.locator('.n-input-number input').first()).toHaveValue('1')
 
-  await finalDialog.getByRole('button', { name: '取消', exact: true }).click()
-  await expect(finalDialog).toHaveCount(0)
   await page.getByRole('button', { name: '复制', exact: true }).click()
-  const copyDialog = page
+  const copyDialog = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
+  await expect(
+    copyDialog.locator('input[name="automation-parameter-preset-name"]'),
+  ).toHaveValue('日常采集 副本')
+  await copyDialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.getByText('日常采集 副本', { exact: true })).toBeVisible()
+})
+
+test('shows the same preset choice and per-shop final parameters before an immediate run', async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('control-center.theme-mode', 'dark')
+  })
+  await page.goto('/#/devices')
+  await expect(page).toHaveURL(/#\/login\?redirect=\/devices/)
+  await page.getByLabel('内部登录账号').fill(loginName)
+  await page.getByLabel('密码').fill(password)
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page).toHaveURL(/#\/devices$/)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+  const deviceRow = page
+    .getByRole('row')
+    .filter({ hasText: '参数预设验收设备' })
+  await expect(deviceRow).toBeVisible()
+  await deviceRow.getByRole('button', { name: '能力', exact: true }).click()
+  const capabilityDrawer = page
+    .getByRole('dialog')
+    .filter({ hasText: '设备能力 · 参数预设验收设备' })
+  await expect(capabilityDrawer).toContainText('日常采集（零字段）')
+  await capabilityDrawer
+    .getByRole('button', { name: '运行', exact: true })
+    .click()
+
+  const runDialog = page
     .locator('.app-dialog')
-    .filter({ hasText: '管理参数预设' })
-  await copyDialog.getByPlaceholder('复制后的名称').fill('日常采集副本')
-  await copyDialog.getByRole('button', { name: '复制', exact: true }).click()
-  await expect(copyDialog).toHaveCount(0)
-  await expect(page.getByText('日常采集副本', { exact: true })).toBeVisible()
+    .filter({ hasText: '运行应用 · 日常采集（零字段）' })
+  const presetSelect = runDialog
+    .locator('.n-form-item')
+    .filter({ hasText: '参数预设' })
+    .locator('.n-base-selection')
+  await expect(presetSelect).toBeVisible()
+  await presetSelect.click()
+  const presetMenu = page.locator('.n-base-select-menu:visible').last()
+  await expect(presetMenu).toBeVisible()
+  await presetMenu.getByText('日常采集', { exact: true }).click()
+  await expect(runDialog).toContainText(
+    '已选择“日常采集”：2 家店铺，1 家有单独设置',
+  )
+  await runDialog.getByText('参数预设', { exact: true }).click()
+  await expect(page.locator('.n-base-select-menu:visible')).toHaveCount(0)
+  await page.screenshot({
+    path: testInfo.outputPath('07-immediate-run-preset-choice.png'),
+    fullPage: true,
+  })
+
+  await runDialog.getByRole('button', { name: '查看本次参数' }).click()
+  await expect(runDialog).toContainText('甲店')
+  await expect(runDialog).toContainText('乙店')
+  await expect(runDialog).toContainText('页码')
+  await expect(runDialog).toContainText('每页数量')
+  await page.screenshot({
+    path: testInfo.outputPath('08-immediate-run-parameter-preview.png'),
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 1024, height: 720 })
+  const dialogBox = await runDialog.boundingBox()
+  expect(dialogBox).not.toBeNull()
+  expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(720)
+  expect(
+    await page.evaluate(() => ({
+      document:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+      body: document.body.scrollWidth > document.body.clientWidth,
+    })),
+  ).toEqual({ document: false, body: false })
+  await page.screenshot({
+    path: testInfo.outputPath('09-immediate-run-dark-narrow.png'),
+    fullPage: true,
+  })
 })

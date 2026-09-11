@@ -47,7 +47,9 @@ function openPreset(preset: AutomationParameterPresetDto): void {
   management.openPreset(preset)
 }
 
-function openSchemaConfiguration(application: YingdaoApplicationOptionDto): void {
+function openSchemaConfiguration(
+  application: YingdaoApplicationOptionDto,
+): void {
   schemaDialogApplication.value = {
     appId: application.app_id,
     appName: application.app_name,
@@ -78,13 +80,27 @@ function openSchemaConfiguration(application: YingdaoApplicationOptionDto): void
         <AppButton tone="primary" @click="management.query">查询</AppButton>
       </template>
       <template #primary-action>
-        <AppButton tone="primary" @click="management.openCreate">+ 新建配置</AppButton>
+        <AppButton tone="primary" @click="management.openCreate"
+          >+ 新建配置</AppButton
+        >
       </template>
     </FilterBar>
 
-    <p v-if="management.applicationsError.value" class="parameter-preset-library-page__error">
+    <p
+      v-if="management.applicationsError.value"
+      class="parameter-preset-library-page__error"
+    >
       应用列表读取失败：{{ management.applicationsError.value }}
-      <AppButton tone="text" @click="() => management.retryApplications()">重试</AppButton>
+      <AppButton tone="text" @click="() => management.retryApplications()"
+        >重试</AppButton
+      >
+    </p>
+    <p
+      v-if="management.copyError.value"
+      class="parameter-preset-library-page__error"
+      role="alert"
+    >
+      复制预设失败：{{ management.copyError.value }}
     </p>
 
     <ManagementListSection>
@@ -94,7 +110,7 @@ function openSchemaConfiguration(application: YingdaoApplicationOptionDto): void
         :loading="management.listLoading.value"
         :error="management.listError.value"
         @edit="openPreset"
-        @copy="openPreset"
+        @copy="management.copyAndOpen"
         @retry="management.retryList"
       />
     </ManagementListSection>
@@ -111,7 +127,7 @@ function openSchemaConfiguration(application: YingdaoApplicationOptionDto): void
       allow-schema-configuration
       @update:show="(show) => (show ? undefined : management.closeEditor())"
       @update:app-id="(appId) => (management.editorAppId.value = appId)"
-      @saved="management.closeEditor"
+      @saved="management.handleSaved"
       @configure-schema="openSchemaConfiguration"
     />
 

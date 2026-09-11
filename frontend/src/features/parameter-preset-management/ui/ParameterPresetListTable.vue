@@ -23,9 +23,7 @@ const emit = defineEmits<{
 function parameterSummary(values: Record<string, unknown>): string {
   const entries = Object.entries(values)
   if (!entries.length) return '—'
-  return entries
-    .map(([name, value]) => `${name}=${String(value)}`)
-    .join('；')
+  return entries.map(([name, value]) => `${name}=${String(value)}`).join('；')
 }
 
 function appName(preset: AutomationParameterPresetDto): string {
@@ -37,6 +35,7 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
     title: '配置名',
     key: 'name',
     width: 180,
+    fixed: 'left',
     ellipsis: { tooltip: true },
   },
   {
@@ -69,6 +68,7 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
     title: '操作',
     key: 'actions',
     width: 150,
+    fixed: 'right',
     render: (preset) =>
       h('div', { class: 'parameter-preset-list-table__actions' }, [
         h(
