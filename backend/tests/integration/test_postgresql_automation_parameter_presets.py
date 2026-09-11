@@ -22,6 +22,7 @@ from app.modules.automation_apps.models import (
 from app.modules.automation_apps.presets_api import (
     get_device_authorized_actor as get_parameter_preset_authorized_actor,
 )
+from app.modules.automation_apps.exceptions import AutomationParameterPresetNotFoundError
 from app.modules.automation_apps.schemas import (
     AutomationParameterPresetCreate,
     AutomationParameterPresetUpdate,
@@ -428,6 +429,71 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "公共标题"
             assert scheduled_task.parameter_preset_id == preset.preset_id
             assert scheduled_task.parameter_preset_version == updated_preset.version
+
+            # Presets themselves are Team-scoped.  A Shop has no separate Team
+            # ownership field in the current model, so this verifies the real
+            # authorization boundary instead of claiming one that does not
+            # exist: neither immediate Tasks nor Schedules may resolve another
+            # Team's preset, even though the target Device and selected Shops
+            # are otherwise eligible for this Team.
+            foreign_team_id, foreign_user_id = uuid4(), uuid4()
+            foreign_preset = AutomationParameterPreset(
+                preset_id=uuid4(),
+                team_id=foreign_team_id,
+                created_by_user_id=foreign_user_id,
+                app_id=app_id,
+                name="其他团队预设",
+                common_parameters={"标题": "不应读取"},
+                shop_overrides={},
+                version=1,
+            )
+            session.add_all(
+                [
+                    Team(team_id=foreign_team_id, name="Foreign preset team"),
+                    User(user_id=foreign_user_id, display_name="Foreign preset user"),
+                ],
+            )
+            session.flush()
+            session.add(foreign_preset)
+            session.commit()
+
+            with pytest.raises(AutomationParameterPresetNotFoundError):
+                TaskService(session, credential_service=credential_service).create(
+                    TaskCreate(
+                        target_device_id=device_id,
+                        shop_ids=[shop_a],
+                        skill_id="yingdao.app.run",
+                        input={"app_id": app_id, "params": {}},
+                        parameter_preset_id=foreign_preset.preset_id,
+                    ),
+                    actor,
+                )
+            with pytest.raises(AutomationParameterPresetNotFoundError):
+                ScheduleService(
+                    session,
+                    task_service=TaskService(
+                        session,
+                        credential_service=credential_service,
+                    ),
+                ).create(
+                    ScheduleCreate(
+                        name="跨团队预设计划",
+                        target_device_id=device_id,
+                        shop_ids=[shop_a],
+                        application_id=app_id,
+                        parameter_preset_id=foreign_preset.preset_id,
+                        parameters={},
+                        local_time=time(10, 30),
+                        timezone="Asia/Shanghai",
+                    ),
+                    actor,
+                    now=now,
+                )
+
+            session.delete(foreign_preset)
+            session.delete(session.get(User, foreign_user_id))
+            session.delete(session.get(Team, foreign_team_id))
+            session.commit()
     finally:
         _cleanup(
             postgresql_engine,

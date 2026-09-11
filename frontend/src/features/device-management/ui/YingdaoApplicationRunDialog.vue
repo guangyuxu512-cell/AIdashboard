@@ -59,13 +59,19 @@ const runDisabledReason = computed(() => {
 })
 
 watch(
-  [() => props.show, () => props.application?.appId, () => configQuery.data.value],
-  ([show, applicationId, config], previous) => {
+  [
+    () => props.show,
+    () => props.application?.appId,
+    () => props.deviceId,
+    () => configQuery.data.value,
+  ],
+  ([show, applicationId, deviceId, config], previous) => {
     if (!show) return
     if (
       previous &&
       previous[0] === show &&
-      previous[1] === applicationId
+      previous[1] === applicationId &&
+      previous[2] === deviceId
     ) {
       return
     }

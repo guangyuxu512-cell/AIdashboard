@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ShopMultiSelector } from '@/entities/shop'
 import { AssetMultiSelector } from '@/entities/asset'
+import { AutomationParameterPresetSelector } from '@/entities/automation-application'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 
 import YingdaoApplicationRunDialog from './YingdaoApplicationRunDialog.vue'
@@ -122,22 +123,18 @@ describe('YingdaoApplicationRunDialog', () => {
       global: { renderStubDefaultSlot: true },
     })
     await flushPromises()
-    wrapper
-      .findComponent(ShopMultiSelector)
-      .vm.$emit('update:modelValue', [])
+    wrapper.findComponent(ShopMultiSelector).vm.$emit('update:modelValue', [])
     ;(
       mocks.shops as {
         data: { value: Array<{ label: string; value: string }> }
       }
-    ).data.value = [
-      { label: '刷新后的店铺', value: 'shop-refreshed' },
-    ]
+    ).data.value = [{ label: '刷新后的店铺', value: 'shop-refreshed' }]
     await flushPromises()
 
     const dialog = wrapper.findComponent(AppDialog)
-    expect(wrapper.findComponent(ShopMultiSelector).props('modelValue')).toEqual(
-      [],
-    )
+    expect(
+      wrapper.findComponent(ShopMultiSelector).props('modelValue'),
+    ).toEqual([])
     expect(dialog.props('positiveDisabled')).toBe(false)
     dialog.vm.$emit('confirm')
     await flushPromises()
@@ -145,6 +142,39 @@ describe('YingdaoApplicationRunDialog', () => {
     expect(mocks.createTask).toHaveBeenCalledWith({
       target_device_id: 'device-1',
       shop_ids: [],
+      asset_ids: [],
+      skill_id: 'yingdao.app.run',
+      input: { app_id: 'safe-app', params: {} },
+    })
+  })
+
+  it('clears a selected preset when the execution device changes', async () => {
+    const wrapper = shallowMount(YingdaoApplicationRunDialog, {
+      props: {
+        show: true,
+        application: {
+          appId: 'safe-app',
+          appName: '安全测试应用',
+          versionId: '1',
+        },
+        deviceId: 'device-1',
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+    wrapper
+      .findComponent(AutomationParameterPresetSelector)
+      .vm.$emit('update:modelValue', 'preset-for-device-1')
+    await flushPromises()
+
+    await wrapper.setProps({ deviceId: 'device-2' })
+    await flushPromises()
+    wrapper.findComponent(AppDialog).vm.$emit('confirm')
+    await flushPromises()
+
+    expect(mocks.createTask).toHaveBeenCalledWith({
+      target_device_id: 'device-2',
+      shop_ids: ['shop-1', 'shop-2', 'shop-3', 'shop-4', 'shop-5'],
       asset_ids: [],
       skill_id: 'yingdao.app.run',
       input: { app_id: 'safe-app', params: {} },
