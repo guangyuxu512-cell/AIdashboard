@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 import logging
 from typing import ContextManager
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -54,14 +56,48 @@ class GenerationExecutor:
         execution = self._prepare_next()
         if execution is None:
             return False
+        self._execute(execution)
+        return True
 
+    def execute_available(self, max_concurrency: int) -> int:
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be at least 1")
+
+        executions: list[GenerationExecution] = []
+        in_flight_item_ids: set[UUID] = set()
+        for _ in range(max_concurrency):
+            execution = self._prepare_next(
+                exclude_generation_item_ids=in_flight_item_ids,
+            )
+            if execution is None:
+                break
+            executions.append(execution)
+            in_flight_item_ids.add(execution.generation_item_id)
+
+        if not executions:
+            return 0
+
+        # This is deliberately one coordinator which prepares and commits each
+        # item before any provider I/O. The worker pool only owns upload/poll/
+        # download work, so no database transaction spans network calls and a
+        # RUNNING item cannot be selected twice in one scan.
+        with ThreadPoolExecutor(max_workers=len(executions)) as worker_pool:
+            futures = [
+                worker_pool.submit(self._execute, execution)
+                for execution in executions
+            ]
+            for future in futures:
+                future.result()
+        return len(executions)
+
+    def _execute(self, execution: GenerationExecution) -> None:
         if execution.provider_code != self._provider.provider_code:
             self._fail_if_current(
                 execution,
                 failure_code="GENERATION_PROVIDER_UNSUPPORTED",
                 failure_message="当前生成模型暂不支持执行",
             )
-            return True
+            return
 
         provider_create_unpersisted = False
         try:
@@ -73,7 +109,7 @@ class GenerationExecutor:
                         failure_code=ProviderCreateOutcomeUnknownError.code,
                         failure_message=ProviderCreateOutcomeUnknownError.message,
                     )
-                    return True
+                    return
                 external_task_id = self._create_provider_task(execution)
                 provider_create_unpersisted = True
                 self._record_provider_task(execution, external_task_id)
@@ -124,11 +160,18 @@ class GenerationExecutor:
                     else "图片生成执行失败"
                 ),
             )
-        return True
 
-    def _prepare_next(self) -> GenerationExecution | None:
+    def _prepare_next(
+        self,
+        *,
+        exclude_generation_item_ids: set[UUID] | None = None,
+    ) -> GenerationExecution | None:
         with self._session_factory() as session:
-            return self._service_factory(session).prepare_next_provider_execution()
+            return self._service_factory(session).prepare_next_provider_execution(
+                exclude_generation_item_ids=tuple(
+                    exclude_generation_item_ids or (),
+                ),
+            )
 
     def _create_provider_task(self, execution: GenerationExecution) -> str:
         with ExitStack() as stack:
@@ -146,6 +189,7 @@ class GenerationExecutor:
             return self._provider.create_task(
                 GenerationProviderRequest(
                     generation_item_id=execution.generation_item_id,
+                    team_id=execution.team_id,
                     model_code=execution.model_code,
                     mode=execution.mode,
                     final_prompt=execution.final_prompt,
@@ -246,7 +290,10 @@ async def execute_generation_items_forever() -> None:
     executor = build_generation_executor(settings)
     while True:
         try:
-            processed = await asyncio.to_thread(executor.execute_next)
+            processed = await asyncio.to_thread(
+                executor.execute_available,
+                settings.ai_generation_concurrency,
+            )
         except asyncio.CancelledError:
             raise
         except Exception:

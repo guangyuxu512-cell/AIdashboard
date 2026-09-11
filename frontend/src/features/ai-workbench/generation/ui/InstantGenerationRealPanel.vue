@@ -7,10 +7,14 @@ import { computed, ref, watch } from 'vue'
 
 import {
   assetApi,
-  fetchAssetContent,
   getAssetContentUrl,
   getAssetThumbnailUrl,
 } from '@/entities/asset/api/asset-api'
+import {
+  AssetDownloadStatusBar,
+  formatAssetDownloadFailure,
+  useAssetDownloadQueue,
+} from '@/entities/asset'
 import {
   aiWorkbenchApi,
   aiWorkbenchQueryKeys,
@@ -67,6 +71,7 @@ const props = defineProps<{
 
 const message = useMessage()
 const queryClient = useQueryClient()
+const downloads = useAssetDownloadQueue()
 const sessionStore = useAiWorkbenchSessionStore()
 const {
   instantMode: mode,
@@ -364,31 +369,48 @@ function clearCurrentTask(): void {
   message.success('已清空当前即时生成')
 }
 
-async function downloadResult(
-  result: GenerationExecutionResultView,
-): Promise<void> {
-  if (!result.previewUrl) return
-  try {
-    const blob = await fetchAssetContent(result.previewUrl)
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = result.name ?? `generation-${result.slotIndex + 1}.png`
-    document.body.append(anchor)
-    anchor.click()
-    anchor.remove()
-    URL.revokeObjectURL(url)
-  } catch (error) {
-    message.error(getErrorMessage(error))
-  }
+function beginDownload(results: readonly GenerationExecutionResultView[]): void {
+  if (downloads.isDownloading.value) return
+  const requests = results.flatMap((result) =>
+    result.previewUrl
+      ? [
+          {
+            id: result.id,
+            contentUrl: result.previewUrl,
+            filename: result.name ?? `generation-${result.slotIndex + 1}.png`,
+          },
+        ]
+      : [],
+  )
+  void downloads.start(requests).then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)
+    if (summary.failed) {
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    }
+  })
+}
+
+function downloadResult(result: GenerationExecutionResultView): void {
+  beginDownload([result])
 }
 
 function downloadAll(): void {
   const results =
     execution.value?.results.filter((result) => result.status === 'SUCCESS') ??
     []
-  void Promise.all(results.map(downloadResult)).then(() => {
-    if (results.length) message.success(`已开始下载 ${results.length} 张图片`)
+  beginDownload(results)
+}
+
+function retryFailedDownloads(): void {
+  void downloads.retryFailed().then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 张图片`)
+    if (summary.failed) {
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    }
   })
 }
 
@@ -554,6 +576,13 @@ function retryResult(result: GenerationExecutionResultView): void {
         @download-all="downloadAll"
         @download="downloadResult"
         @retry="retryResult"
+      />
+      <AssetDownloadStatusBar
+        :is-downloading="downloads.isDownloading.value"
+        :progress-label="downloads.progressLabel.value"
+        :failed-count="downloads.failedRequests.value.length"
+        @cancel="downloads.cancel"
+        @retry-failed="retryFailedDownloads"
       />
     </template>
   </AiWorkbenchLayout>

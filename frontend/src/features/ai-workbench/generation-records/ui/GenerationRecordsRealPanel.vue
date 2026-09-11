@@ -3,7 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { useMessage } from 'naive-ui'
 import { computed, ref } from 'vue'
 
-import { fetchAssetContent } from '@/entities/asset/api/asset-api'
+import {
+  AssetDownloadStatusBar,
+  formatAssetDownloadFailure,
+  useAssetDownloadQueue,
+} from '@/entities/asset'
 import {
   aiWorkbenchApi,
   aiWorkbenchQueryKeys,
@@ -39,6 +43,7 @@ import GenerationRecordsTable from './GenerationRecordsTable.vue'
 
 const message = useMessage()
 const queryClient = useQueryClient()
+const downloads = useAssetDownloadQueue()
 const page = ref(1)
 const pageSize = ref(20)
 const sourceType = ref<'ALL' | GenerationWorkMode>('ALL')
@@ -165,6 +170,7 @@ function retry(record: GenerationRecordView): void {
 }
 
 function download(): void {
+  if (downloads.isDownloading.value) return
   const results = selectedRecord.value?.detail
   const outputResults =
     results?.kind === 'INSTANT'
@@ -178,23 +184,36 @@ function download(): void {
     outputResults?.filter(
       (result) => result.status === 'SUCCESS' && result.previewUrl,
     ) ?? []
-  void Promise.all(
-    downloadable.map(async (result) => {
-      const previewUrl = result.previewUrl
-      if (!previewUrl) return
-      const blob = await fetchAssetContent(previewUrl)
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = result.name || 'generation.png'
-      document.body.append(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(url)
-    }),
+  const requests = downloadable.flatMap((result) =>
+    result.previewUrl
+      ? [
+          {
+            id: result.id,
+            contentUrl: result.previewUrl,
+            filename: result.name || 'generation.png',
+          },
+        ]
+      : [],
   )
-    .then(() => message.success(`已开始下载 ${downloadable.length} 张图片`))
-    .catch((error) => message.error(getErrorMessage(error)))
+  void downloads.start(requests).then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)
+    if (summary.failed) {
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    }
+  })
+}
+
+function retryFailedDownloads(): void {
+  void downloads.retryFailed().then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 张图片`)
+    if (summary.failed) {
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    }
+  })
 }
 </script>
 
@@ -251,6 +270,13 @@ function download(): void {
     :record="selectedRecord"
     @retry="retry"
     @download="download"
+  />
+  <AssetDownloadStatusBar
+    :is-downloading="downloads.isDownloading.value"
+    :progress-label="downloads.progressLabel.value"
+    :failed-count="downloads.failedRequests.value.length"
+    @cancel="downloads.cancel"
+    @retry-failed="retryFailedDownloads"
   />
 </template>
 

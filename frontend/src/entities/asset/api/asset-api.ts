@@ -3,6 +3,18 @@ import type { PageDto } from '@/shared/api'
 
 import type { AssetReadDto } from './contracts'
 
+export const assetDownloadTimeoutMs = 120_000
+
+export interface AssetDownloadProgress {
+  loadedBytes: number
+  totalBytes: number | null
+}
+
+export interface AssetDownloadOptions {
+  signal?: AbortSignal
+  onProgress?: (progress: AssetDownloadProgress) => void
+}
+
 export interface AssetListApiParams {
   page: number
   pageSize: number
@@ -32,6 +44,27 @@ export async function fetchAssetContent(
   const response = await httpClient.get<Blob>(contentUrl, {
     responseType: 'blob',
     signal,
+  })
+  return response.data
+}
+
+export async function fetchAssetDownload(
+  contentUrl: string,
+  options: AssetDownloadOptions = {},
+): Promise<Blob> {
+  if (/\/thumbnail(?:[/?#]|$)/.test(contentUrl)) {
+    throw new Error('下载必须使用资产原图读取地址')
+  }
+  const response = await httpClient.get<Blob>(contentUrl, {
+    responseType: 'blob',
+    signal: options.signal,
+    timeout: assetDownloadTimeoutMs,
+    onDownloadProgress: (event) => {
+      options.onProgress?.({
+        loadedBytes: event.loaded,
+        totalBytes: event.total ?? null,
+      })
+    },
   })
   return response.data
 }

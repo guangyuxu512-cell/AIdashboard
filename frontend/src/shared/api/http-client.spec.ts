@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { AxiosError, AxiosHeaders } from 'axios'
 import type { AxiosResponse } from 'axios'
 
 import {
@@ -6,6 +7,7 @@ import {
   configureHumanRequestContext,
   httpClient,
   isHumanSessionError,
+  toResponseApiError,
 } from './http-client'
 
 describe('Human request context', () => {
@@ -53,5 +55,32 @@ describe('Human request context', () => {
         }),
       ),
     ).toBe(false)
+  })
+
+  it('classifies a readable Blob download error envelope without exposing binary content', async () => {
+    const error = new AxiosError('download failed')
+    error.response = {
+      // jsdom's Blob lacks `text()`, unlike the browser Blob received by Axios.
+      // This is the minimal readable Blob shape used by the response interceptor.
+      data: {
+        text: async () =>
+          JSON.stringify({
+          code: 'ASSET_NOT_FOUND',
+          message: '图片不存在',
+          request_id: 'request-download-1',
+          }),
+      },
+      status: 404,
+      statusText: 'Not Found',
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+    }
+
+    await expect(toResponseApiError(error)).resolves.toMatchObject({
+      code: 'ASSET_NOT_FOUND',
+      message: '图片不存在',
+      requestId: 'request-download-1',
+      status: 404,
+    })
   })
 })
