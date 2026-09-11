@@ -32,6 +32,7 @@ CORE_TABLES = {
     "task_assets",
     "notification_channels",
     "automation_application_configs",
+    "automation_parameter_presets",
     "schedules",
     "schedule_shops",
     "schedule_runs",

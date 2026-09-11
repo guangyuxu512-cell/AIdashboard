@@ -40,8 +40,9 @@ class _PreparedTaskService:
         data: object,
         *,
         team_id: UUID,
+        actor: object | None = None,
     ) -> PreparedTaskCreation:
-        del data, team_id
+        del data, team_id, actor
         return PreparedTaskCreation(
             input_json={"message": "safe"},
             execution_display_name="系统回声验证",

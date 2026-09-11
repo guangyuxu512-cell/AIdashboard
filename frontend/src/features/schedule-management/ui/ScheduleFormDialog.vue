@@ -5,6 +5,7 @@ import { computed, reactive, ref, watch } from 'vue'
 
 import {
   AutomationParameterFields,
+  AutomationParameterPresetSelector,
   createDefaultAutomationParameters,
   useAutomationApplicationConfigQuery,
   validateAutomationParameters,
@@ -82,6 +83,7 @@ const form = reactive({
   shopIds: [] as string[],
   executionType: 'yingdao_application' as ScheduleExecutionTypeDto,
   applicationId: null as string | null,
+  parameterPresetId: null as string | null,
   skillId: null as string | null,
   scheduleType: 'daily' as ScheduleTypeDto,
   localDateValue: null as number | null,
@@ -197,6 +199,7 @@ const disabledReason = computed(() => {
     if (inventoryInitialError.value) return '设备影刀应用读取失败'
     if (configInitialLoading.value) return '正在读取应用参数配置'
     if (configInitialError.value) return '应用参数配置读取失败'
+    if (form.parameterPresetId) return null
     const error = validateAutomationParameters(
       applicationSchema.value,
       form.parameters,
@@ -250,6 +253,7 @@ watch(
     shouldDefaultShops.value = mode === 'create'
     form.executionType = schedule?.executionType ?? 'yingdao_application'
     form.applicationId = schedule?.applicationId ?? null
+    form.parameterPresetId = schedule?.parameterPresetId ?? null
     form.skillId =
       schedule?.executionType === 'business_skill' ? schedule.skillId : null
     form.scheduleType = schedule?.scheduleType ?? 'daily'
@@ -344,8 +348,17 @@ function changeExecutionType(value: AppOptionValue | null): void {
 
 function changeApplication(value: AppOptionValue | null): void {
   form.applicationId = value as string | null
+  form.parameterPresetId = null
   form.parameters = {}
   parameterSourceKey.value = ''
+}
+
+function changeParameterPreset(value: string | null): void {
+  const previous = form.parameterPresetId
+  form.parameterPresetId = value
+  if (previous && !value) {
+    form.parameters = createDefaultAutomationParameters(applicationSchema.value)
+  }
 }
 
 function changeBusinessSkill(value: AppOptionValue | null): void {
@@ -363,6 +376,7 @@ function changeScheduleType(value: AppOptionValue | null): void {
 
 function resetTarget(): void {
   form.applicationId = null
+  form.parameterPresetId = null
   form.skillId = null
   form.parameters = {}
   parameterSourceKey.value = ''
@@ -402,6 +416,7 @@ function submit(): void {
     shopIds: [...form.shopIds],
     executionType: form.executionType,
     applicationId: isYingdao.value ? form.applicationId : null,
+    parameterPresetId: isYingdao.value ? form.parameterPresetId : null,
     skillId: isBusinessSkill.value ? form.skillId : null,
     parameters: { ...form.parameters },
     scheduleType: form.scheduleType,
@@ -528,7 +543,17 @@ function submit(): void {
           <p v-else-if="configInitialError" class="schedule-form__error">
             参数配置读取失败：{{ getErrorMessage(configQuery.error.value) }}
           </p>
+          <AutomationParameterPresetSelector
+            :model-value="form.parameterPresetId"
+            :app-id="form.applicationId"
+            :shop-ids="form.shopIds"
+            :shop-options="shopOptions"
+            :schema="applicationSchema"
+            :disabled="configInitialLoading"
+            @update:model-value="changeParameterPreset"
+          />
           <AutomationParameterFields
+            v-if="!form.parameterPresetId"
             v-model="form.parameters"
             :schema="applicationSchema"
             :disabled="configInitialLoading"

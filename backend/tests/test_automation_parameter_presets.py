@@ -1,0 +1,345 @@
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.exceptions import ModuleAccessDeniedError
+from app.modules.automation_apps.exceptions import (
+    AutomationParameterPresetNotFoundError,
+    AutomationParameterPresetVersionConflictError,
+)
+from app.modules.automation_apps.models import AutomationParameterPreset
+from app.modules.automation_apps.schemas import (
+    AutomationParameterPresetCopy,
+    AutomationParameterPresetCreate,
+    AutomationParameterPresetUpdate,
+)
+from app.modules.automation_apps.service import AutomationParameterPresetService
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+    def refresh(self, preset: AutomationParameterPreset) -> None:
+        now = datetime.now(UTC)
+        preset.created_at = preset.created_at or now
+        preset.updated_at = now
+
+
+class FakePresetRepository:
+    def __init__(self) -> None:
+        self.presets: list[AutomationParameterPreset] = []
+
+    def add(self, preset: AutomationParameterPreset) -> None:
+        self.presets.append(preset)
+
+    def list_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+    ) -> list[AutomationParameterPreset]:
+        # This fake deliberately honors ALL to prove the service still keeps
+        # presets inside the current Team.
+        candidates = [preset for preset in self.presets if preset.app_id == app_id]
+        if actor.data_scope is DataScope.SELF:
+            candidates = [
+                preset
+                for preset in candidates
+                if preset.team_id == actor.team_id
+                and preset.created_by_user_id == actor.user_id
+            ]
+        elif actor.data_scope is DataScope.TEAM:
+            candidates = [
+                preset for preset in candidates if preset.team_id == actor.team_id
+            ]
+        return candidates
+
+    def get_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        preset_id: UUID,
+        for_update: bool = False,
+    ) -> AutomationParameterPreset | None:
+        del for_update
+        return next(
+            (
+                preset
+                for preset in self.list_for_actor(actor=actor, app_id=app_id)
+                if preset.preset_id == preset_id
+            ),
+            None,
+        )
+
+    def get_for_team(
+        self,
+        *,
+        team_id: UUID,
+        app_id: str,
+        preset_id: UUID,
+    ) -> AutomationParameterPreset | None:
+        return next(
+            (
+                preset
+                for preset in self.presets
+                if preset.preset_id == preset_id
+                and preset.team_id == team_id
+                and preset.app_id == app_id
+            ),
+            None,
+        )
+
+    def exists_name(
+        self,
+        *,
+        team_id: UUID,
+        app_id: str,
+        name: str,
+        exclude_preset_id: UUID | None = None,
+    ) -> bool:
+        return any(
+            preset.team_id == team_id
+            and preset.app_id == app_id
+            and preset.name == name
+            and preset.preset_id != exclude_preset_id
+            for preset in self.presets
+        )
+
+
+class FakeConfigRepository:
+    def get(self, provider_code: str, app_id: str) -> SimpleNamespace:
+        assert (provider_code, app_id) == ("yingdao", "safe-app")
+        return SimpleNamespace(
+            input_schema={
+                "fields": [
+                    {
+                        "name": "标题",
+                        "label": "标题",
+                        "type": "text",
+                        "required": True,
+                        "default_value": None,
+                        "options": [],
+                    },
+                    {
+                        "name": "数量",
+                        "label": "数量",
+                        "type": "number",
+                        "required": False,
+                        "default_value": 1,
+                        "options": [],
+                    },
+                    {
+                        "name": "启用",
+                        "label": "启用",
+                        "type": "boolean",
+                        "required": False,
+                        "default_value": True,
+                        "options": [],
+                    },
+                    {
+                        "name": "备注",
+                        "label": "备注",
+                        "type": "text",
+                        "required": False,
+                        "default_value": "默认备注",
+                        "options": [],
+                    },
+                ],
+            },
+        )
+
+
+class FakeShopRepository:
+    def __init__(self, shop_ids: set[UUID]) -> None:
+        self.shop_ids = shop_ids
+
+    def list_by_ids(self, shop_ids: list[UUID]) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(shop_id=shop_id)
+            for shop_id in shop_ids
+            if shop_id in self.shop_ids
+        ]
+
+
+class FakeModuleAccessService:
+    def __init__(self, *, allowed: bool) -> None:
+        self.allowed = allowed
+
+    def require_module_access(self, actor: ActorContext, module_code: object) -> None:
+        del actor, module_code
+        if not self.allowed:
+            raise ModuleAccessDeniedError()
+
+
+def actor(*, team_id: UUID, scope: DataScope = DataScope.TEAM) -> ActorContext:
+    return ActorContext(
+        user_id=uuid4(),
+        user_display_name="参数预设测试人员",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=scope,
+    )
+
+
+def service_for(
+    *,
+    repository: FakePresetRepository,
+    shop_ids: set[UUID],
+    allowed: bool = True,
+) -> AutomationParameterPresetService:
+    return AutomationParameterPresetService(
+        FakeSession(),  # type: ignore[arg-type]
+        config_repository=FakeConfigRepository(),  # type: ignore[arg-type]
+        preset_repository=repository,  # type: ignore[arg-type]
+        shop_repository=FakeShopRepository(shop_ids),  # type: ignore[arg-type]
+        module_access_service=FakeModuleAccessService(allowed=allowed),  # type: ignore[arg-type]
+    )
+
+
+def test_preset_keeps_false_zero_and_empty_string_and_snapshots_selected_shops() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    shop_a, shop_b = uuid4(), uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids={shop_a, shop_b})
+
+    created = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="中文店铺预设",
+            common_parameters={"标题": "公共标题", "数量": 0, "启用": False, "备注": ""},
+            shop_overrides={shop_a: {"标题": "店铺 A"}},
+        ),
+    )
+    assert created.common_parameters == {
+        "标题": "公共标题",
+        "数量": 0,
+        "启用": False,
+        "备注": "",
+    }
+
+    updated = service.update(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=created.preset_id,
+        data=AutomationParameterPresetUpdate(
+            expected_version=created.version,
+            shop_overrides={shop_a: {"标题": "店铺 A 更新"}},
+        ),
+    )
+    assert updated.shop_overrides == {shop_a: {"标题": "店铺 A 更新"}}
+    snapshot = service.snapshot_for_actor(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=created.preset_id,
+        shop_ids=[shop_a],
+    )
+    assert snapshot.parameters == {
+        "格式版本": 1,
+        "公共参数": created.common_parameters,
+        "店铺参数": {
+            str(shop_a): {
+                "标题": "店铺 A 更新",
+                "数量": 0,
+                "启用": False,
+                "备注": "",
+            },
+        },
+    }
+    assert str(shop_b) not in snapshot.parameters["店铺参数"]
+    assert snapshot.preset_id == created.preset_id
+    assert snapshot.preset_version == updated.version
+
+    with pytest.raises(AutomationParameterPresetVersionConflictError):
+        service.update(
+            actor=actor_context,
+            app_id="safe-app",
+            preset_id=created.preset_id,
+            data=AutomationParameterPresetUpdate(
+                expected_version=created.version,
+                common_parameters={"标题": "过期写入"},
+            ),
+        )
+
+
+def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> None:
+    own_team, other_team = uuid4(), uuid4()
+    own_actor = actor(team_id=own_team, scope=DataScope.ALL)
+    shop_id = uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids={shop_id})
+
+    own = service.create(
+        actor=own_actor,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="团队内预设",
+            common_parameters={"标题": "原始"},
+        ),
+    )
+    repository.add(
+        AutomationParameterPreset(
+            preset_id=uuid4(),
+            team_id=other_team,
+            created_by_user_id=uuid4(),
+            app_id="safe-app",
+            name="其他团队预设",
+            common_parameters={"标题": "不可见"},
+            shop_overrides={},
+            version=1,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+
+    assert [preset.preset_id for preset in service.list(actor=own_actor, app_id="safe-app")] == [
+        own.preset_id,
+    ]
+    copied = service.copy(
+        actor=own_actor,
+        app_id="safe-app",
+        preset_id=own.preset_id,
+        data=AutomationParameterPresetCopy(name="团队内预设副本"),
+    )
+    service.update(
+        actor=own_actor,
+        app_id="safe-app",
+        preset_id=own.preset_id,
+        data=AutomationParameterPresetUpdate(
+            expected_version=own.version,
+            common_parameters={"标题": "已修改"},
+        ),
+    )
+    assert copied.common_parameters == {"标题": "原始", "数量": 1, "启用": True, "备注": "默认备注"}
+
+    with pytest.raises(AutomationParameterPresetNotFoundError):
+        service.get(
+            actor=actor(team_id=other_team),
+            app_id="safe-app",
+            preset_id=own.preset_id,
+        )
+
+
+def test_preset_requires_existing_shop_module_access() -> None:
+    preset_service = service_for(
+        repository=FakePresetRepository(),
+        shop_ids=set(),
+        allowed=False,
+    )
+    with pytest.raises(ModuleAccessDeniedError):
+        preset_service.list(actor=actor(team_id=uuid4()), app_id="safe-app")

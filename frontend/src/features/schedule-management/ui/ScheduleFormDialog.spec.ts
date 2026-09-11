@@ -131,6 +131,7 @@ const savedSchedule: ScheduleDetailViewModel = {
   updatedAt: '2026-08-26T00:00:00Z',
   updatedAtDisplay: '2026-08-26 08:00',
   applicationId: null,
+  parameterPresetId: null,
   parameters: { keyword: 'saved' },
 }
 

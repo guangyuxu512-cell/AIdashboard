@@ -68,6 +68,7 @@ export function scheduleFixtureToDetail(
       item.schedule_id === latestRun.schedule_id
         ? 'app-fixture-product-publish-1'
         : 'app-fixture-inventory-sync-2',
+    parameter_preset_id: null,
     parameters: {},
   }
 }

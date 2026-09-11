@@ -31,6 +31,7 @@ class ScheduleCreate(BaseModel):
         ScheduleExecutionType.YINGDAO_APPLICATION
     )
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
+    parameter_preset_id: UUID | None = None
     skill_id: str | None = Field(
         default=None,
         min_length=3,
@@ -50,7 +51,11 @@ class ScheduleCreate(BaseModel):
         if self.execution_type is ScheduleExecutionType.YINGDAO_APPLICATION:
             if self.application_id is None or self.skill_id is not None:
                 raise ValueError("Yingdao schedules require only application_id")
-        elif self.skill_id is None or self.application_id is not None:
+        elif (
+            self.skill_id is None
+            or self.application_id is not None
+            or self.parameter_preset_id is not None
+        ):
             raise ValueError("Business Skill schedules require only skill_id")
         self.local_date, self.weekdays = validate_schedule_rule(
             self.schedule_type,
@@ -93,6 +98,7 @@ class ScheduleUpdate(BaseModel):
     shop_ids: list[UUID] | None = Field(default=None, max_length=100)
     execution_type: ScheduleExecutionType | None = None
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
+    parameter_preset_id: UUID | None = None
     skill_id: str | None = Field(
         default=None,
         min_length=3,
@@ -128,7 +134,7 @@ class ScheduleUpdate(BaseModel):
         if not self.model_fields_set:
             raise ValueError("At least one field must be provided")
         for field_name in self.model_fields_set:
-            if field_name != "local_date" and getattr(self, field_name) is None:
+            if field_name not in {"local_date", "parameter_preset_id"} and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
         if "application_id" in self.model_fields_set and "skill_id" in self.model_fields_set:
             raise ValueError("application_id and skill_id cannot be updated together")
@@ -190,6 +196,7 @@ class ScheduleListItemRead(BaseModel):
 
 class ScheduleRead(ScheduleListItemRead):
     application_id: str | None
+    parameter_preset_id: UUID | None = None
     parameters: dict[str, Any]
 
 

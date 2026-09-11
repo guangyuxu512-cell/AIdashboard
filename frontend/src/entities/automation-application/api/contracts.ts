@@ -28,3 +28,27 @@ export interface AutomationApplicationConfigDto {
 export interface AutomationApplicationConfigUpsertDto {
   input_schema: AutomationInputSchemaDto
 }
+
+export interface AutomationParameterPresetDto {
+  preset_id: string
+  team_id: string
+  created_by_user_id: string
+  app_id: string
+  name: string
+  common_parameters: Record<string, unknown>
+  shop_overrides: Record<string, Record<string, unknown>>
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AutomationParameterPresetSaveDto {
+  name: string
+  common_parameters: Record<string, unknown>
+  shop_overrides: Record<string, Record<string, unknown>>
+}
+
+export interface AutomationParameterPresetUpdateDto
+  extends AutomationParameterPresetSaveDto {
+  expected_version: number
+}
