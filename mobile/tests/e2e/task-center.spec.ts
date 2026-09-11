@@ -25,6 +25,10 @@ interface MockApiOptions {
   initialListDelayMs?: number
   failInitialListOnce?: boolean
   failRefreshOnce?: boolean
+  holdRefreshOnce?: {
+    onStarted: () => void
+    release: Promise<void>
+  }
   failNextPageOnce?: boolean
 }
 
@@ -186,6 +190,7 @@ async function installMockApi(
   let initialFailureUsed = false
   let pageOneSucceeded = false
   let refreshFailureUsed = false
+  let refreshHeld = false
   let nextPageFailureUsed = false
 
   await page.route('**/api/v1/**', async (route) => {
@@ -237,6 +242,17 @@ async function installMockApi(
       ) {
         initialFailureUsed = true
         return fulfillApiError(route)
+      }
+      if (
+        !isMetricRequest &&
+        pageNumber === 1 &&
+        options.holdRefreshOnce &&
+        pageOneSucceeded &&
+        !refreshHeld
+      ) {
+        refreshHeld = true
+        options.holdRefreshOnce.onStarted()
+        await options.holdRefreshOnce.release
       }
       if (
         !isMetricRequest &&
@@ -680,6 +696,9 @@ test('主动刷新失败保留任务并只给出安全摘要', async ({ page }) 
     .poll(() => state.listRequests.length)
     .toBeGreaterThan(beforeRefresh)
   await expect(page.getByText('刷新失败', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('mobile-pull-refresh-feedback')).toHaveText(
+    '刷新失败',
+  )
   await expect(page.getByTestId('task-card')).toHaveCount(20)
   await expect(page.getByTestId('task-error')).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText('仅供测试的技术错误')
@@ -688,6 +707,49 @@ test('主动刷新失败保留任务并只给出安全摘要', async ({ page }) 
       (message) => !message.includes('Failed to load resource'),
     ),
   ).toEqual([])
+})
+
+test('任务页统一下拉刷新保留列表、显示加载和完成反馈，并防止重复请求', async ({
+  page,
+}) => {
+  let notifyRefreshStarted: () => void = () => undefined
+  const refreshStarted = new Promise<void>((resolve) => {
+    notifyRefreshStarted = resolve
+  })
+  let releaseRefresh: () => void = () => undefined
+  const refreshRelease = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await installMockApi(page, {
+    holdRefreshOnce: {
+      onStarted: notifyRefreshStarted,
+      release: refreshRelease,
+    },
+  })
+  await page.goto('/#/tasks')
+  await expect(page.getByTestId('task-card')).toHaveCount(20)
+
+  await pullToRefresh(page)
+  await refreshStarted
+  await expect(
+    page.getByTestId('mobile-pull-refresh').getByText('正在刷新', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  const requestsWhileLoading = state.listRequests.length
+  await pullToRefresh(page)
+  await page.waitForTimeout(250)
+  expect(state.listRequests).toHaveLength(requestsWhileLoading)
+  await expect(page.getByTestId('task-card')).toHaveCount(20)
+
+  releaseRefresh()
+  await expect(page.getByTestId('mobile-pull-refresh-feedback')).toHaveText(
+    '刷新完成',
+  )
+  await expect(page.getByTestId('task-card')).toHaveCount(20)
+  expect(consoleErrors).toEqual([])
 })
 
 test('空态简洁，下一页失败保留已有任务并支持重试', async ({ page }) => {
@@ -706,10 +768,19 @@ test('空态简洁，下一页失败保留已有任务并支持重试', async ({
   await expect(page.getByTestId('task-card')).toHaveCount(26)
 
   await page.unroute('**/api/v1/**')
-  await installMockApi(page, { empty: true })
+  const emptyState = await installMockApi(page, { empty: true })
   await page.reload()
   await expect(page.getByTestId('task-empty')).toContainText('近7天无任务')
   await expect(page.getByTestId('task-error')).toHaveCount(0)
+  const emptyRefreshRequestCount = emptyState.listRequests.length
+  await pullToRefresh(page)
+  await expect
+    .poll(() => emptyState.listRequests.length)
+    .toBeGreaterThan(emptyRefreshRequestCount)
+  await expect(page.getByTestId('mobile-pull-refresh-feedback')).toHaveText(
+    '刷新完成',
+  )
+  await expect(page.getByTestId('task-empty')).toContainText('近7天无任务')
   expect(
     consoleErrors.filter(
       (message) => !message.includes('Failed to load resource'),

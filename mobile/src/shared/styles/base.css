@@ -25,6 +25,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+#app {
+  background: var(--mobile-root-background);
+}
+
 ::selection {
   color: var(--text-primary);
   background: var(--color-primary-soft);

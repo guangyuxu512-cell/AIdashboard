@@ -47,6 +47,36 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true)
 }
 
+async function expectThemeChrome(
+  page: Page,
+  theme: 'light' | 'dark',
+): Promise<void> {
+  const expectedThemeColor = theme === 'dark' ? '#07111d' : '#fbfcfe'
+  const expectedAppleStatus = theme === 'dark' ? 'black-translucent' : 'default'
+
+  await expect(
+    page.locator('meta[name="theme-color"][data-mobile-theme-color]'),
+  ).toHaveAttribute('content', expectedThemeColor)
+  await expect(
+    page.locator('meta[name="apple-mobile-web-app-status-bar-style"]'),
+  ).toHaveAttribute('content', expectedAppleStatus)
+
+  const backgrounds = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.background = 'var(--mobile-root-background)'
+    document.body.append(probe)
+    const expected = getComputedStyle(probe).backgroundImage
+    probe.remove()
+
+    return {
+      app: getComputedStyle(document.querySelector<HTMLElement>('#app')!)
+        .backgroundImage,
+      expected,
+    }
+  })
+  expect(backgrounds.app).toBe(backgrounds.expected)
+}
+
 test('production output exposes the Mobile document, manifest and hashed assets below /mobile/', async ({
   request,
 }) => {
@@ -178,6 +208,7 @@ for (const width of [360, 375, 390, 430]) {
       await page.goto('/mobile/#/devices')
       await expect(page).toHaveURL(/\/mobile\/#\/devices$/)
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      await expectThemeChrome(page, theme)
       await expectNoHorizontalOverflow(page)
 
       await page.goto('/mobile/#/tasks')

@@ -4,27 +4,33 @@ import {
   Empty as VanEmpty,
   List as VanList,
   Loading as VanLoading,
-  PullRefresh as VanPullRefresh,
   Skeleton as VanSkeleton,
 } from 'vant'
 
 import type { Device } from '@/entities/device'
+import { MobilePullRefresh } from '@/shared/ui'
 
 import type { DeviceActiveTaskState } from '../model/use-device-active-task'
 import DeviceListCard from './DeviceListCard.vue'
 
-const props = defineProps<{
-  devices: Device[]
-  activeTaskStates: Readonly<Record<string, DeviceActiveTaskState>>
-  initialLoading: boolean
-  initialError: boolean
-  filterPreparing?: boolean
-  filterError?: boolean
-  nextPageError: boolean
-  refreshing: boolean
-  loadingMore: boolean
-  hasMore: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    devices: Device[]
+    activeTaskStates: Readonly<Record<string, DeviceActiveTaskState>>
+    initialLoading: boolean
+    initialError: boolean
+    filterPreparing?: boolean
+    filterError?: boolean
+    nextPageError: boolean
+    refreshing: boolean
+    loadingMore: boolean
+    hasMore: boolean
+    onRefresh?: () => Promise<boolean>
+  }>(),
+  {
+    onRefresh: async () => false,
+  },
+)
 
 const pendingActiveTaskState: DeviceActiveTaskState = {
   task: undefined,
@@ -40,7 +46,6 @@ function activeTaskState(deviceId: string): DeviceActiveTaskState {
 }
 
 const emit = defineEmits<{
-  refresh: []
   retry: []
   loadMore: []
   retryLoadMore: []
@@ -69,7 +74,7 @@ const emit = defineEmits<{
   </div>
 
   <div
-    v-else-if="filterPreparing"
+    v-else-if="filterPreparing && !refreshing"
     class="device-list-state device-list-state--filter"
     data-testid="device-filter-preparing"
   >
@@ -77,7 +82,7 @@ const emit = defineEmits<{
   </div>
 
   <div
-    v-else-if="filterError"
+    v-else-if="filterError && !refreshing"
     class="device-list-state"
     data-testid="device-filter-error"
   >
@@ -86,12 +91,7 @@ const emit = defineEmits<{
     </VanEmpty>
   </div>
 
-  <VanPullRefresh
-    v-else
-    class="device-list-refresh"
-    :model-value="refreshing"
-    @refresh="emit('refresh')"
-  >
+  <MobilePullRefresh v-else class="device-list-refresh" :refresh="onRefresh">
     <VanEmpty
       v-if="devices.length === 0"
       description="没有设备"
@@ -122,7 +122,7 @@ const emit = defineEmits<{
         <VanButton block @click="emit('retryLoadMore')">重试</VanButton>
       </div>
     </VanList>
-  </VanPullRefresh>
+  </MobilePullRefresh>
 </template>
 
 <style scoped>
