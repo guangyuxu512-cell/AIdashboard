@@ -163,6 +163,26 @@ def test_bridge_writes_empty_params_instead_of_reusing_previous_task(
     assert json.loads(bridge.paths.params_json_path.read_text("utf-8")) == {}
 
 
+def test_bridge_preserves_backend_materialized_parameter_preset_envelope(
+    tmp_path: Path,
+) -> None:
+    bridge = make_bridge(tmp_path)
+    envelope = {
+        "format_version": 1,
+        "common_parameters": {"标题": "公共", "启用": False},
+        "shop_parameters": {
+            "shop-a": {"标题": "店铺 A", "数量": 0},
+        },
+    }
+
+    bridge.prepare(params=envelope, accounts=[])
+
+    assert json.loads(bridge.paths.params_json_path.read_text("utf-8")) == envelope
+    assert json.loads(bridge.paths.account_json_path.read_text("utf-8")) == {
+        "店铺列表": [],
+    }
+
+
 def test_bridge_reports_safe_error_without_payload_and_stops_preparation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -112,6 +112,11 @@ class Schedule(TimestampMixin, Base):
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
         nullable=False,
     )
+    parameter_preset_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("automation_parameter_presets.preset_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     shop_links: Mapped[list["ScheduleShop"]] = relationship(
         back_populates="schedule",
         cascade="all, delete-orphan",

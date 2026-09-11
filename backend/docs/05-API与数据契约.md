@@ -191,6 +191,24 @@ text/number/boolean/select 类型。
 配置保存的请求校验使用 `422 / VALIDATION_ERROR`；`details` 保留 Pydantic 的字段定位，PC 弹窗必须
 映射到对应参数行/字段并保留未保存草稿，而不是关闭弹窗或只显示泛化错误。
 
+### 影刀参数预设
+
+`yingdao` 应用的参数预设使用
+`/api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets` 的 list/create/read/update/copy
+路由。预设只归属于创建时的 ActorContext Team；服务端在列表、详情、修改、复制和运行取快照时均再次
+确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
+
+每个预设保存 `name`、`common_parameters` 和以 `shop_id` 为键的 `shop_overrides`。公共参数是完整参数，
+店铺覆盖只保存与公共参数不同的字段；合并/字段校验只使用该应用已保存的 Schema，必须保留合法的 `0`、
+`false` 和空字符串。预设服务通过既有 Shop 查询和 `shop` 模块授权核验每个 `shop_id`。当前 Shop 尚未
+建立 Team Ownership Scope，因此这复用的是现行正式 Shop 可见范围，不能把 Device Binding 当作人员授权。
+Credential、Cookie 和账号明文永不保存进预设。
+
+`POST /api/v1/tasks` 选择预设时只提交 `parameter_preset_id`；Backend 在既有 Device、Shop 启用状态、
+Binding 与 Credential 校验成功后，才物化本次选中 Shop 的合并结果。Task `input.params` 保存不可变快照：
+`{"format_version":1,"common_parameters":{...},"shop_parameters":{"<shop_id>":{...}}}`。手工参数模式
+继续保存原平铺对象。Worker 不做继承、合并或授权判断。
+
 `POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
 `{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。
 Backend 必须验证目标 Device 启用、全部 Shop 有效并与该 Device 存在启用 Binding、账号可用、

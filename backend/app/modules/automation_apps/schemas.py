@@ -112,6 +112,51 @@ class AutomationApplicationConfigRead(BaseModel):
     updated_at: datetime
 
 
+class AutomationParameterPresetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=100)
+    common_parameters: dict[str, Any] = Field(default_factory=dict)
+    shop_overrides: dict[UUID, dict[str, Any]] = Field(default_factory=dict)
+
+
+class AutomationParameterPresetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    common_parameters: dict[str, Any] | None = None
+    shop_overrides: dict[UUID, dict[str, Any]] | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "AutomationParameterPresetUpdate":
+        if not self.model_fields_set:
+            raise ValueError("至少提供一个需要更新的字段")
+        for name in self.model_fields_set:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} 不能为 null")
+        return self
+
+
+class AutomationParameterPresetCopy(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=100)
+
+
+class AutomationParameterPresetRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    preset_id: UUID
+    team_id: UUID
+    created_by_user_id: UUID
+    app_id: str
+    name: str
+    common_parameters: dict[str, Any]
+    shop_overrides: dict[UUID, dict[str, Any]]
+    created_at: datetime
+    updated_at: datetime
+
+
 def normalize_parameters(
     schema: AutomationInputSchema,
     values: dict[str, Any],
@@ -135,6 +180,62 @@ def normalize_parameters(
         _validate_value(field, value)
         normalized[field.name] = value
     return normalized
+
+
+def validate_parameter_subset(
+    schema: AutomationInputSchema,
+    values: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate a partial override without inventing a second field schema.
+
+    Required-field completeness belongs to the final Task parameter snapshot;
+    a shop override is deliberately allowed to contain only fields that differ
+    from the preset's common parameters.
+    """
+
+    field_by_name = {field.name: field for field in schema.fields}
+    unknown = sorted(set(values) - set(field_by_name))
+    if unknown:
+        raise ValueError(f"未知参数: {', '.join(unknown)}")
+    normalized: dict[str, Any] = {}
+    for name, value in values.items():
+        if value is None:
+            raise ValueError(f"参数 {field_by_name[name].label} 不能为 null")
+        _validate_value(field_by_name[name], value)
+        normalized[name] = value
+    return normalized
+
+
+def build_parameter_preset_snapshot(
+    schema: AutomationInputSchema,
+    *,
+    common_parameters: dict[str, Any],
+    shop_overrides: dict[str, dict[str, Any]],
+    shop_ids: list[UUID],
+) -> dict[str, Any]:
+    """Materialize a versioned Worker payload for the selected Shop set.
+
+    The Task stores only this completed snapshot.  It never asks the Worker to
+    merge preset data, and a later preset edit cannot change an already-created
+    Task.
+    """
+
+    normalized_common = normalize_parameters(schema, common_parameters)
+    normalized_overrides = {
+        shop_id: validate_parameter_subset(schema, values)
+        for shop_id, values in shop_overrides.items()
+    }
+    return {
+        "format_version": 1,
+        "common_parameters": normalized_common,
+        "shop_parameters": {
+            str(shop_id): normalize_parameters(
+                schema,
+                {**normalized_common, **normalized_overrides.get(str(shop_id), {})},
+            )
+            for shop_id in shop_ids
+        },
+    }
 
 
 def _validate_value(field: AutomationInputField, value: Any) -> None:

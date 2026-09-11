@@ -115,6 +115,7 @@ export function mapScheduleDetailDto(
   return {
     ...mapScheduleListItemDto(dto),
     applicationId: dto.application_id,
+    parameterPresetId: dto.parameter_preset_id,
     parameters: { ...dto.parameters },
   }
 }

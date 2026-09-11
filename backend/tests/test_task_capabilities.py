@@ -173,6 +173,10 @@ def service_for(
     inventory: dict[str, object] | None = None,
     *,
     runtime_status: str = "online",
+    parameter_preset_service: object | None = None,
+    shop_repository: object | None = None,
+    shop_device_binding_repository: object | None = None,
+    credential_service: object | None = None,
 ) -> TaskService:
     return TaskService(
         FakeSession(),  # type: ignore[arg-type]
@@ -183,7 +187,59 @@ def service_for(
             runtime_status,
         ),
         application_config_repository=EmptyApplicationConfigRepository(),  # type: ignore[arg-type]
+        parameter_preset_service=parameter_preset_service,  # type: ignore[arg-type]
+        shop_repository=shop_repository,  # type: ignore[arg-type]
+        shop_device_binding_repository=shop_device_binding_repository,  # type: ignore[arg-type]
+        credential_service=credential_service,  # type: ignore[arg-type]
     )
+
+
+class PresetSnapshotService:
+    def __init__(self) -> None:
+        self.actor: ActorContext | None = None
+        self.shop_ids: list[object] = []
+
+    def snapshot_for_actor(self, **kwargs: object) -> dict[str, object]:
+        self.actor = kwargs["actor"]  # type: ignore[assignment]
+        self.shop_ids = list(kwargs["shop_ids"])  # type: ignore[arg-type]
+        return {
+            "format_version": 1,
+            "common_parameters": {"标题": "公共标题"},
+            "shop_parameters": {
+                str(shop_id): {"标题": "店铺标题"}
+                for shop_id in self.shop_ids
+            },
+        }
+
+
+class SelectedShopRepository:
+    def __init__(self, shop_id: object) -> None:
+        self.shop_id = shop_id
+
+    def list_by_ids(self, shop_ids: list[object]) -> list[object]:
+        return [
+            SimpleNamespace(shop_id=shop_id, enabled=True)
+            for shop_id in shop_ids
+            if shop_id == self.shop_id
+        ]
+
+
+class SelectedBindingRepository:
+    def __init__(self, shop_id: object) -> None:
+        self.shop_id = shop_id
+
+    def list_enabled_shop_ids_for_device(
+        self,
+        device_id: object,
+        shop_ids: list[object],
+    ) -> set[object]:
+        del device_id
+        return {shop_id for shop_id in shop_ids if shop_id == self.shop_id}
+
+
+class ReadyCredentialService:
+    def ensure_task_accounts_available(self, shop_ids: list[object]) -> None:
+        assert shop_ids
 
 
 def test_system_skill_requires_device_capability_and_disabled_is_distinct() -> None:
@@ -267,6 +323,60 @@ def test_legacy_ready_provider_inventory_allows_yingdao_app_guard() -> None:
     )
     assert task.skill_id == "yingdao.app.run"
     assert task.execution_display_name == "Safe App"
+
+
+def test_parameter_preset_cannot_be_silently_ignored_by_another_skill() -> None:
+    device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
+
+    with pytest.raises(TaskInputInvalidError):
+        service_for(
+            device,
+            [capability(device, TaskSkillId.SYSTEM_ECHO)],
+        ).create(
+            TaskCreate(
+                target_device_id=device.device_id,
+                skill_id=TaskSkillId.SYSTEM_ECHO,
+                input={"message": "safe"},
+                parameter_preset_id=uuid4(),
+            ),
+            ACTOR,
+        )
+
+
+def test_yingdao_preset_is_materialized_by_task_service_after_shop_checks() -> None:
+    device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
+    shop_id = uuid4()
+    preset_service = PresetSnapshotService()
+
+    task = service_for(
+        device,
+        [capability(device, "yingdao.app.run", runtime="rpa", provider="yingdao")],
+        ready_inventory(),
+        parameter_preset_service=preset_service,
+        shop_repository=SelectedShopRepository(shop_id),
+        shop_device_binding_repository=SelectedBindingRepository(shop_id),
+        credential_service=ReadyCredentialService(),
+    ).create(
+        TaskCreate(
+            target_device_id=device.device_id,
+            shop_ids=[shop_id],
+            skill_id=TaskSkillId.YINGDAO_APP_RUN,
+            input={"app_id": "safe-app", "params": {}},
+            parameter_preset_id=uuid4(),
+        ),
+        ACTOR,
+    )
+
+    assert preset_service.actor is ACTOR
+    assert preset_service.shop_ids == [shop_id]
+    assert task.input_json == {
+        "app_id": "safe-app",
+        "params": {
+            "format_version": 1,
+            "common_parameters": {"标题": "公共标题"},
+            "shop_parameters": {str(shop_id): {"标题": "店铺标题"}},
+        },
+    }
 
 
 def test_yingdao_guard_returns_specific_provider_and_application_errors() -> None:

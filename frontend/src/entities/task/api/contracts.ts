@@ -25,6 +25,7 @@ export interface TaskCreateDto {
   target_device_id: string
   shop_ids?: string[]
   asset_ids?: string[]
+  parameter_preset_id?: string
   skill_id: TaskReadDto['skill_id']
   input: Record<string, unknown>
 }

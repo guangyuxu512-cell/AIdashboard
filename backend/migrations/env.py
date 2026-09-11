@@ -20,7 +20,10 @@ from app.modules.ai_workbench.models import (
     TemplateGroup,
 )
 from app.modules.assets.models import Asset
-from app.modules.automation_apps.models import AutomationApplicationConfig
+from app.modules.automation_apps.models import (
+    AutomationApplicationConfig,
+    AutomationParameterPreset,
+)
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.devices.models import Device
 from app.modules.human_auth.models import HumanSession
@@ -40,6 +43,7 @@ from app.modules.workers.models import (
 _MODELS = (
     AiModel,
     AutomationApplicationConfig,
+    AutomationParameterPreset,
     Asset,
     AuditLog,
     GenerationItem,

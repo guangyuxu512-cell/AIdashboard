@@ -16,6 +16,7 @@ const props = defineProps<{
   fields: SchemaParameterField[]
   modelValue: Record<string, unknown>
   disabled?: boolean
+  preserveEmptyString?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,7 +25,13 @@ const emit = defineEmits<{
 
 function update(name: string, value: unknown): void {
   const next = { ...props.modelValue }
-  if (value === null || value === undefined || value === '') delete next[name]
+  if (
+    value === null ||
+    value === undefined ||
+    (value === '' && !props.preserveEmptyString)
+  ) {
+    delete next[name]
+  }
   else next[name] = value
   emit('update:modelValue', next)
 }

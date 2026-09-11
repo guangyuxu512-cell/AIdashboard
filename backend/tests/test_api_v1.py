@@ -16,6 +16,16 @@ from app.modules.automation_apps.api import get_service as get_automation_servic
 from app.modules.automation_apps.schemas import (
     AutomationApplicationConfigRead,
     AutomationApplicationConfigUpsert,
+    AutomationParameterPresetCopy,
+    AutomationParameterPresetCreate,
+    AutomationParameterPresetRead,
+    AutomationParameterPresetUpdate,
+)
+from app.modules.automation_apps.presets_api import (
+    get_device_authorized_actor as get_parameter_preset_authorized_actor,
+)
+from app.modules.automation_apps.presets_api import (
+    get_service as get_parameter_preset_service,
 )
 from app.modules.devices.api import (
     get_device_authorized_actor,
@@ -279,6 +289,78 @@ class ApiAutomationApplicationConfigService:
         )
 
 
+class ApiAutomationParameterPresetService:
+    preset_id = uuid4()
+    last_create: AutomationParameterPresetCreate | None = None
+
+    @classmethod
+    def read(cls, *, app_id: str, name: str) -> AutomationParameterPresetRead:
+        now = datetime.now(UTC)
+        return AutomationParameterPresetRead(
+            preset_id=cls.preset_id,
+            team_id=TEAM_ID,
+            created_by_user_id=USER_ID,
+            app_id=app_id,
+            name=name,
+            common_parameters={"商品列表": "", "数量": 0, "启用": False},
+            shop_overrides={SHOP_ID: {"数量": 0, "启用": False}},
+            created_at=now,
+            updated_at=now,
+        )
+
+    def list(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+    ) -> list[AutomationParameterPresetRead]:
+        del actor
+        return [self.read(app_id=app_id, name="默认预设")]
+
+    def create(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        data: AutomationParameterPresetCreate,
+    ) -> AutomationParameterPresetRead:
+        del actor
+        type(self).last_create = data
+        return self.read(app_id=app_id, name=data.name)
+
+    def get(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        preset_id: UUID,
+    ) -> AutomationParameterPresetRead:
+        del actor, preset_id
+        return self.read(app_id=app_id, name="默认预设")
+
+    def update(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        preset_id: UUID,
+        data: AutomationParameterPresetUpdate,
+    ) -> AutomationParameterPresetRead:
+        del actor, preset_id
+        return self.read(app_id=app_id, name=data.name or "默认预设")
+
+    def copy(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        preset_id: UUID,
+        data: AutomationParameterPresetCopy,
+    ) -> AutomationParameterPresetRead:
+        del actor, preset_id
+        return self.read(app_id=app_id, name=data.name)
+
+
 class ApiUserService:
     def list(self, *, offset: int, limit: int) -> tuple[list[User], int]:
         return [self.get(USER_ID)][offset : offset + limit], 1
@@ -470,12 +552,18 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[
         get_automation_service
     ] = ApiAutomationApplicationConfigService
+    application.dependency_overrides[
+        get_parameter_preset_service
+    ] = ApiAutomationParameterPresetService
     application.dependency_overrides[get_device_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_task_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_schedule_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[
         get_automation_device_authorized_actor
+    ] = lambda: API_ACTOR
+    application.dependency_overrides[
+        get_parameter_preset_authorized_actor
     ] = lambda: API_ACTOR
 
     async def send() -> Response:
@@ -838,6 +926,49 @@ def test_automation_application_config_api_accepts_unicode_name_and_label_fallba
         ApiAutomationApplicationConfigService.last_data.input_schema.fields[0].label
         == "商品列表"
     )
+
+
+def test_automation_parameter_preset_api_contract() -> None:
+    base_path = "/api/v1/automation-app-configs/yingdao/preset-api-app/parameter-presets"
+
+    list_response = request("GET", base_path)
+    create_response = request(
+        "POST",
+        base_path,
+        json={
+            "name": "店铺覆盖",
+            "common_parameters": {"商品列表": "", "数量": 0, "启用": False},
+            "shop_overrides": {str(SHOP_ID): {"数量": 0, "启用": False}},
+        },
+    )
+    detail_response = request(
+        "GET",
+        f"{base_path}/{ApiAutomationParameterPresetService.preset_id}",
+    )
+    update_response = request(
+        "PATCH",
+        f"{base_path}/{ApiAutomationParameterPresetService.preset_id}",
+        json={"name": "店铺覆盖（已更新）"},
+    )
+    copy_response = request(
+        "POST",
+        f"{base_path}/{ApiAutomationParameterPresetService.preset_id}/copy",
+        json={"name": "店铺覆盖副本"},
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["team_id"] == str(TEAM_ID)
+    assert create_response.status_code == 201
+    assert create_response.json()["name"] == "店铺覆盖"
+    assert create_response.json()["shop_overrides"][str(SHOP_ID)]["数量"] == 0
+    assert create_response.json()["common_parameters"]["启用"] is False
+    assert ApiAutomationParameterPresetService.last_create is not None
+    assert ApiAutomationParameterPresetService.last_create.shop_overrides[SHOP_ID]["数量"] == 0
+    assert detail_response.status_code == 200
+    assert update_response.status_code == 200
+    assert update_response.json()["name"] == "店铺覆盖（已更新）"
+    assert copy_response.status_code == 201
+    assert copy_response.json()["name"] == "店铺覆盖副本"
 
 
 def test_automation_application_config_api_rejects_duplicate_or_invalid_names() -> None:

@@ -27,8 +27,13 @@ images 目录
 Bridge：完整覆盖两个 JSON 并确认图片目录；成功后才调用 `YingdaoAdapter.execute()`。
 Preparation 与 ShadowBot Run 位于同一个 Provider 串行边界内，不会被两个影刀 Task 交叉覆盖。
 
-`params.json` 的根对象就是业务参数本身，不增加 context/runtime/resources Envelope；无参数为
-`{}`。`account.json` 只使用认证 Claim 下发的正式有序 `accounts`，并仅在落盘边界映射为：
+手工参数 Task 的 `params.json` 根对象继续就是业务参数本身，无参数为 `{}`。影刀参数预设 Task 是唯一
+版本化例外：根对象固定为 `{"format_version":1,"common_parameters":{...},"shop_parameters":{...}}`，
+且 `shop_parameters` 已由 Backend 针对本次已验证的 `shop_id` 完成继承合并。Worker 只原样原子落盘，
+不做店铺授权、参数合并或回退。外部影刀 App 可复用
+`worker/examples/yingdao_parameter_preset_reader.py`：指定店铺时读对应完整参数，无店铺时读公共参数；
+缺少指定店铺明确报错。该示例不是 Worker Business Skill。`account.json` 只使用认证 Claim 下发的正式有序
+`accounts`，并仅在落盘边界映射为：
 
 ```json
 {

@@ -31,6 +31,7 @@ class TaskCreate(BaseModel):
     target_device_id: UUID
     shop_ids: list[UUID] = Field(default_factory=list, max_length=100)
     asset_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    parameter_preset_id: UUID | None = None
     skill_id: str = Field(
         min_length=3,
         max_length=TASK_SKILL_ID_MAX_LENGTH,

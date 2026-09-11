@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.modules.access.contracts import ActorContext
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
+from app.modules.automation_apps.service import AutomationParameterPresetService
 from app.modules.assets.enums import AssetMediaType
 from app.modules.assets.models import Asset
 from app.modules.assets.repository import AssetRepository
@@ -106,6 +107,7 @@ class TaskService:
         application_config_repository: (
             AutomationApplicationConfigRepository | None
         ) = None,
+        parameter_preset_service: AutomationParameterPresetService | None = None,
         credential_service: CredentialService | None = None,
         shop_repository: ShopRepository | None = None,
         shop_device_binding_repository: ShopDeviceBindingRepository | None = None,
@@ -117,6 +119,10 @@ class TaskService:
         self.application_config_repository = (
             application_config_repository
             or AutomationApplicationConfigRepository(session)
+        )
+        self.parameter_preset_service = parameter_preset_service or AutomationParameterPresetService(
+            session,
+            config_repository=self.application_config_repository,
         )
         self.credential_service = credential_service
         self.shop_repository = shop_repository or ShopRepository(session)
@@ -131,6 +137,7 @@ class TaskService:
             require_worker_online=True,
             team_id=actor.team_id,
             created_by_user_id=actor.user_id,
+            actor=actor,
         )
         self.session.commit()
         self.session.refresh(task)
@@ -141,6 +148,7 @@ class TaskService:
         data: TaskCreate,
         *,
         team_id: UUID,
+        actor: ActorContext | None = None,
     ) -> PreparedTaskCreation:
         """Validate a future Task while allowing its Worker to be offline.
 
@@ -153,6 +161,7 @@ class TaskService:
             data,
             require_worker_online=False,
             team_id=team_id,
+            actor=actor,
         )
 
     def create_for_schedule(
@@ -161,6 +170,7 @@ class TaskService:
         *,
         team_id: UUID,
         created_by_user_id: UUID | None,
+        actor: ActorContext | None = None,
     ) -> Task:
         """Add a validated pending Task without committing the outer transaction."""
 
@@ -169,6 +179,7 @@ class TaskService:
             require_worker_online=False,
             team_id=team_id,
             created_by_user_id=created_by_user_id,
+            actor=actor,
         )
 
     def _create_pending(
@@ -178,11 +189,13 @@ class TaskService:
         require_worker_online: bool,
         team_id: UUID,
         created_by_user_id: UUID | None,
+        actor: ActorContext | None,
     ) -> Task:
         prepared = self._prepare_creation(
             data,
             require_worker_online=require_worker_online,
             team_id=team_id,
+            actor=actor,
         )
         task = Task(
             team_id=team_id,
@@ -210,7 +223,13 @@ class TaskService:
         *,
         require_worker_online: bool,
         team_id: UUID,
+        actor: ActorContext | None,
     ) -> PreparedTaskCreation:
+        if (
+            data.parameter_preset_id is not None
+            and data.skill_id != TaskSkillId.YINGDAO_APP_RUN
+        ):
+            raise TaskInputInvalidError("影刀参数预设只支持 yingdao.app.run")
         device = self.repository.get_task_target_device(
             data.target_device_id,
             team_id=team_id,
@@ -262,6 +281,10 @@ class TaskService:
             input_json, execution_display_name = self._validate_yingdao_application_run(
                 input_json,
                 provider_inventory,
+                parameter_preset_id=data.parameter_preset_id,
+                team_id=team_id,
+                actor=actor,
+                shop_ids=data.shop_ids,
             )
         return PreparedTaskCreation(
             input_json=input_json,
@@ -374,6 +397,11 @@ class TaskService:
         self,
         input_json: dict[str, Any],
         inventory: YingdaoProviderInventory | None,
+        *,
+        parameter_preset_id: UUID | None,
+        team_id: UUID,
+        actor: ActorContext | None,
+        shop_ids: list[UUID],
     ) -> tuple[dict[str, Any], str]:
         if inventory is None:
             raise TaskProviderNotReadyError(details={"provider": "yingdao"})
@@ -390,14 +418,32 @@ class TaskService:
             raise TaskApplicationNotAvailableError(
                 details={"app_id": app_id},
             )
-        config = self.application_config_repository.get("yingdao", app_id)
-        schema = AutomationInputSchema.model_validate(
-            config.input_schema if config is not None else {"fields": []},
-        )
-        try:
-            params = normalize_parameters(schema, input_json.get("params", {}))
-        except ValueError as error:
-            raise TaskInputInvalidError(str(error)) from error
+        if parameter_preset_id is not None:
+            snapshot = (
+                self.parameter_preset_service.snapshot_for_actor(
+                    actor=actor,
+                    app_id=app_id,
+                    preset_id=parameter_preset_id,
+                    shop_ids=shop_ids,
+                )
+                if actor is not None
+                else self.parameter_preset_service.snapshot_for_team(
+                    team_id=team_id,
+                    app_id=app_id,
+                    preset_id=parameter_preset_id,
+                    shop_ids=shop_ids,
+                )
+            )
+            params = snapshot
+        else:
+            config = self.application_config_repository.get("yingdao", app_id)
+            schema = AutomationInputSchema.model_validate(
+                config.input_schema if config is not None else {"fields": []},
+            )
+            try:
+                params = normalize_parameters(schema, input_json.get("params", {}))
+            except ValueError as error:
+                raise TaskInputInvalidError(str(error)) from error
         return {"app_id": app_id, "params": params}, application.app_name
 
     def get(self, actor: ActorContext, task_id: UUID) -> Task:
