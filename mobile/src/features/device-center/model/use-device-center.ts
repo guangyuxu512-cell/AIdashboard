@@ -1,7 +1,11 @@
 import { useQueryClient } from '@tanstack/vue-query'
 import { computed, nextTick, ref, watch } from 'vue'
 
-import { flattenDevicePages, useDeviceCenterListQuery } from '@/entities/device'
+import {
+  flattenDevicePages,
+  type Device,
+  useDeviceCenterListQuery,
+} from '@/entities/device'
 import { taskQueryKeys } from '@/entities/task'
 import { classifyInfiniteQueryError } from '@/shared/utils/infinite-query-error'
 
@@ -28,6 +32,11 @@ export function useDeviceCenter() {
   const refreshing = ref(false)
   const refreshError = ref<unknown>(null)
   const filterPreparationError = ref<unknown>(null)
+  const retainedFilterPresentation = ref<{
+    filter: DeviceQuickFilter
+    searchQuery: string
+    devices: Device[]
+  } | null>(null)
   let filterPreparationPromise: Promise<boolean> | null = null
   const devices = computed(() =>
     flattenDevicePages(query.data.value?.pages ?? []),
@@ -72,13 +81,7 @@ export function useDeviceCenter() {
       (hasCompleteDeviceDataset.value &&
         (filter.value !== 'running' || overview.value.runningCount !== null)),
   )
-  const isFilterPreparing = computed(
-    () =>
-      requiresCompleteDeviceDataset.value &&
-      !filterResultReady.value &&
-      filterPreparationError.value === null,
-  )
-  const filteredDevices = computed(() => {
+  const currentFilteredDevices = computed(() => {
     if (!filterResultReady.value) return []
     const filtered = filterDevicesByQuickFilter(
       devices.value,
@@ -87,6 +90,28 @@ export function useDeviceCenter() {
     )
     return searchDevicesByDisplayName(filtered, searchQuery.value)
   })
+  const hasRetainedFilterPresentation = computed(() => {
+    const retained = retainedFilterPresentation.value
+    return (
+      retained !== null &&
+      retained.filter === filter.value &&
+      retained.searchQuery === searchQuery.value &&
+      !filterResultReady.value &&
+      (refreshing.value || filterPreparationError.value !== null)
+    )
+  })
+  const isFilterPreparing = computed(
+    () =>
+      requiresCompleteDeviceDataset.value &&
+      !filterResultReady.value &&
+      !hasRetainedFilterPresentation.value &&
+      filterPreparationError.value === null,
+  )
+  const filteredDevices = computed(() =>
+    hasRetainedFilterPresentation.value
+      ? (retainedFilterPresentation.value?.devices ?? [])
+      : currentFilteredDevices.value,
+  )
   const visibleTotal = computed(() => {
     if (!filterResultReady.value) return undefined
     return filter.value === 'all' && searchQuery.value.trim().length === 0
@@ -107,6 +132,18 @@ export function useDeviceCenter() {
   watch(query.dataUpdatedAt, () => {
     refreshError.value = null
   })
+  watch(
+    [filterResultReady, filter, searchQuery, currentFilteredDevices],
+    ([isReady, nextFilter, nextSearchQuery, nextDevices]) => {
+      if (!isReady) return
+      retainedFilterPresentation.value = {
+        filter: nextFilter,
+        searchQuery: nextSearchQuery,
+        devices: [...nextDevices],
+      }
+    },
+    { immediate: true },
+  )
 
   function runningFactsState(): 'pending' | 'ready' | 'error' {
     if (filter.value !== 'running') return 'ready'
@@ -284,6 +321,7 @@ export function useDeviceCenter() {
     filterResultReady,
     isFilterPreparing,
     filterPreparationError,
+    hasRetainedFilterPresentation,
     filterLabel: computed(() => getDeviceQuickFilterLabel(filter.value)),
     filterAvailability,
     visibleTotal,

@@ -24,7 +24,9 @@
 
 - Manifest 的稳定 `id`、`start_url` 与 `scope` 都限定为 `/mobile/`，`display` 为 `standalone`。
 - 安装图标复用正式 `siyu-ai-mark` 品牌资源，提供 192、512、maskable 512 与 Apple Touch Icon。
-- HTML 同时提供 Manifest、Apple Web App metadata 和 Light/Dark `theme-color`。
+- HTML 提供 Manifest、Apple Web App metadata 和唯一可由 Theme Store 动态同步的 `theme-color`；Light / Dark
+  实际值只来自 Mobile `tokens.css`。Dark Apple PWA 使用 `black-translucent`、Light 使用 `default`，真机
+  状态栏绘制与主屏幕恢复仍需发布后验收。
 - 本阶段是联网 PWA，不注册 Service Worker，不实现离线业务、推送或私有响应缓存，也不控制 PC 页面。
 - HTML 使用 `no-store/no-cache`，Manifest 与稳定文件名图标要求重新验证，带 hash 的 JS/CSS 使用 immutable cache；新版本重新打开或刷新后由最新 HTML 引用新 hash 资源。
 - 不提供伪造的统一“安装”按钮。添加至主屏幕能力、入口位置和安装提示由实际浏览器与系统决定。

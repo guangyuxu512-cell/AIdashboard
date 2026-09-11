@@ -7,6 +7,10 @@ export type ResolvedTheme = Exclude<ThemeMode, 'system'>
 export const MOBILE_THEME_STORAGE_KEY = 'control-center.mobile.theme-mode'
 
 const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+const THEME_COLOR_META_SELECTOR =
+  'meta[name="theme-color"][data-mobile-theme-color]'
+const APPLE_STATUS_BAR_META_SELECTOR =
+  'meta[name="apple-mobile-web-app-status-bar-style"]'
 
 function isThemeMode(value: string | null): value is ThemeMode {
   return value === 'light' || value === 'dark' || value === 'system'
@@ -33,6 +37,31 @@ function persistThemeMode(mode: ThemeMode): void {
   }
 }
 
+function syncBrowserThemeChrome(theme: ResolvedTheme): void {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return
+
+  const root = document.documentElement
+  const themeColor = window
+    .getComputedStyle(root)
+    .getPropertyValue('--mobile-browser-theme-color')
+    .trim()
+  const themeColorMeta = document.head.querySelector<HTMLMetaElement>(
+    THEME_COLOR_META_SELECTOR,
+  )
+  const appleStatusBarMeta = document.head.querySelector<HTMLMetaElement>(
+    APPLE_STATUS_BAR_META_SELECTOR,
+  )
+
+  if (themeColor && themeColorMeta) {
+    themeColorMeta.content = themeColor
+  }
+
+  if (appleStatusBarMeta) {
+    appleStatusBarMeta.content =
+      theme === 'dark' ? 'black-translucent' : 'default'
+  }
+}
+
 function applyResolvedTheme(theme: ResolvedTheme): void {
   if (typeof document === 'undefined') return
 
@@ -40,6 +69,7 @@ function applyResolvedTheme(theme: ResolvedTheme): void {
   root.dataset.theme = theme
   root.style.colorScheme = theme
   root.classList.toggle('van-theme-dark', theme === 'dark')
+  syncBrowserThemeChrome(theme)
 }
 
 export const useThemeStore = defineStore('mobile-theme', () => {
@@ -58,6 +88,11 @@ export const useThemeStore = defineStore('mobile-theme', () => {
 
   const handleSystemThemeChange = (event: Pick<MediaQueryList, 'matches'>) => {
     systemPrefersDark.value = event.matches
+  }
+
+  const syncThemeAfterResume = () => {
+    if (mediaQuery) systemPrefersDark.value = mediaQuery.matches
+    applyResolvedTheme(resolvedTheme.value)
   }
 
   const addSystemThemeListener = (query: MediaQueryList): void => {
@@ -99,10 +134,25 @@ export const useThemeStore = defineStore('mobile-theme', () => {
       immediate: true,
       flush: 'sync',
     })
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', syncThemeAfterResume)
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pageshow', syncThemeAfterResume)
+      window.addEventListener('orientationchange', syncThemeAfterResume)
+    }
   }
 
   onScopeDispose(() => {
     if (mediaQuery) removeSystemThemeListener(mediaQuery)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', syncThemeAfterResume)
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pageshow', syncThemeAfterResume)
+      window.removeEventListener('orientationchange', syncThemeAfterResume)
+    }
   })
 
   return { mode, resolvedTheme, setMode, toggleResolvedTheme, initialize }

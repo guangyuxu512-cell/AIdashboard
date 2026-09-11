@@ -140,6 +140,7 @@ describe('Device page loading boundaries', () => {
       searchAvailable: ref(false),
       isFilterPreparing: ref(false),
       filterPreparationError: ref(null),
+      hasRetainedFilterPresentation: ref(false),
       filterLabel: ref('全部'),
       filterAvailability: ref({
         all: true,
@@ -220,6 +221,7 @@ describe('Device page loading boundaries', () => {
       searchAvailable: ref(true),
       isFilterPreparing: ref(false),
       filterPreparationError: ref(null),
+      hasRetainedFilterPresentation: ref(false),
       filterLabel: ref('全部'),
       filterAvailability: ref({
         all: true,

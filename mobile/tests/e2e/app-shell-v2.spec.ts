@@ -479,3 +479,104 @@ test('System快速切换与Reduced Motion不影响触控操作', async ({ page }
   await expect(page.locator('.van-toast')).toContainText('功能建设中')
   expect(consoleErrors).toEqual([])
 })
+
+test('主题同步浏览器顶部与页面根背景，不创建独立顶部色块', async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await installShellReadOnlyApi(page)
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('summary-all')).toHaveText('20')
+
+  const readThemeChrome = () =>
+    page.evaluate(() => {
+      const root = document.documentElement
+      const probe = document.createElement('span')
+      probe.style.background = 'var(--mobile-root-background)'
+      document.body.append(probe)
+      const expectedRootBackground =
+        window.getComputedStyle(probe).backgroundImage
+      probe.remove()
+
+      const header = document.querySelector<HTMLElement>(
+        '[data-testid="mobile-shell-header"]',
+      )
+      const pageHeader = document.querySelector<HTMLElement>(
+        '.mobile-global-header',
+      )
+      if (!header || !pageHeader) throw new Error('未找到顶部主题容器')
+
+      return {
+        theme: root.dataset.theme,
+        browserThemeColor: document.querySelector<HTMLMetaElement>(
+          'meta[name="theme-color"][data-mobile-theme-color]',
+        )?.content,
+        expectedBrowserThemeColor: window
+          .getComputedStyle(root)
+          .getPropertyValue('--mobile-browser-theme-color')
+          .trim(),
+        expectedPageHeaderBackground: window
+          .getComputedStyle(root)
+          .getPropertyValue('--visual-v2-page-header-background')
+          .trim(),
+        shellClassName: document.querySelector('.mobile-app-shell')?.className,
+        appleStatusBar: document.querySelector<HTMLMetaElement>(
+          'meta[name="apple-mobile-web-app-status-bar-style"]',
+        )?.content,
+        rootBackground: window.getComputedStyle(
+          document.querySelector<HTMLElement>('#app')!,
+        ).backgroundImage,
+        expectedRootBackground,
+        shellHeaderBackground: window.getComputedStyle(header).backgroundColor,
+        pageHeaderBackground:
+          window.getComputedStyle(pageHeader).backgroundColor,
+      }
+    })
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  const darkChrome = await readThemeChrome()
+  expect(darkChrome.rootBackground).toBe(darkChrome.expectedRootBackground)
+  expect(darkChrome.expectedPageHeaderBackground).toBe('transparent')
+  expect(darkChrome.shellClassName).toContain('mobile-app-shell--visual-v2')
+  expect(darkChrome).toMatchObject({
+    theme: 'dark',
+    browserThemeColor: '#07111d',
+    expectedBrowserThemeColor: '#07111d',
+    appleStatusBar: 'black-translucent',
+    shellHeaderBackground: 'rgba(0, 0, 0, 0)',
+    pageHeaderBackground: 'rgba(0, 0, 0, 0)',
+  })
+
+  await page.getByTestId('theme-toggle').click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  const lightChrome = await readThemeChrome()
+  expect(lightChrome.rootBackground).toBe(lightChrome.expectedRootBackground)
+  expect(lightChrome).toMatchObject({
+    theme: 'light',
+    browserThemeColor: '#fbfcfe',
+    expectedBrowserThemeColor: '#fbfcfe',
+    appleStatusBar: 'default',
+    shellHeaderBackground: 'rgba(0, 0, 0, 0)',
+    pageHeaderBackground: 'rgba(0, 0, 0, 0)',
+  })
+
+  await page.getByRole('button', { name: '打开主题设置' }).click()
+  await page.getByRole('button', { name: '跟随系统' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  const systemLightChrome = await readThemeChrome()
+  expect(systemLightChrome.rootBackground).toBe(
+    systemLightChrome.expectedRootBackground,
+  )
+  expect(systemLightChrome).toMatchObject({
+    theme: 'light',
+    browserThemeColor: '#fbfcfe',
+    expectedBrowserThemeColor: '#fbfcfe',
+    appleStatusBar: 'default',
+    shellHeaderBackground: 'rgba(0, 0, 0, 0)',
+    pageHeaderBackground: 'rgba(0, 0, 0, 0)',
+  })
+  expect(consoleErrors).toEqual([])
+})

@@ -88,6 +88,8 @@ describe('Mobile Production PWA contract', () => {
     expect(indexHtml).toContain('href="%BASE_URL%manifest.webmanifest"')
     expect(indexHtml).toContain('rel="apple-touch-icon"')
     expect(indexHtml).toContain('apple-mobile-web-app-capable')
+    expect(indexHtml).toContain('apple-mobile-web-app-status-bar-style')
+    expect(indexHtml).toContain('data-mobile-theme-color')
     expect(sourceFiles.join('\n')).not.toMatch(
       /serviceWorker|navigator\.serviceWorker/,
     )

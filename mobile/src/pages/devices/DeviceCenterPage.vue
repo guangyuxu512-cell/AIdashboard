@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
 
 import { MOBILE_ROUTE_NAMES } from '@/app/router/routes'
@@ -19,8 +18,8 @@ function openDevice(deviceId: string): void {
   })
 }
 
-async function refresh(): Promise<void> {
-  if (!(await deviceCenter.refresh())) showToast('刷新失败')
+async function refresh(): Promise<boolean> {
+  return deviceCenter.refresh()
 }
 </script>
 
@@ -48,12 +47,15 @@ async function refresh(): Promise<void> {
         :initial-loading="deviceCenter.isInitialLoading.value"
         :initial-error="deviceCenter.isInitialError.value"
         :filter-preparing="deviceCenter.isFilterPreparing.value"
-        :filter-error="deviceCenter.filterPreparationError.value !== null"
+        :filter-error="
+          deviceCenter.filterPreparationError.value !== null &&
+          !deviceCenter.hasRetainedFilterPresentation.value
+        "
         :next-page-error="deviceCenter.isNextPageError.value"
         :refreshing="deviceCenter.refreshing.value"
+        :on-refresh="refresh"
         :loading-more="deviceCenter.query.isFetchingNextPage.value"
         :has-more="Boolean(deviceCenter.query.hasNextPage.value)"
-        @refresh="refresh"
         @retry="deviceCenter.query.refetch"
         @load-more="deviceCenter.loadMore"
         @retry-load-more="deviceCenter.retryLoadMore"

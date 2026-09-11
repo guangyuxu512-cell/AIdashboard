@@ -172,6 +172,35 @@ async function pullToRefresh(page: Page): Promise<void> {
   await client.detach()
 }
 
+async function pullBelowRefreshThreshold(page: Page): Promise<void> {
+  const main = page.getByTestId('device-list-scroll')
+  await main.evaluate((element) => {
+    element.scrollTop = 0
+  })
+  const box = await page.locator('.van-pull-refresh__track').boundingBox()
+  if (!box) throw new Error('未找到设备列表下拉刷新触控区域')
+
+  const client = await page.context().newCDPSession(page)
+  const x = box.x + Math.min(box.width / 2, 120)
+  const startY = box.y + 30
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x, y: startY }],
+  })
+  for (const offset of [8, 16, 24]) {
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: startY + offset }],
+    })
+  }
+  await expect(page.getByTestId('mobile-pull-refresh-pulling')).toBeVisible()
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  })
+  await client.detach()
+}
+
 function makeDevice(index: number) {
   const hasRuntime = index !== 3
   return {
@@ -1428,6 +1457,89 @@ test('设备列表按正式 20 条分页、下拉刷新并保持底部任务/设
   expect(consoleErrors).toEqual([])
 })
 
+test('设备页统一下拉刷新提供阈值、加载、成功反馈并防止重复请求', async ({
+  page,
+}) => {
+  let notifyRefreshStarted: () => void = () => undefined
+  const refreshStarted = new Promise<void>((resolve) => {
+    notifyRefreshStarted = resolve
+  })
+  let releaseRefresh: () => void = () => undefined
+  const refreshRelease = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await installMockApi(page, {
+    deviceTotal: 1,
+    holdDevicePage1AfterSuccessOnce: {
+      onStarted: notifyRefreshStarted,
+      release: refreshRelease,
+    },
+  })
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+
+  const requestsBeforeShortPull = state.deviceListRequests.length
+  await pullBelowRefreshThreshold(page)
+  await expect(page.getByTestId('mobile-pull-refresh-pulling')).toHaveCount(0)
+  await page.waitForTimeout(280)
+  expect(state.deviceListRequests).toHaveLength(requestsBeforeShortPull)
+
+  await pullToRefresh(page)
+  await refreshStarted
+  await expect(
+    page.getByTestId('mobile-pull-refresh').getByText('正在刷新', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  const requestsWhileLoading = state.deviceListRequests.length
+
+  await pullToRefresh(page)
+  await page.waitForTimeout(250)
+  expect(state.deviceListRequests).toHaveLength(requestsWhileLoading)
+
+  releaseRefresh()
+  await expect(page.getByTestId('mobile-pull-refresh-feedback')).toHaveText(
+    '刷新完成',
+  )
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+  expect(consoleErrors).toEqual([])
+})
+
+test('设备页离开后忽略迟到的手动刷新反馈', async ({ page }) => {
+  let notifyRefreshStarted: () => void = () => undefined
+  const refreshStarted = new Promise<void>((resolve) => {
+    notifyRefreshStarted = resolve
+  })
+  let releaseRefresh: () => void = () => undefined
+  const refreshRelease = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  const consoleErrors = collectConsoleErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installMockApi(page, {
+    deviceTotal: 1,
+    holdDevicePage1AfterSuccessOnce: {
+      onStarted: notifyRefreshStarted,
+      release: refreshRelease,
+    },
+  })
+  await page.goto('/#/devices')
+  await expect(page.getByTestId('device-card')).toHaveCount(1)
+
+  await pullToRefresh(page)
+  await refreshStarted
+  await page.getByRole('tab', { name: /任务$/ }).click()
+  await expect(page).toHaveURL(/#\/tasks$/)
+  await expect(page.getByTestId('task-card')).toBeVisible()
+
+  releaseRefresh()
+  await page.waitForTimeout(650)
+  await expect(page.getByTestId('mobile-pull-refresh-feedback')).toHaveCount(0)
+  expect(consoleErrors).toEqual([])
+})
+
 test('未完成分页时点击快捷筛选会补齐全量结果并给出明确反馈', async ({
   page,
 }) => {
@@ -1610,6 +1722,9 @@ test('设备后台刷新失败保留旧卡片且不展示实现原因', async ({
 
   await pullToRefresh(page)
   await expect(page.getByText('刷新失败', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('mobile-pull-refresh-feedback')).toHaveText(
+    '刷新失败',
+  )
   await expect(page.getByTestId('device-background-error')).toHaveCount(0)
   await expect(page.getByText('设备后台刷新失败')).toHaveCount(0)
   await expect(page.getByTestId('device-card').first()).toBeVisible()
