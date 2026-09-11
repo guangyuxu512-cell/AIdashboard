@@ -35,6 +35,10 @@ import {
   type GenerationRecordView,
 } from '../../generation/model/types'
 import {
+  toGenerationAssetDownloadRequests,
+  type GenerationDownloadSelection,
+} from '../../generation/model/download'
+import {
   mapGenerationRecord,
   mapGenerationRecordSummary,
 } from '../../real-api/model/mappers'
@@ -169,32 +173,9 @@ function retry(record: GenerationRecordView): void {
   retryMutation.mutate(record)
 }
 
-function download(): void {
+function download(selection: GenerationDownloadSelection): void {
   if (downloads.isDownloading.value) return
-  const results = selectedRecord.value?.detail
-  const outputResults =
-    results?.kind === 'INSTANT'
-      ? results.results
-      : (results?.results.flatMap((product) =>
-          product.groups.flatMap((group) =>
-            group.templates.flatMap((template) => template.results),
-          ),
-        ) ?? [])
-  const downloadable =
-    outputResults?.filter(
-      (result) => result.status === 'SUCCESS' && result.previewUrl,
-    ) ?? []
-  const requests = downloadable.flatMap((result) =>
-    result.previewUrl
-      ? [
-          {
-            id: result.id,
-            contentUrl: result.previewUrl,
-            filename: result.name || 'generation.png',
-          },
-        ]
-      : [],
-  )
+  const requests = toGenerationAssetDownloadRequests(selection.results)
   void downloads.start(requests).then((summary) => {
     if (!summary) return
     if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)

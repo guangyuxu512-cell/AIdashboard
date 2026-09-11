@@ -1601,6 +1601,88 @@ test('recovers one multi-product batch job through refresh and renders grouped r
   expect(runtimeErrors).toEqual([])
 })
 
+test('scopes generation-record detail downloads to the clicked single, group, or batch', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const calls = await installWorkbenchApi(page, {
+    controlledJob: true,
+    batchScenario: true,
+  })
+  const outputAssetIds = new Set(
+    batchItemFixtures.map((fixture) => fixture.outputAssetId),
+  )
+  const outputRequestCount = () =>
+    calls
+      .assetContentRequests()
+      .filter((assetId) => outputAssetIds.has(assetId)).length
+  const outputRequestsSince = (count: number) =>
+    calls
+      .assetContentRequests()
+      .filter((assetId) => outputAssetIds.has(assetId))
+      .slice(count)
+
+  await submitControlledBatch(page)
+  await expect.poll(calls.submitCount).toBe(1)
+  calls.setControlledJobStatus('SUCCESS')
+  await expect(page.getByTestId('batch-execution-summary')).toContainText(
+    '已完成',
+    { timeout: 10_000 },
+  )
+
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: '生成记录' })
+    .click()
+  await page
+    .getByLabel('生成记录列表')
+    .getByRole('button', { name: '查看', exact: true })
+    .click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer.getByTestId('batch-result-tree')).toBeVisible()
+
+  const beforeSingle = outputRequestCount()
+  const singleDownload = page.waitForEvent('download')
+  await drawer
+    .getByRole('button', {
+      name: `下载 ${batchItemFixtures[1]!.outputFilename}`,
+      exact: true,
+    })
+    .click()
+  await singleDownload
+  await expect.poll(outputRequestCount).toBe(beforeSingle + 1)
+  expect(outputRequestsSince(beforeSingle)).toEqual([
+    batchItemFixtures[1]!.outputAssetId,
+  ])
+
+  const beforeGroup = outputRequestCount()
+  const groupDownload = page.waitForEvent('download')
+  await drawer
+    .getByRole('button', {
+      name: `下载 ${templateGroup.name} 结果`,
+      exact: true,
+    })
+    .first()
+    .click()
+  await groupDownload
+  await expect.poll(outputRequestCount).toBe(beforeGroup + 1)
+  expect(outputRequestsSince(beforeGroup)).toEqual([
+    batchItemFixtures[0]!.outputAssetId,
+  ])
+
+  const beforeBatch = outputRequestCount()
+  const downloads: string[] = []
+  page.on('download', (download) =>
+    downloads.push(download.suggestedFilename()),
+  )
+  await drawer.getByRole('button', { name: '下载整个批次' }).click()
+  await expect.poll(outputRequestCount).toBe(beforeBatch + 4)
+  expect(outputRequestsSince(beforeBatch)).toEqual(
+    batchItemFixtures.map((fixture) => fixture.outputAssetId),
+  )
+  await expect.poll(() => downloads.length).toBe(4)
+})
+
 test('restores partial-failed batch hierarchy and its actions after refresh and reopening', async ({
   page,
 }) => {

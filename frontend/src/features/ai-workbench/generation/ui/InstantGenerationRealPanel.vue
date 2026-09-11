@@ -49,6 +49,7 @@ import {
   type GenerationSourceImageView,
   type GenerationTemplateGroupView,
 } from '../model/types'
+import { toGenerationAssetDownloadRequests } from '../model/download'
 import { useAiWorkbenchSessionStore } from '../model/useAiWorkbenchSessionStore'
 import type { WorkbenchModelView } from '../../real-api/model/mappers'
 import { mapInstantExecution } from '../../real-api/model/mappers'
@@ -371,17 +372,7 @@ function clearCurrentTask(): void {
 
 function beginDownload(results: readonly GenerationExecutionResultView[]): void {
   if (downloads.isDownloading.value) return
-  const requests = results.flatMap((result) =>
-    result.previewUrl
-      ? [
-          {
-            id: result.id,
-            contentUrl: result.previewUrl,
-            filename: result.name ?? `generation-${result.slotIndex + 1}.png`,
-          },
-        ]
-      : [],
-  )
+  const requests = toGenerationAssetDownloadRequests(results)
   void downloads.start(requests).then((summary) => {
     if (!summary) return
     if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)

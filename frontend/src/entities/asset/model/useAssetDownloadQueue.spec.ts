@@ -16,7 +16,9 @@ function prepareBrowserDownload(): void {
     createObjectURL: vi.fn(() => 'blob:asset-download'),
     revokeObjectURL: vi.fn(),
   })
-  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
+    () => undefined,
+  )
 }
 
 describe('asset download queue', () => {
@@ -79,8 +81,16 @@ describe('asset download queue', () => {
 
     const first = await queue.start([
       { id: 'ok', contentUrl: '/api/v1/assets/ok/content', filename: 'ok.png' },
-      { id: 'failed', contentUrl: '/api/v1/assets/failed/content', filename: 'failed.png' },
-      { id: 'cancelled', contentUrl: '/api/v1/assets/cancelled/content', filename: 'cancelled.png' },
+      {
+        id: 'failed',
+        contentUrl: '/api/v1/assets/failed/content',
+        filename: 'failed.png',
+      },
+      {
+        id: 'cancelled',
+        contentUrl: '/api/v1/assets/cancelled/content',
+        filename: 'cancelled.png',
+      },
     ])
 
     expect(first).toMatchObject({ succeeded: 1, failed: 1, cancelled: 1 })
@@ -97,5 +107,42 @@ describe('asset download queue', () => {
     expect(download).toHaveBeenCalledTimes(4)
     expect(download.mock.calls[3]?.[0]).toBe('/api/v1/assets/failed/content')
     await vi.runAllTimersAsync()
+  })
+
+  it('ignores a repeated start while an explicit selection is still downloading', async () => {
+    prepareBrowserDownload()
+    vi.useFakeTimers()
+    let resolveFirstDownload: ((blob: Blob) => void) | undefined
+    download.mockImplementationOnce(
+      () =>
+        new Promise<Blob>((resolve) => {
+          resolveFirstDownload = resolve
+        }),
+    )
+    const queue = useAssetDownloadQueue()
+
+    const first = queue.start([
+      {
+        id: 'single',
+        contentUrl: '/api/v1/assets/single/content',
+        filename: 'single.png',
+      },
+    ])
+    const repeated = await queue.start([
+      {
+        id: 'other',
+        contentUrl: '/api/v1/assets/other/content',
+        filename: 'other.png',
+      },
+    ])
+
+    expect(repeated).toBeNull()
+    expect(download).toHaveBeenCalledTimes(1)
+    resolveFirstDownload?.(new Blob(['single']))
+    await expect(first).resolves.toMatchObject({
+      succeeded: 1,
+      failed: 0,
+      cancelled: 0,
+    })
   })
 })
