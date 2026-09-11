@@ -10,7 +10,7 @@ export function mapAutomationParameterFields(
 ): SchemaParameterField[] {
   return schema.fields.map((field) => ({
     name: field.name,
-    label: field.label,
+    label: field.label || field.name,
     control:
       field.type === 'text'
         ? 'string'
@@ -18,9 +18,7 @@ export function mapAutomationParameterFields(
           ? 'select'
           : field.type,
     valueType:
-      field.type === 'text' || field.type === 'select'
-        ? 'string'
-        : field.type,
+      field.type === 'text' || field.type === 'select' ? 'string' : field.type,
     required: field.required,
     hasDefault: field.default_value !== null,
     ...(field.default_value !== null

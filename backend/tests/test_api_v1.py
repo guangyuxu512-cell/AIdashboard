@@ -9,6 +9,14 @@ from httpx import ASGITransport, AsyncClient, Response
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
+from app.modules.automation_apps.api import (
+    get_device_authorized_actor as get_automation_device_authorized_actor,
+)
+from app.modules.automation_apps.api import get_service as get_automation_service
+from app.modules.automation_apps.schemas import (
+    AutomationApplicationConfigRead,
+    AutomationApplicationConfigUpsert,
+)
 from app.modules.devices.api import (
     get_device_authorized_actor,
     get_device_service,
@@ -243,6 +251,34 @@ class ApiWorkerService:
         ]
 
 
+class ApiAutomationApplicationConfigService:
+    last_data: AutomationApplicationConfigUpsert | None = None
+
+    def upsert(
+        self,
+        provider_code: str,
+        app_id: str,
+        data: AutomationApplicationConfigUpsert,
+    ) -> AutomationApplicationConfigRead:
+        type(self).last_data = data
+        now = datetime.now(UTC)
+        return AutomationApplicationConfigRead(
+            config_id=uuid4(),
+            provider_code=provider_code,
+            app_id=app_id,
+            schema_source="manual",
+            input_schema=data.input_schema,
+            default_values={
+                field.name: field.default_value
+                for field in data.input_schema.fields
+                if field.default_value is not None
+            },
+            version=1,
+            created_at=now,
+            updated_at=now,
+        )
+
+
 class ApiUserService:
     def list(self, *, offset: int, limit: int) -> tuple[list[User], int]:
         return [self.get(USER_ID)][offset : offset + limit], 1
@@ -431,10 +467,16 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[get_user_service] = ApiUserService
     application.dependency_overrides[get_task_service] = ApiTaskService
     application.dependency_overrides[get_schedule_service] = ApiScheduleService
+    application.dependency_overrides[
+        get_automation_service
+    ] = ApiAutomationApplicationConfigService
     application.dependency_overrides[get_device_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_task_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_schedule_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[
+        get_automation_device_authorized_actor
+    ] = lambda: API_ACTOR
 
     async def send() -> Response:
         transport = ASGITransport(app=application)
@@ -763,3 +805,95 @@ def test_api_validation_and_business_not_found_error() -> None:
     assert not_found_response.json()["code"] == "DEVICE_NOT_FOUND"
     assert immutable_platform_id_response.status_code == 422
     assert immutable_platform_id_response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_automation_application_config_api_accepts_unicode_name_and_label_fallback() -> None:
+    response = request(
+        "PUT",
+        "/api/v1/automation-app-configs/yingdao/unicode-config-app",
+        json={
+            "input_schema": {
+                "fields": [
+                    {
+                        "name": "商品列表",
+                        "label": "",
+                        "type": "text",
+                        "required": True,
+                        "default_value": '{"page":1}',
+                        "options": [],
+                    },
+                ],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    field = response.json()["input_schema"]["fields"][0]
+    assert field["name"] == "商品列表"
+    assert field["label"] == "商品列表"
+    assert field["default_value"] == '{"page":1}'
+    assert isinstance(field["default_value"], str)
+    assert ApiAutomationApplicationConfigService.last_data is not None
+    assert (
+        ApiAutomationApplicationConfigService.last_data.input_schema.fields[0].label
+        == "商品列表"
+    )
+
+
+def test_automation_application_config_api_rejects_duplicate_or_invalid_names() -> None:
+    duplicate_response = request(
+        "PUT",
+        "/api/v1/automation-app-configs/yingdao/invalid-config-app",
+        json={
+            "input_schema": {
+                "fields": [
+                    {
+                        "name": "商品列表",
+                        "label": "列表一",
+                        "type": "text",
+                        "required": False,
+                        "default_value": None,
+                        "options": [],
+                    },
+                    {
+                        "name": "商品列表",
+                        "label": "列表二",
+                        "type": "text",
+                        "required": False,
+                        "default_value": None,
+                        "options": [],
+                    },
+                ],
+            },
+        },
+    )
+    invalid_response = request(
+        "PUT",
+        "/api/v1/automation-app-configs/yingdao/invalid-config-app",
+        json={
+            "input_schema": {
+                "fields": [
+                    {
+                        "name": "商品 列表",
+                        "label": "列表",
+                        "type": "text",
+                        "required": False,
+                        "default_value": None,
+                        "options": [],
+                    },
+                ],
+            },
+        },
+    )
+
+    assert duplicate_response.status_code == 422
+    assert duplicate_response.json()["code"] == "VALIDATION_ERROR"
+    duplicate_details = duplicate_response.json()["details"]
+    assert [detail["loc"] for detail in duplicate_details] == [
+        ["body", "input_schema", "fields", 0, "name"],
+        ["body", "input_schema", "fields", 1, "name"],
+    ]
+    assert [detail["msg"] for detail in duplicate_details] == ["参数名不能重复", "参数名不能重复"]
+    assert invalid_response.status_code == 422
+    assert invalid_response.json()["code"] == "VALIDATION_ERROR"
+    assert invalid_response.json()["details"]

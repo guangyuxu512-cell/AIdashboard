@@ -269,6 +269,113 @@ def test_automation_application_parameters_apply_defaults_and_validate_types() -
         normalize_parameters(schema, {"keyword": "商品", "mode": "invalid"})
 
 
+def test_automation_application_parameters_preserve_unicode_names_and_text_defaults() -> None:
+    schema = AutomationInputSchema.model_validate(
+        {
+            "fields": [
+                {
+                    "name": "商品列表",
+                    "label": "",
+                    "type": "text",
+                    "required": True,
+                    "default_value": '{"page":1}',
+                    "options": [],
+                },
+                {
+                    "name": "数量",
+                    "label": "数量",
+                    "type": "number",
+                    "required": False,
+                    "default_value": 10,
+                    "options": [],
+                },
+                {
+                    "name": "启用",
+                    "label": "启用",
+                    "type": "boolean",
+                    "required": False,
+                    "default_value": True,
+                    "options": [],
+                },
+                {
+                    "name": "状态",
+                    "label": "状态",
+                    "type": "select",
+                    "required": False,
+                    "default_value": "ready",
+                    "options": ["ready", "paused"],
+                },
+            ],
+        },
+    )
+
+    field = schema.fields[0]
+    assert field.name == "商品列表"
+    assert field.label == "商品列表"
+    assert isinstance(field.default_value, str)
+    assert normalize_parameters(schema, {}) == {
+        "商品列表": '{"page":1}',
+        "数量": 10,
+        "启用": True,
+        "状态": "ready",
+    }
+    with pytest.raises(ValueError, match="商品列表"):
+        normalize_parameters(schema, {"商品列表": {"page": 1}})
+    with pytest.raises(ValueError, match="数量"):
+        normalize_parameters(schema, {"商品列表": "ok", "数量": "10"})
+    with pytest.raises(ValueError, match="启用"):
+        normalize_parameters(schema, {"商品列表": "ok", "启用": 1})
+    with pytest.raises(ValueError, match="状态"):
+        normalize_parameters(schema, {"商品列表": "ok", "状态": "unknown"})
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["", "a b", "a\x00b", "x" * 101],
+)
+def test_automation_application_parameter_name_rejects_blank_or_invalid_unicode_keys(
+    name: str,
+) -> None:
+    with pytest.raises(ValueError):
+        AutomationInputSchema.model_validate(
+            {
+                "fields": [
+                    {
+                        "name": name,
+                        "label": "显示名称",
+                        "type": "text",
+                        "default_value": None,
+                        "options": [],
+                    },
+                ],
+            },
+        )
+
+
+def test_automation_application_parameter_name_rejects_duplicates_after_normalization() -> None:
+    with pytest.raises(ValueError, match="不能重复"):
+        AutomationInputSchema.model_validate(
+            {
+                "fields": [
+                    {
+                        "name": "商品列表",
+                        "label": "商品列表",
+                        "type": "text",
+                        "default_value": None,
+                        "options": [],
+                    },
+                    {
+                        "name": "商品列表",
+                        "label": "另一个名称",
+                        "type": "text",
+                        "default_value": None,
+                        "options": [],
+                    },
+                ],
+            },
+        )
+
+
 def test_notification_failure_does_not_rollback_runtime_transition() -> None:
     device = Device(device_id=uuid4(), display_name="Worker PC", enabled=True)
     repository = FakeWorkerRepository(device)

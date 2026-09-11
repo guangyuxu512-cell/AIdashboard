@@ -9,9 +9,15 @@ import {
   type AutomationInputTypeDto,
 } from '@/entities/automation-application'
 import type { ProviderApplicationViewModel } from '@/entities/device'
-import { getErrorMessage } from '@/shared/api'
+import { getErrorMessage, toApiError } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
-import { AppButton, AppInput, AppNumberInput, AppSelect, AppSwitch } from '@/shared/ui'
+import {
+  AppButton,
+  AppInput,
+  AppNumberInput,
+  AppSelect,
+  AppSwitch,
+} from '@/shared/ui'
 
 interface FieldDraft {
   name: string
@@ -34,6 +40,8 @@ const query = useAutomationApplicationConfigQuery(appId)
 const mutation = useUpsertAutomationApplicationConfigMutation()
 const form = reactive<{ fields: FieldDraft[] }>({ fields: [] })
 const parameterList = ref<HTMLElement | null>(null)
+const fieldErrors = ref<Record<string, string>>({})
+const initializedKey = ref('')
 const typeOptions = [
   { label: '文本', value: 'text' },
   { label: '数字', value: 'number' },
@@ -42,9 +50,18 @@ const typeOptions = [
 ]
 
 watch(
-  [() => props.show, () => query.data.value],
-  ([show, config]) => {
-    if (!show) return
+  [() => props.show, appId, () => query.data.value],
+  ([show, currentAppId, config]) => {
+    if (!show) {
+      initializedKey.value = ''
+      fieldErrors.value = {}
+      return
+    }
+    if (config === undefined) return
+    const key = `${currentAppId ?? ''}:${config?.version ?? 'new'}`
+    if (key === initializedKey.value) return
+    initializedKey.value = key
+    fieldErrors.value = {}
     form.fields = (config?.input_schema.fields ?? []).map((field) => ({
       name: field.name,
       label: field.label,
@@ -79,6 +96,68 @@ function changeType(field: FieldDraft, value: unknown): void {
   if (field.type !== 'select') field.optionsText = ''
 }
 
+function effectiveLabel(field: FieldDraft): string {
+  return field.label.trim() || field.name.trim() || '该参数'
+}
+
+function errorKey(index: number, field: string): string {
+  return `${index}.${field}`
+}
+
+function clearFieldError(index: number, field: string): void {
+  delete fieldErrors.value[errorKey(index, field)]
+  delete fieldErrors.value[errorKey(index, 'row')]
+}
+
+function validateDrafts(): Record<string, string> {
+  const errors: Record<string, string> = {}
+  const normalizedNames = form.fields.map((field) => field.name.trim())
+  const duplicateNames = new Set(
+    normalizedNames.filter(
+      (name, index) => Boolean(name) && normalizedNames.indexOf(name) !== index,
+    ),
+  )
+  const namePattern = /^[\p{L}\p{N}_.-]+$/u
+
+  form.fields.forEach((field, index) => {
+    const name = normalizedNames[index]!
+    const label = effectiveLabel(field)
+    if (!name) {
+      errors[errorKey(index, 'name')] = '请输入参数名'
+    } else if (!namePattern.test(name)) {
+      errors[errorKey(index, 'name')] =
+        '参数名只能包含 Unicode 字母、数字、下划线、点和连字符'
+    } else if (duplicateNames.has(name)) {
+      errors[errorKey(index, 'name')] = '参数名不能重复'
+    }
+
+    const options = parseOptions(field.optionsText)
+    if (field.type === 'select') {
+      if (!options.length || new Set(options).size !== options.length) {
+        errors[errorKey(index, 'options')] = `${label}必须提供不重复的选项`
+      }
+    } else if (options.length) {
+      errors[errorKey(index, 'options')] = `${label}不是选择参数，不能提供选项`
+    }
+
+    if (field.defaultValue === null) return
+    const validDefault =
+      (field.type === 'text' && typeof field.defaultValue === 'string') ||
+      (field.type === 'number' &&
+        typeof field.defaultValue === 'number' &&
+        Number.isFinite(field.defaultValue)) ||
+      (field.type === 'boolean' && typeof field.defaultValue === 'boolean') ||
+      (field.type === 'select' &&
+        typeof field.defaultValue === 'string' &&
+        options.includes(field.defaultValue))
+    if (!validDefault) {
+      errors[errorKey(index, 'defaultValue')] =
+        `${label}的默认值不符合${field.type}类型`
+    }
+  })
+  return errors
+}
+
 function parseOptions(value: string): string[] {
   return value
     .split(',')
@@ -97,6 +176,41 @@ function toDto(field: FieldDraft): AutomationInputFieldDto {
   }
 }
 
+function applyServerFieldErrors(error: unknown): boolean {
+  const apiError = toApiError(error)
+  if (
+    apiError.code !== 'VALIDATION_ERROR' ||
+    !Array.isArray(apiError.details)
+  ) {
+    return false
+  }
+  const errors: Record<string, string> = {}
+  for (const detail of apiError.details) {
+    if (typeof detail !== 'object' || detail === null) continue
+    const record = detail as { loc?: unknown; msg?: unknown }
+    const location = Array.isArray(record.loc) ? record.loc : []
+    const fieldsIndex = location.findIndex((part) => part === 'fields')
+    const index = location[fieldsIndex + 1]
+    if (typeof index !== 'number' || !form.fields[index]) continue
+    const leaf = location.at(-1)
+    const field =
+      leaf === 'name' ||
+      leaf === 'label' ||
+      leaf === 'type' ||
+      leaf === 'options' ||
+      leaf === 'default_value'
+        ? leaf === 'default_value'
+          ? 'defaultValue'
+          : leaf
+        : 'row'
+    errors[errorKey(index, field)] =
+      typeof record.msg === 'string' ? record.msg : '参数配置校验失败'
+  }
+  if (!Object.keys(errors).length) return false
+  fieldErrors.value = errors
+  return true
+}
+
 async function save(): Promise<void> {
   if (!props.application) return
   if (query.isPending.value) return
@@ -104,6 +218,8 @@ async function save(): Promise<void> {
     message.error(getErrorMessage(query.error.value))
     return
   }
+  fieldErrors.value = validateDrafts()
+  if (Object.keys(fieldErrors.value).length) return
   try {
     await mutation.mutateAsync({
       appId: props.application.appId,
@@ -112,7 +228,7 @@ async function save(): Promise<void> {
     message.success('应用参数配置已保存')
     emit('update:show', false)
   } catch (error) {
-    message.error(getErrorMessage(error))
+    if (!applyServerFieldErrors(error)) message.error(getErrorMessage(error))
   }
 }
 </script>
@@ -140,13 +256,41 @@ async function save(): Promise<void> {
           class="parameter-config__row"
           data-testid="parameter-config-field"
         >
-          <NFormItem label="参数名">
-            <AppInput v-model="field.name" placeholder="例如 product_id" />
+          <NFormItem
+            label="参数名"
+            :validation-status="
+              fieldErrors[errorKey(index, 'name')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'name')]"
+          >
+            <AppInput
+              v-model="field.name"
+              placeholder="例如 商品列表"
+              :maxlength="100"
+              @update:model-value="clearFieldError(index, 'name')"
+            />
           </NFormItem>
-          <NFormItem label="显示名称">
-            <AppInput v-model="field.label" placeholder="例如 商品 ID" />
+          <NFormItem
+            label="显示名称（留空使用参数名）"
+            :validation-status="
+              fieldErrors[errorKey(index, 'label')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'label')]"
+          >
+            <AppInput
+              v-model="field.label"
+              placeholder="例如 商品 ID"
+              :maxlength="100"
+              @update:model-value="clearFieldError(index, 'label')"
+            />
           </NFormItem>
-          <NFormItem label="类型">
+          <NFormItem
+            label="类型"
+            :validation-status="
+              fieldErrors[errorKey(index, 'type')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'type')]"
+          >
             <AppSelect
               :model-value="field.type"
               :options="typeOptions"
@@ -156,37 +300,87 @@ async function save(): Promise<void> {
           <NFormItem label="必填">
             <AppSwitch v-model="field.required" />
           </NFormItem>
-          <NFormItem v-if="field.type === 'number'" label="默认值">
+          <NFormItem
+            v-if="field.type === 'number'"
+            label="默认值"
+            :validation-status="
+              fieldErrors[errorKey(index, 'defaultValue')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'defaultValue')]"
+          >
             <AppNumberInput
               :model-value="field.defaultValue as number"
               clearable
               @update:model-value="field.defaultValue = $event"
             />
           </NFormItem>
-          <NFormItem v-else-if="field.type === 'boolean'" label="默认值">
+          <NFormItem
+            v-else-if="field.type === 'boolean'"
+            label="默认值"
+            :validation-status="
+              fieldErrors[errorKey(index, 'defaultValue')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'defaultValue')]"
+          >
             <AppSwitch
               :model-value="(field.defaultValue as boolean) ?? false"
               @update:model-value="field.defaultValue = $event"
             />
           </NFormItem>
-          <NFormItem v-else-if="field.type === 'select'" label="默认值">
+          <NFormItem
+            v-else-if="field.type === 'select'"
+            label="默认值"
+            :validation-status="
+              fieldErrors[errorKey(index, 'defaultValue')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'defaultValue')]"
+          >
             <AppSelect
               :model-value="field.defaultValue as string"
-              :options="parseOptions(field.optionsText).map((value) => ({ label: value, value }))"
+              :options="
+                parseOptions(field.optionsText).map((value) => ({
+                  label: value,
+                  value,
+                }))
+              "
               clearable
               @update:model-value="field.defaultValue = $event"
             />
           </NFormItem>
-          <NFormItem v-else label="默认值">
+          <NFormItem
+            v-else
+            label="默认值"
+            :validation-status="
+              fieldErrors[errorKey(index, 'defaultValue')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'defaultValue')]"
+          >
             <AppInput
               :model-value="field.defaultValue as string"
               clearable
               @update:model-value="field.defaultValue = $event"
             />
           </NFormItem>
-          <NFormItem v-if="field.type === 'select'" label="选项（逗号分隔）">
-            <AppInput v-model="field.optionsText" placeholder="选项A, 选项B" />
+          <NFormItem
+            v-if="field.type === 'select'"
+            label="选项（逗号分隔）"
+            :validation-status="
+              fieldErrors[errorKey(index, 'options')] ? 'error' : undefined
+            "
+            :feedback="fieldErrors[errorKey(index, 'options')]"
+          >
+            <AppInput
+              v-model="field.optionsText"
+              placeholder="选项A, 选项B"
+              @update:model-value="clearFieldError(index, 'options')"
+            />
           </NFormItem>
+          <p
+            v-if="fieldErrors[errorKey(index, 'row')]"
+            class="parameter-config__row-error"
+          >
+            {{ fieldErrors[errorKey(index, 'row')] }}
+          </p>
           <AppButton
             class="parameter-config__remove"
             tone="danger"
@@ -225,5 +419,12 @@ async function save(): Promise<void> {
 
 .parameter-config__remove {
   justify-self: start;
+}
+
+.parameter-config__row-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-error);
+  font-size: var(--font-size-secondary);
 }
 </style>
