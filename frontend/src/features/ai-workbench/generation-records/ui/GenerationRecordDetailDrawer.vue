@@ -13,19 +13,38 @@ import {
   GENERATION_RECORD_STATUS_META,
   type GenerationRecordView,
 } from '../../generation/model/types'
+import type {
+  GenerationDownloadResult,
+  GenerationDownloadSelection,
+} from '../../generation/model/download'
 import BatchResultTree from '../../generation/ui/BatchResultTree.vue'
 import InstantResultGrid from '../../generation/ui/InstantResultGrid.vue'
 
-defineProps<{
+const props = defineProps<{
   show: boolean
   record: GenerationRecordView | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:show': [value: boolean]
   retry: [record: GenerationRecordView]
-  download: []
+  download: [selection: GenerationDownloadSelection]
 }>()
+
+function allResults(record: GenerationRecordView): GenerationDownloadResult[] {
+  return record.detail.kind === 'INSTANT'
+    ? record.detail.results
+    : record.detail.results.flatMap((product) =>
+        product.groups.flatMap((group) =>
+          group.templates.flatMap((template) => template.results),
+        ),
+      )
+}
+
+function downloadAll(): void {
+  if (!props.record) return
+  emit('download', { scope: 'BATCH', results: allResults(props.record) })
+}
 </script>
 
 <template>
@@ -103,7 +122,9 @@ defineEmits<{
           <InstantResultGrid
             :results="record.detail.results"
             :show-actions="false"
-            @download="$emit('download')"
+            @download="
+              $emit('download', { scope: 'SINGLE', results: [$event] })
+            "
           />
         </section>
       </template>
@@ -133,7 +154,7 @@ defineEmits<{
           <h3>批量结果</h3>
           <BatchResultTree
             :results="record.detail.results"
-            @download="$emit('download')"
+            @download="$emit('download', $event)"
           />
         </section>
       </template>
@@ -150,7 +171,9 @@ defineEmits<{
           重试失败项
         </AppButton>
         <span />
-        <AppButton @click="$emit('download')">下载</AppButton>
+        <AppButton aria-label="下载全部生成结果" @click="downloadAll"
+          >下载全部</AppButton
+        >
         <AppButton @click="$emit('update:show', false)">关闭</AppButton>
       </div>
     </template>

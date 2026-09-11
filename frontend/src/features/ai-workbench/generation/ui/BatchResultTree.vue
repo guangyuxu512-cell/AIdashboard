@@ -8,16 +8,45 @@ import { AppButton } from '@/shared/ui'
 import {
   GENERATION_OUTPUT_ROLE_META,
   GENERATION_RESULT_STATUS_META,
+  type BatchTemplateGroupResultView,
   type BatchProductResultView,
+  type GenerationResultView,
 } from '../model/types'
+import type { GenerationDownloadScope } from '../model/download'
 
-defineProps<{
+const props = defineProps<{
   results: BatchProductResultView[]
 }>()
 
-defineEmits<{
-  download: []
+const emit = defineEmits<{
+  download: [
+    selection: {
+      scope: GenerationDownloadScope
+      results: readonly GenerationResultView[]
+    },
+  ]
 }>()
+
+function batchResults(): GenerationResultView[] {
+  return props.results.flatMap((product) =>
+    product.groups.flatMap((group) =>
+      group.templates.flatMap((template) => template.results),
+    ),
+  )
+}
+
+function groupResults(
+  group: BatchTemplateGroupResultView,
+): GenerationResultView[] {
+  return group.templates.flatMap((template) => template.results)
+}
+
+function download(
+  scope: GenerationDownloadScope,
+  results: readonly GenerationResultView[],
+): void {
+  emit('download', { scope, results })
+}
 </script>
 
 <template>
@@ -27,7 +56,11 @@ defineEmits<{
     data-testid="batch-result-tree"
   >
     <div class="batch-result-tree__actions">
-      <AppButton tone="text" @click="$emit('download')">
+      <AppButton
+        tone="text"
+        aria-label="下载整个批次"
+        @click="download('BATCH', batchResults())"
+      >
         <Download :size="15" />
         下载批次
       </AppButton>
@@ -51,7 +84,7 @@ defineEmits<{
               <AppButton
                 tone="text"
                 :aria-label="`下载 ${group.groupName} 结果`"
-                @click.stop="$emit('download')"
+                @click.stop="download('GROUP', groupResults(group))"
               >
                 <Download :size="14" />
                 下载组
@@ -80,7 +113,7 @@ defineEmits<{
                   <AppButton
                     tone="text"
                     :aria-label="`下载 ${item.name}`"
-                    @click="$emit('download')"
+                    @click.stop="download('SINGLE', [item])"
                   >
                     <Download :size="13" />
                     下载
