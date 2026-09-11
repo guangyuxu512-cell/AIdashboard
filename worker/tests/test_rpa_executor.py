@@ -205,6 +205,24 @@ def test_rpa_executor_parses_success_and_uses_shared_runtime(tmp_path: Path) -> 
     assert adapter.requests[0].params == {"关键词": "测试", "count": 2}
 
 
+def test_yingdao_claim_params_preserve_unicode_key_and_json_looking_text(
+    tmp_path: Path,
+) -> None:
+    adapter = FakeYingdaoAdapter(discovery=discovery())
+    executor = make_executor(tmp_path, adapter)
+    task = make_task(params={"商品列表": '{"page":1}'})
+
+    result = run(executor, task)
+
+    assert result.status is ExecutionStatus.SUCCESS
+    params_path = tmp_path / "local-input" / "params.json"
+    params = json.loads(params_path.read_text("utf-8"))
+    assert params == {"商品列表": '{"page":1}'}
+    assert isinstance(params["商品列表"], str)
+    assert not list(params_path.parent.glob(".*.tmp"))
+    assert adapter.requests[0].params == {"商品列表": '{"page":1}'}
+
+
 def test_rpa_provider_unavailable_finishes_failed(tmp_path: Path) -> None:
     adapter = FakeYingdaoAdapter(discovery=discovery(available=False))
     task = make_task()

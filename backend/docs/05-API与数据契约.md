@@ -181,6 +181,16 @@ Descriptor 固定包含
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
 所有读取与保存均要求 Human Session、ActorContext 与 `device` 模块访问。
 
+`input_schema.fields[]` 的 `name` 是 Task `input.params` 与 Worker `params.json` 的正式 JSON 键。
+它允许 Unicode 字母或数字及 `_ . -`，包括 `商品列表`；会拒绝空白、空格、控制字符、重复项与超过
+100 字符的键，且不得翻译、拼音化或改写。`label` 是用户界面显示名，可留空；保存和 Read 时空值固定
+回退为对应 `name`，所有必填和类型错误使用该最终显示名。`text` 的 `default_value` 始终是字符串，
+即使内容形如 JSON；它不会被解析成新的参数类型。选择参数必须有不重复选项，所有默认值必须匹配其
+text/number/boolean/select 类型。
+
+配置保存的请求校验使用 `422 / VALIDATION_ERROR`；`details` 保留 Pydantic 的字段定位，PC 弹窗必须
+映射到对应参数行/字段并保留未保存草稿，而不是关闭弹窗或只显示泛化错误。
+
 `POST /api/v1/tasks` 创建 `yingdao.app.run` 时，input 固定为
 `{"app_id":"...","params":{...}}`。店铺上下文通过独立有序 `shop_ids` 提交，不进入 input。
 Backend 必须验证目标 Device 启用、全部 Shop 有效并与该 Device 存在启用 Binding、账号可用、

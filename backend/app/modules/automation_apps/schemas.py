@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -14,11 +15,14 @@ class AutomationInputType(StrEnum):
     SELECT = "select"
 
 
+_PARAMETER_NAME_PATTERN = re.compile(r"[\w.-]+\Z")
+
+
 class AutomationInputField(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=1, max_length=100)
-    label: str = Field(min_length=1, max_length=100)
+    label: str = Field(default="", max_length=100)
     type: AutomationInputType
     required: bool = False
     default_value: Any = None
@@ -27,12 +31,16 @@ class AutomationInputField(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", value) is None:
-            raise ValueError("参数名只能包含字母、数字、下划线、点和连字符")
+        if any(unicodedata.category(character).startswith("C") for character in value):
+            raise ValueError("参数名不能包含控制字符")
+        if _PARAMETER_NAME_PATTERN.fullmatch(value) is None:
+            raise ValueError("参数名只能包含 Unicode 字母、数字、下划线、点和连字符")
         return value
 
     @model_validator(mode="after")
     def validate_type_contract(self) -> "AutomationInputField":
+        if not self.label:
+            self.label = self.name
         if self.type is AutomationInputType.SELECT:
             if (
                 not self.options

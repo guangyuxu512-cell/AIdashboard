@@ -50,6 +50,10 @@ UTF-8、中文不转义、原子替换并对每个 Task 完整覆盖。完整账
 或 Task Result。现有
 `shadowbot:Run?...` Application Params 保持兼容，不因增加固定文件而删除。
 
+`params.json` 的键严格来自 Backend 已保存 Schema 的 `name`，允许且必须原样保留 Unicode 业务键
+（例如 `商品列表`）；Worker 不翻译、拼音化、解析 JSON 形状的 text 值或重命名这些键。`text` 默认值
+即使形如 JSON 也保持 JSON string，避免把配置参数误变为另一个类型。
+
 一个多店铺 Task 只准备一次 `account.json` 并启动一次 ShadowBot Application。Worker 不循环
 店铺、不判断切号或验证码；Application 自行决定串行、切号、单店失败后是否继续，并通过现有
 最终结果 Contract 决定 Task 终态。
