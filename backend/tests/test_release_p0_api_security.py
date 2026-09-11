@@ -331,7 +331,7 @@ def test_authorized_module_users_can_complete_management_operations(
         (sessions_router, get_session_shop_authorized_actor, 5),
         (credentials_router, get_credential_shop_authorized_actor, 4),
         (notifications_router, get_settings_authorized_actor, 4),
-        (automation_router, get_automation_device_authorized_actor, 2),
+        (automation_router, get_automation_device_authorized_actor, 3),
         (onboarding_router, get_onboarding_shop_authorized_actor, 2),
     ],
 )
