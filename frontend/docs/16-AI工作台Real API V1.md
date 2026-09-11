@@ -50,7 +50,7 @@ Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FA
 - 批量页面以同一 `generation_job_id` 恢复运行中任务，继续通过 Job Detail Query 轮询；终态返回后按 Item 中的产品、模板组、模板快照与 `output_asset` 原地渲染分组结果。
 - `SUCCESS / PARTIAL_FAILED` 刷新或重新打开后仍以后端 Job 为事实来源。已知 Job ID 只发起读取；Submit 回执中断只能以持久化的原请求和原 `submission_key` 恢复。
 - 清空批量任务后，旧 Query 或迟到响应不得回写；即时草稿、生成记录和 Asset 不受影响。Job Detail 读取失败必须显示可重试 Error State，不得保留旧 `RUNNING` 结果持续转圈。
-- 当前下载实现逐个通过正式 Asset Content API 读取成功结果原图，再交给浏览器下载；模板下载和“下载全部”都是对该单图能力的逐件调用。V1 没有 ZIP 或按产品/模板组文件夹打包 API，也不声称已支持按组文件夹下载。
+- 成功结果、生成记录和素材库下载复用统一 Asset Download Queue：只请求正式 Asset Content 原图地址，单次队列最多 3 个并发请求，提供进度、取消、逐文件失败重试及受控错误码/请求编号提示。下载专用超时为 120 秒，不改变页面预览的短请求策略；V1 没有 ZIP 或按产品/模板组文件夹打包 API，也不声称已支持按组文件夹下载。
 - 素材库仅承载用户上传或主动关联的产品参考图。生成结果已由 GenerationJob、GenerationItem 与输出 Asset 持久化，页面保留预览、下载、历史和恢复，但不显示素材库归属状态、不提供保存入口，也不调用生成结果归档 API。既有历史关联不在本阶段删除或迁移；旧归档接口的数据库失败仍待 Backend 单独调查。
 - 自动化验收使用正式 Real 页面、真实 Query 链路与受控 API 响应，不接入 Visual Mock 执行状态。生产付费批量任务的完整闭环仍需在发布后使用一次正常任务验收。
 

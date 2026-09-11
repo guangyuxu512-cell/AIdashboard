@@ -54,6 +54,11 @@ API Key 不进入数据库、Frontend、业务错误或日志。
 `n=1` 并原样提交 `final_prompt`，不追加或改写四宫格文案。`output_format` 继续作为 GenerationItem 业务
 Snapshot，不反向推导 Prompt。
 
+同一 Backend 进程中，输入上传只按 `(team_id, provider_code, asset_id)` 复用：同一 Team 对同一原图的并发
+上传合并为一次 in-flight 请求，成功 URL 可在该进程生命周期内复用。这个缓存不写入数据库、Task、日志或
+Provider Execution，也不跨 Team、Provider、Backend 进程或部署实例共享；`team_id` 只是 Adapter 的内部
+隔离键，绝不作为 Provider HTTP 请求字段。
+
 ## 3. Provider Execution Persistence
 
 `generation_provider_executions` 只保存当前有效外部执行：
@@ -74,10 +79,14 @@ Snapshot，不反向推导 Prompt。
 
 ## 4. Recovery and Attempt Safety
 
-Backend lifespan 启动一个当前进程内的顺序执行循环：
+Backend lifespan 启动一个当前进程内的有界执行循环。`BACKEND_AI_GENERATION_CONCURRENCY` 默认 `5`，允许
+范围为 `1..20`；每次扫描由一个协调器先逐项提交 `RUNNING` 状态和 Durable Intent，再在该单一 Backend
+进程内并发执行 Provider I/O。该排除只保证同一扫描不重复选择一个 Item，不是分布式 Lease/Claim 方案。
 
 - 当前 Attempt 没有 Provider Execution 时，先提交空 Task ID Intent，再允许创建一次；
 - `RUNNING` 且当前 Attempt 已有 External Task ID 时，直接恢复轮询原 Task，不重新上传或创建；
+- 已知 External Task ID 的结果轮询、下载或输出 Asset 持久化失败后，标准 Failed Item Retry 保持当前
+  Attempt 和该 Task ID；恢复只重新轮询/下载/持久化结果，绝不再发 Create POST；
 - 恢复时当前 Attempt 已有 Provider Execution、但 External Task ID 仍为空时，外部创建结果视为未知，禁止再次
   Create，并以 `PROVIDER_CREATE_OUTCOME_UNKNOWN` 使 Item Fail Closed；
 - ToAPIs Create POST 已发出后发生超时、连接中断、无效响应或缺少 Task ID 时，同样视为未知结果；上传阶段失败
@@ -122,8 +131,8 @@ Provider HTTP、响应、终态失败、超时与结果下载错误只落为安�
 - `last_failed_at`。
 
 业务表不保存 Authorization Header、API Key、完整 Provider Payload、Stack Trace 或带查询参数的结果 URL。
-普通失败 Item 继续复用既有 Failed Item Retry；新 Attempt 重新走同一执行链。只有
-`PROVIDER_CREATE_OUTCOME_UNKNOWN` 禁止标准 Retry，避免重复生成和重复计费。
+普通失败 Item 继续复用既有 Failed Item Retry；若尚无可恢复的 External Task ID，Retry 创建新 Attempt 并
+重新走同一执行链。只有 `PROVIDER_CREATE_OUTCOME_UNKNOWN` 禁止标准 Retry，避免重复生成和重复计费。
 
 ## 7. Explicitly Not Implemented
 

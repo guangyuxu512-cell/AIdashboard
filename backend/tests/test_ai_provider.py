@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import replace
 from io import BytesIO
 import json
 import logging
+from threading import Event, Lock
+from time import sleep
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -49,9 +52,12 @@ def provider_request(
     *,
     mode: GenerationMode = GenerationMode.NORMAL_GENERATION,
     output_format: OutputFormat = OutputFormat.SINGLE,
+    team_id: UUID | None = None,
+    asset_id: UUID | None = None,
 ) -> GenerationProviderRequest:
     return GenerationProviderRequest(
         generation_item_id=uuid4(),
+        team_id=team_id if team_id is not None else uuid4(),
         model_code="gpt-image-2",
         mode=mode,
         final_prompt="保持这段完整提示词，不做拼接 {{literal}}",
@@ -60,7 +66,7 @@ def provider_request(
         size=GenerationSize.SQUARE,
         input_images=(
             GenerationProviderInput(
-                asset_id=uuid4(),
+                asset_id=asset_id if asset_id is not None else uuid4(),
                 original_filename="source.png",
                 content_type="image/png",
                 stream=BytesIO(PNG_BYTES),
@@ -279,6 +285,102 @@ def test_toapis_upload_failure_is_not_a_create_outcome_unknown() -> None:
     assert captured.value.retryable is True
 
 
+def test_toapis_upload_singleflight_is_scoped_to_team_provider_and_original_asset() -> None:
+    upload_calls = 0
+    counter_lock = Lock()
+    team_a = uuid4()
+    team_b = uuid4()
+    shared_asset_id = uuid4()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal upload_calls
+        if request.url.path == "/v1/uploads/images":
+            with counter_lock:
+                upload_calls += 1
+            sleep(0.05)
+            return httpx.Response(
+                200,
+                json={"data": {"url": "https://files.toapis.com/input.png"}},
+            )
+        assert request.url.path == "/v1/images/generations"
+        return httpx.Response(200, json={"data": {"id": str(uuid4())}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = toapis_provider(client)
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            created = list(
+                pool.map(
+                    lambda _index: provider.create_task(
+                        provider_request(team_id=team_a, asset_id=shared_asset_id),
+                    ),
+                    range(5),
+                ),
+            )
+        provider.create_task(provider_request(team_id=team_b, asset_id=shared_asset_id))
+
+    assert len(created) == 5
+    assert upload_calls == 2
+
+
+def test_toapis_failed_upload_does_not_poison_the_team_asset_cache() -> None:
+    upload_calls = 0
+    team_id = uuid4()
+    asset_id = uuid4()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal upload_calls
+        if request.url.path == "/v1/uploads/images":
+            upload_calls += 1
+            if upload_calls == 1:
+                raise httpx.ReadError("upload interrupted", request=request)
+            return httpx.Response(
+                200,
+                json={"data": {"url": "https://files.toapis.com/input.png"}},
+            )
+        assert request.url.path == "/v1/images/generations"
+        return httpx.Response(200, json={"data": {"id": "task-after-retry"}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = toapis_provider(client)
+        with pytest.raises(ImageProviderFailure) as captured:
+            provider.create_task(provider_request(team_id=team_id, asset_id=asset_id))
+        assert captured.value.failure_code == "PROVIDER_UNAVAILABLE"
+        assert (
+            provider.create_task(provider_request(team_id=team_id, asset_id=asset_id))
+            == "task-after-retry"
+        )
+
+    assert upload_calls == 2
+
+
+def test_toapis_marks_completed_result_download_transport_failure_separately() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/known-task"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "status": "completed",
+                        "result": {
+                            "data": [
+                                {"url": "https://files.toapis.com/output.png"},
+                            ],
+                        },
+                    },
+                },
+            )
+        assert request.url.path == "/output.png"
+        raise httpx.ReadError("download interrupted", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = toapis_provider(client)
+        with pytest.raises(ImageProviderFailure) as captured:
+            provider.wait_for_image("known-task")
+
+    assert captured.value.failure_code == "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE"
+    assert captured.value.retryable is True
+
+
 @pytest.mark.parametrize(
     ("provider_code", "expected_code", "expected_message"),
     [
@@ -440,7 +542,12 @@ class FakeExecutionService:
         self.failures: list[tuple[int, str, str]] = []
         self.record_error = record_error
 
-    def prepare_next_provider_execution(self) -> GenerationExecution | None:
+    def prepare_next_provider_execution(
+        self,
+        *,
+        exclude_generation_item_ids: object = (),
+    ) -> GenerationExecution | None:
+        del exclude_generation_item_ids
         return self.executions.pop(0) if self.executions else None
 
     def record_provider_execution(
@@ -577,6 +684,104 @@ def executor(
         provider=provider,
         storage=MemoryStorage(),
     )
+
+
+def test_executor_excludes_in_flight_running_item_before_preparing_more_work() -> None:
+    events: list[str] = []
+    first = execution(
+        attempt_count=1,
+        external_task_id="known-first",
+        provider_task_create_required=False,
+    )
+    second = execution(
+        attempt_count=1,
+        external_task_id="known-second",
+        provider_task_create_required=False,
+    )
+
+    class InFlightAwareService(FakeExecutionService):
+        def __init__(self) -> None:
+            super().__init__([], events)
+            self.current_attempt = 1
+            self.seen_exclusions: list[set[object]] = []
+
+        def prepare_next_provider_execution(
+            self,
+            *,
+            exclude_generation_item_ids: object = (),
+        ) -> GenerationExecution | None:
+            excluded = set(exclude_generation_item_ids)  # type: ignore[arg-type]
+            self.seen_exclusions.append(excluded)
+            return next(
+                (
+                    candidate
+                    for candidate in (first, second)
+                    if candidate.generation_item_id not in excluded
+                ),
+                None,
+            )
+
+    service = InFlightAwareService()
+    provider = FakeProvider([provider_image(), provider_image()], events)
+
+    assert executor(service, provider).execute_available(5) == 2
+    assert provider.created_requests == []
+    assert provider.waited_task_ids == ["known-first", "known-second"]
+    assert first.generation_item_id in service.seen_exclusions[1]
+    assert second.generation_item_id in service.seen_exclusions[2]
+
+
+def test_executor_runs_distinct_known_tasks_with_bounded_concurrency() -> None:
+    events: list[str] = []
+    executions = [
+        execution(
+            attempt_count=1,
+            external_task_id=f"known-{index}",
+            provider_task_create_required=False,
+        )
+        for index in range(5)
+    ]
+    service = FakeExecutionService(executions, events)
+    entered = Event()
+    state_lock = Lock()
+
+    class ConcurrentProvider:
+        provider_code = "toapis"
+
+        def __init__(self) -> None:
+            self.active = 0
+            self.max_active = 0
+            self.waited_task_ids: list[str] = []
+
+        def create_task(self, _request: GenerationProviderRequest) -> str:
+            raise AssertionError("known provider tasks must not be created again")
+
+        def wait_for_image(self, external_task_id: str) -> GeneratedProviderImage:
+            with state_lock:
+                self.waited_task_ids.append(external_task_id)
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+                if self.active == 5:
+                    entered.set()
+            try:
+                assert entered.wait(timeout=2), "provider work did not overlap"
+                return provider_image()
+            finally:
+                with state_lock:
+                    self.active -= 1
+
+    provider = ConcurrentProvider()
+    runner = GenerationExecutor(
+        session_factory=lambda: nullcontext(object()),  # type: ignore[arg-type]
+        service_factory=lambda _session: service,  # type: ignore[arg-type]
+        provider=provider,
+        storage=MemoryStorage(),
+    )
+
+    assert runner.execute_available(5) == 5
+    assert provider.max_active == 5
+    assert sorted(provider.waited_task_ids) == [f"known-{index}" for index in range(5)]
+    assert service.completed_attempts == [1] * 5
 
 
 def test_pending_item_creates_and_persists_task_before_polling_then_succeeds() -> None:

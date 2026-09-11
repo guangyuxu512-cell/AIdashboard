@@ -70,6 +70,7 @@ class Settings(BaseSettings):
         ge=0.1,
         le=60,
     )
+    ai_generation_concurrency: int = Field(default=5, ge=1, le=20)
     toapis_api_key: SecretStr | None = None
     toapis_base_url: str = "https://toapis.cn"
     toapis_resolution: Literal["1k", "2k", "4k"] = "2k"

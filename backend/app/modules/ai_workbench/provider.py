@@ -29,6 +29,7 @@ class GenerationProviderInput:
 @dataclass(frozen=True, slots=True)
 class GenerationProviderRequest:
     generation_item_id: UUID
+    team_id: UUID
     model_code: str
     mode: GenerationMode
     final_prompt: str

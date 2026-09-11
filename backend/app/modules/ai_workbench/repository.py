@@ -715,7 +715,10 @@ class GenerationRepository:
             created_by_user_id_column=GenerationJob.created_by_user_id,
             actor=actor,
         )
-        return self.session.scalar(statement.with_for_update())
+        # GenerationJob joins its model for the read projection. PostgreSQL
+        # cannot lock the nullable side of that outer join, while retry only
+        # needs to lock the Job row that owns the Item set.
+        return self.session.scalar(statement.with_for_update(of=GenerationJob))
 
     def get_job_by_id(self, generation_job_id: UUID) -> GenerationJob | None:
         return self.session.scalar(
@@ -738,6 +741,7 @@ class GenerationRepository:
                     GenerationItem.generation_job_id == generation_job_id,
                     GenerationItem.generation_item_id.in_(item_ids),
                 )
+                .options(selectinload(GenerationItem.provider_execution))
                 .order_by(GenerationItem.generation_item_id)
                 .with_for_update(),
             ),
@@ -821,8 +825,12 @@ class GenerationRepository:
             .with_for_update(),
         )
 
-    def next_item_id_for_provider_execution(self) -> UUID | None:
-        return self.session.scalar(
+    def next_item_id_for_provider_execution(
+        self,
+        *,
+        exclude_generation_item_ids: Sequence[UUID] = (),
+    ) -> UUID | None:
+        statement = (
             select(GenerationItem.generation_item_id)
             .where(
                 GenerationItem.status.in_(
@@ -840,8 +848,15 @@ class GenerationRepository:
                 GenerationItem.created_at,
                 GenerationItem.generation_item_id,
             )
-            .limit(1),
+            .limit(1)
         )
+        if exclude_generation_item_ids:
+            statement = statement.where(
+                GenerationItem.generation_item_id.not_in(
+                    exclude_generation_item_ids,
+                ),
+            )
+        return self.session.scalar(statement)
 
     def add_provider_execution(
         self,

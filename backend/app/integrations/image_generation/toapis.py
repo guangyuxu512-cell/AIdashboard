@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import Future
 from contextlib import contextmanager
 from pathlib import PurePosixPath
 import re
 from tempfile import SpooledTemporaryFile
+from threading import Lock
 from time import monotonic, sleep
 from typing import Any, BinaryIO, Iterator
 from urllib.parse import quote, urlsplit
+from uuid import UUID
 
 import httpx
 from pydantic import SecretStr
@@ -74,6 +77,11 @@ class ToApisImageProvider:
         self._client = client
         self._sleep = sleep_fn
         self._monotonic = monotonic_fn
+        # Provider upload URLs are intentionally process-local only. They are
+        # never written to generation rows, task logs, or other durable state.
+        self._upload_cache: dict[tuple[UUID, str, UUID], str] = {}
+        self._upload_flights: dict[tuple[UUID, str, UUID], Future[str]] = {}
+        self._upload_lock = Lock()
 
     def create_task(self, request: GenerationProviderRequest) -> str:
         create_request_started = False
@@ -81,7 +89,7 @@ class ToApisImageProvider:
         try:
             with self._client_scope() as client:
                 image_urls = [
-                    self._upload_image(client, image)
+                    self._upload_image(client, request.team_id, image)
                     for image in request.input_images
                 ]
                 body: dict[str, Any] = {
@@ -136,7 +144,7 @@ class ToApisImageProvider:
                         raise
                     if self._monotonic() - started_at >= self._poll_timeout_seconds:
                         raise ImageProviderFailure(
-                            "PROVIDER_TIMEOUT",
+                            "PROVIDER_POLL_TIMEOUT",
                             "图片生成服务处理超时",
                             retryable=True,
                         ) from None
@@ -172,13 +180,49 @@ class ToApisImageProvider:
                     )
                 if self._monotonic() - started_at >= self._poll_timeout_seconds:
                     raise ImageProviderFailure(
-                        "PROVIDER_TIMEOUT",
+                        "PROVIDER_POLL_TIMEOUT",
                         "图片生成服务处理超时",
                         retryable=True,
                     )
                 self._sleep(self._poll_interval_seconds)
 
     def _upload_image(
+        self,
+        client: httpx.Client,
+        team_id: UUID,
+        image: GenerationProviderInput,
+    ) -> str:
+        cache_key = (team_id, self.provider_code, image.asset_id)
+        with self._upload_lock:
+            cached_url = self._upload_cache.get(cache_key)
+            if cached_url is not None:
+                return cached_url
+            flight = self._upload_flights.get(cache_key)
+            if flight is None:
+                flight = Future()
+                self._upload_flights[cache_key] = flight
+                is_owner = True
+            else:
+                is_owner = False
+
+        if not is_owner:
+            return flight.result()
+
+        try:
+            uploaded_url = self._upload_image_uncached(client, image)
+        except BaseException as error:
+            with self._upload_lock:
+                self._upload_flights.pop(cache_key, None)
+                flight.set_exception(error)
+            raise
+
+        with self._upload_lock:
+            self._upload_cache[cache_key] = uploaded_url
+            self._upload_flights.pop(cache_key, None)
+            flight.set_result(uploaded_url)
+        return uploaded_url
+
+    def _upload_image_uncached(
         self,
         client: httpx.Client,
         image: GenerationProviderInput,
@@ -255,13 +299,13 @@ class ToApisImageProvider:
             raise
         except httpx.TimeoutException:
             raise ImageProviderFailure(
-                "PROVIDER_TIMEOUT",
+                "PROVIDER_OUTPUT_DOWNLOAD_TIMEOUT",
                 "生成图片下载超时",
                 retryable=True,
             ) from None
         except httpx.RequestError:
             raise ImageProviderFailure(
-                "PROVIDER_UNAVAILABLE",
+                "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE",
                 "生成图片下载失败",
                 retryable=True,
             ) from None

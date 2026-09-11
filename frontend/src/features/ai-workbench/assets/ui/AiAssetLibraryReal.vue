@@ -6,8 +6,13 @@ import type { DropdownOption, UploadSettledFileInfo } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 
-import { AssetContentImage } from '@/entities/asset'
-import { assetApi, fetchAssetContent } from '@/entities/asset/api/asset-api'
+import {
+  AssetContentImage,
+  AssetDownloadStatusBar,
+  formatAssetDownloadFailure,
+  useAssetDownloadQueue,
+} from '@/entities/asset'
+import { assetApi } from '@/entities/asset/api/asset-api'
 import { aiWorkbenchApi, aiWorkbenchQueryKeys } from '@/entities/ai-workbench'
 import {
   AiManagementLayout,
@@ -45,6 +50,7 @@ type PendingDelete =
 
 const message = useMessage()
 const queryClient = useQueryClient()
+const downloads = useAssetDownloadQueue()
 const productDialogShow = ref(false)
 const productDialogMode = ref<'create' | 'rename'>('create')
 const editingProduct = ref<ProductMaterialGroup | null>(null)
@@ -351,32 +357,39 @@ function updateAssetRole(role: MaterialRole): void {
   }, '素材类型已更新')
 }
 
-async function triggerAssetDownload(
-  asset: MaterialAssetReference,
-): Promise<void> {
-  const blob = await fetchAssetContent(asset.previewUrl)
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = asset.name
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
+function startAssetDownloads(assets: readonly MaterialAssetReference[]): void {
+  if (!assets.length || downloads.isDownloading.value) return
+  void downloads
+    .start(
+      assets.map((asset) => ({
+        id: asset.assetId,
+        contentUrl: asset.previewUrl,
+        filename: asset.name,
+      })),
+    )
+    .then((summary) => {
+      if (!summary) return
+      if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 个素材`)
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    })
 }
 
 function downloadAsset(asset: MaterialAssetReference): void {
-  void triggerAssetDownload(asset)
-    .then(() => message.success('已开始下载'))
-    .catch((error) => message.error(getErrorMessage(error)))
+  startAssetDownloads([asset])
 }
 
 function downloadSelectedAssets(): void {
-  const assets = [...selectedAssets.value]
-  if (!assets.length) return
-  void Promise.all(assets.map(triggerAssetDownload))
-    .then(() => message.success(`已开始下载 ${assets.length} 个素材`))
-    .catch((error) => message.error(getErrorMessage(error)))
+  startAssetDownloads([...selectedAssets.value])
+}
+
+function retryFailedDownloads(): void {
+  void downloads.retryFailed().then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 个素材`)
+    const firstFailure = summary.results.find((result) => result.failure)?.failure
+    if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+  })
 }
 
 function confirmDelete(): void {
@@ -530,6 +543,13 @@ function replaceBindings(
                   })
                 "
                 @finish="finishSelectionMode"
+              />
+              <AssetDownloadStatusBar
+                :is-downloading="downloads.isDownloading.value"
+                :progress-label="downloads.progressLabel.value"
+                :failed-count="downloads.failedRequests.value.length"
+                @cancel="downloads.cancel"
+                @retry-failed="retryFailedDownloads"
               />
 
               <div class="ai-assets-workspace__asset-scroll">

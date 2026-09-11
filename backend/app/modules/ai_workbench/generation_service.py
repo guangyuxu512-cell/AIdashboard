@@ -83,6 +83,27 @@ from app.shared.identifiers import generate_id
 
 OUTPUT_PERSISTENCE_FAILURE_CODE = "OUTPUT_PERSISTENCE_FAILED"
 OUTPUT_PERSISTENCE_FAILURE_MESSAGE = "生成结果保存失败"
+NORMAL_BATCH_PRODUCT_FIDELITY_GUARD = (
+    "产品原图真实性优先：输入的商品原图是产品外观的唯一事实来源。"
+    "如创意描述与原图冲突，必须以原图为准，保留颜色、材质、纹理、"
+    "结构、比例、功能和可见细节；不得替换、改色、改材质、改结构或变形产品。"
+)
+
+# The legacy generic transport codes are deliberately included for already
+# persisted executions. Older download failures used them before the explicit
+# output-download codes below existed. An external task id is still required,
+# so a pre-create failure can never enter this recovery path.
+REMOTE_RESULT_RECOVERY_FAILURE_CODES = frozenset(
+    {
+        OUTPUT_PERSISTENCE_FAILURE_CODE,
+        "PROVIDER_OUTPUT_DOWNLOAD_TIMEOUT",
+        "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE",
+        "PROVIDER_POLL_TIMEOUT",
+        "PROVIDER_POLL_UNAVAILABLE",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_UNAVAILABLE",
+    },
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,6 +356,7 @@ class GenerationService:
                 raise GenerationItemNotFoundError()
 
             actionable: list[GenerationItem] = []
+            resume_known_provider_results: set[UUID] = set()
             for item in locked_items:
                 expected = requested[item.generation_item_id].expected_attempt_count
                 if item.attempt_count > expected:
@@ -350,6 +372,8 @@ class GenerationService:
                 ):
                     raise ProviderCreateOutcomeUnknownError()
                 actionable.append(item)
+                if self._can_resume_known_provider_result(item):
+                    resume_known_provider_results.add(item.generation_item_id)
 
             if not actionable:
                 self.session.rollback()
@@ -375,7 +399,8 @@ class GenerationService:
 
             for item in actionable:
                 item.status = GenerationItemStatus.PENDING.value
-                item.attempt_count += 1
+                if item.generation_item_id not in resume_known_provider_results:
+                    item.attempt_count += 1
                 item.started_at = None
                 item.finished_at = None
             self._sync_job_status(job)
@@ -461,9 +486,11 @@ class GenerationService:
 
     def prepare_next_provider_execution(
         self,
+        *,
+        exclude_generation_item_ids: Sequence[UUID] = (),
     ) -> GenerationExecution | None:
-        generation_item_id = (
-            self.generation_repository.next_item_id_for_provider_execution()
+        generation_item_id = self.generation_repository.next_item_id_for_provider_execution(
+            exclude_generation_item_ids=exclude_generation_item_ids,
         )
         if generation_item_id is None:
             self.session.rollback()
@@ -904,7 +931,10 @@ class GenerationService:
                                 generation_job_id=job_id,
                                 position=len(items),
                                 status=GenerationItemStatus.PENDING.value,
-                                final_prompt=prompt.prompt,
+                                final_prompt=self._compose_batch_final_prompt(
+                                    prompt.prompt,
+                                    data.mode,
+                                ),
                                 output_role=prompt.output_role,
                                 output_format=prompt.output_format,
                                 size=prompt.size,
@@ -1116,6 +1146,25 @@ class GenerationService:
             ),
             external_task_id=external_task_id,
             provider_task_create_required=provider_task_create_required,
+        )
+
+    @staticmethod
+    def _compose_batch_final_prompt(
+        template_prompt: str,
+        mode: GenerationMode,
+    ) -> str:
+        if mode is not GenerationMode.NORMAL_GENERATION:
+            return template_prompt
+        return f"{template_prompt}\n\n{NORMAL_BATCH_PRODUCT_FIDELITY_GUARD}"
+
+    @staticmethod
+    def _can_resume_known_provider_result(item: GenerationItem) -> bool:
+        execution = item.provider_execution
+        return (
+            item.last_failure_code in REMOTE_RESULT_RECOVERY_FAILURE_CODES
+            and execution is not None
+            and execution.external_task_id is not None
+            and execution.attempt_count == item.attempt_count
         )
 
     def _model_for_new_submission(

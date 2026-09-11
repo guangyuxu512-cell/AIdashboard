@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { httpClient } from '@/shared/api'
 
 import {
+  fetchAssetDownload,
   fetchAssetContent,
   getAssetContentUrl,
   getAssetThumbnailUrl,
@@ -30,5 +31,43 @@ describe('asset content api', () => {
     expect(getAssetThumbnailUrl('asset-1')).toBe(
       '/api/v1/assets/asset-1/thumbnail',
     )
+  })
+
+  it('downloads only the original content route with progress and a longer timeout', async () => {
+    const blob = new Blob(['original'], { type: 'image/png' })
+    const progress: Array<{ loadedBytes: number; totalBytes: number | null }> = []
+    const get = vi.spyOn(httpClient, 'get').mockResolvedValue({ data: blob })
+    const controller = new AbortController()
+
+    await expect(
+      fetchAssetDownload('/api/v1/assets/asset-1/content', {
+        signal: controller.signal,
+        onProgress: (value) => progress.push(value),
+      }),
+    ).resolves.toBe(blob)
+
+    const config = get.mock.calls[0]?.[1]
+    expect(get).toHaveBeenCalledWith('/api/v1/assets/asset-1/content', {
+      responseType: 'blob',
+      signal: controller.signal,
+      timeout: 120_000,
+      onDownloadProgress: expect.any(Function),
+    })
+    config?.onDownloadProgress?.({
+      loaded: 12,
+      total: 24,
+      bytes: 12,
+      lengthComputable: true,
+    })
+    expect(progress).toEqual([{ loadedBytes: 12, totalBytes: 24 }])
+  })
+
+  it('never turns a thumbnail URL into a download request', async () => {
+    const get = vi.spyOn(httpClient, 'get')
+
+    await expect(
+      fetchAssetDownload('/api/v1/assets/asset-1/thumbnail'),
+    ).rejects.toThrow('下载必须使用资产原图读取地址')
+    expect(get).not.toHaveBeenCalled()
   })
 })
