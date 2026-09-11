@@ -5,6 +5,7 @@ import { automationApplicationApi } from './automation-application-api'
 import type {
   AutomationApplicationConfigUpsertDto,
   AutomationParameterPresetListParams,
+  AutomationParameterPresetDto,
   AutomationParameterPresetSaveDto,
   AutomationParameterPresetUpdateDto,
 } from './contracts'
@@ -18,11 +19,66 @@ export const automationApplicationQueryKeys = {
       params.appId ?? null,
       params.query?.trim() || null,
     ] as const,
-  yingdaoApplications: ['automation-app-configs', 'yingdao', 'applications'] as const,
+  yingdaoApplications: [
+    'automation-app-configs',
+    'yingdao',
+    'applications',
+  ] as const,
   detail: (appId: string | null) =>
     ['automation-app-configs', 'yingdao', appId] as const,
   presets: (appId: string | null) =>
     ['automation-app-configs', 'yingdao', appId, 'parameter-presets'] as const,
+}
+
+function mergePreset(
+  current: AutomationParameterPresetDto[] | undefined,
+  preset: AutomationParameterPresetDto,
+  { append }: { append: boolean },
+): AutomationParameterPresetDto[] | undefined {
+  if (!current) return append ? [preset] : current
+  const index = current.findIndex((item) => item.preset_id === preset.preset_id)
+  if (index < 0) return append ? [...current, preset] : current
+  return current.map((item) =>
+    item.preset_id === preset.preset_id ? preset : item,
+  )
+}
+
+function updatePresetCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  preset: AutomationParameterPresetDto,
+): void {
+  // The mutation response is the latest source of truth for `version`.  Store
+  // it before a background list refresh so a transient/refetch failure can
+  // never make an open editor submit its prior expected_version again.
+  queryClient.setQueryData<AutomationParameterPresetDto[]>(
+    automationApplicationQueryKeys.presets(preset.app_id),
+    (current) => mergePreset(current, preset, { append: true }),
+  )
+  queryClient.setQueriesData<AutomationParameterPresetDto[]>(
+    { queryKey: automationApplicationQueryKeys.allPresets },
+    (current) => mergePreset(current, preset, { append: false }),
+  )
+}
+
+function refreshPresetLists(
+  queryClient: ReturnType<typeof useQueryClient>,
+  appId: string,
+): void {
+  // Refreshing list presentation is deliberately best-effort.  The mutation
+  // has already succeeded and the editor has the returned DTO, so a list
+  // request failure must not turn that success into an old draft/version.
+  void queryClient
+    .invalidateQueries({
+      queryKey: automationApplicationQueryKeys.presets(appId),
+      refetchType: 'active',
+    })
+    .catch(() => undefined)
+  void queryClient
+    .invalidateQueries({
+      queryKey: automationApplicationQueryKeys.allPresets,
+      refetchType: 'active',
+    })
+    .catch(() => undefined)
 }
 
 export function useYingdaoApplicationOptionsQuery() {
@@ -68,7 +124,8 @@ export function useSaveAutomationParameterPresetMutation() {
     }: {
       appId: string
       presetId: string | null
-      data: AutomationParameterPresetSaveDto | AutomationParameterPresetUpdateDto
+      data:
+        AutomationParameterPresetSaveDto | AutomationParameterPresetUpdateDto
     }) =>
       presetId
         ? automationApplicationApi.updatePreset(
@@ -77,15 +134,10 @@ export function useSaveAutomationParameterPresetMutation() {
             data as AutomationParameterPresetUpdateDto,
           )
         : automationApplicationApi.createPreset(appId, data),
-    onSuccess: (_, variables) =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.presets(variables.appId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.allPresets,
-        }),
-      ]),
+    onSuccess: (preset, variables) => {
+      updatePresetCaches(queryClient, preset)
+      refreshPresetLists(queryClient, variables.appId)
+    },
   })
 }
 
@@ -101,15 +153,10 @@ export function useCopyAutomationParameterPresetMutation() {
       presetId: string
       name: string
     }) => automationApplicationApi.copyPreset(appId, presetId, name),
-    onSuccess: (_, variables) =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.presets(variables.appId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.allPresets,
-        }),
-      ]),
+    onSuccess: (preset, variables) => {
+      updatePresetCaches(queryClient, preset)
+      refreshPresetLists(queryClient, variables.appId)
+    },
   })
 }
 

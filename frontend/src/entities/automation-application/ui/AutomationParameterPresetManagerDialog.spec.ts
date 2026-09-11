@@ -65,10 +65,13 @@ const configuredSchema = {
   ],
 }
 
-function mountDialog(options: {
-  schema?: typeof emptySchema | typeof configuredSchema
-  show?: boolean
-} = {}) {
+function mountDialog(
+  options: {
+    initialPresetId?: string | null
+    schema?: typeof emptySchema | typeof configuredSchema
+    show?: boolean
+  } = {},
+) {
   return shallowMount(AutomationParameterPresetManagerDialog, {
     props: {
       show: options.show ?? true,
@@ -76,6 +79,7 @@ function mountDialog(options: {
       schema: options.schema ?? emptySchema,
       applicationOptions: [application],
       allowSchemaConfiguration: true,
+      initialPresetId: options.initialPresetId ?? null,
     },
     global: { renderStubDefaultSlot: true },
   })
@@ -113,7 +117,7 @@ describe('AutomationParameterPresetManagerDialog', () => {
     await flushPromises()
     const configure = wrapper
       .findAllComponents(AppButton)
-      .find((button) => button.text() === '配置字段')
+      .find((button) => button.text() === '管理字段')
     configure!.vm.$emit('click')
     await flushPromises()
     expect(wrapper.emitted('configureSchema')).toEqual([[application]])
@@ -144,11 +148,81 @@ describe('AutomationParameterPresetManagerDialog', () => {
     await flushPromises()
 
     expect(mocks.save).toHaveBeenCalled()
-    expect(wrapper.findAllComponents(NFormItem)[2]!.props('feedback')).toBe(
-      '当前团队中该应用的预设名称已存在',
-    )
+    expect(
+      wrapper
+        .findAllComponents(NFormItem)
+        .find((item) => item.props('label') === '预设名称')!
+        .props('feedback'),
+    ).toBe('当前团队中该应用的预设名称已存在')
     expect(wrapper.findComponent(AppInput).props('modelValue')).toBe('日常采集')
     expect(wrapper.emitted('update:show')).toBeUndefined()
+  })
+
+  it('keeps an unknown public parameter draft and identifies its source', async () => {
+    mocks.save.mockRejectedValue(
+      new ApiError({
+        code: 'AUTOMATION_PARAMETER_PRESET_INVALID',
+        message: '未知参数: 已移除字段',
+      }),
+    )
+    const wrapper = mountDialog({ schema: configuredSchema })
+    await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '日常采集')
+    wrapper
+      .findAllComponents({ name: 'AutomationParameterFields' })[0]!
+      .vm.$emit('update:modelValue', {
+        页码: 1,
+        每页数量: 20,
+        已移除字段: '保留草稿',
+      })
+    await flushPromises()
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(
+      '公共参数包含服务端已不再定义的字段：已移除字段',
+    )
+    expect(
+      wrapper
+        .findAllComponents({ name: 'AutomationParameterFields' })[0]!
+        .props('modelValue'),
+    ).toMatchObject({ 已移除字段: '保留草稿' })
+  })
+
+  it('keeps an unknown shop override draft and returns to that shop', async () => {
+    const presetWithRemovedShopField = {
+      preset_id: 'preset-shop-field',
+      app_id: application.app_id,
+      name: '店铺差异预设',
+      common_parameters: { 页码: 1, 每页数量: 20 },
+      shop_overrides: { 'shop-a': { 已移除字段: '保留草稿' } },
+      version: 2,
+    }
+    mocks.presets = {
+      data: ref([presetWithRemovedShopField]),
+      isPending: ref(false),
+    }
+    mocks.save.mockRejectedValue(
+      new ApiError({
+        code: 'AUTOMATION_PARAMETER_PRESET_INVALID',
+        message: '未知参数: 已移除字段',
+      }),
+    )
+    const wrapper = mountDialog({
+      initialPresetId: presetWithRemovedShopField.preset_id,
+      schema: configuredSchema,
+    })
+    await flushPromises()
+
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(
+      '店铺“甲店”包含服务端已不再定义的字段：已移除字段',
+    )
+    expect(mocks.save.mock.calls[0]![0].data.shop_overrides).toMatchObject({
+      'shop-a': { 已移除字段: '保留草稿' },
+    })
   })
 
   it('keeps the draft visible and prevents saving when the shared schema API fails', async () => {
@@ -158,7 +232,9 @@ describe('AutomationParameterPresetManagerDialog', () => {
     await wrapper.setProps({ schemaError: '应用参数配置暂时无法读取' })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('参数定义读取失败：应用参数配置暂时无法读取')
+    expect(wrapper.text()).toContain(
+      '参数定义读取失败：应用参数配置暂时无法读取',
+    )
     expect(wrapper.findComponent(AppInput).props('modelValue')).toBe('日常采集')
     expect(wrapper.findComponent(FormDialog).props('submitDisabled')).toBe(true)
   })
@@ -166,10 +242,14 @@ describe('AutomationParameterPresetManagerDialog', () => {
   it('preserves explicit zero values in an individual shop override and restores inheritance', async () => {
     const wrapper = mountDialog({ schema: configuredSchema })
     await flushPromises()
-    wrapper.findComponent(ShopMultiSelector).vm.$emit('update:modelValue', ['shop-a'])
+    wrapper
+      .findComponent(ShopMultiSelector)
+      .vm.$emit('update:modelValue', ['shop-a'])
     await flushPromises()
 
-    const parameterFields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })
+    const parameterFields = wrapper.findAllComponents({
+      name: 'AutomationParameterFields',
+    })
     parameterFields[1]!.vm.$emit('update:modelValue', { 页码: 0, 每页数量: 20 })
     await flushPromises()
     expect(wrapper.text()).toContain('恢复继承 · 页码')
@@ -179,5 +259,39 @@ describe('AutomationParameterPresetManagerDialog', () => {
       .vm.$emit('click')
     await flushPromises()
     expect(wrapper.text()).not.toContain('恢复继承 · 页码')
+  })
+
+  it('uses the returned version for consecutive saves even if an older list response arrives', async () => {
+    const initialPreset = {
+      preset_id: 'preset-1',
+      app_id: application.app_id,
+      name: '日常采集',
+      common_parameters: { 页码: 1, 每页数量: 20 },
+      shop_overrides: {},
+      version: 1,
+    }
+    const presets = ref([initialPreset])
+    mocks.presets = { data: presets, isPending: ref(false) }
+    mocks.save
+      .mockResolvedValueOnce({ ...initialPreset, version: 2 })
+      .mockResolvedValueOnce({ ...initialPreset, version: 3 })
+    const wrapper = mountDialog({
+      initialPresetId: initialPreset.preset_id,
+      schema: configuredSchema,
+    })
+    await flushPromises()
+
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+    expect(mocks.save.mock.calls[0]![0].data.expected_version).toBe(1)
+
+    // A stale list must not reset the active editor to version 1.  The
+    // mutation response remains the editor source of truth until the user
+    // explicitly reopens/reloads it.
+    presets.value = [initialPreset]
+    await flushPromises()
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+    expect(mocks.save.mock.calls[1]![0].data.expected_version).toBe(2)
   })
 })

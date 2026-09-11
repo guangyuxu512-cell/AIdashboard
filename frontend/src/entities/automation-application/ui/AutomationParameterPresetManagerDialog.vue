@@ -1,8 +1,18 @@
 <script setup lang="ts">
-import { NForm, NFormItem, useMessage, type SelectOption } from 'naive-ui'
+import {
+  NForm,
+  NFormItem,
+  NTabPane,
+  NTabs,
+  useMessage,
+  type SelectOption,
+} from 'naive-ui'
 import { computed, reactive, ref, watch } from 'vue'
 
-import { ShopMultiSelector, useShopSelectionOptionsQuery } from '@/entities/shop'
+import {
+  ShopMultiSelector,
+  useShopSelectionOptionsQuery,
+} from '@/entities/shop'
 import { toApiError } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
@@ -14,7 +24,6 @@ import type {
 } from '../api/contracts'
 import {
   useAutomationParameterPresetsQuery,
-  useCopyAutomationParameterPresetMutation,
   useSaveAutomationParameterPresetMutation,
 } from '../api/queries'
 import {
@@ -57,10 +66,11 @@ const message = useMessage()
 const presetsQuery = useAutomationParameterPresetsQuery(() => props.appId)
 const shopOptionsQuery = useShopSelectionOptionsQuery()
 const savePreset = useSaveAutomationParameterPresetMutation()
-const copyPreset = useCopyAutomationParameterPresetMutation()
 const selectedPresetId = ref<string | null>(null)
 const overrideShopIds = ref<string[]>([])
-const copyName = ref('')
+const selectedOverrideShopId = ref<string | null>(null)
+const activeTab = ref<'common' | 'shops'>('common')
+const parameterQuery = ref('')
 const saveError = ref<string | null>(null)
 const nameError = ref<string | null>(null)
 const draft = reactive({
@@ -71,26 +81,29 @@ const draft = reactive({
 })
 
 const presets = computed(() => presetsQuery.data.value ?? [])
-const presetOptions = computed(() =>
-  presets.value.map((preset) => ({
-    label: preset.name,
-    value: preset.preset_id,
-  })),
-)
 const applicationOptions = computed<SelectOption[]>(() =>
   props.applicationOptions.map((application) => ({
     label: application.app_name,
     value: application.app_id,
   })),
 )
-const selectedApplication = computed(() =>
-  props.applicationOptions.find((application) => application.app_id === props.appId) ??
-  (props.appId
-    ? { app_id: props.appId, app_name: props.appId }
-    : null),
+const selectedApplication = computed(
+  () =>
+    props.applicationOptions.find(
+      (application) => application.app_id === props.appId,
+    ) ?? (props.appId ? { app_id: props.appId, app_name: props.appId } : null),
 )
 const shopOptions = computed(() => shopOptionsQuery.data.value ?? [])
 const fields = computed(() => mapAutomationParameterFields(props.schema))
+const filteredSchema = computed(() => {
+  const query = parameterQuery.value.trim().toLocaleLowerCase()
+  if (!query) return props.schema
+  return {
+    fields: props.schema.fields.filter((field) =>
+      `${field.label} ${field.name}`.toLocaleLowerCase().includes(query),
+    ),
+  }
+})
 const commonError = computed(() =>
   validateAutomationParameters(props.schema, draft.commonParameters),
 )
@@ -127,7 +140,11 @@ watch(
 )
 
 watch(
-  [() => props.initialPresetId, () => presetsQuery.data.value, () => props.show],
+  [
+    () => props.initialPresetId,
+    () => presetsQuery.data.value,
+    () => props.show,
+  ],
   ([presetId, available, show]) => {
     if (!show || !presetId || !available?.length) return
     const preset = available.find((item) => item.preset_id === presetId)
@@ -135,6 +152,7 @@ watch(
       selectPreset(preset.preset_id)
     }
   },
+  { immediate: true },
 )
 
 watch(
@@ -145,7 +163,10 @@ watch(
     // absent values so the user returns to the same draft instead of losing
     // an explicit `0`, `false`, or empty string.
     draft.commonParameters = {
-      ...createDefaultAutomationParameters(props.schema, draft.commonParameters),
+      ...createDefaultAutomationParameters(
+        props.schema,
+        draft.commonParameters,
+      ),
       ...draft.commonParameters,
     }
   },
@@ -169,7 +190,9 @@ function startCreate(): void {
   draft.shopOverrides = {}
   draft.expectedVersion = null
   overrideShopIds.value = []
-  copyName.value = ''
+  selectedOverrideShopId.value = null
+  activeTab.value = 'common'
+  parameterQuery.value = ''
   saveError.value = null
   nameError.value = null
 }
@@ -181,13 +204,30 @@ function selectPreset(value: unknown): void {
     startCreate()
     return
   }
+  applyPreset(preset)
+}
+
+function applyPreset(
+  preset: AutomationParameterPresetDto,
+  { preserveEditorView = false }: { preserveEditorView?: boolean } = {},
+): void {
+  const previousOverrideShopId = selectedOverrideShopId.value
   selectedPresetId.value = preset.preset_id
   draft.name = preset.name
   draft.commonParameters = { ...preset.common_parameters }
   draft.shopOverrides = cloneOverrides(preset.shop_overrides)
   draft.expectedVersion = preset.version
   overrideShopIds.value = Object.keys(preset.shop_overrides)
-  copyName.value = `${preset.name} 副本`
+  selectedOverrideShopId.value =
+    preserveEditorView &&
+    previousOverrideShopId &&
+    overrideShopIds.value.includes(previousOverrideShopId)
+      ? previousOverrideShopId
+      : (overrideShopIds.value[0] ?? null)
+  if (!preserveEditorView) {
+    activeTab.value = 'common'
+    parameterQuery.value = ''
+  }
   saveError.value = null
   nameError.value = null
 }
@@ -201,12 +241,20 @@ function changeApplication(value: unknown): void {
 function updateOverrideShops(shopIds: string[]): void {
   const allowed = new Set(shopIds)
   draft.shopOverrides = Object.fromEntries(
-    Object.entries(draft.shopOverrides).filter(([shopId]) => allowed.has(shopId)),
+    Object.entries(draft.shopOverrides).filter(([shopId]) =>
+      allowed.has(shopId),
+    ),
   )
   for (const shopId of shopIds) {
     if (!draft.shopOverrides[shopId]) draft.shopOverrides[shopId] = {}
   }
   overrideShopIds.value = [...shopIds]
+  if (
+    !selectedOverrideShopId.value ||
+    !allowed.has(selectedOverrideShopId.value)
+  ) {
+    selectedOverrideShopId.value = shopIds[0] ?? null
+  }
 }
 
 function effectiveShopParameters(shopId: string): Record<string, unknown> {
@@ -226,7 +274,8 @@ function updateShopParameters(
     const name = field.name
     if (next[name] === current[name]) continue
     if (next[name] === draft.commonParameters[name]) delete overrides[name]
-    else if (Object.prototype.hasOwnProperty.call(next, name)) overrides[name] = next[name]
+    else if (Object.prototype.hasOwnProperty.call(next, name))
+      overrides[name] = next[name]
     else delete overrides[name]
   }
   draft.shopOverrides[shopId] = overrides
@@ -242,6 +291,22 @@ function labelForField(name: string): string {
   return fields.value.find((field) => field.name === name)?.label ?? name
 }
 
+function shopName(shopId: string): string {
+  return (
+    shopOptions.value.find((option) => option.value === shopId)?.label ?? shopId
+  )
+}
+
+function overrideSummary(shopId: string): string {
+  const names = Object.keys(draft.shopOverrides[shopId] ?? {})
+  if (!names.length) return '使用公共参数'
+  return `已单独设置：${names.map(labelForField).join('、')}`
+}
+
+function selectOverrideShop(shopId: string): void {
+  selectedOverrideShopId.value = shopId
+}
+
 function clearNameError(): void {
   nameError.value = null
   saveError.value = null
@@ -253,7 +318,37 @@ function applySaveError(error: unknown): void {
     nameError.value = apiError.message
     return
   }
-  saveError.value = apiError.message
+  const unknownParameters = apiError.message.match(/^未知参数:\s*(.+)$/)?.[1]
+  if (unknownParameters) {
+    const names = unknownParameters.split(',').map((name) => name.trim())
+    if (
+      names.some((name) =>
+        Object.prototype.hasOwnProperty.call(draft.commonParameters, name),
+      )
+    ) {
+      activeTab.value = 'common'
+      saveError.value = `公共参数包含服务端已不再定义的字段：${names.join('、')}`
+      return
+    }
+    const matchedShopId = overrideShopIds.value.find((shopId) =>
+      names.some((name) =>
+        Object.prototype.hasOwnProperty.call(
+          draft.shopOverrides[shopId] ?? {},
+          name,
+        ),
+      ),
+    )
+    if (matchedShopId) {
+      activeTab.value = 'shops'
+      selectedOverrideShopId.value = matchedShopId
+      saveError.value = `店铺“${shopName(matchedShopId)}”包含服务端已不再定义的字段：${names.join('、')}`
+      return
+    }
+  }
+  saveError.value =
+    apiError.code === 'AUTOMATION_PARAMETER_PRESET_VERSION_CONFLICT'
+      ? `${apiError.message}。请重新读取后决定是否覆盖。`
+      : apiError.message
 }
 
 async function save(): Promise<void> {
@@ -276,7 +371,7 @@ async function save(): Promise<void> {
             shop_overrides: cloneOverrides(draft.shopOverrides),
           },
     })
-    selectPreset(preset.preset_id)
+    applyPreset(preset, { preserveEditorView: true })
     message.success('参数预设已保存')
     emit('saved', preset)
   } catch (error) {
@@ -284,41 +379,29 @@ async function save(): Promise<void> {
   }
 }
 
-async function copy(): Promise<void> {
-  if (!props.appId || !selectedPresetId.value || !copyName.value.trim()) return
-  saveError.value = null
-  try {
-    const preset = await copyPreset.mutateAsync({
-      appId: props.appId,
-      presetId: selectedPresetId.value,
-      name: copyName.value.trim(),
-    })
-    selectPreset(preset.preset_id)
-    message.success('参数预设已复制')
-    emit('saved', preset)
-  } catch (error) {
-    applySaveError(error)
-  }
-}
-
 function openSchemaConfiguration(): void {
-  if (selectedApplication.value) emit('configureSchema', selectedApplication.value)
+  if (selectedApplication.value)
+    emit('configureSchema', selectedApplication.value)
 }
 </script>
 
 <template>
   <FormDialog
     :show="show"
-    title="管理参数预设"
+    :title="selectedPresetId ? '编辑配置' : '新建配置'"
     size="lg"
-    :submitting="savePreset.isPending.value || copyPreset.isPending.value"
+    :submitting="savePreset.isPending.value"
     :submit-disabled="Boolean(saveDisabledReason)"
     :submit-disabled-reason="saveDisabledReason"
     @update:show="$emit('update:show', $event)"
     @submit="save"
   >
     <NForm label-placement="top" class="preset-manager">
-      <NFormItem v-if="applicationOptions.length" label="影刀应用" required>
+      <NFormItem
+        v-if="applicationOptions.length && !selectedPresetId"
+        label="对应应用"
+        required
+      >
         <AppSelect
           :model-value="appId"
           :options="applicationOptions"
@@ -327,19 +410,8 @@ function openSchemaConfiguration(): void {
           @update:model-value="changeApplication"
         />
       </NFormItem>
-      <NFormItem label="已保存预设">
-        <div class="preset-manager__saved">
-          <AppSelect
-            :model-value="selectedPresetId"
-            :options="presetOptions"
-            :loading="presetsQuery.isPending.value"
-            :disabled="!appId"
-            clearable
-            placeholder="选择预设，或新建"
-            @update:model-value="selectPreset"
-          />
-          <AppButton :disabled="!appId" @click="startCreate">新建</AppButton>
-        </div>
+      <NFormItem v-else-if="selectedApplication" label="对应应用">
+        <AppInput :model-value="selectedApplication.app_name" disabled />
       </NFormItem>
       <NFormItem
         label="预设名称"
@@ -356,12 +428,6 @@ function openSchemaConfiguration(): void {
           @update:model-value="clearNameError"
         />
       </NFormItem>
-      <NFormItem v-if="selectedPresetId" label="复制预设">
-        <div class="preset-manager__saved">
-          <AppInput v-model="copyName" :maxlength="100" placeholder="复制后的名称" />
-          <AppButton :disabled="!copyName.trim()" @click="copy">复制</AppButton>
-        </div>
-      </NFormItem>
 
       <p v-if="saveError" class="preset-manager__error" role="alert">
         保存失败：{{ saveError }}。草稿仍已保留，请修正后重试。
@@ -370,105 +436,146 @@ function openSchemaConfiguration(): void {
         参数定义读取失败：{{ schemaError }}
       </p>
 
-      <section class="preset-manager__section">
-        <div class="preset-manager__section-heading">
-          <div>
-            <h3>应用参数定义</h3>
-            <p v-if="schemaLoading">正在读取参数定义。</p>
-            <p v-else-if="!fields.length">
-              该应用尚未配置参数字段。字段定义由应用共用，预设值彼此独立。
-            </p>
-            <p v-else>当前应用已有 {{ fields.length }} 个共用参数字段。</p>
-          </div>
-          <AppButton
-            v-if="allowSchemaConfiguration"
-            :disabled="!selectedApplication"
-            @click="openSchemaConfiguration"
-          >
-            配置字段
-          </AppButton>
-        </div>
-      </section>
-
-      <section class="preset-manager__section">
-        <h3>公共参数</h3>
-        <AutomationParameterFields
-          v-if="fields.length"
-          v-model="draft.commonParameters"
-          :schema="schema"
-          :disabled="schemaLoading"
-          preserve-empty-string
-        />
-        <p v-else class="preset-manager__hint">
-          请先配置字段；返回后会保留当前预设名称和未保存草稿。
-        </p>
-      </section>
-
-      <section class="preset-manager__section">
-        <h3>店铺参数覆盖</h3>
-        <p>只保存与公共参数不同的字段；恢复继承后会继续使用公共参数。</p>
-        <ShopMultiSelector
-          :model-value="overrideShopIds"
-          :options="shopOptions"
-          :loading="shopOptionsQuery.isPending.value"
-          :disabled="schemaLoading || !appId"
-          @update:model-value="updateOverrideShops"
-        />
-        <section
-          v-for="shopId in overrideShopIds"
-          :key="shopId"
-          class="preset-manager__shop"
-        >
-          <h4>
-            {{ shopOptions.find((option) => option.value === shopId)?.label ?? shopId }}
-          </h4>
-          <p v-if="fields.length" class="preset-manager__hint">
-            本店生效值先继承公共参数；仅已显示“恢复继承”的字段为单独设置。
+      <section class="preset-manager__schema-summary">
+        <div>
+          <p v-if="schemaLoading">正在读取参数定义。</p>
+          <p v-else-if="!fields.length">
+            该应用尚未配置参数字段。字段定义由应用共用，预设值彼此独立。
           </p>
-          <AutomationParameterFields
-            v-if="fields.length"
-            :model-value="effectiveShopParameters(shopId)"
-            :schema="schema"
-            :disabled="schemaLoading"
-            preserve-empty-string
-            @update:model-value="updateShopParameters(shopId, $event)"
-          />
-          <div
-            v-if="Object.keys(draft.shopOverrides[shopId] ?? {}).length"
-            class="preset-manager__overrides"
-          >
-            <AppButton
-              v-for="name in Object.keys(draft.shopOverrides[shopId] ?? {})"
-              :key="name"
-              tone="text"
-              @click="resetShopField(shopId, name)"
-            >
-              恢复继承 · {{ labelForField(name) }}
-            </AppButton>
-          </div>
-        </section>
+          <p v-else>当前应用已有 {{ fields.length }} 个共用参数字段。</p>
+        </div>
+        <AppButton
+          v-if="allowSchemaConfiguration"
+          :disabled="!selectedApplication"
+          @click="openSchemaConfiguration"
+        >
+          管理字段
+        </AppButton>
       </section>
+
+      <NTabs
+        v-model:value="activeTab"
+        type="line"
+        animated
+        class="preset-manager__tabs"
+      >
+        <NTabPane name="common" tab="公共参数">
+          <div class="preset-manager__tab-content">
+            <AppInput
+              v-if="fields.length"
+              v-model="parameterQuery"
+              clearable
+              placeholder="搜索参数"
+            />
+            <AutomationParameterFields
+              v-if="fields.length"
+              v-model="draft.commonParameters"
+              :schema="filteredSchema"
+              :disabled="schemaLoading"
+              preserve-empty-string
+            />
+            <p v-else class="preset-manager__hint">
+              请先配置字段；返回后会保留当前预设名称和未保存草稿。
+            </p>
+          </div>
+        </NTabPane>
+        <NTabPane
+          name="shops"
+          :tab="`店铺差异 ${overrideShopIds.length ? `(${overrideShopIds.length})` : ''}`"
+        >
+          <div class="preset-manager__tab-content">
+            <p class="preset-manager__hint">
+              仅保存与公共参数不同的字段；恢复继承后继续使用公共参数。
+            </p>
+            <ShopMultiSelector
+              :model-value="overrideShopIds"
+              :options="shopOptions"
+              :loading="shopOptionsQuery.isPending.value"
+              :disabled="schemaLoading || !appId"
+              @update:model-value="updateOverrideShops"
+            />
+            <div
+              v-if="overrideShopIds.length"
+              class="preset-manager__shop-list"
+            >
+              <AppButton
+                v-for="shopId in overrideShopIds"
+                :key="shopId"
+                :tone="selectedOverrideShopId === shopId ? 'primary' : 'text'"
+                class="preset-manager__shop-summary"
+                @click="selectOverrideShop(shopId)"
+              >
+                <strong>{{ shopName(shopId) }}</strong>
+                <span>{{ overrideSummary(shopId) }}</span>
+              </AppButton>
+            </div>
+            <section
+              v-if="selectedOverrideShopId"
+              class="preset-manager__shop-editor"
+            >
+              <div class="preset-manager__section-heading">
+                <div>
+                  <h3>{{ shopName(selectedOverrideShopId) }}</h3>
+                  <p class="preset-manager__hint">
+                    {{ overrideSummary(selectedOverrideShopId) }}
+                  </p>
+                </div>
+              </div>
+              <AppInput
+                v-if="fields.length"
+                v-model="parameterQuery"
+                clearable
+                placeholder="搜索参数"
+              />
+              <AutomationParameterFields
+                v-if="fields.length"
+                :model-value="effectiveShopParameters(selectedOverrideShopId)"
+                :schema="filteredSchema"
+                :disabled="schemaLoading"
+                preserve-empty-string
+                @update:model-value="
+                  updateShopParameters(selectedOverrideShopId, $event)
+                "
+              />
+              <div
+                v-if="
+                  Object.keys(draft.shopOverrides[selectedOverrideShopId] ?? {})
+                    .length
+                "
+                class="preset-manager__overrides"
+              >
+                <AppButton
+                  v-for="name in Object.keys(
+                    draft.shopOverrides[selectedOverrideShopId] ?? {},
+                  )"
+                  :key="name"
+                  tone="text"
+                  @click="resetShopField(selectedOverrideShopId, name)"
+                >
+                  恢复继承 · {{ labelForField(name) }}
+                </AppButton>
+              </div>
+            </section>
+          </div>
+        </NTabPane>
+      </NTabs>
     </NForm>
   </FormDialog>
 </template>
 
 <style scoped>
 .preset-manager,
-.preset-manager__section {
+.preset-manager__tab-content,
+.preset-manager__shop-editor {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-3);
 }
 
-.preset-manager__section {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.preset-manager__section h3,
-.preset-manager__shop h4,
-.preset-manager__section p {
+.preset-manager__schema-summary p,
+.preset-manager__section-heading h3,
+.preset-manager__section-heading p {
   margin: 0;
 }
 
@@ -477,8 +584,8 @@ function openSchemaConfiguration(): void {
   color: var(--text-secondary);
 }
 
+.preset-manager__schema-summary,
 .preset-manager__section-heading,
-.preset-manager__saved,
 .preset-manager__overrides {
   display: flex;
   min-width: 0;
@@ -486,21 +593,48 @@ function openSchemaConfiguration(): void {
   gap: var(--space-2);
 }
 
-.preset-manager__section-heading {
-  align-items: flex-start;
+.preset-manager__schema-summary {
   justify-content: space-between;
 }
 
-.preset-manager__saved > :first-child {
-  min-width: 0;
-  flex: 1;
+.preset-manager__section-heading {
+  align-items: flex-start;
 }
 
 .preset-manager__overrides {
   flex-wrap: wrap;
 }
 
-.preset-manager__shop {
+.preset-manager__tabs {
+  min-width: 0;
+}
+
+.preset-manager__tab-content {
+  padding-top: var(--space-2);
+}
+
+.preset-manager__shop-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.preset-manager__shop-summary {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  overflow: hidden;
+  text-align: left;
+}
+
+.preset-manager__shop-summary span {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-manager__shop-editor {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
