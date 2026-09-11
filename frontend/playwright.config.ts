@@ -7,7 +7,6 @@ const frontendPort = process.env.PLAYWRIGHT_FRONTEND_PORT ?? '4173'
 const productionTestFiles = ['**/production/**']
 const realTestFiles = [
   '**/auth-real.spec.ts',
-  '**/parameter-presets-real-api.spec.ts',
   '**/real-api.spec.ts',
   '**/ai-workbench-real-api.spec.ts',
   '**/ai-workbench-real-backend.spec.ts',

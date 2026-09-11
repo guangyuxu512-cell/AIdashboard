@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -28,12 +28,6 @@ router = APIRouter(
     },
 )
 
-management_router = APIRouter(
-    prefix="/api/v1/automation-parameter-presets",
-    tags=["automation-parameter-presets"],
-    responses=COMMON_ERROR_RESPONSES,
-)
-
 
 get_device_authorized_actor = require_module_access(ModuleCode.DEVICE)
 
@@ -42,20 +36,6 @@ def get_service(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> AutomationParameterPresetService:
     return AutomationParameterPresetService(session)
-
-
-@management_router.get("", response_model=list[AutomationParameterPresetRead])
-def list_all_presets(
-    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
-    service: Annotated[AutomationParameterPresetService, Depends(get_service)],
-    app_id: str | None = Query(default=None, min_length=1, max_length=200),
-    q: str | None = Query(default=None, min_length=1, max_length=100),
-) -> list[AutomationParameterPresetRead]:
-    return service.list_all(
-        actor=actor,
-        app_id=app_id,
-        name_query=q.strip() if q is not None else None,
-    )
 
 
 @router.get("", response_model=list[AutomationParameterPresetRead])

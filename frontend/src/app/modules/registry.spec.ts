@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  getModuleAccessCode,
   getModuleAccessOptions,
   getNavigationEntries,
   getNavigationModules,
@@ -19,7 +18,6 @@ describe('Module Registry Lite', () => {
       'device',
       'task',
       'schedule',
-      'parameter-preset',
       'settings',
     ])
   })
@@ -36,7 +34,6 @@ describe('Module Registry Lite', () => {
       'device',
       'task',
       'schedule',
-      'parameter-preset',
       'settings',
     ])
     expect(
@@ -51,7 +48,6 @@ describe('Module Registry Lite', () => {
       'device',
       'task',
       'schedule',
-      'parameter-preset',
       'settings',
     ])
   })
@@ -70,7 +66,7 @@ describe('Module Registry Lite', () => {
       automation?.type === 'group'
         ? automation.children.map((module) => module.moduleCode)
         : [],
-    ).toEqual(['device', 'task', 'schedule', 'parameter-preset'])
+    ).toEqual(['device', 'task', 'schedule'])
     expect(
       MODULE_REGISTRY.some(
         (module) => (module.routePath as string) === '/automation',
@@ -107,23 +103,8 @@ describe('Module Registry Lite', () => {
       device: null,
       task: null,
       schedule: null,
-      'parameter-preset': null,
       settings: null,
     })
-  })
-
-  it('uses the existing Device permission for the distinct parameter preset route', () => {
-    const parameterPreset = MODULE_REGISTRY.find(
-      (module) => module.moduleCode === 'parameter-preset',
-    )!
-
-    expect(parameterPreset.accessModuleCode).toBe('device')
-    expect(getModuleAccessCode(parameterPreset)).toBe('device')
-    expect(
-      getNavigationModules(MODULE_REGISTRY, {
-        allowedModuleCodes: new Set(['device']),
-      }).map((module) => module.moduleCode),
-    ).toEqual(['device', 'parameter-preset'])
   })
 
   it('derives personnel module authorization choices and navigation from the same registry', () => {

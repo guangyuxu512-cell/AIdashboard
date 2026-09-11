@@ -11,12 +11,8 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.automation_apps.schemas import (
     AutomationApplicationConfigRead,
     AutomationApplicationConfigUpsert,
-    YingdaoApplicationOptionRead,
 )
-from app.modules.automation_apps.service import (
-    AutomationApplicationCatalogService,
-    AutomationApplicationConfigService,
-)
+from app.modules.automation_apps.service import AutomationApplicationConfigService
 
 
 router = APIRouter(
@@ -33,26 +29,6 @@ def get_service(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> AutomationApplicationConfigService:
     return AutomationApplicationConfigService(session)
-
-
-def get_catalog_service(
-    session: Annotated[Session, Depends(get_database_session)],
-) -> AutomationApplicationCatalogService:
-    return AutomationApplicationCatalogService(session)
-
-
-@router.get(
-    "/yingdao/applications",
-    response_model=list[YingdaoApplicationOptionRead],
-)
-def list_yingdao_applications(
-    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
-    service: Annotated[
-        AutomationApplicationCatalogService,
-        Depends(get_catalog_service),
-    ],
-) -> list[YingdaoApplicationOptionRead]:
-    return service.list_yingdao_application_options(actor=actor)
 
 
 @router.get(

@@ -223,36 +223,6 @@ def test_yingdao_claim_params_preserve_unicode_key_and_json_looking_text(
     assert adapter.requests[0].params == {"商品列表": '{"page":1}'}
 
 
-def test_rpa_executor_preserves_materialized_preset_envelope_for_selected_shops(
-    tmp_path: Path,
-) -> None:
-    """The Worker receives the Backend snapshot unchanged and writes it once.
-
-    Backend integration covers Task creation and Claim.  This executor regression
-    covers the next boundary: the claimed, already-materialized envelope must
-    remain intact in the fixed Local Input Bridge file and in the single
-    Yingdao execution request.  The Worker must never re-merge per-shop values.
-    """
-    adapter = FakeYingdaoAdapter(discovery=discovery())
-    executor = make_executor(tmp_path, adapter)
-    envelope = {
-        "格式版本": 1,
-        "公共参数": {"页码": 1, "每页数量": 20, "启用": False},
-        "店铺参数": {
-            "shop-a": {"页码": 2, "每页数量": 20, "启用": False},
-            "shop-b": {"页码": 3, "每页数量": 20, "启用": False},
-        },
-    }
-
-    result = run(executor, make_task(params=envelope, accounts=[make_account()]))
-
-    assert result.status is ExecutionStatus.SUCCESS
-    local_params = tmp_path / "local-input" / "params.json"
-    assert json.loads(local_params.read_text("utf-8")) == envelope
-    assert adapter.requests[0].params == envelope
-    assert not list(local_params.parent.glob(".*.tmp"))
-
-
 def test_rpa_provider_unavailable_finishes_failed(tmp_path: Path) -> None:
     adapter = FakeYingdaoAdapter(discovery=discovery(available=False))
     task = make_task()

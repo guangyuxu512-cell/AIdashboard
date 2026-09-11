@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -49,22 +47,6 @@ class DeviceRepository:
             self.session.scalar(statement)
             or 0
         )
-
-    def list_all_for_actor(self, *, actor: ActorContext) -> list[Device]:
-        """Return only devices already visible to the current human actor.
-
-        Small option/catalog read models need the complete visible set rather
-        than a management-page slice.  Callers still must decide which device
-        facts, if any, may be exposed in their own response contract.
-        """
-
-        statement = DataScopePolicy.apply(
-            select(Device).where(Device.deleted_at.is_(None)),
-            team_id_column=Device.team_id,
-            created_by_user_id_column=Device.created_by_user_id,
-            actor=actor,
-        )
-        return list(self.session.scalars(statement.order_by(Device.device_id.asc())))
 
     def get(self, device_id: UUID) -> Device | None:
         """Internal lookup for legacy services outside the Human access plane."""

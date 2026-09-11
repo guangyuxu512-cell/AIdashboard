@@ -176,9 +176,6 @@ Descriptor 固定包含
 
 - `GET /api/v1/automation-app-configs/{provider_code}/{app_id}`：读取应用参数配置，未配置返回 null。
 - `PUT /api/v1/automation-app-configs/{provider_code}/{app_id}`：保存手工参数 Schema。
-- `GET /api/v1/automation-app-configs/yingdao/applications`：返回当前 ActorContext Team 已可见 Device 的
-  Provider Inventory 中去重后的 `{app_id, app_name}` 选项；不返回 Device、影刀账号、店铺或 Credential
-  事实。
 
 当前 provider 仅允许 `yingdao`。字段类型为 text/number/boolean/select；Backend 校验字段名、
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
@@ -200,12 +197,6 @@ text/number/boolean/select 类型。
 `/api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets` 的 list/create/read/update/copy
 路由。预设只归属于创建时的 ActorContext Team；服务端在列表、详情、修改、复制和运行取快照时均再次
 确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
-
-参数配置库使用 `GET /api/v1/automation-parameter-presets` 查询当前 Team 预设；可选 `app_id` 与
-`q`（名称）过滤在服务端的 ActorContext / DataScope 查询边界完成。该管理列表仍逐项限制为当前
-Team，即使 Actor 在其他资源具备 `ALL` scope 也不返回其他 Team 的预设。上述两类读取路由继续使用
-既有 `device` 模块 Guard；预设路由还保留现有 `shop` 模块 Guard。它们不建立 Shop Team Ownership，
-也不改变 Task/Schedule 创建时对目标 Device、Binding、启用状态和 Credential 的正式校验。
 
 每个预设保存 `name`、`common_parameters`、以 `shop_id` 为键的 `shop_overrides` 和递增 `version`。更新必须
 携带当前 Read DTO 的 `expected_version`；版本不一致返回 `409 / AUTOMATION_PARAMETER_PRESET_VERSION_CONFLICT`，

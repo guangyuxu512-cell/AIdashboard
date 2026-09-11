@@ -12,9 +12,6 @@ from app.modules.access.enums import DataScope
 from app.modules.automation_apps.api import (
     get_device_authorized_actor as get_automation_device_authorized_actor,
 )
-from app.modules.automation_apps.api import (
-    get_catalog_service as get_automation_catalog_service,
-)
 from app.modules.automation_apps.api import get_service as get_automation_service
 from app.modules.automation_apps.schemas import (
     AutomationApplicationConfigRead,
@@ -23,7 +20,6 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetCreate,
     AutomationParameterPresetRead,
     AutomationParameterPresetUpdate,
-    YingdaoApplicationOptionRead,
 )
 from app.modules.automation_apps.presets_api import (
     get_device_authorized_actor as get_parameter_preset_authorized_actor,
@@ -293,21 +289,6 @@ class ApiAutomationApplicationConfigService:
         )
 
 
-class ApiAutomationApplicationCatalogService:
-    def list_yingdao_application_options(
-        self,
-        *,
-        actor: ActorContext,
-    ) -> list[YingdaoApplicationOptionRead]:
-        assert actor == API_ACTOR
-        return [
-            YingdaoApplicationOptionRead(
-                app_id="preset-api-app",
-                app_name="参数预设测试应用",
-            ),
-        ]
-
-
 class ApiAutomationParameterPresetService:
     preset_id = uuid4()
     last_create: AutomationParameterPresetCreate | None = None
@@ -336,18 +317,6 @@ class ApiAutomationParameterPresetService:
     ) -> list[AutomationParameterPresetRead]:
         del actor
         return [self.read(app_id=app_id, name="默认预设")]
-
-    def list_all(
-        self,
-        *,
-        actor: ActorContext,
-        app_id: str | None = None,
-        name_query: str | None = None,
-    ) -> list[AutomationParameterPresetRead]:
-        assert actor == API_ACTOR
-        app = app_id or "preset-api-app"
-        name = "日常采集" if name_query else "默认预设"
-        return [self.read(app_id=app, name=name)]
 
     def create(
         self,
@@ -584,9 +553,6 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[
         get_automation_service
     ] = ApiAutomationApplicationConfigService
-    application.dependency_overrides[
-        get_automation_catalog_service
-    ] = ApiAutomationApplicationCatalogService
     application.dependency_overrides[
         get_parameter_preset_service
     ] = ApiAutomationParameterPresetService
@@ -1004,26 +970,6 @@ def test_automation_parameter_preset_api_contract() -> None:
     assert update_response.json()["name"] == "店铺覆盖（已更新）"
     assert copy_response.status_code == 201
     assert copy_response.json()["name"] == "店铺覆盖副本"
-
-
-def test_automation_parameter_preset_management_catalog_contract() -> None:
-    applications_response = request(
-        "GET",
-        "/api/v1/automation-app-configs/yingdao/applications",
-    )
-    presets_response = request(
-        "GET",
-        "/api/v1/automation-parameter-presets",
-        params={"app_id": "preset-api-app", "q": "日常"},
-    )
-
-    assert applications_response.status_code == 200
-    assert applications_response.json() == [
-        {"app_id": "preset-api-app", "app_name": "参数预设测试应用"},
-    ]
-    assert presets_response.status_code == 200
-    assert presets_response.json()[0]["app_id"] == "preset-api-app"
-    assert presets_response.json()[0]["name"] == "日常采集"
 
 
 def test_automation_application_config_api_rejects_duplicate_or_invalid_names() -> None:

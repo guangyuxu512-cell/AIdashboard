@@ -4,43 +4,15 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { automationApplicationApi } from './automation-application-api'
 import type {
   AutomationApplicationConfigUpsertDto,
-  AutomationParameterPresetListParams,
   AutomationParameterPresetSaveDto,
   AutomationParameterPresetUpdateDto,
 } from './contracts'
 
 export const automationApplicationQueryKeys = {
-  allPresets: ['automation-parameter-presets'] as const,
-  presetManagementList: (params: AutomationParameterPresetListParams) =>
-    [
-      ...automationApplicationQueryKeys.allPresets,
-      'list',
-      params.appId ?? null,
-      params.query?.trim() || null,
-    ] as const,
-  yingdaoApplications: ['automation-app-configs', 'yingdao', 'applications'] as const,
   detail: (appId: string | null) =>
     ['automation-app-configs', 'yingdao', appId] as const,
   presets: (appId: string | null) =>
     ['automation-app-configs', 'yingdao', appId, 'parameter-presets'] as const,
-}
-
-export function useYingdaoApplicationOptionsQuery() {
-  return useQuery({
-    queryKey: automationApplicationQueryKeys.yingdaoApplications,
-    queryFn: () => automationApplicationApi.listYingdaoApplications(),
-  })
-}
-
-export function useAutomationParameterPresetManagementQuery(
-  params: MaybeRefOrGetter<AutomationParameterPresetListParams>,
-) {
-  return useQuery({
-    queryKey: computed(() =>
-      automationApplicationQueryKeys.presetManagementList(toValue(params)),
-    ),
-    queryFn: () => automationApplicationApi.listAllPresets(toValue(params)),
-  })
 }
 
 export function useAutomationParameterPresetsQuery(
@@ -78,14 +50,9 @@ export function useSaveAutomationParameterPresetMutation() {
           )
         : automationApplicationApi.createPreset(appId, data),
     onSuccess: (_, variables) =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.presets(variables.appId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.allPresets,
-        }),
-      ]),
+      queryClient.invalidateQueries({
+        queryKey: automationApplicationQueryKeys.presets(variables.appId),
+      }),
   })
 }
 
@@ -102,14 +69,9 @@ export function useCopyAutomationParameterPresetMutation() {
       name: string
     }) => automationApplicationApi.copyPreset(appId, presetId, name),
     onSuccess: (_, variables) =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.presets(variables.appId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: automationApplicationQueryKeys.allPresets,
-        }),
-      ]),
+      queryClient.invalidateQueries({
+        queryKey: automationApplicationQueryKeys.presets(variables.appId),
+      }),
   })
 }
 
