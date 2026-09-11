@@ -32,6 +32,7 @@ from app.modules.ai_workbench.exceptions import (
 )
 from app.modules.ai_workbench.generation_service import (
     GenerationService,
+    NORMAL_BATCH_PRODUCT_FIDELITY_GUARD,
     derive_generation_job_status,
     generation_counts,
     generation_input_summary,
@@ -235,7 +236,12 @@ class FakeGenerationRepository:
             None,
         )
 
-    def next_item_id_for_provider_execution(self) -> UUID | None:
+    def next_item_id_for_provider_execution(
+        self,
+        *,
+        exclude_generation_item_ids: Sequence[UUID] = (),
+    ) -> UUID | None:
+        excluded = set(exclude_generation_item_ids)
         return next(
             (
                 item.generation_item_id
@@ -246,6 +252,7 @@ class FakeGenerationRepository:
                     GenerationItemStatus.PENDING.value,
                     GenerationItemStatus.RUNNING.value,
                 }
+                and item.generation_item_id not in excluded
             ),
             None,
         )
@@ -984,6 +991,58 @@ def test_batch_plan_uses_frozen_templates_roles_and_ordered_asset_relations() ->
     )
 
 
+def test_normal_batch_freezes_product_fidelity_guard_without_changing_style_or_instant() -> None:
+    service, _, templates, materials, assets, _ = make_service()
+    current_actor = actor()
+    product = add_material_group(
+        materials,
+        current_actor=current_actor,
+        mode=GenerationMode.NORMAL_GENERATION,
+    )
+    product_source = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    style_reference = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    attach(product, product_source, MaterialRole.PRODUCT_SOURCE)
+    attach(product, style_reference, MaterialRole.STYLE_REFERENCE)
+    template_group = add_template_group(
+        templates,
+        current_actor=current_actor,
+        mode=GenerationMode.NORMAL_GENERATION,
+    )
+    prompt = add_prompt(template_group, role=OutputRole.MAIN_IMAGE, count=1)
+    prompt.prompt = "静态创意说明：将产品放在窗边。"
+    product.template_bindings.append(
+        MaterialGroupTemplateBinding(
+            material_group_id=product.material_group_id,
+            template_group_id=template_group.template_group_id,
+            generation_mode=GenerationMode.NORMAL_GENERATION.value,
+            position=0,
+        ),
+    )
+
+    job = service.submit(
+        current_actor,
+        BatchGenerationSubmit(
+            work_mode=GenerationWorkMode.BATCH,
+            submission_key="normal-product-fidelity",
+            model_id=MODEL_ID,
+            mode=GenerationMode.NORMAL_GENERATION,
+            product_scope="SELECTED",  # type: ignore[arg-type]
+            selected_product_ids=[product.material_group_id],
+            template_source="PRODUCT_CONFIGURED",  # type: ignore[arg-type]
+            output_range="MAIN_IMAGE",  # type: ignore[arg-type]
+        ),
+    )
+
+    item = job.items[0]
+    assert item.final_prompt == (
+        f"{prompt.prompt}\n\n{NORMAL_BATCH_PRODUCT_FIDELITY_GUARD}"
+    )
+    assert [link.input_role for link in item.input_assets] == [
+        MaterialRole.PRODUCT_SOURCE.value,
+    ]
+    assert item.input_assets[0].asset_id == product_source.asset_id
+
+
 def test_batch_submit_requires_at_least_one_executable_item() -> None:
     service, generations, _, materials, _, session = make_service()
     current_actor = actor()
@@ -1244,6 +1303,55 @@ def test_retry_rejects_unknown_provider_create_outcome_without_mutation() -> Non
     assert unchanged.status == GenerationItemStatus.FAILED.value
     assert unchanged.attempt_count == 1
     assert unchanged.last_failure_code == ProviderCreateOutcomeUnknownError.code
+
+
+@pytest.mark.parametrize(
+    "failure_code",
+    ["PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE", "PROVIDER_UNAVAILABLE", "OUTPUT_PERSISTENCE_FAILED"],
+)
+def test_retry_known_remote_result_keeps_external_task_without_new_create(
+    failure_code: str,
+) -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    product = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    job = service.submit(
+        current_actor,
+        instant_data(product.asset_id, key=f"recover-{failure_code}", count=1),
+    )
+    item = job.items[0]
+    item.status = GenerationItemStatus.FAILED.value
+    item.last_failure_code = failure_code
+    item.last_failure_message = "远端结果待恢复"
+    item.provider_execution = GenerationProviderExecution(
+        generation_item_id=item.generation_item_id,
+        provider_code="toapis",
+        external_task_id="known-remote-task",
+        attempt_count=item.attempt_count,
+    )
+
+    retried = service.retry_failed_items(
+        current_actor,
+        job.generation_job_id,
+        GenerationRetryRequest.model_validate(
+            {
+                "items": [
+                    {
+                        "item_id": str(item.generation_item_id),
+                        "expected_attempt_count": item.attempt_count,
+                    },
+                ],
+            },
+        ),
+    )
+
+    retried_item = retried.items[0]
+    assert retried_item.status == GenerationItemStatus.PENDING.value
+    assert retried_item.attempt_count == 1
+    snapshot = service.prepare_next_provider_execution()
+    assert snapshot is not None
+    assert snapshot.external_task_id == "known-remote-task"
+    assert snapshot.provider_task_create_required is False
 
 
 def test_disabled_model_does_not_change_accepted_job_retry_or_execution() -> None:

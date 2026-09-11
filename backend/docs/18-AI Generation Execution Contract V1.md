@@ -144,9 +144,10 @@ PromptTemplate 来源标识，也不继承该模板的 Role。
 “产品已配置”在提交时解析现有 Binding；“本次显式选择”只属于该 Job，不创建、替换或删除正式
 `MaterialGroupTemplateBinding`。
 
-批量 Item 的 `final_prompt` 直接等于对应 `PromptTemplate.prompt` 的 Literal Text；不拼接额外 Prompt，
-不读取或解析 `PromptTemplate.variables`。批量 Item 的 `output_role` 继承对应 PromptTemplate 的
-`MAIN_IMAGE / DETAIL_IMAGE`。
+批量 `STYLE_REPLICATION` Item 的 `final_prompt` 直接等于对应 `PromptTemplate.prompt` 的 Literal Text。
+批量 `NORMAL_GENERATION` 只在冻结该 Literal Text 后追加一次固定的产品保真 Guard；它不读取、解析或替换
+`PromptTemplate.variables`，也不建立旧工具的 `product.json` 变量或负提示词语法。批量 Item 的 `output_role`
+继承对应 PromptTemplate 的 `MAIN_IMAGE / DETAIL_IMAGE`。
 
 Backend 必须以提交时数据库事实重新执行计划校验，不能信任 Frontend Preflight 的数量、Enabled、Binding、
 Asset Role 或 Item 列表。Frontend Preflight Skip 与 Runtime Item Failure 是不同语义：被跳过的 Product
@@ -530,6 +531,8 @@ Provider、输出校验、Storage 或归档失败发生在 Job 已返回之后�
 
 Provider Execution 已存在但当前 Attempt 的 External Task ID 为空时，以
 `PROVIDER_CREATE_OUTCOME_UNKNOWN` 记录安全失败摘要；恢复与标准 Retry 均不得再次调用 Provider Create。
+相反，当前 Attempt 已持久化 External Task ID，且失败发生在结果轮询、下载或输出 Asset 持久化时，Retry
+保留该 Attempt 与 Task ID，只恢复结果读取/持久化，绝不重新 Create。
 
 完整 Stack Trace、认证 Header、Secret、Provider 原始请求/响应和敏感图片 Payload 只允许进入受控内部日志，
 不进入公开 DTO 或业务表。本文不建设新的 Logging/Audit 系统。
@@ -581,8 +584,11 @@ Device Skill。两类执行面只共享正式 Access、Asset、HTTP、错误与�
 
 - V1 不支持 Prompt 变量、缺值解析、替换、转义或 Template Engine。
 - 即时请求 `prompt` 是完整 `final_prompt`。
-- 批量 Item 的 `final_prompt` 直接等于对应 `PromptTemplate.prompt`。
-- 不自动拼接模板 Prompt、请求 Prompt 或第二份 Prompt。
+- 批量 `STYLE_REPLICATION` Item 的 `final_prompt` 直接等于对应 `PromptTemplate.prompt`。
+- 批量 `NORMAL_GENERATION` Item 在冻结模板文本后，唯一追加固定的产品保真 Guard：输入产品原图是产品外观
+  的唯一事实来源；创意描述冲突时必须保留颜色、材质、纹理、结构、比例、功能和可见细节，不得替换、改色、
+  改材质、改结构或变形产品。
+- 除上述固定 Guard 外，不自动拼接模板 Prompt、请求 Prompt 或第二份 Prompt。
 
 ### D3. Output Role
 

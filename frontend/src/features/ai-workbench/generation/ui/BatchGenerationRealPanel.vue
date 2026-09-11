@@ -5,7 +5,11 @@ import { useMessage } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
-import { fetchAssetContent } from '@/entities/asset/api/asset-api'
+import {
+  AssetDownloadStatusBar,
+  formatAssetDownloadFailure,
+  useAssetDownloadQueue,
+} from '@/entities/asset'
 import {
   aiWorkbenchApi,
   aiWorkbenchQueryKeys,
@@ -54,6 +58,7 @@ const props = defineProps<{
 
 const message = useMessage()
 const queryClient = useQueryClient()
+const downloads = useAssetDownloadQueue()
 const sessionStore = useAiWorkbenchSessionStore()
 const {
   batchMode: mode,
@@ -386,30 +391,38 @@ function clearCurrentTask(): void {
   message.success('已清空当前批量生成')
 }
 
-async function downloadResult(
-  result: NonNullable<
-    typeof execution.value
-  >['products'][number]['templateGroups'][number]['templates'][number]['results'][number],
-): Promise<void> {
-  if (!result.previewUrl) return
-  const blob = await fetchAssetContent(result.previewUrl)
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = result.name ?? 'generation.png'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
+type DownloadableBatchResult = NonNullable<
+  typeof execution.value
+>['products'][number]['templateGroups'][number]['templates'][number]['results'][number]
+
+function beginDownload(results: readonly DownloadableBatchResult[]): void {
+  if (downloads.isDownloading.value) return
+  const requests = results.flatMap((result) =>
+    result.previewUrl
+      ? [
+          {
+            id: result.id,
+            contentUrl: result.previewUrl,
+            filename: result.name ?? 'generation.png',
+          },
+        ]
+      : [],
+  )
+  void downloads.start(requests).then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)
+    if (summary.failed) {
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    }
+  })
 }
 
 function downloadTemplate(template: BatchTemplateExecutionView): void {
   const results = template.results.filter(
     (result) => result.status === 'SUCCESS' && result.previewUrl,
   )
-  void Promise.all(results.map(downloadResult))
-    .then(() => message.success(`已开始下载 ${results.length} 张图片`))
-    .catch((error) => message.error(getErrorMessage(error)))
+  beginDownload(results)
 }
 
 function downloadAll(): void {
@@ -423,9 +436,18 @@ function downloadAll(): void {
         ),
       ),
     ) ?? []
-  void Promise.all(results.map(downloadResult))
-    .then(() => message.success(`已开始下载 ${results.length} 张图片`))
-    .catch((error) => message.error(getErrorMessage(error)))
+  beginDownload(results)
+}
+
+function retryFailedDownloads(): void {
+  void downloads.retryFailed().then((summary) => {
+    if (!summary) return
+    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 张图片`)
+    if (summary.failed) {
+      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
+    }
+  })
 }
 
 function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
@@ -655,6 +677,13 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
           @download-all="downloadAll"
           @download-template="downloadTemplate"
           @retry="retryTemplate"
+        />
+        <AssetDownloadStatusBar
+          :is-downloading="downloads.isDownloading.value"
+          :progress-label="downloads.progressLabel.value"
+          :failed-count="downloads.failedRequests.value.length"
+          @cancel="downloads.cancel"
+          @retry-failed="retryFailedDownloads"
         />
       </div>
     </template>
