@@ -28,10 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无（`FREE`）。
+当前活跃 Migration Slot：`feat/ai-workbench-input-preview-output-v1`（`reserved`）。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/ai-workbench-input-preview-output-v1` / 0106 | `reserved` | `GenerationJob` 增加每任务输出压缩策略快照（boolean、默认 `false`）；提交后不可变，并在 retry/recovery 保持；不新增 Provider Payload/Table、Queue 或 Worker | `20260911_0034_automation_parameter_presets_v1` | `20260912_0035_ai_generation_output_compression_v1` | Feature DB 先从空库执行既有 `upgrade head` 至 0034；Feature Owner 负责验证 `0034 → 0035 → 0034 → 0035`、提交后不可变及 retry/recovery 保留策略；失败则拒绝 Slot，不在 dev 修补 |
 
 最近释放记录：
 
