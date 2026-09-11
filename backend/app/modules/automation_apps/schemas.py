@@ -1,10 +1,20 @@
 import re
+import unicodedata
+from collections import Counter
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 
 class AutomationInputType(StrEnum):
@@ -14,11 +24,14 @@ class AutomationInputType(StrEnum):
     SELECT = "select"
 
 
+_PARAMETER_NAME_PATTERN = re.compile(r"[\w.-]+\Z")
+
+
 class AutomationInputField(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=1, max_length=100)
-    label: str = Field(min_length=1, max_length=100)
+    label: str = Field(default="", max_length=100)
     type: AutomationInputType
     required: bool = False
     default_value: Any = None
@@ -27,12 +40,16 @@ class AutomationInputField(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", value) is None:
-            raise ValueError("参数名只能包含字母、数字、下划线、点和连字符")
+        if any(unicodedata.category(character).startswith("C") for character in value):
+            raise ValueError("参数名不能包含控制字符")
+        if _PARAMETER_NAME_PATTERN.fullmatch(value) is None:
+            raise ValueError("参数名只能包含 Unicode 字母、数字、下划线、点和连字符")
         return value
 
     @model_validator(mode="after")
     def validate_type_contract(self) -> "AutomationInputField":
+        if not self.label:
+            self.label = self.name
         if self.type is AutomationInputType.SELECT:
             if (
                 not self.options
@@ -52,12 +69,29 @@ class AutomationInputSchema(BaseModel):
 
     fields: list[AutomationInputField] = Field(default_factory=list, max_length=100)
 
-    @model_validator(mode="after")
-    def unique_names(self) -> "AutomationInputSchema":
-        names = [field.name for field in self.fields]
-        if len(names) != len(set(names)):
-            raise ValueError("参数名不能重复")
-        return self
+    @field_validator("fields")
+    @classmethod
+    def unique_names(
+        cls,
+        fields: list[AutomationInputField],
+    ) -> list[AutomationInputField]:
+        duplicate_names = {
+            name
+            for name, count in Counter(field.name for field in fields).items()
+            if count > 1
+        }
+        duplicate_errors = [
+            {
+                "type": PydanticCustomError("value_error", "参数名不能重复"),
+                "loc": (index, "name"),
+                "input": field.name,
+            }
+            for index, field in enumerate(fields)
+            if field.name in duplicate_names
+        ]
+        if duplicate_errors:
+            raise ValidationError.from_exception_data(cls.__name__, duplicate_errors)
+        return fields
 
 
 class AutomationApplicationConfigUpsert(BaseModel):

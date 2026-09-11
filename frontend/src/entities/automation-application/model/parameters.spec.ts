@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createDefaultAutomationParameters,
+  mapAutomationParameterFields,
   validateAutomationParameters,
 } from './parameters'
 
@@ -45,5 +46,43 @@ describe('validateAutomationParameters', () => {
     expect(
       validateAutomationParameters(schema, { keyword: '商品', count: '2' }),
     ).toBe('数量的参数类型不正确')
+  })
+
+  it('falls back to the Unicode parameter name when a legacy DTO has no label', () => {
+    const fields = mapAutomationParameterFields({
+      fields: [
+        {
+          name: '商品列表',
+          label: '',
+          type: 'text',
+          required: true,
+          default_value: '{"page":1}',
+          options: [],
+        },
+      ],
+    })
+
+    expect(fields[0]).toMatchObject({
+      name: '商品列表',
+      label: '商品列表',
+      defaultValue: '{"page":1}',
+    })
+    expect(
+      validateAutomationParameters(
+        {
+          fields: [
+            {
+              name: '商品列表',
+              label: '',
+              type: 'text',
+              required: true,
+              default_value: null,
+              options: [],
+            },
+          ],
+        },
+        {},
+      ),
+    ).toBe('请填写商品列表')
   })
 })

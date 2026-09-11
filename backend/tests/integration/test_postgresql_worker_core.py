@@ -583,11 +583,11 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                         "input_schema": {
                             "fields": [
                                 {
-                                    "name": "message",
-                                    "label": "测试消息",
+                                    "name": "商品列表",
+                                    "label": "",
                                     "type": "text",
                                     "required": True,
-                                    "default_value": "hello",
+                                    "default_value": '{"page":1}',
                                     "options": [],
                                 },
                             ],
@@ -596,6 +596,48 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                 ),
             )
             assert config_service.get("yingdao", app_id) == saved
+            assert saved.input_schema.fields[0].label == "商品列表"
+            assert saved.default_values == {"商品列表": '{"page":1}'}
+            updated = config_service.upsert(
+                "yingdao",
+                app_id,
+                AutomationApplicationConfigUpsert.model_validate(
+                    {
+                        "input_schema": {
+                            "fields": [
+                                {
+                                    "name": "商品列表",
+                                    "label": "商品列表说明",
+                                    "type": "text",
+                                    "required": True,
+                                    "default_value": '{"page":1}',
+                                    "options": [],
+                                },
+                            ],
+                        },
+                    },
+                ),
+            )
+            assert updated.version == saved.version + 1
+            assert config_service.get("yingdao", app_id) == updated
+            with pytest.raises(ValueError):
+                AutomationApplicationConfigUpsert.model_validate(
+                    {
+                        "input_schema": {
+                            "fields": [
+                                {
+                                    "name": "商品列表",
+                                    "label": "商品列表说明",
+                                    "type": "text",
+                                    "required": True,
+                                    "default_value": {"page": 1},
+                                    "options": [],
+                                },
+                            ],
+                        },
+                    },
+                )
+            assert config_service.get("yingdao", app_id) == updated
 
             task_service = TaskService(session)
             task = task_service.create(
@@ -606,7 +648,10 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                 ),
                 actor,
             )
-            assert task.input_json == {"app_id": app_id, "params": {"message": "hello"}}
+            assert task.input_json == {
+                "app_id": app_id,
+                "params": {"商品列表": '{"page":1}'},
+            }
             assert task.execution_display_name == "Worker闭环测试"
             inventory_record = session.scalar(
                 select(DeviceProviderInventory).where(
@@ -627,7 +672,12 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
             session.refresh(task)
             assert task.execution_display_name == "Worker闭环测试"
             assert task_service.claim(WorkerPrincipal(device_id=device_b)) is None
-            assert task_service.claim(WorkerPrincipal(device_id=device_a)) is not None
+            claimed = task_service.claim_with_account(WorkerPrincipal(device_id=device_a))
+            assert claimed is not None
+            assert claimed.task.input_json == {
+                "app_id": app_id,
+                "params": {"商品列表": '{"page":1}'},
+            }
 
             with pytest.raises(TaskProviderNotReadyError):
                 task_service.create(
@@ -652,7 +702,7 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                     TaskCreate(
                         target_device_id=device_a,
                         skill_id=TaskSkillId.YINGDAO_APP_RUN,
-                        input={"app_id": app_id, "params": {"message": 1}},
+                        input={"app_id": app_id, "params": {"商品列表": 1}},
                     ),
                     actor,
                 )
