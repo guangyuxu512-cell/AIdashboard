@@ -17,7 +17,10 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetCreate,
     AutomationParameterPresetUpdate,
 )
-from app.modules.automation_apps.service import AutomationParameterPresetService
+from app.modules.automation_apps.service import (
+    AutomationApplicationCatalogService,
+    AutomationParameterPresetService,
+)
 
 
 class FakeSession:
@@ -101,6 +104,24 @@ class FakePresetRepository:
             ),
             None,
         )
+
+    def list_all_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str | None = None,
+        name_query: str | None = None,
+    ) -> list[AutomationParameterPreset]:
+        candidates = self.list_for_actor(actor=actor, app_id=app_id or "safe-app")
+        if app_id is None:
+            candidates = [
+                preset
+                for preset in self.presets
+                if actor.data_scope is DataScope.ALL or preset.team_id == actor.team_id
+            ]
+        if name_query:
+            candidates = [preset for preset in candidates if name_query in preset.name]
+        return candidates
 
     def exists_name(
         self,
@@ -343,3 +364,104 @@ def test_preset_requires_existing_shop_module_access() -> None:
     )
     with pytest.raises(ModuleAccessDeniedError):
         preset_service.list(actor=actor(team_id=uuid4()), app_id="safe-app")
+
+
+def test_management_list_remains_inside_current_team_for_all_scope() -> None:
+    own_team, other_team = uuid4(), uuid4()
+    own_actor = actor(team_id=own_team, scope=DataScope.ALL)
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids=set())
+    own = service.create(
+        actor=own_actor,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="日常采集",
+            common_parameters={"标题": "公共标题"},
+        ),
+    )
+    repository.add(
+        AutomationParameterPreset(
+            preset_id=uuid4(),
+            team_id=other_team,
+            created_by_user_id=uuid4(),
+            app_id="other-app",
+            name="日常采集（其他团队）",
+            common_parameters={},
+            shop_overrides={},
+            version=1,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+
+    assert [
+        preset.preset_id
+        for preset in service.list_all(
+            actor=own_actor,
+            app_id="safe-app",
+            name_query="日常",
+        )
+    ] == [own.preset_id]
+
+
+class FakeDeviceCatalogRepository:
+    def list_all_for_actor(self, *, actor: ActorContext) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(device_id=uuid4(), team_id=actor.team_id),
+            SimpleNamespace(device_id=uuid4(), team_id=uuid4()),
+        ]
+
+
+class FakeWorkerCatalogRepository:
+    def get_provider_inventories_for_devices(
+        self,
+        device_ids: list[UUID],
+        *,
+        provider_code: str,
+    ) -> list[SimpleNamespace]:
+        assert len(device_ids) == 1
+        assert provider_code == "yingdao"
+        return [
+            SimpleNamespace(
+                inventory_payload={
+                    "provider": "yingdao",
+                    "available": True,
+                    "status": "need_login",
+                    "status_reason_code": None,
+                    "status_reason": None,
+                    "provider_version": "6.3.6",
+                    "execution_available": False,
+                    "execution_version": None,
+                    "execution_unavailable_reason": None,
+                    "logged_in": False,
+                    "account_display": None,
+                    "account_type": None,
+                    "enterprise_account": None,
+                    "user_id": None,
+                    "applications": [
+                        {"app_id": "daily", "app_name": "日常采集"},
+                        {"app_id": "after-sale", "app_name": "售后同步"},
+                        {"app_id": "daily", "app_name": "重复报告不覆盖"},
+                    ],
+                    "discovered_at": datetime.now(UTC).isoformat(),
+                },
+            ),
+        ]
+
+
+def test_application_catalog_returns_only_deduplicated_current_team_application_options() -> None:
+    service = AutomationApplicationCatalogService(
+        FakeSession(),  # type: ignore[arg-type]
+        device_repository=FakeDeviceCatalogRepository(),  # type: ignore[arg-type]
+        worker_repository=FakeWorkerCatalogRepository(),  # type: ignore[arg-type]
+    )
+
+    assert [
+        option.model_dump()
+        for option in service.list_yingdao_application_options(
+            actor=actor(team_id=uuid4()),
+        )
+    ] == [
+        {"app_id": "after-sale", "app_name": "售后同步"},
+        {"app_id": "daily", "app_name": "日常采集"},
+    ]
