@@ -35,8 +35,12 @@ from app.modules.automation_apps.schemas import (
     build_parameter_preset_snapshot,
     normalize_parameters,
     validate_parameter_subset,
+    YingdaoApplicationOptionRead,
 )
+from app.modules.devices.repository import DeviceRepository
 from app.modules.shops.repository import ShopRepository
+from app.modules.workers.repository import WorkerRepository
+from app.modules.workers.schemas import YingdaoProviderInventory
 from app.shared.identifiers import generate_id
 
 
@@ -103,6 +107,54 @@ class AutomationApplicationConfigService:
         return AutomationApplicationConfigRead.model_validate(config, from_attributes=True)
 
 
+class AutomationApplicationCatalogService:
+    """Read only the Yingdao apps from Devices the actor can already view."""
+
+    def __init__(
+        self,
+        session: Session,
+        *,
+        device_repository: DeviceRepository | None = None,
+        worker_repository: WorkerRepository | None = None,
+    ) -> None:
+        self.device_repository = device_repository or DeviceRepository(session)
+        self.worker_repository = worker_repository or WorkerRepository(session)
+
+    def list_yingdao_application_options(
+        self,
+        *,
+        actor: ActorContext,
+    ) -> list[YingdaoApplicationOptionRead]:
+        devices = self.device_repository.list_all_for_actor(actor=actor)
+        # Parameter presets are always scoped to the active Team.  A human
+        # actor can have a broader Device data scope elsewhere, but that must
+        # not turn this options endpoint into a cross-Team application catalog.
+        device_ids = [
+            device.device_id
+            for device in devices
+            if device.team_id == actor.team_id
+        ]
+        records = self.worker_repository.get_provider_inventories_for_devices(
+            device_ids,
+            provider_code="yingdao",
+        )
+        options: dict[str, str] = {}
+        for record in records:
+            inventory = YingdaoProviderInventory.model_validate(record.inventory_payload)
+            for application in inventory.applications:
+                # Keep a deterministic value when one visible application is
+                # reported by multiple Devices; no Device/account data leaves
+                # this catalog endpoint.
+                options.setdefault(application.app_id, application.app_name)
+        return [
+            YingdaoApplicationOptionRead(app_id=app_id, app_name=app_name)
+            for app_id, app_name in sorted(
+                options.items(),
+                key=lambda item: (item[1], item[0]),
+            )
+        ]
+
+
 class AutomationParameterPresetService:
     """Team-scoped Yingdao parameter presets and their final Task snapshots."""
 
@@ -140,6 +192,26 @@ class AutomationParameterPresetService:
             )
             # Parameter presets are intentionally Team-scoped even when an
             # operator has ALL scope for another resource type.
+            if preset.team_id == actor.team_id
+        ]
+
+    def list_all(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str | None = None,
+        name_query: str | None = None,
+    ) -> list[AutomationParameterPresetRead]:
+        self._require_shop_access(actor)
+        return [
+            self._to_read(preset)
+            for preset in self.preset_repository.list_all_for_actor(
+                actor=actor,
+                app_id=app_id,
+                name_query=name_query,
+            )
+            # Parameter presets intentionally never escape the active Team,
+            # including for an ActorContext with ALL scope elsewhere.
             if preset.team_id == actor.team_id
         ]
 

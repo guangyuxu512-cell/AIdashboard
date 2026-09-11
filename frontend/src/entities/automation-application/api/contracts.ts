@@ -29,6 +29,12 @@ export interface AutomationApplicationConfigUpsertDto {
   input_schema: AutomationInputSchemaDto
 }
 
+/** A Yingdao application already visible through the actor's Device inventory. */
+export interface YingdaoApplicationOptionDto {
+  app_id: string
+  app_name: string
+}
+
 export interface AutomationParameterPresetDto {
   preset_id: string
   team_id: string
@@ -51,4 +57,9 @@ export interface AutomationParameterPresetSaveDto {
 export interface AutomationParameterPresetUpdateDto
   extends AutomationParameterPresetSaveDto {
   expected_version: number
+}
+
+export interface AutomationParameterPresetListParams {
+  appId?: string | null
+  query?: string | null
 }

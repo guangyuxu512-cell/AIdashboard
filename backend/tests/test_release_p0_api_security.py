@@ -26,11 +26,15 @@ from app.modules.authentication.schemas import (
     PddManagementLoginIdentityResult,
 )
 from app.modules.automation_apps.api import (
+    get_catalog_service as get_automation_catalog_service,
     get_device_authorized_actor as get_automation_device_authorized_actor,
     get_service as get_automation_service,
     router as automation_router,
 )
-from app.modules.automation_apps.schemas import AutomationApplicationConfigRead
+from app.modules.automation_apps.schemas import (
+    AutomationApplicationConfigRead,
+    YingdaoApplicationOptionRead,
+)
 from app.modules.credentials.api import (
     get_credential_service,
     get_shop_authorized_actor as get_credential_shop_authorized_actor,
@@ -133,6 +137,21 @@ class AutomationApplicationConfigServiceStub:
         )
 
 
+class AutomationApplicationCatalogServiceStub:
+    def list_yingdao_application_options(
+        self,
+        *,
+        actor: ActorContext,
+    ) -> list[YingdaoApplicationOptionRead]:
+        assert actor == ACTOR
+        return [
+            YingdaoApplicationOptionRead(
+                app_id="release-p0-app",
+                app_name="Release P0 应用",
+            )
+        ]
+
+
 class NotificationServiceStub:
     def send_test(self, channel_id: UUID, *, now: datetime) -> None:
         assert channel_id == CHANNEL_ID
@@ -207,6 +226,9 @@ def configured_app() -> Any:
     application.dependency_overrides[
         get_automation_service
     ] = AutomationApplicationConfigServiceStub
+    application.dependency_overrides[
+        get_automation_catalog_service
+    ] = AutomationApplicationCatalogServiceStub
     application.dependency_overrides[get_notification_service] = NotificationServiceStub
     application.dependency_overrides[
         get_management_onboarding_service
@@ -324,6 +346,25 @@ def test_authorized_module_users_can_complete_management_operations(
     assert allowed.checked == [module_code]
 
 
+def test_yingdao_application_catalog_requires_existing_device_module_access() -> None:
+    path = "/api/v1/automation-app-configs/yingdao/applications"
+
+    assert request("GET", path).status_code == 401
+
+    denied = ModuleAccessProbe(False)
+    denied_response = request("GET", path, module_access=denied)
+    assert denied_response.status_code == 403
+    assert denied.checked == [ModuleCode.DEVICE]
+
+    allowed = ModuleAccessProbe(True)
+    allowed_response = request("GET", path, module_access=allowed)
+    assert allowed_response.status_code == 200
+    assert allowed.checked == [ModuleCode.DEVICE]
+    assert allowed_response.json() == [
+        {"app_id": "release-p0-app", "app_name": "Release P0 应用"},
+    ]
+
+
 @pytest.mark.parametrize(
     ("router", "authorized_actor", "expected_count"),
     [
@@ -331,7 +372,7 @@ def test_authorized_module_users_can_complete_management_operations(
         (sessions_router, get_session_shop_authorized_actor, 5),
         (credentials_router, get_credential_shop_authorized_actor, 4),
         (notifications_router, get_settings_authorized_actor, 4),
-        (automation_router, get_automation_device_authorized_actor, 2),
+        (automation_router, get_automation_device_authorized_actor, 3),
         (onboarding_router, get_onboarding_shop_authorized_actor, 2),
     ],
 )
