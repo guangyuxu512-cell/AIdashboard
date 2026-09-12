@@ -217,6 +217,46 @@ def validate_parameter_subset(
     return normalized
 
 
+def normalize_explicit_parameter_selection(
+    schema: AutomationInputSchema,
+    values: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate the field set explicitly enabled by one parameter preset.
+
+    Unlike :func:`normalize_parameters`, this function must never turn an
+    omitted optional schema field into a preset value.  The persisted keys are
+    the preset's field selection: a default is included only when the user has
+    explicitly added that field (and the client submitted its default value).
+    Required fields still have to be explicitly present so a changed schema
+    cannot silently alter a future Task or Schedule execution.
+    """
+
+    field_by_name = {field.name: field for field in schema.fields}
+    unknown = sorted(set(values) - set(field_by_name))
+    if unknown:
+        raise ValueError(f"未知参数: {', '.join(unknown)}")
+
+    normalized: dict[str, Any] = {}
+    for field in schema.fields:
+        if field.name not in values:
+            if field.required:
+                raise ValueError(f"缺少必填参数: {field.label}")
+            continue
+        value = values[field.name]
+        if value is None:
+            raise ValueError(f"参数 {field.label} 不能为 null")
+        if (
+            field.required
+            and field.type is AutomationInputType.TEXT
+            and isinstance(value, str)
+            and not value.strip()
+        ):
+            raise ValueError(f"缺少必填参数: {field.label}")
+        _validate_value(field, value)
+        normalized[field.name] = value
+    return normalized
+
+
 def build_parameter_preset_snapshot(
     schema: AutomationInputSchema,
     *,
@@ -231,7 +271,14 @@ def build_parameter_preset_snapshot(
     Task.
     """
 
-    normalized_common = normalize_parameters(schema, common_parameters)
+    # A preset's persisted keys are its explicit enabled field set.  Do not
+    # reuse the manual-parameter normalizer here: it intentionally materializes
+    # every schema default, which would make fields removed from one preset
+    # reappear in new Task/Schedule snapshots.
+    normalized_common = normalize_explicit_parameter_selection(
+        schema,
+        common_parameters,
+    )
     normalized_overrides = {
         shop_id: validate_parameter_subset(schema, values)
         for shop_id, values in shop_overrides.items()
@@ -240,7 +287,7 @@ def build_parameter_preset_snapshot(
         "格式版本": 1,
         "公共参数": normalized_common,
         "店铺参数": {
-            str(shop_id): normalize_parameters(
+            str(shop_id): normalize_explicit_parameter_selection(
                 schema,
                 {**normalized_common, **normalized_overrides.get(str(shop_id), {})},
             )

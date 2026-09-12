@@ -262,9 +262,17 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                                     "default_value": True,
                                     "options": [],
                                 },
+                                {
+                                    "name": "每页数量",
+                                    "label": "每页数量",
+                                    "type": "number",
+                                    "required": False,
+                                    "default_value": 20,
+                                    "options": [],
+                                },
                             ],
                         },
-                        default_values={"数量": 1, "启用": True},
+                        default_values={"数量": 1, "启用": True, "每页数量": 20},
                         version=1,
                     ),
                 ],
@@ -317,6 +325,28 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             )
             assert preset.team_id == team_id
             assert presets.list(actor=actor, app_id=app_id) == [preset]
+
+            # A second preset uses the same application field catalog, but
+            # must never cause its values or unselected schema defaults to
+            # appear in A's Task/Schedule/Claim payloads.
+            preset_b = presets.create(
+                actor=actor,
+                app_id=app_id,
+                data=AutomationParameterPresetCreate(
+                    name="独立预设 B",
+                    common_parameters={"标题": "B 标题", "数量": 5},
+                ),
+            )
+            snapshot_b = presets.snapshot_for_actor(
+                actor=actor,
+                app_id=app_id,
+                preset_id=preset_b.preset_id,
+                shop_ids=[shop_a],
+            )
+            assert snapshot_b.parameters["店铺参数"][str(shop_a)] == {
+                "标题": "B 标题",
+                "数量": 5,
+            }
 
             async def exercise_preset_api() -> None:
                 application = create_app()
@@ -375,6 +405,11 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             }
             assert task.parameter_preset_id == preset.preset_id
             assert task.parameter_preset_version == preset.version
+            assert "每页数量" not in task.input_json["params"]["公共参数"]
+            assert all(
+                "每页数量" not in values
+                for values in task.input_json["params"]["店铺参数"].values()
+            )
             claimed = TaskService(
                 session,
                 credential_service=credential_service,
@@ -430,6 +465,11 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert scheduled_task is not None
             assert scheduled_task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "后续标题"
             assert task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "公共标题"
+            assert "每页数量" not in scheduled_task.input_json["params"]["公共参数"]
+            assert all(
+                "每页数量" not in values
+                for values in scheduled_task.input_json["params"]["店铺参数"].values()
+            )
             assert scheduled_task.parameter_preset_id == preset.preset_id
             assert scheduled_task.parameter_preset_version == updated_preset.version
 

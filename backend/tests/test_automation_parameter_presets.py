@@ -9,6 +9,7 @@ from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetInUseError,
+    AutomationParameterPresetInvalidError,
     AutomationParameterPresetNotFoundError,
     AutomationParameterPresetVersionConflictError,
 )
@@ -364,7 +365,7 @@ def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> N
         )
 
 
-def test_preset_parameter_selection_is_independent_and_defaults_only_materialize_in_task_snapshot() -> None:
+def test_preset_parameter_selection_is_independent_and_task_snapshot_keeps_only_enabled_fields() -> None:
     team_id = uuid4()
     actor_context = actor(team_id=team_id)
     shop_a, shop_b = uuid4(), uuid4()
@@ -423,19 +424,55 @@ def test_preset_parameter_selection_is_independent_and_defaults_only_materialize
         "格式版本": 1,
         "公共参数": {
             "标题": "A 已修改",
-            "数量": 1,
-            "启用": True,
-            "备注": "默认备注",
         },
         "店铺参数": {
             str(shop_a): {
                 "标题": "A 已修改",
-                "数量": 1,
-                "启用": True,
                 "备注": "A 店铺已修改",
             },
         },
     }
+
+    copied_snapshot = service.snapshot_for_actor(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=updated_copy.preset_id,
+        shop_ids=[shop_b],
+    )
+    assert copied_snapshot.parameters == {
+        "格式版本": 1,
+        "公共参数": {"标题": "B", "启用": False},
+        "店铺参数": {
+            str(shop_b): {"标题": "B", "数量": 0, "启用": False},
+        },
+    }
+
+
+def test_preset_snapshot_fails_when_a_current_required_field_is_not_explicitly_enabled() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids=set())
+    preset = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="已有预设",
+            common_parameters={"标题": "保存时完整"},
+        ),
+    )
+
+    # Simulate a legacy stored selection after the current schema gains (or
+    # exposes) a required field.  Snapshotting must fail closed, not add a
+    # default or let the Worker receive an incomplete payload.
+    repository.presets[0].common_parameters = {"数量": 2}
+    with pytest.raises(AutomationParameterPresetInvalidError, match="缺少必填参数: 标题"):
+        service.snapshot_for_actor(
+            actor=actor_context,
+            app_id="safe-app",
+            preset_id=preset.preset_id,
+            shop_ids=[],
+        )
 
 def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
     team_id = uuid4()

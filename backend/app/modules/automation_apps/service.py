@@ -34,7 +34,7 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetRead,
     AutomationParameterPresetUpdate,
     build_parameter_preset_snapshot,
-    normalize_parameters,
+    normalize_explicit_parameter_selection,
     validate_parameter_subset,
     YingdaoApplicationOptionRead,
 )
@@ -418,11 +418,14 @@ class AutomationParameterPresetService:
             # A preset owns its explicit parameter selection. Validate that
             # selection without persisting schema defaults back into it: an
             # optional field removed from one preset must remain absent after
-            # reread and cannot alter another preset. `normalize_parameters`
-            # still verifies the final required-field contract here, and the
-            # Task snapshot remains the single place that materializes defaults.
-            common = validate_parameter_subset(schema, common_parameters)
-            normalize_parameters(schema, common)
+            # reread and cannot alter another preset.  The explicit selection
+            # also enforces required fields; Task/Schedule snapshotting uses
+            # the same rule so a later schema change fails closed instead of
+            # silently adding a default.
+            common = normalize_explicit_parameter_selection(
+                schema,
+                common_parameters,
+            )
             overrides = {
                 str(shop_id): validate_parameter_subset(schema, values)
                 for shop_id, values in shop_overrides.items()

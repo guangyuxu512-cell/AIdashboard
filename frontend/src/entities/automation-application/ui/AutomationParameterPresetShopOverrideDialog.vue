@@ -92,7 +92,7 @@ function confirm(): void {
   >
     <div v-if="fields.length" class="shop-override-dialog__parameter-viewport">
       <div class="shop-override-dialog__column-headings" aria-hidden="true">
-        <span>字段</span>
+        <span>字段名</span>
         <span>公共值</span>
         <span>本店值</span>
         <span>恢复</span>
@@ -140,6 +140,8 @@ function confirm(): void {
 }
 
 .shop-override-dialog__parameter-viewport {
+  --schema-parameter-label-column: var(--field-width-xs);
+  --schema-parameter-action-column: 48px;
   max-height: 280px;
   overflow-y: auto;
   padding-right: var(--space-1);
@@ -150,12 +152,14 @@ function confirm(): void {
   margin-bottom: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
-  grid-template-columns: var(--field-width-sm) minmax(0, 0.75fr) minmax(0, 1fr) auto;
+  grid-template-columns:
+    var(--schema-parameter-label-column) minmax(0, 0.75fr) minmax(0, 1fr)
+    var(--schema-parameter-action-column);
   gap: var(--space-2);
 }
 
 .shop-override-dialog__column-headings span:last-child {
-  min-width: 32px;
+  min-width: 0;
   text-align: center;
 }
 
@@ -172,7 +176,7 @@ function confirm(): void {
 
 @media (max-width: 640px) {
   .shop-override-dialog__column-headings {
-    grid-template-columns: var(--field-width-xs) minmax(0, 1fr) minmax(0, 1fr) auto;
+    display: none;
   }
 }
 </style>

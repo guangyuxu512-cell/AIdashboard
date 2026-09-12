@@ -606,3 +606,100 @@ test('shows the same preset choice and per-shop final parameters before an immed
     fullPage: true,
   })
 })
+
+test('keeps A and B field selections isolated after A extends the shared field catalog', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000)
+  await page.goto('/#/parameter-presets')
+  await expect(page).toHaveURL(/#\/login\?redirect=\/parameter-presets/)
+  await page.getByLabel('内部登录账号').fill(loginName)
+  await page.getByLabel('密码').fill(password)
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page).toHaveURL(/#\/parameter-presets$/)
+
+  const originalRow = page
+    .getByRole('row')
+    .filter({ has: page.getByText('日常采集', { exact: true }) })
+  await expect(originalRow).toBeVisible()
+  await originalRow.getByRole('button', { name: '复制', exact: true }).click()
+  const copyDialog = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
+  await expect(
+    copyDialog.locator('input[name="automation-parameter-preset-name"]'),
+  ).toHaveValue('日常采集 副本')
+  await copyDialog.getByRole('button', { name: '取消', exact: true }).click()
+  const copyRow = page
+    .getByRole('row')
+    .filter({ has: page.getByText('日常采集 副本', { exact: true }) })
+  await expect(copyRow).toBeVisible()
+
+  await originalRow.getByRole('button', { name: '编辑', exact: true }).click()
+  const editor = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
+  await editor.getByRole('button', { name: '管理字段' }).click()
+  const schemaDialog = page
+    .locator('.app-dialog')
+    .filter({ hasText: '配置参数 · 日常采集（零字段）' })
+  await schemaDialog.getByRole('button', { name: '+ 添加参数' }).click()
+  const addedField = schemaDialog.getByTestId('parameter-config-field').last()
+  await addedField.getByPlaceholder('例如 商品列表').fill('最大页数')
+  await addedField.getByPlaceholder('例如 商品 ID').fill('最大页数')
+  await selectNumberParameterType(page, addedField)
+  await schemaDialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(schemaDialog).toHaveCount(0)
+
+  // A field definition is shared, but it is not enabled for A until the
+  // editor explicitly adds it to A's own preset values.
+  await expect(editor).toContainText('2 项当前参数')
+  await expect(
+    editor.locator('.preset-manager__parameter-viewport').getByText('最大页数'),
+  ).toHaveCount(0)
+  const addCommonParameter = editor.locator(
+    '.preset-manager__add-parameter .n-base-selection',
+  )
+  await addCommonParameter.click()
+  await page
+    .locator('.n-base-select-menu:visible')
+    .last()
+    .getByText('最大页数', { exact: true })
+    .click()
+  const aInputs = editor.locator('.n-input-number input')
+  await expect(aInputs).toHaveCount(3)
+  await aInputs.nth(2).fill('100')
+  await savePresetAndWait(page, editor)
+
+  const aShopRow = editor
+    .locator('.preset-manager__shop-row')
+    .filter({ hasText: '甲店' })
+  await aShopRow.getByRole('button', { name: '修改', exact: true }).click()
+  const aShopEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '店铺差异 · 甲店' })
+  await expect(aShopEditor).toContainText('最大页数')
+  await expect(aShopEditor).toHaveCSS('opacity', '1')
+  await page.screenshot({
+    path: testInfo.outputPath('10-a-shop-explicit-fields.png'),
+    fullPage: true,
+  })
+  await aShopEditor.getByRole('button', { name: '取消', exact: true }).click()
+  await editor.getByRole('button', { name: '取消', exact: true }).click()
+
+  await copyRow.getByRole('button', { name: '编辑', exact: true }).click()
+  const copyEditor = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
+  await expect(copyEditor.locator('.n-input-number input')).toHaveCount(2)
+  await expect(copyEditor).not.toContainText('最大页数')
+  const bShopRow = copyEditor
+    .locator('.preset-manager__shop-row')
+    .filter({ hasText: '甲店' })
+  await bShopRow.getByRole('button', { name: '修改', exact: true }).click()
+  const bShopEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '店铺差异 · 甲店' })
+  await expect(bShopEditor).not.toContainText('最大页数')
+  await expect(bShopEditor).toHaveCSS('opacity', '1')
+  await page.screenshot({
+    path: testInfo.outputPath('11-b-shop-isolated-fields.png'),
+    fullPage: true,
+  })
+  await bShopEditor.getByRole('button', { name: '取消', exact: true }).click()
+  await copyEditor.getByRole('button', { name: '取消', exact: true }).click()
+})

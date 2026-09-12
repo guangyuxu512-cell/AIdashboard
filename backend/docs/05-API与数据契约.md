@@ -212,8 +212,10 @@ Team，即使 Actor 在其他资源具备 `ALL` scope 也不返回其他 Team �
 携带当前 Read DTO 的 `expected_version`；版本不一致返回 `409 / AUTOMATION_PARAMETER_PRESET_VERSION_CONFLICT`，
 客户端保留草稿并刷新后由用户决定如何处理。公共参数只保存当前预设显式选择的字段和值，不能因保存或回读
 自动把同一应用的默认值写回预设；应用字段定义继续是名称、类型、必填和默认值的唯一契约。店铺覆盖只保存
-与公共参数不同的字段；创建 Task 快照时才按该 Schema 补齐默认值并校验最终必填项。合并/字段校验只使用
-该应用已保存的 Schema，必须保留合法的 `0`、
+与公共参数不同的字段。预设的已保存键是明确启用字段集合：Task/Schedule 快照只合并、校验并下发这组字段，
+不会为未启用的可选字段补入 Schema 默认值；若当前 Schema 的必填字段不在该集合，保存、Task 创建或计划触发
+必须以参数预设契约错误失败，不能静默补值。旧预设已有键继续按其已有集合兼容；无预设的手工参数模式维持原有
+全 Schema/default 物化语义。合并/字段校验只使用该应用已保存的 Schema，必须保留合法的 `0`、
 `false` 和空字符串。预设服务通过既有 Shop 查询和 `shop` 模块授权核验每个 `shop_id`。当前 Shop 尚未
 建立 Team Ownership Scope，因此这复用的是现行正式 Shop 可见范围；Target Device Binding 仅是本次执行资格
 检查，不能被表述或实现为新的 Shop 人员归属授权。Credential、Cookie 和账号明文永不保存进预设。

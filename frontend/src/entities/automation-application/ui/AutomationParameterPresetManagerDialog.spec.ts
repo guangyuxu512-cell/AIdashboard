@@ -63,11 +63,24 @@ const configuredSchema = {
     },
   ],
 }
+const expandedSchema = {
+  fields: [
+    ...configuredSchema.fields,
+    {
+      name: '最大页数',
+      label: '最大页数',
+      type: 'number' as const,
+      required: false,
+      default_value: 100,
+      options: [],
+    },
+  ],
+}
 
 function mountDialog(
   options: {
     initialPresetId?: string | null
-    schema?: typeof emptySchema | typeof configuredSchema
+    schema?: typeof emptySchema | typeof configuredSchema | typeof expandedSchema
     show?: boolean
   } = {},
 ) {
@@ -124,9 +137,9 @@ describe('AutomationParameterPresetManagerDialog', () => {
     await wrapper.setProps({ schema: configuredSchema })
     await flushPromises()
     expect(wrapper.findComponent(AppInput).props('modelValue')).toBe('日常采集')
-    expect(wrapper.text()).toContain('2 项当前参数')
+    expect(wrapper.text()).toContain('0 项当前参数')
     const fields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
-    expect(fields.props('modelValue')).toEqual({ 页码: 1, 每页数量: 20 })
+    expect(fields.props('modelValue')).toEqual({})
     expect(fields.props('layout')).toBe('compact')
     expect(fields.props('showRemove')).toBe(true)
   })
@@ -135,24 +148,77 @@ describe('AutomationParameterPresetManagerDialog', () => {
     const wrapper = mountDialog({ schema: configuredSchema })
     await flushPromises()
     wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '参数选择')
-    const fields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
-    fields.vm.$emit('remove', '每页数量')
-    await flushPromises()
-
-    expect(fields.props('modelValue')).toEqual({ 页码: 1 })
     const addParameter = wrapper
       .findAllComponents({ name: 'AppSelect' })
       .find((select) => select.props('placeholder') === '+ 添加参数')!
+    addParameter.vm.$emit('update:modelValue', '页码')
+    await flushPromises()
+    const fields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
+    fields.vm.$emit('remove', '页码')
+    await flushPromises()
+
+    expect(fields.props('modelValue')).toEqual({})
     addParameter.vm.$emit('update:modelValue', '每页数量')
     await flushPromises()
-    expect(fields.props('modelValue')).toEqual({ 页码: 1, 每页数量: 20 })
+    expect(fields.props('modelValue')).toEqual({ 每页数量: 20 })
 
     wrapper.findComponent(FormDialog).vm.$emit('submit')
     await flushPromises()
     expect(mocks.save.mock.calls[0]![0].data.common_parameters).toEqual({
-      页码: 1,
       每页数量: 20,
     })
+  })
+
+  it('keeps A and B field selections isolated when the shared schema changes', async () => {
+    const presetA = {
+      preset_id: 'preset-a',
+      app_id: application.app_id,
+      name: '配置 A',
+      common_parameters: { 页码: 2 },
+      shop_overrides: { 'shop-a': { 页码: 3 } },
+      version: 1,
+    }
+    const presetB = {
+      preset_id: 'preset-b',
+      app_id: application.app_id,
+      name: '配置 B',
+      common_parameters: { 每页数量: 20 },
+      shop_overrides: {},
+      version: 1,
+    }
+    mocks.presets = { data: ref([presetA, presetB]), isPending: ref(false) }
+    const wrapper = mountDialog({
+      initialPresetId: presetA.preset_id,
+      schema: configuredSchema,
+    })
+    await flushPromises()
+
+    const commonFields = () =>
+      wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
+    expect(commonFields().props('modelValue')).toEqual({ 页码: 2 })
+    expect(commonFields().props('schema')).toEqual({
+      fields: [configuredSchema.fields[0]],
+    })
+
+    // Adding an application field changes the shared catalog only. It cannot
+    // enable the new default field for A (or later B) without an explicit
+    // per-preset add action.
+    await wrapper.setProps({ schema: expandedSchema })
+    await flushPromises()
+    expect(commonFields().props('modelValue')).toEqual({ 页码: 2 })
+    expect(commonFields().props('schema')).toEqual({
+      fields: [expandedSchema.fields[0]],
+    })
+
+    await wrapper.setProps({ initialPresetId: presetB.preset_id })
+    await flushPromises()
+    expect(commonFields().props('modelValue')).toEqual({ 每页数量: 20 })
+    expect(commonFields().props('schema')).toEqual({
+      fields: [expandedSchema.fields[1]],
+    })
+    expect(
+      wrapper.findComponent({ name: 'AutomationParameterPresetShopOverrideDialog' }).props('schema'),
+    ).toEqual({ fields: [expandedSchema.fields[1]] })
   })
 
   it('keeps the current draft and points a duplicate name failure at the name field', async () => {
@@ -265,6 +331,11 @@ describe('AutomationParameterPresetManagerDialog', () => {
     const wrapper = mountDialog({ schema: configuredSchema })
     await flushPromises()
     wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '店铺差异')
+    wrapper
+      .findAllComponents({ name: 'AppSelect' })
+      .find((select) => select.props('placeholder') === '+ 添加参数')!
+      .vm.$emit('update:modelValue', '页码')
+    await flushPromises()
     wrapper
       .findAllComponents({ name: 'AppSelect' })
       .find((select) => select.props('placeholder') === '+ 添加店铺')!
