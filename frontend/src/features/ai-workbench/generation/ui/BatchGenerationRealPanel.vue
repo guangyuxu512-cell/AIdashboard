@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue'
 
 import {
   AssetDownloadStatusBar,
+  AssetPreviewDialog,
   formatAssetDownloadFailure,
   useAssetDownloadQueue,
 } from '@/entities/asset'
@@ -36,6 +37,7 @@ import {
   type BatchPreflightIssueView,
   type BatchPreflightView,
   type BatchTemplateExecutionView,
+  type GenerationExecutionResultView,
   type GenerationProductView,
   type GenerationTemplateGroupView,
 } from '../model/types'
@@ -50,6 +52,7 @@ import {
 } from '../../real-api/model/model-selection'
 import BatchExecutionViewer from './BatchExecutionViewer.vue'
 import BatchProductPickerDialog from './BatchProductPickerDialog.vue'
+import GenerationOutputCompressionSetting from './GenerationOutputCompressionSetting.vue'
 
 const props = defineProps<{
   models: WorkbenchModelView[]
@@ -69,6 +72,7 @@ const {
   batchTemplateSource: templateSource,
   batchSelectedTemplateGroupIds: selectedTemplateGroupIds,
   batchOutputRange: outputRange,
+  outputCompressionEnabled,
   batchChecked,
   batchCurrentJobId: currentJobId,
   batchSubmitting: submitting,
@@ -78,6 +82,7 @@ const {
 const productPickerVisible = ref(false)
 const preflightProblemsVisible = ref(false)
 const clearDialogVisible = ref(false)
+const previewResultId = ref<string | null>(null)
 
 const jobQuery = useGenerationJobQuery(currentJobId, { poll: true })
 
@@ -116,10 +121,11 @@ const templateGroupOptions = computed(() =>
     disabled: !group.enabled,
   })),
 )
+const modelCapabilityReady = computed(() => selectedModel.value !== null)
 const preflight = computed<BatchPreflightView>(() => {
   const issues: BatchPreflightIssueView[] = []
   const plans: BatchPreflightView['plans'] = []
-  const modelLimit = selectedModel.value?.maxInputImages ?? 0
+  const modelLimit = selectedModel.value?.maxInputImages
   for (const product of scopedProducts.value) {
     const productSources = product.assets.filter(
       (asset) => asset.role === 'PRODUCT_SOURCE',
@@ -137,8 +143,9 @@ const preflight = computed<BatchPreflightView>(() => {
     else if (mode.value === 'STYLE_REPLICATION' && !styleReferences.length) {
       reason = 'NO_STYLE_REFERENCE'
     } else if (
+      modelLimit !== undefined &&
       productSources.length + (mode.value === 'STYLE_REPLICATION' ? 1 : 0) >
-      modelLimit
+        modelLimit
     ) {
       reason = 'MODEL_INPUT_LIMIT'
     }
@@ -170,6 +177,7 @@ const preflight = computed<BatchPreflightView>(() => {
     if (!reason && !groups.length) reason = 'NO_TEMPLATE_GROUPS'
     if (
       !reason &&
+      selectedModel.value !== null &&
       groups.some((entry) =>
         entry.templates.some(
           (template) =>
@@ -221,6 +229,24 @@ const preflight = computed<BatchPreflightView>(() => {
 })
 const execution = computed(() =>
   jobQuery.data.value ? mapBatchExecution(jobQuery.data.value) : null,
+)
+const previewSources = computed(() =>
+  (execution.value?.products ?? []).flatMap((product) =>
+    product.templateGroups.flatMap((group) =>
+      group.templates.flatMap((template) =>
+        template.results
+          .filter(
+            (result) =>
+              result.status === 'SUCCESS' && Boolean(result.previewUrl),
+          )
+          .map((result) => ({
+            id: result.id,
+            name: result.name ?? template.templateName,
+            contentUrl: result.previewUrl!,
+          })),
+      ),
+    ),
+  ),
 )
 const jobError = computed(() => jobQuery.error.value)
 const restoringJob = computed(
@@ -333,6 +359,10 @@ function setSelectedTemplateGroups(values: Array<string | number>): void {
 }
 
 function runPreflight(): void {
+  if (!modelCapabilityReady.value) {
+    message.warning('模型能力正在加载，请稍后再试')
+    return
+  }
   batchChecked.value = true
   if (preflight.value.issues.length) preflightProblemsVisible.value = true
 }
@@ -361,6 +391,7 @@ async function start(): Promise<void> {
           ? selectedTemplateGroupIds.value
           : [],
       output_range: outputRange.value,
+      compress_output_under_1000kb: outputCompressionEnabled.value,
     })
     if (!job) return
     setJob(job)
@@ -401,9 +432,12 @@ function beginDownload(results: readonly DownloadableBatchResult[]): void {
   const requests = toGenerationAssetDownloadRequests(results)
   void downloads.start(requests).then((summary) => {
     if (!summary) return
-    if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)
+    if (summary.succeeded)
+      message.success(`已开始下载 ${summary.succeeded} 张图片`)
     if (summary.failed) {
-      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      const firstFailure = summary.results.find(
+        (result) => result.failure,
+      )?.failure
       if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
     }
   })
@@ -414,6 +448,24 @@ function downloadTemplate(template: BatchTemplateExecutionView): void {
     (result) => result.status === 'SUCCESS' && result.previewUrl,
   )
   beginDownload(results)
+}
+
+function previewResult(result: GenerationExecutionResultView): void {
+  if (result.status !== 'SUCCESS' || !result.previewUrl) return
+  previewResultId.value = result.id
+}
+
+function downloadPreviewResult(source: { id: string }): void {
+  const result = (execution.value?.products ?? [])
+    .flatMap((product) => product.templateGroups)
+    .flatMap((group) => group.templates)
+    .flatMap((template) => template.results)
+    .find((item) => item.id === source.id)
+  if (result) beginDownload([result])
+}
+
+function setPreviewVisible(visible: boolean): void {
+  if (!visible) previewResultId.value = null
 }
 
 function downloadAll(): void {
@@ -433,9 +485,12 @@ function downloadAll(): void {
 function retryFailedDownloads(): void {
   void downloads.retryFailed().then((summary) => {
     if (!summary) return
-    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 张图片`)
+    if (summary.succeeded)
+      message.success(`已重新下载 ${summary.succeeded} 张图片`)
     if (summary.failed) {
-      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      const firstFailure = summary.results.find(
+        (result) => result.failure,
+      )?.failure
       if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
     }
   })
@@ -494,6 +549,9 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
               placeholder="选择模型"
               aria-label="批量生成模型"
             />
+            <span v-if="selectedModel" class="batch-generation-field__hint">
+              最多 {{ selectedModel.maxInputImages }} 张输入图
+            </span>
           </section>
           <section class="batch-generation-field">
             <strong>产品范围</strong>
@@ -567,6 +625,12 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
               :active-key="outputRange"
               :items="outputRangeOptions"
               @select="setOutputRange"
+            />
+          </section>
+
+          <section class="batch-generation-field">
+            <GenerationOutputCompressionSetting
+              v-model="outputCompressionEnabled"
             />
           </section>
 
@@ -668,6 +732,7 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
           @download-all="downloadAll"
           @download-template="downloadTemplate"
           @retry="retryTemplate"
+          @preview="previewResult"
         />
         <AssetDownloadStatusBar
           :is-downloading="downloads.isDownloading.value"
@@ -685,6 +750,13 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
     :products="selectableProducts"
     :selected-product-ids="selectedProductIds"
     @confirm="selectedProductIds = $event"
+  />
+  <AssetPreviewDialog
+    :show="Boolean(previewResultId)"
+    :items="previewSources"
+    :selected-asset-id="previewResultId"
+    @update:show="setPreviewVisible"
+    @download="downloadPreviewResult"
   />
   <AppDialog
     v-model:show="preflightProblemsVisible"
@@ -778,6 +850,11 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
   color: var(--text-primary);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
+}
+
+.batch-generation-field__hint {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-secondary);
 }
 
 .batch-generation-field__header,

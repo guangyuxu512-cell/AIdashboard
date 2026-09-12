@@ -7,8 +7,8 @@ import { useMessage } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 
 import {
-  AssetContentImage,
   AssetDownloadStatusBar,
+  AssetPreviewDialog,
   formatAssetDownloadFailure,
   useAssetDownloadQueue,
 } from '@/entities/asset'
@@ -232,6 +232,11 @@ function setFilter(key: string | number): void {
 
 function selectProduct(id: string): void {
   selectedProductId.value = id
+  // Re-selecting the current product must close an open asset inspector too.
+  // The selectedProductId watcher only runs when the id changes.
+  selectedAssetId.value = null
+  selectionMode.value = false
+  selectedAssetIds.value = []
 }
 
 function setActiveRole(role: MaterialRole): void {
@@ -369,14 +374,38 @@ function startAssetDownloads(assets: readonly MaterialAssetReference[]): void {
     )
     .then((summary) => {
       if (!summary) return
-      if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 个素材`)
-      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      if (summary.succeeded)
+        message.success(`已开始下载 ${summary.succeeded} 个素材`)
+      const firstFailure = summary.results.find(
+        (result) => result.failure,
+      )?.failure
       if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
     })
 }
 
 function downloadAsset(asset: MaterialAssetReference): void {
   startAssetDownloads([asset])
+}
+
+function downloadPreviewAsset(source: {
+  id: string
+  name: string
+  contentUrl: string
+}): void {
+  startAssetDownloads([
+    {
+      assetId: source.id,
+      name: source.name,
+      previewUrl: source.contentUrl,
+      mediaType: '',
+      sourceType: 'LOCAL_UPLOAD',
+      role: activeRole.value,
+    },
+  ])
+}
+
+function setPreviewVisible(visible: boolean): void {
+  if (!visible) previewAsset.value = null
 }
 
 function downloadSelectedAssets(): void {
@@ -386,8 +415,11 @@ function downloadSelectedAssets(): void {
 function retryFailedDownloads(): void {
   void downloads.retryFailed().then((summary) => {
     if (!summary) return
-    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 个素材`)
-    const firstFailure = summary.results.find((result) => result.failure)?.failure
+    if (summary.succeeded)
+      message.success(`已重新下载 ${summary.succeeded} 个素材`)
+    const firstFailure = summary.results.find(
+      (result) => result.failure,
+    )?.failure
     if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
   })
 }
@@ -508,9 +540,16 @@ function replaceBindings(
           >
             <template v-if="selectedProduct">
               <header class="ai-assets-workspace__product-header">
-                <strong :title="selectedProduct.name">{{
-                  selectedProduct.name
-                }}</strong>
+                <div class="ai-assets-workspace__product-identity">
+                  <strong :title="selectedProduct.name">{{
+                    selectedProduct.name
+                  }}</strong>
+                  <span class="ai-assets-workspace__product-counts">
+                    商品原图 {{ roleCounts.PRODUCT_SOURCE }} · AI 成品
+                    {{ roleCounts.AI_OUTPUT }} · 全部素材
+                    {{ selectedProduct.assets.length }}
+                  </span>
+                </div>
                 <label class="ai-assets-workspace__enabled">
                   <span>启用</span>
                   <AppSwitch
@@ -627,23 +666,19 @@ function replaceBindings(
     >
       {{ deleteDialogText }}
     </AppDialog>
-    <AppDialog
+    <AssetPreviewDialog
       :show="Boolean(previewAsset)"
-      :title="previewAsset?.name ?? '预览'"
-      size="lg"
-      positive-text="关闭"
-      :show-negative="false"
-      @update:show="previewAsset = null"
-      @confirm="previewAsset = null"
-    >
-      <AssetContentImage
-        v-if="previewAsset"
-        class="ai-assets-real__preview-image"
-        :src="previewAsset.previewUrl"
-        :alt="previewAsset.name"
-        loading="eager"
-      />
-    </AppDialog>
+      :items="
+        roleAssets.map((asset) => ({
+          id: asset.assetId,
+          name: asset.name,
+          contentUrl: asset.previewUrl,
+        }))
+      "
+      :selected-asset-id="previewAsset?.assetId ?? null"
+      @update:show="setPreviewVisible"
+      @download="downloadPreviewAsset"
+    />
   </div>
 </template>
 
@@ -672,6 +707,7 @@ function replaceBindings(
 }
 
 .ai-assets-workspace__product-header,
+.ai-assets-workspace__product-identity,
 .ai-assets-workspace__enabled {
   display: flex;
   align-items: center;
@@ -681,17 +717,31 @@ function replaceBindings(
 .ai-assets-workspace__product-header {
   flex: 0 0 auto;
   justify-content: space-between;
+  gap: var(--space-4);
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.ai-assets-workspace__product-header > strong {
+.ai-assets-workspace__product-identity {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ai-assets-workspace__product-identity > strong {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
   font-size: var(--font-size-section-title);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ai-assets-workspace__product-counts {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-caption);
+  line-height: 1.4;
+  white-space: normal;
 }
 
 .ai-assets-workspace__enabled span {
@@ -719,15 +769,6 @@ function replaceBindings(
   flex: 0 0 auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
-}
-
-.ai-assets-real__preview-image {
-  display: block;
-  max-width: 100%;
-  max-height: calc(var(--dialog-max-height) - var(--field-width-sm));
-  margin: 0 auto;
-  border-radius: var(--radius-card);
-  object-fit: contain;
 }
 
 .ai-assets-real__upload {

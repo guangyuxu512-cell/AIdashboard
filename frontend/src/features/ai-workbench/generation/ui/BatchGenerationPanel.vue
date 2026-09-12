@@ -27,6 +27,14 @@ import {
 import { useAiGenerationStore } from '../model/useAiGenerationStore'
 import BatchExecutionViewer from './BatchExecutionViewer.vue'
 import BatchProductPickerDialog from './BatchProductPickerDialog.vue'
+import GenerationOutputCompressionSetting from './GenerationOutputCompressionSetting.vue'
+
+const props = defineProps<{
+  outputCompressionEnabled: boolean
+}>()
+const emit = defineEmits<{
+  'update:outputCompressionEnabled': [value: boolean]
+}>()
 
 const generationStore = useAiGenerationStore()
 const {
@@ -241,6 +249,11 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
               @select="setOutputRange"
             />
           </section>
+
+          <GenerationOutputCompressionSetting
+            :model-value="props.outputCompressionEnabled"
+            @update:model-value="emit('update:outputCompressionEnabled', $event)"
+          />
 
           <section
             v-if="batchChecked"

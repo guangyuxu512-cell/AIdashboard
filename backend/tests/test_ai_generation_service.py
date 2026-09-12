@@ -33,6 +33,7 @@ from app.modules.ai_workbench.exceptions import (
 from app.modules.ai_workbench.generation_service import (
     GenerationService,
     NORMAL_BATCH_PRODUCT_FIDELITY_GUARD,
+    OUTPUT_PROCESSING_FAILURE_CODE,
     derive_generation_job_status,
     generation_counts,
     generation_input_summary,
@@ -67,6 +68,9 @@ from app.modules.ai_workbench.schemas import (
 from app.modules.assets.contracts import AssetOwnership
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetNotFoundError
+from app.modules.assets.generated_image_optimization import (
+    GeneratedImageOptimizationError,
+)
 from app.modules.assets.models import Asset
 from tests.support import FakeSession
 
@@ -523,6 +527,7 @@ def instant_data(
     prompt: str = "完整商品主图提示词",
     count: int = 2,
     model_id: UUID = MODEL_ID,
+    compress_output_under_1000kb: bool = False,
 ) -> InstantGenerationSubmit:
     return InstantGenerationSubmit(
         work_mode=GenerationWorkMode.INSTANT,
@@ -534,6 +539,7 @@ def instant_data(
         output_format="SINGLE",  # type: ignore[arg-type]
         size="1:1",  # type: ignore[arg-type]
         count=count,
+        compress_output_under_1000kb=compress_output_under_1000kb,
     )
 
 
@@ -650,6 +656,54 @@ def test_instant_submit_creates_pending_items_and_is_persistently_idempotent() -
             current_actor,
             instant_data(product.asset_id, prompt="另一个提示词"),
         )
+
+
+def test_output_compression_policy_is_an_immutable_job_snapshot() -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    source = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    submitted = instant_data(
+        source.asset_id,
+        key="compression-policy",
+        count=1,
+        compress_output_under_1000kb=True,
+    )
+
+    job = service.submit(current_actor, submitted)
+
+    assert job.compress_output_under_1000kb is True
+    assert service.submit(current_actor, submitted).generation_job_id == job.generation_job_id
+    with pytest.raises(GenerationSubmissionConflictError):
+        service.submit(
+            current_actor,
+            instant_data(
+                source.asset_id,
+                key="compression-policy",
+                count=1,
+                compress_output_under_1000kb=False,
+            ),
+        )
+
+    failed = service.fail_item(
+        job.items[0].generation_item_id,
+        failure_code="PROVIDER_UNAVAILABLE",
+        failure_message="暂不可用",
+    )
+    retried = service.retry_failed_items(
+        current_actor,
+        failed.generation_job_id,
+        GenerationRetryRequest.model_validate(
+            {
+                "items": [
+                    {
+                        "item_id": str(failed.items[0].generation_item_id),
+                        "expected_attempt_count": 1,
+                    },
+                ],
+            },
+        ),
+    )
+    assert retried.compress_output_under_1000kb is True
 
 
 def test_new_submission_requires_an_enabled_compatible_model() -> None:
@@ -1001,8 +1055,10 @@ def test_normal_batch_freezes_product_fidelity_guard_without_changing_style_or_i
     )
     product_source = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
     style_reference = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    prior_ai_output = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
     attach(product, product_source, MaterialRole.PRODUCT_SOURCE)
     attach(product, style_reference, MaterialRole.STYLE_REFERENCE)
+    attach(product, prior_ai_output, MaterialRole.AI_OUTPUT)
     template_group = add_template_group(
         templates,
         current_actor=current_actor,
@@ -1041,6 +1097,9 @@ def test_normal_batch_freezes_product_fidelity_guard_without_changing_style_or_i
         MaterialRole.PRODUCT_SOURCE.value,
     ]
     assert item.input_assets[0].asset_id == product_source.asset_id
+    assert prior_ai_output.asset_id not in {
+        link.asset_id for link in item.input_assets
+    }
 
 
 def test_batch_submit_requires_at_least_one_executable_item() -> None:
@@ -1307,7 +1366,12 @@ def test_retry_rejects_unknown_provider_create_outcome_without_mutation() -> Non
 
 @pytest.mark.parametrize(
     "failure_code",
-    ["PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE", "PROVIDER_UNAVAILABLE", "OUTPUT_PERSISTENCE_FAILED"],
+    [
+        "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE",
+        "PROVIDER_UNAVAILABLE",
+        "OUTPUT_PERSISTENCE_FAILED",
+        OUTPUT_PROCESSING_FAILURE_CODE,
+    ],
 )
 def test_retry_known_remote_result_keeps_external_task_without_new_create(
     failure_code: str,
@@ -1352,6 +1416,59 @@ def test_retry_known_remote_result_keeps_external_task_without_new_create(
     assert snapshot is not None
     assert snapshot.external_task_id == "known-remote-task"
     assert snapshot.provider_task_create_required is False
+
+
+def test_output_processing_failure_keeps_known_provider_task_for_retry() -> None:
+    service, _, _, _, assets, _ = make_service()
+    current_actor = actor()
+    source = assets.add(team_id=TEAM_A, created_by_user_id=USER_A)
+    job = service.submit(
+        current_actor,
+        instant_data(
+            source.asset_id,
+            key="compression-processing-failure",
+            count=1,
+            compress_output_under_1000kb=True,
+        ),
+    )
+    item = job.items[0]
+    service.mark_item_running(item.generation_item_id)
+    item.provider_execution = GenerationProviderExecution(
+        generation_item_id=item.generation_item_id,
+        provider_code="toapis",
+        external_task_id="known-processed-result",
+        attempt_count=item.attempt_count,
+    )
+
+    with pytest.raises(GeneratedImageOptimizationError):
+        service.complete_item(
+            item.generation_item_id,
+            original_filename="provider.png",
+            content_type="image/png",
+            stream=BytesIO(b"invalid-provider-image"),
+        )
+
+    failed = service.get(current_actor, job.generation_job_id)
+    assert failed.items[0].last_failure_code == OUTPUT_PROCESSING_FAILURE_CODE
+    retried = service.retry_failed_items(
+        current_actor,
+        failed.generation_job_id,
+        GenerationRetryRequest.model_validate(
+            {
+                "items": [
+                    {
+                        "item_id": str(item.generation_item_id),
+                        "expected_attempt_count": item.attempt_count,
+                    },
+                ],
+            },
+        ),
+    )
+    assert retried.items[0].attempt_count == 1
+    execution = service.prepare_next_provider_execution()
+    assert execution is not None
+    assert execution.external_task_id == "known-processed-result"
+    assert execution.provider_task_create_required is False
 
 
 def test_disabled_model_does_not_change_accepted_job_retry_or_execution() -> None:

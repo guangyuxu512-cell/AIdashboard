@@ -26,10 +26,18 @@ import {
 import { useAiGenerationStore } from '../model/useAiGenerationStore'
 import GenerationAssetPickerDialog from './GenerationAssetPickerDialog.vue'
 import GenerationInputSlot from './GenerationInputSlot.vue'
+import GenerationOutputCompressionSetting from './GenerationOutputCompressionSetting.vue'
 import InstantResultViewer from './InstantResultViewer.vue'
 
 const VISUAL_MOCK_PENDING_COMPLETION_MS = 1600
 const VISUAL_MOCK_RETRY_COMPLETION_MS = 360
+
+const props = defineProps<{
+  outputCompressionEnabled: boolean
+}>()
+const emit = defineEmits<{
+  'update:outputCompressionEnabled': [value: boolean]
+}>()
 
 const generationStore = useAiGenerationStore()
 const {
@@ -223,6 +231,10 @@ function retryResult(result: GenerationExecutionResultView): void {
                 />
               </section>
             </div>
+            <GenerationOutputCompressionSetting
+              :model-value="props.outputCompressionEnabled"
+              @update:model-value="emit('update:outputCompressionEnabled', $event)"
+            />
           </div>
         </div>
 

@@ -220,6 +220,11 @@ class ApiGenerationService:
             created_by_display_name=actor.user_display_name,
             work_mode=GenerationWorkMode.INSTANT.value,
             mode=GenerationMode.NORMAL_GENERATION.value,
+            compress_output_under_1000kb=getattr(
+                data,
+                "compress_output_under_1000kb",
+                False,
+            ),
             status="PENDING",
             submission_key=data.submission_key,  # type: ignore[attr-defined]
             submission_fingerprint="d" * 64,
@@ -406,6 +411,7 @@ def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection()
             "output_format": "SINGLE",
             "size": "1:1",
             "count": 1,
+            "compress_output_under_1000kb": True,
         },
     )
 
@@ -413,6 +419,7 @@ def test_generation_submit_api_is_async_pending_and_uses_safe_asset_projection()
     payload = response.json()
     assert payload["status"] == "PENDING"
     assert payload["model_id"] == str(model_id)
+    assert payload["compress_output_under_1000kb"] is True
     assert payload["model_code"] == "gpt-image-2"
     assert payload["model_display_name"] == "GPT Image 2"
     assert payload["total_count"] == 1

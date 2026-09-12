@@ -63,6 +63,7 @@ describe('AI Workbench model selection', () => {
     expect(isWorkbenchModelInputCountAllowed(models[0]!, 3)).toBe(false)
     expect(isWorkbenchModelInputCountAllowed(models[0]!, -1)).toBe(false)
     expect(isWorkbenchModelInputCountAllowed(null, 0)).toBe(false)
+    expect(remainingWorkbenchModelInputCapacity(null, 0)).toBeNull()
     expect(remainingWorkbenchModelInputCapacity(models[0]!, 1)).toBe(1)
     expect(remainingWorkbenchModelInputCapacity(models[0]!, 4)).toBe(0)
   })
