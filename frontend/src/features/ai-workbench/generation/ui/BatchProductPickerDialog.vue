@@ -8,6 +8,7 @@ import PaginationBar from '@/shared/components/PaginationBar.vue'
 import { AppCheckbox, AppDialog, AppInput } from '@/shared/ui'
 
 import type { GenerationProductView } from '../model/types'
+import { countGenerationProductSourceAssets } from '../model/product-source-assets'
 
 const props = defineProps<{
   show: boolean
@@ -128,7 +129,7 @@ function confirm(): void {
           v-for="product in visibleProducts"
           :key="product.id"
           :title="product.name"
-          :count="product.assets.length"
+          :count="`商品原图 ${countGenerationProductSourceAssets(product)}`"
           :active="localSelectedIds.includes(product.id)"
           :select-label="`选择产品 ${product.name}`"
           @select="toggleProductFromRow(product.id)"

@@ -23,10 +23,47 @@ const secondMaterialGroupId = '44444444-4444-4444-8444-444444444445'
 const inputAssetId = '55555555-5555-4555-8555-555555555555'
 const secondInputAssetId = '55555555-5555-4555-8555-555555555556'
 const generatedProductAssetId = '55555555-5555-4555-8555-555555555557'
+const supplementalInputAssetId = '55555555-5555-4555-8555-555555555558'
+const generatedProductAssetIds = [
+  generatedProductAssetId,
+  '55555555-5555-4555-8555-555555555559',
+  '55555555-5555-4555-8555-555555555560',
+  '55555555-5555-4555-8555-555555555561',
+  '55555555-5555-4555-8555-555555555562',
+  '55555555-5555-4555-8555-555555555563',
+  '55555555-5555-4555-8555-555555555564',
+  '55555555-5555-4555-8555-555555555565',
+] as const
+const generatedProductAssetHashes = [
+  'd',
+  'e',
+  'f',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+] as const
 const jobId = '66666666-6666-4666-8666-666666666666'
 const itemId = '77777777-7777-4777-8777-777777777777'
 const outputAssetId = '88888888-8888-4888-8888-888888888888'
 const timestamp = '2026-09-06T00:00:00Z'
+const controlledAssetImage = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="512" height="384" viewBox="0 0 512 384">
+    <defs>
+      <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#e8f3ff" />
+        <stop offset="1" stop-color="#8eb8e8" />
+      </linearGradient>
+    </defs>
+    <rect width="512" height="384" fill="url(#background)" />
+    <rect x="150" y="82" width="212" height="220" rx="28" fill="#ffffff" />
+    <rect x="178" y="124" width="156" height="18" rx="9" fill="#5b86b9" />
+    <rect x="178" y="158" width="114" height="14" rx="7" fill="#9cb8d8" />
+    <circle cx="256" cy="225" r="44" fill="#3b6fa8" />
+    <text x="256" y="348" text-anchor="middle" fill="#1d426c" font-family="sans-serif" font-size="20">AI Output</text>
+  </svg>
+`
 
 type ControlledJobStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'PARTIAL_FAILED'
 
@@ -34,6 +71,8 @@ interface WorkbenchApiOptions {
   controlledJob?: boolean
   submissionGate?: Promise<void>
   batchScenario?: boolean
+  assetContentGate?: Promise<void>
+  failAssetContentRequests?: number
 }
 
 const templateGroup: TemplateGroupReadDto = {
@@ -112,19 +151,34 @@ const materialGroup: ProductMaterialGroupReadDto = {
       },
     },
     {
-      role: 'AI_OUTPUT',
+      role: 'PRODUCT_SOURCE',
       created_at: timestamp,
       asset: {
-        asset_id: generatedProductAssetId,
+        asset_id: supplementalInputAssetId,
         media_type: 'image',
-        original_filename: '历史AI成品.png',
+        original_filename: '商品图-侧面.png',
         content_type: 'image/png',
-        size_bytes: 256,
-        sha256: 'd'.repeat(64),
-        source_type: 'ai_generated',
+        size_bytes: 144,
+        sha256: 'b'.repeat(64),
+        source_type: 'upload',
         created_at: timestamp,
       },
     },
+    ...generatedProductAssetIds.map((assetId, index) => ({
+      role: 'AI_OUTPUT' as const,
+      created_at: timestamp,
+      asset: {
+        asset_id: assetId,
+        media_type: 'image' as const,
+        original_filename:
+          index === 0 ? '历史AI成品.png' : `历史AI成品-${index + 1}.png`,
+        content_type: 'image/png',
+        size_bytes: 256 + index,
+        sha256: generatedProductAssetHashes[index]!.repeat(64),
+        source_type: 'ai_generated' as const,
+        created_at: timestamp,
+      },
+    })),
   ],
   template_bindings: [
     {
@@ -463,7 +517,13 @@ async function installWorkbenchApi(
   let retryBody: Record<string, unknown> | null = null
   const archiveRequests: string[] = []
   const assetContentRequests: string[] = []
+  const assetImageRequests: Array<{
+    assetId: string
+    resource: 'content' | 'thumbnail'
+  }> = []
   const destructiveRequests: string[] = []
+  let assetContentGateUsed = false
+  let assetContentFailuresRemaining = options.failAssetContentRequests ?? 0
   let authenticated = true
   let loginName = 'administrator-preview'
 
@@ -566,14 +626,35 @@ async function installWorkbenchApi(
 
   const fulfillAssetImage = async (route: Parameters<Page['route']>[1]) => {
     const segments = new URL(route.request().url()).pathname.split('/')
-    assetContentRequests.push(segments.at(-2) ?? '')
+    const assetId = segments.at(-2) ?? ''
+    const resource = segments.at(-1)
+    assetContentRequests.push(assetId)
+    if (resource === 'content' || resource === 'thumbnail') {
+      assetImageRequests.push({ assetId, resource })
+    }
+    if (
+      resource === 'content' &&
+      options.assetContentGate &&
+      !assetContentGateUsed
+    ) {
+      assetContentGateUsed = true
+      await options.assetContentGate
+    }
+    if (resource === 'content' && assetContentFailuresRemaining > 0) {
+      assetContentFailuresRemaining -= 1
+      await route.fulfill({
+        status: 503,
+        json: {
+          code: 'ASSET_CONTENT_UNAVAILABLE',
+          message: '原图暂时无法读取',
+        },
+      })
+      return
+    }
     await route.fulfill({
       status: 200,
-      contentType: 'image/png',
-      body: Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-        'base64',
-      ),
+      contentType: 'image/svg+xml',
+      body: Buffer.from(controlledAssetImage),
     })
   }
   await page.route('**/api/v1/assets/*/content', fulfillAssetImage)
@@ -800,6 +881,7 @@ async function installWorkbenchApi(
     retryBody: () => retryBody,
     archiveRequests: () => [...archiveRequests],
     assetContentRequests: () => [...assetContentRequests],
+    assetImageRequests: () => [...assetImageRequests],
     destructiveRequests: () => [...destructiveRequests],
     setControlledJobStatus: (status: ControlledJobStatus) => {
       controlledJobStatus = status
@@ -842,6 +924,7 @@ async function submitControlledBatch(page: Page): Promise<void> {
   await expect(page.getByLabel('批量生成模型')).toBeVisible()
   const productList = page.getByTestId('batch-product-list')
   await expect(productList).toContainText('手机支架')
+  await expect(productList).toContainText('商品原图 2')
   await expect(productList).toContainText('马克杯')
   await page.getByRole('button', { name: '执行检查', exact: true }).click()
   const preflight = page.getByTestId('batch-preflight')
@@ -1094,15 +1177,19 @@ test('runs the production workbench through submit, polling, retry, result and r
 
 test('keeps generated outputs out of new inputs and freezes the output compression policy on submit', async ({
   page,
-}) => {
+}, testInfo) => {
   const calls = await installWorkbenchApi(page)
 
   await page.goto('/#/ai-workbench/assets')
   await expect(
-    page.getByText('商品原图 1 · AI 成品 1 · 全部素材 2', {
+    page.getByText('商品原图 2 · AI 成品 8 · 全部素材 10', {
       exact: true,
     }),
   ).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('ai-material-current-product.png'),
+    fullPage: true,
+  })
 
   await page.goto('/#/ai-workbench/generate')
   await page
@@ -1128,6 +1215,139 @@ test('keeps generated outputs out of new inputs and freezes the output compressi
     product_asset_ids: [inputAssetId],
     compress_output_under_1000kb: true,
   })
+
+  await page.getByRole('button', { name: '批量生成', exact: true }).click()
+  const batchProductList = page.getByTestId('batch-product-list')
+  await expect(batchProductList).toContainText('商品原图 2')
+  await page.getByRole('button', { name: '选择产品', exact: true }).click()
+  const productPicker = page.getByRole('dialog')
+  await expect(productPicker).toContainText('手机支架')
+  await expect(productPicker).toContainText('商品原图 2')
+  await productPicker.screenshot({
+    path: testInfo.outputPath('ai-batch-product-picker-dialog.png'),
+  })
+  await productPicker.getByRole('button', { name: '取消', exact: true }).click()
+})
+
+test('keeps a thumbnail visible while a slow AI output detail image loads and survives rapid selection', async ({
+  page,
+}, testInfo) => {
+  const gate = releaseGate()
+  const calls = await installWorkbenchApi(page, {
+    assetContentGate: gate.promise,
+  })
+
+  await page.goto('/#/ai-workbench/assets')
+  await page
+    .getByRole('navigation', { name: '素材角色' })
+    .getByRole('button', { name: 'AI成品 8', exact: true })
+    .click()
+  const cards = page.getByRole('button', { name: /^查看素材 历史AI成品/ })
+  await expect(cards).toHaveCount(8)
+  await cards.first().click()
+
+  const inspector = page.getByRole('region', { name: '素材详情' })
+  const loadingImage = inspector.locator('.asset-content-image')
+  await expect(loadingImage).toHaveAttribute('data-state', 'loading')
+  await expect(loadingImage).toHaveAttribute('data-source', 'thumbnail')
+  await expect(loadingImage.getByAltText('历史AI成品.png')).toBeVisible()
+  await expect(loadingImage.getByRole('status')).toContainText('正在加载原图')
+
+  await cards.nth(1).click()
+  await expect(inspector).toContainText('历史AI成品-2.png')
+  const fullImage = inspector.locator(
+    '.asset-content-image[data-state="ready"][data-source="content"] img',
+  )
+  await expect(fullImage).toBeVisible()
+  const decoded = await fullImage.evaluate((element) => {
+    const image = element as HTMLImageElement
+    const bounds = image.getBoundingClientRect()
+    return {
+      complete: image.complete,
+      naturalHeight: image.naturalHeight,
+      naturalWidth: image.naturalWidth,
+      renderedHeight: bounds.height,
+      renderedWidth: bounds.width,
+    }
+  })
+  expect(decoded).toMatchObject({
+    complete: true,
+    naturalHeight: 384,
+    naturalWidth: 512,
+  })
+  expect(decoded.renderedHeight).toBeGreaterThan(0)
+  expect(decoded.renderedWidth).toBeGreaterThan(0)
+  expect(
+    calls
+      .assetImageRequests()
+      .filter((request) => request.resource === 'content')
+      .map((request) => request.assetId),
+  ).toEqual(
+    expect.arrayContaining([
+      generatedProductAssetId,
+      generatedProductAssetIds[1],
+    ]),
+  )
+
+  gate.release()
+  await page.screenshot({
+    path: testInfo.outputPath('ai-material-detail-full-image.png'),
+    fullPage: true,
+  })
+})
+
+test('shows an explicit retry when a full material detail image fails, then decodes the retry result', async ({
+  page,
+}) => {
+  const calls = await installWorkbenchApi(page, {
+    failAssetContentRequests: 1,
+  })
+
+  await page.goto('/#/ai-workbench/assets')
+  await page
+    .getByRole('navigation', { name: '素材角色' })
+    .getByRole('button', { name: 'AI成品 8', exact: true })
+    .click()
+  await page
+    .getByRole('button', { name: '查看素材 历史AI成品.png', exact: true })
+    .click()
+
+  const inspector = page.getByRole('region', { name: '素材详情' })
+  const image = inspector.locator('.asset-content-image')
+  await expect(image).toHaveAttribute('data-state', 'error')
+  await expect(image).toHaveAttribute('data-source', 'none')
+  const retry = image.getByRole('button', {
+    name: '重新加载图片：历史AI成品.png',
+  })
+  await expect(retry).toBeVisible()
+  await retry.click()
+
+  const fullImage = inspector.locator(
+    '.asset-content-image[data-state="ready"][data-source="content"] img',
+  )
+  await expect(fullImage).toBeVisible()
+  const decoded = await fullImage.evaluate((element) => {
+    const image = element as HTMLImageElement
+    return {
+      complete: image.complete,
+      naturalHeight: image.naturalHeight,
+      naturalWidth: image.naturalWidth,
+    }
+  })
+  expect(decoded).toEqual({
+    complete: true,
+    naturalHeight: 384,
+    naturalWidth: 512,
+  })
+  expect(
+    calls
+      .assetImageRequests()
+      .filter(
+        (request) =>
+          request.assetId === generatedProductAssetId &&
+          request.resource === 'content',
+      ),
+  ).toHaveLength(2)
 })
 
 test('updates results in place and never masks a detail read error with a stale spinner', async ({
@@ -1162,7 +1382,9 @@ test('updates results in place and never masks a detail read error with a stale 
   await expect(successCard.getByAltText('真实结果.png')).toBeVisible()
   await successCard.getByRole('button', { name: '预览 真实结果.png' }).click()
   await expect(page.getByLabel('图片预览')).toContainText('真实结果.png')
-  await expect(page.getByLabel('图片预览').getByAltText('真实结果.png')).toBeVisible()
+  await expect(
+    page.getByLabel('图片预览').getByAltText('真实结果.png'),
+  ).toBeVisible()
   expect(calls.submitCount()).toBe(1)
 })
 
@@ -1704,11 +1926,15 @@ test('scopes generation-record detail downloads to the clicked single, group, or
     await previewButtons.nth(index).scrollIntoViewIfNeeded()
   }
   await expect(drawer.locator('img')).toHaveCount(4)
-  await expect.poll(async () =>
-    drawer.locator('img').evaluateAll((images) =>
-      images.every((image) => image.complete && image.naturalWidth > 0),
-    ),
-  ).toBe(true)
+  await expect
+    .poll(async () =>
+      drawer
+        .locator('img')
+        .evaluateAll((images) =>
+          images.every((image) => image.complete && image.naturalWidth > 0),
+        ),
+    )
+    .toBe(true)
 
   const beforeSingle = outputRequestCount()
   const singleDownload = page.waitForEvent('download')
