@@ -112,6 +112,27 @@ describe('DeviceCapabilityDrawer', () => {
     expect(wrapper.text()).toContain('影刀 6.3.6 当前需要登录')
   })
 
+  it('forwards the selected application to the single parameter library entry', async () => {
+    const wrapper = shallowMount(DeviceCapabilityDrawer, {
+      props: {
+        show: true,
+        device,
+        skills: [runSkill],
+        yingdaoInventory: inventory,
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+
+    wrapper
+      .findComponent(YingdaoApplicationsTable)
+      .vm.$emit('parameterPresets', inventory.applications[0])
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('parameterPresets')).toEqual([
+      [inventory.applications[0]],
+    ])
+  })
+
   it('renders a Business Skill Empty State when only Internal Skills exist', () => {
     const wrapper = shallowMount(DeviceCapabilityDrawer, {
       props: {

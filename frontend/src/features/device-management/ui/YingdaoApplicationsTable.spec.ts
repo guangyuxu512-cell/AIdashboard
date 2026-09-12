@@ -58,4 +58,30 @@ describe('YingdaoApplicationsTable', () => {
     expect(tooltip.type).toBe(NTooltip)
     expect(slots.default()).toBe(reason)
   })
+
+  it('emits the selected application to the parameter configuration library', () => {
+    const wrapper = shallowMount(YingdaoApplicationsTable, {
+      props: { applications: [application] },
+    })
+    const columns = wrapper
+      .findComponent(DataTable)
+      .props('columns') as DataTableColumns<ProviderApplicationViewModel>
+    const configurationColumn = columns.find(
+      (column) => 'key' in column && column.key === 'configuration',
+    ) as
+      | {
+          render?: (
+            row: ProviderApplicationViewModel,
+            rowIndex: number,
+          ) => VNode
+        }
+      | undefined
+    const rendered = configurationColumn?.render?.(application, 0) as VNode
+    const slots = rendered.children as { default: () => string }
+    const onClick = rendered.props?.onClick as (() => void) | undefined
+
+    expect(slots.default()).toBe('参数配置')
+    onClick?.()
+    expect(wrapper.emitted('parameterPresets')).toEqual([[application]])
+  })
 })

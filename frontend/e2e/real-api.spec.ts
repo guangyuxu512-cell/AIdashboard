@@ -1533,27 +1533,31 @@ test('persists shop and device records through FastAPI and PostgreSQL', async ({
   await expect(
     applicationsDrawer.getByRole('button', { name: '运行' }),
   ).toBeEnabled()
-  const configResponse = page.waitForResponse(
-    (response) =>
-      response
-        .url()
-        .endsWith('/api/v1/automation-app-configs/yingdao/stage-3b-1a-app') &&
-      response.request().method() === 'GET',
-  )
-  await applicationsDrawer.getByRole('button', { name: '配置' }).click()
-  expect((await configResponse).ok()).toBe(true)
-  const configDialog = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', {
-      name: '配置参数 · 影刀应用 E2E',
-    }),
-  })
-  await configDialog.getByRole('button', { name: '添加参数' }).click()
-  const parameterField = configDialog.getByTestId('parameter-config-field')
-  await expect(parameterField).toHaveCount(1)
-  await parameterField.getByPlaceholder('例如 product_id').fill('message')
-  await parameterField.getByPlaceholder('例如 商品 ID').fill('测试消息')
-  await configDialog.getByRole('button', { name: '保存' }).click()
-  await expect(configDialog).toHaveCount(0)
+  // Legacy application schema data remains compatible with no-preset manual
+  // runs, but its editing UI lives only in the parameter preset library.
+  expect(
+    (
+      await page.request.put(
+        '/api/v1/automation-app-configs/yingdao/stage-3b-1a-app',
+        {
+          data: {
+            input_schema: {
+              fields: [
+                {
+                  name: 'message',
+                  label: '测试消息',
+                  type: 'text',
+                  required: false,
+                  default_value: '',
+                  options: [],
+                },
+              ],
+            },
+          },
+        },
+      )
+    ).ok(),
+  ).toBe(true)
 
   await applicationsDrawer.getByRole('button', { name: '运行' }).click()
   const runDialog = page.getByRole('dialog').filter({

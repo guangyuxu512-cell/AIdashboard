@@ -41,7 +41,7 @@ const emit = defineEmits<{
   'retry-skills': []
   'retry-provider-inventory': []
   'refresh-yingdao': []
-  configure: [application: ProviderApplicationViewModel]
+  parameterPresets: [application: ProviderApplicationViewModel]
   run: [application: ProviderApplicationViewModel]
 }>()
 
@@ -223,7 +223,7 @@ const skillColumns: DataTableColumns<DeviceSkillCapabilityViewModel> = [
           v-if="providerReady"
           :applications="yingdaoInventory?.applications ?? []"
           :run-disabled-reason="runUnavailableReason"
-          @configure="emit('configure', $event)"
+          @parameter-presets="emit('parameterPresets', $event)"
           @run="emit('run', $event)"
         />
         <EmptyState

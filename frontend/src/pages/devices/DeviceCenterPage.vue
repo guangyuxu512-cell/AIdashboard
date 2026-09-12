@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
+
 import {
   DeviceDetailDrawer,
   DeviceCapabilityDrawer,
@@ -6,18 +8,27 @@ import {
   DeviceFormDialog,
   DeviceListTable,
   DeviceRemoveDialog,
-  YingdaoApplicationConfigDialog,
   YingdaoApplicationRunDialog,
   WorkerCredentialConfirmDialog,
   WorkerTokenDialog,
   useDeviceManagement,
 } from '@/features/device-management'
+import type { ProviderApplicationViewModel } from '@/entities/device'
 import { TaskRuntimeDrawer } from '@/features/task-runtime'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useDeviceManagement()
+const router = useRouter()
+
+function openParameterPresets(application: ProviderApplicationViewModel): void {
+  management.capabilityVisible.value = false
+  void router.push({
+    path: '/parameter-presets',
+    query: { app_id: application.appId },
+  })
+}
 </script>
 
 <template>
@@ -123,13 +134,8 @@ const management = useDeviceManagement()
         management.retryCapabilityProviderInventory
       "
       @refresh-yingdao="management.refreshYingdao"
-      @configure="management.configureYingdaoApplication"
+      @parameter-presets="openParameterPresets"
       @run="management.runYingdaoApplication"
-    />
-
-    <YingdaoApplicationConfigDialog
-      v-model:show="management.applicationConfigVisible.value"
-      :application="management.selectedApplication.value"
     />
 
     <YingdaoApplicationRunDialog

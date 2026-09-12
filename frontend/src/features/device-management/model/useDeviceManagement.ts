@@ -67,7 +67,6 @@ export function useDeviceManagement() {
   const editingDeviceId = ref<string | null>(null)
   const capabilityDeviceId = ref<string | null>(null)
   const capabilityVisible = ref(false)
-  const applicationConfigVisible = ref(false)
   const applicationRunVisible = ref(false)
   const selectedApplication = ref<ProviderApplicationViewModel | null>(null)
   const selectedDeviceIds = ref<string[]>([])
@@ -290,13 +289,6 @@ export function useDeviceManagement() {
     detailVisible.value = false
   }
 
-  function configureYingdaoApplication(
-    application: ProviderApplicationViewModel,
-  ): void {
-    selectedApplication.value = application
-    applicationConfigVisible.value = true
-  }
-
   function runYingdaoApplication(
     application: ProviderApplicationViewModel,
   ): void {
@@ -489,7 +481,6 @@ export function useDeviceManagement() {
     runtimeDeviceName,
     capabilityVisible,
     capabilityDeviceId,
-    applicationConfigVisible,
     applicationRunVisible,
     selectedApplication,
     detailDeviceId,
@@ -604,7 +595,6 @@ export function useDeviceManagement() {
     openCreate,
     openEdit,
     openCapabilities,
-    configureYingdaoApplication,
     runYingdaoApplication,
     openTaskRuntime,
     refreshYingdao,

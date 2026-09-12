@@ -12,7 +12,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:show': [value: boolean]
-  configure: [application: ProviderApplicationViewModel]
+  parameterPresets: [application: ProviderApplicationViewModel]
   run: [application: ProviderApplicationViewModel]
 }>()
 </script>
@@ -29,7 +29,7 @@ const emit = defineEmits<{
     </p>
     <YingdaoApplicationsTable
       :applications="applications"
-      @configure="emit('configure', $event)"
+      @parameter-presets="emit('parameterPresets', $event)"
       @run="emit('run', $event)"
     />
 
