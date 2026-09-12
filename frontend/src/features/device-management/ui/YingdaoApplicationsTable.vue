@@ -15,7 +15,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  configure: [application: ProviderApplicationViewModel]
+  parameterPresets: [application: ProviderApplicationViewModel]
   run: [application: ProviderApplicationViewModel]
 }>()
 const message = useMessage()
@@ -85,8 +85,11 @@ const columns: DataTableColumns<ProviderApplicationViewModel> = [
     render: (application) =>
       h(
         AppButton,
-        { tone: 'text', onClick: () => emit('configure', application) },
-        { default: () => '配置' },
+        {
+          tone: 'text',
+          onClick: () => emit('parameterPresets', application),
+        },
+        { default: () => '参数配置' },
       ),
   },
   {

@@ -137,7 +137,7 @@ describe('AutomationParameterPresetSelector', () => {
 
     wrapper
       .findAllComponents(AppButton)
-      .find((button) => button.text() === '管理预设')!
+      .find((button) => button.text() === '管理配置')!
       .vm.$emit('click')
     await flushPromises()
 

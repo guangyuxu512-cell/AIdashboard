@@ -136,7 +136,7 @@ function openPresetManagement(): void {
           @update:model-value="change"
         />
         <AppButton :disabled="disabled || !appId" @click="openPresetManagement">
-          管理预设
+          管理配置
         </AppButton>
       </div>
       <p v-if="selectedPreset" class="preset-selector__note">
