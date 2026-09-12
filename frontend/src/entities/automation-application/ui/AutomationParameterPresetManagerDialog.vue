@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NForm, NFormItem, useMessage, type SelectOption } from 'naive-ui'
-import { computed, reactive, ref, watch, watchEffect } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 import { useShopSelectionOptionsQuery } from '@/entities/shop'
 import { toApiError } from '@/shared/api'
@@ -17,7 +17,6 @@ import {
   useSaveAutomationParameterPresetMutation,
 } from '../api/queries'
 import {
-  createDefaultAutomationParameters,
   mapAutomationParameterFields,
   validateAutomationParameters,
 } from '../model/parameters'
@@ -50,7 +49,10 @@ const emit = defineEmits<{
   'update:show': [value: boolean]
   'update:appId': [value: string | null]
   saved: [preset: AutomationParameterPresetDto]
-  configureSchema: [application: YingdaoApplicationOptionDto]
+  configureSchema: [
+    application: YingdaoApplicationOptionDto,
+    schema: AutomationInputSchemaDto,
+  ]
 }>()
 
 const message = useMessage()
@@ -65,9 +67,9 @@ const shopOverrideDialogVisible = ref(false)
 const editingShopId = ref<string | null>(null)
 const pendingNewShopId = ref<string | null>(null)
 const pendingCommonParameterNames = ref<string[]>([])
-const defaultSeedSignature = ref('')
 const draft = reactive({
   name: '',
+  inputSchema: { fields: [] } as AutomationInputSchemaDto,
   commonParameters: {} as Record<string, unknown>,
   shopOverrides: {} as Record<string, Record<string, unknown>>,
   expectedVersion: null as number | null,
@@ -92,12 +94,12 @@ const availableShopOptions = computed<SelectOption[]>(() =>
   ),
 )
 const overrideShopIds = computed(() => Object.keys(draft.shopOverrides))
-const fields = computed(() => mapAutomationParameterFields(props.schema))
+const fields = computed(() => mapAutomationParameterFields(draft.inputSchema))
 const selectedCommonParameterNames = computed(() =>
   new Set(Object.keys(draft.commonParameters)),
 )
 const displayedCommonSchema = computed(() => ({
-  fields: props.schema.fields.filter(
+  fields: draft.inputSchema.fields.filter(
     (field) =>
       field.required ||
       selectedCommonParameterNames.value.has(field.name) ||
@@ -114,7 +116,7 @@ const filteredCommonSchema = computed(() => {
   }
 })
 const addableCommonParameterOptions = computed<SelectOption[]>(() =>
-  props.schema.fields
+  draft.inputSchema.fields
     .filter(
       (field) =>
         !selectedCommonParameterNames.value.has(field.name) &&
@@ -127,7 +129,7 @@ const unknownCommonParameterNames = computed(() => {
   return Object.keys(draft.commonParameters).filter((name) => !known.has(name))
 })
 const commonError = computed(() =>
-  validateAutomationParameters(props.schema, draft.commonParameters),
+  validateAutomationParameters(draft.inputSchema, draft.commonParameters),
 )
 const saveDisabledReason = computed(() => {
   if (!props.appId) return '请先选择影刀应用'
@@ -148,6 +150,15 @@ const editingShopName = computed(() =>
 const editingShopOverrides = computed(() =>
   editingShopId.value ? (draft.shopOverrides[editingShopId.value] ?? {}) : {},
 )
+const editingShopSchema = computed(() => {
+  const selectedNames = new Set([
+    ...Object.keys(draft.commonParameters),
+    ...Object.keys(editingShopOverrides.value),
+  ])
+  return {
+    fields: draft.inputSchema.fields.filter((field) => selectedNames.has(field.name)),
+  }
+})
 
 watch(
   () => props.show,
@@ -175,6 +186,26 @@ watch(
 )
 
 watch(
+  () => props.schema,
+  (schema) => {
+    // The application schema is an initial template only.  Async arrival may
+    // seed an untouched *new* draft, but can never overwrite a name, value,
+    // store difference, or a saved preset's own schema snapshot.
+    if (
+      !props.show ||
+      selectedPresetId.value ||
+      draft.name ||
+      Object.keys(draft.commonParameters).length ||
+      Object.keys(draft.shopOverrides).length ||
+      draft.inputSchema.fields.length
+    ) {
+      return
+    }
+    draft.inputSchema = cloneSchema(schema)
+  },
+)
+
+watch(
   [
     () => props.initialPresetId,
     () => presetsQuery.data.value,
@@ -187,34 +218,6 @@ watch(
   },
   { immediate: true },
 )
-
-watchEffect(() => {
-  const signature = JSON.stringify(
-    props.schema.fields.map((field) => [
-      field.name,
-      field.required,
-      field.default_value,
-    ]),
-  )
-
-  // A new preset starts with the application's defaults.  Configuration can
-  // arrive after the dialog opens, so seed once for each schema revision;
-  // never seed again after a user removes an optional current-preset field.
-  if (
-    !props.show ||
-    selectedPresetId.value ||
-    !props.schema.fields.length ||
-    defaultSeedSignature.value === signature
-  ) {
-    return
-  }
-
-  draft.commonParameters = {
-    ...createDefaultAutomationParameters(props.schema, draft.commonParameters),
-    ...draft.commonParameters,
-  }
-  defaultSeedSignature.value = signature
-})
 
 function cloneOverrides(
   value: Record<string, Record<string, unknown>>,
@@ -229,9 +232,11 @@ function cloneOverrides(
 
 function startCreate(): void {
   selectedPresetId.value = null
-  defaultSeedSignature.value = ''
   draft.name = ''
-  draft.commonParameters = createDefaultAutomationParameters(props.schema)
+  draft.inputSchema = cloneSchema(props.schema)
+  // Application fields are a shared catalog.  A new preset starts with no
+  // optional fields selected; adding a field is an explicit preset fact.
+  draft.commonParameters = {}
   draft.shopOverrides = {}
   draft.expectedVersion = null
   commonParameterQuery.value = ''
@@ -243,8 +248,8 @@ function startCreate(): void {
 
 function applyPreset(preset: AutomationParameterPresetDto): void {
   selectedPresetId.value = preset.preset_id
-  defaultSeedSignature.value = ''
   draft.name = preset.name
+  draft.inputSchema = cloneSchema(preset.input_schema ?? props.schema)
   draft.commonParameters = { ...preset.common_parameters }
   draft.shopOverrides = cloneOverrides(preset.shop_overrides)
   draft.expectedVersion = preset.version
@@ -312,7 +317,7 @@ function removeCommonParameter(name: string): void {
 
 function addCommonParameter(value: unknown): void {
   const name = typeof value === 'string' ? value : null
-  const field = props.schema.fields.find((item) => item.name === name)
+  const field = draft.inputSchema.fields.find((item) => item.name === name)
   if (!field || selectedCommonParameterNames.value.has(field.name)) return
   if (field.default_value !== null) {
     draft.commonParameters = {
@@ -421,12 +426,14 @@ async function save(): Promise<void> {
       data: selectedPresetId.value
         ? {
             name: draft.name.trim(),
+            input_schema: cloneSchema(draft.inputSchema),
             common_parameters: { ...draft.commonParameters },
             shop_overrides: cloneOverrides(draft.shopOverrides),
             expected_version: draft.expectedVersion!,
           }
         : {
             name: draft.name.trim(),
+            input_schema: cloneSchema(draft.inputSchema),
             common_parameters: { ...draft.commonParameters },
             shop_overrides: cloneOverrides(draft.shopOverrides),
           },
@@ -441,9 +448,43 @@ async function save(): Promise<void> {
 
 function openSchemaConfiguration(): void {
   if (selectedApplication.value) {
-    emit('configureSchema', selectedApplication.value)
+    emit('configureSchema', selectedApplication.value, cloneSchema(draft.inputSchema))
   }
 }
+
+function cloneSchema(schema: AutomationInputSchemaDto): AutomationInputSchemaDto {
+  return {
+    fields: schema.fields.map((field) => ({
+      ...field,
+      options: [...field.options],
+    })),
+  }
+}
+
+function applyInputSchema(schema: AutomationInputSchemaDto): void {
+  const nextSchema = cloneSchema(schema)
+  const knownNames = new Set(nextSchema.fields.map((field) => field.name))
+  // Removing a field is an intentional edit to this preset's contract.  Do
+  // not leave a value or a shop override that the Backend must reject.
+  draft.commonParameters = Object.fromEntries(
+    Object.entries(draft.commonParameters).filter(([name]) => knownNames.has(name)),
+  )
+  draft.shopOverrides = Object.fromEntries(
+    Object.entries(draft.shopOverrides).map(([shopId, values]) => [
+      shopId,
+      Object.fromEntries(
+        Object.entries(values).filter(([name]) => knownNames.has(name)),
+      ),
+    ]),
+  )
+  pendingCommonParameterNames.value = pendingCommonParameterNames.value.filter(
+    (name) => knownNames.has(name),
+  )
+  draft.inputSchema = nextSchema
+  saveError.value = null
+}
+
+defineExpose({ applyInputSchema })
 </script>
 
 <template>
@@ -538,6 +579,11 @@ function openSchemaConfiguration(): void {
           placeholder="搜索参数"
         />
         <div v-if="fields.length" class="preset-manager__parameter-viewport">
+          <div class="preset-manager__parameter-headings" aria-hidden="true">
+            <span>字段名</span>
+            <span>值</span>
+            <span>移除</span>
+          </div>
           <AutomationParameterFields
             v-model="draft.commonParameters"
             :schema="filteredCommonSchema"
@@ -597,7 +643,7 @@ function openSchemaConfiguration(): void {
     :show="shopOverrideDialogVisible"
     :shop-id="editingShopId"
     :shop-name="editingShopName"
-    :schema="schema"
+    :schema="editingShopSchema"
     :common-parameters="draft.commonParameters"
     :shop-overrides="editingShopOverrides"
     :disabled="schemaLoading"
@@ -669,12 +715,30 @@ function openSchemaConfiguration(): void {
 
 .preset-manager__parameter-viewport {
   /* A compact NForm row includes the control plus its form-item spacing. */
+  --schema-parameter-label-column: var(--field-width-xs);
+  --schema-parameter-action-column: 48px;
   --preset-parameter-row-height: calc(
     var(--control-height-default) + var(--space-8)
   );
   max-height: calc(var(--preset-parameter-row-height) * 5);
   overflow-y: auto;
   padding-right: var(--space-2);
+}
+
+.preset-manager__parameter-headings {
+  display: grid;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  grid-template-columns:
+    var(--schema-parameter-label-column) minmax(0, 1fr)
+    var(--schema-parameter-action-column);
+}
+
+.preset-manager__parameter-headings span:last-child {
+  text-align: center;
 }
 
 .preset-manager__legacy {
@@ -765,6 +829,10 @@ function openSchemaConfiguration(): void {
 
   .preset-manager__add-shop {
     width: 100%;
+  }
+
+  .preset-manager__parameter-headings {
+    display: none;
   }
 }
 </style>

@@ -28,10 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无（`FREE`）。
+当前活跃 Migration Slot：`hotfix/automation-parameter-schema-snapshot-v1` / 81a1（`reserved`）。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `hotfix/automation-parameter-schema-snapshot-v1` / 81a1 | `reserved` | `automation_parameter_presets` 增加不可变 `input_schema_snapshot` JSONB，要求 object check；旧预设只从当前应用 Schema 识别的既有公共/店铺覆盖键构造 snapshot，未知键和值必须保留并以正式诊断路径报告，禁止猜测或清空 | `20260912_0035_ai_generation_output_compression_v1` | `20260912_0036_automation_parameter_schema_snapshot_v1` | Feature DB `control_center_feat_automation_parameter_schema_snapshot` 已从空库升级至 `0035`；Gate 1 必须验证 `0035 → 0036`、已知/未知键保留与诊断、降级语义及 Feature DB 回滚，不得使用 `control_center_feat_parameter_presets_usability` |
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |

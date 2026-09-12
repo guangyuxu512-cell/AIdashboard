@@ -84,6 +84,7 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
     title: '操作',
     key: 'actions',
     width: 208,
+    align: 'center',
     fixed: 'right',
     render: (preset) =>
       h('div', { class: 'parameter-preset-list-table__actions' }, [
@@ -126,7 +127,9 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
 :deep(.parameter-preset-list-table__actions) {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
+  white-space: nowrap;
 }
 
 :deep(.parameter-preset-list-table__parameters) {

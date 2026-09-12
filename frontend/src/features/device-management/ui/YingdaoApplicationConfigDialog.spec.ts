@@ -44,7 +44,7 @@ function configField(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function mountDialog() {
+function mountDialog(presetSchema?: { fields: ReturnType<typeof configField>[] }) {
   return shallowMount(YingdaoApplicationConfigDialog, {
     props: {
       show: true,
@@ -53,6 +53,7 @@ function mountDialog() {
         appName: '中文参数测试应用',
         versionId: '1',
       },
+      ...(presetSchema ? { presetSchema } : {}),
     },
     global: { renderStubDefaultSlot: true },
   })
@@ -102,6 +103,33 @@ describe('YingdaoApplicationConfigDialog', () => {
       mocks.mutateAsync.mock.calls[0]![0].data.input_schema.fields[0]
         .default_value
     expect(typeof submitted).toBe('string')
+  })
+
+  it('returns a preset-local schema without mutating the application template', async () => {
+    const schema = { fields: [configField()] }
+    const wrapper = mountDialog(schema)
+    await flushPromises()
+
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+
+    expect(wrapper.emitted('confirmPresetSchema')).toEqual([
+      [
+        {
+          fields: [
+            {
+              name: '商品列表',
+              label: '',
+              type: 'text',
+              required: true,
+              default_value: '{"page":1}',
+              options: [],
+            },
+          ],
+        },
+      ],
+    ])
+    expect(mocks.mutateAsync).not.toHaveBeenCalled()
   })
 
   it('shows a client name error and keeps the draft without sending a request', async () => {

@@ -6,7 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
-from sqlalchemy import Engine, delete, inspect
+from sqlalchemy import Engine, delete, inspect, select
 from sqlalchemy.orm import Session
 
 from app.main import create_app
@@ -262,9 +262,17 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                                     "default_value": True,
                                     "options": [],
                                 },
+                                {
+                                    "name": "每页数量",
+                                    "label": "每页数量",
+                                    "type": "number",
+                                    "required": False,
+                                    "default_value": 20,
+                                    "options": [],
+                                },
                             ],
                         },
-                        default_values={"数量": 1, "启用": True},
+                        default_values={"数量": 1, "启用": True, "每页数量": 20},
                         version=1,
                     ),
                 ],
@@ -317,6 +325,28 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             )
             assert preset.team_id == team_id
             assert presets.list(actor=actor, app_id=app_id) == [preset]
+
+            # A second preset uses the same application field catalog, but
+            # must never cause its values or unselected schema defaults to
+            # appear in A's Task/Schedule/Claim payloads.
+            preset_b = presets.create(
+                actor=actor,
+                app_id=app_id,
+                data=AutomationParameterPresetCreate(
+                    name="独立预设 B",
+                    common_parameters={"标题": "B 标题", "数量": 5},
+                ),
+            )
+            snapshot_b = presets.snapshot_for_actor(
+                actor=actor,
+                app_id=app_id,
+                preset_id=preset_b.preset_id,
+                shop_ids=[shop_a],
+            )
+            assert snapshot_b.parameters["店铺参数"][str(shop_a)] == {
+                "标题": "B 标题",
+                "数量": 5,
+            }
 
             async def exercise_preset_api() -> None:
                 application = create_app()
@@ -375,6 +405,11 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             }
             assert task.parameter_preset_id == preset.preset_id
             assert task.parameter_preset_version == preset.version
+            assert "每页数量" not in task.input_json["params"]["公共参数"]
+            assert all(
+                "每页数量" not in values
+                for values in task.input_json["params"]["店铺参数"].values()
+            )
             claimed = TaskService(
                 session,
                 credential_service=credential_service,
@@ -430,6 +465,11 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert scheduled_task is not None
             assert scheduled_task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "后续标题"
             assert task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "公共标题"
+            assert "每页数量" not in scheduled_task.input_json["params"]["公共参数"]
+            assert all(
+                "每页数量" not in values
+                for values in scheduled_task.input_json["params"]["店铺参数"].values()
+            )
             assert scheduled_task.parameter_preset_id == preset.preset_id
             assert scheduled_task.parameter_preset_version == updated_preset.version
 
@@ -523,6 +563,48 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             session.delete(session.get(User, foreign_user_id))
             session.delete(session.get(Team, foreign_team_id))
             session.commit()
+
+            # Changing the global application template after A/B exist must
+            # neither add a value to their Task/Schedule snapshots nor make a
+            # newly-required template field retroactively invalidate them.
+            config = session.scalar(
+                select(AutomationApplicationConfig).where(
+                    AutomationApplicationConfig.provider_code == "yingdao",
+                    AutomationApplicationConfig.app_id == app_id,
+                ),
+            )
+            assert config is not None
+            config.input_schema = {
+                "fields": [
+                    {
+                        "name": "模板新增必填",
+                        "label": "模板新增必填",
+                        "type": "text",
+                        "required": True,
+                        "default_value": None,
+                        "options": [],
+                    },
+                ],
+            }
+            config.default_values = {}
+            config.version += 1
+            session.commit()
+            assert "模板新增必填" not in {
+                field.name for field in preset.input_schema.fields
+            }
+            assert "模板新增必填" not in {
+                field.name for field in preset_b.input_schema.fields
+            }
+            assert presets.snapshot_for_actor(
+                actor=actor,
+                app_id=app_id,
+                preset_id=preset.preset_id,
+                shop_ids=[shop_a],
+            ).parameters["店铺参数"][str(shop_a)] == {
+                "标题": "后续标题",
+                "数量": 0,
+                "启用": False,
+            }
     finally:
         _cleanup(
             postgresql_engine,
@@ -550,6 +632,11 @@ def test_postgresql_preset_schema_has_team_scope_and_schedule_reference(
     }
     assert any("jsonb_typeof(common_parameters)" in check for check in checks)
     assert any("jsonb_typeof(shop_overrides)" in check for check in checks)
+    assert any("jsonb_typeof(input_schema_snapshot)" in check for check in checks)
+    assert "input_schema_snapshot" in {
+        column["name"]
+        for column in inspector.get_columns("automation_parameter_presets")
+    }
     assert any(
         key["name"] == "fk_schedules_parameter_preset_id_automation_parameter_presets"
         for key in inspector.get_foreign_keys("schedules")

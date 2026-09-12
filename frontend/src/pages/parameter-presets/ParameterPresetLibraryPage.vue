@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 
 import {
   AutomationParameterPresetManagerDialog,
+  type AutomationInputSchemaDto,
   useAutomationApplicationConfigQuery,
   type AutomationParameterPresetDto,
   type YingdaoApplicationOptionDto,
@@ -23,15 +24,29 @@ import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 const management = useParameterPresetManagement()
 const route = useRoute()
 const schemaDialogApplication = ref<ProviderApplicationViewModel | null>(null)
+const schemaDialogSchema = ref<AutomationInputSchemaDto>({ fields: [] })
+const managerDialog = ref<InstanceType<
+  typeof AutomationParameterPresetManagerDialog
+> | null>(null)
 const configQuery = useAutomationApplicationConfigQuery(
   () => management.editorAppId.value,
-  () => management.editorVisible.value,
+  // Existing presets read their persisted schema from the preset API.  Only a
+  // brand-new preset needs the mutable application template as its seed.
+  () => management.editorVisible.value && !management.editorPresetId.value,
 )
 const editorSchema = computed(
   () => configQuery.data.value?.input_schema ?? { fields: [] },
 )
+const editorSchemaLoading = computed(
+  () =>
+    management.editorVisible.value &&
+    !management.editorPresetId.value &&
+    configQuery.isPending.value,
+)
 const editorSchemaError = computed(() =>
-  configQuery.error.value ? getErrorMessage(configQuery.error.value) : null,
+  management.editorPresetId.value || !configQuery.error.value
+    ? null
+    : getErrorMessage(configQuery.error.value),
 )
 const filterApplicationOptions = computed(() =>
   management.applicationOptions.value.map((application) => ({
@@ -63,12 +78,18 @@ function openPreset(preset: AutomationParameterPresetDto): void {
 
 function openSchemaConfiguration(
   application: YingdaoApplicationOptionDto,
+  schema: AutomationInputSchemaDto,
 ): void {
   schemaDialogApplication.value = {
     appId: application.app_id,
     appName: application.app_name,
     versionId: null,
   }
+  schemaDialogSchema.value = schema
+}
+
+function applyPresetSchema(schema: AutomationInputSchemaDto): void {
+  managerDialog.value?.applyInputSchema(schema)
 }
 </script>
 
@@ -138,13 +159,14 @@ function openSchemaConfiguration(
     </ManagementListSection>
 
     <AutomationParameterPresetManagerDialog
+      ref="managerDialog"
       :show="management.editorVisible.value"
       :app-id="management.editorAppId.value"
       :schema="editorSchema"
       :application-options="management.applicationOptions.value"
       :application-options-loading="management.applicationsLoading.value"
       :initial-preset-id="management.editorPresetId.value"
-      :schema-loading="configQuery.isPending.value"
+      :schema-loading="editorSchemaLoading"
       :schema-error="editorSchemaError"
       allow-schema-configuration
       @update:show="(show) => (show ? undefined : management.closeEditor())"
@@ -156,6 +178,8 @@ function openSchemaConfiguration(
     <YingdaoApplicationConfigDialog
       v-model:show="schemaDialogOpen"
       :application="schemaDialogApplication"
+      :preset-schema="schemaDialogSchema"
+      @confirm-preset-schema="applyPresetSchema"
     />
 
     <ParameterPresetDeleteDialog

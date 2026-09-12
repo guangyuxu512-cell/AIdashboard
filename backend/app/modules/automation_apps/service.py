@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -34,7 +35,7 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetRead,
     AutomationParameterPresetUpdate,
     build_parameter_preset_snapshot,
-    normalize_parameters,
+    normalize_explicit_parameter_selection,
     validate_parameter_subset,
     YingdaoApplicationOptionRead,
 )
@@ -195,8 +196,7 @@ class AutomationParameterPresetService:
             # operator has ALL scope for another resource type.
             if preset.team_id == actor.team_id
         ]
-        schema = self._schema(app_id)
-        return [self._to_read(preset, schema=schema) for preset in presets]
+        return [self._to_read(preset) for preset in presets]
 
     def list_all(
         self,
@@ -217,11 +217,7 @@ class AutomationParameterPresetService:
             # including for an ActorContext with ALL scope elsewhere.
             if preset.team_id == actor.team_id
         ]
-        schemas = {preset.app_id: self._schema(preset.app_id) for preset in presets}
-        return [
-            self._to_read(preset, schema=schemas[preset.app_id])
-            for preset in presets
-        ]
+        return [self._to_read(preset) for preset in presets]
 
     def get(
         self,
@@ -242,8 +238,13 @@ class AutomationParameterPresetService:
         data: AutomationParameterPresetCreate,
     ) -> AutomationParameterPresetRead:
         self._require_shop_access(actor)
+        schema = (
+            data.input_schema
+            if data.input_schema is not None
+            else self._application_schema(app_id)
+        )
         common_parameters, shop_overrides = self._normalize_payload(
-            app_id=app_id,
+            schema=schema,
             common_parameters=data.common_parameters,
             shop_overrides=data.shop_overrides,
         )
@@ -261,6 +262,7 @@ class AutomationParameterPresetService:
             name=data.name,
             common_parameters=common_parameters,
             shop_overrides=shop_overrides,
+            input_schema_snapshot=schema.model_dump(mode="json"),
             version=1,
         )
         self.preset_repository.add(preset)
@@ -287,8 +289,13 @@ class AutomationParameterPresetService:
             raise AutomationParameterPresetVersionConflictError()
         values = data.model_dump(exclude_unset=True)
         name = values.get("name", preset.name)
+        schema = (
+            data.input_schema
+            if data.input_schema is not None
+            else self._preset_schema(preset)
+        )
         common_parameters, shop_overrides = self._normalize_payload(
-            app_id=app_id,
+            schema=schema,
             common_parameters=values.get("common_parameters", preset.common_parameters),
             shop_overrides=values.get("shop_overrides", preset.shop_overrides),
         )
@@ -303,6 +310,8 @@ class AutomationParameterPresetService:
         preset.name = name
         preset.common_parameters = common_parameters
         preset.shop_overrides = shop_overrides
+        if data.input_schema is not None:
+            preset.input_schema_snapshot = schema.model_dump(mode="json")
         preset.version += 1
         self._commit(preset)
         return self._to_read(preset)
@@ -334,6 +343,7 @@ class AutomationParameterPresetService:
                 shop_id: dict(values)
                 for shop_id, values in source.shop_overrides.items()
             },
+            input_schema_snapshot=deepcopy(source.input_schema_snapshot),
             version=1,
         )
         self.preset_repository.add(preset)
@@ -400,29 +410,35 @@ class AutomationParameterPresetService:
             raise AutomationParameterPresetNotFoundError()
         return self._snapshot(preset, shop_ids)
 
-    def _schema(self, app_id: str) -> AutomationInputSchema:
+    def _application_schema(self, app_id: str) -> AutomationInputSchema:
         config = self.config_repository.get("yingdao", app_id)
         return AutomationInputSchema.model_validate(
             config.input_schema if config is not None else {"fields": []},
         )
 
+    @staticmethod
+    def _preset_schema(preset: AutomationParameterPreset) -> AutomationInputSchema:
+        return AutomationInputSchema.model_validate(preset.input_schema_snapshot)
+
     def _normalize_payload(
         self,
         *,
-        app_id: str,
+        schema: AutomationInputSchema,
         common_parameters: dict[str, object],
         shop_overrides: dict[object, dict[str, object]],
     ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-        schema = self._schema(app_id)
         try:
             # A preset owns its explicit parameter selection. Validate that
             # selection without persisting schema defaults back into it: an
             # optional field removed from one preset must remain absent after
-            # reread and cannot alter another preset. `normalize_parameters`
-            # still verifies the final required-field contract here, and the
-            # Task snapshot remains the single place that materializes defaults.
-            common = validate_parameter_subset(schema, common_parameters)
-            normalize_parameters(schema, common)
+            # reread and cannot alter another preset.  The explicit selection
+            # also enforces required fields; Task/Schedule snapshotting uses
+            # the same rule so a later schema change fails closed instead of
+            # silently adding a default.
+            common = normalize_explicit_parameter_selection(
+                schema,
+                common_parameters,
+            )
             overrides = {
                 str(shop_id): validate_parameter_subset(schema, values)
                 for shop_id, values in shop_overrides.items()
@@ -442,7 +458,7 @@ class AutomationParameterPresetService:
                 preset_id=preset.preset_id,
                 preset_version=preset.version,
                 parameters=build_parameter_preset_snapshot(
-                    self._schema(preset.app_id),
+                    self._preset_schema(preset),
                     common_parameters=preset.common_parameters,
                     shop_overrides=preset.shop_overrides,
                     shop_ids=shop_ids,  # type: ignore[arg-type]
@@ -490,10 +506,8 @@ class AutomationParameterPresetService:
     def _to_read(
         self,
         preset: AutomationParameterPreset,
-        *,
-        schema: AutomationInputSchema | None = None,
     ) -> AutomationParameterPresetRead:
-        current_schema = schema or self._schema(preset.app_id)
+        current_schema = self._preset_schema(preset)
         known_names = {field.name for field in current_schema.fields}
         invalid_names = sorted(
             {
@@ -506,4 +520,7 @@ class AutomationParameterPresetService:
         return AutomationParameterPresetRead.model_validate(
             preset,
             from_attributes=True,
-        ).model_copy(update={"invalid_parameter_names": invalid_names})
+        ).model_copy(update={
+            "input_schema": current_schema,
+            "invalid_parameter_names": invalid_names,
+        })

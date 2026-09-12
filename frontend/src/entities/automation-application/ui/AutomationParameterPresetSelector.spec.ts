@@ -23,6 +23,26 @@ const preset = {
   preset_id: 'preset-1',
   app_id: 'daily-collection',
   name: '抖店日常采集',
+  input_schema: {
+    fields: [
+      {
+        name: '页码',
+        label: '预设页码',
+        type: 'number' as const,
+        required: false,
+        default_value: 1,
+        options: [],
+      },
+      {
+        name: '每页数量',
+        label: '预设每页数量',
+        type: 'number' as const,
+        required: false,
+        default_value: 20,
+        options: [],
+      },
+    ],
+  },
   common_parameters: { 页码: 1, 每页数量: 20 },
   shop_overrides: { 'shop-b': { 页码: 2 } },
   version: 1,
@@ -98,7 +118,7 @@ describe('AutomationParameterPresetSelector', () => {
     expect(wrapper.text()).toContain('使用公共参数')
     expect(wrapper.text()).toContain('乙店')
     expect(wrapper.text()).toContain('已单独设置：页码')
-    expect(wrapper.text()).toContain('每页数量')
+    expect(wrapper.text()).toContain('预设每页数量')
     expect(wrapper.text()).not.toContain('每页数量=20')
   })
 
@@ -117,7 +137,7 @@ describe('AutomationParameterPresetSelector', () => {
 
     wrapper
       .findAllComponents(AppButton)
-      .find((button) => button.text() === '管理预设')!
+      .find((button) => button.text() === '管理配置')!
       .vm.$emit('click')
     await flushPromises()
 
