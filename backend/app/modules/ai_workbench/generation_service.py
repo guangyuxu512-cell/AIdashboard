@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import BinaryIO
@@ -76,6 +77,10 @@ from app.modules.ai_workbench.schemas import (
 from app.modules.assets.contracts import AssetOwnership
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetNotFoundError
+from app.modules.assets.generated_image_optimization import (
+    GeneratedImageOptimizationError,
+    prepare_generated_image_output,
+)
 from app.modules.assets.models import Asset
 from app.modules.assets.service import AssetService
 from app.shared.identifiers import generate_id
@@ -83,6 +88,8 @@ from app.shared.identifiers import generate_id
 
 OUTPUT_PERSISTENCE_FAILURE_CODE = "OUTPUT_PERSISTENCE_FAILED"
 OUTPUT_PERSISTENCE_FAILURE_MESSAGE = "生成结果保存失败"
+OUTPUT_PROCESSING_FAILURE_CODE = "OUTPUT_PROCESSING_FAILED"
+OUTPUT_PROCESSING_FAILURE_MESSAGE = "生成结果处理失败"
 NORMAL_BATCH_PRODUCT_FIDELITY_GUARD = (
     "产品原图真实性优先：输入的商品原图是产品外观的唯一事实来源。"
     "如创意描述与原图冲突，必须以原图为准，保留颜色、材质、纹理、"
@@ -96,6 +103,7 @@ NORMAL_BATCH_PRODUCT_FIDELITY_GUARD = (
 REMOTE_RESULT_RECOVERY_FAILURE_CODES = frozenset(
     {
         OUTPUT_PERSISTENCE_FAILURE_CODE,
+        OUTPUT_PROCESSING_FAILURE_CODE,
         "PROVIDER_OUTPUT_DOWNLOAD_TIMEOUT",
         "PROVIDER_OUTPUT_DOWNLOAD_UNAVAILABLE",
         "PROVIDER_POLL_TIMEOUT",
@@ -139,6 +147,13 @@ class GenerationExecution:
     input_assets: tuple[GenerationExecutionInput, ...]
     external_task_id: str | None
     provider_task_create_required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderImageOutput:
+    stream: BinaryIO
+    original_filename: str | None
+    content_type: str | None
 
 
 def generation_counts(items: Sequence[GenerationItem]) -> GenerationCounts:
@@ -259,6 +274,7 @@ class GenerationService:
                 created_by_display_name=actor.user_display_name,
                 work_mode=data.work_mode.value,
                 mode=data.mode.value,
+                compress_output_under_1000kb=data.compress_output_under_1000kb,
                 status=GenerationJobStatus.PENDING.value,
                 submission_key=data.submission_key,
                 submission_fingerprint=fingerprint,
@@ -648,6 +664,8 @@ class GenerationService:
             self.session.rollback()
             raise
 
+        failure_code = OUTPUT_PERSISTENCE_FAILURE_CODE
+        failure_message = OUTPUT_PERSISTENCE_FAILURE_MESSAGE
         try:
             archive_group: ProductMaterialGroup | None = None
             if item.job.work_mode == GenerationWorkMode.BATCH.value:
@@ -660,44 +678,70 @@ class GenerationService:
                 if archive_group is None:
                     raise ProductMaterialGroupNotFoundError()
 
-            with self.asset_service.stage_for_transaction(
-                original_filename=original_filename,
-                content_type=content_type,
-                stream=stream,
-                media_type=AssetMediaType.IMAGE,
-                source_type=AssetSourceType.AI_GENERATED,
-                ownership=AssetOwnership(
-                    team_id=item.job.team_id,
-                    created_by_user_id=item.job.created_by_user_id,
-                ),
-            ) as asset:
-                now = datetime.now(UTC)
-                item.output_asset_id = asset.asset_id
-                item.output_asset = asset
-                if archive_group is not None:
-                    self.generation_repository.add_material_group_asset(
-                        archive_group,
-                        MaterialGroupAsset(
-                            material_group_id=archive_group.material_group_id,
-                            asset_id=asset.asset_id,
-                            role=MaterialRole.AI_OUTPUT.value,
-                        ),
-                    )
-                    item.archived_material_group_id = archive_group.material_group_id
-                    item.archived_material_group_name_snapshot = archive_group.name
-                    item.archived_at = now
-                item.status = GenerationItemStatus.SUCCESS.value
-                item.finished_at = now
-                if item.job.started_at is None:
-                    item.job.started_at = now
-                self._sync_job_status(item.job, now=now)
-                self.session.commit()
+            if item.job.compress_output_under_1000kb:
+                output_context = prepare_generated_image_output(
+                    stream=stream,
+                    original_filename=original_filename,
+                    content_type=content_type,
+                )
+            else:
+                output_context = nullcontext(
+                    ProviderImageOutput(
+                        stream=stream,
+                        original_filename=original_filename,
+                        content_type=content_type,
+                    ),
+                )
+            with output_context as output:
+                with self.asset_service.stage_for_transaction(
+                    original_filename=output.original_filename,
+                    content_type=output.content_type,
+                    stream=output.stream,
+                    media_type=AssetMediaType.IMAGE,
+                    source_type=AssetSourceType.AI_GENERATED,
+                    ownership=AssetOwnership(
+                        team_id=item.job.team_id,
+                        created_by_user_id=item.job.created_by_user_id,
+                    ),
+                ) as asset:
+                    now = datetime.now(UTC)
+                    item.output_asset_id = asset.asset_id
+                    item.output_asset = asset
+                    if archive_group is not None:
+                        self.generation_repository.add_material_group_asset(
+                            archive_group,
+                            MaterialGroupAsset(
+                                material_group_id=archive_group.material_group_id,
+                                asset_id=asset.asset_id,
+                                role=MaterialRole.AI_OUTPUT.value,
+                            ),
+                        )
+                        item.archived_material_group_id = archive_group.material_group_id
+                        item.archived_material_group_name_snapshot = archive_group.name
+                        item.archived_at = now
+                    item.status = GenerationItemStatus.SUCCESS.value
+                    item.finished_at = now
+                    if item.job.started_at is None:
+                        item.job.started_at = now
+                    self._sync_job_status(item.job, now=now)
+                    self.session.commit()
+        except GeneratedImageOptimizationError:
+            failure_code = OUTPUT_PROCESSING_FAILURE_CODE
+            failure_message = OUTPUT_PROCESSING_FAILURE_MESSAGE
+            self.session.rollback()
+            self.fail_item(
+                generation_item_id,
+                failure_code=failure_code,
+                failure_message=failure_message,
+                expected_attempt_count=expected_attempt_count,
+            )
+            raise
         except Exception:
             self.session.rollback()
             self.fail_item(
                 generation_item_id,
-                failure_code=OUTPUT_PERSISTENCE_FAILURE_CODE,
-                failure_message=OUTPUT_PERSISTENCE_FAILURE_MESSAGE,
+                failure_code=failure_code,
+                failure_message=failure_message,
                 expected_attempt_count=expected_attempt_count,
             )
             raise

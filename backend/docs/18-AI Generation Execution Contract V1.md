@@ -205,6 +205,8 @@ Provenance FK 均为 nullable、`ON DELETE SET NULL`，不得通过 Cascade 删�
 ### 5.2 必须冻结为 Snapshot
 
 - Job 的 `work_mode`、`mode`、Creator 显示名与创建时间；
+- Job 的 `compress_output_under_1000kb` 输出处理策略；默认 `false`。它在提交时冻结，之后修改工作台开关、
+  模型配置或重试都不得改变已接受 Job 的处理策略；
 - Item 的稳定序号；
 - 输入 Asset 的 Slot/Role 与顺序；
 - 完整 Literal `final_prompt`：即时取请求 `prompt`，批量取对应 `PromptTemplate.prompt`；
@@ -259,10 +261,33 @@ Ownership、Asset ID 或 Storage Key。
 一个 Item 只有在输出已进入 Asset Foundation、`output_asset_id` 已建立且必要的业务归档完成后，才可成为
 `SUCCESS`。Provider URL 只允许作为 Adapter 内短生命周期执行信息，绝不永久保存为结果。
 
+### 7.1 输出压缩策略
+
+`GenerationJob.compress_output_under_1000kb` 是 V1 唯一的输出处理策略快照。默认关闭时保持既有行为：
+Provider 成功下载的图片直接按 Asset Foundation 原有校验与入库路径处理。开启时，处理顺序固定为：
+
+```text
+Provider 结果下载
+→ 受限并发的临时解码与优化
+→ 最终文件解码、大小校验
+→ AssetService.stage_for_transaction
+→ output_asset_id / Item SUCCESS
+```
+
+- 最终文件必须严格小于 `1,000,000` bytes；已经满足上限的合法图片不进行二次有损压缩。
+- 过大的不透明图片使用 JPEG；包含透明通道的图片使用保留 Alpha 的支持格式，不能填白或丢失透明度。
+- 优化只允许有限次数的质量调整和等比缩小，不裁剪、不改变商品内容，并保留明确的最小尺寸下限；无法在该边界内
+  达标时失败，不无限降低画质。
+- 原始 Provider 响应只存在于处理过程的临时受控存储中。正式 Asset 只保存最终成品及既有必要缩略图；扩展名、
+  MIME、字节数与哈希都必须来自最终文件。
+- 供应商已经成功、但输出解码、压缩或入库失败时，Item 记录稳定的
+  `OUTPUT_PROCESSING_FAILED` 安全失败摘要。若当前 Attempt 已持久化 External Task ID，Retry 只恢复结果读取和
+  最终文件处理，不重新 Create Provider Task，也不产生第二次费用。
+
 `AI_GENERATED` 是 Asset 来源；`AI_OUTPUT` 是 Asset 与 ProductMaterialGroup 的关系角色，二者不能混用：
 
-- 即时生成：成功即创建正式 Asset，但默认不建立 ProductMaterialGroup 关系；用户“保存到素材库”时，
-  通过可信 AI Workbench Service 将现有输出 Asset 以 `AI_OUTPUT` 关联到同 Team 目标组。
+- 即时生成：成功即创建正式 Asset，但不建立 ProductMaterialGroup 关系。AI 工作台不提供“保存到素材库”入口，
+  也不得为该结果触发归档请求；既有历史关系不因这一前端收口而被删除或迁移。
 - 批量生成：成功结果自动以 `AI_OUTPUT` 关联提交时对应的同 Team ProductMaterialGroup。
 
 `output_asset_id` 是 Item 对正式 Asset 的引用。输入或输出 Asset 只要仍被 GenerationJob/Item 引用，
@@ -272,19 +297,16 @@ Asset 删除就必须复用 `ASSET_IN_USE` 保护；不得删除 Asset 后让历
 Item 同时保存最小归档历史：nullable、`ON DELETE SET NULL` 的 `archived_material_group_id`、
 `archived_material_group_name_snapshot` 与 `archived_at`。这些字段表达结果曾被归档的历史事实；当前是否仍有
 `MaterialGroupAsset` 关系由关系表表达。批量成功时归档目标固定为该 Item 的来源 ProductMaterialGroup；
-即时结果只允许首次显式保存选择一个同 Team 目标组，重复同一保存请求幂等返回，已归档后改投其他组返回
-Conflict。目标组后续删除或关系后续 detach 不篡改归档历史。
+即时结果不会通过工作台建立新的归档关系。目标组后续删除或关系后续 detach 不篡改归档历史。
 
 输出落库必须复用 Asset Foundation 的校验、Storage 与 Ownership 规则，并提供一个受控的事务编排边界：
 
 1. 即时 Item 的 Asset Row 与 `output_asset_id` 在同一数据库事务提交后，Item 才成为 `SUCCESS`；
 2. 批量 Item 的 Asset Row、`output_asset_id`、`AI_OUTPUT` 关系和归档历史在同一数据库事务提交后，Item
    才成为 `SUCCESS`；
-3. 即时结果显式保存时，`AI_OUTPUT` 关系与 Item 的归档历史在同一数据库事务提交；任一写入失败则整体
-   回滚，Item 保持 `SUCCESS` 且未归档；
-4. Storage 写入或数据库事务失败时，复用 Asset Foundation 的 Rollback 与 Storage 补偿规则，不保留已提交但
+3. Storage 写入或数据库事务失败时，复用 Asset Foundation 的 Rollback 与 Storage 补偿规则，不保留已提交但
    未关联 Item 的孤儿 Asset；
-5. 同一 Item 的重复完成/回调在行锁下复用已有 `output_asset_id`，不得创建第二个输出 Asset。
+4. 同一 Item 的重复完成/回调在行锁下复用已有 `output_asset_id`，不得创建第二个输出 Asset。
 
 当前 `AssetService.create()` 自己提交事务。正式实现必须在 Asset 模块内提供或复用事务感知的内部能力，
 不能在 Generation Feature 复制第二套 Asset 创建逻辑。该要求属于后续实现边界，本轮不修改代码。

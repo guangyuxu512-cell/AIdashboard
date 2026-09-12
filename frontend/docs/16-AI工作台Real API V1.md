@@ -15,6 +15,18 @@ Model / Template / Material Catalog
 
 模型下拉框只展示支持当前 Mode 的启用模型，优先选择 `is_default=true`，并使用 `max_input_images / supported_sizes` 约束输入与尺寸。Backend 始终是最终校验边界。
 
+## 1.1 Input, Preview And Output Policy
+
+- ProductMaterialGroup 的素材角色在 Real API 映射中保持原值：`PRODUCT_SOURCE` 与 `STYLE_REFERENCE` 才能组成生成输入，
+  `AI_OUTPUT` 只作为结果展示事实，不能自动成为下一次生成输入。页面分别展示商品原图、AI 成品与全部素材数量，
+  不用文件名推断角色，也不静默截断超限输入。
+- 模型能力缓存由模型管理与工作台共用。模型能力未知时不把输入上限误判为 `0`；模型限制更新后，两处查询同时失效并
+  重新读取。提交前提示必须显示实际输入数量和模型上限，Backend 仍按每个 Item 完成最终校验。
+- 图片缩略图、素材详情、生成结果和生成记录统一使用受保护 Asset Content/Thumbnail 链路。共享预览支持完整比例查看、
+  切换、下载、加载失败和重试；对象 URL 只在组件生命周期内存在，快速切换不能让旧请求覆盖新素材。
+- 即时与批量页面共用“生成后压缩至 1000 KB 以下”输出设置，默认关闭并按当前身份与 Team 保存用户选择。Submit 时把
+  该布尔值冻结到 GenerationJob；任务恢复、轮询和重试只展示或执行已有 Job 策略，不会因后来切换开关改变任务结果。
+
 ## 2. Management Pages
 
 - 模板库使用正式 TemplateGroup 与 PromptTemplate 列表、详情、新增、编辑、删除、复制、排序和启停 API。

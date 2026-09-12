@@ -19,6 +19,7 @@ function summary(
     model_display_name: 'GPT Image 2',
     work_mode: 'INSTANT',
     mode: 'NORMAL_GENERATION',
+    compress_output_under_1000kb: false,
     status,
     input_summary: { count: 1, primary_name: '商品图' },
     created_by_display_name: '用户',

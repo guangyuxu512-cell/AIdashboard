@@ -22,6 +22,7 @@ const materialGroupId = '44444444-4444-4444-8444-444444444444'
 const secondMaterialGroupId = '44444444-4444-4444-8444-444444444445'
 const inputAssetId = '55555555-5555-4555-8555-555555555555'
 const secondInputAssetId = '55555555-5555-4555-8555-555555555556'
+const generatedProductAssetId = '55555555-5555-4555-8555-555555555557'
 const jobId = '66666666-6666-4666-8666-666666666666'
 const itemId = '77777777-7777-4777-8777-777777777777'
 const outputAssetId = '88888888-8888-4888-8888-888888888888'
@@ -107,6 +108,20 @@ const materialGroup: ProductMaterialGroupReadDto = {
         size_bytes: 128,
         sha256: 'a'.repeat(64),
         source_type: 'upload',
+        created_at: timestamp,
+      },
+    },
+    {
+      role: 'AI_OUTPUT',
+      created_at: timestamp,
+      asset: {
+        asset_id: generatedProductAssetId,
+        media_type: 'image',
+        original_filename: '历史AI成品.png',
+        content_type: 'image/png',
+        size_bytes: 256,
+        sha256: 'd'.repeat(64),
+        source_type: 'ai_generated',
         created_at: timestamp,
       },
     },
@@ -242,6 +257,7 @@ function generationJob(
     model_display_name: 'GPT Image 2',
     work_mode: 'INSTANT',
     mode: 'NORMAL_GENERATION',
+    compress_output_under_1000kb: false,
     status,
     input_summary: { count: 1, primary_name: '商品图.png' },
     created_by_display_name: '开发管理员',
@@ -411,6 +427,7 @@ function batchGenerationJob(status: ControlledJobStatus): GenerationJobReadDto {
     model_display_name: 'GPT Image 2',
     work_mode: 'BATCH',
     mode: 'NORMAL_GENERATION',
+    compress_output_under_1000kb: false,
     status,
     input_summary: { count: 2, primary_name: '2 个产品' },
     created_by_display_name: '开发管理员',
@@ -1075,6 +1092,44 @@ test('runs the production workbench through submit, polling, retry, result and r
   expect(runtimeErrors).toEqual([])
 })
 
+test('keeps generated outputs out of new inputs and freezes the output compression policy on submit', async ({
+  page,
+}) => {
+  const calls = await installWorkbenchApi(page)
+
+  await page.goto('/#/ai-workbench/assets')
+  await expect(
+    page.getByText('商品原图 1 · AI 成品 1 · 全部素材 2', {
+      exact: true,
+    }),
+  ).toBeVisible()
+
+  await page.goto('/#/ai-workbench/generate')
+  await page
+    .getByLabel('即时生成配置')
+    .getByRole('button', { name: '素材库', exact: true })
+    .click()
+  const picker = page.getByRole('dialog')
+  await expect(
+    picker.getByRole('button', { name: '选择素材 商品图.png' }),
+  ).toBeVisible()
+  await expect(picker.getByText('历史AI成品.png')).toHaveCount(0)
+  await picker.getByRole('button', { name: '选择素材 商品图.png' }).click()
+  await picker.getByRole('button', { name: '选择', exact: true }).click()
+  await page.getByLabel('提示词').fill('冻结压缩策略')
+
+  const compression = page.getByLabel('生成后压缩至 1000 KB 以下')
+  await expect(compression).not.toBeChecked()
+  await compression.check()
+  await page.getByRole('button', { name: '生成', exact: true }).click()
+
+  await expect.poll(calls.submittedBody).toMatchObject({
+    work_mode: 'INSTANT',
+    product_asset_ids: [inputAssetId],
+    compress_output_under_1000kb: true,
+  })
+})
+
 test('updates results in place and never masks a detail read error with a stale spinner', async ({
   page,
 }) => {
@@ -1105,6 +1160,9 @@ test('updates results in place and never masks a detail read error with a stale 
   const successCard = page.locator('[data-result-status="SUCCESS"]')
   await expect(successCard).toBeVisible({ timeout: 10_000 })
   await expect(successCard.getByAltText('真实结果.png')).toBeVisible()
+  await successCard.getByRole('button', { name: '预览 真实结果.png' }).click()
+  await expect(page.getByLabel('图片预览')).toContainText('真实结果.png')
+  await expect(page.getByLabel('图片预览').getByAltText('真实结果.png')).toBeVisible()
   expect(calls.submitCount()).toBe(1)
 })
 
@@ -1640,6 +1698,17 @@ test('scopes generation-record detail downloads to the clicked single, group, or
     .click()
   const drawer = page.getByRole('dialog')
   await expect(drawer.getByTestId('batch-result-tree')).toBeVisible()
+  const previewButtons = drawer.getByRole('button', { name: /^预览 / })
+  await expect(previewButtons).toHaveCount(4)
+  for (let index = 0; index < 4; index += 1) {
+    await previewButtons.nth(index).scrollIntoViewIfNeeded()
+  }
+  await expect(drawer.locator('img')).toHaveCount(4)
+  await expect.poll(async () =>
+    drawer.locator('img').evaluateAll((images) =>
+      images.every((image) => image.complete && image.naturalWidth > 0),
+    ),
+  ).toBe(true)
 
   const beforeSingle = outputRequestCount()
   const singleDownload = page.waitForEvent('download')

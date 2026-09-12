@@ -187,6 +187,7 @@ describe('AI Workbench API client', () => {
       output_format: 'SINGLE' as const,
       size: '1:1' as const,
       count: 1,
+      compress_output_under_1000kb: false,
     }
 
     await expect(aiWorkbenchApi.submitGeneration(payload)).resolves.toBe(

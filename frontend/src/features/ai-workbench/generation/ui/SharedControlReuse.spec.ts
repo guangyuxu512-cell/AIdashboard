@@ -135,6 +135,8 @@ describe('AI generation shared control reuse contracts', () => {
     expect(instantResultCardSource).not.toContain('<button')
     expect(instantResultViewerSource).not.toContain('Product')
     expect(instantResultViewerSource).not.toContain('Template')
+    expect(instantSource).toContain('GenerationOutputCompressionSetting')
+    expect(batchSource).toContain('GenerationOutputCompressionSetting')
   })
 
   it('keeps one visible editable config and a clearable template select', () => {

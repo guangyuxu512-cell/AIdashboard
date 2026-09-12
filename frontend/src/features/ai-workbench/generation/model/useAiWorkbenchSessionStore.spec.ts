@@ -24,6 +24,7 @@ function generationJob(
     model_display_name: 'GPT Image 2',
     work_mode: workMode,
     mode: 'NORMAL_GENERATION',
+    compress_output_under_1000kb: false,
     status: 'PENDING',
     total_count: 1,
     pending_count: 1,
@@ -64,6 +65,7 @@ const instantSubmission = {
   output_format: 'SINGLE' as const,
   size: '1:1' as const,
   count: 1,
+  compress_output_under_1000kb: false,
 }
 
 const batchSubmission = {
@@ -74,6 +76,7 @@ const batchSubmission = {
   template_source: 'CURRENT_SELECTION' as const,
   selected_template_group_ids: ['group-1'],
   output_range: 'MAIN_IMAGE' as const,
+  compress_output_under_1000kb: false,
 }
 
 describe('AI Workbench session state', () => {
@@ -102,6 +105,7 @@ describe('AI Workbench session state', () => {
       },
     ]
     store.instantCurrentJobId = 'job-instant'
+    store.outputCompressionEnabled = true
 
     store.workMode = 'BATCH'
     store.batchMode = 'STYLE_REPLICATION'
@@ -124,6 +128,7 @@ describe('AI Workbench session state', () => {
     expect(restored.instantCount).toBe(3)
     expect(restored.instantOutputFormat).toBe('COLLAGE_2X2')
     expect(restored.instantCurrentJobId).toBe('job-instant')
+    expect(restored.outputCompressionEnabled).toBe(true)
     expect(restored.batchMode).toBe('STYLE_REPLICATION')
     expect(restored.batchSelectedModelId).toBe('model-batch')
     expect(restored.batchSelectedProductIds).toEqual(['product-1'])
@@ -139,10 +144,17 @@ describe('AI Workbench session state', () => {
       .spyOn(aiWorkbenchApi, 'submitGeneration')
       .mockReturnValue(receipt.promise)
     const store = useAiWorkbenchSessionStore()
+    store.outputCompressionEnabled = true
 
-    const first = store.submitInstant(instantSubmission)
+    const first = store.submitInstant({
+      ...instantSubmission,
+      compress_output_under_1000kb: store.outputCompressionEnabled,
+    })
     const restored = useAiWorkbenchSessionStore()
-    const second = restored.submitInstant(instantSubmission)
+    const second = restored.submitInstant({
+      ...instantSubmission,
+      compress_output_under_1000kb: false,
+    })
 
     expect(submit).toHaveBeenCalledTimes(1)
     expect(store.instantSubmitting).toBe(true)
@@ -150,6 +162,7 @@ describe('AI Workbench session state', () => {
     expect(submit.mock.calls[0]?.[0]).toMatchObject({
       work_mode: 'INSTANT',
       product_asset_ids: ['asset-1'],
+      compress_output_under_1000kb: true,
     })
 
     receipt.resolve(generationJob('job-delayed'))

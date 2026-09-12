@@ -268,6 +268,7 @@ class InstantGenerationSubmit(BaseModel):
     output_format: OutputFormat
     size: GenerationSize
     count: int = Field(ge=1, le=8)
+    compress_output_under_1000kb: bool = False
 
     @field_validator("product_asset_ids", "reference_asset_ids")
     @classmethod
@@ -307,6 +308,7 @@ class BatchGenerationSubmit(BaseModel):
         max_length=MAX_GENERATION_SELECTION_IDS,
     )
     output_range: GenerationOutputRange = GenerationOutputRange.ALL
+    compress_output_under_1000kb: bool = False
 
     @field_validator("selected_product_ids", "selected_template_group_ids")
     @classmethod
@@ -431,6 +433,7 @@ class GenerationJobSummaryRead(GenerationCountsRead):
     model_display_name: str
     work_mode: GenerationWorkMode
     mode: GenerationMode
+    compress_output_under_1000kb: bool
     status: GenerationJobStatus
     input_summary: GenerationInputSummaryRead
     created_by_display_name: str

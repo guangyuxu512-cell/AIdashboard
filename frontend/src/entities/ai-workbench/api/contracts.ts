@@ -173,6 +173,7 @@ export interface GenerationJobSummaryReadDto extends GenerationCountsReadDto {
   model_display_name: string
   work_mode: GenerationWorkMode
   mode: GenerationMode
+  compress_output_under_1000kb: boolean
   status: GenerationJobStatus
   input_summary: { count: number; primary_name: string | null }
   created_by_display_name: string
@@ -199,6 +200,7 @@ export interface InstantGenerationSubmitDto {
   output_format: GenerationOutputFormat
   size: GenerationSize
   count: number
+  compress_output_under_1000kb: boolean
 }
 
 export interface BatchGenerationSubmitDto {
@@ -211,6 +213,7 @@ export interface BatchGenerationSubmitDto {
   template_source: 'PRODUCT_CONFIGURED' | 'CURRENT_SELECTION'
   selected_template_group_ids: string[]
   output_range: 'ALL' | GenerationOutputRole
+  compress_output_under_1000kb: boolean
 }
 
 export type GenerationSubmitDto =

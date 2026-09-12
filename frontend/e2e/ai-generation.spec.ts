@@ -87,6 +87,12 @@ test('keeps every generation short option group unframed in both themes', async 
     instantConfig.getByRole('navigation', { name: '输出格式' }),
   ]
   for (const group of instantGroups) await expectBareSwitchBar(group)
+  const instantCompression = instantConfig.getByRole('switch', {
+    name: '生成后压缩至 1000 KB 以下',
+  })
+  await expect(instantCompression).not.toBeChecked()
+  await instantCompression.click()
+  await expect(instantCompression).toBeChecked()
 
   await workMode.getByRole('button', { name: '批量生成' }).click()
   await expect(
@@ -104,6 +110,11 @@ test('keeps every generation short option group unframed in both themes', async 
     batchConfig.getByRole('navigation', { name: '输出范围' }),
   ]
   for (const group of batchGroups) await expectBareSwitchBar(group)
+  await expect(
+    batchConfig.getByRole('switch', {
+      name: '生成后压缩至 1000 KB 以下',
+    }),
+  ).toBeChecked()
 
   await page.getByRole('button', { name: '切换主题' }).click()
   await page.getByText('深色', { exact: true }).click()
