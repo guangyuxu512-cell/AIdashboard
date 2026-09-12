@@ -49,7 +49,10 @@ const emit = defineEmits<{
   'update:show': [value: boolean]
   'update:appId': [value: string | null]
   saved: [preset: AutomationParameterPresetDto]
-  configureSchema: [application: YingdaoApplicationOptionDto]
+  configureSchema: [
+    application: YingdaoApplicationOptionDto,
+    schema: AutomationInputSchemaDto,
+  ]
 }>()
 
 const message = useMessage()
@@ -66,6 +69,7 @@ const pendingNewShopId = ref<string | null>(null)
 const pendingCommonParameterNames = ref<string[]>([])
 const draft = reactive({
   name: '',
+  inputSchema: { fields: [] } as AutomationInputSchemaDto,
   commonParameters: {} as Record<string, unknown>,
   shopOverrides: {} as Record<string, Record<string, unknown>>,
   expectedVersion: null as number | null,
@@ -90,12 +94,12 @@ const availableShopOptions = computed<SelectOption[]>(() =>
   ),
 )
 const overrideShopIds = computed(() => Object.keys(draft.shopOverrides))
-const fields = computed(() => mapAutomationParameterFields(props.schema))
+const fields = computed(() => mapAutomationParameterFields(draft.inputSchema))
 const selectedCommonParameterNames = computed(() =>
   new Set(Object.keys(draft.commonParameters)),
 )
 const displayedCommonSchema = computed(() => ({
-  fields: props.schema.fields.filter(
+  fields: draft.inputSchema.fields.filter(
     (field) =>
       field.required ||
       selectedCommonParameterNames.value.has(field.name) ||
@@ -112,7 +116,7 @@ const filteredCommonSchema = computed(() => {
   }
 })
 const addableCommonParameterOptions = computed<SelectOption[]>(() =>
-  props.schema.fields
+  draft.inputSchema.fields
     .filter(
       (field) =>
         !selectedCommonParameterNames.value.has(field.name) &&
@@ -125,7 +129,7 @@ const unknownCommonParameterNames = computed(() => {
   return Object.keys(draft.commonParameters).filter((name) => !known.has(name))
 })
 const commonError = computed(() =>
-  validateAutomationParameters(props.schema, draft.commonParameters),
+  validateAutomationParameters(draft.inputSchema, draft.commonParameters),
 )
 const saveDisabledReason = computed(() => {
   if (!props.appId) return '请先选择影刀应用'
@@ -152,7 +156,7 @@ const editingShopSchema = computed(() => {
     ...Object.keys(editingShopOverrides.value),
   ])
   return {
-    fields: props.schema.fields.filter((field) => selectedNames.has(field.name)),
+    fields: draft.inputSchema.fields.filter((field) => selectedNames.has(field.name)),
   }
 })
 
@@ -178,6 +182,26 @@ watch(
   (appId, previousAppId) => {
     if (!props.show || appId === previousAppId) return
     startCreate()
+  },
+)
+
+watch(
+  () => props.schema,
+  (schema) => {
+    // The application schema is an initial template only.  Async arrival may
+    // seed an untouched *new* draft, but can never overwrite a name, value,
+    // store difference, or a saved preset's own schema snapshot.
+    if (
+      !props.show ||
+      selectedPresetId.value ||
+      draft.name ||
+      Object.keys(draft.commonParameters).length ||
+      Object.keys(draft.shopOverrides).length ||
+      draft.inputSchema.fields.length
+    ) {
+      return
+    }
+    draft.inputSchema = cloneSchema(schema)
   },
 )
 
@@ -209,6 +233,7 @@ function cloneOverrides(
 function startCreate(): void {
   selectedPresetId.value = null
   draft.name = ''
+  draft.inputSchema = cloneSchema(props.schema)
   // Application fields are a shared catalog.  A new preset starts with no
   // optional fields selected; adding a field is an explicit preset fact.
   draft.commonParameters = {}
@@ -224,6 +249,7 @@ function startCreate(): void {
 function applyPreset(preset: AutomationParameterPresetDto): void {
   selectedPresetId.value = preset.preset_id
   draft.name = preset.name
+  draft.inputSchema = cloneSchema(preset.input_schema ?? props.schema)
   draft.commonParameters = { ...preset.common_parameters }
   draft.shopOverrides = cloneOverrides(preset.shop_overrides)
   draft.expectedVersion = preset.version
@@ -291,7 +317,7 @@ function removeCommonParameter(name: string): void {
 
 function addCommonParameter(value: unknown): void {
   const name = typeof value === 'string' ? value : null
-  const field = props.schema.fields.find((item) => item.name === name)
+  const field = draft.inputSchema.fields.find((item) => item.name === name)
   if (!field || selectedCommonParameterNames.value.has(field.name)) return
   if (field.default_value !== null) {
     draft.commonParameters = {
@@ -400,12 +426,14 @@ async function save(): Promise<void> {
       data: selectedPresetId.value
         ? {
             name: draft.name.trim(),
+            input_schema: cloneSchema(draft.inputSchema),
             common_parameters: { ...draft.commonParameters },
             shop_overrides: cloneOverrides(draft.shopOverrides),
             expected_version: draft.expectedVersion!,
           }
         : {
             name: draft.name.trim(),
+            input_schema: cloneSchema(draft.inputSchema),
             common_parameters: { ...draft.commonParameters },
             shop_overrides: cloneOverrides(draft.shopOverrides),
           },
@@ -420,9 +448,43 @@ async function save(): Promise<void> {
 
 function openSchemaConfiguration(): void {
   if (selectedApplication.value) {
-    emit('configureSchema', selectedApplication.value)
+    emit('configureSchema', selectedApplication.value, cloneSchema(draft.inputSchema))
   }
 }
+
+function cloneSchema(schema: AutomationInputSchemaDto): AutomationInputSchemaDto {
+  return {
+    fields: schema.fields.map((field) => ({
+      ...field,
+      options: [...field.options],
+    })),
+  }
+}
+
+function applyInputSchema(schema: AutomationInputSchemaDto): void {
+  const nextSchema = cloneSchema(schema)
+  const knownNames = new Set(nextSchema.fields.map((field) => field.name))
+  // Removing a field is an intentional edit to this preset's contract.  Do
+  // not leave a value or a shop override that the Backend must reject.
+  draft.commonParameters = Object.fromEntries(
+    Object.entries(draft.commonParameters).filter(([name]) => knownNames.has(name)),
+  )
+  draft.shopOverrides = Object.fromEntries(
+    Object.entries(draft.shopOverrides).map(([shopId, values]) => [
+      shopId,
+      Object.fromEntries(
+        Object.entries(values).filter(([name]) => knownNames.has(name)),
+      ),
+    ]),
+  )
+  pendingCommonParameterNames.value = pendingCommonParameterNames.value.filter(
+    (name) => knownNames.has(name),
+  )
+  draft.inputSchema = nextSchema
+  saveError.value = null
+}
+
+defineExpose({ applyInputSchema })
 </script>
 
 <template>

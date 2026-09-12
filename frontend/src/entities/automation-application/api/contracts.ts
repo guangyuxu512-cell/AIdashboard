@@ -41,6 +41,8 @@ export interface AutomationParameterPresetDto {
   created_by_user_id: string
   app_id: string
   name: string
+  /** The preset-owned field contract; not the mutable application template. */
+  input_schema: AutomationInputSchemaDto
   common_parameters: Record<string, unknown>
   shop_overrides: Record<string, Record<string, unknown>>
   invalid_parameter_names: string[]
@@ -51,6 +53,8 @@ export interface AutomationParameterPresetDto {
 
 export interface AutomationParameterPresetSaveDto {
   name: string
+  /** Optional only for legacy callers; current UI always persists this draft. */
+  input_schema?: AutomationInputSchemaDto
   common_parameters: Record<string, unknown>
   shop_overrides: Record<string, Record<string, unknown>>
 }

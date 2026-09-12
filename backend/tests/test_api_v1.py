@@ -323,6 +323,34 @@ class ApiAutomationParameterPresetService:
             created_by_user_id=USER_ID,
             app_id=app_id,
             name=name,
+            input_schema={
+                "fields": [
+                    {
+                        "name": "商品列表",
+                        "label": "商品列表",
+                        "type": "text",
+                        "required": False,
+                        "default_value": None,
+                        "options": [],
+                    },
+                    {
+                        "name": "数量",
+                        "label": "数量",
+                        "type": "number",
+                        "required": False,
+                        "default_value": 0,
+                        "options": [],
+                    },
+                    {
+                        "name": "启用",
+                        "label": "启用",
+                        "type": "boolean",
+                        "required": False,
+                        "default_value": False,
+                        "options": [],
+                    },
+                ],
+            },
             common_parameters={"商品列表": "", "数量": 0, "启用": False},
             shop_overrides={SHOP_ID: {"数量": 0, "启用": False}},
             version=1,
@@ -989,6 +1017,34 @@ def test_automation_parameter_preset_api_contract() -> None:
         base_path,
         json={
             "name": "店铺覆盖",
+            "input_schema": {
+                "fields": [
+                    {
+                        "name": "商品列表",
+                        "label": "商品列表",
+                        "type": "text",
+                        "required": False,
+                        "default_value": None,
+                        "options": [],
+                    },
+                    {
+                        "name": "数量",
+                        "label": "数量",
+                        "type": "number",
+                        "required": False,
+                        "default_value": 0,
+                        "options": [],
+                    },
+                    {
+                        "name": "启用",
+                        "label": "启用",
+                        "type": "boolean",
+                        "required": False,
+                        "default_value": False,
+                        "options": [],
+                    },
+                ],
+            },
             "common_parameters": {"商品列表": "", "数量": 0, "启用": False},
             "shop_overrides": {str(SHOP_ID): {"数量": 0, "启用": False}},
         },
@@ -1018,7 +1074,13 @@ def test_automation_parameter_preset_api_contract() -> None:
     assert create_response.json()["name"] == "店铺覆盖"
     assert create_response.json()["shop_overrides"][str(SHOP_ID)]["数量"] == 0
     assert create_response.json()["common_parameters"]["启用"] is False
+    assert create_response.json()["input_schema"]["fields"][0]["name"] == "商品列表"
     assert ApiAutomationParameterPresetService.last_create is not None
+    assert (
+        ApiAutomationParameterPresetService.last_create.input_schema
+        and ApiAutomationParameterPresetService.last_create.input_schema.fields[0].name
+        == "商品列表"
+    )
     assert ApiAutomationParameterPresetService.last_create.shop_overrides[SHOP_ID]["数量"] == 0
     assert detail_response.status_code == 200
     assert update_response.status_code == 200

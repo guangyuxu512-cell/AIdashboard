@@ -61,10 +61,15 @@ const overrideShopCount = computed(
           .length,
     ).length,
 )
+// A preset's preview must use its persisted contract rather than the mutable
+// application template supplied for legacy/manual parameter mode.
+const previewSchema = computed(
+  () => selectedPreset.value?.input_schema ?? props.schema,
+)
 const parameterLabels = computed(
   () =>
     new Map(
-      mapAutomationParameterFields(props.schema).map((field) => [
+      mapAutomationParameterFields(previewSchema.value).map((field) => [
         field.name,
         field.label,
       ]),
@@ -86,7 +91,7 @@ function parameterEntries(
   item: (typeof preview.value)[number],
 ): Array<[string, unknown]> {
   const positions = new Map(
-    mapAutomationParameterFields(props.schema).map((field, index) => [
+    mapAutomationParameterFields(previewSchema.value).map((field, index) => [
       field.name,
       index,
     ]),

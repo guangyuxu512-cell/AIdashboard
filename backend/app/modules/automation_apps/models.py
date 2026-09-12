@@ -74,6 +74,10 @@ class AutomationParameterPreset(TimestampMixin, Base):
             "jsonb_typeof(shop_overrides) = 'object'",
             name="shop_overrides_object",
         ),
+        CheckConstraint(
+            "jsonb_typeof(input_schema_snapshot) = 'object'",
+            name="input_schema_snapshot_object",
+        ),
         CheckConstraint("version > 0", name="positive_version"),
         UniqueConstraint("team_id", "app_id", "name", name="uq_automation_preset_team_app_name"),
         Index(
@@ -114,4 +118,17 @@ class AutomationParameterPreset(TimestampMixin, Base):
         JSONB,
         nullable=False,
     )
+    # A preset owns its field contract.  The application configuration is only
+    # the initial template for a newly-created preset; changing that template
+    # must not reinterpret a saved preset, Task snapshot, or Schedule run.
+    input_schema_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: {"fields": []},
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        """Read-model compatibility name for the persisted schema snapshot."""
+        return self.input_schema_snapshot

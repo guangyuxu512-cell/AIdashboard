@@ -179,7 +179,7 @@ test('saves a preset repeatedly, keeps public and shop editing together, and rem
 
   const schemaDialog = page
     .locator('.app-dialog')
-    .filter({ hasText: '配置参数 · 日常采集（零字段）' })
+    .filter({ hasText: '管理预设字段 · 日常采集（零字段）' })
   await schemaDialog.getByRole('button', { name: '+ 添加参数' }).click()
   await schemaDialog.getByRole('button', { name: '+ 添加参数' }).click()
   const rows = schemaDialog.getByTestId('parameter-config-field')
@@ -190,7 +190,7 @@ test('saves a preset repeatedly, keeps public and shop editing together, and rem
   await rows.nth(1).getByPlaceholder('例如 商品 ID').fill('每页数量')
   await selectNumberParameterType(page, rows.nth(1))
   await page.screenshot({
-    path: testInfo.outputPath('02-shared-schema-fields.png'),
+    path: testInfo.outputPath('02-preset-schema-fields.png'),
     fullPage: true,
   })
   await schemaDialog.getByRole('button', { name: '保存', exact: true }).click()
@@ -442,39 +442,25 @@ test('saves a preset repeatedly, keeps public and shop editing together, and rem
       },
     ],
   }
-  const setSchema = (schema: object) =>
-    runBackendScript([
-      'import json',
-      'from sqlalchemy import text',
-      'from app.core.database import get_database_engine',
-      `schema = json.loads(${JSON.stringify(JSON.stringify(schema))})`,
-      `app_id = ${JSON.stringify(appId)}`,
-      'with get_database_engine().begin() as connection:',
-      '    result = connection.execute(',
-      '        text("UPDATE automation_application_configs SET input_schema = CAST(:schema AS jsonb) WHERE provider_code = \'yingdao\' AND app_id = :app_id"),',
-      '        {"schema": json.dumps(schema), "app_id": app_id},',
-      '    )',
-      '    assert result.rowcount == 1',
-    ])
-
-  const setPresetParameters = (parameters: object) =>
+  const setPresetSnapshotAndParameters = (schema: object, parameters: object) =>
     runBackendScript([
       'import json',
       'from uuid import UUID',
       'from sqlalchemy import text',
       'from app.core.database import get_database_engine',
+      `schema = json.loads(${JSON.stringify(JSON.stringify(schema))})`,
       `parameters = json.loads(${JSON.stringify(JSON.stringify(parameters))})`,
       `preset_id = UUID(${JSON.stringify(createdPreset.preset_id)})`,
       'with get_database_engine().begin() as connection:',
       '    result = connection.execute(',
-      '        text("UPDATE automation_parameter_presets SET common_parameters = CAST(:parameters AS jsonb) WHERE preset_id = :preset_id"),',
-      '        {"parameters": json.dumps(parameters), "preset_id": preset_id},',
+      '        text("UPDATE automation_parameter_presets SET input_schema_snapshot = CAST(:schema AS jsonb), common_parameters = CAST(:parameters AS jsonb) WHERE preset_id = :preset_id"),',
+      '        {"schema": json.dumps(schema), "parameters": json.dumps(parameters), "preset_id": preset_id},',
       '    )',
       '    assert result.rowcount == 1',
     ])
 
-  setSchema(denseSchema)
-  setPresetParameters(
+  setPresetSnapshotAndParameters(
+    denseSchema,
     Object.fromEntries(denseSchema.fields.map((field) => [field.name, '值'])),
   )
   await page.setViewportSize({ width: 1440, height: 1200 })
@@ -526,8 +512,7 @@ test('saves a preset repeatedly, keeps public and shop editing together, and rem
     constrainedEditor.getByRole('button', { name: '保存配置', exact: true }),
   ).toBeVisible()
   await constrainedEditor.getByRole('button', { name: '取消', exact: true }).click()
-  setSchema(originalSchema)
-  setPresetParameters({ 页码: 1, 每页数量: 20 })
+  setPresetSnapshotAndParameters(originalSchema, { 页码: 1, 每页数量: 20 })
 })
 
 test('shows the same preset choice and per-shop final parameters before an immediate run', async ({
@@ -553,6 +538,12 @@ test('shows the same preset choice and per-shop final parameters before an immed
     .getByRole('dialog')
     .filter({ hasText: '设备能力 · 参数预设验收设备' })
   await expect(capabilityDrawer).toContainText('日常采集（零字段）')
+  const presetsResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes(
+        '/automation-app-configs/yingdao/preset-usability-zero-schema/parameter-presets',
+      ) && response.request().method() === 'GET',
+  )
   await capabilityDrawer
     .getByRole('button', { name: '运行', exact: true })
     .click()
@@ -564,6 +555,7 @@ test('shows the same preset choice and per-shop final parameters before an immed
     .locator('.n-form-item')
     .filter({ hasText: '参数预设' })
     .locator('.n-base-selection')
+  expect((await presetsResponse).status()).toBe(200)
   await expect(presetSelect).toBeVisible()
   await presetSelect.click()
   const presetMenu = page.locator('.n-base-select-menu:visible').last()
@@ -607,7 +599,7 @@ test('shows the same preset choice and per-shop final parameters before an immed
   })
 })
 
-test('keeps A and B field selections isolated after A extends the shared field catalog', async ({
+test('keeps A and B field snapshots isolated after A extends its own schema', async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000)
@@ -638,7 +630,7 @@ test('keeps A and B field selections isolated after A extends the shared field c
   await editor.getByRole('button', { name: '管理字段' }).click()
   const schemaDialog = page
     .locator('.app-dialog')
-    .filter({ hasText: '配置参数 · 日常采集（零字段）' })
+    .filter({ hasText: '管理预设字段 · 日常采集（零字段）' })
   await schemaDialog.getByRole('button', { name: '+ 添加参数' }).click()
   const addedField = schemaDialog.getByTestId('parameter-config-field').last()
   await addedField.getByPlaceholder('例如 商品列表').fill('最大页数')
@@ -647,8 +639,8 @@ test('keeps A and B field selections isolated after A extends the shared field c
   await schemaDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(schemaDialog).toHaveCount(0)
 
-  // A field definition is shared, but it is not enabled for A until the
-  // editor explicitly adds it to A's own preset values.
+  // A extends only its persisted schema. Adding the field still does not
+  // select a public value until the editor explicitly adds it to A.
   await expect(editor).toContainText('2 项当前参数')
   await expect(
     editor.locator('.preset-manager__parameter-viewport').getByText('最大页数'),
