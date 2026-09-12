@@ -12,6 +12,7 @@ import {
 } from '@/entities/asset/api/asset-api'
 import {
   AssetDownloadStatusBar,
+  AssetPreviewDialog,
   formatAssetDownloadFailure,
   useAssetDownloadQueue,
 } from '@/entities/asset'
@@ -62,6 +63,7 @@ import {
 } from '../../real-api/model/model-selection'
 import GenerationAssetPickerDialog from './GenerationAssetPickerDialog.vue'
 import GenerationInputSlot from './GenerationInputSlot.vue'
+import GenerationOutputCompressionSetting from './GenerationOutputCompressionSetting.vue'
 import InstantResultViewer from './InstantResultViewer.vue'
 
 const props = defineProps<{
@@ -81,6 +83,7 @@ const {
   instantAppliedTemplateId: appliedTemplateId,
   instantPrompt: prompt,
   instantOutputFormat: outputFormat,
+  outputCompressionEnabled,
   instantSize: size,
   instantCount: count,
   instantCurrentJobId: currentJobId,
@@ -91,6 +94,8 @@ const {
 const assetPickerVisible = ref(false)
 const assetPickerSlotKey = ref<GenerationInputSlotKey>('PRODUCT_IMAGES')
 const clearDialogVisible = ref(false)
+const previewResultId = ref<string | null>(null)
+const pendingUploadCount = ref(0)
 
 const jobQuery = useGenerationJobQuery(currentJobId, { poll: true })
 
@@ -119,6 +124,14 @@ const sizeOptions = computed(() =>
 const currentInputCount = computed(
   () =>
     inputs.value.PRODUCT_IMAGES.length + inputs.value.REFERENCE_IMAGES.length,
+)
+const hasInputLimitViolation = computed(
+  () =>
+    selectedModel.value !== null &&
+    !isWorkbenchModelInputCountAllowed(
+      selectedModel.value,
+      currentInputCount.value,
+    ),
 )
 const remainingInputCount = computed(() =>
   remainingWorkbenchModelInputCapacity(
@@ -150,6 +163,17 @@ const assetPickerDefinition = computed(
 )
 const execution = computed(() =>
   jobQuery.data.value ? mapInstantExecution(jobQuery.data.value) : null,
+)
+const previewSources = computed(() =>
+  (execution.value?.results ?? [])
+    .filter(
+      (result) => result.status === 'SUCCESS' && Boolean(result.previewUrl),
+    )
+    .map((result) => ({
+      id: result.id,
+      name: result.name ?? `生成结果 ${result.slotIndex + 1}`,
+      contentUrl: result.previewUrl!,
+    })),
 )
 const jobError = computed(() => jobQuery.error.value)
 const restoringJob = computed(
@@ -208,7 +232,6 @@ watch(selectedModel, (model) => {
   if (model && !isWorkbenchModelSizeSupported(model, size.value)) {
     size.value = model.supportedSizes[0] ?? '1:1'
   }
-  trimInputsToLimit()
 })
 
 function setJob(job: GenerationJobReadDto): void {
@@ -229,21 +252,20 @@ function setMode(value: string): void {
   appliedTemplateId.value = null
 }
 
-function trimInputsToLimit(): void {
-  const limit = selectedModel.value?.maxInputImages ?? 0
-  const products = inputs.value.PRODUCT_IMAGES.slice(0, limit)
-  const remaining = Math.max(0, limit - products.length)
-  inputs.value = {
-    PRODUCT_IMAGES: products,
-    REFERENCE_IMAGES: inputs.value.REFERENCE_IMAGES.slice(0, remaining),
+function modelCapabilityMessage(): string {
+  if (selectedModel.value === null) {
+    return '模型能力正在加载，请稍后再试'
   }
+  return `实际输入 ${currentInputCount.value} 张，模型最多 ${selectedModel.value.maxInputImages} 张`
 }
 
 function openAssetPicker(slot: GenerationInputSlotDefinition): void {
+  if (selectedModel.value === null || remainingInputCount.value === null) {
+    message.warning(modelCapabilityMessage())
+    return
+  }
   if (remainingInputCount.value === 0) {
-    message.warning(
-      `当前模型最多支持 ${selectedModel.value?.maxInputImages ?? 0} 张输入图`,
-    )
+    message.warning(modelCapabilityMessage())
     return
   }
   assetPickerSlotKey.value = slot.key
@@ -253,20 +275,21 @@ function openAssetPicker(slot: GenerationInputSlotDefinition): void {
 function addSources(
   slotKey: GenerationInputSlotKey,
   sources: GenerationSourceImageView[],
-): void {
-  const existing = new Set(inputs.value[slotKey].map((image) => image.id))
-  const additions = sources
-    .filter((source) => !existing.has(source.id))
-    .slice(0, remainingInputCount.value)
-  inputs.value[slotKey] = [...inputs.value[slotKey], ...additions]
-  if (
-    additions.length <
-    sources.filter((source) => !existing.has(source.id)).length
-  ) {
-    message.warning(
-      `当前模型最多支持 ${selectedModel.value?.maxInputImages ?? 0} 张输入图`,
-    )
+): boolean {
+  if (selectedModel.value === null || remainingInputCount.value === null) {
+    message.warning(modelCapabilityMessage())
+    return false
   }
+  const existing = new Set(inputs.value[slotKey].map((image) => image.id))
+  const additions = sources.filter((source) => !existing.has(source.id))
+  if (additions.length > remainingInputCount.value) {
+    message.warning(
+      `实际输入 ${currentInputCount.value + additions.length} 张，模型最多 ${selectedModel.value.maxInputImages} 张`,
+    )
+    return false
+  }
+  inputs.value[slotKey] = [...inputs.value[slotKey], ...additions]
+  return true
 }
 
 function selectAsset(source: GenerationSourceImageView): void {
@@ -274,12 +297,22 @@ function selectAsset(source: GenerationSourceImageView): void {
 }
 
 function upload(slot: GenerationInputSlotDefinition, files: File[]): void {
-  if (!files.length || remainingInputCount.value === 0) return
-  void Promise.all(
-    files.slice(0, remainingInputCount.value).map(assetApi.upload),
-  )
+  if (!files.length) return
+  if (selectedModel.value === null || remainingInputCount.value === null) {
+    message.warning(modelCapabilityMessage())
+    return
+  }
+  const availableCapacity = remainingInputCount.value - pendingUploadCount.value
+  if (files.length > availableCapacity) {
+    message.warning(
+      `实际输入 ${currentInputCount.value + pendingUploadCount.value + files.length} 张，模型最多 ${selectedModel.value.maxInputImages} 张`,
+    )
+    return
+  }
+  pendingUploadCount.value += files.length
+  void Promise.all(files.map(assetApi.upload))
     .then((assets) => {
-      addSources(
+      const added = addSources(
         slot.key,
         assets.map((asset) => ({
           id: asset.asset_id,
@@ -290,9 +323,12 @@ function upload(slot: GenerationInputSlotDefinition, files: File[]): void {
           sourceType: 'LOCAL_UPLOAD',
         })),
       )
-      message.success('图片已上传')
+      if (added) message.success('图片已上传')
     })
     .catch((error) => message.error(getErrorMessage(error)))
+    .finally(() => {
+      pendingUploadCount.value -= files.length
+    })
 }
 
 function removeSource(slotKey: GenerationInputSlotKey, sourceId: string): void {
@@ -339,6 +375,7 @@ async function generate(): Promise<void> {
       output_format: outputFormat.value,
       size: size.value,
       count: count.value,
+      compress_output_under_1000kb: outputCompressionEnabled.value,
     })
     if (!job) return
     setJob(job)
@@ -370,14 +407,19 @@ function clearCurrentTask(): void {
   message.success('已清空当前即时生成')
 }
 
-function beginDownload(results: readonly GenerationExecutionResultView[]): void {
+function beginDownload(
+  results: readonly GenerationExecutionResultView[],
+): void {
   if (downloads.isDownloading.value) return
   const requests = toGenerationAssetDownloadRequests(results)
   void downloads.start(requests).then((summary) => {
     if (!summary) return
-    if (summary.succeeded) message.success(`已开始下载 ${summary.succeeded} 张图片`)
+    if (summary.succeeded)
+      message.success(`已开始下载 ${summary.succeeded} 张图片`)
     if (summary.failed) {
-      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      const firstFailure = summary.results.find(
+        (result) => result.failure,
+      )?.failure
       if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
     }
   })
@@ -385,6 +427,20 @@ function beginDownload(results: readonly GenerationExecutionResultView[]): void 
 
 function downloadResult(result: GenerationExecutionResultView): void {
   beginDownload([result])
+}
+
+function previewResult(result: GenerationExecutionResultView): void {
+  if (result.status !== 'SUCCESS' || !result.previewUrl) return
+  previewResultId.value = result.id
+}
+
+function downloadPreviewResult(source: { id: string }): void {
+  const result = execution.value?.results.find((item) => item.id === source.id)
+  if (result) downloadResult(result)
+}
+
+function setPreviewVisible(visible: boolean): void {
+  if (!visible) previewResultId.value = null
 }
 
 function downloadAll(): void {
@@ -397,9 +453,12 @@ function downloadAll(): void {
 function retryFailedDownloads(): void {
   void downloads.retryFailed().then((summary) => {
     if (!summary) return
-    if (summary.succeeded) message.success(`已重新下载 ${summary.succeeded} 张图片`)
+    if (summary.succeeded)
+      message.success(`已重新下载 ${summary.succeeded} 张图片`)
     if (summary.failed) {
-      const firstFailure = summary.results.find((result) => result.failure)?.failure
+      const firstFailure = summary.results.find(
+        (result) => result.failure,
+      )?.failure
       if (firstFailure) message.error(formatAssetDownloadFailure(firstFailure))
     }
   })
@@ -458,6 +517,13 @@ function retryResult(result: GenerationExecutionResultView): void {
             <span v-if="selectedModel" class="instant-generation-field__hint">
               最多 {{ selectedModel.maxInputImages }} 张输入图
             </span>
+            <span
+              v-if="hasInputLimitViolation"
+              class="instant-generation-field__hint instant-generation-field__hint--error"
+            >
+              实际输入 {{ currentInputCount }} 张，模型最多
+              {{ selectedModel?.maxInputImages }} 张
+            </span>
           </section>
 
           <GenerationInputSlot
@@ -500,6 +566,11 @@ function retryResult(result: GenerationExecutionResultView): void {
               :active-key="outputFormat"
               :items="outputFormatOptions"
               @select="outputFormat = $event as GenerationOutputFormat"
+            />
+          </section>
+          <section class="instant-generation-field">
+            <GenerationOutputCompressionSetting
+              v-model="outputCompressionEnabled"
             />
           </section>
           <div class="instant-generation-parameters">
@@ -567,6 +638,7 @@ function retryResult(result: GenerationExecutionResultView): void {
         @download-all="downloadAll"
         @download="downloadResult"
         @retry="retryResult"
+        @preview="previewResult"
       />
       <AssetDownloadStatusBar
         :is-downloading="downloads.isDownloading.value"
@@ -583,6 +655,13 @@ function retryResult(result: GenerationExecutionResultView): void {
     :products="products"
     :role="assetPickerDefinition.acceptedMaterialRole"
     @confirm="selectAsset"
+  />
+  <AssetPreviewDialog
+    :show="Boolean(previewResultId)"
+    :items="previewSources"
+    :selected-asset-id="previewResultId"
+    @update:show="setPreviewVisible"
+    @download="downloadPreviewResult"
   />
   <AppDialog
     v-model:show="clearDialogVisible"
@@ -666,6 +745,10 @@ function retryResult(result: GenerationExecutionResultView): void {
 .instant-generation-field__hint {
   color: var(--text-tertiary);
   font-size: var(--font-size-secondary);
+}
+
+.instant-generation-field__hint--error {
+  color: var(--status-danger);
 }
 
 .instant-generation-prompt {

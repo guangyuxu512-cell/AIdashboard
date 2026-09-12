@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Download } from '@lucide/vue'
 
+import { AssetContentImage } from '@/entities/asset'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
@@ -25,6 +26,7 @@ const emit = defineEmits<{
       results: readonly GenerationResultView[]
     },
   ]
+  preview: [result: GenerationResultView]
 }>()
 
 function batchResults(): GenerationResultView[] {
@@ -105,6 +107,19 @@ function download(
                   :key="item.id"
                   class="batch-result-tree__item"
                 >
+                  <AppButton
+                    v-if="item.status === 'SUCCESS' && item.previewUrl"
+                    block
+                    class="batch-result-tree__preview"
+                    tone="text"
+                    :aria-label="`预览 ${item.name}`"
+                    @click.stop="$emit('preview', item)"
+                  >
+                    <AssetContentImage
+                      :src="item.thumbnailUrl ?? item.previewUrl"
+                      :alt="item.name"
+                    />
+                  </AppButton>
                   <span>{{ item.name }}</span>
                   <StatusTag
                     :label="GENERATION_RESULT_STATUS_META[item.status].label"
@@ -230,6 +245,27 @@ function download(
   color: var(--text-secondary);
   background: var(--bg-surface-solid);
   font-size: var(--font-size-secondary);
+}
+
+.batch-result-tree__preview {
+  display: flex;
+  width: var(--control-height-large);
+  height: var(--control-height-large);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  cursor: zoom-in;
+  background: var(--bg-subtle);
+}
+
+.batch-result-tree__preview :deep(.n-button__content) {
+  width: 100%;
+  height: 100%;
+}
+
+.batch-result-tree__preview :deep(img) {
+  object-fit: cover;
 }
 
 .batch-result-tree__item > span:first-child {

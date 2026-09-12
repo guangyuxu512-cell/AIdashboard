@@ -16,6 +16,7 @@ defineEmits<{
   downloadAll: []
   download: [result: GenerationExecutionResultView]
   retry: [result: GenerationExecutionResultView]
+  preview: [result: GenerationExecutionResultView]
 }>()
 </script>
 
@@ -34,6 +35,7 @@ defineEmits<{
         :results="execution.results"
         @download="$emit('download', $event)"
         @retry="$emit('retry', $event)"
+        @preview="$emit('preview', $event)"
       />
       <EmptyState v-else description="暂无生成结果" />
     </div>

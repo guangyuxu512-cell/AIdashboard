@@ -129,6 +129,7 @@ def test_instant_generation_submit_freezes_supported_input_contract() -> None:
     assert data.product_asset_ids == [product_asset_id]
     assert data.reference_asset_ids == [reference_asset_id]
     assert data.model_id == model_id
+    assert data.compress_output_under_1000kb is False
     assert "output_role" not in InstantGenerationSubmit.model_fields
     for forbidden_field in (
         "team_id",
@@ -143,6 +144,45 @@ def test_instant_generation_submit_freezes_supported_input_contract() -> None:
                     forbidden_field: "forbidden",
                 },
             )
+
+
+def test_generation_submit_accepts_only_the_boolean_output_compression_policy() -> None:
+    model_id = uuid4()
+    product_asset_id = uuid4()
+    instant = InstantGenerationSubmit.model_validate(
+        {
+            "work_mode": "INSTANT",
+            "submission_key": "compression-enabled",
+            "model_id": str(model_id),
+            "mode": "NORMAL_GENERATION",
+            "product_asset_ids": [str(product_asset_id)],
+            "prompt": "完整提示词",
+            "output_format": "SINGLE",
+            "size": "1:1",
+            "count": 1,
+            "compress_output_under_1000kb": True,
+        },
+    )
+    batch = BatchGenerationSubmit.model_validate(
+        {
+            "work_mode": "BATCH",
+            "submission_key": "compression-default",
+            "model_id": str(model_id),
+            "mode": "NORMAL_GENERATION",
+            "product_scope": "ALL_ENABLED",
+            "template_source": "PRODUCT_CONFIGURED",
+        },
+    )
+
+    assert instant.compress_output_under_1000kb is True
+    assert batch.compress_output_under_1000kb is False
+    with pytest.raises(ValidationError):
+        InstantGenerationSubmit.model_validate(
+            {
+                **instant.model_dump(mode="json"),
+                "compression_quality": 1,
+            },
+        )
 
 
 def test_generation_submit_rejects_invalid_mode_inputs_and_duplicate_ids() -> None:

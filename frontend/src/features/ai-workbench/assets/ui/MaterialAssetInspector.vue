@@ -185,7 +185,7 @@ function updateRole(value: string | number | null): void {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .material-asset-inspector__filename {

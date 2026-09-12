@@ -21,6 +21,7 @@ import {
   type BatchExecutionView,
   type BatchPreflightIssueView,
   type BatchTemplateExecutionView,
+  type GenerationExecutionResultView,
 } from '../model/types'
 import BatchProductTaskRow from './BatchProductTaskRow.vue'
 import BatchTemplateExecutionCard from './BatchTemplateExecutionCard.vue'
@@ -34,6 +35,7 @@ defineEmits<{
   downloadAll: []
   downloadTemplate: [template: BatchTemplateExecutionView]
   retry: [identity: BatchTemplateExecutionIdentity]
+  preview: [result: GenerationExecutionResultView]
 }>()
 
 const filter = ref<BatchExecutionFilter>('ALL')
@@ -277,6 +279,7 @@ function setFilter(value: string): void {
                   :template="template"
                   @retry="$emit('retry', $event)"
                   @download="$emit('downloadTemplate', $event)"
+                  @preview="$emit('preview', $event)"
                 />
               </div>
             </NCollapseItem>

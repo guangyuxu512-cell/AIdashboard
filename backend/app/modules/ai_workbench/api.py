@@ -177,6 +177,7 @@ def _generation_job_summary_read(
         model_display_name=job.model.display_name,
         work_mode=job.work_mode,
         mode=job.mode,
+        compress_output_under_1000kb=job.compress_output_under_1000kb,
         status=job.status,
         input_summary=GenerationInputSummaryRead(
             count=input_summary.count,

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import dayjs from 'dayjs'
 import { NDescriptions, NDescriptionsItem } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
 
+import { AssetPreviewDialog } from '@/entities/asset'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { AppButton } from '@/shared/ui'
@@ -17,6 +19,10 @@ import type {
   GenerationDownloadResult,
   GenerationDownloadSelection,
 } from '../../generation/model/download'
+import type {
+  GenerationExecutionResultView,
+  GenerationResultView,
+} from '../../generation/model/types'
 import BatchResultTree from '../../generation/ui/BatchResultTree.vue'
 import InstantResultGrid from '../../generation/ui/InstantResultGrid.vue'
 
@@ -31,6 +37,15 @@ const emit = defineEmits<{
   download: [selection: GenerationDownloadSelection]
 }>()
 
+const previewResultId = ref<string | null>(null)
+
+watch(
+  () => props.show,
+  (show) => {
+    if (!show) previewResultId.value = null
+  },
+)
+
 function allResults(record: GenerationRecordView): GenerationDownloadResult[] {
   return record.detail.kind === 'INSTANT'
     ? record.detail.results
@@ -44,6 +59,42 @@ function allResults(record: GenerationRecordView): GenerationDownloadResult[] {
 function downloadAll(): void {
   if (!props.record) return
   emit('download', { scope: 'BATCH', results: allResults(props.record) })
+}
+
+const previewSources = computed(() =>
+  props.record
+    ? allResults(props.record)
+        .filter(
+          (result) => result.status === 'SUCCESS' && Boolean(result.previewUrl),
+        )
+        .map((result) => ({
+          id: result.id,
+          name:
+            result.name ??
+            ('slotIndex' in result
+              ? `生成结果 ${result.slotIndex + 1}`
+              : '生成结果'),
+          contentUrl: result.previewUrl!,
+        }))
+    : [],
+)
+
+function previewResult(
+  result: GenerationExecutionResultView | GenerationResultView,
+): void {
+  if (result.status !== 'SUCCESS' || !result.previewUrl) return
+  previewResultId.value = result.id
+}
+
+function downloadPreviewResult(source: { id: string }): void {
+  const result = props.record
+    ? allResults(props.record).find((item) => item.id === source.id)
+    : undefined
+  if (result) emit('download', { scope: 'SINGLE', results: [result] })
+}
+
+function setPreviewVisible(visible: boolean): void {
+  if (!visible) previewResultId.value = null
 }
 </script>
 
@@ -125,6 +176,7 @@ function downloadAll(): void {
             @download="
               $emit('download', { scope: 'SINGLE', results: [$event] })
             "
+            @preview="previewResult"
           />
         </section>
       </template>
@@ -155,6 +207,7 @@ function downloadAll(): void {
           <BatchResultTree
             :results="record.detail.results"
             @download="$emit('download', $event)"
+            @preview="previewResult"
           />
         </section>
       </template>
@@ -178,6 +231,13 @@ function downloadAll(): void {
       </div>
     </template>
   </DetailDrawer>
+  <AssetPreviewDialog
+    :show="Boolean(previewResultId)"
+    :items="previewSources"
+    :selected-asset-id="previewResultId"
+    @update:show="setPreviewVisible"
+    @download="downloadPreviewResult"
+  />
 </template>
 
 <style scoped>

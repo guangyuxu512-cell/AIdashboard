@@ -15,13 +15,19 @@ function createStore() {
 function productSource(store: ReturnType<typeof useAiGenerationStore>) {
   return store.products
     .flatMap((product) => product.assets)
-    .find((asset) => asset.role === 'PRODUCT_SOURCE')!
+    .find(
+      (asset): asset is GenerationSourceImageView =>
+        asset.role === 'PRODUCT_SOURCE',
+    )!
 }
 
 function styleReference(store: ReturnType<typeof useAiGenerationStore>) {
   return store.products
     .flatMap((product) => product.assets)
-    .find((asset) => asset.role === 'STYLE_REFERENCE')!
+    .find(
+      (asset): asset is GenerationSourceImageView =>
+        asset.role === 'STYLE_REFERENCE',
+    )!
 }
 
 function readyInstant(store: ReturnType<typeof useAiGenerationStore>): void {

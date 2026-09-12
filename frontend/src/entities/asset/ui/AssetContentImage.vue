@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 
 import { fetchAssetContent } from '../api/asset-api'
 
@@ -31,14 +31,16 @@ function handleImageError(): void {
 }
 
 watch(
-  [() => props.src, () => props.loading, target],
-  ([src, loading, imageTarget], _previous, onCleanup) => {
+  [() => props.src, () => props.loading],
+  ([src, loading], _previous, onCleanup) => {
     let objectUrl: string | null = null
     let disposed = false
+    let requestInFlight = false
     let observer: IntersectionObserver | null = null
     const controller = new AbortController()
     renderedSrc.value = ''
     retryLoader.value = null
+    state.value = src ? 'idle' : 'empty'
 
     onCleanup(() => {
       disposed = true
@@ -60,11 +62,12 @@ watch(
     }
 
     const load = () => {
-      if (disposed || state.value === 'loading') return
+      if (disposed || requestInFlight) return
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl)
         objectUrl = null
       }
+      requestInFlight = true
       state.value = 'loading'
       void fetchAssetContent(src, controller.signal)
         .then((blob) => {
@@ -78,19 +81,28 @@ watch(
           renderedSrc.value = ''
           state.value = 'error'
         })
+        .finally(() => {
+          requestInFlight = false
+        })
     }
     retryLoader.value = load
 
     if (loading === 'lazy' && typeof IntersectionObserver !== 'undefined') {
       state.value = 'idle'
-      if (!imageTarget) return
-      observer = new IntersectionObserver((entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return
-        observer?.disconnect()
-        observer = null
-        load()
-      })
-      observer.observe(imageTarget)
+      const observeImage = () => {
+        if (disposed || observer) return
+        const imageTarget = target.value
+        if (!imageTarget) return
+        observer = new IntersectionObserver((entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return
+          observer?.disconnect()
+          observer = null
+          load()
+        })
+        observer.observe(imageTarget)
+      }
+      if (target.value) observeImage()
+      else void nextTick().then(observeImage)
       return
     }
     load()

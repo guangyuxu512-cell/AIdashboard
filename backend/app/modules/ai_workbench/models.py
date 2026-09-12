@@ -487,6 +487,12 @@ class GenerationJob(TimestampMixin, Base):
     )
     work_mode: Mapped[str] = mapped_column(String(16), nullable=False)
     mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    compress_output_under_1000kb: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

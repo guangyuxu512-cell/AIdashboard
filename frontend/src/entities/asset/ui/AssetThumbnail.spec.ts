@@ -11,6 +11,8 @@ vi.mock('../api/asset-api', () => ({
 
 describe('AssetContentImage', () => {
   beforeEach(() => {
+    mocks.fetchAssetContent.mockReset()
+    mocks.fetchAssetContent.mockResolvedValue(new Blob(['asset']))
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
       value: vi.fn(() => 'blob:protected-asset'),
@@ -90,5 +92,53 @@ describe('AssetContentImage', () => {
     callback?.([{ isIntersecting: true } as IntersectionObserverEntry])
     await flushPromises()
     expect(mocks.fetchAssetContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a new protected request when the source changes during a pending request', async () => {
+    let resolveFirst: ((blob: Blob) => void) | undefined
+    let resolveSecond: ((blob: Blob) => void) | undefined
+    const first = new Promise<Blob>((resolve) => {
+      resolveFirst = resolve
+    })
+    const second = new Promise<Blob>((resolve) => {
+      resolveSecond = resolve
+    })
+    mocks.fetchAssetContent
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => second)
+    vi.mocked(URL.createObjectURL).mockReturnValue('blob:second-asset')
+
+    const wrapper = mount(AssetContentImage, {
+      props: {
+        src: '/api/v1/assets/asset-first/content',
+        alt: '第一张图片',
+        loading: 'eager',
+      },
+    })
+    await flushPromises()
+
+    await wrapper.setProps({
+      src: '/api/v1/assets/asset-second/content',
+      alt: '第二张图片',
+    })
+    await flushPromises()
+
+    expect(mocks.fetchAssetContent).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/assets/asset-first/content',
+      expect.any(AbortSignal),
+    )
+    expect(mocks.fetchAssetContent).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/assets/asset-second/content',
+      expect.any(AbortSignal),
+    )
+
+    resolveFirst?.(new Blob(['first']))
+    resolveSecond?.(new Blob(['second']))
+    await flushPromises()
+
+    expect(wrapper.find('img').attributes('src')).toBe('blob:second-asset')
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
   })
 })

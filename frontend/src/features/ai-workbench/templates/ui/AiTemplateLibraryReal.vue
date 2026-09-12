@@ -169,6 +169,14 @@ function updateMode(value: AppOptionValue | null): void {
   selectedTemplateId.value = null
 }
 
+function selectGroup(groupId: string): void {
+  // A row can be selected again while its template editor is open. Vue will
+  // not notify the selectedGroupId watcher for an identical id, so clear the
+  // child selection explicitly and return the right pane to group settings.
+  selectedGroupId.value = groupId
+  selectedTemplateId.value = null
+}
+
 function openCreateGroup(): void {
   groupDialogMode.value = 'create'
   editingGroup.value = null
@@ -384,7 +392,7 @@ function setPageSize(value: number): void {
           :groups="visibleGroups"
           :selected-group-id="selectedGroupId"
           @create="openCreateGroup"
-          @select="selectedGroupId = $event"
+          @select="selectGroup"
           @rename="openRenameGroup"
           @remove="pendingDelete = { type: 'group', group: $event }"
         />

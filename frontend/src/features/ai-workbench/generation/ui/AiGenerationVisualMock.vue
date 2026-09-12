@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { ref } from 'vue'
 
 import { AiManagementToolbar } from '@/features/ai-workbench'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
@@ -14,6 +15,7 @@ import InstantGenerationPanel from './InstantGenerationPanel.vue'
 
 const { generationStore } = useAiGenerationRuntime()
 const { workMode } = storeToRefs(generationStore)
+const outputCompressionEnabled = ref(false)
 const workModeOptions = [
   { label: GENERATION_WORK_MODE_META.INSTANT.label, key: 'INSTANT' },
   { label: GENERATION_WORK_MODE_META.BATCH.label, key: 'BATCH' },
@@ -35,8 +37,14 @@ function setWorkMode(value: string): void {
       @select="setWorkMode"
     />
   </AiManagementToolbar>
-  <InstantGenerationPanel v-if="workMode === 'INSTANT'" />
-  <BatchGenerationPanel v-else />
+  <InstantGenerationPanel
+    v-if="workMode === 'INSTANT'"
+    v-model:output-compression-enabled="outputCompressionEnabled"
+  />
+  <BatchGenerationPanel
+    v-else
+    v-model:output-compression-enabled="outputCompressionEnabled"
+  />
 </template>
 
 <style scoped>

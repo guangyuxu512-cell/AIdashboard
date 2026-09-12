@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import { AssetContentImage } from '@/entities/asset'
+import { AssetContentImage, AssetPreviewDialog } from '@/entities/asset'
 import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
-import { AppDialog, AppSelect } from '@/shared/ui'
+import { AppButton, AppDialog, AppSelect } from '@/shared/ui'
 
 import type {
   GenerationProductView,
@@ -25,6 +25,7 @@ const emit = defineEmits<{
 
 const selectedProductId = ref<string | null>(null)
 const selectedAssetId = ref<string | null>(null)
+const previewAssetId = ref<string | null>(null)
 
 const productOptions = computed(() =>
   props.products
@@ -75,8 +76,12 @@ function confirm(): void {
     (asset) => asset.id === selectedAssetId.value,
   )
   if (!source) return
-  emit('confirm', { ...source })
+  emit('confirm', { ...source, role: props.role })
   emit('update:show', false)
+}
+
+function setPreviewVisible(visible: boolean): void {
+  if (!visible) previewAssetId.value = null
 }
 </script>
 
@@ -114,11 +119,32 @@ function confirm(): void {
               :alt="asset.name"
             />
           </template>
+          <template #actions>
+            <AppButton
+              tone="text"
+              :aria-label="`预览素材 ${asset.name}`"
+              @click.stop="previewAssetId = asset.id"
+            >
+              预览
+            </AppButton>
+          </template>
         </CompactEntityRow>
       </div>
       <EmptyState v-else description="暂无可选素材" />
     </div>
   </AppDialog>
+  <AssetPreviewDialog
+    :show="Boolean(previewAssetId)"
+    :items="
+      visibleAssets.map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        contentUrl: asset.previewUrl,
+      }))
+    "
+    :selected-asset-id="previewAssetId"
+    @update:show="setPreviewVisible"
+  />
 </template>
 
 <style scoped>

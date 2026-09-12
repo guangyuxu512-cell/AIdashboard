@@ -77,6 +77,7 @@ const instantSubmissionSchema = z
     output_format: z.enum(['SINGLE', 'COLLAGE_2X2']),
     size: z.enum(['1:1', '3:4', '4:3', '16:9']),
     count: z.number().int().min(1).max(8),
+    compress_output_under_1000kb: z.boolean().default(false),
   })
   .strict()
 
@@ -89,6 +90,7 @@ const batchSubmissionSchema = z
     template_source: z.enum(['PRODUCT_CONFIGURED', 'CURRENT_SELECTION']),
     selected_template_group_ids: z.array(z.string().min(1)),
     output_range: z.enum(['ALL', 'MAIN_IMAGE', 'DETAIL_IMAGE']),
+    compress_output_under_1000kb: z.boolean().default(false),
   })
   .strict()
 
@@ -96,6 +98,7 @@ const persistedSessionSchema = z
   .object({
     version: z.literal(2),
     workMode: z.enum(['INSTANT', 'BATCH']),
+    outputCompressionEnabled: z.boolean().default(false),
     instant: z
       .object({
         mode: z.enum(['NORMAL_GENERATION', 'STYLE_REPLICATION']),
@@ -246,6 +249,7 @@ export const useAiWorkbenchSessionStore = defineStore(
   'ai-workbench-session',
   () => {
     const workMode = ref<GenerationWorkMode>('INSTANT')
+    const outputCompressionEnabled = ref(false)
 
     const instantMode = ref<GenerationMode>('NORMAL_GENERATION')
     const instantSelectedModelId = ref<string | null>(null)
@@ -292,6 +296,7 @@ export const useAiWorkbenchSessionStore = defineStore(
       return {
         version: 2,
         workMode: workMode.value,
+        outputCompressionEnabled: outputCompressionEnabled.value,
         instant: {
           mode: instantMode.value,
           selectedModelId: instantSelectedModelId.value,
@@ -388,12 +393,14 @@ export const useAiWorkbenchSessionStore = defineStore(
 
     function resetAllState(): void {
       workMode.value = 'INSTANT'
+      outputCompressionEnabled.value = false
       resetInstantState()
       resetBatchState()
     }
 
     function hydrate(session: PersistedSession): void {
       workMode.value = session.workMode
+      outputCompressionEnabled.value = session.outputCompressionEnabled
       instantMode.value = session.instant.mode
       instantSelectedModelId.value = session.instant.selectedModelId
       instantInputs.value = {
@@ -670,6 +677,7 @@ export const useAiWorkbenchSessionStore = defineStore(
     watch(
       [
         workMode,
+        outputCompressionEnabled,
         instantMode,
         instantSelectedModelId,
         instantInputs,
@@ -697,6 +705,7 @@ export const useAiWorkbenchSessionStore = defineStore(
 
     return {
       workMode,
+      outputCompressionEnabled,
       instantMode,
       instantSelectedModelId,
       instantInputs,

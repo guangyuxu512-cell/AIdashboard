@@ -15,6 +15,7 @@ withDefaults(
 defineEmits<{
   download: [result: GenerationExecutionResultView]
   retry: [result: GenerationExecutionResultView]
+  preview: [result: GenerationExecutionResultView]
 }>()
 </script>
 
@@ -27,6 +28,7 @@ defineEmits<{
       :show-actions="showActions"
       @download="$emit('download', $event)"
       @retry="$emit('retry', $event)"
+      @preview="$emit('preview', $event)"
     />
   </div>
 </template>

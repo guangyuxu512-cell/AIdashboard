@@ -12,6 +12,7 @@ import {
   mapGenerationRecord,
   mapGenerationRecordSummary,
   mapInstantExecution,
+  mapGenerationProduct,
   mapProductMaterialGroup,
   mapTemplateGroup,
   mapWorkbenchModel,
@@ -79,6 +80,7 @@ function job(
     model_display_name: 'GPT Image 2',
     work_mode: 'INSTANT',
     mode: 'NORMAL_GENERATION',
+    compress_output_under_1000kb: false,
     status,
     input_summary: { count: 1, primary_name: '商品图.png' },
     created_by_display_name: '测试用户',
@@ -172,6 +174,20 @@ describe('AI Workbench real API mappers', () => {
             created_at: '2026-09-06T00:00:00Z',
           },
         },
+        {
+          role: 'AI_OUTPUT',
+          created_at: '2026-09-06T00:00:00Z',
+          asset: {
+            asset_id: 'asset-output-1',
+            media_type: 'image',
+            original_filename: 'generated.png',
+            content_type: 'image/png',
+            size_bytes: 512,
+            sha256: 'c'.repeat(64),
+            source_type: 'ai_generated',
+            created_at: '2026-09-06T00:00:00Z',
+          },
+        },
       ],
       template_bindings: [
         {
@@ -192,8 +208,15 @@ describe('AI Workbench real API mappers', () => {
       id: 'material-1',
       normalTemplateGroupIds: ['group-1'],
       styleReplicationTemplateGroupIds: [],
-      assets: [{ assetId: 'asset-1', role: 'PRODUCT_SOURCE' }],
+      assets: [
+        { assetId: 'asset-1', role: 'PRODUCT_SOURCE' },
+        { assetId: 'asset-output-1', role: 'AI_OUTPUT' },
+      ],
     })
+    expect(mapGenerationProduct(materialGroup).assets).toEqual([
+      expect.objectContaining({ id: 'asset-1', role: 'PRODUCT_SOURCE' }),
+      expect.objectContaining({ id: 'asset-output-1', role: 'AI_OUTPUT' }),
+    ])
   })
 
   it.each([

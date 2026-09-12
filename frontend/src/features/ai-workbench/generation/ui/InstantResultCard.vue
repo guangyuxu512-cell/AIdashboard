@@ -31,6 +31,7 @@ const props = withDefaults(
 defineEmits<{
   download: [result: GenerationExecutionResultView]
   retry: [result: GenerationExecutionResultView]
+  preview: [result: GenerationExecutionResultView]
 }>()
 
 const resultLabel = computed(
@@ -47,12 +48,20 @@ const resultLabel = computed(
     :data-result-status="result.status"
   >
     <div class="instant-result-card__preview">
-      <AssetContentImage
+      <AppButton
         v-if="result.status === 'SUCCESS' && result.previewUrl"
-        class="instant-result-card__image"
-        :src="result.thumbnailUrl ?? result.previewUrl"
-        :alt="resultLabel"
-      />
+        block
+        class="instant-result-card__preview-button"
+        tone="text"
+        :aria-label="`预览 ${resultLabel}`"
+        @click="$emit('preview', result)"
+      >
+        <AssetContentImage
+          class="instant-result-card__image"
+          :src="result.thumbnailUrl ?? result.previewUrl"
+          :alt="resultLabel"
+        />
+      </AppButton>
       <ImageIcon
         v-else-if="result.status === 'SUCCESS'"
         :size="24"
@@ -129,6 +138,21 @@ const resultLabel = computed(
   place-items: center;
   color: var(--text-tertiary);
   background: var(--bg-subtle);
+}
+
+.instant-result-card__preview-button {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+  background: transparent;
+}
+
+.instant-result-card__preview-button :deep(.n-button__content) {
+  width: 100%;
+  height: 100%;
 }
 
 .instant-result-card__image {

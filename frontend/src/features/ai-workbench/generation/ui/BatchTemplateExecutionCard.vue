@@ -17,6 +17,7 @@ import type { BatchTemplateExecutionIdentity } from '../model/batch-execution'
 import {
   BATCH_EXECUTION_STATUS_META,
   type BatchTemplateExecutionView,
+  type GenerationExecutionResultView,
 } from '../model/types'
 
 const props = defineProps<{
@@ -28,6 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   download: [template: BatchTemplateExecutionView]
   retry: [identity: BatchTemplateExecutionIdentity]
+  preview: [result: GenerationExecutionResultView]
 }>()
 
 const successCount = computed(
@@ -79,12 +81,20 @@ function retry(): void {
         :data-result-status="result.status"
         :aria-label="`${template.templateName} 结果 ${index + 1} ${result.status}`"
       >
-        <AssetContentImage
+        <AppButton
           v-if="result.status === 'SUCCESS' && result.previewUrl"
-          class="batch-template-result__preview"
-          :src="result.thumbnailUrl ?? result.previewUrl"
-          :alt="`${template.templateName} 结果 ${index + 1}`"
-        />
+          block
+          class="batch-template-result__preview-button"
+          tone="text"
+          :aria-label="`预览 ${template.templateName} 结果 ${index + 1}`"
+          @click="$emit('preview', result)"
+        >
+          <AssetContentImage
+            class="batch-template-result__preview"
+            :src="result.thumbnailUrl ?? result.previewUrl"
+            :alt="`${template.templateName} 结果 ${index + 1}`"
+          />
+        </AppButton>
         <ImageIcon
           v-else-if="result.status === 'SUCCESS'"
           :size="16"
@@ -192,6 +202,21 @@ function retry(): void {
 }
 
 .batch-template-result__preview {
+  width: 100%;
+  height: 100%;
+}
+
+.batch-template-result__preview-button {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+  background: transparent;
+}
+
+.batch-template-result__preview-button :deep(.n-button__content) {
   width: 100%;
   height: 100%;
 }

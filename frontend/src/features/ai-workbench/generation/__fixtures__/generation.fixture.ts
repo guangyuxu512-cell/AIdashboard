@@ -4,6 +4,7 @@ import type {
   GenerationProductView,
   GenerationRecordStatus,
   GenerationRecordView,
+  GenerationSourceImageView,
   GenerationResultView,
   GenerationTemplateGroupView,
   GenerationVisualMockFixture,
@@ -257,7 +258,8 @@ function createRecordFixtures(
     products.find((candidate) => candidate.id === 'pmg-phone-stand') ??
     products[0]
   const productImage = product?.assets.find(
-    (asset) => asset.role === 'PRODUCT_SOURCE',
+    (asset): asset is GenerationSourceImageView =>
+      asset.role === 'PRODUCT_SOURCE',
   ) ?? {
     id: 'generation-record-source',
     name: '商品图.webp',
@@ -266,7 +268,8 @@ function createRecordFixtures(
     sourceType: 'ASSET_LIBRARY' as const,
   }
   const styleReference = product?.assets.find(
-    (asset) => asset.role === 'STYLE_REFERENCE',
+    (asset): asset is GenerationSourceImageView =>
+      asset.role === 'STYLE_REFERENCE',
   )
 
   const statuses: GenerationRecordStatus[] = [
