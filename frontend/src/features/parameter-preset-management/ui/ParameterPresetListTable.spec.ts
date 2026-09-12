@@ -13,6 +13,7 @@ const preset: AutomationParameterPresetDto = {
   created_by_user_id: 'user-1',
   app_id: 'app-1',
   name: '日常采集',
+  input_schema: { fields: [] },
   common_parameters: { 页码: 1 },
   shop_overrides: {},
   invalid_parameter_names: [],

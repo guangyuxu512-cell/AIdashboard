@@ -7,6 +7,7 @@ import { ApiError } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import type { AutomationInputSchemaDto } from '../api/contracts'
 
 import AutomationParameterPresetManagerDialog from './AutomationParameterPresetManagerDialog.vue'
 
@@ -104,6 +105,7 @@ beforeEach(() => {
   mocks.success.mockReset()
   mocks.save.mockResolvedValue({
     preset_id: 'preset-1',
+    input_schema: emptySchema,
     name: '日常采集',
     common_parameters: {},
     shop_overrides: {},
@@ -132,11 +134,18 @@ describe('AutomationParameterPresetManagerDialog', () => {
       .find((button) => button.text() === '管理字段')
     configure!.vm.$emit('click')
     await flushPromises()
-    expect(wrapper.emitted('configureSchema')).toEqual([[application]])
+    expect(wrapper.emitted('configureSchema')).toEqual([[application, emptySchema]])
 
     await wrapper.setProps({ schema: configuredSchema })
     await flushPromises()
     expect(wrapper.findComponent(AppInput).props('modelValue')).toBe('日常采集')
+    // Returning from global/template editing alone cannot mutate this draft;
+    // the parent must pass an explicit preset-local schema confirmation.
+    expect(wrapper.text()).toContain('该应用尚未配置参数字段')
+    ;(wrapper.vm as unknown as {
+      applyInputSchema: (schema: AutomationInputSchemaDto) => void
+    }).applyInputSchema(configuredSchema)
+    await flushPromises()
     expect(wrapper.text()).toContain('0 项当前参数')
     const fields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
     expect(fields.props('modelValue')).toEqual({})
@@ -167,6 +176,30 @@ describe('AutomationParameterPresetManagerDialog', () => {
     expect(mocks.save.mock.calls[0]![0].data.common_parameters).toEqual({
       每页数量: 20,
     })
+    expect(mocks.save.mock.calls[0]![0].data.input_schema).toEqual(
+      configuredSchema,
+    )
+  })
+
+  it('keeps field edits local to the active preset and removes only deleted-field values', async () => {
+    const wrapper = mountDialog({ schema: configuredSchema })
+    await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '配置 A')
+    wrapper
+      .findAllComponents({ name: 'AutomationParameterFields' })[0]!
+      .vm.$emit('update:modelValue', { 页码: 2, 每页数量: 20 })
+    ;(wrapper.vm as unknown as {
+      applyInputSchema: (schema: AutomationInputSchemaDto) => void
+    })
+      .applyInputSchema({ fields: [configuredSchema.fields[0]] })
+    await flushPromises()
+
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+    expect(mocks.save.mock.calls[0]![0].data).toMatchObject({
+      input_schema: { fields: [configuredSchema.fields[0]] },
+      common_parameters: { 页码: 2 },
+    })
   })
 
   it('keeps A and B field selections isolated when the shared schema changes', async () => {
@@ -174,6 +207,7 @@ describe('AutomationParameterPresetManagerDialog', () => {
       preset_id: 'preset-a',
       app_id: application.app_id,
       name: '配置 A',
+      input_schema: { fields: [configuredSchema.fields[0]] },
       common_parameters: { 页码: 2 },
       shop_overrides: { 'shop-a': { 页码: 3 } },
       version: 1,
@@ -182,6 +216,7 @@ describe('AutomationParameterPresetManagerDialog', () => {
       preset_id: 'preset-b',
       app_id: application.app_id,
       name: '配置 B',
+      input_schema: { fields: [configuredSchema.fields[1]] },
       common_parameters: { 每页数量: 20 },
       shop_overrides: {},
       version: 1,
@@ -200,25 +235,24 @@ describe('AutomationParameterPresetManagerDialog', () => {
       fields: [configuredSchema.fields[0]],
     })
 
-    // Adding an application field changes the shared catalog only. It cannot
-    // enable the new default field for A (or later B) without an explicit
-    // per-preset add action.
+    // The mutable application template cannot reinterpret an already-saved
+    // preset field contract. A remains exactly its persisted schema.
     await wrapper.setProps({ schema: expandedSchema })
     await flushPromises()
     expect(commonFields().props('modelValue')).toEqual({ 页码: 2 })
     expect(commonFields().props('schema')).toEqual({
-      fields: [expandedSchema.fields[0]],
+      fields: [configuredSchema.fields[0]],
     })
 
     await wrapper.setProps({ initialPresetId: presetB.preset_id })
     await flushPromises()
     expect(commonFields().props('modelValue')).toEqual({ 每页数量: 20 })
     expect(commonFields().props('schema')).toEqual({
-      fields: [expandedSchema.fields[1]],
+      fields: [configuredSchema.fields[1]],
     })
     expect(
       wrapper.findComponent({ name: 'AutomationParameterPresetShopOverrideDialog' }).props('schema'),
-    ).toEqual({ fields: [expandedSchema.fields[1]] })
+    ).toEqual({ fields: [configuredSchema.fields[1]] })
   })
 
   it('keeps the current draft and points a duplicate name failure at the name field', async () => {

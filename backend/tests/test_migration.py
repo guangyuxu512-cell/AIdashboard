@@ -976,3 +976,40 @@ def test_ai_workbench_real_api_migration_upgrade_and_downgrade(
         ("drop_constraint", "fk_generation_jobs_model_id_ai_models"),
         ("drop_column", "generation_jobs"),
     ]
+
+
+def test_automation_parameter_schema_snapshot_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260912_0036_automation_parameter_schema_snapshot_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260912_0036"
+    assert migration.down_revision == "20260912_0035"
+    migration.upgrade()
+    assert [operation for operation, _ in recorder.calls] == [
+        "add_column",
+        "execute",
+        "alter_column",
+        "create_check_constraint",
+    ]
+    assert recorder.calls[0] == ("add_column", "automation_parameter_presets")
+    assert "jsonb_object_keys" in str(recorder.calls[1][1])
+    assert "automation_application_configs" in str(recorder.calls[1][1])
+    assert recorder.calls[-1] == (
+        "create_check_constraint",
+        "ck_automation_parameter_presets_input_schema_snapshot_object",
+    )
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        (
+            "drop_constraint",
+            "ck_automation_parameter_presets_input_schema_snapshot_object",
+        ),
+        ("drop_column", "automation_parameter_presets"),
+    ]

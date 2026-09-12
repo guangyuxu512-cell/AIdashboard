@@ -15,6 +15,7 @@ from app.modules.automation_apps.exceptions import (
 )
 from app.modules.automation_apps.models import AutomationParameterPreset
 from app.modules.automation_apps.schemas import (
+    AutomationInputSchema,
     AutomationParameterPresetCopy,
     AutomationParameterPresetCreate,
     AutomationParameterPresetUpdate,
@@ -150,46 +151,47 @@ class FakePresetRepository:
 
 
 class FakeConfigRepository:
+    def __init__(self) -> None:
+        self.input_schema = {
+            "fields": [
+                {
+                    "name": "标题",
+                    "label": "标题",
+                    "type": "text",
+                    "required": True,
+                    "default_value": None,
+                    "options": [],
+                },
+                {
+                    "name": "数量",
+                    "label": "数量",
+                    "type": "number",
+                    "required": False,
+                    "default_value": 1,
+                    "options": [],
+                },
+                {
+                    "name": "启用",
+                    "label": "启用",
+                    "type": "boolean",
+                    "required": False,
+                    "default_value": True,
+                    "options": [],
+                },
+                {
+                    "name": "备注",
+                    "label": "备注",
+                    "type": "text",
+                    "required": False,
+                    "default_value": "默认备注",
+                    "options": [],
+                },
+            ],
+        }
+
     def get(self, provider_code: str, app_id: str) -> SimpleNamespace:
         assert (provider_code, app_id) == ("yingdao", "safe-app")
-        return SimpleNamespace(
-            input_schema={
-                "fields": [
-                    {
-                        "name": "标题",
-                        "label": "标题",
-                        "type": "text",
-                        "required": True,
-                        "default_value": None,
-                        "options": [],
-                    },
-                    {
-                        "name": "数量",
-                        "label": "数量",
-                        "type": "number",
-                        "required": False,
-                        "default_value": 1,
-                        "options": [],
-                    },
-                    {
-                        "name": "启用",
-                        "label": "启用",
-                        "type": "boolean",
-                        "required": False,
-                        "default_value": True,
-                        "options": [],
-                    },
-                    {
-                        "name": "备注",
-                        "label": "备注",
-                        "type": "text",
-                        "required": False,
-                        "default_value": "默认备注",
-                        "options": [],
-                    },
-                ],
-            },
-        )
+        return SimpleNamespace(input_schema=self.input_schema)
 
 
 class FakeShopRepository:
@@ -446,6 +448,136 @@ def test_preset_parameter_selection_is_independent_and_task_snapshot_keeps_only_
             str(shop_b): {"标题": "B", "数量": 0, "启用": False},
         },
     }
+
+
+def test_preset_schema_snapshot_is_independent_from_template_and_copy() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    shop_a = uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids={shop_a})
+
+    schema_a = AutomationInputSchema.model_validate(
+        {
+            "fields": [
+                {
+                    "name": "标题",
+                    "label": "标题",
+                    "type": "text",
+                    "required": True,
+                    "default_value": None,
+                    "options": [],
+                },
+                {
+                    "name": "页码",
+                    "label": "页码",
+                    "type": "number",
+                    "required": False,
+                    "default_value": 1,
+                    "options": [],
+                },
+            ],
+        },
+    )
+    schema_b = AutomationInputSchema.model_validate(
+        {
+            "fields": [
+                {
+                    "name": "标题",
+                    "label": "标题",
+                    "type": "text",
+                    "required": True,
+                    "default_value": None,
+                    "options": [],
+                },
+                {
+                    "name": "启用",
+                    "label": "启用",
+                    "type": "boolean",
+                    "required": False,
+                    "default_value": False,
+                    "options": [],
+                },
+            ],
+        },
+    )
+    preset_a = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="配置 A",
+            input_schema=schema_a,
+            common_parameters={"标题": "A", "页码": 2},
+        ),
+    )
+    preset_b = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="配置 B",
+            input_schema=schema_b,
+            common_parameters={"标题": "B", "启用": False},
+        ),
+    )
+    copied_a = service.copy(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset_a.preset_id,
+        data=AutomationParameterPresetCopy(name="配置 C"),
+    )
+
+    # A later application-template change is deliberately irrelevant to all
+    # existing preset schemas, values, and materialized Task/Schedule params.
+    config = service.config_repository  # type: ignore[assignment]
+    config.input_schema = {  # type: ignore[attr-defined]
+        "fields": [
+            {
+                "name": "新必填字段",
+                "label": "新必填字段",
+                "type": "text",
+                "required": True,
+                "default_value": None,
+                "options": [],
+            },
+        ],
+    }
+    assert service.get(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset_a.preset_id,
+    ).input_schema == schema_a
+    assert service.snapshot_for_actor(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset_a.preset_id,
+        shop_ids=[shop_a],
+    ).parameters["店铺参数"][str(shop_a)] == {"标题": "A", "页码": 2}
+    assert service.snapshot_for_actor(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset_b.preset_id,
+        shop_ids=[shop_a],
+    ).parameters["店铺参数"][str(shop_a)] == {"标题": "B", "启用": False}
+    assert copied_a.input_schema == schema_a
+
+    # Field editing is an explicit versioned fact of A only.  B and C retain
+    # their own contracts and values after A removes its optional page field.
+    updated_a = service.update(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset_a.preset_id,
+        data=AutomationParameterPresetUpdate(
+            expected_version=preset_a.version,
+            input_schema=AutomationInputSchema.model_validate(
+                {"fields": [schema_a.fields[0].model_dump(mode="json")]},
+            ),
+            common_parameters={"标题": "A 已编辑"},
+            shop_overrides={},
+        ),
+    )
+    assert [field.name for field in updated_a.input_schema.fields] == ["标题"]
+    assert [field.name for field in preset_b.input_schema.fields] == ["标题", "启用"]
+    assert [field.name for field in copied_a.input_schema.fields] == ["标题", "页码"]
 
 
 def test_preset_snapshot_fails_when_a_current_required_field_is_not_explicitly_enabled() -> None:

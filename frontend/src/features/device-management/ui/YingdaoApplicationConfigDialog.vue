@@ -6,6 +6,7 @@ import {
   useAutomationApplicationConfigQuery,
   useUpsertAutomationApplicationConfigMutation,
   type AutomationInputFieldDto,
+  type AutomationInputSchemaDto,
   type AutomationInputTypeDto,
 } from '@/entities/automation-application'
 import type { ProviderApplicationViewModel } from '@/entities/device'
@@ -31,13 +32,27 @@ interface FieldDraft {
 const props = defineProps<{
   show: boolean
   application: ProviderApplicationViewModel | null
+  /** Edit a preset-local schema without writing the shared app template. */
+  presetSchema?: AutomationInputSchemaDto | null
 }>()
 
-const emit = defineEmits<{ 'update:show': [value: boolean] }>()
+const emit = defineEmits<{
+  'update:show': [value: boolean]
+  confirmPresetSchema: [schema: AutomationInputSchemaDto]
+}>()
 const message = useMessage()
 const appId = computed(() => props.application?.appId ?? null)
-const query = useAutomationApplicationConfigQuery(appId)
+const isPresetSchemaEditor = computed(() => props.presetSchema !== undefined)
+const query = useAutomationApplicationConfigQuery(
+  appId,
+  () => !isPresetSchemaEditor.value,
+)
 const mutation = useUpsertAutomationApplicationConfigMutation()
+const sourceSchema = computed(() =>
+  isPresetSchemaEditor.value
+    ? props.presetSchema ?? { fields: [] }
+    : (query.data.value?.input_schema ?? { fields: [] }),
+)
 const form = reactive<{ fields: FieldDraft[] }>({ fields: [] })
 const parameterList = ref<HTMLElement | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
@@ -50,19 +65,19 @@ const typeOptions = [
 ]
 
 watch(
-  [() => props.show, appId, () => query.data.value],
-  ([show, currentAppId, config]) => {
+  [() => props.show, appId, sourceSchema],
+  ([show, currentAppId, schema]) => {
     if (!show) {
       initializedKey.value = ''
       fieldErrors.value = {}
       return
     }
-    if (config === undefined) return
-    const key = `${currentAppId ?? ''}:${config?.version ?? 'new'}`
+    if (!isPresetSchemaEditor.value && query.data.value === undefined) return
+    const key = `${currentAppId ?? ''}:${JSON.stringify(schema)}`
     if (key === initializedKey.value) return
     initializedKey.value = key
     fieldErrors.value = {}
-    form.fields = (config?.input_schema.fields ?? []).map((field) => ({
+    form.fields = schema.fields.map((field) => ({
       name: field.name,
       label: field.label,
       type: field.type,
@@ -213,17 +228,23 @@ function applyServerFieldErrors(error: unknown): boolean {
 
 async function save(): Promise<void> {
   if (!props.application) return
-  if (query.isPending.value) return
-  if (query.error.value) {
+  if (!isPresetSchemaEditor.value && query.isPending.value) return
+  if (!isPresetSchemaEditor.value && query.error.value) {
     message.error(getErrorMessage(query.error.value))
     return
   }
   fieldErrors.value = validateDrafts()
   if (Object.keys(fieldErrors.value).length) return
+  const inputSchema = { fields: form.fields.map(toDto) }
+  if (isPresetSchemaEditor.value) {
+    emit('confirmPresetSchema', inputSchema)
+    emit('update:show', false)
+    return
+  }
   try {
     await mutation.mutateAsync({
       appId: props.application.appId,
-      data: { input_schema: { fields: form.fields.map(toDto) } },
+      data: { input_schema: inputSchema },
     })
     message.success('应用参数配置已保存')
     emit('update:show', false)
@@ -236,16 +257,21 @@ async function save(): Promise<void> {
 <template>
   <FormDialog
     :show="show"
-    :title="`配置参数 · ${application?.appName ?? ''}`"
+    :title="`${isPresetSchemaEditor ? '管理预设字段' : '配置参数'} · ${application?.appName ?? ''}`"
     size="lg"
-    :submitting="mutation.isPending.value || query.isPending.value"
+    :submitting="mutation.isPending.value || (!isPresetSchemaEditor && query.isPending.value)"
     @update:show="$emit('update:show', $event)"
     @submit="save"
   >
     <template #description>
-      参数定义由中控台手工维护；当前不推断影刀应用详情中的输入结构。
+      <template v-if="isPresetSchemaEditor">
+        字段只属于当前参数预设；不会修改应用共用字段模板或其他预设。
+      </template>
+      <template v-else>
+        参数定义由中控台手工维护；当前不推断影刀应用详情中的输入结构。
+      </template>
     </template>
-    <p v-if="query.error.value" class="parameter-config__error">
+    <p v-if="!isPresetSchemaEditor && query.error.value" class="parameter-config__error">
       参数配置加载失败：{{ getErrorMessage(query.error.value) }}
     </p>
     <NForm label-placement="top">

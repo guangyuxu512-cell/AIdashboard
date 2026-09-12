@@ -123,6 +123,9 @@ class AutomationParameterPresetCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=1, max_length=100)
+    # Omitted only by legacy clients.  The service then takes one initial
+    # template snapshot from the application configuration.
+    input_schema: AutomationInputSchema | None = None
     common_parameters: dict[str, Any] = Field(default_factory=dict)
     shop_overrides: dict[UUID, dict[str, Any]] = Field(default_factory=dict)
 
@@ -132,6 +135,7 @@ class AutomationParameterPresetUpdate(BaseModel):
 
     expected_version: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    input_schema: AutomationInputSchema | None = None
     common_parameters: dict[str, Any] | None = None
     shop_overrides: dict[UUID, dict[str, Any]] | None = None
 
@@ -160,6 +164,7 @@ class AutomationParameterPresetRead(BaseModel):
     created_by_user_id: UUID
     app_id: str
     name: str
+    input_schema: AutomationInputSchema
     common_parameters: dict[str, Any]
     shop_overrides: dict[UUID, dict[str, Any]]
     invalid_parameter_names: list[str] = Field(default_factory=list)
