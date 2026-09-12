@@ -8,10 +8,15 @@ import AutomationParameterPresetSelector from './AutomationParameterPresetSelect
 
 const mocks = vi.hoisted(() => ({
   presets: null as unknown,
+  push: vi.fn(),
 }))
 
 vi.mock('../api/queries', () => ({
   useAutomationParameterPresetsQuery: () => mocks.presets,
+}))
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: mocks.push }),
 }))
 
 const preset = {
@@ -24,6 +29,7 @@ const preset = {
 }
 
 beforeEach(() => {
+  mocks.push.mockReset()
   mocks.presets = { data: ref([preset]), isPending: ref(false) }
 })
 
@@ -94,5 +100,30 @@ describe('AutomationParameterPresetSelector', () => {
     expect(wrapper.text()).toContain('已单独设置：页码')
     expect(wrapper.text()).toContain('每页数量')
     expect(wrapper.text()).not.toContain('每页数量=20')
+  })
+
+  it('uses the parameter library as the only management destination', async () => {
+    const wrapper = shallowMount(AutomationParameterPresetSelector, {
+      props: {
+        appId: preset.app_id,
+        modelValue: null,
+        schema: { fields: [] },
+        shopIds: [],
+        shopOptions: [],
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+
+    wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '管理预设')!
+      .vm.$emit('click')
+    await flushPromises()
+
+    expect(mocks.push).toHaveBeenCalledWith({
+      path: '/parameter-presets',
+      query: { app_id: preset.app_id },
+    })
   })
 })

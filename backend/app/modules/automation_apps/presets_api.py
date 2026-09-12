@@ -107,6 +107,16 @@ def update_preset(
     )
 
 
+@router.delete("/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_preset(
+    app_id: str,
+    preset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    service: Annotated[AutomationParameterPresetService, Depends(get_service)],
+) -> None:
+    service.remove(actor=actor, app_id=app_id, preset_id=preset_id)
+
+
 @router.post(
     "/{preset_id}/copy",
     response_model=AutomationParameterPresetRead,

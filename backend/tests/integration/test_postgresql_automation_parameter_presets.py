@@ -22,7 +22,10 @@ from app.modules.automation_apps.models import (
 from app.modules.automation_apps.presets_api import (
     get_device_authorized_actor as get_parameter_preset_authorized_actor,
 )
-from app.modules.automation_apps.exceptions import AutomationParameterPresetNotFoundError
+from app.modules.automation_apps.exceptions import (
+    AutomationParameterPresetInUseError,
+    AutomationParameterPresetNotFoundError,
+)
 from app.modules.automation_apps.schemas import (
     AutomationParameterPresetCreate,
     AutomationParameterPresetUpdate,
@@ -429,6 +432,32 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "公共标题"
             assert scheduled_task.parameter_preset_id == preset.preset_id
             assert scheduled_task.parameter_preset_version == updated_preset.version
+
+            with pytest.raises(AutomationParameterPresetInUseError) as error:
+                presets.remove(
+                    actor=actor,
+                    app_id=app_id,
+                    preset_id=preset.preset_id,
+                )
+            assert error.value.details == {"reference_types": ["task", "schedule"]}
+            assert session.get(AutomationParameterPreset, preset.preset_id) is not None
+            assert session.get(Task, task.task_id) is not None
+            assert session.get(Schedule, schedule.schedule_id) is not None
+
+            removable = presets.create(
+                actor=actor,
+                app_id=app_id,
+                data=AutomationParameterPresetCreate(
+                    name="无引用配置",
+                    common_parameters={"标题": "可删除", "数量": 0, "启用": False},
+                ),
+            )
+            presets.remove(
+                actor=actor,
+                app_id=app_id,
+                preset_id=removable.preset_id,
+            )
+            assert session.get(AutomationParameterPreset, removable.preset_id) is None
 
             # Presets themselves are Team-scoped.  A Shop has no separate Team
             # ownership field in the current model, so this verifies the real

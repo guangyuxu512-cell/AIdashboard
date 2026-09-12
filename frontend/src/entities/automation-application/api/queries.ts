@@ -81,6 +81,20 @@ function refreshPresetLists(
     .catch(() => undefined)
 }
 
+function removePresetFromCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  preset: Pick<AutomationParameterPresetDto, 'app_id' | 'preset_id'>,
+): void {
+  queryClient.setQueryData<AutomationParameterPresetDto[]>(
+    automationApplicationQueryKeys.presets(preset.app_id),
+    (current) => current?.filter((item) => item.preset_id !== preset.preset_id),
+  )
+  queryClient.setQueriesData<AutomationParameterPresetDto[]>(
+    { queryKey: automationApplicationQueryKeys.allPresets },
+    (current) => current?.filter((item) => item.preset_id !== preset.preset_id),
+  )
+}
+
 export function useYingdaoApplicationOptionsQuery() {
   return useQuery({
     queryKey: automationApplicationQueryKeys.yingdaoApplications,
@@ -155,6 +169,26 @@ export function useCopyAutomationParameterPresetMutation() {
     }) => automationApplicationApi.copyPreset(appId, presetId, name),
     onSuccess: (preset, variables) => {
       updatePresetCaches(queryClient, preset)
+      refreshPresetLists(queryClient, variables.appId)
+    },
+  })
+}
+
+export function useRemoveAutomationParameterPresetMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      appId,
+      presetId,
+    }: {
+      appId: string
+      presetId: string
+    }) => automationApplicationApi.removePreset(appId, presetId),
+    onSuccess: (_, variables) => {
+      removePresetFromCaches(queryClient, {
+        app_id: variables.appId,
+        preset_id: variables.presetId,
+      })
       refreshPresetLists(queryClient, variables.appId)
     },
   })

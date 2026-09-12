@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BusinessSkillCatalogItemViewModel } from '@/entities/business-skill'
+import { AutomationParameterPresetSelector } from '@/entities/automation-application'
 import type { ScheduleDetailViewModel } from '@/entities/schedule'
 import { ShopMultiSelector } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
@@ -158,6 +159,14 @@ async function chooseBusinessSkill(
 }
 
 describe('ScheduleFormDialog Business Skill target', () => {
+  it('uses the shared parameter preset selector for a Yingdao schedule', () => {
+    const wrapper = mountDialog()
+
+    expect(wrapper.findComponent(AutomationParameterPresetSelector).exists()).toBe(
+      true,
+    )
+  })
+
   it('uses the device-scoped catalog schema and emits ordinary Task input', async () => {
     const wrapper = mountDialog()
     await chooseBusinessSkill(wrapper)

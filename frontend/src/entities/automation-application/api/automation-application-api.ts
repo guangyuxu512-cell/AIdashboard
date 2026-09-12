@@ -81,6 +81,12 @@ export const automationApplicationApi = {
     return response.data
   },
 
+  async removePreset(appId: string, presetId: string): Promise<void> {
+    await httpClient.delete(
+      `/api/v1/automation-app-configs/yingdao/${encodeURIComponent(appId)}/parameter-presets/${encodeURIComponent(presetId)}`,
+    )
+  },
+
   async copyPreset(
     appId: string,
     presetId: string,

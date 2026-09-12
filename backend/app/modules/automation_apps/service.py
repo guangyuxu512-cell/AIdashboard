@@ -12,6 +12,7 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.access.service import ModuleAccessService
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetConflictError,
+    AutomationParameterPresetInUseError,
     AutomationParameterPresetInvalidError,
     AutomationParameterPresetNotFoundError,
     AutomationParameterPresetVersionConflictError,
@@ -184,8 +185,8 @@ class AutomationParameterPresetService:
         app_id: str,
     ) -> list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
-        return [
-            self._to_read(preset)
+        presets = [
+            preset
             for preset in self.preset_repository.list_for_actor(
                 actor=actor,
                 app_id=app_id,
@@ -194,6 +195,8 @@ class AutomationParameterPresetService:
             # operator has ALL scope for another resource type.
             if preset.team_id == actor.team_id
         ]
+        schema = self._schema(app_id)
+        return [self._to_read(preset, schema=schema) for preset in presets]
 
     def list_all(
         self,
@@ -203,8 +206,8 @@ class AutomationParameterPresetService:
         name_query: str | None = None,
     ) -> list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
-        return [
-            self._to_read(preset)
+        presets = [
+            preset
             for preset in self.preset_repository.list_all_for_actor(
                 actor=actor,
                 app_id=app_id,
@@ -213,6 +216,11 @@ class AutomationParameterPresetService:
             # Parameter presets intentionally never escape the active Team,
             # including for an ActorContext with ALL scope elsewhere.
             if preset.team_id == actor.team_id
+        ]
+        schemas = {preset.app_id: self._schema(preset.app_id) for preset in presets}
+        return [
+            self._to_read(preset, schema=schemas[preset.app_id])
+            for preset in presets
         ]
 
     def get(
@@ -332,6 +340,36 @@ class AutomationParameterPresetService:
         self._commit(preset)
         return self._to_read(preset)
 
+    def remove(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        preset_id: object,
+    ) -> None:
+        self._require_shop_access(actor)
+        preset = self._get_for_actor(
+            actor=actor,
+            app_id=app_id,
+            preset_id=preset_id,
+            for_update=True,
+        )
+        reference_types = self.preset_repository.reference_types(preset.preset_id)
+        if reference_types:
+            self.session.rollback()
+            raise AutomationParameterPresetInUseError(reference_types)
+        self.preset_repository.remove(preset)
+        try:
+            self.session.commit()
+        except IntegrityError as error:
+            # A Task or Schedule can be created between the reference check and
+            # this commit.  Their RESTRICT foreign keys remain the final source
+            # of truth, so preserve both the preset and its existing snapshot.
+            self.session.rollback()
+            if getattr(error.orig, "sqlstate", None) == "23503":
+                raise AutomationParameterPresetInUseError() from error
+            raise
+
     def snapshot_for_actor(
         self,
         *,
@@ -442,6 +480,23 @@ class AutomationParameterPresetService:
             raise AutomationParameterPresetConflictError() from error
         self.session.refresh(preset)
 
-    @staticmethod
-    def _to_read(preset: AutomationParameterPreset) -> AutomationParameterPresetRead:
-        return AutomationParameterPresetRead.model_validate(preset, from_attributes=True)
+    def _to_read(
+        self,
+        preset: AutomationParameterPreset,
+        *,
+        schema: AutomationInputSchema | None = None,
+    ) -> AutomationParameterPresetRead:
+        current_schema = schema or self._schema(preset.app_id)
+        known_names = {field.name for field in current_schema.fields}
+        invalid_names = sorted(
+            {
+                name
+                for values in [preset.common_parameters, *preset.shop_overrides.values()]
+                for name in values
+                if name not in known_names
+            },
+        )
+        return AutomationParameterPresetRead.model_validate(
+            preset,
+            from_attributes=True,
+        ).model_copy(update={"invalid_parameter_names": invalid_names})

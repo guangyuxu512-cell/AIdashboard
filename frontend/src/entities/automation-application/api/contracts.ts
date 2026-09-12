@@ -43,6 +43,7 @@ export interface AutomationParameterPresetDto {
   name: string
   common_parameters: Record<string, unknown>
   shop_overrides: Record<string, Record<string, unknown>>
+  invalid_parameter_names: string[]
   version: number
   created_at: string
   updated_at: string

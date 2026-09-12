@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import {
   useAutomationParameterPresetManagementQuery,
   useCopyAutomationParameterPresetMutation,
+  useRemoveAutomationParameterPresetMutation,
   useYingdaoApplicationOptionsQuery,
   type AutomationParameterPresetDto,
 } from '@/entities/automation-application'
@@ -19,10 +20,14 @@ export function useParameterPresetManagement() {
   const editorAppId = ref<string | null>(null)
   const editorPresetId = ref<string | null>(null)
   const copyError = ref<string | null>(null)
+  const removeError = ref<string | null>(null)
+  const removePreset = ref<AutomationParameterPresetDto | null>(null)
+  const removeVisible = ref(false)
 
   const applicationsQuery = useYingdaoApplicationOptionsQuery()
   const presetsQuery = useAutomationParameterPresetManagementQuery(filters)
   const copyPresetMutation = useCopyAutomationParameterPresetMutation()
+  const removePresetMutation = useRemoveAutomationParameterPresetMutation()
   const applicationOptions = computed(() => applicationsQuery.data.value ?? [])
   const applicationNameById = computed(
     () =>
@@ -60,6 +65,29 @@ export function useParameterPresetManagement() {
     editorAppId.value = preset.app_id
     editorPresetId.value = preset.preset_id
     editorVisible.value = true
+  }
+
+  function requestRemove(preset: AutomationParameterPresetDto): void {
+    removeError.value = null
+    removePreset.value = preset
+    removeVisible.value = true
+  }
+
+  async function confirmRemove(): Promise<void> {
+    const preset = removePreset.value
+    if (!preset) return
+    removeError.value = null
+    try {
+      await removePresetMutation.mutateAsync({
+        appId: preset.app_id,
+        presetId: preset.preset_id,
+      })
+      if (editorPresetId.value === preset.preset_id) closeEditor()
+      removeVisible.value = false
+      removePreset.value = null
+    } catch (error) {
+      removeError.value = getErrorMessage(error)
+    }
   }
 
   function closeEditor(): void {
@@ -118,6 +146,7 @@ export function useParameterPresetManagement() {
     applicationsLoading: computed(() => applicationsQuery.isPending.value),
     copyAndOpen,
     copyError,
+    confirmRemove,
     closeEditor,
     editorAppId,
     editorPresetId,
@@ -129,8 +158,13 @@ export function useParameterPresetManagement() {
     openPreset,
     query,
     reset,
+    removeError,
+    removePreset,
+    removeSubmitting: computed(() => removePresetMutation.isPending.value),
+    removeVisible,
     retryApplications: applicationsQuery.refetch,
     retryList: presetsQuery.refetch,
+    requestRemove,
     rows,
     searchDraft,
     selectedAppIdDraft,

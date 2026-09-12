@@ -17,13 +17,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [preset: AutomationParameterPresetDto]
   copy: [preset: AutomationParameterPresetDto]
+  remove: [preset: AutomationParameterPresetDto]
   retry: []
 }>()
 
-function parameterSummary(values: Record<string, unknown>): string {
-  const entries = Object.entries(values)
-  if (!entries.length) return '—'
-  return entries.map(([name, value]) => `${name}=${String(value)}`).join('；')
+function parameterSummary(preset: AutomationParameterPresetDto): string {
+  const count = Object.keys(preset.common_parameters).length
+  return count ? `${count} 项 · 查看` : '0 项 · 查看'
 }
 
 function appName(preset: AutomationParameterPresetDto): string {
@@ -48,9 +48,25 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
   {
     title: '公共参数',
     key: 'common_parameters',
-    minWidth: 260,
+    width: 150,
     ellipsis: { tooltip: true },
-    render: (preset) => parameterSummary(preset.common_parameters),
+    render: (preset) =>
+      h('div', { class: 'parameter-preset-list-table__parameters' }, [
+        h(
+          AppButton,
+          { tone: 'text', onClick: () => emit('edit', preset) },
+          { default: () => parameterSummary(preset) },
+        ),
+        ...(preset.invalid_parameter_names.length
+          ? [
+              h(
+                'span',
+                { class: 'parameter-preset-list-table__invalid' },
+                '待修正',
+              ),
+            ]
+          : []),
+      ]),
   },
   {
     title: '店铺差异',
@@ -67,7 +83,7 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
   {
     title: '操作',
     key: 'actions',
-    width: 150,
+    width: 208,
     fixed: 'right',
     render: (preset) =>
       h('div', { class: 'parameter-preset-list-table__actions' }, [
@@ -81,6 +97,11 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
           { tone: 'text', onClick: () => emit('copy', preset) },
           { default: () => '复制' },
         ),
+        h(
+          AppButton,
+          { tone: 'danger', onClick: () => emit('remove', preset) },
+          { default: () => '删除' },
+        ),
       ]),
   },
 ]
@@ -93,8 +114,9 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
     :loading="loading"
     :error="error"
     :row-key="(row: AutomationParameterPresetDto) => row.preset_id"
-    :scroll-x="1080"
+    :scroll-x="1040"
     viewport="fill"
+    appearance="list"
     empty-description="暂无参数配置"
     @retry="$emit('retry')"
   />
@@ -105,5 +127,18 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+:deep(.parameter-preset-list-table__parameters) {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+:deep(.parameter-preset-list-table__invalid) {
+  color: var(--color-warning);
+  font-size: var(--font-size-secondary);
+  white-space: nowrap;
 }
 </style>

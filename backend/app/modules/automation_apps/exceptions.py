@@ -19,6 +19,15 @@ class AutomationParameterPresetVersionConflictError(AppError):
     status_code = 409
 
 
+class AutomationParameterPresetInUseError(AppError):
+    code = "AUTOMATION_PARAMETER_PRESET_IN_USE"
+    message = "该配置已被历史任务或定时计划引用，无法删除"
+    status_code = 409
+
+    def __init__(self, reference_types: tuple[str, ...] = ()) -> None:
+        super().__init__(details={"reference_types": list(reference_types)})
+
+
 class AutomationParameterPresetInvalidError(AppError):
     code = "AUTOMATION_PARAMETER_PRESET_INVALID"
     message = "参数预设不符合当前应用参数契约"
