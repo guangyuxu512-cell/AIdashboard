@@ -50,6 +50,7 @@ from app.modules.workers.models import (
     DeviceSkillCapability,
 )
 from app.modules.workers.service import WorkerPrincipal
+from app.shared.pagination import PaginationParams
 
 
 pytestmark = pytest.mark.integration
@@ -383,6 +384,17 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                     assert read_response.json()["common_parameters"]["数量"] == 0
                     assert read_response.json()["common_parameters"]["启用"] is False
 
+                    management_response = await client.get(
+                        "/api/v1/automation-parameter-presets",
+                        params={"app_id": app_id, "page": 1, "page_size": 1},
+                    )
+                    assert management_response.status_code == 200
+                    management_page = management_response.json()
+                    assert management_page["total"] >= 3
+                    assert management_page["page"] == 1
+                    assert management_page["page_size"] == 1
+                    assert len(management_page["items"]) == 1
+
             asyncio.run(exercise_preset_api())
 
             task = TaskService(session, credential_service=credential_service).create(
@@ -525,6 +537,21 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             session.flush()
             session.add(foreign_preset)
             session.commit()
+
+            all_scope_actor = ActorContext(
+                user_id=actor.user_id,
+                user_display_name=actor.user_display_name,
+                team_id=actor.team_id,
+                membership_id=actor.membership_id,
+                role_code=actor.role_code,
+                data_scope=DataScope.ALL,
+            )
+            management_page = presets.list_all(
+                actor=all_scope_actor,
+                pagination=PaginationParams(page=1, page_size=100),
+            )
+            assert management_page.total == 3
+            assert all(item.team_id == team_id for item in management_page.items)
 
             with pytest.raises(AutomationParameterPresetNotFoundError):
                 TaskService(session, credential_service=credential_service).create(

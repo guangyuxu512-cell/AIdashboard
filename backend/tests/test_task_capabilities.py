@@ -337,7 +337,7 @@ def test_offline_device_can_prepare_and_create_a_scheduled_task() -> None:
     assert task.status == "pending"
     assert task.input_json == {"message": "scheduled"}
 
-def test_legacy_ready_provider_inventory_allows_yingdao_app_guard() -> None:
+def test_yingdao_app_without_a_parameter_schema_keeps_empty_params() -> None:
     device = Device(device_id=uuid4(), display_name="PC-11", enabled=True)
     task = service_for(
         device,
@@ -353,6 +353,9 @@ def test_legacy_ready_provider_inventory_allows_yingdao_app_guard() -> None:
     )
     assert task.skill_id == "yingdao.app.run"
     assert task.execution_display_name == "Safe App"
+    # A missing application config means the app has no declared input schema.
+    # It must not inherit values from an unrelated legacy application template.
+    assert task.input_json == {"app_id": "safe-app", "params": {}}
 
 
 def test_parameter_preset_cannot_be_silently_ignored_by_another_skill() -> None:

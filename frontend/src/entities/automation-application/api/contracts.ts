@@ -1,3 +1,5 @@
+import type { PageDto } from '@/shared/api'
+
 export type AutomationInputTypeDto = 'text' | 'number' | 'boolean' | 'select'
 
 export interface AutomationInputFieldDto {
@@ -67,4 +69,9 @@ export interface AutomationParameterPresetUpdateDto
 export interface AutomationParameterPresetListParams {
   appId?: string | null
   query?: string | null
+  page?: number
+  pageSize?: number
 }
+
+export type AutomationParameterPresetPageDto =
+  PageDto<AutomationParameterPresetDto>

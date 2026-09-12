@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ShopMultiSelector } from '@/entities/shop'
 import { AssetMultiSelector } from '@/entities/asset'
-import { AutomationParameterPresetSelector } from '@/entities/automation-application'
+import {
+  AutomationParameterFields,
+  AutomationParameterPresetSelector,
+} from '@/entities/automation-application'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 
 import YingdaoApplicationRunDialog from './YingdaoApplicationRunDialog.vue'
@@ -14,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   success: vi.fn(),
   shops: null as unknown,
+  config: null as unknown,
 }))
 
 vi.mock('naive-ui', async (importOriginal) => ({
@@ -38,11 +42,7 @@ vi.mock('@/entities/automation-application', async (importOriginal) => ({
   ...(await importOriginal<
     typeof import('@/entities/automation-application')
   >()),
-  useAutomationApplicationConfigQuery: () => ({
-    data: ref({ input_schema: { fields: [] } }),
-    isPending: ref(false),
-    error: ref(null),
-  }),
+  useAutomationApplicationConfigQuery: () => mocks.config,
 }))
 
 beforeEach(() => {
@@ -57,6 +57,11 @@ beforeEach(() => {
         value: `shop-${index + 1}`,
       })),
     ),
+    isPending: ref(false),
+    error: ref(null),
+  }
+  mocks.config = {
+    data: ref({ input_schema: { fields: [] } }),
     isPending: ref(false),
     error: ref(null),
   }
@@ -179,5 +184,59 @@ describe('YingdaoApplicationRunDialog', () => {
       skill_id: 'yingdao.app.run',
       input: { app_id: 'safe-app', params: {} },
     })
+  })
+
+  it('does not expose or submit a legacy template until manual mode is explicit', async () => {
+    mocks.config = {
+      data: ref({
+        input_schema: {
+          fields: [
+            {
+              name: '页码',
+              label: '页码',
+              type: 'number',
+              required: false,
+              default_value: 1,
+              options: [],
+            },
+          ],
+        },
+      }),
+      isPending: ref(false),
+      error: ref(null),
+    }
+    const wrapper = shallowMount(YingdaoApplicationRunDialog, {
+      props: {
+        show: true,
+        application: {
+          appId: 'legacy-template-app',
+          appName: '旧模板应用',
+          versionId: '1',
+        },
+        deviceId: 'device-1',
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+
+    const dialog = wrapper.findComponent(AppDialog)
+    expect(dialog.props('positiveDisabled')).toBe(true)
+    expect(wrapper.findComponent(AutomationParameterFields).exists()).toBe(false)
+
+    wrapper
+      .findComponent(AutomationParameterPresetSelector)
+      .vm.$emit('update:manualMode', true)
+    await flushPromises()
+
+    expect(dialog.props('positiveDisabled')).toBe(false)
+    expect(wrapper.findComponent(AutomationParameterFields).exists()).toBe(true)
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(mocks.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: { app_id: 'legacy-template-app', params: { 页码: 1 } },
+      }),
+    )
   })
 })

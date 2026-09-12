@@ -19,6 +19,7 @@ import YingdaoApplicationConfigDialog from '@/features/device-management/ui/Ying
 import { getErrorMessage } from '@/shared/api'
 import FilterBar from '@/shared/components/FilterBar.vue'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
+import PaginationBar from '@/shared/components/PaginationBar.vue'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 
 const management = useParameterPresetManagement()
@@ -131,6 +132,13 @@ function applyPresetSchema(schema: AutomationInputSchemaDto): void {
       >
     </p>
     <p
+      v-if="management.invalidSelectedApp.value"
+      class="parameter-preset-library-page__error"
+      role="alert"
+    >
+      当前应用标识无效或当前团队不可访问；系统不会按应用名称匹配。请从能力页进入或重新选择应用。
+    </p>
+    <p
       v-if="management.copyError.value"
       class="parameter-preset-library-page__error"
       role="alert"
@@ -155,6 +163,13 @@ function applyPresetSchema(schema: AutomationInputSchemaDto): void {
         @copy="management.copyAndOpen"
         @remove="management.requestRemove"
         @retry="management.retryList"
+      />
+      <PaginationBar
+        :page="management.page.value"
+        :page-size="management.pageSize.value"
+        :item-count="management.total.value"
+        @update:page="management.setPage"
+        @update:page-size="management.setPageSize"
       />
     </ManagementListSection>
 

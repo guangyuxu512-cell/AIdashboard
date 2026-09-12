@@ -128,7 +128,10 @@ test('uses the same app-filtered parameter library from a Yingdao application', 
   await page.route('**/api/v1/automation-parameter-presets*', (route) => {
     filteredRequest =
       new URL(route.request().url()).searchParams.get('app_id') === appId
-    return route.fulfill({ contentType: 'application/json', body: '[]' })
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+    })
   })
 
   await page.goto('/#/devices')

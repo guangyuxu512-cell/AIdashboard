@@ -47,6 +47,8 @@ describe('automation parameter preset api', () => {
     await automationApplicationApi.listAllPresets({
       appId: 'daily-collection',
       query: '日常 采集',
+      page: 2,
+      pageSize: 50,
     })
 
     expect(get).toHaveBeenNthCalledWith(
@@ -56,7 +58,14 @@ describe('automation parameter preset api', () => {
     expect(get).toHaveBeenNthCalledWith(
       2,
       '/api/v1/automation-parameter-presets',
-      { params: { app_id: 'daily-collection', q: '日常 采集' } },
+      {
+        params: {
+          app_id: 'daily-collection',
+          q: '日常 采集',
+          page: 2,
+          page_size: 50,
+        },
+      },
     )
   })
 })
