@@ -15,6 +15,8 @@ export function useParameterPresetManagement() {
   const filters = ref({
     appId: null as string | null,
     query: null as string | null,
+    page: 1,
+    pageSize: 20,
   })
   const editorVisible = ref(false)
   const editorAppId = ref<string | null>(null)
@@ -35,7 +37,20 @@ export function useParameterPresetManagement() {
         applicationOptions.value.map((item) => [item.app_id, item.app_name]),
       ),
   )
-  const rows = computed(() => presetsQuery.data.value ?? [])
+  const rows = computed(() => presetsQuery.data.value?.items ?? [])
+  const page = computed(() => presetsQuery.data.value?.page ?? filters.value.page)
+  const pageSize = computed(
+    () => presetsQuery.data.value?.page_size ?? filters.value.pageSize,
+  )
+  const total = computed(() => presetsQuery.data.value?.total ?? 0)
+  const invalidSelectedApp = computed(
+    () =>
+      selectedAppIdDraft.value !== null &&
+      applicationsQuery.data.value !== undefined &&
+      !applicationOptions.value.some(
+        (application) => application.app_id === selectedAppIdDraft.value,
+      ),
+  )
   const listError = computed(() =>
     presetsQuery.error.value ? getErrorMessage(presetsQuery.error.value) : null,
   )
@@ -44,6 +59,8 @@ export function useParameterPresetManagement() {
     filters.value = {
       appId: selectedAppIdDraft.value,
       query: searchDraft.value.trim() || null,
+      page: 1,
+      pageSize: filters.value.pageSize,
     }
   }
 
@@ -55,7 +72,9 @@ export function useParameterPresetManagement() {
 
   function openCreate(): void {
     copyError.value = null
-    editorAppId.value = selectedAppIdDraft.value
+    editorAppId.value = invalidSelectedApp.value
+      ? null
+      : selectedAppIdDraft.value
     editorPresetId.value = null
     editorVisible.value = true
   }
@@ -77,6 +96,7 @@ export function useParameterPresetManagement() {
     const preset = removePreset.value
     if (!preset) return
     removeError.value = null
+    const retreatToPreviousPage = rows.value.length === 1 && page.value > 1
     try {
       await removePresetMutation.mutateAsync({
         appId: preset.app_id,
@@ -85,6 +105,14 @@ export function useParameterPresetManagement() {
       if (editorPresetId.value === preset.preset_id) closeEditor()
       removeVisible.value = false
       removePreset.value = null
+      if (retreatToPreviousPage) {
+        filters.value = {
+          ...filters.value,
+          page: page.value - 1,
+        }
+      } else {
+        await presetsQuery.refetch()
+      }
     } catch (error) {
       removeError.value = getErrorMessage(error)
     }
@@ -135,6 +163,16 @@ export function useParameterPresetManagement() {
     editorPresetId.value = preset.preset_id
   }
 
+  function setPage(value: number): void {
+    if (value === filters.value.page) return
+    filters.value = { ...filters.value, page: value }
+  }
+
+  function setPageSize(value: number): void {
+    if (value === filters.value.pageSize) return
+    filters.value = { ...filters.value, page: 1, pageSize: value }
+  }
+
   return {
     applicationNameById,
     applicationOptions,
@@ -152,10 +190,13 @@ export function useParameterPresetManagement() {
     editorPresetId,
     editorVisible,
     handleSaved,
+    invalidSelectedApp,
     listError,
     listLoading: computed(() => presetsQuery.isPending.value),
     openCreate,
     openPreset,
+    page,
+    pageSize,
     query,
     reset,
     removeError,
@@ -168,5 +209,8 @@ export function useParameterPresetManagement() {
     rows,
     searchDraft,
     selectedAppIdDraft,
+    setPage,
+    setPageSize,
+    total,
   }
 }

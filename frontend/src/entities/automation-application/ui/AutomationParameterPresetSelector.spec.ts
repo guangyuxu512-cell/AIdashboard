@@ -54,7 +54,7 @@ beforeEach(() => {
 })
 
 describe('AutomationParameterPresetSelector', () => {
-  it('clearly identifies manual parameter mode when no preset is selected', async () => {
+  it('requires an explicit source instead of defaulting to manual parameters', async () => {
     const wrapper = shallowMount(AutomationParameterPresetSelector, {
       props: {
         appId: preset.app_id,
@@ -86,7 +86,17 @@ describe('AutomationParameterPresetSelector', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('当前使用手动参数')
+    expect(wrapper.text()).toContain('请选择参数配置，或选择本次手动参数')
+    expect(wrapper.text()).not.toContain('当前使用手动参数')
+
+    wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '本次手动参数')!
+      .vm.$emit('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([[null]])
+    expect(wrapper.emitted('update:manualMode')).toEqual([[true]])
   })
 
   it('summarizes shop overrides without rendering raw parameter strings', async () => {

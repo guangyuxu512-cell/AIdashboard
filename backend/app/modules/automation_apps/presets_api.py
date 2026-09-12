@@ -16,6 +16,7 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetUpdate,
 )
 from app.modules.automation_apps.service import AutomationParameterPresetService
+from app.shared.pagination import Page, PaginationParams
 
 
 router = APIRouter(
@@ -44,17 +45,19 @@ def get_service(
     return AutomationParameterPresetService(session)
 
 
-@management_router.get("", response_model=list[AutomationParameterPresetRead])
+@management_router.get("", response_model=Page[AutomationParameterPresetRead])
 def list_all_presets(
     actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[AutomationParameterPresetService, Depends(get_service)],
+    pagination: Annotated[PaginationParams, Depends()],
     app_id: str | None = Query(default=None, min_length=1, max_length=200),
     q: str | None = Query(default=None, min_length=1, max_length=100),
-) -> list[AutomationParameterPresetRead]:
+) -> Page[AutomationParameterPresetRead]:
     return service.list_all(
         actor=actor,
         app_id=app_id,
         name_query=q.strip() if q is not None else None,
+        pagination=pagination,
     )
 
 

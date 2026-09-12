@@ -44,6 +44,7 @@ from app.modules.shops.repository import ShopRepository
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.schemas import YingdaoProviderInventory
 from app.shared.identifiers import generate_id
+from app.shared.pagination import Page, PaginationParams
 
 
 @dataclass(frozen=True)
@@ -204,20 +205,29 @@ class AutomationParameterPresetService:
         actor: ActorContext,
         app_id: str | None = None,
         name_query: str | None = None,
-    ) -> list[AutomationParameterPresetRead]:
+        pagination: PaginationParams,
+    ) -> Page[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
-        presets = [
-            preset
-            for preset in self.preset_repository.list_all_for_actor(
-                actor=actor,
-                app_id=app_id,
-                name_query=name_query,
-            )
-            # Parameter presets intentionally never escape the active Team,
-            # including for an ActorContext with ALL scope elsewhere.
-            if preset.team_id == actor.team_id
-        ]
-        return [self._to_read(preset) for preset in presets]
+        presets = self.preset_repository.list_all_for_actor(
+            actor=actor,
+            team_id=actor.team_id,
+            app_id=app_id,
+            name_query=name_query,
+            offset=pagination.offset,
+            limit=pagination.page_size,
+        )
+        total = self.preset_repository.count_all_for_actor(
+            actor=actor,
+            team_id=actor.team_id,
+            app_id=app_id,
+            name_query=name_query,
+        )
+        return Page(
+            items=[self._to_read(preset) for preset in presets],
+            total=total,
+            page=pagination.page,
+            page_size=pagination.page_size,
+        )
 
     def get(
         self,

@@ -24,6 +24,7 @@ from app.modules.automation_apps.service import (
     AutomationApplicationCatalogService,
     AutomationParameterPresetService,
 )
+from app.shared.pagination import PaginationParams
 
 
 class FakeSession:
@@ -113,19 +114,43 @@ class FakePresetRepository:
         self,
         *,
         actor: ActorContext,
+        team_id: UUID,
         app_id: str | None = None,
         name_query: str | None = None,
+        offset: int = 0,
+        limit: int | None = None,
     ) -> list[AutomationParameterPreset]:
-        candidates = self.list_for_actor(actor=actor, app_id=app_id or "safe-app")
-        if app_id is None:
+        candidates = [preset for preset in self.presets if preset.team_id == team_id]
+        if actor.data_scope is DataScope.SELF:
             candidates = [
                 preset
-                for preset in self.presets
-                if actor.data_scope is DataScope.ALL or preset.team_id == actor.team_id
+                for preset in candidates
+                if preset.created_by_user_id == actor.user_id
             ]
+        if app_id is not None:
+            candidates = [preset for preset in candidates if preset.app_id == app_id]
         if name_query:
             candidates = [preset for preset in candidates if name_query in preset.name]
-        return candidates
+        candidates.sort(key=lambda preset: preset.preset_id)
+        candidates.sort(key=lambda preset: preset.updated_at, reverse=True)
+        return candidates[offset : offset + limit if limit is not None else None]
+
+    def count_all_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        team_id: UUID,
+        app_id: str | None = None,
+        name_query: str | None = None,
+    ) -> int:
+        return len(
+            self.list_all_for_actor(
+                actor=actor,
+                team_id=team_id,
+                app_id=app_id,
+                name_query=name_query,
+            ),
+        )
 
     def exists_name(
         self,
@@ -715,20 +740,70 @@ def test_management_list_remains_inside_current_team_for_all_scope() -> None:
             name="日常采集（其他团队）",
             common_parameters={},
             shop_overrides={},
+            input_schema_snapshot={"fields": []},
             version=1,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         ),
     )
 
-    assert [
-        preset.preset_id
-        for preset in service.list_all(
-            actor=own_actor,
+    page = service.list_all(
+        actor=own_actor,
+        app_id="safe-app",
+        name_query="日常",
+        pagination=PaginationParams(),
+    )
+    assert [preset.preset_id for preset in page.items] == [own.preset_id]
+    assert page.total == 1
+
+
+def test_management_list_counts_and_pages_only_authorized_team_rows() -> None:
+    team_id, other_team_id = uuid4(), uuid4()
+    actor_context = actor(team_id=team_id, scope=DataScope.ALL)
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids=set())
+    now = datetime.now(UTC)
+    own_presets = [
+        AutomationParameterPreset(
+            preset_id=uuid4(),
+            team_id=team_id,
+            created_by_user_id=actor_context.user_id,
             app_id="safe-app",
-            name_query="日常",
+            name=f"当前团队配置 {index}",
+            common_parameters={},
+            shop_overrides={},
+            input_schema_snapshot={"fields": []},
+            version=1,
+            created_at=now,
+            updated_at=now.replace(microsecond=index),
         )
-    ] == [own.preset_id]
+        for index in range(1, 4)
+    ]
+    foreign = AutomationParameterPreset(
+        preset_id=uuid4(),
+        team_id=other_team_id,
+        created_by_user_id=uuid4(),
+        app_id="safe-app",
+        name="其他团队配置",
+        common_parameters={},
+        shop_overrides={},
+        input_schema_snapshot={"fields": []},
+        version=1,
+        created_at=now,
+        updated_at=now.replace(microsecond=999999),
+    )
+    repository.presets.extend([*own_presets, foreign])
+
+    page = service.list_all(
+        actor=actor_context,
+        app_id="safe-app",
+        pagination=PaginationParams(page=2, page_size=1),
+    )
+
+    assert page.total == 3
+    assert page.page == 2
+    assert page.page_size == 1
+    assert [preset.preset_id for preset in page.items] == [own_presets[1].preset_id]
 
 
 class FakeDeviceCatalogRepository:
