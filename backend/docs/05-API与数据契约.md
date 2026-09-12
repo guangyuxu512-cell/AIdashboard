@@ -197,7 +197,7 @@ text/number/boolean/select 类型。
 ### 影刀参数预设
 
 `yingdao` 应用的参数预设使用
-`/api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets` 的 list/create/read/update/copy
+`/api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets` 的 list/create/read/update/copy/delete
 路由。预设只归属于创建时的 ActorContext Team；服务端在列表、详情、修改、复制和运行取快照时均再次
 确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
 
@@ -207,13 +207,19 @@ Team，即使 Actor 在其他资源具备 `ALL` scope 也不返回其他 Team �
 既有 `device` 模块 Guard；预设路由还保留现有 `shop` 模块 Guard。它们不建立 Shop Team Ownership，
 也不改变 Task/Schedule 创建时对目标 Device、Binding、启用状态和 Credential 的正式校验。
 
-每个预设保存 `name`、`common_parameters`、以 `shop_id` 为键的 `shop_overrides` 和递增 `version`。更新必须
+每个预设保存 `name`、`common_parameters`、以 `shop_id` 为键的 `shop_overrides` 和递增 `version`。Read DTO
+额外返回 `invalid_parameter_names`，它只标记该预设中已不在当前应用 Schema 的键，绝不自动删除旧值。更新必须
 携带当前 Read DTO 的 `expected_version`；版本不一致返回 `409 / AUTOMATION_PARAMETER_PRESET_VERSION_CONFLICT`，
 客户端保留草稿并刷新后由用户决定如何处理。公共参数是完整参数，
 店铺覆盖只保存与公共参数不同的字段；合并/字段校验只使用该应用已保存的 Schema，必须保留合法的 `0`、
 `false` 和空字符串。预设服务通过既有 Shop 查询和 `shop` 模块授权核验每个 `shop_id`。当前 Shop 尚未
 建立 Team Ownership Scope，因此这复用的是现行正式 Shop 可见范围；Target Device Binding 仅是本次执行资格
 检查，不能被表述或实现为新的 Shop 人员归属授权。Credential、Cookie 和账号明文永不保存进预设。
+
+`DELETE /api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets/{preset_id}` 也执行相同的
+ActorContext、`device` 和 `shop` Guard。删除只删除无引用的预设；任何历史 `Task` 或 `Schedule` 引用均返回
+`409 / AUTOMATION_PARAMETER_PRESET_IN_USE`（`details.reference_types` 为 `task` 和/或 `schedule`），不改写
+引用、不删除应用字段、Shop 或历史 Task 快照。预检与最终外键约束之间若发生并发引用，同样以该 409 收口。
 
 `POST /api/v1/tasks` 选择预设时只提交 `parameter_preset_id`；Backend 在既有 Device、Shop 启用状态、
 Binding 与 Credential 校验成功后，才物化本次选中 Shop 的合并结果。Task `input.params` 保存不可变快照：

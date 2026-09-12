@@ -8,6 +8,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
 from app.modules.automation_apps.exceptions import (
+    AutomationParameterPresetInUseError,
     AutomationParameterPresetNotFoundError,
     AutomationParameterPresetVersionConflictError,
 )
@@ -43,6 +44,7 @@ class FakeSession:
 class FakePresetRepository:
     def __init__(self) -> None:
         self.presets: list[AutomationParameterPreset] = []
+        self.references: dict[UUID, tuple[str, ...]] = {}
 
     def add(self, preset: AutomationParameterPreset) -> None:
         self.presets.append(preset)
@@ -138,6 +140,12 @@ class FakePresetRepository:
             and preset.preset_id != exclude_preset_id
             for preset in self.presets
         )
+
+    def reference_types(self, preset_id: UUID) -> tuple[str, ...]:
+        return self.references.get(preset_id, ())
+
+    def remove(self, preset: AutomationParameterPreset) -> None:
+        self.presets.remove(preset)
 
 
 class FakeConfigRepository:
@@ -354,6 +362,83 @@ def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> N
             app_id="safe-app",
             preset_id=own.preset_id,
         )
+
+
+def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids=set())
+    preset = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="可删除配置",
+            common_parameters={"标题": "公共标题"},
+        ),
+    )
+
+    service.remove(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset.preset_id,
+    )
+    assert repository.presets == []
+
+    referenced = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="被引用配置",
+            common_parameters={"标题": "公共标题"},
+        ),
+    )
+    repository.references[referenced.preset_id] = ("task", "schedule")
+
+    with pytest.raises(AutomationParameterPresetInUseError) as error:
+        service.remove(
+            actor=actor_context,
+            app_id="safe-app",
+            preset_id=referenced.preset_id,
+        )
+
+    assert error.value.details == {"reference_types": ["task", "schedule"]}
+    assert [preset.preset_id for preset in repository.presets] == [
+        referenced.preset_id,
+    ]
+
+
+def test_preset_read_marks_only_values_missing_from_the_current_schema() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    shop_id = uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids={shop_id})
+    preset = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="含历史字段配置",
+            common_parameters={"标题": "当前字段"},
+            shop_overrides={shop_id: {"标题": "店铺字段"}},
+        ),
+    )
+
+    # A schema change must retain and surface old values rather than silently
+    # dropping them from an otherwise readable preset.
+    stored = repository.presets[0]
+    stored.common_parameters = {"标题": "当前字段", "1": "旧公共值"}
+    stored.shop_overrides = {shop_id: {"已移除店铺字段": "旧店铺值"}}
+
+    read = service.get(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=preset.preset_id,
+    )
+
+    assert read.common_parameters["1"] == "旧公共值"
+    assert read.shop_overrides[shop_id]["已移除店铺字段"] == "旧店铺值"
+    assert read.invalid_parameter_names == ["1", "已移除店铺字段"]
 
 
 def test_preset_requires_existing_shop_module_access() -> None:

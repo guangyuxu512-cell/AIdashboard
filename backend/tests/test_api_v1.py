@@ -25,6 +25,7 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetUpdate,
     YingdaoApplicationOptionRead,
 )
+from app.modules.automation_apps.exceptions import AutomationParameterPresetInUseError
 from app.modules.automation_apps.presets_api import (
     get_device_authorized_actor as get_parameter_preset_authorized_actor,
 )
@@ -311,6 +312,7 @@ class ApiAutomationApplicationCatalogService:
 class ApiAutomationParameterPresetService:
     preset_id = uuid4()
     last_create: AutomationParameterPresetCreate | None = None
+    remove_reference_types: tuple[str, ...] = ()
 
     @classmethod
     def read(cls, *, app_id: str, name: str) -> AutomationParameterPresetRead:
@@ -391,6 +393,21 @@ class ApiAutomationParameterPresetService:
     ) -> AutomationParameterPresetRead:
         del actor, preset_id
         return self.read(app_id=app_id, name=data.name)
+
+    def remove(
+        self,
+        *,
+        actor: ActorContext,
+        app_id: str,
+        preset_id: UUID,
+    ) -> None:
+        assert actor == API_ACTOR
+        assert app_id == "preset-api-app"
+        assert preset_id == self.preset_id
+        if type(self).remove_reference_types:
+            raise AutomationParameterPresetInUseError(
+                type(self).remove_reference_types,
+            )
 
 
 class ApiUserService:
@@ -990,6 +1007,10 @@ def test_automation_parameter_preset_api_contract() -> None:
         f"{base_path}/{ApiAutomationParameterPresetService.preset_id}/copy",
         json={"name": "店铺覆盖副本"},
     )
+    delete_response = request(
+        "DELETE",
+        f"{base_path}/{ApiAutomationParameterPresetService.preset_id}",
+    )
 
     assert list_response.status_code == 200
     assert list_response.json()[0]["team_id"] == str(TEAM_ID)
@@ -1004,6 +1025,23 @@ def test_automation_parameter_preset_api_contract() -> None:
     assert update_response.json()["name"] == "店铺覆盖（已更新）"
     assert copy_response.status_code == 201
     assert copy_response.json()["name"] == "店铺覆盖副本"
+    assert delete_response.status_code == 204
+
+
+def test_automation_parameter_preset_delete_reports_durable_references() -> None:
+    ApiAutomationParameterPresetService.remove_reference_types = ("task", "schedule")
+    try:
+        response = request(
+            "DELETE",
+            "/api/v1/automation-app-configs/yingdao/preset-api-app/parameter-presets/"
+            f"{ApiAutomationParameterPresetService.preset_id}",
+        )
+    finally:
+        ApiAutomationParameterPresetService.remove_reference_types = ()
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "AUTOMATION_PARAMETER_PRESET_IN_USE"
+    assert response.json()["details"] == {"reference_types": ["task", "schedule"]}
 
 
 def test_automation_parameter_preset_management_catalog_contract() -> None:

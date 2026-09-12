@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 import {
   AutomationParameterPresetManagerDialog,
@@ -10,6 +11,7 @@ import {
 import type { ProviderApplicationViewModel } from '@/entities/device'
 import {
   ParameterPresetListTable,
+  ParameterPresetDeleteDialog,
   useParameterPresetManagement,
 } from '@/features/parameter-preset-management'
 import YingdaoApplicationConfigDialog from '@/features/device-management/ui/YingdaoApplicationConfigDialog.vue'
@@ -19,6 +21,7 @@ import ManagementListSection from '@/shared/components/ManagementListSection.vue
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 
 const management = useParameterPresetManagement()
+const route = useRoute()
 const schemaDialogApplication = ref<ProviderApplicationViewModel | null>(null)
 const configQuery = useAutomationApplicationConfigQuery(
   () => management.editorAppId.value,
@@ -42,6 +45,17 @@ const schemaDialogOpen = computed({
     if (!show) schemaDialogApplication.value = null
   },
 })
+
+watch(
+  () => route.query.app_id,
+  (appId) => {
+    const value = typeof appId === 'string' ? appId : null
+    if (management.selectedAppIdDraft.value === value) return
+    management.selectedAppIdDraft.value = value
+    management.query()
+  },
+  { immediate: true },
+)
 
 function openPreset(preset: AutomationParameterPresetDto): void {
   management.openPreset(preset)
@@ -102,6 +116,13 @@ function openSchemaConfiguration(
     >
       复制预设失败：{{ management.copyError.value }}
     </p>
+    <p
+      v-if="management.removeError.value"
+      class="parameter-preset-library-page__error"
+      role="alert"
+    >
+      删除配置失败：{{ management.removeError.value }}
+    </p>
 
     <ManagementListSection>
       <ParameterPresetListTable
@@ -111,6 +132,7 @@ function openSchemaConfiguration(
         :error="management.listError.value"
         @edit="openPreset"
         @copy="management.copyAndOpen"
+        @remove="management.requestRemove"
         @retry="management.retryList"
       />
     </ManagementListSection>
@@ -134,6 +156,13 @@ function openSchemaConfiguration(
     <YingdaoApplicationConfigDialog
       v-model:show="schemaDialogOpen"
       :application="schemaDialogApplication"
+    />
+
+    <ParameterPresetDeleteDialog
+      v-model:show="management.removeVisible.value"
+      :preset="management.removePreset.value"
+      :submitting="management.removeSubmitting.value"
+      @confirm="management.confirmRemove"
     />
   </div>
 </template>
