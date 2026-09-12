@@ -3,7 +3,6 @@ import { NFormItem } from 'naive-ui'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ShopMultiSelector } from '@/entities/shop'
 import { ApiError } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
@@ -125,7 +124,7 @@ describe('AutomationParameterPresetManagerDialog', () => {
     await wrapper.setProps({ schema: configuredSchema })
     await flushPromises()
     expect(wrapper.findComponent(AppInput).props('modelValue')).toBe('日常采集')
-    expect(wrapper.text()).toContain('当前应用已有 2 个共用参数字段')
+    expect(wrapper.text()).toContain('2 个应用共用字段')
     expect(
       wrapper
         .findAllComponents({ name: 'AutomationParameterFields' })[0]!
@@ -239,26 +238,45 @@ describe('AutomationParameterPresetManagerDialog', () => {
     expect(wrapper.findComponent(FormDialog).props('submitDisabled')).toBe(true)
   })
 
-  it('preserves explicit zero values in an individual shop override and restores inheritance', async () => {
+  it('keeps an individual shop override in the main draft until the main form saves', async () => {
     const wrapper = mountDialog({ schema: configuredSchema })
     await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '店铺差异')
     wrapper
-      .findComponent(ShopMultiSelector)
-      .vm.$emit('update:modelValue', ['shop-a'])
+      .findAllComponents({ name: 'AppSelect' })
+      .find((select) => select.props('placeholder') === '+ 添加店铺')!
+      .vm.$emit('update:modelValue', 'shop-a')
     await flushPromises()
 
-    const parameterFields = wrapper.findAllComponents({
-      name: 'AutomationParameterFields',
-    })
-    parameterFields[1]!.vm.$emit('update:modelValue', { 页码: 0, 每页数量: 20 })
-    await flushPromises()
-    expect(wrapper.text()).toContain('恢复继承 · 页码')
     wrapper
-      .findAllComponents(AppButton)
-      .find((button) => button.text() === '恢复继承 · 页码')!
-      .vm.$emit('click')
+      .findComponent({ name: 'AutomationParameterPresetShopOverrideDialog' })
+      .vm.$emit('confirm', { 页码: 0 })
     await flushPromises()
-    expect(wrapper.text()).not.toContain('恢复继承 · 页码')
+
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+    expect(mocks.save.mock.calls[0]![0].data.shop_overrides).toEqual({
+      'shop-a': { 页码: 0 },
+    })
+  })
+
+  it('does not add a new shop difference when the child editor is cancelled', async () => {
+    const wrapper = mountDialog({ schema: configuredSchema })
+    await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '店铺差异')
+    wrapper
+      .findAllComponents({ name: 'AppSelect' })
+      .find((select) => select.props('placeholder') === '+ 添加店铺')!
+      .vm.$emit('update:modelValue', 'shop-a')
+    await flushPromises()
+
+    wrapper
+      .findComponent({ name: 'AutomationParameterPresetShopOverrideDialog' })
+      .vm.$emit('update:show', false)
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+
+    expect(mocks.save.mock.calls[0]![0].data.shop_overrides).toEqual({})
   })
 
   it('uses the returned version for consecutive saves even if an older list response arrives', async () => {

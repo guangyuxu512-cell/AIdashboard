@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { httpClient } from '@/shared/api'
 
 import {
+  assetPreviewTimeoutMs,
   fetchAssetDownload,
   fetchAssetContent,
   getAssetContentUrl,
@@ -26,6 +27,23 @@ describe('asset content api', () => {
     })
   })
 
+  it('allows full-image previews to use their bounded preview timeout', async () => {
+    const blob = new Blob(['asset'], { type: 'image/png' })
+    const get = vi.spyOn(httpClient, 'get').mockResolvedValue({ data: blob })
+    const controller = new AbortController()
+
+    await expect(
+      fetchAssetContent('/api/v1/assets/asset-1/content', controller.signal, {
+        timeoutMs: assetPreviewTimeoutMs,
+      }),
+    ).resolves.toBe(blob)
+    expect(get).toHaveBeenCalledWith('/api/v1/assets/asset-1/content', {
+      responseType: 'blob',
+      signal: controller.signal,
+      timeout: assetPreviewTimeoutMs,
+    })
+  })
+
   it('keeps original and thumbnail routes explicitly separate', () => {
     expect(getAssetContentUrl('asset-1')).toBe('/api/v1/assets/asset-1/content')
     expect(getAssetThumbnailUrl('asset-1')).toBe(
@@ -35,7 +53,8 @@ describe('asset content api', () => {
 
   it('downloads only the original content route with progress and a longer timeout', async () => {
     const blob = new Blob(['original'], { type: 'image/png' })
-    const progress: Array<{ loadedBytes: number; totalBytes: number | null }> = []
+    const progress: Array<{ loadedBytes: number; totalBytes: number | null }> =
+      []
     const get = vi.spyOn(httpClient, 'get').mockResolvedValue({ data: blob })
     const controller = new AbortController()
 

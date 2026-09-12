@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { NFormItem } from 'naive-ui'
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { AppButton, AppSelect } from '@/shared/ui'
 import type { ShopSelectOption } from '@/entities/shop'
@@ -8,7 +9,6 @@ import type { ShopSelectOption } from '@/entities/shop'
 import type { AutomationInputSchemaDto } from '../api/contracts'
 import { useAutomationParameterPresetsQuery } from '../api/queries'
 import { mapAutomationParameterFields } from '../model/parameters'
-import AutomationParameterPresetManagerDialog from './AutomationParameterPresetManagerDialog.vue'
 
 const props = defineProps<{
   appId: string | null
@@ -23,7 +23,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
 
-const managerOpen = ref(false)
+const router = useRouter()
 const previewOpen = ref(false)
 const presetsQuery = useAutomationParameterPresetsQuery(() => props.appId)
 const presets = computed(() => presetsQuery.data.value ?? [])
@@ -109,9 +109,11 @@ function parameterValue(value: unknown): string {
   return String(value)
 }
 
-function handleSaved(preset: { preset_id: string }): void {
-  emit('update:modelValue', preset.preset_id)
-  managerOpen.value = false
+function openPresetManagement(): void {
+  void router.push({
+    path: '/parameter-presets',
+    query: props.appId ? { app_id: props.appId } : undefined,
+  })
 }
 </script>
 
@@ -128,7 +130,7 @@ function handleSaved(preset: { preset_id: string }): void {
           placeholder="使用手动参数"
           @update:model-value="change"
         />
-        <AppButton :disabled="disabled || !appId" @click="managerOpen = true">
+        <AppButton :disabled="disabled || !appId" @click="openPresetManagement">
           管理预设
         </AppButton>
       </div>
@@ -175,14 +177,6 @@ function handleSaved(preset: { preset_id: string }): void {
       </div>
     </div>
   </NFormItem>
-
-  <AutomationParameterPresetManagerDialog
-    v-model:show="managerOpen"
-    :app-id="appId"
-    :schema="schema"
-    :initial-preset-id="modelValue"
-    @saved="handleSaved"
-  />
 </template>
 
 <style scoped>

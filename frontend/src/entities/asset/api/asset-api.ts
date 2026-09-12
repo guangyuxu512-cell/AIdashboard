@@ -4,6 +4,7 @@ import type { PageDto } from '@/shared/api'
 import type { AssetReadDto } from './contracts'
 
 export const assetDownloadTimeoutMs = 120_000
+export const assetPreviewTimeoutMs = 30_000
 
 export interface AssetDownloadProgress {
   loadedBytes: number
@@ -15,13 +16,20 @@ export interface AssetDownloadOptions {
   onProgress?: (progress: AssetDownloadProgress) => void
 }
 
+export interface AssetContentRequestOptions {
+  timeoutMs?: number
+}
+
 export interface AssetListApiParams {
   page: number
   pageSize: number
   search: string
 }
 
-function getAssetUrl(assetId: string, resource: 'content' | 'thumbnail'): string {
+function getAssetUrl(
+  assetId: string,
+  resource: 'content' | 'thumbnail',
+): string {
   const path = `/api/v1/assets/${encodeURIComponent(assetId)}/${resource}`
   if (/^https?:\/\//i.test(apiBaseUrl)) {
     return new URL(path, apiBaseUrl).toString()
@@ -40,10 +48,12 @@ export function getAssetThumbnailUrl(assetId: string): string {
 export async function fetchAssetContent(
   contentUrl: string,
   signal?: AbortSignal,
+  options: AssetContentRequestOptions = {},
 ): Promise<Blob> {
   const response = await httpClient.get<Blob>(contentUrl, {
     responseType: 'blob',
     signal,
+    ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
   })
   return response.data
 }

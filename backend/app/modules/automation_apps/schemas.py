@@ -162,6 +162,7 @@ class AutomationParameterPresetRead(BaseModel):
     name: str
     common_parameters: dict[str, Any]
     shop_overrides: dict[UUID, dict[str, Any]]
+    invalid_parameter_names: list[str] = Field(default_factory=list)
     version: int
     created_at: datetime
     updated_at: datetime

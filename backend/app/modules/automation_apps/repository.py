@@ -142,3 +142,30 @@ class AutomationParameterPresetRepository:
                 .where(*filters),
             ),
         )
+
+    def reference_types(self, preset_id: object) -> tuple[str, ...]:
+        """Return only the durable records that prevent removing a preset.
+
+        Imports remain local because the automation app module owns the preset
+        repository while Task and Schedule own their respective models.
+        """
+        from app.modules.schedules.models import Schedule
+        from app.modules.tasks.models import Task
+
+        references: list[str] = []
+        if self.session.scalar(
+            select(Task.task_id)
+            .where(Task.parameter_preset_id == preset_id)
+            .limit(1),
+        ) is not None:
+            references.append("task")
+        if self.session.scalar(
+            select(Schedule.schedule_id)
+            .where(Schedule.parameter_preset_id == preset_id)
+            .limit(1),
+        ) is not None:
+            references.append("schedule")
+        return tuple(references)
+
+    def remove(self, preset: AutomationParameterPreset) -> None:
+        self.session.delete(preset)

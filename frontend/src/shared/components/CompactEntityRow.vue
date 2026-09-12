@@ -92,7 +92,7 @@ defineEmits<{
   grid-template-columns:
     var(--control-height-compact)
     minmax(0, 1fr)
-    var(--control-height-compact)
+    max-content
     var(--space-3);
   align-items: center;
   gap: var(--space-1);
@@ -125,6 +125,7 @@ defineEmits<{
   font-size: var(--font-size-secondary);
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .compact-entity-row__status {

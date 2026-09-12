@@ -2,7 +2,13 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIResponse,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 
 test.skip(
   process.env.PLAYWRIGHT_API_MODE !== 'real',
@@ -123,20 +129,25 @@ async function selectNumberParameterType(
   await menu.getByText('数字', { exact: true }).click()
 }
 
-async function savePresetAndWait(page: Page, dialog: Locator): Promise<void> {
+async function savePresetAndWait(
+  page: Page,
+  dialog: Locator,
+): Promise<APIResponse> {
   const responsePromise = page.waitForResponse(
     (response) =>
       response.url().includes('/parameter-presets') &&
       ['POST', 'PATCH'].includes(response.request().method()),
   )
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
-  expect([200, 201]).toContain((await responsePromise).status())
+  const response = await responsePromise
+  expect([200, 201]).toContain(response.status())
+  return response
 }
 
 test.beforeAll(seedFixture)
 test.afterAll(cleanupFixture)
 
-test('saves a preset repeatedly, restores its shop inheritance, and opens a copied draft', async ({
+test('saves a preset repeatedly, keeps public and shop editing together, and removes a legacy value', async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000)
@@ -186,36 +197,86 @@ test('saves a preset repeatedly, restores its shop inheritance, and opens a copi
   await expect(schemaDialog).toHaveCount(0)
 
   await expect(presetName).toHaveValue('日常采集')
-  await expect(presetDialog).toContainText('当前应用已有 2 个共用参数字段')
-  await presetDialog.locator('.n-tabs-tab', { hasText: '公共参数' }).click()
+  await expect(presetDialog).toContainText('2 个应用共用字段')
   const publicParameterInputs = presetDialog.locator('.n-input-number input')
   await publicParameterInputs.nth(0).fill('1')
   await publicParameterInputs.nth(1).fill('20')
   await page.screenshot({
-    path: testInfo.outputPath('03-public-parameters.png'),
+    path: testInfo.outputPath('03-final-main-editor.png'),
     fullPage: true,
   })
 
-  await presetDialog.locator('.n-tabs-tab', { hasText: '店铺差异' }).click()
-  await presetDialog.getByRole('checkbox', { name: '甲店' }).click()
-  await presetDialog.getByRole('checkbox', { name: '乙店' }).click()
-  await presetDialog.getByRole('button', { name: /甲店/ }).click()
-  const shopEditor = presetDialog.locator('.preset-manager__shop-editor')
+  const addShop = presetDialog.locator(
+    '.preset-manager__add-shop .n-base-selection',
+  )
+  await addShop.click()
+  await page
+    .locator('.n-base-select-menu:visible')
+    .last()
+    .getByText('甲店', { exact: true })
+    .click()
+  const shopEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '店铺差异 · 甲店' })
+  await expect(shopEditor).toContainText('公共值：1')
   await shopEditor.locator('.n-input-number input').first().fill('2')
-  await expect(shopEditor).toContainText('恢复继承 · 页码')
-  await presetDialog.getByRole('button', { name: /乙店/ }).click()
-  await shopEditor.locator('.n-input-number input').first().fill('3')
-  await expect(shopEditor).toContainText('恢复继承 · 页码')
+  await shopEditor.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(shopEditor).toHaveCount(0)
+
+  await addShop.click()
+  await page
+    .locator('.n-base-select-menu:visible')
+    .last()
+    .getByText('乙店', { exact: true })
+    .click()
+  const cancelledShopEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '店铺差异 · 乙店' })
+  await cancelledShopEditor.locator('.n-input-number input').first().fill('3')
+  await cancelledShopEditor.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(cancelledShopEditor).toHaveCount(0)
+  await expect(
+    presetDialog.locator('.preset-manager__shop-row').filter({ hasText: '乙店' }),
+  ).toHaveCount(0)
+
+  const shopRow = presetDialog
+    .locator('.preset-manager__shop-row')
+    .filter({ hasText: '甲店' })
+  await shopRow.getByRole('button', { name: '修改', exact: true }).click()
+  const reopenedShopEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '店铺差异 · 甲店' })
+  await expect(
+    reopenedShopEditor.locator('.n-input-number input').first(),
+  ).toHaveValue('2')
+  await reopenedShopEditor
+    .getByRole('button', { name: '恢复公共值 · 页码' })
+    .click()
+  await reopenedShopEditor
+    .getByRole('button', { name: '保存', exact: true })
+    .click()
+  await expect(shopRow).toContainText('使用公共参数')
+
+  await shopRow.getByRole('button', { name: '修改', exact: true }).click()
+  const overrideShopEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '店铺差异 · 甲店' })
+  await overrideShopEditor.locator('.n-input-number input').first().fill('2')
+  await expect(overrideShopEditor).toHaveCSS('opacity', '1')
   await page.screenshot({
-    path: testInfo.outputPath('04-shop-override-editing.png'),
+    path: testInfo.outputPath('04-final-shop-override-editor.png'),
     fullPage: true,
   })
-  await savePresetAndWait(page, presetDialog)
+  await overrideShopEditor
+    .getByRole('button', { name: '保存', exact: true })
+    .click()
+
+  const created = await savePresetAndWait(page, presetDialog)
+  const createdPreset = (await created.json()) as { preset_id: string }
   await expect(presetDialog).toBeVisible()
-  await shopEditor.locator('.n-input-number input').first().fill('5')
+  await publicParameterInputs.nth(0).fill('5')
   await savePresetAndWait(page, presetDialog)
-  await expect(presetDialog).toBeVisible()
-  await shopEditor.getByRole('button', { name: '恢复继承 · 页码' }).click()
+  await publicParameterInputs.nth(0).fill('1')
   await savePresetAndWait(page, presetDialog)
   await expect(presetDialog).toBeVisible()
   await presetDialog.getByRole('button', { name: '取消', exact: true }).click()
@@ -223,37 +284,47 @@ test('saves a preset repeatedly, restores its shop inheritance, and opens a copi
 
   await expect(page.getByText('日常采集', { exact: true })).toBeVisible()
   await page.screenshot({
-    path: testInfo.outputPath('05-preset-list-readback.png'),
+    path: testInfo.outputPath('05-final-preset-list.png'),
     fullPage: true,
   })
+
+  runBackendScript([
+    'from uuid import UUID',
+    'from sqlalchemy import text',
+    'from app.core.database import get_database_engine',
+    `preset_id = UUID(${JSON.stringify(createdPreset.preset_id)})`,
+    'with get_database_engine().begin() as connection:',
+    '    result = connection.execute(',
+    '        text("UPDATE automation_parameter_presets SET common_parameters = common_parameters || CAST(:legacy AS jsonb) WHERE preset_id = :preset_id"),',
+    '        {"legacy": \'{"1":"旧值"}\', "preset_id": preset_id},',
+    '    )',
+    '    assert result.rowcount == 1',
+  ])
   await page.reload()
   await expect(page.getByText('日常采集', { exact: true })).toBeVisible()
+  await expect(page.getByText('待修正', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   const reopened = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
   await expect(
     reopened.locator('input[name="automation-parameter-preset-name"]'),
   ).toHaveValue('日常采集')
-  await expect(reopened).toContainText('当前应用已有 2 个共用参数字段')
-  await reopened.locator('.n-tabs-tab', { hasText: '公共参数' }).click()
+  await expect(reopened).toContainText('2 个应用共用字段')
   const reopenedPublic = reopened.locator('.n-input-number input')
   await expect(reopenedPublic.nth(0)).toHaveValue('1')
   await expect(reopenedPublic.nth(1)).toHaveValue('20')
-  await reopened.locator('.n-tabs-tab', { hasText: '店铺差异' }).click()
-  await reopened.getByRole('button', { name: /甲店/ }).click()
-  const reopenedShopEditor = reopened.locator('.preset-manager__shop-editor')
+  await expect(reopened).toContainText('待修正字段')
+  await expect(reopened).toContainText('1：旧值')
   await expect(
-    reopenedShopEditor.locator('.n-input-number input').first(),
-  ).toHaveValue('2')
-  await reopened.getByRole('button', { name: /乙店/ }).click()
-  await expect(
-    reopenedShopEditor.locator('.n-input-number input').first(),
-  ).toHaveValue('1')
+    reopened.locator('.preset-manager__shop-row').filter({ hasText: '甲店' }),
+  ).toContainText('已单独设置：页码')
   await page.screenshot({
-    path: testInfo.outputPath('06-reopened-shop-inheritance.png'),
+    path: testInfo.outputPath('06-final-legacy-field.png'),
     fullPage: true,
   })
+  await reopened.getByRole('button', { name: '移除旧值', exact: true }).click()
+  await savePresetAndWait(page, reopened)
+  await expect(reopened).not.toContainText('待修正字段')
   await reopened.getByRole('button', { name: '取消', exact: true }).click()
-  await expect(reopened).toHaveCount(0)
 
   await page.getByRole('button', { name: '复制', exact: true }).click()
   const copyDialog = page.locator('.app-dialog').filter({ hasText: '编辑配置' })
@@ -262,6 +333,98 @@ test('saves a preset repeatedly, restores its shop inheritance, and opens a copi
   ).toHaveValue('日常采集 副本')
   await copyDialog.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.getByText('日常采集 副本', { exact: true })).toBeVisible()
+  const copyRow = page
+    .getByRole('row')
+    .filter({ hasText: '日常采集 副本' })
+  await copyRow.getByRole('button', { name: '删除', exact: true }).click()
+  const deleteDialog = page
+    .locator('.app-dialog')
+    .filter({ hasText: '删除配置' })
+  await expect(deleteDialog).toContainText('日常采集 副本')
+  const deleteResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/parameter-presets/') &&
+      response.request().method() === 'DELETE',
+  )
+  await deleteDialog
+    .getByRole('button', { name: '删除配置', exact: true })
+    .click()
+  expect((await deleteResponse).status()).toBe(204)
+  await expect(page.getByText('日常采集 副本', { exact: true })).toHaveCount(0)
+
+  const denseSchema = {
+    fields: Array.from({ length: 10 }, (_, index) => ({
+      name: `额外字段${index + 1}`,
+      label: `额外字段 ${index + 1}`,
+      type: 'text',
+      required: false,
+      default_value: '',
+      options: [],
+    })),
+  }
+  const originalSchema = {
+    fields: [
+      {
+        name: '页码',
+        label: '页码',
+        type: 'number',
+        required: false,
+        default_value: 1,
+        options: [],
+      },
+      {
+        name: '每页数量',
+        label: '每页数量',
+        type: 'number',
+        required: false,
+        default_value: 20,
+        options: [],
+      },
+    ],
+  }
+  const setSchema = (schema: object) =>
+    runBackendScript([
+      'import json',
+      'from sqlalchemy import text',
+      'from app.core.database import get_database_engine',
+      `schema = json.loads(${JSON.stringify(JSON.stringify(schema))})`,
+      `app_id = ${JSON.stringify(appId)}`,
+      'with get_database_engine().begin() as connection:',
+      '    result = connection.execute(',
+      '        text("UPDATE automation_application_configs SET input_schema = CAST(:schema AS jsonb) WHERE provider_code = \'yingdao\' AND app_id = :app_id"),',
+      '        {"schema": json.dumps(schema), "app_id": app_id},',
+      '    )',
+      '    assert result.rowcount == 1',
+    ])
+
+  setSchema(denseSchema)
+  await page.setViewportSize({ width: 1024, height: 640 })
+  await page.reload()
+  await page.getByRole('button', { name: '编辑', exact: true }).click()
+  const constrainedEditor = page
+    .locator('.app-dialog')
+    .filter({ hasText: '编辑配置' })
+  const parameterViewport = constrainedEditor.locator(
+    '.preset-manager__parameter-viewport',
+  )
+  await expect(parameterViewport).toBeVisible()
+  expect(
+    await parameterViewport.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true)
+  const constrainedBox = await constrainedEditor.boundingBox()
+  expect(constrainedBox).not.toBeNull()
+  expect(constrainedBox!.y + constrainedBox!.height).toBeLessThanOrEqual(640)
+  await expect(
+    constrainedEditor.getByRole('button', { name: '保存', exact: true }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('07-final-editor-constrained-scroll.png'),
+    fullPage: true,
+  })
+  await constrainedEditor.getByRole('button', { name: '取消', exact: true }).click()
+  setSchema(originalSchema)
 })
 
 test('shows the same preset choice and per-shop final parameters before an immediate run', async ({
