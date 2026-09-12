@@ -249,6 +249,11 @@ onBeforeUnmount(library.dispose)
               <header class="ai-assets-workspace__product-header">
                 <div class="ai-assets-workspace__product-identity">
                   <strong>{{ selectedProduct.name }}</strong>
+                  <span class="ai-assets-workspace__product-counts">
+                    商品原图 {{ roleCounts.PRODUCT_SOURCE }} · AI 成品
+                    {{ roleCounts.AI_OUTPUT }}
+                    · 全部素材 {{ selectedProduct.assets.length }}
+                  </span>
                 </div>
                 <label class="ai-assets-workspace__enabled">
                   <span>启用</span>
@@ -435,6 +440,16 @@ onBeforeUnmount(library.dispose)
 .ai-assets-workspace__product-identity strong {
   color: var(--text-primary);
   font-size: var(--font-size-section-title);
+}
+
+.ai-assets-workspace__product-counts {
+  min-width: 0;
+  overflow: visible;
+  color: var(--text-muted);
+  font-size: var(--font-size-caption);
+  line-height: 1.4;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .ai-assets-workspace__enabled span {

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 
+import { aiWorkbenchQueryKeys } from '@/entities/ai-workbench'
+
 import type { AiModelCreateInput, AiModelUpdateInput } from '../model/types'
 import { aiModelDataSource } from './ai-model-data-source'
 
@@ -22,7 +24,12 @@ function useAiModelMutation<Result, Variables>(
   return useMutation({
     mutationFn: action,
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: aiModelQueryKeys.all }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: aiModelQueryKeys.all }),
+        queryClient.invalidateQueries({
+          queryKey: aiWorkbenchQueryKeys.models,
+        }),
+      ]),
   })
 }
 

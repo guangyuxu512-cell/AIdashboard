@@ -146,8 +146,7 @@ export function mapGenerationProduct(
       name: asset.name,
       previewUrl: asset.previewUrl,
       thumbnailUrl: asset.thumbnailUrl,
-      role:
-        asset.role === 'STYLE_REFERENCE' ? 'STYLE_REFERENCE' : 'PRODUCT_SOURCE',
+      role: asset.role,
       sourceType: 'ASSET_LIBRARY',
       productId: product.id,
       productName: product.name,

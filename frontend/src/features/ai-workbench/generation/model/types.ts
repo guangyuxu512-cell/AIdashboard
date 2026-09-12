@@ -34,6 +34,13 @@ export type GenerationOutputRange = 'ALL' | GenerationOutputRole
 
 export type GenerationSourceType = 'LOCAL_UPLOAD' | 'ASSET_LIBRARY'
 
+/**
+ * A product-material group can contain generated outputs as well as selectable
+ * source images. Keep that distinction at the catalog boundary: only source
+ * roles can become GenerationSourceImageView inputs.
+ */
+export type GenerationMaterialAssetRole = GenerationSourceRole | 'AI_OUTPUT'
+
 export type BatchProductScope = 'ALL_ENABLED' | 'SELECTED'
 
 export type BatchTemplateSource = 'PRODUCT_CONFIGURED' | 'CURRENT_SELECTION'
@@ -77,6 +84,15 @@ export interface GenerationSourceImageView {
   objectUrl?: boolean
 }
 
+export interface GenerationOutputAssetView
+  extends Omit<GenerationSourceImageView, 'role'> {
+  role: 'AI_OUTPUT'
+}
+
+export type GenerationProductAssetView =
+  | GenerationSourceImageView
+  | GenerationOutputAssetView
+
 export interface GenerationTemplateView extends GenerationConfig {
   id: string
   groupId: string
@@ -104,7 +120,7 @@ export interface GenerationProductView {
   styleReplicationEnabled: boolean
   normalTemplateGroupIds: string[]
   styleReplicationTemplateGroupIds: string[]
-  assets: GenerationSourceImageView[]
+  assets: GenerationProductAssetView[]
 }
 
 export interface GenerationAppliedTemplate {

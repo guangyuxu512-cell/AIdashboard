@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { loadAiGenerationVisualMock } from './load-visual-mock'
 import { useAiGenerationStore } from './useAiGenerationStore'
+import type { GenerationSourceImageView } from './types'
 
 function createStore() {
   const store = useAiGenerationStore()
@@ -13,7 +14,10 @@ function createStore() {
 function readyInstant(store: ReturnType<typeof useAiGenerationStore>): void {
   const product = store.products[0]!
   store.addInstantSources('PRODUCT_IMAGES', [
-    product.assets.find((asset) => asset.role === 'PRODUCT_SOURCE')!,
+    product.assets.find(
+      (asset): asset is GenerationSourceImageView =>
+        asset.role === 'PRODUCT_SOURCE',
+    )!,
   ])
   store.updateInstantPrompt('new record')
 }
@@ -140,7 +144,10 @@ describe('AI generation visual store: generation records', () => {
     const store = createStore()
     const product = store.products[0]!
     store.addInstantSources('PRODUCT_IMAGES', [
-      product.assets.find((asset) => asset.role === 'PRODUCT_SOURCE')!,
+      product.assets.find(
+        (asset): asset is GenerationSourceImageView =>
+          asset.role === 'PRODUCT_SOURCE',
+      )!,
     ])
     const template = store.instantTemplateGroups[0]!.templates[1]!
     store.applyInstantTemplate(template.id)

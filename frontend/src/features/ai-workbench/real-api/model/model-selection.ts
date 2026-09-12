@@ -33,8 +33,9 @@ export function isWorkbenchModelInputCountAllowed(
 export function remainingWorkbenchModelInputCapacity(
   model: WorkbenchModelView | null,
   inputCount: number,
-): number {
-  return Math.max(0, (model?.maxInputImages ?? 0) - inputCount)
+): number | null {
+  if (model === null) return null
+  return Math.max(0, model.maxInputImages - inputCount)
 }
 
 export function isWorkbenchModelSizeSupported(
