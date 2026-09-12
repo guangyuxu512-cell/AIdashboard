@@ -415,7 +415,14 @@ class AutomationParameterPresetService:
     ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
         schema = self._schema(app_id)
         try:
-            common = normalize_parameters(schema, common_parameters)
+            # A preset owns its explicit parameter selection. Validate that
+            # selection without persisting schema defaults back into it: an
+            # optional field removed from one preset must remain absent after
+            # reread and cannot alter another preset. `normalize_parameters`
+            # still verifies the final required-field contract here, and the
+            # Task snapshot remains the single place that materializes defaults.
+            common = validate_parameter_subset(schema, common_parameters)
+            normalize_parameters(schema, common)
             overrides = {
                 str(shop_id): validate_parameter_subset(schema, values)
                 for shop_id, values in shop_overrides.items()

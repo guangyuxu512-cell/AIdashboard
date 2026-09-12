@@ -10,6 +10,15 @@ export type SchemaParameterControl =
   | SchemaParameterValueType
   | 'select'
 
+/**
+ * Visual arrangement only. The parameter contract and emitted value shape stay
+ * identical across layouts.
+ */
+export type SchemaParameterFieldsLayout =
+  | 'stacked'
+  | 'compact'
+  | 'comparison'
+
 export interface SchemaParameterField {
   name: string
   label: string

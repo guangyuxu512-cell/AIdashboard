@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NForm, NFormItem, useMessage, type SelectOption } from 'naive-ui'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, watchEffect } from 'vue'
 
 import { useShopSelectionOptionsQuery } from '@/entities/shop'
 import { toApiError } from '@/shared/api'
@@ -64,6 +64,8 @@ const nameError = ref<string | null>(null)
 const shopOverrideDialogVisible = ref(false)
 const editingShopId = ref<string | null>(null)
 const pendingNewShopId = ref<string | null>(null)
+const pendingCommonParameterNames = ref<string[]>([])
+const defaultSeedSignature = ref('')
 const draft = reactive({
   name: '',
   commonParameters: {} as Record<string, unknown>,
@@ -91,15 +93,35 @@ const availableShopOptions = computed<SelectOption[]>(() =>
 )
 const overrideShopIds = computed(() => Object.keys(draft.shopOverrides))
 const fields = computed(() => mapAutomationParameterFields(props.schema))
+const selectedCommonParameterNames = computed(() =>
+  new Set(Object.keys(draft.commonParameters)),
+)
+const displayedCommonSchema = computed(() => ({
+  fields: props.schema.fields.filter(
+    (field) =>
+      field.required ||
+      selectedCommonParameterNames.value.has(field.name) ||
+      pendingCommonParameterNames.value.includes(field.name),
+  ),
+}))
 const filteredCommonSchema = computed(() => {
   const query = commonParameterQuery.value.trim().toLocaleLowerCase()
-  if (!query) return props.schema
+  if (!query) return displayedCommonSchema.value
   return {
-    fields: props.schema.fields.filter((field) =>
+    fields: displayedCommonSchema.value.fields.filter((field) =>
       `${field.label} ${field.name}`.toLocaleLowerCase().includes(query),
     ),
   }
 })
+const addableCommonParameterOptions = computed<SelectOption[]>(() =>
+  props.schema.fields
+    .filter(
+      (field) =>
+        !selectedCommonParameterNames.value.has(field.name) &&
+        !pendingCommonParameterNames.value.includes(field.name),
+    )
+    .map((field) => ({ label: field.label || field.name, value: field.name })),
+)
 const unknownCommonParameterNames = computed(() => {
   const known = new Set(fields.value.map((field) => field.name))
   return Object.keys(draft.commonParameters).filter((name) => !known.has(name))
@@ -114,6 +136,9 @@ const saveDisabledReason = computed(() => {
   if (!draft.name.trim()) return '请输入预设名称'
   if (selectedPresetId.value && draft.expectedVersion === null) {
     return '预设版本加载中，请稍后再保存'
+  }
+  if (pendingCommonParameterNames.value.length) {
+    return '请填写新添加的参数后再保存'
   }
   return commonError.value
 })
@@ -133,6 +158,7 @@ watch(
       shopOverrideDialogVisible.value = false
       editingShopId.value = null
       pendingNewShopId.value = null
+      pendingCommonParameterNames.value = []
       return
     }
     startCreate()
@@ -162,16 +188,33 @@ watch(
   { immediate: true },
 )
 
-watch(
-  [fields, () => props.show, () => selectedPresetId.value],
-  ([nextFields, show, presetId]) => {
-    if (!show || presetId || !nextFields.length) return
-    draft.commonParameters = {
-      ...createDefaultAutomationParameters(props.schema, draft.commonParameters),
-      ...draft.commonParameters,
-    }
-  },
-)
+watchEffect(() => {
+  const signature = JSON.stringify(
+    props.schema.fields.map((field) => [
+      field.name,
+      field.required,
+      field.default_value,
+    ]),
+  )
+
+  // A new preset starts with the application's defaults.  Configuration can
+  // arrive after the dialog opens, so seed once for each schema revision;
+  // never seed again after a user removes an optional current-preset field.
+  if (
+    !props.show ||
+    selectedPresetId.value ||
+    !props.schema.fields.length ||
+    defaultSeedSignature.value === signature
+  ) {
+    return
+  }
+
+  draft.commonParameters = {
+    ...createDefaultAutomationParameters(props.schema, draft.commonParameters),
+    ...draft.commonParameters,
+  }
+  defaultSeedSignature.value = signature
+})
 
 function cloneOverrides(
   value: Record<string, Record<string, unknown>>,
@@ -186,11 +229,13 @@ function cloneOverrides(
 
 function startCreate(): void {
   selectedPresetId.value = null
+  defaultSeedSignature.value = ''
   draft.name = ''
   draft.commonParameters = createDefaultAutomationParameters(props.schema)
   draft.shopOverrides = {}
   draft.expectedVersion = null
   commonParameterQuery.value = ''
+  pendingCommonParameterNames.value = []
   saveError.value = null
   nameError.value = null
   pendingNewShopId.value = null
@@ -198,11 +243,13 @@ function startCreate(): void {
 
 function applyPreset(preset: AutomationParameterPresetDto): void {
   selectedPresetId.value = preset.preset_id
+  defaultSeedSignature.value = ''
   draft.name = preset.name
   draft.commonParameters = { ...preset.common_parameters }
   draft.shopOverrides = cloneOverrides(preset.shop_overrides)
   draft.expectedVersion = preset.version
   commonParameterQuery.value = ''
+  pendingCommonParameterNames.value = []
   saveError.value = null
   nameError.value = null
 }
@@ -254,9 +301,37 @@ function removeOverrideShop(shopId: string): void {
 }
 
 function removeCommonParameter(name: string): void {
+  if (fields.value.some((field) => field.name === name && field.required)) return
   const next = { ...draft.commonParameters }
   delete next[name]
   draft.commonParameters = next
+  pendingCommonParameterNames.value = pendingCommonParameterNames.value.filter(
+    (item) => item !== name,
+  )
+}
+
+function addCommonParameter(value: unknown): void {
+  const name = typeof value === 'string' ? value : null
+  const field = props.schema.fields.find((item) => item.name === name)
+  if (!field || selectedCommonParameterNames.value.has(field.name)) return
+  if (field.default_value !== null) {
+    draft.commonParameters = {
+      ...draft.commonParameters,
+      [field.name]: field.default_value,
+    }
+    return
+  }
+  pendingCommonParameterNames.value = [
+    ...pendingCommonParameterNames.value,
+    field.name,
+  ]
+}
+
+function updateCommonParameters(values: Record<string, unknown>): void {
+  draft.commonParameters = values
+  pendingCommonParameterNames.value = pendingCommonParameterNames.value.filter(
+    (name) => !Object.hasOwn(values, name),
+  )
 }
 
 function shopName(shopId: string): string {
@@ -267,9 +342,19 @@ function shopName(shopId: string): string {
 
 function overrideSummary(shopId: string): string {
   const values = draft.shopOverrides[shopId] ?? {}
-  const names = Object.keys(values)
-  if (!names.length) return '使用公共参数'
-  return `已单独设置：${names.map(labelForField).join('、')}`
+  const entries = Object.entries(values)
+  if (!entries.length) return '使用公共参数'
+  const summary = entries
+    .slice(0, 2)
+    .map(([name, value]) => `${labelForField(name)}：${valueText(value)}`)
+  if (entries.length > summary.length) summary.push(`等 ${entries.length} 项`)
+  return summary.join('；')
+}
+
+function fullOverrideSummary(shopId: string): string {
+  return Object.entries(draft.shopOverrides[shopId] ?? {})
+    .map(([name, value]) => `${labelForField(name)}：${valueText(value)}`)
+    .join('；')
 }
 
 function labelForField(name: string): string {
@@ -367,6 +452,7 @@ function openSchemaConfiguration(): void {
     :title="selectedPresetId ? '编辑配置' : '新建配置'"
     size="lg"
     :submitting="savePreset.isPending.value"
+    submit-text="保存配置"
     :submit-disabled="Boolean(saveDisabledReason)"
     :submit-disabled-reason="saveDisabledReason"
     @update:show="$emit('update:show', $event)"
@@ -422,19 +508,29 @@ function openSchemaConfiguration(): void {
             <p v-else-if="!fields.length" class="preset-manager__hint">
               该应用尚未配置参数字段。
             </p>
-            <p v-else class="preset-manager__hint">{{ fields.length }} 个应用共用字段</p>
+            <p v-else class="preset-manager__hint">
+              {{ displayedCommonSchema.fields.length }} 项当前参数
+            </p>
           </div>
-          <AppButton
-            v-if="allowSchemaConfiguration"
-            :disabled="!selectedApplication"
-            @click="openSchemaConfiguration"
-          >
-            管理字段
-          </AppButton>
+          <div class="preset-manager__section-actions">
+            <AppSelect
+              v-if="addableCommonParameterOptions.length"
+              :model-value="null"
+              :options="addableCommonParameterOptions"
+              :disabled="schemaLoading"
+              placeholder="+ 添加参数"
+              class="preset-manager__add-parameter"
+              @update:model-value="addCommonParameter"
+            />
+            <AppButton
+              v-if="allowSchemaConfiguration"
+              :disabled="!selectedApplication"
+              @click="openSchemaConfiguration"
+            >
+              管理字段
+            </AppButton>
+          </div>
         </div>
-        <p class="preset-manager__scope-note">
-          字段定义会影响该应用的全部配置；此处仅编辑当前配置的值。
-        </p>
         <AppInput
           v-if="fields.length"
           v-model="commonParameterQuery"
@@ -446,7 +542,11 @@ function openSchemaConfiguration(): void {
             v-model="draft.commonParameters"
             :schema="filteredCommonSchema"
             :disabled="schemaLoading"
+            layout="compact"
             preserve-empty-string
+            show-remove
+            @update:model-value="updateCommonParameters"
+            @remove="removeCommonParameter"
           />
         </div>
         <section v-if="unknownCommonParameterNames.length" class="preset-manager__legacy">
@@ -454,7 +554,7 @@ function openSchemaConfiguration(): void {
           <p>这些旧值已不在当前应用字段定义中；移除只影响当前配置，不会删除应用共用字段。</p>
           <div v-for="name in unknownCommonParameterNames" :key="name">
             <span>{{ name }}：{{ valueText(draft.commonParameters[name]) }}</span>
-            <AppButton tone="danger" @click="removeCommonParameter(name)">移除旧值</AppButton>
+            <AppButton tone="text" @click="removeCommonParameter(name)">移除旧值</AppButton>
           </div>
         </section>
       </section>
@@ -463,7 +563,6 @@ function openSchemaConfiguration(): void {
         <div class="preset-manager__section-heading">
           <div>
             <h3>店铺差异</h3>
-            <p class="preset-manager__hint">仅保存与公共参数不同的字段。</p>
           </div>
           <AppSelect
             :model-value="null"
@@ -482,14 +581,14 @@ function openSchemaConfiguration(): void {
             class="preset-manager__shop-row"
           >
             <strong>{{ shopName(shopId) }}</strong>
-            <span>{{ overrideSummary(shopId) }}</span>
+            <span :title="fullOverrideSummary(shopId)">{{ overrideSummary(shopId) }}</span>
             <div>
               <AppButton tone="text" @click="openShopOverride(shopId)">修改</AppButton>
-              <AppButton tone="danger" @click="removeOverrideShop(shopId)">移除</AppButton>
+              <AppButton tone="text" @click="removeOverrideShop(shopId)">移除</AppButton>
             </div>
           </div>
         </div>
-        <p v-else class="preset-manager__hint">尚未添加店铺差异；所有店铺将使用公共参数。</p>
+        <p v-else class="preset-manager__hint">尚未添加店铺差异</p>
       </section>
     </NForm>
   </FormDialog>
@@ -538,9 +637,15 @@ function openSchemaConfiguration(): void {
   gap: var(--space-3);
 }
 
+.preset-manager__section-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .preset-manager__section-heading h3,
 .preset-manager__section-heading p,
-.preset-manager__scope-note,
 .preset-manager__legacy h4,
 .preset-manager__legacy p,
 .preset-manager__error {
@@ -553,7 +658,6 @@ function openSchemaConfiguration(): void {
 }
 
 .preset-manager__hint,
-.preset-manager__scope-note,
 .preset-manager__shop-row span,
 .preset-manager__legacy p {
   color: var(--text-secondary);
@@ -563,12 +667,12 @@ function openSchemaConfiguration(): void {
   color: var(--color-error);
 }
 
-.preset-manager__scope-note {
-  font-size: var(--font-size-secondary);
-}
-
 .preset-manager__parameter-viewport {
-  max-height: 352px;
+  /* A compact NForm row includes the control plus its form-item spacing. */
+  --preset-parameter-row-height: calc(
+    var(--control-height-default) + var(--space-8)
+  );
+  max-height: calc(var(--preset-parameter-row-height) * 5);
   overflow-y: auto;
   padding-right: var(--space-2);
 }
@@ -591,6 +695,10 @@ function openSchemaConfiguration(): void {
 
 .preset-manager__add-shop {
   width: min(220px, 45%);
+}
+
+.preset-manager__add-parameter {
+  width: min(180px, 40vw);
 }
 
 .preset-manager__shop-list {
@@ -623,15 +731,15 @@ function openSchemaConfiguration(): void {
   gap: var(--space-2);
 }
 
-@media (min-height: 900px) {
+@media (min-height: 1100px) {
   .preset-manager__parameter-viewport {
-    max-height: 560px;
+    max-height: calc(var(--preset-parameter-row-height) * 8);
   }
 }
 
 @media (max-height: 700px) {
   .preset-manager__parameter-viewport {
-    max-height: 230px;
+    max-height: calc(var(--preset-parameter-row-height) * 3);
   }
 
   .preset-manager__shop-list {
@@ -648,6 +756,11 @@ function openSchemaConfiguration(): void {
   .preset-manager__section-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .preset-manager__section-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .preset-manager__add-shop {
