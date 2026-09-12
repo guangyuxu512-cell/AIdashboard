@@ -99,7 +99,7 @@ const columns: DataTableColumns<AutomationParameterPresetDto> = [
         ),
         h(
           AppButton,
-          { tone: 'danger', onClick: () => emit('remove', preset) },
+          { tone: 'text', onClick: () => emit('remove', preset) },
           { default: () => '删除' },
         ),
       ]),

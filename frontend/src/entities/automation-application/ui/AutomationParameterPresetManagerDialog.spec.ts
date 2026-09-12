@@ -124,12 +124,35 @@ describe('AutomationParameterPresetManagerDialog', () => {
     await wrapper.setProps({ schema: configuredSchema })
     await flushPromises()
     expect(wrapper.findComponent(AppInput).props('modelValue')).toBe('日常采集')
-    expect(wrapper.text()).toContain('2 个应用共用字段')
-    expect(
-      wrapper
-        .findAllComponents({ name: 'AutomationParameterFields' })[0]!
-        .props('modelValue'),
-    ).toEqual({ 页码: 1, 每页数量: 20 })
+    expect(wrapper.text()).toContain('2 项当前参数')
+    const fields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
+    expect(fields.props('modelValue')).toEqual({ 页码: 1, 每页数量: 20 })
+    expect(fields.props('layout')).toBe('compact')
+    expect(fields.props('showRemove')).toBe(true)
+  })
+
+  it('keeps parameter selection in the current preset rather than changing its application schema', async () => {
+    const wrapper = mountDialog({ schema: configuredSchema })
+    await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '参数选择')
+    const fields = wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
+    fields.vm.$emit('remove', '每页数量')
+    await flushPromises()
+
+    expect(fields.props('modelValue')).toEqual({ 页码: 1 })
+    const addParameter = wrapper
+      .findAllComponents({ name: 'AppSelect' })
+      .find((select) => select.props('placeholder') === '+ 添加参数')!
+    addParameter.vm.$emit('update:modelValue', '每页数量')
+    await flushPromises()
+    expect(fields.props('modelValue')).toEqual({ 页码: 1, 每页数量: 20 })
+
+    wrapper.findComponent(FormDialog).vm.$emit('submit')
+    await flushPromises()
+    expect(mocks.save.mock.calls[0]![0].data.common_parameters).toEqual({
+      页码: 1,
+      每页数量: 20,
+    })
   })
 
   it('keeps the current draft and points a duplicate name failure at the name field', async () => {

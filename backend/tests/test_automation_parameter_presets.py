@@ -354,7 +354,7 @@ def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> N
             common_parameters={"标题": "已修改"},
         ),
     )
-    assert copied.common_parameters == {"标题": "原始", "数量": 1, "启用": True, "备注": "默认备注"}
+    assert copied.common_parameters == {"标题": "原始"}
 
     with pytest.raises(AutomationParameterPresetNotFoundError):
         service.get(
@@ -363,6 +363,79 @@ def test_preset_is_team_scoped_even_for_all_scope_and_copy_is_independent() -> N
             preset_id=own.preset_id,
         )
 
+
+def test_preset_parameter_selection_is_independent_and_defaults_only_materialize_in_task_snapshot() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    shop_a, shop_b = uuid4(), uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids={shop_a, shop_b})
+
+    source = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="配置 A",
+            common_parameters={"标题": "A", "数量": 2},
+            shop_overrides={shop_a: {"备注": "A 店铺"}},
+        ),
+    )
+    copied = service.copy(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=source.preset_id,
+        data=AutomationParameterPresetCopy(name="配置 B"),
+    )
+
+    updated_source = service.update(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=source.preset_id,
+        data=AutomationParameterPresetUpdate(
+            expected_version=source.version,
+            common_parameters={"标题": "A 已修改"},
+            shop_overrides={shop_a: {"备注": "A 店铺已修改"}},
+        ),
+    )
+    updated_copy = service.update(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=copied.preset_id,
+        data=AutomationParameterPresetUpdate(
+            expected_version=copied.version,
+            common_parameters={"标题": "B", "启用": False},
+            shop_overrides={shop_b: {"数量": 0}},
+        ),
+    )
+
+    assert updated_source.common_parameters == {"标题": "A 已修改"}
+    assert updated_source.shop_overrides == {shop_a: {"备注": "A 店铺已修改"}}
+    assert updated_copy.common_parameters == {"标题": "B", "启用": False}
+    assert updated_copy.shop_overrides == {shop_b: {"数量": 0}}
+
+    snapshot = service.snapshot_for_actor(
+        actor=actor_context,
+        app_id="safe-app",
+        preset_id=updated_source.preset_id,
+        shop_ids=[shop_a],
+    )
+    assert snapshot.parameters == {
+        "格式版本": 1,
+        "公共参数": {
+            "标题": "A 已修改",
+            "数量": 1,
+            "启用": True,
+            "备注": "默认备注",
+        },
+        "店铺参数": {
+            str(shop_a): {
+                "标题": "A 已修改",
+                "数量": 1,
+                "启用": True,
+                "备注": "A 店铺已修改",
+            },
+        },
+    }
 
 def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
     team_id = uuid4()
