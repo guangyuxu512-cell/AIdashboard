@@ -8,12 +8,14 @@ withDefaults(
     title: string
     size?: OverlaySize
     submitting?: boolean
+    submitText?: string
     submitDisabled?: boolean
     submitDisabledReason?: string | null
   }>(),
   {
     size: 'md',
     submitting: false,
+    submitText: '保存',
     submitDisabled: false,
     submitDisabledReason: null,
   },
@@ -34,7 +36,7 @@ defineEmits<{
     :loading="submitting"
     :positive-disabled="submitDisabled"
     :positive-disabled-reason="submitDisabledReason"
-    positive-text="保存"
+    :positive-text="submitText"
     @update:show="$emit('update:show', $event)"
     @confirm="$emit('submit')"
     @cancel="$emit('cancel')"

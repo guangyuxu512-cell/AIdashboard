@@ -2,7 +2,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import FormDialog from '@/shared/components/FormDialog.vue'
-import AppButton from '@/shared/ui/AppButton.vue'
+import AutomationParameterFields from './AutomationParameterFields.vue'
 
 import AutomationParameterPresetShopOverrideDialog from './AutomationParameterPresetShopOverrideDialog.vue'
 
@@ -54,12 +54,14 @@ describe('AutomationParameterPresetShopOverrideDialog', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('公共值：1')
-    expect(wrapper.text()).toContain('恢复公共值 · 页码')
-    wrapper
-      .findAllComponents(AppButton)
-      .find((button) => button.text() === '恢复公共值 · 页码')!
-      .vm.$emit('click')
+    expect(wrapper.text()).toContain('字段')
+    expect(wrapper.text()).toContain('公共值')
+    expect(wrapper.text()).toContain('本店值')
+    expect(wrapper.text()).toContain('恢复')
+    const fields = wrapper.findComponent(AutomationParameterFields)
+    expect(fields.props('layout')).toBe('comparison')
+    expect(fields.props('referenceValues')).toEqual({ 页码: 1 })
+    fields.vm.$emit('restore', '页码')
     wrapper.findComponent(FormDialog).vm.$emit('submit')
     await flushPromises()
 
