@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NForm, NFormItem, useMessage, type SelectOption } from 'naive-ui'
-import { computed, reactive, ref, watch, watchEffect } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 import { useShopSelectionOptionsQuery } from '@/entities/shop'
 import { toApiError } from '@/shared/api'
@@ -17,7 +17,6 @@ import {
   useSaveAutomationParameterPresetMutation,
 } from '../api/queries'
 import {
-  createDefaultAutomationParameters,
   mapAutomationParameterFields,
   validateAutomationParameters,
 } from '../model/parameters'
@@ -65,7 +64,6 @@ const shopOverrideDialogVisible = ref(false)
 const editingShopId = ref<string | null>(null)
 const pendingNewShopId = ref<string | null>(null)
 const pendingCommonParameterNames = ref<string[]>([])
-const defaultSeedSignature = ref('')
 const draft = reactive({
   name: '',
   commonParameters: {} as Record<string, unknown>,
@@ -148,6 +146,15 @@ const editingShopName = computed(() =>
 const editingShopOverrides = computed(() =>
   editingShopId.value ? (draft.shopOverrides[editingShopId.value] ?? {}) : {},
 )
+const editingShopSchema = computed(() => {
+  const selectedNames = new Set([
+    ...Object.keys(draft.commonParameters),
+    ...Object.keys(editingShopOverrides.value),
+  ])
+  return {
+    fields: props.schema.fields.filter((field) => selectedNames.has(field.name)),
+  }
+})
 
 watch(
   () => props.show,
@@ -188,34 +195,6 @@ watch(
   { immediate: true },
 )
 
-watchEffect(() => {
-  const signature = JSON.stringify(
-    props.schema.fields.map((field) => [
-      field.name,
-      field.required,
-      field.default_value,
-    ]),
-  )
-
-  // A new preset starts with the application's defaults.  Configuration can
-  // arrive after the dialog opens, so seed once for each schema revision;
-  // never seed again after a user removes an optional current-preset field.
-  if (
-    !props.show ||
-    selectedPresetId.value ||
-    !props.schema.fields.length ||
-    defaultSeedSignature.value === signature
-  ) {
-    return
-  }
-
-  draft.commonParameters = {
-    ...createDefaultAutomationParameters(props.schema, draft.commonParameters),
-    ...draft.commonParameters,
-  }
-  defaultSeedSignature.value = signature
-})
-
 function cloneOverrides(
   value: Record<string, Record<string, unknown>>,
 ): Record<string, Record<string, unknown>> {
@@ -229,9 +208,10 @@ function cloneOverrides(
 
 function startCreate(): void {
   selectedPresetId.value = null
-  defaultSeedSignature.value = ''
   draft.name = ''
-  draft.commonParameters = createDefaultAutomationParameters(props.schema)
+  // Application fields are a shared catalog.  A new preset starts with no
+  // optional fields selected; adding a field is an explicit preset fact.
+  draft.commonParameters = {}
   draft.shopOverrides = {}
   draft.expectedVersion = null
   commonParameterQuery.value = ''
@@ -243,7 +223,6 @@ function startCreate(): void {
 
 function applyPreset(preset: AutomationParameterPresetDto): void {
   selectedPresetId.value = preset.preset_id
-  defaultSeedSignature.value = ''
   draft.name = preset.name
   draft.commonParameters = { ...preset.common_parameters }
   draft.shopOverrides = cloneOverrides(preset.shop_overrides)
@@ -538,6 +517,11 @@ function openSchemaConfiguration(): void {
           placeholder="搜索参数"
         />
         <div v-if="fields.length" class="preset-manager__parameter-viewport">
+          <div class="preset-manager__parameter-headings" aria-hidden="true">
+            <span>字段名</span>
+            <span>值</span>
+            <span>移除</span>
+          </div>
           <AutomationParameterFields
             v-model="draft.commonParameters"
             :schema="filteredCommonSchema"
@@ -597,7 +581,7 @@ function openSchemaConfiguration(): void {
     :show="shopOverrideDialogVisible"
     :shop-id="editingShopId"
     :shop-name="editingShopName"
-    :schema="schema"
+    :schema="editingShopSchema"
     :common-parameters="draft.commonParameters"
     :shop-overrides="editingShopOverrides"
     :disabled="schemaLoading"
@@ -669,12 +653,30 @@ function openSchemaConfiguration(): void {
 
 .preset-manager__parameter-viewport {
   /* A compact NForm row includes the control plus its form-item spacing. */
+  --schema-parameter-label-column: var(--field-width-xs);
+  --schema-parameter-action-column: 48px;
   --preset-parameter-row-height: calc(
     var(--control-height-default) + var(--space-8)
   );
   max-height: calc(var(--preset-parameter-row-height) * 5);
   overflow-y: auto;
   padding-right: var(--space-2);
+}
+
+.preset-manager__parameter-headings {
+  display: grid;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  grid-template-columns:
+    var(--schema-parameter-label-column) minmax(0, 1fr)
+    var(--schema-parameter-action-column);
+}
+
+.preset-manager__parameter-headings span:last-child {
+  text-align: center;
 }
 
 .preset-manager__legacy {
@@ -765,6 +767,10 @@ function openSchemaConfiguration(): void {
 
   .preset-manager__add-shop {
     width: 100%;
+  }
+
+  .preset-manager__parameter-headings {
+    display: none;
   }
 }
 </style>

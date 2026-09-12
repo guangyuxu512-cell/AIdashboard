@@ -79,7 +79,7 @@ function displayValue(value: unknown): string {
   <NFormItem
     v-for="field in fields"
     :key="field.name"
-    :label="field.label"
+    :label="layout === 'stacked' ? field.label : undefined"
     :required="field.required"
     :label-placement="layout === 'stacked' ? undefined : 'left'"
     :class="[
@@ -96,6 +96,13 @@ function displayValue(value: unknown): string {
         },
       ]"
     >
+      <span
+        v-if="layout !== 'stacked'"
+        class="schema-parameter-field__label"
+      >
+        {{ field.label }}
+        <span v-if="field.required" aria-hidden="true">*</span>
+      </span>
       <span
         v-if="layout === 'comparison'"
         class="schema-parameter-field__reference"
@@ -173,27 +180,41 @@ function displayValue(value: unknown): string {
   margin-bottom: var(--space-2);
 }
 
-.schema-parameter-fields__item--compact :deep(.n-form-item-label),
-.schema-parameter-fields__item--comparison :deep(.n-form-item-label) {
-  flex: 0 0 var(--field-width-sm);
-  width: var(--field-width-sm);
-  padding-right: var(--space-3);
-}
-
 .schema-parameter-field--comparison {
   display: grid;
   align-items: center;
   gap: var(--space-2);
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr) auto;
+  grid-template-columns:
+    var(--schema-parameter-label-column, var(--field-width-xs))
+    minmax(0, 0.75fr) minmax(0, 1fr)
+    var(--schema-parameter-action-column, 48px);
 }
 
 .schema-parameter-field--compact {
-  flex-direction: row;
+  display: grid;
   align-items: center;
+  gap: var(--space-2);
+  grid-template-columns:
+    var(--schema-parameter-label-column, var(--field-width-xs))
+    minmax(0, 1fr)
+    var(--schema-parameter-action-column, 48px);
 }
 
-.schema-parameter-field--compact .schema-parameter-field__control {
-  flex: 1;
+.schema-parameter-field__label {
+  display: flex;
+  min-width: 0;
+  min-height: var(--control-height-default);
+  align-items: center;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schema-parameter-field__label > span {
+  margin-left: 2px;
+  color: var(--color-error);
 }
 
 .schema-parameter-field__reference {
@@ -206,8 +227,15 @@ function displayValue(value: unknown): string {
 .schema-parameter-field__control {
   display: flex;
   min-width: 0;
+  min-height: var(--control-height-default);
+  justify-content: center;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.schema-parameter-field--compact :deep(.app-button),
+.schema-parameter-field--comparison :deep(.app-button) {
+  justify-self: center;
 }
 
 .schema-parameter-field small {
@@ -217,13 +245,17 @@ function displayValue(value: unknown): string {
 }
 
 @media (max-width: 640px) {
-  .schema-parameter-fields__item--compact :deep(.n-form-item-label),
-  .schema-parameter-fields__item--comparison :deep(.n-form-item-label) {
-    flex-basis: var(--field-width-xs);
-    width: var(--field-width-xs);
+  .schema-parameter-field--comparison {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 
-  .schema-parameter-field--comparison {
+  .schema-parameter-field--comparison .schema-parameter-field__label,
+  .schema-parameter-field--compact .schema-parameter-field__label {
+    grid-column: 1 / -1;
+  }
+
+  .schema-parameter-field--comparison,
+  .schema-parameter-field--compact {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 }
