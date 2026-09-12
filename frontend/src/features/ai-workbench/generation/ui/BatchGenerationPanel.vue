@@ -24,6 +24,7 @@ import {
   type GenerationMode,
   type GenerationOutputRange,
 } from '../model/types'
+import { countGenerationProductSourceAssets } from '../model/product-source-assets'
 import { useAiGenerationStore } from '../model/useAiGenerationStore'
 import BatchExecutionViewer from './BatchExecutionViewer.vue'
 import BatchProductPickerDialog from './BatchProductPickerDialog.vue'
@@ -194,7 +195,7 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
                 v-else
                 :key="product.id"
                 :title="product.name"
-                :count="product.assets.length"
+                :count="`商品原图 ${countGenerationProductSourceAssets(product)}`"
                 :select-label="`查看产品 ${product.name}`"
                 @select="openProductPicker"
               >
@@ -252,7 +253,9 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
 
           <GenerationOutputCompressionSetting
             :model-value="props.outputCompressionEnabled"
-            @update:model-value="emit('update:outputCompressionEnabled', $event)"
+            @update:model-value="
+              emit('update:outputCompressionEnabled', $event)
+            "
           />
 
           <section

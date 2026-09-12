@@ -16,6 +16,7 @@ import {
 } from './instant-execution'
 import { createGenerationObjectUrlRegistry } from './generation-object-url-registry'
 import { getGenerationModeDefinition } from './generation-mode-registry'
+import { getGenerationProductSourceAssets } from './product-source-assets'
 import type {
   BatchExecutionView,
   BatchGenerationDraft,
@@ -341,9 +342,7 @@ export const useAiGenerationStore = defineStore('ai-generation', () => {
     if (!modeEnabled) {
       return { plan: null, issue: preflightIssue(product, 'MODE_DISABLED') }
     }
-    const productSources = product.assets.filter(
-      (asset) => asset.role === 'PRODUCT_SOURCE',
-    )
+    const productSources = getGenerationProductSourceAssets(product.assets)
     if (productSources.length === 0) {
       return {
         plan: null,

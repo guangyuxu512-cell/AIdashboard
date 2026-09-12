@@ -42,6 +42,10 @@ import {
   type GenerationTemplateGroupView,
 } from '../model/types'
 import { toGenerationAssetDownloadRequests } from '../model/download'
+import {
+  countGenerationProductSourceAssets,
+  getGenerationProductSourceAssets,
+} from '../model/product-source-assets'
 import { useAiWorkbenchSessionStore } from '../model/useAiWorkbenchSessionStore'
 import type { WorkbenchModelView } from '../../real-api/model/mappers'
 import { mapBatchExecution } from '../../real-api/model/mappers'
@@ -127,9 +131,7 @@ const preflight = computed<BatchPreflightView>(() => {
   const plans: BatchPreflightView['plans'] = []
   const modelLimit = selectedModel.value?.maxInputImages
   for (const product of scopedProducts.value) {
-    const productSources = product.assets.filter(
-      (asset) => asset.role === 'PRODUCT_SOURCE',
-    )
+    const productSources = getGenerationProductSourceAssets(product.assets)
     const styleReferences = product.assets.filter(
       (asset) => asset.role === 'STYLE_REFERENCE',
     )
@@ -585,7 +587,7 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
                 v-else
                 :key="product.id"
                 :title="product.name"
-                :count="product.assets.length"
+                :count="`商品原图 ${countGenerationProductSourceAssets(product)}`"
                 :select-label="`查看产品 ${product.name}`"
                 @select="productPickerVisible = productScope === 'SELECTED'"
               >

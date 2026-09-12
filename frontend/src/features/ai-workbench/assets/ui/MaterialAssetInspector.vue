@@ -8,6 +8,7 @@ import {
   type MaterialAssetReference,
   type MaterialRole,
 } from '../model/types'
+import { assetPreviewTimeoutMs } from '@/entities/asset/api/asset-api'
 import { AssetContentImage } from '@/entities/asset'
 import { GENERATION_MODE_META } from '../../shared/model/generation-mode'
 import StatusTag from '@/shared/components/StatusTag.vue'
@@ -74,18 +75,17 @@ function updateRole(value: string | number | null): void {
       </AppButton>
     </div>
 
-    <button
-      class="material-asset-inspector__preview"
-      type="button"
-      :aria-label="`预览 ${asset.name}`"
-      @click="$emit('preview', asset)"
-    >
+    <div class="material-asset-inspector__preview">
       <AssetContentImage
         :src="asset.previewUrl"
+        :fallback-src="asset.thumbnailUrl"
         :alt="asset.name"
         loading="eager"
+        :timeout-ms="assetPreviewTimeoutMs"
+        interactive
+        @activate="$emit('preview', asset)"
       />
-    </button>
+    </div>
 
     <strong class="material-asset-inspector__filename" :title="asset.name">
       {{ asset.name }}
@@ -170,18 +170,21 @@ function updateRole(value: string | number | null): void {
 }
 
 .material-asset-inspector__preview {
-  display: block;
+  display: grid;
   width: 100%;
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
-  cursor: zoom-in;
   background: var(--bg-subtle);
   aspect-ratio: 4 / 3;
 }
 
-.material-asset-inspector__preview img {
+.material-asset-inspector__preview :deep(.asset-content-image[role='button']) {
+  cursor: zoom-in;
+}
+
+.material-asset-inspector__preview :deep(img) {
   display: block;
   width: 100%;
   height: 100%;
