@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -45,19 +45,28 @@ def get_service(
     return AutomationParameterPresetService(session)
 
 
-@management_router.get("", response_model=Page[AutomationParameterPresetRead])
+@management_router.get(
+    "",
+    response_model=Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead],
+    description="Without page/page_size returns the legacy array; either pagination parameter opts into Page. Invalid or empty values return 422.",
+)
 def list_all_presets(
+    request: Request,
     actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[AutomationParameterPresetService, Depends(get_service)],
     pagination: Annotated[PaginationParams, Depends()],
     app_id: str | None = Query(default=None, min_length=1, max_length=200),
     q: str | None = Query(default=None, min_length=1, max_length=100),
-) -> Page[AutomationParameterPresetRead]:
+) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
     return service.list_all(
         actor=actor,
         app_id=app_id,
         name_query=q.strip() if q is not None else None,
-        pagination=pagination,
+        pagination=(
+            pagination
+            if "page" in request.query_params or "page_size" in request.query_params
+            else None
+        ),
     )
 
 

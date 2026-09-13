@@ -78,6 +78,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    volumes:
+      - type: bind
+        source: /opt/ecommerce-control-center/production/pc-static-assets/public
+        target: /var/lib/control-center-static
+        read_only: true
+        bind:
+          create_host_path: false
     network_mode: host
     restart: unless-stopped
     init: true

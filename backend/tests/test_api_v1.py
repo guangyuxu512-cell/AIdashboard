@@ -312,12 +312,13 @@ class ApiAutomationApplicationCatalogService:
 
 class ApiAutomationParameterPresetService:
     preset_id = uuid4()
+    timestamp = datetime.now(UTC)
     last_create: AutomationParameterPresetCreate | None = None
     remove_reference_types: tuple[str, ...] = ()
 
     @classmethod
     def read(cls, *, app_id: str, name: str) -> AutomationParameterPresetRead:
-        now = datetime.now(UTC)
+        now = cls.timestamp
         return AutomationParameterPresetRead(
             preset_id=cls.preset_id,
             team_id=TEAM_ID,
@@ -374,11 +375,13 @@ class ApiAutomationParameterPresetService:
         actor: ActorContext,
         app_id: str | None = None,
         name_query: str | None = None,
-        pagination: PaginationParams,
-    ) -> Page[AutomationParameterPresetRead]:
+        pagination: PaginationParams | None,
+    ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
         assert actor == API_ACTOR
         app = app_id or "preset-api-app"
         name = "日常采集" if name_query else "默认预设"
+        if pagination is None:
+            return [self.read(app_id=app, name=name)]
         return Page(
             items=[self.read(app_id=app, name=name)],
             total=1,
@@ -1121,7 +1124,7 @@ def test_automation_parameter_preset_management_catalog_contract() -> None:
     presets_response = request(
         "GET",
         "/api/v1/automation-parameter-presets",
-        params={"app_id": "preset-api-app", "q": "日常"},
+        params={"app_id": "preset-api-app", "q": "日常", "page": 1},
     )
 
     assert applications_response.status_code == 200
@@ -1134,6 +1137,32 @@ def test_automation_parameter_preset_management_catalog_contract() -> None:
     assert presets_response.json()["total"] == 1
     assert presets_response.json()["page"] == 1
     assert presets_response.json()["page_size"] == 20
+
+
+def test_preset_list_legacy_array_and_explicit_pagination_contract() -> None:
+    path = "/api/v1/automation-parameter-presets"
+    filters = {"app_id": "preset-api-app", "q": "日常"}
+    legacy = request("GET", path, params=filters)
+    assert legacy.status_code == 200
+    assert isinstance(legacy.json(), list)
+    for paging in ({"page": 1}, {"page_size": 20}, {"page": 1, "page_size": 20}):
+        paged = request("GET", path, params={**filters, **paging})
+        assert paged.status_code == 200
+        assert paged.json()["items"] == legacy.json()
+    for paging in (
+        {"page": ""}, {"page_size": ""}, {"page": "invalid"},
+        {"page": "0"}, {"page_size": "101"}, {"page_size": "-1"},
+    ):
+        invalid = request("GET", path, params={**filters, **paging})
+        assert invalid.status_code == 422
+        assert invalid.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_preset_list_openapi_describes_both_response_shapes() -> None:
+    schema = create_app().openapi()
+    response_schema = schema["paths"]["/api/v1/automation-parameter-presets"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert any(option.get("type") == "array" for option in response_schema["anyOf"])
+    assert any("Page" in option.get("$ref", "") for option in response_schema["anyOf"])
 
 
 def test_automation_application_config_api_rejects_duplicate_or_invalid_names() -> None:

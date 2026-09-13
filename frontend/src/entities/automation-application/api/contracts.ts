@@ -73,5 +73,6 @@ export interface AutomationParameterPresetListParams {
   pageSize?: number
 }
 
+/** Explicit page/page_size opts into Page; unpaged legacy HTTP callers receive AutomationParameterPresetDto[]. */
 export type AutomationParameterPresetPageDto =
   PageDto<AutomationParameterPresetDto>

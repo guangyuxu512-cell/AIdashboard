@@ -4,6 +4,7 @@ import { createApp, watch } from 'vue'
 
 import App from './App.vue'
 import router from './app/router'
+import { installClientUpdateDetection } from './app/client-update'
 import { installAuthGuard } from './app/router/auth-guard'
 import {
   queryClient,
@@ -67,6 +68,7 @@ configureHumanRequestContext({
   },
 })
 installAuthGuard(router, pinia)
+installClientUpdateDetection(router)
 app.use(router)
 app.use(VueQueryPlugin, { queryClient })
 useThemeStore(pinia).initialize()

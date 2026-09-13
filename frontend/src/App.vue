@@ -14,6 +14,7 @@ import {
 import { RouterView, useRoute } from 'vue-router'
 
 import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
+import ClientUpdateNotice from '@/app/ClientUpdateNotice.vue'
 import { getNavigationEntries } from '@/app/modules/registry'
 import AppShell from '@/shared/components/AppShell.vue'
 import CurrentUserMenu from '@/features/human-auth/ui/CurrentUserMenu.vue'
@@ -58,6 +59,7 @@ const naiveThemeOverrides = computed(() =>
       <NDialogProvider :to="APP_OVERLAY_HOST_SELECTOR">
         <NNotificationProvider>
           <NMessageProvider>
+            <ClientUpdateNotice />
             <div v-if="isAuthLayout" class="auth-layout">
               <RouterView />
             </div>

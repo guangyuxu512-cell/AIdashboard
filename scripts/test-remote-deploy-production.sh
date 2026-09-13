@@ -157,6 +157,7 @@ touch \
     "$migration_source/deploy/production/compose.yaml" \
     "$migration_source/deploy/production/host-nginx.conf.template"
 cp "$repository_root/scripts/production-env.sh" "$migration_source/scripts/production-env.sh"
+cp "$repository_root/deploy/production/pc-static-assets.sh" "$migration_source/deploy/production/pc-static-assets.sh"
 
 test_certificate="$test_root/fullchain.pem"
 test_certificate_key="$test_root/privkey.pem"
@@ -203,6 +204,8 @@ cat > "$fake_bin/docker" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$TEST_DOCKER_LOG"
+if [[ "$1" == create ]]; then printf 'fixture-export-container\n'; fi
+if [[ "$1" == cp ]]; then printf 'console.log("fixture")\n' > "$3/index-12345678.js"; fi
 if [[ "$*" == *" run --rm backend python -m alembic upgrade head" ]]; then
     exit 61
 fi

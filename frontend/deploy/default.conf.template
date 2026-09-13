@@ -53,7 +53,31 @@ server {
         try_files $uri $uri/ /mobile/index.html;
     }
 
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        try_files $uri =404;
+    }
+
+    location ^~ /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri @retained_pc_asset;
+    }
+
+    location @retained_pc_asset {
+        root /var/lib/control-center-static;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    location ~* \.(?:js|mjs|css)$ {
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
     location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         try_files $uri $uri/ /index.html;
     }
 }
