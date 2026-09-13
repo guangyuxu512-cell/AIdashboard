@@ -1,6 +1,5 @@
 import { app, BrowserWindow, session, type Session } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
 import type {
@@ -17,9 +16,10 @@ import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
 import { PddPlatformAuthAdapter } from './pdd-platform-auth-adapter'
 import { shouldPreserveCapturedLogin } from './management-login-lifecycle'
 import {
-  parseManagementLoginProfile,
+  ManagementLoginProfileStore,
   resolveManagementLoginPartition,
 } from './management-login-profile'
+import type { ManagementLoginProfileMappingStore } from './management-login-profile'
 import type {
   CapturedManagementSession,
   PlatformAuthAdapter,
@@ -78,6 +78,7 @@ export class ManagementLoginService {
   private readonly attempts = new Map<string, LoginAttempt>()
   private readonly backendBaseUrl: string
   private readonly allowDevTools: boolean
+  private readonly profileMappingStore: ManagementLoginProfileMappingStore
   private readonly adapters = new Map<ManagementLoginPlatform, PlatformAuthAdapter>([
     ['douyin', new DouyinPlatformAuthAdapter()],
     ['pdd', new PddPlatformAuthAdapter()],
@@ -86,12 +87,18 @@ export class ManagementLoginService {
   constructor(options?: {
     backendBaseUrl?: string
     allowDevTools?: boolean
+    profileMappingStore?: ManagementLoginProfileMappingStore
   }) {
     this.backendBaseUrl =
       options?.backendBaseUrl ??
       process.env.CONTROL_CENTER_BACKEND_URL ??
       'http://127.0.0.1:8000/'
     this.allowDevTools = options?.allowDevTools ?? true
+    this.profileMappingStore =
+      options?.profileMappingStore ??
+      new ManagementLoginProfileStore(() =>
+        path.join(app.getPath('userData'), 'management-login-profiles.json'),
+      )
   }
 
   async open(
@@ -347,20 +354,16 @@ export class ManagementLoginService {
     ) {
       throw new Error('服务器返回的接入结果不完整')
     }
-    await this.saveProfileMapping(
-      result.shop.shop_id,
-      attempt.platform,
-      attempt.partition,
+    const profileMappingWarning =
+      await this.saveProfileMappingAfterServerSuccess(
+        attempt,
+        result.shop.shop_id,
+        '服务器已完成店铺接入',
+      )
+    this.finishCompletedAttempt(
+      attempt,
+      profileMappingWarning ?? '店铺接入成功',
     )
-    attempt.status = 'completed'
-    attempt.message = '店铺接入成功'
-    if (attempt.window && !attempt.window.isDestroyed()) {
-      attempt.systemCloseRequested = true
-      attempt.window.close()
-    }
-    this.clearCapturedSession(attempt)
-    this.clearAttemptTimeout(attempt)
-    this.attempts.delete(attempt.attemptId)
     return {
       shopId: result.shop.shop_id,
       platformShopId: result.shop.platform_shop_id,
@@ -369,6 +372,7 @@ export class ManagementLoginService {
       sessionStatus: result.session.status,
       sessionVersion: result.session.version,
       sessionCapturedAt: result.session.captured_at,
+      profileMappingWarning,
     }
   }
 
@@ -402,26 +406,23 @@ export class ManagementLoginService {
     ) {
       throw new Error('服务器返回的 Session 恢复结果不完整')
     }
-    await this.saveProfileMapping(
-      result.shop_id,
-      attempt.platform,
-      attempt.partition,
+    const profileMappingWarning =
+      await this.saveProfileMappingAfterServerSuccess(
+        attempt,
+        result.shop_id,
+        '服务器已恢复并验证登录会话',
+      )
+    this.finishCompletedAttempt(
+      attempt,
+      profileMappingWarning ?? '登录会话已恢复并验证有效',
     )
-    attempt.status = 'completed'
-    attempt.message = '登录会话已恢复并验证有效'
-    if (attempt.window && !attempt.window.isDestroyed()) {
-      attempt.systemCloseRequested = true
-      attempt.window.close()
-    }
-    this.clearCapturedSession(attempt)
-    this.clearAttemptTimeout(attempt)
-    this.attempts.delete(attempt.attemptId)
     return {
       shopId: result.shop_id,
       status: result.status,
       sessionVersion: result.version,
       validatedAt: result.validated_at,
       cookieUpdatesApplied: result.cookie_updates_applied,
+      profileMappingWarning,
     }
   }
 
@@ -468,6 +469,18 @@ export class ManagementLoginService {
   private clearCapturedSession(attempt: LoginAttempt): void {
     attempt.capturedSession?.payload.fill(0)
     attempt.capturedSession = null
+  }
+
+  private finishCompletedAttempt(attempt: LoginAttempt, message: string): void {
+    attempt.status = 'completed'
+    attempt.message = message
+    if (attempt.window && !attempt.window.isDestroyed()) {
+      attempt.systemCloseRequested = true
+      attempt.window.close()
+    }
+    this.clearCapturedSession(attempt)
+    this.clearAttemptTimeout(attempt)
+    this.attempts.delete(attempt.attemptId)
   }
 
   private armAttemptTimeout(attempt: LoginAttempt): void {
@@ -571,19 +584,7 @@ export class ManagementLoginService {
     shopId: string,
     platform: ManagementLoginPlatform,
   ) {
-    const filePath = path.join(
-      app.getPath('userData'),
-      'management-login-profiles.json',
-    )
-    try {
-      const mappings = JSON.parse(await fs.readFile(filePath, 'utf8')) as Record<
-        string,
-        unknown
-      >
-      return parseManagementLoginProfile(mappings[shopId], platform)
-    } catch {
-      return null
-    }
+    return this.profileMappingStore.load(shopId, platform)
   }
 
   private async saveProfileMapping(
@@ -591,23 +592,20 @@ export class ManagementLoginService {
     platform: ManagementLoginPlatform,
     partition: string,
   ): Promise<void> {
-    const filePath = path.join(
-      app.getPath('userData'),
-      'management-login-profiles.json',
-    )
-    let mappings: Record<string, unknown> = {}
+    await this.profileMappingStore.save(shopId, platform, partition)
+  }
+
+  private async saveProfileMappingAfterServerSuccess(
+    attempt: LoginAttempt,
+    shopId: string,
+    serverSuccessMessage: string,
+  ): Promise<string | null> {
     try {
-      mappings = JSON.parse(await fs.readFile(filePath, 'utf8')) as Record<
-        string,
-        unknown
-      >
-    } catch {
-      mappings = {}
+      await this.saveProfileMapping(shopId, attempt.platform, attempt.partition)
+      return null
+    } catch (error) {
+      return `${serverSuccessMessage}，但本机登录环境映射未保存；下次恢复需要重新登录（${safeErrorMessage(error)}）`
     }
-    mappings[shopId] = { platform, partition, updatedAt: new Date().toISOString() }
-    const temporaryPath = `${filePath}.tmp`
-    await fs.writeFile(temporaryPath, JSON.stringify(mappings, null, 2), 'utf8')
-    await fs.rename(temporaryPath, filePath)
   }
 }
 

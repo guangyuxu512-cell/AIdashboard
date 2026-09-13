@@ -30,6 +30,7 @@ declare global {
     sessionStatus: 'captured'
     sessionVersion: number
     sessionCapturedAt: string
+    profileMappingWarning: string | null
   }
 
   interface Window {
@@ -61,6 +62,7 @@ declare global {
           sessionVersion: number
           validatedAt: string
           cookieUpdatesApplied: number
+          profileMappingWarning: string | null
         }>
         close(attemptId: string): Promise<void>
       }

@@ -63,7 +63,9 @@ Payload 不经过 Renderer，不提供读取 API，也不记录日志。Electron
 persist:management-login-<login_attempt_id>
 ```
 
-Electron 按 Chromium persistent session 规范把实际 Profile 保存在应用 `userData` 私有目录，而不是 Git 仓库、系统 Chrome Profile 或 `frontend/public`。成功后，本地 `management-login-profiles.json` 只保存 `shop_id → partition` 映射；完整 Profile 永不上传服务器。
+Electron 按 Chromium persistent session 规范把实际 Profile 保存在应用 `userData` 私有目录，而不是 Git 仓库、系统 Chrome Profile 或 `frontend/public`。成功后，本地 `management-login-profiles.json` 只保存 `shop_id → partition` 映射；完整 Profile 永不上传服务器。映射只在文件不存在时初始化为空；损坏、结构无效或无法读取时必须保留原文件并报错，写入以临时文件替换且同一 Main 内串行化多店读改写。
+
+首次接入或 Session 恢复的 Backend 已成功后，如本机映射写入失败，接入/恢复仍视为成功并清理该次尝试，响应通过 `profileMappingWarning` 明示本机恢复环境未保存；Renderer 不得将其显示为可重发的业务失败。用户下次恢复时按无本机 Profile 的人工登录路径继续。
 
 ## 6. 安全 IPC
 

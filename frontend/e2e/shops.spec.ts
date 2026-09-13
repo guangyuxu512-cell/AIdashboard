@@ -444,6 +444,7 @@ test('reuses Management Profile, shows recovery progress and refreshes version',
             sessionVersion: 4,
             validatedAt: '2026-08-22T00:20:00+08:00',
             cookieUpdatesApplied: 0,
+            profileMappingWarning: null,
           }
         },
         async complete() {
@@ -573,6 +574,8 @@ test('drives the Management Login onboarding through typed Electron state', asyn
             sessionStatus: 'captured',
             sessionVersion: 1,
             sessionCapturedAt: '2026-08-21T12:00:00Z',
+            profileMappingWarning:
+              '服务器已完成店铺接入，但本机登录环境映射未保存；下次恢复需要重新登录',
           }
         },
         async refresh() {
@@ -582,6 +585,7 @@ test('drives the Management Login onboarding through typed Electron state', asyn
             sessionVersion: 2,
             validatedAt: '2026-08-21T12:05:00Z',
             cookieUpdatesApplied: 0,
+            profileMappingWarning: null,
           }
         },
         async close() {},
@@ -605,7 +609,7 @@ test('drives the Management Login onboarding through typed Electron state', asyn
   const options = page.locator('.n-base-select-option')
   await expect(options.filter({ hasText: '抖店' })).toBeVisible()
   await expect(options.filter({ hasText: '拼多多' })).toBeVisible()
-  await expect(options.filter({ hasText: '拼多多' })).toHaveClass(/--disabled/)
+  await expect(options.filter({ hasText: '拼多多' })).not.toHaveClass(/--disabled/)
   await expect(options.filter({ hasText: '淘宝' })).toHaveClass(/--disabled/)
   await expect(options.filter({ hasText: '视频号' })).toHaveClass(/--disabled/)
   await options.filter({ hasText: '抖店' }).click()
@@ -626,6 +630,9 @@ test('drives the Management Login onboarding through typed Electron state', asyn
   await page.getByRole('button', { name: '完成接入' }).click()
   await expect(page.getByText('接入成功', { exact: true })).toBeVisible()
   await expect(page.getByText('138****8888')).toBeVisible()
+  await expect(
+    page.getByText('服务器已完成店铺接入，但本机登录环境映射未保存；下次恢复需要重新登录'),
+  ).toBeVisible()
 })
 
 test('renders compact Shop and Device pages in light and dark themes', async ({
