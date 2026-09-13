@@ -1,6 +1,7 @@
 export {
   desktopIpcChannels,
   isDesktopResolvedTheme,
+  isManagementLoginPlatform,
   isManagementLoginCompleteInput,
   isManagementLoginOpenInput,
   isUuid,

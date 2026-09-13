@@ -371,6 +371,13 @@ function updateShow(show: boolean): void {
           <h3>接入成功</h3>
           <p>店铺、加密凭证与加密 Session 已由服务器一致保存。</p>
         </div>
+        <NAlert
+          v-if="completedResult?.profileMappingWarning"
+          type="warning"
+          :bordered="true"
+        >
+          {{ completedResult.profileMappingWarning }}
+        </NAlert>
         <NDescriptions :column="1" label-placement="left" bordered>
           <NDescriptionsItem label="平台店铺名称">
             {{ completedResult?.shopDisplayName ?? '—' }}
