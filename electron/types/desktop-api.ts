@@ -51,6 +51,7 @@ export interface ManagementLoginCompleteResult {
   sessionStatus: 'captured'
   sessionVersion: number
   sessionCapturedAt: string
+  profileMappingWarning: string | null
 }
 
 export interface ManagementLoginRefreshResult {
@@ -59,6 +60,7 @@ export interface ManagementLoginRefreshResult {
   sessionVersion: number
   validatedAt: string
   cookieUpdatesApplied: number
+  profileMappingWarning: string | null
 }
 
 export const desktopIpcChannels = {

@@ -181,7 +181,11 @@ async function recoverSession(): Promise<void> {
         )
         await sessionQuery.refetch()
         emit('sessionUpdated')
-        message.success(`登录会话已恢复并验证有效 · v${result.sessionVersion}`)
+        if (result.profileMappingWarning) {
+          message.warning(result.profileMappingWarning)
+        } else {
+          message.success(`登录会话已恢复并验证有效 · v${result.sessionVersion}`)
+        }
       },
       onError(error) {
         recovering.value = false
