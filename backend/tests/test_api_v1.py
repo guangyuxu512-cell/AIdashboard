@@ -32,6 +32,7 @@ from app.modules.automation_apps.presets_api import (
 from app.modules.automation_apps.presets_api import (
     get_service as get_parameter_preset_service,
 )
+from app.shared.pagination import Page, PaginationParams
 from app.modules.devices.api import (
     get_device_authorized_actor,
     get_device_service,
@@ -373,11 +374,17 @@ class ApiAutomationParameterPresetService:
         actor: ActorContext,
         app_id: str | None = None,
         name_query: str | None = None,
-    ) -> list[AutomationParameterPresetRead]:
+        pagination: PaginationParams,
+    ) -> Page[AutomationParameterPresetRead]:
         assert actor == API_ACTOR
         app = app_id or "preset-api-app"
         name = "日常采集" if name_query else "默认预设"
-        return [self.read(app_id=app, name=name)]
+        return Page(
+            items=[self.read(app_id=app, name=name)],
+            total=1,
+            page=pagination.page,
+            page_size=pagination.page_size,
+        )
 
     def create(
         self,
@@ -1122,8 +1129,11 @@ def test_automation_parameter_preset_management_catalog_contract() -> None:
         {"app_id": "preset-api-app", "app_name": "参数预设测试应用"},
     ]
     assert presets_response.status_code == 200
-    assert presets_response.json()[0]["app_id"] == "preset-api-app"
-    assert presets_response.json()[0]["name"] == "日常采集"
+    assert presets_response.json()["items"][0]["app_id"] == "preset-api-app"
+    assert presets_response.json()["items"][0]["name"] == "日常采集"
+    assert presets_response.json()["total"] == 1
+    assert presets_response.json()["page"] == 1
+    assert presets_response.json()["page_size"] == 20
 
 
 def test_automation_application_config_api_rejects_duplicate_or_invalid_names() -> None:

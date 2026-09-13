@@ -4,7 +4,10 @@ import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BusinessSkillCatalogItemViewModel } from '@/entities/business-skill'
-import { AutomationParameterPresetSelector } from '@/entities/automation-application'
+import {
+  AutomationParameterFields,
+  AutomationParameterPresetSelector,
+} from '@/entities/automation-application'
 import type { ScheduleDetailViewModel } from '@/entities/schedule'
 import { ShopMultiSelector } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
@@ -289,6 +292,132 @@ describe('ScheduleFormDialog Business Skill target', () => {
       scheduleType: 'weekly',
       localDate: null,
       weekdays: [1, 3, 5],
+    })
+  })
+
+  it('requires an explicit preset or manual choice for a new Yingdao schedule', async () => {
+    ;(
+      queryMocks.inventory as {
+        data: { value: { applications: Array<Record<string, string>> } }
+      }
+    ).data.value = {
+      applications: [
+        {
+          appId: 'legacy-template-app',
+          appName: '旧模板应用',
+          versionId: '1',
+        },
+      ],
+    }
+    ;(
+      queryMocks.config as {
+        data: { value: { input_schema: { fields: Array<Record<string, unknown>> } } }
+      }
+    ).data.value = {
+      input_schema: {
+        fields: [
+          {
+            name: '页码',
+            label: '页码',
+            type: 'number',
+            required: false,
+            default_value: 1,
+            options: [],
+          },
+        ],
+      },
+    }
+    const wrapper = mountDialog()
+    const selects = wrapper.findAllComponents(AppSelect)
+    selects[0]!.vm.$emit('update:modelValue', 'device-1')
+    await flushPromises()
+    const applicationSelect = wrapper
+      .findAllComponents(AppSelect)
+      .find((select) => select.props('placeholder')?.includes('当前设备可访问的应用'))
+    expect(applicationSelect).toBeDefined()
+    applicationSelect!.vm.$emit('update:modelValue', 'legacy-template-app')
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '新建影刀计划')
+    await flushPromises()
+
+    const dialog = wrapper.findComponent(FormDialog)
+    expect(dialog.props('submitDisabledReason')).toBe(
+      '请选择参数配置，或选择本次手动参数',
+    )
+    expect(wrapper.findComponent(AutomationParameterFields).exists()).toBe(false)
+
+    wrapper
+      .findComponent(AutomationParameterPresetSelector)
+      .vm.$emit('update:manualMode', true)
+    await flushPromises()
+    const parameters = wrapper.findComponent(AutomationParameterFields)
+    expect(parameters.exists()).toBe(true)
+    parameters.vm.$emit('update:modelValue', { 页码: 2 })
+    await flushPromises()
+
+    expect(dialog.props('submitDisabled')).toBe(false)
+    dialog.vm.$emit('submit')
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      applicationId: 'legacy-template-app',
+      parameterPresetId: null,
+      parameters: { 页码: 2 },
+    })
+  })
+
+  it('keeps a historical manual Yingdao schedule editable', async () => {
+    ;(
+      queryMocks.inventory as {
+        data: { value: { applications: Array<Record<string, string>> } }
+      }
+    ).data.value = {
+      applications: [
+        {
+          appId: 'legacy-template-app',
+          appName: '旧模板应用',
+          versionId: '1',
+        },
+      ],
+    }
+    ;(
+      queryMocks.config as {
+        data: { value: { input_schema: { fields: Array<Record<string, unknown>> } } }
+      }
+    ).data.value = {
+      input_schema: {
+        fields: [
+          {
+            name: '页码',
+            label: '页码',
+            type: 'number',
+            required: false,
+            default_value: 1,
+            options: [],
+          },
+        ],
+      },
+    }
+    const legacySchedule: ScheduleDetailViewModel = {
+      ...savedSchedule,
+      executionType: 'yingdao_application',
+      executionTypeDisplay: '影刀应用',
+      skillId: '',
+      applicationId: 'legacy-template-app',
+      parameterPresetId: null,
+      parameters: { 页码: 3 },
+    }
+    const wrapper = shallowMount(ScheduleFormDialog, {
+      props: {
+        show: true,
+        mode: 'edit',
+        schedule: legacySchedule,
+        deviceOptions: [{ label: '设备一', value: 'device-1' }],
+      },
+      global: { renderStubDefaultSlot: true },
+    })
+    await flushPromises()
+
+    expect(wrapper.findComponent(AutomationParameterFields).exists()).toBe(true)
+    expect(wrapper.findComponent(AutomationParameterFields).props('modelValue')).toEqual({
+      页码: 3,
     })
   })
 })

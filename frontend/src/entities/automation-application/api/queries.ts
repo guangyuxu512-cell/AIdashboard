@@ -18,6 +18,8 @@ export const automationApplicationQueryKeys = {
       'list',
       params.appId ?? null,
       params.query?.trim() || null,
+      params.page ?? 1,
+      params.pageSize ?? 20,
     ] as const,
   yingdaoApplications: [
     'automation-app-configs',
@@ -54,10 +56,6 @@ function updatePresetCaches(
     automationApplicationQueryKeys.presets(preset.app_id),
     (current) => mergePreset(current, preset, { append: true }),
   )
-  queryClient.setQueriesData<AutomationParameterPresetDto[]>(
-    { queryKey: automationApplicationQueryKeys.allPresets },
-    (current) => mergePreset(current, preset, { append: false }),
-  )
 }
 
 function refreshPresetLists(
@@ -87,10 +85,6 @@ function removePresetFromCaches(
 ): void {
   queryClient.setQueryData<AutomationParameterPresetDto[]>(
     automationApplicationQueryKeys.presets(preset.app_id),
-    (current) => current?.filter((item) => item.preset_id !== preset.preset_id),
-  )
-  queryClient.setQueriesData<AutomationParameterPresetDto[]>(
-    { queryKey: automationApplicationQueryKeys.allPresets },
     (current) => current?.filter((item) => item.preset_id !== preset.preset_id),
   )
 }

@@ -41,6 +41,7 @@ const shopOptionsQuery = useDeviceShopSelectionOptionsQuery(
 const shopOptions = computed(() => shopOptionsQuery.data.value ?? [])
 const params = ref<Record<string, unknown>>({})
 const parameterPresetId = ref<string | null>(null)
+const manualParameters = ref(false)
 const hasConfigData = computed(() => configQuery.data.value !== undefined)
 const configInitialLoading = computed(
   () => configQuery.isPending.value && !hasConfigData.value,
@@ -55,6 +56,10 @@ const runDisabledReason = computed(() => {
   if (configInitialError.value) return '参数配置加载失败，暂时无法运行'
   const schema = configQuery.data.value?.input_schema ?? { fields: [] }
   if (parameterPresetId.value) return null
+  if (!schema.fields.length) return null
+  if (!manualParameters.value) {
+    return '请选择参数配置，或选择本次手动参数'
+  }
   return validateAutomationParameters(schema, params.value)
 })
 
@@ -63,9 +68,8 @@ watch(
     () => props.show,
     () => props.application?.appId,
     () => props.deviceId,
-    () => configQuery.data.value,
   ],
-  ([show, applicationId, deviceId, config], previous) => {
+  ([show, applicationId, deviceId], previous) => {
     if (!show) return
     if (
       previous &&
@@ -76,12 +80,26 @@ watch(
       return
     }
     parameterPresetId.value = null
-    params.value = createDefaultAutomationParameters(
-      config?.input_schema ?? { fields: [] },
-    )
+    manualParameters.value = false
+    params.value = {}
   },
   { immediate: true },
 )
+
+function changeParameterPreset(value: string | null): void {
+  parameterPresetId.value = value
+  if (value) manualParameters.value = false
+}
+
+function changeManualParameters(value: boolean): void {
+  manualParameters.value = value
+  if (!value) return
+  parameterPresetId.value = null
+  params.value = createDefaultAutomationParameters(
+    configQuery.data.value?.input_schema ?? { fields: [] },
+    params.value,
+  )
+}
 
 watch(
   [
@@ -162,15 +180,18 @@ async function run(): Promise<void> {
         />
       </NFormItem>
       <AutomationParameterPresetSelector
-        v-model="parameterPresetId"
+        :model-value="parameterPresetId"
         :app-id="appId"
         :shop-ids="shopIds"
         :shop-options="shopOptions"
         :schema="configQuery.data.value?.input_schema ?? { fields: [] }"
+        :manual-mode="manualParameters"
         :disabled="configInitialLoading"
+        @update:model-value="changeParameterPreset"
+        @update:manual-mode="changeManualParameters"
       />
       <AutomationParameterFields
-        v-if="!parameterPresetId"
+        v-if="manualParameters && !parameterPresetId"
         v-model="params"
         :schema="configQuery.data.value?.input_schema ?? { fields: [] }"
       />

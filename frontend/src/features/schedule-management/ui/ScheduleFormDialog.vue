@@ -97,6 +97,7 @@ const initializedKey = ref('')
 const parameterSourceKey = ref('')
 const shopSelectionKey = ref('')
 const shouldDefaultShops = ref(false)
+const manualParameters = ref(false)
 const isYingdao = computed(
   () => form.executionType === 'yingdao_application',
 )
@@ -200,6 +201,10 @@ const disabledReason = computed(() => {
     if (configInitialLoading.value) return '正在读取应用参数配置'
     if (configInitialError.value) return '应用参数配置读取失败'
     if (form.parameterPresetId) return null
+    if (!applicationSchema.value.fields.length) return null
+    if (!manualParameters.value) {
+      return '请选择参数配置，或选择本次手动参数'
+    }
     const error = validateAutomationParameters(
       applicationSchema.value,
       form.parameters,
@@ -254,6 +259,10 @@ watch(
     form.executionType = schedule?.executionType ?? 'yingdao_application'
     form.applicationId = schedule?.applicationId ?? null
     form.parameterPresetId = schedule?.parameterPresetId ?? null
+    manualParameters.value = Boolean(
+      schedule?.executionType === 'yingdao_application' &&
+        !schedule.parameterPresetId,
+    )
     form.skillId =
       schedule?.executionType === 'business_skill' ? schedule.skillId : null
     form.scheduleType = schedule?.scheduleType ?? 'daily'
@@ -317,8 +326,10 @@ watch(
         : props.schedule.skillId === skillId)
     const existing = editingCurrentTarget ? props.schedule.parameters : {}
     form.parameters =
-      executionType === 'yingdao_application' && config
-        ? createDefaultAutomationParameters(config.input_schema, existing)
+      executionType === 'yingdao_application'
+        ? manualParameters.value && config
+          ? createDefaultAutomationParameters(config.input_schema, existing)
+          : existing
         : createDefaultSchemaParameters(skill?.parameterFields ?? [], existing)
     parameterSourceKey.value = sourceKey
   },
@@ -349,6 +360,7 @@ function changeExecutionType(value: AppOptionValue | null): void {
 function changeApplication(value: AppOptionValue | null): void {
   form.applicationId = value as string | null
   form.parameterPresetId = null
+  manualParameters.value = false
   form.parameters = {}
   parameterSourceKey.value = ''
 }
@@ -356,9 +368,21 @@ function changeApplication(value: AppOptionValue | null): void {
 function changeParameterPreset(value: string | null): void {
   const previous = form.parameterPresetId
   form.parameterPresetId = value
-  if (previous && !value) {
-    form.parameters = createDefaultAutomationParameters(applicationSchema.value)
+  if (value) {
+    manualParameters.value = false
+    return
   }
+  if (previous) changeManualParameters(true)
+}
+
+function changeManualParameters(value: boolean): void {
+  manualParameters.value = value
+  if (!value) return
+  form.parameterPresetId = null
+  form.parameters = createDefaultAutomationParameters(
+    applicationSchema.value,
+    form.parameters,
+  )
 }
 
 function changeBusinessSkill(value: AppOptionValue | null): void {
@@ -377,6 +401,7 @@ function changeScheduleType(value: AppOptionValue | null): void {
 function resetTarget(): void {
   form.applicationId = null
   form.parameterPresetId = null
+  manualParameters.value = false
   form.skillId = null
   form.parameters = {}
   parameterSourceKey.value = ''
@@ -549,11 +574,13 @@ function submit(): void {
             :shop-ids="form.shopIds"
             :shop-options="shopOptions"
             :schema="applicationSchema"
+            :manual-mode="manualParameters"
             :disabled="configInitialLoading"
             @update:model-value="changeParameterPreset"
+            @update:manual-mode="changeManualParameters"
           />
           <AutomationParameterFields
-            v-if="!form.parameterPresetId"
+            v-if="manualParameters && !form.parameterPresetId"
             v-model="form.parameters"
             :schema="applicationSchema"
             :disabled="configInitialLoading"

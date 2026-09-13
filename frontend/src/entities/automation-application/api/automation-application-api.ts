@@ -4,6 +4,7 @@ import type {
   AutomationApplicationConfigDto,
   AutomationApplicationConfigUpsertDto,
   AutomationParameterPresetListParams,
+  AutomationParameterPresetPageDto,
   AutomationParameterPresetDto,
   AutomationParameterPresetSaveDto,
   AutomationParameterPresetUpdateDto,
@@ -44,14 +45,16 @@ export const automationApplicationApi = {
   },
 
   async listAllPresets(
-    params: AutomationParameterPresetListParams = {},
-  ): Promise<AutomationParameterPresetDto[]> {
-    const response = await httpClient.get<AutomationParameterPresetDto[]>(
+    params: AutomationParameterPresetListParams = { page: 1, pageSize: 20 },
+  ): Promise<AutomationParameterPresetPageDto> {
+    const response = await httpClient.get<AutomationParameterPresetPageDto>(
       '/api/v1/automation-parameter-presets',
       {
         params: {
           ...(params.appId ? { app_id: params.appId } : {}),
           ...(params.query?.trim() ? { q: params.query.trim() } : {}),
+          page: params.page ?? 1,
+          page_size: params.pageSize ?? 20,
         },
       },
     )

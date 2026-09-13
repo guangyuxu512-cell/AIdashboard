@@ -95,9 +95,50 @@ class AutomationParameterPresetRepository:
         self,
         *,
         actor: ActorContext,
+        team_id: object,
         app_id: str | None = None,
         name_query: str | None = None,
+        offset: int = 0,
+        limit: int | None = None,
     ) -> list[AutomationParameterPreset]:
+        statement = self._list_all_for_actor_statement(
+            actor=actor,
+            team_id=team_id,
+            app_id=app_id,
+            name_query=name_query,
+        ).order_by(
+            AutomationParameterPreset.updated_at.desc(),
+            AutomationParameterPreset.preset_id.asc(),
+        )
+        if limit is not None:
+            statement = statement.offset(offset).limit(limit)
+        return list(self.session.scalars(statement))
+
+    def count_all_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        team_id: object,
+        app_id: str | None = None,
+        name_query: str | None = None,
+    ) -> int:
+        statement = self._list_all_for_actor_statement(
+            actor=actor,
+            team_id=team_id,
+            app_id=app_id,
+            name_query=name_query,
+        )
+        count_statement = statement.with_only_columns(func.count()).order_by(None)
+        return int(self.session.scalar(count_statement) or 0)
+
+    @staticmethod
+    def _list_all_for_actor_statement(
+        *,
+        actor: ActorContext,
+        team_id: object,
+        app_id: str | None,
+        name_query: str | None,
+    ):
         statement = select(AutomationParameterPreset)
         if app_id is not None:
             statement = statement.where(AutomationParameterPreset.app_id == app_id)
@@ -105,20 +146,15 @@ class AutomationParameterPresetRepository:
             statement = statement.where(
                 AutomationParameterPreset.name.ilike(f"%{name_query}%"),
             )
-        statement = DataScopePolicy.apply(
+        # Presets never cross the active Team, even for an ALL-scoped actor.
+        # Keep this predicate in SQL so total, ordering, and page contents
+        # are derived from exactly the same authorized collection.
+        return DataScopePolicy.apply(
             statement,
             team_id_column=AutomationParameterPreset.team_id,
             created_by_user_id_column=AutomationParameterPreset.created_by_user_id,
             actor=actor,
-        )
-        return list(
-            self.session.scalars(
-                statement.order_by(
-                    AutomationParameterPreset.updated_at.desc(),
-                    AutomationParameterPreset.preset_id.asc(),
-                ),
-            ),
-        )
+        ).where(AutomationParameterPreset.team_id == team_id)
 
     def exists_name(
         self,

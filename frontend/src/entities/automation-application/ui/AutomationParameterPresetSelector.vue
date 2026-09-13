@@ -16,11 +16,13 @@ const props = defineProps<{
   shopOptions: ShopSelectOption[]
   schema: AutomationInputSchemaDto
   modelValue: string | null
+  manualMode?: boolean
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
+  'update:manualMode': [value: boolean]
 }>()
 
 const router = useRouter()
@@ -38,6 +40,7 @@ const presetOptions = computed(() =>
     value: preset.preset_id,
   })),
 )
+const hasParameters = computed(() => props.schema.fields.length > 0)
 const preview = computed(() => {
   const preset = selectedPreset.value
   if (!preset) return []
@@ -78,7 +81,14 @@ const parameterLabels = computed(
 
 function change(value: unknown): void {
   previewOpen.value = false
+  emit('update:manualMode', false)
   emit('update:modelValue', typeof value === 'string' ? value : null)
+}
+
+function changeManualMode(value: boolean): void {
+  previewOpen.value = false
+  emit('update:modelValue', null)
+  emit('update:manualMode', value)
 }
 
 function describeShop(item: (typeof preview.value)[number]): string {
@@ -132,9 +142,16 @@ function openPresetManagement(): void {
           :loading="presetsQuery.isPending.value"
           :disabled="disabled || !appId"
           clearable
-          placeholder="使用手动参数"
+          placeholder="请选择参数配置"
           @update:model-value="change"
         />
+        <AppButton
+          v-if="hasParameters"
+          :disabled="disabled || !appId"
+          @click="changeManualMode(!manualMode)"
+        >
+          {{ manualMode ? '使用参数配置' : '本次手动参数' }}
+        </AppButton>
         <AppButton :disabled="disabled || !appId" @click="openPresetManagement">
           管理配置
         </AppButton>
@@ -145,9 +162,13 @@ function openPresetManagement(): void {
         }}
         家有单独设置。
       </p>
-      <p v-else class="preset-selector__note">
+      <p v-else-if="manualMode" class="preset-selector__note">
         当前使用手动参数；创建任务后会由服务端固化该次参数。
       </p>
+      <p v-else-if="hasParameters" class="preset-selector__note">
+        请选择参数配置，或选择本次手动参数。
+      </p>
+      <p v-else class="preset-selector__note">该应用没有输入参数，可直接运行。</p>
       <div
         v-if="selectedPreset && !preview.length"
         class="preset-selector__preview"
