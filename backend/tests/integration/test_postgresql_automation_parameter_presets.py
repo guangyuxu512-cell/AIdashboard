@@ -394,6 +394,15 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                     assert management_page["page"] == 1
                     assert management_page["page_size"] == 1
                     assert len(management_page["items"]) == 1
+                    legacy_response = await client.get(
+                        "/api/v1/automation-parameter-presets",
+                        params={"app_id": app_id},
+                    )
+                    assert legacy_response.status_code == 200
+                    legacy_items = legacy_response.json()
+                    assert len(legacy_items) == management_page["total"]
+                    assert legacy_items[0] == management_page["items"][0]
+                    assert all(item["team_id"] == str(actor.team_id) for item in legacy_items)
 
             asyncio.run(exercise_preset_api())
 

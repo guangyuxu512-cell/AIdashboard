@@ -29,15 +29,10 @@ describe('automation parameter preset api', () => {
 
     expect(get).toHaveBeenCalledWith(path)
     expect(post).toHaveBeenNthCalledWith(1, path, data)
-    expect(patch).toHaveBeenCalledWith(
-      `${path}/preset%20%2F%20one`,
-      updateData,
-    )
-    expect(post).toHaveBeenNthCalledWith(
-      2,
-      `${path}/preset%20%2F%20one/copy`,
-      { name: '副本' },
-    )
+    expect(patch).toHaveBeenCalledWith(`${path}/preset%20%2F%20one`, updateData)
+    expect(post).toHaveBeenNthCalledWith(2, `${path}/preset%20%2F%20one/copy`, {
+      name: '副本',
+    })
   })
 
   it('uses the actor-scoped application catalog and management list filters', async () => {
@@ -67,5 +62,18 @@ describe('automation parameter preset api', () => {
         },
       },
     )
+  })
+
+  it('always opts the current management client into Page, including default callers', async () => {
+    const get = vi
+      .spyOn(httpClient, 'get')
+      .mockResolvedValue({
+        data: { items: [], total: 0, page: 1, page_size: 20 },
+      })
+    const result = await automationApplicationApi.listAllPresets()
+    expect(get).toHaveBeenCalledWith('/api/v1/automation-parameter-presets', {
+      params: { page: 1, page_size: 20 },
+    })
+    expect(result.items).toEqual([])
   })
 })
