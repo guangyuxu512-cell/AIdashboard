@@ -205,17 +205,20 @@ class AutomationParameterPresetService:
         actor: ActorContext,
         app_id: str | None = None,
         name_query: str | None = None,
-        pagination: PaginationParams,
-    ) -> Page[AutomationParameterPresetRead]:
+        pagination: PaginationParams | None = None,
+    ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
         presets = self.preset_repository.list_all_for_actor(
             actor=actor,
             team_id=actor.team_id,
             app_id=app_id,
             name_query=name_query,
-            offset=pagination.offset,
-            limit=pagination.page_size,
+            offset=pagination.offset if pagination is not None else 0,
+            limit=pagination.page_size if pagination is not None else None,
         )
+        items = [self._to_read(preset) for preset in presets]
+        if pagination is None:
+            return items
         total = self.preset_repository.count_all_for_actor(
             actor=actor,
             team_id=actor.team_id,
@@ -223,7 +226,7 @@ class AutomationParameterPresetService:
             name_query=name_query,
         )
         return Page(
-            items=[self._to_read(preset) for preset in presets],
+            items=items,
             total=total,
             page=pagination.page,
             page_size=pagination.page_size,

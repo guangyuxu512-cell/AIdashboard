@@ -78,6 +78,8 @@ jobs:
           bash -n deploy/production/renew-production-ip-certificate.sh
       - name: Test production release cleanup ownership
         run: bash scripts/test-remote-deploy-production.sh
+      - name: Test PC static asset retention
+        run: bash scripts/test-pc-static-assets.sh
       - name: Test production deployment target resolution
         run: bash scripts/test-resolve-production-deploy-target.sh
       - name: Test production deployment workflow trigger contract
@@ -90,6 +92,8 @@ jobs:
             'node --version && test -f /app/app/platforms/pdd/vendor/anti_content.js && python -c "from app.platforms.pdd.signer import PddAntiContentSigner; PddAntiContentSigner().generate()"'
       - name: Build production frontend image
         run: docker build --tag control-center-frontend-ci:${{ github.sha }} --file frontend/Dockerfile .
+      - name: Verify retained PC assets with production Nginx
+        run: bash scripts/test-pc-static-nginx.sh control-center-frontend-ci:${{ github.sha }}
       - name: Verify PC and Mobile production entries with a read-only root filesystem
         run: |
           container_name="control-center-frontend-ci-${{ github.run_id }}"
@@ -178,6 +182,8 @@ jobs:
           test -f "${release_dir}/mobile/public/icons/icon-192.png"
           test -f "${release_dir}/mobile/public/icons/icon-512.png"
           test -f "${release_dir}/scripts/production-env.sh"
+          test -f "${release_dir}/deploy/production/pc-static-assets.sh"
+          bash -n "${release_dir}/deploy/production/pc-static-assets.sh"
           docker build --tag control-center-release-frontend-ci:${{ github.sha }} --file "${release_dir}/frontend/Dockerfile" "${release_dir}"
       - name: Validate production compose contract
         run: |

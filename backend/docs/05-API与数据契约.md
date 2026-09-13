@@ -202,8 +202,11 @@ text/number/boolean/select 类型。
 确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
 
 参数配置库使用 `GET /api/v1/automation-parameter-presets` 查询当前 Team 预设；可选 `app_id` 与
-`q`（名称）过滤以及 `page / page_size`（默认 `1 / 20`，最大 100）在服务端的 ActorContext / DataScope
-查询边界完成，返回统一 `{items,total,page,page_size}`。当前 Team 限制、过滤、`total`、`updated_at DESC,
+`q`（名称）过滤在服务端的 ActorContext / DataScope 查询边界完成。未携带 `page` 和 `page_size` 时，
+为旧客户端返回完整 DTO 数组；携带任一分页参数时返回 `{items,total,page,page_size}`，另一个参数
+沿用默认 `1 / 20`（page_size 最大 100）。显式空值、非法数字或越界值返回 `422 / VALIDATION_ERROR`，
+不能降级为数组模式。OpenAPI 响应为 Page 或数组的联合类型；新版管理 UI 始终显式发送分页参数。
+当前 Team 限制、过滤、`total`、`updated_at DESC,
 preset_id ASC` 排序和分页必须来自同一 SQL 集合；即使 Actor 在其他资源具备 `ALL` scope 也不返回其他
 Team 的预设。按应用读取、供运行／计划选择器使用的
 `GET /api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets` 保持完整列表，不能因管理页分页遗漏

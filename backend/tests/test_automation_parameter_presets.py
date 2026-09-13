@@ -804,6 +804,11 @@ def test_management_list_counts_and_pages_only_authorized_team_rows() -> None:
     assert page.page == 2
     assert page.page_size == 1
     assert [preset.preset_id for preset in page.items] == [own_presets[1].preset_id]
+    legacy = service.list_all(actor=actor_context, app_id="safe-app")
+    assert [preset.preset_id for preset in legacy] == [
+        preset.preset_id for preset in reversed(own_presets)
+    ]
+    assert legacy[1] == page.items[0]
 
 
 class FakeDeviceCatalogRepository:

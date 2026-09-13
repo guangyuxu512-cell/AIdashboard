@@ -106,6 +106,7 @@ for required_path in \
     frontend/deploy/default.conf.template \
     deploy/production/compose.yaml \
     deploy/production/host-nginx.conf.template \
+    deploy/production/pc-static-assets.sh \
     scripts/production-env.sh; do
     if [[ ! -e "$release_directory/$required_path" ]]; then
         echo "Production release is missing $required_path" >&2
@@ -114,6 +115,7 @@ for required_path in \
 done
 
 source "$release_directory/scripts/production-env.sh"
+source "$release_directory/deploy/production/pc-static-assets.sh"
 environment_file="$remote_root/.env"
 production_env_open "$environment_file"
 
@@ -219,6 +221,28 @@ compose=(docker compose --project-name control-center-production --env-file "$en
 "${compose[@]}" build douyin-signer backend frontend
 "${compose[@]}" run --rm --no-deps backend python -c \
     "from app.core.config import get_settings; from app.modules.assets.storage import verify_asset_storage; verify_asset_storage(get_settings()); print('asset-storage=ready')"
+
+# Populate the shared read-only PC asset mount before replacing any service.
+static_store="$remote_root/pc-static-assets"
+if [[ ! -f "$static_store/.bootstrapped" ]]; then
+    # First upgrade: import still-available historical release images, including
+    # old windows' chunks. No historical HTML, API responses or env is exported.
+    for historical_release in "$remote_root"/releases/*; do
+        historical_sha="$(basename "$historical_release")"
+        [[ "$historical_sha" =~ ^[0-9a-f]{40}$ && "$historical_sha" != "$release_sha" ]] || continue
+        historical_image="ecommerce-control-center-frontend-prod:$historical_sha"
+        if docker image inspect "$historical_image" >/dev/null 2>&1; then
+            pc_assets_capture_image "$static_store" "$historical_sha" "$historical_image"
+        else
+            echo "Historical PC image unavailable for asset import: $historical_sha"
+        fi
+    done
+fi
+if [[ -n "$previous_release" ]]; then
+    previous_sha="$(basename "$previous_release")"
+    pc_assets_capture_image "$static_store" "$previous_sha" "ecommerce-control-center-frontend-prod:$previous_sha"
+fi
+pc_assets_capture_image "$static_store" "$release_sha" "ecommerce-control-center-frontend-prod:$release_sha"
 deployment_runtime_changed=true
 "${compose[@]}" run --rm backend python -m alembic upgrade head
 
@@ -338,4 +362,8 @@ fi
 "${compose[@]}" exec -T backend python -m alembic current
 
 deployment_succeeded=true
+# Only successful activation advances retention/pruning. Failure cleanup never
+# removes shared assets, and same-SHA retries return before touching metadata.
+pc_assets_activate "$static_store" "$release_sha" "${previous_release##*/}"
+touch "$static_store/.bootstrapped"
 echo "Production release $release_sha deployed"

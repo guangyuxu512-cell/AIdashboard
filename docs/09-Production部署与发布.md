@@ -45,6 +45,44 @@ Backend → existing Docker Asset volume (local mode) / verified NAS mount (moun
 - PDD 签名继续由 Backend 中现有的隔离 Node 子进程执行。`backend/Dockerfile` 安装 Node.js，且随 `app/platforms/pdd/vendor/anti_content.js` 一起打包；不引入第二套 PDD 服务。
 - Douyin Signer 仍是独立的、只绑定回环地址的容器，生产端口为 `8788`，与开发端口 `8787` 隔离。
 
+## PC 跨版本静态资源与参数 API 兼容
+
+发布前仍打开的 PC/Electron 窗口可能请求旧哈希文件。`/assets/` 先读取当前镜像，再读取只读挂载
+`/opt/ecommerce-control-center/production/pc-static-assets/public → /var/lib/control-center-static`；
+缺失 JS/CSS 返回真实 404，不回退首页。PC 首页使用 no-store，存在的哈希资源使用 immutable 缓存。
+Mobile 的 `/mobile/` 规则不变。Compose 的共享路径禁止自动创建；部署脚本在启动容器前准备资源。
+
+`deploy/production/pc-static-assets.sh` 只保留 Vite 带哈希的 JS/MJS、CSS、字体与图片，支持含 `.vue_...`
+的依赖名称；不导出历史 index.html、sourcemap、API 数据、环境文件、日志或 symlink。
+相同路径但字节不同必须中止发布，不能覆盖旧窗口依赖。新文件完成复制后才原子移入公开目录。
+helper 放在现有 `deploy/production` 归档范围内，远程必需文件预检和 CI 真实归档解包都检查它。
+
+保留策略为退出 active 后至少 7 天（604800 秒），当前和最近一份回滚 release 始终保护。
+成功切换才记录旧 active 的 `retired-at`；后续部署不会刷新已经 retired 的时钟。首次安装没有可证明的
+历史退出时间，因此将仍有本地镜像的历史 release 导入，并从首次成功启用给予 7 天宽限。
+已被回收的旧镜像无法凭空恢复：发布前必须核对已确认受影响的 f625 资产实际导入清单，缺少则暂停发布。
+当前旧镜像与新镜像的提取必须成功后才替换服务。每次提取用未启动的临时容器，结束时仅删除该容器。
+
+同 SHA 跳过在资源处理之前完成，不续期。失败候选不触发 pruning，原 current/历史文件保持；失败期间
+已导入的哈希文件可保留，到下次成功激活再计时。只有不再被任何保留 release 使用的文件才删除。
+激活/健康校验已经成功之后若 retention/pruning 失败，命令仍失败并要求 Main 核对现场，但不会撤销健康
+current 或删除共享历史目录；此时不得把“工作流失败”直接等同于服务已回滚，也不得盲目重建同 SHA。
+
+回滚到支持此机制的版本时保留共享目录/只读挂载，旧静态引用继续可用。回滚到本修复之前的 Frontend
+镜像/Compose 会失去 archive fallback 和更新提示；Main 必须同时保留本修复的 Nginx 模板及只读挂载
+（以受审查的 rollback Compose override 挂载模板），或把该限制作为回滚阻塞，不能宣称任意旧镜像
+天然具备跨版本支持。不能删除共享目录来“修复”回滚。API 回滚也不得重新破坏旧数组响应。
+
+参数管理 API 无分页参数继续返回数组；显式任一分页参数返回 Page，权限/筛选/排序共用同一查询。
+新版 PC 的资源加载失败提示保留当前页面并中止失败导航，不自动刷新。用户点击重新加载后须再次明确确认，
+也可“继续编辑”保存草稿，再从同一提示重开确认。它不复制草稿/凭据到通用本地缓存。
+旧发布 bundle 不含这一新提示、初始入口本身无法加载时也无法运行提示逻辑；这部分窗口依靠历史资源保留，
+超出保留期需要用户主动重新加载客户端，不能声称提示可以追溯注入已发布 bundle。
+
+验收必须使用生产 build + 同款 Nginx，并由 ca97 保持旧 Electron 窗口进行切换/菜单/配置读取与刷新后
+分页验收。`scripts/test-pc-static-assets.sh` 验证生命周期；`scripts/test-pc-static-nginx.sh <image> [old-assets]`
+验证只读临时容器中的真实字节、缓存和 404，独立随机回环端口、无数据库；它不代替 Electron 人工操作。
+
 ## 生产环境文件
 
 服务器仅保存一个 root 管理、权限为 `0600` 的文件：
