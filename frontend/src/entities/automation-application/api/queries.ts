@@ -16,16 +16,22 @@ export const automationApplicationQueryKeys = {
     [
       ...automationApplicationQueryKeys.allPresets,
       'list',
+      params.deviceId ?? null,
       params.appId ?? null,
       params.query?.trim() || null,
       params.page ?? 1,
       params.pageSize ?? 20,
     ] as const,
-  yingdaoApplications: [
+  yingdaoApplicationsRoot: [
     'automation-app-configs',
     'yingdao',
     'applications',
   ] as const,
+  yingdaoApplications: (deviceId: string | null) =>
+    [
+      ...automationApplicationQueryKeys.yingdaoApplicationsRoot,
+      deviceId,
+    ] as const,
   detail: (appId: string | null) =>
     ['automation-app-configs', 'yingdao', appId] as const,
   presets: (appId: string | null) =>
@@ -89,10 +95,15 @@ function removePresetFromCaches(
   )
 }
 
-export function useYingdaoApplicationOptionsQuery() {
+export function useYingdaoApplicationOptionsQuery(
+  deviceId: MaybeRefOrGetter<string | null> = null,
+) {
   return useQuery({
-    queryKey: automationApplicationQueryKeys.yingdaoApplications,
-    queryFn: () => automationApplicationApi.listYingdaoApplications(),
+    queryKey: computed(() =>
+      automationApplicationQueryKeys.yingdaoApplications(toValue(deviceId)),
+    ),
+    queryFn: () =>
+      automationApplicationApi.listYingdaoApplications(toValue(deviceId)),
   })
 }
 

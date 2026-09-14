@@ -26,7 +26,10 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
   management.capabilityVisible.value = false
   void router.push({
     path: '/parameter-presets',
-    query: { app_id: application.appId },
+    query: {
+      device_id: management.capabilityDeviceId.value,
+      app_id: application.appId,
+    },
   })
 }
 </script>

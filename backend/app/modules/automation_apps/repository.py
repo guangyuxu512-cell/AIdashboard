@@ -97,6 +97,7 @@ class AutomationParameterPresetRepository:
         actor: ActorContext,
         team_id: object,
         app_id: str | None = None,
+        app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
         offset: int = 0,
         limit: int | None = None,
@@ -105,6 +106,7 @@ class AutomationParameterPresetRepository:
             actor=actor,
             team_id=team_id,
             app_id=app_id,
+            app_ids=app_ids,
             name_query=name_query,
         ).order_by(
             AutomationParameterPreset.updated_at.desc(),
@@ -120,12 +122,14 @@ class AutomationParameterPresetRepository:
         actor: ActorContext,
         team_id: object,
         app_id: str | None = None,
+        app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
     ) -> int:
         statement = self._list_all_for_actor_statement(
             actor=actor,
             team_id=team_id,
             app_id=app_id,
+            app_ids=app_ids,
             name_query=name_query,
         )
         count_statement = statement.with_only_columns(func.count()).order_by(None)
@@ -137,11 +141,14 @@ class AutomationParameterPresetRepository:
         actor: ActorContext,
         team_id: object,
         app_id: str | None,
+        app_ids: tuple[str, ...] | None,
         name_query: str | None,
     ):
         statement = select(AutomationParameterPreset)
         if app_id is not None:
             statement = statement.where(AutomationParameterPreset.app_id == app_id)
+        if app_ids is not None:
+            statement = statement.where(AutomationParameterPreset.app_id.in_(app_ids))
         if name_query:
             statement = statement.where(
                 AutomationParameterPreset.name.ilike(f"%{name_query}%"),

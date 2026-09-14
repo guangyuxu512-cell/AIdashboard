@@ -300,8 +300,10 @@ class ApiAutomationApplicationCatalogService:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
     ) -> list[YingdaoApplicationOptionRead]:
         assert actor == API_ACTOR
+        type(self).last_device_id = device_id
         return [
             YingdaoApplicationOptionRead(
                 app_id="preset-api-app",
@@ -373,11 +375,13 @@ class ApiAutomationParameterPresetService:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
         app_id: str | None = None,
         name_query: str | None = None,
         pagination: PaginationParams | None,
     ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
         assert actor == API_ACTOR
+        type(self).last_device_id = device_id
         app = app_id or "preset-api-app"
         name = "日常采集" if name_query else "默认预设"
         if pagination is None:
@@ -1117,17 +1121,26 @@ def test_automation_parameter_preset_delete_reports_durable_references() -> None
 
 
 def test_automation_parameter_preset_management_catalog_contract() -> None:
+    device_id = uuid4()
     applications_response = request(
         "GET",
         "/api/v1/automation-app-configs/yingdao/applications",
+        params={"device_id": str(device_id)},
     )
     presets_response = request(
         "GET",
         "/api/v1/automation-parameter-presets",
-        params={"app_id": "preset-api-app", "q": "日常", "page": 1},
+        params={
+            "device_id": str(device_id),
+            "app_id": "preset-api-app",
+            "q": "日常",
+            "page": 1,
+        },
     )
 
     assert applications_response.status_code == 200
+    assert ApiAutomationApplicationCatalogService.last_device_id == device_id
+    assert ApiAutomationParameterPresetService.last_device_id == device_id
     assert applications_response.json() == [
         {"app_id": "preset-api-app", "app_name": "参数预设测试应用"},
     ]

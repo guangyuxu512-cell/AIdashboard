@@ -178,7 +178,8 @@ Descriptor 固定包含
 - `PUT /api/v1/automation-app-configs/{provider_code}/{app_id}`：保存手工参数 Schema。
 - `GET /api/v1/automation-app-configs/yingdao/applications`：返回当前 ActorContext Team 已可见 Device 的
   Provider Inventory 中去重后的 `{app_id, app_name}` 选项；不返回 Device、影刀账号、店铺或 Credential
-  事实。
+  事实。可选 `device_id` 时先按正式 Device DataScope 查找该设备，再只返回它已上报的应用；不可见设备按
+  `DEVICE_NOT_FOUND` 处理。
 
 当前 provider 仅允许 `yingdao`。字段类型为 text/number/boolean/select；Backend 校验字段名、
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
@@ -201,8 +202,9 @@ text/number/boolean/select 类型。
 路由。预设只归属于创建时的 ActorContext Team；服务端在列表、详情、修改、复制和运行取快照时均再次
 确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
 
-参数配置库使用 `GET /api/v1/automation-parameter-presets` 查询当前 Team 预设；可选 `app_id` 与
-`q`（名称）过滤在服务端的 ActorContext / DataScope 查询边界完成。未携带 `page` 和 `page_size` 时，
+参数配置库使用 `GET /api/v1/automation-parameter-presets` 查询当前 Team 预设；可选 `device_id`、`app_id` 与
+`q`（名称）过滤在服务端的 ActorContext / DataScope 查询边界完成。`device_id` 只把 SQL 分页集合限制到
+该可见设备上报的应用 ID，不改变预设的 Team + app_id 归属，也不建立设备副本。未携带 `page` 和 `page_size` 时，
 为旧客户端返回完整 DTO 数组；携带任一分页参数时返回 `{items,total,page,page_size}`，另一个参数
 沿用默认 `1 / 20`（page_size 最大 100）。显式空值、非法数字或越界值返回 `422 / VALIDATION_ERROR`，
 不能降级为数组模式。OpenAPI 响应为 Page 或数组的联合类型；新版管理 UI 始终显式发送分页参数。

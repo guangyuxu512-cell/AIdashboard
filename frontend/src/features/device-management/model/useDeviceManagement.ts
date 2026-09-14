@@ -326,6 +326,13 @@ export function useDeviceManagement() {
         await queryClient.invalidateQueries({
           queryKey: ['devices', 'management-context'],
         })
+        await queryClient.invalidateQueries({
+          queryKey: [
+            'automation-app-configs',
+            'yingdao',
+            'applications',
+          ],
+        })
         message.success('影刀能力已刷新')
         return
       }
