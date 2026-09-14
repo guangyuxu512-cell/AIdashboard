@@ -1,5 +1,8 @@
 import asyncio
+import errno
+import json
 import struct
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -21,7 +24,7 @@ from app.providers.yingdao import (
     YingdaoTaskLogParser,
     build_shadowbot_run_uri,
 )
-from app.runtime_events import RuntimeEventBus
+from app.runtime_events import LocalRuntimeState, RuntimeEventBus
 
 
 class FakeSessionAdapter:
@@ -154,6 +157,255 @@ def test_tasklog_follower_accepts_verified_636_chinese_terminal_messages(
 
     assert follower.started is True
     assert follower.exited is True
+
+
+def test_tasklog_follower_recovers_without_losing_partial_record(
+    tmp_path: Path,
+) -> None:
+    task_id = uuid4()
+    path = tmp_path / f"{uuid4()}.tasklog"
+    started = encode_record(2, "robot task Safe App started")
+    exited = encode_record(2, "robot task Safe App exited")
+    interrupted_payload = started + exited[:17]
+    path.write_bytes(interrupted_payload)
+    state_path = tmp_path / "runtime-status.json"
+    state = LocalRuntimeState(path=state_path, device_id=uuid4())
+    bus = RuntimeEventBus()
+    events = []
+    bus.subscribe(events.append)
+    bus.subscribe(state.consume)
+    follower = YingdaoTaskLogFollower(
+        path=path,
+        task_id=task_id,
+        app_uuid="safe-app",
+        app_name="Safe App",
+        yingdao_task_uuid=path.stem,
+        event_bus=bus,
+    )
+
+    asyncio.run(follower.read_available())
+    interrupted_offset = follower.read_offset
+    buffered_bytes = follower.parser.buffered_bytes
+    path.unlink()
+    asyncio.run(follower.read_available())
+    asyncio.run(follower.read_available())
+
+    assert follower.read_offset == interrupted_offset
+    assert follower.parser.buffered_bytes == buffered_bytes
+    assert follower.exited is False
+
+    path.write_bytes(started + exited)
+    recovered_records = asyncio.run(follower.read_available())
+    runtime_state = json.loads(state_path.read_text(encoding="utf-8"))
+    failures = [
+        event
+        for event in events
+        if event.metadata.get("tasklog_read_status") == "failed"
+    ]
+    recoveries = [
+        event
+        for event in events
+        if event.metadata.get("tasklog_read_status") == "recovered"
+    ]
+
+    assert [record.message for record in recovered_records] == [
+        "robot task Safe App exited",
+    ]
+    assert follower.read_offset == path.stat().st_size
+    assert follower.parser.buffered_bytes == 0
+    assert follower.started is True
+    assert follower.exited is True
+    assert len(failures) == 1
+    assert failures[0].metadata["tasklog_read_error"] == "file_missing"
+    assert len(recoveries) == 1
+    assert recoveries[0].metadata["tasklog_read_failure_count"] == 2
+    assert recoveries[0].metadata["tasklog_read_offset"] == path.stat().st_size
+    assert [
+        event["message"]
+        for event in runtime_state["recent_events"]
+        if "运行日志" in event["message"]
+    ] == [
+        "影刀运行日志文件暂时消失，Worker 将保持任务占用并继续等待",
+        "影刀运行日志读取已恢复，继续从上次位置读取",
+    ]
+
+
+def test_tasklog_follower_deduplicates_persistent_permission_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / f"{uuid4()}.tasklog"
+    path.write_bytes(encode_record(2, "robot task Safe App started"))
+    bus = RuntimeEventBus()
+    events = []
+    bus.subscribe(events.append)
+    follower = YingdaoTaskLogFollower(
+        path=path,
+        task_id=uuid4(),
+        app_uuid="safe-app",
+        app_name="Safe App",
+        yingdao_task_uuid=path.stem,
+        event_bus=bus,
+    )
+    original_read = follower._read_new_bytes
+
+    def deny_read() -> bytes:
+        raise PermissionError(errno.EACCES, "fixture access denied")
+
+    monkeypatch.setattr(follower, "_read_new_bytes", deny_read)
+    for _ in range(3):
+        asyncio.run(follower.read_available())
+
+    failures = [
+        event
+        for event in events
+        if event.metadata.get("tasklog_read_status") == "failed"
+    ]
+    assert len(failures) == 1
+    assert failures[0].metadata["tasklog_read_error"] == "permission_denied"
+    assert follower.read_offset == 0
+    assert follower.exited is False
+
+    monkeypatch.setattr(follower, "_read_new_bytes", original_read)
+    asyncio.run(follower.read_available())
+    recoveries = [
+        event
+        for event in events
+        if event.metadata.get("tasklog_read_status") == "recovered"
+    ]
+    assert len(recoveries) == 1
+    assert recoveries[0].metadata["tasklog_read_failure_count"] == 3
+
+
+def test_tasklog_follower_keeps_waiting_during_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / f"{uuid4()}.tasklog"
+    path.write_bytes(b"")
+    bus = RuntimeEventBus()
+    events = []
+    bus.subscribe(events.append)
+    follower = YingdaoTaskLogFollower(
+        path=path,
+        task_id=uuid4(),
+        app_uuid="safe-app",
+        app_name="Safe App",
+        yingdao_task_uuid=path.stem,
+        event_bus=bus,
+        poll_interval_seconds=0.001,
+    )
+    original_read = follower._read_new_bytes
+
+    def busy_read() -> bytes:
+        error = OSError(errno.EBUSY, "fixture file busy")
+        raise error
+
+    monkeypatch.setattr(follower, "_read_new_bytes", busy_read)
+
+    async def scenario() -> None:
+        following = asyncio.create_task(follower.follow_until_terminal())
+        await asyncio.sleep(0.01)
+        assert following.done() is False
+        assert follower.exited is False
+
+        path.write_bytes(
+            encode_record(2, "robot task Safe App started")
+            + encode_record(2, "robot task Safe App exited"),
+        )
+        monkeypatch.setattr(follower, "_read_new_bytes", original_read)
+        await asyncio.wait_for(following, timeout=1)
+
+    asyncio.run(scenario())
+
+    assert follower.started is True
+    assert follower.exited is True
+    failures = [
+        event
+        for event in events
+        if event.metadata.get("tasklog_read_status") == "failed"
+    ]
+    assert len(failures) == 1
+    assert failures[0].metadata["tasklog_read_error"] == "file_busy"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows sharing fault only")
+def test_tasklog_follower_reports_real_windows_exclusive_file_lock(
+    tmp_path: Path,
+) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    path = (tmp_path / f"{uuid4()}.tasklog").resolve()
+    path.write_bytes(
+        encode_record(2, "robot task Safe App started")
+        + encode_record(2, "robot task Safe App exited"),
+    )
+    bus = RuntimeEventBus()
+    events = []
+    bus.subscribe(events.append)
+    follower = YingdaoTaskLogFollower(
+        path=path,
+        task_id=uuid4(),
+        app_uuid="safe-app",
+        app_name="Safe App",
+        yingdao_task_uuid=path.stem,
+        event_bus=bus,
+    )
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    handle = create_file(
+        str(path),
+        0x80000000,
+        0,
+        None,
+        3,
+        0x80,
+        None,
+    )
+    invalid_handle = ctypes.c_void_p(-1).value
+    assert handle != invalid_handle
+
+    try:
+        asyncio.run(follower.read_available())
+    finally:
+        assert close_handle(handle)
+
+    failures = [
+        event
+        for event in events
+        if event.metadata.get("tasklog_read_status") == "failed"
+    ]
+    assert len(failures) == 1
+    assert failures[0].metadata["tasklog_read_error"] == "file_busy"
+    assert failures[0].metadata["tasklog_read_error_type"] == "PermissionError"
+    assert failures[0].metadata["tasklog_read_winerror"] == 32
+    assert follower.read_offset == 0
+    assert follower.exited is False
+
+    asyncio.run(follower.read_available())
+    assert follower.started is True
+    assert follower.exited is True
+    assert len(
+        [
+            event
+            for event in events
+            if event.metadata.get("tasklog_read_status") == "recovered"
+        ],
+    ) == 1
 
 
 def test_runtime_adapter_has_provider_single_execution_lock(tmp_path: Path) -> None:

@@ -98,6 +98,7 @@ def test_running_other_version_is_not_stopped_or_replaced(tmp_path: Path) -> Non
 def test_locator_reports_missing_supported_installation(tmp_path: Path) -> None:
     locator = WindowsYingdaoRuntimeLocator(tmp_path)
     locator._list_shadowbot_processes = lambda: []  # type: ignore[method-assign]
+    locator._find_supported_executable = lambda: None  # type: ignore[method-assign]
 
     with pytest.raises(YingdaoSessionError) as error:
         asyncio.run(locator.resolve(start_if_missing=True))

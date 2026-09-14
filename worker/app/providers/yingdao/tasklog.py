@@ -1,8 +1,11 @@
 import asyncio
+import errno
+import os
 import struct
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from app.contracts import RuntimeEventType
@@ -12,6 +15,13 @@ from app.runtime_events import RuntimeEventBus
 _HEADER_SIZE = 13
 _MAX_MESSAGE_BYTES = 1024 * 1024
 _DOTNET_MAX_TICKS = 3_155_378_975_999_999_999
+
+TaskLogReadFailureKind = Literal[
+    "file_busy",
+    "file_missing",
+    "permission_denied",
+    "io_error",
+]
 
 
 class YingdaoTaskLogError(RuntimeError):
@@ -27,6 +37,13 @@ class YingdaoTaskLogRecord:
     level: str
     event_at: datetime
     message: str
+
+
+@dataclass
+class _TaskLogReadFailureState:
+    started_at: datetime
+    total_attempts: int
+    kind_counts: dict[TaskLogReadFailureKind, int]
 
 
 class YingdaoTaskLogParser:
@@ -105,6 +122,7 @@ class YingdaoTaskLogFollower:
         self.parser = YingdaoTaskLogParser()
         self.started = False
         self.exited = False
+        self._read_failure: _TaskLogReadFailureState | None = None
 
     async def follow_until_terminal(self) -> None:
         while not self.exited:
@@ -115,8 +133,10 @@ class YingdaoTaskLogFollower:
     async def read_available(self) -> list[YingdaoTaskLogRecord]:
         try:
             data = await asyncio.to_thread(self._read_new_bytes)
-        except (OSError, PermissionError):
+        except OSError as error:
+            self._record_read_failure(error)
             return []
+        self._record_read_recovery()
         records = self.parser.feed(data)
         for record in records:
             metadata = {
@@ -155,6 +175,144 @@ class YingdaoTaskLogFollower:
                         metadata={**metadata, "phase": "succeeded"},
                     )
         return records
+
+    def _record_read_failure(self, error: OSError) -> None:
+        winerror = getattr(error, "winerror", None)
+        if (
+            winerror is None
+            and os.name == "nt"
+            and error.errno in {errno.EACCES, errno.EPERM}
+        ):
+            winerror = self._probe_windows_read_error(self.path)
+        kind = self._classify_read_failure(error, winerror=winerror)
+        now = datetime.now(UTC)
+        if self._read_failure is None:
+            self._read_failure = _TaskLogReadFailureState(
+                started_at=now,
+                total_attempts=0,
+                kind_counts={},
+            )
+        state = self._read_failure
+        state.total_attempts += 1
+        state.kind_counts[kind] = state.kind_counts.get(kind, 0) + 1
+
+        # One event per failure kind keeps a persistent lock from flooding the
+        # Runtime Event Bus while still exposing a changed failure reason.
+        if state.kind_counts[kind] > 1:
+            return
+        messages = {
+            "file_busy": "影刀运行日志文件正被占用，Worker 将保持任务占用并继续等待",
+            "file_missing": "影刀运行日志文件暂时消失，Worker 将保持任务占用并继续等待",
+            "permission_denied": "影刀运行日志读取被拒绝，Worker 将保持任务占用并继续等待",
+            "io_error": "影刀运行日志读取失败，Worker 将保持任务占用并继续等待",
+        }
+        self.event_bus.emit(
+            self.task_id,
+            RuntimeEventType.LOG,
+            messages[kind],
+            level="warning",
+            metadata={
+                **self._event_metadata(),
+                "tasklog_read_status": "failed",
+                "tasklog_read_error": kind,
+                "tasklog_read_error_type": type(error).__name__,
+                "tasklog_read_errno": error.errno,
+                "tasklog_read_winerror": winerror,
+                "tasklog_read_failure_started_at": state.started_at.isoformat(),
+            },
+        )
+
+    def _record_read_recovery(self) -> None:
+        state = self._read_failure
+        if state is None:
+            return
+        recovered_at = datetime.now(UTC)
+        duration_ms = max(
+            0,
+            int((recovered_at - state.started_at).total_seconds() * 1000),
+        )
+        self.event_bus.emit(
+            self.task_id,
+            RuntimeEventType.LOG,
+            "影刀运行日志读取已恢复，继续从上次位置读取",
+            level="info",
+            metadata={
+                **self._event_metadata(),
+                "tasklog_read_status": "recovered",
+                "tasklog_read_failure_count": state.total_attempts,
+                "tasklog_read_failure_kinds": sorted(state.kind_counts),
+                "tasklog_read_failure_started_at": state.started_at.isoformat(),
+                "tasklog_read_failure_duration_ms": duration_ms,
+                "tasklog_read_offset": self.read_offset,
+                "tasklog_buffered_bytes": self.parser.buffered_bytes,
+            },
+        )
+        self._read_failure = None
+
+    def _event_metadata(self) -> dict[str, str]:
+        return {
+            "provider": "yingdao",
+            "app_uuid": self.app_uuid,
+            "app_name": self.app_name,
+            "yingdao_task_uuid": self.yingdao_task_uuid,
+            "phase": "running" if self.started else "launching",
+        }
+
+    @staticmethod
+    def _classify_read_failure(
+        error: OSError,
+        *,
+        winerror: int | None = None,
+    ) -> TaskLogReadFailureKind:
+        if isinstance(error, FileNotFoundError) or error.errno == errno.ENOENT:
+            return "file_missing"
+        if winerror in {32, 33} or error.errno in {
+            errno.EBUSY,
+            getattr(errno, "ETXTBSY", errno.EBUSY),
+        }:
+            return "file_busy"
+        if isinstance(error, PermissionError) or error.errno in {
+            errno.EACCES,
+            errno.EPERM,
+        }:
+            return "permission_denied"
+        return "io_error"
+
+    @staticmethod
+    def _probe_windows_read_error(path: Path) -> int | None:
+        """Recover the Win32 code hidden by Python's errno=13 conversion."""
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = (
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        )
+        create_file.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        handle = create_file(
+            str(path),
+            0x80000000,
+            0x00000001 | 0x00000002 | 0x00000004,
+            None,
+            3,
+            0x80,
+            None,
+        )
+        invalid_handle = ctypes.c_void_p(-1).value
+        if handle == invalid_handle:
+            return ctypes.get_last_error()
+        close_handle(handle)
+        return None
 
     def _read_new_bytes(self) -> bytes:
         with self.path.open("rb") as stream:
