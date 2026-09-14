@@ -348,6 +348,50 @@ def test_yingdao_provider_capacity_serializes_three_tasks(tmp_path: Path) -> Non
     assert executor.can_claim() is True
 
 
+def test_tasklog_wait_keeps_yingdao_slot_and_next_task_queued(
+    tmp_path: Path,
+) -> None:
+    class TaskLogWaitingAdapter(FakeYingdaoAdapter):
+        def __init__(self) -> None:
+            super().__init__(discovery=discovery())
+            self.tasklog_wait_started = asyncio.Event()
+            self.tasklog_recovered = asyncio.Event()
+
+        async def execute(
+            self,
+            request: YingdaoExecutionRequest,
+        ) -> Mapping[str, Any]:
+            self.execute_calls.append(str(request.task_id))
+            self.tasklog_wait_started.set()
+            await self.tasklog_recovered.wait()
+            return self.result
+
+    async def scenario() -> None:
+        adapter = TaskLogWaitingAdapter()
+        executor = make_executor(tmp_path, adapter)
+        first, second = make_task(), make_task()
+
+        first_execution = asyncio.create_task(executor.execute(first))
+        await adapter.tasklog_wait_started.wait()
+        assert executor.can_claim() is False
+
+        second_execution = asyncio.create_task(executor.execute(second))
+        await asyncio.sleep(0.01)
+        assert adapter.execute_calls == [str(first.task_id)]
+
+        adapter.tasklog_recovered.set()
+        first_result, second_result = await asyncio.gather(
+            first_execution,
+            second_execution,
+        )
+        assert first_result.status is ExecutionStatus.SUCCESS
+        assert second_result.status is ExecutionStatus.SUCCESS
+        assert adapter.execute_calls == [str(first.task_id), str(second.task_id)]
+        assert executor.can_claim() is True
+
+    asyncio.run(scenario())
+
+
 def test_yingdao_failure_releases_slot_for_next_task(tmp_path: Path) -> None:
     class FailFirstAdapter(FakeYingdaoAdapter):
         async def execute(
