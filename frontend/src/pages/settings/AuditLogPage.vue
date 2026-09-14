@@ -20,6 +20,7 @@ import AppButton from '@/shared/ui/AppButton.vue'
 import AppDatePicker, { type AppDateValue } from '@/shared/ui/AppDatePicker.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 const page = ref(1)
 const pageSize = ref(20)
@@ -134,6 +135,12 @@ function reset(): void {
   }
   page.value = 1
 }
+const autoSearch = useAutoSearch(query)
+
+function resetFilters(): void {
+  autoSearch.cancel()
+  reset()
+}
 </script>
 
 <template>
@@ -147,6 +154,7 @@ function reset(): void {
             type="daterange"
             start-placeholder="开始日期"
             end-placeholder="结束日期"
+            @update:model-value="autoSearch.submitNow"
           />
           <AppInput
             v-model="actorUserId"
@@ -154,7 +162,10 @@ function reset(): void {
             width="md"
             clearable
             placeholder="操作人 ID"
-            @keyup.enter="query"
+            @update:model-value="autoSearch.onInput"
+            @compositionstart="autoSearch.onCompositionStart"
+            @compositionend="autoSearch.onCompositionEnd(actorUserId)"
+            @keyup.enter="autoSearch.onEnter($event)"
           />
           <AppSelect
             v-model="action"
@@ -162,9 +173,9 @@ function reset(): void {
             clearable
             :options="actionOptions"
             placeholder="全部操作"
+            @update:model-value="autoSearch.submitNow"
           />
-          <AppButton tone="text" @click="reset">重置</AppButton>
-          <AppButton tone="primary" @click="query">查询</AppButton>
+          <AppButton tone="text" @click="resetFilters">重置</AppButton>
         </template>
       </TableToolbar>
       <div class="audit-log-page__table">

@@ -59,7 +59,6 @@ test('filters by status, device and stable searchable Task fields', async ({
     .locator('.n-base-select-option')
     .filter({ hasText: '成功' })
     .click()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('系统回声验证', { exact: true })).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 
@@ -69,7 +68,6 @@ test('filters by status, device and stable searchable Task fields', async ({
     .locator('.n-base-select-option')
     .filter({ hasText: '上海-直播机-02' })
     .click()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('Python 进度闭环验证')).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 
@@ -77,7 +75,6 @@ test('filters by status, device and stable searchable Task fields', async ({
   await toolbar
     .getByPlaceholder('搜索 Task ID / 执行对象 / Skill')
     .fill('yingdao.test')
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('影刀无副作用测试').first()).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 })
@@ -99,7 +96,6 @@ test('defaults to seven days and resets from all-time without a second filter ro
     .locator('.n-base-select-option')
     .filter({ hasText: '全部时间' })
     .click()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('历史审计任务', { exact: true })).toBeVisible()
   await expect(page.getByText('共 7 条', { exact: true })).toBeVisible()
 
@@ -112,7 +108,6 @@ test('defaults to seven days and resets from all-time without a second filter ro
     .locator('.n-base-select-option')
     .filter({ hasText: '昨天' })
     .click()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('暂无任务')).toBeVisible()
 
   await selections.nth(2).click()
@@ -120,7 +115,6 @@ test('defaults to seven days and resets from all-time without a second filter ro
     .locator('.n-base-select-option')
     .filter({ hasText: '今天' })
     .click()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('共 6 条', { exact: true })).toBeVisible()
 
   await selections.nth(2).click()
@@ -129,7 +123,6 @@ test('defaults to seven days and resets from all-time without a second filter ro
     .filter({ hasText: '自定义' })
     .click()
   await expect(toolbar.locator('.n-date-picker')).toBeVisible()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('共 6 条', { exact: true })).toBeVisible()
 
   const filterRows = await toolbar
@@ -232,11 +225,9 @@ test('fills remaining space and pins pagination for many, one and empty states',
 
   const many = await measure()
   await search.fill('系统回声验证')
-  await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
   const one = await measure()
   await search.fill('完全不存在的任务')
-  await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(/暂无任务/)).toBeVisible()
   const empty = await measure()
 

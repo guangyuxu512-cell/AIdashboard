@@ -67,6 +67,7 @@ export interface AutomationParameterPresetUpdateDto
 }
 
 export interface AutomationParameterPresetListParams {
+  deviceId?: string | null
   appId?: string | null
   query?: string | null
   page?: number

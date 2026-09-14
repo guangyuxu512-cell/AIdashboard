@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -69,12 +69,21 @@ def list_shops(
     service: Annotated[ShopService, Depends(get_shop_service)],
     device_id: Annotated[UUID | None, Query()] = None,
     enabled: Annotated[bool | None, Query()] = None,
+    owner_user_id: Annotated[UUID | None, Query()] = None,
+    platform: Annotated[
+        Literal["douyin", "pdd", "taobao", "wechat_channels"] | None,
+        Query(),
+    ] = None,
+    q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
 ) -> Page[ShopListRead]:
     shops, total, session_statuses = service.list(
         offset=pagination.offset,
         limit=pagination.page_size,
         device_id=device_id,
         enabled=enabled,
+        owner_user_id=owner_user_id,
+        platform=platform,
+        name_query=q.strip() if q is not None else None,
     )
     return Page[ShopListRead](
         items=[

@@ -15,6 +15,7 @@ import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import ThreePaneWorkbench from '@/shared/components/ThreePaneWorkbench.vue'
 import { getErrorMessage } from '@/shared/api'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 import { AppButton, AppDialog, AppInput, AppSelect } from '@/shared/ui'
 import type { AppOptionValue } from '@/shared/ui/types'
 
@@ -42,7 +43,11 @@ type PendingDelete =
 const message = useMessage()
 const queryClient = useQueryClient()
 const activeMode = ref<GenerationMode>('NORMAL_GENERATION')
+const searchDraft = ref('')
 const searchQuery = ref('')
+const autoSearch = useAutoSearch(() => {
+  searchQuery.value = searchDraft.value
+})
 const roleFilter = ref<TemplateRoleFilter>('ALL')
 const selectedGroupId = ref<string | null>(null)
 const selectedTemplateId = ref<string | null>(null)
@@ -201,6 +206,7 @@ function saveGroup(input: TemplateGroupInput): void {
           mode: input.mode,
         })
         activeMode.value = input.mode
+        searchDraft.value = ''
         searchQuery.value = ''
         selectedGroupId.value = created.template_group_id
         return
@@ -353,11 +359,15 @@ function setPageSize(value: number): void {
 <template>
   <AiManagementToolbar label="模板库工具栏">
     <AppInput
-      v-model="searchQuery"
+      v-model="searchDraft"
       width="lg"
       placeholder="搜索模板"
       clearable
       aria-label="搜索模板"
+      @update:model-value="autoSearch.onInput"
+      @compositionstart="autoSearch.onCompositionStart"
+      @compositionend="autoSearch.onCompositionEnd(searchDraft)"
+      @keyup.enter="autoSearch.onEnter($event)"
     />
     <template #actions>
       <AppSelect

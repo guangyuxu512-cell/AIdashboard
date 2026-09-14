@@ -11,11 +11,17 @@ import type {
 } from './contracts'
 
 export const deviceApi = {
-  async list(params: PageParams): Promise<PageDto<DeviceReadDto>> {
+  async list(
+    params: PageParams & { search?: string },
+  ): Promise<PageDto<DeviceReadDto>> {
     const response = await httpClient.get<PageDto<DeviceReadDto>>(
       '/api/v1/devices',
       {
-        params: { page: params.page, page_size: params.pageSize },
+        params: {
+          page: params.page,
+          page_size: params.pageSize,
+          ...(params.search?.trim() ? { q: params.search.trim() } : {}),
+        },
       },
     )
     return response.data

@@ -6,6 +6,7 @@ import CompactEntityRow from '@/shared/components/CompactEntityRow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import { AppCheckbox, AppDialog, AppInput } from '@/shared/ui'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import type { GenerationProductView } from '../model/types'
 import { countGenerationProductSourceAssets } from '../model/product-source-assets'
@@ -21,7 +22,11 @@ const emit = defineEmits<{
   confirm: [productIds: string[]]
 }>()
 
+const searchDraft = ref('')
 const search = ref('')
+const autoSearch = useAutoSearch(() => {
+  search.value = searchDraft.value
+})
 const page = ref(1)
 const pageSize = ref(10)
 const localSelectedIds = ref<string[]>([])
@@ -56,6 +61,8 @@ watch(
   () => props.show,
   (show) => {
     if (!show) return
+    autoSearch.cancel()
+    searchDraft.value = ''
     search.value = ''
     page.value = 1
     pageSize.value = 10
@@ -111,10 +118,14 @@ function confirm(): void {
     <div class="batch-product-picker">
       <div class="batch-product-picker__toolbar">
         <AppInput
-          v-model="search"
+          v-model="searchDraft"
           clearable
           placeholder="搜索产品"
           aria-label="搜索产品"
+          @update:model-value="autoSearch.onInput"
+          @compositionstart="autoSearch.onCompositionStart"
+          @compositionend="autoSearch.onCompositionEnd(searchDraft)"
+          @keyup.enter="autoSearch.onEnter($event)"
         />
         <AppCheckbox
           :model-value="currentPageChecked"

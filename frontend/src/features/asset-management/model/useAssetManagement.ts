@@ -28,9 +28,7 @@ export function useAssetManagement() {
   const hasData = computed(() => listQuery.data.value !== undefined)
   const listLoading = computed(() => listQuery.isPending.value && !hasData.value)
   const listError = computed(() =>
-    listQuery.error.value && !hasData.value
-      ? getErrorMessage(listQuery.error.value)
-      : null,
+    listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
   )
 
   function query(): void {

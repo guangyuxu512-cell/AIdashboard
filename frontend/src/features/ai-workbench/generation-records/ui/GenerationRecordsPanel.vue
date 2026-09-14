@@ -7,6 +7,7 @@ import FilterBar from '@/shared/components/FilterBar.vue'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import { AppInput, AppSelect } from '@/shared/ui'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import {
   GENERATION_MODE_META,
@@ -35,6 +36,10 @@ const {
 const message = useMessage()
 const detailVisible = ref(false)
 const selectedRecord = ref<GenerationRecordView | null>(null)
+const recordsSearchDraft = ref(recordsSearch.value)
+const autoSearch = useAutoSearch(() => {
+  generationStore.setRecordsSearch(recordsSearchDraft.value)
+})
 
 const sourceTypeOptions = [
   { label: '全部类型', value: 'ALL' },
@@ -103,12 +108,15 @@ function download(): void {
   <div class="generation-records-panel" aria-label="生成记录列表">
     <FilterBar>
       <AppInput
-        :model-value="recordsSearch"
+        v-model="recordsSearchDraft"
         width="lg"
         clearable
         placeholder="搜索任务、内容或创建人"
         aria-label="搜索生成记录"
-        @update:model-value="generationStore.setRecordsSearch"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(recordsSearchDraft)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
       <AppSelect
         :model-value="recordsSourceType"

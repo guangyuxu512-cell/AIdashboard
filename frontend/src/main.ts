@@ -12,6 +12,7 @@ import {
 } from './app/providers/query-client'
 import { useAiWorkbenchSessionStore } from './features/ai-workbench/generation/model/useAiWorkbenchSessionStore'
 import { configureHumanRequestContext } from './shared/api'
+import { cancelAllAutoSearches } from './shared/composables/useAutoSearch'
 import { configureAuthEffects, useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
 import './shared/styles/theme.css'
@@ -24,6 +25,7 @@ const authStore = useAuthStore(pinia)
 const aiWorkbenchSessionStore = useAiWorkbenchSessionStore(pinia)
 configureAuthEffects({
   onTeamChanged: () => {
+    cancelAllAutoSearches()
     aiWorkbenchSessionStore.clearActiveActorContext()
     void resetQueriesForActorContextChange()
   },

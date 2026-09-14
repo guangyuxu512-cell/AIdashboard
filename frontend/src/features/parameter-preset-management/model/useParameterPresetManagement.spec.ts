@@ -22,6 +22,7 @@ const preset: AutomationParameterPresetDto = {
 }
 
 interface ManagementListParams {
+  deviceId: string | null
   appId: string | null
   query: string | null
   page: number
@@ -46,6 +47,19 @@ vi.mock('@/entities/automation-application', () => ({
   useRemoveAutomationParameterPresetMutation: () => mocks.remove,
 }))
 
+vi.mock('@/entities/device', () => ({
+  useDeviceListQuery: () => ({
+    data: ref({ items: [], total: 0, page: 1, pageSize: 100 }),
+    isPending: ref(false),
+    error: ref(null),
+  }),
+  useDeviceProviderInventoriesQuery: () => ({
+    data: ref(null),
+    isPending: ref(false),
+    error: ref(null),
+  }),
+}))
+
 function listParams(): ManagementListParams {
   return (mocks.listParams as Ref<ManagementListParams>).value
 }
@@ -67,6 +81,7 @@ beforeEach(() => {
     data: ref([{ app_id: 'app-1', app_name: '采集应用' }]),
     isPending: ref(false),
     error: ref(null),
+    isSuccess: ref(true),
     refetch: vi.fn(),
   }
   mocks.list = {
@@ -86,13 +101,14 @@ describe('useParameterPresetManagement', () => {
 
     management.setPage(2)
     management.setPageSize(50)
-    expect(listParams()).toEqual({ appId: null, query: null, page: 1, pageSize: 50 })
+    expect(listParams()).toEqual({ deviceId: null, appId: null, query: null, page: 1, pageSize: 50 })
 
     management.searchDraft.value = ' 日常 '
     management.selectedAppIdDraft.value = 'app-1'
     management.query()
     expect(listParams()).toEqual({
       appId: 'app-1',
+      deviceId: null,
       query: '日常',
       page: 1,
       pageSize: 50,
@@ -100,7 +116,7 @@ describe('useParameterPresetManagement', () => {
 
     management.reset()
     await flushPromises()
-    expect(listParams()).toEqual({ appId: null, query: null, page: 1, pageSize: 50 })
+    expect(listParams()).toEqual({ deviceId: null, appId: null, query: null, page: 1, pageSize: 50 })
   })
 
   it('returns to a valid page after deleting the final row of a later page', async () => {
@@ -118,7 +134,7 @@ describe('useParameterPresetManagement', () => {
     expect(
       (mocks.remove as { mutateAsync: unknown }).mutateAsync,
     ).toHaveBeenCalledWith({ appId: 'app-1', presetId: 'preset-last-page' })
-    expect(listParams()).toEqual({ appId: null, query: null, page: 1, pageSize: 20 })
+    expect(listParams()).toEqual({ deviceId: null, appId: null, query: null, page: 1, pageSize: 20 })
   })
 
   it('does not reinterpret an unknown application display name as an app id', () => {

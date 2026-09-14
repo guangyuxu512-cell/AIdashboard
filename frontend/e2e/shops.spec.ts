@@ -170,7 +170,6 @@ test('validates the Shop Center V4 list, selection, platform registry and detail
   await page.getByRole('button', { name: '全部平台', exact: true }).click()
 
   await page.getByPlaceholder('搜索店铺名称').fill('星河')
-  await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   await expect(page.getByText('海风家居生活馆')).toHaveCount(0)
   await page.getByRole('button', { name: '重置' }).click()
@@ -361,7 +360,6 @@ test('fills the remaining workspace and pins pagination for multi-row, one-row a
     .evaluate((element) => Math.round(element.getBoundingClientRect().height))
 
   await page.getByPlaceholder('搜索店铺名称').fill('星河')
-  await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('星河服饰旗舰店')).toBeVisible()
   const oneRowLayout = await measureLayout()
   const oneRowHeight = await section

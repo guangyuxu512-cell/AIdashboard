@@ -11,6 +11,7 @@ import AppDatePicker, { type AppDateValue } from '@/shared/ui/AppDatePicker.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOptionValue } from '@/shared/ui/types'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import type { TaskDatePreset, TaskFilterViewModel } from '../model/types'
 
@@ -79,36 +80,58 @@ const search = computed({
   get: () => props.modelValue.search,
   set: (value: string) => updateFilter('search', value),
 })
+const autoSearch = useAutoSearch(() => emit('query'))
+
+function applyFilter<Key extends keyof TaskFilterViewModel>(
+  key: Key,
+  value: TaskFilterViewModel[Key],
+): void {
+  updateFilter(key, value)
+  autoSearch.submitNow()
+}
+
+function resetFilters(): void {
+  autoSearch.cancel()
+  emit('reset')
+}
+
+function applyDatePreset(value: AppOptionValue | null): void {
+  datePreset.value = (value ?? 'last7Days') as TaskDatePreset
+  autoSearch.submitNow()
+}
 </script>
 
 <template>
   <FilterBar>
     <FilterField width="xs">
       <AppSelect
-        v-model="status"
+        :model-value="status"
         width="xs"
         clearable
         :options="statusOptions"
         placeholder="全部状态"
+        @update:model-value="applyFilter('status', $event as TaskStatusDto | null)"
       />
     </FilterField>
     <FilterField width="sm">
       <AppSelect
-        v-model="deviceId"
+        :model-value="deviceId"
         width="sm"
         clearable
         filterable
         :options="deviceOptions"
         :loading="deviceOptionsLoading"
         placeholder="全部设备"
+        @update:model-value="applyFilter('deviceId', $event as string | null)"
       />
     </FilterField>
     <FilterField width="xs">
       <AppSelect
-        v-model="datePreset"
+        :model-value="datePreset"
         width="xs"
         :options="datePresetOptions"
         placeholder="创建时间"
+        @update:model-value="applyDatePreset"
       />
     </FilterField>
     <AppDatePicker
@@ -118,6 +141,7 @@ const search = computed({
       :clearable="false"
       start-placeholder="开始日期"
       end-placeholder="结束日期"
+      @update:model-value="autoSearch.submitNow"
     />
     <FilterField width="md">
       <AppInput
@@ -125,12 +149,14 @@ const search = computed({
         width="md"
         clearable
         placeholder="搜索 Task ID / 执行对象 / Skill"
-        @keyup.enter="$emit('query')"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(search)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
     </FilterField>
     <template #actions>
-      <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
-      <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
+      <AppButton tone="text" @click="resetFilters">重置</AppButton>
     </template>
   </FilterBar>
 </template>

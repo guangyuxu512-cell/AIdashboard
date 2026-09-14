@@ -1,3 +1,4 @@
+import type { SelectOption } from 'naive-ui'
 import { computed, ref } from 'vue'
 
 import {
@@ -7,12 +8,29 @@ import {
   useYingdaoApplicationOptionsQuery,
   type AutomationParameterPresetDto,
 } from '@/entities/automation-application'
-import { getErrorMessage } from '@/shared/api'
+import {
+  type DeviceListFilters,
+  useDeviceListQuery,
+  useDeviceProviderInventoriesQuery,
+} from '@/entities/device'
+import { getErrorMessage, isInitialQueryLoading } from '@/shared/api'
+
+function emptyDeviceFilters(): DeviceListFilters {
+  return {
+    status: null,
+    tag: null,
+    workerVersion: null,
+    capability: null,
+    keyword: '',
+  }
+}
 
 export function useParameterPresetManagement() {
   const searchDraft = ref('')
+  const selectedDeviceIdDraft = ref<string | null>(null)
   const selectedAppIdDraft = ref<string | null>(null)
   const filters = ref({
+    deviceId: null as string | null,
     appId: null as string | null,
     query: null as string | null,
     page: 1,
@@ -26,11 +44,25 @@ export function useParameterPresetManagement() {
   const removePreset = ref<AutomationParameterPresetDto | null>(null)
   const removeVisible = ref(false)
 
-  const applicationsQuery = useYingdaoApplicationOptionsQuery()
+  const deviceQuery = useDeviceListQuery(
+    computed(() => ({
+      page: 1,
+      pageSize: 100,
+      filters: emptyDeviceFilters(),
+    })),
+  )
+  const inventoryQuery = useDeviceProviderInventoriesQuery(selectedDeviceIdDraft)
+  const applicationsQuery = useYingdaoApplicationOptionsQuery(selectedDeviceIdDraft)
   const presetsQuery = useAutomationParameterPresetManagementQuery(filters)
   const copyPresetMutation = useCopyAutomationParameterPresetMutation()
   const removePresetMutation = useRemoveAutomationParameterPresetMutation()
   const applicationOptions = computed(() => applicationsQuery.data.value ?? [])
+  const deviceOptions = computed<SelectOption[]>(() =>
+    (deviceQuery.data.value?.items ?? []).map((device) => ({
+      label: device.deviceName,
+      value: device.deviceId,
+    })),
+  )
   const applicationNameById = computed(
     () =>
       new Map(
@@ -54,9 +86,36 @@ export function useParameterPresetManagement() {
   const listError = computed(() =>
     presetsQuery.error.value ? getErrorMessage(presetsQuery.error.value) : null,
   )
+  const selectedDeviceCapabilityState = computed(() => {
+    if (!selectedDeviceIdDraft.value) return null
+    if (inventoryQuery.error.value) {
+      return {
+        kind: 'error' as const,
+        message: getErrorMessage(inventoryQuery.error.value),
+      }
+    }
+    if (inventoryQuery.isPending.value) {
+      return { kind: 'loading' as const, message: '正在读取设备能力…' }
+    }
+    const inventory = inventoryQuery.data.value
+    if (!inventory) {
+      return {
+        kind: 'unsynced' as const,
+        message: '该设备尚未同步影刀应用能力，请先在设备能力中刷新。',
+      }
+    }
+    if (inventory.providerStatus !== 'ready') {
+      return {
+        kind: 'unavailable' as const,
+        message: inventory.statusReason || '该设备的影刀能力当前不可用。',
+      }
+    }
+    return { kind: 'ready' as const, message: null }
+  })
 
   function query(): void {
     filters.value = {
+      deviceId: selectedDeviceIdDraft.value,
       appId: selectedAppIdDraft.value,
       query: searchDraft.value.trim() || null,
       page: 1,
@@ -66,6 +125,7 @@ export function useParameterPresetManagement() {
 
   function reset(): void {
     searchDraft.value = ''
+    selectedDeviceIdDraft.value = null
     selectedAppIdDraft.value = null
     query()
   }
@@ -182,6 +242,14 @@ export function useParameterPresetManagement() {
         : null,
     ),
     applicationsLoading: computed(() => applicationsQuery.isPending.value),
+    applicationsLoaded: computed(() => applicationsQuery.isSuccess.value),
+    deviceOptions,
+    deviceOptionsError: computed(() =>
+      deviceQuery.error.value ? getErrorMessage(deviceQuery.error.value) : null,
+    ),
+    deviceOptionsLoading: computed(() =>
+      isInitialQueryLoading(deviceQuery.isPending.value, deviceQuery.data.value),
+    ),
     copyAndOpen,
     copyError,
     confirmRemove,
@@ -209,6 +277,8 @@ export function useParameterPresetManagement() {
     rows,
     searchDraft,
     selectedAppIdDraft,
+    selectedDeviceCapabilityState,
+    selectedDeviceIdDraft,
     setPage,
     setPageSize,
     total,

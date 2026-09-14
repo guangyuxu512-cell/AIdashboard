@@ -142,8 +142,10 @@ class AutomationApplicationCatalogServiceStub:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
     ) -> list[YingdaoApplicationOptionRead]:
         assert actor == ACTOR
+        assert device_id is None
         return [
             YingdaoApplicationOptionRead(
                 app_id="release-p0-app",

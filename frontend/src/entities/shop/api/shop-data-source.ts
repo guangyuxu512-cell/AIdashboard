@@ -12,6 +12,7 @@ import type {
   ShopDeviceBindingInput,
   ShopListFilters,
   ShopListItemViewModel,
+  ShopPlatformFilter,
   ShopSaveInput,
   ShopSelectOption,
 } from '../model/types'
@@ -26,6 +27,7 @@ export interface ShopListParams {
   page: number
   pageSize: number
   filters: ShopListFilters
+  platform?: ShopPlatformFilter
   referenceOptions?: ShopReferenceOptions
 }
 
@@ -81,10 +83,22 @@ export function createMockShopDataSource(): ShopDataSource {
   return {
     mode: 'mock',
     async list(params) {
+      const keyword = params.filters.keyword.trim().toLocaleLowerCase()
+      const filtered = rows.filter(
+        (shop) =>
+          (!params.platform ||
+            params.platform === 'all' ||
+            shop.platform === params.platform) &&
+          (!params.filters.enabledStatus ||
+            shop.enabledStatus === params.filters.enabledStatus) &&
+          (!params.filters.ownerUserId ||
+            shop.ownerUserId === params.filters.ownerUserId) &&
+          (!keyword || shop.shopName.toLocaleLowerCase().includes(keyword)),
+      )
       const start = (params.page - 1) * params.pageSize
       return {
-        items: rows.slice(start, start + params.pageSize),
-        total: rows.length,
+        items: filtered.slice(start, start + params.pageSize),
+        total: filtered.length,
         page: params.page,
         pageSize: params.pageSize,
       }
@@ -231,7 +245,19 @@ const realShopDataSource: ShopDataSource = {
   mode: 'real',
   async list(params) {
     const [page, references] = await Promise.all([
-      shopApi.list(params),
+      shopApi.list({
+        ...params,
+        enabled:
+          params.filters.enabledStatus === null
+            ? undefined
+            : params.filters.enabledStatus === 'enabled',
+        ownerUserId: params.filters.ownerUserId ?? undefined,
+        platform:
+          !params.platform || params.platform === 'all'
+            ? undefined
+            : params.platform,
+        search: params.filters.keyword,
+      }),
       loadMappingReferences(params.referenceOptions),
     ])
     const bindings = await Promise.all(

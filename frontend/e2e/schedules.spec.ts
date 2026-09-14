@@ -56,12 +56,10 @@ test('filters schedules and preserves normal empty state', async ({ page }) => {
   const toolbar = page.getByRole('region', { name: '筛选条件' })
 
   await toolbar.getByPlaceholder('搜索计划名称或执行对象').fill('库存同步')
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('库存同步（Fixture）').first()).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 
   await toolbar.getByPlaceholder('搜索计划名称或执行对象').fill('不存在')
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('暂无定时计划')).toBeVisible()
   await expect(page.getByText('加载失败')).toHaveCount(0)
 })

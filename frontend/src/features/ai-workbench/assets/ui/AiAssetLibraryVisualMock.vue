@@ -29,6 +29,7 @@ import {
 import EmptyState from '@/shared/components/EmptyState.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import ThreePaneWorkbench from '@/shared/components/ThreePaneWorkbench.vue'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 import { AppButton, AppDialog, AppInput, AppSwitch } from '@/shared/ui'
 
 type PendingDelete =
@@ -66,6 +67,10 @@ const {
   currentPageSelectionIndeterminate,
   roleCounts,
 } = library
+const searchDraft = ref(searchQuery.value)
+const autoSearch = useAutoSearch(() => {
+  searchQuery.value = searchDraft.value
+})
 
 const filterOptions: DropdownOption[] = [
   { key: 'all', label: '全部' },
@@ -191,11 +196,15 @@ onBeforeUnmount(library.dispose)
   <div class="ai-assets-visual-mock">
     <AiManagementToolbar label="素材库工具栏">
       <AppInput
-        v-model="searchQuery"
+        v-model="searchDraft"
         width="lg"
         placeholder="搜索素材"
         clearable
         aria-label="搜索素材"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(searchDraft)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
       <template #actions>
         <NDropdown trigger="click" :options="filterOptions" @select="setFilter">

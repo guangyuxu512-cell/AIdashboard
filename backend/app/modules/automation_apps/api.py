@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -51,8 +52,12 @@ def list_yingdao_applications(
         AutomationApplicationCatalogService,
         Depends(get_catalog_service),
     ],
+    device_id: UUID | None = None,
 ) -> list[YingdaoApplicationOptionRead]:
-    return service.list_yingdao_application_options(actor=actor)
+    return service.list_yingdao_application_options(
+        actor=actor,
+        device_id=device_id,
+    )
 
 
 @router.get(

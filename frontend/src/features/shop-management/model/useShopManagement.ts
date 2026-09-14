@@ -62,9 +62,8 @@ export function useShopManagement() {
   const listParams = computed(() => ({
     page: page.value,
     pageSize: pageSize.value,
-    // Backend V1 only accepts pagination. All visible filters are applied to
-    // the already-loaded page and must never become invented query params.
-    filters: createEmptyFilters(),
+    filters: appliedFilters.value,
+    platform: selectedPlatform.value,
     referenceOptions: referenceOptions.value,
   }))
   const listQuery = useShopListQuery(listParams)
@@ -76,19 +75,7 @@ export function useShopManagement() {
   const removeMutation = useRemoveShopMutation()
 
   const sourceRows = computed(() => listQuery.data.value?.items ?? [])
-  const rows = computed(() => {
-    const filters = appliedFilters.value
-    const keyword = filters.keyword.trim().toLocaleLowerCase()
-    return sourceRows.value.filter(
-      (shop) =>
-        (selectedPlatform.value === 'all' ||
-          shop.platform === selectedPlatform.value) &&
-        (!filters.enabledStatus ||
-          shop.enabledStatus === filters.enabledStatus) &&
-        (!filters.ownerUserId || shop.ownerUserId === filters.ownerUserId) &&
-        (!keyword || shop.shopName.toLocaleLowerCase().includes(keyword)),
-    )
-  })
+  const rows = computed(() => sourceRows.value)
   const selectedShopCount = computed(() => selectedShopIds.value.length)
   const total = computed(() => listQuery.data.value?.total ?? 0)
   const listError = computed(() =>
@@ -107,6 +94,9 @@ export function useShopManagement() {
       currentIds.has(shopId),
     )
   })
+  watch(selectedPlatform, () => {
+    page.value = 1
+  }, { flush: 'sync' })
 
   function query(): void {
     appliedFilters.value = { ...filterDraft.value }
@@ -250,8 +240,8 @@ export function useShopManagement() {
     canReadDevices,
     dataSourceDescription:
       shopDataSource.mode === 'real'
-        ? '数据来自 FastAPI；平台与筛选条件仅筛选当前页。'
-        : '当前数据来自 Frontend Fixture；平台与筛选条件仅筛选当前页。',
+        ? '数据来自 FastAPI；筛选在授权范围内分页前执行。'
+        : '当前数据来自 Frontend Fixture；筛选在分页前执行。',
     listLoading: listQuery.isPending,
     listError,
     detailShop: computed(() => detailQuery.data.value ?? null),

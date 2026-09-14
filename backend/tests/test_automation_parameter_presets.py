@@ -19,11 +19,13 @@ from app.modules.automation_apps.schemas import (
     AutomationParameterPresetCopy,
     AutomationParameterPresetCreate,
     AutomationParameterPresetUpdate,
+    YingdaoApplicationOptionRead,
 )
 from app.modules.automation_apps.service import (
     AutomationApplicationCatalogService,
     AutomationParameterPresetService,
 )
+from app.modules.devices.exceptions import DeviceNotFoundError
 from app.shared.pagination import PaginationParams
 
 
@@ -116,6 +118,7 @@ class FakePresetRepository:
         actor: ActorContext,
         team_id: UUID,
         app_id: str | None = None,
+        app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
         offset: int = 0,
         limit: int | None = None,
@@ -129,6 +132,8 @@ class FakePresetRepository:
             ]
         if app_id is not None:
             candidates = [preset for preset in candidates if preset.app_id == app_id]
+        if app_ids is not None:
+            candidates = [preset for preset in candidates if preset.app_id in app_ids]
         if name_query:
             candidates = [preset for preset in candidates if name_query in preset.name]
         candidates.sort(key=lambda preset: preset.preset_id)
@@ -141,6 +146,7 @@ class FakePresetRepository:
         actor: ActorContext,
         team_id: UUID,
         app_id: str | None = None,
+        app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
     ) -> int:
         return len(
@@ -148,6 +154,7 @@ class FakePresetRepository:
                 actor=actor,
                 team_id=team_id,
                 app_id=app_id,
+                app_ids=app_ids,
                 name_query=name_query,
             ),
         )
@@ -257,6 +264,7 @@ def service_for(
     repository: FakePresetRepository,
     shop_ids: set[UUID],
     allowed: bool = True,
+    application_catalog_service: object | None = None,
 ) -> AutomationParameterPresetService:
     return AutomationParameterPresetService(
         FakeSession(),  # type: ignore[arg-type]
@@ -264,6 +272,7 @@ def service_for(
         preset_repository=repository,  # type: ignore[arg-type]
         shop_repository=FakeShopRepository(shop_ids),  # type: ignore[arg-type]
         module_access_service=FakeModuleAccessService(allowed=allowed),  # type: ignore[arg-type]
+        application_catalog_service=application_catalog_service,  # type: ignore[arg-type]
     )
 
 
@@ -812,11 +821,25 @@ def test_management_list_counts_and_pages_only_authorized_team_rows() -> None:
 
 
 class FakeDeviceCatalogRepository:
+    def __init__(self) -> None:
+        self.team_device_id = uuid4()
+        self.foreign_device_id = uuid4()
+
     def list_all_for_actor(self, *, actor: ActorContext) -> list[SimpleNamespace]:
         return [
-            SimpleNamespace(device_id=uuid4(), team_id=actor.team_id),
-            SimpleNamespace(device_id=uuid4(), team_id=uuid4()),
+            SimpleNamespace(device_id=self.team_device_id, team_id=actor.team_id),
+            SimpleNamespace(device_id=self.foreign_device_id, team_id=uuid4()),
         ]
+
+    def get_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        device_id: UUID,
+    ) -> SimpleNamespace | None:
+        if device_id != self.team_device_id:
+            return None
+        return SimpleNamespace(device_id=device_id, team_id=actor.team_id)
 
 
 class FakeWorkerCatalogRepository:
@@ -857,9 +880,10 @@ class FakeWorkerCatalogRepository:
 
 
 def test_application_catalog_returns_only_deduplicated_current_team_application_options() -> None:
+    device_repository = FakeDeviceCatalogRepository()
     service = AutomationApplicationCatalogService(
         FakeSession(),  # type: ignore[arg-type]
-        device_repository=FakeDeviceCatalogRepository(),  # type: ignore[arg-type]
+        device_repository=device_repository,  # type: ignore[arg-type]
         worker_repository=FakeWorkerCatalogRepository(),  # type: ignore[arg-type]
     )
 
@@ -872,3 +896,64 @@ def test_application_catalog_returns_only_deduplicated_current_team_application_
         {"app_id": "after-sale", "app_name": "售后同步"},
         {"app_id": "daily", "app_name": "日常采集"},
     ]
+
+    assert len(
+        service.list_yingdao_application_options(
+            actor=actor(team_id=uuid4()),
+            device_id=device_repository.team_device_id,
+        ),
+    ) == 2
+    with pytest.raises(DeviceNotFoundError):
+        service.list_yingdao_application_options(
+            actor=actor(team_id=uuid4()),
+            device_id=uuid4(),
+        )
+
+
+def test_management_list_filters_authorized_rows_by_selected_device_apps() -> None:
+    team_id = uuid4()
+    actor_context = actor(team_id=team_id)
+    repository = FakePresetRepository()
+    now = datetime.now(UTC)
+    for app_id in ("daily", "other-app"):
+        repository.add(
+            AutomationParameterPreset(
+                preset_id=uuid4(),
+                team_id=team_id,
+                created_by_user_id=actor_context.user_id,
+                app_id=app_id,
+                name=app_id,
+                common_parameters={},
+                shop_overrides={},
+                input_schema_snapshot={"fields": []},
+                version=1,
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+
+    class SelectedDeviceCatalog:
+        def list_yingdao_application_options(
+            self,
+            *,
+            actor: ActorContext,
+            device_id: UUID,
+        ) -> list[YingdaoApplicationOptionRead]:
+            assert actor == actor_context
+            assert device_id == selected_device_id
+            return [YingdaoApplicationOptionRead(app_id="daily", app_name="日常采集")]
+
+    selected_device_id = uuid4()
+    service = service_for(
+        repository=repository,
+        shop_ids=set(),
+        application_catalog_service=SelectedDeviceCatalog(),
+    )
+    page = service.list_all(
+        actor=actor_context,
+        device_id=selected_device_id,
+        pagination=PaginationParams(),
+    )
+
+    assert page.total == 1
+    assert [item.app_id for item in page.items] == ["daily"]

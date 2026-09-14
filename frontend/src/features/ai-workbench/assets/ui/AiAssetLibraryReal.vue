@@ -19,6 +19,7 @@ import {
   AiManagementToolbar,
 } from '@/features/ai-workbench'
 import { getErrorMessage } from '@/shared/api'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
@@ -61,7 +62,11 @@ const selectedAssetId = ref<string | null>(null)
 const selectedAssetIds = ref<string[]>([])
 const selectionMode = ref(false)
 const activeRole = ref<MaterialRole>('PRODUCT_SOURCE')
+const searchDraft = ref('')
 const searchQuery = ref('')
+const autoSearch = useAutoSearch(() => {
+  searchQuery.value = searchDraft.value
+})
 const productFilter = ref<ProductMaterialFilter>('all')
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -469,11 +474,15 @@ function replaceBindings(
   <div class="ai-assets-real">
     <AiManagementToolbar label="素材库工具栏">
       <AppInput
-        v-model="searchQuery"
+        v-model="searchDraft"
         width="lg"
         placeholder="搜索素材"
         clearable
         aria-label="搜索素材"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(searchDraft)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
       <template #actions>
         <NDropdown trigger="click" :options="filterOptions" @select="setFilter">

@@ -26,7 +26,10 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
   management.capabilityVisible.value = false
   void router.push({
     path: '/parameter-presets',
-    query: { app_id: application.appId },
+    query: {
+      device_id: management.capabilityDeviceId.value,
+      app_id: application.appId,
+    },
   })
 }
 </script>
@@ -37,6 +40,7 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
       v-model="management.filterDraft.value"
       :statistics="management.statistics.value"
       :refreshing="management.refreshing.value"
+      @query="management.query"
       @refresh="management.refreshList"
     >
       <template #primary-action>

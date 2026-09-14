@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.policy import DataScopePolicy
 from app.modules.devices.models import Device
+from app.modules.workers.models import DeviceProviderInventory
 
 
 class DeviceRepository:
@@ -20,9 +21,10 @@ class DeviceRepository:
         actor: ActorContext,
         offset: int,
         limit: int,
+        search: str | None = None,
     ) -> list[Device]:
         statement = DataScopePolicy.apply(
-            select(Device).where(Device.deleted_at.is_(None)),
+            self._search_statement(search),
             team_id_column=Device.team_id,
             created_by_user_id_column=Device.created_by_user_id,
             actor=actor,
@@ -36,18 +38,39 @@ class DeviceRepository:
             ),
         )
 
-    def count(self, *, actor: ActorContext) -> int:
+    def count(self, *, actor: ActorContext, search: str | None = None) -> int:
         statement = DataScopePolicy.apply(
-            select(func.count())
-            .select_from(Device)
-            .where(Device.deleted_at.is_(None)),
+            self._search_statement(search),
             team_id_column=Device.team_id,
             created_by_user_id_column=Device.created_by_user_id,
             actor=actor,
         )
         return (
-            self.session.scalar(statement)
+            self.session.scalar(
+                statement.with_only_columns(func.count()).order_by(None),
+            )
             or 0
+        )
+
+    @staticmethod
+    def _search_statement(search: str | None):
+        statement = select(Device).where(Device.deleted_at.is_(None))
+        if not search:
+            return statement
+        pattern = f"%{search}%"
+        matching_inventory = exists(
+            select(DeviceProviderInventory.device_id).where(
+                DeviceProviderInventory.device_id == Device.device_id,
+                DeviceProviderInventory.provider_code == "yingdao",
+                DeviceProviderInventory.account_display.ilike(pattern),
+            ),
+        )
+        return statement.where(
+            or_(
+                Device.display_name.ilike(pattern),
+                Device.location.ilike(pattern),
+                matching_inventory,
+            ),
         )
 
     def list_all_for_actor(self, *, actor: ActorContext) -> list[Device]:
