@@ -119,9 +119,7 @@ export function useScheduleManagement() {
   )
   const rows = computed(() => listQuery.data.value?.items ?? [])
   const listError = computed(() =>
-    isInitialQueryError(listQuery.error.value, listQuery.data.value)
-      ? getErrorMessage(listQuery.error.value)
-      : null,
+    listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
   )
   const detailError = computed(() =>
     isInitialQueryError(detailQuery.error.value, detailQuery.data.value)

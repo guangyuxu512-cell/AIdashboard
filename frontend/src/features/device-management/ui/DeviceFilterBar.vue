@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import FilterBar from '@/shared/components/FilterBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import type { DeviceFilterViewModel } from '../model/types'
 
@@ -15,8 +16,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: DeviceFilterViewModel]
+  query: []
   refresh: []
 }>()
+const autoSearch = useAutoSearch(() => emit('query'))
 
 const keyword = computed({
   get: () => props.modelValue.keyword,
@@ -48,6 +51,10 @@ const keyword = computed({
         width="md"
         clearable
         placeholder="搜索设备名称或影刀账号"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(keyword)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
       <AppButton :loading="refreshing" @click="$emit('refresh')">
         刷新

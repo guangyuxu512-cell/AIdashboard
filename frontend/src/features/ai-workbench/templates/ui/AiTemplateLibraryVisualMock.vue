@@ -25,6 +25,7 @@ import {
 } from '@/features/ai-workbench'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ThreePaneWorkbench from '@/shared/components/ThreePaneWorkbench.vue'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 import { AppButton, AppDialog, AppInput, AppSelect } from '@/shared/ui'
 import type { AppOptionValue } from '@/shared/ui/types'
 
@@ -53,6 +54,10 @@ const {
   currentPage,
   pageSize,
 } = library
+const searchDraft = ref(searchQuery.value)
+const autoSearch = useAutoSearch(() => {
+  searchQuery.value = searchDraft.value
+})
 
 const modeOptions: SelectOption[] = Object.entries(GENERATION_MODE_META).map(
   ([value, meta]) => ({ value, label: meta.label }),
@@ -121,11 +126,15 @@ function saveTemplate(input: PromptTemplateInput): void {
 <template>
   <AiManagementToolbar label="模板库工具栏">
     <AppInput
-      v-model="searchQuery"
+      v-model="searchDraft"
       width="lg"
       placeholder="搜索模板"
       clearable
       aria-label="搜索模板"
+      @update:model-value="autoSearch.onInput"
+      @compositionstart="autoSearch.onCompositionStart"
+      @compositionend="autoSearch.onCompositionEnd(searchDraft)"
+      @keyup.enter="autoSearch.onEnter($event)"
     />
     <template #actions>
       <AppSelect

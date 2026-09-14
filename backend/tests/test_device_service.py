@@ -21,15 +21,18 @@ class FakeDeviceRepository:
         actor: ActorContext,
         offset: int,
         limit: int,
+        search: str | None = None,
     ) -> list[Device]:
         del actor
-        return [
+        candidates = [
             item for item in self.items.values() if item.deleted_at is None
-        ][offset : offset + limit]
+        ]
+        if search:
+            candidates = [item for item in candidates if search in item.display_name]
+        return candidates[offset : offset + limit]
 
-    def count(self, *, actor: ActorContext) -> int:
-        del actor
-        return sum(item.deleted_at is None for item in self.items.values())
+    def count(self, *, actor: ActorContext, search: str | None = None) -> int:
+        return len(self.list(actor=actor, offset=0, limit=1000, search=search))
 
     def get_for_actor(
         self,
@@ -120,6 +123,26 @@ def test_device_create_get_list_and_update() -> None:
     assert created.team_id == ACTOR.team_id
     assert created.created_by_user_id == ACTOR.user_id
     assert session.commits == 2
+
+
+def test_device_search_filters_before_pagination_and_count() -> None:
+    service = DeviceService(  # type: ignore[arg-type]
+        FakeSession(),
+        FakeDeviceRepository(),
+    )
+    service.create(ACTOR, DeviceCreate(display_name="筛选设备 A"))
+    expected = service.create(ACTOR, DeviceCreate(display_name="筛选设备 B"))
+    service.create(ACTOR, DeviceCreate(display_name="其他设备"))
+
+    items, total = service.list(
+        actor=ACTOR,
+        offset=1,
+        limit=1,
+        search="筛选",
+    )
+
+    assert items == [expected]
+    assert total == 2
 
 
 def test_device_not_found() -> None:

@@ -39,10 +39,16 @@ class DeviceService:
         actor: ActorContext,
         offset: int,
         limit: int,
+        search: str | None = None,
     ) -> tuple[list[Device], int]:
         return (
-            self.repository.list(actor=actor, offset=offset, limit=limit),
-            self.repository.count(actor=actor),
+            self.repository.list(
+                actor=actor,
+                offset=offset,
+                limit=limit,
+                search=search,
+            ),
+            self.repository.count(actor=actor, search=search),
         )
 
     def get(self, actor: ActorContext, device_id: UUID) -> Device:

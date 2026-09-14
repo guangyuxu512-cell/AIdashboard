@@ -5,6 +5,7 @@ import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 import DataTable from '@/shared/components/DataTable.vue'
 import { getErrorMessage } from '@/shared/api'
 import { AppButton, AppDialog, AppInput } from '@/shared/ui'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import { useAssetListQuery } from '../api/asset-queries'
 import type { AssetListItemViewModel } from '../model/types'
@@ -18,6 +19,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const visible = ref(false)
 const searchDraft = ref('')
 const search = ref('')
+const autoSearch = useAutoSearch(() => {
+  search.value = searchDraft.value
+})
 const draftIds = ref<string[]>([])
 const listQuery = useAssetListQuery(
   computed(() => ({ page: 1, pageSize: 100, search: search.value })),
@@ -26,9 +30,7 @@ const rows = computed(() => listQuery.data.value?.items ?? [])
 const hasRows = computed(() => listQuery.data.value !== undefined)
 const initialLoading = computed(() => listQuery.isPending.value && !hasRows.value)
 const initialError = computed(() =>
-  listQuery.error.value && !hasRows.value
-    ? getErrorMessage(listQuery.error.value)
-    : null,
+  listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
 )
 const selectedRows = computed(() => {
   const byId = new Map(rows.value.map((row) => [row.assetId, row]))
@@ -43,7 +45,11 @@ const selectedRows = computed(() => {
 })
 
 watch(visible, (show) => {
-  if (show) draftIds.value = [...props.modelValue]
+  if (show) {
+    draftIds.value = [...props.modelValue]
+    return
+  }
+  autoSearch.cancel()
 })
 
 function updateDraft(keys: DataTableRowKey[]): void {
@@ -132,8 +138,11 @@ const columns: DataTableColumns<AssetListItemViewModel> = [
             placeholder="搜索文件名"
             width="lg"
             clearable
+            @update:model-value="autoSearch.onInput"
+            @compositionstart="autoSearch.onCompositionStart"
+            @compositionend="autoSearch.onCompositionEnd(searchDraft)"
+            @keyup.enter="autoSearch.onEnter($event)"
           />
-          <AppButton tone="primary" @click="search = searchDraft">查询</AppButton>
         </div>
         <DataTable
           :columns="columns"

@@ -1,5 +1,5 @@
 import { shallowMount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import AppCheckbox from '@/shared/ui/AppCheckbox.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
@@ -30,6 +30,7 @@ describe('ShopMultiSelector', () => {
   })
 
   it('filters the visible shop list and reports the selected count', async () => {
+    vi.useFakeTimers()
     const wrapper = shallowMount(ShopMultiSelector, {
       props: { modelValue: ['shop-2'], options },
       global: { renderStubDefaultSlot: true },
@@ -37,10 +38,12 @@ describe('ShopMultiSelector', () => {
 
     expect(wrapper.text()).toContain('已选择 1 个店铺')
     wrapper.findComponent(AppInput).vm.$emit('update:modelValue', 'Huan')
+    await vi.advanceTimersByTimeAsync(300)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('HuanYu')
     expect(wrapper.text()).not.toContain('店铺02')
+    vi.useRealTimers()
   })
 
   it('lets schedule editors remove a saved shop that is no longer bound', async () => {

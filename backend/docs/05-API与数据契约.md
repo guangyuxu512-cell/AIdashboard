@@ -111,6 +111,11 @@ Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文�
 
 Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_status`：没有 ShopSession 时为 `null`，其余值直接来自正式 ShopSession Status，不由 Frontend 猜测。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；对已移除 Shop 的 GET、PATCH、Binding 与 Session 业务访问返回 `SHOP_NOT_FOUND`。`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
 
+`GET /api/v1/shops` 的 `enabled / device_id / owner_user_id / platform / q` 与 `GET /api/v1/devices`
+的 `status / search` 都在服务端授权范围内先过滤，再执行稳定排序、分页和 `count`。Device `search`
+匹配名称、位置及 Yingdao Inventory 的账号显示名；它不扩大 Device Data Scope。Registry 中尚未接入数据库
+枚举的平台查询返回空页，不把前端展示能力伪装为可创建平台。
+
 带 `platform_shop_id` 的 Shop 已由平台身份识别建立。普通 `ShopUpdate` 不允许修改其 `display_name` 或 `platform`，且 Contract 本身不接受 `platform_shop_id` 更新；负责人、备注和既有 `enabled` 语义不受影响。`Shop.enabled` 不是自动化总开关。
 
 `Shop.enabled=true/false` 分别表示店铺可/不可参与正常系统业务；当前不存在 `automation_enabled`，禁止用 `Shop.enabled` 表达自动化总开关。

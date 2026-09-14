@@ -21,10 +21,12 @@ import FilterBar from '@/shared/components/FilterBar.vue'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 const management = useParameterPresetManagement()
 const route = useRoute()
 const router = useRouter()
+const autoSearch = useAutoSearch(pushCurrentFilters)
 const schemaDialogApplication = ref<ProviderApplicationViewModel | null>(null)
 const schemaDialogSchema = ref<AutomationInputSchemaDto>({ fields: [] })
 const managerDialog = ref<InstanceType<
@@ -121,17 +123,20 @@ function pushCurrentFilters(): void {
 }
 
 function selectDevice(value: string | number | null): void {
+  autoSearch.cancel()
   management.selectedDeviceIdDraft.value = value === null ? null : String(value)
   management.selectedAppIdDraft.value = null
   pushCurrentFilters()
 }
 
 function selectApplication(value: string | number | null): void {
+  autoSearch.cancel()
   management.selectedAppIdDraft.value = value === null ? null : String(value)
   pushCurrentFilters()
 }
 
 function resetFilters(): void {
+  autoSearch.cancel()
   management.searchDraft.value = ''
   management.selectedDeviceIdDraft.value = null
   management.selectedAppIdDraft.value = null
@@ -187,11 +192,13 @@ function applyPresetSchema(schema: AutomationInputSchemaDto): void {
         width="lg"
         clearable
         placeholder="搜索配置名称"
-        @keyup.enter="pushCurrentFilters"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(management.searchDraft.value)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
       <template #actions>
         <AppButton @click="resetFilters">重置</AppButton>
-        <AppButton tone="primary" @click="pushCurrentFilters">查询</AppButton>
       </template>
       <template #primary-action>
         <AppButton tone="primary" @click="management.openCreate"

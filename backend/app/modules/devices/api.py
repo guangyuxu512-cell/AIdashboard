@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -64,11 +64,13 @@ def list_devices(
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[DeviceService, Depends(get_device_service)],
     worker_service: Annotated[WorkerService, Depends(get_worker_service)],
+    q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
 ) -> Page[DeviceRead]:
     devices, total = service.list(
         actor=actor,
         offset=pagination.offset,
         limit=pagination.page_size,
+        search=q.strip() if q is not None else None,
     )
     runtimes = worker_service.get_runtime_reads(
         [device.device_id for device in devices],

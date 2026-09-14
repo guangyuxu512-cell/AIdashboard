@@ -64,9 +64,7 @@ export function useAccessManagement() {
     () => membersQuery.isPending.value && !membersHaveData.value,
   )
   const membersError = computed(() =>
-    membersQuery.error.value && !membersHaveData.value
-      ? getErrorMessage(membersQuery.error.value)
-      : null,
+    membersQuery.error.value ? getErrorMessage(membersQuery.error.value) : null,
   )
 
   function query(): void {

@@ -38,10 +38,19 @@ class FakeShopRepository:
         limit: int,
         device_id: UUID | None = None,
         enabled: bool | None = None,
+        owner_user_id: UUID | None = None,
+        platform: str | None = None,
+        name_query: str | None = None,
     ) -> list[Shop]:
         active = [shop for shop in self.items.values() if shop.deleted_at is None]
         if enabled is not None:
             active = [shop for shop in active if shop.enabled is enabled]
+        if owner_user_id is not None:
+            active = [shop for shop in active if shop.owner_user_id == owner_user_id]
+        if platform is not None:
+            active = [shop for shop in active if shop.platform == platform]
+        if name_query:
+            active = [shop for shop in active if name_query in shop.display_name]
         del device_id
         return active[offset : offset + limit]
 
@@ -50,12 +59,20 @@ class FakeShopRepository:
         *,
         device_id: UUID | None = None,
         enabled: bool | None = None,
+        owner_user_id: UUID | None = None,
+        platform: str | None = None,
+        name_query: str | None = None,
     ) -> int:
-        del device_id
-        return sum(
-            shop.deleted_at is None
-            and (enabled is None or shop.enabled is enabled)
-            for shop in self.items.values()
+        return len(
+            self.list(
+                offset=0,
+                limit=1000,
+                device_id=device_id,
+                enabled=enabled,
+                owner_user_id=owner_user_id,
+                platform=platform,
+                name_query=name_query,
+            ),
         )
 
     def get(self, shop_id: UUID) -> Shop | None:
@@ -163,6 +180,42 @@ def test_shop_create_get_list_and_update() -> None:
     assert updated.display_name == "正式店铺 A"
     assert updated.enabled is False
     assert session.commits == 2
+
+
+def test_shop_list_filters_before_pagination_and_count() -> None:
+    service, _, _, _, user_id, _ = build_service()
+    service.create(
+        ShopCreate(
+            display_name="筛选店铺 A",
+            platform=ShopPlatform.PDD,
+            owner_user_id=user_id,
+        ),
+    )
+    expected = service.create(
+        ShopCreate(
+            display_name="筛选店铺 B",
+            platform=ShopPlatform.PDD,
+            owner_user_id=user_id,
+        ),
+    )
+    service.create(
+        ShopCreate(
+            display_name="其他店铺",
+            platform=ShopPlatform.DOUYIN,
+            owner_user_id=user_id,
+        ),
+    )
+
+    items, total, _ = service.list(
+        offset=1,
+        limit=1,
+        owner_user_id=user_id,
+        platform="pdd",
+        name_query="筛选",
+    )
+
+    assert items == [expected]
+    assert total == 2
 
 
 def test_shop_not_found() -> None:

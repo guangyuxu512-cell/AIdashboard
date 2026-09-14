@@ -40,6 +40,7 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
       v-model="management.filterDraft.value"
       :statistics="management.statistics.value"
       :refreshing="management.refreshing.value"
+      @query="management.query"
       @refresh="management.refreshList"
     >
       <template #primary-action>
