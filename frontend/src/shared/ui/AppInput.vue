@@ -11,6 +11,7 @@ withDefaults(
     type?: 'text' | 'password' | 'textarea'
     clearable?: boolean
     disabled?: boolean
+    readonly?: boolean
     loading?: boolean
     maxlength?: number
     name?: string
@@ -25,6 +26,7 @@ withDefaults(
     type: 'text',
     clearable: false,
     disabled: false,
+    readonly: false,
     loading: false,
     maxlength: undefined,
     name: undefined,
@@ -49,6 +51,7 @@ defineEmits<{
     :placeholder="placeholder"
     :clearable="clearable"
     :disabled="disabled"
+    :readonly="readonly"
     :loading="loading"
     :maxlength="maxlength"
     :autofocus="autofocus"

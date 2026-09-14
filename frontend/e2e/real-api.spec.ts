@@ -1245,10 +1245,53 @@ test('issues, rotates and revokes a one-time Worker credential in Device Drawer'
     has: page.getByRole('heading', { name: 'Worker Token' }),
   })
   await expect(tokenDialog.getByText(/仅本次显示/)).toBeVisible()
-  const firstToken = await tokenDialog.locator('input').inputValue()
+  const tokenInput = tokenDialog.locator('input')
+  await expect(tokenInput).toHaveAttribute('type', 'password')
+  await expect(tokenInput).toBeDisabled()
+  const firstToken = await tokenInput.inputValue()
   expect(firstToken.length).toBeGreaterThan(32)
+  await tokenDialog.getByRole('button', { name: '显示' }).click()
+  await expect(tokenInput).toHaveAttribute('type', 'text')
+  await expect(tokenInput).toBeEnabled()
+  await expect(tokenInput).toHaveJSProperty('readOnly', true)
+  await tokenInput.selectText()
+  expect(
+    await tokenInput.evaluate(
+      (input) =>
+        input.selectionStart === 0 && input.selectionEnd === input.value.length,
+    ),
+  ).toBe(true)
   await tokenDialog.getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('Worker Token 已复制')).toBeVisible()
+  expect(
+    await tokenInput.evaluate(
+      async (input) => (await navigator.clipboard.readText()) === input.value,
+    ),
+  ).toBe(true)
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: () =>
+          Promise.reject(
+            new DOMException('permission denied', 'NotAllowedError'),
+          ),
+      },
+    })
+  })
+  await tokenDialog.getByRole('button', { name: '复制' }).click()
+  await expect(
+    page.getByText('Worker Token 复制失败，请点击“显示”后手动选中复制'),
+  ).toBeVisible()
+  await expect(tokenDialog).toBeVisible()
+  await tokenInput.selectText()
+  expect(
+    await tokenInput.evaluate(
+      (input) =>
+        input.selectionStart === 0 && input.selectionEnd === input.value.length,
+    ),
+  ).toBe(true)
   await tokenDialog.getByRole('button', { name: '关闭' }).click()
   await expect(tokenDialog).toHaveCount(0)
   await expect(

@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { isTrustedRendererUrl } from '../config/runtime'
 import type { DesktopResolvedTheme } from '../types'
+import { installMainWindowPermissionHandlers } from './permissions'
 
 const titleBarHeight = 54
 const titleBarSymbolColors: Record<DesktopResolvedTheme, string> = {
@@ -86,9 +87,9 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       event.preventDefault()
     }
   })
-  window.webContents.session.setPermissionCheckHandler(() => false)
-  window.webContents.session.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => callback(false),
+  installMainWindowPermissionHandlers(
+    window.webContents,
+    options.trustedRendererOrigin,
   )
 
   void window.loadURL(options.rendererUrl).catch(() => {
