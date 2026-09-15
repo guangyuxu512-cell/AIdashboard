@@ -114,6 +114,8 @@ test('uses the shared management list pattern and capability-first drawer', asyn
 test('uses the same app-filtered parameter library from a Yingdao application', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1024, height: 640 })
+
   const appId = 'app-fixture-product-publish-1'
   const applicationFixtures = [
     { app_id: appId, app_name: '商品发布（Fixture）' },
@@ -173,7 +175,6 @@ test('uses the same app-filtered parameter library from a Yingdao application', 
   await expect(deviceSelect).toContainText('杭州-运营机-01')
   await expect(applicationSelect).toContainText('商品发布（Fixture）')
 
-  await page.setViewportSize({ width: 1024, height: 640 })
   await applicationSelect.click()
   const menu = page
     .locator('#app-overlay-host .app-select-menu--viewport-safe')
