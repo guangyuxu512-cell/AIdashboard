@@ -114,15 +114,22 @@ test('uses the shared management list pattern and capability-first drawer', asyn
 test('uses the same app-filtered parameter library from a Yingdao application', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1024, height: 640 })
+
   const appId = 'app-fixture-product-publish-1'
+  const applicationFixtures = [
+    { app_id: appId, app_name: '商品发布（Fixture）' },
+    ...Array.from({ length: 17 }, (_, index) => ({
+      app_id: `app-popup-${index + 2}`,
+      app_name: index < 1 ? '商品发布（Fixture）' : `下拉应用 ${index + 2}`,
+    })),
+  ]
   let filteredRequest = false
 
   await page.route('**/api/v1/automation-app-configs/yingdao/applications*', (route) =>
     route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify([
-        { app_id: appId, app_name: '商品发布（Fixture）' },
-      ]),
+      body: JSON.stringify(applicationFixtures),
     }),
   )
   await page.route('**/api/v1/automation-parameter-presets*', (route) => {
@@ -152,6 +159,47 @@ test('uses the same app-filtered parameter library from a Yingdao application', 
   await expect.poll(() => filteredRequest).toBe(true)
   await expect(page.getByRole('button', { name: '+ 新建配置' })).toBeVisible()
   await expect(capabilityDrawer).toHaveCount(0)
+
+  await page.getByRole('button', { name: '+ 新建配置' }).click()
+  const presetDialog = page.locator('.app-dialog').filter({
+    has: page.locator('input[name="automation-parameter-preset-name"]'),
+  })
+  const deviceSelect = presetDialog
+    .locator('.n-form-item')
+    .filter({ hasText: '筛选设备' })
+    .locator('.n-base-selection')
+  const applicationSelect = presetDialog
+    .locator('.n-form-item')
+    .filter({ hasText: '对应应用' })
+    .locator('.n-base-selection')
+  await expect(deviceSelect).toContainText('杭州-运营机-01')
+  await expect(applicationSelect).toContainText('商品发布（Fixture）')
+
+  await applicationSelect.click()
+  const menu = page
+    .locator('#app-overlay-host .app-select-menu--viewport-safe')
+    .last()
+  await expect(menu).toBeVisible()
+  const [menuBounds, hostBounds] = await Promise.all([
+    menu.boundingBox(),
+    page.locator('#app-overlay-host').boundingBox(),
+  ])
+  expect(menuBounds).not.toBeNull()
+  expect(hostBounds).not.toBeNull()
+  expect(menuBounds!.y).toBeGreaterThanOrEqual(hostBounds!.y)
+  expect(menuBounds!.y + menuBounds!.height).toBeLessThanOrEqual(
+    hostBounds!.y + hostBounds!.height,
+  )
+  for (let index = 1; index < applicationFixtures.length; index += 1) {
+    await page.keyboard.press('ArrowDown')
+  }
+  await page.keyboard.press('Enter')
+  await expect(applicationSelect).toContainText('下拉应用 18')
+
+  await presetDialog.getByRole('button', { name: '取消' }).click()
+  await expect(page).toHaveURL(
+    /#\/parameter-presets\?device_id=device-fixture-001&app_id=app-fixture-product-publish-1$/,
+  )
 })
 
 test('fills remaining space and pins pagination for many, one and empty rows', async ({
