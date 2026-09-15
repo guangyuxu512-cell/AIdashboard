@@ -41,4 +41,17 @@ describe('AppSelect', () => {
     expect(wrapper.emitted('update:modelValue')).toEqual([['one']])
     expect(wrapper.emitted('update:values')).toBeUndefined()
   })
+
+  it('can keep a popup inside an existing overlay host', () => {
+    const wrapper = shallowMount(AppSelect, {
+      props: {
+        options: [{ label: 'One', value: 'one' }],
+        to: '#app-overlay-host',
+      },
+    })
+
+    expect(wrapper.findComponent(NSelect).props('to')).toBe(
+      '#app-overlay-host',
+    )
+  })
 })

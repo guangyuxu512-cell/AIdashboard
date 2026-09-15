@@ -6,12 +6,14 @@ import { useShopSelectionOptionsQuery } from '@/entities/shop'
 import { toApiError } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
+import { APP_OVERLAY_HOST_SELECTOR } from '@/shared/ui/overlay-host'
 
 import type {
   AutomationInputSchemaDto,
   AutomationParameterPresetDto,
   YingdaoApplicationOptionDto,
 } from '../api/contracts'
+import { buildYingdaoApplicationSelectOptions } from '../model/application-options'
 import {
   useAutomationParameterPresetsQuery,
   useSaveAutomationParameterPresetMutation,
@@ -27,9 +29,13 @@ const props = withDefaults(
   defineProps<{
     show: boolean
     appId: string | null
+    deviceId?: string | null
+    deviceOptions?: SelectOption[]
+    deviceOptionsLoading?: boolean
     schema: AutomationInputSchemaDto
     applicationOptions?: YingdaoApplicationOptionDto[]
     applicationOptionsLoading?: boolean
+    applicationOptionsError?: string | null
     initialPresetId?: string | null
     schemaLoading?: boolean
     schemaError?: string | null
@@ -38,6 +44,10 @@ const props = withDefaults(
   {
     applicationOptions: () => [],
     applicationOptionsLoading: false,
+    applicationOptionsError: null,
+    deviceId: null,
+    deviceOptions: () => [],
+    deviceOptionsLoading: false,
     initialPresetId: null,
     schemaLoading: false,
     schemaError: null,
@@ -48,6 +58,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:show': [value: boolean]
   'update:appId': [value: string | null]
+  'update:deviceId': [value: string | null]
   saved: [preset: AutomationParameterPresetDto]
   configureSchema: [
     application: YingdaoApplicationOptionDto,
@@ -63,6 +74,7 @@ const selectedPresetId = ref<string | null>(null)
 const commonParameterQuery = ref('')
 const saveError = ref<string | null>(null)
 const nameError = ref<string | null>(null)
+const applicationSelectionNotice = ref<string | null>(null)
 const shopOverrideDialogVisible = ref(false)
 const editingShopId = ref<string | null>(null)
 const pendingNewShopId = ref<string | null>(null)
@@ -76,10 +88,10 @@ const draft = reactive({
 })
 
 const applicationOptions = computed<SelectOption[]>(() =>
-  props.applicationOptions.map((application) => ({
-    label: application.app_name,
-    value: application.app_id,
-  })),
+  buildYingdaoApplicationSelectOptions(props.applicationOptions),
+)
+const isEditingPreset = computed(() =>
+  Boolean(props.initialPresetId || selectedPresetId.value),
 )
 const selectedApplication = computed(
   () =>
@@ -87,6 +99,15 @@ const selectedApplication = computed(
       (application) => application.app_id === props.appId,
     ) ?? (props.appId ? { app_id: props.appId, app_name: props.appId } : null),
 )
+const applicationPrompt = computed(() => {
+  if (props.appId) return null
+  if (props.applicationOptionsLoading) return '正在读取可用应用。'
+  if (props.applicationOptionsError) return '应用列表读取失败，请稍后重试。'
+  if (props.deviceId && !props.applicationOptions.length) {
+    return '该设备当前没有可用的影刀应用。'
+  }
+  return '请先选择应用。'
+})
 const shopOptions = computed(() => shopOptionsQuery.data.value ?? [])
 const availableShopOptions = computed<SelectOption[]>(() =>
   shopOptions.value.filter(
@@ -170,6 +191,7 @@ watch(
       editingShopId.value = null
       pendingNewShopId.value = null
       pendingCommonParameterNames.value = []
+      applicationSelectionNotice.value = null
       return
     }
     startCreate()
@@ -181,8 +203,34 @@ watch(
   () => props.appId,
   (appId, previousAppId) => {
     if (!props.show || appId === previousAppId) return
-    startCreate()
+    startCreate(false)
   },
+)
+
+watch(
+  [
+    () => props.applicationOptions,
+    () => props.applicationOptionsLoading,
+    () => props.applicationOptionsError,
+    () => props.show,
+  ],
+  ([available, loading, applicationError, show]) => {
+    if (
+      !show ||
+      isEditingPreset.value ||
+      loading ||
+      applicationError ||
+      !props.appId ||
+      available.some((application) => application.app_id === props.appId)
+    ) {
+      return
+    }
+    applicationSelectionNotice.value = props.deviceId
+      ? '原应用在所选设备上不可用，已清除应用选择和对应参数草稿。'
+      : '原应用当前不可用，已清除应用选择和对应参数草稿。'
+    emit('update:appId', null)
+  },
+  { immediate: true },
 )
 
 watch(
@@ -230,10 +278,12 @@ function cloneOverrides(
   )
 }
 
-function startCreate(): void {
+function startCreate(seedSchema = true): void {
   selectedPresetId.value = null
   draft.name = ''
-  draft.inputSchema = cloneSchema(props.schema)
+  draft.inputSchema = seedSchema
+    ? cloneSchema(props.schema)
+    : { fields: [] }
   // Application fields are a shared catalog.  A new preset starts with no
   // optional fields selected; adding a field is an explicit preset fact.
   draft.commonParameters = {}
@@ -262,7 +312,15 @@ function applyPreset(preset: AutomationParameterPresetDto): void {
 function changeApplication(value: unknown): void {
   const appId = typeof value === 'string' ? value : null
   if (appId === props.appId) return
+  applicationSelectionNotice.value = null
   emit('update:appId', appId)
+}
+
+function changeDevice(value: unknown): void {
+  const deviceId = typeof value === 'string' ? value : null
+  if (deviceId === props.deviceId) return
+  applicationSelectionNotice.value = null
+  emit('update:deviceId', deviceId)
 }
 
 function addOverrideShop(value: unknown): void {
@@ -517,7 +575,22 @@ defineExpose({ applyInputSchema })
           />
         </NFormItem>
         <NFormItem
-          v-if="applicationOptions.length && !selectedPresetId"
+          v-if="!isEditingPreset"
+          label="筛选设备"
+        >
+          <AppSelect
+            :model-value="deviceId"
+            :options="deviceOptions"
+            :loading="deviceOptionsLoading"
+            clearable
+            filterable
+            placeholder="全部设备"
+            :to="APP_OVERLAY_HOST_SELECTOR"
+            @update:model-value="changeDevice"
+          />
+        </NFormItem>
+        <NFormItem
+          v-if="!isEditingPreset"
           label="对应应用"
           required
         >
@@ -525,7 +598,10 @@ defineExpose({ applyInputSchema })
             :model-value="appId"
             :options="applicationOptions"
             :loading="applicationOptionsLoading"
+            clearable
+            filterable
             placeholder="选择影刀应用"
+            :to="APP_OVERLAY_HOST_SELECTOR"
             @update:model-value="changeApplication"
           />
         </NFormItem>
@@ -533,6 +609,21 @@ defineExpose({ applyInputSchema })
           <AppInput :model-value="selectedApplication.app_name" disabled />
         </NFormItem>
       </div>
+
+      <p
+        v-if="applicationSelectionNotice"
+        class="preset-manager__error"
+        role="alert"
+      >
+        {{ applicationSelectionNotice }}
+      </p>
+      <p
+        v-if="applicationOptionsError && !isEditingPreset"
+        class="preset-manager__error"
+        role="alert"
+      >
+        应用列表读取失败：{{ applicationOptionsError }}
+      </p>
 
       <p v-if="saveError" class="preset-manager__error" role="alert">
         保存失败：{{ saveError }}。草稿仍已保留，请修正后重试。
@@ -545,7 +636,12 @@ defineExpose({ applyInputSchema })
         <div class="preset-manager__section-heading">
           <div>
             <h3>公共参数</h3>
-            <p v-if="schemaLoading" class="preset-manager__hint">正在读取参数定义。</p>
+            <p v-if="applicationPrompt" class="preset-manager__hint">
+              {{ applicationPrompt }}
+            </p>
+            <p v-else-if="schemaLoading" class="preset-manager__hint">
+              正在读取参数定义。
+            </p>
             <p v-else-if="!fields.length" class="preset-manager__hint">
               该应用尚未配置参数字段。
             </p>
@@ -561,6 +657,7 @@ defineExpose({ applyInputSchema })
               :disabled="schemaLoading"
               placeholder="+ 添加参数"
               class="preset-manager__add-parameter"
+              :to="APP_OVERLAY_HOST_SELECTOR"
               @update:model-value="addCommonParameter"
             />
             <AppButton
@@ -617,6 +714,7 @@ defineExpose({ applyInputSchema })
             :disabled="schemaLoading || !appId"
             placeholder="+ 添加店铺"
             class="preset-manager__add-shop"
+            :to="APP_OVERLAY_HOST_SELECTOR"
             @update:model-value="addOverrideShop"
           />
         </div>
@@ -665,7 +763,7 @@ defineExpose({ applyInputSchema })
 .preset-manager__identity {
   display: grid;
   gap: 0 var(--space-3);
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .preset-manager__section {

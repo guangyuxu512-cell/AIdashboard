@@ -29,6 +29,7 @@ export function useParameterPresetManagement() {
   const searchDraft = ref('')
   const selectedDeviceIdDraft = ref<string | null>(null)
   const selectedAppIdDraft = ref<string | null>(null)
+  const editorDeviceId = ref<string | null>(null)
   const filters = ref({
     deviceId: null as string | null,
     appId: null as string | null,
@@ -53,6 +54,7 @@ export function useParameterPresetManagement() {
   )
   const inventoryQuery = useDeviceProviderInventoriesQuery(selectedDeviceIdDraft)
   const applicationsQuery = useYingdaoApplicationOptionsQuery(selectedDeviceIdDraft)
+  const editorApplicationsQuery = useYingdaoApplicationOptionsQuery(editorDeviceId)
   const presetsQuery = useAutomationParameterPresetManagementQuery(filters)
   const copyPresetMutation = useCopyAutomationParameterPresetMutation()
   const removePresetMutation = useRemoveAutomationParameterPresetMutation()
@@ -132,6 +134,7 @@ export function useParameterPresetManagement() {
 
   function openCreate(): void {
     copyError.value = null
+    editorDeviceId.value = selectedDeviceIdDraft.value
     editorAppId.value = invalidSelectedApp.value
       ? null
       : selectedAppIdDraft.value
@@ -141,6 +144,7 @@ export function useParameterPresetManagement() {
 
   function openPreset(preset: AutomationParameterPresetDto): void {
     copyError.value = null
+    editorDeviceId.value = null
     editorAppId.value = preset.app_id
     editorPresetId.value = preset.preset_id
     editorVisible.value = true
@@ -255,6 +259,18 @@ export function useParameterPresetManagement() {
     confirmRemove,
     closeEditor,
     editorAppId,
+    editorApplicationOptions: computed(
+      () => editorApplicationsQuery.data.value ?? [],
+    ),
+    editorApplicationsError: computed(() =>
+      editorApplicationsQuery.error.value
+        ? getErrorMessage(editorApplicationsQuery.error.value)
+        : null,
+    ),
+    editorApplicationsLoading: computed(
+      () => editorApplicationsQuery.isPending.value,
+    ),
+    editorDeviceId,
     editorPresetId,
     editorVisible,
     handleSaved,
