@@ -48,16 +48,28 @@ class ShopService:
         limit: int,
         device_id: UUID | None = None,
         enabled: bool | None = None,
+        owner_user_id: UUID | None = None,
+        platform: str | None = None,
+        name_query: str | None = None,
     ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
         shops = self.shop_repository.list(
             offset=offset,
             limit=limit,
             device_id=device_id,
             enabled=enabled,
+            owner_user_id=owner_user_id,
+            platform=platform,
+            name_query=name_query,
         )
         return (
             shops,
-            self.shop_repository.count(device_id=device_id, enabled=enabled),
+            self.shop_repository.count(
+                device_id=device_id,
+                enabled=enabled,
+                owner_user_id=owner_user_id,
+                platform=platform,
+                name_query=name_query,
+            ),
             self.shop_repository.list_session_statuses(
                 [shop.shop_id for shop in shops],
             ),

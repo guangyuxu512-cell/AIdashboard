@@ -1138,7 +1138,6 @@ test('queries real Tasks by local date combinations and reads bounded retained l
 
   await expect(selections.nth(2)).toContainText('最近 7 天')
   await search.fill(`${testPrefix}query-`)
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(
     page.getByText(fixtures.todayName, { exact: true }),
   ).toBeVisible()
@@ -1153,7 +1152,6 @@ test('queries real Tasks by local date combinations and reads bounded retained l
     .locator('.n-base-select-option')
     .filter({ hasText: '全部时间' })
     .click()
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(fixtures.oldName, { exact: true })).toBeVisible()
   await expect(page.getByText('共 3 条', { exact: true })).toBeVisible()
 
@@ -1169,7 +1167,6 @@ test('queries real Tasks by local date combinations and reads bounded retained l
     .filter({ hasText: deviceName })
     .click()
   await search.fill(`${testPrefix}query-`)
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(
     page.getByText(fixtures.todayName, { exact: true }),
   ).toBeVisible()
@@ -1186,13 +1183,11 @@ test('queries real Tasks by local date combinations and reads bounded retained l
   await dateInputs.nth(1).fill(fixtures.oldDate)
   await dateInputs.nth(1).press('Enter')
   await search.fill(`${testPrefix}query-`)
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(fixtures.oldName, { exact: true })).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 
   await toolbar.getByRole('button', { name: '重置' }).click()
   await search.fill(fixtures.todayName)
-  await toolbar.getByRole('button', { name: '查询' }).click()
   const eventRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === 'GET' &&
@@ -1245,10 +1240,53 @@ test('issues, rotates and revokes a one-time Worker credential in Device Drawer'
     has: page.getByRole('heading', { name: 'Worker Token' }),
   })
   await expect(tokenDialog.getByText(/仅本次显示/)).toBeVisible()
-  const firstToken = await tokenDialog.locator('input').inputValue()
+  const tokenInput = tokenDialog.locator('input')
+  await expect(tokenInput).toHaveAttribute('type', 'password')
+  await expect(tokenInput).toBeDisabled()
+  const firstToken = await tokenInput.inputValue()
   expect(firstToken.length).toBeGreaterThan(32)
+  await tokenDialog.getByRole('button', { name: '显示' }).click()
+  await expect(tokenInput).toHaveAttribute('type', 'text')
+  await expect(tokenInput).toBeEnabled()
+  await expect(tokenInput).toHaveJSProperty('readOnly', true)
+  await tokenInput.selectText()
+  expect(
+    await tokenInput.evaluate(
+      (input) =>
+        input.selectionStart === 0 && input.selectionEnd === input.value.length,
+    ),
+  ).toBe(true)
   await tokenDialog.getByRole('button', { name: '复制' }).click()
   await expect(page.getByText('Worker Token 已复制')).toBeVisible()
+  expect(
+    await tokenInput.evaluate(
+      async (input) => (await navigator.clipboard.readText()) === input.value,
+    ),
+  ).toBe(true)
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: () =>
+          Promise.reject(
+            new DOMException('permission denied', 'NotAllowedError'),
+          ),
+      },
+    })
+  })
+  await tokenDialog.getByRole('button', { name: '复制' }).click()
+  await expect(
+    page.getByText('Worker Token 复制失败，请点击“显示”后手动选中复制'),
+  ).toBeVisible()
+  await expect(tokenDialog).toBeVisible()
+  await tokenInput.selectText()
+  expect(
+    await tokenInput.evaluate(
+      (input) =>
+        input.selectionStart === 0 && input.selectionEnd === input.value.length,
+    ),
+  ).toBe(true)
   await tokenDialog.getByRole('button', { name: '关闭' }).click()
   await expect(tokenDialog).toHaveCount(0)
   await expect(

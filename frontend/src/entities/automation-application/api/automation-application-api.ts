@@ -12,10 +12,15 @@ import type {
 } from './contracts'
 
 export const automationApplicationApi = {
-  async listYingdaoApplications(): Promise<YingdaoApplicationOptionDto[]> {
-    const response = await httpClient.get<YingdaoApplicationOptionDto[]>(
-      '/api/v1/automation-app-configs/yingdao/applications',
-    )
+  async listYingdaoApplications(
+    deviceId?: string | null,
+  ): Promise<YingdaoApplicationOptionDto[]> {
+    const path = '/api/v1/automation-app-configs/yingdao/applications'
+    const response = deviceId
+      ? await httpClient.get<YingdaoApplicationOptionDto[]>(path, {
+          params: { device_id: deviceId },
+        })
+      : await httpClient.get<YingdaoApplicationOptionDto[]>(path)
     return response.data
   },
 
@@ -51,6 +56,7 @@ export const automationApplicationApi = {
       '/api/v1/automation-parameter-presets',
       {
         params: {
+          ...(params.deviceId ? { device_id: params.deviceId } : {}),
           ...(params.appId ? { app_id: params.appId } : {}),
           ...(params.query?.trim() ? { q: params.query.trim() } : {}),
           page: params.page ?? 1,

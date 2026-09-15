@@ -17,22 +17,64 @@ defineEmits<{
 
 const message = useMessage()
 const revealed = ref(false)
+const copying = ref(false)
+let copyFailureNotified = false
+const clipboardErrorTypes = new Set([
+  'AbortError',
+  'NotAllowedError',
+  'NotFoundError',
+  'NotReadableError',
+  'SecurityError',
+  'TypeError',
+  'UnknownError',
+])
 
 watch(
   () => props.show,
   (show) => {
-    if (show) revealed.value = false
+    if (show) {
+      revealed.value = false
+      copyFailureNotified = false
+    }
   },
 )
 
 async function copyToken(): Promise<void> {
-  if (!props.token) return
+  if (!props.token || copying.value) return
+  copying.value = true
   try {
-    await navigator.clipboard.writeText(props.token)
+    const clipboard = navigator.clipboard
+    if (!clipboard || typeof clipboard.writeText !== 'function') {
+      throw new TypeError('ClipboardWriteUnavailable')
+    }
+    await clipboard.writeText(props.token)
+    copyFailureNotified = false
     message.success('Worker Token 已复制')
-  } catch {
-    message.error('Worker Token 复制失败')
+  } catch (error) {
+    if (!copyFailureNotified) {
+      console.warn(
+        '[worker-token-copy] clipboard write failed',
+        getClipboardErrorType(error),
+      )
+      message.error('Worker Token 复制失败，请点击“显示”后手动选中复制')
+      copyFailureNotified = true
+    }
+  } finally {
+    copying.value = false
   }
+}
+
+function getClipboardErrorType(error: unknown): string {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'name' in error &&
+    typeof error.name === 'string' &&
+    clipboardErrorTypes.has(error.name)
+  ) {
+    return error.name
+  }
+  return error && typeof error === 'object' ? 'Error' : typeof error
 }
 </script>
 
@@ -53,13 +95,22 @@ async function copyToken(): Promise<void> {
       <AppInput
         :model-value="token"
         :type="revealed ? 'text' : 'password'"
-        disabled
+        :disabled="!revealed || !token"
+        :readonly="revealed"
+        aria-label="Worker Token"
       />
       <div class="worker-token-dialog__actions">
         <AppButton tone="text" @click="revealed = !revealed">
           {{ revealed ? '隐藏' : '显示' }}
         </AppButton>
-        <AppButton tone="primary" @click="copyToken">复制</AppButton>
+        <AppButton
+          tone="primary"
+          :loading="copying"
+          :disabled="!token || copying"
+          @click="copyToken"
+        >
+          {{ copying ? '复制中' : '复制' }}
+        </AppButton>
       </div>
     </div>
   </AppDialog>

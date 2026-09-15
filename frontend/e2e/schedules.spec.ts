@@ -56,14 +56,49 @@ test('filters schedules and preserves normal empty state', async ({ page }) => {
   const toolbar = page.getByRole('region', { name: '筛选条件' })
 
   await toolbar.getByPlaceholder('搜索计划名称或执行对象').fill('库存同步')
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('库存同步（Fixture）').first()).toBeVisible()
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
 
   await toolbar.getByPlaceholder('搜索计划名称或执行对象').fill('不存在')
-  await toolbar.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText('暂无定时计划')).toBeVisible()
   await expect(page.getByText('加载失败')).toHaveCount(0)
+})
+
+test('keeps the selected-date control compact and aligned while the filter bar wraps', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/schedules')
+  const toolbar = page.getByRole('region', { name: '筛选条件' })
+
+  await toolbar.getByText('指定日期', { exact: true }).click()
+  const datePicker = toolbar.locator('.n-date-picker')
+  await expect(datePicker).toBeVisible()
+
+  const desktopBounds = await Promise.all(
+    [
+      toolbar.locator('.n-radio-group'),
+      datePicker,
+      toolbar.locator('.n-input').last(),
+    ].map((locator) => locator.boundingBox()),
+  )
+  expect(desktopBounds.every((bounds) => bounds !== null)).toBe(true)
+  expect(desktopBounds.map((bounds) => Math.round(bounds!.height))).toEqual([
+    34, 34, 34,
+  ])
+  const desktopCenters = desktopBounds.map(
+    (bounds) => bounds!.y + bounds!.height / 2,
+  )
+  expect(Math.max(...desktopCenters) - Math.min(...desktopCenters)).toBeLessThanOrEqual(1)
+
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await expect(datePicker).toBeVisible()
+  const compactBounds = await datePicker.boundingBox()
+  expect(Math.round(compactBounds!.height)).toBe(34)
+  const dateFieldHeight = await datePicker.evaluate(
+    (element) => element.parentElement?.getBoundingClientRect().height ?? 0,
+  )
+  expect(Math.round(dateFieldHeight)).toBe(34)
 })
 
 test('opens create form with real Device Inventory semantics and saves a mock plan', async ({

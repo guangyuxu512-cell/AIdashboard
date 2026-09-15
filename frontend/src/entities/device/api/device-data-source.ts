@@ -158,9 +158,12 @@ export function createMockDeviceDataSource(): DeviceDataSource {
 
 const realDeviceDataSource: DeviceDataSource = {
   mode: 'real',
-  supportsFilters: false,
+  supportsFilters: true,
   async list(params) {
-    const page = await deviceApi.list(params)
+    const page = await deviceApi.list({
+      ...params,
+      search: params.filters.keyword,
+    })
     return {
       items: page.items.map(mapDeviceDto),
       total: page.total,

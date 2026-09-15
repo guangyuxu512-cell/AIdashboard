@@ -10,6 +10,7 @@ import AppInput from '@/shared/ui/AppInput.vue'
 import AppRadio from '@/shared/ui/AppRadio.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOptionValue } from '@/shared/ui/types'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import type { ScheduleFilterViewModel } from '../model/types'
 
@@ -81,35 +82,59 @@ const selectedOccurrenceDate = computed({
   set: (value: number | [number, number] | null) =>
     update('selectedOccurrenceDate', typeof value === 'number' ? value : null),
 })
+const autoSearch = useAutoSearch(() => emit('query'))
+
+function applyFilter<Key extends 'enabled' | 'deviceId'>(
+  key: Key,
+  value: ScheduleFilterViewModel[Key],
+): void {
+  update(key, value)
+  autoSearch.submitNow()
+}
+
+function resetFilters(): void {
+  autoSearch.cancel()
+  emit('reset')
+}
 </script>
 
 <template>
   <FilterBar>
     <FilterField width="xs">
       <AppSelect
-        v-model="enabled"
+        :model-value="enabled"
         width="xs"
         clearable
         :options="enabledOptions"
         placeholder="全部状态"
+        @update:model-value="applyFilter('enabled', $event === null ? null : $event === 'enabled')"
       />
     </FilterField>
     <FilterField width="sm">
       <AppSelect
-        v-model="deviceId"
+        :model-value="deviceId"
         width="sm"
         clearable
         filterable
         :options="deviceOptions"
         :loading="deviceOptionsLoading"
         placeholder="全部设备"
+        @update:model-value="applyFilter('deviceId', $event as string | null)"
       />
     </FilterField>
     <FilterField width="md">
-      <AppRadio v-model="occurrenceMode" :options="occurrenceOptions" />
+      <AppRadio
+        v-model="occurrenceMode"
+        :options="occurrenceOptions"
+        @update:model-value="autoSearch.submitNow"
+      />
     </FilterField>
     <FilterField v-if="occurrenceMode === 'selected'" width="sm">
-      <AppDatePicker v-model="selectedOccurrenceDate" placeholder="选择发生日期" />
+      <AppDatePicker
+        v-model="selectedOccurrenceDate"
+        placeholder="选择发生日期"
+        @update:model-value="autoSearch.submitNow"
+      />
     </FilterField>
     <FilterField width="md">
       <AppInput
@@ -117,12 +142,14 @@ const selectedOccurrenceDate = computed({
         width="md"
         clearable
         placeholder="搜索计划名称或执行对象"
-        @keyup.enter="$emit('query')"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(search)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
     </FilterField>
     <template #actions>
-      <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
-      <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
+      <AppButton tone="text" @click="resetFilters">重置</AppButton>
     </template>
     <template #primary-action>
       <AppButton tone="primary" @click="$emit('create')">+ 新建计划</AppButton>

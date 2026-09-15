@@ -38,8 +38,9 @@ describe('automation parameter preset api', () => {
   it('uses the actor-scoped application catalog and management list filters', async () => {
     const get = vi.spyOn(httpClient, 'get').mockResolvedValue({ data: [] })
 
-    await automationApplicationApi.listYingdaoApplications()
+    await automationApplicationApi.listYingdaoApplications('device-1')
     await automationApplicationApi.listAllPresets({
+      deviceId: 'device-1',
       appId: 'daily-collection',
       query: '日常 采集',
       page: 2,
@@ -49,12 +50,14 @@ describe('automation parameter preset api', () => {
     expect(get).toHaveBeenNthCalledWith(
       1,
       '/api/v1/automation-app-configs/yingdao/applications',
+      { params: { device_id: 'device-1' } },
     )
     expect(get).toHaveBeenNthCalledWith(
       2,
       '/api/v1/automation-parameter-presets',
       {
         params: {
+          device_id: 'device-1',
           app_id: 'daily-collection',
           q: '日常 采集',
           page: 2,

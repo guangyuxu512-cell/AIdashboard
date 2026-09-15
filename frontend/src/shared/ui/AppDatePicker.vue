@@ -48,11 +48,10 @@ defineEmits<{
 <style scoped>
 .app-date-picker {
   width: var(--date-picker-width-single);
-  flex: 0 0 var(--date-picker-width-single);
+  flex: 0 0 auto;
 }
 
 .app-date-picker--range {
   width: var(--date-picker-width-range);
-  flex-basis: var(--date-picker-width-range);
 }
 </style>

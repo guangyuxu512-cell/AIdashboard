@@ -10,7 +10,6 @@ import {
 } from '@/entities/task'
 import {
   getErrorMessage,
-  isInitialQueryError,
   isInitialQueryLoading,
 } from '@/shared/api'
 
@@ -108,9 +107,7 @@ export function useTaskManagement() {
   )
   const rows = computed(() => listQuery.data.value?.items ?? [])
   const listError = computed(() =>
-    isInitialQueryError(listQuery.error.value, listQuery.data.value)
-      ? getErrorMessage(listQuery.error.value)
-      : null,
+    listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
   )
 
   function query(): void {

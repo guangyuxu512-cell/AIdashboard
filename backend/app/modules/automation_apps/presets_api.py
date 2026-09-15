@@ -55,11 +55,13 @@ def list_all_presets(
     actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
     service: Annotated[AutomationParameterPresetService, Depends(get_service)],
     pagination: Annotated[PaginationParams, Depends()],
+    device_id: UUID | None = None,
     app_id: str | None = Query(default=None, min_length=1, max_length=200),
     q: str | None = Query(default=None, min_length=1, max_length=100),
 ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
     return service.list_all(
         actor=actor,
+        device_id=device_id,
         app_id=app_id,
         name_query=q.strip() if q is not None else None,
         pagination=(

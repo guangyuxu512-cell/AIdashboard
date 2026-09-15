@@ -40,6 +40,7 @@ from app.modules.automation_apps.schemas import (
     YingdaoApplicationOptionRead,
 )
 from app.modules.devices.repository import DeviceRepository
+from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.shops.repository import ShopRepository
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.schemas import YingdaoProviderInventory
@@ -127,8 +128,18 @@ class AutomationApplicationCatalogService:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
     ) -> list[YingdaoApplicationOptionRead]:
-        devices = self.device_repository.list_all_for_actor(actor=actor)
+        if device_id is None:
+            devices = self.device_repository.list_all_for_actor(actor=actor)
+        else:
+            device = self.device_repository.get_for_actor(
+                actor=actor,
+                device_id=device_id,
+            )
+            if device is None or device.team_id != actor.team_id:
+                raise DeviceNotFoundError()
+            devices = [device]
         # Parameter presets are always scoped to the active Team.  A human
         # actor can have a broader Device data scope elsewhere, but that must
         # not turn this options endpoint into a cross-Team application catalog.
@@ -169,6 +180,7 @@ class AutomationParameterPresetService:
         preset_repository: AutomationParameterPresetRepository | None = None,
         shop_repository: ShopRepository | None = None,
         module_access_service: ModuleAccessService | None = None,
+        application_catalog_service: AutomationApplicationCatalogService | None = None,
     ) -> None:
         self.session = session
         self.config_repository = config_repository or AutomationApplicationConfigRepository(
@@ -179,6 +191,10 @@ class AutomationParameterPresetService:
         )
         self.shop_repository = shop_repository or ShopRepository(session)
         self.module_access_service = module_access_service or ModuleAccessService(session)
+        self.application_catalog_service = (
+            application_catalog_service
+            or AutomationApplicationCatalogService(session)
+        )
 
     def list(
         self,
@@ -203,15 +219,26 @@ class AutomationParameterPresetService:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
         app_id: str | None = None,
         name_query: str | None = None,
         pagination: PaginationParams | None = None,
     ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
+        allowed_app_ids = None
+        if device_id is not None:
+            allowed_app_ids = tuple(
+                option.app_id
+                for option in self.application_catalog_service.list_yingdao_application_options(
+                    actor=actor,
+                    device_id=device_id,
+                )
+            )
         presets = self.preset_repository.list_all_for_actor(
             actor=actor,
             team_id=actor.team_id,
             app_id=app_id,
+            app_ids=allowed_app_ids,
             name_query=name_query,
             offset=pagination.offset if pagination is not None else 0,
             limit=pagination.page_size if pagination is not None else None,
@@ -223,6 +250,7 @@ class AutomationParameterPresetService:
             actor=actor,
             team_id=actor.team_id,
             app_id=app_id,
+            app_ids=allowed_app_ids,
             name_query=name_query,
         )
         return Page(

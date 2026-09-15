@@ -12,10 +12,17 @@ import FilterBar from '@/shared/components/FilterBar.vue'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import { AppButton, AppInput } from '@/shared/ui'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 const management = useAssetManagement()
 const message = useMessage()
 const fileInput = ref<HTMLInputElement | null>(null)
+const autoSearch = useAutoSearch(management.query)
+
+function resetFilters(): void {
+  autoSearch.cancel()
+  management.reset()
+}
 
 function chooseFiles(): void {
   fileInput.value?.click()
@@ -57,11 +64,13 @@ async function confirmDelete(): Promise<void> {
         placeholder="搜索图片文件名"
         width="lg"
         clearable
-        @keyup.enter="management.query"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(management.searchDraft.value)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
       <template #actions>
-        <AppButton @click="management.reset">重置</AppButton>
-        <AppButton tone="primary" @click="management.query">查询</AppButton>
+        <AppButton @click="resetFilters">重置</AppButton>
       </template>
       <template #primary-action>
         <input

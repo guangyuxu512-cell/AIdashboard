@@ -111,6 +111,11 @@ Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文�
 
 Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_status`：没有 ShopSession 时为 `null`，其余值直接来自正式 ShopSession Status，不由 Frontend 猜测。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；对已移除 Shop 的 GET、PATCH、Binding 与 Session 业务访问返回 `SHOP_NOT_FOUND`。`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
 
+`GET /api/v1/shops` 的 `enabled / device_id / owner_user_id / platform / q` 与 `GET /api/v1/devices`
+的 `status / search` 都在服务端授权范围内先过滤，再执行稳定排序、分页和 `count`。Device `search`
+匹配名称、位置及 Yingdao Inventory 的账号显示名；它不扩大 Device Data Scope。Registry 中尚未接入数据库
+枚举的平台查询返回空页，不把前端展示能力伪装为可创建平台。
+
 带 `platform_shop_id` 的 Shop 已由平台身份识别建立。普通 `ShopUpdate` 不允许修改其 `display_name` 或 `platform`，且 Contract 本身不接受 `platform_shop_id` 更新；负责人、备注和既有 `enabled` 语义不受影响。`Shop.enabled` 不是自动化总开关。
 
 `Shop.enabled=true/false` 分别表示店铺可/不可参与正常系统业务；当前不存在 `automation_enabled`，禁止用 `Shop.enabled` 表达自动化总开关。
@@ -178,7 +183,8 @@ Descriptor 固定包含
 - `PUT /api/v1/automation-app-configs/{provider_code}/{app_id}`：保存手工参数 Schema。
 - `GET /api/v1/automation-app-configs/yingdao/applications`：返回当前 ActorContext Team 已可见 Device 的
   Provider Inventory 中去重后的 `{app_id, app_name}` 选项；不返回 Device、影刀账号、店铺或 Credential
-  事实。
+  事实。可选 `device_id` 时先按正式 Device DataScope 查找该设备，再只返回它已上报的应用；不可见设备按
+  `DEVICE_NOT_FOUND` 处理。
 
 当前 provider 仅允许 `yingdao`。字段类型为 text/number/boolean/select；Backend 校验字段名、
 重复项、选择项、默认值和类型。该 API 不读取或保存影刀 Credential。
@@ -201,8 +207,9 @@ text/number/boolean/select 类型。
 路由。预设只归属于创建时的 ActorContext Team；服务端在列表、详情、修改、复制和运行取快照时均再次
 确认该 Team，不能由前端传 Team、User 或预设 ID 获得另一 Team 的记录。
 
-参数配置库使用 `GET /api/v1/automation-parameter-presets` 查询当前 Team 预设；可选 `app_id` 与
-`q`（名称）过滤在服务端的 ActorContext / DataScope 查询边界完成。未携带 `page` 和 `page_size` 时，
+参数配置库使用 `GET /api/v1/automation-parameter-presets` 查询当前 Team 预设；可选 `device_id`、`app_id` 与
+`q`（名称）过滤在服务端的 ActorContext / DataScope 查询边界完成。`device_id` 只把 SQL 分页集合限制到
+该可见设备上报的应用 ID，不改变预设的 Team + app_id 归属，也不建立设备副本。未携带 `page` 和 `page_size` 时，
 为旧客户端返回完整 DTO 数组；携带任一分页参数时返回 `{items,total,page,page_size}`，另一个参数
 沿用默认 `1 / 20`（page_size 最大 100）。显式空值、非法数字或越界值返回 `422 / VALIDATION_ERROR`，
 不能降级为数组模式。OpenAPI 响应为 Page 或数组的联合类型；新版管理 UI 始终显式发送分页参数。

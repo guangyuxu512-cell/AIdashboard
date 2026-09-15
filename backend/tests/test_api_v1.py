@@ -105,6 +105,8 @@ def stamp(entity: object) -> object:
 
 
 class ApiShopService:
+    last_list_filters: dict[str, object] | None = None
+
     def list(
         self,
         *,
@@ -112,8 +114,17 @@ class ApiShopService:
         limit: int,
         device_id: UUID | None = None,
         enabled: bool | None = None,
+        owner_user_id: UUID | None = None,
+        platform: str | None = None,
+        name_query: str | None = None,
     ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
-        del device_id, enabled
+        type(self).last_list_filters = {
+            "device_id": device_id,
+            "enabled": enabled,
+            "owner_user_id": owner_user_id,
+            "platform": platform,
+            "name_query": name_query,
+        }
         return (
             [self.get(SHOP_ID)][offset : offset + limit],
             1,
@@ -184,13 +195,17 @@ class ApiShopPlatformService:
 
 
 class ApiDeviceService:
+    last_search: str | None = None
+
     def list(
         self,
         *,
         actor: ActorContext,
         offset: int,
         limit: int,
+        search: str | None = None,
     ) -> tuple[list[Device], int]:
+        type(self).last_search = search
         return [self.get(actor, DEVICE_ID)][offset : offset + limit], 1
 
     def get(self, actor: ActorContext, device_id: UUID) -> Device:
@@ -300,8 +315,10 @@ class ApiAutomationApplicationCatalogService:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
     ) -> list[YingdaoApplicationOptionRead]:
         assert actor == API_ACTOR
+        type(self).last_device_id = device_id
         return [
             YingdaoApplicationOptionRead(
                 app_id="preset-api-app",
@@ -373,11 +390,13 @@ class ApiAutomationParameterPresetService:
         self,
         *,
         actor: ActorContext,
+        device_id: UUID | None = None,
         app_id: str | None = None,
         name_query: str | None = None,
         pagination: PaginationParams | None,
     ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
         assert actor == API_ACTOR
+        type(self).last_device_id = device_id
         app = app_id or "preset-api-app"
         name = "日常采集" if name_query else "默认预设"
         if pagination is None:
@@ -714,6 +733,30 @@ def test_offline_device_is_a_successful_list_item() -> None:
     assert item["enabled"] is True
     assert item["worker_runtime"]["connection_status"] == "offline"
     assert item["worker_runtime"]["last_seen_at"] is not None
+
+
+def test_shop_and_device_list_forward_server_search_filters() -> None:
+    owner_id = uuid4()
+    shop_response = request(
+        "GET",
+        "/api/v1/shops?page=2&page_size=10"
+        f"&owner_user_id={owner_id}&platform=douyin&q=%E6%AD%A3%E5%BC%8F&enabled=true",
+    )
+    device_response = request(
+        "GET",
+        "/api/v1/devices?page=1&page_size=20&q=%E5%BD%B1%E5%88%80",
+    )
+
+    assert shop_response.status_code == 200
+    assert ApiShopService.last_list_filters == {
+        "device_id": None,
+        "enabled": True,
+        "owner_user_id": owner_id,
+        "platform": "douyin",
+        "name_query": "正式",
+    }
+    assert device_response.status_code == 200
+    assert ApiDeviceService.last_search == "影刀"
 
 
 def test_device_business_skill_catalog_contract() -> None:
@@ -1117,17 +1160,26 @@ def test_automation_parameter_preset_delete_reports_durable_references() -> None
 
 
 def test_automation_parameter_preset_management_catalog_contract() -> None:
+    device_id = uuid4()
     applications_response = request(
         "GET",
         "/api/v1/automation-app-configs/yingdao/applications",
+        params={"device_id": str(device_id)},
     )
     presets_response = request(
         "GET",
         "/api/v1/automation-parameter-presets",
-        params={"app_id": "preset-api-app", "q": "日常", "page": 1},
+        params={
+            "device_id": str(device_id),
+            "app_id": "preset-api-app",
+            "q": "日常",
+            "page": 1,
+        },
     )
 
     assert applications_response.status_code == 200
+    assert ApiAutomationApplicationCatalogService.last_device_id == device_id
+    assert ApiAutomationParameterPresetService.last_device_id == device_id
     assert applications_response.json() == [
         {"app_id": "preset-api-app", "app_name": "参数预设测试应用"},
     ]

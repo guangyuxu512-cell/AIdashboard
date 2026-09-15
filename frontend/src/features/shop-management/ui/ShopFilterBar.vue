@@ -12,6 +12,7 @@ import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOptionValue } from '@/shared/ui/types'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import type { ShopFilterViewModel } from '../model/types'
 
@@ -55,27 +56,43 @@ const keyword = computed({
   get: () => props.modelValue.keyword,
   set: (value: string) => updateFilter('keyword', value),
 })
+const autoSearch = useAutoSearch(() => emit('query'))
+
+function applySelectFilter<Key extends 'enabledStatus' | 'ownerUserId'>(
+  key: Key,
+  value: ShopFilterViewModel[Key],
+): void {
+  updateFilter(key, value)
+  autoSearch.submitNow()
+}
+
+function resetFilters(): void {
+  autoSearch.cancel()
+  emit('reset')
+}
 </script>
 
 <template>
   <FilterBar>
     <FilterField>
       <AppSelect
-        v-model="enabledStatus"
+        :model-value="enabledStatus"
         width="sm"
         clearable
         :options="enabledStatusOptions"
         placeholder="全部状态"
+        @update:model-value="applySelectFilter('enabledStatus', $event as ShopEnabledStatus | null)"
       />
     </FilterField>
     <FilterField v-if="showOwnerFilter">
       <AppSelect
-        v-model="ownerUserId"
+        :model-value="ownerUserId"
         width="sm"
         clearable
         :options="ownerOptions"
         :loading="ownerOptionsLoading"
         placeholder="全部负责人"
+        @update:model-value="applySelectFilter('ownerUserId', $event as string | null)"
       />
     </FilterField>
     <FilterField width="md">
@@ -84,12 +101,14 @@ const keyword = computed({
         width="md"
         clearable
         placeholder="搜索店铺名称"
-        @keyup.enter="$emit('query')"
+        @update:model-value="autoSearch.onInput"
+        @compositionstart="autoSearch.onCompositionStart"
+        @compositionend="autoSearch.onCompositionEnd(keyword)"
+        @keyup.enter="autoSearch.onEnter($event)"
       />
     </FilterField>
     <template #actions>
-      <AppButton tone="text" @click="$emit('reset')">重置</AppButton>
-      <AppButton tone="primary" @click="$emit('query')">查询</AppButton>
+      <AppButton tone="text" @click="resetFilters">重置</AppButton>
     </template>
     <template v-if="$slots['primary-action']" #primary-action>
       <slot name="primary-action" />

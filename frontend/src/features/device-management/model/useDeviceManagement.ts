@@ -89,7 +89,6 @@ export function useDeviceManagement() {
     pageSize: pageSize.value,
     filters: {
       ...appliedFilters.value,
-      keyword: filterDraft.value.keyword,
     },
   }))
   const listQuery = useDeviceListQuery(listParams)
@@ -135,17 +134,7 @@ export function useDeviceManagement() {
       activeTask: activeTasks[device.deviceId] ?? null,
     }))
   })
-  const visibleRows = computed(() => {
-    const keyword = filterDraft.value.keyword.trim().toLocaleLowerCase()
-    if (!keyword) return rows.value
-    return rows.value.filter((device) =>
-      [
-        device.deviceName,
-        device.location,
-        device.yingdaoInventory?.accountDisplay ?? '',
-      ].some((value) => value.toLocaleLowerCase().includes(keyword)),
-    )
-  })
+  const visibleRows = computed(() => rows.value)
   const total = computed(() => listQuery.data.value?.total ?? 0)
   const statistics = computed(() => ({
     total: total.value,
@@ -159,9 +148,7 @@ export function useDeviceManagement() {
       .length,
   }))
   const listError = computed(() =>
-    listQuery.error.value && !listQuery.data.value
-      ? getErrorMessage(listQuery.error.value)
-      : null,
+    listQuery.error.value ? getErrorMessage(listQuery.error.value) : null,
   )
   const detailError = computed(() =>
     detailQuery.error.value ? getErrorMessage(detailQuery.error.value) : null,
@@ -302,13 +289,6 @@ export function useDeviceManagement() {
   }
 
   watch(
-    () => filterDraft.value.keyword,
-    () => {
-      page.value = 1
-    },
-  )
-
-  watch(
     () => refreshTaskQuery.data.value,
     async (task) => {
       if (
@@ -325,6 +305,13 @@ export function useDeviceManagement() {
         })
         await queryClient.invalidateQueries({
           queryKey: ['devices', 'management-context'],
+        })
+        await queryClient.invalidateQueries({
+          queryKey: [
+            'automation-app-configs',
+            'yingdao',
+            'applications',
+          ],
         })
         message.success('影刀能力已刷新')
         return

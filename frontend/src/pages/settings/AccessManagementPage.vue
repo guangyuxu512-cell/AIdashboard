@@ -22,9 +22,16 @@ import StatusTag from '@/shared/components/StatusTag.vue'
 import TableToolbar from '@/shared/components/TableToolbar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 const management = useAccessManagement()
 const moduleOptions = getModuleAccessOptions()
+const autoSearch = useAutoSearch(management.query)
+
+function resetSearch(): void {
+  autoSearch.cancel()
+  management.reset()
+}
 
 const managementTabs = [
   { key: 'members', label: '成员管理' },
@@ -100,10 +107,12 @@ function openCreateTeam(): void {
               placeholder="搜索显示名或登录账号"
               width="lg"
               clearable
-              @keyup.enter="management.query"
+              @update:model-value="autoSearch.onInput"
+              @compositionstart="autoSearch.onCompositionStart"
+              @compositionend="autoSearch.onCompositionEnd(management.searchDraft.value)"
+              @keyup.enter="autoSearch.onEnter($event)"
             />
-            <AppButton @click="management.reset">重置</AppButton>
-            <AppButton tone="primary" @click="management.query">查询</AppButton>
+            <AppButton @click="resetSearch">重置</AppButton>
             <AppButton
               tone="primary"
               @click="management.memberFormVisible.value = true"

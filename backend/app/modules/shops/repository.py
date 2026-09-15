@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import false, func, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.shops.enums import ShopPlatform
@@ -22,10 +22,23 @@ class ShopRepository:
         limit: int,
         device_id: UUID | None = None,
         enabled: bool | None = None,
+        owner_user_id: UUID | None = None,
+        platform: str | None = None,
+        name_query: str | None = None,
     ) -> list[Shop]:
         filters = [Shop.deleted_at.is_(None)]
         if enabled is not None:
             filters.append(Shop.enabled.is_(enabled))
+        if owner_user_id is not None:
+            filters.append(Shop.owner_user_id == owner_user_id)
+        if platform is not None:
+            filters.append(
+                Shop.platform == platform
+                if platform in {item.value for item in ShopPlatform}
+                else false(),
+            )
+        if name_query:
+            filters.append(Shop.display_name.ilike(f"%{name_query}%"))
         statement = select(Shop)
         if device_id is not None:
             statement = statement.join(
@@ -52,10 +65,23 @@ class ShopRepository:
         *,
         device_id: UUID | None = None,
         enabled: bool | None = None,
+        owner_user_id: UUID | None = None,
+        platform: str | None = None,
+        name_query: str | None = None,
     ) -> int:
         filters = [Shop.deleted_at.is_(None)]
         if enabled is not None:
             filters.append(Shop.enabled.is_(enabled))
+        if owner_user_id is not None:
+            filters.append(Shop.owner_user_id == owner_user_id)
+        if platform is not None:
+            filters.append(
+                Shop.platform == platform
+                if platform in {item.value for item in ShopPlatform}
+                else false(),
+            )
+        if name_query:
+            filters.append(Shop.display_name.ilike(f"%{name_query}%"))
         statement = select(func.count()).select_from(Shop)
         if device_id is not None:
             statement = statement.join(

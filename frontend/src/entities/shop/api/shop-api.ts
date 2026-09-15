@@ -12,7 +12,13 @@ import type {
 
 export const shopApi = {
   async list(
-    params: PageParams & { deviceId?: string; enabled?: boolean },
+    params: PageParams & {
+      deviceId?: string
+      enabled?: boolean
+      ownerUserId?: string
+      platform?: string
+      search?: string
+    },
   ): Promise<PageDto<ShopListReadDto>> {
     const response = await httpClient.get<PageDto<ShopListReadDto>>(
       '/api/v1/shops',
@@ -22,6 +28,9 @@ export const shopApi = {
           page_size: params.pageSize,
           device_id: params.deviceId,
           enabled: params.enabled,
+          owner_user_id: params.ownerUserId,
+          platform: params.platform,
+          q: params.search?.trim() || undefined,
         },
       },
     )

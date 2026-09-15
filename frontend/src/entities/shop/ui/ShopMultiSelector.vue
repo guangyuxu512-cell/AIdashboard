@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 
 import { AppCheckbox, AppInput } from '@/shared/ui'
+import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 
 import type { ShopSelectOption } from '../model/types'
 
@@ -22,7 +23,11 @@ const emit = defineEmits<{
   'update:modelValue': [value: string[]]
 }>()
 
+const keywordDraft = ref('')
 const keyword = ref('')
+const autoSearch = useAutoSearch(() => {
+  keyword.value = keywordDraft.value
+})
 const visibleOptions = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLocaleLowerCase()
   const available = props.options.filter(
@@ -84,11 +89,15 @@ function toggleShop(shopId: string, checked: boolean): void {
       <span>已选择 {{ modelValue.length }} 个店铺</span>
     </div>
     <AppInput
-      v-model="keyword"
+      v-model="keywordDraft"
       clearable
       :disabled="disabled"
       :loading="loading"
       placeholder="搜索店铺"
+      @update:model-value="autoSearch.onInput"
+      @compositionstart="autoSearch.onCompositionStart"
+      @compositionend="autoSearch.onCompositionEnd(keywordDraft)"
+      @keyup.enter="autoSearch.onEnter($event)"
     />
     <div class="shop-multi-selector__list">
       <AppCheckbox

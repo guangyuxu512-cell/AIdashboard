@@ -117,7 +117,7 @@ test('uses the same app-filtered parameter library from a Yingdao application', 
   const appId = 'app-fixture-product-publish-1'
   let filteredRequest = false
 
-  await page.route('**/api/v1/automation-app-configs/yingdao/applications', (route) =>
+  await page.route('**/api/v1/automation-app-configs/yingdao/applications*', (route) =>
     route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify([
@@ -126,8 +126,10 @@ test('uses the same app-filtered parameter library from a Yingdao application', 
     }),
   )
   await page.route('**/api/v1/automation-parameter-presets*', (route) => {
+    const params = new URL(route.request().url()).searchParams
     filteredRequest =
-      new URL(route.request().url()).searchParams.get('app_id') === appId
+      params.get('app_id') === appId &&
+      params.get('device_id') === 'device-fixture-001'
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
@@ -145,7 +147,7 @@ test('uses the same app-filtered parameter library from a Yingdao application', 
     .click()
 
   await expect(page).toHaveURL(
-    /#\/parameter-presets\?app_id=app-fixture-product-publish-1$/,
+    /#\/parameter-presets\?device_id=device-fixture-001&app_id=app-fixture-product-publish-1$/,
   )
   await expect.poll(() => filteredRequest).toBe(true)
   await expect(page.getByRole('button', { name: '+ 新建配置' })).toBeVisible()
