@@ -7,6 +7,7 @@ import { ApiError } from '@/shared/api'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AutomationInputSchemaDto } from '../api/contracts'
 
 import AutomationParameterPresetManagerDialog from './AutomationParameterPresetManagerDialog.vue'
@@ -80,6 +81,11 @@ const expandedSchema = {
 
 function mountDialog(
   options: {
+    appId?: string | null
+    applicationOptions?: typeof application[]
+    applicationOptionsError?: string | null
+    applicationOptionsLoading?: boolean
+    deviceId?: string | null
     initialPresetId?: string | null
     schema?: typeof emptySchema | typeof configuredSchema | typeof expandedSchema
     show?: boolean
@@ -88,9 +94,17 @@ function mountDialog(
   return shallowMount(AutomationParameterPresetManagerDialog, {
     props: {
       show: options.show ?? true,
-      appId: application.app_id,
+      appId:
+        options.appId === undefined ? application.app_id : options.appId,
       schema: options.schema ?? emptySchema,
-      applicationOptions: [application],
+      applicationOptions: options.applicationOptions ?? [application],
+      applicationOptionsError: options.applicationOptionsError ?? null,
+      applicationOptionsLoading: options.applicationOptionsLoading ?? false,
+      deviceId: options.deviceId ?? null,
+      deviceOptions: [
+        { label: '设备一', value: 'device-1' },
+        { label: '设备二', value: 'device-2' },
+      ],
       allowSchemaConfiguration: true,
       initialPresetId: options.initialPresetId ?? null,
     },
@@ -122,6 +136,88 @@ beforeEach(() => {
 })
 
 describe('AutomationParameterPresetManagerDialog', () => {
+  it('keeps device filtering local and preserves the draft when the application remains available', async () => {
+    const wrapper = mountDialog({
+      deviceId: 'device-1',
+      schema: configuredSchema,
+    })
+    await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '设备共享配置')
+    wrapper
+      .findAllComponents({ name: 'AutomationParameterFields' })[0]!
+      .vm.$emit('update:modelValue', { 页码: 2 })
+
+    const deviceSelect = wrapper
+      .findAllComponents(AppSelect)
+      .find((select) => select.props('placeholder') === '全部设备')!
+    deviceSelect.vm.$emit('update:modelValue', 'device-2')
+    await wrapper.setProps({ deviceId: 'device-2' })
+    await flushPromises()
+
+    expect(wrapper.emitted('update:deviceId')).toEqual([['device-2']])
+    expect(wrapper.findComponent(AppInput).props('modelValue')).toBe(
+      '设备共享配置',
+    )
+    expect(
+      wrapper.findAllComponents({ name: 'AutomationParameterFields' })[0]!
+        .props('modelValue'),
+    ).toEqual({ 页码: 2 })
+  })
+
+  it('clears an application that is unavailable on the selected device and explains why', async () => {
+    const wrapper = mountDialog({
+      deviceId: 'device-1',
+      schema: configuredSchema,
+    })
+    await flushPromises()
+    wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '错误设备配置')
+
+    await wrapper.setProps({
+      deviceId: 'device-2',
+      applicationOptions: [],
+    })
+    await flushPromises()
+    expect(wrapper.emitted('update:appId')).toEqual([[null]])
+    await wrapper.setProps({ appId: null })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(
+      '原应用在所选设备上不可用，已清除应用选择和对应参数草稿。',
+    )
+    expect(wrapper.text()).toContain('该设备当前没有可用的影刀应用。')
+  })
+
+  it('asks for an application before showing parameter-definition loading', async () => {
+    const wrapper = mountDialog({
+      appId: null,
+      applicationOptionsLoading: false,
+      schema: emptySchema,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('请先选择应用。')
+    expect(wrapper.text()).not.toContain('正在读取参数定义。')
+    for (const placeholder of ['全部设备', '选择影刀应用']) {
+      const select = wrapper
+        .findAllComponents(AppSelect)
+        .find((item) => item.props('placeholder') === placeholder)!
+      expect(select.props('to')).toBe('#app-overlay-host')
+    }
+  })
+
+  it('does not clear the current application when device applications fail to load', async () => {
+    const wrapper = mountDialog({
+      applicationOptions: [],
+      applicationOptionsError: '无权读取设备应用',
+      deviceId: 'device-2',
+      schema: configuredSchema,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('应用列表读取失败：无权读取设备应用')
+    expect(wrapper.emitted('update:appId')).toBeUndefined()
+  })
+
   it('keeps a new preset draft while shared application fields are configured', async () => {
     const wrapper = mountDialog()
     await flushPromises()

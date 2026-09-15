@@ -145,4 +145,18 @@ describe('useParameterPresetManagement', () => {
     management.openCreate()
     expect(management.editorAppId.value).toBeNull()
   })
+
+  it('inherits create context without coupling dialog device changes to list filters', () => {
+    const management = mountManagement()
+    management.selectedDeviceIdDraft.value = 'device-1'
+    management.selectedAppIdDraft.value = 'app-1'
+
+    management.openCreate()
+    expect(management.editorDeviceId.value).toBe('device-1')
+    expect(management.editorAppId.value).toBe('app-1')
+
+    management.editorDeviceId.value = 'device-2'
+    expect(management.selectedDeviceIdDraft.value).toBe('device-1')
+    expect(management.selectedAppIdDraft.value).toBe('app-1')
+  })
 })

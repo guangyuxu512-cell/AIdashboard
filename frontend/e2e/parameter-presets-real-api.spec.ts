@@ -162,7 +162,10 @@ test('saves a preset repeatedly, keeps public and shop editing together, and rem
   const presetDialog = page.locator('.app-dialog').filter({
     has: page.locator('input[name="automation-parameter-preset-name"]'),
   })
-  const applicationSelect = presetDialog.locator('.n-base-selection').first()
+  const applicationSelect = presetDialog
+    .locator('.n-form-item')
+    .filter({ hasText: '对应应用' })
+    .locator('.n-base-selection')
   await expect(applicationSelect).not.toHaveClass(/n-base-selection--disabled/)
   await applicationSelect.click()
   await page.getByText('日常采集（零字段）', { exact: true }).last().click()

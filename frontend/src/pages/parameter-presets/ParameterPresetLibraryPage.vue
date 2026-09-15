@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import {
   AutomationParameterPresetManagerDialog,
+  buildYingdaoApplicationSelectOptions,
   type AutomationInputSchemaDto,
   useAutomationApplicationConfigQuery,
   type AutomationParameterPresetDto,
@@ -53,20 +54,9 @@ const editorSchemaError = computed(() =>
     : getErrorMessage(configQuery.error.value),
 )
 const filterApplicationOptions = computed(() => {
-  const nameCounts = new Map<string, number>()
-  for (const application of management.applicationOptions.value) {
-    nameCounts.set(
-      application.app_name,
-      (nameCounts.get(application.app_name) ?? 0) + 1,
-    )
-  }
-  return management.applicationOptions.value.map((application) => ({
-    label:
-      (nameCounts.get(application.app_name) ?? 0) > 1
-        ? `${application.app_name} · ${application.app_id}`
-        : application.app_name,
-    value: application.app_id,
-  }))
+  return buildYingdaoApplicationSelectOptions(
+    management.applicationOptions.value,
+  )
 })
 const emptySelectedApplication = computed(
   () =>
@@ -292,14 +282,19 @@ function applyPresetSchema(schema: AutomationInputSchemaDto): void {
       ref="managerDialog"
       :show="management.editorVisible.value"
       :app-id="management.editorAppId.value"
+      :device-id="management.editorDeviceId.value"
+      :device-options="management.deviceOptions.value"
+      :device-options-loading="management.deviceOptionsLoading.value"
       :schema="editorSchema"
-      :application-options="management.applicationOptions.value"
-      :application-options-loading="management.applicationsLoading.value"
+      :application-options="management.editorApplicationOptions.value"
+      :application-options-loading="management.editorApplicationsLoading.value"
+      :application-options-error="management.editorApplicationsError.value"
       :initial-preset-id="management.editorPresetId.value"
       :schema-loading="editorSchemaLoading"
       :schema-error="editorSchemaError"
       allow-schema-configuration
       @update:show="(show) => (show ? undefined : management.closeEditor())"
+      @update:device-id="(deviceId) => (management.editorDeviceId.value = deviceId)"
       @update:app-id="(appId) => (management.editorAppId.value = appId)"
       @saved="management.handleSaved"
       @configure-schema="openSchemaConfiguration"

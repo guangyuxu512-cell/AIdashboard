@@ -21,6 +21,7 @@ const props = withDefaults(
     filter?: SelectFilter
     menuProps?: SelectProps['menuProps']
     placement?: SelectProps['placement']
+    to?: SelectProps['to']
     viewportSafeMenu?: boolean
   }>(),
   {
@@ -37,6 +38,7 @@ const props = withDefaults(
     filter: undefined,
     menuProps: undefined,
     placement: 'bottom-start',
+    to: undefined,
     viewportSafeMenu: true,
   },
 )
@@ -81,6 +83,7 @@ function updateValue(value: AppSelectValue | null): void {
     :filter="filter"
     :menu-props="mergedMenuProps"
     :placement="placement"
+    :to="to"
     @update:value="updateValue"
   />
 </template>
@@ -88,5 +91,6 @@ function updateValue(value: AppSelectValue | null): void {
 <style>
 .app-select-menu--viewport-safe {
   --n-height: var(--select-menu-max-height) !important;
+  pointer-events: auto;
 }
 </style>
