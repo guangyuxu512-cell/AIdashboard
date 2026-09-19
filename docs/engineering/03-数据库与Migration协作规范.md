@@ -28,15 +28,16 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`hotfix/automation-parameter-schema-snapshot-v1` / 81a1（`reserved`）。
+当前活跃 Migration Slot：`feat/super-account-team-authorization-v1` / 81a1（`reserved`）。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `hotfix/automation-parameter-schema-snapshot-v1` / 81a1 | `reserved` | `automation_parameter_presets` 增加不可变 `input_schema_snapshot` JSONB，要求 object check；旧预设只从当前应用 Schema 识别的既有公共/店铺覆盖键构造 snapshot，未知键和值必须保留并以正式诊断路径报告，禁止猜测或清空 | `20260912_0035_ai_generation_output_compression_v1` | `20260912_0036_automation_parameter_schema_snapshot_v1` | Feature DB `control_center_feat_automation_parameter_schema_snapshot` 已从空库升级至 `0035`；Gate 1 必须验证 `0035 → 0036`、已知/未知键保留与诊断、降级语义及 Feature DB 回滚，不得使用 `control_center_feat_parameter_presets_usability` |
+| `feat/super-account-team-authorization-v1` / 81a1 | `reserved` | 最小化增加 `users.is_super_account`、Team 级模块/设备/店铺授权关系，以及 Active Member 约束与生命周期支持；不得静默扩大现有成员授权 | `20260912_0036_automation_parameter_schema_snapshot_v1` | `20260919_0037_super_account_team_authorization_v1` | Feature DB `control_center_feat_super_account_team_authorization` 已从空库升级至 `0036`；Gate 1 必须验证 PostgreSQL upgrade/downgrade、授权边界、Active Member 生命周期与显式 normalization。生产预检发现 1 个多 Active Team 用户及 1 个成员授权集合存在差异，发布前必须提交可审查的归一方案，禁止默认回填或扩大权限 |
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `hotfix/automation-parameter-schema-snapshot-v1` / 81a1 | `released` | `automation_parameter_presets` 增加不可变 `input_schema_snapshot` JSONB；旧预设仅复制当前 Schema 可识别且已持久化的公共/店铺键，未知键和值保持可诊断 | `20260912_0035_ai_generation_output_compression_v1` | `20260912_0036_automation_parameter_schema_snapshot_v1` | 已进入 Green `dev` 并发布；Integration 与生产均为唯一 `0036` Head。Feature DB `control_center_feat_automation_parameter_schema_snapshot` 仍保留待 Integrator 回收，但不再占用 Slot |
 | `feat/ai-workbench-input-preview-output-v1` / 0106 | `released` | AI Workbench Input / Preview / Output V1 已合入 Green `dev`；`GenerationJob` 记录不可变的每任务输出压缩策略快照，生成输出保持可追溯且不会回流为后续输入 | `20260911_0034_automation_parameter_presets_v1` | `20260912_0035_ai_generation_output_compression_v1` | Gate 2 已在 `control_center_integration` 验证 `0034 → 0035 → 0034 → 0035`、压缩后最终 Asset、完整 Backend/Frontend 回归及 Real API/Visual 定向测试；`control_center_feat_ai_workbench_input_preview_output` 已由 Integrator 回收，专用 HBA 规则已移除 |
 | `feat/automation-parameter-presets-v1` | `released` | Automation Parameter Presets V1 已合入 Green `dev`；影刀应用参数预设、店铺覆盖、Task 不可变快照及 Schedule 触发时重物化 | `20260911_0033_pc_schedule_date_recurrence_v1` | `20260911_0034_automation_parameter_presets_v1` | Gate 2 已在 `control_center_integration` 验证 `0033 → 0034 → 0033 → 0034`、完整 Backend 回归、参数预设 PostgreSQL 集成、前端生产构建与 Worker 参数桥接；Feature DB 回收待处理（`control_center_feat_automation_parameter_presets` 已由获授权管理通道删除，专用 HBA 规则已移除；不表示其余 Feature 环境已全部清理） |
 | `feat/pc-schedule-date-recurrence-v1` | `released` | PC Schedule Date Recurrence V1 已合入 Green `dev`；Schedule 支持一次/每日/每周规则与发生日期筛选 | `20260906_0032_ai_workbench_real_api_v1` | `20260911_0033_pc_schedule_date_recurrence_v1` | Gate 2 已在 `control_center_integration` 验证 `0032 → 0033`、完整 Backend/Frontend 回归；Feature DB 的 `0033 → 0032 → 0033` 与 once/weekly 数据 fail-closed 降级已通过，待数据库管理员回收 |
