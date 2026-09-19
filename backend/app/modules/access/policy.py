@@ -4,8 +4,6 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql import ColumnElement, Select
 
 from app.modules.access.contracts import ActorContext
-from app.modules.access.enums import DataScope
-from app.modules.access.exceptions import InvalidDataScopeError
 
 
 class DataScopePolicy:
@@ -19,16 +17,11 @@ class DataScopePolicy:
         created_by_user_id_column: ColumnElement[Any] | InstrumentedAttribute[Any],
         actor: ActorContext,
     ) -> Select[Any]:
-        scope = actor.data_scope
-        if not isinstance(scope, DataScope):
-            raise InvalidDataScopeError()
-        if scope is DataScope.SELF:
-            return statement.where(
-                team_id_column == actor.team_id,
-                created_by_user_id_column == actor.user_id,
-            )
-        if scope is DataScope.TEAM:
-            return statement.where(team_id_column == actor.team_id)
-        if scope is DataScope.ALL:
+        # The V2 product rule is intentionally smaller than the legacy
+        # SELF/TEAM/ALL matrix: a super account can read every Team and a
+        # normal member can read only its one effective Team.  Keeping this in
+        # one predicate preserves SQL-side scope filtering before pagination.
+        del created_by_user_id_column
+        if actor.is_super_account:
             return statement
-        raise InvalidDataScopeError()
+        return statement.where(team_id_column == actor.require_team_id())

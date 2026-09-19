@@ -27,6 +27,7 @@ def _actor(
     user_id: UUID,
     team_id: UUID,
     scope: DataScope,
+    is_super_account: bool = False,
 ) -> ActorContext:
     return ActorContext(
         user_id=user_id,
@@ -35,6 +36,7 @@ def _actor(
         membership_id=uuid4(),
         role_code="member",
         data_scope=scope,
+        is_super_account=is_super_account,
     )
 
 
@@ -115,25 +117,22 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
                         user_id=all_user_id,
                         display_name="素材全局用户",
                         enabled=True,
+                        is_super_account=True,
                     ),
                 ],
             )
             session.commit()
 
-            self_actor = _actor(
-                user_id=user_a1_id,
-                team_id=team_a_id,
-                scope=DataScope.SELF,
-            )
-            team_actor = _actor(
+            member_actor = _actor(
                 user_id=user_a1_id,
                 team_id=team_a_id,
                 scope=DataScope.TEAM,
             )
-            all_actor = _actor(
+            super_actor = _actor(
                 user_id=all_user_id,
                 team_id=team_a_id,
                 scope=DataScope.ALL,
+                is_super_account=True,
             )
             service = AssetService(
                 session,
@@ -142,7 +141,7 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
             )
 
             owned_by_a1 = service.upload(
-                actor=self_actor,
+                actor=member_actor,
                 original_filename="team-a-user-a1.png",
                 content_type="image/png",
                 stream=BytesIO(b"\x89PNG\r\n\x1a\na1"),
@@ -162,8 +161,8 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
                 filename="cross-team-secret.png",
                 ownership=AssetOwnership(team_b_id, user_b_id),
             )
-            created_by_all = service.upload(
-                actor=all_actor,
+            created_by_super = service.upload(
+                actor=super_actor,
                 original_filename="all-user-active-team.png",
                 content_type="image/png",
                 stream=BytesIO(b"\x89PNG\r\n\x1a\nall"),
@@ -174,40 +173,31 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
                     owned_by_a2.asset_id,
                     legacy_team_a.asset_id,
                     team_b_asset.asset_id,
-                    created_by_all.asset_id,
+                    created_by_super.asset_id,
                 },
             )
 
             assert owned_by_a1.team_id == team_a_id
             assert owned_by_a1.created_by_user_id == user_a1_id
-            assert created_by_all.team_id == team_a_id
-            assert created_by_all.created_by_user_id == all_user_id
+            assert created_by_super.team_id == team_a_id
+            assert created_by_super.created_by_user_id == all_user_id
 
-            self_items, self_total = service.list(
-                actor=self_actor,
-                page=1,
-                page_size=1,
-                search=None,
-            )
-            assert self_total == 1
-            assert [item.asset_id for item in self_items] == [owned_by_a1.asset_id]
-
-            team_items, team_total = service.list(
-                actor=team_actor,
+            member_items, member_total = service.list(
+                actor=member_actor,
                 page=1,
                 page_size=20,
                 search=None,
             )
-            assert team_total == 4
-            assert {item.asset_id for item in team_items} == {
+            assert member_total == 4
+            assert {item.asset_id for item in member_items} == {
                 owned_by_a1.asset_id,
                 owned_by_a2.asset_id,
                 legacy_team_a.asset_id,
-                created_by_all.asset_id,
+                created_by_super.asset_id,
             }
 
             all_items, all_total = service.list(
-                actor=all_actor,
+                actor=super_actor,
                 page=1,
                 page_size=20,
                 search=None,
@@ -216,7 +206,7 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
             assert {item.asset_id for item in all_items} == asset_ids
 
             searched, searched_total = service.list(
-                actor=team_actor,
+                actor=member_actor,
                 page=1,
                 page_size=20,
                 search="cross-team",
@@ -225,17 +215,17 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
             assert searched_total == 0
 
             accessible = service.list_accessible_by_ids(
-                self_actor,
+                member_actor,
                 [owned_by_a1.asset_id, team_b_asset.asset_id],
             )
             assert [asset.asset_id for asset in accessible] == [owned_by_a1.asset_id]
 
             with pytest.raises(AssetNotFoundError):
-                service.get_for_actor(self_actor, team_b_asset.asset_id)
+                service.get_for_actor(member_actor, team_b_asset.asset_id)
             with pytest.raises(AssetNotFoundError):
-                service.get_content(self_actor, team_b_asset.asset_id)
+                service.get_content(member_actor, team_b_asset.asset_id)
             with pytest.raises(AssetNotFoundError):
-                service.delete(self_actor, team_b_asset.asset_id)
+                service.delete(member_actor, team_b_asset.asset_id)
             assert (
                 session.scalar(
                     select(Asset).where(Asset.asset_id == team_b_asset.asset_id),
@@ -243,7 +233,7 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
                 is not None
             )
 
-            legacy, content = service.get_content(team_actor, legacy_team_a.asset_id)
+            legacy, content = service.get_content(member_actor, legacy_team_a.asset_id)
             with content:
                 assert content.read().startswith(b"\x89PNG")
             assert legacy.created_by_user_id is None

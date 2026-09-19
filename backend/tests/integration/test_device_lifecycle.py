@@ -5,6 +5,9 @@ import pytest
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team, TeamDeviceAccess, TeamShopAccess
 from app.modules.devices.exceptions import DeviceHasActiveTasksError
 from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
@@ -16,6 +19,7 @@ from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.models import Task
 from app.modules.tasks.schemas import TaskCreate, TaskFail
 from app.modules.tasks.service import TaskService
+from app.modules.users.models import User
 from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.models import (
     DeviceProviderInventory,
@@ -37,17 +41,36 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
+    team_id = uuid4()
+    user_id = uuid4()
     replacement_device_id = None
     shop_id = uuid4()
     task_id = None
     now = datetime.now(UTC)
+    actor = ActorContext(
+        user_id=user_id,
+        user_display_name="Device lifecycle fixture",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="super_account",
+        data_scope=DataScope.ALL,
+        is_super_account=True,
+    )
 
     try:
         with Session(postgresql_engine) as session:
             session.add_all(
                 [
+                    User(
+                        user_id=user_id,
+                        display_name="Device lifecycle super account",
+                        login_name=f"device-lifecycle-{user_id.hex[:8]}",
+                        is_super_account=True,
+                    ),
+                    Team(team_id=team_id, name="Device Lifecycle Team"),
                     Device(
                         device_id=device_id,
+                        team_id=team_id,
                         display_name="stage-device-lifecycle",
                         enabled=True,
                     ),
@@ -60,6 +83,12 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                 ],
             )
             session.flush()
+            session.add_all(
+                [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id),
+                    TeamShopAccess(team_id=team_id, shop_id=shop_id),
+                ],
+            )
             session.add(
                 ShopDeviceBinding(
                     shop_id=shop_id,
@@ -131,10 +160,15 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                     skill_id=TaskSkillId.SYSTEM_ECHO,
                     input={"message": "lifecycle"},
                 ),
+                actor,
             )
             task_id = task.task_id
 
-            DeviceService(session).update(device_id, DeviceUpdate(enabled=False))
+            DeviceService(session).update(
+                actor,
+                device_id,
+                DeviceUpdate(enabled=False),
+            )
             disabled_heartbeat = worker_service.heartbeat(
                 principal,
                 WorkerHeartbeat(worker_version="0.1.0", started_at=now),
@@ -142,13 +176,17 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
             )
             assert disabled_heartbeat.connection_status == "online"
             assert task_service.claim(principal, now=now) is None
-            DeviceService(session).update(device_id, DeviceUpdate(enabled=True))
+            DeviceService(session).update(
+                actor,
+                device_id,
+                DeviceUpdate(enabled=True),
+            )
 
             with pytest.raises(DeviceHasActiveTasksError):
-                DeviceService(session).remove(device_id)
+                DeviceService(session).remove(actor, device_id)
             assert task_service.claim(principal, now=now) is not None
             with pytest.raises(DeviceHasActiveTasksError):
-                DeviceService(session).remove(device_id)
+                DeviceService(session).remove(actor, device_id)
 
             failed = task_service.fail(
                 principal,
@@ -160,7 +198,7 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                 now=now,
             )
             assert failed.status == TaskStatus.FAILED.value
-            DeviceService(session).remove(device_id)
+            DeviceService(session).remove(actor, device_id)
 
             with pytest.raises(WorkerAuthenticationError):
                 worker_service.authenticate(device_id, token)
@@ -182,6 +220,7 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
             assert session.get(DeviceRuntime, device_id) is not None
 
             replacement = DeviceService(session).create(
+                actor,
                 DeviceCreate(display_name="stage-device-lifecycle"),
             )
             replacement_device_id = replacement.device_id
@@ -212,10 +251,22 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                     ShopDeviceBinding.device_id == device_id,
                 ),
             )
+            session.execute(
+                delete(TeamDeviceAccess).where(
+                    TeamDeviceAccess.team_id == team_id,
+                ),
+            )
+            session.execute(
+                delete(TeamShopAccess).where(
+                    TeamShopAccess.team_id == team_id,
+                ),
+            )
             session.execute(delete(Device).where(Device.device_id == device_id))
             if replacement_device_id is not None:
                 session.execute(
                     delete(Device).where(Device.device_id == replacement_device_id),
                 )
             session.execute(delete(Shop).where(Shop.shop_id == shop_id))
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
             session.commit()

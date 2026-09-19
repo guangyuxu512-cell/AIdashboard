@@ -28,11 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`feat/super-account-team-authorization-v1` / 81a1（`reserved`）。
+当前活跃 Migration Slot：`feat/super-account-team-authorization-v1` / 81a1（`active`）。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `feat/super-account-team-authorization-v1` / 81a1 | `reserved` | 最小化增加 `users.is_super_account`、Team 级模块/设备/店铺授权关系，以及 Active Member 约束与生命周期支持；不得静默扩大现有成员授权 | `20260912_0036_automation_parameter_schema_snapshot_v1` | `20260919_0037_super_account_team_authorization_v1` | Feature DB `control_center_feat_super_account_team_authorization` 已从空库升级至 `0036`；Gate 1 必须验证 PostgreSQL upgrade/downgrade、授权边界、Active Member 生命周期与显式 normalization。生产预检发现 1 个多 Active Team 用户及 1 个成员授权集合存在差异，发布前必须提交可审查的归一方案，禁止默认回填或扩大权限 |
+| `feat/super-account-team-authorization-v1` / 81a1 | `active` | 最小化增加 `users.is_super_account`、Team 级模块/设备/店铺授权关系，以及 Active Member 约束与生命周期支持；不得静默扩大现有成员授权 | `20260912_0036_automation_parameter_schema_snapshot_v1` | `20260919_0037_super_account_team_authorization_v1` | Feature DB `control_center_feat_super_account_team_authorization` 已完成 `0036 → 0037 → 0036 → 0037`。Gate 1 必须验证 PostgreSQL 授权边界、Active Member 生命周期与显式 normalization。生产预检发现 1 个多 Active Team 用户及 1 个成员授权集合存在差异，发布前必须提交可审查的归一方案，禁止默认回填或扩大权限 |
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |

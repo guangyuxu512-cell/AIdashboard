@@ -1,5 +1,11 @@
 # Access Management V1
 
+> **历史 V1：** 本文描述的 `access_admin`、成员级模块授权和成员级 `SELF/TEAM/ALL`
+> 已由 `20260919_0037_super_account_team_authorization_v1` 替代。现行人员、Team、资源
+> 授权、移出/调组/归档与删除契约以
+> [23-超级账号与团队授权V1.md](23-超级账号与团队授权V1.md) 为准；本文只保留 0025 的
+> Migration 与旧客户端字段背景。
+
 ## 目标与边界
 
 Access Management V1 在既有 Human Auth、User、Team、TeamMembership、ActorContext 和

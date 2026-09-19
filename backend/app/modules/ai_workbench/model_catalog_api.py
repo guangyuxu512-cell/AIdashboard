@@ -8,7 +8,7 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import (
-    get_access_administrator,
+    get_super_account,
     require_module_access,
 )
 from app.modules.access.module_access import ModuleCode
@@ -54,7 +54,7 @@ def get_ai_model_catalog_service(
 
 @admin_router.get("", response_model=list[AiModelAdminRead])
 def list_ai_models(
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[
         AiModelCatalogService,
         Depends(get_ai_model_catalog_service),
@@ -70,7 +70,7 @@ def list_ai_models(
 )
 def create_ai_model(
     data: AiModelCreate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[
         AiModelCatalogService,
         Depends(get_ai_model_catalog_service),
@@ -82,7 +82,7 @@ def create_ai_model(
 @admin_router.get("/{model_id}", response_model=AiModelAdminRead)
 def get_ai_model(
     model_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[
         AiModelCatalogService,
         Depends(get_ai_model_catalog_service),
@@ -95,7 +95,7 @@ def get_ai_model(
 def update_ai_model(
     model_id: UUID,
     data: AiModelUpdate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[
         AiModelCatalogService,
         Depends(get_ai_model_catalog_service),
@@ -107,7 +107,7 @@ def update_ai_model(
 @admin_router.post("/{model_id}/default", response_model=AiModelAdminRead)
 def set_default_ai_model(
     model_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[
         AiModelCatalogService,
         Depends(get_ai_model_catalog_service),

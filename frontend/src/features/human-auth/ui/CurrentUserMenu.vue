@@ -22,7 +22,9 @@ const options = computed<DropdownOption[]>(() => {
     },
     {
       key: 'current-team',
-      label: `当前团队：${auth.currentTeam?.teamName ?? '—'}`,
+      label: auth.isSuperAccount
+        ? `业务上下文：${auth.currentTeam?.teamName ?? '全部团队'}`
+        : `当前团队：${auth.currentTeam?.teamName ?? '未分配团队'}`,
       disabled: true,
     },
   ]

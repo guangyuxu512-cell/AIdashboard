@@ -6,7 +6,7 @@ from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
-from app.modules.access.policy import DataScopePolicy
+from app.modules.access.models import TeamDeviceAccess
 from app.modules.devices.models import Device
 from app.modules.workers.models import DeviceProviderInventory
 
@@ -23,12 +23,7 @@ class DeviceRepository:
         limit: int,
         search: str | None = None,
     ) -> list[Device]:
-        statement = DataScopePolicy.apply(
-            self._search_statement(search),
-            team_id_column=Device.team_id,
-            created_by_user_id_column=Device.created_by_user_id,
-            actor=actor,
-        )
+        statement = self._apply_actor_scope(self._search_statement(search), actor)
         return list(
             self.session.scalars(
                 statement
@@ -39,12 +34,7 @@ class DeviceRepository:
         )
 
     def count(self, *, actor: ActorContext, search: str | None = None) -> int:
-        statement = DataScopePolicy.apply(
-            self._search_statement(search),
-            team_id_column=Device.team_id,
-            created_by_user_id_column=Device.created_by_user_id,
-            actor=actor,
-        )
+        statement = self._apply_actor_scope(self._search_statement(search), actor)
         return (
             self.session.scalar(
                 statement.with_only_columns(func.count()).order_by(None),
@@ -81,11 +71,9 @@ class DeviceRepository:
         facts, if any, may be exposed in their own response contract.
         """
 
-        statement = DataScopePolicy.apply(
+        statement = self._apply_actor_scope(
             select(Device).where(Device.deleted_at.is_(None)),
-            team_id_column=Device.team_id,
-            created_by_user_id_column=Device.created_by_user_id,
-            actor=actor,
+            actor,
         )
         return list(self.session.scalars(statement.order_by(Device.device_id.asc())))
 
@@ -117,14 +105,12 @@ class DeviceRepository:
         actor: ActorContext,
         device_id: UUID,
     ) -> Device | None:
-        statement = DataScopePolicy.apply(
+        statement = self._apply_actor_scope(
             select(Device).where(
                 Device.device_id == device_id,
                 Device.deleted_at.is_(None),
             ),
-            team_id_column=Device.team_id,
-            created_by_user_id_column=Device.created_by_user_id,
-            actor=actor,
+            actor,
         )
         return self.session.scalar(statement)
 
@@ -134,15 +120,13 @@ class DeviceRepository:
         actor: ActorContext,
         device_id: UUID,
     ) -> Device | None:
-        statement = DataScopePolicy.apply(
+        statement = self._apply_actor_scope(
             select(Device)
             .where(
                 Device.device_id == device_id,
                 Device.deleted_at.is_(None),
             ),
-            team_id_column=Device.team_id,
-            created_by_user_id_column=Device.created_by_user_id,
-            actor=actor,
+            actor,
         )
         return self.session.scalar(statement.with_for_update())
 
@@ -151,3 +135,16 @@ class DeviceRepository:
 
     def add(self, device: Device) -> None:
         self.session.add(device)
+
+    @staticmethod
+    def _apply_actor_scope(statement, actor: ActorContext):
+        if actor.is_super_account:
+            return statement
+        return statement.where(
+            exists(
+                select(TeamDeviceAccess.team_id).where(
+                    TeamDeviceAccess.team_id == actor.require_team_id(),
+                    TeamDeviceAccess.device_id == Device.device_id,
+                ),
+            ),
+        )

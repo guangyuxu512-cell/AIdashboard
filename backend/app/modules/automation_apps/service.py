@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.module_access import ModuleCode
-from app.modules.access.service import ModuleAccessService
+from app.modules.access.service import ModuleAccessService, TeamAuthorizationService
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetConflictError,
     AutomationParameterPresetInUseError,
@@ -137,17 +137,13 @@ class AutomationApplicationCatalogService:
                 actor=actor,
                 device_id=device_id,
             )
-            if device is None or device.team_id != actor.team_id:
+            if device is None:
                 raise DeviceNotFoundError()
             devices = [device]
-        # Parameter presets are always scoped to the active Team.  A human
-        # actor can have a broader Device data scope elsewhere, but that must
-        # not turn this options endpoint into a cross-Team application catalog.
-        device_ids = [
-            device.device_id
-            for device in devices
-            if device.team_id == actor.team_id
-        ]
+        # DeviceRepository already applies the Team's explicit device grants
+        # in SQL.  Do not reintroduce the obsolete device.team_id ownership
+        # filter here: a public Device may be granted to multiple Teams.
+        device_ids = [device.device_id for device in devices]
         records = self.worker_repository.get_provider_inventories_for_devices(
             device_ids,
             provider_code="yingdao",
@@ -180,6 +176,7 @@ class AutomationParameterPresetService:
         preset_repository: AutomationParameterPresetRepository | None = None,
         shop_repository: ShopRepository | None = None,
         module_access_service: ModuleAccessService | None = None,
+        team_authorization_service: TeamAuthorizationService | None = None,
         application_catalog_service: AutomationApplicationCatalogService | None = None,
     ) -> None:
         self.session = session
@@ -191,6 +188,9 @@ class AutomationParameterPresetService:
         )
         self.shop_repository = shop_repository or ShopRepository(session)
         self.module_access_service = module_access_service or ModuleAccessService(session)
+        self.team_authorization_service = (
+            team_authorization_service or TeamAuthorizationService(session)
+        )
         self.application_catalog_service = (
             application_catalog_service
             or AutomationApplicationCatalogService(session)
@@ -203,16 +203,12 @@ class AutomationParameterPresetService:
         app_id: str,
     ) -> list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
-        presets = [
-            preset
-            for preset in self.preset_repository.list_for_actor(
-                actor=actor,
-                app_id=app_id,
-            )
-            # Parameter presets are intentionally Team-scoped even when an
-            # operator has ALL scope for another resource type.
-            if preset.team_id == actor.team_id
-        ]
+        # A super account without an explicit Team context performs an
+        # authorized cross-Team read.  Selecting a Team intentionally narrows
+        # the collection again; writes still require that explicit context.
+        presets = self.preset_repository.list_for_actor(actor=actor, app_id=app_id)
+        if actor.team_id is not None:
+            presets = [preset for preset in presets if preset.team_id == actor.team_id]
         return [self._to_read(preset) for preset in presets]
 
     def list_all(
@@ -279,25 +275,27 @@ class AutomationParameterPresetService:
         data: AutomationParameterPresetCreate,
     ) -> AutomationParameterPresetRead:
         self._require_shop_access(actor)
+        team_id = actor.require_team_id()
         schema = (
             data.input_schema
             if data.input_schema is not None
             else self._application_schema(app_id)
         )
         common_parameters, shop_overrides = self._normalize_payload(
+            actor=actor,
             schema=schema,
             common_parameters=data.common_parameters,
             shop_overrides=data.shop_overrides,
         )
         if self.preset_repository.exists_name(
-            team_id=actor.team_id,
+            team_id=team_id,
             app_id=app_id,
             name=data.name,
         ):
             raise AutomationParameterPresetConflictError()
         preset = AutomationParameterPreset(
             preset_id=generate_id(),
-            team_id=actor.team_id,
+            team_id=team_id,
             created_by_user_id=actor.user_id,
             app_id=app_id,
             name=data.name,
@@ -319,6 +317,7 @@ class AutomationParameterPresetService:
         data: AutomationParameterPresetUpdate,
     ) -> AutomationParameterPresetRead:
         self._require_shop_access(actor)
+        team_id = actor.require_team_id()
         preset = self._get_for_actor(
             actor=actor,
             app_id=app_id,
@@ -336,12 +335,13 @@ class AutomationParameterPresetService:
             else self._preset_schema(preset)
         )
         common_parameters, shop_overrides = self._normalize_payload(
+            actor=actor,
             schema=schema,
             common_parameters=values.get("common_parameters", preset.common_parameters),
             shop_overrides=values.get("shop_overrides", preset.shop_overrides),
         )
         if self.preset_repository.exists_name(
-            team_id=actor.team_id,
+            team_id=team_id,
             app_id=app_id,
             name=name,
             exclude_preset_id=preset.preset_id,
@@ -366,16 +366,17 @@ class AutomationParameterPresetService:
         data: AutomationParameterPresetCopy,
     ) -> AutomationParameterPresetRead:
         self._require_shop_access(actor)
+        team_id = actor.require_team_id()
         source = self._get_for_actor(actor=actor, app_id=app_id, preset_id=preset_id)
         if self.preset_repository.exists_name(
-            team_id=actor.team_id,
+            team_id=team_id,
             app_id=app_id,
             name=data.name,
         ):
             raise AutomationParameterPresetConflictError()
         preset = AutomationParameterPreset(
             preset_id=generate_id(),
-            team_id=actor.team_id,
+            team_id=team_id,
             created_by_user_id=actor.user_id,
             app_id=app_id,
             name=data.name,
@@ -399,6 +400,10 @@ class AutomationParameterPresetService:
         preset_id: object,
     ) -> None:
         self._require_shop_access(actor)
+        # Removing a Team-owned preset is a write.  A super account must first
+        # select its target Team instead of deleting from the cross-Team read
+        # view by accident.
+        actor.require_team_id()
         preset = self._get_for_actor(
             actor=actor,
             app_id=app_id,
@@ -431,7 +436,7 @@ class AutomationParameterPresetService:
     ) -> ParameterPresetSnapshot:
         self._require_shop_access(actor)
         preset = self._get_for_actor(actor=actor, app_id=app_id, preset_id=preset_id)
-        self._ensure_selected_shops_exist(shop_ids)
+        self._ensure_selected_shops_exist(actor, shop_ids)
         return self._snapshot(preset, shop_ids)
 
     def snapshot_for_team(
@@ -464,6 +469,7 @@ class AutomationParameterPresetService:
     def _normalize_payload(
         self,
         *,
+        actor: ActorContext,
         schema: AutomationInputSchema,
         common_parameters: dict[str, object],
         shop_overrides: dict[object, dict[str, object]],
@@ -486,7 +492,7 @@ class AutomationParameterPresetService:
             }
         except ValueError as error:
             raise AutomationParameterPresetInvalidError(str(error)) from error
-        self._ensure_selected_shops_exist(list(shop_overrides))
+        self._ensure_selected_shops_exist(actor, list(shop_overrides))
         return common, overrides
 
     def _snapshot(
@@ -508,12 +514,18 @@ class AutomationParameterPresetService:
         except ValueError as error:
             raise AutomationParameterPresetInvalidError(str(error)) from error
 
-    def _ensure_selected_shops_exist(self, shop_ids: list[object]) -> None:
+    def _ensure_selected_shops_exist(
+        self,
+        actor: ActorContext,
+        shop_ids: list[object],
+    ) -> None:
         if not shop_ids:
             return
         shops = self.shop_repository.list_by_ids(shop_ids)  # type: ignore[arg-type]
         if len(shops) != len(set(shop_ids)):
             raise AutomationParameterPresetInvalidError("参数预设包含不存在或已移除的店铺")
+        for shop_id in shop_ids:
+            self.team_authorization_service.require_shop_access(actor, shop_id)  # type: ignore[arg-type]
 
     def _get_for_actor(
         self,
@@ -529,7 +541,14 @@ class AutomationParameterPresetService:
             preset_id=preset_id,
             for_update=for_update,
         )
-        if preset is None or preset.team_id != actor.team_id:
+        if preset is None:
+            raise AutomationParameterPresetNotFoundError()
+        # Normal members always have exactly one effective Team.  A super
+        # account may omit its Team only for reads; when it selects one, the
+        # selected context remains the write/read scope for this resource.
+        if actor.team_id is not None and preset.team_id != actor.team_id:
+            raise AutomationParameterPresetNotFoundError()
+        if not actor.is_super_account and actor.team_id is None:
             raise AutomationParameterPresetNotFoundError()
         return preset
 

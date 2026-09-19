@@ -133,7 +133,7 @@ class TemplateRepository:
             select(TemplateGroup)
             .where(
                 TemplateGroup.template_group_id == template_group_id,
-                TemplateGroup.team_id == actor.team_id,
+                TemplateGroup.team_id == actor.require_team_id(),
             )
             .options(selectinload(TemplateGroup.prompt_templates)),
             team_id_column=TemplateGroup.team_id,
@@ -337,7 +337,7 @@ class ProductMaterialGroupRepository:
         statement = DataScopePolicy.apply(
             select(ProductMaterialGroup.material_group_id).where(
                 ProductMaterialGroup.material_group_id == material_group_id,
-                ProductMaterialGroup.team_id == actor.team_id,
+                ProductMaterialGroup.team_id == actor.require_team_id(),
             ),
             team_id_column=ProductMaterialGroup.team_id,
             created_by_user_id_column=ProductMaterialGroup.created_by_user_id,
@@ -355,7 +355,7 @@ class ProductMaterialGroupRepository:
             select(ProductMaterialGroup)
             .where(
                 ProductMaterialGroup.material_group_id == material_group_id,
-                ProductMaterialGroup.team_id == actor.team_id,
+                ProductMaterialGroup.team_id == actor.require_team_id(),
             )
             .options(*self._detail_options()),
             team_id_column=ProductMaterialGroup.team_id,
@@ -709,7 +709,7 @@ class GenerationRepository:
         statement = DataScopePolicy.apply(
             select(GenerationJob).where(
                 GenerationJob.generation_job_id == generation_job_id,
-                GenerationJob.team_id == actor.team_id,
+                GenerationJob.team_id == actor.require_team_id(),
             ),
             team_id_column=GenerationJob.team_id,
             created_by_user_id_column=GenerationJob.created_by_user_id,

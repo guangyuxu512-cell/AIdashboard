@@ -7,6 +7,8 @@ import pytest
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
+from app.modules.access.exceptions import TeamResourceAccessDeniedError
+from app.modules.access.exceptions import TeamContextRequiredError
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetInUseError,
     AutomationParameterPresetInvalidError,
@@ -116,14 +118,18 @@ class FakePresetRepository:
         self,
         *,
         actor: ActorContext,
-        team_id: UUID,
+        team_id: UUID | None,
         app_id: str | None = None,
         app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
         offset: int = 0,
         limit: int | None = None,
     ) -> list[AutomationParameterPreset]:
-        candidates = [preset for preset in self.presets if preset.team_id == team_id]
+        candidates = (
+            list(self.presets)
+            if team_id is None
+            else [preset for preset in self.presets if preset.team_id == team_id]
+        )
         if actor.data_scope is DataScope.SELF:
             candidates = [
                 preset
@@ -144,7 +150,7 @@ class FakePresetRepository:
         self,
         *,
         actor: ActorContext,
-        team_id: UUID,
+        team_id: UUID | None,
         app_id: str | None = None,
         app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
@@ -248,6 +254,15 @@ class FakeModuleAccessService:
             raise ModuleAccessDeniedError()
 
 
+class FakeTeamAuthorizationService:
+    def __init__(self, allowed_shop_ids: set[UUID]) -> None:
+        self.allowed_shop_ids = allowed_shop_ids
+
+    def require_shop_access(self, _actor: ActorContext, shop_id: UUID) -> None:
+        if shop_id not in self.allowed_shop_ids:
+            raise TeamResourceAccessDeniedError()
+
+
 def actor(*, team_id: UUID, scope: DataScope = DataScope.TEAM) -> ActorContext:
     return ActorContext(
         user_id=uuid4(),
@@ -272,6 +287,7 @@ def service_for(
         preset_repository=repository,  # type: ignore[arg-type]
         shop_repository=FakeShopRepository(shop_ids),  # type: ignore[arg-type]
         module_access_service=FakeModuleAccessService(allowed=allowed),  # type: ignore[arg-type]
+        team_authorization_service=FakeTeamAuthorizationService(shop_ids),  # type: ignore[arg-type]
         application_catalog_service=application_catalog_service,  # type: ignore[arg-type]
     )
 
@@ -820,15 +836,85 @@ def test_management_list_counts_and_pages_only_authorized_team_rows() -> None:
     assert legacy[1] == page.items[0]
 
 
+def test_super_without_team_reads_all_presets_but_writes_require_selected_team() -> None:
+    team_a, team_b = uuid4(), uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids=set())
+    preset_a = service.create(
+        actor=actor(team_id=team_a),
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="团队 A 配置",
+            common_parameters={"标题": "A"},
+        ),
+    )
+    preset_b = service.create(
+        actor=actor(team_id=team_b),
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="团队 B 配置",
+            common_parameters={"标题": "B"},
+        ),
+    )
+    super_actor = ActorContext(
+        user_id=uuid4(),
+        user_display_name="超级账号",
+        team_id=None,
+        membership_id=None,
+        role_code="super_account",
+        data_scope=DataScope.ALL,
+        is_super_account=True,
+    )
+
+    page = service.list_all(
+        actor=super_actor,
+        app_id="safe-app",
+        pagination=PaginationParams(page=1, page_size=10),
+    )
+
+    assert page.total == 2
+    assert {preset.preset_id for preset in page.items} == {
+        preset_a.preset_id,
+        preset_b.preset_id,
+    }
+    assert service.get(
+        actor=super_actor,
+        app_id="safe-app",
+        preset_id=preset_b.preset_id,
+    ).name == "团队 B 配置"
+
+    with pytest.raises(TeamContextRequiredError):
+        service.create(
+            actor=super_actor,
+            app_id="safe-app",
+            data=AutomationParameterPresetCreate(
+                name="不得隐式归属",
+                common_parameters={"标题": "X"},
+            ),
+        )
+    with pytest.raises(TeamContextRequiredError):
+        service.remove(
+            actor=super_actor,
+            app_id="safe-app",
+            preset_id=preset_a.preset_id,
+        )
+    assert {preset.preset_id for preset in repository.presets} == {
+        preset_a.preset_id,
+        preset_b.preset_id,
+    }
+
+
 class FakeDeviceCatalogRepository:
     def __init__(self) -> None:
         self.team_device_id = uuid4()
         self.foreign_device_id = uuid4()
 
     def list_all_for_actor(self, *, actor: ActorContext) -> list[SimpleNamespace]:
+        # The real repository applies Team device grants in SQL.  The catalog
+        # deliberately trusts that scope instead of reopening device.team_id.
+        del actor
         return [
-            SimpleNamespace(device_id=self.team_device_id, team_id=actor.team_id),
-            SimpleNamespace(device_id=self.foreign_device_id, team_id=uuid4()),
+            SimpleNamespace(device_id=self.team_device_id),
         ]
 
     def get_for_actor(
@@ -839,7 +925,8 @@ class FakeDeviceCatalogRepository:
     ) -> SimpleNamespace | None:
         if device_id != self.team_device_id:
             return None
-        return SimpleNamespace(device_id=device_id, team_id=actor.team_id)
+        del actor
+        return SimpleNamespace(device_id=device_id)
 
 
 class FakeWorkerCatalogRepository:

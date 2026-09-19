@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient, Response
 
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
+from app.modules.access.dependencies import get_super_account
 from app.modules.access.enums import DataScope
 from app.modules.automation_apps.api import (
     get_device_authorized_actor as get_automation_device_authorized_actor,
@@ -94,6 +95,7 @@ API_ACTOR = ActorContext(
     membership_id=MEMBERSHIP_ID,
     role_code="member",
     data_scope=DataScope.TEAM,
+    is_super_account=True,
 )
 
 
@@ -110,6 +112,7 @@ class ApiShopService:
     def list(
         self,
         *,
+        actor: ActorContext,
         offset: int,
         limit: int,
         device_id: UUID | None = None,
@@ -118,6 +121,7 @@ class ApiShopService:
         platform: str | None = None,
         name_query: str | None = None,
     ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
+        del actor
         type(self).last_list_filters = {
             "device_id": device_id,
             "enabled": enabled,
@@ -131,7 +135,8 @@ class ApiShopService:
             {SHOP_ID: ShopSessionStatus.VALID},
         )
 
-    def get(self, shop_id: UUID) -> Shop:
+    def get(self, *args: object) -> Shop:
+        shop_id = args[-1]
         if shop_id != SHOP_ID:
             raise ShopNotFoundError()
         return stamp(
@@ -144,29 +149,41 @@ class ApiShopService:
                 note=None,
             ),
         )  # type: ignore[return-value]
-    def create(self, data: object) -> Shop:
+    def create(self, actor: ActorContext, data: object) -> Shop:
+        del actor, data
         return self.get(SHOP_ID)
 
-    def update(self, shop_id: UUID, data: object) -> Shop:
+    def update(self, actor: ActorContext, shop_id: UUID, data: object) -> Shop:
+        del actor, data
         return self.get(shop_id)
 
-    def remove(self, shop_id: UUID) -> None:
+    def remove(self, actor: ActorContext, shop_id: UUID) -> None:
+        del actor
         self.get(shop_id)
 
-    def list_bindings(self, shop_id: UUID) -> list[ShopDeviceBinding]:
+    def list_bindings(self, actor: ActorContext, shop_id: UUID) -> list[ShopDeviceBinding]:
+        del actor
         self.get(shop_id)
         return [self._binding()]
 
-    def create_binding(self, shop_id: UUID, data: object) -> ShopDeviceBinding:
+    def create_binding(
+        self,
+        actor: ActorContext,
+        shop_id: UUID,
+        data: object,
+    ) -> ShopDeviceBinding:
+        del actor, data
         self.get(shop_id)
         return self._binding()
 
     def update_binding(
         self,
+        actor: ActorContext,
         shop_id: UUID,
         device_id: UUID,
         data: object,
     ) -> ShopDeviceBinding:
+        del actor, data
         self.get(shop_id)
         return self._binding(device_id)
 
@@ -668,6 +685,7 @@ def request(method: str, path: str, **kwargs: object) -> Response:
     application.dependency_overrides[get_task_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_schedule_authorized_actor] = lambda: API_ACTOR
     application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
+    application.dependency_overrides[get_super_account] = lambda: API_ACTOR
     application.dependency_overrides[
         get_automation_device_authorized_actor
     ] = lambda: API_ACTOR

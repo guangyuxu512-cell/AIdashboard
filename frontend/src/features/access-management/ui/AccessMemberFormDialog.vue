@@ -1,24 +1,20 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { NCheckbox, NCheckboxGroup, NForm, NFormItem } from 'naive-ui'
+import { NForm, NFormItem } from 'naive-ui'
 import { useForm } from 'vee-validate'
 import { z } from 'zod'
 
 import type {
-  AccessDataScope,
   AccessMemberCreateInput,
-  AccessRoleCode,
   AccessTeamViewModel,
 } from '@/entities/access-management'
 import FormDialog from '@/shared/components/FormDialog.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
-import AppSwitch from '@/shared/ui/AppSwitch.vue'
 
 const props = defineProps<{
   show: boolean
   teams: AccessTeamViewModel[]
-  moduleOptions: Array<{ value: string; label: string }>
   submitting?: boolean
 }>()
 
@@ -32,10 +28,6 @@ interface MemberFormValues {
   loginName: string
   password: string
   teamId: string | null
-  roleCode: AccessRoleCode
-  dataScope: AccessDataScope
-  membershipEnabled: boolean
-  moduleCodes: string[]
 }
 
 const emptyForm: MemberFormValues = {
@@ -43,21 +35,13 @@ const emptyForm: MemberFormValues = {
   loginName: '',
   password: '',
   teamId: null,
-  roleCode: 'member',
-  dataScope: 'team',
-  membershipEnabled: true,
-  moduleCodes: [],
 }
 
 const schema = z.object({
   displayName: z.string().trim().min(1, '请输入显示名').max(100),
   loginName: z.string().trim().min(1, '请输入登录账号').max(100),
   password: z.string().min(10, '密码至少需要 10 个字符').max(256),
-  teamId: z.string().min(1, '请选择团队'),
-  roleCode: z.enum(['member', 'access_admin']),
-  dataScope: z.enum(['self', 'team', 'all']),
-  membershipEnabled: z.boolean(),
-  moduleCodes: z.array(z.string()),
+  teamId: z.string().uuid().nullable(),
 })
 
 const { defineField, errors, handleSubmit, resetForm, setErrors } =
@@ -66,10 +50,6 @@ const [displayName] = defineField('displayName')
 const [loginName] = defineField('loginName')
 const [password] = defineField('password')
 const [teamId] = defineField('teamId')
-const [roleCode] = defineField('roleCode')
-const [dataScope] = defineField('dataScope')
-const [membershipEnabled] = defineField('membershipEnabled')
-const [moduleCodes] = defineField('moduleCodes')
 
 const teamOptions = computed(() =>
   props.teams
@@ -100,13 +80,7 @@ const submit = handleSubmit((values) => {
     displayName: parsed.data.displayName,
     loginName: parsed.data.loginName,
     password: parsed.data.password,
-    membership: {
-      teamId: parsed.data.teamId,
-      roleCode: parsed.data.roleCode,
-      dataScope: parsed.data.dataScope,
-      enabled: parsed.data.membershipEnabled,
-      moduleCodes: parsed.data.moduleCodes,
-    },
+    teamId: parsed.data.teamId,
   })
 })
 </script>
@@ -121,6 +95,9 @@ const submit = handleSubmit((values) => {
     @submit="submit"
     @cancel="$emit('update:show', false)"
   >
+    <template #description>
+      成员加入团队后继承团队已配置的模块、设备和店铺权限；也可以先创建未分配团队的成员。
+    </template>
     <NForm label-placement="top" @submit.prevent="submit">
       <div class="access-member-form__grid">
         <NFormItem label="显示名" :feedback="errors.displayName">
@@ -142,47 +119,13 @@ const submit = handleSubmit((values) => {
           autocomplete="off"
         />
       </NFormItem>
-      <div class="access-member-form__grid">
-        <NFormItem label="团队" :feedback="errors.teamId">
-          <AppSelect v-model="teamId" :options="teamOptions" />
-        </NFormItem>
-        <NFormItem label="角色">
-          <AppSelect
-            v-model="roleCode"
-            :options="[
-              { value: 'member', label: '成员' },
-              { value: 'access_admin', label: '权限管理员' },
-            ]"
-          />
-        </NFormItem>
-      </div>
-      <div class="access-member-form__grid">
-        <NFormItem label="数据范围">
-          <AppSelect
-            v-model="dataScope"
-            :options="[
-              { value: 'self', label: 'SELF' },
-              { value: 'team', label: 'TEAM' },
-              { value: 'all', label: 'ALL' },
-            ]"
-          />
-        </NFormItem>
-        <NFormItem label="成员关系启用">
-          <AppSwitch v-model="membershipEnabled" />
-        </NFormItem>
-      </div>
-      <NFormItem label="功能权限">
-        <NCheckboxGroup v-model:value="moduleCodes">
-          <div class="access-member-form__modules">
-            <NCheckbox
-              v-for="module in moduleOptions"
-              :key="module.value"
-              :value="module.value"
-            >
-              {{ module.label }}
-            </NCheckbox>
-          </div>
-        </NCheckboxGroup>
+      <NFormItem label="所属团队（可选）" :feedback="errors.teamId">
+        <AppSelect
+          v-model="teamId"
+          clearable
+          placeholder="未分配团队"
+          :options="teamOptions"
+        />
       </NFormItem>
     </NForm>
   </FormDialog>
@@ -195,15 +138,8 @@ const submit = handleSubmit((values) => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.access-member-form__modules {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
 @media (max-width: 640px) {
-  .access-member-form__grid,
-  .access-member-form__modules {
+  .access-member-form__grid {
     grid-template-columns: 1fr;
   }
 }

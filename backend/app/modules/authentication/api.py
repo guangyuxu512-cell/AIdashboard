@@ -7,8 +7,7 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import require_module_access
-from app.modules.access.module_access import ModuleCode
+from app.modules.access.dependencies import get_super_account
 from app.modules.authentication.schemas import (
     CompleteManagementOnboardingCommand,
     ManagementOnboardingResult,
@@ -16,6 +15,11 @@ from app.modules.authentication.schemas import (
     VerifyPddManagementLoginCommand,
 )
 from app.modules.authentication.service import ManagementOnboardingService
+
+
+# Kept only as the stable injection target for existing Electron/API tests.
+# The value is the super-account guard and does not grant ordinary Shop users.
+get_shop_authorized_actor = get_super_account
 
 
 router = APIRouter(
@@ -26,9 +30,6 @@ router = APIRouter(
         409: {"model": ErrorResponse, "description": "平台店铺已经接入"},
     },
 )
-
-
-get_shop_authorized_actor = require_module_access(ModuleCode.SHOP)
 
 
 def get_management_onboarding_service(

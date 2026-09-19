@@ -51,6 +51,11 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 ## Access Foundation V1 Contract
 
+> **0037 覆盖说明：** 本节的多有效 Team / 成员级 Scope 只解释旧 Contract。自
+> `20260919_0037_super_account_team_authorization_v1` 起，当前身份与授权契约以
+> [23-超级账号与团队授权V1.md](23-超级账号与团队授权V1.md) 为准：超级账号无 Membership，
+> 普通成员至多一个有效 Team，`X-Team-ID` 对超级账号是显式写入上下文而不是默认团队。
+
 - `GET /api/v1/access/me`：返回当前请求解析后的 ActorContext。
 - `GET /api/v1/access/me/teams`：返回当前 Human User 的 Team/Membership 摘要，供未来 Team
   Switcher 使用；该接口不要求先选定 Active Team。
@@ -70,6 +75,22 @@ Human Auth V1 已为 `users` 增加可空 `login_name/password_hash`，并以服
 Contract 保持不变。
 
 ## Access Management V1 Contract
+
+> **0037 覆盖说明：** 下方 `access_admin`、成员级模块/Scope 和旧 Membership 编辑描述为
+> 0025 的历史 API 背景。当前管理接口全部要求超级账号；普通成员的模块、设备和店铺可用范围
+> 来自 Team 授权，不再来自 Membership 字段。
+
+当前新增或变更的正式管理接口为：
+
+- `PUT /members/{user_id}/team`：指定唯一目标 Team；`team_id: null` 表示移出团队。
+- `POST /teams/{team_id}/archive`：归档 Team 及其当前成员关系，保留业务数据。
+- `DELETE /teams/{team_id}`：仅无成员、授权关系和业务引用的空 Team 可删除。
+- `GET/PUT /teams/{team_id}/authorization`：读取或原子更新该 Team 的模块、设备和店铺授权。
+- `GET /me/module-access`：返回 `is_super_account`；为旧客户端保留
+  `is_access_administrator` 同义字段。未分配普通成员返回空模块集合，不把有效会话伪装成 401。
+
+超级账号创建 Team-owned 业务对象必须携带有效 `X-Team-ID`。所有普通成员资源查询都必须在
+授权范围内先过滤、再分页；管理列表分页与资源选择器不能用前端全量结果代替服务端校验。
 
 统一前缀为 `/api/v1/access-management`。`GET /me/module-access` 需要有效的 Human
 ActorContext，返回当前选中 Membership 的 `module_codes` 和

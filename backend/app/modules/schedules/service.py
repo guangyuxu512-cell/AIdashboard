@@ -61,6 +61,7 @@ class ScheduleService:
         now: datetime | None = None,
     ) -> ScheduleRead:
         current_time = now or datetime.now(UTC)
+        team_id = actor.require_team_id()
         task_data = _task_create(
             target_device_id=data.target_device_id,
             shop_ids=data.shop_ids,
@@ -72,11 +73,11 @@ class ScheduleService:
         )
         prepared = self.task_service.prepare_scheduled_task(
             task_data,
-            team_id=actor.team_id,
+            team_id=team_id,
             actor=actor,
         )
         schedule = Schedule(
-            team_id=actor.team_id,
+            team_id=team_id,
             created_by_user_id=actor.user_id,
             name=data.name,
             enabled=data.enabled,
@@ -125,7 +126,7 @@ class ScheduleService:
             actor=actor,
             schedule_id=schedule_id,
         )
-        if schedule is None or schedule.team_id != actor.team_id:
+        if schedule is None or not actor.can_access_team(schedule.team_id):
             raise ScheduleNotFoundError()
 
         values = data.model_dump(exclude_unset=True)
@@ -274,7 +275,7 @@ class ScheduleService:
             actor=actor,
             schedule_id=schedule_id,
         )
-        if schedule is None or schedule.team_id != actor.team_id:
+        if schedule is None or not actor.can_access_team(schedule.team_id):
             raise ScheduleNotFoundError()
         schedule.enabled = False
         schedule.next_run_at = None

@@ -1,6 +1,16 @@
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, String, UniqueConstraint, Uuid, true
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Index,
+    String,
+    UniqueConstraint,
+    Uuid,
+    false,
+    text,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, TimestampMixin
@@ -17,6 +27,15 @@ class User(TimestampMixin, Base):
             name="login_name_normalized",
         ),
         UniqueConstraint("login_name", name="uq_users_login_name"),
+        # There is one company-level operator.  A partial unique index keeps
+        # the designation explicit without coupling it to a login name or a
+        # TeamMembership role.
+        Index(
+            "uq_users_single_super_account",
+            "is_super_account",
+            unique=True,
+            postgresql_where=text("is_super_account"),
+        ),
     )
 
     user_id: Mapped[UUID] = mapped_column(
@@ -32,4 +51,10 @@ class User(TimestampMixin, Base):
         nullable=False,
         default=True,
         server_default=true(),
+    )
+    is_super_account: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
     )

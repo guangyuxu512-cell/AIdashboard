@@ -5,7 +5,14 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.core.database import Base
-from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
+from app.modules.access.models import (
+    MembershipModuleAccess,
+    Team,
+    TeamDeviceAccess,
+    TeamMembership,
+    TeamModuleAccess,
+    TeamShopAccess,
+)
 from app.modules.audit.models import AuditLog
 from app.modules.ai_workbench.models import (
     AiModel,
@@ -76,6 +83,9 @@ _MODELS = (
     Team,
     TeamMembership,
     MembershipModuleAccess,
+    TeamModuleAccess,
+    TeamDeviceAccess,
+    TeamShopAccess,
     User,
     WorkerDeviceCredential,
 )

@@ -13,7 +13,14 @@ from app.main import create_app
 from app.core.security import SecretCipher
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
-from app.modules.access.models import MembershipModuleAccess, Team, TeamMembership
+from app.modules.access.exceptions import TeamContextRequiredError
+from app.modules.access.models import (
+    Team,
+    TeamDeviceAccess,
+    TeamMembership,
+    TeamModuleAccess,
+    TeamShopAccess,
+)
 from app.modules.access.module_access import ModuleCode
 from app.modules.automation_apps.models import (
     AutomationApplicationConfig,
@@ -128,6 +135,12 @@ def _cleanup(
             ),
         )
         session.execute(delete(ShopDeviceBinding).where(ShopDeviceBinding.shop_id.in_(shop_ids)))
+        session.execute(
+            delete(TeamDeviceAccess).where(TeamDeviceAccess.team_id == team_id),
+        )
+        session.execute(
+            delete(TeamShopAccess).where(TeamShopAccess.team_id == team_id),
+        )
         session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))
         session.execute(
             delete(DeviceProviderInventory).where(
@@ -153,9 +166,7 @@ def _cleanup(
             ),
         )
         session.execute(
-            delete(MembershipModuleAccess).where(
-                MembershipModuleAccess.membership_id == membership_id,
-            ),
+            delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
         )
         session.execute(
             delete(TeamMembership).where(TeamMembership.membership_id == membership_id),
@@ -193,8 +204,8 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             )
             session.flush()
             session.add(
-                MembershipModuleAccess(
-                    membership_id=membership_id,
+                TeamModuleAccess(
+                    team_id=team_id,
                     module_code=ModuleCode.SHOP.value,
                 ),
             )
@@ -297,6 +308,14 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                         enabled=True,
                     )
                     for shop_id in [shop_a, shop_b]
+                ],
+            )
+            session.flush()
+            session.add_all(
+                [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id),
+                    TeamShopAccess(team_id=team_id, shop_id=shop_a),
+                    TeamShopAccess(team_id=team_id, shop_id=shop_b),
                 ],
             )
             session.commit()
@@ -651,6 +670,97 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             shop_ids={shop_a, shop_b},
             app_id=app_id,
         )
+
+
+def test_postgresql_super_without_team_reads_all_presets_but_cannot_write(
+    postgresql_engine: Engine,
+) -> None:
+    super_user_id, team_a_id, team_b_id = uuid4(), uuid4(), uuid4()
+    preset_a_id, preset_b_id = uuid4(), uuid4()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(
+                        user_id=super_user_id,
+                        display_name="Preset read super account",
+                        is_super_account=True,
+                    ),
+                    Team(team_id=team_a_id, name="Preset read team A"),
+                    Team(team_id=team_b_id, name="Preset read team B"),
+                ],
+            )
+            session.flush()
+            session.add_all(
+                [
+                    AutomationParameterPreset(
+                        preset_id=preset_a_id,
+                        team_id=team_a_id,
+                        created_by_user_id=super_user_id,
+                        app_id="cross-team-read-app",
+                        name="团队 A 配置",
+                        common_parameters={},
+                        shop_overrides={},
+                        input_schema_snapshot={"fields": []},
+                    ),
+                    AutomationParameterPreset(
+                        preset_id=preset_b_id,
+                        team_id=team_b_id,
+                        created_by_user_id=super_user_id,
+                        app_id="cross-team-read-app",
+                        name="团队 B 配置",
+                        common_parameters={},
+                        shop_overrides={},
+                        input_schema_snapshot={"fields": []},
+                    ),
+                ],
+            )
+            session.commit()
+
+            actor = ActorContext(
+                user_id=super_user_id,
+                user_display_name="Preset read super account",
+                team_id=None,
+                membership_id=None,
+                role_code="super_account",
+                data_scope=DataScope.ALL,
+                is_super_account=True,
+            )
+            service = AutomationParameterPresetService(session)
+
+            page = service.list_all(
+                actor=actor,
+                app_id="cross-team-read-app",
+                pagination=PaginationParams(page=1, page_size=1),
+            )
+
+            assert page.total == 2
+            assert service.get(
+                actor=actor,
+                app_id="cross-team-read-app",
+                preset_id=preset_b_id,
+            ).preset_id == preset_b_id
+            with pytest.raises(TeamContextRequiredError):
+                service.create(
+                    actor=actor,
+                    app_id="cross-team-read-app",
+                    data=AutomationParameterPresetCreate(
+                        name="没有显式团队的写入",
+                        common_parameters={},
+                    ),
+                )
+    finally:
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(AutomationParameterPreset).where(
+                    AutomationParameterPreset.preset_id.in_([preset_a_id, preset_b_id]),
+                ),
+            )
+            session.execute(delete(User).where(User.user_id == super_user_id))
+            session.execute(
+                delete(Team).where(Team.team_id.in_([team_a_id, team_b_id])),
+            )
+            session.commit()
 
 
 def test_postgresql_preset_schema_has_team_scope_and_schedule_reference(

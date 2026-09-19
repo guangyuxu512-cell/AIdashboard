@@ -18,7 +18,7 @@ from app.modules.tasks.exceptions import (
 from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import DeviceSkillCapability
-from tests.support import FakeSession
+from tests.support import AllowExecutionResources, FakeSession
 
 
 ACTOR = ActorContext(
@@ -135,6 +135,7 @@ def make_service(
                 if bound_shop_ids is not None
                 else {shop.shop_id for shop in shops},
             ),  # type: ignore[arg-type]
+            team_authorization_service=AllowExecutionResources(),  # type: ignore[arg-type]
         ),
         task_repository,
         credential_service,

@@ -12,7 +12,11 @@ from httpx import ASGITransport, AsyncClient, Response
 from app.core.database import get_database_session
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_actor_context, get_module_access_service
+from app.modules.access.dependencies import (
+    get_actor_context,
+    get_module_access_service,
+    get_super_account,
+)
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
 from app.modules.access.module_access import ModuleCode
@@ -78,6 +82,15 @@ ACTOR = ActorContext(
     role_code="member",
     data_scope=DataScope.TEAM,
 )
+SUPER_ACTOR = ActorContext(
+    user_id=ACTOR.user_id,
+    user_display_name="Release P0 super account",
+    team_id=ACTOR.team_id,
+    membership_id=None,
+    role_code="super_account",
+    data_scope=DataScope.ALL,
+    is_super_account=True,
+)
 
 
 class ModuleAccessProbe:
@@ -97,7 +110,8 @@ class ModuleAccessProbe:
 
 
 class ShopServiceStub:
-    def remove(self, shop_id: UUID) -> None:
+    def remove(self, actor: ActorContext, shop_id: UUID) -> None:
+        assert actor == SUPER_ACTOR
         assert shop_id == SHOP_ID
 
 
@@ -243,11 +257,13 @@ def request(
     path: str,
     *,
     module_access: ModuleAccessProbe | None = None,
+    actor: ActorContext | None = None,
     **kwargs: object,
 ) -> Response:
     application = configured_app()
+    if module_access is not None or actor is not None:
+        application.dependency_overrides[get_actor_context] = lambda: actor or ACTOR
     if module_access is not None:
-        application.dependency_overrides[get_actor_context] = lambda: ACTOR
         application.dependency_overrides[get_module_access_service] = (
             lambda: module_access
         )
@@ -308,43 +324,59 @@ def test_management_operations_require_human_authentication(
     assert response.status_code == 401
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs", "module_code"), MANAGEMENT_OPERATIONS)
-def test_management_operations_enforce_their_existing_module_access(
+PUBLIC_RESOURCE_MANAGEMENT_OPERATIONS = [
+    operation
+    for operation in MANAGEMENT_OPERATIONS
+    if operation[3] is not ModuleCode.SETTINGS
+]
+
+
+@pytest.mark.parametrize(("method", "path", "kwargs", "_module_code"), PUBLIC_RESOURCE_MANAGEMENT_OPERATIONS)
+def test_public_resource_management_rejects_non_super_accounts(
     method: str,
     path: str,
     kwargs: dict[str, object],
-    module_code: ModuleCode,
+    _module_code: ModuleCode,
 ) -> None:
-    denied = ModuleAccessProbe(False)
-    response = request(method, path, module_access=denied, **kwargs)
+    response = request(method, path, actor=ACTOR, **kwargs)
 
     assert response.status_code == 403
-    assert denied.checked == [module_code]
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "kwargs", "module_code", "status_code"),
+    ("method", "path", "kwargs", "_module_code", "status_code"),
     [
         (*MANAGEMENT_OPERATIONS[0], 204),
         (*MANAGEMENT_OPERATIONS[1], 201),
         (*MANAGEMENT_OPERATIONS[2], 200),
         (*MANAGEMENT_OPERATIONS[3], 200),
-        (*MANAGEMENT_OPERATIONS[4], 200),
         (*MANAGEMENT_OPERATIONS[5], 201),
         (*MANAGEMENT_OPERATIONS[6], 200),
     ],
 )
-def test_authorized_module_users_can_complete_management_operations(
+def test_super_account_can_complete_public_resource_management_operations(
     method: str,
     path: str,
     kwargs: dict[str, object],
-    module_code: ModuleCode,
+    _module_code: ModuleCode,
     status_code: int,
 ) -> None:
-    allowed = ModuleAccessProbe(True)
-    response = request(method, path, module_access=allowed, **kwargs)
+    response = request(method, path, actor=SUPER_ACTOR, **kwargs)
 
     assert response.status_code == status_code
+
+
+def test_notification_management_remains_a_team_module_permission() -> None:
+    method, path, kwargs, module_code = MANAGEMENT_OPERATIONS[4]
+
+    denied = ModuleAccessProbe(False)
+    denied_response = request(method, path, module_access=denied, **kwargs)
+    assert denied_response.status_code == 403
+    assert denied.checked == [module_code]
+
+    allowed = ModuleAccessProbe(True)
+    allowed_response = request(method, path, module_access=allowed, **kwargs)
+    assert allowed_response.status_code == 200
     assert allowed.checked == [module_code]
 
 
@@ -370,18 +402,14 @@ def test_yingdao_application_catalog_requires_existing_device_module_access() ->
 @pytest.mark.parametrize(
     ("router", "authorized_actor", "expected_count"),
     [
-        (shops_router, get_shop_authorized_actor, 9),
-        (sessions_router, get_session_shop_authorized_actor, 5),
-        (credentials_router, get_credential_shop_authorized_actor, 4),
+        (sessions_router, get_super_account, 5),
+        (credentials_router, get_super_account, 4),
+        (onboarding_router, get_super_account, 2),
         (notifications_router, get_settings_authorized_actor, 4),
-        (automation_router, get_automation_device_authorized_actor, 3),
-        (onboarding_router, get_onboarding_shop_authorized_actor, 2),
     ],
 )
-def test_every_release_p0_management_handler_declares_its_guard(
-    router: Any,
-    authorized_actor: Any,
-    expected_count: int,
+def test_management_router_declares_its_authoritative_guard(
+    router: Any, authorized_actor: Any, expected_count: int,
 ) -> None:
     routes = [route for route in router.routes if isinstance(route, APIRoute)]
 
@@ -389,4 +417,34 @@ def test_every_release_p0_management_handler_declares_its_guard(
     assert all(
         any(dependency.call is authorized_actor for dependency in route.dependant.dependencies)
         for route in routes
+    )
+
+
+def test_mixed_management_routers_keep_read_module_guards_and_mutation_super_guards() -> None:
+    shop_routes = [route for route in shops_router.routes if isinstance(route, APIRoute)]
+    automation_routes = [
+        route for route in automation_router.routes if isinstance(route, APIRoute)
+    ]
+
+    assert len(shop_routes) == 9
+    assert len(automation_routes) == 3
+    assert any(
+        dependency.call is get_shop_authorized_actor
+        for route in shop_routes
+        for dependency in route.dependant.dependencies
+    )
+    assert any(
+        dependency.call is get_super_account
+        for route in shop_routes
+        for dependency in route.dependant.dependencies
+    )
+    assert any(
+        dependency.call is get_automation_device_authorized_actor
+        for route in automation_routes
+        for dependency in route.dependant.dependencies
+    )
+    assert any(
+        dependency.call is get_super_account
+        for route in automation_routes
+        for dependency in route.dependant.dependencies
     )

@@ -117,7 +117,7 @@ class AiWorkbenchService:
     ) -> TemplateGroup:
         group = TemplateGroup(
             template_group_id=generate_id(),
-            team_id=actor.team_id,
+            team_id=actor.require_team_id(),
             created_by_user_id=actor.user_id,
             name=data.name,
             mode=data.mode.value,
@@ -327,7 +327,7 @@ class AiWorkbenchService:
     ) -> ProductMaterialGroup:
         group = ProductMaterialGroup(
             material_group_id=generate_id(),
-            team_id=actor.team_id,
+            team_id=actor.require_team_id(),
             created_by_user_id=actor.user_id,
             **data.model_dump(),
         )
