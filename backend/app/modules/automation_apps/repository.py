@@ -95,7 +95,7 @@ class AutomationParameterPresetRepository:
         self,
         *,
         actor: ActorContext,
-        team_id: object,
+        team_id: object | None,
         app_id: str | None = None,
         app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
@@ -120,7 +120,7 @@ class AutomationParameterPresetRepository:
         self,
         *,
         actor: ActorContext,
-        team_id: object,
+        team_id: object | None,
         app_id: str | None = None,
         app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
@@ -139,7 +139,7 @@ class AutomationParameterPresetRepository:
     def _list_all_for_actor_statement(
         *,
         actor: ActorContext,
-        team_id: object,
+        team_id: object | None,
         app_id: str | None,
         app_ids: tuple[str, ...] | None,
         name_query: str | None,
@@ -153,15 +153,19 @@ class AutomationParameterPresetRepository:
             statement = statement.where(
                 AutomationParameterPreset.name.ilike(f"%{name_query}%"),
             )
-        # Presets never cross the active Team, even for an ALL-scoped actor.
-        # Keep this predicate in SQL so total, ordering, and page contents
-        # are derived from exactly the same authorized collection.
-        return DataScopePolicy.apply(
+        # DataScopePolicy applies the normal member's Team predicate in SQL.
+        # A super account with no selected Team is intentionally allowed to
+        # read across Teams; an explicit selected Team narrows the same SQL
+        # collection.  This keeps total, ordering and page contents aligned.
+        statement = DataScopePolicy.apply(
             statement,
             team_id_column=AutomationParameterPreset.team_id,
             created_by_user_id_column=AutomationParameterPreset.created_by_user_id,
             actor=actor,
-        ).where(AutomationParameterPreset.team_id == team_id)
+        )
+        if team_id is not None:
+            statement = statement.where(AutomationParameterPreset.team_id == team_id)
+        return statement
 
     def exists_name(
         self,

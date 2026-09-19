@@ -203,15 +203,12 @@ class AutomationParameterPresetService:
         app_id: str,
     ) -> list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
-        team_id = actor.require_team_id()
-        presets = [
-            preset
-            for preset in self.preset_repository.list_for_actor(
-                actor=actor,
-                app_id=app_id,
-            )
-            if preset.team_id == team_id
-        ]
+        # A super account without an explicit Team context performs an
+        # authorized cross-Team read.  Selecting a Team intentionally narrows
+        # the collection again; writes still require that explicit context.
+        presets = self.preset_repository.list_for_actor(actor=actor, app_id=app_id)
+        if actor.team_id is not None:
+            presets = [preset for preset in presets if preset.team_id == actor.team_id]
         return [self._to_read(preset) for preset in presets]
 
     def list_all(
@@ -224,7 +221,6 @@ class AutomationParameterPresetService:
         pagination: PaginationParams | None = None,
     ) -> Page[AutomationParameterPresetRead] | list[AutomationParameterPresetRead]:
         self._require_shop_access(actor)
-        team_id = actor.require_team_id()
         allowed_app_ids = None
         if device_id is not None:
             allowed_app_ids = tuple(
@@ -236,7 +232,7 @@ class AutomationParameterPresetService:
             )
         presets = self.preset_repository.list_all_for_actor(
             actor=actor,
-            team_id=team_id,
+            team_id=actor.team_id,
             app_id=app_id,
             app_ids=allowed_app_ids,
             name_query=name_query,
@@ -248,7 +244,7 @@ class AutomationParameterPresetService:
             return items
         total = self.preset_repository.count_all_for_actor(
             actor=actor,
-            team_id=team_id,
+            team_id=actor.team_id,
             app_id=app_id,
             app_ids=allowed_app_ids,
             name_query=name_query,
@@ -268,7 +264,6 @@ class AutomationParameterPresetService:
         preset_id: object,
     ) -> AutomationParameterPresetRead:
         self._require_shop_access(actor)
-        actor.require_team_id()
         preset = self._get_for_actor(actor=actor, app_id=app_id, preset_id=preset_id)
         return self._to_read(preset)
 
@@ -405,6 +400,10 @@ class AutomationParameterPresetService:
         preset_id: object,
     ) -> None:
         self._require_shop_access(actor)
+        # Removing a Team-owned preset is a write.  A super account must first
+        # select its target Team instead of deleting from the cross-Team read
+        # view by accident.
+        actor.require_team_id()
         preset = self._get_for_actor(
             actor=actor,
             app_id=app_id,
@@ -542,7 +541,14 @@ class AutomationParameterPresetService:
             preset_id=preset_id,
             for_update=for_update,
         )
-        if preset is None or preset.team_id != actor.require_team_id():
+        if preset is None:
+            raise AutomationParameterPresetNotFoundError()
+        # Normal members always have exactly one effective Team.  A super
+        # account may omit its Team only for reads; when it selects one, the
+        # selected context remains the write/read scope for this resource.
+        if actor.team_id is not None and preset.team_id != actor.team_id:
+            raise AutomationParameterPresetNotFoundError()
+        if not actor.is_super_account and actor.team_id is None:
             raise AutomationParameterPresetNotFoundError()
         return preset
 
