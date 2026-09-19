@@ -63,10 +63,10 @@ class AuditLog(Base):
         ForeignKey("users.user_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    team_id: Mapped[UUID] = mapped_column(
+    team_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("teams.team_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False)

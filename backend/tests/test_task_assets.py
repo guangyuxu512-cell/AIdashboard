@@ -17,7 +17,7 @@ from app.modules.tasks.service import TaskService
 from app.modules.tasks.worker_api import claim_task
 from app.modules.workers.models import DeviceSkillCapability
 from app.modules.workers.service import WorkerPrincipal
-from tests.support import FakeSession
+from tests.support import AllowExecutionResources, FakeSession
 
 
 ACTOR = ActorContext(
@@ -109,6 +109,7 @@ def test_one_task_keeps_ordered_asset_relationships() -> None:
         FakeSession(),  # type: ignore[arg-type]
         repository,  # type: ignore[arg-type]
         asset_repository=FakeAssetRepository([first, second, third]),  # type: ignore[arg-type]
+        team_authorization_service=AllowExecutionResources(),  # type: ignore[arg-type]
     )
     ordered_ids = [third.asset_id, first.asset_id, second.asset_id]
 
@@ -128,6 +129,7 @@ def test_missing_asset_rejects_the_whole_task() -> None:
         FakeSession(),  # type: ignore[arg-type]
         repository,  # type: ignore[arg-type]
         asset_repository=FakeAssetRepository([existing]),  # type: ignore[arg-type]
+        team_authorization_service=AllowExecutionResources(),  # type: ignore[arg-type]
     )
 
     with pytest.raises(TaskAssetInvalidError) as captured:
@@ -149,6 +151,7 @@ def test_non_image_asset_is_not_added_to_worker_task_contract() -> None:
         FakeSession(),  # type: ignore[arg-type]
         repository,  # type: ignore[arg-type]
         asset_repository=FakeAssetRepository([future_video]),  # type: ignore[arg-type]
+        team_authorization_service=AllowExecutionResources(),  # type: ignore[arg-type]
     )
 
     with pytest.raises(TaskAssetInvalidError) as captured:

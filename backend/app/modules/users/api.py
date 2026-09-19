@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_access_administrator
+from app.modules.access.dependencies import get_super_account
 from app.modules.users.schemas import UserCreate, UserRead, UserUpdate
 from app.modules.users.service import UserService
 from app.shared.pagination import Page, PaginationParams
@@ -31,7 +31,7 @@ def get_user_service(
 
 @router.get("", response_model=Page[UserRead])
 def list_users(
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> Page[UserRead]:
@@ -47,7 +47,7 @@ def list_users(
 @router.get("/{user_id}", response_model=UserRead)
 def get_user(
     user_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> UserRead:
     return UserRead.model_validate(service.get(user_id))
@@ -56,7 +56,7 @@ def get_user(
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user(
     data: UserCreate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> UserRead:
     return UserRead.model_validate(service.create(data))
@@ -66,7 +66,7 @@ def create_user(
 def update_user(
     user_id: UUID,
     data: UserUpdate,
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> UserRead:
     return UserRead.model_validate(service.update(user_id, data))

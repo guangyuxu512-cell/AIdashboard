@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime, time
 from uuid import UUID, uuid4
 
 from app.modules.schedules.enums import ScheduleRunTriggerResult
+from app.modules.access.exceptions import TeamResourceAccessDeniedError
 from app.modules.schedules.models import Schedule, ScheduleShop
 from app.modules.schedules.service import ScheduleService
 from app.modules.tasks.exceptions import TaskDeviceDisabledError
@@ -152,6 +153,22 @@ def test_guard_failure_records_blocked_occurrence_and_advances_schedule() -> Non
     run = repository.runs[0]
     assert getattr(run, "trigger_error_code") == "TASK_DEVICE_DISABLED"
     assert schedule.next_run_at == datetime(2026, 8, 25, 1, 30, tzinfo=UTC)
+
+
+def test_revoked_team_resource_authorization_blocks_future_schedule_dispatch() -> None:
+    schedule = due_schedule()
+    repository = FakeScheduleRepository(schedule)
+    result = ScheduleService(
+        FakeSession(),  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+        FakeScheduledTaskService(TeamResourceAccessDeniedError()),  # type: ignore[arg-type]
+    ).trigger_next_due(now=datetime(2026, 8, 24, 12, 0, tzinfo=UTC))
+
+    assert result is not None
+    assert result.trigger_result is ScheduleRunTriggerResult.BLOCKED
+    assert result.task_id is None
+    run = repository.runs[0]
+    assert getattr(run, "trigger_error_code") == "TEAM_RESOURCE_ACCESS_DENIED"
 
 
 def test_no_due_schedule_rolls_back_read_transaction() -> None:

@@ -8,9 +8,11 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type {
   AccessMemberCreateInput,
+  AccessMemberTeamInput,
   AccessMembershipInput,
   AccessMembershipUpdateInput,
   AccessTeamInput,
+  AccessTeamAuthorizationInput,
 } from '../model/types'
 import {
   accessManagementDataSource,
@@ -22,6 +24,8 @@ export const accessManagementQueryKeys = {
   members: (params: AccessMemberListParams) =>
     ['access-management', 'members', params] as const,
   teams: ['access-management', 'teams'] as const,
+  teamAuthorization: (teamId: string | null) =>
+    ['access-management', 'teams', teamId, 'authorization'] as const,
 }
 
 export function useAccessMembersQuery(
@@ -40,6 +44,19 @@ export function useAccessTeamsQuery() {
   return useQuery({
     queryKey: accessManagementQueryKeys.teams,
     queryFn: () => accessManagementDataSource.listTeams(),
+  })
+}
+
+export function useAccessTeamAuthorizationQuery(
+  teamId: MaybeRefOrGetter<string | null>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      accessManagementQueryKeys.teamAuthorization(toValue(teamId)),
+    ),
+    queryFn: () =>
+      accessManagementDataSource.getTeamAuthorization(toValue(teamId)!),
+    enabled: computed(() => Boolean(toValue(teamId))),
   })
 }
 
@@ -76,6 +93,13 @@ export function useResetAccessMemberPasswordMutation() {
   )
 }
 
+export function useMoveAccessMemberToTeamMutation() {
+  return useAccessMutation(
+    ({ userId, input }: { userId: string; input: AccessMemberTeamInput }) =>
+      accessManagementDataSource.moveMemberToTeam(userId, input),
+  )
+}
+
 export function useCreateAccessMembershipMutation() {
   return useAccessMutation(
     ({ userId, input }: { userId: string; input: AccessMembershipInput }) =>
@@ -105,5 +129,29 @@ export function useUpdateAccessTeamMutation() {
   return useAccessMutation(
     ({ teamId, input }: { teamId: string; input: AccessTeamInput }) =>
       accessManagementDataSource.updateTeam(teamId, input),
+  )
+}
+
+export function useArchiveAccessTeamMutation() {
+  return useAccessMutation((teamId: string) =>
+    accessManagementDataSource.archiveTeam(teamId),
+  )
+}
+
+export function useDeleteAccessTeamMutation() {
+  return useAccessMutation((teamId: string) =>
+    accessManagementDataSource.deleteTeam(teamId),
+  )
+}
+
+export function useUpdateAccessTeamAuthorizationMutation() {
+  return useAccessMutation(
+    ({
+      teamId,
+      input,
+    }: {
+      teamId: string
+      input: AccessTeamAuthorizationInput
+    }) => accessManagementDataSource.updateTeamAuthorization(teamId, input),
   )
 }

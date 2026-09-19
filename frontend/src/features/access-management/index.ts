@@ -4,4 +4,5 @@ export { default as AccessMemberListTable } from './ui/AccessMemberListTable.vue
 export { default as AccessMembershipFormDialog } from './ui/AccessMembershipFormDialog.vue'
 export { default as AccessPasswordResetDialog } from './ui/AccessPasswordResetDialog.vue'
 export { default as AccessTeamFormDialog } from './ui/AccessTeamFormDialog.vue'
+export { default as AccessTeamAuthorizationDialog } from './ui/AccessTeamAuthorizationDialog.vue'
 export { useAccessManagement } from './model/useAccessManagement'

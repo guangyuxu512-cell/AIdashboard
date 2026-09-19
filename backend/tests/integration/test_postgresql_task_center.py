@@ -5,16 +5,26 @@ import pytest
 from sqlalchemy import Engine, delete, event, select
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.tasks.service import TaskService
+from app.modules.users.models import User
 
 
 pytestmark = pytest.mark.integration
 
 
-def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
+def _cleanup(
+    engine: Engine,
+    device_ids: set[UUID],
+    *,
+    team_id: UUID,
+    user_id: UUID,
+) -> None:
     with Session(engine) as session:
         task_ids = list(
             session.scalars(
@@ -25,6 +35,8 @@ def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
             session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
         session.execute(delete(Task).where(Task.target_device_id.in_(device_ids)))
         session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
+        session.execute(delete(User).where(User.user_id == user_id))
+        session.execute(delete(Team).where(Team.team_id == team_id))
         session.commit()
 
 
@@ -34,6 +46,15 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
     device_a = uuid4()
     device_b = uuid4()
     device_ids = {device_a, device_b}
+    team_id, user_id = uuid4(), uuid4()
+    actor = ActorContext(
+        user_id=user_id,
+        user_display_name="Task center fixture",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
     task_a = UUID("20000000-0000-4000-8000-000000000001")
     task_b = UUID("20000000-0000-4000-8000-000000000002")
     task_failed = uuid4()
@@ -43,15 +64,24 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
         with Session(postgresql_engine) as session:
             deleted_device = Device(
                 device_id=device_b,
+                team_id=team_id,
                 display_name="历史设备",
                 deleted_at=now,
             )
             session.add_all(
                 [
-                    Device(device_id=device_a, display_name="PC-11"),
+                    Team(team_id=team_id, name="Task Center Integration Team"),
+                    User(user_id=user_id, display_name="Task Center Integration User"),
+                    Device(
+                        device_id=device_a,
+                        team_id=team_id,
+                        display_name="PC-11",
+                    ),
                     deleted_device,
                     Task(
                         task_id=task_a,
+                        team_id=team_id,
+                            created_by_user_id=None,
                         target_device_id=device_a,
                         skill_id="system.sleep",
                         execution_display_name="进度测试 A",
@@ -63,6 +93,8 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
                     ),
                     Task(
                         task_id=task_b,
+                        team_id=team_id,
+                            created_by_user_id=None,
                         target_device_id=device_a,
                         skill_id="system.echo",
                         execution_display_name="进度测试 B",
@@ -76,6 +108,8 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
                     ),
                     Task(
                         task_id=task_failed,
+                        team_id=team_id,
+                            created_by_user_id=None,
                         target_device_id=device_b,
                         skill_id="yingdao.test",
                         execution_display_name="历史影刀测试",
@@ -90,6 +124,8 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
                     ),
                     Task(
                         task_id=task_pending,
+                        team_id=team_id,
+                            created_by_user_id=None,
                         target_device_id=device_a,
                         skill_id="yingdao.app.run",
                         execution_display_name="待执行应用",
@@ -147,6 +183,7 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
         try:
             with Session(postgresql_engine) as session:
                 page = TaskService(session).list_management_tasks(
+                    actor=actor,
                     page=1,
                     page_size=20,
                     status=None,
@@ -170,6 +207,7 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
         with Session(postgresql_engine) as session:
             service = TaskService(session)
             running_page = service.list_management_tasks(
+                actor=actor,
                 page=1,
                 page_size=20,
                 status=TaskStatus.RUNNING,
@@ -177,6 +215,7 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
                 search="进度测试",
             )
             id_search_page = service.list_management_tasks(
+                actor=actor,
                 page=1,
                 page_size=20,
                 status=None,
@@ -189,4 +228,9 @@ def test_task_center_query_is_stable_summarized_and_has_no_n_plus_one(
         assert id_search_page.items[0].device_display_name == "历史设备"
         assert id_search_page.items[0].current_message == "执行失败 token=[REDACTED]"
     finally:
-        _cleanup(postgresql_engine, device_ids)
+        _cleanup(
+            postgresql_engine,
+            device_ids,
+            team_id=team_id,
+            user_id=user_id,
+        )

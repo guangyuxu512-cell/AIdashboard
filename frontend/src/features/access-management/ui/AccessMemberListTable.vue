@@ -20,27 +20,13 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-function scopeSummary(member: AccessMemberViewModel): string {
-  return (
-    member.memberships
-      .map((membership) => membership.dataScope.toUpperCase())
-      .join(' / ') || '—'
-  )
-}
-
 function teamSummary(member: AccessMemberViewModel): string {
+  if (member.isSuperAccount) return '全部团队'
   return (
-    member.memberships.map((membership) => membership.teamName).join('、') ||
-    '—'
+    member.memberships.find(
+      (membership) => membership.enabled && membership.teamEnabled,
+    )?.teamName ?? '未分配团队'
   )
-}
-
-function moduleSummary(member: AccessMemberViewModel): string {
-  const count = member.memberships.reduce(
-    (total, membership) => total + membership.moduleCodes.length,
-    0,
-  )
-  return `${count} 项`
 }
 
 const columns: DataTableColumns<AccessMemberViewModel> = [
@@ -70,30 +56,27 @@ const columns: DataTableColumns<AccessMemberViewModel> = [
       }),
   },
   {
-    title: '所属团队',
+    title: '账号类型',
+    key: 'accountType',
+    width: 120,
+    align: 'center',
+    render: (member) =>
+      h(StatusTag, {
+        label: member.isSuperAccount ? '超级账号' : '普通成员',
+        tone: member.isSuperAccount ? 'info' : 'neutral',
+      }),
+  },
+  {
+    title: '当前团队',
     key: 'teams',
-    width: 180,
+    width: 200,
     ellipsis: { tooltip: true },
     render: teamSummary,
   },
   {
-    title: '数据范围',
-    key: 'scope',
-    width: 128,
-    align: 'center',
-    render: scopeSummary,
-  },
-  {
-    title: '功能权限',
-    key: 'modules',
-    width: 104,
-    align: 'center',
-    render: moduleSummary,
-  },
-  {
     title: '操作',
     key: 'actions',
-    width: 184,
+    width: 156,
     align: 'center',
     fixed: 'right',
     render: (member) =>
@@ -128,7 +111,7 @@ const columns: DataTableColumns<AccessMemberViewModel> = [
     :loading="loading"
     :error="error"
     :row-key="(row: AccessMemberViewModel) => row.userId"
-    :scroll-x="1012"
+    :scroll-x="892"
     appearance="list"
     viewport="fill"
     empty-description="暂无员工"

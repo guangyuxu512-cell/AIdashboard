@@ -45,6 +45,7 @@ function dataSource(
   const moduleAccess = options.moduleAccess ?? {
     moduleCodes: ['asset'],
     isAccessAdministrator: false,
+    isSuperAccount: false,
   }
   return {
     login: vi.fn().mockResolvedValue(current),

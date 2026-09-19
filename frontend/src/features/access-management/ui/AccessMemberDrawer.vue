@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { NDescriptions, NDescriptionsItem } from 'naive-ui'
+import { computed } from 'vue'
+import {
+  NDescriptions,
+  NDescriptionsItem,
+  NEmpty,
+  NPopconfirm,
+} from 'naive-ui'
 
 import type {
   AccessMemberViewModel,
@@ -9,23 +15,31 @@ import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
-defineProps<{
+const props = defineProps<{
   show: boolean
   member: AccessMemberViewModel | null
   statusChanging?: boolean
+  teamChanging?: boolean
 }>()
 
 defineEmits<{
   'update:show': [value: boolean]
   'toggle-enabled': [member: AccessMemberViewModel]
   'reset-password': [member: AccessMemberViewModel]
-  'create-membership': [member: AccessMemberViewModel]
-  'edit-membership': [membership: AccessMembershipViewModel]
+  'move-team': [member: AccessMemberViewModel]
+  'remove-team': [member: AccessMemberViewModel]
 }>()
 
-function scopeLabel(scope: AccessMembershipViewModel['dataScope']): string {
-  return scope.toUpperCase()
-}
+const activeMembership = computed<AccessMembershipViewModel | null>(() =>
+  props.member?.memberships.find(
+    (membership) => membership.enabled && membership.teamEnabled,
+  ) ?? null,
+)
+const historicalMemberships = computed(() =>
+  props.member?.memberships.filter(
+    (membership) => !membership.enabled || !membership.teamEnabled,
+  ) ?? [],
+)
 </script>
 
 <template>
@@ -45,74 +59,81 @@ function scopeLabel(scope: AccessMembershipViewModel['dataScope']): string {
           />
         </div>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="显示名">{{
-            member.displayName
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="登录账号">{{
-            member.loginName ?? '未配置'
-          }}</NDescriptionsItem>
+          <NDescriptionsItem label="显示名">{{ member.displayName }}</NDescriptionsItem>
+          <NDescriptionsItem label="登录账号">{{ member.loginName ?? '未配置' }}</NDescriptionsItem>
+          <NDescriptionsItem label="账号类型">
+            {{ member.isSuperAccount ? '超级账号' : '普通成员' }}
+          </NDescriptionsItem>
         </NDescriptions>
         <div class="access-member-drawer__actions">
           <AppButton
             :loading="statusChanging"
             @click="$emit('toggle-enabled', member)"
           >
-            {{ member.enabled ? '停用员工' : '启用员工' }}
+            {{ member.enabled ? '停用成员' : '启用成员' }}
           </AppButton>
-          <AppButton tone="primary" @click="$emit('reset-password', member)"
-            >重置密码</AppButton
-          >
+          <AppButton tone="primary" @click="$emit('reset-password', member)">
+            重置密码
+          </AppButton>
         </div>
       </section>
 
       <section class="access-member-drawer__section">
         <div class="access-member-drawer__section-header">
-          <h3>团队关系</h3>
-          <AppButton tone="text" @click="$emit('create-membership', member)"
-            >加入团队</AppButton
+          <h3>当前团队</h3>
+          <AppButton
+            v-if="!member.isSuperAccount"
+            tone="text"
+            :loading="teamChanging"
+            @click="$emit('move-team', member)"
           >
+            {{ activeMembership ? '调组' : '分配团队' }}
+          </AppButton>
         </div>
+        <template v-if="member.isSuperAccount">
+          <p class="access-member-drawer__description">
+            超级账号不加入业务团队，可跨团队管理资源与授权。
+          </p>
+        </template>
+        <template v-else-if="activeMembership">
+          <article class="access-member-drawer__membership">
+            <div class="access-member-drawer__membership-heading">
+              <strong>{{ activeMembership.teamName }}</strong>
+              <StatusTag label="已生效" tone="success" />
+            </div>
+            <p>该成员继承此团队的模块、设备和店铺授权。</p>
+            <NPopconfirm
+              positive-text="确认移出"
+              negative-text="取消"
+              @positive-click="$emit('remove-team', member)"
+            >
+              <template #trigger>
+                <AppButton tone="text" :loading="teamChanging">移出团队</AppButton>
+              </template>
+              移出后该成员将不能访问当前团队的数据和资源，历史记录会保留。
+            </NPopconfirm>
+          </article>
+        </template>
+        <NEmpty v-else size="small" description="未分配团队" />
+      </section>
+
+      <section
+        v-if="!member.isSuperAccount && historicalMemberships.length"
+        class="access-member-drawer__section"
+      >
+        <h3>历史团队关系</h3>
         <article
-          v-for="membership in member.memberships"
+          v-for="membership in historicalMemberships"
           :key="membership.membershipId"
           class="access-member-drawer__membership"
         >
           <div class="access-member-drawer__membership-heading">
             <strong>{{ membership.teamName }}</strong>
             <StatusTag
-              :label="
-                membership.enabled && membership.teamEnabled
-                  ? '已启用'
-                  : '已停用'
-              "
-              :tone="
-                membership.enabled && membership.teamEnabled
-                  ? 'success'
-                  : 'neutral'
-              "
+              :label="membership.teamEnabled ? '已移出' : '团队已归档'"
+              tone="neutral"
             />
           </div>
-          <dl>
-            <div>
-              <dt>角色</dt>
-              <dd>
-                {{
-                  membership.roleCode === 'access_admin' ? '权限管理员' : '成员'
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>数据范围</dt>
-              <dd>{{ scopeLabel(membership.dataScope) }}</dd>
-            </div>
-            <div>
-              <dt>功能权限</dt>
-              <dd>{{ membership.moduleCodes.length }} 项</dd>
-            </div>
-          </dl>
-          <AppButton tone="text" @click="$emit('edit-membership', membership)"
-            >编辑</AppButton
-          >
         </article>
       </section>
     </div>
@@ -161,19 +182,10 @@ function scopeLabel(scope: AccessMembershipViewModel['dataScope']): string {
   background: var(--bg-subtle);
 }
 
-.access-member-drawer__membership dl {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin: var(--space-3) 0;
-}
-
-.access-member-drawer__membership dt {
-  color: var(--text-tertiary);
+.access-member-drawer__membership p,
+.access-member-drawer__description {
+  margin: var(--space-2) 0 var(--space-3);
+  color: var(--text-secondary);
   font-size: var(--font-size-secondary);
-}
-
-.access-member-drawer__membership dd {
-  margin: var(--space-1) 0 0;
 }
 </style>

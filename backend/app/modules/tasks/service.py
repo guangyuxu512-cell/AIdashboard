@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.modules.access.contracts import ActorContext
+from app.modules.access.service import TeamAuthorizationService
 from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
 from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
 from app.modules.automation_apps.service import AutomationParameterPresetService
@@ -114,6 +115,7 @@ class TaskService:
         shop_repository: ShopRepository | None = None,
         shop_device_binding_repository: ShopDeviceBindingRepository | None = None,
         asset_repository: AssetRepository | None = None,
+        team_authorization_service: TeamAuthorizationService | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or TaskRepository(session)
@@ -132,12 +134,15 @@ class TaskService:
             shop_device_binding_repository or ShopDeviceBindingRepository(session)
         )
         self.asset_repository = asset_repository or AssetRepository(session)
+        self.team_authorization_service = (
+            team_authorization_service or TeamAuthorizationService(session)
+        )
 
     def create(self, data: TaskCreate, actor: ActorContext) -> Task:
         task = self._create_pending(
             data,
             require_worker_online=True,
-            team_id=actor.team_id,
+            team_id=actor.require_team_id(),
             created_by_user_id=actor.user_id,
             actor=actor,
         )
@@ -234,10 +239,12 @@ class TaskService:
             and data.skill_id != TaskSkillId.YINGDAO_APP_RUN
         ):
             raise TaskInputInvalidError("影刀参数预设只支持 yingdao.app.run")
-        device = self.repository.get_task_target_device(
-            data.target_device_id,
+        self.team_authorization_service.require_execution_resources(
             team_id=team_id,
+            device_id=data.target_device_id,
+            shop_ids=data.shop_ids,
         )
+        device = self.repository.get_task_target_device(data.target_device_id)
         if device is None:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:

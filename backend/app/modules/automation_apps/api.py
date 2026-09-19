@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import require_module_access
+from app.modules.access.dependencies import get_super_account, require_module_access
 from app.modules.access.module_access import ModuleCode
 from app.modules.automation_apps.schemas import (
     AutomationApplicationConfigRead,
@@ -81,7 +81,7 @@ def upsert_config(
     provider_code: Literal["yingdao"],
     app_id: str,
     data: AutomationApplicationConfigUpsert,
-    _actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[AutomationApplicationConfigService, Depends(get_service)],
 ) -> AutomationApplicationConfigRead:
     return service.upsert(provider_code, app_id, data)

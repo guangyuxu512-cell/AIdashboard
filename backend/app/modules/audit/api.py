@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_access_administrator
+from app.modules.access.dependencies import get_super_account
 from app.modules.audit.enums import AuditAction
 from app.modules.audit.schemas import AuditLogCreatedRange, AuditLogRead
 from app.modules.audit.service import AuditLogService
@@ -57,7 +57,7 @@ def get_audit_log_created_range(
 
 @router.get("", response_model=Page[AuditLogRead])
 def list_audit_logs(
-    _actor: Annotated[ActorContext, Depends(get_access_administrator)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     pagination: Annotated[PaginationParams, Depends()],
     created_range: Annotated[
         AuditLogCreatedRange,

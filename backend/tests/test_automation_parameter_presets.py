@@ -7,6 +7,7 @@ import pytest
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
+from app.modules.access.exceptions import TeamResourceAccessDeniedError
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetInUseError,
     AutomationParameterPresetInvalidError,
@@ -248,6 +249,15 @@ class FakeModuleAccessService:
             raise ModuleAccessDeniedError()
 
 
+class FakeTeamAuthorizationService:
+    def __init__(self, allowed_shop_ids: set[UUID]) -> None:
+        self.allowed_shop_ids = allowed_shop_ids
+
+    def require_shop_access(self, _actor: ActorContext, shop_id: UUID) -> None:
+        if shop_id not in self.allowed_shop_ids:
+            raise TeamResourceAccessDeniedError()
+
+
 def actor(*, team_id: UUID, scope: DataScope = DataScope.TEAM) -> ActorContext:
     return ActorContext(
         user_id=uuid4(),
@@ -272,6 +282,7 @@ def service_for(
         preset_repository=repository,  # type: ignore[arg-type]
         shop_repository=FakeShopRepository(shop_ids),  # type: ignore[arg-type]
         module_access_service=FakeModuleAccessService(allowed=allowed),  # type: ignore[arg-type]
+        team_authorization_service=FakeTeamAuthorizationService(shop_ids),  # type: ignore[arg-type]
         application_catalog_service=application_catalog_service,  # type: ignore[arg-type]
     )
 
@@ -826,9 +837,11 @@ class FakeDeviceCatalogRepository:
         self.foreign_device_id = uuid4()
 
     def list_all_for_actor(self, *, actor: ActorContext) -> list[SimpleNamespace]:
+        # The real repository applies Team device grants in SQL.  The catalog
+        # deliberately trusts that scope instead of reopening device.team_id.
+        del actor
         return [
-            SimpleNamespace(device_id=self.team_device_id, team_id=actor.team_id),
-            SimpleNamespace(device_id=self.foreign_device_id, team_id=uuid4()),
+            SimpleNamespace(device_id=self.team_device_id),
         ]
 
     def get_for_actor(
@@ -839,7 +852,8 @@ class FakeDeviceCatalogRepository:
     ) -> SimpleNamespace | None:
         if device_id != self.team_device_id:
             return None
-        return SimpleNamespace(device_id=device_id, team_id=actor.team_id)
+        del actor
+        return SimpleNamespace(device_id=device_id)
 
 
 class FakeWorkerCatalogRepository:

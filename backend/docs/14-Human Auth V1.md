@@ -1,5 +1,11 @@
 # Human Auth V1
 
+> **权限解析更新：** 人员登录与服务端 Session 契约仍有效；但从
+> `20260919_0037_super_account_team_authorization_v1` 起，超级账号不需要默认团队，
+> 普通成员至多一条有效 Membership。本文关于 Bootstrap 加入默认团队、多 Team 选择和
+> Membership Role/Data Scope 的内容已被
+> [23-超级账号与团队授权V1.md](23-超级账号与团队授权V1.md) 覆盖。
+
 ## 1. 定位
 
 Human Auth V1 为思余AI中控台提供企业内部人员登录。正式链路是：

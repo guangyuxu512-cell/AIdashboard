@@ -2,19 +2,25 @@ import { apiMode, type ApiMode, type PageResult } from '@/shared/api'
 
 import type {
   AccessMemberCreateInput,
+  AccessMemberTeamInput,
   AccessMemberViewModel,
   AccessMembershipInput,
   AccessMembershipUpdateInput,
   AccessTeamInput,
+  AccessTeamAuthorizationInput,
+  AccessTeamAuthorizationViewModel,
   AccessTeamViewModel,
 } from '../model/types'
 import { accessManagementApi } from './access-management-api'
 import type {
   AccessMemberCreateDto,
   AccessMemberReadDto,
+  AccessMemberTeamWriteDto,
   AccessMembershipUpdateDto,
   AccessMembershipWriteDto,
   AccessTeamReadDto,
+  AccessTeamAuthorizationReadDto,
+  AccessTeamAuthorizationWriteDto,
   AccessTeamWriteDto,
 } from './contracts'
 
@@ -38,6 +44,10 @@ export interface AccessManagementDataSource {
     userId: string,
     password: string,
   ): Promise<AccessMemberViewModel>
+  moveMemberToTeam(
+    userId: string,
+    input: AccessMemberTeamInput,
+  ): Promise<AccessMemberViewModel>
   createMembership(
     userId: string,
     input: AccessMembershipInput,
@@ -52,6 +62,15 @@ export interface AccessManagementDataSource {
     teamId: string,
     input: AccessTeamInput,
   ): Promise<AccessTeamViewModel>
+  archiveTeam(teamId: string): Promise<AccessTeamViewModel>
+  deleteTeam(teamId: string): Promise<void>
+  getTeamAuthorization(
+    teamId: string,
+  ): Promise<AccessTeamAuthorizationViewModel>
+  updateTeamAuthorization(
+    teamId: string,
+    input: AccessTeamAuthorizationInput,
+  ): Promise<AccessTeamAuthorizationViewModel>
 }
 
 function mapMember(dto: AccessMemberReadDto): AccessMemberViewModel {
@@ -60,6 +79,7 @@ function mapMember(dto: AccessMemberReadDto): AccessMemberViewModel {
     displayName: dto.display_name,
     loginName: dto.login_name,
     enabled: dto.enabled,
+    isSuperAccount: dto.is_super_account,
     memberships: dto.memberships.map((membership) => ({
       membershipId: membership.membership_id,
       teamId: membership.team_id,
@@ -85,6 +105,17 @@ function mapTeam(dto: AccessTeamReadDto): AccessTeamViewModel {
   }
 }
 
+function mapTeamAuthorization(
+  dto: AccessTeamAuthorizationReadDto,
+): AccessTeamAuthorizationViewModel {
+  return {
+    teamId: dto.team_id,
+    moduleCodes: [...dto.module_codes],
+    deviceIds: [...dto.device_ids],
+    shopIds: [...dto.shop_ids],
+  }
+}
+
 function mapMembership(input: AccessMembershipInput): AccessMembershipWriteDto {
   return {
     team_id: input.teamId,
@@ -95,15 +126,19 @@ function mapMembership(input: AccessMembershipInput): AccessMembershipWriteDto {
   }
 }
 
-function mapMemberCreate(
-  input: AccessMemberCreateInput,
-): AccessMemberCreateDto {
+function mapMemberCreate(input: AccessMemberCreateInput): AccessMemberCreateDto {
   return {
     display_name: input.displayName.trim(),
     login_name: input.loginName.trim().toLowerCase(),
     password: input.password,
-    membership: mapMembership(input.membership),
+    team_id: input.teamId,
   }
+}
+
+function mapMemberTeam(
+  input: AccessMemberTeamInput,
+): AccessMemberTeamWriteDto {
+  return { team_id: input.teamId }
 }
 
 function mapMembershipUpdate(
@@ -123,6 +158,16 @@ function mapTeamWrite(input: AccessTeamInput): AccessTeamWriteDto {
   return { name: input.name.trim(), enabled: input.enabled }
 }
 
+function mapTeamAuthorizationWrite(
+  input: AccessTeamAuthorizationInput,
+): AccessTeamAuthorizationWriteDto {
+  return {
+    module_codes: [...input.moduleCodes],
+    device_ids: [...input.deviceIds],
+    shop_ids: [...input.shopIds],
+  }
+}
+
 function createMockDataSource(): AccessManagementDataSource {
   const now = new Date().toISOString()
   const teams: AccessTeamViewModel[] = [
@@ -134,32 +179,15 @@ function createMockDataSource(): AccessManagementDataSource {
       updatedAt: now,
     },
   ]
+  const authorizations = new Map<string, AccessTeamAuthorizationViewModel>()
   const members: AccessMemberViewModel[] = [
     {
       userId: 'access-user-admin',
       displayName: '系统管理员',
       loginName: 'admin',
       enabled: true,
-      memberships: [
-        {
-          membershipId: 'access-membership-admin',
-          teamId: 'access-team-default',
-          teamName: '默认团队',
-          teamEnabled: true,
-          roleCode: 'access_admin',
-          dataScope: 'all',
-          enabled: true,
-          moduleCodes: [
-            'shop',
-            'asset',
-            'ai-workbench',
-            'device',
-            'task',
-            'schedule',
-            'settings',
-          ],
-        },
-      ],
+      isSuperAccount: true,
+      memberships: [],
       createdAt: now,
       updatedAt: now,
     },
@@ -202,26 +230,31 @@ function createMockDataSource(): AccessManagementDataSource {
       if (members.some((member) => member.loginName === input.loginName)) {
         throw new Error('登录账号已被使用')
       }
-      const team = teams.find((item) => item.teamId === input.membership.teamId)
-      if (!team?.enabled) throw new Error('团队已停用')
+      const team = input.teamId
+        ? teams.find((item) => item.teamId === input.teamId)
+        : null
+      if (input.teamId && !team?.enabled) throw new Error('团队已停用')
       const timestamp = new Date().toISOString()
       const member: AccessMemberViewModel = {
         userId: crypto.randomUUID(),
         displayName: input.displayName.trim(),
         loginName: input.loginName.trim().toLowerCase(),
         enabled: true,
-        memberships: [
+        isSuperAccount: false,
+        memberships: team
+          ? [
           {
             membershipId: crypto.randomUUID(),
             teamId: team.teamId,
             teamName: team.name,
             teamEnabled: team.enabled,
-            roleCode: input.membership.roleCode,
-            dataScope: input.membership.dataScope,
-            enabled: input.membership.enabled,
-            moduleCodes: [...input.membership.moduleCodes],
+            roleCode: 'member',
+            dataScope: 'team',
+            enabled: true,
+            moduleCodes: [...(authorizations.get(team.teamId)?.moduleCodes ?? [])],
           },
-        ],
+            ]
+          : [],
         createdAt: timestamp,
         updatedAt: timestamp,
       }
@@ -236,6 +269,38 @@ function createMockDataSource(): AccessManagementDataSource {
     },
     async resetMemberPassword(userId) {
       return copyMember(findMember(userId))
+    },
+    async moveMemberToTeam(userId, input) {
+      const member = findMember(userId)
+      if (member.isSuperAccount) throw new Error('超级账号不加入业务团队')
+      for (const membership of member.memberships) membership.enabled = false
+      if (input.teamId) {
+        const team = teams.find((item) => item.teamId === input.teamId)
+        if (!team?.enabled) throw new Error('团队已停用')
+        const existing = member.memberships.find(
+          (item) => item.teamId === input.teamId,
+        )
+        if (existing) {
+          existing.enabled = true
+          existing.teamEnabled = team.enabled
+          existing.teamName = team.name
+        } else {
+          member.memberships.push({
+            membershipId: crypto.randomUUID(),
+            teamId: team.teamId,
+            teamName: team.name,
+            teamEnabled: team.enabled,
+            roleCode: 'member',
+            dataScope: 'team',
+            enabled: true,
+            moduleCodes: [
+              ...(authorizations.get(team.teamId)?.moduleCodes ?? []),
+            ],
+          })
+        }
+      }
+      member.updatedAt = new Date().toISOString()
+      return copyMember(member)
     },
     async createMembership(userId, input) {
       const member = findMember(userId)
@@ -311,6 +376,54 @@ function createMockDataSource(): AccessManagementDataSource {
       }
       return { ...team }
     },
+    async archiveTeam(teamId) {
+      const team = teams.find((item) => item.teamId === teamId)
+      if (!team) throw new Error('团队不存在')
+      team.enabled = false
+      team.updatedAt = new Date().toISOString()
+      for (const member of members) {
+        for (const membership of member.memberships) {
+          if (membership.teamId === teamId) membership.enabled = false
+        }
+      }
+      return { ...team }
+    },
+    async deleteTeam(teamId) {
+      const index = teams.findIndex((item) => item.teamId === teamId)
+      if (index < 0) throw new Error('团队不存在')
+      if (members.some((member) => member.memberships.some((item) => item.teamId === teamId))) {
+        throw new Error('团队仍有关联成员，只能归档')
+      }
+      teams.splice(index, 1)
+      authorizations.delete(teamId)
+    },
+    async getTeamAuthorization(teamId) {
+      if (!teams.some((item) => item.teamId === teamId)) throw new Error('团队不存在')
+      return {
+        teamId,
+        moduleCodes: [...(authorizations.get(teamId)?.moduleCodes ?? [])],
+        deviceIds: [...(authorizations.get(teamId)?.deviceIds ?? [])],
+        shopIds: [...(authorizations.get(teamId)?.shopIds ?? [])],
+      }
+    },
+    async updateTeamAuthorization(teamId, input) {
+      if (!teams.some((item) => item.teamId === teamId)) throw new Error('团队不存在')
+      const authorization = {
+        teamId,
+        moduleCodes: [...input.moduleCodes],
+        deviceIds: [...input.deviceIds],
+        shopIds: [...input.shopIds],
+      }
+      authorizations.set(teamId, authorization)
+      for (const member of members) {
+        for (const membership of member.memberships) {
+          if (membership.teamId === teamId) {
+            membership.moduleCodes = [...authorization.moduleCodes]
+          }
+        }
+      }
+      return authorization
+    },
   }
 }
 
@@ -340,6 +453,14 @@ const realDataSource: AccessManagementDataSource = {
       await accessManagementApi.resetMemberPassword(userId, password),
     )
   },
+  async moveMemberToTeam(userId, input) {
+    return mapMember(
+      await accessManagementApi.moveMemberToTeam(
+        userId,
+        mapMemberTeam(input),
+      ),
+    )
+  },
   async createMembership(userId, input) {
     return mapMember(
       await accessManagementApi.createMembership(userId, mapMembership(input)),
@@ -362,6 +483,25 @@ const realDataSource: AccessManagementDataSource = {
   async updateTeam(teamId, input) {
     return mapTeam(
       await accessManagementApi.updateTeam(teamId, mapTeamWrite(input)),
+    )
+  },
+  async archiveTeam(teamId) {
+    return mapTeam(await accessManagementApi.archiveTeam(teamId))
+  },
+  async deleteTeam(teamId) {
+    await accessManagementApi.deleteTeam(teamId)
+  },
+  async getTeamAuthorization(teamId) {
+    return mapTeamAuthorization(
+      await accessManagementApi.getTeamAuthorization(teamId),
+    )
+  },
+  async updateTeamAuthorization(teamId, input) {
+    return mapTeamAuthorization(
+      await accessManagementApi.updateTeamAuthorization(
+        teamId,
+        mapTeamAuthorizationWrite(input),
+      ),
     )
   },
 }

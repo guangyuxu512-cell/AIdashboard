@@ -8,9 +8,9 @@ from app.core.database import get_database_session
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import (
-    get_access_administrator,
     get_actor_context,
     get_module_access_service,
+    get_super_account,
 )
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
@@ -34,6 +34,7 @@ ADMIN = ActorContext(
     membership_id=uuid4(),
     role_code="access_admin",
     data_scope=DataScope.TEAM,
+    is_super_account=True,
 )
 MEMBER = ActorContext(
     user_id=uuid4(),
@@ -143,7 +144,7 @@ def request(
     application.dependency_overrides[get_database_session] = lambda: FakeSession()
     application.dependency_overrides[get_ai_model_catalog_service] = lambda: service
     if admin is not None:
-        application.dependency_overrides[get_access_administrator] = lambda: admin
+        application.dependency_overrides[get_super_account] = lambda: admin
     if catalog_actor is not None:
         application.dependency_overrides[
             get_ai_model_catalog_authorized_actor

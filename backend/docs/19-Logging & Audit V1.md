@@ -1,5 +1,10 @@
 # Logging & Audit V1
 
+> **0037 覆盖说明：** `20260919_0037_super_account_team_authorization_v1` 后，新的
+> 人员/Team 管理动作由超级账号执行，且全局管理审计可没有 `team_id`。本文件下文关于
+> `access_admin` 和成员级 Membership 授权的描述仅保留旧审计事实；现行权限边界见
+> [23-超级账号与团队授权V1.md](23-超级账号与团队授权V1.md)。
+
 ## 当前交付与边界
 
 本期分为两个独立边界：请求运行日志与 Access Management 审计记录。它们不共用一张表，也不引入
@@ -45,6 +50,10 @@ request body、query、Cookie、Authorization、密码、Token、验证码或 Se
 | `update_membership` | `access_management.update_membership` | `membership_id`、实际变更字段名 |
 | `create_team` | `access_management.create_team` | 新 `team_id` |
 | `update_team` | `access_management.update_team` | `team_id`、实际变更字段名（含 `enabled`） |
+| `move_member_to_team` | `access_management.move_member_team` | `user_id`、旧关系 ID、新 Team/关系 ID |
+| `move_member_to_team(team_id=null)` | `access_management.remove_member_from_team` | `user_id`、被停用关系 ID |
+| `archive_team` / `delete_team` | `access_management.archive_team` / `delete_team` | `team_id`、受影响成员数（归档时） |
+| `update_team_authorization` | `access_management.update_team_authorization` | `team_id`、模块/设备/店铺数量及失效会话计数 |
 
 `update_member` 的现有 Schema 只允许 `enabled`；`update_membership` 是当前 Role、Data Scope、
 Membership 状态与 Module Access 的唯一更新入口；`update_team` 是 Team 启停的现有入口。上述映射不

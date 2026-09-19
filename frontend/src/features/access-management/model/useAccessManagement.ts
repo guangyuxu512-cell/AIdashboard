@@ -4,17 +4,19 @@ import { useMessage } from 'naive-ui'
 import {
   useAccessMembersQuery,
   useAccessTeamsQuery,
+  useArchiveAccessTeamMutation,
   useCreateAccessMemberMutation,
-  useCreateAccessMembershipMutation,
   useCreateAccessTeamMutation,
+  useDeleteAccessTeamMutation,
+  useMoveAccessMemberToTeamMutation,
   useResetAccessMemberPasswordMutation,
   useUpdateAccessMemberEnabledMutation,
-  useUpdateAccessMembershipMutation,
+  useUpdateAccessTeamAuthorizationMutation,
   useUpdateAccessTeamMutation,
   type AccessMemberCreateInput,
+  type AccessMemberTeamInput,
   type AccessMemberViewModel,
-  type AccessMembershipInput,
-  type AccessMembershipUpdateInput,
+  type AccessTeamAuthorizationInput,
   type AccessTeamInput,
   type AccessTeamViewModel,
 } from '@/entities/access-management'
@@ -33,7 +35,7 @@ export function useAccessManagement() {
   const membershipFormVisible = ref(false)
   const passwordFormVisible = ref(false)
   const teamFormVisible = ref(false)
-  const editingMembershipId = ref<string | null>(null)
+  const teamAuthorizationVisible = ref(false)
 
   const membersQuery = useAccessMembersQuery(
     computed(() => ({
@@ -46,19 +48,16 @@ export function useAccessManagement() {
   const createMemberMutation = useCreateAccessMemberMutation()
   const updateMemberEnabledMutation = useUpdateAccessMemberEnabledMutation()
   const resetPasswordMutation = useResetAccessMemberPasswordMutation()
-  const createMembershipMutation = useCreateAccessMembershipMutation()
-  const updateMembershipMutation = useUpdateAccessMembershipMutation()
+  const moveMemberMutation = useMoveAccessMemberToTeamMutation()
   const createTeamMutation = useCreateAccessTeamMutation()
   const updateTeamMutation = useUpdateAccessTeamMutation()
+  const archiveTeamMutation = useArchiveAccessTeamMutation()
+  const deleteTeamMutation = useDeleteAccessTeamMutation()
+  const updateAuthorizationMutation =
+    useUpdateAccessTeamAuthorizationMutation()
 
   const members = computed(() => membersQuery.data.value?.items ?? [])
   const teams = computed(() => teamsQuery.data.value ?? [])
-  const currentMembership = computed(
-    () =>
-      selectedMember.value?.memberships.find(
-        (membership) => membership.membershipId === editingMembershipId.value,
-      ) ?? null,
-  )
   const membersHaveData = computed(() => membersQuery.data.value !== undefined)
   const membersLoading = computed(
     () => membersQuery.isPending.value && !membersHaveData.value,
@@ -87,15 +86,14 @@ export function useAccessManagement() {
     selectedMember.value = member
   }
 
-  function openCreateMembership(member: AccessMemberViewModel): void {
+  function openMoveMember(member: AccessMemberViewModel): void {
     selectedMember.value = member
-    editingMembershipId.value = null
     membershipFormVisible.value = true
   }
 
-  function openEditMembership(membershipId: string): void {
-    editingMembershipId.value = membershipId
-    membershipFormVisible.value = true
+  function openTeamAuthorization(team: AccessTeamViewModel): void {
+    selectedTeam.value = team
+    teamAuthorizationVisible.value = true
   }
 
   async function createMember(input: AccessMemberCreateInput): Promise<void> {
@@ -118,7 +116,7 @@ export function useAccessManagement() {
         enabled: !member.enabled,
       })
       selectedMember.value = updated
-      message.success(updated.enabled ? '员工已启用' : '员工已停用')
+      message.success(updated.enabled ? '成员已启用' : '成员已停用')
     } catch (error) {
       message.error(getErrorMessage(error))
     }
@@ -139,21 +137,16 @@ export function useAccessManagement() {
     }
   }
 
-  async function saveMembership(input: AccessMembershipInput): Promise<void> {
+  async function saveMemberTeam(input: AccessMemberTeamInput): Promise<void> {
     if (!selectedMember.value) return
     try {
-      const updated = editingMembershipId.value
-        ? await updateMembershipMutation.mutateAsync({
-            membershipId: editingMembershipId.value,
-            input: input as AccessMembershipUpdateInput,
-          })
-        : await createMembershipMutation.mutateAsync({
-            userId: selectedMember.value.userId,
-            input,
-          })
+      const updated = await moveMemberMutation.mutateAsync({
+        userId: selectedMember.value.userId,
+        input,
+      })
       selectedMember.value = updated
       membershipFormVisible.value = false
-      message.success('团队关系已保存')
+      message.success(input.teamId ? '成员已调入目标团队' : '成员已移出团队')
     } catch (error) {
       message.error(getErrorMessage(error))
     }
@@ -177,6 +170,40 @@ export function useAccessManagement() {
     }
   }
 
+  async function archiveTeam(team: AccessTeamViewModel): Promise<void> {
+    try {
+      await archiveTeamMutation.mutateAsync(team.teamId)
+      message.success('团队已归档，成员关系与历史业务数据已保留')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
+  }
+
+  async function deleteTeam(team: AccessTeamViewModel): Promise<void> {
+    try {
+      await deleteTeamMutation.mutateAsync(team.teamId)
+      message.success('空团队已删除')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
+  }
+
+  async function saveTeamAuthorization(
+    input: AccessTeamAuthorizationInput,
+  ): Promise<void> {
+    if (!selectedTeam.value) return
+    try {
+      await updateAuthorizationMutation.mutateAsync({
+        teamId: selectedTeam.value.teamId,
+        input,
+      })
+      teamAuthorizationVisible.value = false
+      message.success('团队授权已保存')
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
+  }
+
   return {
     activeTab,
     page,
@@ -190,23 +217,19 @@ export function useAccessManagement() {
     teamsLoading: teamsQuery.isPending,
     selectedMember,
     selectedTeam,
-    currentMembership,
     memberFormVisible,
     membershipFormVisible,
     passwordFormVisible,
     teamFormVisible,
+    teamAuthorizationVisible,
     createMemberPending: createMemberMutation.isPending,
-    membershipPending: computed(
-      () =>
-        createMembershipMutation.isPending.value ||
-        updateMembershipMutation.isPending.value,
-    ),
+    memberTeamPending: moveMemberMutation.isPending,
     passwordPending: resetPasswordMutation.isPending,
     teamPending: computed(
       () =>
-        createTeamMutation.isPending.value ||
-        updateTeamMutation.isPending.value,
+        createTeamMutation.isPending.value || updateTeamMutation.isPending.value,
     ),
+    authorizationPending: updateAuthorizationMutation.isPending,
     togglingUserId: computed(() =>
       updateMemberEnabledMutation.isPending.value
         ? (updateMemberEnabledMutation.variables.value?.userId ?? null)
@@ -216,13 +239,16 @@ export function useAccessManagement() {
     reset,
     setPageSize,
     openMember,
-    openCreateMembership,
-    openEditMembership,
+    openMoveMember,
+    openTeamAuthorization,
     createMember,
     toggleMemberEnabled,
     resetPassword,
-    saveMembership,
+    saveMemberTeam,
     saveTeam,
+    archiveTeam,
+    deleteTeam,
+    saveTeamAuthorization,
     retryMembers: membersQuery.refetch,
     retryTeams: teamsQuery.refetch,
   }

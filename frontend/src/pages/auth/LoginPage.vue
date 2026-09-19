@@ -102,7 +102,7 @@ async function confirmTeam(): Promise<void> {
           type="warning"
           :show-icon="false"
         >
-          当前账号没有可用团队，请联系管理员。
+          当前账号未分配团队，请联系超级账号管理员。
         </NAlert>
         <NForm v-else label-placement="top" @submit.prevent="confirmTeam">
           <NFormItem label="当前团队">
