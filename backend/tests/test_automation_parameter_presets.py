@@ -51,10 +51,7 @@ class FakeSession:
 class FakePresetRepository:
     def __init__(self) -> None:
         self.presets: list[AutomationParameterPreset] = []
-        self.active_schedule_references_by_preset: dict[
-            UUID,
-            tuple[tuple[UUID, str], ...],
-        ] = {}
+        self.references: dict[UUID, tuple[str, ...]] = {}
 
     def add(self, preset: AutomationParameterPreset) -> None:
         self.presets.append(preset)
@@ -67,11 +64,7 @@ class FakePresetRepository:
     ) -> list[AutomationParameterPreset]:
         # This fake deliberately honors ALL to prove the service still keeps
         # presets inside the current Team.
-        candidates = [
-            preset
-            for preset in self.presets
-            if preset.app_id == app_id and preset.deleted_at is None
-        ]
+        candidates = [preset for preset in self.presets if preset.app_id == app_id]
         if actor.data_scope is DataScope.SELF:
             candidates = [
                 preset
@@ -109,9 +102,7 @@ class FakePresetRepository:
         team_id: UUID,
         app_id: str,
         preset_id: UUID,
-        for_update: bool = False,
     ) -> AutomationParameterPreset | None:
-        del for_update
         return next(
             (
                 preset
@@ -119,7 +110,6 @@ class FakePresetRepository:
                 if preset.preset_id == preset_id
                 and preset.team_id == team_id
                 and preset.app_id == app_id
-                and preset.deleted_at is None
             ),
             None,
         )
@@ -136,13 +126,9 @@ class FakePresetRepository:
         limit: int | None = None,
     ) -> list[AutomationParameterPreset]:
         candidates = (
-            [preset for preset in self.presets if preset.deleted_at is None]
+            list(self.presets)
             if team_id is None
-            else [
-                preset
-                for preset in self.presets
-                if preset.team_id == team_id and preset.deleted_at is None
-            ]
+            else [preset for preset in self.presets if preset.team_id == team_id]
         )
         if actor.data_scope is DataScope.SELF:
             candidates = [
@@ -191,16 +177,15 @@ class FakePresetRepository:
             preset.team_id == team_id
             and preset.app_id == app_id
             and preset.name == name
-            and preset.deleted_at is None
             and preset.preset_id != exclude_preset_id
             for preset in self.presets
         )
 
-    def active_schedule_references(
-        self,
-        preset_id: UUID,
-    ) -> tuple[tuple[UUID, str], ...]:
-        return self.active_schedule_references_by_preset.get(preset_id, ())
+    def reference_types(self, preset_id: UUID) -> tuple[str, ...]:
+        return self.references.get(preset_id, ())
+
+    def remove(self, preset: AutomationParameterPreset) -> None:
+        self.presets.remove(preset)
 
 
 class FakeConfigRepository:
@@ -671,7 +656,7 @@ def test_preset_snapshot_fails_when_a_current_required_field_is_not_explicitly_e
             shop_ids=[],
         )
 
-def test_preset_remove_hides_history_but_blocks_undeleted_schedule() -> None:
+def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
     team_id = uuid4()
     actor_context = actor(team_id=team_id)
     repository = FakePresetRepository()
@@ -690,30 +675,7 @@ def test_preset_remove_hides_history_but_blocks_undeleted_schedule() -> None:
         app_id="safe-app",
         preset_id=preset.preset_id,
     )
-    assert len(repository.presets) == 1
-    stored_preset = repository.presets[0]
-    assert stored_preset.preset_id == preset.preset_id
-    assert stored_preset.deleted_at is not None
-    assert service.list(actor=actor_context, app_id="safe-app") == []
-    with pytest.raises(AutomationParameterPresetNotFoundError):
-        service.snapshot_for_actor(
-            actor=actor_context,
-            app_id="safe-app",
-            preset_id=preset.preset_id,
-            shop_ids=[],
-        )
-
-    # The active-name uniqueness scope ends with the logical deletion, so a
-    # new configuration can intentionally reuse its name.
-    replacement = service.create(
-        actor=actor_context,
-        app_id="safe-app",
-        data=AutomationParameterPresetCreate(
-            name="可删除配置",
-            common_parameters={"标题": "新的公共标题"},
-        ),
-    )
-    assert replacement.preset_id != preset.preset_id
+    assert repository.presets == []
 
     referenced = service.create(
         actor=actor_context,
@@ -723,10 +685,7 @@ def test_preset_remove_hides_history_but_blocks_undeleted_schedule() -> None:
             common_parameters={"标题": "公共标题"},
         ),
     )
-    schedule_id = uuid4()
-    repository.active_schedule_references_by_preset[referenced.preset_id] = (
-        (schedule_id, "已停用但未删除的计划"),
-    )
+    repository.references[referenced.preset_id] = ("task", "schedule")
 
     with pytest.raises(AutomationParameterPresetInUseError) as error:
         service.remove(
@@ -735,19 +694,10 @@ def test_preset_remove_hides_history_but_blocks_undeleted_schedule() -> None:
             preset_id=referenced.preset_id,
         )
 
-    assert error.value.details == {
-        "schedules": [
-            {
-                "schedule_id": str(schedule_id),
-                "name": "已停用但未删除的计划",
-            },
-        ],
-    }
-    assert next(
-        item
-        for item in repository.presets
-        if item.preset_id == referenced.preset_id
-    ).deleted_at is None
+    assert error.value.details == {"reference_types": ["task", "schedule"]}
+    assert [preset.preset_id for preset in repository.presets] == [
+        referenced.preset_id,
+    ]
 
 
 def test_preset_read_marks_only_values_missing_from_the_current_schema() -> None:

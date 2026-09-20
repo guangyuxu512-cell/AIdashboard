@@ -25,10 +25,7 @@ router = APIRouter(
     responses={
         **COMMON_ERROR_RESPONSES,
         404: {"model": ErrorResponse, "description": "参数预设不存在"},
-        409: {
-            "model": ErrorResponse,
-            "description": "参数预设名称冲突或仍被未归档计划引用",
-        },
+        409: {"model": ErrorResponse, "description": "参数预设名称冲突"},
     },
 )
 

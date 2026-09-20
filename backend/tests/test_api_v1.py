@@ -348,7 +348,7 @@ class ApiAutomationParameterPresetService:
     preset_id = uuid4()
     timestamp = datetime.now(UTC)
     last_create: AutomationParameterPresetCreate | None = None
-    remove_schedule_references: tuple[tuple[UUID, str], ...] = ()
+    remove_reference_types: tuple[str, ...] = ()
 
     @classmethod
     def read(cls, *, app_id: str, name: str) -> AutomationParameterPresetRead:
@@ -478,9 +478,9 @@ class ApiAutomationParameterPresetService:
         assert actor == API_ACTOR
         assert app_id == "preset-api-app"
         assert preset_id == self.preset_id
-        if type(self).remove_schedule_references:
+        if type(self).remove_reference_types:
             raise AutomationParameterPresetInUseError(
-                type(self).remove_schedule_references,
+                type(self).remove_reference_types,
             )
 
 
@@ -1161,11 +1161,8 @@ def test_automation_parameter_preset_api_contract() -> None:
     assert delete_response.status_code == 204
 
 
-def test_automation_parameter_preset_delete_reports_undeleted_schedule_reference() -> None:
-    schedule_id = uuid4()
-    ApiAutomationParameterPresetService.remove_schedule_references = (
-        (schedule_id, "正在使用的计划"),
-    )
+def test_automation_parameter_preset_delete_reports_durable_references() -> None:
+    ApiAutomationParameterPresetService.remove_reference_types = ("task", "schedule")
     try:
         response = request(
             "DELETE",
@@ -1173,15 +1170,11 @@ def test_automation_parameter_preset_delete_reports_undeleted_schedule_reference
             f"{ApiAutomationParameterPresetService.preset_id}",
         )
     finally:
-        ApiAutomationParameterPresetService.remove_schedule_references = ()
+        ApiAutomationParameterPresetService.remove_reference_types = ()
 
     assert response.status_code == 409
     assert response.json()["code"] == "AUTOMATION_PARAMETER_PRESET_IN_USE"
-    assert response.json()["details"] == {
-        "schedules": [
-            {"schedule_id": str(schedule_id), "name": "正在使用的计划"},
-        ],
-    }
+    assert response.json()["details"] == {"reference_types": ["task", "schedule"]}
 
 
 def test_automation_parameter_preset_management_catalog_contract() -> None:

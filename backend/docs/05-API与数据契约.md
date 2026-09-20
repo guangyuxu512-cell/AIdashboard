@@ -262,12 +262,9 @@ Read DTO 额外返回 `invalid_parameter_names`，它只标记该预设 snapshot
 检查，不能被表述或实现为新的 Shop 人员归属授权。Credential、Cookie 和账号明文永不保存进预设。
 
 `DELETE /api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets/{preset_id}` 也执行相同的
-ActorContext、`device` 和 `shop` Guard。删除是逻辑删除：日常列表、详情、选择器、复制与新 Task/Schedule
-引用只读取 `deleted_at IS NULL` 的预设；历史 Task 和已归档 Schedule 保留原 `parameter_preset_id`、版本及
-参数快照，不改写应用字段、Shop 或历史输入。未归档 Schedule（包括已停用 Schedule）仍可再次启用或触发，
-因此会返回 `409 / AUTOMATION_PARAMETER_PRESET_IN_USE`，`details.schedules` 精确列出关联计划 ID 与名称，
-用户必须先更换预设或归档计划。Task/Schedule 创建解析预设时与删除使用同一行锁，避免删除后的预设并发进入
-新的引用；已删除预设按 `404 / AUTOMATION_PARAMETER_PRESET_NOT_FOUND` 拒绝新引用。
+ActorContext、`device` 和 `shop` Guard。删除只删除无引用的预设；任何历史 `Task` 或 `Schedule` 引用均返回
+`409 / AUTOMATION_PARAMETER_PRESET_IN_USE`（`details.reference_types` 为 `task` 和/或 `schedule`），不改写
+引用、不删除应用字段、Shop 或历史 Task 快照。预检与最终外键约束之间若发生并发引用，同样以该 409 收口。
 
 新建运行／计划的 UI 在应用存在输入字段时必须先明确选择参数预设或“本次手动参数”；未选择不是手动模式，
 不得由客户端隐式提交或展示应用模板字段。该 UI 规则不改变 Backend 的旧手动调用兼容：无预设的正式旧调用

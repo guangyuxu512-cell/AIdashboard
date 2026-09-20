@@ -27,7 +27,7 @@ defineEmits<{
     <div class="parameter-preset-delete-dialog">
       <p>确认删除配置“{{ preset?.name }}”？</p>
       <p>
-        历史任务和已删除计划的参数快照会保留；仍被未删除的定时计划使用时，请先更换配置或删除计划。
+        已被历史任务或定时计划引用的配置不能删除；删除不会修改应用字段、店铺或既有任务快照。
       </p>
     </div>
   </AppDialog>

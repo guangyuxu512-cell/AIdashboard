@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -411,21 +410,20 @@ class AutomationParameterPresetService:
             preset_id=preset_id,
             for_update=True,
         )
-        schedule_references = self.preset_repository.active_schedule_references(
-            preset.preset_id,
-        )
-        if schedule_references:
+        reference_types = self.preset_repository.reference_types(preset.preset_id)
+        if reference_types:
             self.session.rollback()
-            raise AutomationParameterPresetInUseError(schedule_references)
-
-        # Task input_json is a completed, versioned snapshot.  An archived
-        # Schedule cannot trigger again.  Keep those durable records and hide
-        # this preset from every normal read/new-reference path instead.
-        preset.deleted_at = datetime.now(UTC)
+            raise AutomationParameterPresetInUseError(reference_types)
+        self.preset_repository.remove(preset)
         try:
             self.session.commit()
-        except IntegrityError:
+        except IntegrityError as error:
+            # A Task or Schedule can be created between the reference check and
+            # this commit.  Their RESTRICT foreign keys remain the final source
+            # of truth, so preserve both the preset and its existing snapshot.
             self.session.rollback()
+            if getattr(error.orig, "sqlstate", None) == "23503":
+                raise AutomationParameterPresetInUseError() from error
             raise
 
     def snapshot_for_actor(
@@ -437,14 +435,7 @@ class AutomationParameterPresetService:
         shop_ids: list[object],
     ) -> ParameterPresetSnapshot:
         self._require_shop_access(actor)
-        # The same row lock as remove() makes resolution and logical deletion
-        # serial: a deleted preset cannot race into a newly-created Task.
-        preset = self._get_for_actor(
-            actor=actor,
-            app_id=app_id,
-            preset_id=preset_id,
-            for_update=True,
-        )
+        preset = self._get_for_actor(actor=actor, app_id=app_id, preset_id=preset_id)
         self._ensure_selected_shops_exist(actor, shop_ids)
         return self._snapshot(preset, shop_ids)
 
@@ -460,7 +451,6 @@ class AutomationParameterPresetService:
             team_id=team_id,
             app_id=app_id,
             preset_id=preset_id,
-            for_update=True,
         )
         if preset is None:
             raise AutomationParameterPresetNotFoundError()
