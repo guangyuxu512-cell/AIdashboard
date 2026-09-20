@@ -1080,3 +1080,48 @@ def test_super_account_team_authorization_migration_refuses_ambiguous_legacy_dat
         migration.upgrade()
 
     assert not [call for call in recorder.calls if call[0] == "create_table"]
+
+
+def test_parameter_preset_historical_reference_deletion_migration(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260920_0038_parameter_preset_historical_reference_deletion_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260920_0038"
+    assert migration.down_revision == "20260919_0037"
+    migration.upgrade()
+    assert recorder.calls == [
+        ("add_column", "automation_parameter_presets"),
+        ("drop_constraint", "uq_automation_preset_team_app_name"),
+        ("create_index", "uq_automation_preset_team_app_name"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls[0][0] == "scalar"
+    assert "deleted_at IS NOT NULL" in recorder.calls[0][1]
+    assert recorder.calls[1:] == [
+        ("drop_index", "uq_automation_preset_team_app_name"),
+        ("create_unique_constraint", "uq_automation_preset_team_app_name"),
+        ("drop_column", "automation_parameter_presets"),
+    ]
+
+
+def test_parameter_preset_historical_reference_deletion_downgrade_fails_closed(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260920_0038_parameter_preset_historical_reference_deletion_v1",
+    )
+    recorder = OperationRecorder()
+    recorder.scalar_values = [1]
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    with pytest.raises(RuntimeError, match="已逻辑删除"):
+        migration.downgrade()
+
+    assert not [call for call in recorder.calls if call[0] == "drop_index"]

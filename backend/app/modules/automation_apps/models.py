@@ -1,14 +1,17 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -79,7 +82,14 @@ class AutomationParameterPreset(TimestampMixin, Base):
             name="input_schema_snapshot_object",
         ),
         CheckConstraint("version > 0", name="positive_version"),
-        UniqueConstraint("team_id", "app_id", "name", name="uq_automation_preset_team_app_name"),
+        Index(
+            "uq_automation_preset_team_app_name",
+            "team_id",
+            "app_id",
+            "name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         Index(
             "ix_automation_preset_team_app_created",
             "team_id",
@@ -127,6 +137,12 @@ class AutomationParameterPreset(TimestampMixin, Base):
         default=lambda: {"fields": []},
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Keep the durable Task/Schedule foreign-key history intact while removing
+    # the preset from all new configuration reads and selections.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     @property
     def input_schema(self) -> dict[str, Any]:

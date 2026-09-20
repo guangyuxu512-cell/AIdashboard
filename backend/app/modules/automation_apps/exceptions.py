@@ -21,11 +21,18 @@ class AutomationParameterPresetVersionConflictError(AppError):
 
 class AutomationParameterPresetInUseError(AppError):
     code = "AUTOMATION_PARAMETER_PRESET_IN_USE"
-    message = "该配置已被历史任务或定时计划引用，无法删除"
+    message = "该配置仍被未删除的定时计划引用，请先更换配置或删除关联计划"
     status_code = 409
 
-    def __init__(self, reference_types: tuple[str, ...] = ()) -> None:
-        super().__init__(details={"reference_types": list(reference_types)})
+    def __init__(self, schedules: tuple[tuple[object, str], ...] = ()) -> None:
+        super().__init__(
+            details={
+                "schedules": [
+                    {"schedule_id": str(schedule_id), "name": name}
+                    for schedule_id, name in schedules
+                ],
+            },
+        )
 
 
 class AutomationParameterPresetInvalidError(AppError):

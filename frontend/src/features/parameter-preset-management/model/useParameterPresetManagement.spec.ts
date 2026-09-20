@@ -3,6 +3,7 @@ import { defineComponent, h, ref, type Ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AutomationParameterPresetDto } from '@/entities/automation-application'
+import { ApiError } from '@/shared/api'
 
 import { useParameterPresetManagement } from './useParameterPresetManagement'
 
@@ -135,6 +136,30 @@ describe('useParameterPresetManagement', () => {
       (mocks.remove as { mutateAsync: unknown }).mutateAsync,
     ).toHaveBeenCalledWith({ appId: 'app-1', presetId: 'preset-last-page' })
     expect(listParams()).toEqual({ deviceId: null, appId: null, query: null, page: 1, pageSize: 20 })
+  })
+
+  it('names the undeleted schedules that still block removal', async () => {
+    ;(mocks.remove as { mutateAsync: ReturnType<typeof vi.fn> }).mutateAsync.mockRejectedValue(
+      new ApiError({
+        code: 'AUTOMATION_PARAMETER_PRESET_IN_USE',
+        message: '该配置仍被未删除的定时计划引用，请先更换配置或删除关联计划',
+        details: {
+          schedules: [
+            { schedule_id: 'schedule-1', name: '每日采集' },
+            { schedule_id: 'schedule-2', name: '已停用但未删除的计划' },
+          ],
+        },
+      }),
+    )
+    const management = mountManagement()
+    management.requestRemove(preset)
+
+    await management.confirmRemove()
+
+    expect(management.removeError.value).toBe(
+      '该配置仍被未删除的定时计划引用，请先更换配置或删除关联计划：每日采集、已停用但未删除的计划',
+    )
+    expect(management.removeVisible.value).toBe(true)
   })
 
   it('does not reinterpret an unknown application display name as an app id', () => {
