@@ -42,7 +42,7 @@ const authorizationQuery = useAccessTeamAuthorizationQuery(teamId)
 const deviceQuery = useDeviceListQuery(
   computed(() => ({
     page: 1,
-    pageSize: 200,
+    pageSize: 100,
     filters: emptyDeviceFilters(),
   })),
   computed(() => props.show),
@@ -50,7 +50,7 @@ const deviceQuery = useDeviceListQuery(
 const shopQuery = useShopListQuery(
   computed(() => ({
     page: 1,
-    pageSize: 200,
+    pageSize: 100,
     filters: emptyShopFilters(),
     referenceOptions: { includeDevices: false, includeOwners: false },
   })),
