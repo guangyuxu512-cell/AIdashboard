@@ -513,16 +513,93 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert scheduled_task.parameter_preset_id == preset.preset_id
             assert scheduled_task.parameter_preset_version == updated_preset.version
 
+            # Disabled still means the Schedule can be enabled again, so it
+            # remains a live reference until it is explicitly archived.
+            record.enabled = False
+            session.commit()
             with pytest.raises(AutomationParameterPresetInUseError) as error:
                 presets.remove(
                     actor=actor,
                     app_id=app_id,
                     preset_id=preset.preset_id,
                 )
-            assert error.value.details == {"reference_types": ["task", "schedule"]}
+            assert error.value.details == {
+                "schedules": [
+                    {
+                        "schedule_id": str(schedule.schedule_id),
+                        "name": "预设计划",
+                    },
+                ],
+            }
             assert session.get(AutomationParameterPreset, preset.preset_id) is not None
             assert session.get(Task, task.task_id) is not None
             assert session.get(Schedule, schedule.schedule_id) is not None
+
+            ScheduleService(
+                session,
+                task_service=TaskService(
+                    session,
+                    credential_service=credential_service,
+                ),
+            ).archive(schedule.schedule_id, actor, now=now)
+            presets.remove(
+                actor=actor,
+                app_id=app_id,
+                preset_id=preset.preset_id,
+            )
+            deleted_preset = session.get(AutomationParameterPreset, preset.preset_id)
+            assert deleted_preset is not None
+            assert deleted_preset.deleted_at is not None
+            session.expire_all()
+            preserved_task = session.get(Task, task.task_id)
+            assert preserved_task is not None
+            assert preserved_task.parameter_preset_id == preset.preset_id
+            assert preserved_task.parameter_preset_version == preset.version
+            assert (
+                preserved_task.input_json["params"]["店铺参数"][str(shop_a)]["标题"]
+                == "公共标题"
+            )
+            archived_schedule = session.get(Schedule, schedule.schedule_id)
+            assert archived_schedule is not None
+            assert archived_schedule.deleted_at is not None
+            assert archived_schedule.parameter_preset_id == preset.preset_id
+            assert scheduled_task.input_json["params"]["店铺参数"][str(shop_a)]["标题"] == "后续标题"
+            assert all(
+                item.preset_id != preset.preset_id
+                for item in presets.list(actor=actor, app_id=app_id)
+            )
+            with pytest.raises(AutomationParameterPresetNotFoundError):
+                TaskService(session, credential_service=credential_service).create(
+                    TaskCreate(
+                        target_device_id=device_id,
+                        shop_ids=[shop_a],
+                        skill_id="yingdao.app.run",
+                        input={"app_id": app_id, "params": {}},
+                        parameter_preset_id=preset.preset_id,
+                    ),
+                    actor,
+                )
+            with pytest.raises(AutomationParameterPresetNotFoundError):
+                ScheduleService(
+                    session,
+                    task_service=TaskService(
+                        session,
+                        credential_service=credential_service,
+                    ),
+                ).create(
+                    ScheduleCreate(
+                        name="已删除预设计划",
+                        target_device_id=device_id,
+                        shop_ids=[shop_a],
+                        application_id=app_id,
+                        parameter_preset_id=preset.preset_id,
+                        parameters={},
+                        local_time=time(10, 0),
+                        timezone="Asia/Shanghai",
+                    ),
+                    actor,
+                    now=now,
+                )
 
             removable = presets.create(
                 actor=actor,
@@ -537,7 +614,18 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
                 app_id=app_id,
                 preset_id=removable.preset_id,
             )
-            assert session.get(AutomationParameterPreset, removable.preset_id) is None
+            removed_record = session.get(AutomationParameterPreset, removable.preset_id)
+            assert removed_record is not None
+            assert removed_record.deleted_at is not None
+            reused_name = presets.create(
+                actor=actor,
+                app_id=app_id,
+                data=AutomationParameterPresetCreate(
+                    name="无引用配置",
+                    common_parameters={"标题": "重建后的配置", "数量": 0, "启用": False},
+                ),
+            )
+            assert reused_name.preset_id != removable.preset_id
 
             # Presets themselves are Team-scoped.  A Shop has no separate Team
             # ownership field in the current model, so this verifies the real
@@ -580,6 +668,14 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             )
             assert management_page.total == 3
             assert all(item.team_id == team_id for item in management_page.items)
+
+            with pytest.raises(AutomationParameterPresetNotFoundError):
+                presets.remove(
+                    actor=actor,
+                    app_id=app_id,
+                    preset_id=foreign_preset.preset_id,
+                )
+            assert foreign_preset.deleted_at is None
 
             with pytest.raises(AutomationParameterPresetNotFoundError):
                 TaskService(session, credential_service=credential_service).create(
@@ -650,15 +746,18 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
             assert "模板新增必填" not in {
                 field.name for field in preset_b.input_schema.fields
             }
+            # A was logically deleted above and deliberately cannot become a
+            # new Task/Schedule reference.  B stays active and proves that an
+            # existing preset schema remains independent of later application
+            # template changes.
             assert presets.snapshot_for_actor(
                 actor=actor,
                 app_id=app_id,
-                preset_id=preset.preset_id,
+                preset_id=preset_b.preset_id,
                 shop_ids=[shop_a],
             ).parameters["店铺参数"][str(shop_a)] == {
-                "标题": "后续标题",
-                "数量": 0,
-                "启用": False,
+                "标题": "B 标题",
+                "数量": 5,
             }
     finally:
         _cleanup(
@@ -768,10 +867,19 @@ def test_postgresql_preset_schema_has_team_scope_and_schedule_reference(
 ) -> None:
     inspector = inspect(postgresql_engine)
     assert "automation_parameter_presets" in inspector.get_table_names()
-    assert "uq_automation_preset_team_app_name" in {
+    assert "uq_automation_preset_team_app_name" not in {
         item["name"]
         for item in inspector.get_unique_constraints("automation_parameter_presets")
     }
+    active_name_index = next(
+        item
+        for item in inspector.get_indexes("automation_parameter_presets")
+        if item["name"] == "uq_automation_preset_team_app_name"
+    )
+    assert active_name_index["unique"] is True
+    assert "deleted_at IS NULL" in str(
+        active_name_index.get("dialect_options", {}).get("postgresql_where", ""),
+    )
     checks = {
         item["sqltext"]
         for item in inspector.get_check_constraints("automation_parameter_presets")
@@ -780,6 +888,10 @@ def test_postgresql_preset_schema_has_team_scope_and_schedule_reference(
     assert any("jsonb_typeof(shop_overrides)" in check for check in checks)
     assert any("jsonb_typeof(input_schema_snapshot)" in check for check in checks)
     assert "input_schema_snapshot" in {
+        column["name"]
+        for column in inspector.get_columns("automation_parameter_presets")
+    }
+    assert "deleted_at" in {
         column["name"]
         for column in inspector.get_columns("automation_parameter_presets")
     }
