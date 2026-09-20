@@ -81,6 +81,14 @@ function select(item: ContextSwitchItem): void {
 }
 
 .context-switch-bar__item--active {
-  color: var(--accent-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+
+.context-switch-bar__item--active:hover {
+  color: var(--color-primary-pressed);
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-pressed);
 }
 </style>
