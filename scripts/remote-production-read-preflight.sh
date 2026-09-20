@@ -64,6 +64,7 @@ docker exec \
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping
 from typing import Any
 
@@ -71,6 +72,19 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.database.session import create_database_engine
+
+
+def safe_excepthook(
+    exception_type: type[BaseException],
+    exception: BaseException,
+    traceback: Any,
+) -> None:
+    # Do not let driver exceptions place a database URL or connection context in
+    # an Actions log. The fixed code is enough for the operator to investigate.
+    print(json.dumps({"report_version": 1, "preflight_error": "DATABASE_READ_FAILED"}))
+
+
+sys.excepthook = safe_excepthook
 
 
 def serialize(value: Any) -> Any:
@@ -133,7 +147,7 @@ with engine.connect() as connection:
             "database": scalar(connection, "SELECT current_database()"),
             "database_role": scalar(connection, "SELECT current_user"),
             "migration_head": scalar(connection, "SELECT version_num FROM alembic_version"),
-            "asset_storage_mode": settings.asset_storage_mode,
+            "asset_storage_mode": serialize(settings.asset_storage_mode),
         }
 
         has_super_column = column_exists(connection, "users", "is_super_account")
