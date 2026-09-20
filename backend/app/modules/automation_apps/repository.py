@@ -43,6 +43,7 @@ class AutomationParameterPresetRepository:
         statement = DataScopePolicy.apply(
             select(AutomationParameterPreset).where(
                 AutomationParameterPreset.app_id == app_id,
+                AutomationParameterPreset.deleted_at.is_(None),
             ),
             team_id_column=AutomationParameterPreset.team_id,
             created_by_user_id_column=AutomationParameterPreset.created_by_user_id,
@@ -69,12 +70,15 @@ class AutomationParameterPresetRepository:
             select(AutomationParameterPreset).where(
                 AutomationParameterPreset.preset_id == preset_id,
                 AutomationParameterPreset.app_id == app_id,
+                AutomationParameterPreset.deleted_at.is_(None),
             ),
             team_id_column=AutomationParameterPreset.team_id,
             created_by_user_id_column=AutomationParameterPreset.created_by_user_id,
             actor=actor,
         )
-        return self.session.scalar(statement.with_for_update() if for_update else statement)
+        return self.session.scalar(
+            statement.with_for_update() if for_update else statement,
+        )
 
     def get_for_team(
         self,
@@ -82,14 +86,17 @@ class AutomationParameterPresetRepository:
         team_id: object,
         app_id: str,
         preset_id: object,
+        for_update: bool = False,
     ) -> AutomationParameterPreset | None:
-        return self.session.scalar(
+        statement = (
             select(AutomationParameterPreset).where(
                 AutomationParameterPreset.preset_id == preset_id,
                 AutomationParameterPreset.team_id == team_id,
                 AutomationParameterPreset.app_id == app_id,
-            ),
+                AutomationParameterPreset.deleted_at.is_(None),
+            )
         )
+        return self.session.scalar(statement.with_for_update() if for_update else statement)
 
     def list_all_for_actor(
         self,
@@ -144,7 +151,9 @@ class AutomationParameterPresetRepository:
         app_ids: tuple[str, ...] | None,
         name_query: str | None,
     ):
-        statement = select(AutomationParameterPreset)
+        statement = select(AutomationParameterPreset).where(
+            AutomationParameterPreset.deleted_at.is_(None),
+        )
         if app_id is not None:
             statement = statement.where(AutomationParameterPreset.app_id == app_id)
         if app_ids is not None:
@@ -179,6 +188,7 @@ class AutomationParameterPresetRepository:
             AutomationParameterPreset.team_id == team_id,
             AutomationParameterPreset.app_id == app_id,
             AutomationParameterPreset.name == name,
+            AutomationParameterPreset.deleted_at.is_(None),
         ]
         if exclude_preset_id is not None:
             filters.append(AutomationParameterPreset.preset_id != exclude_preset_id)
@@ -190,29 +200,25 @@ class AutomationParameterPresetRepository:
             ),
         )
 
-    def reference_types(self, preset_id: object) -> tuple[str, ...]:
-        """Return only the durable records that prevent removing a preset.
+    def active_schedule_references(
+        self,
+        preset_id: object,
+    ) -> tuple[tuple[object, str], ...]:
+        """Return undeleted Schedules that still need the current preset.
 
-        Imports remain local because the automation app module owns the preset
-        repository while Task and Schedule own their respective models.
+        Task inputs are already immutable snapshots.  Archived Schedules are
+        likewise historical records and can no longer create another Task.
         """
         from app.modules.schedules.models import Schedule
-        from app.modules.tasks.models import Task
 
-        references: list[str] = []
-        if self.session.scalar(
-            select(Task.task_id)
-            .where(Task.parameter_preset_id == preset_id)
-            .limit(1),
-        ) is not None:
-            references.append("task")
-        if self.session.scalar(
-            select(Schedule.schedule_id)
-            .where(Schedule.parameter_preset_id == preset_id)
-            .limit(1),
-        ) is not None:
-            references.append("schedule")
-        return tuple(references)
-
-    def remove(self, preset: AutomationParameterPreset) -> None:
-        self.session.delete(preset)
+        return tuple(
+            (schedule_id, name)
+            for schedule_id, name in self.session.execute(
+                select(Schedule.schedule_id, Schedule.name)
+                .where(
+                    Schedule.parameter_preset_id == preset_id,
+                    Schedule.deleted_at.is_(None),
+                )
+                .order_by(Schedule.created_at.asc(), Schedule.schedule_id.asc()),
+            )
+        )

@@ -13,7 +13,7 @@ import {
   useDeviceListQuery,
   useDeviceProviderInventoriesQuery,
 } from '@/entities/device'
-import { getErrorMessage, isInitialQueryLoading } from '@/shared/api'
+import { getErrorMessage, isInitialQueryLoading, toApiError } from '@/shared/api'
 
 function emptyDeviceFilters(): DeviceListFilters {
   return {
@@ -23,6 +23,31 @@ function emptyDeviceFilters(): DeviceListFilters {
     capability: null,
     keyword: '',
   }
+}
+
+function getPresetRemovalErrorMessage(error: unknown): string {
+  const apiError = toApiError(error)
+  if (apiError.code !== 'AUTOMATION_PARAMETER_PRESET_IN_USE') {
+    return apiError.message
+  }
+  const schedules =
+    apiError.details &&
+    !Array.isArray(apiError.details) &&
+    typeof apiError.details === 'object'
+      ? (apiError.details as { schedules?: unknown }).schedules
+      : null
+  const names = Array.isArray(schedules)
+    ? schedules.flatMap((schedule) =>
+        schedule &&
+        typeof schedule === 'object' &&
+        typeof (schedule as { name?: unknown }).name === 'string'
+          ? [(schedule as { name: string }).name]
+          : [],
+      )
+    : []
+  return names.length > 0
+    ? `${apiError.message}：${names.join('、')}`
+    : apiError.message
 }
 
 export function useParameterPresetManagement() {
@@ -178,7 +203,7 @@ export function useParameterPresetManagement() {
         await presetsQuery.refetch()
       }
     } catch (error) {
-      removeError.value = getErrorMessage(error)
+      removeError.value = getPresetRemovalErrorMessage(error)
     }
   }
 
