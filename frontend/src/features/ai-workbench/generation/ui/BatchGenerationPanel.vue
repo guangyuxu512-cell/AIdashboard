@@ -429,9 +429,12 @@ function retryTemplate(identity: BatchTemplateExecutionIdentity): void {
 }
 
 .batch-generation-product-list {
+  box-sizing: border-box;
   height: calc(var(--table-list-row-slot-height) * 4 + var(--space-1) * 3);
   min-width: 0;
   overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
 }
 
 .batch-preflight__stats {
