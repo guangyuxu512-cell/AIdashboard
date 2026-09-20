@@ -8,7 +8,6 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import (
     HumanUserDisabledError,
-    InvalidDataScopeError,
     TeamAccessDeniedError,
     TeamContextRequiredError,
     TeamMembershipRequiredError,
@@ -131,7 +130,9 @@ def test_actor_context_selects_an_explicit_active_membership() -> None:
     )
 
     assert actor.team_id == second[1].team_id
-    assert actor.data_scope is DataScope.SELF
+    # Legacy SELF/TEAM/ALL values are historical metadata only.  A normal
+    # member's live scope is always its one active Team.
+    assert actor.data_scope is DataScope.TEAM
 
 
 def test_actor_context_requires_selection_for_multiple_active_teams() -> None:
@@ -171,7 +172,7 @@ def test_actor_context_rejects_no_membership_and_disabled_user() -> None:
         service.resolve(user_id=user.user_id, requested_team_id=None)
 
 
-def make_actor(scope: object) -> ActorContext:
+def make_actor(scope: object, *, is_super_account: bool = False) -> ActorContext:
     return ActorContext(
         user_id=uuid4(),
         user_display_name="查询用户",
@@ -179,10 +180,11 @@ def make_actor(scope: object) -> ActorContext:
         membership_id=uuid4(),
         role_code="member",
         data_scope=cast(Any, scope),
+        is_super_account=is_super_account,
     )
 
 
-def test_data_scope_policy_applies_self_team_and_all_predicates() -> None:
+def test_data_scope_policy_applies_team_predicate_or_super_account_bypass() -> None:
     entities = table(
         "entities",
         column("entity_id"),
@@ -191,40 +193,57 @@ def test_data_scope_policy_applies_self_team_and_all_predicates() -> None:
     )
     base = select(entities)
 
-    self_statement = DataScopePolicy.apply(
-        base,
-        team_id_column=entities.c.team_id,
-        created_by_user_id_column=entities.c.created_by_user_id,
-        actor=make_actor(DataScope.SELF),
-    )
-    team_statement = DataScopePolicy.apply(
+    member_statement = DataScopePolicy.apply(
         base,
         team_id_column=entities.c.team_id,
         created_by_user_id_column=entities.c.created_by_user_id,
         actor=make_actor(DataScope.TEAM),
     )
-    all_statement = DataScopePolicy.apply(
+    super_statement = DataScopePolicy.apply(
         base,
         team_id_column=entities.c.team_id,
         created_by_user_id_column=entities.c.created_by_user_id,
-        actor=make_actor(DataScope.ALL),
+        actor=make_actor(DataScope.ALL, is_super_account=True),
     )
 
-    assert str(self_statement.whereclause).count("entities.team_id") == 1
-    assert str(self_statement.whereclause).count("entities.created_by_user_id") == 1
-    assert str(team_statement.whereclause).count("entities.team_id") == 1
-    assert "created_by_user_id" not in str(team_statement.whereclause)
-    assert all_statement.whereclause is None
+    assert str(member_statement.whereclause).count("entities.team_id") == 1
+    assert "created_by_user_id" not in str(member_statement.whereclause)
+    assert super_statement.whereclause is None
 
 
-def test_data_scope_policy_fails_closed_for_an_untyped_or_unknown_scope() -> None:
+def test_data_scope_policy_fails_closed_without_an_effective_team() -> None:
     entities = table("entities", column("team_id"), column("created_by_user_id"))
 
-    for invalid_scope in ("all", "unexpected", None):
-        with pytest.raises(InvalidDataScopeError):
-            DataScopePolicy.apply(
-                select(entities),
-                team_id_column=entities.c.team_id,
-                created_by_user_id_column=entities.c.created_by_user_id,
-                actor=make_actor(invalid_scope),
-            )
+    actor = ActorContext(
+        user_id=uuid4(),
+        user_display_name="未分配成员",
+        team_id=None,
+        membership_id=None,
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
+    with pytest.raises(TeamContextRequiredError):
+        DataScopePolicy.apply(
+            select(entities),
+            team_id_column=entities.c.team_id,
+            created_by_user_id_column=entities.c.created_by_user_id,
+            actor=actor,
+        )
+
+
+def test_super_account_resolves_without_membership_or_default_team() -> None:
+    user = User(
+        user_id=uuid4(),
+        display_name="超级账号",
+        enabled=True,
+        is_super_account=True,
+    )
+    actor = actor_service(user, []).resolve(
+        user_id=user.user_id,
+        requested_team_id=None,
+    )
+
+    assert actor.is_super_account is True
+    assert actor.team_id is None
+    assert actor.membership_id is None
+    assert actor.data_scope is DataScope.ALL

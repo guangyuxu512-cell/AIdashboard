@@ -8,16 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.modules.access.contracts import HumanPrincipal
-from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import (
     HumanAuthenticationRequiredError,
     HumanUserDisabledError,
 )
-from app.modules.access.models import TeamMembership
-from app.modules.access.repository import MembershipRepository, TeamRepository
-from app.modules.access.roles import DEFAULT_ROLE_CODE, DEFAULT_TEAM_NAME
 from app.modules.human_auth.exceptions import (
-    DefaultTeamNotFoundError,
     HumanBootstrapNotAllowedError,
     HumanLoginFailedError,
     HumanLoginNameConflictError,
@@ -53,18 +48,12 @@ class HumanAuthService:
         *,
         user_repository: UserRepository | None = None,
         session_repository: HumanSessionRepository | None = None,
-        team_repository: TeamRepository | None = None,
-        membership_repository: MembershipRepository | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.password_service = password_service
         self.user_repository = user_repository or UserRepository(session)
         self.session_repository = session_repository or HumanSessionRepository(session)
-        self.team_repository = team_repository or TeamRepository(session)
-        self.membership_repository = membership_repository or MembershipRepository(
-            session,
-        )
 
     def login(
         self,
@@ -183,30 +172,18 @@ class HumanAuthService:
         normalized_display_name = display_name.strip()
         if not normalized_display_name or len(normalized_display_name) > 100:
             raise ValueError("显示名称不能为空且不能超过100个字符")
-        default_team = self.team_repository.get_by_name(DEFAULT_TEAM_NAME)
-        if default_team is None or not default_team.enabled:
-            raise DefaultTeamNotFoundError()
-
         user = User(
             user_id=generate_id(),
             display_name=normalized_display_name,
             login_name=normalize_login_name(login_name),
             password_hash=self.password_service.hash_password(password),
             enabled=True,
+            # The first locally bootstrapped operator is explicitly the one
+            # company-level super account.  It deliberately receives no
+            # default-Team membership.
+            is_super_account=True,
         )
         self.user_repository.add(user)
-        # User 与 Membership 没有 ORM relationship；先落下 User，确保 FK 插入顺序稳定。
-        self.session.flush()
-        self.membership_repository.add(
-            TeamMembership(
-                membership_id=generate_id(),
-                team_id=default_team.team_id,
-                user_id=user.user_id,
-                role_code=DEFAULT_ROLE_CODE,
-                data_scope=DataScope.TEAM.value,
-                enabled=True,
-            ),
-        )
         self.session.commit()
         self.session.refresh(user)
         return user

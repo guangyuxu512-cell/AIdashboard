@@ -251,7 +251,7 @@ class GenerationService:
     ) -> GenerationJob:
         fingerprint = self._submission_fingerprint(data)
         existing = self.generation_repository.get_by_submission(
-            team_id=actor.team_id,
+            team_id=actor.require_team_id(),
             created_by_user_id=actor.user_id,
             submission_key=data.submission_key,
         )
@@ -267,7 +267,7 @@ class GenerationService:
             self._validate_model_plan(model, items)
             job = GenerationJob(
                 generation_job_id=items[0].generation_job_id,
-                team_id=actor.team_id,
+                team_id=actor.require_team_id(),
                 created_by_user_id=actor.user_id,
                 model_id=model.model_id,
                 model=model,
@@ -285,7 +285,7 @@ class GenerationService:
         except IntegrityError:
             self.session.rollback()
             raced = self.generation_repository.get_by_submission(
-                team_id=actor.team_id,
+                team_id=actor.require_team_id(),
                 created_by_user_id=actor.user_id,
                 submission_key=data.submission_key,
             )
@@ -766,7 +766,7 @@ class GenerationService:
         if data.prompt_template_id is not None:
             source_prompt = self.template_repository.get_prompt_source_for_generation(
                 actor=actor,
-                team_id=actor.team_id,
+                team_id=actor.require_team_id(),
                 prompt_template_id=data.prompt_template_id,
             )
             if source_prompt is None:
@@ -826,7 +826,7 @@ class GenerationService:
             selected_product_ids = data.selected_product_ids
         products = self.material_group_repository.list_groups_for_generation(
             actor=actor,
-            team_id=actor.team_id,
+            team_id=actor.require_team_id(),
             material_group_ids=selected_product_ids,
             limit=MAX_GENERATION_SELECTION_IDS + 1,
         )
@@ -853,7 +853,7 @@ class GenerationService:
             raise GenerationPlanTooLargeError()
         template_groups = self.template_repository.list_groups_for_generation(
             actor=actor,
-            team_id=actor.team_id,
+            team_id=actor.require_team_id(),
             template_group_ids=template_group_ids,
         )
         groups_by_id = {
@@ -1028,7 +1028,7 @@ class GenerationService:
         )
         by_id = {asset.asset_id: asset for asset in assets}
         if set(by_id) != set(unique_ids) or any(
-            asset.team_id != actor.team_id
+            asset.team_id != actor.require_team_id()
             or asset.media_type != AssetMediaType.IMAGE.value
             for asset in assets
         ):

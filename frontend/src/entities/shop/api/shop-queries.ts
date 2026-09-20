@@ -17,10 +17,14 @@ export const shopQueryKeys = {
     ['shops', 'selection-options', deviceId ?? 'all'] as const,
 }
 
-export function useShopListQuery(params: MaybeRefOrGetter<ShopListParams>) {
+export function useShopListQuery(
+  params: MaybeRefOrGetter<ShopListParams>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
   return useQuery({
     queryKey: computed(() => shopQueryKeys.list(toValue(params))),
     queryFn: () => shopDataSource.list(toValue(params)),
+    enabled: computed(() => Boolean(toValue(enabled))),
   })
 }
 

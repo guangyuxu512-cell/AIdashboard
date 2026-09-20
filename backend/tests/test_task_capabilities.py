@@ -27,7 +27,7 @@ from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
 from app.modules.automation_apps.service import ParameterPresetSnapshot
 from app.modules.workers.models import DeviceProviderInventory, DeviceSkillCapability
-from tests.support import FakeSession
+from tests.support import AllowExecutionResources, FakeSession
 
 
 ACTOR = ActorContext(
@@ -202,6 +202,7 @@ def service_for(
         shop_repository=shop_repository,  # type: ignore[arg-type]
         shop_device_binding_repository=shop_device_binding_repository,  # type: ignore[arg-type]
         credential_service=credential_service,  # type: ignore[arg-type]
+        team_authorization_service=AllowExecutionResources(),  # type: ignore[arg-type]
     )
 
 

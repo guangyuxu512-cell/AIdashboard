@@ -100,16 +100,17 @@ class ActorContextRead(BaseModel):
 
     user_id: UUID
     user_display_name: str
-    team_id: UUID
-    membership_id: UUID
+    team_id: UUID | None
+    membership_id: UUID | None
     role_code: str
     data_scope: DataScope
+    is_super_account: bool
 
 
 class MyTeamMembershipRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    membership_id: UUID
+    membership_id: UUID | None
     team_id: UUID
     team_name: str
     team_enabled: bool
@@ -148,7 +149,18 @@ class AccessMemberCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     login_name: str = Field(min_length=1, max_length=100)
     password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
-    membership: AccessMemberMembershipCreate
+    # A member may be deliberately created without a Team.  ``membership`` is
+    # temporarily accepted only so old clients receive a validation error-free
+    # response while they upgrade; it is converted to the same one-Team input.
+    team_id: UUID | None = None
+    membership: AccessMemberMembershipCreate | None = None
+
+    @model_validator(mode="after")
+    def validate_team_input(self) -> "AccessMemberCreate":
+        if self.team_id is not None and self.membership is not None:
+            if self.team_id != self.membership.team_id:
+                raise ValueError("team_id 与 membership.team_id 不一致")
+        return self
 
     @field_validator("login_name")
     @classmethod
@@ -166,6 +178,14 @@ class AccessMemberUpdate(BaseModel):
         if self.enabled is None:
             raise ValueError("至少提供一个需要更新的字段")
         return self
+
+
+class AccessMemberTeamUpdate(BaseModel):
+    """Assign, move, or remove a member's single effective business Team."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    team_id: UUID | None = None
 
 
 class AccessMemberPasswordReset(BaseModel):
@@ -249,6 +269,7 @@ class AccessMemberRead(BaseModel):
     display_name: str
     login_name: str | None
     enabled: bool
+    is_super_account: bool
     memberships: list[AccessMembershipRead]
     created_at: datetime
     updated_at: datetime
@@ -256,7 +277,39 @@ class AccessMemberRead(BaseModel):
 
 class CurrentModuleAccessRead(BaseModel):
     module_codes: list[ModuleCode]
+    is_super_account: bool
+    # Compatibility output only; no backend authorization checks this legacy
+    # role marker after this migration.
     is_access_administrator: bool
+
+
+class TeamAuthorizationRead(BaseModel):
+    team_id: UUID
+    module_codes: list[ModuleCode]
+    device_ids: list[UUID]
+    shop_ids: list[UUID]
+
+
+class TeamAuthorizationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    module_codes: list[ModuleCode] = Field(default_factory=list)
+    device_ids: list[UUID] = Field(default_factory=list)
+    shop_ids: list[UUID] = Field(default_factory=list)
+
+    @field_validator("module_codes")
+    @classmethod
+    def validate_module_codes(cls, value: list[ModuleCode]) -> list[ModuleCode]:
+        if not module_codes_are_unique(value):
+            raise ValueError("module_codes 不能重复")
+        return value
+
+    @field_validator("device_ids", "shop_ids")
+    @classmethod
+    def validate_resource_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("资源不能重复")
+        return value
 
 
 def is_access_administrator_role(role_code: str) -> bool:

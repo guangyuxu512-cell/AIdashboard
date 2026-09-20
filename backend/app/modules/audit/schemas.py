@@ -29,7 +29,7 @@ class AuditLogRead(BaseModel):
     request_id: str
     actor_user_id: UUID
     actor_display_name: str
-    team_id: UUID
+    team_id: UUID | None
     action: AuditAction
     target_type: AuditTargetType
     target_id: UUID

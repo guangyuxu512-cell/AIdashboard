@@ -30,6 +30,7 @@ function createSource(moduleCodes: string[]): HumanAuthDataSource {
   const access: CurrentModuleAccess = {
     moduleCodes,
     isAccessAdministrator: false,
+    isSuperAccount: false,
   }
   return {
     login: vi.fn().mockResolvedValue(user),

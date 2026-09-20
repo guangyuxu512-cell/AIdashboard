@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 class FakeSession:
@@ -37,3 +37,16 @@ class FakeSession:
             setattr(entity, "created_at", now)
         if hasattr(entity, "updated_at"):
             setattr(entity, "updated_at", now)
+
+
+class AllowExecutionResources:
+    """Test double for task-focused tests that do not exercise Team grants."""
+
+    def require_execution_resources(
+        self,
+        *,
+        team_id: UUID,
+        device_id: UUID,
+        shop_ids: list[UUID],
+    ) -> None:
+        del team_id, device_id, shop_ids

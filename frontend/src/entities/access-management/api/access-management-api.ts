@@ -3,10 +3,13 @@ import { httpClient, type PageDto, type PageParams } from '@/shared/api'
 import type {
   AccessMemberCreateDto,
   AccessMemberReadDto,
+  AccessMemberTeamWriteDto,
   AccessMemberUpdateDto,
   AccessMembershipUpdateDto,
   AccessMembershipWriteDto,
   AccessTeamReadDto,
+  AccessTeamAuthorizationReadDto,
+  AccessTeamAuthorizationWriteDto,
   AccessTeamWriteDto,
 } from './contracts'
 
@@ -43,6 +46,16 @@ export const accessManagementApi = {
   ): Promise<AccessMemberReadDto> {
     const response = await httpClient.patch<AccessMemberReadDto>(
       `${basePath}/members/${userId}`,
+      data,
+    )
+    return response.data
+  },
+  async moveMemberToTeam(
+    userId: string,
+    data: AccessMemberTeamWriteDto,
+  ): Promise<AccessMemberReadDto> {
+    const response = await httpClient.put<AccessMemberReadDto>(
+      `${basePath}/members/${userId}/team`,
       data,
     )
     return response.data
@@ -96,6 +109,33 @@ export const accessManagementApi = {
   ): Promise<AccessTeamReadDto> {
     const response = await httpClient.patch<AccessTeamReadDto>(
       `${basePath}/teams/${teamId}`,
+      data,
+    )
+    return response.data
+  },
+  async archiveTeam(teamId: string): Promise<AccessTeamReadDto> {
+    const response = await httpClient.post<AccessTeamReadDto>(
+      `${basePath}/teams/${teamId}/archive`,
+    )
+    return response.data
+  },
+  async deleteTeam(teamId: string): Promise<void> {
+    await httpClient.delete(`${basePath}/teams/${teamId}`)
+  },
+  async getTeamAuthorization(
+    teamId: string,
+  ): Promise<AccessTeamAuthorizationReadDto> {
+    const response = await httpClient.get<AccessTeamAuthorizationReadDto>(
+      `${basePath}/teams/${teamId}/authorization`,
+    )
+    return response.data
+  },
+  async updateTeamAuthorization(
+    teamId: string,
+    data: AccessTeamAuthorizationWriteDto,
+  ): Promise<AccessTeamAuthorizationReadDto> {
+    const response = await httpClient.put<AccessTeamAuthorizationReadDto>(
+      `${basePath}/teams/${teamId}/authorization`,
       data,
     )
     return response.data

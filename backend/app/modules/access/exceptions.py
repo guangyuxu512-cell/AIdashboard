@@ -45,7 +45,7 @@ class TeamMembershipRequiredError(AppError):
 
 class TeamContextRequiredError(AppError):
     code = "TEAM_CONTEXT_REQUIRED"
-    message = "当前用户属于多个团队，请指定团队上下文"
+    message = "请先选择目标团队"
     status_code = 409
 
 
@@ -67,10 +67,40 @@ class AccessAdministrationForbiddenError(AppError):
     status_code = 403
 
 
+class SuperAccountRequiredError(AppError):
+    code = "SUPER_ACCOUNT_REQUIRED"
+    message = "仅超级账号可以维护公司公共资源"
+    status_code = 403
+
+
+class SuperAccountConflictError(AppError):
+    code = "SUPER_ACCOUNT_CONFLICT"
+    message = "系统已有其他超级账号；请先显式完成交接"
+    status_code = 409
+
+
 class ModuleAccessDeniedError(AppError):
     code = "MODULE_ACCESS_DENIED"
     message = "当前用户无权使用此功能模块"
     status_code = 403
+
+
+class TeamResourceAccessDeniedError(AppError):
+    code = "TEAM_RESOURCE_ACCESS_DENIED"
+    message = "当前团队无权使用该资源"
+    status_code = 403
+
+
+class TeamResourceInvalidError(AppError):
+    code = "TEAM_RESOURCE_INVALID"
+    message = "团队授权包含不存在或已移除的资源"
+    status_code = 422
+
+
+class TeamInUseError(AppError):
+    code = "TEAM_IN_USE"
+    message = "团队仍有关联成员、资源授权或业务数据，只能归档"
+    status_code = 409
 
 
 class InvalidModuleAccessError(AppError):
@@ -82,6 +112,12 @@ class InvalidModuleAccessError(AppError):
 class LastAccessAdministratorRequiredError(AppError):
     code = "LAST_ACCESS_ADMINISTRATOR_REQUIRED"
     message = "系统至少需要保留一名可管理用户与权限的管理员"
+    status_code = 409
+
+
+class LastSuperAccountRequiredError(AppError):
+    code = "LAST_SUPER_ACCOUNT_REQUIRED"
+    message = "系统至少需要保留一个启用的超级账号"
     status_code = 409
 
 

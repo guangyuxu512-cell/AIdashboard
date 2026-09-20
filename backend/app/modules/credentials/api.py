@@ -8,14 +8,18 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import require_module_access
-from app.modules.access.module_access import ModuleCode
+from app.modules.access.dependencies import get_super_account
 from app.modules.credentials.schemas import (
     CredentialCreate,
     CredentialStatusRead,
     CredentialUpdate,
 )
 from app.modules.credentials.service import CredentialService
+
+
+# Existing dependency override consumers retain this import path.  It is an
+# exact alias of the super-account guard, not a Shop-module permission path.
+get_shop_authorized_actor = get_super_account
 
 
 router = APIRouter(
@@ -27,9 +31,6 @@ router = APIRouter(
         409: {"model": ErrorResponse, "description": "账号凭证关系冲突"},
     },
 )
-
-
-get_shop_authorized_actor = require_module_access(ModuleCode.SHOP)
 
 
 def get_credential_service(

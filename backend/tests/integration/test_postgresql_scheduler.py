@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
-from app.modules.access.models import Team
+from app.modules.access.models import Team, TeamDeviceAccess
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.devices.models import Device
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
@@ -135,6 +135,9 @@ def _cleanup(
                 AutomationApplicationConfig.app_id == "scheduler-safe-app",
             ),
         )
+        session.execute(
+            delete(TeamDeviceAccess).where(TeamDeviceAccess.team_id == team_id),
+        )
         session.execute(delete(Device).where(Device.device_id == device_id))
         session.execute(delete(User).where(User.user_id == user_id))
         session.execute(delete(Team).where(Team.team_id == team_id))
@@ -175,6 +178,8 @@ def test_schedule_shop_set_can_be_replaced_and_reordered(
                     for position, shop_id in enumerate(shop_ids, start=1)
                 ],
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.add(
                 Schedule(
                     schedule_id=schedule_id,
@@ -220,6 +225,11 @@ def test_schedule_shop_set_can_be_replaced_and_reordered(
             )
             session.execute(
                 delete(Schedule).where(Schedule.schedule_id == schedule_id),
+            )
+            session.execute(
+                delete(TeamDeviceAccess).where(
+                    TeamDeviceAccess.team_id == team_id,
+                ),
             )
             session.execute(delete(Shop).where(Shop.shop_id.in_(shop_ids)))
             session.execute(delete(Device).where(Device.device_id == device_id))
@@ -294,6 +304,8 @@ def test_scheduler_coalesces_is_idempotent_and_keeps_list_query_bounded(
                     version=1,
                 ),
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
         with Session(postgresql_engine) as session:
@@ -680,6 +692,8 @@ def test_occurrence_date_filter_uses_runs_or_next_run_in_the_selected_timezone(
                     ),
                 ],
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
         with Session(postgresql_engine) as session:
@@ -765,6 +779,8 @@ def test_scheduler_created_task_uses_existing_worker_runtime_lifecycle(
                     next_run_at=now,
                 ),
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
         with Session(postgresql_engine) as session:
@@ -907,6 +923,8 @@ def test_business_skill_schedule_validates_current_contract_and_uses_task_runtim
                     input_schema=schema,
                 ),
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
         with Session(postgresql_engine) as session:
@@ -1103,6 +1121,8 @@ def test_same_time_schedules_create_tasks_in_stable_order_and_failure_does_not_b
                         next_run_at=now,
                     ),
                 )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
         triggered = []

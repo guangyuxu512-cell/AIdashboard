@@ -154,6 +154,13 @@ Migration `20260905_0029_device_task_human_access_v1` 将这对字段加到 `dev
 `tasks`，使用 `RESTRICT` 外键、Team/创建者查询索引和 `team_id NOT NULL`。升级时仅在数据库恰有一个
 Team 时回填既有记录的 Team；无法可靠归属的历史创建者保持 `NULL`，多 Team 的歧义数据拒绝迁移。
 
+Migration `20260920_0038_parameter_preset_historical_reference_deletion_v1` 为
+`automation_parameter_presets` 增加可空 `deleted_at`，将名称唯一性改为仅对正常可用记录生效的
+`(team_id, app_id, name) WHERE deleted_at IS NULL` 部分唯一索引。删除预设时保留其行及 Task / 已归档
+Schedule 的历史参数快照；未归档 Schedule（无论是否启用）仍必须先更换配置或删除。创建 Task 或
+Schedule 时只接受 `deleted_at IS NULL` 的预设。该 Migration 的降级在存在任何已逻辑删除预设时
+Fail Closed，避免将历史引用与名称唯一性恢复为不一致状态；生产回退须先评估并处理该数据前置条件。
+
 ## AI Provider V1 数据库
 
 Migration `20260905_0030_ai_provider_v1` 增加 `generation_provider_executions`。该表以

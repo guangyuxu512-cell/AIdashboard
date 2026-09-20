@@ -6,6 +6,9 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
@@ -18,6 +21,7 @@ pytestmark = pytest.mark.integration
 def _task(
     *,
     task_id: UUID,
+    team_id: UUID,
     device_id: UUID,
     status: TaskStatus,
     created_at: datetime,
@@ -26,6 +30,8 @@ def _task(
 ) -> Task:
     values = {
         "task_id": task_id,
+        "team_id": team_id,
+        "created_by_user_id": None,
         "target_device_id": device_id,
         "skill_id": "system.echo",
         "execution_display_name": name,
@@ -59,7 +65,18 @@ def _event(task_id: UUID, seq: int, at: datetime) -> TaskEvent:
     )
 
 
-def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
+def _actor(team_id: UUID) -> ActorContext:
+    return ActorContext(
+        user_id=uuid4(),
+        user_display_name="Task query fixture",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="member",
+        data_scope=DataScope.TEAM,
+    )
+
+
+def _cleanup(engine: Engine, device_ids: set[UUID], *, team_id: UUID) -> None:
     with Session(engine) as session:
         task_ids = list(
             session.scalars(
@@ -70,6 +87,7 @@ def _cleanup(engine: Engine, device_ids: set[UUID]) -> None:
             session.execute(delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids)))
             session.execute(delete(Task).where(Task.task_id.in_(task_ids)))
         session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
+        session.execute(delete(Team).where(Team.team_id == team_id))
         session.commit()
 
 
@@ -79,6 +97,8 @@ def test_task_date_ranges_combine_with_status_device_and_search(
     device_a = uuid4()
     device_b = uuid4()
     device_ids = {device_a, device_b}
+    team_id = uuid4()
+    actor = _actor(team_id)
     search_marker = f"date-fixture-{device_a}"
     start_today = datetime.now(UTC).replace(
         hour=0,
@@ -96,12 +116,23 @@ def test_task_date_ranges_combine_with_status_device_and_search(
     }
     try:
         with Session(postgresql_engine) as session:
+            session.add(Team(team_id=team_id, name="Task Query Integration Team"))
+            session.flush()
             session.add_all(
                 [
-                    Device(device_id=device_a, display_name="日期设备 A"),
-                    Device(device_id=device_b, display_name="日期设备 B"),
+                    Device(
+                        device_id=device_a,
+                        team_id=team_id,
+                        display_name="日期设备 A",
+                    ),
+                    Device(
+                        device_id=device_b,
+                        team_id=team_id,
+                        display_name="日期设备 B",
+                    ),
                     _task(
                         task_id=ids["today"],
+                        team_id=team_id,
                         device_id=device_a,
                         status=TaskStatus.FAILED,
                         created_at=start_today,
@@ -110,6 +141,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
                     ),
                     _task(
                         task_id=ids["today_second"],
+                        team_id=team_id,
                         device_id=device_a,
                         status=TaskStatus.SUCCESS,
                         created_at=start_today,
@@ -118,6 +150,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
                     ),
                     _task(
                         task_id=ids["yesterday"],
+                        team_id=team_id,
                         device_id=device_a,
                         status=TaskStatus.FAILED,
                         created_at=start_today - timedelta(hours=23),
@@ -126,6 +159,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
                     ),
                     _task(
                         task_id=ids["six_days"],
+                        team_id=team_id,
                         device_id=device_b,
                         status=TaskStatus.PENDING,
                         created_at=start_today - timedelta(days=6),
@@ -133,6 +167,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
                     ),
                     _task(
                         task_id=ids["eight_days"],
+                        team_id=team_id,
                         device_id=device_b,
                         status=TaskStatus.RUNNING,
                         created_at=start_today - timedelta(days=8),
@@ -140,6 +175,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
                     ),
                     _task(
                         task_id=ids["thirty_one_days"],
+                        team_id=team_id,
                         device_id=device_b,
                         status=TaskStatus.SUCCESS,
                         created_at=start_today - timedelta(days=31),
@@ -164,6 +200,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
                 return [
                     item.task_id
                     for item in service.list_management_tasks(
+                        actor=actor,
                         page=1,
                         page_size=20,
                         status=status,
@@ -209,7 +246,7 @@ def test_task_date_ranges_combine_with_status_device_and_search(
         assert set(ids.values()) <= set(all_ids)
         assert combined == [ids["yesterday"]]
     finally:
-        _cleanup(postgresql_engine, device_ids)
+        _cleanup(postgresql_engine, device_ids, team_id=team_id)
 
 
 def test_runtime_event_sequence_pages_are_bounded_complete_and_ordered(
@@ -217,13 +254,24 @@ def test_runtime_event_sequence_pages_are_bounded_complete_and_ordered(
 ) -> None:
     device_id = uuid4()
     task_id = uuid4()
+    team_id = uuid4()
+    actor = _actor(team_id)
     now = datetime.now(UTC)
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="日志分页设备"))
+            session.add(Team(team_id=team_id, name="Task Event Integration Team"))
+            session.flush()
+            session.add(
+                Device(
+                    device_id=device_id,
+                    team_id=team_id,
+                    display_name="日志分页设备",
+                ),
+            )
             session.add(
                 _task(
                     task_id=task_id,
+                    team_id=team_id,
                     device_id=device_id,
                     status=TaskStatus.SUCCESS,
                     created_at=now,
@@ -237,24 +285,28 @@ def test_runtime_event_sequence_pages_are_bounded_complete_and_ordered(
         with Session(postgresql_engine) as session:
             service = TaskService(session)
             latest = service.list_events(
+                actor,
                 task_id,
                 after_seq=None,
                 before_seq=None,
                 limit=100,
             )
             middle = service.list_events(
+                actor,
                 task_id,
                 after_seq=None,
                 before_seq=latest.items[0].seq,
                 limit=100,
             )
             earliest = service.list_events(
+                actor,
                 task_id,
                 after_seq=None,
                 before_seq=middle.items[0].seq,
                 limit=100,
             )
             live = service.list_events(
+                actor,
                 task_id,
                 after_seq=200,
                 before_seq=None,
@@ -271,13 +323,15 @@ def test_runtime_event_sequence_pages_are_bounded_complete_and_ordered(
         assert middle.has_more_before is True
         assert earliest.has_more_before is False
     finally:
-        _cleanup(postgresql_engine, {device_id})
+        _cleanup(postgresql_engine, {device_id}, team_id=team_id)
 
 
 def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
     postgresql_engine: Engine,
 ) -> None:
     device_id = uuid4()
+    team_id = uuid4()
+    actor = _actor(team_id)
     now = datetime.now(UTC)
     old = now - timedelta(days=91)
     recent = now - timedelta(days=89)
@@ -289,7 +343,15 @@ def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
     recent_id = uuid4()
     try:
         with Session(postgresql_engine) as session:
-            session.add(Device(device_id=device_id, display_name="Retention 设备"))
+            session.add(Team(team_id=team_id, name="Task Retention Integration Team"))
+            session.flush()
+            session.add(
+                Device(
+                    device_id=device_id,
+                    team_id=team_id,
+                    display_name="Retention 设备",
+                ),
+            )
             for status in (
                 TaskStatus.SUCCESS,
                 TaskStatus.FAILED,
@@ -306,6 +368,7 @@ def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
                 session.add(
                     _task(
                         task_id=task_id,
+                        team_id=team_id,
                         device_id=device_id,
                         status=status,
                         created_at=old,
@@ -317,6 +380,7 @@ def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
             session.add(
                 _task(
                     task_id=no_event_id,
+                    team_id=team_id,
                     device_id=device_id,
                     status=TaskStatus.SUCCESS,
                     created_at=old,
@@ -327,6 +391,7 @@ def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
             session.add(
                 _task(
                     task_id=recent_id,
+                    team_id=team_id,
                     device_id=device_id,
                     status=TaskStatus.SUCCESS,
                     created_at=recent,
@@ -385,6 +450,7 @@ def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
 
         with Session(postgresql_engine) as session:
             partial = TaskService(session).list_events(
+                actor,
                 task_ids["success"],
                 after_seq=None,
                 before_seq=None,
@@ -396,4 +462,4 @@ def test_retention_only_purges_expired_terminal_events_and_keeps_tasks(
         assert purged_task is not None
         assert purged_task.runtime_events_purged_at is not None
     finally:
-        _cleanup(postgresql_engine, {device_id})
+        _cleanup(postgresql_engine, {device_id}, team_id=team_id)

@@ -51,6 +51,11 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 ## Access Foundation V1 Contract
 
+> **0037 覆盖说明：** 本节的多有效 Team / 成员级 Scope 只解释旧 Contract。自
+> `20260919_0037_super_account_team_authorization_v1` 起，当前身份与授权契约以
+> [23-超级账号与团队授权V1.md](23-超级账号与团队授权V1.md) 为准：超级账号无 Membership，
+> 普通成员至多一个有效 Team，`X-Team-ID` 对超级账号是显式写入上下文而不是默认团队。
+
 - `GET /api/v1/access/me`：返回当前请求解析后的 ActorContext。
 - `GET /api/v1/access/me/teams`：返回当前 Human User 的 Team/Membership 摘要，供未来 Team
   Switcher 使用；该接口不要求先选定 Active Team。
@@ -70,6 +75,22 @@ Human Auth V1 已为 `users` 增加可空 `login_name/password_hash`，并以服
 Contract 保持不变。
 
 ## Access Management V1 Contract
+
+> **0037 覆盖说明：** 下方 `access_admin`、成员级模块/Scope 和旧 Membership 编辑描述为
+> 0025 的历史 API 背景。当前管理接口全部要求超级账号；普通成员的模块、设备和店铺可用范围
+> 来自 Team 授权，不再来自 Membership 字段。
+
+当前新增或变更的正式管理接口为：
+
+- `PUT /members/{user_id}/team`：指定唯一目标 Team；`team_id: null` 表示移出团队。
+- `POST /teams/{team_id}/archive`：归档 Team 及其当前成员关系，保留业务数据。
+- `DELETE /teams/{team_id}`：仅无成员、授权关系和业务引用的空 Team 可删除。
+- `GET/PUT /teams/{team_id}/authorization`：读取或原子更新该 Team 的模块、设备和店铺授权。
+- `GET /me/module-access`：返回 `is_super_account`；为旧客户端保留
+  `is_access_administrator` 同义字段。未分配普通成员返回空模块集合，不把有效会话伪装成 401。
+
+超级账号创建 Team-owned 业务对象必须携带有效 `X-Team-ID`。所有普通成员资源查询都必须在
+授权范围内先过滤、再分页；管理列表分页与资源选择器不能用前端全量结果代替服务端校验。
 
 统一前缀为 `/api/v1/access-management`。`GET /me/module-access` 需要有效的 Human
 ActorContext，返回当前选中 Membership 的 `module_codes` 和
@@ -241,9 +262,12 @@ Read DTO 额外返回 `invalid_parameter_names`，它只标记该预设 snapshot
 检查，不能被表述或实现为新的 Shop 人员归属授权。Credential、Cookie 和账号明文永不保存进预设。
 
 `DELETE /api/v1/automation-app-configs/yingdao/{app_id}/parameter-presets/{preset_id}` 也执行相同的
-ActorContext、`device` 和 `shop` Guard。删除只删除无引用的预设；任何历史 `Task` 或 `Schedule` 引用均返回
-`409 / AUTOMATION_PARAMETER_PRESET_IN_USE`（`details.reference_types` 为 `task` 和/或 `schedule`），不改写
-引用、不删除应用字段、Shop 或历史 Task 快照。预检与最终外键约束之间若发生并发引用，同样以该 409 收口。
+ActorContext、`device` 和 `shop` Guard。删除是逻辑删除：日常列表、详情、选择器、复制与新 Task/Schedule
+引用只读取 `deleted_at IS NULL` 的预设；历史 Task 和已归档 Schedule 保留原 `parameter_preset_id`、版本及
+参数快照，不改写应用字段、Shop 或历史输入。未归档 Schedule（包括已停用 Schedule）仍可再次启用或触发，
+因此会返回 `409 / AUTOMATION_PARAMETER_PRESET_IN_USE`，`details.schedules` 精确列出关联计划 ID 与名称，
+用户必须先更换预设或归档计划。Task/Schedule 创建解析预设时与删除使用同一行锁，避免删除后的预设并发进入
+新的引用；已删除预设按 `404 / AUTOMATION_PARAMETER_PRESET_NOT_FOUND` 拒绝新引用。
 
 新建运行／计划的 UI 在应用存在输入字段时必须先明确选择参数预设或“本次手动参数”；未选择不是手动模式，
 不得由客户端隐式提交或展示应用模板字段。该 UI 规则不改变 Backend 的旧手动调用兼容：无预设的正式旧调用

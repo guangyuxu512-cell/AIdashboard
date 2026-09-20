@@ -13,8 +13,14 @@ from sqlalchemy.orm import Session
 
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_access_administrator
+from app.modules.access.dependencies import get_super_account
 from app.modules.access.enums import DataScope
+from app.modules.access.models import (
+    Team,
+    TeamDeviceAccess,
+    TeamModuleAccess,
+    TeamShopAccess,
+)
 from app.modules.devices.api import get_device_authorized_actor
 from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
@@ -39,7 +45,17 @@ from app.modules.users.service import UserService
 
 pytestmark = pytest.mark.integration
 TEST_PREFIX = "stage-2a1"
-EXPECTED_TABLES = {"users", "shops", "devices", "shop_device_bindings"}
+EXPECTED_TABLES = {
+    "users",
+    "shops",
+    "devices",
+    "shop_device_bindings",
+    "teams",
+    "team_memberships",
+    "team_module_accesses",
+    "team_device_accesses",
+    "team_shop_accesses",
+}
 
 
 def _cleanup(
@@ -48,11 +64,29 @@ def _cleanup(
     user_ids: set[UUID] | None = None,
     shop_ids: set[UUID] | None = None,
     device_ids: set[UUID] | None = None,
+    team_ids: set[UUID] | None = None,
 ) -> None:
     user_ids = user_ids or set()
     shop_ids = shop_ids or set()
     device_ids = device_ids or set()
+    team_ids = team_ids or set()
     with Session(engine) as session:
+        if team_ids:
+            session.execute(
+                delete(TeamModuleAccess).where(
+                    TeamModuleAccess.team_id.in_(team_ids),
+                ),
+            )
+            session.execute(
+                delete(TeamDeviceAccess).where(
+                    TeamDeviceAccess.team_id.in_(team_ids),
+                ),
+            )
+            session.execute(
+                delete(TeamShopAccess).where(
+                    TeamShopAccess.team_id.in_(team_ids),
+                ),
+            )
         if shop_ids or device_ids:
             predicates = []
             if shop_ids:
@@ -67,6 +101,8 @@ def _cleanup(
             session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
         if user_ids:
             session.execute(delete(User).where(User.user_id.in_(user_ids)))
+        if team_ids:
+            session.execute(delete(Team).where(Team.team_id.in_(team_ids)))
         session.commit()
 
 
@@ -77,6 +113,18 @@ def _assert_uuid_and_time(payload: dict[str, object], id_field: str) -> None:
         assert parsed.tzinfo is not None
 
 
+def _super_actor(*, user_id: UUID, team_id: UUID) -> ActorContext:
+    return ActorContext(
+        user_id=user_id,
+        user_display_name="Core Domain Super Account",
+        team_id=team_id,
+        membership_id=None,
+        role_code="super_account",
+        data_scope=DataScope.ALL,
+        is_super_account=True,
+    )
+
+
 def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> None:
     inspector = inspect(postgresql_engine)
 
@@ -84,7 +132,7 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
         assert connection.scalar(text("SELECT 1")) == 1
         assert connection.scalar(text("SHOW server_version"))
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260902_0025"
+            "20260920_0038"
         )
 
     assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -133,6 +181,7 @@ def test_postgresql_connection_and_real_schema(postgresql_engine: Engine) -> Non
 
 
 def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None:
+    team_id = uuid4()
     shop_id = uuid4()
     invalid_shop_id = uuid4()
     primary_device_id = uuid4()
@@ -141,6 +190,10 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
     device_ids = {primary_device_id, second_device_id, backup_device_id}
 
     try:
+        with Session(postgresql_engine) as session:
+            session.add(Team(team_id=team_id, name=f"{TEST_PREFIX}-constraint-team"))
+            session.commit()
+
         with Session(postgresql_engine) as session:
             session.add(
                 Shop(
@@ -175,7 +228,11 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
             )
             session.add_all(
                 [
-                    Device(device_id=device_id, display_name=f"{TEST_PREFIX}-{device_id}")
+                    Device(
+                        device_id=device_id,
+                        team_id=team_id,
+                        display_name=f"{TEST_PREFIX}-{device_id}",
+                    )
                     for device_id in device_ids
                 ],
             )
@@ -219,13 +276,19 @@ def test_postgresql_enforces_core_constraints(postgresql_engine: Engine) -> None
             session.commit()
             assert session.get(ShopDeviceBinding, (shop_id, backup_device_id)) is not None
     finally:
-        _cleanup(postgresql_engine, shop_ids={shop_id, invalid_shop_id}, device_ids=device_ids)
+        _cleanup(
+            postgresql_engine,
+            shop_ids={shop_id, invalid_shop_id},
+            device_ids=device_ids,
+            team_ids={team_id},
+        )
 
 
 def test_repository_service_crud_and_transactions(postgresql_engine: Engine) -> None:
     user_ids: set[UUID] = set()
     shop_ids: set[UUID] = set()
     device_ids: set[UUID] = set()
+    team_ids: set[UUID] = set()
     rolled_back_user_id = uuid4()
 
     try:
@@ -243,8 +306,15 @@ def test_repository_service_crud_and_transactions(postgresql_engine: Engine) -> 
                 UserUpdate(display_name=f"{TEST_PREFIX}-service-user-updated"),
             ).display_name.endswith("updated")
 
+            team = Team(name=f"{TEST_PREFIX}-service-team")
+            session.add(team)
+            session.flush()
+            team_ids.add(team.team_id)
+            actor = _super_actor(user_id=user.user_id, team_id=team.team_id)
+
             shop_service = ShopService(session)
             shop = shop_service.create(
+                actor,
                 ShopCreate(
                     display_name=f"{TEST_PREFIX}-service-shop",
                     platform=ShopPlatform.DOUYIN,
@@ -253,52 +323,60 @@ def test_repository_service_crud_and_transactions(postgresql_engine: Engine) -> 
             )
             shop_ids.add(shop.shop_id)
             assert ShopRepository(session).get(shop.shop_id) is not None
-            assert shop_service.get(shop.shop_id).shop_id == shop.shop_id
-            assert shop_service.list(offset=0, limit=100)[1] >= 1
+            assert shop_service.get(actor, shop.shop_id).shop_id == shop.shop_id
+            assert shop_service.list(actor=actor, offset=0, limit=100)[1] >= 1
             assert shop_service.update(
+                actor,
                 shop.shop_id,
                 ShopUpdate(note=f"{TEST_PREFIX}-updated"),
             ).note == f"{TEST_PREFIX}-updated"
 
             device_service = DeviceService(session)
             primary = device_service.create(
+                actor,
                 DeviceCreate(display_name=f"{TEST_PREFIX}-service-primary"),
             )
             backup = device_service.create(
+                actor,
                 DeviceCreate(display_name=f"{TEST_PREFIX}-service-backup"),
             )
             device_ids.update({primary.device_id, backup.device_id})
             assert DeviceRepository(session).get(primary.device_id) is not None
-            assert device_service.get(primary.device_id).device_id == primary.device_id
-            assert device_service.list(offset=0, limit=100)[1] >= 2
+            assert device_service.get(actor, primary.device_id).device_id == primary.device_id
+            assert device_service.list(actor=actor, offset=0, limit=100)[1] >= 2
             assert device_service.update(
+                actor,
                 primary.device_id,
                 DeviceUpdate(location=f"{TEST_PREFIX}-location"),
             ).location == f"{TEST_PREFIX}-location"
 
             shop_service.create_binding(
+                actor,
                 shop.shop_id,
                 ShopDeviceBindingCreate(
                     device_id=primary.device_id,
                 ),
             )
             shop_service.create_binding(
+                actor,
                 shop.shop_id,
                 ShopDeviceBindingCreate(
                     device_id=backup.device_id,
                 ),
             )
-            assert len(shop_service.list_bindings(shop.shop_id)) == 2
+            assert len(shop_service.list_bindings(actor, shop.shop_id)) == 2
             assert ShopDeviceBindingRepository(session).get(
                 shop.shop_id,
                 primary.device_id,
             ) is not None
             assert shop_service.update_binding(
+                actor,
                 shop.shop_id,
                 primary.device_id,
                 ShopDeviceBindingUpdate(enabled=False),
             ).enabled is False
             changed = shop_service.update_binding(
+                actor,
                 shop.shop_id,
                 backup.device_id,
                 ShopDeviceBindingUpdate(enabled=False),
@@ -322,6 +400,7 @@ def test_repository_service_crud_and_transactions(postgresql_engine: Engine) -> 
             user_ids=user_ids | {rolled_back_user_id},
             shop_ids=shop_ids,
             device_ids=device_ids,
+            team_ids=team_ids,
         )
 
 
@@ -329,32 +408,12 @@ async def _exercise_real_api(
     user_ids: set[UUID],
     shop_ids: set[UUID],
     device_ids: set[UUID],
+    actor: ActorContext,
 ) -> None:
     application = create_app()
-    application.dependency_overrides[get_access_administrator] = lambda: ActorContext(
-        user_id=uuid4(),
-        user_display_name="Core Domain API Administrator",
-        team_id=uuid4(),
-        membership_id=uuid4(),
-        role_code="access_admin",
-        data_scope=DataScope.ALL,
-    )
-    application.dependency_overrides[get_shop_authorized_actor] = lambda: ActorContext(
-        user_id=uuid4(),
-        user_display_name="Core Domain API Shop Operator",
-        team_id=uuid4(),
-        membership_id=uuid4(),
-        role_code="member",
-        data_scope=DataScope.ALL,
-    )
-    application.dependency_overrides[get_device_authorized_actor] = lambda: ActorContext(
-        user_id=uuid4(),
-        user_display_name="Core Domain API Device Operator",
-        team_id=uuid4(),
-        membership_id=uuid4(),
-        role_code="member",
-        data_scope=DataScope.ALL,
-    )
+    application.dependency_overrides[get_super_account] = lambda: actor
+    application.dependency_overrides[get_shop_authorized_actor] = lambda: actor
+    application.dependency_overrides[get_device_authorized_actor] = lambda: actor
     transport = ASGITransport(app=application)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -471,12 +530,36 @@ def test_fastapi_uses_real_postgresql_contract(postgresql_engine: Engine) -> Non
     user_ids: set[UUID] = set()
     shop_ids: set[UUID] = set()
     device_ids: set[UUID] = set()
+    team_ids: set[UUID] = set()
     try:
-        asyncio.run(_exercise_real_api(user_ids, shop_ids, device_ids))
+        actor_user_id = uuid4()
+        team_id = uuid4()
+        user_ids.add(actor_user_id)
+        team_ids.add(team_id)
+        with Session(postgresql_engine) as session:
+            session.add_all(
+                [
+                    User(
+                        user_id=actor_user_id,
+                        display_name=f"{TEST_PREFIX}-api-super-account",
+                    ),
+                    Team(team_id=team_id, name=f"{TEST_PREFIX}-api-team"),
+                ],
+            )
+            session.commit()
+        asyncio.run(
+            _exercise_real_api(
+                user_ids,
+                shop_ids,
+                device_ids,
+                _super_actor(user_id=actor_user_id, team_id=team_id),
+            ),
+        )
     finally:
         _cleanup(
             postgresql_engine,
             user_ids=user_ids,
             shop_ids=shop_ids,
             device_ids=device_ids,
+            team_ids=team_ids,
         )

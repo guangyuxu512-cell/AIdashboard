@@ -5,6 +5,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.sessions.enums import ShopSessionStatus
@@ -79,6 +81,21 @@ class FakeShopRepository:
         shop = self.items.get(shop_id)
         return shop if shop is not None and shop.deleted_at is None else None
 
+    def list_for_actor(self, *, actor: ActorContext, **kwargs: object) -> list[Shop]:
+        del actor
+        return self.list(**kwargs)  # type: ignore[arg-type]
+
+    def count_for_actor(self, *, actor: ActorContext, **kwargs: object) -> int:
+        del actor
+        return self.count(**kwargs)  # type: ignore[arg-type]
+
+    def get_for_actor(self, *, actor: ActorContext, shop_id: UUID) -> Shop | None:
+        del actor
+        return self.get(shop_id)
+
+    def get_for_update(self, shop_id: UUID) -> Shop | None:
+        return self.get(shop_id)
+
     def get_including_deleted(self, shop_id: UUID) -> Shop | None:
         return self.items.get(shop_id)
 
@@ -128,6 +145,28 @@ class FakeBindingRepository:
         return changed
 
 
+class FakeTeamResourceAccessRepository:
+    def __init__(self) -> None:
+        self.shop_ids: list[UUID] = []
+
+    def list_shop_ids(self, _team_id: UUID) -> list[UUID]:
+        return list(self.shop_ids)
+
+    def replace_shop_ids(self, _team_id: UUID, shop_ids: list[UUID]) -> None:
+        self.shop_ids = list(shop_ids)
+
+
+SUPER_ACTOR = ActorContext(
+    user_id=uuid4(),
+    user_display_name="店铺超级账号",
+    team_id=uuid4(),
+    membership_id=None,
+    role_code="super_account",
+    data_scope=DataScope.ALL,
+    is_super_account=True,
+)
+
+
 def build_service() -> tuple[
     ShopService,
     FakeSession,
@@ -151,6 +190,7 @@ def build_service() -> tuple[
         bindings,  # type: ignore[arg-type]
         devices,  # type: ignore[arg-type]
         users,  # type: ignore[arg-type]
+        FakeTeamResourceAccessRepository(),  # type: ignore[arg-type]
     )
     return service, session, shops, bindings, user_id, device_id
 
@@ -159,6 +199,7 @@ def test_shop_create_get_list_and_update() -> None:
     service, session, _, _, user_id, _ = build_service()
 
     created = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="正式店铺",
             platform=ShopPlatform.DOUYIN,
@@ -166,9 +207,10 @@ def test_shop_create_get_list_and_update() -> None:
             note="基础备注",
         ),
     )
-    fetched = service.get(created.shop_id)
-    items, total, session_statuses = service.list(offset=0, limit=20)
+    fetched = service.get(SUPER_ACTOR, created.shop_id)
+    items, total, session_statuses = service.list(actor=SUPER_ACTOR, offset=0, limit=20)
     updated = service.update(
+        SUPER_ACTOR,
         created.shop_id,
         ShopUpdate(display_name="正式店铺 A", enabled=False),
     )
@@ -185,6 +227,7 @@ def test_shop_create_get_list_and_update() -> None:
 def test_shop_list_filters_before_pagination_and_count() -> None:
     service, _, _, _, user_id, _ = build_service()
     service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="筛选店铺 A",
             platform=ShopPlatform.PDD,
@@ -192,6 +235,7 @@ def test_shop_list_filters_before_pagination_and_count() -> None:
         ),
     )
     expected = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="筛选店铺 B",
             platform=ShopPlatform.PDD,
@@ -199,6 +243,7 @@ def test_shop_list_filters_before_pagination_and_count() -> None:
         ),
     )
     service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="其他店铺",
             platform=ShopPlatform.DOUYIN,
@@ -207,6 +252,7 @@ def test_shop_list_filters_before_pagination_and_count() -> None:
     )
 
     items, total, _ = service.list(
+        actor=SUPER_ACTOR,
         offset=1,
         limit=1,
         owner_user_id=user_id,
@@ -222,12 +268,13 @@ def test_shop_not_found() -> None:
     service, _, _, _, _, _ = build_service()
 
     with pytest.raises(ShopNotFoundError):
-        service.get(uuid4())
+        service.get(SUPER_ACTOR, uuid4())
 
 
 def test_platform_identified_shop_identity_is_immutable() -> None:
     service, session, _, _, user_id, _ = build_service()
     shop = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="平台真实店名",
             platform=ShopPlatform.DOUYIN,
@@ -237,11 +284,11 @@ def test_platform_identified_shop_identity_is_immutable() -> None:
     )
 
     with pytest.raises(ImmutableShopIdentityError):
-        service.update(shop.shop_id, ShopUpdate(display_name="人工改名"))
+        service.update(SUPER_ACTOR, shop.shop_id, ShopUpdate(display_name="人工改名"))
     with pytest.raises(ImmutableShopIdentityError):
-        service.update(shop.shop_id, ShopUpdate(platform=ShopPlatform.PDD))
+        service.update(SUPER_ACTOR, shop.shop_id, ShopUpdate(platform=ShopPlatform.PDD))
 
-    updated = service.update(shop.shop_id, ShopUpdate(enabled=False, note="可编辑备注"))
+    updated = service.update(SUPER_ACTOR, shop.shop_id, ShopUpdate(enabled=False, note="可编辑备注"))
 
     assert updated.display_name == "平台真实店名"
     assert updated.platform == ShopPlatform.DOUYIN
@@ -253,6 +300,7 @@ def test_platform_identified_shop_identity_is_immutable() -> None:
 def test_binding_many_to_many_duplicate_and_disable() -> None:
     service, _, _, bindings, user_id, primary_device_id = build_service()
     shop = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="绑定测试店铺",
             platform=ShopPlatform.PDD,
@@ -266,26 +314,31 @@ def test_binding_many_to_many_duplicate_and_disable() -> None:
     )
 
     first = service.create_binding(
+        SUPER_ACTOR,
         shop.shop_id,
         ShopDeviceBindingCreate(device_id=primary_device_id),
     )
     second = service.create_binding(
+        SUPER_ACTOR,
         shop.shop_id,
         ShopDeviceBindingCreate(device_id=backup_device_id),
     )
 
     with pytest.raises(InvalidDeviceBindingError):
         service.create_binding(
+            SUPER_ACTOR,
             shop.shop_id,
             ShopDeviceBindingCreate(device_id=primary_device_id),
         )
 
     disabled = service.update_binding(
+        SUPER_ACTOR,
         shop.shop_id,
         primary_device_id,
         ShopDeviceBindingUpdate(enabled=False),
     )
     unchanged_second = service.update_binding(
+        SUPER_ACTOR,
         shop.shop_id,
         backup_device_id,
         ShopDeviceBindingUpdate(enabled=True),
@@ -301,6 +354,7 @@ def test_binding_many_to_many_duplicate_and_disable() -> None:
 def test_binding_rejects_unknown_device_and_missing_relation() -> None:
     service, _, _, _, user_id, _ = build_service()
     shop = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="非法关系测试店铺",
             platform=ShopPlatform.DOUYIN,
@@ -310,11 +364,13 @@ def test_binding_rejects_unknown_device_and_missing_relation() -> None:
 
     with pytest.raises(DeviceNotFoundError):
         service.create_binding(
+            SUPER_ACTOR,
             shop.shop_id,
             ShopDeviceBindingCreate(device_id=uuid4()),
         )
     with pytest.raises(InvalidDeviceBindingError):
         service.update_binding(
+            SUPER_ACTOR,
             shop.shop_id,
             uuid4(),
             ShopDeviceBindingUpdate(enabled=False),
@@ -324,6 +380,7 @@ def test_binding_rejects_unknown_device_and_missing_relation() -> None:
 def test_list_projects_real_session_status() -> None:
     service, _, shops, _, user_id, _ = build_service()
     shop = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="Session 状态店铺",
             platform=ShopPlatform.DOUYIN,
@@ -332,7 +389,7 @@ def test_list_projects_real_session_status() -> None:
     )
     shops.session_statuses[shop.shop_id] = ShopSessionStatus.CAPTURED
 
-    items, total, session_statuses = service.list(offset=0, limit=20)
+    items, total, session_statuses = service.list(actor=SUPER_ACTOR, offset=0, limit=20)
 
     assert items == [shop]
     assert total == 1
@@ -342,6 +399,7 @@ def test_list_projects_real_session_status() -> None:
 def test_soft_remove_excludes_shop_and_disables_bindings() -> None:
     service, session, shops, bindings, user_id, device_id = build_service()
     shop = service.create(
+        SUPER_ACTOR,
         ShopCreate(
             display_name="软删除测试店铺",
             platform=ShopPlatform.DOUYIN,
@@ -349,11 +407,12 @@ def test_soft_remove_excludes_shop_and_disables_bindings() -> None:
         ),
     )
     service.create_binding(
+        SUPER_ACTOR,
         shop.shop_id,
         ShopDeviceBindingCreate(device_id=device_id),
     )
 
-    service.remove(shop.shop_id)
+    service.remove(SUPER_ACTOR, shop.shop_id)
 
     stored = shops.get_including_deleted(shop.shop_id)
     assert stored is shop
@@ -361,7 +420,7 @@ def test_soft_remove_excludes_shop_and_disables_bindings() -> None:
     assert isinstance(stored.deleted_at, datetime)
     assert stored.deleted_at.tzinfo is UTC
     assert bindings.get(shop.shop_id, device_id).enabled is False  # type: ignore[union-attr]
-    assert service.list(offset=0, limit=20) == ([], 0, {})
+    assert service.list(actor=SUPER_ACTOR, offset=0, limit=20) == ([], 0, {})
     with pytest.raises(ShopNotFoundError):
-        service.get(shop.shop_id)
+        service.get(SUPER_ACTOR, shop.shop_id)
     assert session.commits == 3
