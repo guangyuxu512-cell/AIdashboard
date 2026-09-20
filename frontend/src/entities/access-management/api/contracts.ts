@@ -16,6 +16,7 @@ export interface AccessMemberReadDto {
   display_name: string
   login_name: string | null
   enabled: boolean
+  is_super_account: boolean
   memberships: AccessMembershipReadDto[]
   created_at: string
   updated_at: string
@@ -41,7 +42,7 @@ export interface AccessMemberCreateDto {
   display_name: string
   login_name: string
   password: string
-  membership: AccessMembershipWriteDto
+  team_id: string | null
 }
 
 export interface AccessMembershipUpdateDto {
@@ -58,4 +59,21 @@ export interface AccessMemberUpdateDto {
 export interface AccessTeamWriteDto {
   name: string
   enabled: boolean
+}
+
+export interface AccessMemberTeamWriteDto {
+  team_id: string | null
+}
+
+export interface AccessTeamAuthorizationReadDto {
+  team_id: string
+  module_codes: string[]
+  device_ids: string[]
+  shop_ids: string[]
+}
+
+export interface AccessTeamAuthorizationWriteDto {
+  module_codes: string[]
+  device_ids: string[]
+  shop_ids: string[]
 }

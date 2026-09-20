@@ -271,7 +271,7 @@ class TaskRepository:
         )
         if actor is not None:
             eligible_statement = DataScopePolicy.apply(
-                eligible_statement.where(Task.team_id == actor.team_id),
+                eligible_statement,
                 team_id_column=Task.team_id,
                 created_by_user_id_column=Task.created_by_user_id,
                 actor=actor,
@@ -342,15 +342,11 @@ class TaskRepository:
     def get_task_target_device(
         self,
         device_id: UUID,
-        *,
-        team_id: UUID | None = None,
     ) -> Device | None:
         filters = [
             Device.device_id == device_id,
             Device.deleted_at.is_(None),
         ]
-        if team_id is not None:
-            filters.append(Device.team_id == team_id)
         return self.session.scalar(
             select(Device)
             .where(*filters)

@@ -13,7 +13,7 @@ interface CurrentHumanUserDto {
 }
 
 interface HumanTeamMembershipDto {
-  membership_id: string
+  membership_id: string | null
   team_id: string
   team_name: string
   team_enabled: boolean
@@ -24,6 +24,7 @@ interface HumanTeamMembershipDto {
 
 interface CurrentModuleAccessDto {
   module_codes: string[]
+  is_super_account?: boolean
   is_access_administrator: boolean
 }
 
@@ -54,7 +55,10 @@ function mapTeam(dto: HumanTeamMembershipDto): HumanTeamMembership {
 function mapModuleAccess(dto: CurrentModuleAccessDto): CurrentModuleAccess {
   return {
     moduleCodes: [...dto.module_codes],
-    isAccessAdministrator: dto.is_access_administrator,
+    isSuperAccount:
+      dto.is_super_account ?? dto.is_access_administrator,
+    isAccessAdministrator:
+      dto.is_super_account ?? dto.is_access_administrator,
   }
 }
 
@@ -106,7 +110,7 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
       membershipEnabled: true,
     },
   ]
-  let isAccessAdministrator = true
+  let isSuperAccount = true
 
   const requireUser = (): CurrentHumanUser => {
     if (!currentUser) {
@@ -136,7 +140,7 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
         userId: '00000000-0000-4000-8000-000000000001',
         displayName: multipleTeams ? '多团队测试人员' : '测试人员',
       }
-      isAccessAdministrator = input.loginName
+      isSuperAccount = input.loginName
         .trim()
         .toLowerCase()
         .includes('admin')
@@ -169,7 +173,7 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
     async logout() {
       currentUser = null
       teams = []
-      isAccessAdministrator = false
+      isSuperAccount = false
     },
     async getCurrentUser() {
       return requireUser()
@@ -190,7 +194,8 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
           'schedule',
           'settings',
         ],
-        isAccessAdministrator,
+        isSuperAccount,
+        isAccessAdministrator: isSuperAccount,
       }
     },
   }

@@ -62,7 +62,7 @@ class AssetService:
             media_type=AssetMediaType.IMAGE,
             source_type=AssetSourceType.UPLOAD,
             ownership=AssetOwnership(
-                team_id=actor.team_id,
+                team_id=actor.require_team_id(),
                 created_by_user_id=actor.user_id,
             ),
         )

@@ -6,6 +6,7 @@ import SettingsSideNav from './SettingsSideNav.vue'
 const push = vi.fn()
 const authState = vi.hoisted(() => ({
   isAccessAdministrator: true,
+  isSuperAccount: true,
   allowedModuleCodes: new Set(['settings']),
 }))
 

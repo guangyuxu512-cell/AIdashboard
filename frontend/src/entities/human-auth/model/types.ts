@@ -6,7 +6,7 @@ export interface CurrentHumanUser {
 export type DataScope = 'self' | 'team' | 'all'
 
 export interface HumanTeamMembership {
-  membershipId: string
+  membershipId: string | null
   teamId: string
   teamName: string
   teamEnabled: boolean
@@ -22,5 +22,7 @@ export interface HumanLoginInput {
 
 export interface CurrentModuleAccess {
   moduleCodes: string[]
+  isSuperAccount: boolean
+  /** @deprecated UI compatibility alias; this is now exactly super-account. */
   isAccessAdministrator: boolean
 }

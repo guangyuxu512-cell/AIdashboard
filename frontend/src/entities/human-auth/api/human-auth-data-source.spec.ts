@@ -60,6 +60,7 @@ describe('Human Auth Data Source', () => {
       data: {
         module_codes: ['asset', 'settings'],
         is_access_administrator: true,
+        is_super_account: true,
       },
     })
     const source = createHumanAuthDataSource('real')
@@ -67,6 +68,7 @@ describe('Human Auth Data Source', () => {
     await expect(source.getCurrentModuleAccess()).resolves.toEqual({
       moduleCodes: ['asset', 'settings'],
       isAccessAdministrator: true,
+      isSuperAccount: true,
     })
     expect(get).toHaveBeenCalledWith(
       '/api/v1/access-management/me/module-access',

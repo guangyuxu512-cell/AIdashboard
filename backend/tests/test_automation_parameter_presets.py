@@ -7,6 +7,8 @@ import pytest
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
+from app.modules.access.exceptions import TeamResourceAccessDeniedError
+from app.modules.access.exceptions import TeamContextRequiredError
 from app.modules.automation_apps.exceptions import (
     AutomationParameterPresetInUseError,
     AutomationParameterPresetInvalidError,
@@ -49,7 +51,10 @@ class FakeSession:
 class FakePresetRepository:
     def __init__(self) -> None:
         self.presets: list[AutomationParameterPreset] = []
-        self.references: dict[UUID, tuple[str, ...]] = {}
+        self.active_schedule_references_by_preset: dict[
+            UUID,
+            tuple[tuple[UUID, str], ...],
+        ] = {}
 
     def add(self, preset: AutomationParameterPreset) -> None:
         self.presets.append(preset)
@@ -62,7 +67,11 @@ class FakePresetRepository:
     ) -> list[AutomationParameterPreset]:
         # This fake deliberately honors ALL to prove the service still keeps
         # presets inside the current Team.
-        candidates = [preset for preset in self.presets if preset.app_id == app_id]
+        candidates = [
+            preset
+            for preset in self.presets
+            if preset.app_id == app_id and preset.deleted_at is None
+        ]
         if actor.data_scope is DataScope.SELF:
             candidates = [
                 preset
@@ -100,7 +109,9 @@ class FakePresetRepository:
         team_id: UUID,
         app_id: str,
         preset_id: UUID,
+        for_update: bool = False,
     ) -> AutomationParameterPreset | None:
+        del for_update
         return next(
             (
                 preset
@@ -108,6 +119,7 @@ class FakePresetRepository:
                 if preset.preset_id == preset_id
                 and preset.team_id == team_id
                 and preset.app_id == app_id
+                and preset.deleted_at is None
             ),
             None,
         )
@@ -116,14 +128,22 @@ class FakePresetRepository:
         self,
         *,
         actor: ActorContext,
-        team_id: UUID,
+        team_id: UUID | None,
         app_id: str | None = None,
         app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
         offset: int = 0,
         limit: int | None = None,
     ) -> list[AutomationParameterPreset]:
-        candidates = [preset for preset in self.presets if preset.team_id == team_id]
+        candidates = (
+            [preset for preset in self.presets if preset.deleted_at is None]
+            if team_id is None
+            else [
+                preset
+                for preset in self.presets
+                if preset.team_id == team_id and preset.deleted_at is None
+            ]
+        )
         if actor.data_scope is DataScope.SELF:
             candidates = [
                 preset
@@ -144,7 +164,7 @@ class FakePresetRepository:
         self,
         *,
         actor: ActorContext,
-        team_id: UUID,
+        team_id: UUID | None,
         app_id: str | None = None,
         app_ids: tuple[str, ...] | None = None,
         name_query: str | None = None,
@@ -171,15 +191,16 @@ class FakePresetRepository:
             preset.team_id == team_id
             and preset.app_id == app_id
             and preset.name == name
+            and preset.deleted_at is None
             and preset.preset_id != exclude_preset_id
             for preset in self.presets
         )
 
-    def reference_types(self, preset_id: UUID) -> tuple[str, ...]:
-        return self.references.get(preset_id, ())
-
-    def remove(self, preset: AutomationParameterPreset) -> None:
-        self.presets.remove(preset)
+    def active_schedule_references(
+        self,
+        preset_id: UUID,
+    ) -> tuple[tuple[UUID, str], ...]:
+        return self.active_schedule_references_by_preset.get(preset_id, ())
 
 
 class FakeConfigRepository:
@@ -248,6 +269,15 @@ class FakeModuleAccessService:
             raise ModuleAccessDeniedError()
 
 
+class FakeTeamAuthorizationService:
+    def __init__(self, allowed_shop_ids: set[UUID]) -> None:
+        self.allowed_shop_ids = allowed_shop_ids
+
+    def require_shop_access(self, _actor: ActorContext, shop_id: UUID) -> None:
+        if shop_id not in self.allowed_shop_ids:
+            raise TeamResourceAccessDeniedError()
+
+
 def actor(*, team_id: UUID, scope: DataScope = DataScope.TEAM) -> ActorContext:
     return ActorContext(
         user_id=uuid4(),
@@ -272,6 +302,7 @@ def service_for(
         preset_repository=repository,  # type: ignore[arg-type]
         shop_repository=FakeShopRepository(shop_ids),  # type: ignore[arg-type]
         module_access_service=FakeModuleAccessService(allowed=allowed),  # type: ignore[arg-type]
+        team_authorization_service=FakeTeamAuthorizationService(shop_ids),  # type: ignore[arg-type]
         application_catalog_service=application_catalog_service,  # type: ignore[arg-type]
     )
 
@@ -640,7 +671,7 @@ def test_preset_snapshot_fails_when_a_current_required_field_is_not_explicitly_e
             shop_ids=[],
         )
 
-def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
+def test_preset_remove_hides_history_but_blocks_undeleted_schedule() -> None:
     team_id = uuid4()
     actor_context = actor(team_id=team_id)
     repository = FakePresetRepository()
@@ -659,7 +690,30 @@ def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
         app_id="safe-app",
         preset_id=preset.preset_id,
     )
-    assert repository.presets == []
+    assert len(repository.presets) == 1
+    stored_preset = repository.presets[0]
+    assert stored_preset.preset_id == preset.preset_id
+    assert stored_preset.deleted_at is not None
+    assert service.list(actor=actor_context, app_id="safe-app") == []
+    with pytest.raises(AutomationParameterPresetNotFoundError):
+        service.snapshot_for_actor(
+            actor=actor_context,
+            app_id="safe-app",
+            preset_id=preset.preset_id,
+            shop_ids=[],
+        )
+
+    # The active-name uniqueness scope ends with the logical deletion, so a
+    # new configuration can intentionally reuse its name.
+    replacement = service.create(
+        actor=actor_context,
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="可删除配置",
+            common_parameters={"标题": "新的公共标题"},
+        ),
+    )
+    assert replacement.preset_id != preset.preset_id
 
     referenced = service.create(
         actor=actor_context,
@@ -669,7 +723,10 @@ def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
             common_parameters={"标题": "公共标题"},
         ),
     )
-    repository.references[referenced.preset_id] = ("task", "schedule")
+    schedule_id = uuid4()
+    repository.active_schedule_references_by_preset[referenced.preset_id] = (
+        (schedule_id, "已停用但未删除的计划"),
+    )
 
     with pytest.raises(AutomationParameterPresetInUseError) as error:
         service.remove(
@@ -678,10 +735,19 @@ def test_preset_remove_keeps_task_and_schedule_references_intact() -> None:
             preset_id=referenced.preset_id,
         )
 
-    assert error.value.details == {"reference_types": ["task", "schedule"]}
-    assert [preset.preset_id for preset in repository.presets] == [
-        referenced.preset_id,
-    ]
+    assert error.value.details == {
+        "schedules": [
+            {
+                "schedule_id": str(schedule_id),
+                "name": "已停用但未删除的计划",
+            },
+        ],
+    }
+    assert next(
+        item
+        for item in repository.presets
+        if item.preset_id == referenced.preset_id
+    ).deleted_at is None
 
 
 def test_preset_read_marks_only_values_missing_from_the_current_schema() -> None:
@@ -820,15 +886,85 @@ def test_management_list_counts_and_pages_only_authorized_team_rows() -> None:
     assert legacy[1] == page.items[0]
 
 
+def test_super_without_team_reads_all_presets_but_writes_require_selected_team() -> None:
+    team_a, team_b = uuid4(), uuid4()
+    repository = FakePresetRepository()
+    service = service_for(repository=repository, shop_ids=set())
+    preset_a = service.create(
+        actor=actor(team_id=team_a),
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="团队 A 配置",
+            common_parameters={"标题": "A"},
+        ),
+    )
+    preset_b = service.create(
+        actor=actor(team_id=team_b),
+        app_id="safe-app",
+        data=AutomationParameterPresetCreate(
+            name="团队 B 配置",
+            common_parameters={"标题": "B"},
+        ),
+    )
+    super_actor = ActorContext(
+        user_id=uuid4(),
+        user_display_name="超级账号",
+        team_id=None,
+        membership_id=None,
+        role_code="super_account",
+        data_scope=DataScope.ALL,
+        is_super_account=True,
+    )
+
+    page = service.list_all(
+        actor=super_actor,
+        app_id="safe-app",
+        pagination=PaginationParams(page=1, page_size=10),
+    )
+
+    assert page.total == 2
+    assert {preset.preset_id for preset in page.items} == {
+        preset_a.preset_id,
+        preset_b.preset_id,
+    }
+    assert service.get(
+        actor=super_actor,
+        app_id="safe-app",
+        preset_id=preset_b.preset_id,
+    ).name == "团队 B 配置"
+
+    with pytest.raises(TeamContextRequiredError):
+        service.create(
+            actor=super_actor,
+            app_id="safe-app",
+            data=AutomationParameterPresetCreate(
+                name="不得隐式归属",
+                common_parameters={"标题": "X"},
+            ),
+        )
+    with pytest.raises(TeamContextRequiredError):
+        service.remove(
+            actor=super_actor,
+            app_id="safe-app",
+            preset_id=preset_a.preset_id,
+        )
+    assert {preset.preset_id for preset in repository.presets} == {
+        preset_a.preset_id,
+        preset_b.preset_id,
+    }
+
+
 class FakeDeviceCatalogRepository:
     def __init__(self) -> None:
         self.team_device_id = uuid4()
         self.foreign_device_id = uuid4()
 
     def list_all_for_actor(self, *, actor: ActorContext) -> list[SimpleNamespace]:
+        # The real repository applies Team device grants in SQL.  The catalog
+        # deliberately trusts that scope instead of reopening device.team_id.
+        del actor
         return [
-            SimpleNamespace(device_id=self.team_device_id, team_id=actor.team_id),
-            SimpleNamespace(device_id=self.foreign_device_id, team_id=uuid4()),
+            SimpleNamespace(device_id=self.team_device_id),
         ]
 
     def get_for_actor(
@@ -839,7 +975,8 @@ class FakeDeviceCatalogRepository:
     ) -> SimpleNamespace | None:
         if device_id != self.team_device_id:
             return None
-        return SimpleNamespace(device_id=device_id, team_id=actor.team_id)
+        del actor
+        return SimpleNamespace(device_id=device_id)
 
 
 class FakeWorkerCatalogRepository:

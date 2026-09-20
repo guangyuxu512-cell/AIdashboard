@@ -17,7 +17,6 @@ from app.modules.access.exceptions import HumanUserDisabledError
 from app.modules.access.enums import DataScope
 from app.modules.access.models import Team, TeamMembership
 from app.modules.human_auth.exceptions import (
-    DefaultTeamNotFoundError,
     HumanBootstrapNotAllowedError,
     HumanLoginFailedError,
     HumanSessionInvalidError,
@@ -258,14 +257,11 @@ def test_password_reset_revokes_existing_sessions(
         assert session.get(User, user.user_id).login_name == "new.operator"
 
 
-def test_bootstrap_only_works_for_zero_users_and_adds_default_membership(
+def test_bootstrap_only_works_for_zero_users_and_creates_a_super_account(
     database: tuple[sessionmaker[Session], Settings, PasswordService],
 ) -> None:
     factory, settings, password_service = database
-    default_team = Team(team_id=uuid4(), name="默认团队", enabled=True)
     with factory() as session:
-        session.add(default_team)
-        session.commit()
         service = HumanAuthService(session, settings, password_service)
         user = service.bootstrap_first_user(
             display_name="首位人员",
@@ -277,10 +273,8 @@ def test_bootstrap_only_works_for_zero_users_and_adds_default_membership(
         )
 
         assert user.login_name == "first.user"
-        assert membership is not None
-        assert membership.team_id == default_team.team_id
-        assert membership.role_code == "member"
-        assert membership.data_scope == "team"
+        assert user.is_super_account is True
+        assert membership is None
         with pytest.raises(HumanBootstrapNotAllowedError):
             service.bootstrap_first_user(
                 display_name="第二位",
@@ -289,7 +283,7 @@ def test_bootstrap_only_works_for_zero_users_and_adds_default_membership(
             )
 
 
-def test_bootstrap_rejects_disabled_default_team(
+def test_bootstrap_does_not_depend_on_a_default_team(
     database: tuple[sessionmaker[Session], Settings, PasswordService],
 ) -> None:
     factory, settings, password_service = database
@@ -297,34 +291,20 @@ def test_bootstrap_rejects_disabled_default_team(
         session.add(Team(team_id=uuid4(), name="默认团队", enabled=False))
         session.commit()
 
-        with pytest.raises(DefaultTeamNotFoundError):
-            HumanAuthService(session, settings, password_service).bootstrap_first_user(
-                display_name="首位人员",
-                login_name="first.user",
-                password=TEST_PASSWORD,
-            )
+        user = HumanAuthService(session, settings, password_service).bootstrap_first_user(
+            display_name="首位人员",
+            login_name="first.user",
+            password=TEST_PASSWORD,
+        )
 
-        assert session.scalar(select(User)) is None
+        assert user.is_super_account is True
 
 
-def test_human_auth_api_cookie_restore_multi_team_and_logout(
+def test_human_auth_api_cookie_restore_single_team_and_logout(
     database: tuple[sessionmaker[Session], Settings, PasswordService],
 ) -> None:
     factory, settings, password_service = database
     user, first_team = seed_user(factory, password_service)
-    second_team = Team(team_id=uuid4(), name="第二团队", enabled=True)
-    second_membership = TeamMembership(
-        membership_id=uuid4(),
-        team_id=second_team.team_id,
-        user_id=user.user_id,
-        role_code="member",
-        data_scope="team",
-        enabled=True,
-    )
-    with factory() as session:
-        session.add_all([second_team, second_membership])
-        session.commit()
-
     application = create_app()
 
     def override_database_session():
@@ -358,16 +338,16 @@ def test_human_auth_api_cookie_restore_multi_team_and_logout(
 
             current = await client.get("/api/v1/auth/me")
             teams = await client.get("/api/v1/access/me/teams")
-            missing_team = await client.get("/api/v1/access/me")
+            default_team = await client.get("/api/v1/access/me")
             selected_team = await client.get(
                 "/api/v1/access/me",
                 headers={"X-Team-ID": str(first_team.team_id)},
             )
             assert current.status_code == 200
             assert teams.status_code == 200
-            assert len(teams.json()) == 2
-            assert missing_team.status_code == 409
-            assert missing_team.json()["code"] == "TEAM_CONTEXT_REQUIRED"
+            assert len(teams.json()) == 1
+            assert default_team.status_code == 200
+            assert default_team.json()["team_id"] == str(first_team.team_id)
             assert selected_team.status_code == 200
             assert selected_team.json()["team_id"] == str(first_team.team_id)
 

@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient, Response
 
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import get_access_administrator, get_actor_context
+from app.modules.access.dependencies import get_actor_context, get_super_account
 from app.modules.access.enums import DataScope
 from app.modules.audit.api import get_audit_log_service
 from app.modules.audit.enums import AuditAction, AuditTargetType
@@ -23,6 +23,7 @@ ACTOR = ActorContext(
     membership_id=uuid4(),
     role_code="access_admin",
     data_scope=DataScope.ALL,
+    is_super_account=True,
 )
 
 
@@ -68,7 +69,7 @@ def _request(application: object, path: str) -> Response:
 def test_access_administrator_can_list_paginated_audit_logs() -> None:
     service = ApiAuditLogService()
     application = create_app()
-    application.dependency_overrides[get_access_administrator] = lambda: ACTOR
+    application.dependency_overrides[get_super_account] = lambda: ACTOR
     application.dependency_overrides[get_audit_log_service] = lambda: service
     actor_user_id = uuid4()
 

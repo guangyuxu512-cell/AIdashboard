@@ -80,14 +80,20 @@ export const useAuthStore = defineStore('auth', () => {
       activeTeams.value.find((item) => item.teamId === activeTeamId.value) ??
       null,
   )
+  const isSuperAccount = computed(
+    () => currentModuleAccess.value?.isSuperAccount === true,
+  )
   const requiresTeamSelection = computed(
-    () => isAuthenticated.value && currentTeam.value === null,
+    () =>
+      isAuthenticated.value &&
+      !isSuperAccount.value &&
+      currentTeam.value === null,
   )
   const allowedModuleCodes = computed(
     () => new Set(currentModuleAccess.value?.moduleCodes ?? []),
   )
   const isAccessAdministrator = computed(
-    () => currentModuleAccess.value?.isAccessAdministrator === true,
+    () => isSuperAccount.value,
   )
 
   function applyAuthenticatedSession(
@@ -100,9 +106,11 @@ export const useAuthStore = defineStore('auth', () => {
       (item) => item.teamEnabled && item.membershipEnabled,
     )
     const storedTeamId = readStoredTeamId(user.userId)
+    // A stored explicit Team context may be restored.  Do not choose the
+    // first Team yet: the following module-access response tells us whether
+    // the user is the super account, which has no default Team by design.
     activeTeamId.value =
-      available.find((item) => item.teamId === storedTeamId)?.teamId ??
-      (available.length === 1 ? (available[0]?.teamId ?? null) : null)
+      available.find((item) => item.teamId === storedTeamId)?.teamId ?? null
     if (activeTeamId.value) persistTeamId(user.userId, activeTeamId.value)
     currentModuleAccess.value = null
     restoreError.value = null
@@ -174,11 +182,23 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function refreshModuleAccess(): Promise<void> {
-    if (!isAuthenticated.value || !activeTeamId.value) {
+    if (!isAuthenticated.value) {
       currentModuleAccess.value = null
       return
     }
     currentModuleAccess.value = await dataSource.getCurrentModuleAccess()
+    if (
+      !currentModuleAccess.value.isSuperAccount &&
+      !activeTeamId.value &&
+      currentUser.value &&
+      activeTeams.value.length === 1
+    ) {
+      const teamId = activeTeams.value[0]?.teamId
+      if (teamId) {
+        activeTeamId.value = teamId
+        persistTeamId(currentUser.value.userId, teamId)
+      }
+    }
   }
 
   function expireSession(): void {
@@ -199,6 +219,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentModuleAccess,
     restoreError,
     isAuthenticated,
+    isSuperAccount,
     activeTeams,
     currentTeam,
     requiresTeamSelection,

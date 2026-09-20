@@ -10,8 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
-from app.modules.access.models import Team
-from app.modules.access.roles import DEFAULT_TEAM_NAME
+from app.modules.access.models import Team, TeamDeviceAccess
 from app.modules.assets.contracts import AssetOwnership
 from app.modules.assets.enums import AssetMediaType, AssetSourceType
 from app.modules.assets.exceptions import AssetInUseError, AssetNotFoundError
@@ -22,6 +21,7 @@ from app.modules.devices.models import Device
 from app.modules.tasks.models import Task, TaskAsset
 from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
+from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
 from app.modules.workers.service import WorkerPrincipal
 
@@ -29,7 +29,14 @@ from app.modules.workers.service import WorkerPrincipal
 pytestmark = pytest.mark.integration
 
 
-def _cleanup(engine: Engine, device_ids: set[UUID], asset_ids: set[UUID]) -> None:
+def _cleanup(
+    engine: Engine,
+    device_ids: set[UUID],
+    asset_ids: set[UUID],
+    *,
+    team_id: UUID,
+    user_id: UUID,
+) -> None:
     with Session(engine) as session:
         task_ids = select(Task.task_id).where(Task.target_device_id.in_(device_ids))
         session.execute(delete(TaskAsset).where(TaskAsset.task_id.in_(task_ids)))
@@ -42,8 +49,13 @@ def _cleanup(engine: Engine, device_ids: set[UUID], asset_ids: set[UUID]) -> Non
         session.execute(
             delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(device_ids)),
         )
+        session.execute(
+            delete(TeamDeviceAccess).where(TeamDeviceAccess.team_id == team_id),
+        )
         session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
         session.execute(delete(Asset).where(Asset.asset_id.in_(asset_ids)))
+        session.execute(delete(User).where(User.user_id == user_id))
+        session.execute(delete(Team).where(Team.team_id == team_id))
         session.commit()
 
 
@@ -53,6 +65,7 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
 ) -> None:
     device_a, device_b = uuid4(), uuid4()
     device_ids = {device_a, device_b}
+    team_id, user_id = uuid4(), uuid4()
     asset_ids: set[UUID] = set()
     now = datetime.now(UTC)
     storage = LocalAssetStorage(tmp_path / "assets", 1024 * 1024)
@@ -63,11 +76,19 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
         with Session(postgresql_engine, expire_on_commit=False) as session:
             session.add_all(
                 [
+                    Team(team_id=team_id, name="Task Asset Integration Team"),
+                    User(user_id=user_id, display_name="Task Asset Integration User"),
                     Device(
-                        device_id=device_a, display_name="Asset Device A", enabled=True
+                        device_id=device_a,
+                        team_id=team_id,
+                        display_name="Asset Device A",
+                        enabled=True,
                     ),
                     Device(
-                        device_id=device_b, display_name="Asset Device B", enabled=True
+                        device_id=device_b,
+                        team_id=team_id,
+                        display_name="Asset Device B",
+                        enabled=True,
                     ),
                     DeviceRuntime(
                         device_id=device_a,
@@ -87,6 +108,8 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                     ),
                 ],
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_a))
             session.commit()
 
             asset_service = AssetService(
@@ -94,18 +117,14 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                 storage=storage,
                 settings=settings,
             )
-            default_team = session.scalar(
-                select(Team).where(Team.name == DEFAULT_TEAM_NAME),
-            )
-            assert default_team is not None
             ownership = AssetOwnership(
-                team_id=default_team.team_id,
+                team_id=team_id,
                 created_by_user_id=None,
             )
             actor = ActorContext(
-                user_id=uuid4(),
+                user_id=user_id,
                 user_display_name="Task Asset集成测试",
-                team_id=default_team.team_id,
+                team_id=team_id,
                 membership_id=uuid4(),
                 role_code="member",
                 data_scope=DataScope.TEAM,
@@ -138,6 +157,7 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
                     skill_id="system.echo",
                     input={"message": "safe transfer"},
                 ),
+                actor,
             )
             links = list(
                 session.scalars(
@@ -176,4 +196,10 @@ def test_ordered_task_assets_are_claimed_and_download_is_device_isolated(
             with pytest.raises(AssetInUseError):
                 asset_service.delete(actor, first.asset_id)
     finally:
-        _cleanup(postgresql_engine, device_ids, asset_ids)
+        _cleanup(
+            postgresql_engine,
+            device_ids,
+            asset_ids,
+            team_id=team_id,
+            user_id=user_id,
+        )

@@ -67,6 +67,16 @@ class TeamMembership(TimestampMixin, Base):
             "team_id",
             postgresql_where=text("enabled"),
         ),
+        # A normal user has at most one current business Team.  Disabled
+        # membership rows remain as history and can be reactivated on a move
+        # back to the same Team.
+        Index(
+            "uq_team_memberships_one_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("enabled"),
+            sqlite_where=text("enabled"),
+        ),
     )
 
     membership_id: Mapped[UUID] = mapped_column(
@@ -115,6 +125,70 @@ class MembershipModuleAccess(Base):
         primary_key=True,
     )
     module_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class TeamModuleAccess(Base):
+    """One enabled PC module granted to every current member of a Team."""
+
+    __tablename__ = "team_module_accesses"
+
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    module_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class TeamDeviceAccess(Base):
+    """A public execution Device made available to one business Team."""
+
+    __tablename__ = "team_device_accesses"
+    __table_args__ = (Index("ix_team_device_accesses_device", "device_id"),)
+
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    device_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("devices.device_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class TeamShopAccess(Base):
+    """A centrally maintained Shop made available to one business Team."""
+
+    __tablename__ = "team_shop_accesses"
+    __table_args__ = (Index("ix_team_shop_accesses_shop", "shop_id"),)
+
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    shop_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

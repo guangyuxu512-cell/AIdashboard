@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import false, func, select, update
+from sqlalchemy import exists, false, func, select, update
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.models import TeamShopAccess
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.sessions.enums import ShopSessionStatus
@@ -15,9 +17,10 @@ class ShopRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def list(
+    def list_for_actor(
         self,
         *,
+        actor: ActorContext,
         offset: int,
         limit: int,
         device_id: UUID | None = None,
@@ -51,6 +54,10 @@ class ShopRepository:
                     ShopDeviceBinding.enabled.is_(True),
                 ],
             )
+        statement = self._apply_actor_scope(
+            statement,
+            actor,
+        )
         statement = (
             statement
             .where(*filters)
@@ -60,9 +67,10 @@ class ShopRepository:
         )
         return list(self.session.scalars(statement))
 
-    def count(
+    def count_for_actor(
         self,
         *,
+        actor: ActorContext,
         device_id: UUID | None = None,
         enabled: bool | None = None,
         owner_user_id: UUID | None = None,
@@ -94,6 +102,7 @@ class ShopRepository:
                     ShopDeviceBinding.enabled.is_(True),
                 ],
             )
+        statement = self._apply_actor_scope(statement, actor)
         return (
             self.session.scalar(
                 statement.where(*filters),
@@ -119,6 +128,27 @@ class ShopRepository:
                 Shop.shop_id == shop_id,
                 Shop.deleted_at.is_(None),
             ),
+        )
+
+    def get_for_actor(self, *, actor: ActorContext, shop_id: UUID) -> Shop | None:
+        return self.session.scalar(
+            self._apply_actor_scope(
+                select(Shop).where(
+                    Shop.shop_id == shop_id,
+                    Shop.deleted_at.is_(None),
+                ),
+                actor,
+            ),
+        )
+
+    def get_for_update(self, shop_id: UUID) -> Shop | None:
+        return self.session.scalar(
+            select(Shop)
+            .where(
+                Shop.shop_id == shop_id,
+                Shop.deleted_at.is_(None),
+            )
+            .with_for_update(),
         )
 
     def get_including_deleted(self, shop_id: UUID) -> Shop | None:
@@ -151,6 +181,19 @@ class ShopRepository:
 
     def add(self, shop: Shop) -> None:
         self.session.add(shop)
+
+    @staticmethod
+    def _apply_actor_scope(statement, actor: ActorContext):
+        if actor.is_super_account:
+            return statement
+        return statement.where(
+            exists(
+                select(TeamShopAccess.team_id).where(
+                    TeamShopAccess.team_id == actor.require_team_id(),
+                    TeamShopAccess.shop_id == Shop.shop_id,
+                ),
+            ),
+        )
 
 
 class ShopDeviceBindingRepository:

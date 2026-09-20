@@ -5,6 +5,9 @@ import pytest
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.enums import DataScope
+from app.modules.access.models import Team, TeamDeviceAccess, TeamShopAccess
 from app.modules.credentials.enums import VerificationChannel
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.devices.models import Device
@@ -24,14 +27,25 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
 ) -> None:
     shop_id = uuid4()
     device_id = uuid4()
+    team_id = uuid4()
     credential_id = uuid4()
     session_id = uuid4()
     now = datetime.now(UTC)
+    actor = ActorContext(
+        user_id=uuid4(),
+        user_display_name="Shop lifecycle fixture",
+        team_id=team_id,
+        membership_id=uuid4(),
+        role_code="super_account",
+        data_scope=DataScope.ALL,
+        is_super_account=True,
+    )
 
     try:
         with Session(postgresql_engine) as session:
             session.add_all(
                 [
+                    Team(team_id=team_id, name="Shop Lifecycle Team"),
                     Shop(
                         shop_id=shop_id,
                         display_name="stage-shop-soft-delete",
@@ -41,6 +55,7 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
                     ),
                     Device(
                         device_id=device_id,
+                        team_id=team_id,
                         display_name="stage-shop-soft-delete-device",
                     ),
                     PlatformCredential(
@@ -55,6 +70,8 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
             session.flush()
             session.add_all(
                 [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id),
+                    TeamShopAccess(team_id=team_id, shop_id=shop_id),
                     ShopDeviceBinding(
                         shop_id=shop_id,
                         device_id=device_id,
@@ -80,7 +97,7 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
 
         with Session(postgresql_engine) as session:
             service = ShopService(session)
-            service.remove(shop_id)
+            service.remove(actor, shop_id)
 
             assert ShopRepository(session).get(shop_id) is None
             stored_shop = ShopRepository(session).get_including_deleted(shop_id)
@@ -93,7 +110,7 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
             assert session.get(PlatformCredential, credential_id) is not None
             assert session.get(ShopCredentialBinding, (shop_id, credential_id)) is not None
             assert session.get(ShopSession, session_id) is not None
-            shops, _, statuses = service.list(offset=0, limit=100)
+            shops, _, statuses = service.list(actor=actor, offset=0, limit=100)
             assert shop_id not in {shop.shop_id for shop in shops}
             assert shop_id not in statuses
     finally:
@@ -107,6 +124,16 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
             session.execute(
                 delete(ShopDeviceBinding).where(ShopDeviceBinding.shop_id == shop_id),
             )
+            session.execute(
+                delete(TeamDeviceAccess).where(
+                    TeamDeviceAccess.team_id == team_id,
+                ),
+            )
+            session.execute(
+                delete(TeamShopAccess).where(
+                    TeamShopAccess.team_id == team_id,
+                ),
+            )
             session.execute(delete(Shop).where(Shop.shop_id == shop_id))
             session.execute(
                 delete(PlatformCredential).where(
@@ -114,4 +141,5 @@ def test_soft_remove_preserves_auth_facts_and_disables_bindings(
                 ),
             )
             session.execute(delete(Device).where(Device.device_id == device_id))
+            session.execute(delete(Team).where(Team.team_id == team_id))
             session.commit()

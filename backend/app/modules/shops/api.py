@@ -8,7 +8,7 @@ from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import require_module_access
+from app.modules.access.dependencies import get_super_account, require_module_access
 from app.modules.access.module_access import ModuleCode
 from app.modules.sessions.auth_context import ShopSessionAccessor
 from app.modules.sessions.health_service import ShopSessionHealthService
@@ -64,7 +64,7 @@ def get_shop_platform_service(
 
 @router.get("", response_model=Page[ShopListRead])
 def list_shops(
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     pagination: Annotated[PaginationParams, Depends()],
     service: Annotated[ShopService, Depends(get_shop_service)],
     device_id: Annotated[UUID | None, Query()] = None,
@@ -77,6 +77,7 @@ def list_shops(
     q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
 ) -> Page[ShopListRead]:
     shops, total, session_statuses = service.list(
+        actor=actor,
         offset=pagination.offset,
         limit=pagination.page_size,
         device_id=device_id,
@@ -102,10 +103,10 @@ def list_shops(
 @router.get("/{shop_id}", response_model=ShopRead)
 def get_shop(
     shop_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopRead:
-    return ShopRead.model_validate(service.get(shop_id))
+    return ShopRead.model_validate(service.get(actor, shop_id))
 
 
 @router.get(
@@ -119,7 +120,7 @@ def get_shop(
 )
 def get_platform_shop_identity(
     shop_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    _actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[
         ShopPlatformService,
         Depends(get_shop_platform_service),
@@ -131,40 +132,40 @@ def get_platform_shop_identity(
 @router.post("", response_model=ShopRead, status_code=status.HTTP_201_CREATED)
 def create_shop(
     data: ShopCreate,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopRead:
-    return ShopRead.model_validate(service.create(data))
+    return ShopRead.model_validate(service.create(actor, data))
 
 
 @router.patch("/{shop_id}", response_model=ShopRead)
 def update_shop(
     shop_id: UUID,
     data: ShopUpdate,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopRead:
-    return ShopRead.model_validate(service.update(shop_id, data))
+    return ShopRead.model_validate(service.update(actor, shop_id, data))
 
 
 @router.delete("/{shop_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_shop(
     shop_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> None:
-    service.remove(shop_id)
+    service.remove(actor, shop_id)
 
 
 @router.get("/{shop_id}/device-bindings", response_model=list[ShopDeviceBindingRead])
 def list_shop_device_bindings(
     shop_id: UUID,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> list[ShopDeviceBindingRead]:
     return [
         ShopDeviceBindingRead.model_validate(binding)
-        for binding in service.list_bindings(shop_id)
+        for binding in service.list_bindings(actor, shop_id)
     ]
 
 
@@ -176,10 +177,12 @@ def list_shop_device_bindings(
 def create_shop_device_binding(
     shop_id: UUID,
     data: ShopDeviceBindingCreate,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopDeviceBindingRead:
-    return ShopDeviceBindingRead.model_validate(service.create_binding(shop_id, data))
+    return ShopDeviceBindingRead.model_validate(
+        service.create_binding(actor, shop_id, data),
+    )
 
 
 @router.patch(
@@ -190,9 +193,9 @@ def update_shop_device_binding(
     shop_id: UUID,
     device_id: UUID,
     data: ShopDeviceBindingUpdate,
-    _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
+    actor: Annotated[ActorContext, Depends(get_super_account)],
     service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopDeviceBindingRead:
     return ShopDeviceBindingRead.model_validate(
-        service.update_binding(shop_id, device_id, data),
+        service.update_binding(actor, shop_id, device_id, data),
     )

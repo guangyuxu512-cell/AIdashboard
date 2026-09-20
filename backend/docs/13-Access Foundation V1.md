@@ -1,5 +1,10 @@
 # Access Foundation V1
 
+> **历史基础说明：** `20260919_0037_super_account_team_authorization_v1` 已取代本文关于
+> 默认 Team、多个有效 Membership 和 `SELF/TEAM/ALL` 的当前行为。现行契约见
+> [23-超级账号与团队授权V1.md](23-超级账号与团队授权V1.md)；本文保留用于解释 0022 的
+> 历史 Migration 与旧数据字段，不得据此实现新授权路径。
+
 ## 1. 定位
 
 Access Foundation V1 为单组织、多 Team、多 User 建立统一管理平面身份上下文：

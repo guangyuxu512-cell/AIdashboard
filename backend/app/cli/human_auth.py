@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="仅在users为空时创建第一个User并加入默认团队",
+        help="仅在users为空时创建第一个超级账号（不加入默认团队）",
     )
     bootstrap.add_argument("--display-name", required=True)
     bootstrap.add_argument("--login-name", required=True)
@@ -31,11 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
     credentials.add_argument("user_id", type=UUID)
     credentials.add_argument("--login-name", required=True)
 
-    grant_access_administrator = subparsers.add_parser(
-        "grant-access-administrator",
-        help="为一条启用成员关系授予用户与权限管理员身份",
+    designate_super_account = subparsers.add_parser(
+        "designate-super-account",
+        help="显式指定唯一超级账号；不按登录名或旧角色推断",
     )
-    grant_access_administrator.add_argument("membership_id", type=UUID)
+    designate_super_account.add_argument("user_id", type=UUID)
     return parser
 
 
@@ -51,14 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         with Session(get_database_engine()) as session:
-            if args.command == "grant-access-administrator":
-                AccessManagementService(
+            if args.command == "designate-super-account":
+                user = AccessManagementService(
                     session,
                     PasswordService(),
-                ).grant_access_administrator(args.membership_id)
+                ).designate_super_account(args.user_id)
                 print(
-                    "权限管理员已授予: "
-                    f"membership_id={args.membership_id}",
+                    "超级账号已指定且不再使用团队成员关系: "
+                    f"user_id={user.user_id}",
                 )
                 return 0
 

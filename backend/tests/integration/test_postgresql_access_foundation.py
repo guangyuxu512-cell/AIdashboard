@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import Engine, delete, inspect, insert
+from sqlalchemy import Engine, delete, inspect, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,16 +13,26 @@ from app.main import create_app
 from app.modules.access.auth import get_human_principal
 from app.modules.access.contracts import HumanPrincipal
 from app.modules.access.enums import DataScope
-from app.modules.access.models import Team, TeamMembership
-from app.modules.access.schemas import TeamCreate, TeamMembershipCreate
+from app.modules.access.models import (
+    Team,
+    TeamDeviceAccess,
+    TeamMembership,
+    TeamModuleAccess,
+    TeamShopAccess,
+)
+from app.modules.access.module_access import ModuleCode
+from app.modules.access.schemas import (
+    AccessMemberCreate,
+    AccessMemberTeamUpdate,
+    TeamAuthorizationUpdate,
+    TeamCreate,
+)
 from app.modules.access.service import (
+    AccessManagementService,
     ActorContextService,
-    MembershipService,
-    TeamService,
 )
 from app.modules.users.models import User
-from app.modules.users.schemas import UserCreate
-from app.modules.users.service import UserService
+from app.modules.human_auth.passwords import PasswordService
 
 
 pytestmark = pytest.mark.integration
@@ -37,6 +47,22 @@ def _cleanup(
     user_ids: set[UUID],
 ) -> None:
     with Session(engine) as session:
+        if team_ids:
+            session.execute(
+                delete(TeamModuleAccess).where(
+                    TeamModuleAccess.team_id.in_(team_ids),
+                ),
+            )
+            session.execute(
+                delete(TeamDeviceAccess).where(
+                    TeamDeviceAccess.team_id.in_(team_ids),
+                ),
+            )
+            session.execute(
+                delete(TeamShopAccess).where(
+                    TeamShopAccess.team_id.in_(team_ids),
+                ),
+            )
         if membership_ids:
             session.execute(
                 delete(TeamMembership).where(
@@ -50,11 +76,58 @@ def _cleanup(
         session.commit()
 
 
+def _cleanup_stale_fixture_rows(engine: Engine) -> None:
+    """Recover only this test's rows if a previous assertion aborted cleanup."""
+
+    with Session(engine) as session:
+        team_ids = set(
+            session.scalars(
+                select(Team.team_id).where(Team.name.like(f"{TEST_PREFIX}%")),
+            ),
+        )
+        user_ids = set(
+            session.scalars(
+                select(User.user_id).where(
+                    User.display_name.like(f"{TEST_PREFIX}%"),
+                ),
+            ),
+        )
+        membership_ids = set(
+            session.scalars(
+                select(TeamMembership.membership_id).where(
+                    TeamMembership.team_id.in_(team_ids),
+                ),
+            ),
+        ) if team_ids else set()
+    _cleanup(
+        engine,
+        membership_ids=membership_ids,
+        team_ids=team_ids,
+        user_ids=user_ids,
+    )
+
+
+def _member_input(team_id: UUID, *, login_name: str) -> AccessMemberCreate:
+    return AccessMemberCreate(
+        display_name=f"{TEST_PREFIX}-{login_name}",
+        login_name=login_name,
+        password="correct-horse-battery",
+        team_id=team_id,
+    )
+
+
 def test_postgresql_access_schema_constraints_and_services(
     postgresql_engine: Engine,
 ) -> None:
+    _cleanup_stale_fixture_rows(postgresql_engine)
     inspector = inspect(postgresql_engine)
-    assert {"teams", "team_memberships"} <= set(inspector.get_table_names())
+    assert {
+        "teams",
+        "team_memberships",
+        "team_module_accesses",
+        "team_device_accesses",
+        "team_shop_accesses",
+    } <= set(inspector.get_table_names())
 
     membership_unique_constraints = {
         constraint["name"]: constraint["column_names"]
@@ -70,6 +143,7 @@ def test_postgresql_access_schema_constraints_and_services(
     assert "ix_team_memberships_user_id" in membership_indexes
     assert "ix_team_memberships_active_user" in membership_indexes
     assert "ix_team_memberships_active_team" in membership_indexes
+    assert "uq_team_memberships_one_active_user" in membership_indexes
     assert (
         membership_indexes["ix_team_memberships_active_user"]["dialect_options"][
             "postgresql_where"
@@ -98,51 +172,49 @@ def test_postgresql_access_schema_constraints_and_services(
     membership_ids: set[UUID] = set()
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
-            user = UserService(session).create(
-                UserCreate(display_name=f"{TEST_PREFIX}-user"),
-            )
-            user_ids.add(user.user_id)
-            first_team = TeamService(session).create(
+            service = AccessManagementService(session, PasswordService())
+            first_team = service.create_team(
                 TeamCreate(name=f"{TEST_PREFIX}-first"),
             )
-            second_team = TeamService(session).create(
+            second_team = service.create_team(
                 TeamCreate(name=f"{TEST_PREFIX}-second"),
             )
-            team_ids.update({first_team.team_id, second_team.team_id})
-
-            membership_service = MembershipService(session)
-            first_membership = membership_service.create(
-                TeamMembershipCreate(
-                    team_id=first_team.team_id,
-                    user_id=user.user_id,
-                    role_code="member",
-                    data_scope=DataScope.TEAM,
+            third_team = service.create_team(
+                TeamCreate(name=f"{TEST_PREFIX}-third"),
+            )
+            team_ids.update(
+                {first_team.team_id, second_team.team_id, third_team.team_id},
+            )
+            service.update_team_authorization(
+                first_team.team_id,
+                TeamAuthorizationUpdate(module_codes=[ModuleCode.DEVICE]),
+            )
+            member = service.create_member(
+                _member_input(
+                    first_team.team_id,
+                    login_name=f"{TEST_PREFIX}-user",
                 ),
             )
-            second_membership = membership_service.create(
-                TeamMembershipCreate(
-                    team_id=second_team.team_id,
-                    user_id=user.user_id,
-                    role_code="reviewer",
-                    data_scope=DataScope.SELF,
-                ),
+            user_ids.add(member.user_id)
+            membership_ids.add(member.memberships[0].membership_id)
+            moved = service.move_member_to_team(
+                member.user_id,
+                AccessMemberTeamUpdate(team_id=second_team.team_id),
             )
-            membership_ids.update(
-                {first_membership.membership_id, second_membership.membership_id},
-            )
+            membership_ids.update(item.membership_id for item in moved.memberships)
 
             actor = ActorContextService(session).resolve(
-                user_id=user.user_id,
+                user_id=member.user_id,
                 requested_team_id=second_team.team_id,
             )
             assert actor.team_id == second_team.team_id
-            assert actor.role_code == "reviewer"
-            assert actor.data_scope is DataScope.SELF
+            assert actor.role_code == "member"
+            assert actor.data_scope is DataScope.TEAM
 
         duplicate = TeamMembership(
             membership_id=uuid4(),
-            team_id=first_team.team_id,
-            user_id=user.user_id,
+            team_id=third_team.team_id,
+            user_id=member.user_id,
             role_code="member",
             data_scope=DataScope.TEAM,
         )
@@ -158,7 +230,7 @@ def test_postgresql_access_schema_constraints_and_services(
                     insert(TeamMembership).values(
                         membership_id=uuid4(),
                         team_id=first_team.team_id,
-                        user_id=user.user_id,
+                        user_id=member.user_id,
                         role_code="member",
                         data_scope="nope",
                         enabled=True,
@@ -173,7 +245,7 @@ def test_postgresql_access_schema_constraints_and_services(
                     insert(TeamMembership).values(
                         membership_id=uuid4(),
                         team_id=uuid4(),
-                        user_id=user.user_id,
+                        user_id=member.user_id,
                         role_code="member",
                         data_scope="team",
                         enabled=True,
@@ -193,47 +265,34 @@ def test_postgresql_access_schema_constraints_and_services(
 def test_postgresql_access_http_resolves_active_team(
     postgresql_engine: Engine,
 ) -> None:
+    _cleanup_stale_fixture_rows(postgresql_engine)
     user_ids: set[UUID] = set()
     team_ids: set[UUID] = set()
     membership_ids: set[UUID] = set()
     with Session(postgresql_engine, expire_on_commit=False) as session:
-        user = UserService(session).create(
-            UserCreate(display_name=f"{TEST_PREFIX}-api-user"),
+        service = AccessManagementService(session, PasswordService())
+        team = service.create_team(TeamCreate(name=f"{TEST_PREFIX}-api"))
+        team_ids.add(team.team_id)
+        member = service.create_member(
+            _member_input(team.team_id, login_name=f"{TEST_PREFIX}-api-user"),
         )
-        user_ids.add(user.user_id)
-        teams = [
-            TeamService(session).create(
-                TeamCreate(name=f"{TEST_PREFIX}-api-{position}"),
-            )
-            for position in range(2)
-        ]
-        team_ids.update(team.team_id for team in teams)
-        memberships = [
-            MembershipService(session).create(
-                TeamMembershipCreate(
-                    team_id=team.team_id,
-                    user_id=user.user_id,
-                    data_scope=DataScope.TEAM,
-                ),
-            )
-            for team in teams
-        ]
-        membership_ids.update(membership.membership_id for membership in memberships)
+        user_ids.add(member.user_id)
+        membership_ids.add(member.memberships[0].membership_id)
 
     async def exercise() -> None:
         application = create_app()
         application.dependency_overrides[get_human_principal] = lambda: HumanPrincipal(
-            user_id=user.user_id,
-            display_name=user.display_name,
+            user_id=member.user_id,
+            display_name=member.display_name,
         )
         transport = ASGITransport(app=application)
         async with AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as client:
-            missing_context = await client.get("/api/v1/access/me")
+            resolved_context = await client.get("/api/v1/access/me")
             selected_context = await client.get(
                 "/api/v1/access/me",
-                headers={"X-Team-ID": str(teams[1].team_id)},
+                headers={"X-Team-ID": str(team.team_id)},
             )
             invalid_context = await client.get(
                 "/api/v1/access/me",
@@ -241,16 +300,14 @@ def test_postgresql_access_http_resolves_active_team(
             )
             my_teams = await client.get("/api/v1/access/me/teams")
 
-        assert missing_context.status_code == 409
-        assert missing_context.json()["code"] == "TEAM_CONTEXT_REQUIRED"
+        assert resolved_context.status_code == 200
+        assert resolved_context.json()["team_id"] == str(team.team_id)
         assert selected_context.status_code == 200
-        assert selected_context.json()["team_id"] == str(teams[1].team_id)
+        assert selected_context.json()["team_id"] == str(team.team_id)
         assert invalid_context.status_code == 403
         assert invalid_context.json()["code"] == "TEAM_ACCESS_DENIED"
         assert my_teams.status_code == 200
-        assert {item["team_id"] for item in my_teams.json()} == {
-            str(team.team_id) for team in teams
-        }
+        assert {item["team_id"] for item in my_teams.json()} == {str(team.team_id)}
 
     try:
         asyncio.run(exercise())

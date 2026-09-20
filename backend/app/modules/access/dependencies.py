@@ -10,7 +10,6 @@ from app.modules.access.auth import get_human_principal
 from app.modules.access.contracts import ActorContext, HumanPrincipal
 from app.modules.access.exceptions import AccessAdministrationForbiddenError
 from app.modules.access.module_access import ModuleCode
-from app.modules.access.roles import ACCESS_ADMIN_ROLE_CODE
 from app.modules.access.service import (
     AccessManagementService,
     ActorContextService,
@@ -24,18 +23,23 @@ TEAM_CONTEXT_HEADER = "X-Team-ID"
 
 
 def get_actor_context_service(
+    _principal: Annotated[HumanPrincipal, Depends(get_human_principal)],
     session: Annotated[Session, Depends(get_database_session)],
 ) -> ActorContextService:
+    # Keep authentication ahead of database construction.  Anonymous requests
+    # must receive the documented 401 even when a local database is absent.
     return ActorContextService(session)
 
 
 def get_module_access_service(
+    _principal: Annotated[HumanPrincipal, Depends(get_human_principal)],
     session: Annotated[Session, Depends(get_database_session)],
 ) -> ModuleAccessService:
     return ModuleAccessService(session)
 
 
 def get_access_management_service(
+    _principal: Annotated[HumanPrincipal, Depends(get_human_principal)],
     session: Annotated[Session, Depends(get_database_session)],
     password_service: Annotated[PasswordService, Depends(get_password_service)],
 ) -> AccessManagementService:
@@ -56,16 +60,22 @@ def get_actor_context(
         requested_team_id=requested_team_id,
     )
     set_request_user_id(request, actor.user_id)
-    set_request_team_id(request, actor.team_id)
+    if actor.team_id is not None:
+        set_request_team_id(request, actor.team_id)
     return actor
 
 
-def get_access_administrator(
+def get_super_account(
     actor: Annotated[ActorContext, Depends(get_actor_context)],
 ) -> ActorContext:
-    if actor.role_code != ACCESS_ADMIN_ROLE_CODE:
+    if not actor.is_super_account:
         raise AccessAdministrationForbiddenError()
     return actor
+
+
+# Imported by a few older routers.  Keep the dependency name during the
+# transition, but never retain the legacy membership role as an authority.
+get_access_administrator = get_super_account
 
 
 def require_module_access(module_code: ModuleCode):

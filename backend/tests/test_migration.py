@@ -7,6 +7,14 @@ import pytest
 class OperationRecorder:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.scalar_values: list[object] = []
+
+    def get_bind(self) -> "OperationRecorder":
+        return self
+
+    def scalar(self, statement: object) -> object:
+        self.calls.append(("scalar", str(statement)))
+        return self.scalar_values.pop(0) if self.scalar_values else 0
 
     def create_table(self, name: str, *args: object, **kwargs: object) -> None:
         self.calls.append(("create_table", name))
@@ -1013,3 +1021,107 @@ def test_automation_parameter_schema_snapshot_migration_upgrade_and_downgrade(
         ),
         ("drop_column", "automation_parameter_presets"),
     ]
+
+
+def test_super_account_team_authorization_migration_upgrade_and_downgrade(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260919_0037_super_account_team_authorization_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260919_0037"
+    assert migration.down_revision == "20260912_0036"
+    migration.upgrade()
+    assert [call for call in recorder.calls if call[0] == "create_table"] == [
+        ("create_table", "team_module_accesses"),
+        ("create_table", "team_device_accesses"),
+        ("create_table", "team_shop_accesses"),
+    ]
+    assert {
+        "uq_users_single_super_account",
+        "ix_team_device_accesses_device",
+        "ix_team_shop_accesses_shop",
+        "uq_team_memberships_one_active_user",
+    } <= {name for operation, name in recorder.calls if operation == "create_index"}
+    assert "membership_module_accesses" in "\n".join(
+        str(value) for operation, value in recorder.calls if operation == "execute"
+    )
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls == [
+        ("scalar", "SELECT count(*) FROM audit_logs WHERE team_id IS NULL"),
+        ("drop_index", "uq_team_memberships_one_active_user"),
+        ("drop_index", "ix_team_shop_accesses_shop"),
+        ("drop_table", "team_shop_accesses"),
+        ("drop_index", "ix_team_device_accesses_device"),
+        ("drop_table", "team_device_accesses"),
+        ("drop_table", "team_module_accesses"),
+        ("alter_column", "audit_logs"),
+        ("drop_index", "uq_users_single_super_account"),
+        ("drop_column", "users"),
+    ]
+
+
+def test_super_account_team_authorization_migration_refuses_ambiguous_legacy_data(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260919_0037_super_account_team_authorization_v1",
+    )
+    recorder = OperationRecorder()
+    recorder.scalar_values = [1]
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    with pytest.raises(RuntimeError, match="多个有效团队"):
+        migration.upgrade()
+
+    assert not [call for call in recorder.calls if call[0] == "create_table"]
+
+
+def test_parameter_preset_historical_reference_deletion_migration(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260920_0038_parameter_preset_historical_reference_deletion_v1",
+    )
+    recorder = OperationRecorder()
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    assert migration.revision == "20260920_0038"
+    assert migration.down_revision == "20260919_0037"
+    migration.upgrade()
+    assert recorder.calls == [
+        ("add_column", "automation_parameter_presets"),
+        ("drop_constraint", "uq_automation_preset_team_app_name"),
+        ("create_index", "uq_automation_preset_team_app_name"),
+    ]
+
+    recorder.calls.clear()
+    migration.downgrade()
+    assert recorder.calls[0][0] == "scalar"
+    assert "deleted_at IS NOT NULL" in recorder.calls[0][1]
+    assert recorder.calls[1:] == [
+        ("drop_index", "uq_automation_preset_team_app_name"),
+        ("create_unique_constraint", "uq_automation_preset_team_app_name"),
+        ("drop_column", "automation_parameter_presets"),
+    ]
+
+
+def test_parameter_preset_historical_reference_deletion_downgrade_fails_closed(
+    monkeypatch: object,
+) -> None:
+    migration = importlib.import_module(
+        "migrations.versions.20260920_0038_parameter_preset_historical_reference_deletion_v1",
+    )
+    recorder = OperationRecorder()
+    recorder.scalar_values = [1]
+    monkeypatch.setattr(migration, "op", recorder)  # type: ignore[attr-defined]
+
+    with pytest.raises(RuntimeError, match="已逻辑删除"):
+        migration.downgrade()
+
+    assert not [call for call in recorder.calls if call[0] == "drop_index"]

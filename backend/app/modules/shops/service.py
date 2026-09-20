@@ -6,6 +6,9 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.access.contracts import ActorContext
+from app.modules.access.exceptions import SuperAccountRequiredError
+from app.modules.access.repository import TeamResourceAccessRepository
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.repository import DeviceRepository
 from app.modules.sessions.enums import ShopSessionStatus
@@ -34,16 +37,21 @@ class ShopService:
         binding_repository: ShopDeviceBindingRepository | None = None,
         device_repository: DeviceRepository | None = None,
         user_repository: UserRepository | None = None,
+        resource_access_repository: TeamResourceAccessRepository | None = None,
     ) -> None:
         self.session = session
         self.shop_repository = shop_repository or ShopRepository(session)
         self.binding_repository = binding_repository or ShopDeviceBindingRepository(session)
         self.device_repository = device_repository or DeviceRepository(session)
         self.user_repository = user_repository or UserRepository(session)
+        self.resource_access_repository = (
+            resource_access_repository or TeamResourceAccessRepository(session)
+        )
 
     def list(
         self,
         *,
+        actor: ActorContext,
         offset: int,
         limit: int,
         device_id: UUID | None = None,
@@ -52,7 +60,8 @@ class ShopService:
         platform: str | None = None,
         name_query: str | None = None,
     ) -> tuple[list[Shop], int, dict[UUID, ShopSessionStatus]]:
-        shops = self.shop_repository.list(
+        shops = self.shop_repository.list_for_actor(
+            actor=actor,
             offset=offset,
             limit=limit,
             device_id=device_id,
@@ -63,7 +72,8 @@ class ShopService:
         )
         return (
             shops,
-            self.shop_repository.count(
+            self.shop_repository.count_for_actor(
+                actor=actor,
                 device_id=device_id,
                 enabled=enabled,
                 owner_user_id=owner_user_id,
@@ -75,8 +85,8 @@ class ShopService:
             ),
         )
 
-    def get(self, shop_id: UUID) -> Shop:
-        shop = self.shop_repository.get(shop_id)
+    def get(self, actor: ActorContext, shop_id: UUID) -> Shop:
+        shop = self.shop_repository.get_for_actor(actor=actor, shop_id=shop_id)
         if shop is None:
             raise ShopNotFoundError()
         return shop
@@ -85,16 +95,29 @@ class ShopService:
         if owner_user_id is not None and self.user_repository.get(owner_user_id) is None:
             raise UserNotFoundError()
 
-    def create(self, data: ShopCreate) -> Shop:
+    def create(self, actor: ActorContext, data: ShopCreate) -> Shop:
+        self._require_super_account(actor)
+        team_id = actor.require_team_id()
         self._ensure_owner_exists(data.owner_user_id)
         shop = Shop(**data.model_dump())
         self.shop_repository.add(shop)
+        self.session.flush()
+        self.resource_access_repository.replace_shop_ids(
+            team_id,
+            [
+                *self.resource_access_repository.list_shop_ids(team_id),
+                shop.shop_id,
+            ],
+        )
         self.session.commit()
         self.session.refresh(shop)
         return shop
 
-    def update(self, shop_id: UUID, data: ShopUpdate) -> Shop:
-        shop = self.get(shop_id)
+    def update(self, actor: ActorContext, shop_id: UUID, data: ShopUpdate) -> Shop:
+        self._require_super_account(actor)
+        shop = self.shop_repository.get_for_update(shop_id)
+        if shop is None:
+            raise ShopNotFoundError()
         changes = data.model_dump(exclude_unset=True)
         if shop.platform_shop_id is not None and {
             "display_name",
@@ -109,15 +132,22 @@ class ShopService:
         self.session.refresh(shop)
         return shop
 
-    def remove(self, shop_id: UUID) -> None:
-        shop = self.get(shop_id)
+    def remove(self, actor: ActorContext, shop_id: UUID) -> None:
+        self._require_super_account(actor)
+        shop = self.shop_repository.get_for_update(shop_id)
+        if shop is None:
+            raise ShopNotFoundError()
         shop.enabled = False
         shop.deleted_at = datetime.now(UTC)
         self.binding_repository.disable_enabled_by_shop(shop_id)
         self.session.commit()
 
-    def list_bindings(self, shop_id: UUID) -> list[ShopDeviceBinding]:
-        self.get(shop_id)
+    def list_bindings(
+        self,
+        actor: ActorContext,
+        shop_id: UUID,
+    ) -> list[ShopDeviceBinding]:
+        self.get(actor, shop_id)
         return self.binding_repository.list_by_shop(shop_id)
 
     def _ensure_device_exists(self, device_id: UUID) -> None:
@@ -126,10 +156,13 @@ class ShopService:
 
     def create_binding(
         self,
+        actor: ActorContext,
         shop_id: UUID,
         data: ShopDeviceBindingCreate,
     ) -> ShopDeviceBinding:
-        self.get(shop_id)
+        self._require_super_account(actor)
+        if self.shop_repository.get(shop_id) is None:
+            raise ShopNotFoundError()
         self._ensure_device_exists(data.device_id)
         if self.binding_repository.get(shop_id, data.device_id) is not None:
             raise InvalidDeviceBindingError("该店铺与设备已经存在绑定关系")
@@ -139,11 +172,14 @@ class ShopService:
 
     def update_binding(
         self,
+        actor: ActorContext,
         shop_id: UUID,
         device_id: UUID,
         data: ShopDeviceBindingUpdate,
     ) -> ShopDeviceBinding:
-        self.get(shop_id)
+        self._require_super_account(actor)
+        if self.shop_repository.get(shop_id) is None:
+            raise ShopNotFoundError()
         binding = self.binding_repository.get(shop_id, device_id)
         if binding is None:
             raise InvalidDeviceBindingError("设备绑定关系不存在")
@@ -160,3 +196,8 @@ class ShopService:
             raise InvalidDeviceBindingError() from error
         self.session.refresh(binding)
         return binding
+
+    @staticmethod
+    def _require_super_account(actor: ActorContext) -> None:
+        if not actor.is_super_account:
+            raise SuperAccountRequiredError()

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
-from app.modules.access.models import Team
+from app.modules.access.models import Team, TeamDeviceAccess
 from app.core.config import Settings
 from app.modules.automation_apps.models import AutomationApplicationConfig
 from app.modules.automation_apps.schemas import AutomationApplicationConfigUpsert
@@ -83,6 +83,9 @@ def _cleanup(
                 WorkerDeviceCredential.device_id.in_(device_ids),
             ),
         )
+        session.execute(
+            delete(TeamDeviceAccess).where(TeamDeviceAccess.team_id == team_id),
+        )
         session.execute(delete(Device).where(Device.device_id.in_(device_ids)))
         session.execute(delete(User).where(User.user_id == user_id))
         session.execute(delete(Team).where(Team.team_id == team_id))
@@ -128,6 +131,13 @@ def test_worker_credential_lifecycle_uses_hash_and_isolates_devices(
                         team_id=team_id,
                         display_name="credential-b",
                     ),
+                ],
+            )
+            session.flush()
+            session.add_all(
+                [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id)
+                    for device_id in device_ids
                 ],
             )
             session.commit()
@@ -201,6 +211,13 @@ def test_worker_identity_runtime_claim_result_and_lost(
                         team_id=team_id,
                         display_name="worker-lite-b",
                     ),
+                ],
+            )
+            session.flush()
+            session.add_all(
+                [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id)
+                    for device_id in device_ids
                 ],
             )
             session.commit()
@@ -495,6 +512,13 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
                         team_id=team_id,
                         display_name="yingdao-not-ready",
                     ),
+                ],
+            )
+            session.flush()
+            session.add_all(
+                [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id)
+                    for device_id in device_ids
                 ],
             )
             session.commit()

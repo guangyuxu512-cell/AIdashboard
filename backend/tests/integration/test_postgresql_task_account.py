@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
-from app.modules.access.models import Team
+from app.modules.access.models import Team, TeamDeviceAccess, TeamShopAccess
 from app.core.security import SecretCipher
 from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.credentials.schemas import CredentialCreate
@@ -112,6 +112,12 @@ def _cleanup(
             delete(ShopDeviceBinding).where(
                 ShopDeviceBinding.shop_id.in_(shop_ids),
             ),
+        )
+        session.execute(
+            delete(TeamDeviceAccess).where(TeamDeviceAccess.team_id == team_id),
+        )
+        session.execute(
+            delete(TeamShopAccess).where(TeamShopAccess.team_id == team_id),
         )
         if credential_ids:
             session.execute(
@@ -219,6 +225,16 @@ def test_shop_scoped_task_claim_delivers_account_without_persisting_it(
                         enabled=True,
                     )
                     for shop_id in shop_ids
+                ],
+            )
+            session.flush()
+            session.add_all(
+                [
+                    TeamDeviceAccess(team_id=team_id, device_id=device_id),
+                    *[
+                        TeamShopAccess(team_id=team_id, shop_id=shop_id)
+                        for shop_id in shop_ids
+                    ],
                 ],
             )
             session.commit()
@@ -391,6 +407,8 @@ def test_no_shop_task_claim_returns_an_empty_account_payload(
                     ),
                 ],
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
             task_service = TaskService(session)
@@ -470,6 +488,8 @@ def test_no_shop_schedule_create_edit_and_trigger_keep_accounts_empty(
                     ),
                 ],
             )
+            session.flush()
+            session.add(TeamDeviceAccess(team_id=team_id, device_id=device_id))
             session.commit()
 
             schedules = ScheduleService(session)
@@ -580,6 +600,7 @@ def test_same_shop_can_run_on_two_bound_devices_without_global_lock(
                     for device_id in device_ids
                 ],
             )
+            session.flush()
             session.add_all(
                 [
                     DeviceSkillCapability(
@@ -594,6 +615,7 @@ def test_same_shop_can_run_on_two_bound_devices_without_global_lock(
                     for device_id in device_ids
                 ],
             )
+            session.flush()
             session.add_all(
                 [
                     ShopDeviceBinding(
@@ -602,6 +624,15 @@ def test_same_shop_can_run_on_two_bound_devices_without_global_lock(
                         enabled=True,
                     )
                     for device_id in device_ids
+                ],
+            )
+            session.add_all(
+                [
+                    *[
+                        TeamDeviceAccess(team_id=team_id, device_id=device_id)
+                        for device_id in device_ids
+                    ],
+                    TeamShopAccess(team_id=team_id, shop_id=shop_id),
                 ],
             )
             session.commit()
@@ -682,6 +713,16 @@ def test_same_shop_can_run_on_two_bound_devices_without_global_lock(
             session.execute(
                 delete(ShopDeviceBinding).where(
                     ShopDeviceBinding.shop_id == shop_id,
+                ),
+            )
+            session.execute(
+                delete(TeamDeviceAccess).where(
+                    TeamDeviceAccess.team_id == team_id,
+                ),
+            )
+            session.execute(
+                delete(TeamShopAccess).where(
+                    TeamShopAccess.team_id == team_id,
                 ),
             )
             if credential_ids:

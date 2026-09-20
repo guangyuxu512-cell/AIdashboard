@@ -17,6 +17,7 @@ export interface AccessMemberViewModel {
   displayName: string
   loginName: string | null
   enabled: boolean
+  isSuperAccount: boolean
   memberships: AccessMembershipViewModel[]
   createdAt: string
   updatedAt: string
@@ -42,7 +43,11 @@ export interface AccessMemberCreateInput {
   displayName: string
   loginName: string
   password: string
-  membership: AccessMembershipInput
+  teamId: string | null
+}
+
+export interface AccessMemberTeamInput {
+  teamId: string | null
 }
 
 export interface AccessMembershipUpdateInput {
@@ -55,4 +60,17 @@ export interface AccessMembershipUpdateInput {
 export interface AccessTeamInput {
   name: string
   enabled: boolean
+}
+
+export interface AccessTeamAuthorizationViewModel {
+  teamId: string
+  moduleCodes: string[]
+  deviceIds: string[]
+  shopIds: string[]
+}
+
+export interface AccessTeamAuthorizationInput {
+  moduleCodes: string[]
+  deviceIds: string[]
+  shopIds: string[]
 }

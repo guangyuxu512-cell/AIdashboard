@@ -20,14 +20,14 @@ def test_cli_has_no_raw_password_argument() -> None:
     assert all(action.dest != "password" for action in _all_actions(build_parser()))
 
 
-def test_cli_exposes_generic_access_administrator_grant_command() -> None:
+def test_cli_exposes_explicit_super_account_designation_command() -> None:
     parser = build_parser()
     args = parser.parse_args(
-        ["grant-access-administrator", "00000000-0000-4000-8000-000000000001"],
+        ["designate-super-account", "00000000-0000-4000-8000-000000000001"],
     )
 
-    assert args.command == "grant-access-administrator"
-    assert str(args.membership_id) == "00000000-0000-4000-8000-000000000001"
+    assert args.command == "designate-super-account"
+    assert str(args.user_id) == "00000000-0000-4000-8000-000000000001"
 
 
 def test_cli_reads_and_confirms_password_with_getpass(
