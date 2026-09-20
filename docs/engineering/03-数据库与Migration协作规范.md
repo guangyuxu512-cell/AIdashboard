@@ -28,10 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无。`20260919_0037_super_account_team_authorization_v1` 已完成 Gate 2 并进入 Green `dev`；生产发布前仍须完成其数据归一与唯一超级账号身份预检。
+当前活跃 Migration Slot：`feat/parameter-preset-historical-reference-deletion-v1` / 81a1，状态为 `reserved`。`20260919_0037_super_account_team_authorization_v1` 已完成 Gate 2 并进入 Green `dev`；生产发布前仍须完成其数据归一与唯一超级账号身份预检。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/parameter-preset-historical-reference-deletion-v1` / 81a1 | `reserved` | `automation_parameter_presets` 计划增加 `deleted_at`，并以仅覆盖未软删除记录的 `(team_id, app_id, name)` 部分唯一索引替代现有名称唯一约束；Task 完整 `input_json` 快照与软删除 Schedule 的历史引用必须保留，只有未软删除 Schedule（包括 disabled）阻止删除 | `20260919_0037_super_account_team_authorization_v1` | `20260920_0038_parameter_preset_historical_reference_deletion_v1`（down revision：`20260919_0037`） | Integrator 已创建空库 `control_center_feat_parameter_preset_history_delete` 并验证最小权限角色连接与建表权限；Feature Owner 先执行既有 `alembic upgrade head`，再实现/验证 `0038`。不得修改 `0037`；Gate 1 必须覆盖历史 Task、软删除/活动 Schedule 与同名重建语义 |
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
