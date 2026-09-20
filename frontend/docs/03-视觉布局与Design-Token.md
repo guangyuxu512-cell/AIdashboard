@@ -97,6 +97,8 @@ Base Token
 
 新的全局实现应优先使用 `--text-*`、`--bg-*`、`--border-*`、`--status-*` 语义 Token。`--color-text-*`、`--color-bg-*` 等旧名称仅作兼容别名，不得在业务页新增随机颜色。
 
+视觉辨识度调整只能收敛到既有语义 Token 与 Naive UI 全局覆盖：`--border-subtle` 用于可见的层级分隔，`--border-default` 用于可操作控件边界，`--color-primary-soft` 与 `--color-primary` 共同表达选中状态。禁用控件必须继续使用 `--bg-subtle` 和 `--text-disabled`，与正常控件明确区分；业务页面不得自行覆写这些状态色。
+
 ## 企业级 Frosted Glass
 
 毛玻璃只用于 Sidebar、Topbar 和主 Surface/Card，默认 Blur 为 10px，配合低透明度表面、1px 边框与轻阴影。Table Cell、Button、Input、Select 不使用 Blur。页面背景使用中性冷灰，禁止蓝紫青渐变、Neon、Glow 和大面积高饱和颜色。
