@@ -774,17 +774,32 @@ def test_postgresql_preset_snapshot_and_schedule_use_current_saved_preset(
 def test_postgresql_super_without_team_reads_all_presets_but_cannot_write(
     postgresql_engine: Engine,
 ) -> None:
-    super_user_id, team_a_id, team_b_id = uuid4(), uuid4(), uuid4()
+    created_super_user_id: UUID | None = None
+    super_user_id: UUID | None = None
+    team_a_id, team_b_id = uuid4(), uuid4()
     preset_a_id, preset_b_id = uuid4(), uuid4()
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
+            # Integration may already contain the singleton super account.
+            # Reuse it without mutating or deleting it; a fresh Feature DB
+            # creates only the short-lived fixture account below.
+            super_user = session.scalar(
+                select(User)
+                .where(User.is_super_account.is_(True))
+                .order_by(User.user_id.asc())
+            )
+            if super_user is None:
+                super_user = User(
+                    user_id=uuid4(),
+                    display_name="Preset read super account",
+                    is_super_account=True,
+                )
+                session.add(super_user)
+                session.flush()
+                created_super_user_id = super_user.user_id
+            super_user_id = super_user.user_id
             session.add_all(
                 [
-                    User(
-                        user_id=super_user_id,
-                        display_name="Preset read super account",
-                        is_super_account=True,
-                    ),
                     Team(team_id=team_a_id, name="Preset read team A"),
                     Team(team_id=team_b_id, name="Preset read team B"),
                 ],
@@ -818,7 +833,7 @@ def test_postgresql_super_without_team_reads_all_presets_but_cannot_write(
 
             actor = ActorContext(
                 user_id=super_user_id,
-                user_display_name="Preset read super account",
+                user_display_name=super_user.display_name,
                 team_id=None,
                 membership_id=None,
                 role_code="super_account",
@@ -855,7 +870,10 @@ def test_postgresql_super_without_team_reads_all_presets_but_cannot_write(
                     AutomationParameterPreset.preset_id.in_([preset_a_id, preset_b_id]),
                 ),
             )
-            session.execute(delete(User).where(User.user_id == super_user_id))
+            if created_super_user_id is not None:
+                session.execute(
+                    delete(User).where(User.user_id == created_super_user_id),
+                )
             session.execute(
                 delete(Team).where(Team.team_id.in_([team_a_id, team_b_id])),
             )
