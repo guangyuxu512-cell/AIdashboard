@@ -1,0 +1,53 @@
+name: Production Read Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-center-production-read-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Read production release facts
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure production SSH
+        env:
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+          PRODUCTION_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_PRIVATE_KEY }}
+          PRODUCTION_SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${PRODUCTION_DEPLOY_HOST}"
+          test -n "${PRODUCTION_DEPLOY_USER}"
+          test -n "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
+          test -n "${PRODUCTION_SSH_KNOWN_HOSTS}"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "${PRODUCTION_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add - <<< "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
+          printf 'SSH_AUTH_SOCK=%s\n' "${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
+          printf 'SSH_AGENT_PID=%s\n' "${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
+
+      - name: Run fixed read-only production preflight
+        env:
+          PRECHECK_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          remote_script="/tmp/control-center-production-read-preflight-${PRECHECK_ID}.sh"
+          remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
+          ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
+          scp "${ssh_options[@]}" scripts/remote-production-read-preflight.sh "${remote_target}:${remote_script}"
+          ssh "${ssh_options[@]}" "${remote_target}" \
+            "chmod 0700 '${remote_script}' && '${remote_script}' '/opt/ecommerce-control-center/production'; status=\$?; rm -f -- '${remote_script}'; exit \$status"
