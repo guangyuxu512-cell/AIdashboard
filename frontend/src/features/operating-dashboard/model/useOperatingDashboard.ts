@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import type { SelectOption } from 'naive-ui'
 
+import { getPlatformDefinition } from '@/entities/platform'
 import { apiMode } from '@/shared/api'
 
 import { createOperatingDashboardMockSource } from './mock-source'
@@ -132,12 +133,12 @@ export function useOperatingDashboard() {
         (shop) => shop.platform,
       ),
     )
-    return [
-      ...(platforms.has('douyin')
-        ? [{ label: '抖店', value: 'douyin' }]
-        : []),
-      ...(platforms.has('pdd') ? [{ label: '拼多多', value: 'pdd' }] : []),
-    ]
+    return [...platforms].flatMap((platform) => {
+      const definition = getPlatformDefinition(platform)
+      return definition
+        ? [{ label: definition.label, value: definition.code }]
+        : []
+    })
   })
 
   watch(pageCount, (nextPageCount) => {
