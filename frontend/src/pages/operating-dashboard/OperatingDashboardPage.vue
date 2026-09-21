@@ -28,9 +28,6 @@ const trendTitle = computed(() => {
     ? `${range.endDate} 成交趋势`
     : `${range.startDate} 至 ${range.endDate} 成交趋势`
 })
-const showExperience = computed(
-  () => dashboard.filters.value.platform !== 'pdd',
-)
 </script>
 
 <template>
@@ -76,7 +73,6 @@ const showExperience = computed(
           :rows="dashboard.rows.value"
           :loading="dashboard.filterLoading.value"
           :error="dashboard.error.value"
-          :show-experience="showExperience"
           @retry="dashboard.retry"
         />
 

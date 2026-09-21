@@ -1,8 +1,47 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
-test('uses the UI-only dashboard fixture for filtering, pagination and refresh feedback', async ({
+async function getMixedPlatformAlignment(
+  page: Page,
+  tableSelector: string,
+) {
+  return page.evaluate((selector) => {
+    const displays = Array.from(
+      document.querySelectorAll(`${selector} .platform-display`),
+    ).map((display) => {
+      const iconSlot = display.querySelector('.platform-display__icon-slot')
+      const label = display.querySelector('.platform-display__label')
+      if (!iconSlot || !label) return null
+      const displayRect = display.getBoundingClientRect()
+      const iconRect = iconSlot.getBoundingClientRect()
+      const labelRect = label.getBoundingClientRect()
+      return {
+        label: label.textContent,
+        width: displayRect.width,
+        iconLeft: iconRect.left,
+        labelLeft: labelRect.left,
+        verticallyAligned:
+          Math.abs(
+            iconRect.top + iconRect.height / 2 -
+              (labelRect.top + labelRect.height / 2),
+          ) <= 1,
+      }
+    })
+    const douyin = displays.find((display) => display?.label === '抖店')
+    const pdd = displays.find((display) => display?.label === '拼多多')
+    return douyin && pdd
+      ? {
+          fixedWidth: Math.abs(douyin.width - pdd.width) <= 1,
+          iconStart: Math.abs(douyin.iconLeft - pdd.iconLeft) <= 1,
+          labelStart: Math.abs(douyin.labelLeft - pdd.labelLeft) <= 1,
+          verticallyAligned: douyin.verticallyAligned && pdd.verticallyAligned,
+        }
+      : null
+  }, tableSelector)
+}
+
+test('uses the UI-only dashboard fixture for filtering, stable experience columns and refresh feedback', async ({
   page,
 }) => {
   const runtimeErrors: string[] = []
@@ -35,10 +74,13 @@ test('uses the UI-only dashboard fixture for filtering, pagination and refresh f
     .click()
   await expect(
     page.getByRole('columnheader', { name: '商家体验分' }),
-  ).toHaveCount(0)
+  ).toBeVisible()
   await expect(
     page.getByRole('row').filter({ hasText: '抖店' }),
   ).toHaveCount(0)
+  await expect(
+    page.getByRole('row').filter({ hasText: '示例店铺 A' }),
+  ).toContainText('—')
 
   await filter.locator('.n-base-selection').first().click()
   await page
@@ -55,6 +97,15 @@ test('uses the UI-only dashboard fixture for filtering, pagination and refresh f
   await expect(
     page.getByRole('row').filter({ hasText: '示例店铺 B' }),
   ).toHaveCount(1)
+
+  await filter.locator('.n-base-selection').last().click()
+  await page.getByText('抖店', { exact: true }).last().click()
+  await expect(
+    page.getByRole('columnheader', { name: '商家体验分' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('row').filter({ hasText: 'HuanYu' }),
+  ).toContainText('81分')
 
   await filter.locator('.n-base-selection').last().click()
   await page.getByText('全部平台', { exact: true }).last().click()
@@ -138,24 +189,15 @@ test('matches the shop list table density and centers dashboard metric cells', a
   const shopTableMetrics = await page.evaluate(() => {
     const row = document.querySelector('.n-data-table-tbody .n-data-table-tr')
     const header = document.querySelector('.n-data-table-thead .n-data-table-th')
-    const platformDisplay = document.querySelector('.platform-display')
-    const iconSlot = document.querySelector('.platform-display__icon-slot')
-    const label = document.querySelector('.platform-display__label')
-    const platformAligned =
-      platformDisplay && iconSlot && label
-        ? Math.abs(
-            iconSlot.getBoundingClientRect().top +
-              iconSlot.getBoundingClientRect().height / 2 -
-              (label.getBoundingClientRect().top +
-                label.getBoundingClientRect().height / 2),
-          ) <= 1
-        : false
     return {
       rowHeight: Math.round(row?.getBoundingClientRect().height ?? 0),
       headerHeight: Math.round(header?.getBoundingClientRect().height ?? 0),
-      platformAligned,
     }
   })
+  const shopPlatformAlignment = await getMixedPlatformAlignment(
+    page,
+    '.shop-list-table',
+  )
 
   await page.goto('/#/operating-dashboard')
   await expect(
@@ -168,36 +210,21 @@ test('matches the shop list table density and centers dashboard metric cells', a
     const header = document.querySelector(
       '.operating-dashboard-table .n-data-table-thead .n-data-table-th',
     )
-    const platformDisplay = document.querySelector(
-      '.operating-dashboard-table .platform-display',
-    )
-    const iconSlot = document.querySelector(
-      '.operating-dashboard-table .platform-display__icon-slot',
-    )
-    const label = document.querySelector(
-      '.operating-dashboard-table .platform-display__label',
-    )
     const alignments = Array.from(
       document.querySelectorAll(
         '.operating-dashboard-table .n-data-table-tbody .n-data-table-tr:first-child .n-data-table-td',
       ),
     ).map((cell) => getComputedStyle(cell).textAlign)
-    const platformAligned =
-      platformDisplay && iconSlot && label
-        ? Math.abs(
-            iconSlot.getBoundingClientRect().top +
-              iconSlot.getBoundingClientRect().height / 2 -
-              (label.getBoundingClientRect().top +
-                label.getBoundingClientRect().height / 2),
-          ) <= 1
-        : false
     return {
       rowHeight: Math.round(row?.getBoundingClientRect().height ?? 0),
       headerHeight: Math.round(header?.getBoundingClientRect().height ?? 0),
       alignments,
-      platformAligned,
     }
   })
+  const dashboardPlatformAlignment = await getMixedPlatformAlignment(
+    page,
+    '.operating-dashboard-table',
+  )
 
   expect(dashboardTableMetrics.rowHeight).toBe(shopTableMetrics.rowHeight)
   expect(dashboardTableMetrics.headerHeight).toBe(shopTableMetrics.headerHeight)
@@ -207,8 +234,18 @@ test('matches the shop list table density and centers dashboard metric cells', a
     'center',
     'center',
   ])
-  expect(shopTableMetrics.platformAligned).toBe(true)
-  expect(dashboardTableMetrics.platformAligned).toBe(true)
+  expect(shopPlatformAlignment).toEqual({
+    fixedWidth: true,
+    iconStart: true,
+    labelStart: true,
+    verticallyAligned: true,
+  })
+  expect(dashboardPlatformAlignment).toEqual({
+    fixedWidth: true,
+    iconStart: true,
+    labelStart: true,
+    verticallyAligned: true,
+  })
 })
 
 test('keeps the dashboard table and pagination inside the desktop renderer', async ({

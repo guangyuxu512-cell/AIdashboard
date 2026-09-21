@@ -17,7 +17,11 @@ const meta = computed(() => getPlatformDefinition(props.code))
 </script>
 
 <template>
-  <span v-if="meta" class="platform-display">
+  <span
+    v-if="meta"
+    class="platform-display"
+    :class="{ 'platform-display--with-label': label }"
+  >
     <span class="platform-display__icon-slot" aria-hidden="true">
       <PlatformIcon :code="code" />
     </span>
@@ -39,6 +43,10 @@ const meta = computed(() => getPlatformDefinition(props.code))
   white-space: nowrap;
 }
 
+.platform-display--with-label {
+  width: calc(var(--space-5) + var(--space-2) + 3em);
+}
+
 .platform-display__icon-slot {
   display: inline-grid;
   width: var(--space-5);
@@ -50,6 +58,10 @@ const meta = computed(() => getPlatformDefinition(props.code))
 .platform-display__label {
   min-width: 0;
   text-align: left;
+}
+
+.platform-display--with-label .platform-display__label {
+  flex: 0 0 3em;
 }
 
 .platform-display__support {
