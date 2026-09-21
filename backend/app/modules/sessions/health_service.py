@@ -4,7 +4,11 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.modules.sessions.auth_context import ShopSessionAccessor
+from app.modules.sessions.auth_context import (
+    ShopSessionAccessor,
+    ShopSessionAuthContext,
+    StoredSessionCookie,
+)
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.schemas import (
     ShopSessionHealthRead,
@@ -94,27 +98,13 @@ class ShopSessionHealthService:
         ):
             raise PlatformIdentityMismatchError()
 
-        updates_applied = 0
-        if identity.cookie_updates:
-            payload, updates_applied = self.session_accessor.merge_response_cookies(
-                shop_id,
-                identity.cookie_updates,
-            )
-            if updates_applied:
-                metadata = self.session_service.get_metadata(shop_id)
-                metadata = self.session_service.store_payload(
-                    StoreShopSessionCommand(
-                        shop_id=shop_id,
-                        expected_version=auth_context.session_version,
-                        status=ShopSessionStatus.VALID,
-                        source_device_id=metadata.source_device_id,
-                        captured_at=metadata.captured_at or now,
-                        validated_at=now,
-                        expires_at=metadata.expires_at,
-                    ),
-                    payload,
-                )
-        if not updates_applied:
+        updates_applied = self.apply_response_cookie_updates(
+            auth_context,
+            identity.cookie_updates,
+        )
+        if updates_applied:
+            metadata = self.session_service.get_metadata(shop_id)
+        else:
             self.session_accessor.mark_validation_status(
                 shop_id,
                 auth_context.session_version,
@@ -133,3 +123,40 @@ class ShopSessionHealthService:
             used_cached_validation=False,
             cookie_updates_applied=updates_applied,
         )
+
+    def apply_response_cookie_updates(
+        self,
+        auth_context: ShopSessionAuthContext,
+        cookie_updates: tuple[StoredSessionCookie, ...],
+    ) -> int:
+        """Persist explicit platform Set-Cookie updates through the Session boundary.
+
+        Platform business connectors may use this after a successful request;
+        they never decrypt or write a Session payload directly.  A version
+        conflict remains explicit so an older in-flight request cannot replace
+        a newly captured browser session.
+        """
+
+        if not cookie_updates:
+            return 0
+        payload, updates_applied = self.session_accessor.merge_response_cookies(
+            auth_context.shop_id,
+            cookie_updates,
+        )
+        if not updates_applied:
+            return 0
+        metadata = self.session_service.get_metadata(auth_context.shop_id)
+        now = datetime.now(UTC)
+        self.session_service.store_payload(
+            StoreShopSessionCommand(
+                shop_id=auth_context.shop_id,
+                expected_version=auth_context.session_version,
+                status=ShopSessionStatus.VALID,
+                source_device_id=metadata.source_device_id,
+                captured_at=metadata.captured_at or now,
+                validated_at=now,
+                expires_at=metadata.expires_at,
+            ),
+            payload,
+        )
+        return updates_applied
