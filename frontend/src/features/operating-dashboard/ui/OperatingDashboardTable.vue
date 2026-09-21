@@ -13,11 +13,10 @@ import {
 } from '../model/formatters'
 import type { OperatingDashboardTableRow } from '../model/types'
 
-const props = defineProps<{
+defineProps<{
   rows: OperatingDashboardTableRow[]
   loading?: boolean
   error?: string | null
-  showExperience: boolean
 }>()
 
 defineEmits<{ retry: [] }>()
@@ -58,25 +57,21 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     align: 'center',
     render: (row) => formatDashboardCount(row.returnQuantity),
   },
-  ...(props.showExperience
-    ? [
-        {
-          title: '商家体验分',
-          key: 'experience',
-          width: 270,
-          align: 'center' as const,
-          ellipsis: { tooltip: true },
-          render: (row: OperatingDashboardTableRow) => {
-            const value = formatMerchantExperience(row.experience)
-            return h(
-              'span',
-              { class: 'operating-dashboard-table__experience', title: value },
-              value,
-            )
-          },
-        },
-      ]
-    : []),
+  {
+    title: '商家体验分',
+    key: 'experience',
+    width: 270,
+    align: 'center' as const,
+    ellipsis: { tooltip: true },
+    render: (row: OperatingDashboardTableRow) => {
+      const value = formatMerchantExperience(row.experience)
+      return h(
+        'span',
+        { class: 'operating-dashboard-table__experience', title: value },
+        value,
+      )
+    },
+  },
   {
     title: '更新时间',
     key: 'collectedAt',
@@ -94,7 +89,7 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     :loading="loading"
     :error="error"
     :row-key="(row: OperatingDashboardTableRow) => row.shopId"
-    :scroll-x="showExperience ? 1062 : 792"
+    :scroll-x="1062"
     appearance="list"
     viewport="fill"
     class="operating-dashboard-table"
