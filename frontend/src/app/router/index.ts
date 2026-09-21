@@ -7,7 +7,6 @@ const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
 const assetModule = requireModuleDefinition('asset')
 const aiWorkbenchModule = requireModuleDefinition('ai-workbench')
-const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
@@ -69,13 +68,6 @@ const router = createRouter({
       component: () =>
         import('@/pages/ai-workbench/AiGenerationRecordsPage.vue'),
       meta: { moduleCode: aiWorkbenchModule.moduleCode },
-    },
-    {
-      path: operatingDashboardModule.routePath,
-      name: operatingDashboardModule.routeName,
-      component: () =>
-        import('@/pages/operating-dashboard/OperatingDashboardPage.vue'),
-      meta: { moduleCode: operatingDashboardModule.moduleCode },
     },
     {
       path: deviceModule.routePath,
