@@ -41,21 +41,21 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     title: '成交金额',
     key: 'turnoverCents',
     width: 132,
-    align: 'right',
+    align: 'center',
     render: (row) => formatDashboardCurrency(row.turnoverCents),
   },
   {
     title: '成交订单',
     key: 'orderCount',
     width: 112,
-    align: 'right',
+    align: 'center',
     render: (row) => formatDashboardCount(row.orderCount),
   },
   {
     title: '退货数量',
     key: 'returnQuantity',
     width: 112,
-    align: 'right',
+    align: 'center',
     render: (row) => formatDashboardCount(row.returnQuantity),
   },
   ...(props.showExperience
@@ -64,7 +64,7 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
           title: '商家体验分',
           key: 'experience',
           width: 270,
-          align: 'left' as const,
+          align: 'center' as const,
           ellipsis: { tooltip: true },
           render: (row: OperatingDashboardTableRow) => {
             const value = formatMerchantExperience(row.experience)
@@ -109,12 +109,17 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
   flex: 1;
 }
 
-:deep(.operating-dashboard-table__experience) {
+.operating-dashboard-table :deep(.n-data-table-tbody .n-data-table-td) {
+  height: var(--table-list-row-slot-height);
+  vertical-align: middle;
+}
+
+.operating-dashboard-table :deep(.operating-dashboard-table__experience) {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  vertical-align: bottom;
+  vertical-align: middle;
   white-space: nowrap;
 }
 </style>
