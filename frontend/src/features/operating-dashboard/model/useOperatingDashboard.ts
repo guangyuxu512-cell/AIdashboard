@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/vue-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import type { SelectOption } from 'naive-ui'
 
@@ -33,6 +33,19 @@ function cloneFilters(
       ? [...filters.customDateRange] as [number, number]
       : null,
   }
+}
+
+function sameFilters(
+  left: OperatingDashboardFilters,
+  right: OperatingDashboardFilters,
+): boolean {
+  return (
+    left.datePreset === right.datePreset &&
+    left.platform === right.platform &&
+    left.shopId === right.shopId &&
+    left.customDateRange?.[0] === right.customDateRange?.[0] &&
+    left.customDateRange?.[1] === right.customDateRange?.[1]
+  )
 }
 
 function createUnavailableError(): Error {
@@ -83,23 +96,28 @@ export function useOperatingDashboard() {
       filters.value.platform,
       filters.value.shopId,
     ]),
-    queryFn: () =>
-      mockSource
-        ? mockSource.read(filters.value)
-        : Promise.reject(createUnavailableError()),
+    queryFn: () => {
+      const requestFilters = cloneFilters(filters.value)
+      return mockSource
+        ? mockSource.read(requestFilters)
+        : Promise.reject(createUnavailableError())
+    },
+    placeholderData: keepPreviousData,
     retry: false,
   })
 
   const refreshMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (requestFilters: OperatingDashboardFilters) => {
       if (!mockSource) return Promise.reject(createUnavailableError())
-      return mockSource.refresh(filters.value)
+      return mockSource.refresh(requestFilters)
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, requestFilters) => {
+      if (!sameFilters(requestFilters, filters.value)) return
       refreshFeedback.value = getFeedback(result)
       await query.refetch()
     },
-    onError: (error) => {
+    onError: (error, requestFilters) => {
+      if (!sameFilters(requestFilters, filters.value)) return
       refreshFeedback.value = {
         tone: 'error',
         message:
@@ -122,10 +140,16 @@ export function useOperatingDashboard() {
     return allRows.value.slice(start, start + pageSize.value)
   })
   const shopOptions = computed<SelectOption[]>(() =>
-    (query.data.value?.availableShops ?? []).map((shop) => ({
-      label: shop.shopName,
-      value: shop.shopId,
-    })),
+    (query.data.value?.allAvailableShops ?? [])
+      .filter(
+        (shop) =>
+          filters.value.platform === null ||
+          shop.platform === filters.value.platform,
+      )
+      .map((shop) => ({
+        label: shop.shopName,
+        value: shop.shopId,
+      })),
   )
   const platformOptions = computed<SelectOption[]>(() => {
     const platforms = new Set(
@@ -148,7 +172,7 @@ export function useOperatingDashboard() {
   function updateFilters(next: OperatingDashboardFilters): void {
     const currentShopExists =
       next.shopId === null ||
-      (query.data.value?.availableShops ?? []).some(
+      (query.data.value?.allAvailableShops ?? []).some(
         (shop) =>
           shop.shopId === next.shopId &&
           (next.platform === null || shop.platform === next.platform),
@@ -168,7 +192,7 @@ export function useOperatingDashboard() {
 
   function refresh(): void {
     if (!mockSource || refreshMutation.isPending.value) return
-    refreshMutation.mutate()
+    refreshMutation.mutate(cloneFilters(filters.value))
   }
 
   return {
@@ -182,7 +206,12 @@ export function useOperatingDashboard() {
     shopOptions,
     platformOptions,
     read: query.data,
-    loading: query.isFetching,
+    initialLoading: computed(
+      () => query.isPending.value && query.data.value === undefined,
+    ),
+    filterLoading: computed(
+      () => query.isFetching.value && query.data.value !== undefined,
+    ),
     error: computed(() =>
       query.error.value instanceof Error
         ? query.error.value.message
