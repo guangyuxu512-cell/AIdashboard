@@ -11,6 +11,10 @@ services:
       - ${PRODUCTION_ENV_FILE:?PRODUCTION_ENV_FILE is required}
     environment:
       PORT: ${DOUYIN_SIGNER_BIND_PORT:-8788}
+      # One signature per isolated child process; this only pre-warms the
+      # process start and never shares a shop's browser-like globals.
+      DOUYIN_SIGNER_WARM_POOL_SIZE: ${DOUYIN_SIGNER_WARM_POOL_SIZE:-2}
+      DOUYIN_SIGNER_QUEUE_TIMEOUT_MS: ${DOUYIN_SIGNER_QUEUE_TIMEOUT_MS:-15000}
     network_mode: host
     restart: unless-stopped
     init: true

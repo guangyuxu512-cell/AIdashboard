@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Mapping
 
 import httpx
@@ -20,6 +21,7 @@ from app.platforms.douyin.endpoints import DouyinEndpoint
 from app.platforms.exceptions import (
     PlatformAuthenticationInvalidError,
     PlatformRequestFailedError,
+    PlatformSignerFailedError,
     PlatformRequestTimeoutError,
     PlatformResponseInvalidError,
 )
@@ -30,6 +32,8 @@ from app.platforms.session_cookies import response_cookie_updates, to_httpx_cook
 class DouyinApiResponse:
     payload: dict[str, Any]
     cookie_updates: tuple[StoredSessionCookie, ...]
+    signature_duration_ms: int | None
+    platform_duration_ms: int
 
 
 class DouyinApiClient:
@@ -59,7 +63,7 @@ class DouyinApiClient:
         params = dict(query or {})
         try:
             if self.client is not None:
-                response = self._request(
+                response, signature_duration_ms, platform_duration_ms = self._request(
                     self.client,
                     endpoint,
                     cookies,
@@ -73,7 +77,7 @@ class DouyinApiClient:
                     timeout=self.timeout_seconds,
                     follow_redirects=False,
                 ) as client:
-                    response = self._request(
+                    response, signature_duration_ms, platform_duration_ms = self._request(
                         client,
                         endpoint,
                         cookies,
@@ -102,6 +106,8 @@ class DouyinApiClient:
         return DouyinApiResponse(
             payload=payload,
             cookie_updates=response_cookie_updates(response),
+            signature_duration_ms=signature_duration_ms,
+            platform_duration_ms=platform_duration_ms,
         )
 
     def _request(
@@ -113,7 +119,7 @@ class DouyinApiClient:
         headers: dict[str, str],
         params: dict[str, str | int | bool],
         body: Mapping[str, Any] | None,
-    ) -> httpx.Response:
+    ) -> tuple[httpx.Response, int | None, int]:
         unsigned_request = client.build_request(
             endpoint.method,
             endpoint.url,
@@ -123,9 +129,13 @@ class DouyinApiClient:
             json=body,
         )
         if not endpoint.sign_required:
-            return client.send(unsigned_request)
+            platform_started_at = monotonic()
+            return client.send(unsigned_request), None, round(
+                (monotonic() - platform_started_at) * 1000,
+            )
 
         signer = self.signer or DouyinSignerClient()
+        signature_started_at = monotonic()
         try:
             sign_result = signer.sign(
                 DouyinSignRequest(
@@ -150,7 +160,12 @@ class DouyinApiClient:
             DouyinSignerResponseError,
             DouyinSignerUnavailableError,
         ) as error:
-            raise PlatformRequestFailedError() from error
+            raise PlatformSignerFailedError(
+                details={
+                    "failure_stage": "signer",
+                    "retryable": error.retryable,
+                },
+            ) from error
 
         signed_request = client.build_request(
             endpoint.method,
@@ -160,7 +175,13 @@ class DouyinApiClient:
             params={**params, "a_bogus": sign_result.a_bogus.get_secret_value()},
             json=body,
         )
-        return client.send(signed_request)
+        signature_duration_ms = round((monotonic() - signature_started_at) * 1000)
+        platform_started_at = monotonic()
+        return (
+            client.send(signed_request),
+            signature_duration_ms,
+            round((monotonic() - platform_started_at) * 1000),
+        )
 
 
 def _cookie_header(auth_context: ShopSessionAuthContext) -> str:

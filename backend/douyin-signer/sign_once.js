@@ -210,10 +210,24 @@ async function sign(input) {
 }
 
 async function cliMain() {
+  // A warm worker is still deliberately single-use.  The parent signer can
+  // start this process before a request arrives, but every request receives
+  // its own Node process and therefore its own vendor globals, timers and
+  // browser-like environment.
+  if (process.argv.includes("--warm")) {
+    process.stdout.write(`${JSON.stringify({ ready: true })}\n`);
+  }
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
   const result = await sign(input);
+  if (process.env.SIGNER_RUNTIME_METRICS === "1") {
+    const usage = process.resourceUsage();
+    result.runtime_metrics = {
+      cpu_ms: Math.round((usage.userCPUTime + usage.systemCPUTime) / 1000),
+      rss_bytes: process.memoryUsage().rss,
+    };
+  }
   process.stdout.write(JSON.stringify(result));
   process.exit(0);
 }
