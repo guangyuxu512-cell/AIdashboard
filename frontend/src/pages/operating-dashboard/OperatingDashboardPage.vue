@@ -44,7 +44,7 @@ const showExperience = computed(
       />
     </PageSection>
 
-    <PageSection v-else-if="dashboard.initialLoading.value">
+    <PageSection v-else-if="dashboard.loading.value && !dashboard.read.value">
       <LoadingState description="正在加载经营数据…" />
     </PageSection>
 
@@ -74,7 +74,7 @@ const showExperience = computed(
 
         <OperatingDashboardTable
           :rows="dashboard.rows.value"
-          :loading="dashboard.filterLoading.value"
+          :loading="dashboard.loading.value"
           :error="dashboard.error.value"
           :show-experience="showExperience"
           @retry="dashboard.retry"

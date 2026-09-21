@@ -34,15 +34,12 @@ const meta = computed(() => getPlatformDefinition(props.code))
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
-  line-height: var(--line-height-compact);
-  vertical-align: middle;
   white-space: nowrap;
 }
 
 .platform-display__icon-slot {
   display: inline-grid;
   width: var(--space-5);
-  height: var(--space-5);
   flex: 0 0 var(--space-5);
   place-items: center;
 }

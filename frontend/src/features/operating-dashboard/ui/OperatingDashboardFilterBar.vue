@@ -40,19 +40,6 @@ const dateOptions = [
   { label: '自定义', value: 'custom' },
 ] satisfies AppOption[]
 
-/** UI-only option values are normalized to null before emitting domain filters. */
-const ALL_SHOPS_OPTION_VALUE = '__operating_dashboard_all_shops__'
-const ALL_PLATFORMS_OPTION_VALUE = '__operating_dashboard_all_platforms__'
-
-const shopSelectOptions = computed<SelectOption[]>(() => [
-  { label: '全部店铺', value: ALL_SHOPS_OPTION_VALUE },
-  ...props.shopOptions,
-])
-const platformSelectOptions = computed<SelectOption[]>(() => [
-  { label: '全部平台', value: ALL_PLATFORMS_OPTION_VALUE },
-  ...props.platformOptions,
-])
-
 function update<Key extends keyof OperatingDashboardFilters>(
   key: Key,
   value: OperatingDashboardFilters[Key],
@@ -80,23 +67,16 @@ const customDateRange = computed({
     update('customDateRange', Array.isArray(value) ? value : null),
 })
 const selectedShopId = computed({
-  get: () => props.modelValue.shopId ?? ALL_SHOPS_OPTION_VALUE,
+  get: () => props.modelValue.shopId,
   set: (value: AppOptionValue | null) =>
-    update(
-      'shopId',
-      value === null || value === ALL_SHOPS_OPTION_VALUE
-        ? null
-        : String(value),
-    ),
+    update('shopId', value === null ? null : String(value)),
 })
 const selectedPlatform = computed({
-  get: () => props.modelValue.platform ?? ALL_PLATFORMS_OPTION_VALUE,
+  get: () => props.modelValue.platform,
   set: (value: AppOptionValue | null) =>
     update(
       'platform',
-      value === null || value === ALL_PLATFORMS_OPTION_VALUE
-        ? null
-        : (value as OperatingDashboardFilters['platform']),
+      value === null ? null : (value as OperatingDashboardFilters['platform']),
     ),
 })
 
@@ -113,21 +93,22 @@ function updateDatePreset(value: AppOptionValue): void {
         :options="dateOptions"
         @update:model-value="updateDatePreset"
       />
-      <AppDatePicker
-        v-if="datePreset === 'custom'"
-        v-model="customDateRange"
-        type="daterange"
-        :clearable="false"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-      />
+      <FilterField v-if="datePreset === 'custom'" width="md">
+        <AppDatePicker
+          v-model="customDateRange"
+          type="daterange"
+          :clearable="false"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+        />
+      </FilterField>
       <FilterField width="sm">
         <AppSelect
           v-model="selectedShopId"
           width="sm"
           clearable
           filterable
-          :options="shopSelectOptions"
+          :options="shopOptions"
           placeholder="全部店铺"
         />
       </FilterField>
@@ -136,7 +117,7 @@ function updateDatePreset(value: AppOptionValue): void {
           v-model="selectedPlatform"
           width="sm"
           clearable
-          :options="platformSelectOptions"
+          :options="platformOptions"
           placeholder="全部平台"
         />
       </FilterField>

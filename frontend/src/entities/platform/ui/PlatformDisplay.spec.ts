@@ -8,10 +8,9 @@ describe('PlatformDisplay alignment contract', () => {
       /platform-display__icon-slot[\s\S]*PlatformIcon[\s\S]*platform-display__label/,
     )
     expect(source).toMatch(
-      /\.platform-display__icon-slot[\s\S]*width: var\(--space-5\)[\s\S]*height: var\(--space-5\)[\s\S]*flex: 0 0 var\(--space-5\)[\s\S]*place-items: center/,
+      /\.platform-display__icon-slot[\s\S]*width: var\(--space-5\)[\s\S]*flex: 0 0 var\(--space-5\)[\s\S]*place-items: center/,
     )
     expect(source).toMatch(/\.platform-display[\s\S]*gap: var\(--space-2\)/)
-    expect(source).toMatch(/\.platform-display[\s\S]*vertical-align: middle/)
     expect(source).toMatch(/\.platform-display__label[\s\S]*text-align: left/)
   })
 })
