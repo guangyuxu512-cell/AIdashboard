@@ -16,6 +16,7 @@ describe('Module Registry Lite', () => {
       'shop',
       'asset',
       'ai-workbench',
+      'operating-dashboard',
       'device',
       'task',
       'schedule',
@@ -33,6 +34,7 @@ describe('Module Registry Lite', () => {
       'shop',
       'asset',
       'ai-workbench',
+      'operating-dashboard',
       'device',
       'task',
       'schedule',
@@ -48,6 +50,7 @@ describe('Module Registry Lite', () => {
       'shop',
       'asset',
       'ai-workbench',
+      'operating-dashboard',
       'device',
       'task',
       'schedule',
@@ -78,6 +81,28 @@ describe('Module Registry Lite', () => {
     ).toBe(false)
   })
 
+  it('builds the data-center navigation group without a data-center route', () => {
+    const entries = getNavigationEntries()
+    const dataCenter = entries.find(
+      (entry) => entry.type === 'group' && entry.groupCode === 'data-center',
+    )
+
+    expect(dataCenter).toMatchObject({
+      type: 'group',
+      groupName: '数据中心',
+    })
+    expect(
+      dataCenter?.type === 'group'
+        ? dataCenter.children.map((module) => module.moduleCode)
+        : [],
+    ).toEqual(['operating-dashboard'])
+    expect(
+      MODULE_REGISTRY.some(
+        (module) => (module.routePath as string) === '/data-center',
+      ),
+    ).toBe(false)
+  })
+
   it('does not expose disabled modules', () => {
     const disabledDevice: ModuleDefinition = {
       ...MODULE_REGISTRY.find((module) => module.moduleCode === 'device')!,
@@ -104,6 +129,7 @@ describe('Module Registry Lite', () => {
       shop: null,
       asset: null,
       'ai-workbench': null,
+      'operating-dashboard': null,
       device: null,
       task: null,
       schedule: null,
@@ -124,6 +150,20 @@ describe('Module Registry Lite', () => {
         allowedModuleCodes: new Set(['device']),
       }).map((module) => module.moduleCode),
     ).toEqual(['device', 'parameter-preset'])
+  })
+
+  it('uses the existing Shop permission for the UI-only operating dashboard route', () => {
+    const dashboard = MODULE_REGISTRY.find(
+      (module) => module.moduleCode === 'operating-dashboard',
+    )!
+
+    expect(dashboard.accessModuleCode).toBe('shop')
+    expect(getModuleAccessCode(dashboard)).toBe('shop')
+    expect(
+      getNavigationModules(MODULE_REGISTRY, {
+        allowedModuleCodes: new Set(['shop']),
+      }).map((module) => module.moduleCode),
+    ).toEqual(['shop', 'operating-dashboard'])
   })
 
   it('derives personnel module authorization choices and navigation from the same registry', () => {
