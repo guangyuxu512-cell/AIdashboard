@@ -1,5 +1,0 @@
-export { default as OperatingDashboardFilterBar } from './ui/OperatingDashboardFilterBar.vue'
-export { default as OperatingDashboardSummaryCards } from './ui/OperatingDashboardSummaryCards.vue'
-export { default as OperatingDashboardTable } from './ui/OperatingDashboardTable.vue'
-export { default as OperatingDashboardTrendChart } from './ui/OperatingDashboardTrendChart.vue'
-export { useOperatingDashboard } from './model/useOperatingDashboard'
