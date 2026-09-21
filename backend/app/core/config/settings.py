@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     douyin_signer_url: str = "http://127.0.0.1:8787"
     douyin_signer_api_key: SecretStr | None = None
     douyin_signer_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
+    douyin_compass_collection_concurrency: int = Field(default=5, ge=1, le=20)
 
     @field_validator("toapis_api_key", mode="before")
     @classmethod

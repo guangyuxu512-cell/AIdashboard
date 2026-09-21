@@ -9,7 +9,7 @@ from app.modules.sessions.auth_context import ShopSessionAuthContext, StoredSess
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.api_client import DouyinApiClient
 from app.platforms.douyin.endpoints import PRODUCT_LIST_ENDPOINT, SHOP_INFO_V2_ENDPOINT
-from app.platforms.exceptions import PlatformRequestFailedError
+from app.platforms.exceptions import PlatformRequestFailedError, PlatformSignerFailedError
 
 
 PRODUCT_LIST_QUERY = {
@@ -136,7 +136,7 @@ def test_signer_and_platform_failures_become_platform_errors() -> None:
             raise DouyinSignerUnavailableError()
 
     with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500, request=request))) as client:
-        with pytest.raises(PlatformRequestFailedError):
+        with pytest.raises(PlatformSignerFailedError):
             DouyinApiClient(client, signer=UnavailableSigner()).request_json(
                 PRODUCT_LIST_ENDPOINT,
                 auth_context(),

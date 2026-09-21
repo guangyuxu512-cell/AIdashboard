@@ -80,3 +80,18 @@ Session 状态，也不触发自动登录。Backend 请求不读取 Management L
 Cookie 到期时间只用于预警，不阻止权威平台请求。HTTPX 响应真实提供 `Set-Cookie` 时，Accessor 按 name/domain/path 合并，保留 HttpOnly、Secure、SameSite 和 expires，随后加密并通过 `expected_version` 写入新版本；没有 Cookie 更新时只更新验证状态和时间。
 
 人工恢复使用 `shop_sessions.refresh_lease_id` 与 `refresh_lease_expires_at` 作为跨 Backend 进程的可过期租约，不持有长事务。租约时长由 `BACKEND_SHOP_SESSION_REFRESH_LEASE_SECONDS` 配置，默认 1800 秒。完成、取消和 Electron 超时主动释放；客户端崩溃后由到期条件允许下一次获取。恢复提交先校验 Lease 和 `expected_version`，写 `captured` 新版本后立即执行健康检查，身份匹配才转为 `valid`。
+
+### 罗盘经营数据的失效处理
+
+抖店罗盘只读采集复用上述 Session 边界，不创建第二套刷新或浏览器常驻机制：
+
+1. 采集前使用 `ShopSessionHealthService.check(force=False)`；缓存仍新鲜时不额外访问身份接口。
+2. 平台 HTTP `401/403` 或本地 Session 未配置、无效、无法安全读取时，当前店铺的本批后续日期暂停，
+   结果标记 `SHOP_REAUTHORIZATION_REQUIRED`。HTTP/网络超时、Signer 失败、平台业务拒绝和响应解析失败
+   分别保留各自失败阶段，不能一律触发登录。
+3. 重新授权仍走现有 Electron 管理登录和
+   `POST /api/v1/shops/{shop_id}/session/refresh-lease` → `POST .../session/refresh`：新 Session 写入后必须
+   完成身份健康校验，版本冲突不得覆盖较新的 Session。
+4. 验证成功后，调用方以原店铺、原统计日期重新提交一次读取。V1 尚无持久化 collection-job/通知表，
+   因而不能在 Backend 重启后自动续跑或主动通知；这项能力需要单独的数据模型和迁移审批，不能通过
+   隐藏重试或明文 Cookie 补丁伪造。

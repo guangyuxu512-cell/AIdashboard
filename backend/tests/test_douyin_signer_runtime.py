@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -36,24 +37,35 @@ def _available_loopback_port() -> int:
         return int(listener.getsockname()[1])
 
 
-def _runtime_environment(*, port: int, api_key: str | None) -> dict[str, str]:
+def _runtime_environment(
+    *,
+    port: int,
+    api_key: str | None,
+    warm_pool_size: int | None = None,
+) -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("BACKEND_DOUYIN_SIGNER_API_KEY", None)
     environment["PORT"] = str(port)
     if api_key is not None:
         environment["BACKEND_DOUYIN_SIGNER_API_KEY"] = api_key
+    if warm_pool_size is not None:
+        environment["DOUYIN_SIGNER_WARM_POOL_SIZE"] = str(warm_pool_size)
     return environment
 
 
 @contextmanager
-def running_signer() -> Iterator[RunningSigner]:
+def running_signer(*, warm_pool_size: int | None = None) -> Iterator[RunningSigner]:
     node = shutil.which("node")
     assert node is not None, "Douyin Signer runtime requires Node.js"
     port = _available_loopback_port()
     process = subprocess.Popen(
         [node, str(SERVER_PATH)],
         cwd=SIGNER_ROOT,
-        env=_runtime_environment(port=port, api_key=TEST_API_KEY),
+        env=_runtime_environment(
+            port=port,
+            api_key=TEST_API_KEY,
+            warm_pool_size=warm_pool_size,
+        ),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -139,6 +151,7 @@ def test_signer_health_auth_isolation_and_backend_client() -> None:
         assert first.status_code == 200
         assert first.json()["ok"] is True
         assert first.json()["a_bogus"]
+        assert "runtime_metrics" not in first.json()
 
         second = httpx.post(
             f"{runtime.base_url}/sign",
@@ -183,3 +196,48 @@ def test_signer_health_auth_isolation_and_backend_client() -> None:
     assert TEST_API_KEY not in runtime.stderr
     assert "synthetic-context-a" not in runtime.stdout
     assert "synthetic-context-a" not in runtime.stderr
+
+
+def test_warm_single_use_pool_isolates_parallel_contexts_and_recovers_timeout() -> None:
+    with running_signer(warm_pool_size=2) as runtime:
+        def sign_synthetic_context(index: int) -> httpx.Response:
+            return httpx.post(
+                f"{runtime.base_url}/sign",
+                headers={"X-API-Key": TEST_API_KEY},
+                json={
+                    **_sign_payload(host=f"shop-{index}.example.invalid"),
+                    "cookie": f"synthetic-cookie-{index}",
+                    "user_agent": f"synthetic-user-agent-{index}",
+                    "ms_token": f"synthetic-ms-token-{index}",
+                },
+                timeout=20,
+            )
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            responses = list(pool.map(sign_synthetic_context, range(6)))
+
+        assert all(response.status_code == 200 for response in responses)
+        assert all(response.json()["ok"] is True for response in responses)
+        assert all(response.json()["a_bogus"] for response in responses)
+
+        timed_out = httpx.post(
+            f"{runtime.base_url}/sign",
+            headers={"X-API-Key": TEST_API_KEY},
+            json={
+                **_sign_payload(host="timeout.example.invalid"),
+                "child_timeout_ms": 1,
+            },
+            timeout=10,
+        )
+        assert timed_out.status_code == 500
+        assert timed_out.json()["error_code"] == "SIGN_CHILD_TIMEOUT"
+        assert timed_out.json()["error"] == "signing_failed"
+
+        recovered = sign_synthetic_context(99)
+        assert recovered.status_code == 200
+        assert recovered.json()["ok"] is True
+
+    assert "synthetic-cookie-" not in runtime.stdout
+    assert "synthetic-cookie-" not in runtime.stderr
+    assert "synthetic-ms-token-" not in runtime.stdout
+    assert "synthetic-ms-token-" not in runtime.stderr

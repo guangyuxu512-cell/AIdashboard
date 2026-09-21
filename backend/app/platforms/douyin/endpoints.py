@@ -66,3 +66,38 @@ PRODUCT_LIST_ENDPOINT = DouyinEndpoint(
         ("sec-ch-ua-platform", '"Windows"'),
     ),
 )
+
+
+# Verified from the Compass homepage request contract.  Keep dynamic browser
+# context out of this definition: `_lid` is supplied per request and the
+# signed request is built without `a_bogus`, which the API client injects only
+# after the signer returns a fresh value.
+COMPASS_CORE_INDEX_V3_ENDPOINT = DouyinEndpoint(
+    host="compass.jinritemai.com",
+    path="/compass_api/shop/common/homepage/core_index_v3",
+    method="GET",
+    sign_required=True,
+    referer="https://compass.jinritemai.com/shop",
+    headers=(
+        ("accept", "application/json, text/plain, */*"),
+        ("accept-language", "zh-CN"),
+        ("agw-js-conv", "str"),
+        ("cache-control", "no-cache"),
+        ("pragma", "no-cache"),
+        ("sec-ch-ua", '"Not?A_Brand";v="8", "Chromium";v="108"'),
+        ("sec-ch-ua-mobile", "?0"),
+        ("sec-ch-ua-platform", '"Windows"'),
+        ("sec-fetch-dest", "empty"),
+        ("sec-fetch-mode", "cors"),
+        ("sec-fetch-site", "same-origin"),
+        ("x-e2e-platform", "compass"),
+        ("referer", "https://compass.jinritemai.com/shop"),
+        (
+            "user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) feige/1.1.11 "
+            "Chrome/108.0.5359.215 Electron/22.3.18-tt.10.release.main.13 "
+            "TTElectron/22.3.18-tt.10.release.main.13 Safari/537.36",
+        ),
+    ),
+)

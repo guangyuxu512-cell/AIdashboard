@@ -10,6 +10,11 @@ services:
     env_file:
       - ../../.env
     network_mode: host
+    environment:
+      # A small pool pre-starts one-shot isolated signing processes. It is
+      # intentionally independent from Backend collection concurrency.
+      DOUYIN_SIGNER_WARM_POOL_SIZE: ${DOUYIN_SIGNER_WARM_POOL_SIZE:-2}
+      DOUYIN_SIGNER_QUEUE_TIMEOUT_MS: ${DOUYIN_SIGNER_QUEUE_TIMEOUT_MS:-15000}
     restart: unless-stopped
     init: true
     read_only: true

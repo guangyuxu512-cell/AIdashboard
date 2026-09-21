@@ -19,6 +19,13 @@ class PlatformRequestFailedError(AppError):
     status_code = 502
 
 
+class PlatformSignerFailedError(PlatformRequestFailedError):
+    """The isolated platform signer failed before a platform request was sent."""
+
+    code = "PLATFORM_SIGNER_FAILED"
+    message = "平台签名服务失败"
+
+
 class PlatformResponseInvalidError(AppError):
     code = "PLATFORM_RESPONSE_INVALID"
     message = "平台响应结构无效"
