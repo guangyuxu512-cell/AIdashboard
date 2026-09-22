@@ -31,6 +31,13 @@ from app.modules.credentials.api import router as credentials_router
 from app.modules.devices.api import router as devices_router
 from app.modules.human_auth.api import router as human_auth_router
 from app.modules.notifications.api import router as notifications_router
+from app.modules.operating_dashboard.api import router as operating_dashboard_router
+from app.modules.operating_dashboard.executor import (
+    execute_operating_data_collections_forever,
+)
+from app.modules.operating_dashboard.scheduler import (
+    enqueue_due_daily_operating_collections_forever,
+)
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
 from app.modules.sessions.api import router as sessions_router
@@ -57,6 +64,20 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if settings.toapis_api_key is not None
         else None
     )
+    operating_collection_task = (
+        asyncio.create_task(execute_operating_data_collections_forever())
+        if settings.operating_dashboard_collection_execution_enabled
+        else None
+    )
+    operating_daily_planning_task = (
+        asyncio.create_task(enqueue_due_daily_operating_collections_forever())
+        if (
+            settings.operating_dashboard_collection_execution_enabled
+            and settings.operating_dashboard_daily_collection_enabled
+            and settings.operating_dashboard_daily_collection_local_time is not None
+        )
+        else None
+    )
     try:
         yield
     finally:
@@ -66,6 +87,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         schedule_task.cancel()
         if generation_task is not None:
             generation_task.cancel()
+        if operating_collection_task is not None:
+            operating_collection_task.cancel()
+        if operating_daily_planning_task is not None:
+            operating_daily_planning_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -77,6 +102,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if generation_task is not None:
             with suppress(asyncio.CancelledError):
                 await generation_task
+        if operating_collection_task is not None:
+            with suppress(asyncio.CancelledError):
+                await operating_collection_task
+        if operating_daily_planning_task is not None:
+            with suppress(asyncio.CancelledError):
+                await operating_daily_planning_task
 
 
 def create_app() -> FastAPI:
@@ -120,6 +151,7 @@ def create_app() -> FastAPI:
     application.include_router(shops_router)
     application.include_router(devices_router)
     application.include_router(notifications_router)
+    application.include_router(operating_dashboard_router)
     application.include_router(credentials_router)
     application.include_router(sessions_router)
     application.include_router(tasks_router)

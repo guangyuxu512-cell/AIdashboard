@@ -137,13 +137,11 @@ def build_core_index_query(
     query = {
         "begin_date": f"{day} 00:00:00",
         "end_date": f"{day} 00:00:00",
-        "date_type": "20",
+        # Explicit begin/end boundaries use the Compass custom-date mode.
+        "date_type": "999",
         "activity_id": "",
         "index_selected": ",".join(CORE_INDEX_SELECTED_FIELDS),
         "operate_type": "0",
-        "verifyFp": "",
-        "fp": "",
-        "msToken": "",
     }
     if request_lid is not None:
         normalized_lid = request_lid.strip()

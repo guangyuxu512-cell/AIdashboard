@@ -46,7 +46,9 @@ export function shiftCalendarDate(value: string, days: number): string {
   return formatCalendarDate(parseCalendarDate(value) + days * 86_400_000)
 }
 
-export function listCalendarDates(range: OperatingDashboardDateRange): string[] {
+export function listCalendarDates(
+  range: OperatingDashboardDateRange,
+): string[] {
   const start = parseCalendarDate(range.startDate)
   const end = parseCalendarDate(range.endDate)
   if (end < start) return []
@@ -162,19 +164,22 @@ function buildTableRows(
       const newest = [...group].sort((left, right) =>
         (right.collectedAt ?? '').localeCompare(left.collectedAt ?? ''),
       )[0]!
-      const newestExperience = [...group]
-        .filter((record) => record.experience !== null)
-        .sort((left, right) =>
-          (right.experience?.collectedAt ?? '').localeCompare(
-            left.experience?.collectedAt ?? '',
-          ),
-        )[0]?.experience ?? null
+      const newestExperience =
+        [...group]
+          .filter((record) => record.experience !== null)
+          .sort((left, right) =>
+            (right.experience?.collectedAt ?? '').localeCompare(
+              left.experience?.collectedAt ?? '',
+            ),
+          )[0]?.experience ?? null
 
       return {
         shopId: newest.shopId,
         shopName: newest.shopName,
         platform: newest.platform,
-        turnoverCents: sumAvailable(group.map((record) => record.turnoverCents)),
+        turnoverCents: sumAvailable(
+          group.map((record) => record.turnoverCents),
+        ),
         orderCount: sumAvailable(group.map((record) => record.orderCount)),
         returnQuantity: sumAvailable(
           group.map((record) => record.returnQuantity),
@@ -364,6 +369,12 @@ export function buildOperatingDashboardRead(
     },
     trend: buildTrend(trendRecords, trendDateRange),
     tableRows,
+    tablePage: {
+      total: tableRows.length,
+      page: 1,
+      pageSize: Math.max(1, tableRows.length),
+    },
+    collectionAvailable: true,
   }
 }
 
@@ -420,6 +431,12 @@ export function buildOperatingDashboardUnavailableRead(
       experience: null,
       collectedAt: null,
     })),
+    tablePage: {
+      total: shopCount ?? 0,
+      page: 1,
+      pageSize: Math.max(1, shopCount ?? 0),
+    },
+    collectionAvailable: false,
   }
 }
 
