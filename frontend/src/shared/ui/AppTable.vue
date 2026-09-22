@@ -4,6 +4,7 @@ import type {
   DataTableProps,
   DataTableRowData,
   DataTableRowKey,
+  DataTableSortState,
 } from 'naive-ui'
 
 const props = withDefaults(
@@ -18,6 +19,7 @@ const props = withDefaults(
     checkedRowKeys?: DataTableRowKey[]
     appearance?: 'grid' | 'list'
     fill?: boolean
+    themeOverrides?: DataTableProps['themeOverrides']
   }>(),
   {
     data: () => [],
@@ -29,17 +31,27 @@ const props = withDefaults(
     checkedRowKeys: () => [],
     appearance: 'grid',
     fill: false,
+    themeOverrides: undefined,
   },
 )
 
-defineEmits<{
+const emit = defineEmits<{
   'update:checkedRowKeys': [keys: DataTableRowKey[]]
+  'update:sorter': [
+    sorter: DataTableSortState | DataTableSortState[] | null,
+  ]
 }>()
 
 function rowClassName(row: DataTableRowData): string {
   if (!props.rowKey) return ''
   const key = props.rowKey(row)
   return props.checkedRowKeys.includes(key) ? 'app-table__row--selected' : ''
+}
+
+function handleSorterUpdate(
+  sorter: DataTableSortState | DataTableSortState[] | null,
+): void {
+  emit('update:sorter', sorter)
 }
 </script>
 
@@ -56,11 +68,17 @@ function rowClassName(row: DataTableRowData): string {
     :row-key="rowKey"
     :scroll-x="scrollX"
     :checked-row-keys="props.checkedRowKeys"
+    :theme-overrides="props.themeOverrides"
     :row-class-name="rowClassName"
     :single-line="appearance === 'list'"
     :flex-height="fill"
     @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
-  />
+    @update:sorter="handleSorterUpdate"
+  >
+    <template v-if="$slots.empty" #empty>
+      <slot name="empty" />
+    </template>
+  </NDataTable>
 </template>
 
 <style scoped>

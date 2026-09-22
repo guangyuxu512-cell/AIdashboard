@@ -1,6 +1,7 @@
 import {
   Blocks,
   CalendarClock,
+  ChartLine,
   SlidersHorizontal,
   Images,
   ListChecks,
@@ -15,7 +16,7 @@ import type { Component } from 'vue'
 import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 export type ModuleNavigationGroup = 'development' | 'management'
-export type ModuleNavigationParent = 'automation'
+export type ModuleNavigationParent = 'automation' | 'data-center'
 
 export interface ModuleDefinition<Code extends string = string> {
   moduleCode: Code
@@ -56,6 +57,12 @@ export interface ModuleNavigationOptions {
 }
 
 export const NAVIGATION_GROUP_REGISTRY = [
+  {
+    groupCode: 'data-center',
+    groupName: '数据中心',
+    icon: ChartLine,
+    order: 28,
+  },
   {
     groupCode: 'automation',
     groupName: '自动化中心',
@@ -117,6 +124,22 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 27,
+  },
+  {
+    moduleCode: 'operating-dashboard',
+    // V1 has no Backend data-center module or permission code. The dashboard
+    // only reads the current actor's shop-scoped business data when that
+    // contract exists, so it reuses the existing Shop guard.
+    accessModuleCode: 'shop',
+    moduleName: '经营看板',
+    navigationGroup: 'management',
+    navigationParent: 'data-center',
+    routeName: 'operating-dashboard',
+    routePath: '/operating-dashboard',
+    icon: ChartLine,
+    enabled: true,
+    permissionCode: null,
+    order: 28,
   },
   {
     moduleCode: 'device',
