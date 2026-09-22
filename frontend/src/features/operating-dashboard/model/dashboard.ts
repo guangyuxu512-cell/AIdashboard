@@ -5,10 +5,12 @@ import type {
   OperatingDashboardRead,
   OperatingDashboardRecord,
   OperatingDashboardShopOption,
+  OperatingDashboardSort,
   OperatingDashboardTableRow,
 } from './types'
 
 const SHANGHAI_TIME_ZONE = 'Asia/Shanghai'
+const DASHBOARD_NAME_COLLATOR = new Intl.Collator('zh-CN')
 
 function getDateParts(value: Date): Record<string, string> {
   return Object.fromEntries(
@@ -182,6 +184,88 @@ function buildTableRows(
       }
     })
     .sort((left, right) => left.shopName.localeCompare(right.shopName, 'zh-CN'))
+}
+
+function compareShopIds(left: string, right: string): number {
+  if (left === right) return 0
+  return left < right ? -1 : 1
+}
+
+function compareNullableNumbers(
+  left: number | null,
+  right: number | null,
+  direction: OperatingDashboardSort['direction'],
+): number {
+  if (left === null) return right === null ? 0 : 1
+  if (right === null) return -1
+
+  const comparison = left - right
+  return direction === 'asc' ? comparison : -comparison
+}
+
+function parseCollectedAt(value: string | null): number | null {
+  if (value === null) return null
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+/**
+ * Sorts the already filtered UI-only result before it is paginated. The
+ * default order remains the dashboard's Chinese shop-name order. Missing
+ * values always remain after real values, and shop_id makes tied values stable.
+ */
+export function sortOperatingDashboardRows(
+  rows: ReadonlyArray<OperatingDashboardTableRow>,
+  sort: OperatingDashboardSort | null,
+): OperatingDashboardTableRow[] {
+  const activeSort: OperatingDashboardSort = sort ?? {
+    field: 'shopName',
+    direction: 'asc',
+  }
+
+  return [...rows].sort((left, right) => {
+    let comparison: number
+    switch (activeSort.field) {
+      case 'shopName':
+        comparison = DASHBOARD_NAME_COLLATOR.compare(
+          left.shopName,
+          right.shopName,
+        )
+        if (activeSort.direction === 'desc') comparison *= -1
+        break
+      case 'turnoverCents':
+        comparison = compareNullableNumbers(
+          left.turnoverCents,
+          right.turnoverCents,
+          activeSort.direction,
+        )
+        break
+      case 'orderCount':
+        comparison = compareNullableNumbers(
+          left.orderCount,
+          right.orderCount,
+          activeSort.direction,
+        )
+        break
+      case 'returnQuantity':
+        comparison = compareNullableNumbers(
+          left.returnQuantity,
+          right.returnQuantity,
+          activeSort.direction,
+        )
+        break
+      case 'collectedAt':
+        comparison = compareNullableNumbers(
+          parseCollectedAt(left.collectedAt),
+          parseCollectedAt(right.collectedAt),
+          activeSort.direction,
+        )
+        break
+    }
+    return comparison === 0
+      ? compareShopIds(left.shopId, right.shopId)
+      : comparison
+  })
 }
 
 function buildTrend(

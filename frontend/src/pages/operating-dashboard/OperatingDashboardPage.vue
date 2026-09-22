@@ -64,6 +64,9 @@ const trendTitle = computed(() => {
           :rows="dashboard.rows.value"
           :loading="dashboard.filterLoading.value"
           :empty-description="dashboard.tableEmptyDescription.value"
+          :sort="dashboard.sort.value"
+          :sorting-enabled="dashboard.isMockMode"
+          @update:sort="dashboard.setSort"
         />
 
         <PaginationBar

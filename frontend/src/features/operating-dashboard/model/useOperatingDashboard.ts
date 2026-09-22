@@ -12,12 +12,16 @@ import {
 import { getPlatformDefinition } from '@/entities/platform'
 import { apiMode } from '@/shared/api'
 
-import { buildOperatingDashboardUnavailableRead } from './dashboard'
+import {
+  buildOperatingDashboardUnavailableRead,
+  sortOperatingDashboardRows,
+} from './dashboard'
 import { createOperatingDashboardMockSource } from './mock-source'
 import type {
   OperatingDashboardFilters,
   OperatingDashboardRefreshResult,
   OperatingDashboardShopOption,
+  OperatingDashboardSort,
   OperatingDashboardTableRow,
 } from './types'
 
@@ -111,6 +115,7 @@ function toDashboardShopOption(shop: {
  */
 export function useOperatingDashboard() {
   const filters = ref<OperatingDashboardFilters>(cloneFilters(DEFAULT_FILTERS))
+  const sort = ref<OperatingDashboardSort | null>(null)
   const page = ref(1)
   const pageSize = ref(10)
   const refreshFeedback = ref<OperatingDashboardRefreshFeedback | null>(null)
@@ -236,16 +241,26 @@ export function useOperatingDashboard() {
   const allRows = computed<OperatingDashboardTableRow[]>(
     () => read.value?.tableRows ?? [],
   )
+  /**
+   * Mock reads contain the full filtered result, so sort before slicing it.
+   * Real mode has no operating-data Page Contract; it must not pretend that
+   * client ordering of an incomplete Shop page is server-side ordering.
+   */
+  const sortedRows = computed<OperatingDashboardTableRow[]>(() =>
+    isMockMode
+      ? sortOperatingDashboardRows(allRows.value, sort.value)
+      : allRows.value,
+  )
   const total = computed(() =>
-    isMockMode ? allRows.value.length : realShopCount.value ?? 0,
+    isMockMode ? sortedRows.value.length : realShopCount.value ?? 0,
   )
   const pageCount = computed(() =>
     Math.max(1, Math.ceil(total.value / pageSize.value)),
   )
   const rows = computed(() => {
-    if (!isMockMode) return allRows.value
+    if (!isMockMode) return sortedRows.value
     const start = (page.value - 1) * pageSize.value
-    return allRows.value.slice(start, start + pageSize.value)
+    return sortedRows.value.slice(start, start + pageSize.value)
   })
   const shopOptions = computed<SelectOption[]>(() => {
     const shops = isMockMode
@@ -322,6 +337,11 @@ export function useOperatingDashboard() {
     page.value = 1
   }
 
+  function setSort(value: OperatingDashboardSort | null): void {
+    sort.value = value
+    page.value = 1
+  }
+
   function refresh(): void {
     if (!mockSource || refreshMutation.isPending.value) return
     refreshMutation.mutate(cloneFilters(filters.value))
@@ -330,6 +350,7 @@ export function useOperatingDashboard() {
   return {
     apiMode,
     filters,
+    sort,
     page,
     pageSize,
     total,
@@ -354,6 +375,7 @@ export function useOperatingDashboard() {
     refreshing: refreshMutation.isPending,
     isMockMode,
     updateFilters,
+    setSort,
     setPageSize,
     refresh,
   }

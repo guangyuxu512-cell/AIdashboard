@@ -9,10 +9,15 @@ function mountTable(
 ) {
   return mount({
     components: { NConfigProvider, OperatingDashboardTable },
-    props: ['rows', 'emptyDescription'],
+    props: ['rows', 'emptyDescription', 'sort', 'sortingEnabled'],
     template: `
       <NConfigProvider>
-        <OperatingDashboardTable :rows="rows" :empty-description="emptyDescription" />
+        <OperatingDashboardTable
+          :rows="rows"
+          :empty-description="emptyDescription"
+          :sort="sort"
+          :sorting-enabled="sortingEnabled"
+        />
       </NConfigProvider>
     `,
   }, { props })
@@ -48,5 +53,35 @@ describe('OperatingDashboardTable', () => {
 
     expect(wrapper.text()).toContain('拼多多店铺')
     expect(wrapper.text()).toContain('—')
+  })
+
+  it('uses native sortable headers only for the complete Mock result', () => {
+    const rows = [
+      {
+        shopId: 'shop-a',
+        shopName: '店铺 A',
+        platform: 'douyin' as const,
+        turnoverCents: 1,
+        orderCount: 1,
+        returnQuantity: 0,
+        experience: null,
+        collectedAt: '2026-09-20T08:00:00+08:00',
+      },
+    ]
+    const mockTable = mountTable({
+      rows,
+      sortingEnabled: true,
+      sort: { field: 'turnoverCents', direction: 'desc' },
+    })
+    const realTable = mountTable({ rows, sortingEnabled: false })
+
+    expect(mockTable.findAll('.n-data-table-th--sortable')).toHaveLength(5)
+    expect(
+      mockTable
+        .get('[data-col-key="turnoverCents"]')
+        .find('.n-data-table-sorter')
+        .classes(),
+    ).toContain('n-data-table-sorter--desc')
+    expect(realTable.findAll('.n-data-table-th--sortable')).toHaveLength(0)
   })
 })
