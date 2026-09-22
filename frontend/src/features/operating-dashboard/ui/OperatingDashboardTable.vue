@@ -3,7 +3,8 @@ import { computed, h } from 'vue'
 import type { DataTableColumns } from 'naive-ui'
 
 import { PlatformDisplay } from '@/entities/platform'
-import DataTable from '@/shared/components/DataTable.vue'
+import EmptyState from '@/shared/components/EmptyState.vue'
+import AppTable from '@/shared/ui/AppTable.vue'
 
 import {
   formatDashboardCollectedAt,
@@ -16,10 +17,8 @@ import type { OperatingDashboardTableRow } from '../model/types'
 defineProps<{
   rows: OperatingDashboardTableRow[]
   loading?: boolean
-  error?: string | null
+  emptyDescription?: string
 }>()
-
-defineEmits<{ retry: [] }>()
 
 const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
   {
@@ -83,25 +82,31 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
 </script>
 
 <template>
-  <DataTable
-    :columns="columns"
-    :data="rows"
-    :loading="loading"
-    :error="error"
-    :row-key="(row: OperatingDashboardTableRow) => row.shopId"
-    :scroll-x="1062"
-    appearance="list"
-    viewport="fill"
-    class="operating-dashboard-table"
-    empty-description="当前筛选范围暂无经营数据"
-    @retry="$emit('retry')"
-  />
+  <div class="operating-dashboard-table">
+    <AppTable
+      :columns="columns"
+      :data="rows"
+      :loading="loading"
+      :row-key="(row: OperatingDashboardTableRow) => row.shopId"
+      :scroll-x="1062"
+      appearance="list"
+      fill
+    >
+      <template #empty>
+        <EmptyState
+          :description="emptyDescription ?? '当前筛选范围暂无经营数据'"
+        />
+      </template>
+    </AppTable>
+  </div>
 </template>
 
 <style scoped>
 .operating-dashboard-table {
+  display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
 }
 
 .operating-dashboard-table :deep(.n-data-table-tbody .n-data-table-td) {

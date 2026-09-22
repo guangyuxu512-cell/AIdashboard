@@ -79,7 +79,8 @@ export interface OperatingDashboardSummary {
   turnoverCents: number | null
   orderCount: number | null
   returnQuantity: number | null
-  shopCount: number
+  /** Null means the authorized shop scope could not be read. */
+  shopCount: number | null
   turnoverComparison: DashboardComparison
   orderComparison: DashboardComparison
   returnComparison: DashboardComparison

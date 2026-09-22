@@ -283,6 +283,62 @@ export function buildOperatingDashboardRead(
   }
 }
 
+/**
+ * Keeps the dashboard chrome truthful before an operating-data Read Contract
+ * exists. Shop identity comes from the existing authorized Shop query; every
+ * operating metric and collection timestamp intentionally remains unavailable.
+ */
+export function buildOperatingDashboardUnavailableRead(
+  filters: OperatingDashboardFilters,
+  allAvailableShops: ReadonlyArray<OperatingDashboardShopOption>,
+  tableShops: ReadonlyArray<OperatingDashboardShopOption>,
+  shopCount: number | null,
+  now = new Date(),
+): OperatingDashboardRead {
+  const dateRange = resolveOperatingDashboardDateRange(filters, now)
+  const comparisonDateRange = getPreviousOperatingDashboardDateRange(dateRange)
+  const trendDateRange =
+    filters.datePreset === 'yesterday'
+      ? {
+          startDate: shiftCalendarDate(dateRange.endDate, -6),
+          endDate: dateRange.endDate,
+        }
+      : dateRange
+
+  return {
+    dateRange,
+    comparisonDateRange,
+    trendDateRange,
+    allAvailableShops: [...allAvailableShops],
+    availableShops: allAvailableShops.filter(
+      (shop) => filters.platform === null || shop.platform === filters.platform,
+    ),
+    summary: {
+      turnoverCents: null,
+      orderCount: null,
+      returnQuantity: null,
+      shopCount,
+      turnoverComparison: { state: 'unavailable' },
+      orderComparison: { state: 'unavailable' },
+      returnComparison: { state: 'unavailable' },
+      shopCountComparison: { state: 'unavailable' },
+    },
+    trend: listCalendarDates(trendDateRange).map((businessDate) => ({
+      businessDate,
+      turnoverCents: null,
+      orderCount: null,
+    })),
+    tableRows: tableShops.map((shop) => ({
+      ...shop,
+      turnoverCents: null,
+      orderCount: null,
+      returnQuantity: null,
+      experience: null,
+      collectedAt: null,
+    })),
+  }
+}
+
 export function formatOperatingDashboardDateRange(
   range: OperatingDashboardDateRange,
 ): string {
