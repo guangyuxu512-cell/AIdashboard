@@ -54,7 +54,7 @@ const trendTitle = computed(() => {
           :shop-options="dashboard.shopOptions.value"
           :platform-options="dashboard.platformOptions.value"
           :refreshing="dashboard.refreshing.value"
-          :refresh-available="dashboard.isMockMode"
+          :refresh-available="dashboard.refreshAvailable.value"
           :refresh-feedback="dashboard.refreshFeedback.value"
           @update:model-value="dashboard.updateFilters"
           @refresh="dashboard.refresh"
@@ -65,7 +65,7 @@ const trendTitle = computed(() => {
           :loading="dashboard.filterLoading.value"
           :empty-description="dashboard.tableEmptyDescription.value"
           :sort="dashboard.sort.value"
-          :sorting-enabled="dashboard.isMockMode"
+          :sorting-enabled="dashboard.sortingEnabled"
           @update:sort="dashboard.setSort"
         />
 
@@ -79,7 +79,12 @@ const trendTitle = computed(() => {
     </template>
 
     <PageSection v-else>
-      <ErrorState title="经营数据暂不可用" />
+      <ErrorState
+        title="经营数据暂不可用"
+        :description="dashboard.readErrorMessage.value"
+        retryable
+        @retry="dashboard.retryRead"
+      />
     </PageSection>
   </div>
 </template>
@@ -89,5 +94,4 @@ const trendTitle = computed(() => {
   height: 100%;
   min-height: 0;
 }
-
 </style>

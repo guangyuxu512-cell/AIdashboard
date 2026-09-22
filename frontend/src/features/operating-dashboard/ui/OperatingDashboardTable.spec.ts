@@ -7,10 +7,11 @@ import OperatingDashboardTable from './OperatingDashboardTable.vue'
 function mountTable(
   props: InstanceType<typeof OperatingDashboardTable>['$props'],
 ) {
-  return mount({
-    components: { NConfigProvider, OperatingDashboardTable },
-    props: ['rows', 'emptyDescription', 'sort', 'sortingEnabled'],
-    template: `
+  return mount(
+    {
+      components: { NConfigProvider, OperatingDashboardTable },
+      props: ['rows', 'emptyDescription', 'sort', 'sortingEnabled'],
+      template: `
       <NConfigProvider>
         <OperatingDashboardTable
           :rows="rows"
@@ -20,7 +21,9 @@ function mountTable(
         />
       </NConfigProvider>
     `,
-  }, { props })
+    },
+    { props },
+  )
 }
 
 describe('OperatingDashboardTable', () => {
@@ -55,7 +58,7 @@ describe('OperatingDashboardTable', () => {
     expect(wrapper.text()).toContain('—')
   })
 
-  it('uses native sortable headers only for the complete Mock result', () => {
+  it('uses native sortable headers for both Mock and server-paginated results', () => {
     const rows = [
       {
         shopId: 'shop-a',
@@ -73,7 +76,11 @@ describe('OperatingDashboardTable', () => {
       sortingEnabled: true,
       sort: { field: 'turnoverCents', direction: 'desc' },
     })
-    const realTable = mountTable({ rows, sortingEnabled: false })
+    const realTable = mountTable({
+      rows,
+      sortingEnabled: true,
+      sort: { field: 'turnoverCents', direction: 'desc' },
+    })
 
     expect(mockTable.findAll('.n-data-table-th--sortable')).toHaveLength(5)
     expect(
@@ -82,6 +89,6 @@ describe('OperatingDashboardTable', () => {
         .find('.n-data-table-sorter')
         .classes(),
     ).toContain('n-data-table-sorter--desc')
-    expect(realTable.findAll('.n-data-table-th--sortable')).toHaveLength(0)
+    expect(realTable.findAll('.n-data-table-th--sortable')).toHaveLength(5)
   })
 })

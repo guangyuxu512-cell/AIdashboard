@@ -11,7 +11,10 @@ from app.modules.access.exceptions import SuperAccountRequiredError
 from app.modules.access.repository import TeamResourceAccessRepository
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.repository import DeviceRepository
+from app.modules.operating_dashboard.enums import OperatingCollectionJobKind
+from app.modules.operating_dashboard.service import OperatingDashboardService
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import (
     ImmutableShopIdentityError,
     InvalidDeviceBindingError,
@@ -119,6 +122,7 @@ class ShopService:
         if shop is None:
             raise ShopNotFoundError()
         changes = data.model_dump(exclude_unset=True)
+        was_enabled = shop.enabled
         if shop.platform_shop_id is not None and {
             "display_name",
             "platform",
@@ -128,6 +132,18 @@ class ShopService:
             self._ensure_owner_exists(changes["owner_user_id"])
         for field, value in changes.items():
             setattr(shop, field, value)
+        if (
+            not was_enabled
+            and shop.enabled
+            and shop.platform is ShopPlatform.DOUYIN
+        ):
+            OperatingDashboardService(
+                self.session,
+            ).enqueue_initial_backfill_for_shop(
+                shop_id=shop.shop_id,
+                kind=OperatingCollectionJobKind.REENABLE_BACKFILL,
+                commit=False,
+            )
         self.session.commit()
         self.session.refresh(shop)
         return shop

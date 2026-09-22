@@ -12,6 +12,7 @@ withDefaults(
     placeholder?: string
     startPlaceholder?: string
     endPlaceholder?: string
+    isDateDisabled?: (timestamp: number) => boolean
   }>(),
   {
     modelValue: null,
@@ -21,6 +22,7 @@ withDefaults(
     placeholder: undefined,
     startPlaceholder: undefined,
     endPlaceholder: undefined,
+    isDateDisabled: undefined,
   },
 )
 
@@ -41,6 +43,7 @@ defineEmits<{
     :placeholder="placeholder"
     :start-placeholder="startPlaceholder"
     :end-placeholder="endPlaceholder"
+    :is-date-disabled="isDateDisabled"
     @update:value="$emit('update:modelValue', $event)"
   />
 </template>

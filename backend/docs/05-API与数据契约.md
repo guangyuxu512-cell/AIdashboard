@@ -454,3 +454,31 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 
 商品素材组详情中的 Asset 使用现有安全 `AssetRead` 投影，不返回 `storage_key`、bucket、绝对路径、
 厂商 URL 或 Storage 凭据。本阶段没有 GenerationJob、Provider、Queue 或 Worker API。
+
+## Operating Dashboard Data V1 API
+
+经营看板正式 Human API 前缀为 `/api/v1/operating-dashboard`，全部要求 Human Session、当前
+ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进入看板；每个 Repository 查询和
+采集任务读取还必须在 SQL 层应用当前 Actor 的 Shop Scope。超级账号按现有超管语义读取全部允许的 Shop；
+普通成员只能读取/更新当前有效 Team 已授权的 Shop。前端传入的 `shop_id` 只是筛选条件，绝不是授权依据。
+
+- `GET /api/v1/operating-dashboard`：`start_date / end_date` 必填，均为 Asia/Shanghai 完整自然日；范围最多
+  60 天且不含今天。可选 `platform / shop_id`，可选且必须成对的 `sort_field / sort_direction`，以及统一
+  `page / page_size`。后端先权限过滤、业务筛选、全量稳定排序、最后分页。响应包含 selected/comparison/trend
+  date ranges、当前授权 Shop candidates、四卡、趋势、`table.items/total/page/page_size` 与
+  `collection_available`。当前仅 `turnover_cents` 和 `order_count` 是已确认的抖店值；`return_quantity` 与
+  `experience_score` 保持 `null`，不能从退款字段或 Mock 推断。
+- `POST /api/v1/operating-dashboard/collections`：按当前日期/平台/店铺筛选创建异步、持久化的采集任务，
+  返回 `202` 和 collection job。它覆盖符合条件的所有授权 Shop，而非当前表格页；店铺停用、删除或未接入平台
+  的 item 会被明确标记跳过，绝不发送平台请求。当前环境未启用执行器时返回
+  `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`，不会创建永远 pending 的手动任务。
+  手动和 retry job 在真正发出每个请求前还会以保存的发起用户和 Team context 重新解析模块及 Shop 授权；
+  调组、停用或撤销 Shop 访问后标记 `COLLECTION_REQUESTER_ACCESS_REVOKED`，不调用平台。
+- `GET /api/v1/operating-dashboard/collections/{collection_job_id}`：返回当前 Actor 可读取 Shop 对应的脱敏
+  item 进度、阶段、可重试状态与耗时；不返回 Cookie、Session、签名、完整平台响应或非本 Scope 的 item。
+- `POST /api/v1/operating-dashboard/collections/{collection_job_id}/retry`：只接受当前 Actor 可读取且明确可重试的
+  failed item；重新授权暂停、授权范围外、已跳过或成功 item 都不能藉此绕过既有 Session/Shop 校验。
+
+日金额使用整数分，响应/存储都不使用浮点累计；`null` 表示平台字段或完整日期覆盖缺失，不是 0。HTTP 200
+不能替代平台业务成功：平台 Connector 在固定路径解析、身份/Session 验证、签名、业务状态与指标结构均成功后，
+才可写入日事实。查询中的更新时间只来自实际成功采集时间。

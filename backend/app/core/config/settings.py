@@ -1,4 +1,5 @@
 from functools import lru_cache
+from datetime import time
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -82,6 +83,40 @@ class Settings(BaseSettings):
     douyin_signer_api_key: SecretStr | None = None
     douyin_signer_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
     douyin_compass_collection_concurrency: int = Field(default=5, ge=1, le=20)
+    # Disabled by default so Feature/Integration environments never begin
+    # platform collection merely because the Backend process is running.
+    # Production enablement remains a separate Release-Gate decision.
+    operating_dashboard_collection_execution_enabled: bool = False
+    operating_dashboard_collection_scan_interval_seconds: float = Field(
+        default=5.0,
+        ge=0.5,
+        le=300.0,
+    )
+    operating_dashboard_collection_lease_seconds: int = Field(
+        default=120,
+        ge=30,
+        le=1800,
+    )
+    operating_dashboard_collection_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+    )
+    operating_dashboard_collection_retry_base_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+    )
+    operating_dashboard_initial_backfill_days: int = Field(
+        default=30,
+        ge=1,
+        le=60,
+    )
+    operating_dashboard_daily_collection_enabled: bool = False
+    # The Compass data-ready time is not a platform guarantee.  A deployment
+    # must choose and verify its own Shanghai-local execution time before it
+    # can enable daily planning.
+    operating_dashboard_daily_collection_local_time: time | None = None
 
     @field_validator("toapis_api_key", mode="before")
     @classmethod

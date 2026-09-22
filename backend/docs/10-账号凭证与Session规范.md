@@ -92,6 +92,9 @@ Cookie 到期时间只用于预警，不阻止权威平台请求。HTTPX 响应�
 3. 重新授权仍走现有 Electron 管理登录和
    `POST /api/v1/shops/{shop_id}/session/refresh-lease` → `POST .../session/refresh`：新 Session 写入后必须
    完成身份健康校验，版本冲突不得覆盖较新的 Session。
-4. 验证成功后，调用方以原店铺、原统计日期重新提交一次读取。V1 尚无持久化 collection-job/通知表，
-   因而不能在 Backend 重启后自动续跑或主动通知；这项能力需要单独的数据模型和迁移审批，不能通过
-   隐藏重试或明文 Cookie 补丁伪造。
+4. 验证成功后，`OperatingDashboardService` 仅恢复该 Shop 原有、持久化的
+   `paused_reauthorization` collection item；原店铺、原统计日期和已有 retry 边界保持不变。不会创建
+   另一份日期任务，也不会重新读取其他 Shop 的 Session。
+5. `operating_data_collection_items` 的可过期 lease 用于 Backend 重启恢复：未完成 running item 到期后才重新
+   pending；已经成功的数据不会因恢复被清空。当前没有“自动登录”或验证码绕过：需要扫码、验证码或人工确认时，
+   仍由用户走上述 Electron 管理登录入口。通知能力尚未纳入本期，不把缺少通知伪装为自动恢复。

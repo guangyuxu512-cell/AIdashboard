@@ -2,25 +2,21 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/vue-query'
 import { computed, ref, watch } from 'vue'
 import type { SelectOption } from 'naive-ui'
 
-import {
-  type ShopListFilters,
-  type ShopListParams,
-  type ShopReferenceOptions,
-  useShopDetailQuery,
-  useShopListQuery,
-} from '@/entities/shop'
 import { getPlatformDefinition } from '@/entities/platform'
-import { apiMode } from '@/shared/api'
+import { apiMode, getErrorMessage } from '@/shared/api'
 
 import {
-  buildOperatingDashboardUnavailableRead,
+  operatingDashboardApi,
+  type OperatingDashboardCollectionJobDto,
+} from '../api/operating-dashboard-api'
+import {
+  resolveOperatingDashboardDateRange,
   sortOperatingDashboardRows,
 } from './dashboard'
 import { createOperatingDashboardMockSource } from './mock-source'
 import type {
   OperatingDashboardFilters,
   OperatingDashboardRefreshResult,
-  OperatingDashboardShopOption,
   OperatingDashboardSort,
   OperatingDashboardTableRow,
 } from './types'
@@ -37,24 +33,13 @@ const DEFAULT_FILTERS: OperatingDashboardFilters = {
   shopId: null,
 }
 
-const EMPTY_SHOP_FILTERS = {
-  enabledStatus: null,
-  ownerUserId: null,
-  keyword: '',
-} satisfies ShopListFilters
-
-const DASHBOARD_SHOP_REFERENCES = {
-  includeOwners: false,
-  includeDevices: false,
-} satisfies ShopReferenceOptions
-
 function cloneFilters(
   filters: OperatingDashboardFilters,
 ): OperatingDashboardFilters {
   return {
     ...filters,
     customDateRange: filters.customDateRange
-      ? [...filters.customDateRange] as [number, number]
+      ? ([...filters.customDateRange] as [number, number])
       : null,
   }
 }
@@ -72,7 +57,7 @@ function sameFilters(
   )
 }
 
-function getFeedback(
+function getMockFeedback(
   result: OperatingDashboardRefreshResult,
 ): OperatingDashboardRefreshFeedback {
   if (result.status === 'completed') {
@@ -96,22 +81,55 @@ function getFeedback(
   }
 }
 
-function toDashboardShopOption(shop: {
-  shopId: string
-  shopName: string
-  platform: OperatingDashboardShopOption['platform']
-}): OperatingDashboardShopOption {
+function isActiveCollection(job: OperatingDashboardCollectionJobDto): boolean {
+  return (
+    (job.status === 'pending' || job.status === 'running') &&
+    job.counts.pending + job.counts.running > 0
+  )
+}
+
+function getCollectionFeedback(
+  job: OperatingDashboardCollectionJobDto,
+): OperatingDashboardRefreshFeedback {
+  const { counts } = job
+  if (counts.paused_reauthorization > 0) {
+    const activeCount = counts.pending + counts.running
+    return {
+      tone: 'warning',
+      message:
+        activeCount > 0
+          ? `其中 ${counts.paused_reauthorization} 条需重新授权，另有 ${activeCount} 条正在处理中。`
+          : `其中 ${counts.paused_reauthorization} 条需重新授权后才能继续更新。`,
+    }
+  }
+  if (isActiveCollection(job)) {
+    return {
+      tone: 'warning',
+      message: `已提交更新：${counts.pending + counts.running} 条店铺日期数据正在处理中。`,
+    }
+  }
+  if (counts.failed > 0) {
+    return {
+      tone: job.status === 'failed' ? 'error' : 'warning',
+      message: `更新已结束：成功 ${counts.succeeded} 条，失败 ${counts.failed} 条，跳过 ${counts.skipped} 条。`,
+    }
+  }
+  if (counts.skipped > 0) {
+    return {
+      tone: 'warning',
+      message: `更新已结束：成功 ${counts.succeeded} 条，跳过 ${counts.skipped} 条。`,
+    }
+  }
   return {
-    shopId: shop.shopId,
-    shopName: shop.shopName,
-    platform: shop.platform,
+    tone: 'success',
+    message: `已完成 ${counts.succeeded} 条店铺日期数据更新。`,
   }
 }
 
 /**
- * UI-only dashboard coordinator. Real mode deliberately reads only the
- * existing authorized Shop Contract for identity and scope; no operating-data
- * read or refresh endpoint is invented before its backend contract exists.
+ * Coordinates the two explicitly separate dashboard sources. Mock mode owns
+ * its fixture and client-side full-result sort; real mode only consumes the
+ * formal Backend read/update contract, which sorts before pagination.
  */
 export function useOperatingDashboard() {
   const filters = ref<OperatingDashboardFilters>(cloneFilters(DEFAULT_FILTERS))
@@ -119,13 +137,19 @@ export function useOperatingDashboard() {
   const page = ref(1)
   const pageSize = ref(10)
   const refreshFeedback = ref<OperatingDashboardRefreshFeedback | null>(null)
+  const collectionJobId = ref<string | null>(null)
+  const collectionScope = ref<OperatingDashboardFilters | null>(null)
+  const settledCollectionJobId = ref<string | null>(null)
   const isMockMode = apiMode === 'mock'
   const mockSource = isMockMode ? createOperatingDashboardMockSource() : null
+  const dateRange = computed(() =>
+    resolveOperatingDashboardDateRange(filters.value),
+  )
 
   const mockQuery = useQuery({
     queryKey: computed(() => [
       'operating-dashboard',
-      apiMode,
+      'mock',
       filters.value.datePreset,
       filters.value.customDateRange,
       filters.value.platform,
@@ -137,122 +161,123 @@ export function useOperatingDashboard() {
     retry: false,
   })
 
-  const realListParams = computed<ShopListParams>(() => ({
-    page: page.value,
-    pageSize: pageSize.value,
-    filters: EMPTY_SHOP_FILTERS,
-    platform: filters.value.platform ?? 'all',
-    referenceOptions: DASHBOARD_SHOP_REFERENCES,
-  }))
-  const realShopListQuery = useShopListQuery(
-    realListParams,
-    () => !isMockMode && filters.value.shopId === null,
-  )
-  const realShopOptionsQuery = useShopListQuery(
-    computed(() => ({
-      page: 1,
-      pageSize: 100,
-      filters: EMPTY_SHOP_FILTERS,
-      platform: 'all' as const,
-      referenceOptions: DASHBOARD_SHOP_REFERENCES,
-    })),
-    () => !isMockMode,
-  )
-  const selectedRealShopId = computed(() =>
-    isMockMode ? null : filters.value.shopId,
-  )
-  const selectedRealShopQuery = useShopDetailQuery(
-    selectedRealShopId,
-    DASHBOARD_SHOP_REFERENCES,
-  )
+  const realQuery = useQuery({
+    queryKey: computed(() => [
+      'operating-dashboard',
+      'real',
+      dateRange.value.startDate,
+      dateRange.value.endDate,
+      filters.value.platform,
+      filters.value.shopId,
+      sort.value?.field ?? null,
+      sort.value?.direction ?? null,
+      page.value,
+      pageSize.value,
+    ]),
+    queryFn: () =>
+      operatingDashboardApi.read({
+        range: dateRange.value,
+        filters: cloneFilters(filters.value),
+        sort: sort.value,
+        page: page.value,
+        pageSize: pageSize.value,
+      }),
+    enabled: !isMockMode,
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
 
-  const realShopOptions = computed<OperatingDashboardShopOption[]>(() =>
-    (realShopOptionsQuery.data.value?.items ?? []).map(toDashboardShopOption),
-  )
-  const selectedRealShop = computed(() => {
-    const shop = selectedRealShopQuery.data.value
-    if (!shop) return null
-    if (filters.value.platform && shop.platform !== filters.value.platform) {
-      return null
-    }
-    return toDashboardShopOption(shop)
+  const collectionJobQuery = useQuery({
+    queryKey: computed(() => [
+      'operating-dashboard',
+      'collection',
+      collectionJobId.value,
+    ]),
+    queryFn: () => operatingDashboardApi.getCollection(collectionJobId.value!),
+    enabled: computed(() => !isMockMode && collectionJobId.value !== null),
+    retry: false,
+    refetchInterval: (query) => {
+      const job = query.state.data
+      return job && isActiveCollection(job) ? 1_000 : false
+    },
   })
-  const realTableShops = computed<OperatingDashboardShopOption[]>(() => {
-    if (filters.value.shopId) {
-      return selectedRealShop.value ? [selectedRealShop.value] : []
-    }
-    return (realShopListQuery.data.value?.items ?? []).map(
-      toDashboardShopOption,
-    )
-  })
-  const realShopCount = computed<number | null>(() => {
-    if (filters.value.shopId) {
-      if (selectedRealShopQuery.isSuccess.value) {
-        return selectedRealShop.value ? 1 : 0
-      }
-      return null
-    }
-    return realShopListQuery.isSuccess.value
-      ? realShopListQuery.data.value?.total ?? 0
-      : null
-  })
-  const realUnavailable = computed(() =>
-    filters.value.shopId
-      ? Boolean(selectedRealShopQuery.error.value)
-      : Boolean(realShopListQuery.error.value),
-  )
-  const realLoading = computed(() =>
-    filters.value.shopId
-      ? selectedRealShopQuery.isPending.value
-      : realShopListQuery.isPending.value,
-  )
-  const realRead = computed(() =>
-    buildOperatingDashboardUnavailableRead(
-      filters.value,
-      realShopOptions.value,
-      realTableShops.value,
-      realShopCount.value,
-    ),
-  )
 
-  const refreshMutation = useMutation({
+  const mockRefreshMutation = useMutation({
     mutationFn: (requestFilters: OperatingDashboardFilters) =>
       mockSource!.refresh(requestFilters),
     onSuccess: async (result, requestFilters) => {
       if (!sameFilters(requestFilters, filters.value)) return
-      refreshFeedback.value = getFeedback(result)
+      refreshFeedback.value = getMockFeedback(result)
       await mockQuery.refetch()
     },
     onError: (error, requestFilters) => {
       if (!sameFilters(requestFilters, filters.value)) return
-      refreshFeedback.value = {
-        tone: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : '更新数据时发生未知错误。',
-      }
+      refreshFeedback.value = { tone: 'error', message: getErrorMessage(error) }
     },
   })
 
+  const realRefreshMutation = useMutation({
+    mutationFn: (requestFilters: OperatingDashboardFilters) =>
+      operatingDashboardApi.enqueueCollection({
+        range: resolveOperatingDashboardDateRange(requestFilters),
+        filters: requestFilters,
+      }),
+    onSuccess: (job, requestFilters) => {
+      collectionJobId.value = job.collection_job_id
+      collectionScope.value = cloneFilters(requestFilters)
+      settledCollectionJobId.value = null
+      if (sameFilters(requestFilters, filters.value)) {
+        refreshFeedback.value = getCollectionFeedback(job)
+      }
+    },
+    onError: (error, requestFilters) => {
+      if (!sameFilters(requestFilters, filters.value)) return
+      refreshFeedback.value = { tone: 'error', message: getErrorMessage(error) }
+    },
+  })
+
+  watch(
+    () => collectionJobQuery.data.value,
+    (job) => {
+      if (!job || !collectionScope.value) return
+      if (sameFilters(collectionScope.value, filters.value)) {
+        refreshFeedback.value = getCollectionFeedback(job)
+      }
+      if (
+        !isActiveCollection(job) &&
+        settledCollectionJobId.value !== job.collection_job_id
+      ) {
+        settledCollectionJobId.value = job.collection_job_id
+        void realQuery.refetch()
+      }
+    },
+  )
+
+  watch(
+    () => collectionJobQuery.error.value,
+    (error) => {
+      if (!error || !collectionScope.value) return
+      if (!sameFilters(collectionScope.value, filters.value)) return
+      refreshFeedback.value = {
+        tone: 'error',
+        message: `更新进度读取失败：${getErrorMessage(error)}`,
+      }
+    },
+  )
+
   const read = computed(() =>
-    mockQuery.data.value ?? (!isMockMode ? realRead.value : undefined),
+    isMockMode ? mockQuery.data.value : realQuery.data.value,
   )
   const allRows = computed<OperatingDashboardTableRow[]>(
     () => read.value?.tableRows ?? [],
   )
-  /**
-   * Mock reads contain the full filtered result, so sort before slicing it.
-   * Real mode has no operating-data Page Contract; it must not pretend that
-   * client ordering of an incomplete Shop page is server-side ordering.
-   */
   const sortedRows = computed<OperatingDashboardTableRow[]>(() =>
     isMockMode
       ? sortOperatingDashboardRows(allRows.value, sort.value)
       : allRows.value,
   )
   const total = computed(() =>
-    isMockMode ? sortedRows.value.length : realShopCount.value ?? 0,
+    isMockMode ? sortedRows.value.length : (read.value?.tablePage.total ?? 0),
   )
   const pageCount = computed(() =>
     Math.max(1, Math.ceil(total.value / pageSize.value)),
@@ -262,23 +287,19 @@ export function useOperatingDashboard() {
     const start = (page.value - 1) * pageSize.value
     return sortedRows.value.slice(start, start + pageSize.value)
   })
-  const shopOptions = computed<SelectOption[]>(() => {
-    const shops = isMockMode
-      ? read.value?.allAvailableShops ?? []
-      : realShopOptions.value
-    return shops
+  const shopOptions = computed<SelectOption[]>(() =>
+    (read.value?.allAvailableShops ?? [])
       .filter(
         (shop) =>
           filters.value.platform === null ||
           shop.platform === filters.value.platform,
       )
-      .map((shop) => ({ label: shop.shopName, value: shop.shopId }))
-  })
+      .map((shop) => ({ label: shop.shopName, value: shop.shopId })),
+  )
   const platformOptions = computed<SelectOption[]>(() => {
-    const shops = isMockMode
-      ? read.value?.allAvailableShops ?? []
-      : realShopOptions.value
-    const platforms = new Set(shops.map((shop) => shop.platform))
+    const platforms = new Set(
+      (read.value?.allAvailableShops ?? []).map((shop) => shop.platform),
+    )
     return [...platforms].flatMap((platform) => {
       const definition = getPlatformDefinition(platform)
       return definition
@@ -286,39 +307,41 @@ export function useOperatingDashboard() {
         : []
     })
   })
+  const activeCollection = computed(() => {
+    const job = collectionJobQuery.data.value
+    return Boolean(
+      job &&
+      !collectionJobQuery.isError.value &&
+      collectionScope.value &&
+      sameFilters(collectionScope.value, filters.value) &&
+      isActiveCollection(job),
+    )
+  })
+  const refreshing = computed(() =>
+    isMockMode
+      ? mockRefreshMutation.isPending.value
+      : realRefreshMutation.isPending.value || activeCollection.value,
+  )
   const tableEmptyDescription = computed(() => {
-    if (!isMockMode && realUnavailable.value) return '经营数据暂不可用'
-    if (!isMockMode && realShopCount.value === 0) return '暂无店铺'
+    if (!isMockMode && realQuery.isError.value)
+      return '经营数据读取失败，请重试'
     return '当前筛选范围暂无经营数据'
   })
+  const readErrorMessage = computed(() =>
+    !isMockMode && realQuery.error.value
+      ? getErrorMessage(realQuery.error.value)
+      : '经营数据暂不可用',
+  )
 
   watch(pageCount, (nextPageCount) => {
     if (page.value > nextPageCount) page.value = nextPageCount
   })
-  watch(
-    () => [filters.value.platform, selectedRealShopQuery.data.value] as const,
-    ([platform, shop]) => {
-      if (
-        isMockMode ||
-        !filters.value.shopId ||
-        !platform ||
-        !shop ||
-        shop.platform === platform
-      ) {
-        return
-      }
-      filters.value = { ...filters.value, shopId: null }
-    },
-  )
 
   function updateFilters(next: OperatingDashboardFilters): void {
-    const knownShops = isMockMode
-      ? read.value?.allAvailableShops ?? []
-      : realShopOptions.value
-    const optionsResolved = isMockMode || realShopOptionsQuery.isSuccess.value
+    const knownShops = read.value?.allAvailableShops ?? []
     const currentShopExists =
       next.shopId === null ||
-      !optionsResolved ||
+      knownShops.length === 0 ||
       knownShops.some(
         (shop) =>
           shop.shopId === next.shopId &&
@@ -343,8 +366,17 @@ export function useOperatingDashboard() {
   }
 
   function refresh(): void {
-    if (!mockSource || refreshMutation.isPending.value) return
-    refreshMutation.mutate(cloneFilters(filters.value))
+    if (refreshing.value) return
+    const requestFilters = cloneFilters(filters.value)
+    if (isMockMode) {
+      mockRefreshMutation.mutate(requestFilters)
+      return
+    }
+    realRefreshMutation.mutate(requestFilters)
+  }
+
+  function retryRead(): void {
+    if (!isMockMode) void realQuery.refetch()
   }
 
   return {
@@ -359,24 +391,28 @@ export function useOperatingDashboard() {
     shopOptions,
     platformOptions,
     read,
-    initialLoading: computed(
-      () =>
-        isMockMode &&
-        mockQuery.isPending.value &&
-        mockQuery.data.value === undefined,
+    initialLoading: computed(() =>
+      isMockMode
+        ? mockQuery.isPending.value && mockQuery.data.value === undefined
+        : realQuery.isPending.value && realQuery.data.value === undefined,
     ),
     filterLoading: computed(() =>
       isMockMode
         ? mockQuery.isFetching.value && mockQuery.data.value !== undefined
-        : realLoading.value,
+        : realQuery.isFetching.value && realQuery.data.value !== undefined,
     ),
     tableEmptyDescription,
+    readErrorMessage,
     refreshFeedback,
-    refreshing: refreshMutation.isPending,
-    isMockMode,
+    refreshing,
+    refreshAvailable: computed(
+      () => isMockMode || read.value?.collectionAvailable === true,
+    ),
+    sortingEnabled: true,
     updateFilters,
     setSort,
     setPageSize,
     refresh,
+    retryRead,
   }
 }
