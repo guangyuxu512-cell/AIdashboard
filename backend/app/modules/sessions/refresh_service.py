@@ -1,5 +1,6 @@
 import base64
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -26,6 +27,7 @@ from app.modules.sessions.schemas import (
     StoreShopSessionCommand,
 )
 from app.modules.sessions.service import ShopSessionService
+from app.modules.operating_dashboard.service import OperatingDashboardService
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.repository import ShopRepository
 
@@ -40,12 +42,18 @@ class ShopSessionRefreshService:
         repository: ShopSessionRepository | None = None,
         shop_repository: ShopRepository | None = None,
         session_service: ShopSessionService | None = None,
+        collection_resume: Callable[[UUID], int] | None = None,
         settings: Settings | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or ShopSessionRepository(session)
         self.shop_repository = shop_repository or ShopRepository(session)
         self.session_service = session_service or ShopSessionService(session, cipher)
+        self.collection_resume = collection_resume or (
+            lambda shop_id: OperatingDashboardService(
+                self.session,
+            ).resume_after_session_refresh(shop_id)
+        )
         self.health_service = health_service
         self.settings = settings or get_settings()
 
@@ -150,4 +158,10 @@ class ShopSessionRefreshService:
             ),
             payload,
         )
-        return self.health_service.check(shop_id, force=True)
+        health = self.health_service.check(shop_id, force=True)
+        # Resume only after the replacement Session has passed the existing
+        # authoritative identity check; a captured-but-invalid payload must
+        # never restart paused platform requests.
+        if health.status is ShopSessionStatus.VALID:
+            self.collection_resume(shop_id)
+        return health

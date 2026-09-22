@@ -1,12 +1,11 @@
 import type { ShopPlatform } from '@/entities/shop'
 
-/** This is a UI-only read model, not a Backend DTO or persisted record. */
+/**
+ * Dashboard view state.  Mock records use this shape directly; real API DTOs
+ * are mapped into it at the feature boundary rather than leaked into page UI.
+ */
 export type OperatingDashboardDatePreset =
-  | 'yesterday'
-  | 'last3Days'
-  | 'last7Days'
-  | 'last30Days'
-  | 'custom'
+  'yesterday' | 'last3Days' | 'last7Days' | 'last30Days' | 'custom'
 
 export interface OperatingDashboardFilters {
   datePreset: OperatingDashboardDatePreset
@@ -66,16 +65,19 @@ export interface OperatingDashboardTableRow {
   collectedAt: string | null
 }
 
+/** Pagination is supplied by the real API; Mock mode derives it after sort. */
+export interface OperatingDashboardTablePage {
+  total: number
+  page: number
+  pageSize: number
+}
+
 /**
  * UI-only table ordering. A future Real operating-data Page must apply the
  * same field and direction within the authorized scope before pagination.
  */
 export type OperatingDashboardSortField =
-  | 'shopName'
-  | 'turnoverCents'
-  | 'orderCount'
-  | 'returnQuantity'
-  | 'collectedAt'
+  'shopName' | 'turnoverCents' | 'orderCount' | 'returnQuantity' | 'collectedAt'
 
 export type OperatingDashboardSortDirection = 'asc' | 'desc'
 
@@ -117,6 +119,9 @@ export interface OperatingDashboardRead {
   summary: OperatingDashboardSummary
   trend: OperatingDashboardTrendPoint[]
   tableRows: OperatingDashboardTableRow[]
+  tablePage: OperatingDashboardTablePage
+  /** True only when this Backend is allowed to execute platform collection. */
+  collectionAvailable: boolean
 }
 
 export interface OperatingDashboardRefreshResult {

@@ -22,6 +22,12 @@ from app.modules.credentials.models import PlatformCredential, ShopCredentialBin
 from app.modules.devices.models import Device
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.models import ShopSession
+from app.modules.operating_dashboard.models import (
+    OperatingDataCollectionItem,
+    OperatingDataCollectionJob,
+    ShopOperatingDailyMetric,
+)
+from app.modules.operating_dashboard.enums import OperatingCollectionJobKind
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.modules.users.models import User
@@ -46,6 +52,9 @@ def create_test_session() -> Session:
             PlatformCredential.__table__,
             ShopCredentialBinding.__table__,
             ShopSession.__table__,
+            ShopOperatingDailyMetric.__table__,
+            OperatingDataCollectionJob.__table__,
+            OperatingDataCollectionItem.__table__,
         ],
     )
     return Session(engine, expire_on_commit=False)
@@ -136,6 +145,15 @@ def test_management_onboarding_is_atomic_and_encrypts_sensitive_data() -> None:
             == 1
         )
         assert session.scalar(select(func.count()).select_from(ShopSession)) == 1
+        collection_job = session.scalar(select(OperatingDataCollectionJob))
+        assert collection_job is not None
+        assert collection_job.kind == OperatingCollectionJobKind.INITIAL_BACKFILL.value
+        # Onboarding only records work.  Its captured Session is not treated
+        # as a usable platform Session until the durable executor checks it.
+        assert (
+            session.scalar(select(func.count()).select_from(OperatingDataCollectionItem))
+            == 30
+        )
 
         credential = session.scalar(select(PlatformCredential))
         shop_session = session.scalar(select(ShopSession))
