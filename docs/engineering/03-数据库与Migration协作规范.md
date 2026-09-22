@@ -28,7 +28,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`feat/operating-dashboard-data-v1` / 81a1，`reserved`：`20260922_0039_operating_dashboard_data_v1`（revision `20260922_0039`，down revision `20260920_0038`）。该 Slot 仅用于按冻结 Contract 新增店铺日经营数据及必要的采集进度/失败与跨进程防重复结构；Feature Owner 尚在只读契约审查，未创建 Migration。`control_center_feat_operating_dashboard_data` 已由 Integrator 创建并 Owner 为既有最小权限应用角色，但该库尚缺应用角色的专用 HBA allow 规则，Feature 不得在连接恢复前运行 Migration 或开始数据库开发。
+当前活跃 Migration Slot：`feat/operating-dashboard-data-v1` / 81a1，`reserved`：`20260922_0039_operating_dashboard_data_v1`（revision `20260922_0039`，down revision `20260920_0038`）。该 Slot 仅用于按冻结 Contract 新增店铺日经营数据及必要的采集进度/失败与跨进程防重复结构；Feature Owner 尚未创建 Migration。`control_center_feat_operating_dashboard_data` 已由 Integrator 创建、Owner 为既有最小权限应用角色，专用 HBA allow 已恢复并已从空库升级到当前 `20260920_0038` Head；Feature 只可通过本地忽略的连接配置使用该库，回收时由 Integrator 同步移除专用 HBA 规则。
 
 最近释放记录：
 
