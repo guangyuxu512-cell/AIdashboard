@@ -28,7 +28,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`feat/operating-dashboard-data-v1` / 81a1，`reserved`：`20260922_0039_operating_dashboard_data_v1`（revision `20260922_0039`，down revision `20260920_0038`）。该 Slot 仅用于按冻结 Contract 新增店铺日经营数据及必要的采集进度/失败与跨进程防重复结构；Feature Owner 尚未创建 Migration。`control_center_feat_operating_dashboard_data` 已由 Integrator 创建、Owner 为既有最小权限应用角色，专用 HBA allow 已恢复并已从空库升级到当前 `20260920_0038` Head；Feature 只可通过本地忽略的连接配置使用该库，回收时由 Integrator 同步移除专用 HBA 规则。
+当前活跃 Migration Slot：`feat/operating-dashboard-data-v1` / 81a1，`active`：`20260922_0039_operating_dashboard_data_v1`（revision `20260922_0039`，down revision `20260920_0038`）。该 Slot 仅用于按冻结 Contract 新增店铺日经营数据及必要的采集进度/失败与跨进程防重复结构；本机旧 `.env` 实际属于另一 Feature，误指向的 0039 已回退到其原 `0038`。登记的 `control_center_feat_operating_dashboard_data` 现已通过既有本机 SSH tunnel 以最小权限应用角色连接，并完成 Feature-local `0038 → 0039 → 0038 → 0039` 与 PostgreSQL 定向验证。Feature 不得改用其他业务库，未写 Integration/Main/生产库。0039 的 downgrade 会删除经营日事实与采集状态，只可在可重建 Feature/Integration 测试库用于闭环；生产应用已有该数据后，回滚应用版本应保持 Schema，数据处置必须另走获批迁移方案。回收时由 Integrator 同步删除库并移除专用 HBA 规则。
 
 最近释放记录：
 

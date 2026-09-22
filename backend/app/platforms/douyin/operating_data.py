@@ -141,9 +141,6 @@ def build_core_index_query(
         "activity_id": "",
         "index_selected": ",".join(CORE_INDEX_SELECTED_FIELDS),
         "operate_type": "0",
-        "verifyFp": "",
-        "fp": "",
-        "msToken": "",
     }
     if request_lid is not None:
         normalized_lid = request_lid.strip()

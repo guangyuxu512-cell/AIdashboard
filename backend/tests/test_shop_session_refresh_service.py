@@ -96,18 +96,24 @@ class FakeSessionService:
 
 
 class FakeHealthService:
-    def __init__(self, stored: ShopSession) -> None:
+    def __init__(
+        self,
+        stored: ShopSession,
+        *,
+        status: ShopSessionStatus = ShopSessionStatus.VALID,
+    ) -> None:
         self.stored = stored
+        self.status = status
 
     def check(self, shop_id: UUID, *, force: bool) -> ShopSessionHealthRead:
         assert force is True
-        self.stored.status = ShopSessionStatus.VALID
+        self.stored.status = self.status
         return ShopSessionHealthRead(
             shop_id=shop_id,
             platform=ShopPlatform.DOUYIN,
             platform_shop_id="shop-1",
             shop_display_name="HuanYu",
-            status=ShopSessionStatus.VALID,
+            status=self.status,
             version=self.stored.version,
             validated_at=datetime.now(UTC),
             used_cached_validation=False,
@@ -115,7 +121,11 @@ class FakeHealthService:
         )
 
 
-def make_service():
+def make_service(
+    *,
+    health_status: ShopSessionStatus = ShopSessionStatus.VALID,
+    collection_resume=None,
+):
     shop_id = uuid4()
     now = datetime.now(UTC)
     shop = Shop(
@@ -141,10 +151,11 @@ def make_service():
     service = ShopSessionRefreshService(
         FakeSession(),  # type: ignore[arg-type]
         SecretCipher(Fernet.generate_key().decode()),
-        FakeHealthService(stored),  # type: ignore[arg-type]
+        FakeHealthService(stored, status=health_status),  # type: ignore[arg-type]
         repository=repository,  # type: ignore[arg-type]
         shop_repository=FakeShopRepository(shop),  # type: ignore[arg-type]
         session_service=session_service,  # type: ignore[arg-type]
+        collection_resume=collection_resume or (lambda _shop_id: 0),
         settings=Settings(_env_file=None, shop_session_refresh_lease_seconds=60),
     )
     return service, stored, session_service
@@ -223,3 +234,27 @@ def test_version_conflict_rejects_overwrite_and_releases_lease() -> None:
 
     assert session_service.payload is None
     assert stored.refresh_lease_id is None
+
+
+def test_refresh_does_not_resume_operating_collection_until_health_is_valid() -> None:
+    resumed_shop_ids: list[UUID] = []
+    service, stored, _ = make_service(
+        health_status=ShopSessionStatus.CAPTURED,
+        collection_resume=resumed_shop_ids.append,
+    )
+    lease = service.acquire(stored.shop_id)
+
+    result = service.complete(
+        stored.shop_id,
+        CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id,
+            expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(
+                base64.b64encode(captured_payload()).decode(),
+            ),
+            captured_at=datetime.now(UTC),
+        ),
+    )
+
+    assert result.status is ShopSessionStatus.CAPTURED
+    assert resumed_shop_ids == []

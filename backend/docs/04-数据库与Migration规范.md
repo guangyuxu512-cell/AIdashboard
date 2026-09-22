@@ -142,6 +142,10 @@ Membership 使用独立 UUID 主键、`UNIQUE(team_id, user_id)`、User Membersh
 Active Lookup 部分索引，并以 RESTRICT 外键关联 Team 与 User。`data_scope` 的数据库 Check 只允许
 `self / team / all`；`role_code` 是非空可扩展字符串，当前默认 Registry 只有 `member`。
 
+上述 `role_code / data_scope` 以及后续 `membership_module_accesses` 是历史升级、审计和最小旧接口
+兼容字段。超级账号＋团队授权 V1 后，普通成员的现行授权来自有效 Team 的模块、店铺和设备授权；新业务查询、
+新 API 和新 UI 不得把这些历史字段重新作为授权来源。保留字段不等于允许批量清理或改变既有历史记录。
+
 Migration 创建一个“默认团队”，并把升级时已经存在的全部 User 各回填一条启用 Membership：
 `role_code=member, data_scope=team`。空 users 表同样可以升级。任何旧用户都不会自动获得 ALL。
 Team 与 Membership 以 `enabled` 停用，不以 Hard Delete 作为主要生命周期操作。
@@ -203,3 +207,82 @@ Ownership。模板顺序为组内从 1 开始的连续 `sort_order`，模板绑�
 Asset 与 Template Binding 关系，但不删除 Asset 本体。删除 TemplateGroup 前由 Service 检查反向
 Binding；仍被引用时返回领域冲突，不自动解除关系，也不依赖数据库 Cascade。0026 不创建
 GenerationJob、Provider 或 Queue 表。
+
+## 当前完整表清单（Feature 0039 基线）
+
+以下清单已与登记的 `control_center_feat_operating_dashboard_data` 在 `20260922_0039` Head 的实际 PostgreSQL
+introspection 核对（2026-09-22）：共 **44** 张表，含 Alembic 元数据表。它不是生产库状态的推断，生产是否已
+应用 0039 必须在 Release Gate 单独核对。未有已批准保留期的表明确标为“待定”，文档整理本身不授权删除、改名
+或迁移任何历史数据。
+
+### 系统与身份/授权
+
+| 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
+| --- | --- | --- |
+| `alembic_version` | Alembic 当前 revision，PK `version_num`。 | 系统元数据；只能由 Migration 工具维护。 |
+| `users` | 人员身份，PK `user_id`；被 Team、业务对象、Session、审计引用。 | 正常业务不级联物理删除；停用/历史保留由人员服务管理。 |
+| `teams` | 业务团队，PK `team_id`。 | 空且无资源/业务引用的团队才可删除；有历史业务数据时停用/归档，绝不级联删业务数据。 |
+| `team_memberships` | User–Team 关系，PK `membership_id`，FK `user_id → users`、`team_id → teams`。 | `enabled=false` 是历史关系；当前授权只看有效关系，保留历史审计。 |
+| `team_module_accesses` | Team 可用模块，复合 PK `(team_id,module_code)`。 | 删除关系立即撤销当前模块授权；不删除 Team 或业务对象。 |
+| `team_device_accesses` | Team 可用 Device，复合 PK `(team_id,device_id)`。 | 删除关系立即撤销当前设备访问；不删除共享连接配置或 Device。 |
+| `team_shop_accesses` | Team 可用 Shop，复合 PK `(team_id,shop_id)`。 | 删除关系立即撤销当前店铺访问；不删除 Shop、Session 或历史数据。 |
+| `membership_module_accesses` | 旧 Membership 模块关系，复合 PK `(membership_id,module_code)`。 | **历史兼容**；新授权不得依赖或写入，保留升级/审计数据，退出条件待兼容旧客户端完成后另定。 |
+| `human_sessions` | Human 登录会话，PK `session_id`，FK `user_id → users`。 | 认证生命周期/失效清理；不承担业务历史保留，具体 TTL 由认证配置定义。 |
+| `audit_logs` | 安全与管理审计，PK `audit_log_id`，可关联 actor/Team。 | 审计记录；当前保留期待定，不可因 Team/成员移除级联删除。 |
+
+### 店铺、凭证与设备
+
+| 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
+| --- | --- | --- |
+| `shops` | 店铺主档，PK `shop_id`，可关联 `owner_user_id`。 | `deleted_at` 软移除且 `shop_id` 不复用；停用/移除不删凭证、Session、Task 或经营历史。 |
+| `platform_credentials` | 加密平台凭证，PK `credential_id`。 | 独立于 Shop；绑定停用/解除不自动清除凭证，敏感数据处置规则待单独定义。 |
+| `shop_credential_bindings` | Shop–Credential 关系，复合 PK `(shop_id,credential_id)`。 | 启停/解绑不级联删任一事实；当前每 Shop 最多一个启用关系。 |
+| `shop_sessions` | 每 Shop 当前加密 Session 与版本，PK `session_id`，FK Shop/来源 Device。 | 替换时以版本校验更新；软移除 Shop 后保留，不能导出明文 Cookie。 |
+| `shop_device_bindings` | Shop–Device 执行资格，复合 PK `(shop_id,device_id)`。 | 普通可启停多对多；无 PRIMARY/BACKUP，停用绑定不删除历史 Task。 |
+| `devices` | 设备主档，PK `device_id`，可关联 Team/创建人。 | 软移除；保留 Device ID 与历史 Task/审计显示。 |
+| `worker_device_credentials` | Worker Device Token 摘要，PK `credential_id`，FK Device。 | 轮换覆盖 hash、撤销用 `enabled=false`；明文永不落库。 |
+| `device_runtime` | 每 Device 当前运行快照，PK/FK `device_id`。 | 当前态可覆盖；不承担 Task Event 历史。 |
+| `device_provider_inventory` | Device Provider 最新完整快照，复合 PK `(device_id,provider_code)`。 | snapshot replace；离线保留最后已知状态，不用删除表示离线。 |
+| `device_skill_capabilities` | Device Skill 最新能力，复合 PK `(device_id,skill_id)`。 | snapshot replace；能力变化不回写旧 Task 快照。 |
+| `notification_channels` | 全局通知通道，PK `channel_id`。 | 配置生命周期由通知服务管理；密文保留，历史/清理期限待定。 |
+
+### 自动化、任务与计划
+
+| 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
+| --- | --- | --- |
+| `automation_application_configs` | 应用字段 Schema/默认值目录，PK `config_id`。 | 当前应用契约；移除/变更须先验证旧预设、Task/Schedule 快照兼容，不能自动级联清理。 |
+| `automation_parameter_presets` | Team+应用参数预设，PK `preset_id`，FK Team/创建人。 | `deleted_at` 逻辑删除；历史 Task 和已归档 Schedule 可读，未归档 Schedule 仍引用时阻止删除。 |
+| `tasks` | 长期 Task 历史与参数快照，PK `task_id`，FK Team/Device/预设/创建人。 | 不随 Runtime Event 清理删除；参数预设后续修改/删除不改写已创建 Task。 |
+| `task_shops` | Task 的有序 Shop 快照，复合 PK `(task_id,shop_id)`。 | 随 Task 历史保留；当前 Shop 授权变化不改写既有 Task。 |
+| `task_assets` | Task 图片关系和位置，复合 PK `(task_id,asset_id)`。 | 随 Task 历史保留；被关系引用的 Asset 不可删除。 |
+| `task_events` | Task 运行事件，PK `event_id`，FK Task。 | 默认保留 90 天；只清 Terminal Task Event，不删除 Task/结果/安全摘要。 |
+| `schedules` | 定时计划，PK `schedule_id`，FK Team/Device/预设/创建人。 | `deleted_at` 软归档；归档计划不触发，ScheduleRun/Task 历史保留。 |
+| `schedule_shops` | Schedule Shop 集合，复合 PK `(schedule_id,shop_id)`。 | 计划保存的业务上下文；归档后保留以支撑历史审计。 |
+| `schedule_runs` | 每个理论触发时刻，PK `run_id`，FK Schedule/Task。 | 历史审计保留；不等同 Task 状态机。 |
+
+### 资产与 AI 工作台
+
+| 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
+| --- | --- | --- |
+| `assets` | 统一媒体元数据，PK `asset_id`，FK Team/创建人。 | 文件本体在 Storage；Service 仅删除未被现存 Task 引用的 Asset，存储删除与元数据同步处理。 |
+| `ai_models` | 可用 AI 模型目录，PK `model_id`。 | 配置目录；引用/退役兼容须由模型服务评估，未定义批量清理。 |
+| `template_groups` | Team 提示词模板组，PK `template_group_id`，FK Team/创建人。 | 被 Material Binding 引用时阻止删除；不自动解除反向关系。 |
+| `prompt_templates` | TemplateGroup 内有序提示词，PK `prompt_template_id`，FK TemplateGroup。 | 组内删除/重排由服务维护；历史 Generation 来源快照不被反向改写。 |
+| `product_material_groups` | Team 商品素材组，PK `material_group_id`，FK Team/创建人。 | 删除时清其自身关系行，不删 Asset 本体；业务历史保留策略待定。 |
+| `material_group_assets` | MaterialGroup–Asset 关系，复合 PK `(material_group_id,asset_id)`。 | 仅关系生命周期；解除关系不删除 Asset。 |
+| `material_group_template_bindings` | MaterialGroup–TemplateGroup 模式绑定，复合 PK `(material_group_id,template_group_id)`。 | 仅关系生命周期；TemplateGroup 被引用时先显式解除/阻止删除。 |
+| `generation_jobs` | AI 生成请求聚合，PK `generation_job_id`，FK Team/模型/创建人。 | 生成历史；当前批量保留/清理规则待定。 |
+| `generation_items` | GenerationJob 单项，PK `generation_item_id`，FK Job、来源与输出 Asset。 | 生成历史；Provider retry 不复制 Item，历史保留规则待定。 |
+| `generation_item_assets` | GenerationItem 输入 Asset 关系，复合 PK `(generation_item_id,input_role,position)`。 | 随 Item 历史保留；关联 Asset 不可被无检查删除。 |
+| `generation_provider_executions` | 每 Item 当前 Provider 执行，PK/FK `generation_item_id`。 | Retry 复用同一行并递增 attempt；不是 Provider 全量历史表。 |
+
+### 经营数据（0039 新增）
+
+| 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
+| --- | --- | --- |
+| `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。 | 重采更新同一日事实，不累计；Shop 停用/移除不删历史；数据保留期限待单独批准。 |
+| `operating_data_collection_jobs` | 异步采集请求组，PK `collection_job_id`，可 FK 请求人及其提交时的 Team context。 | 手动/重试 item 在发出平台请求前按该上下文重新授权；只保存范围/状态，不保存 Cookie、签名或原始响应；清理期限待定。 |
+| `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实；清理期限待定。 |
+
+所有表变更均须在同一 Gate 1/Gate 2 中同步：SQLAlchemy Model、Alembic Migration、此数据字典、API/
+兼容说明和真实 PostgreSQL 验证。文档中标为“历史兼容”或“待定”的对象不构成删除授权。

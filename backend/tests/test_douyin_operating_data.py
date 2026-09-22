@@ -93,9 +93,9 @@ def test_core_index_signed_request_uses_unsigned_context_then_injects_signature(
         assert request.url.params["end_date"] == "2026/09/19 00:00:00"
         assert request.url.params["date_type"] == "20"
         assert request.url.params["_lid"] == "synthetic-per-request-lid"
-        assert request.url.params["verifyFp"] == ""
-        assert request.url.params["fp"] == ""
-        assert request.url.params["msToken"] == ""
+        assert "verifyFp" not in request.url.params
+        assert "fp" not in request.url.params
+        assert "msToken" not in request.url.params
         assert request.headers["referer"] == "https://compass.jinritemai.com/shop"
         assert request.headers["x-e2e-platform"] == "compass"
         assert "origin" not in request.headers

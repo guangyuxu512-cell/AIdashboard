@@ -544,28 +544,43 @@ def build_douyin_operating_data_batch_executor(
     """Build an explicit server-side executor; it is not a background Cron."""
 
     resolved_settings = settings or get_settings()
-    cipher = get_secret_cipher()
-
     def collect(request: DailyCollectionRequest) -> CollectionOutcome:
-        with get_session_factory()() as session:
-            accessor = ShopSessionAccessor(session, cipher)
-            health_service = ShopSessionHealthService(
-                session,
-                accessor,
-                create_platform_connectors(),
-                session_service=ShopSessionService(session, cipher),
-                settings=resolved_settings,
-            )
-            return SessionAwareDouyinOperatingDataCollector(
-                health_service=health_service,
-                session_accessor=accessor,
-                connector=DouyinOperatingDataConnector(),
-            ).collect(request)
+        return collect_douyin_operating_data_once(request, settings=resolved_settings)
 
     return DouyinOperatingDataBatchExecutor(
         collect,
         max_concurrency=resolved_settings.douyin_compass_collection_concurrency,
     )
+
+
+def collect_douyin_operating_data_once(
+    request: DailyCollectionRequest,
+    *,
+    settings: Settings | None = None,
+) -> CollectionOutcome:
+    """Use the established server Session/Signer path for one read-only call.
+
+    The durable dashboard executor owns database job claiming and persistence.
+    This function deliberately owns only the existing Session-aware external
+    request path, so no database transaction remains open across platform I/O.
+    """
+
+    resolved_settings = settings or get_settings()
+    cipher = get_secret_cipher()
+    with get_session_factory()() as session:
+        accessor = ShopSessionAccessor(session, cipher)
+        health_service = ShopSessionHealthService(
+            session,
+            accessor,
+            create_platform_connectors(),
+            session_service=ShopSessionService(session, cipher),
+            settings=resolved_settings,
+        )
+        return SessionAwareDouyinOperatingDataCollector(
+            health_service=health_service,
+            session_accessor=accessor,
+            connector=DouyinOperatingDataConnector(),
+        ).collect(request)
 
 
 def _error_detail(error: PlatformRequestFailedError, key: str, default: object) -> object:

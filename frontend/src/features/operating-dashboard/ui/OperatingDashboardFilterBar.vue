@@ -11,9 +11,8 @@ import AppRadio from '@/shared/ui/AppRadio.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOption, AppOptionValue } from '@/shared/ui/types'
 
-import type {
-  OperatingDashboardFilters,
-} from '../model/types'
+import type { OperatingDashboardFilters } from '../model/types'
+import { formatShanghaiDate } from '../model/dashboard'
 
 const props = defineProps<{
   modelValue: OperatingDashboardFilters
@@ -39,6 +38,19 @@ const dateOptions = [
   { label: '近30天', value: 'last30Days' },
   { label: '自定义', value: 'custom' },
 ] satisfies AppOption[]
+
+const SHANGHAI_DAY_MS = 86_400_000
+
+function latestCompletedDateTimestamp(): number {
+  const today = formatShanghaiDate(new Date())
+  return Date.parse(`${today}T00:00:00+08:00`) - SHANGHAI_DAY_MS
+}
+
+function disableUnfinishedBusinessDate(timestamp: number): boolean {
+  return (
+    formatShanghaiDate(new Date(timestamp)) >= formatShanghaiDate(new Date())
+  )
+}
 
 /** UI-only option values are normalized to null before emitting domain filters. */
 const ALL_SHOPS_OPTION_VALUE = '__operating_dashboard_all_shops__'
@@ -69,7 +81,10 @@ const datePreset = computed({
       datePreset: value as OperatingDashboardFilters['datePreset'],
       customDateRange:
         value === 'custom' && props.modelValue.customDateRange === null
-          ? [Date.now() - 86_400_000, Date.now()]
+          ? [
+              latestCompletedDateTimestamp() - SHANGHAI_DAY_MS,
+              latestCompletedDateTimestamp(),
+            ]
           : props.modelValue.customDateRange,
     })
   },
@@ -84,9 +99,7 @@ const selectedShopId = computed({
   set: (value: AppOptionValue | null) =>
     update(
       'shopId',
-      value === null || value === ALL_SHOPS_OPTION_VALUE
-        ? null
-        : String(value),
+      value === null || value === ALL_SHOPS_OPTION_VALUE ? null : String(value),
     ),
 })
 const selectedPlatform = computed({
@@ -120,6 +133,7 @@ function updateDatePreset(value: AppOptionValue): void {
         :clearable="false"
         start-placeholder="开始日期"
         end-placeholder="结束日期"
+        :is-date-disabled="disableUnfinishedBusinessDate"
       />
       <FilterField width="sm">
         <AppSelect

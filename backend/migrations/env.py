@@ -35,6 +35,11 @@ from app.modules.credentials.models import PlatformCredential, ShopCredentialBin
 from app.modules.devices.models import Device
 from app.modules.human_auth.models import HumanSession
 from app.modules.notifications.models import NotificationChannel
+from app.modules.operating_dashboard.models import (
+    OperatingDataCollectionItem,
+    OperatingDataCollectionJob,
+    ShopOperatingDailyMetric,
+)
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
@@ -68,11 +73,14 @@ _MODELS = (
     DeviceSkillCapability,
     HumanSession,
     NotificationChannel,
+    OperatingDataCollectionItem,
+    OperatingDataCollectionJob,
     Schedule,
     ScheduleRun,
     ScheduleShop,
     PlatformCredential,
     Shop,
+    ShopOperatingDailyMetric,
     ShopCredentialBinding,
     ShopDeviceBinding,
     ShopSession,
