@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -827,6 +827,224 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
                 item.status == OperatingCollectionItemStatus.PENDING.value
                 for item in items
             ) == 1
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_global_claim_capacity_applies_across_backend_processes(
+    postgresql_engine: Engine,
+) -> None:
+    """Independent Backend sessions cannot collectively exceed the setting."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    barrier = Barrier(4)
+    claims = []
+    errors: list[Exception] = []
+    lock = Lock()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="Global capacity user"),
+                    Team(team_id=team_id, name="Global capacity team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            seeded = [
+                _seed_shop(session, display_name=f"全局容量店铺 {index}")
+                for index in range(4)
+            ]
+            session.flush()
+            shops.update(shop.shop_id for shop in seeded)
+            session.add_all(
+                TeamShopAccess(team_id=team_id, shop_id=shop.shop_id)
+                for shop in seeded
+            )
+            session.commit()
+            _service(
+                session,
+                douyin_compass_collection_concurrency=2,
+            ).enqueue_manual_collection(
+                actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
+                request=OperatingDataCollectionRequest(
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                ),
+            )
+
+        now = datetime(2026, 9, 22, tzinfo=UTC)
+
+        def claim_from_independent_session() -> None:
+            try:
+                with Session(postgresql_engine, expire_on_commit=False) as session:
+                    barrier.wait(timeout=5)
+                    claim = _service(
+                        session,
+                        douyin_compass_collection_concurrency=2,
+                    ).prepare_next_collection(
+                        now=now,
+                        lease_until=now + timedelta(seconds=60),
+                    )
+                    with lock:
+                        claims.append(claim)
+            except Exception as error:  # pragma: no cover - assertion below
+                with lock:
+                    errors.append(error)
+
+        workers = [Thread(target=claim_from_independent_session) for _ in range(4)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=15)
+
+        assert all(not worker.is_alive() for worker in workers)
+        assert errors == []
+        assert sum(claim is not None for claim in claims) == 2
+
+        with Session(postgresql_engine) as session:
+            assert session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.status
+                    == OperatingCollectionItemStatus.RUNNING.value,
+                ),
+            ) == 2
+            assert (
+                _service(
+                    session,
+                    douyin_compass_collection_concurrency=2,
+                ).prepare_next_collection(
+                    now=now,
+                    lease_until=now + timedelta(seconds=60),
+                )
+                is None
+            )
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
+    postgresql_engine: Engine,
+) -> None:
+    """An expired executor cannot overwrite the later claimant's outcome."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="Lease recovery user"),
+                    Team(team_id=team_id, name="Lease recovery team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            shop = _seed_shop(session, display_name="Lease recovery shop")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.commit()
+            _service(session).enqueue_manual_collection(
+                actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
+                request=OperatingDataCollectionRequest(
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                    shop_id=shop.shop_id,
+                ),
+            )
+
+        first_now = datetime(2026, 9, 22, tzinfo=UTC)
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            first_claim = _service(session).prepare_next_collection(
+                now=first_now,
+                lease_until=first_now + timedelta(seconds=10),
+            )
+        assert first_claim is not None
+
+        recovered_now = first_now + timedelta(seconds=11)
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            replacement_claim = _service(session).prepare_next_collection(
+                now=recovered_now,
+                lease_until=recovered_now + timedelta(seconds=60),
+            )
+        assert replacement_claim is not None
+        assert replacement_claim.collection_item_id == first_claim.collection_item_id
+        assert replacement_claim.attempt_count == first_claim.attempt_count + 1
+
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            service = _service(session)
+            assert service.finalize_collection(
+                claim=first_claim,
+                outcome=_success(
+                    DailyCollectionRequest(
+                        shop_id=shop.shop_id,
+                        statistic_date=DAY_ONE,
+                    ),
+                    turnover=100,
+                ),
+                now=recovered_now,
+            ) is False
+            assert session.scalar(
+                select(ShopOperatingDailyMetric).where(
+                    ShopOperatingDailyMetric.shop_id == shop.shop_id,
+                    ShopOperatingDailyMetric.business_date == DAY_ONE,
+                ),
+            ) is None
+
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            assert _service(session).finalize_collection(
+                claim=replacement_claim,
+                outcome=_success(
+                    DailyCollectionRequest(
+                        shop_id=shop.shop_id,
+                        statistic_date=DAY_ONE,
+                    ),
+                    turnover=200,
+                ),
+                now=recovered_now,
+            ) is True
+            metric = session.scalar(
+                select(ShopOperatingDailyMetric).where(
+                    ShopOperatingDailyMetric.shop_id == shop.shop_id,
+                    ShopOperatingDailyMetric.business_date == DAY_ONE,
+                ),
+            )
+            assert metric is not None
+            assert metric.turnover_cents == 200
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:

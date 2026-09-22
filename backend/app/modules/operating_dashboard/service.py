@@ -367,6 +367,11 @@ class OperatingDashboardService:
 
     def prepare_next_collection(self, *, now: datetime, lease_until: datetime) -> CollectionClaim | None:
         try:
+            # PostgreSQL advisory locking makes the global running count and
+            # the following claim one short serializable decision.  The lock
+            # is released by this commit before any Session/Signer/platform
+            # work starts, so it never turns external I/O into a DB lock.
+            self.repository.acquire_global_claim_lock()
             expired_job_ids = self.repository.affected_job_ids_for_expired_running_items(
                 now=now,
             )
@@ -378,6 +383,12 @@ class OperatingDashboardService:
                     (*expired_job_ids, *disabled_job_ids),
                     now=now,
                 )
+            if (
+                self.repository.count_running_items()
+                >= self.settings.douyin_compass_collection_concurrency
+            ):
+                self.session.commit()
+                return None
             claim = self.repository.claim_next(now=now, lease_until=lease_until)
             self.session.commit()
             return claim

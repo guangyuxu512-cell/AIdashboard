@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from typing import Iterable
 from uuid import UUID
 
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -348,6 +348,43 @@ class OperatingDashboardRepository:
                 )
                 .distinct(),
             ),
+        )
+
+    def acquire_global_claim_lock(self) -> None:
+        """Serialize the short claim transaction across PostgreSQL processes.
+
+        The durable item rows already prevent duplicate Shop/date work.  A
+        separate transaction-scoped advisory lock is needed before counting
+        running items, otherwise several Backend processes can each observe
+        spare capacity and collectively exceed the configured global limit.
+        It is deliberately released at commit/rollback, before platform I/O.
+
+        SQLite is not a production execution store; keeping it a no-op lets
+        narrow non-PostgreSQL unit fixtures exercise service behavior without
+        pretending to provide the production cross-process guarantee.
+        """
+
+        if self.session.get_bind().dialect.name != "postgresql":
+            return
+        self.session.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    6_317_189_432_001,
+                ),
+            ),
+        )
+
+    def count_running_items(self) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.status
+                    == OperatingCollectionItemStatus.RUNNING.value,
+                ),
+            )
+            or 0,
         )
 
     def claim_next(
