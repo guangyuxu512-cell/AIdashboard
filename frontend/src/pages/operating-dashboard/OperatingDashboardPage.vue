@@ -32,16 +32,7 @@ const trendTitle = computed(() => {
 
 <template>
   <div class="page-container operating-dashboard-page">
-    <PageSection v-if="!dashboard.isMockMode">
-      <ErrorState
-        title="经营数据暂不可用"
-        :description="dashboard.error.value ?? '经营数据查询接口暂未接入。'"
-        retryable
-        @retry="dashboard.retry"
-      />
-    </PageSection>
-
-    <PageSection v-else-if="dashboard.initialLoading.value">
+    <PageSection v-if="dashboard.initialLoading.value">
       <LoadingState description="正在加载经营数据…" />
     </PageSection>
 
@@ -72,8 +63,7 @@ const trendTitle = computed(() => {
         <OperatingDashboardTable
           :rows="dashboard.rows.value"
           :loading="dashboard.filterLoading.value"
-          :error="dashboard.error.value"
-          @retry="dashboard.retry"
+          :empty-description="dashboard.tableEmptyDescription.value"
         />
 
         <PaginationBar
@@ -84,6 +74,10 @@ const trendTitle = computed(() => {
         />
       </ManagementListSection>
     </template>
+
+    <PageSection v-else>
+      <ErrorState title="经营数据暂不可用" />
+    </PageSection>
   </div>
 </template>
 

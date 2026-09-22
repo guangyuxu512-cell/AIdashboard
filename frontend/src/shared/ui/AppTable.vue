@@ -60,7 +60,11 @@ function rowClassName(row: DataTableRowData): string {
     :single-line="appearance === 'list'"
     :flex-height="fill"
     @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
-  />
+  >
+    <template v-if="$slots.empty" #empty>
+      <slot name="empty" />
+    </template>
+  </NDataTable>
 </template>
 
 <style scoped>

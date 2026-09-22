@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SelectOption } from 'naive-ui'
+import { NTooltip, type SelectOption } from 'naive-ui'
 import { RefreshCw } from '@lucide/vue'
 
 import FilterBar from '@/shared/components/FilterBar.vue'
@@ -141,10 +141,22 @@ function updateDatePreset(value: AppOptionValue): void {
         />
       </FilterField>
       <template #primary-action>
+        <NTooltip v-if="!refreshAvailable">
+          <template #trigger>
+            <span class="operating-dashboard-filter__refresh-trigger">
+              <AppButton tone="primary" disabled>
+                <RefreshCw :size="16" aria-hidden="true" />
+                更新数据
+              </AppButton>
+            </span>
+          </template>
+          经营数据更新暂不可用
+        </NTooltip>
         <AppButton
+          v-else
           tone="primary"
           :loading="refreshing"
-          :disabled="!refreshAvailable || refreshing"
+          :disabled="refreshing"
           @click="$emit('refresh')"
         >
           <RefreshCw :size="16" aria-hidden="true" />
@@ -185,6 +197,10 @@ function updateDatePreset(value: AppOptionValue): void {
 
 .operating-dashboard-filter__feedback--error {
   color: var(--status-danger);
+}
+
+.operating-dashboard-filter__refresh-trigger {
+  display: inline-flex;
 }
 
 @media (max-width: 960px) {

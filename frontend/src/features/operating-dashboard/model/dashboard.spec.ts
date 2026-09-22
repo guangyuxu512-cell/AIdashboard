@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildOperatingDashboardRead,
+  buildOperatingDashboardUnavailableRead,
   formatShanghaiDate,
   getPreviousOperatingDashboardDateRange,
   resolveOperatingDashboardDateRange,
@@ -135,6 +136,56 @@ describe('operating dashboard date and aggregation model', () => {
       'shop-a',
       'shop-b',
     ])
+  })
+
+  it('keeps authorized shop identity visible without inventing operating data', () => {
+    const shops = [
+      { shopId: 'shop-a', shopName: '店铺 A', platform: 'douyin' as const },
+      { shopId: 'shop-b', shopName: '店铺 B', platform: 'pdd' as const },
+    ]
+
+    const result = buildOperatingDashboardUnavailableRead(
+      yesterdayFilters,
+      shops,
+      [shops[0]!],
+      2,
+      now,
+    )
+
+    expect(result.summary).toMatchObject({
+      turnoverCents: null,
+      orderCount: null,
+      returnQuantity: null,
+      shopCount: 2,
+    })
+    expect(result.trend).toHaveLength(7)
+    expect(result.trend.every((point) => point.turnoverCents === null)).toBe(true)
+    expect(result.tableRows).toEqual([
+      expect.objectContaining({
+        shopId: 'shop-a',
+        shopName: '店铺 A',
+        platform: 'douyin',
+        turnoverCents: null,
+        orderCount: null,
+        returnQuantity: null,
+        experience: null,
+        collectedAt: null,
+      }),
+    ])
+  })
+
+  it('keeps a successful empty shop scope distinct from an unavailable scope', () => {
+    const result = buildOperatingDashboardUnavailableRead(
+      yesterdayFilters,
+      [],
+      [],
+      0,
+      now,
+    )
+
+    expect(result.summary.shopCount).toBe(0)
+    expect(result.tableRows).toEqual([])
+    expect(result.summary.turnoverCents).toBeNull()
   })
 })
 
