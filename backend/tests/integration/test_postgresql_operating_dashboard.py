@@ -24,6 +24,7 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.operating_dashboard.enums import OperatingCollectionItemStatus
 from app.modules.operating_dashboard.exceptions import (
     OperatingDashboardCollectionUnavailableError,
+    OperatingDashboardShopNotAvailableError,
 )
 from app.modules.operating_dashboard.executor import OperatingDataCollectionExecutor
 from app.modules.operating_dashboard.models import (
@@ -373,6 +374,77 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_manual_collection_rejects_empty_authorized_scope_before_persisting(
+    postgresql_engine: Engine,
+) -> None:
+    """An unfiltered update cannot leave an invisible job for a normal actor."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="No-shop collection user"),
+                    Team(team_id=team_id, name="No-shop collection team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            inaccessible_shop = _seed_shop(session, display_name="未授权采集店铺")
+            session.flush()
+            shops.add(inaccessible_shop.shop_id)
+            session.commit()
+
+            with pytest.raises(OperatingDashboardShopNotAvailableError):
+                _service(session).enqueue_manual_collection(
+                    actor=_actor(
+                        user_id=user_id,
+                        team_id=team_id,
+                        super_account=False,
+                    ),
+                    request=OperatingDataCollectionRequest(
+                        start_date=DAY_ONE,
+                        end_date=DAY_ONE,
+                    ),
+                )
+
+        # A separate transaction proves no durable row escaped the rejection.
+        with Session(postgresql_engine) as verification_session:
+            assert verification_session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionJob)
+                .where(OperatingDataCollectionJob.requested_by_user_id == user_id),
+            ) == 0
+            assert verification_session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionItem)
+                .where(OperatingDataCollectionItem.shop_id == inaccessible_shop.shop_id),
+            ) == 0
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(OperatingDataCollectionJob).where(
+                    OperatingDataCollectionJob.requested_by_user_id == user_id,
+                ),
+            )
             session.execute(
                 delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
             )

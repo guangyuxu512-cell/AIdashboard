@@ -208,7 +208,10 @@ class OperatingDashboardService:
             platform=request.platform,
             shop_id=request.shop_id,
         )
-        if request.shop_id is not None and not shops:
+        # A manual refresh must always target at least one shop within the
+        # actor's current authorization scope.  Reject before creating the
+        # durable job so an unfiltered request cannot leave an empty orphan.
+        if not shops:
             raise OperatingDashboardShopNotAvailableError()
         job = self._create_collection_job(
             kind=OperatingCollectionJobKind.MANUAL_REFRESH,
