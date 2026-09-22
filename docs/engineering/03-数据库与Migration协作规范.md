@@ -28,12 +28,13 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：`feat/operating-dashboard-data-v1` / 81a1，`active`：`20260922_0039_operating_dashboard_data_v1`（revision `20260922_0039`，down revision `20260920_0038`）。该 Slot 仅用于按冻结 Contract 新增店铺日经营数据及必要的采集进度/失败与跨进程防重复结构；本机旧 `.env` 实际属于另一 Feature，误指向的 0039 已回退到其原 `0038`。登记的 `control_center_feat_operating_dashboard_data` 现已通过既有本机 SSH tunnel 以最小权限应用角色连接，并完成 Feature-local `0038 → 0039 → 0038 → 0039` 与 PostgreSQL 定向验证。Feature 不得改用其他业务库，未写 Integration/Main/生产库。0039 的 downgrade 会删除经营日事实与采集状态，只可在可重建 Feature/Integration 测试库用于闭环；生产应用已有该数据后，回滚应用版本应保持 Schema，数据处置必须另走获批迁移方案。回收时由 Integrator 同步删除库并移除专用 HBA 规则。
+当前活跃 Migration Slot：无。
 
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/operating-dashboard-data-v1` / 81a1 | `released` | 新增店铺日经营事实、采集 Job / Item 状态及跨进程防重复约束；生产执行和日调度默认关闭 | `20260920_0038_parameter_preset_historical_reference_deletion_v1` | `20260922_0039_operating_dashboard_data_v1` | Gate 2 PASS：Integration 已验证 `0038 → 0039`、11 项 PostgreSQL 定向测试、完整 Backend/Frontend 回归、一次 HuanYu 真实单店采集、正式查询及 Electron Real 看板人工验收；`control_center_feat_operating_dashboard_data` 与专用 HBA 已回收。本 Migration 的 downgrade 会删除经营日事实与采集状态，只可在可重建 Feature / Integration 测试库闭环；生产已有数据后，应用回滚保持 Schema，数据处置另走获批迁移方案。 |
 | `feat/parameter-preset-historical-reference-deletion-v1` / 81a1 | `released` | `automation_parameter_presets` 增加 `deleted_at`，以仅覆盖未软删除记录的 `(team_id, app_id, name)` 部分唯一索引替代全量名称唯一约束；历史 Task 与软删除 Schedule 引用保留，只有未软删除 Schedule（包括 disabled）阻止删除 | `20260919_0037_super_account_team_authorization_v1` | `20260920_0038_parameter_preset_historical_reference_deletion_v1` | Gate 2 Retry 已在 `control_center_integration` 验证 `0037 → 0038`、历史引用/同名重建/Team 范围与既有超级账号场景；后端 455 个非集成测试、参数预设 PostgreSQL 3 个测试及前端 lint/typecheck/475 单测/Real production build 通过。Feature DB 回收待处理，不再占用 Slot |
 | `feat/super-account-team-authorization-v1` / 81a1 | `released` | 增加 `users.is_super_account`、Team 级模块/设备/店铺授权关系，以及 Active Member 约束与生命周期支持；不得静默扩大现有成员授权 | `20260912_0036_automation_parameter_schema_snapshot_v1` | `20260919_0037_super_account_team_authorization_v1` | Feature DB 已完成 `0036 → 0037 → 0036 → 0037`。Gate 2 已在 Integration Electron 验证超级账号、A/B Team、共享/独占资源、保存回读、隔离与撤权；生产预检发现的多 Active Team 用户和成员授权集合差异仍必须逐项形成可审查归一方案，禁止默认回填、权限并集或按账号名称推断超级账号。 |
 | `hotfix/automation-parameter-schema-snapshot-v1` / 81a1 | `released` | `automation_parameter_presets` 增加不可变 `input_schema_snapshot` JSONB；旧预设仅复制当前 Schema 可识别且已持久化的公共/店铺键，未知键和值保持可诊断 | `20260912_0035_ai_generation_output_compression_v1` | `20260912_0036_automation_parameter_schema_snapshot_v1` | 已进入 Green `dev` 并发布；Integration 与生产均为唯一 `0036` Head。Feature DB `control_center_feat_automation_parameter_schema_snapshot` 仍保留待 Integrator 回收，但不再占用 Slot |
