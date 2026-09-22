@@ -91,7 +91,7 @@ def test_core_index_signed_request_uses_unsigned_context_then_injects_signature(
         assert request.url.params["a_bogus"] == "synthetic-a-bogus"
         assert request.url.params["begin_date"] == "2026/09/19 00:00:00"
         assert request.url.params["end_date"] == "2026/09/19 00:00:00"
-        assert request.url.params["date_type"] == "20"
+        assert request.url.params["date_type"] == "999"
         assert request.url.params["_lid"] == "synthetic-per-request-lid"
         assert "verifyFp" not in request.url.params
         assert "fp" not in request.url.params
