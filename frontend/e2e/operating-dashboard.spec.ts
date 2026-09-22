@@ -274,3 +274,76 @@ test('keeps the dashboard table and pagination inside the desktop renderer', asy
     })
   }
 })
+
+test('sorts the complete Mock result before pagination and preserves the active sorter', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/operating-dashboard')
+
+  const table = page.locator('.operating-dashboard-table')
+  const pagination = page.locator('.pagination-bar')
+  const header = (name: string) =>
+    table.getByRole('columnheader', { name, exact: true })
+  const sorter = (name: string) => header(name).locator('.n-data-table-sorter')
+
+  await expect(
+    table.locator('.n-data-table-tbody .n-data-table-tr').first(),
+  ).toBeVisible()
+
+  await pagination.getByText('2', { exact: true }).click()
+  await expect(pagination.locator('.n-pagination-item--active')).toHaveText('2')
+
+  await sorter('成交金额').click()
+  await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--desc/)
+  await expect(pagination.locator('.n-pagination-item--active')).toHaveText('1')
+  await expect(
+    table.locator('.n-data-table-tbody .n-data-table-tr').first(),
+  ).toContainText('HuanYu')
+
+  await sorter('成交金额').click()
+  await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--asc/)
+  await expect(
+    table.locator('.n-data-table-tbody .n-data-table-tr').first(),
+  ).toContainText('示例店铺 H')
+
+  await sorter('成交金额').click()
+  await expect(sorter('成交金额')).not.toHaveClass(/n-data-table-sorter--(?:asc|desc)/)
+  await expect(
+    table.locator('.n-data-table-tbody .n-data-table-tr').first(),
+  ).toContainText('示例店铺 A')
+
+  for (const [name, firstDirection] of [
+    ['店铺', 'asc'],
+    ['成交订单', 'desc'],
+    ['退货数量', 'desc'],
+    ['更新时间', 'desc'],
+  ]) {
+    await sorter(name).click()
+    await expect(sorter(name)).toHaveClass(
+      new RegExp(`n-data-table-sorter--${firstDirection}`),
+    )
+    await sorter(name).click()
+    await sorter(name).click()
+    await expect(sorter(name)).not.toHaveClass(
+      /n-data-table-sorter--(?:asc|desc)/,
+    )
+  }
+
+  await sorter('成交金额').click()
+  const filter = page.getByRole('region', { name: '筛选条件' })
+  await filter.locator('.n-base-selection').last().click()
+  await page
+    .locator('.app-select-menu--viewport-safe')
+    .last()
+    .getByText('拼多多', { exact: true })
+    .click()
+  await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--desc/)
+  await expect(pagination.locator('.n-pagination-item--active')).toHaveText('1')
+
+  await page.getByRole('button', { name: '更新数据', exact: true }).click()
+  await sorter('成交金额').click()
+  await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--asc/)
+  await expect(page.getByRole('status')).toContainText('已完成')
+  await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--asc/)
+})

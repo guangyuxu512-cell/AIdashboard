@@ -66,6 +66,24 @@ export interface OperatingDashboardTableRow {
   collectedAt: string | null
 }
 
+/**
+ * UI-only table ordering. A future Real operating-data Page must apply the
+ * same field and direction within the authorized scope before pagination.
+ */
+export type OperatingDashboardSortField =
+  | 'shopName'
+  | 'turnoverCents'
+  | 'orderCount'
+  | 'returnQuantity'
+  | 'collectedAt'
+
+export type OperatingDashboardSortDirection = 'asc' | 'desc'
+
+export interface OperatingDashboardSort {
+  field: OperatingDashboardSortField
+  direction: OperatingDashboardSortDirection
+}
+
 export type DashboardComparison =
   | { state: 'unavailable' }
   | { state: 'equal' }

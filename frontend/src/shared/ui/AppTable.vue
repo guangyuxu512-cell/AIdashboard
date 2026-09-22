@@ -4,6 +4,7 @@ import type {
   DataTableProps,
   DataTableRowData,
   DataTableRowKey,
+  DataTableSortState,
 } from 'naive-ui'
 
 const props = withDefaults(
@@ -32,14 +33,23 @@ const props = withDefaults(
   },
 )
 
-defineEmits<{
+const emit = defineEmits<{
   'update:checkedRowKeys': [keys: DataTableRowKey[]]
+  'update:sorter': [
+    sorter: DataTableSortState | DataTableSortState[] | null,
+  ]
 }>()
 
 function rowClassName(row: DataTableRowData): string {
   if (!props.rowKey) return ''
   const key = props.rowKey(row)
   return props.checkedRowKeys.includes(key) ? 'app-table__row--selected' : ''
+}
+
+function handleSorterUpdate(
+  sorter: DataTableSortState | DataTableSortState[] | null,
+): void {
+  emit('update:sorter', sorter)
 }
 </script>
 
@@ -60,6 +70,7 @@ function rowClassName(row: DataTableRowData): string {
     :single-line="appearance === 'list'"
     :flex-height="fill"
     @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
+    @update:sorter="handleSorterUpdate"
   >
     <template v-if="$slots.empty" #empty>
       <slot name="empty" />
