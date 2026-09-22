@@ -19,6 +19,7 @@ const props = withDefaults(
     checkedRowKeys?: DataTableRowKey[]
     appearance?: 'grid' | 'list'
     fill?: boolean
+    themeOverrides?: DataTableProps['themeOverrides']
   }>(),
   {
     data: () => [],
@@ -30,6 +31,7 @@ const props = withDefaults(
     checkedRowKeys: () => [],
     appearance: 'grid',
     fill: false,
+    themeOverrides: undefined,
   },
 )
 
@@ -66,6 +68,7 @@ function handleSorterUpdate(
     :row-key="rowKey"
     :scroll-x="scrollX"
     :checked-row-keys="props.checkedRowKeys"
+    :theme-overrides="props.themeOverrides"
     :row-class-name="rowClassName"
     :single-line="appearance === 'list'"
     :flex-height="fill"

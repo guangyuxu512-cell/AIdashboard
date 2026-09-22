@@ -2,6 +2,7 @@
 import { computed, h } from 'vue'
 import type {
   DataTableColumns,
+  DataTableProps,
   DataTableSortOrder,
   DataTableSortState,
 } from 'naive-ui'
@@ -21,6 +22,10 @@ import type {
   OperatingDashboardSortField,
   OperatingDashboardTableRow,
 } from '../model/types'
+
+type DashboardTableThemeOverrides = NonNullable<
+  DataTableProps['themeOverrides']
+>
 
 const props = withDefaults(defineProps<{
   rows: OperatingDashboardTableRow[]
@@ -44,6 +49,16 @@ const SORTABLE_FIELDS = new Set<OperatingDashboardSortField>([
   'returnQuantity',
   'collectedAt',
 ])
+
+/**
+ * Naive gives an active sort column a hover-toned background by default.
+ * The dashboard keeps sort state in the existing header text and arrow only;
+ * these values deliberately reuse the table's established surface tokens.
+ */
+const DASHBOARD_SORT_THEME_OVERRIDES: DashboardTableThemeOverrides = {
+  thColorSorting: 'var(--bg-subtle)',
+  tdColorSorting: 'var(--bg-surface-solid)',
+}
 
 function getSortOrder(field: OperatingDashboardSortField): DataTableSortOrder {
   if (!props.sortingEnabled || props.sort?.field !== field) return false
@@ -175,6 +190,9 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
       :loading="loading"
       :row-key="(row: OperatingDashboardTableRow) => row.shopId"
       :scroll-x="1062"
+      :theme-overrides="
+        sortingEnabled ? DASHBOARD_SORT_THEME_OVERRIDES : undefined
+      "
       appearance="list"
       fill
       @update:sorter="handleSorterUpdate"
@@ -199,6 +217,13 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
 .operating-dashboard-table :deep(.n-data-table-tbody .n-data-table-td) {
   height: var(--table-list-row-slot-height);
   vertical-align: middle;
+}
+
+/* Naive applies its sorting class after hover. Restore the normal row-hover
+ * token only when the pointer is over an active sort cell. */
+.operating-dashboard-table
+  :deep(.n-data-table-td--sorting.n-data-table-td--hover) {
+  background-color: var(--n-merged-td-color-hover);
 }
 
 .operating-dashboard-table :deep(.operating-dashboard-table__experience) {
