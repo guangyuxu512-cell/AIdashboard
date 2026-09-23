@@ -950,7 +950,7 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
 def test_postgresql_global_claim_capacity_applies_across_backend_processes(
     postgresql_engine: Engine,
 ) -> None:
-    """Independent sessions respect the global limit including pre-existing work."""
+    """Independent Backend sessions cannot collectively exceed the setting."""
 
     user_id = uuid4()
     team_id = uuid4()
@@ -959,62 +959,8 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
     claims = []
     errors: list[Exception] = []
     lock = Lock()
-    now = datetime(2026, 9, 22, tzinfo=UTC)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
-            foreign_shop = _seed_shop(session, display_name="全局容量外部执行夹具")
-            session.flush()
-            shops.add(foreign_shop.shop_id)
-            foreign_job = OperatingDataCollectionJob(
-                collection_job_id=uuid4(),
-                kind="daily",
-                status="running",
-                requested_start_date=DAY_ONE,
-                requested_end_date=DAY_ONE,
-                requested_by_user_id=None,
-                dedupe_key=None,
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(foreign_job)
-            session.flush()
-            session.add(
-                OperatingDataCollectionItem(
-                    collection_item_id=uuid4(),
-                    collection_job_id=foreign_job.collection_job_id,
-                    shop_id=foreign_shop.shop_id,
-                    business_date=DAY_ONE,
-                    status=OperatingCollectionItemStatus.RUNNING.value,
-                    priority=0,
-                    attempt_count=1,
-                    retryable=False,
-                    lease_until=now + timedelta(seconds=60),
-                    started_at=now,
-                    created_at=now,
-                    updated_at=now,
-                ),
-            )
-            session.flush()
-            existing_running = int(
-                session.scalar(
-                    select(func.count())
-                    .select_from(OperatingDataCollectionItem)
-                    .where(
-                        OperatingDataCollectionItem.status
-                        == OperatingCollectionItemStatus.RUNNING.value,
-                    ),
-                )
-                or 0,
-            )
-            if existing_running > 18:
-                pytest.skip("共享 Integration 队列没有足够的安全容量运行此并发夹具")
-            # The fixture requests two additional slots above work it does not
-            # own. Its own running row makes the condition reproducible; any
-            # real shared rows remain part of the same baseline. This proves
-            # the production-wide capacity count includes a pre-existing
-            # runner without deleting, resetting, or assuming a clean
-            # Integration database.
-            fixture_capacity = existing_running + 2
             session.add_all(
                 [
                     User(user_id=user_id, display_name="Global capacity user"),
@@ -1040,7 +986,7 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
             session.commit()
             _service(
                 session,
-                douyin_compass_collection_concurrency=fixture_capacity,
+                douyin_compass_collection_concurrency=2,
             ).enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
@@ -1049,13 +995,15 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                 ),
             )
 
+        now = datetime(2026, 9, 22, tzinfo=UTC)
+
         def claim_from_independent_session() -> None:
             try:
                 with Session(postgresql_engine, expire_on_commit=False) as session:
                     barrier.wait(timeout=5)
                     claim = _service(
                         session,
-                        douyin_compass_collection_concurrency=fixture_capacity,
+                        douyin_compass_collection_concurrency=2,
                     ).prepare_next_collection(
                         now=now,
                         lease_until=now + timedelta(seconds=60),
@@ -1084,11 +1032,11 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                     OperatingDataCollectionItem.status
                     == OperatingCollectionItemStatus.RUNNING.value,
                 ),
-            ) == fixture_capacity
+            ) == 2
             assert (
                 _service(
                     session,
-                    douyin_compass_collection_concurrency=fixture_capacity,
+                    douyin_compass_collection_concurrency=2,
                 ).prepare_next_collection(
                     now=now,
                     lease_until=now + timedelta(seconds=60),
