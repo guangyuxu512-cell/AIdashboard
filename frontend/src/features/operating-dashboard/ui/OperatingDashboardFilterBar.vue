@@ -11,7 +11,10 @@ import AppRadio from '@/shared/ui/AppRadio.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import type { AppOption, AppOptionValue } from '@/shared/ui/types'
 
-import type { OperatingDashboardFilters } from '../model/types'
+import type {
+  OperatingDashboardCoverage,
+  OperatingDashboardFilters,
+} from '../model/types'
 import { formatShanghaiDate } from '../model/dashboard'
 
 const props = defineProps<{
@@ -20,6 +23,7 @@ const props = defineProps<{
   platformOptions: SelectOption[]
   refreshing?: boolean
   refreshAvailable: boolean
+  coverage?: OperatingDashboardCoverage | null
   refreshFeedback?: {
     tone: 'success' | 'warning' | 'error'
     message: string
@@ -64,6 +68,32 @@ const platformSelectOptions = computed<SelectOption[]>(() => [
   { label: '全部平台', value: ALL_PLATFORMS_OPTION_VALUE },
   ...props.platformOptions,
 ])
+
+const coverageText = computed(() => {
+  const coverage = props.coverage
+  if (!coverage) return null
+  if (coverage.state === 'unsupported') return '当前筛选范围暂未支持经营采集'
+  return `所选范围已采集 ${coverage.collectedShopDays}/${coverage.totalShopDays} 个店铺日期`
+})
+
+const coverageDetail = computed(() => {
+  const coverage = props.coverage
+  if (!coverage || coverage.missingSamples.length === 0) return ''
+  const stateLabel: Record<
+    OperatingDashboardCoverage['missingSamples'][number]['state'],
+    string
+  > = {
+    missing: '待采集',
+    collecting: '采集中',
+    waiting_reauthorization: '等待重新登录',
+    failed: '采集失败',
+  }
+  const samples = coverage.missingSamples.map(
+    (sample) => `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}`,
+  )
+  if (coverage.missingSamplesTruncated) samples.push('其余缺失项未展开')
+  return samples.join('\n')
+})
 
 function update<Key extends keyof OperatingDashboardFilters>(
   key: Key,
@@ -186,6 +216,20 @@ function updateDatePreset(value: AppOptionValue): void {
     >
       {{ refreshFeedback.message }}
     </p>
+    <p v-if="coverageText" class="operating-dashboard-filter__coverage" role="status">
+      {{ coverageText }}
+      <NTooltip v-if="coverageDetail" placement="bottom-start">
+        <template #trigger>
+          <AppButton tone="text" class="operating-dashboard-filter__coverage-detail">
+            查看缺失
+          </AppButton>
+        </template>
+        <span class="operating-dashboard-filter__coverage-tooltip">{{ coverageDetail }}</span>
+      </NTooltip>
+      <span v-if="coverage?.manualBackfillRequired" class="operating-dashboard-filter__coverage-note">
+        超过最近30日的缺失请手动补采
+      </span>
+    </p>
   </div>
 </template>
 
@@ -215,6 +259,26 @@ function updateDatePreset(value: AppOptionValue): void {
 
 .operating-dashboard-filter__refresh-trigger {
   display: inline-flex;
+}
+
+.operating-dashboard-filter__coverage {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.operating-dashboard-filter__coverage-detail {
+  margin-left: var(--space-2);
+}
+
+.operating-dashboard-filter__coverage-note {
+  margin-left: var(--space-2);
+}
+
+.operating-dashboard-filter__coverage-tooltip {
+  display: block;
+  max-width: 22rem;
+  white-space: pre-line;
 }
 
 @media (max-width: 960px) {
