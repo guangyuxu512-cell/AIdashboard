@@ -107,35 +107,16 @@ class Settings(BaseSettings):
         ge=1,
         le=3600,
     )
-    # A failed system recovery item may be revisited only after this cooldown.
-    # It is deliberately separate from the short in-item exponential retry so
-    # a later daily gap scan cannot create a hot retry loop.
-    operating_dashboard_gap_recovery_retry_cooldown_seconds: int = Field(
-        default=86400,
-        ge=60,
-        le=7 * 24 * 60 * 60,
-    )
-    # This is cumulative across automatic gap-recovery jobs for one
-    # Shop/date. Manual retry remains an explicit human action and is not
-    # silently exhausted by a background scan.
-    operating_dashboard_gap_recovery_max_attempts: int = Field(
-        default=6,
-        ge=1,
-        le=20,
-    )
     operating_dashboard_initial_backfill_days: int = Field(
         default=30,
-        # The confirmed automatic-recovery contract is exactly the most
-        # recent 30 completed Shanghai calendar days. Older history remains
-        # an explicit dashboard-driven manual backfill.
-        ge=30,
-        le=30,
+        ge=1,
+        le=60,
     )
     operating_dashboard_daily_collection_enabled: bool = False
-    # The confirmed normal planning time. The daily switch remains false by
-    # default, so Feature/Integration processes never begin platform work
-    # merely because this value is present.
-    operating_dashboard_daily_collection_local_time: time = time(hour=9)
+    # The Compass data-ready time is not a platform guarantee.  A deployment
+    # must choose and verify its own Shanghai-local execution time before it
+    # can enable daily planning.
+    operating_dashboard_daily_collection_local_time: time | None = None
 
     @field_validator("toapis_api_key", mode="before")
     @classmethod
