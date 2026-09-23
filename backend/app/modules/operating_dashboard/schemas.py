@@ -61,32 +61,6 @@ class OperatingDashboardTablePageRead(BaseModel):
     page_size: int = Field(ge=1, le=100)
 
 
-class OperatingDashboardCoverageMissingRead(BaseModel):
-    shop_id: UUID
-    shop_name: str
-    business_date: date
-    # This is intentionally a presentation-safe state, not a raw platform
-    # error or a collection item identifier.
-    state: Literal["missing", "collecting", "waiting_reauthorization", "failed"]
-
-
-class OperatingDashboardCoverageRead(BaseModel):
-    # `unsupported` means the current authorized/filter scope has no enabled
-    # platform that can collect operating data. A read/query failure remains a
-    # normal API error and is never represented as fake empty coverage.
-    state: Literal["available", "unsupported"]
-    supported_shop_count: int = Field(ge=0)
-    collected_shop_days: int = Field(ge=0)
-    total_shop_days: int = Field(ge=0)
-    missing_shop_days: int = Field(ge=0)
-    missing_samples: list[OperatingDashboardCoverageMissingRead]
-    missing_samples_truncated: bool
-    # The selected range reaches before the automatic 30-day recovery window
-    # and includes a missing Shop/date. The user may explicitly update the
-    # custom range, but ordinary reads never cause that platform work.
-    manual_backfill_required: bool
-
-
 class OperatingDashboardRead(BaseModel):
     date_range: OperatingDashboardDateRangeRead
     comparison_date_range: OperatingDashboardDateRangeRead
@@ -95,7 +69,6 @@ class OperatingDashboardRead(BaseModel):
     summary: OperatingDashboardSummaryRead
     trend: list[OperatingDashboardTrendPointRead]
     table: OperatingDashboardTablePageRead
-    coverage: OperatingDashboardCoverageRead
     # Read access and collection execution are deliberately separate.  A
     # Feature/Integration Backend can truthfully show persisted data without
     # being allowed to call the platform on a user's button click.

@@ -1,6 +1,5 @@
 import type {
   DashboardComparison,
-  OperatingDashboardCoverage,
   OperatingDashboardDateRange,
   OperatingDashboardFilters,
   OperatingDashboardRead,
@@ -308,72 +307,6 @@ function buildAvailableShopOptions(
   )
 }
 
-/** Mock-only coverage follows the same confirmed-metric rule as the API. */
-function buildMockCoverage(
-  records: ReadonlyArray<OperatingDashboardRecord>,
-  range: OperatingDashboardDateRange,
-  filters: OperatingDashboardFilters,
-  allShops: ReadonlyArray<OperatingDashboardShopOption>,
-): OperatingDashboardCoverage {
-  const supportedShops = allShops.filter(
-    (shop) =>
-      shop.platform === 'douyin' &&
-      (filters.platform === null || shop.platform === filters.platform) &&
-      (filters.shopId === null || shop.shopId === filters.shopId),
-  )
-  if (supportedShops.length === 0) {
-    return {
-      state: 'unsupported',
-      supportedShopCount: 0,
-      collectedShopDays: 0,
-      totalShopDays: 0,
-      missingShopDays: 0,
-      missingSamples: [],
-      missingSamplesTruncated: false,
-      manualBackfillRequired: false,
-    }
-  }
-  const dates = listCalendarDates(range)
-  const byShopDate = new Map(
-    records.map((record) => [`${record.shopId}:${record.businessDate}`, record]),
-  )
-  const missingSamples: OperatingDashboardCoverage['missingSamples'] = []
-  let collectedShopDays = 0
-  let missingShopDays = 0
-  for (const businessDate of [...dates].reverse()) {
-    for (const shop of supportedShops) {
-      const record = byShopDate.get(`${shop.shopId}:${businessDate}`)
-      if (
-        record !== undefined &&
-        record.turnoverCents !== null &&
-        record.orderCount !== null
-      ) {
-        collectedShopDays += 1
-        continue
-      }
-      missingShopDays += 1
-      if (missingSamples.length < 20) {
-        missingSamples.push({
-          shopId: shop.shopId,
-          shopName: shop.shopName,
-          businessDate,
-          state: 'missing',
-        })
-      }
-    }
-  }
-  return {
-    state: 'available',
-    supportedShopCount: supportedShops.length,
-    collectedShopDays,
-    totalShopDays: supportedShops.length * dates.length,
-    missingShopDays,
-    missingSamples,
-    missingSamplesTruncated: missingShopDays > missingSamples.length,
-    manualBackfillRequired: false,
-  }
-}
-
 /**
  * Builds the entire filtered result before pagination. This is deliberate for
  * the UI-only source: cards, trends and the table must share one filter scope.
@@ -441,7 +374,6 @@ export function buildOperatingDashboardRead(
       page: 1,
       pageSize: Math.max(1, tableRows.length),
     },
-    coverage: buildMockCoverage(records, dateRange, filters, allAvailableShops),
     collectionAvailable: true,
   }
 }
@@ -503,16 +435,6 @@ export function buildOperatingDashboardUnavailableRead(
       total: shopCount ?? 0,
       page: 1,
       pageSize: Math.max(1, shopCount ?? 0),
-    },
-    coverage: {
-      state: 'unsupported',
-      supportedShopCount: 0,
-      collectedShopDays: 0,
-      totalShopDays: 0,
-      missingShopDays: 0,
-      missingSamples: [],
-      missingSamplesTruncated: false,
-      manualBackfillRequired: false,
     },
     collectionAvailable: false,
   }
