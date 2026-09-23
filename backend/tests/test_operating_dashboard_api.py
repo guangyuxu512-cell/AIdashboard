@@ -13,7 +13,6 @@ from app.modules.operating_dashboard.api import (
 )
 from app.modules.operating_dashboard.schemas import (
     OperatingDashboardComparisonRead,
-    OperatingDashboardCoverageRead,
     OperatingDashboardDateRangeRead,
     OperatingDashboardRead,
     OperatingDashboardShopOptionRead,
@@ -95,16 +94,6 @@ def dashboard_read() -> OperatingDashboardRead:
             total=1,
             page=2,
             page_size=10,
-        ),
-        coverage=OperatingDashboardCoverageRead(
-            state="available",
-            supported_shop_count=1,
-            collected_shop_days=1,
-            total_shop_days=1,
-            missing_shop_days=0,
-            missing_samples=[],
-            missing_samples_truncated=False,
-            manual_backfill_required=False,
         ),
         collection_available=True,
     )

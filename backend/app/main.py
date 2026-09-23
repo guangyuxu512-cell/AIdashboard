@@ -37,7 +37,6 @@ from app.modules.operating_dashboard.executor import (
 )
 from app.modules.operating_dashboard.scheduler import (
     enqueue_due_daily_operating_collections_forever,
-    recover_operating_data_collections_on_startup,
 )
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
@@ -79,14 +78,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         )
         else None
     )
-    operating_startup_recovery_task = (
-        asyncio.create_task(recover_operating_data_collections_on_startup())
-        if (
-            settings.operating_dashboard_collection_execution_enabled
-            and settings.operating_dashboard_daily_collection_enabled
-        )
-        else None
-    )
     try:
         yield
     finally:
@@ -100,8 +91,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             operating_collection_task.cancel()
         if operating_daily_planning_task is not None:
             operating_daily_planning_task.cancel()
-        if operating_startup_recovery_task is not None:
-            operating_startup_recovery_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -119,9 +108,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if operating_daily_planning_task is not None:
             with suppress(asyncio.CancelledError):
                 await operating_daily_planning_task
-        if operating_startup_recovery_task is not None:
-            with suppress(asyncio.CancelledError):
-                await operating_startup_recovery_task
 
 
 def create_app() -> FastAPI:
