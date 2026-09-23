@@ -1171,8 +1171,10 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
     """The daily planner scans one 30-day window without duplicating active work."""
 
     shops: set[UUID] = set()
-    now = datetime(2026, 9, 23, 1, tzinfo=UTC)  # 09:00 Asia/Shanghai
-    business_date = date(2026, 9, 22)
+    # Daily jobs have a global date-based dedupe key.  Use a dedicated
+    # historical fixture date outside the automatic 30-day planning window.
+    now = datetime(2000, 1, 15, 1, tzinfo=UTC)  # 09:00 Asia/Shanghai
+    business_date = date(2000, 1, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             shop = _seed_shop(session, display_name="零值补漏店铺")
@@ -1232,8 +1234,9 @@ def test_postgresql_gap_plan_requeues_an_obsolete_metric_contract(
     """A complete-looking row from an old contract is not current coverage."""
 
     shops: set[UUID] = set()
-    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
-    business_date = date(2026, 9, 22)
+    # Keep this contract fixture separate from every other global daily key.
+    now = datetime(2000, 2, 15, 1, tzinfo=UTC)
+    business_date = date(2000, 2, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             shop = _seed_shop(session, display_name="旧口径补漏店铺")
@@ -1292,8 +1295,9 @@ def test_postgresql_gap_plan_prioritizes_yesterday_across_shops(
     """All Shops' newest gaps outrank any Shop's older history."""
 
     shops: set[UUID] = set()
-    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
-    business_date = date(2026, 9, 22)
+    # The priority fixture must not reuse a real or another test's daily job.
+    now = datetime(2000, 3, 15, 1, tzinfo=UTC)
+    business_date = date(2000, 3, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             first = _seed_shop(session, display_name="昨日优先店铺 A")
@@ -1337,8 +1341,9 @@ def test_postgresql_concurrent_daily_and_startup_plans_share_one_daily_job(
     errors: list[Exception] = []
     lock = Lock()
     barrier = Barrier(2)
-    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
-    business_date = date(2026, 9, 22)
+    # This cross-process assertion owns a distinct date-based daily key.
+    now = datetime(2000, 4, 15, 1, tzinfo=UTC)
+    business_date = date(2000, 4, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             shop = _seed_shop(session, display_name="跨进程每日补漏店铺")
