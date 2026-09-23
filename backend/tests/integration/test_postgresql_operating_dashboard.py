@@ -324,6 +324,37 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
                     end_date=DAY_TWO,
                 ),
             )
+            # A scoped executor must leave a different durable job untouched.
+            # The negative priority would make this item win an unscoped
+            # global claim, so this also protects the shared Integration DB
+            # from accidental test execution of unrelated pending work.
+            foreign_shop = _seed_shop(session, display_name="范围外执行夹具")
+            session.flush()
+            shops.add(foreign_shop.shop_id)
+            foreign_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind="daily",
+                status="pending",
+                requested_start_date=DAY_ONE,
+                requested_end_date=DAY_ONE,
+                requested_by_user_id=None,
+                dedupe_key=None,
+            )
+            session.add(foreign_job)
+            session.flush()
+            foreign_item_id = uuid4()
+            session.add(
+                OperatingDataCollectionItem(
+                    collection_item_id=foreign_item_id,
+                    collection_job_id=foreign_job.collection_job_id,
+                    shop_id=foreign_shop.shop_id,
+                    business_date=DAY_ONE,
+                    status=OperatingCollectionItemStatus.PENDING.value,
+                    priority=-1,
+                    attempt_count=0,
+                    retryable=False,
+                ),
+            )
             # Disable after queuing.  The executor must record a skip without
             # invoking the external collector for this Shop.
             disabled.enabled = False
@@ -352,12 +383,13 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
             collector=collector,
             settings=settings,
         )
-        while executor.execute_available():
+        while executor.execute_available(collection_job_id=job.collection_job_id):
             pass
 
         assert highest_active <= 5
         assert all(value <= 1 for value in highest_per_shop.values())
         assert disabled.shop_id not in {request.shop_id for request in calls}
+        assert foreign_shop.shop_id not in {request.shop_id for request in calls}
 
         with Session(postgresql_engine) as session:
             items = session.scalars(
@@ -378,6 +410,9 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
                     ShopOperatingDailyMetric.business_date == DAY_ONE,
                 ),
             ) is not None
+            foreign_item = session.get(OperatingDataCollectionItem, foreign_item_id)
+            assert foreign_item is not None
+            assert foreign_item.status == OperatingCollectionItemStatus.PENDING.value
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
@@ -520,7 +555,7 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
             collector=collector,
             settings=_settings(douyin_compass_collection_concurrency=5),
         )
-        assert executor.execute_available() == 1
+        assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         with Session(postgresql_engine, expire_on_commit=False) as session:
             items = session.scalars(
                 select(OperatingDataCollectionItem)
@@ -560,7 +595,7 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
                 ),
             ) == 28
 
-        assert executor.execute_available() == 1
+        assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert len(calls) == 2
     finally:
         _cleanup(postgresql_engine, shops)
@@ -629,7 +664,7 @@ def test_postgresql_executor_rechecks_manual_requester_shop_access(
             collector=collector,
             settings=_settings(),
         )
-        assert executor.execute_available() == 1
+        assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert calls == []
 
         with Session(postgresql_engine) as session:

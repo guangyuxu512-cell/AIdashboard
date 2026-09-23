@@ -5,6 +5,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 import logging
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -49,10 +50,16 @@ class OperatingDataCollectionExecutor:
         self._collector = collector
         self._settings = settings
 
-    def execute_available(self) -> int:
+    def execute_available(self, *, collection_job_id: UUID | None = None) -> int:
+        """Execute available work, optionally limited to one durable job.
+
+        The optional scope never relaxes the global running-item count.  It
+        only prevents a controlled invocation from claiming a different job.
+        """
+
         claims: list[CollectionClaim] = []
         for _ in range(self._settings.douyin_compass_collection_concurrency):
-            claim = self._prepare_next()
+            claim = self._prepare_next(collection_job_id=collection_job_id)
             if claim is None:
                 break
             claims.append(claim)
@@ -85,7 +92,11 @@ class OperatingDataCollectionExecutor:
         )
         return len(claims)
 
-    def _prepare_next(self) -> CollectionClaim | None:
+    def _prepare_next(
+        self,
+        *,
+        collection_job_id: UUID | None = None,
+    ) -> CollectionClaim | None:
         now = datetime.now(UTC)
         lease_until = now + timedelta(
             seconds=self._settings.operating_dashboard_collection_lease_seconds,
@@ -94,7 +105,11 @@ class OperatingDataCollectionExecutor:
             return OperatingDashboardService(
                 session,
                 settings=self._settings,
-            ).prepare_next_collection(now=now, lease_until=lease_until)
+            ).prepare_next_collection(
+                now=now,
+                lease_until=lease_until,
+                collection_job_id=collection_job_id,
+            )
 
     def _execute_claim(self, claim: CollectionClaim) -> CollectionOutcome:
         with self._session_factory() as session:
