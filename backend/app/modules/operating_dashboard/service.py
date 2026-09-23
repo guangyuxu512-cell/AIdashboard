@@ -450,18 +450,24 @@ class OperatingDashboardService:
         self,
         *,
         now: datetime | None = None,
+        collection_job_id: UUID | None = None,
     ) -> OperatingDataCollectionJob:
         """Recover expired durable work, then run one bounded daily gap plan.
 
         The caller gates this to the explicit automatic-collection switches.
         This function performs only short database transactions; it never
         waits for the executor, Session validation, signing, or the platform.
+        A controlled collection_job_id narrows recovery only; the default
+        startup path remains global.
         """
 
         resolved_now = now or datetime.now(UTC)
         try:
             self.repository.acquire_global_claim_lock()
-            self._recover_expired_or_disabled_items(now=resolved_now)
+            self._recover_expired_or_disabled_items(
+                now=resolved_now,
+                collection_job_id=collection_job_id,
+            )
             self.session.commit()
         except Exception:
             self.session.rollback()
