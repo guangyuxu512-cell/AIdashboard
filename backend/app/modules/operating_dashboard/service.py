@@ -53,6 +53,7 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDataCollectionItemRead,
     OperatingDataCollectionJobRead,
     OperatingDataCollectionRequest,
+    OperatingDataCollectionSubmissionRead,
 )
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.operating_data import CompassDailyMetrics
@@ -90,6 +91,17 @@ class _ShopRangeValues:
     return_quantity: int | None
     collected_at: datetime | None
     coverage_complete: bool
+
+
+@dataclass(frozen=True)
+class _ManualCollectionPlan:
+    """One bounded, authorized update decision before any durable write."""
+
+    business_dates_by_shop: dict[UUID, list[date]]
+    active_job_ids: tuple[UUID, ...]
+    missing_shop_days: int
+    active_shop_days: int
+    blocked_shop_days: int
 
 
 class OperatingDashboardService:
@@ -188,13 +200,33 @@ class OperatingDashboardService:
         )
         total = len(ordered_rows)
         page_rows = ordered_rows[pagination.offset : pagination.offset + pagination.page_size]
+        # Unsupported or disabled Shops remain visible in the table and in
+        # the selected Shop count, but they must not make confirmed Douyin
+        # facts disappear from aggregate cards.  The coverage object below
+        # still makes that incomplete scope explicit.
+        current_supported_by_shop = {
+            shop.shop_id: current_by_shop[shop.shop_id] for shop in supported_shops
+        }
+        previous_supported_by_shop = {
+            shop.shop_id: previous_by_shop[shop.shop_id] for shop in supported_shops
+        }
         summary = self._summary(
-            current_by_shop,
-            previous_by_shop,
+            current_supported_by_shop,
+            previous_supported_by_shop,
             shop_count=total,
+            current_coverage_complete=self._range_coverage_complete(
+                supported_shops,
+                metric_by_shop_date,
+                selected_range,
+            ),
+            previous_coverage_complete=self._range_coverage_complete(
+                supported_shops,
+                metric_by_shop_date,
+                comparison_range,
+            ),
         )
         trend = self._trend(
-            selected_shops,
+            supported_shops,
             metric_by_shop_date,
             trend_range,
         )
@@ -249,6 +281,143 @@ class OperatingDashboardService:
             requested_team_id=actor.team_id,
         )
         return self._job_read_for_actor(actor=actor, job=job)
+
+    def request_collection_update(
+        self,
+        *,
+        actor: ActorContext,
+        request: OperatingDataCollectionRequest,
+        force_recollect: bool = False,
+        now: datetime | None = None,
+    ) -> OperatingDataCollectionSubmissionRead:
+        """Plan a normal gap-fill or an explicitly requested recollection.
+
+        This is deliberately separate from ``enqueue_manual_collection`` so
+        lifecycle callers and older explicit-retry code retain their durable
+        Job contract. The dashboard button needs a truthful no-work result:
+        a fully collected range must not create an empty Job/Item or make a
+        platform request just to look refreshed.
+        """
+
+        self._require_dashboard_access(actor)
+        if not self.settings.operating_dashboard_collection_execution_enabled:
+            raise OperatingDashboardCollectionUnavailableError()
+        self._validate_completed_date_range(request.start_date, request.end_date)
+        visible_shops = self.repository.list_authorized_shops(
+            actor=actor,
+            platform=request.platform,
+            shop_id=request.shop_id,
+        )
+        if not visible_shops:
+            raise OperatingDashboardShopNotAvailableError()
+        supported_shops = [
+            shop
+            for shop in visible_shops
+            if shop.enabled and shop.platform is ShopPlatform.DOUYIN
+        ]
+        if not supported_shops:
+            return OperatingDataCollectionSubmissionRead(
+                state="unsupported",
+                message="当前筛选范围没有可补齐的已启用抖店",
+                collection_job=None,
+                missing_shop_days=0,
+                queued_shop_days=0,
+                active_shop_days=0,
+                blocked_shop_days=0,
+            )
+
+        resolved_now = now or datetime.now(UTC)
+        # The active-item constraint is the final cross-process guard, but a
+        # short PostgreSQL advisory lock lets the normal path *reuse* a fresh
+        # active row rather than creating a second all-skipped Job after a
+        # concurrent button click. The lock ends before any signer/platform
+        # work and is a no-op for narrow SQLite unit fixtures.
+        try:
+            self.repository.acquire_global_claim_lock()
+            plan = self._manual_collection_plan(
+                shops=supported_shops,
+                start_date=request.start_date,
+                end_date=request.end_date,
+                force_recollect=force_recollect,
+                now=resolved_now,
+            )
+            created_job: OperatingDataCollectionJob | None = None
+            if plan.business_dates_by_shop:
+                created_job = self._create_collection_job(
+                    kind=OperatingCollectionJobKind.MANUAL_REFRESH,
+                    start_date=request.start_date,
+                    end_date=request.end_date,
+                    shops=[
+                        shop
+                        for shop in supported_shops
+                        if shop.shop_id in plan.business_dates_by_shop
+                    ],
+                    requested_by_user_id=actor.user_id,
+                    requested_team_id=actor.team_id,
+                    business_dates_by_shop=plan.business_dates_by_shop,
+                )
+            else:
+                self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        job_read = (
+            self._job_read_for_actor(actor=actor, job=created_job)
+            if created_job is not None
+            else self._latest_active_job_read_for_actor(
+                actor=actor,
+                job_ids=plan.active_job_ids,
+            )
+        )
+        queued_shop_days = sum(
+            len(dates) for dates in plan.business_dates_by_shop.values()
+        )
+        if job_read is not None:
+            return OperatingDataCollectionSubmissionRead(
+                state="collection_queued",
+                message=(
+                    "已提交所选范围重新采集"
+                    if force_recollect and created_job is not None
+                    else "已按缺口检查采集进度"
+                ),
+                collection_job=job_read,
+                missing_shop_days=plan.missing_shop_days,
+                queued_shop_days=queued_shop_days,
+                active_shop_days=plan.active_shop_days,
+                blocked_shop_days=plan.blocked_shop_days,
+            )
+        if plan.active_shop_days:
+            # Authorization can change between the bounded plan and the
+            # progress projection. Do not mislabel that unknown active work
+            # as "up to date" or create another Job to work around it.
+            return OperatingDataCollectionSubmissionRead(
+                state="attention_required",
+                message="已有采集任务状态已变化，请刷新后查看当前进度",
+                collection_job=None,
+                missing_shop_days=plan.missing_shop_days,
+                queued_shop_days=0,
+                active_shop_days=plan.active_shop_days,
+                blocked_shop_days=plan.blocked_shop_days,
+            )
+        if plan.blocked_shop_days:
+            return OperatingDataCollectionSubmissionRead(
+                state="attention_required",
+                message="部分缺口当前不能自动补采，请查看覆盖状态并按提示处理",
+                collection_job=None,
+                missing_shop_days=plan.missing_shop_days,
+                queued_shop_days=0,
+                active_shop_days=0,
+                blocked_shop_days=plan.blocked_shop_days,
+            )
+        return OperatingDataCollectionSubmissionRead(
+            state="up_to_date",
+            message="数据已是最新，无需重新采集",
+            collection_job=None,
+            missing_shop_days=0,
+            queued_shop_days=0,
+            active_shop_days=0,
+            blocked_shop_days=0,
+        )
 
     def enqueue_initial_backfill_for_shop(
         self,
@@ -651,6 +820,126 @@ class OperatingDashboardService:
         )
         return automatic_attempts < self.settings.operating_dashboard_gap_recovery_max_attempts
 
+    def _manual_collection_plan(
+        self,
+        *,
+        shops: list[DashboardShop],
+        start_date: date,
+        end_date: date,
+        force_recollect: bool,
+        now: datetime,
+    ) -> _ManualCollectionPlan:
+        """Find only actionable Shop/date work in one bounded read pass.
+
+        A normal update queues missing confirmed metrics only. An explicit
+        recollection additionally queues complete dates, but neither mode
+        bypasses an active item, a paused reauthorization, or a terminal
+        non-retryable platform result.
+        """
+
+        shop_ids = tuple(shop.shop_id for shop in shops)
+        metric_by_shop_date = {
+            (metric.shop_id, metric.business_date): metric
+            for metric in self.repository.list_metrics(
+                shop_ids=shop_ids,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        }
+        states_by_shop_date: dict[tuple[UUID, date], list[CollectionItemState]] = defaultdict(
+            list,
+        )
+        for state in self.repository.list_collection_item_states(
+            shop_ids=shop_ids,
+            start_date=start_date,
+            end_date=end_date,
+        ):
+            states_by_shop_date[(state.shop_id, state.business_date)].append(state)
+
+        candidates: dict[UUID, list[date]] = defaultdict(list)
+        active_job_ids: set[UUID] = set()
+        missing_shop_days = 0
+        active_shop_days = 0
+        blocked_shop_days = 0
+        for shop in shops:
+            for business_date in reversed(_calendar_days(start_date, end_date)):
+                metric = metric_by_shop_date.get((shop.shop_id, business_date))
+                complete = _has_complete_daily_metrics(metric)
+                history = states_by_shop_date[(shop.shop_id, business_date)]
+                active_states = [
+                    state
+                    for state in history
+                    if state.status
+                    in {
+                        OperatingCollectionItemStatus.PENDING.value,
+                        OperatingCollectionItemStatus.RUNNING.value,
+                        OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value,
+                    }
+                ]
+                if not complete:
+                    missing_shop_days += 1
+                if active_states:
+                    # Active durable work owns this Shop/date even if a prior
+                    # successful fact exists and the user explicitly asks to
+                    # recollect it. Reusing it avoids duplicate platform I/O.
+                    active_shop_days += 1
+                    active_job_ids.update(
+                        state.collection_job_id for state in active_states
+                    )
+                    continue
+                if complete and not force_recollect:
+                    continue
+                # An explicit recollection is intentional, but it is not an
+                # escape hatch for a terminal platform/session result or an
+                # in-cooldown retryable failure.  A confirmed historical
+                # fact remains readable in either case; the blocked result
+                # simply prevents this button from issuing another request.
+                if not self._manual_gap_recovery_allowed(history, now=now):
+                    blocked_shop_days += 1
+                    continue
+                candidates[shop.shop_id].append(business_date)
+        return _ManualCollectionPlan(
+            business_dates_by_shop=dict(candidates),
+            active_job_ids=tuple(active_job_ids),
+            missing_shop_days=missing_shop_days,
+            active_shop_days=active_shop_days,
+            blocked_shop_days=blocked_shop_days,
+        )
+
+    def _manual_gap_recovery_allowed(
+        self,
+        states: Iterable[CollectionItemState],
+        *,
+        now: datetime,
+    ) -> bool:
+        """Apply the same finite safeguards to ordinary dashboard updates.
+
+        Explicit retry remains a separate, deliberate action. Repeated clicks
+        on the normal "check and fill" control must not create an unlimited
+        series of attempts after a session, risk, or non-retryable failure.
+        """
+
+        history = list(states)
+        if not history:
+            return True
+        latest = max(
+            history,
+            key=lambda state: (state.updated_at, str(state.collection_item_id)),
+        )
+        if latest.status != OperatingCollectionItemStatus.FAILED.value:
+            return True
+        if not latest.retryable:
+            return False
+        cooldown = timedelta(
+            seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
+        )
+        if latest.updated_at + cooldown > now:
+            return False
+        return (
+            sum(state.attempt_count for state in history)
+            < self.settings.operating_dashboard_collection_max_attempts
+        )
+
     def abandon_claim_if_not_executable(self, claim: CollectionClaim) -> bool:
         """Last enabled and requester-access check before external I/O."""
 
@@ -919,6 +1208,39 @@ class OperatingDashboardService:
             raise OperatingDashboardCollectionNotFoundError()
         return self._job_read(job, items)
 
+    def _latest_active_job_read_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        job_ids: Iterable[UUID],
+    ) -> OperatingDataCollectionJobRead | None:
+        """Return one already-authorized active Job for UI progress polling.
+
+        A bounded request can overlap several existing Jobs. The full
+        coverage state remains the source of truth for all Shop/dates; the
+        latest visible Job gives the existing UI one real progress stream
+        without manufacturing another Job solely for tracking.
+        """
+
+        jobs = [
+            job
+            for job_id in set(job_ids)
+            if (job := self.repository.get_job(job_id)) is not None
+        ]
+        for job in sorted(
+            jobs,
+            key=lambda value: (value.updated_at, str(value.collection_job_id)),
+            reverse=True,
+        ):
+            try:
+                return self._job_read_for_actor(actor=actor, job=job)
+            except OperatingDashboardCollectionNotFoundError:
+                # A concurrent access revocation can make one related Job
+                # invisible between planning and response. It is not a reason
+                # to reveal another Team's state or create duplicate work.
+                continue
+        return None
+
     @staticmethod
     def _job_read(
         job: OperatingDataCollectionJob,
@@ -1032,7 +1354,9 @@ class OperatingDashboardService:
         item.retryable = True
         item.retry_after = now + timedelta(seconds=delay_seconds)
         item.failure_code = outcome.failure_code
-        item.failure_message = _safe_failure_message(outcome.failure_code)
+        item.failure_message = outcome.failure_message or _safe_failure_message(
+            outcome.failure_code,
+        )
         item.failure_stage = outcome.stage.value
         item.lease_until = None
         item.finished_at = None
@@ -1048,7 +1372,9 @@ class OperatingDashboardService:
         item.retryable = outcome.retryable
         item.retry_after = None
         item.failure_code = outcome.failure_code
-        item.failure_message = _safe_failure_message(outcome.failure_code)
+        item.failure_message = outcome.failure_message or _safe_failure_message(
+            outcome.failure_code,
+        )
         item.failure_stage = outcome.stage.value
         item.lease_until = None
         item.finished_at = now
@@ -1168,15 +1494,23 @@ class OperatingDashboardService:
                 ),
                 default=None,
             )
+            valid_observations = [
+                observation
+                for observation in observations
+                if _has_complete_daily_metrics(observation)
+            ]
             values[shop.shop_id] = _ShopRangeValues(
+                # Keep real facts from the collected dates visible.  The
+                # separate coverage flag distinguishes this partial sum from
+                # a complete range; it is deliberately not a zero fallback.
                 turnover_cents=(
-                    sum(observation.turnover_cents for observation in observations if observation is not None)
-                    if complete
+                    sum(observation.turnover_cents for observation in valid_observations)
+                    if valid_observations
                     else None
                 ),
                 order_count=(
-                    sum(observation.order_count for observation in observations if observation is not None)
-                    if complete
+                    sum(observation.order_count for observation in valid_observations)
+                    if valid_observations
                     else None
                 ),
                 # No verified platform contract exists for return-piece
@@ -1242,24 +1576,39 @@ class OperatingDashboardService:
         previous: dict[UUID, _ShopRangeValues],
         *,
         shop_count: int,
+        current_coverage_complete: bool,
+        previous_coverage_complete: bool,
     ) -> OperatingDashboardSummaryRead:
-        current_turnover = _complete_sum(current.values(), "turnover_cents")
-        previous_turnover = _complete_sum(previous.values(), "turnover_cents")
-        current_orders = _complete_sum(current.values(), "order_count")
-        previous_orders = _complete_sum(previous.values(), "order_count")
-        current_returns = _complete_sum(current.values(), "return_quantity")
-        previous_returns = _complete_sum(previous.values(), "return_quantity")
+        current_turnover = _available_sum(current.values(), "turnover_cents")
+        previous_turnover = _available_sum(previous.values(), "turnover_cents")
+        current_orders = _available_sum(current.values(), "order_count")
+        previous_orders = _available_sum(previous.values(), "order_count")
+        current_returns = _available_sum(current.values(), "return_quantity")
+        previous_returns = _available_sum(previous.values(), "return_quantity")
         return OperatingDashboardSummaryRead(
             turnover_cents=current_turnover,
             order_count=current_orders,
             return_quantity=current_returns,
             shop_count=shop_count,
-            turnover_comparison=_comparison(current_turnover, previous_turnover),
-            order_comparison=_comparison(current_orders, previous_orders),
+            turnover_comparison=_comparison(
+                current_turnover,
+                previous_turnover,
+                coverage_complete=(
+                    current_coverage_complete and previous_coverage_complete
+                ),
+            ),
+            order_comparison=_comparison(
+                current_orders,
+                previous_orders,
+                coverage_complete=(
+                    current_coverage_complete and previous_coverage_complete
+                ),
+            ),
             return_comparison=_comparison(
                 current_returns,
                 previous_returns,
                 lower_is_better=True,
+                coverage_complete=False,
             ),
             shop_count_comparison=OperatingDashboardComparisonRead(state="unavailable"),
         )
@@ -1278,14 +1627,18 @@ class OperatingDashboardService:
             observations = [
                 metric_by_shop_date.get((shop.shop_id, business_date)) for shop in shops
             ]
+            valid_observations = [
+                item for item in observations if _has_complete_daily_metrics(item)
+            ]
+            complete = bool(observations) and len(valid_observations) == len(observations)
             turnover = (
-                sum(item.turnover_cents for item in observations if item is not None)
-                if all(_has_complete_daily_metrics(item) for item in observations)
+                sum(item.turnover_cents for item in valid_observations)
+                if valid_observations
                 else None
             )
             orders = (
-                sum(item.order_count for item in observations if item is not None)
-                if all(_has_complete_daily_metrics(item) for item in observations)
+                sum(item.order_count for item in valid_observations)
+                if valid_observations
                 else None
             )
             points.append(
@@ -1293,9 +1646,29 @@ class OperatingDashboardService:
                     business_date=business_date,
                     turnover_cents=turnover,
                     order_count=orders,
+                    coverage_complete=complete,
                 ),
             )
         return points
+
+    @staticmethod
+    def _range_coverage_complete(
+        shops: list[DashboardShop],
+        metric_by_shop_date: dict[tuple[UUID, date], ShopOperatingDailyMetric],
+        range_value: OperatingDashboardDateRangeRead,
+    ) -> bool:
+        """Whether every supported Shop/date in one comparison range exists.
+
+        An empty supported scope cannot produce a reliable comparison.  This
+        intentionally differs from a numerical zero, which remains a valid
+        complete daily fact through ``_has_complete_daily_metrics``.
+        """
+
+        return bool(shops) and all(
+            _has_complete_daily_metrics(metric_by_shop_date.get((shop.shop_id, day)))
+            for shop in shops
+            for day in _calendar_days(range_value.start_date, range_value.end_date)
+        )
 
     def _require_dashboard_access(self, actor: ActorContext) -> None:
         self.module_access_service.require_module_access(actor, ModuleCode.SHOP)
@@ -1419,10 +1792,12 @@ def _shanghai_today(now: datetime | None = None) -> date:
     return resolved.astimezone(SHANGHAI_TIMEZONE).date()
 
 
-def _complete_sum(values: Iterable[_ShopRangeValues], field: str) -> int | None:
-    collected = list(values)
-    raw = [getattr(value, field) for value in collected]
-    return sum(raw) if raw and all(value is not None for value in raw) else None
+def _available_sum(values: Iterable[_ShopRangeValues], field: str) -> int | None:
+    """Sum only confirmed values while preserving all-missing as ``None``."""
+
+    raw = [getattr(value, field) for value in values]
+    present = [value for value in raw if value is not None]
+    return sum(present) if present else None
 
 
 def _comparison(
@@ -1430,8 +1805,9 @@ def _comparison(
     previous: int | None,
     *,
     lower_is_better: bool = False,
+    coverage_complete: bool = True,
 ) -> OperatingDashboardComparisonRead:
-    if current is None or previous is None or previous == 0:
+    if not coverage_complete or current is None or previous is None or previous == 0:
         return OperatingDashboardComparisonRead(state="unavailable")
     if current == previous:
         return OperatingDashboardComparisonRead(state="equal")

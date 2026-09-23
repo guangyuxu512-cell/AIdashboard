@@ -120,12 +120,24 @@ function sumAvailable(values: ReadonlyArray<number | null>): number | null {
   return hasValue ? total : null
 }
 
+function hasConfirmedCoreObservation(
+  record: OperatingDashboardRecord,
+): boolean {
+  return record.turnoverCents !== null && record.orderCount !== null
+}
+
 function compare(
   current: number | null,
   previous: number | null,
-  lowerIsBetter = false,
+  options: { lowerIsBetter?: boolean; coverageComplete?: boolean } = {},
 ): DashboardComparison {
-  if (current === null || previous === null) return { state: 'unavailable' }
+  if (
+    options.coverageComplete === false ||
+    current === null ||
+    previous === null
+  ) {
+    return { state: 'unavailable' }
+  }
   if (current === previous) return { state: 'equal' }
   if (previous === 0) return { state: 'unavailable' }
 
@@ -133,7 +145,7 @@ function compare(
   return {
     state: increased ? 'increase' : 'decrease',
     percentage: Math.abs(((current - previous) / previous) * 100),
-    favorable: lowerIsBetter ? !increased : increased,
+    favorable: options.lowerIsBetter ? !increased : increased,
   }
 }
 
@@ -152,6 +164,7 @@ function filteredRecords(
 
 function buildTableRows(
   records: ReadonlyArray<OperatingDashboardRecord>,
+  expectedDates: ReadonlyArray<string>,
 ): OperatingDashboardTableRow[] {
   const groups = new Map<string, OperatingDashboardRecord[]>()
   for (const record of records) {
@@ -162,6 +175,7 @@ function buildTableRows(
 
   return [...groups.values()]
     .map((group) => {
+      const confirmedCoreRecords = group.filter(hasConfirmedCoreObservation)
       const newest = [...group].sort((left, right) =>
         (right.collectedAt ?? '').localeCompare(left.collectedAt ?? ''),
       )[0]!
@@ -179,14 +193,24 @@ function buildTableRows(
         shopName: newest.shopName,
         platform: newest.platform,
         turnoverCents: sumAvailable(
-          group.map((record) => record.turnoverCents),
+          confirmedCoreRecords.map((record) => record.turnoverCents),
         ),
-        orderCount: sumAvailable(group.map((record) => record.orderCount)),
+        orderCount: sumAvailable(
+          confirmedCoreRecords.map((record) => record.orderCount),
+        ),
         returnQuantity: sumAvailable(
           group.map((record) => record.returnQuantity),
         ),
         experience: newestExperience,
         collectedAt: newest.collectedAt,
+        coverageComplete: expectedDates.every((businessDate) =>
+          group.some(
+            (record) =>
+              record.businessDate === businessDate &&
+              record.turnoverCents !== null &&
+              record.orderCount !== null,
+          ),
+        ),
       }
     })
     .sort((left, right) => left.shopName.localeCompare(right.shopName, 'zh-CN'))
@@ -277,17 +301,29 @@ export function sortOperatingDashboardRows(
 function buildTrend(
   records: ReadonlyArray<OperatingDashboardRecord>,
   range: OperatingDashboardDateRange,
+  expectedShopIds: ReadonlyArray<string>,
 ) {
   return listCalendarDates(range).map((businessDate) => {
     const dailyRecords = records.filter(
       (record) => record.businessDate === businessDate,
     )
+    const validDailyRecords = dailyRecords.filter(hasConfirmedCoreObservation)
     return {
       businessDate,
       turnoverCents: sumAvailable(
-        dailyRecords.map((record) => record.turnoverCents),
+        validDailyRecords.map((record) => record.turnoverCents),
       ),
-      orderCount: sumAvailable(dailyRecords.map((record) => record.orderCount)),
+      orderCount: sumAvailable(
+        validDailyRecords.map((record) => record.orderCount),
+      ),
+      coverageComplete:
+        expectedShopIds.length > 0 &&
+        expectedShopIds.every((shopId) =>
+          dailyRecords.some(
+            (record) =>
+              record.shopId === shopId && hasConfirmedCoreObservation(record),
+          ),
+        ),
     }
   })
 }
@@ -305,6 +341,37 @@ function buildAvailableShopOptions(
   }
   return [...shops.values()].sort((left, right) =>
     left.shopName.localeCompare(right.shopName, 'zh-CN'),
+  )
+}
+
+function selectedShopOptions(
+  allShops: ReadonlyArray<OperatingDashboardShopOption>,
+  filters: OperatingDashboardFilters,
+): OperatingDashboardShopOption[] {
+  return allShops.filter(
+    (shop) =>
+      (filters.platform === null || shop.platform === filters.platform) &&
+      (filters.shopId === null || shop.shopId === filters.shopId),
+  )
+}
+
+function hasCompleteRangeCoverage(
+  records: ReadonlyArray<OperatingDashboardRecord>,
+  range: OperatingDashboardDateRange,
+  expectedShopIds: ReadonlyArray<string>,
+): boolean {
+  return (
+    expectedShopIds.length > 0 &&
+    listCalendarDates(range).every((businessDate) =>
+      expectedShopIds.every((shopId) =>
+        records.some(
+          (record) =>
+            record.shopId === shopId &&
+            record.businessDate === businessDate &&
+            hasConfirmedCoreObservation(record),
+        ),
+      ),
+    )
   )
 }
 
@@ -335,7 +402,10 @@ function buildMockCoverage(
   }
   const dates = listCalendarDates(range)
   const byShopDate = new Map(
-    records.map((record) => [`${record.shopId}:${record.businessDate}`, record]),
+    records.map((record) => [
+      `${record.shopId}:${record.businessDate}`,
+      record,
+    ]),
   )
   const missingSamples: OperatingDashboardCoverage['missingSamples'] = []
   let collectedShopDays = 0
@@ -395,17 +465,34 @@ export function buildOperatingDashboardRead(
   const current = filteredRecords(records, dateRange, filters)
   const previous = filteredRecords(records, comparisonDateRange, filters)
   const trendRecords = filteredRecords(records, trendDateRange, filters)
-  const tableRows = buildTableRows(current)
+  const tableRows = buildTableRows(current, listCalendarDates(dateRange))
+  const allAvailableShops = buildAvailableShopOptions(records)
+  const selectedShops = selectedShopOptions(allAvailableShops, filters)
+  const selectedShopIds = selectedShops.map((shop) => shop.shopId)
+  const currentCoreRecords = current.filter(hasConfirmedCoreObservation)
+  const previousCoreRecords = previous.filter(hasConfirmedCoreObservation)
+  const currentCoverageComplete = hasCompleteRangeCoverage(
+    current,
+    dateRange,
+    selectedShopIds,
+  )
+  const previousCoverageComplete = hasCompleteRangeCoverage(
+    previous,
+    comparisonDateRange,
+    selectedShopIds,
+  )
 
   const currentTurnover = sumAvailable(
-    current.map((record) => record.turnoverCents),
+    currentCoreRecords.map((record) => record.turnoverCents),
   )
   const previousTurnover = sumAvailable(
-    previous.map((record) => record.turnoverCents),
+    previousCoreRecords.map((record) => record.turnoverCents),
   )
-  const currentOrders = sumAvailable(current.map((record) => record.orderCount))
+  const currentOrders = sumAvailable(
+    currentCoreRecords.map((record) => record.orderCount),
+  )
   const previousOrders = sumAvailable(
-    previous.map((record) => record.orderCount),
+    previousCoreRecords.map((record) => record.orderCount),
   )
   const currentReturns = sumAvailable(
     current.map((record) => record.returnQuantity),
@@ -413,8 +500,6 @@ export function buildOperatingDashboardRead(
   const previousReturns = sumAvailable(
     previous.map((record) => record.returnQuantity),
   )
-
-  const allAvailableShops = buildAvailableShopOptions(records)
 
   return {
     dateRange,
@@ -428,13 +513,20 @@ export function buildOperatingDashboardRead(
       turnoverCents: currentTurnover,
       orderCount: currentOrders,
       returnQuantity: currentReturns,
-      shopCount: new Set(tableRows.map((row) => row.shopId)).size,
-      turnoverComparison: compare(currentTurnover, previousTurnover),
-      orderComparison: compare(currentOrders, previousOrders),
-      returnComparison: compare(currentReturns, previousReturns, true),
+      shopCount: selectedShops.length,
+      turnoverComparison: compare(currentTurnover, previousTurnover, {
+        coverageComplete: currentCoverageComplete && previousCoverageComplete,
+      }),
+      orderComparison: compare(currentOrders, previousOrders, {
+        coverageComplete: currentCoverageComplete && previousCoverageComplete,
+      }),
+      returnComparison: compare(currentReturns, previousReturns, {
+        lowerIsBetter: true,
+        coverageComplete: false,
+      }),
       shopCountComparison: { state: 'unavailable' },
     },
-    trend: buildTrend(trendRecords, trendDateRange),
+    trend: buildTrend(trendRecords, trendDateRange, selectedShopIds),
     tableRows,
     tablePage: {
       total: tableRows.length,
@@ -490,6 +582,7 @@ export function buildOperatingDashboardUnavailableRead(
       businessDate,
       turnoverCents: null,
       orderCount: null,
+      coverageComplete: false,
     })),
     tableRows: tableShops.map((shop) => ({
       ...shop,
@@ -498,6 +591,7 @@ export function buildOperatingDashboardUnavailableRead(
       returnQuantity: null,
       experience: null,
       collectedAt: null,
+      coverageComplete: false,
     })),
     tablePage: {
       total: shopCount ?? 0,

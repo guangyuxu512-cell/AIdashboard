@@ -62,6 +62,7 @@ interface DashboardReadDto {
     business_date: string
     turnover_cents: number | null
     order_count: number | null
+    coverage_complete: boolean
   }>
   table: {
     items: TableRowDto[]
@@ -119,6 +120,27 @@ export interface OperatingDashboardCollectionJobDto {
   items: OperatingDashboardCollectionItemDto[]
 }
 
+export interface OperatingDashboardCollectionSubmissionDto {
+  state:
+    'up_to_date' | 'collection_queued' | 'attention_required' | 'unsupported'
+  message: string
+  collection_job: OperatingDashboardCollectionJobDto | null
+  missing_shop_days: number
+  queued_shop_days: number
+  active_shop_days: number
+  blocked_shop_days: number
+}
+
+export interface OperatingDashboardCollectionSubmission {
+  state: OperatingDashboardCollectionSubmissionDto['state']
+  message: string
+  collectionJob: OperatingDashboardCollectionJobDto | null
+  missingShopDays: number
+  queuedShopDays: number
+  activeShopDays: number
+  blockedShopDays: number
+}
+
 export interface OperatingDashboardReadParams {
   range: OperatingDashboardDateRange
   filters: OperatingDashboardFilters
@@ -166,6 +188,21 @@ function mapTableRow(value: TableRowDto): OperatingDashboardTableRow {
     // backend deliberately returns null rather than a guessed score object.
     experience: null,
     collectedAt: value.collected_at,
+    coverageComplete: value.coverage_complete,
+  }
+}
+
+function mapCollectionSubmission(
+  value: OperatingDashboardCollectionSubmissionDto,
+): OperatingDashboardCollectionSubmission {
+  return {
+    state: value.state,
+    message: value.message,
+    collectionJob: value.collection_job,
+    missingShopDays: value.missing_shop_days,
+    queuedShopDays: value.queued_shop_days,
+    activeShopDays: value.active_shop_days,
+    blockedShopDays: value.blocked_shop_days,
   }
 }
 
@@ -193,6 +230,7 @@ export function mapOperatingDashboardRead(
       businessDate: point.business_date,
       turnoverCents: point.turnover_cents,
       orderCount: point.order_count,
+      coverageComplete: point.coverage_complete,
     })),
     tableRows: value.table.items.map(mapTableRow),
     tablePage: {
@@ -269,22 +307,24 @@ export const operatingDashboardApi = {
     return mapOperatingDashboardRead(response.data)
   },
 
-  async enqueueCollection(params: {
+  async requestCollectionUpdate(params: {
     range: OperatingDashboardDateRange
     filters: OperatingDashboardFilters
-  }): Promise<OperatingDashboardCollectionJobDto> {
-    const response = await httpClient.post<OperatingDashboardCollectionJobDto>(
-      `${basePath}/collections`,
-      {
-        start_date: params.range.startDate,
-        end_date: params.range.endDate,
-        ...(params.filters.platform
-          ? { platform: params.filters.platform }
-          : {}),
-        ...(params.filters.shopId ? { shop_id: params.filters.shopId } : {}),
-      },
-    )
-    return response.data
+    forceRecollect?: boolean
+  }): Promise<OperatingDashboardCollectionSubmission> {
+    const response =
+      await httpClient.post<OperatingDashboardCollectionSubmissionDto>(
+        `${basePath}/collections${params.forceRecollect ? '/recollect' : ''}`,
+        {
+          start_date: params.range.startDate,
+          end_date: params.range.endDate,
+          ...(params.filters.platform
+            ? { platform: params.filters.platform }
+            : {}),
+          ...(params.filters.shopId ? { shop_id: params.filters.shopId } : {}),
+        },
+      )
+    return mapCollectionSubmission(response.data)
   },
 
   async getCollection(

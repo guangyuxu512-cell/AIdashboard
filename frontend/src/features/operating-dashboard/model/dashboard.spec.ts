@@ -122,6 +122,91 @@ describe('operating dashboard date and aggregation model', () => {
     expect(result.tableRows[0]?.orderCount).toBeNull()
   })
 
+  it('keeps confirmed Mock facts visible while marking a partial range', () => {
+    const records: OperatingDashboardRecord[] = [
+      {
+        shopId: 'shop-a',
+        shopName: '部分覆盖店铺',
+        platform: 'douyin',
+        businessDate: '2026-09-19',
+        turnoverCents: 100,
+        orderCount: 1,
+        returnQuantity: null,
+        experience: null,
+        collectedAt: '2026-09-19T08:00:00+08:00',
+      },
+      {
+        shopId: 'shop-b',
+        shopName: '完整覆盖店铺',
+        platform: 'douyin',
+        businessDate: '2026-09-19',
+        turnoverCents: 200,
+        orderCount: 2,
+        returnQuantity: null,
+        experience: null,
+        collectedAt: '2026-09-19T08:00:00+08:00',
+      },
+      {
+        shopId: 'shop-b',
+        shopName: '完整覆盖店铺',
+        platform: 'douyin',
+        businessDate: '2026-09-20',
+        turnoverCents: 0,
+        orderCount: 0,
+        returnQuantity: null,
+        experience: null,
+        collectedAt: '2026-09-20T08:00:00+08:00',
+      },
+    ]
+    const result = buildOperatingDashboardRead(
+      records,
+      {
+        ...yesterdayFilters,
+        datePreset: 'custom',
+        customDateRange: [
+          Date.parse('2026-09-19T00:00:00+08:00'),
+          Date.parse('2026-09-20T00:00:00+08:00'),
+        ],
+      },
+      now,
+    )
+
+    expect(result.summary.turnoverCents).toBe(300)
+    expect(result.summary.orderCount).toBe(3)
+    expect(result.summary.turnoverComparison).toEqual({ state: 'unavailable' })
+    expect(result.coverage).toMatchObject({
+      collectedShopDays: 3,
+      totalShopDays: 4,
+      missingShopDays: 1,
+    })
+    expect(result.tableRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shopId: 'shop-a',
+          turnoverCents: 100,
+          coverageComplete: false,
+        }),
+        expect.objectContaining({
+          shopId: 'shop-b',
+          turnoverCents: 200,
+          coverageComplete: true,
+        }),
+      ]),
+    )
+    expect(result.trend).toEqual([
+      expect.objectContaining({
+        businessDate: '2026-09-19',
+        turnoverCents: 300,
+        coverageComplete: true,
+      }),
+      expect.objectContaining({
+        businessDate: '2026-09-20',
+        turnoverCents: 0,
+        coverageComplete: false,
+      }),
+    ])
+  })
+
   it('applies platform and shop filtering before table rows are assembled', () => {
     const records = [
       {
@@ -184,7 +269,9 @@ describe('operating dashboard date and aggregation model', () => {
       shopCount: 2,
     })
     expect(result.trend).toHaveLength(7)
-    expect(result.trend.every((point) => point.turnoverCents === null)).toBe(true)
+    expect(result.trend.every((point) => point.turnoverCents === null)).toBe(
+      true,
+    )
     expect(result.tableRows).toEqual([
       expect.objectContaining({
         shopId: 'shop-a',
@@ -295,9 +382,9 @@ describe('operating dashboard table ordering', () => {
     expect(ascending[0]?.shopId).toBe('shop-zero')
     expect(ascending[ascending.length - 1]?.shopId).toBe('shop-null')
     expect(descending[descending.length - 1]?.shopId).toBe('shop-null')
-    expect(ascending.findIndex((row) => row.shopId === 'shop-zero')).toBeLessThan(
-      ascending.findIndex((row) => row.shopId === 'shop-null'),
-    )
+    expect(
+      ascending.findIndex((row) => row.shopId === 'shop-zero'),
+    ).toBeLessThan(ascending.findIndex((row) => row.shopId === 'shop-null'))
   })
 
   it('applies the same raw-value rule to order and return counts', () => {
@@ -356,7 +443,11 @@ describe('operating dashboard table ordering', () => {
         shopName: '同名店',
         collectedAt: '2026-09-20T08:00:00+08:00',
       }),
-      tableRow({ shopId: 'shop-time-null', shopName: '同名店', collectedAt: null }),
+      tableRow({
+        shopId: 'shop-time-null',
+        shopName: '同名店',
+        collectedAt: null,
+      }),
       tableRow({
         shopId: 'shop-name-b',
         shopName: '同名店',

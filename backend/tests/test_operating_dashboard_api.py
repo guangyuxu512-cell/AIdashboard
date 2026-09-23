@@ -23,6 +23,7 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDashboardTrendPointRead,
     OperatingDataCollectionCountsRead,
     OperatingDataCollectionJobRead,
+    OperatingDataCollectionSubmissionRead,
 )
 from app.modules.shops.enums import ShopPlatform
 
@@ -77,6 +78,7 @@ def dashboard_read() -> OperatingDashboardRead:
                 business_date=date(2026, 9, 20),
                 turnover_cents=100,
                 order_count=2,
+                coverage_complete=True,
             ),
         ],
         table=OperatingDashboardTablePageRead(
@@ -143,9 +145,20 @@ class DashboardServiceStub:
         self.read_calls.append(kwargs)
         return dashboard_read()
 
-    def enqueue_manual_collection(self, **kwargs: object) -> OperatingDataCollectionJobRead:
+    def request_collection_update(
+        self,
+        **kwargs: object,
+    ) -> OperatingDataCollectionSubmissionRead:
         self.enqueue_calls.append(kwargs)
-        return collection_job()
+        return OperatingDataCollectionSubmissionRead(
+            state="collection_queued",
+            message="已按缺口检查采集进度",
+            collection_job=collection_job(),
+            missing_shop_days=1,
+            queued_shop_days=1,
+            active_shop_days=0,
+            blocked_shop_days=0,
+        )
 
     def get_collection_job(self, **_: object) -> OperatingDataCollectionJobRead:
         return collection_job()
@@ -206,7 +219,7 @@ def test_read_rejects_half_of_a_sort_contract_before_service_execution() -> None
     assert service.read_calls == []
 
 
-def test_manual_update_returns_a_durable_job_instead_of_waiting_for_platform_io() -> None:
+def test_manual_update_returns_a_durable_job_only_when_gap_work_exists() -> None:
     service = DashboardServiceStub()
 
     response = request(
@@ -220,6 +233,32 @@ def test_manual_update_returns_a_durable_job_instead_of_waiting_for_platform_io(
         },
     )
 
-    assert response.status_code == 202
-    assert response.json()["collection_job_id"] == str(JOB_ID)
+    assert response.status_code == 200
+    assert response.json()["collection_job"]["collection_job_id"] == str(JOB_ID)
     assert service.enqueue_calls[0]["actor"] == ACTOR
+    assert service.enqueue_calls[0]["force_recollect"] is False
+
+
+def test_explicit_recollect_uses_the_scoped_recollect_contract() -> None:
+    service = DashboardServiceStub()
+
+    response = request(
+        "POST",
+        "/api/v1/operating-dashboard/collections/recollect",
+        service=service,
+        json={
+            "start_date": "2026-09-19",
+            "end_date": "2026-09-20",
+            "platform": "douyin",
+            "shop_id": str(SHOP_ID),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "collection_queued"
+    assert service.enqueue_calls[0]["actor"] == ACTOR
+    assert service.enqueue_calls[0]["force_recollect"] is True
+    request_value = service.enqueue_calls[0]["request"]
+    assert getattr(request_value, "start_date") == date(2026, 9, 19)
+    assert getattr(request_value, "end_date") == date(2026, 9, 20)
+    assert getattr(request_value, "platform") is ShopPlatform.DOUYIN

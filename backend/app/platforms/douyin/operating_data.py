@@ -45,34 +45,24 @@ class DouyinOperatingDataBusinessError(PlatformRequestFailedError):
 
 @dataclass(frozen=True)
 class CompassDailyMetrics:
-    """Fixed values from the verified Compass core-index response path.
+    """Persisted facts from the verified Compass core-index response path.
 
-    Monetary fields remain integer cents at the transport boundary.  The
-    derived Decimal properties are presentation-safe conversions, not a new
+    Only the metrics that the Operating Dashboard currently persists and
+    exposes are read here.  Compass may omit other requested card fields for
+    an otherwise successful response; parsing an unimplemented field must not
+    turn a valid turnover/order observation into a failed collection item.
+
+    Monetary values remain integer cents at the transport boundary.  The
+    derived Decimal property is presentation-safe conversion, not a new
     accounting calculation.
     """
 
     income_amt_cents: int | None
     pay_cnt: int | None
-    pay_amt_cents: int | None
-    rfndsuc_amt_pay_time_cents: int | None
-    settlement_amt_pay_time_cents: int | None
 
     @property
     def income_amt_yuan(self) -> Decimal | None:
         return _cents_to_yuan(self.income_amt_cents)
-
-    @property
-    def pay_amt_yuan(self) -> Decimal | None:
-        return _cents_to_yuan(self.pay_amt_cents)
-
-    @property
-    def rfndsuc_amt_pay_time_yuan(self) -> Decimal | None:
-        return _cents_to_yuan(self.rfndsuc_amt_pay_time_cents)
-
-    @property
-    def settlement_amt_pay_time_yuan(self) -> Decimal | None:
-        return _cents_to_yuan(self.settlement_amt_pay_time_cents)
 
 
 @dataclass(frozen=True)
@@ -173,15 +163,6 @@ def parse_core_index_metrics(payload: Mapping[str, Any]) -> CompassDailyMetrics:
     return CompassDailyMetrics(
         income_amt_cents=_read_integer_metric(card, "income_amt"),
         pay_cnt=_read_integer_metric(card, "pay_cnt"),
-        pay_amt_cents=_read_integer_metric(card, "pay_amt"),
-        rfndsuc_amt_pay_time_cents=_read_integer_metric(
-            card,
-            "rfndsuc_amt_pay_time",
-        ),
-        settlement_amt_pay_time_cents=_read_integer_metric(
-            card,
-            "settlement_amt_pay_time",
-        ),
     )
 
 

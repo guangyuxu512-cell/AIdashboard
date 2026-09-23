@@ -8,6 +8,7 @@ import { apiMode, getErrorMessage } from '@/shared/api'
 import {
   operatingDashboardApi,
   type OperatingDashboardCollectionJobDto,
+  type OperatingDashboardCollectionSubmission,
 } from '../api/operating-dashboard-api'
 import {
   resolveOperatingDashboardDateRange,
@@ -24,6 +25,13 @@ import type {
 export interface OperatingDashboardRefreshFeedback {
   tone: 'success' | 'warning' | 'error'
   message: string
+}
+
+type DashboardRefreshMode = 'fill_gaps' | 'recollect'
+
+interface DashboardRefreshRequest {
+  filters: OperatingDashboardFilters
+  mode: DashboardRefreshMode
 }
 
 const DEFAULT_FILTERS: OperatingDashboardFilters = {
@@ -126,6 +134,43 @@ function getCollectionFeedback(
   }
 }
 
+function getCollectionSubmissionFeedback(
+  submission: OperatingDashboardCollectionSubmission,
+): OperatingDashboardRefreshFeedback {
+  if (submission.state === 'up_to_date') {
+    return { tone: 'success', message: submission.message }
+  }
+  if (submission.state === 'unsupported') {
+    return { tone: 'warning', message: submission.message }
+  }
+  if (submission.state === 'attention_required') {
+    return {
+      tone: 'warning',
+      message:
+        submission.blockedShopDays > 0
+          ? `${submission.message}（${submission.blockedShopDays} 个店铺日期）`
+          : submission.message,
+    }
+  }
+  const parts: string[] = []
+  if (submission.queuedShopDays > 0) {
+    parts.push(`已安排 ${submission.queuedShopDays} 个店铺日期`)
+  }
+  if (submission.activeShopDays > 0) {
+    parts.push(`${submission.activeShopDays} 个店铺日期正在处理中`)
+  }
+  if (submission.blockedShopDays > 0) {
+    parts.push(`${submission.blockedShopDays} 个店铺日期暂不能自动补采`)
+  }
+  return {
+    tone: submission.blockedShopDays > 0 ? 'warning' : 'success',
+    message:
+      parts.length > 0
+        ? `${submission.message}：${parts.join('；')}。`
+        : submission.message,
+  }
+}
+
 /**
  * Coordinates the two explicitly separate dashboard sources. Mock mode owns
  * its fixture and client-side full-result sort; real mode only consumes the
@@ -217,20 +262,29 @@ export function useOperatingDashboard() {
   })
 
   const realRefreshMutation = useMutation({
-    mutationFn: (requestFilters: OperatingDashboardFilters) =>
-      operatingDashboardApi.enqueueCollection({
-        range: resolveOperatingDashboardDateRange(requestFilters),
-        filters: requestFilters,
+    mutationFn: (request: DashboardRefreshRequest) =>
+      operatingDashboardApi.requestCollectionUpdate({
+        range: resolveOperatingDashboardDateRange(request.filters),
+        filters: request.filters,
+        forceRecollect: request.mode === 'recollect',
       }),
-    onSuccess: (job, requestFilters) => {
-      collectionJobId.value = job.collection_job_id
-      collectionScope.value = cloneFilters(requestFilters)
-      settledCollectionJobId.value = null
+    onSuccess: (submission, request) => {
+      const requestFilters = request.filters
+      const job = submission.collectionJob
+      if (job) {
+        collectionJobId.value = job.collection_job_id
+        collectionScope.value = cloneFilters(requestFilters)
+        settledCollectionJobId.value = null
+      }
       if (sameFilters(requestFilters, filters.value)) {
-        refreshFeedback.value = getCollectionFeedback(job)
+        refreshFeedback.value = getCollectionSubmissionFeedback(submission)
+        // A gap check that finds no work still reads the authoritative
+        // persisted result. It never waits for or fabricates a collection Job.
+        if (!job) void realQuery.refetch()
       }
     },
-    onError: (error, requestFilters) => {
+    onError: (error, request) => {
+      const requestFilters = request.filters
       if (!sameFilters(requestFilters, filters.value)) return
       refreshFeedback.value = { tone: 'error', message: getErrorMessage(error) }
     },
@@ -365,14 +419,14 @@ export function useOperatingDashboard() {
     page.value = 1
   }
 
-  function refresh(): void {
+  function refresh(mode: DashboardRefreshMode = 'fill_gaps'): void {
     if (refreshing.value) return
     const requestFilters = cloneFilters(filters.value)
     if (isMockMode) {
       mockRefreshMutation.mutate(requestFilters)
       return
     }
-    realRefreshMutation.mutate(requestFilters)
+    realRefreshMutation.mutate({ filters: requestFilters, mode })
   }
 
   function retryRead(): void {
@@ -413,6 +467,7 @@ export function useOperatingDashboard() {
     setSort,
     setPageSize,
     refresh,
+    recollect: () => refresh('recollect'),
     retryRead,
   }
 }

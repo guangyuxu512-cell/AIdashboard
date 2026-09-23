@@ -20,6 +20,7 @@ from app.platforms.douyin.operating_data_executor import (
 )
 from app.platforms.exceptions import (
     PlatformAuthenticationInvalidError,
+    PlatformResponseInvalidError,
     PlatformSignerFailedError,
 )
 
@@ -35,7 +36,7 @@ def _success(request: DailyCollectionRequest) -> CollectionOutcome:
         retryable=False,
         requires_reauthorization=False,
         timings=CollectionTimings(total_ms=1),
-        metrics=CompassDailyMetrics(1, 1, 1, 1, 1),
+        metrics=CompassDailyMetrics(1, 1),
     )
 
 
@@ -278,12 +279,27 @@ def test_session_aware_collector_classifies_signer_and_auth_failures() -> None:
     assert auth_accessor.marked == [ShopSessionStatus.INVALID]
 
 
+def test_session_aware_collector_keeps_required_metric_parse_hint_safe() -> None:
+    collector, _, accessor = _session_collector(
+        PlatformResponseInvalidError(
+            details={"failure_stage": "core_index_parse", "metric": "pay_cnt"},
+        ),
+    )
+
+    outcome = collector.collect(DailyCollectionRequest(accessor.context.shop_id, DAY))
+
+    assert outcome.stage is CollectionStage.RESPONSE_PARSE
+    assert outcome.failure_code == "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
+    assert outcome.failure_message == "抖店经营数据响应缺少或无法读取必要指标：成交订单数"
+    assert outcome.retryable is False
+
+
 def test_session_aware_collector_persists_only_explicit_response_cookie_updates() -> None:
     shop_id = uuid4()
     read = CompassDailyRead(
         shop_id=shop_id,
         statistic_date=DAY,
-        metrics=CompassDailyMetrics(98660, 93, 80685, 2406, 95220),
+        metrics=CompassDailyMetrics(98660, 93),
         cookie_updates=(
             StoredSessionCookie(name="rotated", value="synthetic-cookie"),
         ),
