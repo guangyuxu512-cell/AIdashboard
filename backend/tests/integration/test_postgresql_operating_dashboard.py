@@ -217,6 +217,33 @@ def _unused_daily_fixture_clock(session: Session) -> tuple[date, datetime]:
     pytest.skip("共享 Integration 队列没有可安全复用的每日计划夹具日期")
 
 
+def _shared_safe_collection_concurrency(
+    session: Session,
+    *,
+    required_slots: int,
+) -> int:
+    """Reserve only the fixture's bounded slots above the live global count."""
+
+    existing_running = int(
+        session.scalar(
+            select(func.count())
+            .select_from(OperatingDataCollectionItem)
+            .where(
+                OperatingDataCollectionItem.status
+                == OperatingCollectionItemStatus.RUNNING.value,
+            ),
+        )
+        or 0,
+    )
+    fixture_capacity = existing_running + required_slots
+    if fixture_capacity > 20:
+        pytest.skip(
+            "共享 Integration 队列没有足够全局容量运行此夹具 "
+            f"(running={existing_running}, required_slots={required_slots})",
+        )
+    return fixture_capacity
+
+
 def _success(
     request: DailyCollectionRequest,
     *,
@@ -415,6 +442,10 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
             # invoking the external collector for this Shop.
             disabled.enabled = False
             session.commit()
+            fixture_capacity = _shared_safe_collection_concurrency(
+                session,
+                required_slots=5,
+            )
 
         def collector(request: DailyCollectionRequest) -> CollectionOutcome:
             nonlocal active, highest_active
@@ -433,7 +464,7 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
                 active_per_shop[request.shop_id] -= 1
             return _success(request, turnover=100 + len(calls), orders=2)
 
-        settings = _settings(douyin_compass_collection_concurrency=5)
+        settings = _settings(douyin_compass_collection_concurrency=fixture_capacity)
         executor = OperatingDataCollectionExecutor(
             session_factory=lambda: Session(postgresql_engine, expire_on_commit=False),
             collector=collector,
@@ -587,6 +618,10 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
                     end_date=DAY_TWO,
                 ),
             )
+            fixture_capacity = _shared_safe_collection_concurrency(
+                session,
+                required_slots=1,
+            )
 
         first = True
 
@@ -609,7 +644,7 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
         executor = OperatingDataCollectionExecutor(
             session_factory=lambda: Session(postgresql_engine, expire_on_commit=False),
             collector=collector,
-            settings=_settings(douyin_compass_collection_concurrency=5),
+            settings=_settings(douyin_compass_collection_concurrency=fixture_capacity),
         )
         assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         with Session(postgresql_engine, expire_on_commit=False) as session:
@@ -710,6 +745,10 @@ def test_postgresql_executor_rechecks_manual_requester_shop_access(
                 ),
             )
             session.commit()
+            fixture_capacity = _shared_safe_collection_concurrency(
+                session,
+                required_slots=1,
+            )
 
         def collector(request: DailyCollectionRequest) -> CollectionOutcome:
             calls.append(request)
@@ -718,7 +757,7 @@ def test_postgresql_executor_rechecks_manual_requester_shop_access(
         executor = OperatingDataCollectionExecutor(
             session_factory=lambda: Session(postgresql_engine, expire_on_commit=False),
             collector=collector,
-            settings=_settings(),
+            settings=_settings(douyin_compass_collection_concurrency=fixture_capacity),
         )
         assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert calls == []
@@ -982,6 +1021,10 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
                     shop_id=shop.shop_id,
                 ),
             )
+            fixture_capacity = _shared_safe_collection_concurrency(
+                session,
+                required_slots=1,
+            )
 
         now = datetime(2026, 9, 22, tzinfo=UTC)
 
@@ -990,7 +1033,10 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
                 with Session(postgresql_engine, expire_on_commit=False) as session:
                     barrier.wait(timeout=5)
                     claims.append(
-                        _service(session).prepare_next_collection(
+                        _service(
+                            session,
+                            douyin_compass_collection_concurrency=fixture_capacity,
+                        ).prepare_next_collection(
                             now=now,
                             lease_until=now + timedelta(seconds=60),
                             collection_job_id=job.collection_job_id,
@@ -1238,10 +1284,17 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
                     shop_id=shop.shop_id,
                 ),
             )
+            fixture_capacity = _shared_safe_collection_concurrency(
+                session,
+                required_slots=1,
+            )
 
         first_now = datetime(2026, 9, 22, tzinfo=UTC)
         with Session(postgresql_engine, expire_on_commit=False) as session:
-            first_claim = _service(session).prepare_next_collection(
+            first_claim = _service(
+                session,
+                douyin_compass_collection_concurrency=fixture_capacity,
+            ).prepare_next_collection(
                 now=first_now,
                 lease_until=first_now + timedelta(seconds=10),
                 collection_job_id=job.collection_job_id,
@@ -1250,7 +1303,10 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
 
         recovered_now = first_now + timedelta(seconds=11)
         with Session(postgresql_engine, expire_on_commit=False) as session:
-            replacement_claim = _service(session).prepare_next_collection(
+            replacement_claim = _service(
+                session,
+                douyin_compass_collection_concurrency=fixture_capacity,
+            ).prepare_next_collection(
                 now=recovered_now,
                 lease_until=recovered_now + timedelta(seconds=60),
                 collection_job_id=job.collection_job_id,
@@ -1582,6 +1638,14 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
                     end_date=DAY_ONE,
                     shop_id=shop.shop_id,
                 ),
+            )
+            fixture_capacity = _shared_safe_collection_concurrency(
+                session,
+                required_slots=1,
+            )
+            service = _service(
+                session,
+                douyin_compass_collection_concurrency=fixture_capacity,
             )
             claim = service.prepare_next_collection(
                 now=first_now,
