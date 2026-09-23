@@ -69,16 +69,6 @@ const dashboardDto = {
     page: 1,
     page_size: 10,
   },
-  coverage: {
-    state: 'available',
-    supported_shop_count: 1,
-    collected_shop_days: 1,
-    total_shop_days: 1,
-    missing_shop_days: 0,
-    missing_samples: [],
-    missing_samples_truncated: false,
-    manual_backfill_required: false,
-  },
   collection_available: true,
 }
 
@@ -117,11 +107,6 @@ describe('operatingDashboardApi', () => {
       experience: null,
     })
     expect(result.tablePage).toEqual({ total: 1, page: 1, pageSize: 10 })
-    expect(result.coverage).toMatchObject({
-      collectedShopDays: 1,
-      totalShopDays: 1,
-      missingShopDays: 0,
-    })
     expect(result.collectionAvailable).toBe(true)
     expect(result.summary.turnoverComparison).toEqual({
       state: 'increase',
