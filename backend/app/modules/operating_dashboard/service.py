@@ -34,11 +34,14 @@ from app.modules.operating_dashboard.models import (
 )
 from app.modules.operating_dashboard.repository import (
     CollectionClaim,
+    CollectionItemState,
     DashboardShop,
     OperatingDashboardRepository,
 )
 from app.modules.operating_dashboard.schemas import (
     OperatingDashboardComparisonRead,
+    OperatingDashboardCoverageMissingRead,
+    OperatingDashboardCoverageRead,
     OperatingDashboardDateRangeRead,
     OperatingDashboardRead,
     OperatingDashboardShopOptionRead,
@@ -61,6 +64,14 @@ from app.shared.pagination import PaginationParams
 SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
 DOUYIN_CORE_INDEX_SOURCE = "douyin_compass_core_index_v3"
 DOUYIN_CORE_INDEX_CONTRACT = "douyin_compass_daily_v1"
+COVERAGE_MISSING_SAMPLE_LIMIT = 20
+SYSTEM_COLLECTION_KINDS = frozenset(
+    {
+        OperatingCollectionJobKind.INITIAL_BACKFILL.value,
+        OperatingCollectionJobKind.REENABLE_BACKFILL.value,
+        OperatingCollectionJobKind.DAILY.value,
+    },
+)
 
 DashboardSortField = Literal[
     "shop_name",
@@ -148,6 +159,16 @@ class OperatingDashboardService:
         metric_by_shop_date = {
             (metric.shop_id, metric.business_date): metric for metric in metrics
         }
+        supported_shops = [
+            shop
+            for shop in selected_shops
+            if shop.platform is ShopPlatform.DOUYIN and shop.enabled
+        ]
+        collection_states = self.repository.list_collection_item_states(
+            shop_ids=(shop.shop_id for shop in supported_shops),
+            start_date=start_date,
+            end_date=end_date,
+        )
 
         current_by_shop = self._shop_range_values(
             selected_shops,
@@ -190,6 +211,12 @@ class OperatingDashboardService:
                 page=pagination.page,
                 page_size=pagination.page_size,
             ),
+            coverage=self._coverage(
+                shops=supported_shops,
+                metric_by_shop_date=metric_by_shop_date,
+                collection_states=collection_states,
+                range_value=selected_range,
+            ),
             collection_available=self.settings.operating_dashboard_collection_execution_enabled,
         )
 
@@ -231,54 +258,67 @@ class OperatingDashboardService:
         now: datetime | None = None,
         commit: bool = True,
     ) -> OperatingDataCollectionJob | None:
-        """Queue missing/failed dates once from Shop lifecycle code.
+        """Compatibility name for lifecycle callers of the unified planner.
 
-        This only persists work.  A captured Session is still validated by the
-        executor before its first platform call, so creating a Shop never
-        itself claims that the Session is usable.
+        Onboarding and re-enable paths deliberately keep their existing entry
+        point and job kind.  The gap decision itself is shared with daily,
+        startup, and post-reauthorization recovery below.
+        """
+
+        return self.enqueue_missing_backfill_for_shop(
+            shop_id=shop_id,
+            kind=kind,
+            now=now,
+            commit=commit,
+        )
+
+    def enqueue_missing_backfill_for_shop(
+        self,
+        *,
+        shop_id: UUID,
+        kind: OperatingCollectionJobKind,
+        now: datetime | None = None,
+        commit: bool = True,
+    ) -> OperatingDataCollectionJob | None:
+        """Persist eligible gaps for one enabled Douyin Shop.
+
+        This method is intentionally database-only.  It neither decrypts a
+        Session nor makes a platform request; the existing executor remains
+        the single place that validates a stored Session immediately before
+        external I/O.  Active/paused work is reused rather than duplicated.
         """
 
         shop = self.repository.get_shop(shop_id)
-        if (
-            shop is None
-            or shop.platform is not ShopPlatform.DOUYIN
-            or not shop.enabled
-        ):
+        if shop is None or shop.platform is not ShopPlatform.DOUYIN or not shop.enabled:
             return None
-        today = _shanghai_today(now)
-        end_date = today - timedelta(days=1)
-        start_date = end_date - timedelta(
-            days=self.settings.operating_dashboard_initial_backfill_days - 1,
+        resolved_now = now or datetime.now(UTC)
+        end_date = _shanghai_today(resolved_now) - timedelta(days=1)
+        start_date = _automatic_recovery_start(
+            end_date,
+            self.settings.operating_dashboard_initial_backfill_days,
         )
-        existing_metrics = {
-            metric.business_date
-            for metric in self.repository.list_metrics(
-                shop_ids=(shop_id,),
-                start_date=start_date,
-                end_date=end_date,
-            )
-        }
-        dates = [
-            business_date
-            for business_date in reversed(_calendar_days(start_date, end_date))
-            if business_date not in existing_metrics
-        ]
+        dashboard_shop = DashboardShop(
+            shop_id=shop.shop_id,
+            shop_name=shop.display_name,
+            platform=shop.platform,
+            enabled=shop.enabled,
+        )
+        dates_by_shop = self._missing_dates_by_shop(
+            shops=[dashboard_shop],
+            start_date=start_date,
+            end_date=end_date,
+            now=resolved_now,
+        )
+        dates = dates_by_shop.get(shop_id, [])
         if not dates:
             return None
         return self._create_collection_job(
             kind=kind,
             start_date=start_date,
             end_date=end_date,
-            shops=[
-                DashboardShop(
-                    shop_id=shop.shop_id,
-                    shop_name=shop.display_name,
-                    platform=shop.platform,
-                    enabled=shop.enabled,
-                ),
-            ],
+            shops=[dashboard_shop],
             requested_by_user_id=None,
-            business_dates=dates,
+            business_dates_by_shop=dates_by_shop,
             commit=commit,
         )
 
@@ -286,21 +326,40 @@ class OperatingDashboardService:
         self,
         *,
         business_date: date,
+        now: datetime | None = None,
     ) -> OperatingDataCollectionJob:
-        """Idempotently create the daily job; scheduling is separately gated."""
+        """Idempotently plan yesterday first, then bounded recent gaps.
+
+        The stable daily key is a durable once-per-Shanghai-day marker.  A
+        later day scans the same bounded window again, so a partial failure
+        cannot suppress future eligible recovery while duplicate polling or a
+        restart cannot enqueue the same daily plan twice.
+        """
 
         dedupe_key = f"daily:{business_date.isoformat()}"
         existing = self.repository.get_job_by_dedupe_key(dedupe_key)
         if existing is not None:
             return existing
         shops = self.repository.list_enabled_douyin_shops()
+        resolved_now = now or datetime.now(UTC)
+        start_date = _automatic_recovery_start(
+            business_date,
+            self.settings.operating_dashboard_initial_backfill_days,
+        )
+        dates_by_shop = self._missing_dates_by_shop(
+            shops=shops,
+            start_date=start_date,
+            end_date=business_date,
+            now=resolved_now,
+        )
         return self._create_collection_job(
             kind=OperatingCollectionJobKind.DAILY,
-            start_date=business_date,
+            start_date=start_date,
             end_date=business_date,
-            shops=shops,
+            shops=[shop for shop in shops if shop.shop_id in dates_by_shop],
             requested_by_user_id=None,
             dedupe_key=dedupe_key,
+            business_dates_by_shop=dates_by_shop,
         )
 
     def retry_failed_collection_items(
@@ -359,40 +418,94 @@ class OperatingDashboardService:
             raise OperatingDashboardCollectionNotFoundError()
         return self._job_read_for_actor(actor=actor, job=job)
 
-    def resume_after_session_refresh(self, shop_id: UUID) -> int:
-        now = datetime.now(UTC)
+    def resume_after_session_refresh(
+        self,
+        shop_id: UUID,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        resolved_now = now or datetime.now(UTC)
         job_ids = self.repository.paused_job_ids_for_shop(shop_id)
-        resumed = self.repository.resume_paused_reauthorization(shop_id=shop_id, now=now)
+        resumed = self.repository.resume_paused_reauthorization(
+            shop_id=shop_id,
+            now=resolved_now,
+        )
         if resumed:
-            self.repository.update_job_statuses(job_ids, now=now)
+            self.repository.update_job_statuses(job_ids, now=resolved_now)
+        # A valid login refresh resumes its original paused rows first.  The
+        # shared gap planner then adds only dates that never had a durable
+        # paused item (for example, dates missed while the Shop was awaiting
+        # reauthorization).  Both changes commit together.
+        queued = self.enqueue_missing_backfill_for_shop(
+            shop_id=shop_id,
+            kind=OperatingCollectionJobKind.DAILY,
+            now=resolved_now,
+            commit=False,
+        )
+        if resumed or queued is not None:
             self.session.commit()
         return resumed
 
-    def prepare_next_collection(self, *, now: datetime, lease_until: datetime) -> CollectionClaim | None:
+    def recover_after_backend_startup(
+        self,
+        *,
+        now: datetime | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> OperatingDataCollectionJob:
+        """Recover expired durable work, then run one bounded daily gap plan.
+
+        The caller gates this to the explicit automatic-collection switches.
+        This function performs only short database transactions; it never
+        waits for the executor, Session validation, signing, or the platform.
+        A controlled collection_job_id narrows recovery only; the default
+        startup path remains global.
+        """
+
+        resolved_now = now or datetime.now(UTC)
+        try:
+            self.repository.acquire_global_claim_lock()
+            self._recover_expired_or_disabled_items(
+                now=resolved_now,
+                collection_job_id=collection_job_id,
+            )
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        business_date = _shanghai_today(resolved_now) - timedelta(days=1)
+        return self.enqueue_daily_collection(
+            business_date=business_date,
+            now=resolved_now,
+        )
+
+    def prepare_next_collection(
+        self,
+        *,
+        now: datetime,
+        lease_until: datetime,
+        collection_job_id: UUID | None = None,
+    ) -> CollectionClaim | None:
         try:
             # PostgreSQL advisory locking makes the global running count and
             # the following claim one short serializable decision.  The lock
             # is released by this commit before any Session/Signer/platform
             # work starts, so it never turns external I/O into a DB lock.
             self.repository.acquire_global_claim_lock()
-            expired_job_ids = self.repository.affected_job_ids_for_expired_running_items(
+            self._recover_expired_or_disabled_items(
                 now=now,
+                collection_job_id=collection_job_id,
             )
-            disabled_job_ids = self.repository.affected_job_ids_for_disabled_pending_items()
-            expired = self.repository.mark_expired_running_items_pending(now=now)
-            skipped = self.repository.mark_disabled_pending_items_skipped(now=now)
-            if expired or skipped:
-                self.repository.update_job_statuses(
-                    (*expired_job_ids, *disabled_job_ids),
-                    now=now,
-                )
             if (
                 self.repository.count_running_items()
                 >= self.settings.douyin_compass_collection_concurrency
             ):
                 self.session.commit()
                 return None
-            claim = self.repository.claim_next(now=now, lease_until=lease_until)
+            claim = self.repository.claim_next(
+                now=now,
+                lease_until=lease_until,
+                collection_job_id=collection_job_id,
+            )
             self.session.commit()
             return claim
         except IntegrityError as error:
@@ -405,6 +518,138 @@ class OperatingDashboardService:
             if _is_running_shop_claim_conflict(error):
                 return None
             raise
+
+    def _recover_expired_or_disabled_items(
+        self,
+        *,
+        now: datetime,
+        collection_job_id: UUID | None = None,
+    ) -> None:
+        """Apply database-only executor recovery while the caller holds its lock."""
+
+        expired_job_ids = self.repository.affected_job_ids_for_expired_running_items(
+            now=now,
+            collection_job_id=collection_job_id,
+        )
+        disabled_job_ids = self.repository.affected_job_ids_for_disabled_pending_items(
+            collection_job_id=collection_job_id,
+        )
+        expired = self.repository.mark_expired_running_items_pending(
+            now=now,
+            collection_job_id=collection_job_id,
+        )
+        skipped = self.repository.mark_disabled_pending_items_skipped(
+            now=now,
+            collection_job_id=collection_job_id,
+        )
+        if expired or skipped:
+            self.repository.update_job_statuses(
+                (*expired_job_ids, *disabled_job_ids),
+                now=now,
+            )
+
+    def _missing_dates_by_shop(
+        self,
+        *,
+        shops: Iterable[DashboardShop],
+        start_date: date,
+        end_date: date,
+        now: datetime,
+    ) -> dict[UUID, list[date]]:
+        """Return automatic-recovery candidates in yesterday-first order.
+
+        One bounded facts query and one bounded durable-item query cover the
+        complete 30-day window.  The method deliberately treats a successful
+        zero as complete and ignores unimplemented return/score fields: only
+        the two confirmed V1 daily metrics decide whether a date is missing.
+        """
+
+        selected_shops = list(shops)
+        if not selected_shops:
+            return {}
+        shop_ids = tuple(shop.shop_id for shop in selected_shops)
+        metric_by_shop_date = {
+            (metric.shop_id, metric.business_date): metric
+            for metric in self.repository.list_metrics(
+                shop_ids=shop_ids,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        }
+        states_by_shop_date: dict[tuple[UUID, date], list[CollectionItemState]] = defaultdict(
+            list,
+        )
+        for state in self.repository.list_collection_item_states(
+            shop_ids=shop_ids,
+            start_date=start_date,
+            end_date=end_date,
+        ):
+            states_by_shop_date[(state.shop_id, state.business_date)].append(state)
+
+        dates_by_shop: dict[UUID, list[date]] = {}
+        for shop in selected_shops:
+            missing_dates: list[date] = []
+            for business_date in reversed(_calendar_days(start_date, end_date)):
+                metric = metric_by_shop_date.get((shop.shop_id, business_date))
+                if _has_complete_daily_metrics(metric):
+                    continue
+                if self._automatic_gap_recovery_allowed(
+                    states_by_shop_date[(shop.shop_id, business_date)],
+                    now=now,
+                ):
+                    missing_dates.append(business_date)
+            if missing_dates:
+                dates_by_shop[shop.shop_id] = missing_dates
+        return dates_by_shop
+
+    def _automatic_gap_recovery_allowed(
+        self,
+        states: Iterable[CollectionItemState],
+        *,
+        now: datetime,
+    ) -> bool:
+        """Keep automatic recovery finite without blocking explicit manual work."""
+
+        history = list(states)
+        if any(
+            state.status
+            in {
+                OperatingCollectionItemStatus.PENDING.value,
+                OperatingCollectionItemStatus.RUNNING.value,
+                OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value,
+            }
+            for state in history
+        ):
+            # Pending/running rows own this Shop/date; paused rows must be
+            # resumed after a valid login rather than recreated every day.
+            return False
+        if not history:
+            return True
+        latest = max(
+            history,
+            key=lambda state: (state.updated_at, str(state.collection_item_id)),
+        )
+        if latest.status != OperatingCollectionItemStatus.FAILED.value:
+            # A historical success with no readable fact is unusual but must
+            # remain repairable; skipped disabled rows must also become
+            # eligible after a legitimate re-enable.
+            return True
+        if not latest.retryable:
+            # Verified platform/business rejection remains visible for manual
+            # handling.  A read-only background scan must not hammer it.
+            return False
+        cooldown = timedelta(
+            seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
+        )
+        if latest.updated_at + cooldown > now:
+            return False
+        automatic_attempts = sum(
+            state.attempt_count
+            for state in history
+            if state.job_kind in SYSTEM_COLLECTION_KINDS
+            and state.requested_by_user_id is None
+        )
+        return automatic_attempts < self.settings.operating_dashboard_gap_recovery_max_attempts
 
     def abandon_claim_if_not_executable(self, claim: CollectionClaim) -> bool:
         """Last enabled and requester-access check before external I/O."""
@@ -565,23 +810,21 @@ class OperatingDashboardService:
                     self.repository.add_job(job)
                     self.session.flush()
                     priority = 0
-                    for shop in shops:
-                        dates = (
-                            business_dates_by_shop.get(shop.shop_id, [])
-                            if business_dates_by_shop is not None
-                            else business_dates
-                            if business_dates is not None
-                            else list(reversed(_calendar_days(start_date, end_date)))
+                    for shop, business_date in _prioritized_collection_items(
+                        shops=shops,
+                        start_date=start_date,
+                        end_date=end_date,
+                        business_dates=business_dates,
+                        business_dates_by_shop=business_dates_by_shop,
+                    ):
+                        item = self._new_item(
+                            job=job,
+                            shop=shop,
+                            business_date=business_date,
+                            priority=priority,
                         )
-                        for business_date in dates:
-                            item = self._new_item(
-                                job=job,
-                                shop=shop,
-                                business_date=business_date,
-                                priority=priority,
-                            )
-                            priority += 1
-                            self.repository.add_item(item)
+                        priority += 1
+                        self.repository.add_item(item)
                     self.repository.update_job_statuses(
                         (job.collection_job_id,),
                         now=datetime.now(UTC),
@@ -835,6 +1078,74 @@ class OperatingDashboardService:
             platform=shop.platform,
         )
 
+    def _coverage(
+        self,
+        *,
+        shops: list[DashboardShop],
+        metric_by_shop_date: dict[tuple[UUID, date], ShopOperatingDailyMetric],
+        collection_states: Iterable[CollectionItemState],
+        range_value: OperatingDashboardDateRangeRead,
+    ) -> OperatingDashboardCoverageRead:
+        """Describe data availability without initiating collection work.
+
+        Coverage is scoped to already-authorized, enabled, supported Shops.
+        It is deliberately a database-read result: an empty/failed platform
+        request is never represented as a zero or as a fake completed day.
+        """
+
+        if not shops:
+            return OperatingDashboardCoverageRead(
+                state="unsupported",
+                supported_shop_count=0,
+                collected_shop_days=0,
+                total_shop_days=0,
+                missing_shop_days=0,
+                missing_samples=[],
+                missing_samples_truncated=False,
+                manual_backfill_required=False,
+            )
+        latest_states = _latest_collection_states(collection_states)
+        missing: list[OperatingDashboardCoverageMissingRead] = []
+        collected = 0
+        dates = _calendar_days(range_value.start_date, range_value.end_date)
+        shop_by_id = {shop.shop_id: shop for shop in shops}
+        for business_date in reversed(dates):
+            for shop_id, shop in sorted(
+                shop_by_id.items(),
+                key=lambda item: (item[1].shop_name.casefold(), str(item[0])),
+            ):
+                metric = metric_by_shop_date.get((shop_id, business_date))
+                if _has_complete_daily_metrics(metric):
+                    collected += 1
+                    continue
+                missing.append(
+                    OperatingDashboardCoverageMissingRead(
+                        shop_id=shop_id,
+                        shop_name=shop.shop_name,
+                        business_date=business_date,
+                        state=_coverage_state(
+                            latest_states.get((shop_id, business_date)),
+                        ),
+                    ),
+                )
+        automatic_start = _automatic_recovery_start(
+            _shanghai_today() - timedelta(days=1),
+            self.settings.operating_dashboard_initial_backfill_days,
+        )
+        samples = missing[:COVERAGE_MISSING_SAMPLE_LIMIT]
+        return OperatingDashboardCoverageRead(
+            state="available",
+            supported_shop_count=len(shops),
+            collected_shop_days=collected,
+            total_shop_days=len(shops) * len(dates),
+            missing_shop_days=len(missing),
+            missing_samples=samples,
+            missing_samples_truncated=len(missing) > len(samples),
+            manual_backfill_required=any(
+                item.business_date < automatic_start for item in missing
+            ),
+        )
+
     @staticmethod
     def _shop_range_values(
         shops: list[DashboardShop],
@@ -845,31 +1156,27 @@ class OperatingDashboardService:
         values: dict[UUID, _ShopRangeValues] = {}
         for shop in shops:
             observations = [metric_by_shop_date.get((shop.shop_id, day)) for day in dates]
-            turnover_complete = all(
-                observation is not None and observation.turnover_cents is not None
-                for observation in observations
-            )
-            order_complete = all(
-                observation is not None and observation.order_count is not None
+            complete = all(
+                _has_complete_daily_metrics(observation)
                 for observation in observations
             )
             collected_at = max(
                 (
                     observation.collected_at
                     for observation in observations
-                    if observation is not None
+                    if _has_complete_daily_metrics(observation)
                 ),
                 default=None,
             )
             values[shop.shop_id] = _ShopRangeValues(
                 turnover_cents=(
                     sum(observation.turnover_cents for observation in observations if observation is not None)
-                    if turnover_complete
+                    if complete
                     else None
                 ),
                 order_count=(
                     sum(observation.order_count for observation in observations if observation is not None)
-                    if order_complete
+                    if complete
                     else None
                 ),
                 # No verified platform contract exists for return-piece
@@ -877,7 +1184,7 @@ class OperatingDashboardService:
                 # storing/referring to a refund-shaped Compass field.
                 return_quantity=None,
                 collected_at=collected_at,
-                coverage_complete=turnover_complete and order_complete,
+                coverage_complete=complete,
             )
         return values
 
@@ -973,12 +1280,12 @@ class OperatingDashboardService:
             ]
             turnover = (
                 sum(item.turnover_cents for item in observations if item is not None)
-                if all(item is not None and item.turnover_cents is not None for item in observations)
+                if all(_has_complete_daily_metrics(item) for item in observations)
                 else None
             )
             orders = (
                 sum(item.order_count for item in observations if item is not None)
-                if all(item is not None and item.order_count is not None for item in observations)
+                if all(_has_complete_daily_metrics(item) for item in observations)
                 else None
             )
             points.append(
@@ -1001,6 +1308,101 @@ class OperatingDashboardService:
             raise OperatingDashboardInvalidRequestError("日期范围最多为60个完整自然日")
         if end_date >= _shanghai_today():
             raise OperatingDashboardInvalidRequestError("经营数据只支持截至昨日的完整自然日")
+
+
+def _has_complete_daily_metrics(metric: ShopOperatingDailyMetric | None) -> bool:
+    """Only confirmed V1 metrics decide whether a Shop/date is collected.
+
+    `0` is a valid platform fact.  Return quantity and experience score have
+    no verified source contract yet, so their nullability never keeps a day in
+    an automatic recovery loop.
+    """
+
+    return (
+        metric is not None
+        and metric.source_code == DOUYIN_CORE_INDEX_SOURCE
+        and metric.metric_contract == DOUYIN_CORE_INDEX_CONTRACT
+        and metric.turnover_cents is not None
+        and metric.order_count is not None
+    )
+
+
+def _latest_collection_states(
+    states: Iterable[CollectionItemState],
+) -> dict[tuple[UUID, date], CollectionItemState]:
+    latest: dict[tuple[UUID, date], CollectionItemState] = {}
+    for state in states:
+        key = (state.shop_id, state.business_date)
+        current = latest.get(key)
+        if current is None or (state.updated_at, str(state.collection_item_id)) > (
+            current.updated_at,
+            str(current.collection_item_id),
+        ):
+            latest[key] = state
+    return latest
+
+
+def _coverage_state(
+    state: CollectionItemState | None,
+) -> Literal["missing", "collecting", "waiting_reauthorization", "failed"]:
+    if state is None:
+        return "missing"
+    if state.status in {
+        OperatingCollectionItemStatus.PENDING.value,
+        OperatingCollectionItemStatus.RUNNING.value,
+    }:
+        return "collecting"
+    if state.status == OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value:
+        return "waiting_reauthorization"
+    if state.status == OperatingCollectionItemStatus.FAILED.value:
+        return "failed"
+    return "missing"
+
+
+def _automatic_recovery_start(end_date: date, days: int) -> date:
+    return end_date - timedelta(days=days - 1)
+
+
+def _prioritized_collection_items(
+    *,
+    shops: Iterable[DashboardShop],
+    start_date: date,
+    end_date: date,
+    business_dates: list[date] | None,
+    business_dates_by_shop: dict[UUID, list[date]] | None,
+) -> list[tuple[DashboardShop, date]]:
+    """Order durable items yesterday-first across all Shops.
+
+    The executor already enforces the global limit and same-Shop serialism.
+    Giving every Shop's newest eligible date a lower priority than any older
+    date means a long history for one Shop cannot delay another Shop's
+    yesterday.  UUID ordering is only the deterministic tie-breaker.
+    """
+
+    by_shop: dict[UUID, tuple[DashboardShop, set[date]]] = {}
+    fallback_dates = (
+        business_dates
+        if business_dates is not None
+        else list(reversed(_calendar_days(start_date, end_date)))
+    )
+    for shop in shops:
+        dates = (
+            business_dates_by_shop.get(shop.shop_id, [])
+            if business_dates_by_shop is not None
+            else fallback_dates
+        )
+        by_shop[shop.shop_id] = (shop, set(dates))
+
+    ordered: list[tuple[DashboardShop, date]] = []
+    for business_date in sorted(
+        {item_date for _, dates in by_shop.values() for item_date in dates},
+        reverse=True,
+    ):
+        for shop_id in sorted(by_shop, key=str):
+            shop, dates = by_shop[shop_id]
+            if business_date in dates:
+                ordered.append((shop, business_date))
+    return ordered
 
 
 def _calendar_days(start_date: date, end_date: date) -> list[date]:
