@@ -1032,7 +1032,9 @@ class OperatingDashboardService:
         item.retryable = True
         item.retry_after = now + timedelta(seconds=delay_seconds)
         item.failure_code = outcome.failure_code
-        item.failure_message = _safe_failure_message(outcome.failure_code)
+        item.failure_message = outcome.failure_message or _safe_failure_message(
+            outcome.failure_code,
+        )
         item.failure_stage = outcome.stage.value
         item.lease_until = None
         item.finished_at = None
@@ -1048,7 +1050,9 @@ class OperatingDashboardService:
         item.retryable = outcome.retryable
         item.retry_after = None
         item.failure_code = outcome.failure_code
-        item.failure_message = _safe_failure_message(outcome.failure_code)
+        item.failure_message = outcome.failure_message or _safe_failure_message(
+            outcome.failure_code,
+        )
         item.failure_stage = outcome.stage.value
         item.lease_until = None
         item.finished_at = now

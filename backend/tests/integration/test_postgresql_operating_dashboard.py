@@ -256,7 +256,7 @@ def _success(
         stage=CollectionStage.COMPLETE,
         retryable=False,
         requires_reauthorization=False,
-        metrics=CompassDailyMetrics(turnover, orders, 0, 0, 0),
+        metrics=CompassDailyMetrics(turnover, orders),
         timings=CollectionTimings(
             session_preparation_ms=1,
             signature_ms=2,
@@ -688,6 +688,97 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
 
         assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert len(calls) == 2
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_response_parse_failure_persists_only_safe_required_metric_hint(
+    postgresql_engine: Engine,
+) -> None:
+    """A collection-progress item can diagnose a core-field parse failure safely."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    now = datetime(2026, 9, 21, 1, tzinfo=UTC)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="Parse failure user"),
+                    Team(team_id=team_id, name="Parse failure team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            shop = _seed_shop(session, display_name="解析失败店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.commit()
+
+            service = _service(session)
+            job = service.enqueue_manual_collection(
+                actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
+                request=OperatingDataCollectionRequest(
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                    shop_id=shop.shop_id,
+                ),
+            )
+            claim = service.prepare_next_collection(
+                now=now,
+                lease_until=now + timedelta(seconds=60),
+                collection_job_id=job.collection_job_id,
+            )
+            assert claim is not None
+            assert service.finalize_collection(
+                claim=claim,
+                outcome=CollectionOutcome(
+                    request=DailyCollectionRequest(shop.shop_id, DAY_ONE),
+                    status=CollectionStatus.FAILED,
+                    stage=CollectionStage.RESPONSE_PARSE,
+                    retryable=False,
+                    requires_reauthorization=False,
+                    failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                    failure_message="抖店经营数据响应缺少或无法读取必要指标：成交订单数",
+                    timings=CollectionTimings(total_ms=1),
+                ),
+                now=now,
+            )
+
+        # A different transaction proves that no raw response and no metric
+        # fact were committed with the locally derived, safe failure hint.
+        with Session(postgresql_engine) as verification_session:
+            item = verification_session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id == job.collection_job_id,
+                ),
+            )
+            assert item is not None
+            assert item.status == OperatingCollectionItemStatus.FAILED.value
+            assert item.failure_code == "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
+            assert item.failure_message == "抖店经营数据响应缺少或无法读取必要指标：成交订单数"
+            assert verification_session.scalar(
+                select(ShopOperatingDailyMetric).where(
+                    ShopOperatingDailyMetric.shop_id == shop.shop_id,
+                    ShopOperatingDailyMetric.business_date == DAY_ONE,
+                ),
+            ) is None
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:

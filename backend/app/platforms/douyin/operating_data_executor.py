@@ -92,6 +92,10 @@ class CollectionOutcome:
     requires_reauthorization: bool
     timings: CollectionTimings
     failure_code: str | None = None
+    # This may reach the human collection-progress API.  It therefore carries
+    # only a fixed, locally-derived explanation, never a platform message,
+    # URL, cookie, signed query, or response fragment.
+    failure_message: str | None = None
     metrics: CompassDailyMetrics | None = None
 
 
@@ -421,11 +425,12 @@ class SessionAwareDouyinOperatingDataCollector:
                 started_at=started_at,
                 session_preparation_ms=preparation_duration_ms,
             )
-        except PlatformResponseInvalidError:
+        except PlatformResponseInvalidError as error:
             return self._failure(
                 request,
                 stage=CollectionStage.RESPONSE_PARSE,
                 failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                failure_message=_safe_response_parse_failure_message(error),
                 retryable=False,
                 requires_reauthorization=False,
                 started_at=started_at,
@@ -513,6 +518,7 @@ class SessionAwareDouyinOperatingDataCollector:
         *,
         stage: CollectionStage,
         failure_code: str,
+        failure_message: str | None = None,
         retryable: bool,
         requires_reauthorization: bool,
         started_at: float,
@@ -528,6 +534,7 @@ class SessionAwareDouyinOperatingDataCollector:
             retryable=retryable,
             requires_reauthorization=requires_reauthorization,
             failure_code=failure_code,
+            failure_message=failure_message,
             timings=CollectionTimings(
                 session_preparation_ms=session_preparation_ms,
                 signature_ms=signature_ms,
@@ -586,3 +593,16 @@ def collect_douyin_operating_data_once(
 def _error_detail(error: PlatformRequestFailedError, key: str, default: object) -> object:
     details = error.details
     return details.get(key, default) if isinstance(details, dict) else default
+
+
+def _safe_response_parse_failure_message(error: PlatformResponseInvalidError) -> str:
+    """Return a stable parse hint without exposing a platform payload."""
+
+    metric = _error_detail(error, "metric", None)
+    labels = {
+        "income_amt": "成交金额",
+        "pay_cnt": "成交订单数",
+    }
+    if metric in labels:
+        return f"抖店经营数据响应缺少或无法读取必要指标：{labels[metric]}"
+    return "抖店经营数据响应无效"
