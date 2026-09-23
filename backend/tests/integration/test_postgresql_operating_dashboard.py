@@ -21,7 +21,10 @@ from app.modules.access.models import (
     TeamShopAccess,
 )
 from app.modules.access.module_access import ModuleCode
-from app.modules.operating_dashboard.enums import OperatingCollectionItemStatus
+from app.modules.operating_dashboard.enums import (
+    OperatingCollectionItemStatus,
+    OperatingCollectionJobKind,
+)
 from app.modules.operating_dashboard.exceptions import (
     OperatingDashboardCollectionUnavailableError,
     OperatingDashboardShopNotAvailableError,
@@ -32,7 +35,15 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
-from app.modules.operating_dashboard.service import OperatingDashboardService
+from app.modules.operating_dashboard.repository import (
+    DashboardShop,
+    OperatingDashboardRepository,
+)
+from app.modules.operating_dashboard.service import (
+    DOUYIN_CORE_INDEX_CONTRACT,
+    DOUYIN_CORE_INDEX_SOURCE,
+    OperatingDashboardService,
+)
 from app.modules.operating_dashboard.schemas import OperatingDataCollectionRequest
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
@@ -154,6 +165,58 @@ def _seed_shop(
     return shop
 
 
+def _isolate_daily_planner(
+    monkeypatch: pytest.MonkeyPatch,
+    *shops: Shop,
+) -> None:
+    """Keep a global daily plan limited to rows owned by this test.
+
+    Daily jobs intentionally have no team scope in production: they plan all
+    enabled Douyin Shops.  The shared Integration database contains unrelated
+    enabled Shops, so these tests replace only that repository read after
+    separately proving their fixture Shop is visible to the real query.
+    """
+
+    fixture_shops = tuple(
+        DashboardShop(
+            shop_id=shop.shop_id,
+            shop_name=shop.display_name,
+            platform=shop.platform,
+            enabled=shop.enabled,
+        )
+        for shop in shops
+    )
+    monkeypatch.setattr(
+        OperatingDashboardRepository,
+        "list_enabled_douyin_shops",
+        lambda _repository: list(fixture_shops),
+    )
+
+
+def _unused_daily_fixture_clock(session: Session) -> tuple[date, datetime]:
+    """Pick an unclaimed historical daily key without touching shared jobs."""
+
+    first_candidate = date(1900, 1, 1)
+    candidate_days = (date(2020, 1, 1) - first_candidate).days
+    repository = OperatingDashboardRepository(session)
+    for _ in range(12):
+        business_date = first_candidate + timedelta(
+            days=uuid4().int % candidate_days,
+        )
+        if (
+            repository.get_job_by_dedupe_key(f"daily:{business_date.isoformat()}")
+            is None
+        ):
+            return business_date, datetime(
+                business_date.year,
+                business_date.month,
+                business_date.day,
+                1,
+                tzinfo=UTC,
+            ) + timedelta(days=1)
+    pytest.skip("共享 Integration 队列没有可安全复用的每日计划夹具日期")
+
+
 def _success(
     request: DailyCollectionRequest,
     *,
@@ -215,8 +278,8 @@ def test_postgresql_dashboard_scope_sort_and_idempotent_metric_update(
                     repository.upsert_daily_metric(
                         shop_id=shop.shop_id,
                         business_date=business_day,
-                        source_code="test",
-                        metric_contract="test-v1",
+                        source_code=DOUYIN_CORE_INDEX_SOURCE,
+                        metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                         turnover_cents=amount,
                         order_count=orders,
                         collected_at=datetime(2026, 9, 20, tzinfo=UTC),
@@ -226,8 +289,8 @@ def test_postgresql_dashboard_scope_sort_and_idempotent_metric_update(
             repository.upsert_daily_metric(
                 shop_id=alpha.shop_id,
                 business_date=DAY_TWO,
-                source_code="test",
-                metric_contract="test-v1",
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=300,
                 order_count=3,
                 collected_at=datetime(2026, 9, 20, 1, tzinfo=UTC),
@@ -317,6 +380,37 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
                     end_date=DAY_TWO,
                 ),
             )
+            # A scoped executor must leave a different durable job untouched.
+            # The negative priority would make this item win an unscoped
+            # global claim, so this also protects the shared Integration DB
+            # from accidental test execution of unrelated pending work.
+            foreign_shop = _seed_shop(session, display_name="范围外执行夹具")
+            session.flush()
+            shops.add(foreign_shop.shop_id)
+            foreign_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind="daily",
+                status="pending",
+                requested_start_date=DAY_ONE,
+                requested_end_date=DAY_ONE,
+                requested_by_user_id=None,
+                dedupe_key=None,
+            )
+            session.add(foreign_job)
+            session.flush()
+            foreign_item_id = uuid4()
+            session.add(
+                OperatingDataCollectionItem(
+                    collection_item_id=foreign_item_id,
+                    collection_job_id=foreign_job.collection_job_id,
+                    shop_id=foreign_shop.shop_id,
+                    business_date=DAY_ONE,
+                    status=OperatingCollectionItemStatus.PENDING.value,
+                    priority=-1,
+                    attempt_count=0,
+                    retryable=False,
+                ),
+            )
             # Disable after queuing.  The executor must record a skip without
             # invoking the external collector for this Shop.
             disabled.enabled = False
@@ -345,12 +439,13 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
             collector=collector,
             settings=settings,
         )
-        while executor.execute_available():
+        while executor.execute_available(collection_job_id=job.collection_job_id):
             pass
 
         assert highest_active <= 5
         assert all(value <= 1 for value in highest_per_shop.values())
         assert disabled.shop_id not in {request.shop_id for request in calls}
+        assert foreign_shop.shop_id not in {request.shop_id for request in calls}
 
         with Session(postgresql_engine) as session:
             items = session.scalars(
@@ -371,6 +466,9 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
                     ShopOperatingDailyMetric.business_date == DAY_ONE,
                 ),
             ) is not None
+            foreign_item = session.get(OperatingDataCollectionItem, foreign_item_id)
+            assert foreign_item is not None
+            assert foreign_item.status == OperatingCollectionItemStatus.PENDING.value
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
@@ -513,7 +611,7 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
             collector=collector,
             settings=_settings(douyin_compass_collection_concurrency=5),
         )
-        assert executor.execute_available() == 1
+        assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         with Session(postgresql_engine, expire_on_commit=False) as session:
             items = session.scalars(
                 select(OperatingDataCollectionItem)
@@ -524,9 +622,36 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
                 item.status == OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value
                 for item in items
             )
-            assert _service(session).resume_after_session_refresh(shop.shop_id) == 2
+            assert _service(session).resume_after_session_refresh(
+                shop.shop_id,
+                now=datetime(2026, 9, 21, 1, tzinfo=UTC),
+            ) == 2
+            # The original paused dates are reused. Dates that were never
+            # queued during reauthorization are planned separately, bounded
+            # to the same recent recovery window.
+            recovery_job = session.scalar(
+                select(OperatingDataCollectionJob)
+                .join(
+                    OperatingDataCollectionItem,
+                    OperatingDataCollectionItem.collection_job_id
+                    == OperatingDataCollectionJob.collection_job_id,
+                )
+                .where(
+                    OperatingDataCollectionJob.kind == "daily",
+                    OperatingDataCollectionItem.shop_id == shop.shop_id,
+                ),
+            )
+            assert recovery_job is not None
+            assert session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == recovery_job.collection_job_id,
+                ),
+            ) == 28
 
-        assert executor.execute_available() == 1
+        assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert len(calls) == 2
     finally:
         _cleanup(postgresql_engine, shops)
@@ -595,7 +720,7 @@ def test_postgresql_executor_rechecks_manual_requester_shop_access(
             collector=collector,
             settings=_settings(),
         )
-        assert executor.execute_available() == 1
+        assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert calls == []
 
         with Session(postgresql_engine) as session:
@@ -773,8 +898,8 @@ def test_postgresql_reenable_queues_only_missing_backfill_dates(
             _service(session).repository.upsert_daily_metric(
                 shop_id=shop.shop_id,
                 business_date=yesterday,
-                source_code="test",
-                metric_contract="test-v1",
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=100,
                 order_count=1,
                 collected_at=datetime.now(UTC),
@@ -849,7 +974,7 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
             shops.add(shop.shop_id)
             session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
             session.commit()
-            _service(session).enqueue_manual_collection(
+            job = _service(session).enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
                     start_date=DAY_ONE,
@@ -868,6 +993,7 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
                         _service(session).prepare_next_collection(
                             now=now,
                             lease_until=now + timedelta(seconds=60),
+                            collection_job_id=job.collection_job_id,
                         ),
                     )
             except Exception as error:  # pragma: no cover - assertion below
@@ -916,7 +1042,7 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
 def test_postgresql_global_claim_capacity_applies_across_backend_processes(
     postgresql_engine: Engine,
 ) -> None:
-    """Independent Backend sessions cannot collectively exceed the setting."""
+    """Independent sessions respect the global limit including pre-existing work."""
 
     user_id = uuid4()
     team_id = uuid4()
@@ -925,8 +1051,62 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
     claims = []
     errors: list[Exception] = []
     lock = Lock()
+    now = datetime(2026, 9, 22, tzinfo=UTC)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
+            foreign_shop = _seed_shop(session, display_name="全局容量外部执行夹具")
+            session.flush()
+            shops.add(foreign_shop.shop_id)
+            foreign_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind="daily",
+                status="running",
+                requested_start_date=DAY_ONE,
+                requested_end_date=DAY_ONE,
+                requested_by_user_id=None,
+                dedupe_key=None,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(foreign_job)
+            session.flush()
+            session.add(
+                OperatingDataCollectionItem(
+                    collection_item_id=uuid4(),
+                    collection_job_id=foreign_job.collection_job_id,
+                    shop_id=foreign_shop.shop_id,
+                    business_date=DAY_ONE,
+                    status=OperatingCollectionItemStatus.RUNNING.value,
+                    priority=0,
+                    attempt_count=1,
+                    retryable=False,
+                    lease_until=now + timedelta(seconds=60),
+                    started_at=now,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+            session.flush()
+            existing_running = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperatingDataCollectionItem)
+                    .where(
+                        OperatingDataCollectionItem.status
+                        == OperatingCollectionItemStatus.RUNNING.value,
+                    ),
+                )
+                or 0,
+            )
+            if existing_running > 18:
+                pytest.skip("共享 Integration 队列没有足够的安全容量运行此并发夹具")
+            # The fixture requests two additional slots above work it does not
+            # own. Its own running row makes the condition reproducible; any
+            # real shared rows remain part of the same baseline. This proves
+            # the production-wide capacity count includes a pre-existing
+            # runner without deleting, resetting, or assuming a clean
+            # Integration database.
+            fixture_capacity = existing_running + 2
             session.add_all(
                 [
                     User(user_id=user_id, display_name="Global capacity user"),
@@ -950,9 +1130,9 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                 for shop in seeded
             )
             session.commit()
-            _service(
+            job = _service(
                 session,
-                douyin_compass_collection_concurrency=2,
+                douyin_compass_collection_concurrency=fixture_capacity,
             ).enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
@@ -961,18 +1141,17 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                 ),
             )
 
-        now = datetime(2026, 9, 22, tzinfo=UTC)
-
         def claim_from_independent_session() -> None:
             try:
                 with Session(postgresql_engine, expire_on_commit=False) as session:
                     barrier.wait(timeout=5)
                     claim = _service(
                         session,
-                        douyin_compass_collection_concurrency=2,
+                        douyin_compass_collection_concurrency=fixture_capacity,
                     ).prepare_next_collection(
                         now=now,
                         lease_until=now + timedelta(seconds=60),
+                        collection_job_id=job.collection_job_id,
                     )
                     with lock:
                         claims.append(claim)
@@ -998,14 +1177,15 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                     OperatingDataCollectionItem.status
                     == OperatingCollectionItemStatus.RUNNING.value,
                 ),
-            ) == 2
+            ) == fixture_capacity
             assert (
                 _service(
                     session,
-                    douyin_compass_collection_concurrency=2,
+                    douyin_compass_collection_concurrency=fixture_capacity,
                 ).prepare_next_collection(
                     now=now,
                     lease_until=now + timedelta(seconds=60),
+                    collection_job_id=job.collection_job_id,
                 )
                 is None
             )
@@ -1050,7 +1230,7 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             shops.add(shop.shop_id)
             session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
             session.commit()
-            _service(session).enqueue_manual_collection(
+            job = _service(session).enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
                     start_date=DAY_ONE,
@@ -1064,6 +1244,7 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             first_claim = _service(session).prepare_next_collection(
                 now=first_now,
                 lease_until=first_now + timedelta(seconds=10),
+                collection_job_id=job.collection_job_id,
             )
         assert first_claim is not None
 
@@ -1072,6 +1253,7 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             replacement_claim = _service(session).prepare_next_collection(
                 now=recovered_now,
                 lease_until=recovered_now + timedelta(seconds=60),
+                collection_job_id=job.collection_job_id,
             )
         assert replacement_claim is not None
         assert replacement_claim.collection_item_id == first_claim.collection_item_id
@@ -1117,6 +1299,486 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             )
             assert metric is not None
             assert metric.turnover_cents == 200
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The daily planner scans one 30-day window without duplicating active work."""
+
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            shop = _seed_shop(session, display_name="零值补漏店铺")
+            unrelated_shop = _seed_shop(session, display_name="每日计划范围外夹具")
+            session.flush()
+            shops.update({shop.shop_id, unrelated_shop.shop_id})
+            business_date, now = _unused_daily_fixture_clock(session)
+            repository = _service(session).repository
+            # Zero is a valid successful fact, not a gap.
+            repository.upsert_daily_metric(
+                shop_id=shop.shop_id,
+                business_date=business_date,
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
+                turnover_cents=0,
+                order_count=0,
+                collected_at=now,
+            )
+            session.commit()
+
+            service = _service(session)
+            assert {shop.shop_id, unrelated_shop.shop_id}.issubset({
+                candidate.shop_id
+                for candidate in service.repository.list_enabled_douyin_shops()
+            })
+            _isolate_daily_planner(monkeypatch, shop)
+            job = service.enqueue_daily_collection(
+                business_date=business_date,
+                now=now,
+            )
+            repeated = service.enqueue_daily_collection(
+                business_date=business_date,
+                now=now,
+            )
+
+            assert repeated.collection_job_id == job.collection_job_id
+            items = session.scalars(
+                select(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == job.collection_job_id,
+                )
+                .order_by(OperatingDataCollectionItem.priority),
+            ).all()
+            assert len(items) == 29
+            assert {item.shop_id for item in items} == {shop.shop_id}
+            assert items[0].business_date == business_date - timedelta(days=1)
+            assert all(item.business_date != business_date for item in items)
+            assert all(item.status == OperatingCollectionItemStatus.PENDING.value for item in items)
+
+            # The active rows created above are the cross-entry ownership
+            # boundary; lifecycle recovery does not create another copy.
+            assert service.enqueue_missing_backfill_for_shop(
+                shop_id=shop.shop_id,
+                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
+                now=now,
+            ) is None
+    finally:
+        _cleanup(postgresql_engine, shops)
+
+
+def test_postgresql_gap_plan_requeues_an_obsolete_metric_contract(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A complete-looking row from an old contract is not current coverage."""
+
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            shop = _seed_shop(session, display_name="旧口径补漏店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            business_date, now = _unused_daily_fixture_clock(session)
+            _service(session).repository.upsert_daily_metric(
+                shop_id=shop.shop_id,
+                business_date=business_date,
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract="obsolete-contract-v0",
+                turnover_cents=0,
+                order_count=0,
+                collected_at=now,
+            )
+            session.commit()
+
+            service = _service(session)
+            _isolate_daily_planner(monkeypatch, shop)
+            job = service.enqueue_daily_collection(
+                business_date=business_date,
+                now=now,
+            )
+            assert session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == job.collection_job_id,
+                    OperatingDataCollectionItem.shop_id == shop.shop_id,
+                    OperatingDataCollectionItem.business_date == business_date,
+                    OperatingDataCollectionItem.status
+                    == OperatingCollectionItemStatus.PENDING.value,
+                ),
+            ) is not None
+            read = service.read(
+                actor=_actor(
+                    user_id=uuid4(),
+                    team_id=None,
+                    super_account=True,
+                ),
+                start_date=business_date,
+                end_date=business_date,
+                platform=ShopPlatform.DOUYIN,
+                shop_id=shop.shop_id,
+                sort_field=None,
+                sort_direction=None,
+                pagination=PaginationParams(page=1, page_size=20),
+            )
+            assert read.table.items[0].turnover_cents is None
+            assert read.table.items[0].order_count is None
+            assert read.trend[0].turnover_cents is None
+            assert read.coverage.collected_shop_days == 0
+    finally:
+        _cleanup(postgresql_engine, shops)
+
+
+def test_postgresql_gap_plan_prioritizes_yesterday_across_shops(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All Shops' newest gaps outrank any Shop's older history."""
+
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            first = _seed_shop(session, display_name="昨日优先店铺 A")
+            second = _seed_shop(session, display_name="昨日优先店铺 B")
+            session.flush()
+            shops.update({first.shop_id, second.shop_id})
+            business_date, now = _unused_daily_fixture_clock(session)
+
+            service = _service(session)
+            _isolate_daily_planner(monkeypatch, first, second)
+            job = service.enqueue_daily_collection(
+                business_date=business_date,
+                now=now,
+            )
+            items = session.scalars(
+                select(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == job.collection_job_id,
+                )
+                .order_by(OperatingDataCollectionItem.priority),
+            ).all()
+
+            assert [item.shop_id for item in items[:2]] == sorted(
+                [first.shop_id, second.shop_id],
+                key=str,
+            )
+            assert all(item.business_date == business_date for item in items[:2])
+            assert all(
+                item.business_date == business_date - timedelta(days=1)
+                for item in items[2:4]
+            )
+    finally:
+        _cleanup(postgresql_engine, shops)
+
+
+def test_postgresql_concurrent_daily_and_startup_plans_share_one_daily_job(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Independent Backend processes share the durable daily plan marker."""
+
+    shops: set[UUID] = set()
+    jobs: list[UUID] = []
+    errors: list[Exception] = []
+    lock = Lock()
+    barrier = Barrier(2)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            shop = _seed_shop(session, display_name="跨进程每日补漏店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.commit()
+            business_date, now = _unused_daily_fixture_clock(session)
+            _isolate_daily_planner(monkeypatch, shop)
+
+        def plan_from_independent_session() -> None:
+            try:
+                with Session(postgresql_engine, expire_on_commit=False) as session:
+                    barrier.wait(timeout=5)
+                    job = _service(session).enqueue_daily_collection(
+                        business_date=business_date,
+                        now=now,
+                    )
+                    with lock:
+                        jobs.append(job.collection_job_id)
+            except Exception as error:  # pragma: no cover - assertion below
+                with lock:
+                    errors.append(error)
+
+        first = Thread(target=plan_from_independent_session)
+        second = Thread(target=plan_from_independent_session)
+        first.start()
+        second.start()
+        first.join(timeout=15)
+        second.join(timeout=15)
+
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert errors == []
+        assert len(set(jobs)) == 1
+        with Session(postgresql_engine) as session:
+            assert session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionJob)
+                .where(
+                    OperatingDataCollectionJob.dedupe_key
+                    == f"daily:{business_date.isoformat()}",
+                ),
+            ) == 1
+    finally:
+        _cleanup(postgresql_engine, shops)
+
+
+def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Startup does short DB-only recovery before it creates a daily gap job."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="Startup recovery user"),
+                    Team(team_id=team_id, name="Startup recovery team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            shop = _seed_shop(session, display_name="启动恢复店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.commit()
+            _business_date, recovery_now = _unused_daily_fixture_clock(session)
+            first_now = recovery_now - timedelta(seconds=11)
+            service = _service(session)
+            job = service.enqueue_manual_collection(
+                actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
+                request=OperatingDataCollectionRequest(
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                    shop_id=shop.shop_id,
+                ),
+            )
+            claim = service.prepare_next_collection(
+                now=first_now,
+                lease_until=first_now + timedelta(seconds=10),
+                collection_job_id=job.collection_job_id,
+            )
+            assert claim is not None
+
+            _isolate_daily_planner(monkeypatch, shop)
+            daily_job = service.recover_after_backend_startup(
+                now=recovery_now,
+                collection_job_id=job.collection_job_id,
+            )
+            reclaimed = session.get(OperatingDataCollectionItem, claim.collection_item_id)
+            assert reclaimed is not None
+            assert reclaimed.status == OperatingCollectionItemStatus.PENDING.value
+            assert reclaimed.failure_code == "COLLECTION_WORKER_LEASE_EXPIRED"
+            assert daily_job.kind == "daily"
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_gap_recovery_bounds_automatic_retry_but_allows_later_eligibility(
+    postgresql_engine: Engine,
+) -> None:
+    """A failed automatic date cools down/caps without becoming a data tombstone."""
+
+    shops: set[UUID] = set()
+    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
+    business_date = date(2026, 9, 22)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            shop = _seed_shop(session, display_name="失败补漏店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            failed_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind="daily",
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                dedupe_key=None,
+                created_at=now - timedelta(hours=2),
+                updated_at=now - timedelta(hours=2),
+            )
+            # There is no ORM relationship on this deliberately lean durable
+            # queue model, so establish the FK parent before the test item.
+            session.add(failed_job)
+            session.flush()
+            failed_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=failed_job.collection_job_id,
+                shop_id=shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=3,
+                retryable=True,
+                failure_code="DOUYIN_PLATFORM_TIMEOUT",
+                failure_stage="platform_response",
+                finished_at=now - timedelta(hours=2),
+                created_at=now - timedelta(hours=2),
+                updated_at=now - timedelta(hours=2),
+            )
+            session.add(failed_item)
+            session.commit()
+
+            service = _service(
+                session,
+                operating_dashboard_gap_recovery_max_attempts=3,
+                operating_dashboard_gap_recovery_retry_cooldown_seconds=60,
+            )
+            first = service.enqueue_missing_backfill_for_shop(
+                shop_id=shop.shop_id,
+                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
+                now=now,
+            )
+            assert first is not None
+            first_dates = set(
+                session.scalars(
+                    select(OperatingDataCollectionItem.business_date).where(
+                        OperatingDataCollectionItem.collection_job_id
+                        == first.collection_job_id,
+                    ),
+                ),
+            )
+            assert business_date not in first_dates
+
+            # A later eligible retry remains possible once the automatic
+            # attempt count is below the bounded cap and cooldown elapsed.
+            failed_item.attempt_count = 1
+            # Assign a distinct value so SQLAlchemy does not substitute the
+            # database's real current timestamp through `onupdate`.
+            failed_item.updated_at = now - timedelta(hours=3)
+            session.commit()
+            second = service.enqueue_missing_backfill_for_shop(
+                shop_id=shop.shop_id,
+                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
+                now=now,
+            )
+            assert second is not None
+            assert session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == second.collection_job_id,
+                    OperatingDataCollectionItem.business_date == business_date,
+                    OperatingDataCollectionItem.status
+                    == OperatingCollectionItemStatus.PENDING.value,
+                ),
+            ) is not None
+    finally:
+        _cleanup(postgresql_engine, shops)
+
+
+def test_postgresql_coverage_uses_authorized_supported_shop_dates_and_active_state(
+    postgresql_engine: Engine,
+) -> None:
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="Coverage user"),
+                    Team(team_id=team_id, name="Coverage team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            shop = _seed_shop(session, display_name="覆盖率店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            repository = _service(session).repository
+            repository.upsert_daily_metric(
+                shop_id=shop.shop_id,
+                business_date=DAY_ONE,
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
+                turnover_cents=0,
+                order_count=0,
+                collected_at=datetime(2026, 9, 20, tzinfo=UTC),
+            )
+            session.commit()
+
+            actor = _actor(user_id=user_id, team_id=team_id, super_account=False)
+            service = _service(session)
+            before = service.read(
+                actor=actor,
+                start_date=DAY_ONE,
+                end_date=DAY_TWO,
+                platform=None,
+                shop_id=None,
+                sort_field=None,
+                sort_direction=None,
+                pagination=PaginationParams(page=1, page_size=10),
+            )
+            assert before.coverage.state == "available"
+            assert before.coverage.collected_shop_days == 1
+            assert before.coverage.total_shop_days == 2
+            assert before.coverage.missing_samples[0].state == "missing"
+
+            service.enqueue_manual_collection(
+                actor=actor,
+                request=OperatingDataCollectionRequest(
+                    start_date=DAY_TWO,
+                    end_date=DAY_TWO,
+                    shop_id=shop.shop_id,
+                ),
+            )
+            after = service.read(
+                actor=actor,
+                start_date=DAY_ONE,
+                end_date=DAY_TWO,
+                platform=None,
+                shop_id=None,
+                sort_field=None,
+                sort_direction=None,
+                pagination=PaginationParams(page=1, page_size=10),
+            )
+            assert after.coverage.missing_samples[0].state == "collecting"
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
