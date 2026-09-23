@@ -465,8 +465,12 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 - `GET /api/v1/operating-dashboard`：`start_date / end_date` 必填，均为 Asia/Shanghai 完整自然日；范围最多
   60 天且不含今天。可选 `platform / shop_id`，可选且必须成对的 `sort_field / sort_direction`，以及统一
   `page / page_size`。后端先权限过滤、业务筛选、全量稳定排序、最后分页。响应包含 selected/comparison/trend
-  date ranges、当前授权 Shop candidates、四卡、趋势、`table.items/total/page/page_size` 与
-  `collection_available`。当前仅 `turnover_cents` 和 `order_count` 是已确认的抖店值；`return_quantity` 与
+  date ranges、当前授权 Shop candidates、四卡、趋势、`table.items/total/page/page_size`、当前范围的
+  `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；它返回
+  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed` 状态，但读取
+  不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；超过自动最近
+  30 日窗口的缺失以 `manual_backfill_required=true` 明示。当前仅
+  `turnover_cents` 和 `order_count` 是已确认的抖店值；`return_quantity` 与
   `experience_score` 保持 `null`，不能从退款字段或 Mock 推断。
 - `POST /api/v1/operating-dashboard/collections`：按当前日期/平台/店铺筛选创建异步、持久化的采集任务，
   返回 `202` 和 collection job。它覆盖符合条件的所有授权 Shop，而非当前表格页；店铺停用、删除或未接入平台
