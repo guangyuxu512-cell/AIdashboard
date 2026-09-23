@@ -27,8 +27,7 @@ def enqueue_due_daily_operating_collection_once(
 
     settings = get_settings()
     if (
-        not settings.operating_dashboard_collection_execution_enabled
-        or not settings.operating_dashboard_daily_collection_enabled
+        not settings.operating_dashboard_daily_collection_enabled
         or settings.operating_dashboard_daily_collection_local_time is None
     ):
         return False
@@ -40,44 +39,8 @@ def enqueue_due_daily_operating_collection_once(
     with get_session_factory()() as session:
         OperatingDashboardService(session, settings=settings).enqueue_daily_collection(
             business_date=business_date,
-            now=resolved_now,
         )
     return True
-
-
-def recover_operating_data_collections_on_startup_once(
-    *,
-    now: datetime | None = None,
-) -> bool:
-    """Recover durable work and plan one bounded gap scan after Backend start.
-
-    Both automatic switches are checked here rather than only in FastAPI's
-    lifespan.  Calling this helper from a test, shell, or future worker cannot
-    accidentally persist automatic platform work while the deployment has the
-    feature disabled.
-    """
-
-    settings = get_settings()
-    if (
-        not settings.operating_dashboard_collection_execution_enabled
-        or not settings.operating_dashboard_daily_collection_enabled
-    ):
-        return False
-    with get_session_factory()() as session:
-        OperatingDashboardService(
-            session,
-            settings=settings,
-        ).recover_after_backend_startup(now=now)
-    return True
-
-
-async def recover_operating_data_collections_on_startup() -> None:
-    try:
-        await asyncio.to_thread(recover_operating_data_collections_on_startup_once)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        logger.exception("Operating dashboard startup recovery scan failed")
 
 
 async def enqueue_due_daily_operating_collections_forever() -> None:

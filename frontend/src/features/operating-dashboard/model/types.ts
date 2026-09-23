@@ -72,34 +72,6 @@ export interface OperatingDashboardTablePage {
   pageSize: number
 }
 
-export type OperatingDashboardCoverageState =
-  | 'missing'
-  | 'collecting'
-  | 'waiting_reauthorization'
-  | 'failed'
-
-export interface OperatingDashboardCoverageMissing {
-  shopId: string
-  shopName: string
-  businessDate: string
-  state: OperatingDashboardCoverageState
-}
-
-/**
- * Database-read collection coverage for the current authorized filter scope.
- * It never means that this page has started a platform request.
- */
-export interface OperatingDashboardCoverage {
-  state: 'available' | 'unsupported'
-  supportedShopCount: number
-  collectedShopDays: number
-  totalShopDays: number
-  missingShopDays: number
-  missingSamples: OperatingDashboardCoverageMissing[]
-  missingSamplesTruncated: boolean
-  manualBackfillRequired: boolean
-}
-
 /**
  * UI-only table ordering. A future Real operating-data Page must apply the
  * same field and direction within the authorized scope before pagination.
@@ -148,7 +120,6 @@ export interface OperatingDashboardRead {
   trend: OperatingDashboardTrendPoint[]
   tableRows: OperatingDashboardTableRow[]
   tablePage: OperatingDashboardTablePage
-  coverage: OperatingDashboardCoverage
   /** True only when this Backend is allowed to execute platform collection. */
   collectionAvailable: boolean
 }
