@@ -35,6 +35,10 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
+from app.modules.operating_dashboard.repository import (
+    DashboardShop,
+    OperatingDashboardRepository,
+)
 from app.modules.operating_dashboard.service import (
     DOUYIN_CORE_INDEX_CONTRACT,
     DOUYIN_CORE_INDEX_SOURCE,
@@ -159,6 +163,58 @@ def _seed_shop(
     )
     session.add(shop)
     return shop
+
+
+def _isolate_daily_planner(
+    monkeypatch: pytest.MonkeyPatch,
+    *shops: Shop,
+) -> None:
+    """Keep a global daily plan limited to rows owned by this test.
+
+    Daily jobs intentionally have no team scope in production: they plan all
+    enabled Douyin Shops.  The shared Integration database contains unrelated
+    enabled Shops, so these tests replace only that repository read after
+    separately proving their fixture Shop is visible to the real query.
+    """
+
+    fixture_shops = tuple(
+        DashboardShop(
+            shop_id=shop.shop_id,
+            shop_name=shop.display_name,
+            platform=shop.platform,
+            enabled=shop.enabled,
+        )
+        for shop in shops
+    )
+    monkeypatch.setattr(
+        OperatingDashboardRepository,
+        "list_enabled_douyin_shops",
+        lambda _repository: list(fixture_shops),
+    )
+
+
+def _unused_daily_fixture_clock(session: Session) -> tuple[date, datetime]:
+    """Pick an unclaimed historical daily key without touching shared jobs."""
+
+    first_candidate = date(1900, 1, 1)
+    candidate_days = (date(2020, 1, 1) - first_candidate).days
+    repository = OperatingDashboardRepository(session)
+    for _ in range(12):
+        business_date = first_candidate + timedelta(
+            days=uuid4().int % candidate_days,
+        )
+        if (
+            repository.get_job_by_dedupe_key(f"daily:{business_date.isoformat()}")
+            is None
+        ):
+            return business_date, datetime(
+                business_date.year,
+                business_date.month,
+                business_date.day,
+                1,
+                tzinfo=UTC,
+            ) + timedelta(days=1)
+    pytest.skip("共享 Integration 队列没有可安全复用的每日计划夹具日期")
 
 
 def _success(
@@ -918,7 +974,7 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
             shops.add(shop.shop_id)
             session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
             session.commit()
-            _service(session).enqueue_manual_collection(
+            job = _service(session).enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
                     start_date=DAY_ONE,
@@ -937,6 +993,7 @@ def test_postgresql_cross_process_claim_keeps_one_running_shop_request(
                         _service(session).prepare_next_collection(
                             now=now,
                             lease_until=now + timedelta(seconds=60),
+                            collection_job_id=job.collection_job_id,
                         ),
                     )
             except Exception as error:  # pragma: no cover - assertion below
@@ -1073,7 +1130,7 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                 for shop in seeded
             )
             session.commit()
-            _service(
+            job = _service(
                 session,
                 douyin_compass_collection_concurrency=fixture_capacity,
             ).enqueue_manual_collection(
@@ -1094,6 +1151,7 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                     ).prepare_next_collection(
                         now=now,
                         lease_until=now + timedelta(seconds=60),
+                        collection_job_id=job.collection_job_id,
                     )
                     with lock:
                         claims.append(claim)
@@ -1127,6 +1185,7 @@ def test_postgresql_global_claim_capacity_applies_across_backend_processes(
                 ).prepare_next_collection(
                     now=now,
                     lease_until=now + timedelta(seconds=60),
+                    collection_job_id=job.collection_job_id,
                 )
                 is None
             )
@@ -1171,7 +1230,7 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             shops.add(shop.shop_id)
             session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
             session.commit()
-            _service(session).enqueue_manual_collection(
+            job = _service(session).enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
                     start_date=DAY_ONE,
@@ -1185,6 +1244,7 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             first_claim = _service(session).prepare_next_collection(
                 now=first_now,
                 lease_until=first_now + timedelta(seconds=10),
+                collection_job_id=job.collection_job_id,
             )
         assert first_claim is not None
 
@@ -1193,6 +1253,7 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
             replacement_claim = _service(session).prepare_next_collection(
                 now=recovered_now,
                 lease_until=recovered_now + timedelta(seconds=60),
+                collection_job_id=job.collection_job_id,
             )
         assert replacement_claim is not None
         assert replacement_claim.collection_item_id == first_claim.collection_item_id
@@ -1254,19 +1315,18 @@ def test_postgresql_expired_claim_recovery_rejects_late_executor_result(
 
 def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
     postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The daily planner scans one 30-day window without duplicating active work."""
 
     shops: set[UUID] = set()
-    # Daily jobs have a global date-based dedupe key.  Use a dedicated
-    # historical fixture date outside the automatic 30-day planning window.
-    now = datetime(2000, 1, 15, 1, tzinfo=UTC)  # 09:00 Asia/Shanghai
-    business_date = date(2000, 1, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             shop = _seed_shop(session, display_name="零值补漏店铺")
+            unrelated_shop = _seed_shop(session, display_name="每日计划范围外夹具")
             session.flush()
-            shops.add(shop.shop_id)
+            shops.update({shop.shop_id, unrelated_shop.shop_id})
+            business_date, now = _unused_daily_fixture_clock(session)
             repository = _service(session).repository
             # Zero is a valid successful fact, not a gap.
             repository.upsert_daily_metric(
@@ -1281,6 +1341,11 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
             session.commit()
 
             service = _service(session)
+            assert {shop.shop_id, unrelated_shop.shop_id}.issubset({
+                candidate.shop_id
+                for candidate in service.repository.list_enabled_douyin_shops()
+            })
+            _isolate_daily_planner(monkeypatch, shop)
             job = service.enqueue_daily_collection(
                 business_date=business_date,
                 now=now,
@@ -1300,6 +1365,7 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
                 .order_by(OperatingDataCollectionItem.priority),
             ).all()
             assert len(items) == 29
+            assert {item.shop_id for item in items} == {shop.shop_id}
             assert items[0].business_date == business_date - timedelta(days=1)
             assert all(item.business_date != business_date for item in items)
             assert all(item.status == OperatingCollectionItemStatus.PENDING.value for item in items)
@@ -1317,18 +1383,17 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
 
 def test_postgresql_gap_plan_requeues_an_obsolete_metric_contract(
     postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A complete-looking row from an old contract is not current coverage."""
 
     shops: set[UUID] = set()
-    # Keep this contract fixture separate from every other global daily key.
-    now = datetime(2000, 2, 15, 1, tzinfo=UTC)
-    business_date = date(2000, 2, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             shop = _seed_shop(session, display_name="旧口径补漏店铺")
             session.flush()
             shops.add(shop.shop_id)
+            business_date, now = _unused_daily_fixture_clock(session)
             _service(session).repository.upsert_daily_metric(
                 shop_id=shop.shop_id,
                 business_date=business_date,
@@ -1340,7 +1405,9 @@ def test_postgresql_gap_plan_requeues_an_obsolete_metric_contract(
             )
             session.commit()
 
-            job = _service(session).enqueue_daily_collection(
+            service = _service(session)
+            _isolate_daily_planner(monkeypatch, shop)
+            job = service.enqueue_daily_collection(
                 business_date=business_date,
                 now=now,
             )
@@ -1354,7 +1421,7 @@ def test_postgresql_gap_plan_requeues_an_obsolete_metric_contract(
                     == OperatingCollectionItemStatus.PENDING.value,
                 ),
             ) is not None
-            read = _service(session).read(
+            read = service.read(
                 actor=_actor(
                     user_id=uuid4(),
                     team_id=None,
@@ -1378,21 +1445,22 @@ def test_postgresql_gap_plan_requeues_an_obsolete_metric_contract(
 
 def test_postgresql_gap_plan_prioritizes_yesterday_across_shops(
     postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """All Shops' newest gaps outrank any Shop's older history."""
 
     shops: set[UUID] = set()
-    # The priority fixture must not reuse a real or another test's daily job.
-    now = datetime(2000, 3, 15, 1, tzinfo=UTC)
-    business_date = date(2000, 3, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             first = _seed_shop(session, display_name="昨日优先店铺 A")
             second = _seed_shop(session, display_name="昨日优先店铺 B")
             session.flush()
             shops.update({first.shop_id, second.shop_id})
+            business_date, now = _unused_daily_fixture_clock(session)
 
-            job = _service(session).enqueue_daily_collection(
+            service = _service(session)
+            _isolate_daily_planner(monkeypatch, first, second)
+            job = service.enqueue_daily_collection(
                 business_date=business_date,
                 now=now,
             )
@@ -1420,6 +1488,7 @@ def test_postgresql_gap_plan_prioritizes_yesterday_across_shops(
 
 def test_postgresql_concurrent_daily_and_startup_plans_share_one_daily_job(
     postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Independent Backend processes share the durable daily plan marker."""
 
@@ -1428,15 +1497,14 @@ def test_postgresql_concurrent_daily_and_startup_plans_share_one_daily_job(
     errors: list[Exception] = []
     lock = Lock()
     barrier = Barrier(2)
-    # This cross-process assertion owns a distinct date-based daily key.
-    now = datetime(2000, 4, 15, 1, tzinfo=UTC)
-    business_date = date(2000, 4, 14)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             shop = _seed_shop(session, display_name="跨进程每日补漏店铺")
             session.flush()
             shops.add(shop.shop_id)
             session.commit()
+            business_date, now = _unused_daily_fixture_clock(session)
+            _isolate_daily_planner(monkeypatch, shop)
 
         def plan_from_independent_session() -> None:
             try:
@@ -1478,13 +1546,13 @@ def test_postgresql_concurrent_daily_and_startup_plans_share_one_daily_job(
 
 def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
     postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Startup does short DB-only recovery before it creates a daily gap job."""
 
     user_id = uuid4()
     team_id = uuid4()
     shops: set[UUID] = set()
-    first_now = datetime(2026, 9, 22, tzinfo=UTC)
     try:
         with Session(postgresql_engine, expire_on_commit=False) as session:
             session.add_all(
@@ -1504,7 +1572,10 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
             shops.add(shop.shop_id)
             session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
             session.commit()
-            _service(session).enqueue_manual_collection(
+            _business_date, recovery_now = _unused_daily_fixture_clock(session)
+            first_now = recovery_now - timedelta(seconds=11)
+            service = _service(session)
+            job = service.enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
                 request=OperatingDataCollectionRequest(
                     start_date=DAY_ONE,
@@ -1512,14 +1583,18 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
                     shop_id=shop.shop_id,
                 ),
             )
-            claim = _service(session).prepare_next_collection(
+            claim = service.prepare_next_collection(
                 now=first_now,
                 lease_until=first_now + timedelta(seconds=10),
+                collection_job_id=job.collection_job_id,
             )
             assert claim is not None
 
-            recovery_now = first_now + timedelta(seconds=11)
-            daily_job = _service(session).recover_after_backend_startup(now=recovery_now)
+            _isolate_daily_planner(monkeypatch, shop)
+            daily_job = service.recover_after_backend_startup(
+                now=recovery_now,
+                collection_job_id=job.collection_job_id,
+            )
             reclaimed = session.get(OperatingDataCollectionItem, claim.collection_item_id)
             assert reclaimed is not None
             assert reclaimed.status == OperatingCollectionItemStatus.PENDING.value
