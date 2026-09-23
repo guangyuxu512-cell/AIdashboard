@@ -43,6 +43,30 @@ class DashboardShop:
     enabled: bool
 
 
+@dataclass(frozen=True)
+class CollectionItemState:
+    """A bounded Shop/date history record used by automatic gap planning.
+
+    The planner intentionally reads a finite date window in one query rather
+    than issuing per-Shop or per-date history queries. It needs job ownership
+    only to keep system retries bounded while leaving human-triggered retry
+    available as an explicit recovery path.
+    """
+
+    collection_item_id: UUID
+    collection_job_id: UUID
+    shop_id: UUID
+    business_date: date
+    status: str
+    retryable: bool
+    attempt_count: int
+    failure_code: str | None
+    finished_at: datetime | None
+    updated_at: datetime
+    job_kind: str
+    requested_by_user_id: UUID | None
+
+
 class OperatingDashboardRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -121,6 +145,66 @@ class OperatingDashboardRepository:
                 ),
             ),
         )
+
+    def list_collection_item_states(
+        self,
+        *,
+        shop_ids: Iterable[UUID],
+        start_date: date,
+        end_date: date,
+    ) -> list[CollectionItemState]:
+        """Return bounded item history for a planner/read coverage window."""
+
+        ids = tuple(shop_ids)
+        if not ids:
+            return []
+        rows = self.session.execute(
+            select(
+                OperatingDataCollectionItem.collection_item_id,
+                OperatingDataCollectionItem.collection_job_id,
+                OperatingDataCollectionItem.shop_id,
+                OperatingDataCollectionItem.business_date,
+                OperatingDataCollectionItem.status,
+                OperatingDataCollectionItem.retryable,
+                OperatingDataCollectionItem.attempt_count,
+                OperatingDataCollectionItem.failure_code,
+                OperatingDataCollectionItem.finished_at,
+                OperatingDataCollectionItem.updated_at,
+                OperatingDataCollectionJob.kind,
+                OperatingDataCollectionJob.requested_by_user_id,
+            )
+            .join(
+                OperatingDataCollectionJob,
+                OperatingDataCollectionJob.collection_job_id
+                == OperatingDataCollectionItem.collection_job_id,
+            )
+            .where(
+                OperatingDataCollectionItem.shop_id.in_(ids),
+                OperatingDataCollectionItem.business_date >= start_date,
+                OperatingDataCollectionItem.business_date <= end_date,
+            )
+            .order_by(
+                OperatingDataCollectionItem.updated_at.asc(),
+                OperatingDataCollectionItem.collection_item_id.asc(),
+            ),
+        ).all()
+        return [
+            CollectionItemState(
+                collection_item_id=row.collection_item_id,
+                collection_job_id=row.collection_job_id,
+                shop_id=row.shop_id,
+                business_date=row.business_date,
+                status=row.status,
+                retryable=row.retryable,
+                attempt_count=row.attempt_count,
+                failure_code=row.failure_code,
+                finished_at=row.finished_at,
+                updated_at=row.updated_at,
+                job_kind=row.kind,
+                requested_by_user_id=row.requested_by_user_id,
+            )
+            for row in rows
+        ]
 
     def upsert_daily_metric(
         self,
