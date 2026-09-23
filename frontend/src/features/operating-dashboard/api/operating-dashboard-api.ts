@@ -4,6 +4,7 @@ import { httpClient } from '@/shared/api'
 import type {
   DashboardComparison,
   OperatingDashboardDateRange,
+  OperatingDashboardCoverage,
   OperatingDashboardFilters,
   OperatingDashboardRead,
   OperatingDashboardShopOption,
@@ -67,6 +68,21 @@ interface DashboardReadDto {
     total: number
     page: number
     page_size: number
+  }
+  coverage: {
+    state: OperatingDashboardCoverage['state']
+    supported_shop_count: number
+    collected_shop_days: number
+    total_shop_days: number
+    missing_shop_days: number
+    missing_samples: Array<{
+      shop_id: string
+      shop_name: string
+      business_date: string
+      state: OperatingDashboardCoverage['missingSamples'][number]['state']
+    }>
+    missing_samples_truncated: boolean
+    manual_backfill_required: boolean
   }
   collection_available: boolean
 }
@@ -183,6 +199,21 @@ export function mapOperatingDashboardRead(
       total: value.table.total,
       page: value.table.page,
       pageSize: value.table.page_size,
+    },
+    coverage: {
+      state: value.coverage.state,
+      supportedShopCount: value.coverage.supported_shop_count,
+      collectedShopDays: value.coverage.collected_shop_days,
+      totalShopDays: value.coverage.total_shop_days,
+      missingShopDays: value.coverage.missing_shop_days,
+      missingSamples: value.coverage.missing_samples.map((sample) => ({
+        shopId: sample.shop_id,
+        shopName: sample.shop_name,
+        businessDate: sample.business_date,
+        state: sample.state,
+      })),
+      missingSamplesTruncated: value.coverage.missing_samples_truncated,
+      manualBackfillRequired: value.coverage.manual_backfill_required,
     },
     collectionAvailable: value.collection_available,
   }
