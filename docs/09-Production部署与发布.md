@@ -106,6 +106,24 @@ current 或删除共享历史目录；此时不得把“工作流失败”直接
 
 部署脚本在 build、迁移或覆盖 Nginx 前验证这些条件，并拒绝将 Backend 指向 `control_center_dev`。首次应用部署前，先手动触发 `Production Provision Public-IP TLS` 工作流，输入当前 `origin/main` 的完整 SHA；它会严格 checkout 该 SHA、以 Certbot 5.8 的 `--ip-address` + `--preferred-profile shortlived` 申请证书，并启用续期 timer。证书阶段会先配置只返回 `503` 的 HTTPS bootstrap vhost，再由 GitHub Runner 直接访问公网 IP 并校验证书；正常 `Production Deploy` 成功后才替换为应用反向代理。该步骤需要公网端口 80 对外可达以及有效的 ACME 联系邮箱。
 
+### 经营数据每日采集启用顺序
+
+经营数据代码发布、Migration 与服务健康通过，不等于已经允许自动访问抖店平台。Release Gate 必须先以部署后的
+精确 SHA 验证 Backend、Signer 和持久化 collection queue：确认当前启用且受支持的抖店数量、最近 30 日的预计
+缺口数量、没有遗留的 Feature/Integration collection item，并确认不会把停用店铺或缺失 Session 当作成功。
+随后才在服务器 root-only `.env` 持久化以下非秘密配置并按现有发布规范重启服务：
+
+```text
+BACKEND_OPERATING_DASHBOARD_COLLECTION_EXECUTION_ENABLED=true
+BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_ENABLED=true
+BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_LOCAL_TIME=09:00:00
+```
+
+该顺序使启动恢复与每日计划在 Asia/Shanghai 09:00 生效：昨日优先，并仅补最近 30 个完整自然日的缺口；不采
+今日实时数据。启用后记录下次执行时间、实际 queue 数量、暂停重新授权数和失败分类。若首次 09:00 尚未到达，只能
+记录“已启用、首次定时执行待观察”，不能写成已经定时成功。回退自动采集时先将两个开关设为 false 并按规范重启；
+已持久化的日事实保留，队列和失败记录不得靠删除数据清理。更早历史只由看板明确提交的手动分批补采处理。
+
 ## 数据库与首位管理员
 
 生产数据库与应用角色必须在当前 VPS 的 PostgreSQL 实例中创建，但不得影响 `control_center_dev`、`control_center_integration` 或任何现有卷。创建步骤只允许使用现有 PostgreSQL 管理通道，并在交互式 `psql` 中设置应用角色密码；不要把密码放到 shell history、GitHub workflow、文档或聊天中。应用角色在 `control_center_prod` 的 `public` schema 必须具备 `USAGE` 和 `CREATE`，以便 Alembic 在空生产库创建版本表和正式 Schema；保留 schema owner 与其他数据库授权不变：
