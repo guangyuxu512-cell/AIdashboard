@@ -52,6 +52,8 @@ export interface OperatingDashboardTrendPoint {
   businessDate: string
   turnoverCents: number | null
   orderCount: number | null
+  /** False means the displayed value covers only some supported Shops. */
+  coverageComplete?: boolean
 }
 
 export interface OperatingDashboardTableRow {
@@ -63,6 +65,8 @@ export interface OperatingDashboardTableRow {
   returnQuantity: number | null
   experience: MerchantExperienceScore | null
   collectedAt: string | null
+  /** False means this Shop has data for only part of the selected range. */
+  coverageComplete?: boolean
 }
 
 /** Pagination is supplied by the real API; Mock mode derives it after sort. */
@@ -73,10 +77,7 @@ export interface OperatingDashboardTablePage {
 }
 
 export type OperatingDashboardCoverageState =
-  | 'missing'
-  | 'collecting'
-  | 'waiting_reauthorization'
-  | 'failed'
+  'missing' | 'collecting' | 'waiting_reauthorization' | 'failed'
 
 export interface OperatingDashboardCoverageMissing {
   shopId: string

@@ -17,6 +17,7 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDataCollectionJobRead,
     OperatingDataCollectionRequest,
     OperatingDataCollectionRetryRequest,
+    OperatingDataCollectionSubmissionRead,
 )
 from app.modules.operating_dashboard.exceptions import (
     OperatingDashboardInvalidRequestError,
@@ -81,8 +82,7 @@ def read_operating_dashboard(
 
 @router.post(
     "/collections",
-    response_model=OperatingDataCollectionJobRead,
-    status_code=status.HTTP_202_ACCEPTED,
+    response_model=OperatingDataCollectionSubmissionRead,
 )
 def enqueue_operating_collection(
     request: OperatingDataCollectionRequest,
@@ -91,8 +91,33 @@ def enqueue_operating_collection(
         OperatingDashboardService,
         Depends(get_operating_dashboard_service),
     ],
-) -> OperatingDataCollectionJobRead:
-    return service.enqueue_manual_collection(actor=actor, request=request)
+) -> OperatingDataCollectionSubmissionRead:
+    return service.request_collection_update(
+        actor=actor,
+        request=request,
+        force_recollect=False,
+    )
+
+
+@router.post(
+    "/collections/recollect",
+    response_model=OperatingDataCollectionSubmissionRead,
+)
+def recollect_operating_collection(
+    request: OperatingDataCollectionRequest,
+    actor: Annotated[ActorContext, Depends(get_operating_dashboard_actor)],
+    service: Annotated[
+        OperatingDashboardService,
+        Depends(get_operating_dashboard_service),
+    ],
+) -> OperatingDataCollectionSubmissionRead:
+    """Explicitly refresh the selected persisted scope after user intent."""
+
+    return service.request_collection_update(
+        actor=actor,
+        request=request,
+        force_recollect=True,
+    )
 
 
 @router.get(

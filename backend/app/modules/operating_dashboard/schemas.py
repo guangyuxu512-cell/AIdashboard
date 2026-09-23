@@ -33,6 +33,11 @@ class OperatingDashboardTrendPointRead(BaseModel):
     business_date: date
     turnover_cents: int | None
     order_count: int | None
+    # A point can contain a useful partial aggregate when some supported
+    # Shops have not yet supplied the selected business date.  The value is
+    # never synthesized from a missing observation; consumers use this flag
+    # to label the partial coverage without erasing the facts that do exist.
+    coverage_complete: bool
 
 
 class OperatingDashboardShopOptionRead(BaseModel):
@@ -160,6 +165,29 @@ class OperatingDataCollectionJobRead(BaseModel):
     finished_at: datetime | None
     counts: OperatingDataCollectionCountsRead
     items: list[OperatingDataCollectionItemRead]
+
+
+class OperatingDataCollectionSubmissionRead(BaseModel):
+    """Safe result of a dashboard update/recollection request.
+
+    Ordinary dashboard updates may correctly have no durable Job: the
+    selected confirmed metrics can already be complete.  Keeping that state
+    explicit prevents the UI from fabricating an empty Job merely to display
+    a success message.
+    """
+
+    state: Literal[
+        "up_to_date",
+        "collection_queued",
+        "attention_required",
+        "unsupported",
+    ]
+    message: str
+    collection_job: OperatingDataCollectionJobRead | None
+    missing_shop_days: int = Field(ge=0)
+    queued_shop_days: int = Field(ge=0)
+    active_shop_days: int = Field(ge=0)
+    blocked_shop_days: int = Field(ge=0)
 
 
 class OperatingDataCollectionRetryRequest(BaseModel):

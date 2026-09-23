@@ -469,13 +469,23 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；它返回
   已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed` 状态，但读取
   不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；超过自动最近
-  30 日窗口的缺失以 `manual_backfill_required=true` 明示。当前仅
+  30 日窗口的缺失以 `manual_backfill_required=true` 明示。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
+  卡片汇总整个已授权筛选范围而非当前分页，趋势点只有完全缺失时才为 `null`，表格和趋势的
+  `coverage_complete=false` 明确标识部分覆盖；缺失不补零。当前或对比周期有任一必要店铺日期不完整时，环比返回
+  `unavailable`，不伪造涨跌。当前仅
   `turnover_cents` 和 `order_count` 是已确认的抖店值；`return_quantity` 与
   `experience_score` 保持 `null`，不能从退款字段或 Mock 推断。
-- `POST /api/v1/operating-dashboard/collections`：按当前日期/平台/店铺筛选创建异步、持久化的采集任务，
-  返回 `202` 和 collection job。它覆盖符合条件的所有授权 Shop，而非当前表格页；店铺停用、删除或未接入平台
-  的 item 会被明确标记跳过，绝不发送平台请求。当前环境未启用执行器时返回
+- `POST /api/v1/operating-dashboard/collections`：普通“更新数据”只按当前日期/平台/店铺范围检查并补齐当前
+  `turnover_cents + order_count` 的缺口，返回 `200` 的 submission（`up_to_date / collection_queued /
+  attention_required / unsupported`）而不是强行制造空 job。已完整的核心事实返回 `up_to_date`，不创建 job/item、
+  不发平台请求；有缺口时只创建允许补采的店铺日期，已有 pending/running/等待重新授权 item 则复用。终态不可重试
+  结果、重试冷却或尝试上限返回 `attention_required`，不会因连续点击绕过保护。它始终覆盖符合条件的所有授权 Shop，
+  而非当前表格页；停用、删除、无授权或未接入平台的 Shop 不会触发平台请求。当前环境未启用执行器时返回
   `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`，不会创建永远 pending 的手动任务。
+- `POST /api/v1/operating-dashboard/collections/recollect`：只有用户从次级“重新采集当前筛选范围”操作明确发起时，
+  才对所选、最多 60 个完整自然日的已支持范围请求重新采集。它仍复用权限、停用、范围、活动 item、终态失败、
+  冷却、并发与幂等保护；失败绝不清空此前成功事实。submission 的 `queued_shop_days / active_shop_days /
+  blocked_shop_days` 只表达脱敏的店铺日期计数。
   手动和 retry job 在真正发出每个请求前还会以保存的发起用户和 Team context 重新解析模块及 Shop 授权；
   调组、停用或撤销 Shop 访问后标记 `COLLECTION_REQUESTER_ACCESS_REVOKED`，不调用平台。
 - `GET /api/v1/operating-dashboard/collections/{collection_job_id}`：返回当前 Actor 可读取 Shop 对应的脱敏

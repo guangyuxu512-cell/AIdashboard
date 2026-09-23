@@ -6,6 +6,7 @@ import type {
   DataTableSortOrder,
   DataTableSortState,
 } from 'naive-ui'
+import { NTooltip } from 'naive-ui'
 
 import { PlatformDisplay } from '@/entities/platform'
 import EmptyState from '@/shared/components/EmptyState.vue'
@@ -27,16 +28,19 @@ type DashboardTableThemeOverrides = NonNullable<
   DataTableProps['themeOverrides']
 >
 
-const props = withDefaults(defineProps<{
-  rows: OperatingDashboardTableRow[]
-  loading?: boolean
-  emptyDescription?: string
-  sort?: OperatingDashboardSort | null
-  sortingEnabled?: boolean
-}>(), {
-  sort: null,
-  sortingEnabled: false,
-})
+const props = withDefaults(
+  defineProps<{
+    rows: OperatingDashboardTableRow[]
+    loading?: boolean
+    emptyDescription?: string
+    sort?: OperatingDashboardSort | null
+    sortingEnabled?: boolean
+  }>(),
+  {
+    sort: null,
+    sortingEnabled: false,
+  },
+)
 
 const emit = defineEmits<{
   'update:sort': [value: OperatingDashboardSort | null]
@@ -87,10 +91,23 @@ function sortableColumn(
   }
 }
 
+function partialCoverageValue(value: string, row: OperatingDashboardTableRow) {
+  if (row.coverageComplete !== false || value === '—') return value
+  return h(NTooltip, null, {
+    trigger: () =>
+      h(
+        'span',
+        { class: 'operating-dashboard-table__partial-value' },
+        `${value}（部分）`,
+      ),
+    default: () => '所选范围内仅部分日期已采集',
+  })
+}
+
 function handleSorterUpdate(
   value: DataTableSortState | DataTableSortState[] | null,
 ): void {
-  const sorter = Array.isArray(value) ? value[0] ?? null : value
+  const sorter = Array.isArray(value) ? (value[0] ?? null) : value
   if (
     !sorter ||
     sorter.order === false ||
@@ -137,7 +154,8 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     key: 'turnoverCents',
     width: 132,
     align: 'center',
-    render: (row) => formatDashboardCurrency(row.turnoverCents),
+    render: (row) =>
+      partialCoverageValue(formatDashboardCurrency(row.turnoverCents), row),
     ...sortableColumn('turnoverCents', nextMetricSortOrder),
   },
   {
@@ -145,7 +163,8 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     key: 'orderCount',
     width: 112,
     align: 'center',
-    render: (row) => formatDashboardCount(row.orderCount),
+    render: (row) =>
+      partialCoverageValue(formatDashboardCount(row.orderCount), row),
     ...sortableColumn('orderCount', nextMetricSortOrder),
   },
   {
@@ -232,6 +251,10 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.operating-dashboard-table :deep(.operating-dashboard-table__partial-value) {
   white-space: nowrap;
 }
 </style>

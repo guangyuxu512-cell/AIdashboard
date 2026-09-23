@@ -152,6 +152,7 @@ function filteredRecords(
 
 function buildTableRows(
   records: ReadonlyArray<OperatingDashboardRecord>,
+  expectedDates: ReadonlyArray<string>,
 ): OperatingDashboardTableRow[] {
   const groups = new Map<string, OperatingDashboardRecord[]>()
   for (const record of records) {
@@ -187,6 +188,14 @@ function buildTableRows(
         ),
         experience: newestExperience,
         collectedAt: newest.collectedAt,
+        coverageComplete: expectedDates.every((businessDate) =>
+          group.some(
+            (record) =>
+              record.businessDate === businessDate &&
+              record.turnoverCents !== null &&
+              record.orderCount !== null,
+          ),
+        ),
       }
     })
     .sort((left, right) => left.shopName.localeCompare(right.shopName, 'zh-CN'))
@@ -288,6 +297,7 @@ function buildTrend(
         dailyRecords.map((record) => record.turnoverCents),
       ),
       orderCount: sumAvailable(dailyRecords.map((record) => record.orderCount)),
+      coverageComplete: dailyRecords.length > 0,
     }
   })
 }
@@ -335,7 +345,10 @@ function buildMockCoverage(
   }
   const dates = listCalendarDates(range)
   const byShopDate = new Map(
-    records.map((record) => [`${record.shopId}:${record.businessDate}`, record]),
+    records.map((record) => [
+      `${record.shopId}:${record.businessDate}`,
+      record,
+    ]),
   )
   const missingSamples: OperatingDashboardCoverage['missingSamples'] = []
   let collectedShopDays = 0
@@ -395,7 +408,7 @@ export function buildOperatingDashboardRead(
   const current = filteredRecords(records, dateRange, filters)
   const previous = filteredRecords(records, comparisonDateRange, filters)
   const trendRecords = filteredRecords(records, trendDateRange, filters)
-  const tableRows = buildTableRows(current)
+  const tableRows = buildTableRows(current, listCalendarDates(dateRange))
 
   const currentTurnover = sumAvailable(
     current.map((record) => record.turnoverCents),
@@ -490,6 +503,7 @@ export function buildOperatingDashboardUnavailableRead(
       businessDate,
       turnoverCents: null,
       orderCount: null,
+      coverageComplete: false,
     })),
     tableRows: tableShops.map((shop) => ({
       ...shop,
@@ -498,6 +512,7 @@ export function buildOperatingDashboardUnavailableRead(
       returnQuantity: null,
       experience: null,
       collectedAt: null,
+      coverageComplete: false,
     })),
     tablePage: {
       total: shopCount ?? 0,
