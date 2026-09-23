@@ -472,21 +472,34 @@ class OperatingDashboardService:
             now=resolved_now,
         )
 
-    def prepare_next_collection(self, *, now: datetime, lease_until: datetime) -> CollectionClaim | None:
+    def prepare_next_collection(
+        self,
+        *,
+        now: datetime,
+        lease_until: datetime,
+        collection_job_id: UUID | None = None,
+    ) -> CollectionClaim | None:
         try:
             # PostgreSQL advisory locking makes the global running count and
             # the following claim one short serializable decision.  The lock
             # is released by this commit before any Session/Signer/platform
             # work starts, so it never turns external I/O into a DB lock.
             self.repository.acquire_global_claim_lock()
-            self._recover_expired_or_disabled_items(now=now)
+            self._recover_expired_or_disabled_items(
+                now=now,
+                collection_job_id=collection_job_id,
+            )
             if (
                 self.repository.count_running_items()
                 >= self.settings.douyin_compass_collection_concurrency
             ):
                 self.session.commit()
                 return None
-            claim = self.repository.claim_next(now=now, lease_until=lease_until)
+            claim = self.repository.claim_next(
+                now=now,
+                lease_until=lease_until,
+                collection_job_id=collection_job_id,
+            )
             self.session.commit()
             return claim
         except IntegrityError as error:
@@ -500,15 +513,29 @@ class OperatingDashboardService:
                 return None
             raise
 
-    def _recover_expired_or_disabled_items(self, *, now: datetime) -> None:
+    def _recover_expired_or_disabled_items(
+        self,
+        *,
+        now: datetime,
+        collection_job_id: UUID | None = None,
+    ) -> None:
         """Apply database-only executor recovery while the caller holds its lock."""
 
         expired_job_ids = self.repository.affected_job_ids_for_expired_running_items(
             now=now,
+            collection_job_id=collection_job_id,
         )
-        disabled_job_ids = self.repository.affected_job_ids_for_disabled_pending_items()
-        expired = self.repository.mark_expired_running_items_pending(now=now)
-        skipped = self.repository.mark_disabled_pending_items_skipped(now=now)
+        disabled_job_ids = self.repository.affected_job_ids_for_disabled_pending_items(
+            collection_job_id=collection_job_id,
+        )
+        expired = self.repository.mark_expired_running_items_pending(
+            now=now,
+            collection_job_id=collection_job_id,
+        )
+        skipped = self.repository.mark_disabled_pending_items_skipped(
+            now=now,
+            collection_job_id=collection_job_id,
+        )
         if expired or skipped:
             self.repository.update_job_statuses(
                 (*expired_job_ids, *disabled_job_ids),

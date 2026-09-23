@@ -352,14 +352,24 @@ class OperatingDashboardRepository:
             .with_for_update(),
         )
 
-    def mark_expired_running_items_pending(self, *, now: datetime) -> int:
+    def mark_expired_running_items_pending(
+        self,
+        *,
+        now: datetime,
+        collection_job_id: UUID | None = None,
+    ) -> int:
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.RUNNING.value,
+            OperatingDataCollectionItem.lease_until < now,
+        ]
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
         result = self.session.execute(
             update(OperatingDataCollectionItem)
-            .where(
-                OperatingDataCollectionItem.status
-                == OperatingCollectionItemStatus.RUNNING.value,
-                OperatingDataCollectionItem.lease_until < now,
-            )
+            .where(*conditions)
             .values(
                 status=OperatingCollectionItemStatus.PENDING.value,
                 retryable=True,
@@ -378,32 +388,48 @@ class OperatingDashboardRepository:
         self,
         *,
         now: datetime,
+        collection_job_id: UUID | None = None,
     ) -> tuple[UUID, ...]:
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.RUNNING.value,
+            OperatingDataCollectionItem.lease_until < now,
+        ]
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
         return tuple(
             self.session.scalars(
                 select(OperatingDataCollectionItem.collection_job_id)
-                .where(
-                    OperatingDataCollectionItem.status
-                    == OperatingCollectionItemStatus.RUNNING.value,
-                    OperatingDataCollectionItem.lease_until < now,
-                )
+                .where(*conditions)
                 .distinct(),
             ),
         )
 
-    def mark_disabled_pending_items_skipped(self, *, now: datetime) -> int:
+    def mark_disabled_pending_items_skipped(
+        self,
+        *,
+        now: datetime,
+        collection_job_id: UUID | None = None,
+    ) -> int:
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.PENDING.value,
+            exists(
+                select(Shop.shop_id).where(
+                    Shop.shop_id == OperatingDataCollectionItem.shop_id,
+                    or_(Shop.deleted_at.is_not(None), Shop.enabled.is_(False)),
+                ),
+            ),
+        ]
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
         result = self.session.execute(
             update(OperatingDataCollectionItem)
-            .where(
-                OperatingDataCollectionItem.status
-                == OperatingCollectionItemStatus.PENDING.value,
-                exists(
-                    select(Shop.shop_id).where(
-                        Shop.shop_id == OperatingDataCollectionItem.shop_id,
-                        or_(Shop.deleted_at.is_not(None), Shop.enabled.is_(False)),
-                    ),
-                ),
-            )
+            .where(*conditions)
             .values(
                 status=OperatingCollectionItemStatus.SKIPPED.value,
                 retryable=False,
@@ -416,20 +442,29 @@ class OperatingDashboardRepository:
         )
         return int(result.rowcount or 0)
 
-    def affected_job_ids_for_disabled_pending_items(self) -> tuple[UUID, ...]:
+    def affected_job_ids_for_disabled_pending_items(
+        self,
+        *,
+        collection_job_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.PENDING.value,
+            exists(
+                select(Shop.shop_id).where(
+                    Shop.shop_id == OperatingDataCollectionItem.shop_id,
+                    or_(Shop.deleted_at.is_not(None), Shop.enabled.is_(False)),
+                ),
+            ),
+        ]
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
         return tuple(
             self.session.scalars(
                 select(OperatingDataCollectionItem.collection_job_id)
-                .where(
-                    OperatingDataCollectionItem.status
-                    == OperatingCollectionItemStatus.PENDING.value,
-                    exists(
-                        select(Shop.shop_id).where(
-                            Shop.shop_id == OperatingDataCollectionItem.shop_id,
-                            or_(Shop.deleted_at.is_not(None), Shop.enabled.is_(False)),
-                        ),
-                    ),
-                )
+                .where(*conditions)
                 .distinct(),
             ),
         )
@@ -476,6 +511,7 @@ class OperatingDashboardRepository:
         *,
         now: datetime,
         lease_until: datetime,
+        collection_job_id: UUID | None = None,
     ) -> CollectionClaim | None:
         """Claim one due item after all database-only eligibility checks.
 
@@ -491,20 +527,25 @@ class OperatingDashboardRepository:
                 running.status == OperatingCollectionItemStatus.RUNNING.value,
             ),
         )
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.PENDING.value,
+            or_(
+                OperatingDataCollectionItem.retry_after.is_(None),
+                OperatingDataCollectionItem.retry_after <= now,
+            ),
+            Shop.enabled.is_(True),
+            Shop.deleted_at.is_(None),
+            no_running_for_shop,
+        ]
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
         candidate = self.session.scalar(
             select(OperatingDataCollectionItem)
             .join(Shop, Shop.shop_id == OperatingDataCollectionItem.shop_id)
-            .where(
-                OperatingDataCollectionItem.status
-                == OperatingCollectionItemStatus.PENDING.value,
-                or_(
-                    OperatingDataCollectionItem.retry_after.is_(None),
-                    OperatingDataCollectionItem.retry_after <= now,
-                ),
-                Shop.enabled.is_(True),
-                Shop.deleted_at.is_(None),
-                no_running_for_shop,
-            )
+            .where(*conditions)
             .order_by(
                 OperatingDataCollectionItem.priority.asc(),
                 OperatingDataCollectionItem.created_at.asc(),
