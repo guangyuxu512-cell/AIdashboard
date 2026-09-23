@@ -55,7 +55,6 @@ const trendTitle = computed(() => {
           :platform-options="dashboard.platformOptions.value"
           :refreshing="dashboard.refreshing.value"
           :refresh-available="dashboard.refreshAvailable.value"
-          :coverage="dashboard.read.value.coverage"
           :refresh-feedback="dashboard.refreshFeedback.value"
           @update:model-value="dashboard.updateFilters"
           @refresh="dashboard.refresh"
