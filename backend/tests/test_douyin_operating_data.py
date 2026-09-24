@@ -68,9 +68,6 @@ def _payload(*, status: int | str = 0) -> dict[str, object]:
                             {
                                 "income_amt": _metric(98660),
                                 "pay_cnt": _metric(93),
-                                "pay_amt": _metric("80685"),
-                                "rfndsuc_amt_pay_time": _metric(2406),
-                                "settlement_amt_pay_time": _metric(95220),
                             },
                         ],
                     },
@@ -120,9 +117,6 @@ def test_core_index_signed_request_uses_unsigned_context_then_injects_signature(
     assert read.metrics.income_amt_cents == 98660
     assert read.metrics.income_amt_yuan == Decimal("986.60")
     assert read.metrics.pay_cnt == 93
-    assert read.metrics.pay_amt_cents == 80685
-    assert read.metrics.rfndsuc_amt_pay_time_cents == 2406
-    assert read.metrics.settlement_amt_pay_time_cents == 95220
     assert read.signature_duration_ms is not None
     assert read.platform_duration_ms >= 0
     assert read.parse_duration_ms >= 0
@@ -145,7 +139,7 @@ def test_previous_completed_date_uses_asia_shanghai_calendar() -> None:
     ) == date(2026, 9, 19)
 
 
-def test_core_index_parser_keeps_null_as_missing_and_rejects_business_or_shape_errors() -> None:
+def test_core_index_parser_keeps_null_as_missing_and_rejects_business_or_core_shape_errors() -> None:
     payload = _payload()
     card = payload["data"]["module_data"]["homepage_core_index"][
         "compass_general_multi_index_card_value"
@@ -156,7 +150,6 @@ def test_core_index_parser_keeps_null_as_missing_and_rejects_business_or_shape_e
 
     assert metrics.income_amt_cents is None
     assert metrics.income_amt_yuan is None
-    assert metrics.pay_amt_yuan == Decimal("806.85")
 
     with pytest.raises(DouyinOperatingDataBusinessError):
         parse_core_index_metrics(_payload(status=100008))
@@ -168,3 +161,65 @@ def test_core_index_parser_keeps_null_as_missing_and_rejects_business_or_shape_e
     broken_card.pop("pay_cnt")
     with pytest.raises(PlatformResponseInvalidError):
         parse_core_index_metrics(broken)
+
+
+def test_core_index_parser_does_not_require_unpersisted_card_metrics() -> None:
+    """A bad optional refund card cannot invalidate the confirmed core facts."""
+
+    payload = _payload()
+    card = payload["data"]["module_data"]["homepage_core_index"][
+        "compass_general_multi_index_card_value"
+    ]["data"][0]
+    card["rfndsuc_amt_pay_time"] = {"index_value": {"value": {}}}
+    card["refund_order_cnt"] = {"unexpected": "shape"}
+
+    metrics = parse_core_index_metrics(payload)
+
+    assert metrics.income_amt_cents == 98660
+    assert metrics.pay_cnt == 93
+    assert metrics.refund_order_count is None
+    assert metrics.refund_order_status == "invalid"
+
+
+def test_core_index_parser_reads_only_verified_refund_time_order_count() -> None:
+    payload = _payload()
+    card = payload["data"]["module_data"]["homepage_core_index"][
+        "compass_general_multi_index_card_value"
+    ]["data"][0]
+    card["refund_order_cnt"] = _metric(9)
+    # This is the distinct payment-time metric and deliberately must not be
+    # persisted or substituted for the refund-time dashboard value.
+    card["refund_order_cnt_pay_time"] = _metric(5)
+
+    metrics = parse_core_index_metrics(payload)
+
+    assert metrics.refund_order_count == 9
+    assert metrics.refund_order_status == "available"
+
+
+@pytest.mark.parametrize(
+    ("refund_metric", "expected_status"),
+    [
+        (None, "unavailable"),
+        (_metric(None), "not_ready"),
+        ({"unexpected": "shape"}, "invalid"),
+        (_metric(-1), "invalid"),
+    ],
+)
+def test_core_index_parser_classifies_optional_refund_observation_without_failing_core(
+    refund_metric: dict[str, object] | None,
+    expected_status: str,
+) -> None:
+    payload = _payload()
+    card = payload["data"]["module_data"]["homepage_core_index"][
+        "compass_general_multi_index_card_value"
+    ]["data"][0]
+    if refund_metric is not None:
+        card["refund_order_cnt"] = refund_metric
+
+    metrics = parse_core_index_metrics(payload)
+
+    assert metrics.income_amt_cents == 98660
+    assert metrics.pay_cnt == 93
+    assert metrics.refund_order_count is None
+    assert metrics.refund_order_status == expected_status

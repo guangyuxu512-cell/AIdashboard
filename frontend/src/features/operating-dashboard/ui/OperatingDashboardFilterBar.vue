@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NTooltip, type SelectOption } from 'naive-ui'
-import { RefreshCw } from '@lucide/vue'
+import {
+  NDropdown,
+  NTooltip,
+  type DropdownOption,
+  type SelectOption,
+} from 'naive-ui'
+import { ChevronDown, RefreshCw } from '@lucide/vue'
 
 import FilterBar from '@/shared/components/FilterBar.vue'
 import FilterField from '@/shared/components/FilterField.vue'
@@ -33,6 +38,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: OperatingDashboardFilters]
   refresh: []
+  recollect: []
 }>()
 
 const dateOptions = [
@@ -69,6 +75,20 @@ const platformSelectOptions = computed<SelectOption[]>(() => [
   ...props.platformOptions,
 ])
 
+const recollectOptions = computed<DropdownOption[]>(() => {
+  const scopeCount = props.coverage?.totalShopDays ?? 0
+  return [
+    {
+      key: 'recollect',
+      label:
+        scopeCount > 0
+          ? `重新采集当前筛选范围（${scopeCount} 个店铺日期）`
+          : '重新采集当前筛选范围',
+      disabled: props.coverage?.state === 'unsupported',
+    },
+  ]
+})
+
 const coverageText = computed(() => {
   const coverage = props.coverage
   if (!coverage) return null
@@ -89,7 +109,8 @@ const coverageDetail = computed(() => {
     failed: '采集失败',
   }
   const samples = coverage.missingSamples.map(
-    (sample) => `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}`,
+    (sample) =>
+      `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}`,
   )
   if (coverage.missingSamplesTruncated) samples.push('其余缺失项未展开')
   return samples.join('\n')
@@ -145,6 +166,10 @@ const selectedPlatform = computed({
 
 function updateDatePreset(value: AppOptionValue): void {
   datePreset.value = value
+}
+
+function selectRecollect(key: string | number): void {
+  if (key === 'recollect') emit('recollect')
 }
 </script>
 
@@ -206,6 +231,20 @@ function updateDatePreset(value: AppOptionValue): void {
           <RefreshCw :size="16" aria-hidden="true" />
           更新数据
         </AppButton>
+        <NDropdown
+          v-if="refreshAvailable"
+          trigger="click"
+          :options="recollectOptions"
+          @select="selectRecollect"
+        >
+          <AppButton
+            tone="secondary"
+            :disabled="refreshing"
+            aria-label="更多数据更新操作"
+          >
+            <ChevronDown :size="16" aria-hidden="true" />
+          </AppButton>
+        </NDropdown>
       </template>
     </FilterBar>
     <p
@@ -216,17 +255,29 @@ function updateDatePreset(value: AppOptionValue): void {
     >
       {{ refreshFeedback.message }}
     </p>
-    <p v-if="coverageText" class="operating-dashboard-filter__coverage" role="status">
+    <p
+      v-if="coverageText"
+      class="operating-dashboard-filter__coverage"
+      role="status"
+    >
       {{ coverageText }}
       <NTooltip v-if="coverageDetail" placement="bottom-start">
         <template #trigger>
-          <AppButton tone="text" class="operating-dashboard-filter__coverage-detail">
+          <AppButton
+            tone="text"
+            class="operating-dashboard-filter__coverage-detail"
+          >
             查看缺失
           </AppButton>
         </template>
-        <span class="operating-dashboard-filter__coverage-tooltip">{{ coverageDetail }}</span>
+        <span class="operating-dashboard-filter__coverage-tooltip">{{
+          coverageDetail
+        }}</span>
       </NTooltip>
-      <span v-if="coverage?.manualBackfillRequired" class="operating-dashboard-filter__coverage-note">
+      <span
+        v-if="coverage?.manualBackfillRequired"
+        class="operating-dashboard-filter__coverage-note"
+      >
         超过最近30日的缺失请手动补采
       </span>
     </p>

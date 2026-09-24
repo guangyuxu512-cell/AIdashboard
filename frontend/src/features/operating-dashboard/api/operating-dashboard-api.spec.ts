@@ -21,7 +21,8 @@ const dashboardDto = {
   summary: {
     turnover_cents: 98660,
     order_count: 93,
-    return_quantity: null,
+    refund_order_count: 9,
+    refund_order_coverage_complete: true,
     shop_count: 1,
     turnover_comparison: {
       state: 'increase',
@@ -33,7 +34,7 @@ const dashboardDto = {
       percentage: null,
       favorable: null,
     },
-    return_comparison: {
+    refund_order_comparison: {
       state: 'unavailable',
       percentage: null,
       favorable: null,
@@ -49,6 +50,7 @@ const dashboardDto = {
       business_date: '2026-09-20',
       turnover_cents: 98660,
       order_count: 93,
+      coverage_complete: true,
     },
   ],
   table: {
@@ -59,7 +61,8 @@ const dashboardDto = {
         platform: 'douyin',
         turnover_cents: 98660,
         order_count: 93,
-        return_quantity: null,
+        refund_order_count: 9,
+        refund_order_coverage_complete: true,
         experience_score: null,
         collected_at: '2026-09-21T00:05:00+08:00',
         coverage_complete: true,
@@ -113,9 +116,12 @@ describe('operatingDashboardApi', () => {
     expect(result.tableRows[0]).toMatchObject({
       shopId: 'shop-1',
       turnoverCents: 98660,
-      returnQuantity: null,
+      refundOrderCount: 9,
+      refundOrderCoverageComplete: true,
       experience: null,
+      coverageComplete: true,
     })
+    expect(result.trend[0]?.coverageComplete).toBe(true)
     expect(result.tablePage).toEqual({ total: 1, page: 1, pageSize: 10 })
     expect(result.coverage).toMatchObject({
       collectedShopDays: 1,
@@ -130,24 +136,33 @@ describe('operatingDashboardApi', () => {
     })
   })
 
-  it('submits the selected real date and scope as an asynchronous collection request', async () => {
+  it('submits the selected real date and scope for backend gap checking', async () => {
     const post = vi.spyOn(httpClient, 'post').mockResolvedValue({
       data: {
-        collection_job_id: 'job-1',
-        status: 'pending',
-        counts: {
-          pending: 1,
-          running: 0,
-          succeeded: 0,
-          failed: 0,
-          skipped: 0,
-          paused_reauthorization: 0,
+        state: 'collection_queued',
+        message: '已按缺口检查采集进度',
+        collection_job: {
+          collection_job_id: 'job-1',
+          status: 'pending',
+          counts: {
+            pending: 1,
+            running: 0,
+            succeeded: 0,
+            failed: 0,
+            skipped: 0,
+            paused_reauthorization: 0,
+          },
+          items: [],
         },
-        items: [],
+        missing_shop_days: 1,
+        queued_shop_days: 1,
+        active_shop_days: 0,
+        blocked_shop_days: 0,
+        refund_attention_shop_days: 0,
       },
     })
 
-    await operatingDashboardApi.enqueueCollection({
+    const result = await operatingDashboardApi.requestCollectionUpdate({
       range: { startDate: '2026-09-18', endDate: '2026-09-20' },
       filters,
     })
@@ -161,5 +176,43 @@ describe('operatingDashboardApi', () => {
         shop_id: 'shop-1',
       },
     )
+    expect(result.collectionJob?.collection_job_id).toBe('job-1')
+    expect(result.refundAttentionShopDays).toBe(0)
+  })
+
+  it('uses the explicit scoped recollect endpoint only after user intent', async () => {
+    const post = vi.spyOn(httpClient, 'post').mockResolvedValue({
+      data: {
+        state: 'up_to_date',
+        message: '数据已是最新，无需重新采集',
+        collection_job: null,
+        missing_shop_days: 0,
+        queued_shop_days: 0,
+        active_shop_days: 0,
+        blocked_shop_days: 0,
+        refund_attention_shop_days: 0,
+      },
+    })
+
+    const result = await operatingDashboardApi.requestCollectionUpdate({
+      range: { startDate: '2026-09-18', endDate: '2026-09-20' },
+      filters,
+      forceRecollect: true,
+    })
+
+    expect(post).toHaveBeenCalledWith(
+      '/api/v1/operating-dashboard/collections/recollect',
+      {
+        start_date: '2026-09-18',
+        end_date: '2026-09-20',
+        platform: 'douyin',
+        shop_id: 'shop-1',
+      },
+    )
+    expect(result).toMatchObject({
+      state: 'up_to_date',
+      collectionJob: null,
+      queuedShopDays: 0,
+    })
   })
 })

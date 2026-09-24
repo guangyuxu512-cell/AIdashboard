@@ -28,12 +28,17 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无。
+当前活跃 Migration Slot：
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| 无 | `free` | 当前没有已分配的结构变更 | 无 | 无 | 下一个需要结构变更的 Feature 必须先申请并登记。 |
 
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/operating-dashboard-refund-orders-v1` / 81a1 | `released` | 为已证实的抖店 `refund_order_cnt`（页面“退款订单数〔退款时间〕”，单位单）增加最小日事实字段和窄范围观测状态；不含 `refund_order_cnt_pay_time`、商家体验分或通用指标框架 | `20260922_0039_operating_dashboard_data_v1` | `20260924_0040_operating_dashboard_refund_orders_v1` | Gate 2 PASS：Integration 已验证 `0039 → 0040`、完整 Backend 回归、退款定向 PostgreSQL 验证、Frontend 定向测试及 Real build；HuanYu 2026-09-22 在真实平台显式重采后持久化成交额 ¥659.05、成交订单 60、退款订单数 8，Electron Real 看板回读一致；普通更新未再创建任务。Feature DB 与专用 HBA 待 Integrator 回收。 |
 | `feat/operating-dashboard-data-v1` / 81a1 | `released` | 新增店铺日经营事实、采集 Job / Item 状态及跨进程防重复约束；生产执行和日调度默认关闭 | `20260920_0038_parameter_preset_historical_reference_deletion_v1` | `20260922_0039_operating_dashboard_data_v1` | Gate 2 PASS：Integration 已验证 `0038 → 0039`、11 项 PostgreSQL 定向测试、完整 Backend/Frontend 回归、一次 HuanYu 真实单店采集、正式查询及 Electron Real 看板人工验收；`control_center_feat_operating_dashboard_data` 与专用 HBA 已回收。本 Migration 的 downgrade 会删除经营日事实与采集状态，只可在可重建 Feature / Integration 测试库闭环；生产已有数据后，应用回滚保持 Schema，数据处置另走获批迁移方案。 |
 | `feat/parameter-preset-historical-reference-deletion-v1` / 81a1 | `released` | `automation_parameter_presets` 增加 `deleted_at`，以仅覆盖未软删除记录的 `(team_id, app_id, name)` 部分唯一索引替代全量名称唯一约束；历史 Task 与软删除 Schedule 引用保留，只有未软删除 Schedule（包括 disabled）阻止删除 | `20260919_0037_super_account_team_authorization_v1` | `20260920_0038_parameter_preset_historical_reference_deletion_v1` | Gate 2 Retry 已在 `control_center_integration` 验证 `0037 → 0038`、历史引用/同名重建/Team 范围与既有超级账号场景；后端 455 个非集成测试、参数预设 PostgreSQL 3 个测试及前端 lint/typecheck/475 单测/Real production build 通过。Feature DB 回收待处理，不再占用 Slot |
 | `feat/super-account-team-authorization-v1` / 81a1 | `released` | 增加 `users.is_super_account`、Team 级模块/设备/店铺授权关系，以及 Active Member 约束与生命周期支持；不得静默扩大现有成员授权 | `20260912_0036_automation_parameter_schema_snapshot_v1` | `20260919_0037_super_account_team_authorization_v1` | Feature DB 已完成 `0036 → 0037 → 0036 → 0037`。Gate 2 已在 Integration Electron 验证超级账号、A/B Team、共享/独占资源、保存回读、隔离与撤权；生产预检发现的多 Active Team 用户和成员授权集合差异仍必须逐项形成可审查归一方案，禁止默认回填、权限并集或按账号名称推断超级账号。 |

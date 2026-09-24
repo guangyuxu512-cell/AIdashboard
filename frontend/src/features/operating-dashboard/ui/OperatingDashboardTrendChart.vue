@@ -58,7 +58,9 @@ const chartOption = computed<EChartsCoreOption>(() => {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: props.points.map((point) => point.businessDate.slice(5).replace('-', '/')),
+      data: props.points.map((point) =>
+        point.businessDate.slice(5).replace('-', '/'),
+      ),
       axisLine: { lineStyle: { color: border } },
       axisLabel: { color: textSecondary },
       axisTick: { show: false },
@@ -81,12 +83,20 @@ const chartOption = computed<EChartsCoreOption>(() => {
       formatter: (params: unknown) => {
         const point = Array.isArray(params) ? params[0] : params
         if (!point || typeof point !== 'object') return ''
-        const typedPoint = point as { axisValueLabel?: string; value?: number | null }
+        const typedPoint = point as {
+          axisValueLabel?: string
+          dataIndex?: number
+          value?: number | null
+        }
         const value = typedPoint.value ?? null
+        const coverageComplete =
+          props.points[typedPoint.dataIndex ?? -1]?.coverageComplete
         const display = isTurnover
           ? formatDashboardCurrency(value === null ? null : value * 100)
           : formatDashboardCount(value)
-        return `${typedPoint.axisValueLabel ?? ''}<br/>${isTurnover ? '成交金额' : '成交订单数'}：${display}`
+        const coverageNote =
+          value !== null && coverageComplete === false ? '（覆盖不完整）' : ''
+        return `${typedPoint.axisValueLabel ?? ''}<br/>${isTurnover ? '成交金额' : '成交订单数'}：${display}${coverageNote}`
       },
     },
     series: [

@@ -21,11 +21,15 @@ class OperatingDashboardComparisonRead(BaseModel):
 class OperatingDashboardSummaryRead(BaseModel):
     turnover_cents: int | None
     order_count: int | None
-    return_quantity: int | None
+    # `refund_order_cnt`: Compass “退款订单数（退款时间）”, unit: order.
+    refund_order_count: int | None
+    # Refund coverage is independent from core turnover/order coverage.  A
+    # partial aggregate is useful but cannot support a misleading comparison.
+    refund_order_coverage_complete: bool
     shop_count: int
     turnover_comparison: OperatingDashboardComparisonRead
     order_comparison: OperatingDashboardComparisonRead
-    return_comparison: OperatingDashboardComparisonRead
+    refund_order_comparison: OperatingDashboardComparisonRead
     shop_count_comparison: OperatingDashboardComparisonRead
 
 
@@ -33,6 +37,11 @@ class OperatingDashboardTrendPointRead(BaseModel):
     business_date: date
     turnover_cents: int | None
     order_count: int | None
+    # A point can contain a useful partial aggregate when some supported
+    # Shops have not yet supplied the selected business date.  The value is
+    # never synthesized from a missing observation; consumers use this flag
+    # to label the partial coverage without erasing the facts that do exist.
+    coverage_complete: bool
 
 
 class OperatingDashboardShopOptionRead(BaseModel):
@@ -47,8 +56,8 @@ class OperatingDashboardTableRowRead(BaseModel):
     platform: ShopPlatform
     turnover_cents: int | None
     order_count: int | None
-    # No backend source has established the refund/return-piece contract yet.
-    return_quantity: int | None
+    refund_order_count: int | None
+    refund_order_coverage_complete: bool
     experience_score: None = None
     collected_at: datetime | None
     coverage_complete: bool
@@ -160,6 +169,33 @@ class OperatingDataCollectionJobRead(BaseModel):
     finished_at: datetime | None
     counts: OperatingDataCollectionCountsRead
     items: list[OperatingDataCollectionItemRead]
+
+
+class OperatingDataCollectionSubmissionRead(BaseModel):
+    """Safe result of a dashboard update/recollection request.
+
+    Ordinary dashboard updates may correctly have no durable Job: the
+    selected confirmed metrics can already be complete.  Keeping that state
+    explicit prevents the UI from fabricating an empty Job merely to display
+    a success message.
+    """
+
+    state: Literal[
+        "up_to_date",
+        "collection_queued",
+        "attention_required",
+        "unsupported",
+    ]
+    message: str
+    collection_job: OperatingDataCollectionJobRead | None
+    missing_shop_days: int = Field(ge=0)
+    queued_shop_days: int = Field(ge=0)
+    active_shop_days: int = Field(ge=0)
+    blocked_shop_days: int = Field(ge=0)
+    # A successful core response can still report an optional refund field as
+    # unavailable/not-ready/malformed. It is not a core failure and is not
+    # automatically retried forever; this count keeps that result visible.
+    refund_attention_shop_days: int = Field(ge=0)
 
 
 class OperatingDataCollectionRetryRequest(BaseModel):

@@ -21,11 +21,12 @@ from app.shared.identifiers import generate_id
 
 
 class ShopOperatingDailyMetric(TimestampMixin, Base):
-    """One immutable business-date observation for one Shop.
+    """One current business-date fact for one Shop.
 
-    The table deliberately stores only metrics whose platform response paths
-    and units are confirmed. Return quantity and merchant score have no
-    persisted column until their platform contracts are separately verified.
+    Core turnover/order facts and the separately verified refund-order count
+    share the same Compass response.  `refund_order_status` makes an absent,
+    not-ready, or malformed optional field explicit without changing a valid
+    core observation into a fabricated zero or a failed whole-day fact.
     """
 
     __tablename__ = "shop_operating_daily_metrics"
@@ -39,6 +40,14 @@ class ShopOperatingDailyMetric(TimestampMixin, Base):
         CheckConstraint(
             "order_count IS NULL OR order_count >= 0",
             name="orders_non_negative",
+        ),
+        CheckConstraint(
+            "refund_order_count IS NULL OR refund_order_count >= 0",
+            name="refund_orders_non_negative",
+        ),
+        CheckConstraint(
+            "refund_order_status IN ('unobserved', 'available', 'unavailable', 'not_ready', 'invalid')",
+            name="refund_order_status_valid",
         ),
         UniqueConstraint("shop_id", "business_date", name="uq_operating_metric_shop_date"),
         Index(
@@ -62,6 +71,18 @@ class ShopOperatingDailyMetric(TimestampMixin, Base):
     metric_contract: Mapped[str] = mapped_column(String(64), nullable=False)
     turnover_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     order_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # `refund_order_cnt` is the platform's refund-time order count, measured
+    # in orders.  It is intentionally not a return-piece count and does not
+    # imply a same-day refund rate against `order_count`.
+    refund_order_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Existing 0039 rows predate this contract.  They are safely marked
+    # unobserved and become eligible for one bounded refund backfill.
+    refund_order_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="unobserved",
+        server_default=text("'unobserved'"),
+    )
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

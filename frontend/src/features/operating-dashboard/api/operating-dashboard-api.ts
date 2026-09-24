@@ -37,7 +37,8 @@ interface TableRowDto {
   platform: ShopPlatform
   turnover_cents: number | null
   order_count: number | null
-  return_quantity: number | null
+  refund_order_count: number | null
+  refund_order_coverage_complete: boolean
   experience_score: null
   collected_at: string | null
   coverage_complete: boolean
@@ -51,17 +52,19 @@ interface DashboardReadDto {
   summary: {
     turnover_cents: number | null
     order_count: number | null
-    return_quantity: number | null
+    refund_order_count: number | null
+    refund_order_coverage_complete: boolean
     shop_count: number
     turnover_comparison: ComparisonDto
     order_comparison: ComparisonDto
-    return_comparison: ComparisonDto
+    refund_order_comparison: ComparisonDto
     shop_count_comparison: ComparisonDto
   }
   trend: Array<{
     business_date: string
     turnover_cents: number | null
     order_count: number | null
+    coverage_complete: boolean
   }>
   table: {
     items: TableRowDto[]
@@ -119,6 +122,29 @@ export interface OperatingDashboardCollectionJobDto {
   items: OperatingDashboardCollectionItemDto[]
 }
 
+export interface OperatingDashboardCollectionSubmissionDto {
+  state:
+    'up_to_date' | 'collection_queued' | 'attention_required' | 'unsupported'
+  message: string
+  collection_job: OperatingDashboardCollectionJobDto | null
+  missing_shop_days: number
+  queued_shop_days: number
+  active_shop_days: number
+  blocked_shop_days: number
+  refund_attention_shop_days: number
+}
+
+export interface OperatingDashboardCollectionSubmission {
+  state: OperatingDashboardCollectionSubmissionDto['state']
+  message: string
+  collectionJob: OperatingDashboardCollectionJobDto | null
+  missingShopDays: number
+  queuedShopDays: number
+  activeShopDays: number
+  blockedShopDays: number
+  refundAttentionShopDays: number
+}
+
 export interface OperatingDashboardReadParams {
   range: OperatingDashboardDateRange
   filters: OperatingDashboardFilters
@@ -161,11 +187,28 @@ function mapTableRow(value: TableRowDto): OperatingDashboardTableRow {
     platform: value.platform,
     turnoverCents: value.turnover_cents,
     orderCount: value.order_count,
-    returnQuantity: value.return_quantity,
+    refundOrderCount: value.refund_order_count,
     // Merchant experience has no verified platform contract in V1.  The
     // backend deliberately returns null rather than a guessed score object.
     experience: null,
     collectedAt: value.collected_at,
+    coverageComplete: value.coverage_complete,
+    refundOrderCoverageComplete: value.refund_order_coverage_complete,
+  }
+}
+
+function mapCollectionSubmission(
+  value: OperatingDashboardCollectionSubmissionDto,
+): OperatingDashboardCollectionSubmission {
+  return {
+    state: value.state,
+    message: value.message,
+    collectionJob: value.collection_job,
+    missingShopDays: value.missing_shop_days,
+    queuedShopDays: value.queued_shop_days,
+    activeShopDays: value.active_shop_days,
+    blockedShopDays: value.blocked_shop_days,
+    refundAttentionShopDays: value.refund_attention_shop_days,
   }
 }
 
@@ -182,17 +225,20 @@ export function mapOperatingDashboardRead(
     summary: {
       turnoverCents: value.summary.turnover_cents,
       orderCount: value.summary.order_count,
-      returnQuantity: value.summary.return_quantity,
+      refundOrderCount: value.summary.refund_order_count,
+      refundOrderCoverageComplete:
+        value.summary.refund_order_coverage_complete,
       shopCount: value.summary.shop_count,
       turnoverComparison: mapComparison(value.summary.turnover_comparison),
       orderComparison: mapComparison(value.summary.order_comparison),
-      returnComparison: mapComparison(value.summary.return_comparison),
+      refundOrderComparison: mapComparison(value.summary.refund_order_comparison),
       shopCountComparison: mapComparison(value.summary.shop_count_comparison),
     },
     trend: value.trend.map((point) => ({
       businessDate: point.business_date,
       turnoverCents: point.turnover_cents,
       orderCount: point.order_count,
+      coverageComplete: point.coverage_complete,
     })),
     tableRows: value.table.items.map(mapTableRow),
     tablePage: {
@@ -225,20 +271,20 @@ function toApiSortField(
   | 'shop_name'
   | 'turnover_cents'
   | 'order_count'
-  | 'return_quantity'
+  | 'refund_order_count'
   | 'collected_at' {
   const fields: Record<
     OperatingDashboardSort['field'],
     | 'shop_name'
     | 'turnover_cents'
     | 'order_count'
-    | 'return_quantity'
+    | 'refund_order_count'
     | 'collected_at'
   > = {
     shopName: 'shop_name',
     turnoverCents: 'turnover_cents',
     orderCount: 'order_count',
-    returnQuantity: 'return_quantity',
+    refundOrderCount: 'refund_order_count',
     collectedAt: 'collected_at',
   }
   return fields[field]
@@ -269,22 +315,24 @@ export const operatingDashboardApi = {
     return mapOperatingDashboardRead(response.data)
   },
 
-  async enqueueCollection(params: {
+  async requestCollectionUpdate(params: {
     range: OperatingDashboardDateRange
     filters: OperatingDashboardFilters
-  }): Promise<OperatingDashboardCollectionJobDto> {
-    const response = await httpClient.post<OperatingDashboardCollectionJobDto>(
-      `${basePath}/collections`,
-      {
-        start_date: params.range.startDate,
-        end_date: params.range.endDate,
-        ...(params.filters.platform
-          ? { platform: params.filters.platform }
-          : {}),
-        ...(params.filters.shopId ? { shop_id: params.filters.shopId } : {}),
-      },
-    )
-    return response.data
+    forceRecollect?: boolean
+  }): Promise<OperatingDashboardCollectionSubmission> {
+    const response =
+      await httpClient.post<OperatingDashboardCollectionSubmissionDto>(
+        `${basePath}/collections${params.forceRecollect ? '/recollect' : ''}`,
+        {
+          start_date: params.range.startDate,
+          end_date: params.range.endDate,
+          ...(params.filters.platform
+            ? { platform: params.filters.platform }
+            : {}),
+          ...(params.filters.shopId ? { shop_id: params.filters.shopId } : {}),
+        },
+      )
+    return mapCollectionSubmission(response.data)
   },
 
   async getCollection(

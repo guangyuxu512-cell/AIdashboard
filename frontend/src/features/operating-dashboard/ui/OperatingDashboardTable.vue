@@ -6,6 +6,7 @@ import type {
   DataTableSortOrder,
   DataTableSortState,
 } from 'naive-ui'
+import { NTooltip } from 'naive-ui'
 
 import { PlatformDisplay } from '@/entities/platform'
 import EmptyState from '@/shared/components/EmptyState.vue'
@@ -27,16 +28,19 @@ type DashboardTableThemeOverrides = NonNullable<
   DataTableProps['themeOverrides']
 >
 
-const props = withDefaults(defineProps<{
-  rows: OperatingDashboardTableRow[]
-  loading?: boolean
-  emptyDescription?: string
-  sort?: OperatingDashboardSort | null
-  sortingEnabled?: boolean
-}>(), {
-  sort: null,
-  sortingEnabled: false,
-})
+const props = withDefaults(
+  defineProps<{
+    rows: OperatingDashboardTableRow[]
+    loading?: boolean
+    emptyDescription?: string
+    sort?: OperatingDashboardSort | null
+    sortingEnabled?: boolean
+  }>(),
+  {
+    sort: null,
+    sortingEnabled: false,
+  },
+)
 
 const emit = defineEmits<{
   'update:sort': [value: OperatingDashboardSort | null]
@@ -46,7 +50,7 @@ const SORTABLE_FIELDS = new Set<OperatingDashboardSortField>([
   'shopName',
   'turnoverCents',
   'orderCount',
-  'returnQuantity',
+  'refundOrderCount',
   'collectedAt',
 ])
 
@@ -87,10 +91,34 @@ function sortableColumn(
   }
 }
 
+function partialCoverageValue(
+  value: string,
+  row: OperatingDashboardTableRow,
+  coverage: 'core' | 'refund' = 'core',
+) {
+  const coverageComplete =
+    coverage === 'core'
+      ? row.coverageComplete
+      : row.refundOrderCoverageComplete
+  if (coverageComplete !== false || value === '—') return value
+  return h(NTooltip, null, {
+    trigger: () =>
+      h(
+        'span',
+        { class: 'operating-dashboard-table__partial-value' },
+        `${value}（部分）`,
+      ),
+    default: () =>
+      coverage === 'core'
+        ? '所选范围内仅部分日期已采集'
+        : '按退款时间统计；所选范围内仅部分日期有有效退款订单数据',
+  })
+}
+
 function handleSorterUpdate(
   value: DataTableSortState | DataTableSortState[] | null,
 ): void {
-  const sorter = Array.isArray(value) ? value[0] ?? null : value
+  const sorter = Array.isArray(value) ? (value[0] ?? null) : value
   if (
     !sorter ||
     sorter.order === false ||
@@ -137,7 +165,8 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     key: 'turnoverCents',
     width: 132,
     align: 'center',
-    render: (row) => formatDashboardCurrency(row.turnoverCents),
+    render: (row) =>
+      partialCoverageValue(formatDashboardCurrency(row.turnoverCents), row),
     ...sortableColumn('turnoverCents', nextMetricSortOrder),
   },
   {
@@ -145,16 +174,26 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     key: 'orderCount',
     width: 112,
     align: 'center',
-    render: (row) => formatDashboardCount(row.orderCount),
+    render: (row) =>
+      partialCoverageValue(formatDashboardCount(row.orderCount), row),
     ...sortableColumn('orderCount', nextMetricSortOrder),
   },
   {
-    title: '退货数量',
-    key: 'returnQuantity',
+    title: () =>
+      h(NTooltip, null, {
+        trigger: () => h('span', '退款订单数'),
+        default: () => '按退款时间统计，单位：单',
+      }),
+    key: 'refundOrderCount',
     width: 112,
     align: 'center',
-    render: (row) => formatDashboardCount(row.returnQuantity),
-    ...sortableColumn('returnQuantity', nextMetricSortOrder),
+    render: (row) =>
+      partialCoverageValue(
+        formatDashboardCount(row.refundOrderCount),
+        row,
+        'refund',
+      ),
+    ...sortableColumn('refundOrderCount', nextMetricSortOrder),
   },
   {
     title: '商家体验分',
@@ -232,6 +271,10 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.operating-dashboard-table :deep(.operating-dashboard-table__partial-value) {
   white-space: nowrap;
 }
 </style>

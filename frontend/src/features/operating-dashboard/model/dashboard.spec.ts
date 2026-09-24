@@ -33,8 +33,8 @@ function tableRow(
     platform: input.platform ?? 'douyin',
     turnoverCents: input.turnoverCents === undefined ? 0 : input.turnoverCents,
     orderCount: input.orderCount === undefined ? 0 : input.orderCount,
-    returnQuantity:
-      input.returnQuantity === undefined ? 0 : input.returnQuantity,
+    refundOrderCount:
+      input.refundOrderCount === undefined ? 0 : input.refundOrderCount,
     experience: input.experience === undefined ? null : input.experience,
     collectedAt:
       input.collectedAt === undefined
@@ -69,7 +69,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 100,
         orderCount: 1,
-        returnQuantity: 0,
+        refundOrderCount: 0,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -95,7 +95,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 100,
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -106,7 +106,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-19',
         turnoverCents: 0,
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-19T08:00:00+08:00',
       },
@@ -115,11 +115,96 @@ describe('operating dashboard date and aggregation model', () => {
     const result = buildOperatingDashboardRead(records, yesterdayFilters, now)
 
     expect(result.summary.orderCount).toBeNull()
-    expect(result.summary.returnQuantity).toBeNull()
+    expect(result.summary.refundOrderCount).toBeNull()
     expect(result.summary.turnoverComparison).toEqual({
       state: 'unavailable',
     })
     expect(result.tableRows[0]?.orderCount).toBeNull()
+  })
+
+  it('keeps confirmed Mock facts visible while marking a partial range', () => {
+    const records: OperatingDashboardRecord[] = [
+      {
+        shopId: 'shop-a',
+        shopName: '部分覆盖店铺',
+        platform: 'douyin',
+        businessDate: '2026-09-19',
+        turnoverCents: 100,
+        orderCount: 1,
+        refundOrderCount: null,
+        experience: null,
+        collectedAt: '2026-09-19T08:00:00+08:00',
+      },
+      {
+        shopId: 'shop-b',
+        shopName: '完整覆盖店铺',
+        platform: 'douyin',
+        businessDate: '2026-09-19',
+        turnoverCents: 200,
+        orderCount: 2,
+        refundOrderCount: null,
+        experience: null,
+        collectedAt: '2026-09-19T08:00:00+08:00',
+      },
+      {
+        shopId: 'shop-b',
+        shopName: '完整覆盖店铺',
+        platform: 'douyin',
+        businessDate: '2026-09-20',
+        turnoverCents: 0,
+        orderCount: 0,
+        refundOrderCount: null,
+        experience: null,
+        collectedAt: '2026-09-20T08:00:00+08:00',
+      },
+    ]
+    const result = buildOperatingDashboardRead(
+      records,
+      {
+        ...yesterdayFilters,
+        datePreset: 'custom',
+        customDateRange: [
+          Date.parse('2026-09-19T00:00:00+08:00'),
+          Date.parse('2026-09-20T00:00:00+08:00'),
+        ],
+      },
+      now,
+    )
+
+    expect(result.summary.turnoverCents).toBe(300)
+    expect(result.summary.orderCount).toBe(3)
+    expect(result.summary.turnoverComparison).toEqual({ state: 'unavailable' })
+    expect(result.coverage).toMatchObject({
+      collectedShopDays: 3,
+      totalShopDays: 4,
+      missingShopDays: 1,
+    })
+    expect(result.tableRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shopId: 'shop-a',
+          turnoverCents: 100,
+          coverageComplete: false,
+        }),
+        expect.objectContaining({
+          shopId: 'shop-b',
+          turnoverCents: 200,
+          coverageComplete: true,
+        }),
+      ]),
+    )
+    expect(result.trend).toEqual([
+      expect.objectContaining({
+        businessDate: '2026-09-19',
+        turnoverCents: 300,
+        coverageComplete: true,
+      }),
+      expect.objectContaining({
+        businessDate: '2026-09-20',
+        turnoverCents: 0,
+        coverageComplete: false,
+      }),
+    ])
   })
 
   it('applies platform and shop filtering before table rows are assembled', () => {
@@ -131,7 +216,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 100,
         orderCount: 1,
-        returnQuantity: 0,
+        refundOrderCount: 0,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -142,7 +227,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 200,
         orderCount: 2,
-        returnQuantity: 1,
+        refundOrderCount: 1,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -180,11 +265,13 @@ describe('operating dashboard date and aggregation model', () => {
     expect(result.summary).toMatchObject({
       turnoverCents: null,
       orderCount: null,
-      returnQuantity: null,
+      refundOrderCount: null,
       shopCount: 2,
     })
     expect(result.trend).toHaveLength(7)
-    expect(result.trend.every((point) => point.turnoverCents === null)).toBe(true)
+    expect(result.trend.every((point) => point.turnoverCents === null)).toBe(
+      true,
+    )
     expect(result.tableRows).toEqual([
       expect.objectContaining({
         shopId: 'shop-a',
@@ -192,7 +279,7 @@ describe('operating dashboard date and aggregation model', () => {
         platform: 'douyin',
         turnoverCents: null,
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: null,
       }),
@@ -295,9 +382,9 @@ describe('operating dashboard table ordering', () => {
     expect(ascending[0]?.shopId).toBe('shop-zero')
     expect(ascending[ascending.length - 1]?.shopId).toBe('shop-null')
     expect(descending[descending.length - 1]?.shopId).toBe('shop-null')
-    expect(ascending.findIndex((row) => row.shopId === 'shop-zero')).toBeLessThan(
-      ascending.findIndex((row) => row.shopId === 'shop-null'),
-    )
+    expect(
+      ascending.findIndex((row) => row.shopId === 'shop-zero'),
+    ).toBeLessThan(ascending.findIndex((row) => row.shopId === 'shop-null'))
   })
 
   it('applies the same raw-value rule to order and return counts', () => {
@@ -306,23 +393,23 @@ describe('operating dashboard table ordering', () => {
         shopId: 'shop-max',
         shopName: '最大值店',
         orderCount: 9,
-        returnQuantity: 9,
+        refundOrderCount: 9,
       }),
       tableRow({
         shopId: 'shop-zero',
         shopName: '零值店',
         orderCount: 0,
-        returnQuantity: 0,
+        refundOrderCount: 0,
       }),
       tableRow({
         shopId: 'shop-null',
         shopName: '缺失店',
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
       }),
     ]
 
-    for (const field of ['orderCount', 'returnQuantity'] as const) {
+    for (const field of ['orderCount', 'refundOrderCount'] as const) {
       const ascending = sortOperatingDashboardRows(countRows, {
         field,
         direction: 'asc',
@@ -356,7 +443,11 @@ describe('operating dashboard table ordering', () => {
         shopName: '同名店',
         collectedAt: '2026-09-20T08:00:00+08:00',
       }),
-      tableRow({ shopId: 'shop-time-null', shopName: '同名店', collectedAt: null }),
+      tableRow({
+        shopId: 'shop-time-null',
+        shopName: '同名店',
+        collectedAt: null,
+      }),
       tableRow({
         shopId: 'shop-name-b',
         shopName: '同名店',

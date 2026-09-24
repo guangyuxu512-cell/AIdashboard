@@ -47,7 +47,7 @@ describe('OperatingDashboardTable', () => {
           platform: 'pdd',
           turnoverCents: null,
           orderCount: null,
-          returnQuantity: null,
+          refundOrderCount: null,
           experience: null,
           collectedAt: null,
         },
@@ -66,7 +66,7 @@ describe('OperatingDashboardTable', () => {
         platform: 'douyin' as const,
         turnoverCents: 1,
         orderCount: 1,
-        returnQuantity: 0,
+        refundOrderCount: 0,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -83,6 +83,7 @@ describe('OperatingDashboardTable', () => {
     })
 
     expect(mockTable.findAll('.n-data-table-th--sortable')).toHaveLength(5)
+    expect(mockTable.text()).toContain('退款订单数')
     expect(
       mockTable
         .get('[data-col-key="turnoverCents"]')
