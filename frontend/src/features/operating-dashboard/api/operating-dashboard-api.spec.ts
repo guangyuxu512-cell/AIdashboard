@@ -21,7 +21,8 @@ const dashboardDto = {
   summary: {
     turnover_cents: 98660,
     order_count: 93,
-    return_quantity: null,
+    refund_order_count: 9,
+    refund_order_coverage_complete: true,
     shop_count: 1,
     turnover_comparison: {
       state: 'increase',
@@ -33,7 +34,7 @@ const dashboardDto = {
       percentage: null,
       favorable: null,
     },
-    return_comparison: {
+    refund_order_comparison: {
       state: 'unavailable',
       percentage: null,
       favorable: null,
@@ -60,7 +61,8 @@ const dashboardDto = {
         platform: 'douyin',
         turnover_cents: 98660,
         order_count: 93,
-        return_quantity: null,
+        refund_order_count: 9,
+        refund_order_coverage_complete: true,
         experience_score: null,
         collected_at: '2026-09-21T00:05:00+08:00',
         coverage_complete: true,
@@ -114,7 +116,8 @@ describe('operatingDashboardApi', () => {
     expect(result.tableRows[0]).toMatchObject({
       shopId: 'shop-1',
       turnoverCents: 98660,
-      returnQuantity: null,
+      refundOrderCount: 9,
+      refundOrderCoverageComplete: true,
       experience: null,
       coverageComplete: true,
     })
@@ -155,6 +158,7 @@ describe('operatingDashboardApi', () => {
         queued_shop_days: 1,
         active_shop_days: 0,
         blocked_shop_days: 0,
+        refund_attention_shop_days: 0,
       },
     })
 
@@ -173,6 +177,7 @@ describe('operatingDashboardApi', () => {
       },
     )
     expect(result.collectionJob?.collection_job_id).toBe('job-1')
+    expect(result.refundAttentionShopDays).toBe(0)
   })
 
   it('uses the explicit scoped recollect endpoint only after user intent', async () => {
@@ -185,6 +190,7 @@ describe('operatingDashboardApi', () => {
         queued_shop_days: 0,
         active_shop_days: 0,
         blocked_shop_days: 0,
+        refund_attention_shop_days: 0,
       },
     })
 

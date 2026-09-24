@@ -36,8 +36,8 @@ export interface OperatingDashboardRecord {
   businessDate: string
   turnoverCents: number | null
   orderCount: number | null
-  /** UI-only mock field. It is not mapped from any current platform response. */
-  returnQuantity: number | null
+  /** Compass “退款订单数（退款时间）”, measured in orders. */
+  refundOrderCount: number | null
   experience: MerchantExperienceScore | null
   collectedAt: string | null
 }
@@ -62,11 +62,13 @@ export interface OperatingDashboardTableRow {
   platform: ShopPlatform
   turnoverCents: number | null
   orderCount: number | null
-  returnQuantity: number | null
+  refundOrderCount: number | null
   experience: MerchantExperienceScore | null
   collectedAt: string | null
   /** False means this Shop has data for only part of the selected range. */
   coverageComplete?: boolean
+  /** False means only part of the selected range has a valid refund count. */
+  refundOrderCoverageComplete?: boolean
 }
 
 /** Pagination is supplied by the real API; Mock mode derives it after sort. */
@@ -106,7 +108,11 @@ export interface OperatingDashboardCoverage {
  * same field and direction within the authorized scope before pagination.
  */
 export type OperatingDashboardSortField =
-  'shopName' | 'turnoverCents' | 'orderCount' | 'returnQuantity' | 'collectedAt'
+  | 'shopName'
+  | 'turnoverCents'
+  | 'orderCount'
+  | 'refundOrderCount'
+  | 'collectedAt'
 
 export type OperatingDashboardSortDirection = 'asc' | 'desc'
 
@@ -127,12 +133,13 @@ export type DashboardComparison =
 export interface OperatingDashboardSummary {
   turnoverCents: number | null
   orderCount: number | null
-  returnQuantity: number | null
+  refundOrderCount: number | null
+  refundOrderCoverageComplete: boolean
   /** Null means the authorized shop scope could not be read. */
   shopCount: number | null
   turnoverComparison: DashboardComparison
   orderComparison: DashboardComparison
-  returnComparison: DashboardComparison
+  refundOrderComparison: DashboardComparison
   /** Shop count has no confirmed historical baseline in V1. */
   shopCountComparison: DashboardComparison
 }

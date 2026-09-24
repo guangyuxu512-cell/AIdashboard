@@ -276,11 +276,11 @@ introspection 核对（2026-09-22）：共 **44** 张表，含 Alembic 元数据
 | `generation_item_assets` | GenerationItem 输入 Asset 关系，复合 PK `(generation_item_id,input_role,position)`。 | 随 Item 历史保留；关联 Asset 不可被无检查删除。 |
 | `generation_provider_executions` | 每 Item 当前 Provider 执行，PK/FK `generation_item_id`。 | Retry 复用同一行并递增 attempt；不是 Provider 全量历史表。 |
 
-### 经营数据（0039 新增）
+### 经营数据（0039 + 0040 Feature）
 
 | 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
 | --- | --- | --- |
-| `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。 | 重采更新同一日事实，不累计；Shop 停用/移除不删历史；数据保留期限待单独批准。 |
+| `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。0040 增加可空 `refund_order_count` 与窄范围 `refund_order_status`，仅记录罗盘 `refund_order_cnt`（“退款订单数〔退款时间〕”，单位单）的观测结果。 | 重采更新同一日事实，不累计；退款字段的 `available / unavailable / not_ready / invalid / unobserved` 区分真实 0、字段缺失、未就绪、结构异常和待一次补观测，不能把未知写成 0；后一次非 available 观测不得清空此前已确认退款值。Shop 停用/移除不删历史；数据保留期限待单独批准。 |
 | `operating_data_collection_jobs` | 异步采集请求组，PK `collection_job_id`，可 FK 请求人及其提交时的 Team context。 | 手动/重试 item 在发出平台请求前按该上下文重新授权；只保存范围/状态，不保存 Cookie、签名或原始响应；清理期限待定。 |
 | `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实；清理期限待定。 |
 

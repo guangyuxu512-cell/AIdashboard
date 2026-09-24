@@ -15,7 +15,7 @@ withDefaults(
 
 <template>
   <article class="stat-card" :class="`stat-card--${tone}`">
-    <span class="stat-card__label">{{ label }}</span>
+    <span class="stat-card__label"><slot name="label">{{ label }}</slot></span>
     <strong>{{ value }}</strong>
     <span v-if="$slots.description || description" class="stat-card__description">
       <slot name="description">{{ description }}</slot>

@@ -41,6 +41,7 @@ from app.modules.operating_dashboard.repository import (
 )
 from app.modules.operating_dashboard.service import (
     DOUYIN_CORE_INDEX_CONTRACT,
+    DOUYIN_CORE_INDEX_LEGACY_CONTRACT,
     DOUYIN_CORE_INDEX_SOURCE,
     OperatingDashboardService,
 )
@@ -309,6 +310,8 @@ def test_postgresql_dashboard_scope_sort_and_idempotent_metric_update(
                         metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                         turnover_cents=amount,
                         order_count=orders,
+                        refund_order_count=0,
+                        refund_order_status="available",
                         collected_at=datetime(2026, 9, 20, tzinfo=UTC),
                     )
             # Recollection updates exactly the one daily fact rather than
@@ -320,6 +323,8 @@ def test_postgresql_dashboard_scope_sort_and_idempotent_metric_update(
                 metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=300,
                 order_count=3,
+                refund_order_count=0,
+                refund_order_status="available",
                 collected_at=datetime(2026, 9, 20, 1, tzinfo=UTC),
             )
             session.commit()
@@ -338,7 +343,7 @@ def test_postgresql_dashboard_scope_sort_and_idempotent_metric_update(
             assert result.table.total == 3
             assert [row.shop_id for row in result.table.items] == [beta.shop_id, alpha.shop_id]
             assert result.table.items[1].turnover_cents == 400
-            assert result.table.items[0].return_quantity is None
+            assert result.table.items[0].refund_order_count == 0
             # The uncollected third Shop makes comparison/coverage partial,
             # but it must not erase the two confirmed Shops' facts.
             assert result.summary.turnover_cents == 1200
@@ -504,6 +509,176 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
             foreign_item = session.get(OperatingDataCollectionItem, foreign_item_id)
             assert foreign_item is not None
             assert foreign_item.status == OperatingCollectionItemStatus.PENDING.value
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_refund_order_observation_backfill_is_bounded_and_preserves_core_facts(
+    postgresql_engine: Engine,
+) -> None:
+    """A 0039 core fact receives one refund observation without blind retries."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="Refund observation user"),
+                    Team(team_id=team_id, name="Refund observation team"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            shop = _seed_shop(session, display_name="退款订单观测店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            # This is the shape of a pre-0040 core fact after the migration:
+            # it remains valid core coverage but the refund observation itself
+            # is deliberately unobserved once.
+            session.add(
+                ShopOperatingDailyMetric(
+                    shop_id=shop.shop_id,
+                    business_date=DAY_ONE,
+                    source_code=DOUYIN_CORE_INDEX_SOURCE,
+                    metric_contract=DOUYIN_CORE_INDEX_LEGACY_CONTRACT,
+                    turnover_cents=100,
+                    order_count=1,
+                    collected_at=datetime(2026, 9, 20, tzinfo=UTC),
+                ),
+            )
+            session.commit()
+
+            actor = _actor(user_id=user_id, team_id=team_id, super_account=False)
+            service = _service(session)
+            request = OperatingDataCollectionRequest(
+                start_date=DAY_ONE,
+                end_date=DAY_ONE,
+                shop_id=shop.shop_id,
+            )
+            first = service.request_collection_update(actor=actor, request=request)
+            assert first.state == "collection_queued"
+            assert first.queued_shop_days == 1
+            assert first.collection_job is not None
+
+            first_item = session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == first.collection_job.collection_job_id,
+                ),
+            )
+            assert first_item is not None
+            first_item.status = OperatingCollectionItemStatus.SUCCEEDED.value
+            first_item.retryable = False
+            first_item.finished_at = datetime(2026, 9, 20, 1, tzinfo=UTC)
+            first_item.updated_at = datetime(2026, 9, 20, 1, tzinfo=UTC)
+            service.repository.upsert_daily_metric(
+                shop_id=shop.shop_id,
+                business_date=DAY_ONE,
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
+                turnover_cents=100,
+                order_count=1,
+                refund_order_count=9,
+                refund_order_status="available",
+                collected_at=datetime(2026, 9, 20, 1, tzinfo=UTC),
+            )
+            service.repository.update_job_statuses(
+                (first_item.collection_job_id,), now=datetime(2026, 9, 20, 1, tzinfo=UTC)
+            )
+            session.commit()
+
+            complete = service.read(
+                actor=actor,
+                start_date=DAY_ONE,
+                end_date=DAY_ONE,
+                platform=None,
+                shop_id=shop.shop_id,
+                sort_field="refund_order_count",
+                sort_direction="desc",
+                pagination=PaginationParams(page=1, page_size=10),
+            )
+            assert complete.summary.turnover_cents == 100
+            assert complete.summary.order_count == 1
+            assert complete.summary.refund_order_count == 9
+            assert complete.summary.refund_order_coverage_complete is True
+            assert complete.table.items[0].refund_order_count == 9
+            assert complete.table.items[0].refund_order_coverage_complete is True
+            assert service.request_collection_update(actor=actor, request=request).state == "up_to_date"
+
+            # A later malformed optional value may not erase the prior known
+            # count in storage, cannot hide core facts, and cannot make the
+            # ordinary gap action retry the same date forever.
+            service.repository.upsert_daily_metric(
+                shop_id=shop.shop_id,
+                business_date=DAY_ONE,
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
+                turnover_cents=100,
+                order_count=1,
+                refund_order_count=None,
+                refund_order_status="invalid",
+                collected_at=datetime(2026, 9, 20, 2, tzinfo=UTC),
+            )
+            session.commit()
+            stored = session.scalar(
+                select(ShopOperatingDailyMetric).where(
+                    ShopOperatingDailyMetric.shop_id == shop.shop_id,
+                    ShopOperatingDailyMetric.business_date == DAY_ONE,
+                ),
+            )
+            assert stored is not None
+            assert stored.refund_order_count == 9
+            assert stored.refund_order_status == "invalid"
+
+            attention = service.request_collection_update(actor=actor, request=request)
+            assert attention.state == "attention_required"
+            assert attention.refund_attention_shop_days == 1
+            assert attention.collection_job is None
+            assert session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionItem)
+                .where(OperatingDataCollectionItem.shop_id == shop.shop_id),
+            ) == 1
+
+            after_invalid = service.read(
+                actor=actor,
+                start_date=DAY_ONE,
+                end_date=DAY_ONE,
+                platform=None,
+                shop_id=shop.shop_id,
+                sort_field=None,
+                sort_direction=None,
+                pagination=PaginationParams(page=1, page_size=10),
+            )
+            assert after_invalid.summary.turnover_cents == 100
+            assert after_invalid.summary.order_count == 1
+            assert after_invalid.summary.refund_order_count is None
+            assert after_invalid.summary.refund_order_coverage_complete is False
+
+            explicit = service.request_collection_update(
+                actor=actor,
+                request=request,
+                force_recollect=True,
+            )
+            assert explicit.state == "collection_queued"
+            assert explicit.queued_shop_days == 1
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
@@ -1036,6 +1211,8 @@ def test_postgresql_reenable_queues_only_missing_backfill_dates(
                 metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=100,
                 order_count=1,
+                refund_order_count=0,
+                refund_order_status="available",
                 collected_at=datetime.now(UTC),
             )
             session.commit()
@@ -1487,6 +1664,8 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
                 metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=0,
                 order_count=0,
+                refund_order_count=0,
+                refund_order_status="available",
                 collected_at=now,
             )
             session.commit()
@@ -1898,6 +2077,8 @@ def test_postgresql_coverage_uses_authorized_supported_shop_dates_and_active_sta
                 metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=0,
                 order_count=0,
+                refund_order_count=0,
+                refund_order_status="available",
                 collected_at=datetime(2026, 9, 20, tzinfo=UTC),
             )
             session.commit()
@@ -1996,6 +2177,8 @@ def test_postgresql_partial_range_preserves_available_facts_in_read_contract(
                     metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                     turnover_cents=turnover_cents,
                     order_count=order_count,
+                    refund_order_count=0,
+                    refund_order_status="available",
                     collected_at=datetime(2026, 9, 20, tzinfo=UTC),
                 )
             session.commit()
@@ -2071,6 +2254,8 @@ def test_postgresql_dashboard_gap_check_avoids_empty_jobs_and_reuses_active_work
                 metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
                 turnover_cents=100,
                 order_count=1,
+                refund_order_count=0,
+                refund_order_status="available",
                 collected_at=datetime(2026, 9, 20, tzinfo=UTC),
             )
             session.commit()

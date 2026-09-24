@@ -198,8 +198,8 @@ function buildTableRows(
         orderCount: sumAvailable(
           confirmedCoreRecords.map((record) => record.orderCount),
         ),
-        returnQuantity: sumAvailable(
-          group.map((record) => record.returnQuantity),
+        refundOrderCount: sumAvailable(
+          group.map((record) => record.refundOrderCount),
         ),
         experience: newestExperience,
         collectedAt: newest.collectedAt,
@@ -209,6 +209,13 @@ function buildTableRows(
               record.businessDate === businessDate &&
               record.turnoverCents !== null &&
               record.orderCount !== null,
+          ),
+        ),
+        refundOrderCoverageComplete: expectedDates.every((businessDate) =>
+          group.some(
+            (record) =>
+              record.businessDate === businessDate &&
+              record.refundOrderCount !== null,
           ),
         ),
       }
@@ -277,10 +284,10 @@ export function sortOperatingDashboardRows(
           activeSort.direction,
         )
         break
-      case 'returnQuantity':
+      case 'refundOrderCount':
         comparison = compareNullableNumbers(
-          left.returnQuantity,
-          right.returnQuantity,
+          left.refundOrderCount,
+          right.refundOrderCount,
           activeSort.direction,
         )
         break
@@ -369,6 +376,26 @@ function hasCompleteRangeCoverage(
             record.shopId === shopId &&
             record.businessDate === businessDate &&
             hasConfirmedCoreObservation(record),
+        ),
+      ),
+    )
+  )
+}
+
+function hasCompleteRefundCoverage(
+  records: ReadonlyArray<OperatingDashboardRecord>,
+  range: OperatingDashboardDateRange,
+  expectedShopIds: ReadonlyArray<string>,
+): boolean {
+  return (
+    expectedShopIds.length > 0 &&
+    listCalendarDates(range).every((businessDate) =>
+      expectedShopIds.every((shopId) =>
+        records.some(
+          (record) =>
+            record.shopId === shopId &&
+            record.businessDate === businessDate &&
+            record.refundOrderCount !== null,
         ),
       ),
     )
@@ -494,11 +521,21 @@ export function buildOperatingDashboardRead(
   const previousOrders = sumAvailable(
     previousCoreRecords.map((record) => record.orderCount),
   )
-  const currentReturns = sumAvailable(
-    current.map((record) => record.returnQuantity),
+  const currentRefundOrders = sumAvailable(
+    current.map((record) => record.refundOrderCount),
   )
-  const previousReturns = sumAvailable(
-    previous.map((record) => record.returnQuantity),
+  const previousRefundOrders = sumAvailable(
+    previous.map((record) => record.refundOrderCount),
+  )
+  const currentRefundCoverageComplete = hasCompleteRefundCoverage(
+    current,
+    dateRange,
+    selectedShopIds,
+  )
+  const previousRefundCoverageComplete = hasCompleteRefundCoverage(
+    previous,
+    comparisonDateRange,
+    selectedShopIds,
   )
 
   return {
@@ -512,7 +549,8 @@ export function buildOperatingDashboardRead(
     summary: {
       turnoverCents: currentTurnover,
       orderCount: currentOrders,
-      returnQuantity: currentReturns,
+      refundOrderCount: currentRefundOrders,
+      refundOrderCoverageComplete: currentRefundCoverageComplete,
       shopCount: selectedShops.length,
       turnoverComparison: compare(currentTurnover, previousTurnover, {
         coverageComplete: currentCoverageComplete && previousCoverageComplete,
@@ -520,9 +558,10 @@ export function buildOperatingDashboardRead(
       orderComparison: compare(currentOrders, previousOrders, {
         coverageComplete: currentCoverageComplete && previousCoverageComplete,
       }),
-      returnComparison: compare(currentReturns, previousReturns, {
+      refundOrderComparison: compare(currentRefundOrders, previousRefundOrders, {
         lowerIsBetter: true,
-        coverageComplete: false,
+        coverageComplete:
+          currentRefundCoverageComplete && previousRefundCoverageComplete,
       }),
       shopCountComparison: { state: 'unavailable' },
     },
@@ -571,11 +610,12 @@ export function buildOperatingDashboardUnavailableRead(
     summary: {
       turnoverCents: null,
       orderCount: null,
-      returnQuantity: null,
+      refundOrderCount: null,
+      refundOrderCoverageComplete: false,
       shopCount,
       turnoverComparison: { state: 'unavailable' },
       orderComparison: { state: 'unavailable' },
-      returnComparison: { state: 'unavailable' },
+      refundOrderComparison: { state: 'unavailable' },
       shopCountComparison: { state: 'unavailable' },
     },
     trend: listCalendarDates(trendDateRange).map((businessDate) => ({
@@ -588,10 +628,11 @@ export function buildOperatingDashboardUnavailableRead(
       ...shop,
       turnoverCents: null,
       orderCount: null,
-      returnQuantity: null,
+      refundOrderCount: null,
       experience: null,
       collectedAt: null,
       coverageComplete: false,
+      refundOrderCoverageComplete: false,
     })),
     tablePage: {
       total: shopCount ?? 0,
