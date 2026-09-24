@@ -42,6 +42,7 @@ interface TableRowDto {
   experience_score: null
   collected_at: string | null
   coverage_complete: boolean
+  not_operating_for_range: boolean
 }
 
 interface DashboardReadDto {
@@ -87,6 +88,9 @@ interface DashboardReadDto {
     }>
     missing_samples_truncated: boolean
     manual_backfill_required: boolean
+    not_operating_shop_days: number
+    shops_with_unknown_operating_start: number
+    no_operating_scope: boolean
   }
   collection_available: boolean
 }
@@ -125,7 +129,11 @@ export interface OperatingDashboardCollectionJobDto {
 
 export interface OperatingDashboardCollectionSubmissionDto {
   state:
-    'up_to_date' | 'collection_queued' | 'attention_required' | 'unsupported'
+    | 'up_to_date'
+    | 'collection_queued'
+    | 'attention_required'
+    | 'unsupported'
+    | 'not_operating'
   message: string
   collection_job: OperatingDashboardCollectionJobDto | null
   missing_shop_days: number
@@ -133,6 +141,7 @@ export interface OperatingDashboardCollectionSubmissionDto {
   active_shop_days: number
   blocked_shop_days: number
   refund_attention_shop_days: number
+  not_operating_shop_days: number
 }
 
 export interface OperatingDashboardCollectionSubmission {
@@ -144,6 +153,7 @@ export interface OperatingDashboardCollectionSubmission {
   activeShopDays: number
   blockedShopDays: number
   refundAttentionShopDays: number
+  notOperatingShopDays: number
 }
 
 export interface OperatingDashboardReadParams {
@@ -195,6 +205,7 @@ function mapTableRow(value: TableRowDto): OperatingDashboardTableRow {
     collectedAt: value.collected_at,
     coverageComplete: value.coverage_complete,
     refundOrderCoverageComplete: value.refund_order_coverage_complete,
+    notOperatingForRange: value.not_operating_for_range,
   }
 }
 
@@ -210,6 +221,7 @@ function mapCollectionSubmission(
     activeShopDays: value.active_shop_days,
     blockedShopDays: value.blocked_shop_days,
     refundAttentionShopDays: value.refund_attention_shop_days,
+    notOperatingShopDays: value.not_operating_shop_days,
   }
 }
 
@@ -262,6 +274,10 @@ export function mapOperatingDashboardRead(
       })),
       missingSamplesTruncated: value.coverage.missing_samples_truncated,
       manualBackfillRequired: value.coverage.manual_backfill_required,
+      notOperatingShopDays: value.coverage.not_operating_shop_days,
+      shopsWithUnknownOperatingStart:
+        value.coverage.shops_with_unknown_operating_start,
+      noOperatingScope: value.coverage.no_operating_scope,
     },
     collectionAvailable: value.collection_available,
   }

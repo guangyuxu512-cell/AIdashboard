@@ -37,7 +37,7 @@ Credential / Session 与普通业务字段分离并加密。
 | 表                     | 职责                                           |
 | ---------------------- | ---------------------------------------------- |
 | `users`                | 最小系统用户身份，供负责人等稳定关系引用       |
-| `shops`                | 店铺基础事实、平台、启用状态、可选负责人和备注 |
+| `shops`                | 店铺基础事实、平台、启用状态、可选负责人、备注及可选经营覆盖边界 |
 | `devices`              | 设备身份、启用状态、可选位置和备注             |
 | `shop_device_bindings` | Shop 与 Device 的执行资格多对多关系及启用状态  |
 
@@ -208,12 +208,12 @@ Asset 与 Template Binding 关系，但不删除 Asset 本体。删除 TemplateG
 Binding；仍被引用时返回领域冲突，不自动解除关系，也不依赖数据库 Cascade。0026 不创建
 GenerationJob、Provider 或 Queue 表。
 
-## 当前完整表清单（Feature 0039 基线）
+## 当前完整表清单（Feature 0041 Candidate）
 
-以下清单已与登记的 `control_center_feat_operating_dashboard_data` 在 `20260922_0039` Head 的实际 PostgreSQL
-introspection 核对（2026-09-22）：共 **44** 张表，含 Alembic 元数据表。它不是生产库状态的推断，生产是否已
-应用 0039 必须在 Release Gate 单独核对。未有已批准保留期的表明确标为“待定”，文档整理本身不授权删除、改名
-或迁移任何历史数据。
+以下清单已与 Feature DB `control_center_feat_operating_data_availability` 在 `20260924_0041` Head 的实际 PostgreSQL
+introspection 核对（2026-09-24）：共 **44** 张表，含 Alembic 元数据表。0041 只为 `shops` 增加四个可空经营
+起算日审计列，不新增表。它不是生产库状态的推断；生产是否已应用 0041 必须在 Release Gate 单独核对。未有已批准
+保留期的表明确标为“待定”，文档整理本身不授权删除、改名或迁移任何历史数据。
 
 ### 系统与身份/授权
 
@@ -234,7 +234,7 @@ introspection 核对（2026-09-22）：共 **44** 张表，含 Alembic 元数据
 
 | 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
 | --- | --- | --- |
-| `shops` | 店铺主档，PK `shop_id`，可关联 `owner_user_id`。 | `deleted_at` 软移除且 `shop_id` 不复用；停用/移除不删凭证、Session、Task 或经营历史。 |
+| `shops` | 店铺主档，PK `shop_id`，可关联 `owner_user_id`。0041 增加可空 `operating_start_date`、来源、设置人和设置时间；设置人 FK `users.user_id` 为 `RESTRICT`。 | `deleted_at` 软移除且 `shop_id` 不复用；停用/移除不删凭证、Session、Task 或经营历史。经营起算日仅由有管理权限人员显式确认，来源当前为 `manual`；不得从中控台接入、首次采集或首次出单推断。起算日与全部审计列要么同时为 NULL、要么同时存在；若已有更早已确认成交/订单/退款事实，拒绝设置会隐藏事实的较晚日期。 |
 | `platform_credentials` | 加密平台凭证，PK `credential_id`。 | 独立于 Shop；绑定停用/解除不自动清除凭证，敏感数据处置规则待单独定义。 |
 | `shop_credential_bindings` | Shop–Credential 关系，复合 PK `(shop_id,credential_id)`。 | 启停/解绑不级联删任一事实；当前每 Shop 最多一个启用关系。 |
 | `shop_sessions` | 每 Shop 当前加密 Session 与版本，PK `session_id`，FK Shop/来源 Device。 | 替换时以版本校验更新；软移除 Shop 后保留，不能导出明文 Cookie。 |
@@ -276,13 +276,13 @@ introspection 核对（2026-09-22）：共 **44** 张表，含 Alembic 元数据
 | `generation_item_assets` | GenerationItem 输入 Asset 关系，复合 PK `(generation_item_id,input_role,position)`。 | 随 Item 历史保留；关联 Asset 不可被无检查删除。 |
 | `generation_provider_executions` | 每 Item 当前 Provider 执行，PK/FK `generation_item_id`。 | Retry 复用同一行并递增 attempt；不是 Provider 全量历史表。 |
 
-### 经营数据（0039 + 0040 Feature）
+### 经营数据（0039 + 0040 + 0041 Feature）
 
 | 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
 | --- | --- | --- |
-| `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。0040 增加可空 `refund_order_count` 与窄范围 `refund_order_status`，仅记录罗盘 `refund_order_cnt`（“退款订单数〔退款时间〕”，单位单）的观测结果。 | 重采更新同一日事实，不累计；退款字段的 `available / unavailable / not_ready / invalid / unobserved` 区分真实 0、字段缺失、未就绪、结构异常和待一次补观测，不能把未知写成 0；后一次非 available 观测不得清空此前已确认退款值。Shop 停用/移除不删历史；数据保留期限待单独批准。 |
-| `operating_data_collection_jobs` | 异步采集请求组，PK `collection_job_id`，可 FK 请求人及其提交时的 Team context。 | 手动/重试 item 在发出平台请求前按该上下文重新授权；只保存范围/状态，不保存 Cookie、签名或原始响应；清理期限待定。 |
-| `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实；清理期限待定。 |
+| `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。0040 增加可空 `refund_order_count` 与窄范围 `refund_order_status`，仅记录罗盘 `refund_order_cnt`（“退款订单数〔退款时间〕”，单位单）的观测结果。 | 重采更新同一日事实，不累计；退款字段的 `available / unavailable / not_ready / invalid / unobserved` 区分真实 0、字段缺失、未就绪、结构异常和待一次补观测，不能把未知写成 0；后一次非 available 观测不得清空此前已确认退款值。0041 的起算日不会删除、更改或伪造该表的事实；Shop 停用/移除不删历史；数据保留期限待单独批准。 |
+| `operating_data_collection_jobs` | 异步采集请求组，PK `collection_job_id`，可 FK 请求人及其提交时的 Team context。 | 手动/重试 item 在发出平台请求前按该上下文重新授权；只保存范围/状态，不保存 Cookie、签名或原始响应。全范围早于已确认经营起算日时普通更新不创建空 Job；清理期限待定。 |
+| `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实。0041 会把尚未发起、且早于已确认起算日的 item 标为 `SHOP_NOT_OPERATING_ON_DATE` / `skipped`，不调用平台；清理期限待定。 |
 
 所有表变更均须在同一 Gate 1/Gate 2 中同步：SQLAlchemy Model、Alembic Migration、此数据字典、API/
 兼容说明和真实 PostgreSQL 验证。文档中标为“历史兼容”或“待定”的对象不构成删除授权。

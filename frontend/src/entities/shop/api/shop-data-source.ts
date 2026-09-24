@@ -132,6 +132,7 @@ export function createMockShopDataSource(): ShopDataSource {
         createdAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
         updatedAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
         note: input.note,
+        operatingStartDate: input.operatingStartDate ?? null,
         dataSource: 'mock',
       }
       rows.unshift(shop)
@@ -156,6 +157,8 @@ export function createMockShopDataSource(): ShopDataSource {
         enabled: input.enabled,
         enabledStatus: input.enabled ? 'enabled' : 'disabled',
         note: input.note,
+        operatingStartDate:
+          input.operatingStartDate ?? rows[index]!.operatingStartDate ?? null,
         updatedAtDisplay: dayjs().format('YYYY-MM-DD HH:mm'),
       }
       rows[index] = updated

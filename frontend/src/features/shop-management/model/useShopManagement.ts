@@ -1,3 +1,4 @@
+import dayjs from 'dayjs'
 import { useMessage } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 
@@ -145,6 +146,9 @@ export function useShopManagement() {
       enabled: shop.enabled,
       ownerUserId: shop.ownerUserId,
       note: shop.note,
+      operatingStartDate: shop.operatingStartDate
+        ? dayjs(shop.operatingStartDate).valueOf()
+        : null,
     }
     formVisible.value = true
   }
@@ -156,7 +160,14 @@ export function useShopManagement() {
 
   async function saveShop(form: ShopFormViewModel): Promise<void> {
     if (!form.platform) return
-    const input: ShopSaveInput = { ...form, platform: form.platform }
+    const input: ShopSaveInput = {
+      ...form,
+      platform: form.platform,
+      operatingStartDate:
+        form.operatingStartDate === null
+          ? null
+          : dayjs(form.operatingStartDate).format('YYYY-MM-DD'),
+    }
     try {
       if (formMode.value === 'edit' && editingShopId.value) {
         await updateMutation.mutateAsync({ shopId: editingShopId.value, input })

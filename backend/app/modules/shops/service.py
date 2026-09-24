@@ -18,6 +18,7 @@ from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import (
     ImmutableShopIdentityError,
     InvalidDeviceBindingError,
+    OperatingStartDateConflictError,
     ShopNotFoundError,
 )
 from app.modules.shops.models import Shop, ShopDeviceBinding
@@ -123,6 +124,30 @@ class ShopService:
             raise ShopNotFoundError()
         changes = data.model_dump(exclude_unset=True)
         was_enabled = shop.enabled
+        previous_operating_start_date = shop.operating_start_date
+        operating_start_date_changed = "operating_start_date" in changes
+        requested_operating_start_date = changes.pop(
+            "operating_start_date",
+            None,
+        )
+        operating_start_date_effectively_changed = (
+            operating_start_date_changed
+            and requested_operating_start_date != previous_operating_start_date
+        )
+        dashboard_service = OperatingDashboardService(self.session)
+        if (
+            operating_start_date_effectively_changed
+            and requested_operating_start_date is not None
+            and dashboard_service.has_confirmed_metric_before(
+                shop_id=shop.shop_id,
+                operating_start_date=requested_operating_start_date,
+            )
+        ):
+            # ``get_for_update`` deliberately holds a row lock.  Release it
+            # before exposing the conflict so a rejected edit cannot block
+            # ordinary Shop/session work in the same request process.
+            self.session.rollback()
+            raise OperatingStartDateConflictError()
         if shop.platform_shop_id is not None and {
             "display_name",
             "platform",
@@ -132,16 +157,53 @@ class ShopService:
             self._ensure_owner_exists(changes["owner_user_id"])
         for field, value in changes.items():
             setattr(shop, field, value)
-        if (
-            not was_enabled
-            and shop.enabled
-            and shop.platform is ShopPlatform.DOUYIN
-        ):
-            OperatingDashboardService(
-                self.session,
-            ).enqueue_initial_backfill_for_shop(
+        if operating_start_date_effectively_changed:
+            if requested_operating_start_date is None:
+                shop.operating_start_date = None
+                shop.operating_start_date_source = None
+                shop.operating_start_date_set_by_user_id = None
+                shop.operating_start_date_set_at = None
+            else:
+                shop.operating_start_date = requested_operating_start_date
+                shop.operating_start_date_source = "manual"
+                shop.operating_start_date_set_by_user_id = actor.user_id
+                shop.operating_start_date_set_at = datetime.now(UTC)
+            # Make the changed boundary visible to the queue's set-based
+            # cleanup in this same database transaction.  Facts are never
+            # altered; only unstarted requests outside the new scope stop.
+            self.session.flush()
+            dashboard_service.skip_not_operating_collection_items(
                 shop_id=shop.shop_id,
-                kind=OperatingCollectionJobKind.REENABLE_BACKFILL,
+                now=datetime.now(UTC),
+            )
+
+        operating_scope_expanded = (
+            operating_start_date_effectively_changed
+            and (
+                (
+                    requested_operating_start_date is None
+                    and previous_operating_start_date is not None
+                )
+                or (
+                    requested_operating_start_date is not None
+                    and previous_operating_start_date is not None
+                    and requested_operating_start_date < previous_operating_start_date
+                )
+            )
+        )
+        reenabled = not was_enabled and shop.enabled
+        if (
+            (reenabled or operating_scope_expanded)
+            and shop.platform is ShopPlatform.DOUYIN
+            and shop.enabled
+        ):
+            dashboard_service.enqueue_initial_backfill_for_shop(
+                shop_id=shop.shop_id,
+                kind=(
+                    OperatingCollectionJobKind.REENABLE_BACKFILL
+                    if reenabled
+                    else OperatingCollectionJobKind.INITIAL_BACKFILL
+                ),
                 commit=False,
             )
         self.session.commit()

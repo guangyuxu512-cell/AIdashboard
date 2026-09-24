@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -26,6 +27,10 @@ class ShopUpdate(BaseModel):
     enabled: bool | None = None
     owner_user_id: UUID | None = None
     note: str | None = Field(default=None, max_length=1000)
+    # An explicit null clears a manager-confirmed coverage boundary.  Pydantic
+    # preserves the difference between an omitted field and this explicit
+    # clear through ``model_fields_set``.
+    operating_start_date: date | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "ShopUpdate":
@@ -47,6 +52,13 @@ class ShopRead(BaseModel):
     enabled: bool
     owner_user_id: UUID | None
     note: str | None
+    # Defaults retain compatibility for existing service/mocking callers that
+    # construct a ShopRead from the pre-0041 contract. SQLAlchemy-backed
+    # responses still expose the database values once the migration is live.
+    operating_start_date: date | None = None
+    operating_start_date_source: Literal["manual"] | None = None
+    operating_start_date_set_by_user_id: UUID | None = None
+    operating_start_date_set_at: datetime | None = None
     deleted_at: datetime | None
     created_at: datetime
     updated_at: datetime
