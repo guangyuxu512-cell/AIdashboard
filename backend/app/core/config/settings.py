@@ -3,6 +3,7 @@ from datetime import time
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import Field, PostgresDsn, SecretStr
 from pydantic import field_validator, model_validator
@@ -123,6 +124,12 @@ class Settings(BaseSettings):
         ge=1,
         le=20,
     )
+    # Empty by default.  A Release Gate may place only the exact UUIDs of
+    # audited legacy response-parse failures here for one controlled recovery
+    # attempt; it is not a general non-retryable-failure override.
+    operating_dashboard_legacy_response_parse_recovery_item_ids: frozenset[
+        UUID
+    ] = Field(default_factory=frozenset)
     operating_dashboard_initial_backfill_days: int = Field(
         default=30,
         # The confirmed automatic-recovery contract is exactly the most

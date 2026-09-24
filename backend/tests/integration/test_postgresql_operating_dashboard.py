@@ -45,7 +45,10 @@ from app.modules.operating_dashboard.service import (
     DOUYIN_CORE_INDEX_SOURCE,
     OperatingDashboardService,
 )
-from app.modules.operating_dashboard.schemas import OperatingDataCollectionRequest
+from app.modules.operating_dashboard.schemas import (
+    OperatingDashboardDateRangeRead,
+    OperatingDataCollectionRequest,
+)
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.modules.shops.schemas import ShopUpdate
@@ -2041,6 +2044,151 @@ def test_postgresql_gap_recovery_bounds_automatic_retry_but_allows_later_eligibi
                     == OperatingCollectionItemStatus.PENDING.value,
                 ),
             ) is not None
+    finally:
+        _cleanup(postgresql_engine, shops)
+
+
+def test_postgresql_approved_legacy_parse_recovery_queues_once_and_maps_safe_coverage_reason(
+    postgresql_engine: Engine,
+) -> None:
+    """An audited old parser item gets one new attempt without mutation."""
+
+    shops: set[UUID] = set()
+    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
+    business_date = date(2026, 9, 22)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            shop = _seed_shop(session, display_name="旧解析恢复店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            failed_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                dedupe_key=None,
+                created_at=now - timedelta(hours=2),
+                updated_at=now - timedelta(hours=2),
+            )
+            session.add(failed_job)
+            session.flush()
+            legacy_item_id = uuid4()
+            legacy_item = OperatingDataCollectionItem(
+                collection_item_id=legacy_item_id,
+                collection_job_id=failed_job.collection_job_id,
+                shop_id=shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                # The stored message deliberately resembles an upstream
+                # detail. Coverage must use the safe code mapping instead.
+                failure_message="raw upstream detail must not be returned",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(hours=2),
+                created_at=now - timedelta(hours=2),
+                updated_at=now - timedelta(hours=2),
+            )
+            session.add(legacy_item)
+            session.commit()
+
+            service = _service(
+                session,
+                operating_dashboard_legacy_response_parse_recovery_item_ids=frozenset(
+                    {legacy_item_id},
+                ),
+            )
+            states = service.repository.list_collection_item_states(
+                shop_ids=[shop.shop_id],
+                start_date=business_date,
+                end_date=business_date,
+            )
+            assert states[0].failure_stage == "response_parse"
+            coverage = service._coverage(
+                shops=[
+                    DashboardShop(
+                        shop_id=shop.shop_id,
+                        shop_name=shop.display_name,
+                        platform=shop.platform,
+                        enabled=shop.enabled,
+                    ),
+                ],
+                metric_by_shop_date={},
+                collection_states=states,
+                range_value=OperatingDashboardDateRangeRead(
+                    start_date=business_date,
+                    end_date=business_date,
+                ),
+            )
+            assert coverage.missing_samples[0].failure_reason == "抖店经营数据响应无效"
+
+            recovery = service.enqueue_missing_backfill_for_shop(
+                shop_id=shop.shop_id,
+                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
+                now=now,
+            )
+            assert recovery is not None
+            items = session.scalars(
+                select(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.shop_id == shop.shop_id,
+                    OperatingDataCollectionItem.business_date == business_date,
+                )
+                .order_by(OperatingDataCollectionItem.created_at.asc()),
+            ).all()
+            assert len(items) == 2
+            assert items[0].collection_item_id == legacy_item_id
+            assert items[0].status == OperatingCollectionItemStatus.FAILED.value
+            assert items[0].retryable is False
+            assert items[0].failure_stage == "response_parse"
+            assert items[1].status == OperatingCollectionItemStatus.PENDING.value
+
+            # The active new item owns the date, so a second planner call does
+            # not create duplicate external work.
+            assert (
+                service.enqueue_missing_backfill_for_shop(
+                    shop_id=shop.shop_id,
+                    kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
+                    now=now,
+                )
+                is None
+            )
+
+            # If that new item itself reaches the same terminal classification,
+            # the allowlist still names only the original item and cannot
+            # reopen the date a second time.
+            recovered_item = items[1]
+            recovered_item.status = OperatingCollectionItemStatus.FAILED.value
+            recovered_item.retryable = False
+            recovered_item.attempt_count = 1
+            recovered_item.failure_code = "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
+            recovered_item.failure_stage = "response_parse"
+            recovered_item.finished_at = now + timedelta(minutes=1)
+            recovered_item.updated_at = now + timedelta(minutes=1)
+            session.commit()
+            assert (
+                service.enqueue_missing_backfill_for_shop(
+                    shop_id=shop.shop_id,
+                    kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
+                    now=now + timedelta(minutes=2),
+                )
+                is None
+            )
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperatingDataCollectionItem)
+                    .where(
+                        OperatingDataCollectionItem.shop_id == shop.shop_id,
+                        OperatingDataCollectionItem.business_date == business_date,
+                    ),
+                )
+                == 2
+            )
     finally:
         _cleanup(postgresql_engine, shops)
 

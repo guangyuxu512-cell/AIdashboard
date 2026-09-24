@@ -455,6 +455,7 @@ function buildMockCoverage(
           shopName: shop.shopName,
           businessDate,
           state: 'missing',
+          failureReason: null,
         })
       }
     }

@@ -82,6 +82,8 @@ REFUND_ORDER_ATTENTION_STATUSES = frozenset(
     },
 )
 COVERAGE_MISSING_SAMPLE_LIMIT = 20
+LEGACY_RESPONSE_PARSE_FAILURE_CODE = "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
+LEGACY_RESPONSE_PARSE_FAILURE_STAGE = "response_parse"
 SYSTEM_COLLECTION_KINDS = frozenset(
     {
         OperatingCollectionJobKind.INITIAL_BACKFILL.value,
@@ -849,6 +851,12 @@ class OperatingDashboardService:
             # eligible after a legitimate re-enable.
             return True
         if not latest.retryable:
+            if self._approved_legacy_response_parse_recovery(latest):
+                # This is intentionally a one-item Release-Gate allowlist,
+                # not a broad retry policy.  Once a new attempt is created,
+                # it becomes the latest state and this exception no longer
+                # applies to subsequent failures.
+                return True
             # Verified platform/business rejection remains visible for manual
             # handling.  A read-only background scan must not hammer it.
             return False
@@ -879,7 +887,8 @@ class OperatingDashboardService:
         A normal update queues missing core facts and one unobserved refund
         observation. An explicit recollection additionally queues checked
         dates, but neither mode bypasses an active item, a paused
-        reauthorization, or a terminal non-retryable platform result.
+        reauthorization, or a terminal non-retryable platform result, except
+        for an exact Release-Gate-approved legacy parser item.
         """
 
         shop_ids = tuple(shop.shop_id for shop in shops)
@@ -967,6 +976,8 @@ class OperatingDashboardService:
         Explicit retry remains a separate, deliberate action. Repeated clicks
         on the normal "check and fill" control must not create an unlimited
         series of attempts after a session, risk, or non-retryable failure.
+        The only exception is a separately audited original item configured
+        for the one-time legacy parser recovery below.
         """
 
         history = list(states)
@@ -979,7 +990,7 @@ class OperatingDashboardService:
         if latest.status != OperatingCollectionItemStatus.FAILED.value:
             return True
         if not latest.retryable:
-            return False
+            return self._approved_legacy_response_parse_recovery(latest)
         cooldown = timedelta(
             seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
         )
@@ -988,6 +999,30 @@ class OperatingDashboardService:
         return (
             sum(state.attempt_count for state in history)
             < self.settings.operating_dashboard_collection_max_attempts
+        )
+
+    def _approved_legacy_response_parse_recovery(
+        self,
+        state: CollectionItemState,
+    ) -> bool:
+        """Allow exactly audited old parser failures to be retried once.
+
+        The old parser incorrectly treated optional response fields as core
+        requirements.  Its persisted terminal failures cannot be safely
+        reclassified from a generic failure code alone, so Release Gate must
+        explicitly approve each original item UUID after read-only evidence.
+        A fresh item created by the ordinary planner is never on that list.
+        """
+
+        return (
+            state.collection_item_id
+            in self.settings.operating_dashboard_legacy_response_parse_recovery_item_ids
+            and state.status == OperatingCollectionItemStatus.FAILED.value
+            and not state.retryable
+            and state.attempt_count == 1
+            and state.failure_code == LEGACY_RESPONSE_PARSE_FAILURE_CODE
+            and state.failure_stage == LEGACY_RESPONSE_PARSE_FAILURE_STAGE
+            and state.finished_at is not None
         )
 
     def abandon_claim_if_not_executable(self, claim: CollectionClaim) -> bool:
@@ -1496,14 +1531,14 @@ class OperatingDashboardService:
                 if _has_complete_daily_metrics(metric):
                     collected += 1
                     continue
+                latest_state = latest_states.get((shop_id, business_date))
                 missing.append(
                     OperatingDashboardCoverageMissingRead(
                         shop_id=shop_id,
                         shop_name=shop.shop_name,
                         business_date=business_date,
-                        state=_coverage_state(
-                            latest_states.get((shop_id, business_date)),
-                        ),
+                        state=_coverage_state(latest_state),
+                        failure_reason=_coverage_failure_reason(latest_state),
                     ),
                 )
         automatic_start = _automatic_recovery_start(
@@ -1862,6 +1897,14 @@ def _coverage_state(
     if state.status == OperatingCollectionItemStatus.FAILED.value:
         return "failed"
     return "missing"
+
+
+def _coverage_failure_reason(state: CollectionItemState | None) -> str | None:
+    """Map a persisted failure code without disclosing raw failure details."""
+
+    if state is None or state.status != OperatingCollectionItemStatus.FAILED.value:
+        return None
+    return _safe_failure_message(state.failure_code)
 
 
 def _automatic_recovery_start(end_date: date, days: int) -> date:
