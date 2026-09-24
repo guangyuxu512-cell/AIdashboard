@@ -33,8 +33,8 @@ function tableRow(
     platform: input.platform ?? 'douyin',
     turnoverCents: input.turnoverCents === undefined ? 0 : input.turnoverCents,
     orderCount: input.orderCount === undefined ? 0 : input.orderCount,
-    returnQuantity:
-      input.returnQuantity === undefined ? 0 : input.returnQuantity,
+    refundOrderCount:
+      input.refundOrderCount === undefined ? 0 : input.refundOrderCount,
     experience: input.experience === undefined ? null : input.experience,
     collectedAt:
       input.collectedAt === undefined
@@ -69,7 +69,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 100,
         orderCount: 1,
-        returnQuantity: 0,
+        refundOrderCount: 0,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -95,7 +95,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 100,
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -106,7 +106,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-19',
         turnoverCents: 0,
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-19T08:00:00+08:00',
       },
@@ -115,7 +115,7 @@ describe('operating dashboard date and aggregation model', () => {
     const result = buildOperatingDashboardRead(records, yesterdayFilters, now)
 
     expect(result.summary.orderCount).toBeNull()
-    expect(result.summary.returnQuantity).toBeNull()
+    expect(result.summary.refundOrderCount).toBeNull()
     expect(result.summary.turnoverComparison).toEqual({
       state: 'unavailable',
     })
@@ -131,7 +131,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-19',
         turnoverCents: 100,
         orderCount: 1,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-19T08:00:00+08:00',
       },
@@ -142,7 +142,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-19',
         turnoverCents: 200,
         orderCount: 2,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-19T08:00:00+08:00',
       },
@@ -153,7 +153,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 0,
         orderCount: 0,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -216,7 +216,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 100,
         orderCount: 1,
-        returnQuantity: 0,
+        refundOrderCount: 0,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -227,7 +227,7 @@ describe('operating dashboard date and aggregation model', () => {
         businessDate: '2026-09-20',
         turnoverCents: 200,
         orderCount: 2,
-        returnQuantity: 1,
+        refundOrderCount: 1,
         experience: null,
         collectedAt: '2026-09-20T08:00:00+08:00',
       },
@@ -265,7 +265,7 @@ describe('operating dashboard date and aggregation model', () => {
     expect(result.summary).toMatchObject({
       turnoverCents: null,
       orderCount: null,
-      returnQuantity: null,
+      refundOrderCount: null,
       shopCount: 2,
     })
     expect(result.trend).toHaveLength(7)
@@ -279,7 +279,7 @@ describe('operating dashboard date and aggregation model', () => {
         platform: 'douyin',
         turnoverCents: null,
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
         experience: null,
         collectedAt: null,
       }),
@@ -393,23 +393,23 @@ describe('operating dashboard table ordering', () => {
         shopId: 'shop-max',
         shopName: '最大值店',
         orderCount: 9,
-        returnQuantity: 9,
+        refundOrderCount: 9,
       }),
       tableRow({
         shopId: 'shop-zero',
         shopName: '零值店',
         orderCount: 0,
-        returnQuantity: 0,
+        refundOrderCount: 0,
       }),
       tableRow({
         shopId: 'shop-null',
         shopName: '缺失店',
         orderCount: null,
-        returnQuantity: null,
+        refundOrderCount: null,
       }),
     ]
 
-    for (const field of ['orderCount', 'returnQuantity'] as const) {
+    for (const field of ['orderCount', 'refundOrderCount'] as const) {
       const ascending = sortOperatingDashboardRows(countRows, {
         field,
         direction: 'asc',

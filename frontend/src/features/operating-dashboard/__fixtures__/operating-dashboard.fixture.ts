@@ -169,7 +169,7 @@ export function createOperatingDashboardFixture(
         seed.dailyTurnoverCents + variation * 1_140,
       )
       const orderCount = Math.max(0, seed.dailyOrders + (variation % 4))
-      const returnQuantity =
+      const refundOrderCount =
         seed.shopId === 'dashboard-shop-009' && dayIndex % 7 === 0
           ? null
           : Math.max(0, seed.dailyReturns + (variation < -2 ? 1 : 0))
@@ -182,7 +182,7 @@ export function createOperatingDashboardFixture(
           businessDate,
           turnoverCents,
           orderCount,
-          returnQuantity,
+          refundOrderCount,
           experience: buildExperience(seed, businessDate),
           collectedAt: `${businessDate}T08:${String(5 + (shopIndex % 4)).padStart(2, '0')}:00+08:00`,
         },

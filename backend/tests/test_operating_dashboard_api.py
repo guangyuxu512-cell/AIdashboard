@@ -66,11 +66,12 @@ def dashboard_read() -> OperatingDashboardRead:
         summary=OperatingDashboardSummaryRead(
             turnover_cents=100,
             order_count=2,
-            return_quantity=None,
+            refund_order_count=9,
+            refund_order_coverage_complete=True,
             shop_count=1,
             turnover_comparison=unavailable,
             order_comparison=unavailable,
-            return_comparison=unavailable,
+            refund_order_comparison=unavailable,
             shop_count_comparison=unavailable,
         ),
         trend=[
@@ -89,7 +90,8 @@ def dashboard_read() -> OperatingDashboardRead:
                     platform=ShopPlatform.DOUYIN,
                     turnover_cents=100,
                     order_count=2,
-                    return_quantity=None,
+                    refund_order_count=9,
+                    refund_order_coverage_complete=True,
                     collected_at=datetime(2026, 9, 21, tzinfo=UTC),
                     coverage_complete=True,
                 ),
@@ -158,6 +160,7 @@ class DashboardServiceStub:
             queued_shop_days=1,
             active_shop_days=0,
             blocked_shop_days=0,
+            refund_attention_shop_days=0,
         )
 
     def get_collection_job(self, **_: object) -> OperatingDataCollectionJobRead:
@@ -197,7 +200,7 @@ def test_read_uses_formal_sort_and_pagination_contract() -> None:
 
     assert response.status_code == 200
     assert response.json()["table"]["page"] == 2
-    assert response.json()["table"]["items"][0]["return_quantity"] is None
+    assert response.json()["table"]["items"][0]["refund_order_count"] == 9
     assert service.read_calls[0]["sort_field"] == "turnover_cents"
     assert service.read_calls[0]["sort_direction"] == "desc"
     pagination = service.read_calls[0]["pagination"]

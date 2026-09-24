@@ -50,7 +50,7 @@ const SORTABLE_FIELDS = new Set<OperatingDashboardSortField>([
   'shopName',
   'turnoverCents',
   'orderCount',
-  'returnQuantity',
+  'refundOrderCount',
   'collectedAt',
 ])
 
@@ -91,8 +91,16 @@ function sortableColumn(
   }
 }
 
-function partialCoverageValue(value: string, row: OperatingDashboardTableRow) {
-  if (row.coverageComplete !== false || value === '—') return value
+function partialCoverageValue(
+  value: string,
+  row: OperatingDashboardTableRow,
+  coverage: 'core' | 'refund' = 'core',
+) {
+  const coverageComplete =
+    coverage === 'core'
+      ? row.coverageComplete
+      : row.refundOrderCoverageComplete
+  if (coverageComplete !== false || value === '—') return value
   return h(NTooltip, null, {
     trigger: () =>
       h(
@@ -100,7 +108,10 @@ function partialCoverageValue(value: string, row: OperatingDashboardTableRow) {
         { class: 'operating-dashboard-table__partial-value' },
         `${value}（部分）`,
       ),
-    default: () => '所选范围内仅部分日期已采集',
+    default: () =>
+      coverage === 'core'
+        ? '所选范围内仅部分日期已采集'
+        : '按退款时间统计；所选范围内仅部分日期有有效退款订单数据',
   })
 }
 
@@ -168,12 +179,21 @@ const columns = computed<DataTableColumns<OperatingDashboardTableRow>>(() => [
     ...sortableColumn('orderCount', nextMetricSortOrder),
   },
   {
-    title: '退货数量',
-    key: 'returnQuantity',
+    title: () =>
+      h(NTooltip, null, {
+        trigger: () => h('span', '退款订单数'),
+        default: () => '按退款时间统计，单位：单',
+      }),
+    key: 'refundOrderCount',
     width: 112,
     align: 'center',
-    render: (row) => formatDashboardCount(row.returnQuantity),
-    ...sortableColumn('returnQuantity', nextMetricSortOrder),
+    render: (row) =>
+      partialCoverageValue(
+        formatDashboardCount(row.refundOrderCount),
+        row,
+        'refund',
+      ),
+    ...sortableColumn('refundOrderCount', nextMetricSortOrder),
   },
   {
     title: '商家体验分',

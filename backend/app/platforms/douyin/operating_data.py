@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from time import monotonic
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -35,6 +35,16 @@ CORE_INDEX_SELECTED_FIELDS = (
 )
 SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
+# `refund_order_cnt` is the only refund field whose page label and date
+# attribution are verified for this contract: “退款订单数（退款时间）”.  The
+# companion `refund_order_cnt_pay_time` stays intentionally unparsed.
+RefundOrderObservationStatus = Literal[
+    "available",
+    "unavailable",
+    "not_ready",
+    "invalid",
+]
+
 
 class DouyinOperatingDataBusinessError(PlatformRequestFailedError):
     """The platform returned a parsed, non-success business response."""
@@ -59,6 +69,15 @@ class CompassDailyMetrics:
 
     income_amt_cents: int | None
     pay_cnt: int | None
+    # A refund observation is optional relative to the two core facts.  It
+    # therefore carries an explicit safe status instead of making an
+    # otherwise usable turnover/order response fail as a whole.  `unobserved`
+    # is used only by compatibility fixtures; real parser output is one of
+    # the four statuses above.
+    refund_order_count: int | None = None
+    refund_order_status: RefundOrderObservationStatus | Literal["unobserved"] = (
+        "unobserved"
+    )
 
     @property
     def income_amt_yuan(self) -> Decimal | None:
@@ -160,9 +179,15 @@ def parse_core_index_metrics(payload: Mapping[str, Any]) -> CompassDailyMetrics:
         )
 
     card = _core_index_card(payload)
+    refund_order_count, refund_order_status = _read_optional_integer_metric(
+        card,
+        "refund_order_cnt",
+    )
     return CompassDailyMetrics(
         income_amt_cents=_read_integer_metric(card, "income_amt"),
         pay_cnt=_read_integer_metric(card, "pay_cnt"),
+        refund_order_count=refund_order_count,
+        refund_order_status=refund_order_status,
     )
 
 
@@ -212,6 +237,42 @@ def _read_integer_metric(card: Mapping[str, Any], field: str) -> int | None:
             details={"failure_stage": "core_index_parse", "metric": field},
         )
     return _to_optional_integer(value_container["value"], field)
+
+
+def _read_optional_integer_metric(
+    card: Mapping[str, Any],
+    field: str,
+) -> tuple[int | None, RefundOrderObservationStatus]:
+    """Read the frozen optional refund field without weakening core parsing.
+
+    The platform can legitimately omit an optional card, return a null while
+    the day is not ready, or change an otherwise unexpected shape.  Those
+    cases are persisted as separate observation states so they never become a
+    fabricated zero or a retry loop, while `income_amt` / `pay_cnt` retain
+    their strict fixed-path behavior.
+    """
+
+    if field not in card:
+        return None, "unavailable"
+    metric = card[field]
+    if not isinstance(metric, Mapping):
+        return None, "invalid"
+    index_value = metric.get("index_value")
+    if not isinstance(index_value, Mapping):
+        return None, "invalid"
+    value_container = index_value.get("value")
+    if not isinstance(value_container, Mapping) or "value" not in value_container:
+        return None, "invalid"
+    value = value_container["value"]
+    if value is None:
+        return None, "not_ready"
+    try:
+        parsed = _to_optional_integer(value, field)
+    except PlatformResponseInvalidError:
+        return None, "invalid"
+    if parsed is None or parsed < 0:
+        return None, "invalid"
+    return parsed, "available"
 
 
 def _to_optional_integer(value: Any, field: str) -> int | None:

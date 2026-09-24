@@ -64,7 +64,23 @@ from app.shared.pagination import PaginationParams
 
 SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
 DOUYIN_CORE_INDEX_SOURCE = "douyin_compass_core_index_v3"
-DOUYIN_CORE_INDEX_CONTRACT = "douyin_compass_daily_v1"
+DOUYIN_CORE_INDEX_LEGACY_CONTRACT = "douyin_compass_daily_v1"
+DOUYIN_CORE_INDEX_CONTRACT = "douyin_compass_daily_v2_refund_orders"
+DOUYIN_CORE_INDEX_ACCEPTED_CONTRACTS = frozenset(
+    {
+        DOUYIN_CORE_INDEX_LEGACY_CONTRACT,
+        DOUYIN_CORE_INDEX_CONTRACT,
+    },
+)
+REFUND_ORDER_STATUS_UNOBSERVED = "unobserved"
+REFUND_ORDER_STATUS_AVAILABLE = "available"
+REFUND_ORDER_ATTENTION_STATUSES = frozenset(
+    {
+        "unavailable",
+        "not_ready",
+        "invalid",
+    },
+)
 COVERAGE_MISSING_SAMPLE_LIMIT = 20
 SYSTEM_COLLECTION_KINDS = frozenset(
     {
@@ -78,7 +94,7 @@ DashboardSortField = Literal[
     "shop_name",
     "turnover_cents",
     "order_count",
-    "return_quantity",
+    "refund_order_count",
     "collected_at",
 ]
 DashboardSortDirection = Literal["asc", "desc"]
@@ -88,9 +104,10 @@ DashboardSortDirection = Literal["asc", "desc"]
 class _ShopRangeValues:
     turnover_cents: int | None
     order_count: int | None
-    return_quantity: int | None
+    refund_order_count: int | None
     collected_at: datetime | None
     coverage_complete: bool
+    refund_order_coverage_complete: bool
 
 
 @dataclass(frozen=True)
@@ -102,6 +119,7 @@ class _ManualCollectionPlan:
     missing_shop_days: int
     active_shop_days: int
     blocked_shop_days: int
+    refund_attention_shop_days: int
 
 
 class OperatingDashboardService:
@@ -214,12 +232,22 @@ class OperatingDashboardService:
             current_supported_by_shop,
             previous_supported_by_shop,
             shop_count=total,
-            current_coverage_complete=self._range_coverage_complete(
+            current_core_coverage_complete=self._range_coverage_complete(
                 supported_shops,
                 metric_by_shop_date,
                 selected_range,
             ),
-            previous_coverage_complete=self._range_coverage_complete(
+            previous_core_coverage_complete=self._range_coverage_complete(
+                supported_shops,
+                metric_by_shop_date,
+                comparison_range,
+            ),
+            current_refund_coverage_complete=self._refund_order_range_coverage_complete(
+                supported_shops,
+                metric_by_shop_date,
+                selected_range,
+            ),
+            previous_refund_coverage_complete=self._refund_order_range_coverage_complete(
                 supported_shops,
                 metric_by_shop_date,
                 comparison_range,
@@ -324,6 +352,7 @@ class OperatingDashboardService:
                 queued_shop_days=0,
                 active_shop_days=0,
                 blocked_shop_days=0,
+                refund_attention_shop_days=0,
             )
 
         resolved_now = now or datetime.now(UTC)
@@ -385,6 +414,7 @@ class OperatingDashboardService:
                 queued_shop_days=queued_shop_days,
                 active_shop_days=plan.active_shop_days,
                 blocked_shop_days=plan.blocked_shop_days,
+                refund_attention_shop_days=plan.refund_attention_shop_days,
             )
         if plan.active_shop_days:
             # Authorization can change between the bounded plan and the
@@ -398,6 +428,7 @@ class OperatingDashboardService:
                 queued_shop_days=0,
                 active_shop_days=plan.active_shop_days,
                 blocked_shop_days=plan.blocked_shop_days,
+                refund_attention_shop_days=plan.refund_attention_shop_days,
             )
         if plan.blocked_shop_days:
             return OperatingDataCollectionSubmissionRead(
@@ -408,6 +439,18 @@ class OperatingDashboardService:
                 queued_shop_days=0,
                 active_shop_days=0,
                 blocked_shop_days=plan.blocked_shop_days,
+                refund_attention_shop_days=plan.refund_attention_shop_days,
+            )
+        if plan.refund_attention_shop_days:
+            return OperatingDataCollectionSubmissionRead(
+                state="attention_required",
+                message="部分退款订单字段暂不可用，请稍后查看或主动重新采集",
+                collection_job=None,
+                missing_shop_days=plan.missing_shop_days,
+                queued_shop_days=0,
+                active_shop_days=0,
+                blocked_shop_days=0,
+                refund_attention_shop_days=plan.refund_attention_shop_days,
             )
         return OperatingDataCollectionSubmissionRead(
             state="up_to_date",
@@ -417,6 +460,7 @@ class OperatingDashboardService:
             queued_shop_days=0,
             active_shop_days=0,
             blocked_shop_days=0,
+            refund_attention_shop_days=0,
         )
 
     def enqueue_initial_backfill_for_shop(
@@ -728,9 +772,10 @@ class OperatingDashboardService:
         """Return automatic-recovery candidates in yesterday-first order.
 
         One bounded facts query and one bounded durable-item query cover the
-        complete 30-day window.  The method deliberately treats a successful
-        zero as complete and ignores unimplemented return/score fields: only
-        the two confirmed V1 daily metrics decide whether a date is missing.
+        complete 30-day window. A real zero remains complete. Existing 0039
+        facts are marked `unobserved` for the newly verified refund field and
+        receive one bounded backfill; an already checked unavailable/not-ready
+        /invalid optional field is not retried by every automatic scan.
         """
 
         selected_shops = list(shops)
@@ -760,7 +805,7 @@ class OperatingDashboardService:
             missing_dates: list[date] = []
             for business_date in reversed(_calendar_days(start_date, end_date)):
                 metric = metric_by_shop_date.get((shop.shop_id, business_date))
-                if _has_complete_daily_metrics(metric):
+                if not _requires_collection(metric):
                     continue
                 if self._automatic_gap_recovery_allowed(
                     states_by_shop_date[(shop.shop_id, business_date)],
@@ -831,10 +876,10 @@ class OperatingDashboardService:
     ) -> _ManualCollectionPlan:
         """Find only actionable Shop/date work in one bounded read pass.
 
-        A normal update queues missing confirmed metrics only. An explicit
-        recollection additionally queues complete dates, but neither mode
-        bypasses an active item, a paused reauthorization, or a terminal
-        non-retryable platform result.
+        A normal update queues missing core facts and one unobserved refund
+        observation. An explicit recollection additionally queues checked
+        dates, but neither mode bypasses an active item, a paused
+        reauthorization, or a terminal non-retryable platform result.
         """
 
         shop_ids = tuple(shop.shop_id for shop in shops)
@@ -861,10 +906,12 @@ class OperatingDashboardService:
         missing_shop_days = 0
         active_shop_days = 0
         blocked_shop_days = 0
+        refund_attention_shop_days = 0
         for shop in shops:
             for business_date in reversed(_calendar_days(start_date, end_date)):
                 metric = metric_by_shop_date.get((shop.shop_id, business_date))
-                complete = _has_complete_daily_metrics(metric)
+                requires_collection = _requires_collection(metric)
+                refund_attention = _refund_order_requires_attention(metric)
                 history = states_by_shop_date[(shop.shop_id, business_date)]
                 active_states = [
                     state
@@ -876,8 +923,10 @@ class OperatingDashboardService:
                         OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value,
                     }
                 ]
-                if not complete:
+                if requires_collection:
                     missing_shop_days += 1
+                elif refund_attention:
+                    refund_attention_shop_days += 1
                 if active_states:
                     # Active durable work owns this Shop/date even if a prior
                     # successful fact exists and the user explicitly asks to
@@ -887,7 +936,7 @@ class OperatingDashboardService:
                         state.collection_job_id for state in active_states
                     )
                     continue
-                if complete and not force_recollect:
+                if not requires_collection and not force_recollect:
                     continue
                 # An explicit recollection is intentional, but it is not an
                 # escape hatch for a terminal platform/session result or an
@@ -904,6 +953,7 @@ class OperatingDashboardService:
             missing_shop_days=missing_shop_days,
             active_shop_days=active_shop_days,
             blocked_shop_days=blocked_shop_days,
+            refund_attention_shop_days=refund_attention_shop_days,
         )
 
     def _manual_gap_recovery_allowed(
@@ -1304,6 +1354,8 @@ class OperatingDashboardService:
             metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
             turnover_cents=metrics.income_amt_cents,
             order_count=metrics.pay_cnt,
+            refund_order_count=metrics.refund_order_count,
+            refund_order_status=metrics.refund_order_status,
             collected_at=now,
         )
         item.status = OperatingCollectionItemStatus.SUCCEEDED.value
@@ -1499,6 +1551,11 @@ class OperatingDashboardService:
                 for observation in observations
                 if _has_complete_daily_metrics(observation)
             ]
+            valid_refund_observations = [
+                observation
+                for observation in observations
+                if _has_available_refund_order_observation(observation)
+            ]
             values[shop.shop_id] = _ShopRangeValues(
                 # Keep real facts from the collected dates visible.  The
                 # separate coverage flag distinguishes this partial sum from
@@ -1513,12 +1570,23 @@ class OperatingDashboardService:
                     if valid_observations
                     else None
                 ),
-                # No verified platform contract exists for return-piece
-                # counts; keep the formal API field unavailable rather than
-                # storing/referring to a refund-shaped Compass field.
-                return_quantity=None,
+                # This is a refund-time order count, not a return-piece
+                # count.  Its coverage intentionally stays independent from
+                # the core turnover/order observation for the same date.
+                refund_order_count=(
+                    sum(
+                        observation.refund_order_count
+                        for observation in valid_refund_observations
+                    )
+                    if valid_refund_observations
+                    else None
+                ),
                 collected_at=collected_at,
                 coverage_complete=complete,
+                refund_order_coverage_complete=(
+                    bool(observations)
+                    and len(valid_refund_observations) == len(observations)
+                ),
             )
         return values
 
@@ -1534,9 +1602,12 @@ class OperatingDashboardService:
                 platform=shop.platform,
                 turnover_cents=values[shop.shop_id].turnover_cents,
                 order_count=values[shop.shop_id].order_count,
-                return_quantity=values[shop.shop_id].return_quantity,
+                refund_order_count=values[shop.shop_id].refund_order_count,
                 collected_at=values[shop.shop_id].collected_at,
                 coverage_complete=values[shop.shop_id].coverage_complete,
+                refund_order_coverage_complete=(
+                    values[shop.shop_id].refund_order_coverage_complete
+                ),
             )
             for shop in shops
         ]
@@ -1554,7 +1625,7 @@ class OperatingDashboardService:
             "shop_name": lambda row: row.shop_name.casefold(),
             "turnover_cents": lambda row: row.turnover_cents,
             "order_count": lambda row: row.order_count,
-            "return_quantity": lambda row: row.return_quantity,
+            "refund_order_count": lambda row: row.refund_order_count,
             "collected_at": lambda row: row.collected_at,
         }
         getter = value_getters[field]
@@ -1576,39 +1647,47 @@ class OperatingDashboardService:
         previous: dict[UUID, _ShopRangeValues],
         *,
         shop_count: int,
-        current_coverage_complete: bool,
-        previous_coverage_complete: bool,
+        current_core_coverage_complete: bool,
+        previous_core_coverage_complete: bool,
+        current_refund_coverage_complete: bool,
+        previous_refund_coverage_complete: bool,
     ) -> OperatingDashboardSummaryRead:
         current_turnover = _available_sum(current.values(), "turnover_cents")
         previous_turnover = _available_sum(previous.values(), "turnover_cents")
         current_orders = _available_sum(current.values(), "order_count")
         previous_orders = _available_sum(previous.values(), "order_count")
-        current_returns = _available_sum(current.values(), "return_quantity")
-        previous_returns = _available_sum(previous.values(), "return_quantity")
+        current_refund_orders = _available_sum(current.values(), "refund_order_count")
+        previous_refund_orders = _available_sum(previous.values(), "refund_order_count")
         return OperatingDashboardSummaryRead(
             turnover_cents=current_turnover,
             order_count=current_orders,
-            return_quantity=current_returns,
+            refund_order_count=current_refund_orders,
+            refund_order_coverage_complete=current_refund_coverage_complete,
             shop_count=shop_count,
             turnover_comparison=_comparison(
                 current_turnover,
                 previous_turnover,
                 coverage_complete=(
-                    current_coverage_complete and previous_coverage_complete
+                    current_core_coverage_complete
+                    and previous_core_coverage_complete
                 ),
             ),
             order_comparison=_comparison(
                 current_orders,
                 previous_orders,
                 coverage_complete=(
-                    current_coverage_complete and previous_coverage_complete
+                    current_core_coverage_complete
+                    and previous_core_coverage_complete
                 ),
             ),
-            return_comparison=_comparison(
-                current_returns,
-                previous_returns,
+            refund_order_comparison=_comparison(
+                current_refund_orders,
+                previous_refund_orders,
                 lower_is_better=True,
-                coverage_complete=False,
+                coverage_complete=(
+                    current_refund_coverage_complete
+                    and previous_refund_coverage_complete
+                ),
             ),
             shop_count_comparison=OperatingDashboardComparisonRead(state="unavailable"),
         )
@@ -1670,6 +1749,22 @@ class OperatingDashboardService:
             for day in _calendar_days(range_value.start_date, range_value.end_date)
         )
 
+    @staticmethod
+    def _refund_order_range_coverage_complete(
+        shops: list[DashboardShop],
+        metric_by_shop_date: dict[tuple[UUID, date], ShopOperatingDailyMetric],
+        range_value: OperatingDashboardDateRangeRead,
+    ) -> bool:
+        """Whether every supported Shop/date has a valid refund-time count."""
+
+        return bool(shops) and all(
+            _has_available_refund_order_observation(
+                metric_by_shop_date.get((shop.shop_id, day)),
+            )
+            for shop in shops
+            for day in _calendar_days(range_value.start_date, range_value.end_date)
+        )
+
     def _require_dashboard_access(self, actor: ActorContext) -> None:
         self.module_access_service.require_module_access(actor, ModuleCode.SHOP)
 
@@ -1684,19 +1779,56 @@ class OperatingDashboardService:
 
 
 def _has_complete_daily_metrics(metric: ShopOperatingDailyMetric | None) -> bool:
-    """Only confirmed V1 metrics decide whether a Shop/date is collected.
+    """Only confirmed core metrics decide whether a Shop/date has core facts.
 
-    `0` is a valid platform fact.  Return quantity and experience score have
-    no verified source contract yet, so their nullability never keeps a day in
-    an automatic recovery loop.
+    `0` is a valid platform fact.  The 0040 refund observation extends the
+    daily response contract but does not invalidate existing 0039 core facts.
+    Its separate status decides whether a one-time refund backfill is needed.
     """
 
     return (
         metric is not None
         and metric.source_code == DOUYIN_CORE_INDEX_SOURCE
-        and metric.metric_contract == DOUYIN_CORE_INDEX_CONTRACT
+        and metric.metric_contract in DOUYIN_CORE_INDEX_ACCEPTED_CONTRACTS
         and metric.turnover_cents is not None
         and metric.order_count is not None
+    )
+
+
+def _requires_collection(metric: ShopOperatingDailyMetric | None) -> bool:
+    """Whether a Shop/date needs one normal collection attempt.
+
+    A current core gap always wins. Once the core facts are complete, only an
+    `unobserved` refund field creates the finite 0040 backfill. Explicit
+    unavailable/not-ready/invalid states remain visible but cannot cause a
+    daily scan or repeated normal-button click to keep calling the platform.
+    """
+
+    return not _has_complete_daily_metrics(metric) or (
+        metric is not None
+        and metric.refund_order_status == REFUND_ORDER_STATUS_UNOBSERVED
+    )
+
+
+def _has_available_refund_order_observation(
+    metric: ShopOperatingDailyMetric | None,
+) -> bool:
+    return (
+        metric is not None
+        and metric.source_code == DOUYIN_CORE_INDEX_SOURCE
+        and metric.metric_contract in DOUYIN_CORE_INDEX_ACCEPTED_CONTRACTS
+        and metric.refund_order_status == REFUND_ORDER_STATUS_AVAILABLE
+        and metric.refund_order_count is not None
+    )
+
+
+def _refund_order_requires_attention(metric: ShopOperatingDailyMetric | None) -> bool:
+    """Return true for checked optional responses that need no blind retry."""
+
+    return (
+        _has_complete_daily_metrics(metric)
+        and metric is not None
+        and metric.refund_order_status in REFUND_ORDER_ATTENTION_STATUSES
     )
 
 

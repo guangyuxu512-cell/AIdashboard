@@ -37,6 +37,8 @@ def _metric(
     business_date: date,
     turnover_cents: int,
     order_count: int,
+    refund_order_count: int | None = None,
+    refund_order_status: str = "unobserved",
 ) -> ShopOperatingDailyMetric:
     return ShopOperatingDailyMetric(
         shop_id=shop_id,
@@ -45,6 +47,8 @@ def _metric(
         metric_contract="douyin_compass_daily_v1",
         turnover_cents=turnover_cents,
         order_count=order_count,
+        refund_order_count=refund_order_count,
+        refund_order_status=refund_order_status,
         collected_at=datetime(2026, 9, 20, tzinfo=UTC),
     )
 
@@ -99,8 +103,10 @@ def test_partial_range_keeps_collected_facts_and_marks_coverage_incomplete() -> 
         current,
         current,
         shop_count=2,
-        current_coverage_complete=False,
-        previous_coverage_complete=True,
+        current_core_coverage_complete=False,
+        previous_core_coverage_complete=True,
+        current_refund_coverage_complete=False,
+        previous_refund_coverage_complete=True,
     )
     assert summary.turnover_cents == 300
     assert summary.order_count == 3
@@ -118,3 +124,56 @@ def test_partial_range_keeps_collected_facts_and_marks_coverage_incomplete() -> 
         (0, 0),
     ]
     assert [point.coverage_complete for point in trend] == [True, False]
+
+
+def test_refund_observation_uses_its_own_coverage_and_preserves_zero() -> None:
+    shop_id = uuid4()
+    first_day = date(2026, 9, 18)
+    second_day = date(2026, 9, 19)
+    shops = [DashboardShop(shop_id, "退款口径店铺", ShopPlatform.DOUYIN, True)]
+    selected_range = OperatingDashboardDateRangeRead(
+        start_date=first_day,
+        end_date=second_day,
+    )
+    metrics = {
+        (shop_id, first_day): _metric(
+            shop_id=shop_id,
+            business_date=first_day,
+            turnover_cents=100,
+            order_count=1,
+            refund_order_count=0,
+            refund_order_status="available",
+        ),
+        (shop_id, second_day): _metric(
+            shop_id=shop_id,
+            business_date=second_day,
+            turnover_cents=200,
+            order_count=2,
+            refund_order_count=None,
+            refund_order_status="not_ready",
+        ),
+    }
+
+    values = OperatingDashboardService._shop_range_values(
+        shops,
+        metrics,
+        selected_range,
+    )
+    summary = OperatingDashboardService._summary(
+        values,
+        values,
+        shop_count=1,
+        current_core_coverage_complete=True,
+        previous_core_coverage_complete=True,
+        current_refund_coverage_complete=False,
+        previous_refund_coverage_complete=False,
+    )
+
+    assert values[shop_id].turnover_cents == 300
+    assert values[shop_id].order_count == 3
+    assert values[shop_id].coverage_complete is True
+    assert values[shop_id].refund_order_count == 0
+    assert values[shop_id].refund_order_coverage_complete is False
+    assert summary.refund_order_count == 0
+    assert summary.refund_order_coverage_complete is False
+    assert summary.refund_order_comparison.state == "unavailable"

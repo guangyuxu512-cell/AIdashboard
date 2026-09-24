@@ -472,11 +472,12 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   30 日窗口的缺失以 `manual_backfill_required=true` 明示。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
   卡片汇总整个已授权筛选范围而非当前分页，趋势点只有完全缺失时才为 `null`，表格和趋势的
   `coverage_complete=false` 明确标识部分覆盖；缺失不补零。当前或对比周期有任一必要店铺日期不完整时，环比返回
-  `unavailable`，不伪造涨跌。当前仅
-  `turnover_cents` 和 `order_count` 是已确认的抖店值；`return_quantity` 与
-  `experience_score` 保持 `null`，不能从退款字段或 Mock 推断。
+  `unavailable`，不伪造涨跌。当前已确认的抖店值为 `turnover_cents`、`order_count` 和
+  `refund_order_count`。后者只表示罗盘“退款订单数（退款时间）”，单位为单，不能与同日成交订单相除推断退款率。
+  退款覆盖独立由 `refund_order_coverage_complete` 表示：有有效观测时可展示已采集合计，范围不完整时不产生环比；
+  `experience_score` 仍保持 `null`。
 - `POST /api/v1/operating-dashboard/collections`：普通“更新数据”只按当前日期/平台/店铺范围检查并补齐当前
-  `turnover_cents + order_count` 的缺口，返回 `200` 的 submission（`up_to_date / collection_queued /
+  核心成交缺口，以及 0040 前日事实的一次 `refund_order_count` 待观测状态，返回 `200` 的 submission（`up_to_date / collection_queued /
   attention_required / unsupported`）而不是强行制造空 job。已完整的核心事实返回 `up_to_date`，不创建 job/item、
   不发平台请求；有缺口时只创建允许补采的店铺日期，已有 pending/running/等待重新授权 item 则复用。终态不可重试
   结果、重试冷却或尝试上限返回 `attention_required`，不会因连续点击绕过保护。它始终覆盖符合条件的所有授权 Shop，
@@ -485,7 +486,7 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 - `POST /api/v1/operating-dashboard/collections/recollect`：只有用户从次级“重新采集当前筛选范围”操作明确发起时，
   才对所选、最多 60 个完整自然日的已支持范围请求重新采集。它仍复用权限、停用、范围、活动 item、终态失败、
   冷却、并发与幂等保护；失败绝不清空此前成功事实。submission 的 `queued_shop_days / active_shop_days /
-  blocked_shop_days` 只表达脱敏的店铺日期计数。
+  blocked_shop_days / refund_attention_shop_days` 只表达脱敏的店铺日期计数。
   手动和 retry job 在真正发出每个请求前还会以保存的发起用户和 Team context 重新解析模块及 Shop 授权；
   调组、停用或撤销 Shop 访问后标记 `COLLECTION_REQUESTER_ACCESS_REVOKED`，不调用平台。
 - `GET /api/v1/operating-dashboard/collections/{collection_job_id}`：返回当前 Actor 可读取 Shop 对应的脱敏
@@ -499,15 +500,18 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 
 ### 当前指标契约与解析恢复边界
 
-`core_index_v3` 当前正式持久化契约仅为 `income_amt`（成交金额，整数分）和 `pay_cnt`（成交订单数）。
-平台在 `st=0` 的响应中可以按店铺或日期省略其它卡片字段；这些尚未持久化的字段不是当前成功条件。只有两个
-已确认字段自身缺失、为 `null` 或不符合固定嵌套结构时，采集 item 才以
+`core_index_v3` 当前正式持久化契约为 `income_amt`（成交金额，整数分）、`pay_cnt`（成交订单数）与可选
+`refund_order_cnt`（页面“退款订单数（退款时间）”，单位单）。三者均从固定路径
+`data.module_data.homepage_core_index.compass_general_multi_index_card_value.data[0].<metric>.index_value.value.value`
+读取；金额不使用浮点累计，订单数不从 `last_value` 读取。只有两个核心成交字段自身缺失、为 `null` 或不符合固定嵌套结构时，采集 item 才以
 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 失败，并返回不含平台响应内容的安全提示。
 
-`refund_order_cnt` 与 `refund_order_cnt_pay_time` 已在同一响应中观察到，但尚未建立“页面指标名 → 字段 →
-日期归属/修订规则”的正式证据，不能据字段名映射到 `return_quantity` 或“退货数量”。因此当前 API 的
-`return_quantity` 和 `experience_score` 继续返回 `null`。商家体验分没有已验证的服务端 Endpoint、响应路径和
-时间语义，不能由 Mock 或罗盘其它指标推断。
+`refund_order_cnt` 已由同一页面指标“退款订单数（退款时间）”确认，不表示退货件数，也不表示按支付时间统计的退款订单。
+同一响应中的 `refund_order_cnt_pay_time` 是独立“退款订单数（支付时间）”指标，本期不解析、不存储、不展示，也不能
+代替前者。可选退款字段缺失、`null` 或异常结构分别记录为 `unavailable / not_ready / invalid`，不使有效成交事实失败，
+不转成 0，也不触发无限自动补采；已有 0039 核心事实只在 `unobserved` 状态下接受一次有界退款观测。显式“重新采集”
+可以按既有范围和权限重新取得该日观测，失败不清空既有成功值。商家体验分没有已验证的服务端 Endpoint、响应路径和
+时间语义，继续返回 `null`，不能由 Mock 或罗盘其它指标推断。
 
 旧的不可重试解析失败不会被全局改写为可重试。修复上线后，只能通过既有持久化采集入口重新提交已经由受控
 样本证明受该解析缺陷影响的店铺日期；原失败 item 仍保留审计记录，成功结果按同一 Shop/业务日期幂等覆盖日事实。

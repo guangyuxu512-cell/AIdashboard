@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { NTooltip } from 'naive-ui'
+
 import StatCard from '@/shared/components/StatCard.vue'
 import SummaryGrid from '@/shared/components/SummaryGrid.vue'
 
@@ -18,9 +20,15 @@ const props = defineProps<{
   comparisonLabel: string
 }>()
 
-function formatCountWithUnit(value: number | null, unit: string): string {
+function formatCountWithUnit(
+  value: number | null,
+  unit: string,
+  partial = false,
+): string {
   const formatted = formatDashboardCount(value)
-  return value === null ? formatted : `${formatted} ${unit}`
+  return value === null
+    ? formatted
+    : `${formatted}${partial ? '（部分）' : ''} ${unit}`
 }
 
 function getCardTone(
@@ -37,21 +45,33 @@ const cards = () => [
     label: '成交金额',
     value: formatDashboardCurrency(props.summary.turnoverCents),
     comparison: props.summary.turnoverComparison,
+    hint: undefined,
   },
   {
     label: '成交订单',
     value: formatCountWithUnit(props.summary.orderCount, '单'),
     comparison: props.summary.orderComparison,
+    hint: undefined,
   },
   {
-    label: '退货数量',
-    value: formatCountWithUnit(props.summary.returnQuantity, '件'),
-    comparison: props.summary.returnComparison,
+    label: '退款订单数',
+    value: formatCountWithUnit(
+      props.summary.refundOrderCount,
+      '单',
+      props.summary.refundOrderCoverageComplete === false &&
+        props.summary.refundOrderCount !== null,
+    ),
+    comparison: props.summary.refundOrderComparison,
+    hint:
+      props.summary.refundOrderCoverageComplete === false
+        ? '按退款时间统计；所选范围内仅部分日期有有效退款订单数据'
+        : '按退款时间统计',
   },
   {
     label: '店铺数量',
     value: formatCountWithUnit(props.summary.shopCount, '家'),
     comparison: props.summary.shopCountComparison,
+    hint: undefined,
   },
 ]
 </script>
@@ -66,6 +86,17 @@ const cards = () => [
         :value="card.value"
         :tone="getCardTone(card.comparison)"
       >
+        <template #label>
+          <NTooltip v-if="card.hint">
+            <template #trigger>
+              <span class="operating-dashboard-summary__metric-label">
+                {{ card.label }}
+              </span>
+            </template>
+            {{ card.hint }}
+          </NTooltip>
+          <template v-else>{{ card.label }}</template>
+        </template>
         <template #description>
           <span class="operating-dashboard-summary__comparison">
             <span>{{ comparisonLabel }}</span>
@@ -97,5 +128,9 @@ const cards = () => [
 
 .operating-dashboard-summary__comparison-value--neutral {
   color: var(--text-secondary);
+}
+
+.operating-dashboard-summary__metric-label {
+  cursor: help;
 }
 </style>

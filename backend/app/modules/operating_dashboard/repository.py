@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from typing import Iterable
 from uuid import UUID
 
-from sqlalchemy import exists, func, or_, select, update
+from sqlalchemy import case, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -215,6 +215,8 @@ class OperatingDashboardRepository:
         metric_contract: str,
         turnover_cents: int | None,
         order_count: int | None,
+        refund_order_count: int | None = None,
+        refund_order_status: str = "unobserved",
         collected_at: datetime,
     ) -> None:
         statement = insert(ShopOperatingDailyMetric).values(
@@ -224,6 +226,8 @@ class OperatingDashboardRepository:
             metric_contract=metric_contract,
             turnover_cents=turnover_cents,
             order_count=order_count,
+            refund_order_count=refund_order_count,
+            refund_order_status=refund_order_status,
             collected_at=collected_at,
         )
         self.session.execute(
@@ -234,6 +238,18 @@ class OperatingDashboardRepository:
                     "metric_contract": statement.excluded.metric_contract,
                     "turnover_cents": statement.excluded.turnover_cents,
                     "order_count": statement.excluded.order_count,
+                    # An incomplete optional observation must not erase a
+                    # previously confirmed nonzero/zero refund count.  The
+                    # latest explicit status still tells readers not to
+                    # present that retained value as a complete observation.
+                    "refund_order_count": case(
+                        (
+                            statement.excluded.refund_order_status == "available",
+                            statement.excluded.refund_order_count,
+                        ),
+                        else_=ShopOperatingDailyMetric.refund_order_count,
+                    ),
+                    "refund_order_status": statement.excluded.refund_order_status,
                     "collected_at": statement.excluded.collected_at,
                     "updated_at": datetime.now(UTC),
                 },
