@@ -5,11 +5,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.core.config import Settings
+from app.modules.operating_dashboard.enums import OperatingCollectionItemStatus
 from app.modules.operating_dashboard.exceptions import (
     OperatingDashboardInvalidRequestError,
 )
 from app.modules.operating_dashboard.models import ShopOperatingDailyMetric
-from app.modules.operating_dashboard.repository import DashboardShop
+from app.modules.operating_dashboard.repository import CollectionItemState, DashboardShop
 from app.modules.operating_dashboard.schemas import OperatingDashboardDateRangeRead
 from app.modules.operating_dashboard.service import OperatingDashboardService
 from app.modules.shops.enums import ShopPlatform
@@ -51,6 +53,157 @@ def _metric(
         refund_order_status=refund_order_status,
         collected_at=datetime(2026, 9, 20, tzinfo=UTC),
     )
+
+
+def _collection_state(
+    *,
+    collection_item_id: UUID,
+    failure_code: str = "DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+    failure_stage: str | None = "response_parse",
+    retryable: bool = False,
+    attempt_count: int = 1,
+    updated_at: datetime = datetime(2026, 9, 23, tzinfo=UTC),
+) -> CollectionItemState:
+    return CollectionItemState(
+        collection_item_id=collection_item_id,
+        collection_job_id=uuid4(),
+        shop_id=uuid4(),
+        business_date=date(2026, 9, 22),
+        status=OperatingCollectionItemStatus.FAILED.value,
+        retryable=retryable,
+        attempt_count=attempt_count,
+        failure_code=failure_code,
+        failure_stage=failure_stage,
+        finished_at=updated_at,
+        updated_at=updated_at,
+        job_kind="daily",
+        requested_by_user_id=None,
+    )
+
+
+def _recovery_service(*, approved_item_ids: frozenset[UUID]) -> OperatingDashboardService:
+    return OperatingDashboardService(
+        None,  # type: ignore[arg-type]
+        settings=Settings(
+            _env_file=None,
+            operating_dashboard_legacy_response_parse_recovery_item_ids=approved_item_ids,
+        ),
+    )
+
+
+def test_legacy_response_parse_recovery_allowlist_uses_json_uuid_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item_id = uuid4()
+    monkeypatch.setenv(
+        "BACKEND_OPERATING_DASHBOARD_LEGACY_RESPONSE_PARSE_RECOVERY_ITEM_IDS",
+        f'["{item_id}"]',
+    )
+
+    assert (
+        Settings(_env_file=None).operating_dashboard_legacy_response_parse_recovery_item_ids
+        == frozenset({item_id})
+    )
+
+
+def test_legacy_response_parse_recovery_requires_exact_approved_original_item() -> None:
+    now = datetime(2026, 9, 24, tzinfo=UTC)
+    approved_item_id = uuid4()
+    service = _recovery_service(approved_item_ids=frozenset({approved_item_id}))
+    approved = _collection_state(collection_item_id=approved_item_id)
+
+    assert service._automatic_gap_recovery_allowed([approved], now=now) is True
+    assert service._manual_gap_recovery_allowed([approved], now=now) is True
+
+    # A generic parse failure remains terminal unless its original UUID was
+    # independently approved at Release Gate.
+    assert (
+        service._automatic_gap_recovery_allowed(
+            [_collection_state(collection_item_id=uuid4())],
+            now=now,
+        )
+        is False
+    )
+    # Even an approved UUID cannot override another stage, the normal
+    # cooldown for a retryable item, or an already-retried old item.
+    assert (
+        service._manual_gap_recovery_allowed(
+            [
+                _collection_state(
+                    collection_item_id=approved_item_id,
+                    failure_stage="platform_response",
+                ),
+            ],
+            now=now,
+        )
+        is False
+    )
+    assert (
+        service._manual_gap_recovery_allowed(
+            [
+                _collection_state(
+                    collection_item_id=approved_item_id,
+                    retryable=True,
+                    updated_at=now,
+                ),
+            ],
+            now=now,
+        )
+        is False
+    )
+    assert (
+        service._automatic_gap_recovery_allowed(
+            [
+                _collection_state(
+                    collection_item_id=approved_item_id,
+                    attempt_count=2,
+                ),
+            ],
+            now=now,
+        )
+        is False
+    )
+
+
+def test_legacy_response_parse_allowlist_does_not_reopen_a_later_failure() -> None:
+    now = datetime(2026, 9, 24, tzinfo=UTC)
+    approved_item_id = uuid4()
+    service = _recovery_service(approved_item_ids=frozenset({approved_item_id}))
+    original = _collection_state(
+        collection_item_id=approved_item_id,
+        updated_at=now - timedelta(hours=2),
+    )
+    later_failure = _collection_state(
+        collection_item_id=uuid4(),
+        updated_at=now - timedelta(hours=1),
+    )
+
+    assert service._automatic_gap_recovery_allowed([original, later_failure], now=now) is False
+    assert service._manual_gap_recovery_allowed([original, later_failure], now=now) is False
+
+
+def test_coverage_maps_failed_state_to_a_safe_reason_from_the_failure_code() -> None:
+    state = _collection_state(collection_item_id=uuid4())
+    service = _recovery_service(approved_item_ids=frozenset())
+    coverage = service._coverage(
+        shops=[
+            DashboardShop(
+                state.shop_id,
+                "覆盖率失败原因店铺",
+                ShopPlatform.DOUYIN,
+                True,
+            ),
+        ],
+        metric_by_shop_date={},
+        collection_states=[state],
+        range_value=OperatingDashboardDateRangeRead(
+            start_date=state.business_date,
+            end_date=state.business_date,
+        ),
+    )
+
+    assert coverage.missing_samples[0].state == "failed"
+    assert coverage.missing_samples[0].failure_reason == "抖店经营数据响应无效"
 
 
 def test_partial_range_keeps_collected_facts_and_marks_coverage_incomplete() -> None:

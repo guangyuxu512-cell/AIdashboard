@@ -83,6 +83,7 @@ interface DashboardReadDto {
       shop_name: string
       business_date: string
       state: OperatingDashboardCoverage['missingSamples'][number]['state']
+      failure_reason: string | null
     }>
     missing_samples_truncated: boolean
     manual_backfill_required: boolean
@@ -257,6 +258,7 @@ export function mapOperatingDashboardRead(
         shopName: sample.shop_name,
         businessDate: sample.business_date,
         state: sample.state,
+        failureReason: sample.failure_reason,
       })),
       missingSamplesTruncated: value.coverage.missing_samples_truncated,
       manualBackfillRequired: value.coverage.manual_backfill_required,

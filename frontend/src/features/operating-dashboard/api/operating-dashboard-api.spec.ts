@@ -78,7 +78,15 @@ const dashboardDto = {
     collected_shop_days: 1,
     total_shop_days: 1,
     missing_shop_days: 0,
-    missing_samples: [],
+    missing_samples: [
+      {
+        shop_id: 'shop-1',
+        shop_name: '测试店铺',
+        business_date: '2026-09-20',
+        state: 'failed' as const,
+        failure_reason: '抖店经营数据响应无效',
+      },
+    ],
     missing_samples_truncated: false,
     manual_backfill_required: false,
   },
@@ -128,6 +136,15 @@ describe('operatingDashboardApi', () => {
       totalShopDays: 1,
       missingShopDays: 0,
     })
+    expect(result.coverage.missingSamples).toEqual([
+      {
+        shopId: 'shop-1',
+        shopName: '测试店铺',
+        businessDate: '2026-09-20',
+        state: 'failed',
+        failureReason: '抖店经营数据响应无效',
+      },
+    ])
     expect(result.collectionAvailable).toBe(true)
     expect(result.summary.turnoverComparison).toEqual({
       state: 'increase',

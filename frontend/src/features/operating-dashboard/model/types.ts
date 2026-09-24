@@ -86,6 +86,8 @@ export interface OperatingDashboardCoverageMissing {
   shopName: string
   businessDate: string
   state: OperatingDashboardCoverageState
+  /** Server-side safe reason only; never an upstream response or credential. */
+  failureReason: string | null
 }
 
 /**
