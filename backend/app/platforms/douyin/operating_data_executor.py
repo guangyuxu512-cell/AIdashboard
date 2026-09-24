@@ -31,6 +31,9 @@ from app.platforms.douyin.operating_data import (
     CompassDailyMetrics,
     DouyinOperatingDataBusinessError,
     DouyinOperatingDataConnector,
+    DouyinOperatingDataMetricMissingError,
+    DouyinOperatingDataMetricNotReadyError,
+    DouyinOperatingDataMetricUnavailableError,
 )
 from app.platforms.exceptions import (
     PlatformAuthenticationInvalidError,
@@ -429,7 +432,7 @@ class SessionAwareDouyinOperatingDataCollector:
             return self._failure(
                 request,
                 stage=CollectionStage.RESPONSE_PARSE,
-                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                failure_code=_response_parse_failure_code(error),
                 failure_message=_safe_response_parse_failure_message(error),
                 retryable=False,
                 requires_reauthorization=False,
@@ -598,6 +601,12 @@ def _error_detail(error: PlatformRequestFailedError, key: str, default: object) 
 def _safe_response_parse_failure_message(error: PlatformResponseInvalidError) -> str:
     """Return a stable parse hint without exposing a platform payload."""
 
+    if isinstance(error, DouyinOperatingDataMetricUnavailableError):
+        return "抖店平台未提供可确认的经营指标值"
+    if isinstance(error, DouyinOperatingDataMetricNotReadyError):
+        return "抖店经营指标暂未就绪"
+    if isinstance(error, DouyinOperatingDataMetricMissingError):
+        return "抖店经营数据响应缺少必要指标"
     metric = _error_detail(error, "metric", None)
     labels = {
         "income_amt": "成交金额",
@@ -606,3 +615,18 @@ def _safe_response_parse_failure_message(error: PlatformResponseInvalidError) ->
     if metric in labels:
         return f"抖店经营数据响应缺少或无法读取必要指标：{labels[metric]}"
     return "抖店经营数据响应无效"
+
+
+def _response_parse_failure_code(error: PlatformResponseInvalidError) -> str:
+    """Map only audited core-value variants to public-safe item codes."""
+
+    if isinstance(
+        error,
+        (
+            DouyinOperatingDataMetricUnavailableError,
+            DouyinOperatingDataMetricNotReadyError,
+            DouyinOperatingDataMetricMissingError,
+        ),
+    ):
+        return error.code
+    return "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"

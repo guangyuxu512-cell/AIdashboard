@@ -81,7 +81,7 @@ export interface OperatingDashboardTablePage {
 }
 
 export type OperatingDashboardCoverageState =
-  'missing' | 'collecting' | 'waiting_reauthorization' | 'failed'
+  'missing' | 'collecting' | 'waiting_reauthorization' | 'failed' | 'unknown'
 
 export interface OperatingDashboardCoverageMissing {
   shopId: string

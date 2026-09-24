@@ -282,7 +282,7 @@ introspection 核对（2026-09-24）：共 **44** 张表，含 Alembic 元数据
 | --- | --- | --- |
 | `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。0040 增加可空 `refund_order_count` 与窄范围 `refund_order_status`，仅记录罗盘 `refund_order_cnt`（“退款订单数〔退款时间〕”，单位单）的观测结果。 | 重采更新同一日事实，不累计；退款字段的 `available / unavailable / not_ready / invalid / unobserved` 区分真实 0、字段缺失、未就绪、结构异常和待一次补观测，不能把未知写成 0；后一次非 available 观测不得清空此前已确认退款值。0041 的起算日不会删除、更改或伪造该表的事实；Shop 停用/移除不删历史；数据保留期限待单独批准。 |
 | `operating_data_collection_jobs` | 异步采集请求组，PK `collection_job_id`，可 FK 请求人及其提交时的 Team context。 | 手动/重试 item 在发出平台请求前按该上下文重新授权；只保存范围/状态，不保存 Cookie、签名或原始响应。全范围早于已确认经营起算日时普通更新不创建空 Job；清理期限待定。 |
-| `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实。0041 会把尚未发起、且早于已确认起算日的 item 标为 `SHOP_NOT_OPERATING_ON_DATE` / `skipped`，不调用平台；清理期限待定。 |
+| `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实。核心固定路径只有 `unit`、无标量值时以 `DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE` 终态记录，不写日事实、不代表 0 或未经营、也不自动重试；直接缺失或显式 null 的核心指标分别使用同一 `unknown` 展示语义的窄范围安全码。0041 会把尚未发起、且早于已确认起算日的 item 标为 `SHOP_NOT_OPERATING_ON_DATE` / `skipped`，不调用平台；清理期限待定。 |
 
 所有表变更均须在同一 Gate 1/Gate 2 中同步：SQLAlchemy Model、Alembic Migration、此数据字典、API/
 兼容说明和真实 PostgreSQL 验证。文档中标为“历史兼容”或“待定”的对象不构成删除授权。

@@ -474,7 +474,7 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；对已确认经营起算日
   的 Shop，只统计所选日期与 `[operating_start_date, end_date]` 的交集，并返回 `not_operating_shop_days`；起算日未知的
   Shop 保留完整选择范围并以 `shops_with_unknown_operating_start` 明示，绝不从首单或接入日期猜测。它返回
-  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed` 状态，但读取
+  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed / unknown` 状态，但读取
   不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；超过自动最近
   30 日窗口的缺失以 `manual_backfill_required=true` 明示。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
   卡片汇总整个已授权筛选范围而非当前分页，趋势点只有完全缺失时才为 `null`，表格和趋势的
@@ -512,8 +512,13 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 `core_index_v3` 当前正式持久化契约为 `income_amt`（成交金额，整数分）、`pay_cnt`（成交订单数）与可选
 `refund_order_cnt`（页面“退款订单数（退款时间）”，单位单）。三者均从固定路径
 `data.module_data.homepage_core_index.compass_general_multi_index_card_value.data[0].<metric>.index_value.value.value`
-读取；金额不使用浮点累计，订单数不从 `last_value` 读取。只有两个核心成交字段自身缺失、为 `null` 或不符合固定嵌套结构时，采集 item 才以
-`DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 失败，并返回不含平台响应内容的安全提示。
+读取；金额不使用浮点累计，订单数不从 `last_value` 读取。受控脱敏样本还确认过固定路径存在、但
+`index_value.value` 只包含 `unit` 而没有标量 `value` 的结构。这一精确结构以
+`DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE / response_parse` 记录为 `coverage.missing_samples[].state=unknown`；
+它不写日事实、不表示 0、不表示未经营，也不自动重试。核心字段直接缺失或标量显式为 `null` 分别以
+`DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING` 或 `DOUYIN_OPERATING_DATA_METRICS_NOT_READY` 记录为同一安全的
+`unknown` 状态。其他不符合固定嵌套结构的响应仍以
+`DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 失败，不能通过递归猜测同名字段恢复数值。
 
 `refund_order_cnt` 已由同一页面指标“退款订单数（退款时间）”确认，不表示退货件数，也不表示按支付时间统计的退款订单。
 同一响应中的 `refund_order_cnt_pay_time` 是独立“退款订单数（支付时间）”指标，本期不解析、不存储、不展示，也不能
@@ -529,4 +534,5 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 
 旧的不可重试解析失败不会被全局改写为可重试。修复上线后，只能通过既有持久化采集入口重新提交已经由受控
 样本证明受该解析缺陷影响的店铺日期；原失败 item 仍保留审计记录，成功结果按同一 Shop/业务日期幂等覆盖日事实。
-退款新增指标的补采与此类核心解析恢复须分别统计和追踪。
+已有 root-only allowlist 只适用于历史通用码 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE` 的精确原 item；
+新的三个 `unknown` 码不在该例外内，避免把尚未有平台语义的指标状态变成每日重试。退款新增指标的补采与此类核心解析恢复须分别统计和追踪。

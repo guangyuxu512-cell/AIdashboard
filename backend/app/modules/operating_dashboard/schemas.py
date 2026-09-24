@@ -80,7 +80,13 @@ class OperatingDashboardCoverageMissingRead(BaseModel):
     business_date: date
     # This is intentionally a presentation-safe state, not a raw platform
     # error or a collection item identifier.
-    state: Literal["missing", "collecting", "waiting_reauthorization", "failed"]
+    state: Literal[
+        "missing",
+        "collecting",
+        "waiting_reauthorization",
+        "failed",
+        "unknown",
+    ]
     # A locally mapped, presentation-safe failure reason.  Raw platform
     # messages and persisted failure details must never appear in coverage.
     failure_reason: str | None = None

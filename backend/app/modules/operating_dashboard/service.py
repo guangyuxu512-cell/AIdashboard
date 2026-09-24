@@ -84,6 +84,13 @@ REFUND_ORDER_ATTENTION_STATUSES = frozenset(
 COVERAGE_MISSING_SAMPLE_LIMIT = 20
 LEGACY_RESPONSE_PARSE_FAILURE_CODE = "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
 LEGACY_RESPONSE_PARSE_FAILURE_STAGE = "response_parse"
+DOUYIN_CORE_METRIC_UNKNOWN_FAILURE_CODES = frozenset(
+    {
+        "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
+        "DOUYIN_OPERATING_DATA_METRICS_NOT_READY",
+        "DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING",
+    },
+)
 SYSTEM_COLLECTION_KINDS = frozenset(
     {
         OperatingCollectionJobKind.INITIAL_BACKFILL.value,
@@ -2029,7 +2036,7 @@ def _latest_collection_states(
 
 def _coverage_state(
     state: CollectionItemState | None,
-) -> Literal["missing", "collecting", "waiting_reauthorization", "failed"]:
+) -> Literal["missing", "collecting", "waiting_reauthorization", "failed", "unknown"]:
     if state is None:
         return "missing"
     if state.status in {
@@ -2040,6 +2047,12 @@ def _coverage_state(
     if state.status == OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value:
         return "waiting_reauthorization"
     if state.status == OperatingCollectionItemStatus.FAILED.value:
+        if state.failure_code in DOUYIN_CORE_METRIC_UNKNOWN_FAILURE_CODES:
+            # The fixed platform path was observed, but it did not supply a
+            # scalar for a required core metric.  This is deliberately not a
+            # retryable platform failure, a numeric zero, or proof that the
+            # Shop was not operating.
+            return "unknown"
         return "failed"
     return "missing"
 
@@ -2229,6 +2242,9 @@ def _safe_failure_message(code: str | None) -> str:
         "SHOP_SESSION_VALIDATION_FAILED": "店铺登录态验证失败",
         "DOUYIN_PLATFORM_TIMEOUT": "抖店平台请求超时",
         "DOUYIN_OPERATING_DATA_INVALID_RESPONSE": "抖店经营数据响应无效",
+        "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE": "抖店平台未提供可确认的经营指标值",
+        "DOUYIN_OPERATING_DATA_METRICS_NOT_READY": "抖店经营指标暂未就绪",
+        "DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING": "抖店经营数据响应缺少必要指标",
         "DOUYIN_PLATFORM_REQUEST_FAILED": "抖店平台请求失败",
         "DOUYIN_OPERATING_DATA_REJECTED": "抖店平台拒绝经营数据请求",
         "COLLECTION_EXECUTION_FAILED": "经营数据采集执行失败",
