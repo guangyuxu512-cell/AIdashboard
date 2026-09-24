@@ -14,6 +14,10 @@ export interface ShopReadDto {
   enabled: boolean
   owner_user_id: string | null
   note: string | null
+  operating_start_date?: string | null
+  operating_start_date_source?: 'manual' | null
+  operating_start_date_set_by_user_id?: string | null
+  operating_start_date_set_at?: string | null
   deleted_at: string | null
   created_at: string
   updated_at: string
@@ -37,6 +41,7 @@ export interface ShopUpdateDto {
   enabled?: boolean
   owner_user_id?: string | null
   note?: string | null
+  operating_start_date?: string | null
 }
 
 export interface ShopDeviceBindingReadDto {

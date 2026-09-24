@@ -110,6 +110,7 @@ class _ShopRangeValues:
     collected_at: datetime | None
     coverage_complete: bool
     refund_order_coverage_complete: bool
+    not_operating_for_range: bool
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,8 @@ class _ManualCollectionPlan:
     active_shop_days: int
     blocked_shop_days: int
     refund_attention_shop_days: int
+    expected_shop_days: int
+    not_operating_shop_days: int
 
 
 class OperatingDashboardService:
@@ -403,6 +406,18 @@ class OperatingDashboardService:
         queued_shop_days = sum(
             len(dates) for dates in plan.business_dates_by_shop.values()
         )
+        if plan.expected_shop_days == 0 and plan.not_operating_shop_days:
+            return OperatingDataCollectionSubmissionRead(
+                state="not_operating",
+                message="所选范围尚未经营，未创建采集任务",
+                collection_job=None,
+                missing_shop_days=0,
+                queued_shop_days=0,
+                active_shop_days=0,
+                blocked_shop_days=0,
+                refund_attention_shop_days=0,
+                not_operating_shop_days=plan.not_operating_shop_days,
+            )
         if job_read is not None:
             return OperatingDataCollectionSubmissionRead(
                 state="collection_queued",
@@ -417,6 +432,7 @@ class OperatingDashboardService:
                 active_shop_days=plan.active_shop_days,
                 blocked_shop_days=plan.blocked_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
+                not_operating_shop_days=plan.not_operating_shop_days,
             )
         if plan.active_shop_days:
             # Authorization can change between the bounded plan and the
@@ -431,6 +447,7 @@ class OperatingDashboardService:
                 active_shop_days=plan.active_shop_days,
                 blocked_shop_days=plan.blocked_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
+                not_operating_shop_days=plan.not_operating_shop_days,
             )
         if plan.blocked_shop_days:
             return OperatingDataCollectionSubmissionRead(
@@ -442,6 +459,7 @@ class OperatingDashboardService:
                 active_shop_days=0,
                 blocked_shop_days=plan.blocked_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
+                not_operating_shop_days=plan.not_operating_shop_days,
             )
         if plan.refund_attention_shop_days:
             return OperatingDataCollectionSubmissionRead(
@@ -453,6 +471,7 @@ class OperatingDashboardService:
                 active_shop_days=0,
                 blocked_shop_days=0,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
+                not_operating_shop_days=plan.not_operating_shop_days,
             )
         return OperatingDataCollectionSubmissionRead(
             state="up_to_date",
@@ -463,6 +482,7 @@ class OperatingDashboardService:
             active_shop_days=0,
             blocked_shop_days=0,
             refund_attention_shop_days=0,
+            not_operating_shop_days=plan.not_operating_shop_days,
         )
 
     def enqueue_initial_backfill_for_shop(
@@ -517,6 +537,7 @@ class OperatingDashboardService:
             shop_name=shop.display_name,
             platform=shop.platform,
             enabled=shop.enabled,
+            operating_start_date=shop.operating_start_date,
         )
         dates_by_shop = self._missing_dates_by_shop(
             shops=[dashboard_shop],
@@ -640,6 +661,10 @@ class OperatingDashboardService:
         now: datetime | None = None,
     ) -> int:
         resolved_now = now or datetime.now(UTC)
+        skipped = self.skip_not_operating_collection_items(
+            shop_id=shop_id,
+            now=resolved_now,
+        )
         job_ids = self.repository.paused_job_ids_for_shop(shop_id)
         resumed = self.repository.resume_paused_reauthorization(
             shop_id=shop_id,
@@ -657,9 +682,41 @@ class OperatingDashboardService:
             now=resolved_now,
             commit=False,
         )
-        if resumed or queued is not None:
+        if resumed or queued is not None or skipped:
             self.session.commit()
         return resumed
+
+    def has_confirmed_metric_before(
+        self,
+        *,
+        shop_id: UUID,
+        operating_start_date: date,
+    ) -> bool:
+        """Expose the boundary-conflict check to the Shop edit transaction."""
+
+        return self.repository.has_confirmed_metric_before(
+            shop_id=shop_id,
+            business_date=operating_start_date,
+        )
+
+    def skip_not_operating_collection_items(
+        self,
+        *,
+        shop_id: UUID,
+        now: datetime,
+    ) -> int:
+        """Stop unstarted work made out-of-scope by a confirmed boundary."""
+
+        job_ids = self.repository.affected_job_ids_for_not_operating_items(
+            shop_id=shop_id,
+        )
+        skipped = self.repository.mark_not_operating_items_skipped(
+            now=now,
+            shop_id=shop_id,
+        )
+        if skipped:
+            self.repository.update_job_statuses(job_ids, now=now)
+        return skipped
 
     def recover_after_backend_startup(
         self,
@@ -749,6 +806,9 @@ class OperatingDashboardService:
         disabled_job_ids = self.repository.affected_job_ids_for_disabled_pending_items(
             collection_job_id=collection_job_id,
         )
+        not_operating_job_ids = self.repository.affected_job_ids_for_not_operating_items(
+            collection_job_id=collection_job_id,
+        )
         expired = self.repository.mark_expired_running_items_pending(
             now=now,
             collection_job_id=collection_job_id,
@@ -757,9 +817,13 @@ class OperatingDashboardService:
             now=now,
             collection_job_id=collection_job_id,
         )
-        if expired or skipped:
+        not_operating_skipped = self.repository.mark_not_operating_items_skipped(
+            now=now,
+            collection_job_id=collection_job_id,
+        )
+        if expired or skipped or not_operating_skipped:
             self.repository.update_job_statuses(
-                (*expired_job_ids, *disabled_job_ids),
+                (*expired_job_ids, *disabled_job_ids, *not_operating_job_ids),
                 now=now,
             )
 
@@ -805,7 +869,9 @@ class OperatingDashboardService:
         dates_by_shop: dict[UUID, list[date]] = {}
         for shop in selected_shops:
             missing_dates: list[date] = []
-            for business_date in reversed(_calendar_days(start_date, end_date)):
+            for business_date in reversed(
+                _expected_dates_for_shop(shop, start_date, end_date),
+            ):
                 metric = metric_by_shop_date.get((shop.shop_id, business_date))
                 if not _requires_collection(metric):
                     continue
@@ -916,8 +982,17 @@ class OperatingDashboardService:
         active_shop_days = 0
         blocked_shop_days = 0
         refund_attention_shop_days = 0
+        expected_shop_days = 0
+        not_operating_shop_days = 0
         for shop in shops:
-            for business_date in reversed(_calendar_days(start_date, end_date)):
+            expected_dates = _expected_dates_for_shop(shop, start_date, end_date)
+            expected_shop_days += len(expected_dates)
+            not_operating_shop_days += _not_operating_days_in_range(
+                shop,
+                start_date,
+                end_date,
+            )
+            for business_date in reversed(expected_dates):
                 metric = metric_by_shop_date.get((shop.shop_id, business_date))
                 requires_collection = _requires_collection(metric)
                 refund_attention = _refund_order_requires_attention(metric)
@@ -963,6 +1038,8 @@ class OperatingDashboardService:
             active_shop_days=active_shop_days,
             blocked_shop_days=blocked_shop_days,
             refund_attention_shop_days=refund_attention_shop_days,
+            expected_shop_days=expected_shop_days,
+            not_operating_shop_days=not_operating_shop_days,
         )
 
     def _manual_gap_recovery_allowed(
@@ -1048,10 +1125,30 @@ class OperatingDashboardService:
             )
             return True
         shop = self.repository.get_shop(claim.shop_id)
-        if shop is not None and shop.enabled and shop.deleted_at is None:
+        if (
+            shop is not None
+            and shop.enabled
+            and shop.deleted_at is None
+            and (
+                shop.operating_start_date is None
+                or claim.business_date >= shop.operating_start_date
+            )
+        ):
             self.session.rollback()
             return False
         now = datetime.now(UTC)
+        if (
+            shop is not None
+            and shop.operating_start_date is not None
+            and claim.business_date < shop.operating_start_date
+        ):
+            self._skip_claim(
+                item,
+                now=now,
+                failure_code="SHOP_NOT_OPERATING_ON_DATE",
+                failure_message="该业务日期早于已确认经营起算日，未发起平台请求",
+            )
+            return True
         self._skip_claim(
             item,
             now=now,
@@ -1516,17 +1613,32 @@ class OperatingDashboardService:
                 missing_samples=[],
                 missing_samples_truncated=False,
                 manual_backfill_required=False,
+                not_operating_shop_days=0,
+                shops_with_unknown_operating_start=0,
+                no_operating_scope=False,
             )
         latest_states = _latest_collection_states(collection_states)
         missing: list[OperatingDashboardCoverageMissingRead] = []
         collected = 0
         dates = _calendar_days(range_value.start_date, range_value.end_date)
+        total = 0
+        not_operating_shop_days = 0
+        shops_with_unknown_operating_start = 0
         shop_by_id = {shop.shop_id: shop for shop in shops}
-        for business_date in reversed(dates):
-            for shop_id, shop in sorted(
-                shop_by_id.items(),
-                key=lambda item: (item[1].shop_name.casefold(), str(item[0])),
-            ):
+        for shop_id, shop in sorted(
+            shop_by_id.items(),
+            key=lambda item: (item[1].shop_name.casefold(), str(item[0])),
+        ):
+            if shop.operating_start_date is None:
+                shops_with_unknown_operating_start += 1
+            expected_dates = _expected_dates_for_shop(
+                shop,
+                range_value.start_date,
+                range_value.end_date,
+            )
+            total += len(expected_dates)
+            not_operating_shop_days += len(dates) - len(expected_dates)
+            for business_date in reversed(expected_dates):
                 metric = metric_by_shop_date.get((shop_id, business_date))
                 if _has_complete_daily_metrics(metric):
                     collected += 1
@@ -1550,13 +1662,16 @@ class OperatingDashboardService:
             state="available",
             supported_shop_count=len(shops),
             collected_shop_days=collected,
-            total_shop_days=len(shops) * len(dates),
+            total_shop_days=total,
             missing_shop_days=len(missing),
             missing_samples=samples,
             missing_samples_truncated=len(missing) > len(samples),
             manual_backfill_required=any(
                 item.business_date < automatic_start for item in missing
             ),
+            not_operating_shop_days=not_operating_shop_days,
+            shops_with_unknown_operating_start=shops_with_unknown_operating_start,
+            no_operating_scope=(total == 0 and not_operating_shop_days > 0),
         )
 
     @staticmethod
@@ -1565,11 +1680,21 @@ class OperatingDashboardService:
         metric_by_shop_date: dict[tuple[UUID, date], ShopOperatingDailyMetric],
         range_value: OperatingDashboardDateRangeRead,
     ) -> dict[UUID, _ShopRangeValues]:
-        dates = _calendar_days(range_value.start_date, range_value.end_date)
         values: dict[UUID, _ShopRangeValues] = {}
         for shop in shops:
-            observations = [metric_by_shop_date.get((shop.shop_id, day)) for day in dates]
-            complete = all(
+            expected_dates = _expected_dates_for_shop(
+                shop,
+                range_value.start_date,
+                range_value.end_date,
+            )
+            observations = [
+                metric_by_shop_date.get((shop.shop_id, day)) for day in expected_dates
+            ]
+            # An all-pre-operation range has no expected observation.  It is
+            # deliberately *not* complete coverage: the separate
+            # ``not_operating_for_range`` flag tells callers why there is no
+            # value, without turning it into a zero or a successful day.
+            complete = bool(observations) and all(
                 _has_complete_daily_metrics(observation)
                 for observation in observations
             )
@@ -1622,6 +1747,9 @@ class OperatingDashboardService:
                     bool(observations)
                     and len(valid_refund_observations) == len(observations)
                 ),
+                not_operating_for_range=(
+                    not expected_dates and shop.operating_start_date is not None
+                ),
             )
         return values
 
@@ -1643,6 +1771,7 @@ class OperatingDashboardService:
                 refund_order_coverage_complete=(
                     values[shop.shop_id].refund_order_coverage_complete
                 ),
+                not_operating_for_range=values[shop.shop_id].not_operating_for_range,
             )
             for shop in shops
         ]
@@ -1738,8 +1867,14 @@ class OperatingDashboardService:
             range_value.start_date,
             range_value.end_date,
         ):
+            operating_shops = [
+                shop
+                for shop in shops
+                if _business_date_is_in_operating_scope(shop, business_date)
+            ]
             observations = [
-                metric_by_shop_date.get((shop.shop_id, business_date)) for shop in shops
+                metric_by_shop_date.get((shop.shop_id, business_date))
+                for shop in operating_shops
             ]
             valid_observations = [
                 item for item in observations if _has_complete_daily_metrics(item)
@@ -1778,10 +1913,16 @@ class OperatingDashboardService:
         complete daily fact through ``_has_complete_daily_metrics``.
         """
 
+        days = _calendar_days(range_value.start_date, range_value.end_date)
         return bool(shops) and all(
-            _has_complete_daily_metrics(metric_by_shop_date.get((shop.shop_id, day)))
+            _shop_has_full_comparable_range(shop, days)
+            and all(
+                _has_complete_daily_metrics(
+                    metric_by_shop_date.get((shop.shop_id, day)),
+                )
+                for day in days
+            )
             for shop in shops
-            for day in _calendar_days(range_value.start_date, range_value.end_date)
         )
 
     @staticmethod
@@ -1792,12 +1933,16 @@ class OperatingDashboardService:
     ) -> bool:
         """Whether every supported Shop/date has a valid refund-time count."""
 
+        days = _calendar_days(range_value.start_date, range_value.end_date)
         return bool(shops) and all(
-            _has_available_refund_order_observation(
-                metric_by_shop_date.get((shop.shop_id, day)),
+            _shop_has_full_comparable_range(shop, days)
+            and all(
+                _has_available_refund_order_observation(
+                    metric_by_shop_date.get((shop.shop_id, day)),
+                )
+                for day in days
             )
             for shop in shops
-            for day in _calendar_days(range_value.start_date, range_value.end_date)
         )
 
     def _require_dashboard_access(self, actor: ActorContext) -> None:
@@ -1934,12 +2079,21 @@ def _prioritized_collection_items(
         else list(reversed(_calendar_days(start_date, end_date)))
     )
     for shop in shops:
-        dates = (
+        requested_dates = (
             business_dates_by_shop.get(shop.shop_id, [])
             if business_dates_by_shop is not None
             else fallback_dates
         )
-        by_shop[shop.shop_id] = (shop, set(dates))
+        # Every caller, including legacy lifecycle callers that still invoke
+        # ``_create_collection_job`` directly, observes a confirmed start
+        # boundary.  This is a defensive final planning gate; it does not
+        # infer a boundary when the date remains unknown.
+        dates = {
+            business_date
+            for business_date in requested_dates
+            if _business_date_is_in_operating_scope(shop, business_date)
+        }
+        by_shop[shop.shop_id] = (shop, dates)
 
     ordered: list[tuple[DashboardShop, date]] = []
     for business_date in sorted(
@@ -1958,6 +2112,59 @@ def _calendar_days(start_date: date, end_date: date) -> list[date]:
         start_date + timedelta(days=offset)
         for offset in range((end_date - start_date).days + 1)
     ]
+
+
+def _business_date_is_in_operating_scope(
+    shop: DashboardShop,
+    business_date: date,
+) -> bool:
+    """Return true unless a confirmed boundary places the date before trade."""
+
+    return (
+        shop.operating_start_date is None
+        or business_date >= shop.operating_start_date
+    )
+
+
+def _expected_dates_for_shop(
+    shop: DashboardShop,
+    start_date: date,
+    end_date: date,
+) -> list[date]:
+    """Intersect a selected range with a confirmed operating period.
+
+    An unknown start date intentionally leaves the range untouched.  The
+    caller must surface that uncertainty rather than infer a boundary from a
+    first order, Shop onboarding timestamp, or a first successful request.
+    """
+
+    effective_start = start_date
+    if shop.operating_start_date is not None:
+        effective_start = max(effective_start, shop.operating_start_date)
+    if effective_start > end_date:
+        return []
+    return _calendar_days(effective_start, end_date)
+
+
+def _not_operating_days_in_range(
+    shop: DashboardShop,
+    start_date: date,
+    end_date: date,
+) -> int:
+    return len(_calendar_days(start_date, end_date)) - len(
+        _expected_dates_for_shop(shop, start_date, end_date),
+    )
+
+
+def _shop_has_full_comparable_range(
+    shop: DashboardShop,
+    days: list[date],
+) -> bool:
+    """A comparison cannot treat pre-operation dates as zero history."""
+
+    return bool(days) and all(
+        _business_date_is_in_operating_scope(shop, day) for day in days
+    )
 
 
 def _shanghai_today(now: datetime | None = None) -> date:

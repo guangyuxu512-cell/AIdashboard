@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum as SqlEnum,
     ForeignKey,
@@ -24,6 +25,17 @@ class Shop(TimestampMixin, Base):
     __tablename__ = "shops"
     __table_args__ = (
         CheckConstraint("length(trim(display_name)) > 0", name="display_name_not_blank"),
+        CheckConstraint(
+            "(operating_start_date IS NULL "
+            "AND operating_start_date_source IS NULL "
+            "AND operating_start_date_set_by_user_id IS NULL "
+            "AND operating_start_date_set_at IS NULL) "
+            "OR (operating_start_date IS NOT NULL "
+            "AND operating_start_date_source IS NOT NULL "
+            "AND operating_start_date_set_by_user_id IS NOT NULL "
+            "AND operating_start_date_set_at IS NOT NULL)",
+            name="operating_start_date_audit_complete",
+        ),
         UniqueConstraint(
             "platform",
             "platform_shop_id",
@@ -65,6 +77,27 @@ class Shop(TimestampMixin, Base):
         index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # This is a deliberately optional, manager-confirmed coverage boundary.
+    # It is not inferred from Control Center onboarding, first collection, or
+    # first order.  The audit fields make the source of an explicit boundary
+    # visible without storing any platform-session material on the Shop.
+    operating_start_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+    operating_start_date_source: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+    operating_start_date_set_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    operating_start_date_set_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

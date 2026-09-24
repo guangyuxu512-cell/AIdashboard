@@ -66,6 +66,7 @@ const dashboardDto = {
         experience_score: null,
         collected_at: '2026-09-21T00:05:00+08:00',
         coverage_complete: true,
+        not_operating_for_range: false,
       },
     ],
     total: 1,
@@ -89,6 +90,9 @@ const dashboardDto = {
     ],
     missing_samples_truncated: false,
     manual_backfill_required: false,
+    not_operating_shop_days: 0,
+    shops_with_unknown_operating_start: 0,
+    no_operating_scope: false,
   },
   collection_available: true,
 }
@@ -128,6 +132,7 @@ describe('operatingDashboardApi', () => {
       refundOrderCoverageComplete: true,
       experience: null,
       coverageComplete: true,
+      notOperatingForRange: false,
     })
     expect(result.trend[0]?.coverageComplete).toBe(true)
     expect(result.tablePage).toEqual({ total: 1, page: 1, pageSize: 10 })
@@ -135,6 +140,7 @@ describe('operatingDashboardApi', () => {
       collectedShopDays: 1,
       totalShopDays: 1,
       missingShopDays: 0,
+      noOperatingScope: false,
     })
     expect(result.coverage.missingSamples).toEqual([
       {

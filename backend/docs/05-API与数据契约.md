@@ -141,6 +141,11 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 
 `Shop.enabled=true/false` 分别表示店铺可/不可参与正常系统业务；当前不存在 `automation_enabled`，禁止用 `Shop.enabled` 表达自动化总开关。
 
+`PATCH /api/v1/shops/{shop_id}` 的当前超级账号可以显式提交可空 `operating_start_date`。该日期仅用于界定经营数据
+应采覆盖范围，不是店铺加入中控台、首次采集或首次出单日期；显式 `null` 表示经营起算日未确认。来源、设置人和时间由
+服务端写入并只读返回，客户端不能伪造审计字段。若拟定日期之前已有任何已确认成交、订单或退款事实，服务端返回
+`409 OPERATING_START_DATE_CONFLICT`，而不是隐藏既有事实。来源未知时，经营看板保留完整选择范围作为应采范围。
+
 ## Credential / Session Metadata Contract
 
 阶段 3A 增加：
@@ -466,23 +471,27 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   60 天且不含今天。可选 `platform / shop_id`，可选且必须成对的 `sort_field / sort_direction`，以及统一
   `page / page_size`。后端先权限过滤、业务筛选、全量稳定排序、最后分页。响应包含 selected/comparison/trend
   date ranges、当前授权 Shop candidates、四卡、趋势、`table.items/total/page/page_size`、当前范围的
-  `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；它返回
+  `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；对已确认经营起算日
+  的 Shop，只统计所选日期与 `[operating_start_date, end_date]` 的交集，并返回 `not_operating_shop_days`；起算日未知的
+  Shop 保留完整选择范围并以 `shops_with_unknown_operating_start` 明示，绝不从首单或接入日期猜测。它返回
   已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed` 状态，但读取
   不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；超过自动最近
   30 日窗口的缺失以 `manual_backfill_required=true` 明示。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
   卡片汇总整个已授权筛选范围而非当前分页，趋势点只有完全缺失时才为 `null`，表格和趋势的
   `coverage_complete=false` 明确标识部分覆盖；缺失不补零。当前或对比周期有任一必要店铺日期不完整时，环比返回
-  `unavailable`，不伪造涨跌。当前已确认的抖店值为 `turnover_cents`、`order_count` 和
+  `unavailable`，不伪造涨跌。全范围都早于已确认起算日时 `coverage.no_operating_scope=true`，UI 显示“该范围尚未经营”，
+  而不是伪造 0 或失败。当前已确认的抖店值为 `turnover_cents`、`order_count` 和
   `refund_order_count`。后者只表示罗盘“退款订单数（退款时间）”，单位为单，不能与同日成交订单相除推断退款率。
   退款覆盖独立由 `refund_order_coverage_complete` 表示：有有效观测时可展示已采集合计，范围不完整时不产生环比；
   `experience_score` 仍保持 `null`。
 - `POST /api/v1/operating-dashboard/collections`：普通“更新数据”只按当前日期/平台/店铺范围检查并补齐当前
   核心成交缺口，以及 0040 前日事实的一次 `refund_order_count` 待观测状态，返回 `200` 的 submission（`up_to_date / collection_queued /
-  attention_required / unsupported`）而不是强行制造空 job。已完整的核心事实返回 `up_to_date`，不创建 job/item、
+  attention_required / unsupported / not_operating`）而不是强行制造空 job。已完整的核心事实返回 `up_to_date`，不创建 job/item、
   不发平台请求；有缺口时只创建允许补采的店铺日期，已有 pending/running/等待重新授权 item 则复用。终态不可重试
   结果、重试冷却或尝试上限返回 `attention_required`，不会因连续点击绕过保护。它始终覆盖符合条件的所有授权 Shop，
   而非当前表格页；停用、删除、无授权或未接入平台的 Shop 不会触发平台请求。当前环境未启用执行器时返回
-  `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`，不会创建永远 pending 的手动任务。
+  `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`，不会创建永远 pending 的手动任务。全范围早于已确认经营起算日返回
+  `not_operating`，不创建 Job 或 Item；所有兼容入队路径在持久化前也会再次按起算日裁剪。
 - `POST /api/v1/operating-dashboard/collections/recollect`：只有用户从次级“重新采集当前筛选范围”操作明确发起时，
   才对所选、最多 60 个完整自然日的已支持范围请求重新采集。它仍复用权限、停用、范围、活动 item、终态失败、
   冷却、并发与幂等保护；失败绝不清空此前成功事实。submission 的 `queued_shop_days / active_shop_days /
@@ -512,6 +521,11 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 不转成 0，也不触发无限自动补采；已有 0039 核心事实只在 `unobserved` 状态下接受一次有界退款观测。显式“重新采集”
 可以按既有范围和权限重新取得该日观测，失败不清空既有成功值。商家体验分没有已验证的服务端 Endpoint、响应路径和
 时间语义，继续返回 `null`，不能由 Mock 或罗盘其它指标推断。
+
+平台明确的数值 `0` 是有效事实；HTTP 200、业务成功、空对象、缺字段或 `null` 单独都不足以表示零值。当前仅有受控
+服务端样本证明 2026-09-16 的退款字段显式为 0；2026-09-15 的核心字段在成功包装结构中缺失，仍分类为未知的
+`response_parse`，不能据此推断未经营或零成交。尚未取得真实“成交金额 0、成交订单 0、退款订单大于 0”平台样本，
+该组合由契约测试覆盖，不能冒充为真实平台验证；也尚未取得可信的抖店开业/经营起始日期接口语义。
 
 旧的不可重试解析失败不会被全局改写为可重试。修复上线后，只能通过既有持久化采集入口重新提交已经由受控
 样本证明受该解析缺陷影响的店铺日期；原失败 item 仍保留审计记录，成功结果按同一 Shop/业务日期幂等覆盖日事实。

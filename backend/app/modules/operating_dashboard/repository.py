@@ -41,6 +41,10 @@ class DashboardShop:
     shop_name: str
     platform: ShopPlatform
     enabled: bool
+    # Null means the platform has not supplied a reliable opening date and no
+    # authorized manager has confirmed one.  Callers must retain their full
+    # selected range in that case rather than guessing from other timestamps.
+    operating_start_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,7 @@ class OperatingDashboardRepository:
                 shop_name=shop.display_name,
                 platform=shop.platform,
                 enabled=shop.enabled,
+                operating_start_date=shop.operating_start_date,
             )
             for shop in self.session.scalars(
                 statement.order_by(Shop.display_name.asc(), Shop.shop_id.asc()),
@@ -305,6 +310,7 @@ class OperatingDashboardRepository:
                 shop_name=shop.display_name,
                 platform=shop.platform,
                 enabled=shop.enabled,
+                operating_start_date=shop.operating_start_date,
             )
             for shop in self.session.scalars(
                 select(Shop)
@@ -316,6 +322,33 @@ class OperatingDashboardRepository:
                 .order_by(Shop.shop_id.asc()),
             )
         ]
+
+    def has_confirmed_metric_before(
+        self,
+        *,
+        shop_id: UUID,
+        business_date: date,
+    ) -> bool:
+        """Whether a proposed start date would hide a confirmed fact.
+
+        This is intentionally broader than the current core-contract helper:
+        an earlier confirmed refund observation is also evidence that the
+        Shop was operating and must not be silently excluded from reads.
+        """
+
+        return self.session.scalar(
+            select(ShopOperatingDailyMetric.metric_id)
+            .where(
+                ShopOperatingDailyMetric.shop_id == shop_id,
+                ShopOperatingDailyMetric.business_date < business_date,
+                or_(
+                    ShopOperatingDailyMetric.turnover_cents.is_not(None),
+                    ShopOperatingDailyMetric.order_count.is_not(None),
+                    ShopOperatingDailyMetric.refund_order_count.is_not(None),
+                ),
+            )
+            .limit(1),
+        ) is not None
 
     def list_job_items(
         self,
@@ -488,6 +521,97 @@ class OperatingDashboardRepository:
             ),
         )
 
+    def affected_job_ids_for_not_operating_items(
+        self,
+        *,
+        shop_id: UUID | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        """Find unstarted work that predates an explicit start boundary."""
+
+        conditions = [
+            OperatingDataCollectionItem.status.in_(
+                [
+                    OperatingCollectionItemStatus.PENDING.value,
+                    OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value,
+                ],
+            ),
+            exists(
+                select(Shop.shop_id).where(
+                    Shop.shop_id == OperatingDataCollectionItem.shop_id,
+                    Shop.operating_start_date.is_not(None),
+                    OperatingDataCollectionItem.business_date
+                    < Shop.operating_start_date,
+                ),
+            ),
+        ]
+        if shop_id is not None:
+            conditions.append(OperatingDataCollectionItem.shop_id == shop_id)
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
+        return tuple(
+            self.session.scalars(
+                select(OperatingDataCollectionItem.collection_job_id)
+                .where(*conditions)
+                .distinct(),
+            ),
+        )
+
+    def mark_not_operating_items_skipped(
+        self,
+        *,
+        now: datetime,
+        shop_id: UUID | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> int:
+        """Skip only work whose date is now outside a confirmed boundary.
+
+        Already-running requests are not touched here.  The service performs
+        one final boundary check before external I/O, so a concurrent Shop
+        edit cannot turn into an unbounded request or silently delete facts.
+        """
+
+        conditions = [
+            OperatingDataCollectionItem.status.in_(
+                [
+                    OperatingCollectionItemStatus.PENDING.value,
+                    OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value,
+                ],
+            ),
+            exists(
+                select(Shop.shop_id).where(
+                    Shop.shop_id == OperatingDataCollectionItem.shop_id,
+                    Shop.operating_start_date.is_not(None),
+                    OperatingDataCollectionItem.business_date
+                    < Shop.operating_start_date,
+                ),
+            ),
+        ]
+        if shop_id is not None:
+            conditions.append(OperatingDataCollectionItem.shop_id == shop_id)
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
+        result = self.session.execute(
+            update(OperatingDataCollectionItem)
+            .where(*conditions)
+            .values(
+                status=OperatingCollectionItemStatus.SKIPPED.value,
+                retryable=False,
+                retry_after=None,
+                failure_code="SHOP_NOT_OPERATING_ON_DATE",
+                failure_message="该业务日期早于已确认经营起算日，未发起平台请求",
+                failure_stage="queued",
+                lease_until=None,
+                finished_at=now,
+                updated_at=now,
+            ),
+        )
+        return int(result.rowcount or 0)
+
     def acquire_global_claim_lock(self) -> None:
         """Serialize the short claim transaction across PostgreSQL processes.
 
@@ -555,6 +679,10 @@ class OperatingDashboardRepository:
             ),
             Shop.enabled.is_(True),
             Shop.deleted_at.is_(None),
+            or_(
+                Shop.operating_start_date.is_(None),
+                OperatingDataCollectionItem.business_date >= Shop.operating_start_date,
+            ),
             no_running_for_shop,
         ]
         if collection_job_id is not None:

@@ -58,4 +58,48 @@ describe('OperatingDashboardFilterBar', () => {
       (wrapper.vm as unknown as { coverageDetail: string }).coverageDetail,
     ).toBe('测试店铺 · 2026-09-22 · 采集失败（抖店经营数据响应无效）')
   })
+
+  it('distinguishes a confirmed pre-operation range from missing collection', () => {
+    const wrapper = mount(OperatingDashboardFilterBar, {
+      props: {
+        modelValue: {
+          datePreset: 'last30Days',
+          customDateRange: null,
+          shopId: 'shop-1',
+          platform: 'douyin',
+        },
+        shopOptions: [],
+        platformOptions: [],
+        refreshAvailable: true,
+        coverage: {
+          state: 'available',
+          supportedShopCount: 1,
+          collectedShopDays: 0,
+          totalShopDays: 0,
+          missingShopDays: 0,
+          missingSamples: [],
+          missingSamplesTruncated: false,
+          manualBackfillRequired: false,
+          notOperatingShopDays: 30,
+          shopsWithUnknownOperatingStart: 0,
+          noOperatingScope: true,
+        },
+      },
+      global: {
+        stubs: {
+          FilterBar: {
+            template: '<div><slot /><slot name="primary-action" /></div>',
+          },
+          FilterField: { template: '<div><slot /></div>' },
+          AppButton: { template: '<button><slot /></button>' },
+          AppRadio: true,
+          AppSelect: true,
+          NDropdown: { template: '<div><slot /></div>' },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('该范围尚未经营')
+    expect(wrapper.text()).not.toContain('0/30 个应采店铺日期')
+  })
 })

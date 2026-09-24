@@ -50,6 +50,7 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDataCollectionRequest,
 )
 from app.modules.shops.enums import ShopPlatform
+from app.modules.shops.exceptions import OperatingStartDateConflictError
 from app.modules.shops.models import Shop
 from app.modules.shops.schemas import ShopUpdate
 from app.modules.shops.service import ShopService
@@ -372,6 +373,145 @@ def test_postgresql_dashboard_scope_sort_and_idempotent_metric_update(
         with Session(postgresql_engine) as session:
             session.execute(delete(Team).where(Team.team_id.in_([team_id, other_team_id])))
             session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_operating_start_date_scopes_coverage_without_hiding_confirmed_facts(
+    postgresql_engine: Engine,
+) -> None:
+    """Feature-DB proof for zero values, queue scope, and audit metadata."""
+
+    manager_id = uuid4()
+    shop_ids: set[UUID] = set()
+    start_date = DAY_TWO
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add(User(user_id=manager_id, display_name="经营起算日管理员"))
+            shop = _seed_shop(session, display_name="起算日覆盖夹具")
+            session.flush()
+            shop_ids.add(shop.shop_id)
+            dashboard = _service(session)
+            dashboard._create_collection_job(
+                kind=OperatingCollectionJobKind.DAILY,
+                start_date=DAY_ONE,
+                end_date=DAY_TWO,
+                shops=[
+                    DashboardShop(
+                        shop_id=shop.shop_id,
+                        shop_name=shop.display_name,
+                        platform=shop.platform,
+                        enabled=shop.enabled,
+                    ),
+                ],
+                requested_by_user_id=None,
+                business_dates_by_shop={shop.shop_id: [DAY_ONE, DAY_TWO]},
+            )
+
+            manager = _actor(
+                user_id=manager_id,
+                team_id=None,
+                super_account=True,
+            )
+            updated = ShopService(session).update(
+                manager,
+                shop.shop_id,
+                ShopUpdate(operating_start_date=start_date),
+            )
+            assert updated.operating_start_date == start_date
+            assert updated.operating_start_date_source == "manual"
+            assert updated.operating_start_date_set_by_user_id == manager_id
+            assert updated.operating_start_date_set_at is not None
+
+            items = list(
+                session.scalars(
+                    select(OperatingDataCollectionItem)
+                    .where(OperatingDataCollectionItem.shop_id == shop.shop_id)
+                    .order_by(OperatingDataCollectionItem.business_date.asc()),
+                ),
+            )
+            assert [item.status for item in items] == [
+                OperatingCollectionItemStatus.SKIPPED.value,
+                OperatingCollectionItemStatus.PENDING.value,
+            ]
+            assert items[0].failure_code == "SHOP_NOT_OPERATING_ON_DATE"
+
+            # The public ordinary-update path must not create a new durable
+            # job (or platform work) for an all-pre-operation selection.
+            existing_job_count = int(
+                session.scalar(
+                    select(func.count()).select_from(OperatingDataCollectionJob),
+                )
+                or 0,
+            )
+            pre_operation_submission = dashboard.request_collection_update(
+                actor=manager,
+                request=OperatingDataCollectionRequest(
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                    platform=ShopPlatform.DOUYIN,
+                    shop_id=shop.shop_id,
+                ),
+                now=datetime(2026, 9, 20, tzinfo=UTC),
+            )
+            assert pre_operation_submission.state == "not_operating"
+            assert pre_operation_submission.collection_job is None
+            assert pre_operation_submission.queued_shop_days == 0
+            assert pre_operation_submission.not_operating_shop_days == 1
+            assert (
+                session.scalar(
+                    select(func.count()).select_from(OperatingDataCollectionJob),
+                )
+                == existing_job_count
+            )
+
+            dashboard.repository.upsert_daily_metric(
+                shop_id=shop.shop_id,
+                business_date=DAY_TWO,
+                source_code=DOUYIN_CORE_INDEX_SOURCE,
+                metric_contract=DOUYIN_CORE_INDEX_CONTRACT,
+                turnover_cents=0,
+                order_count=0,
+                refund_order_count=3,
+                refund_order_status="available",
+                collected_at=datetime(2026, 9, 20, tzinfo=UTC),
+            )
+            session.commit()
+
+            read = dashboard.read(
+                actor=manager,
+                start_date=DAY_ONE,
+                end_date=DAY_TWO,
+                platform=ShopPlatform.DOUYIN,
+                shop_id=shop.shop_id,
+                sort_field=None,
+                sort_direction=None,
+                pagination=PaginationParams(page=1, page_size=20),
+            )
+            assert read.coverage.total_shop_days == 1
+            assert read.coverage.collected_shop_days == 1
+            assert read.coverage.missing_shop_days == 0
+            assert read.coverage.not_operating_shop_days == 1
+            assert read.table.items[0].turnover_cents == 0
+            assert read.table.items[0].order_count == 0
+            assert read.table.items[0].refund_order_count == 3
+            assert read.table.items[0].coverage_complete is True
+            assert read.summary.turnover_cents == 0
+            assert read.summary.order_count == 0
+            assert read.summary.refund_order_count == 3
+
+            # A later boundary would hide the actual zero/positive-refund
+            # fact; it must reject rather than silently shrink the UI scope.
+            with pytest.raises(OperatingStartDateConflictError):
+                ShopService(session).update(
+                    manager,
+                    shop.shop_id,
+                    ShopUpdate(operating_start_date=DAY_TWO + timedelta(days=1)),
+                )
+            session.rollback()
+    finally:
+        _cleanup(postgresql_engine, shop_ids)
+        with Session(postgresql_engine) as session:
+            session.execute(delete(User).where(User.user_id == manager_id))
             session.commit()
 
 

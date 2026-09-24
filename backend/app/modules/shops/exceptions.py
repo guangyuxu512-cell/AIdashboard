@@ -17,3 +17,11 @@ class ImmutableShopIdentityError(AppError):
     code = "IMMUTABLE_SHOP_IDENTITY"
     message = "平台识别店铺的名称与平台不可修改"
     status_code = 409
+
+
+class OperatingStartDateConflictError(AppError):
+    """A confirmed fact would be hidden by a newly proposed start date."""
+
+    code = "OPERATING_START_DATE_CONFLICT"
+    message = "该经营起算日前已有已确认经营数据，请核实后再设置"
+    status_code = 409
