@@ -13,6 +13,9 @@ from app.platforms.douyin.api_client import DouyinApiClient
 from app.platforms.douyin.operating_data import (
     DouyinOperatingDataBusinessError,
     DouyinOperatingDataConnector,
+    DouyinOperatingDataMetricMissingError,
+    DouyinOperatingDataMetricNotReadyError,
+    DouyinOperatingDataMetricUnavailableError,
     build_core_index_query,
     parse_core_index_metrics,
     previous_completed_shanghai_date,
@@ -139,17 +142,28 @@ def test_previous_completed_date_uses_asia_shanghai_calendar() -> None:
     ) == date(2026, 9, 19)
 
 
-def test_core_index_parser_keeps_null_as_missing_and_rejects_business_or_core_shape_errors() -> None:
+def test_core_index_parser_classifies_unknown_required_metric_states_without_fabricating_zero() -> None:
     payload = _payload()
     card = payload["data"]["module_data"]["homepage_core_index"][
         "compass_general_multi_index_card_value"
     ]["data"][0]
     card["income_amt"] = _metric(None)
 
-    metrics = parse_core_index_metrics(payload)
+    with pytest.raises(DouyinOperatingDataMetricNotReadyError) as not_ready:
+        parse_core_index_metrics(payload)
+    assert not_ready.value.code == "DOUYIN_OPERATING_DATA_METRICS_NOT_READY"
 
-    assert metrics.income_amt_cents is None
-    assert metrics.income_amt_yuan is None
+    unit_only = _payload()
+    unit_only_card = unit_only["data"]["module_data"]["homepage_core_index"][
+        "compass_general_multi_index_card_value"
+    ]["data"][0]
+    # This exact value-container shape came from the controlled, redacted
+    # production response.  It identifies neither zero activity nor a Shop
+    # lifecycle boundary because no scalar value was supplied.
+    unit_only_card["income_amt"] = {"index_value": {"value": {"unit": "元"}}}
+    with pytest.raises(DouyinOperatingDataMetricUnavailableError) as unavailable:
+        parse_core_index_metrics(unit_only)
+    assert unavailable.value.code == "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE"
 
     with pytest.raises(DouyinOperatingDataBusinessError):
         parse_core_index_metrics(_payload(status=100008))
@@ -159,8 +173,33 @@ def test_core_index_parser_keeps_null_as_missing_and_rejects_business_or_core_sh
         "compass_general_multi_index_card_value"
     ]["data"][0]
     broken_card.pop("pay_cnt")
-    with pytest.raises(PlatformResponseInvalidError):
+    with pytest.raises(DouyinOperatingDataMetricMissingError) as missing:
         parse_core_index_metrics(broken)
+    assert missing.value.code == "DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING"
+
+    malformed = _payload()
+    malformed_card = malformed["data"]["module_data"]["homepage_core_index"][
+        "compass_general_multi_index_card_value"
+    ]["data"][0]
+    malformed_card["pay_cnt"] = {"index_value": {"value": {"unexpected": "shape"}}}
+    with pytest.raises(PlatformResponseInvalidError) as invalid:
+        parse_core_index_metrics(malformed)
+    assert type(invalid.value) is PlatformResponseInvalidError
+
+
+def test_core_index_parser_preserves_explicit_zero_core_values() -> None:
+    payload = _payload()
+    card = payload["data"]["module_data"]["homepage_core_index"][
+        "compass_general_multi_index_card_value"
+    ]["data"][0]
+    card["income_amt"] = _metric(0)
+    card["pay_cnt"] = _metric(0)
+
+    metrics = parse_core_index_metrics(payload)
+
+    assert metrics.income_amt_cents == 0
+    assert metrics.income_amt_yuan == Decimal("0")
+    assert metrics.pay_cnt == 0
 
 
 def test_core_index_parser_does_not_require_unpersisted_card_metrics() -> None:

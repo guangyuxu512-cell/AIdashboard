@@ -7,7 +7,11 @@ from uuid import UUID, uuid4
 from app.modules.sessions.auth_context import ShopSessionAuthContext, StoredSessionCookie
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.shops.enums import ShopPlatform
-from app.platforms.douyin.operating_data import CompassDailyMetrics, CompassDailyRead
+from app.platforms.douyin.operating_data import (
+    CompassDailyMetrics,
+    CompassDailyRead,
+    DouyinOperatingDataMetricUnavailableError,
+)
 from app.platforms.douyin.operating_data_executor import (
     CollectionOutcome,
     CollectionStage,
@@ -292,6 +296,22 @@ def test_session_aware_collector_keeps_required_metric_parse_hint_safe() -> None
     assert outcome.failure_code == "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
     assert outcome.failure_message == "抖店经营数据响应缺少或无法读取必要指标：成交订单数"
     assert outcome.retryable is False
+
+
+def test_session_aware_collector_marks_a_known_scalarless_core_value_unknown() -> None:
+    collector, _, accessor = _session_collector(
+        DouyinOperatingDataMetricUnavailableError(
+            details={"failure_stage": "core_index_parse", "metric": "income_amt"},
+        ),
+    )
+
+    outcome = collector.collect(DailyCollectionRequest(accessor.context.shop_id, DAY))
+
+    assert outcome.stage is CollectionStage.RESPONSE_PARSE
+    assert outcome.failure_code == "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE"
+    assert outcome.failure_message == "抖店平台未提供可确认的经营指标值"
+    assert outcome.retryable is False
+    assert outcome.requires_reauthorization is False
 
 
 def test_session_aware_collector_persists_only_explicit_response_cookie_updates() -> None:

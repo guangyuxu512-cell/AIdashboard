@@ -1024,10 +1024,36 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
             session.commit()
 
 
+@pytest.mark.parametrize(
+    (
+        "failure_code",
+        "failure_message",
+        "expected_coverage_state",
+        "expected_coverage_reason",
+    ),
+    [
+        (
+            "DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+            "抖店经营数据响应缺少或无法读取必要指标：成交订单数",
+            "failed",
+            "抖店经营数据响应无效",
+        ),
+        (
+            "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
+            "抖店平台未提供可确认的经营指标值",
+            "unknown",
+            "抖店平台未提供可确认的经营指标值",
+        ),
+    ],
+)
 def test_postgresql_response_parse_failure_persists_only_safe_required_metric_hint(
     postgresql_engine: Engine,
+    failure_code: str,
+    failure_message: str,
+    expected_coverage_state: str,
+    expected_coverage_reason: str,
 ) -> None:
-    """A collection-progress item can diagnose a core-field parse failure safely."""
+    """A parse failure keeps its safe state and never creates a daily fact."""
 
     user_id = uuid4()
     team_id = uuid4()
@@ -1076,8 +1102,8 @@ def test_postgresql_response_parse_failure_persists_only_safe_required_metric_hi
                     stage=CollectionStage.RESPONSE_PARSE,
                     retryable=False,
                     requires_reauthorization=False,
-                    failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
-                    failure_message="抖店经营数据响应缺少或无法读取必要指标：成交订单数",
+                    failure_code=failure_code,
+                    failure_message=failure_message,
                     timings=CollectionTimings(total_ms=1),
                 ),
                 now=now,
@@ -1093,14 +1119,37 @@ def test_postgresql_response_parse_failure_persists_only_safe_required_metric_hi
             )
             assert item is not None
             assert item.status == OperatingCollectionItemStatus.FAILED.value
-            assert item.failure_code == "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
-            assert item.failure_message == "抖店经营数据响应缺少或无法读取必要指标：成交订单数"
+            assert item.failure_code == failure_code
+            assert item.failure_message == failure_message
             assert verification_session.scalar(
                 select(ShopOperatingDailyMetric).where(
                     ShopOperatingDailyMetric.shop_id == shop.shop_id,
                     ShopOperatingDailyMetric.business_date == DAY_ONE,
                 ),
             ) is None
+            verification_service = _service(verification_session)
+            coverage = verification_service._coverage(
+                shops=[
+                    DashboardShop(
+                        shop_id=shop.shop_id,
+                        shop_name=shop.display_name,
+                        platform=shop.platform,
+                        enabled=shop.enabled,
+                    ),
+                ],
+                metric_by_shop_date={},
+                collection_states=verification_service.repository.list_collection_item_states(
+                    shop_ids=[shop.shop_id],
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                ),
+                range_value=OperatingDashboardDateRangeRead(
+                    start_date=DAY_ONE,
+                    end_date=DAY_ONE,
+                ),
+            )
+            assert coverage.missing_samples[0].state == expected_coverage_state
+            assert coverage.missing_samples[0].failure_reason == expected_coverage_reason
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
