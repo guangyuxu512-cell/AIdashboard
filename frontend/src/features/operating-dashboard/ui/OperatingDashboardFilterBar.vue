@@ -110,7 +110,9 @@ const coverageDetail = computed(() => {
   }
   const samples = coverage.missingSamples.map(
     (sample) =>
-      `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}`,
+      `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}${
+        sample.failureReason ? `（${sample.failureReason}）` : ''
+      }`,
   )
   if (coverage.missingSamplesTruncated) samples.push('其余缺失项未展开')
   return samples.join('\n')

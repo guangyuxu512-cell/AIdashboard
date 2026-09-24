@@ -119,6 +119,11 @@ BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_ENABLED=true
 BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_LOCAL_TIME=09:00:00
 ```
 
+若 Release Gate 已逐项确认旧版可选字段解析缺陷留下的终态失败，可额外配置
+`BACKEND_OPERATING_DASHBOARD_LEGACY_RESPONSE_PARSE_RECOVERY_ITEM_IDS` 为精确原 item UUID 的 JSON 数组；默认必须为
+`[]`。该清单不是会话、平台拒绝或一般解析失败的重试开关。部署后仅让每个已批准旧 item 通过既有补漏规划创建一次
+新的尝试，保留旧失败记录，并在新 item 已入队后从清单移除已处理 UUID。
+
 该顺序使启动恢复与每日计划在 Asia/Shanghai 09:00 生效：昨日优先，并仅补最近 30 个完整自然日的缺口；不采
 今日实时数据。启用后记录下次执行时间、实际 queue 数量、暂停重新授权数和失败分类。若首次 09:00 尚未到达，只能
 记录“已启用、首次定时执行待观察”，不能写成已经定时成功。回退自动采集时先将两个开关设为 false 并按规范重启；

@@ -61,6 +61,7 @@ class CollectionItemState:
     retryable: bool
     attempt_count: int
     failure_code: str | None
+    failure_stage: str | None
     finished_at: datetime | None
     updated_at: datetime
     job_kind: str
@@ -168,6 +169,7 @@ class OperatingDashboardRepository:
                 OperatingDataCollectionItem.retryable,
                 OperatingDataCollectionItem.attempt_count,
                 OperatingDataCollectionItem.failure_code,
+                OperatingDataCollectionItem.failure_stage,
                 OperatingDataCollectionItem.finished_at,
                 OperatingDataCollectionItem.updated_at,
                 OperatingDataCollectionJob.kind,
@@ -198,6 +200,7 @@ class OperatingDashboardRepository:
                 retryable=row.retryable,
                 attempt_count=row.attempt_count,
                 failure_code=row.failure_code,
+                failure_stage=row.failure_stage,
                 finished_at=row.finished_at,
                 updated_at=row.updated_at,
                 job_kind=row.kind,
