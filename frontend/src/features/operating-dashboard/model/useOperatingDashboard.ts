@@ -143,6 +143,9 @@ function getCollectionSubmissionFeedback(
   if (submission.state === 'unsupported') {
     return { tone: 'warning', message: submission.message }
   }
+  if (submission.state === 'not_operating') {
+    return { tone: 'warning', message: submission.message }
+  }
   if (submission.state === 'attention_required') {
     return {
       tone: 'warning',

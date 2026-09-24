@@ -69,6 +69,8 @@ export interface OperatingDashboardTableRow {
   coverageComplete?: boolean
   /** False means only part of the selected range has a valid refund count. */
   refundOrderCoverageComplete?: boolean
+  /** The entire selected range is before this Shop's confirmed start date. */
+  notOperatingForRange?: boolean
 }
 
 /** Pagination is supplied by the real API; Mock mode derives it after sort. */
@@ -103,6 +105,12 @@ export interface OperatingDashboardCoverage {
   missingSamples: OperatingDashboardCoverageMissing[]
   missingSamplesTruncated: boolean
   manualBackfillRequired: boolean
+  /** Excluded from the denominator by an explicit operating-start boundary. */
+  notOperatingShopDays?: number
+  /** These Shops remain conservatively scoped to the full selected range. */
+  shopsWithUnknownOperatingStart?: number
+  /** No selected Shop/date belongs to a confirmed operating period. */
+  noOperatingScope?: boolean
 }
 
 /**

@@ -13,7 +13,10 @@ from app.modules.operating_dashboard.exceptions import (
 from app.modules.operating_dashboard.models import ShopOperatingDailyMetric
 from app.modules.operating_dashboard.repository import CollectionItemState, DashboardShop
 from app.modules.operating_dashboard.schemas import OperatingDashboardDateRangeRead
-from app.modules.operating_dashboard.service import OperatingDashboardService
+from app.modules.operating_dashboard.service import (
+    OperatingDashboardService,
+    _prioritized_collection_items,
+)
 from app.modules.shops.enums import ShopPlatform
 
 
@@ -330,3 +333,201 @@ def test_refund_observation_uses_its_own_coverage_and_preserves_zero() -> None:
     assert summary.refund_order_count == 0
     assert summary.refund_order_coverage_complete is False
     assert summary.refund_order_comparison.state == "unavailable"
+
+
+def test_confirmed_zero_core_values_and_positive_refund_remain_independent() -> None:
+    """A real zero is not a missing observation or a proxy for refund data."""
+
+    shop_id = uuid4()
+    business_date = date(2026, 9, 18)
+    shop = DashboardShop(shop_id, "零成交退款店铺", ShopPlatform.DOUYIN, True)
+    metric = _metric(
+        shop_id=shop_id,
+        business_date=business_date,
+        turnover_cents=0,
+        order_count=0,
+        refund_order_count=3,
+        refund_order_status="available",
+    )
+    range_value = OperatingDashboardDateRangeRead(
+        start_date=business_date,
+        end_date=business_date,
+    )
+
+    values = OperatingDashboardService._shop_range_values(
+        [shop],
+        {(shop_id, business_date): metric},
+        range_value,
+    )
+    summary = OperatingDashboardService._summary(
+        values,
+        values,
+        shop_count=1,
+        current_core_coverage_complete=True,
+        previous_core_coverage_complete=True,
+        current_refund_coverage_complete=True,
+        previous_refund_coverage_complete=True,
+    )
+
+    assert values[shop_id].turnover_cents == 0
+    assert values[shop_id].order_count == 0
+    assert values[shop_id].refund_order_count == 3
+    assert values[shop_id].coverage_complete is True
+    assert values[shop_id].refund_order_coverage_complete is True
+    assert summary.turnover_cents == 0
+    assert summary.order_count == 0
+    assert summary.refund_order_count == 3
+
+
+def test_confirmed_operating_start_excludes_only_pre_operation_dates() -> None:
+    shop_id = uuid4()
+    start = date(2026, 9, 14)
+    opening = date(2026, 9, 16)
+    end = date(2026, 9, 17)
+    shop = DashboardShop(
+        shop_id,
+        "有明确经营起算日店铺",
+        ShopPlatform.DOUYIN,
+        True,
+        operating_start_date=opening,
+    )
+    metrics = {
+        (shop_id, opening): _metric(
+            shop_id=shop_id,
+            business_date=opening,
+            turnover_cents=0,
+            order_count=0,
+            refund_order_count=0,
+            refund_order_status="available",
+        ),
+        (shop_id, end): _metric(
+            shop_id=shop_id,
+            business_date=end,
+            turnover_cents=100,
+            order_count=1,
+            refund_order_count=0,
+            refund_order_status="available",
+        ),
+    }
+    range_value = OperatingDashboardDateRangeRead(start_date=start, end_date=end)
+    service = _recovery_service(approved_item_ids=frozenset())
+
+    coverage = service._coverage(
+        shops=[shop],
+        metric_by_shop_date=metrics,
+        collection_states=[],
+        range_value=range_value,
+    )
+    values = OperatingDashboardService._shop_range_values(
+        [shop],
+        metrics,
+        range_value,
+    )
+    trend = OperatingDashboardService._trend(
+        object(),  # type: ignore[arg-type]
+        [shop],
+        metrics,
+        range_value,
+    )
+
+    assert coverage.total_shop_days == 2
+    assert coverage.collected_shop_days == 2
+    assert coverage.missing_shop_days == 0
+    assert coverage.not_operating_shop_days == 2
+    assert coverage.no_operating_scope is False
+    assert values[shop_id].turnover_cents == 100
+    assert values[shop_id].order_count == 1
+    assert values[shop_id].coverage_complete is True
+    # A date range partly before operation can still display its in-scope
+    # facts, but it cannot support a made-up period comparison.
+    assert (
+        OperatingDashboardService._range_coverage_complete(
+            [shop],
+            metrics,
+            range_value,
+        )
+        is False
+    )
+    assert [point.turnover_cents for point in trend] == [None, None, 0, 100]
+    assert [point.coverage_complete for point in trend] == [False, False, True, True]
+
+
+def test_unknown_operating_start_remains_in_full_coverage_denominator() -> None:
+    shop = DashboardShop(uuid4(), "起算日未知店铺", ShopPlatform.DOUYIN, True)
+    range_value = OperatingDashboardDateRangeRead(
+        start_date=date(2026, 9, 14),
+        end_date=date(2026, 9, 16),
+    )
+
+    coverage = _recovery_service(approved_item_ids=frozenset())._coverage(
+        shops=[shop],
+        metric_by_shop_date={},
+        collection_states=[],
+        range_value=range_value,
+    )
+
+    assert coverage.total_shop_days == 3
+    assert coverage.missing_shop_days == 3
+    assert coverage.not_operating_shop_days == 0
+    assert coverage.shops_with_unknown_operating_start == 1
+    assert coverage.no_operating_scope is False
+
+
+def test_all_dates_before_confirmed_start_are_not_operating_not_missing() -> None:
+    shop = DashboardShop(
+        uuid4(),
+        "尚未经营店铺",
+        ShopPlatform.DOUYIN,
+        True,
+        operating_start_date=date(2026, 9, 20),
+    )
+    range_value = OperatingDashboardDateRangeRead(
+        start_date=date(2026, 9, 14),
+        end_date=date(2026, 9, 16),
+    )
+    service = _recovery_service(approved_item_ids=frozenset())
+
+    coverage = service._coverage(
+        shops=[shop],
+        metric_by_shop_date={},
+        collection_states=[],
+        range_value=range_value,
+    )
+    values = OperatingDashboardService._shop_range_values(
+        [shop],
+        {},
+        range_value,
+    )
+
+    assert coverage.total_shop_days == 0
+    assert coverage.missing_shop_days == 0
+    assert coverage.not_operating_shop_days == 3
+    assert coverage.no_operating_scope is True
+    assert values[shop.shop_id].not_operating_for_range is True
+    assert values[shop.shop_id].turnover_cents is None
+    assert values[shop.shop_id].coverage_complete is False
+    assert values[shop.shop_id].refund_order_coverage_complete is False
+
+
+def test_legacy_collection_planning_excludes_known_pre_operation_days() -> None:
+    """The final planner gate also protects older direct job callers."""
+
+    shop = DashboardShop(
+        uuid4(),
+        "兼容入队范围店铺",
+        ShopPlatform.DOUYIN,
+        True,
+        operating_start_date=date(2026, 9, 16),
+    )
+    planned = _prioritized_collection_items(
+        shops=[shop],
+        start_date=date(2026, 9, 14),
+        end_date=date(2026, 9, 17),
+        business_dates=None,
+        business_dates_by_shop=None,
+    )
+
+    assert [business_date for _, business_date in planned] == [
+        date(2026, 9, 17),
+        date(2026, 9, 16),
+    ]

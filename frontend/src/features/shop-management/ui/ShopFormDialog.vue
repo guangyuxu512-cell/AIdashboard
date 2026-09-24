@@ -12,6 +12,7 @@ import {
   type PlatformCode,
 } from '@/entities/platform'
 import FormDialog from '@/shared/components/FormDialog.vue'
+import AppDatePicker from '@/shared/ui/AppDatePicker.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import AppSelect from '@/shared/ui/AppSelect.vue'
 import AppSwitch from '@/shared/ui/AppSwitch.vue'
@@ -41,6 +42,7 @@ const emptyForm: ShopFormViewModel = {
   enabled: true,
   ownerUserId: null,
   note: '',
+  operatingStartDate: null,
 }
 
 const formSchema = z.object({
@@ -57,6 +59,7 @@ const formSchema = z.object({
   enabled: z.boolean(),
   ownerUserId: z.string().nullable(),
   note: z.string().trim().max(1000, '备注最多 1000 个字符'),
+  operatingStartDate: z.number().nullable(),
 })
 
 const { defineField, errors, handleSubmit, resetForm, setErrors } =
@@ -70,6 +73,7 @@ const [platformShopId] = defineField('platformShopId')
 const [enabled] = defineField('enabled')
 const [ownerUserId] = defineField('ownerUserId')
 const [note] = defineField('note')
+const [operatingStartDate] = defineField('operatingStartDate')
 
 const title = computed(() =>
   props.mode === 'create' ? '新增店铺（Legacy Onboarding）' : '编辑店铺',
@@ -193,6 +197,17 @@ const submit = handleSubmit((values) => {
         <NFormItem label="启用状态">
           <AppSwitch v-model="enabled" />
         </NFormItem>
+        <NFormItem v-if="mode === 'edit'" label="经营起算日">
+          <div class="shop-form__operating-start">
+            <AppDatePicker
+              v-model="operatingStartDate"
+              placeholder="未确认"
+            />
+            <p>
+              用于界定经营数据覆盖范围，不是加入中控台的日期。留空表示未确认。
+            </p>
+          </div>
+        </NFormItem>
       </div>
       <NFormItem
         label="备注"
@@ -233,6 +248,18 @@ const submit = handleSubmit((values) => {
   overflow-wrap: anywhere;
   font-family: monospace;
   font-size: var(--font-size-secondary);
+}
+
+.shop-form__operating-start {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.shop-form__operating-start p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-normal);
 }
 
 @media (max-width: 640px) {

@@ -60,6 +60,7 @@ export function mapShopDto(
     createdAtDisplay: formatDateTime(dto.created_at),
     updatedAtDisplay: formatDateTime(dto.updated_at),
     note: dto.note || '',
+    operatingStartDate: dto.operating_start_date ?? null,
     dataSource: 'real',
   }
 }
@@ -84,6 +85,9 @@ export function mapShopUpdateInput(input: ShopSaveInput): ShopUpdateDto {
     enabled: input.enabled,
     owner_user_id: input.ownerUserId,
     note: input.note.trim() || null,
+  }
+  if (input.operatingStartDate !== undefined) {
+    editableFields.operating_start_date = input.operatingStartDate
   }
   if (!input.platformShopId) {
     editableFields.display_name = input.shopName.trim()

@@ -32,7 +32,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| 无 | `free` | 当前没有已分配的结构变更 | 无 | 无 | 下一个需要结构变更的 Feature 必须先申请并登记。 |
+| `feat/operating-data-availability-v1` / 81a1 | `active` | 为 Shop 增加人工确认的经营起算日、来源、设置人及设置时间的最小审计字段；不从店铺创建、首次采集或首单推断回填，不新增平台空态枚举 | `20260924_0040_operating_dashboard_refund_orders_v1` | `20260924_0041_operating_data_availability_v1` | Feature DB `control_center_feat_operating_data_availability` 已完成 `0040 → 0041 → 0040 → 0041` 验证；Gate 1 / Gate 2 后才可释放 Slot。 |
 
 最近释放记录：
 

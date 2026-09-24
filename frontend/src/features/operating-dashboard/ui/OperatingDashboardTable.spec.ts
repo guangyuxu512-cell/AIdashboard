@@ -58,6 +58,28 @@ describe('OperatingDashboardTable', () => {
     expect(wrapper.text()).toContain('—')
   })
 
+  it('labels a fully pre-operation shop range without turning it into zeros', () => {
+    const wrapper = mountTable({
+      rows: [
+        {
+          shopId: 'shop-unopened',
+          shopName: '尚未经营店铺',
+          platform: 'douyin',
+          turnoverCents: null,
+          orderCount: null,
+          refundOrderCount: null,
+          experience: null,
+          collectedAt: null,
+          notOperatingForRange: true,
+        },
+      ],
+    })
+
+    expect(wrapper.text()).toContain('尚未经营店铺')
+    expect(wrapper.text()).toContain('未经营')
+    expect(wrapper.text()).not.toContain('¥0.00')
+  })
+
   it('uses native sortable headers for both Mock and server-paginated results', () => {
     const rows = [
       {

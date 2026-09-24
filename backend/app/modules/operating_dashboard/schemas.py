@@ -61,6 +61,10 @@ class OperatingDashboardTableRowRead(BaseModel):
     experience_score: None = None
     collected_at: datetime | None
     coverage_complete: bool
+    # True only when the entire selected range ends before this Shop's
+    # explicitly confirmed operating start date.  It is distinct from a
+    # missing/failed observation and therefore must not render as a zero.
+    not_operating_for_range: bool = False
 
 
 class OperatingDashboardTablePageRead(BaseModel):
@@ -97,6 +101,15 @@ class OperatingDashboardCoverageRead(BaseModel):
     # and includes a missing Shop/date. The user may explicitly update the
     # custom range, but ordinary reads never cause that platform work.
     manual_backfill_required: bool
+    # Calendar dates before a confirmed Shop operating-start boundary are not
+    # expected collection work and therefore are excluded from the denominator.
+    not_operating_shop_days: int = Field(default=0, ge=0)
+    # Unknown remains deliberately conservative: those Shops retain the
+    # complete selected calendar range rather than being guessed as unopened.
+    shops_with_unknown_operating_start: int = Field(default=0, ge=0)
+    # Lets the UI distinguish an all-pre-operation selection from an all-null
+    # or failed collection range without manufacturing zeros.
+    no_operating_scope: bool = False
 
 
 class OperatingDashboardRead(BaseModel):
@@ -188,6 +201,7 @@ class OperatingDataCollectionSubmissionRead(BaseModel):
         "collection_queued",
         "attention_required",
         "unsupported",
+        "not_operating",
     ]
     message: str
     collection_job: OperatingDataCollectionJobRead | None
@@ -199,6 +213,7 @@ class OperatingDataCollectionSubmissionRead(BaseModel):
     # unavailable/not-ready/malformed. It is not a core failure and is not
     # automatically retried forever; this count keeps that result visible.
     refund_attention_shop_days: int = Field(ge=0)
+    not_operating_shop_days: int = Field(default=0, ge=0)
 
 
 class OperatingDataCollectionRetryRequest(BaseModel):

@@ -104,4 +104,23 @@ describe('shop backend DTO mapper', () => {
       note: '只更新备注',
     })
   })
+
+  it('maps only the explicit operating-start date and never accepts client audit fields', () => {
+    expect(
+      mapShopUpdateInput({
+        shopName: '店铺',
+        platform: 'douyin',
+        platformShopId: '987654321',
+        enabled: true,
+        ownerUserId: null,
+        note: '',
+        operatingStartDate: '2026-09-16',
+      }),
+    ).toEqual({
+      enabled: true,
+      owner_user_id: null,
+      note: null,
+      operating_start_date: '2026-09-16',
+    })
+  })
 })

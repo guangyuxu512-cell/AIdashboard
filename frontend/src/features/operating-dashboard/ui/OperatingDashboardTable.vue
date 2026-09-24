@@ -96,6 +96,7 @@ function partialCoverageValue(
   row: OperatingDashboardTableRow,
   coverage: 'core' | 'refund' = 'core',
 ) {
+  if (row.notOperatingForRange) return '未经营'
   const coverageComplete =
     coverage === 'core'
       ? row.coverageComplete

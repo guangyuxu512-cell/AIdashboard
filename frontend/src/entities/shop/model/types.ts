@@ -40,6 +40,8 @@ export interface ShopListItemViewModel {
   createdAtDisplay: string
   updatedAtDisplay: string
   note: string
+  /** A manager-confirmed coverage boundary, not the CC onboarding date. */
+  operatingStartDate?: string | null
   dataSource: 'mock' | 'real'
 }
 
@@ -56,6 +58,8 @@ export interface ShopSaveInput {
   enabled: boolean
   ownerUserId: string | null
   note: string
+  /** Omitted on create; an explicit null clears the confirmed boundary. */
+  operatingStartDate?: string | null
 }
 
 export interface ShopDeviceBindingInput {

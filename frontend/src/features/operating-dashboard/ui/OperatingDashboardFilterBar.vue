@@ -84,7 +84,11 @@ const recollectOptions = computed<DropdownOption[]>(() => {
         scopeCount > 0
           ? `重新采集当前筛选范围（${scopeCount} 个店铺日期）`
           : '重新采集当前筛选范围',
-      disabled: props.coverage?.state === 'unsupported',
+      // A deliberate start boundary is not a collection failure.  There is
+      // no valid platform work for an explicit recollection in this scope.
+      disabled:
+        props.coverage?.state === 'unsupported' ||
+        props.coverage?.noOperatingScope === true,
     },
   ]
 })
@@ -93,7 +97,8 @@ const coverageText = computed(() => {
   const coverage = props.coverage
   if (!coverage) return null
   if (coverage.state === 'unsupported') return '当前筛选范围暂未支持经营采集'
-  return `所选范围已采集 ${coverage.collectedShopDays}/${coverage.totalShopDays} 个店铺日期`
+  if (coverage.noOperatingScope) return '该范围尚未经营'
+  return `所选范围已采集 ${coverage.collectedShopDays}/${coverage.totalShopDays} 个应采店铺日期`
 })
 
 const coverageDetail = computed(() => {
@@ -281,6 +286,12 @@ function selectRecollect(key: string | number): void {
         class="operating-dashboard-filter__coverage-note"
       >
         超过最近30日的缺失请手动补采
+      </span>
+      <span
+        v-if="(coverage?.shopsWithUnknownOperatingStart ?? 0) > 0"
+        class="operating-dashboard-filter__coverage-note"
+      >
+        部分店铺经营起算日未确认，按完整日期范围统计
       </span>
     </p>
   </div>

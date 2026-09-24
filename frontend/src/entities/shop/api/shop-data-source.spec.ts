@@ -42,6 +42,7 @@ describe('shop query and mutation data source', () => {
       enabled: true,
       ownerUserId: null,
       note: '',
+      operatingStartDate: '2026-09-16',
     })
     const updated = await source.update(created.shopId, {
       shopName: 'Mock Mutation Shop Updated',
@@ -57,6 +58,7 @@ describe('shop query and mutation data source', () => {
     })
 
     expect(updated.enabledStatus).toBe('disabled')
+    expect(updated.operatingStartDate).toBe('2026-09-16')
     expect(page.items[0]?.shopName).toBe('Mock Mutation Shop Updated')
     expect(page.total).toBe(11)
   })
