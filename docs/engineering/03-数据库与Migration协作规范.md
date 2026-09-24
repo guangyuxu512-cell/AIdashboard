@@ -28,7 +28,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前活跃 Migration Slot：无。
+当前活跃 Migration Slot：
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+|---|---|---|---|---|---|
+| `feat/operating-dashboard-refund-orders-v1` / 81a1 | `reserved` | 为已证实的抖店 `refund_order_cnt`（页面“退款订单数〔退款时间〕”，单位单）增加最小日事实字段和窄范围观测状态；不得纳入 `refund_order_cnt_pay_time`、商家体验分或通用指标框架 | `20260922_0039_operating_dashboard_data_v1` | `20260924_0040_operating_dashboard_refund_orders_v1` | Feature DB `control_center_feat_operating_dashboard_refund_orders` 已由 Integrator 创建并初始化至 `0039`；Feature Owner 必须在该库完成 `0039 → 0040`、必要 downgrade/upgrade 闭环、同日非零真实样本的受控验证及失败状态不触发无限自动重试。 |
 
 最近释放记录：
 
