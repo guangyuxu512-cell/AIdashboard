@@ -112,6 +112,7 @@ const coverageDetail = computed(() => {
     collecting: '采集中',
     waiting_reauthorization: '等待重新登录',
     failed: '采集失败',
+    unknown: '平台指标未知',
   }
   const samples = coverage.missingSamples.map(
     (sample) =>

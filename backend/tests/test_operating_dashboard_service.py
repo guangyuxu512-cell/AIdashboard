@@ -209,6 +209,46 @@ def test_coverage_maps_failed_state_to_a_safe_reason_from_the_failure_code() -> 
     assert coverage.missing_samples[0].failure_reason == "抖店经营数据响应无效"
 
 
+@pytest.mark.parametrize(
+    ("failure_code", "expected_reason"),
+    [
+        (
+            "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
+            "抖店平台未提供可确认的经营指标值",
+        ),
+        ("DOUYIN_OPERATING_DATA_METRICS_NOT_READY", "抖店经营指标暂未就绪"),
+        ("DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING", "抖店经营数据响应缺少必要指标"),
+    ],
+)
+def test_coverage_maps_known_core_metric_unknown_states_without_reopening_them(
+    failure_code: str,
+    expected_reason: str,
+) -> None:
+    state = _collection_state(collection_item_id=uuid4(), failure_code=failure_code)
+    service = _recovery_service(approved_item_ids=frozenset())
+    coverage = service._coverage(
+        shops=[
+            DashboardShop(
+                state.shop_id,
+                "平台指标未知店铺",
+                ShopPlatform.DOUYIN,
+                True,
+            ),
+        ],
+        metric_by_shop_date={},
+        collection_states=[state],
+        range_value=OperatingDashboardDateRangeRead(
+            start_date=state.business_date,
+            end_date=state.business_date,
+        ),
+    )
+
+    assert coverage.missing_samples[0].state == "unknown"
+    assert coverage.missing_samples[0].failure_reason == expected_reason
+    assert service._automatic_gap_recovery_allowed([state], now=state.updated_at) is False
+    assert service._manual_gap_recovery_allowed([state], now=state.updated_at) is False
+
+
 def test_partial_range_keeps_collected_facts_and_marks_coverage_incomplete() -> None:
     first_shop_id = uuid4()
     second_shop_id = uuid4()

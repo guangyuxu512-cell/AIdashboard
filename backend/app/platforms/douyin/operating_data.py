@@ -53,6 +53,34 @@ class DouyinOperatingDataBusinessError(PlatformRequestFailedError):
     message = "抖店经营数据请求未被平台接受"
 
 
+class DouyinOperatingDataMetricUnavailableError(PlatformResponseInvalidError):
+    """A fixed Compass metric path exists but supplies no scalar value.
+
+    This is intentionally *not* a zero-value fallback.  The observed card
+    shape has a value container containing only ``unit``; until Compass
+    documents a no-business semantic for that shape, the collector must keep
+    the day as an explicit unknown observation rather than fabricate a daily
+    fact or infer that the Shop was not operating.
+    """
+
+    code = "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE"
+    message = "抖店平台未提供可确认的经营指标值"
+
+
+class DouyinOperatingDataMetricNotReadyError(PlatformResponseInvalidError):
+    """Compass explicitly returned a null core metric value."""
+
+    code = "DOUYIN_OPERATING_DATA_METRICS_NOT_READY"
+    message = "抖店经营指标暂未就绪"
+
+
+class DouyinOperatingDataMetricMissingError(PlatformResponseInvalidError):
+    """Compass omitted a required core metric from an otherwise valid card."""
+
+    code = "DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING"
+    message = "抖店经营数据响应缺少必要指标"
+
+
 @dataclass(frozen=True)
 class CompassDailyMetrics:
     """Persisted facts from the verified Compass core-index response path.
@@ -221,7 +249,11 @@ def _core_index_card(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _read_integer_metric(card: Mapping[str, Any], field: str) -> int | None:
-    metric = card.get(field)
+    if field not in card:
+        raise DouyinOperatingDataMetricMissingError(
+            details={"failure_stage": "core_index_parse", "metric": field},
+        )
+    metric = card[field]
     if not isinstance(metric, Mapping):
         raise PlatformResponseInvalidError(
             details={"failure_stage": "core_index_parse", "metric": field},
@@ -232,11 +264,35 @@ def _read_integer_metric(card: Mapping[str, Any], field: str) -> int | None:
             details={"failure_stage": "core_index_parse", "metric": field},
         )
     value_container = index_value.get("value")
-    if not isinstance(value_container, Mapping) or "value" not in value_container:
+    if not isinstance(value_container, Mapping):
         raise PlatformResponseInvalidError(
             details={"failure_stage": "core_index_parse", "metric": field},
         )
+    if "value" not in value_container:
+        if _is_unit_only_value_container(value_container):
+            raise DouyinOperatingDataMetricUnavailableError(
+                details={"failure_stage": "core_index_parse", "metric": field},
+            )
+        raise PlatformResponseInvalidError(
+            details={"failure_stage": "core_index_parse", "metric": field},
+        )
+    if value_container["value"] is None:
+        raise DouyinOperatingDataMetricNotReadyError(
+            details={"failure_stage": "core_index_parse", "metric": field},
+        )
     return _to_optional_integer(value_container["value"], field)
+
+
+def _is_unit_only_value_container(value_container: Mapping[str, Any]) -> bool:
+    """Recognize the audited Compass shape without treating it as a number.
+
+    The check is deliberately exact.  We do not recursively search another
+    branch for a same-named field, and any different missing-value structure
+    remains a normal invalid-response failure until there is a separate
+    platform contract for it.
+    """
+
+    return set(value_container) == {"unit"}
 
 
 def _read_optional_integer_metric(
