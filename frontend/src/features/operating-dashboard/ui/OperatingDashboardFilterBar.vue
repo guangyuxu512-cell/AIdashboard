@@ -98,6 +98,12 @@ const coverageText = computed(() => {
   if (!coverage) return null
   if (coverage.state === 'unsupported') return '当前筛选范围暂未支持经营采集'
   if (coverage.noOperatingScope) return '该范围尚未经营'
+  if (
+    coverage.collectedShopDays === 0 &&
+    coverage.missingShopDays > 0 &&
+    coverage.missingSamples.every((sample) => sample.state === 'missing')
+  )
+    return '所选范围尚未采集，请点击更新数据'
   return `所选范围已采集 ${coverage.collectedShopDays}/${coverage.totalShopDays} 个应采店铺日期`
 })
 
@@ -110,6 +116,7 @@ const coverageDetail = computed(() => {
   > = {
     missing: '待采集',
     collecting: '采集中',
+    waiting_collection_time: '等待每日采集时间',
     waiting_reauthorization: '等待重新登录',
     failed: '采集失败',
     unknown: '平台指标未知',
@@ -282,12 +289,6 @@ function selectRecollect(key: string | number): void {
           coverageDetail
         }}</span>
       </NTooltip>
-      <span
-        v-if="coverage?.manualBackfillRequired"
-        class="operating-dashboard-filter__coverage-note"
-      >
-        超过最近30日的缺失请手动补采
-      </span>
       <span
         v-if="(coverage?.shopsWithUnknownOperatingStart ?? 0) > 0"
         class="operating-dashboard-filter__coverage-note"

@@ -27,7 +27,6 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
-from app.modules.operating_dashboard.enums import OperatingCollectionJobKind
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.modules.users.models import User
@@ -146,13 +145,10 @@ def test_management_onboarding_is_atomic_and_encrypts_sensitive_data() -> None:
         )
         assert session.scalar(select(func.count()).select_from(ShopSession)) == 1
         collection_job = session.scalar(select(OperatingDataCollectionJob))
-        assert collection_job is not None
-        assert collection_job.kind == OperatingCollectionJobKind.INITIAL_BACKFILL.value
-        # Onboarding only records work.  Its captured Session is not treated
-        # as a usable platform Session until the durable executor checks it.
+        assert collection_job is None
         assert (
             session.scalar(select(func.count()).select_from(OperatingDataCollectionItem))
-            == 30
+            == 0
         )
 
         credential = session.scalar(select(PlatformCredential))

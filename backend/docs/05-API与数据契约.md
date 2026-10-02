@@ -474,9 +474,8 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；对已确认经营起算日
   的 Shop，只统计所选日期与 `[operating_start_date, end_date]` 的交集，并返回 `not_operating_shop_days`；起算日未知的
   Shop 保留完整选择范围并以 `shops_with_unknown_operating_start` 明示，绝不从首单或接入日期猜测。它返回
-  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed / unknown` 状态，但读取
-  不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；超过自动最近
-  30 日窗口的缺失以 `manual_backfill_required=true` 明示。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
+  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_collection_time / waiting_reauthorization / failed / unknown` 状态，但读取
+  不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；当前缺失以 `manual_backfill_required=true` 表明需要在看板主动更新，服务端不自动补历史范围。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
   卡片汇总整个已授权筛选范围而非当前分页，趋势点只有完全缺失时才为 `null`，表格和趋势的
   `coverage_complete=false` 明确标识部分覆盖；缺失不补零。当前或对比周期有任一必要店铺日期不完整时，环比返回
   `unavailable`，不伪造涨跌。全范围都早于已确认起算日时 `coverage.no_operating_scope=true`，UI 显示“该范围尚未经营”，
@@ -495,13 +494,12 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 - `POST /api/v1/operating-dashboard/collections/recollect`：只有用户从次级“重新采集当前筛选范围”操作明确发起时，
   才对所选、最多 60 个完整自然日的已支持范围请求重新采集。它仍复用权限、停用、范围、活动 item、终态失败、
   冷却、并发与幂等保护；失败绝不清空此前成功事实。submission 的 `queued_shop_days / active_shop_days /
-  blocked_shop_days / refund_attention_shop_days` 只表达脱敏的店铺日期计数。
+  blocked_shop_days / waiting_shop_days / refund_attention_shop_days` 只表达脱敏的店铺日期计数。
   手动和 retry job 在真正发出每个请求前还会以保存的发起用户和 Team context 重新解析模块及 Shop 授权；
   调组、停用或撤销 Shop 访问后标记 `COLLECTION_REQUESTER_ACCESS_REVOKED`，不调用平台。
 - `GET /api/v1/operating-dashboard/collections/{collection_job_id}`：返回当前 Actor 可读取 Shop 对应的脱敏
   item 进度、阶段、可重试状态与耗时；不返回 Cookie、Session、签名、完整平台响应或非本 Scope 的 item。
-- `POST /api/v1/operating-dashboard/collections/{collection_job_id}/retry`：只接受当前 Actor 可读取且明确可重试的
-  failed item；重新授权暂停、授权范围外、已跳过或成功 item 都不能藉此绕过既有 Session/Shop 校验。
+- `POST /api/v1/operating-dashboard/collections/{collection_job_id}/retry`：只接受当前 Actor 可读取的 retryable failed item，或用户明确指定的 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 原失败 item；重新授权暂停、授权范围外、已跳过或成功 item 都不能藉此绕过既有 Session/Shop 校验。
 
 日金额使用整数分，响应/存储都不使用浮点累计；`null` 表示平台字段或完整日期覆盖缺失，不是 0。HTTP 200
 不能替代平台业务成功：平台 Connector 在固定路径解析、身份/Session 验证、签名、业务状态与指标结构均成功后，
@@ -532,7 +530,8 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 `response_parse`，不能据此推断未经营或零成交。尚未取得真实“成交金额 0、成交订单 0、退款订单大于 0”平台样本，
 该组合由契约测试覆盖，不能冒充为真实平台验证；也尚未取得可信的抖店开业/经营起始日期接口语义。
 
-旧的不可重试解析失败不会被全局改写为可重试。修复上线后，只能通过既有持久化采集入口重新提交已经由受控
-样本证明受该解析缺陷影响的店铺日期；原失败 item 仍保留审计记录，成功结果按同一 Shop/业务日期幂等覆盖日事实。
-已有 root-only allowlist 只适用于历史通用码 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE` 的精确原 item；
-新的三个 `unknown` 码不在该例外内，避免把尚未有平台语义的指标状态变成每日重试。退款新增指标的补采与此类核心解析恢复须分别统计和追踪。
+旧的不可重试解析失败不会被全局改写为可重试。显式重采或指定 Item retry 可对通用 `response_parse` 发起有限恢复，
+原失败 Item 保留；三个 `unknown` 码、会话、风险及未知业务拒绝不在恢复例外内。不再使用工程人员 UUID 清单。
+普通更新、显式重采及 Item retry 共用冷却与同店同日失败链预算；成功结束失败链，新建 Job 不重置失败额度。
+完整范围普通更新不创建 Job/Item、不请求平台。昨日未到上海 09:00 时排队等待，更早历史日期不一起等待。
+首次手动范围不会写起算日，日计划仅昨日；接入、启用、启动和重新授权不创建历史补采，见后台调度规范。

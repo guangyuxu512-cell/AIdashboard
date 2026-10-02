@@ -2,10 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 test.skip(process.env.PLAYWRIGHT_API_MODE === 'real', 'Mock mode coverage')
 
-async function getMixedPlatformAlignment(
-  page: Page,
-  tableSelector: string,
-) {
+async function getMixedPlatformAlignment(page: Page, tableSelector: string) {
   return page.evaluate((selector) => {
     const displays = Array.from(
       document.querySelectorAll(`${selector} .platform-display`),
@@ -23,7 +20,8 @@ async function getMixedPlatformAlignment(
         labelLeft: labelRect.left,
         verticallyAligned:
           Math.abs(
-            iconRect.top + iconRect.height / 2 -
+            iconRect.top +
+              iconRect.height / 2 -
               (labelRect.top + labelRect.height / 2),
           ) <= 1,
       }
@@ -57,7 +55,9 @@ test('uses the UI-only dashboard fixture for filtering, stable experience column
   await expect(page.getByRole('region', { name: '经营概览' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /成交趋势/ })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: '店铺' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: '商家体验分' })).toBeVisible()
+  await expect(
+    page.getByRole('columnheader', { name: '商家体验分' }),
+  ).toBeVisible()
 
   await page.getByText('近3天', { exact: true }).click()
   await expect(page.getByText('较上期', { exact: true })).toHaveCount(4)
@@ -75,9 +75,7 @@ test('uses the UI-only dashboard fixture for filtering, stable experience column
   await expect(
     page.getByRole('columnheader', { name: '商家体验分' }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('row').filter({ hasText: '抖店' }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('row').filter({ hasText: '抖店' })).toHaveCount(0)
   await expect(
     page.getByRole('row').filter({ hasText: '示例店铺 A' }),
   ).toContainText('—')
@@ -121,9 +119,13 @@ test('uses the UI-only dashboard fixture for filtering, stable experience column
   ).toBeVisible()
 
   await page.getByRole('button', { name: '更新数据', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('已更新 10 家')
+  await expect(
+    page.getByRole('status').filter({ hasText: '已更新 10 家' }),
+  ).toBeVisible()
   await page.getByRole('button', { name: '更新数据', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('已完成 11 家店铺')
+  await expect(
+    page.getByRole('status').filter({ hasText: '已完成 11 家店铺' }),
+  ).toBeVisible()
   expect(runtimeErrors).toEqual([])
 })
 
@@ -159,8 +161,10 @@ test('keeps the filter chrome mounted and gives the custom date range enough wid
       rangeWidth: Math.round(rangeRect.width),
       rangeRight: Math.round(rangeRect.right),
       viewportWidth: window.innerWidth,
-      startWithinRange: startRect.left >= rangeRect.left && startRect.right <= rangeRect.right,
-      endWithinRange: endRect.left >= rangeRect.left && endRect.right <= rangeRect.right,
+      startWithinRange:
+        startRect.left >= rangeRect.left && startRect.right <= rangeRect.right,
+      endWithinRange:
+        endRect.left >= rangeRect.left && endRect.right <= rangeRect.right,
     }
   })
   expect(dateLayout).toEqual({
@@ -185,10 +189,14 @@ test('matches the shop list table density and centers dashboard metric cells', a
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/shops')
-  await expect(page.locator('.n-data-table-tbody .n-data-table-tr').first()).toBeVisible()
+  await expect(
+    page.locator('.n-data-table-tbody .n-data-table-tr').first(),
+  ).toBeVisible()
   const shopTableMetrics = await page.evaluate(() => {
     const row = document.querySelector('.n-data-table-tbody .n-data-table-tr')
-    const header = document.querySelector('.n-data-table-thead .n-data-table-th')
+    const header = document.querySelector(
+      '.n-data-table-thead .n-data-table-th',
+    )
     return {
       rowHeight: Math.round(row?.getBoundingClientRect().height ?? 0),
       headerHeight: Math.round(header?.getBoundingClientRect().height ?? 0),
@@ -201,7 +209,11 @@ test('matches the shop list table density and centers dashboard metric cells', a
 
   await page.goto('/#/operating-dashboard')
   await expect(
-    page.locator('.operating-dashboard-table .n-data-table-tbody .n-data-table-tr').first(),
+    page
+      .locator(
+        '.operating-dashboard-table .n-data-table-tbody .n-data-table-tr',
+      )
+      .first(),
   ).toBeVisible()
   const dashboardTableMetrics = await page.evaluate(() => {
     const row = document.querySelector(
@@ -308,7 +320,9 @@ test('sorts the complete Mock result before pagination and preserves the active 
   ).toContainText('示例店铺 H')
 
   await sorter('成交金额').click()
-  await expect(sorter('成交金额')).not.toHaveClass(/n-data-table-sorter--(?:asc|desc)/)
+  await expect(sorter('成交金额')).not.toHaveClass(
+    /n-data-table-sorter--(?:asc|desc)/,
+  )
   await expect(
     table.locator('.n-data-table-tbody .n-data-table-tr').first(),
   ).toContainText('示例店铺 A')
@@ -316,7 +330,7 @@ test('sorts the complete Mock result before pagination and preserves the active 
   for (const [name, firstDirection] of [
     ['店铺', 'asc'],
     ['成交订单', 'desc'],
-    ['退货数量', 'desc'],
+    ['退款订单数', 'desc'],
     ['更新时间', 'desc'],
   ]) {
     await sorter(name).click()
@@ -344,6 +358,6 @@ test('sorts the complete Mock result before pagination and preserves the active 
   await page.getByRole('button', { name: '更新数据', exact: true }).click()
   await sorter('成交金额').click()
   await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--asc/)
-  await expect(page.getByRole('status')).toContainText('已完成')
+  await expect(page.getByRole('status').filter({ hasText: '已完成' })).toBeVisible()
   await expect(sorter('成交金额')).toHaveClass(/n-data-table-sorter--asc/)
 })

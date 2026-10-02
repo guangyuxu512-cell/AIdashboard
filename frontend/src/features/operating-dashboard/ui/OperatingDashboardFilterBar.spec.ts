@@ -4,6 +4,55 @@ import { describe, expect, it } from 'vitest'
 import OperatingDashboardFilterBar from './OperatingDashboardFilterBar.vue'
 
 describe('OperatingDashboardFilterBar', () => {
+  it('guides the first selected range to ordinary update, not an inferred operating date', () => {
+    const wrapper = mount(OperatingDashboardFilterBar, {
+      props: {
+        modelValue: {
+          datePreset: 'last7Days',
+          customDateRange: null,
+          shopId: 'shop-1',
+          platform: 'douyin',
+        },
+        shopOptions: [],
+        platformOptions: [],
+        refreshAvailable: true,
+        coverage: {
+          state: 'available',
+          supportedShopCount: 1,
+          collectedShopDays: 0,
+          totalShopDays: 7,
+          missingShopDays: 7,
+          missingSamplesTruncated: false,
+          manualBackfillRequired: true,
+          missingSamples: [
+            {
+              shopId: 'shop-1',
+              shopName: '新店',
+              businessDate: '2026-09-22',
+              state: 'missing',
+              failureReason: null,
+            },
+          ],
+        },
+      },
+      global: {
+        stubs: {
+          FilterBar: {
+            template: '<div><slot /><slot name="primary-action" /></div>',
+          },
+          FilterField: { template: '<div><slot /></div>' },
+          AppButton: { template: '<button><slot /></button>' },
+          AppRadio: true,
+          AppSelect: true,
+          NDropdown: true,
+          NTooltip: { template: '<div><slot name="trigger" /></div>' },
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('所选范围尚未采集，请点击更新数据')
+    expect(wrapper.text()).not.toContain('超过最近30日')
+    wrapper.unmount()
+  })
   it('shows only the server-mapped safe reason for a failed coverage sample', () => {
     const wrapper = mount(OperatingDashboardFilterBar, {
       props: {
@@ -108,7 +157,63 @@ describe('OperatingDashboardFilterBar', () => {
 
     expect(
       (wrapper.vm as unknown as { coverageDetail: string }).coverageDetail,
-    ).toBe('测试店铺 · 2026-09-22 · 平台指标未知（抖店平台未提供可确认的经营指标值）')
+    ).toBe(
+      '测试店铺 · 2026-09-22 · 平台指标未知（抖店平台未提供可确认的经营指标值）',
+    )
+  })
+
+  it('shows a durable pre-boundary wait without calling it a platform failure', () => {
+    const wrapper = mount(OperatingDashboardFilterBar, {
+      props: {
+        modelValue: {
+          datePreset: 'yesterday',
+          customDateRange: null,
+          shopId: null,
+          platform: null,
+        },
+        shopOptions: [],
+        platformOptions: [],
+        refreshAvailable: false,
+        coverage: {
+          state: 'available',
+          supportedShopCount: 1,
+          collectedShopDays: 0,
+          totalShopDays: 1,
+          missingShopDays: 1,
+          missingSamples: [
+            {
+              shopId: 'shop-1',
+              shopName: '测试店铺',
+              businessDate: '2026-09-23',
+              state: 'waiting_collection_time',
+              failureReason: '等待每日采集时间后再请求平台',
+            },
+          ],
+          missingSamplesTruncated: false,
+          manualBackfillRequired: false,
+        },
+      },
+      global: {
+        stubs: {
+          FilterBar: {
+            template: '<div><slot /><slot name="primary-action" /></div>',
+          },
+          FilterField: { template: '<div><slot /></div>' },
+          AppButton: { template: '<button><slot /></button>' },
+          AppRadio: true,
+          AppSelect: true,
+          NTooltip: {
+            template: '<div><slot name="trigger" /><slot /></div>',
+          },
+        },
+      },
+    })
+
+    expect(
+      (wrapper.vm as unknown as { coverageDetail: string }).coverageDetail,
+    ).toBe(
+      '测试店铺 · 2026-09-23 · 等待每日采集时间（等待每日采集时间后再请求平台）',
+    )
   })
 
   it('distinguishes a confirmed pre-operation range from missing collection', () => {

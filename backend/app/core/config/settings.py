@@ -3,7 +3,6 @@ from datetime import time
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
-from uuid import UUID
 
 from pydantic import Field, PostgresDsn, SecretStr
 from pydantic import field_validator, model_validator
@@ -108,35 +107,13 @@ class Settings(BaseSettings):
         ge=1,
         le=3600,
     )
-    # A failed system recovery item may be revisited only after this cooldown.
+    # Manual recovery and retry share a cross-Job failure cooldown.
     # It is deliberately separate from the short in-item exponential retry so
-    # a later daily gap scan cannot create a hot retry loop.
+    # repeated manual actions cannot create a hot retry loop.
     operating_dashboard_gap_recovery_retry_cooldown_seconds: int = Field(
         default=86400,
         ge=60,
         le=7 * 24 * 60 * 60,
-    )
-    # This is cumulative across automatic gap-recovery jobs for one
-    # Shop/date. Manual retry remains an explicit human action and is not
-    # silently exhausted by a background scan.
-    operating_dashboard_gap_recovery_max_attempts: int = Field(
-        default=6,
-        ge=1,
-        le=20,
-    )
-    # Empty by default.  A Release Gate may place only the exact UUIDs of
-    # audited legacy response-parse failures here for one controlled recovery
-    # attempt; it is not a general non-retryable-failure override.
-    operating_dashboard_legacy_response_parse_recovery_item_ids: frozenset[
-        UUID
-    ] = Field(default_factory=frozenset)
-    operating_dashboard_initial_backfill_days: int = Field(
-        default=30,
-        # The confirmed automatic-recovery contract is exactly the most
-        # recent 30 completed Shanghai calendar days. Older history remains
-        # an explicit dashboard-driven manual backfill.
-        ge=30,
-        le=30,
     )
     operating_dashboard_daily_collection_enabled: bool = False
     # The confirmed normal planning time. The daily switch remains false by

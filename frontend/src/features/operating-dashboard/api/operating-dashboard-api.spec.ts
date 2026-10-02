@@ -163,7 +163,7 @@ describe('operatingDashboardApi', () => {
     const post = vi.spyOn(httpClient, 'post').mockResolvedValue({
       data: {
         state: 'collection_queued',
-        message: '已按缺口检查采集进度',
+        message: '发现 1 个待补采店铺日期，已安排采集',
         collection_job: {
           collection_job_id: 'job-1',
           status: 'pending',
@@ -181,6 +181,7 @@ describe('operatingDashboardApi', () => {
         queued_shop_days: 1,
         active_shop_days: 0,
         blocked_shop_days: 0,
+        waiting_shop_days: 1,
         refund_attention_shop_days: 0,
       },
     })
@@ -200,6 +201,7 @@ describe('operatingDashboardApi', () => {
       },
     )
     expect(result.collectionJob?.collection_job_id).toBe('job-1')
+    expect(result.waitingShopDays).toBe(1)
     expect(result.refundAttentionShopDays).toBe(0)
   })
 
@@ -207,7 +209,7 @@ describe('operatingDashboardApi', () => {
     const post = vi.spyOn(httpClient, 'post').mockResolvedValue({
       data: {
         state: 'up_to_date',
-        message: '数据已是最新，无需重新采集',
+        message: '所选范围数据已齐全，无需补采。',
         collection_job: null,
         missing_shop_days: 0,
         queued_shop_days: 0,
@@ -236,6 +238,7 @@ describe('operatingDashboardApi', () => {
       state: 'up_to_date',
       collectionJob: null,
       queuedShopDays: 0,
+      waitingShopDays: 0,
     })
   })
 })

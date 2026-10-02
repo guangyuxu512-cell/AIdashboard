@@ -11,7 +11,6 @@ from app.modules.access.exceptions import SuperAccountRequiredError
 from app.modules.access.repository import TeamResourceAccessRepository
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.repository import DeviceRepository
-from app.modules.operating_dashboard.enums import OperatingCollectionJobKind
 from app.modules.operating_dashboard.service import OperatingDashboardService
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.shops.enums import ShopPlatform
@@ -123,7 +122,6 @@ class ShopService:
         if shop is None:
             raise ShopNotFoundError()
         changes = data.model_dump(exclude_unset=True)
-        was_enabled = shop.enabled
         previous_operating_start_date = shop.operating_start_date
         operating_start_date_changed = "operating_start_date" in changes
         requested_operating_start_date = changes.pop(
@@ -177,35 +175,6 @@ class ShopService:
                 now=datetime.now(UTC),
             )
 
-        operating_scope_expanded = (
-            operating_start_date_effectively_changed
-            and (
-                (
-                    requested_operating_start_date is None
-                    and previous_operating_start_date is not None
-                )
-                or (
-                    requested_operating_start_date is not None
-                    and previous_operating_start_date is not None
-                    and requested_operating_start_date < previous_operating_start_date
-                )
-            )
-        )
-        reenabled = not was_enabled and shop.enabled
-        if (
-            (reenabled or operating_scope_expanded)
-            and shop.platform is ShopPlatform.DOUYIN
-            and shop.enabled
-        ):
-            dashboard_service.enqueue_initial_backfill_for_shop(
-                shop_id=shop.shop_id,
-                kind=(
-                    OperatingCollectionJobKind.REENABLE_BACKFILL
-                    if reenabled
-                    else OperatingCollectionJobKind.INITIAL_BACKFILL
-                ),
-                commit=False,
-            )
         self.session.commit()
         self.session.refresh(shop)
         return shop
