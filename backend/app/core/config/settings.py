@@ -124,9 +124,11 @@ class Settings(BaseSettings):
         ge=1,
         le=20,
     )
-    # Empty by default.  A Release Gate may place only the exact UUIDs of
-    # audited legacy response-parse failures here for one controlled recovery
-    # attempt; it is not a general non-retryable-failure override.
+    # Empty by default. A Release Gate may place only exact UUIDs of audited
+    # legacy response-parse failures here for one *automatic* controlled
+    # recovery attempt. This is not required for the separate user-explicit,
+    # bounded retry of the same known parser shape, nor is it a general
+    # non-retryable-failure override.
     operating_dashboard_legacy_response_parse_recovery_item_ids: frozenset[
         UUID
     ] = Field(default_factory=frozenset)

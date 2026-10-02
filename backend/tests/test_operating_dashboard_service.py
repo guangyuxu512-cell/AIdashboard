@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -14,8 +14,10 @@ from app.modules.operating_dashboard.models import ShopOperatingDailyMetric
 from app.modules.operating_dashboard.repository import CollectionItemState, DashboardShop
 from app.modules.operating_dashboard.schemas import OperatingDashboardDateRangeRead
 from app.modules.operating_dashboard.service import (
+    COLLECTION_WAITING_FOR_DAILY_BOUNDARY,
     OperatingDashboardService,
     _prioritized_collection_items,
+    operating_collection_wait_until,
 )
 from app.modules.shops.enums import ShopPlatform
 
@@ -65,6 +67,7 @@ def _collection_state(
     failure_stage: str | None = "response_parse",
     retryable: bool = False,
     attempt_count: int = 1,
+    status: str = OperatingCollectionItemStatus.FAILED.value,
     updated_at: datetime = datetime(2026, 9, 23, tzinfo=UTC),
 ) -> CollectionItemState:
     return CollectionItemState(
@@ -72,12 +75,16 @@ def _collection_state(
         collection_job_id=uuid4(),
         shop_id=uuid4(),
         business_date=date(2026, 9, 22),
-        status=OperatingCollectionItemStatus.FAILED.value,
+        status=status,
         retryable=retryable,
         attempt_count=attempt_count,
         failure_code=failure_code,
         failure_stage=failure_stage,
-        finished_at=updated_at,
+        finished_at=(
+            updated_at
+            if status == OperatingCollectionItemStatus.FAILED.value
+            else None
+        ),
         updated_at=updated_at,
         job_kind="daily",
         requested_by_user_id=None,
@@ -183,6 +190,120 @@ def test_legacy_response_parse_allowlist_does_not_reopen_a_later_failure() -> No
 
     assert service._automatic_gap_recovery_allowed([original, later_failure], now=now) is False
     assert service._manual_gap_recovery_allowed([original, later_failure], now=now) is False
+
+
+def test_explicit_response_parse_recovery_is_bounded_without_uuid_allowlist() -> None:
+    now = datetime(2026, 9, 24, 3, tzinfo=UTC)
+    service = OperatingDashboardService(
+        None,  # type: ignore[arg-type]
+        settings=Settings(
+            _env_file=None,
+            operating_dashboard_collection_max_attempts=3,
+            operating_dashboard_gap_recovery_retry_cooldown_seconds=60,
+        ),
+    )
+    parser_failure = _collection_state(
+        collection_item_id=uuid4(),
+        updated_at=now - timedelta(minutes=2),
+    )
+
+    # Normal gap fill leaves a terminal parser result alone. The explicit
+    # recollect path may retry the exact known parser shape without requiring
+    # an engineer-maintained item UUID list.
+    assert service._manual_gap_recovery_allowed([parser_failure], now=now) is False
+    assert (
+        service._manual_gap_recovery_allowed(
+            [parser_failure],
+            now=now,
+            allow_response_parse_recovery=True,
+        )
+        is True
+    )
+    assert (
+        service._manual_gap_recovery_allowed(
+            [
+                _collection_state(
+                    collection_item_id=uuid4(),
+                    failure_code="DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
+                    updated_at=now - timedelta(minutes=2),
+                ),
+            ],
+            now=now,
+            allow_response_parse_recovery=True,
+        )
+        is False
+    )
+    assert (
+        service._manual_gap_recovery_allowed(
+            [
+                parser_failure,
+                _collection_state(
+                    collection_item_id=uuid4(),
+                    updated_at=now - timedelta(minutes=1),
+                    attempt_count=2,
+                ),
+            ],
+            now=now,
+            allow_response_parse_recovery=True,
+        )
+        is False
+    )
+
+
+def test_only_yesterday_waits_for_the_shanghai_daily_collection_boundary() -> None:
+    before_due = datetime(2026, 9, 24, 0, 59, tzinfo=UTC)
+    yesterday = date(2026, 9, 23)
+
+    assert operating_collection_wait_until(
+        business_date=yesterday,
+        now=before_due,
+        local_time=time(hour=9),
+    ) == datetime(2026, 9, 24, 1, tzinfo=UTC)
+    assert (
+        operating_collection_wait_until(
+            business_date=date(2026, 9, 22),
+            now=before_due,
+            local_time=time(hour=9),
+        )
+        is None
+    )
+    assert (
+        operating_collection_wait_until(
+            business_date=yesterday,
+            now=datetime(2026, 9, 24, 1, tzinfo=UTC),
+            local_time=time(hour=9),
+        )
+        is None
+    )
+
+
+def test_coverage_marks_a_delayed_yesterday_item_as_waiting_for_collection_time() -> None:
+    state = _collection_state(
+        collection_item_id=uuid4(),
+        status=OperatingCollectionItemStatus.PENDING.value,
+        failure_code=COLLECTION_WAITING_FOR_DAILY_BOUNDARY,
+        failure_stage="queued",
+    )
+    service = _recovery_service(approved_item_ids=frozenset())
+    coverage = service._coverage(
+        shops=[
+            DashboardShop(
+                state.shop_id,
+                "等待采集时间店铺",
+                ShopPlatform.DOUYIN,
+                True,
+            ),
+        ],
+        metric_by_shop_date={},
+        collection_states=[state],
+        range_value=OperatingDashboardDateRangeRead(
+            start_date=state.business_date,
+            end_date=state.business_date,
+        ),
+    )
+
+    assert coverage.missing_samples[0].state == "waiting_collection_time"
+    assert coverage.missing_samples[0].failure_reason == "等待每日采集时间后再请求平台"
 
 
 def test_coverage_maps_failed_state_to_a_safe_reason_from_the_failure_code() -> None:

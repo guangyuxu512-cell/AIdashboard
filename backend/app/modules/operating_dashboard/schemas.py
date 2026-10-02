@@ -83,6 +83,7 @@ class OperatingDashboardCoverageMissingRead(BaseModel):
     state: Literal[
         "missing",
         "collecting",
+        "waiting_collection_time",
         "waiting_reauthorization",
         "failed",
         "unknown",
@@ -215,6 +216,9 @@ class OperatingDataCollectionSubmissionRead(BaseModel):
     queued_shop_days: int = Field(ge=0)
     active_shop_days: int = Field(ge=0)
     blocked_shop_days: int = Field(ge=0)
+    # A yesterday item can be durably queued before the configured Shanghai
+    # boundary, but must not be claimed for an upstream request until then.
+    waiting_shop_days: int = Field(default=0, ge=0)
     # A successful core response can still report an optional refund field as
     # unavailable/not-ready/malformed. It is not a core failure and is not
     # automatically retried forever; this count keeps that result visible.

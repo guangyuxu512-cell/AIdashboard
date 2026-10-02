@@ -110,6 +110,7 @@ const coverageDetail = computed(() => {
   > = {
     missing: '待采集',
     collecting: '采集中',
+    waiting_collection_time: '等待每日采集时间',
     waiting_reauthorization: '等待重新登录',
     failed: '采集失败',
     unknown: '平台指标未知',

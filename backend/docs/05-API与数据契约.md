@@ -474,7 +474,7 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   `coverage` 与 `collection_available`。`coverage` 只统计当前授权、已启用、已支持采集的店铺日期；对已确认经营起算日
   的 Shop，只统计所选日期与 `[operating_start_date, end_date]` 的交集，并返回 `not_operating_shop_days`；起算日未知的
   Shop 保留完整选择范围并以 `shops_with_unknown_operating_start` 明示，绝不从首单或接入日期猜测。它返回
-  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_reauthorization / failed / unknown` 状态，但读取
+  已采集/总店铺日期数、有限缺失样本及 `missing / collecting / waiting_collection_time / waiting_reauthorization / failed / unknown` 状态，但读取
   不会发起平台请求。仅当前 `source_code + metric_contract` 的已确认日事实可计入覆盖、汇总和趋势；超过自动最近
   30 日窗口的缺失以 `manual_backfill_required=true` 明示。范围内已有的确认日事实必须保留在卡片、趋势和店铺行中：
   卡片汇总整个已授权筛选范围而非当前分页，趋势点只有完全缺失时才为 `null`，表格和趋势的
@@ -488,20 +488,29 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   核心成交缺口，以及 0040 前日事实的一次 `refund_order_count` 待观测状态，返回 `200` 的 submission（`up_to_date / collection_queued /
   attention_required / unsupported / not_operating`）而不是强行制造空 job。已完整的核心事实返回 `up_to_date`，不创建 job/item、
   不发平台请求；有缺口时只创建允许补采的店铺日期，已有 pending/running/等待重新授权 item 则复用。终态不可重试
-  结果、重试冷却或尝试上限返回 `attention_required`，不会因连续点击绕过保护。它始终覆盖符合条件的所有授权 Shop，
+  结果、重试冷却或尝试上限返回 `attention_required`，不会因连续点击绕过保护。当前范围完整时 message 固定为
+  “所选范围数据已齐全，无需补采。”，不会创建 Job / Item 或请求平台；有可处理缺口时返回实际安排的店铺日期数。
+  昨日早于当前配置的 Shanghai 每日采集墙钟时刻时可以持久化排队，但 item 会带 `retry_after` 与
+  `waiting_collection_time`，在到时前不能被执行器领取或请求平台；这只是本系统的执行边界，不表示平台已经或必然
+  在该时刻准备完数据。它始终覆盖符合条件的所有授权 Shop，
   而非当前表格页；停用、删除、无授权或未接入平台的 Shop 不会触发平台请求。当前环境未启用执行器时返回
   `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`，不会创建永远 pending 的手动任务。全范围早于已确认经营起算日返回
   `not_operating`，不创建 Job 或 Item；所有兼容入队路径在持久化前也会再次按起算日裁剪。
 - `POST /api/v1/operating-dashboard/collections/recollect`：只有用户从次级“重新采集当前筛选范围”操作明确发起时，
   才对所选、最多 60 个完整自然日的已支持范围请求重新采集。它仍复用权限、停用、范围、活动 item、终态失败、
   冷却、并发与幂等保护；失败绝不清空此前成功事实。submission 的 `queued_shop_days / active_shop_days /
-  blocked_shop_days / refund_attention_shop_days` 只表达脱敏的店铺日期计数。
+  blocked_shop_days / waiting_shop_days / refund_attention_shop_days` 只表达脱敏的店铺日期计数。若当前最新终态恰为
+  `DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse`，用户主动发起该操作可在当前解析器下做一次有限恢复，
+  无须工程人员逐项填写 UUID；仍必须是当前最新 item，遵守当前授权、活动 item 去重、冷却和跨 Job 累积的最大尝试次数。
+  会话失效、风控、指标未知、原因未确定的平台拒绝及其他终态失败不在此例外内，页面返回安全原因和下一步。
   手动和 retry job 在真正发出每个请求前还会以保存的发起用户和 Team context 重新解析模块及 Shop 授权；
   调组、停用或撤销 Shop 访问后标记 `COLLECTION_REQUESTER_ACCESS_REVOKED`，不调用平台。
 - `GET /api/v1/operating-dashboard/collections/{collection_job_id}`：返回当前 Actor 可读取 Shop 对应的脱敏
   item 进度、阶段、可重试状态与耗时；不返回 Cookie、Session、签名、完整平台响应或非本 Scope 的 item。
 - `POST /api/v1/operating-dashboard/collections/{collection_job_id}/retry`：只接受当前 Actor 可读取且明确可重试的
-  failed item；重新授权暂停、授权范围外、已跳过或成功 item 都不能藉此绕过既有 Session/Shop 校验。
+  failed item；若调用方明确选择当前最新的 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 原 item，也可走与
+  “重新采集当前筛选范围”相同的有限人工恢复。重新授权暂停、授权范围外、已跳过或成功 item，以及指标未知、风控和
+  原因未确定的平台拒绝都不能藉此绕过既有 Session/Shop 校验、冷却或累计次数。
 
 日金额使用整数分，响应/存储都不使用浮点累计；`null` 表示平台字段或完整日期覆盖缺失，不是 0。HTTP 200
 不能替代平台业务成功：平台 Connector 在固定路径解析、身份/Session 验证、签名、业务状态与指标结构均成功后，
@@ -532,7 +541,8 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 `response_parse`，不能据此推断未经营或零成交。尚未取得真实“成交金额 0、成交订单 0、退款订单大于 0”平台样本，
 该组合由契约测试覆盖，不能冒充为真实平台验证；也尚未取得可信的抖店开业/经营起始日期接口语义。
 
-旧的不可重试解析失败不会被全局改写为可重试。修复上线后，只能通过既有持久化采集入口重新提交已经由受控
-样本证明受该解析缺陷影响的店铺日期；原失败 item 仍保留审计记录，成功结果按同一 Shop/业务日期幂等覆盖日事实。
-已有 root-only allowlist 只适用于历史通用码 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE` 的精确原 item；
-新的三个 `unknown` 码不在该例外内，避免把尚未有平台语义的指标状态变成每日重试。退款新增指标的补采与此类核心解析恢复须分别统计和追踪。
+旧的不可重试解析失败不会被全局改写为可重试。用户主动选择当前最新、精确为
+`DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 的原 item 时，可经既有持久化入口做有限恢复；原失败 item
+仍保留审计记录，成功结果按同一 Shop/业务日期幂等覆盖日事实。自动扫描仍不打开这类终态失败：已有 root-only
+allowlist 仅保留给发布核验过的历史原 item 的一次性自动恢复；新的三个 `unknown` 码不在任何例外内，避免把尚未有
+平台语义的指标状态变成每日重试。退款新增指标的补采与此类核心解析恢复须分别统计和追踪。

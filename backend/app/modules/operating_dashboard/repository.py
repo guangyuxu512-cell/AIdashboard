@@ -70,6 +70,10 @@ class CollectionItemState:
     updated_at: datetime
     job_kind: str
     requested_by_user_id: UUID | None
+    # A delayed pending item remains the durable owner of its Shop/date.  The
+    # planner needs this value only to present a truthful waiting state; the
+    # database claim predicate remains the execution authority.
+    retry_after: datetime | None = None
 
 
 class OperatingDashboardRepository:
@@ -177,6 +181,7 @@ class OperatingDashboardRepository:
                 OperatingDataCollectionItem.failure_stage,
                 OperatingDataCollectionItem.finished_at,
                 OperatingDataCollectionItem.updated_at,
+                OperatingDataCollectionItem.retry_after,
                 OperatingDataCollectionJob.kind,
                 OperatingDataCollectionJob.requested_by_user_id,
             )
@@ -210,6 +215,7 @@ class OperatingDashboardRepository:
                 updated_at=row.updated_at,
                 job_kind=row.kind,
                 requested_by_user_id=row.requested_by_user_id,
+                retry_after=row.retry_after,
             )
             for row in rows
         ]
@@ -792,6 +798,113 @@ class OperatingDashboardRepository:
             ),
         )
         return int(result.rowcount or 0)
+
+    def defer_pending_items_until(
+        self,
+        *,
+        business_date: date,
+        available_at: datetime,
+        now: datetime,
+        shop_id: UUID | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        """Keep already-queued prior-day work out of the platform before due.
+
+        This is deliberately a narrow persistence primitive: Service owns the
+        Shanghai eligibility rule, while the repository only delays matching
+        pending rows.  It also protects rows created by an older process
+        before the shared planner was deployed.
+        """
+
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.PENDING.value,
+            OperatingDataCollectionItem.business_date == business_date,
+            or_(
+                OperatingDataCollectionItem.retry_after.is_(None),
+                OperatingDataCollectionItem.retry_after < available_at,
+            ),
+        ]
+        if shop_id is not None:
+            conditions.append(OperatingDataCollectionItem.shop_id == shop_id)
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
+        job_ids = tuple(
+            self.session.scalars(
+                select(OperatingDataCollectionItem.collection_job_id)
+                .where(*conditions)
+                .distinct(),
+            ),
+        )
+        if not job_ids:
+            return ()
+        self.session.execute(
+            update(OperatingDataCollectionItem)
+            .where(*conditions)
+            .values(
+                retryable=True,
+                retry_after=available_at,
+                failure_code="COLLECTION_WAITING_FOR_DAILY_BOUNDARY",
+                failure_message="等待每日采集时间后再请求平台",
+                failure_stage="queued",
+                lease_until=None,
+                updated_at=now,
+            ),
+        )
+        return job_ids
+
+    def release_pending_items_after_daily_boundary(
+        self,
+        *,
+        business_date: date,
+        now: datetime,
+        shop_id: UUID | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        """Release only rows which this planner previously held for 09:00.
+
+        `retry_after` is the database claim predicate, but an explicit state
+        transition at the configured boundary avoids making an exact wall-clock
+        handoff depend on timestamp comparison/precision.  The Service calls
+        this only after it has established that the Shanghai boundary passed.
+        """
+
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.PENDING.value,
+            OperatingDataCollectionItem.business_date == business_date,
+            OperatingDataCollectionItem.failure_code
+            == "COLLECTION_WAITING_FOR_DAILY_BOUNDARY",
+        ]
+        if shop_id is not None:
+            conditions.append(OperatingDataCollectionItem.shop_id == shop_id)
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
+        job_ids = tuple(
+            self.session.scalars(
+                select(OperatingDataCollectionItem.collection_job_id)
+                .where(*conditions)
+                .distinct(),
+            ),
+        )
+        if not job_ids:
+            return ()
+        self.session.execute(
+            update(OperatingDataCollectionItem)
+            .where(*conditions)
+            .values(
+                retry_after=None,
+                failure_code=None,
+                failure_message=None,
+                failure_stage=None,
+                updated_at=now,
+            ),
+        )
+        return job_ids
 
     def paused_job_ids_for_shop(self, shop_id: UUID) -> tuple[UUID, ...]:
         return tuple(

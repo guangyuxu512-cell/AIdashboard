@@ -121,7 +121,9 @@ BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_LOCAL_TIME=09:00:00
 
 若 Release Gate 已逐项确认旧版可选字段解析缺陷留下的终态失败，可额外配置
 `BACKEND_OPERATING_DASHBOARD_LEGACY_RESPONSE_PARSE_RECOVERY_ITEM_IDS` 为精确原 item UUID 的 JSON 数组；默认必须为
-`[]`。该清单不是会话、平台拒绝或一般解析失败的重试开关。部署后仅让每个已批准旧 item 通过既有补漏规划创建一次
+`[]`。该清单只用于发布后自动恢复已审计的历史 item，不是会话、平台拒绝或一般解析失败的重试开关；用户在看板中
+明确选择当前最新的 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` item 时，不需要依赖该配置，仍由服务端
+统一执行权限、活动任务去重、冷却和跨 Job 累计次数限制。部署后仅让每个已批准旧 item 通过既有补漏规划创建一次
 新的尝试，保留旧失败记录，并在新 item 已入队后从清单移除已处理 UUID。
 
 该顺序使启动恢复与每日计划在 Asia/Shanghai 09:00 生效：昨日优先，并仅补最近 30 个完整自然日的缺口；不采

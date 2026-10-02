@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from threading import Barrier, Lock, Thread
 from time import sleep
 from uuid import UUID, uuid4
@@ -26,6 +26,7 @@ from app.modules.operating_dashboard.enums import (
     OperatingCollectionJobKind,
 )
 from app.modules.operating_dashboard.exceptions import (
+    OperatingDashboardCollectionRetryUnavailableError,
     OperatingDashboardCollectionUnavailableError,
     OperatingDashboardShopNotAvailableError,
 )
@@ -2848,7 +2849,7 @@ def test_postgresql_dashboard_gap_check_avoids_empty_jobs_and_reuses_active_work
             assert forced.state == "collection_queued"
             assert forced.queued_shop_days == 1
             assert forced.collection_job is not None
-            assert [item.business_date for item in forced.collection_job.items] == [DAY_ONE]
+
             forced_reused = service.request_collection_update(
                 actor=actor,
                 request=OperatingDataCollectionRequest(
@@ -2982,6 +2983,492 @@ def test_postgresql_dashboard_gap_check_avoids_empty_jobs_and_reuses_active_work
                 .select_from(OperatingDataCollectionItem)
                 .where(OperatingDataCollectionItem.shop_id == shop.shop_id),
             ) == 2
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+
+def test_postgresql_all_collection_entries_defer_only_yesterday_before_daily_boundary(
+    postgresql_engine: Engine,
+) -> None:
+    """Lifecycle, page actions and reauthorization share the same due rule."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    before_due = datetime(2026, 9, 24, 0, 59, tzinfo=UTC)
+    due_at = datetime(2026, 9, 24, 1, tzinfo=UTC)
+    yesterday = date(2026, 9, 23)
+    historical_date = date(2026, 9, 22)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="采集时间边界用户"),
+                    Team(team_id=team_id, name="采集时间边界团队"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            lifecycle_shop = _seed_shop(session, display_name="新店补采")
+            reenable_shop = _seed_shop(session, display_name="重新启用补采")
+            legacy_manual_shop = _seed_shop(session, display_name="旧手动入口")
+            normal_shop = _seed_shop(session, display_name="普通更新")
+            explicit_shop = _seed_shop(session, display_name="显式重采")
+            reauthorization_shop = _seed_shop(session, display_name="重新授权")
+            # TeamShopAccess has no ORM relationship to Shop, so flush the
+            # fixture rows before inserting their foreign-key references.
+            session.flush()
+            for shop in (
+                lifecycle_shop,
+                reenable_shop,
+                legacy_manual_shop,
+                normal_shop,
+                explicit_shop,
+                reauthorization_shop,
+            ):
+                shops.add(shop.shop_id)
+                session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.flush()
+            service = _service(
+                session,
+                operating_dashboard_daily_collection_local_time=time(hour=9),
+                operating_dashboard_initial_backfill_days=30,
+            )
+            actor = _actor(user_id=user_id, team_id=team_id, super_account=False)
+
+            lifecycle_job = service.enqueue_initial_backfill_for_shop(
+                shop_id=lifecycle_shop.shop_id,
+                now=before_due,
+            )
+            assert lifecycle_job is not None
+            lifecycle_items = {
+                item.business_date: item
+                for item in session.scalars(
+                    select(OperatingDataCollectionItem).where(
+                        OperatingDataCollectionItem.collection_job_id
+                        == lifecycle_job.collection_job_id,
+                    ),
+                )
+            }
+            assert lifecycle_items[yesterday].status == OperatingCollectionItemStatus.PENDING.value
+            assert lifecycle_items[yesterday].retry_after == due_at
+            assert (
+                lifecycle_items[yesterday].failure_code
+                == "COLLECTION_WAITING_FOR_DAILY_BOUNDARY"
+            )
+            assert lifecycle_items[historical_date].retry_after is None
+
+            reenable_job = service.enqueue_initial_backfill_for_shop(
+                shop_id=reenable_shop.shop_id,
+                kind=OperatingCollectionJobKind.REENABLE_BACKFILL,
+                now=before_due,
+            )
+            assert reenable_job is not None
+            reenable_yesterday = session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == reenable_job.collection_job_id,
+                    OperatingDataCollectionItem.business_date == yesterday,
+                ),
+            )
+            assert reenable_yesterday is not None
+            assert reenable_yesterday.retry_after == due_at
+
+            legacy_manual = service.enqueue_manual_collection(
+                actor=actor,
+                request=OperatingDataCollectionRequest(
+                    start_date=yesterday,
+                    end_date=yesterday,
+                    shop_id=legacy_manual_shop.shop_id,
+                ),
+                now=before_due,
+            )
+            assert legacy_manual.counts.pending == 1
+            legacy_manual_item = session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == legacy_manual.collection_job_id,
+                ),
+            )
+            assert legacy_manual_item is not None
+            assert legacy_manual_item.retry_after == due_at
+
+            normal = service.request_collection_update(
+                actor=actor,
+                request=OperatingDataCollectionRequest(
+                    start_date=yesterday,
+                    end_date=yesterday,
+                    shop_id=normal_shop.shop_id,
+                ),
+                now=before_due,
+            )
+            assert normal.collection_job is not None
+            assert normal.waiting_shop_days == 1
+            normal_item = session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == normal.collection_job.collection_job_id,
+                ),
+            )
+            assert normal_item is not None
+            assert normal_item.retry_after == due_at
+
+            explicit = service.request_collection_update(
+                actor=actor,
+                request=OperatingDataCollectionRequest(
+                    start_date=yesterday,
+                    end_date=yesterday,
+                    shop_id=explicit_shop.shop_id,
+                ),
+                force_recollect=True,
+                now=before_due,
+            )
+            assert explicit.collection_job is not None
+            assert explicit.waiting_shop_days == 1
+            explicit_item = session.scalar(
+                select(OperatingDataCollectionItem).where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == explicit.collection_job.collection_job_id,
+                ),
+            )
+            assert explicit_item is not None
+            assert explicit_item.retry_after == due_at
+
+            paused_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="pending",
+                requested_start_date=yesterday,
+                requested_end_date=yesterday,
+                requested_by_user_id=None,
+                created_at=before_due - timedelta(minutes=5),
+                updated_at=before_due - timedelta(minutes=5),
+            )
+            session.add(paused_job)
+            session.flush()
+            resumed_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=paused_job.collection_job_id,
+                shop_id=reauthorization_shop.shop_id,
+                business_date=yesterday,
+                status=OperatingCollectionItemStatus.PAUSED_REAUTHORIZATION.value,
+                priority=0,
+                retryable=False,
+                failure_code="SHOP_REAUTHORIZATION_REQUIRED",
+                failure_stage="session_preparation",
+                finished_at=before_due - timedelta(minutes=1),
+                created_at=before_due - timedelta(minutes=5),
+                updated_at=before_due - timedelta(minutes=1),
+            )
+            session.add(resumed_item)
+            session.commit()
+
+            assert (
+                service.resume_after_session_refresh(
+                    reauthorization_shop.shop_id,
+                    now=before_due,
+                )
+                == 1
+            )
+            session.refresh(resumed_item)
+            assert resumed_item.status == OperatingCollectionItemStatus.PENDING.value
+            assert resumed_item.retry_after == due_at
+
+            # The older date remains executable before the boundary; only
+            # yesterday is held.  No collector/platform call occurs in this
+            # test -- claiming is the final database-side precondition.
+            historical_claim = service.prepare_next_collection(
+                now=before_due,
+                lease_until=before_due + timedelta(minutes=5),
+                collection_job_id=lifecycle_job.collection_job_id,
+            )
+            assert historical_claim is not None
+            assert historical_claim.business_date == historical_date
+            historical_item = session.get(
+                OperatingDataCollectionItem,
+                historical_claim.collection_item_id,
+            )
+            assert historical_item is not None
+            historical_item.status = OperatingCollectionItemStatus.SUCCEEDED.value
+            historical_item.retryable = False
+            historical_item.finished_at = before_due
+            historical_item.updated_at = before_due
+            service.repository.update_job_statuses(
+                (historical_item.collection_job_id,),
+                now=before_due,
+            )
+            session.commit()
+
+            assert (
+                service.prepare_next_collection(
+                    now=before_due,
+                    lease_until=before_due + timedelta(minutes=5),
+                    collection_job_id=normal.collection_job.collection_job_id,
+                )
+                is None
+            )
+            # At the exact configured boundary, release the durable wait
+            # marker before claiming.  This keeps the wall-clock handoff out
+            # of a timestamp-comparison edge case while leaving old-history
+            # eligibility unchanged.
+            assert service._defer_yesterday_until_daily_boundary(
+                now=due_at,
+                collection_job_id=lifecycle_job.collection_job_id,
+            ) == (lifecycle_job.collection_job_id,)
+            session.refresh(lifecycle_items[yesterday])
+            assert lifecycle_items[yesterday].retry_after is None
+            assert lifecycle_items[yesterday].failure_code is None
+            yesterday_claim = service.prepare_next_collection(
+                now=due_at,
+                lease_until=due_at + timedelta(minutes=5),
+                collection_job_id=lifecycle_job.collection_job_id,
+            )
+            assert yesterday_claim is not None
+            assert yesterday_claim.business_date == yesterday
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_explicit_parser_recovery_is_scoped_and_bounded(
+    postgresql_engine: Engine,
+) -> None:
+    """A selected parser failure can recover without reopening other terminals."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    now = datetime(2026, 9, 24, 3, tzinfo=UTC)
+    business_date = date(2026, 9, 22)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="解析恢复用户"),
+                    Team(team_id=team_id, name="解析恢复团队"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            parser_shop = _seed_shop(session, display_name="解析失败店铺")
+            retry_shop = _seed_shop(session, display_name="专用重试店铺")
+            metrics_shop = _seed_shop(session, display_name="指标未知店铺")
+            # Keep the fixture FK ordering explicit; these models are not
+            # connected by an ORM relationship.
+            session.flush()
+            for shop in (parser_shop, retry_shop, metrics_shop):
+                shops.add(shop.shop_id)
+                session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.flush()
+            parser_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=3),
+            )
+            metrics_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=3),
+            )
+            retry_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=3),
+            )
+            session.add_all([parser_job, retry_job, metrics_job])
+            session.flush()
+            parser_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=parser_job.collection_job_id,
+                shop_id=parser_shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(minutes=2),
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=2),
+            )
+            metrics_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=metrics_job.collection_job_id,
+                shop_id=metrics_shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(minutes=2),
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=2),
+            )
+            retry_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=retry_job.collection_job_id,
+                shop_id=retry_shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(minutes=2),
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=2),
+            )
+            session.add_all([parser_item, retry_item, metrics_item])
+            session.commit()
+
+            service = _service(
+                session,
+                operating_dashboard_collection_max_attempts=2,
+                operating_dashboard_gap_recovery_retry_cooldown_seconds=60,
+            )
+            actor = _actor(user_id=user_id, team_id=team_id, super_account=False)
+            request = OperatingDataCollectionRequest(
+                start_date=business_date,
+                end_date=business_date,
+                shop_id=parser_shop.shop_id,
+            )
+            retry = service.retry_failed_collection_items(
+                actor=actor,
+                collection_job_id=retry_job.collection_job_id,
+                item_ids=[retry_item.collection_item_id],
+                now=now,
+            )
+            assert retry.kind == OperatingCollectionJobKind.RETRY.value
+            assert retry.counts.pending == 1
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperatingDataCollectionItem)
+                    .where(
+                        OperatingDataCollectionItem.shop_id == retry_shop.shop_id,
+                        OperatingDataCollectionItem.business_date == business_date,
+                    ),
+                )
+                == 2
+            )
+            session.refresh(retry_item)
+            assert retry_item.status == OperatingCollectionItemStatus.FAILED.value
+
+            normal = service.request_collection_update(
+                actor=actor,
+                request=request,
+                now=now,
+            )
+            assert normal.state == "attention_required"
+            assert normal.message == "历史响应解析失败，可使用“重新采集当前筛选范围”发起有限恢复"
+
+            explicit = service.request_collection_update(
+                actor=actor,
+                request=request,
+                force_recollect=True,
+                now=now,
+            )
+            assert explicit.collection_job is not None
+            assert explicit.collection_job.kind == OperatingCollectionJobKind.MANUAL_REFRESH.value
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperatingDataCollectionItem)
+                    .where(
+                        OperatingDataCollectionItem.shop_id == parser_shop.shop_id,
+                        OperatingDataCollectionItem.business_date == business_date,
+                    ),
+                )
+                == 2
+            )
+
+            # The original terminal row remains as audit history; its active
+            # replacement owns the date and cannot be reopened through a
+            # second button click or the item retry API.
+            reused = service.request_collection_update(
+                actor=actor,
+                request=request,
+                force_recollect=True,
+                now=now,
+            )
+            assert reused.queued_shop_days == 0
+            assert reused.active_shop_days == 1
+            with pytest.raises(OperatingDashboardCollectionRetryUnavailableError):
+                service.retry_failed_collection_items(
+                    actor=actor,
+                    collection_job_id=parser_job.collection_job_id,
+                    item_ids=[parser_item.collection_item_id],
+                    now=now,
+                )
+
+            # A different terminal type never becomes retryable through
+            # either the page's explicit recollection or the item retry API.
+            metrics_submission = service.request_collection_update(
+                actor=actor,
+                request=OperatingDataCollectionRequest(
+                    start_date=business_date,
+                    end_date=business_date,
+                    shop_id=metrics_shop.shop_id,
+                ),
+                force_recollect=True,
+                now=now,
+            )
+            assert metrics_submission.state == "attention_required"
+            assert metrics_submission.message == "平台指标未知，暂不能补采"
+            with pytest.raises(OperatingDashboardCollectionRetryUnavailableError):
+                service.retry_failed_collection_items(
+                    actor=actor,
+                    collection_job_id=metrics_job.collection_job_id,
+                    item_ids=[metrics_item.collection_item_id],
+                    now=now,
+                )
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:

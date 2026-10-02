@@ -84,6 +84,7 @@ REFUND_ORDER_ATTENTION_STATUSES = frozenset(
 COVERAGE_MISSING_SAMPLE_LIMIT = 20
 LEGACY_RESPONSE_PARSE_FAILURE_CODE = "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
 LEGACY_RESPONSE_PARSE_FAILURE_STAGE = "response_parse"
+COLLECTION_WAITING_FOR_DAILY_BOUNDARY = "COLLECTION_WAITING_FOR_DAILY_BOUNDARY"
 DOUYIN_CORE_METRIC_UNKNOWN_FAILURE_CODES = frozenset(
     {
         "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
@@ -149,6 +150,33 @@ def operating_daily_collection_due_at(
     ).astimezone(UTC)
 
 
+def operating_collection_wait_until(
+    *,
+    business_date: date,
+    now: datetime,
+    local_time: time | None,
+) -> datetime | None:
+    """Return a due time only for yesterday before the configured boundary.
+
+    The platform can still be preparing yesterday at the daily collection
+    boundary.  That rule must be shared by lifecycle backfills, manual gap
+    checks, explicit recollection and executor recovery.  Older completed
+    business dates remain immediately eligible; today's date never reaches
+    the completed-date APIs.
+    """
+
+    if local_time is None:
+        return None
+    yesterday = _shanghai_today(now) - timedelta(days=1)
+    if business_date != yesterday:
+        return None
+    due_at = operating_daily_collection_due_at(
+        business_date=business_date,
+        local_time=local_time,
+    )
+    return due_at if now < due_at else None
+
+
 @dataclass(frozen=True)
 class _ShopRangeValues:
     turnover_cents: int | None
@@ -169,9 +197,11 @@ class _ManualCollectionPlan:
     missing_shop_days: int
     active_shop_days: int
     blocked_shop_days: int
+    waiting_shop_days: int
     refund_attention_shop_days: int
     expected_shop_days: int
     not_operating_shop_days: int
+    blocked_reasons: tuple[str, ...]
 
 
 class OperatingDashboardService:
@@ -337,6 +367,7 @@ class OperatingDashboardService:
         *,
         actor: ActorContext,
         request: OperatingDataCollectionRequest,
+        now: datetime | None = None,
     ) -> OperatingDataCollectionJobRead:
         self._require_dashboard_access(actor)
         if not self.settings.operating_dashboard_collection_execution_enabled:
@@ -352,6 +383,7 @@ class OperatingDashboardService:
         # durable job so an unfiltered request cannot leave an empty orphan.
         if not shops:
             raise OperatingDashboardShopNotAvailableError()
+        resolved_now = now or datetime.now(UTC)
         job = self._create_collection_job(
             kind=OperatingCollectionJobKind.MANUAL_REFRESH,
             start_date=request.start_date,
@@ -359,6 +391,7 @@ class OperatingDashboardService:
             shops=shops,
             requested_by_user_id=actor.user_id,
             requested_team_id=actor.team_id,
+            now=resolved_now,
         )
         return self._job_read_for_actor(actor=actor, job=job)
 
@@ -436,6 +469,7 @@ class OperatingDashboardService:
                     requested_by_user_id=actor.user_id,
                     requested_team_id=actor.team_id,
                     business_dates_by_shop=plan.business_dates_by_shop,
+                    now=resolved_now,
                 )
             else:
                 self.session.commit()
@@ -463,21 +497,33 @@ class OperatingDashboardService:
                 active_shop_days=0,
                 blocked_shop_days=0,
                 refund_attention_shop_days=0,
+                waiting_shop_days=0,
                 not_operating_shop_days=plan.not_operating_shop_days,
             )
         if job_read is not None:
+            message = (
+                "将重新向平台获取当前筛选范围数据"
+                if force_recollect and created_job is not None
+                else (
+                    f"发现 {queued_shop_days} 个待补采店铺日期，已安排采集"
+                    if created_job is not None
+                    else "已复用当前范围内的采集进度"
+                )
+            )
+            if plan.blocked_reasons:
+                # A partly actionable scope must not hide why the remaining
+                # dates stayed terminal. The reason is already sanitized and
+                # includes the next safe action where one exists.
+                message = f"{message}；{plan.blocked_reasons[0]}"
             return OperatingDataCollectionSubmissionRead(
                 state="collection_queued",
-                message=(
-                    "已提交所选范围重新采集"
-                    if force_recollect and created_job is not None
-                    else "已按缺口检查采集进度"
-                ),
+                message=message,
                 collection_job=job_read,
                 missing_shop_days=plan.missing_shop_days,
                 queued_shop_days=queued_shop_days,
                 active_shop_days=plan.active_shop_days,
                 blocked_shop_days=plan.blocked_shop_days,
+                waiting_shop_days=plan.waiting_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
                 not_operating_shop_days=plan.not_operating_shop_days,
             )
@@ -493,18 +539,24 @@ class OperatingDashboardService:
                 queued_shop_days=0,
                 active_shop_days=plan.active_shop_days,
                 blocked_shop_days=plan.blocked_shop_days,
+                waiting_shop_days=plan.waiting_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
                 not_operating_shop_days=plan.not_operating_shop_days,
             )
         if plan.blocked_shop_days:
             return OperatingDataCollectionSubmissionRead(
                 state="attention_required",
-                message="部分缺口当前不能自动补采，请查看覆盖状态并按提示处理",
+                message=(
+                    plan.blocked_reasons[0]
+                    if plan.blocked_reasons
+                    else "部分缺口当前不能自动补采，请查看覆盖状态并按提示处理"
+                ),
                 collection_job=None,
                 missing_shop_days=plan.missing_shop_days,
                 queued_shop_days=0,
                 active_shop_days=0,
                 blocked_shop_days=plan.blocked_shop_days,
+                waiting_shop_days=plan.waiting_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
                 not_operating_shop_days=plan.not_operating_shop_days,
             )
@@ -517,17 +569,19 @@ class OperatingDashboardService:
                 queued_shop_days=0,
                 active_shop_days=0,
                 blocked_shop_days=0,
+                waiting_shop_days=plan.waiting_shop_days,
                 refund_attention_shop_days=plan.refund_attention_shop_days,
                 not_operating_shop_days=plan.not_operating_shop_days,
             )
         return OperatingDataCollectionSubmissionRead(
             state="up_to_date",
-            message="数据已是最新，无需重新采集",
+            message="所选范围数据已齐全，无需补采。",
             collection_job=None,
             missing_shop_days=0,
             queued_shop_days=0,
             active_shop_days=0,
             blocked_shop_days=0,
+            waiting_shop_days=plan.waiting_shop_days,
             refund_attention_shop_days=0,
             not_operating_shop_days=plan.not_operating_shop_days,
         )
@@ -602,6 +656,7 @@ class OperatingDashboardService:
             shops=[dashboard_shop],
             requested_by_user_id=None,
             business_dates_by_shop=dates_by_shop,
+            now=resolved_now,
             commit=commit,
         )
 
@@ -648,6 +703,7 @@ class OperatingDashboardService:
             requested_by_user_id=None,
             dedupe_key=dedupe_key,
             business_dates_by_shop=dates_by_shop,
+            now=resolved_now,
         )
 
     def retry_failed_collection_items(
@@ -656,10 +712,10 @@ class OperatingDashboardService:
         actor: ActorContext,
         collection_job_id: UUID,
         item_ids: Iterable[UUID],
+        now: datetime | None = None,
     ) -> OperatingDataCollectionJobRead:
         self._require_dashboard_access(actor)
-        source = self.repository.get_job(collection_job_id)
-        if source is None:
+        if self.repository.get_job(collection_job_id) is None:
             raise OperatingDashboardCollectionNotFoundError()
         visible_items = self.repository.list_job_items_for_actor(
             actor=actor,
@@ -668,30 +724,96 @@ class OperatingDashboardService:
         if not visible_items:
             raise OperatingDashboardCollectionNotFoundError()
         requested_ids = set(item_ids)
-        retryable_items = [
+        # A broad retry request must stay limited to rows already marked
+        # retryable.  The parser-specific manual recovery is intentionally
+        # explicit per original item so it cannot become a generic retry-all
+        # endpoint for terminal failures.
+        candidate_items = [
             item
             for item in visible_items
             if item.status == OperatingCollectionItemStatus.FAILED.value
-            and item.retryable
-            and (not requested_ids or item.collection_item_id in requested_ids)
+            and (
+                (
+                    item.retryable
+                    and (
+                        not requested_ids
+                        or item.collection_item_id in requested_ids
+                    )
+                )
+                or (
+                    bool(requested_ids)
+                    and item.collection_item_id in requested_ids
+                    and item.failure_code == LEGACY_RESPONSE_PARSE_FAILURE_CODE
+                    and item.failure_stage == LEGACY_RESPONSE_PARSE_FAILURE_STAGE
+                )
+            )
         ]
-        if not retryable_items:
+        if not candidate_items:
             raise OperatingDashboardCollectionRetryUnavailableError()
         shops = self.repository.list_authorized_shops(actor=actor)
         by_id = {shop.shop_id: shop for shop in shops}
+        resolved_now = now or datetime.now(UTC)
         retry_dates_by_shop: dict[UUID, list[date]] = defaultdict(list)
-        for item in retryable_items:
-            if item.shop_id in by_id:
+        job: OperatingDataCollectionJob | None = None
+        try:
+            self.repository.acquire_global_claim_lock()
+            states_by_shop_date: dict[
+                tuple[UUID, date],
+                list[CollectionItemState],
+            ] = defaultdict(list)
+            for state in self.repository.list_collection_item_states(
+                shop_ids={item.shop_id for item in candidate_items},
+                start_date=min(item.business_date for item in candidate_items),
+                end_date=max(item.business_date for item in candidate_items),
+            ):
+                states_by_shop_date[(state.shop_id, state.business_date)].append(state)
+            for item in candidate_items:
+                if item.shop_id not in by_id:
+                    continue
+                history = states_by_shop_date[(item.shop_id, item.business_date)]
+                latest = _latest_state(history)
+                # Do not allow a stale UI item to reopen a newer terminal or
+                # active row.  `find_active_item` inside `_new_item` is the
+                # final DB guard; this comparison makes the user result
+                # truthful before a new Job is written.
+                if latest is None or latest.collection_item_id != item.collection_item_id:
+                    continue
+                if not self._manual_gap_recovery_allowed(
+                    history,
+                    now=resolved_now,
+                    allow_response_parse_recovery=(
+                        item.collection_item_id in requested_ids
+                    ),
+                ):
+                    continue
                 retry_dates_by_shop[item.shop_id].append(item.business_date)
-        job = self._create_collection_job(
-            kind=OperatingCollectionJobKind.RETRY,
-            start_date=min(item.business_date for item in retryable_items),
-            end_date=max(item.business_date for item in retryable_items),
-            shops=[by_id[shop_id] for shop_id in retry_dates_by_shop],
-            requested_by_user_id=actor.user_id,
-            requested_team_id=actor.team_id,
-            business_dates_by_shop=retry_dates_by_shop,
-        )
+            if retry_dates_by_shop:
+                job = self._create_collection_job(
+                    kind=OperatingCollectionJobKind.RETRY,
+                    start_date=min(
+                        business_date
+                        for dates in retry_dates_by_shop.values()
+                        for business_date in dates
+                    ),
+                    end_date=max(
+                        business_date
+                        for dates in retry_dates_by_shop.values()
+                        for business_date in dates
+                    ),
+                    shops=[by_id[shop_id] for shop_id in retry_dates_by_shop],
+                    requested_by_user_id=actor.user_id,
+                    requested_team_id=actor.team_id,
+                    business_dates_by_shop=retry_dates_by_shop,
+                    now=resolved_now,
+                )
+        except Exception:
+            self.session.rollback()
+            raise
+        if job is None:
+            # Release the advisory-lock transaction without pretending the
+            # caller's stale/blocked item selection was a successful retry.
+            self.session.rollback()
+            raise OperatingDashboardCollectionRetryUnavailableError()
         return self._job_read_for_actor(actor=actor, job=job)
 
     def get_collection_job(
@@ -722,6 +844,10 @@ class OperatingDashboardService:
             shop_id=shop_id,
             now=resolved_now,
         )
+        deferred = self._defer_yesterday_until_daily_boundary(
+            now=resolved_now,
+            shop_id=shop_id,
+        )
         if resumed:
             self.repository.update_job_statuses(job_ids, now=resolved_now)
         # A valid login refresh resumes its original paused rows first.  The
@@ -734,7 +860,7 @@ class OperatingDashboardService:
             now=resolved_now,
             commit=False,
         )
-        if resumed or queued is not None or skipped:
+        if resumed or deferred or queued is not None or skipped:
             self.session.commit()
         return resumed
 
@@ -887,6 +1013,7 @@ class OperatingDashboardService:
             requested_by_user_id=None,
             dedupe_key=recovery_dedupe_key,
             business_dates_by_shop={shop.shop_id: [business_date] for shop in shops},
+            now=now,
         )
 
     @staticmethod
@@ -924,6 +1051,10 @@ class OperatingDashboardService:
             # work starts, so it never turns external I/O into a DB lock.
             self.repository.acquire_global_claim_lock()
             self._recover_expired_or_disabled_items(
+                now=now,
+                collection_job_id=collection_job_id,
+            )
+            self._defer_yesterday_until_daily_boundary(
                 now=now,
                 collection_job_id=collection_job_id,
             )
@@ -986,6 +1117,52 @@ class OperatingDashboardService:
                 (*expired_job_ids, *disabled_job_ids, *not_operating_job_ids),
                 now=now,
             )
+
+    def _defer_yesterday_until_daily_boundary(
+        self,
+        *,
+        now: datetime,
+        shop_id: UUID | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        """Apply the shared eligibility rule to already durable pending rows.
+
+        New jobs calculate the same delay in `_new_item`.  This extra
+        database-side pass covers a row resumed after reauthorization and a
+        row written by an older Backend process, before `claim_next` could
+        turn it into a platform request.
+        """
+
+        yesterday = _shanghai_today(now) - timedelta(days=1)
+        local_time = self.settings.operating_dashboard_daily_collection_local_time
+        wait_until = operating_collection_wait_until(
+            business_date=yesterday,
+            now=now,
+            local_time=local_time,
+        )
+        if wait_until is not None:
+            job_ids = self.repository.defer_pending_items_until(
+                business_date=yesterday,
+                available_at=wait_until,
+                now=now,
+                shop_id=shop_id,
+                collection_job_id=collection_job_id,
+            )
+        elif local_time is not None:
+            # Clear the durable wait marker in the same short claim
+            # transaction once the configured instant has arrived.  This is
+            # deliberately not a retry or a platform-status classification.
+            job_ids = self.repository.release_pending_items_after_daily_boundary(
+                business_date=yesterday,
+                now=now,
+                shop_id=shop_id,
+                collection_job_id=collection_job_id,
+            )
+        else:
+            return ()
+        if job_ids:
+            self.repository.update_job_statuses(job_ids, now=now)
+        return job_ids
 
     def _missing_dates_by_shop(
         self,
@@ -1141,9 +1318,11 @@ class OperatingDashboardService:
         missing_shop_days = 0
         active_shop_days = 0
         blocked_shop_days = 0
+        waiting_shop_days = 0
         refund_attention_shop_days = 0
         expected_shop_days = 0
         not_operating_shop_days = 0
+        blocked_reasons: list[str] = []
         for shop in shops:
             expected_dates = _expected_dates_for_shop(shop, start_date, end_date)
             expected_shop_days += len(expected_dates)
@@ -1176,6 +1355,13 @@ class OperatingDashboardService:
                     # successful fact exists and the user explicitly asks to
                     # recollect it. Reusing it avoids duplicate platform I/O.
                     active_shop_days += 1
+                    if any(
+                        state.status == OperatingCollectionItemStatus.PENDING.value
+                        and state.failure_code
+                        == COLLECTION_WAITING_FOR_DAILY_BOUNDARY
+                        for state in active_states
+                    ):
+                        waiting_shop_days += 1
                     active_job_ids.update(
                         state.collection_job_id for state in active_states
                     )
@@ -1187,19 +1373,41 @@ class OperatingDashboardService:
                 # in-cooldown retryable failure.  A confirmed historical
                 # fact remains readable in either case; the blocked result
                 # simply prevents this button from issuing another request.
-                if not self._manual_gap_recovery_allowed(history, now=now):
+                if not self._manual_gap_recovery_allowed(
+                    history,
+                    now=now,
+                    allow_response_parse_recovery=force_recollect,
+                ):
                     blocked_shop_days += 1
+                    reason = self._manual_recovery_block_reason(
+                        history,
+                        now=now,
+                        allow_response_parse_recovery=force_recollect,
+                    )
+                    if reason not in blocked_reasons:
+                        blocked_reasons.append(reason)
                     continue
                 candidates[shop.shop_id].append(business_date)
+                if (
+                    operating_collection_wait_until(
+                        business_date=business_date,
+                        now=now,
+                        local_time=self.settings.operating_dashboard_daily_collection_local_time,
+                    )
+                    is not None
+                ):
+                    waiting_shop_days += 1
         return _ManualCollectionPlan(
             business_dates_by_shop=dict(candidates),
             active_job_ids=tuple(active_job_ids),
             missing_shop_days=missing_shop_days,
             active_shop_days=active_shop_days,
             blocked_shop_days=blocked_shop_days,
+            waiting_shop_days=waiting_shop_days,
             refund_attention_shop_days=refund_attention_shop_days,
             expected_shop_days=expected_shop_days,
             not_operating_shop_days=not_operating_shop_days,
+            blocked_reasons=tuple(blocked_reasons),
         )
 
     def _manual_gap_recovery_allowed(
@@ -1207,6 +1415,7 @@ class OperatingDashboardService:
         states: Iterable[CollectionItemState],
         *,
         now: datetime,
+        allow_response_parse_recovery: bool = False,
     ) -> bool:
         """Apply the same finite safeguards to ordinary dashboard updates.
 
@@ -1227,6 +1436,15 @@ class OperatingDashboardService:
         if latest.status != OperatingCollectionItemStatus.FAILED.value:
             return True
         if not latest.retryable:
+            if (
+                allow_response_parse_recovery
+                and self._explicit_response_parse_recovery_allowed(
+                    history,
+                    latest=latest,
+                    now=now,
+                )
+            ):
+                return True
             return self._approved_legacy_response_parse_recovery(latest)
         cooldown = timedelta(
             seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
@@ -1237,6 +1455,73 @@ class OperatingDashboardService:
             sum(state.attempt_count for state in history)
             < self.settings.operating_dashboard_collection_max_attempts
         )
+
+    def _explicit_response_parse_recovery_allowed(
+        self,
+        history: list[CollectionItemState],
+        *,
+        latest: CollectionItemState,
+        now: datetime,
+    ) -> bool:
+        """Allow only an explicit, bounded retry of the known parser shape.
+
+        The old UUID allowlist remains a Release-Gate-only automatic recovery
+        safeguard.  A user pressing "重新采集当前筛选范围" may instead retry a
+        current terminal `response_parse` result through the current parser,
+        but never a session, risk, metrics-unavailable or unknown platform
+        rejection.  Attempts are summed across Jobs so creating a fresh Job
+        cannot reset the safety budget.
+        """
+
+        if not _is_response_parse_failure(latest):
+            return False
+        cooldown = timedelta(
+            seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
+        )
+        if latest.updated_at + cooldown > now:
+            return False
+        return (
+            sum(state.attempt_count for state in history)
+            < self.settings.operating_dashboard_collection_max_attempts
+        )
+
+    def _manual_recovery_block_reason(
+        self,
+        states: Iterable[CollectionItemState],
+        *,
+        now: datetime,
+        allow_response_parse_recovery: bool,
+    ) -> str:
+        """Return a safe action-oriented explanation without raw platform text."""
+
+        latest = _latest_state(states)
+        if latest is None:
+            return "当前范围暂不能补采，请刷新后重试"
+        if latest.failure_code in {
+            "SHOP_REAUTHORIZATION_REQUIRED",
+            "SHOP_SESSION_IDENTITY_MISMATCH",
+            "SHOP_SESSION_VERSION_CONFLICT",
+        }:
+            return "店铺需要重新登录后才能继续采集"
+        if latest.failure_code in DOUYIN_CORE_METRIC_UNKNOWN_FAILURE_CODES:
+            return "平台指标未知，暂不能补采"
+        if _is_response_parse_failure(latest):
+            if not allow_response_parse_recovery:
+                return "历史响应解析失败，可使用“重新采集当前筛选范围”发起有限恢复"
+            cooldown = timedelta(
+                seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
+            )
+            if latest.updated_at + cooldown > now:
+                return "解析恢复仍在冷却期，请稍后再试"
+            return "解析恢复已达到重采上限，请等待人工核实"
+        if latest.retryable:
+            cooldown = timedelta(
+                seconds=self.settings.operating_dashboard_gap_recovery_retry_cooldown_seconds,
+            )
+            if latest.updated_at + cooldown > now:
+                return "采集仍在冷却期，请稍后再试"
+            return "采集已达到重试上限，请等待人工核实"
+        return "平台返回暂不能自动恢复，请核实店铺登录或平台状态"
 
     def _approved_legacy_response_parse_recovery(
         self,
@@ -1262,8 +1547,13 @@ class OperatingDashboardService:
             and state.finished_at is not None
         )
 
-    def abandon_claim_if_not_executable(self, claim: CollectionClaim) -> bool:
-        """Last enabled and requester-access check before external I/O."""
+    def abandon_claim_if_not_executable(
+        self,
+        claim: CollectionClaim,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Last authorization and time-eligibility check before external I/O."""
 
         item = self.repository.get_item_for_update(
             collection_item_id=claim.collection_item_id,
@@ -1276,13 +1566,38 @@ class OperatingDashboardService:
             self.session.rollback()
             return True
         if not self._manual_claim_still_authorized(item):
-            now = datetime.now(UTC)
+            resolved_now = now or datetime.now(UTC)
             self._skip_claim(
                 item,
-                now=now,
+                now=resolved_now,
                 failure_code="COLLECTION_REQUESTER_ACCESS_REVOKED",
                 failure_message="发起更新所需的当前授权已撤销，未发起平台请求",
             )
+            return True
+        resolved_now = now or datetime.now(UTC)
+        wait_until = operating_collection_wait_until(
+            business_date=claim.business_date,
+            now=resolved_now,
+            local_time=self.settings.operating_dashboard_daily_collection_local_time,
+        )
+        if wait_until is not None:
+            # A legacy process could claim a row just as this Feature deploys.
+            # No platform call has happened yet, so return it to PENDING and
+            # undo that claim's attempt increment instead of recording a
+            # synthetic failure.
+            item.status = OperatingCollectionItemStatus.PENDING.value
+            item.attempt_count = max(0, item.attempt_count - 1)
+            item.retryable = True
+            item.retry_after = wait_until
+            item.failure_code = COLLECTION_WAITING_FOR_DAILY_BOUNDARY
+            item.failure_message = "等待每日采集时间后再请求平台"
+            item.failure_stage = "queued"
+            item.lease_until = None
+            item.started_at = None
+            item.finished_at = None
+            item.updated_at = resolved_now
+            self.repository.update_job_statuses((item.collection_job_id,), now=resolved_now)
+            self.session.commit()
             return True
         shop = self.repository.get_shop(claim.shop_id)
         if (
@@ -1296,7 +1611,6 @@ class OperatingDashboardService:
         ):
             self.session.rollback()
             return False
-        now = datetime.now(UTC)
         if (
             shop is not None
             and shop.operating_start_date is not None
@@ -1304,14 +1618,14 @@ class OperatingDashboardService:
         ):
             self._skip_claim(
                 item,
-                now=now,
+                now=resolved_now,
                 failure_code="SHOP_NOT_OPERATING_ON_DATE",
                 failure_message="该业务日期早于已确认经营起算日，未发起平台请求",
             )
             return True
         self._skip_claim(
             item,
-            now=now,
+            now=resolved_now,
             failure_code="SHOP_DISABLED",
             failure_message="店铺已停用或移除，未发起平台请求",
         )
@@ -1416,11 +1730,13 @@ class OperatingDashboardService:
         dedupe_key: str | None = None,
         business_dates: list[date] | None = None,
         business_dates_by_shop: dict[UUID, list[date]] | None = None,
+        now: datetime | None = None,
         commit: bool = True,
     ) -> OperatingDataCollectionJob:
         # A concurrent enqueue can collide only with an active Shop/date item.
         # Retry the transaction once so the second request records explicit
         # SKIPPED rows rather than exposing a database uniqueness error.
+        resolved_now = now or datetime.now(UTC)
         for attempt in range(2):
             try:
                 with self.session.begin_nested():
@@ -1453,12 +1769,13 @@ class OperatingDashboardService:
                             shop=shop,
                             business_date=business_date,
                             priority=priority,
+                            now=resolved_now,
                         )
                         priority += 1
                         self.repository.add_item(item)
                     self.repository.update_job_statuses(
                         (job.collection_job_id,),
-                        now=datetime.now(UTC),
+                        now=resolved_now,
                     )
                     self.session.flush()
                 if not commit:
@@ -1479,6 +1796,7 @@ class OperatingDashboardService:
         shop: DashboardShop,
         business_date: date,
         priority: int,
+        now: datetime,
     ) -> OperatingDataCollectionItem:
         active = self.repository.find_active_item(
             shop_id=shop.shop_id,
@@ -1496,7 +1814,7 @@ class OperatingDashboardService:
                 failure_code="SHOP_DISABLED",
                 failure_message="店铺已停用，未发起平台请求",
                 failure_stage="queued",
-                finished_at=datetime.now(UTC),
+                finished_at=now,
             )
         if shop.platform is not ShopPlatform.DOUYIN:
             return OperatingDataCollectionItem(
@@ -1510,7 +1828,7 @@ class OperatingDashboardService:
                 failure_code="PLATFORM_OPERATING_DATA_UNSUPPORTED",
                 failure_message="当前平台尚未接入经营数据采集",
                 failure_stage="queued",
-                finished_at=datetime.now(UTC),
+                finished_at=now,
             )
         if active is not None:
             return OperatingDataCollectionItem(
@@ -1524,8 +1842,13 @@ class OperatingDashboardService:
                 failure_code="COLLECTION_ALREADY_QUEUED",
                 failure_message="该店铺日期已有进行中的采集",
                 failure_stage="queued",
-                finished_at=datetime.now(UTC),
+                finished_at=now,
             )
+        wait_until = operating_collection_wait_until(
+            business_date=business_date,
+            now=now,
+            local_time=self.settings.operating_dashboard_daily_collection_local_time,
+        )
         return OperatingDataCollectionItem(
             collection_item_id=generate_id(),
             collection_job_id=job.collection_job_id,
@@ -1534,6 +1857,18 @@ class OperatingDashboardService:
             status=OperatingCollectionItemStatus.PENDING.value,
             priority=priority,
             retryable=True,
+            retry_after=wait_until,
+            failure_code=(
+                COLLECTION_WAITING_FOR_DAILY_BOUNDARY
+                if wait_until is not None
+                else None
+            ),
+            failure_message=(
+                "等待每日采集时间后再请求平台"
+                if wait_until is not None
+                else None
+            ),
+            failure_stage="queued" if wait_until is not None else None,
         )
 
     def _job_read_for_actor(
@@ -2187,11 +2522,45 @@ def _latest_collection_states(
     return latest
 
 
+def _latest_state(
+    states: Iterable[CollectionItemState],
+) -> CollectionItemState | None:
+    history = list(states)
+    if not history:
+        return None
+    return max(
+        history,
+        key=lambda state: (state.updated_at, str(state.collection_item_id)),
+    )
+
+
+def _is_response_parse_failure(state: CollectionItemState) -> bool:
+    return (
+        state.status == OperatingCollectionItemStatus.FAILED.value
+        and not state.retryable
+        and state.failure_code == LEGACY_RESPONSE_PARSE_FAILURE_CODE
+        and state.failure_stage == LEGACY_RESPONSE_PARSE_FAILURE_STAGE
+        and state.finished_at is not None
+    )
+
+
 def _coverage_state(
     state: CollectionItemState | None,
-) -> Literal["missing", "collecting", "waiting_reauthorization", "failed", "unknown"]:
+) -> Literal[
+    "missing",
+    "collecting",
+    "waiting_collection_time",
+    "waiting_reauthorization",
+    "failed",
+    "unknown",
+]:
     if state is None:
         return "missing"
+    if (
+        state.status == OperatingCollectionItemStatus.PENDING.value
+        and state.failure_code == COLLECTION_WAITING_FOR_DAILY_BOUNDARY
+    ):
+        return "waiting_collection_time"
     if state.status in {
         OperatingCollectionItemStatus.PENDING.value,
         OperatingCollectionItemStatus.RUNNING.value,
@@ -2213,7 +2582,14 @@ def _coverage_state(
 def _coverage_failure_reason(state: CollectionItemState | None) -> str | None:
     """Map a persisted failure code without disclosing raw failure details."""
 
-    if state is None or state.status != OperatingCollectionItemStatus.FAILED.value:
+    if state is None:
+        return None
+    if (
+        state.status == OperatingCollectionItemStatus.PENDING.value
+        and state.failure_code == COLLECTION_WAITING_FOR_DAILY_BOUNDARY
+    ):
+        return _safe_failure_message(state.failure_code)
+    if state.status != OperatingCollectionItemStatus.FAILED.value:
         return None
     return _safe_failure_message(state.failure_code)
 
@@ -2400,6 +2776,7 @@ def _safe_failure_message(code: str | None) -> str:
         "DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING": "抖店经营数据响应缺少必要指标",
         "DOUYIN_PLATFORM_REQUEST_FAILED": "抖店平台请求失败",
         "DOUYIN_OPERATING_DATA_REJECTED": "抖店平台拒绝经营数据请求",
+        COLLECTION_WAITING_FOR_DAILY_BOUNDARY: "等待每日采集时间后再请求平台",
         "COLLECTION_EXECUTION_FAILED": "经营数据采集执行失败",
     }
     return messages.get(code or "", "经营数据采集失败")
