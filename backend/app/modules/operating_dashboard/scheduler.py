@@ -7,7 +7,10 @@ from zoneinfo import ZoneInfo
 
 from app.core.config import get_settings
 from app.core.database import get_session_factory
-from app.modules.operating_dashboard.service import OperatingDashboardService
+from app.modules.operating_dashboard.service import (
+    OperatingDashboardService,
+    is_operating_daily_collection_due,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,9 +36,12 @@ def enqueue_due_daily_operating_collection_once(
     ):
         return False
     resolved_now = now or datetime.now(UTC)
-    local_now = resolved_now.astimezone(SHANGHAI_TIMEZONE)
-    if local_now.timetz().replace(tzinfo=None) < settings.operating_dashboard_daily_collection_local_time:
+    if not is_operating_daily_collection_due(
+        now=resolved_now,
+        local_time=settings.operating_dashboard_daily_collection_local_time,
+    ):
         return False
+    local_now = resolved_now.astimezone(SHANGHAI_TIMEZONE)
     business_date = local_now.date() - timedelta(days=1)
     with get_session_factory()() as session:
         OperatingDashboardService(session, settings=settings).enqueue_daily_collection(

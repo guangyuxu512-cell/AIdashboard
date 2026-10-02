@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Iterable, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -91,6 +91,7 @@ DOUYIN_CORE_METRIC_UNKNOWN_FAILURE_CODES = frozenset(
         "DOUYIN_OPERATING_DATA_CORE_METRIC_MISSING",
     },
 )
+DAILY_COLLECTION_RECOVERY_DEDUPE_PREFIX = "daily-recovery"
 SYSTEM_COLLECTION_KINDS = frozenset(
     {
         OperatingCollectionJobKind.INITIAL_BACKFILL.value,
@@ -107,6 +108,45 @@ DashboardSortField = Literal[
     "collected_at",
 ]
 DashboardSortDirection = Literal["asc", "desc"]
+
+
+def is_operating_daily_collection_due(
+    *,
+    now: datetime,
+    local_time: time | None,
+) -> bool:
+    """Whether the configured Shanghai daily collection boundary has passed.
+
+    Startup recovery and the recurring scheduler must use the same boundary.
+    Before it, the prior business day can still be unavailable upstream, so a
+    restart must not consume that day's durable ``daily:`` key prematurely.
+    """
+
+    if local_time is None:
+        return False
+    local_now = now.astimezone(SHANGHAI_TIMEZONE)
+    return (
+        local_now.timetz().replace(tzinfo=None)
+        >= local_time.replace(tzinfo=None)
+    )
+
+
+def operating_daily_collection_due_at(
+    *,
+    business_date: date,
+    local_time: time,
+) -> datetime:
+    """Return the UTC wall-clock boundary for a Shanghai business date.
+
+    A daily request for ``business_date`` becomes eligible on the following
+    Shanghai calendar day at the configured collection time.
+    """
+
+    return datetime.combine(
+        business_date + timedelta(days=1),
+        local_time.replace(tzinfo=None),
+        tzinfo=SHANGHAI_TIMEZONE,
+    ).astimezone(UTC)
 
 
 @dataclass(frozen=True)
@@ -579,12 +619,17 @@ class OperatingDashboardService:
         restart cannot enqueue the same daily plan twice.
         """
 
+        resolved_now = now or datetime.now(UTC)
         dedupe_key = f"daily:{business_date.isoformat()}"
         existing = self.repository.get_job_by_dedupe_key(dedupe_key)
         if existing is not None:
-            return existing
+            recovery = self._enqueue_pre_due_daily_platform_recovery(
+                daily_job=existing,
+                business_date=business_date,
+                now=resolved_now,
+            )
+            return recovery or existing
         shops = self.repository.list_enabled_douyin_shops()
-        resolved_now = now or datetime.now(UTC)
         start_date = _automatic_recovery_start(
             business_date,
             self.settings.operating_dashboard_initial_backfill_days,
@@ -730,8 +775,8 @@ class OperatingDashboardService:
         *,
         now: datetime | None = None,
         collection_job_id: UUID | None = None,
-    ) -> OperatingDataCollectionJob:
-        """Recover expired durable work, then run one bounded daily gap plan.
+    ) -> OperatingDataCollectionJob | None:
+        """Recover durable work and plan gaps only after the daily boundary.
 
         The caller gates this to the explicit automatic-collection switches.
         This function performs only short database transactions; it never
@@ -751,10 +796,118 @@ class OperatingDashboardService:
         except Exception:
             self.session.rollback()
             raise
+        if not is_operating_daily_collection_due(
+            now=resolved_now,
+            local_time=self.settings.operating_dashboard_daily_collection_local_time,
+        ):
+            # A restart before the configured collection time may recover
+            # leases and disabled items, but it must not reserve the stable
+            # daily key before Compass is expected to publish yesterday.
+            return None
         business_date = _shanghai_today(resolved_now) - timedelta(days=1)
         return self.enqueue_daily_collection(
             business_date=business_date,
             now=resolved_now,
+        )
+
+    def _enqueue_pre_due_daily_platform_recovery(
+        self,
+        *,
+        daily_job: OperatingDataCollectionJob,
+        business_date: date,
+        now: datetime,
+    ) -> OperatingDataCollectionJob | None:
+        """Recover one specifically audited early daily platform rejection.
+
+        The connector intentionally does not infer that every non-success
+        platform ``st`` means "not ready". This narrow recovery instead uses
+        a durable internal fact: an original daily item made one
+        platform-response attempt *before* the configured boundary. The
+        one-shot recovery job is separately deduped, so later scans cannot
+        turn a terminal platform rejection into an unlimited retry loop.
+        """
+
+        local_time = self.settings.operating_dashboard_daily_collection_local_time
+        expected_daily_key = f"daily:{business_date.isoformat()}"
+        if (
+            local_time is None
+            or daily_job.kind != OperatingCollectionJobKind.DAILY.value
+            or daily_job.dedupe_key != expected_daily_key
+            or not is_operating_daily_collection_due(now=now, local_time=local_time)
+        ):
+            return None
+
+        recovery_dedupe_key = (
+            f"{DAILY_COLLECTION_RECOVERY_DEDUPE_PREFIX}:{business_date.isoformat()}"
+        )
+        existing_recovery = self.repository.get_job_by_dedupe_key(
+            recovery_dedupe_key,
+        )
+        if existing_recovery is not None:
+            return existing_recovery
+
+        due_at = operating_daily_collection_due_at(
+            business_date=business_date,
+            local_time=local_time,
+        )
+        # The exceptional path repairs only the prior startup behavior: the
+        # original durable daily plan itself must have been created before the
+        # configured boundary.  A later daily plan that happens to receive the
+        # same platform status remains terminal under the normal policy.
+        if daily_job.created_at >= due_at:
+            return None
+        eligible_shop_ids = {
+            item.shop_id
+            for item in self.repository.list_job_items(daily_job.collection_job_id)
+            if self._is_pre_due_daily_platform_rejection(
+                item,
+                business_date=business_date,
+                due_at=due_at,
+            )
+        }
+        if not eligible_shop_ids:
+            return None
+
+        shops = [
+            shop
+            for shop in self.repository.list_enabled_douyin_shops()
+            if shop.shop_id in eligible_shop_ids
+            and (
+                shop.operating_start_date is None
+                or business_date >= shop.operating_start_date
+            )
+        ]
+        if not shops:
+            return None
+        return self._create_collection_job(
+            kind=OperatingCollectionJobKind.DAILY,
+            start_date=business_date,
+            end_date=business_date,
+            shops=shops,
+            requested_by_user_id=None,
+            dedupe_key=recovery_dedupe_key,
+            business_dates_by_shop={shop.shop_id: [business_date] for shop in shops},
+        )
+
+    @staticmethod
+    def _is_pre_due_daily_platform_rejection(
+        item: OperatingDataCollectionItem,
+        *,
+        business_date: date,
+        due_at: datetime,
+    ) -> bool:
+        """Recognize only the one failed request shape caused by the old bug."""
+
+        return (
+            item.business_date == business_date
+            and item.status == OperatingCollectionItemStatus.FAILED.value
+            and not item.retryable
+            and item.attempt_count == 1
+            and item.failure_code == "DOUYIN_OPERATING_DATA_REJECTED"
+            and item.failure_stage == "platform_response"
+            and item.started_at is not None
+            and item.finished_at is not None
+            and item.started_at < due_at
         )
 
     def prepare_next_collection(
