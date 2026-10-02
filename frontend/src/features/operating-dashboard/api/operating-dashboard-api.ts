@@ -140,6 +140,9 @@ export interface OperatingDashboardCollectionSubmissionDto {
   queued_shop_days: number
   active_shop_days: number
   blocked_shop_days: number
+  // Optional during a rolling Backend/Frontend deployment. Older Backends
+  // did not expose durable prior-day waiting counts.
+  waiting_shop_days?: number
   refund_attention_shop_days: number
   not_operating_shop_days: number
 }
@@ -152,6 +155,7 @@ export interface OperatingDashboardCollectionSubmission {
   queuedShopDays: number
   activeShopDays: number
   blockedShopDays: number
+  waitingShopDays: number
   refundAttentionShopDays: number
   notOperatingShopDays: number
 }
@@ -220,6 +224,7 @@ function mapCollectionSubmission(
     queuedShopDays: value.queued_shop_days,
     activeShopDays: value.active_shop_days,
     blockedShopDays: value.blocked_shop_days,
+    waitingShopDays: value.waiting_shop_days ?? 0,
     refundAttentionShopDays: value.refund_attention_shop_days,
     notOperatingShopDays: value.not_operating_shop_days,
   }

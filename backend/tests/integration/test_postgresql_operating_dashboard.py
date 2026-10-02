@@ -26,6 +26,7 @@ from app.modules.operating_dashboard.enums import (
     OperatingCollectionJobKind,
 )
 from app.modules.operating_dashboard.exceptions import (
+    OperatingDashboardCollectionRetryUnavailableError,
     OperatingDashboardCollectionUnavailableError,
     OperatingDashboardShopNotAvailableError,
 )
@@ -84,7 +85,6 @@ def _settings(**values: object) -> Settings:
         "operating_dashboard_collection_lease_seconds": 60,
         "operating_dashboard_collection_max_attempts": 2,
         "operating_dashboard_collection_retry_base_seconds": 1,
-        "operating_dashboard_initial_backfill_days": 30,
         "douyin_compass_collection_concurrency": 5,
     }
     return Settings(_env_file=None, **(defaults | values))
@@ -254,6 +254,7 @@ def _success(
     *,
     turnover: int = 100,
     orders: int = 2,
+    refund_observed: bool = False,
 ) -> CollectionOutcome:
     return CollectionOutcome(
         request=request,
@@ -261,7 +262,11 @@ def _success(
         stage=CollectionStage.COMPLETE,
         retryable=False,
         requires_reauthorization=False,
-        metrics=CompassDailyMetrics(turnover, orders),
+        metrics=CompassDailyMetrics(
+            turnover, orders,
+            refund_order_count=0 if refund_observed else None,
+            refund_order_status="available" if refund_observed else "unobserved",
+        ),
         timings=CollectionTimings(
             session_preparation_ms=1,
             signature_ms=2,
@@ -421,6 +426,18 @@ def test_operating_start_date_scopes_coverage_without_hiding_confirmed_facts(
             assert updated.operating_start_date_source == "manual"
             assert updated.operating_start_date_set_by_user_id == manager_id
             assert updated.operating_start_date_set_at is not None
+            original_set_at = updated.operating_start_date_set_at
+            # The shared UI now omits the field. Ordinary edits must keep
+            # the confirmed date and audit metadata, not PATCH them to null.
+            edited = ShopService(session).update(
+                manager,
+                shop.shop_id,
+                ShopUpdate(note="保留已确认起算日"),
+            )
+            assert edited.operating_start_date == start_date
+            assert edited.operating_start_date_source == "manual"
+            assert edited.operating_start_date_set_by_user_id == manager_id
+            assert edited.operating_start_date_set_at == original_set_at
 
             items = list(
                 session.scalars(
@@ -652,6 +669,412 @@ def test_postgresql_durable_executor_limits_concurrency_and_respects_disabled_sh
             foreign_item = session.get(OperatingDataCollectionItem, foreign_item_id)
             assert foreign_item is not None
             assert foreign_item.status == OperatingCollectionItemStatus.PENDING.value
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(
+                delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id),
+            )
+            session.execute(
+                delete(TeamMembership).where(TeamMembership.team_id == team_id),
+            )
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_first_manual_range_waits_only_yesterday_and_complete_update_is_noop(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real API/DB planning; simulated upstream, never real platform traffic."""
+    import asyncio
+    from httpx import ASGITransport, AsyncClient
+    from app.main import create_app
+    from app.modules.operating_dashboard.api import (
+        get_operating_dashboard_actor,
+        get_operating_dashboard_service,
+    )
+
+    user_id, team_id = uuid4(), uuid4()
+    shops: set[UUID] = set()
+    clock = [datetime(2026, 9, 24, 0, 59, tzinfo=UTC)]
+    yesterday, older = date(2026, 9, 23), date(2026, 9, 22)
+    calls: list[date] = []
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all([
+                User(user_id=user_id, display_name="首次手动拉取用户"),
+                Team(team_id=team_id, name="简单流程测试团队"),
+            ])
+            session.flush()
+            _grant_dashboard_execution_access(session, user_id=user_id, team_id=team_id)
+            shop = _seed_shop(session, display_name="首次手动拉取店铺")
+            session.flush()
+            shops.add(shop.shop_id)
+            session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.commit()
+            service = _service(session)
+            actor = _actor(user_id=user_id, team_id=team_id, super_account=False)
+            # Login with no previous work is not a history planning trigger.
+            assert service.resume_after_session_refresh(shop.shop_id, now=clock[0]) == 0
+            assert session.scalar(select(func.count()).select_from(
+                OperatingDataCollectionItem,
+            ).where(OperatingDataCollectionItem.shop_id == shop.shop_id)) == 0
+
+            app = create_app()
+            app.dependency_overrides[get_operating_dashboard_actor] = lambda: actor
+            app.dependency_overrides[get_operating_dashboard_service] = lambda: service
+            original_update = service.request_collection_update
+            monkeypatch.setattr(service, "request_collection_update", lambda **kw: original_update(
+                **kw, now=clock[0],
+            ))
+
+            async def update() -> dict:
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    response = await client.post("/api/v1/operating-dashboard/collections", json={
+                        "shop_id": str(shop.shop_id),
+                        "start_date": older.isoformat(), "end_date": yesterday.isoformat(),
+                    })
+                    assert response.status_code == 200
+                    return response.json()
+
+            queued = asyncio.run(update())
+            assert queued["queued_shop_days"] == 2
+            assert queued["waiting_shop_days"] == 1
+            job_id = UUID(queued["collection_job"]["collection_job_id"])
+            claim = service.prepare_next_collection(now=clock[0], lease_until=clock[0] + timedelta(minutes=5), collection_job_id=job_id)
+            assert claim is not None and claim.business_date == older
+            calls.append(claim.business_date)
+            assert service.finalize_collection(claim=claim, outcome=_success(
+                DailyCollectionRequest(shop.shop_id, older), turnover=0, orders=0, refund_observed=True,
+            ), now=clock[0])
+            assert service.prepare_next_collection(now=clock[0], lease_until=clock[0] + timedelta(minutes=5), collection_job_id=job_id) is None
+            clock[0] = datetime(2026, 9, 24, 1, tzinfo=UTC)
+            claim = service.prepare_next_collection(now=clock[0], lease_until=clock[0] + timedelta(minutes=5), collection_job_id=job_id)
+            assert claim is not None and claim.business_date == yesterday
+            calls.append(claim.business_date)
+            assert service.finalize_collection(claim=claim, outcome=_success(
+                DailyCollectionRequest(shop.shop_id, yesterday), refund_observed=True,
+            ), now=clock[0])
+            assert service.prepare_next_collection(now=clock[0], lease_until=clock[0] + timedelta(minutes=5), collection_job_id=job_id) is None
+
+            job_count = session.scalar(select(func.count()).select_from(OperatingDataCollectionJob))
+            for _ in range(3):
+                response = asyncio.run(update())
+                assert response["state"] == "up_to_date"
+                assert response["message"] == "所选范围数据已齐全，无需补采。"
+                assert response["collection_job"] is None
+                assert response["queued_shop_days"] == 0
+            assert session.scalar(select(func.count()).select_from(OperatingDataCollectionJob)) == job_count
+            assert session.scalar(select(func.count()).select_from(OperatingDataCollectionItem).where(
+                OperatingDataCollectionItem.shop_id == shop.shop_id,
+            )) == 2
+            assert calls == [older, yesterday]
+            facts = session.scalars(select(ShopOperatingDailyMetric).where(
+                ShopOperatingDailyMetric.shop_id == shop.shop_id,
+            ).order_by(ShopOperatingDailyMetric.business_date)).all()
+            assert len(facts) == 2
+            assert facts[0].turnover_cents == 0 and facts[0].order_count == 0
+            assert shop.operating_start_date is None
+
+            async def query() -> dict:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test",
+                ) as client:
+                    response = await client.get("/api/v1/operating-dashboard", params={
+                        "shop_id": str(shop.shop_id),
+                        "start_date": older.isoformat(),
+                        "end_date": yesterday.isoformat(),
+                    })
+                    assert response.status_code == 200
+                    return response.json()
+
+            result = asyncio.run(query())
+            assert result["coverage"]["collected_shop_days"] == 2
+            assert result["coverage"]["missing_shop_days"] == 0
+            assert result["summary"]["turnover_cents"] == 100
+            assert result["table"]["items"][0]["order_count"] == 2
+            assert result["trend"][0]["turnover_cents"] == 0
+            assert calls == [older, yesterday]
+
+            def unexpected_platform_call(request: DailyCollectionRequest) -> CollectionOutcome:
+                raise AssertionError("Complete range must not request the platform")
+
+            executor = OperatingDataCollectionExecutor(
+                session_factory=lambda: Session(postgresql_engine),
+                collector=unexpected_platform_call,
+                settings=service.settings,
+            )
+            assert executor.execute_available(collection_job_id=job_id) == 0
+    finally:
+        _cleanup(postgresql_engine, shops)
+        with Session(postgresql_engine) as session:
+            session.execute(delete(TeamModuleAccess).where(TeamModuleAccess.team_id == team_id))
+            session.execute(delete(TeamMembership).where(TeamMembership.team_id == team_id))
+            session.execute(delete(Team).where(Team.team_id == team_id))
+            session.execute(delete(User).where(User.user_id == user_id))
+            session.commit()
+
+
+def test_postgresql_explicit_parser_recovery_is_scoped_and_bounded(
+    postgresql_engine: Engine,
+) -> None:
+    """A selected parser failure can recover without reopening other terminals."""
+
+    user_id = uuid4()
+    team_id = uuid4()
+    shops: set[UUID] = set()
+    now = datetime(2026, 9, 24, 3, tzinfo=UTC)
+    business_date = date(2026, 9, 22)
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            session.add_all(
+                [
+                    User(user_id=user_id, display_name="解析恢复用户"),
+                    Team(team_id=team_id, name="解析恢复团队"),
+                ],
+            )
+            session.flush()
+            _grant_dashboard_execution_access(
+                session,
+                user_id=user_id,
+                team_id=team_id,
+            )
+            parser_shop = _seed_shop(session, display_name="解析失败店铺")
+            retry_shop = _seed_shop(session, display_name="专用重试店铺")
+            metrics_shop = _seed_shop(session, display_name="指标未知店铺")
+            # Keep the fixture FK ordering explicit; these models are not
+            # connected by an ORM relationship.
+            session.flush()
+            for shop in (parser_shop, retry_shop, metrics_shop):
+                shops.add(shop.shop_id)
+                session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
+            session.flush()
+            parser_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=3),
+            )
+            metrics_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=3),
+            )
+            retry_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=3),
+            )
+            session.add_all([parser_job, retry_job, metrics_job])
+            session.flush()
+            parser_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=parser_job.collection_job_id,
+                shop_id=parser_shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(minutes=2),
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=2),
+            )
+            metrics_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=metrics_job.collection_job_id,
+                shop_id=metrics_shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(minutes=2),
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=2),
+            )
+            retry_item = OperatingDataCollectionItem(
+                collection_item_id=uuid4(),
+                collection_job_id=retry_job.collection_job_id,
+                shop_id=retry_shop.shop_id,
+                business_date=business_date,
+                status=OperatingCollectionItemStatus.FAILED.value,
+                priority=0,
+                attempt_count=1,
+                retryable=False,
+                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                failure_stage="response_parse",
+                finished_at=now - timedelta(minutes=2),
+                created_at=now - timedelta(minutes=3),
+                updated_at=now - timedelta(minutes=2),
+            )
+            session.add_all([parser_item, retry_item, metrics_item])
+            session.commit()
+
+            service = _service(
+                session,
+                operating_dashboard_collection_max_attempts=2,
+                operating_dashboard_gap_recovery_retry_cooldown_seconds=60,
+            )
+            actor = _actor(user_id=user_id, team_id=team_id, super_account=False)
+            request = OperatingDataCollectionRequest(
+                start_date=business_date,
+                end_date=business_date,
+                shop_id=parser_shop.shop_id,
+            )
+            retry = service.retry_failed_collection_items(
+                actor=actor,
+                collection_job_id=retry_job.collection_job_id,
+                item_ids=[retry_item.collection_item_id],
+                now=now,
+            )
+            assert retry.kind == OperatingCollectionJobKind.RETRY.value
+            assert retry.counts.pending == 1
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperatingDataCollectionItem)
+                    .where(
+                        OperatingDataCollectionItem.shop_id == retry_shop.shop_id,
+                        OperatingDataCollectionItem.business_date == business_date,
+                    ),
+                )
+                == 2
+            )
+            session.refresh(retry_item)
+            assert retry_item.status == OperatingCollectionItemStatus.FAILED.value
+
+            normal = service.request_collection_update(
+                actor=actor,
+                request=request,
+                now=now,
+            )
+            assert normal.state == "attention_required"
+            assert normal.message == "历史响应解析失败，可使用“重新采集当前筛选范围”发起有限恢复"
+
+            explicit = service.request_collection_update(
+                actor=actor,
+                request=request,
+                force_recollect=True,
+                now=now,
+            )
+            assert explicit.collection_job is not None
+            assert explicit.collection_job.kind == OperatingCollectionJobKind.MANUAL_REFRESH.value
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperatingDataCollectionItem)
+                    .where(
+                        OperatingDataCollectionItem.shop_id == parser_shop.shop_id,
+                        OperatingDataCollectionItem.business_date == business_date,
+                    ),
+                )
+                == 2
+            )
+
+            # The original terminal row remains as audit history; its active
+            # replacement owns the date and cannot be reopened through a
+            # second button click or the item retry API.
+            reused = service.request_collection_update(
+                actor=actor,
+                request=request,
+                force_recollect=True,
+                now=now,
+            )
+            assert reused.queued_shop_days == 0
+            assert reused.active_shop_days == 1
+            with pytest.raises(OperatingDashboardCollectionRetryUnavailableError):
+                service.retry_failed_collection_items(
+                    actor=actor,
+                    collection_job_id=parser_job.collection_job_id,
+                    item_ids=[parser_item.collection_item_id],
+                    now=now,
+                )
+
+            # A different terminal type never becomes retryable through
+            # either the page's explicit recollection or the item retry API.
+            metrics_submission = service.request_collection_update(
+                actor=actor,
+                request=OperatingDataCollectionRequest(
+                    start_date=business_date,
+                    end_date=business_date,
+                    shop_id=metrics_shop.shop_id,
+                ),
+                force_recollect=True,
+                now=now,
+            )
+            assert metrics_submission.state == "attention_required"
+            assert metrics_submission.message == "平台指标未知，暂不能补采"
+            with pytest.raises(OperatingDashboardCollectionRetryUnavailableError):
+                service.retry_failed_collection_items(
+                    actor=actor,
+                    collection_job_id=metrics_job.collection_job_id,
+                    item_ids=[metrics_item.collection_item_id],
+                    now=now,
+                )
+            # Run the selected recovery through the current persistence path.
+            recovered_claim = service.prepare_next_collection(
+                now=now, lease_until=now + timedelta(minutes=5),
+                collection_job_id=explicit.collection_job.collection_job_id,
+            )
+            assert recovered_claim is not None
+            assert service.finalize_collection(
+                claim=recovered_claim,
+                outcome=_success(DailyCollectionRequest(parser_shop.shop_id, business_date), refund_observed=True),
+                now=now,
+            )
+            session.refresh(parser_item)
+            assert parser_item.status == OperatingCollectionItemStatus.FAILED.value
+            complete = service.request_collection_update(actor=actor, request=request, now=now)
+            assert complete.state == "up_to_date"
+            assert complete.collection_job is None
+
+            # A new Job does not reset the same-date failure budget. The old
+            # failure already spent one of two attempts, so this network
+            # failure cannot receive another automatic in-item retry.
+            retry_claim = service.prepare_next_collection(
+                now=now, lease_until=now + timedelta(minutes=5),
+                collection_job_id=retry.collection_job_id,
+            )
+            assert retry_claim is not None
+            assert service.finalize_collection(
+                claim=retry_claim,
+                outcome=CollectionOutcome(
+                    request=DailyCollectionRequest(retry_shop.shop_id, business_date),
+                    status=CollectionStatus.FAILED,
+                    stage=CollectionStage.PLATFORM_RESPONSE,
+                    retryable=True, requires_reauthorization=False,
+                    failure_code="DOUYIN_PLATFORM_TIMEOUT",
+                    timings=CollectionTimings(total_ms=1),
+                ), now=now,
+            )
+            again = service.request_collection_update(
+                actor=actor, force_recollect=True,
+                request=OperatingDataCollectionRequest(start_date=business_date, end_date=business_date, shop_id=retry_shop.shop_id),
+                now=now + timedelta(minutes=2),
+            )
+            assert again.state == "attention_required"
+            assert again.collection_job is None
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
@@ -983,30 +1406,11 @@ def test_postgresql_reauthorization_pauses_remaining_dates_and_resume_is_explici
                 shop.shop_id,
                 now=datetime(2026, 9, 21, 1, tzinfo=UTC),
             ) == 2
-            # The original paused dates are reused. Dates that were never
-            # queued during reauthorization are planned separately, bounded
-            # to the same recent recovery window.
-            recovery_job = session.scalar(
-                select(OperatingDataCollectionJob)
-                .join(
-                    OperatingDataCollectionItem,
-                    OperatingDataCollectionItem.collection_job_id
-                    == OperatingDataCollectionJob.collection_job_id,
-                )
-                .where(
-                    OperatingDataCollectionJob.kind == "daily",
-                    OperatingDataCollectionItem.shop_id == shop.shop_id,
-                ),
-            )
-            assert recovery_job is not None
+            # Reauthorization only resumes the original two rows.
             assert session.scalar(
-                select(func.count())
-                .select_from(OperatingDataCollectionItem)
-                .where(
-                    OperatingDataCollectionItem.collection_job_id
-                    == recovery_job.collection_job_id,
-                ),
-            ) == 28
+                select(func.count()).select_from(OperatingDataCollectionItem)
+                .where(OperatingDataCollectionItem.shop_id == shop.shop_id),
+            ) == 2
 
         assert executor.execute_available(collection_job_id=job.collection_job_id) == 1
         assert len(calls) == 2
@@ -1361,15 +1765,9 @@ def test_postgresql_concurrent_enqueue_creates_one_active_shop_date_claim(
                     OperatingDataCollectionItem.business_date == DAY_ONE,
                 ),
             ).all()
-            assert len(items) == 2
-            assert (
-                sum(item.status == OperatingCollectionItemStatus.PENDING.value for item in items)
-                == 1
-            )
-            assert (
-                sum(item.failure_code == "COLLECTION_ALREADY_QUEUED" for item in items)
-                == 1
-            )
+            assert len(items) == 1
+            assert items[0].status == OperatingCollectionItemStatus.PENDING.value
+            assert jobs[0].collection_job_id == jobs[1].collection_job_id
     finally:
         _cleanup(postgresql_engine, shops)
         with Session(postgresql_engine) as session:
@@ -1378,10 +1776,10 @@ def test_postgresql_concurrent_enqueue_creates_one_active_shop_date_claim(
             session.commit()
 
 
-def test_postgresql_reenable_queues_only_missing_backfill_dates(
+def test_postgresql_reenable_preserves_facts_without_creating_history(
     postgresql_engine: Engine,
 ) -> None:
-    """Re-enabling a Shop plans missing days but does not send platform I/O."""
+    """Re-enabling preserves facts and creates no collection Job/Item."""
 
     shops: set[UUID] = set()
     try:
@@ -1429,20 +1827,15 @@ def test_postgresql_reenable_queues_only_missing_backfill_dates(
                     OperatingDataCollectionItem.shop_id == shop.shop_id,
                 ),
             )
-            assert job is not None
-            items = session.scalars(
-                select(OperatingDataCollectionItem).where(
-                    OperatingDataCollectionItem.collection_job_id == job.collection_job_id,
-                ),
-            ).all()
-            # The default bounded window is 30 days; yesterday was already a
-            # persisted success and is deliberately not planned again.
-            assert len(items) == 29
-            assert all(item.business_date != yesterday for item in items)
-            assert all(
-                item.status == OperatingCollectionItemStatus.PENDING.value
-                for item in items
-            )
+            assert job is None
+            assert session.scalar(
+                select(func.count()).select_from(OperatingDataCollectionItem)
+                .where(OperatingDataCollectionItem.shop_id == shop.shop_id),
+            ) == 0
+            assert session.scalar(
+                select(ShopOperatingDailyMetric.turnover_cents)
+                .where(ShopOperatingDailyMetric.shop_id == shop.shop_id),
+            ) == 100
     finally:
         _cleanup(postgresql_engine, shops)
 
@@ -1837,7 +2230,7 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
     postgresql_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The daily planner scans one 30-day window without duplicating active work."""
+    """The daily marker never scans history and a real zero needs no work."""
 
     shops: set[UUID] = set()
     try:
@@ -1886,19 +2279,11 @@ def test_postgresql_daily_gap_plan_keeps_real_zero_and_is_idempotent(
                 )
                 .order_by(OperatingDataCollectionItem.priority),
             ).all()
-            assert len(items) == 29
-            assert {item.shop_id for item in items} == {shop.shop_id}
-            assert items[0].business_date == business_date - timedelta(days=1)
-            assert all(item.business_date != business_date for item in items)
-            assert all(item.status == OperatingCollectionItemStatus.PENDING.value for item in items)
-
-            # The active rows created above are the cross-entry ownership
-            # boundary; lifecycle recovery does not create another copy.
-            assert service.enqueue_missing_backfill_for_shop(
-                shop_id=shop.shop_id,
-                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
-                now=now,
-            ) is None
+            assert items == []
+            assert job.requested_start_date == business_date
+            assert job.requested_end_date == business_date
+            session.delete(job)
+            session.commit()
     finally:
         _cleanup(postgresql_engine, shops)
 
@@ -2000,10 +2385,7 @@ def test_postgresql_gap_plan_prioritizes_yesterday_across_shops(
                 key=str,
             )
             assert all(item.business_date == business_date for item in items[:2])
-            assert all(
-                item.business_date == business_date - timedelta(days=1)
-                for item in items[2:4]
-            )
+            assert len(items) == 2
     finally:
         _cleanup(postgresql_engine, shops)
 
@@ -2153,454 +2535,6 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
             session.execute(delete(Team).where(Team.team_id == team_id))
             session.execute(delete(User).where(User.user_id == user_id))
             session.commit()
-
-
-def test_postgresql_daily_recovery_retries_only_a_pre_due_platform_rejection_once(
-    postgresql_engine: Engine,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A pre-09:00 startup failure gets one post-boundary recovery attempt.
-
-    The narrow predicate intentionally excludes a later rejection and any
-    other failure shape.  It preserves the original terminal rows for audit
-    and uses a separate stable recovery key to make concurrent 09:00 scans
-    idempotent.
-    """
-
-    shops: set[UUID] = set()
-    try:
-        with Session(postgresql_engine, expire_on_commit=False) as session:
-            early_shop = _seed_shop(session, display_name="提前请求恢复店铺")
-            late_shop = _seed_shop(session, display_name="正常时点拒绝店铺")
-            other_failure_shop = _seed_shop(session, display_name="其他失败店铺")
-            session.flush()
-            shops.update(
-                {
-                    early_shop.shop_id,
-                    late_shop.shop_id,
-                    other_failure_shop.shop_id,
-                },
-            )
-            business_date, due_now = _unused_daily_fixture_clock(session)
-            pre_due_now = due_now - timedelta(minutes=5)
-            original_job = OperatingDataCollectionJob(
-                collection_job_id=uuid4(),
-                kind=OperatingCollectionJobKind.DAILY.value,
-                status="failed",
-                requested_start_date=business_date,
-                requested_end_date=business_date,
-                requested_by_user_id=None,
-                dedupe_key=f"daily:{business_date.isoformat()}",
-                started_at=pre_due_now,
-                finished_at=pre_due_now,
-                created_at=pre_due_now,
-                updated_at=pre_due_now,
-            )
-            session.add(original_job)
-            session.flush()
-            original_items = [
-                OperatingDataCollectionItem(
-                    collection_item_id=uuid4(),
-                    collection_job_id=original_job.collection_job_id,
-                    shop_id=early_shop.shop_id,
-                    business_date=business_date,
-                    status=OperatingCollectionItemStatus.FAILED.value,
-                    priority=0,
-                    attempt_count=1,
-                    retryable=False,
-                    failure_code="DOUYIN_OPERATING_DATA_REJECTED",
-                    failure_stage="platform_response",
-                    started_at=pre_due_now,
-                    finished_at=pre_due_now,
-                    created_at=pre_due_now,
-                    updated_at=pre_due_now,
-                ),
-                OperatingDataCollectionItem(
-                    collection_item_id=uuid4(),
-                    collection_job_id=original_job.collection_job_id,
-                    shop_id=late_shop.shop_id,
-                    business_date=business_date,
-                    status=OperatingCollectionItemStatus.FAILED.value,
-                    priority=1,
-                    attempt_count=1,
-                    retryable=False,
-                    failure_code="DOUYIN_OPERATING_DATA_REJECTED",
-                    failure_stage="platform_response",
-                    started_at=due_now,
-                    finished_at=due_now,
-                    created_at=pre_due_now,
-                    updated_at=due_now,
-                ),
-                OperatingDataCollectionItem(
-                    collection_item_id=uuid4(),
-                    collection_job_id=original_job.collection_job_id,
-                    shop_id=other_failure_shop.shop_id,
-                    business_date=business_date,
-                    status=OperatingCollectionItemStatus.FAILED.value,
-                    priority=2,
-                    attempt_count=1,
-                    retryable=False,
-                    failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
-                    failure_stage="response_parse",
-                    started_at=pre_due_now,
-                    finished_at=pre_due_now,
-                    created_at=pre_due_now,
-                    updated_at=pre_due_now,
-                ),
-            ]
-            session.add_all(original_items)
-            session.commit()
-
-            service = _service(session)
-            _isolate_daily_planner(
-                monkeypatch,
-                early_shop,
-                late_shop,
-                other_failure_shop,
-            )
-
-            assert service.enqueue_daily_collection(
-                business_date=business_date,
-                now=pre_due_now,
-            ).collection_job_id == original_job.collection_job_id
-            assert service.repository.get_job_by_dedupe_key(
-                f"daily-recovery:{business_date.isoformat()}",
-            ) is None
-
-            recovery = service.enqueue_daily_collection(
-                business_date=business_date,
-                now=due_now,
-            )
-            repeated = service.enqueue_daily_collection(
-                business_date=business_date,
-                now=due_now + timedelta(minutes=1),
-            )
-            assert recovery.collection_job_id == repeated.collection_job_id
-            assert recovery.collection_job_id != original_job.collection_job_id
-            assert recovery.kind == OperatingCollectionJobKind.DAILY.value
-            assert recovery.dedupe_key == f"daily-recovery:{business_date.isoformat()}"
-
-            original_after = session.scalars(
-                select(OperatingDataCollectionItem)
-                .where(
-                    OperatingDataCollectionItem.collection_job_id
-                    == original_job.collection_job_id,
-                )
-                .order_by(OperatingDataCollectionItem.priority),
-            ).all()
-            assert [item.status for item in original_after] == [
-                OperatingCollectionItemStatus.FAILED.value,
-                OperatingCollectionItemStatus.FAILED.value,
-                OperatingCollectionItemStatus.FAILED.value,
-            ]
-            recovery_items = session.scalars(
-                select(OperatingDataCollectionItem)
-                .where(
-                    OperatingDataCollectionItem.collection_job_id
-                    == recovery.collection_job_id,
-                )
-                .order_by(OperatingDataCollectionItem.priority),
-            ).all()
-            assert len(recovery_items) == 1
-            assert recovery_items[0].shop_id == early_shop.shop_id
-            assert recovery_items[0].business_date == business_date
-            assert recovery_items[0].status == OperatingCollectionItemStatus.PENDING.value
-            assert recovery_items[0].attempt_count == 0
-            assert session.scalar(
-                select(func.count())
-                .select_from(OperatingDataCollectionJob)
-                .where(
-                    OperatingDataCollectionJob.dedupe_key
-                    == f"daily-recovery:{business_date.isoformat()}",
-                ),
-            ) == 1
-
-            # The exceptional path is for a daily plan reserved by startup
-            # *before* the boundary.  Even a synthetically matching item
-            # cannot make an at-boundary daily plan eligible for this repair.
-            later_business_date, later_due_now = _unused_daily_fixture_clock(
-                session,
-            )
-            post_boundary_job = OperatingDataCollectionJob(
-                collection_job_id=uuid4(),
-                kind=OperatingCollectionJobKind.DAILY.value,
-                status="failed",
-                requested_start_date=later_business_date,
-                requested_end_date=later_business_date,
-                requested_by_user_id=None,
-                dedupe_key=f"daily:{later_business_date.isoformat()}",
-                created_at=later_due_now,
-                updated_at=later_due_now,
-            )
-            session.add(post_boundary_job)
-            session.flush()
-            session.add(
-                OperatingDataCollectionItem(
-                    collection_item_id=uuid4(),
-                    collection_job_id=post_boundary_job.collection_job_id,
-                    shop_id=late_shop.shop_id,
-                    business_date=later_business_date,
-                    status=OperatingCollectionItemStatus.FAILED.value,
-                    priority=0,
-                    attempt_count=1,
-                    retryable=False,
-                    failure_code="DOUYIN_OPERATING_DATA_REJECTED",
-                    failure_stage="platform_response",
-                    started_at=later_due_now - timedelta(minutes=1),
-                    finished_at=later_due_now - timedelta(minutes=1),
-                    created_at=later_due_now - timedelta(minutes=1),
-                    updated_at=later_due_now,
-                ),
-            )
-            session.commit()
-
-            assert service.enqueue_daily_collection(
-                business_date=later_business_date,
-                now=later_due_now,
-            ).collection_job_id == post_boundary_job.collection_job_id
-            assert service.repository.get_job_by_dedupe_key(
-                f"daily-recovery:{later_business_date.isoformat()}",
-            ) is None
-    finally:
-        _cleanup(postgresql_engine, shops)
-
-
-def test_postgresql_gap_recovery_bounds_automatic_retry_but_allows_later_eligibility(
-    postgresql_engine: Engine,
-) -> None:
-    """A failed automatic date cools down/caps without becoming a data tombstone."""
-
-    shops: set[UUID] = set()
-    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
-    business_date = date(2026, 9, 22)
-    try:
-        with Session(postgresql_engine, expire_on_commit=False) as session:
-            shop = _seed_shop(session, display_name="失败补漏店铺")
-            session.flush()
-            shops.add(shop.shop_id)
-            failed_job = OperatingDataCollectionJob(
-                collection_job_id=uuid4(),
-                kind="daily",
-                status="failed",
-                requested_start_date=business_date,
-                requested_end_date=business_date,
-                requested_by_user_id=None,
-                dedupe_key=None,
-                created_at=now - timedelta(hours=2),
-                updated_at=now - timedelta(hours=2),
-            )
-            # There is no ORM relationship on this deliberately lean durable
-            # queue model, so establish the FK parent before the test item.
-            session.add(failed_job)
-            session.flush()
-            failed_item = OperatingDataCollectionItem(
-                collection_item_id=uuid4(),
-                collection_job_id=failed_job.collection_job_id,
-                shop_id=shop.shop_id,
-                business_date=business_date,
-                status=OperatingCollectionItemStatus.FAILED.value,
-                priority=0,
-                attempt_count=3,
-                retryable=True,
-                failure_code="DOUYIN_PLATFORM_TIMEOUT",
-                failure_stage="platform_response",
-                finished_at=now - timedelta(hours=2),
-                created_at=now - timedelta(hours=2),
-                updated_at=now - timedelta(hours=2),
-            )
-            session.add(failed_item)
-            session.commit()
-
-            service = _service(
-                session,
-                operating_dashboard_gap_recovery_max_attempts=3,
-                operating_dashboard_gap_recovery_retry_cooldown_seconds=60,
-            )
-            first = service.enqueue_missing_backfill_for_shop(
-                shop_id=shop.shop_id,
-                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
-                now=now,
-            )
-            assert first is not None
-            first_dates = set(
-                session.scalars(
-                    select(OperatingDataCollectionItem.business_date).where(
-                        OperatingDataCollectionItem.collection_job_id
-                        == first.collection_job_id,
-                    ),
-                ),
-            )
-            assert business_date not in first_dates
-
-            # A later eligible retry remains possible once the automatic
-            # attempt count is below the bounded cap and cooldown elapsed.
-            failed_item.attempt_count = 1
-            # Assign a distinct value so SQLAlchemy does not substitute the
-            # database's real current timestamp through `onupdate`.
-            failed_item.updated_at = now - timedelta(hours=3)
-            session.commit()
-            second = service.enqueue_missing_backfill_for_shop(
-                shop_id=shop.shop_id,
-                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
-                now=now,
-            )
-            assert second is not None
-            assert session.scalar(
-                select(OperatingDataCollectionItem).where(
-                    OperatingDataCollectionItem.collection_job_id
-                    == second.collection_job_id,
-                    OperatingDataCollectionItem.business_date == business_date,
-                    OperatingDataCollectionItem.status
-                    == OperatingCollectionItemStatus.PENDING.value,
-                ),
-            ) is not None
-    finally:
-        _cleanup(postgresql_engine, shops)
-
-
-def test_postgresql_approved_legacy_parse_recovery_queues_once_and_maps_safe_coverage_reason(
-    postgresql_engine: Engine,
-) -> None:
-    """An audited old parser item gets one new attempt without mutation."""
-
-    shops: set[UUID] = set()
-    now = datetime(2026, 9, 23, 1, tzinfo=UTC)
-    business_date = date(2026, 9, 22)
-    try:
-        with Session(postgresql_engine, expire_on_commit=False) as session:
-            shop = _seed_shop(session, display_name="旧解析恢复店铺")
-            session.flush()
-            shops.add(shop.shop_id)
-            failed_job = OperatingDataCollectionJob(
-                collection_job_id=uuid4(),
-                kind=OperatingCollectionJobKind.DAILY.value,
-                status="failed",
-                requested_start_date=business_date,
-                requested_end_date=business_date,
-                requested_by_user_id=None,
-                dedupe_key=None,
-                created_at=now - timedelta(hours=2),
-                updated_at=now - timedelta(hours=2),
-            )
-            session.add(failed_job)
-            session.flush()
-            legacy_item_id = uuid4()
-            legacy_item = OperatingDataCollectionItem(
-                collection_item_id=legacy_item_id,
-                collection_job_id=failed_job.collection_job_id,
-                shop_id=shop.shop_id,
-                business_date=business_date,
-                status=OperatingCollectionItemStatus.FAILED.value,
-                priority=0,
-                attempt_count=1,
-                retryable=False,
-                failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
-                # The stored message deliberately resembles an upstream
-                # detail. Coverage must use the safe code mapping instead.
-                failure_message="raw upstream detail must not be returned",
-                failure_stage="response_parse",
-                finished_at=now - timedelta(hours=2),
-                created_at=now - timedelta(hours=2),
-                updated_at=now - timedelta(hours=2),
-            )
-            session.add(legacy_item)
-            session.commit()
-
-            service = _service(
-                session,
-                operating_dashboard_legacy_response_parse_recovery_item_ids=frozenset(
-                    {legacy_item_id},
-                ),
-            )
-            states = service.repository.list_collection_item_states(
-                shop_ids=[shop.shop_id],
-                start_date=business_date,
-                end_date=business_date,
-            )
-            assert states[0].failure_stage == "response_parse"
-            coverage = service._coverage(
-                shops=[
-                    DashboardShop(
-                        shop_id=shop.shop_id,
-                        shop_name=shop.display_name,
-                        platform=shop.platform,
-                        enabled=shop.enabled,
-                    ),
-                ],
-                metric_by_shop_date={},
-                collection_states=states,
-                range_value=OperatingDashboardDateRangeRead(
-                    start_date=business_date,
-                    end_date=business_date,
-                ),
-            )
-            assert coverage.missing_samples[0].failure_reason == "抖店经营数据响应无效"
-
-            recovery = service.enqueue_missing_backfill_for_shop(
-                shop_id=shop.shop_id,
-                kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
-                now=now,
-            )
-            assert recovery is not None
-            items = session.scalars(
-                select(OperatingDataCollectionItem)
-                .where(
-                    OperatingDataCollectionItem.shop_id == shop.shop_id,
-                    OperatingDataCollectionItem.business_date == business_date,
-                )
-                .order_by(OperatingDataCollectionItem.created_at.asc()),
-            ).all()
-            assert len(items) == 2
-            assert items[0].collection_item_id == legacy_item_id
-            assert items[0].status == OperatingCollectionItemStatus.FAILED.value
-            assert items[0].retryable is False
-            assert items[0].failure_stage == "response_parse"
-            assert items[1].status == OperatingCollectionItemStatus.PENDING.value
-
-            # The active new item owns the date, so a second planner call does
-            # not create duplicate external work.
-            assert (
-                service.enqueue_missing_backfill_for_shop(
-                    shop_id=shop.shop_id,
-                    kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
-                    now=now,
-                )
-                is None
-            )
-
-            # If that new item itself reaches the same terminal classification,
-            # the allowlist still names only the original item and cannot
-            # reopen the date a second time.
-            recovered_item = items[1]
-            recovered_item.status = OperatingCollectionItemStatus.FAILED.value
-            recovered_item.retryable = False
-            recovered_item.attempt_count = 1
-            recovered_item.failure_code = "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
-            recovered_item.failure_stage = "response_parse"
-            recovered_item.finished_at = now + timedelta(minutes=1)
-            recovered_item.updated_at = now + timedelta(minutes=1)
-            session.commit()
-            assert (
-                service.enqueue_missing_backfill_for_shop(
-                    shop_id=shop.shop_id,
-                    kind=OperatingCollectionJobKind.INITIAL_BACKFILL,
-                    now=now + timedelta(minutes=2),
-                )
-                is None
-            )
-            assert (
-                session.scalar(
-                    select(func.count())
-                    .select_from(OperatingDataCollectionItem)
-                    .where(
-                        OperatingDataCollectionItem.shop_id == shop.shop_id,
-                        OperatingDataCollectionItem.business_date == business_date,
-                    ),
-                )
-                == 2
-            )
-    finally:
-        _cleanup(postgresql_engine, shops)
 
 
 def test_postgresql_coverage_uses_authorized_supported_shop_dates_and_active_state(

@@ -13,8 +13,6 @@ export interface ShopFormViewModel {
   enabled: boolean
   ownerUserId: string | null
   note: string
-  /** Naive UI epoch timestamp; converted to a Shanghai calendar date on save. */
-  operatingStartDate: number | null
 }
 
 export type ShopFormMode = 'create' | 'edit'

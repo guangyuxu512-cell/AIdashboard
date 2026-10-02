@@ -154,7 +154,7 @@ class DashboardServiceStub:
         self.enqueue_calls.append(kwargs)
         return OperatingDataCollectionSubmissionRead(
             state="collection_queued",
-            message="已按缺口检查采集进度",
+            message="发现 1 个待补采店铺日期，已安排采集",
             collection_job=collection_job(),
             missing_shop_days=1,
             queued_shop_days=1,

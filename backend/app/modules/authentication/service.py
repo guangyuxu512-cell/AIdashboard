@@ -24,7 +24,6 @@ from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.auth_context import StoredManagementSessionPayload
 from app.modules.sessions.models import ShopSession
 from app.modules.sessions.schemas import ShopSessionMetadataRead
-from app.modules.operating_dashboard.service import OperatingDashboardService
 from app.modules.shops.models import Shop
 from app.modules.shops.repository import ShopRepository
 from app.modules.shops.schemas import ShopRead
@@ -99,16 +98,7 @@ class ManagementOnboardingService:
                 payload_encrypted=self.cipher.encrypt_bytes(payload),
             )
             self.session.add_all([credential_binding, shop_session])
-            # Keep the initial collection plan in the same transaction as the
-            # Shop/Credential/Session facts.  The executor validates the
-            # captured Session before it makes any platform request.
-            if command.platform is ShopPlatform.DOUYIN:
-                OperatingDashboardService(
-                    self.session,
-                ).enqueue_initial_backfill_for_shop(
-                    shop_id=shop.shop_id,
-                    commit=False,
-                )
+            # Collection is requested separately on the dashboard after login.
             self.session.commit()
         except IntegrityError as error:
             self.session.rollback()
