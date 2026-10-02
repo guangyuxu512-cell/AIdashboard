@@ -165,8 +165,12 @@ def test_core_index_parser_classifies_unknown_required_metric_states_without_fab
         parse_core_index_metrics(unit_only)
     assert unavailable.value.code == "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE"
 
-    with pytest.raises(DouyinOperatingDataBusinessError):
+    with pytest.raises(DouyinOperatingDataBusinessError) as rejected:
         parse_core_index_metrics(_payload(status=100008))
+    # The connector preserves only the safe platform status.  It must not
+    # invent a "not ready" meaning for a non-success business response.
+    assert rejected.value.code == "DOUYIN_OPERATING_DATA_REJECTED"
+    assert rejected.value.details == {"platform_code": "100008"}
 
     broken = _payload()
     broken_card = broken["data"]["module_data"]["homepage_core_index"][

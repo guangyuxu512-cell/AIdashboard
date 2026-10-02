@@ -2094,8 +2094,9 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
             shops.add(shop.shop_id)
             session.add(TeamShopAccess(team_id=team_id, shop_id=shop.shop_id))
             session.commit()
-            _business_date, recovery_now = _unused_daily_fixture_clock(session)
-            first_now = recovery_now - timedelta(seconds=11)
+            business_date, recovery_now = _unused_daily_fixture_clock(session)
+            pre_due_now = recovery_now - timedelta(minutes=1)
+            first_now = pre_due_now - timedelta(seconds=11)
             service = _service(session)
             job = service.enqueue_manual_collection(
                 actor=_actor(user_id=user_id, team_id=team_id, super_account=False),
@@ -2121,14 +2122,24 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
             assert claim is not None
 
             _isolate_daily_planner(monkeypatch, shop)
-            daily_job = service.recover_after_backend_startup(
-                now=recovery_now,
+            startup_job = service.recover_after_backend_startup(
+                now=pre_due_now,
                 collection_job_id=job.collection_job_id,
             )
             reclaimed = session.get(OperatingDataCollectionItem, claim.collection_item_id)
             assert reclaimed is not None
             assert reclaimed.status == OperatingCollectionItemStatus.PENDING.value
             assert reclaimed.failure_code == "COLLECTION_WORKER_LEASE_EXPIRED"
+            assert startup_job is None
+            assert service.repository.get_job_by_dedupe_key(
+                f"daily:{business_date.isoformat()}",
+            ) is None
+
+            daily_job = service.recover_after_backend_startup(
+                now=recovery_now,
+                collection_job_id=job.collection_job_id,
+            )
+            assert daily_job is not None
             assert daily_job.kind == "daily"
     finally:
         _cleanup(postgresql_engine, shops)
@@ -2142,6 +2153,216 @@ def test_postgresql_startup_recovery_reclaims_expired_item_before_gap_planning(
             session.execute(delete(Team).where(Team.team_id == team_id))
             session.execute(delete(User).where(User.user_id == user_id))
             session.commit()
+
+
+def test_postgresql_daily_recovery_retries_only_a_pre_due_platform_rejection_once(
+    postgresql_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-09:00 startup failure gets one post-boundary recovery attempt.
+
+    The narrow predicate intentionally excludes a later rejection and any
+    other failure shape.  It preserves the original terminal rows for audit
+    and uses a separate stable recovery key to make concurrent 09:00 scans
+    idempotent.
+    """
+
+    shops: set[UUID] = set()
+    try:
+        with Session(postgresql_engine, expire_on_commit=False) as session:
+            early_shop = _seed_shop(session, display_name="提前请求恢复店铺")
+            late_shop = _seed_shop(session, display_name="正常时点拒绝店铺")
+            other_failure_shop = _seed_shop(session, display_name="其他失败店铺")
+            session.flush()
+            shops.update(
+                {
+                    early_shop.shop_id,
+                    late_shop.shop_id,
+                    other_failure_shop.shop_id,
+                },
+            )
+            business_date, due_now = _unused_daily_fixture_clock(session)
+            pre_due_now = due_now - timedelta(minutes=5)
+            original_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=business_date,
+                requested_end_date=business_date,
+                requested_by_user_id=None,
+                dedupe_key=f"daily:{business_date.isoformat()}",
+                started_at=pre_due_now,
+                finished_at=pre_due_now,
+                created_at=pre_due_now,
+                updated_at=pre_due_now,
+            )
+            session.add(original_job)
+            session.flush()
+            original_items = [
+                OperatingDataCollectionItem(
+                    collection_item_id=uuid4(),
+                    collection_job_id=original_job.collection_job_id,
+                    shop_id=early_shop.shop_id,
+                    business_date=business_date,
+                    status=OperatingCollectionItemStatus.FAILED.value,
+                    priority=0,
+                    attempt_count=1,
+                    retryable=False,
+                    failure_code="DOUYIN_OPERATING_DATA_REJECTED",
+                    failure_stage="platform_response",
+                    started_at=pre_due_now,
+                    finished_at=pre_due_now,
+                    created_at=pre_due_now,
+                    updated_at=pre_due_now,
+                ),
+                OperatingDataCollectionItem(
+                    collection_item_id=uuid4(),
+                    collection_job_id=original_job.collection_job_id,
+                    shop_id=late_shop.shop_id,
+                    business_date=business_date,
+                    status=OperatingCollectionItemStatus.FAILED.value,
+                    priority=1,
+                    attempt_count=1,
+                    retryable=False,
+                    failure_code="DOUYIN_OPERATING_DATA_REJECTED",
+                    failure_stage="platform_response",
+                    started_at=due_now,
+                    finished_at=due_now,
+                    created_at=pre_due_now,
+                    updated_at=due_now,
+                ),
+                OperatingDataCollectionItem(
+                    collection_item_id=uuid4(),
+                    collection_job_id=original_job.collection_job_id,
+                    shop_id=other_failure_shop.shop_id,
+                    business_date=business_date,
+                    status=OperatingCollectionItemStatus.FAILED.value,
+                    priority=2,
+                    attempt_count=1,
+                    retryable=False,
+                    failure_code="DOUYIN_OPERATING_DATA_INVALID_RESPONSE",
+                    failure_stage="response_parse",
+                    started_at=pre_due_now,
+                    finished_at=pre_due_now,
+                    created_at=pre_due_now,
+                    updated_at=pre_due_now,
+                ),
+            ]
+            session.add_all(original_items)
+            session.commit()
+
+            service = _service(session)
+            _isolate_daily_planner(
+                monkeypatch,
+                early_shop,
+                late_shop,
+                other_failure_shop,
+            )
+
+            assert service.enqueue_daily_collection(
+                business_date=business_date,
+                now=pre_due_now,
+            ).collection_job_id == original_job.collection_job_id
+            assert service.repository.get_job_by_dedupe_key(
+                f"daily-recovery:{business_date.isoformat()}",
+            ) is None
+
+            recovery = service.enqueue_daily_collection(
+                business_date=business_date,
+                now=due_now,
+            )
+            repeated = service.enqueue_daily_collection(
+                business_date=business_date,
+                now=due_now + timedelta(minutes=1),
+            )
+            assert recovery.collection_job_id == repeated.collection_job_id
+            assert recovery.collection_job_id != original_job.collection_job_id
+            assert recovery.kind == OperatingCollectionJobKind.DAILY.value
+            assert recovery.dedupe_key == f"daily-recovery:{business_date.isoformat()}"
+
+            original_after = session.scalars(
+                select(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == original_job.collection_job_id,
+                )
+                .order_by(OperatingDataCollectionItem.priority),
+            ).all()
+            assert [item.status for item in original_after] == [
+                OperatingCollectionItemStatus.FAILED.value,
+                OperatingCollectionItemStatus.FAILED.value,
+                OperatingCollectionItemStatus.FAILED.value,
+            ]
+            recovery_items = session.scalars(
+                select(OperatingDataCollectionItem)
+                .where(
+                    OperatingDataCollectionItem.collection_job_id
+                    == recovery.collection_job_id,
+                )
+                .order_by(OperatingDataCollectionItem.priority),
+            ).all()
+            assert len(recovery_items) == 1
+            assert recovery_items[0].shop_id == early_shop.shop_id
+            assert recovery_items[0].business_date == business_date
+            assert recovery_items[0].status == OperatingCollectionItemStatus.PENDING.value
+            assert recovery_items[0].attempt_count == 0
+            assert session.scalar(
+                select(func.count())
+                .select_from(OperatingDataCollectionJob)
+                .where(
+                    OperatingDataCollectionJob.dedupe_key
+                    == f"daily-recovery:{business_date.isoformat()}",
+                ),
+            ) == 1
+
+            # The exceptional path is for a daily plan reserved by startup
+            # *before* the boundary.  Even a synthetically matching item
+            # cannot make an at-boundary daily plan eligible for this repair.
+            later_business_date, later_due_now = _unused_daily_fixture_clock(
+                session,
+            )
+            post_boundary_job = OperatingDataCollectionJob(
+                collection_job_id=uuid4(),
+                kind=OperatingCollectionJobKind.DAILY.value,
+                status="failed",
+                requested_start_date=later_business_date,
+                requested_end_date=later_business_date,
+                requested_by_user_id=None,
+                dedupe_key=f"daily:{later_business_date.isoformat()}",
+                created_at=later_due_now,
+                updated_at=later_due_now,
+            )
+            session.add(post_boundary_job)
+            session.flush()
+            session.add(
+                OperatingDataCollectionItem(
+                    collection_item_id=uuid4(),
+                    collection_job_id=post_boundary_job.collection_job_id,
+                    shop_id=late_shop.shop_id,
+                    business_date=later_business_date,
+                    status=OperatingCollectionItemStatus.FAILED.value,
+                    priority=0,
+                    attempt_count=1,
+                    retryable=False,
+                    failure_code="DOUYIN_OPERATING_DATA_REJECTED",
+                    failure_stage="platform_response",
+                    started_at=later_due_now - timedelta(minutes=1),
+                    finished_at=later_due_now - timedelta(minutes=1),
+                    created_at=later_due_now - timedelta(minutes=1),
+                    updated_at=later_due_now,
+                ),
+            )
+            session.commit()
+
+            assert service.enqueue_daily_collection(
+                business_date=later_business_date,
+                now=later_due_now,
+            ).collection_job_id == post_boundary_job.collection_job_id
+            assert service.repository.get_job_by_dedupe_key(
+                f"daily-recovery:{later_business_date.isoformat()}",
+            ) is None
+    finally:
+        _cleanup(postgresql_engine, shops)
 
 
 def test_postgresql_gap_recovery_bounds_automatic_retry_but_allows_later_eligibility(
