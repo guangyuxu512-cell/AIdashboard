@@ -98,8 +98,14 @@ function isActiveCollection(job: OperatingDashboardCollectionJobDto): boolean {
 
 function getCollectionFeedback(
   job: OperatingDashboardCollectionJobDto,
+  mode: DashboardRefreshMode | null,
 ): OperatingDashboardRefreshFeedback {
   const { counts } = job
+  const waitingForDailyBoundary = job.items.filter(
+    (item) =>
+      item.status === 'pending' &&
+      item.failure_code === 'COLLECTION_WAITING_FOR_DAILY_BOUNDARY',
+  ).length
   if (counts.paused_reauthorization > 0) {
     const activeCount = counts.pending + counts.running
     return {
@@ -108,6 +114,16 @@ function getCollectionFeedback(
         activeCount > 0
           ? `其中 ${counts.paused_reauthorization} 条需重新授权，另有 ${activeCount} 条正在处理中。`
           : `其中 ${counts.paused_reauthorization} 条需重新授权后才能继续更新。`,
+    }
+  }
+  if (waitingForDailyBoundary > 0) {
+    const activeCount = counts.pending + counts.running - waitingForDailyBoundary
+    return {
+      tone: 'warning',
+      message:
+        activeCount > 0
+          ? `其中 ${waitingForDailyBoundary} 条等待每日采集时间后处理，另有 ${activeCount} 条正在处理中。`
+          : `${waitingForDailyBoundary} 条店铺日期已排队，等待每日采集时间后处理。`,
     }
   }
   if (isActiveCollection(job)) {
@@ -130,7 +146,10 @@ function getCollectionFeedback(
   }
   return {
     tone: 'success',
-    message: `已完成 ${counts.succeeded} 条店铺日期数据更新。`,
+    message:
+      mode === 'recollect'
+        ? `重新采集已完成：成功 ${counts.succeeded} 条店铺日期数据。`
+        : `已完成 ${counts.succeeded} 条店铺日期数据更新。`,
   }
 }
 
@@ -162,6 +181,9 @@ function getCollectionSubmissionFeedback(
   if (submission.activeShopDays > 0) {
     parts.push(`${submission.activeShopDays} 个店铺日期正在处理中`)
   }
+  if (submission.waitingShopDays > 0) {
+    parts.push(`${submission.waitingShopDays} 个店铺日期等待每日采集时间后处理`)
+  }
   if (submission.blockedShopDays > 0) {
     parts.push(`${submission.blockedShopDays} 个店铺日期暂不能自动补采`)
   }
@@ -187,6 +209,7 @@ export function useOperatingDashboard() {
   const refreshFeedback = ref<OperatingDashboardRefreshFeedback | null>(null)
   const collectionJobId = ref<string | null>(null)
   const collectionScope = ref<OperatingDashboardFilters | null>(null)
+  const collectionMode = ref<DashboardRefreshMode | null>(null)
   const settledCollectionJobId = ref<string | null>(null)
   const isMockMode = apiMode === 'mock'
   const mockSource = isMockMode ? createOperatingDashboardMockSource() : null
@@ -277,6 +300,7 @@ export function useOperatingDashboard() {
       if (job) {
         collectionJobId.value = job.collection_job_id
         collectionScope.value = cloneFilters(requestFilters)
+        collectionMode.value = request.mode
         settledCollectionJobId.value = null
       }
       if (sameFilters(requestFilters, filters.value)) {
@@ -298,7 +322,7 @@ export function useOperatingDashboard() {
     (job) => {
       if (!job || !collectionScope.value) return
       if (sameFilters(collectionScope.value, filters.value)) {
-        refreshFeedback.value = getCollectionFeedback(job)
+        refreshFeedback.value = getCollectionFeedback(job, collectionMode.value)
       }
       if (
         !isActiveCollection(job) &&

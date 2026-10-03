@@ -108,10 +108,9 @@ current 或删除共享历史目录；此时不得把“工作流失败”直接
 
 ### 经营数据每日采集启用顺序
 
-经营数据代码发布、Migration 与服务健康通过，不等于已经允许自动访问抖店平台。Release Gate 必须先以部署后的
-精确 SHA 验证 Backend、Signer 和持久化 collection queue：确认当前启用且受支持的抖店数量、最近 30 日的预计
-缺口数量、没有遗留的 Feature/Integration collection item，并确认不会把停用店铺或缺失 Session 当作成功。
-随后才在服务器 root-only `.env` 持久化以下非秘密配置并按现有发布规范重启服务：
+经营数据代码发布、服务健康通过，不等于已经允许自动访问抖店平台。Release Gate 先按精确候选核对
+启用抖店、有效 Session、昨日预计任务和既有活动/暂停队列（包含旧版已建历史任务）；不删除旧失败或事实。
+此版本不新增 Migration，保留 0041 和既有审计。保留服务器 root-only 持久化配置，不重复启用：
 
 ```text
 BACKEND_OPERATING_DASHBOARD_COLLECTION_EXECUTION_ENABLED=true
@@ -119,15 +118,22 @@ BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_ENABLED=true
 BACKEND_OPERATING_DASHBOARD_DAILY_COLLECTION_LOCAL_TIME=09:00:00
 ```
 
-若 Release Gate 已逐项确认旧版可选字段解析缺陷留下的终态失败，可额外配置
-`BACKEND_OPERATING_DASHBOARD_LEGACY_RESPONSE_PARSE_RECOVERY_ITEM_IDS` 为精确原 item UUID 的 JSON 数组；默认必须为
-`[]`。该清单不是会话、平台拒绝或一般解析失败的重试开关。部署后仅让每个已批准旧 item 通过既有补漏规划创建一次
-新的尝试，保留旧失败记录，并在新 item 已入队后从清单移除已处理 UUID。
+简单流程的每日计划只采昨日。启动到点后使用同一 `daily:` 标记，不新增 30 日历史；新店与启用不规划，
+重新授权只恢复原来请求。首次和其他历史范围由看板手动更新（最多 60 日），完整范围不产生任务。
+昨日 09:00 前的手动任务排队等待，历史日期可先处理；不能把平台任意拒绝误报为数据未就绪。
 
-该顺序使启动恢复与每日计划在 Asia/Shanghai 09:00 生效：昨日优先，并仅补最近 30 个完整自然日的缺口；不采
-今日实时数据。启用后记录下次执行时间、实际 queue 数量、暂停重新授权数和失败分类。若首次 09:00 尚未到达，只能
-记录“已启用、首次定时执行待观察”，不能写成已经定时成功。回退自动采集时先将两个开关设为 false 并按规范重启；
-已持久化的日事实保留，队列和失败记录不得靠删除数据清理。更早历史只由看板明确提交的手动分批补采处理。
+退休的 `BACKEND_OPERATING_DASHBOARD_INITIAL_BACKFILL_DAYS`、
+`BACKEND_OPERATING_DASHBOARD_GAP_RECOVERY_MAX_ATTEMPTS` 和
+`BACKEND_OPERATING_DASHBOARD_LEGACY_RESPONSE_PARSE_RECOVERY_ITEM_IDS` 不再参与规划。
+Release Gate 可备份后移除这些未使用配置，但本 Feature 不直接改生产配置。显式解析恢复在正式看板完成，
+共用冷却和失败链上限，无需再填写 UUID 清单；不放开 metrics-unavailable、风险或未知平台拒绝。
+不新建 `daily-recovery:` 特殊 Job，但兼容读取和执行旧持久化任务，禁止顺手删除历史。
+
+部署核验须覆盖：首次手动范围入库/回读、每日仅昨日、显式解析恢复、完整范围普通更新零 Job/Item/平台请求，
+以及共用店铺表单无日期输入且保存不清空旧日期。既有 Signer、解析、事实 upsert、权限均不改。
+首次 09:00 尚未到达只能写“首次定时执行待观察”；不能用手动测试代替。失败保留旧成功事实。
+回退到上一兼容 release 会恢复旧自动历史规划和特殊恢复策略，应先核对队列/备份部署配置，不能当作纯视觉回退。
+本 Feature 不重启生产或更改每日开关，生产仅在 Gate/Release Gate 后由 ca97 协调。
 
 ## 数据库与首位管理员
 

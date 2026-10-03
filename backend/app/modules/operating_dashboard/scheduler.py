@@ -55,7 +55,7 @@ def recover_operating_data_collections_on_startup_once(
     *,
     now: datetime | None = None,
 ) -> bool:
-    """Recover durable work and plan one bounded gap scan after Backend start.
+    """Recover durable work and reconcile only yesterday after Backend start.
 
     Both automatic switches are checked here rather than only in FastAPI's
     lifespan.  Calling this helper from a test, shell, or future worker cannot

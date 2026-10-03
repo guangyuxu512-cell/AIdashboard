@@ -793,6 +793,62 @@ class OperatingDashboardRepository:
         )
         return int(result.rowcount or 0)
 
+    def defer_pending_items_until(
+        self,
+        *,
+        business_date: date,
+        available_at: datetime,
+        now: datetime,
+        shop_id: UUID | None = None,
+        collection_job_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
+        """Keep already-queued prior-day work out of the platform before due.
+
+        This is deliberately a narrow persistence primitive: Service owns the
+        Shanghai eligibility rule, while the repository only delays matching
+        pending rows.  It also protects rows created by an older process
+        before the shared planner was deployed.
+        """
+
+        conditions = [
+            OperatingDataCollectionItem.status
+            == OperatingCollectionItemStatus.PENDING.value,
+            OperatingDataCollectionItem.business_date == business_date,
+            or_(
+                OperatingDataCollectionItem.retry_after.is_(None),
+                OperatingDataCollectionItem.retry_after < available_at,
+            ),
+        ]
+        if shop_id is not None:
+            conditions.append(OperatingDataCollectionItem.shop_id == shop_id)
+        if collection_job_id is not None:
+            conditions.append(
+                OperatingDataCollectionItem.collection_job_id == collection_job_id,
+            )
+        job_ids = tuple(
+            self.session.scalars(
+                select(OperatingDataCollectionItem.collection_job_id)
+                .where(*conditions)
+                .distinct(),
+            ),
+        )
+        if not job_ids:
+            return ()
+        self.session.execute(
+            update(OperatingDataCollectionItem)
+            .where(*conditions)
+            .values(
+                retryable=True,
+                retry_after=available_at,
+                failure_code="COLLECTION_WAITING_FOR_DAILY_BOUNDARY",
+                failure_message="等待每日采集时间后再请求平台",
+                failure_stage="queued",
+                lease_until=None,
+                updated_at=now,
+            ),
+        )
+        return job_ids
+
     def paused_job_ids_for_shop(self, shop_id: UUID) -> tuple[UUID, ...]:
         return tuple(
             self.session.scalars(
