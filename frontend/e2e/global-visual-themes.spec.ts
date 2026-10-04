@@ -44,6 +44,71 @@ async function selectTheme(page: Page, theme: (typeof themes)[number]) {
   )
 }
 
+test('theme trigger keeps token spacing and both topbar menus usable at desktop widths', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  for (const width of [1280, 1920, 960]) {
+    await page.setViewportSize({ width, height: 800 })
+    for (const theme of themes) {
+      await selectTheme(page, theme)
+      const content = page.locator('.theme-selector__content')
+      await expect(content).toHaveCSS('gap', '8px')
+      await expect(content).toHaveCSS('align-items', 'center')
+      await expect(content).toHaveCSS('white-space', 'nowrap')
+      const mark = page.locator('.theme-selector__mark')
+      await expect(mark).toHaveCSS('width', '10px')
+      await expect(mark).toHaveCSS('height', '10px')
+      await expect(mark).toHaveCSS('flex-shrink', '0')
+      const rows = await content.evaluate((element) =>
+        Array.from(element.children).map((child) => {
+          const rect = child.getBoundingClientRect()
+          return {
+            left: rect.left,
+            right: rect.right,
+            center: rect.top + rect.height / 2,
+          }
+        }),
+      )
+      expect(rows[1]!.left - rows[0]!.right).toBeCloseTo(8, 1)
+      expect(rows[2]!.left - rows[1]!.right).toBeCloseTo(8, 1)
+      expect(rows[0]!.center).toBeCloseTo(rows[1]!.center, 1)
+      expect(rows[1]!.center).toBeCloseTo(rows[2]!.center, 1)
+      const trigger = page.getByRole('button', { name: '切换主题' })
+      const account = page.getByRole('button', { name: '当前用户菜单' })
+      const triggerBounds = (await trigger.boundingBox())!
+      const accountBounds = (await account.boundingBox())!
+      expect(
+        accountBounds.x - triggerBounds.x - triggerBounds.width,
+      ).toBeCloseTo(12, 1)
+      const leading = (await page
+        .locator('.app-shell__topbar-leading')
+        .boundingBox())!
+      expect(leading.x + leading.width).toBeLessThanOrEqual(triggerBounds.x)
+      expect(accountBounds.x + accountBounds.width).toBeLessThanOrEqual(
+        width - 20,
+      )
+      await trigger.click()
+      await expect(
+        page.locator('.n-dropdown').getByText('跟随系统', { exact: true }),
+      ).toBeVisible()
+      await page.locator('.app-shell__topbar-leading').click()
+      await expect(page.locator('.n-dropdown')).not.toBeVisible()
+      await account.click()
+      await expect(
+        page.locator('.n-dropdown').getByText('退出登录', { exact: true }),
+      ).toBeVisible()
+      await page.locator('.app-shell__topbar-leading').click()
+      await expect(page.locator('.n-dropdown')).not.toBeVisible()
+    }
+  }
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-theme-preset',
+    'midnight',
+  )
+})
+
 test('four rendered themes preserve filters, layouts and preferences and synchronize controls and overlays', async ({
   page,
 }, testInfo) => {
@@ -76,10 +141,22 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
   await expect(page.getByPlaceholder('搜索图片文件名')).toBeVisible()
   await expect(page.locator('.app-shell__sidebar')).toHaveCSS(
     'background-color',
-    'rgb(213, 46, 59)',
+    'rgb(240, 106, 107)',
   )
   await page.screenshot({
     path: testInfo.outputPath('coral-assets.png'),
+    animations: 'disabled',
+  })
+  await page.goto('/#/operating-dashboard')
+  await expect(page.locator('.app-shell__sidebar')).toHaveCSS(
+    'background-color',
+    'rgb(240, 106, 107)',
+  )
+  await expect(
+    page.getByRole('columnheader', { name: '成交金额' }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('coral-operating-dashboard.png'),
     animations: 'disabled',
   })
   await page.goto('/#/foundation')
@@ -157,26 +234,6 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
     'data-theme-preset',
     'midnight',
   )
-})
-
-test('shell uses four 12px corners and becomes square for maximized/fullscreen desktop states', async ({
-  page,
-}) => {
-  await page.goto('/#/shops')
-  for (const state of ['normal', 'maximized', 'fullscreen', 'normal']) {
-    // CSS contract only, not an assertion about the physical native window.
-    await page.evaluate((value) => {
-      document.documentElement.dataset.windowState = value
-    }, state)
-    await expect(page.locator('.app-shell')).toHaveCSS(
-      'border-top-left-radius',
-      state === 'normal' ? '12px' : '0px',
-    )
-    await expect(page.locator('.app-shell')).toHaveCSS(
-      'border-bottom-right-radius',
-      state === 'normal' ? '12px' : '0px',
-    )
-  }
 })
 
 test('semantic text and primary buttons meet contrast targets in all four palettes', async ({

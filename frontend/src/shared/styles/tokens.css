@@ -38,7 +38,6 @@
   --radius-control: 6px;
   --radius-card: 9px;
   --radius-dialog: 10px;
-  --radius-shell: 12px;
   --glass-blur: 0px;
   --dialog-width-sm: 420px;
   --dialog-width-md: 560px;
@@ -171,7 +170,7 @@
 :root[data-theme-preset='coral'] {
   color-scheme: light;
   --bg-app: #fff9f5;
-  --bg-sidebar: #d52e3b;
+  --bg-sidebar: #f06a6b;
   --bg-topbar: #ffffff;
   --bg-surface: #ffffff;
   --bg-subtle: #fff1eb;
@@ -191,11 +190,11 @@
   --text-on-primary: #ffffff;
   --chart-primary: #e63946;
   --color-accent: #f4a261;
-  --sidebar-text: #ffffff;
-  --sidebar-text-active: #ffffff;
-  --sidebar-item-hover: #c22835;
-  --sidebar-item-active: #ad2330;
-  --sidebar-border: #ffb4a2;
+  --sidebar-text: #3b291d;
+  --sidebar-text-active: #3b291d;
+  --sidebar-item-hover: #f78982;
+  --sidebar-item-active: #ffb4a2;
+  --sidebar-border: #e6555b;
   --bg-surface-solid: var(--bg-surface);
   --text-inverse: #ffffff;
   --bg-overlay: rgb(22 28 36 / 38%);

@@ -1,15 +1,9 @@
 import { BrowserWindow, nativeTheme } from 'electron'
 import path from 'node:path'
-import os from 'node:os'
 
 import { isTrustedRendererUrl } from '../config/runtime'
-import {
-  desktopIpcChannels,
-  type DesktopResolvedTheme,
-  type DesktopWindowState,
-} from '../types'
+import type { DesktopResolvedTheme } from '../types'
 import { installMainWindowPermissionHandlers } from './permissions'
-import { needsWindowsRegion, roundedWindowRegion } from './window-shape'
 
 const titleBarHeight = 54
 const titleBarSymbolColors: Record<DesktopResolvedTheme, string> = {
@@ -51,7 +45,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     ...(process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,
-          roundedCorners: true,
+          hasShadow: false,
           titleBarOverlay: {
             color: '#00000000',
             symbolColor: titleBarSymbolColors[initialTheme],
@@ -71,31 +65,6 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       preload: path.join(__dirname, '../preload/index.js'),
     },
   })
-
-  const needsRegion = needsWindowsRegion(process.platform, os.release())
-  const synchronizeWindowShape = () => {
-    if (window.isDestroyed()) return
-    const state: DesktopWindowState = window.isFullScreen()
-      ? 'fullscreen'
-      : window.isMaximized()
-        ? 'maximized'
-        : 'normal'
-    if (needsRegion) {
-      const { width, height } = window.getBounds()
-      window.setShape(
-        state === 'normal' ? roundedWindowRegion(width, height) : [],
-      )
-    }
-    window.webContents.send(desktopIpcChannels.windowState, state)
-  }
-  window.on('resize', synchronizeWindowShape)
-  window.on('maximize', synchronizeWindowShape)
-  window.on('unmaximize', synchronizeWindowShape)
-  window.on('enter-full-screen', synchronizeWindowShape)
-  window.on('leave-full-screen', synchronizeWindowShape)
-  window.on('restore', synchronizeWindowShape)
-  window.webContents.on('did-finish-load', synchronizeWindowShape)
-  synchronizeWindowShape()
 
   window.once('ready-to-show', () => window.show())
   window.webContents.on(
