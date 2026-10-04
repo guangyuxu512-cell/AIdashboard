@@ -125,7 +125,7 @@ Sidebar、Topbar、Surface/Card 与弹层使用纯色和必要的轻阴影，不
 
 ## AppShell 高度与滚动
 
-Web AppShell 使用 `--radius-shell: 12px`；桌面由受信任 Preload 写入 `data-window-state` 后，页面四角统一直角，避免与原生窗口形成第二层错位裁切。桌面外缘只交给系统：Windows 11 原生圆角待实测；Windows 10 撤下逐行矩形 setShape，暂为直角，平滑圆角未完成。最大化/全屏贴边。AppShell 不加投影，既有 Overlay Host 与滚动边界不变；浏览器截图不能证明原生外缘、系统阴影或窗口操作。
+用户已取消应用外壳圆角需求。AppShell 不设置外壳圆角或投影，也不接收专用窗口状态；桌面外缘使用系统默认窗口行为。卡片、按钮、输入框和弹窗继续使用各自现有圆角 Token。既有 Overlay Host、尺寸和滚动边界不变。
 
 `NConfigProvider` 必须使用 `abstract`，避免默认 `.n-config-provider` 自动高度中间层破坏百分比高度链。权威布局链为：
 

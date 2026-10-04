@@ -171,30 +171,6 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
   )
 })
 
-test('web shell retains 12px corners; desktop leaves outer clipping to the native window', async ({
-  page,
-}) => {
-  await page.goto('/#/shops')
-  await expect(page.locator('.app-shell')).toHaveCSS(
-    'border-top-left-radius',
-    '12px',
-  )
-  for (const state of ['normal', 'maximized', 'fullscreen', 'normal']) {
-    // CSS contract only, not an assertion about the physical native window.
-    await page.evaluate((value) => {
-      document.documentElement.dataset.windowState = value
-    }, state)
-    await expect(page.locator('.app-shell')).toHaveCSS(
-      'border-top-left-radius',
-      '0px',
-    )
-    await expect(page.locator('.app-shell')).toHaveCSS(
-      'border-bottom-right-radius',
-      '0px',
-    )
-  }
-})
-
 test('semantic text and primary buttons meet contrast targets in all four palettes', async ({
   page,
 }) => {

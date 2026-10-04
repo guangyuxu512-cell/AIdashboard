@@ -2,11 +2,7 @@ import { BrowserWindow, nativeTheme } from 'electron'
 import path from 'node:path'
 
 import { isTrustedRendererUrl } from '../config/runtime'
-import {
-  desktopIpcChannels,
-  type DesktopResolvedTheme,
-  type DesktopWindowState,
-} from '../types'
+import type { DesktopResolvedTheme } from '../types'
 import { installMainWindowPermissionHandlers } from './permissions'
 
 const titleBarHeight = 54
@@ -49,7 +45,6 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     ...(process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,
-          roundedCorners: true,
           hasShadow: false,
           titleBarOverlay: {
             color: '#00000000',
@@ -70,24 +65,6 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       preload: path.join(__dirname, '../preload/index.js'),
     },
   })
-
-  const synchronizeWindowState = () => {
-    if (window.isDestroyed()) return
-    const state: DesktopWindowState = window.isFullScreen()
-      ? 'fullscreen'
-      : window.isMaximized()
-        ? 'maximized'
-        : 'normal'
-    window.webContents.send(desktopIpcChannels.windowState, state)
-  }
-  window.on('resize', synchronizeWindowState)
-  window.on('maximize', synchronizeWindowState)
-  window.on('unmaximize', synchronizeWindowState)
-  window.on('enter-full-screen', synchronizeWindowState)
-  window.on('leave-full-screen', synchronizeWindowState)
-  window.on('restore', synchronizeWindowState)
-  window.webContents.on('did-finish-load', synchronizeWindowState)
-  synchronizeWindowState()
 
   window.once('ready-to-show', () => window.show())
   window.webContents.on(

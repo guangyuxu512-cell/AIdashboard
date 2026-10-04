@@ -208,14 +208,6 @@ function navigate(key: string): void {
   grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg-app);
-  border-radius: var(--radius-shell);
-}
-
-/* Desktop outer corners belong to the native window, not a second CSS cutout. */
-:global(:root[data-window-state] .app-shell),
-:global(:fullscreen .app-shell),
-.app-shell:fullscreen {
-  border-radius: 0;
 }
 
 .app-shell__sidebar {
