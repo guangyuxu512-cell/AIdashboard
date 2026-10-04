@@ -108,7 +108,7 @@ defineEmits<{
 }
 
 .compact-entity-row--active .compact-entity-row__icon {
-  color: var(--color-primary);
+  color: var(--text-link);
 }
 
 .compact-entity-row__title {

@@ -45,6 +45,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     ...(process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,
+          hasShadow: false,
           titleBarOverlay: {
             color: '#00000000',
             symbolColor: titleBarSymbolColors[initialTheme],

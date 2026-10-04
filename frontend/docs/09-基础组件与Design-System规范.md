@@ -547,7 +547,7 @@ description（需要时）
 
 阶段 2D-2 起 `FilterField.label` 为可选属性：普通表单式筛选可保留标签，Compact Management Pattern 默认省略标签并依赖控件 Placeholder / Accessible Name 表达含义。`FilterBar` 提供独立 `primary-action` Slot，将新建/添加等主操作与查询、重置放在同一自适应工具栏最右侧。
 
-阶段 2C 增加 `ThemeSelector`，作为 AppShell Topbar 的 Light / Dark / System 入口，内部复用 `AppButton` 和 Naive `NDropdown`。
+`ThemeSelector` 是 AppShell Topbar 的石墨浅色 / 森林绿 / 珊瑚红 / 午夜青 / 跟随系统入口，内部复用 `AppButton` 和 Naive `NDropdown`。四预设共用布局和尺寸，跟随系统不是独立配色；详细状态与兼容契约见 03。
 
 阶段 2D-1 为既有 `AppDrawer` / `DetailDrawer` 增加通用 `header` Slot，用于领域详情的图标、身份信息和真实操作组合；宽度仍只能使用 `sm / md / lg` 语义尺寸，不新增店铺专用 Drawer。
 

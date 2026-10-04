@@ -58,12 +58,13 @@ withDefaults(
 }
 
 .page-section--card {
+  /* Retain the former backdrop-filter stacking boundary without blur. */
+  isolation: isolate;
   padding: var(--surface-padding);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(var(--glass-blur));
 }
 
 .page-section__header {

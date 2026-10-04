@@ -71,7 +71,7 @@ test('keeps every generation short option group unframed in both themes', async 
   await page.goto('/#/ai-workbench/generate?visualMock=1')
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 
   const moduleNavigation = page.getByRole('navigation', {
@@ -117,7 +117,7 @@ test('keeps every generation short option group unframed in both themes', async 
   ).toBeChecked()
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   for (const group of batchGroups) await expectBareSwitchBar(group)
 
@@ -601,11 +601,11 @@ test('renders stable instant result slots with preview and isolated retry', asyn
   })
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(viewer).toBeVisible()
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(viewer).toBeVisible()
 
@@ -1155,14 +1155,14 @@ test('filters, paginates and opens generation record details in both themes', as
   expect(paginationLayout.mainVerticalOverflow).toBe(false)
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(pagination).toBeVisible()
   await rows.first().getByRole('button', { name: '查看' }).click()
   await expect(page.getByRole('dialog')).toContainText('任务信息')
   await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click()
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   expect(runtimeErrors).toEqual([])
 })
@@ -1175,7 +1175,7 @@ test('keeps every generation interaction stable in light and dark themes', async
   await page.goto('/#/ai-workbench/generate?visualMock=1')
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 
   const instantConfig = page.getByRole('region', { name: '即时生成配置' })
@@ -1209,7 +1209,7 @@ test('keeps every generation interaction stable in light and dark themes', async
   await expect(page.getByTestId('batch-execution-viewer')).toBeVisible()
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.getByTestId('batch-execution-viewer')).toBeVisible()
 

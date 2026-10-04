@@ -169,7 +169,7 @@ function channelLabel(channel: NotificationChannelViewModel): string {
   flex: 0 0 var(--control-height-compact);
   place-items: center;
   border-radius: var(--radius-control);
-  color: var(--color-primary);
+  color: var(--text-link);
   background: var(--color-primary-soft);
 }
 

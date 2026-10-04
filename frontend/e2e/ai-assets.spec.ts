@@ -439,7 +439,7 @@ test('renders folder, selection, multi-select and pagination states in both them
 }) => {
   await page.goto('/#/ai-workbench/assets?visualMock=1')
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.locator('svg.lucide-folder').first()).toBeVisible()
   await expect(page.getByRole('checkbox', { name: '全选' })).toBeVisible()
@@ -464,7 +464,7 @@ test('renders folder, selection, multi-select and pagination states in both them
   )
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(
     page.locator('button.material-asset-card--selected'),

@@ -40,7 +40,7 @@ test('keeps theme preference while hiding the login theme control', async ({
   ).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.reload()
   await expect(page.locator('.app-shell')).toBeVisible()

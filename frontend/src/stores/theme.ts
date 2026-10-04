@@ -1,22 +1,30 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
-export type ThemeMode = 'light' | 'dark' | 'system'
-export type ResolvedTheme = Exclude<ThemeMode, 'system'>
+export type ThemePreset = 'graphite' | 'forest' | 'coral' | 'midnight'
+export type ThemeMode = ThemePreset | 'system'
+export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'control-center.theme-mode'
 
-function isThemeMode(value: string | null): value is ThemeMode {
-  return value === 'light' || value === 'dark' || value === 'system'
+function normalizeThemeMode(value: string | null): ThemeMode {
+  if (value === 'dark') return 'midnight'
+  if (value === 'light') return 'graphite'
+  return value === 'graphite' ||
+    value === 'forest' ||
+    value === 'coral' ||
+    value === 'midnight' ||
+    value === 'system'
+    ? value
+    : 'graphite'
 }
 
 function readStoredThemeMode(): ThemeMode {
-  if (typeof window === 'undefined') return 'system'
+  if (typeof window === 'undefined') return 'graphite'
   try {
-    const value = window.localStorage.getItem(THEME_STORAGE_KEY)
-    return isThemeMode(value) ? value : 'system'
+    return normalizeThemeMode(window.localStorage.getItem(THEME_STORAGE_KEY))
   } catch {
-    return 'system'
+    return 'graphite'
   }
 }
 
@@ -33,22 +41,25 @@ export const useThemeStore = defineStore('theme', () => {
   const systemPrefersDark = ref(false)
   let initialized = false
 
-  const resolvedTheme = computed<ResolvedTheme>(() =>
+  const resolvedPreset = computed<ThemePreset>(() =>
     mode.value === 'system'
       ? systemPrefersDark.value
-        ? 'dark'
-        : 'light'
+        ? 'midnight'
+        : 'graphite'
       : mode.value,
   )
+  const resolvedTheme = computed<ResolvedTheme>(() =>
+    resolvedPreset.value === 'midnight' ? 'dark' : 'light',
+  )
 
-  function applyTheme(theme: ResolvedTheme): void {
-    document.documentElement.dataset.theme = theme
-    document.documentElement.style.colorScheme = theme
-    window.desktop?.appearance.setTitleBarTheme(theme)
+  function applyPreset(preset: ThemePreset): void {
+    document.documentElement.dataset.theme = resolvedTheme.value
+    document.documentElement.dataset.themePreset = preset
+    document.documentElement.style.colorScheme = resolvedTheme.value
   }
 
-  function setMode(value: ThemeMode): void {
-    mode.value = value
+  function setMode(value: ThemeMode | ResolvedTheme): void {
+    mode.value = normalizeThemeMode(value)
   }
 
   function initialize(): void {
@@ -62,8 +73,15 @@ export const useThemeStore = defineStore('theme', () => {
     })
 
     watch(mode, persistThemeMode, { flush: 'sync' })
-    watch(resolvedTheme, applyTheme, { immediate: true, flush: 'sync' })
+    watch(resolvedPreset, applyPreset, { immediate: true, flush: 'sync' })
+    watch(
+      resolvedTheme,
+      (theme) => {
+        window.desktop?.appearance.setTitleBarTheme(theme)
+      },
+      { immediate: true, flush: 'sync' },
+    )
   }
 
-  return { mode, resolvedTheme, initialize, setMode }
+  return { mode, resolvedPreset, resolvedTheme, initialize, setMode }
 })

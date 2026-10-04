@@ -9,8 +9,10 @@ import AppButton from '@/shared/ui/AppButton.vue'
 const themeStore = useThemeStore()
 
 const options: DropdownOption[] = [
-  { key: 'light', label: '浅色' },
-  { key: 'dark', label: '深色' },
+  { key: 'graphite', label: '石墨浅色' },
+  { key: 'forest', label: '森林绿' },
+  { key: 'coral', label: '珊瑚红' },
+  { key: 'midnight', label: '午夜青' },
   { key: 'system', label: '跟随系统' },
 ]
 
@@ -31,17 +33,27 @@ function selectTheme(key: string | number): void {
       aria-label="切换主题"
       :title="`当前主题：${currentLabel}`"
     >
-      <span class="theme-selector__mark" aria-hidden="true" />
-      <span>主题</span>
-      <span class="theme-selector__current">{{ currentLabel }}</span>
+      <span class="theme-selector__content">
+        <span class="theme-selector__mark" aria-hidden="true" />
+        <span>主题</span>
+        <span class="theme-selector__current">{{ currentLabel }}</span>
+      </span>
     </AppButton>
   </NDropdown>
 </template>
 
 <style scoped>
+.theme-selector__content {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
 .theme-selector__mark {
   width: 10px;
   height: 10px;
+  flex: 0 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: 50%;
   background: linear-gradient(
