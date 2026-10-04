@@ -76,10 +76,22 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
   await expect(page.getByPlaceholder('搜索图片文件名')).toBeVisible()
   await expect(page.locator('.app-shell__sidebar')).toHaveCSS(
     'background-color',
-    'rgb(213, 46, 59)',
+    'rgb(240, 106, 107)',
   )
   await page.screenshot({
     path: testInfo.outputPath('coral-assets.png'),
+    animations: 'disabled',
+  })
+  await page.goto('/#/operating-dashboard')
+  await expect(page.locator('.app-shell__sidebar')).toHaveCSS(
+    'background-color',
+    'rgb(240, 106, 107)',
+  )
+  await expect(
+    page.getByRole('columnheader', { name: '成交金额' }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('coral-operating-dashboard.png'),
     animations: 'disabled',
   })
   await page.goto('/#/foundation')
@@ -159,10 +171,14 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
   )
 })
 
-test('shell uses four 12px corners and becomes square for maximized/fullscreen desktop states', async ({
+test('web shell retains 12px corners; desktop leaves outer clipping to the native window', async ({
   page,
 }) => {
   await page.goto('/#/shops')
+  await expect(page.locator('.app-shell')).toHaveCSS(
+    'border-top-left-radius',
+    '12px',
+  )
   for (const state of ['normal', 'maximized', 'fullscreen', 'normal']) {
     // CSS contract only, not an assertion about the physical native window.
     await page.evaluate((value) => {
@@ -170,11 +186,11 @@ test('shell uses four 12px corners and becomes square for maximized/fullscreen d
     }, state)
     await expect(page.locator('.app-shell')).toHaveCSS(
       'border-top-left-radius',
-      state === 'normal' ? '12px' : '0px',
+      '0px',
     )
     await expect(page.locator('.app-shell')).toHaveCSS(
       'border-bottom-right-radius',
-      state === 'normal' ? '12px' : '0px',
+      '0px',
     )
   }
 })

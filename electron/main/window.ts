@@ -1,6 +1,5 @@
 import { BrowserWindow, nativeTheme } from 'electron'
 import path from 'node:path'
-import os from 'node:os'
 
 import { isTrustedRendererUrl } from '../config/runtime'
 import {
@@ -9,7 +8,6 @@ import {
   type DesktopWindowState,
 } from '../types'
 import { installMainWindowPermissionHandlers } from './permissions'
-import { needsWindowsRegion, roundedWindowRegion } from './window-shape'
 
 const titleBarHeight = 54
 const titleBarSymbolColors: Record<DesktopResolvedTheme, string> = {
@@ -52,6 +50,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
       ? {
           titleBarStyle: 'hidden' as const,
           roundedCorners: true,
+          hasShadow: false,
           titleBarOverlay: {
             color: '#00000000',
             symbolColor: titleBarSymbolColors[initialTheme],
@@ -72,30 +71,23 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     },
   })
 
-  const needsRegion = needsWindowsRegion(process.platform, os.release())
-  const synchronizeWindowShape = () => {
+  const synchronizeWindowState = () => {
     if (window.isDestroyed()) return
     const state: DesktopWindowState = window.isFullScreen()
       ? 'fullscreen'
       : window.isMaximized()
         ? 'maximized'
         : 'normal'
-    if (needsRegion) {
-      const { width, height } = window.getBounds()
-      window.setShape(
-        state === 'normal' ? roundedWindowRegion(width, height) : [],
-      )
-    }
     window.webContents.send(desktopIpcChannels.windowState, state)
   }
-  window.on('resize', synchronizeWindowShape)
-  window.on('maximize', synchronizeWindowShape)
-  window.on('unmaximize', synchronizeWindowShape)
-  window.on('enter-full-screen', synchronizeWindowShape)
-  window.on('leave-full-screen', synchronizeWindowShape)
-  window.on('restore', synchronizeWindowShape)
-  window.webContents.on('did-finish-load', synchronizeWindowShape)
-  synchronizeWindowShape()
+  window.on('resize', synchronizeWindowState)
+  window.on('maximize', synchronizeWindowState)
+  window.on('unmaximize', synchronizeWindowState)
+  window.on('enter-full-screen', synchronizeWindowState)
+  window.on('leave-full-screen', synchronizeWindowState)
+  window.on('restore', synchronizeWindowState)
+  window.webContents.on('did-finish-load', synchronizeWindowState)
+  synchronizeWindowState()
 
   window.once('ready-to-show', () => window.show())
   window.webContents.on(

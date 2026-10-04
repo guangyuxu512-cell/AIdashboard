@@ -211,8 +211,8 @@ function navigate(key: string): void {
   border-radius: var(--radius-shell);
 }
 
-:global(:root[data-window-state='maximized'] .app-shell),
-:global(:root[data-window-state='fullscreen'] .app-shell),
+/* Desktop outer corners belong to the native window, not a second CSS cutout. */
+:global(:root[data-window-state] .app-shell),
 :global(:fullscreen .app-shell),
 .app-shell:fullscreen {
   border-radius: 0;

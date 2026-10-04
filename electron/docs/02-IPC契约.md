@@ -51,7 +51,7 @@ Payload: DesktopWindowState = "normal" | "maximized" | "fullscreen"
 Effect: validated value → document.documentElement.dataset.windowState
 ```
 
-Main 在加载完成及窗口 resize/maximize/unmaximize/fullscreen/restore 时同步状态。Preload 仅在既有白名单 Origin 安装监听，只接受三种值；不暴露 IPC 或窗口操作 API。Renderer 外壳用此状态决定页面圆角，业务数据不参与。刷新后重新同步，不持久化瞬时窗口状态。
+Main 在加载完成及窗口 resize/maximize/unmaximize/fullscreen/restore 时同步状态。Preload 仅在既有白名单 Origin 安装监听，只接受三种值；不暴露 IPC 或窗口操作 API。Renderer 收到桌面状态后不叠加页面圆角，外缘由原生窗口处理，业务数据不参与。刷新后重新同步，不持久化瞬时窗口状态。
 
 当前 Preload 未引入打包器且保持 `sandbox: true`，因此运行时白名单在 Preload 单文件内声明，并与 `electron/types` 的正式 Channel 常量保持一致；不得通过本地运行时 `require` 破坏 Sandboxed Preload 加载。
 

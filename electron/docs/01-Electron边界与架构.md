@@ -39,7 +39,7 @@ Origin，不得通过放宽 CORS 或关闭 `webSecurity` 绕过。导航、页�
 
 Windows 桌面窗口使用 `titleBarStyle: hidden` 与原生 `titleBarOverlay`，由现有 54px AppShell Topbar 承载统一标题区域。窗口最小化、最大化/恢复和关闭仍由 Windows 原生 Window Controls Overlay 提供，不在 Renderer 自绘。
 
-主窗口外角：Windows 11（build >=22000）保留系统原生 roundedCorners；旧 Windows 使用 Electron 内置 `setShape` 的 12px 圆角区域，不改透明窗、frame 或 thickFrame，不增加原生依赖。resize/恢复重新计算区域；最大化/全屏清空区域回到矩形。仅应用主窗口，不处理平台登录窗口。`setShape` 是实验 API，必须以实际窗口外缘与拖动、边缘缩放、原生控制验收证明兼容；编译、区域单测、网页圆角截图均不能替代，未实测不能标记完成。
+主窗口外角：Windows 11（build >=22000）保留系统原生 roundedCorners；Windows 10 撤下造成阶梯边缘的逐行矩形 setShape 及其区域单测，暂为直角，平滑圆角仍未完成。桌面 Renderer 不再叠加 CSS 圆角。Windows 主窗口设 hasShadow=false，不改变 frame/thickFrame（保留边缘缩放），不增加透明窗或原生依赖；平台登录窗口不变。系统残边与实际阴影是否消失仍须真实窗口取证，不能仅凭配置断言。最大化/全屏贴边直角；编译、网页截图不能替代原生外缘及拖动、缩放、原生控制验收。
 
 Renderer 仅通过 `window.desktop.appearance.setTitleBarTheme(light | dark)` 同步 Window Controls Overlay 的图标颜色。该 API 不提供窗口控制、通用 IPC 或任意参数能力；Light / Dark / System 的模式解析仍由 Frontend Theme Store 负责。
 
