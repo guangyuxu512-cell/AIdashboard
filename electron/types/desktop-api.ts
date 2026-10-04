@@ -1,4 +1,5 @@
 export type DesktopResolvedTheme = 'light' | 'dark'
+export type DesktopWindowState = 'normal' | 'maximized' | 'fullscreen'
 export type ManagementLoginPlatform = 'douyin' | 'pdd'
 export type ManagementLoginStatus =
   | 'opened'
@@ -65,6 +66,7 @@ export interface ManagementLoginRefreshResult {
 
 export const desktopIpcChannels = {
   setTitleBarTheme: 'appearance:set-title-bar-theme',
+  windowState: 'appearance:window-state',
   openManagementLogin: 'management-login:open',
   getManagementLoginStatus: 'management-login:get-status',
   completeManagementLogin: 'management-login:complete',

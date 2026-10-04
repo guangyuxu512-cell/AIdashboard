@@ -97,9 +97,7 @@ function renderPrimaryNavigationLabel(label: string, active = false) {
     )
 }
 
-function createMenuOptions(
-  navigation: AppNavigationItem[],
-): MenuOption[] {
+function createMenuOptions(navigation: AppNavigationItem[]): MenuOption[] {
   return navigation.map((item) => {
     if (item.type === 'group') {
       return {
@@ -210,6 +208,14 @@ function navigate(key: string): void {
   grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg-app);
+  border-radius: var(--radius-shell);
+}
+
+:global(:root[data-window-state='maximized'] .app-shell),
+:global(:root[data-window-state='fullscreen'] .app-shell),
+:global(:fullscreen .app-shell),
+.app-shell:fullscreen {
+  border-radius: 0;
 }
 
 .app-shell__sidebar {
@@ -267,7 +273,7 @@ function navigate(key: string): void {
 }
 
 :deep(.app-shell__nav-label--active) {
-  border-left-color: var(--color-primary);
+  border-left-color: var(--color-accent);
   font-weight: var(--font-weight-medium);
 }
 

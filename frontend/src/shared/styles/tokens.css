@@ -38,6 +38,7 @@
   --radius-control: 6px;
   --radius-card: 9px;
   --radius-dialog: 10px;
+  --radius-shell: 12px;
   --glass-blur: 0px;
   --dialog-width-sm: 420px;
   --dialog-width-md: 560px;
@@ -71,16 +72,15 @@
   --table-divider-width: 1px;
   --table-list-page-size: 10;
   --table-list-viewport-height: calc(
-    var(--table-header-height) +
-      var(--table-list-row-slot-height) * var(--table-list-page-size) +
-      var(--table-divider-width)
+    var(--table-header-height) + var(--table-list-row-slot-height) *
+      var(--table-list-page-size) + var(--table-divider-width)
   );
 }
 
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg-app: #f9fafb;
+  --bg-app: #f3f4f6;
   --bg-sidebar: #1f2937;
   --bg-topbar: #ffffff;
   --bg-surface: #ffffff;
@@ -126,11 +126,11 @@
 :root[data-theme-preset='forest'] {
   color-scheme: light;
   --bg-app: #f8fbf5;
-  --bg-sidebar: #143d29;
+  --bg-sidebar: #123e3b;
   --bg-topbar: #ffffff;
   --bg-surface: #ffffff;
-  --bg-subtle: #f0f6ee;
-  --bg-surface-hover: #f2f8f0;
+  --bg-subtle: #ddf7e3;
+  --bg-surface-hover: #edf9ee;
   --border-default: #ccd7ca;
   --border-subtle: #e0e8dd;
   --border-strong: #91a68c;
@@ -148,9 +148,9 @@
   --color-accent: #b7e44b;
   --sidebar-text: #d6e5d9;
   --sidebar-text-active: #ffffff;
-  --sidebar-item-hover: #1d4b33;
-  --sidebar-item-active: #2f6f45;
-  --sidebar-border: #2b513c;
+  --sidebar-item-hover: #194c46;
+  --sidebar-item-active: #24594b;
+  --sidebar-border: #2b5751;
   --bg-surface-solid: var(--bg-surface);
   --text-inverse: #ffffff;
   --bg-overlay: rgb(22 28 36 / 38%);
@@ -171,7 +171,7 @@
 :root[data-theme-preset='coral'] {
   color-scheme: light;
   --bg-app: #fff9f5;
-  --bg-sidebar: #264653;
+  --bg-sidebar: #d52e3b;
   --bg-topbar: #ffffff;
   --bg-surface: #ffffff;
   --bg-subtle: #fff1eb;
@@ -191,11 +191,11 @@
   --text-on-primary: #ffffff;
   --chart-primary: #e63946;
   --color-accent: #f4a261;
-  --sidebar-text: #d9e4e8;
+  --sidebar-text: #ffffff;
   --sidebar-text-active: #ffffff;
-  --sidebar-item-hover: #305563;
-  --sidebar-item-active: #3a626f;
-  --sidebar-border: #42626d;
+  --sidebar-item-hover: #c22835;
+  --sidebar-item-active: #ad2330;
+  --sidebar-border: #ffb4a2;
   --bg-surface-solid: var(--bg-surface);
   --text-inverse: #ffffff;
   --bg-overlay: rgb(22 28 36 / 38%);
@@ -215,15 +215,15 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg-app: #0b1e3f;
-  --bg-sidebar: #08182f;
-  --bg-topbar: #102441;
-  --bg-surface: #132b45;
-  --bg-subtle: #18344f;
-  --bg-surface-hover: #1b3a54;
-  --border-default: #3c5773;
-  --border-subtle: #29435f;
-  --border-strong: #56718c;
+  --bg-app: #111827;
+  --bg-sidebar: #0b1e3f;
+  --bg-topbar: #1f2937;
+  --bg-surface: #1f2937;
+  --bg-subtle: #253141;
+  --bg-surface-hover: #2a3849;
+  --border-default: #4b5a6d;
+  --border-subtle: #374151;
+  --border-strong: #64748b;
   --text-primary: #f1f5f9;
   --text-secondary: #c1ceda;
   --text-tertiary: #a4b6c8;

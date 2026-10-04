@@ -11,6 +11,7 @@ import type {
 // Sandboxed preloads cannot load local runtime modules without bundling.
 // Keep this whitelist self-contained and mirrored by the formal Main contract.
 const setTitleBarThemeChannel = 'appearance:set-title-bar-theme'
+const windowStateChannel = 'appearance:window-state'
 const openManagementLoginChannel = 'management-login:open'
 const getManagementLoginStatusChannel = 'management-login:get-status'
 const completeManagementLoginChannel = 'management-login:complete'
@@ -54,4 +55,10 @@ const desktopApi: DesktopApi = {
 
 if (trustedRendererOrigins.has(window.location.origin)) {
   contextBridge.exposeInMainWorld('desktop', desktopApi)
+  // Main-to-preload only: no renderer window controls or generic IPC exposed.
+  ipcRenderer.on(windowStateChannel, (_event, state: unknown) => {
+    if (state === 'normal' || state === 'maximized' || state === 'fullscreen') {
+      document.documentElement.dataset.windowState = state
+    }
+  })
 }

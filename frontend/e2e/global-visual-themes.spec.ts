@@ -22,7 +22,7 @@ const themes = [
   {
     id: 'midnight',
     label: '午夜青',
-    surface: 'rgb(19, 43, 69)',
+    surface: 'rgb(31, 41, 55)',
     primary: 'rgb(18, 160, 143)',
   },
 ]
@@ -63,6 +63,25 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
       animations: 'disabled',
     })
   }
+  await selectTheme(page, themes[2]!)
+  await page.getByRole('button', { name: '查看', exact: true }).first().click()
+  await expect(page.locator('.shop-detail-header')).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('coral-shop-drawer.png'),
+    animations: 'disabled',
+  })
+  await page.keyboard.press('Escape')
+  await page.goto('/#/assets')
+  await selectTheme(page, themes[2]!)
+  await expect(page.getByPlaceholder('搜索图片文件名')).toBeVisible()
+  await expect(page.locator('.app-shell__sidebar')).toHaveCSS(
+    'background-color',
+    'rgb(213, 46, 59)',
+  )
+  await page.screenshot({
+    path: testInfo.outputPath('coral-assets.png'),
+    animations: 'disabled',
+  })
   await page.goto('/#/foundation')
   const input = page.getByPlaceholder('搜索基础设施')
   await input.fill('保留输入与页面')
@@ -138,6 +157,26 @@ test('four rendered themes preserve filters, layouts and preferences and synchro
     'data-theme-preset',
     'midnight',
   )
+})
+
+test('shell uses four 12px corners and becomes square for maximized/fullscreen desktop states', async ({
+  page,
+}) => {
+  await page.goto('/#/shops')
+  for (const state of ['normal', 'maximized', 'fullscreen', 'normal']) {
+    // CSS contract only, not an assertion about the physical native window.
+    await page.evaluate((value) => {
+      document.documentElement.dataset.windowState = value
+    }, state)
+    await expect(page.locator('.app-shell')).toHaveCSS(
+      'border-top-left-radius',
+      state === 'normal' ? '12px' : '0px',
+    )
+    await expect(page.locator('.app-shell')).toHaveCSS(
+      'border-bottom-right-radius',
+      state === 'normal' ? '12px' : '0px',
+    )
+  }
 })
 
 test('semantic text and primary buttons meet contrast targets in all four palettes', async ({
