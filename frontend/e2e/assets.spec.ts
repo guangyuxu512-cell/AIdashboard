@@ -22,10 +22,10 @@ test('manages image assets with the compact management pattern', async ({
   await expect(page.getByText('test-02.png', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
   await page.locator('input[type="file"]').setInputFiles({

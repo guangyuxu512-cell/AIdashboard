@@ -213,13 +213,13 @@ function navigate(key: string): void {
 }
 
 .app-shell__sidebar {
+  isolation: isolate;
   display: flex;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--sidebar-border);
   color: var(--sidebar-text);
   background: var(--bg-sidebar);
-  backdrop-filter: blur(var(--glass-blur));
 }
 
 .app-shell__brand {
@@ -229,7 +229,7 @@ function navigate(key: string): void {
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--sidebar-border);
   -webkit-app-region: drag;
   app-region: drag;
 }
@@ -244,7 +244,7 @@ function navigate(key: string): void {
 
 .app-shell__brand strong {
   display: block;
-  color: var(--text-primary);
+  color: var(--sidebar-text-active);
   font-size: var(--font-size-body);
   line-height: var(--line-height-compact);
 }
@@ -268,6 +268,7 @@ function navigate(key: string): void {
 
 :deep(.app-shell__nav-label--active) {
   border-left-color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
 }
 
 .app-shell__sidebar-footer {
@@ -275,21 +276,21 @@ function navigate(key: string): void {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  color: var(--text-tertiary);
+  color: var(--sidebar-text);
   font-size: var(--font-size-secondary);
 }
 
 .app-shell__settings-navigation {
   flex: 0 0 auto;
   padding: var(--space-2);
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--sidebar-border);
 }
 
 .app-shell__sidebar-footer span {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--status-success);
+  background: var(--sidebar-text);
 }
 
 .app-shell__workspace {
@@ -302,6 +303,7 @@ function navigate(key: string): void {
 }
 
 .app-shell__topbar {
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -318,7 +320,6 @@ function navigate(key: string): void {
     0 var(--layout-page-padding-x);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-topbar);
-  backdrop-filter: blur(var(--glass-blur));
   -webkit-app-region: drag;
   app-region: drag;
 }

@@ -40,10 +40,13 @@ const metricOptions = [
 ] satisfies Array<{ label: string; value: TrendMetric }>
 
 const chartOption = computed<EChartsCoreOption>(() => {
+  // CSS reads are not reactive: depend on the preset, including light→light.
+  void themeStore.resolvedPreset
   const root = document.documentElement
   const styles = getComputedStyle(root)
-  const primary = styles.getPropertyValue('--color-primary').trim()
-  const textSecondary = styles.getPropertyValue('--text-secondary').trim()
+  const primary = styles.getPropertyValue('--chart-primary').trim()
+  const textSecondary = styles.getPropertyValue('--text-tertiary').trim()
+  const textPrimary = styles.getPropertyValue('--text-primary').trim()
   const border = styles.getPropertyValue('--border-subtle').trim()
   const surface = styles.getPropertyValue('--bg-surface-solid').trim()
   const isTurnover = props.metric === 'turnover'
@@ -79,7 +82,7 @@ const chartOption = computed<EChartsCoreOption>(() => {
       trigger: 'axis',
       backgroundColor: surface,
       borderColor: border,
-      textStyle: { color: textSecondary },
+      textStyle: { color: textPrimary },
       formatter: (params: unknown) => {
         const point = Array.isArray(params) ? params[0] : params
         if (!point || typeof point !== 'object') return ''
@@ -109,6 +112,7 @@ const chartOption = computed<EChartsCoreOption>(() => {
         data: values,
         lineStyle: { width: 2, color: primary },
         itemStyle: { color: primary },
+        areaStyle: { color: primary, opacity: 0.08 },
       },
     ],
   }
@@ -133,7 +137,7 @@ onMounted(async () => {
   }
 })
 
-watch([chartOption, () => themeStore.resolvedTheme], renderChart, {
+watch(chartOption, renderChart, {
   deep: true,
 })
 

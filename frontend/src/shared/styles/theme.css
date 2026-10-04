@@ -10,7 +10,7 @@ body {
 }
 
 ::selection {
-  color: var(--text-inverse);
+  color: var(--text-on-primary);
   background: var(--color-primary);
 }
 

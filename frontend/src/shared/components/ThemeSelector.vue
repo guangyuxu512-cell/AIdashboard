@@ -9,8 +9,10 @@ import AppButton from '@/shared/ui/AppButton.vue'
 const themeStore = useThemeStore()
 
 const options: DropdownOption[] = [
-  { key: 'light', label: '浅色' },
-  { key: 'dark', label: '深色' },
+  { key: 'graphite', label: '石墨浅色' },
+  { key: 'forest', label: '森林绿' },
+  { key: 'coral', label: '珊瑚红' },
+  { key: 'midnight', label: '午夜青' },
   { key: 'system', label: '跟随系统' },
 ]
 

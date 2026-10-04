@@ -1072,11 +1072,11 @@ test('keeps real material and template toolbars compact, aligned and responsive'
   }
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('浅色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   expectCompactToolbar(await readManagementToolbarLayout(page, assetToolbar))
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   expectCompactToolbar(await readManagementToolbarLayout(page, assetToolbar))
 

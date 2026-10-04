@@ -24,12 +24,12 @@ test('keeps the production brand compact and hides development navigation', asyn
   ).toHaveCount(0)
   await expect(page.locator('.app-shell__brand-mark')).toBeVisible()
 
-  for (const theme of ['浅色', '深色']) {
+  for (const theme of ['石墨浅色', '午夜青']) {
     await page.getByRole('button', { name: '切换主题' }).click()
-    await page.getByText(theme, { exact: true }).click()
+    await page.locator('.n-dropdown').getByText(theme, { exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute(
       'data-theme',
-      theme === '浅色' ? 'light' : 'dark',
+      theme === '石墨浅色' ? 'light' : 'dark',
     )
   }
 

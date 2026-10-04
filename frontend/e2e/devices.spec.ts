@@ -292,9 +292,9 @@ test('configures and tests a system webhook without revealing its URL', async ({
   await page.getByRole('button', { name: '发送测试通知' }).click()
   await expect(page.getByText('测试通知已发送')).toBeVisible()
 
-  for (const theme of ['深色', '浅色']) {
+  for (const theme of ['午夜青', '石墨浅色']) {
     await page.getByRole('button', { name: '切换主题' }).click()
-    await page.getByText(theme, { exact: true }).click()
+    await page.locator('.n-dropdown').getByText(theme, { exact: true }).click()
     await expect(page.getByRole('heading', { name: '通知配置' })).toBeVisible()
   }
 })
@@ -312,9 +312,9 @@ for (const viewport of [
     await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
     await expect(page.getByText('杭州-运营机-01')).toBeVisible()
 
-    for (const theme of ['浅色', '深色']) {
+    for (const theme of ['石墨浅色', '午夜青']) {
       await page.getByRole('button', { name: '切换主题' }).click()
-      await page.getByText(theme, { exact: true }).click()
+      await page.locator('.n-dropdown').getByText(theme, { exact: true }).click()
       const overflow = await page.evaluate(() => ({
         document:
           document.documentElement.scrollWidth >

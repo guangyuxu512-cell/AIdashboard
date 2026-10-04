@@ -268,9 +268,9 @@ test('keeps the dashboard table and pagination inside the desktop renderer', asy
   await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
   await expect(page.locator('.pagination-bar')).toBeVisible()
 
-  for (const theme of ['浅色', '深色']) {
+  for (const theme of ['石墨浅色', '午夜青']) {
     await page.getByRole('button', { name: '切换主题', exact: true }).click()
-    await page.getByText(theme, { exact: true }).click()
+    await page.locator('.n-dropdown').getByText(theme, { exact: true }).click()
     const layout = await page.evaluate(() => ({
       document:
         document.documentElement.scrollWidth >

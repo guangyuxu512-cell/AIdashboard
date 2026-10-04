@@ -15,10 +15,13 @@ Page vertical padding: 16px
 Section gap: 14px
 Card gap: 12px
 
-Page title: 20px / 600
-Section title: 15px / 600
+Page title: 18px / 600
+Section title: 16px / 600
 Body: 14px / 400
-Secondary: 12px / 400
+Secondary: 13px / 400
+Selected navigation: 14px / 500
+Font: Segoe UI / Microsoft YaHei / PingFang SC / system-ui
+Body / compact line-height: 1.5 / 1.35
 
 Control height: 34px
 Card radius: 9px
@@ -80,14 +83,18 @@ AppShell 默认品牌为“思余AI中控台”。品牌图使用真实 Alpha �
 
 ## 阶段 2C 主题与语义 Token
 
-Theme Store 正式支持 `light`、`dark`、`system`。模式保存于 Renderer `localStorage`，`system` 通过 `prefers-color-scheme` 实时跟随系统。Electron 桌面环境只通过类型化 `window.desktop.appearance.setTitleBarTheme` 接收解析后的 Light / Dark 结果，用于同步原生 Window Controls Overlay 图标颜色；Web 环境保持无 Electron 依赖。
+Theme Store 支持 `graphite`（石墨浅色，默认）、`forest`（森林绿）、`coral`（珊瑚红）、`midnight`（午夜青）与 `system`。沿用 Renderer `localStorage` 的 `control-center.theme-mode` 键；旧 `light` / `dark` 分别映射 graphite / midnight。跟随系统解析到 graphite / midnight，不是第五套配色。根节点保留 `data-theme=light|dark`，另以 `data-theme-preset` 区分预设。Electron 仍只通过类型化 `window.desktop.appearance.setTitleBarTheme` 接收实际 Light / Dark 结果；Web 无 Electron 依赖。
+
+四套共用尺寸、间距、字体与密度。CSS Token 是配色唯一来源；Naive Provider 和 ECharts 必须依赖 `resolvedPreset`，确保浅色之间切换也更新控件、弹出层及图表。切换不重新挂载页面、不清空草稿或筛选、不触发业务动作。
+
+`--text-link` 表达交互文字，`--text-on-primary` 表达主按钮及复选框前景；`--text-inverse` 保留旧语义。侧栏文字、图标、箭头与分割线消费 `--sidebar-*`，不使用浅色内容正文色。`--chart-primary` 是图表主线，面积透明度为 8%；网格、坐标和 Tooltip 复用边框、辅助文字及内容表面。平台 Logo、商品图片和 Mock 图片内容保留原色。
 
 Token 分层：
 
 ```text
 Base Token
 ├── Typography / Spacing / Density / Radius / Layout
-└── Light / Dark Semantic Token
+└── Four presets → Light / Dark Semantic Token
     ├── Accent
     ├── Text
     ├── Surface
@@ -99,9 +106,11 @@ Base Token
 
 视觉辨识度调整只能收敛到既有语义 Token 与 Naive UI 全局覆盖：`--border-subtle` 用于可见的层级分隔，`--border-default` 用于可操作控件边界，`--color-primary-soft` 与 `--color-primary` 共同表达选中状态。禁用控件必须继续使用 `--bg-subtle` 和 `--text-disabled`，与正常控件明确区分；业务页面不得自行覆写这些状态色。
 
-## 企业级 Frosted Glass
+## 全局表面
 
-毛玻璃只用于 Sidebar、Topbar 和主 Surface/Card，默认 Blur 为 10px，配合低透明度表面、1px 边框与轻阴影。Table Cell、Button、Input、Select 不使用 Blur。页面背景使用中性冷灰，禁止蓝紫青渐变、Neon、Glow 和大面积高饱和颜色。
+Sidebar、Topbar、Surface/Card 与弹层使用纯色和必要的轻阴影，不使用玻璃模糊或大面积渐变。兼容 `--glass-blur` 保留为 0px。普通文字（含辅助、占位、交互文字及按钮各可操作状态）目标对比度至少 4.5:1；禁用态单独检查辨识度，不与可操作状态混淆。中性基础色约 85%、辅助色约 10%、主色约 5% 用于控制视觉份量，不进行像素计数或改变布局凑比例。
+
+移除 `backdrop-filter` 时，以 `isolation: isolate` 保留原 Surface 的层叠边界，避免 DataTable 固定列/表头越过 Overlay；不通过放大 z-index 或恢复模糊修补。空态说明不是禁用控件，使用辅助文字色。
 
 ## AppShell 高度与滚动
 

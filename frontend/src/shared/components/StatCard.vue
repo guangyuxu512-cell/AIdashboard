@@ -28,6 +28,7 @@ withDefaults(
   --stat-accent: var(--border-strong);
 
   position: relative;
+  isolation: isolate;
   min-width: 0;
   overflow: hidden;
   padding: var(--space-3) var(--surface-padding);
@@ -35,7 +36,6 @@ withDefaults(
   border-radius: var(--radius-card);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(var(--glass-blur));
 }
 
 .stat-card::before {
@@ -60,6 +60,7 @@ withDefaults(
   display: block;
   margin-top: var(--space-1);
   font-size: var(--font-size-page-title);
+  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-compact);
 }
 
