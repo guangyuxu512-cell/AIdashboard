@@ -42,7 +42,7 @@ const naiveTheme = computed(() =>
   themeStore.resolvedTheme === 'dark' ? darkTheme : null,
 )
 const naiveThemeOverrides = computed(() =>
-  createNaiveThemeOverrides(themeStore.resolvedTheme),
+  createNaiveThemeOverrides(themeStore.resolvedPreset),
 )
 </script>
 

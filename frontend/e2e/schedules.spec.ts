@@ -262,9 +262,9 @@ for (const viewport of [
     await page.goto('/#/schedules')
     await expect(page.getByText('每日商品发布（Fixture）')).toBeVisible()
 
-    for (const theme of ['浅色', '深色']) {
+    for (const theme of ['石墨浅色', '午夜青']) {
       await page.getByRole('button', { name: '切换主题' }).click()
-      await page.getByText(theme, { exact: true }).click()
+      await page.locator('.n-dropdown').getByText(theme, { exact: true }).click()
       const overflow = await page.evaluate(() => ({
         document:
           document.documentElement.scrollWidth >

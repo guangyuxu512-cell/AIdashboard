@@ -7,6 +7,7 @@ export {
   isUuid,
   type DesktopApi,
   type DesktopResolvedTheme,
+  type DesktopWindowState,
   type ManagementLoginCompleteInput,
   type ManagementLoginCompleteResult,
   type ManagementLoginIdentity,

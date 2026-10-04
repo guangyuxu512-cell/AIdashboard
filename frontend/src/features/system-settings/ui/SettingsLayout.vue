@@ -22,6 +22,7 @@ import SettingsSideNav from './SettingsSideNav.vue'
 }
 
 .settings-layout__surface {
+  isolation: isolate;
   display: grid;
   min-height: 0;
   flex: 1;
@@ -30,7 +31,6 @@ import SettingsSideNav from './SettingsSideNav.vue'
   border-radius: var(--radius-card);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(var(--glass-blur));
   overflow: hidden;
 }
 

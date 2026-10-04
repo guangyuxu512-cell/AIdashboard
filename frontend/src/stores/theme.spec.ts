@@ -37,6 +37,7 @@ describe('theme store', () => {
     window.localStorage.clear()
     delete window.desktop
     delete document.documentElement.dataset.theme
+    delete document.documentElement.dataset.themePreset
     document.documentElement.style.colorScheme = ''
     setActivePinia(createPinia())
   })
@@ -49,7 +50,7 @@ describe('theme store', () => {
 
     expect(store.resolvedTheme).toBe('dark')
     expect(document.documentElement.dataset.theme).toBe('dark')
-    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('midnight')
   })
 
   it('tracks live system color scheme changes in system mode', () => {
@@ -57,6 +58,7 @@ describe('theme store', () => {
     const store = useThemeStore()
     store.initialize()
 
+    store.setMode('system')
     expect(store.mode).toBe('system')
     expect(store.resolvedTheme).toBe('light')
 
@@ -71,7 +73,7 @@ describe('theme store', () => {
     const store = useThemeStore()
     store.initialize()
 
-    expect(store.mode).toBe('dark')
+    expect(store.mode).toBe('midnight')
     expect(store.resolvedTheme).toBe('dark')
   })
 
@@ -86,5 +88,62 @@ describe('theme store', () => {
 
     expect(setTitleBarTheme).toHaveBeenNthCalledWith(1, 'light')
     expect(setTitleBarTheme).toHaveBeenLastCalledWith('dark')
+  })
+
+  it('defaults to graphite even when the system is dark', () => {
+    mockSystemTheme(true)
+    const store = useThemeStore()
+    store.initialize()
+    expect(store.mode).toBe('graphite')
+    expect(store.resolvedPreset).toBe('graphite')
+    expect(store.resolvedTheme).toBe('light')
+  })
+
+  it.each(['graphite', 'forest', 'coral', 'midnight'] as const)(
+    'applies and restores %s without changing the persistence key',
+    (preset) => {
+      mockSystemTheme(false)
+      const store = useThemeStore()
+      store.initialize()
+      store.setMode(preset)
+      expect(store.resolvedPreset).toBe(preset)
+      expect(document.documentElement.dataset.themePreset).toBe(preset)
+      expect(document.documentElement.style.colorScheme).toBe(
+        preset === 'midnight' ? 'dark' : 'light',
+      )
+      // The initial default is not written until a preference is chosen.
+      if (preset === 'graphite') store.setMode('forest')
+      store.setMode(preset)
+      expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe(preset)
+      setActivePinia(createPinia())
+      const reopened = useThemeStore()
+      reopened.initialize()
+      expect(reopened.mode).toBe(preset)
+    },
+  )
+
+  it('maps old light preferences and ignores malformed preferences', () => {
+    mockSystemTheme(true)
+    for (const preference of ['light', 'invalid']) {
+      window.localStorage.setItem(THEME_STORAGE_KEY, preference)
+      setActivePinia(createPinia())
+      const store = useThemeStore()
+      store.initialize()
+      expect(store.mode).toBe('graphite')
+    }
+  })
+
+  it('updates the preset for light-to-light changes without redundant native mode calls', () => {
+    const setTitleBarTheme = vi.fn()
+    window.desktop = { appearance: { setTitleBarTheme } }
+    mockSystemTheme(false)
+    const store = useThemeStore()
+    store.initialize()
+    store.setMode('forest')
+    expect(document.documentElement.dataset.themePreset).toBe('forest')
+    store.setMode('coral')
+    expect(document.documentElement.dataset.themePreset).toBe('coral')
+    expect(store.resolvedTheme).toBe('light')
+    expect(setTitleBarTheme).toHaveBeenCalledTimes(1)
   })
 })

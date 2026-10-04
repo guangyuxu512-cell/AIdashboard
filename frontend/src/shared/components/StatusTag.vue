@@ -58,7 +58,7 @@ const tagType = computed(() =>
 }
 
 .status-tag__dot--error {
-  border-color: var(--status-error);
-  background: var(--status-error);
+  border-color: var(--status-danger);
+  background: var(--status-danger);
 }
 </style>

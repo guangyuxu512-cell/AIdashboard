@@ -44,6 +44,15 @@ Error behavior: Preload 与 Main 均拒绝非法主题值；窗口已销毁或�
 
 该通道只更新发起 Renderer 所属 BrowserWindow 的原生 Window Controls Overlay 图标颜色。它不提供最小化、最大化、关闭或任意 BrowserWindow 调用能力。
 
+```text
+Channel: appearance:window-state
+Direction: Main → trusted Preload (notification only)
+Payload: DesktopWindowState = "normal" | "maximized" | "fullscreen"
+Effect: validated value → document.documentElement.dataset.windowState
+```
+
+Main 在加载完成及窗口 resize/maximize/unmaximize/fullscreen/restore 时同步状态。Preload 仅在既有白名单 Origin 安装监听，只接受三种值；不暴露 IPC 或窗口操作 API。Renderer 外壳用此状态决定页面圆角，业务数据不参与。刷新后重新同步，不持久化瞬时窗口状态。
+
 当前 Preload 未引入打包器且保持 `sandbox: true`，因此运行时白名单在 Preload 单文件内声明，并与 `electron/types` 的正式 Channel 常量保持一致；不得通过本地运行时 `require` 破坏 Sandboxed Preload 加载。
 
 ## Management Login

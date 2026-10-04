@@ -81,13 +81,13 @@ function select(item: ContextSwitchItem): void {
 }
 
 .context-switch-bar__item--active {
-  color: var(--color-primary);
+  color: var(--text-link);
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
 }
 
 .context-switch-bar__item--active:hover {
-  color: var(--color-primary-pressed);
+  color: var(--text-link);
   background: var(--color-primary-soft);
   border-color: var(--color-primary-pressed);
 }

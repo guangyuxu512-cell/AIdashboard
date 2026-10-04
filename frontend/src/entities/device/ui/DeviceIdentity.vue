@@ -27,7 +27,7 @@ defineProps<{ name: string }>()
 
 .device-identity__icon {
   flex: 0 0 auto;
-  color: var(--color-primary);
+  color: var(--text-link);
 }
 
 .device-identity__name {

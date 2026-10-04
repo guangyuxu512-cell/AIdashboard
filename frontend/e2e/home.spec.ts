@@ -117,7 +117,7 @@ test('switches and persists light, dark and system themes', async ({
   await page.goto('/#/foundation')
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.getByText('深色', { exact: true }).click()
+  await page.locator('.n-dropdown').getByText('午夜青', { exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
@@ -182,9 +182,9 @@ test('keeps every primary navigation row aligned when groups toggle', async ({
     await page.setViewportSize(viewport)
     await page.goto('/#/tasks')
 
-    for (const theme of ['浅色', '深色']) {
+    for (const theme of ['石墨浅色', '森林绿', '珊瑚红', '午夜青']) {
       await page.getByRole('button', { name: '切换主题' }).click()
-      await page.getByText(theme, { exact: true }).click()
+      await page.locator('.n-dropdown').getByText(theme, { exact: true }).click()
       await ensureAutomationNavigationExpanded(page)
 
       const expanded = await measure()
