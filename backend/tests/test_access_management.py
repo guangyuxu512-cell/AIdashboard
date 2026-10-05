@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -56,6 +57,41 @@ from app.modules.users.models import User
 
 
 TEST_PASSWORD = "correct-horse-battery"
+
+
+def test_product_module_authorization_contract_accepts_registered_values_only() -> None:
+    payload = TeamAuthorizationUpdate.model_validate(
+        {"module_codes": ["product-selection", "product-library"]}
+    )
+    assert payload.module_codes == [ModuleCode.PRODUCT_SELECTION, ModuleCode.PRODUCT_LIBRARY]
+    for values in (["product-center"], ["product-library", "product-library"]):
+        with pytest.raises(ValidationError):
+            TeamAuthorizationUpdate.model_validate({"module_codes": values})
+
+
+def test_product_modules_require_explicit_team_grants_and_revocation_takes_effect(
+    database: tuple[sessionmaker[Session], PasswordService],
+) -> None:
+    factory, password_service = database
+    with factory() as session:
+        service = AccessManagementService(session, password_service)
+        team = service.create_team(TeamCreate(name="商品占位授权团队"))
+        member = service.create_member(create_member_input(team.team_id))
+        actor = actor_for(member.user_id, team.team_id, member.memberships[0].membership_id)
+        modules = ModuleAccessService(session)
+        for code in (ModuleCode.PRODUCT_SELECTION, ModuleCode.PRODUCT_LIBRARY):
+            with pytest.raises(ModuleAccessDeniedError):
+                modules.require_module_access(actor, code)
+        service.update_team_authorization(
+            team.team_id,
+            TeamAuthorizationUpdate(module_codes=[ModuleCode.PRODUCT_SELECTION]),
+        )
+        modules.require_module_access(actor, ModuleCode.PRODUCT_SELECTION)
+        with pytest.raises(ModuleAccessDeniedError):
+            modules.require_module_access(actor, ModuleCode.PRODUCT_LIBRARY)
+        service.update_team_authorization(team.team_id, TeamAuthorizationUpdate(module_codes=[]))
+        with pytest.raises(ModuleAccessDeniedError):
+            modules.require_module_access(actor, ModuleCode.PRODUCT_SELECTION)
 
 
 class UnassignedActorContextService:
