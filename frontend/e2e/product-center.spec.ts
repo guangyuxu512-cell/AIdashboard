@@ -7,19 +7,19 @@ const themes = [
   ['midnight', '午夜青'],
 ] as const
 
-async function expectSelection(bar: Locator, name: '候选池' | '采集任务') {
+const selectionLabels = ['候选池', '采集任务', '选品策略'] as const
+
+async function expectSelection(
+  bar: Locator,
+  name: (typeof selectionLabels)[number],
+) {
   await expect(bar).toHaveAttribute('data-appearance', 'framed')
-  await expect(bar.getByRole('button')).toHaveCount(2)
-  await expect(bar.getByRole('button', { name, exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-  await expect(
-    bar.getByRole('button', {
-      name: name === '候选池' ? '采集任务' : '候选池',
-      exact: true,
-    }),
-  ).toHaveAttribute('aria-pressed', 'false')
+  await expect(bar.getByRole('button')).toHaveCount(selectionLabels.length)
+  for (const label of selectionLabels) {
+    await expect(
+      bar.getByRole('button', { name: label, exact: true }),
+    ).toHaveAttribute('aria-pressed', String(label === name))
+  }
 }
 
 async function switchStyles(bar: Locator) {
@@ -104,6 +104,26 @@ test('product placeholders preserve navigation, tabs and history in all four the
       path: testInfo.outputPath(`${id}-collection-tasks.png`),
       animations: 'disabled',
     })
+    await tabs.getByRole('button', { name: '选品策略', exact: true }).click()
+    await expect(page).toHaveURL(/tab=selection-strategy/)
+    await expect(
+      page.getByText('选品策略待接入', { exact: true }),
+    ).toBeVisible()
+    await expectSelection(tabs, '选品策略')
+    await page.reload()
+    await expectSelection(tabs, '选品策略')
+    await expect(
+      page.getByText('选品策略待接入', { exact: true }),
+    ).toBeVisible()
+    await page.screenshot({
+      path: testInfo.outputPath(`${id}-selection-strategy.png`),
+      animations: 'disabled',
+    })
+    await page.goBack()
+    await expectSelection(tabs, '采集任务')
+    await page.goForward()
+    await expectSelection(tabs, '选品策略')
+    await tabs.getByRole('button', { name: '采集任务', exact: true }).click()
     if (!(await nav.getByText('商品库', { exact: true }).isVisible()))
       await nav.getByText('商品中心', { exact: true }).click()
     await nav.getByText('商品库', { exact: true }).click()
@@ -153,13 +173,23 @@ test('product placeholders preserve navigation, tabs and history in all four the
   await tabs.getByRole('button', { name: '候选池', exact: true }).click()
   await expect(page).toHaveURL(/product-selection\?context=preserved$/)
   await expectSelection(tabs, '候选池')
+  await page.goto(
+    '/#/product-selection?tab=selection-strategy&context=preserved',
+  )
+  await expectSelection(tabs, '选品策略')
+  await expect(page.getByText('选品策略待接入', { exact: true })).toBeVisible()
+  await page.reload()
+  await expectSelection(tabs, '选品策略')
+  await tabs.getByRole('button', { name: '候选池', exact: true }).click()
+  await expect(page).toHaveURL(/product-selection\?context=preserved$/)
   await page.goto('/#/product-selection?tab=unknown')
   await expectSelection(tabs, '候选池')
   for (const width of [960, 1920]) {
     await page.setViewportSize({ width, height: 800 })
-    await expect(
-      tabs.getByRole('button', { name: '采集任务', exact: true }),
-    ).toBeVisible()
+    for (const name of selectionLabels)
+      await expect(
+        tabs.getByRole('button', { name, exact: true }),
+      ).toBeVisible()
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
