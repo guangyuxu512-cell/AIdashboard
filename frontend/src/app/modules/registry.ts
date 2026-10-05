@@ -32,6 +32,8 @@ export interface ModuleDefinition<Code extends string = string> {
   routePath: string
   icon: Component
   enabled: boolean
+  /** Sidebar visibility only; hidden modules keep routes and authorization. */
+  navigationVisible?: boolean
   permissionCode: string | null
   order: number
 }
@@ -118,6 +120,7 @@ export const MODULE_REGISTRY = [
     routePath: '/assets',
     icon: Images,
     enabled: true,
+    navigationVisible: false,
     permissionCode: null,
     order: 25,
   },
@@ -279,6 +282,7 @@ export function getNavigationModules(
     .filter(
       (module) =>
         module.enabled &&
+        module.navigationVisible !== false &&
         (options.includeDevelopment ||
           module.navigationGroup !== 'development') &&
         (module.navigationGroup === 'development' ||
@@ -312,8 +316,13 @@ export function getModuleAccessOptions(): Array<{
   value: string
   label: string
 }> {
-  return getNavigationModules(MODULE_REGISTRY)
-    .filter((module) => module.accessModuleCode === null)
+  return MODULE_REGISTRY.filter(
+    (module) =>
+      module.enabled &&
+      module.navigationGroup !== 'development' &&
+      module.accessModuleCode === null,
+  )
+    .sort((left, right) => left.order - right.order)
     .map((module) => ({
       value: module.moduleCode,
       label: module.moduleName,

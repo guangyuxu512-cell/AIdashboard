@@ -62,6 +62,12 @@ function createGuardedRouter(pinia: ReturnType<typeof createPinia>) {
         component: { template: '<div />' },
         meta: { moduleCode: 'parameter-preset' },
       },
+      {
+        path: '/assets',
+        name: 'assets',
+        component: { template: '<div />' },
+        meta: { moduleCode: 'asset' },
+      },
       ...['product-selection', 'product-library'].map((code) => ({
         path: code === 'product-library' ? '/products' : '/product-selection',
         name: code,
@@ -79,6 +85,22 @@ describe('parameter preset route authorization', () => {
     window.localStorage.clear()
     setActivePinia(createPinia())
   })
+
+  it.each([false, true])(
+    'keeps the hidden asset route protected; asset grant=%s',
+    async (hasAssetGrant) => {
+      const pinia = createPinia()
+      useAuthStore(pinia).setDataSource(
+        createSource(hasAssetGrant ? ['asset'] : ['shop']),
+      )
+      const router = createGuardedRouter(pinia)
+      await router.push('/assets')
+      await router.isReady()
+      expect(router.currentRoute.value.name).toBe(
+        hasAssetGrant ? 'assets' : 'permission-denied',
+      )
+    },
+  )
 
   it.each(['product-selection', 'product-library'])(
     'guards direct access to %s with its own explicit module grant',

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getModuleAccessCode,
   getModuleAccessOptions,
+  getModuleDefinition,
   getNavigationEntries,
   getNavigationModules,
   MODULE_REGISTRY,
@@ -34,7 +35,6 @@ describe('Module Registry Lite', () => {
       }).map((module) => module.moduleCode),
     ).toEqual([
       'shop',
-      'asset',
       'ai-workbench',
       'operating-dashboard',
       'product-selection',
@@ -52,7 +52,6 @@ describe('Module Registry Lite', () => {
     ).toEqual([
       'foundation',
       'shop',
-      'asset',
       'ai-workbench',
       'operating-dashboard',
       'product-selection',
@@ -204,7 +203,7 @@ describe('Module Registry Lite', () => {
     ).toEqual(['shop', 'operating-dashboard'])
   })
 
-  it('derives personnel module authorization choices and navigation from the same registry', () => {
+  it('keeps personnel authorization independent of sidebar visibility in the same registry', () => {
     expect(getModuleAccessOptions().map((option) => option.value)).toEqual([
       'shop',
       'asset',
@@ -220,6 +219,37 @@ describe('Module Registry Lite', () => {
       getNavigationModules(MODULE_REGISTRY, {
         allowedModuleCodes: new Set(['asset', 'settings']),
       }).map((module) => module.moduleCode),
-    ).toEqual(['asset', 'settings'])
+    ).toEqual(['settings'])
+  })
+
+  it('hides assets for both full and team access without disabling its route or grant', () => {
+    const asset = getModuleDefinition('asset')!
+    expect(asset).toMatchObject({
+      enabled: true,
+      navigationVisible: false,
+      routeName: 'assets',
+      routePath: '/assets',
+    })
+    expect(getModuleAccessCode(asset)).toBe('asset')
+    expect(getModuleAccessOptions()).toContainEqual({
+      value: 'asset',
+      label: '资料库',
+    })
+    for (const allowedModuleCodes of [
+      null,
+      new Set(MODULE_REGISTRY.map((module) => module.moduleCode)),
+      new Set(['asset', 'ai-workbench']),
+    ]) {
+      expect(
+        getNavigationEntries(MODULE_REGISTRY, { allowedModuleCodes }).some(
+          (entry) => entry.type === 'module' && entry.moduleCode === 'asset',
+        ),
+      ).toBe(false)
+      expect(
+        getNavigationModules(MODULE_REGISTRY, { allowedModuleCodes }).some(
+          (module) => module.moduleCode === 'ai-workbench',
+        ),
+      ).toBe(true)
+    }
   })
 })
