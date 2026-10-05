@@ -104,7 +104,9 @@ Base Token
 
 新的全局实现应优先使用 `--text-*`、`--bg-*`、`--border-*`、`--status-*` 语义 Token。`--color-text-*`、`--color-bg-*` 等旧名称仅作兼容别名，不得在业务页新增随机颜色。
 
-视觉辨识度调整只能收敛到既有语义 Token 与 Naive UI 全局覆盖：`--border-subtle` 用于可见的层级分隔，`--border-default` 用于可操作控件边界，`--color-primary-soft` 与 `--color-primary` 共同表达选中状态。禁用控件必须继续使用 `--bg-subtle` 和 `--text-disabled`，与正常控件明确区分；业务页面不得自行覆写这些状态色。
+视觉辨识度调整只能收敛到既有语义 Token 与 Naive UI 全局覆盖：`--border-subtle` 用于可见的层级分隔，`--border-default` 用于可操作控件边界，`--color-primary-soft` 与 `--color-primary` 共同表达选中状态。除下述 primary 按钮映射外，禁用控件继续使用 `--bg-subtle` 和 `--text-disabled`，与正常控件明确区分；业务页面不得自行覆写这些状态色。
+
+禁用 primary 按钮使用共享映射 `--bg-subtle / --border-subtle / --text-tertiary`，不再把边框色当背景；四主题实际文字与图标对比度至少 4.5:1，同时通过中性背景、非主色边框和禁止操作状态与启用态区分。只调整此按钮类型映射，其他控件继续使用原 `--text-disabled`；不新增 token 或页面 CSS，不改变业务禁用条件。
 
 ## 全局表面
 

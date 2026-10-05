@@ -15,7 +15,10 @@ import { RouterView, useRoute } from 'vue-router'
 
 import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
 import ClientUpdateNotice from '@/app/ClientUpdateNotice.vue'
-import { getNavigationEntries } from '@/app/modules/registry'
+import {
+  getModuleDefinition,
+  getNavigationEntries,
+} from '@/app/modules/registry'
 import AppShell from '@/shared/components/AppShell.vue'
 import CurrentUserMenu from '@/features/human-auth/ui/CurrentUserMenu.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
@@ -36,6 +39,12 @@ const navigation = computed(() =>
   }),
 )
 const route = useRoute()
+const hiddenPageLabel = computed(() => {
+  const code = route.meta.moduleCode
+  const module =
+    typeof code === 'string' ? getModuleDefinition(code) : undefined
+  return module?.navigationVisible === false ? module.moduleName : undefined
+})
 const isDevelopment = import.meta.env.DEV
 const isAuthLayout = computed(() => route.meta.layout === 'auth')
 const naiveTheme = computed(() =>
@@ -63,7 +72,11 @@ const naiveThemeOverrides = computed(() =>
             <div v-if="isAuthLayout" class="auth-layout">
               <RouterView />
             </div>
-            <AppShell v-else :navigation="navigation">
+            <AppShell
+              v-else
+              :navigation="navigation"
+              :page-label="hiddenPageLabel"
+            >
               <template #topbar-actions>
                 <StatusTag v-if="isDevelopment" label="开发" />
                 <ThemeSelector />

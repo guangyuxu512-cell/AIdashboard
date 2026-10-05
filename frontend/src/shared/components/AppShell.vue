@@ -29,6 +29,7 @@ export type AppNavigationItem = AppNavigationModuleItem | AppNavigationGroupItem
 const props = withDefaults(
   defineProps<{
     appName?: string
+    pageLabel?: string
     navigation: AppNavigationItem[]
   }>(),
   {
@@ -78,9 +79,11 @@ const activeNavigationKey = computed(() => {
 
 const activeNavigationLabel = computed(
   () =>
+    props.pageLabel ??
     navigationModules.value.find(
       (item) => item.moduleCode === activeNavigationKey.value,
-    )?.moduleName ?? '工作台',
+    )?.moduleName ??
+    '工作台',
 )
 
 function renderPrimaryNavigationLabel(label: string, active = false) {

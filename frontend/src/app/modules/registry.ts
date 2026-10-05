@@ -6,6 +6,8 @@ import {
   Images,
   ListChecks,
   Monitor,
+  Package,
+  Library,
   Settings,
   Sparkles,
   Store,
@@ -16,7 +18,8 @@ import type { Component } from 'vue'
 import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 export type ModuleNavigationGroup = 'development' | 'management'
-export type ModuleNavigationParent = 'automation' | 'data-center'
+export type ModuleNavigationParent =
+  'automation' | 'data-center' | 'product-center'
 
 export interface ModuleDefinition<Code extends string = string> {
   moduleCode: Code
@@ -29,6 +32,8 @@ export interface ModuleDefinition<Code extends string = string> {
   routePath: string
   icon: Component
   enabled: boolean
+  /** Sidebar visibility only; hidden modules keep routes and authorization. */
+  navigationVisible?: boolean
   permissionCode: string | null
   order: number
 }
@@ -62,6 +67,12 @@ export const NAVIGATION_GROUP_REGISTRY = [
     groupName: '数据中心',
     icon: ChartLine,
     order: 28,
+  },
+  {
+    groupCode: 'product-center',
+    groupName: '商品中心',
+    icon: Package,
+    order: 29,
   },
   {
     groupCode: 'automation',
@@ -109,6 +120,7 @@ export const MODULE_REGISTRY = [
     routePath: '/assets',
     icon: Images,
     enabled: true,
+    navigationVisible: false,
     permissionCode: null,
     order: 25,
   },
@@ -140,6 +152,32 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 28,
+  },
+  {
+    moduleCode: 'product-selection',
+    accessModuleCode: null,
+    moduleName: '选品库',
+    navigationGroup: 'management',
+    navigationParent: 'product-center',
+    routeName: 'product-selection',
+    routePath: '/product-selection',
+    icon: Library,
+    enabled: true,
+    permissionCode: null,
+    order: 29,
+  },
+  {
+    moduleCode: 'product-library',
+    accessModuleCode: null,
+    moduleName: '商品库',
+    navigationGroup: 'management',
+    navigationParent: 'product-center',
+    routeName: 'product-library',
+    routePath: '/products',
+    icon: Package,
+    enabled: true,
+    permissionCode: null,
+    order: 30,
   },
   {
     moduleCode: 'device',
@@ -244,6 +282,7 @@ export function getNavigationModules(
     .filter(
       (module) =>
         module.enabled &&
+        module.navigationVisible !== false &&
         (options.includeDevelopment ||
           module.navigationGroup !== 'development') &&
         (module.navigationGroup === 'development' ||
@@ -277,8 +316,13 @@ export function getModuleAccessOptions(): Array<{
   value: string
   label: string
 }> {
-  return getNavigationModules(MODULE_REGISTRY)
-    .filter((module) => module.accessModuleCode === null)
+  return MODULE_REGISTRY.filter(
+    (module) =>
+      module.enabled &&
+      module.navigationGroup !== 'development' &&
+      module.accessModuleCode === null,
+  )
+    .sort((left, right) => left.order - right.order)
     .map((module) => ({
       value: module.moduleCode,
       label: module.moduleName,

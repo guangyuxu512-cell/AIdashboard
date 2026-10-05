@@ -8,6 +8,8 @@ const shopModule = requireModuleDefinition('shop')
 const assetModule = requireModuleDefinition('asset')
 const aiWorkbenchModule = requireModuleDefinition('ai-workbench')
 const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
+const productSelectionModule = requireModuleDefinition('product-selection')
+const productLibraryModule = requireModuleDefinition('product-library')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
@@ -76,6 +78,18 @@ const router = createRouter({
       component: () =>
         import('@/pages/operating-dashboard/OperatingDashboardPage.vue'),
       meta: { moduleCode: operatingDashboardModule.moduleCode },
+    },
+    {
+      path: productSelectionModule.routePath,
+      name: productSelectionModule.routeName,
+      component: () => import('@/pages/products/ProductSelectionPage.vue'),
+      meta: { moduleCode: productSelectionModule.moduleCode },
+    },
+    {
+      path: productLibraryModule.routePath,
+      name: productLibraryModule.routeName,
+      component: () => import('@/pages/products/ProductLibraryPage.vue'),
+      meta: { moduleCode: productLibraryModule.moduleCode },
     },
     {
       path: deviceModule.routePath,
