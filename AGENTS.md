@@ -20,7 +20,7 @@
 
 本期 Feature 登记（2026-10-05）：81a1 `feat/product-center-placeholder-v1` 从 Green
 `afec237435dabc3e086b9b515f28986876f6fcbd` 开发商品中心导航与占位，状态 `UI_ONLY`。
-Frontend 复用 Registry / Guard / AppTabs / EmptyState / PageSection；Backend 仅登记
+Frontend 复用 Registry / Guard / ContextSwitchBar（framed）/ EmptyState / PageSection；Backend 仅登记
 `product-selection`、`product-library` 模块授权值，不自动授予普通成员。无业务 API、Schema、Migration
 或 Worker 变更；Gate 1 后交“集成ca97”真实 Electron Gate 2，Green 后交原发布会话，发布须满足适用授权。
 旧主题成果与本地忽略材料保留，不修改 main 或生产环境。
