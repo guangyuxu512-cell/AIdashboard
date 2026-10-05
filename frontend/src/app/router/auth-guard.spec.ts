@@ -45,14 +45,29 @@ function createGuardedRouter(pinia: ReturnType<typeof createPinia>) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/login', name: 'login', component: { template: '<div />' }, meta: { public: true } },
-      { path: '/permission-denied', name: 'permission-denied', component: { template: '<div />' } },
+      {
+        path: '/login',
+        name: 'login',
+        component: { template: '<div />' },
+        meta: { public: true },
+      },
+      {
+        path: '/permission-denied',
+        name: 'permission-denied',
+        component: { template: '<div />' },
+      },
       {
         path: '/parameter-presets',
         name: 'parameter-presets',
         component: { template: '<div />' },
         meta: { moduleCode: 'parameter-preset' },
       },
+      ...['product-selection', 'product-library'].map((code) => ({
+        path: code === 'product-library' ? '/products' : '/product-selection',
+        name: code,
+        component: { template: '<div />' },
+        meta: { moduleCode: code },
+      })),
     ],
   })
   installAuthGuard(router, pinia)
@@ -64,6 +79,24 @@ describe('parameter preset route authorization', () => {
     window.localStorage.clear()
     setActivePinia(createPinia())
   })
+
+  it.each(['product-selection', 'product-library'])(
+    'guards direct access to %s with its own explicit module grant',
+    async (code) => {
+      const path =
+        code === 'product-library' ? '/products' : '/product-selection'
+      for (const grants of [['shop', 'device'], [code]]) {
+        const pinia = createPinia()
+        useAuthStore(pinia).setDataSource(createSource(grants))
+        const router = createGuardedRouter(pinia)
+        await router.push(path)
+        await router.isReady()
+        expect(router.currentRoute.value.name).toBe(
+          grants.includes(code) ? code : 'permission-denied',
+        )
+      }
+    },
+  )
 
   it('allows the distinct route when the existing Device permission is granted', async () => {
     const pinia = createPinia()

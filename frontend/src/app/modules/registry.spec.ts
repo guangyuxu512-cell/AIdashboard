@@ -17,6 +17,8 @@ describe('Module Registry Lite', () => {
       'asset',
       'ai-workbench',
       'operating-dashboard',
+      'product-selection',
+      'product-library',
       'device',
       'task',
       'schedule',
@@ -35,6 +37,8 @@ describe('Module Registry Lite', () => {
       'asset',
       'ai-workbench',
       'operating-dashboard',
+      'product-selection',
+      'product-library',
       'device',
       'task',
       'schedule',
@@ -51,6 +55,8 @@ describe('Module Registry Lite', () => {
       'asset',
       'ai-workbench',
       'operating-dashboard',
+      'product-selection',
+      'product-library',
       'device',
       'task',
       'schedule',
@@ -103,6 +109,36 @@ describe('Module Registry Lite', () => {
     ).toBe(false)
   })
 
+  it('registers exactly two product routes and requires each own grant', () => {
+    const product = getNavigationEntries().find(
+      (entry) => entry.type === 'group' && entry.groupCode === 'product-center',
+    )
+    expect(
+      product?.type === 'group'
+        ? product.children.map((child) => child.routePath)
+        : [],
+    ).toEqual(['/product-selection', '/products'])
+    for (const code of ['product-selection', 'product-library']) {
+      const entries = getNavigationEntries(MODULE_REGISTRY, {
+        allowedModuleCodes: new Set([code]),
+      })
+      expect(entries).toHaveLength(1)
+      expect(entries[0]).toMatchObject({
+        type: 'group',
+        groupCode: 'product-center',
+        children: [{ moduleCode: code }],
+      })
+    }
+    expect(
+      getNavigationEntries(MODULE_REGISTRY, {
+        allowedModuleCodes: new Set(['shop']),
+      }).some(
+        (entry) =>
+          entry.type === 'group' && entry.groupCode === 'product-center',
+      ),
+    ).toBe(false)
+  })
+
   it('does not expose disabled modules', () => {
     const disabledDevice: ModuleDefinition = {
       ...MODULE_REGISTRY.find((module) => module.moduleCode === 'device')!,
@@ -130,6 +166,8 @@ describe('Module Registry Lite', () => {
       asset: null,
       'ai-workbench': null,
       'operating-dashboard': null,
+      'product-selection': null,
+      'product-library': null,
       device: null,
       task: null,
       schedule: null,
@@ -171,6 +209,8 @@ describe('Module Registry Lite', () => {
       'shop',
       'asset',
       'ai-workbench',
+      'product-selection',
+      'product-library',
       'device',
       'task',
       'schedule',

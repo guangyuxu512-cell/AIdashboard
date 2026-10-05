@@ -6,6 +6,8 @@ import {
   Images,
   ListChecks,
   Monitor,
+  Package,
+  Library,
   Settings,
   Sparkles,
   Store,
@@ -16,7 +18,8 @@ import type { Component } from 'vue'
 import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 export type ModuleNavigationGroup = 'development' | 'management'
-export type ModuleNavigationParent = 'automation' | 'data-center'
+export type ModuleNavigationParent =
+  'automation' | 'data-center' | 'product-center'
 
 export interface ModuleDefinition<Code extends string = string> {
   moduleCode: Code
@@ -62,6 +65,12 @@ export const NAVIGATION_GROUP_REGISTRY = [
     groupName: '数据中心',
     icon: ChartLine,
     order: 28,
+  },
+  {
+    groupCode: 'product-center',
+    groupName: '商品中心',
+    icon: Package,
+    order: 29,
   },
   {
     groupCode: 'automation',
@@ -140,6 +149,32 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 28,
+  },
+  {
+    moduleCode: 'product-selection',
+    accessModuleCode: null,
+    moduleName: '选品库',
+    navigationGroup: 'management',
+    navigationParent: 'product-center',
+    routeName: 'product-selection',
+    routePath: '/product-selection',
+    icon: Library,
+    enabled: true,
+    permissionCode: null,
+    order: 29,
+  },
+  {
+    moduleCode: 'product-library',
+    accessModuleCode: null,
+    moduleName: '商品库',
+    navigationGroup: 'management',
+    navigationParent: 'product-center',
+    routeName: 'product-library',
+    routePath: '/products',
+    icon: Package,
+    enabled: true,
+    permissionCode: null,
+    order: 30,
   },
   {
     moduleCode: 'device',

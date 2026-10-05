@@ -83,6 +83,10 @@ describe('Human Auth Data Source', () => {
       isAccessAdministrator: true,
     })
 
+    expect((await source.getCurrentModuleAccess()).moduleCodes).toEqual(
+      expect.arrayContaining(['product-selection', 'product-library']),
+    )
+
     await source.login({
       loginName: 'operator',
       password: 'safe-test-password',
@@ -92,5 +96,8 @@ describe('Human Auth Data Source', () => {
       moduleCodes: expect.arrayContaining(['settings']),
       isAccessAdministrator: false,
     })
+    const memberAccess = await source.getCurrentModuleAccess()
+    expect(memberAccess.moduleCodes).not.toContain('product-selection')
+    expect(memberAccess.moduleCodes).not.toContain('product-library')
   })
 })

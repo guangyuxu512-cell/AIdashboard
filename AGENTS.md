@@ -18,6 +18,13 @@
 
 ### Two-Gate、问题归属与共享历史
 
+本期 Feature 登记（2026-10-05）：81a1 `feat/product-center-placeholder-v1` 从 Green
+`afec237435dabc3e086b9b515f28986876f6fcbd` 开发商品中心导航与占位，状态 `UI_ONLY`。
+Frontend 复用 Registry / Guard / AppTabs / EmptyState / PageSection；Backend 仅登记
+`product-selection`、`product-library` 模块授权值，不自动授予普通成员。无业务 API、Schema、Migration
+或 Worker 变更；Gate 1 后交“集成ca97”真实 Electron Gate 2，Green 后交原发布会话，发布须满足适用授权。
+旧主题成果与本地忽略材料保留，不修改 main 或生产环境。
+
 - Gate 1 由 Feature Owner 完成：自检、测试、文档/契约同步、提交，并以正式 Handoff 交给 Integrator。
 - Gate 2 只在 Integration Worktree 执行：读取候选提交、做集成验证、解决真实冲突并决定接受或拒绝。候选本身的业务 Bug、缺测试或契约缺口必须退回原 Feature Owner；Integrator 不代为开发业务修复。
 - Gate 2 通过后只允许 `git merge --no-ff feat/*` 合入 `dev`。集成后 `dev` 失败时，应拒绝候选或在共享历史上 `git revert`，禁止 `reset`、改写历史、未审查的 rebase/cherry-pick。
