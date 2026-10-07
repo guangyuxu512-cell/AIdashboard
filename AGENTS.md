@@ -18,12 +18,12 @@
 
 ### Two-Gate、问题归属与共享历史
 
-本期 Feature 登记（2026-10-05）：81a1 `feat/product-center-placeholder-v1` 从 Green
-`afec237435dabc3e086b9b515f28986876f6fcbd` 开发商品中心导航与占位，状态 `UI_ONLY`。
-Frontend 复用 Registry / Guard / ContextSwitchBar（framed）/ EmptyState / PageSection；Backend 仅登记
-`product-selection`、`product-library` 模块授权值，不自动授予普通成员。无业务 API、Schema、Migration
-或 Worker 变更；Gate 1 后交“集成ca97”真实 Electron Gate 2，Green 后交原发布会话，发布须满足适用授权。
-旧主题成果与本地忽略材料保留，不修改 main 或生产环境。
+本期 Feature 登记（2026-10-08）：81a1 `feat/product-selection-frontend-v1` 从 ca97 确认的 Green
+`b34e43cb90356e03d2f793c4146c6775a11f5ab3` 开发选品库前端与 Mock 交互，状态 `UI_ONLY`。
+复用 framed 导航、既有列表/分页/Drawer/表单/ShopSelector/主题；采集任务与商品库仍占位。
+typed service 为前端草案，Real 不请求猜测接口、不回退 Mock。无 Backend、Schema、Migration、Worker、
+真实平台、真实调度或达人登录/Session 保存。Gate 1 后交“集成ca97”唯一 Integration Electron 验证 Mock
+与 Real 边界；Green 后交原发布会话，开发会话不发布。旧分支、提交与本机忽略材料保留。
 
 - Gate 1 由 Feature Owner 完成：自检、测试、文档/契约同步、提交，并以正式 Handoff 交给 Integrator。
 - Gate 2 只在 Integration Worktree 执行：读取候选提交、做集成验证、解决真实冲突并决定接受或拒绝。候选本身的业务 Bug、缺测试或契约缺口必须退回原 Feature Owner；Integrator 不代为开发业务修复。

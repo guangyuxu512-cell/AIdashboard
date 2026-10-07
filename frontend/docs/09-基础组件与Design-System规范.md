@@ -339,6 +339,8 @@ table border
 
 行选择继续使用 Naive UI 原生 selection column，并通过 `checkedRowKeys` / `update:checkedRowKeys` 由 `AppTable`、`DataTable` 统一透传；业务页面不得手写第二套 Checkbox 表头联动。
 
+表头排序沿用 Naive `sorter` / `sortOrder` 列配置，`DataTable` 透传 `AppTable` 的 `update:sorter`（原生 `DataTableSortState`，包括取消排序）。该事件不改变既有默认外观或调用；业务查询层负责完整筛选结果排序后分页，不在公共组件内猜测业务字段。
+
 ---
 
 ## 10. Dialog / Drawer 规范

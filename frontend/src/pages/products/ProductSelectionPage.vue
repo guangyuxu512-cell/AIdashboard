@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ContextSwitchBar, EmptyState, PageSection } from '@/shared/components'
+import { ContextSwitchBar } from '@/shared/components'
+import SelectionWorkspace from '@/features/product-selection/ui/SelectionWorkspace.vue'
 
 const selectionItems = [
   {
@@ -29,6 +30,15 @@ const selectedItem = computed(
     selectionItems.find((item) => item.key === route.query.tab) ??
     selectionItems[0]!,
 )
+const panel = computed<
+  'candidate-pool' | 'selection-strategy' | 'collection-tasks'
+>(() =>
+  selectedItem.value.key === 'collection-tasks'
+    ? 'collection-tasks'
+    : selectedItem.value.key === 'selection-strategy'
+      ? 'selection-strategy'
+      : 'candidate-pool',
+)
 
 function selectTab(value: string) {
   void router.push({
@@ -41,7 +51,7 @@ function selectTab(value: string) {
 </script>
 
 <template>
-  <div class="page-container">
+  <div class="page-container product-selection-page">
     <ContextSwitchBar
       label="选品库切换"
       appearance="framed"
@@ -49,8 +59,13 @@ function selectTab(value: string) {
       :active-key="selectedItem.key"
       @select="selectTab"
     />
-    <PageSection>
-      <EmptyState :description="selectedItem.description" />
-    </PageSection>
+    <SelectionWorkspace :panel="panel" />
   </div>
 </template>
+
+<style scoped>
+.product-selection-page {
+  height: 100%;
+  min-height: 0;
+}
+</style>

@@ -4,6 +4,17 @@ import { describe, expect, it } from 'vitest'
 import DataTable from './DataTable.vue'
 
 describe('DataTable', () => {
+  it('forwards the existing AppTable native sorter without altering default behavior', async () => {
+    const wrapper = shallowMount(DataTable, {
+      props: {
+        columns: [{ key: 'name', title: '名称', sorter: true }],
+        data: [{ name: 'A' }],
+      },
+    })
+    const state = { columnKey: 'name', order: 'ascend' }
+    wrapper.findComponent({ name: 'AppTable' }).vm.$emit('update:sorter', state)
+    expect(wrapper.emitted('update:sorter')).toEqual([[state]])
+  })
   it('renders the shared loading state before the first rows arrive', () => {
     const wrapper = mount(DataTable, {
       props: {
