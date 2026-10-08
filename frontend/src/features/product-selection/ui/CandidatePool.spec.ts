@@ -1,0 +1,145 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+import { defineComponent, h } from 'vue'
+import { NMessageProvider } from 'naive-ui'
+import { describe, expect, it, vi } from 'vitest'
+import { AppButton } from '@/shared/ui'
+import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
+import type { BatchCollectReceipt, SelectionService } from '../model/contracts'
+import CandidatePool from './CandidatePool.vue'
+
+const TableStub = defineComponent({
+  name: 'DataTable',
+  props: ['data', 'checkedRowKeys'],
+  emits: ['update:checkedRowKeys'],
+  template: '<div />',
+})
+function render(service: SelectionService) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+  const wrapper = mount(
+    defineComponent({
+      setup: () => () =>
+        h(
+          NMessageProvider,
+          {},
+          {
+            default: () =>
+              h(CandidatePool, { service, contextKey: 'actor:team' }),
+          },
+        ),
+    }),
+    {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient }]],
+        stubs: {
+          DataTable: TableStub,
+          ShopSelector: true,
+          CandidateDetailDrawer: true,
+        },
+      },
+    },
+  )
+  const table = wrapper.findComponent(TableStub)
+  const button = () =>
+    wrapper
+      .findAllComponents(AppButton)
+      .find((item) => item.text() === '批量采集入库')!
+  const dispose = () => {
+    wrapper.unmount()
+    queryClient.clear()
+  }
+  return { wrapper, table, button, dispose }
+}
+
+describe('candidate selection and batch demo', () => {
+  it('guards empty/duplicate submissions, unchecks success and retains failed selections with per-item feedback', async () => {
+    let finish!: (receipt: BatchCollectReceipt) => void
+    const service = createSelectionMockHandlers()
+    const batch = vi.spyOn(service, 'collectBatch').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const { wrapper, table, button, dispose } = render(service)
+    await flushPromises()
+    expect(table.props('data')).toHaveLength(10)
+    expect(button().props('disabled')).toBe(true)
+    button().vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    expect(batch).not.toHaveBeenCalled()
+    table.vm.$emit('update:checkedRowKeys', ['candidate-000', 'candidate-001'])
+    await flushPromises()
+    button().vm.$emit('click', new MouseEvent('click'))
+    button().vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    expect(batch).toHaveBeenCalledExactlyOnceWith([
+      'candidate-000',
+      'candidate-001',
+    ])
+    expect(button().props('disabled')).toBe(true)
+    finish({
+      mode: 'mock',
+      results: [
+        {
+          candidateId: 'candidate-000',
+          candidateIds: ['candidate-000'],
+          productId: '9087654321098765000',
+          state: 'demo',
+          message: '演示',
+        },
+        {
+          candidateId: 'candidate-001',
+          candidateIds: ['candidate-001'],
+          productId: '9087654321098765001',
+          state: 'failed',
+          message: '演示采集失败，请重试',
+        },
+      ],
+    })
+    await flushPromises()
+    expect(table.props('checkedRowKeys')).toEqual(['candidate-001'])
+    expect(wrapper.text()).toContain(
+      '9087654321098765001：演示采集失败，请重试',
+    )
+    expect(button().props('disabled')).toBe(false)
+    batch.mockImplementationOnce((ids) =>
+      Promise.resolve({
+        mode: 'mock',
+        results: ids.map((id) => ({
+          candidateId: id,
+          candidateIds: [id],
+          productId: '9087654321098765001',
+          state: 'demo',
+          message: '演示',
+        })),
+      }),
+    )
+    button().vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    expect(table.props('checkedRowKeys')).toEqual([])
+    expect(button().props('disabled')).toBe(true)
+    dispose()
+  })
+  it('keeps all selections on a request failure and clears them on page/filter changes', async () => {
+    const service = createSelectionMockHandlers()
+    vi.spyOn(service, 'collectBatch').mockRejectedValue(
+      new Error('演示请求失败'),
+    )
+    const { wrapper, table, button, dispose } = render(service)
+    await flushPromises()
+    table.vm.$emit('update:checkedRowKeys', ['candidate-000'])
+    await flushPromises()
+    button().vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    expect(table.props('checkedRowKeys')).toEqual(['candidate-000'])
+    wrapper.findComponent({ name: 'PaginationBar' }).vm.$emit('update:page', 2)
+    await flushPromises()
+    expect(table.props('checkedRowKeys')).toEqual([])
+    expect(table.props('data')[0].id).toBe('candidate-010')
+    expect(wrapper.text()).toContain('全选仅当前页')
+    dispose()
+  })
+})

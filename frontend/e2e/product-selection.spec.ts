@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 
 const themes = [
@@ -7,6 +7,24 @@ const themes = [
   ['coral', '珊瑚红'],
   ['midnight', '午夜青'],
 ] as const
+async function settleTransitions(page: Page) {
+  await expect
+    .poll(() =>
+      page
+        .locator('body')
+        .evaluate(
+          (element) =>
+            element
+              .getAnimations({ subtree: true })
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  animation.effect?.getTiming().iterations !== Infinity,
+              ).length,
+        ),
+    )
+    .toBe(0)
+}
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
 })
@@ -23,6 +41,42 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
   await expect(rows).toHaveCount(10)
   await expect(page.getByText('共 32 条', { exact: true })).toBeVisible()
   await expect(rows.first()).toContainText('9087654321098765000')
+  const title = rows.first().locator('td').nth(3).locator('.n-ellipsis')
+  const fullTitle = 'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
+  await expect(title).toHaveText(fullTitle)
+  expect(
+    await title.evaluate((element) => ({
+      whiteSpace: getComputedStyle(element).whiteSpace,
+      overflow: element.scrollWidth > element.clientWidth,
+      height: element.getBoundingClientRect().height,
+    })),
+  ).toMatchObject({ whiteSpace: 'nowrap', overflow: true })
+  await title.hover()
+  await expect(
+    page.locator('.n-popover').getByText(fullTitle, { exact: true }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('long-title-tooltip.png'),
+    animations: 'disabled',
+  })
+  await page.getByRole('columnheader', { name: '图片', exact: true }).hover()
+  const idCell = rows.first().locator('td').nth(4)
+  const copyIcon = idCell.getByRole('button', {
+    name: '复制商品ID 9087654321098765000',
+    exact: true,
+  })
+  await expect(copyIcon.locator('svg')).toHaveCount(1)
+  await expect(copyIcon).toHaveText('')
+  const idBounds = await idCell.locator('.n-ellipsis').boundingBox()
+  const copyBounds = await copyIcon.boundingBox()
+  expect(
+    Math.abs(
+      idBounds!.y +
+        idBounds!.height / 2 -
+        copyBounds!.y -
+        copyBounds!.height / 2,
+    ),
+  ).toBeLessThan(2)
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await rows
     .first()
@@ -121,9 +175,9 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
       path: info.outputPath(`${id}-shop-reference.png`),
       animations: 'disabled',
     })
-    expect(
-      await shopCell.evaluate((cell) => getComputedStyle(cell).color),
-    ).toBe(colors.body)
+    await expect
+      .poll(() => shopCell.evaluate((cell) => getComputedStyle(cell).color))
+      .toBe(colors.body)
     const colorPath = info.outputPath(`${id}-computed-candidate-colors.json`)
     await writeFile(colorPath, JSON.stringify(colors, null, 2))
     await info.attach(`${id}-computed-candidate-colors`, {
@@ -159,6 +213,18 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
   await rows.first().getByRole('button', { name: '详情', exact: true }).click()
   await expect(page.locator('.n-drawer')).toContainText('短视频用户支付金额')
   await expect(page.locator('.n-drawer')).toContainText('单位未确认')
+  for (const label of [
+    '店铺',
+    '类目',
+    '价格带',
+    '上架日期',
+    '差评率',
+    '屏蔽状态',
+  ])
+    await expect(page.locator('.n-drawer')).toContainText(label)
+  await page.locator('.n-drawer-body-content-wrapper').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
   await page.screenshot({
     path: info.outputPath('candidate-detail.png'),
     animations: 'disabled',
@@ -190,6 +256,122 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
   ).toBe(true)
   expect(apiRequests).toEqual([])
 })
+
+test('batch demo selects only the current page, rejects empty selection and guards rapid clicks', async ({
+  page,
+}, info) => {
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const batch = page.getByRole('button', { name: '批量采集入库', exact: true })
+  await expect(rows).toHaveCount(10)
+  await expect(batch).toBeDisabled()
+  await page.locator('.n-data-table-thead').getByRole('checkbox').check()
+  await expect(
+    page.getByText('已选择 10 项 · 全选仅当前页', { exact: true }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('batch-selected-current-page.png'),
+    animations: 'disabled',
+  })
+  await batch.evaluate((button) => {
+    ;(button as HTMLButtonElement).click()
+    ;(button as HTMLButtonElement).click()
+  })
+  await expect(
+    page.getByText('采集入库演示完成 10 项，失败 0 项；未写入正式商品库', {
+      exact: true,
+    }),
+  ).toHaveCount(1)
+  await expect(batch).toBeDisabled()
+  await expect(
+    page.getByText('已选择 0 项 · 全选仅当前页', { exact: true }),
+  ).toBeVisible()
+  await page.locator('.n-data-table-thead').getByRole('checkbox').check()
+  await page.locator('.n-pagination-item').filter({ hasText: /^2$/ }).click()
+  await expect(rows.first()).toContainText('9087654321098765010')
+  await expect(batch).toBeDisabled()
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(rows).toHaveCount(10)
+  await expect(rows.first()).toContainText('9087654321098765000')
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  await page.screenshot({
+    path: info.outputPath('candidate-wide-1920.png'),
+    animations: 'disabled',
+  })
+  await rows.first().getByRole('button', { name: '详情', exact: true }).click()
+  const drawer = page.locator('.n-drawer')
+  await expect(drawer).toContainText('未屏蔽')
+  await expect(drawer.getByText('—', { exact: true })).toHaveCount(3)
+  await expect(drawer.locator('.n-image img')).toBeVisible()
+  await drawer.locator('.n-image').click()
+  await expect(page.locator('.n-image-preview-container')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(drawer).toBeHidden()
+  await rows.first().getByRole('button', { name: '详情', exact: true }).click()
+  await expect(drawer).toContainText('未屏蔽')
+  await expect(drawer).toContainText('1000–5000')
+  await settleTransitions(page)
+  await page.screenshot({
+    path: info.outputPath('detail-fields-null-wide.png'),
+    animations: 'disabled',
+  })
+  await drawer.locator('.n-drawer-body-content-wrapper').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.screenshot({
+    path: info.outputPath('detail-fields-null-wide-bottom.png'),
+    animations: 'disabled',
+  })
+})
+test('exception-only: batch partial failure preserves failed selection and all item feedback', async ({
+  page,
+}, info) => {
+  // Only intercept the development Mock module; no proposed Backend endpoint or production hook.
+  await page.route(
+    '**/src/features/product-selection/api/selection-mock-handlers.ts*',
+    async (route) => {
+      const response = await route.fetch()
+      const source = await response.text()
+      const marker = 'function collect(id) {'
+      expect(source).toContain(marker)
+      await route.fulfill({
+        response,
+        body: source.replace(
+          marker,
+          `${marker}\n if (id === "candidate-001") throw new Error("受控演示采集失败");`,
+        ),
+      })
+    },
+  )
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await expect(rows).toHaveCount(10)
+  await rows.nth(0).getByRole('checkbox').check()
+  await rows.nth(1).getByRole('checkbox').check()
+  await rows.nth(2).getByRole('checkbox').check()
+  await page.getByRole('button', { name: '批量采集入库', exact: true }).click()
+  await expect(
+    page.getByText('采集入库演示完成 2 项，失败 1 项；未写入正式商品库', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByText('9087654321098765001：受控演示采集失败', { exact: true }),
+  ).toBeVisible()
+  await expect(rows.nth(0).getByRole('checkbox')).not.toBeChecked()
+  await expect(rows.nth(1).getByRole('checkbox')).toBeChecked()
+  await expect(rows.nth(2).getByRole('checkbox')).not.toBeChecked()
+  await expect(
+    page.getByText('已选择 1 项 · 全选仅当前页', { exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  await page.screenshot({
+    path: info.outputPath('batch-partial-failure.png'),
+    animations: 'disabled',
+  })
+})
+
 test('strategy: right drawer, categories/all, retrieval without saving, validation, optional schedule, Baiying boundary', async ({
   page,
 }, info) => {
@@ -406,6 +588,7 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
     await expect(
       drawer.getByRole('checkbox', { name: '选择巨量百应' }),
     ).toBeInViewport()
+    await settleTransitions(page)
     await page.screenshot({
       path: info.outputPath(`${id}-multichannel-overview.png`),
       animations: 'disabled',
@@ -419,12 +602,15 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
       .evaluate((element) => {
         element.scrollTop = 0
       })
+    await expect(field('日期').locator('.n-select')).toBeVisible()
+    await settleTransitions(page)
     await page.screenshot({
       path: info.outputPath(`${id}-multichannel.png`),
       animations: 'disabled',
     })
     await field('日期').locator('.n-select').click()
     await expect(page.locator('.n-base-select-menu')).toBeVisible()
+    await settleTransitions(page)
     await page.screenshot({
       path: info.outputPath(`${id}-dropdown.png`),
       animations: 'disabled',
@@ -465,6 +651,48 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
       animations: 'disabled',
     })
   }
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await drawer.locator('.n-drawer-body-content-wrapper').evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await settleTransitions(page)
+  const pairs = [
+    ['请求店铺', '达人账号'],
+    ['日期', '品牌'],
+    ['价格大于', '价格小于'],
+    ['起始排名', '结束排名'],
+  ]
+  for (const [left, right] of pairs) {
+    const leftBounds = await field(left!).boundingBox()
+    const rightBounds = await field(right!).boundingBox()
+    expect(Math.abs(leftBounds!.y - rightBounds!.y)).toBeLessThan(2)
+    expect(rightBounds!.x).toBeGreaterThan(leftBounds!.x)
+  }
+  for (const label of [
+    '策略名称',
+    '价格大于',
+    '价格小于',
+    '起始排名',
+    '结束排名',
+  ]) {
+    const labelBounds = await field(label)
+      .locator('.n-form-item-label')
+      .boundingBox()
+    const inputBounds = await field(label).getByRole('textbox').boundingBox()
+    expect(inputBounds!.x).toBeGreaterThan(labelBounds!.x)
+    expect(
+      Math.abs(
+        inputBounds!.y +
+          inputBounds!.height / 2 -
+          labelBounds!.y -
+          labelBounds!.height / 2,
+      ),
+    ).toBeLessThan(2)
+  }
+  await page.screenshot({
+    path: info.outputPath('compact-strategy-wide-1920.png'),
+    animations: 'disabled',
+  })
   await drawer.getByRole('button', { name: '取消', exact: true }).click()
 })
 
@@ -504,4 +732,23 @@ test('exception-only: external image failure, no authentication headers and expl
         .evaluate((image) => (image as HTMLImageElement).naturalWidth),
     )
     .toBeGreaterThan(0)
+  await page
+    .locator('.n-data-table-tbody .n-data-table-tr')
+    .first()
+    .getByRole('button', { name: '详情', exact: true })
+    .click()
+  await page.locator('.n-drawer .n-image img').evaluate((image) => {
+    ;(image as HTMLImageElement).src =
+      'https://selection-image.invalid/detail.webp'
+  })
+  const detailRetry = page
+    .locator('.n-drawer')
+    .getByRole('button', { name: '重试商品图片', exact: true })
+  await expect(detailRetry).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('detail-image-failure.png'),
+    animations: 'disabled',
+  })
+  await detailRetry.click()
+  await expect(detailRetry).toHaveCount(0)
 })

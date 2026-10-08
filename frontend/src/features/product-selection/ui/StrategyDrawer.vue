@@ -162,7 +162,12 @@ async function submit(saving: boolean) {
     size="lg"
     @update:show="emit('update:show', $event)"
   >
-    <NForm label-placement="top" @submit.prevent="submit(true)">
+    <NForm
+      label-placement="left"
+      label-align="right"
+      :label-width="96"
+      @submit.prevent="submit(true)"
+    >
       <div class="strategy-pair">
         <NFormItem
           label="请求店铺"
@@ -205,6 +210,8 @@ async function submit(saving: boolean) {
       </NFormItem>
       <NFormItem
         label="渠道"
+        label-placement="top"
+        label-align="left"
         :validation-status="errors.channels ? 'error' : undefined"
         :feedback="errors.channels"
       >
@@ -252,30 +259,32 @@ async function submit(saving: boolean) {
                   />
                 </div>
               </NFormItem>
-              <NFormItem label="日期"
-                ><AppSelect
-                  :model-value="conditions.period"
-                  :options="periodOptions"
-                  :disabled="!values.channels.shortVideo.selected"
-                  @update:model-value="selectPeriod"
-              /></NFormItem>
-              <NFormItem label="品牌">
-                <AppSelect
-                  :model-value="conditions.brand"
-                  :options="[
-                    { label: '不限', value: 'all' },
-                    { label: '知名品牌', value: 'known' },
-                    { label: '非知名品牌', value: 'unknown' },
-                  ]"
-                  :disabled="!values.channels.shortVideo.selected"
-                  @update:model-value="
-                    setCondition(
-                      'brand',
-                      $event as ShortVideoConditions['brand'],
-                    )
-                  "
-                />
-              </NFormItem>
+              <div class="strategy-pair">
+                <NFormItem label="日期"
+                  ><AppSelect
+                    :model-value="conditions.period"
+                    :options="periodOptions"
+                    :disabled="!values.channels.shortVideo.selected"
+                    @update:model-value="selectPeriod"
+                /></NFormItem>
+                <NFormItem label="品牌">
+                  <AppSelect
+                    :model-value="conditions.brand"
+                    :options="[
+                      { label: '不限', value: 'all' },
+                      { label: '知名品牌', value: 'known' },
+                      { label: '非知名品牌', value: 'unknown' },
+                    ]"
+                    :disabled="!values.channels.shortVideo.selected"
+                    @update:model-value="
+                      setCondition(
+                        'brand',
+                        $event as ShortVideoConditions['brand'],
+                      )
+                    "
+                  />
+                </NFormItem>
+              </div>
               <NFormItem label="价格">
                 <AppRadio
                   :model-value="conditions.priceMode"

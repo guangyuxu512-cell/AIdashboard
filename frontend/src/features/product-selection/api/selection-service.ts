@@ -23,5 +23,6 @@ export async function createSelectionService(
     candidates: unavailable,
     candidate: unavailable,
     demoAction: unavailable,
+    collectBatch: unavailable,
   }
 }

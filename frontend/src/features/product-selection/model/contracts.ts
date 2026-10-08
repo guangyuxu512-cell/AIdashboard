@@ -79,6 +79,17 @@ export interface DemoReceipt {
     count: number | null
   }[]
 }
+export interface BatchCollectItemResult {
+  candidateId: string
+  productId: string | null
+  state: 'demo' | 'failed'
+  message: string
+}
+export interface BatchCollectReceipt {
+  mode: 'mock'
+  // One result per distinct product; all supplied candidate aliases are returned.
+  results: (BatchCollectItemResult & { candidateIds: string[] })[]
+}
 export interface SelectionService {
   readonly available: boolean
   categories(shopId: string): Promise<CategoryNode[]>
@@ -91,6 +102,7 @@ export interface SelectionService {
     id: string,
     action: 'collect' | 'block' | 'restore',
   ): Promise<DemoReceipt>
+  collectBatch(candidateIds: string[]): Promise<BatchCollectReceipt>
 }
 export const CREATOR_DEMO_OPTIONS = [
   { label: '演示达人 A', value: 'creator-demo-a' },

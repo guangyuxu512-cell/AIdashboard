@@ -248,4 +248,42 @@ describe('selection draft and isolated mock handlers', () => {
       ),
     ).toBe(false)
   })
+  it('batch demo deduplicates products and returns failures without losing other item results', async () => {
+    const first = await createSelectionMockHandlers().candidate('candidate-000')
+    const source = createSelectionMockHandlers([
+      first,
+      { ...first, id: 'alias-same-product' },
+      { ...first, id: 'other-product', productId: '9087654321098765999' },
+    ])
+    const result = await source.collectBatch([
+      first.id,
+      first.id,
+      'missing',
+      'alias-same-product',
+      'other-product',
+    ])
+    expect(result.mode).toBe('mock')
+    expect(result.results).toHaveLength(3)
+    expect(result.results[0]).toMatchObject({
+      state: 'demo',
+      productId: first.productId,
+      candidateIds: [first.id, 'alias-same-product'],
+    })
+    expect(result.results[1]).toMatchObject({
+      state: 'failed',
+      candidateId: 'missing',
+    })
+    expect(result.results[2]).toMatchObject({
+      state: 'demo',
+      productId: '9087654321098765999',
+    })
+    expect(result.results[0]!.message).toBe(
+      (await source.demoAction(first.id, 'collect')).message,
+    )
+    expect(await source.collectBatch([])).toEqual({ mode: 'mock', results: [] })
+    expect(await source.candidate(first.id)).toEqual(first)
+    await expect(
+      (await createSelectionService('real')).collectBatch([first.id]),
+    ).rejects.toThrow(SELECTION_UNAVAILABLE)
+  })
 })

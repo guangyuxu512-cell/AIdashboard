@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { Copy } from '@lucide/vue'
 import {
   type DataTableColumns,
   type DataTableRowKey,
   type DataTableSortState,
   NText,
   NEllipsis,
+  NAlert,
   useMessage,
 } from 'naive-ui'
-import dayjs from 'dayjs'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
 import {
   DataTable,
@@ -17,6 +18,7 @@ import {
   FilterField,
   ManagementListSection,
   PaginationBar,
+  TableToolbar,
 } from '@/shared/components'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
@@ -24,7 +26,12 @@ import type {
   CandidateQuery,
   SelectionCandidate,
   SelectionService,
+  BatchCollectReceipt,
 } from '../model/contracts'
+import {
+  formatCandidateDate,
+  formatReviewRate,
+} from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
 
@@ -43,6 +50,12 @@ const keyword = ref(''),
   checked = ref<DataTableRowKey[]>([]),
   detailId = ref<string | null>(null),
   busy = ref(false)
+const batchReceipt = ref<BatchCollectReceipt | null>(null)
+const batchFailures = computed(
+  () =>
+    batchReceipt.value?.results.filter((result) => result.state === 'failed') ??
+    [],
+)
 const query = useQuery({
   queryKey: computed(() => [
     'selection-candidates',
@@ -104,6 +117,32 @@ async function act(
     busy.value = false
   }
 }
+async function collectSelected() {
+  if (busy.value || !checked.value.length) return
+  const ids = checked.value.map(String)
+  busy.value = true
+  batchReceipt.value = null
+  try {
+    const receipt = await props.service.collectBatch(ids)
+    batchReceipt.value = receipt
+    const succeeded = receipt.results.filter(
+      (result) => result.state === 'demo',
+    )
+    const successIds = new Set(
+      succeeded.flatMap((result) => result.candidateIds),
+    )
+    checked.value = checked.value.filter((key) => !successIds.has(String(key)))
+    const feedback = `采集入库演示完成 ${succeeded.length} 项，失败 ${batchFailures.value.length} 项；未写入正式商品库`
+    if (batchFailures.value.length) message.warning(feedback)
+    else message.info(feedback)
+  } catch (error) {
+    message.error(
+      error instanceof Error ? error.message : '批量演示失败，请重试',
+    )
+  } finally {
+    busy.value = false
+  }
+}
 function sort(state: DataTableSortState | DataTableSortState[] | null) {
   const value = Array.isArray(state) ? state[0] : state
   const field = value?.columnKey
@@ -149,15 +188,14 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'title',
     title: '标题',
-    width: 320,
+    width: 240,
     align: 'center',
-    render: (row) =>
-      h(NEllipsis, { lineClamp: 3, tooltip: true }, () => row.title),
+    render: (row) => h(NEllipsis, { tooltip: true }, () => row.title),
   },
   {
     key: 'productId',
     title: '商品ID',
-    width: 160,
+    width: 200,
     align: 'center',
     render: (row) =>
       h('div', { class: 'selection-product-id' }, [
@@ -169,14 +207,14 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
             'aria-label': `复制商品ID ${row.productId}`,
             onClick: () => copyProductId(row.productId),
           },
-          () => '复制',
+          () => h(Copy, { size: 16, 'aria-hidden': true }),
         ),
       ]),
   },
   {
     key: 'category',
     title: '类目',
-    width: 150,
+    width: 140,
     align: 'center',
     ellipsis: { tooltip: true },
   },
@@ -196,7 +234,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     sortOrder:
       filters.value.sortField === 'listedAt' ? filters.value.sortOrder : false,
     render: (row) =>
-      row.listedAt ? dayjs(row.listedAt).format('YYYY-MM-DD') : missing(),
+      row.listedAt ? formatCandidateDate(row.listedAt) : missing(),
   },
   {
     key: 'negativeReviewRate',
@@ -211,7 +249,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     render: (row) =>
       row.negativeReviewRate === null
         ? missing()
-        : `${(row.negativeReviewRate * 100).toFixed(2)}%`,
+        : formatReviewRate(row.negativeReviewRate),
   },
   {
     key: 'actions',
@@ -289,13 +327,36 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       >
     </FilterBar>
     <ManagementListSection>
+      <TableToolbar aria-label="候选商品批量操作">
+        <NText :depth="3">已选择 {{ checked.length }} 项 · 全选仅当前页</NText>
+        <template #actions>
+          <AppButton
+            :disabled="!checked.length || busy"
+            :loading="busy"
+            @click="collectSelected"
+          >
+            批量采集入库
+          </AppButton>
+        </template>
+      </TableToolbar>
+      <NAlert
+        v-if="batchFailures.length"
+        type="warning"
+        title="演示采集失败"
+        closable
+        @close="batchReceipt = null"
+      >
+        <div v-for="result in batchFailures" :key="result.candidateId">
+          {{ result.productId ?? result.candidateId }}：{{ result.message }}
+        </div>
+      </NAlert>
       <DataTable
         :columns="columns"
         :data="query.data.value?.items ?? []"
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1458"
+        :scroll-x="1408"
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
@@ -324,8 +385,9 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
 <style scoped>
 :deep(.selection-product-id) {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   min-width: 0;
 }
 </style>

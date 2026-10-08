@@ -4,6 +4,11 @@ import { useQuery } from '@tanstack/vue-query'
 import { NDescriptions, NDescriptionsItem, NText } from 'naive-ui'
 import { DetailDrawer, ErrorState, LoadingState } from '@/shared/components'
 import type { SelectionService } from '../model/contracts'
+import {
+  formatCandidateDate,
+  formatReviewRate,
+} from '../model/candidate-display'
+import ExternalProductImage from './ExternalProductImage.vue'
 
 const props = defineProps<{
   id: string | null
@@ -39,11 +44,42 @@ const query = useQuery({
       label-placement="left"
       bordered
     >
+      <NDescriptionsItem label="图片">
+        <ExternalProductImage
+          :src="query.data.value.imageUrl"
+          :title="query.data.value.title"
+        />
+      </NDescriptionsItem>
+      <NDescriptionsItem label="店铺">{{
+        query.data.value.shopName
+      }}</NDescriptionsItem>
       <NDescriptionsItem label="标题">{{
         query.data.value.title
       }}</NDescriptionsItem>
       <NDescriptionsItem label="商品ID">{{
         query.data.value.productId
+      }}</NDescriptionsItem>
+      <NDescriptionsItem label="类目">{{
+        query.data.value.category
+      }}</NDescriptionsItem>
+      <NDescriptionsItem label="价格带"
+        ><NText :depth="query.data.value.priceBand === null ? 3 : undefined">{{
+          query.data.value.priceBand ?? '—'
+        }}</NText></NDescriptionsItem
+      >
+      <NDescriptionsItem label="上架日期"
+        ><NText :depth="query.data.value.listedAt === null ? 3 : undefined">{{
+          formatCandidateDate(query.data.value.listedAt)
+        }}</NText></NDescriptionsItem
+      >
+      <NDescriptionsItem label="差评率"
+        ><NText
+          :depth="query.data.value.negativeReviewRate === null ? 3 : undefined"
+          >{{ formatReviewRate(query.data.value.negativeReviewRate) }}</NText
+        ></NDescriptionsItem
+      >
+      <NDescriptionsItem label="屏蔽状态">{{
+        query.data.value.blocked ? '已屏蔽' : '未屏蔽'
       }}</NDescriptionsItem>
       <NDescriptionsItem label="来源">{{
         query.data.value.source

@@ -13,7 +13,8 @@ Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI
 | shared/components/DetailDrawer.vue | 商品详情 | 仅新增选品指标内容 |
 | shared/ui/AppDrawer.vue、AppButton.vue、AppSelect.vue、AppInput.vue、AppNumberInput.vue、AppSwitch.vue | 策略右抽屉、条件与独立保存/立即获取 | 组合已有 footer，不改变 FormDrawer |
 | shared/ui/AppCheckbox.vue、AppRadio.vue、AppTimePicker.vue；Naive NCollapse/NCollapseItem | 选择渠道、表单价格模式、每日时间、纵向折叠 | 不用导航条充当表单，不新建折叠/时间控件 |
-| Naive NText、NEllipsis | 缺值/辅助层次、标题三行溢出、完整 ID 提示 | 继承 themeOverrides，不为页面另配色 |
+| Naive NText、NEllipsis；Lucide Copy | 缺值/辅助层次、标题单行溢出与全文提示、ID 同行图标 | 继承 themeOverrides，不为页面另配色，不另建复制组件 |
+| shared/components/TableToolbar.vue、原生 checkedRowKeys | 当前页选择数量、批量演示与逐项失败反馈 | 不建立跨页暗选或第二套选择控件 |
 | entities/shop/ui/ShopSelector.vue | 请求店铺 | 不建立第二套店铺选择 |
 | shared/styles/tokens.css、app/providers/naive-theme.ts | 四主题/字体/密度 | 不新增 token 或单页配色 |
 | shared/composables/useAutoSearch.ts、TanStack Query | 显式列表搜索与请求隔离 | 不建立新缓存/搜索框架 |
@@ -38,6 +39,8 @@ Mock service 仅在构建环境明确 `VITE_API_MODE=mock` 且调用模式为 mo
 - retrieve(input, strategyId?)：允许未保存策略；选中的短视频返回演示回执，百应返回 unavailable/count=null。仅选百应明确失败，同时选择时返回部分演示回执；不会把百应计入完成数量。传入已有策略 ID 更新最近演示结果，不是平台采集成功。
 - list/get candidates：先完整筛选，再原始日期/差评率排序（null 双向末尾、同值 ID 稳定），再分页。
 - demo action：屏蔽/恢复仅修改 Mock 池；采集入库仅演示回执，不写正式商品库。
+- `collectBatch(candidateIds)`：前端草案，输入为当前勾选候选 ID；按字符串 productId 去重，`results` 每个商品一项，包含 `candidateId/candidateIds/productId/state/message`。同商品多个候选别名共同回填；不存在的候选 productId=null、failed。成功与失败均返回，单项失败不终止其余项。单条与批量使用同一 collect 规则；mode 固定 mock、成功态名 demo，不声称正式入库。
+- 批量成功项取消勾选，失败项保留并逐项显示原因；请求级失败保留全部选择，执行中互斥。全选只作用当前页，换页/搜索/筛选/排序清空选择。Real collectBatch 与其他业务能力同样明确不可用，不调用猜测接口。
 - 未确定的“更多”日期选项、原始支付金额单位不猜测、不换算。
 
 Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平台 Endpoint、单位和调度契约；不能直接把本草案 URL 化。
@@ -58,7 +61,7 @@ Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平�
 
 候选列表使用原生降序→升序→取消排序，字段限上架日期/差评率；默认恢复夹具顺序，同值按字符串候选 ID 稳定，null 双向末尾，真实 0 参与排序。
 
-## 视觉与多渠道返修
+## 第一轮视觉与多渠道返修（1211c34，列宽/标题由第二轮覆盖）
 
 本轮覆盖原候选缩略图/单渠道方案，其他有效流程保留：
 
@@ -100,5 +103,36 @@ Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平�
 实际浏览器截图（四主题、1366×768、横向滚动、策略列表、右抽屉、详情、填值后抽屉滚动、Real 不可用）保存在忽略目录 `docs/_local/product-selection-frontend-v1/{mock-browser,real-browser}/`。截图已检查，但不是 Electron 验收。
 
 未执行项：唯一 Integration Electron 的视觉/操作验收由 ca97 在 Gate 2 完成；真实平台条件匹配、类目 API、达人登录/Session、持久化策略、正式采集/入库、后台定时与手机能力均未接入。未定义的“更多”日期选项、金额单位保留未知。百应条件为空且不生成模拟取数结果。
+
+## 第二轮定向返修
+
+接续 `1211c34dc195e89cf93d85a2c956ae272f7bfd1c`，保持 10 条分页、真实照片夹具、80px 等比例图片、独立多渠道条件与全策略唯一执行计划。
+
+- 当前列宽：复选框44、图片104、店铺140、标题240、商品ID200、类目140、价格100、日期140、差评率100、操作200，总宽1408。标题单行 NEllipsis/Tooltip，不要求长标题全部展开；ID 与 Copy 图标同行居中，保留完整字符串复制和成功反馈。
+- 详情复用 DetailDrawer、ExternalProductImage、NDescriptions，补齐图片、店铺、类目、价格带、日期、差评率及屏蔽状态；原来源、周期、排名、首次上榜与四项原始区间不变。列表/详情共用业务格式化函数，null 显示 —，真实0正常显示。
+- StrategyDrawer 继续公共 lg 宽度，NForm 同行标签96px；店铺/达人、日期/品牌、价格上下限、排名起止使用原双列容器。不新增页面 CSS、字号或宽度补丁。渠道纵向折叠，定时与启用仍各一套，AppTimePicker 不变。
+- 故障注入回归修正了单项异常回执丢失已知 productId 的问题；正常 Mock 列表不混故障样本。浏览器异常测试只拦截开发 Mock 模块/外图，不增加生产故障开关或猜测业务 URL。
+
+本轮实际渲染材料使用 `docs/_local/product-selection-frontend-v1-repair-2/`，前后对照保留 1211 的原目录。
+浏览器为 Feature `127.0.0.1:4176 --strictPort`；四主题1366×768，另核对1920×1080候选与抽屉。
+截图等待有限过渡动画结束后捕获，不把折叠过渡空白当正式状态。
+Gate 1 的执行结果与精确新 Candidate 记录在同目录 Handoff；旧候选记录不替代本轮验收。
+唯一 Integration Electron 及用户本轮视觉确认仍由 ca97 接续，未完成前不标视觉 PASS、不发布。
+
+### 第二轮 Gate 1 实测
+
+| 命令（frontend） | 结果 |
+| --- | --- |
+| `pnpm lint`、`pnpm typecheck` | PASS；build 再执行 typecheck |
+| `pnpm test` | 132 文件 / 538 项 PASS；最后异常回执修正后另复跑定向回归 |
+| `pnpm exec vitest run src/features/product-selection src/shared/components/DataTable.spec.ts` | 最终5文件 / 23项 PASS；含去重、单项/请求级失败保留选择、互斥、详情缺值及原多渠道/竞态回归 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --project=mock e2e/product-center.spec.ts e2e/product-selection.spec.ts --workers=1` | 最终7项 PASS，1.2m；四主题、单行 Tooltip/19位复制/同行居中/固定列，当前页批量空选/成功/部分失败/快速双击，详情缺值/预览/故障，紧凑抽屉及原双渠道/计划/history |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1` | 1项 PASS，10.2s；Real无Mock/无猜测请求，团队撤权后守卫拒绝 |
+| `pnpm build` | PASS（Real production）；无商品照片/Mock handler夹具产物；既有500kB chunk告警保留 |
+| `git diff --check` | PASS |
+
+迭代中新增故障注入曾发现失败回执丢失商品ID，已修复并复跑；截图中过渡态已改为等待状态稳定。
+全量单测既有 jsdom XHR AggregateError stderr、Playwright NO_COLOR/FORCE_COLOR 和构建大chunk告警如实保留，不作零告警声明。
+本轮截图及计算颜色已检查，不改变主题token。实际Electron与用户视觉确认未执行；无后端/数据库/真实平台测试需求，不冒称业务接入完成。
 
 回滚：未涉及 Schema、数据或 Electron 壳变更；候选失败退回本 Feature，集成后回滚使用明确 revert，不改共享历史。无需新桌面包。状态为“前端／Mock完成，待 Gate 2”，不是选品业务完成或生产发布。

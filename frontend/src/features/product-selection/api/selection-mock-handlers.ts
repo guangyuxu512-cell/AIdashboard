@@ -6,6 +6,8 @@ import {
   type SelectionCandidate,
   type SelectionStrategy,
   type SelectionService,
+  type BatchCollectReceipt,
+  type BatchCollectItemResult,
 } from '../model/contracts'
 
 // Local photographs are test fixtures; they are removed from the Real build.
@@ -18,7 +20,9 @@ const photographs = Object.values(
 ) as string[]
 
 // Explicit mock mode only; in-memory handlers are not platform/Backend responses.
-export function createSelectionMockHandlers(): SelectionService {
+export function createSelectionMockHandlers(
+  candidateFixture?: SelectionCandidate[],
+): SelectionService {
   const shops = SHOP_LIST_FIXTURE.filter((shop) => shop.enabled)
   let sequence = 0
   const strategies: SelectionStrategy[] = [
@@ -47,7 +51,7 @@ export function createSelectionMockHandlers(): SelectionService {
       latestResult: null,
     },
   ]
-  const candidates: SelectionCandidate[] = Array.from(
+  const defaultCandidates: SelectionCandidate[] = Array.from(
     { length: 32 },
     (_, index) => {
       const shop = shops[index % shops.length]!
@@ -58,7 +62,7 @@ export function createSelectionMockHandlers(): SelectionService {
         imageUrl: photographs[index % photographs.length]!,
         title:
           index === 0
-            ? '超长演示商品标题：家居收纳生活用品多规格组合装（仅用于前端布局与长文本检查）'
+            ? 'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
             : `演示商品 ${index + 1}`,
         productId: `9087654321098765${String(index).padStart(3, '0')}`,
         category: index % 2 ? '生活用品 / 家居 / 收纳' : '服饰 / 女装 / 上衣',
@@ -82,10 +86,22 @@ export function createSelectionMockHandlers(): SelectionService {
       }
     },
   )
+  const candidates = candidateFixture
+    ? structuredClone(candidateFixture)
+    : defaultCandidates
   function findCandidate(id: string) {
     const row = candidates.find((row) => row.id === id)
     if (!row) throw new Error('演示候选不存在')
     return row
+  }
+  function collect(id: string): BatchCollectItemResult {
+    const row = findCandidate(id)
+    return {
+      candidateId: row.id,
+      productId: row.productId,
+      state: 'demo',
+      message: '采集入库流程演示；未写入正式商品库',
+    }
   }
   function validate(
     input: Parameters<SelectionService['retrieve']>[0],
@@ -220,17 +236,44 @@ export function createSelectionMockHandlers(): SelectionService {
     },
     async demoAction(id, action) {
       const row = findCandidate(id)
-      if (action !== 'collect') row.blocked = action === 'block'
+      if (action === 'collect')
+        return { mode: 'mock', count: 1, message: collect(id).message }
+      row.blocked = action === 'block'
       return {
         mode: 'mock',
         count: 1,
-        message:
-          action === 'collect'
-            ? '采集入库流程演示；未写入正式商品库'
-            : action === 'block'
-              ? '已在演示列表屏蔽'
-              : '已恢复演示候选',
+        message: action === 'block' ? '已在演示列表屏蔽' : '已恢复演示候选',
       }
+    },
+    async collectBatch(candidateIds) {
+      const results: BatchCollectReceipt['results'] = []
+      const products = new Map<string, BatchCollectReceipt['results'][number]>()
+      for (const id of new Set(candidateIds)) {
+        let productId: string | null = null
+        try {
+          const row = findCandidate(id)
+          productId = row.productId
+          const previous = products.get(row.productId)
+          if (previous) {
+            previous.candidateIds.push(id)
+            continue
+          }
+          const result = { ...collect(id), candidateIds: [id] }
+          products.set(row.productId, result)
+          results.push(result)
+        } catch (error) {
+          const failure: BatchCollectReceipt['results'][number] = {
+            candidateId: id,
+            candidateIds: [id],
+            productId,
+            state: 'failed',
+            message: error instanceof Error ? error.message : '演示采集失败',
+          }
+          results.push(failure)
+          if (productId !== null) products.set(productId, failure)
+        }
+      }
+      return { mode: 'mock', results }
     },
   }
 }
