@@ -9,7 +9,7 @@ import type {
   SelectionService,
   SelectionStrategy,
 } from '../model/contracts'
-import { AppCheckbox } from '@/shared/ui'
+import { AppCheckbox, AppRadio } from '@/shared/ui'
 import CategorySelector from './CategorySelector.vue'
 import StrategyDrawer from './StrategyDrawer.vue'
 
@@ -55,6 +55,48 @@ function render(
 }
 
 describe('strategy shop category loading', () => {
+  it('uses four mutually exclusive date options, retains disabled/collapsed values and never saves a preview range', async () => {
+    const service = createSelectionMockHandlers()
+    const initial = (await service.strategies())[0]!
+    initial.channels.baiying.selected = true
+    const save = vi.spyOn(service, 'saveStrategy')
+    const { wrapper, queryClient } = render(service, initial)
+    const radio = wrapper.findAllComponents(AppRadio)[0]!
+    expect(radio.props('options').map((option) => option.value)).toEqual([
+      'realtime',
+      '1d',
+      '7d',
+      '30d',
+    ])
+    for (const period of ['realtime', '1d', '7d', '30d']) {
+      radio.vm.$emit('update:modelValue', period)
+      await flushPromises()
+      expect(radio.props('modelValue')).toBe(period)
+      expect(wrapper.text()).toContain('Mock 示例区间：')
+    }
+    const checkbox = wrapper.findAllComponents(AppCheckbox)[0]!
+    checkbox.vm.$emit('update:modelValue', false)
+    await flushPromises()
+    expect(radio.props('disabled')).toBe(true)
+    expect(radio.props('modelValue')).toBe('30d')
+    const header = wrapper.findAll('.n-collapse-item__header-main')[0]!
+    await header.trigger('click')
+    await header.trigger('click')
+    checkbox.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(radio.props('modelValue')).toBe('30d')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '保存策略')!
+      .trigger('click')
+    await flushPromises()
+    const conditions = save.mock.calls[0]![0].channels.shortVideo.conditions
+    expect(conditions.period).toBe('30d')
+    expect(Object.keys(conditions)).not.toContain('rangeLabel')
+    expect(initial.channels.shortVideo.conditions.period).toBe('realtime')
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('collapsing channels preserves values; saving detaches draft and includes both channels with only one schedule', async () => {
     const service = createSelectionMockHandlers()
     const initial = (await service.strategies())[0]!

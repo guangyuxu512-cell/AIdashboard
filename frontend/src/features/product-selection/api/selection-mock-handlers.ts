@@ -117,6 +117,16 @@ export function createSelectionMockHandlers(
   }
   return {
     available: true,
+    async previewPeriod(period) {
+      // Fixed examples supplied only by Mock. Platform time semantics are unverified.
+      const ranges = {
+        realtime: '2026-10-08 00:00–12:00',
+        '1d': '2026-10-07 00:00–23:59',
+        '7d': '2026-10-01–2026-10-07',
+        '30d': '2026-09-08–2026-10-07',
+      }
+      return { mode: 'mock', rangeLabel: ranges[period] }
+    },
     async categories(shopId) {
       if (!shops.some((shop) => shop.shopId === shopId))
         throw new Error('店铺类目加载失败')

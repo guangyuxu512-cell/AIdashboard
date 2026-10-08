@@ -443,15 +443,12 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
     .getByText('全部', { exact: true })
     .click()
   await expect(drawer.locator('.n-cascader')).toContainText('全部')
-  await field('日期').locator('.n-select').click()
-  await page
-    .locator('.n-base-select-menu')
-    .getByText('更多', { exact: true })
-    .click()
+  await expect(field('日期').getByRole('radio')).toHaveCount(4)
   await expect(
-    page.getByText('更多日期选项尚未确认', { exact: true }),
-  ).toBeVisible()
-  await expect(field('日期').locator('.n-select')).toContainText('实时')
+    field('日期').getByRole('radio', { name: '实时', exact: true }),
+  ).toBeChecked()
+  await expect(field('日期').locator('.n-select')).toHaveCount(0)
+  await expect(drawer.getByText('更多', { exact: true })).toHaveCount(0)
   await drawer.getByRole('textbox', { name: '策略名称' }).click()
   await drawer.getByRole('button', { name: '立即获取', exact: true }).click()
   await expect(
@@ -602,13 +599,15 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
       .evaluate((element) => {
         element.scrollTop = 0
       })
-    await expect(field('日期').locator('.n-select')).toBeVisible()
+    await expect(
+      field('日期').getByRole('radio', { name: '近30天', exact: true }),
+    ).toBeVisible()
     await settleTransitions(page)
     await page.screenshot({
       path: info.outputPath(`${id}-multichannel.png`),
       animations: 'disabled',
     })
-    await field('日期').locator('.n-select').click()
+    await field('品牌').locator('.n-select').click()
     await expect(page.locator('.n-base-select-menu')).toBeVisible()
     await settleTransitions(page)
     await page.screenshot({
@@ -691,6 +690,124 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
   }
   await page.screenshot({
     path: info.outputPath('compact-strategy-wide-1920.png'),
+    animations: 'disabled',
+  })
+  await drawer.getByRole('button', { name: '取消', exact: true }).click()
+})
+
+test('date shortcuts: four exclusive relative periods, Mock ranges, reread, cancel and disabled retention', async ({
+  page,
+}, info) => {
+  test.setTimeout(90000)
+  await page.goto('/#/product-selection?tab=selection-strategy')
+  const row = page
+    .locator('.n-data-table-tbody .n-data-table-tr')
+    .filter({ hasText: '短视频热销观察' })
+  const drawer = page.locator('.n-drawer')
+  const field = (label: string) =>
+    drawer
+      .locator('.n-form-item')
+      .filter({
+        has: page.locator('.n-form-item-label', {
+          hasText: new RegExp(`^${label}$`),
+        }),
+      })
+      .last()
+  const date = field('日期')
+  const header = () =>
+    drawer
+      .locator('.n-collapse-item__header-main')
+      .filter({ hasText: '短视频榜单' })
+  const periods = [
+    ['实时', '2026-10-08 00:00–12:00'],
+    ['近1天', '2026-10-07 00:00–23:59'],
+    ['近7天', '2026-10-01–2026-10-07'],
+    ['近30天', '2026-09-08–2026-10-07'],
+  ] as const
+  for (const [label, range] of periods) {
+    await row.getByRole('button', { name: '编辑', exact: true }).click()
+    await expect(date.getByRole('radio')).toHaveCount(4)
+    await date.getByText(label, { exact: true }).click()
+    await expect(date.locator('input[type="radio"]:checked')).toHaveCount(1)
+    await expect(date).toContainText(`Mock 示例区间：${range}`)
+    await settleTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`period-${label}.png`),
+      animations: 'disabled',
+    })
+    await drawer.getByRole('button', { name: '保存策略', exact: true }).click()
+    await expect(drawer).toHaveCount(0)
+    await row.getByRole('button', { name: '编辑', exact: true }).click()
+    await expect(
+      date.getByRole('radio', { name: label, exact: true }),
+    ).toBeChecked()
+    await expect(date).toContainText(range)
+    await header().click()
+    await expect(date).toBeHidden()
+    await header().click()
+    await expect(
+      date.getByRole('radio', { name: label, exact: true }),
+    ).toBeChecked()
+    // Unsaved edits must not alter the source strategy.
+    await date
+      .getByText(label === '实时' ? '近7天' : '实时', { exact: true })
+      .click()
+    await drawer.getByRole('button', { name: '取消', exact: true }).click()
+    await row.getByRole('button', { name: '编辑', exact: true }).click()
+    await expect(
+      date.getByRole('radio', { name: label, exact: true }),
+    ).toBeChecked()
+    await drawer.getByRole('button', { name: '取消', exact: true }).click()
+  }
+  for (const [id, label] of themes) {
+    await page.getByRole('button', { name: '切换主题' }).click()
+    await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
+    await row.getByRole('button', { name: '编辑', exact: true }).click()
+    await expect(
+      date.getByRole('radio', { name: '近30天', exact: true }),
+    ).toBeChecked()
+    await settleTransitions(page)
+    const radios = await date.locator('.n-radio-button').all()
+    const bounds = await Promise.all(radios.map((radio) => radio.boundingBox()))
+    const brand = await field('品牌').boundingBox()
+    await writeFile(
+      info.outputPath(`${id}-date-layout.json`),
+      JSON.stringify({ bounds, brand }, null, 2),
+    )
+    await page.screenshot({
+      path: info.outputPath(`${id}-date-1366.png`),
+      animations: 'disabled',
+    })
+    for (const radio of radios) await expect(radio).toBeInViewport()
+    expect(bounds.every((box) => Math.abs(box!.y - bounds[0]!.y) < 2)).toBe(
+      true,
+    )
+    expect(bounds[3]!.x + bounds[3]!.width).toBeLessThanOrEqual(brand!.x)
+    const preview = await date.locator('.n-text').boundingBox()
+    expect(preview!.y).toBeGreaterThanOrEqual(bounds[0]!.y + bounds[0]!.height)
+    await drawer.getByRole('checkbox', { name: '选择短视频榜单' }).uncheck()
+    await expect(date.locator('input[type="radio"]:disabled')).toHaveCount(4)
+    await date
+      .getByRole('radio', { name: '实时', exact: true })
+      .dispatchEvent('click')
+    await expect(
+      date.getByRole('radio', { name: '近30天', exact: true }),
+    ).toBeChecked()
+    await page.screenshot({
+      path: info.outputPath(`${id}-date-disabled.png`),
+      animations: 'disabled',
+    })
+    await drawer.getByRole('checkbox', { name: '选择短视频榜单' }).check()
+    await expect(
+      date.getByRole('radio', { name: '近30天', exact: true }),
+    ).toBeChecked()
+    await drawer.getByRole('button', { name: '取消', exact: true }).click()
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await row.getByRole('button', { name: '编辑', exact: true }).click()
+  await settleTransitions(page)
+  await page.screenshot({
+    path: info.outputPath('date-wide-1920.png'),
     animations: 'disabled',
   })
   await drawer.getByRole('button', { name: '取消', exact: true }).click()

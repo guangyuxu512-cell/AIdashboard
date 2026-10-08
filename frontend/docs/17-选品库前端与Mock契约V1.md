@@ -12,7 +12,7 @@ Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI
 | shared/components/ManagementListSection.vue、FilterBar.vue、DataTable.vue、PaginationBar.vue | 两种列表、稳定底部分页、固定列、居中 | 仅增加选品业务列定义 |
 | shared/components/DetailDrawer.vue | 商品详情 | 仅新增选品指标内容 |
 | shared/ui/AppDrawer.vue、AppButton.vue、AppSelect.vue、AppInput.vue、AppNumberInput.vue、AppSwitch.vue | 策略右抽屉、条件与独立保存/立即获取 | 组合已有 footer，不改变 FormDrawer |
-| shared/ui/AppCheckbox.vue、AppRadio.vue、AppTimePicker.vue；Naive NCollapse/NCollapseItem | 选择渠道、表单价格模式、每日时间、纵向折叠 | 不用导航条充当表单，不新建折叠/时间控件 |
+| shared/ui/AppCheckbox.vue、AppRadio.vue、AppTimePicker.vue；Naive NCollapse/NCollapseItem | 选择渠道、日期四选项/价格模式、每日时间、纵向折叠 | 日期仅参考经营看板组件用法，不复用其统计日期算法；不新建控件 |
 | Naive NText、NEllipsis；Lucide Copy | 缺值/辅助层次、标题单行溢出与全文提示、ID 同行图标 | 继承 themeOverrides，不为页面另配色，不另建复制组件 |
 | shared/components/TableToolbar.vue、原生 checkedRowKeys | 当前页选择数量、批量演示与逐项失败反馈 | 不建立跨页暗选或第二套选择控件 |
 | entities/shop/ui/ShopSelector.vue | 请求店铺 | 不建立第二套店铺选择 |
@@ -41,7 +41,7 @@ Mock service 仅在构建环境明确 `VITE_API_MODE=mock` 且调用模式为 mo
 - demo action：屏蔽/恢复仅修改 Mock 池；采集入库仅演示回执，不写正式商品库。
 - `collectBatch(candidateIds)`：前端草案，输入为当前勾选候选 ID；按字符串 productId 去重，`results` 每个商品一项，包含 `candidateId/candidateIds/productId/state/message`。同商品多个候选别名共同回填；不存在的候选 productId=null、failed。成功与失败均返回，单项失败不终止其余项。单条与批量使用同一 collect 规则；mode 固定 mock、成功态名 demo，不声称正式入库。
 - 批量成功项取消勾选，失败项保留并逐项显示原因；请求级失败保留全部选择，执行中互斥。全选只作用当前页，换页/搜索/筛选/排序清空选择。Real collectBatch 与其他业务能力同样明确不可用，不调用猜测接口。
-- 未确定的“更多”日期选项、原始支付金额单位不猜测、不换算。
+- 日期仅有实时/近1天/近7天/近30天，策略持久化草案只存相对周期 `realtime/1d/7d/30d`。`previewPeriod(period)` 返回 `{mode:'mock', rangeLabel}`，仅展示固定 Mock 示例区间，不写入策略或获取参数；Real 明确不可用，不解析未知的平台实际日期。原始支付金额单位不猜测、不换算。
 
 Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平台 Endpoint、单位和调度契约；不能直接把本草案 URL 化。
 
@@ -69,7 +69,7 @@ Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平�
 - 只固定复选框/图片及右操作，减少 1366 宽窗口固定区对标题的挤占。标题最多三行且可查看全文；商品ID保持19位字符串，独立复制完整值。
 - 商品照片80×80，object-fit:contain，不拉伸；这不是表单控件尺寸，不修改公共表格 padding/行高 token。图片内容自然撑高商品行，其他表格不受影响。
 - 10张本地 WebP 来源及边界见 `features/product-selection/fixtures/README.md`；正常列表不含失败图。图片放大继续 NImage，失败在专门测试注入。
-- 日期 AppSelect、价格 AppRadio、每日 AppTimePicker；选项“更多”不产生未知值。两渠道纵向折叠，共用顶部店铺/达人，仅一套启用/定时。
+- 第一轮曾使用日期 AppSelect（本轮收尾已由 AppRadio 四选项覆盖）、价格 AppRadio、每日 AppTimePicker。两渠道纵向折叠，共用顶部店铺/达人，仅一套启用/定时。
 - 缺值使用 NText depth=3，最近演示结果 depth=2，其余正文继承主题。未发现并未新增硬编码黑色；四主题的实际渲染仍需检查，不以属性测试替代。
 
 返修验证及前后截图保存在 `docs/_local/product-selection-frontend-v1-repair/`，
@@ -102,7 +102,7 @@ Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平�
 
 实际浏览器截图（四主题、1366×768、横向滚动、策略列表、右抽屉、详情、填值后抽屉滚动、Real 不可用）保存在忽略目录 `docs/_local/product-selection-frontend-v1/{mock-browser,real-browser}/`。截图已检查，但不是 Electron 验收。
 
-未执行项：唯一 Integration Electron 的视觉/操作验收由 ca97 在 Gate 2 完成；真实平台条件匹配、类目 API、达人登录/Session、持久化策略、正式采集/入库、后台定时与手机能力均未接入。未定义的“更多”日期选项、金额单位保留未知。百应条件为空且不生成模拟取数结果。
+未执行项：唯一 Integration Electron 的视觉/操作验收由 ca97 在 Gate 2 完成；真实平台条件匹配、类目 API、达人登录/Session、持久化策略、正式采集/入库、后台定时与手机能力均未接入。平台实际日期区间、金额单位保留未知。百应条件为空且不生成模拟取数结果。
 
 ## 第二轮定向返修
 
@@ -136,3 +136,29 @@ Gate 1 的执行结果与精确新 Candidate 记录在同目录 Handoff；旧候
 本轮截图及计算颜色已检查，不改变主题token。实际Electron与用户视觉确认未执行；无后端/数据库/真实平台测试需求，不冒称业务接入完成。
 
 回滚：未涉及 Schema、数据或 Electron 壳变更；候选失败退回本 Feature，集成后回滚使用明确 revert，不改共享历史。无需新桌面包。状态为“前端／Mock完成，待 Gate 2”，不是选品业务完成或生产发布。
+
+## 日期交互收尾（接续4b7fd7d）
+
+- 日期改为公共 AppRadio 横向四项：实时/近1天/近7天/近30天；删除旧日期下拉及额外选项/提示逻辑。不更改共享组件、主题 token、字号或抽屉宽度。
+- 原等宽双列实测日期空间约242px，四项需要约260px；仅日期/品牌区域组合既有 Naive NGrid/NGi（7:5），其他双列布局不变，无新增页面 CSS。1366与1920视口仍能同排。
+- Mock 示例区间由隔离 Mock service 返回固定夹具，不使用经营看板的上海日期算法，也不声称真实平台日期契约已确认。示例文字使用公共 NText depth=3，策略保存与立即获取仍只传相对周期，不附加预览日期。
+- 期间切换使用现有 TanStack Query 的上下文/周期键；折叠与禁用保留条件，取消编辑不修改已保存策略。Real 无正式接口时保持不可用，不展示 Mock 示例或虚假成功。
+- 本轮继续回归候选池/批量/详情；成交件数仍为原始区间，不增加“近30天销量”或佣金/达人接口数据。
+- 运行结果、四主题实际浏览器截图及精确 Candidate 记录于 `docs/_local/product-selection-date-repair/`。浏览器证据不替代 ca97 唯一 Integration Electron 与用户复验；未确认不标视觉通过、不发布。
+
+### 日期收尾 Gate 1 实测
+
+执行位置为81a1；浏览器 `127.0.0.1:4176 --strictPort`，未启动Backend/数据库/Electron，未占用集成端口。
+
+| 命令（frontend） | 结果 |
+| --- | --- |
+| `pnpm lint`、`pnpm typecheck` | 最终 PASS |
+| `pnpm test` | 132文件/543项 PASS；最后示例文字改为块级、测试类型注解修正后另复跑定向回归 |
+| `pnpm exec vitest run src/features/product-selection src/shared/components/DataTable.spec.ts` | 最终5文件/28项 PASS，8.94s；四周期Mock区间/只存相对值、禁用/折叠保值及候选批量/详情/类目竞态 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --project=mock e2e/product-center.spec.ts e2e/product-selection.spec.ts --workers=1` | 最终8项 PASS，1.6m；四主题1366/1920、四项互斥/保存回读/取消、原候选池/批量部分失败/详情缺值/图片故障、导航 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1` | 1项 PASS，5.4s；无Mock模块加载/示例区间/虚假成功或猜测业务请求，普通团队撤权守卫正常 |
+| `pnpm build`、`git diff --check` | 最终 PASS；Real产物无Mock handler、商品照片或固定日期示例夹具 |
+
+迭代曾修正测试点击Radio隐藏输入的定位，以及测试AppOption注解过窄引起的typecheck失败；最终已通过。
+完整单测既有jsdom XHR stderr、Playwright NO_COLOR/FORCE_COLOR和既有大chunk告警如实保留。
+本轮没有改候选池/详情业务代码、公共日期组件/主题、经营日期算法或Electron壳；无DB/Migration/真实请求/达人登录测试需求。唯一Electron视觉验收仍待ca97与用户完成。

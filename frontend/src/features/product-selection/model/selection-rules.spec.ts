@@ -198,6 +198,9 @@ describe('selection draft and isolated mock handlers', () => {
     await expect(mock.categories('missing')).rejects.toThrow('类目加载失败')
     const real = await createSelectionService('real')
     expect(real.available).toBe(false)
+    await expect(real.previewPeriod('7d')).rejects.toThrow(
+      SELECTION_UNAVAILABLE,
+    )
     await expect(real.candidates(query())).rejects.toThrow(
       SELECTION_UNAVAILABLE,
     )
@@ -210,6 +213,27 @@ describe('selection draft and isolated mock handlers', () => {
       vi.unstubAllEnvs()
     }
   })
+  it.each(['realtime', '1d', '7d', '30d'] as const)(
+    'supplies explicit Mock ranges but saves only the relative period: %s',
+    async (period) => {
+      const service = createSelectionMockHandlers()
+      const preview = await service.previewPeriod(period)
+      expect(preview.mode).toBe('mock')
+      expect(preview.rangeLabel).toMatch(/^2026-/)
+      const saved = await service.saveStrategy({
+        ...input({ period }),
+        name: period,
+      })
+      const read = (await service.strategies()).find(
+        (row) => row.id === saved.id,
+      )!
+      expect(read.channels.shortVideo.conditions.period).toBe(period)
+      expect(Object.keys(read.channels.shortVideo.conditions).sort()).toEqual(
+        Object.keys(emptyStrategy().channels.shortVideo.conditions).sort(),
+      )
+      expect(JSON.stringify(read)).not.toContain(preview.rangeLabel)
+    },
+  )
   it('preserves two channel configurations independently, reports partial retrieval honestly and rejects no-channel drafts', async () => {
     const mock = createSelectionMockHandlers()
     const draft = input({

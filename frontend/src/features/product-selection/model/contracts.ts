@@ -3,6 +3,11 @@ import type { PageResult } from '@/shared/api'
 // Frontend draft only. No Backend DTO/Endpoint or platform unit is implied.
 export type SelectionChannel = 'short-video' | 'baiying'
 export type SelectionPeriod = 'realtime' | '1d' | '7d' | '30d'
+// Display-only Mock example, never a platform request or saved execution range.
+export interface SelectionPeriodPreview {
+  mode: 'mock'
+  rangeLabel: string
+}
 export interface CategoryNode {
   id: string
   name: string
@@ -92,6 +97,7 @@ export interface BatchCollectReceipt {
 }
 export interface SelectionService {
   readonly available: boolean
+  previewPeriod(period: SelectionPeriod): Promise<SelectionPeriodPreview>
   categories(shopId: string): Promise<CategoryNode[]>
   strategies(): Promise<SelectionStrategy[]>
   saveStrategy(input: StrategyInput, id?: string): Promise<SelectionStrategy>

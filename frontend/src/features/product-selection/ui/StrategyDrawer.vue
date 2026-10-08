@@ -5,6 +5,9 @@ import {
   NCollapseItem,
   NForm,
   NFormItem,
+  NGrid,
+  NGi,
+  NText,
   useMessage,
 } from 'naive-ui'
 import { useForm } from 'vee-validate'
@@ -31,6 +34,7 @@ import {
   type SelectionService,
   type SelectionStrategy,
 } from '../model/contracts'
+import type { AppOption, AppOptionValue } from '@/shared/ui/types'
 import { validateStrategy } from '../model/selection-rules'
 import CategorySelector from './CategorySelector.vue'
 
@@ -47,6 +51,16 @@ const expanded = ref<string[]>(['short-video'])
 const { values, errors, setFieldValue, resetForm, setErrors } =
   useForm<StrategyInput>({ initialValues: emptyStrategy() })
 const conditions = computed(() => values.channels.shortVideo.conditions)
+const periodPreview = useQuery({
+  queryKey: computed(() => [
+    'selection-period-preview',
+    props.contextKey,
+    conditions.value.period,
+  ]),
+  enabled: computed(() => props.show && props.service.available),
+  queryFn: () => props.service.previewPeriod(conditions.value.period),
+  retry: false,
+})
 const categories = useQuery({
   queryKey: computed(() => [
     'selection-categories',
@@ -105,13 +119,9 @@ const periodOptions = [
   { value: '1d', label: '近1天' },
   { value: '7d', label: '近7天' },
   { value: '30d', label: '近30天' },
-  { value: 'more', label: '更多' },
-]
-function selectPeriod(value: string | number | null) {
-  if (value === 'more') {
-    message.info('更多日期选项尚未确认')
-    return
-  }
+] satisfies AppOption[]
+function selectPeriod(value: AppOptionValue) {
+  if (!periodOptions.some((option) => option.value === value)) return
   setCondition('period', value as ShortVideoConditions['period'])
 }
 async function submit(saving: boolean) {
@@ -259,32 +269,49 @@ async function submit(saving: boolean) {
                   />
                 </div>
               </NFormItem>
-              <div class="strategy-pair">
-                <NFormItem label="日期"
-                  ><AppSelect
-                    :model-value="conditions.period"
-                    :options="periodOptions"
-                    :disabled="!values.channels.shortVideo.selected"
-                    @update:model-value="selectPeriod"
-                /></NFormItem>
-                <NFormItem label="品牌">
-                  <AppSelect
-                    :model-value="conditions.brand"
-                    :options="[
-                      { label: '不限', value: 'all' },
-                      { label: '知名品牌', value: 'known' },
-                      { label: '非知名品牌', value: 'unknown' },
-                    ]"
-                    :disabled="!values.channels.shortVideo.selected"
-                    @update:model-value="
-                      setCondition(
-                        'brand',
-                        $event as ShortVideoConditions['brand'],
-                      )
-                    "
-                  />
-                </NFormItem>
-              </div>
+              <NGrid :cols="12" x-gap="var(--space-3)">
+                <NGi :span="7">
+                  <NFormItem label="日期">
+                    <div class="strategy-field">
+                      <AppRadio
+                        :model-value="conditions.period"
+                        :options="periodOptions"
+                        :disabled="!values.channels.shortVideo.selected"
+                        aria-label="选品日期"
+                        @update:model-value="selectPeriod"
+                      />
+                      <NText v-if="periodPreview.data.value" tag="div" depth="3">
+                        Mock 示例区间：{{ periodPreview.data.value.rangeLabel }}
+                      </NText>
+                      <ErrorState
+                        v-else-if="periodPreview.isError.value"
+                        title="示例区间读取失败"
+                        retryable
+                        @retry="periodPreview.refetch()"
+                      />
+                    </div>
+                  </NFormItem>
+                </NGi>
+                <NGi :span="5">
+                  <NFormItem label="品牌">
+                    <AppSelect
+                      :model-value="conditions.brand"
+                      :options="[
+                        { label: '不限', value: 'all' },
+                        { label: '知名品牌', value: 'known' },
+                        { label: '非知名品牌', value: 'unknown' },
+                      ]"
+                      :disabled="!values.channels.shortVideo.selected"
+                      @update:model-value="
+                        setCondition(
+                          'brand',
+                          $event as ShortVideoConditions['brand'],
+                        )
+                      "
+                    />
+                  </NFormItem>
+                </NGi>
+              </NGrid>
               <NFormItem label="价格">
                 <AppRadio
                   :model-value="conditions.priceMode"

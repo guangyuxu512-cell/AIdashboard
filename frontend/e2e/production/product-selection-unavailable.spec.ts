@@ -6,6 +6,11 @@ test('Real keeps unavailable state without Mock fallback and retains route permi
   let allowed = true
   const unexpected: string[] = []
   const runtimeErrors: string[] = []
+  const mockModules: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('selection-mock-handlers'))
+      mockModules.push(request.url())
+  })
   page.on('pageerror', (error) => runtimeErrors.push(error.message))
   // Match the API root, not Vite's /src/shared/api/*.ts modules.
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
@@ -57,6 +62,8 @@ test('Real keeps unavailable state without Mock fallback and retains route permi
   await expect(
     page.getByRole('button', { name: '新建策略', exact: true }),
   ).toHaveCount(0)
+  await expect(page.getByText(/Mock 示例区间/)).toHaveCount(0)
+  expect(mockModules).toEqual([])
   await page.screenshot({
     path: info.outputPath('real-unavailable.png'),
     animations: 'disabled',

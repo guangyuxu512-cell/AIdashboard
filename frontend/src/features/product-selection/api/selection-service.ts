@@ -16,6 +16,7 @@ export async function createSelectionService(
   }
   return {
     available: false,
+    previewPeriod: unavailable,
     categories: unavailable,
     strategies: unavailable,
     saveStrategy: unavailable,
