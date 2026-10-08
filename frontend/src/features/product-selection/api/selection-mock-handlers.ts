@@ -8,6 +8,15 @@ import {
   type SelectionService,
 } from '../model/contracts'
 
+// Local photographs are test fixtures; they are removed from the Real build.
+const photographs = Object.values(
+  import.meta.glob('../fixtures/photos/*.webp', {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  }),
+) as string[]
+
 // Explicit mock mode only; in-memory handlers are not platform/Backend responses.
 export function createSelectionMockHandlers(): SelectionService {
   const shops = SHOP_LIST_FIXTURE.filter((shop) => shop.enabled)
@@ -27,7 +36,10 @@ export function createSelectionMockHandlers(): SelectionService {
       ...emptyStrategy(),
       id: 'strategy-demo-2',
       name: '巨量百应观察',
-      channel: 'baiying',
+      channels: {
+        shortVideo: { ...emptyStrategy().channels.shortVideo, selected: false },
+        baiying: { selected: true, conditions: {} },
+      },
       shopId: shops[1]!.shopId,
       shopName: shops[1]!.shopName,
       creatorId: 'creator-demo-b',
@@ -43,18 +55,12 @@ export function createSelectionMockHandlers(): SelectionService {
         id: `candidate-${String(index).padStart(3, '0')}`,
         shopId: shop.shopId,
         shopName: shop.shopName,
-        imageUrl:
-          index === 2
-            ? 'https://selection-image.invalid/missing.jpg'
-            : 'data:image/svg+xml,' +
-              encodeURIComponent(
-                `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="white"/><text x="8" y="45" font-size="18">商品${index + 1}</text></svg>`,
-              ),
+        imageUrl: photographs[index % photographs.length]!,
         title:
           index === 0
             ? '超长演示商品标题：家居收纳生活用品多规格组合装（仅用于前端布局与长文本检查）'
             : `演示商品 ${index + 1}`,
-        productId: `908765432109876543210${String(index).padStart(3, '0')}`,
+        productId: `9087654321098765${String(index).padStart(3, '0')}`,
         category: index % 2 ? '生活用品 / 家居 / 收纳' : '服饰 / 女装 / 上衣',
         priceBand: index === 4 ? null : '10–50',
         listedAt:
@@ -145,7 +151,8 @@ export function createSelectionMockHandlers(): SelectionService {
     },
     async retrieve(input, strategyId) {
       validate(input, false)
-      if (input.channel === 'baiying') throw new Error('巨量百应获取尚未接入')
+      if (!input.channels.shortVideo.selected)
+        throw new Error('巨量百应获取尚未接入')
       const strategy = strategyId
         ? strategies.find((row) => row.id === strategyId)
         : null
@@ -154,11 +161,25 @@ export function createSelectionMockHandlers(): SelectionService {
       const count = candidates.filter(
         (row) => row.shopId === input.shopId && !row.blocked,
       ).length
-      if (strategy) strategy.latestResult = `演示获取 ${count} 项`
+      const baiyingSelected = input.channels.baiying.selected
+      if (strategy)
+        strategy.latestResult = `演示获取 ${count} 项${baiyingSelected ? ' · 百应未接入' : ''}`
       return {
         mode: 'mock',
         count,
-        message: '演示获取完成；未向平台请求，未启动采集任务',
+        channels: [
+          { channel: 'short-video', state: 'demo', count },
+          ...(baiyingSelected
+            ? [
+                {
+                  channel: 'baiying' as const,
+                  state: 'unavailable' as const,
+                  count: null,
+                },
+              ]
+            : []),
+        ],
+        message: `演示获取完成；未向平台请求，未启动采集任务${baiyingSelected ? '；巨量百应获取尚未接入' : ''}`,
       }
     },
     async candidates(query) {

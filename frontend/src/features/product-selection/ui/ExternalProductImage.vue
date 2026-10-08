@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NImage } from 'naive-ui'
+import { NImage, NText } from 'naive-ui'
 import { ref, watch } from 'vue'
 import { AppButton } from '@/shared/ui'
 
@@ -20,7 +20,7 @@ function retry() {
 
 <template>
   <div class="product-image">
-    <span v-if="!src">—</span>
+    <NText v-if="!src" :depth="3">—</NText>
     <AppButton
       v-else-if="failed"
       tone="text"
@@ -49,11 +49,11 @@ function retry() {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: var(--control-height-default);
+  height: 80px;
 }
 .product-image :deep(img) {
-  width: var(--control-height-default);
-  height: var(--control-height-default);
+  width: 80px;
+  height: 80px;
   object-fit: contain;
 }
 </style>

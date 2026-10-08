@@ -12,6 +12,8 @@ Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI
 | shared/components/ManagementListSection.vue、FilterBar.vue、DataTable.vue、PaginationBar.vue | 两种列表、稳定底部分页、固定列、居中 | 仅增加选品业务列定义 |
 | shared/components/DetailDrawer.vue | 商品详情 | 仅新增选品指标内容 |
 | shared/ui/AppDrawer.vue、AppButton.vue、AppSelect.vue、AppInput.vue、AppNumberInput.vue、AppSwitch.vue | 策略右抽屉、条件与独立保存/立即获取 | 组合已有 footer，不改变 FormDrawer |
+| shared/ui/AppCheckbox.vue、AppRadio.vue、AppTimePicker.vue；Naive NCollapse/NCollapseItem | 选择渠道、表单价格模式、每日时间、纵向折叠 | 不用导航条充当表单，不新建折叠/时间控件 |
+| Naive NText、NEllipsis | 缺值/辅助层次、标题三行溢出、完整 ID 提示 | 继承 themeOverrides，不为页面另配色 |
 | entities/shop/ui/ShopSelector.vue | 请求店铺 | 不建立第二套店铺选择 |
 | shared/styles/tokens.css、app/providers/naive-theme.ts | 四主题/字体/密度 | 不新增 token 或单页配色 |
 | shared/composables/useAutoSearch.ts、TanStack Query | 显式列表搜索与请求隔离 | 不建立新缓存/搜索框架 |
@@ -30,15 +32,17 @@ Mock service 仅在构建环境明确 `VITE_API_MODE=mock` 且调用模式为 mo
 ## 请求草案
 
 - categories(shopId)：行业/层级树；允许父级全部，选项 ID 保持字符串。
-- list/save strategies：命名策略、请求店铺、共用达人、渠道、条件、可选 hourly/daily schedule。
-- retrieve(input, strategyId?)：允许未保存策略；短视频返回演示回执，传入已有策略 ID 时更新其演示最近结果，百应明确不可用；不是平台采集成功。
+- list/save strategies：命名策略、请求店铺、共用达人、多个渠道配置、全策略唯一的 enabled/hourly/daily schedule。
+- `channels.shortVideo = {selected, conditions}`：条件独立包含请求类目、日期、品牌、价格及结果筛选首次上榜/排名。`channels.baiying = {selected, conditions:{}}`：未知条件严格为空，不接纳猜测字段。至少选一个渠道。
+- 两个渠道纵向折叠，展开状态仅为 UI 状态，不参与保存；折叠、取消选择不清条件。切店只清当前短视频失效类目。草稿深拷贝，列表缓存与其他策略不会被编辑污染。
+- retrieve(input, strategyId?)：允许未保存策略；选中的短视频返回演示回执，百应返回 unavailable/count=null。仅选百应明确失败，同时选择时返回部分演示回执；不会把百应计入完成数量。传入已有策略 ID 更新最近演示结果，不是平台采集成功。
 - list/get candidates：先完整筛选，再原始日期/差评率排序（null 双向末尾、同值 ID 稳定），再分页。
 - demo action：屏蔽/恢复仅修改 Mock 池；采集入库仅演示回执，不写正式商品库。
 - 未确定的“更多”日期选项、原始支付金额单位不猜测、不换算。
 
 Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平台 Endpoint、单位和调度契约；不能直接把本草案 URL 化。
 
-## Gate 1 验证与交接边界（2026-10-08）
+## 原候选 Gate 1 验证（02ce8808；不替代本轮返修验收）
 
 执行位置为 81a1，浏览器地址 `http://127.0.0.1:4176`，Vite `--strictPort`。未启动 Backend、数据库或 Electron，不占用 Integration 5180/8100。
 
@@ -52,7 +56,46 @@ Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平�
 | `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1` | 1 项 PASS：Real 不回退、不请求选品接口，普通团队取消模块权限后拒绝直达。仅拦截现有登录/团队/权限 API，没有假设后端业务接口 |
 | `git diff --check` | PASS |
 
-候选列表使用原生降序→升序→取消排序，字段限上架日期/差评率；默认恢复夹具顺序，同值按字符串候选 ID 稳定，null 双向末尾，真实 0 参与排序。图片按既有 `--control-height-default` 尺寸组合，不修改标准行高；固定列为复选框/店铺/图片与右操作列，表格内部横向滚动。
+候选列表使用原生降序→升序→取消排序，字段限上架日期/差评率；默认恢复夹具顺序，同值按字符串候选 ID 稳定，null 双向末尾，真实 0 参与排序。
+
+## 视觉与多渠道返修
+
+本轮覆盖原候选缩略图/单渠道方案，其他有效流程保留：
+
+- 候选列：复选框44、图片104、店铺140、标题320、商品ID160、类目150、价格100、日期140、差评率100、操作200。默认10条，完整结果排序后分页。
+- 只固定复选框/图片及右操作，减少 1366 宽窗口固定区对标题的挤占。标题最多三行且可查看全文；商品ID保持19位字符串，独立复制完整值。
+- 商品照片80×80，object-fit:contain，不拉伸；这不是表单控件尺寸，不修改公共表格 padding/行高 token。图片内容自然撑高商品行，其他表格不受影响。
+- 10张本地 WebP 来源及边界见 `features/product-selection/fixtures/README.md`；正常列表不含失败图。图片放大继续 NImage，失败在专门测试注入。
+- 日期 AppSelect、价格 AppRadio、每日 AppTimePicker；选项“更多”不产生未知值。两渠道纵向折叠，共用顶部店铺/达人，仅一套启用/定时。
+- 缺值使用 NText depth=3，最近演示结果 depth=2，其余正文继承主题。未发现并未新增硬编码黑色；四主题的实际渲染仍需检查，不以属性测试替代。
+
+返修验证及前后截图保存在 `docs/_local/product-selection-frontend-v1-repair/`，
+原候选材料保留于旧目录。新候选另记实际执行结果，Electron Gate 2 未完成前不宣告视觉通过。
+
+### 返修 Gate 1 实测
+
+均在 81a1 执行，浏览器 `127.0.0.1:4176 --strictPort`，未使用 Integration 端口或新增 Electron：
+
+| 命令（frontend） | 结果 |
+| --- | --- |
+| `pnpm lint` | PASS |
+| `pnpm build`（含 typecheck，Real production） | PASS；无 Mock handler chunk、无商品 WebP 夹具，既有大 chunk 告警保留 |
+| `pnpm test` | 130 文件 / 534 项 PASS；最后详情缺值展示属性调整后另复跑受影响回归及 build |
+| `pnpm exec vitest run src/features/product-selection src/shared/components/DataTable.spec.ts` | 最终 3 文件 / 19 项 PASS：多渠道深拷贝、保存回读、未保存获取、边界、折叠、类目失败重试/切店竞态、全量排序分页及 Real 隔离 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --project=mock e2e/product-center.spec.ts e2e/product-selection.spec.ts --workers=1` | 最终 5 项 PASS，54.4s：原导航/守卫回归、四主题共享 framed 对照、10张照片/80px/19位复制/横向固定/全量排序分页/预览/屏蔽恢复、双渠道条件保存回读/折叠/单套定时/时间控件/禁用态、独立外图失败与原图重试 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1` | 1 项 PASS，5.3s：Real 无业务请求/无 Mock 回退，普通团队取消权限后守卫拒绝 |
+| `git diff --check` | PASS |
+
+浏览器截图已人工对照：四主题候选池、横向滚动、店铺参考表格、主抽屉、双渠道折叠总览/展开/底部滚动、
+下拉弹层、禁用条件、详情及 Real 不可用。候选表普通正文计算颜色与对应主题店铺表相同；
+缺值采用不同的公共次要文字颜色。计算值由 Playwright attachment 记录，不用主题属性断言替代截图。
+核对既有 ShopFormDialog / DeviceFormDialog / ScheduleFormDialog 均沿用公共控件、次要文字 token，
+本轮不改变它们或共享 token。新 UI 的右抽屉宽度、输入高度和底栏来自 AppDrawer/公共表单；
+只放大商品图片内容，不调整公共表格尺寸。
+
+未完成：ca97 的唯一 Integration Electron 新候选验收及用户视觉确认；前端契约仍为草案，
+百应条件、真实匹配、真实图片业务来源、平台接口、达人登录/Session、后台调度及持久化仍未接入。
+本轮不触发业务或生产发布，不需要新 Electron 安装包。
 
 实际浏览器截图（四主题、1366×768、横向滚动、策略列表、右抽屉、详情、填值后抽屉滚动、Real 不可用）保存在忽略目录 `docs/_local/product-selection-frontend-v1/{mock-browser,real-browser}/`。截图已检查，但不是 Electron 验收。
 

@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NForm, NFormItem, useMessage } from 'naive-ui'
+import {
+  NCollapse,
+  NCollapseItem,
+  NForm,
+  NFormItem,
+  useMessage,
+} from 'naive-ui'
 import { useForm } from 'vee-validate'
 import { useQuery } from '@tanstack/vue-query'
+import dayjs from 'dayjs'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
 import {
   AppDrawer,
@@ -11,12 +18,15 @@ import {
   AppSelect,
   AppNumberInput,
   AppSwitch,
+  AppCheckbox,
+  AppRadio,
+  AppTimePicker,
 } from '@/shared/ui'
-import { ContextSwitchBar, ErrorState } from '@/shared/components'
+import { ErrorState } from '@/shared/components'
 import {
-  CHANNEL_OPTIONS,
   CREATOR_DEMO_OPTIONS,
   emptyStrategy,
+  type ShortVideoConditions,
   type StrategyInput,
   type SelectionService,
   type SelectionStrategy,
@@ -33,53 +43,93 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:show': [show: boolean]; saved: [] }>()
 const message = useMessage()
 const busy = ref(false)
+const expanded = ref<string[]>(['short-video'])
 const { values, errors, setFieldValue, resetForm, setErrors } =
   useForm<StrategyInput>({ initialValues: emptyStrategy() })
+const conditions = computed(() => values.channels.shortVideo.conditions)
 const categories = useQuery({
   queryKey: computed(() => [
     'selection-categories',
     props.contextKey,
     values.shopId,
   ]),
-  enabled: computed(() => props.show && !!values.shopId),
+  enabled: computed(
+    () => props.show && !!values.shopId && values.channels.shortVideo.selected,
+  ),
   queryFn: ({ queryKey }) => props.service.categories(String(queryKey[2])),
   retry: false,
 })
 watch(
   () => props.show,
   (show) => {
-    if (show)
-      resetForm({
-        values: props.strategy ? { ...props.strategy } : emptyStrategy(),
-      })
+    if (!show) return
+    // JSON-shaped draft: detach nested Vue/Query objects before editing or passing to service.
+    resetForm({
+      values: props.strategy
+        ? (JSON.parse(JSON.stringify(props.strategy)) as StrategyInput)
+        : emptyStrategy(),
+    })
+    expanded.value = ['short-video']
   },
   { immediate: true },
 )
+function setCondition<K extends keyof ShortVideoConditions>(
+  key: K,
+  value: ShortVideoConditions[K],
+) {
+  setFieldValue('channels.shortVideo.conditions', {
+    ...conditions.value,
+    [key]: value,
+  })
+}
+function conditionError(key: keyof ShortVideoConditions) {
+  return errors.value[`channels.shortVideo.conditions.${key}`]
+}
 function changeShop(value: string | null) {
   setFieldValue('shopId', value)
-  setFieldValue('categoryId', null)
+  setCondition('categoryId', null)
 }
-const periodItems = [
-  { key: 'realtime', label: '实时' },
-  { key: '1d', label: '近1天' },
-  { key: '7d', label: '近7天' },
-  { key: '30d', label: '近30天' },
-  { key: 'more', label: '更多' },
+const dailyTime = computed({
+  get: () =>
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(values.dailyTime)
+      ? dayjs(`2000-01-01T${values.dailyTime}:00`).valueOf()
+      : null,
+  set: (value: number | null) =>
+    setFieldValue(
+      'dailyTime',
+      value === null ? '' : dayjs(value).format('HH:mm'),
+    ),
+})
+const periodOptions = [
+  { value: 'realtime', label: '实时' },
+  { value: '1d', label: '近1天' },
+  { value: '7d', label: '近7天' },
+  { value: '30d', label: '近30天' },
+  { value: 'more', label: '更多' },
 ]
-function selectPeriod(value: string) {
+function selectPeriod(value: string | number | null) {
   if (value === 'more') {
     message.info('更多日期选项尚未确认')
     return
   }
-  setFieldValue('period', value as StrategyInput['period'])
+  setCondition('period', value as ShortVideoConditions['period'])
 }
 async function submit(saving: boolean) {
   if (busy.value) return
   const validation = validateStrategy(values, saving)
   setErrors(validation)
-  if (Object.keys(validation).length) return
+  if (Object.keys(validation).length) {
+    if (
+      Object.keys(validation).some((key) =>
+        key.startsWith('channels.shortVideo.conditions.'),
+      ) &&
+      !expanded.value.includes('short-video')
+    )
+      expanded.value.push('short-video')
+    return
+  }
   if (
-    values.channel === 'short-video' &&
+    values.channels.shortVideo.selected &&
     (categories.isPending.value || categories.isError.value)
   ) {
     message.error('请先成功加载当前店铺类目')
@@ -87,18 +137,14 @@ async function submit(saving: boolean) {
   }
   busy.value = true
   try {
+    const draft = JSON.parse(JSON.stringify(values)) as StrategyInput
     if (saving) {
-      await props.service.saveStrategy(
-        structuredClone({ ...values }),
-        props.strategy?.id,
-      )
+      await props.service.saveStrategy(draft, props.strategy?.id)
       message.success('演示策略已保存')
       emit('saved')
       emit('update:show', false)
     } else {
-      const receipt = await props.service.retrieve(
-        structuredClone({ ...values }),
-      )
+      const receipt = await props.service.retrieve(draft)
       message.info(receipt.message)
     }
   } catch (error) {
@@ -157,139 +203,188 @@ async function submit(saving: boolean) {
           @update:model-value="setFieldValue('name', $event)"
         />
       </NFormItem>
-      <NFormItem label="渠道">
-        <ContextSwitchBar
-          label="选品渠道"
-          appearance="bare"
-          :items="
-            CHANNEL_OPTIONS.map((option) => ({
-              key: option.value,
-              label: option.label,
-            }))
-          "
-          :active-key="values.channel"
-          @select="setFieldValue('channel', $event as StrategyInput['channel'])"
-        />
+      <NFormItem
+        label="渠道"
+        :validation-status="errors.channels ? 'error' : undefined"
+        :feedback="errors.channels"
+      >
+        <NCollapse
+          v-model:expanded-names="expanded"
+          class="strategy-channels"
+          display-directive="show"
+        >
+          <NCollapseItem name="short-video" title="短视频榜单">
+            <template #header-extra>
+              <span @click.stop
+                ><AppCheckbox
+                  :model-value="values.channels.shortVideo.selected"
+                  aria-label="选择短视频榜单"
+                  @update:model-value="
+                    setFieldValue('channels.shortVideo.selected', $event)
+                  "
+              /></span>
+            </template>
+            <fieldset
+              class="strategy-conditions"
+              :disabled="!values.channels.shortVideo.selected"
+            >
+              <NFormItem label="类目">
+                <div class="strategy-field">
+                  <CategorySelector
+                    :model-value="conditions.categoryId"
+                    :nodes="categories.data.value ?? []"
+                    :disabled="
+                      !values.shopId || !values.channels.shortVideo.selected
+                    "
+                    :loading="
+                      !!values.shopId &&
+                      values.channels.shortVideo.selected &&
+                      categories.isPending.value
+                    "
+                    @update:model-value="setCondition('categoryId', $event)"
+                  />
+                  <ErrorState
+                    v-if="categories.isError.value"
+                    title="类目加载失败"
+                    description="请重试当前店铺类目"
+                    retryable
+                    @retry="categories.refetch()"
+                  />
+                </div>
+              </NFormItem>
+              <NFormItem label="日期"
+                ><AppSelect
+                  :model-value="conditions.period"
+                  :options="periodOptions"
+                  :disabled="!values.channels.shortVideo.selected"
+                  @update:model-value="selectPeriod"
+              /></NFormItem>
+              <NFormItem label="品牌">
+                <AppSelect
+                  :model-value="conditions.brand"
+                  :options="[
+                    { label: '不限', value: 'all' },
+                    { label: '知名品牌', value: 'known' },
+                    { label: '非知名品牌', value: 'unknown' },
+                  ]"
+                  :disabled="!values.channels.shortVideo.selected"
+                  @update:model-value="
+                    setCondition(
+                      'brand',
+                      $event as ShortVideoConditions['brand'],
+                    )
+                  "
+                />
+              </NFormItem>
+              <NFormItem label="价格">
+                <AppRadio
+                  :model-value="conditions.priceMode"
+                  :options="[
+                    { label: '不限', value: 'all' },
+                    { label: '自定义', value: 'custom' },
+                  ]"
+                  :disabled="!values.channels.shortVideo.selected"
+                  @update:model-value="
+                    setCondition(
+                      'priceMode',
+                      $event as ShortVideoConditions['priceMode'],
+                    )
+                  "
+                />
+              </NFormItem>
+              <div
+                v-if="conditions.priceMode === 'custom'"
+                class="strategy-pair"
+              >
+                <NFormItem
+                  label="价格大于"
+                  :validation-status="
+                    conditionError('priceAbove') ? 'error' : undefined
+                  "
+                  :feedback="conditionError('priceAbove')"
+                >
+                  <AppNumberInput
+                    :model-value="conditions.priceAbove"
+                    :min="0"
+                    :disabled="!values.channels.shortVideo.selected"
+                    @update:model-value="setCondition('priceAbove', $event)"
+                  />
+                </NFormItem>
+                <NFormItem
+                  label="价格小于"
+                  :validation-status="
+                    conditionError('priceBelow') ? 'error' : undefined
+                  "
+                  :feedback="conditionError('priceBelow')"
+                >
+                  <AppNumberInput
+                    :model-value="conditions.priceBelow"
+                    :min="0"
+                    :disabled="!values.channels.shortVideo.selected"
+                    @update:model-value="setCondition('priceBelow', $event)"
+                  />
+                </NFormItem>
+              </div>
+              <NFormItem label="首次上榜"
+                ><AppSwitch
+                  :model-value="conditions.firstListedOnly"
+                  :disabled="!values.channels.shortVideo.selected"
+                  @update:model-value="setCondition('firstListedOnly', $event)"
+              /></NFormItem>
+              <div class="strategy-pair">
+                <NFormItem
+                  label="起始排名"
+                  :validation-status="
+                    conditionError('rankFrom') ? 'error' : undefined
+                  "
+                  :feedback="conditionError('rankFrom')"
+                >
+                  <AppNumberInput
+                    :model-value="conditions.rankFrom"
+                    :min="1"
+                    :disabled="!values.channels.shortVideo.selected"
+                    @update:model-value="setCondition('rankFrom', $event)"
+                  />
+                </NFormItem>
+                <NFormItem
+                  label="结束排名"
+                  :validation-status="
+                    conditionError('rankTo') ? 'error' : undefined
+                  "
+                  :feedback="conditionError('rankTo')"
+                >
+                  <AppNumberInput
+                    :model-value="conditions.rankTo"
+                    :min="1"
+                    :disabled="!values.channels.shortVideo.selected"
+                    @update:model-value="setCondition('rankTo', $event)"
+                  />
+                </NFormItem>
+              </div>
+            </fieldset>
+          </NCollapseItem>
+          <NCollapseItem name="baiying" title="巨量百应">
+            <template #header-extra>
+              <span @click.stop
+                ><AppCheckbox
+                  :model-value="values.channels.baiying.selected"
+                  aria-label="选择巨量百应"
+                  @update:model-value="
+                    setFieldValue('channels.baiying.selected', $event)
+                  "
+              /></span>
+            </template>
+          </NCollapseItem>
+        </NCollapse>
       </NFormItem>
-      <template v-if="values.channel === 'short-video'">
-        <NFormItem label="类目">
-          <div class="strategy-field">
-            <CategorySelector
-              :model-value="values.categoryId"
-              :nodes="categories.data.value ?? []"
-              :disabled="!values.shopId"
-              :loading="!!values.shopId && categories.isPending.value"
-              @update:model-value="setFieldValue('categoryId', $event)"
-            />
-            <ErrorState
-              v-if="categories.isError.value"
-              title="类目加载失败"
-              description="请重试当前店铺类目"
-              retryable
-              @retry="categories.refetch()"
-            />
-          </div>
-        </NFormItem>
-        <NFormItem label="日期">
-          <ContextSwitchBar
-            label="榜单日期"
-            appearance="bare"
-            :items="periodItems"
-            :active-key="values.period"
-            @select="selectPeriod"
-          />
-        </NFormItem>
-        <NFormItem label="品牌">
-          <AppSelect
-            :model-value="values.brand"
-            :options="[
-              { label: '不限', value: 'all' },
-              { label: '知名品牌', value: 'known' },
-              { label: '非知名品牌', value: 'unknown' },
-            ]"
-            @update:model-value="
-              setFieldValue('brand', $event as StrategyInput['brand'])
-            "
-          />
-        </NFormItem>
-        <NFormItem label="价格">
-          <ContextSwitchBar
-            label="价格条件"
-            appearance="bare"
-            :items="[
-              { key: 'all', label: '不限' },
-              { key: 'custom', label: '自定义' },
-            ]"
-            :active-key="values.priceMode"
-            @select="
-              setFieldValue('priceMode', $event as StrategyInput['priceMode'])
-            "
-          />
-        </NFormItem>
-        <div v-if="values.priceMode === 'custom'" class="strategy-pair">
-          <NFormItem
-            label="价格大于"
-            :validation-status="errors.priceAbove ? 'error' : undefined"
-            :feedback="errors.priceAbove"
-          >
-            <AppNumberInput
-              :model-value="values.priceAbove"
-              :min="0"
-              @update:model-value="setFieldValue('priceAbove', $event)"
-            />
-          </NFormItem>
-          <NFormItem
-            label="价格小于"
-            :validation-status="errors.priceBelow ? 'error' : undefined"
-            :feedback="errors.priceBelow"
-          >
-            <AppNumberInput
-              :model-value="values.priceBelow"
-              :min="0"
-              @update:model-value="setFieldValue('priceBelow', $event)"
-            />
-          </NFormItem>
-        </div>
-        <NFormItem label="首次上榜">
-          <AppSwitch
-            :model-value="values.firstListedOnly"
-            @update:model-value="setFieldValue('firstListedOnly', $event)"
-          />
-        </NFormItem>
-        <div class="strategy-pair">
-          <NFormItem
-            label="起始排名"
-            :validation-status="errors.rankFrom ? 'error' : undefined"
-            :feedback="errors.rankFrom"
-          >
-            <AppNumberInput
-              :model-value="values.rankFrom"
-              :min="1"
-              @update:model-value="setFieldValue('rankFrom', $event)"
-            />
-          </NFormItem>
-          <NFormItem
-            label="结束排名"
-            :validation-status="errors.rankTo ? 'error' : undefined"
-            :feedback="errors.rankTo"
-          >
-            <AppNumberInput
-              :model-value="values.rankTo"
-              :min="1"
-              @update:model-value="setFieldValue('rankTo', $event)"
-            />
-          </NFormItem>
-        </div>
-      </template>
-      <NFormItem label="定时执行">
-        <AppSwitch
+      <NFormItem label="定时执行"
+        ><AppSwitch
           :model-value="values.scheduled"
           @update:model-value="setFieldValue('scheduled', $event)"
-        />
-      </NFormItem>
+      /></NFormItem>
       <div v-if="values.scheduled" class="strategy-pair">
-        <NFormItem label="执行频率">
-          <AppSelect
+        <NFormItem label="执行频率"
+          ><AppSelect
             :model-value="values.scheduleKind"
             :options="[
               { label: '每小时', value: 'hourly' },
@@ -301,31 +396,28 @@ async function submit(saving: boolean) {
                 $event as StrategyInput['scheduleKind'],
               )
             "
-          />
-        </NFormItem>
+        /></NFormItem>
         <NFormItem
           v-if="values.scheduleKind === 'daily'"
           label="每日时间"
           :validation-status="errors.dailyTime ? 'error' : undefined"
           :feedback="errors.dailyTime"
         >
-          <AppInput
-            :model-value="values.dailyTime"
-            placeholder="HH:mm"
-            aria-label="每日时间"
-            @update:model-value="setFieldValue('dailyTime', $event)"
+          <AppTimePicker
+            v-model="dailyTime"
+            :clearable="false"
+            format="HH:mm"
           />
         </NFormItem>
       </div>
-      <NFormItem label="策略状态">
-        <AppSwitch
+      <NFormItem label="策略状态"
+        ><AppSwitch
           :model-value="values.enabled"
           @update:model-value="setFieldValue('enabled', $event)"
-        />
-      </NFormItem>
+      /></NFormItem>
     </NForm>
-    <template #footer>
-      <div class="strategy-actions">
+    <template #footer
+      ><div class="strategy-actions">
         <AppButton :disabled="busy" @click="emit('update:show', false)"
           >取消</AppButton
         >
@@ -333,8 +425,8 @@ async function submit(saving: boolean) {
         <AppButton tone="primary" :loading="busy" @click="submit(true)"
           >保存策略</AppButton
         >
-      </div>
-    </template>
+      </div></template
+    >
   </AppDrawer>
 </template>
 
@@ -344,8 +436,15 @@ async function submit(saving: boolean) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
-.strategy-field {
+.strategy-field,
+.strategy-channels {
   width: 100%;
+  min-width: 0;
+}
+.strategy-conditions {
+  border: 0;
+  padding: 0;
+  margin: 0;
   min-width: 0;
 }
 .strategy-actions {

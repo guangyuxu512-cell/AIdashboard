@@ -5,6 +5,7 @@ import {
   useMessage,
   type DataTableColumns,
   type DataTableRowKey,
+  NText,
 } from 'naive-ui'
 import {
   DataTable,
@@ -110,7 +111,13 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
     width: 130,
     align: 'center',
     render: (row) =>
-      CHANNEL_OPTIONS.find((option) => option.value === row.channel)!.label,
+      CHANNEL_OPTIONS.filter((option) =>
+        option.value === 'short-video'
+          ? row.channels.shortVideo.selected
+          : row.channels.baiying.selected,
+      )
+        .map((option) => option.label)
+        .join('、'),
   },
   {
     key: 'conditions',
@@ -118,7 +125,10 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
     width: 230,
     align: 'center',
     ellipsis: { tooltip: true },
-    render: conditionSummary,
+    render: (row) =>
+      conditionSummary(row) === '—'
+        ? h(NText, { depth: 3 }, () => '—')
+        : conditionSummary(row),
   },
   {
     key: 'execution',
@@ -137,7 +147,10 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
     title: '最近结果',
     width: 150,
     align: 'center',
-    render: (row) => row.latestResult ?? '—',
+    render: (row) =>
+      row.latestResult
+        ? h(NText, { depth: 2 }, () => row.latestResult)
+        : h(NText, { depth: 3 }, () => '—'),
   },
   {
     key: 'enabled',

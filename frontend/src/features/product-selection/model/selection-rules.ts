@@ -16,32 +16,27 @@ const optionalRank = z
   .int('排名须为整数')
   .min(1, '排名从 1 开始')
   .nullable()
-export const strategySchema = z
-  .object({
-    name: z.string(),
-    shopId: z.string().min(1).nullable().refine(Boolean, '请选择请求店铺'),
-    creatorId: z.string().min(1).nullable().refine(Boolean, '请选择达人账号'),
-    channel: z.enum(['short-video', 'baiying']),
-    categoryId: z.string().nullable(),
-    period: z.enum(['realtime', '1d', '7d', '30d']),
-    brand: z.enum(['all', 'known', 'unknown']),
-    priceMode: z.enum(['all', 'custom']),
-    priceAbove: optionalPrice,
-    priceBelow: optionalPrice,
-    firstListedOnly: z.boolean(),
-    rankFrom: optionalRank,
-    rankTo: optionalRank,
-    scheduled: z.boolean(),
-    scheduleKind: z.enum(['hourly', 'daily']),
-    dailyTime: z.string(),
-    enabled: z.boolean(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.channel === 'short-video' && value.priceMode === 'custom') {
+const shortVideoSchema = z.object({
+  categoryId: z.string().nullable(),
+  period: z.enum(['realtime', '1d', '7d', '30d']),
+  brand: z.enum(['all', 'known', 'unknown']),
+  priceMode: z.enum(['all', 'custom']),
+  priceAbove: optionalPrice,
+  priceBelow: optionalPrice,
+  firstListedOnly: z.boolean(),
+  rankFrom: optionalRank,
+  rankTo: optionalRank,
+})
+const shortVideoChannelSchema = z
+  .object({ selected: z.boolean(), conditions: shortVideoSchema })
+  .superRefine((channel, ctx) => {
+    if (!channel.selected) return
+    const value = channel.conditions
+    if (value.priceMode === 'custom') {
       if (value.priceAbove === null && value.priceBelow === null)
         ctx.addIssue({
           code: 'custom',
-          path: ['priceAbove'],
+          path: ['conditions', 'priceAbove'],
           message: '请填写至少一个价格边界',
         })
       if (
@@ -51,7 +46,7 @@ export const strategySchema = z
       )
         ctx.addIssue({
           code: 'custom',
-          path: ['priceBelow'],
+          path: ['conditions', 'priceBelow'],
           message: '价格小于须大于价格大于',
         })
     }
@@ -62,8 +57,34 @@ export const strategySchema = z
     )
       ctx.addIssue({
         code: 'custom',
-        path: ['rankTo'],
+        path: ['conditions', 'rankTo'],
         message: '结束排名不能小于起始排名',
+      })
+  })
+
+export const strategySchema = z
+  .object({
+    name: z.string(),
+    shopId: z.string().min(1).nullable().refine(Boolean, '请选择请求店铺'),
+    creatorId: z.string().min(1).nullable().refine(Boolean, '请选择达人账号'),
+    channels: z.object({
+      shortVideo: shortVideoChannelSchema,
+      baiying: z.object({
+        selected: z.boolean(),
+        conditions: z.object({}).strict(),
+      }),
+    }),
+    scheduled: z.boolean(),
+    scheduleKind: z.enum(['hourly', 'daily']),
+    dailyTime: z.string(),
+    enabled: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.channels.shortVideo.selected && !value.channels.baiying.selected)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channels'],
+        message: '请选择至少一个渠道',
       })
     if (
       value.scheduled &&
@@ -85,7 +106,7 @@ export function validateStrategy(
   const result = strategySchema.safeParse(input)
   if (!result.success)
     result.error.issues.forEach((issue) => {
-      errors[String(issue.path[0])] = issue.message
+      errors[issue.path.join('.')] = issue.message
     })
   if (saving && !input.name.trim()) errors.name = '请输入策略名称'
   return errors
@@ -134,7 +155,8 @@ export function compareCandidates(
 }
 
 export function conditionSummary(value: StrategyInput): string {
-  if (value.channel === 'baiying') return '—'
+  if (!value.channels.shortVideo.selected) return '—'
+  const conditions = value.channels.shortVideo.conditions
   const periods = {
     realtime: '实时',
     '1d': '近1天',
@@ -143,15 +165,15 @@ export function conditionSummary(value: StrategyInput): string {
   }
   const brands = { all: '不限品牌', known: '知名品牌', unknown: '非知名品牌' }
   return [
-    periods[value.period],
-    brands[value.brand],
-    value.categoryId ? '已选类目' : '全部类目',
-    value.priceMode === 'custom'
-      ? `${value.priceAbove === null ? '' : `价格>${value.priceAbove}`} ${value.priceBelow === null ? '' : `价格<${value.priceBelow}`}`.trim()
+    periods[conditions.period],
+    brands[conditions.brand],
+    conditions.categoryId ? '已选类目' : '全部类目',
+    conditions.priceMode === 'custom'
+      ? `${conditions.priceAbove === null ? '' : `价格>${conditions.priceAbove}`} ${conditions.priceBelow === null ? '' : `价格<${conditions.priceBelow}`}`.trim()
       : '不限价格',
-    value.firstListedOnly ? '首次上榜' : null,
-    value.rankFrom !== null || value.rankTo !== null
-      ? `排名 ${value.rankFrom ?? '—'}–${value.rankTo ?? '—'}`
+    conditions.firstListedOnly ? '首次上榜' : null,
+    conditions.rankFrom !== null || conditions.rankTo !== null
+      ? `排名 ${conditions.rankFrom ?? '—'}–${conditions.rankTo ?? '—'}`
       : null,
   ]
     .filter(Boolean)

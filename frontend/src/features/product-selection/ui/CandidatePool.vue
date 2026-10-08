@@ -5,6 +5,8 @@ import {
   type DataTableColumns,
   type DataTableRowKey,
   type DataTableSortState,
+  NText,
+  NEllipsis,
   useMessage,
 } from 'naive-ui'
 import dayjs from 'dayjs'
@@ -30,7 +32,7 @@ const props = defineProps<{ service: SelectionService; contextKey: string }>()
 const message = useMessage()
 const filters = ref<CandidateQuery>({
   page: 1,
-  pageSize: 20,
+  pageSize: 10,
   shopId: null,
   keyword: '',
   blocked: false,
@@ -117,38 +119,59 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
   }
   checked.value = []
 }
+async function copyProductId(id: string) {
+  try {
+    await navigator.clipboard.writeText(id)
+    message.success('商品ID已复制')
+  } catch {
+    message.error('商品ID复制失败')
+  }
+}
+const missing = () => h(NText, { depth: 3 }, () => '—')
 const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   { type: 'selection', width: 44, fixed: 'left', align: 'center' },
   {
-    key: 'shopName',
-    title: '店铺名',
-    width: 140,
-    fixed: 'left',
-    align: 'center',
-    ellipsis: { tooltip: true },
-  },
-  {
     key: 'image',
     title: '图片',
-    width: 64,
+    width: 104,
     fixed: 'left',
     align: 'center',
     render: (row) =>
       h(ExternalProductImage, { src: row.imageUrl, title: row.title }),
   },
   {
-    key: 'title',
-    title: '标题',
-    width: 220,
+    key: 'shopName',
+    title: '店铺名',
+    width: 140,
     align: 'center',
     ellipsis: { tooltip: true },
   },
   {
+    key: 'title',
+    title: '标题',
+    width: 320,
+    align: 'center',
+    render: (row) =>
+      h(NEllipsis, { lineClamp: 3, tooltip: true }, () => row.title),
+  },
+  {
     key: 'productId',
     title: '商品ID',
-    width: 220,
+    width: 160,
     align: 'center',
-    ellipsis: { tooltip: true },
+    render: (row) =>
+      h('div', { class: 'selection-product-id' }, [
+        h(NEllipsis, { tooltip: true }, () => row.productId),
+        h(
+          AppButton,
+          {
+            tone: 'text',
+            'aria-label': `复制商品ID ${row.productId}`,
+            onClick: () => copyProductId(row.productId),
+          },
+          () => '复制',
+        ),
+      ]),
   },
   {
     key: 'category',
@@ -162,7 +185,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     title: '价格带',
     width: 100,
     align: 'center',
-    render: (row) => row.priceBand ?? '—',
+    render: (row) => row.priceBand ?? missing(),
   },
   {
     key: 'listedAt',
@@ -173,7 +196,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     sortOrder:
       filters.value.sortField === 'listedAt' ? filters.value.sortOrder : false,
     render: (row) =>
-      row.listedAt ? dayjs(row.listedAt).format('YYYY-MM-DD') : '—',
+      row.listedAt ? dayjs(row.listedAt).format('YYYY-MM-DD') : missing(),
   },
   {
     key: 'negativeReviewRate',
@@ -187,7 +210,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         : false,
     render: (row) =>
       row.negativeReviewRate === null
-        ? '—'
+        ? missing()
         : `${(row.negativeReviewRate * 100).toFixed(2)}%`,
   },
   {
@@ -272,7 +295,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1478"
+        :scroll-x="1458"
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
@@ -297,3 +320,12 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     />
   </div>
 </template>
+
+<style scoped>
+:deep(.selection-product-id) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+</style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { NDescriptions, NDescriptionsItem } from 'naive-ui'
+import { NDescriptions, NDescriptionsItem, NText } from 'naive-ui'
 import { DetailDrawer, ErrorState, LoadingState } from '@/shared/components'
 import type { SelectionService } from '../model/contracts'
 
@@ -51,34 +51,58 @@ const query = useQuery({
       <NDescriptionsItem label="统计周期">{{
         query.data.value.statisticalPeriod
       }}</NDescriptionsItem>
-      <NDescriptionsItem label="榜单排名">{{
-        query.data.value.rank ?? '—'
-      }}</NDescriptionsItem>
-      <NDescriptionsItem label="首次上榜">{{
-        query.data.value.firstListed === null
-          ? '—'
-          : query.data.value.firstListed
-            ? '是'
-            : '否'
-      }}</NDescriptionsItem>
-      <NDescriptionsItem label="短视频用户支付金额"
-        >{{ query.data.value.userPaidAmountRange ?? '—'
-        }}{{
-          query.data.value.userPaidAmountRange &&
-          !query.data.value.userPaidAmountUnit
-            ? '（单位未确认）'
-            : query.data.value.userPaidAmountUnit
-        }}</NDescriptionsItem
+      <NDescriptionsItem label="榜单排名"
+        ><NText :depth="query.data.value.rank === null ? 3 : undefined">{{
+          query.data.value.rank ?? '—'
+        }}</NText></NDescriptionsItem
       >
-      <NDescriptionsItem label="点击次数">{{
-        query.data.value.clicksRange ?? '—'
-      }}</NDescriptionsItem>
-      <NDescriptionsItem label="成交件数">{{
-        query.data.value.soldUnitsRange ?? '—'
-      }}</NDescriptionsItem>
-      <NDescriptionsItem label="带货视频数">{{
-        query.data.value.videoCountRange ?? '—'
-      }}</NDescriptionsItem>
+      <NDescriptionsItem label="首次上榜"
+        ><NText
+          :depth="query.data.value.firstListed === null ? 3 : undefined"
+          >{{
+            query.data.value.firstListed === null
+              ? '—'
+              : query.data.value.firstListed
+                ? '是'
+                : '否'
+          }}</NText
+        ></NDescriptionsItem
+      >
+      <NDescriptionsItem label="短视频用户支付金额"
+        ><NText
+          :depth="query.data.value.userPaidAmountRange === null ? 3 : undefined"
+          >{{ query.data.value.userPaidAmountRange ?? '—' }}</NText
+        >
+        <NText
+          v-if="
+            query.data.value.userPaidAmountRange &&
+            !query.data.value.userPaidAmountUnit
+          "
+          :depth="3"
+          >（单位未确认）</NText
+        >
+        <template v-else>{{
+          query.data.value.userPaidAmountUnit
+        }}</template></NDescriptionsItem
+      >
+      <NDescriptionsItem label="点击次数"
+        ><NText
+          :depth="query.data.value.clicksRange === null ? 3 : undefined"
+          >{{ query.data.value.clicksRange ?? '—' }}</NText
+        ></NDescriptionsItem
+      >
+      <NDescriptionsItem label="成交件数"
+        ><NText
+          :depth="query.data.value.soldUnitsRange === null ? 3 : undefined"
+          >{{ query.data.value.soldUnitsRange ?? '—' }}</NText
+        ></NDescriptionsItem
+      >
+      <NDescriptionsItem label="带货视频数"
+        ><NText
+          :depth="query.data.value.videoCountRange === null ? 3 : undefined"
+          >{{ query.data.value.videoCountRange ?? '—' }}</NText
+        ></NDescriptionsItem
+      >
     </NDescriptions>
   </DetailDrawer>
 </template>

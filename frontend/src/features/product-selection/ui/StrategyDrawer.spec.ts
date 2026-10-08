@@ -4,7 +4,12 @@ import { defineComponent, h } from 'vue'
 import { NMessageProvider } from 'naive-ui'
 import { describe, expect, it, vi } from 'vitest'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
-import type { CategoryNode, SelectionService } from '../model/contracts'
+import type {
+  CategoryNode,
+  SelectionService,
+  SelectionStrategy,
+} from '../model/contracts'
+import { AppCheckbox } from '@/shared/ui'
 import CategorySelector from './CategorySelector.vue'
 import StrategyDrawer from './StrategyDrawer.vue'
 
@@ -14,7 +19,10 @@ const ShopStub = defineComponent({
   emits: ['update:modelValue'],
   template: '<div />',
 })
-function render(service: SelectionService) {
+function render(
+  service: SelectionService,
+  strategy: SelectionStrategy | null = null,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
@@ -27,7 +35,7 @@ function render(service: SelectionService) {
           default: () =>
             h(StrategyDrawer, {
               show: true,
-              strategy: null,
+              strategy,
               service,
               contextKey: 'actor:team',
             }),
@@ -47,6 +55,47 @@ function render(service: SelectionService) {
 }
 
 describe('strategy shop category loading', () => {
+  it('collapsing channels preserves values; saving detaches draft and includes both channels with only one schedule', async () => {
+    const service = createSelectionMockHandlers()
+    const initial = (await service.strategies())[0]!
+    initial.channels.shortVideo.conditions.priceMode = 'custom'
+    initial.channels.shortVideo.conditions.priceAbove = 0
+    initial.channels.shortVideo.conditions.priceBelow = 50
+    initial.scheduled = true
+    initial.scheduleKind = 'daily'
+    initial.dailyTime = '10:00'
+    const save = vi.spyOn(service, 'saveStrategy')
+    const { wrapper, queryClient } = render(service, initial)
+    await flushPromises()
+    wrapper
+      .findComponent(CategorySelector)
+      .vm.$emit('update:modelValue', 'shop-fixture-001/clothing/*')
+    const header = wrapper.findAll('.n-collapse-item__header-main')[0]!
+    await header.trigger('click')
+    wrapper
+      .findAllComponents(AppCheckbox)[1]!
+      .vm.$emit('update:modelValue', true)
+    await flushPromises()
+    await header.trigger('click')
+    expect(wrapper.findComponent(CategorySelector).props('modelValue')).toBe(
+      'shop-fixture-001/clothing/*',
+    )
+    expect(initial.channels.shortVideo.conditions.categoryId).toBeNull()
+    expect(initial.channels.baiying.selected).toBe(false)
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '保存策略')!
+      .trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledOnce()
+    const draft = save.mock.calls[0]![0]
+    expect(draft.channels.shortVideo.conditions.priceAbove).toBe(0)
+    expect(draft.channels.baiying).toEqual({ selected: true, conditions: {} })
+    expect(draft.dailyTime).toBe('10:00')
+    expect(draft.scheduleKind).toBe('daily')
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('clears old category and ignores an older shop response arriving last', async () => {
     let finishOld!: (nodes: CategoryNode[]) => void
     const service = createSelectionMockHandlers()

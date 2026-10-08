@@ -8,11 +8,7 @@ export interface CategoryNode {
   name: string
   children?: CategoryNode[]
 }
-export interface StrategyInput {
-  name: string
-  shopId: string | null
-  creatorId: string | null
-  channel: SelectionChannel
+export interface ShortVideoConditions {
   categoryId: string | null
   period: SelectionPeriod
   brand: 'all' | 'known' | 'unknown'
@@ -22,6 +18,15 @@ export interface StrategyInput {
   firstListedOnly: boolean
   rankFrom: number | null
   rankTo: number | null
+}
+export interface StrategyInput {
+  name: string
+  shopId: string | null
+  creatorId: string | null
+  channels: {
+    shortVideo: { selected: boolean; conditions: ShortVideoConditions }
+    baiying: { selected: boolean; conditions: Record<string, never> }
+  }
   scheduled: boolean
   scheduleKind: 'hourly' | 'daily'
   dailyTime: string
@@ -68,6 +73,11 @@ export interface DemoReceipt {
   mode: 'mock'
   message: string
   count: number
+  channels?: {
+    channel: SelectionChannel
+    state: 'demo' | 'unavailable'
+    count: number | null
+  }[]
 }
 export interface SelectionService {
   readonly available: boolean
@@ -95,16 +105,23 @@ export function emptyStrategy(): StrategyInput {
     name: '',
     shopId: null,
     creatorId: null,
-    channel: 'short-video',
-    categoryId: null,
-    period: 'realtime',
-    brand: 'all',
-    priceMode: 'all',
-    priceAbove: null,
-    priceBelow: null,
-    firstListedOnly: false,
-    rankFrom: null,
-    rankTo: null,
+    channels: {
+      shortVideo: {
+        selected: true,
+        conditions: {
+          categoryId: null,
+          period: 'realtime',
+          brand: 'all',
+          priceMode: 'all',
+          priceAbove: null,
+          priceBelow: null,
+          firstListedOnly: false,
+          rankFrom: null,
+          rankTo: null,
+        },
+      },
+      baiying: { selected: false, conditions: {} },
+    },
     scheduled: false,
     scheduleKind: 'hourly',
     dailyTime: '09:00',
