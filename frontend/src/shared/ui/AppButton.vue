@@ -15,6 +15,7 @@ const linkTheme = {
 withDefaults(
   defineProps<{
     tone?: AppButtonTone
+    size?: 'small' | 'medium'
     loading?: boolean
     disabled?: boolean
     block?: boolean
@@ -22,6 +23,7 @@ withDefaults(
   }>(),
   {
     tone: 'secondary',
+    size: 'medium',
     loading: false,
     disabled: false,
     block: false,
@@ -36,7 +38,7 @@ defineEmits<{
 
 <template>
   <NButton
-    size="medium"
+    :size="size"
     :type="
       tone === 'primary' || tone === 'link'
         ? 'primary'

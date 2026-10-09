@@ -139,8 +139,8 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
       !row.scheduled
         ? '手动'
         : row.scheduleKind === 'hourly'
-          ? '每小时（演示）'
-          : `每日 ${row.dailyTime}（演示）`,
+          ? '每小时'
+          : `每日 ${row.dailyTime}`,
   },
   {
     key: 'latestResult',

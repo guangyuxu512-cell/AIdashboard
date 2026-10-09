@@ -10,7 +10,7 @@ import CandidatePool from './CandidatePool.vue'
 
 const TableStub = defineComponent({
   name: 'DataTable',
-  props: ['data', 'checkedRowKeys', 'columns'],
+  props: ['data', 'checkedRowKeys', 'columns', 'themeOverrides'],
   emits: ['update:checkedRowKeys'],
   template: '<div />',
 })
@@ -54,7 +54,7 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
-  it('keeps independent centered fields, source contexts and explicit button hierarchy', async () => {
+  it('aligns title, merchant and category left while keeping the remaining fields centered and source context available', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),
     )
@@ -78,13 +78,22 @@ describe('candidate selection and batch demo', () => {
       'collectionStatus',
       'actions',
     ])
-    expect(
-      columns.every((column: { align: string }) => column.align === 'center'),
-    ).toBe(true)
+    for (const column of columns) {
+      expect(column.align).toBe(
+        ['title', 'merchant', 'category'].includes(column.key)
+          ? 'left'
+          : 'center',
+      )
+    }
     expect(columns.at(-1).fixed).toBe('right')
+    expect(columns.at(-1).width).toBe(220)
+    expect(table.props('themeOverrides')).toEqual({
+      tdPaddingMedium: 'var(--space-3)',
+    })
     expect(button().props('tone')).toBe('primary')
-    expect(wrapper.text()).toContain('监控范围：1～200 名')
-    expect(wrapper.text()).toContain('检查时间：2026-10-08 12:00')
+    expect(wrapper.text()).toContain('短视频商品榜 · 近7天 · 第1–200名')
+    expect(wrapper.text()).toContain('查看范围')
+    expect(wrapper.text()).not.toContain('2026-10-08 12:00')
     dispose()
   })
   it('guards empty/duplicate submissions, unchecks success and retains failed selections with per-item feedback', async () => {

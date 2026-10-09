@@ -85,24 +85,25 @@ export function createSelectionMockHandlers(
         negativeReviewRate:
           index % 8 === 0 ? null : index % 5 === 0 ? 0 : (index % 10) / 100,
         blocked: false,
-        source: '短视频榜单（演示）',
+        source: '短视频榜单',
         sourceContext: {
           leaderboardId: 'short-video-demo',
-          leaderboardName: '短视频商品榜单',
+          leaderboardName: '短视频商品榜',
           scopeKey: 'all-categories:7d:user-paid-amount',
           category: '全部类目',
-          statisticalPeriod: '近7天（Mock 示例 2026-10-01–2026-10-07）',
+          statisticalPeriod: '近7天 · 2026-10-01–2026-10-07',
+          periodLabel: '近7天',
           rankFrom: 1,
           rankTo: 200,
           checkedAt: '2026-10-08T12:00:00+08:00',
         },
-        statisticalPeriod: '近7天（Mock 示例 2026-10-01–2026-10-07）',
+        statisticalPeriod: '近7天 · 2026-10-01–2026-10-07',
         rank: index % 4 === 3 ? 201 + index : index + 1,
         previousRank:
           index % 4 === 0
             ? null
             : {
-                rank: index + 3,
+                rank: index === 2 ? 1 : index === 6 ? index + 1 : index + 3,
                 leaderboardId: 'short-video-demo',
                 scopeKey:
                   index % 4 === 3

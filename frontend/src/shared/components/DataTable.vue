@@ -23,6 +23,7 @@ const props = withDefaults(
     checkedRowKeys?: DataTableRowKey[]
     viewport?: 'auto' | 'stable' | 'fill'
     appearance?: 'grid' | 'list'
+    themeOverrides?: DataTableProps['themeOverrides']
   }>(),
   {
     data: () => [],
@@ -34,6 +35,7 @@ const props = withDefaults(
     checkedRowKeys: () => [],
     viewport: 'auto',
     appearance: 'grid',
+    themeOverrides: undefined,
   },
 )
 
@@ -69,6 +71,7 @@ defineEmits<{
       :scroll-x="scrollX"
       :checked-row-keys="checkedRowKeys"
       :appearance="appearance"
+      :theme-overrides="themeOverrides"
       :fill="viewport === 'fill'"
       @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
       @update:sorter="$emit('update:sorter', $event)"

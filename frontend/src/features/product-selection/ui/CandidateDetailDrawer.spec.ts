@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, ref } from 'vue'
-import { NMessageProvider } from 'naive-ui'
+import { NDescriptions, NMessageProvider } from 'naive-ui'
 import { AppButton } from '@/shared/ui'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import {
@@ -48,6 +48,22 @@ describe('candidate details preserve the draft contract', () => {
     })
     await flushPromises()
     const row = await service.candidate('candidate-000')
+    expect(
+      wrapper
+        .findAll('section')
+        .map((section) => section.attributes('aria-label')),
+    ).toEqual([
+      '罗盘视频榜单数据',
+      '排名与发现信息',
+      '商品基础信息',
+      '请求来源信息',
+    ])
+    const metrics = wrapper.get('section[aria-label="罗盘视频榜单数据"]')
+    expect(metrics.findComponent(NDescriptions).props('column')).toBe(2)
+    expect(metrics.text()).toContain(row.sourceContext.statisticalPeriod)
+    expect(
+      metrics.findAll('.candidate-detail__metric').map((item) => item.text()),
+    ).toEqual(['—', '1000–5000', '100–500', '10–50'])
     expect(wrapper.findComponent(ExternalProductImage).props('src')).toBe(
       row.imageUrl,
     )

@@ -28,9 +28,10 @@ async function settleTransitions(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
 })
-test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagination, preview and block/restore', async ({
+test('candidate pool: four themes, column alignment, IDs, full sort/pagination, preview and block/restore', async ({
   page,
 }, info) => {
+  test.setTimeout(90000)
   const apiRequests: string[] = []
   page.on('request', (request) => {
     if (new URL(request.url()).pathname.startsWith('/api/'))
@@ -61,7 +62,8 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
     path: info.outputPath('long-title-tooltip.png'),
     animations: 'disabled',
   })
-  await page.getByRole('columnheader', { name: '缩略图', exact: true }).hover()
+  await page.mouse.move(10, 10)
+  await expect(page.locator('.n-popover')).toBeHidden()
   const body = page.locator('.n-data-table-base-table-body')
   await body.evaluate((element) => {
     element.scrollTop = element.scrollHeight
@@ -91,21 +93,35 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
         getComputedStyle(image).height,
         getComputedStyle(image).objectFit,
       ]),
-  ).toEqual(['80px', '80px', 'contain'])
+  ).toEqual(['56px', '56px', 'contain'])
   for (const [id, label] of themes) {
     await page.getByRole('button', { name: '切换主题' }).click()
     await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme-preset', id)
     await expect(page.locator('.n-dropdown')).toBeHidden()
-    expect(
-      await page
-        .locator('.n-data-table-th, .n-data-table-td')
+    for (const row of await page
+      .locator('.n-data-table-thead tr, .n-data-table-tbody tr')
+      .all()) {
+      const alignments = await row
+        .locator('th, td')
         .evaluateAll((elements) =>
-          elements.every(
-            (element) => getComputedStyle(element).textAlign === 'center',
-          ),
-        ),
-    ).toBe(true)
+          elements.map((element) => getComputedStyle(element).textAlign),
+        )
+      expect(alignments).toEqual([
+        'center',
+        'center',
+        'left',
+        'left',
+        'left',
+        'center',
+        'center',
+        'center',
+        'center',
+        'center',
+        'center',
+        'center',
+      ])
+    }
     const before = await page
       .getByRole('columnheader', { name: '缩略图', exact: true })
       .boundingBox()
@@ -134,7 +150,7 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
     })
     const colors = await rows.first().evaluate((row) => {
       const plain = row.querySelector('td:nth-child(3)')!
-      const missing = row.querySelector('.n-text')!
+      const missing = row.querySelector('td:nth-child(9) .n-text')!
       return {
         body: getComputedStyle(plain).color,
         missing: getComputedStyle(missing).color,
@@ -216,11 +232,7 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
       exact: true,
     }),
   ).toBeVisible()
-  await rows
-    .first()
-    .getByRole('button', { name: /^更多操作 / })
-    .click()
-  await page.locator('.n-dropdown').getByText('屏蔽', { exact: true }).click()
+  await rows.first().getByRole('button', { name: '屏蔽', exact: true }).click()
   await expect(rows).toHaveCount(0)
   await page.getByText('未屏蔽', { exact: true }).click()
   await page
@@ -228,11 +240,7 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
     .getByText('已屏蔽', { exact: true })
     .click()
   await expect(rows).toHaveCount(1)
-  await rows
-    .first()
-    .getByRole('button', { name: /^更多操作 / })
-    .click()
-  await page.locator('.n-dropdown').getByText('恢复', { exact: true }).click()
+  await rows.first().getByRole('button', { name: '恢复', exact: true }).click()
   await expect(rows).toHaveCount(0)
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(rows).toHaveCount(10)
@@ -473,7 +481,7 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
   const row = page
     .locator('.n-data-table-tbody .n-data-table-tr')
     .filter({ hasText: '前端验证策略长名称 A' })
-  await expect(row).toContainText('每小时（演示）')
+  await expect(row).toContainText('每小时')
   await row.getByRole('button', { name: '立即获取', exact: true }).click()
   await expect(row).toContainText('演示获取 4 项')
   await page
@@ -501,7 +509,7 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
   await field('每日时间').getByRole('textbox').press('Enter')
   await field('策略状态').click()
   await drawer.getByRole('button', { name: '保存策略', exact: true }).click()
-  await expect(row).toContainText('每日 10:00（演示）')
+  await expect(row).toContainText('每日 10:00')
   await row.getByRole('button', { name: '编辑', exact: true }).click()
   await expect(field('每日时间').getByRole('textbox')).toHaveValue('10:00')
   await expect(page.locator('.n-message')).toHaveCount(0)
@@ -728,7 +736,10 @@ test('date shortcuts: four exclusive relative periods, Mock ranges, reread, canc
     await expect(date.getByRole('radio')).toHaveCount(4)
     await date.getByText(label, { exact: true }).click()
     await expect(date.locator('input[type="radio"]:checked')).toHaveCount(1)
-    await expect(date).toContainText(`Mock 示例区间：${range}`)
+    await expect(date).not.toContainText('Mock 示例区间')
+    await date.locator('.n-radio-group').hover()
+    await expect(page.locator('.n-popover')).toContainText(range)
+    await page.mouse.move(10, 10)
     await settleTransitions(page)
     await page.screenshot({
       path: info.outputPath(`period-${label}.png`),
@@ -740,7 +751,9 @@ test('date shortcuts: four exclusive relative periods, Mock ranges, reread, canc
     await expect(
       date.getByRole('radio', { name: label, exact: true }),
     ).toBeChecked()
-    await expect(date).toContainText(range)
+    await date.locator('.n-radio-group').hover()
+    await expect(page.locator('.n-popover')).toContainText(range)
+    await page.mouse.move(10, 10)
     await header().click()
     await expect(date).toBeHidden()
     await header().click()
@@ -782,8 +795,7 @@ test('date shortcuts: four exclusive relative periods, Mock ranges, reread, canc
       true,
     )
     expect(bounds[3]!.x + bounds[3]!.width).toBeLessThanOrEqual(brand!.x)
-    const preview = await date.locator('.n-text').boundingBox()
-    expect(preview!.y).toBeGreaterThanOrEqual(bounds[0]!.y + bounds[0]!.height)
+    await expect(date.locator('.n-text')).toHaveCount(0)
     await drawer.getByRole('checkbox', { name: '选择短视频榜单' }).uncheck()
     await expect(date.locator('input[type="radio"]:disabled')).toHaveCount(4)
     await date
@@ -869,10 +881,11 @@ test('exception-only: external image failure, no authentication headers and expl
   await expect(detailRetry).toHaveCount(0)
 })
 
-test('candidate structure, merchant identity and themed action hierarchy: four actual rendered themes', async ({
+test('compact candidate scope, actions and first-screen metrics: four actual rendered themes at two viewports', async ({
   page,
 }, info) => {
-  test.setTimeout(120000)
+  test.setTimeout(150000)
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/product-selection')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
@@ -895,106 +908,233 @@ test('candidate structure, merchant identity and themed action hierarchy: four a
     '采集状态',
     '操作',
   ])
-  await expect(rows.nth(1)).toContainText('上升 2')
-  await expect(rows.nth(3)).toContainText('离开监控范围')
-  await expect(rows.nth(3)).not.toContainText('上升')
-  await expect(rows.nth(4)).toContainText('新进入监控范围')
-  await expect(page.getByText(/榜单：短视频商品榜单/)).toContainText(
-    '监控范围：1～200 名',
+  await expect(rows.nth(1)).toContainText('↑ 2')
+  await expect(rows.nth(2)).toContainText('↓ 2')
+  await expect(rows.nth(6)).toContainText('持平')
+  await expect(rows.nth(3)).toContainText('已离开')
+  await expect(rows.nth(3)).not.toContainText('↑')
+  await expect(rows.nth(4)).toContainText('新进入')
+  await expect(page.getByText('演示数据', { exact: true })).toHaveCount(1)
+  await expect(page.locator('.candidate-scope-summary')).toContainText(
+    '短视频商品榜 · 近7天 · 第1–200名',
   )
+  await expect(page.locator('.candidate-scope-summary')).not.toContainText(
+    '2026-10-01',
+  )
+  await page.getByRole('button', { name: '查看范围', exact: true }).click()
+  await expect(page.locator('.n-popover')).toContainText(
+    '近7天 · 2026-10-01–2026-10-07',
+  )
+  await expect(page.locator('.n-popover')).toContainText('全部类目')
+  await expect(page.locator('.n-popover')).toContainText('2026-10-08 12:00')
+  await page.getByText('演示数据', { exact: true }).click()
+  await expect(page.locator('.n-popover')).toBeHidden()
   const colorEvidence = []
-  for (const [id, label] of themes) {
-    await page.getByRole('button', { name: '切换主题' }).click()
-    await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
-    await expect(page.locator('html')).toHaveAttribute('data-theme-preset', id)
-    await expect(page.locator('.n-dropdown')).toBeHidden()
-    await expect(batch).toBeDisabled()
-    const disabledColors = await batch.evaluate((element) => ({
-      text: getComputedStyle(element).color,
-      background: getComputedStyle(element).backgroundColor,
-    }))
-    expect(disabledColors.text).not.toBe(disabledColors.background)
-    await rows.first().getByRole('checkbox').check()
-    await expect(batch).toBeEnabled()
-    await settleTransitions(page)
-    const primaryColors = await batch.evaluate((element) => ({
-      text: getComputedStyle(element).color,
-      background: getComputedStyle(element).backgroundColor,
-    }))
-    expect(primaryColors.background).not.toBe(disabledColors.background)
-    const secondaryColors = await refresh.evaluate((element) => ({
-      text: getComputedStyle(element).color,
-      background: getComputedStyle(element).backgroundColor,
-      border: getComputedStyle(element.querySelector('.n-button__border')!)
-        .borderColor,
-    }))
-    const linkColor = await rows
-      .first()
-      .getByRole('button', { name: '详情', exact: true })
-      .evaluate((element) => getComputedStyle(element).color)
-    const tokenColor = await page.evaluate(() => {
-      const probe = document.createElement('span')
-      probe.style.color = 'var(--text-link)'
-      document.body.append(probe)
-      const color = getComputedStyle(probe).color
-      probe.remove()
-      return color
-    })
-    expect(linkColor).toBe(tokenColor)
-    expect(secondaryColors.background).not.toBe(primaryColors.background)
-    colorEvidence.push({
-      theme: id,
-      disabledColors,
-      primaryColors,
-      secondaryColors,
-      linkColor,
-    })
-    await settleTransitions(page)
-    await page.screenshot({
-      path: info.outputPath(`${id}-candidate-final.png`),
-      animations: 'disabled',
-    })
-    await rows.first().getByRole('checkbox').uncheck()
-    await rows
-      .first()
-      .getByRole('button', { name: '详情', exact: true })
-      .click()
-    await expect(detail).toContainText('商品所属商家')
-    await expect(detail).toContainText('轻盈美妆示例店')
-    await expect(detail).toContainText('请求罗盘使用的自有店铺')
-    await expect(detail).toContainText('星河服饰旗舰店')
-    await expect(
-      detail.getByRole('button', { name: '查看源商品', exact: true }),
-    ).toHaveCount(0)
-    for (const label of [
-      '短视频用户支付金额',
-      '短视频点击次数',
-      '短视频成交件数',
-      '带货视频数',
-    ])
-      await expect(detail).toContainText(label)
-    await expect(detail).not.toContainText('近30天销量')
-    await expect(
-      detail.getByRole('button', { name: '采集资料', exact: true }),
-    ).toBeInViewport()
-    await expect(
-      detail.getByRole('button', { name: '更新罗盘指标', exact: true }),
-    ).toBeInViewport()
-    await settleTransitions(page)
-    await page.screenshot({
-      path: info.outputPath(`${id}-detail-final.png`),
-      animations: 'disabled',
-    })
-    await detail
-      .locator('.n-drawer-body-content-wrapper')
-      .evaluate((element) => {
-        element.scrollTop = element.scrollHeight
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1366, height: 768 },
+  ]) {
+    await page.setViewportSize(viewport)
+    for (const [id, label] of themes) {
+      await page.getByRole('button', { name: '切换主题' }).click()
+      await page
+        .locator('.n-dropdown')
+        .getByText(label, { exact: true })
+        .click()
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-theme-preset',
+        id,
+      )
+      await expect(page.locator('.n-dropdown')).toBeHidden()
+      await expect(batch).toBeDisabled()
+      const disabledColors = await batch.evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }))
+      expect(disabledColors.text).not.toBe(disabledColors.background)
+      await rows.first().getByRole('checkbox').check()
+      await expect(batch).toBeEnabled()
+      await settleTransitions(page)
+      const primaryColors = await batch.evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }))
+      expect(primaryColors.background).not.toBe(disabledColors.background)
+      const secondaryColors = await refresh.evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+        border: getComputedStyle(element.querySelector('.n-button__border')!)
+          .borderColor,
+      }))
+      const linkColor = await rows
+        .first()
+        .getByRole('button', { name: '详情', exact: true })
+        .evaluate((element) => getComputedStyle(element).color)
+      const tokenColor = await page.evaluate(() => {
+        const probe = document.createElement('span')
+        probe.style.color = 'var(--text-link)'
+        document.body.append(probe)
+        const color = getComputedStyle(probe).color
+        probe.remove()
+        return color
       })
-    await page.screenshot({
-      path: info.outputPath(`${id}-detail-metrics-final.png`),
-      animations: 'disabled',
-    })
-    await detail.getByRole('button', { name: '关闭', exact: true }).click()
+      expect(linkColor).toBe(tokenColor)
+      expect(secondaryColors.background).not.toBe(primaryColors.background)
+      const rowDimensions = await rows.first().evaluate((row) => {
+        const cell = row.querySelector('td:nth-child(2)')!
+        const actions = row.querySelector('.selection-candidate-actions')!
+        const buttons = [...actions.querySelectorAll('button')]
+        return {
+          rowHeight: row.getBoundingClientRect().height,
+          paddingTop: getComputedStyle(cell).paddingTop,
+          paddingBottom: getComputedStyle(cell).paddingBottom,
+          actionGap: getComputedStyle(actions).columnGap,
+          actionWrap: getComputedStyle(actions).flexWrap,
+          buttonCenters: buttons.map((button) => {
+            const box = button.getBoundingClientRect()
+            return box.y + box.height / 2
+          }),
+          tablePadding: getComputedStyle(
+            row.closest('.n-data-table')!,
+          ).getPropertyValue('--n-td-padding'),
+          space: getComputedStyle(cell).getPropertyValue('--space-3'),
+          imageHeight: getComputedStyle(row.querySelector('.product-image')!)
+            .height,
+        }
+      })
+      await writeFile(
+        info.outputPath(`${id}-${viewport.width}-row-layout.json`),
+        JSON.stringify(rowDimensions, null, 2),
+      )
+      expect(rowDimensions.rowHeight).toBeGreaterThanOrEqual(80)
+      expect(rowDimensions.rowHeight).toBeLessThanOrEqual(83)
+      expect(rowDimensions.paddingTop).toBe('12px')
+      expect(rowDimensions.paddingBottom).toBe('12px')
+      expect(rowDimensions.actionGap).toBe('12px')
+      expect(rowDimensions.actionWrap).toBe('nowrap')
+      expect(new Set(rowDimensions.buttonCenters).size).toBe(1)
+      const semanticColors = await page.evaluate(() => {
+        const probe = document.createElement('span')
+        document.body.append(probe)
+        const result: Record<string, string> = {}
+        for (const name of ['success', 'error']) {
+          probe.style.color = `var(--color-${name})`
+          result[name] = getComputedStyle(probe).color
+        }
+        probe.remove()
+        return result
+      })
+      expect(
+        await rows
+          .nth(1)
+          .getByText('↑ 2', { exact: true })
+          .evaluate((element) => getComputedStyle(element).color),
+      ).toBe(semanticColors.success)
+      expect(
+        await rows
+          .nth(2)
+          .getByText('↓ 2', { exact: true })
+          .evaluate((element) => getComputedStyle(element).color),
+      ).toBe(semanticColors.error)
+      await expect(rows.first().locator('td').nth(4)).toHaveText('上衣')
+      colorEvidence.push({
+        theme: id,
+        viewport,
+        rowDimensions,
+        disabledColors,
+        primaryColors,
+        secondaryColors,
+        linkColor,
+      })
+      await settleTransitions(page)
+      await page.screenshot({
+        path: info.outputPath(`${id}-${viewport.width}-candidate-final.png`),
+        animations: 'disabled',
+      })
+      await rows.first().getByRole('checkbox').uncheck()
+      await page.mouse.move(10, 10)
+      await settleTransitions(page)
+      await page.screenshot({
+        path: info.outputPath(`${id}-${viewport.width}-candidate-plain.png`),
+        animations: 'disabled',
+      })
+      await rows
+        .first()
+        .getByRole('button', { name: '详情', exact: true })
+        .click()
+      await expect
+        .poll(() =>
+          detail
+            .locator('.n-image img')
+            .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+        )
+        .toBeGreaterThan(0)
+      await expect(detail).toContainText('商品所属商家')
+      await expect(detail).toContainText('轻盈美妆示例店')
+      await expect(detail).toContainText('请求罗盘使用的自有店铺')
+      await expect(detail).toContainText('星河服饰旗舰店')
+      await expect(
+        detail.getByRole('button', { name: '查看源商品', exact: true }),
+      ).toHaveCount(0)
+      for (const label of [
+        '短视频用户支付金额',
+        '短视频点击次数',
+        '短视频成交件数',
+        '带货视频数',
+      ])
+        await expect(detail.getByText(label, { exact: true })).toBeInViewport()
+      expect(
+        await detail
+          .locator('section')
+          .evaluateAll((sections) =>
+            sections.map((section) => section.getAttribute('aria-label')),
+          ),
+      ).toEqual([
+        '罗盘视频榜单数据',
+        '排名与发现信息',
+        '商品基础信息',
+        '请求来源信息',
+      ])
+      await expect(
+        detail.locator('section[aria-label="罗盘视频榜单数据"]'),
+      ).toContainText('近7天 · 2026-10-01–2026-10-07')
+      const metricBoxes = await detail
+        .locator('.candidate-detail__metric')
+        .evaluateAll((metrics) =>
+          metrics.map((metric) => ({
+            x: metric.getBoundingClientRect().x,
+            y: metric.getBoundingClientRect().y,
+          })),
+        )
+      expect(metricBoxes[0]!.y).toBe(metricBoxes[1]!.y)
+      expect(metricBoxes[2]!.y).toBe(metricBoxes[3]!.y)
+      expect(metricBoxes[0]!.x).toBe(metricBoxes[2]!.x)
+      expect(metricBoxes[1]!.x).toBeGreaterThan(metricBoxes[0]!.x)
+      await expect(detail).not.toContainText('近30天销量')
+      await expect(
+        detail.getByRole('button', { name: '采集资料', exact: true }),
+      ).toBeInViewport()
+      await expect(
+        detail.getByRole('button', { name: '更新罗盘指标', exact: true }),
+      ).toBeInViewport()
+      await settleTransitions(page)
+      await page.screenshot({
+        path: info.outputPath(`${id}-${viewport.width}-detail-final.png`),
+        animations: 'disabled',
+      })
+      await detail
+        .locator('.n-drawer-body-content-wrapper')
+        .evaluate((element) => {
+          element.scrollTop = element.scrollHeight
+        })
+      await page.screenshot({
+        path: info.outputPath(
+          `${id}-${viewport.width}-detail-source-final.png`,
+        ),
+        animations: 'disabled',
+      })
+      await detail.getByRole('button', { name: '关闭', exact: true }).click()
+    }
   }
   await writeFile(
     info.outputPath('action-colors-four-themes.json'),

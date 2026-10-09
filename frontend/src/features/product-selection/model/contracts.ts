@@ -50,6 +50,7 @@ export interface CandidateSourceContext {
   scopeKey: string
   category: string
   statisticalPeriod: string
+  periodLabel: string
   rankFrom: number | null
   rankTo: number | null
   checkedAt: string | null

@@ -25,6 +25,12 @@ typed service 为前端草案，Real 不请求猜测接口、不回退 Mock。�
 真实平台、真实调度或达人登录/Session 保存。Gate 1 后交“集成ca97”唯一 Integration Electron 验证 Mock
 与 Real 边界；Green 后交原发布会话，开发会话不发布。旧分支、提交与本机忽略材料保留。
 
+2026-10-09 用户授权按两个阶段接续本 Feature：先完成紧凑候选列表、详情首屏和说明精简的前端返修，
+仍为 UI_ONLY，无新增业务数据库/Migration；由 ca97 加载精确新候选进行集中页面复验。
+前端确认后才实施罗盘手动选品最小闭环（条件→榜单请求→候选持久化→basic_info补充→正式查询）。
+该阶段复用ShopSession/HTTP/Signer/商品模块授权与团队隔离；必要Feature DB与Migration Slot由ca97分配。
+不扩展百应、达人登录、每小时监控、手机任务或自动上架；开发会话不操作main/生产，Mock不能替代真实闭环证据。
+
 - Gate 1 由 Feature Owner 完成：自检、测试、文档/契约同步、提交，并以正式 Handoff 交给 Integrator。
 - Gate 2 只在 Integration Worktree 执行：读取候选提交、做集成验证、解决真实冲突并决定接受或拒绝。候选本身的业务 Bug、缺测试或契约缺口必须退回原 Feature Owner；Integrator 不代为开发业务修复。
 - Gate 2 通过后只允许 `git merge --no-ff feat/*` 合入 `dev`。集成后 `dev` 失败时，应拒绝候选或在共享历史上 `git revert`，禁止 `reset`、改写历史、未审查的 rebase/cherry-pick。

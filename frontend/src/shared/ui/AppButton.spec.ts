@@ -39,4 +39,18 @@ describe('AppButton', () => {
       expect(ordinary.props('quaternary')).toBe(tone === 'text')
     }
   })
+  it('opts into the existing small button size without changing its tone or default callers', () => {
+    const compact = mount(AppButton, {
+      props: { size: 'small', tone: 'secondary' },
+    }).findComponent({ name: 'Button' })
+    expect(compact.props()).toMatchObject({
+      size: 'small',
+      type: 'default',
+      text: false,
+      quaternary: false,
+    })
+    expect(
+      mount(AppButton).findComponent({ name: 'Button' }).props('size'),
+    ).toBe('medium')
+  })
 })

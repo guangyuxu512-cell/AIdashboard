@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { defineComponent, h } from 'vue'
-import { NMessageProvider } from 'naive-ui'
+import { NMessageProvider, NTooltip } from 'naive-ui'
 import { describe, expect, it, vi } from 'vitest'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import type {
@@ -60,6 +60,7 @@ describe('strategy shop category loading', () => {
     const initial = (await service.strategies())[0]!
     initial.channels.baiying.selected = true
     const save = vi.spyOn(service, 'saveStrategy')
+    const preview = vi.spyOn(service, 'previewPeriod')
     const { wrapper, queryClient } = render(service, initial)
     const radio = wrapper.findAllComponents(AppRadio)[0]!
     expect(radio.props('options').map((option) => option.value)).toEqual([
@@ -72,8 +73,10 @@ describe('strategy shop category loading', () => {
       radio.vm.$emit('update:modelValue', period)
       await flushPromises()
       expect(radio.props('modelValue')).toBe(period)
-      expect(wrapper.text()).toContain('Mock 示例区间：')
+      expect(wrapper.text()).not.toContain('Mock 示例区间')
+      expect(preview).toHaveBeenLastCalledWith(period)
     }
+    expect(wrapper.findComponent(NTooltip).exists()).toBe(true)
     const checkbox = wrapper.findAllComponents(AppCheckbox)[0]!
     checkbox.vm.$emit('update:modelValue', false)
     await flushPromises()

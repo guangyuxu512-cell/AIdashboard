@@ -52,6 +52,7 @@ test('Real keeps unavailable state without Mock fallback and retains route permi
     page.getByText('选品能力尚未接入', { exact: true }),
   ).toBeVisible()
   await expect(page.getByText('演示商品 1', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('演示数据', { exact: true })).toHaveCount(0)
   await page
     .getByRole('navigation', { name: '选品库切换' })
     .getByRole('button', { name: '选品策略', exact: true })

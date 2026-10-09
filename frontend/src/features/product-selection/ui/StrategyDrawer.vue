@@ -7,7 +7,7 @@ import {
   NFormItem,
   NGrid,
   NGi,
-  NText,
+  NTooltip,
   useMessage,
 } from 'naive-ui'
 import { useForm } from 'vee-validate'
@@ -274,22 +274,21 @@ async function submit(saving: boolean) {
                 <NGi :span="7">
                   <NFormItem label="日期">
                     <div class="strategy-field">
-                      <AppRadio
-                        :model-value="conditions.period"
-                        :options="periodOptions"
-                        :disabled="!values.channels.shortVideo.selected"
-                        aria-label="选品日期"
-                        @update:model-value="selectPeriod"
-                      />
-                      <NText
-                        v-if="periodPreview.data.value"
-                        tag="div"
-                        depth="3"
-                      >
-                        Mock 示例区间：{{ periodPreview.data.value.rangeLabel }}
-                      </NText>
+                      <NTooltip>
+                        <template #trigger
+                          ><AppRadio
+                            :model-value="conditions.period"
+                            :options="periodOptions"
+                            :disabled="!values.channels.shortVideo.selected"
+                            aria-label="选品日期"
+                            @update:model-value="selectPeriod"
+                        /></template>
+                        {{
+                          periodPreview.data.value?.rangeLabel ?? '区间暂不可用'
+                        }}
+                      </NTooltip>
                       <ErrorState
-                        v-else-if="periodPreview.isError.value"
+                        v-if="periodPreview.isError.value"
                         title="示例区间读取失败"
                         retryable
                         @retry="periodPreview.refetch()"

@@ -23,20 +23,41 @@ export function comparablePreviousRank(row: SelectionCandidate): number | null {
     : null
 }
 
-export function rankChangeLabel(row: SelectionCandidate): string | null {
+export function rankChange(row: SelectionCandidate): {
+  label: string
+  type?: 'success' | 'error'
+} | null {
   const previous = comparablePreviousRank(row)
   if (previous === null || row.rank === null) return null
   const change = previous - row.rank
   return change === 0
-    ? '持平'
-    : `${change > 0 ? '上升' : '下降'} ${Math.abs(change)}`
+    ? { label: '持平' }
+    : {
+        label: `${change > 0 ? '↑' : '↓'} ${Math.abs(change)}`,
+        type: change > 0 ? 'success' : 'error',
+      }
 }
 
 export const discoveryLabels: Record<CandidateDiscovery, string> = {
-  'new-in-scope': '新进入监控范围',
+  'new-in-scope': '新进入',
   known: '已发现',
-  'outside-scope': '离开监控范围',
+  'outside-scope': '已离开',
   unknown: '—',
+}
+export const discoveryDescriptions: Record<CandidateDiscovery, string> = {
+  'new-in-scope': '新进入监控范围，不等同于平台首次上榜',
+  known: '已在当前监控范围发现',
+  'outside-scope': '已离开监控范围，不代表已下榜',
+  unknown: '发现情况未知',
+}
+export function categoryLeaf(path: string): string {
+  return (
+    path
+      .split('/')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .at(-1) ?? '—'
+  )
 }
 export const collectionLabels: Record<MaterialCollectionStatus, string> = {
   'not-collected': '未采集',

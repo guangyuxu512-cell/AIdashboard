@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ContextSwitchBar } from '@/shared/components'
+import { ContextSwitchBar, StatusTag } from '@/shared/components'
+import { apiMode } from '@/shared/api'
 import SelectionWorkspace from '@/features/product-selection/ui/SelectionWorkspace.vue'
 
 const selectionItems = [
@@ -52,13 +53,16 @@ function selectTab(value: string) {
 
 <template>
   <div class="page-container product-selection-page">
-    <ContextSwitchBar
-      label="选品库切换"
-      appearance="framed"
-      :items="selectionItems"
-      :active-key="selectedItem.key"
-      @select="selectTab"
-    />
+    <div class="product-selection-navigation">
+      <ContextSwitchBar
+        label="选品库切换"
+        appearance="framed"
+        :items="selectionItems"
+        :active-key="selectedItem.key"
+        @select="selectTab"
+      />
+      <StatusTag v-if="apiMode === 'mock'" label="演示数据" />
+    </div>
     <SelectionWorkspace :panel="panel" />
   </div>
 </template>
@@ -67,5 +71,13 @@ function selectTab(value: string) {
 .product-selection-page {
   height: 100%;
   min-height: 0;
+}
+.product-selection-navigation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.product-selection-navigation > :first-child {
+  flex: 1;
 }
 </style>

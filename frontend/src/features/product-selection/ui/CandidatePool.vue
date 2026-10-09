@@ -8,7 +8,10 @@ import {
   NText,
   NEllipsis,
   NAlert,
-  NDropdown,
+  NTooltip,
+  NPopover,
+  NDescriptions,
+  NDescriptionsItem,
   useMessage,
 } from 'naive-ui'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
@@ -35,7 +38,9 @@ import {
   formatCandidateTime,
   collectionLabels,
   discoveryLabels,
-  rankChangeLabel,
+  discoveryDescriptions,
+  rankChange,
+  categoryLeaf,
 } from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
@@ -170,24 +175,28 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'image',
     title: '缩略图',
-    width: 104,
+    width: 80,
     fixed: 'left',
     align: 'center',
     render: (row) =>
-      h(ExternalProductImage, { src: row.imageUrl, title: row.title }),
+      h(ExternalProductImage, {
+        src: row.imageUrl,
+        title: row.title,
+        size: 'thumbnail',
+      }),
   },
   {
     key: 'title',
     title: '商品标题',
     width: 240,
-    align: 'center',
+    align: 'left',
     render: (row) => h(NEllipsis, { tooltip: true }, () => row.title),
   },
   {
     key: 'merchant',
     title: '店铺名',
-    width: 140,
-    align: 'center',
+    width: 150,
+    align: 'left',
     render: (row) =>
       row.merchant
         ? h(NEllipsis, { tooltip: true }, () => row.merchant!.name)
@@ -196,30 +205,45 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'category',
     title: '类目',
-    width: 140,
-    align: 'center',
-    ellipsis: { tooltip: true },
+    width: 120,
+    align: 'left',
+    render: (row) =>
+      h(NEllipsis, { tooltip: true }, () => categoryLeaf(row.category)),
   },
   {
     key: 'rank',
     title: '榜单排名',
-    width: 120,
+    width: 100,
     align: 'center',
     render: (row) => {
-      const change = rankChangeLabel(row)
+      const change = rankChange(row)
       return h('div', [
         row.rank ?? missing(),
-        change ? h(NText, { depth: 3, tag: 'div' }, () => change) : null,
+        change
+          ? h(NText, { type: change.type, tag: 'div' }, () => change.label)
+          : null,
       ])
     },
   },
   {
     key: 'discovery',
     title: '发现情况',
-    width: 150,
+    width: 100,
     align: 'center',
     render: (row) =>
-      h(NEllipsis, { tooltip: true }, () => discoveryLabels[row.discovery]),
+      h(
+        NTooltip,
+        {},
+        {
+          trigger: () =>
+            h(
+              NText,
+              { depth: row.discovery === 'unknown' ? 3 : undefined },
+              () => discoveryLabels[row.discovery],
+            ),
+          default: () => discoveryDescriptions[row.discovery],
+        },
+      ),
   },
   {
     key: 'priceBand',
@@ -268,15 +292,16 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'actions',
     title: '操作',
-    width: 230,
+    width: 220,
     fixed: 'right',
     align: 'center',
     render: (row) =>
-      h('div', { class: 'selection-row-actions' }, [
+      h('div', { class: 'selection-row-actions selection-candidate-actions' }, [
         h(
           AppButton,
           {
             tone: 'link',
+            size: 'small',
             onClick: () => {
               detailId.value = row.id
             },
@@ -287,33 +312,21 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           AppButton,
           {
             tone: 'secondary',
+            size: 'small',
             disabled: busy.value,
             onClick: () => act(row, 'collect'),
           },
           () => '采集资料',
         ),
         h(
-          NDropdown,
+          AppButton,
           {
-            trigger: 'click',
-            options: [
-              {
-                label: row.blocked ? '恢复' : '屏蔽',
-                key: row.blocked ? 'restore' : 'block',
-                disabled: busy.value,
-              },
-            ],
-            onSelect: (key: string) =>
-              act(row, key === 'restore' ? 'restore' : 'block'),
+            tone: 'text',
+            size: 'small',
+            disabled: busy.value,
+            onClick: () => act(row, row.blocked ? 'restore' : 'block'),
           },
-          {
-            default: () =>
-              h(
-                AppButton,
-                { tone: 'text', 'aria-label': `更多操作 ${row.title}` },
-                () => '更多',
-              ),
-          },
+          () => (row.blocked ? '恢复' : '屏蔽'),
         ),
       ]),
   },
@@ -321,7 +334,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
 </script>
 
 <template>
-  <div class="selection-panel">
+  <div class="selection-panel candidate-pool">
     <FilterBar>
       <FilterField width="md"
         ><ShopSelector
@@ -357,19 +370,41 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       >
     </FilterBar>
     <ManagementListSection>
-      <NText
+      <div
         v-for="(context, index) in query.data.value?.contexts ?? []"
         :key="index"
-        tag="div"
-        depth="3"
+        class="candidate-scope-summary"
       >
-        榜单：{{ context.leaderboardName }} · 类目：{{ context.category }} ·
-        周期：{{ context.statisticalPeriod }} · 监控范围：{{
-          context.rankFrom ?? '—'
-        }}～{{ context.rankTo ?? '—' }} 名 · 检查时间：{{
-          formatCandidateTime(context.checkedAt)
-        }}
-      </NText>
+        <NText
+          >{{ context.leaderboardName }} · {{ context.periodLabel }} · 第{{
+            context.rankFrom ?? '—'
+          }}–{{ context.rankTo ?? '—' }}名</NText
+        >
+        <NPopover trigger="click" placement="bottom-start">
+          <template #trigger
+            ><AppButton tone="link" size="small">查看范围</AppButton></template
+          >
+          <NDescriptions :column="1" label-placement="left">
+            <NDescriptionsItem label="榜单">{{
+              context.leaderboardName
+            }}</NDescriptionsItem>
+            <NDescriptionsItem label="类目范围">{{
+              context.category
+            }}</NDescriptionsItem>
+            <NDescriptionsItem label="统计周期">{{
+              context.statisticalPeriod
+            }}</NDescriptionsItem>
+            <NDescriptionsItem label="监控范围"
+              >第{{ context.rankFrom ?? '—' }}–{{
+                context.rankTo ?? '—'
+              }}名</NDescriptionsItem
+            >
+            <NDescriptionsItem label="检查时间">{{
+              formatCandidateTime(context.checkedAt)
+            }}</NDescriptionsItem>
+          </NDescriptions>
+        </NPopover>
+      </div>
       <TableToolbar aria-label="候选商品批量操作">
         <NText :depth="3">已选择 {{ checked.length }} 项 · 全选仅当前页</NText>
         <template #actions>
@@ -400,7 +435,8 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1748"
+        :scroll-x="1634"
+        :theme-overrides="{ tdPaddingMedium: 'var(--space-3)' }"
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
@@ -426,3 +462,16 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     />
   </div>
 </template>
+
+<style scoped>
+.candidate-scope-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.candidate-pool :deep(.selection-candidate-actions) {
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+}
+</style>

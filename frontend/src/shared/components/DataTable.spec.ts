@@ -4,6 +4,21 @@ import { describe, expect, it } from 'vitest'
 import DataTable from './DataTable.vue'
 
 describe('DataTable', () => {
+  it('forwards an opt-in AppTable theme override without changing default tables', () => {
+    const props = {
+      columns: [{ key: 'name', title: '名称' }],
+      data: [{ name: 'A' }],
+    }
+    const defaultTable = shallowMount(DataTable, { props }).findComponent({
+      name: 'AppTable',
+    })
+    expect(defaultTable.props('themeOverrides')).toBeUndefined()
+    const themeOverrides = { tdPaddingMedium: 'var(--space-3)' }
+    const customized = shallowMount(DataTable, {
+      props: { ...props, themeOverrides },
+    }).findComponent({ name: 'AppTable' })
+    expect(customized.props('themeOverrides')).toEqual(themeOverrides)
+  })
   it('forwards the existing AppTable native sorter without altering default behavior', async () => {
     const wrapper = shallowMount(DataTable, {
       props: {

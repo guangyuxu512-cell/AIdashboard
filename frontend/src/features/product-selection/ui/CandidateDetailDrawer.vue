@@ -2,7 +2,13 @@
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { Copy } from '@lucide/vue'
-import { NDescriptions, NDescriptionsItem, NText, useMessage } from 'naive-ui'
+import {
+  NDescriptions,
+  NDescriptionsItem,
+  NText,
+  NTooltip,
+  useMessage,
+} from 'naive-ui'
 import {
   DetailDrawer,
   ErrorState,
@@ -16,9 +22,10 @@ import {
   formatCandidateTime,
   formatReviewRate,
   comparablePreviousRank,
-  rankChangeLabel,
+  rankChange,
   collectionLabels,
   discoveryLabels,
+  discoveryDescriptions,
   sourceProductUrl,
 } from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
@@ -39,6 +46,23 @@ const query = useQuery({
 })
 const row = computed(() => query.data.value)
 const sourceUrl = computed(() => sourceProductUrl(row.value?.sourceUrl ?? null))
+const change = computed(() => (row.value ? rankChange(row.value) : null))
+const metrics = computed(() =>
+  row.value
+    ? [
+        {
+          label: '短视频用户支付金额',
+          value: row.value.userPaidAmountRange,
+          unit: row.value.userPaidAmountUnit,
+          unknownUnit:
+            !!row.value.userPaidAmountRange && !row.value.userPaidAmountUnit,
+        },
+        { label: '短视频点击次数', value: row.value.clicksRange },
+        { label: '短视频成交件数', value: row.value.soldUnitsRange },
+        { label: '带货视频数', value: row.value.videoCountRange },
+      ]
+    : [],
+)
 async function copyProductId() {
   if (!row.value) return
   try {
@@ -102,7 +126,78 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           >
         </div>
       </div>
-      <section>
+      <section aria-label="罗盘视频榜单数据">
+        <div class="candidate-detail__section-heading">
+          <h3>罗盘视频榜单数据</h3>
+          <NText depth="3"
+            >统计周期：{{ row.sourceContext.statisticalPeriod }}</NText
+          >
+        </div>
+        <NText tag="div" depth="3"
+          >获取时间：{{ formatCandidateTime(row.metricsRetrievedAt) }}</NText
+        >
+        <NDescriptions :column="2" label-placement="top" bordered>
+          <NDescriptionsItem
+            v-for="metric in metrics"
+            :key="metric.label"
+            :label="metric.label"
+          >
+            <NText
+              tag="strong"
+              class="candidate-detail__metric"
+              :depth="metric.value === null ? 3 : undefined"
+              >{{ metric.value ?? '—' }}</NText
+            >
+            <NText v-if="metric.unknownUnit" depth="3">（单位未确认）</NText>
+            <template v-else>{{ metric.unit }}</template>
+          </NDescriptionsItem>
+        </NDescriptions>
+      </section>
+      <section aria-label="排名与发现信息">
+        <h3>排名与发现信息</h3>
+        <NDescriptions :column="2" label-placement="top">
+          <NDescriptionsItem label="所属榜单">{{
+            row.sourceContext.leaderboardName
+          }}</NDescriptionsItem>
+          <NDescriptionsItem label="本次排名">
+            <NText :depth="row.rank === null ? 3 : undefined">{{
+              row.rank ?? '—'
+            }}</NText>
+            <NText v-if="change" :type="change.type">
+              · {{ change.label }}</NText
+            >
+          </NDescriptionsItem>
+          <NDescriptionsItem label="上次排名">
+            <NText :depth="row.previousRank === null ? 3 : undefined">{{
+              row.previousRank?.rank ?? '—'
+            }}</NText>
+            <NText
+              v-if="row.previousRank && comparablePreviousRank(row) === null"
+              depth="3"
+              >（口径不同，不作比较）</NText
+            >
+          </NDescriptionsItem>
+          <NDescriptionsItem label="发现情况">
+            <NTooltip
+              ><template #trigger
+                ><NText :depth="row.discovery === 'unknown' ? 3 : undefined">{{
+                  discoveryLabels[row.discovery]
+                }}</NText></template
+              >{{ discoveryDescriptions[row.discovery] }}</NTooltip
+            >
+          </NDescriptionsItem>
+          <NDescriptionsItem label="首次发现时间">{{
+            formatCandidateTime(row.firstDiscoveredAt)
+          }}</NDescriptionsItem>
+          <NDescriptionsItem label="平台首次上榜"
+            ><NText :depth="row.firstListed === null ? 3 : undefined">{{
+              row.firstListed === null ? '—' : row.firstListed ? '是' : '否'
+            }}</NText></NDescriptionsItem
+          >
+        </NDescriptions>
+      </section>
+      <section aria-label="商品基础信息">
+        <h3>商品基础信息</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
           <NDescriptionsItem label="商品ID">
             <div class="candidate-detail__inline">
@@ -144,46 +239,8 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               >商品商家身份未确认</NText
             >
           </NDescriptionsItem>
-          <NDescriptionsItem label="请求罗盘使用的自有店铺"
-            ><NText depth="2">{{ row.shopName }}</NText></NDescriptionsItem
-          >
           <NDescriptionsItem label="完整类目">{{
             row.category
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="来源">{{ row.source }}</NDescriptionsItem>
-          <NDescriptionsItem label="所属榜单">{{
-            row.sourceContext.leaderboardName
-          }}</NDescriptionsItem>
-          <NDescriptionsItem label="本次排名"
-            ><NText :depth="row.rank === null ? 3 : undefined">{{
-              row.rank ?? '—'
-            }}</NText
-            ><NText v-if="rankChangeLabel(row)" depth="3">
-              · {{ rankChangeLabel(row) }}</NText
-            ></NDescriptionsItem
-          >
-          <NDescriptionsItem label="上次排名"
-            ><NText :depth="row.previousRank === null ? 3 : undefined">{{
-              row.previousRank?.rank ?? '—'
-            }}</NText
-            ><NText
-              v-if="row.previousRank && comparablePreviousRank(row) === null"
-              depth="3"
-              >（口径不同，不作比较）</NText
-            ></NDescriptionsItem
-          >
-          <NDescriptionsItem label="发现情况"
-            ><NText :depth="row.discovery === 'unknown' ? 3 : undefined">{{
-              discoveryLabels[row.discovery]
-            }}</NText></NDescriptionsItem
-          >
-          <NDescriptionsItem label="平台首次上榜"
-            ><NText :depth="row.firstListed === null ? 3 : undefined">{{
-              row.firstListed === null ? '—' : row.firstListed ? '是' : '否'
-            }}</NText></NDescriptionsItem
-          >
-          <NDescriptionsItem label="首次发现时间">{{
-            formatCandidateTime(row.firstDiscoveredAt)
           }}</NDescriptionsItem>
           <NDescriptionsItem label="差评率"
             ><NText :depth="row.negativeReviewRate === null ? 3 : undefined">{{
@@ -195,9 +252,6 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               formatCandidateDate(row.listedAt)
             }}</NText></NDescriptionsItem
           >
-          <NDescriptionsItem label="指标获取时间">{{
-            formatCandidateTime(row.metricsRetrievedAt)
-          }}</NDescriptionsItem>
           <NDescriptionsItem label="商品资料采集状态"
             ><StatusTag
               :label="collectionLabels[row.collectionStatus]"
@@ -208,41 +262,16 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           }}</NDescriptionsItem>
         </NDescriptions>
       </section>
-      <section>
-        <h3>罗盘视频榜单数据</h3>
-        <NText tag="div" depth="3"
-          >统计周期：{{ row.sourceContext.statisticalPeriod }} · 获取时间：{{
-            formatCandidateTime(row.metricsRetrievedAt)
-          }}</NText
-        >
+      <section aria-label="请求来源信息">
+        <h3>请求来源信息</h3>
         <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="短视频用户支付金额"
-            ><NText :depth="row.userPaidAmountRange === null ? 3 : undefined">{{
-              row.userPaidAmountRange ?? '—'
-            }}</NText
-            ><NText
-              v-if="row.userPaidAmountRange && !row.userPaidAmountUnit"
-              depth="3"
-              >（单位未确认）</NText
-            ><template v-else>{{
-              row.userPaidAmountUnit
-            }}</template></NDescriptionsItem
+          <NDescriptionsItem label="请求罗盘使用的自有店铺"
+            ><NText depth="2">{{ row.shopName }}</NText></NDescriptionsItem
           >
-          <NDescriptionsItem label="短视频点击次数"
-            ><NText :depth="row.clicksRange === null ? 3 : undefined">{{
-              row.clicksRange ?? '—'
-            }}</NText></NDescriptionsItem
-          >
-          <NDescriptionsItem label="短视频成交件数"
-            ><NText :depth="row.soldUnitsRange === null ? 3 : undefined">{{
-              row.soldUnitsRange ?? '—'
-            }}</NText></NDescriptionsItem
-          >
-          <NDescriptionsItem label="带货视频数"
-            ><NText :depth="row.videoCountRange === null ? 3 : undefined">{{
-              row.videoCountRange ?? '—'
-            }}</NText></NDescriptionsItem
-          >
+          <NDescriptionsItem label="来源">{{ row.source }}</NDescriptionsItem>
+          <NDescriptionsItem label="指标获取时间">{{
+            formatCandidateTime(row.metricsRetrievedAt)
+          }}</NDescriptionsItem>
         </NDescriptions>
       </section>
     </div>
@@ -271,7 +300,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
 .candidate-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
   min-width: 0;
 }
 .candidate-detail__summary,
@@ -302,7 +331,17 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
 .candidate-detail h3 {
   font-size: var(--font-size-section-title);
   font-weight: var(--font-weight-semibold);
-  margin-bottom: var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+.candidate-detail__section-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.candidate-detail__metric {
+  font-size: var(--font-size-page-title);
+  font-weight: var(--font-weight-semibold);
 }
 .candidate-detail__actions {
   justify-content: flex-end;

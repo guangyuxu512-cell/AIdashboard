@@ -2,18 +2,18 @@
 
 状态：UI_ONLY；前端契约草案，不是 Backend DTO 或平台接口契约。
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
-分支：`feat/product-selection-frontend-v1`。无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。
+分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。
 
-当前返修以文末“候选池与详情调整”为准，旧候选列宽/商品ID列/采集入库文案仅为历史验收记录，不代表当前结构。
+当前返修以文末“紧凑列表与详情首屏返修”为准，旧候选列宽/80px列表缩略图/全列居中/更多操作菜单与常驻日期说明仅为历史验收记录，不代表当前结构。
 
 ## 实施前复用清单
 
 | 现有路径（frontend/src） | 用途 | 新增边界 |
 | --- | --- | --- |
 | shared/components/ContextSwitchBar.vue | 保留 framed 三选项和 query 历史 | 不改公共切换组件 |
-| shared/components/ManagementListSection.vue、FilterBar.vue、DataTable.vue、PaginationBar.vue | 两种列表、稳定底部分页、固定列、居中 | 仅增加选品业务列定义 |
+| shared/components/ManagementListSection.vue、FilterBar.vue、DataTable.vue、PaginationBar.vue | 两种列表、稳定底部分页、固定列、列对齐 | DataTable仅透传已有themeOverrides，其他调用默认不变 |
 | shared/components/DetailDrawer.vue | 商品详情 | 仅新增选品指标内容 |
-| shared/ui/AppDrawer.vue、AppButton.vue、AppSelect.vue、AppInput.vue、AppNumberInput.vue、AppSwitch.vue | 策略右抽屉、条件与独立保存/立即获取 | 组合已有 footer，不改变 FormDrawer |
+| shared/ui/AppDrawer.vue、AppButton.vue、AppSelect.vue、AppInput.vue、AppNumberInput.vue、AppSwitch.vue | 策略右抽屉、条件与独立保存/立即获取 | AppButton增加可选small、保留默认medium；组合已有footer，不改变FormDrawer |
 | shared/ui/AppCheckbox.vue、AppRadio.vue、AppTimePicker.vue；Naive NCollapse/NCollapseItem | 选择渠道、日期四选项/价格模式、每日时间、纵向折叠 | 日期仅参考经营看板组件用法，不复用其统计日期算法；不新建控件 |
 | Naive NText、NEllipsis；Lucide Copy | 缺值/辅助层次、标题单行溢出与全文提示、ID 同行图标 | 继承 themeOverrides，不为页面另配色，不另建复制组件 |
 | shared/components/TableToolbar.vue、原生 checkedRowKeys | 当前页选择数量、批量演示与逐项失败反馈 | 不建立跨页暗选或第二套选择控件 |
@@ -45,7 +45,7 @@ Mock service 仅在构建环境明确 `VITE_API_MODE=mock` 且调用模式为 mo
 - 批量成功项取消勾选，失败项保留并逐项显示原因；请求级失败保留全部选择，执行中互斥。全选只作用当前页，换页/搜索/筛选/排序清空选择。Real collectBatch 与其他业务能力同样明确不可用，不调用猜测接口。
 - 日期仅有实时/近1天/近7天/近30天，策略持久化草案只存相对周期 `realtime/1d/7d/30d`。`previewPeriod(period)` 返回 `{mode:'mock', rangeLabel}`，仅展示固定 Mock 示例区间，不写入策略或获取参数；Real 明确不可用，不解析未知的平台实际日期。原始支付金额单位不猜测、不换算。
 
-Real 后续接入须先冻结 Backend/OpenAPI 与授权、达人 Session、平台 Endpoint、单位和调度契约；不能直接把本草案 URL 化。
+Real 后续手动闭环须先冻结 Backend/OpenAPI、团队与店铺授权、罗盘榜单及basic_info请求/响应/单位契约，并申请必要Feature DB和Migration Slot；不能直接把本草案 URL 化。短视频/罗盘复用店铺ShopSession，不以达人Session或自动调度为前置；百应与定时监控留在独立后续范围。
 
 短视频/罗盘渠道的请求店铺与达人身份分离：仅选择短视频时 creatorId 可空；选择百应才要求对应达人。未知百应能力依然不可用，不将通过表单校验等同于真实接口接入。
 
@@ -205,3 +205,36 @@ Gate 1 的执行结果与精确新 Candidate 记录在同目录 Handoff；旧候
 共享按钮首次补跑出现3项生图用例在“素材/提示词准备后仍禁用”的断言处超时；原测试与业务代码未修改，带trace的定向4项及完整8项复跑均通过。初次失败证据保留于 `shared-buttons/`，原因未确定，不宣称修复了AI业务问题。原单测jsdom XHR stderr、Playwright颜色环境告警及构建大chunk告警如实保留。
 
 四主题已检查1366×768候选/详情与正常/禁用/链接计算颜色，宽屏回归沿用1920×1080。列表需要横向滚动以容纳独立字段，不压缩公共行高，分页固定在卡片底部；详情Body独立滚动、底栏常驻。截图来自代码实际浏览器渲染，均为Mock或明确Real不可用，不是Electron验收。真实Integration Electron和用户本轮视觉复验仍待ca97，不运行生产或正式平台调用。
+
+## 紧凑列表与详情首屏返修（接续b30eb93，2026-10-09）
+
+本节覆盖此前80px列表图、全列居中、单项更多菜单和常驻日期说明，其他有效功能保留。
+
+- Mock只在选品库切换栏旁显示一个“演示数据”标识；不在日期字段下反复写Mock。四项AppRadio旁的NTooltip展示service返回的完整示例区间，保存仍只有相对周期。瞬时操作回执继续明确演示边界，不能把演示采集改叫真实成功。
+- 列顺序与上一轮一致。列表56×56px图片（等比）、主题`--space-3`上下留白，实测行高81px；详情摘要仍为原80px图片。标题240、商家150、末级类目120，三列左对齐并保留Ellipsis/Tooltip；ID仍只在详情、完整类目路径不修改。其他列居中；选择44/图片80左固定、操作220右固定，完整宽度1634，窄窗口局部横向滚动。
+- 范围摘要由`CandidateSourceContext`的榜单名、`periodLabel`、排名上下限生成；NPopover“查看范围”保留完整日期、类目、排名与检查时间。上下文来自完整筛选结果，不写死页面文字、不改真实统计口径。
+- 排名同口径才比较；`↑ 2`复用NText success、`↓ 2`复用error、同值“持平”，无可靠历史不显示变化。发现情况缩为“新进入/已发现/已离开”，NTooltip解释监控范围含义；不等同平台首次上榜或下榜。
+- 行内直接提供主题链接“详情”、small描边“采集资料”、普通文字“屏蔽/恢复”，12px间距、垂直居中、nowrap。删除单项NDropdown，屏蔽/恢复与批量仍使用原service和互斥/逐项回执。
+- 详情依次为摘要→罗盘视频榜单数据→排名与发现→商品基础信息→请求来源。视频区两列四项、原始区间与缺失不变，周期紧邻标题、获取时间为辅助；两个视口均能在首屏看到四项。商家平台ID与请求店铺UUID继续分离。底栏关闭/更新罗盘指标/采集资料及Body滚动保持。
+- 共享调整仅`AppButton.size`（默认medium，可选small）与`DataTable.themeOverrides`透传已有AppTable能力（默认undefined）；不改全局token、表格CSS、按钮默认tone、权限、接口或Electron。
+
+### 本轮Gate 1验证
+
+运行位置81a1，浏览器`http://127.0.0.1:4176 --strictPort`；实际Mock服务加载返修工作树。不是旧b30窗口，不是Electron证据。
+
+| 命令（frontend） | 结果 |
+| --- | --- |
+| `pnpm run lint`、`pnpm run typecheck` | PASS；最终build再次执行typecheck |
+| `pnpm run test` | 133文件/553项PASS；最后样式作用域与无用导入修正后另复跑定向 |
+| `pnpm exec vitest run src/features/product-selection src/shared/ui/AppButton.spec.ts src/shared/components/DataTable.spec.ts` | 最终7文件/39项PASS；含语义排名/类目末级、排列、可选共享属性、详情顺序/两列/缺值、原批量/草稿/竞态 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm run test:e2e:mock e2e/product-center.spec.ts e2e/product-selection.spec.ts e2e/disabled-primary.spec.ts --workers=1 --trace=retain-on-failure` | 最终17项PASS，2.5m；四主题1440×900/1366×768同夹具/100%缩放，真实56px照片、81px行/12px间距、固定列/排序分页、首屏四项、日期Tooltip/保值、商家区分及共享按钮8项；生图仅Mock且所有API/外部请求拦截 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1` | 1项PASS；无演示标识/Mock handler/猜测选品请求，普通成员撤权后守卫仍拒绝 |
+| `pnpm run build` | 最终PASS；Real产物没有选品Mock handler、商品照片或夹具；保留原大chunk告警 |
+| `git diff --check` | PASS；以最终Handoff记录为准 |
+
+迭代证据保留：首次浏览器运行长标题Tooltip挡测试目标、日期旧DOM定位超时，以及h渲染节点未命中scoped操作间距；已分别修正测试移出/关闭提示、删除旧定位、将业务容器作用域定向deep到动作节点并复验。未修改公共表格样式。截图等待图片加载及动画完成，避免把加载帧当正常照片；完整单测既有jsdom XHR stderr、Playwright颜色环境和构建大chunk告警不作零告警声明。
+
+实际截图/计算布局/前后索引、精确Candidate与正式Handoff在`docs/_local/product-selection-compact-repair/`（本机忽略，不进Git）。本阶段无Backend/DB/Migration/真实平台调用，不需要重测经营数据。
+ca97须把新Candidate实际加载到唯一5180 Mock Electron，记录Renderer尺寸/缩放并让用户集中复验列表、详情、日期区域；当前用户窗口尺寸尚未取得，不能用浏览器尺寸代替。Real边界另验，未完成Electron不标视觉PASS。
+
+真实最小闭环尚未实施。仅先核对正式DouyinApiClient/ShopSession权限路径与既有basic_info脱敏材料；生产只读证据由ca97统一协调，basic_info字段存在不是榜单成功或非零差评率单位已确认。前端确认后再冻结榜单/基础信息契约、安排DB/Slot及真实平台→入库→API→Real页面验证。百应、达人登录、监控、手机、自动上架仍不纳入，商品资料按钮不能报真实手机采集成功。
