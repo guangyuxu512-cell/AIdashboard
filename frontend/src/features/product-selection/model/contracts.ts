@@ -43,27 +43,65 @@ export interface SelectionStrategy extends StrategyInput {
   creatorName: string
   latestResult: string | null
 }
+export interface CandidateSourceContext {
+  leaderboardId: string
+  leaderboardName: string
+  // Includes category, period and rank measure; only identical scopes are comparable.
+  scopeKey: string
+  category: string
+  statisticalPeriod: string
+  rankFrom: number | null
+  rankTo: number | null
+  checkedAt: string | null
+}
+export interface CandidateMerchant {
+  // Product merchant platform ID, never the requesting Shop UUID.
+  shopId: string
+  name: string
+  competitor: boolean
+}
+export type CandidateDiscovery =
+  'new-in-scope' | 'known' | 'outside-scope' | 'unknown'
+export type MaterialCollectionStatus =
+  'not-collected' | 'demo-collected' | 'failed' | 'unknown'
 export interface SelectionCandidate {
   id: string
   shopId: string
   shopName: string
+  merchant: CandidateMerchant | null
   imageUrl: string | null
   title: string
   productId: string
+  sourceUrl: string | null
   category: string
   priceBand: string | null
   listedAt: string | null
   negativeReviewRate: number | null
   blocked: boolean
   source: string
+  sourceContext: CandidateSourceContext
   statisticalPeriod: string
   rank: number | null
+  previousRank: {
+    rank: number
+    leaderboardId: string
+    scopeKey: string
+    checkedAt: string | null
+  } | null
+  discovery: CandidateDiscovery
+  firstDiscoveredAt: string | null
+  metricsRetrievedAt: string | null
+  collectionStatus: MaterialCollectionStatus
   firstListed: boolean | null
   userPaidAmountRange: string | null
   userPaidAmountUnit: string | null
   clicksRange: string | null
   soldUnitsRange: string | null
   videoCountRange: string | null
+}
+export interface CandidatePage extends PageResult<SelectionCandidate> {
+  // Contexts for all filtered matches, not just the current page.
+  contexts: CandidateSourceContext[]
 }
 export interface CandidateQuery {
   page: number
@@ -102,13 +140,15 @@ export interface SelectionService {
   strategies(): Promise<SelectionStrategy[]>
   saveStrategy(input: StrategyInput, id?: string): Promise<SelectionStrategy>
   retrieve(input: StrategyInput, strategyId?: string): Promise<DemoReceipt>
-  candidates(query: CandidateQuery): Promise<PageResult<SelectionCandidate>>
+  candidates(query: CandidateQuery): Promise<CandidatePage>
   candidate(id: string): Promise<SelectionCandidate>
   demoAction(
     id: string,
     action: 'collect' | 'block' | 'restore',
   ): Promise<DemoReceipt>
   collectBatch(candidateIds: string[]): Promise<BatchCollectReceipt>
+  updateCompassMetrics(id: string): Promise<DemoReceipt>
+  markCompetitor(merchantShopId: string): Promise<DemoReceipt>
 }
 export const CREATOR_DEMO_OPTIONS = [
   { label: '演示达人 A', value: 'creator-demo-a' },

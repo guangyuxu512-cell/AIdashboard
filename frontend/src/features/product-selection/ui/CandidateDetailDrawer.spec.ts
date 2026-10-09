@@ -1,6 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, ref } from 'vue'
+import { NMessageProvider } from 'naive-ui'
+import { AppButton } from '@/shared/ui'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import {
   formatCandidateDate,
@@ -16,12 +19,29 @@ describe('candidate details preserve the draft contract', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     })
-    const wrapper = mount(CandidateDetailDrawer, {
-      props: { id: 'candidate-000', service, contextKey: 'actor:team' },
+    const selectedId = ref('candidate-000')
+    const Wrapper = defineComponent({
+      setup: () => () =>
+        h(
+          NMessageProvider,
+          {},
+          {
+            default: () =>
+              h(CandidateDetailDrawer, {
+                id: selectedId.value,
+                service,
+                contextKey: 'actor:team',
+              }),
+          },
+        ),
+    })
+    const wrapper = mount(Wrapper, {
       global: {
         plugins: [[VueQueryPlugin, { queryClient }]],
         stubs: {
-          DetailDrawer: { template: '<div><slot /></div>' },
+          DetailDrawer: {
+            template: '<div><slot /><slot name="footer" /></div>',
+          },
           ExternalProductImage: true,
         },
       },
@@ -32,8 +52,8 @@ describe('candidate details preserve the draft contract', () => {
       row.imageUrl,
     )
     for (const label of [
-      '图片',
-      '店铺',
+      '商品所属商家',
+      '请求罗盘使用的自有店铺',
       '类目',
       '价格带',
       '上架日期',
@@ -41,17 +61,38 @@ describe('candidate details preserve the draft contract', () => {
       '屏蔽状态',
       '来源',
       '统计周期',
-      '榜单排名',
+      '本次排名',
       '首次上榜',
     ])
       expect(wrapper.text()).toContain(label)
     expect(wrapper.text()).toContain('已屏蔽')
     expect(wrapper.text()).toContain(row.shopName)
+    expect(wrapper.text()).toContain(row.merchant!.name)
     expect(wrapper.text()).toContain('9087654321098765000')
     expect(wrapper.text()).toContain('1000–5000')
     expect(wrapper.text()).toContain('100–500')
     expect(wrapper.text()).toContain('—')
-    await wrapper.setProps({ id: 'candidate-005' })
+    const marker = vi.spyOn(service, 'markCompetitor')
+    await wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '标记为竞品店铺')!
+      .trigger('click')
+    await flushPromises()
+    expect(marker).toHaveBeenCalledExactlyOnceWith(row.merchant!.shopId)
+    expect(wrapper.text()).toContain('已标记竞品店铺')
+    expect(
+      wrapper
+        .findAllComponents(AppButton)
+        .find((button) => button.text() === '采集资料')!
+        .props('tone'),
+    ).toBe('primary')
+    expect(
+      wrapper
+        .findAllComponents(AppButton)
+        .find((button) => button.text() === '更新罗盘指标')!
+        .props('tone'),
+    ).toBe('secondary')
+    selectedId.value = 'candidate-005'
     await flushPromises()
     expect(wrapper.text()).toContain('0.00%')
     expect(wrapper.text()).toContain('1万–5万')
@@ -61,5 +102,56 @@ describe('candidate details preserve the draft contract', () => {
     expect(formatCandidateDate(null)).toBe('—')
     expect(formatReviewRate(null)).toBe('—')
     expect(formatReviewRate(0)).toBe('0.00%')
+  })
+  it('does not enable competitor marking when the product merchant is unknown, even with a valid request shop', async () => {
+    const fixture =
+      await createSelectionMockHandlers().candidate('candidate-000')
+    const service = createSelectionMockHandlers([
+      { ...fixture, merchant: null },
+    ])
+    const marker = vi.spyOn(service, 'markCompetitor')
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    const wrapper = mount(
+      defineComponent({
+        setup: () => () =>
+          h(
+            NMessageProvider,
+            {},
+            {
+              default: () =>
+                h(CandidateDetailDrawer, {
+                  id: fixture.id,
+                  service,
+                  contextKey: 'actor:team',
+                }),
+            },
+          ),
+      }),
+      {
+        global: {
+          plugins: [[VueQueryPlugin, { queryClient }]],
+          stubs: {
+            DetailDrawer: {
+              template: '<div><slot /><slot name="footer" /></div>',
+            },
+            ExternalProductImage: true,
+          },
+        },
+      },
+    )
+    await flushPromises()
+    const button = wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '标记为竞品店铺')!
+    expect(button.props('disabled')).toBe(true)
+    expect(wrapper.text()).toContain('商品商家身份未确认')
+    expect(wrapper.text()).toContain(fixture.shopName)
+    button.vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    expect(marker).not.toHaveBeenCalled()
+    wrapper.unmount()
+    queryClient.clear()
   })
 })

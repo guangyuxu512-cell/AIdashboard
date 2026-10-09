@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
-import { Copy } from '@lucide/vue'
 import {
   type DataTableColumns,
   type DataTableRowKey,
@@ -9,6 +8,7 @@ import {
   NText,
   NEllipsis,
   NAlert,
+  NDropdown,
   useMessage,
 } from 'naive-ui'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
@@ -19,6 +19,7 @@ import {
   ManagementListSection,
   PaginationBar,
   TableToolbar,
+  StatusTag,
 } from '@/shared/components'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
@@ -31,6 +32,10 @@ import type {
 import {
   formatCandidateDate,
   formatReviewRate,
+  formatCandidateTime,
+  collectionLabels,
+  discoveryLabels,
+  rankChangeLabel,
 } from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
@@ -132,9 +137,10 @@ async function collectSelected() {
       succeeded.flatMap((result) => result.candidateIds),
     )
     checked.value = checked.value.filter((key) => !successIds.has(String(key)))
-    const feedback = `采集入库演示完成 ${succeeded.length} 项，失败 ${batchFailures.value.length} 项；未写入正式商品库`
+    const feedback = `资料采集演示完成 ${succeeded.length} 项，失败 ${batchFailures.value.length} 项；未发起真实采集`
     if (batchFailures.value.length) message.warning(feedback)
     else message.info(feedback)
+    await query.refetch()
   } catch (error) {
     message.error(
       error instanceof Error ? error.message : '批量演示失败，请重试',
@@ -158,20 +164,12 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
   }
   checked.value = []
 }
-async function copyProductId(id: string) {
-  try {
-    await navigator.clipboard.writeText(id)
-    message.success('商品ID已复制')
-  } catch {
-    message.error('商品ID复制失败')
-  }
-}
 const missing = () => h(NText, { depth: 3 }, () => '—')
 const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   { type: 'selection', width: 44, fixed: 'left', align: 'center' },
   {
     key: 'image',
-    title: '图片',
+    title: '缩略图',
     width: 104,
     fixed: 'left',
     align: 'center',
@@ -179,37 +177,21 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       h(ExternalProductImage, { src: row.imageUrl, title: row.title }),
   },
   {
-    key: 'shopName',
-    title: '店铺名',
-    width: 140,
-    align: 'center',
-    ellipsis: { tooltip: true },
-  },
-  {
     key: 'title',
-    title: '标题',
+    title: '商品标题',
     width: 240,
     align: 'center',
     render: (row) => h(NEllipsis, { tooltip: true }, () => row.title),
   },
   {
-    key: 'productId',
-    title: '商品ID',
-    width: 200,
+    key: 'merchant',
+    title: '店铺名',
+    width: 140,
     align: 'center',
     render: (row) =>
-      h('div', { class: 'selection-product-id' }, [
-        h(NEllipsis, { tooltip: true }, () => row.productId),
-        h(
-          AppButton,
-          {
-            tone: 'text',
-            'aria-label': `复制商品ID ${row.productId}`,
-            onClick: () => copyProductId(row.productId),
-          },
-          () => h(Copy, { size: 16, 'aria-hidden': true }),
-        ),
-      ]),
+      row.merchant
+        ? h(NEllipsis, { tooltip: true }, () => row.merchant!.name)
+        : missing(),
   },
   {
     key: 'category',
@@ -219,22 +201,32 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     ellipsis: { tooltip: true },
   },
   {
-    key: 'priceBand',
-    title: '价格带',
-    width: 100,
+    key: 'rank',
+    title: '榜单排名',
+    width: 120,
     align: 'center',
-    render: (row) => row.priceBand ?? missing(),
+    render: (row) => {
+      const change = rankChangeLabel(row)
+      return h('div', [
+        row.rank ?? missing(),
+        change ? h(NText, { depth: 3, tag: 'div' }, () => change) : null,
+      ])
+    },
   },
   {
-    key: 'listedAt',
-    title: '上架日期',
-    width: 140,
+    key: 'discovery',
+    title: '发现情况',
+    width: 150,
     align: 'center',
-    sorter: true,
-    sortOrder:
-      filters.value.sortField === 'listedAt' ? filters.value.sortOrder : false,
     render: (row) =>
-      row.listedAt ? formatCandidateDate(row.listedAt) : missing(),
+      h(NEllipsis, { tooltip: true }, () => discoveryLabels[row.discovery]),
+  },
+  {
+    key: 'priceBand',
+    title: '价格／价格带',
+    width: 120,
+    align: 'center',
+    render: (row) => row.priceBand ?? missing(),
   },
   {
     key: 'negativeReviewRate',
@@ -252,9 +244,31 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         : formatReviewRate(row.negativeReviewRate),
   },
   {
+    key: 'listedAt',
+    title: '首次上架日期',
+    width: 140,
+    align: 'center',
+    sorter: true,
+    sortOrder:
+      filters.value.sortField === 'listedAt' ? filters.value.sortOrder : false,
+    render: (row) =>
+      row.listedAt ? formatCandidateDate(row.listedAt) : missing(),
+  },
+  {
+    key: 'collectionStatus',
+    title: '采集状态',
+    width: 120,
+    align: 'center',
+    render: (row) =>
+      h(StatusTag, {
+        label: collectionLabels[row.collectionStatus],
+        tone: row.collectionStatus === 'failed' ? 'error' : 'neutral',
+      }),
+  },
+  {
     key: 'actions',
     title: '操作',
-    width: 200,
+    width: 230,
     fixed: 'right',
     align: 'center',
     render: (row) =>
@@ -262,7 +276,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         h(
           AppButton,
           {
-            tone: 'text',
+            tone: 'link',
             onClick: () => {
               detailId.value = row.id
             },
@@ -272,20 +286,34 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         h(
           AppButton,
           {
-            tone: 'text',
+            tone: 'secondary',
             disabled: busy.value,
             onClick: () => act(row, 'collect'),
           },
-          () => '采集入库',
+          () => '采集资料',
         ),
         h(
-          AppButton,
+          NDropdown,
           {
-            tone: 'text',
-            disabled: busy.value,
-            onClick: () => act(row, row.blocked ? 'restore' : 'block'),
+            trigger: 'click',
+            options: [
+              {
+                label: row.blocked ? '恢复' : '屏蔽',
+                key: row.blocked ? 'restore' : 'block',
+                disabled: busy.value,
+              },
+            ],
+            onSelect: (key: string) =>
+              act(row, key === 'restore' ? 'restore' : 'block'),
           },
-          () => (row.blocked ? '恢复' : '屏蔽'),
+          {
+            default: () =>
+              h(
+                AppButton,
+                { tone: 'text', 'aria-label': `更多操作 ${row.title}` },
+                () => '更多',
+              ),
+          },
         ),
       ]),
   },
@@ -298,7 +326,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       <FilterField width="md"
         ><ShopSelector
           v-model="filters.shopId"
-          placeholder="全部店铺"
+          placeholder="全部请求店铺"
           @update:model-value="filterChanged"
       /></FilterField>
       <FilterField width="lg"
@@ -323,19 +351,35 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       /></FilterField>
       <template #actions
         ><AppButton @click="reset">重置</AppButton
-        ><AppButton @click="query.refetch()">刷新</AppButton></template
+        ><AppButton tone="secondary" @click="query.refetch()"
+          >刷新列表</AppButton
+        ></template
       >
     </FilterBar>
     <ManagementListSection>
+      <NText
+        v-for="(context, index) in query.data.value?.contexts ?? []"
+        :key="index"
+        tag="div"
+        depth="3"
+      >
+        榜单：{{ context.leaderboardName }} · 类目：{{ context.category }} ·
+        周期：{{ context.statisticalPeriod }} · 监控范围：{{
+          context.rankFrom ?? '—'
+        }}～{{ context.rankTo ?? '—' }} 名 · 检查时间：{{
+          formatCandidateTime(context.checkedAt)
+        }}
+      </NText>
       <TableToolbar aria-label="候选商品批量操作">
         <NText :depth="3">已选择 {{ checked.length }} 项 · 全选仅当前页</NText>
         <template #actions>
           <AppButton
+            tone="primary"
             :disabled="!checked.length || busy"
             :loading="busy"
             @click="collectSelected"
           >
-            批量采集入库
+            批量采集资料
           </AppButton>
         </template>
       </TableToolbar>
@@ -356,7 +400,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1408"
+        :scroll-x="1748"
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
@@ -378,16 +422,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       :service="service"
       :context-key="contextKey"
       @close="detailId = null"
+      @updated="query.refetch()"
     />
   </div>
 </template>
-
-<style scoped>
-:deep(.selection-product-id) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-</style>

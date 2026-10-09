@@ -287,7 +287,8 @@ field-full: 100%
 - primary
 - secondary
 - danger
-- text/icon
+- text/icon（中性文字操作）
+- link（显式使用主题链接色，默认按钮行为不变）
 
 页面不得自行定义新的主按钮颜色。
 
@@ -528,7 +529,7 @@ description（需要时）
 
 | 组件             | 基础实现       | 项目级默认语义                                   |
 | ---------------- | -------------- | ------------------------------------------------ |
-| `AppButton`      | `NButton`      | primary / secondary / danger / text，固定 medium |
+| `AppButton`      | `NButton`      | primary / secondary / danger / text / link，固定 medium |
 | `AppInput`       | `NInput`       | 语义宽度、固定 medium                            |
 | `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium                            |
 | `AppSelect`      | `NSelect`      | 语义宽度、固定 medium、单选/多选与标签折叠       |

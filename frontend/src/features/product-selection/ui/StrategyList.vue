@@ -174,7 +174,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
         h(
           AppButton,
           {
-            tone: 'text',
+            tone: 'primary',
             loading: busyId.value === row.id,
             onClick: () => retrieve(row),
           },

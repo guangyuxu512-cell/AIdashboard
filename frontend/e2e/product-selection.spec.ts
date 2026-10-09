@@ -40,8 +40,10 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   await expect(page.getByText('共 32 条', { exact: true })).toBeVisible()
-  await expect(rows.first()).toContainText('9087654321098765000')
-  const title = rows.first().locator('td').nth(3).locator('.n-ellipsis')
+  await expect(
+    page.getByRole('columnheader', { name: '商品ID', exact: true }),
+  ).toHaveCount(0)
+  const title = rows.first().locator('td').nth(2).locator('.n-ellipsis')
   const fullTitle = 'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
   await expect(title).toHaveText(fullTitle)
   expect(
@@ -59,35 +61,7 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
     path: info.outputPath('long-title-tooltip.png'),
     animations: 'disabled',
   })
-  await page.getByRole('columnheader', { name: '图片', exact: true }).hover()
-  const idCell = rows.first().locator('td').nth(4)
-  const copyIcon = idCell.getByRole('button', {
-    name: '复制商品ID 9087654321098765000',
-    exact: true,
-  })
-  await expect(copyIcon.locator('svg')).toHaveCount(1)
-  await expect(copyIcon).toHaveText('')
-  const idBounds = await idCell.locator('.n-ellipsis').boundingBox()
-  const copyBounds = await copyIcon.boundingBox()
-  expect(
-    Math.abs(
-      idBounds!.y +
-        idBounds!.height / 2 -
-        copyBounds!.y -
-        copyBounds!.height / 2,
-    ),
-  ).toBeLessThan(2)
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-  await rows
-    .first()
-    .getByRole('button', {
-      name: '复制商品ID 9087654321098765000',
-      exact: true,
-    })
-    .click()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    '9087654321098765000',
-  )
+  await page.getByRole('columnheader', { name: '缩略图', exact: true }).hover()
   const body = page.locator('.n-data-table-base-table-body')
   await body.evaluate((element) => {
     element.scrollTop = element.scrollHeight
@@ -133,7 +107,7 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
         ),
     ).toBe(true)
     const before = await page
-      .getByRole('columnheader', { name: '图片', exact: true })
+      .getByRole('columnheader', { name: '缩略图', exact: true })
       .boundingBox()
     const scroll = page.locator('.n-data-table-base-table-body')
     await scroll.evaluate((element) => {
@@ -141,7 +115,7 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
     })
     expect(
       (await page
-        .getByRole('columnheader', { name: '图片', exact: true })
+        .getByRole('columnheader', { name: '缩略图', exact: true })
         .boundingBox())!.x,
     ).toBe(before!.x)
     await expect(
@@ -197,8 +171,11 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
   await rate.click()
   await expect(rows.first()).toContainText('0.00%')
   await rate.click()
-  await expect(rows.first()).toContainText('9087654321098765000')
-  const date = page.getByRole('columnheader', { name: '上架日期', exact: true })
+  await expect(rows.first()).toContainText(fullTitle)
+  const date = page.getByRole('columnheader', {
+    name: '首次上架日期',
+    exact: true,
+  })
   await date.click()
   await expect(rows.first()).toContainText('2026-09-28')
   await date.click()
@@ -232,12 +209,18 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
   await page.locator('.n-drawer-header__close').click()
   await rows
     .first()
-    .getByRole('button', { name: '采集入库', exact: true })
+    .getByRole('button', { name: '采集资料', exact: true })
     .click()
   await expect(
-    page.getByText('采集入库流程演示；未写入正式商品库', { exact: true }),
+    page.getByText('商品资料采集流程演示；未发起真实采集，未写入正式商品库', {
+      exact: true,
+    }),
   ).toBeVisible()
-  await rows.first().getByRole('button', { name: '屏蔽', exact: true }).click()
+  await rows
+    .first()
+    .getByRole('button', { name: /^更多操作 / })
+    .click()
+  await page.locator('.n-dropdown').getByText('屏蔽', { exact: true }).click()
   await expect(rows).toHaveCount(0)
   await page.getByText('未屏蔽', { exact: true }).click()
   await page
@@ -245,7 +228,11 @@ test('candidate pool: four themes, centered fixed columns, IDs, full sort/pagina
     .getByText('已屏蔽', { exact: true })
     .click()
   await expect(rows).toHaveCount(1)
-  await rows.first().getByRole('button', { name: '恢复', exact: true }).click()
+  await rows
+    .first()
+    .getByRole('button', { name: /^更多操作 / })
+    .click()
+  await page.locator('.n-dropdown').getByText('恢复', { exact: true }).click()
   await expect(rows).toHaveCount(0)
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(rows).toHaveCount(10)
@@ -262,7 +249,7 @@ test('batch demo selects only the current page, rejects empty selection and guar
 }, info) => {
   await page.goto('/#/product-selection')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
-  const batch = page.getByRole('button', { name: '批量采集入库', exact: true })
+  const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
   await expect(rows).toHaveCount(10)
   await expect(batch).toBeDisabled()
   await page.locator('.n-data-table-thead').getByRole('checkbox').check()
@@ -278,7 +265,7 @@ test('batch demo selects only the current page, rejects empty selection and guar
     ;(button as HTMLButtonElement).click()
   })
   await expect(
-    page.getByText('采集入库演示完成 10 项，失败 0 项；未写入正式商品库', {
+    page.getByText('资料采集演示完成 10 项，失败 0 项；未发起真实采集', {
       exact: true,
     }),
   ).toHaveCount(1)
@@ -288,12 +275,12 @@ test('batch demo selects only the current page, rejects empty selection and guar
   ).toBeVisible()
   await page.locator('.n-data-table-thead').getByRole('checkbox').check()
   await page.locator('.n-pagination-item').filter({ hasText: /^2$/ }).click()
-  await expect(rows.first()).toContainText('9087654321098765010')
+  await expect(rows.first()).toContainText('演示商品 11')
   await expect(batch).toBeDisabled()
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(rows).toHaveCount(10)
-  await expect(rows.first()).toContainText('9087654321098765000')
+  await expect(rows.first()).toContainText('Essence 纤长卷翘防水睫毛膏')
   await expect(page.locator('.n-message')).toHaveCount(0)
   await page.screenshot({
     path: info.outputPath('candidate-wide-1920.png'),
@@ -302,7 +289,19 @@ test('batch demo selects only the current page, rejects empty selection and guar
   await rows.first().getByRole('button', { name: '详情', exact: true }).click()
   const drawer = page.locator('.n-drawer')
   await expect(drawer).toContainText('未屏蔽')
-  await expect(drawer.getByText('—', { exact: true })).toHaveCount(3)
+  await expect(drawer.getByText('—', { exact: true })).toHaveCount(4)
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  const copy = drawer.getByRole('button', {
+    name: '复制商品ID 9087654321098765000',
+    exact: true,
+  })
+  await expect(copy).toHaveText('')
+  await expect(copy.locator('svg')).toHaveCount(1)
+  await copy.click()
+  await expect(page.getByText('商品ID已复制', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    '9087654321098765000',
+  )
   await expect(drawer.locator('.n-image img')).toBeVisible()
   await drawer.locator('.n-image').click()
   await expect(page.locator('.n-image-preview-container')).toBeVisible()
@@ -350,9 +349,9 @@ test('exception-only: batch partial failure preserves failed selection and all i
   await rows.nth(0).getByRole('checkbox').check()
   await rows.nth(1).getByRole('checkbox').check()
   await rows.nth(2).getByRole('checkbox').check()
-  await page.getByRole('button', { name: '批量采集入库', exact: true }).click()
+  await page.getByRole('button', { name: '批量采集资料', exact: true }).click()
   await expect(
-    page.getByText('采集入库演示完成 2 项，失败 1 项；未写入正式商品库', {
+    page.getByText('资料采集演示完成 2 项，失败 1 项；未发起真实采集', {
       exact: true,
     }),
   ).toBeVisible()
@@ -868,4 +867,157 @@ test('exception-only: external image failure, no authentication headers and expl
   })
   await detailRetry.click()
   await expect(detailRetry).toHaveCount(0)
+})
+
+test('candidate structure, merchant identity and themed action hierarchy: four actual rendered themes', async ({
+  page,
+}, info) => {
+  test.setTimeout(120000)
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
+  const refresh = page.getByRole('button', { name: '刷新列表', exact: true })
+  const detail = page.locator('.n-drawer')
+  await expect(rows).toHaveCount(10)
+  const headers = (await page.locator('.n-data-table-th').allTextContents())
+    .map((label) => label.trim())
+    .filter(Boolean)
+  expect(headers).toEqual([
+    '缩略图',
+    '商品标题',
+    '店铺名',
+    '类目',
+    '榜单排名',
+    '发现情况',
+    '价格／价格带',
+    '差评率',
+    '首次上架日期',
+    '采集状态',
+    '操作',
+  ])
+  await expect(rows.nth(1)).toContainText('上升 2')
+  await expect(rows.nth(3)).toContainText('离开监控范围')
+  await expect(rows.nth(3)).not.toContainText('上升')
+  await expect(rows.nth(4)).toContainText('新进入监控范围')
+  await expect(page.getByText(/榜单：短视频商品榜单/)).toContainText(
+    '监控范围：1～200 名',
+  )
+  const colorEvidence = []
+  for (const [id, label] of themes) {
+    await page.getByRole('button', { name: '切换主题' }).click()
+    await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme-preset', id)
+    await expect(page.locator('.n-dropdown')).toBeHidden()
+    await expect(batch).toBeDisabled()
+    const disabledColors = await batch.evaluate((element) => ({
+      text: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor,
+    }))
+    expect(disabledColors.text).not.toBe(disabledColors.background)
+    await rows.first().getByRole('checkbox').check()
+    await expect(batch).toBeEnabled()
+    await settleTransitions(page)
+    const primaryColors = await batch.evaluate((element) => ({
+      text: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor,
+    }))
+    expect(primaryColors.background).not.toBe(disabledColors.background)
+    const secondaryColors = await refresh.evaluate((element) => ({
+      text: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor,
+      border: getComputedStyle(element.querySelector('.n-button__border')!)
+        .borderColor,
+    }))
+    const linkColor = await rows
+      .first()
+      .getByRole('button', { name: '详情', exact: true })
+      .evaluate((element) => getComputedStyle(element).color)
+    const tokenColor = await page.evaluate(() => {
+      const probe = document.createElement('span')
+      probe.style.color = 'var(--text-link)'
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    })
+    expect(linkColor).toBe(tokenColor)
+    expect(secondaryColors.background).not.toBe(primaryColors.background)
+    colorEvidence.push({
+      theme: id,
+      disabledColors,
+      primaryColors,
+      secondaryColors,
+      linkColor,
+    })
+    await settleTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`${id}-candidate-final.png`),
+      animations: 'disabled',
+    })
+    await rows.first().getByRole('checkbox').uncheck()
+    await rows
+      .first()
+      .getByRole('button', { name: '详情', exact: true })
+      .click()
+    await expect(detail).toContainText('商品所属商家')
+    await expect(detail).toContainText('轻盈美妆示例店')
+    await expect(detail).toContainText('请求罗盘使用的自有店铺')
+    await expect(detail).toContainText('星河服饰旗舰店')
+    await expect(
+      detail.getByRole('button', { name: '查看源商品', exact: true }),
+    ).toHaveCount(0)
+    for (const label of [
+      '短视频用户支付金额',
+      '短视频点击次数',
+      '短视频成交件数',
+      '带货视频数',
+    ])
+      await expect(detail).toContainText(label)
+    await expect(detail).not.toContainText('近30天销量')
+    await expect(
+      detail.getByRole('button', { name: '采集资料', exact: true }),
+    ).toBeInViewport()
+    await expect(
+      detail.getByRole('button', { name: '更新罗盘指标', exact: true }),
+    ).toBeInViewport()
+    await settleTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`${id}-detail-final.png`),
+      animations: 'disabled',
+    })
+    await detail
+      .locator('.n-drawer-body-content-wrapper')
+      .evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+    await page.screenshot({
+      path: info.outputPath(`${id}-detail-metrics-final.png`),
+      animations: 'disabled',
+    })
+    await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  }
+  await writeFile(
+    info.outputPath('action-colors-four-themes.json'),
+    JSON.stringify(colorEvidence, null, 2),
+  )
+  await rows.first().getByRole('button', { name: '详情', exact: true }).click()
+  await detail
+    .getByRole('button', { name: '标记为竞品店铺', exact: true })
+    .click()
+  await expect(
+    detail.getByRole('button', { name: '已标记竞品店铺', exact: true }),
+  ).toBeDisabled()
+  await detail
+    .getByRole('button', { name: '更新罗盘指标', exact: true })
+    .click()
+  await expect(
+    page.getByText('罗盘指标更新流程演示；未向平台请求', { exact: true }),
+  ).toBeVisible()
+  await detail.getByRole('button', { name: '采集资料', exact: true }).click()
+  await expect(detail).toContainText('已演示采集')
+  await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(rows.first()).toContainText('已演示采集')
+  await refresh.click()
+  await expect(rows).toHaveCount(10)
+  await expect(rows.first()).toContainText('已演示采集')
 })

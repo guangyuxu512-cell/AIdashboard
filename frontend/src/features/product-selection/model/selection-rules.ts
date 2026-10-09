@@ -66,7 +66,7 @@ export const strategySchema = z
   .object({
     name: z.string(),
     shopId: z.string().min(1).nullable().refine(Boolean, '请选择请求店铺'),
-    creatorId: z.string().min(1).nullable().refine(Boolean, '请选择达人账号'),
+    creatorId: z.string().min(1).nullable(),
     channels: z.object({
       shortVideo: shortVideoChannelSchema,
       baiying: z.object({
@@ -80,6 +80,12 @@ export const strategySchema = z
     enabled: z.boolean(),
   })
   .superRefine((value, ctx) => {
+    if (value.channels.baiying.selected && !value.creatorId)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['creatorId'],
+        message: '使用巨量百应请选择达人账号',
+      })
     if (!value.channels.shortVideo.selected && !value.channels.baiying.selected)
       ctx.addIssue({
         code: 'custom',

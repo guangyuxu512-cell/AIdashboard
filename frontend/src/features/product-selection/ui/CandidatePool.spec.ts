@@ -10,7 +10,7 @@ import CandidatePool from './CandidatePool.vue'
 
 const TableStub = defineComponent({
   name: 'DataTable',
-  props: ['data', 'checkedRowKeys'],
+  props: ['data', 'checkedRowKeys', 'columns'],
   emits: ['update:checkedRowKeys'],
   template: '<div />',
 })
@@ -45,7 +45,7 @@ function render(service: SelectionService) {
   const button = () =>
     wrapper
       .findAllComponents(AppButton)
-      .find((item) => item.text() === '批量采集入库')!
+      .find((item) => item.text() === '批量采集资料')!
   const dispose = () => {
     wrapper.unmount()
     queryClient.clear()
@@ -54,6 +54,39 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
+  it('keeps independent centered fields, source contexts and explicit button hierarchy', async () => {
+    const { wrapper, table, button, dispose } = render(
+      createSelectionMockHandlers(),
+    )
+    await flushPromises()
+    const columns = table.props('columns')
+    expect(
+      columns.map(
+        (column: { key?: string; type?: string }) => column.key ?? column.type,
+      ),
+    ).toEqual([
+      'selection',
+      'image',
+      'title',
+      'merchant',
+      'category',
+      'rank',
+      'discovery',
+      'priceBand',
+      'negativeReviewRate',
+      'listedAt',
+      'collectionStatus',
+      'actions',
+    ])
+    expect(
+      columns.every((column: { align: string }) => column.align === 'center'),
+    ).toBe(true)
+    expect(columns.at(-1).fixed).toBe('right')
+    expect(button().props('tone')).toBe('primary')
+    expect(wrapper.text()).toContain('监控范围：1～200 名')
+    expect(wrapper.text()).toContain('检查时间：2026-10-08 12:00')
+    dispose()
+  })
   it('guards empty/duplicate submissions, unchecks success and retains failed selections with per-item feedback', async () => {
     let finish!: (receipt: BatchCollectReceipt) => void
     const service = createSelectionMockHandlers()

@@ -198,6 +198,7 @@ async function submit(saving: boolean) {
             :model-value="values.creatorId"
             :options="CREATOR_DEMO_OPTIONS"
             placeholder="请选择达人账号"
+            clearable
             @update:model-value="
               setFieldValue(
                 'creatorId',
@@ -280,7 +281,11 @@ async function submit(saving: boolean) {
                         aria-label="选品日期"
                         @update:model-value="selectPeriod"
                       />
-                      <NText v-if="periodPreview.data.value" tag="div" depth="3">
+                      <NText
+                        v-if="periodPreview.data.value"
+                        tag="div"
+                        depth="3"
+                      >
                         Mock 示例区间：{{ periodPreview.data.value.rangeLabel }}
                       </NText>
                       <ErrorState
@@ -457,7 +462,9 @@ async function submit(saving: boolean) {
         <AppButton :disabled="busy" @click="emit('update:show', false)"
           >取消</AppButton
         >
-        <AppButton :loading="busy" @click="submit(false)">立即获取</AppButton>
+        <AppButton tone="primary" :loading="busy" @click="submit(false)"
+          >立即获取</AppButton
+        >
         <AppButton tone="primary" :loading="busy" @click="submit(true)"
           >保存策略</AppButton
         >

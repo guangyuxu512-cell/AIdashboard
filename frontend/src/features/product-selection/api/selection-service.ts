@@ -25,5 +25,7 @@ export async function createSelectionService(
     candidate: unavailable,
     demoAction: unavailable,
     collectBatch: unavailable,
+    updateCompassMetrics: unavailable,
+    markCompetitor: unavailable,
   }
 }

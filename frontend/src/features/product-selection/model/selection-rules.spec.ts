@@ -305,9 +305,53 @@ describe('selection draft and isolated mock handlers', () => {
       (await source.demoAction(first.id, 'collect')).message,
     )
     expect(await source.collectBatch([])).toEqual({ mode: 'mock', results: [] })
-    expect(await source.candidate(first.id)).toEqual(first)
+    expect(await source.candidate(first.id)).toEqual({
+      ...first,
+      collectionStatus: 'demo-collected',
+    })
     await expect(
       (await createSelectionService('real')).collectBatch([first.id]),
     ).rejects.toThrow(SELECTION_UNAVAILABLE)
+  })
+  it('only requires a creator for Baiying, never for Compass-only retrieval/save', async () => {
+    const mock = createSelectionMockHandlers()
+    const draft = { ...input(), creatorId: null }
+    expect(validateStrategy(draft, false)).toEqual({})
+    expect((await mock.retrieve(draft)).mode).toBe('mock')
+    expect(
+      (await mock.saveStrategy({ ...draft, name: '无需达人' })).creatorName,
+    ).toBe('—')
+    draft.channels.baiying.selected = true
+    expect(validateStrategy(draft, false)).toHaveProperty('creatorId')
+    await expect(mock.retrieve(draft)).rejects.toThrow(
+      '使用巨量百应请选择达人账号',
+    )
+  })
+  it('updates the existing product, preserves source information and uses merchant IDs only', async () => {
+    const mock = createSelectionMockHandlers()
+    const first = await mock.candidate('candidate-000')
+    expect(first.merchant!.shopId).not.toBe(first.shopId)
+    await expect(mock.markCompetitor(first.shopId)).rejects.toThrow(
+      '商品商家身份缺失',
+    )
+    await mock.markCompetitor(first.merchant!.shopId)
+    await mock.updateCompassMetrics(first.id)
+    const read = await mock.candidate(first.id)
+    expect(read.merchant!.competitor).toBe(true)
+    expect(read.source).toBe(first.source)
+    expect(read.sourceContext).toEqual(first.sourceContext)
+    expect(read.userPaidAmountRange).toBe(first.userPaidAmountRange)
+    expect(read.id).toBe(first.id)
+    expect(read.metricsRetrievedAt).not.toBe(first.metricsRetrievedAt)
+    const page = await mock.candidates({ ...query(), page: 2 })
+    expect(page.total).toBe(32)
+    expect(page.contexts).toEqual([first.sourceContext])
+    const real = await createSelectionService('real')
+    await expect(real.updateCompassMetrics(first.id)).rejects.toThrow(
+      SELECTION_UNAVAILABLE,
+    )
+    await expect(real.markCompetitor(first.merchant!.shopId)).rejects.toThrow(
+      SELECTION_UNAVAILABLE,
+    )
   })
 })

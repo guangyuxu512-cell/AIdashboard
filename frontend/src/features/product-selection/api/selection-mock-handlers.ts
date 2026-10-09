@@ -59,12 +59,23 @@ export function createSelectionMockHandlers(
         id: `candidate-${String(index).padStart(3, '0')}`,
         shopId: shop.shopId,
         shopName: shop.shopName,
+        merchant: {
+          shopId: `merchant-demo-${(index % 4) + 1}`,
+          name: [
+            '轻盈美妆示例店',
+            '简居家居示例店',
+            '优选服饰示例店',
+            '日常百货示例店',
+          ][index % 4]!,
+          competitor: false,
+        },
         imageUrl: photographs[index % photographs.length]!,
         title:
           index === 0
             ? 'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
             : `演示商品 ${index + 1}`,
         productId: `9087654321098765${String(index).padStart(3, '0')}`,
+        sourceUrl: null,
         category: index % 2 ? '生活用品 / 家居 / 收纳' : '服饰 / 女装 / 上衣',
         priceBand: index === 4 ? null : '10–50',
         listedAt:
@@ -75,8 +86,39 @@ export function createSelectionMockHandlers(
           index % 8 === 0 ? null : index % 5 === 0 ? 0 : (index % 10) / 100,
         blocked: false,
         source: '短视频榜单（演示）',
-        statisticalPeriod: '近7天（演示）',
-        rank: index + 1,
+        sourceContext: {
+          leaderboardId: 'short-video-demo',
+          leaderboardName: '短视频商品榜单',
+          scopeKey: 'all-categories:7d:user-paid-amount',
+          category: '全部类目',
+          statisticalPeriod: '近7天（Mock 示例 2026-10-01–2026-10-07）',
+          rankFrom: 1,
+          rankTo: 200,
+          checkedAt: '2026-10-08T12:00:00+08:00',
+        },
+        statisticalPeriod: '近7天（Mock 示例 2026-10-01–2026-10-07）',
+        rank: index % 4 === 3 ? 201 + index : index + 1,
+        previousRank:
+          index % 4 === 0
+            ? null
+            : {
+                rank: index + 3,
+                leaderboardId: 'short-video-demo',
+                scopeKey:
+                  index % 4 === 3
+                    ? 'different-period'
+                    : 'all-categories:7d:user-paid-amount',
+                checkedAt: '2026-10-08T11:00:00+08:00',
+              },
+        discovery:
+          index % 4 === 0
+            ? 'new-in-scope'
+            : index % 4 === 3
+              ? 'outside-scope'
+              : 'known',
+        firstDiscoveredAt: '2026-10-07T10:00:00+08:00',
+        metricsRetrievedAt: '2026-10-08T12:00:00+08:00',
+        collectionStatus: 'not-collected',
         firstListed: index % 3 === 0,
         userPaidAmountRange: index % 6 === 0 ? null : '1万–5万',
         userPaidAmountUnit: null,
@@ -96,11 +138,14 @@ export function createSelectionMockHandlers(
   }
   function collect(id: string): BatchCollectItemResult {
     const row = findCandidate(id)
+    for (const candidate of candidates)
+      if (candidate.productId === row.productId)
+        candidate.collectionStatus = 'demo-collected'
     return {
       candidateId: row.id,
       productId: row.productId,
       state: 'demo',
-      message: '采集入库流程演示；未写入正式商品库',
+      message: '商品资料采集流程演示；未发起真实采集，未写入正式商品库',
     }
   }
   function validate(
@@ -111,7 +156,10 @@ export function createSelectionMockHandlers(
     if (Object.keys(errors).length) throw new Error(Object.values(errors)[0])
     if (
       !shops.some((shop) => shop.shopId === input.shopId) ||
-      !CREATOR_DEMO_OPTIONS.some((option) => option.value === input.creatorId)
+      (input.channels.baiying.selected &&
+        !CREATOR_DEMO_OPTIONS.some(
+          (option) => option.value === input.creatorId,
+        ))
     )
       throw new Error('请选择有效的演示店铺和达人账号')
   }
@@ -161,14 +209,14 @@ export function createSelectionMockHandlers(
       const creator = CREATOR_DEMO_OPTIONS.find(
         (option) => option.value === input.creatorId,
       )
-      if (!shop || !creator) throw new Error('请选择有效的演示店铺和达人账号')
+      if (!shop) throw new Error('请选择有效的演示店铺')
       const old = strategies.find((row) => row.id === id)
       if (id && !old) throw new Error('演示策略不存在')
       const row: SelectionStrategy = {
         ...structuredClone(input),
         id: id ?? `strategy-new-${++sequence}`,
         shopName: shop.shopName,
-        creatorName: creator.label,
+        creatorName: creator?.label ?? '—',
         latestResult: old?.latestResult ?? null,
       }
       if (old) strategies.splice(strategies.indexOf(old), 1, row)
@@ -239,10 +287,43 @@ export function createSelectionMockHandlers(
         total: rows.length,
         page,
         pageSize: query.pageSize,
+        contexts: structuredClone(
+          Array.from(
+            new Map(
+              rows.map((row) => [
+                JSON.stringify(row.sourceContext),
+                row.sourceContext,
+              ]),
+            ).values(),
+          ),
+        ),
       }
     },
     async candidate(id) {
       return structuredClone(findCandidate(id))
+    },
+    async updateCompassMetrics(id) {
+      const row = findCandidate(id)
+      // Update the original record, not a new candidate; preserve source and raw ranges.
+      row.metricsRetrievedAt = new Date().toISOString()
+      return {
+        mode: 'mock',
+        count: 1,
+        message: '罗盘指标更新流程演示；未向平台请求',
+      }
+    },
+    async markCompetitor(merchantShopId) {
+      const matches = candidates.filter(
+        (row) => row.merchant?.shopId === merchantShopId,
+      )
+      if (!merchantShopId || !matches.length)
+        throw new Error('商品商家身份缺失，无法标记竞品店铺')
+      for (const row of matches) row.merchant!.competitor = true
+      return {
+        mode: 'mock',
+        count: 1,
+        message: '已演示标记商品商家为竞品店铺；未启动监控',
+      }
     },
     async demoAction(id, action) {
       const row = findCandidate(id)
