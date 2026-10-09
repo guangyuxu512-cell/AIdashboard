@@ -11,8 +11,10 @@ export const formatCandidateDate = (value: string | null) =>
 export const formatReviewRate = (value: number | null) =>
   value === null ? '—' : `${(value * 100).toFixed(2)}%`
 
-export const formatCandidateTime = (value: string | null) =>
-  value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
+export const formatCandidateTime = (
+  value: string | null,
+  format = 'YYYY-MM-DD HH:mm',
+) => (value ? dayjs(value).format(format) : '—')
 
 export function comparablePreviousRank(row: SelectionCandidate): number | null {
   const previous = row.previousRank

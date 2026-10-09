@@ -7,6 +7,7 @@ import { AppButton } from '@/shared/ui'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import {
   formatCandidateDate,
+  formatCandidateTime,
   formatReviewRate,
 } from '../model/candidate-display'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
@@ -55,9 +56,16 @@ describe('candidate details preserve the draft contract', () => {
     ).toEqual(['罗盘视频数据', '排名与发现', '商品基础信息', '数据来源'])
     const metrics = wrapper.get('section[aria-label="罗盘视频数据"]')
     expect(metrics.findComponent(NDescriptions).props('column')).toBe(2)
-    expect(metrics.text()).toContain(
-      `统计周期：${row.sourceContext.periodLabel}`,
+    const metadata = wrapper.get('.candidate-detail__metadata')
+    expect(metadata.text()).toContain(`罗盘：${row.sourceContext.periodLabel}`)
+    expect(metadata.text()).toContain(
+      `更新 ${formatCandidateTime(row.metricsRetrievedAt, 'MM-DD HH:mm')}`,
     )
+    expect(wrapper.get('.candidate-detail__headline').text()).toContain(
+      row.title,
+    )
+    expect(metrics.text()).not.toContain('统计周期')
+    expect(metrics.text()).not.toContain('指标获取时间')
     expect(metrics.text()).not.toContain(row.sourceContext.statisticalPeriod)
     const descriptions = wrapper.findAllComponents(NDescriptions)
     expect(descriptions).toHaveLength(3)
@@ -66,6 +74,13 @@ describe('candidate details preserve the draft contract', () => {
       expect(description.props('themeOverrides')).toEqual({
         thPaddingBorderedMedium: 'var(--space-3)',
         tdPaddingBorderedMedium: 'var(--space-3)',
+        fontSizeMedium: 'var(--font-size-body)',
+        thFontWeight: 'var(--font-weight-regular)',
+        thTextColor: 'var(--text-secondary)',
+        tdTextColor: 'var(--text-primary)',
+      })
+      expect(description.props('labelStyle')).toEqual({
+        fontSize: 'var(--font-size-secondary)',
       })
     }
     expect(descriptions[1].props('column')).toBe(2)
@@ -73,7 +88,7 @@ describe('candidate details preserve the draft contract', () => {
       wrapper.findComponent(NCollapse).props('defaultExpandedNames'),
     ).toEqual([])
     expect(wrapper.text()).not.toContain('请求罗盘使用的自有店铺')
-    expect(wrapper.text().match(/指标获取时间/g)).toHaveLength(1)
+    expect(wrapper.findAll('.candidate-detail__metadata')).toHaveLength(1)
     expect(
       metrics.findAll('.candidate-detail__metric').map((item) => item.text()),
     ).toEqual(['—', '1000–5000', '100–500', '10–50'])
@@ -91,9 +106,10 @@ describe('candidate details preserve the draft contract', () => {
       '差评率',
       '屏蔽状态',
       '来源',
-      '统计周期',
+      '完整统计区间',
       '本次排名',
       '首次上榜',
+      '榜单检查时间',
     ])
       expect(wrapper.text()).toContain(label)
     expect(wrapper.text()).toContain('已屏蔽')
@@ -145,6 +161,78 @@ describe('candidate details preserve the draft contract', () => {
     expect(formatCandidateDate(null)).toBe('—')
     expect(formatReviewRate(null)).toBe('—')
     expect(formatReviewRate(0)).toBe('0.00%')
+  })
+  it('keeps zero metrics prominent and a missing acquisition time unknown instead of using leaderboard or discovery time', async () => {
+    const fixture =
+      await createSelectionMockHandlers().candidate('candidate-000')
+    const row = {
+      ...fixture,
+      metricsRetrievedAt: null,
+      userPaidAmountRange: '0',
+      clicksRange: '0',
+      soldUnitsRange: '0',
+      videoCountRange: null,
+      collectionStatus: 'unknown' as const,
+      sourceContext: {
+        ...fixture.sourceContext,
+        periodLabel: '',
+        rankFrom: null,
+        rankTo: null,
+        checkedAt: '2026-10-09T09:00:00',
+      },
+    }
+    const service = createSelectionMockHandlers([row])
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    const wrapper = mount(
+      defineComponent({
+        setup: () => () =>
+          h(
+            NMessageProvider,
+            {},
+            {
+              default: () =>
+                h(CandidateDetailDrawer, {
+                  id: row.id,
+                  service,
+                  contextKey: 'actor:team',
+                }),
+            },
+          ),
+      }),
+      {
+        global: {
+          plugins: [[VueQueryPlugin, { queryClient }]],
+          stubs: {
+            DetailDrawer: {
+              template: '<div><slot /><slot name="footer" /></div>',
+            },
+            ExternalProductImage: true,
+          },
+        },
+      },
+    )
+    await flushPromises()
+    expect(wrapper.get('.candidate-detail__metadata').text()).toContain(
+      '罗盘：— · 更新 —',
+    )
+    expect(wrapper.get('.candidate-detail__metadata').text()).not.toContain(
+      '09:00',
+    )
+    expect(
+      wrapper
+        .findAll('.candidate-detail__metric')
+        .map((metric) => metric.text()),
+    ).toEqual(['0', '0', '0', '—'])
+    await wrapper.get('.n-collapse-item__header-main').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('榜单检查时间')
+    expect(wrapper.text()).toContain('2026-10-09 09:00')
+    expect(wrapper.text()).toContain('第—–—名')
+    expect(wrapper.text()).toContain(row.sourceContext.statisticalPeriod)
+    wrapper.unmount()
+    queryClient.clear()
   })
   it('does not enable competitor marking when the product merchant is unknown, even with a valid request shop', async () => {
     const fixture =

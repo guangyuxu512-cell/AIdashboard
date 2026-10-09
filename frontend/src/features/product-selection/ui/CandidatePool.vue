@@ -238,12 +238,16 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     title: '类目',
     width: 120,
     align: 'center',
-    render: (row) =>
-      h(
-        NEllipsis,
-        { tooltip: true, style: { width: '100%', textAlign: 'center' } },
-        () => categoryLeaf(row.category),
-      ),
+    render: (row) => {
+      const leaf = categoryLeaf(row.category)
+      return leaf === '—'
+        ? missing()
+        : h(
+            NEllipsis,
+            { tooltip: true, style: { width: '100%', textAlign: 'center' } },
+            () => leaf,
+          )
+    },
   },
   {
     key: 'rank',
@@ -255,7 +259,11 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       return h('div', [
         row.rank ?? missing(),
         change
-          ? h(NText, { type: change.type, tag: 'div' }, () => change.label)
+          ? h(
+              NText,
+              { type: change.type, tag: 'div', depth: 1 },
+              () => change.label,
+            )
           : null,
       ])
     },
@@ -273,7 +281,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           trigger: () =>
             h(
               NText,
-              { depth: row.discovery === 'unknown' ? 3 : undefined },
+              { depth: row.discovery === 'unknown' ? 3 : 1 },
               () => discoveryLabels[row.discovery],
             ),
           default: () => discoveryDescriptions[row.discovery],
@@ -321,10 +329,12 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     width: 120,
     align: 'center',
     render: (row) =>
-      h(StatusTag, {
-        label: collectionLabels[row.collectionStatus],
-        tone: row.collectionStatus === 'failed' ? 'error' : 'neutral',
-      }),
+      row.collectionStatus === 'unknown'
+        ? missing()
+        : h(StatusTag, {
+            label: collectionLabels[row.collectionStatus],
+            tone: row.collectionStatus === 'failed' ? 'error' : 'neutral',
+          }),
   },
   {
     key: 'actions',

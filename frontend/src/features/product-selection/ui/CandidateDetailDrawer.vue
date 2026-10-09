@@ -52,7 +52,12 @@ const change = computed(() => (row.value ? rankChange(row.value) : null))
 const descriptionTheme = {
   thPaddingBorderedMedium: 'var(--space-3)',
   tdPaddingBorderedMedium: 'var(--space-3)',
+  fontSizeMedium: 'var(--font-size-body)',
+  thFontWeight: 'var(--font-weight-regular)',
+  thTextColor: 'var(--text-secondary)',
+  tdTextColor: 'var(--text-primary)',
 }
+const descriptionLabelStyle = { fontSize: 'var(--font-size-secondary)' }
 const metrics = computed(() =>
   row.value
     ? [
@@ -126,33 +131,35 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
       <div class="candidate-detail__summary">
         <ExternalProductImage :src="row.imageUrl" :title="row.title" />
         <div class="candidate-detail__identity">
-          <strong>{{ row.title }}</strong>
-          <NText :depth="row.priceBand === null ? 3 : undefined"
+          <div class="candidate-detail__headline">
+            <strong class="candidate-detail__title">{{ row.title }}</strong>
+            <NTooltip>
+              <template #trigger>
+                <NText depth="3" class="candidate-detail__metadata"
+                  >罗盘：{{ row.sourceContext.periodLabel || '—' }} · 更新
+                  {{
+                    formatCandidateTime(row.metricsRetrievedAt, 'MM-DD HH:mm')
+                  }}</NText
+                >
+              </template>
+              完整统计区间：{{ row.sourceContext.statisticalPeriod || '—' }}
+              <br />
+              指标获取时间：{{ formatCandidateTime(row.metricsRetrievedAt) }}
+            </NTooltip>
+          </div>
+          <NText :depth="row.priceBand === null ? 3 : 1"
             >价格／价格带：{{ row.priceBand ?? '—' }}</NText
           >
         </div>
       </div>
       <section aria-label="罗盘视频数据">
-        <div class="candidate-detail__section-heading">
-          <h3>罗盘视频数据</h3>
-          <NTooltip
-            ><template #trigger
-              ><NText depth="3"
-                >统计周期：{{ row.sourceContext.periodLabel }}</NText
-              ></template
-            >{{ row.sourceContext.statisticalPeriod }}</NTooltip
-          >
-        </div>
-        <NText tag="div" depth="3"
-          >指标获取时间：{{
-            formatCandidateTime(row.metricsRetrievedAt)
-          }}</NText
-        >
+        <h3>罗盘视频数据</h3>
         <NDescriptions
           :column="2"
           label-placement="top"
           bordered
           :theme-overrides="descriptionTheme"
+          :label-style="descriptionLabelStyle"
         >
           <NDescriptionsItem
             v-for="metric in metrics"
@@ -164,7 +171,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
                 ><NText
                   tag="strong"
                   class="candidate-detail__metric"
-                  :depth="metric.value === null ? 3 : undefined"
+                  :depth="metric.value === null ? 3 : 1"
                   >{{ metric.value ?? '—' }}</NText
                 ></template
               >单位未确认</NTooltip
@@ -180,15 +187,16 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           label-placement="top"
           bordered
           :theme-overrides="descriptionTheme"
+          :label-style="descriptionLabelStyle"
         >
           <NDescriptionsItem label="所属榜单">{{
             row.sourceContext.leaderboardName
           }}</NDescriptionsItem>
           <NDescriptionsItem label="本次排名">
-            <NText :depth="row.rank === null ? 3 : undefined">{{
+            <NText :depth="row.rank === null ? 3 : 1">{{
               row.rank ?? '—'
             }}</NText>
-            <NText v-if="change" :type="change.type">
+            <NText v-if="change" :type="change.type" :depth="1">
               · {{ change.label }}</NText
             >
           </NDescriptionsItem>
@@ -198,7 +206,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
                 !row.previousRank || comparablePreviousRank(row) !== null
               "
               ><template #trigger
-                ><NText :depth="row.previousRank === null ? 3 : undefined">{{
+                ><NText :depth="row.previousRank === null ? 3 : 1">{{
                   row.previousRank?.rank ?? '—'
                 }}</NText></template
               >口径不同，不作比较</NTooltip
@@ -207,17 +215,19 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           <NDescriptionsItem label="发现情况">
             <NTooltip
               ><template #trigger
-                ><NText :depth="row.discovery === 'unknown' ? 3 : undefined">{{
+                ><NText :depth="row.discovery === 'unknown' ? 3 : 1">{{
                   discoveryLabels[row.discovery]
                 }}</NText></template
               >{{ discoveryDescriptions[row.discovery] }}</NTooltip
             >
           </NDescriptionsItem>
-          <NDescriptionsItem label="首次发现时间">{{
-            formatCandidateTime(row.firstDiscoveredAt)
-          }}</NDescriptionsItem>
+          <NDescriptionsItem label="首次发现时间"
+            ><NText :depth="row.firstDiscoveredAt === null ? 3 : 1">{{
+              formatCandidateTime(row.firstDiscoveredAt)
+            }}</NText></NDescriptionsItem
+          >
           <NDescriptionsItem label="平台首次上榜"
-            ><NText :depth="row.firstListed === null ? 3 : undefined">{{
+            ><NText :depth="row.firstListed === null ? 3 : 1">{{
               row.firstListed === null ? '—' : row.firstListed ? '是' : '否'
             }}</NText></NDescriptionsItem
           >
@@ -230,6 +240,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           label-placement="left"
           bordered
           :theme-overrides="descriptionTheme"
+          :label-style="descriptionLabelStyle"
         >
           <NDescriptionsItem label="商品ID">
             <div class="candidate-detail__inline">
@@ -253,7 +264,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           </NDescriptionsItem>
           <NDescriptionsItem label="商品所属商家">
             <div class="candidate-detail__inline">
-              <NText :depth="row.merchant ? undefined : 3">{{
+              <NText :depth="row.merchant ? 1 : 3">{{
                 row.merchant?.name ?? '—'
               }}</NText>
               <AppButton
@@ -275,17 +286,19 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
             row.category
           }}</NDescriptionsItem>
           <NDescriptionsItem label="差评率"
-            ><NText :depth="row.negativeReviewRate === null ? 3 : undefined">{{
+            ><NText :depth="row.negativeReviewRate === null ? 3 : 1">{{
               formatReviewRate(row.negativeReviewRate)
             }}</NText></NDescriptionsItem
           >
           <NDescriptionsItem label="首次上架日期"
-            ><NText :depth="row.listedAt === null ? 3 : undefined">{{
+            ><NText :depth="row.listedAt === null ? 3 : 1">{{
               formatCandidateDate(row.listedAt)
             }}</NText></NDescriptionsItem
           >
           <NDescriptionsItem label="商品资料采集状态"
+            ><NText v-if="row.collectionStatus === 'unknown'" depth="3">—</NText
             ><StatusTag
+              v-else
               :label="collectionLabels[row.collectionStatus]"
               :tone="row.collectionStatus === 'failed' ? 'error' : 'neutral'"
           /></NDescriptionsItem>
@@ -297,14 +310,20 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
       <section aria-label="数据来源">
         <NCollapse :key="id ?? 'closed'" :default-expanded-names="[]">
           <NCollapseItem title="数据来源" name="source">
+            <template #header
+              ><span class="candidate-detail__section-title"
+                >数据来源</span
+              ></template
+            >
             <NDescriptions
               :column="1"
               label-placement="left"
               bordered
               :theme-overrides="descriptionTheme"
+              :label-style="descriptionLabelStyle"
             >
               <NDescriptionsItem label="请求罗盘使用的自有店铺"
-                ><NText depth="2">{{ row.shopName }}</NText></NDescriptionsItem
+                ><NText depth="1">{{ row.shopName }}</NText></NDescriptionsItem
               >
               <NDescriptionsItem label="来源">{{
                 row.source
@@ -316,13 +335,19 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
                 row.sourceContext.category
               }}</NDescriptionsItem>
               <NDescriptionsItem label="监控范围"
-                >第{{ row.sourceContext.rankFrom ?? '—' }}–{{
+                >第<NText
+                  :depth="row.sourceContext.rankFrom === null ? 3 : 1"
+                  >{{ row.sourceContext.rankFrom ?? '—' }}</NText
+                >–<NText :depth="row.sourceContext.rankTo === null ? 3 : 1">{{
                   row.sourceContext.rankTo ?? '—'
-                }}名</NDescriptionsItem
+                }}</NText
+                >名</NDescriptionsItem
               >
-              <NDescriptionsItem label="检查时间">{{
-                formatCandidateTime(row.sourceContext.checkedAt)
-              }}</NDescriptionsItem>
+              <NDescriptionsItem label="榜单检查时间"
+                ><NText :depth="row.sourceContext.checkedAt === null ? 3 : 1">{{
+                  formatCandidateTime(row.sourceContext.checkedAt)
+                }}</NText></NDescriptionsItem
+              >
             </NDescriptions>
           </NCollapseItem>
         </NCollapse>
@@ -355,6 +380,9 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
 }
 .candidate-detail__summary,
 .candidate-detail__inline,
@@ -375,25 +403,41 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+  flex: 1;
 }
-.candidate-detail__identity strong {
-  font-size: var(--font-size-section-title);
-  font-weight: var(--font-weight-semibold);
-  overflow-wrap: anywhere;
-}
-.candidate-detail h3 {
-  font-size: var(--font-size-section-title);
-  font-weight: var(--font-weight-semibold);
-  margin: 0 0 var(--space-2);
-}
-.candidate-detail__section-heading {
+.candidate-detail__headline {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2);
+  min-width: 0;
+}
+.candidate-detail__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-page-title);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.candidate-detail__metadata {
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-regular);
+  overflow-wrap: anywhere;
+}
+.candidate-detail h3,
+.candidate-detail__section-title {
+  font-size: var(--font-size-section-title);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.candidate-detail h3 {
+  margin: 0 0 var(--space-2);
 }
 .candidate-detail__metric {
-  font-size: var(--font-size-page-title);
+  font-size: 22px;
   font-weight: var(--font-weight-semibold);
 }
 .candidate-detail__actions {

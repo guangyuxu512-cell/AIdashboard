@@ -4,7 +4,7 @@
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
 分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。
 
-当前返修以文末“紧凑列表与详情首屏返修”为准，旧候选列宽/80px列表缩略图/全列居中/更多操作菜单与常驻日期说明仅为历史验收记录，不代表当前结构。
+当前表现以文末“候选池与详情视觉收口”和“文字层次与详情顶部时间返修”为准；此前各轮的不同列宽、列表图片尺寸、对齐、更多菜单及常驻说明仅为历史验收记录，不代表当前结构。
 
 ## 实施前复用清单
 
@@ -269,3 +269,43 @@ Owner当前浏览器/原生工具初始化报“failed to write kernel assets / 
 用户另提供真实Electron修改前截图（2552×1375图片像素）：仍可见旧范围摘要/查看范围/零选中说明，不能当作新候选验收。截图像素不等于已确认Renderer视口或缩放。已保留本机对照；实际新版加载和操作仍交ca97。
 
 收尾校验发现旧滚动测试操作的是NScrollbar外层，而非内部`.n-scrollbar-container`；此前“右滚动”截图未产生真实移动，不作滚动通过证据。已改为实际滚动节点，并断言scrollLeft大于0、非固定标题移动、图片/操作表头位置不变、排序表头在右滚动后可见；垂直滚动也核对实际scrollTop。新证据保存在`scroll-verified/`，1440视口横移411px且两个固定列位置不变；旧输出保留但明确不采用其滚动结论。没有借测试修正变更业务或公共表格。
+
+## 文字层次与详情顶部时间返修（接续c0e1da78，2026-10-10）
+
+仅调整候选池及候选详情的文字表现、顶部时间信息和定向测试；状态仍为 UI_ONLY。沿用原列宽、居中、12px内边距、56px列表图片、操作排列、两列指标/排名表格与详情分区顺序。不修改全局主题、基础控件、接口、数据源、Backend、数据库、Migration或Electron壳。
+
+### 文字与组件复用
+
+| 内容 | 现有字号/字重 | 现有颜色角色与应用方式 |
+| --- | --- | --- |
+| 详情商品标题 | `--font-size-page-title` / `--font-weight-semibold`（18px/600） | `--text-primary`，只作用于详情标题 |
+| 详情分区标题 | `--font-size-section-title` / `--font-weight-semibold`（16px/600） | `--text-primary`，折叠来源标题同样处理 |
+| 罗盘四项原始指标 | 22px / `--font-weight-semibold` | 现有字号token没有22px，唯一一次定义在本Feature的 `.candidate-detail__metric`；NText depth=1，缺失depth=3 |
+| 普通字段值/候选池正文 | `--font-size-body` / `--font-weight-regular`（14px/400） | `--text-primary`，局部NDescriptions themeOverrides与NText depth=1；列表未放大字号 |
+| 详情字段名称 | `--font-size-secondary` / `--font-weight-regular`（13px/400） | `--text-secondary`，复用NDescriptions原生labelStyle和themeOverrides |
+| 周期/指标获取时间 | `--font-size-secondary` / `--font-weight-regular`（13px/400） | NText depth=3，使用原辅助文字色 |
+
+Naive默认Descriptions标签比字段值深，NText未指定depth时为次文字色；此次通过组件支持的**局部**主题映射纠正，不覆盖Naive内部全局颜色、不改变其他模块。缺值为辅助色，真实0为正常主文字；排名涨跌仍走success/error，链接及按钮沿用当前主题色。StatusTag保留其现有状态语义。
+
+### 顶部时间与来源语义
+
+- 摘要仍为左图右内容；商品标题与紧凑信息使用可换行的flex容器。短标题有空间时同行，长标题/窄抽屉自然换行，不缩字号、不增宽抽屉，不产生横向滚动；价格仍在下一行。
+- 紧凑信息为“罗盘：{sourceContext.periodLabel} · 更新 {metricsRetrievedAt}”。复用原dayjs `formatCandidateTime`，可传 `MM-DD HH:mm` 输出；原其他调用默认 `YYYY-MM-DD HH:mm` 不变。
+- NTooltip展示 `sourceContext.statisticalPeriod` 完整统计区间，以及 `metricsRetrievedAt` 完整获取时间。周期/获取时间缺失均显示 —，不得用榜单检查时间、首次发现时间或当前时间补值。
+- 罗盘视频数据区仅保留分区标题及紧接的四项表格，不再放常驻周期或单独获取时间。原始区间如 `1万–5万` 原样显示，未知单位只在Tooltip提示，不估算或换算。
+- 默认折叠的数据来源保留完整统计区间，将“检查时间”明确为“榜单检查时间”，仍只读 `sourceContext.checkedAt`。两类时间相互独立，首次发现/平台首次上榜/首次上架语义不变。
+
+实际浏览器截图、四主题计算字号/颜色、长标题/420px窄抽屉、缺失时间/真实0测试及精确Candidate/Handoff保存在本机忽略目录 `docs/_local/product-selection-typography-v1/`。浏览器4176与唯一Integration Electron5180证据分别记录；Gate 1后由ca97更新同一候选快照并核实实际加载SHA，不以旧窗口或浏览器截图宣称本轮Electron视觉通过。本轮交付至新预览与视觉验收，不追加业务或发布。
+
+### 文字返修 Gate 1 实测
+
+| 命令（81a1/frontend） | 实际结果 |
+| --- | --- |
+| `pnpm run lint`、`pnpm run typecheck`、受影响文件 `prettier --check` | 最终PASS |
+| `pnpm run test` | 最终133文件/555项PASS，76.16s；既有jsdom XHR stderr保留 |
+| `pnpm exec vitest run src/features/product-selection src/shared/ui/AppButton.spec.ts src/shared/components/DataTable.spec.ts` | 最终7文件/41项PASS，10.36s；含顶部格式/缺失时间不回退、0与null、原批量/日期/多渠道/权限边界相关回归 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 PLAYWRIGHT_API_MODE=mock pnpm exec playwright test e2e/product-selection.spec.ts e2e/product-center.spec.ts e2e/disabled-primary.spec.ts --project=mock --config ../.codex/product-selection-visual-closeout/playwright.mock.config.ts --workers=1 --trace=retain-on-failure` | 最终19项PASS，3.1m；四主题实际计算字号/字重/颜色及截图、1440×900/1366×768、420px窄抽屉、长标题/短标题同行、Tooltip完整区间/时间、真实0/缺失与未知状态，原居中/列宽/固定/滚动/排序/分页/批量/导航/共享按钮不回归 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 PLAYWRIGHT_API_MODE=real pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1 --trace=retain-on-failure` | 1项PASS，10.1s；只拦截既有身份/团队/权限，Real不加载Mock或调用猜测选品接口，普通成员撤权守卫仍拒绝 |
+| `pnpm run build`、`git diff --check` | 最终PASS，Real production，19.00s；未输出选品Mock handler/商品照片/商家及指标夹具，原大chunk告警保留 |
+
+首次新时间断言发现Feature Vite缓存旧TS格式化函数，组件已新但函数仍旧；已核对进程并重启**本Worktree的4176**，实际响应确认使用可选格式参数，再完成全部回归。另两次测试在抽屉/主题过渡帧读取位置或颜色，已等现有有限动画结束后测量，不改业务动画、不加性能重构。初次失败材料保留，最终证据使用`final-regression/`、`real-boundary/`；四主题截图/计算值为实际浏览器Mock渲染，不能代替唯一Electron或用户视觉验收。Integration更新后仍需核对实际加载精确SHA及新时间格式，不能仅依据Git HEAD或HMR宣称完成。

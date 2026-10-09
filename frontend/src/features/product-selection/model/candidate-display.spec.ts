@@ -7,6 +7,7 @@ import {
   discoveryDescriptions,
   categoryLeaf,
   sourceProductUrl,
+  formatCandidateTime,
 } from './candidate-display'
 
 describe('candidate rank and discovery semantics', () => {
@@ -53,5 +54,11 @@ describe('candidate rank and discovery semantics', () => {
     expect(sourceProductUrl('https://example.test/products/123')).toBe(
       'https://example.test/products/123',
     )
+  })
+  it('uses the existing timestamp formatter for compact metadata without inventing a missing time', () => {
+    const value = '2026-10-09T23:27:00'
+    expect(formatCandidateTime(value)).toBe('2026-10-09 23:27')
+    expect(formatCandidateTime(value, 'MM-DD HH:mm')).toBe('10-09 23:27')
+    expect(formatCandidateTime(null, 'MM-DD HH:mm')).toBe('—')
   })
 })

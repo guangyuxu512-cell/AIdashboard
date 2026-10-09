@@ -268,10 +268,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   await expect(page.locator('.n-popover')).toContainText('单位未确认')
   await page.mouse.move(10, 10)
   await expect(page.locator('.n-popover')).toBeHidden()
-  await page
-    .locator('.n-drawer')
-    .getByText('统计周期：近7天', { exact: true })
-    .hover()
+  await page.locator('.n-drawer').locator('.candidate-detail__metadata').hover()
   await expect(page.locator('.n-popover')).toContainText(
     '2026-10-01–2026-10-07',
   )
@@ -1251,10 +1248,13 @@ test('centered candidate columns and consistent bordered details: four rendered 
             sections.map((section) => section.getAttribute('aria-label')),
           ),
       ).toEqual(['罗盘视频数据', '排名与发现', '商品基础信息', '数据来源'])
+      await expect(detail.locator('.candidate-detail__metadata')).toHaveText(
+        '罗盘：近7天 · 更新 10-08 12:00',
+      )
       await expect(
         detail.locator('section[aria-label="罗盘视频数据"]'),
-      ).toContainText('统计周期：近7天')
-      await expect(detail.getByText(/指标获取时间：/)).toHaveCount(1)
+      ).not.toContainText('统计周期')
+      await expect(detail.getByText(/指标获取时间：/)).toHaveCount(0)
       const borderStyles = await detail
         .locator('.n-descriptions')
         .evaluateAll((areas) =>
@@ -1329,7 +1329,8 @@ test('centered candidate columns and consistent bordered details: four rendered 
       await expect(detail).toContainText('近7天 · 2026-10-01–2026-10-07')
       await expect(detail).toContainText('全部类目')
       await expect(detail).toContainText('第1–200名')
-      await expect(detail.getByText(/指标获取时间：/)).toHaveCount(1)
+      await expect(detail.locator('.candidate-detail__metadata')).toHaveCount(1)
+      await expect(detail).toContainText('榜单检查时间')
       await detail
         .locator('.n-drawer-body-content-wrapper')
         .evaluate((element) => {
@@ -1384,4 +1385,309 @@ test('centered candidate columns and consistent bordered details: four rendered 
   await refresh.click()
   await expect(rows).toHaveCount(10)
   await expect(rows.first()).toContainText('已演示采集')
+})
+
+test('detail typography: four themes, primary values, compact header metadata and narrow drawer wrapping', async ({
+  page,
+}, info) => {
+  test.setTimeout(90000)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const detail = page.locator('.n-drawer')
+  await expect(rows).toHaveCount(10)
+  for (const [id, label] of themes) {
+    await page.getByRole('button', { name: '切换主题' }).click()
+    await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme-preset', id)
+    await settleTransitions(page)
+    const colors = await page.evaluate(() => {
+      const probe = document.createElement('span')
+      document.body.append(probe)
+      const result: Record<string, string> = {}
+      for (const role of ['primary', 'secondary', 'tertiary']) {
+        probe.style.color = `var(--text-${role})`
+        result[role] = getComputedStyle(probe).color
+      }
+      probe.remove()
+      return result
+    })
+    const listText = await rows
+      .first()
+      .locator('td')
+      .evaluateAll((cells) =>
+        [
+          cells[2]!.querySelector('.n-ellipsis')!,
+          cells[3]!.querySelector('.n-ellipsis')!,
+          cells[4]!.querySelector('.n-ellipsis')!,
+          cells[6]!.querySelector('.n-text')!,
+        ].map((element) => {
+          const css = getComputedStyle(element)
+          return {
+            size: css.fontSize,
+            weight: css.fontWeight,
+            color: css.color,
+          }
+        }),
+      )
+    expect(listText).toEqual(
+      Array(4).fill({ size: '14px', weight: '400', color: colors.primary }),
+    )
+    await settleTransitions(page)
+    if (id === 'graphite')
+      await page.screenshot({
+        path: info.outputPath('candidate-1440.png'),
+        animations: 'disabled',
+      })
+    await rows
+      .first()
+      .getByRole('button', { name: '详情', exact: true })
+      .click()
+    await expect(detail.locator('.candidate-detail__metadata')).toHaveText(
+      '罗盘：近7天 · 更新 10-08 12:00',
+    )
+    await expect
+      .poll(() =>
+        detail
+          .locator('.n-image img')
+          .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+      )
+      .toBeGreaterThan(0)
+    // Keep the background at the same horizontal position across theme captures.
+    await page
+      .locator('.n-data-table-base-table-body .n-scrollbar-container')
+      .evaluate((element) => {
+        element.scrollLeft = 0
+      })
+    await settleTransitions(page)
+    const typography = await detail.evaluate((element) => {
+      const measure = (element: Element) => {
+        const css = getComputedStyle(element)
+        return { size: css.fontSize, weight: css.fontWeight, color: css.color }
+      }
+      return {
+        title: measure(element.querySelector('.candidate-detail__title')!),
+        headings: [
+          ...element.querySelectorAll(
+            '.candidate-detail h3, .candidate-detail__section-title',
+          ),
+        ].map(measure),
+        labels: [
+          ...element.querySelectorAll('.n-descriptions-table-header'),
+        ].map(measure),
+        values: [
+          ...element.querySelectorAll('.n-descriptions-table-content'),
+        ].map(measure),
+        metrics: [...element.querySelectorAll('.candidate-detail__metric')].map(
+          measure,
+        ),
+        metadata: measure(
+          element.querySelector('.candidate-detail__metadata')!,
+        ),
+      }
+    })
+    expect(typography.title).toEqual({
+      size: '18px',
+      weight: '600',
+      color: colors.primary,
+    })
+    for (const heading of typography.headings)
+      expect(heading).toEqual({
+        size: '16px',
+        weight: '600',
+        color: colors.primary,
+      })
+    for (const field of typography.labels)
+      expect(field).toEqual({
+        size: '13px',
+        weight: '400',
+        color: colors.secondary,
+      })
+    for (const field of typography.values)
+      expect(field).toEqual({
+        size: '14px',
+        weight: '400',
+        color: colors.primary,
+      })
+    expect(typography.metrics).toEqual([
+      { size: '22px', weight: '600', color: colors.tertiary },
+      ...Array(3).fill({ size: '22px', weight: '600', color: colors.primary }),
+    ])
+    expect(typography.metadata).toEqual({
+      size: '13px',
+      weight: '400',
+      color: colors.tertiary,
+    })
+    await writeFile(
+      info.outputPath(`${id}-typography.json`),
+      JSON.stringify({ colors, listText, typography }, null, 2),
+    )
+    await expect(
+      detail.locator('section[aria-label="罗盘视频数据"]'),
+    ).not.toContainText('统计周期')
+    await expect(detail.getByText(/指标获取时间：/)).toHaveCount(0)
+    await detail.locator('.candidate-detail__metadata').hover()
+    await expect(page.locator('.n-popover')).toContainText(
+      '完整统计区间：近7天 · 2026-10-01–2026-10-07',
+    )
+    await expect(page.locator('.n-popover')).toContainText(
+      '指标获取时间：2026-10-08 12:00',
+    )
+    await page.mouse.move(10, 10)
+    await expect(page.locator('.n-popover')).toBeHidden()
+    await settleTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`${id}-detail-1440.png`),
+      animations: 'disabled',
+    })
+    // Test-only reuse of the existing small Drawer token; the live page stays md.
+    await page.evaluate(() =>
+      document.documentElement.style.setProperty(
+        '--drawer-width-md',
+        'var(--drawer-width-sm)',
+      ),
+    )
+    await expect
+      .poll(() =>
+        detail.evaluate((element) => element.getBoundingClientRect().width),
+      )
+      .toBe(420)
+    const overflow = await detail
+      .locator(
+        '.n-drawer-body-content-wrapper, .candidate-detail__summary, .candidate-detail__identity, .candidate-detail__headline',
+      )
+      .evaluateAll((elements) =>
+        elements.map((element) => element.scrollWidth - element.clientWidth),
+      )
+    expect(overflow.every((value) => value <= 1)).toBe(true)
+    await page.screenshot({
+      path: info.outputPath(`${id}-detail-narrow-420.png`),
+      animations: 'disabled',
+    })
+    await detail.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.evaluate(() =>
+      document.documentElement.style.removeProperty('--drawer-width-md'),
+    )
+    await rows.nth(5).getByRole('button', { name: '详情', exact: true }).click()
+    await expect(
+      detail.locator('.candidate-detail__metric').first(),
+    ).toHaveText('1万–5万')
+    await settleTransitions(page)
+    const titleBox = (await detail
+      .locator('.candidate-detail__title')
+      .boundingBox())!
+    const metadataBox = (await detail
+      .locator('.candidate-detail__metadata')
+      .boundingBox())!
+    expect(metadataBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
+    expect(metadataBox.y).toBeLessThan(titleBox.y + titleBox.height)
+    await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  }
+})
+
+test('detail missing timestamp and zero metrics stay distinct from leaderboard time with a long title', async ({
+  page,
+}, info) => {
+  const originalTitle =
+    'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
+  const longTitle = `${originalTitle} ${'LongProductName'.repeat(8)}`
+  await page.route(
+    '**/src/features/product-selection/api/selection-mock-handlers.ts*',
+    async (route) => {
+      const response = await route.fetch()
+      let source = await response.text()
+      const replacements: [RegExp, string][] = [
+        [
+          /metricsRetrievedAt:\s*(['"])2026-10-08T12:00:00\+08:00\1/,
+          'metricsRetrievedAt: null',
+        ],
+        [
+          /userPaidAmountRange:\s*index % 6 === 0 \? null : (['"])1万–5万\1/,
+          'userPaidAmountRange: "0"',
+        ],
+        [/clicksRange:\s*(['"])1000–5000\1/, 'clicksRange: "0"'],
+        [/soldUnitsRange:\s*(['"])100–500\1/, 'soldUnitsRange: "0"'],
+        [/videoCountRange:\s*(['"])10–50\1/, 'videoCountRange: null'],
+        [
+          /collectionStatus:\s*(['"])not-collected\1/,
+          'collectionStatus: "unknown"',
+        ],
+      ]
+      for (const [pattern, replacement] of replacements) {
+        expect(source).toMatch(pattern)
+        source = source.replace(pattern, replacement)
+      }
+      expect(source).toContain(originalTitle)
+      await route.fulfill({
+        response,
+        body: source.replace(originalTitle, longTitle),
+      })
+    },
+  )
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await expect(rows).toHaveCount(10)
+  const collection = rows.first().locator('td').nth(10)
+  await expect(collection).toHaveText('—')
+  const missingColors = await rows
+    .first()
+    .locator('td')
+    .evaluateAll((cells) =>
+      [8, 10].map(
+        (index) =>
+          getComputedStyle(cells[index]!.querySelector('.n-text')!).color,
+      ),
+    )
+  expect(missingColors[1]).toBe(missingColors[0])
+  await rows.first().getByRole('button', { name: '详情', exact: true }).click()
+  const detail = page.locator('.n-drawer')
+  await expect(detail.locator('.candidate-detail__title')).toHaveText(longTitle)
+  await expect(detail.locator('.candidate-detail__metadata')).toHaveText(
+    '罗盘：近7天 · 更新 —',
+  )
+  await expect(detail.locator('.candidate-detail__metric')).toHaveText([
+    '0',
+    '0',
+    '0',
+    '—',
+  ])
+  const colors = await detail
+    .locator('.candidate-detail__metric')
+    .evaluateAll((metrics) =>
+      metrics.map((metric) => getComputedStyle(metric).color),
+    )
+  expect(new Set(colors.slice(0, 3)).size).toBe(1)
+  expect(colors[3]).not.toBe(colors[0])
+  await detail.locator('.candidate-detail__metadata').hover()
+  await expect(page.locator('.n-popover')).toContainText('指标获取时间：—')
+  await expect(page.locator('.n-popover')).not.toContainText('12:00')
+  await page.mouse.move(10, 10)
+  await expect(page.locator('.n-popover')).toBeHidden()
+  await detail.locator('.n-drawer-body-content-wrapper').evaluate((element) => {
+    element.scrollTop = 0
+  })
+  expect(
+    await detail
+      .locator('.n-drawer-body-content-wrapper')
+      .evaluate((element) => element.scrollWidth - element.clientWidth),
+  ).toBeLessThanOrEqual(1)
+  await settleTransitions(page)
+  await page.screenshot({
+    path: info.outputPath('long-title-zero-missing-time.png'),
+    animations: 'disabled',
+  })
+  await detail.locator('.n-drawer-body-content-wrapper').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await detail.locator('.n-collapse-item__header-main').click()
+  await expect(detail).toContainText('榜单检查时间')
+  await expect(detail).toContainText('2026-10-08 12:00')
+  await expect(detail.locator('.candidate-detail__metadata')).toHaveText(
+    '罗盘：近7天 · 更新 —',
+  )
+  await page.screenshot({
+    path: info.outputPath('distinct-source-time.png'),
+    animations: 'disabled',
+  })
 })
