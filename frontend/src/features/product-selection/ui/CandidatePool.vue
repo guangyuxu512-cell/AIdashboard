@@ -9,9 +9,6 @@ import {
   NEllipsis,
   NAlert,
   NTooltip,
-  NPopover,
-  NDescriptions,
-  NDescriptionsItem,
   useMessage,
 } from 'naive-ui'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
@@ -35,7 +32,6 @@ import type {
 import {
   formatCandidateDate,
   formatReviewRate,
-  formatCandidateTime,
   collectionLabels,
   discoveryLabels,
   discoveryDescriptions,
@@ -60,6 +56,22 @@ const keyword = ref(''),
   checked = ref<DataTableRowKey[]>([]),
   detailId = ref<string | null>(null),
   busy = ref(false)
+const selectionHint = ref<{ x: number; y: number } | null>(null)
+function showSelectionHint(event: Event) {
+  const checkbox =
+    event.target instanceof Element
+      ? event.target.closest('th.selection-current-page [role="checkbox"]')
+      : null
+  if (!checkbox) {
+    selectionHint.value = null
+    return
+  }
+  const bounds = checkbox.getBoundingClientRect()
+  selectionHint.value = {
+    x: bounds.left + bounds.width / 2,
+    y: bounds.bottom,
+  }
+}
 const batchReceipt = ref<BatchCollectReceipt | null>(null)
 const batchFailures = computed(
   () =>
@@ -171,7 +183,13 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
 }
 const missing = () => h(NText, { depth: 3 }, () => '—')
 const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
-  { type: 'selection', width: 44, fixed: 'left', align: 'center' },
+  {
+    type: 'selection',
+    width: 44,
+    fixed: 'left',
+    align: 'center',
+    className: 'selection-current-page',
+  },
   {
     key: 'image',
     title: '缩略图',
@@ -188,27 +206,44 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'title',
     title: '商品标题',
-    width: 240,
-    align: 'left',
-    render: (row) => h(NEllipsis, { tooltip: true }, () => row.title),
+    minWidth: 240,
+    align: 'center',
+    render: (row) =>
+      h(
+        NEllipsis,
+        {
+          lineClamp: 2,
+          tooltip: true,
+          style: { width: '100%', textAlign: 'center' },
+        },
+        () => row.title,
+      ),
   },
   {
     key: 'merchant',
     title: '店铺名',
     width: 150,
-    align: 'left',
+    align: 'center',
     render: (row) =>
       row.merchant
-        ? h(NEllipsis, { tooltip: true }, () => row.merchant!.name)
+        ? h(
+            NEllipsis,
+            { tooltip: true, style: { width: '100%', textAlign: 'center' } },
+            () => row.merchant!.name,
+          )
         : missing(),
   },
   {
     key: 'category',
     title: '类目',
     width: 120,
-    align: 'left',
+    align: 'center',
     render: (row) =>
-      h(NEllipsis, { tooltip: true }, () => categoryLeaf(row.category)),
+      h(
+        NEllipsis,
+        { tooltip: true, style: { width: '100%', textAlign: 'center' } },
+        () => categoryLeaf(row.category),
+      ),
   },
   {
     key: 'rank',
@@ -256,6 +291,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     key: 'negativeReviewRate',
     title: '差评率',
     width: 100,
+    className: 'selection-sort-column',
     align: 'center',
     sorter: true,
     sortOrder:
@@ -271,6 +307,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     key: 'listedAt',
     title: '首次上架日期',
     width: 140,
+    className: 'selection-sort-column',
     align: 'center',
     sorter: true,
     sortOrder:
@@ -334,7 +371,13 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
 </script>
 
 <template>
-  <div class="selection-panel candidate-pool">
+  <div
+    class="selection-panel candidate-pool"
+    @mouseover="showSelectionHint"
+    @focusin="showSelectionHint"
+    @mouseleave="selectionHint = null"
+    @focusout="selectionHint = null"
+  >
     <FilterBar>
       <FilterField width="md"
         ><ShopSelector
@@ -370,43 +413,10 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       >
     </FilterBar>
     <ManagementListSection>
-      <div
-        v-for="(context, index) in query.data.value?.contexts ?? []"
-        :key="index"
-        class="candidate-scope-summary"
-      >
-        <NText
-          >{{ context.leaderboardName }} · {{ context.periodLabel }} · 第{{
-            context.rankFrom ?? '—'
-          }}–{{ context.rankTo ?? '—' }}名</NText
-        >
-        <NPopover trigger="click" placement="bottom-start">
-          <template #trigger
-            ><AppButton tone="link" size="small">查看范围</AppButton></template
-          >
-          <NDescriptions :column="1" label-placement="left">
-            <NDescriptionsItem label="榜单">{{
-              context.leaderboardName
-            }}</NDescriptionsItem>
-            <NDescriptionsItem label="类目范围">{{
-              context.category
-            }}</NDescriptionsItem>
-            <NDescriptionsItem label="统计周期">{{
-              context.statisticalPeriod
-            }}</NDescriptionsItem>
-            <NDescriptionsItem label="监控范围"
-              >第{{ context.rankFrom ?? '—' }}–{{
-                context.rankTo ?? '—'
-              }}名</NDescriptionsItem
-            >
-            <NDescriptionsItem label="检查时间">{{
-              formatCandidateTime(context.checkedAt)
-            }}</NDescriptionsItem>
-          </NDescriptions>
-        </NPopover>
-      </div>
       <TableToolbar aria-label="候选商品批量操作">
-        <NText :depth="3">已选择 {{ checked.length }} 项 · 全选仅当前页</NText>
+        <NText v-if="checked.length" :depth="3"
+          >已选 {{ checked.length }} 项</NText
+        >
         <template #actions>
           <AppButton
             tone="primary"
@@ -435,8 +445,11 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1634"
-        :theme-overrides="{ tdPaddingMedium: 'var(--space-3)' }"
+        :scroll-x="1534"
+        :theme-overrides="{
+          tdPaddingMedium: 'var(--space-3)',
+          thPaddingMedium: 'var(--space-3)',
+        }"
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
@@ -453,6 +466,15 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         @update:page-size="setPageSize"
       />
     </ManagementListSection>
+    <NTooltip
+      v-if="selectionHint"
+      trigger="manual"
+      placement="bottom"
+      :show="true"
+      :x="selectionHint.x"
+      :y="selectionHint.y"
+      >全选仅当前页</NTooltip
+    >
     <CandidateDetailDrawer
       :id="detailId"
       :service="service"
@@ -464,13 +486,17 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
 </template>
 
 <style scoped>
-.candidate-scope-summary {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+.candidate-pool :deep(.n-data-table .selection-current-page) {
+  padding: var(--space-3);
+}
+.candidate-pool :deep(.selection-sort-column .n-data-table-th__title-wrapper) {
+  justify-content: center;
+}
+.candidate-pool :deep(.selection-sort-column .n-data-table-th__title) {
+  flex: 0 1 auto;
 }
 .candidate-pool :deep(.selection-candidate-actions) {
+  justify-content: center;
   gap: var(--space-3);
   flex-wrap: nowrap;
 }

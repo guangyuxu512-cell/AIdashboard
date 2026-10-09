@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, ref } from 'vue'
-import { NDescriptions, NMessageProvider } from 'naive-ui'
+import { NDescriptions, NMessageProvider, NTooltip, NCollapse } from 'naive-ui'
 import { AppButton } from '@/shared/ui'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import {
@@ -52,21 +52,36 @@ describe('candidate details preserve the draft contract', () => {
       wrapper
         .findAll('section')
         .map((section) => section.attributes('aria-label')),
-    ).toEqual([
-      '罗盘视频榜单数据',
-      '排名与发现信息',
-      '商品基础信息',
-      '请求来源信息',
-    ])
-    const metrics = wrapper.get('section[aria-label="罗盘视频榜单数据"]')
+    ).toEqual(['罗盘视频数据', '排名与发现', '商品基础信息', '数据来源'])
+    const metrics = wrapper.get('section[aria-label="罗盘视频数据"]')
     expect(metrics.findComponent(NDescriptions).props('column')).toBe(2)
-    expect(metrics.text()).toContain(row.sourceContext.statisticalPeriod)
+    expect(metrics.text()).toContain(
+      `统计周期：${row.sourceContext.periodLabel}`,
+    )
+    expect(metrics.text()).not.toContain(row.sourceContext.statisticalPeriod)
+    const descriptions = wrapper.findAllComponents(NDescriptions)
+    expect(descriptions).toHaveLength(3)
+    for (const description of descriptions) {
+      expect(description.props('bordered')).toBe(true)
+      expect(description.props('themeOverrides')).toEqual({
+        thPaddingBorderedMedium: 'var(--space-3)',
+        tdPaddingBorderedMedium: 'var(--space-3)',
+      })
+    }
+    expect(descriptions[1].props('column')).toBe(2)
+    expect(
+      wrapper.findComponent(NCollapse).props('defaultExpandedNames'),
+    ).toEqual([])
+    expect(wrapper.text()).not.toContain('请求罗盘使用的自有店铺')
+    expect(wrapper.text().match(/指标获取时间/g)).toHaveLength(1)
     expect(
       metrics.findAll('.candidate-detail__metric').map((item) => item.text()),
     ).toEqual(['—', '1000–5000', '100–500', '10–50'])
     expect(wrapper.findComponent(ExternalProductImage).props('src')).toBe(
       row.imageUrl,
     )
+    await wrapper.get('.n-collapse-item__header-main').trigger('click')
+    await flushPromises()
     for (const label of [
       '商品所属商家',
       '请求罗盘使用的自有店铺',
@@ -112,7 +127,19 @@ describe('candidate details preserve the draft contract', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('0.00%')
     expect(wrapper.text()).toContain('1万–5万')
-    expect(wrapper.text()).toContain('单位未确认')
+    expect(wrapper.text()).not.toContain('单位未确认')
+    expect(wrapper.text()).not.toContain('请求罗盘使用的自有店铺')
+    expect(
+      wrapper
+        .findAllComponents(NTooltip)
+        .find(
+          (item) =>
+            item.vm.$slots
+              .default?.()
+              .some((node) => node.children === '单位未确认') &&
+            !item.props('disabled'),
+        ),
+    ).toBeDefined()
     wrapper.unmount()
     queryClient.clear()
     expect(formatCandidateDate(null)).toBe('—')
@@ -163,6 +190,9 @@ describe('candidate details preserve the draft contract', () => {
       .find((button) => button.text() === '标记为竞品店铺')!
     expect(button.props('disabled')).toBe(true)
     expect(wrapper.text()).toContain('商品商家身份未确认')
+    expect(wrapper.text()).not.toContain(fixture.shopName)
+    await wrapper.get('.n-collapse-item__header-main').trigger('click')
+    await flushPromises()
     expect(wrapper.text()).toContain(fixture.shopName)
     button.vm.$emit('click', new MouseEvent('click'))
     await flushPromises()

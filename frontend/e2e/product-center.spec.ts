@@ -82,6 +82,21 @@ test('product navigation preserves framed query history, refresh, fallback and l
 test('product switch uses the same shared framed styling as AI navigation in all themes', async ({
   page,
 }) => {
+  const apiAttempts: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/'))
+      apiAttempts.push(request.method())
+  })
+  // UI comparison uses the existing isolated fixture, never Real AI APIs.
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url())
+    if (
+      url.origin === new URL(test.info().project.use.baseURL!).origin &&
+      !url.pathname.startsWith('/api/')
+    )
+      await route.continue()
+    else await route.abort()
+  })
   const style = async (label: string) =>
     page
       .getByRole('navigation', { name: label, exact: true })
@@ -110,7 +125,7 @@ test('product switch uses the same shared framed styling as AI navigation in all
         ]
       })
   for (const label of ['石墨浅色', '森林绿', '珊瑚红', '午夜青']) {
-    await page.goto('/#/ai-workbench/generate')
+    await page.goto('/#/ai-workbench/generate?visualMock=1')
     await page.getByRole('button', { name: '切换主题' }).click()
     await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
     await expect(page.locator('.n-dropdown')).toBeHidden()
@@ -122,4 +137,5 @@ test('product switch uses the same shared framed styling as AI navigation in all
     await page.goto('/#/product-selection')
     expect(await style('选品库切换')).toEqual(ai)
   }
+  expect(apiAttempts).toEqual([])
 })

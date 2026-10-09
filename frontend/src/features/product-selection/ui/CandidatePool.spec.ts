@@ -54,7 +54,7 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
-  it('aligns title, merchant and category left while keeping the remaining fields centered and source context available', async () => {
+  it('centers all columns, gives only the two-line title flexible width and keeps scope out of the list', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),
     )
@@ -79,20 +79,33 @@ describe('candidate selection and batch demo', () => {
       'actions',
     ])
     for (const column of columns) {
-      expect(column.align).toBe(
-        ['title', 'merchant', 'category'].includes(column.key)
-          ? 'left'
-          : 'center',
-      )
+      expect(column.align).toBe('center')
     }
+    expect(
+      columns.find((column: { key: string }) => column.key === 'title'),
+    ).toMatchObject({ minWidth: 240 })
+    expect(
+      columns.filter((column: { width?: number }) => !column.width),
+    ).toHaveLength(1)
+    const title = columns
+      .find((column: { key: string }) => column.key === 'title')
+      .render(table.props('data')[0])
+    expect(title.props).toMatchObject({
+      lineClamp: 2,
+      tooltip: true,
+      style: { width: '100%', textAlign: 'center' },
+    })
     expect(columns.at(-1).fixed).toBe('right')
     expect(columns.at(-1).width).toBe(220)
     expect(table.props('themeOverrides')).toEqual({
       tdPaddingMedium: 'var(--space-3)',
+      thPaddingMedium: 'var(--space-3)',
     })
     expect(button().props('tone')).toBe('primary')
-    expect(wrapper.text()).toContain('短视频商品榜 · 近7天 · 第1–200名')
-    expect(wrapper.text()).toContain('查看范围')
+    expect(wrapper.text()).not.toContain('短视频商品榜 · 近7天 · 第1–200名')
+    expect(wrapper.text()).not.toContain('查看范围')
+    expect(wrapper.text()).not.toContain('已选')
+    expect(wrapper.text()).not.toContain('全选仅当前页')
     expect(wrapper.text()).not.toContain('2026-10-08 12:00')
     dispose()
   })
@@ -114,6 +127,7 @@ describe('candidate selection and batch demo', () => {
     expect(batch).not.toHaveBeenCalled()
     table.vm.$emit('update:checkedRowKeys', ['candidate-000', 'candidate-001'])
     await flushPromises()
+    expect(wrapper.text()).toContain('已选 2 项')
     button().vm.$emit('click', new MouseEvent('click'))
     button().vm.$emit('click', new MouseEvent('click'))
     await flushPromises()
@@ -181,7 +195,7 @@ describe('candidate selection and batch demo', () => {
     await flushPromises()
     expect(table.props('checkedRowKeys')).toEqual([])
     expect(table.props('data')[0].id).toBe('candidate-010')
-    expect(wrapper.text()).toContain('全选仅当前页')
+    expect(wrapper.text()).not.toContain('已选')
     dispose()
   })
 })

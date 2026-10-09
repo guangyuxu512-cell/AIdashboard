@@ -238,3 +238,32 @@ Gate 1 的执行结果与精确新 Candidate 记录在同目录 Handoff；旧候
 ca97须把新Candidate实际加载到唯一5180 Mock Electron，记录Renderer尺寸/缩放并让用户集中复验列表、详情、日期区域；当前用户窗口尺寸尚未取得，不能用浏览器尺寸代替。Real边界另验，未完成Electron不标视觉PASS。
 
 真实最小闭环尚未实施。仅先核对正式DouyinApiClient/ShopSession权限路径与既有basic_info脱敏材料；生产只读证据由ca97统一协调，basic_info字段存在不是榜单成功或非零差评率单位已确认。前端确认后再冻结榜单/基础信息契约、安排DB/Slot及真实平台→入库→API→Real页面验证。百应、达人登录、监控、手机、自动上架仍不纳入，商品资料按钮不能报真实手机采集成功。
+
+## 候选池与详情视觉收口（接续72fb71cf，2026-10-09）
+
+本节覆盖上一节的列表范围摘要/查看范围、正文三列左对齐和详情常驻解释，其他已验证成果保留。状态仍为 UI_ONLY，无 Backend、数据库、Migration、平台请求、手机或全局主题变更。
+
+- 列表移除范围摘要与入口，来源事实仍保存在原契约和详情中。无勾选时不显示数量；有勾选时仅“已选 X 项”。Naive 原生全选继续只选当前页，现有 NTooltip 只在原全选控件悬停/聚焦时提示。统一“演示数据”标识和演示操作回执不变。
+- 全部表头/内容居中；标题两行 NEllipsis，商家与末级类目单行 NEllipsis，内部容器也居中，溢出提示保留全文。全部单元格局部采用 `--space-3` 四边12px，图片56px，正常行高约81px；不改公共表格默认样式。
+- 列宽依次为选择44、图片80、标题弹性（最小240）、店铺150、类目120、排名100、发现100、价格120、差评率100、首次上架140、状态120、操作220。固定列合计1294，最小表宽1534；标题为唯一未指定固定 width 的列，宽屏剩余宽度只交给标题。选择/图片左固定、操作右固定，操作12px间距、居中、不换行；窄窗口局部横向滚动。
+- 原生 sortable 表头仍使用原排序状态与箭头。Naive 的 align 只控制文字，内部标题默认 flex:1 会把箭头推到右边；通过本页列 className 与两条局部布局规则居中文字/箭头整体，不修改图标、排序算法或全局样式。原生选择列默认padding为0，本页列 className 仅同步为12px。没有新增公共控件。
+- 详情保持摘要→罗盘视频数据→排名与发现→商品基础信息→数据来源。前三个数据区共用 bordered NDescriptions 的主题边框/圆角/标签底色和12px内边距；视频、排名区各两列。周期只显示相对名称，完整区间在Tooltip和折叠来源内；指标获取时间只出现一次。底部数据来源默认折叠、换商品/重开恢复折叠，保留取数自有店铺、来源、完整区间、类目与监控范围、检查时间。
+- 不可比较、金额单位未确认改为字段Tooltip；原判断不变，不显示不可靠涨跌、不换算未知单位、不填零。商家身份缺失的必要反馈、错误及批量部分失败仍保留。请求自有店铺与商品商家不混淆。
+- 跨AI导航对照测试原来未指定 `visualMock=1`，在5180代理到8100时进入Real AI读取，401后跳到登录页。此次仅让Mock UI对照使用已有隔离视觉夹具，并阻断API/外部请求，断言零API尝试；不改Real认证、守卫或AI业务。
+
+本轮精确Candidate、命令结果、布局测量及四主题实际浏览器截图记录在本机忽略目录 `docs/_local/product-selection-visual-closeout-v1/`。实际预览用4176 strictPort，保留同一数据；1440×900、1366×768和宽屏检查属于浏览器证据，不替代当前用户窗口或Electron。
+Owner当前浏览器/原生工具初始化报“failed to write kernel assets / 系统找不到指定的路径 (os error 3)”，未取得用户实际Renderer尺寸/zoom；不通过另一个低层入口绕过。Gate 1后ca97更新5180候选快照、核对实际加载SHA，并在唯一Integration Electron集中补验。旧72fb或本轮浏览器PASS不能替代新增视觉验收；跨AI导航须在集成端精确新候选复跑，未完成不标Gate 2全部通过。
+
+### 视觉收口 Gate 1 实测
+
+| 命令（81a1/frontend） | 实际结果 |
+| --- | --- |
+| `pnpm run lint`、`pnpm run typecheck` | 最终PASS；Real build另执行typecheck |
+| `pnpm run test` | 133文件/553项PASS，86.78s；既有jsdom XHR stderr保留 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 PLAYWRIGHT_API_MODE=mock pnpm exec playwright test e2e/product-selection.spec.ts e2e/product-center.spec.ts e2e/disabled-primary.spec.ts --project=mock --config ../.codex/product-selection-visual-closeout/playwright.mock.config.ts --workers=1 --trace=retain-on-failure` | 17项PASS，2.7m；复用已核对的Feature Mock Vite，未新增Electron/Backend。含排序/分页、当前页全选Tooltip/聚焦、批量部分失败、长内容居中/两行、省略提示、四主题、原日期/策略/竞态及共享按钮 |
+| 同配置，`e2e/product-selection.spec.ts --grep 'centered candidate'` | 最终截图补跑1项PASS，35.8s；四主题1440×900/1366×768同数据，表头箭头整体居中/12px padding/81px行、三块边框一致/来源默认折叠、右滚动及2240宽屏只有标题扩展 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1 --trace=retain-on-failure` | 1项PASS，5.6s；Real不加载Mock/不发猜测请求，普通成员撤权后守卫拒绝。仅身份/团队/权限拦截，无真实Backend/DB |
+| `pnpm run build` | PASS，Real production，36.86s；扫描未发现选品Mock handler/商品照片/商家夹具，原大chunk告警保留 |
+| `git diff --check` | PASS |
+
+用户另提供真实Electron修改前截图（2552×1375图片像素）：仍可见旧范围摘要/查看范围/零选中说明，不能当作新候选验收。截图像素不等于已确认Renderer视口或缩放。已保留本机对照；实际新版加载和操作仍交ca97。

@@ -37,6 +37,27 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
     if (new URL(request.url()).pathname.startsWith('/api/'))
       apiRequests.push(request.url())
   })
+  const originalTitle =
+    'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
+  const fullTitle = `${originalTitle} 防汗持妆细密刷头轻松卸妆日常通勤眼妆组合`
+  const longMerchant = '轻盈美妆日常护理产品精选演示旗舰店'
+  const longCategory = '日常通勤多场景演示上衣类目'
+  // Long-content rendering fixture only; keep the normal preview dataset unchanged.
+  await page.route(
+    '**/src/features/product-selection/api/selection-mock-handlers.ts*',
+    async (route) => {
+      const response = await route.fetch()
+      const source = await response.text()
+      expect(source).toContain(originalTitle)
+      await route.fulfill({
+        response,
+        body: source
+          .replace(originalTitle, fullTitle)
+          .replace('轻盈美妆示例店', longMerchant)
+          .replace('服饰 / 女装 / 上衣', `服饰 / 女装 / ${longCategory}`),
+      })
+    },
+  )
   await page.goto('/#/product-selection')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
@@ -45,15 +66,15 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
     page.getByRole('columnheader', { name: '商品ID', exact: true }),
   ).toHaveCount(0)
   const title = rows.first().locator('td').nth(2).locator('.n-ellipsis')
-  const fullTitle = 'Essence 纤长卷翘防水睫毛膏 浓密自然不晕染持久眼妆便携装'
   await expect(title).toHaveText(fullTitle)
   expect(
     await title.evaluate((element) => ({
-      whiteSpace: getComputedStyle(element).whiteSpace,
-      overflow: element.scrollWidth > element.clientWidth,
+      lineClamp: getComputedStyle(element).webkitLineClamp,
+      align: getComputedStyle(element).textAlign,
+      overflow: element.scrollHeight > element.clientHeight,
       height: element.getBoundingClientRect().height,
     })),
-  ).toMatchObject({ whiteSpace: 'nowrap', overflow: true })
+  ).toMatchObject({ lineClamp: '2', align: 'center', overflow: true })
   await title.hover()
   await expect(
     page.locator('.n-popover').getByText(fullTitle, { exact: true }),
@@ -64,6 +85,23 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   })
   await page.mouse.move(10, 10)
   await expect(page.locator('.n-popover')).toBeHidden()
+  for (const [index, text] of [
+    [3, longMerchant],
+    [4, longCategory],
+  ] as const) {
+    const ellipsis = rows
+      .first()
+      .locator('td')
+      .nth(index)
+      .locator('.n-ellipsis')
+    expect(
+      await ellipsis.evaluate((element) => getComputedStyle(element).textAlign),
+    ).toBe('center')
+    await ellipsis.hover()
+    await expect(page.locator('.n-popover')).toHaveText(text)
+    await page.mouse.move(10, 10)
+    await expect(page.locator('.n-popover')).toBeHidden()
+  }
   const body = page.locator('.n-data-table-base-table-body')
   await body.evaluate((element) => {
     element.scrollTop = element.scrollHeight
@@ -107,20 +145,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         .evaluateAll((elements) =>
           elements.map((element) => getComputedStyle(element).textAlign),
         )
-      expect(alignments).toEqual([
-        'center',
-        'center',
-        'left',
-        'left',
-        'left',
-        'center',
-        'center',
-        'center',
-        'center',
-        'center',
-        'center',
-        'center',
-      ])
+      expect(alignments).toEqual(Array(12).fill('center'))
     }
     const before = await page
       .getByRole('columnheader', { name: '缩略图', exact: true })
@@ -205,7 +230,28 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
   await rows.first().getByRole('button', { name: '详情', exact: true }).click()
   await expect(page.locator('.n-drawer')).toContainText('短视频用户支付金额')
-  await expect(page.locator('.n-drawer')).toContainText('单位未确认')
+  await expect(page.locator('.n-drawer')).not.toContainText('单位未确认')
+  await page.locator('.candidate-detail__metric').first().hover()
+  await expect(page.locator('.n-popover')).toContainText('单位未确认')
+  await page.mouse.move(10, 10)
+  await expect(page.locator('.n-popover')).toBeHidden()
+  await page
+    .locator('.n-drawer')
+    .getByText('统计周期：近7天', { exact: true })
+    .hover()
+  await expect(page.locator('.n-popover')).toContainText(
+    '2026-10-01–2026-10-07',
+  )
+  await page.mouse.move(10, 10)
+  await expect(page.locator('.n-popover')).toBeHidden()
+  const ranks = page.locator('section[aria-label="排名与发现"]')
+  await expect(ranks).not.toContainText('口径不同，不作比较')
+  await expect(ranks).not.toContainText('↑')
+  await expect(ranks).not.toContainText('↓')
+  await ranks.getByText('34', { exact: true }).hover()
+  await expect(page.locator('.n-popover')).toContainText('口径不同，不作比较')
+  await page.mouse.move(10, 10)
+  await expect(page.locator('.n-popover')).toBeHidden()
   for (const label of [
     '店铺',
     '类目',
@@ -260,10 +306,17 @@ test('batch demo selects only the current page, rejects empty selection and guar
   const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
   await expect(rows).toHaveCount(10)
   await expect(batch).toBeDisabled()
-  await page.locator('.n-data-table-thead').getByRole('checkbox').check()
-  await expect(
-    page.getByText('已选择 10 项 · 全选仅当前页', { exact: true }),
-  ).toBeVisible()
+  await expect(page.getByText(/已选 \d+ 项/)).toHaveCount(0)
+  const selectAll = page.locator('.n-data-table-thead').getByRole('checkbox')
+  await selectAll.hover()
+  await expect(page.getByText('全选仅当前页', { exact: true })).toBeVisible()
+  await page.mouse.move(10, 10)
+  await expect(page.getByText('全选仅当前页', { exact: true })).toBeHidden()
+  await selectAll.focus()
+  await expect(page.getByText('全选仅当前页', { exact: true })).toBeVisible()
+  await selectAll.check()
+  await batch.focus()
+  await expect(page.getByText('已选 10 项', { exact: true })).toBeVisible()
   await page.screenshot({
     path: info.outputPath('batch-selected-current-page.png'),
     animations: 'disabled',
@@ -278,9 +331,7 @@ test('batch demo selects only the current page, rejects empty selection and guar
     }),
   ).toHaveCount(1)
   await expect(batch).toBeDisabled()
-  await expect(
-    page.getByText('已选择 0 项 · 全选仅当前页', { exact: true }),
-  ).toBeVisible()
+  await expect(page.getByText(/已选 \d+ 项/)).toHaveCount(0)
   await page.locator('.n-data-table-thead').getByRole('checkbox').check()
   await page.locator('.n-pagination-item').filter({ hasText: /^2$/ }).click()
   await expect(rows.first()).toContainText('演示商品 11')
@@ -369,9 +420,7 @@ test('exception-only: batch partial failure preserves failed selection and all i
   await expect(rows.nth(0).getByRole('checkbox')).not.toBeChecked()
   await expect(rows.nth(1).getByRole('checkbox')).toBeChecked()
   await expect(rows.nth(2).getByRole('checkbox')).not.toBeChecked()
-  await expect(
-    page.getByText('已选择 1 项 · 全选仅当前页', { exact: true }),
-  ).toBeVisible()
+  await expect(page.getByText('已选 1 项', { exact: true })).toBeVisible()
   await expect(page.locator('.n-message')).toHaveCount(0)
   await page.screenshot({
     path: info.outputPath('batch-partial-failure.png'),
@@ -881,7 +930,7 @@ test('exception-only: external image failure, no authentication headers and expl
   await expect(detailRetry).toHaveCount(0)
 })
 
-test('compact candidate scope, actions and first-screen metrics: four actual rendered themes at two viewports', async ({
+test('centered candidate columns and consistent bordered details: four rendered themes at two viewports', async ({
   page,
 }, info) => {
   test.setTimeout(150000)
@@ -915,20 +964,11 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
   await expect(rows.nth(3)).not.toContainText('↑')
   await expect(rows.nth(4)).toContainText('新进入')
   await expect(page.getByText('演示数据', { exact: true })).toHaveCount(1)
-  await expect(page.locator('.candidate-scope-summary')).toContainText(
-    '短视频商品榜 · 近7天 · 第1–200名',
-  )
-  await expect(page.locator('.candidate-scope-summary')).not.toContainText(
-    '2026-10-01',
-  )
-  await page.getByRole('button', { name: '查看范围', exact: true }).click()
-  await expect(page.locator('.n-popover')).toContainText(
-    '近7天 · 2026-10-01–2026-10-07',
-  )
-  await expect(page.locator('.n-popover')).toContainText('全部类目')
-  await expect(page.locator('.n-popover')).toContainText('2026-10-08 12:00')
-  await page.getByText('演示数据', { exact: true }).click()
-  await expect(page.locator('.n-popover')).toBeHidden()
+  await expect(page.locator('.candidate-scope-summary')).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '查看范围', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByText(/已选 \d+ 项/)).toHaveCount(0)
   const colorEvidence = []
   for (const viewport of [
     { width: 1440, height: 900 },
@@ -982,14 +1022,33 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
       expect(secondaryColors.background).not.toBe(primaryColors.background)
       const rowDimensions = await rows.first().evaluate((row) => {
         const cell = row.querySelector('td:nth-child(2)')!
+        const cells = [...row.querySelectorAll('td')]
         const actions = row.querySelector('.selection-candidate-actions')!
         const buttons = [...actions.querySelectorAll('button')]
+        const actionCell = cells.at(-1)!.getBoundingClientRect()
+        const first = buttons[0]!.getBoundingClientRect()
+        const last = buttons.at(-1)!.getBoundingClientRect()
         return {
           rowHeight: row.getBoundingClientRect().height,
           paddingTop: getComputedStyle(cell).paddingTop,
           paddingBottom: getComputedStyle(cell).paddingBottom,
           actionGap: getComputedStyle(actions).columnGap,
           actionWrap: getComputedStyle(actions).flexWrap,
+          actionCenterOffset:
+            (first.left + last.right) / 2 -
+            (actionCell.left + actionCell.width / 2),
+          cells: cells.map((cell) => {
+            const css = getComputedStyle(cell)
+            return {
+              padding: css.padding,
+              align: css.textAlign,
+              verticalAlign: css.verticalAlign,
+              width: cell.getBoundingClientRect().width,
+              ellipsisAlign: cell.querySelector('.n-ellipsis')
+                ? getComputedStyle(cell.querySelector('.n-ellipsis')!).textAlign
+                : null,
+            }
+          }),
           buttonCenters: buttons.map((button) => {
             const box = button.getBoundingClientRect()
             return box.y + box.height / 2
@@ -1012,7 +1071,41 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
       expect(rowDimensions.paddingBottom).toBe('12px')
       expect(rowDimensions.actionGap).toBe('12px')
       expect(rowDimensions.actionWrap).toBe('nowrap')
+      expect(Math.abs(rowDimensions.actionCenterOffset)).toBeLessThanOrEqual(1)
       expect(new Set(rowDimensions.buttonCenters).size).toBe(1)
+      for (const cell of rowDimensions.cells) {
+        expect(cell.padding).toBe('12px')
+        expect(cell.align).toBe('center')
+        expect(cell.verticalAlign).toBe('middle')
+        if (cell.ellipsisAlign) expect(cell.ellipsisAlign).toBe('center')
+      }
+      const expectedWidths = [
+        44, 80, 240, 150, 120, 100, 100, 120, 100, 140, 120, 220,
+      ]
+      expect(rowDimensions.cells.map((cell) => Math.round(cell.width))).toEqual(
+        expectedWidths,
+      )
+      for (const height of await rows.evaluateAll((rows) =>
+        rows.map((row) => row.getBoundingClientRect().height),
+      )) {
+        expect(height).toBeGreaterThanOrEqual(80)
+        expect(height).toBeLessThanOrEqual(83)
+      }
+      for (const name of ['差评率', '首次上架日期']) {
+        const offset = await page
+          .getByRole('columnheader', { name, exact: true })
+          .evaluate((header) => {
+            const box = header.getBoundingClientRect()
+            const title = header
+              .querySelector('.n-data-table-th__title')!
+              .getBoundingClientRect()
+            const arrow = header
+              .querySelector('.n-data-table-sorter')!
+              .getBoundingClientRect()
+            return (title.left + arrow.right) / 2 - (box.left + box.width / 2)
+          })
+        expect(Math.abs(offset)).toBeLessThanOrEqual(1)
+      }
       const semanticColors = await page.evaluate(() => {
         const probe = document.createElement('span')
         document.body.append(probe)
@@ -1058,6 +1151,19 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
         path: info.outputPath(`${id}-${viewport.width}-candidate-plain.png`),
         animations: 'disabled',
       })
+      const tableBody = page.locator('.n-data-table-base-table-body')
+      await tableBody.evaluate((element) => {
+        element.scrollLeft = element.scrollWidth
+      })
+      await page.screenshot({
+        path: info.outputPath(
+          `${id}-${viewport.width}-candidate-scrolled-right.png`,
+        ),
+        animations: 'disabled',
+      })
+      await tableBody.evaluate((element) => {
+        element.scrollLeft = 0
+      })
       await rows
         .first()
         .getByRole('button', { name: '详情', exact: true })
@@ -1071,8 +1177,8 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
         .toBeGreaterThan(0)
       await expect(detail).toContainText('商品所属商家')
       await expect(detail).toContainText('轻盈美妆示例店')
-      await expect(detail).toContainText('请求罗盘使用的自有店铺')
-      await expect(detail).toContainText('星河服饰旗舰店')
+      await expect(detail).not.toContainText('请求罗盘使用的自有店铺')
+      await expect(detail).not.toContainText('星河服饰旗舰店')
       await expect(
         detail.getByRole('button', { name: '查看源商品', exact: true }),
       ).toHaveCount(0)
@@ -1089,15 +1195,44 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
           .evaluateAll((sections) =>
             sections.map((section) => section.getAttribute('aria-label')),
           ),
-      ).toEqual([
-        '罗盘视频榜单数据',
-        '排名与发现信息',
-        '商品基础信息',
-        '请求来源信息',
-      ])
+      ).toEqual(['罗盘视频数据', '排名与发现', '商品基础信息', '数据来源'])
       await expect(
-        detail.locator('section[aria-label="罗盘视频榜单数据"]'),
-      ).toContainText('近7天 · 2026-10-01–2026-10-07')
+        detail.locator('section[aria-label="罗盘视频数据"]'),
+      ).toContainText('统计周期：近7天')
+      await expect(detail.getByText(/指标获取时间：/)).toHaveCount(1)
+      const borderStyles = await detail
+        .locator('.n-descriptions')
+        .evaluateAll((areas) =>
+          areas.map((area) => {
+            const frame = getComputedStyle(
+              area.querySelector('.n-descriptions-table-wrapper')!,
+            )
+            const label = getComputedStyle(area.querySelector('th')!)
+            const content = getComputedStyle(
+              area.querySelector('.n-descriptions-table-content')!,
+            )
+            return {
+              bordered: area.classList.contains('n-descriptions--bordered'),
+              border: frame.border,
+              radius: frame.borderRadius,
+              labelBackground: label.backgroundColor,
+              labelPadding: label.padding,
+              contentPadding: content.padding,
+            }
+          }),
+        )
+      expect(borderStyles).toHaveLength(3)
+      expect(borderStyles[1]).toEqual(borderStyles[0])
+      expect(borderStyles[2]).toEqual(borderStyles[0])
+      expect(borderStyles[0]).toMatchObject({
+        bordered: true,
+        labelPadding: '12px',
+        contentPadding: '12px',
+      })
+      await writeFile(
+        info.outputPath(`${id}-${viewport.width}-detail-borders.json`),
+        JSON.stringify(borderStyles, null, 2),
+      )
       const metricBoxes = await detail
         .locator('.candidate-detail__metric')
         .evaluateAll((metrics) =>
@@ -1129,6 +1264,25 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
         })
       await page.screenshot({
         path: info.outputPath(
+          `${id}-${viewport.width}-detail-collapsed-source.png`,
+        ),
+        animations: 'disabled',
+      })
+      await detail.locator('.n-collapse-item__header-main').click()
+      await expect(detail).toContainText('请求罗盘使用的自有店铺')
+      await expect(detail).toContainText('星河服饰旗舰店')
+      await expect(detail).toContainText('近7天 · 2026-10-01–2026-10-07')
+      await expect(detail).toContainText('全部类目')
+      await expect(detail).toContainText('第1–200名')
+      await expect(detail.getByText(/指标获取时间：/)).toHaveCount(1)
+      await detail
+        .locator('.n-drawer-body-content-wrapper')
+        .evaluate((element) => {
+          element.scrollTop = element.scrollHeight
+        })
+      await settleTransitions(page)
+      await page.screenshot({
+        path: info.outputPath(
           `${id}-${viewport.width}-detail-source-final.png`,
         ),
         animations: 'disabled',
@@ -1140,6 +1294,21 @@ test('compact candidate scope, actions and first-screen metrics: four actual ren
     info.outputPath('action-colors-four-themes.json'),
     JSON.stringify(colorEvidence, null, 2),
   )
+  await page.setViewportSize({ width: 2240, height: 1080 })
+  const wideWidths = await rows
+    .first()
+    .locator('td')
+    .evaluateAll((cells) =>
+      cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
+    )
+  expect(wideWidths[2]).toBeGreaterThan(240)
+  expect(wideWidths.filter((_, index) => index !== 2)).toEqual([
+    44, 80, 150, 120, 100, 100, 120, 100, 140, 120, 220,
+  ])
+  await page.screenshot({
+    path: info.outputPath('candidate-full-width-2240.png'),
+    animations: 'disabled',
+  })
   await rows.first().getByRole('button', { name: '详情', exact: true }).click()
   await detail
     .getByRole('button', { name: '标记为竞品店铺', exact: true })

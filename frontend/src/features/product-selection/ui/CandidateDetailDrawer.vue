@@ -7,6 +7,8 @@ import {
   NDescriptionsItem,
   NText,
   NTooltip,
+  NCollapse,
+  NCollapseItem,
   useMessage,
 } from 'naive-ui'
 import {
@@ -47,6 +49,10 @@ const query = useQuery({
 const row = computed(() => query.data.value)
 const sourceUrl = computed(() => sourceProductUrl(row.value?.sourceUrl ?? null))
 const change = computed(() => (row.value ? rankChange(row.value) : null))
+const descriptionTheme = {
+  thPaddingBorderedMedium: 'var(--space-3)',
+  tdPaddingBorderedMedium: 'var(--space-3)',
+}
 const metrics = computed(() =>
   row.value
     ? [
@@ -126,36 +132,55 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           >
         </div>
       </div>
-      <section aria-label="罗盘视频榜单数据">
+      <section aria-label="罗盘视频数据">
         <div class="candidate-detail__section-heading">
-          <h3>罗盘视频榜单数据</h3>
-          <NText depth="3"
-            >统计周期：{{ row.sourceContext.statisticalPeriod }}</NText
+          <h3>罗盘视频数据</h3>
+          <NTooltip
+            ><template #trigger
+              ><NText depth="3"
+                >统计周期：{{ row.sourceContext.periodLabel }}</NText
+              ></template
+            >{{ row.sourceContext.statisticalPeriod }}</NTooltip
           >
         </div>
         <NText tag="div" depth="3"
-          >获取时间：{{ formatCandidateTime(row.metricsRetrievedAt) }}</NText
+          >指标获取时间：{{
+            formatCandidateTime(row.metricsRetrievedAt)
+          }}</NText
         >
-        <NDescriptions :column="2" label-placement="top" bordered>
+        <NDescriptions
+          :column="2"
+          label-placement="top"
+          bordered
+          :theme-overrides="descriptionTheme"
+        >
           <NDescriptionsItem
             v-for="metric in metrics"
             :key="metric.label"
             :label="metric.label"
           >
-            <NText
-              tag="strong"
-              class="candidate-detail__metric"
-              :depth="metric.value === null ? 3 : undefined"
-              >{{ metric.value ?? '—' }}</NText
+            <NTooltip :disabled="!metric.unknownUnit"
+              ><template #trigger
+                ><NText
+                  tag="strong"
+                  class="candidate-detail__metric"
+                  :depth="metric.value === null ? 3 : undefined"
+                  >{{ metric.value ?? '—' }}</NText
+                ></template
+              >单位未确认</NTooltip
             >
-            <NText v-if="metric.unknownUnit" depth="3">（单位未确认）</NText>
-            <template v-else>{{ metric.unit }}</template>
+            <template v-if="!metric.unknownUnit">{{ metric.unit }}</template>
           </NDescriptionsItem>
         </NDescriptions>
       </section>
-      <section aria-label="排名与发现信息">
-        <h3>排名与发现信息</h3>
-        <NDescriptions :column="2" label-placement="top">
+      <section aria-label="排名与发现">
+        <h3>排名与发现</h3>
+        <NDescriptions
+          :column="2"
+          label-placement="top"
+          bordered
+          :theme-overrides="descriptionTheme"
+        >
           <NDescriptionsItem label="所属榜单">{{
             row.sourceContext.leaderboardName
           }}</NDescriptionsItem>
@@ -168,13 +193,15 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
             >
           </NDescriptionsItem>
           <NDescriptionsItem label="上次排名">
-            <NText :depth="row.previousRank === null ? 3 : undefined">{{
-              row.previousRank?.rank ?? '—'
-            }}</NText>
-            <NText
-              v-if="row.previousRank && comparablePreviousRank(row) === null"
-              depth="3"
-              >（口径不同，不作比较）</NText
+            <NTooltip
+              :disabled="
+                !row.previousRank || comparablePreviousRank(row) !== null
+              "
+              ><template #trigger
+                ><NText :depth="row.previousRank === null ? 3 : undefined">{{
+                  row.previousRank?.rank ?? '—'
+                }}</NText></template
+              >口径不同，不作比较</NTooltip
             >
           </NDescriptionsItem>
           <NDescriptionsItem label="发现情况">
@@ -198,7 +225,12 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
       </section>
       <section aria-label="商品基础信息">
         <h3>商品基础信息</h3>
-        <NDescriptions :column="1" label-placement="left" bordered>
+        <NDescriptions
+          :column="1"
+          label-placement="left"
+          bordered
+          :theme-overrides="descriptionTheme"
+        >
           <NDescriptionsItem label="商品ID">
             <div class="candidate-detail__inline">
               <span>{{ row.productId }}</span>
@@ -262,17 +294,38 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           }}</NDescriptionsItem>
         </NDescriptions>
       </section>
-      <section aria-label="请求来源信息">
-        <h3>请求来源信息</h3>
-        <NDescriptions :column="1" label-placement="left" bordered>
-          <NDescriptionsItem label="请求罗盘使用的自有店铺"
-            ><NText depth="2">{{ row.shopName }}</NText></NDescriptionsItem
-          >
-          <NDescriptionsItem label="来源">{{ row.source }}</NDescriptionsItem>
-          <NDescriptionsItem label="指标获取时间">{{
-            formatCandidateTime(row.metricsRetrievedAt)
-          }}</NDescriptionsItem>
-        </NDescriptions>
+      <section aria-label="数据来源">
+        <NCollapse :key="id ?? 'closed'" :default-expanded-names="[]">
+          <NCollapseItem title="数据来源" name="source">
+            <NDescriptions
+              :column="1"
+              label-placement="left"
+              bordered
+              :theme-overrides="descriptionTheme"
+            >
+              <NDescriptionsItem label="请求罗盘使用的自有店铺"
+                ><NText depth="2">{{ row.shopName }}</NText></NDescriptionsItem
+              >
+              <NDescriptionsItem label="来源">{{
+                row.source
+              }}</NDescriptionsItem>
+              <NDescriptionsItem label="完整统计区间">{{
+                row.sourceContext.statisticalPeriod
+              }}</NDescriptionsItem>
+              <NDescriptionsItem label="类目范围">{{
+                row.sourceContext.category
+              }}</NDescriptionsItem>
+              <NDescriptionsItem label="监控范围"
+                >第{{ row.sourceContext.rankFrom ?? '—' }}–{{
+                  row.sourceContext.rankTo ?? '—'
+                }}名</NDescriptionsItem
+              >
+              <NDescriptionsItem label="检查时间">{{
+                formatCandidateTime(row.sourceContext.checkedAt)
+              }}</NDescriptionsItem>
+            </NDescriptions>
+          </NCollapseItem>
+        </NCollapse>
       </section>
     </div>
     <template #footer>
