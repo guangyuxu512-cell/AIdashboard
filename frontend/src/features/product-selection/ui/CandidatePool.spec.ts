@@ -10,7 +10,7 @@ import CandidatePool from './CandidatePool.vue'
 
 const TableStub = defineComponent({
   name: 'DataTable',
-  props: ['data', 'checkedRowKeys', 'columns', 'themeOverrides'],
+  props: ['data', 'checkedRowKeys', 'columns', 'themeOverrides', 'scrollX'],
   emits: ['update:checkedRowKeys'],
   template: '<div />',
 })
@@ -54,7 +54,7 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
-  it('centers all columns, gives only the two-line title flexible width and keeps scope out of the list', async () => {
+  it('centers the two-line title and all columns, keeps the agreed base widths and scope out of the list', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),
     )
@@ -81,12 +81,14 @@ describe('candidate selection and batch demo', () => {
     for (const column of columns) {
       expect(column.align).toBe('center')
     }
+    const widths = columns.map((column: { width: number }) => column.width)
+    expect(widths).toEqual([
+      44, 88, 280, 140, 100, 88, 88, 112, 96, 140, 100, 220,
+    ])
     expect(
-      columns.find((column: { key: string }) => column.key === 'title'),
-    ).toMatchObject({ minWidth: 240 })
-    expect(
-      columns.filter((column: { width?: number }) => !column.width),
-    ).toHaveLength(1)
+      widths.reduce((total: number, width: number) => total + width, 0),
+    ).toBe(1496)
+    expect(table.props('scrollX')).toBe(1496)
     const title = columns
       .find((column: { key: string }) => column.key === 'title')
       .render(table.props('data')[0])
@@ -98,8 +100,8 @@ describe('candidate selection and batch demo', () => {
     expect(columns.at(-1).fixed).toBe('right')
     expect(columns.at(-1).width).toBe(220)
     expect(table.props('themeOverrides')).toEqual({
-      tdPaddingMedium: 'var(--space-3)',
-      thPaddingMedium: 'var(--space-3)',
+      tdPaddingMedium: 'var(--space-2) var(--space-3)',
+      thPaddingMedium: 'var(--space-2) var(--space-3)',
     })
     expect(button().props('tone')).toBe('primary')
     expect(wrapper.text()).not.toContain('短视频商品榜 · 近7天 · 第1–200名')

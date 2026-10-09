@@ -59,7 +59,7 @@ function retry() {
   height: var(--product-image-size);
 }
 .product-image--thumbnail {
-  --product-image-size: 56px;
+  --product-image-size: 64px;
 }
 .product-image :deep(img) {
   width: var(--product-image-size);

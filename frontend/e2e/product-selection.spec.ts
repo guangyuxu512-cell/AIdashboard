@@ -25,6 +25,33 @@ async function settleTransitions(page: Page) {
     )
     .toBe(0)
 }
+async function loadCandidateImages(page: Page) {
+  const body = page.locator(
+    '.n-data-table-base-table-body .n-scrollbar-container',
+  )
+  await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect
+    .poll(() =>
+      page
+        .locator('.n-data-table-tbody .n-image img')
+        .evaluateAll(
+          (images) =>
+            images.length === 10 &&
+            images.every(
+              (image) =>
+                (image as HTMLImageElement).complete &&
+                (image as HTMLImageElement).naturalWidth > 0,
+            ),
+        ),
+    )
+    .toBe(true)
+  await body.evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(0)
+}
 async function scrollCandidateTableToRight(page: Page) {
   const body = page.locator(
     '.n-data-table-base-table-body .n-scrollbar-container',
@@ -175,7 +202,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         getComputedStyle(image).height,
         getComputedStyle(image).objectFit,
       ]),
-  ).toEqual(['56px', '56px', 'contain'])
+  ).toEqual(['64px', '64px', 'contain'])
   for (const [id, label] of themes) {
     await page.getByRole('button', { name: '切换主题' }).click()
     await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
@@ -1196,7 +1223,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
   const colorEvidence = []
   for (const viewport of [
     { width: 1440, height: 900 },
-    { width: 1366, height: 768 },
+    { width: 1920, height: 1080 },
   ]) {
     await page.setViewportSize(viewport)
     for (const [id, label] of themes) {
@@ -1210,6 +1237,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
         id,
       )
       await expect(page.locator('.n-dropdown')).toBeHidden()
+      await loadCandidateImages(page)
       await expect(batch).toBeDisabled()
       const disabledColors = await batch.evaluate((element) => ({
         text: getComputedStyle(element).color,
@@ -1256,6 +1284,14 @@ test('centered candidate columns and consistent bordered details: four rendered 
           rowHeight: row.getBoundingClientRect().height,
           paddingTop: getComputedStyle(cell).paddingTop,
           paddingBottom: getComputedStyle(cell).paddingBottom,
+          tableWidth: row.closest('.data-table')!.getBoundingClientRect().width,
+          headers: [
+            ...row.closest('.n-data-table')!.querySelectorAll('th'),
+          ].map((header) => ({
+            height: header.getBoundingClientRect().height,
+            padding: getComputedStyle(header).padding,
+            verticalAlign: getComputedStyle(header).verticalAlign,
+          })),
           actionGap: getComputedStyle(actions).columnGap,
           visibleActionGaps: [
             buttons[1]!.getBoundingClientRect().left -
@@ -1301,8 +1337,15 @@ test('centered candidate columns and consistent bordered details: four rendered 
       )
       expect(rowDimensions.rowHeight).toBeGreaterThanOrEqual(80)
       expect(rowDimensions.rowHeight).toBeLessThanOrEqual(83)
-      expect(rowDimensions.paddingTop).toBe('12px')
-      expect(rowDimensions.paddingBottom).toBe('12px')
+      expect(rowDimensions.paddingTop).toBe('8px')
+      expect(rowDimensions.paddingBottom).toBe('8px')
+      expect(rowDimensions.imageHeight).toBe('64px')
+      for (const header of rowDimensions.headers) {
+        expect(header.padding).toBe('8px 12px')
+        expect(header.height).toBeGreaterThanOrEqual(38)
+        expect(header.height).toBeLessThanOrEqual(42)
+        expect(header.verticalAlign).toBe('middle')
+      }
       expect(rowDimensions.actionGap).toBe('12px')
       for (const gap of rowDimensions.visibleActionGaps)
         expect(gap).toBeCloseTo(12, 0)
@@ -1310,17 +1353,33 @@ test('centered candidate columns and consistent bordered details: four rendered 
       expect(Math.abs(rowDimensions.actionCenterOffset)).toBeLessThanOrEqual(1)
       expect(new Set(rowDimensions.buttonCenters).size).toBe(1)
       for (const cell of rowDimensions.cells) {
-        expect(cell.padding).toBe('12px')
+        expect(cell.padding).toBe('8px 12px')
         expect(cell.align).toBe('center')
         expect(cell.verticalAlign).toBe('middle')
         if (cell.ellipsisAlign) expect(cell.ellipsisAlign).toBe('center')
       }
       const expectedWidths = [
-        44, 80, 240, 150, 120, 100, 100, 120, 100, 140, 120, 220,
+        44, 88, 280, 140, 100, 88, 88, 112, 96, 140, 100, 220,
       ]
-      expect(rowDimensions.cells.map((cell) => Math.round(cell.width))).toEqual(
-        expectedWidths,
+      const readingColumns = [2, 3, 4]
+      const actualWidths = rowDimensions.cells.map((cell) =>
+        Math.round(cell.width),
       )
+      for (const [index, width] of actualWidths.entries()) {
+        if (readingColumns.includes(index)) {
+          expect(width).toBeGreaterThanOrEqual(expectedWidths[index]!)
+        } else expect(width).toBe(expectedWidths[index])
+      }
+      expect(actualWidths[2]).toBeLessThanOrEqual(360)
+      if (viewport.width === 1440) expect(actualWidths).toEqual(expectedWidths)
+      else {
+        for (const index of readingColumns)
+          expect(actualWidths[index]).toBeGreaterThan(expectedWidths[index]!)
+        expect(actualWidths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(
+          rowDimensions.tableWidth,
+          0,
+        )
+      }
       for (const height of await rows.evaluateAll((rows) =>
         rows.map((row) => row.getBoundingClientRect().height),
       )) {
@@ -1387,7 +1446,15 @@ test('centered candidate columns and consistent bordered details: four rendered 
         path: info.outputPath(`${id}-${viewport.width}-candidate-plain.png`),
         animations: 'disabled',
       })
-      const scrollEvidence = await scrollCandidateTableToRight(page)
+      const tableBody = page.locator(
+        '.n-data-table-base-table-body .n-scrollbar-container',
+      )
+      const overflows = await tableBody.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      )
+      const scrollEvidence = overflows
+        ? await scrollCandidateTableToRight(page)
+        : { scrollLeft: 0, overflows: false }
       await writeFile(
         info.outputPath(`${id}-${viewport.width}-horizontal-scroll.json`),
         JSON.stringify(scrollEvidence, null, 2),
@@ -1413,9 +1480,6 @@ test('centered candidate columns and consistent bordered details: four rendered 
         ),
         animations: 'disabled',
       })
-      const tableBody = page.locator(
-        '.n-data-table-base-table-body .n-scrollbar-container',
-      )
       await tableBody.evaluate((element) => {
         element.scrollLeft = 0
       })
@@ -1433,6 +1497,15 @@ test('centered candidate columns and consistent bordered details: four rendered 
             .evaluate((image) => (image as HTMLImageElement).naturalWidth),
         )
         .toBeGreaterThan(0)
+      expect(
+        await detail
+          .locator('.product-image--summary img')
+          .evaluate((image) => [
+            getComputedStyle(image).width,
+            getComputedStyle(image).height,
+            getComputedStyle(image).objectFit,
+          ]),
+      ).toEqual(['80px', '80px', 'contain'])
       await expect(detail).toContainText('商品所属商家')
       await expect(detail).toContainText('轻盈美妆示例店')
       await expect(detail).not.toContainText('请求罗盘使用的自有店铺')
@@ -1557,15 +1630,26 @@ test('centered candidate columns and consistent bordered details: four rendered 
     JSON.stringify(colorEvidence, null, 2),
   )
   await page.setViewportSize({ width: 2240, height: 1080 })
+  await expect
+    .poll(() =>
+      rows
+        .first()
+        .locator('td')
+        .nth(2)
+        .evaluate((cell) => Math.round(cell.getBoundingClientRect().width)),
+    )
+    .toBe(360)
   const wideWidths = await rows
     .first()
     .locator('td')
     .evaluateAll((cells) =>
       cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
     )
-  expect(wideWidths[2]).toBeGreaterThan(240)
-  expect(wideWidths.filter((_, index) => index !== 2)).toEqual([
-    44, 80, 150, 120, 100, 100, 120, 100, 140, 120, 220,
+  expect(wideWidths[2]).toBe(360)
+  expect(wideWidths[3]).toBeGreaterThan(140)
+  expect(wideWidths[4]).toBeGreaterThan(100)
+  expect(wideWidths.filter((_, index) => ![2, 3, 4].includes(index))).toEqual([
+    44, 88, 88, 88, 112, 96, 140, 100, 220,
   ])
   await page.screenshot({
     path: info.outputPath('candidate-full-width-2240.png'),

@@ -338,7 +338,7 @@ table border
 
 `DataTable.appearance="list"` 提供无明显纵向网格的列表外观：保留轻量行分隔、表头层级、Hover、Selected 和固定列阴影。默认 `grid` 行为保持不变，必须由页面模式显式选择。
 
-`DataTable.themeOverrides` 透传已有 `AppTable/NDataTable` 配置，只供有明确需求的消费者显式调整；默认 undefined、不改变其他表格。选品图片列表以 `tdPaddingMedium: var(--space-3)` 组合56px图片形成约80px行，不改共享表格或密度Token。
+`DataTable.themeOverrides` 透传已有 `AppTable/NDataTable` 配置，只供有明确需求的消费者显式调整；默认 undefined、不改变其他表格。选品图片列表以 `tdPaddingMedium: var(--space-2) var(--space-3)` 组合64px缩略图形成约81px行，不改共享表格或密度Token；详情摘要图片仍为80px。
 
 行选择继续使用 Naive UI 原生 selection column，并通过 `checkedRowKeys` / `update:checkedRowKeys` 由 `AppTable`、`DataTable` 统一透传；业务页面不得手写第二套 Checkbox 表头联动。
 

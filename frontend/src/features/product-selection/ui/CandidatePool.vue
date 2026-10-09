@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import { useElementSize } from '@vueuse/core'
 import {
   type DataTableColumns,
   type DataTableRowKey,
@@ -182,6 +183,22 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
   checked.value = []
 }
 const missing = () => h(NText, { depth: 3 }, () => '—')
+const tableRef = ref<InstanceType<typeof DataTable> | null>(null)
+const { width: tableWidth } = useElementSize(() => {
+  const element = tableRef.value?.$el
+  return element instanceof HTMLElement ? element : null
+})
+const baseTableWidth = 1496
+const readingWidths = computed(() => {
+  const extra = Math.max(0, Math.floor(tableWidth.value) - baseTableWidth)
+  const titleExtra = Math.min(80, Math.round(extra / 2))
+  const merchantExtra = Math.round((extra - titleExtra) * 0.6)
+  return {
+    title: 280 + titleExtra,
+    merchant: 140 + merchantExtra,
+    category: 100 + extra - titleExtra - merchantExtra,
+  }
+})
 const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     type: 'selection',
@@ -193,7 +210,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'image',
     title: '缩略图',
-    width: 80,
+    width: 88,
     fixed: 'left',
     align: 'center',
     render: (row) =>
@@ -206,7 +223,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'title',
     title: '商品标题',
-    minWidth: 240,
+    width: readingWidths.value.title,
     align: 'center',
     render: (row) =>
       h(
@@ -222,7 +239,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'merchant',
     title: '店铺名',
-    width: 150,
+    width: readingWidths.value.merchant,
     align: 'center',
     render: (row) =>
       row.merchant
@@ -236,7 +253,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'category',
     title: '类目',
-    width: 120,
+    width: readingWidths.value.category,
     align: 'center',
     render: (row) => {
       const leaf = categoryLeaf(row.category)
@@ -252,7 +269,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'rank',
     title: '榜单排名',
-    width: 100,
+    width: 88,
     align: 'center',
     render: (row) => {
       const change = rankChange(row)
@@ -271,7 +288,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'discovery',
     title: '发现情况',
-    width: 100,
+    width: 88,
     align: 'center',
     render: (row) =>
       h(
@@ -291,14 +308,14 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'priceBand',
     title: '价格／价格带',
-    width: 120,
+    width: 112,
     align: 'center',
     render: (row) => row.priceBand ?? missing(),
   },
   {
     key: 'negativeReviewRate',
     title: '差评率',
-    width: 100,
+    width: 96,
     className: 'selection-sort-column',
     align: 'center',
     sorter: true,
@@ -326,7 +343,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'collectionStatus',
     title: '采集状态',
-    width: 120,
+    width: 100,
     align: 'center',
     render: (row) =>
       row.collectionStatus === 'unknown'
@@ -451,15 +468,16 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         </div>
       </NAlert>
       <DataTable
+        ref="tableRef"
         :columns="columns"
         :data="query.data.value?.items ?? []"
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1534"
+        :scroll-x="baseTableWidth"
         :theme-overrides="{
-          tdPaddingMedium: 'var(--space-3)',
-          thPaddingMedium: 'var(--space-3)',
+          tdPaddingMedium: 'var(--space-2) var(--space-3)',
+          thPaddingMedium: 'var(--space-2) var(--space-3)',
         }"
         viewport="fill"
         appearance="list"
@@ -498,7 +516,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
 
 <style scoped>
 .candidate-pool :deep(.n-data-table .selection-current-page) {
-  padding: var(--space-3);
+  padding: var(--n-td-padding);
 }
 .candidate-pool :deep(.selection-sort-column .n-data-table-th__title-wrapper) {
   justify-content: center;

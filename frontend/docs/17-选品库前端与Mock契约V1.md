@@ -4,7 +4,7 @@
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
 分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。
 
-当前表现以文末“候选池与详情视觉收口”“文字层次与详情顶部时间返修”和“审核返修与无用残留清理”为准；此前各轮的不同列宽、列表图片尺寸、对齐、更多菜单及常驻说明仅为历史验收记录，不代表当前结构。
+当前表现以文末“候选池与详情视觉收口”“文字层次与详情顶部时间返修”“审核返修与无用残留清理”及“候选池图片与列宽尺寸收尾”为准；此前各轮的不同列宽、列表图片尺寸、对齐、更多菜单及常驻说明仅为历史验收记录，不代表当前结构。
 
 ## 实施前复用清单
 
@@ -333,3 +333,28 @@ Naive默认Descriptions标签比字段值深，NText未指定depth时为次文�
 | `pnpm run build`、`git diff --check` | PASS；Real production build 21.07s，产物无选品Mock handler/商品WebP/商家和指标夹具；既有大chunk告警保留 |
 
 初次新增E2E失败为测试假设：原生radio输入被其可见标签覆盖，已改为点击标签并断言选中；非可信HTTP测试源未提供预设Fetch Metadata头，已改为核对实际图片请求、无Origin/认证/Referer及无ACAO响应下的缩略图/预览加载结果。初次失败材料保留于 `focused/`，修正后两个新增交互在 `focused-2/` 通过，全部最终回归使用 `mock-regression/`。未修改业务条件、Mock延迟或公共控件绕过测试。
+
+## 候选池图片与列宽尺寸收尾（接续91461d4a，2026-10-10）
+
+本轮仅调整候选池图片、内边距、列宽及相关定向测试。保留此前策略获取/查询刷新、图片无CORS展示/失败重试、残留清理、字体/四主题及所有业务交互；仍为 UI_ONLY，无公共表格API、全局Token、Backend、数据库、Migration、平台或Electron变更，不发布生产。
+
+- `ExternalProductImage` 仅将 thumbnail 由56px改为64px；summary仍为80px。继续object-fit:contain、NImage点击预览、lazy/no-referrer及显式失败重试，不裁切或拉伸。
+- 候选池局部 `tdPaddingMedium` / `thPaddingMedium` 统一消费 `--space-2` / `--space-3`（上下8px、左右12px）。现有原生selection列覆盖改为消费同一`--n-td-padding`，不叠加新规则。图片与padding自然形成约81px行；没有固定行高、内容裁切或公共默认密度变更。表头实际约39.4px、垂直居中。
+- 基础列宽按字段顺序为44/88/280/140/100/88/88/112/96/140/100/220，总宽1496px，`scroll-x`同步1496。选择/图片左固定、操作右固定；窄窗口正常横向滚动，不压缩功能列。
+- 使用已安装VueUse `useElementSize`读取本页DataTable容器，并通过已有列width配置分配宽屏余量：标题优先取一半余量、最多增加80px（280–360px）；余下按店铺/类目6:4分配。其他九列宽度稳定，不扩展公共表格API或另建布局框架。全部省略容器继续居中、标题最多两行并可悬浮看全文。
+- 操作容器仍为12px gap、居中nowrap，屏蔽/恢复按钮原有局部padding修复保留；两侧可见间隔均12px。详情字号、四项原始指标、80px摘要图、周期/指标获取时间和独立榜单检查时间均未改变。
+
+本轮1440×900、1920×1080完整列表及四主题/实际横向滚动/布局测量记录于忽略目录 `docs/_local/product-selection-sizing-v1/`，等待全部10张照片加载后截图。浏览器Mock证据不替代唯一Integration Electron；Gate 1后交ca97更新同一5180候选快照、核对精确SHA并保留登录，不新增验收窗口。首轮2240额外宽屏断言在ResizeObserver更新前读取了旧列分配，已改为等待实际宽度重算完成；失败材料保留，不更改业务动画、延迟或功能逻辑。
+
+### 图片与列宽 Gate 1 实测
+
+| 命令（81a1/frontend） | 实际结果 |
+| --- | --- |
+| `pnpm run lint`、`pnpm run typecheck`、受影响文件 `prettier --check` | PASS；尺寸监听通过现有DataTable根HTMLElement读取，不扩展组件API |
+| `pnpm exec vitest run src/features/product-selection src/shared/components/DataTable.spec.ts` | 6文件/41项PASS，10.09s；覆盖指定基础宽度/scroll-x、局部padding、原策略/详情/批量/日期/缺值回归 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 PLAYWRIGHT_API_MODE=mock pnpm exec playwright test e2e/product-selection.spec.ts e2e/product-center.spec.ts --project=mock --config ../.codex/product-selection-visual-closeout/playwright.mock.config.ts --workers=1 --trace=retain-on-failure --output=../docs/_local/product-selection-sizing-v1/verified-regression` | 最终13项PASS，2.9m；1440×900及1920×1080四主题整页、64px缩略图/80px摘要图、全部10图实际加载、标题两行居中、8/12px内边距、12px可见操作间距、横向滚动固定列、排序/分页/批量、跨AI共享导航、图片无CORS与失败重试等相关回归 |
+| `pnpm run build`、`git diff --check` | PASS；Real production build 18.89s，产物未包含选品Mock handler/商品照片/商家指标夹具；原大chunk告警保留 |
+
+全部主题实测正常行高81px、表头39.390625px、操作左右可见间隔12px。1440视口表格可视宽1123px，12列保持1496px基础总宽并横向滚动373px；1920视口可视宽1603px，标题/店铺/类目334/172/121px，其余九列不变，无横向溢出。额外2240压力检查标题上限360px成立。
+
+首轮typecheck暴露VueUse的VueInstance与DataTable类型化emit不兼容；改为读取已有根HTMLElement后lint/typecheck、定向unit及全部13项E2E重新通过。未调整业务接口、Mock延迟、动画或全局表格。最终截图来自 `verified-regression/`、浏览器Mock、CSS缩放100%；真实Electron新增影响及用户视觉确认由ca97接续，不能据此宣布Gate 2或生产通过。本轮按尺寸改动范围执行定向验证，未重复后端/数据库/平台或无关全量测试；Real运行态边界沿用91461d4a记录，当前Real构建再核验不含Mock。
