@@ -44,7 +44,11 @@ const props = defineProps<{
   service: SelectionService
   contextKey: string
 }>()
-const emit = defineEmits<{ 'update:show': [show: boolean]; saved: [] }>()
+const emit = defineEmits<{
+  'update:show': [show: boolean]
+  saved: []
+  retrieved: []
+}>()
 const message = useMessage()
 const busy = ref(false)
 const expanded = ref<string[]>(['short-video'])
@@ -154,8 +158,10 @@ async function submit(saving: boolean) {
       emit('saved')
       emit('update:show', false)
     } else {
-      const receipt = await props.service.retrieve(draft)
+      const strategyId = props.strategy?.id
+      const receipt = await props.service.retrieve(draft, strategyId)
       message.info(receipt.message)
+      if (strategyId) emit('retrieved')
     }
   } catch (error) {
     message.error(error instanceof Error ? error.message : '操作失败，请重试')

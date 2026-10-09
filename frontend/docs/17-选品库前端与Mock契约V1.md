@@ -4,7 +4,7 @@
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
 分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。
 
-当前表现以文末“候选池与详情视觉收口”和“文字层次与详情顶部时间返修”为准；此前各轮的不同列宽、列表图片尺寸、对齐、更多菜单及常驻说明仅为历史验收记录，不代表当前结构。
+当前表现以文末“候选池与详情视觉收口”“文字层次与详情顶部时间返修”和“审核返修与无用残留清理”为准；此前各轮的不同列宽、列表图片尺寸、对齐、更多菜单及常驻说明仅为历史验收记录，不代表当前结构。
 
 ## 实施前复用清单
 
@@ -38,8 +38,8 @@ Mock service 仅在构建环境明确 `VITE_API_MODE=mock` 且调用模式为 mo
 - list/save strategies：命名策略、请求店铺、共用达人、多个渠道配置、全策略唯一的 enabled/hourly/daily schedule。
 - `channels.shortVideo = {selected, conditions}`：条件独立包含请求类目、日期、品牌、价格及结果筛选首次上榜/排名。`channels.baiying = {selected, conditions:{}}`：未知条件严格为空，不接纳猜测字段。至少选一个渠道。
 - 两个渠道纵向折叠，展开状态仅为 UI 状态，不参与保存；折叠、取消选择不清条件。切店只清当前短视频失效类目。草稿深拷贝，列表缓存与其他策略不会被编辑污染。
-- retrieve(input, strategyId?)：允许未保存策略；选中的短视频返回演示回执，百应返回 unavailable/count=null。仅选百应明确失败，同时选择时返回部分演示回执；不会把百应计入完成数量。传入已有策略 ID 更新最近演示结果，不是平台采集成功。
-- list/get candidates：先完整筛选，再原始日期/差评率排序（null 双向末尾、同值 ID 稳定），再分页。
+- retrieve(input, strategyId?)：允许未保存策略；选中的短视频返回演示回执，百应返回 unavailable/count=null。仅选百应明确失败，同时选择时返回部分演示回执；不会把百应计入完成数量。编辑抽屉传入已有策略 ID 仅更新最近演示结果，成功后使用现有列表 Query 刷新；不保存未提交的条件。新建草稿不传 ID、不创建策略。不是平台采集成功。
+- list/get candidates：先完整筛选，再原始日期/差评率排序（null 双向末尾、同值 ID 稳定），再分页。列表只返回 PageResult；来源与统计区间保留在每条商品的 sourceContext，不再提供列表 contexts 汇总或商品顶层重复 statisticalPeriod。
 - demo action：屏蔽/恢复仅修改 Mock 池；“采集资料”只改变演示状态，不请求平台/手机、不写正式商品库。
 - `collectBatch(candidateIds)`：前端草案，输入为当前勾选候选 ID；按字符串 productId 去重，`results` 每个商品一项，包含 `candidateId/candidateIds/productId/state/message`。同商品多个候选别名共同回填；不存在的候选 productId=null、failed。成功与失败均返回，单项失败不终止其余项。单条与批量使用同一 collect 规则；mode 固定 mock、成功态名 demo，不声称正式入库。
 - 批量成功项取消勾选，失败项保留并逐项显示原因；请求级失败保留全部选择，执行中互斥。全选只作用当前页，换页/搜索/筛选/排序清空选择。Real collectBatch 与其他业务能力同样明确不可用，不调用猜测接口。
@@ -309,3 +309,27 @@ Naive默认Descriptions标签比字段值深，NText未指定depth时为次文�
 | `pnpm run build`、`git diff --check` | 最终PASS，Real production，19.00s；未输出选品Mock handler/商品照片/商家及指标夹具，原大chunk告警保留 |
 
 首次新时间断言发现Feature Vite缓存旧TS格式化函数，组件已新但函数仍旧；已核对进程并重启**本Worktree的4176**，实际响应确认使用可选格式参数，再完成全部回归。另两次测试在抽屉/主题过渡帧读取位置或颜色，已等现有有限动画结束后测量，不改业务动画、不加性能重构。初次失败材料保留，最终证据使用`final-regression/`、`real-boundary/`；四主题截图/计算值为实际浏览器Mock渲染，不能代替唯一Electron或用户视觉验收。Integration更新后仍需核对实际加载精确SHA及新时间格式，不能仅依据Git HEAD或HMR宣称完成。
+
+## 审核返修与无用残留清理（接续c44687ed，2026-10-10）
+
+- 编辑已保存策略的抽屉“立即获取”复用既有 `retrieve(draft, strategyId)`；成功仅发送 `retrieved` 事件，由 StrategyList 的现有 TanStack Query refetch 更新最近结果。保存仍是独立动作，未提交草稿不写入策略，新建获取不自动创建策略；获取失败不发成功刷新事件。
+- 外部商品图不再强制 `crossorigin=anonymous`。正常显示和 NImage 预览使用浏览器原生图片请求，仍保留 lazy、no-referrer、缺图占位及失败重试；没有接入系统认证 HTTP Client、图片代理或下载缓存。
+- 删除商品顶层重复的 `statisticalPeriod`、列表 `contexts` 汇总和计算；详情仍消费 `sourceContext.statisticalPeriod`，榜单检查与指标获取时间继续来自两个独立字段。导航只删未被 ContextSwitchBar 消费的旧 description，采集任务/Real 的未接入空态保留。
+- 策略列表删除无操作消费者的选择列、checked 状态/绑定及翻页清选；不添加批量功能。已有策略名左固定、操作右固定、分页/搜索/编辑保持，scroll-x 仅减去删除的44px选择槽。
+- 用户补充的操作间距问题：候选池“屏蔽/恢复” quaternary 按钮原有左右 padding 使12px容器间距看起来不对称。仅为该按钮传入 Naive 支持的 `paddingSmall: '0'` 局部主题覆盖，按钮类型、颜色、悬停/焦点、容器12px gap、220px操作列及其他AppButton调用不变。实际回归测量“详情文字→采集资料边框”和“采集资料边框→屏蔽文字”两侧可见距离，不只断言容器gap。
+
+本轮仍为前端/Mock、UI_ONLY，无 Backend/业务API/数据库/Migration/平台请求/手机或Electron变更。准确Candidate、定向检查、实际浏览器截图与Handoff记录于忽略目录 `docs/_local/product-selection-review-v1/`；交ca97更新同一5180候选快照并保留登录，浏览器证据不代替唯一Integration Electron验收。本任务不含生产发布。
+
+### 审核返修 Gate 1 实测
+
+| 命令（81a1/frontend） | 实际结果 |
+| --- | --- |
+| `pnpm run lint`、`pnpm run typecheck`、受影响文件 `prettier --check` | PASS；测试定位修正后再执行lint/格式检查 |
+| `pnpm run test` | 133文件/558项PASS，85.30s；既有jsdom XHR AggregateError stderr保留 |
+| `pnpm exec vitest run src/features/product-selection src/shared/ui/AppButton.spec.ts src/shared/components/DataTable.spec.ts` | 7文件/44项PASS，16.97s；增加已有策略ID/草稿不保存、新草稿不创建、获取失败不发成功刷新事件 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 PLAYWRIGHT_API_MODE=mock pnpm exec playwright test e2e/product-selection.spec.ts e2e/product-center.spec.ts e2e/disabled-primary.spec.ts --project=mock --config ../.codex/product-selection-visual-closeout/playwright.mock.config.ts --workers=1 --trace=retain-on-failure` | 最终21项PASS，3.2m；已有策略抽屉获取后列表最近结果更新，取消重开条件未保存、新建获取后仍2条策略；两个不同测试源没有ACAO头，实际缩略图/预览naturalWidth有效、404显式重试后恢复，图片不附中控认证/团队/Referer；原候选/详情/时间/四主题/导航/共享按钮回归通过 |
+| 同Mock配置，`--grep 'centered candidate columns'` | 四主题、1440×900和1366×768实际测量两侧可见操作间距均12px，整体居中/nowrap、正常行高81px；不只断言CSS gap |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 PLAYWRIGHT_API_MODE=real pnpm exec playwright test --config playwright.selection-real.config.ts --workers=1 --trace=retain-on-failure` | 1项PASS，5.4s；Real无Mock回退/猜测选品请求，团队撤权后守卫仍拒绝；只拦截已有身份/团队/权限API |
+| `pnpm run build`、`git diff --check` | PASS；Real production build 21.07s，产物无选品Mock handler/商品WebP/商家和指标夹具；既有大chunk告警保留 |
+
+初次新增E2E失败为测试假设：原生radio输入被其可见标签覆盖，已改为点击标签并断言选中；非可信HTTP测试源未提供预设Fetch Metadata头，已改为核对实际图片请求、无Origin/认证/Referer及无ACAO响应下的缩略图/预览加载结果。初次失败材料保留于 `focused/`，修正后两个新增交互在 `focused-2/` 通过，全部最终回归使用 `mock-regression/`。未修改业务条件、Mock延迟或公共控件绕过测试。

@@ -44,7 +44,6 @@ function retry() {
       :img-props="{
         loading: 'lazy',
         referrerpolicy: 'no-referrer',
-        crossorigin: 'anonymous',
       }"
       @error="failed = true"
     />

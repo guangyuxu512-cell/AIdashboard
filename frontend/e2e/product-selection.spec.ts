@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 
 const themes = [
   ['graphite', '石墨浅色'],
@@ -458,6 +458,70 @@ test('exception-only: batch partial failure preserves failed selection and all i
   })
 })
 
+test('strategy drawer retrieval refreshes saved recent results without saving drafts or creating unsaved strategies', async ({
+  page,
+}, info) => {
+  await page.goto('/#/product-selection?tab=selection-strategy')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const saved = rows.filter({ hasText: '短视频热销观察' })
+  const drawer = page.locator('.n-drawer')
+  await expect(rows).toHaveCount(2)
+  await expect(
+    page.getByRole('columnheader').getByRole('checkbox'),
+  ).toHaveCount(0)
+  await expect(rows.getByRole('checkbox')).toHaveCount(0)
+  await expect(saved).not.toContainText('演示获取')
+  await saved.getByRole('button', { name: '编辑', exact: true }).click()
+  await drawer
+    .getByRole('textbox', { name: '策略名称' })
+    .fill('尚未保存的策略条件')
+  await drawer.getByText('近7天', { exact: true }).click()
+  await drawer.getByRole('button', { name: '立即获取', exact: true }).click()
+  await expect(saved).toContainText('演示获取 4 项')
+  await expect(drawer.getByRole('textbox', { name: '策略名称' })).toHaveValue(
+    '尚未保存的策略条件',
+  )
+  await expect(
+    drawer.getByRole('radio', { name: '近7天', exact: true }),
+  ).toBeChecked()
+  await drawer.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(rows).toHaveCount(2)
+  await expect(page.locator('.n-data-table-tbody')).not.toContainText(
+    '尚未保存的策略条件',
+  )
+  await saved.getByRole('button', { name: '编辑', exact: true }).click()
+  await expect(drawer.getByRole('textbox', { name: '策略名称' })).toHaveValue(
+    '短视频热销观察',
+  )
+  await expect(
+    drawer.getByRole('radio', { name: '实时', exact: true }),
+  ).toBeChecked()
+  await drawer.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  await page.getByRole('button', { name: '新建策略', exact: true }).click()
+  await drawer.locator('.n-select').first().click()
+  await page
+    .locator('.n-base-select-menu')
+    .getByText('星河服饰旗舰店', { exact: true })
+    .click()
+  await drawer.getByRole('button', { name: '立即获取', exact: true }).click()
+  await expect(
+    page.getByText('演示获取完成；未向平台请求，未启动采集任务', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await drawer.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(rows).toHaveCount(2)
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(saved).toContainText('演示获取 4 项')
+  await expect(rows).toHaveCount(2)
+  await settleTransitions(page)
+  await page.screenshot({
+    path: info.outputPath('strategy-recent-result.png'),
+    animations: 'disabled',
+  })
+})
+
 test('strategy: right drawer, categories/all, retrieval without saving, validation, optional schedule, Baiying boundary', async ({
   page,
 }, info) => {
@@ -903,6 +967,136 @@ test('date shortcuts: four exclusive relative periods, Mock ranges, reread, canc
   await drawer.getByRole('button', { name: '取消', exact: true }).click()
 })
 
+test('external images from two origins render and preview without CORS response headers, with failed loads retryable', async ({
+  page,
+}, info) => {
+  const origins = ['http://product-photo-a.test', 'http://product-photo-b.test']
+  const photo = await readFile(
+    new URL(
+      '../src/features/product-selection/fixtures/photos/product-1.webp',
+      import.meta.url,
+    ),
+  )
+  const requests: {
+    origin: string
+    status: number
+    mode: string | undefined
+  }[] = []
+  let recover = false
+  for (const origin of origins) {
+    await page.route(`${origin}/**`, async (route) => {
+      const headers = await route.request().allHeaders()
+      expect(headers.authorization).toBeUndefined()
+      expect(headers['x-team-id']).toBeUndefined()
+      expect(headers.cookie).toBeUndefined()
+      expect(headers.referer).toBeUndefined()
+      expect(headers.origin).toBeUndefined()
+      expect(route.request().resourceType()).toBe('image')
+      const status = origin === origins[1] && !recover ? 404 : 200
+      requests.push({ origin, status, mode: headers['sec-fetch-mode'] })
+      // No Access-Control-Allow-Origin: ordinary display must not require CORS.
+      await route.fulfill({
+        status,
+        contentType: 'image/webp',
+        body: status === 200 ? photo : Buffer.alloc(0),
+      })
+    })
+  }
+  await page.route(
+    '**/src/features/product-selection/api/selection-mock-handlers.ts*',
+    async (route) => {
+      const response = await route.fetch()
+      const source = await response.text()
+      const imageSource = 'imageUrl: photographs[index % photographs.length]'
+      expect(source).toContain(imageSource)
+      await route.fulfill({
+        response,
+        body: source.replace(
+          imageSource,
+          `imageUrl: index === 0 ? '${origins[0]}/photo.webp' : index === 1 ? '${origins[1]}/photo.webp' : photographs[index % photographs.length]`,
+        ),
+      })
+    },
+  )
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const first = rows.first().locator('.n-image img')
+  await expect
+    .poll(() =>
+      first.evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0)
+  await expect(first).not.toHaveAttribute('crossorigin')
+  await expect(first).toHaveAttribute('referrerpolicy', 'no-referrer')
+  const retry = rows
+    .nth(1)
+    .getByRole('button', { name: '重试商品图片', exact: true })
+  await expect(retry).toBeVisible()
+  await rows.first().locator('.n-image').click()
+  const preview = page.locator('.n-image-preview-container')
+  await expect(preview).toBeVisible()
+  await expect
+    .poll(() =>
+      preview
+        .locator('img')
+        .first()
+        .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0)
+  await page.screenshot({
+    path: info.outputPath('external-no-cors-preview.png'),
+    animations: 'disabled',
+  })
+  await page.keyboard.press('Escape')
+  await expect(preview).toBeHidden()
+  recover = true
+  await retry.click()
+  await expect(retry).toHaveCount(0)
+  await expect
+    .poll(() =>
+      rows
+        .nth(1)
+        .locator('.n-image img')
+        .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0)
+  await rows.nth(1).locator('.n-image').click()
+  await expect(preview).toBeVisible()
+  await expect
+    .poll(() =>
+      preview
+        .locator('img')
+        .first()
+        .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0)
+  await page.keyboard.press('Escape')
+  await expect(preview).toBeHidden()
+  expect(
+    requests.some(
+      (request) => request.origin === origins[0] && request.status === 200,
+    ),
+  ).toBe(true)
+  expect(
+    requests.some(
+      (request) => request.origin === origins[1] && request.status === 404,
+    ),
+  ).toBe(true)
+  expect(
+    requests.some(
+      (request) => request.origin === origins[1] && request.status === 200,
+    ),
+  ).toBe(true)
+  await info.attach('external-image-results', {
+    body: JSON.stringify(requests, null, 2),
+    contentType: 'application/json',
+  })
+  await page.screenshot({
+    path: info.outputPath('external-image-recovered.png'),
+    animations: 'disabled',
+  })
+})
+
 test('exception-only: external image failure, no authentication headers and explicit recovery', async ({
   page,
 }, info) => {
@@ -1063,6 +1257,16 @@ test('centered candidate columns and consistent bordered details: four rendered 
           paddingTop: getComputedStyle(cell).paddingTop,
           paddingBottom: getComputedStyle(cell).paddingBottom,
           actionGap: getComputedStyle(actions).columnGap,
+          visibleActionGaps: [
+            buttons[1]!.getBoundingClientRect().left -
+              buttons[0]!
+                .querySelector('.n-button__content')!
+                .getBoundingClientRect().right,
+            buttons[2]!
+              .querySelector('.n-button__content')!
+              .getBoundingClientRect().left -
+              buttons[1]!.getBoundingClientRect().right,
+          ],
           actionWrap: getComputedStyle(actions).flexWrap,
           actionCenterOffset:
             (first.left + last.right) / 2 -
@@ -1100,6 +1304,8 @@ test('centered candidate columns and consistent bordered details: four rendered 
       expect(rowDimensions.paddingTop).toBe('12px')
       expect(rowDimensions.paddingBottom).toBe('12px')
       expect(rowDimensions.actionGap).toBe('12px')
+      for (const gap of rowDimensions.visibleActionGaps)
+        expect(gap).toBeCloseTo(12, 0)
       expect(rowDimensions.actionWrap).toBe('nowrap')
       expect(Math.abs(rowDimensions.actionCenterOffset)).toBeLessThanOrEqual(1)
       expect(new Set(rowDimensions.buttonCenters).size).toBe(1)

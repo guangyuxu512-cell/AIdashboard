@@ -81,7 +81,6 @@ export interface SelectionCandidate {
   blocked: boolean
   source: string
   sourceContext: CandidateSourceContext
-  statisticalPeriod: string
   rank: number | null
   previousRank: {
     rank: number
@@ -100,10 +99,7 @@ export interface SelectionCandidate {
   soldUnitsRange: string | null
   videoCountRange: string | null
 }
-export interface CandidatePage extends PageResult<SelectionCandidate> {
-  // Contexts for all filtered matches, not just the current page.
-  contexts: CandidateSourceContext[]
-}
+export type CandidatePage = PageResult<SelectionCandidate>
 export interface CandidateQuery {
   page: number
   pageSize: number

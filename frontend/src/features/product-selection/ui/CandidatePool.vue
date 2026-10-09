@@ -370,6 +370,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           {
             tone: 'text',
             size: 'small',
+            themeOverrides: { paddingSmall: '0' },
             disabled: busy.value,
             onClick: () => act(row, row.blocked ? 'restore' : 'block'),
           },

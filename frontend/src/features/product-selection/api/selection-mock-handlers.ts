@@ -97,7 +97,6 @@ export function createSelectionMockHandlers(
           rankTo: 200,
           checkedAt: '2026-10-08T12:00:00+08:00',
         },
-        statisticalPeriod: '近7天 · 2026-10-01–2026-10-07',
         rank: index % 4 === 3 ? 201 + index : index + 1,
         previousRank:
           index % 4 === 0
@@ -288,16 +287,6 @@ export function createSelectionMockHandlers(
         total: rows.length,
         page,
         pageSize: query.pageSize,
-        contexts: structuredClone(
-          Array.from(
-            new Map(
-              rows.map((row) => [
-                JSON.stringify(row.sourceContext),
-                row.sourceContext,
-              ]),
-            ).values(),
-          ),
-        ),
       }
     },
     async candidate(id) {

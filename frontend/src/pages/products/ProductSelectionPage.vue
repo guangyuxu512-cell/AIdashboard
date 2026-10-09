@@ -10,17 +10,14 @@ const selectionItems = [
   {
     key: 'candidate-pool',
     label: '候选池',
-    description: '候选池功能待接入',
   },
   {
     key: 'collection-tasks',
     label: '采集任务',
-    description: '采集任务功能待接入',
   },
   {
     key: 'selection-strategy',
     label: '选品策略',
-    description: '选品策略待接入',
   },
 ]
 

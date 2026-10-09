@@ -9,7 +9,7 @@ import type {
   SelectionService,
   SelectionStrategy,
 } from '../model/contracts'
-import { AppCheckbox, AppRadio } from '@/shared/ui'
+import { AppCheckbox, AppInput, AppRadio } from '@/shared/ui'
 import CategorySelector from './CategorySelector.vue'
 import StrategyDrawer from './StrategyDrawer.vue'
 
@@ -55,6 +55,95 @@ function render(
 }
 
 describe('strategy shop category loading', () => {
+  it('retrieves an existing strategy by ID and signals a result refresh without saving its edited draft', async () => {
+    const service = createSelectionMockHandlers()
+    const initial = (await service.strategies())[0]!
+    const retrieve = vi.spyOn(service, 'retrieve')
+    const save = vi.spyOn(service, 'saveStrategy')
+    const { wrapper, queryClient } = render(service, initial)
+    await flushPromises()
+    const name = wrapper.findComponent(AppInput)
+    name.vm.$emit('update:modelValue', '未保存的修改')
+    wrapper.findAllComponents(AppRadio)[0]!.vm.$emit('update:modelValue', '7d')
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '立即获取')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(retrieve).toHaveBeenCalledOnce()
+    expect(retrieve.mock.calls[0]![1]).toBe(initial.id)
+    expect(retrieve.mock.calls[0]![0]).toMatchObject({
+      name: '未保存的修改',
+      channels: { shortVideo: { conditions: { period: '7d' } } },
+    })
+    expect(save).not.toHaveBeenCalled()
+    expect((await service.strategies())[0]).toEqual({
+      ...initial,
+      latestResult: '演示获取 4 项',
+    })
+    expect(
+      wrapper.findComponent(StrategyDrawer).emitted('retrieved'),
+    ).toHaveLength(1)
+    expect(
+      wrapper.findComponent(StrategyDrawer).emitted('saved'),
+    ).toBeUndefined()
+    expect(name.props('modelValue')).toBe('未保存的修改')
+    expect(wrapper.findAllComponents(AppRadio)[0]!.props('modelValue')).toBe(
+      '7d',
+    )
+    wrapper.unmount()
+    queryClient.clear()
+  })
+  it('retrieves an unsaved draft without creating a strategy or emitting a saved-result refresh', async () => {
+    const service = createSelectionMockHandlers()
+    const before = await service.strategies()
+    const retrieve = vi.spyOn(service, 'retrieve')
+    const save = vi.spyOn(service, 'saveStrategy')
+    const { wrapper, queryClient } = render(service)
+    wrapper
+      .findComponent(ShopStub)
+      .vm.$emit('update:modelValue', before[0]!.shopId)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '立即获取')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(retrieve).toHaveBeenCalledOnce()
+    expect(retrieve.mock.calls[0]![1]).toBeUndefined()
+    expect(save).not.toHaveBeenCalled()
+    expect(await service.strategies()).toEqual(before)
+    expect(
+      wrapper.findComponent(StrategyDrawer).emitted('saved'),
+    ).toBeUndefined()
+    expect(
+      wrapper.findComponent(StrategyDrawer).emitted('retrieved'),
+    ).toBeUndefined()
+    wrapper.unmount()
+    queryClient.clear()
+  })
+  it('does not refresh recent results when retrieval fails', async () => {
+    const service = createSelectionMockHandlers()
+    const initial = (await service.strategies())[0]!
+    service.retrieve = vi.fn().mockRejectedValue(new Error('获取失败'))
+    const { wrapper, queryClient } = render(service, initial)
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '立即获取')!
+      .trigger('click')
+    await flushPromises()
+
+    expect((await service.strategies())[0]).toEqual(initial)
+    expect(
+      wrapper.findComponent(StrategyDrawer).emitted('retrieved'),
+    ).toBeUndefined()
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('uses four mutually exclusive date options, retains disabled/collapsed values and never saves a preview range', async () => {
     const service = createSelectionMockHandlers()
     const initial = (await service.strategies())[0]!

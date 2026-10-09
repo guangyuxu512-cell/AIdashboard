@@ -345,7 +345,7 @@ describe('selection draft and isolated mock handlers', () => {
     expect(read.metricsRetrievedAt).not.toBe(first.metricsRetrievedAt)
     const page = await mock.candidates({ ...query(), page: 2 })
     expect(page.total).toBe(32)
-    expect(page.contexts).toEqual([first.sourceContext])
+    expect(page.items[0]!.sourceContext).toEqual(first.sourceContext)
     const real = await createSelectionService('real')
     await expect(real.updateCompassMetrics(first.id)).rejects.toThrow(
       SELECTION_UNAVAILABLE,

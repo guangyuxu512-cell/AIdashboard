@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import {
-  useMessage,
-  type DataTableColumns,
-  type DataTableRowKey,
-  NText,
-} from 'naive-ui'
+import { useMessage, type DataTableColumns, NText } from 'naive-ui'
 import {
   DataTable,
   FilterBar,
@@ -31,7 +26,6 @@ const page = ref(1),
   pageSize = ref(20),
   keyword = ref(''),
   appliedKeyword = ref('')
-const checked = ref<DataTableRowKey[]>([])
 const editing = ref<SelectionStrategy | null>(null),
   drawer = ref(false)
 const busyId = ref<string | null>(null)
@@ -56,7 +50,6 @@ const rows = computed(() =>
 const search = useAutoSearch(() => {
   appliedKeyword.value = keyword.value.trim()
   page.value = 1
-  checked.value = []
 })
 function edit(row: SelectionStrategy | null) {
   editing.value = row
@@ -64,7 +57,6 @@ function edit(row: SelectionStrategy | null) {
 }
 function setPage(value: number) {
   page.value = value
-  checked.value = []
 }
 function setPageSize(value: number) {
   pageSize.value = value
@@ -88,7 +80,6 @@ async function retrieve(row: SelectionStrategy) {
   }
 }
 const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
-  { type: 'selection', fixed: 'left', width: 44, align: 'center' },
   {
     key: 'name',
     title: '策略名',
@@ -219,12 +210,10 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1554"
+        :scroll-x="1510"
         viewport="fill"
         appearance="list"
-        :checked-row-keys="checked"
         empty-description="暂无选品策略"
-        @update:checked-row-keys="checked = $event"
         @retry="query.refetch()"
       />
       <PaginationBar
@@ -241,6 +230,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
       :service="service"
       :context-key="contextKey"
       @saved="saved"
+      @retrieved="query.refetch()"
     />
   </div>
 </template>
