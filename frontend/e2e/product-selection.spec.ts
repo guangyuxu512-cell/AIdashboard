@@ -25,6 +25,45 @@ async function settleTransitions(page: Page) {
     )
     .toBe(0)
 }
+async function scrollCandidateTableToRight(page: Page) {
+  const body = page.locator(
+    '.n-data-table-base-table-body .n-scrollbar-container',
+  )
+  const image = page.getByRole('columnheader', { name: '缩略图', exact: true })
+  const title = page.getByRole('columnheader', {
+    name: '商品标题',
+    exact: true,
+  })
+  const actions = page.getByRole('columnheader', { name: '操作', exact: true })
+  const before = {
+    image: (await image.boundingBox())!,
+    title: (await title.boundingBox())!,
+    actions: (await actions.boundingBox())!,
+  }
+  await body.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth
+  })
+  await expect
+    .poll(() => body.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0)
+  await expect
+    .poll(async () => before.title.x - (await title.boundingBox())!.x)
+    .toBeGreaterThan(50)
+  const after = {
+    image: (await image.boundingBox())!,
+    title: (await title.boundingBox())!,
+    actions: (await actions.boundingBox())!,
+  }
+  expect(Math.abs(after.image.x - before.image.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(after.actions.x - before.actions.x)).toBeLessThanOrEqual(1)
+  await expect(image).toBeInViewport()
+  await expect(actions).toBeInViewport()
+  return {
+    scrollLeft: await body.evaluate((element) => element.scrollLeft),
+    before,
+    after,
+  }
+}
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
 })
@@ -102,10 +141,15 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
     await page.mouse.move(10, 10)
     await expect(page.locator('.n-popover')).toBeHidden()
   }
-  const body = page.locator('.n-data-table-base-table-body')
+  const body = page.locator(
+    '.n-data-table-base-table-body .n-scrollbar-container',
+  )
   await body.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
+  await expect
+    .poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
   await expect
     .poll(() =>
       rows
@@ -147,28 +191,17 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         )
       expect(alignments).toEqual(Array(12).fill('center'))
     }
-    const before = await page
-      .getByRole('columnheader', { name: '缩略图', exact: true })
-      .boundingBox()
-    const scroll = page.locator('.n-data-table-base-table-body')
-    await scroll.evaluate((element) => {
-      element.scrollLeft = 1000
-    })
-    expect(
-      (await page
-        .getByRole('columnheader', { name: '缩略图', exact: true })
-        .boundingBox())!.x,
-    ).toBe(before!.x)
-    await expect(
-      page.getByRole('columnheader', { name: '操作', exact: true }),
-    ).toBeInViewport()
+    await scrollCandidateTableToRight(page)
     await page.screenshot({
       path: info.outputPath(`${id}-candidate-scrolled.png`),
       animations: 'disabled',
     })
-    await scroll.evaluate((element) => {
+    await body.evaluate((element) => {
       element.scrollLeft = 0
     })
+    await expect
+      .poll(() => body.evaluate((element) => element.scrollLeft))
+      .toBe(0)
     await page.screenshot({
       path: info.outputPath(`${id}-candidate.png`),
       animations: 'disabled',
@@ -1151,19 +1184,41 @@ test('centered candidate columns and consistent bordered details: four rendered 
         path: info.outputPath(`${id}-${viewport.width}-candidate-plain.png`),
         animations: 'disabled',
       })
-      const tableBody = page.locator('.n-data-table-base-table-body')
-      await tableBody.evaluate((element) => {
-        element.scrollLeft = element.scrollWidth
-      })
+      const scrollEvidence = await scrollCandidateTableToRight(page)
+      await writeFile(
+        info.outputPath(`${id}-${viewport.width}-horizontal-scroll.json`),
+        JSON.stringify(scrollEvidence, null, 2),
+      )
+      for (const name of ['差评率', '首次上架日期']) {
+        const header = page.getByRole('columnheader', { name, exact: true })
+        await expect(header).toBeInViewport()
+        const offset = await header.evaluate((header) => {
+          const box = header.getBoundingClientRect()
+          const title = header
+            .querySelector('.n-data-table-th__title')!
+            .getBoundingClientRect()
+          const arrow = header
+            .querySelector('.n-data-table-sorter')!
+            .getBoundingClientRect()
+          return (title.left + arrow.right) / 2 - (box.left + box.width / 2)
+        })
+        expect(Math.abs(offset)).toBeLessThanOrEqual(1)
+      }
       await page.screenshot({
         path: info.outputPath(
           `${id}-${viewport.width}-candidate-scrolled-right.png`,
         ),
         animations: 'disabled',
       })
+      const tableBody = page.locator(
+        '.n-data-table-base-table-body .n-scrollbar-container',
+      )
       await tableBody.evaluate((element) => {
         element.scrollLeft = 0
       })
+      await expect
+        .poll(() => tableBody.evaluate((element) => element.scrollLeft))
+        .toBe(0)
       await rows
         .first()
         .getByRole('button', { name: '详情', exact: true })
