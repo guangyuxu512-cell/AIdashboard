@@ -39,9 +39,9 @@ Mock 验证不代表真实入库。两表及只读查询已在 Feature 候选实
 不增加通用队列、Worker、策略调度或自动平台重试。具体事务/幂等约束见选品资源登记文档。
 0041 已在 Integration/生产应用，旧 Slot released；本 Feature 保持唯一 active Slot，串行链为
 `20260924_0041 → 20261010_0042 → 20261010_0043`。0042 已在 Feature 库应用，不改写、不释放；
-追加预留 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，
-由 81a1 编写；两项随同一完整候选验收后一起释放，不另开第二个活跃 Slot。
-独立库 `control_center_feat_product_selection` 现为单一 `20261010_0042`，46 表、ShopSession=0，Owner `control_center_dev_user`，
+追加 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，
+由 81a1 编写且已在 Feature 库应用；两项随同一完整候选验收后一起释放，不另开第二个活跃 Slot。
+独立库 `control_center_feat_product_selection` 现为单一 `20261010_0043`，ShopSession=0，Owner `control_center_dev_user`，
 受信任 `35433` 隧道及 SCRAM 连接/回滚 DDL 探针通过；应用角色无 CREATEDB/CREATEROLE/SUPERUSER。
 81a1 本地忽略连接及实际库名已核验；保持现有库和0042事实，未知渠道/日期/类目转换不猜测实现。
 Feature Backend `8101`、Frontend `4176 --strictPort`，仅 Feature Owner 运行；Integration 仍为

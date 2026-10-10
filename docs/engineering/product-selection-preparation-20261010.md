@@ -11,7 +11,7 @@
 | 资源同步 | ca97 登记提交 `675016769ba0b55f8ed42c15e7500b0c6291f968` 已推送 dev；Owner正常merge后为 `0c75ef05e36e6c7f5ce8137a6bd81e4102f7e515`，再merge工程Green `b746ab1397f4637a5b7beb4face5c197cfdeeac7` 后为 `ebae1ba6536c37e40d383d2214aaab612ad8d836`。819ca33与最终前端树保留，不将资源merge当作业务Gate通过 |
 | 前端最终候选 | `06bd03c0fa61b00251063e21350cd0cc5445afe5`；Gate 1 有完整 Handoff，含 lint/typecheck、41 定向单测、13 Mock E2E、Real build |
 | Integration 返修复核 | 06bd03c 独立 lint/typecheck/Real build、41 单测、3 定向 Mock E2E、diff check PASS；前一 91461d4 Review2 返修及 Real 无回退证据保留 |
-| Electron | 唯一既有开发窗口，5180 的 06bd03c Mock 快照；32 条演示候选。已有交互/主题确认保留，尺寸收尾记录仍为等待最终人工确认，不用浏览器截图补写 Electron PASS |
+| Electron | 唯一既有开发窗口已从最小化恢复；原生可访问性核对5180选品库、候选池/采集任务/策略入口、32条演示候选。运行仍为06bd03c Mock快照。原生截图重新绑定后仍超时；已有交互/主题确认保留，尺寸收尾等待最终人工确认，不用浏览器截图补写Electron PASS |
 | dev 合并 | 06bd03c 与 819ca33 均不在基线 dev，未合并，无 Merge Commit；资源登记不代表业务合并或 Green 新功能 |
 | 诊断补丁 | 819ca33 是 06bd03c 的直接后续，仅请求层、9 项定向测试及 Backend 说明；两提交 Frontend tree 均为 `0cfd65b3eb7573a2ba5be6b9a7cef08977f85e84`，Electron 树亦相同。定向审查 PASS，不等于完整 Gate 2 |
 
@@ -19,7 +19,7 @@
 
 ## 已确认取数事实及未知边界
 
-正式认证来自 HuanYu 数据库 ShopSession v1，平台 shop_id `243321624`；链路为 Accessor → 819ca33 DouyinApiClient → 既有 Signer。两次榜单均 HTTP 200、整数 st=0、10 条，basic_info 成功且商品身份匹配。签名 Cookie 与实际 HTTP Cookie 一致，签名后复用同一请求并保持业务 Query 编码。本轮不再追加平台请求。
+正式认证来自 HuanYu 数据库 ShopSession v1，平台 shop_id `243321624`；链路为 Accessor → 819ca33 DouyinApiClient → 既有 Signer。两次榜单均 HTTP 200、整数 st=0、10 条，basic_info 成功且商品身份匹配。签名 Cookie 与实际 HTTP Cookie 一致，签名后复用同一请求并保持业务 Query 编码。本轮不重播这些Backend诊断或追加认证探针；仅正常页面取证，不把页面自动请求说成新的入库闭环。
 
 - 榜单固定路径 `product_rank/video_bring_good`；响应 `data.data_result`、`data.page_result`，商品 ID 为字符串。
 - 成功样本为 2026-10-02～10-08、date_type=21、rank_data_type=1、第2页/10条，以及已记录的12个业务字符串参数；这是一次具体条件，不是生产默认、所有渠道/周期的映射依据。
@@ -45,20 +45,23 @@
 | DB | `control_center_feat_product_selection`，管理员创建独立空库后，由 Owner 通过既有 Migration 初始化；Owner `control_center_dev_user`；不复用 Availability/Integration/生产 |
 | 应用连接 | 既有 `127.0.0.1:35433` 受信任 SSH 隧道已恢复；StrictHostKeyChecking=yes；实际 SCRAM 连接成功，当前 DB/角色匹配 |
 | 最小权限 | CREATEDB=false、CREATEROLE=false、SUPERUSER=false；Feature 库建表/改列/索引权限探针 PASS，事务已回滚，前后 public 表数均0 |
-| 初始化及现状 | 初始0041/44表已核验；Owner执行0042后，Integrator最新只读核对单一 `20261010_0042`、46表、候选/观察/ShopSession均0、两表模型差异0、角色权限仍最小；未执行共享环境迁移或平台任务。Owner `.env` Git Ignore PASS |
+| 初始化及现状 | 初始0041/44表、0042/46表及两表模型差异0已核验；Owner现已执行0043，Integrator最新只读核对DB和Owner工作树代码单一 `20261010_0043`，1候选/1观察为0042回滚保留测试事实，run=0、ShopSession=0、角色仍最小。未执行共享环境迁移或平台任务；Owner `.env` Git Ignore PASS |
 | HBA | 仅新增本 Feature DB + 应用角色 + `172.17.0.1/32` SCRAM 规则，位于 reject 前；解析错误0，reload，无服务重启；其他规则不变 |
 | HBA 备份 | 持久化数据卷中的 `pg_hba.conf.before-product-selection-20261010T112247Z`；SHA-256 `4d6671e093bc9fcb1665d207a08ade58806c4a19e7d34b200ea686080ca1eb7a` |
-| Head 与 Slot | Integration/生产已核验单一 `20260924_0041`，旧0041 Slot released；本 Feature 唯一 active Slot 继续覆盖已应用的0042及追加reserved `20261010_0043_product_selection_runs_v1`（revision `20261010_0043`，down `20261010_0042`）。不改写0042、不另开活跃Slot；追加文件由Owner编写，完整候选一起验收 |
+| Head 与 Slot | Integration/生产已核验单一 `20260924_0041`，旧0041 Slot released；本 Feature 唯一 active Slot 覆盖已应用Feature库的0042/0043（0043 revision `20261010_0043`，down `20261010_0042`）。不改写0042、不另开活跃Slot；两文件由Owner编写，完整候选一起验收 |
 | 端口 | Owner Backend 8101，Frontend 4176 strictPort；只登记未启动。Integration 保持8100/5180及唯一 Electron，真实平台由 ca97 协调 |
 | 凭据 | 复用 Owner 本地忽略配置中的既有应用角色凭据，仅更改目标数据库；不得回传完整连接串，不能继续使用旧 Availability 库 |
 
 81a1已完成两表、事实服务和只读API，不重复安排开发。部分候选80ed841对团队引用保护的返修复核PASS：Integrator独立65项定向测试通过，纯内存探针确认引用检查包含候选；Owner的21项PG及409/204用例已审阅，未宣称Integrator独立重跑。整体仍PARTIAL，未合入dev、未释放Slot。
+
+Owner已正常merge资源登记到 `7060899e7284527bdde25a06335d4aec15eab297`，当前未提交的run/Real读取适配成果保留。Owner报告38项真实PG/正式API合成平台测试、41项前端定向测试和1项Real失败/空态E2E通过；0043降级保留0042事实、非空run拒绝降级通过。上述是实施中证据，不是最终Candidate、完整Gate1、真实平台请求或Electron验收。
 
 ## 手动运行技术决策
 
 业务专用run方案允许实施，由81a1将正式DTO、Model、Service/API和本节约束同步到Backend契约。run保存Team/发起User/请求Shop（RESTRICT）、submission_key、版本化白名单条件及明确日期、状态/阶段、实际结果计数、安全错误和租约。只增加本业务必要结构，不重做两张事实表。
 
 - `(team_id, created_by_user_id, submission_key)`保证回执幂等；相同原始用户条件必须返回原run和已冻结日期，不能因跨日重新计算相对日期而误判409或再次请求。相同key不同用户条件409。活动同Team/Shop/规范条件由PostgreSQL部分唯一约束去重，处理特定唯一冲突返回同一run，不把刷新当提交。
+- 同一run表以可空自引用`reused_run_id`保存重复提交回执；每个接受的用户/key均先持久化独立映射，再返回202。回执行不领取、不计作执行、不复制执行计数或租约；只能指向同Team/Shop/条件的根执行。公开回执为`receipt_id/submission_key/execution_run_id/reused/execution`；执行DTO不返回其他提交人的key。key和原始条件校验在相对日期重算前完成；不用JSON别名关系、GIN索引或advisory-lock框架。
 - pending只来源于明确手动提交。复用Backend现有lifespan和有限 `to_thread` 执行模式，短事务领取、平台I/O在事务外；模块执行开关默认关闭，复用现有配置体系，不复用经营/AI队列，不增加定时或自动平台重试。
 - lease_id/有效期须通过数据库条件更新或行锁，与本次事实写入、计数及last_run_id关联处于同一短事务。不能只在Python中检查租约后由现有FactService独立commit，留下检查/写入竞态；复用现有服务/Repository，不另造事实写入实现。每次HTTP前和事实写入前复核当前User/Team/模块/Shop授权及启用状态。
 - 无候选的合法成功空列表记录succeeded及真实0计数；取得榜单前失败记录failed/安全阶段，未知计数为null；候选保存后补充缺失或失败为partial，旧有效事实保留。计数明确指取得、有效写入（包括幂等更新）及补充结果，不把未取得值填0，不将去重更新数冒充新增候选数。
@@ -73,7 +76,7 @@ Gate 1须覆盖跨Session提交/领取、回执丢失及跨日幂等、成功空
 
 补充技术审核：0043同表保存独立回执，列`reused_run_id`自外键RESTRICT。canonical为NULL，回执行status=reused且无计数/错误/lease/执行起止，不领取或列入latest。不同提交key和不同用户各保留自己回执，活动复用关系与接受回执同事务提交；不增加JSON别名/advisory锁。公开POST明确receipt_id、调用者submission_key、execution_run_id、reused及execution；执行DTO不含其他人的key。回执ID读取先复核两侧同Team/Shop/canonical关系与当前授权。0043尚未进入共享环境，技术审查不等于完整Gate。
 
-现有材料只证明成功样本的实际字符串参数。正常罗盘页面尚无可用模式/快捷日期对应证据，不由接口路径或Referer推断短视频模式，也不从2026-10-02至10-08推导所有“近7天”。可继续纯DTO/状态/数据库与Real读取适配；未冻结条件的执行选择需明确不可用。
+现有成功请求只证明该组实际字符串参数。此次已有HuanYu正常罗盘页面可见短视频榜、近7天及明确日期2026/10/03～10/09，当前类目为“智能家居 / 餐饮厨具 / 厨房小工具”，正常显示10项。浏览器支持的只读页面/控制台没有取得该次Network业务Query；因此页面标签与实际`date_type`、日期边界、industry/category ID的对应关系仍未冻结。不由接口路径或Referer推断映射，也不从旧10-02～10-08推导通用规则。可继续DTO/状态/数据库与Real读取适配；未冻结条件的执行选择需明确不可用。
 
 最少补证据为既有合法罗盘页面的同一次“短视频＋近7天＋当前类目”正常操作：仅登记所选模式、页面明确日期、12个白名单业务参数及分页。若父级“全部”仍不明确，再做一次单因素类目操作；不覆盖所有周期/品牌/价格、不再做认证成功测试。优先复用已保存页面证据，无Cookie/cURL交接。自定义价格、其它周期、首次上榜及未确认单位继续不支持。
 
