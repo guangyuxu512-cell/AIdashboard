@@ -14,6 +14,24 @@ SelectionSortField = Literal["checked_at", "first_on_shelf_date", "rank"]
 SelectionSortDirection = Literal["asc", "desc"]
 
 
+class SelectionCategoryRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: StrictStr
+    name: StrictStr
+    children: list["SelectionCategoryRead"]
+
+
+class SelectionCategoriesRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shop_id: UUID
+    nodes: list[SelectionCategoryRead]
+    industry_id: StrictStr | None
+    industry_name: StrictStr | None
+    selected_category_id: StrictStr | None
+
+
 class SelectionSourceRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -72,6 +90,7 @@ class SelectionObservationRead(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     observation_id: UUID
+    last_run_id: UUID | None = None
     candidate_id: UUID
     product_id: StrictStr
     platform: Literal["douyin"]

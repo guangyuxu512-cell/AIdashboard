@@ -49,7 +49,11 @@ watch(contextKey, load, { immediate: true })
     ><ErrorState :description="error" retryable @retry="load"
   /></PageSection>
   <PageSection v-else-if="!service"><LoadingState /></PageSection>
-  <PageSection v-else-if="!service.available"
+  <PageSection
+    v-else-if="
+      !service.available &&
+      !(panel === 'candidate-pool' && service.candidatesAvailable)
+    "
     ><EmptyState :description="SELECTION_UNAVAILABLE"
   /></PageSection>
   <CandidatePool

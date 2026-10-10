@@ -1,10 +1,10 @@
 # 选品库前端与 Mock 交互 V1
 
-状态：UI_ONLY；前端契约草案，不是 Backend DTO 或平台接口契约。
+状态：视觉/Mock为UI_ONLY，手动真实接入为PARTIAL。下述Mock模型仍是前端草案；文末“正式只读绑定”以已登记Backend DTO为准，不混用。
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
 分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。
 
-当前表现以文末“候选池与详情视觉收口”“文字层次与详情顶部时间返修”“审核返修与无用残留清理”及“候选池图片与列宽尺寸收尾”为准；此前各轮的不同列宽、列表图片尺寸、对齐、更多菜单及常驻说明仅为历史验收记录，不代表当前结构。
+当前表现以文末“候选池与详情视觉收口”“文字层次与详情顶部时间返修”“审核返修与无用残留清理”“候选池图片与列宽尺寸收尾”及“正式只读绑定”为准；此前各轮不同列宽、尺寸、对齐、更多菜单及常驻说明仅为历史验收记录。
 
 ## 实施前复用清单
 
@@ -358,3 +358,13 @@ Naive默认Descriptions标签比字段值深，NText未指定depth时为次文�
 全部主题实测正常行高81px、表头39.390625px、操作左右可见间隔12px。1440视口表格可视宽1123px，12列保持1496px基础总宽并横向滚动373px；1920视口可视宽1603px，标题/店铺/类目334/172/121px，其余九列不变，无横向溢出。额外2240压力检查标题上限360px成立。
 
 首轮typecheck暴露VueUse的VueInstance与DataTable类型化emit不兼容；改为读取已有根HTMLElement后lint/typecheck、定向unit及全部13项E2E重新通过。未调整业务接口、Mock延迟、动画或全局表格。最终截图来自 `verified-regression/`、浏览器Mock、CSS缩放100%；真实Electron新增影响及用户视觉确认由ca97接续，不能据此宣布Gate 2或生产通过。本轮按尺寸改动范围执行定向验证，未重复后端/数据库/平台或无关全量测试；Real运行态边界沿用91461d4a记录，当前Real构建再核验不含Mock。
+
+## 正式只读绑定（2026-10-10，PARTIAL）
+
+`api/selection-read-api.ts` 镜像正式 `SelectionObservationRead` 和canonical运行摘要，只经既有httpClient调用已登记 `GET /api/v1/product-selection/candidates`、`/observations/{id}`、`/runs`。Actor/Team切换仍由Vue Query查询key隔离；列表刷新只查数据库。前端不持有平台Cookie或Signer，不创建空Job。
+
+`selection-real-service.ts` 将数据库返回映射到已验收候选池/详情，不复用Mock handler。候选ID采用observation_id以保持精确来源；19位product_id不转Number；请求Shop与实际商品商家分开，多个商家不冒称唯一身份。原始Decimal区间字符串不缩放、不取中点；差评率独立保留raw/unit，不加百分号或开放排序。日期/类目尚未冻结的快捷映射不推导，保留明确统计区间，榜单检查时间与指标获取时间不互换。基础信息失败显示安全错误且已存候选仍可查询。
+
+Real列表读最近canonical运行，分别显示未获取、排队/运行、合法空成功、失败、partial及interrupted；运行进度刷新不创建提交回执或平台请求。候选查询失败走已有错误态，不伪装为空榜单；旧运行的当前来源关联不是历史商品快照。
+
+Mock原有视觉/筛选/操作保持。Real资料采集、屏蔽、竞品标记、策略保存与定时仍未接入，禁用或返回不可用；不假成功。正式 `GET /categories?shop_id=UUID` 与前端categories service已实现，返回树使用路径限定显示ID以区分多个0/全部节点，并校验响应shop_id，失败不回退Mock；显示路径不直接冒充平台Query。Real策略/手动获取UI仍受Backend映射门禁阻塞，本候选尚未在合法会话下验收真实类目选择与手动闭环。原列宽1496、64px缩略图、局部8/12pxpadding、12px操作间距和四主题不改；完整Electron验收仍由ca97负责。

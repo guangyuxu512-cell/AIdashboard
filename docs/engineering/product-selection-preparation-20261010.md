@@ -71,13 +71,15 @@ Gate 1须覆盖跨Session提交/领取、回执丢失及跨日幂等、成功空
 
 ## 最小请求映射与会话边界
 
+补充技术审核：0043同表保存独立回执，列`reused_run_id`自外键RESTRICT。canonical为NULL，回执行status=reused且无计数/错误/lease/执行起止，不领取或列入latest。不同提交key和不同用户各保留自己回执，活动复用关系与接受回执同事务提交；不增加JSON别名/advisory锁。公开POST明确receipt_id、调用者submission_key、execution_run_id、reused及execution；执行DTO不含其他人的key。回执ID读取先复核两侧同Team/Shop/canonical关系与当前授权。0043尚未进入共享环境，技术审查不等于完整Gate。
+
 现有材料只证明成功样本的实际字符串参数。正常罗盘页面尚无可用模式/快捷日期对应证据，不由接口路径或Referer推断短视频模式，也不从2026-10-02至10-08推导所有“近7天”。可继续纯DTO/状态/数据库与Real读取适配；未冻结条件的执行选择需明确不可用。
 
 最少补证据为既有合法罗盘页面的同一次“短视频＋近7天＋当前类目”正常操作：仅登记所选模式、页面明确日期、12个白名单业务参数及分页。若父级“全部”仍不明确，再做一次单因素类目操作；不覆盖所有周期/品牌/价格、不再做认证成功测试。优先复用已保存页面证据，无Cookie/cURL交接。自定义价格、其它周期、首次上榜及未确认单位继续不支持。
 
 Feature库ShopSession=0，不复制生产Cookie，也不增加跨库认证桥或身份模块。Feature网络测试需本环境正常授权的Session；最终候选Integration真实闭环由ca97使用Integration正常登录会话、隔离Signer及8100/5180验证，Owner不得切库写Integration。若已有Integration Session不可用，只请求一次正式店铺登录；生产只读旧证据不冒充新候选入库闭环。
 
-## Owner阶段验证
+## Owner两表阶段验证
 
 Owner在独立Feature库完成0041→0042→0041→0042，模型与Migration差异0，旧域表记录保留；当前单一0042、46表、新事实表无测试残留、ShopSession=0。生产/Integration未迁移，没有复制凭据或启动平台循环。此前一次元数据检查因验证器未加载引用表而报错，修正验证器加载users/teams/shops后通过，不是Migration回写失败。
 
@@ -90,3 +92,31 @@ Owner在独立Feature库完成0041→0042→0041→0042，模型与Migration差�
 API验证注入人员Principal和Feature连接，实际Actor/Team/模块/店铺授权链保持；未启动应用lifespan。夹具为合成商品，不能替代本候选真实请求、入库和Real展示。公共TestClient产生一项现有Starlette/httpx弃用警告，未为此改依赖。
 
 Frontend/Electron树与819ca33相同，本阶段没有重跑UI/桌面测试或新增窗口。保存策略、手动执行和类目API未接通；两张事实表不能保存无候选的空成功/失败运行，相对周期/渠道转换也未冻结。完整Gate1继续BLOCKED，只交阶段候选供审查，不进入业务dev合并或发布。
+
+## Owner运行记录与Real查询阶段验证
+
+本阶段接续 `80ed8416ee4fcba03519eaa13e10f5d8ed49672f`，正常merge运行记录审核及0043登记Green `c673892ca88fd90f0507ab5087007f4938247f6a` 后，实施起点为 `7060899e7284527bdde25a06335d4aec15eab297`。既有两张事实表和请求修复保留，没有重复实现；完整Feature仍为PARTIAL，不满足完整Gate1或业务合入条件。
+
+已实现上述最小运行契约：canonical执行与独立submission回执同表、数据库活动去重及全局单执行领取、短事务与租约屏障、成功空榜单、榜单失败、补充部分失败、过期中断、安全错误及Team引用保护。新增0043仅在本Feature库应用；0042保持原文件，0043应用后亦不继续改写。Feature当前单一Head `20261010_0043`、47表，运行/候选/观察/ShopSession均0，无测试残留。0043→0042→0043测试保留0042事实；有run时降级在DDL前拒绝。实际数据存在时应用回退保留Schema，不清库。
+
+正式StoredSession适配复用ShopSessionAccessor、819ca33后的HTTP和Signer；类目API使用已确认的level=4、scene=6、default_cate_to_level=2。API权限读事务及内部授权/会话读事务均在平台I/O前结束，返回后复核授权。榜单适配只接受已冻结的业务字符串参数，不猜UI转换。执行开关默认关闭；即使开启，映射未冻结也只整理过期租约，不领取或重发平台任务，没有自动监控或重试。
+
+Real候选列表、详情及运行进度绑定已登记只读API，刷新只读数据库。区分尚未获取、执行中、合法空结果、失败与候选已保存但补充未完成；差评率保留原值和unit，未确认时不换算百分比。类目typed service已绑定正式API，但策略/手动提交页面仍明确不可用；保存策略、定时、百应、资料采集、竞品标记等未接入能力无假成功或Mock回退。原64px缩略图、1496px基础列宽及前端视觉成果保留。
+
+本阶段最终检查（测试平台全部为合成响应，未实际请求平台）：
+
+| 工作目录 | 实际命令 | 结果与边界 |
+| --- | --- | --- |
+| backend | `.\.venv\Scripts\python.exe -m pytest` | 568 passed，119个integration用例按项目默认选择排除；现有Starlette/httpx弃用警告1项 |
+| backend | `.\.venv\Scripts\python.exe -m pytest -m integration tests/integration/test_postgresql_selection_categories.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_product_selection.py tests/integration/test_postgresql_product_selection_migration.py` | 43 passed，使用分配的真实PostgreSQL Feature库；不是119项全量PG验证 |
+| backend | `.\.venv\Scripts\python.exe -m compileall -q app migrations` | PASS |
+| frontend | `pnpm run lint` | PASS |
+| frontend | `pnpm run test` | 571 passed，135文件；现有Home/jsdom XHR警告未改依赖 |
+| frontend | `pnpm run build` | PASS，包含`pnpm run typecheck`及Real production build；现有大chunk警告 |
+| frontend | `$env:PLAYWRIGHT_FRONTEND_PORT='4176'; pnpm exec playwright test --project=mock e2e/product-center.spec.ts e2e/product-selection.spec.ts` | 13 passed，包括此前跨AI导航、四主题、尺寸和原有交互回归；是浏览器Mock，不是Electron |
+| frontend | `pnpm exec playwright test --config playwright.selection-real.config.ts` | 1 passed，拦截式Real构建测试，验证正式查询契约、失败及无Mock回退；不等于实际平台或Electron闭环 |
+| 仓库 | `git diff --check`、忽略配置和材料核验 | PASS；0042无diff，凭据、原始请求、截图和本机材料未提交 |
+
+真实平台请求次数为0，Feature库仍无合法ShopSession，也未复制生产凭据。此前正式链路两次10条及basic_info成功仅作为请求能力证据，不冒充本阶段入库/页面证据。ca97的正常浏览器已确认短视频/近7天2026-10-03～10-09及当前类目有10条，但工具未取得该次实际Network query，因此仍不能冻结渠道、相对日期、类目及父级全部的转换。最少下一步仍是上节同次正常操作的12个业务参数对照，不要求Cookie或完整cURL，也不重新测试认证/追溯历史错误。
+
+唯一Integration Electron已有Mock视觉/交互记录保留，最终尺寸人工确认尚缺，截图工具超时不能补写PASS。本候选真实请求→入库→API→Real页面、重复获取及真实失败/空结果证据尚未完成。阶段候选交ca97做技术审查及最小证据协调；不能据此合入业务dev或发布。

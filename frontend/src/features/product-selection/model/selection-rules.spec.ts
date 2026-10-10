@@ -201,9 +201,10 @@ describe('selection draft and isolated mock handlers', () => {
     await expect(real.previewPeriod('7d')).rejects.toThrow(
       SELECTION_UNAVAILABLE,
     )
-    await expect(real.candidates(query())).rejects.toThrow(
-      SELECTION_UNAVAILABLE,
-    )
+    expect(real.candidatesAvailable).toBe(true)
+    await expect(
+      real.candidates({ ...query(), blocked: true }),
+    ).rejects.toThrow(SELECTION_UNAVAILABLE)
     await expect(real.retrieve(input())).rejects.toThrow(SELECTION_UNAVAILABLE)
     expect((await createSelectionService('mock')).available).toBe(true)
     vi.stubEnv('VITE_API_MODE', 'real')

@@ -90,6 +90,44 @@ const query = useQuery({
   retry: false,
   placeholderData: keepPreviousData,
 })
+const latestRun = useQuery({
+  queryKey: computed(() => [
+    'selection-run',
+    props.contextKey,
+    filters.value.shopId,
+  ]),
+  enabled: computed(() => !!props.service.latestRun),
+  queryFn: ({ queryKey }) =>
+    props.service.latestRun!(queryKey[2] as string | null),
+  retry: false,
+  refetchInterval: (current) =>
+    ['pending', 'running'].includes(current.state.data?.status ?? '')
+      ? 1000
+      : false,
+})
+const runMessage = computed(() => {
+  const run = latestRun.data.value
+  if (!run) return null
+  if (run.status === 'pending') return '手动获取已排队'
+  if (run.status === 'running') return '手动获取中'
+  if (run.status === 'failed')
+    return `最近获取失败：${run.error_code ?? '原因待核查'}`
+  if (run.status === 'interrupted')
+    return '最近获取已中断，已有候选保留；未自动重发'
+  if (run.status === 'partial')
+    return `最近获取部分完成，候选已保存 ${run.saved_count} 项；${run.error_code ?? '详情补充未完成'}`
+  return `最近获取成功，返回 ${run.result_count ?? '—'} 项`
+})
+const emptyDescription = computed(() => {
+  if (props.service.available || filters.value.keyword) return '暂无候选商品'
+  return runMessage.value ?? '尚未获取候选；手动选品请求映射待确认'
+})
+async function refreshList() {
+  await Promise.all([
+    query.refetch(),
+    ...(props.service.latestRun ? [latestRun.refetch()] : []),
+  ])
+}
 const search = useAutoSearch(() => {
   filters.value = { ...filters.value, keyword: keyword.value.trim(), page: 1 }
   checked.value = []
@@ -318,15 +356,25 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     width: 96,
     className: 'selection-sort-column',
     align: 'center',
-    sorter: true,
+    sorter: props.service.available,
     sortOrder:
       filters.value.sortField === 'negativeReviewRate'
         ? filters.value.sortOrder
         : false,
     render: (row) =>
-      row.negativeReviewRate === null
-        ? missing()
-        : formatReviewRate(row.negativeReviewRate),
+      row.negativeReviewRateRaw
+        ? h(
+            NTooltip,
+            {},
+            {
+              trigger: () => row.negativeReviewRateRaw!.value,
+              default: () =>
+                `平台原值；unit=${row.negativeReviewRateRaw!.unit ?? '—'}，换算尚未确认`,
+            },
+          )
+        : row.negativeReviewRate === null
+          ? missing()
+          : formatReviewRate(row.negativeReviewRate),
   },
   {
     key: 'listedAt',
@@ -377,7 +425,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           {
             tone: 'secondary',
             size: 'small',
-            disabled: busy.value,
+            disabled: busy.value || !props.service.available,
             onClick: () => act(row, 'collect'),
           },
           () => '采集资料',
@@ -388,7 +436,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
             tone: 'text',
             size: 'small',
             themeOverrides: { paddingSmall: '0' },
-            disabled: busy.value,
+            disabled: busy.value || !props.service.available,
             onClick: () => act(row, row.blocked ? 'restore' : 'block'),
           },
           () => (row.blocked ? '恢复' : '屏蔽'),
@@ -426,6 +474,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       /></FilterField>
       <FilterField width="sm"
         ><AppSelect
+          :disabled="!service.available"
           :model-value="filters.blocked ? 'blocked' : 'normal'"
           :options="[
             { label: '未屏蔽', value: 'normal' },
@@ -435,12 +484,25 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       /></FilterField>
       <template #actions
         ><AppButton @click="reset">重置</AppButton
-        ><AppButton tone="secondary" @click="query.refetch()"
+        ><AppButton tone="secondary" @click="refreshList"
           >刷新列表</AppButton
         ></template
       >
     </FilterBar>
     <ManagementListSection>
+      <NAlert
+        v-if="runMessage"
+        :type="
+          latestRun.data.value?.status === 'failed' ||
+          latestRun.data.value?.status === 'interrupted'
+            ? 'warning'
+            : 'info'
+        "
+        >{{ runMessage }}</NAlert
+      >
+      <NAlert v-if="latestRun.isError.value" type="warning">{{
+        latestRun.error.value?.message
+      }}</NAlert>
       <TableToolbar aria-label="候选商品批量操作">
         <NText v-if="checked.length" :depth="3"
           >已选 {{ checked.length }} 项</NText
@@ -448,7 +510,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         <template #actions>
           <AppButton
             tone="primary"
-            :disabled="!checked.length || busy"
+            :disabled="!checked.length || busy || !service.available"
             :loading="busy"
             @click="collectSelected"
           >
@@ -482,7 +544,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
-        empty-description="暂无候选商品"
+        :empty-description="emptyDescription"
         @update:checked-row-keys="checked = $event"
         @retry="query.refetch()"
         @update:sorter="sort"

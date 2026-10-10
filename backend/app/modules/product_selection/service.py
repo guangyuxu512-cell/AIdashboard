@@ -18,6 +18,9 @@ from app.modules.product_selection.models import (
 )
 from app.modules.product_selection.repository import ProductSelectionRepository
 from app.modules.product_selection.schemas import SelectionObservationRead
+from app.modules.product_selection.run_contract import SelectionRunClaim
+from app.modules.product_selection.run_repository import SelectionRunRepository
+from app.modules.product_selection.exceptions import SelectionRunLeaseLostError
 from app.modules.product_selection.source import SelectionSourceScope
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.repository import ShopRepository
@@ -79,12 +82,14 @@ class ProductSelectionFactService:
     def persist_rank_page(
         self, *, actor: ActorContext, shop_id: UUID, scope: SelectionSourceScope,
         page: CompassRankPage, started_at: datetime, retrieved_at: datetime,
+        claim: SelectionRunClaim | None = None,
     ) -> tuple[UUID, ...]:
         self._time_order(started_at, retrieved_at)
         try:
             current = self._current_actor(actor)
             team_id = current.require_team_id()
             self._execution_shop(current, shop_id)
+            run = self._fenced_run(current, claim, shop_id, scope, retrieved_at)
             # Stable identity dedup within a page as well as database-enforced
             # dedup across pages/processes. No candidate is invented for empty.
             products = {product.product_id: product for product in reversed(page.products)}
@@ -97,6 +102,7 @@ class ProductSelectionFactService:
                 observation_id = self.repository.upsert_rank_observation(
                     candidate_id=candidate_id, shop_id=shop_id, scope=scope,
                     started_at=started_at, retrieved_at=retrieved_at,
+                    last_run_id=claim.run_id if claim is not None else None,
                     values={
                         "title": product.title, "image_url": product.image_url,
                         "merchant_snapshot": [
@@ -115,11 +121,26 @@ class ProductSelectionFactService:
                 )
                 if observation_id is not None:
                     saved.append(observation_id)
+            if run is not None:
+                run.stage = "basic_info"
+                run.result_count = (run.result_count or 0) + len(products)
+                run.saved_count += len(saved)
+                run.updated_at = retrieved_at
             self.session.commit()
             return tuple(saved)
         except Exception:
             self.session.rollback()
             raise
+
+    def _fenced_run(self, actor, claim, shop_id, scope, at):
+        if claim is None:
+            return None
+        if (actor.user_id != claim.user_id or actor.require_team_id() != claim.team_id
+            or shop_id != claim.shop_id or scope != claim.request.scope):
+            raise SelectionRunLeaseLostError()
+        # Hold the row lock until the same commit as facts, counts and source
+        # association. An expiry/replacement cannot pass between check/write.
+        return SelectionRunRepository(self.session).fence(claim, at)
 
     def _writable_observation(
         self, actor: ActorContext, observation_id: UUID,
@@ -140,10 +161,15 @@ class ProductSelectionFactService:
     def persist_basic_info(
         self, *, actor: ActorContext, observation_id: UUID,
         rank_started_at: datetime, retrieved_at: datetime, basic: CompassBasicInfo,
+        claim: SelectionRunClaim | None = None,
     ) -> bool:
         self._time_order(rank_started_at, retrieved_at)
         try:
             row = self._writable_observation(actor, observation_id)
+            run = self._fenced_run(actor, claim, row.request_shop_id,
+                                   SelectionSourceScope.model_validate(row.source_context["business"]), retrieved_at)
+            if claim is not None and row.last_run_id != claim.run_id:
+                raise SelectionRunLeaseLostError()
             candidate = self.session.get(ProductSelectionCandidate, row.candidate_id)
             if candidate is None or candidate.platform_product_id != basic.product_id:
                 raise CompassSelectionIdentityError()
@@ -161,7 +187,14 @@ class ProductSelectionFactService:
             changed = self.repository.update_basic_info(
                 observation_id=observation_id, rank_started_at=rank_started_at,
                 retrieved_at=retrieved_at, values=values, partial=partial,
+                once_for_run=claim is not None,
             )
+            if run is not None and changed:
+                if partial:
+                    run.supplement_failed_count += 1
+                else:
+                    run.supplemented_count += 1
+                run.updated_at = retrieved_at
             self.session.commit()
             return changed
         except Exception:
@@ -171,6 +204,7 @@ class ProductSelectionFactService:
     def record_basic_info_failure(
         self, *, actor: ActorContext, observation_id: UUID,
         rank_started_at: datetime, at: datetime, error: AppError,
+        claim: SelectionRunClaim | None = None,
     ) -> bool:
         self._time_order(rank_started_at, at)
         safe_codes = {
@@ -179,11 +213,19 @@ class ProductSelectionFactService:
             "DOUYIN_SELECTION_BUSINESS_REJECTED", "DOUYIN_SELECTION_PRODUCT_ID_MISMATCH",
         }
         try:
-            self._writable_observation(actor, observation_id)
+            row = self._writable_observation(actor, observation_id)
+            run = self._fenced_run(actor, claim, row.request_shop_id,
+                                   SelectionSourceScope.model_validate(row.source_context["business"]), at)
+            if claim is not None and row.last_run_id != claim.run_id:
+                raise SelectionRunLeaseLostError()
             changed = self.repository.record_basic_info_failure(
                 observation_id=observation_id, rank_started_at=rank_started_at, at=at,
                 code=error.code if error.code in safe_codes else "PLATFORM_REQUEST_FAILED",
+                once_for_run=claim is not None,
             )
+            if run is not None and changed:
+                run.supplement_failed_count += 1
+                run.updated_at = at
             self.session.commit()
             return changed
         except Exception:
@@ -221,6 +263,7 @@ class ProductSelectionFactService:
         identities = self.repository.read_identities([row.observation_id for row in rows])
         return [SelectionObservationRead(
             observation_id=row.observation_id,
+            last_run_id=row.last_run_id,
             candidate_id=row.candidate_id,
             product_id=identities[row.observation_id][0], platform="douyin",
             request_shop_id=row.request_shop_id,

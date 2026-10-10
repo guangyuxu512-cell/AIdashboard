@@ -1,0 +1,240 @@
+"""Short transactions for manual intentions, progress, claims and terminal state."""
+
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+
+from app.core.config import Settings, get_settings
+from app.core.exceptions import AppError
+from app.modules.access.contracts import ActorContext
+from app.modules.product_selection.exceptions import (
+    SelectionExecutionDisabledError, SelectionRequestUnconfirmedError,
+    SelectionRunConflictError, SelectionRunNotFoundError,
+    SelectionSubmissionBusyError,
+)
+from app.modules.product_selection.models import ProductSelectionRun
+from app.modules.product_selection.run_contract import (
+    SelectionResolvedRequest, SelectionRunClaim, SelectionRunCreate,
+    SelectionRunOriginal, SelectionRunRead, SelectionRunReceipt,
+)
+from app.modules.product_selection.run_repository import SelectionRunRepository
+from app.modules.product_selection.service import ProductSelectionFactService
+
+
+RequestResolver = Callable[[SelectionRunOriginal, datetime], SelectionResolvedRequest]
+
+
+def selection_request_mapping_available() -> bool:
+    # Internal capability, not a config switch that could bypass page evidence.
+    return False
+
+
+def resolve_selection_request(original: SelectionRunOriginal, now: datetime) -> SelectionResolvedRequest:
+    # Page/period/channel evidence has not been frozen. In particular do not
+    # substitute the successful historical dates/category for a user's choice.
+    raise SelectionRequestUnconfirmedError()
+
+
+SAFE_ERROR_CODES = {
+    "AUTH_INVALID", "PLATFORM_TIMEOUT", "PLATFORM_REQUEST_FAILED", "PLATFORM_SIGNER_FAILED",
+    "PLATFORM_RESPONSE_INVALID", "DOUYIN_SELECTION_BUSINESS_REJECTED",
+    "DOUYIN_SELECTION_PRODUCT_ID_MISMATCH", "SHOP_SESSION_NOT_CONFIGURED",
+    "SHOP_SESSION_AUTHENTICATION_INVALID", "SHOP_SESSION_PAYLOAD_INVALID",
+    "SESSION_ENCRYPTION_UNAVAILABLE",
+    "PLATFORM_IDENTITY_MISMATCH", "PRODUCT_SELECTION_SHOP_UNAVAILABLE",
+    "MODULE_ACCESS_DENIED", "TEAM_ACCESS_DENIED", "HUMAN_USER_DISABLED",
+    "PRODUCT_SELECTION_ACCESS_REVOKED", "PRODUCT_SELECTION_EXECUTION_FAILED",
+}
+
+
+def safe_run_error(error: AppError) -> tuple[str, str, str | int | None]:
+    code = error.code if error.code in SAFE_ERROR_CODES else "PRODUCT_SELECTION_EXECUTION_FAILED"
+    stage = {
+        "AUTH_INVALID": "session", "PLATFORM_SIGNER_FAILED": "signer",
+        "PLATFORM_TIMEOUT": "http", "PLATFORM_REQUEST_FAILED": "http",
+        "PLATFORM_RESPONSE_INVALID": "response_parse",
+        "DOUYIN_SELECTION_BUSINESS_REJECTED": "platform_business",
+        "DOUYIN_SELECTION_PRODUCT_ID_MISMATCH": "response_parse",
+        "PRODUCT_SELECTION_SHOP_UNAVAILABLE": "authorization",
+        "PRODUCT_SELECTION_ACCESS_REVOKED": "authorization",
+        "MODULE_ACCESS_DENIED": "authorization", "TEAM_ACCESS_DENIED": "authorization",
+        "HUMAN_USER_DISABLED": "authorization",
+        "SHOP_SESSION_NOT_CONFIGURED": "session",
+        "SHOP_SESSION_AUTHENTICATION_INVALID": "session",
+        "SHOP_SESSION_PAYLOAD_INVALID": "session",
+        "SESSION_ENCRYPTION_UNAVAILABLE": "session",
+        "PLATFORM_IDENTITY_MISMATCH": "session",
+    }.get(code, "execution")
+    business_code = None
+    if code == "DOUYIN_SELECTION_BUSINESS_REJECTED" and isinstance(error.details, dict):
+        value = error.details.get("platform_code")
+        # The parser has already restricted the scalar. Repeat the boundary
+        # here; bool, URL, long text and exception messages cannot be stored.
+        if type(value) is int:
+            business_code = value
+        elif type(value) is str and 1 <= len(value) <= 64 and all(c.isalnum() or c in "_.-" for c in value):
+            business_code = value
+    return code, stage, business_code
+
+
+class SelectionRunService:
+    def __init__(self, session: Session, *, settings: Settings | None = None, resolver: RequestResolver = resolve_selection_request):
+        self.session = session
+        self.repository = SelectionRunRepository(session)
+        self.facts = ProductSelectionFactService(session)
+        self.settings = settings or get_settings()
+        self.resolver = resolver
+
+    def submit(self, actor: ActorContext, command: SelectionRunCreate, *, now: datetime | None = None) -> SelectionRunReceipt:
+        at = now or datetime.now(UTC)
+        original = command.original()
+        try:
+            current = self.facts._current_actor(actor)
+            team_id = current.require_team_id()
+            old = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
+            if old is not None:
+                visible = self.repository.get_for_actor(current, old.run_id)
+                if visible is None:
+                    raise SelectionRunNotFoundError()
+                if SelectionResolvedRequest.model_validate(old.request_conditions).original != original:
+                    raise SelectionRunConflictError()
+                result = self._receipt(current, old)
+                self.session.commit()
+                return result
+            self.facts._execution_shop(current, command.shop_id)
+            if not self.settings.product_selection_execution_enabled:
+                raise SelectionExecutionDisabledError()
+            resolved = self.resolver(original, at)
+            if resolved.original != original:
+                raise ValueError("A resolver cannot replace original user conditions")
+            self.repository.recover_expired(at)
+            for _ in range(3):
+                try:
+                    with self.session.begin_nested():
+                        # Recheck after a specific uniqueness race. Replayed
+                        # keys never go through relative-date resolution again.
+                        row = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
+                        if row is not None:
+                            if SelectionResolvedRequest.model_validate(row.request_conditions).original != original:
+                                raise SelectionRunConflictError()
+                        else:
+                            active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=resolved.fingerprint())
+                            row = ProductSelectionRun(
+                                run_id=uuid4(), team_id=team_id, created_by_user_id=current.user_id,
+                                request_shop_id=command.shop_id, submission_key=command.submission_key,
+                                request_fingerprint=resolved.fingerprint(),
+                                request_conditions=active.request_conditions if active is not None else resolved.model_dump(mode="json"),
+                                reused_run_id=active.run_id if active is not None else None,
+                                status="reused" if active is not None else "pending", stage="queued",
+                                result_count=None, saved_count=0, supplemented_count=0,
+                                supplement_failed_count=0, created_at=at, updated_at=at,
+                            )
+                            self.session.add(row)
+                            self.session.flush()
+                        result = self._receipt(current, row)
+                    self.session.commit()
+                    return result
+                except IntegrityError as collision:
+                    constraint = getattr(getattr(collision.orig, "diag", None), "constraint_name", None)
+                    if constraint not in {"uq_selection_run_submission", "uq_selection_run_active_request"}:
+                        raise
+            raise SelectionSubmissionBusyError()
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def _read(self, actor: ActorContext, row: ProductSelectionRun) -> SelectionRunRead:
+        canonical = row
+        if row.reused_run_id is not None:
+            canonical = self.repository.get_for_actor(actor, row.reused_run_id)
+            if (canonical is None or canonical.reused_run_id is not None
+                or canonical.team_id != row.team_id or canonical.request_shop_id != row.request_shop_id
+                or canonical.request_fingerprint != row.request_fingerprint):
+                raise SelectionRunNotFoundError()
+        return SelectionRunRead.model_validate(canonical)
+
+    def _receipt(self, actor: ActorContext, row: ProductSelectionRun) -> SelectionRunReceipt:
+        execution = self._read(actor, row)
+        return SelectionRunReceipt(
+            receipt_id=row.run_id, submission_key=row.submission_key,
+            execution_run_id=execution.run_id, reused=row.reused_run_id is not None,
+            execution=execution,
+        )
+
+    def get(self, actor: ActorContext, run_id: UUID) -> SelectionRunRead:
+        current = self.facts._current_actor(actor)
+        row = self.repository.get_for_actor(current, run_id)
+        if row is None:
+            raise SelectionRunNotFoundError()
+        return self._read(current, row)
+
+    def list(self, actor: ActorContext, *, shop_id: UUID | None, offset: int, limit: int) -> tuple[list[SelectionRunRead], int]:
+        if offset < 0 or not 1 <= limit <= 100:
+            raise ValueError("Invalid bounded pagination")
+        rows, total = self.repository.list_for_actor(self.facts._current_actor(actor), shop_id=shop_id, offset=offset, limit=limit)
+        return [SelectionRunRead.model_validate(row) for row in rows], total
+
+    def recover_expired(self, *, now: datetime | None = None) -> int:
+        count = self.repository.recover_expired(now or datetime.now(UTC))
+        self.session.commit()
+        return count
+
+    def claim_next(self, *, now: datetime | None = None) -> SelectionRunClaim | None:
+        at = now or datetime.now(UTC)
+        if not self.settings.product_selection_execution_enabled:
+            return None
+        try:
+            claim = self.repository.claim_next(now=at, lease_until=at + timedelta(seconds=self.settings.product_selection_run_lease_seconds))
+            self.session.commit()
+            return claim
+        except IntegrityError as collision:
+            self.session.rollback()
+            constraint = getattr(getattr(collision.orig, "diag", None), "constraint_name", None)
+            if constraint == "uq_selection_run_running":
+                return None
+            raise
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def authorize(self, claim: SelectionRunClaim, *, stage: str, now: datetime | None = None) -> ActorContext:
+        at = now or datetime.now(UTC)
+        try:
+            from app.modules.access.service import ActorContextService
+            current = ActorContextService(self.session).resolve(user_id=claim.user_id, requested_team_id=claim.team_id)
+            current = self.facts._current_actor(current)
+            self.facts._execution_shop(current, claim.shop_id)
+            row = self.repository.fence(claim, at)
+            row.stage = stage
+            row.lease_expires_at = at + timedelta(seconds=self.settings.product_selection_run_lease_seconds)
+            row.updated_at = at
+            self.session.commit()
+            return current
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def finish(self, claim: SelectionRunClaim, *, error: AppError | None = None, now: datetime | None = None) -> None:
+        at = now or datetime.now(UTC)
+        try:
+            # A still-valid lease may terminate after revocation, but cannot
+            # write any facts. Do not require a now-revoked actor to end a run.
+            row = self.repository.fence(claim, at)
+            if error is not None:
+                row.error_code, row.error_stage, row.platform_business_code = safe_run_error(error)
+                row.status = "partial" if row.saved_count else "failed"
+            else:
+                row.status = "partial" if row.supplement_failed_count or row.saved_count != row.result_count else "succeeded"
+                if row.supplement_failed_count:
+                    row.error_code, row.error_stage = "PRODUCT_SELECTION_BASIC_INFO_INCOMPLETE", "basic_info"
+                if row.result_count is None:
+                    row.status, row.error_code = "failed", "PRODUCT_SELECTION_EXECUTION_FAILED"
+            row.stage, row.finished_at, row.updated_at = "completed", at, at
+            row.lease_id, row.lease_expires_at = None, None
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer,
-    Numeric, String, Text, UniqueConstraint, Uuid,
+    Numeric, String, Text, UniqueConstraint, Uuid, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,6 +43,57 @@ class ProductSelectionCandidate(TimestampMixin, Base):
     )
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     platform_product_id: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class ProductSelectionRun(TimestampMixin, Base):
+    """One explicit manual intent, including empty success and no-fact failure."""
+
+    __tablename__ = "product_selection_runs"
+    __table_args__ = (
+        UniqueConstraint("team_id", "created_by_user_id", "submission_key", name="uq_selection_run_submission"),
+        Index("uq_selection_run_active_request", "team_id", "request_shop_id", "request_fingerprint",
+              unique=True, postgresql_where=text("status IN ('pending', 'running')")),
+        Index("ix_selection_run_pending", "status", "created_at", "run_id"),
+        Index("ix_selection_run_team_created", "team_id", "created_at", "run_id"),
+        Index("uq_selection_run_running", text("(1)"), unique=True,
+              postgresql_where=text("status = 'running'")),
+        CheckConstraint("status IN ('pending','running','succeeded','partial','failed','interrupted','reused')", name="status"),
+        CheckConstraint("(status = 'reused') = (reused_run_id IS NOT NULL)", name="reuse_state"),
+        CheckConstraint("reused_run_id IS NULL OR reused_run_id <> run_id", name="reuse_not_self"),
+        CheckConstraint("reused_run_id IS NULL OR (lease_id IS NULL AND lease_expires_at IS NULL AND started_at IS NULL AND finished_at IS NULL)", name="reuse_not_execution"),
+        CheckConstraint("reused_run_id IS NULL OR (result_count IS NULL AND saved_count = 0 AND supplemented_count = 0 AND supplement_failed_count = 0 AND error_code IS NULL AND error_stage IS NULL AND platform_business_code IS NULL)", name="reuse_not_result"),
+        CheckConstraint("stage IN ('queued','session','rank','persistence','basic_info','completed')", name="stage"),
+        CheckConstraint("request_fingerprint ~ '^[a-f0-9]{64}$'", name="request_hash"),
+        CheckConstraint("jsonb_typeof(request_conditions) = 'object'", name="request_object"),
+        CheckConstraint("result_count IS NULL OR result_count >= 0", name="result_non_negative"),
+        CheckConstraint("saved_count >= 0 AND supplemented_count >= 0 AND supplement_failed_count >= 0", name="counts_non_negative"),
+        CheckConstraint("supplemented_count + supplement_failed_count <= saved_count", name="supplement_counts"),
+        CheckConstraint("platform_business_code IS NULL OR jsonb_typeof(platform_business_code) IN ('string','number')", name="business_code_scalar"),
+    )
+
+    run_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_id)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False)
+    created_by_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
+    request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
+    submission_key: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    reused_run_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("product_selection_runs.run_id", ondelete="RESTRICT"),
+    )
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_conditions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    stage: Mapped[str] = mapped_column(String(16), nullable=False)
+    result_count: Mapped[int | None] = mapped_column(Integer)
+    saved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    supplemented_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    supplement_failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(96))
+    error_stage: Mapped[str | None] = mapped_column(String(32))
+    platform_business_code: Mapped[str | int | None] = mapped_column(JSONB(none_as_null=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProductSelectionObservation(TimestampMixin, Base):
@@ -107,6 +158,9 @@ class ProductSelectionObservation(TimestampMixin, Base):
     request_shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    last_run_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("product_selection_runs.run_id", ondelete="RESTRICT"),
     )
     source_scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

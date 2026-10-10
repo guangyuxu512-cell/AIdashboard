@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import case, exists, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,17 @@ class ProductSelectionRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @staticmethod
+    def _basic_unattempted():
+        # Even identical timestamp precision must not count the callback
+        # twice. Rank refresh resets the attempt/error and advances checked_at.
+        return and_(
+            Observation.last_attempt_at == Observation.checked_at,
+            Observation.last_error_stage.is_(None),
+            Observation.basic_info_retrieved_at.is_(None)
+            | (Observation.basic_info_retrieved_at < Observation.checked_at),
+        )
+
     def upsert_candidate(
         self, *, team_id: UUID, user_id: UUID, product_id: str, at: datetime,
     ) -> UUID:
@@ -42,6 +53,7 @@ class ProductSelectionRepository:
     def upsert_rank_observation(
         self, *, candidate_id: UUID, shop_id: UUID, scope: SelectionSourceScope,
         values: dict[str, Any], started_at: datetime, retrieved_at: datetime,
+        last_run_id: UUID | None = None,
     ) -> UUID | None:
         allowed = {
             "title", "image_url", "merchant_snapshot", "price_band", "rank",
@@ -52,6 +64,7 @@ class ProductSelectionRepository:
         statement = insert(Observation).values(
             observation_id=generate_id(), candidate_id=candidate_id,
             request_shop_id=shop_id, source_scope_hash=scope.fingerprint(),
+            last_run_id=last_run_id,
             source_context=scope.context(), period_begin=scope.period_begin,
             period_end=scope.period_end, first_seen_at=retrieved_at,
             checked_at=retrieved_at, metrics_retrieved_at=retrieved_at,
@@ -98,6 +111,7 @@ class ProductSelectionRepository:
                     "last_successful_request_started_at": incoming.last_successful_request_started_at,
                     "last_error_code": None,
                     "last_error_stage": None,
+                    "last_run_id": (incoming.last_run_id if last_run_id is not None else Observation.last_run_id),
                     "updated_at": incoming.updated_at,
                 },
                 # Equal/older starts cannot overwrite a later successful run,
@@ -109,6 +123,7 @@ class ProductSelectionRepository:
     def update_basic_info(
         self, *, observation_id: UUID, rank_started_at: datetime,
         retrieved_at: datetime, values: dict[str, Any], partial: bool,
+        once_for_run: bool = False,
     ) -> bool:
         allowed = {
             "category_path", "first_on_shelf_date", "bad_comment_rate_raw",
@@ -121,6 +136,7 @@ class ProductSelectionRepository:
                 Observation.observation_id == observation_id,
                 Observation.last_successful_request_started_at == rank_started_at,
                 Observation.last_attempt_at <= retrieved_at,
+                self._basic_unattempted() if once_for_run else True,
                 (Observation.basic_info_retrieved_at.is_(None)
                  | (Observation.basic_info_retrieved_at < retrieved_at)),
             ).values(
@@ -136,13 +152,14 @@ class ProductSelectionRepository:
 
     def record_basic_info_failure(
         self, *, observation_id: UUID, rank_started_at: datetime,
-        at: datetime, code: str,
+        at: datetime, code: str, once_for_run: bool = False,
     ) -> bool:
         changed = self.session.execute(
             update(Observation).where(
                 Observation.observation_id == observation_id,
                 Observation.last_successful_request_started_at == rank_started_at,
                 Observation.last_attempt_at <= at,
+                self._basic_unattempted() if once_for_run else True,
             ).values(
                 last_attempt_at=at, updated_at=at, last_error_code=code,
                 last_error_stage="basic_info_request",

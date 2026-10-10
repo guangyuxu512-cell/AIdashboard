@@ -1,5 +1,6 @@
 import type { ApiMode } from '@/shared/api'
 import type { SelectionService } from '../model/contracts'
+import { createSelectionRealService } from './selection-real-service'
 
 export const SELECTION_UNAVAILABLE = '选品能力尚未接入'
 export async function createSelectionService(
@@ -10,22 +11,9 @@ export async function createSelectionService(
       await import('./selection-mock-handlers')
     return createSelectionMockHandlers()
   }
-  // No proposed URL is sent before the Backend contract exists. Never fallback.
+  // Only registered database read contracts are enabled; no guessed I/O URL.
   const unavailable = async (): Promise<never> => {
     throw new Error(SELECTION_UNAVAILABLE)
   }
-  return {
-    available: false,
-    previewPeriod: unavailable,
-    categories: unavailable,
-    strategies: unavailable,
-    saveStrategy: unavailable,
-    retrieve: unavailable,
-    candidates: unavailable,
-    candidate: unavailable,
-    demoAction: unavailable,
-    collectBatch: unavailable,
-    updateCompassMetrics: unavailable,
-    markCompetitor: unavailable,
-  }
+  return createSelectionRealService(unavailable)
 }

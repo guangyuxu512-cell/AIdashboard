@@ -78,6 +78,9 @@ export interface SelectionCandidate {
   priceBand: string | null
   listedAt: string | null
   negativeReviewRate: number | null
+  // Real ratio remains an exact decimal string until its unit is confirmed.
+  negativeReviewRateRaw?: { value: string; unit: string | number | null } | null
+  basicInfoError?: string | null
   blocked: boolean
   source: string
   sourceContext: CandidateSourceContext
@@ -132,6 +135,8 @@ export interface BatchCollectReceipt {
 }
 export interface SelectionService {
   readonly available: boolean
+  readonly candidatesAvailable?: boolean
+  latestRun?(shopId: string | null): Promise<SelectionExecutionSummary | null>
   previewPeriod(period: SelectionPeriod): Promise<SelectionPeriodPreview>
   categories(shopId: string): Promise<CategoryNode[]>
   strategies(): Promise<SelectionStrategy[]>
@@ -146,6 +151,16 @@ export interface SelectionService {
   collectBatch(candidateIds: string[]): Promise<BatchCollectReceipt>
   updateCompassMetrics(id: string): Promise<DemoReceipt>
   markCompetitor(merchantShopId: string): Promise<DemoReceipt>
+}
+export interface SelectionExecutionSummary {
+  run_id: string
+  request_shop_id: string
+  status:
+    'pending' | 'running' | 'succeeded' | 'partial' | 'failed' | 'interrupted'
+  result_count: number | null
+  saved_count: number
+  supplement_failed_count: number
+  error_code: string | null
 }
 export const CREATOR_DEMO_OPTIONS = [
   { label: '演示达人 A', value: 'creator-demo-a' },

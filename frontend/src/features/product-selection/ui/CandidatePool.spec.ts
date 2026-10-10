@@ -54,6 +54,65 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
+  it.each([
+    ['succeeded', 0, null, '最近获取成功，返回 0 项'],
+    [
+      'failed',
+      null,
+      'PLATFORM_RESPONSE_INVALID',
+      '最近获取失败：PLATFORM_RESPONSE_INVALID',
+    ],
+    [
+      'partial',
+      10,
+      'PRODUCT_SELECTION_BASIC_INFO_INCOMPLETE',
+      '最近获取部分完成',
+    ],
+    ['interrupted', null, null, '最近获取已中断'],
+  ] as const)(
+    'reads Real %s state independently from empty candidates and disables unsupported writes',
+    async (status, count, error, message) => {
+      const service = createSelectionMockHandlers()
+      const candidates = vi
+        .spyOn(service, 'candidates')
+        .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 })
+      const latestRun = vi
+        .fn()
+        .mockResolvedValue({
+          run_id: 'canonical',
+          request_shop_id: 'shop',
+          status,
+          result_count: count,
+          saved_count: count ?? 0,
+          supplement_failed_count: 0,
+          error_code: error,
+        })
+      const { wrapper, table, button, dispose } = render({
+        ...service,
+        available: false,
+        candidatesAvailable: true,
+        latestRun,
+      })
+      await flushPromises()
+      expect(wrapper.text()).toContain(message)
+      expect(table.props('data')).toEqual([])
+      expect(button().props('disabled')).toBe(true)
+      expect(
+        table
+          .props('columns')
+          .find((item: { key: string }) => item.key === 'negativeReviewRate')
+          .sorter,
+      ).toBe(false)
+      const refresh = wrapper
+        .findAllComponents(AppButton)
+        .find((item) => item.text() === '刷新列表')!
+      refresh.vm.$emit('click', new MouseEvent('click'))
+      await flushPromises()
+      expect(candidates).toHaveBeenCalledTimes(2)
+      expect(latestRun).toHaveBeenCalledTimes(2)
+      dispose()
+    },
+  )
   it('centers the two-line title and all columns, keeps the agreed base widths and scope out of the list', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),

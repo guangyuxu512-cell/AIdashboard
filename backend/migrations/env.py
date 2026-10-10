@@ -43,6 +43,7 @@ from app.modules.operating_dashboard.models import (
 from app.modules.product_selection.models import (
     ProductSelectionCandidate,
     ProductSelectionObservation,
+    ProductSelectionRun,
 )
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
@@ -71,6 +72,7 @@ _MODELS = (
     ProductMaterialGroup,
     ProductSelectionCandidate,
     ProductSelectionObservation,
+    ProductSelectionRun,
     PromptTemplate,
     TemplateGroup,
     Device,

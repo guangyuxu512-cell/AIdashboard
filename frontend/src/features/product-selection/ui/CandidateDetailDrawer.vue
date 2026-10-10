@@ -9,6 +9,7 @@ import {
   NTooltip,
   NCollapse,
   NCollapseItem,
+  NAlert,
   useMessage,
 } from 'naive-ui'
 import {
@@ -128,6 +129,12 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
       @retry="query.refetch()"
     />
     <div v-else-if="row" class="candidate-detail">
+      <NAlert
+        v-if="row.basicInfoError"
+        type="warning"
+        title="商品补充信息未完成"
+        >{{ row.basicInfoError }}</NAlert
+      >
       <div class="candidate-detail__summary">
         <ExternalProductImage :src="row.imageUrl" :title="row.title" />
         <div class="candidate-detail__identity">
@@ -270,7 +277,10 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               <AppButton
                 tone="secondary"
                 :disabled="
-                  busy || !row.merchant?.shopId || row.merchant.competitor
+                  busy ||
+                  !service.available ||
+                  !row.merchant?.shopId ||
+                  row.merchant.competitor
                 "
                 @click="act('competitor')"
                 >{{
@@ -285,7 +295,19 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           <NDescriptionsItem label="完整类目">{{
             row.category
           }}</NDescriptionsItem>
-          <NDescriptionsItem label="差评率"
+          <NDescriptionsItem v-if="row.negativeReviewRateRaw" label="差评率">
+            <NTooltip
+              ><template #trigger
+                ><NText depth="1">{{
+                  row.negativeReviewRateRaw.value
+                }}</NText></template
+              >
+              平台原值；unit={{
+                row.negativeReviewRateRaw.unit ?? '—'
+              }}，换算尚未确认
+            </NTooltip>
+          </NDescriptionsItem>
+          <NDescriptionsItem v-else label="差评率"
             ><NText :depth="row.negativeReviewRate === null ? 3 : 1">{{
               formatReviewRate(row.negativeReviewRate)
             }}</NText></NDescriptionsItem
