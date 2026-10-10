@@ -32,7 +32,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `feat/product-selection-frontend-v1` / 81a1 | `reserved` | 本轮罗盘手动选品的候选身份与来源观察两表、外键、幂等唯一键及实际查询索引；执行状态/批次关系缺口尚待审核，不擅增第三表、通用队列或调度 | `20260924_0041_operating_data_availability_v1` | 计划名 `20261010_0042_product_selection_manual_v1`；revision `20261010_0042`，down `20260924_0041`；分配时尚无新文件 | 独立库 `control_center_feat_product_selection` 的最小应用角色经既有隧道连接及回滚 DDL 探针 PASS；Owner 初始化至单一 `20260924_0041` 并经 Integrator 只读复核，ShopSession=0。新候选 Gate 1 须验证 `0041 → 0042 → 0041 → 0042`、双 Session 幂等/迟到保护、授权及部分补充失败。downgrade 会删除新选品表，仅限可重建库；生产应用回退默认保留 Schema/事实，不自动降级。 |
+| `feat/product-selection-frontend-v1` / 81a1 | `active` | 0042 候选/观察两表已在 Feature 库；审核允许追加唯一业务专用 `product_selection_runs` 与观察的可空 `last_run_id`，不增加通用队列/Worker/策略调度。单 Slot 覆盖同 Feature 串行迁移，不并行分配 | Green `20260924_0041`；0043 依赖本 Feature 0042，随同一完整候选合入，不提前将部分候选宣称 Green | 0042：`20261010_0042_product_selection_manual_v1`，down `20260924_0041`，已应用 Feature 库且不可改写；追加预留 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，文件由 Owner 编写 | Integrator 只读复核 Feature 单一0042、46表、两表模型差异0、ShopSession=0；Owner 报告21项PG证据，Integrator 未冒充独立重跑。0043须验证旧0042事实保留、完整0041→0042→0043链、双Session重复/租约/撤权/中断；仅在可重建Feature库且run为0时允许0043→0042→0043，存在run则downgrade fail-closed，不删两张0042事实表。应用回退保留Schema/事实。0042/0043均未进入共享环境；完整Gate1/2后统一释放Slot。 |
 
 最近释放记录：
 

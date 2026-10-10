@@ -28,13 +28,16 @@ Frontend 复用 Registry / Guard / ContextSwitchBar（framed）/ EmptyState / Pa
 选品接入资源登记（2026-10-10）：81a1 沿用 `feat/product-selection-frontend-v1`，基线
 `b34e43cb90356e03d2f793c4146c6775a11f5ab3`。前端候选 `06bd03c0fa61b00251063e21350cd0cc5445afe5`
 及诊断补丁 `819ca33ba6548030e418320c6bb80ba046beb842` 尚未合入 dev；Frontend/Electron 树相同，
-Mock 验证不代表真实入库。最小候选身份/来源观察两表方案可用于资源登记，手动执行状态、空成功和
-无候选失败的持久化方案仍须审核，不擅增通用队列或调度。
-0041 已在 Integration/生产应用，旧 Slot 核销为 released；唯一新 Slot reserved 给本 Feature：
-计划 `20261010_0042_product_selection_manual_v1`，revision `20261010_0042`，down `20260924_0041`。
-独立库 `control_center_feat_product_selection` 已分配并由 81a1 初始化至单一 `20260924_0041`，Owner `control_center_dev_user`，
+Mock 验证不代表真实入库。两表及只读查询已在 Feature 候选实现；最小业务专用
+`product_selection_runs` 与观察的可空 `last_run_id` 经技术审核允许实施，空榜单、失败和中断有独立记录，
+不增加通用队列、Worker、策略调度或自动平台重试。具体事务/幂等约束见选品资源登记文档。
+0041 已在 Integration/生产应用，旧 Slot released；本 Feature 保持唯一 active Slot，串行链为
+`20260924_0041 → 20261010_0042 → 20261010_0043`。0042 已在 Feature 库应用，不改写、不释放；
+追加预留 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，
+由 81a1 编写；两项随同一完整候选验收后一起释放，不另开第二个活跃 Slot。
+独立库 `control_center_feat_product_selection` 现为单一 `20261010_0042`，46 表、ShopSession=0，Owner `control_center_dev_user`，
 受信任 `35433` 隧道及 SCRAM 连接/回滚 DDL 探针通过；应用角色无 CREATEDB/CREATEROLE/SUPERUSER。
-81a1 本地忽略连接及实际库名已核验，44 张初始表、ShopSession=0；可开始已确认的持久化范围，未确认契约仍待审核。
+81a1 本地忽略连接及实际库名已核验；保持现有库和0042事实，未知渠道/日期/类目转换不猜测实现。
 Feature Backend `8101`、Frontend `4176 --strictPort`，仅 Feature Owner 运行；Integration 仍为
 `8100/5180 --strictPort` 与唯一 Electron。仅登记/评审，不代 Feature 写 Migration，不发布生产。
 
