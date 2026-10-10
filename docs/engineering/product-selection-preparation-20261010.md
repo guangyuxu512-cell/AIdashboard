@@ -133,6 +133,8 @@ Owner沿用原Feature，从已审查`7b84888984b8eebaf2937eb4d1f9271dc39098aa`�
 
 新增纯参数准备只接受显式确认的七日区间，业务值全部保留字符串及空参数，行业/类目来自输入而非历史固定样本。未知渠道、周期、品牌、自定义价格、首次上榜、父级全部安全拒绝；不是活树校验、日期窗口服务或执行入口。公开resolver继续关闭，并给最小可准备条件返回安全原因`PLATFORM_DATE_WINDOW_UNCONFIRMED`。数据库回归补充：后续提供的窗口改变不能影响同一提交重放、领取或查询，只有新提交才能冻结另一个确认区间。
 
-本轮后端默认`python -m pytest --tb=short`：589 passed、120 integration deselected，64.94秒；参数准备/connector/API定向33 passed；compileall与diff check通过。新增日期冻结、已有跨日重放及门禁三项PostgreSQL测试首次在Fixture连接35433时超时，未进入测试逻辑；此前43项通过仅保留历史证据，不能替代本轮新增验证。已交ca97按原登记方式核对恢复通道，不换库、不清库、不改Slot。恢复后的实际结果在Handoff补记。
+本轮后端默认`python -m pytest --tb=short`：589 passed、120 integration deselected，64.94秒；参数准备/connector/API及Scope/签名Cookie定向52 passed；compileall与diff check通过。首次三项PostgreSQL测试在Fixture连接35433时超时，未进入测试逻辑。ca97按原受信任SSH配置恢复35433并只读核验后，Owner运行`python -m pytest --tb=short -m integration tests/integration/test_postgresql_selection_runs.py`：20 passed，33.69秒，包含新增日期冻结、已有跨日重放及门禁三项。没有换库、清库、改Slot或改HBA/应用角色。此前43项通过保留为上一阶段记录，本轮20项真实PostgreSQL/合成平台回归不写成120项全量数据库验证。
+
+测试后只读核验实际库为`control_center_feat_product_selection`、单一`20261010_0043`、47表；候选/观察/run/ShopSession均0，执行开关仍false。Frontend/Electron树与已审查7b848889相同，复用该阶段检查记录，本轮未重复UI检查或开启验收窗口。参数样本、纯解析和数据库夹具均不代表实际平台请求。
 
 完整Feature继续PARTIAL：专用运行记录技术审查已通过，Real只读查询已绑定；手动执行/策略表单仍受日期来源门禁限制。本候选实际请求→运行/事实→API→Real及唯一Electron最终尺寸验收仍需完成，不以纯参数测试、数据库测试或旧平台成功补写完整Gate1/2通过。
