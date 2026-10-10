@@ -32,9 +32,9 @@ Mock 验证不代表真实入库。最小候选身份/来源观察两表方案�
 无候选失败的持久化方案仍须审核，不擅增通用队列或调度。
 0041 已在 Integration/生产应用，旧 Slot 核销为 released；唯一新 Slot reserved 给本 Feature：
 计划 `20261010_0042_product_selection_manual_v1`，revision `20261010_0042`，down `20260924_0041`。
-独立空库 `control_center_feat_product_selection` 已分配，Owner `control_center_dev_user`，
+独立库 `control_center_feat_product_selection` 已分配并由 81a1 初始化至单一 `20260924_0041`，Owner `control_center_dev_user`，
 受信任 `35433` 隧道及 SCRAM 连接/回滚 DDL 探针通过；应用角色无 CREATEDB/CREATEROLE/SUPERUSER。
-81a1 更新本地忽略连接并执行既有 `alembic upgrade head` 至 0041 后才可数据库开发。
+81a1 本地忽略连接及实际库名已核验，44 张初始表、ShopSession=0；可开始已确认的持久化范围，未确认契约仍待审核。
 Feature Backend `8101`、Frontend `4176 --strictPort`，仅 Feature Owner 运行；Integration 仍为
 `8100/5180 --strictPort` 与唯一 Electron。仅登记/评审，不代 Feature 写 Migration，不发布生产。
 
