@@ -32,7 +32,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `feat/product-selection-frontend-v1` / 81a1 | `reserved` | 本轮罗盘手动选品的候选身份与来源观察两表、外键、幂等唯一键及实际查询索引；执行状态/批次关系缺口尚待审核，不擅增第三表、通用队列或调度 | `20260924_0041_operating_data_availability_v1` | 计划名 `20261010_0042_product_selection_manual_v1`；revision `20261010_0042`，down `20260924_0041`；尚无 Migration 文件 | 独立空库 `control_center_feat_product_selection` 已创建，最小应用角色经既有隧道连接及回滚 DDL 探针 PASS；Owner 初始化既有 Head 后验证 `0041 → 0042 → 0041 → 0042`、双 Session 幂等/迟到保护、授权及部分补充失败。downgrade 会删除新选品表，仅限可重建库；生产应用回退默认保留 Schema/事实，不自动降级。 |
+| `feat/product-selection-frontend-v1` / 81a1 | `reserved` | 本轮罗盘手动选品的候选身份与来源观察两表、外键、幂等唯一键及实际查询索引；执行状态/批次关系缺口尚待审核，不擅增第三表、通用队列或调度 | `20260924_0041_operating_data_availability_v1` | 计划名 `20261010_0042_product_selection_manual_v1`；revision `20261010_0042`，down `20260924_0041`；分配时尚无新文件 | 独立库 `control_center_feat_product_selection` 的最小应用角色经既有隧道连接及回滚 DDL 探针 PASS；Owner 初始化至单一 `20260924_0041` 并经 Integrator 只读复核，ShopSession=0。新候选 Gate 1 须验证 `0041 → 0042 → 0041 → 0042`、双 Session 幂等/迟到保护、授权及部分补充失败。downgrade 会删除新选品表，仅限可重建库；生产应用回退默认保留 Schema/事实，不自动降级。 |
 
 最近释放记录：
 

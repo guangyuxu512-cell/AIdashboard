@@ -7,7 +7,8 @@
 | 项目 | 精确状态 |
 | --- | --- |
 | Green 基线 | `b34e43cb90356e03d2f793c4146c6775a11f5ab3`；资源登记前 ca97 dev/origin/dev 一致且 clean |
-| 当前 Owner | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`，`feat/product-selection-frontend-v1`，HEAD/origin 为 `819ca33ba6548030e418320c6bb80ba046beb842`，clean |
+| 初次核对 Owner | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`，`feat/product-selection-frontend-v1`，HEAD/origin 为 `819ca33ba6548030e418320c6bb80ba046beb842`，clean；此后 Owner 的接入准备修改继续保留 |
+| 资源同步 | ca97 登记提交 `675016769ba0b55f8ed42c15e7500b0c6291f968` 已推送 dev；Owner 正常 merge 后为 `0c75ef05e36e6c7f5ce8137a6bd81e4102f7e515`，819ca33 与最终前端树均保留，不将该文档 merge 当作业务 Gate 通过 |
 | 前端最终候选 | `06bd03c0fa61b00251063e21350cd0cc5445afe5`；Gate 1 有完整 Handoff，含 lint/typecheck、41 定向单测、13 Mock E2E、Real build |
 | Integration 返修复核 | 06bd03c 独立 lint/typecheck/Real build、41 单测、3 定向 Mock E2E、diff check PASS；前一 91461d4 Review2 返修及 Real 无回退证据保留 |
 | Electron | 唯一既有开发窗口，5180 的 06bd03c Mock 快照；32 条演示候选。已有交互/主题确认保留，尺寸收尾记录仍为等待最终人工确认，不用浏览器截图补写 Electron PASS |
@@ -41,15 +42,16 @@
 
 | 资源 | 分配结果 |
 | --- | --- |
-| DB | `control_center_feat_product_selection`，管理员创建空库；Owner `control_center_dev_user`；不复用 Availability/Integration/生产 |
+| DB | `control_center_feat_product_selection`，管理员创建独立空库后，由 Owner 通过既有 Migration 初始化；Owner `control_center_dev_user`；不复用 Availability/Integration/生产 |
 | 应用连接 | 既有 `127.0.0.1:35433` 受信任 SSH 隧道已恢复；StrictHostKeyChecking=yes；实际 SCRAM 连接成功，当前 DB/角色匹配 |
 | 最小权限 | CREATEDB=false、CREATEROLE=false、SUPERUSER=false；Feature 库建表/改列/索引权限探针 PASS，事务已回滚，前后 public 表数均0 |
+| 初始化复核 | Owner 执行既有 `alembic upgrade head` 后，Integrator 独立只读连接确认单一 `20260924_0041`、public 表44、ShopSession=0；没有复制生产会话或启用平台任务。Owner `.env` Git Ignore PASS |
 | HBA | 仅新增本 Feature DB + 应用角色 + `172.17.0.1/32` SCRAM 规则，位于 reject 前；解析错误0，reload，无服务重启；其他规则不变 |
 | HBA 备份 | 持久化数据卷中的 `pg_hba.conf.before-product-selection-20261010T112247Z`；SHA-256 `4d6671e093bc9fcb1665d207a08ade58806c4a19e7d34b200ea686080ca1eb7a` |
 | Head 与 Slot | Integration/生产只读核验均为单一 `20260924_0041`；旧0041 Slot released。新 reserved `20261010_0042_product_selection_manual_v1`，revision `20261010_0042`，down `20260924_0041`；没有新 Migration 文件 |
 | 端口 | Owner Backend 8101，Frontend 4176 strictPort；只登记未启动。Integration 保持8100/5180及唯一 Electron，真实平台由 ca97 协调 |
 | 凭据 | 复用 Owner 本地忽略配置中的既有应用角色凭据，仅更改目标数据库；不得回传完整连接串，不能继续使用旧 Availability 库 |
 
-81a1 先更新忽略连接，核对实际库名，再执行候选既有 `alembic upgrade head` 并回传单一0041与连接验证。完成后才实施新持久化并验证 Slot 对应 Migration；执行状态缺口和未知请求映射未确认的部分仍不得猜测实现。无需复制生产 Cookie 到开发数据库。
+81a1 已更新忽略连接、核对实际库名并执行候选既有 `alembic upgrade head`，单一0041与应用连接验证通过。可实施已确认的两表持久化并验证 Slot 对应 Migration；执行状态缺口和未知请求映射未确认的部分仍不得猜测实现。无需复制生产 Cookie 到开发数据库。
 
 可以继续固定路径解析、错误分层、适配/DTO和离线测试；真实请求→Feature/Integration入库→正式API→Real页面及权限/幂等验证在新的完整 Gate 1/2 候选上完成，再走 Green dev 与适用 Release Gate。
