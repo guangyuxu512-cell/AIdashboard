@@ -240,6 +240,83 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       SELECTION_UNAVAILABLE,
     )
   })
+  it('keeps the outer industry in display identities but not the formal category path', async () => {
+    const real = await createSelectionService('real')
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      data: {
+        shop_id: 'shop-a',
+        industry_id: '7',
+        nodes: [
+          {
+            category_id: '5',
+            name: '其它行业',
+            children: [{ category_id: '5001', name: '其它类目', children: [] }],
+          },
+          {
+            category_id: '7',
+            name: '真实行业',
+            children: [
+              { category_id: '0', name: '全部', children: [] },
+              {
+                category_id: '1000009092',
+                name: '真实父级',
+                children: [
+                  { category_id: '0', name: '全部', children: [] },
+                  { category_id: '1000009142', name: '子级', children: [] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+    const nodes = await real.categories('shop-a')
+    expect(nodes[0]?.id).toBe('5')
+    expect(nodes[0]?.requestScope).toBeUndefined()
+    expect(nodes[0]?.children?.[0]?.requestScope).toBeUndefined()
+    expect(nodes[1]?.id).toBe('7')
+    expect(nodes[1]?.requestScope).toBeUndefined()
+    const parent = nodes[1]?.children?.[0]
+    const leaf = parent?.children?.[0]
+    expect(parent?.requestScope).toEqual({
+      industryId: '7',
+      categoryIds: ['1000009092'],
+    })
+    expect(leaf?.id).toBe('7/1000009092/1000009142')
+    expect(leaf?.requestScope).toEqual({
+      industryId: '7',
+      categoryIds: ['1000009092', '1000009142'],
+    })
+    const input = emptyStrategy()
+    input.shopId = 'shop-a'
+    Object.assign(input.channels.shortVideo.conditions, {
+      categoryId: '7',
+      period: '7d',
+      rankFrom: 1,
+      rankTo: 1,
+    })
+    await expect(real.manual!.submit(input, 'industry-key')).rejects.toThrow(
+      '真实类目',
+    )
+    input.channels.shortVideo.conditions.categoryId = '5/5001'
+    await expect(real.manual!.submit(input, 'other-key')).rejects.toThrow(
+      '真实类目',
+    )
+    expect(httpClient.post).not.toHaveBeenCalled()
+    input.channels.shortVideo.conditions.categoryId = leaf!.id
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      data: { receipt_id: 'run-a', reused: false },
+    })
+    await real.manual!.submit(input, 'category-key')
+    expect(httpClient.post).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/product-selection/runs',
+      expect.objectContaining({
+        shop_id: 'shop-a',
+        industry_id: '7',
+        category_ids: ['1000009092', '1000009142'],
+      }),
+    )
+  })
   it('maps frozen actual fallback dates without inventing units or current timestamps', () => {
     const dto = observation()
     dto.source_context.date_selection = {

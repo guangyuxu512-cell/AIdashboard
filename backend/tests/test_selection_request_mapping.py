@@ -59,6 +59,7 @@ def test_preparation_does_not_replace_selected_category_or_supplied_dates_with_s
     ({"price_mode": "custom", "price_above": "0"}, "PRICE_UNCONFIRMED"),
     ({"first_listed_only": True}, "FIRST_LISTED_FILTER_UNCONFIRMED"),
     ({"industry_id": "0"}, "CATEGORY_PATH_UNCONFIRMED"),
+    ({"category_ids": ["7", "1000009092", "1000009142"]}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["1000009092", "0"]}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["1000009092", "1000009092"]}, "CATEGORY_PATH_UNCONFIRMED"),
 ])
@@ -113,14 +114,24 @@ def test_fingerprint_excludes_outcome_but_keeps_frozen_plan_and_legacy_bytes():
         freeze_short_video_request(_original(rank_to=21), datetime.now(UTC))
 
 
-def test_category_membership_is_current_shop_industry_and_ordered_path_not_leaf_only():
+@pytest.mark.parametrize("industry_wrapped", [False, True])
+def test_category_membership_is_current_shop_industry_and_ordered_path_not_leaf_only(industry_wrapped):
     from app.modules.product_selection.schemas import SelectionCategoriesRead
     original = _original()
+    nodes = [{"category_id": "1000009092", "name": "父级", "children": [{"category_id": "1000009142", "name": "子级", "children": []}]}]
+    if industry_wrapped:
+        nodes = [{"category_id": "5", "name": "其它行业", "children": [{"category_id": "5001", "name": "其它类目", "children": []}]},
+            {"category_id": "7", "name": "示例行业", "children": nodes}]
     tree = SelectionCategoriesRead(shop_id=original.shop_id, industry_id="7", industry_name="示例行业", selected_category_id=None,
-        nodes=[{"category_id": "1000009092", "name": "父级", "children": [{"category_id": "1000009142", "name": "子级", "children": []}]}])
+        nodes=nodes)
     validate_shop_category(original, tree)
     validate_shop_category(original.model_copy(update={"category_ids": ("1000009092",)}), tree)
     with pytest.raises(SelectionRequestUnconfirmedError):
         validate_shop_category(original.model_copy(update={"shop_id": uuid4()}), tree)
     with pytest.raises(SelectionRequestUnconfirmedError):
         validate_shop_category(original.model_copy(update={"category_ids": ("1000009142", "1000009092")}), tree)
+    for category_ids in [("7",), ("7", "1000009092", "1000009142"), ("1000009142",), ("1000009092", "0"), ("5", "5001"), ("5001",)]:
+        with pytest.raises(SelectionRequestUnconfirmedError):
+            validate_shop_category(original.model_copy(update={"category_ids": category_ids}), tree)
+    with pytest.raises(SelectionRequestUnconfirmedError):
+        validate_shop_category(original.model_copy(update={"industry_id": "5", "category_ids": ("5001",)}), tree)

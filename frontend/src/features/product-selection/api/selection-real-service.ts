@@ -20,6 +20,9 @@ function categoryNodes(
   ancestors: string[] = [],
   industryId: string | null = null,
 ): CategoryNode[] {
+  const industryWrapped =
+    ancestors.length === 0 &&
+    nodes.some((node) => node.category_id === industryId)
   return nodes
     .filter(
       (node) =>
@@ -27,15 +30,21 @@ function categoryNodes(
     )
     .map((node) => {
       const path = [...ancestors, node.category_id]
+      const nodeIndustryId =
+        industryWrapped && node.category_id !== industryId ? null : industryId
+      // The observed outer industry node is part of the display tree, not
+      // category_id. Keep display identities intact; submit industry separately.
+      const categoryPath = path[0] === nodeIndustryId ? path.slice(1) : path
       return {
         // Qualified display identities keep repeated '0/全部' nodes distinct.
         // They are not a frozen category_id/industry_id platform mapping.
         id: path.join('/'),
         name: node.name,
-        children: categoryNodes(node.children, path, industryId),
-        requestScope: industryId
-          ? { industryId, categoryIds: path }
-          : undefined,
+        children: categoryNodes(node.children, path, nodeIndustryId),
+        requestScope:
+          nodeIndustryId && categoryPath.length
+            ? { industryId: nodeIndustryId, categoryIds: categoryPath }
+            : undefined,
       }
     })
 }

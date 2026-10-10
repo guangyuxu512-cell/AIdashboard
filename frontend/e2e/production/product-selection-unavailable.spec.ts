@@ -172,10 +172,21 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
         industry_id: '7',
         nodes: [
           {
-            category_id: '1001',
-            name: '真实父类目',
+            category_id: '5',
+            name: '其它行业',
+            children: [{ category_id: '5001', name: '其它类目', children: [] }],
+          },
+          {
+            category_id: '7',
+            name: '真实行业',
             children: [
-              { category_id: '1002', name: '真实子类目', children: [] },
+              {
+                category_id: '1001',
+                name: '真实父类目',
+                children: [
+                  { category_id: '1002', name: '真实子类目', children: [] },
+                ],
+              },
             ],
           },
         ],
@@ -232,6 +243,7 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
   await drawer.locator('.n-base-selection').first().click()
   await page.getByText('授权测试抖店', { exact: true }).last().click()
   await drawer.locator('.n-cascader .n-base-selection').click()
+  await page.getByText('真实行业', { exact: true }).last().click()
   await page.getByText('真实父类目', { exact: true }).last().click()
   await page.getByText('真实子类目', { exact: true }).last().click()
   await drawer.getByRole('button', { name: '立即获取', exact: true }).click()

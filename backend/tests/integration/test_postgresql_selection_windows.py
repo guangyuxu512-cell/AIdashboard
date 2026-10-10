@@ -21,12 +21,17 @@ from tests.integration.test_postgresql_product_selection import selection_contex
 pytestmark = pytest.mark.integration
 
 
+def _category_tree(shop_id):
+    return SelectionCategoriesRead(shop_id=shop_id, industry_id="7", industry_name="行业", selected_category_id=None,
+        nodes=[{"category_id": "5", "name": "其它行业", "children": [{"category_id": "5001", "name": "其它类目", "children": []}]},
+            {"category_id": "7", "name": "行业", "children": [{"category_id": "1000009092", "name": "父类目", "children": [{"category_id": "1000009142", "name": "子类目", "children": []}]}]}])
+
+
 def _submit(context, command=None, now=None, reader=None):
     command = command or _input(context, rank_from=1, rank_to=10)
     def categories(actor, shop_id):
         assert not session.in_transaction()
-        return SelectionCategoriesRead(shop_id=shop_id, industry_id="7", industry_name="行业", selected_category_id=None,
-            nodes=[{"category_id": "1000009092", "name": "父类目", "children": [{"category_id": "1000009142", "name": "子类目", "children": []}]}])
+        return _category_tree(shop_id)
     with Session(context[0]) as session:
         return SelectionRunService(session, settings=SETTINGS, category_reader=reader or categories).submit(context[4][0], command, now=now)
 
@@ -49,6 +54,52 @@ class WindowPlatform(FakePlatform):
         return CompassBasicInfo(product_id, FieldObservation("available", ("厨具", "收纳")),
             FieldObservation("available", self.request.scope.period_begin),
             FieldObservation("available", CompassBadCommentRate(Decimal("0"), "int", 4)))
+
+
+def test_formal_post_validates_full_industry_tree_and_emits_category_only_query(selection_context):
+    from app.modules.product_selection.api import get_selection_run_service
+    from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+    from app.modules.product_selection.run_contract import SelectionRunReceipt
+    context, queries, category_reads = selection_context, [], []
+    command = _input(context, rank_from=1, rank_to=1)
+    def dependency():
+        with Session(context[0]) as session:
+            def reader(actor, shop_id):
+                assert not session.in_transaction()
+                category_reads.append(shop_id)
+                return _category_tree(shop_id)
+            yield SelectionRunService(session, settings=SETTINGS, category_reader=reader)
+    with _api_client(context) as client:
+        client.app.dependency_overrides[get_selection_run_service] = dependency
+        headers = {"X-Team-ID": str(context[1][0])}
+        invalid = command.model_dump(mode="json") | {"category_ids": ["7", "1000009092", "1000009142"]}
+        rejected = client.post("/api/v1/product-selection/runs", json=invalid, headers=headers)
+        assert rejected.status_code == 409
+        assert rejected.json()["code"] == "PRODUCT_SELECTION_REQUEST_MAPPING_UNCONFIRMED"
+        assert category_reads == []
+        response = client.post("/api/v1/product-selection/runs", json=command.model_dump(mode="json"), headers=headers)
+        assert response.status_code == 202
+        receipt = SelectionRunReceipt.model_validate(response.json())
+        assert client.post("/api/v1/product-selection/runs", json=command.model_dump(mode="json"), headers=headers).json() == response.json()
+    assert category_reads == [command.shop_id]
+    class Connector:
+        def rank(self, auth_context, query):
+            queries.append(query)
+            return CompassRankPage((_product(rank=1),), 1, 10, 1)
+    class Platform(WindowPlatform):
+        def rank(self, auth_context, request, page_no):
+            return SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(auth_context, request, page_no)
+    _executor(context, Platform(receipt.execution.request_conditions, {})).execute_available()
+    run = _get(context, receipt)
+    actual = run.request_conditions.actual_scope()
+    assert queries == [{
+        "page_no": "1", "page_size": "10", "industry_id": "7",
+        "category_id": "1000009092,1000009142", "brand_type": "-1",
+        "price_bin": "不限", "search_info": "", "rank_data_type": "1",
+        "begin_date": actual.begin_date, "end_date": actual.end_date,
+        "date_type": "21", "activity_id": "",
+    }]
+    assert (run.status, run.saved_count, run.supplemented_count) == ("succeeded", 1, 1)
 
 
 @pytest.mark.parametrize("primary,backup,state,count,calls", [

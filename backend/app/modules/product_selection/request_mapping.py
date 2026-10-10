@@ -32,6 +32,7 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
         unsupported = "FIRST_LISTED_FILTER_UNCONFIRMED"
     elif (
         not original.industry_id.strip("0")
+        or original.industry_id in original.category_ids
         or any(not value.strip("0") for value in original.category_ids)
         or len(set(original.category_ids)) != len(original.category_ids)
     ):
@@ -90,7 +91,11 @@ def validate_shop_category(original: SelectionRunOriginal, tree: SelectionCatego
     """Only actual non-all paths of this authorized shop/industry may execute."""
     if tree.shop_id != original.shop_id or tree.industry_id != original.industry_id:
         raise SelectionRequestUnconfirmedError(details={"reason": "CATEGORY_SHOP_MISMATCH"})
-    nodes = tree.nodes
+    # cate_list may include its industry as the outer display node. The
+    # observed rank query supplies that ID only through industry_id; traverse
+    # its children for membership without silently rewriting the submitted path.
+    industry = next((node for node in tree.nodes if node.category_id == tree.industry_id), None)
+    nodes = industry.children if industry is not None else tree.nodes
     for category_id in original.category_ids:
         node = next((node for node in nodes if node.category_id == category_id), None)
         if node is None:
