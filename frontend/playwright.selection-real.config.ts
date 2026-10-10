@@ -4,7 +4,10 @@ import { defineConfig } from '@playwright/test'
 const port = process.env.PLAYWRIGHT_FRONTEND_PORT ?? '4176'
 export default defineConfig({
   testDir: './e2e/production',
-  testMatch: 'product-selection-unavailable.spec.ts',
+  testMatch: [
+    'product-selection-unavailable.spec.ts',
+    'product-selection-strategy-restoration.spec.ts',
+  ],
   use: { baseURL: `http://127.0.0.1:${port}` },
   webServer: {
     command: `pnpm exec vite --host 127.0.0.1 --port ${port} --strictPort --mode real`,

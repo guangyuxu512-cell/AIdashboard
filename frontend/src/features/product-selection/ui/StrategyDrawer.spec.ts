@@ -9,7 +9,14 @@ import type {
   SelectionService,
   SelectionStrategy,
 } from '../model/contracts'
-import { AppCheckbox, AppInput, AppRadio } from '@/shared/ui'
+import {
+  AppCheckbox,
+  AppInput,
+  AppRadio,
+  AppSwitch,
+  AppSelect,
+  AppTimePicker,
+} from '@/shared/ui'
 import CategorySelector from './CategorySelector.vue'
 import StrategyDrawer from './StrategyDrawer.vue'
 
@@ -22,7 +29,6 @@ const ShopStub = defineComponent({
 function render(
   service: SelectionService,
   strategy: SelectionStrategy | null = null,
-  manualOnly = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -39,7 +45,6 @@ function render(
               strategy,
               service,
               contextKey: 'actor:team',
-              manualOnly,
             }),
         },
       ),
@@ -57,8 +62,8 @@ function render(
 }
 
 describe('strategy shop category loading', () => {
-  it('Real manual uses a stable submission key after uncertain failure, never saves, and disables unsupported periods', async () => {
-    const service = createSelectionMockHandlers()
+  it('Real retains the original strategy fields and uses a stable manual key without saving a strategy or schedule', async () => {
+    const service = { ...createSelectionMockHandlers(), available: false }
     const submit = vi
       .fn()
       .mockRejectedValueOnce(new Error('提交响应暂未确认'))
@@ -66,7 +71,7 @@ describe('strategy shop category loading', () => {
     service.manual = { capabilities: vi.fn(), submit }
     const save = vi.spyOn(service, 'saveStrategy'),
       demo = vi.spyOn(service, 'retrieve')
-    const { wrapper, queryClient } = render(service, null, true)
+    const { wrapper, queryClient } = render(service)
     wrapper
       .findComponent(ShopStub)
       .vm.$emit('update:modelValue', (await service.strategies())[0]!.shopId)
@@ -77,16 +82,38 @@ describe('strategy shop category loading', () => {
     await flushPromises()
     const radio = wrapper.findAllComponents(AppRadio)[0]!
     expect(radio.props('modelValue')).toBe('7d')
+    expect(radio.props('options').filter((item) => !item.disabled)).toEqual([
+      { value: '7d', label: '近7天', disabled: false },
+    ])
+    expect(wrapper.text()).toContain('策略名称')
+    expect(wrapper.text()).toContain('达人账号')
+    expect(wrapper.text()).toContain('定时执行')
+    expect(wrapper.text()).toContain('策略状态')
     expect(
-      radio
-        .props('options')
-        .filter((item) => !item.disabled),
-    ).toEqual([{ value: '7d', label: '近7天', disabled: false }])
-    expect(wrapper.text()).not.toContain('保存策略')
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '保存策略')!
+        .attributes('disabled'),
+    ).toBeDefined()
+    expect(wrapper.findAllComponents(AppSelect)[0]!.props('options')).toEqual(
+      [],
+    )
+    wrapper.findAllComponents(AppSwitch)[1]!.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    const frequency = wrapper
+      .findAllComponents(AppSelect)
+      .find((select) => select.props('modelValue') === 'hourly')!
+    frequency.vm.$emit('update:modelValue', 'daily')
+    await flushPromises()
+    expect(wrapper.findComponent(AppTimePicker).exists()).toBe(true)
     const get = wrapper
       .findAll('button')
       .find((button) => button.text() === '立即获取')!
     await get.trigger('click')
+    await flushPromises()
+    wrapper
+      .findComponent(AppInput)
+      .vm.$emit('update:modelValue', '尚未保存的策略名称')
     await flushPromises()
     await get.trigger('click')
     await flushPromises()
@@ -94,6 +121,11 @@ describe('strategy shop category loading', () => {
     expect(submit.mock.calls[0]![1]).toBe(submit.mock.calls[1]![1])
     expect(save).not.toHaveBeenCalled()
     expect(demo).not.toHaveBeenCalled()
+    expect(submit.mock.calls[1]![0]).toMatchObject({
+      name: '尚未保存的策略名称',
+      scheduled: true,
+      scheduleKind: 'daily',
+    })
     expect(
       wrapper.findComponent(StrategyDrawer).emitted('retrieved'),
     ).toHaveLength(1)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { useMessage, type DataTableColumns, NText } from 'naive-ui'
+import { useMessage, type DataTableColumns, NText, NAlert } from 'naive-ui'
 import {
   DataTable,
   FilterBar,
@@ -9,6 +9,7 @@ import {
   ManagementListSection,
   PaginationBar,
   StatusTag,
+  ErrorState,
 } from '@/shared/components'
 import { AppButton, AppInput } from '@/shared/ui'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
@@ -18,6 +19,7 @@ import {
   type SelectionStrategy,
 } from '../model/contracts'
 import { conditionSummary } from '../model/selection-rules'
+import { runWindow, runResult } from '../model/run-display'
 import StrategyDrawer from './StrategyDrawer.vue'
 
 const props = defineProps<{ service: SelectionService; contextKey: string }>()
@@ -31,9 +33,49 @@ const editing = ref<SelectionStrategy | null>(null),
 const busyId = ref<string | null>(null)
 const query = useQuery({
   queryKey: computed(() => ['selection-strategies', props.contextKey]),
+  enabled: computed(() => props.service.available),
   queryFn: () => props.service.strategies(),
   retry: false,
 })
+// Preserve strategy management even while its persistence/scheduler is not
+// connected. Only formal run reads and explicit manual submission are available.
+const capability = useQuery({
+  queryKey: computed(() => ['selection-capabilities', props.contextKey]),
+  enabled: computed(() => !!props.service.manual),
+  queryFn: () => props.service.manual!.capabilities(),
+  retry: false,
+})
+const latest = useQuery({
+  queryKey: computed(() => ['selection-manual-run', props.contextKey]),
+  enabled: computed(() => !!props.service.manual),
+  queryFn: () => props.service.latestRun!(null),
+  retry: false,
+  refetchInterval: (query) =>
+    ['pending', 'running'].includes(query.state.data?.status ?? '')
+      ? 2000
+      : false,
+})
+const executionDisabledReason = computed(() => {
+  if (!props.service.manual) return null
+  if (capability.isPending.value) return '正在读取手动获取状态'
+  if (capability.isError.value) return '手动获取状态读取失败，请刷新重试'
+  if (!capability.data.value?.manual_execution_available)
+    return '此环境手动获取未启用，已入库结果仍可查询'
+  if (['pending', 'running'].includes(latest.data.value?.status ?? ''))
+    return '已有选品获取任务正在执行'
+  return null
+})
+function refresh() {
+  if (props.service.available) void query.refetch()
+  if (props.service.manual) {
+    void capability.refetch()
+    void latest.refetch()
+  }
+}
+function retrieved() {
+  if (props.service.available) void query.refetch()
+  if (props.service.manual) void latest.refetch()
+}
 const filtered = computed(() =>
   (query.data.value ?? []).filter((row) =>
     row.name
@@ -192,7 +234,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
           @keydown.enter="search.onEnter"
       /></FilterField>
       <template #actions
-        ><AppButton @click="query.refetch()">刷新</AppButton
+        ><AppButton @click="refresh">刷新</AppButton
         ><AppButton @click="message.info('达人登录尚未接入')"
           >达人登录</AppButton
         ></template
@@ -204,16 +246,52 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
       >
     </FilterBar>
     <ManagementListSection>
+      <template v-if="service.manual">
+        <ErrorState
+          v-if="capability.isError.value"
+          description="手动获取状态读取失败"
+          retryable
+          @retry="capability.refetch()"
+        />
+        <NAlert
+          v-else-if="
+            !capability.isPending.value &&
+            !capability.data.value?.manual_execution_available
+          "
+          type="warning"
+          >此环境手动获取未启用，已入库结果仍可查询</NAlert
+        >
+        <ErrorState
+          v-if="latest.isError.value"
+          description="获取进度查询失败"
+          retryable
+          @retry="latest.refetch()"
+        />
+        <NAlert
+          v-else-if="latest.data.value"
+          :type="
+            ['failed', 'interrupted'].includes(latest.data.value.status)
+              ? 'error'
+              : latest.data.value.status === 'partial'
+                ? 'warning'
+                : 'info'
+          "
+          >最近获取：{{ runResult(latest.data.value) }} ·
+          {{ runWindow(latest.data.value) }}</NAlert
+        >
+      </template>
       <DataTable
         :columns="columns"
         :data="rows"
-        :loading="query.isPending.value"
+        :loading="service.available && query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
         :scroll-x="1510"
         viewport="fill"
         appearance="list"
-        empty-description="暂无选品策略"
+        :empty-description="
+          service.available ? '暂无选品策略' : '策略保存与定时执行待接入'
+        "
         @retry="query.refetch()"
       />
       <PaginationBar
@@ -229,8 +307,9 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
       :strategy="editing"
       :service="service"
       :context-key="contextKey"
+      :execution-disabled-reason="executionDisabledReason"
       @saved="saved"
-      @retrieved="query.refetch()"
+      @retrieved="retrieved"
     />
   </div>
 </template>

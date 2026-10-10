@@ -184,7 +184,17 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
                 category_id: '1001',
                 name: '真实父类目',
                 children: [
-                  { category_id: '1002', name: '真实子类目', children: [] },
+                  {
+                    category_id: '1002',
+                    name: '真实子类目',
+                    children: [
+                      {
+                        category_id: '1003',
+                        name: '真实四级类目',
+                        children: [],
+                      },
+                    ],
+                  },
                 ],
               },
             ],
@@ -238,14 +248,42 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     .getByRole('navigation', { name: '选品库切换' })
     .getByRole('button', { name: '选品策略', exact: true })
     .click()
-  await page.getByRole('button', { name: '执行选品', exact: true }).click()
+  await expect(
+    page.getByRole('textbox', { name: '搜索策略名称' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '达人登录', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: '新建策略', exact: true }).click()
   const drawer = page.locator('.n-drawer')
+  await expect(drawer.getByRole('textbox', { name: '策略名称' })).toBeVisible()
+  await drawer
+    .getByRole('textbox', { name: '策略名称' })
+    .fill('未保存的真实条件草稿')
+  await expect(
+    drawer.getByRole('button', { name: '保存策略', exact: true }),
+  ).toBeDisabled()
   await drawer.locator('.n-base-selection').first().click()
   await page.getByText('授权测试抖店', { exact: true }).last().click()
   await drawer.locator('.n-cascader .n-base-selection').click()
   await page.getByText('真实行业', { exact: true }).last().click()
   await page.getByText('真实父类目', { exact: true }).last().click()
   await page.getByText('真实子类目', { exact: true }).last().click()
+  await page
+    .locator('.n-cascader-submenu')
+    .last()
+    .getByText('全部', { exact: true })
+    .click()
+  await expect(drawer.locator('.n-cascader')).toContainText('真实子类目 / 全部')
+  const schedule = drawer.locator('.n-form-item').filter({
+    has: page.locator('.n-form-item-label', { hasText: /^定时执行$/ }),
+  })
+  await schedule.getByRole('switch').click()
+  await expect(drawer.getByText('执行频率', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('real-restored-strategy-before-submit.png'),
+    animations: 'disabled',
+  })
   await drawer.getByRole('button', { name: '立即获取', exact: true }).click()
   await expect(
     page.getByText(/2026-10-03～2026-10-09 · 已回退一天/),
@@ -263,6 +301,8 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     price_mode: 'all',
   })
   expect(commands[0]).not.toHaveProperty('begin_date')
+  expect(commands[0]).not.toHaveProperty('scheduled')
+  expect(commands[0]).not.toHaveProperty('name')
   await page
     .getByRole('navigation', { name: '选品库切换' })
     .getByRole('button', { name: '候选池', exact: true })
@@ -398,10 +438,25 @@ test('Real keeps unavailable state without Mock fallback and retains route permi
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: '新建策略', exact: true }),
-  ).toHaveCount(0)
+  ).toBeVisible()
+  await page.getByRole('button', { name: '新建策略', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: '执行选品', exact: true }),
+    page
+      .locator('.n-drawer')
+      .getByRole('button', { name: '立即获取', exact: true }),
   ).toBeDisabled()
+  await expect(
+    page
+      .locator('.n-drawer')
+      .getByRole('button', { name: '保存策略', exact: true }),
+  ).toBeDisabled()
+  await expect(
+    page.locator('.n-drawer').getByText('定时执行', { exact: true }),
+  ).toBeVisible()
+  await page
+    .locator('.n-drawer')
+    .getByRole('button', { name: '取消', exact: true })
+    .click()
   await expect(page.getByText(/Mock 示例区间/)).toHaveCount(0)
   expect(mockModules).toEqual([])
   await page.screenshot({

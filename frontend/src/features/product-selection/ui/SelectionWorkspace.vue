@@ -15,7 +15,6 @@ import {
 import type { SelectionService } from '../model/contracts'
 import CandidatePool from './CandidatePool.vue'
 import StrategyList from './StrategyList.vue'
-import ManualSelection from './ManualSelection.vue'
 
 defineProps<{
   panel: 'candidate-pool' | 'selection-strategy' | 'collection-tasks'
@@ -61,12 +60,6 @@ watch(contextKey, load, { immediate: true })
   <CandidatePool
     v-else-if="panel === 'candidate-pool'"
     :key="`pool:${contextKey}`"
-    :service="service"
-    :context-key="contextKey"
-  />
-  <ManualSelection
-    v-else-if="service.manual"
-    :key="`manual:${contextKey}`"
     :service="service"
     :context-key="contextKey"
   />

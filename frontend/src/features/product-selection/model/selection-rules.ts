@@ -120,21 +120,28 @@ export function validateStrategy(
 
 export function categoryOptions(
   nodes: CategoryNode[],
-  includeAll = true,
+  real = false,
 ): {
   value: string
   label: string
   children?: ReturnType<typeof categoryOptions>
+  disabled?: boolean
 }[] {
+  function supportsRequest(node: CategoryNode): boolean {
+    return !!node.requestScope || !!node.children?.some(supportsRequest)
+  }
   return nodes.map((node) => ({
     value: node.id,
     label: node.name,
     children: node.children?.length
       ? [
-          ...(includeAll ? [{ value: `${node.id}/*`, label: '全部' }] : []),
-          ...categoryOptions(node.children, includeAll),
+          ...(!real || node.requestScope
+            ? [{ value: `${node.id}/*`, label: '全部' }]
+            : []),
+          ...categoryOptions(node.children, real),
         ]
       : undefined,
+    ...(real ? { disabled: !supportsRequest(node) } : {}),
   }))
 }
 

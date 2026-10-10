@@ -8,6 +8,7 @@ import {
   NGrid,
   NGi,
   NTooltip,
+  NText,
   useMessage,
 } from 'naive-ui'
 import { useForm } from 'vee-validate'
@@ -43,7 +44,7 @@ const props = defineProps<{
   strategy: SelectionStrategy | null
   service: SelectionService
   contextKey: string
-  manualOnly?: boolean
+  executionDisabledReason?: string | null
 }>()
 const emit = defineEmits<{
   'update:show': [show: boolean]
@@ -53,6 +54,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const busy = ref(false)
 const expanded = ref<string[]>(['short-video'])
+const real = computed(() => !!props.service.manual)
 let submission: { input: string; key: string } | null = null
 const { values, errors, setFieldValue, resetForm, setErrors } =
   useForm<StrategyInput>({ initialValues: emptyStrategy() })
@@ -63,9 +65,7 @@ const periodPreview = useQuery({
     props.contextKey,
     conditions.value.period,
   ]),
-  enabled: computed(
-    () => props.show && props.service.available && !props.manualOnly,
-  ),
+  enabled: computed(() => props.show && props.service.available),
   queryFn: () => props.service.previewPeriod(conditions.value.period),
   retry: false,
 })
@@ -89,10 +89,11 @@ watch(
     const draft = props.strategy
       ? (JSON.parse(JSON.stringify(props.strategy)) as StrategyInput)
       : emptyStrategy()
-    if (props.manualOnly) {
+    if (real.value && !props.strategy) {
       draft.channels.shortVideo.conditions.period = '7d'
       draft.channels.shortVideo.conditions.rankFrom = 1
       draft.channels.shortVideo.conditions.rankTo = 10
+      draft.enabled = false
     }
     resetForm({ values: draft })
     expanded.value = ['short-video']
@@ -135,7 +136,7 @@ const periodOptions = computed(
       { value: '30d', label: '近30天' },
     ].map((option) => ({
       ...option,
-      disabled: !!props.manualOnly && option.value !== '7d',
+      disabled: real.value && option.value !== '7d',
     })) satisfies AppOption[],
 )
 function selectPeriod(value: AppOptionValue) {
@@ -149,8 +150,18 @@ function selectPeriod(value: AppOptionValue) {
 }
 async function submit(saving: boolean) {
   if (busy.value) return
-  if (saving && props.manualOnly) return
-  const validation = validateStrategy(values, saving)
+  if (saving && !props.service.available) {
+    message.info('策略保存与定时执行待接入')
+    return
+  }
+  if (!saving && props.executionDisabledReason) {
+    message.info(props.executionDisabledReason)
+    return
+  }
+  const validation = validateStrategy(
+    real.value && !saving ? { ...values, scheduled: false } : values,
+    saving,
+  )
   setErrors(validation)
   if (Object.keys(validation).length) {
     if (
@@ -172,9 +183,14 @@ async function submit(saving: boolean) {
   busy.value = true
   try {
     const draft = JSON.parse(JSON.stringify(values)) as StrategyInput
-    if (props.manualOnly) {
+    if (!saving && real.value) {
       if (!props.service.manual) throw new Error('手动获取暂不可用')
-      const encoded = JSON.stringify(draft)
+      // Strategy name/status/schedule are editable draft metadata, not manual
+      // execution parameters. They neither save nor change an uncertain receipt.
+      const encoded = JSON.stringify({
+        shopId: draft.shopId,
+        channels: draft.channels,
+      })
       if (submission?.input !== encoded)
         submission = { input: encoded, key: crypto.randomUUID() }
       // Keep the key on an uncertain HTTP failure; do not create another run.
@@ -207,9 +223,7 @@ async function submit(saving: boolean) {
 <template>
   <AppDrawer
     :show="show"
-    :title="
-      manualOnly ? '手动选品' : strategy ? '编辑选品策略' : '新建选品策略'
-    "
+    :title="strategy ? '编辑选品策略' : '新建选品策略'"
     size="lg"
     @update:show="emit('update:show', $event)"
   >
@@ -231,15 +245,15 @@ async function submit(saving: boolean) {
           />
         </NFormItem>
         <NFormItem
-          v-if="!manualOnly"
           label="达人账号"
           :validation-status="errors.creatorId ? 'error' : undefined"
           :feedback="errors.creatorId"
         >
           <AppSelect
             :model-value="values.creatorId"
-            :options="CREATOR_DEMO_OPTIONS"
-            placeholder="请选择达人账号"
+            :options="real ? [] : CREATOR_DEMO_OPTIONS"
+            :disabled="real"
+            :placeholder="real ? '达人账号待接入' : '请选择达人账号'"
             clearable
             @update:model-value="
               setFieldValue(
@@ -251,7 +265,6 @@ async function submit(saving: boolean) {
         </NFormItem>
       </div>
       <NFormItem
-        v-if="!manualOnly"
         label="策略名称"
         :validation-status="errors.name ? 'error' : undefined"
         :feedback="errors.name"
@@ -279,7 +292,6 @@ async function submit(saving: boolean) {
               <span @click.stop
                 ><AppCheckbox
                   :model-value="values.channels.shortVideo.selected"
-                  :disabled="manualOnly"
                   aria-label="选择短视频榜单"
                   @update:model-value="
                     setFieldValue('channels.shortVideo.selected', $event)
@@ -295,7 +307,7 @@ async function submit(saving: boolean) {
                   <CategorySelector
                     :model-value="conditions.categoryId"
                     :nodes="categories.data.value ?? []"
-                    :real="manualOnly"
+                    :real="real"
                     :disabled="
                       !values.shopId || !values.channels.shortVideo.selected
                     "
@@ -329,7 +341,7 @@ async function submit(saving: boolean) {
                             @update:model-value="selectPeriod"
                         /></template>
                         {{
-                          manualOnly
+                          real
                             ? '当前仅支持近7天；服务器按上海日期冻结截至昨日的7天，首查合法为空时最多回退一天，实际区间显示在结果中'
                             : (periodPreview.data.value?.rangeLabel ??
                               '区间暂不可用')
@@ -353,12 +365,12 @@ async function submit(saving: boolean) {
                         {
                           label: '知名品牌',
                           value: 'known',
-                          disabled: manualOnly,
+                          disabled: real,
                         },
                         {
                           label: '非知名品牌',
                           value: 'unknown',
-                          disabled: manualOnly,
+                          disabled: real,
                         },
                       ]"
                       :disabled="!values.channels.shortVideo.selected"
@@ -377,7 +389,7 @@ async function submit(saving: boolean) {
                   :model-value="conditions.priceMode"
                   :options="[
                     { label: '不限', value: 'all' },
-                    { label: '自定义', value: 'custom', disabled: manualOnly },
+                    { label: '自定义', value: 'custom', disabled: real },
                   ]"
                   :disabled="!values.channels.shortVideo.selected"
                   @update:model-value="
@@ -424,7 +436,7 @@ async function submit(saving: boolean) {
               <NFormItem label="首次上榜"
                 ><AppSwitch
                   :model-value="conditions.firstListedOnly"
-                  :disabled="manualOnly || !values.channels.shortVideo.selected"
+                  :disabled="real || !values.channels.shortVideo.selected"
                   @update:model-value="setCondition('firstListedOnly', $event)"
               /></NFormItem>
               <div class="strategy-pair">
@@ -438,7 +450,7 @@ async function submit(saving: boolean) {
                   <AppNumberInput
                     :model-value="conditions.rankFrom"
                     :min="1"
-                    :max="manualOnly ? 20 : undefined"
+                    :max="real ? 20 : undefined"
                     :disabled="!values.channels.shortVideo.selected"
                     @update:model-value="setCondition('rankFrom', $event)"
                   />
@@ -453,7 +465,7 @@ async function submit(saving: boolean) {
                   <AppNumberInput
                     :model-value="conditions.rankTo"
                     :min="1"
-                    :max="manualOnly ? 20 : undefined"
+                    :max="real ? 20 : undefined"
                     :disabled="!values.channels.shortVideo.selected"
                     @update:model-value="setCondition('rankTo', $event)"
                   />
@@ -466,7 +478,7 @@ async function submit(saving: boolean) {
               <span @click.stop
                 ><AppCheckbox
                   :model-value="values.channels.baiying.selected"
-                  :disabled="manualOnly"
+                  :disabled="real"
                   aria-label="选择巨量百应"
                   @update:model-value="
                     setFieldValue('channels.baiying.selected', $event)
@@ -476,11 +488,17 @@ async function submit(saving: boolean) {
           </NCollapseItem>
         </NCollapse>
       </NFormItem>
-      <NFormItem v-if="!manualOnly" label="定时执行"
-        ><AppSwitch
-          :model-value="values.scheduled"
-          @update:model-value="setFieldValue('scheduled', $event)"
-      /></NFormItem>
+      <NFormItem label="定时执行">
+        <NTooltip :disabled="service.available">
+          <template #trigger
+            ><AppSwitch
+              :model-value="values.scheduled"
+              @update:model-value="setFieldValue('scheduled', $event)"
+          /></template>
+          定时调度待接入；本次仅编辑草稿，不会创建或启用计划
+        </NTooltip>
+        <NText v-if="real" depth="3">（待接入）</NText>
+      </NFormItem>
       <div v-if="values.scheduled" class="strategy-pair">
         <NFormItem label="执行频率"
           ><AppSelect
@@ -509,27 +527,47 @@ async function submit(saving: boolean) {
           />
         </NFormItem>
       </div>
-      <NFormItem v-if="!manualOnly" label="策略状态"
-        ><AppSwitch
-          :model-value="values.enabled"
-          @update:model-value="setFieldValue('enabled', $event)"
-      /></NFormItem>
+      <NFormItem label="策略状态">
+        <NTooltip :disabled="service.available">
+          <template #trigger
+            ><AppSwitch
+              :model-value="values.enabled"
+              :disabled="!service.available"
+              @update:model-value="setFieldValue('enabled', $event)"
+          /></template>
+          策略保存待接入，不能启用未保存的策略
+        </NTooltip>
+      </NFormItem>
     </NForm>
     <template #footer
       ><div class="strategy-actions">
         <AppButton :disabled="busy" @click="emit('update:show', false)"
           >取消</AppButton
         >
-        <AppButton tone="primary" :loading="busy" @click="submit(false)"
-          >立即获取</AppButton
-        >
-        <AppButton
-          v-if="!manualOnly"
-          tone="primary"
-          :loading="busy"
-          @click="submit(true)"
-          >保存策略</AppButton
-        >
+        <NTooltip :disabled="!executionDisabledReason">
+          <template #trigger
+            ><AppButton
+              tone="primary"
+              :loading="busy"
+              :disabled="!!executionDisabledReason"
+              @click="submit(false)"
+              >立即获取</AppButton
+            ></template
+          >
+          {{ executionDisabledReason }}
+        </NTooltip>
+        <NTooltip :disabled="service.available">
+          <template #trigger
+            ><AppButton
+              tone="primary"
+              :loading="busy"
+              :disabled="!service.available"
+              @click="submit(true)"
+              >保存策略</AppButton
+            ></template
+          >
+          策略保存与定时执行待接入
+        </NTooltip>
       </div></template
     >
   </AppDrawer>

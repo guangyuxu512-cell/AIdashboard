@@ -176,7 +176,6 @@ export function createSelectionRealService(
           choice.brand !== 'all' ||
           choice.priceMode !== 'all' ||
           choice.firstListedOnly ||
-          input.scheduled ||
           choice.priceAbove !== null ||
           choice.priceBelow !== null
         )

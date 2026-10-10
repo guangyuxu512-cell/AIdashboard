@@ -200,6 +200,10 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     await real.categories('shop-a')
     const input = emptyStrategy()
     input.shopId = 'shop-a'
+    input.name = '未保存的策略草稿'
+    input.scheduled = true
+    input.scheduleKind = 'daily'
+    input.dailyTime = '11:30'
     Object.assign(input.channels.shortVideo.conditions, {
       categoryId: '1001/1002',
       period: '7d',
