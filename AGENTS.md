@@ -31,6 +31,19 @@ typed service 为前端草案，Real 不请求猜测接口、不回退 Mock。�
 该阶段复用ShopSession/HTTP/Signer/商品模块授权与团队隔离；必要Feature DB与Migration Slot由ca97分配。
 不扩展百应、达人登录、每小时监控、手机任务或自动上架；开发会话不操作main/生产，Mock不能替代真实闭环证据。
 
+选品接入资源登记（2026-10-10）：81a1 沿用 `feat/product-selection-frontend-v1`，基线
+`b34e43cb90356e03d2f793c4146c6775a11f5ab3`。前端候选 `06bd03c0fa61b00251063e21350cd0cc5445afe5`
+及诊断补丁 `819ca33ba6548030e418320c6bb80ba046beb842` 尚未合入 dev；Frontend/Electron 树相同，
+Mock 验证不代表真实入库。最小候选身份/来源观察两表方案可用于资源登记，手动执行状态、空成功和
+无候选失败的持久化方案仍须审核，不擅增通用队列或调度。
+0041 已在 Integration/生产应用，旧 Slot 核销为 released；唯一新 Slot reserved 给本 Feature：
+计划 `20261010_0042_product_selection_manual_v1`，revision `20261010_0042`，down `20260924_0041`。
+独立空库 `control_center_feat_product_selection` 已分配，Owner `control_center_dev_user`，
+受信任 `35433` 隧道及 SCRAM 连接/回滚 DDL 探针通过；应用角色无 CREATEDB/CREATEROLE/SUPERUSER。
+81a1 更新本地忽略连接并执行既有 `alembic upgrade head` 至 0041 后才可数据库开发。
+Feature Backend `8101`、Frontend `4176 --strictPort`，仅 Feature Owner 运行；Integration 仍为
+`8100/5180 --strictPort` 与唯一 Electron。仅登记/评审，不代 Feature 写 Migration，不发布生产。
+
 - Gate 1 由 Feature Owner 完成：自检、测试、文档/契约同步、提交，并以正式 Handoff 交给 Integrator。
 - Gate 2 只在 Integration Worktree 执行：读取候选提交、做集成验证、解决真实冲突并决定接受或拒绝。候选本身的业务 Bug、缺测试或契约缺口必须退回原 Feature Owner；Integrator 不代为开发业务修复。
 - Gate 2 通过后只允许 `git merge --no-ff feat/*` 合入 `dev`。集成后 `dev` 失败时，应拒绝候选或在共享历史上 `git revert`，禁止 `reset`、改写历史、未审查的 rebase/cherry-pick。
