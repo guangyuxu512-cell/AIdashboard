@@ -16,8 +16,8 @@ from app.modules.product_selection.source import SelectionSourceScope
 def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> None:
     """Reject choices which cannot be represented by the observed query.
 
-    Nonzero path IDs are only a structural precondition, not proof that a
-    selected category is a current authorized shop's actual leaf category.
+    Nonzero path IDs are only a structural precondition, not proof that the
+    selected path belongs to the current authorized shop's actual tree.
     """
     unsupported = None
     if original.channel != "short-video":
