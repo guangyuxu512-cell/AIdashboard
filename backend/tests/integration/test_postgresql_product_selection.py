@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 from app.modules.access.exceptions import ModuleAccessDeniedError, TeamContextRequiredError
 from app.modules.access.models import Team, TeamMembership, TeamModuleAccess, TeamShopAccess
 from app.modules.access.module_access import ModuleCode
+from app.modules.access.repository import AccessManagementRepository
 from app.modules.access.service import ActorContextService
+from app.modules.audit.models import AuditLog
 from app.modules.product_selection.exceptions import (
     SelectionObservationNotFoundError, SelectionShopUnavailableError,
 )
@@ -84,6 +86,7 @@ def selection_context(postgresql_engine):
         yield engine, teams, users, shops, actors
     finally:
         with Session(engine) as session:
+            session.execute(delete(AuditLog).where(AuditLog.actor_user_id.in_(users)))
             candidate_ids = select(Candidate.candidate_id).where(Candidate.team_id.in_(teams))
             session.execute(delete(Observation).where(Observation.candidate_id.in_(candidate_ids)))
             session.execute(delete(Candidate).where(Candidate.team_id.in_(teams)))
@@ -224,6 +227,51 @@ def test_read_api_rejects_unverified_rate_sort_and_invalid_queries(selection_con
             assert response.status_code == 422
             assert response.json()["code"] == "VALIDATION_ERROR"
         assert client.get("/api/v1/product-selection/candidates").json()["total"] == 0
+
+
+def _remove_team_grants_and_membership(context):
+    engine, teams, users, _, _ = context
+    with Session(engine) as session:
+        # A real super-account principal has no membership. Only these
+        # synthetic fixture grants/membership are removed, never facts.
+        session.get(User, users[0]).is_super_account = True
+        session.execute(delete(TeamMembership).where(TeamMembership.team_id == teams[0]))
+        session.execute(delete(TeamModuleAccess).where(TeamModuleAccess.team_id == teams[0]))
+        session.execute(delete(TeamShopAccess).where(TeamShopAccess.team_id == teams[0]))
+        session.commit()
+
+
+def test_team_delete_rejects_only_selection_facts_and_preserves_them(selection_context):
+    observation_id = _save(selection_context)[0]
+    engine, teams, _, _, _ = selection_context
+    _remove_team_grants_and_membership(selection_context)
+    with Session(engine) as session:
+        for model in (TeamMembership, TeamModuleAccess, TeamShopAccess):
+            assert session.scalar(select(func.count()).select_from(model).where(model.team_id == teams[0])) == 0
+        assert session.scalar(select(func.count()).select_from(Candidate).where(Candidate.team_id == teams[0])) == 1
+        assert AccessManagementRepository(session).team_has_references(teams[0]) is True
+    with _api_client(selection_context) as client:
+        response = client.delete(f"/api/v1/access-management/teams/{teams[0]}")
+        assert response.status_code == 409
+        assert response.json()["code"] == "TEAM_IN_USE"
+    with Session(engine) as session:
+        assert session.get(Team, teams[0]) is not None
+        assert session.get(Observation, observation_id) is not None
+        assert session.scalar(select(func.count()).select_from(Candidate).where(Candidate.team_id == teams[0])) == 1
+        assert session.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.target_id == teams[0])) == 0
+
+
+def test_empty_team_without_selection_or_old_references_remains_deletable(selection_context):
+    engine, teams, _, _, _ = selection_context
+    _remove_team_grants_and_membership(selection_context)
+    with Session(engine) as session:
+        assert AccessManagementRepository(session).team_has_references(teams[0]) is False
+    with _api_client(selection_context) as client:
+        response = client.delete(f"/api/v1/access-management/teams/{teams[0]}")
+        assert response.status_code == 204 and not response.content
+    with Session(engine) as session:
+        assert session.get(Team, teams[0]) is None
+        assert session.get(Team, teams[1]) is not None
 
 
 def test_postgresql_unique_identity_idempotent_source_and_raw_values(selection_context):
