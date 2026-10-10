@@ -118,7 +118,10 @@ export function validateStrategy(
   return errors
 }
 
-export function categoryOptions(nodes: CategoryNode[]): {
+export function categoryOptions(
+  nodes: CategoryNode[],
+  includeAll = true,
+): {
   value: string
   label: string
   children?: ReturnType<typeof categoryOptions>
@@ -128,8 +131,8 @@ export function categoryOptions(nodes: CategoryNode[]): {
     label: node.name,
     children: node.children?.length
       ? [
-          { value: `${node.id}/*`, label: '全部' },
-          ...categoryOptions(node.children),
+          ...(includeAll ? [{ value: `${node.id}/*`, label: '全部' }] : []),
+          ...categoryOptions(node.children, includeAll),
         ]
       : undefined,
   }))

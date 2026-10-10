@@ -9,9 +9,10 @@ const props = defineProps<{
   nodes: CategoryNode[]
   disabled?: boolean
   loading?: boolean
+  real?: boolean
 }>()
 defineEmits<{ 'update:modelValue': [value: string | null] }>()
-const options = computed(() => categoryOptions(props.nodes))
+const options = computed(() => categoryOptions(props.nodes, !props.real))
 </script>
 
 <template>
@@ -19,8 +20,11 @@ const options = computed(() => categoryOptions(props.nodes))
     class="app-field app-field--full"
     :value="modelValue"
     :options="options"
+    :check-strategy="real ? 'all' : 'child'"
     :disabled="disabled || loading"
-    :placeholder="loading ? '正在读取类目' : '全部类目'"
+    :placeholder="
+      loading ? '正在读取类目' : real ? '请选择真实类目' : '全部类目'
+    "
     clearable
     filterable
     :show-path="true"

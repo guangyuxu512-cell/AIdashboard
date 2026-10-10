@@ -41,6 +41,7 @@ import {
 } from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
+import { runWindow, runResult } from '../model/run-display'
 
 const props = defineProps<{ service: SelectionService; contextKey: string }>()
 const message = useMessage()
@@ -108,19 +109,23 @@ const latestRun = useQuery({
 const runMessage = computed(() => {
   const run = latestRun.data.value
   if (!run) return null
-  if (run.status === 'pending') return '手动获取已排队'
-  if (run.status === 'running') return '手动获取中'
-  if (run.status === 'failed')
-    return `最近获取失败：${run.error_code ?? '原因待核查'}`
-  if (run.status === 'interrupted')
-    return '最近获取已中断，已有候选保留；未自动重发'
-  if (run.status === 'partial')
-    return `最近获取部分完成，候选已保存 ${run.saved_count} 项；${run.error_code ?? '详情补充未完成'}`
-  return `最近获取成功，返回 ${run.result_count ?? '—'} 项`
+  return `${runResult(run)} · ${runWindow(run)}`
 })
+watch(
+  () => latestRun.data.value?.status,
+  (status, old) => {
+    if (
+      status &&
+      old &&
+      ['pending', 'running'].includes(old) &&
+      !['pending', 'running'].includes(status)
+    )
+      void query.refetch()
+  },
+)
 const emptyDescription = computed(() => {
   if (props.service.available || filters.value.keyword) return '暂无候选商品'
-  return runMessage.value ?? '尚未获取候选；手动选品请求映射待确认'
+  return runMessage.value ?? '尚未获取候选，请在选品策略中执行手动选品'
 })
 async function refreshList() {
   await Promise.all([

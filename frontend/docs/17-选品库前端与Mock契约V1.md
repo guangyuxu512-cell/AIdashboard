@@ -359,7 +359,17 @@ Naive默认Descriptions标签比字段值深，NText未指定depth时为次文�
 
 首轮typecheck暴露VueUse的VueInstance与DataTable类型化emit不兼容；改为读取已有根HTMLElement后lint/typecheck、定向unit及全部13项E2E重新通过。未调整业务接口、Mock延迟、动画或全局表格。最终截图来自 `verified-regression/`、浏览器Mock、CSS缩放100%；真实Electron新增影响及用户视觉确认由ca97接续，不能据此宣布Gate 2或生产通过。本轮按尺寸改动范围执行定向验证，未重复后端/数据库/平台或无关全量测试；Real运行态边界沿用91461d4a记录，当前Real构建再核验不含Mock。
 
-## 正式只读绑定（2026-10-10，PARTIAL）
+## 近7天有限回退与Real手动入口 2026年10月11日
+
+接续58d4a8，ca97已技术审核用户批准的主/备窗口规则。Real选品策略区域复用StrategyDrawer、ShopSelector、CategorySelector、AppRadio、现有按钮及Query刷新，不创建正式策略或定时配置。支持当前授权抖店真实行业/非0有序类目路径、短视频近7天、不限品牌价格、首次上榜关闭、第1–20名。其余选择禁用；不把Mock示例日期写进正式POST。
+
+正式POST `/api/v1/product-selection/runs`只发送用户条件及submission_key；服务器在首次接受时按上海日期冻结截至昨日7天/提前一天的备用7天。页面同一草稿提交响应不确定时复用key，不自动重复提交；已接收则读取运行状态。执行开关关闭时明确不可用，数据库结果仍可读。刷新/轮询/候选详情不发平台请求；真实类目GET是明确的店铺平台读操作，不回退Mock。
+
+run摘要显示明确日期。备用有数据时显示“已回退一天”；两个窗口都成功空时记录首选区间与“两个窗口均已检查为空”；备用失败显示“首查为空、回退失败”及安全阶段。候选source_context.date_selection镜像Backend正式安全契约，actual business/period/hash保持一致；详情顶部保留实际统计区间及回退标识，原检查时间与指标获取时间不混用。旧v1来源仍可读，不给它补造相对周期或回退证据。
+
+四主题、字号、1496px基础列宽、64px缩略图、8/12px局部padding、12px操作间距及原Mock交互保留。资料采集、屏蔽、竞品标记、策略保存、调度、百应、正式达人Session仍未接入，不能随手动入口宣称完成。全Feature保持PARTIAL，直到本候选真实入库/API/Real与唯一Integration Electron通过；浏览器拦截测试不替代该证据。
+
+## 正式只读绑定（2026-10-10，PARTIAL，历史阶段）
 
 `api/selection-read-api.ts` 镜像正式 `SelectionObservationRead` 和canonical运行摘要，只经既有httpClient调用已登记 `GET /api/v1/product-selection/candidates`、`/observations/{id}`、`/runs`。Actor/Team切换仍由Vue Query查询key隔离；列表刷新只查数据库。前端不持有平台Cookie或Signer，不创建空Job。
 

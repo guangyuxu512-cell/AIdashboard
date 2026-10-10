@@ -18,7 +18,7 @@ from app.modules.product_selection.models import (
 )
 from app.modules.product_selection.repository import ProductSelectionRepository
 from app.modules.product_selection.schemas import SelectionObservationRead
-from app.modules.product_selection.run_contract import SelectionRunClaim
+from app.modules.product_selection.run_contract import SelectionRunClaim, SelectionResolvedRequest
 from app.modules.product_selection.run_repository import SelectionRunRepository
 from app.modules.product_selection.exceptions import SelectionRunLeaseLostError
 from app.modules.product_selection.source import SelectionSourceScope
@@ -103,6 +103,8 @@ class ProductSelectionFactService:
                     candidate_id=candidate_id, shop_id=shop_id, scope=scope,
                     started_at=started_at, retrieved_at=retrieved_at,
                     last_run_id=claim.run_id if claim is not None else None,
+                    date_selection=(SelectionResolvedRequest.model_validate(run.request_conditions).provenance().model_dump(mode="json")
+                        if run is not None and claim.request.version == 2 else None),
                     values={
                         "title": product.title, "image_url": product.image_url,
                         "merchant_snapshot": [
@@ -136,11 +138,15 @@ class ProductSelectionFactService:
         if claim is None:
             return None
         if (actor.user_id != claim.user_id or actor.require_team_id() != claim.team_id
-            or shop_id != claim.shop_id or scope != claim.request.scope):
+            or shop_id != claim.shop_id):
             raise SelectionRunLeaseLostError()
         # Hold the row lock until the same commit as facts, counts and source
         # association. An expiry/replacement cannot pass between check/write.
-        return SelectionRunRepository(self.session).fence(claim, at)
+        run = SelectionRunRepository(self.session).fence(claim, at)
+        request = SelectionResolvedRequest.model_validate(run.request_conditions)
+        if scope != request.actual_scope():
+            raise SelectionRunLeaseLostError()
+        return run
 
     def _writable_observation(
         self, actor: ActorContext, observation_id: UUID,

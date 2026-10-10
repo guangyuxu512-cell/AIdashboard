@@ -54,6 +54,7 @@ class ProductSelectionRepository:
         self, *, candidate_id: UUID, shop_id: UUID, scope: SelectionSourceScope,
         values: dict[str, Any], started_at: datetime, retrieved_at: datetime,
         last_run_id: UUID | None = None,
+        date_selection: dict[str, Any] | None = None,
     ) -> UUID | None:
         allowed = {
             "title", "image_url", "merchant_snapshot", "price_band", "rank",
@@ -61,11 +62,14 @@ class ProductSelectionRepository:
         }
         if set(values) != allowed:
             raise ValueError("Only declared rank facts may be persisted")
+        context = scope.context()
+        if date_selection is not None:
+            context["date_selection"] = date_selection
         statement = insert(Observation).values(
             observation_id=generate_id(), candidate_id=candidate_id,
             request_shop_id=shop_id, source_scope_hash=scope.fingerprint(),
             last_run_id=last_run_id,
-            source_context=scope.context(), period_begin=scope.period_begin,
+            source_context=context, period_begin=scope.period_begin,
             period_end=scope.period_end, first_seen_at=retrieved_at,
             checked_at=retrieved_at, metrics_retrieved_at=retrieved_at,
             last_attempt_at=retrieved_at,
@@ -86,6 +90,7 @@ class ProductSelectionRepository:
             statement.on_conflict_do_update(
                 constraint="uq_selection_observation_source",
                 set_={
+                    "source_context": incoming.source_context,
                     "title": func.coalesce(incoming.title, Observation.title),
                     "image_url": func.coalesce(incoming.image_url, Observation.image_url),
                     "merchant_snapshot": case(

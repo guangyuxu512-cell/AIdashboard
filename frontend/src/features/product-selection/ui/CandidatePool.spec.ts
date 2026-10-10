@@ -55,20 +55,20 @@ function render(service: SelectionService) {
 
 describe('candidate selection and batch demo', () => {
   it.each([
-    ['succeeded', 0, null, '最近获取成功，返回 0 项'],
+    ['succeeded', 0, null, '获取成功，该范围没有结果'],
     [
       'failed',
       null,
       'PLATFORM_RESPONSE_INVALID',
-      '最近获取失败：PLATFORM_RESPONSE_INVALID',
+      '获取失败 · PLATFORM_RESPONSE_INVALID',
     ],
     [
       'partial',
       10,
       'PRODUCT_SELECTION_BASIC_INFO_INCOMPLETE',
-      '最近获取部分完成',
+      '已保存 10 项 · 补充未完成',
     ],
-    ['interrupted', null, null, '最近获取已中断'],
+    ['interrupted', null, null, '执行中断'],
   ] as const)(
     'reads Real %s state independently from empty candidates and disables unsupported writes',
     async (status, count, error, message) => {
@@ -76,17 +76,15 @@ describe('candidate selection and batch demo', () => {
       const candidates = vi
         .spyOn(service, 'candidates')
         .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 })
-      const latestRun = vi
-        .fn()
-        .mockResolvedValue({
-          run_id: 'canonical',
-          request_shop_id: 'shop',
-          status,
-          result_count: count,
-          saved_count: count ?? 0,
-          supplement_failed_count: 0,
-          error_code: error,
-        })
+      const latestRun = vi.fn().mockResolvedValue({
+        run_id: 'canonical',
+        request_shop_id: 'shop',
+        status,
+        result_count: count,
+        saved_count: count ?? 0,
+        supplement_failed_count: 0,
+        error_code: error,
+      })
       const { wrapper, table, button, dispose } = render({
         ...service,
         available: false,

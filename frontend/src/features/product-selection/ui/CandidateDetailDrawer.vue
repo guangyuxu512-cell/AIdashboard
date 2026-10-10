@@ -144,8 +144,9 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               <template #trigger>
                 <NText depth="3" class="candidate-detail__metadata"
                   >罗盘：{{ row.sourceContext.periodLabel || '—' }} · 更新
-                  {{
-                    formatCandidateTime(row.metricsRetrievedAt, 'MM-DD HH:mm')
+                  {{ formatCandidateTime(row.metricsRetrievedAt, 'MM-DD HH:mm')
+                  }}{{
+                    row.sourceContext.dateFallback ? ' · 已回退一天' : ''
                   }}</NText
                 >
               </template>
@@ -154,6 +155,12 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               指标获取时间：{{ formatCandidateTime(row.metricsRetrievedAt) }}
             </NTooltip>
           </div>
+          <NText
+            v-if="row.sourceContext.dateFallback !== undefined"
+            depth="3"
+            class="candidate-detail__metadata"
+            >{{ row.sourceContext.statisticalPeriod || '—' }}</NText
+          >
           <NText :depth="row.priceBand === null ? 3 : 1"
             >价格／价格带：{{ row.priceBand ?? '—' }}</NText
           >

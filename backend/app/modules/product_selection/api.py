@@ -72,7 +72,9 @@ def read_selection_capabilities(
     service: Annotated[SelectionRunService, Depends(get_selection_run_service)],
 ) -> SelectionCapabilitiesRead:
     service.facts._current_actor(actor)
-    return SelectionCapabilitiesRead(execution_enabled=service.settings.product_selection_execution_enabled)
+    enabled = service.settings.product_selection_execution_enabled
+    return SelectionCapabilitiesRead(execution_enabled=enabled, manual_execution_available=enabled,
+                                     unavailable_reason=None if enabled else "EXECUTION_DISABLED")
 
 
 @router.post("/runs", response_model=SelectionRunReceipt, status_code=202)

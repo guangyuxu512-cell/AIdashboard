@@ -1,15 +1,15 @@
-"""Prepare observed business parameters; this is not an enabled date resolver.
+"""Observed query mapping and the user-approved bounded Shanghai date policy.
 
-The caller must supply an independently confirmed explicit interval. Nothing
-here derives dates from a clock, validates a live category tree, plans pages,
-or enables a submission. The public resolver stays closed until those rules
-are frozen. No captured authentication or tracking parameter is accepted.
+No claim about a platform refresh deadline, captured credentials or automatic
+business-error retries. Shop tree validation uses the current authorized read.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.modules.product_selection.exceptions import SelectionRequestUnconfirmedError
-from app.modules.product_selection.run_contract import SelectionRunOriginal
+from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan
+from app.modules.product_selection.schemas import SelectionCategoriesRead
 from app.modules.product_selection.source import SelectionSourceScope
 
 
@@ -65,3 +65,34 @@ def prepare_short_video_scope(
         end_date=period_end.strftime("%Y/%m/%d 00:00:00"),
         date_type="21", activity_id="",
     )
+
+
+def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: datetime) -> SelectionResolvedRequest:
+    """User-approved business policy, not a claim about platform refresh time."""
+    validate_preparable_short_video_choice(original)
+    if original.rank_to > 20:
+        raise SelectionRequestUnconfirmedError(details={"reason": "RANK_RANGE_UNSUPPORTED"})
+    if accepted_at.utcoffset() is None:
+        raise ValueError("Acceptance time must have a timezone")
+    day = accepted_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    return SelectionResolvedRequest(
+        version=2, original=original,
+        scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=7), period_end=day - timedelta(days=1)),
+        page_numbers=(1, 2) if original.rank_to > 10 else (1,),
+        date_plan=SelectionDatePlan(
+            accepted_local_date=day,
+            backup_scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=8), period_end=day - timedelta(days=2)),
+        ),
+    )
+
+
+def validate_shop_category(original: SelectionRunOriginal, tree: SelectionCategoriesRead) -> None:
+    """Only actual non-all paths of this authorized shop/industry may execute."""
+    if tree.shop_id != original.shop_id or tree.industry_id != original.industry_id:
+        raise SelectionRequestUnconfirmedError(details={"reason": "CATEGORY_SHOP_MISMATCH"})
+    nodes = tree.nodes
+    for category_id in original.category_ids:
+        node = next((node for node in nodes if node.category_id == category_id), None)
+        if node is None:
+            raise SelectionRequestUnconfirmedError(details={"reason": "CATEGORY_PATH_UNCONFIRMED"})
+        nodes = node.children

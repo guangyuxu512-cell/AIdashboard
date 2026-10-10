@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.modules.product_selection.exceptions import SelectionRequestUnconfirmedError
-from app.modules.product_selection.request_mapping import prepare_short_video_scope
+from app.modules.product_selection.request_mapping import prepare_short_video_scope, freeze_short_video_request, validate_shop_category
 from app.modules.product_selection.run_contract import SelectionRunOriginal
 from app.modules.product_selection.run_service import (
     resolve_selection_request, selection_request_mapping_available,
@@ -83,13 +83,44 @@ def test_explicit_interval_is_required_and_must_be_exactly_seven_days(start, end
     assert caught.value.details == {"reason": "EXPLICIT_PERIOD_UNCONFIRMED"}
 
 
-@pytest.mark.parametrize("now", [
-    datetime(2026, 10, 10, 8, tzinfo=UTC),
-    datetime(2026, 10, 11, 8, tzinfo=UTC),
-    datetime(2027, 1, 1, 0, tzinfo=UTC),
+@pytest.mark.parametrize("now,primary,backup", [
+    (datetime(2026, 10, 10, 16, tzinfo=UTC), "2026/10/04 00:00:00", "2026/10/03 00:00:00"),
+    (datetime(2026, 10, 31, 16, tzinfo=UTC), "2026/10/25 00:00:00", "2026/10/24 00:00:00"),
+    (datetime(2026, 12, 31, 16, tzinfo=UTC), "2026/12/25 00:00:00", "2026/12/24 00:00:00"),
 ])
-def test_public_resolver_stays_closed_regardless_of_clock_or_capture_date(now):
-    assert selection_request_mapping_available() is False
-    with pytest.raises(SelectionRequestUnconfirmedError) as caught:
-        resolve_selection_request(_original(), now)
-    assert caught.value.details == {"reason": "PLATFORM_DATE_WINDOW_UNCONFIRMED"}
+def test_public_resolver_freezes_user_approved_shanghai_windows(now, primary, backup):
+    assert selection_request_mapping_available() is True
+    request = resolve_selection_request(_original(), now)
+    assert request.version == 2 and request.date_outcome is None
+    assert request.scope.begin_date == primary
+    assert request.date_plan.backup_scope.begin_date == backup
+    assert (request.scope.period_end - request.scope.period_begin).days == 6
+    assert request.page_numbers == (1,)
+
+
+def test_fingerprint_excludes_outcome_but_keeps_frozen_plan_and_legacy_bytes():
+    from app.modules.product_selection.run_contract import SelectionResolvedRequest, SelectionDateOutcome
+    from hashlib import sha256
+    import json
+    request = freeze_short_video_request(_original(rank_from=11, rank_to=20), datetime.now(UTC))
+    assert request.page_numbers == (1, 2)
+    assert request.model_copy(update={"date_outcome": SelectionDateOutcome(state="backup")}).fingerprint() == request.fingerprint()
+    legacy = SelectionResolvedRequest(original=request.original, scope=request.scope, page_numbers=(2,))
+    old = legacy.model_dump(mode="json", exclude={"date_plan", "date_outcome"})
+    assert legacy.fingerprint() == sha256(json.dumps(old, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    with pytest.raises(ValueError): request.actual_scope()
+    with pytest.raises(SelectionRequestUnconfirmedError):
+        freeze_short_video_request(_original(rank_to=21), datetime.now(UTC))
+
+
+def test_category_membership_is_current_shop_industry_and_ordered_path_not_leaf_only():
+    from app.modules.product_selection.schemas import SelectionCategoriesRead
+    original = _original()
+    tree = SelectionCategoriesRead(shop_id=original.shop_id, industry_id="7", industry_name="示例行业", selected_category_id=None,
+        nodes=[{"category_id": "1000009092", "name": "父级", "children": [{"category_id": "1000009142", "name": "子级", "children": []}]}])
+    validate_shop_category(original, tree)
+    validate_shop_category(original.model_copy(update={"category_ids": ("1000009092",)}), tree)
+    with pytest.raises(SelectionRequestUnconfirmedError):
+        validate_shop_category(original.model_copy(update={"shop_id": uuid4()}), tree)
+    with pytest.raises(SelectionRequestUnconfirmedError):
+        validate_shop_category(original.model_copy(update={"category_ids": ("1000009142", "1000009092")}), tree)

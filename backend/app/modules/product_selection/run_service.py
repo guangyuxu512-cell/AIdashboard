@@ -11,17 +11,17 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import AppError
 from app.modules.access.contracts import ActorContext
 from app.modules.product_selection.exceptions import (
-    SelectionExecutionDisabledError, SelectionRequestUnconfirmedError,
+    SelectionExecutionDisabledError,
     SelectionRunConflictError, SelectionRunNotFoundError,
     SelectionSubmissionBusyError,
 )
 from app.modules.product_selection.models import ProductSelectionRun
 from app.modules.product_selection.run_contract import (
     SelectionResolvedRequest, SelectionRunClaim, SelectionRunCreate,
-    SelectionRunOriginal, SelectionRunRead, SelectionRunReceipt,
+    SelectionRunOriginal, SelectionRunRead, SelectionRunReceipt, SelectionDateOutcome,
 )
 from app.modules.product_selection.run_repository import SelectionRunRepository
-from app.modules.product_selection.request_mapping import validate_preparable_short_video_choice
+from app.modules.product_selection.request_mapping import freeze_short_video_request, validate_shop_category
 from app.modules.product_selection.service import ProductSelectionFactService
 
 
@@ -29,16 +29,11 @@ RequestResolver = Callable[[SelectionRunOriginal, datetime], SelectionResolvedRe
 
 
 def selection_request_mapping_available() -> bool:
-    # Internal capability, not a config switch that could bypass page evidence.
-    return False
+    return True
 
 
 def resolve_selection_request(original: SelectionRunOriginal, now: datetime) -> SelectionResolvedRequest:
-    validate_preparable_short_video_choice(original)
-    # The fresh 10-11 query ends on 10-09. Its capture date is confirmed, but
-    # there is no confirmed source for the platform's available date window.
-    # Do not infer yesterday, a fixed lag, or a 09:00 switch from this sample.
-    raise SelectionRequestUnconfirmedError(details={"reason": "PLATFORM_DATE_WINDOW_UNCONFIRMED"})
+    return freeze_short_video_request(original, now)
 
 
 SAFE_ERROR_CODES = {
@@ -84,12 +79,13 @@ def safe_run_error(error: AppError) -> tuple[str, str, str | int | None]:
 
 
 class SelectionRunService:
-    def __init__(self, session: Session, *, settings: Settings | None = None, resolver: RequestResolver = resolve_selection_request):
+    def __init__(self, session: Session, *, settings: Settings | None = None, resolver: RequestResolver = resolve_selection_request, category_reader=None):
         self.session = session
         self.repository = SelectionRunRepository(session)
         self.facts = ProductSelectionFactService(session)
         self.settings = settings or get_settings()
         self.resolver = resolver
+        self.category_reader = category_reader
 
     def submit(self, actor: ActorContext, command: SelectionRunCreate, *, now: datetime | None = None) -> SelectionRunReceipt:
         at = now or datetime.now(UTC)
@@ -113,6 +109,19 @@ class SelectionRunService:
             resolved = self.resolver(original, at)
             if resolved.original != original:
                 raise ValueError("A resolver cannot replace original user conditions")
+            if resolved.version == 2:
+                # Release guard/read transactions before checking the current
+                # shop's real category tree. No platform I/O in a DB transaction.
+                self.session.rollback()
+                if self.category_reader is None:
+                    from app.core.database import get_session_factory
+                    from app.modules.product_selection.category_service import SelectionCategoryService
+                    tree = SelectionCategoryService(get_session_factory()).read(current, command.shop_id)
+                else:
+                    tree = self.category_reader(current, command.shop_id)
+                validate_shop_category(original, tree)
+                current = self.facts._current_actor(actor)
+                self.facts._execution_shop(current, command.shop_id)
             self.repository.recover_expired(at)
             for _ in range(3):
                 try:
@@ -227,6 +236,9 @@ class SelectionRunService:
             # write any facts. Do not require a now-revoked actor to end a run.
             row = self.repository.fence(claim, at)
             if error is not None:
+                request = SelectionResolvedRequest.model_validate(row.request_conditions)
+                if request.date_outcome is not None and request.date_outcome.state == "fallback_checking":
+                    row.request_conditions = request.model_copy(update={"date_outcome": SelectionDateOutcome(state="fallback_failed")}).model_dump(mode="json")
                 row.error_code, row.error_stage, row.platform_business_code = safe_run_error(error)
                 row.status = "partial" if row.saved_count else "failed"
             else:
@@ -238,6 +250,27 @@ class SelectionRunService:
             row.stage, row.finished_at, row.updated_at = "completed", at, at
             row.lease_id, row.lease_expires_at = None, None
             self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def choose_window(self, claim: SelectionRunClaim, state: str, *, now: datetime | None = None) -> SelectionResolvedRequest:
+        """Lease-fenced monotonic outcome; never change dates after persistence."""
+        at = now or datetime.now(UTC)
+        try:
+            row = self.repository.fence(claim, at)
+            request = SelectionResolvedRequest.model_validate(row.request_conditions)
+            previous = request.date_outcome.state if request.date_outcome is not None else None
+            allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "both_empty"}}
+            if (request.version != 2 or state not in allowed.get(previous, set())
+                or row.saved_count != 0 or row.result_count is not None):
+                from app.modules.product_selection.exceptions import SelectionRunLeaseLostError
+                raise SelectionRunLeaseLostError()
+            request = request.model_copy(update={"date_outcome": SelectionDateOutcome(state=state)})
+            row.request_conditions = request.model_dump(mode="json")
+            row.updated_at = at
+            self.session.commit()
+            return request
         except Exception:
             self.session.rollback()
             raise

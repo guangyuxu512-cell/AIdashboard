@@ -20,6 +20,18 @@ export interface SelectionSourceDto {
     date_type: string
     activity_id: string
   }
+  date_selection?: {
+    policy: 'shanghai_7d_once'
+    accepted_local_date: string
+    primary_begin: string
+    primary_end: string
+    backup_begin: string
+    backup_end: string
+    actual_window: 'primary' | 'backup'
+    fallback_reason: 'primary_success_empty' | null
+    rank_from: number
+    rank_to: number
+  } | null
 }
 
 export interface SelectionMetricDto {
@@ -90,6 +102,44 @@ export interface SelectionReadParams {
 }
 
 const basePath = '/api/v1/product-selection'
+
+export interface SelectionCapabilitiesDto {
+  execution_enabled: boolean
+  manual_execution_available: boolean
+  unavailable_reason: 'EXECUTION_DISABLED' | null
+}
+export interface SelectionRunCreateDto {
+  submission_key: string
+  shop_id: string
+  channel: 'short-video'
+  period: '7d'
+  industry_id: string
+  category_ids: string[]
+  brand: 'all'
+  price_mode: 'all'
+  first_listed_only: false
+  rank_from: number
+  rank_to: number
+}
+export interface SelectionRunReceiptDto {
+  receipt_id: string
+  submission_key: string
+  execution_run_id: string
+  reused: boolean
+  execution: SelectionExecutionSummary
+}
+export async function readSelectionCapabilities(): Promise<SelectionCapabilitiesDto> {
+  return (
+    await httpClient.get<SelectionCapabilitiesDto>(`${basePath}/capabilities`)
+  ).data
+}
+export async function submitSelectionRun(
+  command: SelectionRunCreateDto,
+): Promise<SelectionRunReceiptDto> {
+  return (
+    await httpClient.post<SelectionRunReceiptDto>(`${basePath}/runs`, command)
+  ).data
+}
 
 export interface SelectionCategoryDto {
   category_id: string

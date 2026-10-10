@@ -11,22 +11,33 @@ import {
   type SelectionCategoryDto,
   type SelectionObservationDto,
   type SelectionMetricDto,
+  readSelectionCapabilities,
+  submitSelectionRun,
 } from './selection-read-api'
 
 function categoryNodes(
   nodes: SelectionCategoryDto[],
   ancestors: string[] = [],
+  industryId: string | null = null,
 ): CategoryNode[] {
-  return nodes.map((node) => {
-    const path = [...ancestors, node.category_id]
-    return {
-      // Qualified display identities keep repeated '0/全部' nodes distinct.
-      // They are not a frozen category_id/industry_id platform mapping.
-      id: path.join('/'),
-      name: node.name,
-      children: categoryNodes(node.children, path),
-    }
-  })
+  return nodes
+    .filter(
+      (node) =>
+        /^[0-9]+$/.test(node.category_id) && !/^0+$/.test(node.category_id),
+    )
+    .map((node) => {
+      const path = [...ancestors, node.category_id]
+      return {
+        // Qualified display identities keep repeated '0/全部' nodes distinct.
+        // They are not a frozen category_id/industry_id platform mapping.
+        id: path.join('/'),
+        name: node.name,
+        children: categoryNodes(node.children, path, industryId),
+        requestScope: industryId
+          ? { industryId, categoryIds: path }
+          : undefined,
+      }
+    })
 }
 
 function range(metric: SelectionMetricDto): string | null {
@@ -71,15 +82,18 @@ export function mapSelectionObservation(
     source: '罗盘商品榜',
     sourceContext: {
       leaderboardId,
-      leaderboardName: '罗盘商品榜（渠道映射待确认）',
+      leaderboardName: source.date_selection
+        ? '罗盘短视频商品榜'
+        : '罗盘商品榜（渠道映射待确认）',
       scopeKey: dto.source_scope_hash,
       category: source.business.category_id,
       statisticalPeriod: `${dto.period_begin}～${dto.period_end}`,
       // date_type is not interpreted as a shortcut label without evidence.
-      periodLabel: '',
-      rankFrom: null,
-      rankTo: null,
+      periodLabel: source.date_selection ? '近7天' : '',
+      rankFrom: source.date_selection?.rank_from ?? null,
+      rankTo: source.date_selection?.rank_to ?? null,
       checkedAt: dto.checked_at,
+      dateFallback: source.date_selection?.actual_window === 'backup',
     },
     rank: dto.rank,
     previousRank:
@@ -107,16 +121,90 @@ export function mapSelectionObservation(
 export function createSelectionRealService(
   unavailable: () => Promise<never>,
 ): SelectionService {
+  const shopCategories = new Map<string, CategoryNode[]>()
+  function findScope(
+    nodes: CategoryNode[],
+    id: string,
+  ): CategoryNode['requestScope'] {
+    for (const node of nodes) {
+      if (node.id === id) return node.requestScope
+      const result = findScope(node.children ?? [], id)
+      if (result) return result
+    }
+  }
   return {
     available: false,
     candidatesAvailable: true,
     latestRun: readLatestSelectionRun,
+    manual: {
+      capabilities: readSelectionCapabilities,
+      async submit(input, submissionKey) {
+        const choice = input.channels.shortVideo.conditions
+        // A Query cache can outlive this service instance. Re-establish its
+        // actual tree rather than guessing an industry from a display ID.
+        if (input.shopId && !shopCategories.has(input.shopId)) {
+          const tree = await readSelectionCategories(input.shopId)
+          if (tree.shop_id !== input.shopId)
+            throw new Error('类目响应与当前请求店铺不一致')
+          shopCategories.set(
+            input.shopId,
+            categoryNodes(tree.nodes, [], tree.industry_id),
+          )
+        }
+        const scope =
+          input.shopId && choice.categoryId
+            ? findScope(
+                shopCategories.get(input.shopId) ?? [],
+                choice.categoryId,
+              )
+            : undefined
+        if (!input.shopId || !scope)
+          throw new Error('请选择当前店铺已加载的真实类目')
+        if (
+          !input.channels.shortVideo.selected ||
+          input.channels.baiying.selected ||
+          choice.period !== '7d' ||
+          choice.brand !== 'all' ||
+          choice.priceMode !== 'all' ||
+          choice.firstListedOnly ||
+          input.scheduled ||
+          choice.priceAbove !== null ||
+          choice.priceBelow !== null
+        )
+          throw new Error('当前仅支持短视频近7天、不限品牌与价格的手动获取')
+        if (
+          choice.rankFrom === null ||
+          choice.rankTo === null ||
+          !Number.isInteger(choice.rankFrom) ||
+          !Number.isInteger(choice.rankTo) ||
+          choice.rankFrom < 1 ||
+          choice.rankTo > 20 ||
+          choice.rankFrom > choice.rankTo
+        )
+          throw new Error('当前支持第1–20名，请填写完整排名范围')
+        return submitSelectionRun({
+          submission_key: submissionKey,
+          shop_id: input.shopId,
+          channel: 'short-video',
+          period: '7d',
+          industry_id: scope.industryId,
+          category_ids: scope.categoryIds,
+          brand: 'all',
+          price_mode: 'all',
+          first_listed_only: false,
+          rank_from: choice.rankFrom,
+          rank_to: choice.rankTo,
+        })
+      },
+    },
     previewPeriod: unavailable,
     async categories(shopId) {
       const tree = await readSelectionCategories(shopId)
       if (tree.shop_id !== shopId)
         throw new Error('类目响应与当前请求店铺不一致')
-      return categoryNodes(tree.nodes)
+      const nodes = categoryNodes(tree.nodes, [], tree.industry_id)
+      shopCategories.set(shopId, nodes)
+      return nodes
     },
     strategies: unavailable,
     saveStrategy: unavailable,

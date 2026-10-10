@@ -43,6 +43,7 @@ const props = defineProps<{
   strategy: SelectionStrategy | null
   service: SelectionService
   contextKey: string
+  manualOnly?: boolean
 }>()
 const emit = defineEmits<{
   'update:show': [show: boolean]
@@ -52,6 +53,7 @@ const emit = defineEmits<{
 const message = useMessage()
 const busy = ref(false)
 const expanded = ref<string[]>(['short-video'])
+let submission: { input: string; key: string } | null = null
 const { values, errors, setFieldValue, resetForm, setErrors } =
   useForm<StrategyInput>({ initialValues: emptyStrategy() })
 const conditions = computed(() => values.channels.shortVideo.conditions)
@@ -61,7 +63,9 @@ const periodPreview = useQuery({
     props.contextKey,
     conditions.value.period,
   ]),
-  enabled: computed(() => props.show && props.service.available),
+  enabled: computed(
+    () => props.show && props.service.available && !props.manualOnly,
+  ),
   queryFn: () => props.service.previewPeriod(conditions.value.period),
   retry: false,
 })
@@ -82,11 +86,15 @@ watch(
   (show) => {
     if (!show) return
     // JSON-shaped draft: detach nested Vue/Query objects before editing or passing to service.
-    resetForm({
-      values: props.strategy
-        ? (JSON.parse(JSON.stringify(props.strategy)) as StrategyInput)
-        : emptyStrategy(),
-    })
+    const draft = props.strategy
+      ? (JSON.parse(JSON.stringify(props.strategy)) as StrategyInput)
+      : emptyStrategy()
+    if (props.manualOnly) {
+      draft.channels.shortVideo.conditions.period = '7d'
+      draft.channels.shortVideo.conditions.rankFrom = 1
+      draft.channels.shortVideo.conditions.rankTo = 10
+    }
+    resetForm({ values: draft })
     expanded.value = ['short-video']
   },
   { immediate: true },
@@ -118,18 +126,30 @@ const dailyTime = computed({
       value === null ? '' : dayjs(value).format('HH:mm'),
     ),
 })
-const periodOptions = [
-  { value: 'realtime', label: '实时' },
-  { value: '1d', label: '近1天' },
-  { value: '7d', label: '近7天' },
-  { value: '30d', label: '近30天' },
-] satisfies AppOption[]
+const periodOptions = computed(
+  () =>
+    [
+      { value: 'realtime', label: '实时' },
+      { value: '1d', label: '近1天' },
+      { value: '7d', label: '近7天' },
+      { value: '30d', label: '近30天' },
+    ].map((option) => ({
+      ...option,
+      disabled: !!props.manualOnly && option.value !== '7d',
+    })) satisfies AppOption[],
+)
 function selectPeriod(value: AppOptionValue) {
-  if (!periodOptions.some((option) => option.value === value)) return
+  if (
+    !periodOptions.value.some(
+      (option) => option.value === value && !option.disabled,
+    )
+  )
+    return
   setCondition('period', value as ShortVideoConditions['period'])
 }
 async function submit(saving: boolean) {
   if (busy.value) return
+  if (saving && props.manualOnly) return
   const validation = validateStrategy(values, saving)
   setErrors(validation)
   if (Object.keys(validation).length) {
@@ -152,7 +172,20 @@ async function submit(saving: boolean) {
   busy.value = true
   try {
     const draft = JSON.parse(JSON.stringify(values)) as StrategyInput
-    if (saving) {
+    if (props.manualOnly) {
+      if (!props.service.manual) throw new Error('手动获取暂不可用')
+      const encoded = JSON.stringify(draft)
+      if (submission?.input !== encoded)
+        submission = { input: encoded, key: crypto.randomUUID() }
+      // Keep the key on an uncertain HTTP failure; do not create another run.
+      const receipt = await props.service.manual.submit(draft, submission.key)
+      message.info(
+        receipt.reused ? '已复用正在执行的任务' : '已提交，请查看获取进度',
+      )
+      submission = null
+      emit('retrieved')
+      emit('update:show', false)
+    } else if (saving) {
       await props.service.saveStrategy(draft, props.strategy?.id)
       message.success('演示策略已保存')
       emit('saved')
@@ -174,7 +207,9 @@ async function submit(saving: boolean) {
 <template>
   <AppDrawer
     :show="show"
-    :title="strategy ? '编辑选品策略' : '新建选品策略'"
+    :title="
+      manualOnly ? '手动选品' : strategy ? '编辑选品策略' : '新建选品策略'
+    "
     size="lg"
     @update:show="emit('update:show', $event)"
   >
@@ -196,6 +231,7 @@ async function submit(saving: boolean) {
           />
         </NFormItem>
         <NFormItem
+          v-if="!manualOnly"
           label="达人账号"
           :validation-status="errors.creatorId ? 'error' : undefined"
           :feedback="errors.creatorId"
@@ -215,6 +251,7 @@ async function submit(saving: boolean) {
         </NFormItem>
       </div>
       <NFormItem
+        v-if="!manualOnly"
         label="策略名称"
         :validation-status="errors.name ? 'error' : undefined"
         :feedback="errors.name"
@@ -242,6 +279,7 @@ async function submit(saving: boolean) {
               <span @click.stop
                 ><AppCheckbox
                   :model-value="values.channels.shortVideo.selected"
+                  :disabled="manualOnly"
                   aria-label="选择短视频榜单"
                   @update:model-value="
                     setFieldValue('channels.shortVideo.selected', $event)
@@ -257,6 +295,7 @@ async function submit(saving: boolean) {
                   <CategorySelector
                     :model-value="conditions.categoryId"
                     :nodes="categories.data.value ?? []"
+                    :real="manualOnly"
                     :disabled="
                       !values.shopId || !values.channels.shortVideo.selected
                     "
@@ -290,7 +329,10 @@ async function submit(saving: boolean) {
                             @update:model-value="selectPeriod"
                         /></template>
                         {{
-                          periodPreview.data.value?.rangeLabel ?? '区间暂不可用'
+                          manualOnly
+                            ? '当前仅支持近7天；服务器按上海日期冻结截至昨日的7天，首查合法为空时最多回退一天，实际区间显示在结果中'
+                            : (periodPreview.data.value?.rangeLabel ??
+                              '区间暂不可用')
                         }}
                       </NTooltip>
                       <ErrorState
@@ -308,8 +350,16 @@ async function submit(saving: boolean) {
                       :model-value="conditions.brand"
                       :options="[
                         { label: '不限', value: 'all' },
-                        { label: '知名品牌', value: 'known' },
-                        { label: '非知名品牌', value: 'unknown' },
+                        {
+                          label: '知名品牌',
+                          value: 'known',
+                          disabled: manualOnly,
+                        },
+                        {
+                          label: '非知名品牌',
+                          value: 'unknown',
+                          disabled: manualOnly,
+                        },
                       ]"
                       :disabled="!values.channels.shortVideo.selected"
                       @update:model-value="
@@ -327,7 +377,7 @@ async function submit(saving: boolean) {
                   :model-value="conditions.priceMode"
                   :options="[
                     { label: '不限', value: 'all' },
-                    { label: '自定义', value: 'custom' },
+                    { label: '自定义', value: 'custom', disabled: manualOnly },
                   ]"
                   :disabled="!values.channels.shortVideo.selected"
                   @update:model-value="
@@ -374,7 +424,7 @@ async function submit(saving: boolean) {
               <NFormItem label="首次上榜"
                 ><AppSwitch
                   :model-value="conditions.firstListedOnly"
-                  :disabled="!values.channels.shortVideo.selected"
+                  :disabled="manualOnly || !values.channels.shortVideo.selected"
                   @update:model-value="setCondition('firstListedOnly', $event)"
               /></NFormItem>
               <div class="strategy-pair">
@@ -388,6 +438,7 @@ async function submit(saving: boolean) {
                   <AppNumberInput
                     :model-value="conditions.rankFrom"
                     :min="1"
+                    :max="manualOnly ? 20 : undefined"
                     :disabled="!values.channels.shortVideo.selected"
                     @update:model-value="setCondition('rankFrom', $event)"
                   />
@@ -402,6 +453,7 @@ async function submit(saving: boolean) {
                   <AppNumberInput
                     :model-value="conditions.rankTo"
                     :min="1"
+                    :max="manualOnly ? 20 : undefined"
                     :disabled="!values.channels.shortVideo.selected"
                     @update:model-value="setCondition('rankTo', $event)"
                   />
@@ -414,6 +466,7 @@ async function submit(saving: boolean) {
               <span @click.stop
                 ><AppCheckbox
                   :model-value="values.channels.baiying.selected"
+                  :disabled="manualOnly"
                   aria-label="选择巨量百应"
                   @update:model-value="
                     setFieldValue('channels.baiying.selected', $event)
@@ -423,7 +476,7 @@ async function submit(saving: boolean) {
           </NCollapseItem>
         </NCollapse>
       </NFormItem>
-      <NFormItem label="定时执行"
+      <NFormItem v-if="!manualOnly" label="定时执行"
         ><AppSwitch
           :model-value="values.scheduled"
           @update:model-value="setFieldValue('scheduled', $event)"
@@ -456,7 +509,7 @@ async function submit(saving: boolean) {
           />
         </NFormItem>
       </div>
-      <NFormItem label="策略状态"
+      <NFormItem v-if="!manualOnly" label="策略状态"
         ><AppSwitch
           :model-value="values.enabled"
           @update:model-value="setFieldValue('enabled', $event)"
@@ -470,7 +523,11 @@ async function submit(saving: boolean) {
         <AppButton tone="primary" :loading="busy" @click="submit(false)"
           >立即获取</AppButton
         >
-        <AppButton tone="primary" :loading="busy" @click="submit(true)"
+        <AppButton
+          v-if="!manualOnly"
+          tone="primary"
+          :loading="busy"
+          @click="submit(true)"
           >保存策略</AppButton
         >
       </div></template

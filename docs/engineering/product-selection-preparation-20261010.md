@@ -127,7 +127,39 @@ Real候选列表、详情及运行进度绑定已登记只读API，刷新只读�
 
 唯一Integration Electron已有Mock视觉/交互记录保留，最终尺寸人工确认尚缺，截图工具超时不能补写PASS。本候选真实请求→入库→API→Real页面、重复获取及真实失败/空结果证据尚未完成。阶段候选交ca97做技术审查及最小证据协调；不能据此合入业务dev或发布。
 
-## 2026年10月11日映射准备与日期冻结
+## 2026年10月11日一次回退契约
+
+用户已批准近7天首选截至昨日/合法成功空榜后提前一天且最多一次。ca97接受最小契约，取消此前日期来源字段的取证前置；不再索取Cookie、cURL或刷新时刻。接续58d4a8及原资源，0042/0043字节不改，现有request_conditions JSON升级v2计划/独立outcome并兼容v1读取和原fingerprint。
+
+首次接受按上海D冻结[D−7,D−1]/[D−8,D−2]，提交回执重放先于类目HTTP和日期重算。先检查未经排名过滤的真实第1页；合法空必须与total=0一致。认证、签名、HTTP/网络、结构或原因不明业务拒绝不回退；621000704不解释为未就绪。选窗后在租约fence内保存outcome，再写实际scope的来源/日期/hash，后页和basic_info失败不换窗。每窗最多2页10项：主有数据≤2次榜单请求，主空/备有数据且需第2页≤3次，双空2次。
+
+Real手动入口复用原右侧表单，只开放当前授权店铺实际树的非0有序路径、短视频7d、默认品牌/价格和第1–20名。未确认枚举明确不可用；策略保存、自动监控、手机及百应不随本次开放。刷新/运行/候选读取只查DB，实际备用窗口标“已回退一天”；失败、合法空、partial及中断分开。
+
+真实验收仍由ca97在唯一5180/8100 Integration合法Session和隔离Signer下完成。不复制生产Cookie，不用旧请求成功或合成PG/浏览器拦截结果冒充新候选闭环。Owner不合并dev/main、不部署生产；Gate1检查及新的精确Handoff完成后交ca97技术/真实验收，最终Electron尺寸确认保留为待验。
+
+### 一次回退实现的 Owner 验证
+
+实现起点为 `58d4a8e35fd258a3756f4aadad2e0d0fe0b5614b`，已包含 Green `6844b3c226010abc2dafc0677407084a1958dea8`、819ca33请求修复和原前端验收成果。远端核对仍为该 Green；未重置、重复应用补丁或借用其他库。本轮只修改选品领域、Real绑定、定向测试和相关契约文档，不改Electron、经营采集或全局主题。
+
+| 工作目录 | 实际命令 | 结果与证据边界 |
+| --- | --- | --- |
+| backend | `.\.venv\Scripts\python.exe -m pytest --tb=short` | 592 passed，138 integration deselected；并非全量PostgreSQL验收 |
+| backend | `.\.venv\Scripts\python.exe -m pytest -m integration tests/integration/test_postgresql_selection_windows.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_categories.py tests/integration/test_postgresql_product_selection.py tests/integration/test_postgresql_product_selection_migration.py --tb=short` | 63 passed；真实隔离Feature PostgreSQL，平台全部为合成响应 |
+| backend | `.\.venv\Scripts\python.exe -m compileall -q app migrations` | PASS |
+| frontend | `pnpm run lint`、`pnpm run typecheck`、`pnpm run test`、`pnpm run build` | PASS；136文件575单测通过，build包含typecheck和Real production构建 |
+| frontend | `$env:PLAYWRIGHT_API_MODE='mock'; $env:PLAYWRIGHT_FRONTEND_PORT='4176'; pnpm exec playwright test e2e/product-selection.spec.ts e2e/product-center.spec.ts --project=mock --config ../.codex/selection-windows-v2/playwright.mock.config.ts --workers=1 --output ../docs/_local/product-selection-windows-v2/mock-regression` | 13 passed；包括既有跨AI导航、四主题/尺寸/列表/详情/表单回归，仍是浏览器Mock |
+| frontend | `$env:PLAYWRIGHT_FRONTEND_PORT='4176'; pnpm exec playwright test --config ../.codex/selection-windows-v2/playwright.real.config.ts --output ../docs/_local/product-selection-windows-v2/real-intercepted --workers=1` | 2 passed；Real正式契约全拦截，手动提交/备用日期/刷新不重提、禁用与权限无Mock回退；不代表平台或数据库页面闭环 |
+| 仓库 | `git diff --check`、迁移/忽略路径/构建产物核验 | PASS；0042/0043无diff，Real构建无选品Mock产物，截图/临时配置不提交 |
+
+本机当前Playwright期望的浏览器版本未安装，首次启动未执行用例；仅在被忽略的测试wrapper中使用本机已安装的headless shell，不修改公共配置或启动额外Electron。现有Starlette/httpx、Home/jsdom XHR和Vite大chunk警告如实保留，未为此改依赖。
+
+定向覆盖：原始第1页有商品不回退、合法双空、备用有商品、备用失败、业务码字符串621000704、认证/签名/HTTP/结构错误不回退、后页失败和basic_info部分失败不换窗、跨月/年/上海跨日重放、不同Session并发提交、租约失效与迟到保护、实际来源/hash/日期、选窗后禁止写错窗口，以及查询刷新零平台请求。
+
+测试结束只读核验Feature库为 `control_center_feat_product_selection`、单一 `20261010_0043`、47表；候选/观察/run/ShopSession均0，执行开关false，无夹具残留或真实平台调用。Owner平台请求次数0；已有历史成功不补写为本候选证据。ca97确认Integration现有合法HuanYu Session v1记录及原运行资源，但当前有效性和本候选实际闭环仍须受控验证。
+
+Owner代码/测试/文档技术检查通过，正式候选提交后交ca97继续审查与必要真实请求；完整Feature仍为PARTIAL，真实请求→run→事实→API→Real以及唯一Electron和最终尺寸确认未验收。旧58d4a8应用不能读取v2运行JSON：回退需使用v2兼容应用或先停止新执行并保留数据库，不以降级0039–0043、清库或删除run规避兼容性。
+
+## 2026年10月11日映射准备与日期冻结 历史阶段
 
 Owner沿用原Feature，从已审查`7b84888984b8eebaf2937eb4d1f9271dc39098aa`正常merge工程Green `6844b3c226010abc2dafc0677407084a1958dea8`，本轮修改前HEAD为`18914767c627d4f8fea5f816f8b5ec2f8c917f7c`。原前端、两表、0043运行记录、资源和Slot保留；本轮不改模型、迁移或前端，不实施平台调用。0042原Git对象不变，0043哈希仍与已应用版本一致。
 

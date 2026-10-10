@@ -22,6 +22,7 @@ const ShopStub = defineComponent({
 function render(
   service: SelectionService,
   strategy: SelectionStrategy | null = null,
+  manualOnly = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -38,6 +39,7 @@ function render(
               strategy,
               service,
               contextKey: 'actor:team',
+              manualOnly,
             }),
         },
       ),
@@ -55,6 +57,49 @@ function render(
 }
 
 describe('strategy shop category loading', () => {
+  it('Real manual uses a stable submission key after uncertain failure, never saves, and disables unsupported periods', async () => {
+    const service = createSelectionMockHandlers()
+    const submit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('提交响应暂未确认'))
+      .mockResolvedValueOnce({ reused: true })
+    service.manual = { capabilities: vi.fn(), submit }
+    const save = vi.spyOn(service, 'saveStrategy'),
+      demo = vi.spyOn(service, 'retrieve')
+    const { wrapper, queryClient } = render(service, null, true)
+    wrapper
+      .findComponent(ShopStub)
+      .vm.$emit('update:modelValue', (await service.strategies())[0]!.shopId)
+    await flushPromises()
+    wrapper
+      .findComponent(CategorySelector)
+      .vm.$emit('update:modelValue', 'actual-category')
+    await flushPromises()
+    const radio = wrapper.findAllComponents(AppRadio)[0]!
+    expect(radio.props('modelValue')).toBe('7d')
+    expect(
+      radio
+        .props('options')
+        .filter((item) => !item.disabled),
+    ).toEqual([{ value: '7d', label: '近7天', disabled: false }])
+    expect(wrapper.text()).not.toContain('保存策略')
+    const get = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '立即获取')!
+    await get.trigger('click')
+    await flushPromises()
+    await get.trigger('click')
+    await flushPromises()
+    expect(submit).toHaveBeenCalledTimes(2)
+    expect(submit.mock.calls[0]![1]).toBe(submit.mock.calls[1]![1])
+    expect(save).not.toHaveBeenCalled()
+    expect(demo).not.toHaveBeenCalled()
+    expect(
+      wrapper.findComponent(StrategyDrawer).emitted('retrieved'),
+    ).toHaveLength(1)
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('retrieves an existing strategy by ID and signals a result refresh without saving its edited draft', async () => {
     const service = createSelectionMockHandlers()
     const initial = (await service.strategies())[0]!

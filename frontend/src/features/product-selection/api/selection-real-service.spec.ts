@@ -9,9 +9,9 @@ import type {
   SelectionObservationDto,
   SelectionMetricDto,
 } from './selection-read-api'
-import type { CandidateQuery } from '../model/contracts'
+import { emptyStrategy, type CandidateQuery } from '../model/contracts'
 
-vi.mock('@/shared/api', () => ({ httpClient: { get: vi.fn() } }))
+vi.mock('@/shared/api', () => ({ httpClient: { get: vi.fn(), post: vi.fn() } }))
 
 function observation(): SelectionObservationDto {
   const unavailable: SelectionMetricDto = {
@@ -149,7 +149,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     )
     expect(httpClient.get).toHaveBeenCalledTimes(2)
   })
-  it('loads authorized real categories and keeps repeated all-node identities local to their paths', async () => {
+  it('loads shop-bound real category paths and excludes unconfirmed all nodes', async () => {
     const real = await createSelectionService('real')
     vi.mocked(httpClient.get).mockResolvedValueOnce({
       data: {
@@ -165,8 +165,12 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       },
     })
     const nodes = await real.categories('authorized-own-shop')
-    expect(nodes[0]?.children?.[0]?.id).toBe('1001/0')
-    expect(nodes[1]?.children?.[0]?.id).toBe('1002/0')
+    expect(nodes[0]?.children).toEqual([])
+    expect(nodes[1]?.children).toEqual([])
+    expect(nodes[0]?.requestScope).toEqual({
+      industryId: '7',
+      categoryIds: ['1001'],
+    })
     expect(httpClient.get).toHaveBeenCalledExactlyOnceWith(
       '/api/v1/product-selection/categories',
       { params: { shop_id: 'authorized-own-shop' } },
@@ -177,6 +181,86 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     await expect(real.categories('authorized-own-shop')).rejects.toThrow(
       '与当前请求店铺不一致',
     )
+  })
+  it('submits only actual current-shop supported conditions, without saving or sending preview dates', async () => {
+    const real = await createSelectionService('real')
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      data: {
+        shop_id: 'shop-a',
+        industry_id: '7',
+        nodes: [
+          {
+            category_id: '1001',
+            name: '真实父级',
+            children: [{ category_id: '1002', name: '子级', children: [] }],
+          },
+        ],
+      },
+    })
+    await real.categories('shop-a')
+    const input = emptyStrategy()
+    input.shopId = 'shop-a'
+    Object.assign(input.channels.shortVideo.conditions, {
+      categoryId: '1001/1002',
+      period: '7d',
+      rankFrom: 1,
+      rankTo: 20,
+    })
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      data: { receipt_id: 'run-a', reused: false },
+    })
+    await real.manual!.submit(input, 'submission-key')
+    expect(httpClient.post).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/product-selection/runs',
+      {
+        submission_key: 'submission-key',
+        shop_id: 'shop-a',
+        channel: 'short-video',
+        period: '7d',
+        industry_id: '7',
+        category_ids: ['1001', '1002'],
+        brand: 'all',
+        price_mode: 'all',
+        first_listed_only: false,
+        rank_from: 1,
+        rank_to: 20,
+      },
+    )
+    input.channels.shortVideo.conditions.period = 'realtime'
+    await expect(real.manual!.submit(input, 'key-2')).rejects.toThrow(
+      '当前仅支持',
+    )
+    input.channels.shortVideo.conditions.period = '7d'
+    input.channels.shortVideo.conditions.categoryId = '1001/*'
+    await expect(real.manual!.submit(input, 'key-3')).rejects.toThrow(
+      '真实类目',
+    )
+    expect(httpClient.post).toHaveBeenCalledTimes(1)
+    await expect(real.saveStrategy(input)).rejects.toThrow(
+      SELECTION_UNAVAILABLE,
+    )
+  })
+  it('maps frozen actual fallback dates without inventing units or current timestamps', () => {
+    const dto = observation()
+    dto.source_context.date_selection = {
+      policy: 'shanghai_7d_once',
+      accepted_local_date: '2026-10-10',
+      primary_begin: '2026-10-03',
+      primary_end: '2026-10-09',
+      backup_begin: '2026-10-02',
+      backup_end: '2026-10-08',
+      actual_window: 'backup',
+      fallback_reason: 'primary_success_empty',
+      rank_from: 1,
+      rank_to: 20,
+    }
+    const row = mapSelectionObservation(dto)
+    expect(row.sourceContext).toMatchObject({
+      periodLabel: '近7天',
+      dateFallback: true,
+      statisticalPeriod: '2026-10-02～2026-10-08',
+    })
+    expect(row.negativeReviewRateRaw?.value).toBe('0.00205018686599039')
   })
   it('propagates failures, keeps legitimate empty results distinct, rejects unknown sorting before HTTP', async () => {
     const real = await createSelectionService('real')

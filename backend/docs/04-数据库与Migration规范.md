@@ -285,6 +285,8 @@ introspection 核对（2026-10-10）：共 **47** 张表，含 Alembic 元数据
 
 ### 罗盘手动选品事实与运行（0042 + 0043 Feature）
 
+2026-10-11有限日期回退复用0043的JSONB，不改变表结构/Migration Head。request_conditions v2包含原始条件、上海接受日、冻结主备scope和独立date_outcome；唯一活动fingerprint排除可变outcome，v1原哈希保持兼容。observation的source_context.date_selection附安全计划/实际窗口，source_scope_hash仍只由实际请求scope生成。outcome与事实更新均经过现有租约fence和数据库时钟；不同窗口不混写。含v2记录后不可回退到只识别v1的旧应用，应用恢复保留Schema/数据并使用兼容版本，不能清库或改写已应用0042/0043。
+
 | 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
 | --- | --- | --- |
 | `product_selection_candidates` | Team-owned源商品身份，PK `candidate_id`；FK `team_id → teams`、`created_by_user_id → users`，全部RESTRICT。`platform_product_id` 为字符串，唯一 `(team_id,platform,platform_product_id)`；Team/稳定ID查询索引。 | 当前仅douyin候选，不是正式商品库。重复获取复用身份；Shop会话不复制，不同Team候选归属不混合。保留期待定，不自动清理。 |

@@ -1,7 +1,7 @@
 """Business-only manual run contract; external parameter mappings are separate."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from hashlib import sha256
 import json
 from typing import Annotated, Literal
@@ -60,29 +60,109 @@ class SelectionRunCreate(SelectionRunOriginal):
         )
 
 
+class SelectionDatePlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    accepted_local_date: date
+    backup_scope: SelectionSourceScope
+
+
+class SelectionDateOutcome(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    state: Literal["primary", "fallback_checking", "backup", "both_empty", "fallback_failed"]
+
+
+class SelectionDateProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    policy: Literal["shanghai_7d_once"] = "shanghai_7d_once"
+    accepted_local_date: date
+    primary_begin: date
+    primary_end: date
+    backup_begin: date
+    backup_end: date
+    actual_window: Literal["primary", "backup"]
+    fallback_reason: Literal["primary_success_empty"] | None
+    rank_from: int
+    rank_to: int
+
+
 class SelectionResolvedRequest(BaseModel):
     """A server-frozen request, never accepted directly from the public POST."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
     page_numbers: tuple[Annotated[int, Field(ge=1, le=20)], ...] = Field(min_length=1, max_length=2)
     page_size: Literal[10] = 10
+    date_plan: SelectionDatePlan | None = None
+    date_outcome: SelectionDateOutcome | None = None
 
     @model_validator(mode="after")
     def validate_pages(self) -> "SelectionResolvedRequest":
         if len(set(self.page_numbers)) != len(self.page_numbers):
             raise ValueError("Repeated pages are not execution instructions")
+        if self.version == 1:
+            if self.date_plan is not None or self.date_outcome is not None:
+                raise ValueError("Legacy executions have no fallback policy")
+        else:
+            if self.date_plan is None:
+                raise ValueError("A fallback execution must freeze both windows")
+            day = self.date_plan.accepted_local_date
+            backup = self.date_plan.backup_scope
+            if (
+                self.original.channel != "short-video" or self.original.period != "7d"
+                or self.original.rank_to > 20
+                or self.page_numbers != ((1, 2) if self.original.rank_to > 10 else (1,))
+                or self.scope.period_begin != day - timedelta(days=7)
+                or self.scope.period_end != day - timedelta(days=1)
+                or backup.period_begin != day - timedelta(days=8)
+                or backup.period_end != day - timedelta(days=2)
+                or self.scope.model_dump(exclude={"begin_date", "end_date"})
+                != backup.model_dump(exclude={"begin_date", "end_date"})
+            ):
+                raise ValueError("The bounded plan must match the accepted Shanghai date")
         return self
 
     def fingerprint(self) -> str:
+        # Mutable execution outcome never changes the active-request key.
+        # Preserve the exact v1 fingerprint for already-applied 0043 records.
+        excluded = {"date_outcome"}
+        if self.version == 1:
+            excluded.add("date_plan")
         return sha256(json.dumps(
-            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"),
+            self.model_dump(mode="json", exclude=excluded), sort_keys=True, separators=(",", ":"),
             ensure_ascii=False,
         ).encode()).hexdigest()
+
+    def actual_scope(self) -> SelectionSourceScope:
+        if self.version == 1:
+            return self.scope
+        if self.date_outcome is None or self.date_outcome.state not in {"primary", "backup", "both_empty"}:
+            raise ValueError("Choose the actual window before writing facts")
+        if self.date_outcome.state == "backup":
+            assert self.date_plan is not None
+            return self.date_plan.backup_scope
+        return self.scope
+
+    def provenance(self) -> SelectionDateProvenance | None:
+        if self.version == 1:
+            return None
+        self.actual_scope()
+        assert self.date_plan is not None and self.date_outcome is not None
+        return SelectionDateProvenance(
+            accepted_local_date=self.date_plan.accepted_local_date,
+            primary_begin=self.scope.period_begin, primary_end=self.scope.period_end,
+            backup_begin=self.date_plan.backup_scope.period_begin,
+            backup_end=self.date_plan.backup_scope.period_end,
+            actual_window="backup" if self.date_outcome.state == "backup" else "primary",
+            fallback_reason="primary_success_empty" if self.date_outcome.state != "primary" else None,
+            rank_from=self.original.rank_from, rank_to=self.original.rank_to,
+        )
 
 
 @dataclass(frozen=True)
@@ -132,8 +212,8 @@ class SelectionRunReceipt(BaseModel):
 class SelectionCapabilitiesRead(BaseModel):
     candidate_query: Literal[True] = True
     execution_enabled: bool
-    manual_execution_available: Literal[False] = False
-    unavailable_reason: Literal["REQUEST_MAPPING_UNCONFIRMED"] = "REQUEST_MAPPING_UNCONFIRMED"
+    manual_execution_available: bool
+    unavailable_reason: Literal["EXECUTION_DISABLED"] | None
     strategy_save_available: Literal[False] = False
     schedule_available: Literal[False] = False
     material_collection_available: Literal[False] = False

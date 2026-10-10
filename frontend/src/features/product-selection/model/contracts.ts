@@ -1,4 +1,8 @@
 import type { PageResult } from '@/shared/api'
+import type {
+  SelectionRunReceiptDto,
+  SelectionCapabilitiesDto,
+} from '../api/selection-read-api'
 
 // Frontend draft only. No Backend DTO/Endpoint or platform unit is implied.
 export type SelectionChannel = 'short-video' | 'baiying'
@@ -12,6 +16,7 @@ export interface CategoryNode {
   id: string
   name: string
   children?: CategoryNode[]
+  requestScope?: { industryId: string; categoryIds: string[] }
 }
 export interface ShortVideoConditions {
   categoryId: string | null
@@ -54,6 +59,7 @@ export interface CandidateSourceContext {
   rankFrom: number | null
   rankTo: number | null
   checkedAt: string | null
+  dateFallback?: boolean
 }
 export interface CandidateMerchant {
   // Product merchant platform ID, never the requesting Shop UUID.
@@ -137,6 +143,13 @@ export interface SelectionService {
   readonly available: boolean
   readonly candidatesAvailable?: boolean
   latestRun?(shopId: string | null): Promise<SelectionExecutionSummary | null>
+  manual?: {
+    capabilities(): Promise<SelectionCapabilitiesDto>
+    submit(
+      input: StrategyInput,
+      submissionKey: string,
+    ): Promise<SelectionRunReceiptDto>
+  }
   previewPeriod(period: SelectionPeriod): Promise<SelectionPeriodPreview>
   categories(shopId: string): Promise<CategoryNode[]>
   strategies(): Promise<SelectionStrategy[]>
@@ -161,6 +174,22 @@ export interface SelectionExecutionSummary {
   saved_count: number
   supplement_failed_count: number
   error_code: string | null
+  error_stage?: string | null
+  request_conditions?: {
+    version: 1 | 2
+    scope: { begin_date: string; end_date: string }
+    date_plan?: {
+      backup_scope: { begin_date: string; end_date: string }
+    } | null
+    date_outcome?: {
+      state:
+        | 'primary'
+        | 'fallback_checking'
+        | 'backup'
+        | 'both_empty'
+        | 'fallback_failed'
+    } | null
+  }
 }
 export const CREATOR_DEMO_OPTIONS = [
   { label: '演示达人 A', value: 'creator-demo-a' },

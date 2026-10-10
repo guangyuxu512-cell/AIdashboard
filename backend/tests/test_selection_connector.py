@@ -121,11 +121,29 @@ def test_enabled_but_unconfirmed_consumer_only_recovers_expired_leases(monkeypat
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(run_executor, "get_settings", lambda: Settings(product_selection_execution_enabled=True))
+    monkeypatch.setattr(run_executor, "selection_request_mapping_available", lambda: False)
     monkeypatch.setattr(run_executor, "build_selection_run_executor", lambda *_: Executor())
     monkeypatch.setattr(run_executor.asyncio, "sleep", stop)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(run_executor.execute_selection_runs_forever())
     assert recovered == [True]
+
+
+def test_enabled_confirmed_consumer_uses_existing_executor(monkeypatch):
+    from app.modules.product_selection import run_executor
+    executed = []
+    class Executor:
+        def execute_available(self):
+            executed.append(True)
+            return 0
+    async def stop(_):
+        raise asyncio.CancelledError()
+    monkeypatch.setattr(run_executor, "get_settings", lambda: Settings(product_selection_execution_enabled=True))
+    monkeypatch.setattr(run_executor, "build_selection_run_executor", lambda *_: Executor())
+    monkeypatch.setattr(run_executor.asyncio, "sleep", stop)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(run_executor.execute_selection_runs_forever())
+    assert executed == [True]
 
 
 @pytest.mark.parametrize("configured,status,expired,expected", [

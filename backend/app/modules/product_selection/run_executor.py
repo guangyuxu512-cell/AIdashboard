@@ -22,13 +22,14 @@ from app.modules.product_selection.service import ProductSelectionFactService
 from app.modules.sessions.auth_context import ShopSessionAuthContext
 from app.platforms.douyin.product_selection import CompassBasicInfo, CompassRankPage
 from app.platforms.exceptions import PlatformRequestFailedError
+from app.platforms.exceptions import PlatformResponseInvalidError
 
 
 class SelectionPlatformIO(Protocol):
     """The production adapter uses the existing Accessor/HTTP/Signer, not browser fetch.
 
     This protocol is also the isolated synthetic-test injection boundary.
-    Production submissions remain blocked until request mappings are frozen.
+    Production submissions use the bounded frozen plan and execution switch.
     """
 
     def session_context(self, shop_id: UUID) -> ShopSessionAuthContext: ...
@@ -58,6 +59,43 @@ class SelectionRunExecutor:
         with self.session_factory() as session:
             return SelectionRunService(session, settings=self.settings).authorize(claim, stage=stage)
 
+    def _choose(self, claim: SelectionRunClaim, state: str) -> SelectionResolvedRequest:
+        with self.session_factory() as session:
+            return SelectionRunService(session, settings=self.settings).choose_window(claim, state)
+
+    def _rank(self, claim, context, request, page_no):
+        self._authorize(claim, "rank")
+        page = self.platform.rank(context, request, page_no)
+        if page.page_no != page_no or page.page_size != request.page_size:
+            raise PlatformResponseInvalidError()
+        # An inconsistent first-page count is not a confirmed empty榜单.
+        if page_no == 1 and not page.products and page.total != 0:
+            raise PlatformResponseInvalidError()
+        return page
+
+    def _select_first_page(self, claim, context):
+        request = claim.request
+        first = self._rank(claim, context, request, 1)
+        if first.products:
+            chosen = self._choose(claim, "primary")
+        else:
+            self._choose(claim, "fallback_checking")
+            assert request.date_plan is not None
+            # A per-call legacy-shaped request supplies only the actual scope;
+            # lease/idempotency checks always use the original frozen claim.
+            backup_request = SelectionResolvedRequest(
+                original=request.original, scope=request.date_plan.backup_scope,
+                page_numbers=request.page_numbers,
+            )
+            backup = self._rank(claim, context, backup_request, 1)
+            chosen = self._choose(claim, "backup" if backup.products else "both_empty")
+            if backup.products:
+                first = backup
+        actual_request = SelectionResolvedRequest(
+            original=request.original, scope=chosen.actual_scope(), page_numbers=request.page_numbers,
+        )
+        return actual_request, first, chosen.date_outcome.state == "both_empty"
+
     def execute_claim(self, claim: SelectionRunClaim) -> None:
         error = None
         try:
@@ -65,13 +103,20 @@ class SelectionRunExecutor:
             context = self.platform.session_context(claim.shop_id)
             if context.shop_id != claim.shop_id:
                 raise PlatformRequestFailedError()
+            request = claim.request
+            first = None
+            both_empty = False
+            if request.version == 2:
+                request, first, both_empty = self._select_first_page(claim, context)
             seen: set[str] = set()
-            for page_no in claim.request.page_numbers:
-                self._authorize(claim, "rank")
-                page = self.platform.rank(context, claim.request, page_no)
-                if page.page_no != page_no or page.page_size != claim.request.page_size:
-                    from app.platforms.exceptions import PlatformResponseInvalidError
-                    raise PlatformResponseInvalidError()
+            for page_no in ((1,) if both_empty else request.page_numbers):
+                page = first if page_no == 1 and first is not None else self._rank(claim, context, request, page_no)
+                if claim.request.version == 2:
+                    if any(p.rank is None for p in page.products):
+                        raise PlatformResponseInvalidError()
+                    # Filter by returned official rank, not page-local row index.
+                    page = replace(page, products=tuple(p for p in page.products
+                        if claim.request.original.rank_from <= p.rank <= claim.request.original.rank_to))
                 # Dedup before persistence/counts, including repeated identities
                 # across pages. Keep platform rank, never use a local row number.
                 page = replace(page, products=tuple(p for p in page.products if p.product_id not in seen))
@@ -79,7 +124,7 @@ class SelectionRunExecutor:
                 actor = self._authorize(claim, "persistence")
                 with self.session_factory() as session:
                     saved = ProductSelectionFactService(session).persist_rank_page(
-                        actor=actor, shop_id=claim.shop_id, scope=claim.request.scope,
+                        actor=actor, shop_id=claim.shop_id, scope=request.scope,
                         page=page, started_at=claim.started_at, retrieved_at=datetime.now(UTC), claim=claim,
                     )
                 for observation_id in saved:
