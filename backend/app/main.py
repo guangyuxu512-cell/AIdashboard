@@ -39,6 +39,7 @@ from app.modules.operating_dashboard.scheduler import (
     enqueue_due_daily_operating_collections_forever,
     recover_operating_data_collections_on_startup,
 )
+from app.modules.product_selection.api import router as product_selection_router
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
 from app.modules.sessions.api import router as sessions_router
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     application.include_router(devices_router)
     application.include_router(notifications_router)
     application.include_router(operating_dashboard_router)
+    application.include_router(product_selection_router)
     application.include_router(credentials_router)
     application.include_router(sessions_router)
     application.include_router(tasks_router)

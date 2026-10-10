@@ -208,11 +208,11 @@ Asset 与 Template Binding 关系，但不删除 Asset 本体。删除 TemplateG
 Binding；仍被引用时返回领域冲突，不自动解除关系，也不依赖数据库 Cascade。0026 不创建
 GenerationJob、Provider 或 Queue 表。
 
-## 当前完整表清单（Feature 0041 Candidate）
+## 当前完整表清单（Feature 0042 准备候选）
 
-以下清单已与 Feature DB `control_center_feat_operating_data_availability` 在 `20260924_0041` Head 的实际 PostgreSQL
-introspection 核对（2026-09-24）：共 **44** 张表，含 Alembic 元数据表。0041 只为 `shops` 增加四个可空经营
-起算日审计列，不新增表。它不是生产库状态的推断；生产是否已应用 0041 必须在 Release Gate 单独核对。未有已批准
+以下清单已与独立 Feature DB `control_center_feat_product_selection` 在 `20261010_0042` Head 的实际 PostgreSQL
+introspection 核对（2026-10-10）：共 **46** 张表，含 Alembic 元数据表。0042 在既有44表之上仅增加选品候选身份
+与来源观察两表，不改写0041或复制会话。该结构尚未进入Integration/生产，不代表真实选品闭环已接通。未有已批准
 保留期的表明确标为“待定”，文档整理本身不授权删除、改名或迁移任何历史数据。
 
 ### 系统与身份/授权
@@ -283,6 +283,21 @@ introspection 核对（2026-09-24）：共 **44** 张表，含 Alembic 元数据
 | `shop_operating_daily_metrics` | Shop 每个 Asia/Shanghai 业务日的已确认指标，PK `metric_id`，FK `shop_id`，唯一 `(shop_id,business_date)`。0040 增加可空 `refund_order_count` 与窄范围 `refund_order_status`，仅记录罗盘 `refund_order_cnt`（“退款订单数〔退款时间〕”，单位单）的观测结果。 | 重采更新同一日事实，不累计；退款字段的 `available / unavailable / not_ready / invalid / unobserved` 区分真实 0、字段缺失、未就绪、结构异常和待一次补观测，不能把未知写成 0；后一次非 available 观测不得清空此前已确认退款值。0041 的起算日不会删除、更改或伪造该表的事实；Shop 停用/移除不删历史；数据保留期限待单独批准。 |
 | `operating_data_collection_jobs` | 异步采集请求组，PK `collection_job_id`，可 FK 请求人及其提交时的 Team context。 | 手动/重试 item 在发出平台请求前按该上下文重新授权；只保存范围/状态，不保存 Cookie、签名或原始响应。全范围早于已确认经营起算日时普通更新不创建空 Job；清理期限待定。 |
 | `operating_data_collection_items` | Shop+业务日采集状态，PK `collection_item_id`，FK Job/Shop。 | 部分唯一索引防止 active 重叠、lease 支撑安全恢复；失败/暂停保留安全错误码和耗时，不清空此前成功日事实。核心固定路径只有 `unit`、无标量值时以 `DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE` 终态记录，不写日事实、不代表 0 或未经营、也不自动重试；直接缺失或显式 null 的核心指标分别使用同一 `unknown` 展示语义的窄范围安全码。0041 会把尚未发起、且早于已确认起算日的 item 标为 `SHOP_NOT_OPERATING_ON_DATE` / `skipped`，不调用平台；清理期限待定。 |
+
+### 罗盘手动选品事实（0042 Feature）
+
+| 表 | 用途、主键与关联 | 当前/历史状态与删除、保留规则 |
+| --- | --- | --- |
+| `product_selection_candidates` | Team-owned源商品身份，PK `candidate_id`；FK `team_id → teams`、`created_by_user_id → users`，全部RESTRICT。`platform_product_id` 为字符串，唯一 `(team_id,platform,platform_product_id)`；Team/稳定ID查询索引。 | 当前仅douyin候选，不是正式商品库。重复获取复用身份；Shop会话不复制，不同Team候选归属不混合。保留期待定，不自动清理。 |
+| `product_selection_observations` | PK `observation_id`；RESTRICT FK候选及 `request_shop_id → shops`。唯一 `(candidate_id,request_shop_id,source_scope_hash)`；Shop/检查时间及候选/检查时间索引。明确日期/白名单来源条件、实际商品商家、排名、四项原始区间、补充类目/上架日期、NUMERIC差评率原值及原unit、安全错误摘要分别保存。 | 当前来源成功事实，不充当队列。相同/旧榜单执行和其迟到补充受版本条件限制；失败/缺失保留已确认值及有效取数时间。`basic_info_retrieved_at` 仅表示最近完整补充；部分/失败另记尝试时间和安全码。当前授权过滤先于最新来源选择、排序分页；停用/移除/撤权不物理删除历史。保留期待定，不自动清理。 |
+
+来源hash采用版本化白名单业务参数，不含分页、Cookie、Token、签名、指纹、页面追踪或完整请求URL。
+JSONB只承载固定来源/商家/指标结构，不保存整份平台响应。不同期间/请求店铺不互相覆盖；商品商家平台ID
+不能当成中控台请求Shop UUID。差评率unit=4的显示尺度未确认，不在查询层擅自转百分比或用来筛选。
+
+独立Feature已验证 `0041 → 0042 → 0041 → 0042`，原表记录保留、新两表无测试残留。downgrade删除新
+选品事实，只允许在可重建测试库使用；正式数据出现后应用回退保留Schema/事实，不自动降级。
+两表不能保存空榜单或无候选失败的运行状态；该最小运行记录契约待审核，不挪用其他业务Job或新增通用框架。
 
 所有表变更均须在同一 Gate 1/Gate 2 中同步：SQLAlchemy Model、Alembic Migration、此数据字典、API/
 兼容说明和真实 PostgreSQL 验证。文档中标为“历史兼容”或“待定”的对象不构成删除授权。

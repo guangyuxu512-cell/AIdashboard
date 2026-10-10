@@ -1,6 +1,6 @@
 # 选品前端验收状态与真实接入资源
 
-2026-10-10，Integrator ca97，Feature Owner 81a1。独立数据库和新 Migration Slot 已分配；请求链路成功证据可复用，真实持久化闭环尚未完成。本轮不发布生产。
+2026-10-10，Integrator ca97，Feature Owner 81a1。独立数据库和新 Migration Slot 已分配；Owner已完成固定解析、两表及数据库查询API，真实执行闭环仍为PARTIAL。请求链路成功证据可复用，本轮不发布生产。
 
 ## 提交与前端验收
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | Green 基线 | `b34e43cb90356e03d2f793c4146c6775a11f5ab3`；资源登记前 ca97 dev/origin/dev 一致且 clean |
 | 初次核对 Owner | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`，`feat/product-selection-frontend-v1`，HEAD/origin 为 `819ca33ba6548030e418320c6bb80ba046beb842`，clean；此后 Owner 的接入准备修改继续保留 |
-| 资源同步 | ca97 登记提交 `675016769ba0b55f8ed42c15e7500b0c6291f968` 已推送 dev；Owner 正常 merge 后为 `0c75ef05e36e6c7f5ce8137a6bd81e4102f7e515`，819ca33 与最终前端树均保留，不将该文档 merge 当作业务 Gate 通过 |
+| 资源同步 | ca97 登记提交 `675016769ba0b55f8ed42c15e7500b0c6291f968` 已推送 dev；Owner正常merge后为 `0c75ef05e36e6c7f5ce8137a6bd81e4102f7e515`，再merge工程Green `b746ab1397f4637a5b7beb4face5c197cfdeeac7` 后为 `ebae1ba6536c37e40d383d2214aaab612ad8d836`。819ca33与最终前端树保留，不将资源merge当作业务Gate通过 |
 | 前端最终候选 | `06bd03c0fa61b00251063e21350cd0cc5445afe5`；Gate 1 有完整 Handoff，含 lint/typecheck、41 定向单测、13 Mock E2E、Real build |
 | Integration 返修复核 | 06bd03c 独立 lint/typecheck/Real build、41 单测、3 定向 Mock E2E、diff check PASS；前一 91461d4 Review2 返修及 Real 无回退证据保留 |
 | Electron | 唯一既有开发窗口，5180 的 06bd03c Mock 快照；32 条演示候选。已有交互/主题确认保留，尺寸收尾记录仍为等待最终人工确认，不用浏览器截图补写 Electron PASS |
@@ -48,10 +48,22 @@
 | 初始化复核 | Owner 执行既有 `alembic upgrade head` 后，Integrator 独立只读连接确认单一 `20260924_0041`、public 表44、ShopSession=0；没有复制生产会话或启用平台任务。Owner `.env` Git Ignore PASS |
 | HBA | 仅新增本 Feature DB + 应用角色 + `172.17.0.1/32` SCRAM 规则，位于 reject 前；解析错误0，reload，无服务重启；其他规则不变 |
 | HBA 备份 | 持久化数据卷中的 `pg_hba.conf.before-product-selection-20261010T112247Z`；SHA-256 `4d6671e093bc9fcb1665d207a08ade58806c4a19e7d34b200ea686080ca1eb7a` |
-| Head 与 Slot | Integration/生产只读核验均为单一 `20260924_0041`；旧0041 Slot released。新 reserved `20261010_0042_product_selection_manual_v1`，revision `20261010_0042`，down `20260924_0041`；没有新 Migration 文件 |
+| Head 与 Slot | Integration/生产既有只读核验均为单一 `20260924_0041`；旧0041 Slot released。新reserved `20261010_0042_product_selection_manual_v1`，revision `20261010_0042`，down `20260924_0041`；Owner已编写且只在独立Feature库完成验证，未共享应用/释放 |
 | 端口 | Owner Backend 8101，Frontend 4176 strictPort；只登记未启动。Integration 保持8100/5180及唯一 Electron，真实平台由 ca97 协调 |
 | 凭据 | 复用 Owner 本地忽略配置中的既有应用角色凭据，仅更改目标数据库；不得回传完整连接串，不能继续使用旧 Availability 库 |
 
 81a1 已更新忽略连接、核对实际库名并执行候选既有 `alembic upgrade head`，单一0041与应用连接验证通过。可实施已确认的两表持久化并验证 Slot 对应 Migration；执行状态缺口和未知请求映射未确认的部分仍不得猜测实现。无需复制生产 Cookie 到开发数据库。
 
-可以继续固定路径解析、错误分层、适配/DTO和离线测试；真实请求→Feature/Integration入库→正式API→Real页面及权限/幂等验证在新的完整 Gate 1/2 候选上完成，再走 Green dev 与适用 Release Gate。
+## Owner阶段验证
+
+Owner在独立Feature库完成0041→0042→0041→0042，模型与Migration差异0，旧域表记录保留；当前单一0042、46表、新事实表无测试残留、ShopSession=0。生产/Integration未迁移，没有复制凭据或启动平台循环。此前一次元数据检查因验证器未加载引用表而报错，修正验证器加载users/teams/shops后通过，不是Migration回写失败。
+
+实际Backend命令及结果：
+
+- `python -m pytest -o addopts= tests/test_product_selection_api.py tests/test_douyin_product_selection.py tests/test_douyin_api_client.py tests/test_product_selection_source.py -q`：56 passed。
+- `python -m pytest -o addopts= -m integration tests/integration/test_postgresql_product_selection.py tests/integration/test_postgresql_product_selection_migration.py -q`：19 passed。
+- `python -m pytest -o "addopts=-m 'not integration'" -q`：557 passed、95 deselected；95项不表示整套PG已验证，只对本轮上述19项显式执行。
+
+API验证注入人员Principal和Feature连接，实际Actor/Team/模块/店铺授权链保持；未启动应用lifespan。夹具为合成商品，不能替代本候选真实请求、入库和Real展示。公共TestClient产生一项现有Starlette/httpx弃用警告，未为此改依赖。
+
+Frontend/Electron树与819ca33相同，本阶段没有重跑UI/桌面测试或新增窗口。保存策略、手动执行和类目API未接通；两张事实表不能保存无候选的空成功/失败运行，相对周期/渠道转换也未冻结。完整Gate1继续BLOCKED，只交阶段候选供审查，不进入业务dev合并或发布。

@@ -460,6 +460,19 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 商品素材组详情中的 Asset 使用现有安全 `AssetRead` 投影，不返回 `storage_key`、bucket、绝对路径、
 厂商 URL 或 Storage 凭据。本阶段没有 GenerationJob、Provider、Queue 或 Worker API。
 
+## 罗盘手动选品数据库查询 V1
+
+本Feature正式只读接口为 `GET /api/v1/product-selection/candidates` 和
+`GET /api/v1/product-selection/observations/{observation_id}`，复用当前Human Session、ActorContext和
+`product-selection`模块授权。权限及请求店铺Scope先于最新来源选择、搜索、排序和分页；详情固定读取列表来源UUID，
+撤权后不可见。列表使用统一Page，支持shop_id、source_scope_hash、标题/字符串商品ID search，
+以及checked_at、first_on_shelf_date、rank的原值排序；缺失末尾，同值candidate_id稳定排序。
+
+`SelectionObservationRead`保留商品字符串ID、请求自有Shop与实际商家、明确统计区间、四项原始视频区间/单位、
+差评率原值/unit及独立的榜单检查、指标获取、基础信息完整取数和尝试时间。Decimal以字符串传输，不进行未确认单位换算。
+完整字段、未知映射与边界见[24-罗盘手动选品契约V1.md](24-罗盘手动选品契约V1.md)及Pydantic/OpenAPI。
+这两个接口只读数据库，不证明手动执行、成功空榜单或失败运行状态已实现；执行、类目API及Real适配仍为PARTIAL。
+
 ## Operating Dashboard Data V1 API
 
 经营看板正式 Human API 前缀为 `/api/v1/operating-dashboard`，全部要求 Human Session、当前
