@@ -21,6 +21,7 @@ from app.modules.product_selection.run_contract import (
     SelectionRunOriginal, SelectionRunRead, SelectionRunReceipt,
 )
 from app.modules.product_selection.run_repository import SelectionRunRepository
+from app.modules.product_selection.request_mapping import validate_preparable_short_video_choice
 from app.modules.product_selection.service import ProductSelectionFactService
 
 
@@ -33,9 +34,11 @@ def selection_request_mapping_available() -> bool:
 
 
 def resolve_selection_request(original: SelectionRunOriginal, now: datetime) -> SelectionResolvedRequest:
-    # Page/period/channel evidence has not been frozen. In particular do not
-    # substitute the successful historical dates/category for a user's choice.
-    raise SelectionRequestUnconfirmedError()
+    validate_preparable_short_video_choice(original)
+    # The fresh 10-11 query ends on 10-09. Its capture date is confirmed, but
+    # there is no confirmed source for the platform's available date window.
+    # Do not infer yesterday, a fixed lag, or a 09:00 switch from this sample.
+    raise SelectionRequestUnconfirmedError(details={"reason": "PLATFORM_DATE_WINDOW_UNCONFIRMED"})
 
 
 SAFE_ERROR_CODES = {

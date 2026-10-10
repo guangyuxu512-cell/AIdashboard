@@ -1,6 +1,6 @@
 """Synthetic platform I/O + real registered Feature PostgreSQL, not live proof."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, Thread
 from types import SimpleNamespace
@@ -24,6 +24,7 @@ from app.modules.product_selection.models import ProductSelectionRun as Run, Pro
 from app.modules.product_selection.run_contract import SelectionRunCreate, SelectionResolvedRequest
 from app.modules.product_selection.run_executor import SelectionRunExecutor
 from app.modules.product_selection.run_service import SelectionRunService
+from app.modules.product_selection.request_mapping import prepare_short_video_scope
 from app.modules.product_selection.service import ProductSelectionFactService
 from app.modules.shops.models import Shop
 from app.platforms.douyin.product_selection import CompassRankPage, CompassSelectionBusinessError, CompassBasicInfo, FieldObservation
@@ -92,6 +93,43 @@ class FakePlatform:
 
 def _executor(context, platform):
     return SelectionRunExecutor(session_factory=lambda: Session(context[0]), platform=platform, settings=SETTINGS)
+
+
+def test_explicit_window_changes_cannot_rewrite_replayed_or_claimed_run(selection_context):
+    context = selection_context
+    # Synthetic, independently supplied windows, not a platform cutoff rule.
+    window = [date(2026, 10, 3), date(2026, 10, 9)]
+    resolutions = []
+
+    def explicit_resolver(original, now):
+        resolutions.append(tuple(window))
+        return SelectionResolvedRequest(
+            original=original,
+            scope=prepare_short_video_scope(original, period_begin=window[0], period_end=window[1]),
+            page_numbers=(1,),
+        )
+
+    command = _input(context, rank_from=1, rank_to=10)
+    at = datetime.now(UTC)
+    accepted = _submit(context, command, resolver=explicit_resolver, now=at)
+    window[:] = [date(2026, 10, 4), date(2026, 10, 10)]
+    replay = _submit(context, command, resolver=explicit_resolver, now=at + timedelta(days=1))
+    assert replay.receipt_id == accepted.receipt_id
+    assert replay.execution_run_id == accepted.execution_run_id
+    assert replay.execution.request_conditions.scope.end_date == "2026/10/09 00:00:00"
+    assert len(resolutions) == 1
+
+    # Only a fresh explicit submission may freeze a different supplied window.
+    newer = _submit(context, _input(context, rank_from=1, rank_to=10), resolver=explicit_resolver, now=at + timedelta(days=1))
+    assert not newer.reused and newer.execution_run_id != accepted.execution_run_id
+    assert newer.execution.request_conditions.scope.end_date == "2026/10/10 00:00:00"
+    assert len(resolutions) == 2
+    claim = _claim(context)
+    assert claim.run_id == accepted.execution_run_id
+    assert claim.request.scope.begin_date == "2026/10/03 00:00:00"
+    assert claim.request.scope.end_date == "2026/10/09 00:00:00"
+    assert len(resolutions) == 2  # Claim/progress reads do not resolve again.
+    assert _get(context, accepted).request_conditions == replay.execution.request_conditions
 
 
 def test_successful_empty_run_is_queryable_without_inventing_candidates(selection_context):
