@@ -34,8 +34,8 @@ typed service 为前端草案，Real 不请求猜测接口、不回退 Mock。�
 选品接入资源登记（2026-10-10）：81a1 沿用 `feat/product-selection-frontend-v1`，基线
 `b34e43cb90356e03d2f793c4146c6775a11f5ab3`。前端候选 `06bd03c0fa61b00251063e21350cd0cc5445afe5`
 及诊断补丁 `819ca33ba6548030e418320c6bb80ba046beb842` 尚未合入 dev；Frontend/Electron 树相同，
-Mock 验证不代表真实入库。两表及只读查询已在 Feature 候选实现；最小业务专用
-`product_selection_runs` 与观察的可空 `last_run_id` 经技术审核允许实施，空榜单、失败和中断有独立记录，
+Mock 验证不代表真实入库。两表、业务专用 `product_selection_runs`、观察的可空 `last_run_id`
+及 Real 查询已在阶段候选实现；技术复核通过但仍为 PARTIAL，空榜单、失败和中断有独立记录，
 不增加通用队列、Worker、策略调度或自动平台重试。具体事务/幂等约束见选品资源登记文档。
 0041 已在 Integration/生产应用，旧 Slot released；本 Feature 保持唯一 active Slot，串行链为
 `20260924_0041 → 20261010_0042 → 20261010_0043`。0042 已在 Feature 库应用，不改写、不释放；

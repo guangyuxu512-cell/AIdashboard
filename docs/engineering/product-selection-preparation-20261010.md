@@ -14,6 +14,7 @@
 | Electron | 唯一既有开发窗口已从最小化恢复；原生可访问性核对5180选品库、候选池/采集任务/策略入口、32条演示候选。运行仍为06bd03c Mock快照。原生截图重新绑定后仍超时；已有交互/主题确认保留，尺寸收尾等待最终人工确认，不用浏览器截图补写Electron PASS |
 | dev 合并 | 06bd03c 与 819ca33 均不在基线 dev，未合并，无 Merge Commit；资源登记不代表业务合并或 Green 新功能 |
 | 诊断补丁 | 819ca33 是 06bd03c 的直接后续，仅请求层、9 项定向测试及 Backend 说明；两提交 Frontend tree 均为 `0cfd65b3eb7573a2ba5be6b9a7cef08977f85e84`，Electron 树亦相同。定向审查 PASS，不等于完整 Gate 2 |
+| 当前接入阶段候选 | `7b84888984b8eebaf2937eb4d1f9271dc39098aa`，业务提交 `c7d3abe11f83301c1cd3c63d9d0d03e64629e223`；包含06bd03c、819ca33和两表实现，正常merge工程登记基线 `446d372181f66071cc1273fa1dd90dfc12734c6c`，remote匹配、Owner与Integration clean。阶段技术复核通过，整体PARTIAL；无业务Merge Commit、完整Gate1/2或本候选专属CI通过声明 |
 
 前端仅确认界面及 Mock 交互，不证明真实采集、持久化、策略保存或调度完成。恢复 Real 后必须没有 Mock 残留/回退，未接入部分如实不可用。
 
@@ -45,16 +46,18 @@
 | DB | `control_center_feat_product_selection`，管理员创建独立空库后，由 Owner 通过既有 Migration 初始化；Owner `control_center_dev_user`；不复用 Availability/Integration/生产 |
 | 应用连接 | 既有 `127.0.0.1:35433` 受信任 SSH 隧道已恢复；StrictHostKeyChecking=yes；实际 SCRAM 连接成功，当前 DB/角色匹配 |
 | 最小权限 | CREATEDB=false、CREATEROLE=false、SUPERUSER=false；Feature 库建表/改列/索引权限探针 PASS，事务已回滚，前后 public 表数均0 |
-| 初始化及现状 | 初始0041/44表、0042/46表及两表模型差异0已核验；Owner现已执行0043，Integrator最新只读核对DB和Owner工作树代码单一 `20261010_0043`，1候选/1观察为0042回滚保留测试事实，run=0、ShopSession=0、角色仍最小。未执行共享环境迁移或平台任务；Owner `.env` Git Ignore PASS |
+| 初始化及现状 | 初始0041/44表、0042/46表及两表模型差异0已核验；Owner已执行0043并清理本阶段测试数据，Integrator最新只读核对DB和Owner工作树代码单一 `20261010_0043`，候选/观察/run/ShopSession均0、角色仍最小。未执行共享环境迁移或平台任务；Owner `.env` Git Ignore PASS |
 | HBA | 仅新增本 Feature DB + 应用角色 + `172.17.0.1/32` SCRAM 规则，位于 reject 前；解析错误0，reload，无服务重启；其他规则不变 |
 | HBA 备份 | 持久化数据卷中的 `pg_hba.conf.before-product-selection-20261010T112247Z`；SHA-256 `4d6671e093bc9fcb1665d207a08ade58806c4a19e7d34b200ea686080ca1eb7a` |
 | Head 与 Slot | Integration/生产已核验单一 `20260924_0041`，旧0041 Slot released；本 Feature 唯一 active Slot 覆盖已应用Feature库的0042/0043（0043 revision `20261010_0043`，down `20261010_0042`）。不改写0042、不另开活跃Slot；两文件由Owner编写，完整候选一起验收 |
 | 端口 | Owner Backend 8101，Frontend 4176 strictPort；只登记未启动。Integration 保持8100/5180及唯一 Electron，真实平台由 ca97 协调 |
 | 凭据 | 复用 Owner 本地忽略配置中的既有应用角色凭据，仅更改目标数据库；不得回传完整连接串，不能继续使用旧 Availability 库 |
 
-81a1已完成两表、事实服务和只读API，不重复安排开发。部分候选80ed841对团队引用保护的返修复核PASS：Integrator独立65项定向测试通过，纯内存探针确认引用检查包含候选；Owner的21项PG及409/204用例已审阅，未宣称Integrator独立重跑。整体仍PARTIAL，未合入dev、未释放Slot。
+81a1已完成两表、事实服务、业务专用run和Real查询，不重复安排开发。阶段候选 `7b84888984b8eebaf2937eb4d1f9271dc39098aa` 技术复核未发现需要退回的业务问题，但请求映射及真实闭环仍缺，不能合入dev或释放Slot。
 
-Owner已正常merge资源登记到 `7060899e7284527bdde25a06335d4aec15eab297`，当前未提交的run/Real读取适配成果保留。Owner报告38项真实PG/正式API合成平台测试、41项前端定向测试和1项Real失败/空态E2E通过；0043降级保留0042事实、非空run拒绝降级通过。上述是实施中证据，不是最终Candidate、完整Gate1、真实平台请求或Electron验收。
+Integrator对精确Git快照独立运行后端定向58项、前端选品7文件/47项，全部通过；diff check、0042原始Git对象不变、0043文件哈希及生产差异凭据字面量匹配计数0均通过。Owner报告后端568项、前端571项、lint/typecheck/Real build、43项真实Feature PostgreSQL/合成平台测试、13项Mock E2E和1项拦截式Real E2E通过；PG包括回执幂等、并发领取、租约/撤权/停用、0042事实保留和非空run拒绝0043降级，Integrator未宣称独立重跑43项PG。合成响应、拦截式E2E和已有819ca33取数证据不代替本候选实际平台请求→run/事实→API→Real页面。
+
+0043文件SHA-256为 `ecf528848d5ed9689b9b31b43715be44fd8ffd599375821672e6f735c6bb6733`。执行开关默认关闭，映射未冻结时即使开启也不领取或请求，仅处理到期租约；不以失败即建空run或固定旧历史参数绕过门禁。资源登记基线446d372的CI成功，不代表7b848889业务候选CI或完整Gate通过。
 
 ## 手动运行技术决策
 

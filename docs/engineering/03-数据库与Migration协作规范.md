@@ -32,7 +32,7 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
-| `feat/product-selection-frontend-v1` / 81a1 | `active` | 0042 候选/观察两表已在 Feature 库；追加唯一业务专用 `product_selection_runs` 与观察的可空 `last_run_id`，不增加通用队列/Worker/策略调度。单 Slot 覆盖同 Feature 串行迁移，不并行分配 | Green `20260924_0041`；0043 依赖本 Feature 0042，随同一完整候选合入，不提前将部分候选宣称 Green | 0042：`20261010_0042_product_selection_manual_v1`，down `20260924_0041`，已应用 Feature 库且不可改写；追加 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，Owner 已编写并应用 Feature 库 | Integrator 最新只读复核 Feature/工作树代码单一0043、ShopSession=0、应用角色无CREATEDB/CREATEROLE/SUPERUSER；Owner 报告38项PG/正式API合成平台测试及0043降级保留0042事实、非空run拒绝降级通过，Integrator 未冒充独立重跑。完整候选仍须验证0041→0042→0043链、双Session重复/租约/撤权/中断。仅可重建Feature库、run为0时允许0043→0042→0043，不删0042事实；应用回退保留Schema/事实。0042/0043均未进入共享环境；完整Gate1/2后统一释放Slot。 |
+| `feat/product-selection-frontend-v1` / 81a1 | `active` | 0042 候选/观察两表已在 Feature 库；追加唯一业务专用 `product_selection_runs` 与观察的可空 `last_run_id`，不增加通用队列/Worker/策略调度。单 Slot 覆盖同 Feature 串行迁移，不并行分配 | Green `20260924_0041`；0043 依赖本 Feature 0042，随同一完整候选合入，不提前将部分候选宣称 Green | 0042：`20261010_0042_product_selection_manual_v1`，down `20260924_0041`，已应用 Feature 库且不可改写；追加 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，Owner 已编写并应用 Feature 库 | Integrator 最新只读复核 Feature/工作树代码单一0043，候选/观察/run/ShopSession均0，应用角色无CREATEDB/CREATEROLE/SUPERUSER；0042原始Git对象未变、0043文件哈希匹配。Owner报告43项真实PG/合成平台测试，包括双Session幂等、租约/撤权、0043降级保留0042事实及非空run拒绝降级；Integrator未冒充独立重跑。完整候选仍须完成请求映射、实际入库闭环和共享环境0041→0042→0043链验证。仅可重建Feature库、run为0时允许0043→0042→0043，不删0042事实；应用回退保留Schema/事实。0042/0043均未进入共享环境；完整Gate1/2后统一释放Slot。 |
 
 最近释放记录：
 
