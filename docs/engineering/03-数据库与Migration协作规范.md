@@ -30,14 +30,13 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
-|---|---|---|---|---|---|
-| `feat/product-selection-frontend-v1` / 81a1 | `active` | 0042 候选/观察两表已在 Feature 库；追加唯一业务专用 `product_selection_runs` 与观察的可空 `last_run_id`，不增加通用队列/Worker/策略调度。单 Slot 覆盖同 Feature 串行迁移，不并行分配 | Green `20260924_0041`；0043 依赖本 Feature 0042，随同一完整候选合入，不提前将部分候选宣称 Green | 0042：`20261010_0042_product_selection_manual_v1`，down `20260924_0041`，已应用 Feature 库且不可改写；追加 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，Owner 已编写并应用 Feature 库 | Integrator 最新只读复核 Feature/工作树代码单一0043，候选/观察/run/ShopSession均0，应用角色无CREATEDB/CREATEROLE/SUPERUSER；0042原始Git对象未变、0043文件哈希匹配。Owner报告43项真实PG/合成平台测试，包括双Session幂等、租约/撤权、0043降级保留0042事实及非空run拒绝降级；Integrator未冒充独立重跑。完整候选仍须完成请求映射、实际入库闭环和共享环境0041→0042→0043链验证。仅可重建Feature库、run为0时允许0043→0042→0043，不删0042事实；应用回退保留Schema/事实。0042/0043均未进入共享环境；完整Gate1/2后统一释放Slot。 |
+无（FREE）。2026-10-11选品0042/0043完整Gate2通过后统一释放，已应用迁移不可改写。
 
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|
+| `feat/product-selection-frontend-v1` / 81a1 | `released` | 候选/观察两表、业务专用run与可空last_run_id；无通用队列/Worker/策略调度 | `20260924_0041 → 20261010_0042 → 20261010_0043` | `20261010_0042_product_selection_manual_v1`、`20261010_0043_product_selection_runs_v1`；原已应用文件字节不变 | Gate2 PASS，Integration单一0043，HuanYu正式run10条事实/补充/Real回读成功。Integrator兼容PG81与Owner空Feature专用4项及迁移回滚证据分开记录，见Gate2文档。Feature库retained；正式有run后禁止downgrade/清库，回退需v2兼容Reader并关闭新执行、保留Schema/事实/失败历史。生产升级须由Main Release备份预检后执行，不据此标记已部署。 |
 | `feat/operating-data-availability-v1` / 81a1 | `released` | 0041 最小经营起算日审计字段及既有合法零值/未知边界；不推断日期、不改变经营事实 | `20260924_0040_operating_dashboard_refund_orders_v1` | `20260924_0041_operating_data_availability_v1`，revision `20260924_0041` | 2026-10-10 核销历史未同步的 active：已通过 Gate 并进入当前 Green 提交链；管理员只读核实 Integration 和生产均为单一 `20260924_0041`。旧 Availability Feature DB retained，不分配给选品；不重新执行已完成验收或 Migration。 |
 | `feat/operating-dashboard-refund-orders-v1` / 81a1 | `released` | 为已证实的抖店 `refund_order_cnt`（页面“退款订单数〔退款时间〕”，单位单）增加最小日事实字段和窄范围观测状态；不含 `refund_order_cnt_pay_time`、商家体验分或通用指标框架 | `20260922_0039_operating_dashboard_data_v1` | `20260924_0040_operating_dashboard_refund_orders_v1` | Gate 2 PASS：Integration 已验证 `0039 → 0040`、完整 Backend 回归、退款定向 PostgreSQL 验证、Frontend 定向测试及 Real build；HuanYu 2026-09-22 在真实平台显式重采后持久化成交额 ¥659.05、成交订单 60、退款订单数 8，Electron Real 看板回读一致；普通更新未再创建任务。Feature DB 与专用 HBA 待 Integrator 回收。 |
 | `feat/operating-dashboard-data-v1` / 81a1 | `released` | 新增店铺日经营事实、采集 Job / Item 状态及跨进程防重复约束；生产执行和日调度默认关闭 | `20260920_0038_parameter_preset_historical_reference_deletion_v1` | `20260922_0039_operating_dashboard_data_v1` | Gate 2 PASS：Integration 已验证 `0038 → 0039`、11 项 PostgreSQL 定向测试、完整 Backend/Frontend 回归、一次 HuanYu 真实单店采集、正式查询及 Electron Real 看板人工验收；`control_center_feat_operating_dashboard_data` 与专用 HBA 已回收。本 Migration 的 downgrade 会删除经营日事实与采集状态，只可在可重建 Feature / Integration 测试库闭环；生产已有数据后，应用回滚保持 Schema，数据处置另走获批迁移方案。 |

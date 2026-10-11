@@ -18,6 +18,15 @@
 
 ### Two-Gate、问题归属与共享历史
 
+当前状态（2026-10-11）：选品手动Candidate `41e3116e0e176761f3a3fbb29e199283ce61c95c`
+通过Gate2，no-ff Merge `3448b7d74651bcaab3f39dbeff97aee9a5fcea83`；Integration单一0043。
+HuanYu正式run `72f42fff-1996-4d59-9c30-30104f373e63` 真实10条入库及10条basic_info成功，
+用户确认Real列表/详情/刷新。此run首选10-04～10-10成功、未触发备用；窄621000704第一页补查有PG覆盖，
+不把该业务码普遍解释为日期未就绪。0042/0043 Slot统一released，Feature库retained，失败历史保留。
+下列旧UI_ONLY/PARTIAL为阶段记录；当前手动闭环与CI/Release边界见
+`docs/engineering/product-selection-manual-v1-gate2-20261011.md`。未生产核验前不标记DEPLOYED。
+达人登录、策略保存、定时、手机及百应仍未接入，不能假成功。
+
 本期 Feature 登记（2026-10-08）：81a1 `feat/product-selection-frontend-v1` 从 ca97 确认的 Green
 `b34e43cb90356e03d2f793c4146c6775a11f5ab3` 开发选品库前端与 Mock 交互，状态 `UI_ONLY`。
 复用 framed 导航、既有列表/分页/Drawer/表单/ShopSelector/主题；采集任务与商品库仍占位。
