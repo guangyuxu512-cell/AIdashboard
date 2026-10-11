@@ -46,8 +46,17 @@ $ErrorActionPreference = 'Continue'
             $record = $line.Substring($prefix.Length) | ConvertFrom-Json -ErrorAction Stop
             $parsedId = [Guid]::Empty
             $parsedTime = [DateTimeOffset]::MinValue
+            # pwsh converts ISO Z values to UTC DateTime. Converting that value
+            # back to an unzoned string would apply the local offset a second
+            # time. Preserve its Kind; Windows PowerShell's string path remains.
+            $validTime = if ($record.timestamp -is [DateTime]) {
+                $parsedTime = [DateTimeOffset]$record.timestamp
+                $true
+            } else {
+                [DateTimeOffset]::TryParse([string]$record.timestamp, [ref]$parsedTime)
+            }
             if (-not [Guid]::TryParse([string]$record.attemptId, [ref]$parsedId) -or
-                -not [DateTimeOffset]::TryParse([string]$record.timestamp, [ref]$parsedTime) -or
+                -not $validTime -or
                 $phases -notcontains $record.phase -or $events -notcontains $record.event) {
                 return
             }
