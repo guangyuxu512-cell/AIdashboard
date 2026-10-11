@@ -101,3 +101,36 @@ Main 取得精确 Green CI 后完成 Release Gate、main 完整差异、生产�
 
 共享 Git 失败使用正常 revert。无 Schema 降级或清表，应用回退保留 Session 版本、审计和恢复 Job，桌面回退使用同 App ID 已留存安装器并先备份 userData。
 Gate 2、CI、部署成功各自记录；只有生产服务器、实际客户端及对应业务核验完成后才标记 DEPLOYED。
+
+## 2026-10-12 收口范围与诊断增量复验
+
+用户本轮明确授权以「登录、自动保存最新 Session、服务端验证、中控可用」为发布范围。
+罗盘经营概况、收支概况等面板不作为发布条件；历史闪退原因仍为 UNKNOWN，不能声称诊断增量修复了它。
+当前真实流程无复现阻塞时，不把必须还原历史原因或重做已覆盖场景作为新发布门槛。
+
+- 最终 Feature Candidate：`1178fbfa08fb316ccf5b7310206cd433f5bb24e5`，远端一致。
+- 增量 Gate 2A：ACCEPT；相对原 `9fc6409…` 只增加开发态安全诊断、UTC 采集修正、可选原生状态异常隔离、定向测试与说明。
+  Backend、生产 Renderer、认证、Session 保存、窗口保留/关闭逻辑、依赖、部署和 Migration 均无新增变化。
+- 正常 `--no-ff` 合并：`37237a517cf35d8c7138a2cbb8a0ef835e9fadc9`；合并后 Backend/Frontend/Electron 树与 Candidate 一致。
+- 唯一开发 Electron 已从精确候选快照编译加载，应用 1.0.4 / Electron 44.3.0，主进程 PID 59372，窗口 ID 21693790。
+  原实例正常退出，无强杀、无第二实例、无 Profile 清理或认证注入；仍为 Real `5180 → 8100 → control_center_integration`，单一 `20261010_0043`。
+- 受支持原生 accessibility 确认当前人员会话保留、店铺中心 HuanYu 显示「有效」，操作为「查看｜登录｜停用｜移除」；登录不依赖失效。
+  原生点击仍受 `coordinate input geometry is unavailable` 限制，未将无法执行的操作记为成功。
+- 复用上表原生 HuanYu v1→v2→v3 自动保存、服务端真实验证、留窗浏览、重复点击不保存及关闭重开证据。
+  本次没有把单元测试、诊断能力或程序加载本身当作新的真实保存证据；未改变的业务行为不要求重复人工验收。
+- 补足已落库 Session 的实际可用性：2026-10-12 00:42:57 上海时间，通过正式
+  `StoredSession → ShopSessionAccessor → DouyinPlatformConnector → shop_info_v2` 单次只读取数成功，使用存储的 VALID v3，
+  返回 HuanYu / 平台店铺 `243321624`，身份一致。数据库事务 READ ONLY，业务写入 0、平台请求 1，未持久化响应 Cookie。
+  原店铺、团队、Session 和 10 Job/154 Item/0 active 均保留；不把人员登录和平台会话混为一谈。
+- 增量及合并后复验：Electron typecheck/build 与 35 unit、Frontend 登录 hook 9 unit；生产代码未变部分复用上述 604 Backend、37 PostgreSQL、614 Frontend、lint/typecheck/Real build 证据。
+  `git diff --check` PASS；敏感 tracked 文件和凭据 literal 匹配均为 0。本机脚本、日志、运行状态与截图均 ignored。
+- Gate 2B：本轮最小流程 PASS；精确 Green 必须以本次收尾提交推送及对应 dev CI 成功为准，不能沿用 `247267d…` 的 CI。
+
+匹配安装包已交 Main 并重新独立核验：
+`D:\中控台\dist\desktop\1.0.4-1178fbfa08fb\Siyu-AI-Control-Center-1.0.4-1178fbfa08fb-windows-x64-setup.exe`，
+120305136 bytes，SHA-256 `58cec5683a0d34703b2d867bdef5c8a7a4989589d1c01b2519a36dee5c66b05e`。
+Source 为最终 Candidate，ASAR SHA-256 `4a64188a512e083de32c3700de365ff0eb73c7d7470fe31b74b4db75bdc9d216`；
+版本/App ID/userData/生产 Origin/Fuse 保持，NotSigned，仍为人工覆盖升级，旧安装包保留。
+
+Main 按本次缩小范围承接生产只读预检、备份、Release Gate、main CI、单次 Deploy、实际客户端版本和生产登录/Session 可用性。
+未完成实际安装及生产更新前，这两项明确待验，不以服务器部署或开发态成功代替。旧 10-10 经营补采不作为本轮新增发布门槛。
