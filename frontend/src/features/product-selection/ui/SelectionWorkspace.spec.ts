@@ -59,15 +59,18 @@ function execution(
     error_stage: status === 'failed' ? 'platform_business' : null,
   }
 }
-function render(run = vi.fn().mockResolvedValue(execution())) {
+function render(
+  run = vi.fn().mockResolvedValue(execution()),
+  manualExecutionAvailable = true,
+) {
   const service: SelectionService = {
     ...createSelectionMockHandlers(),
     available: false,
     candidatesAvailable: true,
     manual: {
-      capabilities: vi
-        .fn()
-        .mockResolvedValue({ manual_execution_available: true }),
+      capabilities: vi.fn().mockResolvedValue({
+        manual_execution_available: manualExecutionAvailable,
+      }),
       submit: vi.fn(),
     },
     latestRun: vi
@@ -91,7 +94,8 @@ function render(run = vi.fn().mockResolvedValue(execution())) {
         StrategyDrawer: DrawerStub,
         CandidatePool: PoolStub,
         DataTable: {
-          props: ['emptyDescription'],
+          name: 'DataTable',
+          props: ['columns', 'data', 'emptyDescription'],
           template: '<div>{{ emptyDescription }}</div>',
         },
         PaginationBar: true,
@@ -112,6 +116,51 @@ function pendingResult() {
 }
 describe('submitted selection feedback survives panel changes', () => {
   beforeEach(() => vi.clearAllMocks())
+  it.each([true, false])(
+    'keeps the approved Real strategy management when manual execution availability is %s',
+    async (available) => {
+      const { wrapper, queryClient, service } = render(undefined, available)
+      const strategies = vi.spyOn(service, 'strategies')
+      const saveStrategy = vi.spyOn(service, 'saveStrategy')
+      await flushPromises()
+      expect(wrapper.findComponent(StrategyList).exists()).toBe(true)
+      expect(wrapper.text()).toContain('刷新')
+      expect(wrapper.text()).toContain('达人登录')
+      expect(wrapper.text()).toContain('新建策略')
+      expect(wrapper.text()).toContain('策略保存与定时执行待接入')
+      const table = wrapper.findComponent({ name: 'DataTable' })
+      expect(
+        table.props('columns').map((column: { title: string }) => column.title),
+      ).toEqual([
+        '策略名',
+        '请求店铺',
+        '达人账号',
+        '渠道',
+        '条件摘要',
+        '执行方式',
+        '最近结果',
+        '状态',
+        '操作',
+      ])
+      expect(table.props('data')).toEqual([])
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '新建策略')!
+        .trigger('click')
+      const drawer = wrapper.findComponent(DrawerStub)
+      expect(drawer.props('show')).toBe(true)
+      expect(drawer.props('executionDisabledReason')).toBe(
+        available ? null : '此环境手动获取未启用，已入库结果仍可查询',
+      )
+      // Preserve the original UI without loading demo strategies or implicitly
+      // submitting/saving because a manual capability is unavailable.
+      expect(strategies).not.toHaveBeenCalled()
+      expect(saveStrategy).not.toHaveBeenCalled()
+      expect(service.manual!.submit).not.toHaveBeenCalled()
+      wrapper.unmount()
+      queryClient.clear()
+    },
+  )
   it.each([
     ['succeeded', 'success'],
     ['partial', 'warning'],
@@ -136,6 +185,8 @@ describe('submitted selection feedback survives panel changes', () => {
       await wrapper.get('button').trigger('click')
       await wrapper.setProps({ panel: 'selection-strategy' })
       await flushPromises()
+      expect(wrapper.findComponent(StrategyList).exists()).toBe(true)
+      expect(wrapper.text()).toContain('新建策略')
       expect(messages[kind]).toHaveBeenCalledOnce()
       expect(service.run).toHaveBeenCalledOnce()
       wrapper.unmount()

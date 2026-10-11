@@ -18,6 +18,18 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-12 用户任务纠偏：81a1暂停店铺登录诊断，优先核验并收口已确认选品界面。
+从已确认Green `1718abe117c90842c8d39859a074fa988360f070` 接续
+`feat/product-selection-ui-restoration-closeout-v1`，保留1178、旧选品分支和所有本机材料。
+06bd03c为原设计对照；389030a已经恢复原策略列表/抽屉并删除ManualSelection/manualOnly，
+6e6bfc6补充原生组件的弹层边界。本轮不重复重做这些已存在实现，仅处理发现的回归并补齐证据。
+Real必须保留原工具栏、名称、定时草稿、状态和保存入口；未接策略保存/调度不得假成功。
+保留ShopSession/Signer、有限日期回退、run、持久化、正式API及团队权限；不改Backend或0042/0043。
+仅Frontend定向验证与交接，无DB写入、新Slot、平台请求、手机/SY或全局主题变更。
+Owner使用4176 strictPort隔离HTTP拦截验证，不占5180/8100，不另开Electron。
+普通/最大化四级类目可见、滚动、点击及父级全部尚需ca97唯一Real Electron独立证据；
+完成前不将本轮选品验收标为通过、不推进该业务发布。原已发布事实不倒写或伪造。
+
 2026-10-11 当前81a1任务：从精确Green
 `06992f4f3ee03e2ad689b25e7a4cb5837ce0d359` 接续
 `feat/shop-login-session-sync-v1`。仅完成店铺列表/详情共用登录入口、目标店铺身份核验、
