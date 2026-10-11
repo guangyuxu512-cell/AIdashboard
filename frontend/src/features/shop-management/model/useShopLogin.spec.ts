@@ -156,6 +156,24 @@ describe('page-owned shop login sync', () => {
     expect(state.release).toHaveBeenCalled()
     wrapper.unmount()
   })
+  it('diagnostic baseline: failed identity detection triggers Renderer close and lease release without saving', async () => {
+    window.desktop!.managementLogin!.getStatus = vi.fn().mockResolvedValue({
+      attemptId: 'attempt',
+      status: 'failed',
+      message: 'synthetic document-context failure',
+    })
+    const { flow, wrapper } = setup()
+    await flow.login(shop)
+    await flushPromises()
+    expect(window.desktop!.managementLogin!.close).toHaveBeenCalledWith(
+      'attempt',
+    )
+    expect(state.release).toHaveBeenCalledWith('shop', 'lease')
+    expect(window.desktop!.managementLogin!.refresh).not.toHaveBeenCalled()
+    expect(state.confirm).not.toHaveBeenCalled()
+    expect(state.success).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('preserves management authorization/platform capabilities and precise validation error semantics', async () => {
     state.auth.isSuperAccount = false
     const { flow, wrapper } = setup()

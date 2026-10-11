@@ -17,6 +17,10 @@ const runtimeConfig = resolveDesktopRuntimeConfig({
 const managementLoginService = new ManagementLoginService({
   backendBaseUrl: runtimeConfig.backendBaseUrl,
   allowDevTools: !app.isPackaged,
+  onDiagnostic: app.isPackaged
+    ? undefined
+    : (record) =>
+        console.info(`[management-login-diagnostic] ${JSON.stringify(record)}`),
 })
 
 app.setName(desktopApplicationName)

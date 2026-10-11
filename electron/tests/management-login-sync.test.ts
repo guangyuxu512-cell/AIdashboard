@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { EventEmitter } from 'node:events'
 import type { BrowserWindow, Session } from 'electron'
-import { ManagementLoginService } from '../services/management-login-service'
+import {
+  ManagementLoginService,
+  type ManagementLoginDiagnostic,
+} from '../services/management-login-service'
 import type { ManagementLoginOpenInput } from '../types'
 import type { PlatformAuthAdapter } from '../services/platform-auth-adapter'
 import type { ManagementLoginProfileMappingStore } from '../services/management-login-profile'
@@ -29,7 +32,15 @@ const loginSession = {
 class WindowStub extends EventEmitter {
   destroyed = false
   focused = 0
-  webContents = { id: 42, session: loginSession, setWindowOpenHandler() {} }
+  loadFailure: Error | null = null
+  loading = false
+  webContents = Object.assign(new EventEmitter(), {
+    id: 42,
+    session: loginSession,
+    setWindowOpenHandler() {},
+    isDestroyed: () => this.destroyed,
+    isLoadingMainFrame: () => this.loading,
+  })
   isDestroyed() {
     return this.destroyed
   }
@@ -40,7 +51,9 @@ class WindowStub extends EventEmitter {
   focus() {
     this.focused++
   }
-  async loadURL() {}
+  async loadURL() {
+    if (this.loadFailure) throw this.loadFailure
+  }
   close() {
     if (!this.destroyed) {
       this.destroyed = true
@@ -49,7 +62,15 @@ class WindowStub extends EventEmitter {
   }
 }
 
-function setup(profileMappingStore?: ManagementLoginProfileMappingStore) {
+function setup(
+  profileMappingStore?: ManagementLoginProfileMappingStore,
+  failures?: {
+    load?: Error
+    detection?: Error
+    capture?: Error
+    onDiagnostic?: (record: ManagementLoginDiagnostic) => void
+  },
+) {
   const windows: WindowStub[] = []
   const buffers: Buffer[] = []
   let captures = 0
@@ -58,6 +79,7 @@ function setup(profileMappingStore?: ManagementLoginProfileMappingStore) {
     loginUrl: 'https://test.example/login',
     loginWindowTitle: 'isolated test',
     async detectLoginStatus() {
+      if (failures?.detection) throw failures.detection
       return {
         readyForCapture: true,
         message: 'identified',
@@ -69,6 +91,7 @@ function setup(profileMappingStore?: ManagementLoginProfileMappingStore) {
       }
     },
     async captureSession() {
+      if (failures?.capture) throw failures.capture
       captures++
       const payload = Buffer.from('isolated-candidate')
       buffers.push(payload)
@@ -79,10 +102,12 @@ function setup(profileMappingStore?: ManagementLoginProfileMappingStore) {
     adapters: new Map([['douyin', adapter]]),
     createWindow() {
       const window = new WindowStub()
+      window.loadFailure = failures?.load ?? null
       windows.push(window)
       return window as unknown as BrowserWindow
     },
     fromPartition: () => loginSession,
+    onDiagnostic: failures?.onDiagnostic,
     profileMappingStore: profileMappingStore ?? {
       async load() {
         return null
@@ -98,6 +123,282 @@ function setup(profileMappingStore?: ManagementLoginProfileMappingStore) {
     parent: new WindowStub() as unknown as BrowserWindow,
   }
 }
+
+test('diagnostic baseline: empty profile load rejection closes the child and releases without a save', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const failure = Object.assign(new Error('synthetic navigation failure'), {
+    code: 'ERR_SYNTHETIC_NAVIGATION',
+  })
+  const state = setup(undefined, { load: failure })
+  try {
+    await assert.rejects(state.service.open(state.parent, input), failure)
+    assert.equal(state.windows.length, 1)
+    assert.equal(state.windows[0]!.destroyed, true)
+    assert.equal(state.parent.isDestroyed(), false)
+    assert.equal(state.captures(), 0)
+    assert.deepEqual(requests, ['DELETE'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('diagnostic baseline: detection context failure becomes failed before Renderer cancellation closes the child', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup(undefined, {
+    detection: new Error('synthetic document-context failure'),
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal(opened.profileReused, false)
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'failed')
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal(state.captures(), 0)
+    // The existing Renderer handles this status by cancelling the attempt.
+    await state.service.close(opened.attemptId)
+    assert.equal(state.windows[0]!.destroyed, true)
+    assert.equal(state.parent.isDestroyed(), false)
+    assert.deepEqual(requests, ['DELETE'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('development diagnostics whitelist navigation code/errno and explicit close reason, never exception text or URL', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const records: ManagementLoginDiagnostic[] = []
+  const failure = Object.assign(new Error('private exception text'), {
+    code: 'ERR_SYNTHETIC_NAVIGATION',
+    errno: -777,
+    url: 'private navigation value',
+  })
+  const state = setup(undefined, {
+    load: failure,
+    onDiagnostic: (record) => records.push(record),
+  })
+  try {
+    await assert.rejects(state.service.open(state.parent, input), failure)
+    const failed = records.find(
+      (record) => record.phase === 'load' && record.event === 'error',
+    )!
+    assert.equal(failed.errorCode, 'ERR_SYNTHETIC_NAVIGATION')
+    assert.equal(failed.errno, -777)
+    assert.equal(failed.mainFrameLoading, false)
+    assert.ok(
+      records.some(
+        (record) =>
+          record.event === 'closed' && record.closeReason === 'load_failed',
+      ),
+    )
+    const serialized = JSON.stringify(records)
+    assert.ok(!serialized.includes('private'))
+    assert.ok(!serialized.includes('isolated-test'))
+    assert.deepEqual(
+      Object.keys(failed).sort(),
+      [
+        'timestamp',
+        'attemptId',
+        'phase',
+        'event',
+        'errorCode',
+        'errno',
+        'isMainFrame',
+        'mainFrameLoading',
+        'closeReason',
+      ].sort(),
+    )
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('development diagnostics distinguish capture error and Frame navigation without reflecting supplied content', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    capture: Object.assign(new Error('private capture message'), {
+      code: 'not-a-code-private',
+      errno: 'private',
+    }),
+    onDiagnostic: (record) => records.push(record),
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    state.windows[0]!.loading = true
+    state.windows[0]!.webContents.emit('did-start-navigation', {
+      isMainFrame: true,
+      url: 'private',
+    })
+    state.windows[0]!.webContents.emit(
+      'did-fail-provisional-load',
+      {},
+      -3,
+      'private description',
+      'private URL',
+      true,
+    )
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'failed')
+    const failed = records.find(
+      (record) => record.phase === 'capture' && record.event === 'error',
+    )!
+    assert.equal(failed.errorCode, null)
+    assert.equal(failed.errno, null)
+    assert.ok(
+      records.some(
+        (record) =>
+          record.errno === -3 &&
+          record.isMainFrame === true &&
+          record.mainFrameLoading === true,
+      ),
+    )
+    await state.service.close(opened.attemptId)
+    assert.ok(
+      records.some(
+        (record) =>
+          record.event === 'closed' &&
+          record.closeReason === 'renderer_request',
+      ),
+    )
+    assert.ok(!JSON.stringify(records).includes('private'))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a failed diagnostic sink cannot close a healthy window or fail identity capture', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const state = setup(undefined, {
+    onDiagnostic() {
+      throw new Error('sink offline')
+    },
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'identified',
+    )
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('diagnostic property access never replaces the original error or changes cleanup', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const failure = new Error('original navigation failure')
+  Object.defineProperty(failure, 'code', {
+    get() {
+      throw new Error('diagnostic property unavailable')
+    },
+  })
+  const state = setup(undefined, { load: failure })
+  try {
+    await assert.rejects(state.service.open(state.parent, input), failure)
+    assert.equal(state.windows[0]!.destroyed, true)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('closed diagnostics survive destroyed-window getters, without changing manual cancellation or lease cleanup', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const window = state.windows[0]!
+    const contents = window.webContents
+    Object.defineProperty(window, 'webContents', {
+      get() {
+        if (window.destroyed) throw new Error('private destroyed native getter')
+        return contents
+      },
+    })
+    window.close()
+    await new Promise((resolve) => setImmediate(resolve))
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'closed')
+    assert.equal(status.sessionCaptured, false)
+    // The Renderer sees closed and performs its existing cleanup afterward.
+    await state.service.close(opened.attemptId)
+    const closed = records.find((record) => record.event === 'closed')
+    assert.ok(closed)
+    assert.equal(closed.phase, 'close')
+    assert.equal(closed.closeReason, 'window_closed_without_request')
+    assert.equal(closed.mainFrameLoading, null)
+    assert.deepEqual(
+      records
+        .filter((record) => record.phase === 'close')
+        .map((record) => record.event),
+      ['closed', 'request'],
+    )
+    assert.deepEqual(requests, ['DELETE'])
+    assert.equal(state.captures(), 0)
+    assert.equal(state.parent.isDestroyed(), false)
+    assert.ok(!JSON.stringify(records).includes('private'))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('unreadable optional frame state does not drop diagnostic events or affect identity capture', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    state.windows[0]!.webContents.isLoadingMainFrame = () => {
+      throw new Error('private native frame state unavailable')
+    }
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'identified')
+    assert.equal(state.captures(), 1)
+    assert.equal(state.windows[0]!.destroyed, false)
+    const detection = records.filter((record) => record.phase === 'detect')
+    assert.deepEqual(
+      detection.map((record) => record.event),
+      ['start', 'finish'],
+    )
+    assert.ok(detection.every((record) => record.mainFrameLoading === null))
+    assert.ok(!JSON.stringify(records).includes('private'))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
 
 test('existing shop: single capture/save, retain browsing without lease, focus only, close/reopen synchronizes again', async () => {
   const originalFetch = globalThis.fetch

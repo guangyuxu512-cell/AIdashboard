@@ -56,3 +56,5 @@ partition 与本地 Profile mapping。
 取消、完成、应用退出和 30 分钟超时都会清空 Buffer；Session payload、密码不得写入磁盘或日志。Management Login Profile 仅保存完成接入后的平台与 partition 映射，不保存 Cookie payload。
 
 阶段 3C-3 的 Session 恢复仍由 Management Login Service 承担：存在 shop 映射时复用本机 persistent partition，不存在时只在当前电脑新建 Profile。Main 持有 Backend Refresh Lease、expected version 与捕获 Buffer，Renderer 只看非敏感进度。用户提前关闭、取消、30 分钟超时和应用退出会请求释放 Lease；异常退出由服务器 Lease 到期兜底。Management Login Profile 是当前管理电脑本地浏览器身份环境，ShopSession 是服务器权威程序认证状态，两者不得同步或混用。
+
+开发实例的窄诊断仅记录 attempt、阶段、code/errno、主Frame导航/加载状态和关窗调用原因，正式安装实例关闭该诊断。禁止输出 Error.message、URL、身份、Cookie或响应。`electron/tools/capture-login-diagnostics.ps1` 复用已准备的正常启动入口，仅将白名单重建记录保存到本工作树受忽略的 `.codex/shop-login-session-sync/`；其他输出全部丢弃。已有Electron未退出时拒绝启动，不强制结束或另开第二实例，不改变userData/partition/人员认证。
