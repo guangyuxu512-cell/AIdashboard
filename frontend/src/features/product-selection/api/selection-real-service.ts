@@ -7,6 +7,7 @@ import {
   readSelectionCandidates,
   readSelectionObservation,
   readLatestSelectionRun,
+  readSelectionRun,
   readSelectionCategories,
   type SelectionCategoryDto,
   type SelectionObservationDto,
@@ -14,6 +15,7 @@ import {
   readSelectionCapabilities,
   submitSelectionRun,
 } from './selection-read-api'
+import { formatSelectionInterval } from '../model/metric-display'
 
 function categoryNodes(
   nodes: SelectionCategoryDto[],
@@ -49,10 +51,12 @@ function categoryNodes(
     })
 }
 
-function range(metric: SelectionMetricDto): string | null {
+function range(
+  metric: SelectionMetricDto,
+  kind: 'count' | 'amount' = 'count',
+): string | null {
   if (metric.state !== 'available' || !metric.value_range) return null
-  // No scaling, rounding, approximate midpoint or invented suffix.
-  return metric.value_range.map((item) => item.value).join('–')
+  return formatSelectionInterval(metric.value_range, kind)
 }
 
 export function mapSelectionObservation(
@@ -79,7 +83,15 @@ export function mapSelectionObservation(
     category: dto.category_path?.join(' / ') ?? '—',
     priceBand: dto.price_band,
     listedAt: dto.first_on_shelf_date,
-    negativeReviewRate: null,
+    negativeReviewRate:
+      dto.bad_comment_rate_unit === 4 &&
+      dto.bad_comment_rate_raw !== null &&
+      dto.bad_comment_rate_raw.trim() !== '' &&
+      Number.isFinite(Number(dto.bad_comment_rate_raw)) &&
+      Number(dto.bad_comment_rate_raw) >= 0 &&
+      Number(dto.bad_comment_rate_raw) <= 1
+        ? Number(dto.bad_comment_rate_raw)
+        : null,
     negativeReviewRateRaw:
       dto.bad_comment_rate_raw === null
         ? null
@@ -119,7 +131,7 @@ export function mapSelectionObservation(
     metricsRetrievedAt: dto.metrics_retrieved_at,
     collectionStatus: 'unknown',
     firstListed: dto.newly_on_ranking,
-    userPaidAmountRange: range(dto.video_metric_ranges.pay_amt),
+    userPaidAmountRange: range(dto.video_metric_ranges.pay_amt, 'amount'),
     userPaidAmountUnit: null,
     clicksRange: range(dto.video_metric_ranges.product_click_cnt),
     soldUnitsRange: range(dto.video_metric_ranges.pay_combo_cnt),
@@ -130,7 +142,6 @@ export function mapSelectionObservation(
 export function createSelectionRealService(
   unavailable: () => Promise<never>,
 ): SelectionService {
-  const shopCategories = new Map<string, CategoryNode[]>()
   function findScope(
     nodes: CategoryNode[],
     id: string,
@@ -145,27 +156,22 @@ export function createSelectionRealService(
     available: false,
     candidatesAvailable: true,
     latestRun: readLatestSelectionRun,
+    run: readSelectionRun,
     manual: {
       capabilities: readSelectionCapabilities,
-      async submit(input, submissionKey) {
+      async submit(input, submissionKey, categories) {
         const choice = input.channels.shortVideo.conditions
-        // A Query cache can outlive this service instance. Re-establish its
-        // actual tree rather than guessing an industry from a display ID.
-        if (input.shopId && !shopCategories.has(input.shopId)) {
+        // Reuse the drawer's actor/shop-bound Query tree; direct callers load
+        // the registered tree rather than guessing scope or a second cache.
+        if (input.shopId && !categories) {
           const tree = await readSelectionCategories(input.shopId)
           if (tree.shop_id !== input.shopId)
             throw new Error('类目响应与当前请求店铺不一致')
-          shopCategories.set(
-            input.shopId,
-            categoryNodes(tree.nodes, [], tree.industry_id),
-          )
+          categories = categoryNodes(tree.nodes, [], tree.industry_id)
         }
         const scope =
           input.shopId && choice.categoryId
-            ? findScope(
-                shopCategories.get(input.shopId) ?? [],
-                choice.categoryId,
-              )
+            ? findScope(categories ?? [], choice.categoryId)
             : undefined
         if (!input.shopId || !scope)
           throw new Error('请选择当前店铺已加载的真实类目')
@@ -206,12 +212,11 @@ export function createSelectionRealService(
       },
     },
     previewPeriod: unavailable,
-    async categories(shopId) {
-      const tree = await readSelectionCategories(shopId)
+    async categories(shopId, options) {
+      const tree = await readSelectionCategories(shopId, options)
       if (tree.shop_id !== shopId)
         throw new Error('类目响应与当前请求店铺不一致')
       const nodes = categoryNodes(tree.nodes, [], tree.industry_id)
-      shopCategories.set(shopId, nodes)
       return nodes
     },
     strategies: unavailable,

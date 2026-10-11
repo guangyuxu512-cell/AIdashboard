@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { SelectionObservationDto } from '../../src/features/product-selection/api/selection-read-api'
+import { settleSelectionTransitions } from '../support/settle-selection-transitions'
 
 // Intercepted formal HTTP contracts only; not a live platform/DB/Electron proof.
 test('Real manual submits shop-bound choices, reads chosen fallback dates and persists on refresh without resubmitting', async ({
@@ -7,9 +8,11 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
 }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   let submitted = false
+  let terminal = false
   const commands: unknown[] = [],
     unexpected: string[] = [],
     mockModules: string[] = []
+  let categoryReads = 0
   const scope = {
     industry_id: '7',
     category_id: '1001,1002',
@@ -105,13 +108,37 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     checked_at: '2026-10-11T03:59:00Z',
     metrics_retrieved_at: '2026-10-11T04:00:00Z',
     video_metric_ranges: {
-      pay_amt: metric,
-      pay_combo_cnt: metric,
-      product_click_cnt: metric,
-      video_cnt: metric,
+      pay_amt: {
+        ...metric,
+        value_range: [
+          { value: '50000000', value_type: 'int', unit: 'price' },
+          { value: '75000000', value_type: 'int', unit: 'price' },
+        ],
+      },
+      pay_combo_cnt: {
+        ...metric,
+        value_range: [
+          { value: '10000', value_type: 'int', unit: 'number' },
+          { value: '25000', value_type: 'int', unit: 'number' },
+        ],
+      },
+      product_click_cnt: {
+        ...metric,
+        value_range: [
+          { value: '100000', value_type: 'int', unit: 'number' },
+          { value: '250000', value_type: 'int', unit: 'number' },
+        ],
+      },
+      video_cnt: {
+        ...metric,
+        value_range: [
+          { value: '250', value_type: 'int', unit: 'number' },
+          { value: '500', value_type: 'int', unit: 'number' },
+        ],
+      },
     },
     first_on_shelf_date: '2025-08-17',
-    bad_comment_rate_raw: '0.00205018686599039',
+    bad_comment_rate_raw: '0.0006711409395973154',
     bad_comment_rate_unit: 4,
     basic_info_retrieved_at: '2026-10-11T04:00:01Z',
     last_attempt_at: '2026-10-11T04:00:01Z',
@@ -173,6 +200,7 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
         unavailable_reason: null,
       }
     else if (path === '/api/v1/product-selection/categories') {
+      categoryReads++
       expect(new URL(route.request().url()).searchParams.get('shop_id')).toBe(
         'shop-1',
       )
@@ -224,25 +252,38 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
           submission_key: command.submission_key,
           execution_run_id: 'run-1',
           reused: false,
-          execution: run,
+          execution: {
+            ...run,
+            status: 'pending',
+            result_count: null,
+            saved_count: 0,
+          },
         },
       })
       return
-    } else if (path === '/api/v1/product-selection/runs')
+    } else if (path === '/api/v1/product-selection/runs/run-1')
+      data = terminal
+        ? run
+        : { ...run, status: 'pending', result_count: null, saved_count: 0 }
+    else if (path === '/api/v1/product-selection/runs')
       data = {
-        items: submitted ? [run] : [],
+        items: submitted
+          ? [terminal ? run : { ...run, status: 'pending' }]
+          : [],
         total: submitted ? 1 : 0,
         page: 1,
         page_size: 1,
       }
-    else if (path === '/api/v1/product-selection/candidates')
+    else if (path === '/api/v1/product-selection/candidates') {
+      // Finish only after the user changes panel and StrategyList unmounts.
+      terminal = submitted
       data = {
         items: submitted ? [row] : [],
         total: submitted ? 1 : 0,
         page: 1,
         page_size: 10,
       }
-    else if (path === '/api/v1/product-selection/observations/observation-1')
+    } else if (path === '/api/v1/product-selection/observations/observation-1')
       data = row
     else {
       unexpected.push(path)
@@ -284,19 +325,31 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     .getByText('全部', { exact: true })
     .click()
   await expect(drawer.locator('.n-cascader')).toContainText('真实子类目 / 全部')
+  expect(categoryReads).toBe(1)
   const schedule = drawer.locator('.n-form-item').filter({
     has: page.locator('.n-form-item-label', { hasText: /^定时执行$/ }),
   })
   await schedule.getByRole('switch').click()
   await expect(drawer.getByText('执行频率', { exact: true })).toBeVisible()
+  await settleSelectionTransitions(page)
   await page.screenshot({
     path: info.outputPath('real-restored-strategy-before-submit.png'),
     animations: 'disabled',
   })
   await drawer.getByRole('button', { name: '立即获取', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: '选品库切换' })
+    .getByRole('button', { name: '候选池', exact: true })
+    .click()
   await expect(
     page.getByText(/2026-10-03～2026-10-09 · 已回退一天/),
   ).toBeVisible()
+  await expect(
+    page.locator('.n-message').filter({ hasText: '获取完成' }),
+  ).toBeVisible()
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  expect(categoryReads).toBe(1) // Submit uses the actor/shop-scoped Query tree.
+  await expect(page.locator('.selection-panel .n-alert')).toHaveCount(0)
   expect(commands).toHaveLength(1)
   expect(commands[0]).toMatchObject({
     shop_id: 'shop-1',
@@ -312,10 +365,6 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
   expect(commands[0]).not.toHaveProperty('begin_date')
   expect(commands[0]).not.toHaveProperty('scheduled')
   expect(commands[0]).not.toHaveProperty('name')
-  await page
-    .getByRole('navigation', { name: '选品库切换' })
-    .getByRole('button', { name: '候选池', exact: true })
-    .click()
   await expect(page.getByText(row.title!, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '详情', exact: true }).click()
   await expect(
@@ -324,6 +373,45 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
       .getByText('2026-10-03～2026-10-09', { exact: true }),
   ).toBeVisible()
   await expect(page.locator('.n-drawer').getByText(/已回退一天/)).toBeVisible()
+  await expect(
+    page.locator('.n-drawer').getByText('0.07%', { exact: true }),
+  ).toBeVisible()
+  for (const text of ['¥50万–75万', '10万–25万', '1万–2.5万', '250–500'])
+    await expect(
+      page.locator('.n-drawer').getByText(text, { exact: true }),
+    ).toBeVisible()
+  await settleSelectionTransitions(page)
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  for (const [theme, label] of [
+    ['graphite', '石墨浅色'],
+    ['forest', '森林绿'],
+    ['coral', '珊瑚红'],
+    ['midnight', '午夜青'],
+  ]) {
+    // Theme state is normally chosen in the top bar; while a modal is open it
+    // cannot be clicked. Reopen the same detail after using the existing menu.
+    await page
+      .locator('.n-drawer')
+      .getByRole('button', { name: '关闭', exact: true })
+      .click()
+    await page.getByRole('button', { name: '切换主题' }).click()
+    await page.locator('.n-dropdown').getByText(label!, { exact: true }).click()
+    await expect(page.getByText('0.07%', { exact: true })).toBeVisible()
+    await settleSelectionTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`${theme}-experience-candidate-list.png`),
+      animations: 'disabled',
+    })
+    await page.getByRole('button', { name: '详情', exact: true }).click()
+    await expect(
+      page.locator('.n-drawer').getByText('¥50万–75万', { exact: true }),
+    ).toBeVisible()
+    await settleSelectionTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`${theme}-experience-detail.png`),
+      animations: 'disabled',
+    })
+  }
   await page.screenshot({
     path: info.outputPath('real-intercepted-fallback-detail.png'),
     animations: 'disabled',
@@ -334,6 +422,8 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     .click()
   await page.reload()
   await expect(page.getByText(row.title!, { exact: true })).toBeVisible()
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  await expect(page.locator('.selection-panel .n-alert')).toHaveCount(0)
   await page.getByRole('button', { name: '刷新列表', exact: true }).click()
   expect(commands).toHaveLength(1)
   expect(mockModules).toEqual([])

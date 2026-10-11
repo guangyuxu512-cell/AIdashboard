@@ -47,11 +47,12 @@ def read_selection_categories(
     actor: Annotated[ActorContext, Depends(get_selection_actor)],
     service: Annotated[SelectionCategoryService, Depends(get_selection_category_service)],
     session: Annotated[Session, Depends(get_database_session)],
+    refresh: Annotated[bool, Query()] = False,
 ) -> SelectionCategoriesRead:
     # Guard dependencies used this read-only transaction. Release it before
     # the category service starts its independent authorization / HTTP stages.
     session.rollback()
-    return service.read(actor, shop_id)
+    return service.read(actor, shop_id, refresh=refresh)
 
 
 def get_selection_fact_service(

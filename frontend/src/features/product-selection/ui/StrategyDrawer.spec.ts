@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, ref } from 'vue'
 import { NMessageProvider, NTooltip } from 'naive-ui'
 import { describe, expect, it, vi } from 'vitest'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
@@ -33,6 +33,8 @@ function render(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
+  const show = ref(true),
+    contextKey = ref('actor:team')
   const Wrapper = defineComponent({
     setup: () => () =>
       h(
@@ -41,10 +43,10 @@ function render(
         {
           default: () =>
             h(StrategyDrawer, {
-              show: true,
+              show: show.value,
               strategy,
               service,
-              contextKey: 'actor:team',
+              contextKey: contextKey.value,
             }),
         },
       ),
@@ -58,10 +60,67 @@ function render(
       },
     },
   })
-  return { wrapper, queryClient }
+  return { wrapper, queryClient, show, contextKey }
 }
 
 describe('strategy shop category loading', () => {
+  it('reuses shop-scoped Query categories on return and reopen, but supports explicit refresh and expiry', async () => {
+    const service = createSelectionMockHandlers()
+    service.categories = vi.fn(async (shop, options) => [
+      {
+        id: `${shop}/category`,
+        name: options?.refresh ? '刷新后的类目' : shop,
+      },
+    ])
+    const { wrapper, queryClient, show, contextKey } = render(service)
+    const shop = wrapper.findComponent(ShopStub)
+    const select = async (id: string) => {
+      shop.vm.$emit('update:modelValue', id)
+      await flushPromises()
+    }
+    await select('shop-a')
+    await select('shop-b')
+    await select('shop-a')
+    expect(service.categories).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent(CategorySelector).props('nodes')[0].name).toBe(
+      'shop-a',
+    )
+    show.value = false
+    await flushPromises()
+    show.value = true
+    await flushPromises()
+    await select('shop-a')
+    expect(service.categories).toHaveBeenCalledTimes(2)
+    const refresh = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新类目')!
+    await refresh.trigger('click')
+    await flushPromises()
+    expect(service.categories).toHaveBeenLastCalledWith('shop-a', {
+      refresh: true,
+    })
+    expect(wrapper.findComponent(CategorySelector).props('nodes')[0].name).toBe(
+      '刷新后的类目',
+    )
+    const key = ['selection-categories', 'actor:team', 'shop-a']
+    const query = queryClient.getQueryCache().find({ queryKey: key })!
+    expect(query.isStaleByTime(24 * 60 * 60 * 1000)).toBe(false)
+    // Make only this Query older than its declared TTL, without changing app time.
+    queryClient.setQueryData(key, query.state.data, {
+      updatedAt: Date.now() - 24 * 60 * 60 * 1000 - 1,
+    })
+    await select('shop-b')
+    await select('shop-a')
+    expect(service.categories).toHaveBeenCalledTimes(4)
+    expect(service.categories).toHaveBeenLastCalledWith('shop-a', {
+      refresh: false,
+    })
+    contextKey.value = 'other-actor:other-team'
+    await flushPromises()
+    expect(service.categories).toHaveBeenCalledTimes(5)
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('Real retains the original strategy fields and uses a stable manual key without saving a strategy or schedule', async () => {
     const service = { ...createSelectionMockHandlers(), available: false }
     const submit = vi
