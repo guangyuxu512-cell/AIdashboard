@@ -287,7 +287,8 @@ field-full: 100%
 - primary
 - secondary
 - danger
-- text/icon
+- text/icon（中性文字操作）
+- link（显式使用主题链接色，默认按钮行为不变）
 
 页面不得自行定义新的主按钮颜色。
 
@@ -337,7 +338,11 @@ table border
 
 `DataTable.appearance="list"` 提供无明显纵向网格的列表外观：保留轻量行分隔、表头层级、Hover、Selected 和固定列阴影。默认 `grid` 行为保持不变，必须由页面模式显式选择。
 
+`DataTable.themeOverrides` 透传已有 `AppTable/NDataTable` 配置，只供有明确需求的消费者显式调整；默认 undefined、不改变其他表格。选品图片列表以 `tdPaddingMedium: var(--space-2) var(--space-3)` 组合64px缩略图形成约81px行，不改共享表格或密度Token；详情摘要图片仍为80px。
+
 行选择继续使用 Naive UI 原生 selection column，并通过 `checkedRowKeys` / `update:checkedRowKeys` 由 `AppTable`、`DataTable` 统一透传；业务页面不得手写第二套 Checkbox 表头联动。
+
+表头排序沿用 Naive `sorter` / `sortOrder` 列配置，`DataTable` 透传 `AppTable` 的 `update:sorter`（原生 `DataTableSortState`，包括取消排序）。该事件不改变既有默认外观或调用；业务查询层负责完整筛选结果排序后分页，不在公共组件内猜测业务字段。
 
 ---
 
@@ -526,7 +531,7 @@ description（需要时）
 
 | 组件             | 基础实现       | 项目级默认语义                                   |
 | ---------------- | -------------- | ------------------------------------------------ |
-| `AppButton`      | `NButton`      | primary / secondary / danger / text，固定 medium |
+| `AppButton`      | `NButton`      | primary / secondary / danger / text / link，默认 medium，显式 small |
 | `AppInput`       | `NInput`       | 语义宽度、固定 medium                            |
 | `AppNumberInput` | `NInputNumber` | 语义宽度、固定 medium                            |
 | `AppSelect`      | `NSelect`      | 语义宽度、固定 medium、单选/多选与标签折叠       |
@@ -542,6 +547,8 @@ description（需要时）
 | `AppTabs`        | `NTabs`        | 统一 medium 与动画                               |
 
 宽度只允许 `xs / sm / md / lg / xl / full`，弹层只允许 `sm / md / lg`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
+
+`AppButton.size="small"` 仅用于明确的紧凑行内操作，沿用已存在的 Naive small 与 `--control-height-compact`；其他调用保持 medium，不定义新尺寸或改变 tone 默认行为。
 
 阶段 1B 增加页面模式辅助组件：`FilterField` 统一筛选字段标签和语义宽度，`SummaryGrid` 统一 StatCard 响应式网格。两者只组合既有基础能力，不替代 `AppSelect`、`AppInput` 或 `StatCard`。
 

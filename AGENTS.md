@@ -18,12 +18,18 @@
 
 ### Two-Gate、问题归属与共享历史
 
-本期 Feature 登记（2026-10-05）：81a1 `feat/product-center-placeholder-v1` 从 Green
-`afec237435dabc3e086b9b515f28986876f6fcbd` 开发商品中心导航与占位，状态 `UI_ONLY`。
-Frontend 复用 Registry / Guard / ContextSwitchBar（framed）/ EmptyState / PageSection；Backend 仅登记
-`product-selection`、`product-library` 模块授权值，不自动授予普通成员。无业务 API、Schema、Migration
-或 Worker 变更；Gate 1 后交“集成ca97”真实 Electron Gate 2，Green 后交原发布会话，发布须满足适用授权。
-旧主题成果与本地忽略材料保留，不修改 main 或生产环境。
+本期 Feature 登记（2026-10-08）：81a1 `feat/product-selection-frontend-v1` 从 ca97 确认的 Green
+`b34e43cb90356e03d2f793c4146c6775a11f5ab3` 开发选品库前端与 Mock 交互，状态 `UI_ONLY`。
+复用 framed 导航、既有列表/分页/Drawer/表单/ShopSelector/主题；采集任务与商品库仍占位。
+typed service 为前端草案，Real 不请求猜测接口、不回退 Mock。无 Backend、Schema、Migration、Worker、
+真实平台、真实调度或达人登录/Session 保存。Gate 1 后交“集成ca97”唯一 Integration Electron 验证 Mock
+与 Real 边界；Green 后交原发布会话，开发会话不发布。旧分支、提交与本机忽略材料保留。
+
+2026-10-09 用户授权按两个阶段接续本 Feature：先完成紧凑候选列表、详情首屏和说明精简的前端返修，
+仍为 UI_ONLY，无新增业务数据库/Migration；由 ca97 加载精确新候选进行集中页面复验。
+前端确认后才实施罗盘手动选品最小闭环（条件→榜单请求→候选持久化→basic_info补充→正式查询）。
+该阶段复用ShopSession/HTTP/Signer/商品模块授权与团队隔离；必要Feature DB与Migration Slot由ca97分配。
+不扩展百应、达人登录、每小时监控、手机任务或自动上架；开发会话不操作main/生产，Mock不能替代真实闭环证据。
 
 选品接入资源登记（2026-10-10）：81a1 沿用 `feat/product-selection-frontend-v1`，基线
 `b34e43cb90356e03d2f793c4146c6775a11f5ab3`。前端候选 `06bd03c0fa61b00251063e21350cd0cc5445afe5`

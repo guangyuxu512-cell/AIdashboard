@@ -101,3 +101,52 @@ COMPASS_CORE_INDEX_V3_ENDPOINT = DouyinEndpoint(
         ),
     ),
 )
+
+
+# Stable, credential-free context from the verified selection requests. Page
+# tracking, captured fingerprint values and signatures are deliberately absent.
+# These contracts do not establish UI channel or relative-date enum mappings.
+_COMPASS_SELECTION_REFERER = (
+    "https://compass.jinritemai.com/shop/chance/merchandise-product-rank"
+    "?rank_type=3&from_page=%2Fshop%2Fmerchandise-traffic"
+)
+_COMPASS_SELECTION_HEADERS = (
+    ("accept", "application/json, text/plain, */*"),
+    ("accept-language", "zh-CN,zh;q=0.9"),
+    ("agw-js-conv", "str"),
+    ("cache-control", "no-cache"),
+    ("pragma", "no-cache"),
+    ("priority", "u=1, i"),
+    ("sec-ch-ua", '"Google Chrome";v="155", "Chromium";v="155", "Not(A:Brand";v="24"'),
+    ("sec-ch-ua-mobile", "?0"),
+    ("sec-ch-ua-platform", '"Windows"'),
+    ("sec-fetch-dest", "empty"),
+    ("sec-fetch-mode", "cors"),
+    ("sec-fetch-site", "same-origin"),
+    ("x-e2e-platform", "compass"),
+    ("referer", _COMPASS_SELECTION_REFERER),
+    ("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"),
+)
+
+COMPASS_CATEGORY_ENDPOINT = DouyinEndpoint(
+    host="compass.jinritemai.com",
+    path="/compass_api/config_center/category/cate_list",
+    method="GET", sign_required=True,
+    referer=COMPASS_CORE_INDEX_V3_ENDPOINT.referer,
+    headers=COMPASS_CORE_INDEX_V3_ENDPOINT.headers,
+)
+COMPASS_SELECTION_RANK_ENDPOINT = DouyinEndpoint(
+    host="compass.jinritemai.com",
+    path="/compass_api/shop/product/product_rank/video_bring_good",
+    method="GET", sign_required=True,
+    referer=_COMPASS_SELECTION_REFERER,
+    headers=_COMPASS_SELECTION_HEADERS,
+)
+COMPASS_SELECTION_BASIC_INFO_ENDPOINT = DouyinEndpoint(
+    host="compass.jinritemai.com",
+    path="/compass_api/shop/product/compete_product_detail/basic_info",
+    method="GET", sign_required=True,
+    referer=_COMPASS_SELECTION_REFERER,
+    headers=_COMPASS_SELECTION_HEADERS,
+)

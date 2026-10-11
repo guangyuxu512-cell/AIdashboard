@@ -40,6 +40,11 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
+from app.modules.product_selection.models import (
+    ProductSelectionCandidate,
+    ProductSelectionObservation,
+    ProductSelectionRun,
+)
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
@@ -65,6 +70,9 @@ _MODELS = (
     MaterialGroupAsset,
     MaterialGroupTemplateBinding,
     ProductMaterialGroup,
+    ProductSelectionCandidate,
+    ProductSelectionObservation,
+    ProductSelectionRun,
     PromptTemplate,
     TemplateGroup,
     Device,

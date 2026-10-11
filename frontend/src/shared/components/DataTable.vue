@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { DataTableProps, DataTableRowKey } from 'naive-ui'
+import type {
+  DataTableProps,
+  DataTableRowKey,
+  DataTableSortState,
+} from 'naive-ui'
 
 import AppTable from '@/shared/ui/AppTable.vue'
 
@@ -19,6 +23,7 @@ const props = withDefaults(
     checkedRowKeys?: DataTableRowKey[]
     viewport?: 'auto' | 'stable' | 'fill'
     appearance?: 'grid' | 'list'
+    themeOverrides?: DataTableProps['themeOverrides']
   }>(),
   {
     data: () => [],
@@ -30,22 +35,21 @@ const props = withDefaults(
     checkedRowKeys: () => [],
     viewport: 'auto',
     appearance: 'grid',
+    themeOverrides: undefined,
   },
 )
 
 defineEmits<{
   retry: []
   'update:checkedRowKeys': [keys: DataTableRowKey[]]
+  'update:sorter': [sorter: DataTableSortState | DataTableSortState[] | null]
 }>()
 </script>
 
 <template>
   <div
     class="data-table"
-    :class="[
-      `data-table--${viewport}`,
-      `data-table--appearance-${appearance}`,
-    ]"
+    :class="[`data-table--${viewport}`, `data-table--appearance-${appearance}`]"
   >
     <LoadingState v-if="loading && (props.data?.length ?? 0) === 0" />
     <ErrorState
@@ -67,8 +71,10 @@ defineEmits<{
       :scroll-x="scrollX"
       :checked-row-keys="checkedRowKeys"
       :appearance="appearance"
+      :theme-overrides="themeOverrides"
       :fill="viewport === 'fill'"
       @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
+      @update:sorter="$emit('update:sorter', $event)"
     />
   </div>
 </template>
