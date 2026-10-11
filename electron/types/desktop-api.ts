@@ -1,12 +1,7 @@
 export type DesktopResolvedTheme = 'light' | 'dark'
 export type ManagementLoginPlatform = 'douyin' | 'pdd'
 export type ManagementLoginStatus =
-  | 'opened'
-  | 'waiting'
-  | 'identified'
-  | 'closed'
-  | 'failed'
-  | 'completed'
+  'opened' | 'waiting' | 'identified' | 'closed' | 'failed' | 'completed'
 
 export interface ManagementLoginIdentity {
   platform: ManagementLoginPlatform
@@ -23,6 +18,12 @@ export interface ManagementLoginOpenInput {
     leaseId: string
     expectedVersion: number
   }
+}
+
+export interface ManagementLoginFocusInput {
+  platform: ManagementLoginPlatform
+  teamId: string
+  shopId: string
 }
 
 export interface ManagementLoginStatusResult {
@@ -66,6 +67,7 @@ export interface ManagementLoginRefreshResult {
 export const desktopIpcChannels = {
   setTitleBarTheme: 'appearance:set-title-bar-theme',
   openManagementLogin: 'management-login:open',
+  focusManagementShop: 'management-login:focus-shop',
   getManagementLoginStatus: 'management-login:get-status',
   completeManagementLogin: 'management-login:complete',
   refreshManagementLogin: 'management-login:refresh',
@@ -77,6 +79,7 @@ export interface DesktopApi {
     setTitleBarTheme(theme: DesktopResolvedTheme): void
   }
   managementLogin: {
+    focusShop(input: ManagementLoginFocusInput): Promise<boolean>
     open(input: ManagementLoginOpenInput): Promise<ManagementLoginStatusResult>
     getStatus(attemptId: string): Promise<ManagementLoginStatusResult>
     complete(
@@ -85,6 +88,19 @@ export interface DesktopApi {
     refresh(attemptId: string): Promise<ManagementLoginRefreshResult>
     close(attemptId: string): Promise<void>
   }
+}
+
+export function isManagementLoginFocusInput(
+  value: unknown,
+): value is ManagementLoginFocusInput {
+  if (!value || typeof value !== 'object') return false
+  const input = value as Record<string, unknown>
+  return (
+    hasOnlyKeys(input, ['platform', 'teamId', 'shopId']) &&
+    isManagementLoginPlatform(input.platform) &&
+    isUuid(input.teamId) &&
+    isUuid(input.shopId)
+  )
 }
 
 export function isDesktopResolvedTheme(

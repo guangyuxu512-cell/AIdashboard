@@ -59,10 +59,27 @@ class ShopSessionService:
             )
         return self._to_metadata(shop_session)
 
+    def reserve_for_refresh(self, shop_id: UUID, reserved_at: datetime) -> None:
+        """Create only a lease carrier for a pre-existing, unconfigured Shop.
+
+        Does not commit: the refresh service owns the reservation/lease boundary.
+        Empty encrypted bytes are deliberately not a usable Session payload.
+        """
+        self._ensure_shop_exists(shop_id)
+        if self.cipher is None:
+            raise SessionEncryptionUnavailableError()
+        self.repository.reserve_for_refresh(
+            shop_id=shop_id,
+            reserved_at=reserved_at,
+            payload_encrypted=self.cipher.encrypt_bytes(b""),
+        )
+
     def store_payload(
         self,
         command: StoreShopSessionCommand,
         payload: bytes,
+        *,
+        refresh_lease_id: UUID | None = None,
     ) -> ShopSessionMetadataRead:
         self._ensure_shop_exists(command.shop_id)
         if (
@@ -106,6 +123,7 @@ class ShopSessionService:
             validated_at=command.validated_at,
             expires_at=command.expires_at,
             payload_encrypted=payload_encrypted,
+            **({"refresh_lease_id": refresh_lease_id} if refresh_lease_id is not None else {}),
         ):
             self.session.rollback()
             raise SessionVersionConflictError()
@@ -118,6 +136,7 @@ class ShopSessionService:
     @staticmethod
     def _to_metadata(shop_session: ShopSession) -> ShopSessionMetadataRead:
         now = datetime.now(UTC)
+        configured = shop_session.status is not ShopSessionStatus.NOT_CONFIGURED
         refresh_in_progress = (
             shop_session.refresh_lease_id is not None
             and shop_session.refresh_lease_expires_at is not None
@@ -125,13 +144,13 @@ class ShopSessionService:
         )
         return ShopSessionMetadataRead(
             session_id=shop_session.session_id,
-            configured=True,
+            configured=configured,
             status=shop_session.status,
             version=shop_session.version,
             source_device_id=shop_session.source_device_id,
-            captured_at=shop_session.captured_at,
-            validated_at=shop_session.validated_at,
-            expires_at=shop_session.expires_at,
+            captured_at=shop_session.captured_at if configured else None,
+            validated_at=shop_session.validated_at if configured else None,
+            expires_at=shop_session.expires_at if configured else None,
             refresh_in_progress=refresh_in_progress,
             refresh_lease_expires_at=(
                 shop_session.refresh_lease_expires_at

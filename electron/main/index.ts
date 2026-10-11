@@ -17,6 +17,10 @@ const runtimeConfig = resolveDesktopRuntimeConfig({
 const managementLoginService = new ManagementLoginService({
   backendBaseUrl: runtimeConfig.backendBaseUrl,
   allowDevTools: !app.isPackaged,
+  onDiagnostic: app.isPackaged
+    ? undefined
+    : (record) =>
+        console.info(`[management-login-diagnostic] ${JSON.stringify(record)}`),
 })
 
 app.setName(desktopApplicationName)
@@ -30,10 +34,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => focusMainWindow())
 
   void app.whenReady().then(() => {
-    registerIpcHandlers(
-      managementLoginService,
-      runtimeConfig.rendererOrigin,
-    )
+    registerIpcHandlers(managementLoginService, runtimeConfig.rendererOrigin)
     mainWindow = openMainWindow()
 
     app.on('activate', () => {
@@ -61,7 +62,12 @@ function openMainWindow(): BrowserWindow {
     allowDevTools: !app.isPackaged,
   })
   window.on('closed', () => {
-    if (mainWindow === window) mainWindow = null
+    if (mainWindow === window) {
+      mainWindow = null
+      // Retained platform windows must not keep the desktop process alive
+      // after its main window closes. Cancel pending captures/leases as well.
+      void managementLoginService.closeAll()
+    }
   })
   return window
 }

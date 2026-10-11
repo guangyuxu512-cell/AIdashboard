@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   isManagementLoginCompleteInput,
   isManagementLoginOpenInput,
+  isManagementLoginFocusInput,
 } from '../types'
 import { shouldPreserveCapturedLogin } from '../services/management-login-lifecycle'
 import {
@@ -15,12 +16,21 @@ import type { Cookie, Session } from 'electron'
 
 const attemptId = '00000000-0000-4000-8000-000000000001'
 
+test('focus shop only accepts the registered platform and current team/shop UUIDs', () => {
+  const input = { platform: 'douyin', teamId: attemptId, shopId: attemptId }
+  assert.equal(isManagementLoginFocusInput(input), true)
+  for (const invalid of [
+    { ...input, platform: 'taobao' },
+    { ...input, shopId: '../profile' },
+    { ...input, teamId: '' },
+    { ...input, script: 'execute' },
+  ])
+    assert.equal(isManagementLoginFocusInput(invalid), false)
+})
+
 test('management login IPC only accepts registered platform and typed attempt', () => {
   const teamId = '00000000-0000-4000-8000-000000000004'
-  assert.equal(
-    isManagementLoginOpenInput({ platform: 'douyin', teamId }),
-    true,
-  )
+  assert.equal(isManagementLoginOpenInput({ platform: 'douyin', teamId }), true)
   assert.equal(
     isManagementLoginOpenInput({ platform: 'douyin', teamId, attemptId }),
     true,
@@ -144,11 +154,7 @@ test('PDD waits for the authenticated session cookies applicable to identity', a
     cookies: {
       get: async ({ url }: { url: string }) => {
         queriedUrl = url
-        return [
-          cookie('api_uid'),
-          cookie('_nano_fp'),
-          cookie('webp'),
-        ]
+        return [cookie('api_uid'), cookie('_nano_fp'), cookie('webp')]
       },
     },
   } as unknown as Session

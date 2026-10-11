@@ -78,7 +78,7 @@ class ShopSessionAccessor:
         expected_platform: ShopPlatform,
     ) -> ShopSessionAuthContext:
         stored = self.repository.get_by_shop(shop_id)
-        if stored is None:
+        if stored is None or stored.status is ShopSessionStatus.NOT_CONFIGURED:
             raise ShopSessionNotConfiguredError()
         if stored.status not in {
             ShopSessionStatus.CAPTURED,
@@ -97,17 +97,23 @@ class ShopSessionAccessor:
             ValidationError,
         ) as error:
             raise ShopSessionPayloadInvalidError() from error
+        return self.context_from_payload(shop_id, expected_platform, stored.version, payload)
+
+    @staticmethod
+    def context_from_payload(
+        shop_id: UUID,
+        expected_platform: ShopPlatform,
+        version: int,
+        payload: StoredManagementSessionPayload,
+    ) -> ShopSessionAuthContext:
+        """Validate a captured candidate in memory; never replace the stored Session."""
         if payload.platform is not expected_platform:
             raise ShopSessionPayloadInvalidError()
-
-        cookies = tuple(payload.cookies)
-        if not cookies:
-            raise ShopSessionAuthenticationInvalidError()
         return ShopSessionAuthContext(
             shop_id=shop_id,
             platform=payload.platform,
-            session_version=stored.version,
-            cookies=cookies,
+            session_version=version,
+            cookies=tuple(payload.cookies),
         )
 
     def merge_response_cookies(
@@ -121,14 +127,22 @@ class ShopSessionAccessor:
             raise ShopSessionNotConfiguredError()
         try:
             plaintext = self.cipher.decrypt_bytes(stored.payload_encrypted)
-            raw_payload = json.loads(plaintext)
-            StoredManagementSessionPayload.model_validate(raw_payload)
+            return self.merge_payload_cookies(plaintext, updates)
         except (
             EncryptedPayloadError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-            ValidationError,
         ) as error:
+            raise ShopSessionPayloadInvalidError() from error
+
+    @staticmethod
+    def merge_payload_cookies(
+        plaintext: bytes,
+        updates: tuple[StoredSessionCookie, ...],
+    ) -> tuple[bytes, int]:
+        """Shared Set-Cookie merge for stored and not-yet-persisted candidates."""
+        try:
+            raw_payload = json.loads(plaintext)
+            StoredManagementSessionPayload.model_validate(raw_payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
             raise ShopSessionPayloadInvalidError() from error
         if not isinstance(raw_payload, dict) or not isinstance(
             raw_payload.get("cookies"),

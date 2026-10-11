@@ -1,4 +1,10 @@
-import { app, BrowserWindow, session, type Session } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  session,
+  type Session,
+  type BrowserWindowConstructorOptions,
+} from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
 
@@ -11,6 +17,7 @@ import type {
   ManagementLoginStatus,
   ManagementLoginStatusResult,
   ManagementLoginRefreshResult,
+  ManagementLoginFocusInput,
 } from '../types'
 import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
 import { PddPlatformAuthAdapter } from './pdd-platform-auth-adapter'
@@ -42,6 +49,35 @@ interface LoginAttempt {
   profileReused: boolean
   lastPddVerificationFailureFingerprint: string | null
   lastPddVerificationFailureAt: number | null
+  closeReason: LoginCloseReason | null
+}
+
+type LoginCloseReason =
+  | 'renderer_request'
+  | 'load_failed'
+  | 'app_shutdown'
+  | 'attempt_timeout'
+  | 'onboarding_capture'
+  | 'completed_onboarding'
+  | 'window_closed_without_request'
+
+export interface ManagementLoginDiagnostic {
+  timestamp: string
+  attemptId: string
+  phase: 'open' | 'load' | 'detect' | 'capture' | 'refresh' | 'close'
+  event:
+    | 'start'
+    | 'finish'
+    | 'error'
+    | 'redirect'
+    | 'request'
+    | 'closed'
+    | 'renderer_gone'
+  errorCode: string | null
+  errno: number | null
+  isMainFrame: boolean | null
+  mainFrameLoading: boolean | null
+  closeReason: LoginCloseReason | null
 }
 
 const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
@@ -67,6 +103,7 @@ interface RefreshApiResponse {
   version: number
   validated_at: string
   cookie_updates_applied: number
+  used_cached_validation: boolean
 }
 
 interface PddIdentityApiResponse {
@@ -76,10 +113,38 @@ interface PddIdentityApiResponse {
 
 export class ManagementLoginService {
   private readonly attempts = new Map<string, LoginAttempt>()
+  private readonly shopWindows = new Map<
+    string,
+    { window: BrowserWindow; platform: ManagementLoginPlatform }
+  >()
+  private readonly polls = new Map<
+    string,
+    Promise<ManagementLoginStatusResult>
+  >()
+  private readonly refreshes = new Map<
+    string,
+    Promise<ManagementLoginRefreshResult>
+  >()
+  private readonly opens = new Map<
+    string,
+    {
+      input: ManagementLoginOpenInput
+      promise: Promise<ManagementLoginStatusResult>
+    }
+  >()
+  private closingAll = false
+  private readonly createWindow: (
+    options: BrowserWindowConstructorOptions,
+  ) => BrowserWindow
+  private readonly fromPartition: (partition: string) => Session
   private readonly backendBaseUrl: string
   private readonly allowDevTools: boolean
   private readonly profileMappingStore: ManagementLoginProfileMappingStore
-  private readonly adapters = new Map<ManagementLoginPlatform, PlatformAuthAdapter>([
+  private readonly onDiagnostic?: (record: ManagementLoginDiagnostic) => void
+  private readonly adapters = new Map<
+    ManagementLoginPlatform,
+    PlatformAuthAdapter
+  >([
     ['douyin', new DouyinPlatformAuthAdapter()],
     ['pdd', new PddPlatformAuthAdapter()],
   ])
@@ -88,12 +153,23 @@ export class ManagementLoginService {
     backendBaseUrl?: string
     allowDevTools?: boolean
     profileMappingStore?: ManagementLoginProfileMappingStore
+    createWindow?: (options: BrowserWindowConstructorOptions) => BrowserWindow
+    fromPartition?: (partition: string) => Session
+    adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
+    onDiagnostic?: (record: ManagementLoginDiagnostic) => void
   }) {
     this.backendBaseUrl =
       options?.backendBaseUrl ??
       process.env.CONTROL_CENTER_BACKEND_URL ??
       'http://127.0.0.1:8000/'
     this.allowDevTools = options?.allowDevTools ?? true
+    this.onDiagnostic = options?.onDiagnostic
+    this.createWindow =
+      options?.createWindow ?? ((config) => new BrowserWindow(config))
+    this.fromPartition =
+      options?.fromPartition ??
+      ((partition) => session.fromPartition(partition, { cache: true }))
+    if (options?.adapters) this.adapters = options.adapters
     this.profileMappingStore =
       options?.profileMappingStore ??
       new ManagementLoginProfileStore(() =>
@@ -101,10 +177,63 @@ export class ManagementLoginService {
       )
   }
 
+  async focusShop(
+    parent: BrowserWindow,
+    input: ManagementLoginFocusInput,
+  ): Promise<boolean> {
+    // Current personnel authorization is checked again, including for a
+    // completed browsing window. Retaining a window does not retain permission.
+    const response = await fetch(
+      this.backendUrl(`/api/v1/shops/${input.shopId}/session`),
+      {
+        headers: await this.authorizedHeaders({
+          appSession: parent.webContents.session,
+          teamId: input.teamId,
+        }),
+      },
+    )
+    if (!response.ok) throw new Error(await safeBackendError(response))
+    const entry = this.shopWindows.get(input.shopId)
+    if (!entry || entry.window.isDestroyed()) return false
+    if (entry.platform !== input.platform) throw new Error('店铺登录平台不匹配')
+    if (entry.window.isMinimized()) entry.window.restore()
+    entry.window.focus()
+    return true
+  }
+
   async open(
     parent: BrowserWindow,
     input: ManagementLoginOpenInput,
   ): Promise<ManagementLoginStatusResult> {
+    const key = input.recovery
+      ? input.recovery.shopId
+      : (input.attemptId ?? randomUUID())
+    const existing = this.opens.get(key)
+    if (existing) {
+      if (
+        existing.input.teamId !== input.teamId ||
+        existing.input.platform !== input.platform ||
+        existing.input.recovery?.leaseId !== input.recovery?.leaseId ||
+        existing.input.recovery?.expectedVersion !==
+          input.recovery?.expectedVersion
+      )
+        throw new Error('登录尝试与 Session 恢复上下文不匹配')
+      return existing.promise
+    }
+    const pending = this.openAttempt(parent, input)
+    this.opens.set(key, { input, promise: pending })
+    try {
+      return await pending
+    } finally {
+      this.opens.delete(key)
+    }
+  }
+
+  private async openAttempt(
+    parent: BrowserWindow,
+    input: ManagementLoginOpenInput,
+  ): Promise<ManagementLoginStatusResult> {
+    if (this.closingAll) throw new Error('应用正在退出')
     const adapter = this.requireAdapter(input.platform)
     const attemptId = input.attemptId ?? randomUUID()
     let attempt = this.attempts.get(attemptId)
@@ -136,8 +265,13 @@ export class ManagementLoginService {
         profileReused: profile.profileReused,
         lastPddVerificationFailureFingerprint: null,
         lastPddVerificationFailureAt: null,
+        closeReason: null,
       }
       this.attempts.set(attemptId, attempt)
+    }
+    if (this.closingAll || parent.isDestroyed()) {
+      await this.close(attemptId, 'app_shutdown')
+      throw new Error('应用正在退出')
     }
     if (
       attempt.recovery?.shopId !== input.recovery?.shopId ||
@@ -159,14 +293,23 @@ export class ManagementLoginService {
       return this.toStatus(attempt)
     }
 
-    const loginSession = session.fromPartition(attempt.partition, {
-      cache: true,
-    })
+    const shopWindowKey = input.recovery ? input.recovery.shopId : null
+    if (
+      shopWindowKey &&
+      this.shopWindows.get(shopWindowKey)?.window &&
+      !this.shopWindows.get(shopWindowKey)!.window.isDestroyed()
+    ) {
+      await this.releaseRecoveryLease(attempt)
+      this.attempts.delete(attemptId)
+      throw new Error('店铺登录窗口已打开，请通过登录入口置前')
+    }
+
+    const loginSession = this.fromPartition(attempt.partition)
     loginSession.setPermissionCheckHandler(() => false)
     loginSession.setPermissionRequestHandler(
       (_webContents, _permission, callback) => callback(false),
     )
-    const loginWindow = new BrowserWindow({
+    const loginWindow = this.createWindow({
       title: adapter.loginWindowTitle,
       width: 1180,
       height: 820,
@@ -188,15 +331,33 @@ export class ManagementLoginService {
     })
     loginWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     attempt.window = loginWindow
+    this.installNavigationDiagnostics(attempt, loginWindow)
+    this.report(attempt, 'open', 'finish')
+    if (shopWindowKey)
+      this.shopWindows.set(shopWindowKey, {
+        window: loginWindow,
+        platform: input.platform,
+      })
     attempt.identity = null
     attempt.lastPddVerificationFailureFingerprint = null
     attempt.lastPddVerificationFailureAt = null
     attempt.systemCloseRequested = false
+    attempt.closeReason = null
     this.clearCapturedSession(attempt)
     this.armAttemptTimeout(attempt)
     attempt.status = 'waiting'
     attempt.message = '等待人工登录，系统会自动识别店铺'
     loginWindow.on('closed', () => {
+      this.report(attempt!, 'close', 'closed', {
+        closeReason:
+          attempt!.closeReason ??
+          (this.closingAll ? 'app_shutdown' : 'window_closed_without_request'),
+      })
+      if (
+        shopWindowKey &&
+        this.shopWindows.get(shopWindowKey)?.window === loginWindow
+      )
+        this.shopWindows.delete(shopWindowKey)
       const preserveCapture = shouldPreserveCapturedLogin({
         status: attempt!.status,
         systemCloseRequested: attempt!.systemCloseRequested,
@@ -213,15 +374,32 @@ export class ManagementLoginService {
       }
     })
     try {
+      this.report(attempt, 'load', 'start')
       await loginWindow.loadURL(adapter.loginUrl)
+      this.report(attempt, 'load', 'finish')
     } catch (error) {
-      await this.close(attemptId)
+      this.report(attempt, 'load', 'error', diagnosticError(error))
+      await this.close(attemptId, 'load_failed')
       throw error
     }
     return this.toStatus(attempt)
   }
 
   async getStatus(attemptId: string): Promise<ManagementLoginStatusResult> {
+    const existing = this.polls.get(attemptId)
+    if (existing) return existing
+    const pending = this.detectStatus(attemptId)
+    this.polls.set(attemptId, pending)
+    try {
+      return await pending
+    } finally {
+      this.polls.delete(attemptId)
+    }
+  }
+
+  private async detectStatus(
+    attemptId: string,
+  ): Promise<ManagementLoginStatusResult> {
     const attempt = this.requireAttempt(attemptId)
     if (
       attempt.status === 'waiting' &&
@@ -229,18 +407,24 @@ export class ManagementLoginService {
       !attempt.window.isDestroyed()
     ) {
       const loginWindow = attempt.window
+      let phase: 'detect' | 'capture' = 'detect'
       try {
         const adapter = this.requireAdapter(attempt.platform)
+        this.report(attempt, phase, 'start')
         const detection = await adapter.detectLoginStatus(
           loginWindow.webContents.session,
           loginWindow.webContents.id,
         )
+        this.report(attempt, phase, 'finish')
         if (detection.readyForCapture) {
+          phase = 'capture'
+          this.report(attempt, phase, 'start')
           const capturedSession = await adapter.captureSession(
             loginWindow.webContents.session,
             loginWindow.webContents.id,
             detection.identity,
           )
+          this.report(attempt, phase, 'finish')
           if (
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
@@ -296,13 +480,20 @@ export class ManagementLoginService {
           attempt.identity = identity
           attempt.capturedSession = capturedSession
           attempt.status = 'identified'
-          attempt.message = '已验证店铺身份并采集登录会话，登录窗口已关闭'
-          attempt.systemCloseRequested = true
-          loginWindow.close()
+          if (attempt.recovery) {
+            attempt.message = '已识别店铺，正在等待服务器验证登录状态'
+          } else {
+            attempt.message = '已验证店铺身份并采集登录会话，登录窗口已关闭'
+            attempt.systemCloseRequested = true
+            attempt.closeReason = 'onboarding_capture'
+            this.report(attempt, 'close', 'request')
+            loginWindow.close()
+          }
         } else {
           attempt.message = detection.message
         }
       } catch (error) {
+        this.report(attempt, phase, 'error', diagnosticError(error))
         if (attempt.window !== loginWindow || loginWindow.isDestroyed()) {
           return this.toStatus(attempt)
         }
@@ -377,19 +568,42 @@ export class ManagementLoginService {
   }
 
   async refresh(attemptId: string): Promise<ManagementLoginRefreshResult> {
+    const existing = this.refreshes.get(attemptId)
+    if (existing) return existing
+    const attempt = this.attempts.get(attemptId)
+    if (attempt) this.report(attempt, 'refresh', 'start')
+    const pending = this.refreshAttempt(attemptId)
+    this.refreshes.set(attemptId, pending)
+    try {
+      const result = await pending
+      if (attempt) this.report(attempt, 'refresh', 'finish')
+      return result
+    } catch (error) {
+      if (attempt)
+        this.report(attempt, 'refresh', 'error', diagnosticError(error))
+      throw error
+    } finally {
+      this.refreshes.delete(attemptId)
+    }
+  }
+
+  private async refreshAttempt(
+    attemptId: string,
+  ): Promise<ManagementLoginRefreshResult> {
     const attempt = this.requireAttempt(attemptId)
     if (!attempt.recovery) throw new Error('当前登录尝试不是 Session 恢复')
+    const recovery = attempt.recovery
     if (!attempt.capturedSession) {
       throw new Error('尚未识别有效店铺登录会话')
     }
     const response = await fetch(
-      this.backendUrl(`/api/v1/shops/${attempt.recovery.shopId}/session/refresh`),
+      this.backendUrl(`/api/v1/shops/${recovery.shopId}/session/refresh`),
       {
         method: 'POST',
         headers: await this.authorizedHeaders(attempt),
         body: JSON.stringify({
-          lease_id: attempt.recovery.leaseId,
-          expected_version: attempt.recovery.expectedVersion,
+          lease_id: recovery.leaseId,
+          expected_version: recovery.expectedVersion,
           session_payload_base64:
             attempt.capturedSession.payload.toString('base64'),
           captured_at: attempt.capturedSession.capturedAt,
@@ -399,22 +613,35 @@ export class ManagementLoginService {
     if (!response.ok) throw new Error(await safeBackendError(response))
     const result = (await response.json()) as RefreshApiResponse
     if (
-      result.shop_id !== attempt.recovery.shopId ||
+      result.shop_id !== recovery.shopId ||
       result.status !== 'valid' ||
+      result.used_cached_validation !== false ||
       !Number.isInteger(result.version) ||
+      result.version !== recovery.expectedVersion + 1 ||
       !result.validated_at
     ) {
       throw new Error('服务器返回的 Session 恢复结果不完整')
     }
+    if (
+      this.attempts.get(attemptId) !== attempt ||
+      attempt.status !== 'identified'
+    )
+      throw new Error('登录同步已取消；服务器已完成的更新不会撤回')
     const profileMappingWarning =
       await this.saveProfileMappingAfterServerSuccess(
         attempt,
         result.shop_id,
         '服务器已恢复并验证登录会话',
       )
+    if (
+      this.attempts.get(attemptId) !== attempt ||
+      attempt.status !== 'identified'
+    )
+      throw new Error('登录同步已取消；服务器已完成的更新不会撤回')
     this.finishCompletedAttempt(
       attempt,
-      profileMappingWarning ?? '登录会话已恢复并验证有效',
+      profileMappingWarning ?? '登录状态已更新',
+      true,
     )
     return {
       shopId: result.shop_id,
@@ -426,22 +653,40 @@ export class ManagementLoginService {
     }
   }
 
-  async close(attemptId: string): Promise<void> {
+  async close(
+    attemptId: string,
+    reason: LoginCloseReason = 'renderer_request',
+  ): Promise<void> {
     const attempt = this.attempts.get(attemptId)
     if (!attempt) return
+    attempt.closeReason = reason
+    this.report(attempt, 'close', 'request')
+    this.attempts.delete(attemptId)
+    attempt.status = 'closed'
     if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
     attempt.identity = null
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
     await this.releaseRecoveryLease(attempt)
-    this.attempts.delete(attemptId)
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.attempts.keys()].map((id) => this.close(id)))
+    this.closingAll = true
+    const windows = [...this.shopWindows.values()]
+    const closing = [...this.attempts.keys()].map((id) =>
+      this.close(id, 'app_shutdown'),
+    )
+    // Window and capture cleanup must not wait for an offline Backend release.
+    for (const { window } of windows) {
+      if (!window.isDestroyed()) window.close()
+    }
+    this.shopWindows.clear()
+    await Promise.all(closing)
   }
 
-  private requireAdapter(platform: ManagementLoginPlatform): PlatformAuthAdapter {
+  private requireAdapter(
+    platform: ManagementLoginPlatform,
+  ): PlatformAuthAdapter {
     const adapter = this.adapters.get(platform)
     if (!adapter) throw new Error('该平台的管理端登录尚未接入')
     return adapter
@@ -471,22 +716,32 @@ export class ManagementLoginService {
     attempt.capturedSession = null
   }
 
-  private finishCompletedAttempt(attempt: LoginAttempt, message: string): void {
+  private finishCompletedAttempt(
+    attempt: LoginAttempt,
+    message: string,
+    retainWindow = false,
+  ): void {
     attempt.status = 'completed'
     attempt.message = message
-    if (attempt.window && !attempt.window.isDestroyed()) {
+    if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
       attempt.systemCloseRequested = true
+      attempt.closeReason = 'completed_onboarding'
+      this.report(attempt, 'close', 'request')
       attempt.window.close()
     }
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
+    attempt.recovery = null
     this.attempts.delete(attempt.attemptId)
   }
 
   private armAttemptTimeout(attempt: LoginAttempt): void {
     this.clearAttemptTimeout(attempt)
     attempt.expiresAt = setTimeout(() => {
-      if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
+      attempt.closeReason = 'attempt_timeout'
+      this.report(attempt, 'close', 'request')
+      if (attempt.window && !attempt.window.isDestroyed())
+        attempt.window.close()
       attempt.identity = null
       this.clearCapturedSession(attempt)
       attempt.status = 'closed'
@@ -502,9 +757,88 @@ export class ManagementLoginService {
     attempt.expiresAt = null
   }
 
+  private report(
+    attempt: LoginAttempt,
+    phase: ManagementLoginDiagnostic['phase'],
+    event: ManagementLoginDiagnostic['event'],
+    detail: Partial<
+      Pick<
+        ManagementLoginDiagnostic,
+        'errorCode' | 'errno' | 'isMainFrame' | 'closeReason'
+      >
+    > = {},
+  ): void {
+    if (!this.onDiagnostic) return
+    // Only code/errno and navigation state cross this diagnostic boundary.
+    // Never serialize Error.message, URL, identity, cookies or platform bodies.
+    let mainFrameLoading: boolean | null = null
+    try {
+      const window = attempt.window
+      if (window && !window.isDestroyed()) {
+        const contents = window.webContents
+        if (contents && !contents.isDestroyed())
+          mainFrameLoading = contents.isLoadingMainFrame()
+      }
+    } catch {
+      // Native state is optional and may already be destroyed at `closed`.
+      // Do not lose the lifecycle event when this one field is unavailable.
+    }
+    try {
+      this.onDiagnostic({
+        timestamp: new Date().toISOString(),
+        attemptId: attempt.attemptId,
+        phase,
+        event,
+        errorCode: detail.errorCode ?? null,
+        errno: detail.errno ?? null,
+        isMainFrame: detail.isMainFrame ?? null,
+        mainFrameLoading,
+        closeReason: detail.closeReason ?? attempt.closeReason,
+      })
+    } catch {
+      // Diagnostics may never change the original lifecycle or validation.
+    }
+  }
+
+  private installNavigationDiagnostics(
+    attempt: LoginAttempt,
+    window: BrowserWindow,
+  ): void {
+    if (!this.onDiagnostic) return
+    const contents = window.webContents
+    contents.on('did-start-navigation', (details) => {
+      this.report(attempt, 'load', 'start', {
+        isMainFrame: details.isMainFrame,
+      })
+    })
+    contents.on('did-redirect-navigation', (details) => {
+      this.report(attempt, 'load', 'redirect', {
+        isMainFrame: details.isMainFrame,
+      })
+    })
+    contents.on('did-frame-finish-load', (_event, isMainFrame) => {
+      this.report(attempt, 'load', 'finish', { isMainFrame })
+    })
+    const failed = (
+      _event: unknown,
+      errno: number,
+      _description: string,
+      _url: string,
+      isMainFrame: boolean,
+    ) => {
+      this.report(attempt, 'load', 'error', { errno, isMainFrame })
+    }
+    contents.on('did-fail-load', failed)
+    contents.on('did-fail-provisional-load', failed)
+    contents.on('render-process-gone', (_event, detail) => {
+      this.report(attempt, 'load', 'renderer_gone', { errno: detail.exitCode })
+    })
+  }
+
   private backendUrl(pathname: string): string {
     const url = new URL(pathname, this.backendBaseUrl)
-    const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost'
+    const loopback =
+      url.hostname === '127.0.0.1' || url.hostname === 'localhost'
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
       throw new Error('管理端登录只允许连接 HTTPS Backend 或本机 Backend')
     }
@@ -544,7 +878,7 @@ export class ManagementLoginService {
   }
 
   private async authorizedHeaders(
-    attempt: LoginAttempt,
+    attempt: Pick<LoginAttempt, 'appSession' | 'teamId'>,
   ): Promise<Record<string, string>> {
     const url = this.backendUrl('/api/v1/auth/me')
     const cookieName =
@@ -573,7 +907,11 @@ export class ManagementLoginService {
         this.backendUrl(
           `/api/v1/shops/${shopId}/session/refresh-lease/${leaseId}`,
         ),
-        { method: 'DELETE', headers: await this.authorizedHeaders(attempt) },
+        {
+          method: 'DELETE',
+          headers: await this.authorizedHeaders(attempt),
+          signal: AbortSignal.timeout(10_000),
+        },
       )
     } catch {
       // Lease is expiring server-side; cancellation remains best effort offline.
@@ -609,14 +947,43 @@ export class ManagementLoginService {
   }
 }
 
-function sessionFingerprint(capturedSession: CapturedManagementSession): string {
+function diagnosticError(
+  error: unknown,
+): Pick<ManagementLoginDiagnostic, 'errorCode' | 'errno'> {
+  if (!error || typeof error !== 'object')
+    return { errorCode: null, errno: null }
+  try {
+    const { code, errno } = error as { code?: unknown; errno?: unknown }
+    return {
+      errorCode:
+        typeof code === 'string' &&
+        /^(?:ERR_[A-Z0-9_]{1,48}|ENOENT|EACCES|ECONNRESET|ETIMEDOUT)$/.test(
+          code,
+        )
+          ? code
+          : null,
+      errno:
+        typeof errno === 'number' &&
+        Number.isInteger(errno) &&
+        errno >= -2147483648 &&
+        errno <= 2147483647
+          ? errno
+          : null,
+    }
+  } catch {
+    return { errorCode: null, errno: null }
+  }
+}
+
+function sessionFingerprint(
+  capturedSession: CapturedManagementSession,
+): string {
   // `capturedAt` is intentionally refreshed on every capture. It must not be
   // part of the failure fingerprint, or a stable failed session would trigger
   // a new signed platform request on every status poll.
-  const payload = JSON.parse(capturedSession.payload.toString('utf8')) as Record<
-    string,
-    unknown
-  >
+  const payload = JSON.parse(
+    capturedSession.payload.toString('utf8'),
+  ) as Record<string, unknown>
   delete payload.capturedAt
   return createHash('sha256')
     .update(JSON.stringify(payload))

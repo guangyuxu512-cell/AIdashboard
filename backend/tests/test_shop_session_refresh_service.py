@@ -16,13 +16,21 @@ from app.modules.sessions.exceptions import (
 )
 from app.modules.sessions.models import ShopSession
 from app.modules.sessions.refresh_service import ShopSessionRefreshService
+from app.modules.sessions.health_service import ValidatedSessionCandidate
 from app.modules.sessions.schemas import (
     CompleteShopSessionRefreshCommand,
-    ShopSessionHealthRead,
+    ShopSessionMetadataRead,
 )
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from tests.support import FakeSession
+from app.platforms.exceptions import (
+    PlatformAuthenticationInvalidError,
+    PlatformIdentityMismatchError,
+    PlatformRequestFailedError,
+    PlatformRequestTimeoutError,
+    PlatformResponseInvalidError,
+)
 
 
 class FakeShopRepository:
@@ -87,12 +95,22 @@ class FakeSessionService:
         self.stored = stored
         self.payload: bytes | None = None
 
-    def store_payload(self, command, payload: bytes):
+    def store_payload(self, command, payload: bytes, *, refresh_lease_id=None):
+        assert self.stored.refresh_lease_id == refresh_lease_id
         if self.stored.version != command.expected_version:
             raise SessionVersionConflictError()
         self.stored.version += 1
         self.stored.status = command.status
+        self.stored.captured_at = command.captured_at
+        self.stored.validated_at = command.validated_at
         self.payload = payload
+        return ShopSessionMetadataRead(
+            session_id=self.stored.session_id, configured=True,
+            status=self.stored.status, version=self.stored.version,
+            source_device_id=self.stored.source_device_id,
+            captured_at=self.stored.captured_at, validated_at=self.stored.validated_at,
+            expires_at=self.stored.expires_at,
+        )
 
 
 class FakeHealthService:
@@ -100,30 +118,28 @@ class FakeHealthService:
         self,
         stored: ShopSession,
         *,
-        status: ShopSessionStatus = ShopSessionStatus.VALID,
+        failure: Exception | None = None,
     ) -> None:
         self.stored = stored
-        self.status = status
+        self.failure = failure
 
-    def check(self, shop_id: UUID, *, force: bool) -> ShopSessionHealthRead:
-        assert force is True
-        self.stored.status = self.status
-        return ShopSessionHealthRead(
-            shop_id=shop_id,
-            platform=ShopPlatform.DOUYIN,
+    def validate_candidate(self, shop_id, platform, platform_shop_id, version, payload, parsed):
+        del shop_id, platform, version, parsed
+        assert platform_shop_id == "shop-1"
+        if self.failure:
+            raise self.failure
+        return ValidatedSessionCandidate(
+            payload=payload,
             platform_shop_id="shop-1",
             shop_display_name="HuanYu",
-            status=self.status,
-            version=self.stored.version,
             validated_at=datetime.now(UTC),
-            used_cached_validation=False,
             cookie_updates_applied=0,
         )
 
 
 def make_service(
     *,
-    health_status: ShopSessionStatus = ShopSessionStatus.VALID,
+    failure: Exception | None = None,
     collection_resume=None,
 ):
     shop_id = uuid4()
@@ -151,7 +167,7 @@ def make_service(
     service = ShopSessionRefreshService(
         FakeSession(),  # type: ignore[arg-type]
         SecretCipher(Fernet.generate_key().decode()),
-        FakeHealthService(stored, status=health_status),  # type: ignore[arg-type]
+        FakeHealthService(stored, failure=failure),  # type: ignore[arg-type]
         repository=repository,  # type: ignore[arg-type]
         shop_repository=FakeShopRepository(shop),  # type: ignore[arg-type]
         session_service=session_service,  # type: ignore[arg-type]
@@ -236,25 +252,32 @@ def test_version_conflict_rejects_overwrite_and_releases_lease() -> None:
     assert stored.refresh_lease_id is None
 
 
-def test_refresh_does_not_resume_operating_collection_until_health_is_valid() -> None:
+@pytest.mark.parametrize("failure", [
+    PlatformAuthenticationInvalidError(), PlatformIdentityMismatchError(),
+    PlatformRequestFailedError(), PlatformRequestTimeoutError(), PlatformResponseInvalidError(),
+])
+def test_failed_candidate_preserves_old_valid_session_and_does_not_resume(failure) -> None:
     resumed_shop_ids: list[UUID] = []
     service, stored, _ = make_service(
-        health_status=ShopSessionStatus.CAPTURED,
+        failure=failure,
         collection_resume=resumed_shop_ids.append,
     )
     lease = service.acquire(stored.shop_id)
+    stored.status = ShopSessionStatus.VALID
+    before = (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
 
-    result = service.complete(
-        stored.shop_id,
-        CompleteShopSessionRefreshCommand(
-            lease_id=lease.lease_id,
-            expected_version=lease.expected_version,
-            session_payload_base64=SecretStr(
-                base64.b64encode(captured_payload()).decode(),
+    with pytest.raises(type(failure)):
+        service.complete(
+            stored.shop_id,
+            CompleteShopSessionRefreshCommand(
+                lease_id=lease.lease_id,
+                expected_version=lease.expected_version,
+                session_payload_base64=SecretStr(
+                    base64.b64encode(captured_payload()).decode(),
+                ),
+                captured_at=datetime.now(UTC),
             ),
-            captured_at=datetime.now(UTC),
-        ),
-    )
-
-    assert result.status is ShopSessionStatus.CAPTURED
+        )
+    assert before == (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
+    assert stored.refresh_lease_id is None
     assert resumed_shop_ids == []
