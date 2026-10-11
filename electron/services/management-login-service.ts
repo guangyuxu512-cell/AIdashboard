@@ -771,8 +771,19 @@ export class ManagementLoginService {
     if (!this.onDiagnostic) return
     // Only code/errno and navigation state cross this diagnostic boundary.
     // Never serialize Error.message, URL, identity, cookies or platform bodies.
+    let mainFrameLoading: boolean | null = null
     try {
-      const contents = attempt.window?.webContents
+      const window = attempt.window
+      if (window && !window.isDestroyed()) {
+        const contents = window.webContents
+        if (contents && !contents.isDestroyed())
+          mainFrameLoading = contents.isLoadingMainFrame()
+      }
+    } catch {
+      // Native state is optional and may already be destroyed at `closed`.
+      // Do not lose the lifecycle event when this one field is unavailable.
+    }
+    try {
       this.onDiagnostic({
         timestamp: new Date().toISOString(),
         attemptId: attempt.attemptId,
@@ -781,10 +792,7 @@ export class ManagementLoginService {
         errorCode: detail.errorCode ?? null,
         errno: detail.errno ?? null,
         isMainFrame: detail.isMainFrame ?? null,
-        mainFrameLoading:
-          contents && !contents.isDestroyed()
-            ? contents.isLoadingMainFrame()
-            : null,
+        mainFrameLoading,
         closeReason: detail.closeReason ?? attempt.closeReason,
       })
     } catch {

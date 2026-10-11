@@ -39,6 +39,16 @@ pwsh 的 `ConvertFrom-Json` 会将 ISO `Z` 时间转换为 UTC `DateTime`；过�
 
 Owner只准备代码/过滤入口，不执行启动器、不操作Integration/生产或另开Electron。后续行为修复必须另记真实依据，重新交精确候选及匹配桌面包。原9fc安装包保留，不作为新候选的包。
 
+## 人工取消证据与 closed 诊断缺口
+
+ca97在同一1dec开发实例持续采集后，用户实际打开专用空Profile测试店铺并手动关闭子窗口；主窗口与collector仍在。本attempt最终627条，error/renderer_gone/capture/refresh均0，只有1条`close/request`（`renderer_request`），没有`close/closed`。租约POST201、两次DELETE204，无Session refresh；测试店铺NOT_CONFIGURED v1、HuanYu VALID v3及10Jobs/154Items/0active均保持。此证据支持本次人工取消和释放租约，**未复现原闪退**，历史根因仍未知。
+
+代码核对确认一个可独立复现的诊断缺口：原`report`把可选的原生加载状态读取和sink放在同一try；销毁后的窗口getter或`isLoadingMainFrame`抛错时，整条事件被吞掉。两个定向测试先在旧实现失败（缺closed、缺detect事件）。[Electron closed契约](https://www.electronjs.org/docs/latest/api/browser-window#event-closed)明确要求关闭后避免继续使用窗口；本次没有现场getter异常记录，因此不把合成结果写成现场缺失记录的唯一原因，更不是登录窗口自行关闭的原因。
+
+最小修复只拆分诊断读取：先检查Window未销毁，再尝试获取加载状态，失败时`mainFrameLoading=null`，独立发出原9字段记录。`closed`监听、窗口清理、Renderer取消、身份验证、Session保存及租约代码不动。保留`renderer_request`仅表示Renderer清理调用，不反推用户意图；人工关闭后再由Renderer清理时，合成记录顺序为`closed/window_closed_without_request`然后`request/renderer_request`。
+
+Electron typecheck、build及完整35项测试通过（新增2项，原33项保持）；取消测试仍一次Main DELETE、零capture/save、主窗口存活，捕获及sink失败保护保持。此增量需要匹配提交的桌面包，但不安装、不启动、不打断ca97当前窗口，不要求用户再次登录或点击。原生修正后的closed记录未现场复验，Release继续冻结。
+
 ## 定向验证
 
 - Electron `pnpm run test`：33 PASS，含build/typecheck。新增2项原行为特征复现、4项安全阶段诊断；原27项回归保持。

@@ -322,6 +322,84 @@ test('diagnostic property access never replaces the original error or changes cl
   }
 })
 
+test('closed diagnostics survive destroyed-window getters, without changing manual cancellation or lease cleanup', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const window = state.windows[0]!
+    const contents = window.webContents
+    Object.defineProperty(window, 'webContents', {
+      get() {
+        if (window.destroyed) throw new Error('private destroyed native getter')
+        return contents
+      },
+    })
+    window.close()
+    await new Promise((resolve) => setImmediate(resolve))
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'closed')
+    assert.equal(status.sessionCaptured, false)
+    // The Renderer sees closed and performs its existing cleanup afterward.
+    await state.service.close(opened.attemptId)
+    const closed = records.find((record) => record.event === 'closed')
+    assert.ok(closed)
+    assert.equal(closed.phase, 'close')
+    assert.equal(closed.closeReason, 'window_closed_without_request')
+    assert.equal(closed.mainFrameLoading, null)
+    assert.deepEqual(
+      records
+        .filter((record) => record.phase === 'close')
+        .map((record) => record.event),
+      ['closed', 'request'],
+    )
+    assert.deepEqual(requests, ['DELETE'])
+    assert.equal(state.captures(), 0)
+    assert.equal(state.parent.isDestroyed(), false)
+    assert.ok(!JSON.stringify(records).includes('private'))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('unreadable optional frame state does not drop diagnostic events or affect identity capture', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    state.windows[0]!.webContents.isLoadingMainFrame = () => {
+      throw new Error('private native frame state unavailable')
+    }
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'identified')
+    assert.equal(state.captures(), 1)
+    assert.equal(state.windows[0]!.destroyed, false)
+    const detection = records.filter((record) => record.phase === 'detect')
+    assert.deepEqual(
+      detection.map((record) => record.event),
+      ['start', 'finish'],
+    )
+    assert.ok(detection.every((record) => record.mainFrameLoading === null))
+    assert.ok(!JSON.stringify(records).includes('private'))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('existing shop: single capture/save, retain browsing without lease, focus only, close/reopen synchronizes again', async () => {
   const originalFetch = globalThis.fetch
   let saves = 0
