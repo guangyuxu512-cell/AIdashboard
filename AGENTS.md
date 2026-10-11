@@ -31,6 +31,13 @@ Integrator已分配专用空库 `control_center_feat_shop_login_session_sync`，
 新鲜VALID版本通过权限/启用/去重检查后至多一次；保留原失败和累计次数，普通重试上限不变。
 Owner只完成Gate 1与匹配Source SHA的正式桌面包交ca97；真实登录/生产恢复由ca97/Main协调。
 禁止Owner写Integration/生产、合dev/main或发布。旧选品界面恢复已完成，不再重复审核或改设计。
+Gate 2候选 `9fc6409c015bec767a5d4a72304a5bb0c0d9e855` 已整体审查ACCEPT并正常no-ff合入
+`62cc491cb023a2e1b5827d03a7923f370e6711a4`。同一Real Integration Electron已实际验证HuanYu
+正常登录自动保存v2、留窗、重复点击不另存、关闭重开v3且租约释放；无新增经营Job/Item。
+候选Backend604、Frontend614及合并后PG37/Session15/Electron27与Real build通过；负向/首次添加
+合成覆盖和真实操作分开记录。精确dev CI成功后交Main Release；匹配1.0.4实际安装及生产两店
+2026-10-10受控恢复仍待正式发布核验，未DEPLOYED。详见
+`docs/engineering/shop-login-session-sync-v1-gate2-20261011.md`，不复制集成Session到生产。
 
 2026-10-11 新一轮选品体验收口：81a1 从精确 Green
 `a9931a8f8b329bb5e5e79f9e44fd42294ca5d633` 创建
