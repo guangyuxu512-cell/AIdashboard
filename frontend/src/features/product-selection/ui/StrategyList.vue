@@ -17,12 +17,16 @@ import {
   CHANNEL_OPTIONS,
   type SelectionService,
   type SelectionStrategy,
+  type SelectionExecutionSummary,
 } from '../model/contracts'
 import { conditionSummary } from '../model/selection-rules'
-import { runWindow, runResult } from '../model/run-display'
 import StrategyDrawer from './StrategyDrawer.vue'
 
 const props = defineProps<{ service: SelectionService; contextKey: string }>()
+const emit = defineEmits<{
+  submitted: [execution: SelectionExecutionSummary]
+  'refresh-run-feedback': []
+}>()
 const message = useMessage()
 const page = ref(1),
   pageSize = ref(20),
@@ -66,13 +70,17 @@ const executionDisabledReason = computed(() => {
   return null
 })
 function refresh() {
+  emit('refresh-run-feedback')
   if (props.service.available) void query.refetch()
   if (props.service.manual) {
     void capability.refetch()
     void latest.refetch()
   }
 }
-function retrieved() {
+function retrieved(execution?: SelectionExecutionSummary) {
+  if (execution) {
+    emit('submitted', execution)
+  }
   if (props.service.available) void query.refetch()
   if (props.service.manual) void latest.refetch()
 }
@@ -267,18 +275,6 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
           retryable
           @retry="latest.refetch()"
         />
-        <NAlert
-          v-else-if="latest.data.value"
-          :type="
-            ['failed', 'interrupted'].includes(latest.data.value.status)
-              ? 'error'
-              : latest.data.value.status === 'partial'
-                ? 'warning'
-                : 'info'
-          "
-          >最近获取：{{ runResult(latest.data.value) }} ·
-          {{ runWindow(latest.data.value) }}</NAlert
-        >
       </template>
       <DataTable
         :columns="columns"

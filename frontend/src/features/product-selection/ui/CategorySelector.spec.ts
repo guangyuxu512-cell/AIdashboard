@@ -55,7 +55,7 @@ describe('shop-bound category selection', () => {
     expect(wrapper.emitted('update:modelValue')![1]).toEqual([
       '7/1001/1002/1003',
     ])
-    expect(cascader.props('placement')).toBe('bottom-end')
+    expect(cascader.props('placement')).toBe('bottom-start')
     expect(cascader.props('menuProps')!.style).toMatchObject({
       overflowX: 'auto',
       pointerEvents: 'auto',

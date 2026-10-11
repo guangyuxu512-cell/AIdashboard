@@ -143,15 +143,20 @@ export interface SelectionService {
   readonly available: boolean
   readonly candidatesAvailable?: boolean
   latestRun?(shopId: string | null): Promise<SelectionExecutionSummary | null>
+  run?(runId: string): Promise<SelectionExecutionSummary>
   manual?: {
     capabilities(): Promise<SelectionCapabilitiesDto>
     submit(
       input: StrategyInput,
       submissionKey: string,
+      categories?: CategoryNode[],
     ): Promise<SelectionRunReceiptDto>
   }
   previewPeriod(period: SelectionPeriod): Promise<SelectionPeriodPreview>
-  categories(shopId: string): Promise<CategoryNode[]>
+  categories(
+    shopId: string,
+    options?: { refresh?: boolean },
+  ): Promise<CategoryNode[]>
   strategies(): Promise<SelectionStrategy[]>
   saveStrategy(input: StrategyInput, id?: string): Promise<SelectionStrategy>
   retrieve(input: StrategyInput, strategyId?: string): Promise<DemoReceipt>

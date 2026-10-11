@@ -67,7 +67,9 @@ const metrics = computed(() =>
           value: row.value.userPaidAmountRange,
           unit: row.value.userPaidAmountUnit,
           unknownUnit:
-            !!row.value.userPaidAmountRange && !row.value.userPaidAmountUnit,
+            !!row.value.userPaidAmountRange &&
+            !row.value.userPaidAmountRange.startsWith('¥') &&
+            !row.value.userPaidAmountUnit,
         },
         { label: '短视频点击次数', value: row.value.clicksRange },
         { label: '短视频成交件数', value: row.value.soldUnitsRange },
@@ -302,19 +304,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           <NDescriptionsItem label="完整类目">{{
             row.category
           }}</NDescriptionsItem>
-          <NDescriptionsItem v-if="row.negativeReviewRateRaw" label="差评率">
-            <NTooltip
-              ><template #trigger
-                ><NText depth="1">{{
-                  row.negativeReviewRateRaw.value
-                }}</NText></template
-              >
-              平台原值；unit={{
-                row.negativeReviewRateRaw.unit ?? '—'
-              }}，换算尚未确认
-            </NTooltip>
-          </NDescriptionsItem>
-          <NDescriptionsItem v-else label="差评率"
+          <NDescriptionsItem label="差评率"
             ><NText :depth="row.negativeReviewRate === null ? 3 : 1">{{
               formatReviewRate(row.negativeReviewRate)
             }}</NText></NDescriptionsItem

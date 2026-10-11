@@ -4,12 +4,35 @@ import {
   readSelectionCandidates,
   readSelectionObservation,
   readLatestSelectionRun,
+  readSelectionCategories,
+  readSelectionRun,
 } from './selection-read-api'
 
 vi.mock('@/shared/api', () => ({ httpClient: { get: vi.fn() } }))
 
 describe('registered selection database read API', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('reads a submitted run by exact ID and only forces categories on an explicit refresh', async () => {
+    const tree = { shop_id: 'authorized-shop', nodes: [] }
+    vi.mocked(httpClient.get).mockResolvedValue({ data: tree })
+    await readSelectionCategories('authorized-shop')
+    expect(httpClient.get).toHaveBeenLastCalledWith(
+      '/api/v1/product-selection/categories',
+      { params: { shop_id: 'authorized-shop' } },
+    )
+    await readSelectionCategories('authorized-shop', { refresh: true })
+    expect(httpClient.get).toHaveBeenLastCalledWith(
+      '/api/v1/product-selection/categories',
+      { params: { shop_id: 'authorized-shop', refresh: true } },
+    )
+    const run = { run_id: 'current-run', status: 'pending' }
+    vi.mocked(httpClient.get).mockResolvedValueOnce({ data: run })
+    expect(await readSelectionRun('current-run')).toBe(run)
+    expect(httpClient.get).toHaveBeenLastCalledWith(
+      '/api/v1/product-selection/runs/current-run',
+    )
+  })
 
   it('sends only declared filters with explicit ten-row pagination', async () => {
     const page = { items: [], total: 0, page: 2, page_size: 10 }
