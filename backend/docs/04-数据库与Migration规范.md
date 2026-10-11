@@ -236,7 +236,7 @@ introspection 核对（2026-10-10）：共 **47** 张表，含 Alembic 元数据
 | `shops` | 店铺主档，PK `shop_id`，可关联 `owner_user_id`。0041 增加可空 `operating_start_date`、来源、设置人和设置时间；设置人 FK `users.user_id` 为 `RESTRICT`。 | `deleted_at` 软移除且 `shop_id` 不复用；停用/移除不删凭证、Session、Task 或经营历史。经营起算日仅由有管理权限人员显式确认，来源当前为 `manual`；不得从中控台接入、首次采集或首次出单推断。起算日与全部审计列要么同时为 NULL、要么同时存在；若已有更早已确认成交/订单/退款事实，拒绝设置会隐藏事实的较晚日期。 |
 | `platform_credentials` | 加密平台凭证，PK `credential_id`。 | 独立于 Shop；绑定停用/解除不自动清除凭证，敏感数据处置规则待单独定义。 |
 | `shop_credential_bindings` | Shop–Credential 关系，复合 PK `(shop_id,credential_id)`。 | 启停/解绑不级联删任一事实；当前每 Shop 最多一个启用关系。 |
-| `shop_sessions` | 每 Shop 当前加密 Session 与版本，PK `session_id`，FK Shop/来源 Device。 | 替换时以版本校验更新；软移除 Shop 后保留，不能导出明文 Cookie。 |
+| `shop_sessions` | 每 Shop 当前加密 Session 与版本，PK `session_id`，FK Shop/来源 Device；唯一 Shop 和既有租约也承载首次已有店登录的 NOT_CONFIGURED 保留行。 | 保留行不是可用会话，API不展示内部占位时间，Accessor拒绝解密；匹配权威验证成功才以租约+版本CAS替换。失败保留原事实，软移除 Shop 后保留，不能导出明文 Cookie。 |
 | `shop_device_bindings` | Shop–Device 执行资格，复合 PK `(shop_id,device_id)`。 | 普通可启停多对多；无 PRIMARY/BACKUP，停用绑定不删除历史 Task。 |
 | `devices` | 设备主档，PK `device_id`，可关联 Team/创建人。 | 软移除；保留 Device ID 与历史 Task/审计显示。 |
 | `worker_device_credentials` | Worker Device Token 摘要，PK `credential_id`，FK Device。 | 轮换覆盖 hash、撤销用 `enabled=false`；明文永不落库。 |

@@ -8,6 +8,7 @@ import {
   type ShopListItemViewModel,
 } from '@/entities/shop'
 import { PlatformDisplay } from '@/entities/platform'
+import { supportsShopLogin } from '../model/useShopLogin'
 import { ShopSessionStatusTag } from '@/entities/shop-session'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
@@ -20,10 +21,12 @@ const props = defineProps<{
   statusChangingShopId?: string | null
   showOwner?: boolean
   showDeviceSummary?: boolean
+  canLogin?: boolean
 }>()
 
 const emit = defineEmits<{
   view: [shop: ShopListItemViewModel]
+  login: [shop: ShopListItemViewModel]
   'toggle-enabled': [shop: ShopListItemViewModel]
   remove: [shop: ShopListItemViewModel]
   retry: []
@@ -96,7 +99,7 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 184,
+    width: props.canLogin ? 240 : 184,
     align: 'center',
     fixed: 'right',
     render: (shop) =>
@@ -106,6 +109,15 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
           { tone: 'text', onClick: () => emit('view', shop) },
           () => '查看',
         ),
+        ...(props.canLogin && supportsShopLogin(shop.platform)
+          ? [
+              h(
+                AppButton,
+                { tone: 'text', onClick: () => emit('login', shop) },
+                () => '登录',
+              ),
+            ]
+          : []),
         h(
           AppButton,
           {
@@ -145,7 +157,7 @@ function updateCheckedRowKeys(keys: DataTableRowKey[]): void {
     :loading="loading"
     :error="error"
     :row-key="(row: ShopListItemViewModel) => row.shopId"
-    :scroll-x="1058"
+    :scroll-x="canLogin ? 1114 : 1058"
     :checked-row-keys="checkedRowKeys"
     appearance="list"
     viewport="fill"

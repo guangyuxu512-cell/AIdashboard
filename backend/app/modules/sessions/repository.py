@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.modules.sessions.enums import ShopSessionStatus
@@ -19,6 +20,24 @@ class ShopSessionRepository:
 
     def add(self, shop_session: ShopSession) -> None:
         self.session.add(shop_session)
+
+    def reserve_for_refresh(
+        self, *, shop_id: UUID, reserved_at: datetime, payload_encrypted: bytes,
+    ) -> None:
+        """Reserve the existing unique row, without replacing any real Session.
+
+        The caller acquires the lease and commits in the same short transaction.
+        This is not a captured Session; required physical columns are hidden by
+        metadata and the Accessor rejects NOT_CONFIGURED before decryption.
+        """
+        self.session.execute(
+            insert(ShopSession)
+            .values(
+                shop_id=shop_id, version=1, status=ShopSessionStatus.NOT_CONFIGURED,
+                captured_at=reserved_at, payload_encrypted=payload_encrypted,
+            )
+            .on_conflict_do_nothing(constraint="uq_shop_sessions_shop_id"),
+        )
 
     def set_validation_status(
         self,
@@ -49,6 +68,7 @@ class ShopSessionRepository:
         validated_at: datetime | None,
         expires_at: datetime | None,
         payload_encrypted: bytes,
+        refresh_lease_id: UUID | None = None,
     ) -> bool:
         statement = (
             update(ShopSession)
@@ -67,6 +87,11 @@ class ShopSessionRepository:
                 updated_at=func.now(),
             )
         )
+        if refresh_lease_id is not None:
+            statement = statement.where(
+                ShopSession.refresh_lease_id == refresh_lease_id,
+                ShopSession.refresh_lease_expires_at > func.now(),
+            ).values(refresh_lease_id=None, refresh_lease_expires_at=None)
         result = self.session.execute(statement)
         return result.rowcount == 1
 

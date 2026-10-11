@@ -181,6 +181,7 @@ test('server success remains completed when local profile persistence fails', as
           version: 3,
           validated_at: '2026-09-13T00:01:00.000Z',
           cookie_updates_applied: 0,
+          used_cached_validation: false,
         })
       }
       return jsonResponse({

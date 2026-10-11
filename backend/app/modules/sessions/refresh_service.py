@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -31,6 +32,8 @@ from app.modules.operating_dashboard.service import OperatingDashboardService
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.repository import ShopRepository
 
+logger = logging.getLogger(__name__)
+
 
 class ShopSessionRefreshService:
     def __init__(
@@ -60,10 +63,9 @@ class ShopSessionRefreshService:
     def acquire(self, shop_id: UUID) -> ShopSessionRefreshLeaseRead:
         if self.shop_repository.get(shop_id) is None:
             raise ShopNotFoundError()
-        stored = self.repository.get_by_shop(shop_id)
-        if stored is None:
-            raise ShopSessionNotConfiguredError()
         now = datetime.now(UTC)
+        if self.repository.get_by_shop(shop_id) is None:
+            self.session_service.reserve_for_refresh(shop_id, now)
         lease_id = uuid4()
         expires_at = now + timedelta(
             seconds=self.settings.shop_session_refresh_lease_seconds,
@@ -95,6 +97,8 @@ class ShopSessionRefreshService:
         self,
         shop_id: UUID,
         command: CompleteShopSessionRefreshCommand,
+        *,
+        recheck_authorization: Callable[[], None] | None = None,
     ) -> ShopSessionHealthRead:
         now = datetime.now(UTC)
         if not self.repository.has_active_refresh_lease(
@@ -104,14 +108,23 @@ class ShopSessionRefreshService:
         ):
             raise SessionRefreshLeaseInvalidError()
         try:
-            return self._complete_under_lease(shop_id, command)
+            return self._complete_under_lease(shop_id, command, recheck_authorization)
         finally:
-            self.release(shop_id, command.lease_id)
+            # A failed write must not leave the transaction unusable for release.
+            self.session.rollback()
+            try:
+                self.release(shop_id, command.lease_id)
+            except Exception:
+                self.session.rollback()
+                # A successful CAS already clears the lease atomically. Failed
+                # attempts also have the existing timeout recovery boundary.
+                logger.warning("Session refresh lease release incomplete")
 
     def _complete_under_lease(
         self,
         shop_id: UUID,
         command: CompleteShopSessionRefreshCommand,
+        recheck_authorization: Callable[[], None] | None,
     ) -> ShopSessionHealthRead:
         stored = self.repository.get_by_shop(shop_id)
         shop = self.shop_repository.get(shop_id)
@@ -146,22 +159,51 @@ class ShopSessionRefreshService:
         ):
             raise ShopSessionPayloadInvalidError("登录身份与目标店铺不匹配")
 
-        self.session_service.store_payload(
+        platform = shop.platform
+        platform_shop_id = shop.platform_shop_id
+        source_device_id = stored.source_device_id
+        expires_at = stored.expires_at
+        # No transaction/row lock stays open during platform I/O. Nothing has
+        # been changed yet; a failed candidate preserves every old Session field.
+        self.session.rollback()
+        candidate = self.health_service.validate_candidate(
+            shop_id, platform, platform_shop_id, command.expected_version, payload, parsed,
+        )
+        if recheck_authorization is not None:
+            recheck_authorization()
+        shop = self.shop_repository.get(shop_id)
+        if shop is None:
+            raise ShopNotFoundError()
+        if shop.platform is not platform or shop.platform_shop_id != platform_shop_id:
+            raise ShopSessionPayloadInvalidError("目标店铺身份已改变，请重新登录")
+        metadata = self.session_service.store_payload(
             StoreShopSessionCommand(
                 shop_id=shop_id,
                 expected_version=command.expected_version,
-                status=ShopSessionStatus.CAPTURED,
-                source_device_id=stored.source_device_id,
+                status=ShopSessionStatus.VALID,
+                source_device_id=source_device_id,
                 captured_at=command.captured_at,
-                validated_at=None,
-                expires_at=stored.expires_at,
+                validated_at=candidate.validated_at,
+                expires_at=expires_at,
             ),
-            payload,
+            candidate.payload,
+            refresh_lease_id=command.lease_id,
         )
-        health = self.health_service.check(shop_id, force=True)
-        # Resume only after the replacement Session has passed the existing
-        # authoritative identity check; a captured-but-invalid payload must
-        # never restart paused platform requests.
-        if health.status is ShopSessionStatus.VALID:
+        try:
             self.collection_resume(shop_id)
-        return health
+        except Exception:
+            self.session.rollback()
+            # The Session has already committed. A queue error must never make
+            # the client resubmit a valid capture or misreport authentication.
+            logger.warning("Session updated; paused collection resume incomplete")
+        return ShopSessionHealthRead(
+            shop_id=shop_id,
+            platform=platform,
+            platform_shop_id=candidate.platform_shop_id,
+            shop_display_name=candidate.shop_display_name,
+            status=metadata.status,
+            version=metadata.version,
+            validated_at=candidate.validated_at,
+            used_cached_validation=False,
+            cookie_updates_applied=candidate.cookie_updates_applied,
+        )

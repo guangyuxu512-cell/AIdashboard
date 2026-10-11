@@ -49,7 +49,9 @@ partition 与本地 Profile mapping。
 
 ## 管理端登录窗口生命周期
 
-管理端登录身份与 Session 仅由 Main 在单次 attempt 的内存中暂存。Adapter 识别真实店铺或确认可供服务器验证的登录会话并完成 Session 采集后，Main 标记系统关闭意图并主动关闭独立平台窗口；`closed` 事件只有同时满足 `identified + systemCloseRequested + sessionCaptured` 才保留确认状态。用户提前关闭会清空身份和 Session，并返回可重试的未完成状态。抖店在 Main 识别身份；拼多多只在 Main 采集适用于其固定身份接口 `/earth/api/merchant/queryMerchantInfoByMallId` 的 `mms.pinduoduo.com` Cookie，随后必须经 Backend 成功验证 `mallId / mallName` 才能标记 `identified` 并关闭窗口。通用浏览器 Cookie、页面加载或 URL 跳转均不得单独关闭 PDD 登录窗口。
+管理端登录身份与 Session 仅由 Main 在单次 attempt 的内存中暂存。新店 Onboarding 保留既有行为：Adapter 完成身份识别与采集后主动关闭平台窗口，`closed` 同时满足 `identified + systemCloseRequested + sessionCaptured` 才保留确认状态。抖店在 Main 识别身份；拼多多采集固定身份接口适用 Cookie，再经 Backend 成功验证 `mallId / mallName` 才标记识别成功。Cookie 存在、页面加载或 URL 跳转均不构成成功。
+
+已有店铺登录与列表/详情同一流程：复用本机 Profile，等待正常人工登录；已登录时自动捕获，后端用当前候选重新验证真实目标身份后才 CAS 保存。成功结束 attempt、清除 Buffer/计时器并原子释放租约，保留平台浏览窗直到用户关闭；再次点击先复核当前权限再只置前，不重新保存。提前关闭、取消、失败、错店不覆盖原 Session。主窗口关闭/应用退出立即关闭捕获及保留窗口，不能等待离线 Backend 才清理；释放失败沿用服务器租约到期兜底。
 
 取消、完成、应用退出和 30 分钟超时都会清空 Buffer；Session payload、密码不得写入磁盘或日志。Management Login Profile 仅保存完成接入后的平台与 partition 映射，不保存 Cookie payload。
 

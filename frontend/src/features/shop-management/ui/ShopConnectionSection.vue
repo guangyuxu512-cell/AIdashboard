@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { NAlert, NDescriptions, NDescriptionsItem } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 
@@ -11,21 +11,21 @@ import {
 import type { ShopListItemViewModel } from '@/entities/shop'
 import {
   ShopSessionStatusTag,
-  useAcquireShopSessionRefreshLeaseMutation,
-  useReleaseShopSessionRefreshLeaseMutation,
   useShopSessionQuery,
   useValidateShopSessionMutation,
-  shopSessionDataSource,
 } from '@/entities/shop-session'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import { getErrorMessage } from '@/shared/api'
-import { useAuthStore } from '@/stores/auth'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 import CredentialFormDialog from './CredentialFormDialog.vue'
 import type { CredentialFormValue } from './CredentialFormDialog.vue'
-import { startManagementLoginPolling } from '../model/management-login-poller'
+import {
+  shopLoginKey,
+  supportsShopLogin,
+  validationFailureMessage,
+} from '../model/useShopLogin'
 
 const props = defineProps<{ shop: ShopListItemViewModel }>()
 const emit = defineEmits<{ sessionUpdated: [] }>()
@@ -38,14 +38,9 @@ const sessionQuery = useShopSessionQuery(shopId)
 const createMutation = useCreateCredentialMutation()
 const updateMutation = useUpdateCredentialMutation(shopId)
 const validateSessionMutation = useValidateShopSessionMutation(shopId)
-const acquireLeaseMutation = useAcquireShopSessionRefreshLeaseMutation(shopId)
-const releaseLeaseMutation = useReleaseShopSessionRefreshLeaseMutation()
-const recoveryStatus = ref<ManagementLoginStatusResult | null>(null)
-const recoveryError = ref<string | null>(null)
-const recovering = ref(false)
-const activeLease = ref<{ shopId: string; leaseId: string } | null>(null)
-const authStore = useAuthStore()
-let stopRecoveryPolling: (() => void) | undefined
+const login = inject(shopLoginKey, null)
+const loginFeedback = computed(() => login?.feedback.get(props.shop.shopId))
+const recovering = computed(() => loginFeedback.value?.busy ?? false)
 
 const credential = computed(() => credentialQuery.data.value ?? null)
 const shopSession = computed(() => sessionQuery.data.value ?? null)
@@ -69,17 +64,8 @@ const verificationChannelLabel = computed(() => {
   return channel ? labels[channel] : '未配置'
 })
 const recoveryAvailable = computed(
-  () =>
-    shopSession.value?.configured &&
-    (props.shop.platform === 'douyin' || props.shop.platform === 'pdd') &&
-    (shopSession.value.status === 'invalid' ||
-      shopSession.value.status === 'refresh_required'),
+  () => login?.canLogin.value && supportsShopLogin(props.shop.platform),
 )
-
-onBeforeUnmount(() => {
-  stopRecoveryPolling?.()
-  void cancelRecovery()
-})
 
 function retry(): void {
   void Promise.all([credentialQuery.refetch(), sessionQuery.refetch()])
@@ -124,107 +110,8 @@ async function validateSession(): Promise<void> {
   } catch (validationError) {
     await sessionQuery.refetch()
     emit('sessionUpdated')
-    message.error(getErrorMessage(validationError))
+    message.error(validationFailureMessage(validationError))
   }
-}
-
-async function recoverSession(): Promise<void> {
-  if (props.shop.platform !== 'douyin' && props.shop.platform !== 'pdd') {
-    return
-  }
-  if (!window.desktop?.managementLogin) {
-    recoveryError.value = '请在 Electron 中控台中恢复登录会话'
-    return
-  }
-  if (!authStore.activeTeamId) {
-    recoveryError.value = '请先选择当前团队'
-    return
-  }
-  recovering.value = true
-  recoveryError.value = null
-  try {
-    const lease = await acquireLeaseMutation.mutateAsync()
-    activeLease.value = { shopId: lease.shopId, leaseId: lease.leaseId }
-    recoveryStatus.value = await window.desktop.managementLogin.open({
-      platform: props.shop.platform,
-      teamId: authStore.activeTeamId,
-      recovery: {
-        shopId: lease.shopId,
-        leaseId: lease.leaseId,
-        expectedVersion: lease.expectedVersion,
-      },
-    })
-    stopRecoveryPolling?.()
-    stopRecoveryPolling = startManagementLoginPolling({
-      attemptId: recoveryStatus.value.attemptId,
-      getStatus: window.desktop.managementLogin.getStatus,
-      async onStatus(status) {
-        recoveryStatus.value = status
-        if (status.status !== 'identified') {
-          if (status.status === 'closed' || status.status === 'failed') {
-            recovering.value = false
-            activeLease.value = null
-            void window.desktop?.managementLogin?.close(status.attemptId)
-          }
-          return
-        }
-        const result = await window.desktop!.managementLogin!.refresh(
-          status.attemptId,
-        )
-        recovering.value = false
-        recoveryStatus.value = null
-        activeLease.value = null
-        await shopSessionDataSource.confirmRecovery(
-          result.shopId,
-          result.sessionVersion,
-          result.validatedAt,
-        )
-        await sessionQuery.refetch()
-        emit('sessionUpdated')
-        if (result.profileMappingWarning) {
-          message.warning(result.profileMappingWarning)
-        } else {
-          message.success(`登录会话已恢复并验证有效 · v${result.sessionVersion}`)
-        }
-      },
-      onError(error) {
-        recovering.value = false
-        recoveryError.value = getErrorMessage(error)
-        const attemptId = recoveryStatus.value?.attemptId
-        if (attemptId) {
-          void window.desktop?.managementLogin?.close(attemptId)
-        }
-        activeLease.value = null
-      },
-    })
-  } catch (error) {
-    recovering.value = false
-    recoveryError.value = getErrorMessage(error)
-    if (activeLease.value && !recoveryStatus.value?.attemptId) {
-      await releaseLeaseMutation
-        .mutateAsync(activeLease.value)
-        .catch(() => undefined)
-      activeLease.value = null
-    }
-  }
-}
-
-async function cancelRecovery(): Promise<void> {
-  stopRecoveryPolling?.()
-  stopRecoveryPolling = undefined
-  const attemptId = recoveryStatus.value?.attemptId
-  if (attemptId && window.desktop?.managementLogin) {
-    await window.desktop.managementLogin.close(attemptId).catch(() => undefined)
-  } else if (activeLease.value) {
-    await releaseLeaseMutation
-      .mutateAsync(activeLease.value)
-      .catch(() => undefined)
-  }
-  recoveryStatus.value = null
-  recovering.value = false
-  recoveryError.value = null
-  activeLease.value = null
-  releaseLeaseMutation.reset()
 }
 </script>
 
@@ -268,20 +155,19 @@ async function cancelRecovery(): Promise<void> {
           </div>
           <div>
             <span>Session 版本</span>
-            <strong>{{ shopSession.configured ? `v${shopSession.version}` : '—' }}</strong>
+            <strong>{{
+              shopSession.configured ? `v${shopSession.version}` : '—'
+            }}</strong>
           </div>
         </div>
 
         <NAlert
-          v-if="recoveryStatus || recoveryError"
-          :type="recoveryError ? 'error' : 'info'"
+          v-if="loginFeedback?.status || loginFeedback?.error"
+          :type="loginFeedback?.error ? 'error' : 'info'"
           :bordered="true"
           class="shop-connection-section__recovery"
         >
-          {{
-            recoveryError ??
-            `${recoveryStatus?.profileReused ? '已复用本机登录环境' : '已创建本机登录环境'}；${recoveryStatus?.message}`
-          }}
+          {{ loginFeedback?.error ?? loginFeedback?.status }}
         </NAlert>
 
         <div class="shop-connection-section__actions">
@@ -294,14 +180,15 @@ async function cancelRecovery(): Promise<void> {
             验证会话
           </AppButton>
           <AppButton
-            v-if="recoveryAvailable && !recovering"
+            v-if="recoveryAvailable"
             tone="primary"
-            :loading="acquireLeaseMutation.isPending.value"
-            @click="recoverSession"
+            @click="login?.login(shop)"
           >
-            重新登录
+            登录
           </AppButton>
-          <AppButton v-if="recovering" @click="cancelRecovery">取消恢复</AppButton>
+          <AppButton v-if="recovering" @click="login?.cancel(shop.shopId)"
+            >取消登录</AppButton
+          >
         </div>
       </div>
 

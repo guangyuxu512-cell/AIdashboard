@@ -15,6 +15,7 @@ from app.modules.access.models import TeamShopAccess
 from app.modules.operating_dashboard.enums import (
     OperatingCollectionItemStatus,
     OperatingCollectionJobStatus,
+    SESSION_RESTORE_DEDUPE_PREFIX,
 )
 from app.modules.operating_dashboard.models import (
     OperatingDataCollectionItem,
@@ -419,18 +420,23 @@ class OperatingDashboardRepository:
             conditions.append(
                 OperatingDataCollectionItem.collection_job_id == collection_job_id,
             )
+        session_recovery = exists(select(OperatingDataCollectionJob.collection_job_id).where(
+            OperatingDataCollectionJob.collection_job_id == OperatingDataCollectionItem.collection_job_id,
+            OperatingDataCollectionJob.dedupe_key.startswith(SESSION_RESTORE_DEDUPE_PREFIX),
+        ))
         result = self.session.execute(
             update(OperatingDataCollectionItem)
             .where(*conditions)
             .values(
-                status=OperatingCollectionItemStatus.PENDING.value,
-                retryable=True,
-                retry_after=now,
+                status=case((session_recovery, OperatingCollectionItemStatus.FAILED.value), else_=OperatingCollectionItemStatus.PENDING.value),
+                retryable=case((session_recovery, False), else_=True),
+                retry_after=case((session_recovery, None), else_=now),
                 failure_code="COLLECTION_WORKER_LEASE_EXPIRED",
-                failure_message="采集执行器超时后等待安全恢复",
+                failure_message=case((session_recovery, "Session恢复单次执行已中断，请人工核实"), else_="采集执行器超时后等待安全恢复"),
                 failure_stage="execution",
                 lease_until=None,
                 started_at=None,
+                finished_at=case((session_recovery, now), else_=None),
                 updated_at=now,
             ),
         )

@@ -18,6 +18,20 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-11 当前81a1任务：从精确Green
+`06992f4f3ee03e2ad689b25e7a4cb5837ce0d359` 接续
+`feat/shop-login-session-sync-v1`。仅完成店铺列表/详情共用登录入口、目标店铺身份核验、
+候选Session权威验证后原子保存、成功后结束捕获但保留浏览窗口，以及显式单项每日Session失败恢复。
+支持平台和管理权限沿用既有规则；valid亦可登录。首次新店Onboarding仍成功保存后自动关闭。
+失败候选不覆盖原Session；不将网络、签名或未确定平台错误标为认证失效。
+Integrator已分配专用空库 `control_center_feat_shop_login_session_sync`，Owner
+`control_center_dev_user`，仅本地受保护凭据经35433访问，Feature端口8101/4176 strictPort。
+只升级既有迁移至单一 `20261010_0043`；无新Schema/Migration、Slot FREE，不使用旧选品库。
+恢复复用既有retry API/队列/锁和Job唯一键，只覆盖原DAILY的明确Session准备失败，
+新鲜VALID版本通过权限/启用/去重检查后至多一次；保留原失败和累计次数，普通重试上限不变。
+Owner只完成Gate 1与匹配Source SHA的正式桌面包交ca97；真实登录/生产恢复由ca97/Main协调。
+禁止Owner写Integration/生产、合dev/main或发布。旧选品界面恢复已完成，不再重复审核或改设计。
+
 2026-10-11 新一轮选品体验收口：81a1 从精确 Green
 `a9931a8f8b329bb5e5e79f9e44fd42294ca5d633` 创建
 `feat/product-selection-experience-fixes-v1`，保留原策略列表/抽屉和手动接入。
