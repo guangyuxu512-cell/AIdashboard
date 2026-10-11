@@ -1,6 +1,6 @@
 import { defineComponent, h, reactive } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   useShopLogin,
   supportsShopLogin,
@@ -8,6 +8,11 @@ import {
 } from './useShopLogin'
 import { ApiError } from '@/shared/api'
 import type { ShopListItemViewModel } from '@/entities/shop'
+import {
+  LOGIN_FOCUS_TIMEOUT_MS,
+  LOGIN_LEASE_TIMEOUT_MS,
+  LOGIN_OPEN_TIMEOUT_MS,
+} from './shop-login-diagnostics'
 
 const state = vi.hoisted(() => ({
   auth: {
@@ -60,29 +65,27 @@ function setup() {
 }
 function bridge() {
   return {
+    correlationSupported: true as const,
     focusShop: vi.fn().mockResolvedValue(false),
     open: vi.fn().mockResolvedValue({ attemptId: 'attempt' }),
-    getStatus: vi
-      .fn()
-      .mockResolvedValue({
-        attemptId: 'attempt',
-        status: 'identified',
-        message: 'identified',
-      }),
-    refresh: vi
-      .fn()
-      .mockResolvedValue({
-        shopId: 'shop',
-        status: 'valid',
-        sessionVersion: 4,
-        validatedAt: '2026-10-11T09:01:00Z',
-      }),
+    getStatus: vi.fn().mockResolvedValue({
+      attemptId: 'attempt',
+      status: 'identified',
+      message: 'identified',
+    }),
+    refresh: vi.fn().mockResolvedValue({
+      shopId: 'shop',
+      status: 'valid',
+      sessionVersion: 4,
+      validatedAt: '2026-10-11T09:01:00Z',
+    }),
     close: vi.fn().mockResolvedValue(undefined),
     complete: vi.fn(),
   }
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.spyOn(console, 'info').mockImplementation(() => undefined)
   state.auth.isSuperAccount = true
   state.auth.activeTeamId = 'team'
   state.auth.currentUser = { userId: 'person' }
@@ -99,8 +102,197 @@ beforeEach(() => {
     managementLogin: bridge(),
   }
 })
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
 
 describe('page-owned shop login sync', () => {
+  it.each([true, undefined] as const)(
+    'only a new bridge with explicit correlation support receives the extra IPC field (%s)',
+    async (supported) => {
+      window.desktop!.managementLogin = {
+        ...bridge(),
+        correlationSupported: supported,
+      }
+      const desktop = window.desktop!.managementLogin!
+      desktop.getStatus = vi
+        .fn()
+        .mockResolvedValue({
+          attemptId: 'attempt',
+          status: 'opened',
+          message: '等待识别',
+        })
+      const { flow, wrapper } = setup()
+      await flow.login(shop)
+      await flushPromises()
+      const focus = vi.mocked(desktop.focusShop!).mock.calls[0]![0]
+      const opened = vi.mocked(desktop.open).mock.calls[0]![0]
+      if (supported) {
+        expect(focus.correlationId).toEqual(expect.any(String))
+        expect(opened.correlationId).toBe(focus.correlationId)
+        expect(opened.attemptId).toBe(focus.correlationId)
+      } else {
+        expect(Object.keys(focus).sort()).toEqual([
+          'platform',
+          'shopId',
+          'teamId',
+        ])
+        expect(Object.keys(opened).sort()).toEqual([
+          'attemptId',
+          'platform',
+          'recovery',
+          'teamId',
+        ])
+      }
+      vi.mocked(desktop.focusShop!).mockResolvedValue(true)
+      await flow.login(shop)
+      const again = vi.mocked(desktop.focusShop!).mock.calls[1]![0]
+      if (supported) expect(again.correlationId).toBe(focus.correlationId)
+      else expect(again).not.toHaveProperty('correlationId')
+      expect(state.acquire).toHaveBeenCalledTimes(1)
+      expect(desktop.open).toHaveBeenCalledTimes(1)
+      expect(desktop.refresh).not.toHaveBeenCalled()
+      wrapper.unmount()
+    },
+  )
+  it('records missing bridge/team before IPC with booleans only and retains explicit feedback', async () => {
+    const { flow, wrapper } = setup()
+    window.desktop = undefined
+    await flow.login(shop)
+    window.desktop = {
+      appearance: { setTitleBarTheme() {} },
+      managementLogin: bridge(),
+    }
+    reactive(state.auth).activeTeamId = ''
+    await flushPromises()
+    await flow.login(shop)
+    const output = vi.mocked(console.info).mock.calls.flat().join('\n')
+    expect(output).toContain('"bridgeAvailable":false')
+    expect(output).toContain('"teamSelected":false')
+    expect(output).toContain('NO_BRIDGE')
+    expect(output).toContain('NO_TEAM')
+    expect(output).not.toContain('"person"')
+    expect(output).not.toContain('"team"')
+    expect(state.acquire).not.toHaveBeenCalled()
+    expect(state.info).toHaveBeenCalledWith('请先选择当前团队')
+    wrapper.unmount()
+  })
+  it('focus timeout clears opening feedback, ignores late receipt and permits a fresh retry without duplicate IPC', async () => {
+    vi.useFakeTimers()
+    let finish!: (result: boolean) => void
+    const focus = vi.fn().mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve
+        }),
+    )
+    window.desktop!.managementLogin!.focusShop = focus
+    const { flow, wrapper } = setup()
+    const opening = flow.login(shop)
+    await flushPromises()
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: true,
+      opening: true,
+    })
+    await flow.login(shop)
+    expect(focus).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(LOGIN_FOCUS_TIMEOUT_MS)
+    await opening
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: false,
+      opening: false,
+    })
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('超时'))
+    finish(false)
+    await flushPromises()
+    expect(state.acquire).not.toHaveBeenCalled()
+    expect(window.desktop!.managementLogin!.open).not.toHaveBeenCalled()
+    focus.mockResolvedValue(true)
+    await flow.login(shop)
+    expect(focus).toHaveBeenCalledTimes(2)
+    expect(flow.feedback.has('shop')).toBe(false)
+    wrapper.unmount()
+  })
+  it('lease timeout restores clickable state and releases only its late lease without opening or saving', async () => {
+    vi.useFakeTimers()
+    let finish!: (lease: object) => void
+    state.acquire.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const { flow, wrapper } = setup()
+    const opening = flow.login(shop)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(LOGIN_LEASE_TIMEOUT_MS)
+    await opening
+    expect(flow.feedback.get('shop')?.busy).toBe(false)
+    finish({ shopId: 'shop', leaseId: 'late-lease', expectedVersion: 3 })
+    await flushPromises()
+    expect(state.release).toHaveBeenCalledWith('shop', 'late-lease')
+    expect(window.desktop!.managementLogin!.open).not.toHaveBeenCalled()
+    expect(state.confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('open timeout closes the requested attempt and a late receipt, never saves or starts polling', async () => {
+    vi.useFakeTimers()
+    let finish!: (result: object) => void
+    window.desktop!.managementLogin!.open = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const { flow, wrapper } = setup()
+    const opening = flow.login(shop)
+    await flushPromises()
+    const request = vi.mocked(window.desktop!.managementLogin!.open).mock
+      .calls[0]![0]
+    expect(request.attemptId).toBe(request.correlationId)
+    await vi.advanceTimersByTimeAsync(LOGIN_OPEN_TIMEOUT_MS)
+    await opening
+    expect(window.desktop!.managementLogin!.close).toHaveBeenCalledWith(
+      request.attemptId,
+    )
+    expect(flow.feedback.get('shop')?.busy).toBe(false)
+    finish({ attemptId: 'late-attempt' })
+    await flushPromises()
+    expect(window.desktop!.managementLogin!.close).toHaveBeenCalledWith(
+      'late-attempt',
+    )
+    expect(window.desktop!.managementLogin!.getStatus).not.toHaveBeenCalled()
+    expect(window.desktop!.managementLogin!.refresh).not.toHaveBeenCalled()
+    expect(state.success).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it.each(['team', 'permission'] as const)(
+    'actor %s change during focus cannot allocate a lease or open from a late result',
+    async (kind) => {
+      let finish!: (result: boolean) => void
+      window.desktop!.managementLogin!.focusShop = vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+      )
+      const { flow, wrapper } = setup()
+      const opening = flow.login(shop)
+      await flushPromises()
+      if (kind === 'team') reactive(state.auth).activeTeamId = 'other-team'
+      else reactive(state.auth).isSuperAccount = false
+      await flushPromises()
+      await opening
+      finish(false)
+      await flushPromises()
+      expect(state.acquire).not.toHaveBeenCalled()
+      expect(window.desktop!.managementLogin!.open).not.toHaveBeenCalled()
+      expect(flow.feedback.size).toBe(0)
+      expect(state.error).not.toHaveBeenCalled()
+      wrapper.unmount()
+    },
+  )
   it('valid session still logs in; success invalidates list/detail metadata without closing browsing window', async () => {
     const { flow, wrapper } = setup()
     await flow.login(shop)
@@ -118,6 +310,75 @@ describe('page-owned shop login sync', () => {
     expect(state.acquire).not.toHaveBeenCalled()
     expect(window.desktop!.managementLogin!.open).not.toHaveBeenCalled()
     expect(state.success).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('an active opened capture focuses once without new lease/open/save; polling cannot clear the focus guard', async () => {
+    vi.useFakeTimers()
+    const desktop = window.desktop!.managementLogin!
+    desktop.getStatus = vi.fn().mockResolvedValue({
+      attemptId: 'attempt',
+      status: 'opened',
+      message: '等待识别',
+    })
+    const { flow, wrapper } = setup()
+    await flow.login(shop)
+    await flushPromises()
+    let finish!: (focused: boolean) => void
+    vi.mocked(desktop.focusShop!).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const focusing = flow.login(shop)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: true,
+      opening: false,
+      focusing: true,
+    })
+    await flow.login(shop)
+    expect(desktop.focusShop).toHaveBeenCalledTimes(2)
+    expect(state.acquire).toHaveBeenCalledTimes(1)
+    expect(desktop.open).toHaveBeenCalledTimes(1)
+    expect(desktop.refresh).not.toHaveBeenCalled()
+    finish(true)
+    await focusing
+    expect(flow.feedback.get('shop')?.focusing).toBe(false)
+    expect(desktop.close).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('active focus timeout restores the focus action without cancelling the ongoing capture or allocating another lease', async () => {
+    vi.useFakeTimers()
+    const desktop = window.desktop!.managementLogin!
+    desktop.getStatus = vi.fn().mockResolvedValue({
+      attemptId: 'attempt',
+      status: 'opened',
+      message: '等待识别',
+    })
+    const { flow, wrapper } = setup()
+    await flow.login(shop)
+    await flushPromises()
+    vi.mocked(desktop.focusShop!).mockImplementation(
+      () => new Promise(() => {}),
+    )
+    const focusing = flow.login(shop)
+    await vi.advanceTimersByTimeAsync(LOGIN_FOCUS_TIMEOUT_MS)
+    await focusing
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: true,
+      opening: false,
+      focusing: false,
+    })
+    expect(desktop.close).not.toHaveBeenCalled()
+    expect(state.release).not.toHaveBeenCalled()
+    vi.mocked(desktop.focusShop!).mockResolvedValue(true)
+    await flow.login(shop)
+    expect(desktop.focusShop).toHaveBeenCalledTimes(3)
+    expect(state.acquire).toHaveBeenCalledTimes(1)
+    expect(desktop.open).toHaveBeenCalledTimes(1)
+    expect(desktop.refresh).not.toHaveBeenCalled()
     wrapper.unmount()
   })
   it('duplicate clicks cannot start parallel save; pending cancel discards late receipt and releases lease', async () => {

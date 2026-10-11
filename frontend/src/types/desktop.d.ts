@@ -34,15 +34,18 @@ declare global {
         setTitleBarTheme(theme: 'light' | 'dark'): void
       }
       managementLogin?: {
+        readonly correlationSupported?: true
         focusShop?(input: {
           platform: 'douyin' | 'pdd'
           teamId: string
           shopId: string
+          correlationId?: string
         }): Promise<boolean>
         open(input: {
           platform: 'douyin' | 'pdd'
           teamId: string
           attemptId?: string
+          correlationId?: string
           recovery?: {
             shopId: string
             leaseId: string
