@@ -378,9 +378,36 @@ run摘要显示明确日期。除成功空榜外，用户同日明确批准：�
 - `SelectionWorkspace`在Mock和Real均显示原StrategyList；删除替换整页的ManualSelection及`manualOnly`隐藏分支。原列表列配置、工具栏、搜索、分页和右抽屉保持；Real策略数据尚未接入，显示明确不可用状态，不生成演示策略行。
 - 抽屉恢复策略名称、共用达人入口、纵向渠道、全策略定时/状态及原保存底栏。Real保存与启用不可用；定时规则可在草稿中查看/编辑，但明确待接入，不创建或启用计划。手动提交仅使用店铺及取数条件，不保存名称、状态或定时草稿，不因草稿元信息变化重置未确定回执的submission_key。
 - 正式“立即获取”留在原抽屉；最近run及安全失败反馈放在原列表区，沿用Query刷新和活动run轮询。不以执行结果页取代策略管理，不增加策略CRUD或调度接口。
-- CategorySelector复用NCascader支持的placement、menuProps和menuHeight；弹层向控件右端对齐并限定视口宽高，保留原生列滚动及必要的横向滚动。使用现有间距/弹层主题Token，不扩展基础控件或全局主题。
+- CategorySelector复用NCascader支持的placement、menuProps和menuHeight；本轮体验收口采用左下优先及Naive自带边界翻转，限定视口宽高，保留原生列滚动及必要的横向滚动。使用现有间距/弹层主题Token，不扩展基础控件或全局主题。
 
 Signer、实际发送Cookie签名、主/备日期冻结及有限回退、run、候选/来源持久化、正式API和Team/Shop权限保留，已应用0042/0043不变。界面恢复阶段暂停追加平台请求，其本身不证明真实获取成功。四主题和不同视口的浏览器拦截证据、06bd03c差异清单及实际命令保存在本机忽略目录`docs/_local/product-selection-strategy-restoration-v1/`。ca97已将389030a加载到唯一Real Integration Electron，用户随后确认原界面恢复正常；人工确认与原生截图/坐标操作受限分别登记，不伪造窗口量测。本轮保持该已确认界面，仅补必要日期/安全结果状态，不重复整套视觉确认；完整真实闭环仍须新候选正式执行及Gate 2证据，不能提前发布。
+
+## 选品体验收口 2026年10月11日
+
+从精确Green a9931a8接续，不重做已确认的StrategyList/Drawer和64px缩略图、1496px基础列宽、8/12px局部padding。
+保留原策略名称、列表/工具栏、定时/状态区域、保存入口及Real不可用边界；不增加策略CRUD或调度。
+
+- 候选池和策略列表不再常驻最近获取完成横幅。只有当前Actor上下文中主动提交的run注册消失消息：
+  通过已有 `GET /runs/{id}` Query轮询，success/partial/failed/interrupted分别使用既有useMessage。
+  终态只通知一次；列表刷新、历史latest读取和重进页面不重播历史消息，不删数据库run。
+  本次run跟踪归属SelectionWorkspace，切换候选池/策略/采集任务不丢完成提示；Actor/Team切换或离开选品页清理。
+  排队/运行仍限制重复操作，真正的查询错误和批量失败提示保留，日期与来源在详情可查。
+- `metric-display.ts`统一两个原始端点的显示：100000–250000为10万–25万，
+  10000–25000为1万–2.5万，250–500不变；已确认price单位先÷100转元再显示¥万/亿。
+  单位不明/混合时保留原端点，无估算中点。金额证据与周期差异见Backend24。
+- unit=4差评率在列表/详情共用现有两位百分比格式：0.00067114…为0.07%，0为0.00%，
+  缺失/未知单位为—。DTO/数据库保留全部raw/unit精度；不再常驻开发用长小数/单位说明。
+- 类目复用TanStack Query，key包含当前Actor/Team上下文和请求shop_id；staleTime/gcTime均24小时。
+  切店清除旧选择，回来或重开复用缓存，旧请求不覆盖新店。
+  现有抽屉类目旁提供轻量“刷新类目”，仅显式刷新发送refresh=true；失败保留错误/重试。
+  提交使用该查询的当前店铺树解析真实路径，删除无期限service Map；后端仍用当前权限与共享缓存核验实际树，前端不是权限依据。
+- NCascader bottom-start左下优先，复用其VFollower默认flip和resize/scroll同步，
+  配合原视口maxWidth、横向滚动及主题menuHeight；不自写定位算法。
+  父级“全部”仍规范化为已存在的真实父级路径，不发送0、/*或伪造ID。
+
+本轮浏览器拦截仅证明前端行为与边界，PostgreSQL使用合成平台证明缓存/权限/提交共享，
+不作为新平台实测。ca97须更新新Candidate的5180前端及8100后端，在同一Real Electron核验实际运行版本、
+指标、调用次数及普通/最大化菜单；旧41e不作为五项新修复验收。没有Electron主进程变化，无需新桌面包。
 
 ## 正式只读绑定（2026-10-10，PARTIAL，历史阶段）
 

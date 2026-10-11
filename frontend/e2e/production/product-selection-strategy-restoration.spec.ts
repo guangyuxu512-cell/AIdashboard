@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { settleSelectionTransitions as settle } from '../support/settle-selection-transitions'
 
 // Formal API interception only: no platform calls, fake Real strategies or
 // Electron claims. The integrator verifies the same code in its unique window.
@@ -8,24 +9,6 @@ const themes = [
   ['coral', '珊瑚红'],
   ['midnight', '午夜青'],
 ] as const
-async function settle(page: Page) {
-  await expect
-    .poll(() =>
-      page
-        .locator('body')
-        .evaluate(
-          (element) =>
-            element
-              .getAnimations({ subtree: true })
-              .filter(
-                (animation) =>
-                  animation.playState === 'running' &&
-                  animation.effect?.getTiming().iterations !== Infinity,
-              ).length,
-        ),
-    )
-    .toBe(0)
-}
 
 test('Real preserves strategy management, and four-level categories stay visible, scrollable and parent-all selectable', async ({
   page,
@@ -141,6 +124,7 @@ test('Real preserves strategy management, and four-level categories stay visible
     { width: 1280, height: 800 },
     { width: 1366, height: 768 },
     { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
   ]) {
     await page.setViewportSize(viewport)
     for (const [id, label] of themes) {
@@ -184,6 +168,21 @@ test('Real preserves strategy management, and four-level categories stay visible
       await expect(menu.locator('.n-cascader-submenu')).toHaveCount(4)
       await settle(page)
       const bounds = (await menu.boundingBox())!
+      const anchor = (await field('类目')
+        .locator('.n-base-selection')
+        .boundingBox())!
+      // Naive's existing VFollower flips placement when four columns no longer
+      // fit on the right. This tests rendered boundaries, not only the prop.
+      const placement = await menu
+        .locator('xpath=..')
+        .getAttribute('v-placement')
+      expect(placement).toMatch(/^(bottom|top)-(start|end)$/)
+      if (placement?.endsWith('-start'))
+        expect(Math.abs(bounds.x - anchor.x)).toBeLessThan(2)
+      else
+        expect(
+          Math.abs(bounds.x + bounds.width - anchor.x - anchor.width),
+        ).toBeLessThan(2)
       expect(bounds.x).toBeGreaterThanOrEqual(0)
       expect(bounds.y).toBeGreaterThanOrEqual(0)
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width)

@@ -107,12 +107,12 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     const result = mapSelectionObservation(dto)
     expect(result.productId).toBe('3769776708757094595')
     expect(result.merchant?.shopId).not.toBe(result.shopId)
-    expect(result.negativeReviewRate).toBeNull()
+    expect(result.negativeReviewRate).toBe(Number(dto.bad_comment_rate_raw))
     expect(result.negativeReviewRateRaw).toEqual({
       value: dto.bad_comment_rate_raw,
       unit: 4,
     })
-    expect(result.userPaidAmountRange).toBe('10000000–25000000')
+    expect(result.userPaidAmountRange).toBe('¥10万–25万')
     expect(result.userPaidAmountUnit).toBeNull()
     expect(result.clicksRange).toBe('0–0')
     expect(result.soldUnitsRange).toBeNull()
@@ -129,6 +129,23 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     dto.merchants.push({ platform_shop_id: 'other', name: null })
     expect(mapSelectionObservation(dto).merchant).toBeNull()
   })
+  it.each([
+    ['0.0006711409395973154', 4, 0.0006711409395973154],
+    ['0', 4, 0],
+    [null, 4, null],
+    ['', 4, null],
+    ['not-a-number', 4, null],
+    ['0.1', 'unknown', null],
+  ])(
+    'maps known ratio %s with unit %s, keeping raw precision',
+    (raw, unit, expected) => {
+      const dto = observation()
+      dto.bad_comment_rate_raw = raw
+      dto.bad_comment_rate_unit = unit
+      expect(mapSelectionObservation(dto).negativeReviewRate).toBe(expected)
+      expect(dto.bad_comment_rate_raw).toBe(raw)
+    },
+  )
   it('queries database on list/detail/refresh; never invokes an execution API', async () => {
     const dto = observation()
     vi.mocked(httpClient.get)
@@ -197,7 +214,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
         ],
       },
     })
-    await real.categories('shop-a')
+    const nodes = await real.categories('shop-a')
     const input = emptyStrategy()
     input.shopId = 'shop-a'
     input.name = '未保存的策略草稿'
@@ -213,7 +230,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     vi.mocked(httpClient.post).mockResolvedValueOnce({
       data: { receipt_id: 'run-a', reused: false },
     })
-    await real.manual!.submit(input, 'submission-key')
+    await real.manual!.submit(input, 'submission-key', nodes)
     expect(httpClient.post).toHaveBeenCalledExactlyOnceWith(
       '/api/v1/product-selection/runs',
       {
@@ -231,12 +248,12 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       },
     )
     input.channels.shortVideo.conditions.period = 'realtime'
-    await expect(real.manual!.submit(input, 'key-2')).rejects.toThrow(
+    await expect(real.manual!.submit(input, 'key-2', nodes)).rejects.toThrow(
       '当前仅支持',
     )
     input.channels.shortVideo.conditions.period = '7d'
     input.channels.shortVideo.conditions.categoryId = '1001/*'
-    await expect(real.manual!.submit(input, 'key-3')).rejects.toThrow(
+    await expect(real.manual!.submit(input, 'key-3', nodes)).rejects.toThrow(
       '真实类目',
     )
     expect(httpClient.post).toHaveBeenCalledTimes(1)
@@ -299,19 +316,19 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       rankFrom: 1,
       rankTo: 1,
     })
-    await expect(real.manual!.submit(input, 'industry-key')).rejects.toThrow(
-      '真实类目',
-    )
+    await expect(
+      real.manual!.submit(input, 'industry-key', nodes),
+    ).rejects.toThrow('真实类目')
     input.channels.shortVideo.conditions.categoryId = '5/5001'
-    await expect(real.manual!.submit(input, 'other-key')).rejects.toThrow(
-      '真实类目',
-    )
+    await expect(
+      real.manual!.submit(input, 'other-key', nodes),
+    ).rejects.toThrow('真实类目')
     expect(httpClient.post).not.toHaveBeenCalled()
     input.channels.shortVideo.conditions.categoryId = leaf!.id
     vi.mocked(httpClient.post).mockResolvedValueOnce({
       data: { receipt_id: 'run-a', reused: false },
     })
-    await real.manual!.submit(input, 'category-key')
+    await real.manual!.submit(input, 'category-key', nodes)
     expect(httpClient.post).toHaveBeenCalledExactlyOnceWith(
       '/api/v1/product-selection/runs',
       expect.objectContaining({

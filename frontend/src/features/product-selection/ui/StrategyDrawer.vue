@@ -34,6 +34,7 @@ import {
   type StrategyInput,
   type SelectionService,
   type SelectionStrategy,
+  type SelectionExecutionSummary,
 } from '../model/contracts'
 import type { AppOption, AppOptionValue } from '@/shared/ui/types'
 import { validateStrategy } from '../model/selection-rules'
@@ -49,7 +50,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:show': [show: boolean]
   saved: []
-  retrieved: []
+  retrieved: [execution?: SelectionExecutionSummary]
 }>()
 const message = useMessage()
 const busy = ref(false)
@@ -69,6 +70,7 @@ const periodPreview = useQuery({
   queryFn: () => props.service.previewPeriod(conditions.value.period),
   retry: false,
 })
+const refreshingShop = ref<string | null>(null)
 const categories = useQuery({
   queryKey: computed(() => [
     'selection-categories',
@@ -78,9 +80,24 @@ const categories = useQuery({
   enabled: computed(
     () => props.show && !!values.shopId && values.channels.shortVideo.selected,
   ),
-  queryFn: ({ queryKey }) => props.service.categories(String(queryKey[2])),
+  queryFn: ({ queryKey }) =>
+    props.service.categories(String(queryKey[2]), {
+      refresh: refreshingShop.value === queryKey[2],
+    }),
   retry: false,
+  staleTime: 24 * 60 * 60 * 1000,
+  gcTime: 24 * 60 * 60 * 1000,
 })
+async function refreshCategories() {
+  if (!values.shopId || categories.isFetching.value) return
+  const shopId = values.shopId
+  refreshingShop.value = shopId
+  try {
+    await categories.refetch({ cancelRefetch: false })
+  } finally {
+    if (refreshingShop.value === shopId) refreshingShop.value = null
+  }
+}
 watch(
   () => props.show,
   (show) => {
@@ -194,12 +211,14 @@ async function submit(saving: boolean) {
       if (submission?.input !== encoded)
         submission = { input: encoded, key: crypto.randomUUID() }
       // Keep the key on an uncertain HTTP failure; do not create another run.
-      const receipt = await props.service.manual.submit(draft, submission.key)
-      message.info(
-        receipt.reused ? '已复用正在执行的任务' : '已提交，请查看获取进度',
+      const receipt = await props.service.manual.submit(
+        draft,
+        submission.key,
+        categories.data.value,
       )
+      message.info(receipt.reused ? '已复用选品任务' : '已提交选品任务')
       submission = null
-      emit('retrieved')
+      emit('retrieved', receipt.execution)
       emit('update:show', false)
     } else if (saving) {
       await props.service.saveStrategy(draft, props.strategy?.id)
@@ -318,12 +337,24 @@ async function submit(saving: boolean) {
                     "
                     @update:model-value="setCondition('categoryId', $event)"
                   />
+                  <AppButton
+                    tone="link"
+                    size="small"
+                    :disabled="
+                      !values.shopId ||
+                      categories.isFetching.value ||
+                      !values.channels.shortVideo.selected
+                    "
+                    :loading="!!refreshingShop"
+                    @click="refreshCategories"
+                    >刷新类目</AppButton
+                  >
                   <ErrorState
                     v-if="categories.isError.value"
                     title="类目加载失败"
                     description="请重试当前店铺类目"
                     retryable
-                    @retry="categories.refetch()"
+                    @retry="refreshCategories"
                   />
                 </div>
               </NFormItem>

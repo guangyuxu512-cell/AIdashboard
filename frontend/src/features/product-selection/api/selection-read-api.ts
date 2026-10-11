@@ -162,11 +162,15 @@ export interface SelectionCategoriesDto {
 
 export async function readSelectionCategories(
   shopId: string,
+  options?: { refresh?: boolean },
 ): Promise<SelectionCategoriesDto> {
   const response = await httpClient.get<SelectionCategoriesDto>(
     `${basePath}/categories`,
     {
-      params: { shop_id: shopId },
+      params: {
+        shop_id: shopId,
+        ...(options?.refresh ? { refresh: true } : {}),
+      },
     },
   )
   return response.data
@@ -182,6 +186,15 @@ export async function readLatestSelectionRun(
     },
   )
   return response.data.items[0] ?? null
+}
+
+export async function readSelectionRun(
+  runId: string,
+): Promise<SelectionExecutionSummary> {
+  const response = await httpClient.get<SelectionExecutionSummary>(
+    `${basePath}/runs/${encodeURIComponent(runId)}`,
+  )
+  return response.data
 }
 
 export async function readSelectionCandidates(

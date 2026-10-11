@@ -10,7 +10,14 @@ import CandidatePool from './CandidatePool.vue'
 
 const TableStub = defineComponent({
   name: 'DataTable',
-  props: ['data', 'checkedRowKeys', 'columns', 'themeOverrides', 'scrollX'],
+  props: [
+    'data',
+    'checkedRowKeys',
+    'columns',
+    'themeOverrides',
+    'scrollX',
+    'emptyDescription',
+  ],
   emits: ['update:checkedRowKeys'],
   template: '<div />',
 })
@@ -55,7 +62,7 @@ function render(service: SelectionService) {
 
 describe('candidate selection and batch demo', () => {
   it.each([
-    ['succeeded', 0, null, '获取成功，该范围没有结果'],
+    ['succeeded', 0, null, '所选范围暂无候选商品'],
     [
       'failed',
       null,
@@ -66,7 +73,7 @@ describe('candidate selection and batch demo', () => {
       'partial',
       10,
       'PRODUCT_SELECTION_BASIC_INFO_INCOMPLETE',
-      '已保存 10 项 · 补充未完成',
+      '所选范围暂无候选商品',
     ],
     ['interrupted', null, null, '执行中断'],
   ] as const)(
@@ -92,7 +99,8 @@ describe('candidate selection and batch demo', () => {
         latestRun,
       })
       await flushPromises()
-      expect(wrapper.text()).toContain(message)
+      expect(table.props('emptyDescription')).toContain(message)
+      expect(wrapper.text()).not.toContain('获取完成')
       expect(table.props('data')).toEqual([])
       expect(button().props('disabled')).toBe(true)
       expect(

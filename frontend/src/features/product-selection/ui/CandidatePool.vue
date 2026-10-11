@@ -41,9 +41,10 @@ import {
 } from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
-import { runWindow, runResult } from '../model/run-display'
+import { runResult } from '../model/run-display'
 
 const props = defineProps<{ service: SelectionService; contextKey: string }>()
+const emit = defineEmits<{ 'refresh-run-feedback': [] }>()
 const message = useMessage()
 const filters = ref<CandidateQuery>({
   page: 1,
@@ -106,11 +107,6 @@ const latestRun = useQuery({
       ? 1000
       : false,
 })
-const runMessage = computed(() => {
-  const run = latestRun.data.value
-  if (!run) return null
-  return `${runResult(run)} · ${runWindow(run)}`
-})
 watch(
   () => latestRun.data.value?.status,
   (status, old) => {
@@ -125,9 +121,14 @@ watch(
 )
 const emptyDescription = computed(() => {
   if (props.service.available || filters.value.keyword) return '暂无候选商品'
-  return runMessage.value ?? '尚未获取候选，请在选品策略中执行手动选品'
+  const run = latestRun.data.value
+  if (!run) return '尚未获取候选，请在选品策略中执行手动选品'
+  return ['failed', 'interrupted', 'pending', 'running'].includes(run.status)
+    ? runResult(run)
+    : '所选范围暂无候选商品'
 })
 async function refreshList() {
+  emit('refresh-run-feedback')
   await Promise.all([
     query.refetch(),
     ...(props.service.latestRun ? [latestRun.refetch()] : []),
@@ -367,19 +368,9 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         ? filters.value.sortOrder
         : false,
     render: (row) =>
-      row.negativeReviewRateRaw
-        ? h(
-            NTooltip,
-            {},
-            {
-              trigger: () => row.negativeReviewRateRaw!.value,
-              default: () =>
-                `平台原值；unit=${row.negativeReviewRateRaw!.unit ?? '—'}，换算尚未确认`,
-            },
-          )
-        : row.negativeReviewRate === null
-          ? missing()
-          : formatReviewRate(row.negativeReviewRate),
+      row.negativeReviewRate === null
+        ? missing()
+        : formatReviewRate(row.negativeReviewRate),
   },
   {
     key: 'listedAt',
@@ -495,16 +486,6 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       >
     </FilterBar>
     <ManagementListSection>
-      <NAlert
-        v-if="runMessage"
-        :type="
-          latestRun.data.value?.status === 'failed' ||
-          latestRun.data.value?.status === 'interrupted'
-            ? 'warning'
-            : 'info'
-        "
-        >{{ runMessage }}</NAlert
-      >
       <NAlert v-if="latestRun.isError.value" type="warning">{{
         latestRun.error.value?.message
       }}</NAlert>

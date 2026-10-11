@@ -18,6 +18,15 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-11 新一轮选品体验收口：81a1 从精确 Green
+`a9931a8f8b329bb5e5e79f9e44fd42294ca5d633` 创建
+`feat/product-selection-experience-fixes-v1`，保留原策略列表/抽屉和手动接入。
+仅收口本次主动获取的消失消息、视频区间格式、差评率百分比、24小时店铺类目缓存与弹层边界。
+复用 retained `control_center_feat_product_selection`（单一0043）、Feature 8101/4176；无新Schema或Migration。
+0042/0043、Session/Signer、日期规则、事实与权限不改；不新增策略保存、调度、百应或手机能力。
+Gate 1后交ca97更新同一Integration的5180/8100及唯一Real Electron，旧41e预览不作为本轮新候选验收。
+开发会话不合并dev/main、不发布；新增菜单影响须真实Electron复验，浏览器拦截不替代。
+
 当前状态（2026-10-11）：选品手动Candidate `41e3116e0e176761f3a3fbb29e199283ce61c95c`
 通过Gate2，no-ff Merge `3448b7d74651bcaab3f39dbeff97aee9a5fcea83`；Integration单一0043。
 HuanYu正式run `72f42fff-1996-4d59-9c30-30104f373e63` 真实10条入库及10条basic_info成功，
