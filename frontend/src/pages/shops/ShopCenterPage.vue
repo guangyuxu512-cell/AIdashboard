@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { provide } from 'vue'
+import {
+  shopLoginKey,
+  useShopLogin,
+} from '@/features/shop-management/model/useShopLogin'
 import {
   ShopDetailDrawer,
   ShopBatchToolbar,
@@ -15,6 +20,8 @@ import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useShopManagement()
+const login = useShopLogin()
+provide(shopLoginKey, login)
 </script>
 
 <template>
@@ -46,6 +53,8 @@ const management = useShopManagement()
         :show-owner="management.canManageOwners.value"
         :show-device-summary="management.canReadDevices.value"
         :status-changing-shop-id="management.statusChangingShopId.value"
+        :can-login="login.canLogin.value"
+        @login="login.login"
         @view="management.openDetail"
         @toggle-enabled="management.toggleEnabled"
         @remove="management.requestRemove"

@@ -156,4 +156,5 @@ def retry_operating_collection(
         actor=actor,
         collection_job_id=collection_job_id,
         item_ids=request.item_ids,
+        session_recovery_version=request.session_recovery_version,
     )

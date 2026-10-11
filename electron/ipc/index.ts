@@ -13,6 +13,7 @@ import {
   isDesktopResolvedTheme,
   isManagementLoginCompleteInput,
   isManagementLoginOpenInput,
+  isManagementLoginFocusInput,
   isUuid,
 } from '../types'
 
@@ -29,6 +30,18 @@ export function registerIpcHandlers(
 
     setTitleBarTheme(window, theme)
   })
+
+  ipcMain.handle(
+    desktopIpcChannels.focusManagementShop,
+    async (event, input: unknown) => {
+      assertTrustedIpcSender(event, trustedRendererOrigin)
+      if (!isManagementLoginFocusInput(input))
+        throw new Error('店铺登录参数无效')
+      const parent = BrowserWindow.fromWebContents(event.sender)
+      if (!parent) throw new Error('主窗口不存在')
+      return managementLoginService.focusShop(parent, input)
+    },
+  )
 
   ipcMain.handle(
     desktopIpcChannels.openManagementLogin,
@@ -61,7 +74,8 @@ export function registerIpcHandlers(
     desktopIpcChannels.completeManagementLogin,
     (event, input: unknown) => {
       assertTrustedIpcSender(event, trustedRendererOrigin)
-      if (!isManagementLoginCompleteInput(input)) throw new Error('接入参数无效')
+      if (!isManagementLoginCompleteInput(input))
+        throw new Error('接入参数无效')
       return managementLoginService.complete(input)
     },
   )

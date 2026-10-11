@@ -12,6 +12,7 @@ import type {
 // Keep this whitelist self-contained and mirrored by the formal Main contract.
 const setTitleBarThemeChannel = 'appearance:set-title-bar-theme'
 const openManagementLoginChannel = 'management-login:open'
+const focusManagementShopChannel = 'management-login:focus-shop'
 const getManagementLoginStatusChannel = 'management-login:get-status'
 const completeManagementLoginChannel = 'management-login:complete'
 const refreshManagementLoginChannel = 'management-login:refresh'
@@ -34,6 +35,9 @@ const desktopApi: DesktopApi = {
     },
   },
   managementLogin: {
+    focusShop(input) {
+      return ipcRenderer.invoke(focusManagementShopChannel, input)
+    },
     open(input: ManagementLoginOpenInput) {
       return ipcRenderer.invoke(openManagementLoginChannel, input)
     },

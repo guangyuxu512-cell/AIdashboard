@@ -19,6 +19,7 @@ from app.modules.operating_dashboard.enums import (
     OperatingCollectionItemStatus,
     OperatingCollectionJobKind,
     OperatingCollectionJobStatus,
+    SESSION_RESTORE_DEDUPE_PREFIX,
 )
 from app.modules.operating_dashboard.exceptions import (
     OperatingDashboardCollectionNotFoundError,
@@ -56,6 +57,8 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDataCollectionSubmissionRead,
 )
 from app.modules.shops.enums import ShopPlatform
+from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.repository import ShopSessionRepository
 from app.platforms.douyin.operating_data import CompassDailyMetrics
 from app.platforms.douyin.operating_data_executor import CollectionOutcome
 from app.shared.identifiers import generate_id
@@ -602,6 +605,7 @@ class OperatingDashboardService:
         actor: ActorContext,
         collection_job_id: UUID,
         item_ids: Iterable[UUID],
+        session_recovery_version: int | None = None,
         now: datetime | None = None,
     ) -> OperatingDataCollectionJobRead:
         self._require_dashboard_access(actor)
@@ -616,6 +620,12 @@ class OperatingDashboardService:
         if not visible_items:
             raise OperatingDashboardCollectionNotFoundError()
         requested_ids = set(item_ids)
+        if session_recovery_version is not None:
+            return self._recover_failed_daily_session_item(
+                actor=actor, original_job_id=collection_job_id,
+                requested_ids=requested_ids, visible_items=visible_items,
+                session_version=session_recovery_version, now=now or datetime.now(UTC),
+            )
         # A broad retry request must stay limited to rows already marked
         # retryable.  The parser-specific manual recovery is intentionally
         # explicit per original item so it cannot become a generic retry-all
@@ -719,6 +729,72 @@ class OperatingDashboardService:
         if job is None:
             raise OperatingDashboardCollectionNotFoundError()
         return self._job_read_for_actor(actor=actor, job=job)
+
+    def _recover_failed_daily_session_item(
+        self, *, actor: ActorContext, original_job_id: UUID,
+        requested_ids: set[UUID], visible_items: list[OperatingDataCollectionItem],
+        session_version: int, now: datetime,
+    ) -> OperatingDataCollectionJobRead:
+        """One explicit recovery after a newly captured, server-verified Session.
+
+        Never reset accumulated attempts or change ordinary retry/scan policy.
+        The original failed item remains immutable and the dedupe key permits
+        just one new executor attempt, even across Session versions/processes.
+        """
+        original_job = self.repository.get_job(original_job_id)
+        item = next((row for row in visible_items if row.collection_item_id in requested_ids), None)
+        if (len(requested_ids) != 1 or original_job is None or
+            original_job.kind != OperatingCollectionJobKind.DAILY.value or item is None or
+            item.status != OperatingCollectionItemStatus.FAILED.value or not item.retryable or
+            item.failure_stage != "session_preparation" or
+            item.failure_code != "SHOP_SESSION_VALIDATION_FAILED"):
+            raise OperatingDashboardCollectionRetryUnavailableError()
+        shop = self.repository.get_authorized_shop(actor=actor, shop_id=item.shop_id)
+        if shop is None:
+            raise OperatingDashboardCollectionNotFoundError()
+        try:
+            self.repository.acquire_global_claim_lock()
+            dedupe_key = f"{SESSION_RESTORE_DEDUPE_PREFIX}{item.collection_item_id}"
+            existing = self.repository.get_job_by_dedupe_key(dedupe_key)
+            if existing is not None:
+                self.session.rollback()
+                return self.get_collection_job(actor=actor, collection_job_id=existing.collection_job_id)
+            stored = ShopSessionRepository(self.session).get_by_shop(item.shop_id)
+            identity_shop = self.repository.get_shop(item.shop_id)
+            failed_at = item.finished_at or item.updated_at
+            if (not shop.enabled or shop.platform is not ShopPlatform.DOUYIN or
+                identity_shop is None or not identity_shop.platform_shop_id or
+                item.business_date >= _shanghai_today(now) or
+                (shop.operating_start_date is not None and item.business_date < shop.operating_start_date) or
+                stored is None or stored.status is not ShopSessionStatus.VALID or
+                stored.version != session_version or stored.captured_at <= failed_at or
+                stored.captured_at > now or stored.validated_at is None or
+                stored.validated_at < stored.captured_at or stored.validated_at > now or
+                stored.validated_at < now - timedelta(
+                    seconds=self.settings.shop_session_validation_freshness_seconds,
+                )):
+                raise OperatingDashboardCollectionRetryUnavailableError()
+            history = self.repository.list_collection_item_states(
+                shop_ids=(item.shop_id,), start_date=item.business_date, end_date=item.business_date,
+            )
+            latest = _latest_state(history)
+            metrics = self.repository.list_metrics(
+                shop_ids=(item.shop_id,), start_date=item.business_date, end_date=item.business_date,
+            )
+            if (latest is None or latest.collection_item_id != item.collection_item_id or
+                self.repository.find_active_item(shop_id=item.shop_id, business_date=item.business_date) is not None or
+                (metrics and not _requires_collection(metrics[0]))):
+                raise OperatingDashboardCollectionRetryUnavailableError()
+            job = self._create_collection_job(
+                kind=OperatingCollectionJobKind.RETRY, start_date=item.business_date,
+                end_date=item.business_date, shops=[shop], requested_by_user_id=actor.user_id,
+                requested_team_id=actor.team_id, dedupe_key=dedupe_key,
+                business_dates_by_shop={item.shop_id: [item.business_date]}, now=now,
+            )
+            return self.get_collection_job(actor=actor, collection_job_id=job.collection_job_id)
+        except Exception:
+            self.session.rollback()
+            raise
 
     def resume_after_session_refresh(
         self,
@@ -1311,8 +1387,15 @@ class OperatingDashboardService:
         ):
             self.session.rollback()
             return False
+        job = self.repository.get_job(item.collection_job_id)
+        session_recovery = bool(job and job.dedupe_key and job.dedupe_key.startswith(SESSION_RESTORE_DEDUPE_PREFIX))
         if outcome.status.value == "succeeded" and outcome.metrics is not None:
             self._persist_success(item, outcome.metrics, now)
+        elif session_recovery:
+            # Including reauthorization: this one-shot recovery must not turn
+            # into a new paused/automatic retry loop on another login.
+            self._fail(item, outcome, now)
+            item.retryable = False
         elif outcome.requires_reauthorization:
             self._pause_for_reauthorization(item, outcome, now)
         elif outcome.retryable and _attempts_since_last_success(

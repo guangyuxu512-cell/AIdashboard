@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from app.core.config import Settings, get_settings
 from app.modules.sessions.auth_context import (
     ShopSessionAccessor,
     ShopSessionAuthContext,
+    StoredManagementSessionPayload,
     StoredSessionCookie,
 )
 from app.modules.sessions.enums import ShopSessionStatus
@@ -24,6 +26,15 @@ from app.platforms.exceptions import (
     PlatformIdentityMismatchError,
     PlatformNotSupportedError,
 )
+
+
+@dataclass(frozen=True)
+class ValidatedSessionCandidate:
+    payload: bytes = field(repr=False)
+    platform_shop_id: str
+    shop_display_name: str
+    validated_at: datetime
+    cookie_updates_applied: int
 
 
 class ShopSessionHealthService:
@@ -44,6 +55,38 @@ class ShopSessionHealthService:
         self.session_service = session_service or ShopSessionService(session)
         self.shop_repository = shop_repository or ShopRepository(session)
         self.settings = settings or get_settings()
+
+    def validate_candidate(
+        self,
+        shop_id: UUID,
+        platform: ShopPlatform,
+        platform_shop_id: str | None,
+        version: int,
+        payload: bytes,
+        parsed: StoredManagementSessionPayload,
+    ) -> ValidatedSessionCandidate:
+        """Fresh authoritative check without any stored validation/payload writes.
+
+        An invalid replacement does not prove the previous Session is invalid.
+        Keep the existing ``check`` path for validating that stored Session.
+        """
+        connector = self.connectors.get(platform)
+        if connector is None:
+            raise PlatformNotSupportedError()
+        context = self.session_accessor.context_from_payload(shop_id, platform, version, parsed)
+        identity = connector.fetch_shop_identity(shop_id, context)
+        if platform_shop_id is None or identity.platform_shop_id != platform_shop_id:
+            raise PlatformIdentityMismatchError()
+        merged, count = (payload, 0)
+        if identity.cookie_updates:
+            merged, count = self.session_accessor.merge_payload_cookies(payload, identity.cookie_updates)
+        return ValidatedSessionCandidate(
+            payload=merged,
+            platform_shop_id=identity.platform_shop_id,
+            shop_display_name=identity.shop_display_name,
+            validated_at=datetime.now(UTC),
+            cookie_updates_applied=count,
+        )
 
     def check(
         self,

@@ -9,6 +9,7 @@ from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import get_super_account
+from app.modules.access.service import ActorContextService
 from app.modules.sessions.auth_context import ShopSessionAccessor
 from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.refresh_service import ShopSessionRefreshService
@@ -148,4 +149,10 @@ def complete_shop_session_refresh(
         Depends(get_shop_session_refresh_service),
     ],
 ) -> ShopSessionHealthRead:
-    return service.complete(shop_id, command)
+    def recheck_authorization() -> None:
+        current = ActorContextService(service.session).resolve(
+            user_id=_actor.user_id, requested_team_id=_actor.team_id,
+        )
+        get_super_account(current)
+
+    return service.complete(shop_id, command, recheck_authorization=recheck_authorization)

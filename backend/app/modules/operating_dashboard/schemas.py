@@ -229,3 +229,10 @@ class OperatingDataCollectionRetryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     item_ids: list[UUID] = Field(default_factory=list, max_length=200)
+    session_recovery_version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_session_recovery(self) -> "OperatingDataCollectionRetryRequest":
+        if self.session_recovery_version is not None and len(self.item_ids) != 1:
+            raise ValueError("Session恢复必须明确选择一个原失败项")
+        return self

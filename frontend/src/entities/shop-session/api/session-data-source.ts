@@ -80,7 +80,7 @@ export function createMockShopSessionDataSource(): ShopSessionDataSource {
       return {
         shopId,
         leaseId: crypto.randomUUID(),
-        expectedVersion: 1,
+        expectedVersion: getSession(shopId).version || 1,
         expiresAt: dayjs().add(30, 'minute').toISOString(),
       }
     },
@@ -127,7 +127,9 @@ const realShopSessionDataSource: ShopSessionDataSource = {
     }
   },
   async validate(shopId) {
-    await shopSessionApi.validate(shopId)
+    const result = await shopSessionApi.validate(shopId)
+    if (result.status !== 'valid' || result.used_cached_validation !== false)
+      throw new Error('本次验证未完成')
   },
   async acquireRefreshLease(shopId) {
     const lease = await shopSessionApi.acquireRefreshLease(shopId)

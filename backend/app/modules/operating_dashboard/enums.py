@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+SESSION_RESTORE_DEDUPE_PREFIX = "session-restored:"
+
 
 class OperatingCollectionJobKind(StrEnum):
     INITIAL_BACKFILL = "initial_backfill"

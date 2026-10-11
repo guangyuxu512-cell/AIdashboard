@@ -1,11 +1,6 @@
 declare global {
   type ManagementLoginStatus =
-    | 'opened'
-    | 'waiting'
-    | 'identified'
-    | 'closed'
-    | 'failed'
-    | 'completed'
+    'opened' | 'waiting' | 'identified' | 'closed' | 'failed' | 'completed'
 
   interface ManagementLoginStatusResult {
     attemptId: string
@@ -39,6 +34,11 @@ declare global {
         setTitleBarTheme(theme: 'light' | 'dark'): void
       }
       managementLogin?: {
+        focusShop?(input: {
+          platform: 'douyin' | 'pdd'
+          teamId: string
+          shopId: string
+        }): Promise<boolean>
         open(input: {
           platform: 'douyin' | 'pdd'
           teamId: string
