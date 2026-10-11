@@ -19,12 +19,43 @@
 
 ### Two-Gate、问题归属与共享历史
 
-本期 Feature 登记（2026-10-05）：81a1 `feat/product-center-placeholder-v1` 从 Green
-`afec237435dabc3e086b9b515f28986876f6fcbd` 开发商品中心导航与占位，状态 `UI_ONLY`。
-Frontend 复用 Registry / Guard / ContextSwitchBar（framed）/ EmptyState / PageSection；Backend 仅登记
-`product-selection`、`product-library` 模块授权值，不自动授予普通成员。无业务 API、Schema、Migration
-或 Worker 变更；Gate 1 后交“集成ca97”真实 Electron Gate 2，Green 后交原发布会话，发布须满足适用授权。
-旧主题成果与本地忽略材料保留，不修改 main 或生产环境。
+当前状态（2026-10-11）：选品手动Candidate `41e3116e0e176761f3a3fbb29e199283ce61c95c`
+通过Gate2，no-ff Merge `3448b7d74651bcaab3f39dbeff97aee9a5fcea83`；Integration单一0043。
+HuanYu正式run `72f42fff-1996-4d59-9c30-30104f373e63` 真实10条入库及10条basic_info成功，
+用户确认Real列表/详情/刷新。此run首选10-04～10-10成功、未触发备用；窄621000704第一页补查有PG覆盖，
+不把该业务码普遍解释为日期未就绪。0042/0043 Slot统一released，Feature库retained，失败历史保留。
+下列旧UI_ONLY/PARTIAL为阶段记录；当前手动闭环与CI/Release边界见
+`docs/engineering/product-selection-manual-v1-gate2-20261011.md`。未生产核验前不标记DEPLOYED。
+达人登录、策略保存、定时、手机及百应仍未接入，不能假成功。
+
+本期 Feature 登记（2026-10-08）：81a1 `feat/product-selection-frontend-v1` 从 ca97 确认的 Green
+`b34e43cb90356e03d2f793c4146c6775a11f5ab3` 开发选品库前端与 Mock 交互，状态 `UI_ONLY`。
+复用 framed 导航、既有列表/分页/Drawer/表单/ShopSelector/主题；采集任务与商品库仍占位。
+typed service 为前端草案，Real 不请求猜测接口、不回退 Mock。无 Backend、Schema、Migration、Worker、
+真实平台、真实调度或达人登录/Session 保存。Gate 1 后交“集成ca97”唯一 Integration Electron 验证 Mock
+与 Real 边界；Green 后交原发布会话，开发会话不发布。旧分支、提交与本机忽略材料保留。
+
+2026-10-09 用户授权按两个阶段接续本 Feature：先完成紧凑候选列表、详情首屏和说明精简的前端返修，
+仍为 UI_ONLY，无新增业务数据库/Migration；由 ca97 加载精确新候选进行集中页面复验。
+前端确认后才实施罗盘手动选品最小闭环（条件→榜单请求→候选持久化→basic_info补充→正式查询）。
+该阶段复用ShopSession/HTTP/Signer/商品模块授权与团队隔离；必要Feature DB与Migration Slot由ca97分配。
+不扩展百应、达人登录、每小时监控、手机任务或自动上架；开发会话不操作main/生产，Mock不能替代真实闭环证据。
+
+选品接入资源登记（2026-10-10）：81a1 沿用 `feat/product-selection-frontend-v1`，基线
+`b34e43cb90356e03d2f793c4146c6775a11f5ab3`。前端候选 `06bd03c0fa61b00251063e21350cd0cc5445afe5`
+及诊断补丁 `819ca33ba6548030e418320c6bb80ba046beb842` 尚未合入 dev；Frontend/Electron 树相同，
+Mock 验证不代表真实入库。两表、业务专用 `product_selection_runs`、观察的可空 `last_run_id`
+及 Real 查询已在阶段候选实现；技术复核通过但仍为 PARTIAL，空榜单、失败和中断有独立记录，
+不增加通用队列、Worker、策略调度或自动平台重试。具体事务/幂等约束见选品资源登记文档。
+0041 已在 Integration/生产应用，旧 Slot released；本 Feature 保持唯一 active Slot，串行链为
+`20260924_0041 → 20261010_0042 → 20261010_0043`。0042 已在 Feature 库应用，不改写、不释放；
+追加 `20261010_0043_product_selection_runs_v1`，revision `20261010_0043`，down `20261010_0042`，
+由 81a1 编写且已在 Feature 库应用；两项随同一完整候选验收后一起释放，不另开第二个活跃 Slot。
+独立库 `control_center_feat_product_selection` 现为单一 `20261010_0043`，ShopSession=0，Owner `control_center_dev_user`，
+受信任 `35433` 隧道及 SCRAM 连接/回滚 DDL 探针通过；应用角色无 CREATEDB/CREATEROLE/SUPERUSER。
+81a1 本地忽略连接及实际库名已核验；保持现有库和0042事实，未知渠道/日期/类目转换不猜测实现。
+Feature Backend `8101`、Frontend `4176 --strictPort`，仅 Feature Owner 运行；Integration 仍为
+`8100/5180 --strictPort` 与唯一 Electron。仅登记/评审，不代 Feature 写 Migration，不发布生产。
 
 - Gate 1 由 Feature Owner 完成：自检、测试、文档/契约同步、提交，并以正式 Handoff 交给 Integrator。
 - Gate 2 只在 Integration Worktree 执行：读取候选提交、做集成验证、解决真实冲突并决定接受或拒绝。候选本身的业务 Bug、缺测试或契约缺口必须退回原 Feature Owner；Integrator 不代为开发业务修复。

@@ -61,13 +61,14 @@ class DouyinApiClient:
         cookies = to_httpx_cookies(auth_context.cookies)
         headers = dict(endpoint.headers)
         params = dict(query or {})
+        if endpoint.sign_required:
+            params.pop("a_bogus", None)
         try:
             if self.client is not None:
                 response, signature_duration_ms, platform_duration_ms = self._request(
                     self.client,
                     endpoint,
                     cookies,
-                    auth_context,
                     headers,
                     params,
                     body,
@@ -81,7 +82,6 @@ class DouyinApiClient:
                         client,
                         endpoint,
                         cookies,
-                        auth_context,
                         headers,
                         params,
                         body,
@@ -115,7 +115,6 @@ class DouyinApiClient:
         client: httpx.Client,
         endpoint: DouyinEndpoint,
         cookies: httpx.Cookies,
-        auth_context: ShopSessionAuthContext,
         headers: dict[str, str],
         params: dict[str, str | int | bool],
         body: Mapping[str, Any] | None,
@@ -142,7 +141,9 @@ class DouyinApiClient:
                     host=endpoint.host,
                     full_url=str(unsigned_request.url),
                     method=endpoint.method,
-                    cookie=SecretStr(_cookie_header(auth_context)),
+                    # Sign exactly the Cookie header selected by HTTPX for
+                    # this host/path, including its same-name cookie order.
+                    cookie=SecretStr(unsigned_request.headers.get("cookie", "")),
                     user_agent=headers.get("user-agent"),
                     referer=endpoint.referer,
                     body=(
@@ -167,25 +168,20 @@ class DouyinApiClient:
                 },
             ) from error
 
-        signed_request = client.build_request(
-            endpoint.method,
-            endpoint.url,
-            headers=headers,
-            cookies=cookies,
-            params={**params, "a_bogus": sign_result.a_bogus.get_secret_value()},
-            json=body,
+        # Reuse the prepared request so signing cannot be followed by a
+        # second CookieJar selection with a different authentication context.
+        signature_query = str(httpx.QueryParams({
+            "a_bogus": sign_result.a_bogus.get_secret_value(),
+        })).encode("ascii")
+        unsigned_request.url = unsigned_request.url.copy_with(
+            query=b"&".join(
+                part for part in (unsigned_request.url.query, signature_query) if part
+            ),
         )
         signature_duration_ms = round((monotonic() - signature_started_at) * 1000)
         platform_started_at = monotonic()
         return (
-            client.send(signed_request),
+            client.send(unsigned_request),
             signature_duration_ms,
             round((monotonic() - platform_started_at) * 1000),
         )
-
-
-def _cookie_header(auth_context: ShopSessionAuthContext) -> str:
-    return "; ".join(
-        f"{cookie.name}={cookie.value.get_secret_value()}"
-        for cookie in auth_context.cookies
-    )
