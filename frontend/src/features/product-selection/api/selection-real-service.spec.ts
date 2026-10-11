@@ -321,28 +321,42 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       }),
     )
   })
-  it('maps frozen actual fallback dates without inventing units or current timestamps', () => {
-    const dto = observation()
-    dto.source_context.date_selection = {
-      policy: 'shanghai_7d_once',
-      accepted_local_date: '2026-10-10',
-      primary_begin: '2026-10-03',
-      primary_end: '2026-10-09',
-      backup_begin: '2026-10-02',
-      backup_end: '2026-10-08',
-      actual_window: 'backup',
-      fallback_reason: 'primary_success_empty',
-      rank_from: 1,
-      rank_to: 20,
-    }
-    const row = mapSelectionObservation(dto)
-    expect(row.sourceContext).toMatchObject({
-      periodLabel: '近7天',
-      dateFallback: true,
-      statisticalPeriod: '2026-10-02～2026-10-08',
-    })
-    expect(row.negativeReviewRateRaw?.value).toBe('0.00205018686599039')
-  })
+  it.each([
+    'primary_success_empty',
+    'primary_business_rejection_probe',
+  ] as const)(
+    'maps frozen %s fallback dates without inventing units or current timestamps',
+    (fallback_reason) => {
+      const dto = observation()
+      dto.source_context.date_selection = {
+        policy: 'shanghai_7d_once',
+        accepted_local_date: '2026-10-10',
+        primary_begin: '2026-10-03',
+        primary_end: '2026-10-09',
+        backup_begin: '2026-10-02',
+        backup_end: '2026-10-08',
+        actual_window: 'backup',
+        fallback_reason,
+        primary_error:
+          fallback_reason === 'primary_business_rejection_probe'
+            ? {
+                error_code: 'DOUYIN_SELECTION_BUSINESS_REJECTED',
+                error_stage: 'platform_business',
+                platform_business_code: '621000704',
+              }
+            : null,
+        rank_from: 1,
+        rank_to: 20,
+      }
+      const row = mapSelectionObservation(dto)
+      expect(row.sourceContext).toMatchObject({
+        periodLabel: '近7天',
+        dateFallback: true,
+        statisticalPeriod: '2026-10-02～2026-10-08',
+      })
+      expect(row.negativeReviewRateRaw?.value).toBe('0.00205018686599039')
+    },
+  )
   it('propagates failures, keeps legitimate empty results distinct, rejects unknown sorting before HTTP', async () => {
     const real = await createSelectionService('real')
     const failure = new Error('当前店铺授权已撤销')

@@ -114,6 +114,30 @@ def test_fingerprint_excludes_outcome_but_keeps_frozen_plan_and_legacy_bytes():
         freeze_short_video_request(_original(rank_to=21), datetime.now(UTC))
 
 
+def test_old_v2_outcomes_remain_readable_and_new_primary_error_is_strict_and_not_part_of_fingerprint():
+    from app.modules.product_selection.run_contract import SelectionResolvedRequest, SelectionDateOutcome, SelectionPrimaryBusinessError
+    request = freeze_short_video_request(_original(), datetime.now(UTC))
+    raw = request.model_dump(mode="json") | {"date_outcome": {"state": "backup"}}
+    old = SelectionResolvedRequest.model_validate(raw)
+    assert old.actual_scope() == request.date_plan.backup_scope
+    assert old.provenance().fallback_reason == "primary_success_empty"
+    for code in [621000704, "621000704"]:
+        primary = SelectionPrimaryBusinessError(error_code="DOUYIN_SELECTION_BUSINESS_REJECTED",
+            error_stage="platform_business", platform_business_code=code)
+        outcome = SelectionDateOutcome(state="backup", fallback_reason="primary_business_rejection_probe", primary_error=primary)
+        new = request.model_copy(update={"date_outcome": outcome})
+        assert new.fingerprint() == request.fingerprint()
+        assert new.provenance().primary_error.platform_business_code == code
+        assert type(new.provenance().primary_error.platform_business_code) is type(code)
+        with pytest.raises(ValueError):
+            SelectionDateOutcome(state="both_empty", fallback_reason=outcome.fallback_reason, primary_error=primary)
+    for code in [True, False, 621000704.0, "621000705", "https://example.invalid/secret"]:
+        with pytest.raises(ValueError):
+            SelectionPrimaryBusinessError(error_code="DOUYIN_SELECTION_BUSINESS_REJECTED",
+                error_stage="platform_business", platform_business_code=code)
+    with pytest.raises(ValueError): SelectionDateOutcome(state="backup_empty")
+
+
 @pytest.mark.parametrize("industry_wrapped", [False, True])
 def test_category_membership_is_current_shop_industry_and_ordered_path_not_leaf_only(industry_wrapped):
     from app.modules.product_selection.schemas import SelectionCategoriesRead

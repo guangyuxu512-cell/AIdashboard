@@ -14,11 +14,13 @@ from app.modules.product_selection.exceptions import (
     SelectionExecutionDisabledError,
     SelectionRunConflictError, SelectionRunNotFoundError,
     SelectionSubmissionBusyError,
+    SelectionRunLeaseLostError,
 )
 from app.modules.product_selection.models import ProductSelectionRun
 from app.modules.product_selection.run_contract import (
     SelectionResolvedRequest, SelectionRunClaim, SelectionRunCreate,
     SelectionRunOriginal, SelectionRunRead, SelectionRunReceipt, SelectionDateOutcome,
+    SelectionFallbackReason, SelectionPrimaryBusinessError,
 )
 from app.modules.product_selection.run_repository import SelectionRunRepository
 from app.modules.product_selection.request_mapping import freeze_short_video_request, validate_shop_category
@@ -212,13 +214,17 @@ class SelectionRunService:
             self.session.rollback()
             raise
 
+    def _execution_actor(self, claim: SelectionRunClaim) -> ActorContext:
+        from app.modules.access.service import ActorContextService
+        current = ActorContextService(self.session).resolve(user_id=claim.user_id, requested_team_id=claim.team_id)
+        current = self.facts._current_actor(current)
+        self.facts._execution_shop(current, claim.shop_id)
+        return current
+
     def authorize(self, claim: SelectionRunClaim, *, stage: str, now: datetime | None = None) -> ActorContext:
         at = now or datetime.now(UTC)
         try:
-            from app.modules.access.service import ActorContextService
-            current = ActorContextService(self.session).resolve(user_id=claim.user_id, requested_team_id=claim.team_id)
-            current = self.facts._current_actor(current)
-            self.facts._execution_shop(current, claim.shop_id)
+            current = self._execution_actor(claim)
             row = self.repository.fence(claim, at)
             row.stage = stage
             row.lease_expires_at = at + timedelta(seconds=self.settings.product_selection_run_lease_seconds)
@@ -238,7 +244,8 @@ class SelectionRunService:
             if error is not None:
                 request = SelectionResolvedRequest.model_validate(row.request_conditions)
                 if request.date_outcome is not None and request.date_outcome.state == "fallback_checking":
-                    row.request_conditions = request.model_copy(update={"date_outcome": SelectionDateOutcome(state="fallback_failed")}).model_dump(mode="json")
+                    outcome = request.date_outcome.model_copy(update={"state": "fallback_failed"})
+                    row.request_conditions = request.model_copy(update={"date_outcome": outcome}).model_dump(mode="json")
                 row.error_code, row.error_stage, row.platform_business_code = safe_run_error(error)
                 row.status = "partial" if row.saved_count else "failed"
             else:
@@ -254,19 +261,33 @@ class SelectionRunService:
             self.session.rollback()
             raise
 
-    def choose_window(self, claim: SelectionRunClaim, state: str, *, now: datetime | None = None) -> SelectionResolvedRequest:
+    def choose_window(
+        self, claim: SelectionRunClaim, state: str, *, now: datetime | None = None,
+        fallback_reason: SelectionFallbackReason | None = None,
+        primary_error: SelectionPrimaryBusinessError | None = None,
+    ) -> SelectionResolvedRequest:
         """Lease-fenced monotonic outcome; never change dates after persistence."""
         at = now or datetime.now(UTC)
         try:
+            self._execution_actor(claim)
             row = self.repository.fence(claim, at)
             request = SelectionResolvedRequest.model_validate(row.request_conditions)
             previous = request.date_outcome.state if request.date_outcome is not None else None
-            allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "both_empty"}}
+            allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "backup_empty", "both_empty"}}
             if (request.version != 2 or state not in allowed.get(previous, set())
                 or row.saved_count != 0 or row.result_count is not None):
-                from app.modules.product_selection.exceptions import SelectionRunLeaseLostError
                 raise SelectionRunLeaseLostError()
-            request = request.model_copy(update={"date_outcome": SelectionDateOutcome(state=state)})
+            if previous is not None:
+                if fallback_reason is not None or primary_error is not None:
+                    raise SelectionRunLeaseLostError()
+                outcome = SelectionDateOutcome.model_validate(request.date_outcome.model_dump() | {"state": state})
+            else:
+                outcome = SelectionDateOutcome(
+                    state=state,
+                    fallback_reason=(fallback_reason or "primary_success_empty") if state == "fallback_checking" else fallback_reason,
+                    primary_error=primary_error,
+                )
+            request = request.model_copy(update={"date_outcome": outcome})
             row.request_conditions = request.model_dump(mode="json")
             row.updated_at = at
             self.session.commit()

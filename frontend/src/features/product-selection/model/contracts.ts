@@ -165,6 +165,13 @@ export interface SelectionService {
   updateCompassMetrics(id: string): Promise<DemoReceipt>
   markCompetitor(merchantShopId: string): Promise<DemoReceipt>
 }
+export type SelectionFallbackReason =
+  'primary_success_empty' | 'primary_business_rejection_probe'
+export interface SelectionPrimaryBusinessError {
+  error_code: 'DOUYIN_SELECTION_BUSINESS_REJECTED'
+  error_stage: 'platform_business'
+  platform_business_code: 621000704 | '621000704'
+}
 export interface SelectionExecutionSummary {
   run_id: string
   request_shop_id: string
@@ -175,6 +182,7 @@ export interface SelectionExecutionSummary {
   supplement_failed_count: number
   error_code: string | null
   error_stage?: string | null
+  platform_business_code?: string | number | null
   request_conditions?: {
     version: 1 | 2
     scope: { begin_date: string; end_date: string }
@@ -186,8 +194,11 @@ export interface SelectionExecutionSummary {
         | 'primary'
         | 'fallback_checking'
         | 'backup'
+        | 'backup_empty'
         | 'both_empty'
         | 'fallback_failed'
+      fallback_reason?: SelectionFallbackReason | null
+      primary_error?: SelectionPrimaryBusinessError | null
     } | null
   }
 }

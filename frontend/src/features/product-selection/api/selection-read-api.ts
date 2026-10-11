@@ -1,5 +1,9 @@
 import { httpClient, type PageDto } from '@/shared/api'
-import type { SelectionExecutionSummary } from '../model/contracts'
+import type {
+  SelectionExecutionSummary,
+  SelectionFallbackReason,
+  SelectionPrimaryBusinessError,
+} from '../model/contracts'
 
 // Mirrors the registered SelectionObservationRead schema, not the Mock draft.
 // Decimal values stay strings. Units, channel and relative-period mappings are
@@ -28,7 +32,8 @@ export interface SelectionSourceDto {
     backup_begin: string
     backup_end: string
     actual_window: 'primary' | 'backup'
-    fallback_reason: 'primary_success_empty' | null
+    fallback_reason: SelectionFallbackReason | null
+    primary_error?: SelectionPrimaryBusinessError | null
     rank_from: number
     rank_to: number
   } | null

@@ -26,6 +26,65 @@ const run: SelectionExecutionSummary = {
   },
 }
 describe('actual persisted window and progress', () => {
+  it('distinguishes the approved primary rejection probe from two successful empty windows', () => {
+    for (const code of [621000704, '621000704'] as const) {
+      const primary_error = {
+        error_code: 'DOUYIN_SELECTION_BUSINESS_REJECTED',
+        error_stage: 'platform_business',
+        platform_business_code: code,
+      } as const
+      for (const [state, label] of [
+        [
+          'fallback_checking',
+          '2026-10-04～2026-10-10 · 首查被平台拒绝（621000704），正在补查',
+        ],
+        ['backup', '2026-10-03～2026-10-09 · 已回退一天'],
+        ['backup_empty', '2026-10-03～2026-10-09 · 已回退一天 · 备用窗口为空'],
+        [
+          'fallback_failed',
+          '2026-10-04～2026-10-10 · 首查被平台拒绝（621000704）、回退失败',
+        ],
+      ] as const) {
+        expect(
+          runWindow({
+            ...run,
+            request_conditions: {
+              ...run.request_conditions!,
+              date_outcome: {
+                state,
+                fallback_reason: 'primary_business_rejection_probe',
+                primary_error,
+              },
+            },
+          }),
+        ).toBe(label)
+      }
+      expect(
+        runResult({
+          ...run,
+          status: 'failed',
+          result_count: null,
+          error_code: primary_error.error_code,
+          error_stage: primary_error.error_stage,
+          platform_business_code: code,
+        }),
+      ).toBe('获取失败 · 平台业务拒绝（621000704），原因未确定')
+      expect(
+        runWindow({
+          ...run,
+          status: 'interrupted',
+          request_conditions: {
+            ...run.request_conditions!,
+            date_outcome: {
+              state: 'fallback_checking',
+              fallback_reason: 'primary_business_rejection_probe',
+              primary_error,
+            },
+          },
+        }),
+      ).toBe('2026-10-04～2026-10-10 · 首查被平台拒绝（621000704），补查中断')
+    }
+  })
   it('shows explicit chosen dates, empty success and distinct fallback outcomes', () => {
     expect(runWindow(run)).toBe('2026-10-04～2026-10-10')
     expect(runResult(run)).toContain('没有结果')

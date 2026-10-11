@@ -30,7 +30,12 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     backup_begin: '2026-10-03',
     backup_end: '2026-10-09',
     actual_window: 'backup' as const,
-    fallback_reason: 'primary_success_empty' as const,
+    fallback_reason: 'primary_business_rejection_probe' as const,
+    primary_error: {
+      error_code: 'DOUYIN_SELECTION_BUSINESS_REJECTED' as const,
+      error_stage: 'platform_business' as const,
+      platform_business_code: 621000704 as const,
+    },
     rank_from: 1,
     rank_to: 10,
   }
@@ -50,7 +55,11 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
         end_date: '2026/10/10 00:00:00',
       },
       date_plan: { backup_scope: scope },
-      date_outcome: { state: 'backup' },
+      date_outcome: {
+        state: 'backup',
+        fallback_reason: provenance.fallback_reason,
+        primary_error: provenance.primary_error,
+      },
     },
   }
   const metric = {

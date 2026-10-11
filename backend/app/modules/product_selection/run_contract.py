@@ -7,7 +7,7 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.product_selection.source import SelectionSourceScope
 
@@ -15,6 +15,7 @@ from app.modules.product_selection.source import SelectionSourceScope
 CategoryId = Annotated[str, Field(pattern=r"^[0-9]{1,32}$")]
 RunStatus = Literal["pending", "running", "succeeded", "partial", "failed", "interrupted"]
 RunStage = Literal["queued", "session", "rank", "persistence", "basic_info", "completed"]
+SelectionFallbackReason = Literal["primary_success_empty", "primary_business_rejection_probe"]
 
 
 class SelectionRunOriginal(BaseModel):
@@ -67,10 +68,47 @@ class SelectionDatePlan(BaseModel):
     backup_scope: SelectionSourceScope
 
 
+class SelectionPrimaryBusinessError(BaseModel):
+    """Only the explicitly approved first-page rejection, never a raw response."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    error_code: Literal["DOUYIN_SELECTION_BUSINESS_REJECTED"]
+    error_stage: Literal["platform_business"]
+    platform_business_code: Literal[621000704, "621000704"]
+
+    @field_validator("platform_business_code", mode="before")
+    @classmethod
+    def exact_business_code(cls, value):
+        if type(value) not in {int, str} or value not in {621000704, "621000704"}:
+            raise ValueError("Only the exact observed int/string business code is eligible")
+        return value
+
+
 class SelectionDateOutcome(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    state: Literal["primary", "fallback_checking", "backup", "both_empty", "fallback_failed"]
+    state: Literal["primary", "fallback_checking", "backup", "backup_empty", "both_empty", "fallback_failed"]
+    # Optional for already-stored v2 outcomes; they only supported empty-page fallback.
+    fallback_reason: SelectionFallbackReason | None = None
+    primary_error: SelectionPrimaryBusinessError | None = None
+
+    @model_validator(mode="after")
+    def validate_reason(self) -> "SelectionDateOutcome":
+        probe = self.fallback_reason == "primary_business_rejection_probe"
+        if (
+            (self.state == "primary" and (self.fallback_reason is not None or self.primary_error is not None))
+            or probe != (self.primary_error is not None)
+            or (self.state == "both_empty" and probe)
+            or (self.state == "backup_empty" and not probe)
+        ):
+            raise ValueError("The outcome must retain the actual first-page fallback reason")
+        return self
+
+    def effective_reason(self) -> SelectionFallbackReason | None:
+        if self.state == "primary":
+            return None
+        return self.fallback_reason or "primary_success_empty"
 
 
 class SelectionDateProvenance(BaseModel):
@@ -83,7 +121,8 @@ class SelectionDateProvenance(BaseModel):
     backup_begin: date
     backup_end: date
     actual_window: Literal["primary", "backup"]
-    fallback_reason: Literal["primary_success_empty"] | None
+    fallback_reason: SelectionFallbackReason | None
+    primary_error: SelectionPrimaryBusinessError | None = None
     rank_from: int
     rank_to: int
 
@@ -142,9 +181,9 @@ class SelectionResolvedRequest(BaseModel):
     def actual_scope(self) -> SelectionSourceScope:
         if self.version == 1:
             return self.scope
-        if self.date_outcome is None or self.date_outcome.state not in {"primary", "backup", "both_empty"}:
+        if self.date_outcome is None or self.date_outcome.state not in {"primary", "backup", "backup_empty", "both_empty"}:
             raise ValueError("Choose the actual window before writing facts")
-        if self.date_outcome.state == "backup":
+        if self.date_outcome.state in {"backup", "backup_empty"}:
             assert self.date_plan is not None
             return self.date_plan.backup_scope
         return self.scope
@@ -159,8 +198,9 @@ class SelectionResolvedRequest(BaseModel):
             primary_begin=self.scope.period_begin, primary_end=self.scope.period_end,
             backup_begin=self.date_plan.backup_scope.period_begin,
             backup_end=self.date_plan.backup_scope.period_end,
-            actual_window="backup" if self.date_outcome.state == "backup" else "primary",
-            fallback_reason="primary_success_empty" if self.date_outcome.state != "primary" else None,
+            actual_window="backup" if self.date_outcome.state in {"backup", "backup_empty"} else "primary",
+            fallback_reason=self.date_outcome.effective_reason(),
+            primary_error=self.date_outcome.primary_error,
             rank_from=self.original.rank_from, rank_to=self.original.rank_to,
         )
 

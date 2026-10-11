@@ -14,13 +14,17 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_session_factory
 from app.core.exceptions import AppError
 from app.modules.product_selection.exceptions import SelectionRunLeaseLostError
-from app.modules.product_selection.run_contract import SelectionResolvedRequest, SelectionRunClaim
+from app.modules.product_selection.run_contract import (
+    SelectionResolvedRequest, SelectionRunClaim, SelectionPrimaryBusinessError, SelectionFallbackReason,
+)
 from app.modules.product_selection.run_service import (
-    SelectionRunService, selection_request_mapping_available,
+    SelectionRunService, selection_request_mapping_available, safe_run_error,
 )
 from app.modules.product_selection.service import ProductSelectionFactService
 from app.modules.sessions.auth_context import ShopSessionAuthContext
-from app.platforms.douyin.product_selection import CompassBasicInfo, CompassRankPage
+from app.platforms.douyin.product_selection import (
+    CompassBasicInfo, CompassRankPage, CompassSelectionBusinessError,
+)
 from app.platforms.exceptions import PlatformRequestFailedError
 from app.platforms.exceptions import PlatformResponseInvalidError
 
@@ -59,9 +63,33 @@ class SelectionRunExecutor:
         with self.session_factory() as session:
             return SelectionRunService(session, settings=self.settings).authorize(claim, stage=stage)
 
-    def _choose(self, claim: SelectionRunClaim, state: str) -> SelectionResolvedRequest:
+    def _choose(
+        self, claim: SelectionRunClaim, state: str, *,
+        fallback_reason: SelectionFallbackReason | None = None,
+        primary_error: SelectionPrimaryBusinessError | None = None,
+    ) -> SelectionResolvedRequest:
         with self.session_factory() as session:
-            return SelectionRunService(session, settings=self.settings).choose_window(claim, state)
+            return SelectionRunService(session, settings=self.settings).choose_window(
+                claim, state, fallback_reason=fallback_reason, primary_error=primary_error,
+            )
+
+    @staticmethod
+    def _business_probe_allowed(request: SelectionResolvedRequest, failure: CompassSelectionBusinessError) -> bool:
+        """A user-approved date probe, not a date-not-ready or generic retry rule."""
+        code, stage, value = safe_run_error(failure)
+        original, scope = request.original, request.scope
+        return (
+            request.version == 2 and request.date_plan is not None
+            and original.channel == "short-video" and original.period == "7d"
+            and original.brand == "all" and original.price_mode == "all"
+            and original.price_above is None and original.price_below is None
+            and not original.first_listed_only
+            and scope.date_type == "21" and scope.rank_data_type == "1"
+            and scope.brand_type == "-1" and scope.price_bin == "不限"
+            and scope.search_info == "" and scope.activity_id == ""
+            and code == "DOUYIN_SELECTION_BUSINESS_REJECTED" and stage == "platform_business"
+            and type(value) in {int, str} and value in {621000704, "621000704"}
+        )
 
     def _rank(self, claim, context, request, page_no):
         self._authorize(claim, "rank")
@@ -75,11 +103,22 @@ class SelectionRunExecutor:
 
     def _select_first_page(self, claim, context):
         request = claim.request
-        first = self._rank(claim, context, request, 1)
-        if first.products:
+        primary_error = None
+        try:
+            first = self._rank(claim, context, request, 1)
+        except CompassSelectionBusinessError as failure:
+            if not self._business_probe_allowed(request, failure):
+                raise
+            code, stage, value = safe_run_error(failure)
+            primary_error = SelectionPrimaryBusinessError(
+                error_code=code, error_stage=stage, platform_business_code=value,
+            )
+            first = None
+        if first is not None and first.products:
             chosen = self._choose(claim, "primary")
         else:
-            self._choose(claim, "fallback_checking")
+            reason = "primary_business_rejection_probe" if primary_error is not None else "primary_success_empty"
+            self._choose(claim, "fallback_checking", fallback_reason=reason, primary_error=primary_error)
             assert request.date_plan is not None
             # A per-call legacy-shaped request supplies only the actual scope;
             # lease/idempotency checks always use the original frozen claim.
@@ -88,13 +127,14 @@ class SelectionRunExecutor:
                 page_numbers=request.page_numbers,
             )
             backup = self._rank(claim, context, backup_request, 1)
-            chosen = self._choose(claim, "backup" if backup.products else "both_empty")
-            if backup.products:
+            state = "backup" if backup.products else "backup_empty" if primary_error is not None else "both_empty"
+            chosen = self._choose(claim, state)
+            if state != "both_empty":
                 first = backup
         actual_request = SelectionResolvedRequest(
             original=request.original, scope=chosen.actual_scope(), page_numbers=request.page_numbers,
         )
-        return actual_request, first, chosen.date_outcome.state == "both_empty"
+        return actual_request, first, chosen.date_outcome.state in {"both_empty", "backup_empty"}
 
     def execute_claim(self, claim: SelectionRunClaim) -> None:
         error = None
@@ -105,11 +145,11 @@ class SelectionRunExecutor:
                 raise PlatformRequestFailedError()
             request = claim.request
             first = None
-            both_empty = False
+            empty_window = False
             if request.version == 2:
-                request, first, both_empty = self._select_first_page(claim, context)
+                request, first, empty_window = self._select_first_page(claim, context)
             seen: set[str] = set()
-            for page_no in ((1,) if both_empty else request.page_numbers):
+            for page_no in ((1,) if empty_window else request.page_numbers):
                 page = first if page_no == 1 and first is not None else self._rank(claim, context, request, page_no)
                 if claim.request.version == 2:
                     if any(p.rank is None for p in page.products):
