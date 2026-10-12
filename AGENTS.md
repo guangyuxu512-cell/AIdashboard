@@ -27,7 +27,7 @@ B为复用既有Schedule底座的服务端选品，各自Candidate/Gate/发布�
 ca97仅恢复受信任35433隧道并只读核实 retained `control_center_feat_product_selection`、
 `control_center_dev_user`、单一0043、候选/观察/run/ShopSession均0、无数据库管理权限；
 Feature继续8101/4176 strictPort，Integration仍8100/5180及唯一开发Electron，不复制生产Cookie。
-A唯一Slot rejected（返修保留编号，不释放给B）：`20261013_0044_product_selection_strategies_v1`，revision
+A唯一Slot active（77a1阶段边界修补已复核，未完成Gate）：`20261013_0044_product_selection_strategies_v1`，revision
 `20261013_0044`，down `20261010_0043`；一张Team-owned策略表及run可空策略关联，
 版本CAS、白名单相对条件/定时草稿，保存/启停本身不取数、不创建Schedule。
 0042/0043不改写；未知平台参数不猜测开放。新条件保持旧run/事实读取与指纹兼容，
@@ -41,6 +41,11 @@ Integration/生产仍0043，未在本工作树新增Migration或写Feature业务
 旧停用Shop的执行资格校验，配置无法关闭。Slot按迁移拒绝规则保留待修，不改已应用旧迁移或清库。
 隔离快照53后端定向、92前端选品、lint/typecheck/Real build通过不抵消上述缺口；
 未加载Integration、未合dev、未发布。Owner修正后交新精确候选重新审查，平台补证仍独立待完成。
+追加候选`77a1d96a2989ada3ef7f12bbba0e0782588468d1`独立复核：实际降级在锁/DDL前拒绝
+offline及非指定Feature目标；停用Shop的配置可关闭或替换合法新目标，开启/执行仍查资格，CAS/范围不放宽。
+8迁移与6配置无连接合成探针及后端定向62项通过；0044 upgrade函数不变，前端/Electron/Signer/PC/0042/3
+无差异复用原92项/lint/typecheck/Real build，不重复视觉。Slot恢复active仅表示修补边界接受；
+未加载Integration或迁移，不合dev/main，A未知参数与真实闭环仍PARTIAL，B无Slot/实现。
 
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
