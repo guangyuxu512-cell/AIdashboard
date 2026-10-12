@@ -32,6 +32,13 @@ Owner使用4176 strictPort隔离HTTP拦截验证，不占5180/8100，不另开El
 完成前不将本轮选品验收标为通过、不推进该业务发布。原已发布事实不倒写或伪造。
 下列登录任务为保留的历史授权，本轮暂停，不混入选品候选。
 
+2026-10-13 ca97已核验选品收口Candidate `30e8cc63bc3c770cee65bd02c57d56e39740e255`，
+用户在对应Real Integration Electron提交普通/最大化截图并确认目前无问题；四级类目/父级全部
+原生专项验收收口，既有策略结构保留。正常no-ff集成后选品86项、定向lint、typecheck、Real build通过。
+本轮只追加测试与登记，Frontend运行源码/Backend/Electron/Migration相对Green无差异，单一0043不变。
+精确dev CI后交Main Release；未宣称生产DEPLOYED，不混入98登录关闭挂起返修。
+详见 `docs/engineering/product-selection-ui-restoration-closeout-v1-gate2-20261013.md`。
+
 2026-10-12 登录任务：按ca97已核验的人类原始授权
 `01a12c59-4ac4-70f0-894d-5aed7cd7731c`，从精确Green
 `1718abe117c90842c8d39859a074fa988360f070` 建立
