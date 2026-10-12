@@ -18,6 +18,16 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
+`ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
+人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。
+未变路径复用98无团队HuanYu v5→valid v6自动保存/留窗；本轮stored v6正式Accessor只读取得
+正确店铺身份。首开已有人类可操作确认，历史遮罩根因仍未知，不把日志冒称修复。
+正常no-ff合入`0890a5255469b47a2e593290839af549b0541d64`后54 Electron/33前端及lint/typecheck/
+Real build复验通过，无Backend/Signer/经营/选品运行变化，无Migration，单一0043不变。
+精确dev CI Green后交Main Release及匹配1.0.6安装交付；生产实际客户端/无团队Session可用性
+未核验前不标DEPLOYED。见`docs/engineering/shop-login-close-recovery-v1-gate2-20261013.md`。
+
 2026-10-13 当前店铺登录修复：已回读ca97人类turn `01a1313b-de4b-7eb1-ba7b-60707e70ce98`，
 撤销登录Feature暂停。沿 `feat/shop-login-runtime-diagnostics-v1` 保留98d48d4并正常同步
 精确Green `10938c55397442fd25854d01cf1d07628b7f027b`，禁止rebase/reset及dev代修。
