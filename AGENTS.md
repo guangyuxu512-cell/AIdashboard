@@ -32,6 +32,13 @@ Owner完成Gate 1和匹配Source安装包交ca97；唯一生产故障窗口不�
 原生登录复验由ca97协调，CI/发布由ca97/Main按Gate执行。没有点击证据不能称根因已修复。
 选品界面恢复另行交接，原生普通/最大化尺寸仍待复验；不将本诊断候选混作选品验收。
 
+2026-10-12 ca97已审查诊断Candidate `046fd03e7124a829cb2659ba75b6c12fe0a8681d`，
+正常no-ff合入 `ddd523d08ae7896498f2950123c5bdf044568a50` 并复验；唯一Real Integration
+实际HuanYu登录完整走通，Session v3→valid v4、租约释放且浏览窗保留，无新增经营任务。
+原生截图/点击工具受限由用户代点，未把工具故障当业务根因。旧生产无反应仍UNKNOWN、未DEPLOYED；
+精确dev CI、Main Release及匹配1.0.5生产实际点击分别收口，详见
+`docs/engineering/shop-login-runtime-diagnostics-v1-gate2-20261012.md`。
+
 2026-10-11 当前81a1任务：从精确Green
 `06992f4f3ee03e2ad689b25e7a4cb5837ce0d359` 接续
 `feat/shop-login-session-sync-v1`。仅完成店铺列表/详情共用登录入口、目标店铺身份核验、
