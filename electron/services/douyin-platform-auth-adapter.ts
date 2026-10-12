@@ -1,4 +1,5 @@
 import { webContents, type Cookie, type Session } from 'electron'
+import { safeAccountProbes, type LoginAccountProbe } from './login-diagnostics'
 
 import type { ManagementLoginIdentity } from '../types'
 import type {
@@ -24,6 +25,7 @@ interface DouyinAccountInfoProbe {
   topLevelKeys: string[]
   dataKeys: string[]
   requestFailed: boolean
+  probes: LoginAccountProbe[]
 }
 
 interface OriginStorageSnapshot {
@@ -48,6 +50,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
         identity: null,
         readyForCapture: false,
         message: '登录窗口已经关闭',
+        pageContextAvailable: false,
       }
     }
     const cookies = await this.getPlatformCookies(loginSession)
@@ -56,6 +59,10 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     // Only identity fields, HTTP status and response key names cross into Main.
     const probe = (await contents.executeJavaScript(
       `(async () => {
+        const probes = [];
+        let probeIndex = -1;
+        let probeStarted = 0;
+        let currentStatus = null;
         try {
           const safeKeys = (value) => value && typeof value === 'object'
             ? Object.keys(value)
@@ -86,10 +93,14 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
           };
           let lastProbe = null;
           for (const endpoint of ${JSON.stringify(accountInfoUrls)}) {
+            probeIndex++;
+            probeStarted = Date.now();
+            currentStatus = null;
             const response = await fetch(endpoint, {
               credentials: 'include',
               headers: { accept: 'application/json, text/plain, */*' },
             });
+            currentStatus = response.status;
             const text = await response.text();
             let body = null;
             try { body = JSON.parse(text); } catch {}
@@ -97,6 +108,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
             const identity = readIdentity(body);
             const platformShopId = identity?.platformShopId ?? '';
             const shopDisplayName = identity?.shopDisplayName ?? '';
+            probes.push({ probeIndex, httpStatus: response.status, elapsedMs: Math.max(0, Math.min(1800000, Date.now() - probeStarted)), requestFailed: false });
             lastProbe = {
               endpointHost: new URL(endpoint).hostname,
               status: response.status,
@@ -105,11 +117,13 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
               topLevelKeys: safeKeys(body),
               dataKeys: safeKeys(data),
               requestFailed: false,
+              probes,
             };
             if (platformShopId && shopDisplayName) return lastProbe;
           }
           return lastProbe;
         } catch {
+          if (probeIndex >= 0) probes.push({ probeIndex, httpStatus: currentStatus, elapsedMs: Math.max(0, Math.min(1800000, Date.now() - probeStarted)), requestFailed: true });
           return {
             endpointHost: '',
             status: 0,
@@ -118,6 +132,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
             topLevelKeys: [],
             dataKeys: [],
             requestFailed: true,
+            probes,
           };
         }
       })()`,
@@ -134,6 +149,8 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
         },
         readyForCapture: true,
         message: '已从平台账号接口识别店铺',
+        pageContextAvailable: true,
+        probes: safeAccountProbes(probe.probes),
       }
     }
 
@@ -145,6 +162,8 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
       identity: null,
       readyForCapture: false,
       message: `${diagnostic}；平台 Cookie ${cookies.length} 个，正在继续识别`,
+      pageContextAvailable: true,
+      probes: safeAccountProbes(probe.probes),
     }
   }
 

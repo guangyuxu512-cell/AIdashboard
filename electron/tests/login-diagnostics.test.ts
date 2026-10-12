@@ -12,6 +12,9 @@ import {
   safeLoginDiagnostic,
   installRendererLoginDiagnostics,
   createLoginDiagnosticRecorder,
+  safeAccountProbes,
+  loginNavigationClass,
+  loginScriptErrorClass,
   type LoginDiagnostic,
 } from '../services/login-diagnostics'
 
@@ -27,6 +30,69 @@ const entry = {
   platformSupported: true,
 }
 const message = rendererLoginDiagnosticPrefix + JSON.stringify(entry)
+
+test('observation accepts only bounded known path/outcome metadata, never query, payload or a guessed CORS reason', () => {
+  const probe = {
+    probeIndex: 0,
+    httpStatus: 200,
+    elapsedMs: 14,
+    requestFailed: false,
+  }
+  assert.deepEqual(safeAccountProbes([probe]), [probe])
+  for (const invalid of [
+    { ...probe, probeIndex: 9 },
+    { ...probe, payload: 'private-fixture' },
+    { ...probe, httpStatus: 0 },
+    { ...probe, elapsedMs: -1 },
+    { ...probe, requestFailed: 'private-fixture' },
+  ])
+    assert.deepEqual(safeAccountProbes([invalid]), [])
+  assert.equal(
+    loginNavigationClass(
+      'https://compass.jinritemai.com/shop?token=private-fixture',
+    ),
+    'compass_shop',
+  )
+  assert.equal(
+    loginNavigationClass('https://unknown.invalid/private-fixture'),
+    'other_navigation',
+  )
+  assert.equal(loginScriptErrorClass('Failed to fetch'), 'JS_UNCLASSIFIED')
+  assert.equal(
+    loginScriptErrorClass(
+      'Fetch has been blocked by CORS policy: private-fixture',
+    ),
+    'JS_CORS_POLICY',
+  )
+  const record = {
+    ...entry,
+    source: 'main',
+    phase: 'account_probe',
+    event: 'finish',
+    pathClass: 'compass_shop_info_v2',
+    httpStatus: 200,
+    navigationSequence: 1,
+    identityPresent: false,
+    captureReady: false,
+  }
+  assert.ok(safeLoginDiagnostic(record))
+  for (const invalid of [
+    { ...record, pathClass: 'https://secret.invalid' },
+    { ...record, identityPresent: 'private-fixture' },
+    { ...record, navigationSequence: -1 },
+    { ...record, scriptErrorCount: 21 },
+    { ...record, body: 'private-fixture' },
+  ])
+    assert.equal(safeLoginDiagnostic(invalid), null)
+  assert.equal(
+    rendererLoginDiagnostic(
+      rendererLoginDiagnosticPrefix + JSON.stringify(record),
+      true,
+      true,
+    ),
+    null,
+  )
+})
 
 test('pre-IPC missing bridge/team entry survives strict production diagnostic reconstruction', () => {
   const record = rendererLoginDiagnostic(message, true, true)!

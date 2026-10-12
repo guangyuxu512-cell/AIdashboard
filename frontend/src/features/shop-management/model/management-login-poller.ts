@@ -19,6 +19,7 @@ export function startManagementLoginPolling(
     try {
       const status = await options.getStatus(options.attemptId)
       if (stopped) return
+      if (!status) throw new Error('登录状态读取失败')
       await options.onStatus(status)
       if (
         status.status === 'identified' ||
@@ -29,6 +30,7 @@ export function startManagementLoginPolling(
         stop()
       }
     } catch (error) {
+      if (stopped) return
       stop()
       options.onError(error)
     } finally {

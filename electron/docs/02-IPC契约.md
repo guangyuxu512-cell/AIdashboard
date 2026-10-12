@@ -62,7 +62,8 @@ management-login:close
 `complete` 与 `refresh` 的成功结果均含 `profileMappingWarning: string | null`。Backend 已成功而本机 `shop_id → partition` 映射无法保存时，Main 返回成功结果和该告警、清理尝试，不允许 Renderer 把它当作可重发的业务失败；下次恢复按无可用本机 Profile 处理。
 
 `focus-shop` / `window.desktop.managementLogin.focusShop({platform, teamId, shopId, correlationId?}) → Promise<boolean>`
-只接受已注册平台及当前团队/店铺 UUID，correlationId可选且必须UUID，其余多余字段仍拒绝。Main 用主窗口的现有人员 HttpOnly Session
+只接受已注册平台和店铺UUID；teamId可缺省，提供时必须UUID，null/空串/非法UUID均拒绝。
+correlationId可选且必须UUID，其余多余字段仍拒绝。Main 用主窗口的现有人员 HttpOnly Session
 先查询正式 ShopSession 元数据复核当前团队权限，再置前 shop_id 唯一的保留浏览窗；没有窗口返回 false。
 共享店铺切团队后不新开第二窗；未完成 attempt 仍绑定原团队，不能借切团队复用原授权捕获。
 这条路径不获取租约、不捕获、不保存，不把保留窗口当成保留权限。旧客户端没有该方法时 Renderer 提示安装新版，不能走假同步。
@@ -74,9 +75,25 @@ Renderer/Main关联记录须匹配候选Renderer和桌面包，不能把版本�
 focus/open有界失败只回固定`SHOP_LOGIN_<CODE>`错误标记：超时、人员认证缺失、403及HTTP错误
 分别表达；未知错误不反射message，也不提示平台Session已过期。已打开捕获窗的置前超时不取消捕获。
 
+1.0.6新Preload增加固定`managementLogin.globalShopLoginSupported: true`。仅已有店铺恢复
+（open携带合法recovery）允许teamId缺省/undefined；首次新增open无recovery仍必须提供团队UUID。
+Main复用真实人员Cookie；无团队不发送x-team-id，不伪造/自动选择团队，不增成员关系。Backend
+GET session、租约、刷新均由真实super guard校验；没有团队的普通成员或撤销人员仍拒绝，不以
+Renderer旗标代替授权。已有团队调用和首次新增流程保持原契约。
+Renderer只有明确支持标记时允许超级账号无团队调用；旧1.0.5保留原teamed调用，未选团队提示
+升级桌面，而不是要求选团队或失败后盲重试。共享登录流仍对人员/团队/权限变化立即abort。
+
 已有店铺 `refresh` 要求后端同 shop、VALID、expected version+1、非缓存验证及真实验证时间。
 成功清除捕获 Buffer/计时器/恢复上下文/attempt，只保留窗口索引，平台窗口继续浏览；关闭后再登录可重新同步。
 同店 open、状态检测及保存均 single-flight；取消或退出后的迟到结果不再提示成功。
 新店 `complete` 的识别后自动关闭和 Onboarding 契约保留。
+
+`get-status`返回类型仍为非空`ManagementLoginStatusResult`，无新通道/字段。
+真实窗口关闭时，即使已有检测/捕获Promise未返回，等待中的同一IPC也返回最终closed状态，
+不能要求Renderer再发下一次poll才能获知关闭。已有终态先于共享pending检查；未知attempt仍拒绝，
+不返回null或伪造关闭。Main主动Onboarding自动关闭保留identified与捕获元数据，不能误清确认页。
+closed且recovery=false表示Main已接管该租约的释放尝试（并非确认远端DELETE成功）；Renderer
+清理active/忙态和旧focus，不再重复释放。释放失败继续服务器过期兜底；旧桥接/查询失败保持原清理路径。
+轮询停止后的晚到结果/错误不再调用回调，空响应报告安全读取失败而非登录失效或成功。
 
 Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。拼多多 Adapter 只采集适用于 `mms.pinduoduo.com` 的 Cookie；Main 通过 Backend 预检成功取得店铺身份后才将非敏感 ID/名称放入现有 Status IPC。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。

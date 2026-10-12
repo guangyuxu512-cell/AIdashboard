@@ -35,15 +35,16 @@ declare global {
       }
       managementLogin?: {
         readonly correlationSupported?: true
+        readonly globalShopLoginSupported?: true
         focusShop?(input: {
           platform: 'douyin' | 'pdd'
-          teamId: string
+          teamId?: string
           shopId: string
           correlationId?: string
         }): Promise<boolean>
         open(input: {
           platform: 'douyin' | 'pdd'
-          teamId: string
+          teamId?: string
           attemptId?: string
           correlationId?: string
           recovery?: {
