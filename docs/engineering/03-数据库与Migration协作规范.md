@@ -30,7 +30,17 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-无（FREE）。2026-10-11选品0042/0043完整Gate2通过后统一释放，已应用迁移不可改写。
+2026-10-13 为 A 段分配唯一 `reserved` Slot；B 段未分配，不得并行增加第二条迁移链。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `reserved` | 新增一张Team-owned `product_selection_strategies`，UUID/Team/User/Shop RESTRICT、编辑version CAS、白名单相对条件及hourly/daily定时草稿；`product_selection_runs`追加可空RESTRICT策略关联。保存/启停不触发取数或创建Schedule；既有候选/观察/run保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Owner在已分配`control_center_feat_product_selection`实际验证0043→0044及可重建空新实体时的0044→0043→0044；保留全部0042/0043事实和旧run，新增数据后应用回退保留Schema/记录。降级加锁检查新策略/关联run，存在则fail closed，不清库、不批量改历史。当前仅资源与草案审核，不是Migration/Gate通过。 |
+
+ca97已通过受保护应用连接与只读事务核实复用Feature库：owner/role为
+`control_center_dev_user`，单一`20261010_0043`；候选/观察/run/ShopSession均0，
+角色没有CREATEDB/CREATEROLE/SUPERUSER，35433受信任隧道已恢复且严格校验主机公钥。
+该检查没有迁移、业务写入或平台请求。0042/0043于2026-10-11统一released，已应用文件不可改写；
+新增Schema只由Owner在此Slot实现，Integrator不代写Migration，Integration/生产不用于Feature开发。
 
 最近释放记录：
 
