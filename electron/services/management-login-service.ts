@@ -7,6 +7,8 @@ import {
 } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
+import type { LoginDiagnostic } from './login-diagnostics'
+import { isSafeLoginDiagnosticCode } from './login-diagnostics'
 
 import type {
   ManagementLoginCompleteInput,
@@ -34,6 +36,7 @@ import type {
 
 interface LoginAttempt {
   attemptId: string
+  correlationId: string
   platform: ManagementLoginPlatform
   teamId: string
   appSession: Session
@@ -61,27 +64,12 @@ type LoginCloseReason =
   | 'completed_onboarding'
   | 'window_closed_without_request'
 
-export interface ManagementLoginDiagnostic {
-  timestamp: string
-  attemptId: string
-  phase: 'open' | 'load' | 'detect' | 'capture' | 'refresh' | 'close'
-  event:
-    | 'start'
-    | 'finish'
-    | 'error'
-    | 'redirect'
-    | 'request'
-    | 'closed'
-    | 'renderer_gone'
-  errorCode: string | null
-  errno: number | null
-  isMainFrame: boolean | null
-  mainFrameLoading: boolean | null
-  closeReason: LoginCloseReason | null
-}
+export type ManagementLoginDiagnostic = LoginDiagnostic
 
 const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
 const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
+export const LOGIN_METADATA_TIMEOUT_MS = 15_000
+const LOGIN_OPEN_TIMEOUT_MS = 30_000
 
 interface OnboardingApiResponse {
   shop: {
@@ -133,6 +121,7 @@ export class ManagementLoginService {
     }
   >()
   private closingAll = false
+  private readonly cancelledOpens = new Map<string, number>()
   private readonly createWindow: (
     options: BrowserWindowConstructorOptions,
   ) => BrowserWindow
@@ -140,7 +129,7 @@ export class ManagementLoginService {
   private readonly backendBaseUrl: string
   private readonly allowDevTools: boolean
   private readonly profileMappingStore: ManagementLoginProfileMappingStore
-  private readonly onDiagnostic?: (record: ManagementLoginDiagnostic) => void
+  private readonly onDiagnostic?: (record: LoginDiagnostic) => void
   private readonly adapters = new Map<
     ManagementLoginPlatform,
     PlatformAuthAdapter
@@ -156,7 +145,8 @@ export class ManagementLoginService {
     createWindow?: (options: BrowserWindowConstructorOptions) => BrowserWindow
     fromPartition?: (partition: string) => Session
     adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
-    onDiagnostic?: (record: ManagementLoginDiagnostic) => void
+    onDiagnostic?: (record: LoginDiagnostic) => void
+    metadataTimeoutMs?: number
   }) {
     this.backendBaseUrl =
       options?.backendBaseUrl ??
@@ -164,6 +154,8 @@ export class ManagementLoginService {
       'http://127.0.0.1:8000/'
     this.allowDevTools = options?.allowDevTools ?? true
     this.onDiagnostic = options?.onDiagnostic
+    this.metadataTimeoutMs =
+      options?.metadataTimeoutMs ?? LOGIN_METADATA_TIMEOUT_MS
     this.createWindow =
       options?.createWindow ?? ((config) => new BrowserWindow(config))
     this.fromPartition =
@@ -183,28 +175,117 @@ export class ManagementLoginService {
   ): Promise<boolean> {
     // Current personnel authorization is checked again, including for a
     // completed browsing window. Retaining a window does not retain permission.
-    const response = await fetch(
-      this.backendUrl(`/api/v1/shops/${input.shopId}/session`),
-      {
-        headers: await this.authorizedHeaders({
+    const correlationId = input.correlationId ?? randomUUID()
+    const started = Date.now()
+    this.trace({
+      correlationId,
+      source: 'main',
+      phase: 'focus',
+      event: 'start',
+    })
+    let httpStatus: number | null = null
+    let metadataFinished = false
+    try {
+      this.trace({
+        correlationId,
+        source: 'main',
+        phase: 'session_metadata',
+        event: 'start',
+      })
+      const result = await loginDeadline(async (signal) => {
+        const headers = await this.authorizedHeaders({
           appSession: parent.webContents.session,
           teamId: input.teamId,
-        }),
-      },
-    )
-    if (!response.ok) throw new Error(await safeBackendError(response))
-    const entry = this.shopWindows.get(input.shopId)
-    if (!entry || entry.window.isDestroyed()) return false
-    if (entry.platform !== input.platform) throw new Error('店铺登录平台不匹配')
-    if (entry.window.isMinimized()) entry.window.restore()
-    entry.window.focus()
-    return true
+        })
+        signal.throwIfAborted()
+        this.trace({
+          correlationId,
+          source: 'main',
+          phase: 'session_metadata',
+          event: 'request',
+        })
+        const response = await fetch(
+          this.backendUrl(`/api/v1/shops/${input.shopId}/session`),
+          { headers, signal },
+        )
+        httpStatus = response.status
+        signal.throwIfAborted()
+        if (!response.ok) {
+          throw new LoginOpeningError(
+            response.status === 401
+              ? 'AUTH_REQUIRED'
+              : response.status === 403
+                ? 'FORBIDDEN'
+                : 'HTTP_ERROR',
+          )
+        }
+        if (parent.isDestroyed()) throw new LoginOpeningError('CONTEXT_CHANGED')
+        metadataFinished = true
+        this.trace({
+          correlationId,
+          source: 'main',
+          phase: 'session_metadata',
+          event: 'finish',
+          httpStatus,
+          elapsedMs: Date.now() - started,
+        })
+        if (input.correlationId && this.isOpenCancelled(input.correlationId))
+          throw new LoginOpeningError('CONTEXT_CHANGED')
+        const entry = this.shopWindows.get(input.shopId)
+        if (!entry || entry.window.isDestroyed()) return false
+        if (entry.platform !== input.platform)
+          throw new LoginOpeningError('UNEXPECTED_ERROR')
+        if (entry.window.isMinimized()) entry.window.restore()
+        entry.window.focus()
+        return true
+      }, this.metadataTimeoutMs)
+      this.trace({
+        correlationId,
+        source: 'main',
+        phase: 'focus',
+        event: 'finish',
+        focused: result,
+        elapsedMs: Date.now() - started,
+      })
+      return result
+    } catch (error) {
+      const native = diagnosticError(error)
+      const errorCode =
+        error instanceof LoginOpeningError
+          ? error.code
+          : isSafeLoginDiagnosticCode(native.errorCode)
+            ? native.errorCode
+            : 'NETWORK_ERROR'
+      if (!metadataFinished)
+        this.trace({
+          correlationId,
+          source: 'main',
+          phase: 'session_metadata',
+          event: 'error',
+          errorCode,
+          httpStatus,
+          errno: native.errno,
+          elapsedMs: Date.now() - started,
+        })
+      this.trace({
+        correlationId,
+        source: 'main',
+        phase: 'focus',
+        event: 'error',
+        errorCode,
+        elapsedMs: Date.now() - started,
+      })
+      throw error instanceof LoginOpeningError
+        ? error
+        : new LoginOpeningError('NETWORK_ERROR')
+    }
   }
 
   async open(
     parent: BrowserWindow,
     input: ManagementLoginOpenInput,
   ): Promise<ManagementLoginStatusResult> {
+    input = { ...input, attemptId: input.attemptId ?? randomUUID() }
     const key = input.recovery
       ? input.recovery.shopId
       : (input.attemptId ?? randomUUID())
@@ -223,7 +304,10 @@ export class ManagementLoginService {
     const pending = this.openAttempt(parent, input)
     this.opens.set(key, { input, promise: pending })
     try {
-      return await pending
+      return await loginDeadline(() => pending, LOGIN_OPEN_TIMEOUT_MS)
+    } catch (error) {
+      void this.close(input.attemptId!).catch(() => undefined)
+      throw error
     } finally {
       this.opens.delete(key)
     }
@@ -236,6 +320,8 @@ export class ManagementLoginService {
     if (this.closingAll) throw new Error('应用正在退出')
     const adapter = this.requireAdapter(input.platform)
     const attemptId = input.attemptId ?? randomUUID()
+    if (this.isOpenCancelled(attemptId))
+      throw new LoginOpeningError('CONTEXT_CHANGED')
     let attempt = this.attempts.get(attemptId)
     if (attempt && attempt.platform !== input.platform) {
       throw new Error('登录尝试与平台不匹配')
@@ -248,8 +334,11 @@ export class ManagementLoginService {
         ? await this.loadProfileMapping(input.recovery.shopId, input.platform)
         : null
       const profile = resolveManagementLoginPartition(attemptId, mapping)
+      if (this.isOpenCancelled(attemptId))
+        throw new LoginOpeningError('CONTEXT_CHANGED')
       attempt = {
         attemptId,
+        correlationId: input.correlationId ?? attemptId,
         platform: input.platform,
         teamId: input.teamId,
         appSession: parent.webContents.session,
@@ -309,6 +398,7 @@ export class ManagementLoginService {
     loginSession.setPermissionRequestHandler(
       (_webContents, _permission, callback) => callback(false),
     )
+    this.report(attempt, 'open', 'start')
     const loginWindow = this.createWindow({
       title: adapter.loginWindowTitle,
       width: 1180,
@@ -376,6 +466,8 @@ export class ManagementLoginService {
     try {
       this.report(attempt, 'load', 'start')
       await loginWindow.loadURL(adapter.loginUrl)
+      if (this.attempts.get(attemptId) !== attempt)
+        throw new LoginOpeningError('CONTEXT_CHANGED')
       this.report(attempt, 'load', 'finish')
     } catch (error) {
       this.report(attempt, 'load', 'error', diagnosticError(error))
@@ -657,6 +749,9 @@ export class ManagementLoginService {
     attemptId: string,
     reason: LoginCloseReason = 'renderer_request',
   ): Promise<void> {
+    this.cancelledOpens.set(attemptId, Date.now())
+    if (this.cancelledOpens.size > 128)
+      this.cancelledOpens.delete(this.cancelledOpens.keys().next().value!)
     const attempt = this.attempts.get(attemptId)
     if (!attempt) return
     attempt.closeReason = reason
@@ -787,6 +882,8 @@ export class ManagementLoginService {
       this.onDiagnostic({
         timestamp: new Date().toISOString(),
         attemptId: attempt.attemptId,
+        correlationId: attempt.correlationId,
+        source: 'main',
         phase,
         event,
         errorCode: detail.errorCode ?? null,
@@ -798,6 +895,22 @@ export class ManagementLoginService {
     } catch {
       // Diagnostics may never change the original lifecycle or validation.
     }
+  }
+
+  private readonly metadataTimeoutMs: number
+  trace(record: LoginDiagnostic): void {
+    try {
+      this.onDiagnostic?.({ ...record, timestamp: new Date().toISOString() })
+    } catch {
+      /* Observation must never change IPC or login. */
+    }
+  }
+  private isOpenCancelled(attemptId: string): boolean {
+    const cancelledAt = this.cancelledOpens.get(attemptId)
+    return (
+      cancelledAt !== undefined &&
+      Date.now() - cancelledAt < LOGIN_ATTEMPT_TIMEOUT_MS
+    )
   }
 
   private installNavigationDiagnostics(
@@ -889,7 +1002,7 @@ export class ManagementLoginService {
       name: cookieName,
     })
     if (!sessionCookie) {
-      throw new Error('管理端人员登录已失效，请重新登录')
+      throw new LoginOpeningError('AUTH_REQUIRED')
     }
     return {
       'content-type': 'application/json',
@@ -947,19 +1060,51 @@ export class ManagementLoginService {
   }
 }
 
+export class LoginOpeningError extends Error {
+  constructor(readonly code: string) {
+    // Only this fixed safe marker crosses Electron's serialized error boundary.
+    super(`SHOP_LOGIN_${code}`)
+  }
+}
+
+async function loginDeadline<T>(
+  work: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout>
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new LoginOpeningError('REQUEST_TIMEOUT')
+      controller.abort(error)
+      reject(error)
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([work(controller.signal), expired])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
+
 function diagnosticError(
   error: unknown,
 ): Pick<ManagementLoginDiagnostic, 'errorCode' | 'errno'> {
   if (!error || typeof error !== 'object')
     return { errorCode: null, errno: null }
   try {
-    const { code, errno } = error as { code?: unknown; errno?: unknown }
+    const outer = error as { code?: unknown; errno?: unknown; cause?: unknown }
+    const cause =
+      outer.cause && typeof outer.cause === 'object'
+        ? (outer.cause as { code?: unknown; errno?: unknown })
+        : {}
+    const code = outer.code ?? cause.code
+    const errno = outer.errno ?? cause.errno
     return {
       errorCode:
         typeof code === 'string' &&
-        /^(?:ERR_[A-Z0-9_]{1,48}|ENOENT|EACCES|ECONNRESET|ETIMEDOUT)$/.test(
-          code,
-        )
+        (isSafeLoginDiagnosticCode(code) ||
+          /^(?:ERR_[A-Z0-9_]{1,48})$/.test(code))
           ? code
           : null,
       errno:

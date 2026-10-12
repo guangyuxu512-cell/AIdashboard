@@ -4,6 +4,10 @@ import path from 'node:path'
 import { isTrustedRendererUrl } from '../config/runtime'
 import type { DesktopResolvedTheme } from '../types'
 import { installMainWindowPermissionHandlers } from './permissions'
+import {
+  installRendererLoginDiagnostics,
+  type LoginDiagnostic,
+} from '../services/login-diagnostics'
 
 const titleBarHeight = 54
 const titleBarSymbolColors: Record<DesktopResolvedTheme, string> = {
@@ -15,6 +19,7 @@ interface MainWindowOptions {
   rendererUrl: string
   trustedRendererOrigin: string
   allowDevTools: boolean
+  onLoginDiagnostic?: (record: LoginDiagnostic) => void
 }
 
 export function setTitleBarTheme(
@@ -92,6 +97,12 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     window.webContents,
     options.trustedRendererOrigin,
   )
+  if (options.onLoginDiagnostic)
+    installRendererLoginDiagnostics(
+      window.webContents,
+      options.trustedRendererOrigin,
+      options.onLoginDiagnostic,
+    )
 
   void window.loadURL(options.rendererUrl).catch(() => {
     if (!window.isDestroyed()) window.show()

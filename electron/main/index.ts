@@ -8,19 +8,29 @@ import {
 } from '../config/runtime'
 import { registerIpcHandlers } from '../ipc'
 import { ManagementLoginService } from '../services'
+import {
+  LoginDiagnosticFile,
+  createLoginDiagnosticRecorder,
+} from '../services/login-diagnostics'
 import { createMainWindow } from './window'
 
 let mainWindow: BrowserWindow | null = null
 const runtimeConfig = resolveDesktopRuntimeConfig({
   isPackaged: app.isPackaged,
 })
+const loginDiagnosticFile = new LoginDiagnosticFile(
+  resolveDesktopUserDataPath(app.getPath('appData')),
+)
+const recordLoginDiagnostic = createLoginDiagnosticRecorder(
+  loginDiagnosticFile,
+  app.isPackaged,
+  (record) =>
+    console.info(`[management-login-diagnostic] ${JSON.stringify(record)}`),
+)
 const managementLoginService = new ManagementLoginService({
   backendBaseUrl: runtimeConfig.backendBaseUrl,
   allowDevTools: !app.isPackaged,
-  onDiagnostic: app.isPackaged
-    ? undefined
-    : (record) =>
-        console.info(`[management-login-diagnostic] ${JSON.stringify(record)}`),
+  onDiagnostic: recordLoginDiagnostic,
 })
 
 app.setName(desktopApplicationName)
@@ -60,6 +70,7 @@ function openMainWindow(): BrowserWindow {
     rendererUrl: runtimeConfig.rendererUrl,
     trustedRendererOrigin: runtimeConfig.rendererOrigin,
     allowDevTools: !app.isPackaged,
+    onLoginDiagnostic: recordLoginDiagnostic,
   })
   window.on('closed', () => {
     if (mainWindow === window) {

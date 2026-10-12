@@ -18,9 +18,10 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-12 用户任务纠偏：81a1暂停店铺登录诊断，优先核验并收口已确认选品界面。
-从已确认Green `1718abe117c90842c8d39859a074fa988360f070` 接续
-`feat/product-selection-ui-restoration-closeout-v1`，保留1178、旧选品分支和所有本机材料。
+2026-10-13 当前用户任务纠偏：81a1暂停店铺登录诊断及关闭恢复返修，优先核验并收口已确认选品界面。
+沿已保留的 `feat/product-selection-ui-restoration-closeout-v1`（原1279候选）接续，
+同步ca97确认的Green `22403a1094b25b7569427d5383e4e28154253d79`，不重建或回退分支。
+保留98d48d4登录候选、1178、旧选品分支、既有数据库和所有本机材料。
 06bd03c为原设计对照；389030a已经恢复原策略列表/抽屉并删除ManualSelection/manualOnly，
 6e6bfc6补充原生组件的弹层边界。本轮不重复重做这些已存在实现，仅处理发现的回归并补齐证据。
 Real必须保留原工具栏、名称、定时草稿、状态和保存入口；未接策略保存/调度不得假成功。
@@ -29,6 +30,28 @@ Real必须保留原工具栏、名称、定时草稿、状态和保存入口；�
 Owner使用4176 strictPort隔离HTTP拦截验证，不占5180/8100，不另开Electron。
 普通/最大化四级类目可见、滚动、点击及父级全部尚需ca97唯一Real Electron独立证据；
 完成前不将本轮选品验收标为通过、不推进该业务发布。原已发布事实不倒写或伪造。
+下列登录任务为保留的历史授权，本轮暂停，不混入选品候选。
+
+2026-10-12 登录任务：按ca97已核验的人类原始授权
+`01a12c59-4ac4-70f0-894d-5aed7cd7731c`，从精确Green
+`1718abe117c90842c8d39859a074fa988360f070` 建立
+`feat/shop-login-runtime-diagnostics-v1`。仅补店铺登录一次点击的白名单阶段诊断、
+打开中/请求去重/有界超时与失败恢复反馈；列表和详情仍共用既有登录流程。
+已打开捕获窗允许再次点击，经当前权限复核只置前，不重复租约/open/save；
+旧1.0.4不附加新参数，仅新Preload固定能力标记允许correlationId。
+正式1.0.5仍禁DevTools，不改变Origin/主Frame/sandbox、Session/Profile或Signer边界。
+固定userData诊断文件只含随机关联ID、枚举/布尔值/状态/耗时，不含身份、凭据、URL或原始异常。
+无DB/Schema/Migration/平台请求；旧选品1279候选和旧分支/本机材料保留，0042/0043不改。
+Owner完成Gate 1和匹配Source安装包交ca97；唯一生产故障窗口不动，实际点击、根因与
+原生登录复验由ca97协调，CI/发布由ca97/Main按Gate执行。没有点击证据不能称根因已修复。
+选品界面恢复另行交接，原生普通/最大化尺寸仍待复验；不将本诊断候选混作选品验收。
+
+2026-10-12 ca97已审查诊断Candidate `046fd03e7124a829cb2659ba75b6c12fe0a8681d`，
+正常no-ff合入 `ddd523d08ae7896498f2950123c5bdf044568a50` 并复验；唯一Real Integration
+实际HuanYu登录完整走通，Session v3→valid v4、租约释放且浏览窗保留，无新增经营任务。
+原生截图/点击工具受限由用户代点，未把工具故障当业务根因。旧生产无反应仍UNKNOWN、未DEPLOYED；
+精确dev CI、Main Release及匹配1.0.5生产实际点击分别收口，详见
+`docs/engineering/shop-login-runtime-diagnostics-v1-gate2-20261012.md`。
 
 2026-10-11 当前81a1任务：从精确Green
 `06992f4f3ee03e2ad689b25e7a4cb5837ce0d359` 接续
