@@ -8,6 +8,8 @@ import {
 import { isTrustedRendererUrl } from '../config/runtime'
 import { setTitleBarTheme } from '../main/window'
 import { ManagementLoginService } from '../services'
+import { LoginOpeningError } from '../services/management-login-service'
+import { randomUUID } from 'node:crypto'
 import {
   desktopIpcChannels,
   isDesktopResolvedTheme,
@@ -39,7 +41,37 @@ export function registerIpcHandlers(
         throw new Error('店铺登录参数无效')
       const parent = BrowserWindow.fromWebContents(event.sender)
       if (!parent) throw new Error('主窗口不存在')
-      return managementLoginService.focusShop(parent, input)
+      const correlationId = input.correlationId ?? randomUUID()
+      managementLoginService.trace({
+        correlationId,
+        source: 'ipc',
+        phase: 'focus_ipc',
+        event: 'start',
+      })
+      try {
+        const focused = await managementLoginService.focusShop(parent, {
+          ...input,
+          correlationId,
+        })
+        managementLoginService.trace({
+          correlationId,
+          source: 'ipc',
+          phase: 'focus_ipc',
+          event: 'finish',
+          focused,
+        })
+        return focused
+      } catch (error) {
+        managementLoginService.trace({
+          correlationId,
+          source: 'ipc',
+          phase: 'focus_ipc',
+          event: 'error',
+          errorCode:
+            error instanceof LoginOpeningError ? error.code : 'IPC_ERROR',
+        })
+        throw error
+      }
     },
   )
 
@@ -50,7 +82,37 @@ export function registerIpcHandlers(
       if (!isManagementLoginOpenInput(input)) throw new Error('登录参数无效')
       const parent = BrowserWindow.fromWebContents(event.sender)
       if (!parent) throw new Error('主窗口不存在')
-      return managementLoginService.open(parent, input)
+      const correlationId =
+        input.correlationId ?? input.attemptId ?? randomUUID()
+      managementLoginService.trace({
+        correlationId,
+        source: 'ipc',
+        phase: 'open_ipc',
+        event: 'start',
+      })
+      try {
+        const result = await managementLoginService.open(parent, {
+          ...input,
+          correlationId,
+        })
+        managementLoginService.trace({
+          correlationId,
+          source: 'ipc',
+          phase: 'open_ipc',
+          event: 'finish',
+        })
+        return result
+      } catch (error) {
+        managementLoginService.trace({
+          correlationId,
+          source: 'ipc',
+          phase: 'open_ipc',
+          event: 'error',
+          errorCode:
+            error instanceof LoginOpeningError ? error.code : 'IPC_ERROR',
+        })
+        throw error
+      }
     },
   )
 

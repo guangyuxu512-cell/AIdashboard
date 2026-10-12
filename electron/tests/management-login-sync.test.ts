@@ -69,6 +69,7 @@ function setup(
     detection?: Error
     capture?: Error
     onDiagnostic?: (record: ManagementLoginDiagnostic) => void
+    metadataTimeoutMs?: number
   },
 ) {
   const windows: WindowStub[] = []
@@ -108,6 +109,7 @@ function setup(
     },
     fromPartition: () => loginSession,
     onDiagnostic: failures?.onDiagnostic,
+    metadataTimeoutMs: failures?.metadataTimeoutMs,
     profileMappingStore: profileMappingStore ?? {
       async load() {
         return null
@@ -123,6 +125,157 @@ function setup(
     parent: new WindowStub() as unknown as BrowserWindow,
   }
 }
+
+test('Main metadata deadline aborts HTTP and a late success cannot focus or create a window', async () => {
+  const originalFetch = globalThis.fetch
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    metadataTimeoutMs: 20,
+    onDiagnostic: (record) => records.push(record),
+  })
+  let finish!: (response: Response) => void
+  let signal!: AbortSignal
+  globalThis.fetch = (_url, options) => {
+    signal = options!.signal as AbortSignal
+    return new Promise((resolve) => {
+      finish = resolve
+    })
+  }
+  try {
+    await assert.rejects(
+      state.service.focusShop(state.parent, {
+        shopId,
+        teamId,
+        platform: 'douyin',
+        correlationId: input.recovery!.leaseId,
+      }),
+      /SHOP_LOGIN_REQUEST_TIMEOUT/,
+    )
+    assert.equal(signal.aborted, true)
+    const failed = records.find(
+      (record) =>
+        record.phase === 'session_metadata' && record.event === 'error',
+    )!
+    assert.equal(failed.errorCode, 'REQUEST_TIMEOUT')
+    assert.equal(failed.httpStatus, null)
+    assert.equal(failed.correlationId, input.recovery!.leaseId)
+    assert.ok((failed.elapsedMs ?? 0) >= 15)
+    finish(Response.json({ ignored: 'private-fixture' }))
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(state.windows.length, 0)
+    assert.equal(JSON.stringify(records).includes('private-fixture'), false)
+    assert.equal(
+      records.some(
+        (record) =>
+          record.phase === 'session_metadata' && record.event === 'finish',
+      ),
+      false,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('cancelling an open while profile load is pending prevents late BrowserWindow creation', async () => {
+  let finish!: (result: null) => void
+  const state = setup({
+    load: () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    async save() {},
+  })
+  const attemptId = input.recovery!.leaseId
+  const pending = state.service.open(state.parent, {
+    ...input,
+    attemptId,
+    correlationId: attemptId,
+  })
+  await state.service.close(attemptId)
+  finish(null)
+  await assert.rejects(pending, /SHOP_LOGIN_CONTEXT_CHANGED/)
+  assert.equal(state.windows.length, 0)
+  assert.equal(state.captures(), 0)
+})
+
+test('authentication preparation failure is AUTH_REQUIRED with no GET-request event or fetch', async () => {
+  const originalFetch = globalThis.fetch
+  const originalCookies = loginSession.cookies.get
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+  })
+  let calls = 0
+  loginSession.cookies.get = async () => []
+  globalThis.fetch = async () => {
+    calls++
+    return Response.json({})
+  }
+  try {
+    await assert.rejects(
+      state.service.focusShop(state.parent, {
+        shopId,
+        teamId,
+        platform: 'douyin',
+      }),
+      /SHOP_LOGIN_AUTH_REQUIRED/,
+    )
+    assert.equal(calls, 0)
+    assert.equal(
+      records.some((record) => record.event === 'request'),
+      false,
+    )
+    assert.equal(
+      records.find(
+        (record) =>
+          record.phase === 'session_metadata' && record.event === 'error',
+      )?.errorCode,
+      'AUTH_REQUIRED',
+    )
+  } finally {
+    loginSession.cookies.get = originalCookies
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('GET attempt and safe DNS code/errno are retained without URL, error message or cause contents', async () => {
+  const originalFetch = globalThis.fetch
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+  })
+  globalThis.fetch = async () => {
+    throw new TypeError('private-fixture', {
+      cause: { code: 'ENOTFOUND', errno: -3008, private: 'private-fixture' },
+    })
+  }
+  try {
+    await assert.rejects(
+      state.service.focusShop(state.parent, {
+        shopId,
+        teamId,
+        platform: 'douyin',
+      }),
+      /SHOP_LOGIN_NETWORK_ERROR/,
+    )
+    assert.equal(
+      records.some(
+        (record) =>
+          record.phase === 'session_metadata' && record.event === 'request',
+      ),
+      true,
+    )
+    const failed = records.find(
+      (record) =>
+        record.phase === 'session_metadata' && record.event === 'error',
+    )!
+    assert.equal(failed.errorCode, 'ENOTFOUND')
+    assert.equal(failed.errno, -3008)
+    assert.equal(JSON.stringify(records).includes('private-fixture'), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
 
 test('diagnostic baseline: empty profile load rejection closes the child and releases without a save', async () => {
   const originalFetch = globalThis.fetch
@@ -211,6 +364,8 @@ test('development diagnostics whitelist navigation code/errno and explicit close
       [
         'timestamp',
         'attemptId',
+        'correlationId',
+        'source',
         'phase',
         'event',
         'errorCode',
@@ -557,7 +712,7 @@ test('a retained window never bypasses current personnel authorization', async (
         teamId,
         platform: 'douyin',
       }),
-      /forbidden/,
+      /SHOP_LOGIN_FORBIDDEN/,
     )
     assert.equal(state.windows[0]!.focused, 0)
   } finally {

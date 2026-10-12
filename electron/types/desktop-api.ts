@@ -13,6 +13,7 @@ export interface ManagementLoginOpenInput {
   platform: ManagementLoginPlatform
   teamId: string
   attemptId?: string
+  correlationId?: string
   recovery?: {
     shopId: string
     leaseId: string
@@ -24,6 +25,7 @@ export interface ManagementLoginFocusInput {
   platform: ManagementLoginPlatform
   teamId: string
   shopId: string
+  correlationId?: string
 }
 
 export interface ManagementLoginStatusResult {
@@ -79,6 +81,7 @@ export interface DesktopApi {
     setTitleBarTheme(theme: DesktopResolvedTheme): void
   }
   managementLogin: {
+    readonly correlationSupported?: true
     focusShop(input: ManagementLoginFocusInput): Promise<boolean>
     open(input: ManagementLoginOpenInput): Promise<ManagementLoginStatusResult>
     getStatus(attemptId: string): Promise<ManagementLoginStatusResult>
@@ -96,10 +99,11 @@ export function isManagementLoginFocusInput(
   if (!value || typeof value !== 'object') return false
   const input = value as Record<string, unknown>
   return (
-    hasOnlyKeys(input, ['platform', 'teamId', 'shopId']) &&
+    hasOnlyKeys(input, ['platform', 'teamId', 'shopId', 'correlationId']) &&
     isManagementLoginPlatform(input.platform) &&
     isUuid(input.teamId) &&
-    isUuid(input.shopId)
+    isUuid(input.shopId) &&
+    (input.correlationId === undefined || isUuid(input.correlationId))
   )
 }
 
@@ -121,10 +125,17 @@ export function isManagementLoginOpenInput(
   if (!value || typeof value !== 'object') return false
   const input = value as Record<string, unknown>
   return (
-    hasOnlyKeys(input, ['platform', 'teamId', 'attemptId', 'recovery']) &&
+    hasOnlyKeys(input, [
+      'platform',
+      'teamId',
+      'attemptId',
+      'correlationId',
+      'recovery',
+    ]) &&
     isManagementLoginPlatform(input.platform) &&
     isUuid(input.teamId) &&
     (input.attemptId === undefined || isUuid(input.attemptId)) &&
+    (input.correlationId === undefined || isUuid(input.correlationId)) &&
     (input.recovery === undefined || isManagementLoginRecovery(input.recovery))
   )
 }

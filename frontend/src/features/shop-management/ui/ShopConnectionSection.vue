@@ -41,6 +41,9 @@ const validateSessionMutation = useValidateShopSessionMutation(shopId)
 const login = inject(shopLoginKey, null)
 const loginFeedback = computed(() => login?.feedback.get(props.shop.shopId))
 const recovering = computed(() => loginFeedback.value?.busy ?? false)
+const openingOrFocusing = computed(() =>
+  Boolean(loginFeedback.value?.opening || loginFeedback.value?.focusing),
+)
 
 const credential = computed(() => credentialQuery.data.value ?? null)
 const shopSession = computed(() => sessionQuery.data.value ?? null)
@@ -182,9 +185,17 @@ async function validateSession(): Promise<void> {
           <AppButton
             v-if="recoveryAvailable"
             tone="primary"
+            :loading="openingOrFocusing"
+            :disabled="openingOrFocusing"
             @click="login?.login(shop)"
           >
-            登录
+            {{
+              loginFeedback?.opening
+                ? '打开中…'
+                : recovering
+                  ? '登录中…'
+                  : '登录'
+            }}
           </AppButton>
           <AppButton v-if="recovering" @click="login?.cancel(shop.shopId)"
             >取消登录</AppButton

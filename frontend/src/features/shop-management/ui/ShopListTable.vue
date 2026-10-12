@@ -9,6 +9,7 @@ import {
 } from '@/entities/shop'
 import { PlatformDisplay } from '@/entities/platform'
 import { supportsShopLogin } from '../model/useShopLogin'
+import type { ShopLoginFeedback } from '../model/useShopLogin'
 import { ShopSessionStatusTag } from '@/entities/shop-session'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
@@ -22,6 +23,7 @@ const props = defineProps<{
   showOwner?: boolean
   showDeviceSummary?: boolean
   canLogin?: boolean
+  loginFeedback?: ReadonlyMap<string, ShopLoginFeedback>
 }>()
 
 const emit = defineEmits<{
@@ -113,8 +115,28 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
           ? [
               h(
                 AppButton,
-                { tone: 'text', onClick: () => emit('login', shop) },
-                () => '登录',
+                {
+                  tone: 'text',
+                  loading: Boolean(
+                    props.loginFeedback?.get(shop.shopId)?.opening ||
+                    props.loginFeedback?.get(shop.shopId)?.focusing,
+                  ),
+                  disabled: Boolean(
+                    props.loginFeedback?.get(shop.shopId)?.opening ||
+                    props.loginFeedback?.get(shop.shopId)?.focusing,
+                  ),
+                  title:
+                    props.loginFeedback?.get(shop.shopId)?.error ??
+                    props.loginFeedback?.get(shop.shopId)?.status ??
+                    undefined,
+                  onClick: () => emit('login', shop),
+                },
+                () =>
+                  props.loginFeedback?.get(shop.shopId)?.opening
+                    ? '打开中…'
+                    : props.loginFeedback?.get(shop.shopId)?.busy
+                      ? '登录中…'
+                      : '登录',
               ),
             ]
           : []),

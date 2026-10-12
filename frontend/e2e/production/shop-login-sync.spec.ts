@@ -5,7 +5,11 @@ const teamId = 'e2a01000-0000-4000-8000-000000000002'
 const personId = 'shop-login-contract-person'
 const timestamp = '2026-10-11T09:00:00Z'
 
-async function prepare(page: Page, superAccount: boolean) {
+async function prepare(
+  page: Page,
+  superAccount: boolean,
+  pendingCapture = false,
+) {
   const unexpected: string[] = []
   const writes: string[] = []
   let version = 1
@@ -13,29 +17,39 @@ async function prepare(page: Page, superAccount: boolean) {
   let healthFailure = 'unknown'
   await page.exposeFunction('finishSyncContract', () => ++version)
   await page.addInitScript(
-    ({ teamId, personId, shopId, timestamp }) => {
+    ({ teamId, personId, shopId, timestamp, pendingCapture }) => {
       localStorage.setItem(`control-center.active-team.${personId}`, teamId)
       const calls: string[] = []
       let retained = false
+      let finishFocus: (() => void) | undefined
       Object.assign(window, {
         syncContractCalls: calls,
+        finishFocusContract() {
+          finishFocus?.()
+        },
         desktop: {
           appearance: { setTitleBarTheme() {} },
           managementLogin: {
+            ...(pendingCapture ? { correlationSupported: true as const } : {}),
             async focusShop() {
               calls.push('focus')
+              if (retained && pendingCapture)
+                await new Promise<void>((resolve) => {
+                  finishFocus = resolve
+                })
               return retained
             },
             async open() {
               calls.push('open')
+              if (pendingCapture) retained = true
               return { attemptId: 'contract-attempt' }
             },
             async getStatus() {
               calls.push('status')
               return {
                 attemptId: 'contract-attempt',
-                status: 'identified',
-                message: '已识别目标店铺',
+                status: pendingCapture ? 'opened' : 'identified',
+                message: pendingCapture ? '等待人工登录' : '已识别目标店铺',
               }
             },
             async refresh() {
@@ -60,7 +74,7 @@ async function prepare(page: Page, superAccount: boolean) {
         },
       })
     },
-    { teamId, personId, shopId, timestamp },
+    { teamId, personId, shopId, timestamp, pendingCapture },
   )
   const shop = () => ({
     shop_id: shopId,
@@ -137,7 +151,13 @@ async function prepare(page: Page, superAccount: boolean) {
         expected_version: version,
         expires_at: timestamp,
       }
-    else if (path === `/api/v1/shops/${shopId}/session/health-check`) {
+    else if (
+      path === `/api/v1/shops/${shopId}/session/refresh-lease/contract-lease` &&
+      request.method() === 'DELETE'
+    ) {
+      await route.fulfill({ status: 204 })
+      return
+    } else if (path === `/api/v1/shops/${shopId}/session/health-check`) {
       if (healthFailure === 'auth') status = 'invalid'
       await route.fulfill({
         status: healthFailure === 'auth' ? 401 : 502,
@@ -228,6 +248,55 @@ test('Real list/detail share fresh login feedback; retained focus creates no fur
   await page.screenshot({
     path: info.outputPath('real-contract-shop-login-detail.png'),
   })
+  expect(evidence.unexpected).toEqual([])
+})
+
+test('opened capture remains focusable in list and detail while only pending focus is disabled', async ({
+  page,
+}, info) => {
+  const evidence = await prepare(page, true, true)
+  const row = page.locator('tbody tr').filter({ hasText: '隔离登录契约店铺' })
+  await row.getByRole('button', { name: '登录', exact: true }).click()
+  const login = row.getByRole('button', { name: /登录中…$/ })
+  await expect(login).toBeEnabled()
+  await login.click()
+  await expect(login).toBeDisabled()
+  await row.getByRole('button', { name: '查看', exact: true }).click()
+  const drawer = page.locator('.n-drawer')
+  const detailLogin = drawer.getByRole('button', {
+    name: /登录中…$/,
+  })
+  await expect(detailLogin).toBeDisabled()
+  await page.evaluate(() =>
+    (
+      window as typeof window & { finishFocusContract: () => void }
+    ).finishFocusContract(),
+  )
+  await expect(detailLogin).toBeEnabled()
+  expect(evidence.writes).toEqual([
+    `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+  ])
+  const calls = await page.evaluate(
+    () =>
+      (window as typeof window & { syncContractCalls: string[] })
+        .syncContractCalls,
+  )
+  expect(calls.filter((call) => call === 'focus')).toHaveLength(2)
+  expect(calls.filter((call) => call === 'open')).toHaveLength(1)
+  expect(calls.filter((call) => call === 'refresh')).toHaveLength(0)
+  await page.screenshot({
+    path: info.outputPath('browser-intercepted-opened-focusable-detail.png'),
+  })
+  await drawer.getByRole('button', { name: '取消登录', exact: true }).click()
+  await expect(
+    drawer.getByRole('button', { name: '登录', exact: true }),
+  ).toBeEnabled()
+  await expect
+    .poll(() => evidence.writes)
+    .toEqual([
+      `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+      `DELETE /api/v1/shops/${shopId}/session/refresh-lease/contract-lease`,
+    ])
   expect(evidence.unexpected).toEqual([])
 })
 

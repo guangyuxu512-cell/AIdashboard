@@ -54,6 +54,7 @@ provide(shopLoginKey, login)
         :show-device-summary="management.canReadDevices.value"
         :status-changing-shop-id="management.statusChangingShopId.value"
         :can-login="login.canLogin.value"
+        :login-feedback="login.feedback"
         @login="login.login"
         @view="management.openDetail"
         @toggle-enabled="management.toggleEnabled"
