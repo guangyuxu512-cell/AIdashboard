@@ -51,6 +51,11 @@ test('new sandboxed Preload advertises only the fixed login correlation capabili
           .managementLogin.correlationSupported,
         true,
       )
+      assert.equal(
+        (bridge as { managementLogin: { globalShopLoginSupported: boolean } })
+          .managementLogin.globalShopLoginSupported,
+        true,
+      )
     } else assert.equal(bridge, undefined)
   }
 })
@@ -59,6 +64,10 @@ test('focus shop only accepts the registered platform and current team/shop UUID
   const input = { platform: 'douyin', teamId: attemptId, shopId: attemptId }
   assert.equal(isManagementLoginFocusInput(input), true)
   assert.equal(
+    isManagementLoginFocusInput({ platform: 'douyin', shopId: attemptId }),
+    true,
+  )
+  assert.equal(
     isManagementLoginFocusInput({ ...input, correlationId: attemptId }),
     true,
   )
@@ -66,6 +75,8 @@ test('focus shop only accepts the registered platform and current team/shop UUID
     { ...input, platform: 'taobao' },
     { ...input, shopId: '../profile' },
     { ...input, teamId: '' },
+    { ...input, teamId: null },
+    { ...input, teamId: 'invalid-team' },
     { ...input, script: 'execute' },
     { ...input, correlationId: 'private-fixture' },
   ])
@@ -117,6 +128,21 @@ test('management login IPC only accepts registered platform and typed attempt', 
     false,
   )
   assert.equal(isManagementLoginOpenInput({ platform: 'douyin' }), false)
+  const recovery = { shopId: attemptId, leaseId: attemptId, expectedVersion: 3 }
+  assert.equal(
+    isManagementLoginOpenInput({ platform: 'douyin', recovery }),
+    true,
+  )
+  for (const teamId of [null, '', 'invalid-team']) {
+    assert.equal(
+      isManagementLoginOpenInput({ platform: 'douyin', teamId, recovery }),
+      false,
+    )
+  }
+  assert.equal(
+    isManagementLoginOpenInput({ platform: 'douyin', recovery: {} }),
+    false,
+  )
 })
 
 test('management login recovery reuses only a valid local profile mapping', () => {

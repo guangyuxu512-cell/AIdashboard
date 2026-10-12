@@ -18,6 +18,18 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-12 81a1授权追加（ca97人类turn `01a13030-2fd6-7990-afb9-ff7e5458c2a1`）：
+沿 `feat/shop-login-runtime-diagnostics-v1` 仅FF到Green
+`22403a1094b25b7569427d5383e4e28154253d79`，与已发布main db4业务树一致。
+修既有店铺超级账号无团队登录：team可缺省，无团队不发x-team-id，Backend人员Session/
+super/目标/lease/CAS仍权威；新店Onboarding仍要求团队，不自动选团队或增成员。
+新Preload固定globalShopLoginSupported标记支持后才无团队调用，旧1.0.5明确升级提示，旧teamed兼容。
+1.0.6增加本attempt的导航类别/序号、既有固定账号probe HTTP/耗时/失败布尔、脚本错误枚举及
+identity/readiness布尔，首条/变化及20条脚本错误有界，结束卸载；无webRequest hook/额外平台请求。
+仅观察，不猜首次遮罩根因、不自动刷新、不清Profile；两项整体PARTIAL，原生对照未完成不发布。
+无Backend/Schema/Migration/Signer/选品变化，0043与专用Feature库保留，Owner不操作Integration/生产或
+开Electron。精确观察Candidate、匹配Source包及Gate1交ca97；历史046/1279/全部材料保持。
+
 2026-10-12 当前81a1任务：按ca97已核验的人类原始授权
 `01a12c59-4ac4-70f0-894d-5aed7cd7731c`，从精确Green
 `1718abe117c90842c8d39859a074fa988360f070` 建立

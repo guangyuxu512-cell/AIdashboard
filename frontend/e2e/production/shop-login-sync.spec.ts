@@ -9,6 +9,7 @@ async function prepare(
   page: Page,
   superAccount: boolean,
   pendingCapture = false,
+  unscoped = false,
 ) {
   const unexpected: string[] = []
   const writes: string[] = []
@@ -17,8 +18,9 @@ async function prepare(
   let healthFailure = 'unknown'
   await page.exposeFunction('finishSyncContract', () => ++version)
   await page.addInitScript(
-    ({ teamId, personId, shopId, timestamp, pendingCapture }) => {
-      localStorage.setItem(`control-center.active-team.${personId}`, teamId)
+    ({ teamId, personId, shopId, timestamp, pendingCapture, unscoped }) => {
+      if (!unscoped)
+        localStorage.setItem(`control-center.active-team.${personId}`, teamId)
       const calls: string[] = []
       let retained = false
       let finishFocus: (() => void) | undefined
@@ -30,6 +32,7 @@ async function prepare(
         desktop: {
           appearance: { setTitleBarTheme() {} },
           managementLogin: {
+            globalShopLoginSupported: true,
             ...(pendingCapture ? { correlationSupported: true as const } : {}),
             async focusShop() {
               calls.push('focus')
@@ -74,7 +77,7 @@ async function prepare(
         },
       })
     },
-    { teamId, personId, shopId, timestamp, pendingCapture },
+    { teamId, personId, shopId, timestamp, pendingCapture, unscoped },
   )
   const shop = () => ({
     shop_id: shopId,
@@ -93,6 +96,8 @@ async function prepare(
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
+    if (unscoped && request.headers()['x-team-id'])
+      unexpected.push('fabricated-team-header')
     if (request.method() !== 'GET') writes.push(`${request.method()} ${path}`)
     let data: unknown
     if (path === '/api/v1/auth/me')
@@ -299,6 +304,28 @@ test('opened capture remains focusable in list and detail while only pending foc
     ])
   expect(evidence.unexpected).toEqual([])
 })
+
+for (const entry of ['list', 'detail'] as const) {
+  test(`unscoped super starts ${entry} login and confirms fresh metadata without any team header`, async ({
+    page,
+  }) => {
+    const evidence = await prepare(page, true, false, true)
+    if (entry === 'detail')
+      await page.getByRole('button', { name: '查看', exact: true }).click()
+    const scope =
+      entry === 'detail'
+        ? page.locator('.n-drawer')
+        : page.locator('tbody tr').filter({ hasText: '隔离登录契约店铺' })
+    await scope.getByRole('button', { name: '登录', exact: true }).click()
+    await expect(
+      page.getByText('登录状态已更新', { exact: true }),
+    ).toBeVisible()
+    expect(evidence.writes).toEqual([
+      `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+    ])
+    expect(evidence.unexpected).toEqual([])
+  })
+}
 
 test('ordinary team member has no list or detail login entry and submits no lease', async ({
   page,

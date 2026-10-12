@@ -11,7 +11,7 @@ export interface ManagementLoginIdentity {
 
 export interface ManagementLoginOpenInput {
   platform: ManagementLoginPlatform
-  teamId: string
+  teamId?: string
   attemptId?: string
   correlationId?: string
   recovery?: {
@@ -23,7 +23,7 @@ export interface ManagementLoginOpenInput {
 
 export interface ManagementLoginFocusInput {
   platform: ManagementLoginPlatform
-  teamId: string
+  teamId?: string
   shopId: string
   correlationId?: string
 }
@@ -82,6 +82,7 @@ export interface DesktopApi {
   }
   managementLogin: {
     readonly correlationSupported?: true
+    readonly globalShopLoginSupported?: true
     focusShop(input: ManagementLoginFocusInput): Promise<boolean>
     open(input: ManagementLoginOpenInput): Promise<ManagementLoginStatusResult>
     getStatus(attemptId: string): Promise<ManagementLoginStatusResult>
@@ -101,7 +102,7 @@ export function isManagementLoginFocusInput(
   return (
     hasOnlyKeys(input, ['platform', 'teamId', 'shopId', 'correlationId']) &&
     isManagementLoginPlatform(input.platform) &&
-    isUuid(input.teamId) &&
+    (input.teamId === undefined || isUuid(input.teamId)) &&
     isUuid(input.shopId) &&
     (input.correlationId === undefined || isUuid(input.correlationId))
   )
@@ -133,7 +134,8 @@ export function isManagementLoginOpenInput(
       'recovery',
     ]) &&
     isManagementLoginPlatform(input.platform) &&
-    isUuid(input.teamId) &&
+    (isUuid(input.teamId) ||
+      (input.teamId === undefined && input.recovery !== undefined)) &&
     (input.attemptId === undefined || isUuid(input.attemptId)) &&
     (input.correlationId === undefined || isUuid(input.correlationId)) &&
     (input.recovery === undefined || isManagementLoginRecovery(input.recovery))

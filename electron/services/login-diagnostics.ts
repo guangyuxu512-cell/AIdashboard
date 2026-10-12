@@ -19,6 +19,8 @@ const phases = [
   'refresh',
   'close',
   'cleanup',
+  'account_probe',
+  'script',
 ] as const
 const events = [
   'start',
@@ -50,6 +52,7 @@ const errorCodes = new Set([
   'UNEXPECTED_ERROR',
   'NO_BRIDGE',
   'NO_TEAM',
+  'DESKTOP_UPGRADE_REQUIRED',
   'NOT_ALLOWED',
   'UNSUPPORTED_PLATFORM',
   'CONTEXT_CHANGED',
@@ -78,7 +81,108 @@ const errorCodes = new Set([
   'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
   'ERR_CERT_AUTHORITY_INVALID',
   'ERR_CERT_DATE_INVALID',
+  'JS_CORS_POLICY',
+  'JS_CHUNK_LOAD',
+  'JS_SYNTAX_ERROR',
+  'JS_REFERENCE_ERROR',
+  'JS_TYPE_ERROR',
+  'JS_UNCLASSIFIED',
 ])
+export const accountProbePathClasses = [
+  'compass_shop_info_v2',
+  'compass_shop_info',
+  'compass_account_info',
+  'compass_ecom_account',
+  'fxg_ecom_account',
+] as const
+const pathClasses = [
+  ...accountProbePathClasses,
+  'compass_search_terms',
+  'compass_shop',
+  'fxg_login',
+  'pdd_home',
+  'other_navigation',
+] as const
+export interface LoginAccountProbe {
+  probeIndex: number
+  httpStatus: number | null
+  elapsedMs: number
+  requestFailed: boolean
+}
+export function safeAccountProbes(value: unknown): LoginAccountProbe[] {
+  try {
+    if (!Array.isArray(value)) return []
+    return value
+      .slice(0, 5)
+      .filter(
+        (item): item is LoginAccountProbe =>
+          item &&
+          typeof item === 'object' &&
+          Object.keys(item).every((key) =>
+            ['probeIndex', 'httpStatus', 'elapsedMs', 'requestFailed'].includes(
+              key,
+            ),
+          ) &&
+          Number.isInteger(item.probeIndex) &&
+          item.probeIndex >= 0 &&
+          item.probeIndex < 5 &&
+          (item.httpStatus === null ||
+            (Number.isInteger(item.httpStatus) &&
+              item.httpStatus >= 100 &&
+              item.httpStatus <= 599)) &&
+          Number.isInteger(item.elapsedMs) &&
+          item.elapsedMs >= 0 &&
+          item.elapsedMs <= 1800000 &&
+          typeof item.requestFailed === 'boolean',
+      )
+      .map((item) => ({
+        probeIndex: item.probeIndex,
+        httpStatus: item.httpStatus,
+        elapsedMs: item.elapsedMs,
+        requestFailed: item.requestFailed,
+      }))
+  } catch {
+    return []
+  }
+}
+export function loginNavigationClass(
+  value: string,
+): (typeof pathClasses)[number] {
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'https:') {
+      if (
+        url.hostname === 'compass.jinritemai.com' &&
+        url.pathname === '/shop/search/drainage-terms'
+      )
+        return 'compass_search_terms'
+      if (url.hostname === 'compass.jinritemai.com' && url.pathname === '/shop')
+        return 'compass_shop'
+      if (url.hostname === 'fxg.jinritemai.com' && url.pathname === '/login/')
+        return 'fxg_login'
+      if (url.hostname === 'mms.pinduoduo.com' && url.pathname === '/home')
+        return 'pdd_home'
+    }
+  } catch {
+    /* Only a fixed category survives, never the input. */
+  }
+  return 'other_navigation'
+}
+export function loginScriptErrorClass(value: string): string {
+  if (value.length <= 2048) {
+    if (/blocked by CORS policy/i.test(value)) return 'JS_CORS_POLICY'
+    if (
+      /ChunkLoadError|Loading chunk [0-9]+ failed|Failed to fetch dynamically imported module/.test(
+        value,
+      )
+    )
+      return 'JS_CHUNK_LOAD'
+    if (/\bSyntaxError\b/.test(value)) return 'JS_SYNTAX_ERROR'
+    if (/\bReferenceError\b/.test(value)) return 'JS_REFERENCE_ERROR'
+    if (/\bTypeError\b/.test(value)) return 'JS_TYPE_ERROR'
+  }
+  return 'JS_UNCLASSIFIED'
+}
 export function isSafeLoginDiagnosticCode(code: unknown): code is string {
   return typeof code === 'string' && errorCodes.has(code)
 }
@@ -90,6 +194,11 @@ const booleanKeys = [
   'focused',
   'isMainFrame',
   'mainFrameLoading',
+  'identityPresent',
+  'captureReady',
+  'pageContextAvailable',
+  'requestFailed',
+  'corsBlocked',
 ] as const
 const allowedKeys = new Set([
   'timestamp',
@@ -103,6 +212,9 @@ const allowedKeys = new Set([
   'httpStatus',
   'elapsedMs',
   'closeReason',
+  'navigationSequence',
+  'pathClass',
+  'scriptErrorCount',
   ...booleanKeys,
 ])
 
@@ -125,6 +237,14 @@ export interface LoginDiagnostic {
   focused?: boolean | null
   isMainFrame?: boolean | null
   mainFrameLoading?: boolean | null
+  identityPresent?: boolean | null
+  captureReady?: boolean | null
+  pageContextAvailable?: boolean | null
+  requestFailed?: boolean | null
+  corsBlocked?: boolean | null
+  navigationSequence?: number
+  pathClass?: (typeof pathClasses)[number]
+  scriptErrorCount?: number
 }
 
 // Rebuild every record. Unknown keys, invalid values, raw errors and long
@@ -163,6 +283,24 @@ export function safeLoginDiagnostic(
   }
   if (input.attemptId !== undefined)
     record.attemptId = input.attemptId as string
+  for (const key of ['navigationSequence', 'scriptErrorCount'] as const) {
+    const item = input[key]
+    if (item !== undefined) {
+      if (
+        typeof item !== 'number' ||
+        !Number.isInteger(item) ||
+        item < 0 ||
+        item > (key === 'scriptErrorCount' ? 20 : 10000)
+      )
+        return null
+      record[key] = item
+    }
+  }
+  if (input.pathClass !== undefined) {
+    if (!pathClasses.includes(input.pathClass as (typeof pathClasses)[number]))
+      return null
+    record.pathClass = input.pathClass as (typeof pathClasses)[number]
+  }
   for (const key of booleanKeys) {
     const item = input[key]
     if (item !== undefined && item !== null && typeof item !== 'boolean')
