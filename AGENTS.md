@@ -24,8 +24,10 @@
 保留已确认StrategyList/Drawer及五项体验、登录成果。A补已确认条件及真实策略CRUD；
 B独立交付复用Schedule底座的服务端hourly/daily，不造Device/Worker/队列，PC调度不变。
 ca97已分配并核实复用 `control_center_feat_product_selection` / `control_center_dev_user`、
-8101/4176 strictPort与受信任35433；唯一active Slot `20261013_0044`（down0043），
-仅策略表和runs可空策略FK。0042/0043不可改写，B尚无Slot。Owner只在Feature合成验证；
+8101/4176 strictPort与受信任35433；唯一返修占位Slot `20261013_0044`（down0043），
+ca97阶段审查P1/P2退回后状态`rejected`，未释放库/编号，重新审核通过前不恢复active。
+仅策略表和runs可空策略FK；允许Owner最小安全返修，不改upgrade DDL/已存事实，不清库。
+0042/0043不可改写，B尚无Slot。Owner只在Feature合成验证；
 平台最小补证及唯一Integration Electron由ca97协调，未知条件不猜映射/静默忽略，不回退Mock。
 两段分别Gate1→Gate2→Green/CI→Main发布；81a1不合dev/main、不部署生产。
 本节覆盖与当前直接授权冲突的下方历史active范围；下方验收事实保留，不重做原设计。

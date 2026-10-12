@@ -37,9 +37,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # This operation is only for an explicitly guarded rebuildable Feature DB.
-    # Lock both writers before the check so a concurrent insert cannot escape it.
+    # Verify the live target in this execution path, not only in test wrappers
+    # or a configured URL. This active Slot has one registered rebuildable DB.
+    # Offline SQL cannot establish that identity and must not emit drop DDL.
+    if op.get_context().as_sql:
+        raise RuntimeError("0044 downgrade requires online verification of the registered Feature database")
     connection = op.get_bind()
+    database = connection.scalar(sa.text("SELECT current_database()"))
+    if database != "control_center_feat_product_selection":
+        raise RuntimeError("0044 downgrade only permits the registered rebuildable Product Selection Feature database")
+    # Lock both writers before inspecting data so a concurrent insert cannot
+    # escape the check. Main/Integration/production never reach this lock.
     connection.execute(sa.text("LOCK TABLE product_selection_strategies, product_selection_runs IN ACCESS EXCLUSIVE MODE"))
     if connection.scalar(sa.text("SELECT EXISTS(SELECT 1 FROM product_selection_strategies) OR EXISTS(SELECT 1 FROM product_selection_runs WHERE strategy_id IS NOT NULL)")):
         raise RuntimeError("Selection strategy data exists; retain schema and use a compatible application rollback")

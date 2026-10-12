@@ -50,11 +50,11 @@ class SelectionStrategyService:
         return self._project(current, [row])[0]
 
     def writable(self, actor: ActorContext, strategy_id: UUID, *, expected_version: int):
+        """Lock authorized configuration and enforce CAS, not execution readiness."""
         team_id = actor.require_team_id()
         row = self.repository.get(actor, strategy_id, lock=True)
         if row is None or row.team_id != team_id:
             raise SelectionStrategyNotFoundError()
-        self.facts._execution_shop(actor, row.request_shop_id)
         if row.version != expected_version:
             raise SelectionStrategyVersionConflictError()
         return row
@@ -65,6 +65,8 @@ class SelectionStrategyService:
             if not self.settings.product_selection_strategy_management_enabled:
                 raise SelectionStrategyWriteDisabledError()
             team_id = current.require_team_id()
+            # Validate the newly submitted target, not a disabled old target
+            # that an authorized configuration edit is trying to replace.
             self.facts._execution_shop(current, command.shop_id)
             validate_preparable_short_video_choice(command.conditions.original(command.shop_id))
             at = datetime.now(UTC)
@@ -94,6 +96,8 @@ class SelectionStrategyService:
             if not self.settings.product_selection_strategy_management_enabled:
                 raise SelectionStrategyWriteDisabledError()
             row = self.writable(current, strategy_id, expected_version=command.expected_version)
+            if command.enabled:
+                self.facts._execution_shop(current, row.request_shop_id)
             row.enabled = command.enabled
             row.version += 1
             row.updated_at = datetime.now(UTC)

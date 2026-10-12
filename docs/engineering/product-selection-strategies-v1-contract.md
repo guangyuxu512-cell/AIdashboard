@@ -36,6 +36,12 @@ API 使用既有 product-selection 模块、Human Actor 和当前 Shop 授权；
 Team/Shop 过滤再搜索/分页。写入重验有效 Team/启用且未删除抖店；超级账号写入仍需明确 Team。
 Team 仅剩策略也阻止物理删除，不能让新表产生未解释的级联数据丢失。
 
+关闭策略（enabled=false）只要求当前Actor/Team/Shop可见授权和版本CAS，不要求该店铺
+执行就绪，也不读取Session或请求平台。重新开启仍要求所关联店铺启用、未删除且为抖店；
+实际执行继续独立复核资格和Session。新建/完整保存校验本次提交的目标店铺，仍拒绝停用目标。
+编辑旧停用目标换到另一已授权启用抖店允许；原配置的访问权限/CAS仍校验，不能借新目标绕过旧配置撤权。
+仅在旧停用目标上改名称的完整PUT仍明确拒绝，应使用关闭PATCH或选择合法新目标，不泛用旧目标执行校验。
+
 - GET `/api/v1/product-selection/strategies`：分页/名称查询，批量附最近真实执行摘要；
   无结果就是 null，不伪造一次运行。关联回执解析到其 canonical 执行。
 - GET `/strategies/{strategy_id}`：已保存相对条件、计划草稿、version 和 enabled。
@@ -90,15 +96,24 @@ PC读取API在服务端排除选品记录，不靠前端隐藏。迁移待A完�
 
 ## 迁移与验收
 
-ca97已登记并确认唯一active Slot `20261013_0044_product_selection_strategies_v1`，
+ca97已登记唯一Slot `20261013_0044_product_selection_strategies_v1`，
 revision `20261013_0044`，down `20261010_0043`。Feature已应用并验证迁移闭环，
 Integration/生产仍0043；禁止改写0042/0043或通过降级清库绕过记录保留。
+阶段审查4e584cb因P1/P2退回，Slot已由ca97改为rejected返修占位，未释放编号/库；
+仅沿原Feature安全返修，独立重新审核前不恢复active，B不能抢新Slot。
 已分配Feature库 `control_center_feat_product_selection`，角色 `control_center_dev_user`；
 8101/4176 strictPort，35433受信任隧道由ca97恢复。实际Feature为单一0044，
 47业务表＋alembic_version（public共48表），末次ShopSession/策略/run均0；
 应用角色无CREATEDB/CREATEROLE/SUPERUSER，不复制生产凭据。
 升级保留旧候选/观察/run；降级仅可重建库且无新策略/关联run时允许，否则fail closed。
 正式应用回滚保留Schema/策略/事实/失败记录，用兼容Reader关闭新写/新执行，不清库。
+
+阶段审查P1修补：0044的实际downgrade执行路径在任何LOCK/DDL前读取`SELECT current_database()`，
+精确允许已登记的`control_center_feat_product_selection`，拒绝Main/Integration/生产、
+其它未授权Feature及无法确认的目标；不信任URL配置或测试包装器。offline模式拒绝生成删除DDL。
+之后仍保留锁后查数据/并发writer的原保护。0044尚为未通过Gate的Feature返修迁移，
+此次仅修降级安全边界，不改upgrade DDL/revision/down_revision或已有事实，不要求Feature清库/重建，
+不改已进入共享环境的0042/0043、不新增Slot；Integration/生产没有应用0044。
 
 兼容回滚使用本候选（支持v3 run及v2首次上榜来源）的Backend Reader，不能直接换成3128等旧Backend。
 将上述两个开关写入既有受保护部署配置并按规范重启，停止新提交/claim；已发网络请求不承诺撤回。

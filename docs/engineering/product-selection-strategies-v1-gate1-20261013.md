@@ -2,6 +2,8 @@
 
 状态：**PARTIAL**。本候选完成策略管理及已确认条件的实现/自检，不表示A全部条件已接通；
 未知参数和ca97真实平台/Electron验收未完成，B尚未实现。交ca97技术审核/补证，不授权越过门禁发布。
+阶段候选4e584cb独立技术审查因P1/P2退回Owner；本轮完成下述最小返修后交新精确候选重审，
+Slot治理状态仍rejected返修占位，不自行恢复active，不把本次纠错写成完整A Gate通过。
 
 ## 基线与范围
 
@@ -22,7 +24,7 @@
 
 ## 数据库与迁移
 
-ca97分配并确认唯一active `20261013_0044_product_selection_strategies_v1`；
+ca97登记唯一 `20261013_0044_product_selection_strategies_v1`，阶段退回后状态rejected返修占位；
 revision `20261013_0044`、down `20261010_0043`。已分配Feature
 `control_center_feat_product_selection` / `control_center_dev_user`、受保护35433，
 8101/4176 strictPort。实际Head单一0044、47业务表＋1张Alembic元数据表（public共48表），
@@ -43,8 +45,8 @@ revision `20261013_0044`、down `20261010_0043`。已分配Feature
 | 位置/命令 | 实际结果与证据边界 |
 | --- | --- |
 | backend `.venv\Scripts\python.exe -m alembic upgrade head` | PASS，已分配Feature唯一0044，不是Integration/生产升级 |
-| backend `.venv\Scripts\python.exe -m pytest` | 最终代码 **613 PASS**，220 integration deselected；正整数契约已含。保留Starlette/httpx既有弃用告警；只读开关和旧v2活动复用另验真实PG14 |
-| backend `python -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_migration.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py tests/integration/test_postgresql_product_selection.py tests/integration/test_postgresql_selection_categories.py tests/integration/test_postgresql_product_selection_migration.py` | **104 PASS**，真实PostgreSQL/合成平台；CRUD/CAS、同条件跨策略复用、快照/历史不被编辑覆盖、跨页rank/first flag、权限/撤权、旧链路及迁移Meta/保留/并发拒绝。不是平台真实104次请求 |
+| backend `.venv\Scripts\python.exe -m pytest` | P1/P2修补后最终代码 **622 PASS**，222 integration deselected；含9项直接Migration目标保护。保留Starlette/httpx既有弃用告警 |
+| backend `python -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_strategy_migration.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py tests/integration/test_postgresql_product_selection.py tests/integration/test_postgresql_selection_categories.py tests/integration/test_postgresql_product_selection_migration.py` | P1/P2修补后8文件 **109 PASS**，真实PostgreSQL/合成平台；CRUD/CAS、配置关闭/换目标、跨策略复用、快照/历史不被编辑覆盖、跨页rank/first flag、权限/撤权、旧链路及迁移Meta/保留/并发拒绝。不是平台真实109次请求 |
 | frontend `pnpm lint` / `pnpm build`（内含typecheck，强制Real） | PASS；最终build后扫描无selection-mock-handlers、演示达人值或演示候选；保留原大chunk告警 |
 | frontend `pnpm test` | 最终代码 **144文件/649 PASS**。保留原草稿抽屉的回归已修复；既有jsdom XHR stderr未致失败，非零告警声明 |
 | frontend `pnpm exec vitest run src/features/product-selection` | 最终代码 **13文件/92 PASS**，新typed API、相对配置/CAS、独立获取、管理只读仍可读、原布局/图片/缓存/失败/时间/Mock边界 |
@@ -58,6 +60,23 @@ default条件被新v3提交复用，canonical不被改写，新回执保留自�
 `python -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py`
 最终 **14 PASS**。同key跨日先于类目I/O重放原冻结计划，不同key次日不能复用昨日窗口；
 默认条件旧v2与新v3仅在完整条件/页范围/冻结日期指纹一致时共享活动任务。
+
+## 阶段退回P1/P2的修补与兼容边界
+
+- P1：旧downgrade未在执行路径核验目标。先用无连接探针复现7类非授权目标均未拒绝，
+  再补在线current_database精确登记目标判断；拒离线、Main/Integration/生产、其它Feature及未知目标，
+  在LOCK/DDL前执行。探针故意给配置URL的Feature名称，实际查询返回其它名称，不能用URL或包装器assert绕过。
+  新 `python -m pytest tests/test_selection_strategy_migration_guard.py` **9 PASS**；
+  `python -m pytest -m integration tests/integration/test_postgresql_selection_strategy_migration.py tests/integration/test_postgresql_product_selection_migration.py` **4 PASS**。
+  非Feature拒绝测试是无连接合成探针，未连接或尝试降级真实Main/Integration/生产。
+  只修尚未过Gate、仅Feature已应用的0044降级保护；upgrade DDL/revision/down_revision不变，
+  已有Feature Head/结构/旧事实不需清库或重建，0042/0043文件不改，新Slot不申请。
+- P2：先复现关闭旧停用Shop及更换旧停用Shop均409的2项PG/API红测；writable现仅锁当前授权配置与CAS，
+  关闭不检查目标ready，开启仍检查；保存校验本次新目标，不因旧目标停用阻止修正。
+  停用目标仅允许专用关闭PATCH，完整PUT仍须合法已授权启用抖店。API回归覆盖false、版本冲突、
+  开启拒绝、跨Team、撤权、错ID、换有效目标和零Run/零Session/零平台，含在最终109 PASS。
+- 返修未修改Frontend/Electron/PC Schedule/请求抽象/Signer；前端649项和4项拦截E2E及截图均来自4e584cb，
+  其前端代码与本次修补完全一致，保留证据、不称新增原生Electron验收。不重复不受影响的前端构建。
 
 迭代失败如实保留：初轮旧窗口夹具把总数误设为页长度，77PASS/5FAIL，纠正合成total后完整104PASS；
 首次前端精确Body断言未包含新增明确null边界，已更新正式DTO断言；只剩策略保护测试用了错误fixture签名，

@@ -151,6 +151,61 @@ def test_disabled_shop_cannot_write_or_execute_and_strategy_retains_team(selecti
     with pytest.raises(SelectionShopUnavailableError): _submit(context, saved)
 
 
+def test_disabled_shop_can_be_closed_without_bypassing_authority_or_cas(selection_context, monkeypatch):
+    from app.modules.product_selection import platform_io
+    context = selection_context
+    saved = _save(context)
+    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Closing configuration must not read Session or request the platform"))
+    with Session(context[0]) as session:
+        session.get(Shop, context[3][0]).enabled = False
+        session.commit()
+    headers = {"X-Team-ID": str(context[1][0])}
+    path = f"/api/v1/product-selection/strategies/{saved.strategy_id}/enabled"
+    with _api_client(context) as client:
+        closed = client.patch(path, headers=headers, json={"enabled": False, "expected_version": 1})
+        assert closed.status_code == 200
+        assert closed.json()["enabled"] is False and closed.json()["version"] == 2
+        stale = client.patch(path, headers=headers, json={"enabled": False, "expected_version": 1})
+        assert stale.status_code == 409 and stale.json()["code"] == "PRODUCT_SELECTION_STRATEGY_VERSION_CONFLICT"
+        reopened = client.patch(path, headers=headers, json={"enabled": True, "expected_version": 2})
+        assert reopened.status_code == 409 and reopened.json()["code"] == "PRODUCT_SELECTION_SHOP_UNAVAILABLE"
+        assert client.patch(f"/api/v1/product-selection/strategies/{uuid4()}/enabled", headers=headers, json={"enabled": False, "expected_version": 2}).status_code == 404
+    with _api_client(context, actor_index=1) as client:
+        assert client.patch(path, headers={"X-Team-ID": str(context[1][1])}, json={"enabled": False, "expected_version": 2}).status_code == 404
+    with Session(context[0]) as session:
+        session.execute(delete(TeamShopAccess).where(TeamShopAccess.team_id == context[1][0], TeamShopAccess.shop_id == context[3][0]))
+        session.commit()
+    with _api_client(context) as client:
+        assert client.patch(path, headers=headers, json={"enabled": False, "expected_version": 2}).status_code == 404
+    with Session(context[0]) as session:
+        stored = session.get(Strategy, saved.strategy_id)
+        assert stored.enabled is False and stored.version == 2
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
+
+
+def test_edit_can_replace_disabled_shop_with_authorized_enabled_shop(selection_context, monkeypatch):
+    from app.modules.product_selection import platform_io
+    context = selection_context
+    saved = _save(context)
+    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Editing configuration must not read Session or request the platform"))
+    with Session(context[0]) as session:
+        session.get(Shop, context[3][0]).enabled = False
+        session.commit()
+    path = f"/api/v1/product-selection/strategies/{saved.strategy_id}"
+    headers = {"X-Team-ID": str(context[1][0])}
+    with _api_client(context) as client:
+        # Create/save still validate the newly submitted target. A disabled
+        # target is only permitted for the dedicated close-only operation.
+        invalid = client.put(path, headers=headers, json=_config(context).model_dump(mode="json") | {"expected_version": 1})
+        assert invalid.status_code == 409 and invalid.json()["code"] == "PRODUCT_SELECTION_SHOP_UNAVAILABLE"
+        edited = client.put(path, headers=headers, json=_config(context, shop_id=context[3][1]).model_dump(mode="json") | {"expected_version": 1})
+        assert edited.status_code == 200
+        assert edited.json()["shop_id"] == str(context[3][1]) and edited.json()["version"] == 2
+        assert client.get(path, headers=headers).json()["shop_id"] == str(context[3][1])
+    with Session(context[0]) as session:
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
+
+
 def test_concurrent_edit_has_one_winner_and_does_not_reset_version(selection_context):
     context, barrier, results = selection_context, Barrier(2), []
     saved = _save(context)
