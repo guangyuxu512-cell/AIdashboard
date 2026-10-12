@@ -27,12 +27,14 @@ B为复用既有Schedule底座的服务端选品，各自Candidate/Gate/发布�
 ca97仅恢复受信任35433隧道并只读核实 retained `control_center_feat_product_selection`、
 `control_center_dev_user`、单一0043、候选/观察/run/ShopSession均0、无数据库管理权限；
 Feature继续8101/4176 strictPort，Integration仍8100/5180及唯一开发Electron，不复制生产Cookie。
-A唯一Slot reserved：`20261013_0044_product_selection_strategies_v1`，revision
+A唯一Slot active：`20261013_0044_product_selection_strategies_v1`，revision
 `20261013_0044`，down `20261010_0043`；一张Team-owned策略表及run可空策略关联，
 版本CAS、白名单相对条件/定时草稿，保存/启停本身不取数、不创建Schedule。
 0042/0043不改写；未知平台参数不猜测开放。新条件保持旧run/事实读取与指纹兼容，
 降级仅可重建Feature且无新策略或关联run，须加锁后检查；应用回退保留Schema/历史。
 Owner编写/验证新Migration与代码，ca97不代修；B未分配Slot、不在A接入执行或新建调度框架。
+Owner已在分配Feature库应用0044，ca97只读核实该库单一`20261013_0044`与最小角色；
+Integration/生产仍0043，未在本工作树新增Migration或写Feature业务数据，实际Gate验证尚待候选。
 本记录仅资源与技术边界登记，不代表A实现、Gate或真实平台验收已经通过。
 
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
