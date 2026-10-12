@@ -18,7 +18,31 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-13 当前用户任务纠偏：81a1暂停店铺登录诊断及关闭恢复返修，优先核验并收口已确认选品界面。
+2026-10-13 当前店铺登录修复：已回读ca97人类turn `01a1313b-de4b-7eb1-ba7b-60707e70ce98`，
+撤销登录Feature暂停。沿 `feat/shop-login-runtime-diagnostics-v1` 保留98d48d4并正常同步
+精确Green `10938c55397442fd25854d01cf1d07628b7f027b`，禁止rebase/reset及dev代修。
+仅收口超级账号无团队登录、首次页实际可操作及自然关闭后状态恢复；保留目标验证/CAS、
+失败旧Session保护、成功留窗/释放锁、新店自动关闭。首次加载不把观察日志冒称根因修复。
+Owner合成验证，不操作Integration/生产、不新开Electron、不写库或改0042/0043。
+实际关窗49da白名单证据与无团队a61d成功证据复用，补在途检测/捕获迟到与释放定向回归。
+已用deferred检测先复现98关窗后IPC未结算，再补最小终态结算/迟到保护；合成验证不替代原生Gate。
+关闭恢复阶段详见 `docs/engineering/shop-login-close-recovery-v1-gate1-20261013.md`。
+精确Candidate及匹配Source安装包交ca97唯一Real5180→8100→Integration验收，Green/CI后由Main发布。
+已通过的选品30e8/86项/原生确认保留，不重复验收或混入本轮；后续回报明确“店铺登录修复”阶段。
+
+2026-10-12 81a1历史授权追加（ca97人类turn `01a13030-2fd6-7990-afb9-ff7e5458c2a1`）：
+沿 `feat/shop-login-runtime-diagnostics-v1` 仅FF到Green
+`22403a1094b25b7569427d5383e4e28154253d79`，与已发布main db4业务树一致。
+修既有店铺超级账号无团队登录：team可缺省，无团队不发x-team-id，Backend人员Session/
+super/目标/lease/CAS仍权威；新店Onboarding仍要求团队，不自动选团队或增成员。
+新Preload固定globalShopLoginSupported标记支持后才无团队调用，旧1.0.5明确升级提示，旧teamed兼容。
+1.0.6增加本attempt的导航类别/序号、既有固定账号probe HTTP/耗时/失败布尔、脚本错误枚举及
+identity/readiness布尔，首条/变化及20条脚本错误有界，结束卸载；无webRequest hook/额外平台请求。
+仅观察，不猜首次遮罩根因、不自动刷新、不清Profile；两项整体PARTIAL，原生对照未完成不发布。
+无Backend/Schema/Migration/Signer/选品变化，0043与专用Feature库保留，Owner不操作Integration/生产或
+开Electron。精确观察Candidate、匹配Source包及Gate1交ca97；历史046/1279/全部材料保持。
+
+2026-10-13 选品阶段历史纠偏（登录暂停现已撤销）：81a1先核验并收口已确认选品界面。
 沿已保留的 `feat/product-selection-ui-restoration-closeout-v1`（原1279候选）接续，
 同步ca97确认的Green `22403a1094b25b7569427d5383e4e28154253d79`，不重建或回退分支。
 保留98d48d4登录候选、1178、旧选品分支、既有数据库和所有本机材料。
@@ -30,7 +54,7 @@ Real必须保留原工具栏、名称、定时草稿、状态和保存入口；�
 Owner使用4176 strictPort隔离HTTP拦截验证，不占5180/8100，不另开Electron。
 普通/最大化四级类目可见、滚动、点击及父级全部尚需ca97唯一Real Electron独立证据；
 完成前不将本轮选品验收标为通过、不推进该业务发布。原已发布事实不倒写或伪造。
-下列登录任务为保留的历史授权，本轮暂停，不混入选品候选。
+下列登录任务授权与历史证据保留；此次仅恢复登录，不重做已收口选品。
 
 2026-10-13 ca97已核验选品收口Candidate `30e8cc63bc3c770cee65bd02c57d56e39740e255`，
 用户在对应Real Integration Electron提交普通/最大化截图并确认目前无问题；四级类目/父级全部

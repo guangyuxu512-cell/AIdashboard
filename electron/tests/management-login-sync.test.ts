@@ -6,8 +6,15 @@ import {
   ManagementLoginService,
   type ManagementLoginDiagnostic,
 } from '../services/management-login-service'
-import type { ManagementLoginOpenInput } from '../types'
-import type { PlatformAuthAdapter } from '../services/platform-auth-adapter'
+import type {
+  ManagementLoginOpenInput,
+  ManagementLoginStatusResult,
+} from '../types'
+import type {
+  CapturedManagementSession,
+  PlatformAuthAdapter,
+  PlatformLoginDetectionResult,
+} from '../services/platform-auth-adapter'
 import type { ManagementLoginProfileMappingStore } from '../services/management-login-profile'
 
 const shopId = 'd6ac091c-133e-40c4-a827-0951a2309f20'
@@ -70,6 +77,7 @@ function setup(
     capture?: Error
     onDiagnostic?: (record: ManagementLoginDiagnostic) => void
     metadataTimeoutMs?: number
+    detectionResult?: PlatformLoginDetectionResult
   },
 ) {
   const windows: WindowStub[] = []
@@ -81,6 +89,7 @@ function setup(
     loginWindowTitle: 'isolated test',
     async detectLoginStatus() {
       if (failures?.detection) throw failures.detection
+      if (failures?.detectionResult) return failures.detectionResult
       return {
         readyForCapture: true,
         message: 'identified',
@@ -119,12 +128,427 @@ function setup(
   })
   return {
     service,
+    adapter,
     windows,
     buffers,
     captures: () => captures,
     parent: new WindowStub() as unknown as BrowserWindow,
   }
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+test('native close settles an unresolved single-flight detection after focus, releases once and ignores late identity', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup()
+  const detecting = deferred<PlatformLoginDetectionResult>()
+  let detections = 0
+  state.adapter.detectLoginStatus = () => {
+    detections++
+    return detecting.promise
+  }
+  try {
+    const opened = await state.service.open(state.parent, {
+      ...input,
+      teamId: undefined,
+    })
+    const settled: ManagementLoginStatusResult[] = []
+    const polling = state.service.getStatus(opened.attemptId).then((status) => {
+      settled.push(status)
+      return status
+    })
+    const duplicate = state.service.getStatus(opened.attemptId)
+    assert.equal(
+      await state.service.focusShop(state.parent, {
+        shopId,
+        platform: 'douyin',
+      }),
+      true,
+    )
+    state.windows[0]!.close()
+    await nextTurn()
+    // Detection deliberately remains unresolved: another poll cannot rescue
+    // the Renderer while its first IPC is still awaiting page execution.
+    assert.equal(settled[0]?.status, 'closed')
+    assert.deepEqual(await duplicate, await polling)
+    assert.equal(detections, 1)
+    assert.equal(state.windows.length, 1)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'closed',
+    )
+    detecting.resolve({
+      readyForCapture: true,
+      message: 'late identity',
+      identity: {
+        platform: 'douyin',
+        platformShopId: 'matching-test-shop',
+        shopDisplayName: 'test shop',
+      },
+    })
+    await nextTurn()
+    const closed = await state.service.getStatus(opened.attemptId)
+    assert.equal(closed.status, 'closed')
+    assert.equal(closed.identity, null)
+    assert.equal(closed.sessionCaptured, false)
+    assert.equal(state.captures(), 0)
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    await state.service.close(opened.attemptId)
+    assert.equal(requests.filter((method) => method === 'DELETE').length, 1)
+    assert.equal(requests.filter((method) => method === 'POST').length, 0)
+  } finally {
+    detecting.resolve({
+      identity: null,
+      readyForCapture: false,
+      message: 'waiting',
+    })
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('explicit cancellation settles unresolved status and a late detection rejection cannot revive it', async () => {
+  const originalFetch = globalThis.fetch
+  let releases = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'DELETE') releases++
+    assert.notEqual(init?.method, 'POST')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup()
+  const detecting = deferred<PlatformLoginDetectionResult>()
+  state.adapter.detectLoginStatus = () => detecting.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const settled: ManagementLoginStatusResult[] = []
+    const polling = state.service.getStatus(opened.attemptId).then((status) => {
+      settled.push(status)
+      return status
+    })
+    await state.service.close(opened.attemptId)
+    await nextTurn()
+    assert.equal(settled[0]?.status, 'closed')
+    assert.equal((await polling).sessionCaptured, false)
+    detecting.reject(new Error('isolated late detection failure'))
+    await nextTurn()
+    await assert.rejects(state.service.getStatus(opened.attemptId), /不存在/)
+    await state.service.close(opened.attemptId)
+    assert.equal(releases, 1)
+    assert.equal(state.captures(), 0)
+  } finally {
+    detecting.resolve({
+      identity: null,
+      readyForCapture: false,
+      message: 'waiting',
+    })
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('native close settles pending capture, erases its late payload and never saves or maps it', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  let profileSaves = 0
+  const state = setup({
+    async load() {
+      return null
+    },
+    async save() {
+      profileSaves++
+    },
+  })
+  const capturing = deferred<CapturedManagementSession>()
+  let captureCalls = 0
+  state.adapter.captureSession = () => {
+    captureCalls++
+    return capturing.promise
+  }
+  const payload = Buffer.from('isolated-late-candidate')
+  const captured = {
+    payload,
+    capturedAt: '2026-10-11T09:00:00Z',
+    cookieCount: 1,
+  }
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const settled: ManagementLoginStatusResult[] = []
+    const polling = state.service.getStatus(opened.attemptId).then((status) => {
+      settled.push(status)
+      return status
+    })
+    await nextTurn()
+    assert.equal(captureCalls, 1)
+    state.windows[0]!.close()
+    await nextTurn()
+    assert.equal(settled[0]?.status, 'closed')
+    await polling
+    capturing.resolve(captured)
+    await nextTurn()
+    assert.ok(payload.every((value) => value === 0))
+    const closed = await state.service.getStatus(opened.attemptId)
+    assert.equal(closed.status, 'closed')
+    assert.equal(closed.identity, null)
+    assert.equal(closed.sessionCaptured, false)
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    await state.service.close(opened.attemptId)
+    assert.equal(profileSaves, 0)
+    assert.deepEqual(methods, ['DELETE'])
+  } finally {
+    capturing.resolve(captured)
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('unknown attempts reject instead of returning a fabricated closed or null status', async () => {
+  const state = setup()
+  await assert.rejects(state.service.getStatus('unknown-attempt'), /不存在/)
+  assert.equal(state.windows.length, 0)
+  assert.equal(state.captures(), 0)
+})
+
+test('existing-shop super context without a team omits the header on metadata/save/release and preserves single capture/CAS/retained focus', async () => {
+  const originalFetch = globalThis.fetch
+  const calls: Array<{ method: string; team: string | null }> = []
+  globalThis.fetch = async (_url, init) => {
+    calls.push({
+      method: init?.method ?? 'GET',
+      team: new Headers(init?.headers).get('x-team-id'),
+    })
+    assert.ok(new Headers(init?.headers).has('cookie'))
+    return Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      used_cached_validation: false,
+    })
+  }
+  const state = setup()
+  try {
+    const globalInput = { ...input, teamId: undefined }
+    assert.equal(
+      await state.service.focusShop(state.parent, {
+        shopId,
+        platform: 'douyin',
+      }),
+      false,
+    )
+    const opened = await state.service.open(state.parent, globalInput)
+    await state.service.getStatus(opened.attemptId)
+    await state.service.refresh(opened.attemptId)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal(
+      await state.service.focusShop(state.parent, {
+        shopId,
+        platform: 'douyin',
+      }),
+      true,
+    )
+    assert.equal(state.captures(), 1)
+    state.windows[0]!.close()
+    const cancelled = await state.service.open(state.parent, globalInput)
+    await state.service.close(cancelled.attemptId)
+    assert.ok(calls.some((call) => call.method === 'DELETE'))
+    assert.equal(calls.filter((call) => call.method === 'POST').length, 1)
+    assert.ok(calls.every((call) => call.team === null))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('unscoped metadata still rejects revoked personnel and non-super contexts before lease/open', async () => {
+  const originalFetch = globalThis.fetch
+  const state = setup()
+  try {
+    for (const status of [401, 403]) {
+      globalThis.fetch = async () =>
+        Response.json({ private: 'ignored fixture' }, { status })
+      await assert.rejects(
+        state.service.focusShop(state.parent, { shopId, platform: 'douyin' }),
+        status === 401 ? /SHOP_LOGIN_AUTH_REQUIRED/ : /SHOP_LOGIN_FORBIDDEN/,
+      )
+    }
+    assert.equal(state.windows.length, 0)
+    assert.equal(state.captures(), 0)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('same-window navigation/probe/script observation is bounded, redacted and detached without changing capture', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const records: ManagementLoginDiagnostic[] = []
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+    detectionResult: {
+      identity: null,
+      readyForCapture: false,
+      pageContextAvailable: true,
+      message: 'waiting',
+      probes: [
+        { probeIndex: 0, httpStatus: 200, elapsedMs: 13, requestFailed: false },
+      ],
+    },
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const contents = state.windows[0]!.webContents
+    contents.emit('did-start-navigation', {
+      isMainFrame: true,
+      url: 'https://compass.jinritemai.com/shop?private-fixture=do-not-log',
+    })
+    contents.emit(
+      'did-navigate',
+      {},
+      'https://compass.jinritemai.com/shop?private-fixture=do-not-log',
+      200,
+      'secret ignored',
+    )
+    for (let i = 0; i < 25; i++)
+      contents.emit('console-message', {
+        level: 'error',
+        message:
+          'TypeError: private-fixture https://secret.invalid/?credential=private-fixture',
+      })
+    await state.service.getStatus(opened.attemptId)
+    await state.service.getStatus(opened.attemptId)
+    assert.equal(
+      records.filter((record) => record.phase === 'account_probe').length,
+      1,
+    )
+    assert.equal(
+      records.filter((record) => record.phase === 'script').length,
+      20,
+    )
+    assert.ok(
+      records
+        .filter((record) => record.phase === 'script')
+        .every(
+          (record) =>
+            record.errorCode === 'JS_TYPE_ERROR' &&
+            record.corsBlocked === false,
+        ),
+    )
+    assert.ok(
+      records.some(
+        (record) =>
+          record.phase === 'detect' &&
+          record.captureReady === false &&
+          record.identityPresent === false &&
+          record.pageContextAvailable === true,
+      ),
+    )
+    contents.emit('did-start-navigation', {
+      isMainFrame: true,
+      url: 'https://compass.jinritemai.com/shop?different-secret=ignored',
+    })
+    contents.emit('console-message', {
+      level: 'error',
+      message: 'Access has been blocked by CORS policy: private-fixture',
+    })
+    await state.service.getStatus(opened.attemptId)
+    assert.equal(
+      records.filter((record) => record.phase === 'account_probe').length,
+      2,
+    )
+    assert.ok(
+      records.some(
+        (record) =>
+          record.phase === 'script' &&
+          record.navigationSequence === 2 &&
+          record.corsBlocked === true &&
+          record.scriptErrorCount === 1,
+      ),
+    )
+    assert.equal(state.windows[0]!.destroyed, false)
+    await state.service.close(opened.attemptId)
+    const length = records.length
+    contents.emit('console-message', {
+      level: 'error',
+      message: 'private-fixture',
+    })
+    contents.emit('did-start-navigation', {
+      isMainFrame: true,
+      url: 'https://secret.invalid',
+    })
+    assert.equal(records.length, length)
+    assert.equal(contents.listenerCount('console-message'), 0)
+    assert.equal(contents.listenerCount('did-navigate'), 0)
+    assert.equal(state.captures(), 0)
+    assert.equal(JSON.stringify(records).includes('private-fixture'), false)
+    assert.equal(JSON.stringify(records).includes('secret.invalid'), false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('optional observation getters and detach failures cannot fail capture polling or lease cleanup', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const records: ManagementLoginDiagnostic[] = []
+  const detection: PlatformLoginDetectionResult = {
+    identity: null,
+    readyForCapture: false,
+    message: 'waiting',
+    get probes(): PlatformLoginDetectionResult['probes'] {
+      throw new Error('private optional observation getter')
+    },
+    get pageContextAvailable(): boolean | undefined {
+      throw new Error('private optional page getter')
+    },
+  }
+  const state = setup(undefined, {
+    onDiagnostic: (record) => records.push(record),
+    detectionResult: detection,
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'waiting',
+    )
+    const contents = state.windows[0]!.webContents
+    contents.off = () => {
+      throw new Error('private optional off failure')
+    }
+    await state.service.close(opened.attemptId)
+    assert.equal(state.windows[0]!.destroyed, true)
+    const length = records.length
+    contents.emit('console-message', {
+      level: 'error',
+      message: 'private optional retained observer',
+    })
+    assert.equal(records.length, length)
+    assert.equal(JSON.stringify(records).includes('private optional'), false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
 
 test('Main metadata deadline aborts HTTP and a late success cannot focus or create a window', async () => {
   const originalFetch = globalThis.fetch
@@ -372,6 +796,7 @@ test('development diagnostics whitelist navigation code/errno and explicit close
         'errno',
         'isMainFrame',
         'mainFrameLoading',
+        'navigationSequence',
         'closeReason',
       ].sort(),
     )

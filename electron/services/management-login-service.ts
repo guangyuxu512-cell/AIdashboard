@@ -8,7 +8,13 @@ import {
 import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { LoginDiagnostic } from './login-diagnostics'
-import { isSafeLoginDiagnosticCode } from './login-diagnostics'
+import {
+  isSafeLoginDiagnosticCode,
+  safeAccountProbes,
+  accountProbePathClasses,
+  loginNavigationClass,
+  loginScriptErrorClass,
+} from './login-diagnostics'
 
 import type {
   ManagementLoginCompleteInput,
@@ -32,13 +38,14 @@ import type { ManagementLoginProfileMappingStore } from './management-login-prof
 import type {
   CapturedManagementSession,
   PlatformAuthAdapter,
+  PlatformLoginDetectionResult,
 } from './platform-auth-adapter'
 
 interface LoginAttempt {
   attemptId: string
   correlationId: string
   platform: ManagementLoginPlatform
-  teamId: string
+  teamId?: string
   appSession: Session
   partition: string
   window: BrowserWindow | null
@@ -53,6 +60,10 @@ interface LoginAttempt {
   lastPddVerificationFailureFingerprint: string | null
   lastPddVerificationFailureAt: number | null
   closeReason: LoginCloseReason | null
+  navigationSequence: number
+  lastProbeDiagnosticFingerprint?: string
+  disposePageDiagnostics?: () => void
+  finishPendingStatus?: () => void
 }
 
 type LoginCloseReason =
@@ -339,6 +350,7 @@ export class ManagementLoginService {
       attempt = {
         attemptId,
         correlationId: input.correlationId ?? attemptId,
+        navigationSequence: 0,
         platform: input.platform,
         teamId: input.teamId,
         appSession: parent.webContents.session,
@@ -421,7 +433,10 @@ export class ManagementLoginService {
     })
     loginWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     attempt.window = loginWindow
-    this.installNavigationDiagnostics(attempt, loginWindow)
+    attempt.disposePageDiagnostics = this.installNavigationDiagnostics(
+      attempt,
+      loginWindow,
+    )
     this.report(attempt, 'open', 'finish')
     if (shopWindowKey)
       this.shopWindows.set(shopWindowKey, {
@@ -438,6 +453,7 @@ export class ManagementLoginService {
     attempt.status = 'waiting'
     attempt.message = '等待人工登录，系统会自动识别店铺'
     loginWindow.on('closed', () => {
+      attempt!.disposePageDiagnostics?.()
       this.report(attempt!, 'close', 'closed', {
         closeReason:
           attempt!.closeReason ??
@@ -462,6 +478,9 @@ export class ManagementLoginService {
         attempt!.message = '登录窗口已提前关闭，未采集店铺会话'
         void this.releaseRecoveryLease(attempt!)
       }
+      // Page execution may never settle once its WebContents is destroyed.
+      // Complete the existing IPC from the actual terminal window state.
+      attempt!.finishPendingStatus?.()
     })
     try {
       this.report(attempt, 'load', 'start')
@@ -478,14 +497,23 @@ export class ManagementLoginService {
   }
 
   async getStatus(attemptId: string): Promise<ManagementLoginStatusResult> {
+    const attempt = this.requireAttempt(attemptId)
+    if (attempt.status !== 'waiting') return this.toStatus(attempt)
     const existing = this.polls.get(attemptId)
     if (existing) return existing
-    const pending = this.detectStatus(attemptId)
+    let finishPendingStatus!: () => void
+    const ended = new Promise<ManagementLoginStatusResult>((resolve) => {
+      finishPendingStatus = () => resolve(this.toStatus(attempt))
+    })
+    attempt.finishPendingStatus = finishPendingStatus
+    const pending = Promise.race([this.detectStatus(attemptId), ended])
     this.polls.set(attemptId, pending)
     try {
       return await pending
     } finally {
-      this.polls.delete(attemptId)
+      if (this.polls.get(attemptId) === pending) this.polls.delete(attemptId)
+      if (attempt.finishPendingStatus === finishPendingStatus)
+        attempt.finishPendingStatus = undefined
     }
   }
 
@@ -507,7 +535,14 @@ export class ManagementLoginService {
           loginWindow.webContents.session,
           loginWindow.webContents.id,
         )
-        this.report(attempt, phase, 'finish')
+        if (
+          this.attempts.get(attemptId) !== attempt ||
+          attempt.status !== 'waiting' ||
+          attempt.window !== loginWindow ||
+          loginWindow.isDestroyed()
+        )
+          return this.toStatus(attempt)
+        this.reportDetection(attempt, detection)
         if (detection.readyForCapture) {
           phase = 'capture'
           this.report(attempt, phase, 'start')
@@ -518,6 +553,7 @@ export class ManagementLoginService {
           )
           this.report(attempt, phase, 'finish')
           if (
+            this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
             loginWindow.isDestroyed()
@@ -561,6 +597,7 @@ export class ManagementLoginService {
             return this.toStatus(attempt)
           }
           if (
+            this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
             loginWindow.isDestroyed()
@@ -756,13 +793,16 @@ export class ManagementLoginService {
     if (!attempt) return
     attempt.closeReason = reason
     this.report(attempt, 'close', 'request')
+    attempt.disposePageDiagnostics?.()
     this.attempts.delete(attemptId)
     attempt.status = 'closed'
     if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
     attempt.identity = null
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
-    await this.releaseRecoveryLease(attempt)
+    const releasing = this.releaseRecoveryLease(attempt)
+    attempt.finishPendingStatus?.()
+    await releasing
   }
 
   async closeAll(): Promise<void> {
@@ -817,6 +857,7 @@ export class ManagementLoginService {
     retainWindow = false,
   ): void {
     attempt.status = 'completed'
+    attempt.disposePageDiagnostics?.()
     attempt.message = message
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
       attempt.systemCloseRequested = true
@@ -827,12 +868,14 @@ export class ManagementLoginService {
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
     attempt.recovery = null
+    attempt.finishPendingStatus?.()
     this.attempts.delete(attempt.attemptId)
   }
 
   private armAttemptTimeout(attempt: LoginAttempt): void {
     this.clearAttemptTimeout(attempt)
     attempt.expiresAt = setTimeout(() => {
+      attempt.disposePageDiagnostics?.()
       attempt.closeReason = 'attempt_timeout'
       this.report(attempt, 'close', 'request')
       if (attempt.window && !attempt.window.isDestroyed())
@@ -843,6 +886,7 @@ export class ManagementLoginService {
       attempt.message = '登录尝试已超时，请重新打开浏览器登录'
       attempt.expiresAt = null
       void this.releaseRecoveryLease(attempt)
+      attempt.finishPendingStatus?.()
     }, LOGIN_ATTEMPT_TIMEOUT_MS)
     attempt.expiresAt.unref()
   }
@@ -857,9 +901,14 @@ export class ManagementLoginService {
     phase: ManagementLoginDiagnostic['phase'],
     event: ManagementLoginDiagnostic['event'],
     detail: Partial<
-      Pick<
+      Omit<
         ManagementLoginDiagnostic,
-        'errorCode' | 'errno' | 'isMainFrame' | 'closeReason'
+        | 'timestamp'
+        | 'attemptId'
+        | 'correlationId'
+        | 'source'
+        | 'phase'
+        | 'event'
       >
     > = {},
   ): void {
@@ -880,10 +929,12 @@ export class ManagementLoginService {
     }
     try {
       this.onDiagnostic({
+        ...detail,
         timestamp: new Date().toISOString(),
         attemptId: attempt.attemptId,
         correlationId: attempt.correlationId,
         source: 'main',
+        navigationSequence: attempt.navigationSequence,
         phase,
         event,
         errorCode: detail.errorCode ?? null,
@@ -898,6 +949,48 @@ export class ManagementLoginService {
   }
 
   private readonly metadataTimeoutMs: number
+  private reportDetection(
+    attempt: LoginAttempt,
+    detection: PlatformLoginDetectionResult,
+  ): void {
+    try {
+      this.report(attempt, 'detect', 'finish', {
+        identityPresent: Boolean(detection.identity),
+        captureReady: detection.readyForCapture,
+        pageContextAvailable: detection.pageContextAvailable,
+      })
+    } catch {
+      this.report(attempt, 'detect', 'finish')
+    }
+    try {
+      const probes = safeAccountProbes(detection.probes)
+      const fingerprint = JSON.stringify([
+        attempt.navigationSequence,
+        ...probes.map(({ probeIndex, httpStatus, requestFailed }) => [
+          probeIndex,
+          httpStatus,
+          requestFailed,
+        ]),
+      ])
+      if (attempt.lastProbeDiagnosticFingerprint !== fingerprint) {
+        attempt.lastProbeDiagnosticFingerprint = fingerprint
+        for (const probe of probes)
+          this.report(
+            attempt,
+            'account_probe',
+            probe.requestFailed ? 'error' : 'finish',
+            {
+              pathClass: accountProbePathClasses[probe.probeIndex],
+              httpStatus: probe.httpStatus,
+              elapsedMs: probe.elapsedMs,
+              requestFailed: probe.requestFailed,
+            },
+          )
+      }
+    } catch {
+      /* Optional probe telemetry cannot change capture or authorization. */
+    }
+  }
   trace(record: LoginDiagnostic): void {
     try {
       this.onDiagnostic?.({ ...record, timestamp: new Date().toISOString() })
@@ -916,22 +1009,65 @@ export class ManagementLoginService {
   private installNavigationDiagnostics(
     attempt: LoginAttempt,
     window: BrowserWindow,
-  ): void {
-    if (!this.onDiagnostic) return
+  ): () => void {
+    if (!this.onDiagnostic) return () => undefined
     const contents = window.webContents
-    contents.on('did-start-navigation', (details) => {
+    let scriptErrorCount = 0
+    let disposed = false
+    const started = (details: { isMainFrame: boolean; url: string }) => {
+      if (disposed) return
+      if (details.isMainFrame) {
+        attempt.navigationSequence = Math.min(
+          10000,
+          attempt.navigationSequence + 1,
+        )
+        scriptErrorCount = 0
+      }
       this.report(attempt, 'load', 'start', {
         isMainFrame: details.isMainFrame,
+        pathClass: loginNavigationClass(details.url),
       })
-    })
-    contents.on('did-redirect-navigation', (details) => {
+    }
+    const redirected = (details: { isMainFrame: boolean; url: string }) => {
+      if (disposed) return
       this.report(attempt, 'load', 'redirect', {
         isMainFrame: details.isMainFrame,
+        pathClass: loginNavigationClass(details.url),
       })
-    })
-    contents.on('did-frame-finish-load', (_event, isMainFrame) => {
+    }
+    const finished = (_event: unknown, isMainFrame: boolean) => {
+      if (disposed) return
       this.report(attempt, 'load', 'finish', { isMainFrame })
-    })
+    }
+    const navigated = (_event: unknown, url: string, status: number) => {
+      if (disposed) return
+      this.report(attempt, 'load', 'finish', {
+        isMainFrame: true,
+        pathClass: loginNavigationClass(url),
+        httpStatus: status >= 100 && status <= 599 ? status : null,
+      })
+    }
+    const consoleError = (details: {
+      level: string
+      message: string
+      frame?: unknown
+    }) => {
+      try {
+        if (disposed || details.level !== 'error' || scriptErrorCount >= 20)
+          return
+        scriptErrorCount++
+        const errorCode = loginScriptErrorClass(details.message)
+        this.report(attempt, 'script', 'error', {
+          errorCode,
+          scriptErrorCount,
+          corsBlocked: errorCode === 'JS_CORS_POLICY',
+          isMainFrame:
+            Boolean(details.frame) && details.frame === contents.mainFrame,
+        })
+      } catch {
+        /* No raw console or frame state escapes observation. */
+      }
+    }
     const failed = (
       _event: unknown,
       errno: number,
@@ -939,13 +1075,41 @@ export class ManagementLoginService {
       _url: string,
       isMainFrame: boolean,
     ) => {
+      if (disposed) return
       this.report(attempt, 'load', 'error', { errno, isMainFrame })
     }
+    const gone = (_event: unknown, detail: { exitCode: number }) => {
+      if (disposed) return
+      this.report(attempt, 'load', 'renderer_gone', { errno: detail.exitCode })
+    }
+    contents.on('did-start-navigation', started)
+    contents.on('did-redirect-navigation', redirected)
+    contents.on('did-frame-finish-load', finished)
+    contents.on('did-navigate', navigated)
+    contents.on('console-message', consoleError)
     contents.on('did-fail-load', failed)
     contents.on('did-fail-provisional-load', failed)
-    contents.on('render-process-gone', (_event, detail) => {
-      this.report(attempt, 'load', 'renderer_gone', { errno: detail.exitCode })
-    })
+    contents.on('render-process-gone', gone)
+    return () => {
+      if (disposed) return
+      disposed = true
+      for (const detach of [
+        () => contents.off('did-start-navigation', started),
+        () => contents.off('did-redirect-navigation', redirected),
+        () => contents.off('did-frame-finish-load', finished),
+        () => contents.off('did-navigate', navigated),
+        () => contents.off('console-message', consoleError),
+        () => contents.off('did-fail-load', failed),
+        () => contents.off('did-fail-provisional-load', failed),
+        () => contents.off('render-process-gone', gone),
+      ]) {
+        try {
+          detach()
+        } catch {
+          /* Diagnostic cleanup cannot prevent release/save/close. */
+        }
+      }
+    }
   }
 
   private backendUrl(pathname: string): string {
@@ -1007,7 +1171,7 @@ export class ManagementLoginService {
     return {
       'content-type': 'application/json',
       cookie: `${sessionCookie.name}=${sessionCookie.value}`,
-      'x-team-id': attempt.teamId,
+      ...(attempt.teamId ? { 'x-team-id': attempt.teamId } : {}),
     }
   }
 

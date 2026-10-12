@@ -25,6 +25,37 @@ const shop = {
 } as ShopListItemViewModel
 
 describe('shop list uses the shared login feedback, not an independent busy state', () => {
+  it('restores the actual login button after native-close feedback is removed', async () => {
+    const wrapper = mount(ShopListTable, {
+      props: {
+        rows: [shop],
+        canLogin: true,
+        loginFeedback: new Map([
+          [
+            'shop',
+            {
+              busy: true,
+              opening: false,
+              focusing: true,
+              error: null,
+              status: '等待识别',
+            },
+          ],
+        ]),
+      },
+      global: { stubs: { DataTable } },
+    })
+    expect(wrapper.text()).toContain('登录中…')
+    await wrapper.setProps({ loginFeedback: new Map() })
+    const login = wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '登录')!
+    expect(login.props('loading')).toBe(false)
+    expect(login.find('button').attributes('disabled')).toBeUndefined()
+    await login.trigger('click')
+    expect(wrapper.emitted('login')?.[0]).toEqual([shop])
+    wrapper.unmount()
+  })
   it('opening/loading disables duplicate click then restores the same button after failure', async () => {
     const busy: ShopLoginFeedback = {
       busy: true,

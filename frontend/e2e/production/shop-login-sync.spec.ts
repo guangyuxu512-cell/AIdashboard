@@ -9,6 +9,8 @@ async function prepare(
   page: Page,
   superAccount: boolean,
   pendingCapture = false,
+  unscoped = false,
+  pendingDetection = false,
 ) {
   const unexpected: string[] = []
   const writes: string[] = []
@@ -17,19 +19,34 @@ async function prepare(
   let healthFailure = 'unknown'
   await page.exposeFunction('finishSyncContract', () => ++version)
   await page.addInitScript(
-    ({ teamId, personId, shopId, timestamp, pendingCapture }) => {
-      localStorage.setItem(`control-center.active-team.${personId}`, teamId)
+    ({
+      teamId,
+      personId,
+      shopId,
+      timestamp,
+      pendingCapture,
+      unscoped,
+      pendingDetection,
+    }) => {
+      if (!unscoped)
+        localStorage.setItem(`control-center.active-team.${personId}`, teamId)
       const calls: string[] = []
       let retained = false
       let finishFocus: (() => void) | undefined
+      let finishDetection: (() => void) | undefined
       Object.assign(window, {
         syncContractCalls: calls,
         finishFocusContract() {
           finishFocus?.()
         },
+        closeCaptureContract() {
+          retained = false
+          finishDetection?.()
+        },
         desktop: {
           appearance: { setTitleBarTheme() {} },
           managementLogin: {
+            globalShopLoginSupported: true,
             ...(pendingCapture ? { correlationSupported: true as const } : {}),
             async focusShop() {
               calls.push('focus')
@@ -46,6 +63,16 @@ async function prepare(
             },
             async getStatus() {
               calls.push('status')
+              if (pendingDetection)
+                return new Promise((resolve) => {
+                  finishDetection = () =>
+                    resolve({
+                      attemptId: 'contract-attempt',
+                      status: 'closed',
+                      message: '登录窗口已关闭',
+                      recovery: false,
+                    })
+                })
               return {
                 attemptId: 'contract-attempt',
                 status: pendingCapture ? 'opened' : 'identified',
@@ -74,7 +101,15 @@ async function prepare(
         },
       })
     },
-    { teamId, personId, shopId, timestamp, pendingCapture },
+    {
+      teamId,
+      personId,
+      shopId,
+      timestamp,
+      pendingCapture,
+      unscoped,
+      pendingDetection,
+    },
   )
   const shop = () => ({
     shop_id: shopId,
@@ -93,6 +128,8 @@ async function prepare(
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
+    if (unscoped && request.headers()['x-team-id'])
+      unexpected.push('fabricated-team-header')
     if (request.method() !== 'GET') writes.push(`${request.method()} ${path}`)
     let data: unknown
     if (path === '/api/v1/auth/me')
@@ -299,6 +336,89 @@ test('opened capture remains focusable in list and detail while only pending foc
     ])
   expect(evidence.unexpected).toEqual([])
 })
+
+for (const entry of ['list', 'detail'] as const) {
+  test(`intercepted closed receipt restores ${entry} login during pending focus without saving or duplicate release`, async ({
+    page,
+  }) => {
+    const evidence = await prepare(page, true, true, true, true)
+    const row = page.locator('tbody tr').filter({ hasText: '隔离登录契约店铺' })
+    await row.getByRole('button', { name: '登录', exact: true }).click()
+    const waiting = row.getByRole('button', { name: /登录中…$/ })
+    await expect(waiting).toBeEnabled()
+    await waiting.click()
+    await expect(waiting).toBeDisabled()
+    if (entry === 'detail')
+      await row.getByRole('button', { name: '查看', exact: true }).click()
+    const scope = entry === 'detail' ? page.locator('.n-drawer') : row
+    await page.evaluate(() =>
+      (
+        window as typeof window & { closeCaptureContract: () => void }
+      ).closeCaptureContract(),
+    )
+    await expect(
+      scope.getByRole('button', { name: '登录', exact: true }),
+    ).toBeEnabled()
+    await expect(scope.getByRole('button', { name: /登录中…$/ })).toHaveCount(0)
+    await page.evaluate(() =>
+      (
+        window as typeof window & { finishFocusContract: () => void }
+      ).finishFocusContract(),
+    )
+    await expect(
+      scope.getByRole('button', { name: '登录', exact: true }),
+    ).toBeEnabled()
+    const beforeRetry = await page.evaluate(
+      () =>
+        (window as typeof window & { syncContractCalls: string[] })
+          .syncContractCalls,
+    )
+    expect(beforeRetry.filter((call) => call === 'close')).toHaveLength(1)
+    expect(beforeRetry.filter((call) => call === 'open')).toHaveLength(1)
+    expect(beforeRetry.filter((call) => call === 'refresh')).toHaveLength(0)
+    expect(evidence.writes).toEqual([
+      `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+    ])
+    await scope.getByRole('button', { name: '登录', exact: true }).click()
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as typeof window & { syncContractCalls: string[] }
+            ).syncContractCalls.filter((call) => call === 'open').length,
+        ),
+      )
+      .toBe(2)
+    expect(evidence.writes).toEqual([
+      `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+      `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+    ])
+    expect(evidence.unexpected).toEqual([])
+    await expect(page.getByText('登录状态已更新', { exact: true })).toHaveCount(
+      0,
+    )
+  })
+  test(`unscoped super starts ${entry} login and confirms fresh metadata without any team header`, async ({
+    page,
+  }) => {
+    const evidence = await prepare(page, true, false, true)
+    if (entry === 'detail')
+      await page.getByRole('button', { name: '查看', exact: true }).click()
+    const scope =
+      entry === 'detail'
+        ? page.locator('.n-drawer')
+        : page.locator('tbody tr').filter({ hasText: '隔离登录契约店铺' })
+    await scope.getByRole('button', { name: '登录', exact: true }).click()
+    await expect(
+      page.getByText('登录状态已更新', { exact: true }),
+    ).toBeVisible()
+    expect(evidence.writes).toEqual([
+      `POST /api/v1/shops/${shopId}/session/refresh-lease`,
+    ])
+    expect(evidence.unexpected).toEqual([])
+  })
+}
 
 test('ordinary team member has no list or detail login entry and submits no lease', async ({
   page,

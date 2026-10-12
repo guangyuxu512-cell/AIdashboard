@@ -1,9 +1,7 @@
 import type { Session } from 'electron'
+import type { LoginAccountProbe } from './login-diagnostics'
 
-import type {
-  ManagementLoginIdentity,
-  ManagementLoginPlatform,
-} from '../types'
+import type { ManagementLoginIdentity, ManagementLoginPlatform } from '../types'
 
 export interface CapturedManagementSession {
   payload: Buffer
@@ -15,6 +13,8 @@ export interface PlatformLoginDetectionResult {
   identity: ManagementLoginIdentity | null
   readyForCapture: boolean
   message: string
+  pageContextAvailable?: boolean
+  probes?: LoginAccountProbe[]
 }
 
 export interface PlatformAuthAdapter {

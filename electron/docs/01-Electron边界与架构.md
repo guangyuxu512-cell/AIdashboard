@@ -55,6 +55,14 @@ partition 与本地 Profile mapping。
 
 取消、完成、应用退出和 30 分钟超时都会清空 Buffer；Session payload、密码不得写入磁盘或日志。Management Login Profile 仅保存完成接入后的平台与 partition 映射，不保存 Cookie payload。
 
+1.0.6关闭恢复收口：同一attempt的状态检测仍single-flight，但原生`closed`、显式取消及超时会
+按最终状态直接结束已在等待的`get-status`，不依赖销毁WebContents中的页面执行Promise返回。
+这不承诺撤回已发出的平台/服务器请求。迟到检测先复核attempt/窗口/状态，不再开始捕获；
+迟到捕获只清零其Buffer，不重新识别、保存或复活closed。新店Main主动关闭仍返回identified并保留确认数据。
+自然关闭先由Main发起一次租约释放，再以recovery=false返回；Renderer清理忙态/置前操作，
+不再次释放该已由Main接管的租约。未知attempt拒绝；空桥接响应为安全查询失败，不推断Session失效。
+保持旧桥接/取消失败的既有清理兜底，不新增关闭事件IPC、固定刷新或通用重试框架。
+
 阶段 3C-3 的 Session 恢复仍由 Management Login Service 承担：存在 shop 映射时复用本机 persistent partition，不存在时只在当前电脑新建 Profile。Main 持有 Backend Refresh Lease、expected version 与捕获 Buffer，Renderer 只看非敏感进度。用户提前关闭、取消、30 分钟超时和应用退出会请求释放 Lease；异常退出由服务器 Lease 到期兜底。Management Login Profile 是当前管理电脑本地浏览器身份环境，ShopSession 是服务器权威程序认证状态，两者不得同步或混用。
 
 1.0.5的店铺登录窄诊断在开发与正式包中均启用，但正式包继续关闭DevTools。Main复用

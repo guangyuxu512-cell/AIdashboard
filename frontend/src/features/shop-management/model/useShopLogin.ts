@@ -45,7 +45,7 @@ interface LoginFlow {
   shopId: string
   scopeVersion: number
   actorId: string | undefined
-  teamId: string
+  teamId?: string
   attemptId?: string
   leaseId?: string
   stop?: () => void
@@ -79,7 +79,7 @@ export function useShopLogin() {
     return (
       flow.scopeVersion === scopeVersion &&
       auth.currentUser?.userId === flow.actorId &&
-      auth.activeTeamId === flow.teamId &&
+      (auth.activeTeamId || undefined) === flow.teamId &&
       auth.isSuperAccount &&
       active.get(flow.shopId) === flow
     )
@@ -171,7 +171,7 @@ export function useShopLogin() {
     const existing = active.get(shop.shopId)
     const correlationId = existing?.correlationId ?? crypto.randomUUID()
     const bridge = window.desktop?.managementLogin
-    const teamId = auth.activeTeamId
+    const teamId = auth.activeTeamId || undefined
     const eligiblePlatform = supportsShopLogin(shop.platform)
     reportLoginStage(correlationId, 'entry', 'start', {
       bridgeAvailable: Boolean(bridge?.focusShop),
@@ -195,10 +195,10 @@ export function useShopLogin() {
       })
       return
     }
-    if (!teamId) {
-      message.info('请先选择当前团队')
+    if (!teamId && bridge.globalShopLoginSupported !== true) {
+      message.info('请更新桌面客户端以支持超级账号无团队登录')
       reportLoginStage(correlationId, 'entry', 'blocked', {
-        errorCode: 'NO_TEAM',
+        errorCode: 'DESKTOP_UPGRADE_REQUIRED',
       })
       return
     }
@@ -207,6 +207,7 @@ export function useShopLogin() {
     // is diagnostic-specific, not a general version/capability framework.
     const correlation =
       bridge.correlationSupported === true ? { correlationId } : {}
+    const teamContext = teamId ? { teamId } : {}
     if (existing) {
       if (!current(existing) || !existing.windowOpened || existing.focusing) {
         reportLoginStage(correlationId, 'entry', 'duplicate')
@@ -225,7 +226,7 @@ export function useShopLogin() {
           bridge.focusShop({
             platform: shop.platform,
             shopId: shop.shopId,
-            teamId,
+            ...teamContext,
             ...correlation,
           }),
           LOGIN_FOCUS_TIMEOUT_MS,
@@ -274,7 +275,7 @@ export function useShopLogin() {
         bridge.focusShop({
           platform: shop.platform,
           shopId: shop.shopId,
-          teamId,
+          ...teamContext,
           ...correlation,
         }),
         LOGIN_FOCUS_TIMEOUT_MS,
@@ -308,7 +309,7 @@ export function useShopLogin() {
         bridge
           .open({
             platform: shop.platform,
-            teamId,
+            ...teamContext,
             attemptId: flow.attemptId,
             ...correlation,
             recovery: {
@@ -349,6 +350,9 @@ export function useShopLogin() {
             status: status.message,
           })
           if (status.status === 'closed') {
+            // Main clears recovery before its once-only release attempt.
+            // Keep the existing fallback for older/failed bridge replies.
+            if (status.recovery === false) flow.leaseReleaseStarted = true
             await cancel(shop.shopId)
             return
           }
@@ -397,7 +401,7 @@ export function useShopLogin() {
   }
   watch(
     () =>
-      `${auth.currentUser?.userId}:${auth.activeTeamId}:${auth.isSuperAccount}`,
+      `${auth.currentUser?.userId}:${auth.activeTeamId || ''}:${auth.isSuperAccount}`,
     () => {
       scopeVersion++
       for (const shopId of active.keys()) void cancel(shopId)
