@@ -25,6 +25,8 @@
 失败旧Session保护、成功留窗/释放锁、新店自动关闭。首次加载不把观察日志冒称根因修复。
 Owner合成验证，不操作Integration/生产、不新开Electron、不写库或改0042/0043。
 实际关窗49da白名单证据与无团队a61d成功证据复用，补在途检测/捕获迟到与释放定向回归。
+已用deferred检测先复现98关窗后IPC未结算，再补最小终态结算/迟到保护；合成验证不替代原生Gate。
+关闭恢复阶段详见 `docs/engineering/shop-login-close-recovery-v1-gate1-20261013.md`。
 精确Candidate及匹配Source安装包交ca97唯一Real5180→8100→Integration验收，Green/CI后由Main发布。
 已通过的选品30e8/86项/原生确认保留，不重复验收或混入本轮；后续回报明确“店铺登录修复”阶段。
 

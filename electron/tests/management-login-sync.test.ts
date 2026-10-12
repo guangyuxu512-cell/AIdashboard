@@ -6,8 +6,12 @@ import {
   ManagementLoginService,
   type ManagementLoginDiagnostic,
 } from '../services/management-login-service'
-import type { ManagementLoginOpenInput } from '../types'
 import type {
+  ManagementLoginOpenInput,
+  ManagementLoginStatusResult,
+} from '../types'
+import type {
+  CapturedManagementSession,
   PlatformAuthAdapter,
   PlatformLoginDetectionResult,
 } from '../services/platform-auth-adapter'
@@ -124,12 +128,203 @@ function setup(
   })
   return {
     service,
+    adapter,
     windows,
     buffers,
     captures: () => captures,
     parent: new WindowStub() as unknown as BrowserWindow,
   }
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+test('native close settles an unresolved single-flight detection after focus, releases once and ignores late identity', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup()
+  const detecting = deferred<PlatformLoginDetectionResult>()
+  let detections = 0
+  state.adapter.detectLoginStatus = () => {
+    detections++
+    return detecting.promise
+  }
+  try {
+    const opened = await state.service.open(state.parent, {
+      ...input,
+      teamId: undefined,
+    })
+    const settled: ManagementLoginStatusResult[] = []
+    const polling = state.service.getStatus(opened.attemptId).then((status) => {
+      settled.push(status)
+      return status
+    })
+    const duplicate = state.service.getStatus(opened.attemptId)
+    assert.equal(
+      await state.service.focusShop(state.parent, {
+        shopId,
+        platform: 'douyin',
+      }),
+      true,
+    )
+    state.windows[0]!.close()
+    await nextTurn()
+    // Detection deliberately remains unresolved: another poll cannot rescue
+    // the Renderer while its first IPC is still awaiting page execution.
+    assert.equal(settled[0]?.status, 'closed')
+    assert.deepEqual(await duplicate, await polling)
+    assert.equal(detections, 1)
+    assert.equal(state.windows.length, 1)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'closed',
+    )
+    detecting.resolve({
+      readyForCapture: true,
+      message: 'late identity',
+      identity: {
+        platform: 'douyin',
+        platformShopId: 'matching-test-shop',
+        shopDisplayName: 'test shop',
+      },
+    })
+    await nextTurn()
+    const closed = await state.service.getStatus(opened.attemptId)
+    assert.equal(closed.status, 'closed')
+    assert.equal(closed.identity, null)
+    assert.equal(closed.sessionCaptured, false)
+    assert.equal(state.captures(), 0)
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    await state.service.close(opened.attemptId)
+    assert.equal(requests.filter((method) => method === 'DELETE').length, 1)
+    assert.equal(requests.filter((method) => method === 'POST').length, 0)
+  } finally {
+    detecting.resolve({
+      identity: null,
+      readyForCapture: false,
+      message: 'waiting',
+    })
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('explicit cancellation settles unresolved status and a late detection rejection cannot revive it', async () => {
+  const originalFetch = globalThis.fetch
+  let releases = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'DELETE') releases++
+    assert.notEqual(init?.method, 'POST')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup()
+  const detecting = deferred<PlatformLoginDetectionResult>()
+  state.adapter.detectLoginStatus = () => detecting.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const settled: ManagementLoginStatusResult[] = []
+    const polling = state.service.getStatus(opened.attemptId).then((status) => {
+      settled.push(status)
+      return status
+    })
+    await state.service.close(opened.attemptId)
+    await nextTurn()
+    assert.equal(settled[0]?.status, 'closed')
+    assert.equal((await polling).sessionCaptured, false)
+    detecting.reject(new Error('isolated late detection failure'))
+    await nextTurn()
+    await assert.rejects(state.service.getStatus(opened.attemptId), /不存在/)
+    await state.service.close(opened.attemptId)
+    assert.equal(releases, 1)
+    assert.equal(state.captures(), 0)
+  } finally {
+    detecting.resolve({
+      identity: null,
+      readyForCapture: false,
+      message: 'waiting',
+    })
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('native close settles pending capture, erases its late payload and never saves or maps it', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  let profileSaves = 0
+  const state = setup({
+    async load() {
+      return null
+    },
+    async save() {
+      profileSaves++
+    },
+  })
+  const capturing = deferred<CapturedManagementSession>()
+  let captureCalls = 0
+  state.adapter.captureSession = () => {
+    captureCalls++
+    return capturing.promise
+  }
+  const payload = Buffer.from('isolated-late-candidate')
+  const captured = {
+    payload,
+    capturedAt: '2026-10-11T09:00:00Z',
+    cookieCount: 1,
+  }
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const settled: ManagementLoginStatusResult[] = []
+    const polling = state.service.getStatus(opened.attemptId).then((status) => {
+      settled.push(status)
+      return status
+    })
+    await nextTurn()
+    assert.equal(captureCalls, 1)
+    state.windows[0]!.close()
+    await nextTurn()
+    assert.equal(settled[0]?.status, 'closed')
+    await polling
+    capturing.resolve(captured)
+    await nextTurn()
+    assert.ok(payload.every((value) => value === 0))
+    const closed = await state.service.getStatus(opened.attemptId)
+    assert.equal(closed.status, 'closed')
+    assert.equal(closed.identity, null)
+    assert.equal(closed.sessionCaptured, false)
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    await state.service.close(opened.attemptId)
+    assert.equal(profileSaves, 0)
+    assert.deepEqual(methods, ['DELETE'])
+  } finally {
+    capturing.resolve(captured)
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('unknown attempts reject instead of returning a fabricated closed or null status', async () => {
+  const state = setup()
+  await assert.rejects(state.service.getStatus('unknown-attempt'), /不存在/)
+  assert.equal(state.windows.length, 0)
+  assert.equal(state.captures(), 0)
+})
 
 test('existing-shop super context without a team omits the header on metadata/save/release and preserves single capture/CAS/retained focus', async () => {
   const originalFetch = globalThis.fetch

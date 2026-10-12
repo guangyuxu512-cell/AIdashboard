@@ -88,4 +88,12 @@ Renderer只有明确支持标记时允许超级账号无团队调用；旧1.0.5�
 同店 open、状态检测及保存均 single-flight；取消或退出后的迟到结果不再提示成功。
 新店 `complete` 的识别后自动关闭和 Onboarding 契约保留。
 
+`get-status`返回类型仍为非空`ManagementLoginStatusResult`，无新通道/字段。
+真实窗口关闭时，即使已有检测/捕获Promise未返回，等待中的同一IPC也返回最终closed状态，
+不能要求Renderer再发下一次poll才能获知关闭。已有终态先于共享pending检查；未知attempt仍拒绝，
+不返回null或伪造关闭。Main主动Onboarding自动关闭保留identified与捕获元数据，不能误清确认页。
+closed且recovery=false表示Main已接管该租约的释放尝试（并非确认远端DELETE成功）；Renderer
+清理active/忙态和旧focus，不再重复释放。释放失败继续服务器过期兜底；旧桥接/查询失败保持原清理路径。
+轮询停止后的晚到结果/错误不再调用回调，空响应报告安全读取失败而非登录失效或成功。
+
 Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。拼多多 Adapter 只采集适用于 `mms.pinduoduo.com` 的 Cookie；Main 通过 Backend 预检成功取得店铺身份后才将非敏感 ID/名称放入现有 Status IPC。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。

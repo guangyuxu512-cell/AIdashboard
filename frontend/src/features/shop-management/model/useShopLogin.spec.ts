@@ -386,6 +386,80 @@ describe('page-owned shop login sync', () => {
     expect(desktop.close).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+  it('native closed receipt clears busy during duplicate focus and lets a valid shop log in again without reviving the old flow', async () => {
+    let finishStatus!: (result: ManagementLoginStatusResult) => void
+    const desktop = window.desktop!.managementLogin!
+    desktop.getStatus = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishStatus = resolve
+        }),
+    )
+    const { flow, wrapper } = setup()
+    await flow.login(shop)
+    await flushPromises()
+    expect(flow.feedback.get('shop')?.busy).toBe(true)
+    let finishFocus!: (focused: boolean) => void
+    vi.mocked(desktop.focusShop!).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishFocus = resolve
+        }),
+    )
+    const focusing = flow.login(shop)
+    await flushPromises()
+    expect(flow.feedback.get('shop')?.focusing).toBe(true)
+    finishStatus({
+      attemptId: 'attempt',
+      status: 'closed',
+      message: '登录窗口已关闭',
+      recovery: false,
+    } as ManagementLoginStatusResult)
+    await flushPromises()
+    await focusing
+    expect(flow.feedback.has('shop')).toBe(false)
+    expect(desktop.close).toHaveBeenCalledExactlyOnceWith('attempt')
+    expect(state.release).not.toHaveBeenCalled()
+    finishFocus(true)
+    await flushPromises()
+    expect(flow.feedback.has('shop')).toBe(false)
+    expect(desktop.refresh).not.toHaveBeenCalled()
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.confirm).not.toHaveBeenCalled()
+    expect(shop.loginStatus).toBe('valid')
+    vi.mocked(desktop.focusShop!).mockResolvedValue(false)
+    desktop.getStatus = vi.fn().mockResolvedValue({
+      attemptId: 'next-attempt',
+      status: 'waiting',
+      message: '等待登录',
+    })
+    await flow.login(shop)
+    await flushPromises()
+    expect(state.acquire).toHaveBeenCalledTimes(2)
+    expect(desktop.open).toHaveBeenCalledTimes(2)
+    expect(flow.feedback.get('shop')?.busy).toBe(true)
+    wrapper.unmount()
+  })
+  it('a null bridge status clears busy with safe failure feedback and preserves the valid Session', async () => {
+    const desktop = window.desktop!.managementLogin!
+    desktop.getStatus = vi.fn().mockResolvedValue(null)
+    const { flow, wrapper } = setup()
+    await flow.login(shop)
+    await flushPromises()
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: false,
+      opening: false,
+    })
+    expect(desktop.close).toHaveBeenCalledExactlyOnceWith('attempt')
+    expect(state.release).toHaveBeenCalledExactlyOnceWith('shop', 'lease')
+    expect(state.error).toHaveBeenCalledWith(
+      expect.stringContaining('原登录状态保留'),
+    )
+    expect(state.confirm).not.toHaveBeenCalled()
+    expect(state.success).not.toHaveBeenCalled()
+    expect(shop.loginStatus).toBe('valid')
+    wrapper.unmount()
+  })
   it('active focus timeout restores the focus action without cancelling the ongoing capture or allocating another lease', async () => {
     vi.useFakeTimers()
     const desktop = window.desktop!.managementLogin!

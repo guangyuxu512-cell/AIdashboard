@@ -350,6 +350,9 @@ export function useShopLogin() {
             status: status.message,
           })
           if (status.status === 'closed') {
+            // Main clears recovery before its once-only release attempt.
+            // Keep the existing fallback for older/failed bridge replies.
+            if (status.recovery === false) flow.leaseReleaseStarted = true
             await cancel(shop.shopId)
             return
           }

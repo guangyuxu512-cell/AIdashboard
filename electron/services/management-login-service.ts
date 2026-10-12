@@ -63,6 +63,7 @@ interface LoginAttempt {
   navigationSequence: number
   lastProbeDiagnosticFingerprint?: string
   disposePageDiagnostics?: () => void
+  finishPendingStatus?: () => void
 }
 
 type LoginCloseReason =
@@ -477,6 +478,9 @@ export class ManagementLoginService {
         attempt!.message = '登录窗口已提前关闭，未采集店铺会话'
         void this.releaseRecoveryLease(attempt!)
       }
+      // Page execution may never settle once its WebContents is destroyed.
+      // Complete the existing IPC from the actual terminal window state.
+      attempt!.finishPendingStatus?.()
     })
     try {
       this.report(attempt, 'load', 'start')
@@ -493,14 +497,23 @@ export class ManagementLoginService {
   }
 
   async getStatus(attemptId: string): Promise<ManagementLoginStatusResult> {
+    const attempt = this.requireAttempt(attemptId)
+    if (attempt.status !== 'waiting') return this.toStatus(attempt)
     const existing = this.polls.get(attemptId)
     if (existing) return existing
-    const pending = this.detectStatus(attemptId)
+    let finishPendingStatus!: () => void
+    const ended = new Promise<ManagementLoginStatusResult>((resolve) => {
+      finishPendingStatus = () => resolve(this.toStatus(attempt))
+    })
+    attempt.finishPendingStatus = finishPendingStatus
+    const pending = Promise.race([this.detectStatus(attemptId), ended])
     this.polls.set(attemptId, pending)
     try {
       return await pending
     } finally {
-      this.polls.delete(attemptId)
+      if (this.polls.get(attemptId) === pending) this.polls.delete(attemptId)
+      if (attempt.finishPendingStatus === finishPendingStatus)
+        attempt.finishPendingStatus = undefined
     }
   }
 
@@ -522,6 +535,13 @@ export class ManagementLoginService {
           loginWindow.webContents.session,
           loginWindow.webContents.id,
         )
+        if (
+          this.attempts.get(attemptId) !== attempt ||
+          attempt.status !== 'waiting' ||
+          attempt.window !== loginWindow ||
+          loginWindow.isDestroyed()
+        )
+          return this.toStatus(attempt)
         this.reportDetection(attempt, detection)
         if (detection.readyForCapture) {
           phase = 'capture'
@@ -533,6 +553,7 @@ export class ManagementLoginService {
           )
           this.report(attempt, phase, 'finish')
           if (
+            this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
             loginWindow.isDestroyed()
@@ -576,6 +597,7 @@ export class ManagementLoginService {
             return this.toStatus(attempt)
           }
           if (
+            this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
             loginWindow.isDestroyed()
@@ -778,7 +800,9 @@ export class ManagementLoginService {
     attempt.identity = null
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
-    await this.releaseRecoveryLease(attempt)
+    const releasing = this.releaseRecoveryLease(attempt)
+    attempt.finishPendingStatus?.()
+    await releasing
   }
 
   async closeAll(): Promise<void> {
@@ -844,6 +868,7 @@ export class ManagementLoginService {
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
     attempt.recovery = null
+    attempt.finishPendingStatus?.()
     this.attempts.delete(attempt.attemptId)
   }
 
@@ -861,6 +886,7 @@ export class ManagementLoginService {
       attempt.message = '登录尝试已超时，请重新打开浏览器登录'
       attempt.expiresAt = null
       void this.releaseRecoveryLease(attempt)
+      attempt.finishPendingStatus?.()
     }, LOGIN_ATTEMPT_TIMEOUT_MS)
     attempt.expiresAt.unref()
   }
