@@ -18,7 +18,17 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-12 81a1授权追加（ca97人类turn `01a13030-2fd6-7990-afb9-ff7e5458c2a1`）：
+2026-10-13 当前店铺登录修复：已回读ca97人类turn `01a1313b-de4b-7eb1-ba7b-60707e70ce98`，
+撤销登录Feature暂停。沿 `feat/shop-login-runtime-diagnostics-v1` 保留98d48d4并正常同步
+精确Green `10938c55397442fd25854d01cf1d07628b7f027b`，禁止rebase/reset及dev代修。
+仅收口超级账号无团队登录、首次页实际可操作及自然关闭后状态恢复；保留目标验证/CAS、
+失败旧Session保护、成功留窗/释放锁、新店自动关闭。首次加载不把观察日志冒称根因修复。
+Owner合成验证，不操作Integration/生产、不新开Electron、不写库或改0042/0043。
+实际关窗49da白名单证据与无团队a61d成功证据复用，补在途检测/捕获迟到与释放定向回归。
+精确Candidate及匹配Source安装包交ca97唯一Real5180→8100→Integration验收，Green/CI后由Main发布。
+已通过的选品30e8/86项/原生确认保留，不重复验收或混入本轮；后续回报明确“店铺登录修复”阶段。
+
+2026-10-12 81a1历史授权追加（ca97人类turn `01a13030-2fd6-7990-afb9-ff7e5458c2a1`）：
 沿 `feat/shop-login-runtime-diagnostics-v1` 仅FF到Green
 `22403a1094b25b7569427d5383e4e28154253d79`，与已发布main db4业务树一致。
 修既有店铺超级账号无团队登录：team可缺省，无团队不发x-team-id，Backend人员Session/
@@ -30,7 +40,28 @@ identity/readiness布尔，首条/变化及20条脚本错误有界，结束卸�
 无Backend/Schema/Migration/Signer/选品变化，0043与专用Feature库保留，Owner不操作Integration/生产或
 开Electron。精确观察Candidate、匹配Source包及Gate1交ca97；历史046/1279/全部材料保持。
 
-2026-10-12 当前81a1任务：按ca97已核验的人类原始授权
+2026-10-13 选品阶段历史纠偏（登录暂停现已撤销）：81a1先核验并收口已确认选品界面。
+沿已保留的 `feat/product-selection-ui-restoration-closeout-v1`（原1279候选）接续，
+同步ca97确认的Green `22403a1094b25b7569427d5383e4e28154253d79`，不重建或回退分支。
+保留98d48d4登录候选、1178、旧选品分支、既有数据库和所有本机材料。
+06bd03c为原设计对照；389030a已经恢复原策略列表/抽屉并删除ManualSelection/manualOnly，
+6e6bfc6补充原生组件的弹层边界。本轮不重复重做这些已存在实现，仅处理发现的回归并补齐证据。
+Real必须保留原工具栏、名称、定时草稿、状态和保存入口；未接策略保存/调度不得假成功。
+保留ShopSession/Signer、有限日期回退、run、持久化、正式API及团队权限；不改Backend或0042/0043。
+仅Frontend定向验证与交接，无DB写入、新Slot、平台请求、手机/SY或全局主题变更。
+Owner使用4176 strictPort隔离HTTP拦截验证，不占5180/8100，不另开Electron。
+普通/最大化四级类目可见、滚动、点击及父级全部尚需ca97唯一Real Electron独立证据；
+完成前不将本轮选品验收标为通过、不推进该业务发布。原已发布事实不倒写或伪造。
+下列登录任务授权与历史证据保留；此次仅恢复登录，不重做已收口选品。
+
+2026-10-13 ca97已核验选品收口Candidate `30e8cc63bc3c770cee65bd02c57d56e39740e255`，
+用户在对应Real Integration Electron提交普通/最大化截图并确认目前无问题；四级类目/父级全部
+原生专项验收收口，既有策略结构保留。正常no-ff集成后选品86项、定向lint、typecheck、Real build通过。
+本轮只追加测试与登记，Frontend运行源码/Backend/Electron/Migration相对Green无差异，单一0043不变。
+精确dev CI后交Main Release；未宣称生产DEPLOYED，不混入98登录关闭挂起返修。
+详见 `docs/engineering/product-selection-ui-restoration-closeout-v1-gate2-20261013.md`。
+
+2026-10-12 登录任务：按ca97已核验的人类原始授权
 `01a12c59-4ac4-70f0-894d-5aed7cd7731c`，从精确Green
 `1718abe117c90842c8d39859a074fa988360f070` 建立
 `feat/shop-login-runtime-diagnostics-v1`。仅补店铺登录一次点击的白名单阶段诊断、
