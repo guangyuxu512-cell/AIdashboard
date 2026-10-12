@@ -162,6 +162,43 @@ describe('submitted selection feedback survives panel changes', () => {
     },
   )
   it.each([
+    ['capabilities', '手动获取状态读取失败'],
+    ['latestRun', '获取进度查询失败'],
+  ] as const)(
+    'keeps strategy management and the original drawer when %s fails',
+    async (failedQuery, safeMessage) => {
+      const { wrapper, queryClient, service } = render()
+      const strategies = vi.spyOn(service, 'strategies')
+      const saveStrategy = vi.spyOn(service, 'saveStrategy')
+      if (failedQuery === 'capabilities')
+        vi.mocked(service.manual!.capabilities).mockRejectedValue(
+          new Error('状态读取失败'),
+        )
+      else
+        vi.mocked(service.latestRun!).mockRejectedValue(
+          new Error('进度读取失败'),
+        )
+      await flushPromises()
+      expect(wrapper.findComponent(StrategyList).exists()).toBe(true)
+      expect(wrapper.text()).toContain(safeMessage)
+      expect(wrapper.text()).toContain('策略保存与定时执行待接入')
+      expect(
+        wrapper.findComponent({ name: 'DataTable' }).props('data'),
+      ).toEqual([])
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '新建策略')!
+        .trigger('click')
+      expect(wrapper.findComponent(DrawerStub).props('show')).toBe(true)
+      expect(strategies).not.toHaveBeenCalled()
+      expect(saveStrategy).not.toHaveBeenCalled()
+      expect(service.manual!.submit).not.toHaveBeenCalled()
+      expect(messages.success).not.toHaveBeenCalled()
+      wrapper.unmount()
+      queryClient.clear()
+    },
+  )
+  it.each([
     ['succeeded', 'success'],
     ['partial', 'warning'],
     ['failed', 'error'],
