@@ -30,11 +30,12 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-2026-10-13 为 A 段分配唯一 Slot，Owner应用后为 `active`；B 段未分配，不得并行增加第二条迁移链。
+2026-10-13 为 A 段分配唯一 Slot，Owner应用后曾为 `active`；阶段候选0044降级边界缺口已退回，
+当前为 `rejected` 并保留编号等待返修，不清库、不释放给B，不得并行增加第二条迁移链。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-strategies-v1` / 81a1（A） | `active` | 新增一张Team-owned `product_selection_strategies`，UUID/Team/User/Shop RESTRICT、编辑version CAS、白名单相对条件及hourly/daily定时草稿；`product_selection_runs`追加可空RESTRICT策略关联。保存/启停不触发取数或创建Schedule；既有候选/观察/run保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Owner已在分配Feature库应用0044，ca97只读核实单一Head；实际PG回归及可重建空新实体时0044→0043→0044尚待Gate1证据。保留全部0042/0043事实和旧run，新增数据后应用回退保留Schema/记录。降级加锁检查新策略/关联run，存在则fail closed，不清库、不批量改历史。不是Migration闭环/Gate通过。 |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `rejected`（保留返修占位） | 新增一张Team-owned `product_selection_strategies`，UUID/Team/User/Shop RESTRICT、编辑version CAS、白名单相对条件及hourly/daily定时草稿；`product_selection_runs`追加可空RESTRICT策略关联。保存/启停不触发取数或创建Schedule；既有候选/观察/run保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Owner已在分配Feature库应用0044，ca97只读核实单一Head。阶段候选4e584cb的实际downgrade没有目标Feature库检查，只有测试包装器guard；隔离无连接探针确认非Feature模拟目标仍进入6次mock drop。已退Owner补实际执行边界及负向回归，保留Feature Schema/全部旧事实与run、不清库或改0042/0043。修补兼容说明/新Candidate重审前不接受迁移，不以Owner PG/单元PASS代替安全门禁。 |
 
 ca97已通过受保护应用连接与只读事务核实复用Feature库：owner/role为
 `control_center_dev_user`，单一`20261010_0043`；候选/观察/run/ShopSession均0，
