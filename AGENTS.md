@@ -18,6 +18,20 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-12 当前81a1任务：按ca97已核验的人类原始授权
+`01a12c59-4ac4-70f0-894d-5aed7cd7731c`，从精确Green
+`1718abe117c90842c8d39859a074fa988360f070` 建立
+`feat/shop-login-runtime-diagnostics-v1`。仅补店铺登录一次点击的白名单阶段诊断、
+打开中/请求去重/有界超时与失败恢复反馈；列表和详情仍共用既有登录流程。
+已打开捕获窗允许再次点击，经当前权限复核只置前，不重复租约/open/save；
+旧1.0.4不附加新参数，仅新Preload固定能力标记允许correlationId。
+正式1.0.5仍禁DevTools，不改变Origin/主Frame/sandbox、Session/Profile或Signer边界。
+固定userData诊断文件只含随机关联ID、枚举/布尔值/状态/耗时，不含身份、凭据、URL或原始异常。
+无DB/Schema/Migration/平台请求；旧选品1279候选和旧分支/本机材料保留，0042/0043不改。
+Owner完成Gate 1和匹配Source安装包交ca97；唯一生产故障窗口不动，实际点击、根因与
+原生登录复验由ca97协调，CI/发布由ca97/Main按Gate执行。没有点击证据不能称根因已修复。
+选品界面恢复另行交接，原生普通/最大化尺寸仍待复验；不将本诊断候选混作选品验收。
+
 2026-10-11 当前81a1任务：从精确Green
 `06992f4f3ee03e2ad689b25e7a4cb5837ce0d359` 接续
 `feat/shop-login-session-sync-v1`。仅完成店铺列表/详情共用登录入口、目标店铺身份核验、

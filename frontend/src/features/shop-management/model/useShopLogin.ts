@@ -16,6 +16,16 @@ import {
 } from '@/entities/shop-session'
 import { ApiError } from '@/shared/api'
 import { startManagementLoginPolling } from './management-login-poller'
+import {
+  LOGIN_FOCUS_TIMEOUT_MS,
+  LOGIN_LEASE_TIMEOUT_MS,
+  LOGIN_OPEN_TIMEOUT_MS,
+  reportLoginStage,
+  waitForLoginOpening,
+  openingErrorCode,
+  openingFailureMessage,
+  type LoginOpeningPhase,
+} from './shop-login-diagnostics'
 
 export function supportsShopLogin(platform: string): boolean {
   const capabilities = getPlatformDefinition(platform)?.capabilities
@@ -34,9 +44,23 @@ export function validationFailureMessage(error: unknown): string {
 interface LoginFlow {
   shopId: string
   scopeVersion: number
+  actorId: string | undefined
+  teamId: string
   attemptId?: string
   leaseId?: string
   stop?: () => void
+  correlationId: string
+  abort: AbortController
+  leaseReleaseStarted?: boolean
+  windowOpened?: boolean
+  focusing?: boolean
+}
+export interface ShopLoginFeedback {
+  busy: boolean
+  opening: boolean
+  focusing?: boolean
+  error: string | null
+  status: string | null
 }
 export const shopLoginKey: InjectionKey<ReturnType<typeof useShopLogin>> =
   Symbol('shop-login')
@@ -49,16 +73,15 @@ export function useShopLogin() {
   const message = useMessage()
   const active = new Map<string, LoginFlow>()
   let scopeVersion = 0
-  const feedback = reactive(
-    new Map<
-      string,
-      { busy: boolean; error: string | null; status: string | null }
-    >(),
-  )
+  const feedback = reactive(new Map<string, ShopLoginFeedback>())
   const canLogin = computed(() => auth.isSuperAccount)
   function current(flow: LoginFlow) {
     return (
-      flow.scopeVersion === scopeVersion && active.get(flow.shopId) === flow
+      flow.scopeVersion === scopeVersion &&
+      auth.currentUser?.userId === flow.actorId &&
+      auth.activeTeamId === flow.teamId &&
+      auth.isSuperAccount &&
+      active.get(flow.shopId) === flow
     )
   }
   async function refresh(shopId: string) {
@@ -73,85 +96,246 @@ export function useShopLogin() {
     const flow = active.get(shopId)
     if (!flow) return
     active.delete(shopId)
+    flow.abort.abort()
     flow.stop?.()
     feedback.delete(shopId)
-    if (flow.attemptId)
-      await window.desktop?.managementLogin
-        ?.close(flow.attemptId)
-        .catch(() => undefined)
-    if (flow.leaseId)
-      await shopSessionDataSource
-        .releaseRefreshLease(shopId, flow.leaseId)
-        .catch(() => undefined)
+    if (flow.attemptId) {
+      const closing = window.desktop?.managementLogin?.close(flow.attemptId)
+      if (closing) void cleanup(flow, closing)
+    }
+    if (flow.leaseId) releaseLease(flow)
+  }
+  async function cleanup(flow: LoginFlow, pending: Promise<unknown>) {
+    const started = Date.now()
+    reportLoginStage(flow.correlationId, 'cleanup', 'start')
+    try {
+      await waitForLoginOpening(pending, 5_000)
+      reportLoginStage(flow.correlationId, 'cleanup', 'finish', {
+        elapsedMs: Date.now() - started,
+      })
+    } catch (error) {
+      reportLoginStage(flow.correlationId, 'cleanup', 'error', {
+        errorCode: openingErrorCode(error),
+        elapsedMs: Date.now() - started,
+      })
+    }
+  }
+  function releaseLease(flow: LoginFlow) {
+    if (!flow.leaseId || flow.leaseReleaseStarted) return
+    flow.leaseReleaseStarted = true
+    void cleanup(
+      flow,
+      shopSessionDataSource.releaseRefreshLease(flow.shopId, flow.leaseId),
+    )
+  }
+  async function openingStep<T>(
+    flow: LoginFlow,
+    phase: LoginOpeningPhase,
+    pending: Promise<T>,
+    timeoutMs: number,
+  ) {
+    const started = Date.now()
+    reportLoginStage(flow.correlationId, phase, 'start')
+    try {
+      const result = await waitForLoginOpening(
+        pending,
+        timeoutMs,
+        flow.abort.signal,
+      )
+      reportLoginStage(flow.correlationId, phase, 'finish', {
+        elapsedMs: Date.now() - started,
+      })
+      return result
+    } catch (error) {
+      reportLoginStage(flow.correlationId, phase, 'error', {
+        errorCode: openingErrorCode(error),
+        httpStatus: error instanceof ApiError ? error.status : null,
+        elapsedMs: Date.now() - started,
+      })
+      throw error
+    }
   }
   async function fail(flow: LoginFlow, text: string) {
     if (!current(flow)) return
     await cancel(flow.shopId)
     if (flow.scopeVersion !== scopeVersion || active.has(flow.shopId)) return
-    feedback.set(flow.shopId, { busy: false, error: text, status: null })
+    feedback.set(flow.shopId, {
+      busy: false,
+      opening: false,
+      error: text,
+      status: null,
+    })
     message.error(text)
   }
   async function login(shop: ShopListItemViewModel) {
-    if (!canLogin.value || !supportsShopLogin(shop.platform)) return
+    const existing = active.get(shop.shopId)
+    const correlationId = existing?.correlationId ?? crypto.randomUUID()
     const bridge = window.desktop?.managementLogin
-    if (!bridge?.focusShop) {
-      message.info('请安装支持店铺登录同步的新桌面版本')
+    const teamId = auth.activeTeamId
+    const eligiblePlatform = supportsShopLogin(shop.platform)
+    reportLoginStage(correlationId, 'entry', 'start', {
+      bridgeAvailable: Boolean(bridge?.focusShop),
+      superAccount: canLogin.value,
+      teamSelected: Boolean(teamId),
+      platformSupported: eligiblePlatform,
+    })
+    if (!canLogin.value || !eligiblePlatform) {
+      reportLoginStage(correlationId, 'entry', 'blocked', {
+        errorCode: !canLogin.value ? 'NOT_ALLOWED' : 'UNSUPPORTED_PLATFORM',
+      })
+      message.info(
+        !canLogin.value ? '当前账号无店铺登录权限' : '该平台暂不支持店铺登录',
+      )
       return
     }
-    const teamId = auth.activeTeamId
+    if (!bridge?.focusShop) {
+      message.info('请安装支持店铺登录同步的新桌面版本')
+      reportLoginStage(correlationId, 'entry', 'blocked', {
+        errorCode: 'NO_BRIDGE',
+      })
+      return
+    }
     if (!teamId) {
       message.info('请先选择当前团队')
+      reportLoginStage(correlationId, 'entry', 'blocked', {
+        errorCode: 'NO_TEAM',
+      })
       return
     }
     if (shop.platform !== 'douyin' && shop.platform !== 'pdd') return
-    if (active.has(shop.shopId)) {
-      await bridge
-        .focusShop({ platform: shop.platform, shopId: shop.shopId, teamId })
-        .catch(() => undefined)
+    // Published 1.0.4 accepts only the original IPC fields. The new constant
+    // is diagnostic-specific, not a general version/capability framework.
+    const correlation =
+      bridge.correlationSupported === true ? { correlationId } : {}
+    if (existing) {
+      if (!current(existing) || !existing.windowOpened || existing.focusing) {
+        reportLoginStage(correlationId, 'entry', 'duplicate')
+        return
+      }
+      existing.focusing = true
+      feedback.set(shop.shopId, {
+        ...feedback.get(shop.shopId)!,
+        focusing: true,
+        error: null,
+      })
+      try {
+        const focused = await openingStep(
+          existing,
+          'focus',
+          bridge.focusShop({
+            platform: shop.platform,
+            shopId: shop.shopId,
+            teamId,
+            ...correlation,
+          }),
+          LOGIN_FOCUS_TIMEOUT_MS,
+        )
+        if (current(existing) && !focused)
+          message.info('未找到登录窗口，请取消后重新登录')
+      } catch (error) {
+        if (current(existing)) {
+          const text = openingFailureMessage(error)
+          feedback.set(shop.shopId, {
+            ...feedback.get(shop.shopId)!,
+            error: text,
+          })
+          message.error(text)
+        }
+      } finally {
+        existing.focusing = false
+        if (current(existing))
+          feedback.set(shop.shopId, {
+            ...feedback.get(shop.shopId)!,
+            focusing: false,
+          })
+      }
       return
     }
-    const flow: LoginFlow = { shopId: shop.shopId, scopeVersion }
+    const flow: LoginFlow = {
+      shopId: shop.shopId,
+      scopeVersion,
+      actorId: auth.currentUser?.userId,
+      teamId,
+      correlationId,
+      attemptId: correlationId,
+      abort: new AbortController(),
+    }
     active.set(shop.shopId, flow)
     feedback.set(shop.shopId, {
       busy: true,
+      opening: true,
       error: null,
       status: '正在打开店铺登录窗口',
     })
     try {
-      const focused = await bridge.focusShop({
-        platform: shop.platform,
-        shopId: shop.shopId,
-        teamId,
-      })
+      const focused = await openingStep(
+        flow,
+        'focus',
+        bridge.focusShop({
+          platform: shop.platform,
+          shopId: shop.shopId,
+          teamId,
+          ...correlation,
+        }),
+        LOGIN_FOCUS_TIMEOUT_MS,
+      )
       if (!current(flow)) return
       if (focused) {
         active.delete(shop.shopId)
         feedback.delete(shop.shopId)
         return
       }
-      const lease = await shopSessionDataSource.acquireRefreshLease(shop.shopId)
-      flow.leaseId = lease.leaseId
+      const pendingLease = shopSessionDataSource
+        .acquireRefreshLease(shop.shopId)
+        .then((lease) => {
+          flow.leaseId = lease.leaseId
+          if (!current(flow)) releaseLease(flow)
+          return lease
+        })
+      const lease = await openingStep(
+        flow,
+        'lease',
+        pendingLease,
+        LOGIN_LEASE_TIMEOUT_MS,
+      )
       if (!current(flow)) {
-        await shopSessionDataSource.releaseRefreshLease(
-          shop.shopId,
-          lease.leaseId,
-        )
+        releaseLease(flow)
         return
       }
-      const opened = await bridge.open({
-        platform: shop.platform,
-        teamId,
-        recovery: {
-          shopId: shop.shopId,
-          leaseId: lease.leaseId,
-          expectedVersion: lease.expectedVersion,
-        },
-      })
+      const opened = await openingStep(
+        flow,
+        'open',
+        bridge
+          .open({
+            platform: shop.platform,
+            teamId,
+            attemptId: flow.attemptId,
+            ...correlation,
+            recovery: {
+              shopId: shop.shopId,
+              leaseId: lease.leaseId,
+              expectedVersion: lease.expectedVersion,
+            },
+          })
+          .then((opened) => {
+            if (!current(flow))
+              void cleanup(flow, bridge.close(opened.attemptId))
+            return opened
+          }),
+        LOGIN_OPEN_TIMEOUT_MS,
+      )
       flow.attemptId = opened.attemptId
       if (!current(flow)) {
-        await bridge.close(opened.attemptId)
+        void cleanup(flow, bridge.close(opened.attemptId))
         return
       }
+      flow.windowOpened = true
+      feedback.set(shop.shopId, {
+        busy: true,
+        opening: false,
+        error: null,
+        status: '登录窗口已打开，等待识别店铺',
+      })
       flow.stop = startManagementLoginPolling({
         attemptId: opened.attemptId,
         getStatus: bridge.getStatus,
@@ -159,6 +343,8 @@ export function useShopLogin() {
           if (!current(flow)) return
           feedback.set(shop.shopId, {
             busy: true,
+            opening: false,
+            focusing: flow.focusing ?? false,
             error: null,
             status: status.message,
           })
@@ -202,14 +388,11 @@ export function useShopLogin() {
             message.warning(result.profileMappingWarning)
         },
         onError() {
-          void fail(
-            flow,
-            '本次验证未完成，原登录状态保留；请重新登录或稍后重试',
-          )
+          void fail(flow, '本次验证未完成，原登录状态保留；请稍后重试')
         },
       })
-    } catch {
-      await fail(flow, '本次验证未完成，原登录状态保留；请重新登录或稍后重试')
+    } catch (error) {
+      await fail(flow, openingFailureMessage(error))
     }
   }
   watch(

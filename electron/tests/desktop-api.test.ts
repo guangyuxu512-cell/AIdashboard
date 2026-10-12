@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import vm from 'node:vm'
 
 import {
   isManagementLoginCompleteInput,
@@ -16,14 +19,55 @@ import type { Cookie, Session } from 'electron'
 
 const attemptId = '00000000-0000-4000-8000-000000000001'
 
+test('new sandboxed Preload advertises only the fixed login correlation capability at trusted origins', () => {
+  const source = readFileSync(
+    path.join(__dirname, '../preload/index.js'),
+    'utf8',
+  )
+  for (const origin of [
+    'https://119.29.188.118',
+    'https://untrusted.example',
+  ]) {
+    let bridge: unknown
+    vm.runInNewContext(source, {
+      exports: {},
+      window: { location: { origin } },
+      require(name: string) {
+        assert.equal(name, 'electron')
+        return {
+          contextBridge: {
+            exposeInMainWorld(key: string, value: unknown) {
+              assert.equal(key, 'desktop')
+              bridge = value
+            },
+          },
+          ipcRenderer: { invoke() {}, send() {} },
+        }
+      },
+    })
+    if (origin === 'https://119.29.188.118') {
+      assert.equal(
+        (bridge as { managementLogin: { correlationSupported: boolean } })
+          .managementLogin.correlationSupported,
+        true,
+      )
+    } else assert.equal(bridge, undefined)
+  }
+})
+
 test('focus shop only accepts the registered platform and current team/shop UUIDs', () => {
   const input = { platform: 'douyin', teamId: attemptId, shopId: attemptId }
   assert.equal(isManagementLoginFocusInput(input), true)
+  assert.equal(
+    isManagementLoginFocusInput({ ...input, correlationId: attemptId }),
+    true,
+  )
   for (const invalid of [
     { ...input, platform: 'taobao' },
     { ...input, shopId: '../profile' },
     { ...input, teamId: '' },
     { ...input, script: 'execute' },
+    { ...input, correlationId: 'private-fixture' },
   ])
     assert.equal(isManagementLoginFocusInput(invalid), false)
 })
@@ -31,6 +75,22 @@ test('focus shop only accepts the registered platform and current team/shop UUID
 test('management login IPC only accepts registered platform and typed attempt', () => {
   const teamId = '00000000-0000-4000-8000-000000000004'
   assert.equal(isManagementLoginOpenInput({ platform: 'douyin', teamId }), true)
+  assert.equal(
+    isManagementLoginOpenInput({
+      platform: 'douyin',
+      teamId,
+      correlationId: attemptId,
+    }),
+    true,
+  )
+  assert.equal(
+    isManagementLoginOpenInput({
+      platform: 'douyin',
+      teamId,
+      correlationId: 'private-fixture',
+    }),
+    false,
+  )
   assert.equal(
     isManagementLoginOpenInput({ platform: 'douyin', teamId, attemptId }),
     true,

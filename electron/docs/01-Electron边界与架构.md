@@ -57,4 +57,20 @@ partition 与本地 Profile mapping。
 
 阶段 3C-3 的 Session 恢复仍由 Management Login Service 承担：存在 shop 映射时复用本机 persistent partition，不存在时只在当前电脑新建 Profile。Main 持有 Backend Refresh Lease、expected version 与捕获 Buffer，Renderer 只看非敏感进度。用户提前关闭、取消、30 分钟超时和应用退出会请求释放 Lease；异常退出由服务器 Lease 到期兜底。Management Login Profile 是当前管理电脑本地浏览器身份环境，ShopSession 是服务器权威程序认证状态，两者不得同步或混用。
 
-开发实例的窄诊断仅记录 attempt、阶段、code/errno、主Frame导航/加载状态和关窗调用原因，正式安装实例关闭该诊断。禁止输出 Error.message、URL、身份、Cookie或响应。`electron/tools/capture-login-diagnostics.ps1` 复用已准备的正常启动入口，仅将白名单重建记录保存到本工作树受忽略的 `.codex/shop-login-session-sync/`；其他输出全部丢弃。已有Electron未退出时拒绝启动，不强制结束或另开第二实例，不改变userData/partition/人员认证。
+1.0.5的店铺登录窄诊断在开发与正式包中均启用，但正式包继续关闭DevTools。Main复用
+onDiagnostic，并仅观察受信任主窗口主Frame的固定前缀JSON；即使Preload桥接缺失，仍能记录
+入口的bridge/team/权限/平台能力布尔值。固定随机correlationId串联Renderer→IPC→Main的
+focus、认证准备、GET真正发出、租约、open及既有load/detect/capture/save/close阶段。
+固定文件为userData下`diagnostics/shop-login.jsonl`，每份最多512KiB，单一轮转`.1`，待写队列128项。
+每条重建白名单；不写人员/店铺/团队身份、URL/Header、Cookie/Token/Session、原始Error或响应。
+写入失败不影响登录，不向Renderer增加任意日志/文件/JS能力。
+
+Main元数据准备及GET总时限15秒，open总时限30秒；Renderer对应focus20秒、lease20秒、open35秒，
+lease仍沿用HTTP Client原10秒时限。取消/上下文改变立即恢复入口，迟到响应不能继续开窗、保存或提示成功。
+开窗前与置前请求中去重；等待人工登录阶段的再次点击仅复核当前权限并置前，不重复lease/open/save。
+失败不清空旧Session、Profile、Cookie或浏览器数据；超时并不等于平台会话失效。
+
+`electron/tools/read-login-diagnostics.ts`编译后仅从当前Windows用户的固定目录读取两份诊断，
+重建白名单并输出最近200条，可用`--correlation UUID`限定一次点击。工具不进入安装ASAR，不读
+Profile/凭据，不接受任意路径；缺少记录不能证明根因。原开发捕获脚本保留为历史受控入口，
+只在已有Electron退出后使用，不强制结束或另开第二实例，不改变userData/partition/人员认证。
