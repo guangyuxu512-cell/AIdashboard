@@ -55,6 +55,7 @@ class ProductSelectionRepository:
         values: dict[str, Any], started_at: datetime, retrieved_at: datetime,
         last_run_id: UUID | None = None,
         date_selection: dict[str, Any] | None = None,
+        first_listed_only: bool = False,
     ) -> UUID | None:
         allowed = {
             "title", "image_url", "merchant_snapshot", "price_band", "rank",
@@ -62,12 +63,12 @@ class ProductSelectionRepository:
         }
         if set(values) != allowed:
             raise ValueError("Only declared rank facts may be persisted")
-        context = scope.context()
+        context = scope.context(first_listed_only=first_listed_only)
         if date_selection is not None:
             context["date_selection"] = date_selection
         statement = insert(Observation).values(
             observation_id=generate_id(), candidate_id=candidate_id,
-            request_shop_id=shop_id, source_scope_hash=scope.fingerprint(),
+            request_shop_id=shop_id, source_scope_hash=scope.fingerprint(first_listed_only=first_listed_only),
             last_run_id=last_run_id,
             source_context=context, period_begin=scope.period_begin,
             period_end=scope.period_end, first_seen_at=retrieved_at,

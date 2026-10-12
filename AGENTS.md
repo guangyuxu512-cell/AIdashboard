@@ -18,6 +18,19 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-13 当前81a1任务为人类直接授权的罗盘策略 A/B：A分支
+`feat/product-selection-strategies-v1` 从精确Green `3128d6ad1048dfda1240148e863ea0c98eb6247f`
+创建，与已发布生产 `0102dd6d051f89907bad113c35310bbab69412ec` 业务树一致。
+保留已确认StrategyList/Drawer及五项体验、登录成果。A补已确认条件及真实策略CRUD；
+B独立交付复用Schedule底座的服务端hourly/daily，不造Device/Worker/队列，PC调度不变。
+ca97已分配并核实复用 `control_center_feat_product_selection` / `control_center_dev_user`、
+8101/4176 strictPort与受信任35433；唯一active Slot `20261013_0044`（down0043），
+仅策略表和runs可空策略FK。0042/0043不可改写，B尚无Slot。Owner只在Feature合成验证；
+平台最小补证及唯一Integration Electron由ca97协调，未知条件不猜映射/静默忽略，不回退Mock。
+两段分别Gate1→Gate2→Green/CI→Main发布；81a1不合dev/main、不部署生产。
+本节覆盖与当前直接授权冲突的下方历史active范围；下方验收事实保留，不重做原设计。
+当前A仍PARTIAL：CRUD/已确认条件准备不代表全条件或服务端自动执行完成；见本轮契约。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

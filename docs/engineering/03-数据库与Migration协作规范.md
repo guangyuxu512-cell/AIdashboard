@@ -30,7 +30,11 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-无（FREE）。2026-10-11选品0042/0043完整Gate2通过后统一释放，已应用迁移不可改写。
+2026-10-13 ca97已分配A唯一Slot，Feature应用后为 `active`；B未分配，不得并行增加第二条迁移链。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `active` | 一张Team-owned策略表，UUID/Team/User/Shop RESTRICT、version CAS、相对条件与定时草稿；runs可空策略FK及索引，保存/启停不创建Schedule或run、不请求平台 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature实际单一0044；0044→0043→0044保留旧候选/观察/run、新数据拒绝、并发writer保护已验证。只在已登记可重建Feature空新实体时允许降级；生产应用回滚保留Schema/策略/事实，兼容Reader关闭新写。不改0042/0043，不代表Integration/生产迁移或Gate通过。 |
 
 最近释放记录：
 

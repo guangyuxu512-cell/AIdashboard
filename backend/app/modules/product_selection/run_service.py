@@ -21,6 +21,7 @@ from app.modules.product_selection.run_contract import (
     SelectionResolvedRequest, SelectionRunClaim, SelectionRunCreate,
     SelectionRunOriginal, SelectionRunRead, SelectionRunReceipt, SelectionDateOutcome,
     SelectionFallbackReason, SelectionPrimaryBusinessError,
+    SelectionStrategySnapshot,
 )
 from app.modules.product_selection.run_repository import SelectionRunRepository
 from app.modules.product_selection.request_mapping import freeze_short_video_request, validate_shop_category
@@ -100,7 +101,9 @@ class SelectionRunService:
                 visible = self.repository.get_for_actor(current, old.run_id)
                 if visible is None:
                     raise SelectionRunNotFoundError()
-                if SelectionResolvedRequest.model_validate(old.request_conditions).original != original:
+                saved = SelectionResolvedRequest.model_validate(old.request_conditions)
+                if (saved.original != original or old.strategy_id != command.strategy_id
+                    or (saved.strategy is not None and saved.strategy.version != command.strategy_version)):
                     raise SelectionRunConflictError()
                 result = self._receipt(current, old)
                 self.session.commit()
@@ -111,7 +114,7 @@ class SelectionRunService:
             resolved = self.resolver(original, at)
             if resolved.original != original:
                 raise ValueError("A resolver cannot replace original user conditions")
-            if resolved.version == 2:
+            if resolved.version >= 2:
                 # Release guard/read transactions before checking the current
                 # shop's real category tree. No platform I/O in a DB transaction.
                 self.session.rollback()
@@ -124,6 +127,14 @@ class SelectionRunService:
                 validate_shop_category(original, tree)
                 current = self.facts._current_actor(actor)
                 self.facts._execution_shop(current, command.shop_id)
+            if command.strategy_id is not None:
+                from app.modules.product_selection.strategy_service import SelectionStrategyService
+                row = SelectionStrategyService(self.session).writable(current, command.strategy_id, expected_version=command.strategy_version)
+                if row.request_shop_id != command.shop_id:
+                    raise SelectionRunConflictError()
+                if resolved.version != 3:
+                    raise ValueError("Strategy association requires the versioned execution contract")
+                resolved = resolved.model_copy(update={"strategy": SelectionStrategySnapshot(strategy_id=row.strategy_id, version=row.version)})
             self.repository.recover_expired(at)
             for _ in range(3):
                 try:
@@ -132,15 +143,28 @@ class SelectionRunService:
                         # keys never go through relative-date resolution again.
                         row = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
                         if row is not None:
-                            if SelectionResolvedRequest.model_validate(row.request_conditions).original != original:
+                            saved = SelectionResolvedRequest.model_validate(row.request_conditions)
+                            if (saved.original != original or row.strategy_id != command.strategy_id
+                                or (saved.strategy is not None and saved.strategy.version != command.strategy_version)):
                                 raise SelectionRunConflictError()
                         else:
                             active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=resolved.fingerprint())
+                            # During an upgrade, an already-active v2 default
+                            # request is still the same work. Preserve its hash
+                            # and canonical; only the new receipt is v3 so it
+                            # can record its own strategy snapshot.
+                            if active is None and resolved.version == 3 and original.rank_to <= 20 and not original.first_listed_only:
+                                legacy = SelectionResolvedRequest.model_validate(resolved.model_dump(mode="json") | {"version": 2, "strategy": None})
+                                active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=legacy.fingerprint())
+                            shared = (SelectionResolvedRequest.model_validate(active.request_conditions).model_copy(update={
+                                "version": resolved.version, "strategy": resolved.strategy,
+                            }) if active is not None else resolved)
                             row = ProductSelectionRun(
                                 run_id=uuid4(), team_id=team_id, created_by_user_id=current.user_id,
                                 request_shop_id=command.shop_id, submission_key=command.submission_key,
-                                request_fingerprint=resolved.fingerprint(),
-                                request_conditions=active.request_conditions if active is not None else resolved.model_dump(mode="json"),
+                                strategy_id=command.strategy_id,
+                                request_fingerprint=active.request_fingerprint if active is not None else resolved.fingerprint(),
+                                request_conditions=shared.model_dump(mode="json"),
                                 reused_run_id=active.run_id if active is not None else None,
                                 status="reused" if active is not None else "pending", stage="queued",
                                 result_count=None, saved_count=0, supplemented_count=0,
@@ -175,6 +199,7 @@ class SelectionRunService:
         return SelectionRunReceipt(
             receipt_id=row.run_id, submission_key=row.submission_key,
             execution_run_id=execution.run_id, reused=row.reused_run_id is not None,
+            strategy=SelectionResolvedRequest.model_validate(row.request_conditions).strategy,
             execution=execution,
         )
 
@@ -274,7 +299,7 @@ class SelectionRunService:
             request = SelectionResolvedRequest.model_validate(row.request_conditions)
             previous = request.date_outcome.state if request.date_outcome is not None else None
             allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "backup_empty", "both_empty"}}
-            if (request.version != 2 or state not in allowed.get(previous, set())
+            if (request.version not in {2, 3} or state not in allowed.get(previous, set())
                 or row.saved_count != 0 or row.result_count is not None):
                 raise SelectionRunLeaseLostError()
             if previous is not None:

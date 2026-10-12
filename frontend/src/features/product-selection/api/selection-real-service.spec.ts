@@ -242,6 +242,8 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
         category_ids: ['1001', '1002'],
         brand: 'all',
         price_mode: 'all',
+        price_above: null,
+        price_below: null,
         first_listed_only: false,
         rank_from: 1,
         rank_to: 20,
@@ -249,7 +251,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     )
     input.channels.shortVideo.conditions.period = 'realtime'
     await expect(real.manual!.submit(input, 'key-2', nodes)).rejects.toThrow(
-      '当前仅支持',
+      '未确认',
     )
     input.channels.shortVideo.conditions.period = '7d'
     input.channels.shortVideo.conditions.categoryId = '1001/*'
@@ -257,9 +259,9 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       '真实类目',
     )
     expect(httpClient.post).toHaveBeenCalledTimes(1)
-    await expect(real.saveStrategy(input)).rejects.toThrow(
-      SELECTION_UNAVAILABLE,
-    )
+    await expect(
+      real.saveStrategy(input, undefined, undefined, nodes),
+    ).rejects.toThrow('真实类目')
   })
   it('keeps the outer industry in display identities but not the formal category path', async () => {
     const real = await createSelectionService('real')

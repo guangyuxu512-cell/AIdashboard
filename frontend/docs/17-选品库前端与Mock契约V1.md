@@ -1,5 +1,22 @@
 # 选品库前端与 Mock 交互 V1
 
+## 2026-10-13 策略 A Real 绑定（当前开发）
+
+本轮保留已确认列表/工具栏/右抽屉及五项体验，不用手动结果页替换策略页。
+正式契约来自Backend `strategy_contract.py`，typed API集中在selection-strategy-api.ts；
+已有service、TanStack Query、ShopSelector、CategorySelector、AppRadio/TimePicker/按钮复用。
+服务器分页/名称搜索、保存/完整编辑expected_version、启停CAS接线；刷新/重新登录只GET。
+策略名称/相对条件/全策略定时配置/状态真实保存，无“演示策略已保存”Real提示。
+RealCRUD能力与演示/手机动作的available分开，候选采集/屏蔽/竞品等未接能力仍禁用，不因保存
+接通而假成功。A计划只保存，列表明确“未调度”、抽屉提示调度待接入；无假next_run_at。
+立即获取经原manual服务提交当前草稿及已保存策略ID/version，未保存草稿不创建策略、不保存条件。
+收到canonical后沿原消息/轮询刷新最近结果，历史完成不重复toast；不恢复常驻获取完成横幅。
+支持已确认短视频近7天、默认品牌价格、原bool首次上榜返回筛选、有界官方排名1–200；
+未知日期/品牌/价格/其他行业不解除禁用、不回退Mock。来源首次上榜口径与原scope分开。
+详情/候选池尺寸、主题、字体和两个时间来源不改。API拦截截图不是平台/数据库/Electron证据。
+完整本轮契约见docs/engineering/product-selection-strategies-v1-contract.md；A仍PARTIAL，
+下方旧UI_ONLY/未接保存为历史阶段，B服务端自动执行尚未接通。
+
 状态：视觉/Mock为UI_ONLY，手动真实接入为PARTIAL。下述Mock模型仍是前端草案；文末“正式只读绑定”以已登记Backend DTO为准，不混用。
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
 分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。

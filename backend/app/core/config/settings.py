@@ -83,8 +83,10 @@ class Settings(BaseSettings):
     douyin_signer_api_key: SecretStr | None = None
     douyin_signer_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
     douyin_compass_collection_concurrency: int = Field(default=5, ge=1, le=20)
-    # Hand-submitted selection only; no strategies or periodic platform work.
+    # Manual platform execution; saved strategy configuration does not trigger I/O.
     product_selection_execution_enabled: bool = False
+    # Compatible read-only rollback keeps strategy/run/fact readers available.
+    product_selection_strategy_management_enabled: bool = True
     product_selection_run_lease_seconds: int = Field(default=120, ge=30, le=600)
     # Disabled by default so Feature/Integration environments never begin
     # platform collection merely because the Backend process is running.

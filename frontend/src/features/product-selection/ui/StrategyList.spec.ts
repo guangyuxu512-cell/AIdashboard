@@ -43,7 +43,10 @@ function execution(
     error_code: null,
   }
 }
-function render(run = vi.fn().mockResolvedValue(execution())) {
+function render(
+  run = vi.fn().mockResolvedValue(execution()),
+  overrides: Partial<SelectionService> = {},
+) {
   const service: SelectionService = {
     ...createSelectionMockHandlers(),
     available: false,
@@ -57,6 +60,7 @@ function render(run = vi.fn().mockResolvedValue(execution())) {
       .fn()
       .mockResolvedValue({ ...execution(), run_id: 'historical-run' }),
     run,
+    ...overrides,
   }
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -68,8 +72,9 @@ function render(run = vi.fn().mockResolvedValue(execution())) {
       stubs: {
         StrategyDrawer: DrawerStub,
         DataTable: {
-          props: ['emptyDescription'],
-          template: '<div>{{ emptyDescription }}</div>',
+          props: ['emptyDescription', 'data'],
+          template:
+            '<div>{{ emptyDescription }}<span v-for="row in data" :key="row.id">{{ row.name }}</span></div>',
         },
         PaginationBar: true,
       },
@@ -79,6 +84,36 @@ function render(run = vi.fn().mockResolvedValue(execution())) {
 }
 describe('explicit selection completion messages', () => {
   beforeEach(() => vi.clearAllMocks())
+  it('a read-only management capability retains saved rows while disabling new writes', async () => {
+    const row = (await createSelectionMockHandlers().strategies())[0]!
+    const read = vi
+      .fn()
+      .mockResolvedValue({ items: [row], total: 1, page: 1, pageSize: 20 })
+    const { wrapper, queryClient } = render(undefined, {
+      strategySaveAvailable: true,
+      strategiesPage: read,
+      manual: {
+        capabilities: vi
+          .fn()
+          .mockResolvedValue({
+            strategy_save_available: false,
+            manual_execution_available: false,
+          }),
+        submit: vi.fn(),
+      },
+    })
+    await flushPromises()
+    expect(read).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain(row.name)
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '新建策略')!
+        .attributes('disabled'),
+    ).toBeDefined()
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('never displays a historical completion banner or replays a toast on refresh/reentry', async () => {
     const { wrapper, queryClient, service } = render()
     await flushPromises()

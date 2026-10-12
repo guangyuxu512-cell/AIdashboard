@@ -210,6 +210,20 @@ GenerationJob、Provider 或 Queue 表。
 
 ## 当前完整表清单（Feature 0043 阶段候选）
 
+2026-10-13 A策略Feature的实际introspection为单一 `20261013_0044`、**48**张表（含Alembic）；
+下方47表是0043历史基线，本段只新增 `product_selection_strategies`，未删旧表。
+新增/变化登记如下，Integration/生产此刻仍0043，不能把Feature结果写成已发布。
+
+| 表 | 用途、主键与关联 | 状态与保留 |
+| --- | --- | --- |
+| `product_selection_strategies` | PK UUID strategy_id，Team/User/请求Shop外键均RESTRICT；name、正version CAS、enabled、严格相对条件JSONB与单份hourly/daily计划草稿JSONB；Team/updated/ID和Shop/ID索引 | A保存配置，不创建Schedule或取数；未有删除功能或批准保留期，不自动清理。Team仅剩策略仍不能删除。普通成员当前Team/Shop SQL授权先于分页/总数和直接ID。 |
+| `product_selection_runs`（0044追加） | 可空 `strategy_id → product_selection_strategies.strategy_id` RESTRICT及策略/created/ID索引；v3条件JSON内保存提交时策略ID/version和冻结日期，不回填历史关联 | canonical和reused回执分别保存自己的关联；复用不改canonical或复制计数。改策略/启停不改旧run；最近结果沿各自回执解析并过滤历史Shop当前权限。 |
+
+0044降级加排他锁后，发现任何策略或非空run关联即fail closed。只在可重建空新实体环境
+允许0044→0043→0044，保留0042事实/0043旧run；正式应用回滚保留新Schema/数据并使用兼容Reader。
+v1/v2原解析/fingerprint保持；v3有界官方排名分页及原bool首次上榜筛选。仅首次上榜筛选启用时，
+来源context为v2并显式first_listed_only=true，hash含该口径，与原不限筛选来源分开；原v1 hash不变。
+
 以下清单已与独立 Feature DB `control_center_feat_product_selection` 在 `20261010_0043` Head 的实际 PostgreSQL
 introspection 核对（2026-10-10）：共 **47** 张表，含 Alembic 元数据表。0042增加候选/观察两表，0043只追加业务run及观察last_run_id；不改写已应用迁移或复制会话。该结构尚未进入Integration/生产，不代表真实选品闭环已接通。未有已批准
 保留期的表明确标为“待定”，文档整理本身不授权删除、改名或迁移任何历史数据。

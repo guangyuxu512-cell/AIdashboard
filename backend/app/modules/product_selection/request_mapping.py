@@ -28,8 +28,6 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
         unsupported = "BRAND_UNCONFIRMED"
     elif original.price_mode != "all":
         unsupported = "PRICE_UNCONFIRMED"
-    elif original.first_listed_only:
-        unsupported = "FIRST_LISTED_FILTER_UNCONFIRMED"
     elif (
         not original.industry_id.strip("0")
         or original.industry_id in original.category_ids
@@ -71,15 +69,13 @@ def prepare_short_video_scope(
 def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: datetime) -> SelectionResolvedRequest:
     """User-approved business policy, not a claim about platform refresh time."""
     validate_preparable_short_video_choice(original)
-    if original.rank_to > 20:
-        raise SelectionRequestUnconfirmedError(details={"reason": "RANK_RANGE_UNSUPPORTED"})
     if accepted_at.utcoffset() is None:
         raise ValueError("Acceptance time must have a timezone")
     day = accepted_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
     return SelectionResolvedRequest(
-        version=2, original=original,
+        version=3, original=original,
         scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=7), period_end=day - timedelta(days=1)),
-        page_numbers=(1, 2) if original.rank_to > 10 else (1,),
+        page_numbers=tuple(range(1, (original.rank_to + 9) // 10 + 1)),
         date_plan=SelectionDatePlan(
             accepted_local_date=day,
             backup_scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=8), period_end=day - timedelta(days=2)),

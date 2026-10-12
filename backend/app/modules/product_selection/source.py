@@ -40,17 +40,20 @@ class SelectionSourceScope(BaseModel):
             raise ValueError("Explicit source dates must be ordered and canonical")
         return self
 
-    def context(self) -> dict[str, object]:
-        return {
-            "version": 1,
+    def context(self, *, first_listed_only: bool = False) -> dict[str, object]:
+        context = {
+            "version": 2 if first_listed_only else 1,
             "platform": "douyin",
             "endpoint": "product_rank/video_bring_good",
             "business": self.model_dump(),
         }
+        if first_listed_only:
+            context["first_listed_only"] = True
+        return context
 
-    def fingerprint(self) -> str:
+    def fingerprint(self, *, first_listed_only: bool = False) -> str:
         encoded = json.dumps(
-            self.context(), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            self.context(first_listed_only=first_listed_only), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         ).encode("utf-8")
         return sha256(encoded).hexdigest()
 

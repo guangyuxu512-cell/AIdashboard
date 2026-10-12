@@ -16,6 +16,7 @@ from app.core.exceptions import AppError
 from app.modules.product_selection.exceptions import SelectionRunLeaseLostError
 from app.modules.product_selection.run_contract import (
     SelectionResolvedRequest, SelectionRunClaim, SelectionPrimaryBusinessError, SelectionFallbackReason,
+    SelectionRankQuery,
 )
 from app.modules.product_selection.run_service import (
     SelectionRunService, selection_request_mapping_available, safe_run_error,
@@ -79,11 +80,10 @@ class SelectionRunExecutor:
         code, stage, value = safe_run_error(failure)
         original, scope = request.original, request.scope
         return (
-            request.version == 2 and request.date_plan is not None
+            request.version in {2, 3} and request.date_plan is not None
             and original.channel == "short-video" and original.period == "7d"
             and original.brand == "all" and original.price_mode == "all"
             and original.price_above is None and original.price_below is None
-            and not original.first_listed_only
             and scope.date_type == "21" and scope.rank_data_type == "1"
             and scope.brand_type == "-1" and scope.price_bin == "不限"
             and scope.search_info == "" and scope.activity_id == ""
@@ -122,18 +122,13 @@ class SelectionRunExecutor:
             assert request.date_plan is not None
             # A per-call legacy-shaped request supplies only the actual scope;
             # lease/idempotency checks always use the original frozen claim.
-            backup_request = SelectionResolvedRequest(
-                original=request.original, scope=request.date_plan.backup_scope,
-                page_numbers=request.page_numbers,
-            )
+            backup_request = SelectionRankQuery(original=request.original, scope=request.date_plan.backup_scope, page_numbers=request.page_numbers)
             backup = self._rank(claim, context, backup_request, 1)
             state = "backup" if backup.products else "backup_empty" if primary_error is not None else "both_empty"
             chosen = self._choose(claim, state)
             if state != "both_empty":
                 first = backup
-        actual_request = SelectionResolvedRequest(
-            original=request.original, scope=chosen.actual_scope(), page_numbers=request.page_numbers,
-        )
+        actual_request = SelectionRankQuery(original=request.original, scope=chosen.actual_scope(), page_numbers=request.page_numbers)
         return actual_request, first, chosen.date_outcome.state in {"both_empty", "backup_empty"}
 
     def execute_claim(self, claim: SelectionRunClaim) -> None:
@@ -146,17 +141,21 @@ class SelectionRunExecutor:
             request = claim.request
             first = None
             empty_window = False
-            if request.version == 2:
+            if request.version in {2, 3}:
                 request, first, empty_window = self._select_first_page(claim, context)
             seen: set[str] = set()
             for page_no in ((1,) if empty_window else request.page_numbers):
                 page = first if page_no == 1 and first is not None else self._rank(claim, context, request, page_no)
-                if claim.request.version == 2:
+                if claim.request.version in {2, 3}:
                     if any(p.rank is None for p in page.products):
                         raise PlatformResponseInvalidError()
                     # Filter by returned official rank, not page-local row index.
                     page = replace(page, products=tuple(p for p in page.products
                         if claim.request.original.rank_from <= p.rank <= claim.request.original.rank_to))
+                    if claim.request.original.first_listed_only:
+                        if any(p.newly_on_ranking is None for p in page.products):
+                            raise PlatformResponseInvalidError()
+                        page = replace(page, products=tuple(p for p in page.products if p.newly_on_ranking is True))
                 # Dedup before persistence/counts, including repeated identities
                 # across pages. Keep platform rank, never use a local row number.
                 page = replace(page, products=tuple(p for p in page.products if p.product_id not in seen))
@@ -191,6 +190,10 @@ class SelectionRunExecutor:
                                 actor=actor, observation_id=observation_id, rank_started_at=claim.started_at,
                                 retrieved_at=datetime.now(UTC), basic=basic, claim=claim,
                             )
+                # An actual response total bounds pages; never assume every
+                # industry or filter always contains the observed 200 products.
+                if page_no * page.page_size >= page.total:
+                    break
         except SelectionRunLeaseLostError:
             # Expiry reconciliation owns interrupted state; a late executor
             # must not replace it or rewrite facts after it loses its lease.

@@ -104,7 +104,8 @@ class ProductSelectionFactService:
                     started_at=started_at, retrieved_at=retrieved_at,
                     last_run_id=claim.run_id if claim is not None else None,
                     date_selection=(SelectionResolvedRequest.model_validate(run.request_conditions).provenance().model_dump(mode="json")
-                        if run is not None and claim.request.version == 2 else None),
+                        if run is not None and claim.request.version in {2, 3} else None),
+                    first_listed_only=(claim.request.original.first_listed_only if claim is not None and claim.request.version == 3 else False),
                     values={
                         "title": product.title, "image_url": product.image_url,
                         "merchant_snapshot": [

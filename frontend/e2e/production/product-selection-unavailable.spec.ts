@@ -199,6 +199,8 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
         manual_execution_available: true,
         unavailable_reason: null,
       }
+    else if (path === '/api/v1/product-selection/strategies')
+      data = { items: [], total: 0, page: 1, page_size: 20 }
     else if (path === '/api/v1/product-selection/categories') {
       categoryReads++
       expect(new URL(route.request().url()).searchParams.get('shop_id')).toBe(
@@ -312,7 +314,7 @@ test('Real manual submits shop-bound choices, reads chosen fallback dates and pe
     .fill('未保存的真实条件草稿')
   await expect(
     drawer.getByRole('button', { name: '保存策略', exact: true }),
-  ).toBeDisabled()
+  ).toBeEnabled()
   await drawer.locator('.n-base-selection').first().click()
   await page.getByText('授权测试抖店', { exact: true }).last().click()
   await drawer.locator('.n-cascader .n-base-selection').click()
@@ -467,7 +469,10 @@ test('Real keeps unavailable state without Mock fallback and retains route permi
       })
       return
     }
-    if (path === '/api/v1/product-selection/runs') {
+    if (
+      path === '/api/v1/product-selection/runs' ||
+      path === '/api/v1/product-selection/strategies'
+    ) {
       await route.fulfill({
         json: { items: [], total: 0, page: 1, page_size: 1 },
       })
@@ -548,7 +553,7 @@ test('Real keeps unavailable state without Mock fallback and retains route permi
     page
       .locator('.n-drawer')
       .getByRole('button', { name: '保存策略', exact: true }),
-  ).toBeDisabled()
+  ).toBeEnabled()
   await expect(
     page.locator('.n-drawer').getByText('定时执行', { exact: true }),
   ).toBeVisible()

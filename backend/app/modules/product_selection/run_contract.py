@@ -18,12 +18,11 @@ RunStage = Literal["queued", "session", "rank", "persistence", "basic_info", "co
 SelectionFallbackReason = Literal["primary_success_empty", "primary_business_rejection_probe"]
 
 
-class SelectionRunOriginal(BaseModel):
+class SelectionRelativeConditions(BaseModel):
     """Original user intent. It does not claim a platform enum/date mapping."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
-    shop_id: UUID
     channel: Literal["short-video", "baiying"]
     period: Literal["realtime", "1d", "7d", "30d"]
     industry_id: CategoryId
@@ -33,17 +32,21 @@ class SelectionRunOriginal(BaseModel):
     # Unconfirmed price mapping cannot be enabled by accepting arbitrary text.
     price_above: Annotated[str, Field(pattern=r"^\d{1,10}(\.\d{1,2})?$")] | None = None
     price_below: Annotated[str, Field(pattern=r"^\d{1,10}(\.\d{1,2})?$")] | None = None
-    first_listed_only: bool = False
+    first_listed_only: bool = Field(default=False, strict=True)
     rank_from: int = Field(ge=1, le=200)
     rank_to: int = Field(ge=1, le=200)
 
     @model_validator(mode="after")
-    def validate_order(self) -> "SelectionRunOriginal":
+    def validate_order(self) -> "SelectionRelativeConditions":
         if self.rank_from > self.rank_to:
             raise ValueError("Rank range must be ordered")
         if self.price_mode == "all" and (self.price_above is not None or self.price_below is not None):
             raise ValueError("Unlimited price has no custom bounds")
         return self
+
+
+class SelectionRunOriginal(SelectionRelativeConditions):
+    shop_id: UUID
 
     def fingerprint(self) -> str:
         return sha256(json.dumps(
@@ -54,11 +57,26 @@ class SelectionRunOriginal(BaseModel):
 
 class SelectionRunCreate(SelectionRunOriginal):
     submission_key: UUID
+    strategy_id: UUID | None = None
+    strategy_version: int | None = Field(default=None, ge=1, strict=True)
+
+    @model_validator(mode="after")
+    def validate_strategy_reference(self):
+        if (self.strategy_id is None) != (self.strategy_version is None):
+            raise ValueError("Strategy ID and saved version must be supplied together")
+        return self
 
     def original(self) -> SelectionRunOriginal:
         return SelectionRunOriginal.model_validate(
-            self.model_dump(exclude={"submission_key"}),
+            self.model_dump(exclude={"submission_key", "strategy_id", "strategy_version"}),
         )
+
+
+class SelectionStrategySnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    strategy_id: UUID
+    version: int = Field(ge=1, strict=True)
 
 
 class SelectionDatePlan(BaseModel):
@@ -127,26 +145,38 @@ class SelectionDateProvenance(BaseModel):
     rank_to: int
 
 
+class SelectionRankQuery(BaseModel):
+    """Projection for one chosen window, not a stored/accepted frozen plan."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    original: SelectionRunOriginal
+    scope: SelectionSourceScope
+    page_numbers: tuple[int, ...]
+    page_size: Literal[10] = 10
+
+
 class SelectionResolvedRequest(BaseModel):
     """A server-frozen request, never accepted directly from the public POST."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2] = 1
+    version: Literal[1, 2, 3] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
-    page_numbers: tuple[Annotated[int, Field(ge=1, le=20)], ...] = Field(min_length=1, max_length=2)
+    page_numbers: tuple[Annotated[int, Field(ge=1, le=20)], ...] = Field(min_length=1, max_length=20)
     page_size: Literal[10] = 10
     date_plan: SelectionDatePlan | None = None
     date_outcome: SelectionDateOutcome | None = None
+    strategy: SelectionStrategySnapshot | None = None
 
     @model_validator(mode="after")
     def validate_pages(self) -> "SelectionResolvedRequest":
         if len(set(self.page_numbers)) != len(self.page_numbers):
             raise ValueError("Repeated pages are not execution instructions")
         if self.version == 1:
-            if self.date_plan is not None or self.date_outcome is not None:
+            if self.date_plan is not None or self.date_outcome is not None or self.strategy is not None or len(self.page_numbers) > 2:
                 raise ValueError("Legacy executions have no fallback policy")
         else:
             if self.date_plan is None:
@@ -155,8 +185,9 @@ class SelectionResolvedRequest(BaseModel):
             backup = self.date_plan.backup_scope
             if (
                 self.original.channel != "short-video" or self.original.period != "7d"
-                or self.original.rank_to > 20
-                or self.page_numbers != ((1, 2) if self.original.rank_to > 10 else (1,))
+                or (self.version == 2 and (self.original.rank_to > 20 or self.strategy is not None
+                    or self.page_numbers != ((1, 2) if self.original.rank_to > 10 else (1,))))
+                or (self.version == 3 and self.page_numbers != tuple(range(1, (self.original.rank_to + 9) // 10 + 1)))
                 or self.scope.period_begin != day - timedelta(days=7)
                 or self.scope.period_end != day - timedelta(days=1)
                 or backup.period_begin != day - timedelta(days=8)
@@ -170,7 +201,7 @@ class SelectionResolvedRequest(BaseModel):
     def fingerprint(self) -> str:
         # Mutable execution outcome never changes the active-request key.
         # Preserve the exact v1 fingerprint for already-applied 0043 records.
-        excluded = {"date_outcome"}
+        excluded = {"date_outcome", "strategy"}
         if self.version == 1:
             excluded.add("date_plan")
         return sha256(json.dumps(
@@ -223,6 +254,7 @@ class SelectionRunRead(BaseModel):
     team_id: UUID
     created_by_user_id: UUID
     request_shop_id: UUID
+    strategy_id: UUID | None = None
     status: RunStatus
     stage: RunStage
     request_conditions: SelectionResolvedRequest
@@ -246,6 +278,7 @@ class SelectionRunReceipt(BaseModel):
     submission_key: UUID
     execution_run_id: UUID
     reused: bool
+    strategy: SelectionStrategySnapshot | None = None
     execution: SelectionRunRead
 
 
@@ -254,6 +287,11 @@ class SelectionCapabilitiesRead(BaseModel):
     execution_enabled: bool
     manual_execution_available: bool
     unavailable_reason: Literal["EXECUTION_DISABLED"] | None
-    strategy_save_available: Literal[False] = False
+    strategy_save_available: bool = True
     schedule_available: Literal[False] = False
     material_collection_available: Literal[False] = False
+    supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("7d",)
+    supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all",)
+    custom_price_available: bool = False
+    first_listed_filter_available: bool = True
+    max_rank: int = 200
