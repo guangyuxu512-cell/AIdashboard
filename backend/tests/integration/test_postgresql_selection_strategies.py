@@ -188,6 +188,37 @@ def test_shared_run_persistence_leaves_commit_and_rollback_to_authorized_caller(
         assert session.get(Run, first.receipt_id) is None
 
 
+@pytest.mark.parametrize("acknowledgement_lost", [False, True])
+def test_submission_commit_failure_and_cross_day_same_key_recovery(selection_context, monkeypatch, acknowledgement_lost):
+    from datetime import UTC, datetime, timedelta
+    context = selection_context
+    command = _input(context)
+    accepted = datetime(2026, 10, 13, 15, 59, 59, tzinfo=UTC)
+    category_reads = []
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: (category_reads.append(shop) or _category_tree(shop)))
+        commit = session.commit
+        def fail_commit():
+            if acknowledgement_lost:
+                commit()
+            raise RuntimeError("synthetic_commit_boundary_failure")
+        with monkeypatch.context() as fault:
+            fault.setattr(session, "commit", fail_commit)
+            with pytest.raises(RuntimeError, match="synthetic_commit_boundary_failure"):
+                service.submit(context[4][0], command, now=accepted)
+        with Session(context[0]) as reader:
+            stored = reader.scalar(select(Run).where(Run.team_id == context[1][0], Run.submission_key == command.submission_key))
+            assert (stored is not None) is acknowledgement_lost
+        recovered = service.submit(context[4][0], command, now=accepted + timedelta(seconds=2))
+        # A committed but unacknowledged key replays the saved old date without
+        # category I/O. An uncommitted transaction never accepted a frozen run.
+        request = recovered.execution.request_conditions
+        assert request.date_plan.accepted_local_date.isoformat() == ("2026-10-13" if acknowledgement_lost else "2026-10-14")
+        assert len(category_reads) == (1 if acknowledgement_lost else 2)
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 1
+        assert recovered.execution.status == "pending" and recovered.execution.saved_count == 0
+
+
 @pytest.mark.parametrize("unassociated_canonical", [False, True])
 def test_strategy_activity_includes_reused_receipt_until_canonical_is_terminal(selection_context, unassociated_canonical):
     context = selection_context

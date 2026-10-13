@@ -41,6 +41,17 @@
 前面的88与639/232为首准备提交beaf7ce时的实测快照，均保留，不把重复运行相加。
 相对A436，仍无Model/Migration/Schedule DTO/Frontend/Electron变更或平台调用，未激活调度。
 
+ca97已独立接受精确f4非DDL技术准备：隔离归档8文件91 pass，时间/PC service/scanner、
+选品mapping/realtime/strategy/source/connector；确认Models/Migration/Scanner/Settings/
+Frontend/Electron/Worker无B运行差异。这不是完整B Gate1/Gate2/Release，Owner PG90也不计作Root PG。
+
+后续只新增提交边界的两项PG回归（运行代码相对f4字节不变）：
+`.venv\Scripts\python.exe -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py -k 'commit_failure or shared_run_persistence or strategy_activity' -o addopts="" -q`
+为 **5 pass / 17 deselected / 11.40s**。其中3项是既有重叠测试，不和90/91相加：
+提交前失败整体rollback无Run；实际commit后确认丢失，跨上海午夜同key重放旧冻结区间、
+零额外类目读取且只存一条Run。未commit时没有已接受记录，重试按新的接受日冻结，不伪造旧提交。
+均为Feature真实PG＋合成故障，没有平台请求或实际Schedule触发；不代替未来自然定时验收。
+
 DB仍 `control_center_feat_product_selection` / 单一 `20261013_0044`；无新表/列/Slot，
 所有已应用迁移字节不变。前端/Electron/Worker无B运行文件改动，不新开窗口、不发平台请求。
 当前分支沿用A的前端检查，不重新构建桌面壳，不能据此称B Real/Electron通过。
