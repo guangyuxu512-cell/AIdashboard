@@ -212,7 +212,8 @@ GenerationJob、Provider 或 Queue 表。
 
 2026-10-13 A策略Feature的实际introspection为单一 `20261013_0044`、**48**张表（含Alembic）；
 下方47表是0043历史基线，本段只新增 `product_selection_strategies`，未删旧表。
-新增/变化登记如下，Integration/生产此刻仍0043，不能把Feature结果写成已发布。
+新增/变化登记如下：ca97已在Integration正式升级0044并保留旧数据/Session，生产仍0043。
+0044已共享应用，不再改写；实时v4只扩JSON契约，不改Schema，不能把Feature结果写成已发布。
 
 | 表 | 用途、主键与关联 | 状态与保留 |
 | --- | --- | --- |
@@ -227,6 +228,9 @@ GenerationJob、Provider 或 Queue 表。
 0044的upgrade DDL/revision/down_revision及已应用Feature结构不变，无需清库或重建，不改0042/0043。
 v1/v2原解析/fingerprint保持；v3有界官方排名分页及原bool首次上榜筛选。仅首次上榜筛选启用时，
 来源context为v2并显式first_listed_only=true，hash含该口径，与原不限筛选来源分开；原v1 hash不变。
+2026-10-13实时扩展不改表：run JSON版本4单日冻结、strategy JSON仍相对版本1，
+source date_selection以shanghai_realtime_today与7日策略区分，无备用日期。旧JSON/hash不变；
+实际v4写入后应用回滚必须保留支持v4的最终Reader/0044/事实，不能直接换77等旧Backend或降级清库。
 
 以下清单已与独立 Feature DB `control_center_feat_product_selection` 在 `20261010_0043` Head 的实际 PostgreSQL
 introspection 核对（2026-10-10）：共 **47** 张表，含 Alembic 元数据表。0042增加候选/观察两表，0043只追加业务run及观察last_run_id；不改写已应用迁移或复制会话。该结构尚未进入Integration/生产，不代表真实选品闭环已接通。未有已批准

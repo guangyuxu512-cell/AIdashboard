@@ -114,7 +114,9 @@ class SelectionRunExecutor:
                 error_code=code, error_stage=stage, platform_business_code=value,
             )
             first = None
-        if first is not None and first.products:
+        # Realtime has one day only. A legal empty result is success-empty,
+        # never a reason to use the seven-day historical probe.
+        if request.version == 4 or (first is not None and first.products):
             chosen = self._choose(claim, "primary")
         else:
             reason = "primary_business_rejection_probe" if primary_error is not None else "primary_success_empty"
@@ -141,12 +143,12 @@ class SelectionRunExecutor:
             request = claim.request
             first = None
             empty_window = False
-            if request.version in {2, 3}:
+            if request.version in {2, 3, 4}:
                 request, first, empty_window = self._select_first_page(claim, context)
             seen: set[str] = set()
             for page_no in ((1,) if empty_window else request.page_numbers):
                 page = first if page_no == 1 and first is not None else self._rank(claim, context, request, page_no)
-                if claim.request.version in {2, 3}:
+                if claim.request.version in {2, 3, 4}:
                     if any(p.rank is None for p in page.products):
                         raise PlatformResponseInvalidError()
                     # Filter by returned official rank, not page-local row index.

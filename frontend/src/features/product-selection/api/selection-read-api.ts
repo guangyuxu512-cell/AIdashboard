@@ -26,12 +26,12 @@ export interface SelectionSourceDto {
     activity_id: string
   }
   date_selection?: {
-    policy: 'shanghai_7d_once'
+    policy: 'shanghai_7d_once' | 'shanghai_realtime_today'
     accepted_local_date: string
     primary_begin: string
     primary_end: string
-    backup_begin: string
-    backup_end: string
+    backup_begin: string | null
+    backup_end: string | null
     actual_window: 'primary' | 'backup'
     fallback_reason: SelectionFallbackReason | null
     primary_error?: SelectionPrimaryBusinessError | null

@@ -2,8 +2,8 @@
 
 状态：**PARTIAL**。本候选完成策略管理及已确认条件的实现/自检，不表示A全部条件已接通；
 未知参数和ca97真实平台/Electron验收未完成，B尚未实现。交ca97技术审核/补证，不授权越过门禁发布。
-阶段候选4e584cb独立技术审查因P1/P2退回Owner；本轮完成下述最小返修后交新精确候选重审，
-Slot治理状态仍rejected返修占位，不自行恢复active，不把本次纠错写成完整A Gate通过。
+阶段候选4e584cb独立技术审查因P1/P2退回Owner；77a1d96最小返修经ca97独立边界接受，
+Slot由Integrator恢复active，不是完整A Gate通过。后续继续A现有CRUD验收/逐项接证，不冻结候选或等待B。
 
 ## 基线与范围
 
@@ -24,7 +24,7 @@ Slot治理状态仍rejected返修占位，不自行恢复active，不把本次�
 
 ## 数据库与迁移
 
-ca97登记唯一 `20261013_0044_product_selection_strategies_v1`，阶段退回后状态rejected返修占位；
+ca97登记唯一 `20261013_0044_product_selection_strategies_v1`，曾rejected返修占位，77a1d96独立边界接受后active；
 revision `20261013_0044`、down `20261010_0043`。已分配Feature
 `control_center_feat_product_selection` / `control_center_dev_user`、受保护35433，
 8101/4176 strictPort。实际Head单一0044、47业务表＋1张Alembic元数据表（public共48表），
@@ -36,7 +36,7 @@ revision `20261013_0044`、down `20261010_0043`。已分配Feature
 
 已在该Feature实测：0044→0043→0044保留合成0042事实及0043旧run；新策略存在拒绝降级；
 并发未提交writer使排他锁等待、writer提交后降级fail closed，数据保留。
-正式环境必须保留新Schema/数据。v3 run及v2首次上榜来源写入后不能直接使用不识别它们的旧Backend；
+正式环境必须保留新Schema/数据。v4实时、v3 run及v2首次上榜来源写入后不能直接使用不识别它们的旧Backend；
 兼容回滚Backend使用本候选Reader，通过策略管理及执行两个开关停止新写/执行，仍可读策略/新JSON，
 见本轮契约；Feature只读保护已实测，真实部署/重启仍须Release核验，不能清表、改JSON或直接降级。
 
@@ -87,7 +87,7 @@ n-data-table-base-table-body滚动节点后1PASS；不因测试调整改变业�
 
 ## 未覆盖与下一负责人
 
-- A未知：realtime/1d/30d真实枚举和区间、两种品牌枚举、custom price编码/单位/边界、
+- A未知：1d/30d真实枚举和区间、两种品牌枚举、custom price编码/单位/边界、
   其他行业根及对应父级“全部”请求映射。不是Session、DB或Signer未就绪。
 - ca97已有合法HuanYu浏览器/会话，原生取证工具无法可靠核验当前URL而暂停；未切换条件/未发新请求。
   只请求用户将现有罗盘短视频Chrome标签置前并回复“罗盘已置前”。不双线索要Cookie/cURL。
@@ -98,3 +98,43 @@ n-data-table-base-table-body滚动节点后1PASS；不因测试调整改变业�
 
 Candidate完整SHA、发送结果、最终工作树/DB状态及截图路径在本机Handoff记录；
 ca97接阶段审查候选与补证，完成明确范围再走原Gate/独立发布，Main不直接接Feature发布。
+
+## A管理交互补验（不重做已通过功能）
+
+核对77a1d96源码：CRUD/授权/CAS/编辑回显/独立获取已有实现，无需重写。
+原Real拦截E2E虽有PUT处理器和CAS标题，实际未点击编辑保存；本轮补到同一现有场景：
+成功PUT→刷新回读、并发版本冲突→保留抽屉/草稿→取消重读、编辑后立即获取当前未保存条件但不保存。
+完整过程保存/编辑未创建run，只有显式获取POST /runs；关联保存版本正确，启停真实更新。
+
+- `pnpm exec playwright test --config ../.codex/selection-windows-v2/playwright.real.config.ts e2e/production/product-selection-strategies.spec.ts --workers=1 --output ../docs/_local/product-selection-strategies-v1/crud-edit-real-intercepted`（PLAYWRIGHT_FRONTEND_PORT=4176）：**1 PASS**，18.3s测试/22.1s总耗时。
+- `pnpm lint`、`pnpm exec vitest run src/features/product-selection` **13文件92 PASS**、`pnpm build`（内含typecheck、Real）PASS。
+- 本轮仅补E2E/文档/ca97已确认治理状态，Frontend运行源码/Backend/Migration/Signer/Electron未改，
+  不重跑已通过的622 Backend/109 Feature PG或不受影响的原生视觉。保留现有大chunk和NO_COLOR告警。
+- 最小API/同一Real页面清单及专用夹具建议已写入契约对应章节，由ca97在Integration自行建立并记录实际结果；
+  Owner没有写Integration/真实平台，1 PASS仍是正式API完整拦截，不是Server→DB→Electron证据。
+
+## 第一项参数接证：实时（A仍PARTIAL）
+
+ca97以用户旧明确实时Query和2026-10-13 08:12:39+08 stored HuanYu v6的一次正式只读当前日请求补证：
+HTTP200、整数st=0、10条/total200、rank1次/basic0次、无业务写/Run。此为77代码的参数证据，
+不是本轮v4入库闭环或同次页面抓包，也不保证平台所有时段可用。Owner未重复请求或改变Cookie/Signer。
+
+v4实时单日冻结、7d旧v3/hash/受限回退保留，实时合法空直接成功0、621/签名等均不走备用。
+相对策略配置仍v1；前端原AppRadio和service与capabilities同步开放realtime，来源/详情标签为实时，
+备用日期与理由null，缺失值和原始区间保持。0044已由ca97在Integration应用，本次Migration/Schema diff=0。
+
+实际最终检查：
+
+- Backend默认pytest **630 PASS/228 integration deselected**；冻结UTC/上海跨日、旧hash及未知条件门禁等定向 **36 PASS**。
+- `python -m pytest -m integration`在前述8文件再加`test_postgresql_selection_realtime.py`：**115 PASS**；
+  含实时6项（数据/空态/621 int/string/签名失败无备用、跨日同key重放不读类目、新key新日）及完整旧链路。
+- Frontend选品 **13文件93 PASS**，lint/typecheck/Real build PASS；同Real API完整拦截场景按7d/realtime两模式
+  测PUT保存/CAS草稿/刷新/独立获取/启停，**2 PASS**（38.9s）；当前截图在ignored `realtime-crud-real-intercepted`。
+- 原样保留告警；一次前端夹具把原始0–0误断为0，纠正断言不改范围展示；一次PG旧未知周期测试仍用新已证实时，
+  换为仍未确认1d以保留门禁，初轮114PASS/1FAIL后完整115PASS。不是平台或登录故障，未发外部请求。
+
+ca97另已在77正式Integration完成CRUD与零隐式取数，并取得run
+`dae3090a-ceb4-44f3-8bba-4bbf362a5cbf`：7d主窗口2026-10-06～12、实际官方rank21–30，
+10商品/10来源/API与DB一致；basic_info 9成功1业务拒绝，正确partial且不丢候选，未重试。
+category1/rank3/basic10，完成后GET/同key重放增量0，保存版本/条件未改。此未改7d证据可复用，
+不把它替代新v4实时完整闭环/first筛选/唯一Electron；剩余参数每项有证据即接，不等待B。

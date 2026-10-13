@@ -167,7 +167,12 @@ export function mapSelectionObservation(
       category: source.business.category_id,
       statisticalPeriod: `${dto.period_begin}～${dto.period_end}`,
       // date_type is not interpreted as a shortcut label without evidence.
-      periodLabel: source.date_selection ? '近7天' : '',
+      periodLabel: source.date_selection
+        ? {
+            shanghai_7d_once: '近7天',
+            shanghai_realtime_today: '实时',
+          }[source.date_selection.policy]
+        : '',
       rankFrom: source.date_selection?.rank_from ?? null,
       rankTo: source.date_selection?.rank_to ?? null,
       checkedAt: dto.checked_at,
@@ -254,7 +259,7 @@ export function createSelectionRealService(
     if (
       !input.channels.shortVideo.selected ||
       input.channels.baiying.selected ||
-      choice.period !== '7d' ||
+      !['realtime', '7d'].includes(choice.period) ||
       choice.brand !== 'all' ||
       choice.priceMode !== 'all' ||
       choice.priceAbove !== null ||

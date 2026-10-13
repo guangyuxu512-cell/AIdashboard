@@ -53,7 +53,7 @@ Team 仅剩策略也阻止物理删除，不能让新表产生未解释的级联
   同时检查条件和策略关联，不能跨策略挪用回执。不同key的相同活动条件仍复用已有执行。
 
 POST关联策略时须同时提供strategy_id和strategy_version（正整数）；服务端锁定同Team/Shop
-当前策略并核对版本，保存v3 request_conditions.strategy快照。后续编辑不改任何旧run。
+当前策略并核对版本，保存v3（7d）或v4（实时）request_conditions.strategy快照。后续编辑不改任何旧run。
 不同策略复用活动条件时，canonical身份/版本不改；每个reused回执保存自己的策略快照，
 提交响应的strategy表示调用者快照，execution表示canonical计数/状态/冻结条件。
 按回执ID GET仍沿旧契约解析canonical；策略列表按各自提交回执批量取canonical最近结果，
@@ -77,7 +77,8 @@ GET/列表/运行/事实继续读取；前端保留列表与已保存配置，�
 | --- | --- | --- |
 | 短视频 | 已成功路径及 rank_data_type=1 | 不外推商品卡/百应 |
 | 近7天 | date_type=21；上海冻结主备7日及一次回退已有批准 | 保留原规则和首查阶段边界 |
-| 实时/近1天/近30天 | 实时已有 Query=1，但旧证据不含Response；其它尚未冻结 | 需明确枚举与区间；无证据不解除禁用 |
+| 实时 | 用户旧Query明确实时date_type=1；2026-10-13 08:12:39+08 ca97同条件当前日服务器HTTP200/st整数0/10条/total200，Integration stored v6正式链路 | 接受时上海当天begin=end=00:00:00，独立v4单窗口，无7d回退；只证明该时刻首10条，不称全天可用 |
+| 近1天/近30天 | 尚未冻结各自Query/成功Response/页面含义 | 独立门禁，收到各自证据再接，不猜昨日或30日枚举 |
 | 行业/类目 | cate_list 多根/有序节点；原成功行业7 | 核验其它根的行业含义和父级路径，不发送0或UI `/*` |
 | 品牌 | -1＝不限有成功样本 | 其余枚举需补证，不猜0/1 |
 | 价格 | price_bin=不限有成功样本 | 自定义格式、边界与单位待直接证据 |
@@ -86,6 +87,63 @@ GET/列表/运行/事实继续读取；前端保留列表与已保存配置，�
 
 平台最少补验由ca97使用环境合法Session协调。Feature只用合成响应；不索取Cookie/cURL，
 不重复旧成功试验、不将 HTTP200 或模拟数据算成新业务成功。
+
+### 实时v4冻结与可读性
+
+复用原run JSON与执行器，v4仅用于已确认实时：date_plan只有accepted_local_date，
+scope.date_type=1、begin=end为该上海日00:00:00；无backup_scope。仅可选择primary后写事实。
+合法成功空榜单直接成功0；621000704、签名/HTTP/其他失败原样分类，不走7d补查。
+相同submission_key跨日先重放原日，不读类目或重发；新key新日不复用旧日活动。
+来源date_selection.policy=shanghai_realtime_today，backup日期/理由为null，页面显示实时及实际当日。
+旧v1/v2/v3格式/hash、7d source context及受限回退保留；策略相对配置version仍1。
+无新表/列/Migration。实际平台证明来自ca97一次只读请求，非该v4候选入库/原生验收；
+v4尚需当前候选端到端验证，不重复旧7d认证或为单条basic_info失败加盲重试。
+
+## A 已实现范围的最小Integration验收清单
+
+ca97在精确候选Real Integration自行准备，Owner不写该库/配置、不另开Electron。
+先核验Backend/Renderer实际代码树及Integration唯一Head、保留既有人员登录/ShopSession与事实。
+表中检查是待执行清单，不是已有真实Integration/Electron结果；未知参数补证和B不阻塞纯CRUD。
+
+### 夹具与计数边界
+
+- 优先用现有有product-selection模块权限、已明确选Team的人员与该Team授权的HuanYu店铺。
+  从正式`GET /categories?shop_id=...`取实际树，采用行业7及树中真实ordered非0父级路径。
+  既有Query样本是依据，不把其历史固定日期或类目硬写成用户当前选择。
+- 测试策略统一`stage-2a1-selection-strategy-<短后缀>`，记录新strategy_id/version和相关run/receipt_id。
+  初始enabled=false、scheduled=false；随后专门验证计划草稿保存，保持schedule_available=false和next_run_at=null。
+- 纯CRUD可在手动执行开关关闭时验；准备/打开抽屉可读取类目，先完成树加载再计数。
+  HTTP检查/GET列表/类目API不等于榜单取数。POST/PUT/PATCH本身应零新增Run、零rank/basic_info/ShopSession读取。
+- 不停用真实HuanYu、不撤销真实人员权限、不破坏合法Session。负向使用专用合成Team/人员/Shop/授权，
+  可复用Owner `selection_context`和`_api_client`的模型/数据关系，但由Integrator按既有正式服务/隔离测试创建。
+  用真实UUID、不复用浏览器拦截的`strategy-shop`等假ID；普通API校验不注入super或绕模块/Team guard。
+- 没有DELETE策略API，不编造清理接口；纯测试Rows是否由稳定ID夹具清理按Integrator授权处理。
+  真实运行/候选/来源/失败审计及仍被引用的策略保留，勿按名称模糊删除；不降级Integration库验0044。
+
+### API → 数据库 → 同一Real页面
+
+| 检查 | 正式入口和最小步骤 | 必须看到的结果 |
+| --- | --- | --- |
+| 保存不执行 | POST `/strategies`，相对7d/不限品牌价格/实际行业7路径/完整排名，enabled=false | 201，version=1；名称/Shop/条件/计划入库，无绝对日期、Run/Schedule或平台请求 |
+| 列表/读取/刷新 | GET `/strategies?page=1&page_size=...&search=...`、GET `/{strategy_id}`；刷新页面/重新进入或已有正常登录后读取 | 原保存值与API/DB一致，按当前授权先过滤再total/分页；不加载Mock，不生成新任务 |
+| 编辑保存 | 原列表“编辑”，改名称及已支持条件，PUT `/{id}`＋expected_version | 同一ID、version+1；重开抽屉回显新值，未新建另一个策略，不取数 |
+| CAS/草稿保护 | 两次读取同版本，第一次合法PUT后，第二次仍用旧expected_version；页面失败后取消再重开 | 409/PRODUCT_SELECTION_STRATEGY_VERSION_CONFLICT；未覆盖保存值，失败时抽屉/草稿保留，不自动重试或提交Run |
+| 启停 | PATCH `/{id}/enabled`＋当前expected_version，开/关及重读 | version单调递增、仅配置变化；A的每小时/每日只为草稿，不显示已调度/虚构下次时刻 |
+| 失效目标修正 | 合成Shop先启用保存，随后停用；关闭PATCH，再尝试开启；另编辑换合法新Shop | 关闭200且零ShopSession/Run；开启409；合法换新Shop200；完整PUT仍拒绝提交停用新目标 |
+| 权限边界 | 专用夹具跨Team、撤Shop授权、错ID，包含关闭false分支；有模块权限人员无Team写 | 不得越权读取/修改/关停；CAS仍检查。无Team写拒绝，不自动选择Team；原Shop历史事实保留 |
+| 独立立即获取 | 已保存策略中改未保存条件后POST `/runs`，附strategy_id/version；未保存草稿不附关联 | 保存配置未改变、不自动创建策略；当前提交条件在Run冻结，最近结果关联正确，状态可轮询 |
+| 只刷新结果 | GET `/runs/{receipt_id}`、列表/候选/详情，页面刷新与重进 | 仅读数据库，零再提交/平台请求；失败不作为成功空榜单，未知不填0，候选basic_info部分失败不清空有效事实 |
+
+### 必要真实执行及证据边界
+
+在同一真实树条件下由ca97协调最小排名范围执行，选择能与官方rank/first标记对照的样本；
+不要因技术测试通过重复认证、换Cookie或为边界拉满200项。第一页probe/实际total/官方rank过滤保持原逻辑，
+需验21名以后的情况时按最小所需页数，首次上榜按官方bool而非本地首次见到。
+若first筛选结果恰为空，如实记录而非强行回退找商品；反例/大边界继续合成验证。
+记录条件（相对周期与实际类目）→冻结首备/实际采用日期→strategy版本/run/receipt→候选/来源→API→Real页面，
+以及刷新不重发、必要同条件重复提交不重复建档。保留窗口普通/最大化与已确认布局/数字格式/缓存。
+未知周期、品牌、自定义价格及其它行业分别取得Query＋HTTP/业务成功Response/页面含义后逐项实现，
+不等待全部证据，不把本清单或浏览器正式API拦截测试当原生/真实平台Gate。
 
 ## B 预定扩展边界（未实现）
 
@@ -98,9 +156,10 @@ PC读取API在服务端排除选品记录，不靠前端隐藏。迁移待A完�
 
 ca97已登记唯一Slot `20261013_0044_product_selection_strategies_v1`，
 revision `20261013_0044`，down `20261010_0043`。Feature已应用并验证迁移闭环，
-Integration/生产仍0043；禁止改写0042/0043或通过降级清库绕过记录保留。
+ca97现已在Integration正式升级0044且保留旧数据/Session，生产仍0043；0044也已进入共享环境，
+本次不改Migration文件或Schema，禁止改写0042/0043/0044或通过降级清库绕过记录保留。
 阶段审查4e584cb因P1/P2退回，Slot已由ca97改为rejected返修占位，未释放编号/库；
-仅沿原Feature安全返修，独立重新审核前不恢复active，B不能抢新Slot。
+随后77a1d96精确返修独立边界接受，由ca97恢复active，仅允许A继续，不是全A Gate；B不能抢新Slot。
 已分配Feature库 `control_center_feat_product_selection`，角色 `control_center_dev_user`；
 8101/4176 strictPort，35433受信任隧道由ca97恢复。实际Feature为单一0044，
 47业务表＋alembic_version（public共48表），末次ShopSession/策略/run均0；
@@ -113,9 +172,11 @@ Integration/生产仍0043；禁止改写0042/0043或通过降级清库绕过记�
 其它未授权Feature及无法确认的目标；不信任URL配置或测试包装器。offline模式拒绝生成删除DDL。
 之后仍保留锁后查数据/并发writer的原保护。0044尚为未通过Gate的Feature返修迁移，
 此次仅修降级安全边界，不改upgrade DDL/revision/down_revision或已有事实，不要求Feature清库/重建，
-不改已进入共享环境的0042/0043、不新增Slot；Integration/生产没有应用0044。
+该修补发生在当时仅Feature应用0044的阶段；随后Integration已由ca97升级，生产未应用0044。
+旧阶段兼容事实保留，当前不再编辑已进入共享环境的0044，不新增Slot。
 
-兼容回滚使用本候选（支持v3 run及v2首次上榜来源）的Backend Reader，不能直接换成3128等旧Backend。
+兼容回滚使用最终候选（支持v4实时run/来源、旧v1/v2/v3及首次上榜来源）的Backend Reader，
+写入v4后不能直接换成77a1d96/3128等旧Backend，即使先关闭UI/执行开关也不等于兼容。
 将上述两个开关写入既有受保护部署配置并按规范重启，停止新提交/claim；已发网络请求不承诺撤回。
 必要时用既有SelectionRunService.recover_expired在租约过期后记录interrupted，保留事实/回执，
 不自动重发；旧执行者仍受DB时钟/lease fence保护。可以回退Renderer，但Backend Reader及0044保留。

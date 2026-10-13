@@ -132,7 +132,7 @@ class SelectionRunService:
                 row = SelectionStrategyService(self.session).writable(current, command.strategy_id, expected_version=command.strategy_version)
                 if row.request_shop_id != command.shop_id:
                     raise SelectionRunConflictError()
-                if resolved.version != 3:
+                if resolved.version not in {3, 4}:
                     raise ValueError("Strategy association requires the versioned execution contract")
                 resolved = resolved.model_copy(update={"strategy": SelectionStrategySnapshot(strategy_id=row.strategy_id, version=row.version)})
             self.repository.recover_expired(at)
@@ -299,7 +299,9 @@ class SelectionRunService:
             request = SelectionResolvedRequest.model_validate(row.request_conditions)
             previous = request.date_outcome.state if request.date_outcome is not None else None
             allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "backup_empty", "both_empty"}}
-            if (request.version not in {2, 3} or state not in allowed.get(previous, set())
+            if request.version == 4:
+                allowed = {None: {"primary"}}
+            if (request.version not in {2, 3, 4} or state not in allowed.get(previous, set())
                 or row.saved_count != 0 or row.result_count is not None):
                 raise SelectionRunLeaseLostError()
             if previous is not None:

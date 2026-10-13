@@ -51,7 +51,6 @@ def test_preparation_does_not_replace_selected_category_or_supplied_dates_with_s
 
 @pytest.mark.parametrize("changes,reason", [
     ({"channel": "baiying"}, "CHANNEL_UNCONFIRMED"),
-    ({"period": "realtime"}, "PERIOD_UNCONFIRMED"),
     ({"period": "1d"}, "PERIOD_UNCONFIRMED"),
     ({"period": "30d"}, "PERIOD_UNCONFIRMED"),
     ({"brand": "known"}, "BRAND_UNCONFIRMED"),

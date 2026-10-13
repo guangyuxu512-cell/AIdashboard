@@ -28,21 +28,22 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
-当前 Migration Slot（返修占位，未释放）：
+当前活跃 Migration Slot：
 
 2026-10-13 ca97分配A唯一Slot并在Feature应用；阶段候选4e584cb因P1/P2退回后，
-Integrator已登记为 `rejected` 且保留本Feature返修占位，未释放编号/库。
-新候选实际边界独立通过前不恢复active；B未分配，不得并行增加第二条迁移链。
+Integrator曾登记为 `rejected` 且保留本Feature返修占位，未释放编号/库。
+77a1d96实际降级/配置控制边界独立通过后，由ca97恢复active，仅允许A继续开发。
+未知参数/真实业务Gate仍PARTIAL；B未分配，不得并行增加第二条迁移链。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-strategies-v1` / 81a1（A） | `rejected`（返修占位） | 一张Team-owned策略表，UUID/Team/User/Shop RESTRICT、version CAS、相对条件与定时草稿；runs可空策略FK及索引，保存/启停不创建Schedule或run、不请求平台 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature实际单一0044保留；4e584cb的目标降级保护/停用资格缺陷退Owner最小修补。只在实际downgrade核验登记的可重建Feature空新实体时允许降级；生产应用回滚保留Schema/策略/事实，兼容Reader关闭新写。不改upgrade DDL/0042/0043，不清库，须新候选独立重审，非Integration/生产迁移或Gate通过。 |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `active` | 一张Team-owned策略表，UUID/Team/User/Shop RESTRICT、version CAS、相对条件与定时草稿；runs可空策略FK及索引，保存/启停不创建Schedule或run、不请求平台 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature实际单一0044保留；4e584cb退回、77a1d96 P1/P2独立技术边界接受后由ca97恢复active。实际downgrade先核验精确登记Feature，再锁后查空新实体/并发writer；生产保留Schema/事实用兼容Reader。不改upgrade DDL/0042/0043、不清库，未知参数/真实业务Gate仍未过，非Integration/生产迁移或发布。 |
 
 最近释放记录：
 
 0044阶段审查的降级保护P1已退回Owner修补：目标校验必须在Migration实际执行路径而非仅测试入口，
 在LOCK/DDL前在线核对精确登记的`control_center_feat_product_selection`，其它目标及离线删除SQL均拒绝。
-该Slot由ca97登记为rejected返修占位、未通过Gate，仅在Feature应用；修补只加强downgrade，不改upgrade DDL/Head/旧事实，
+该Slot曾rejected返修占位，77a1d96边界经ca97接受后恢复active，但未通过完整业务Gate，仅在Feature应用；修补只加强downgrade，不改upgrade DDL/Head/旧事实，
 无需新编号、清库或重建；0042/0043不改。修补实测与新候选仍须ca97独立复核。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
