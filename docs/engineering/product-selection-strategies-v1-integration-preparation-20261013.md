@@ -25,6 +25,24 @@
 唯一Electron98292/Profile保留，实际仍8df。安全hold解除；Owner正在新56b补真实Feature PG，
 之后才匹配加载并验证既有run的精确GET，无需重复取榜或未变视觉。A整体仍PARTIAL。
 
+### 恢复后的读取团队尾部验收
+
+Owner最终测试/文档补充Candidate `183b35b4057b979f21a15e117cb2d3e8ef3b9efc`，父56b，
+已推送且运行时代码与56b完全相同；ca97已回读实际差异与Gate1记录。新增真实PG权限交错
+canonical/reused两例通过，最终五文件PG96/213.37s；默认636/66.80s、纯逻辑59独立记录。
+首轮93pass/1fail并发断言过严的问题保留，不以重跑掩盖。现契约只保证全局一个running与
+回执不领取，SKIP LOCKED不承诺并发严格FIFO；测试修正并新增无锁串行/锁首条跳过两例，
+领取算法、索引及优先级不变。详见Owner团队上下文Gate1文档。
+
+ca97归档并实际加载183 Backend（PID91792/8100/health200），单一0044及旧业务计数保留；
+保留5180/54832的8df前端源码，其全部Frontend字节与183相同，Electron源码也相同，
+唯一原窗口98292和Profile不动，不用分支HEAD冒充原生新视觉。
+通过正常认证回读原v4正式run `5b3d3ba4-4d64-4202-888d-50cf8915eccc`：
+原Team、无Team、另一有效Team同Header均同keyPOST202→精确GET200且DTO一致。
+Run/Schedule/事实以及category/rank/basic_info请求增量全0，未重取榜或造新数据。
+原8df另一Team GET404定向缺口关闭；PG交错与正式HTTP是不同证据，不冒称全A Gate2B通过。
+用户原生行序/分页/筛选/滚动未确认项及未知参数继续原边界，未合dev业务、未标Green或发布。
+
 ### 晚间安全hold与新交审候选（已解除的历史记录）
 
 Owner先交审 `ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`、父8df，已push、Owner干净；
