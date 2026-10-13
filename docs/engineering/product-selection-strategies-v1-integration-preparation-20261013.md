@@ -2,10 +2,38 @@
 
 状态 **PARTIAL，不是 Gate 2 PASS，不是 Green，不授权跳过未完成验收发布**。
 
-## 当前专项候选：43637bb（团队上下文）
+## 当前专项候选：8df（列表稳定）
+
+精确Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`、父436，Owner干净已推送。
+2026-10-13晚间用户正常启动后，Backend/Frontend已启动，只有助手ReadAllLines读取正在写入的
+重定向日志发生共享冲突；不是Backend失败。ca97只修ignored启动助手为FileShare.ReadWrite/Delete
+只读，并按真实监听/父进程核实复用8100/5180；没有停止服务、改业务代码、安装依赖或再次迁移。
+
+实际8100/5180 HTTP200，Vite模块含updateSavedRow/onBeforeUnmount，白名单Backend启动事件精确8df。
+正常原入口打开唯一匹配1.0.6开发Electron，Main/Preload源码与8df相同、原Profile保留；
+真实原生AX读取`http://127.0.0.1:5180/#/shops`、G2-SA-V1 Super Account，无需重新登录。
+截图捕获FrameArrived超时，重选后AX可读，但点击报coordinate input geometry unavailable；
+不借用其它UI技术绕过，不把网页截图或浏览器拦截测试当原生确认。
+
+正常认证后的正式API已验证启用/停用/编辑及恢复原名：稳定created_at DESC/ID ASC顺序、
+固定API第二页（page_size=1）/名称筛选保持，真正updated_at与version更新、最近真实结果不变。
+目标实时策略最终v15/disabled；原7d已保存记录完全不变。Run/计划/候选/来源及category/rank/basic_info
+增量全部0；API固定分页不是原生分页/滚动证据。
+
+再经正式API准备37条`G2-Selection-A 原生稳定页配置 01…37`，全部disabled/unscheduled、
+无latest_run/next_run_at。加原3条共40条，搜索`G2-Selection-A`、20/页时第二页完整20行，
+靠下目标`G2-Selection-A 实时验收`（ID c0c62cee-5bb1-458d-8597-05a4414e0a37）可检查横纵滚动。
+仅新增配置，不是模拟榜单/平台事实；准备前后Run/计划/事实/平台请求仍0增量。稳定ID清单在本机ignored
+证据中保留，没有策略DELETE契约，未经明确清理不编造接口或删除其它记录。
+
+用户仅需在同一集成Electron进行此目标启停/编辑保存，核实行序、第二页、搜索、滚动及状态原位更新；
+不点立即获取、不重复旧视觉。收到原生确认前Gate2B未通过。参数缺口仍是下述精确四组，
+ca97补证一项即交81a1实现，0044 active/0045 reserved及7d55不参与不变；未合dev业务/未发布。
+
+## 43637bb团队上下文证据（历史阶段）
 
 后续精确候选`43637bb051d2f4b3ba6c9fab608756429971edd3`，父c629，已fetch核实。
-这是当前实际8100代码；后述77/c629为此前真实证据，不代替新专项原生验收。
+这是此前实际8100代码，当前已更新8df；本段及后述77/c629真实证据保留，不代替新专项原生验收。
 新增只有资源Team处理、权限重验及必要测试/文档；Frontend运行代码、Electron、Signer、
 Session、日期映射、Model/Migration及PC无差异。ca97独立5个后端文件65项通过。
 
@@ -186,7 +214,7 @@ v4只冻结上海2026-10-13，begin=end、date_type=1、primary，无backup。
 不需要再点“立即获取”重复此两次真实任务。其它未知参数仍按前述清单分别补证，
 A整体仍PARTIAL，未合dev/未Green/未发布；本段不等待B。
 
-## 8df列表稳定返修：已审查，当前运行未恢复
+## 8df列表稳定返修：早先运行未恢复的历史停点
 
 2026-10-13用户明确继续A；Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`，
 父43637bb，Owner工作树干净且已推送。仅稳定created_at DESC/strategy_id ASC及原位Query更新，

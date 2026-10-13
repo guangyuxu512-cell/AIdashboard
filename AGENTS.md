@@ -88,10 +88,14 @@ A完整Gate及精确Green后才串行激活B，此前不写或应用B DDL。详�
 OwnerPG90为Feature真实DB/合成I/O，ca97未写Feature、未在Integration加载B，0045仍reserved。
 
 同日用户接续A，列表返修Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`已独立审查，
-List/Drawer14项通过、无迁移/壳/执行规则变化，精确归档已准备。当前Codex重开后8100/5180及Electron
-已不运行；既有35433严格隧道恢复、隔离Signer健康、Integration0044与HuanYu v6保留。
-正常启动被工具策略在CreateProcess前拒绝，原生Chrome输入也因URL核实门禁停止，不绕过。
-本机正常启动文件已准备；恢复后由ca97补足第二页专用disabled配置及真实Electron专项。
+List/Drawer14项通过、无迁移/壳/执行规则变化，精确归档已准备。早先正常启动曾在CreateProcess前
+被工具策略拒绝；用户随后正常运行启动文件，8100/5180成功启动，但本地助手ReadAllLines读取写入中
+日志报文件共享冲突。ca97仅修ignored助手的共享只读与监听归属复用，不改Feature业务或停健康服务。
+两服务HTTP200及8df运行字节/白名单启动标记已核实；正常入口已开唯一匹配1.0.6 Electron，
+原生AX确认5180/#/shops、G2-SA-V1 Super Account及原Profile保留。截图FrameArrived超时、点击无geometry，
+不以网页验收替代原生。正式API启停/编辑保持行序/固定页/筛选、真实updated_at/version/最近结果，
+Run/计划/事实/平台IO增量0；37条disabled/unscheduled配置经正式API准备完整第二页，仅测试配置。
+用户在同一窗口补行序/分页/筛选/滚动确认前不标Gate2B PASS；Integration0044/HuanYu v6及旧真实run保留。
 其它行业/父级全部、1d/30d、品牌和custom价格仍须逐项Query补证后交81a1，不猜测开放。
 A整体PARTIAL，不合dev/main或发布；B按0044 active/0045 reserved原顺序，7d55不参与选品。
 
