@@ -44,6 +44,7 @@ from app.modules.product_selection.models import (
     ProductSelectionCandidate,
     ProductSelectionObservation,
     ProductSelectionRun,
+    ProductSelectionStrategy,
 )
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
@@ -73,6 +74,7 @@ _MODELS = (
     ProductSelectionCandidate,
     ProductSelectionObservation,
     ProductSelectionRun,
+    ProductSelectionStrategy,
     PromptTemplate,
     TemplateGroup,
     Device,

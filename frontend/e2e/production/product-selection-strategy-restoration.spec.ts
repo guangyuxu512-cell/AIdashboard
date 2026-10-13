@@ -73,6 +73,8 @@ test('Real preserves strategy management, and four-level categories stay visible
       }
     else if (path === '/api/v1/product-selection/runs')
       data = { items: [], total: 0, page: 1, page_size: 1 }
+    else if (path === '/api/v1/product-selection/strategies')
+      data = { items: [], total: 0, page: 1, page_size: 20 }
     else if (path === '/api/v1/product-selection/categories')
       data = {
         shop_id: 'restoration-shop',
@@ -140,7 +142,7 @@ test('Real preserves strategy management, and four-level categories stay visible
         page.getByRole('button', { name: '达人登录', exact: true }),
       ).toBeVisible()
       await expect(
-        page.getByText('策略保存与定时执行待接入', { exact: true }),
+        page.getByText('暂无选品策略', { exact: true }),
       ).toBeVisible()
       await settle(page)
       await page.screenshot({
@@ -225,10 +227,10 @@ test('Real preserves strategy management, and four-level categories stay visible
         .getByText('每日', { exact: true })
         .click()
       await expect(field('每日时间').getByRole('textbox')).toHaveValue('09:00')
-      await expect(field('策略状态').getByRole('switch')).toBeDisabled()
+      await expect(field('策略状态').getByRole('switch')).toBeEnabled()
       await expect(
         drawer.getByRole('button', { name: '保存策略', exact: true }),
-      ).toBeDisabled()
+      ).toBeEnabled()
       await drawer
         .locator('.n-drawer-body-content-wrapper')
         .evaluate((element) => {

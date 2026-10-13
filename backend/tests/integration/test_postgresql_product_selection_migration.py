@@ -11,12 +11,13 @@ from app.core.database import Base
 from app.modules.product_selection.models import (
     ProductSelectionCandidate, ProductSelectionObservation,
     ProductSelectionRun,
+    ProductSelectionStrategy,
 )
 from tests.integration.test_postgresql_product_selection import selection_context, _save
 
 
 pytestmark = pytest.mark.integration
-SELECTION_TABLES = {"product_selection_candidates", "product_selection_observations", "product_selection_runs"}
+SELECTION_TABLES = {"product_selection_candidates", "product_selection_observations", "product_selection_runs", "product_selection_strategies"}
 
 
 def _row_counts(connection, names):
@@ -37,14 +38,14 @@ def test_0043_metadata_and_downgrade_preserve_0042_facts(
     engine = postgresql_engine
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT current_database()")) == postgresql_url.database
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == ["20261010_0043"]
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == ["20261013_0044"]
         if _row_counts(connection, {"product_selection_runs"})["product_selection_runs"]:
             pytest.skip("Refuse to downgrade an environment containing run history")
         existing = set(inspect(connection).get_table_names()) - SELECTION_TABLES - {"alembic_version"}
-        before = _row_counts(connection, existing | (SELECTION_TABLES - {"product_selection_runs"}))
+        before = _row_counts(connection, existing | (SELECTION_TABLES - {"product_selection_runs", "product_selection_strategies"}))
         metadata = MetaData(naming_convention=Base.metadata.naming_convention)
         metadata.reflect(bind=connection, only=["users", "teams", "shops"])
-        for model in (ProductSelectionCandidate, ProductSelectionObservation, ProductSelectionRun):
+        for model in (ProductSelectionCandidate, ProductSelectionObservation, ProductSelectionRun, ProductSelectionStrategy):
             model.__table__.to_metadata(metadata)
 
         def include_object(obj, name, kind, reflected, compare_to):
@@ -71,5 +72,5 @@ def test_0043_metadata_and_downgrade_preserve_0042_facts(
         command.upgrade(config, "head")
     with engine.connect() as connection:
         assert SELECTION_TABLES <= set(inspect(connection).get_table_names())
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == ["20261010_0043"]
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == ["20261013_0044"]
         assert before == _row_counts(connection, before)

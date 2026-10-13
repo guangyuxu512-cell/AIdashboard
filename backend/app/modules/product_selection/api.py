@@ -22,6 +22,8 @@ from app.modules.product_selection.run_contract import (
 )
 from app.modules.product_selection.run_service import SelectionRunService
 from app.modules.product_selection.category_service import SelectionCategoryService
+from app.modules.product_selection.strategy_contract import SelectionStrategyCreate, SelectionStrategyUpdate, SelectionStrategyToggle, SelectionStrategyRead
+from app.modules.product_selection.strategy_service import SelectionStrategyService
 
 
 router = APIRouter(
@@ -35,6 +37,57 @@ router = APIRouter(
     },
 )
 get_selection_actor = require_module_access(ModuleCode.PRODUCT_SELECTION)
+
+
+def get_selection_strategy_service(session: Annotated[Session, Depends(get_database_session)]) -> SelectionStrategyService:
+    return SelectionStrategyService(session)
+
+
+@router.get("/strategies", response_model=Page[SelectionStrategyRead])
+def list_selection_strategies(
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionStrategyService, Depends(get_selection_strategy_service)],
+    pagination: Annotated[PaginationParams, Depends()],
+    search: Annotated[str | None, Query(max_length=120)] = None,
+) -> Page[SelectionStrategyRead]:
+    items, total = service.list(actor, offset=pagination.offset, limit=pagination.page_size, search=search)
+    return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/strategies/{strategy_id}", response_model=SelectionStrategyRead)
+def read_selection_strategy(
+    strategy_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionStrategyService, Depends(get_selection_strategy_service)],
+) -> SelectionStrategyRead:
+    return service.get(actor, strategy_id)
+
+
+@router.post("/strategies", response_model=SelectionStrategyRead, status_code=201)
+def create_selection_strategy(
+    command: SelectionStrategyCreate,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionStrategyService, Depends(get_selection_strategy_service)],
+) -> SelectionStrategyRead:
+    return service.save(actor, command)
+
+
+@router.put("/strategies/{strategy_id}", response_model=SelectionStrategyRead)
+def update_selection_strategy(
+    strategy_id: UUID, command: SelectionStrategyUpdate,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionStrategyService, Depends(get_selection_strategy_service)],
+) -> SelectionStrategyRead:
+    return service.save(actor, command, strategy_id=strategy_id)
+
+
+@router.patch("/strategies/{strategy_id}/enabled", response_model=SelectionStrategyRead)
+def toggle_selection_strategy(
+    strategy_id: UUID, command: SelectionStrategyToggle,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionStrategyService, Depends(get_selection_strategy_service)],
+) -> SelectionStrategyRead:
+    return service.toggle(actor, strategy_id, command)
 
 
 def get_selection_category_service() -> SelectionCategoryService:
@@ -75,6 +128,7 @@ def read_selection_capabilities(
     service.facts._current_actor(actor)
     enabled = service.settings.product_selection_execution_enabled
     return SelectionCapabilitiesRead(execution_enabled=enabled, manual_execution_available=enabled,
+                                     strategy_save_available=service.settings.product_selection_strategy_management_enabled,
                                      unavailable_reason=None if enabled else "EXECUTION_DISABLED")
 
 

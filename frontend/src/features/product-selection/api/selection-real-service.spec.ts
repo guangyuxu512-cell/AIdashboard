@@ -242,24 +242,38 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
         category_ids: ['1001', '1002'],
         brand: 'all',
         price_mode: 'all',
+        price_above: null,
+        price_below: null,
         first_listed_only: false,
         rank_from: 1,
         rank_to: 20,
       },
     )
     input.channels.shortVideo.conditions.period = 'realtime'
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      data: { receipt_id: 'realtime-run', reused: false },
+    })
+    await real.manual!.submit(input, 'realtime-key', nodes)
+    expect(httpClient.post).toHaveBeenLastCalledWith(
+      '/api/v1/product-selection/runs',
+      expect.objectContaining({
+        period: 'realtime',
+        submission_key: 'realtime-key',
+      }),
+    )
+    input.channels.shortVideo.conditions.period = '1d'
     await expect(real.manual!.submit(input, 'key-2', nodes)).rejects.toThrow(
-      '当前仅支持',
+      '未确认',
     )
     input.channels.shortVideo.conditions.period = '7d'
     input.channels.shortVideo.conditions.categoryId = '1001/*'
     await expect(real.manual!.submit(input, 'key-3', nodes)).rejects.toThrow(
       '真实类目',
     )
-    expect(httpClient.post).toHaveBeenCalledTimes(1)
-    await expect(real.saveStrategy(input)).rejects.toThrow(
-      SELECTION_UNAVAILABLE,
-    )
+    expect(httpClient.post).toHaveBeenCalledTimes(2)
+    await expect(
+      real.saveStrategy(input, undefined, undefined, nodes),
+    ).rejects.toThrow('真实类目')
   })
   it('keeps the outer industry in display identities but not the formal category path', async () => {
     const real = await createSelectionService('real')
@@ -392,5 +406,32 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       }),
     ).rejects.toThrow(SELECTION_UNAVAILABLE)
     expect(httpClient.get).toHaveBeenCalledTimes(2)
+  })
+  it('shows confirmed realtime provenance as today, never as seven days or fallback', () => {
+    const dto = observation()
+    dto.period_begin = dto.period_end = '2026-10-13'
+    dto.source_context.business.date_type = '1'
+    dto.source_context.business.begin_date =
+      dto.source_context.business.end_date = '2026/10/13 00:00:00'
+    dto.source_context.date_selection = {
+      policy: 'shanghai_realtime_today',
+      accepted_local_date: '2026-10-13',
+      primary_begin: '2026-10-13',
+      primary_end: '2026-10-13',
+      backup_begin: null,
+      backup_end: null,
+      actual_window: 'primary',
+      fallback_reason: null,
+      rank_from: 1,
+      rank_to: 10,
+    }
+    const row = mapSelectionObservation(dto)
+    expect(row.sourceContext).toMatchObject({
+      periodLabel: '实时',
+      statisticalPeriod: '2026-10-13～2026-10-13',
+      dateFallback: false,
+    })
+    expect(row.clicksRange).toBe('0–0')
+    expect(row.soldUnitsRange).toBeNull()
   })
 })

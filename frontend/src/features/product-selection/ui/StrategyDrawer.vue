@@ -35,8 +35,10 @@ import {
   type SelectionService,
   type SelectionStrategy,
   type SelectionExecutionSummary,
+  type CategoryNode,
 } from '../model/contracts'
 import type { AppOption, AppOptionValue } from '@/shared/ui/types'
+import type { SelectionCapabilitiesDto } from '../api/selection-read-api'
 import { validateStrategy } from '../model/selection-rules'
 import CategorySelector from './CategorySelector.vue'
 
@@ -46,6 +48,7 @@ const props = defineProps<{
   service: SelectionService
   contextKey: string
   executionDisabledReason?: string | null
+  capabilities?: SelectionCapabilitiesDto
 }>()
 const emit = defineEmits<{
   'update:show': [show: boolean]
@@ -56,6 +59,15 @@ const message = useMessage()
 const busy = ref(false)
 const expanded = ref<string[]>(['short-video'])
 const real = computed(() => !!props.service.manual)
+const canSave = computed(
+  () =>
+    props.capabilities?.strategy_save_available ??
+    props.service.strategySaveAvailable ??
+    props.service.available,
+)
+const canSchedule = computed(
+  () => props.service.scheduleAvailable ?? props.service.available,
+)
 let submission: { input: string; key: string } | null = null
 const { values, errors, setFieldValue, resetForm, setErrors } =
   useForm<StrategyInput>({ initialValues: emptyStrategy() })
@@ -66,7 +78,7 @@ const periodPreview = useQuery({
     props.contextKey,
     conditions.value.period,
   ]),
-  enabled: computed(() => props.show && props.service.available),
+  enabled: computed(() => props.show && !real.value && props.service.available),
   queryFn: () => props.service.previewPeriod(conditions.value.period),
   retry: false,
 })
@@ -87,6 +99,32 @@ const categories = useQuery({
   retry: false,
   staleTime: 24 * 60 * 60 * 1000,
   gcTime: 24 * 60 * 60 * 1000,
+})
+watch(categories.data, (nodes) => {
+  const saved = props.strategy?.requestScope
+  if (
+    !nodes ||
+    !saved ||
+    values.shopId !== props.strategy?.shopId ||
+    conditions.value.categoryId !==
+      [saved.industryId, ...saved.categoryIds].join('/')
+  )
+    return
+  function match(tree: CategoryNode[]): string | null {
+    for (const node of tree) {
+      if (
+        node.requestScope?.industryId === saved!.industryId &&
+        JSON.stringify(node.requestScope.categoryIds) ===
+          JSON.stringify(saved!.categoryIds)
+      )
+        return node.id
+      const id = match(node.children ?? [])
+      if (id) return id
+    }
+    return null
+  }
+  const id = match(nodes)
+  if (id) setCondition('categoryId', id)
 })
 async function refreshCategories() {
   if (!values.shopId || categories.isFetching.value) return
@@ -153,7 +191,11 @@ const periodOptions = computed(
       { value: '30d', label: '近30天' },
     ].map((option) => ({
       ...option,
-      disabled: real.value && option.value !== '7d',
+      disabled:
+        real.value &&
+        !(props.capabilities?.supported_periods ?? ['7d']).includes(
+          option.value as ShortVideoConditions['period'],
+        ),
     })) satisfies AppOption[],
 )
 function selectPeriod(value: AppOptionValue) {
@@ -167,8 +209,12 @@ function selectPeriod(value: AppOptionValue) {
 }
 async function submit(saving: boolean) {
   if (busy.value) return
-  if (saving && !props.service.available) {
-    message.info('策略保存与定时执行待接入')
+  if (saving && !canSave.value) {
+    message.info(
+      props.service.strategySaveAvailable
+        ? '当前策略为只读，保存暂不可用'
+        : '策略保存与定时执行待接入',
+    )
     return
   }
   if (!saving && props.executionDisabledReason) {
@@ -207,6 +253,8 @@ async function submit(saving: boolean) {
       const encoded = JSON.stringify({
         shopId: draft.shopId,
         channels: draft.channels,
+        strategyId: props.strategy?.id,
+        strategyVersion: props.strategy?.version,
       })
       if (submission?.input !== encoded)
         submission = { input: encoded, key: crypto.randomUUID() }
@@ -215,14 +263,24 @@ async function submit(saving: boolean) {
         draft,
         submission.key,
         categories.data.value,
+        props.strategy?.version
+          ? { id: props.strategy.id, version: props.strategy.version }
+          : undefined,
       )
       message.info(receipt.reused ? '已复用选品任务' : '已提交选品任务')
       submission = null
       emit('retrieved', receipt.execution)
       emit('update:show', false)
     } else if (saving) {
-      await props.service.saveStrategy(draft, props.strategy?.id)
-      message.success('演示策略已保存')
+      if (real.value)
+        await props.service.saveStrategy(
+          draft,
+          props.strategy?.id,
+          props.strategy?.version,
+          categories.data.value,
+        )
+      else await props.service.saveStrategy(draft, props.strategy?.id)
+      message.success(real.value ? '策略已保存' : '演示策略已保存')
       emit('saved')
       emit('update:show', false)
     } else {
@@ -467,7 +525,11 @@ async function submit(saving: boolean) {
               <NFormItem label="首次上榜"
                 ><AppSwitch
                   :model-value="conditions.firstListedOnly"
-                  :disabled="real || !values.channels.shortVideo.selected"
+                  :disabled="
+                    (real &&
+                      capabilities?.first_listed_filter_available === false) ||
+                    !values.channels.shortVideo.selected
+                  "
                   @update:model-value="setCondition('firstListedOnly', $event)"
               /></NFormItem>
               <div class="strategy-pair">
@@ -481,7 +543,7 @@ async function submit(saving: boolean) {
                   <AppNumberInput
                     :model-value="conditions.rankFrom"
                     :min="1"
-                    :max="real ? 20 : undefined"
+                    :max="real ? (capabilities?.max_rank ?? 200) : undefined"
                     :disabled="!values.channels.shortVideo.selected"
                     @update:model-value="setCondition('rankFrom', $event)"
                   />
@@ -496,7 +558,7 @@ async function submit(saving: boolean) {
                   <AppNumberInput
                     :model-value="conditions.rankTo"
                     :min="1"
-                    :max="real ? 20 : undefined"
+                    :max="real ? (capabilities?.max_rank ?? 200) : undefined"
                     :disabled="!values.channels.shortVideo.selected"
                     @update:model-value="setCondition('rankTo', $event)"
                   />
@@ -520,15 +582,15 @@ async function submit(saving: boolean) {
         </NCollapse>
       </NFormItem>
       <NFormItem label="定时执行">
-        <NTooltip :disabled="service.available">
+        <NTooltip :disabled="canSchedule">
           <template #trigger
             ><AppSwitch
               :model-value="values.scheduled"
               @update:model-value="setFieldValue('scheduled', $event)"
           /></template>
-          定时调度待接入；本次仅编辑草稿，不会创建或启用计划
+          定时配置可保存；服务端调度待接入，不会创建或启用计划
         </NTooltip>
-        <NText v-if="real" depth="3">（待接入）</NText>
+        <NText v-if="real && !canSchedule" depth="3">（调度待接入）</NText>
       </NFormItem>
       <div v-if="values.scheduled" class="strategy-pair">
         <NFormItem label="执行频率"
@@ -559,11 +621,11 @@ async function submit(saving: boolean) {
         </NFormItem>
       </div>
       <NFormItem label="策略状态">
-        <NTooltip :disabled="service.available">
+        <NTooltip :disabled="canSave">
           <template #trigger
             ><AppSwitch
               :model-value="values.enabled"
-              :disabled="!service.available"
+              :disabled="!canSave"
               @update:model-value="setFieldValue('enabled', $event)"
           /></template>
           策略保存待接入，不能启用未保存的策略
@@ -587,17 +649,17 @@ async function submit(saving: boolean) {
           >
           {{ executionDisabledReason }}
         </NTooltip>
-        <NTooltip :disabled="service.available">
+        <NTooltip :disabled="canSave">
           <template #trigger
             ><AppButton
               tone="primary"
               :loading="busy"
-              :disabled="!service.available"
+              :disabled="!canSave"
               @click="submit(true)"
               >保存策略</AppButton
             ></template
           >
-          策略保存与定时执行待接入
+          策略保存待接入
         </NTooltip>
       </div></template
     >

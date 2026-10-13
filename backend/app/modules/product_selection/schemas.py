@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 
 from app.modules.product_selection.source import SelectionSourceScope
-from app.modules.product_selection.run_contract import SelectionDateProvenance
+from app.modules.product_selection.run_contract import SelectionDateProvenance, SelectionRealtimeDateProvenance
 
 
 SelectionSortField = Literal["checked_at", "first_on_shelf_date", "rank"]
@@ -36,11 +36,12 @@ class SelectionCategoriesRead(BaseModel):
 class SelectionSourceRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal[1]
+    version: Literal[1, 2]
     platform: Literal["douyin"]
     endpoint: Literal["product_rank/video_bring_good"]
     business: SelectionSourceScope
-    date_selection: SelectionDateProvenance | None = None
+    date_selection: SelectionDateProvenance | SelectionRealtimeDateProvenance | None = None
+    first_listed_only: Literal[True] | None = None
 
 
 class SelectionMerchantRead(BaseModel):

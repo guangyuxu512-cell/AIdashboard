@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.modules.product_selection.exceptions import SelectionRequestUnconfirmedError
-from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan
+from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan, SelectionRealtimeDatePlan
 from app.modules.product_selection.schemas import SelectionCategoriesRead
 from app.modules.product_selection.source import SelectionSourceScope
 
@@ -22,14 +22,12 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
     unsupported = None
     if original.channel != "short-video":
         unsupported = "CHANNEL_UNCONFIRMED"
-    elif original.period != "7d":
+    elif original.period not in {"realtime", "7d"}:
         unsupported = "PERIOD_UNCONFIRMED"
     elif original.brand != "all":
         unsupported = "BRAND_UNCONFIRMED"
     elif original.price_mode != "all":
         unsupported = "PRICE_UNCONFIRMED"
-    elif original.first_listed_only:
-        unsupported = "FIRST_LISTED_FILTER_UNCONFIRMED"
     elif (
         not original.industry_id.strip("0")
         or original.industry_id in original.category_ids
@@ -44,17 +42,17 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
 def prepare_short_video_scope(
     original: SelectionRunOriginal, *, period_begin: date, period_end: date,
 ) -> SelectionSourceScope:
-    """Encode a supplied seven-day interval without fixing a relative formula.
+    """Encode the confirmed seven-day or realtime single-day query.
 
     Only default brand/price and an explicit non-all category path are prepared.
-    Real-time query evidence is a contrast sample, not an enabled feature.
+    Realtime uses date_type=1; seven-day uses date_type=21. Other periods remain closed.
     This internal helper is not accepted directly by any HTTP submission API.
     """
     validate_preparable_short_video_choice(original)
     if (
         type(period_begin) is not date
         or type(period_end) is not date
-        or (period_end - period_begin).days != 6
+        or (period_end - period_begin).days != (0 if original.period == "realtime" else 6)
     ):
         raise SelectionRequestUnconfirmedError(details={"reason": "EXPLICIT_PERIOD_UNCONFIRMED"})
     return SelectionSourceScope(
@@ -64,22 +62,27 @@ def prepare_short_video_scope(
         rank_data_type="1",
         begin_date=period_begin.strftime("%Y/%m/%d 00:00:00"),
         end_date=period_end.strftime("%Y/%m/%d 00:00:00"),
-        date_type="21", activity_id="",
+        date_type="1" if original.period == "realtime" else "21", activity_id="",
     )
 
 
 def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: datetime) -> SelectionResolvedRequest:
     """User-approved business policy, not a claim about platform refresh time."""
     validate_preparable_short_video_choice(original)
-    if original.rank_to > 20:
-        raise SelectionRequestUnconfirmedError(details={"reason": "RANK_RANGE_UNSUPPORTED"})
     if accepted_at.utcoffset() is None:
         raise ValueError("Acceptance time must have a timezone")
     day = accepted_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    if original.period == "realtime":
+        return SelectionResolvedRequest(
+            version=4, original=original,
+            scope=prepare_short_video_scope(original, period_begin=day, period_end=day),
+            page_numbers=tuple(range(1, (original.rank_to + 9) // 10 + 1)),
+            date_plan=SelectionRealtimeDatePlan(accepted_local_date=day),
+        )
     return SelectionResolvedRequest(
-        version=2, original=original,
+        version=3, original=original,
         scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=7), period_end=day - timedelta(days=1)),
-        page_numbers=(1, 2) if original.rank_to > 10 else (1,),
+        page_numbers=tuple(range(1, (original.rank_to + 9) // 10 + 1)),
         date_plan=SelectionDatePlan(
             accepted_local_date=day,
             backup_scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=8), period_end=day - timedelta(days=2)),

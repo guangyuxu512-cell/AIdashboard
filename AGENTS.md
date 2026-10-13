@@ -18,6 +18,29 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-13 当前81a1任务为人类直接授权的罗盘策略 A/B：A分支
+`feat/product-selection-strategies-v1` 从精确Green `3128d6ad1048dfda1240148e863ea0c98eb6247f`
+创建，与已发布生产 `0102dd6d051f89907bad113c35310bbab69412ec` 业务树一致。
+保留已确认StrategyList/Drawer及五项体验、登录成果。A补已确认条件及真实策略CRUD；
+B独立交付复用Schedule底座的服务端hourly/daily，不造Device/Worker/队列，PC调度不变。
+ca97已分配并核实复用 `control_center_feat_product_selection` / `control_center_dev_user`、
+8101/4176 strictPort与受信任35433；唯一active Slot `20261013_0044`（down0043），
+曾因P1/P2退回为rejected；77a1d96精确返修经ca97独立边界接受后，由Integrator恢复active。
+该接受仅允许A继续开发，不是完整A Gate1/Gate2/Green或发布；业务未知参数及真实验收仍PARTIAL。
+仅策略表和runs可空策略FK；允许Owner最小安全返修，不改upgrade DDL/已存事实，不清库。
+0042/0043不可改写，B尚无Slot。Owner只在Feature合成验证；
+平台最小补证及唯一Integration Electron由ca97协调，未知条件不猜映射/静默忽略，不回退Mock。
+两段分别Gate1→Gate2→Green/CI→Main发布；81a1不合dev/main、不部署生产。
+本节覆盖与当前直接授权冲突的下方历史active范围；下方验收事实保留，不重做原设计。
+当前A仍PARTIAL：CRUD/已确认条件准备不代表全条件或服务端自动执行完成；见本轮契约。
+
+2026-10-13本会话最新直接任务收口A团队操作：已有策略的super操作须由后台核实当前人员权限后
+按已保存strategy.team_id处理，不要求切全局Team；新建策略/无关联草稿仍明确当前业务Team，
+普通成员模块/Team/Shop授权及CAS不变。已应用Integration的0044与0042/0043均不可再改写。
+A通过即交Main，Owner继续不依赖未知参数的B准备/实现；B结构与事务提案见
+`docs/engineering/product-selection-server-schedule-v1-proposal.md`，新Slot仍由ca97串行登记，
+不并行占第二active、不将尚未验收的B混入A发布，平台补证/原生验收仍仅ca97协调。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

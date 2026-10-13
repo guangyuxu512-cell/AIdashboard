@@ -51,13 +51,11 @@ def test_preparation_does_not_replace_selected_category_or_supplied_dates_with_s
 
 @pytest.mark.parametrize("changes,reason", [
     ({"channel": "baiying"}, "CHANNEL_UNCONFIRMED"),
-    ({"period": "realtime"}, "PERIOD_UNCONFIRMED"),
     ({"period": "1d"}, "PERIOD_UNCONFIRMED"),
     ({"period": "30d"}, "PERIOD_UNCONFIRMED"),
     ({"brand": "known"}, "BRAND_UNCONFIRMED"),
     ({"brand": "unknown"}, "BRAND_UNCONFIRMED"),
     ({"price_mode": "custom", "price_above": "0"}, "PRICE_UNCONFIRMED"),
-    ({"first_listed_only": True}, "FIRST_LISTED_FILTER_UNCONFIRMED"),
     ({"industry_id": "0"}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["7", "1000009092", "1000009142"]}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["1000009092", "0"]}, "CATEGORY_PATH_UNCONFIRMED"),
@@ -92,7 +90,7 @@ def test_explicit_interval_is_required_and_must_be_exactly_seven_days(start, end
 def test_public_resolver_freezes_user_approved_shanghai_windows(now, primary, backup):
     assert selection_request_mapping_available() is True
     request = resolve_selection_request(_original(), now)
-    assert request.version == 2 and request.date_outcome is None
+    assert request.version == 3 and request.date_outcome is None
     assert request.scope.begin_date == primary
     assert request.date_plan.backup_scope.begin_date == backup
     assert (request.scope.period_end - request.scope.period_begin).days == 6
@@ -107,11 +105,10 @@ def test_fingerprint_excludes_outcome_but_keeps_frozen_plan_and_legacy_bytes():
     assert request.page_numbers == (1, 2)
     assert request.model_copy(update={"date_outcome": SelectionDateOutcome(state="backup")}).fingerprint() == request.fingerprint()
     legacy = SelectionResolvedRequest(original=request.original, scope=request.scope, page_numbers=(2,))
-    old = legacy.model_dump(mode="json", exclude={"date_plan", "date_outcome"})
+    old = legacy.model_dump(mode="json", exclude={"date_plan", "date_outcome", "strategy"})
     assert legacy.fingerprint() == sha256(json.dumps(old, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     with pytest.raises(ValueError): request.actual_scope()
-    with pytest.raises(SelectionRequestUnconfirmedError):
-        freeze_short_video_request(_original(rank_to=21), datetime.now(UTC))
+    assert freeze_short_video_request(_original(rank_to=21), datetime.now(UTC)).page_numbers == (1, 2, 3)
 
 
 def test_old_v2_outcomes_remain_readable_and_new_primary_error_is_strict_and_not_part_of_fingerprint():
@@ -136,6 +133,29 @@ def test_old_v2_outcomes_remain_readable_and_new_primary_error_is_strict_and_not
             SelectionPrimaryBusinessError(error_code="DOUYIN_SELECTION_BUSINESS_REJECTED",
                 error_stage="platform_business", platform_business_code=code)
     with pytest.raises(ValueError): SelectionDateOutcome(state="backup_empty")
+
+
+def test_new_v3_does_not_relax_legacy_v2_pages_or_change_legacy_hashes():
+    from app.modules.product_selection.run_contract import SelectionResolvedRequest
+    from hashlib import sha256
+    import json
+    request = freeze_short_video_request(_original(rank_to=20), datetime.now(UTC))
+    raw = request.model_dump(mode="json", exclude={"strategy"}) | {"version": 2}
+    legacy = SelectionResolvedRequest.model_validate(raw)
+    assert legacy.fingerprint() == sha256(json.dumps({key: value for key, value in raw.items() if key != "date_outcome"}, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    with pytest.raises(ValueError):
+        SelectionResolvedRequest.model_validate(raw | {"page_numbers": [1, 2, 3]})
+    assert request.version == 3
+
+
+def test_v3_first_listed_return_filter_separates_source_without_guessing_platform_parameter():
+    original = _original(first_listed_only=True, rank_from=151, rank_to=200)
+    request = freeze_short_video_request(original, datetime.now(UTC))
+    assert request.page_numbers == tuple(range(1, 21))
+    assert "first_listed_only" not in request.scope.model_dump()
+    assert request.scope.fingerprint() != request.scope.fingerprint(first_listed_only=True)
+    assert request.scope.context(first_listed_only=True)["first_listed_only"] is True
+    assert request.scope.context()["version"] == 1
 
 
 @pytest.mark.parametrize("industry_wrapped", [False, True])
