@@ -68,6 +68,12 @@ POST关联策略时须同时提供strategy_id和strategy_version（正整数）�
 按回执ID GET仍沿旧契约解析canonical；策略列表按各自提交回执批量取canonical最近结果，
 并再次按历史请求Shop的当前授权过滤，换Shop后撤销旧Shop不能泄露旧run。
 
+精确`GET /runs/{run_id}`的进度读取同样遵守资源上下文：后台重新核验为super后，
+按已保存Run的Team重新校验有效人员/Team/模块再读取，不要求切换全局Team。
+canonical可能是被关联策略复用的旧无strategy执行，因此不能只看canonical.strategy_id。
+回执仍校验与canonical同Team/Shop/指纹，普通成员仍按Team/Shop授权读取；失效super不能沿用旧标记。
+`GET /runs`列表继续采用当前Team筛选，精确ID例外不改变列表总数、归属或任何事实。
+
 升级期仍在执行的旧v2默认条件可与新v3提交共享任务，但必须Team/Shop、全部原始条件、
 排名/页范围及冻结的两段日期完全一致，保留旧canonical/指纹；新回执记录自己的v3策略快照。
 相同submission_key跨日先重放原请求；新key次日不能因相对周期相同就复用昨日窗口。

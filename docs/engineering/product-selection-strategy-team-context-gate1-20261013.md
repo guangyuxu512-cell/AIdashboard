@@ -50,3 +50,38 @@ GET/PUT/PATCH和关联手动Run共用它；不改归属、不硬编码Team，不
 A其它industry/date1d/date30d/brand/customprice仍缺直接参数证据，由ca97逐项补证，Owner收到即接入。
 B事务/Schema正式提案已提供，尚无新active Slot；先推进时间规则/事务拆取，未验B代码不混入A发布。
 回滚保留0044、旧事实及v4兼容Reader，不降级共享库/清数据；Owner不合dev/main、不发布生产。
+
+## 2026-10-13 追加：精确进度读取的团队一致性
+
+沿A当前`8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`继续，B独立
+`d4eaa9c4fcf686b2669290aaa45bfc2d577bb2b3`不混入。ca97技术核对认可此尾部缺口；
+8df的原生位置专项及既有实时/7d事实保留，不倒写为本次精确进度GET已验收。
+
+已有策略POST已派生资源Team，但`SelectionRunService.get`仍把super的全局Team作为
+精确ID过滤；选另一有效Team时提交成功后GET404，未选Team时不复现。
+新增Feature PG断言在旧逻辑上1 pass/1 fail，失败为`SelectionRunNotFoundError`。
+修复仅在get中重新核验人员/模块及真实super，精确查单个Run，再按已存有效Team复核；
+原`_read`回执与canonical的Team/Shop/fingerprint检查保持。canonical可以是旧无strategy
+执行，因此不只依赖strategy_id。运行列表继续按全局Team过滤，普通成员SQL/Shop权限不变。
+没有提交、事实、保存、CAS、日期、Signer、Session或前端布局变化，不新增API或Schema。
+
+定向覆盖same-header POST202→GET200、同key重放、canonical与reused receipt、旧无关联执行；
+普通成员404、资源Team停用拒绝、撤super及Shop授权后缓存super标记无效。
+全部仅登记Feature PostgreSQL和合成类目，平台Session入口被测试禁止；无真实请求。
+最终追加回归（Backend目录）：
+
+| 命令 | 实际结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_realtime.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py -q --tb=short` | 92 pass，213.19s；Feature PG＋合成I/O，非平台验收 |
+| `.venv\Scripts\python.exe -m pytest --tb=short` | 630 pass / 236 integration deselected，73.38s |
+| root `git diff --check` | pass |
+
+保留既有Starlette/httpx弃用warning。精确Candidate随Handoff回传，不在本节猜未来SHA。
+测试完成后的额外只读核验因连接对象类型错误失败，异常输出意外包含Feature连接凭据；
+未写入Git，本节不复述敏感内容。Owner已停止使用该凭据并通知ca97走受保护轮换/影响核对，
+不自行改共享/生产配置。该额外核验不算成功证据，安全事项未核销前不放行完整Gate或发布。
+
+Frontend/Electron/0042/0043/0044与8df字节不变，复用其已记录lint/typecheck/Real build与
+95项选品定向和3项完整API拦截证据；不是再次执行，也不是本次新原生验收。
+ca97只需加载匹配Backend并补实际现有上下文POST→进度/回执GET，复用不受影响的列表原生专项。
+其它行业/1d/30d/品牌/custom price仍待逐项直接证据，B0045仅reserved；A/B整体保持PARTIAL。

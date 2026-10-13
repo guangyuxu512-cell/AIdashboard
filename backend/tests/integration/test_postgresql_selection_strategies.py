@@ -139,12 +139,60 @@ def test_existing_super_strategy_operations_use_saved_team_without_switch(select
         receipt = service.submit(actor, command)
         assert service.submit(actor, command).receipt_id == receipt.receipt_id
         assert observed_teams == [context[1][0]]
+        assert service.get(actor, receipt.execution_run_id).run_id == receipt.execution_run_id
         stored = session.get(Strategy, saved.strategy_id)
         assert stored.version == 4 and stored.conditions["request"]["rank_from"] == 1
         assert session.get(Run, receipt.receipt_id).team_id == context[1][0]
         assert SelectionStrategyService(session).get(actor, saved.strategy_id).latest_run.run_id == receipt.execution_run_id
         with pytest.raises(TeamContextRequiredError):
             service.submit(replace(actor, team_id=None), _input(context))
+        # A Team filter on the list is not a reason to hide the exact progress
+        # of a resource-authorized submission from the same super account.
+        if other_team:
+            assert service.list(actor, shop_id=None, offset=0, limit=10)[1] == 0
+    with _api_client(context) as client:
+        progress = client.get(f"/api/v1/product-selection/runs/{receipt.execution_run_id}", headers=headers)
+        assert progress.status_code == 200
+        assert progress.json()["team_id"] == str(context[1][0])
+        assert progress.json()["run_id"] == str(receipt.execution_run_id)
+
+
+@pytest.mark.parametrize("other_team", [False, True])
+def test_existing_strategy_post_and_progress_api_share_resource_context(selection_context, other_team, monkeypatch):
+    from app.modules.product_selection.api import get_selection_run_service
+    from app.modules.product_selection import platform_io
+
+    context = selection_context
+    saved = _save(context)
+    with Session(context[0]) as session:
+        session.get(User, context[2][0]).is_super_account = True
+        session.commit()
+    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Progress/replay must not load Session or request the platform"))
+    command = _input(context, rank_from=1, rank_to=10, strategy_id=saved.strategy_id, strategy_version=saved.version)
+    headers = {"X-Team-ID": str(context[1][1])} if other_team else {}
+
+    def dependency():
+        with Session(context[0]) as session:
+            yield SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop))
+
+    with _api_client(context) as client:
+        client.app.dependency_overrides[get_selection_run_service] = dependency
+        accepted = client.post("/api/v1/product-selection/runs", json=command.model_dump(mode="json"), headers=headers)
+        assert accepted.status_code == 202
+        receipt = accepted.json()
+        assert receipt["execution"]["team_id"] == str(context[1][0])
+        for run_id in {receipt["receipt_id"], receipt["execution_run_id"]}:
+            progress = client.get(f"/api/v1/product-selection/runs/{run_id}", headers=headers)
+            assert progress.status_code == 200 and progress.json() == receipt["execution"]
+        replay = client.post("/api/v1/product-selection/runs", json=command.model_dump(mode="json"), headers=headers)
+        assert replay.status_code == 202 and replay.json() == receipt
+        page = client.get("/api/v1/product-selection/runs", headers=headers).json()
+        assert page["total"] == (0 if other_team else 1)
+    with _api_client(context, actor_index=1) as client:
+        assert client.get(f"/api/v1/product-selection/runs/{receipt['execution_run_id']}").status_code == 404
+    with Session(context[0]) as session:
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 1
+        assert session.scalar(select(func.count()).select_from(Candidate).where(Candidate.team_id == context[1][0])) == 0
 
 
 def test_resource_team_binding_rechecks_super_authority_after_category_io(selection_context):

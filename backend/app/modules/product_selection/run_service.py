@@ -1,6 +1,7 @@
 """Short transactions for manual intentions, progress, claims and terminal state."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -212,9 +213,17 @@ class SelectionRunService:
 
     def get(self, actor: ActorContext, run_id: UUID) -> SelectionRunRead:
         current = self.facts._current_actor(actor)
-        row = self.repository.get_for_actor(current, run_id)
+        # A verified super account may submit a saved strategy from another
+        # selected Team. Its exact receipt/canonical progress must remain
+        # readable without changing the global list filter. The canonical can
+        # be an older unassociated run reused by that strategy, so use the
+        # immutable run Team rather than guessing a strategy association.
+        lookup = replace(current, team_id=None) if current.is_super_account else current
+        row = self.repository.get_for_actor(lookup, run_id)
         if row is None:
             raise SelectionRunNotFoundError()
+        if current.is_super_account:
+            current = self.facts._current_actor(replace(current, team_id=row.team_id))
         return self._read(current, row)
 
     def list(self, actor: ActorContext, *, shop_id: UUID | None, offset: int, limit: int) -> tuple[list[SelectionRunRead], int]:
