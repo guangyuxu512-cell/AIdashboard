@@ -74,6 +74,11 @@ CAS、新建/无关联草稿必须明确Team的门禁保留，Run/Schedule/事�
 技术提案已审核，下一Slot`20261013_0045`/down0044仅reserved；A0044仍唯一active，
 A完整Gate及精确Green后才串行激活B，此前不写或应用B DDL。详见阶段集成记录与Slot表。
 
+同日B非DDL准备`f4f61c926d40193b5a5d939927f967f6fee42068`已fetch/技术审查接受，
+隔离归档91项时间/PC/选品定向通过；无Model/Migration/Scanner/Settings/Frontend/Electron变化。
+整点辅助、调用者事务所有权及包含reused的策略活动查询只是准备，不是定时Gate或发布候选。
+OwnerPG90为Feature真实DB/合成I/O，ca97未写Feature、未在Integration加载B，0045仍reserved。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

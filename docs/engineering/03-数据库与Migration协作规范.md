@@ -61,6 +61,9 @@ ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变�
 | --- | --- | --- | --- | --- | --- |
 | `feat/product-selection-server-schedule-v1` / 81a1（B） | `reserved`（非DDL技术准备可继续，禁止写/应用新Migration） | 复用schedules/schedule_runs，明确pc/server_selection目标、策略FK、服务端hourly/daily及SelectionRun回执；组合CHECK/partial unique，保留全部旧PC数据。不新增表或第二调度器 | A必须先完成Gate及精确Green；down `20261013_0044` | 预留 `20261013_0045_product_selection_server_schedule_v1`，计划revision `20261013_0045` | 审核依据为43637bb内正式B提案。准备与平台I/O在锁外，最终真实人员/Team/Shop/CAS重验，Run/occurrence/next共同提交；包含reused活动、COALESCE ONE、PC SQL过滤及原PC API回归。激活后在登记Feature验证，真实B运行后保留兼容Reader/Schema/审计，只关闭server生成/执行；不得将旧A镜像直接当作兼容回退。 |
 
+B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
+OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
+
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |

@@ -42,6 +42,23 @@ B正式最小Schema/事务提案已审核，依真实人类A/B任务分离分支
 唯一active仍A0044。B非DDL准备可继续，不等待用户重新发任务；A完整Gate+精确Green后串行激活，
 不能把未验B混入A发布。当前A仍PARTIAL，不合dev业务、不推main或发布。
 
+### 独立B非DDL准备审查（不改变A运行）
+
+Owner已推送`f4f61c926d40193b5a5d939927f967f6fee42068`，父beaf7ce，分支B，
+正常包含A436依赖，不是完整B或A Release目标。ca97只在独立ignored源码归档审查和运行测试：
+时间规则/PC service/scanner与选品mapping/realtime/strategy/source/connector共8文件91 pass，
+无DB/平台调用；diff check通过。未替换现有A marker/前后端/Electron或其Profile/草稿。
+
+审核接受的准备是：上海整点next严格未来、latest含到点；原submit负责权限/类目/CAS和外层
+commit/rollback，抽取的私有persist只使用原savepoint/唯一冲突处理；策略活动查询同时检查
+canonical pending/running、双Team、Shop和fingerprint，包含该策略复用另一/无关联canonical，
+终态不永久占用。未来Due Service仍须完整授权与持策略/发生时刻锁后使用，不是新增授权入口。
+Model、Migration、Schedule DTO、Scanner、Settings、Frontend、Electron和Worker无变更。
+
+OwnerPG90为登记Feature真实数据库/合成I/O，与ca9791项不累加为某个完整Gate数字。
+未验证真实到点、关闭Electron/Worker离线或新Schema，不称B可运行。0045仍reserved，
+唯一active A0044；A具体参数取证和原生专项继续，不以B准备结果替代或阻塞A。
+
 ## 先前阶段事实（77a1d96及c629）
 
 当前阶段候选 `77a1d96a2989ada3ef7f12bbba0e0782588468d1`，基线 Green
