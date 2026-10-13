@@ -97,3 +97,50 @@ def test_super_progress_reads_saved_run_team_including_reused_unassociated_execu
         for run_id in (receipt.receipt_id, receipt.execution_run_id):
             with pytest.raises(SelectionRunNotFoundError):
                 service.get(replace(actor, team_id=context[1][0]), run_id)
+
+
+@pytest.mark.parametrize("reused", [False, True])
+def test_progress_rechecks_real_shop_grant_after_super_is_revoked_during_resource_resolution(selection_context, reused, monkeypatch):
+    context = selection_context
+    strategy = _save(context)
+    if reused:
+        with Session(context[0]) as session:
+            SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(
+                context[4][0], _input(context, rank_from=1, rank_to=20),
+            )
+    with Session(context[0]) as session:
+        session.get(User, context[2][0]).is_super_account = True
+        session.commit()
+        actor = ActorContextService(session).resolve(user_id=context[2][0], requested_team_id=context[1][1])
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop))
+        receipt = service.submit(actor, _input(context, rank_from=1, rank_to=20, strategy_id=strategy.strategy_id, strategy_version=strategy.version))
+        assert receipt.reused is reused
+        actual_actor_read = service.facts._current_actor
+        actual_visible_read = service.repository.get_for_actor
+        resolved, queried = [], []
+
+        def authority(current):
+            if len(resolved) == 1:
+                # A separate committed connection changes actual permission
+                # rows after the first super lookup, before the second resolve.
+                with Session(context[0]) as write:
+                    write.get(User, context[2][0]).is_super_account = False
+                    write.execute(delete(TeamShopAccess).where(TeamShopAccess.team_id == context[1][0], TeamShopAccess.shop_id == context[3][0]))
+                    write.commit()
+            final = actual_actor_read(current)
+            resolved.append(final)
+            return final
+
+        def visible(current, run_id):
+            queried.append((current, run_id))
+            return actual_visible_read(current, run_id)
+
+        monkeypatch.setattr(service.facts, "_current_actor", authority)
+        monkeypatch.setattr(service.repository, "get_for_actor", visible)
+        with pytest.raises(SelectionRunNotFoundError):
+            service.get(actor, receipt.receipt_id)
+        assert [current.is_super_account for current in resolved] == [True, False]
+        assert len(queried) == 2
+        assert queried[0][0].team_id is None
+        assert queried[1] == (resolved[1], receipt.receipt_id)
+        assert session.get(Run, receipt.execution_run_id).status == "pending"

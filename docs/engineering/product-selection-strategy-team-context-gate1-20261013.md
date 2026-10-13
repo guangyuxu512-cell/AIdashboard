@@ -110,3 +110,36 @@ reused回执查canonical也使用该次Actor，Team/Shop/fingerprint边界不变
 Frontend/Electron/Migration仍零变更，未重复其检查；安全hold期间不执行新PG/整体需要DB的验收。
 ed6旧PG证据不是本次交错修复已通过PG。共享Role轮换/影响核对及新PG复验仍待处理，
 只交无DB代码技术复审，不称Gate1全部完成、Gate2/Green或发布放行。
+
+## 2026-10-13 凭据恢复后的Feature PostgreSQL补验
+
+ca97经现有DBA通道完成开发应用Role受保护轮换，报告生产凭据不共享；Owner没有操作
+其它环境、Role或生产配置，仅按正式恢复通知读取已同步的Feature配置。
+只读预检实际通过：目标`control_center_feat_product_selection`、单一`20261013_0044`；
+rolsuper/rolcreatedb/rolcreaterole均false；策略/run/候选/观察/ShopSession计数均0。
+使用`make_url(str(...))`且全异常只输出安全类型码，不打印配置/URL/repr；本次探针成功。
+不删除原事件或失败阶段记录，恢复Feature连接不等于全A Gate/发布通过。
+
+在56b运行时上新增2项实际PG授权交错：用另一个已提交连接在首次super查行后撤回合成User
+的super和Shop grant，第二次权威Actor变普通成员，既有精确可见SQL必须拒绝；分别覆盖
+canonical和reused receipt，不伪造权限判定或返回值。2 pass/5.22s，原运行保持pending。
+纯逻辑5文件重验59 pass/1.19s；领取测试整理前的默认测试636 pass/238 integration
+deselected/66.80s（后续只追加2项PG测试，运行时/默认单测未再变化）。
+
+首轮5文件PG实际为93 pass/1 fail/213.70s，失败是既有
+`test_claim_race_global_one_execution_and_receipts_never_claimed`断言并发胜者一定是首条。
+实际只领取1个合法canonical；`created_at`排序＋`SKIP LOCKED`允许两个事务锁不同
+canonical，全局running唯一索引只仲裁一个提交，现契约没有并发严格FIFO承诺。
+ca97回读契约后接受只修测试：候选集合内合法canonical、回执不领取、全DB仅一个running、
+另一canonical保持pending；另保留无锁串行首条排序，并以独立连接锁住首条验证可跳过。
+这3项PG定向通过/5.86s；没有修改claim算法、索引、优先级或用反复重跑隐藏原失败。
+完整5文件重跑实际96 pass/213.37s；命令为：
+
+`.venv\Scripts\python.exe -m pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_realtime.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py -q --tb=short`
+
+保留既有Starlette/httpx弃用warning。测试后只读目标/Head/最小Role及上述5项计数与预检一致，
+全0，仅清理合成夹具、没有业务数据或Schema迁移；精确测试补充Candidate随Handoff回传。
+
+运行时Backend、Frontend、Electron及全部Migration相对56b零差异；本次仅测试与证据。
+全部I/O为登记Feature PG与合成类目，不请求真实平台；未重做未变前端/原生/取数验收。
+A未知参数/原生操作及B定时仍按原独立边界推进，不把本段PG当完整业务验收。
