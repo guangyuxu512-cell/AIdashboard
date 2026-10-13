@@ -2,7 +2,30 @@
 
 状态 **PARTIAL，不是 Gate 2 PASS，不是 Green，不授权跳过未完成验收发布**。
 
-### 晚间安全hold与新交审候选（优先于后述运行记录）
+### 凭据恢复后的当前状态（22:31 Asia/Shanghai）
+
+按当前人类条件授权，Main因另一直接人类任务只提供既有正式通道元数据，ca97经DBA入口完成
+生产只读关联核查及开发Role运维。生产root配置、实际Backend/Signer均为独立
+`control_center_prod_app`，角色/密码不共用；current与三镜像仍精确
+`0102dd6d051f89907bad113c35310bbab69412ec`，配置/进程不改，生产health正常。
+
+只轮换`control_center_dev_user`，原角色属性和授权保持。受保护同步81a1、ca97、Main smoke及
+额外0106本机连接配置和服务器DEV配置，仅密码变化。三处新鲜连接PASS、旧密码明确认证拒绝，
+主要业务计数和Integration单一0044保留；Main smoke实际旧Head0034只记录，不因凭据处理升级。
+0106残留配置指向已不存在的旧Feature库，密码已同步但不重建；服务器DEV Backend保持停止，
+停止容器存有失效旧环境，未来启用必须正式Compose重载而不是直接docker start。
+
+首轮受保护文件准备的ACL格式错误发生在远程操作前，只有空文件，核对后移除并定向修正，
+实际Role只轮换一次。后续完整连接检查唯一额外失败为0106旧库不存在，不反复换密码掩盖。
+原工具输出仅按事件标识做流式计数，未导出内容；无历史编辑接口，旧失效值仍留存，不能声称
+已删除或全历史脱敏。新密码不进入聊天/日志/Git；本机配置限定当前Windows用户与SYSTEM。
+加密临时恢复材料已撤除，保留非敏感审计。
+
+只回收归属核实且无活动任务的8100 Backend以加载新配置；当前84500/health200，5180/54832及
+唯一Electron98292/Profile保留，实际仍8df。安全hold解除；Owner正在新56b补真实Feature PG，
+之后才匹配加载并验证既有run的精确GET，无需重复取榜或未变视觉。A整体仍PARTIAL。
+
+### 晚间安全hold与新交审候选（已解除的历史记录）
 
 Owner先交审 `ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`、父8df，已push、Owner干净；
 随后定向返修`56b9614235708faf86bb237c27dffaf8b8ae6165`、父ed6已push，当前以56b交审。

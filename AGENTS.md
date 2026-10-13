@@ -113,6 +113,20 @@ Integration、Main smoke三处共用，生产关系UNKNOWN；候选增量内容�
 没有轮换Role、改共享配置或生产。须对应管理员在明确授权范围下先核对生产关联，再受保护轮换/同步；
 参数12白名单本机捕获与无DB代码审核可继续，安全事项核销前不放行Gate/Green/Release。
 
+同日22:31（Asia/Shanghai）凭据事件恢复：人类明确条件授权后，Main另有直接人类只读任务，
+提供既有正式通道元数据；ca97经受信任root SSH/现有PG管理员完成生产只读比较，
+实际production root配置与Backend/Signer均为`control_center_prod_app`、Role/密码不共用，
+当前生产`0102dd6d051f89907bad113c35310bbab69412ec`健康且配置/进程不动。
+仅轮换`control_center_dev_user`，受保护同步81a1/ca97/Main smoke、额外0106与服务器DEV配置；
+三处新鲜连接通过、旧密码明确认证拒绝，Role属性/授权、业务计数及Integration单一0044保留。
+Main smoke实际旧Head0034只记录，不借凭据处理迁移；0106旧目标库已不存在，不重建，密码已同步。
+停止的服务器DEV容器保持停止，未来启用须正式Compose重载新配置，不直接docker start旧环境。
+只回收核实归属且无活动任务的8100 Backend，5180/唯一Electron98292/Profile保留；新Backend84500
+实际加载既有8df、新连接及health正常。加密恢复材料已撤除，秘密不进聊天/输出/Git。
+原工具历史无受支持编辑接口，失效旧值留存如实记录，不宣称已删或全部脱敏。
+凭据hold解除；Owner继续新56b必要PG，ca97随后匹配集成，A参数/原生未完成项仍PARTIAL，
+不把连接恢复当成全A Gate、Green或生产发布；未受影响验收不重复。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。
