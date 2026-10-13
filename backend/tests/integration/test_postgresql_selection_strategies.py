@@ -165,6 +165,29 @@ def test_resource_team_binding_rechecks_super_authority_after_category_io(select
         assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
 
 
+def test_shared_run_persistence_leaves_commit_and_rollback_to_authorized_caller(selection_context, monkeypatch):
+    from datetime import UTC, datetime
+    context = selection_context
+    at = datetime(2026, 10, 13, 1, tzinfo=UTC)
+    command = _input(context)
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda *_: pytest.fail("Persistence must not request categories"))
+        current = service.facts._current_actor(context[4][0])
+        service.facts._execution_shop(current, command.shop_id)
+        resolved = service.resolver(command.original(), at)
+        with monkeypatch.context() as guarded:
+            guarded.setattr(session, "commit", lambda: pytest.fail("Caller owns commit"))
+            guarded.setattr(session, "rollback", lambda: pytest.fail("Caller owns outer rollback"))
+            first = service._persist_submission(current, command, resolved, at=at)
+            second = service._persist_submission(current, command, resolved, at=at)
+            assert first.receipt_id == second.receipt_id
+            assert session.in_transaction()
+        with Session(context[0]) as reader:
+            assert reader.get(Run, first.receipt_id) is None
+        session.rollback()
+        assert session.get(Run, first.receipt_id) is None
+
+
 def test_only_strategy_still_prevents_team_deletion(selection_context):
     from tests.integration.test_postgresql_product_selection import _remove_team_grants_and_membership
     context = selection_context

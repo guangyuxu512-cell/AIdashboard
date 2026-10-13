@@ -1,0 +1,49 @@
+# 选品服务端定时 B：非DDL准备交接
+
+本次只交技术准备，不是B功能Gate1或真实定时闭环。Owner81a1 / 审核ca97。
+已按ca97安排创建 `feat/product-selection-server-schedule-v1`：精确Green
+`3128d6ad1048dfda1240148e863ea0c98eb6247f`，正常no-ff合入A已交付依赖
+`43637bb051d2f4b3ba6c9fab608756429971edd3`，依赖合并
+`ecdec1a27a5de0105929209530d79178176ec280`。原A分支不变；未rebase/cherry-pick/reset。
+四项B未提交修改以明确路径stash/apply安全移入B，恢复副本保留；没有覆盖其它任务。
+
+## 已实现、未激活的部分
+
+- 复用 schedules/time_rules 增加上海整点next/latest辅助。新接受整点时下一次严格未来；
+  旧due整点包含当前时刻，重启选最近一次。跨日/跨年、aware输入、固定上海规则已测。
+- PC ScheduleType、Create/Update DTO仍只once/daily/weekly，继续拒绝hourly；
+  未改Model、Migration、due scanner、配置或生产；这些函数尚无自动触发调用。
+- 现有SelectionRunService只拆出私有 `_persist_submission`，不增第二运行服务/队列。
+  原手动外层仍负责权限/Shop/类目/策略CAS、冻结、恢复租约、commit/rollback；
+  helper只维护已有savepoint/唯一冲突处理和原回执/活动复用，不HTTP/commit/outer rollback。
+  原v2/v3/v4条件/指纹、canonical及策略快照保持，不改变手动请求范围或失败回退。
+- PG验证helper返回后的新Run其它连接不可见；同一事务同key一致；调用者rollback后无Run残留。
+  通过原有真实PG回归，不把这个内部准备点当成已接到Schedule。
+
+## 实际验证
+
+| 命令（backend） | 结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m pytest tests/test_schedule_time_rules.py tests/test_schedule_service.py tests/test_schedule_scheduler.py -o addopts="" -q` | 26 pass / 1.20s，含9个新增整点/恢复/拒绝边界；PC原once/daily/weekly及scanner保留 |
+| `.venv\Scripts\python.exe -m pytest -o addopts="-m 'not integration'" -q` | 639 pass / 232 integration deselected / 69.71s，既有Starlette/httpx warning |
+| `.venv\Scripts\python.exe -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_realtime.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py -o addopts="" -q` | 88 pass / 229.68s；真实登记Feature PG、全部合成I/O，新增caller事务边界测试 |
+| root `git diff --check` | pass |
+
+DB仍 `control_center_feat_product_selection` / 单一 `20261013_0044`；无新表/列/Slot，
+所有已应用迁移字节不变。前端/Electron/Worker无B运行文件改动，不新开窗口、不发平台请求。
+当前分支沿用A的前端检查，不重新构建桌面壳，不能据此称B Real/Electron通过。
+
+## 下一步与具体前置
+
+ca97已认可 `product-selection-server-schedule-v1-proposal.md` 的最小结构及短事务方向；
+要求FK/partial unique/组合CHECK实际PG验证。0044仍active，按现有串行规则，
+A精确Green后ca97释放0044并登记0045(down0044)，之前Owner不得编写/应用B DDL。
+不因这项流程停止时间/事务准备，也不抢第二active或通过改0044偷带B结构。
+
+获得正式资源登记后实现target类型/组合约束、策略服务同步唯一Schedule、SQL PC隔离、
+原scanner的事务外准备/重锁/原子创建run与触发审计、启停/重复扫描/重启/权限和状态投影。
+旧A草稿须正式Service转换未来occurrence，不Migration批量插计划；保留兼容BReader回退。
+然后由ca97在唯一Integration进行一次自然到点真实执行、入库/展示以及关Electron/PC离线验证。
+当前helper测试和人工执行器都不能替代该证据。未接达人/百应/手机/商品库不扩大范围。
+
+A后续仍由原A分支接每项新的平台映射证据；B后续正常merge A精确Green，不作为A Release目标。

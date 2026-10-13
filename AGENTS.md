@@ -41,6 +41,13 @@ A通过即交Main，Owner继续不依赖未知参数的B准备/实现；B结构�
 `docs/engineering/product-selection-server-schedule-v1-proposal.md`，新Slot仍由ca97串行登记，
 不并行占第二active、不将尚未验收的B混入A发布，平台补证/原生验收仍仅ca97协调。
 
+2026-10-13 ca97已技术认可B最小提案及独立分支安排：Owner在
+`feat/product-selection-server-schedule-v1`，从精确Green3128正常no-ff merge已交A依赖
+`43637bb051d2f4b3ba6c9fab608756429971edd3`，原A分支/候选完整保留。
+当前仅非DDL时间规则及Run事务抽取，不新增Schema/启用自动执行，不是B闭环候选。
+0044仍active、0045尚不得写/应用；A精确Green后ca97串行登记0045(down0044)，
+再由Owner实施B模型/Migration。B未验代码不作为A Release目标，之后正常merge A Green。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

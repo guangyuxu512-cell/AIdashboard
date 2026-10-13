@@ -4,6 +4,11 @@
 这是待审核提案，不代表 Slot 已激活、Schema 已实现或定时已运行。A 当前已应用 0044，保持字节不变。
 B 精确 Candidate 与 A 分离，未验 B 不能混入 A 的发布。新编号及开始写/应用的时点以 ca97 登记为准。
 
+ca97随后技术认可此最小组合/事务提案，要求实际PG证明FK/partial unique/组合CHECK，
+不以设计代替测试。已登记B独立 `feat/product-selection-server-schedule-v1`：精确Green3128
+正常no-ff merge A依赖43637bb；原A不变。因0044仍active，当前仅非DDL准备，
+A精确Green后由ca97串行释放0044、登记0045(down0044)，之前不得编写或应用新DDL。
+
 ## 最少结构变化
 
 复用 `schedules`、`schedule_runs`、`product_selection_strategies`、`product_selection_runs`；不新增表。

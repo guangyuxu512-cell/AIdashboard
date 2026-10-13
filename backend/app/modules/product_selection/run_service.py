@@ -136,53 +136,67 @@ class SelectionRunService:
                     raise ValueError("Strategy association requires the versioned execution contract")
                 resolved = resolved.model_copy(update={"strategy": SelectionStrategySnapshot(strategy_id=row.strategy_id, version=row.version)})
             self.repository.recover_expired(at)
-            for _ in range(3):
-                try:
-                    with self.session.begin_nested():
-                        # Recheck after a specific uniqueness race. Replayed
-                        # keys never go through relative-date resolution again.
-                        row = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
-                        if row is not None:
-                            saved = SelectionResolvedRequest.model_validate(row.request_conditions)
-                            if (saved.original != original or row.strategy_id != command.strategy_id
-                                or (saved.strategy is not None and saved.strategy.version != command.strategy_version)):
-                                raise SelectionRunConflictError()
-                        else:
-                            active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=resolved.fingerprint())
-                            # During an upgrade, an already-active v2 default
-                            # request is still the same work. Preserve its hash
-                            # and canonical; only the new receipt is v3 so it
-                            # can record its own strategy snapshot.
-                            if active is None and resolved.version == 3 and original.rank_to <= 20 and not original.first_listed_only:
-                                legacy = SelectionResolvedRequest.model_validate(resolved.model_dump(mode="json") | {"version": 2, "strategy": None})
-                                active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=legacy.fingerprint())
-                            shared = (SelectionResolvedRequest.model_validate(active.request_conditions).model_copy(update={
-                                "version": resolved.version, "strategy": resolved.strategy,
-                            }) if active is not None else resolved)
-                            row = ProductSelectionRun(
-                                run_id=uuid4(), team_id=team_id, created_by_user_id=current.user_id,
-                                request_shop_id=command.shop_id, submission_key=command.submission_key,
-                                strategy_id=command.strategy_id,
-                                request_fingerprint=active.request_fingerprint if active is not None else resolved.fingerprint(),
-                                request_conditions=shared.model_dump(mode="json"),
-                                reused_run_id=active.run_id if active is not None else None,
-                                status="reused" if active is not None else "pending", stage="queued",
-                                result_count=None, saved_count=0, supplemented_count=0,
-                                supplement_failed_count=0, created_at=at, updated_at=at,
-                            )
-                            self.session.add(row)
-                            self.session.flush()
-                        result = self._receipt(current, row)
-                    self.session.commit()
-                    return result
-                except IntegrityError as collision:
-                    constraint = getattr(getattr(collision.orig, "diag", None), "constraint_name", None)
-                    if constraint not in {"uq_selection_run_submission", "uq_selection_run_active_request"}:
-                        raise
-            raise SelectionSubmissionBusyError()
+            result = self._persist_submission(current, command, resolved, at=at)
+            self.session.commit()
+            return result
         except Exception:
             self.session.rollback()
             raise
+
+    def _persist_submission(
+        self, current: ActorContext, command: SelectionRunCreate,
+        resolved: SelectionResolvedRequest, *, at: datetime,
+    ) -> SelectionRunReceipt:
+        """Shared persistence step; its authorized caller owns the transaction.
+
+        No HTTP, commit or outer rollback here. Manual submit performs its
+        existing category/authorization/CAS checks first. A future registered
+        Schedule path must do the same under its own strategy/occurrence lock.
+        This private extraction does not activate server scheduling.
+        """
+        team_id = current.require_team_id()
+        original = command.original()
+        if resolved.original != original:
+            raise SelectionRunConflictError()
+        for _ in range(3):
+            try:
+                with self.session.begin_nested():
+                    # Replayed keys never resolve relative dates again.
+                    row = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
+                    if row is not None:
+                        saved = SelectionResolvedRequest.model_validate(row.request_conditions)
+                        if (saved.original != original or row.strategy_id != command.strategy_id
+                            or (saved.strategy is not None and saved.strategy.version != command.strategy_version)):
+                            raise SelectionRunConflictError()
+                    else:
+                        active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=resolved.fingerprint())
+                        # Preserve the old v2 canonical/hash during upgrade.
+                        if active is None and resolved.version == 3 and original.rank_to <= 20 and not original.first_listed_only:
+                            legacy = SelectionResolvedRequest.model_validate(resolved.model_dump(mode="json") | {"version": 2, "strategy": None})
+                            active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=legacy.fingerprint())
+                        shared = (SelectionResolvedRequest.model_validate(active.request_conditions).model_copy(update={
+                            "version": resolved.version, "strategy": resolved.strategy,
+                        }) if active is not None else resolved)
+                        row = ProductSelectionRun(
+                            run_id=uuid4(), team_id=team_id, created_by_user_id=current.user_id,
+                            request_shop_id=command.shop_id, submission_key=command.submission_key,
+                            strategy_id=command.strategy_id,
+                            request_fingerprint=active.request_fingerprint if active is not None else resolved.fingerprint(),
+                            request_conditions=shared.model_dump(mode="json"),
+                            reused_run_id=active.run_id if active is not None else None,
+                            status="reused" if active is not None else "pending", stage="queued",
+                            result_count=None, saved_count=0, supplemented_count=0,
+                            supplement_failed_count=0, created_at=at, updated_at=at,
+                        )
+                        self.session.add(row)
+                        self.session.flush()
+                    result = self._receipt(current, row)
+                return result
+            except IntegrityError as collision:
+                constraint = getattr(getattr(collision.orig, "diag", None), "constraint_name", None)
+                if constraint not in {"uq_selection_run_submission", "uq_selection_run_active_request"}:
+                    raise
+        raise SelectionSubmissionBusyError()
 
     def _submission_actor(self, actor: ActorContext, command: SelectionRunCreate) -> ActorContext:
         if command.strategy_id is not None:

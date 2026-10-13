@@ -77,6 +77,29 @@ def latest_daily_occurrence(
     raise ValueError("Unable to determine latest daily occurrence")
 
 
+def next_hourly_occurrence(timezone_name: str, *, after: datetime) -> datetime:
+    """Server selection's Shanghai next whole hour, strictly after acceptance.
+
+    This preparation helper does not expose hourly in the PC Schedule DTO,
+    extend database enums, or activate a new due scanner.
+    """
+    boundary = _shanghai_hour_boundary(timezone_name, after)
+    return (boundary + timedelta(hours=1)).astimezone(UTC)
+
+
+def latest_hourly_occurrence(timezone_name: str, *, at_or_before: datetime) -> datetime:
+    """COALESCE ONE: an already-due whole hour is included, not skipped."""
+    return _shanghai_hour_boundary(timezone_name, at_or_before).astimezone(UTC)
+
+
+def _shanghai_hour_boundary(timezone_name: str, value: datetime) -> datetime:
+    if timezone_name != "Asia/Shanghai":
+        raise ValueError("Server selection hourly requires Asia/Shanghai")
+    return _aware_utc(value).astimezone(get_schedule_timezone(timezone_name)).replace(
+        minute=0, second=0, microsecond=0,
+    )
+
+
 def normalize_weekdays(value: list[int]) -> list[int]:
     if any(isinstance(day, bool) or not isinstance(day, int) for day in value):
         raise ValueError("weekdays must contain integer ISO weekdays")
