@@ -7,8 +7,8 @@ business-error retries. Shop tree validation uses the current authorized read.
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.modules.product_selection.exceptions import SelectionRequestUnconfirmedError
-from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan, SelectionRealtimeDatePlan, HISTORICAL_PERIOD_RULES
+from app.modules.product_selection.exceptions import SelectionRequestUnconfirmedError, SelectionPriceRangeInvalidError
+from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan, SelectionRealtimeDatePlan, HISTORICAL_PERIOD_RULES, custom_price_bin
 from app.modules.product_selection.schemas import SelectionCategoriesRead
 from app.modules.product_selection.source import SelectionSourceScope
 
@@ -26,9 +26,12 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
         unsupported = "PERIOD_UNCONFIRMED"
     elif original.brand != "all":
         unsupported = "BRAND_UNCONFIRMED"
-    elif original.price_mode != "all":
-        unsupported = "PRICE_UNCONFIRMED"
-    elif (
+    elif original.price_mode == "custom":
+        try:
+            custom_price_bin(original)
+        except ValueError:
+            raise SelectionPriceRangeInvalidError() from None
+    if unsupported is None and (
         not original.industry_id.strip("0")
         or original.industry_id in original.category_ids
         or any(not value.strip("0") for value in original.category_ids)
@@ -44,7 +47,7 @@ def prepare_short_video_scope(
 ) -> SelectionSourceScope:
     """Encode confirmed relative period windows and exact platform date enums.
 
-    Only default brand/price and an explicit non-all category path are prepared.
+    Only default brand and confirmed unlimited/two-sided price are prepared.
     History 1d/30d uses 20/23; realtime and seven-day retain 1/21.
     This internal helper is not accepted directly by any HTTP submission API.
     """
@@ -59,7 +62,7 @@ def prepare_short_video_scope(
     return SelectionSourceScope(
         industry_id=original.industry_id,
         category_id=",".join(original.category_ids),
-        brand_type="-1", price_bin="不限", search_info="",
+        brand_type="-1", price_bin=custom_price_bin(original) if original.price_mode == "custom" else "不限", search_info="",
         rank_data_type="1",
         begin_date=period_begin.strftime("%Y/%m/%d 00:00:00"),
         end_date=period_end.strftime("%Y/%m/%d 00:00:00"),
@@ -73,6 +76,17 @@ def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: date
     if accepted_at.utcoffset() is None:
         raise ValueError("Acceptance time must have a timezone")
     day = accepted_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    if original.price_mode == "custom":
+        # Reuse the frozen date policy, not another execution/request path.
+        base = freeze_short_video_request(original.model_copy(update={"price_mode": "all", "price_above": None, "price_below": None}), accepted_at)
+        price = custom_price_bin(original)
+        plan = base.date_plan
+        if isinstance(plan, SelectionDatePlan):
+            plan = plan.model_copy(update={"backup_scope": plan.backup_scope.model_copy(update={"price_bin": price})})
+        return SelectionResolvedRequest(
+            version=6, original=original, scope=base.scope.model_copy(update={"price_bin": price}),
+            page_numbers=base.page_numbers, date_plan=plan,
+        )
     if original.period == "realtime":
         return SelectionResolvedRequest(
             version=4, original=original,

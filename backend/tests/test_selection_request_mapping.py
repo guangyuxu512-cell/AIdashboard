@@ -53,7 +53,6 @@ def test_preparation_does_not_replace_selected_category_or_supplied_dates_with_s
     ({"channel": "baiying"}, "CHANNEL_UNCONFIRMED"),
     ({"brand": "known"}, "BRAND_UNCONFIRMED"),
     ({"brand": "unknown"}, "BRAND_UNCONFIRMED"),
-    ({"price_mode": "custom", "price_above": "0"}, "PRICE_UNCONFIRMED"),
     ({"industry_id": "0"}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["7", "1000009092", "1000009142"]}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["1000009092", "0"]}, "CATEGORY_PATH_UNCONFIRMED"),

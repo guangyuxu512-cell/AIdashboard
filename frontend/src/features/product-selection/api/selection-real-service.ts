@@ -20,6 +20,7 @@ import {
 } from './selection-read-api'
 import { formatSelectionInterval } from '../model/metric-display'
 import { runResult } from '../model/run-display'
+import { realPriceErrors } from '../model/selection-rules'
 import {
   readStrategies,
   writeStrategy,
@@ -263,12 +264,12 @@ export function createSelectionRealService(
       !input.channels.shortVideo.selected ||
       input.channels.baiying.selected ||
       !['realtime', '1d', '7d', '30d'].includes(choice.period) ||
-      choice.brand !== 'all' ||
-      choice.priceMode !== 'all' ||
-      choice.priceAbove !== null ||
-      choice.priceBelow !== null
+      choice.brand !== 'all'
     )
       throw new Error('未确认的渠道、日期、品牌或价格条件暂不可执行')
+    const priceErrors = realPriceErrors(choice)
+    if (Object.keys(priceErrors).length)
+      throw new Error(Object.values(priceErrors)[0])
     if (
       choice.rankFrom === null ||
       choice.rankTo === null ||
@@ -286,8 +287,10 @@ export function createSelectionRealService(
       category_ids: scope.categoryIds,
       brand: choice.brand,
       price_mode: choice.priceMode,
-      price_above: null,
-      price_below: null,
+      price_above:
+        choice.priceMode === 'custom' ? String(choice.priceAbove) : null,
+      price_below:
+        choice.priceMode === 'custom' ? String(choice.priceBelow) : null,
       first_listed_only: choice.firstListedOnly,
       rank_from: choice.rankFrom,
       rank_to: choice.rankTo,

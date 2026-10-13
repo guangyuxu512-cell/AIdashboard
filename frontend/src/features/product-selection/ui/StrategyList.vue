@@ -279,9 +279,9 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
     align: 'center',
     ellipsis: { tooltip: true },
     render: (row) =>
-      conditionSummary(row) === '—'
+      conditionSummary(row, !!props.service.manual) === '—'
         ? h(NText, { depth: 3 }, () => '—')
-        : conditionSummary(row),
+        : conditionSummary(row, !!props.service.manual),
   },
   {
     key: 'execution',

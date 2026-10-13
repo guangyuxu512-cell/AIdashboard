@@ -7,8 +7,16 @@ import { settleSelectionTransitions as settle } from '../support/settle-selectio
 
 // Real Renderer with fully intercepted formal APIs. Synthetic configuration and
 // run responses are not live platform, persisted DB, or native Electron proof.
-for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
-  test(`${period}: saved strategies keep the original UI, CAS editing, and independent immediate retrieval`, async ({
+for (const scenario of [
+  '7d',
+  'realtime',
+  '1d',
+  '30d',
+  '7d-custom-price',
+] as const) {
+  const period = scenario === '7d-custom-price' ? '7d' : scenario
+  const customPrice = scenario === '7d-custom-price'
+  test(`${scenario}: saved strategies keep the original UI, CAS editing, and independent immediate retrieval`, async ({
     page,
   }, info) => {
     test.setTimeout(120000)
@@ -88,7 +96,7 @@ for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
           schedule_available: false,
           supported_periods: ['realtime', '1d', '7d', '30d'],
           supported_brands: ['all'],
-          custom_price_available: false,
+          custom_price_available: true,
           first_listed_filter_available: true,
           max_rank: 200,
         }
@@ -277,6 +285,27 @@ for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
           { exact: true },
         )
         .click()
+    if (customPrice) {
+      await field('价格').getByText('自定义', { exact: true }).click()
+      await field('最低价格（元）').locator('input').fill('20')
+      await field('最低价格（元）').locator('input').blur()
+      await drawer
+        .getByRole('button', { name: '立即获取', exact: true })
+        .click()
+      await expect(
+        page.getByText('请填写有效的最高价格（元，最多两位小数）', {
+          exact: true,
+        }),
+      ).toBeVisible()
+      expect(writes).toHaveLength(0)
+      await field('最高价格（元）').locator('input').fill('100')
+      await field('最高价格（元）').locator('input').blur()
+      await expect(
+        page.getByText('请填写有效的最高价格（元，最多两位小数）', {
+          exact: true,
+        }),
+      ).not.toBeVisible()
+    }
     await drawer
       .getByRole('textbox', { name: '策略名称' })
       .fill('接口拦截合成策略')
@@ -319,6 +348,12 @@ for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
     expect(strategy!.conditions.request.period).toBe(period)
     expect(strategy!.conditions.request.industry_id).toBe(industryId)
     expect(strategy!.conditions.request.category_ids).toEqual([categoryId])
+    if (customPrice)
+      expect(strategy!.conditions.request).toMatchObject({
+        price_mode: 'custom',
+        price_above: '20',
+        price_below: '100',
+      })
     await page.reload()
     await expect(
       page.getByText('接口拦截合成策略', { exact: true }),
@@ -334,6 +369,10 @@ for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
       'true',
     )
     await expect(field('每日时间').getByRole('textbox')).toHaveValue('09:00')
+    if (customPrice) {
+      await expect(field('最低价格（元）').locator('input')).toHaveValue('20')
+      await expect(field('最高价格（元）').locator('input')).toHaveValue('100')
+    }
     // A second editor advances the stored version. A stale save must keep the
     // current drawer/draft and must not silently retry or submit a platform run.
     strategy = { ...strategy!, version: strategy!.version + 1 }
@@ -395,6 +434,10 @@ for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
     await field('结束排名').locator('input').fill('198')
     await field('结束排名').locator('input').blur()
     // The drawer switch edits a draft. Retrieval must not persist its state.
+    if (customPrice) {
+      await field('最高价格（元）').locator('input').fill('40')
+      await field('最高价格（元）').locator('input').blur()
+    }
     await field('策略状态').getByRole('switch').click()
     await expect(field('策略状态').getByRole('switch')).toHaveAttribute(
       'aria-checked',
@@ -417,6 +460,14 @@ for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
       rank_from: 153,
       rank_to: 198,
     })
+    if (customPrice) {
+      expect(writes[3]!.body).toMatchObject({
+        price_mode: 'custom',
+        price_above: '20',
+        price_below: '40',
+      })
+      expect(strategy!.conditions.request.price_below).toBe('100')
+    }
     await page
       .getByRole('switch', { name: '接口拦截已保存编辑启用状态' })
       .click()

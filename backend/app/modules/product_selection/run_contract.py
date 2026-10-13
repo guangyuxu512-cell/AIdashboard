@@ -2,8 +2,10 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from hashlib import sha256
 import json
+import re
 from types import MappingProxyType
 from typing import Annotated, Literal
 from uuid import UUID
@@ -34,7 +36,7 @@ class SelectionRelativeConditions(BaseModel):
     category_ids: tuple[CategoryId, ...] = Field(min_length=1, max_length=3)
     brand: Literal["all", "known", "unknown"]
     price_mode: Literal["all", "custom"]
-    # Unconfirmed price mapping cannot be enabled by accepting arbitrary text.
+    # Confirmed two-sided yuan bounds remain plain, finite decimal strings.
     price_above: Annotated[str, Field(pattern=r"^\d{1,10}(\.\d{1,2})?$")] | None = None
     price_below: Annotated[str, Field(pattern=r"^\d{1,10}(\.\d{1,2})?$")] | None = None
     first_listed_only: bool = Field(default=False, strict=True)
@@ -58,6 +60,20 @@ class SelectionRunOriginal(SelectionRelativeConditions):
             self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"),
             ensure_ascii=False,
         ).encode()).hexdigest()
+
+
+def custom_price_bin(original: SelectionRelativeConditions) -> str:
+    """Confirmed two-sided yuan query; no exponent, rounding or cent conversion."""
+    values = (original.price_above, original.price_below)
+    if any(type(value) is not str or re.fullmatch(r"[0-9]{1,10}(\.[0-9]{1,2})?", value) is None for value in values):
+        raise ValueError("Two explicit finite nonnegative yuan bounds are required")
+    lower, upper = (Decimal(value) for value in values)
+    if lower > upper:
+        raise ValueError("Minimum price cannot exceed maximum price")
+    def plain(value: Decimal) -> str:
+        number = format(value, "f")
+        return number.rstrip("0").rstrip(".") if "." in number else number
+    return f"{plain(lower)}-{plain(upper)}"
 
 
 class SelectionRunCreate(SelectionRunOriginal):
@@ -194,7 +210,7 @@ class SelectionResolvedRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2, 3, 4, 5] = 1
+    version: Literal[1, 2, 3, 4, 5, 6] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
@@ -246,6 +262,29 @@ class SelectionResolvedRequest(BaseModel):
                 or (self.date_outcome is not None and self.date_outcome.state != "primary")
             ):
                 raise ValueError("Historical scope must match its frozen complete Shanghai days")
+        elif self.version == 6:
+            if self.original.price_mode != "custom" or self.original.brand != "all":
+                raise ValueError("Custom price execution requires its confirmed default brand context")
+            price = custom_price_bin(self.original)
+            if self.date_outcome is not None and self.date_outcome.fallback_reason == "primary_business_rejection_probe":
+                raise ValueError("Custom price cannot probe an unexplained business rejection")
+            if (self.scope.price_bin != price or self.scope.brand_type != "-1"
+                or self.scope.industry_id != self.original.industry_id
+                or self.scope.category_id != ",".join(self.original.category_ids)
+                or self.scope.rank_data_type != "1" or self.scope.search_info != "" or self.scope.activity_id != ""
+                or (self.original.period == "7d" and self.scope.date_type != "21")):
+                raise ValueError("Actual price query must match the explicit original bounds")
+            raw = self.model_dump(mode="json")
+            raw["version"] = self._date_version()
+            raw["original"] = raw["original"] | {"price_mode": "all", "price_above": None, "price_below": None}
+            raw["scope"] = raw["scope"] | {"price_bin": "不限"}
+            if isinstance(self.date_plan, SelectionDatePlan):
+                if self.date_plan.backup_scope.price_bin != price:
+                    raise ValueError("Backup cannot change custom price conditions")
+                raw["date_plan"]["backup_scope"]["price_bin"] = "不限"
+            # Reuse the versioned date validation without changing its old JSON
+            # or hash semantics. This projection is never persisted or signed.
+            SelectionResolvedRequest.model_validate(raw)
         else:
             if not isinstance(self.date_plan, SelectionDatePlan):
                 raise ValueError("A fallback execution must freeze both windows")
@@ -266,6 +305,14 @@ class SelectionResolvedRequest(BaseModel):
                 raise ValueError("The bounded plan must match the accepted Shanghai date")
         return self
 
+    def _date_version(self) -> int:
+        if self.version != 6:
+            return self.version
+        return 3 if self.original.period == "7d" else 4 if self.original.period == "realtime" else 5
+
+    def single_window(self) -> bool:
+        return self._date_version() in {4, 5}
+
     def fingerprint(self) -> str:
         # Mutable execution outcome never changes the active-request key.
         # Preserve the exact v1 fingerprint for already-applied 0043 records.
@@ -280,7 +327,7 @@ class SelectionResolvedRequest(BaseModel):
     def actual_scope(self) -> SelectionSourceScope:
         if self.version == 1:
             return self.scope
-        if self.version in {4, 5}:
+        if self.single_window():
             if self.date_outcome is None or self.date_outcome.state != "primary":
                 raise ValueError("Single-window execution must choose primary before writing facts")
             return self.scope
@@ -296,13 +343,13 @@ class SelectionResolvedRequest(BaseModel):
             return None
         self.actual_scope()
         assert self.date_plan is not None and self.date_outcome is not None
-        if self.version == 4:
+        if self._date_version() == 4:
             return SelectionRealtimeDateProvenance(
                 accepted_local_date=self.date_plan.accepted_local_date,
                 primary_begin=self.scope.period_begin, primary_end=self.scope.period_end,
                 rank_from=self.original.rank_from, rank_to=self.original.rank_to,
             )
-        if self.version == 5:
+        if self._date_version() == 5:
             return SelectionHistoricalDateProvenance(
                 policy=HISTORICAL_PERIOD_RULES[self.original.period][2],
                 accepted_local_date=self.date_plan.accepted_local_date,
@@ -378,6 +425,6 @@ class SelectionCapabilitiesRead(BaseModel):
     material_collection_available: Literal[False] = False
     supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("realtime", "1d", "7d", "30d")
     supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all",)
-    custom_price_available: bool = False
+    custom_price_available: bool = True
     first_listed_filter_available: bool = True
     max_rank: int = 200
