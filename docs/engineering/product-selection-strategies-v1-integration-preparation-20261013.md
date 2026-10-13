@@ -185,3 +185,32 @@ v4只冻结上海2026-10-13，begin=end、date_type=1、primary，无backup。
 保存/编辑回显/启停、未调度草稿，以及候选池的实时当日详情/刷新；已确认布局不重复验。
 不需要再点“立即获取”重复此两次真实任务。其它未知参数仍按前述清单分别补证，
 A整体仍PARTIAL，未合dev/未Green/未发布；本段不等待B。
+
+## 8df列表稳定返修：已审查，当前运行未恢复
+
+2026-10-13用户明确继续A；Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`，
+父43637bb，Owner工作树干净且已推送。仅稳定created_at DESC/strategy_id ASC及原位Query更新，
+已有编辑不再无条件回第一页；真实updated_at/CAS/权限保留，布局与取数规则不重做。
+ca97已准备精确source-8dfb2dc归档，3个运行修改文件与Git blob一致；独立List/Drawer14项通过。
+Migration/Electron/Signer/mapper/executor相对436无变化，既有浏览器证据仅为技术证据。
+
+正常重开Codex后，旧8100/5180及开发Electron已不存在，不能把旧436运行记录当新候选已加载。
+ca97恢复了严格主机公钥校验的既有35433隧道；只读实检Integration单一0044、26候选/30来源/6run、
+活动run0、HuanYu valid v6保留，既有隔离Signer8787健康HTTP200；未迁移、未写业务表、未请求平台。
+原生工具因不能可靠核实前台Chrome网址停止本轮窗口输入；extension只提供viewport/pageAssets，
+没有Network读取，不再用DOM/控制台重复冒充Query补证。仅请用户置前现有HuanYu罗盘短视频榜。
+
+正常前后端Start-Process组合在CreateProcess前被工具策略拒绝，实际8100/5180仍未监听，
+Electron未运行、未加载8df；不是生产客户端未关闭或业务启动错误。未换方法绕过拒绝。
+本机ignored `resume-reviewed-runtime-8dfb2dc.ps1`已准备，静态语法0错误；用户一次正常执行后，
+ca97核对实际进程、HTTP模块与backend白名单启动标记，再由原入口恢复唯一匹配1.0.6壳及原Profile。
+此准备文件或匹配源码不是原生验收；尚未标Gate2B PASS。
+
+当前专用策略仅3条，第二页原生专项尚需通过正式API补足disabled配置，不能让用户自行排查夹具。
+恢复后检查启停/编辑前后的行ID顺序、当前页、名称筛选、横纵滚动、版本/最近结果及零新增Run/平台请求；
+原已确认页面结构和既有真实7d/实时run直接复用，不为位置修复重复获取榜单。
+
+剩余缺口具体为：其它行业industry_id/有序category_id及父级全部实际前缀；1d/30d各自date_type、
+begin/end与页面日期含义；known/unknown各自brand_type；custom价格字段格式、元/分、上下界/单边规则。
+ca97确认一项即交81a1同步mapper/契约/capabilities/Real service/保存回显及定向测试，不等整套。
+A完整Gate/Green后交Main发布；B仍独立非DDL准备，0044 active/0045 reserved按原顺序，不把计划保存当自动执行。

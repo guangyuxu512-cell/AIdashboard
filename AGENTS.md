@@ -87,6 +87,14 @@ A完整Gate及精确Green后才串行激活B，此前不写或应用B DDL。详�
 整点辅助、调用者事务所有权及包含reused的策略活动查询只是准备，不是定时Gate或发布候选。
 OwnerPG90为Feature真实DB/合成I/O，ca97未写Feature、未在Integration加载B，0045仍reserved。
 
+同日用户接续A，列表返修Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`已独立审查，
+List/Drawer14项通过、无迁移/壳/执行规则变化，精确归档已准备。当前Codex重开后8100/5180及Electron
+已不运行；既有35433严格隧道恢复、隔离Signer健康、Integration0044与HuanYu v6保留。
+正常启动被工具策略在CreateProcess前拒绝，原生Chrome输入也因URL核实门禁停止，不绕过。
+本机正常启动文件已准备；恢复后由ca97补足第二页专用disabled配置及真实Electron专项。
+其它行业/父级全部、1d/30d、品牌和custom价格仍须逐项Query补证后交81a1，不猜测开放。
+A整体PARTIAL，不合dev/main或发布；B按0044 active/0045 reserved原顺序，7d55不参与选品。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。
