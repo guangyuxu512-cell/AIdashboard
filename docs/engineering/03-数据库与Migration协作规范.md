@@ -46,6 +46,12 @@ ca97已通过受保护应用连接与只读事务核实复用Feature库：owner/
 Owner应用后，ca97再次以只读事务核实该Feature库单一`20261013_0044`、管理角色权限仍关闭；
 本工作树代码与Integration保持0043，不以Feature库升级代替集成Migration或Gate验证。
 
+2026-10-13继续A的阶段Integration验证已由ca97使用精确77a1d96归档，正式升级
+`control_center_integration`至单一`20261013_0044`；旧候选/观察/run、经营及Session计数保留。
+后续仅通过正式API创建专用策略和一个真实受控Run，未写Feature/Main/生产，未降级或修改0042/3。
+这是已执行的阶段迁移事实，替代此前“Integration仍0043”的当前状态，历史审查记录保留；
+Slot继续active，A未知映射与原生验收未完，不释放Slot或据此宣称Green/DEPLOYED。
+
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |

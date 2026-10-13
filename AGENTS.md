@@ -47,6 +47,22 @@ offline及非指定Feature目标；停用Shop的配置可关闭或替换合法�
 无差异复用原92项/lint/typecheck/Real build，不重复视觉。Slot恢复active仅表示修补边界接受；
 未加载Integration或迁移，不合dev/main，A未知参数与真实闭环仍PARTIAL，B无Slot/实现。
 
+2026-10-13后续人类明确继续A，ca97已将77阶段归档匹配加载Real5180/8100，正式Alembic升级
+Integration至单一`20261013_0044`，迁移前后旧事实/run/HuanYu valid v6保留。正常认证配置CRUD/
+CAS/启停通过且Run/Schedule/平台IO增量0；正式run `dae3090a-ceb4-44f3-8bba-4bbf362a5cbf`
+取得官方21–30、主区间10-06～10-12，10条事实/API/详情一致，basic_info9成功/1业务600002拒绝，
+partial如实保留。完成后GET与同key重放平台IO增量0。另按旧人工Query仅一次当日实时只读重放
+HTTP200/int0/10条，交Owner接独立当日窗口；不是正式实时入库，不扩7d回退。
+原生computer-use因无法确认前台Chrome网址停止本轮操作，未启动/验收Electron；仅请用户置前既有
+罗盘标签。其它周期/品牌/自定义价格/行业映射仍具体补证中，A/B未完成，不合dev/main、不标Green。
+详见`docs/engineering/product-selection-strategies-v1-integration-preparation-20261013.md`。
+
+同日实时接证候选`c6298c22378fcfc0b4a88e891875f2ae03b1da98`已独立53后端/18前端定向并
+匹配加载两服务。正式v4 run `5b3d3ba4-4d64-4202-888d-50cf8915eccc` 当日10条入库、basic10成功、
+API/详情一致、同key/刷新IO0；旧v3/9+1partial保留。现26候选/30来源/6run，0044不再修改，
+现有1.0.6壳源码相同，按正常项目入口重开唯一开发Main60592且保留Profile，非原生操作通过。
+其它参数与人员原生确认仍待完成，不以此标全A Gate/Green或发布；B仍无Slot/实现。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。
