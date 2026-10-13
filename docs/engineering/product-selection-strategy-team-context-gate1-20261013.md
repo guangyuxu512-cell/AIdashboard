@@ -85,3 +85,28 @@ Frontend/Electron/0042/0043/0044与8df字节不变，复用其已记录lint/type
 95项选品定向和3项完整API拦截证据；不是再次执行，也不是本次新原生验收。
 ca97只需加载匹配Backend并补实际现有上下文POST→进度/回执GET，复用不受影响的列表原生专项。
 其它行业/1d/30d/品牌/custom price仍待逐项直接证据，B0045仅reserved；A/B整体保持PARTIAL。
+
+## 2026-10-13 ca97追加审查：解析资源Team后的可见性复核
+
+`ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`的92项PG/630项默认通过事实保留，
+但它没有覆盖首次super查行之后、第二次Actor解析之前撤super的交错。
+ca97在无配置/无DB的method-only审查中发现：非reused行可能直接被投影，未再次查询Shop授权。
+此为真实代码时序的合成证据，不是新PostgreSQL或平台验收。
+
+Owner仅在原get中增加第二次权威Actor下的`get_for_actor`与不可见404；复用SQL/_read，
+不新增权限框架或只凭前端/缓存标记判断。正常成员入口保持一次现有查询，super精确ID入口
+重新校验Team后查同一个Run；仍有权限的降权成员可按正常授权读取，无授权成员不能复用旧行。
+reused回执查canonical也使用该次Actor，Team/Shop/fingerprint边界不变。
+
+新增`test_selection_run_progress_authorization.py`：不构造Settings/Session、不加载配置、不连接
+数据库或平台，执行生产get/_read和真实DTO校验，模拟权威Actor/Repository返回的许可交错。
+最初夹具漏了正式DTO的brand/price_mode必填值，先修正夹具；此6项初始校验失败不算缺陷复现。
+修正夹具后旧ed6为5 fail/1 pass，其中非reused无Shop授权仍返回记录直接复现问题；
+其余失败指出缺少第二次精确Run查询或查询了canonical而非先复核回执。
+
+实际命令（Backend）：
+`.venv\Scripts\python.exe -m pytest -o addopts="" tests/test_selection_run_progress_authorization.py tests/test_selection_request_mapping.py tests/test_selection_realtime_mapping.py tests/test_selection_strategy_contract.py tests/test_product_selection_source.py -q --tb=short`
+结果59 pass，1.42s，包含6项本次进度授权定向。`git diff --check`通过。
+Frontend/Electron/Migration仍零变更，未重复其检查；安全hold期间不执行新PG/整体需要DB的验收。
+ed6旧PG证据不是本次交错修复已通过PG。共享Role轮换/影响核对及新PG复验仍待处理，
+只交无DB代码技术复审，不称Gate1全部完成、Gate2/Green或发布放行。

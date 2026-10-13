@@ -224,6 +224,11 @@ class SelectionRunService:
             raise SelectionRunNotFoundError()
         if current.is_super_account:
             current = self.facts._current_actor(replace(current, team_id=row.team_id))
+            # Authority can change between lookup and resource resolution.
+            # Never return a row found with the earlier super visibility.
+            row = self.repository.get_for_actor(current, run_id)
+            if row is None:
+                raise SelectionRunNotFoundError()
         return self._read(current, row)
 
     def list(self, actor: ActorContext, *, shop_id: UUID | None, offset: int, limit: int) -> tuple[list[SelectionRunRead], int]:

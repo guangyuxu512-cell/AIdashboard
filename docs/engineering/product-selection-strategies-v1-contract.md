@@ -72,6 +72,8 @@ POST关联策略时须同时提供strategy_id和strategy_version（正整数）�
 按已保存Run的Team重新校验有效人员/Team/模块再读取，不要求切换全局Team。
 canonical可能是被关联策略复用的旧无strategy执行，因此不能只看canonical.strategy_id。
 回执仍校验与canonical同Team/Shop/指纹，普通成员仍按Team/Shop授权读取；失效super不能沿用旧标记。
+资源Team重新解析后，必须以该次权威Actor再走精确Run可见查询；不能把首次super取得的行
+直接交给DTO。若校验期间super被撤回，正常Team/Shop SQL边界仍生效，未授权则404。
 `GET /runs`列表继续采用当前Team筛选，精确ID例外不改变列表总数、归属或任何事实。
 
 升级期仍在执行的旧v2默认条件可与新v3提交共享任务，但必须Team/Shop、全部原始条件、
