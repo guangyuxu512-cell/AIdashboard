@@ -1,6 +1,49 @@
 # 选品策略 A：参数核验与阶段集成准备
 
 状态 **PARTIAL，不是 Gate 2 PASS，不是 Green，不授权跳过未完成验收发布**。
+
+## 当前专项候选：43637bb（团队上下文）
+
+后续精确候选`43637bb051d2f4b3ba6c9fab608756429971edd3`，父c629，已fetch核实。
+这是当前实际8100代码；后述77/c629为此前真实证据，不代替新专项原生验收。
+新增只有资源Team处理、权限重验及必要测试/文档；Frontend运行代码、Electron、Signer、
+Session、日期映射、Model/Migration及PC无差异。ca97独立5个后端文件65项通过。
+
+原问题先以正常人员认证重现：super不发x-team-id，GET两个已有策略200，但PUT/PATCH/
+关联获取均409 TEAM_CONTEXT_REQUIRED，版本/状态/Run未变。不是凭开关草稿判定失败阶段。
+新版本受控API按正常认证证实：
+
+- 无全局Team、另一有效Team两种上下文，专用实时策略PUT+GET、PATCH启停+GET均200；
+  资源Team不改，CAS旧版仍409；完成后保持disabled，版本1经审计更新至7。
+- 原正式实时Run同key关联重放202，返回原run，不新执行。新增策略/无关联草稿无Team仍409。
+- Run/Schedule/事实增量0，真实观测category/rank/basic_info请求增量均0。
+- 不修改当前打开的7d策略（仍v5）或用户尚未保存的类目草稿；不操作普通成员、店铺状态或Session。
+  Owner真实PG普通成员、IO后撤权、另一Team等负向证据单列，不能冒称原生。
+
+当前环境是**Integration**：Real5180→8100→control_center_integration，单一20261013_0044。
+只正常替换已核实归属且无活动Run的8100后端；5180与唯一Electron不重启/不刷新，
+其源码已确认与436相同。Main60592、标题“电商 AI 中控台”、1.0.6与Profile保留。
+原生只读成功观察“选品策略”列表及打开的“编辑选品策略”；工具读取Chrome时无法可靠确认地址，
+依技能停止本轮输入，未借用其它UI通道。团队专项仍未获得原生点击/人工PASS。
+仅请用户置前已有合法HuanYu罗盘短视频页；无需刷新、重新登录或提交Cookie。
+
+原生专项入口“商品中心→选品库→选品策略”，两个专用策略已列明。
+保存开关必须以保存后GET为准，获取当前草稿不隐式保存，失败保留抽屉草稿并回读真实列表状态。
+已确认结构不重做视觉验收；待工具可安全操作后补专项，不让用户猜版本/去生产尝试。
+
+具体参数缺口仍仅以下四组，不能泛化为“待补证”：1d/30d各自date_type与UI日期范围规则；
+known/unknown品牌各自brand_type；custom price_bin编码、元/分及双/单边；其他industry_id与
+有序类目路径/父级all前缀。已有确认的7d、实时、默认品牌价格、行业7、官方rank/首次bool不重问。
+正常DevTools Query为优先手段，不再重复无法取得Query的页面/Console/performance读取。
+若原生Network仍不可读取，已准备本机ignored隐藏输入采集器，仅保留12项业务参数、UI日期、
+HTTP及原类型st，丢弃全部签名URL/凭据，无平台请求；它的合成self-test不是平台证据。
+
+B正式最小Schema/事务提案已审核，依真实人类A/B任务分离分支；0045仅reserved，
+唯一active仍A0044。B非DDL准备可继续，不等待用户重新发任务；A完整Gate+精确Green后串行激活，
+不能把未验B混入A发布。当前A仍PARTIAL，不合dev业务、不推main或发布。
+
+## 先前阶段事实（77a1d96及c629）
+
 当前阶段候选 `77a1d96a2989ada3ef7f12bbba0e0782588468d1`，基线 Green
 `3128d6ad1048dfda1240148e863ea0c98eb6247f`。ca97 不代开发业务；81a1继续原Feature，
 新条件实现正常产生下一候选，不冻结77。B仍未实现、无新Slot，不等待达人或手机。

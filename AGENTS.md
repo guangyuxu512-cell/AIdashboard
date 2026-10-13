@@ -63,6 +63,17 @@ API/详情一致、同key/刷新IO0；旧v3/9+1partial保留。现26候选/30来
 现有1.0.6壳源码相同，按正常项目入口重开唯一开发Main60592且保留Profile，非原生操作通过。
 其它参数与人员原生确认仍待完成，不以此标全A Gate/Green或发布；B仍无Slot/实现。
 
+2026-10-13后续A团队上下文候选`43637bb051d2f4b3ba6c9fab608756429971edd3`已独立审查、
+65后端定向通过并加载8100；5180/唯一1.0.6 Electron源码与该候选相同，保留当前未保存7d抽屉。
+正式API证实super无Team及另一有效Team均可按资源原Team保存/启停/GET和重放已有关联Run；
+CAS、新建/无关联草稿必须明确Team的门禁保留，Run/Schedule/事实/平台请求增量0。
+这是受控API，非原生点击通过；Chrome地址安全校验停止输入，仅请用户置前现有合法罗盘页，
+不换低层UI入口，不重新索要Cookie。未知1d/30d、品牌、自定义价格和其它行业参数仍具体补证。
+已回读81a1人类turn `01a13382-b40f-7552-a6a0-a32a6ec092d2`的A/B授权；B独立
+`feat/product-selection-server-schedule-v1`从Green3128正常合436依赖，不混A Release。
+技术提案已审核，下一Slot`20261013_0045`/down0044仅reserved；A0044仍唯一active，
+A完整Gate及精确Green后才串行激活B，此前不写或应用B DDL。详见阶段集成记录与Slot表。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

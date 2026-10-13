@@ -52,6 +52,15 @@ Owner应用后，ca97再次以只读事务核实该Feature库单一`20261013_004
 这是已执行的阶段迁移事实，替代此前“Integration仍0043”的当前状态，历史审查记录保留；
 Slot继续active，A未知映射与原生验收未完，不释放Slot或据此宣称Green/DEPLOYED。
 
+2026-10-13后续B技术提案已由ca97审核；基于81a1真实人类turn
+`01a13382-b40f-7552-a6a0-a32a6ec092d2`授权，登记下一预留编号。`reserved`不是第二active，
+不授权开始B Migration编写、应用或切换集成Schema。A0044完成Gate并进入精确Green后，
+ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-server-schedule-v1` / 81a1（B） | `reserved`（非DDL技术准备可继续，禁止写/应用新Migration） | 复用schedules/schedule_runs，明确pc/server_selection目标、策略FK、服务端hourly/daily及SelectionRun回执；组合CHECK/partial unique，保留全部旧PC数据。不新增表或第二调度器 | A必须先完成Gate及精确Green；down `20261013_0044` | 预留 `20261013_0045_product_selection_server_schedule_v1`，计划revision `20261013_0045` | 审核依据为43637bb内正式B提案。准备与平台I/O在锁外，最终真实人员/Team/Shop/CAS重验，Run/occurrence/next共同提交；包含reused活动、COALESCE ONE、PC SQL过滤及原PC API回归。激活后在登记Feature验证，真实B运行后保留兼容Reader/Schema/审计，只关闭server生成/执行；不得将旧A镜像直接当作兼容回退。 |
+
 最近释放记录：
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
