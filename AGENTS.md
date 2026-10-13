@@ -99,6 +99,20 @@ Run/计划/事实/平台IO增量0；37条disabled/unscheduled配置经正式API�
 其它行业/父级全部、1d/30d、品牌和custom价格仍须逐项Query补证后交81a1，不猜测开放。
 A整体PARTIAL，不合dev/main或发布；B按0044 active/0045 reserved原顺序，7d55不参与选品。
 
+同日追加Candidate `ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`已推送交审，父8df。
+ca97在旧8df对同一正式v4 run同key回读复现另一有效Team POST202→GET404，原Team/无Team均200、
+Run/计划/事实/平台IO增量0。ed6仅精确GET派生资源Team，Frontend/Electron/Migration不变。
+无DB method-only交错探针发现二次权限重验后未重新按最终Shop Scope查询，已退回原Owner最小返修；
+原位置/视觉不受影响的证据保留，不把合成探针冒充PG或真实平台。
+Owner随后交`56b9614235708faf86bb237c27dffaf8b8ae6165`、父ed6；仅在最终权威Actor下再次走
+原精确Repo可见查询。ca97同一无配置/无DB方法探针确认拒绝无Shop授权的交错读取，定向边界接受；
+Owner纯逻辑6/59与父版本92PG/630默认分开，56b新PG/API仍待安全核销，不把技术接受标完整Gate。
+Owner额外核验异常工具输出暴露应用DB凭据。ca97仅内存审计确认同端点/Role/密码被Feature、
+Integration、Main smoke三处共用，生产关系UNKNOWN；候选增量内容匹配数0，不复述凭据。
+已冻结使用旧凭据的主动DB验证及发布、本机controller在加载配置/连接前拒绝；现有窗口/Profile不清理。
+没有轮换Role、改共享配置或生产。须对应管理员在明确授权范围下先核对生产关联，再受保护轮换/同步；
+参数12白名单本机捕获与无DB代码审核可继续，安全事项核销前不放行Gate/Green/Release。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

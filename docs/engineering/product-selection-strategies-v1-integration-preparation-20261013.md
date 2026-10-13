@@ -2,6 +2,43 @@
 
 状态 **PARTIAL，不是 Gate 2 PASS，不是 Green，不授权跳过未完成验收发布**。
 
+### 晚间安全hold与新交审候选（优先于后述运行记录）
+
+Owner先交审 `ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`、父8df，已push、Owner干净；
+随后定向返修`56b9614235708faf86bb237c27dffaf8b8ae6165`、父ed6已push，当前以56b交审。
+唯一runtime变化是精确Run GET派生已存Team，Frontend/Electron/0042/3/4与8df无差异；
+当前两个服务/唯一Electron仍8df，未加载ed6，不把新的HEAD冒充实际运行。
+
+ca97在实际8df，仅同key重放既有正式run `5b3d3ba4-4d64-4202-888d-50cf8915eccc`：
+原Team、无Team各POST202→GET200；另一有效Team POST202→GET404/PRODUCT_SELECTION_RUN_NOT_FOUND。
+均指向同一原run，Run/Schedule/事实/category/rank/basic_info增量0，没有新请求或改策略/Profile。
+ed6技术审查的无DB原方法交错探针发现：第一次super全局精确查询后，第二次权威身份变成无Shop
+grant的普通成员，非reused row直接_read返回，未在最终Actor下再次走已有Repo可见性查询。
+已交原Owner做最小fail-closed返修，Integrator不代修。此证据仅method-only合成，不称PG/平台。
+Owner已完成92 PG/630默认是此前版本的真实执行记录，不覆盖该新增交错；无新增Migration。
+56b仅加最终权威Actor下的第二次精确Repo可见查询，None继续原NotFound；没有新权限框架。
+ca97同一原方法无配置/无DB交错探针确认：查询2次、最终Actor下1次，无授权row不返回。
+这是定向技术修补接受，不是新PG/正式API或全A通过；Owner6项与连既有纯逻辑59项为无DB自检，
+父ed6的92PG/630默认只作父版本事实。Frontend/Electron/Migration仍与8df相同，待安全核销后补
+新候选PG和同Header真实旧run精确GET，不重复取榜/未变视觉；当前仍未加载56b。
+
+随后Owner额外只读探针因PostgresDsn对象类型错误，异常工具输出暴露Feature连接凭据。
+Owner已停止使用；没有把该失败当Head/计数核验成功。ca97不读取/复制含敏感值的原异常，
+仅内存解析三个已登记配置：Feature control_center_feat_product_selection、Integration
+control_center_integration、Main smoke control_center_dev，共用同端点/control_center_dev_user及密码。
+生产配置未读取，关系UNKNOWN；ed6变更内容旧敏感值匹配数0，不能把此有限扫描称全库或日志无泄露。
+
+尚未轮换Role、未改三处配置或生产；按本地Integration写入边界及该Role无CREATEROLE的既有事实，
+须对应Main/DB管理员先只读确认生产关联，在明确授权范围内受保护轮换并同步相关非生产配置，
+若涉及生产则先明确影响，不自行扩授权。主动DB验证/发布hold；ignored controller在配置加载/连接前
+拒绝，原唯一窗口/Profile/人员和平台会话保留。安全核销后才恢复定向PG/正式API及Gate流程。
+
+参数侧仍可无DB推进：已正常定位既有HuanYu罗盘短视频页的个护家清父级菜单；当前只有DOM/
+pageAssets，Network Query不可读，原生Chrome主窗未匹配该后台罗盘标签。正常菜单操作已使界面选择
+变成个护家清/个人护理，但未取得对应请求参数，不将此截图当映射已证实。已具体请用户仅一次
+个护家清/家清纸品/全部的12业务Query、HTTP/st及UI日期，或本机隐藏输入安全采集；不索Cookie/cURL。
+本机入口实检READY，空category原样保留不推断、仅12业务字段、认证字段保留0、脚本请求0。
+
 ## 当前专项候选：8df（列表稳定）
 
 精确Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`、父436，Owner干净已推送。
