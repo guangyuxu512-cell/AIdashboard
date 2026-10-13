@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import exists, func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.models import TeamShopAccess
@@ -52,6 +52,25 @@ class SelectionRunRepository:
             Run.team_id == team_id, Run.request_shop_id == shop_id,
             Run.request_fingerprint == fingerprint, Run.status.in_(("pending", "running")),
         ).with_for_update())
+
+    def find_strategy_active(self, *, team_id: UUID, strategy_id: UUID) -> Run | None:
+        """Canonical activity includes this strategy's reused submissions.
+
+        A future due-service caller must hold the authorized strategy lock.
+        This is a persistence predicate, not an authorization shortcut or a
+        second execution state machine. Terminal canonicals no longer block.
+        """
+        receipt = aliased(Run)
+        submitted = exists(select(receipt.run_id).where(
+            receipt.strategy_id == strategy_id, receipt.team_id == team_id,
+            func.coalesce(receipt.reused_run_id, receipt.run_id) == Run.run_id,
+            receipt.request_shop_id == Run.request_shop_id,
+            receipt.request_fingerprint == Run.request_fingerprint,
+        ).correlate(Run))
+        return self.session.scalar(select(Run).where(
+            Run.team_id == team_id, Run.reused_run_id.is_(None),
+            Run.status.in_(("pending", "running")), submitted,
+        ).order_by(Run.created_at, Run.run_id).limit(1))
 
     def recover_expired(self, now: datetime) -> int:
         result = self.session.execute(update(Run).where(

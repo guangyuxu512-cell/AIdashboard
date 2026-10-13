@@ -47,6 +47,8 @@ A通过即交Main，Owner继续不依赖未知参数的B准备/实现；B结构�
 当前仅非DDL时间规则及Run事务抽取，不新增Schema/启用自动执行，不是B闭环候选。
 0044仍active、0045尚不得写/应用；A精确Green后ca97串行登记0045(down0044)，
 再由Owner实施B模型/Migration。B未验代码不作为A Release目标，之后正常merge A Green。
+ca97随后明确预留 `20261013_0045`（reserved，down0044），仅编号/技术审核，未激活。
+仍只有A0044 active；A完整Gate及精确Green后才串行激活B，不将reserved当成写/应用许可。
 
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron

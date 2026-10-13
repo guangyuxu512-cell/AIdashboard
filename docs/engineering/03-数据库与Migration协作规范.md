@@ -35,6 +35,11 @@ Integrator曾登记为 `rejected` 且保留本Feature返修占位，未释放编
 77a1d96实际降级/配置控制边界独立通过后，由ca97恢复active，仅允许A继续开发。
 未知参数/真实业务Gate仍PARTIAL；B未分配，不得并行增加第二条迁移链。
 
+ca97随后已明确B后续revision `20261013_0045`（down `20261013_0044`）为reserved，
+仅预留编号及审核最小Schema/事务提案，不授权写或应用DDL。唯一active仍A0044；
+A完整Gate与精确Green后由ca97串行释放0044、激活0045。Owner B分支当前只有非DDL准备，
+不把预留状态当数据库结构已实现，不修改0042/0043/0044。
+
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
 | `feat/product-selection-strategies-v1` / 81a1（A） | `active` | 一张Team-owned策略表，UUID/Team/User/Shop RESTRICT、version CAS、相对条件与定时草稿；runs可空策略FK及索引，保存/启停不创建Schedule或run、不请求平台 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature实际单一0044保留；4e584cb退回、77a1d96 P1/P2独立技术边界接受后由ca97恢复active。实际downgrade先核验精确登记Feature，再锁后查空新实体/并发writer；生产保留Schema/事实用兼容Reader。不改upgrade DDL/0042/0043、不清库，未知参数/真实业务Gate仍未过，非Integration/生产迁移或发布。 |

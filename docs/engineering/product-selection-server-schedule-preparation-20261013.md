@@ -19,6 +19,9 @@
   原v2/v3/v4条件/指纹、canonical及策略快照保持，不改变手动请求范围或失败回退。
 - PG验证helper返回后的新Run其它连接不可见；同一事务同key一致；调用者rollback后无Run残留。
   通过原有真实PG回归，不把这个内部准备点当成已接到Schedule。
+- 原RunRepository增加同策略活动canonical查询，包括该策略复用无关联/另一策略执行的回执。
+  双重Team、Shop及指纹约束，pending/running阻止重叠；canonical终态后回执本身不永久锁死。
+  只供后续已授权且持策略锁的到期Service使用，本次不改变手动提交或提前开启调度。
 
 ## 实际验证
 
@@ -28,6 +31,15 @@
 | `.venv\Scripts\python.exe -m pytest -o addopts="-m 'not integration'" -q` | 639 pass / 232 integration deselected / 69.71s，既有Starlette/httpx warning |
 | `.venv\Scripts\python.exe -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_realtime.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py -o addopts="" -q` | 88 pass / 229.68s；真实登记Feature PG、全部合成I/O，新增caller事务边界测试 |
 | root `git diff --check` | pass |
+
+随后同策略活动查询新增实际Feature PG验证：
+`.venv\Scripts\python.exe -m pytest -m integration tests/integration/test_postgresql_selection_strategies.py -k 'strategy_activity or shared_run_persistence' -o addopts="" -q`
+为3 pass / 17 deselected / 8.80s，覆盖两种canonical归属、pending/running/failed、错Team/ID及caller事务。
+这3项与上方88项存在重叠，不相加冒称91项；最新提交的完整五文件回归另记。
+
+包含新增活动查询的最新代码随后执行上述相同五文件完整PG回归：**90 pass / 233.00s**。
+前面的88与639/232为首准备提交beaf7ce时的实测快照，均保留，不把重复运行相加。
+相对A436，仍无Model/Migration/Schedule DTO/Frontend/Electron变更或平台调用，未激活调度。
 
 DB仍 `control_center_feat_product_selection` / 单一 `20261013_0044`；无新表/列/Slot，
 所有已应用迁移字节不变。前端/Electron/Worker无B运行文件改动，不新开窗口、不发平台请求。
@@ -39,6 +51,8 @@ ca97已认可 `product-selection-server-schedule-v1-proposal.md` 的最小结构
 要求FK/partial unique/组合CHECK实际PG验证。0044仍active，按现有串行规则，
 A精确Green后ca97释放0044并登记0045(down0044)，之前Owner不得编写/应用B DDL。
 不因这项流程停止时间/事务准备，也不抢第二active或通过改0044偷带B结构。
+ca97后续明确预留revision `20261013_0045`（reserved，down0044），尚未激活，
+仅编号和技术方向批准；不能据此编写/应用Migration。原计划和事实仍是单一0044。
 
 获得正式资源登记后实现target类型/组合约束、策略服务同步唯一Schedule、SQL PC隔离、
 原scanner的事务外准备/重锁/原子创建run与触发审计、启停/重复扫描/重启/权限和状态投影。

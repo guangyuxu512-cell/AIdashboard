@@ -188,6 +188,37 @@ def test_shared_run_persistence_leaves_commit_and_rollback_to_authorized_caller(
         assert session.get(Run, first.receipt_id) is None
 
 
+@pytest.mark.parametrize("unassociated_canonical", [False, True])
+def test_strategy_activity_includes_reused_receipt_until_canonical_is_terminal(selection_context, unassociated_canonical):
+    context = selection_context
+    first, second = _save(context), _save(context, name="stage-2a1 busy via reuse")
+    if unassociated_canonical:
+        with Session(context[0]) as session:
+            receipt = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(context[4][0], _input(context, rank_from=1, rank_to=25))
+        _submit(context, first)
+    else:
+        receipt = _submit(context, first)
+    reused = _submit(context, second)
+    assert reused.reused and reused.execution_run_id == receipt.execution_run_id
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS)
+        repository = service.repository
+        for strategy in (first, second):
+            assert repository.find_strategy_active(team_id=context[1][0], strategy_id=strategy.strategy_id).run_id == receipt.execution_run_id
+            assert repository.find_strategy_active(team_id=context[1][1], strategy_id=strategy.strategy_id) is None
+        assert repository.find_strategy_active(team_id=context[1][0], strategy_id=uuid4()) is None
+        session.rollback()
+        claim = service.claim_next()
+        assert claim.run_id == receipt.execution_run_id
+        assert repository.find_strategy_active(team_id=context[1][0], strategy_id=second.strategy_id).status == "running"
+        session.rollback()
+        service.finish(claim)  # No platform/count => failed, never a fake empty success.
+        assert session.get(Run, receipt.execution_run_id).status == "failed"
+        assert session.get(Run, reused.receipt_id).status == "reused"
+        for strategy in (first, second):
+            assert repository.find_strategy_active(team_id=context[1][0], strategy_id=strategy.strategy_id) is None
+
+
 def test_only_strategy_still_prevents_team_deletion(selection_context):
     from tests.integration.test_postgresql_product_selection import _remove_team_grants_and_membership
     context = selection_context
