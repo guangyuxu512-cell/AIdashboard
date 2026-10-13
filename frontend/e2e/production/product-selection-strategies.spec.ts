@@ -22,6 +22,7 @@ for (const period of ['7d', 'realtime'] as const) {
     const unexpected: string[] = [],
       mocks: string[] = []
     let run: Record<string, unknown> | null = null
+    let rejectToggle = true
     page.on('request', (request) => {
       if (request.url().includes('selection-mock-handlers'))
         mocks.push(request.url())
@@ -167,6 +168,17 @@ for (const period of ['7d', 'realtime'] as const) {
         const body = request.postDataJSON() as {
           enabled: boolean
           expected_version: number
+        }
+        if (rejectToggle) {
+          rejectToggle = false
+          await route.fulfill({
+            status: 409,
+            json: {
+              code: 'PRODUCT_SELECTION_STRATEGY_VERSION_CONFLICT',
+              message: '状态修改失败，请重新读取已保存策略',
+            },
+          })
+          return
         }
         expect(body.expected_version).toBe(strategy!.version)
         strategy = {
@@ -357,10 +369,17 @@ for (const period of ['7d', 'realtime'] as const) {
     await field('起始排名').locator('input').fill('153')
     await field('结束排名').locator('input').fill('198')
     await field('结束排名').locator('input').blur()
+    // The drawer switch edits a draft. Retrieval must not persist its state.
+    await field('策略状态').getByRole('switch').click()
+    await expect(field('策略状态').getByRole('switch')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
     await drawer.getByRole('button', { name: '立即获取', exact: true }).click()
     await expect(page.getByText('等待获取', { exact: true })).toBeVisible()
     expect(strategy!.name).toBe('接口拦截已保存编辑')
     expect(strategy!.conditions.request.rank_from).toBe(152)
+    expect(strategy!.enabled).toBe(false)
     expect(writes).toHaveLength(4)
     expect(writes[3]!.path).toBe('/api/v1/product-selection/runs')
     expect(writes[3]!.body).toMatchObject({
@@ -373,6 +392,16 @@ for (const period of ['7d', 'realtime'] as const) {
       rank_from: 153,
       rank_to: 198,
     })
+    await page
+      .getByRole('switch', { name: '接口拦截已保存编辑启用状态' })
+      .click()
+    await expect(
+      page.getByText('状态修改失败，请重新读取已保存策略', { exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('switch', { name: '接口拦截已保存编辑启用状态' }),
+    ).toHaveAttribute('aria-checked', 'false')
+    expect(strategy!.enabled).toBe(false)
     await page
       .getByRole('switch', { name: '接口拦截已保存编辑启用状态' })
       .click()

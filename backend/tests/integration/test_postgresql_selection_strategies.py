@@ -103,13 +103,66 @@ def test_scope_before_pagination_direct_ids_and_revocation(selection_context):
         with pytest.raises(SelectionStrategyNotFoundError): service.get(context[4][0], saved.strategy_id)
 
 
-def test_current_super_account_needs_explicit_team_for_saved_strategy(selection_context):
+def test_current_super_account_needs_explicit_team_for_new_strategy(selection_context):
     context = selection_context
     with Session(context[0]) as session:
         session.get(User, context[2][0]).is_super_account = True
         session.commit()
         global_actor = ActorContextService(session).resolve(user_id=context[2][0], requested_team_id=None)
         with pytest.raises(TeamContextRequiredError): SelectionStrategyService(session).save(global_actor, _config(context))
+
+
+@pytest.mark.parametrize("other_team", [False, True])
+def test_existing_super_strategy_operations_use_saved_team_without_switch(selection_context, other_team):
+    context = selection_context
+    saved = _save(context)
+    with Session(context[0]) as session:
+        session.get(User, context[2][0]).is_super_account = True
+        session.commit()
+    headers = {"X-Team-ID": str(context[1][1])} if other_team else {}
+    path = f"/api/v1/product-selection/strategies/{saved.strategy_id}"
+    with _api_client(context) as client:
+        edited = client.put(path, headers=headers, json=_config(context, name="stage-2a1 resource team").model_dump(mode="json") | {"expected_version": 1})
+        assert edited.status_code == 200
+        assert edited.json()["team_id"] == str(context[1][0])
+        assert client.get(path, headers=headers).json()["version"] == 2
+        closed = client.patch(path + "/enabled", headers=headers, json={"enabled": False, "expected_version": 2})
+        assert closed.status_code == 200 and closed.json()["enabled"] is False
+        assert client.get(path, headers=headers).json()["enabled"] is False
+        opened = client.patch(path + "/enabled", headers=headers, json={"enabled": True, "expected_version": 3})
+        assert opened.status_code == 200 and opened.json()["version"] == 4
+    with Session(context[0]) as session:
+        actor = ActorContextService(session).resolve(user_id=context[2][0], requested_team_id=context[1][1] if other_team else None)
+        observed_teams = []
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda current, shop: (observed_teams.append(current.team_id) or _category_tree(shop)))
+        command = _input(context, rank_from=21, rank_to=30, strategy_id=saved.strategy_id, strategy_version=4)
+        receipt = service.submit(actor, command)
+        assert service.submit(actor, command).receipt_id == receipt.receipt_id
+        assert observed_teams == [context[1][0]]
+        stored = session.get(Strategy, saved.strategy_id)
+        assert stored.version == 4 and stored.conditions["request"]["rank_from"] == 1
+        assert session.get(Run, receipt.receipt_id).team_id == context[1][0]
+        assert SelectionStrategyService(session).get(actor, saved.strategy_id).latest_run.run_id == receipt.execution_run_id
+        with pytest.raises(TeamContextRequiredError):
+            service.submit(replace(actor, team_id=None), _input(context))
+
+
+def test_resource_team_binding_rechecks_super_authority_after_category_io(selection_context):
+    context = selection_context
+    saved = _save(context)
+    with Session(context[0]) as session:
+        session.get(User, context[2][0]).is_super_account = True
+        session.commit()
+        actor = ActorContextService(session).resolve(user_id=context[2][0], requested_team_id=None)
+        def revoke_super(current, shop):
+            with Session(context[0]) as write:
+                write.get(User, current.user_id).is_super_account = False
+                write.execute(delete(TeamShopAccess).where(TeamShopAccess.team_id == context[1][0]))
+                write.commit()
+            return _category_tree(shop)
+        with pytest.raises(SelectionStrategyNotFoundError):
+            SelectionRunService(session, settings=SETTINGS, category_reader=revoke_super).submit(actor, _input(context, strategy_id=saved.strategy_id, strategy_version=1))
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
 
 
 def test_only_strategy_still_prevents_team_deletion(selection_context):

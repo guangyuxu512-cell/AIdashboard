@@ -34,6 +34,13 @@ ca97已分配并核实复用 `control_center_feat_product_selection` / `control_
 本节覆盖与当前直接授权冲突的下方历史active范围；下方验收事实保留，不重做原设计。
 当前A仍PARTIAL：CRUD/已确认条件准备不代表全条件或服务端自动执行完成；见本轮契约。
 
+2026-10-13本会话最新直接任务收口A团队操作：已有策略的super操作须由后台核实当前人员权限后
+按已保存strategy.team_id处理，不要求切全局Team；新建策略/无关联草稿仍明确当前业务Team，
+普通成员模块/Team/Shop授权及CAS不变。已应用Integration的0044与0042/0043均不可再改写。
+A通过即交Main，Owner继续不依赖未知参数的B准备/实现；B结构与事务提案见
+`docs/engineering/product-selection-server-schedule-v1-proposal.md`，新Slot仍由ca97串行登记，
+不并行占第二active、不将尚未验收的B混入A发布，平台补证/原生验收仍仅ca97协调。
+
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron
 人工验收通过；本次原生关窗约289ms完成renderer清理，按钮恢复、无活动租约。

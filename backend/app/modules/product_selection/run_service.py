@@ -94,7 +94,7 @@ class SelectionRunService:
         at = now or datetime.now(UTC)
         original = command.original()
         try:
-            current = self.facts._current_actor(actor)
+            current = self._submission_actor(actor, command)
             team_id = current.require_team_id()
             old = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
             if old is not None:
@@ -125,7 +125,7 @@ class SelectionRunService:
                 else:
                     tree = self.category_reader(current, command.shop_id)
                 validate_shop_category(original, tree)
-                current = self.facts._current_actor(actor)
+                current = self._submission_actor(actor, command)
                 self.facts._execution_shop(current, command.shop_id)
             if command.strategy_id is not None:
                 from app.modules.product_selection.strategy_service import SelectionStrategyService
@@ -183,6 +183,13 @@ class SelectionRunService:
         except Exception:
             self.session.rollback()
             raise
+
+    def _submission_actor(self, actor: ActorContext, command: SelectionRunCreate) -> ActorContext:
+        if command.strategy_id is not None:
+            from app.modules.product_selection.strategy_service import SelectionStrategyService
+            current, _ = SelectionStrategyService(self.session).existing_context(actor, command.strategy_id)
+            return current
+        return self.facts._current_actor(actor)
 
     def _read(self, actor: ActorContext, row: ProductSelectionRun) -> SelectionRunRead:
         canonical = row

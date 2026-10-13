@@ -33,7 +33,12 @@ name、递增 version、enabled；版本化且严格白名单的相对条件 JSO
 没有删除功能或自动保留期，保留期未定。
 
 API 使用既有 product-selection 模块、Human Actor 和当前 Shop 授权；普通成员先 SQL
-Team/Shop 过滤再搜索/分页。写入重验有效 Team/启用且未删除抖店；超级账号写入仍需明确 Team。
+Team/Shop 过滤再搜索/分页。写入重验有效 Team/启用且未删除抖店。
+新建策略及未关联策略的手动提交仍要求明确的当前业务Team，不推测默认团队。
+已有策略直接ID的GET/PUT/启停及关联手动提交：后台重新验证当前人员的super权限后，
+由已保存strategy.team_id确定有效团队；不要求切换全局Team，不修改原归属。
+普通成员仍按当前模块/团队/店铺授权SQL过滤，不能套用super资源上下文。
+类目I/O后再次从原人员及资源重验；已撤super/Shop授权、失效Team或CAS冲突均拒绝。
 Team 仅剩策略也阻止物理删除，不能让新表产生未解释的级联数据丢失。
 
 关闭策略（enabled=false）只要求当前Actor/Team/Shop可见授权和版本CAS，不要求该店铺

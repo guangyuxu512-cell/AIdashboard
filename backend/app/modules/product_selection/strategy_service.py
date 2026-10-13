@@ -1,5 +1,6 @@
 """Only saved configuration writes; no platform request or implicit execution."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -43,18 +44,32 @@ class SelectionStrategyService:
         return self._project(current, rows), total
 
     def get(self, actor: ActorContext, strategy_id: UUID):
+        current, row = self.existing_context(actor, strategy_id)
+        return self._project(current, [row])[0]
+
+    def existing_context(self, actor: ActorContext, strategy_id: UUID, *, lock: bool = False):
+        """Derive a verified super actor's write Team from this saved resource.
+
+        Only direct existing-strategy operations use this rule. List filters,
+        new configurations and unassociated manual submissions retain their
+        explicit Team context. Never trust a frontend Team or a cached super bit.
+        """
         current = self.facts._current_actor(actor)
-        row = self.repository.get(current, strategy_id)
+        lookup = replace(current, team_id=None) if current.is_super_account else current
+        row = self.repository.get(lookup, strategy_id, lock=lock)
         if row is None:
             raise SelectionStrategyNotFoundError()
-        return self._project(current, [row])[0]
+        if current.is_super_account:
+            # Re-resolve the saved Team, current User and module authorization.
+            # Disabled/missing Teams and revoked super authority fail closed.
+            current = self.facts._current_actor(replace(current, team_id=row.team_id))
+        if row.team_id != current.require_team_id():
+            raise SelectionStrategyNotFoundError()
+        return current, row
 
     def writable(self, actor: ActorContext, strategy_id: UUID, *, expected_version: int):
         """Lock authorized configuration and enforce CAS, not execution readiness."""
-        team_id = actor.require_team_id()
-        row = self.repository.get(actor, strategy_id, lock=True)
-        if row is None or row.team_id != team_id:
-            raise SelectionStrategyNotFoundError()
+        _, row = self.existing_context(actor, strategy_id, lock=True)
         if row.version != expected_version:
             raise SelectionStrategyVersionConflictError()
         return row
@@ -64,7 +79,14 @@ class SelectionStrategyService:
             current = self.facts._current_actor(actor)
             if not self.settings.product_selection_strategy_management_enabled:
                 raise SelectionStrategyWriteDisabledError()
-            team_id = current.require_team_id()
+            if strategy_id is None:
+                team_id = current.require_team_id()
+            else:
+                if not isinstance(command, SelectionStrategyUpdate):
+                    raise ValueError("Updates require an expected saved version")
+                current, row = self.existing_context(current, strategy_id, lock=True)
+                if row.version != command.expected_version:
+                    raise SelectionStrategyVersionConflictError()
             # Validate the newly submitted target, not a disabled old target
             # that an authorized configuration edit is trying to replace.
             self.facts._execution_shop(current, command.shop_id)
@@ -74,9 +96,6 @@ class SelectionStrategyService:
                 row = ProductSelectionStrategy(team_id=team_id, created_by_user_id=current.user_id, request_shop_id=command.shop_id, version=1, created_at=at)
                 self.session.add(row)
             else:
-                if not isinstance(command, SelectionStrategyUpdate):
-                    raise ValueError("Updates require an expected saved version")
-                row = self.writable(current, strategy_id, expected_version=command.expected_version)
                 row.version += 1
             row.name, row.request_shop_id, row.enabled = command.name, command.shop_id, command.enabled
             row.conditions = command.conditions.model_dump(mode="json")
@@ -95,7 +114,9 @@ class SelectionStrategyService:
             current = self.facts._current_actor(actor)
             if not self.settings.product_selection_strategy_management_enabled:
                 raise SelectionStrategyWriteDisabledError()
-            row = self.writable(current, strategy_id, expected_version=command.expected_version)
+            current, row = self.existing_context(current, strategy_id, lock=True)
+            if row.version != command.expected_version:
+                raise SelectionStrategyVersionConflictError()
             if command.enabled:
                 self.facts._execution_shop(current, row.request_shop_id)
             row.enabled = command.enabled
