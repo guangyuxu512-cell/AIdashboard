@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, h, nextTick, onBeforeUnmount, ref } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import type { PageResult } from '@/shared/api'
 import {
   useMessage,
   type DataTableColumns,
@@ -41,17 +42,23 @@ const page = ref(1),
 const editing = ref<SelectionStrategy | null>(null),
   drawer = ref(false)
 const busyId = ref<string | null>(null)
+const queryClient = useQueryClient()
+let mounted = true
+onBeforeUnmount(() => {
+  mounted = false
+})
 const canRead = computed(
   () => props.service.strategySaveAvailable ?? props.service.available,
 )
+const listKey = computed(() => [
+  'selection-strategies',
+  props.contextKey,
+  props.service.strategiesPage ? page.value : null,
+  props.service.strategiesPage ? pageSize.value : null,
+  props.service.strategiesPage ? appliedKeyword.value : null,
+])
 const query = useQuery({
-  queryKey: computed(() => [
-    'selection-strategies',
-    props.contextKey,
-    props.service.strategiesPage ? page.value : null,
-    props.service.strategiesPage ? pageSize.value : null,
-    props.service.strategiesPage ? appliedKeyword.value : null,
-  ]),
+  queryKey: listKey,
   enabled: canRead,
   queryFn: async () =>
     props.service.strategiesPage
@@ -150,9 +157,35 @@ function setPageSize(value: number) {
   pageSize.value = value
   setPage(1)
 }
-function saved() {
+function updateSavedRow(row: SelectionStrategy) {
+  // Update the existing Query page in place; never build a second row store or
+  // move it to the front. The subsequent authorized GET remains authoritative.
+  queryClient.setQueryData<PageResult<SelectionStrategy>>(
+    listKey.value,
+    (previous) =>
+      previous
+        ? {
+            ...previous,
+            items: previous.items.map((item) =>
+              item.id === row.id &&
+              !(item.version && row.version && item.version > row.version)
+                ? row
+                : item,
+            ),
+          }
+        : previous,
+  )
+}
+async function saved(row?: SelectionStrategy) {
+  if (!mounted) return
+  if (editing.value) {
+    if (row) updateSavedRow(row)
+  } else {
+    setPage(1)
+    await nextTick()
+  }
+  if (!mounted) return
   void query.refetch()
-  setPage(1)
 }
 async function retrieve(row: SelectionStrategy) {
   if (busyId.value) return
@@ -194,12 +227,16 @@ let uncertainSubmission: { input: string; key: string } | null = null
 async function toggle(row: SelectionStrategy, enabled: boolean) {
   if (!props.service.toggleStrategy || !canSave.value || busyId.value) return
   busyId.value = row.id
+  const context = props.contextKey
   try {
-    await props.service.toggleStrategy(row, enabled)
+    const saved = await props.service.toggleStrategy(row, enabled)
+    if (!mounted || props.contextKey !== context) return
+    updateSavedRow(saved)
     message.success(enabled ? '策略已启用' : '策略已停用')
     await query.refetch()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '状态修改失败')
+    if (mounted && props.contextKey === context)
+      message.error(error instanceof Error ? error.message : '状态修改失败')
   } finally {
     busyId.value = null
   }

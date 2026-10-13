@@ -49,6 +49,10 @@ Team 仅剩策略也阻止物理删除，不能让新表产生未解释的级联
 
 - GET `/api/v1/product-selection/strategies`：分页/名称查询，批量附最近真实执行摘要；
   无结果就是 null，不伪造一次运行。关联回执解析到其 canonical 执行。
+  默认稳定排序为created_at DESC、strategy_id ASC；启停/编辑仍更新真实updated_at，但不把它
+  当行序键。授权/搜索先于排序和分页；同创建时刻由ID稳定排序，不增加排序配置页面。
+  前端按正式保存/启停响应原位更新既有Query行，再读取正式列表；已有编辑保持当前页/筛选/滚动，
+  新建回第一页按新增规则展示。改名后若不再命中筛选，服从正式过滤，不强行保留已排除行。
 - GET `/strategies/{strategy_id}`：已保存相对条件、计划草稿、version 和 enabled。
 - POST `/strategies`：保存配置，不请求平台、不提交 run、不启用调度。
 - PUT `/strategies/{strategy_id}`：完整编辑＋expected_version；CAS冲突保留客户端草稿。

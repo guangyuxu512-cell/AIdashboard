@@ -52,7 +52,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:show': [show: boolean]
-  saved: []
+  saved: [strategy: SelectionStrategy]
   retrieved: [execution?: SelectionExecutionSummary]
 }>()
 const message = useMessage()
@@ -272,16 +272,16 @@ async function submit(saving: boolean) {
       emit('retrieved', receipt.execution)
       emit('update:show', false)
     } else if (saving) {
-      if (real.value)
-        await props.service.saveStrategy(
-          draft,
-          props.strategy?.id,
-          props.strategy?.version,
-          categories.data.value,
-        )
-      else await props.service.saveStrategy(draft, props.strategy?.id)
+      const saved = real.value
+        ? await props.service.saveStrategy(
+            draft,
+            props.strategy?.id,
+            props.strategy?.version,
+            categories.data.value,
+          )
+        : await props.service.saveStrategy(draft, props.strategy?.id)
       message.success(real.value ? '策略已保存' : '演示策略已保存')
-      emit('saved')
+      emit('saved', saved)
       emit('update:show', false)
     } else {
       const strategyId = props.strategy?.id

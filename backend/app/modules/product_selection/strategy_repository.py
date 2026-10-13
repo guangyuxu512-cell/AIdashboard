@@ -43,7 +43,9 @@ class SelectionStrategyRepository:
             escaped = search.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
             statement = statement.where(Strategy.name.ilike(f"%{escaped}%", escape="\\"))
         total = self.session.scalar(select(func.count()).select_from(statement.subquery())) or 0
-        rows = list(self.session.scalars(statement.order_by(Strategy.updated_at.desc(), Strategy.strategy_id).offset(offset).limit(limit)))
+        # State/configuration updates must not move an existing strategy across
+        # pages. Preserve genuine updated_at, order by immutable creation + ID.
+        rows = list(self.session.scalars(statement.order_by(Strategy.created_at.desc(), Strategy.strategy_id.asc()).offset(offset).limit(limit)))
         return rows, total
 
     def shops(self, rows: list[Strategy]):

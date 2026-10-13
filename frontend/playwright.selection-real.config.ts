@@ -8,6 +8,7 @@ export default defineConfig({
     'product-selection-unavailable.spec.ts',
     'product-selection-strategy-restoration.spec.ts',
     'product-selection-strategies.spec.ts',
+    'product-selection-strategy-position.spec.ts',
   ],
   use: { baseURL: `http://127.0.0.1:${port}` },
   webServer: {

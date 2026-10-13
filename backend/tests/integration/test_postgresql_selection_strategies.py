@@ -276,6 +276,35 @@ def test_concurrent_edit_has_one_winner_and_does_not_reset_version(selection_con
     assert sorted(results, key=str) == [2, "conflict"]
 
 
+@pytest.mark.parametrize("equal_creation_times", [False, True])
+def test_strategy_pagination_order_survives_toggle_edit_and_result_update(selection_context, equal_creation_times):
+    from datetime import UTC, datetime, timedelta
+    context = selection_context
+    created = [_save(context, name=f"stage-2a1 stable-{index}") for index in range(3)]
+    with Session(context[0]) as session:
+        for index, row in enumerate(created):
+            session.get(Strategy, row.strategy_id).created_at = datetime(2026, 10, 1, tzinfo=UTC) + timedelta(days=0 if equal_creation_times else index)
+        session.commit()
+        service = SelectionStrategyService(session)
+        def pages():
+            return [service.list(context[4][0], offset=index, limit=1, search="stage-2a1")[0][0].strategy_id for index in range(3)]
+        expected = sorted([row.strategy_id for row in created], key=str) if equal_creation_times else [row.strategy_id for row in reversed(created)]
+        assert pages() == expected
+        target = next(row for row in created if row.strategy_id == expected[-1])
+        before = service.get(context[4][0], target.strategy_id)
+        closed = service.toggle(context[4][0], target.strategy_id, SelectionStrategyToggle(enabled=False, expected_version=1))
+        assert closed.updated_at > before.updated_at and closed.created_at == before.created_at
+        assert closed.enabled is False and closed.version == 2
+        assert pages() == expected
+        changed = service.save(context[4][0], SelectionStrategyUpdate(**(_config(context, name="stage-2a1 stable-edited", enabled=False).model_dump() | {"expected_version": 2})), strategy_id=target.strategy_id)
+        assert changed.updated_at > closed.updated_at and changed.created_at == before.created_at
+        assert changed.version == 3 and pages() == expected
+        _submit(context, changed)
+        assert service.get(context[4][0], target.strategy_id).latest_run is not None
+        assert pages() == expected
+        assert service.list(context[4][1], offset=0, limit=10, search="stage-2a1")[1] == 0
+
+
 def test_retrieve_freezes_strategy_draft_without_saving_and_reused_result_is_visible(selection_context):
     context = selection_context
     first, second = _save(context), _save(context, name="stage-2a1 另一策略")

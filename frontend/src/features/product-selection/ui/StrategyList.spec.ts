@@ -72,11 +72,17 @@ function render(
       stubs: {
         StrategyDrawer: DrawerStub,
         DataTable: {
-          props: ['emptyDescription', 'data'],
+          name: 'DataTable',
+          props: ['emptyDescription', 'data', 'columns'],
           template:
             '<div>{{ emptyDescription }}<span v-for="row in data" :key="row.id">{{ row.name }}</span></div>',
         },
-        PaginationBar: true,
+        PaginationBar: {
+          name: 'PaginationBar',
+          props: ['page', 'pageSize', 'itemCount'],
+          emits: ['update:page', 'update:pageSize'],
+          template: '<div />',
+        },
       },
     },
   })
@@ -84,6 +90,112 @@ function render(
 }
 describe('explicit selection completion messages', () => {
   beforeEach(() => vi.clearAllMocks())
+  it('keeps page and filter after an existing edit but uses page one for a new save', async () => {
+    const row = {
+      ...(await createSelectionMockHandlers().strategies())[0]!,
+      version: 1,
+    }
+    const read = vi
+      .fn()
+      .mockResolvedValue({ items: [row], total: 45, page: 2, pageSize: 20 })
+    const { wrapper, queryClient } = render(undefined, {
+      strategySaveAvailable: true,
+      strategiesPage: read,
+    })
+    await flushPromises()
+    await wrapper.find('input').setValue(row.name)
+    await wrapper.find('input').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    wrapper.findComponent({ name: 'PaginationBar' }).vm.$emit('update:page', 2)
+    await flushPromises()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    const actions = table
+      .props('columns')
+      .find((column: { key: string }) => column.key === 'actions')
+      .render(row)
+    actions.children[1].props.onClick()
+    await flushPromises()
+    wrapper
+      .findComponent(DrawerStub)
+      .vm.$emit('saved', { ...row, version: 2, name: '已编辑' })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'PaginationBar' }).props('page')).toBe(
+      2,
+    )
+    expect(read.mock.lastCall?.[0]).toMatchObject({
+      page: 2,
+      pageSize: 20,
+      search: row.name,
+    })
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '新建策略')!
+      .trigger('click')
+    wrapper
+      .findComponent(DrawerStub)
+      .vm.$emit('saved', { ...row, id: 'new-strategy' })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'PaginationBar' }).props('page')).toBe(
+      1,
+    )
+    wrapper.unmount()
+    queryClient.clear()
+  })
+  it('applies the authoritative toggle response in place while the list refresh is pending', async () => {
+    const rows = (await createSelectionMockHandlers().strategies())
+      .slice(0, 2)
+      .map((row) => ({ ...row, version: 1, enabled: false }))
+    const changed = {
+      ...rows[1]!,
+      version: 2,
+      enabled: true,
+      latestResult: '已保存的最近结果',
+    }
+    let release!: (value: {
+      items: typeof rows
+      total: number
+      page: number
+      pageSize: number
+    }) => void
+    const pending = new Promise<{
+      items: typeof rows
+      total: number
+      page: number
+      pageSize: number
+    }>((resolve) => {
+      release = resolve
+    })
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ items: rows, total: 2, page: 1, pageSize: 20 })
+      .mockReturnValue(pending)
+    const toggleStrategy = vi.fn().mockResolvedValue(changed)
+    const { wrapper, queryClient } = render(undefined, {
+      strategySaveAvailable: true,
+      strategiesPage: read,
+      toggleStrategy,
+    })
+    await flushPromises()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    const control = table
+      .props('columns')
+      .find((column: { key: string }) => column.key === 'enabled')
+      .render(rows[1])
+    const operation = control.props['onUpdate:modelValue'](true)
+    await flushPromises()
+    expect(table.props('data').map((row: { id: string }) => row.id)).toEqual(
+      rows.map((row) => row.id),
+    )
+    expect(table.props('data')[1]).toMatchObject({
+      enabled: true,
+      version: 2,
+      latestResult: '已保存的最近结果',
+    })
+    release({ items: [rows[0]!, changed], total: 2, page: 1, pageSize: 20 })
+    await operation
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('a read-only management capability retains saved rows while disabling new writes', async () => {
     const row = (await createSelectionMockHandlers().strategies())[0]!
     const read = vi
@@ -93,12 +205,10 @@ describe('explicit selection completion messages', () => {
       strategySaveAvailable: true,
       strategiesPage: read,
       manual: {
-        capabilities: vi
-          .fn()
-          .mockResolvedValue({
-            strategy_save_available: false,
-            manual_execution_available: false,
-          }),
+        capabilities: vi.fn().mockResolvedValue({
+          strategy_save_available: false,
+          manual_execution_available: false,
+        }),
         submit: vi.fn(),
       },
     })
