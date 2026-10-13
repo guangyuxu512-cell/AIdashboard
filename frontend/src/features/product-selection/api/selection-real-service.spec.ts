@@ -308,7 +308,10 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     const nodes = await real.categories('shop-a')
     expect(nodes[0]?.id).toBe('5')
     expect(nodes[0]?.requestScope).toBeUndefined()
-    expect(nodes[0]?.children?.[0]?.requestScope).toBeUndefined()
+    expect(nodes[0]?.children?.[0]?.requestScope).toEqual({
+      industryId: '5',
+      categoryIds: ['5001'],
+    })
     expect(nodes[1]?.id).toBe('7')
     expect(nodes[1]?.requestScope).toBeUndefined()
     const parent = nodes[1]?.children?.[0]
@@ -334,16 +337,25 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       real.manual!.submit(input, 'industry-key', nodes),
     ).rejects.toThrow('真实类目')
     input.channels.shortVideo.conditions.categoryId = '5/5001'
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      data: { receipt_id: 'other-run', reused: false },
+    })
+    await real.manual!.submit(input, 'other-key', nodes)
+    expect(httpClient.post).toHaveBeenLastCalledWith(
+      '/api/v1/product-selection/runs',
+      expect.objectContaining({ industry_id: '5', category_ids: ['5001'] }),
+    )
+    input.channels.shortVideo.conditions.categoryId = '5'
     await expect(
-      real.manual!.submit(input, 'other-key', nodes),
+      real.manual!.submit(input, 'root-all-key', nodes),
     ).rejects.toThrow('真实类目')
-    expect(httpClient.post).not.toHaveBeenCalled()
     input.channels.shortVideo.conditions.categoryId = leaf!.id
     vi.mocked(httpClient.post).mockResolvedValueOnce({
       data: { receipt_id: 'run-a', reused: false },
     })
     await real.manual!.submit(input, 'category-key', nodes)
-    expect(httpClient.post).toHaveBeenCalledExactlyOnceWith(
+    expect(httpClient.post).toHaveBeenCalledTimes(2)
+    expect(httpClient.post).toHaveBeenLastCalledWith(
       '/api/v1/product-selection/runs',
       expect.objectContaining({
         shop_id: 'shop-a',

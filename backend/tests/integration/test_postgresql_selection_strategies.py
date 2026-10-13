@@ -48,6 +48,51 @@ def _submit(context, strategy, **changes):
         return SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(context[4][0], command)
 
 
+def test_other_actual_industry_parent_saves_submits_and_persists_without_default_replacement(selection_context):
+    from app.modules.product_selection.api import get_selection_run_service
+    from app.modules.product_selection.schemas import SelectionCategoriesRead
+
+    context = selection_context
+    choice = _input(context, industry_id="41", category_ids=["4101"], rank_from=1, rank_to=1)
+    strategy = _save(context, conditions={"version": 1, "request": choice.original().model_dump(exclude={"shop_id"}, mode="json")})
+    tree = SelectionCategoriesRead(
+        shop_id=context[3][0], industry_id="7", industry_name="默认行业", selected_category_id=None,
+        nodes=[
+            {"category_id": "7", "name": "默认行业", "children": [{"category_id": "7001", "name": "默认类目", "children": []}]},
+            {"category_id": "41", "name": "合成其它行业", "children": [{"category_id": "4101", "name": "父类目", "children": [{"category_id": "4102", "name": "子类目", "children": []}]}]},
+        ],
+    )
+    command = SelectionRunCreate.model_validate(choice.model_dump() | {"strategy_id": strategy.strategy_id, "strategy_version": strategy.version})
+
+    def dependency():
+        with Session(context[0]) as session:
+            def categories(actor, shop):
+                assert not session.in_transaction() and shop == tree.shop_id
+                return tree
+            yield SelectionRunService(session, settings=SETTINGS, category_reader=categories)
+
+    with _api_client(context) as client:
+        client.app.dependency_overrides[get_selection_run_service] = dependency
+        headers = {"X-Team-ID": str(context[1][0])}
+        accepted = client.post("/api/v1/product-selection/runs", json=command.model_dump(mode="json"), headers=headers)
+        assert accepted.status_code == 202
+        assert client.post("/api/v1/product-selection/runs", json=command.model_dump(mode="json"), headers=headers).json() == accepted.json()
+    with Session(context[0]) as session:
+        service = SelectionRunService(session)
+        run = service.get(context[4][0], accepted.json()["execution_run_id"])
+        assert run.request_conditions.scope.industry_id == "41"
+        assert run.request_conditions.scope.category_id == "4101"
+        assert SelectionStrategyService(session).get(context[4][0], strategy.strategy_id).conditions.request.industry_id == "41"
+    platform = WindowPlatform(run.request_conditions, {("primary", 1): [_product(rank=1)]})
+    assert _executor(context, platform).execute_available() == 1
+    with Session(context[0]) as session:
+        observation = session.scalar(select(Observation).join(Candidate).where(Candidate.team_id == context[1][0]))
+        assert observation.source_context["business"]["industry_id"] == "41"
+        assert observation.source_context["business"]["category_id"] == "4101"
+        assert session.scalar(select(func.count()).select_from(Candidate).where(Candidate.team_id == context[1][0])) == 1
+        assert SelectionRunService(session).get(context[4][0], run.run_id).status == "succeeded"
+
+
 def test_crud_refresh_edit_cas_toggle_do_not_submit_or_fetch(selection_context, monkeypatch):
     context = selection_context
     from app.modules.product_selection import platform_io

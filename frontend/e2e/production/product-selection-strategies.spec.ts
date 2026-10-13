@@ -13,6 +13,10 @@ for (const period of ['7d', 'realtime'] as const) {
   }, info) => {
     test.setTimeout(120000)
     await page.setViewportSize({ width: 1440, height: 900 })
+    const industryId = period === 'realtime' ? '41' : '7'
+    const categoryId = period === 'realtime' ? '4101' : '1001'
+    const industryLabel = period === 'realtime' ? '合成非默认行业' : '合成行业'
+    const categoryLabel = period === 'realtime' ? '其它父类目' : '父级类目'
     let strategy: SelectionStrategyDto | null = null
     const writes: {
       method: string
@@ -94,6 +98,19 @@ for (const period of ['7d', 'realtime'] as const) {
           industry_name: '实际树合成对照',
           selected_category_id: null,
           nodes: [
+            {
+              category_id: '41',
+              name: '合成非默认行业',
+              children: [
+                {
+                  category_id: '4101',
+                  name: '其它父类目',
+                  children: [
+                    { category_id: '4102', name: '其它子类目', children: [] },
+                  ],
+                },
+              ],
+            },
             {
               category_id: '7',
               name: '合成行业',
@@ -245,8 +262,8 @@ for (const period of ['7d', 'realtime'] as const) {
     await field('请求店铺').locator('.n-base-selection').click()
     await page.getByText('授权合成店铺', { exact: true }).last().click()
     await field('类目').locator('.n-base-selection').click()
-    await page.getByText('合成行业', { exact: true }).last().click()
-    await page.getByText('父级类目', { exact: true }).last().click()
+    await page.getByText(industryLabel, { exact: true }).last().click()
+    await page.getByText(categoryLabel, { exact: true }).last().click()
     await page
       .locator('.n-cascader-submenu')
       .last()
@@ -294,13 +311,15 @@ for (const period of ['7d', 'realtime'] as const) {
     expect(writes[0]!.path).toBe('/api/v1/product-selection/strategies')
     expect(JSON.stringify(writes[0]!.body)).not.toContain('begin_date')
     expect(strategy!.conditions.request.period).toBe(period)
+    expect(strategy!.conditions.request.industry_id).toBe(industryId)
+    expect(strategy!.conditions.request.category_ids).toEqual([categoryId])
     await page.reload()
     await expect(
       page.getByText('接口拦截合成策略', { exact: true }),
     ).toBeVisible()
     await page.getByRole('button', { name: '编辑', exact: true }).click()
     await expect(field('类目').locator('.n-cascader')).toContainText(
-      '父级类目 / 全部',
+      `${categoryLabel} / 全部`,
     )
     await expect(field('起始排名').locator('input')).toHaveValue('151')
     await expect(field('结束排名').locator('input')).toHaveValue('200')
@@ -386,8 +405,8 @@ for (const period of ['7d', 'realtime'] as const) {
       strategy_id: 'saved-strategy',
       strategy_version: 3,
       period,
-      industry_id: '7',
-      category_ids: ['1001'],
+      industry_id: industryId,
+      category_ids: [categoryId],
       first_listed_only: true,
       rank_from: 153,
       rank_to: 198,

@@ -138,3 +138,46 @@ ca97另已在77正式Integration完成CRUD与零隐式取数，并取得run
 10商品/10来源/API与DB一致；basic_info 9成功1业务拒绝，正确partial且不丢候选，未重试。
 category1/rank3/basic10，完成后GET/同key重放增量0，保存版本/条件未改。此未改7d证据可复用，
 不把它替代新v4实时完整闭环/first筛选/唯一Electron；剩余参数每项有证据即接，不等待B。
+
+## 通用类目转换接证（A仍PARTIAL）
+
+本轮沿`183b35b4057b979f21a15e117cb2d3e8ef3b9efc`继续，之前“其他行业未知”的限制
+由本节新结构证据更新；历史测试/失败/验收记录保留，不要求逐行业建立人工ID白名单。
+ca97授权店铺正式GET类目200，现有24小时缓存第二次读取零平台请求，保存完整包装根和下级。
+scalar industry_id=7仅为默认选择；ca97从实际树程序读取个护家清/家清纸品，使用当前stored
+HuanYu v6及原HTTP/Signer一次只读榜单：industry_id=5、category_id=1000004647、
+近7天2026-10-06～12/page1/10，HTTP200/st整数0/10条/total200，未回退/重试/入库。
+这些ID是本次证据，不是代码名单；没有同次页面抓包，不能称本新候选完整闭环已验收。
+
+仅2个运行时文件修改：
+
+- `request_mapping.validate_shop_category`：Shop先匹配；包装树按所选实际根匹配行业，
+  根下逐层验证真实有序路径，默认scalar不再当行业白名单。旧unwrapped树仍校验原scalar。
+- `selection-real-service.categoryNodes`：每个实际包装根派生自己的scope，显示ID保留根，
+  请求category_ids排除根。父级全部用原非零前缀；行业根自身仍无scope，0/UI通配符不发平台。
+
+不改变DTO、Schema、Cache key/24小时/命中前后鉴权、类目切店清理、CAS/Team授权、Signer、
+日期冻结/有限回退、原布局/主题。保存和编辑回显复用原动态路径解析；未知根全部/其它条件不放开。
+
+实际验证：
+
+| 命令/范围 | 实际结果与边界 |
+| --- | --- |
+| Backend `pytest -o addopts="" tests/test_selection_request_mapping.py tests/test_selection_realtime_mapping.py -q --tb=short` | 37 pass/1.43s；新增任意合成根41/1082，非默认根与父前缀、错误Shop/行业/逆序/跨根路径拒绝；保留unwrapped |
+| Feature PG `pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_strategies.py -k other_actual_industry_parent -q --tb=short` | 1 pass/7.10s；正式POST/保存回读/合成执行/入库，industry41/category4101不被默认7覆盖；非真实平台 |
+| Backend默认 `pytest --tb=short` | 638 pass/241 integration deselected/97.52s |
+| Feature PG strategies/strategy_compatibility/realtime/runs/windows/categories 6文件，`-o addopts="" -m integration ... -q --tb=short` | 104 pass/249.58s；原权限、进度/回执、幂等/租约、缓存/撤权及新通用路径 |
+| Frontend `pnpm exec vitest run src/features/product-selection` | 13文件96 pass/17.66s；非默认root scope、保存/回显/提交、未知root全部仍拒绝、UI原路径/缓存/缺值回归 |
+| Frontend `pnpm lint` / `pnpm typecheck` / `pnpm build` | pass；强制Real build25.90s。E2E追加后再次lint/typecheck通过 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config ../.codex/selection-windows-v2/playwright.real.config.ts e2e/production/product-selection-strategies.spec.ts --workers=1 --output ../docs/_local/product-selection-strategies-v1/generic-categories-intercepted` | 2 pass/39.8s；真实控件、默认7d与合成非默认行业实时、父级全部/保存重开/提交、四主题；所有正式API拦截，不是Electron/平台 |
+| `git diff --check`、忽略材料/无迁移差异 | pass |
+
+保留既有Starlette/httpx、大chunk与NO_COLOR告警；没有用Mock值补真实参数，没有Owner平台请求。
+首条服务器只读结构证据、Feature合成DB/Renderer和ca97未来正式入库/原生分别登记。
+截图仅Feature浏览器API拦截，四主题同一数据/缩放位于ignored generic-categories-intercepted。
+
+下一ca97加载精确新Backend/Renderer，最小验证一个实际非默认行业父路径选择→保存/刷新→
+手动执行→run/事实/API/Real同一页面，复用旧认证成功证据，不逐行业重复请求。
+行业根全部尚缺空/省略/0的正常请求证据；1d/30d、两种品牌、20～100元自定义价格继续
+由ca97独立查材料/限量单因素服务器对照，Owner确认一项即接；不等待全部条件一起交付。
+原生稳定行序尚待用户反馈、整A/B未完成；B0045仍reserved，Owner不合dev/main/发布。

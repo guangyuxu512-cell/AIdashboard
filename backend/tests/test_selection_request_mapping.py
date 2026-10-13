@@ -177,5 +177,38 @@ def test_category_membership_is_current_shop_industry_and_ordered_path_not_leaf_
     for category_ids in [("7",), ("7", "1000009092", "1000009142"), ("1000009142",), ("1000009092", "0"), ("5", "5001"), ("5001",)]:
         with pytest.raises(SelectionRequestUnconfirmedError):
             validate_shop_category(original.model_copy(update={"category_ids": category_ids}), tree)
-    with pytest.raises(SelectionRequestUnconfirmedError):
-        validate_shop_category(original.model_copy(update={"industry_id": "5", "category_ids": ("5001",)}), tree)
+    other = original.model_copy(update={"industry_id": "5", "category_ids": ("5001",)})
+    if industry_wrapped:
+        validate_shop_category(other, tree)
+    else:
+        with pytest.raises(SelectionRequestUnconfirmedError):
+            validate_shop_category(other, tree)
+
+
+@pytest.mark.parametrize("industry_id", ["41", "1082"])
+def test_wrapped_tree_uses_each_actual_root_and_parent_prefix_without_an_id_whitelist(industry_id):
+    from app.modules.product_selection.schemas import SelectionCategoriesRead
+    original = _original(industry_id=industry_id, category_ids=["9007199254740993123", "12002"])
+    tree = SelectionCategoriesRead(
+        shop_id=original.shop_id, industry_id="73", industry_name="默认行业", selected_category_id=None,
+        nodes=[
+            {"category_id": "73", "name": "默认行业", "children": [{"category_id": "7301", "name": "默认类目", "children": []}]},
+            {"category_id": industry_id, "name": "其它合成行业", "children": [
+                {"category_id": "9007199254740993123", "name": "父类目", "children": [
+                    {"category_id": "12002", "name": "子类目", "children": []},
+                ]},
+            ]},
+        ],
+    )
+    validate_shop_category(original, tree)
+    parent = original.model_copy(update={"category_ids": ("9007199254740993123",)})
+    validate_shop_category(parent, tree)
+    scope = prepare_short_video_scope(parent, period_begin=date(2026, 10, 6), period_end=date(2026, 10, 12))
+    assert scope.industry_id == industry_id
+    assert scope.category_id == "9007199254740993123"
+    for changes in (
+        {"industry_id": "9999"}, {"category_ids": ("7301",)},
+        {"category_ids": ("12002", "9007199254740993123")}, {"shop_id": uuid4()},
+    ):
+        with pytest.raises(SelectionRequestUnconfirmedError):
+            validate_shop_category(original.model_copy(update=changes), tree)

@@ -92,13 +92,22 @@ def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: date
 
 def validate_shop_category(original: SelectionRunOriginal, tree: SelectionCategoriesRead) -> None:
     """Only actual non-all paths of this authorized shop/industry may execute."""
-    if tree.shop_id != original.shop_id or tree.industry_id != original.industry_id:
+    if tree.shop_id != original.shop_id:
         raise SelectionRequestUnconfirmedError(details={"reason": "CATEGORY_SHOP_MISMATCH"})
-    # cate_list may include its industry as the outer display node. The
-    # observed rank query supplies that ID only through industry_id; traverse
-    # its children for membership without silently rewriting the submitted path.
-    industry = next((node for node in tree.nodes if node.category_id == tree.industry_id), None)
-    nodes = industry.children if industry is not None else tree.nodes
+    # The scalar is the shop's default selection, not an industry whitelist.
+    # A wrapped tree contains that industry root and all other returned roots;
+    # match the submitted root dynamically and exclude it from category_id.
+    wrapped = any(node.category_id == tree.industry_id for node in tree.nodes)
+    if wrapped:
+        industry = next((node for node in tree.nodes if node.category_id == original.industry_id), None)
+        if industry is None:
+            raise SelectionRequestUnconfirmedError(details={"reason": "CATEGORY_PATH_UNCONFIRMED"})
+        nodes = industry.children
+    else:
+        # Preserve the previously supported unwrapped, single-industry shape.
+        if tree.industry_id != original.industry_id:
+            raise SelectionRequestUnconfirmedError(details={"reason": "CATEGORY_SHOP_MISMATCH"})
+        nodes = tree.nodes
     for category_id in original.category_ids:
         node = next((node for node in nodes if node.category_id == category_id), None)
         if node is None:

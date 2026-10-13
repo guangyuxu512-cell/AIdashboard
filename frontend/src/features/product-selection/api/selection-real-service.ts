@@ -89,10 +89,11 @@ function categoryNodes(
     )
     .map((node) => {
       const path = [...ancestors, node.category_id]
-      const nodeIndustryId =
-        industryWrapped && node.category_id !== industryId ? null : industryId
-      // The observed outer industry node is part of the display tree, not
-      // category_id. Keep display identities intact; submit industry separately.
+      // Every returned wrapper root supplies its own industry_id. The scalar
+      // is only the shop's default; it must not disable the other actual roots.
+      const nodeIndustryId = industryWrapped ? node.category_id : industryId
+      // Keep the root in display identities, but outside category_id. Root-all
+      // has no confirmed category expression and still has no requestScope.
       const categoryPath = path[0] === nodeIndustryId ? path.slice(1) : path
       return {
         // Qualified display identities keep repeated '0/全部' nodes distinct.
