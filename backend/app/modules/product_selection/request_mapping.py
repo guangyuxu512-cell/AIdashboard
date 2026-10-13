@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.modules.product_selection.exceptions import SelectionRequestUnconfirmedError
-from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan, SelectionRealtimeDatePlan
+from app.modules.product_selection.run_contract import SelectionRunOriginal, SelectionResolvedRequest, SelectionDatePlan, SelectionRealtimeDatePlan, HISTORICAL_PERIOD_RULES
 from app.modules.product_selection.schemas import SelectionCategoriesRead
 from app.modules.product_selection.source import SelectionSourceScope
 
@@ -22,7 +22,7 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
     unsupported = None
     if original.channel != "short-video":
         unsupported = "CHANNEL_UNCONFIRMED"
-    elif original.period not in {"realtime", "7d"}:
+    elif original.period not in {"realtime", "7d", *HISTORICAL_PERIOD_RULES}:
         unsupported = "PERIOD_UNCONFIRMED"
     elif original.brand != "all":
         unsupported = "BRAND_UNCONFIRMED"
@@ -42,17 +42,18 @@ def validate_preparable_short_video_choice(original: SelectionRunOriginal) -> No
 def prepare_short_video_scope(
     original: SelectionRunOriginal, *, period_begin: date, period_end: date,
 ) -> SelectionSourceScope:
-    """Encode the confirmed seven-day or realtime single-day query.
+    """Encode confirmed relative period windows and exact platform date enums.
 
     Only default brand/price and an explicit non-all category path are prepared.
-    Realtime uses date_type=1; seven-day uses date_type=21. Other periods remain closed.
+    History 1d/30d uses 20/23; realtime and seven-day retain 1/21.
     This internal helper is not accepted directly by any HTTP submission API.
     """
     validate_preparable_short_video_choice(original)
+    span = {"realtime": 0, "7d": 6, **{key: rule[0] - 1 for key, rule in HISTORICAL_PERIOD_RULES.items()}}[original.period]
     if (
         type(period_begin) is not date
         or type(period_end) is not date
-        or (period_end - period_begin).days != (0 if original.period == "realtime" else 6)
+        or (period_end - period_begin).days != span
     ):
         raise SelectionRequestUnconfirmedError(details={"reason": "EXPLICIT_PERIOD_UNCONFIRMED"})
     return SelectionSourceScope(
@@ -62,7 +63,7 @@ def prepare_short_video_scope(
         rank_data_type="1",
         begin_date=period_begin.strftime("%Y/%m/%d 00:00:00"),
         end_date=period_end.strftime("%Y/%m/%d 00:00:00"),
-        date_type="1" if original.period == "realtime" else "21", activity_id="",
+        date_type=(HISTORICAL_PERIOD_RULES[original.period][1] if original.period in HISTORICAL_PERIOD_RULES else "1" if original.period == "realtime" else "21"), activity_id="",
     )
 
 
@@ -76,6 +77,14 @@ def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: date
         return SelectionResolvedRequest(
             version=4, original=original,
             scope=prepare_short_video_scope(original, period_begin=day, period_end=day),
+            page_numbers=tuple(range(1, (original.rank_to + 9) // 10 + 1)),
+            date_plan=SelectionRealtimeDatePlan(accepted_local_date=day),
+        )
+    if original.period in HISTORICAL_PERIOD_RULES:
+        days = HISTORICAL_PERIOD_RULES[original.period][0]
+        return SelectionResolvedRequest(
+            version=5, original=original,
+            scope=prepare_short_video_scope(original, period_begin=day - timedelta(days=days), period_end=day - timedelta(days=1)),
             page_numbers=tuple(range(1, (original.rank_to + 9) // 10 + 1)),
             date_plan=SelectionRealtimeDatePlan(accepted_local_date=day),
         )

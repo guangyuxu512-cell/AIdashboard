@@ -181,3 +181,35 @@ HuanYu v6及原HTTP/Signer一次只读榜单：industry_id=5、category_id=10000
 行业根全部尚缺空/省略/0的正常请求证据；1d/30d、两种品牌、20～100元自定义价格继续
 由ca97独立查材料/限量单因素服务器对照，Owner确认一项即接；不等待全部条件一起交付。
 原生稳定行序尚待用户反馈、整A/B未完成；B0045仍reserved，Owner不合dev/main/发布。
+
+## 2026-10-14 第二项参数接证：近1天/近30天
+
+沿6fc类目成果继续，不等待品牌/价格。ca97在同店/路径/品牌价格/第一页固定条件下，
+仅改日期的只读对照1d type20及30d type23各HTTP200/st int0/10条；官方当前5074脚本
+yesterday=20/seven=21/thirty=23，one对应yesterday。响应无日期echo，同商品金额区间随
+周期变化；该事实证明请求口径/效果，不是本新候选run/入库/页面或固定刷新时刻证据。
+
+v5仅新历史单窗口，上海接受D计算1d昨天、30d截至昨天的30完整自然日；保存相对条件，
+提交回执冻结日期并跨日重放。旧v1–v4 JSON/hash、7d备窗及实时当日语义保持。
+复用原single-window锚和executor/service/facts；合法空成功0，621 int/string、签名、HTTP
+失败不回退。来源明确新policy与实际日期，无备用；cap/Real服务/列表详情识别四个日期。
+v5 Reader必须保留，不能在写入后直接回旧6fc Backend，迁移/Schema/0044未改。
+
+实际验证：
+
+| 命令/范围 | 实际结果 |
+| --- | --- |
+| Backend历史/实时/request mapping 3个纯逻辑文件 | 49 pass/1.36s；上海跨日/月末/年末，冻结/序列化/拒绝备用及旧规则 |
+| Feature PG新historical文件 | 14 pass/35.90s；策略保存关联、合法空/非零、来源/API日期、621 int/string/签名/HTTP、跨日重放/拒备窗 |
+| Backend默认 `pytest --tb=short` | 650 pass/255 integration deselected/95.93s |
+| Feature PG historical/strategies/strategy_compatibility/realtime/runs/windows/categories 7文件 | 118 pass/278.37s；真实Feature PostgreSQL、全部平台输入合成，无新真实请求 |
+| Frontend选品13文件 | 100 pass/17.10s；四日期保存/回显/提交、历史来源真实范围与无备用标签 |
+| `pnpm lint` / `pnpm build` | pass，内含typecheck与强制Real build22.87s |
+| 原Real完整API拦截E2E按7d/realtime/1d/30d | 4 pass/1.3m；原抽屉/四主题/父级全部、CAS与独立获取；不是Electron/平台 |
+| `git diff --check`、忽略/无Migration/Electron差异 | pass |
+
+初轮旧未确认周期测试仍期待1d/30d的PERIOD_UNCONFIRMED，实际正确到区间长度校验，
+2 fail/35 pass；更新为已确认周期正测及仍未知品牌/未来枚举负测，未弱化门禁或改旧hash。
+既有Starlette/httpx、大chunk/NO_COLOR告警保留。截图在ignored historical-dates-intercepted。
+日期为本轮代码/Feature/拦截验收完成，ca97在精确新候选另补必要正式真实执行/Real证据。
+双边价格已有新证据、待下一独立v6接入，品牌及行业根全部仍未完成；B0045仅reserved。

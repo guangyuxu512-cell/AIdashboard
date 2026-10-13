@@ -26,7 +26,11 @@ export interface SelectionSourceDto {
     activity_id: string
   }
   date_selection?: {
-    policy: 'shanghai_7d_once' | 'shanghai_realtime_today'
+    policy:
+      | 'shanghai_7d_once'
+      | 'shanghai_realtime_today'
+      | 'shanghai_1d_yesterday'
+      | 'shanghai_30d_complete_days'
     accepted_local_date: string
     primary_begin: string
     primary_end: string

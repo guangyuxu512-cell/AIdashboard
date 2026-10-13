@@ -172,6 +172,8 @@ export function mapSelectionObservation(
         ? {
             shanghai_7d_once: '近7天',
             shanghai_realtime_today: '实时',
+            shanghai_1d_yesterday: '近1天',
+            shanghai_30d_complete_days: '近30天',
           }[source.date_selection.policy]
         : '',
       rankFrom: source.date_selection?.rank_from ?? null,
@@ -260,7 +262,7 @@ export function createSelectionRealService(
     if (
       !input.channels.shortVideo.selected ||
       input.channels.baiying.selected ||
-      !['realtime', '7d'].includes(choice.period) ||
+      !['realtime', '1d', '7d', '30d'].includes(choice.period) ||
       choice.brand !== 'all' ||
       choice.priceMode !== 'all' ||
       choice.priceAbove !== null ||

@@ -82,72 +82,81 @@ describe('saved Real strategies use the registered backend contract', () => {
     expect(view.latestResult).toBeNull()
     expect(view.nextRunAt).toBeNull()
   })
-  it('saves, reopens and submits a non-default wrapper scope from the loaded shop tree', async () => {
-    const service = createSelectionRealService(unavailable)
-    vi.mocked(httpClient.get).mockResolvedValueOnce({
-      data: {
-        shop_id: 'shop-a',
-        industry_id: '7',
-        nodes: [
-          {
-            category_id: '7',
-            name: '默认行业',
-            children: [{ category_id: '7001', name: '默认类目', children: [] }],
-          },
-          {
-            category_id: '41',
-            name: '合成其它行业',
-            children: [{ category_id: '4101', name: '父类目', children: [] }],
-          },
-        ],
-      },
-    })
-    const nodes = await service.categories('shop-a')
-    const dto = saved()
-    dto.conditions.request.industry_id = '41'
-    dto.conditions.request.category_ids = ['4101']
-    const view = mapSelectionStrategy(dto)
-    vi.mocked(httpClient.put).mockResolvedValueOnce({
-      data: { ...dto, version: 4 },
-    })
-    const savedView = await service.saveStrategy(
-      view,
-      view.id,
-      view.version,
-      nodes,
-    )
-    expect(httpClient.put).toHaveBeenCalledWith(
-      '/api/v1/product-selection/strategies/strategy-a',
-      expect.objectContaining({
-        expected_version: 3,
-        conditions: {
-          version: 1,
-          request: expect.objectContaining({
-            industry_id: '41',
-            category_ids: ['4101'],
-          }),
+  it.each(['7d', '1d', '30d'] as const)(
+    'saves, reopens and submits %s in a non-default wrapper scope',
+    async (period) => {
+      const service = createSelectionRealService(unavailable)
+      vi.mocked(httpClient.get).mockResolvedValueOnce({
+        data: {
+          shop_id: 'shop-a',
+          industry_id: '7',
+          nodes: [
+            {
+              category_id: '7',
+              name: '默认行业',
+              children: [
+                { category_id: '7001', name: '默认类目', children: [] },
+              ],
+            },
+            {
+              category_id: '41',
+              name: '合成其它行业',
+              children: [{ category_id: '4101', name: '父类目', children: [] }],
+            },
+          ],
         },
-      }),
-    )
-    expect(savedView.channels.shortVideo.conditions.categoryId).toBe('41/4101')
-    vi.mocked(httpClient.post).mockResolvedValueOnce({
-      data: { receipt_id: 'scope-run', reused: false },
-    })
-    await service.manual!.submit(savedView, 'scope-key', nodes, {
-      id: savedView.id,
-      version: savedView.version!,
-    })
-    expect(httpClient.post).toHaveBeenCalledWith(
-      '/api/v1/product-selection/runs',
-      expect.objectContaining({
-        industry_id: '41',
-        category_ids: ['4101'],
-        strategy_id: 'strategy-a',
-        strategy_version: 4,
-      }),
-    )
-    expect(httpClient.get).toHaveBeenCalledOnce()
-  })
+      })
+      const nodes = await service.categories('shop-a')
+      const dto = saved()
+      dto.conditions.request.period = period
+      dto.conditions.request.industry_id = '41'
+      dto.conditions.request.category_ids = ['4101']
+      const view = mapSelectionStrategy(dto)
+      vi.mocked(httpClient.put).mockResolvedValueOnce({
+        data: { ...dto, version: 4 },
+      })
+      const savedView = await service.saveStrategy(
+        view,
+        view.id,
+        view.version,
+        nodes,
+      )
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/api/v1/product-selection/strategies/strategy-a',
+        expect.objectContaining({
+          expected_version: 3,
+          conditions: {
+            version: 1,
+            request: expect.objectContaining({
+              industry_id: '41',
+              category_ids: ['4101'],
+            }),
+          },
+        }),
+      )
+      expect(savedView.channels.shortVideo.conditions.categoryId).toBe(
+        '41/4101',
+      )
+      vi.mocked(httpClient.post).mockResolvedValueOnce({
+        data: { receipt_id: 'scope-run', reused: false },
+      })
+      await service.manual!.submit(savedView, 'scope-key', nodes, {
+        id: savedView.id,
+        version: savedView.version!,
+      })
+      expect(httpClient.post).toHaveBeenCalledWith(
+        '/api/v1/product-selection/runs',
+        expect.objectContaining({
+          period,
+          industry_id: '41',
+          category_ids: ['4101'],
+          strategy_id: 'strategy-a',
+          strategy_version: 4,
+        }),
+      )
+      expect(httpClient.get).toHaveBeenCalledOnce()
+    },
+  )
   it('reads a server-filtered page and never submits a platform run on refresh', async () => {
     const real = createSelectionRealService(unavailable)
     vi.mocked(httpClient.get).mockResolvedValueOnce({

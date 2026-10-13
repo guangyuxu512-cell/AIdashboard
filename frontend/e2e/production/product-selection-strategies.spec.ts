@@ -7,16 +7,17 @@ import { settleSelectionTransitions as settle } from '../support/settle-selectio
 
 // Real Renderer with fully intercepted formal APIs. Synthetic configuration and
 // run responses are not live platform, persisted DB, or native Electron proof.
-for (const period of ['7d', 'realtime'] as const) {
+for (const period of ['7d', 'realtime', '1d', '30d'] as const) {
   test(`${period}: saved strategies keep the original UI, CAS editing, and independent immediate retrieval`, async ({
     page,
   }, info) => {
     test.setTimeout(120000)
     await page.setViewportSize({ width: 1440, height: 900 })
-    const industryId = period === 'realtime' ? '41' : '7'
-    const categoryId = period === 'realtime' ? '4101' : '1001'
-    const industryLabel = period === 'realtime' ? '合成非默认行业' : '合成行业'
-    const categoryLabel = period === 'realtime' ? '其它父类目' : '父级类目'
+    const otherIndustry = ['realtime', '30d'].includes(period)
+    const industryId = otherIndustry ? '41' : '7'
+    const categoryId = otherIndustry ? '4101' : '1001'
+    const industryLabel = otherIndustry ? '合成非默认行业' : '合成行业'
+    const categoryLabel = otherIndustry ? '其它父类目' : '父级类目'
     let strategy: SelectionStrategyDto | null = null
     const writes: {
       method: string
@@ -85,7 +86,7 @@ for (const period of ['7d', 'realtime'] as const) {
           unavailable_reason: null,
           strategy_save_available: true,
           schedule_available: false,
-          supported_periods: ['realtime', '7d'],
+          supported_periods: ['realtime', '1d', '7d', '30d'],
           supported_brands: ['all'],
           custom_price_available: false,
           first_listed_filter_available: true,
@@ -269,8 +270,13 @@ for (const period of ['7d', 'realtime'] as const) {
       .last()
       .getByText('全部', { exact: true })
       .click()
-    if (period === 'realtime')
-      await field('日期').getByText('实时', { exact: true }).click()
+    if (period !== '7d')
+      await field('日期')
+        .getByText(
+          { realtime: '实时', '1d': '近1天', '30d': '近30天' }[period],
+          { exact: true },
+        )
+        .click()
     await drawer
       .getByRole('textbox', { name: '策略名称' })
       .fill('接口拦截合成策略')

@@ -261,7 +261,18 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
         submission_key: 'realtime-key',
       }),
     )
-    input.channels.shortVideo.conditions.period = '1d'
+    for (const period of ['1d', '30d'] as const) {
+      input.channels.shortVideo.conditions.period = period
+      vi.mocked(httpClient.post).mockResolvedValueOnce({
+        data: { receipt_id: `${period}-run`, reused: false },
+      })
+      await real.manual!.submit(input, `${period}-key`, nodes)
+      expect(httpClient.post).toHaveBeenLastCalledWith(
+        '/api/v1/product-selection/runs',
+        expect.objectContaining({ period }),
+      )
+    }
+    input.channels.shortVideo.conditions.period = 'future' as never
     await expect(real.manual!.submit(input, 'key-2', nodes)).rejects.toThrow(
       '未确认',
     )
@@ -270,7 +281,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     await expect(real.manual!.submit(input, 'key-3', nodes)).rejects.toThrow(
       '真实类目',
     )
-    expect(httpClient.post).toHaveBeenCalledTimes(2)
+    expect(httpClient.post).toHaveBeenCalledTimes(4)
     await expect(
       real.saveStrategy(input, undefined, undefined, nodes),
     ).rejects.toThrow('真实类目')
@@ -446,4 +457,31 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     expect(row.clicksRange).toBe('0–0')
     expect(row.soldUnitsRange).toBeNull()
   })
+  it.each([
+    ['shanghai_1d_yesterday', '近1天', '2026-10-12'],
+    ['shanghai_30d_complete_days', '近30天', '2026-09-13'],
+  ] as const)(
+    'maps %s as its actual history range, with no fallback',
+    (policy, label, begin) => {
+      const dto = observation()
+      dto.period_begin = begin
+      dto.period_end = '2026-10-12'
+      dto.source_context.date_selection = {
+        policy,
+        accepted_local_date: '2026-10-13',
+        primary_begin: begin,
+        primary_end: dto.period_end,
+        backup_begin: null,
+        backup_end: null,
+        actual_window: 'primary',
+        fallback_reason: null,
+        rank_from: 1,
+        rank_to: 10,
+      }
+      const view = mapSelectionObservation(dto)
+      expect(view.sourceContext.periodLabel).toBe(label)
+      expect(view.sourceContext.statisticalPeriod).toBe(`${begin}～2026-10-12`)
+      expect(view.sourceContext.dateFallback).toBe(false)
+    },
+  )
 })

@@ -211,7 +211,7 @@ export interface SelectionExecutionSummary {
   error_stage?: string | null
   platform_business_code?: string | number | null
   request_conditions?: {
-    version: 1 | 2 | 3 | 4
+    version: 1 | 2 | 3 | 4 | 5
     scope: { begin_date: string; end_date: string }
     date_plan?: {
       backup_scope?: { begin_date: string; end_date: string }

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from hashlib import sha256
 import json
+from types import MappingProxyType
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -16,6 +17,10 @@ CategoryId = Annotated[str, Field(pattern=r"^[0-9]{1,32}$")]
 RunStatus = Literal["pending", "running", "succeeded", "partial", "failed", "interrupted"]
 RunStage = Literal["queued", "session", "rank", "persistence", "basic_info", "completed"]
 SelectionFallbackReason = Literal["primary_success_empty", "primary_business_rejection_probe"]
+HISTORICAL_PERIOD_RULES = MappingProxyType({
+    "1d": (1, "20", "shanghai_1d_yesterday"),
+    "30d": (30, "23", "shanghai_30d_complete_days"),
+})
 
 
 class SelectionRelativeConditions(BaseModel):
@@ -87,7 +92,7 @@ class SelectionDatePlan(BaseModel):
 
 
 class SelectionRealtimeDatePlan(BaseModel):
-    """One accepted Shanghai day, with no historical fallback window."""
+    """Existing single-window anchor; actual realtime/history dates live in scope."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -169,6 +174,10 @@ class SelectionRealtimeDateProvenance(BaseModel):
     rank_to: int
 
 
+class SelectionHistoricalDateProvenance(SelectionRealtimeDateProvenance):
+    policy: Literal["shanghai_1d_yesterday", "shanghai_30d_complete_days"]
+
+
 class SelectionRankQuery(BaseModel):
     """Projection for one chosen window, not a stored/accepted frozen plan."""
 
@@ -185,7 +194,7 @@ class SelectionResolvedRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2, 3, 4] = 1
+    version: Literal[1, 2, 3, 4, 5] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
@@ -219,6 +228,24 @@ class SelectionResolvedRequest(BaseModel):
                 or (self.date_outcome is not None and self.date_outcome.state != "primary")
             ):
                 raise ValueError("Realtime must match the single accepted Shanghai day")
+        elif self.version == 5:
+            if not isinstance(self.date_plan, SelectionRealtimeDatePlan) or self.original.period not in HISTORICAL_PERIOD_RULES:
+                raise ValueError("Historical execution freezes one supported window, without a backup")
+            days, date_type, _ = HISTORICAL_PERIOD_RULES[self.original.period]
+            day = self.date_plan.accepted_local_date
+            if (
+                self.original.channel != "short-video" or self.original.brand != "all" or self.original.price_mode != "all"
+                or self.scope.date_type != date_type or self.scope.rank_data_type != "1"
+                or self.scope.brand_type != "-1" or self.scope.price_bin != "不限"
+                or self.scope.search_info != "" or self.scope.activity_id != ""
+                or self.scope.industry_id != self.original.industry_id
+                or self.scope.category_id != ",".join(self.original.category_ids)
+                or self.scope.period_begin != day - timedelta(days=days)
+                or self.scope.period_end != day - timedelta(days=1)
+                or self.page_numbers != tuple(range(1, (self.original.rank_to + 9) // 10 + 1))
+                or (self.date_outcome is not None and self.date_outcome.state != "primary")
+            ):
+                raise ValueError("Historical scope must match its frozen complete Shanghai days")
         else:
             if not isinstance(self.date_plan, SelectionDatePlan):
                 raise ValueError("A fallback execution must freeze both windows")
@@ -253,9 +280,9 @@ class SelectionResolvedRequest(BaseModel):
     def actual_scope(self) -> SelectionSourceScope:
         if self.version == 1:
             return self.scope
-        if self.version == 4:
+        if self.version in {4, 5}:
             if self.date_outcome is None or self.date_outcome.state != "primary":
-                raise ValueError("Realtime must choose its sole window before writing facts")
+                raise ValueError("Single-window execution must choose primary before writing facts")
             return self.scope
         if self.date_outcome is None or self.date_outcome.state not in {"primary", "backup", "backup_empty", "both_empty"}:
             raise ValueError("Choose the actual window before writing facts")
@@ -264,13 +291,20 @@ class SelectionResolvedRequest(BaseModel):
             return self.date_plan.backup_scope
         return self.scope
 
-    def provenance(self) -> SelectionDateProvenance | SelectionRealtimeDateProvenance | None:
+    def provenance(self) -> SelectionDateProvenance | SelectionRealtimeDateProvenance | SelectionHistoricalDateProvenance | None:
         if self.version == 1:
             return None
         self.actual_scope()
         assert self.date_plan is not None and self.date_outcome is not None
         if self.version == 4:
             return SelectionRealtimeDateProvenance(
+                accepted_local_date=self.date_plan.accepted_local_date,
+                primary_begin=self.scope.period_begin, primary_end=self.scope.period_end,
+                rank_from=self.original.rank_from, rank_to=self.original.rank_to,
+            )
+        if self.version == 5:
+            return SelectionHistoricalDateProvenance(
+                policy=HISTORICAL_PERIOD_RULES[self.original.period][2],
                 accepted_local_date=self.date_plan.accepted_local_date,
                 primary_begin=self.scope.period_begin, primary_end=self.scope.period_end,
                 rank_from=self.original.rank_from, rank_to=self.original.rank_to,
@@ -342,7 +376,7 @@ class SelectionCapabilitiesRead(BaseModel):
     strategy_save_available: bool = True
     schedule_available: Literal[False] = False
     material_collection_available: Literal[False] = False
-    supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("realtime", "7d")
+    supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("realtime", "1d", "7d", "30d")
     supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all",)
     custom_price_available: bool = False
     first_listed_filter_available: bool = True
