@@ -143,12 +143,12 @@ class SelectionRunExecutor:
             request = claim.request
             first = None
             empty_window = False
-            if request.version in {2, 3, 4, 5, 6}:
+            if request.version in {2, 3, 4, 5, 6, 7}:
                 request, first, empty_window = self._select_first_page(claim, context)
             seen: set[str] = set()
             for page_no in ((1,) if empty_window else request.page_numbers):
                 page = first if page_no == 1 and first is not None else self._rank(claim, context, request, page_no)
-                if claim.request.version in {2, 3, 4, 5, 6}:
+                if claim.request.version in {2, 3, 4, 5, 6, 7}:
                     if any(p.rank is None for p in page.products):
                         raise PlatformResponseInvalidError()
                     # Filter by returned official rank, not page-local row index.

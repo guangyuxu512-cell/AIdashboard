@@ -470,12 +470,20 @@ async function submit(saving: boolean) {
                         {
                           label: '知名品牌',
                           value: 'known',
-                          disabled: real,
+                          disabled:
+                            real &&
+                            !(
+                              capabilities?.supported_brands ?? ['all']
+                            ).includes('known'),
                         },
                         {
                           label: '非知名品牌',
                           value: 'unknown',
-                          disabled: real,
+                          disabled:
+                            real &&
+                            !(
+                              capabilities?.supported_brands ?? ['all']
+                            ).includes('unknown'),
                         },
                       ]"
                       :disabled="!values.channels.shortVideo.selected"

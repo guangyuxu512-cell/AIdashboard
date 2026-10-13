@@ -264,7 +264,7 @@ export function createSelectionRealService(
       !input.channels.shortVideo.selected ||
       input.channels.baiying.selected ||
       !['realtime', '1d', '7d', '30d'].includes(choice.period) ||
-      choice.brand !== 'all'
+      !['all', 'known', 'unknown'].includes(choice.brand)
     )
       throw new Error('未确认的渠道、日期、品牌或价格条件暂不可执行')
     const priceErrors = realPriceErrors(choice)

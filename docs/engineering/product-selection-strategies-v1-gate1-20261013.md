@@ -265,3 +265,63 @@ NO_COLOR及大chunk告警保留。最终Feature单一0044，role无super/created
 正式执行/入库证据按门禁协调，不用只读请求或合成结果替代。品牌只缺“知名品牌”的官方Query枚举标签，
 行业根全部仍无准确参数；B d4eaa9c/0045 reserved保持独立，不新增DDL/扫描，不混A发布。
 本增量技术检查完成，A完整Gate2/Green/Release及B服务端自动执行仍PARTIAL，Owner不合dev/main、不发布。
+
+## 2026-10-14 增量：品牌贯通与策略列表自适应
+
+父候选e05bedb7f34f44f4d7231c9b5d6ba73308e2beca；分支仍为
+feat/product-selection-strategies-v1。提交前远端核实Green
+3128d6ad1048dfda1240148e863ea0c98eb6247f、main
+0102dd6d051f89907bad113c35310bbab69412ec未变。此节覆盖之前“品牌标签待确认”的历史边界，
+不扩大A到B定时、百应、达人或手机；0044未改、无新Migration。
+
+用户本次直接提供官方页面请求顺序，冻结知名品牌=0、非知名品牌=1、不限=-1。
+ca97旧只读brand0/1对照各HTTP200/st整数0/10条、同一业务条件、商品集合不同，
+只证明请求结果存在区别；本次用户页面标签证据才闭合标签映射。旧响应商品brand_type
+不能反推选项标签。旧只读Source183b35b不是本新候选的真实执行或入库验收。
+
+实现与边界：
+
+- 复用原AppSelect、策略相对条件version1、保存/CAS/编辑回读、Run、请求映射及Connector。
+  非默认品牌运行version7保存真实品牌，签名前主窗/备窗/后续页/source/API均保留字符串0/1，
+  不经truthy默认；旧默认v1–v6的序列化/hash不变。非法枚举和其他已提交条件漂移拒绝。
+- v7沿用对应日期及价格规则，7d仅在第一页合法空、尚未入库时一次冻结备用窗口；
+  非默认品牌621 int/string不自动解释为日期未就绪或回退。rt/1d/30d单窗口不变。
+  这是ca97审核后的有界开放，不改旧默认7d规则、不改Signer/Cookie上下文。
+- 策略表保留9列及名称左固定/操作右固定。删除强制scroll-x=1510，使用现有
+  useElementSize/DataTable/ellipsis tooltip按实际容器分配宽度；状态68、操作192，
+  达人/渠道至少84/96，其余名称/店铺/摘要/执行/结果分配剩余空间。总宽为容器减2px，
+  不改共享表格API、字体、主题、不靠外层隐藏溢出。原行序、updated_at、分页、筛选、滚动不变。
+- 具体列宽公式和兼容说明见本Feature契约。新写v7后恢复必须保留v7 Reader；
+  不能直接回e05 Backend解析新Run。关闭既有写入/执行开关的恢复方式及0044/失败/事实保留规则不变。
+
+实际检查（Backend命令工作目录backend；Frontend命令工作目录frontend）：
+
+| 命令/范围 | 实际结果与证据边界 |
+| --- | --- |
+| `.venv/Scripts/python.exe -m pytest -o addopts="" tests/test_selection_brand_mapping.py tests/test_selection_request_mapping.py tests/test_selection_price_mapping.py tests/test_selection_historical_mapping.py tests/test_selection_realtime_mapping.py -q --tb=short` | 最终102 pass/1.54s；两种品牌×四日期×默认/双边价格、非法0/1标签、字段漂移、旧hash/日期 |
+| `.venv/Scripts/python.exe -m pytest -o addopts="" -m "not integration" -q --tb=short` | 最终703 pass/277 integration deselected/68.55s |
+| `.venv/Scripts/python.exe -m pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_brand.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_price.py -q --tb=short` | 66 pass/167.29s；新品牌正式API保存/重读/202重放、实际Connector参数/分页/来源、旧授权/CAS/结果/价格；全平台I/O合成 |
+| 最后负向scope约束完成后，同上仅`test_postgresql_selection_brand.py` | 8 pass/34.65s；精确最终运行逻辑再次通过Feature PostgreSQL，非共享/生产或真实平台 |
+| `pnpm exec vitest run src/features/product-selection` | 最终13文件107 pass/11.66s；保存/回显/执行标签与品牌0边界、现有9列/无scroll-x、页面回归 |
+| `pnpm lint` / `pnpm typecheck` / `pnpm build` | pass；强制Real生产构建15.55s；最后运行时代码之后仅测试/文档更新，无Electron修改 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config ../.codex/selection-windows-v2/playwright.real.config.ts e2e/production/product-selection-strategies.spec.ts --grep '7d-.*known' --workers=1 --output ../docs/_local/product-selection-strategies-v1/brand-controls-intercepted` | 2 pass/38.8s；知名默认价/非知名双边价，真实控件选择/保存/重开/未保存条件获取、四主题；全部正式API拦截，无Mock回退 |
+| 同配置`e2e/production/product-selection-strategy-position.spec.ts --workers=1 --output ../docs/_local/product-selection-strategies-v1/brand-layout-glyph-intercepted` | 最终1 pass/23.1s；1280×800、1440×900、1920×1080/四主题；9列、无横向溢出、表头字形完整、操作不重叠、名称/摘要完整hover，原位启停/编辑/page2/filter/scroll120 |
+| `git diff --check`、隐私/范围检查 | pass；无Schema/Migration/Electron/公共控件/调度差异，材料/env/override仍ignored |
+
+保留Starlette/httpx、NO_COLOR和大chunk既有告警。初轮brand条件测试98通过，补四个scope
+负例后最终102；首次Windows E2E grep含管道符未执行测试，改无管道正则后才有上述2项结果。
+初轮1280标题“达人…”未完整显示，调整最小84/96并加入实际字形宽度断言后重新通过。
+这些是受控测试/浏览器实际渲染，不是平台或Electron证据。
+
+最后仅限已分配Feature的安全只读检查：单一Head20261013_0044，策略/Run/候选/观察/
+ShopSession各0；无遗留合成队列或测试会话。检查仅输出Head和计数，不输出连接/认证值。
+
+截图为ignored `brand-controls-intercepted`及`brand-layout-glyph-intercepted`；后者12张同数据/
+同缩放列表截图。人工核图最终1280石墨及1920午夜、品牌午夜抽屉，保持已确认结构/主题/计划草稿。
+ca97本次原生窗口测量在唯一窗口遭FrameArrived/window capture timeout，已停止重复捕获；
+历史1600×1003/2560×1390用户图不是本候选实时content尺寸。未宣称普通/最大化原生验收通过。
+
+下一负责人ca97：加载精确新Candidate的Backend/Renderer，保留现有登录/Session/Profile和同一
+Electron；展示宽度用既有数据，不反复取榜。仅补本次品牌正式请求/结果差异，并检查保存/编辑回显
+及普通/最大化表格9列/固定操作、原位操作。完整A Gate2/精确dev CI后交Main，A发布不等B。
+本节Gate1技术检查完成；新Candidate尚未加载Electron/部署时不能报告已部署或完整业务验收完成。

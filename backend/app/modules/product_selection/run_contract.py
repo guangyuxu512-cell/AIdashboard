@@ -23,6 +23,7 @@ HISTORICAL_PERIOD_RULES = MappingProxyType({
     "1d": (1, "20", "shanghai_1d_yesterday"),
     "30d": (30, "23", "shanghai_30d_complete_days"),
 })
+BRAND_TYPES = MappingProxyType({"all": "-1", "known": "0", "unknown": "1"})
 
 
 class SelectionRelativeConditions(BaseModel):
@@ -210,7 +211,7 @@ class SelectionResolvedRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2, 3, 4, 5, 6] = 1
+    version: Literal[1, 2, 3, 4, 5, 6, 7] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
@@ -285,6 +286,29 @@ class SelectionResolvedRequest(BaseModel):
             # Reuse the versioned date validation without changing its old JSON
             # or hash semantics. This projection is never persisted or signed.
             SelectionResolvedRequest.model_validate(raw)
+        elif self.version == 7:
+            if self.original.brand not in {"known", "unknown"} or self.scope.brand_type != BRAND_TYPES[self.original.brand]:
+                raise ValueError("Actual brand query must match the confirmed original label")
+            price = custom_price_bin(self.original) if self.original.price_mode == "custom" else "不限"
+            if (self.original.channel != "short-video" or self.scope.price_bin != price
+                or self.scope.industry_id != self.original.industry_id
+                or self.scope.category_id != ",".join(self.original.category_ids)
+                or self.scope.rank_data_type != "1" or self.scope.search_info != "" or self.scope.activity_id != ""
+                or (self.original.period == "7d" and self.scope.date_type != "21")):
+                raise ValueError("Brand execution cannot replace the other submitted conditions")
+            if self.date_outcome is not None and self.date_outcome.fallback_reason == "primary_business_rejection_probe":
+                raise ValueError("Non-default brand cannot probe an unexplained business rejection")
+            raw = self.model_dump(mode="json")
+            raw["version"] = 6 if self.original.price_mode == "custom" else self._date_version()
+            raw["original"]["brand"] = "all"
+            raw["scope"]["brand_type"] = "-1"
+            if isinstance(self.date_plan, SelectionDatePlan):
+                if self.date_plan.backup_scope.brand_type != BRAND_TYPES[self.original.brand]:
+                    raise ValueError("Backup cannot change brand conditions")
+                raw["date_plan"]["backup_scope"]["brand_type"] = "-1"
+            # Validate the same date/price contract, never persist/sign this
+            # default-brand projection or rewrite an already stored v1-v6 run.
+            SelectionResolvedRequest.model_validate(raw)
         else:
             if not isinstance(self.date_plan, SelectionDatePlan):
                 raise ValueError("A fallback execution must freeze both windows")
@@ -306,7 +330,7 @@ class SelectionResolvedRequest(BaseModel):
         return self
 
     def _date_version(self) -> int:
-        if self.version != 6:
+        if self.version not in {6, 7}:
             return self.version
         return 3 if self.original.period == "7d" else 4 if self.original.period == "realtime" else 5
 
@@ -424,7 +448,7 @@ class SelectionCapabilitiesRead(BaseModel):
     schedule_available: Literal[False] = False
     material_collection_available: Literal[False] = False
     supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("realtime", "1d", "7d", "30d")
-    supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all",)
+    supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all", "known", "unknown")
     custom_price_available: bool = True
     first_listed_filter_available: bool = True
     max_rank: int = 200

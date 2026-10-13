@@ -69,6 +69,63 @@ const unavailable = async (): Promise<never> => {
 
 describe('saved Real strategies use the registered backend contract', () => {
   beforeEach(() => vi.clearAllMocks())
+  it.each([
+    ['known', false],
+    ['unknown', false],
+    ['known', true],
+    ['unknown', true],
+  ] as const)(
+    'persists/rereads and executes confirmed brand %s with custom=%s',
+    async (brand, custom) => {
+      const service = createSelectionRealService(unavailable)
+      const dto = saved()
+      dto.conditions.request.brand = brand
+      if (custom)
+        Object.assign(dto.conditions.request, {
+          price_mode: 'custom',
+          price_above: '20',
+          price_below: '100',
+        })
+      const input = mapSelectionStrategy(dto)
+      vi.mocked(httpClient.put).mockResolvedValueOnce({ data: dto })
+      const read = await service.saveStrategy(
+        input,
+        input.id,
+        input.version,
+        tree,
+      )
+      expect(read.channels.shortVideo.conditions.brand).toBe(brand)
+      expect(httpClient.put).toHaveBeenLastCalledWith(
+        '/api/v1/product-selection/strategies/strategy-a',
+        expect.objectContaining({
+          conditions: {
+            version: 1,
+            request: expect.objectContaining({
+              brand,
+              price_mode: custom ? 'custom' : 'all',
+            }),
+          },
+        }),
+      )
+      vi.mocked(httpClient.post).mockResolvedValueOnce({
+        data: { receipt_id: 'brand-run' },
+      })
+      await service.manual!.submit(read, 'brand-key', tree, {
+        id: read.id,
+        version: read.version!,
+      })
+      expect(httpClient.post).toHaveBeenLastCalledWith(
+        '/api/v1/product-selection/runs',
+        expect.objectContaining({ brand, strategy_id: 'strategy-a' }),
+      )
+      expect(httpClient.put).toHaveBeenCalledOnce()
+      read.channels.shortVideo.conditions.brand = '0' as never
+      await expect(
+        service.manual!.submit(read, 'bad-brand-key', tree),
+      ).rejects.toThrow('未确认')
+      expect(httpClient.post).toHaveBeenCalledOnce()
+    },
+  )
   it('saves/rereads custom yuan values and executes draft bounds without changing the saved strategy', async () => {
     const service = createSelectionRealService(unavailable)
     const dto = saved()

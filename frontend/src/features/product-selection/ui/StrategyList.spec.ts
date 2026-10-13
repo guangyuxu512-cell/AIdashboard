@@ -73,7 +73,7 @@ function render(
         StrategyDrawer: DrawerStub,
         DataTable: {
           name: 'DataTable',
-          props: ['emptyDescription', 'data', 'columns'],
+          props: ['emptyDescription', 'data', 'columns', 'scrollX'],
           template:
             '<div>{{ emptyDescription }}<span v-for="row in data" :key="row.id">{{ row.name }}</span></div>',
         },
@@ -90,6 +90,42 @@ function render(
 }
 describe('explicit selection completion messages', () => {
   beforeEach(() => vi.clearAllMocks())
+  it('retains all existing columns, shares text width and does not force 1510px horizontal scrolling', async () => {
+    const { wrapper, queryClient } = render()
+    await flushPromises()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    const columns = table.props('columns')
+    expect(columns.map((column: { key: string }) => column.key)).toEqual([
+      'name',
+      'shopName',
+      'creatorName',
+      'channel',
+      'conditions',
+      'execution',
+      'latestResult',
+      'enabled',
+      'actions',
+    ])
+    expect(table.props('scrollX')).toBeUndefined()
+    expect(
+      columns.reduce(
+        (sum: number, column: { width: number }) => sum + column.width,
+        0,
+      ),
+    ).toBe(998)
+    expect(
+      columns.find((column: { key: string }) => column.key === 'actions').width,
+    ).toBe(192)
+    expect(
+      columns.find((column: { key: string }) => column.key === 'enabled').width,
+    ).toBe(68)
+    for (const key of ['name', 'shopName', 'conditions', 'latestResult'])
+      expect(
+        columns.find((column: { key: string }) => column.key === key).ellipsis,
+      ).toEqual({ tooltip: true })
+    wrapper.unmount()
+    queryClient.clear()
+  })
   it('keeps page and filter after an existing edit but uses page one for a new save', async () => {
     const row = {
       ...(await createSelectionMockHandlers().strategies())[0]!,

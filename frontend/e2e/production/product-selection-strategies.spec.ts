@@ -13,9 +13,23 @@ for (const scenario of [
   '1d',
   '30d',
   '7d-custom-price',
+  '7d-known',
+  '7d-unknown-custom',
 ] as const) {
-  const period = scenario === '7d-custom-price' ? '7d' : scenario
-  const customPrice = scenario === '7d-custom-price'
+  const period = scenario.startsWith('7d')
+    ? '7d'
+    : (scenario as 'realtime' | '1d' | '30d')
+  const customPrice = ['7d-custom-price', '7d-unknown-custom'].includes(
+    scenario,
+  )
+  const brand =
+    scenario === '7d-known'
+      ? 'known'
+      : scenario === '7d-unknown-custom'
+        ? 'unknown'
+        : 'all'
+  const brandLabel =
+    brand === 'known' ? '知名品牌' : brand === 'unknown' ? '非知名品牌' : '不限'
   test(`${scenario}: saved strategies keep the original UI, CAS editing, and independent immediate retrieval`, async ({
     page,
   }, info) => {
@@ -95,7 +109,7 @@ for (const scenario of [
           strategy_save_available: true,
           schedule_available: false,
           supported_periods: ['realtime', '1d', '7d', '30d'],
-          supported_brands: ['all'],
+          supported_brands: ['all', 'known', 'unknown'],
           custom_price_available: true,
           first_listed_filter_available: true,
           max_rank: 200,
@@ -285,6 +299,13 @@ for (const scenario of [
           { exact: true },
         )
         .click()
+    if (brand !== 'all') {
+      await field('品牌').locator('.n-base-selection').click()
+      await page
+        .locator('.n-base-select-menu')
+        .getByText(brandLabel, { exact: true })
+        .click()
+    }
     if (customPrice) {
       await field('价格').getByText('自定义', { exact: true }).click()
       await field('最低价格（元）').locator('input').fill('20')
@@ -346,6 +367,7 @@ for (const scenario of [
     expect(writes[0]!.path).toBe('/api/v1/product-selection/strategies')
     expect(JSON.stringify(writes[0]!.body)).not.toContain('begin_date')
     expect(strategy!.conditions.request.period).toBe(period)
+    expect(strategy!.conditions.request.brand).toBe(brand)
     expect(strategy!.conditions.request.industry_id).toBe(industryId)
     expect(strategy!.conditions.request.category_ids).toEqual([categoryId])
     if (customPrice)
@@ -369,6 +391,9 @@ for (const scenario of [
       'true',
     )
     await expect(field('每日时间').getByRole('textbox')).toHaveValue('09:00')
+    await expect(field('品牌').locator('.n-base-selection')).toContainText(
+      brandLabel,
+    )
     if (customPrice) {
       await expect(field('最低价格（元）').locator('input')).toHaveValue('20')
       await expect(field('最高价格（元）').locator('input')).toHaveValue('100')
@@ -454,6 +479,7 @@ for (const scenario of [
       strategy_id: 'saved-strategy',
       strategy_version: 3,
       period,
+      brand,
       industry_id: industryId,
       category_ids: [categoryId],
       first_listed_only: true,

@@ -383,7 +383,7 @@ def test_unconfirmed_request_does_not_create_empty_job_or_platform_request(selec
     context = selection_context
     with Session(context[0]) as session:
         with pytest.raises(SelectionRequestUnconfirmedError):
-            SelectionRunService(session, settings=SETTINGS).submit(context[4][0], _input(context, brand="known"))
+            SelectionRunService(session, settings=SETTINGS).submit(context[4][0], _input(context, channel="baiying"))
         assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
 
 

@@ -5,7 +5,7 @@ import { settleSelectionTransitions as settle } from '../support/settle-selectio
 // Real Renderer, fully intercepted APIs. Not live platform or Electron evidence.
 test('strategy toggling and existing editing retain page, filter, order and scroll', async ({
   page,
-}) => {
+}, info) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const rows: SelectionStrategyDto[] = Array.from(
     { length: 60 },
@@ -13,7 +13,7 @@ test('strategy toggling and existing editing retain page, filter, order and scro
       strategy_id: `position-${index + 1}`,
       team_id: 'position-team',
       created_by_user_id: 'position-person',
-      name: `稳定策略${String(index + 1).padStart(3, '0')}`,
+      name: `稳定策略${String(index + 1).padStart(3, '0')}${index === 1 ? '很长的策略名称用于验证省略及完整悬浮提示' : ''}`,
       shop_id: 'position-shop',
       shop_name: '授权合成店铺',
       enabled: false,
@@ -42,7 +42,19 @@ test('strategy toggling and existing editing retain page, filter, order and scro
       },
       schedule_available: false,
       next_run_at: null,
-      latest_run: null,
+      latest_run:
+        index === 0
+          ? {
+              run_id: 'past-run',
+              request_shop_id: 'position-shop',
+              status: 'partial',
+              result_count: 200,
+              saved_count: 199,
+              supplement_failed_count: 1,
+              error_code: 'PLATFORM_TIMEOUT',
+              error_stage: 'http',
+            }
+          : null,
       created_at: '2026-10-13T00:00:00Z',
       updated_at: '2026-10-13T00:00:00Z',
     }),
@@ -156,6 +168,112 @@ test('strategy toggling and existing editing retain page, filter, order and scro
   })
   await page.goto('/#/product-selection?tab=selection-strategy')
   await expect(page.getByText('稳定策略001', { exact: true })).toBeVisible()
+  for (const [width, height] of [
+    [1280, 800],
+    [1440, 900],
+    [1920, 1080],
+  ]) {
+    await page.setViewportSize({ width: width!, height: height! })
+    await settle(page)
+    const viewport = page
+      .locator('.n-data-table-base-table-body .n-scrollbar-container')
+      .first()
+    await expect
+      .poll(() =>
+        viewport.evaluate(
+          (element) => element.scrollWidth - element.clientWidth,
+        ),
+      )
+      .toBeLessThanOrEqual(2)
+    await expect(page.locator('.n-data-table-th')).toHaveCount(9)
+    await expect(page.locator('.n-data-table-th').nth(2)).toHaveText('达人账号')
+    const headerText = await page
+      .locator('.n-data-table-th__title')
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          return {
+            text: element.textContent,
+            glyphWidth: range.getBoundingClientRect().width,
+            availableWidth: element.getBoundingClientRect().width,
+          }
+        }),
+      )
+    expect(headerText).toHaveLength(9)
+    for (const title of headerText)
+      expect(title.glyphWidth, `header ${title.text}`).toBeLessThanOrEqual(
+        title.availableWidth + 1,
+      )
+    const cells = page
+      .locator('.n-data-table-base-table-body .n-data-table-tr')
+      .first()
+      .locator('.n-data-table-td')
+    await expect(cells).toHaveCount(9)
+    const geometry = await cells.evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { left: rect.left, right: rect.right, width: rect.width }
+      }),
+    )
+    expect(geometry[8]!.right).toBeLessThanOrEqual(width! + 1)
+    for (let index = 1; index < geometry.length; index++)
+      expect(geometry[index]!.left).toBeGreaterThanOrEqual(
+        geometry[index - 1]!.right - 1,
+      )
+    const buttons = await cells
+      .last()
+      .getByRole('button')
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect()
+          return { left: rect.left, right: rect.right }
+        }),
+      )
+    expect(buttons[1]!.left).toBeGreaterThanOrEqual(buttons[0]!.right)
+    expect(buttons[0]!.left).toBeGreaterThanOrEqual(geometry[8]!.left)
+    expect(buttons[1]!.right).toBeLessThanOrEqual(geometry[8]!.right)
+    if (width === 1280) {
+      const longName = page
+        .locator('.n-data-table-base-table-body .n-data-table-tr')
+        .nth(1)
+        .locator('.n-data-table-td')
+        .first()
+      await longName.locator('.n-ellipsis').hover()
+      await expect(
+        page.locator('.n-tooltip').filter({ hasText: rows[1]!.name }),
+      ).toBeVisible()
+      await cells.nth(4).locator('.n-ellipsis').hover()
+      await expect(
+        page
+          .locator('.n-tooltip')
+          .filter({ hasText: '近7天 · 不限品牌 · 已选类目 · 不限价格' }),
+      ).toBeVisible()
+      await page.mouse.move(230, 60)
+      await settle(page)
+    }
+    for (const [preset, label] of [
+      ['graphite', '石墨浅色'],
+      ['forest', '森林绿'],
+      ['coral', '珊瑚红'],
+      ['midnight', '午夜青'],
+    ]) {
+      await page.getByRole('button', { name: '切换主题' }).click()
+      await page
+        .locator('.n-dropdown')
+        .getByText(label!, { exact: true })
+        .click()
+      await settle(page)
+      await page.screenshot({
+        path: info.outputPath(
+          `strategy-${width}-${preset}-real-intercepted.png`,
+        ),
+        animations: 'disabled',
+      })
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await settle(page)
   const search = page.getByRole('textbox', { name: '搜索策略名称' })
   await search.fill('稳定策略')
   await search.press('Enter')
@@ -169,8 +287,8 @@ test('strategy toggling and existing editing retain page, filter, order and scro
     .first()
   await body.evaluate((element) => {
     element.scrollTop = 120
-    // Show status cells fully, outside the sticky action column's overlay.
-    element.scrollLeft = element.scrollWidth - element.clientWidth
+    // All status/actions are visible; no horizontal scrolling is necessary.
+    element.scrollLeft = 0
   })
   const targetName = '稳定策略027'
   const target = () =>

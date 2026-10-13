@@ -62,7 +62,7 @@ Team 仅剩策略也阻止物理删除，不能让新表产生未解释的级联
   同时检查条件和策略关联，不能跨策略挪用回执。不同key的相同活动条件仍复用已有执行。
 
 POST关联策略时须同时提供strategy_id和strategy_version（正整数）；服务端锁定同Team/Shop
-当前策略并核对版本，保存v3（7d）/v4（实时）/v5（1d、30d）或v6（双边价格）request_conditions.strategy快照。后续编辑不改任何旧run。
+当前策略并核对版本，保存v3（7d）/v4（实时）/v5（1d、30d）/v6（双边价格）或v7（非默认品牌）request_conditions.strategy快照。后续编辑不改任何旧run。
 不同策略复用活动条件时，canonical身份/版本不改；每个reused回执保存自己的策略快照，
 提交响应的strategy表示调用者快照，execution表示canonical计数/状态/冻结条件。
 按回执ID GET仍沿旧契约解析canonical；策略列表按各自提交回执批量取canonical最近结果，
@@ -97,7 +97,7 @@ GET/列表/运行/事实继续读取；前端保留列表与已保存配置，�
 | 实时 | 用户旧Query明确实时date_type=1；2026-10-13 08:12:39+08 ca97同条件当前日服务器HTTP200/st整数0/10条/total200，Integration stored v6正式链路 | 接受时上海当天begin=end=00:00:00，独立v4单窗口，无7d回退；只证明该时刻首10条，不称全天可用 |
 | 近1天/近30天 | 官方控件yesterday=20/thirty=23及ca97同条件服务器单因素各一次HTTP200/st整数0/10条；同商品区间随周期变化 | 上海接受日D冻结1d=[D-1,D-1]、30d=[D-30,D-1]，type20/23；新v5单窗口，不扩7d备用 |
 | 行业/类目 | 当前授权cate_list完整包装树；ca97正式会话只读行业5/非零父路径HTTP200/st整数0/10条，结合原行业7多层Query确认结构规则 | 包装根ID作为industry_id，根下实际有序非零路径逗号连接为category_id；动态读取所有返回根，不按5/7/10/14建白名单。行业根全部表达尚未确认，仍不可执行 |
-| 品牌 | -1＝不限有成功样本 | 其余枚举需补证，不猜0/1 |
+| 品牌 | 用户本轮同条件官方页面请求明确知名0/非知名1；ca97同Session/冻结条件各一次服务器HTTP200/st整数0/10条、两集合不同；不限-1保持 | 标签缺口已解除，选择/保存/回显/实际请求使用all→"-1"、known→"0"、unknown→"1"；不以商品响应brand_type推断 |
 | 价格 | 默认不限及ca97固定日期下20-100、仅上界改20-40的服务器单因素成功及商品集合变化 | 双边元数规范连接为price_bin；单边未知拒绝，原SKU价带不裁剪，详见v6 |
 | 首次上榜 | product_info.newly_on_ranking 为平台布尔标记 | 按该返回标记筛选，不以本地first_seen代替；未知不当false |
 | 排名 | product_info.rank 官方原值，page_result总200已有证据 | 有界分页，按官方排名1–200筛选，不用本地行号 |
@@ -170,7 +170,7 @@ ca97在精确候选Real Integration自行准备，Owner不写该库/配置、不
 若first筛选结果恰为空，如实记录而非强行回退找商品；反例/大边界继续合成验证。
 记录条件（相对周期与实际类目）→冻结首备/实际采用日期→strategy版本/run/receipt→候选/来源→API→Real页面，
 以及刷新不重发、必要同条件重复提交不重复建档。保留窗口普通/最大化与已确认布局/数字格式/缓存。
-品牌及行业根全部仍分别补Query＋HTTP/业务成功Response/页面含义；已确认双边价格逐项实现，
+行业根全部仍待准确编码；品牌标签及已确认双边价格按本轮证据实现，
 不等待全部证据，不把本清单或浏览器正式API拦截测试当原生/真实平台Gate。
 
 ## B 预定扩展边界（未实现）
@@ -203,7 +203,7 @@ ca97现已在Integration正式升级0044且保留旧数据/Session，生产仍00
 该修补发生在当时仅Feature应用0044的阶段；随后Integration已由ca97升级，生产未应用0044。
 旧阶段兼容事实保留，当前不再编辑已进入共享环境的0044，不新增Slot。
 
-兼容回滚使用最终候选（支持v6价格、v5历史单窗口、v4实时run/来源、旧v1/v2/v3及首次上榜来源）的Backend Reader，
+兼容回滚使用最终候选（支持v7品牌、v6价格、v5历史单窗口、v4实时run/来源、旧v1/v2/v3及首次上榜来源）的Backend Reader，
 写入v4后不能直接换成77a1d96/3128等旧Backend，即使先关闭UI/执行开关也不等于兼容。
 将上述两个开关写入既有受保护部署配置并按规范重启，停止新提交/claim；已发网络请求不承诺撤回。
 必要时用既有SelectionRunService.recover_expired在租约过期后记录interrupted，保留事实/回执，
@@ -258,3 +258,26 @@ v6只扩展已有run JSON Reader：保留original双边数、实际scope及冻�
 ca97须在精确候选加载后补最小条件→run→事实→API→同一Real Electron证据；若当前验收授权仅配置/只读，
 保持真实入库未验，不绕过范围。未知品牌/行业根全部仍关闭。
 B0045仅reserved，尚无到点服务端执行；A整体验收/Green/发布及B仍PARTIAL，不混入完成声明。
+
+## 2026-10-14 品牌接通与策略列表容器适配
+
+用户直接提供官方同条件页面请求顺序：知名brand_type=0、非知名=1、不限=-1。
+结合ca97 stored HuanYu v6同日冻结7d、同Shop/类目/价格/第一页的0/1各一次只读：HTTP200、st int0、
+各10条且商品集合不相同。不能仅用HTTP200判断，亦不能因两组商品响应brand_type皆0改掉页面标签映射。
+标签证据和服务器效果证据分别登记，不重复索取Query/Cookie/cURL，不硬编码样本日期/路径/动态参数。
+
+相对策略条件version1不变，品牌仍是all/known/unknown；BRAND_TYPES唯一映射为字符串-1/0/1，
+不使用truthy默认值。capabilities与原AppSelect接线，保存/编辑回显/手动提交共用现有服务。
+v7仅新增非默认品牌的已冻结run Reader；默认v1–v6 JSON/hash不变。实际主备、分页、source与API保持品牌。
+日期/价格校验复用既有规则；非默认brand近7天仅首选合法成功空且未入库可补冻结备用一次，
+621和其它失败不扩大补查；rt/1d/30d仍单窗。拒绝非法品牌、主备品牌漂移及其它请求条件篡改。
+原HTTP/Session/Signer、Team/Shop授权、basic_info及first-listed/rank逻辑不改，无新Migration。
+写入v7后不得直接换回e05 Backend；保留v7兼容Reader与0044，按既有开关停止新写/claim，不清run/事实。
+
+策略列表仅复用CandidatePool已有useElementSize与原DataTable列配置：去掉强制scroll-x1510，
+保留9列（含最近结果）、左策略名/右操作固定标记、启停/编辑原位响应及Query分页/过滤/滚动。
+以实际容器宽度减2px边缘预算，状态68px、操作192px保留；剩余文本按权重分配。
+达人列至少84px、渠道至少96px（常规支持窗口），其它name/shop/conditions/execution/result共享剩余，
+名称/摘要及长字段沿Naive ellipsis悬浮完整查看。无字体/主题/shared表格API/overflow裁切补丁。
+四主题与1280/1440/1920的浏览器全API拦截检查只是渲染/交互证据；普通/最大化唯一Electron由ca97补验。
+A本增量通过即按独立Gate/Release交Main，不等待B/达人/手机；原生测量工具超时按具体限制登记，不代标通过。
