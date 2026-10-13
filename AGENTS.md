@@ -16,6 +16,14 @@
 - 新 Feature 从最新 Green `dev` 创建，且一个 Worktree 只绑定一个分支。已有 AI、Mobile 长期分支按登记表保留，不因本规则补做 rebase、重建或改名。
 - 当前工作树中的 `AGENTS.md` 和 `docs/` 才是该分支的规则快照；禁止把其他 Worktree 的文件当作当前分支事实。
 
+2026-10-13 7d55已正规恢复为“可用功能开发工作树，具体任务待分配”：
+主仓库Git以CI成功的Green `3128d6ad1048dfda1240148e863ea0c98eb6247f`创建原路径
+`C:\Users\Administrator\.codex\worktrees\7d55\中控台`，当前detached HEAD、源码与规则完整且工作区干净。
+旧残留目录完整改名保留于 `C:\Users\Administrator\.codex\worktrees\7d55-archive-20261013-1baaab5b`；
+经用户授权归档旧7d55聊天并正常重开Codex后，目录占用解除，未强杀或改ACL。
+本次不分配数据库、端口或Migration Slot，不启动/打包Electron，不动81a1共享stash或既有Profile。
+确定新功能后再从当时核验的最新Green建对应分支、登记所需资源；不继承旧“仅打包”职责。
+
 ### Two-Gate、问题归属与共享历史
 
 2026-10-13 选品后续人类任务已在81a1会话回读：A为罗盘条件补齐与策略保存管理，
