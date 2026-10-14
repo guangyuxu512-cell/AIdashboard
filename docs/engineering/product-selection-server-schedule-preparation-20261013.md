@@ -72,3 +72,46 @@ ca97后续明确预留revision `20261013_0045`（reserved，down0044），尚未
 当前helper测试和人工执行器都不能替代该证据。未接达人/百应/手机/商品库不扩大范围。
 
 A后续仍由原A分支接每项新的平台映射证据；B后续正常merge A精确Green，不作为A Release目标。
+
+## 2026-10-14 每N小时与领取容量准备（非完整B Gate）
+
+用户新任务同时收尾A pool/稀疏目标页并要求B每N小时、持久化排队和全局3/每店1/每策略1。
+ca97回读01a137cc直接授权并接受方向；0045仍reserved，A最终f348技术/真实1→15专项已通过，
+原生候选池人工确认仍待。不得提前写/应用45、加载B覆盖当前A窗口或把准备代码混入A Release。
+
+沿d4eaa9c4fcf686b2669290aaa45bfc2d577bb2b3接续，A分支f348/旧成果/stash完整保留，
+不merge未Green治理提交3ac、不cherry-pick/rebase/reset，后续只正常同步精确A Green。
+
+已完成准备：
+
+- 原策略JSON schedule增加interval_hours正整数，PG int边界、默认1兼容旧JSON；
+  原前端AppNumberInput、执行频率/每日AppTimePicker接hourlyInterval、保存/编辑回读。
+  保存只写配置，未启动扫描/创建Schedule或Run，next_run_at仍真实NULL、能力仍false。
+  手动获取不保存或校验未使用的N草稿，非法保存N不静默当1；不使用导航按钮冒充表单。
+- schedules/time_rules扩展原hourly辅助：首次严格下一上海整点，后续以已存occurrence/next_run_at
+  为推进anchor每隔N连续计算。跨日不归零、不从结束时间累加；恢复只COALESCE ONE最近到期。
+  不能为N>1缺锚点时猜当天0点；拒绝非整点锚/未知时区/naive/无效N/超可表达日期间隔。
+- 选品专用事务级advisory count+claim决策与eligible pending SQL已准备，Busy Shop/Strategy
+  保留pending、SQL跳过而非先领队首再失败；包含reused关联的有效running策略，回执不占名额。
+  **repo默认及正式caller仍1，Model/旧running常量unique不变**。参数3仅合成结构/容量边界，
+  未宣称已经跨进程running3，也未运行100计划/自然平台定时。
+- 提案已纠正旧“策略活动即blocked”为相同活动条件复用canonical+occurrence回执、不同条件排队；
+  替换全局running索引/新每店及非空策略partial保护必须与正式容量、worker并发同发布。
+  实际Schedule model没有execution_type列，不添加无必要列；server hourly需local_time可空、
+  PC/server daily仍组合CHECK强制非空，避免假00:00锚。最新触发blocked需在选品投影而非显示旧成功。
+  这两项最小细节已交ca97技术审核，尚未写Model/DDL。
+
+实际验证：
+
+| 范围/命令 | 结果/边界 |
+| --- | --- |
+| Backend `pytest -o addopts="" tests/test_selection_claim_capacity.py tests/test_selection_hourly_interval.py tests/test_schedule_time_rules.py tests/test_schedule_service.py tests/test_schedule_scheduler.py -q --tb=short` | 51 pass/1.30s；N1/2/3/5/6/12/25/48跨日跨年、锚点/COALESCE/非法输入、容量SQL结构；不是3并发PG |
+| Backend默认 `pytest -o addopts="" -m "not integration" -q --tb=short` | 664 pass/242 integration deselected/67.36s；本B快照非A计数，原PC/运行回归 |
+| Feature PG `pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_interval_config.py tests/integration/test_postgresql_selection_runs.py -q --tb=short` | 26 pass/46.75s；6个N保存/编辑/正式API重读、零新增Run/Schedule，旧1名额/锁/租约/原API合成回归 |
+| Frontend `pnpm lint` / `pnpm typecheck` / `pnpm exec vitest run src/features/product-selection` / `pnpm build` | pass；101 tests/10.85s，Real build15.38s。实际读写DTO、旧默认1/未造下次、不顺带获取、原UI保留 |
+
+不重复无关平台取证，不把该Feature合成或可配置helper当成自动调度成功；未新增表/列/Migration。
+写新interval JSON后回退须保留新Reader，不能用旧A extra-forbid读取；正式B恢复还须兼容0045/新类型。
+下一步必须ca97提供A精确Green并串行激活0045，Owner正常merge该基线并实施Schema/同步Schedule/
+原scanner/配置容量3及worker并发/100计划PG，然后ca97少量自然到点/关闭Electron/PC离线真实验收。
+目前具体门禁是A候选池原生人工反馈和0045未active，不是品牌/日期参数、登录或资源凭据缺失。

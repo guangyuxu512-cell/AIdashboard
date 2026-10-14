@@ -14,6 +14,7 @@ class SelectionStrategySchedule(BaseModel):
 
     scheduled: bool = False
     kind: Literal["hourly", "daily"] = "hourly"
+    interval_hours: int = Field(default=1, ge=1, le=2147483647, strict=True)
     daily_time: str = Field(default="09:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
 

@@ -26,6 +26,7 @@ export interface SelectionStrategyWriteDto {
   schedule: {
     scheduled: boolean
     kind: 'hourly' | 'daily'
+    interval_hours?: number
     daily_time: string
     timezone: 'Asia/Shanghai'
   }

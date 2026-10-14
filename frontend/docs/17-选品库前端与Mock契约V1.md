@@ -1,5 +1,11 @@
 # 选品库前端与 Mock 交互 V1
 
+2026-10-14 B非DDL准备：原执行频率区域增加“每N小时”及公共AppNumberInput正整数输入，
+每日仍AppTimePicker；hourlyInterval映射正式schedule.interval_hours，旧JSON默认1。
+保存/编辑回读同一数值，手动获取不顺带保存或校验未使用的间隔；未启用服务端路径时
+schedule_available/next_run_at继续真实，不去掉“调度待接入”伪装完成。B必须正常合入A Green
+后继续0045/Gate，不把准备分支加载到A验收窗口或拿它替代A已确认布局。
+
 ## 2026-10-13 策略 A Real 绑定（当前开发）
 
 本轮保留已确认列表/工具栏/右抽屉及五项体验，不用手动结果页替换策略页。

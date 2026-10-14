@@ -597,7 +597,7 @@ async function submit(saving: boolean) {
           ><AppSelect
             :model-value="values.scheduleKind"
             :options="[
-              { label: '每小时', value: 'hourly' },
+              { label: '每 N 小时', value: 'hourly' },
               { label: '每日', value: 'daily' },
             ]"
             @update:model-value="
@@ -607,6 +607,21 @@ async function submit(saving: boolean) {
               )
             "
         /></NFormItem>
+        <NFormItem
+          v-if="values.scheduleKind === 'hourly'"
+          label="间隔（小时）"
+          :validation-status="errors.hourlyInterval ? 'error' : undefined"
+          :feedback="errors.hourlyInterval"
+        >
+          <AppNumberInput
+            :model-value="values.hourlyInterval"
+            :min="1"
+            :max="2147483647"
+            :precision="0"
+            aria-label="每 N 小时"
+            @update:model-value="setFieldValue('hourlyInterval', $event ?? 0)"
+          />
+        </NFormItem>
         <NFormItem
           v-if="values.scheduleKind === 'daily'"
           label="每日时间"

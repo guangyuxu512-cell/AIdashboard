@@ -61,6 +61,7 @@ export function mapSelectionStrategy(
     },
     scheduled: dto.schedule.scheduled,
     scheduleKind: dto.schedule.kind,
+    hourlyInterval: dto.schedule.interval_hours ?? 1,
     dailyTime: dto.schedule.daily_time,
     enabled: dto.enabled,
     latestResult: dto.latest_run ? runResult(dto.latest_run) : null,
@@ -344,6 +345,7 @@ export function createSelectionRealService(
             schedule: {
               scheduled: input.scheduled,
               kind: input.scheduleKind,
+              interval_hours: input.hourlyInterval,
               daily_time: input.dailyTime,
               timezone: 'Asia/Shanghai',
             },

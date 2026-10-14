@@ -19,6 +19,7 @@ A精确Green后由ca97串行释放0044、登记0045(down0044)，之前不得编�
 | schedules | 可空 `selection_strategy_id`，RESTRICT FK | 每策略至多一个未归档计划（partial unique）；普通PC必须为空 |
 | schedules | `target_device_id` / `skill_id` 改可空 | 只准 server_selection 为空，PC设备/skill仍必须有效；不造假设备/Worker Skill |
 | schedules | 内部规则增加 hourly | PC仍仅once/daily/weekly；server仅hourly/daily，Asia/Shanghai、无local_date/weekday；hourly整点，无分钟偏移 |
+| schedules | 可空正整数 `interval_hours`，hourly使用；`local_time`允许server hourly为NULL | hourly不借00:00伪装每日锚点；PC/daily的local_time仍由组合CHECK强制非空，PC/daily interval必须NULL；不改变旧PC事实 |
 | schedule_runs | 可空 `selection_run_id`，RESTRICT FK到正式提交回执 | 复用现有唯一(schedule_id, scheduled_for)，无第二执行状态机 |
 | schedule_runs | trigger_result 增加 `selection_run` | task_created仅task非空；selection_run仅selection回执非空；blocked两者为空；Service额外检查同Team/目标策略 |
 
@@ -44,14 +45,41 @@ Schedule 与策略的Team/人员一致性及 ScheduleRun 与回执Team/策略一
 4. 用既有time_rules选最近已到期occurrence（COALESCE ONE）；scheduled_for只作理论时刻/唯一审计。
    日期在最终接受时用上海实际日期和与手动相同的mapper冻结，不用停机期间的历史理论日期。
 5. 正式 `create_for_schedule` 调用共用persist步骤：不HTTP、不自行commit/rollback；
-   确定性submission_key由schedule+occurrence生成。同策略活动检查含reused回执的canonical，
-   活动未完成时blocked安全原因，不新起重叠取数、不写成功0。手动与due使用同一策略行锁。
+   确定性submission_key由schedule+occurrence生成。相同活动条件复用canonical并留下本次occurrence回执；
+   不同条件持久化pending排队。容量/同店/同策略占用不是blocked，不能吞掉待执行周期。
+   手动与due使用同一策略行锁、后续同一执行队列；running才占名额，reused回执不占名额。
 6. SelectionRun/回执 + ScheduleRun + next_run_at一次commit；未知异常整体rollback。
    原执行器之后claim、事务外HTTP、短事务事实写入及迟到fence，不另建执行器/队列。
 
-每小时：新建/编辑下一整点严格晚于接受时间；已存在到期整点须执行。每日：用户上海HH:mm。
+每N小时：新建/时间配置改变后第一时刻为严格下一整点，之后从该anchor每隔N小时连续推进，
+跨日不重置、不按结束时间累加；N正数据库整数，默认1兼容旧JSON。next_run_at是推进中的锚点，
+不新增无必要的anchor表；长停机只取此锚点网格的最近到期一次并推进下一未来时刻。
+名称/条件修改而时间配置未变时保留原锚点。每日：用户上海HH:mm。
 重启只COALESCE ONE，不补全部错过的周期。停用/关闭定时无新触发，已开始运行正常收尾。
 Session失效是明确失败/登录提示，不循环登录或伪空结果。7d窄回退保持原契约；其他周期不套用。
+
+## 选品范围内的持久队列与有限并发
+
+由现有claim事务进行选品专用pg_advisory_xact决策锁：回收过期lease、统计running、选择eligible
+pending、写入running/lease同一短事务提交。事务锁不跨HTTP，不建立Shop/PC/经营全局锁。
+全局默认3（正式Settings可配），同request_shop_id至多1、同strategy_id及其关联reused策略至多1；
+SQL谓词跳过忙店/忙策略，再按created_at/run_id并SKIP LOCKED领取，不能先领队首才检查忙店。
+替换旧running常量unique与新每店/非空策略running partial unique须在0045和实际领取同发布。
+原submission/active条件唯一、租约fence、来源幂等、过期interrupted和有界HTTP保持。
+原pending/strategy索引是否足够及实际新claim索引由Feature PG EXPLAIN确认，不虚增排列组合。
+并发worker复用当前SelectionRunExecutor，不造另一个状态机/Redis/Celery。
+
+当前准备代码的repo参数默认仍1，正式Service也未传新容量；旧running常量约束未删。
+仅SQL结构/合成边界及现有0044 PG单名额回归，不把它宣称为已支持3或100计划并发。
+0045 active和精确A Green同步后再实施模型/Migration、容量配置/线程及自然到期扫描。
+100到点验收用Feature PG+合成平台，应分别统计100 occurrence回执、canonical复用/排队、最高running3、
+每店/策略1及释放名额续领；真实Integration仅少量计划自然触发，绝不100次生产请求。
+
+准备阶段接口/Schema真实情况：strategy_config JSON的interval_hours已默认1并支持保存/编辑/回读，
+前端用原AppNumberInput和原频率/每日控件，未接扫描时schedule_available仍false，next_run_at不伪造。
+新JSON写入后恢复需保留interval Reader，不能直接用旧A extra-forbid读取；正式B还须保留新类型Reader。
+若准备/授权失败不能创建Run，只写原ScheduleRun安全blocked并推进；选品读取还需投影最新触发失败，
+避免仍展示更早成功Run。本提案不为此新增状态表，也不把不可取数显示成功0。
 
 ## 开关及 PC API 隔离
 

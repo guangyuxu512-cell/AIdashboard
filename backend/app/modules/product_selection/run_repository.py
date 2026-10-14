@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.modules.access.contracts import ActorContext
@@ -82,15 +82,38 @@ class SelectionRunRepository:
         ))
         return result.rowcount
 
-    def claim_next(self, *, now: datetime, lease_until: datetime) -> SelectionRunClaim | None:
-        # A single small manual executor across processes, not a Shop-global
-        # lock. Conditions remain coalesced by the active unique index.
-        self.recover_expired(now)
-        if self.session.scalar(select(exists().where(Run.status == "running"))):
+    @staticmethod
+    def eligible_pending_statement():
+        running, receipt = aliased(Run), aliased(Run)
+        busy_shop = exists(select(running.run_id).where(
+            running.status == "running", running.request_shop_id == Run.request_shop_id,
+        ).correlate(Run))
+        linked_strategy = exists(select(receipt.run_id).where(
+            receipt.reused_run_id == running.run_id,
+            receipt.strategy_id == Run.strategy_id,
+        ).correlate(Run, running))
+        busy_strategy = exists(select(running.run_id).where(
+            running.status == "running", Run.strategy_id.is_not(None),
+            or_(running.strategy_id == Run.strategy_id, linked_strategy),
+        ).correlate(Run))
+        # Busy shops/strategies stay pending; they cannot head-of-line block
+        # another eligible shop. Reused receipts never consume a worker slot.
+        return select(Run).where(
+            Run.status == "pending", Run.reused_run_id.is_(None),
+            ~busy_shop, ~busy_strategy,
+        ).order_by(Run.created_at, Run.run_id).with_for_update(skip_locked=True).limit(1)
+
+    def claim_next(self, *, now: datetime, lease_until: datetime, max_running: int = 1) -> SelectionRunClaim | None:
+        if type(max_running) is not int or max_running < 1:
+            raise ValueError("Selection execution capacity must be a positive integer")
+        # Selection-only transaction lock serializes count + claim across
+        # processes. No platform I/O or generic Shop/PC/operating-data lock.
+        if not self.session.scalar(select(func.pg_try_advisory_xact_lock(func.hashtext("product_selection_run_claim")))):
             return None
-        row = self.session.scalar(select(Run).where(Run.status == "pending", Run.reused_run_id.is_(None)).order_by(
-            Run.created_at, Run.run_id,
-        ).with_for_update(skip_locked=True).limit(1))
+        self.recover_expired(now)
+        if (self.session.scalar(select(func.count()).select_from(Run).where(Run.status == "running")) or 0) >= max_running:
+            return None
+        row = self.session.scalar(self.eligible_pending_statement())
         if row is None:
             return None
         row.status, row.stage = "running", "session"

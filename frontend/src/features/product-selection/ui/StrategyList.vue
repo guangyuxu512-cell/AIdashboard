@@ -259,7 +259,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
             {},
             {
               trigger: () =>
-                `${row.scheduleKind === 'hourly' ? '每小时' : `每日 ${row.dailyTime}`}${row.scheduleAvailable === false ? ' · 未调度' : ''}`,
+                `${row.scheduleKind === 'hourly' ? `每 ${row.hourlyInterval ?? 1} 小时` : `每日 ${row.dailyTime}`}${row.scheduleAvailable === false ? ' · 未调度' : ''}`,
               default: () =>
                 row.scheduleAvailable === false
                   ? '定时配置已保存，服务端调度待接入'

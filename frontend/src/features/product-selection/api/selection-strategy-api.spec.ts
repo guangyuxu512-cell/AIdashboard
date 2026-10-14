@@ -82,6 +82,28 @@ describe('saved Real strategies use the registered backend contract', () => {
     expect(view.latestResult).toBeNull()
     expect(view.nextRunAt).toBeNull()
   })
+  it.each([1, 2, 3, 5, 6, 12])(
+    'preserves every %i hours through save and edit read without executing',
+    async (hours) => {
+      const real = createSelectionRealService(unavailable)
+      const dto = saved()
+      dto.schedule = { ...dto.schedule, kind: 'hourly', interval_hours: hours }
+      const view = mapSelectionStrategy(dto)
+      expect(view.hourlyInterval).toBe(hours)
+      vi.mocked(httpClient.put).mockResolvedValueOnce({ data: dto })
+      const reread = await real.saveStrategy(view, view.id, view.version, tree)
+      expect(reread.hourlyInterval).toBe(hours)
+      expect(vi.mocked(httpClient.put).mock.calls[0]?.[1]).toMatchObject({
+        schedule: { kind: 'hourly', interval_hours: hours },
+      })
+      expect(httpClient.post).not.toHaveBeenCalled()
+      expect(reread.nextRunAt).toBeNull() // Non-DDL preparation does not enable schedules.
+      expect(reread.scheduleAvailable).toBe(false)
+    },
+  )
+  it('defaults legacy saved hourly JSON to one, not a new fabricated next time', () => {
+    expect(mapSelectionStrategy(saved()).hourlyInterval).toBe(1)
+  })
   it('reads a server-filtered page and never submits a platform run on refresh', async () => {
     const real = createSelectionRealService(unavailable)
     vi.mocked(httpClient.get).mockResolvedValueOnce({

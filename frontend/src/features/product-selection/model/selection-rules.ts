@@ -76,6 +76,12 @@ export const strategySchema = z
     }),
     scheduled: z.boolean(),
     scheduleKind: z.enum(['hourly', 'daily']),
+    hourlyInterval: z
+      .number()
+      .int()
+      .min(1, '请输入正整数小时')
+      .max(2147483647)
+      .default(1),
     dailyTime: z.string(),
     enabled: z.boolean(),
   })
@@ -109,7 +115,10 @@ export function validateStrategy(
   saving: boolean,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
-  const result = strategySchema.safeParse(input)
+  // Immediate retrieval does not validate or save unused schedule metadata.
+  const result = strategySchema.safeParse(
+    saving ? input : { ...input, hourlyInterval: 1 },
+  )
   if (!result.success)
     result.error.issues.forEach((issue) => {
       errors[issue.path.join('.')] = issue.message

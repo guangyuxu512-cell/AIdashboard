@@ -34,6 +34,20 @@ const query = () =>
   }) as const
 
 describe('selection draft and isolated mock handlers', () => {
+  it('accepts positive hourly integers and rejects invalid saving without blocking manual retrieval', () => {
+    for (const hours of [1, 2, 3, 5, 6, 12])
+      expect(
+        validateStrategy(
+          { ...input(), name: 'N小时', scheduled: true, hourlyInterval: hours },
+          true,
+        ),
+      ).toEqual({})
+    for (const hours of [0, -1, 1.5]) {
+      const draft = { ...input(), name: '尚未保存', hourlyInterval: hours }
+      expect(validateStrategy(draft, true)).toHaveProperty('hourlyInterval')
+      expect(validateStrategy(draft, false)).toEqual({})
+    }
+  })
   it('allows retrieval without saving/name/schedule; saving requires name', async () => {
     expect(validateStrategy(input(), false)).toEqual({})
     expect(validateStrategy(input(), true)).toEqual({ name: '请输入策略名称' })

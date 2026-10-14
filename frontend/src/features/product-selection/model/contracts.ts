@@ -39,6 +39,7 @@ export interface StrategyInput {
   }
   scheduled: boolean
   scheduleKind: 'hourly' | 'daily'
+  hourlyInterval: number
   dailyTime: string
   enabled: boolean
 }
@@ -264,6 +265,7 @@ export function emptyStrategy(): StrategyInput {
     },
     scheduled: false,
     scheduleKind: 'hourly',
+    hourlyInterval: 1,
     dailyTime: '09:00',
     enabled: true,
   }
