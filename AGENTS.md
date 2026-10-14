@@ -26,6 +26,15 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-15 B正式收口：精确Green9bb64ac76bf9e0f51fb1715517cf8c18cef63e22经Main正常no-ff
+Release为`382ca92ee1f415e0e1a4269de6b9a02c382e114d`；main CI38599163540和正式
+Deploy38599686878 attempt1全部success，实际三服务/current同382、单一0045、健康/Real资产通过。
+新鲜pre45备份可读、11表旧字段逐行保留；生产持久定时开关及实际getterexecution/management/
+schedule全true、并发3，原经营09:00仅昨日保持。生产选品尚0策略/Run，不复制Integration夹具或
+冒称生产到点实测；已完成真实Integration/关闭客户端及直接人工证据复用，不追加取数。
+0045 released/无active，实际1.0.6/Profile及Integration执行false保持；临时跟进已核销。
+ca97只读复核/记录，无生产写入；详细证据见B Gate2文档，后续治理不是新Green且不再自动部署。
+
 2026-10-15最新Green为`9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`，B精确7db正常no-ff
 合dev89b8d9f，合后复验/直接人类确认及CI38597874343三项success均通过。0045正式released，
 无active Slot；Main已获B发布授权，必须用精确Green9bb而非后续纯治理HEAD合main/CI/正式部署。
