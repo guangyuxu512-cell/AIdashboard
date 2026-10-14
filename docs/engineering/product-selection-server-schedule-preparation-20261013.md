@@ -158,6 +158,9 @@ occurrence、策略版本、日期、Team和随机元数据。必须绑定已有
 `pytest -o addopts="" tests/test_selection_strategy_queue_key.py tests/test_selection_claim_capacity.py tests/test_selection_hourly_interval.py tests/test_schedule_time_rules.py tests/test_schedule_service.py tests/test_schedule_scheduler.py -q --tb=short`，
 **65 pass / 2.21s**；其中14项为本次纯键检查，51项为既有重叠回归，不相加当作数据库并发证据。
 
+随后相同代码执行默认Backend回归：`pytest -o addopts="" -m "not integration" -q --tb=short`，
+**678 pass / 253 integration deselected / 66.28s**；仅既有Starlette/httpx告警。未做平台请求或新增PG容量测试。
+
 A候选池普通/最大化窗口已获用户确认，ca97正进行正常集成和精确CI；不再要求重复视觉确认。
 0045仍reserved，Owner不提前写/应用DDL。收到精确Green及正式active登记后正常merge再完成队列
 运行、Schema和100计划PG；当前尚不具备完整B或真实定时验收证据。
