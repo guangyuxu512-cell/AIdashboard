@@ -591,6 +591,3 @@ AI Assets Library V1 验证后增加两个纯页面模式 Primitive：
 - Naive Provider 统一提供中文 Locale，DatePicker 与 Pagination 不得在中文页面显示默认英文文案。
 
 `Design System Playground` 是开发验收页，必须复用真实基础组件展示 Button、Input、Select、Switch、DatePicker、Status、StatCard、FilterBar、Table、Dialog 和 Drawer。禁止为 Playground 重写仿真组件。
-
-ShopSelector 允许显式 clearable（默认 false），只透传既有 AppSelect 的清除操作；
-清除仍通过 update:modelValue 发出 null，不自动选择其他店铺。既有必选店铺表单的默认行为不变。
