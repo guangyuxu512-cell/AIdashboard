@@ -37,7 +37,7 @@ Owner正常建分支并同步本次治理后才可编写/应用新46，不改42�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `active`（最小方向/资源接受，尚未应用46） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 精确Green9bb64ac，单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046`，down `20261013_0045` | Owner Feature PG/合成I/O验证权限/幂等/真批次/未知/迟到/保值/旧PC/B；新明细标志即使0items、新basic/状态/屏蔽及审计存在均拒绝丢语义。downgrade仅精确可重建Feature+锁后无新状态，保旧事实；共享/生产留新Reader/Schema，关新入口，不降级清历史。资源与方向不是Gate或发布。 |
+| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `active`（Owner已正式应用Feature46，Gate1进行中） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 精确Green9bb64ac，down单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046` | 04:02ca97新鲜只读核Feature单一46/原最小角色连接；Owner阶段PG及前端验证不是整体Gate，完整Candidate尚未交。新明细标志即使0items、新basic/状态/屏蔽及审计存在均拒绝丢语义。downgrade仅精确可重建Feature+锁后无新状态，保旧事实；共享/生产留新Reader/Schema，关新入口，不降级清历史。未合dev/Integration或发布。 |
 
 2026-10-15最终B：0045已released，当前无active Slot。精确Green9bb经Release Gate正常Main382，
 main CI38599163540/正式Deploy38599686878 attempt1 success；生产经新鲜pre45受保护备份981523字节/
