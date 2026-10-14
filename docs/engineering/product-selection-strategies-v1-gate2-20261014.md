@@ -75,3 +75,12 @@ Main发布仅A：从生产已核实单一0043备份并验证可读性，经正�
 
 精确Green后由ca97先核销0044，再激活已审核B0045/down0044；81a1正常merge该精确Green。
 B非DDL准备不是自动调度完成，不混入此次Main发布；保留共享stash、7d55与全部未合并成果。
+
+## 精确Green与发布交接
+
+正常no-ff合并：`f5d4866459acf3e29459a9920c03c1e9118a8839`，父e832a883与最终f348565。
+远端dev精确匹配、Git干净；CI三项全部成功：
+https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38503895984 。
+这是A最新Green，已正式交Main连续完成Release Gate/main CI/生产；不能据此标生产已部署。
+随后0044released、B0045active，B须正常同步此精确Green；槽位治理记录不是新Green，
+Main仍固定发布上述A Green，不跟随B或后续未验证提交。B f2d9952非DDL隔离65项通过仅是准备。

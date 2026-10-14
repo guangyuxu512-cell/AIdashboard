@@ -31,8 +31,11 @@
 用户已直接确认品牌/策略九列/启停编辑位置，以及最后候选池普通/最大化显示；不重复原生验收。
 正式v8 run `e8221905-d2a2-485e-821f-c1465cd0366a` 冻结pages[1,15]，只请求一次page1及15，
 官方rank150一条真实事实/basic_info/API一致；品牌0/1正式结果与旧v1–v7证据分开复用。
-按正常no-ff合dev后复验并等待精确CI，未Green前不放行Main或释放0044。
-A不接入服务端调度，B独立分支/0045仍reserved；Green后先释放0044、再串行激活0045。
+已正常no-ff合入dev `f5d4866459acf3e29459a9920c03c1e9118a8839`，合后复验通过；
+精确CI `38503895984` 的Backend/Real build/container三项成功，该提交为最新Green，已交Main发布A。
+A不接入服务端调度；现核销A0044为released，并串行激活B0045/down0044，唯一active为B。
+B从精确Green f5d4866正常merge，仍只在登记Feature库实施Model/Migration/PG，未部署或集成B。
+B槽位治理提交不是新Green，不将其或未验B代码混入此次A Release；具体范围以Migration登记为准。
 已存在v8事实，回退须保留兼容Reader、Schema、历史及审计，不能直接回旧版本或降级清数据。
 以下A PARTIAL/旧端口PID为阶段历史，不覆盖本次直接人工确认和实际运行核验；
 最终证据与发布边界见 `docs/engineering/product-selection-strategies-v1-gate2-20261014.md`。
