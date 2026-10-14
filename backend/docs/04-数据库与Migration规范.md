@@ -1,5 +1,20 @@
 # 数据库与 Migration 规范
 
+## 20261013_0045 服务端选品调度（B实施中）
+
+ca97已串行释放0044并激活0045/down0044，Owner仅在已登记Feature库实施；未完成B Gate或自然触发验收。
+不新增表，不改已应用42/43/44，不在迁移中创建策略计划或删除历史。下面旧running常量说明为0043历史。
+
+| 表 | 0045新增属性/关系/约束 | 职责与保留 |
+| --- | --- | --- |
+| schedules | target_kind(pc默认/server_selection)、可空selection_strategy_id RESTRICT FK、可空正整数interval_hours；server的device/skill/preset必须NULL，input={}，仅上海hourly/daily；hourly local_time必须NULL且interval非空正数，其他类型local_time非空、interval必须NULL。每策略未归档计划partial unique | PC原once/daily/weekly字段、关联及事实保留；选品条件来自策略，不伪造设备或Skill。停用不删计划/历史，归档不再触发 |
+| schedule_runs | 可空selection_run_id RESTRICT FK到正式选品提交回执；task_created只关联Task，selection_run只关联选品回执，blocked两者空；原unique(schedule_id,scheduled_for)不变 | 理论到点与实际created_at分别保存；无候选/准备失败仍有触发审计，不建立第二执行状态机。保留期限未定，不清理 |
+| product_selection_runs | 原global running常量unique替换为request_shop_id running部分唯一和非空strategy_id running部分唯一；原活动条件唯一/提交唯一/lease/source关联保留 | 全局容量由同一选品事务决策锁+数据库count/claim跨进程保证，完整direct/reused策略集合避免重叠；busy保持pending。默认容量3在正式配置/领取路径接通后才生效 |
+
+Team/User/Shop授权仍由正式Service及SQL可见域执行；Schedule/策略及ScheduleRun/回执一致性在短事务复检。
+0045升级在线加锁预检旧PC组合，发现异常拒绝而不改数据。降级仅在线精确Feature库、锁后没有server/hourly/
+selection引用/多running/新隔离元数据时允许；真实使用后保留B兼容Reader/Schema关闭新执行，不能降级清历史。
+
 数据库渐进式演进，不要求一次设计所有表。
 
 新需求先判断：

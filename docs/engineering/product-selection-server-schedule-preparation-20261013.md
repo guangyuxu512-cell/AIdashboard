@@ -12,6 +12,23 @@ Owner保留78e06d8及原A成果，正常no-ff合入该Green，不合治理30fcb7
 均不是真实定时或Electron证据。0042/43/44及Models字节未改，接下来按active0045实现Schema、
 Schedule同步/原扫描器/队列容量3、跨进程及100计划合成PG，完整Gate尚未完成。
 
+### 0045 Feature首轮迁移与安全返修
+
+初次upgrade得到PG SQLSTATE42704，allowlist只记录“ck_schedules_schedule_type不存在”。
+整笔事务回滚，重新只读核验Head44及原数据不变；再次诊断仍相同错误，未手改表或权限。
+真实pg_constraint及旧0016/0033证明实际名字为双前缀：
+`ck_schedules_ck_schedules_schedule_type`、`ck_schedules_ck_schedules_rule_fields`、
+`ck_schedule_runs_ck_schedule_runs_trigger_result`。不是Session/平台或A失败。
+
+ca97按规范登记rejected返修占位。仅尚未应用0045增加在线/锁后已知名字精确查验：
+短/双前缀恰有一项才删除；不猜任意约束、不改旧迁移。新45使用固定规范名，允许的降级
+恢复旧链双前缀及原PC语义。修正后一次正常upgrade成功，Feature单一**20261013_0045**；
+候选、观察、Run、策略、ShopSession、Schedule、ScheduleRun、Task升级前后均0且一致。
+10项0045实际入口guard测试pass/0.43s；与旧44 guard合跑19项pass（存在重叠不相加）。
+
+仅登记Feature结果，不代表FK/所有组合/降级数据保留和完整B已验；这些PG和正式执行仍待继续。
+只提交Schema/Model/guard/数据字典技术片段，运行逻辑仍在原B继续，不加载Integration或发布。
+
 本次只交技术准备，不是B功能Gate1或真实定时闭环。Owner81a1 / 审核ca97。
 已按ca97安排创建 `feat/product-selection-server-schedule-v1`：精确Green
 `3128d6ad1048dfda1240148e863ea0c98eb6247f`，正常no-ff合入A已交付依赖
