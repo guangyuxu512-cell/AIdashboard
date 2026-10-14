@@ -1,0 +1,67 @@
+# 商品数据前端与 Mock 契约 V1
+
+状态：UI_ONLY / 前端草案。Owner 7d55；基线 9bb64ac76bf9e0f51fb1715517cf8c18cef63e22；
+ca97 已登记独立前端 127.0.0.1:4177 --strictPort。无 Feature DB、Backend 实现或 Migration Slot。
+完成 Gate 1 后准备匹配预览，停止“待用户验收，禁止发布”。
+
+## 复用与边界
+
+| 已有能力 | 本次处理 |
+| --- | --- |
+| Module Registry、Router、Shop Guard、Auth Context | 商品数据作为数据中心独立页面，复用 shop 授权；不增加后端权限码 |
+| ManagementListSection、FilterBar、DataTable、PaginationBar、AppDialog/Drawer | 组合现有组件，不新建表格或弹层框架 |
+| 选品 ExternalProductImage | 提取到 Product Entity，原组件保留兼容包装；候选池布局不变 |
+| 用户隔离的 localStorage 偏好模式 | 字段偏好按 userId 保存，只存列 ID 和顺序 |
+| ShopSession、HTTP/Signer、经营采集与调度、通知通道 | 只读盘点；不调用、不新增后台或复制凭据 |
+| 商品数据查询、店内商品分组 | 新增明确的前端 ViewModel 与隔离 Mock，不冒充正式 API |
+
+入口为 /product-data，moduleCode 为 product-data、accessModuleCode 为 shop。页面没有重复标题或副标题。
+默认固定商品信息（图片、标题、字符串 ID、复制），可配置列默认包含店铺、商品分组、
+曝光人数、点击-成交转化率（人数）、成交订单数、成交金额；点击人数等可选。
+全表宽度由可见列累加，横滚只发生在表格，商品信息固定在左侧。
+
+## 数据与查询草案
+
+types.ts 是本阶段 Frontend ViewModel 和 service 的唯一类型源，不是 FastAPI DTO 或数据库模型。
+列表 Query Key 包含 actor context、已应用筛选、日期、排序及分页。字段修改是草稿；
+查询/重置回到第一页并清除勾选，换页清除勾选。切换店铺清除不兼容的组选择和弹窗；
+切换人员/团队重新挂载工作区，旧异步返回不能覆盖新上下文。
+
+Mock 使用虚构商品，查询顺序固定为完整数据集筛选 → 全量排序（缺失最后、稳定 ID）→ 分页。
+统计日期按 Asia/Shanghai，快捷项为昨日、近7天、近30天及自定义。Mock 数值只模拟所选期间，
+不从响应样本推导金额换算，不把示例数当实数；比例由合成期间的分子/分母生成，不平均逐日比例。
+售卖、载体和更多筛选仅在显式 Mock 演示中可用，其真实平台请求参数仍待证据。
+
+指标保留 available / missing / null / invalid，0 正常展示，缺失显示 — 并可查看状态。
+默认核心字段的样本来源：
+
+| Source Code | 样本名称 | 本次展示 |
+| --- | --- | --- |
+| product_show_ucnt | 曝光人数 | 曝光人数，不是次数 |
+| product_click_ucnt | 点击人数 | 可选列，不是点击次数 |
+| product_click_pay_ucnt_ratio | 点击-成交转化率（人数） | 不能替换成曝光成交率 |
+| pay_cnt | 成交订单数 | 不替换为成交件数 |
+| receive_amt | 成交金额 | 与 pay_amt 用户支付金额独立 |
+
+样本只有响应和 meta，page_no=1/page_size=10/total=31；没有请求 URL、方法、参数、店铺、日期证明。
+金额 unit=3 的实际缩放仍未知。Real service 显式不可用，不发任何商品数据请求，
+不加载商品 Mock 模块，查询/分组操作不会伪造成功。后续必须先冻结正式请求/DTO/单位/排序契约。
+
+## 分组草案与偏好
+
+分组属于单个店铺。当前单组归属只是最小前端演示提案，待规划确认，未声明正式后端关系。
+初始无组，允许创建、重命名、对当前页勾选商品批量设置/移出。
+不同店铺的商品不能提交同一次分组变更；相同组名可在不同店铺独立存在。
+删除组前提示受影响商品数，只移除组归属，保留商品、指标与其他店铺组。
+Mutation 失败保留完整草稿及弹窗，可重试；成功后失效 Query 并重新读取。
+Mock 组只存在当前工作区内存，刷新后恢复未分组，不声称持久化到服务器。
+
+个人字段偏好键为 control-center.product-data.columns.v1.<userId>，保存有序可见列 ID；
+商品信息和详情操作不允许隐藏。格式无效时恢复默认；保存失败保留配置弹窗及草稿，
+不提示已保存。没有人员身份时不写共享匿名偏好。
+
+## 验证边界
+
+覆盖全量排序、日期/筛选、缺失与0、分组从零开始及跨店保护、失败重试、字段偏好隔离、
+人员/团队上下文切换、普通/最大化浏览器与弹层视口。生产 Real build 与接口未接入回归独立验证。
+浏览器证据不替代真实 Integration Electron，真实数据采集、数据库、定时、飞书均未覆盖。

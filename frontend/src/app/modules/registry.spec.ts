@@ -18,6 +18,7 @@ describe('Module Registry Lite', () => {
       'asset',
       'ai-workbench',
       'operating-dashboard',
+      'product-data',
       'product-selection',
       'product-library',
       'device',
@@ -37,6 +38,7 @@ describe('Module Registry Lite', () => {
       'shop',
       'ai-workbench',
       'operating-dashboard',
+      'product-data',
       'product-selection',
       'product-library',
       'device',
@@ -54,6 +56,7 @@ describe('Module Registry Lite', () => {
       'shop',
       'ai-workbench',
       'operating-dashboard',
+      'product-data',
       'product-selection',
       'product-library',
       'device',
@@ -100,7 +103,7 @@ describe('Module Registry Lite', () => {
       dataCenter?.type === 'group'
         ? dataCenter.children.map((module) => module.moduleCode)
         : [],
-    ).toEqual(['operating-dashboard'])
+    ).toEqual(['operating-dashboard', 'product-data'])
     expect(
       MODULE_REGISTRY.some(
         (module) => (module.routePath as string) === '/data-center',
@@ -165,6 +168,7 @@ describe('Module Registry Lite', () => {
       asset: null,
       'ai-workbench': null,
       'operating-dashboard': null,
+      'product-data': null,
       'product-selection': null,
       'product-library': null,
       device: null,
@@ -200,7 +204,27 @@ describe('Module Registry Lite', () => {
       getNavigationModules(MODULE_REGISTRY, {
         allowedModuleCodes: new Set(['shop']),
       }).map((module) => module.moduleCode),
-    ).toEqual(['shop', 'operating-dashboard'])
+    ).toEqual(['shop', 'operating-dashboard', 'product-data'])
+  })
+
+  it('guards the independent product data route with Shop access without adding a grant option', () => {
+    const module = getModuleDefinition('product-data')!
+    expect(module).toMatchObject({
+      routePath: '/product-data',
+      navigationParent: 'data-center',
+      accessModuleCode: 'shop',
+    })
+    expect(getModuleAccessCode(module)).toBe('shop')
+    expect(
+      getModuleAccessOptions().some(
+        (option) => option.value === 'product-data',
+      ),
+    ).toBe(false)
+    expect(
+      getNavigationModules(MODULE_REGISTRY, {
+        allowedModuleCodes: new Set(['device']),
+      }).some((item) => item.moduleCode === 'product-data'),
+    ).toBe(false)
   })
 
   it('keeps personnel authorization independent of sidebar visibility in the same registry', () => {
