@@ -10,7 +10,7 @@ Owner81a1，Integration ca97，规划聊天确认产品范围，Main只接合格
 | 项目 | 正式放行 |
 | --- | --- |
 | 基线 | 精确Green `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`，CI38597874343三项success；远端仍精确相同，不从ca97纯治理或main起Feature |
-| Worktree/分支 | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`；由Owner从Green正常创建 `feat/product-selection-candidate-result-filters-v1`，保留Ops1677、B7db、全部成果和共享stash239a68ca |
+| Worktree/分支 | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`；已正常创建 `feat/product-selection-candidate-result-filters-v1` 并no-ff合资源7dc，实际Merge `8f27a8a86cf8c19fcde2b766e345b831f5a00956`；Ops1677/B7db/共享stash239a68ca保持 |
 | Feature DB | 串行重新分配已登记retained `control_center_feat_product_selection`；当前单一`20261013_0045`，Owner/role `control_center_dev_user`，八项业务计数0、活动Run0、其它连接0；不清库、不创建新库/权限，不复制生产或Integration会话 |
 | 连接 | 复用当前受保护Feature配置与已登记严格35433隧道；已新鲜连接成功，Role无SUPERUSER/CREATEDB/CREATEROLE；不在聊天/Git/日志输出凭据，不改其它环境配置 |
 | 端口 | 复用Feature Backend8101/Frontend4176，Vite strictPort，现场均空闲；禁止占8100/5180或另开Electron/动Profile |
@@ -18,6 +18,9 @@ Owner81a1，Integration ca97，规划聊天确认产品范围，Main只接合格
 
 Owner先建分支、正常merge本次资源治理提交（仅文档/规则，非新Green）以同步自己分支的权威登记，
 重新读完整适用规则，再编写/在登记Feature库应用46及PG测试。ca97不编写Migration或代修业务。
+Owner已执行上述分支/资源同步及ignored任务覆盖更新，ca97独立核对parents精确Green9bb+资源7dc。
+当前开始ShopSelector.clearable及候选入口，现场一处未提交Selector改动属Owner开发成果，保留不代修。
+这是实际开工，不是Candidate/Gate通过；Owner此时声明尚无DB/平台/服务或Integration动作。
 本阶段仅合成平台I/O+Feature真实PG，不发真实平台请求，不连接Integration/生产开发；
 真实Integration行为在合格精确Candidate后另由ca97安排，不将生产拒绝样本冒充原平台响应。
 
