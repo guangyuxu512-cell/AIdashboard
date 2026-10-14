@@ -154,3 +154,31 @@ N3策略仍version5/hourly3/disabled。schedule_available=true、全局schedule/
 只读证据在ignored display-audit-readonly-summary-20261014.json及带时间的数据库快照，原证据不覆盖。
 环境现可查询、当前小时配置/关闭及历史结果可查看；daily/next专用样本目前不具备，需Main与用户
 按实际期望明确清单/配置后再准备。本次无已证实候选缺陷，不凭此要求81a1改业务；B仍待验收、禁止合dev/发布。
+
+## 独立每日控件样本已准备（2026-10-14 23:49，待人工，禁止发布）
+
+Main人类turn01a13b0c-f93f-7a90-b539-f839fdbf426c已直接授权执行前一完整准备提案；
+只新建Integration配置、不覆盖旧两条，准备后等待人工，未授权发布。实际7db候选及
+8100/5180严格Real来源、同一1.0.6/PID19984/Profile保持；原严格隧道当前20624已现场验证，
+非仅监听判断，真实DB/正常认证API/list/detail/capabilities均成功。
+
+新策略“G2-Selection-B 每日17:11界面验收”，ID `e54dc332-0677-4827-be37-f626c520b6b8`，
+通过正式POST一次创建version1/enabled=true/scheduled=true/kind=daily/Asia/Shanghai17:11，
+合法Team/Shop及条件复用原资源并由Backend授权校验。Backend实际返回next
+`2026-10-15T09:11:00Z`即北京时间2026-10-15 17:11，不硬编码或手写next。
+新策略latest_run/latest_trigger均null，最近结果应为—，不能展示旧策略的成功1件。
+
+保存前确认实际启动两个执行配置false/lifespan off、capabilities两执行false、活动Run0，
+管理配置允许；正式保存只写配置。之后同一来源的保存/list/detail重读一致，23:57另一次
+明确verify-only重读仍version1/同一next，不能把GET重读称为原生抽屉关闭重开。
+旧eb1d version8/hourly6/disabled及b869 version5/hourly3/disabled、关联计划逐行摘要保持；
+仅策略49→50、计划5→6，其它Run11/审计3/PC Task4/28候选34来源、经营与Session保持。
+HTTP观测category/rank/basic_info增量各0、新Run/Worker/成功历史0，执行开关始终false。
+
+同一窗口已从最小化正常置前，原生AX确认5180选品库及G2-SA-V1人员会话；无未保存抽屉。
+鼠标点击选品策略返回coordinate input geometry is unavailable；支持的键盘尝试不能可靠定位，
+正常Ctrl+R之后仍同一登录/页面。未开第二实例、清Profile或用网页截图/JS注入代替原生操作。
+当前停在选品库，需用户点选品策略并搜索G2-Selection-B；实际抽屉回显、取消关闭重开、
+刷新可见一致性及普通/最大化遮挡尚待。新每日查17:11/实际next/最近—，N3查小时3，
+旧自然到点行只查hourly6/关闭及17:11真实成功1件；不再用旧行验收每日。
+本次仅准备：B仍PENDING_HUMAN，不合dev/main、不push/CI/发布，待人类对精确候选明确通过。
