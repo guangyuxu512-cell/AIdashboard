@@ -26,6 +26,14 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-15当前B状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`的技术、
+Integration0045/正式API/真实自然到点（含客户端完全退出）及同一原生Electron验收均通过。
+新独立每日配置只供新增控件验收，旧N3/hourly6及真实历史保留；用户已直接回复“验收通过”并
+明确授权“继续合并、CI及B发布”。ca97须正常no-ff合dev、复验及精确CI，Main据Green执行Release，
+不提前标Green/DEPLOYED或重复验收A；0045至Green核销前仍active。A已正式部署
+`103b1c80b82f5bfca78467b887d7fafbdeb1ab60`/单一0044，最小builder修复及09:00原配置保持。
+下文旧B待确认/A未部署为阶段历史，不覆盖此当前状态；候选业务及已应用迁移不改。
+
 2026-10-14 人类已直接授权A部署的最小builder入口工程返修，不改业务/依赖/Migration。
 唯一Owner81a1在`feat/production-buildx-builder-selection-v1`从A Green f5正常起分支并同步
 新确认治理Green `07f1cc79bb4f72776a71eddad527faef0d46016f`（精确CI38511410020三项success，

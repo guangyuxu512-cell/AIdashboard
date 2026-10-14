@@ -1,11 +1,11 @@
-# 选品策略 B 服务端定时 Gate 2（进行中）
+# 选品策略 B 服务端定时 Gate 2（通过，合并及精确CI待完成）
 
 Owner81a1 / Integration ca97。精确候选
 `7db6578e67225efe8b77830712ccdbc72d6803cb`，分支
 `feat/product-selection-server-schedule-v1`，基于A精确Green
 `f5d4866459acf3e29459a9920c03c1e9118a8839`正常合入依赖。
 7db相对完整运行候选6e0ad128仅两处契约记录订正，代码、Schema及测试字节一致。
-**技术审查接受；Gate 2尚未通过，未合dev/未发布B。**
+**2026-10-15：技术、真实后台及同一原生Electron人工验收均通过；人类已明确授权继续合并、CI及B发布。下文各“尚待/禁止发布”为该时间点的阶段记录，不覆盖本项最新结论。尚未合dev或部署，不提前标Green/DEPLOYED。**
 
 ## 独立技术审查与证据边界
 
@@ -182,3 +182,23 @@ HTTP观测category/rank/basic_info增量各0、新Run/Worker/成功历史0，执
 刷新可见一致性及普通/最大化遮挡尚待。新每日查17:11/实际next/最近—，N3查小时3，
 旧自然到点行只查hourly6/关闭及17:11真实成功1件；不再用旧行验收每日。
 本次仅准备：B仍PENDING_HUMAN，不合dev/main、不push/CI/发布，待人类对精确候选明确通过。
+
+## 最终原生确认及发布授权（2026-10-15）
+
+人类在ca97本会话对精确7db候选回复“验收通过”；随后对是否解除准备停止点、继续
+dev/精确CI/Release Gate/B发布，直接选择“继续合并、CI及B发布”。不以Main转述或
+配置准备授权替代这次直接确认，不重复A或本轮已通过的原生验收。
+
+确认范围为同一Real Electron新增定时控件：新专用每日17:11、实际次日17:11及最近结果—；
+原N3编辑回显；原hourly6/关闭策略保留真实历史结果；查看、编辑取消、重开/刷新及普通/最大化。
+平台真实执行证据仍为前述13:54和客户端完全退出时17:11两次自然执行，不把新配置样本冒称执行。
+
+00:18新鲜只读核验：当前仍7db的5180/8100/Integration0045、原Profile及唯一开发实例；
+新每日策略当前version3（人工验收期间已保存），daily17:11/next北京时间10月15日17:11，
+latest_run/trigger仍null，list/detail一致。仅核验不覆写版本；原hourly6/v8及N3/v5及计划保留。
+策略50/计划6、Run11/审计3/PC Task4/候选28/来源34、经营19Job/2820Item/667事实/2Session不变，
+活动Run0，category/rank/basic_info增量各0；两执行开关保持false。没有生产操作。
+
+Gate 2 PASS；下一步正常no-ff合入当前dev（保留最新Green af57的最小builder工程和本地治理链），
+对合并后的实际代码复验并等待精确SHA CI。通过后才登记Green并交Main Release Gate；
+0045仍active至Green核销。生产当前A103b1c80/0044不重复发布，本次仅B，测试配置不带入生产。
