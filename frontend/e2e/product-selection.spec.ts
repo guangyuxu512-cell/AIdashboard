@@ -70,6 +70,17 @@ async function scrollCandidateTableToRight(page: Page) {
   await body.evaluate((element) => {
     element.scrollLeft = element.scrollWidth
   })
+  const overflowing = await body.evaluate(
+    (element) => element.scrollWidth - element.clientWidth > 2,
+  )
+  if (!overflowing) {
+    await expect
+      .poll(() => body.evaluate((element) => element.scrollLeft))
+      .toBeLessThanOrEqual(2)
+    await expect(image).toBeInViewport()
+    await expect(actions).toBeInViewport()
+    return { scrollLeft: 0, before, after: before }
+  }
   await expect
     .poll(() => body.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0)
@@ -93,6 +104,107 @@ async function scrollCandidateTableToRight(page: Page) {
 }
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
+})
+test('candidate pool fits current workspace without horizontal drag in four themes', async ({
+  page,
+}, info) => {
+  test.setTimeout(90000)
+  const requests: string[] = []
+  await page.route((url) => url.pathname.startsWith('/api/'), (route) => {
+    requests.push(route.request().url())
+    return route.abort()
+  })
+  await page.goto('/#/product-selection')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await expect(rows).toHaveCount(10)
+  await loadCandidateImages(page)
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+    { width: 2560, height: 1390 },
+  ]) {
+    await page.setViewportSize(viewport)
+    for (const [theme, label] of themes) {
+      await page.getByRole('button', { name: '切换主题' }).click()
+      await page
+        .locator('.n-dropdown')
+        .getByText(label, { exact: true })
+        .click()
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-theme-preset',
+        theme,
+      )
+      const body = page.locator(
+        '.n-data-table-base-table-body .n-scrollbar-container',
+      )
+      await expect
+        .poll(() => body.evaluate((e) => e.scrollWidth - e.clientWidth))
+        .toBeLessThanOrEqual(2)
+      await expect(page.getByRole('columnheader')).toHaveCount(12)
+      for (const heading of await page.getByRole('columnheader').all())
+        await expect(heading).toBeInViewport()
+      const dimensions = await rows.first().evaluate((row) => {
+        const cells = Array.from(row.querySelectorAll('td')).map((e) => {
+          const b = e.getBoundingClientRect()
+          return { left: b.left, right: b.right }
+        })
+        const actions = Array.from(
+          row.querySelectorAll('td:last-child button'),
+        ).map((e) => {
+          const b = e.getBoundingClientRect()
+          return { left: b.left, right: b.right }
+        })
+        const image = row.querySelector('img')!.getBoundingClientRect()
+        return {
+          cells,
+          actions,
+          image: { width: image.width, height: image.height },
+          height: row.getBoundingClientRect().height,
+        }
+      })
+      expect(dimensions.image).toEqual({ width: 64, height: 64 })
+      expect(dimensions.height).toBeGreaterThanOrEqual(80)
+      for (let n = 1; n < dimensions.cells.length; n++)
+        expect(dimensions.cells[n]!.left).toBeGreaterThanOrEqual(
+          dimensions.cells[n - 1]!.right - 1,
+        )
+      for (let n = 0; n < dimensions.actions.length; n++) {
+        const action = dimensions.actions[n]!
+        expect(action.left).toBeGreaterThanOrEqual(
+          dimensions.cells.at(-1)!.left,
+        )
+        expect(action.right).toBeLessThanOrEqual(dimensions.cells.at(-1)!.right)
+        if (n)
+          expect(action.left).toBeGreaterThanOrEqual(
+            dimensions.actions[n - 1]!.right,
+          )
+      }
+      await settleTransitions(page)
+      await page.screenshot({
+        path: info.outputPath(
+          `${viewport.width}-${theme}-mock-candidate-fit.png`,
+        ),
+        animations: 'disabled',
+      })
+    }
+  }
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await rows.first().locator('td').nth(2).locator('.n-ellipsis').hover()
+  await expect(page.locator('.n-popover')).toContainText('Essence')
+  await page.mouse.move(10, 10)
+  await rows.first().getByRole('checkbox').check()
+  await expect(page.getByText('已选 1 项', { exact: true })).toBeVisible()
+  await page.locator('.n-pagination-item').filter({ hasText: /^2$/ }).click()
+  await expect(rows).toHaveCount(10)
+  await expect(page.getByText('已选 1 项', { exact: true })).toHaveCount(0)
+  await rows.first().getByRole('button', { name: '详情', exact: true }).click()
+  await expect(page.locator('.n-drawer')).toContainText('罗盘视频数据')
+  await page
+    .locator('.n-drawer')
+    .getByRole('button', { name: '关闭', exact: true })
+    .click()
+  expect(requests).toEqual([])
 })
 test('candidate pool: four themes, column alignment, IDs, full sort/pagination, preview and block/restore', async ({
   page,
@@ -1343,7 +1455,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
       for (const header of rowDimensions.headers) {
         expect(header.padding).toBe('8px 12px')
         expect(header.height).toBeGreaterThanOrEqual(38)
-        expect(header.height).toBeLessThanOrEqual(42)
+        expect(header.height).toBeLessThanOrEqual(64)
         expect(header.verticalAlign).toBe('middle')
       }
       expect(rowDimensions.actionGap).toBe('12px')
@@ -1358,28 +1470,17 @@ test('centered candidate columns and consistent bordered details: four rendered 
         expect(cell.verticalAlign).toBe('middle')
         if (cell.ellipsisAlign) expect(cell.ellipsisAlign).toBe('center')
       }
-      const expectedWidths = [
-        44, 88, 280, 140, 100, 88, 88, 112, 96, 140, 100, 220,
-      ]
-      const readingColumns = [2, 3, 4]
       const actualWidths = rowDimensions.cells.map((cell) =>
         Math.round(cell.width),
       )
-      for (const [index, width] of actualWidths.entries()) {
-        if (readingColumns.includes(index)) {
-          expect(width).toBeGreaterThanOrEqual(expectedWidths[index]!)
-        } else expect(width).toBe(expectedWidths[index])
-      }
-      expect(actualWidths[2]).toBeLessThanOrEqual(360)
-      if (viewport.width === 1440) expect(actualWidths).toEqual(expectedWidths)
-      else {
-        for (const index of readingColumns)
-          expect(actualWidths[index]).toBeGreaterThan(expectedWidths[index]!)
-        expect(actualWidths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(
-          rowDimensions.tableWidth,
-          0,
-        )
-      }
+      expect(actualWidths[0]).toBe(44)
+      expect(actualWidths[1]).toBe(88)
+      expect(actualWidths.at(-1)).toBe(220)
+      for (const width of actualWidths) expect(width).toBeGreaterThan(0)
+      expect(actualWidths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(
+        rowDimensions.tableWidth,
+        0,
+      )
       for (const height of await rows.evaluateAll((rows) =>
         rows.map((row) => row.getBoundingClientRect().height),
       )) {
@@ -1638,19 +1739,26 @@ test('centered candidate columns and consistent bordered details: four rendered 
         .nth(2)
         .evaluate((cell) => Math.round(cell.getBoundingClientRect().width)),
     )
-    .toBe(360)
+    .toBeGreaterThan(360)
   const wideWidths = await rows
     .first()
     .locator('td')
     .evaluateAll((cells) =>
       cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
     )
-  expect(wideWidths[2]).toBe(360)
+  expect(
+    await rows
+      .first()
+      .locator('td')
+      .nth(2)
+      .locator('.n-ellipsis')
+      .evaluate((e) => Math.round(e.getBoundingClientRect().width)),
+  ).toBeLessThanOrEqual(360)
   expect(wideWidths[3]).toBeGreaterThan(140)
   expect(wideWidths[4]).toBeGreaterThan(100)
-  expect(wideWidths.filter((_, index) => ![2, 3, 4].includes(index))).toEqual([
-    44, 88, 88, 88, 112, 96, 140, 100, 220,
-  ])
+  expect(wideWidths[0]).toBe(44)
+  expect(wideWidths[1]).toBe(88)
+  expect(wideWidths.at(-1)).toBe(220)
   await page.screenshot({
     path: info.outputPath('candidate-full-width-2240.png'),
     animations: 'disabled',

@@ -146,7 +146,8 @@ def test_new_v3_does_not_relax_legacy_v2_pages_or_change_legacy_hashes():
 def test_v3_first_listed_return_filter_separates_source_without_guessing_platform_parameter():
     original = _original(first_listed_only=True, rank_from=151, rank_to=200)
     request = freeze_short_video_request(original, datetime.now(UTC))
-    assert request.page_numbers == tuple(range(1, 21))
+    assert request.version == 8 and request.page_numbers == (1, 16, 17, 18, 19, 20)
+    assert request.legacy_paging_request().page_numbers == tuple(range(1, 21))
     assert "first_listed_only" not in request.scope.model_dump()
     assert request.scope.fingerprint() != request.scope.fingerprint(first_listed_only=True)
     assert request.scope.context(first_listed_only=True)["first_listed_only"] is True

@@ -71,13 +71,23 @@ def prepare_short_video_scope(
 
 
 def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: datetime) -> SelectionResolvedRequest:
+    """New submissions probe page one once, then fetch only their target pages."""
+    base = _freeze_short_video_conditions(original, accepted_at)
+    if base.page_numbers == base.target_pages():
+        return base
+    return SelectionResolvedRequest.model_validate(base.model_dump(mode="json") | {
+        "version": 8, "page_numbers": base.target_pages(),
+    })
+
+
+def _freeze_short_video_conditions(original: SelectionRunOriginal, accepted_at: datetime) -> SelectionResolvedRequest:
     """User-approved business policy, not a claim about platform refresh time."""
     validate_preparable_short_video_choice(original)
     if accepted_at.utcoffset() is None:
         raise ValueError("Acceptance time must have a timezone")
     day = accepted_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
     if original.brand != "all":
-        base = freeze_short_video_request(original.model_copy(update={"brand": "all"}), accepted_at)
+        base = _freeze_short_video_conditions(original.model_copy(update={"brand": "all"}), accepted_at)
         brand_type = BRAND_TYPES[original.brand]
         plan = base.date_plan
         if isinstance(plan, SelectionDatePlan):
@@ -88,7 +98,7 @@ def freeze_short_video_request(original: SelectionRunOriginal, accepted_at: date
         )
     if original.price_mode == "custom":
         # Reuse the frozen date policy, not another execution/request path.
-        base = freeze_short_video_request(original.model_copy(update={"price_mode": "all", "price_above": None, "price_below": None}), accepted_at)
+        base = _freeze_short_video_conditions(original.model_copy(update={"price_mode": "all", "price_above": None, "price_below": None}), accepted_at)
         price = custom_price_bin(original)
         plan = base.date_plan
         if isinstance(plan, SelectionDatePlan):

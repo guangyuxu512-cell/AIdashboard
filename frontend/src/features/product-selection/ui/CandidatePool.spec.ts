@@ -119,7 +119,7 @@ describe('candidate selection and batch demo', () => {
       dispose()
     },
   )
-  it('centers the two-line title and all columns, keeps the agreed base widths and scope out of the list', async () => {
+  it('centers the two-line title and all columns, fits actual width and keeps scope out of the list', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),
     )
@@ -147,13 +147,13 @@ describe('candidate selection and batch demo', () => {
       expect(column.align).toBe('center')
     }
     const widths = columns.map((column: { width: number }) => column.width)
-    expect(widths).toEqual([
-      44, 88, 280, 140, 100, 88, 88, 112, 96, 140, 100, 220,
-    ])
+    expect(widths[0]).toBe(44)
+    expect(widths[1]).toBe(88)
+    expect(widths.at(-1)).toBe(220)
     expect(
       widths.reduce((total: number, width: number) => total + width, 0),
-    ).toBe(1496)
-    expect(table.props('scrollX')).toBe(1496)
+    ).toBe(1494)
+    expect(table.props('scrollX')).toBeUndefined()
     const title = columns
       .find((column: { key: string }) => column.key === 'title')
       .render(table.props('data')[0])

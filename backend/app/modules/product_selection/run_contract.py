@@ -211,7 +211,7 @@ class SelectionResolvedRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2, 3, 4, 5, 6, 7] = 1
+    version: Literal[1, 2, 3, 4, 5, 6, 7, 8] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
@@ -225,6 +225,13 @@ class SelectionResolvedRequest(BaseModel):
     def validate_pages(self) -> "SelectionResolvedRequest":
         if len(set(self.page_numbers)) != len(self.page_numbers):
             raise ValueError("Repeated pages are not execution instructions")
+        if self.version == 8:
+            if self.page_numbers != self.target_pages():
+                raise ValueError("Target pages must include one first-page date probe and only the selected rank pages")
+            # Reuse date/brand/price checks, without rewriting old runs or
+            # persisting/signing this legacy sequential-page projection.
+            self.legacy_paging_request()
+            return self
         if self.version == 1:
             if self.date_plan is not None or self.date_outcome is not None or self.strategy is not None or len(self.page_numbers) > 2:
                 raise ValueError("Legacy executions have no fallback policy")
@@ -330,9 +337,25 @@ class SelectionResolvedRequest(BaseModel):
         return self
 
     def _date_version(self) -> int:
-        if self.version not in {6, 7}:
+        if self.version not in {6, 7, 8}:
             return self.version
         return 3 if self.original.period == "7d" else 4 if self.original.period == "realtime" else 5
+
+    def target_pages(self) -> tuple[int, ...]:
+        first = (self.original.rank_from - 1) // self.page_size + 1
+        last = (self.original.rank_to - 1) // self.page_size + 1
+        return tuple(dict.fromkeys((1, *range(first, last + 1))))
+
+    def legacy_paging_request(self) -> "SelectionResolvedRequest":
+        """Read/active-key compatibility only; historical instructions stay intact."""
+        if self.version != 8:
+            return self
+        version = 7 if self.original.brand != "all" else 6 if self.original.price_mode == "custom" else self._date_version()
+        raw = self.model_dump(mode="json") | {
+            "version": version,
+            "page_numbers": list(range(1, (self.original.rank_to + 9) // 10 + 1)),
+        }
+        return SelectionResolvedRequest.model_validate(raw)
 
     def single_window(self) -> bool:
         return self._date_version() in {4, 5}

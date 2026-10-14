@@ -325,3 +325,40 @@ ca97本次原生窗口测量在唯一窗口遭FrameArrived/window capture timeou
 Electron；展示宽度用既有数据，不反复取榜。仅补本次品牌正式请求/结果差异，并检查保存/编辑回显
 及普通/最大化表格9列/固定操作、原位操作。完整A Gate2/精确dev CI后交Main，A发布不等B。
 本节Gate1技术检查完成；新Candidate尚未加载Electron/部署时不能报告已部署或完整业务验收完成。
+
+## 2026-10-14 A最终增量：候选池宽度/排名必要页
+
+父a75fbf9d86a48adfe585d20a8cef8c05cd786f3e。新直接人类任务已确认该版本品牌回显、策略
+九列普通/最大化、page2启停/编辑原位；由ca97记录，复用其同Session正式品牌0/1两Run与入库/API
+闭环，不重复取榜/操作。此增量只改候选池列预算和版本化目标页，A无DDL，B仍独立reserved。
+
+实现：保留12列/64图/字体/结构/220操作/原动作间隔。取消强制1496 scroll-x，实际容器宽度分配，
+必要表头换行，长文本tooltip；不外层裁切/删列/缩字体。核图发现首次窄屏分配标题过窄，改为
+数字列紧凑值到宽值平滑过渡，再重新渲染全部四主题/视口，短标题无需被无意义挤成两行。
+新Run只有跳页时v8，目标页ceil(start/10)..ceil(end/10)加入一次1；150–200为1/15..20，
+原首页日期判断/有限备查复用、真实rank/首次上榜/商品去重、basic_info失败事实保护保持。
+平台total在跳目标页前检查；页1目标外商品不入库，目标页失败不再切窗或强补数量。
+旧活动v3–v7同条件保留旧序列/hash复用，已存JSON不重写；原v1/v2兼容保留。
+
+实际命令/结果（Feature平台输入全部合成，Owner零真实平台请求）：
+
+| 命令/范围 | 结果 |
+| --- | --- |
+| Backend `pytest -o addopts="" tests/test_selection_target_pages.py tests/test_selection_request_mapping.py tests/test_selection_realtime_mapping.py tests/test_selection_historical_mapping.py tests/test_selection_price_mapping.py tests/test_selection_brand_mapping.py -q --tb=short` | 135 pass/1.53s；33新增边界/四日期三品牌双价/旧Reader/hash、非法页序列 |
+| Backend `pytest -o addopts="" -m "not integration" -q --tb=short` | 736 pass/291 integration deselected/83.33s；原模块回归 |
+| Feature PG target_pages/windows/strategies/strategy_compatibility 4文件，`-o addopts="" -m integration ... -q --tb=short` | 83 pass/225.99s；真实PG、合成平台；1→15..20/total/官方rank/去重/来源/API、原权限与窗口及策略回归 |
+| 增加旧v3–v7 active复用后的target_pages文件 | 18 pass/57.67s；旧JSON/fingerprint/执行序列不变 |
+| 最终target_pages + strategy_compatibility，含旧v3–v7 active及新增备查空/失败、非默认品牌/价格禁止业务探查 | 27 pass/72.62s；迟到/去重/旧回执与实际日期边界保持 |
+| Frontend `pnpm lint` / `pnpm typecheck` / `pnpm exec vitest run src/features/product-selection` / `pnpm build` | pass；最终13文件107 pass/11.68s、强制Real build17.55s；未改公共组件/主题 |
+| 正式版本范围的新增pool-fit Mock E2E，4176 strictPort、所有`/api/`请求拒绝 | 最终1 pass/22.4s；1366×768/1440×900/1920×1080/2560×1390四主题16图，12列/零横拖/固定区域不覆盖/64图/勾选分页详情 |
+| 原pool四主题/排序/分页/预览/屏蔽恢复交互E2E | 1 pass/20.1s；仅Mock演示，零真实业务请求 |
+
+初版所有新请求v8导致36个旧版本断言失败；收敛为只有页序列改变时v8，原普通范围格式/hash
+保持，旧全部断言与新目标页一起通过。首轮Mock测试baseURL误4173导致未导航；修为4176。
+拦截glob误匹配源码/api/模块导致未渲染，改URL pathname前缀后才有上述实际证据；不计作业务成功。
+保留Starlette/httpx、NO_COLOR及大chunk既有告警，截图仅ignored candidate-fit-mock与
+candidate-interaction-fit-mock，人工核最终1366石墨/1920午夜。不得冒称Electron/真实榜单验证。
+
+新v8 Reader恢复边界同步本Feature契约、Backend24/Frontend17；0042/0043/0044及事实保留。
+ca97仅补本次小范围真实跳页和同一Real Electron宽度检查，复用已确认旧项；通过交Main发布A，
+不等B。Owner继续独立B非DDL准备；0045仍reserved，A精确Green后ca97才激活，不提前写/应用。

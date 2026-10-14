@@ -227,20 +227,43 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
   checked.value = []
 }
 const missing = () => h(NText, { depth: 3 }, () => '—')
+const wrappedHeader = (label: string) => () =>
+  h('span', { style: { whiteSpace: 'normal' } }, label)
 const tableRef = ref<InstanceType<typeof DataTable> | null>(null)
 const { width: tableWidth } = useElementSize(() => {
   const element = tableRef.value?.$el
   return element instanceof HTMLElement ? element : null
 })
-const baseTableWidth = 1496
 const readingWidths = computed(() => {
-  const extra = Math.max(0, Math.floor(tableWidth.value) - baseTableWidth)
-  const titleExtra = Math.min(80, Math.round(extra / 2))
-  const merchantExtra = Math.round((extra - titleExtra) * 0.6)
+  // Preserve the image and three actions; distribute the actual remaining
+  // width, instead of forcing a captured 1496px table into every window.
+  const width = Math.floor(tableWidth.value || 1496) - 2
+  const space = Math.max(0, width - 44 - 88 - 220)
+  const expand = Math.max(0, Math.min(1, (width - 1100) / 400))
+  const fit = (compact: number, wide: number) =>
+    Math.floor(compact + (wide - compact) * expand)
+  const rank = fit(54, 88)
+  const discovery = fit(66, 88)
+  const price = fit(80, 112)
+  const review = fit(84, 96)
+  const listed = fit(106, 140)
+  const status = fit(82, 100)
+  const text = Math.max(
+    0,
+    space - rank - discovery - price - review - listed - status,
+  )
+  const merchant = Math.max(66, Math.floor(text * 0.28))
+  const category = Math.max(52, Math.floor(text * 0.22))
   return {
-    title: 280 + titleExtra,
-    merchant: 140 + merchantExtra,
-    category: 100 + extra - titleExtra - merchantExtra,
+    title: Math.max(0, text - merchant - category),
+    merchant,
+    category,
+    rank,
+    discovery,
+    price,
+    review,
+    listed,
+    status,
   }
 })
 const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
@@ -266,7 +289,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   },
   {
     key: 'title',
-    title: '商品标题',
+    title: wrappedHeader('商品标题'),
     width: readingWidths.value.title,
     align: 'center',
     render: (row) =>
@@ -275,7 +298,12 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         {
           lineClamp: 2,
           tooltip: true,
-          style: { width: '100%', textAlign: 'center' },
+          style: {
+            width: '100%',
+            maxWidth: '360px',
+            marginInline: 'auto',
+            textAlign: 'center',
+          },
         },
         () => row.title,
       ),
@@ -312,8 +340,8 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   },
   {
     key: 'rank',
-    title: '榜单排名',
-    width: 88,
+    title: wrappedHeader('榜单排名'),
+    width: readingWidths.value.rank,
     align: 'center',
     render: (row) => {
       const change = rankChange(row)
@@ -331,8 +359,8 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   },
   {
     key: 'discovery',
-    title: '发现情况',
-    width: 88,
+    title: wrappedHeader('发现情况'),
+    width: readingWidths.value.discovery,
     align: 'center',
     render: (row) =>
       h(
@@ -351,15 +379,22 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   },
   {
     key: 'priceBand',
-    title: '价格／价格带',
-    width: 112,
+    title: wrappedHeader('价格／价格带'),
+    width: readingWidths.value.price,
     align: 'center',
-    render: (row) => row.priceBand ?? missing(),
+    render: (row) =>
+      row.priceBand === null
+        ? missing()
+        : h(
+            NEllipsis,
+            { tooltip: true, style: { width: '100%', textAlign: 'center' } },
+            () => row.priceBand,
+          ),
   },
   {
     key: 'negativeReviewRate',
-    title: '差评率',
-    width: 96,
+    title: wrappedHeader('差评率'),
+    width: readingWidths.value.review,
     className: 'selection-sort-column',
     align: 'center',
     sorter: props.service.available,
@@ -374,8 +409,8 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   },
   {
     key: 'listedAt',
-    title: '首次上架日期',
-    width: 140,
+    title: wrappedHeader('首次上架日期'),
+    width: readingWidths.value.listed,
     className: 'selection-sort-column',
     align: 'center',
     sorter: true,
@@ -387,7 +422,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
   {
     key: 'collectionStatus',
     title: '采集状态',
-    width: 100,
+    width: readingWidths.value.status,
     align: 'center',
     render: (row) =>
       row.collectionStatus === 'unknown'
@@ -522,7 +557,6 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         :loading="query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="baseTableWidth"
         :theme-overrides="{
           tdPaddingMedium: 'var(--space-2) var(--space-3)',
           thPaddingMedium: 'var(--space-2) var(--space-3)',

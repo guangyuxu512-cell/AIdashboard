@@ -80,7 +80,7 @@ class SelectionRunExecutor:
         code, stage, value = safe_run_error(failure)
         original, scope = request.original, request.scope
         return (
-            request.version in {2, 3} and request.date_plan is not None
+            request.version in {2, 3, 8} and request.date_plan is not None
             and original.channel == "short-video" and original.period == "7d"
             and original.brand == "all" and original.price_mode == "all"
             and original.price_above is None and original.price_below is None
@@ -143,12 +143,16 @@ class SelectionRunExecutor:
             request = claim.request
             first = None
             empty_window = False
-            if request.version in {2, 3, 4, 5, 6, 7}:
+            if request.version in {2, 3, 4, 5, 6, 7, 8}:
                 request, first, empty_window = self._select_first_page(claim, context)
             seen: set[str] = set()
+            known_total = None
             for page_no in ((1,) if empty_window else request.page_numbers):
+                if known_total is not None and (page_no - 1) * request.page_size >= known_total:
+                    break
                 page = first if page_no == 1 and first is not None else self._rank(claim, context, request, page_no)
-                if claim.request.version in {2, 3, 4, 5, 6, 7}:
+                known_total = page.total
+                if claim.request.version in {2, 3, 4, 5, 6, 7, 8}:
                     if any(p.rank is None for p in page.products):
                         raise PlatformResponseInvalidError()
                     # Filter by returned official rank, not page-local row index.

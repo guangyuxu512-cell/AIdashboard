@@ -133,7 +133,7 @@ class SelectionRunService:
                 row = SelectionStrategyService(self.session).writable(current, command.strategy_id, expected_version=command.strategy_version)
                 if row.request_shop_id != command.shop_id:
                     raise SelectionRunConflictError()
-                if resolved.version not in {3, 4, 5, 6, 7}:
+                if resolved.version not in {3, 4, 5, 6, 7, 8}:
                     raise ValueError("Strategy association requires the versioned execution contract")
                 resolved = resolved.model_copy(update={"strategy": SelectionStrategySnapshot(strategy_id=row.strategy_id, version=row.version)})
             self.repository.recover_expired(at)
@@ -150,16 +150,23 @@ class SelectionRunService:
                                 raise SelectionRunConflictError()
                         else:
                             active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=resolved.fingerprint())
+                            if active is None and resolved.version == 8:
+                                legacy_pages = resolved.legacy_paging_request()
+                                active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=legacy_pages.fingerprint())
                             # During an upgrade, an already-active v2 default
                             # request is still the same work. Preserve its hash
                             # and canonical; only the new receipt is v3 so it
                             # can record its own strategy snapshot.
-                            if active is None and resolved.version == 3 and original.rank_to <= 20 and not original.first_listed_only:
-                                legacy = SelectionResolvedRequest.model_validate(resolved.model_dump(mode="json") | {"version": 2, "strategy": None})
+                            if active is None and resolved.legacy_paging_request().version == 3 and original.rank_to <= 20 and not original.first_listed_only:
+                                legacy = SelectionResolvedRequest.model_validate(resolved.legacy_paging_request().model_dump(mode="json") | {"version": 2, "strategy": None})
                                 active = self.repository.find_active(team_id=team_id, shop_id=command.shop_id, fingerprint=legacy.fingerprint())
-                            shared = (SelectionResolvedRequest.model_validate(active.request_conditions).model_copy(update={
-                                "version": resolved.version, "strategy": resolved.strategy,
-                            }) if active is not None else resolved)
+                            shared = resolved
+                            if active is not None:
+                                active_request = SelectionResolvedRequest.model_validate(active.request_conditions)
+                                shared = active_request.model_copy(update={
+                                    "version": 3 if active_request.version == 2 else active_request.version,
+                                    "strategy": resolved.strategy,
+                                })
                             row = ProductSelectionRun(
                                 run_id=uuid4(), team_id=team_id, created_by_user_id=current.user_id,
                                 request_shop_id=command.shop_id, submission_key=command.submission_key,
@@ -322,9 +329,9 @@ class SelectionRunService:
             allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "backup_empty", "both_empty"}}
             if request.single_window():
                 allowed = {None: {"primary"}}
-            if (request.version not in {2, 3, 4, 5, 6, 7} or state not in allowed.get(previous, set())
+            if (request.version not in {2, 3, 4, 5, 6, 7, 8} or state not in allowed.get(previous, set())
                 or row.saved_count != 0 or row.result_count is not None
-                or (request.version in {6, 7} and (primary_error is not None or fallback_reason == "primary_business_rejection_probe"))):
+                or ((request.original.price_mode != "all" or request.original.brand != "all") and (primary_error is not None or fallback_reason == "primary_business_rejection_probe"))):
                 raise SelectionRunLeaseLostError()
             if previous is not None:
                 if fallback_reason is not None or primary_error is not None:
