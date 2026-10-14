@@ -34,6 +34,10 @@ Owner先建分支、正常merge本次资源治理提交（仅文档/规则，非
 3. 只新增一张本业务append-only canonical→Observation结果关联，unique(canonical,observation)，
    事实、fence、计数及membership同短事务提交；复用receipt/canonical和完整策略关系。
    旧NULL明细版本=未记录，不反推；新tracked成功空/失败零item与旧未记录明确分开。
+   接受Owner补充的同表最小闭式榜单快照：真实rank/必要previous/checked、价格带、平台首次上榜标记、
+   四视频字段的状态/原精度区间/类型单位与取数时间。不是完整详情或任意response快照；无URL/凭据。
+   精确批次的本次排名/指标及排序读取此不可变快照，不用后来更新的Observation伪装历史本次。
+   图片/标题/商家和基础信息复用当前来源，单项补充不改旧快照/Run；旧未记录依旧不可反推。
 4. 来源发现范围为Team+请求Shop+原相对业务条件，不含实际日期/分页/备用选择/策略UUID/版本。
    **新key要复用已确认价格规范化**，20/20.0等同；不得修改既有rank v1–v8/hash/source_scope_hash。
    新/再次命中是进入同条件范围，不是平台首次上榜或策略名称首次出现；旧明确正证据可known，
