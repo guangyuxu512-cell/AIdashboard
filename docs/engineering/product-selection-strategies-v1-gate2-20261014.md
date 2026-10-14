@@ -84,3 +84,27 @@ https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38503895984 。
 这是A最新Green，已正式交Main连续完成Release Gate/main CI/生产；不能据此标生产已部署。
 随后0044released、B0045active，B须正常同步此精确Green；槽位治理记录不是新Green，
 Main仍固定发布上述A Green，不跟随B或后续未验证提交。B f2d9952非DDL隔离65项通过仅是准备。
+
+## 首次生产部署失败与稳定服务恢复
+
+Main正常no-ff为`48ca680c0dab36d8cda1c489a113b1d37dbc026f`，运行源码/0044与最终f348一致；
+精确main CI38505731648三项success。部署前新dump976172字节、root0600，pg_restore list330条可读；
+正式自动Deploy38505980435在Upload and deploy release失败，不据main CI或build标DEPLOYED。
+失败日志安全类别为BuildKit status-stream RPC Unavailable/EOF、退出1，Backend依赖安装步骤26；
+无哈希/解析冲突/TLS/磁盘/OOM证据，不能虚构具体包损坏。Main白名单journal确认Docker daemon
+03:46UTC panic及systemd auto-restart（两次），与状态流失败吻合，详细panic触发原因仍待核对。
+
+随后旧PG/三生产容器均停止，ca97只读检查明确记录exited及公网502。Main正常启动原PG并
+确认prod单一0043/无新策略或不兼容run，再沿current0102精确旧Compose恢复Signer/Backend/Frontend。
+ca97独立复核实际生产仍`0102dd6d051f89907bad113c35310bbab69412ec`、单一`20261010_0043`，
+四容器running、Backend/Signer/PG healthy，正式公网`/health`200及status ok。
+最初`/api/health`是连通性探测而非正式健康契约；恢复后的404不再用于判断健康。
+旧manual selection execution已恢复true，经营manual/daily true和09:00:00原配置保持，
+Integration仍0044/28候选33来源9run/活动0/HuanYu valid v6，已有数据与Profile保留。
+
+A尚未生产部署，不重复人类视觉验收或改已验收业务。独立docker-container builder仅无凭据smoke，
+不改全局默认/daemon版本配置、不prune或删除既有镜像、不关闭完整性校验。
+现正式remote脚本固定compose build且env reader不会导出builder选择，不能靠全局或SSH注入绕过。
+若接回正式流水线，需要最小独立部署工程Feature：可选PRODUCTION_BUILDX_BUILDER显式选择、
+原默认行为保留及定向测试/文档；当前尚未新增代码授权，不在Main/dev代修或盲重跑原失败路径。
+B资源与代码继续独立，0045仅Feature，不混入A的部署或用本事故消除B必要验收。
