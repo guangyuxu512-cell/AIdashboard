@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { runWindow, runResult } from './run-display'
+import { runWindow, runResult, triggerFailure } from './run-display'
 import type { SelectionExecutionSummary } from './contracts'
 
 const run: SelectionExecutionSummary = {
@@ -26,6 +26,31 @@ const run: SelectionExecutionSummary = {
   },
 }
 describe('actual persisted window and progress', () => {
+  it('explains session failures without classifying unrelated failures as login expiry', () => {
+    expect(
+      runResult({
+        ...run,
+        status: 'failed',
+        result_count: null,
+        error_code: 'SHOP_SESSION_AUTHENTICATION_INVALID',
+      }),
+    ).toContain('重新登录')
+    expect(triggerFailure('SHOP_SESSION_NOT_CONFIGURED', 'session')).toContain(
+      '先登录',
+    )
+    expect(triggerFailure('unknown', 'untrusted raw prose')).not.toContain(
+      'untrusted',
+    )
+    expect(
+      runResult({
+        ...run,
+        status: 'failed',
+        result_count: null,
+        error_code: 'PLATFORM_SIGNER_FAILED',
+        error_stage: 'signer',
+      }),
+    ).not.toContain('重新登录')
+  })
   it('distinguishes the approved primary rejection probe from two successful empty windows', () => {
     for (const code of [621000704, '621000704'] as const) {
       const primary_error = {

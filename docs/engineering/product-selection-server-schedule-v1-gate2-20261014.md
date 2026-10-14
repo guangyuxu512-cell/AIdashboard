@@ -1,11 +1,11 @@
-# 选品策略 B 服务端定时 Gate 2（进行中）
+# 选品策略 B 服务端定时 Gate 2（通过，已合并，精确CI待完成）
 
 Owner81a1 / Integration ca97。精确候选
 `7db6578e67225efe8b77830712ccdbc72d6803cb`，分支
 `feat/product-selection-server-schedule-v1`，基于A精确Green
 `f5d4866459acf3e29459a9920c03c1e9118a8839`正常合入依赖。
 7db相对完整运行候选6e0ad128仅两处契约记录订正，代码、Schema及测试字节一致。
-**技术审查接受；Gate 2尚未通过，未合dev/未发布B。**
+**2026-10-15：技术、真实后台及同一原生Electron人工验收均通过；人类已明确授权继续合并、CI及B发布。下文各“尚待/禁止发布”为该时间点的阶段记录，不覆盖本项最新结论。已正常合dev并复验，精确CI待完成；尚未部署，不提前标Green/DEPLOYED。**
 
 ## 独立技术审查与证据边界
 
@@ -124,6 +124,95 @@ A精确Green f5及main48ca680两条CI成功；首次Deploy38505980435失败，
 
 同一人类turn已明确授权A最小builder工程修复，不改业务/依赖/Migration。
 唯一Owner81a1/独立feat/production-buildx-builder-selection-v1，Main统筹Release，7d55未切支或改文件。
-OwnerDraft1677fd3只4工程文件，Windows权限/ln语义不能替代Linux；被拒临时cleanup目标未执行且不绕过。
-正常Draft PR13触发现有Ubuntu CI38542431178，Gate1待完整通过，ca97同步静态审查；
-B资源窗口结束已回Main，正式构建仍须工程Gate2/精确Green CI，不据授权/Draft直接部署。
+工程1677fd3只4工程文件，Windows权限/ln语义不能替代Linux；被拒临时cleanup目标未执行且不绕过。
+后续PR13/Linux CI、Gate1/Gate2及精确Green af57/CI38547082755已通过；
+Main精确103/main CI38549554911、正式Deploy38550018844 attempt2已success，生产单一0044。
+此A发布不包含B，原B客户端/Profile/0045资源未变；B原生清单仍未回传，不把A部署当作B Gate或发布。
+
+## 原生反馈与新鲜只读核对（2026-10-14晚间，仍未通过）
+
+用户新截图及同一窗口17303688原生AX均显示自然到点策略“每6小时·环境关闭／下次—／关闭”。
+当前仍PID19984、5180 Real；Main及ca97核对3个实际Renderer source map与7db字节相同。
+35433原隧道无监听，未认定为DB认证拒绝；仅恢复原受信任别名/forward、strict host key及BatchMode，
+新PID94772，不改账户/权限/持久配置，不重启8100/5180/Signer或另开Electron/清Profile。
+
+恢复后22:48的数据库只读事务、正式list/detail 200及当前原生显示一致：
+`eb1d3e01-75c5-4621-8391-533fdbf43c12` version8/enabled=false，
+schedule.scheduled=true/kind=hourly/interval_hours=6，关联原plan1bd19adc同为hourly6且disabled、
+local_time=null/next_run_at=null。最后更新时间为北京时间21:22:06.112699；
+JSON仍保留daily_time=17:11，但在hourly模式不是生效的日计划。
+N3策略仍version5/hourly3/disabled。schedule_available=true、全局schedule/manual execution均false，
+环境关闭为集成保护；最新真实Run206d仍17:11成功/保存补充各1，不是当前hourly6新执行。
+
+17:15 native-preview的daily17:11/次日next为当时证据，已不能直接用作当前验收清单。
+之后访问记录存在一次PUT200及一次enabled PATCH200；没有请求体或可靠操作者/意图证据，不归因给用户、
+其他会话或代码。当前DB/API/原生显示没有错值映射证据；静态核对读写映射保留kind，但不以静态证明
+所有历史编辑行为。不能仅为对齐清单覆写该策略、修改version/历史、启用取数或自动恢复daily。
+
+23:10再次只读核验scheduled及计数：28候选/34来源/11Run/3ScheduleRun/4Task，
+经营19Job/2820Item/667事实、ShopSession2均保持。诊断业务写入/平台请求0，独立人员API会话正常登出。
+只读证据在ignored display-audit-readonly-summary-20261014.json及带时间的数据库快照，原证据不覆盖。
+环境现可查询、当前小时配置/关闭及历史结果可查看；daily/next专用样本目前不具备，需Main与用户
+按实际期望明确清单/配置后再准备。本次无已证实候选缺陷，不凭此要求81a1改业务；B仍待验收、禁止合dev/发布。
+
+## 独立每日控件样本已准备（2026-10-14 23:49，待人工，禁止发布）
+
+Main人类turn01a13b0c-f93f-7a90-b539-f839fdbf426c已直接授权执行前一完整准备提案；
+只新建Integration配置、不覆盖旧两条，准备后等待人工，未授权发布。实际7db候选及
+8100/5180严格Real来源、同一1.0.6/PID19984/Profile保持；原严格隧道当前20624已现场验证，
+非仅监听判断，真实DB/正常认证API/list/detail/capabilities均成功。
+
+新策略“G2-Selection-B 每日17:11界面验收”，ID `e54dc332-0677-4827-be37-f626c520b6b8`，
+通过正式POST一次创建version1/enabled=true/scheduled=true/kind=daily/Asia/Shanghai17:11，
+合法Team/Shop及条件复用原资源并由Backend授权校验。Backend实际返回next
+`2026-10-15T09:11:00Z`即北京时间2026-10-15 17:11，不硬编码或手写next。
+新策略latest_run/latest_trigger均null，最近结果应为—，不能展示旧策略的成功1件。
+
+保存前确认实际启动两个执行配置false/lifespan off、capabilities两执行false、活动Run0，
+管理配置允许；正式保存只写配置。之后同一来源的保存/list/detail重读一致，23:57另一次
+明确verify-only重读仍version1/同一next，不能把GET重读称为原生抽屉关闭重开。
+旧eb1d version8/hourly6/disabled及b869 version5/hourly3/disabled、关联计划逐行摘要保持；
+仅策略49→50、计划5→6，其它Run11/审计3/PC Task4/28候选34来源、经营与Session保持。
+HTTP观测category/rank/basic_info增量各0、新Run/Worker/成功历史0，执行开关始终false。
+
+同一窗口已从最小化正常置前，原生AX确认5180选品库及G2-SA-V1人员会话；无未保存抽屉。
+鼠标点击选品策略返回coordinate input geometry is unavailable；支持的键盘尝试不能可靠定位，
+正常Ctrl+R之后仍同一登录/页面。未开第二实例、清Profile或用网页截图/JS注入代替原生操作。
+当前停在选品库，需用户点选品策略并搜索G2-Selection-B；实际抽屉回显、取消关闭重开、
+刷新可见一致性及普通/最大化遮挡尚待。新每日查17:11/实际next/最近—，N3查小时3，
+旧自然到点行只查hourly6/关闭及17:11真实成功1件；不再用旧行验收每日。
+本次仅准备：B仍PENDING_HUMAN，不合dev/main、不push/CI/发布，待人类对精确候选明确通过。
+
+## 最终原生确认及发布授权（2026-10-15）
+
+人类在ca97本会话对精确7db候选回复“验收通过”；随后对是否解除准备停止点、继续
+dev/精确CI/Release Gate/B发布，直接选择“继续合并、CI及B发布”。不以Main转述或
+配置准备授权替代这次直接确认，不重复A或本轮已通过的原生验收。
+
+确认范围为同一Real Electron新增定时控件：新专用每日17:11、实际次日17:11及最近结果—；
+原N3编辑回显；原hourly6/关闭策略保留真实历史结果；查看、编辑取消、重开/刷新及普通/最大化。
+平台真实执行证据仍为前述13:54和客户端完全退出时17:11两次自然执行，不把新配置样本冒称执行。
+
+00:18新鲜只读核验：当前仍7db的5180/8100/Integration0045、原Profile及唯一开发实例；
+新每日策略当前version3（人工验收期间已保存），daily17:11/next北京时间10月15日17:11，
+latest_run/trigger仍null，list/detail一致。仅核验不覆写版本；原hourly6/v8及N3/v5及计划保留。
+策略50/计划6、Run11/审计3/PC Task4/候选28/来源34、经营19Job/2820Item/667事实/2Session不变，
+活动Run0，category/rank/basic_info增量各0；两执行开关保持false。没有生产操作。
+
+Gate 2 PASS；下一步正常no-ff合入当前dev（保留最新Green af57的最小builder工程和本地治理链），
+对合并后的实际代码复验并等待精确SHA CI。通过后才登记Green并交Main Release Gate；
+0045仍active至Green核销。生产当前A103b1c80/0044不重复发布，本次仅B，测试配置不带入生产。
+
+## 正常合并及合并树复验（2026-10-15）
+
+正常no-ff Merge `89b8d9f367187b9de967d0fff29d0112ce893c55`，第一parent为保留最新Green
+及全部本地治理的627c531，第二parent为精确7db候选。仅AGENTS/工程02/03三份阶段治理冲突，
+保留现行A已部署与B通过结论、Owner历史及完整B契约；未代修任何业务或迁移。
+相对7db的backend/frontend/Electron/Signer路径差异0；相对af57的发布scripts/.github差异0。
+Root应用Head为0045，42/43/44/45字节均候选原样；原共享stash保持239a68ca。
+
+在实际Merge树运行：Backend定向153/3.01s；Frontend14文件120、lint、typecheck及
+production Real build18.48s全部通过。只读比对现有5180/8100的验收候选与Merge运行字节一致，
+无需重启或重复原生/平台测试；本次新增DB业务写入、平台请求0。
+Git staged秘密匹配0/临时artifact0/冲突0/diff错误0；本地override/.codex/.dev-runtime被忽略。
+后续证据提交只补本节治理，不改变已复验Merge业务树；推送后的精确HEAD须三项CI成功才标Green。

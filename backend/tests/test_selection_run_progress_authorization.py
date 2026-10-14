@@ -14,6 +14,7 @@ from app.modules.product_selection.exceptions import SelectionRunNotFoundError
 from app.modules.product_selection.request_mapping import freeze_short_video_request
 from app.modules.product_selection.run_contract import SelectionRunOriginal
 from app.modules.product_selection.run_service import SelectionRunService
+from app.modules.product_selection.run_repository import SelectionRunRepository
 
 
 def _context(*, reused=False):
@@ -46,7 +47,7 @@ def _service(before, after, visible):
     # A concrete Session or Settings must never be created by this unit test.
     service = object.__new__(SelectionRunService)
     service.facts = SimpleNamespace(_current_actor=Mock(side_effect=[before, after]))
-    service.repository = SimpleNamespace(get_for_actor=Mock(side_effect=visible))
+    service.repository = SimpleNamespace(get_for_actor=Mock(side_effect=visible), validated_request=SelectionRunRepository.validated_request)
     return service
 
 

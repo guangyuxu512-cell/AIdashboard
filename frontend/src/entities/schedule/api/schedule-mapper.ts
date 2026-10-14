@@ -9,7 +9,7 @@ import type {
   ScheduleRunReadDto,
 } from './contracts'
 
-function formatInstant(value: string | null, timezone: string): string {
+export function formatInstant(value: string | null, timezone: string): string {
   if (!value) return '—'
   const parts = new Intl.DateTimeFormat('zh-CN', {
     timeZone: timezone,

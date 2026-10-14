@@ -10,9 +10,10 @@ from types import MappingProxyType
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, model_serializer
 
 from app.modules.product_selection.source import SelectionSourceScope
+from app.modules.product_selection.strategy_queue_key import SelectionStrategyQueueKey
 
 
 CategoryId = Annotated[str, Field(pattern=r"^[0-9]{1,32}$")]
@@ -220,6 +221,15 @@ class SelectionResolvedRequest(BaseModel):
     date_plan: SelectionDatePlan | SelectionRealtimeDatePlan | None = None
     date_outcome: SelectionDateOutcome | None = None
     strategy: SelectionStrategySnapshot | None = None
+    # Server-only conflict isolation; no HTTP command accepts this metadata.
+    strategy_queue: SelectionStrategyQueueKey | None = None
+
+    @model_serializer(mode="wrap")
+    def retain_legacy_json_without_queue(self, handler):
+        value = handler(self)
+        if self.strategy_queue is None:
+            value.pop("strategy_queue", None)
+        return value
 
     @model_validator(mode="after")
     def validate_pages(self) -> "SelectionResolvedRequest":
@@ -283,6 +293,7 @@ class SelectionResolvedRequest(BaseModel):
                 or (self.original.period == "7d" and self.scope.date_type != "21")):
                 raise ValueError("Actual price query must match the explicit original bounds")
             raw = self.model_dump(mode="json")
+            raw.pop("strategy_queue", None)
             raw["version"] = self._date_version()
             raw["original"] = raw["original"] | {"price_mode": "all", "price_above": None, "price_below": None}
             raw["scope"] = raw["scope"] | {"price_bin": "不限"}
@@ -306,6 +317,7 @@ class SelectionResolvedRequest(BaseModel):
             if self.date_outcome is not None and self.date_outcome.fallback_reason == "primary_business_rejection_probe":
                 raise ValueError("Non-default brand cannot probe an unexplained business rejection")
             raw = self.model_dump(mode="json")
+            raw.pop("strategy_queue", None)
             raw["version"] = 6 if self.original.price_mode == "custom" else self._date_version()
             raw["original"]["brand"] = "all"
             raw["scope"]["brand_type"] = "-1"
@@ -334,6 +346,10 @@ class SelectionResolvedRequest(BaseModel):
                 != backup.model_dump(exclude={"begin_date", "end_date"})
             ):
                 raise ValueError("The bounded plan must match the accepted Shanghai date")
+        if self.strategy_queue is not None:
+            if self.strategy is None or self.version < 3:
+                raise ValueError("Queue isolation requires a saved strategy execution")
+            self.strategy_queue.validate_binding(self, strategy_id=self.strategy.strategy_id)
         return self
 
     def _date_version(self) -> int:
@@ -355,15 +371,19 @@ class SelectionResolvedRequest(BaseModel):
             "version": version,
             "page_numbers": list(range(1, (self.original.rank_to + 9) // 10 + 1)),
         }
+        raw.pop("strategy_queue", None)
         return SelectionResolvedRequest.model_validate(raw)
 
     def single_window(self) -> bool:
         return self._date_version() in {4, 5}
 
     def fingerprint(self) -> str:
+        return self.strategy_queue.fingerprint() if self.strategy_queue is not None else self.base_fingerprint()
+
+    def base_fingerprint(self) -> str:
         # Mutable execution outcome never changes the active-request key.
         # Preserve the exact v1 fingerprint for already-applied 0043 records.
-        excluded = {"date_outcome", "strategy"}
+        excluded = {"date_outcome", "strategy", "strategy_queue"}
         if self.version == 1:
             excluded.add("date_plan")
         return sha256(json.dumps(
@@ -468,7 +488,8 @@ class SelectionCapabilitiesRead(BaseModel):
     manual_execution_available: bool
     unavailable_reason: Literal["EXECUTION_DISABLED"] | None
     strategy_save_available: bool = True
-    schedule_available: Literal[False] = False
+    schedule_available: bool = True
+    schedule_execution_enabled: bool = False
     material_collection_available: Literal[False] = False
     supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("realtime", "1d", "7d", "30d")
     supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all", "known", "unknown")

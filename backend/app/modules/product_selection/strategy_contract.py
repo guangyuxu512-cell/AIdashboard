@@ -14,6 +14,7 @@ class SelectionStrategySchedule(BaseModel):
 
     scheduled: bool = False
     kind: Literal["hourly", "daily"] = "hourly"
+    interval_hours: int = Field(default=1, ge=1, le=2147483647, strict=True)
     daily_time: str = Field(default="09:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
 
@@ -58,6 +59,19 @@ class SelectionStrategyToggle(BaseModel):
     expected_version: int = Field(ge=1, strict=True)
 
 
+class SelectionStrategyTriggerRead(BaseModel):
+    """Safe latest ScheduleRun projection, separate from execution state."""
+    model_config = ConfigDict(extra="forbid")
+    schedule_run_id: UUID
+    scheduled_for: datetime
+    created_at: datetime
+    trigger_result: Literal["selection_run", "blocked"]
+    receipt_id: UUID | None = None
+    execution_run_id: UUID | None = None
+    error_code: str | None = None
+    error_stage: str | None = None
+
+
 class SelectionStrategyRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -73,7 +87,9 @@ class SelectionStrategyRead(BaseModel):
     schedule: SelectionStrategySchedule
     # A persists the plan but does not pretend to schedule it.
     schedule_available: bool = False
+    schedule_execution_enabled: bool = False
     next_run_at: datetime | None = None
     latest_run: SelectionRunRead | None = None
+    latest_trigger: SelectionStrategyTriggerRead | None = None
     created_at: datetime
     updated_at: datetime

@@ -31,7 +31,7 @@ class Schedule(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
         CheckConstraint(
-            "schedule_type IN ('once', 'daily', 'weekly')",
+            "schedule_type IN ('once', 'daily', 'weekly', 'hourly')",
             name="schedule_type",
         ),
         CheckConstraint(
@@ -44,7 +44,9 @@ class Schedule(TimestampMixin, Base):
             "(schedule_type = 'daily' AND local_date IS NULL "
             "AND jsonb_array_length(weekdays) = 0) OR "
             "(schedule_type = 'weekly' AND local_date IS NULL "
-            "AND jsonb_array_length(weekdays) > 0)",
+            "AND jsonb_array_length(weekdays) > 0) OR "
+            "(schedule_type = 'hourly' AND local_date IS NULL "
+            "AND jsonb_array_length(weekdays) = 0)",
             name="rule_fields",
         ),
         CheckConstraint(
@@ -55,6 +57,24 @@ class Schedule(TimestampMixin, Base):
             "jsonb_typeof(task_input_json) = 'object'",
             name="task_input_object",
         ),
+        CheckConstraint("target_kind IN ('pc', 'server_selection')", name="target_kind"),
+        CheckConstraint(
+            "(target_kind = 'pc' AND target_device_id IS NOT NULL AND skill_id IS NOT NULL "
+            "AND selection_strategy_id IS NULL AND schedule_type IN ('once', 'daily', 'weekly')) OR "
+            "(target_kind = 'server_selection' AND selection_strategy_id IS NOT NULL "
+            "AND target_device_id IS NULL AND skill_id IS NULL AND parameter_preset_id IS NULL "
+            "AND task_input_json = '{}'::jsonb AND timezone = 'Asia/Shanghai' "
+            "AND schedule_type IN ('hourly', 'daily'))",
+            name="target_fields",
+        ),
+        CheckConstraint(
+            "(target_kind = 'server_selection' AND schedule_type = 'hourly' "
+            "AND local_time IS NULL AND interval_hours IS NOT NULL AND interval_hours > 0) OR "
+            "(schedule_type <> 'hourly' AND local_time IS NOT NULL AND interval_hours IS NULL)",
+            name="time_fields",
+        ),
+        Index("uq_schedules_selection_strategy", "selection_strategy_id", unique=True,
+              postgresql_where=text("target_kind = 'server_selection' AND deleted_at IS NULL")),
         Index(
             "ix_schedules_due",
             "next_run_at",
@@ -107,10 +127,15 @@ class Schedule(TimestampMixin, Base):
         default=True,
         server_default=true(),
     )
-    target_device_id: Mapped[UUID] = mapped_column(
+    target_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="pc", server_default="pc")
+    selection_strategy_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("product_selection_strategies.strategy_id", name="fk_schedules_selection_strategy", ondelete="RESTRICT"),
+    )
+    interval_hours: Mapped[int | None] = mapped_column(Integer)
+    target_device_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("devices.device_id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     parameter_preset_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
@@ -123,10 +148,10 @@ class Schedule(TimestampMixin, Base):
         lazy="selectin",
         order_by="ScheduleShop.position",
     )
-    skill_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    skill_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     execution_display_name: Mapped[str] = mapped_column(String(500), nullable=False)
     schedule_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    local_time: Mapped[time] = mapped_column(SQLTime(timezone=False), nullable=False)
+    local_time: Mapped[time | None] = mapped_column(SQLTime(timezone=False), nullable=True)
     timezone: Mapped[str] = mapped_column(String(100), nullable=False)
     local_date: Mapped[date | None] = mapped_column(SQLDate, nullable=True)
     weekdays: Mapped[list[int]] = mapped_column(
@@ -180,8 +205,14 @@ class ScheduleRun(Base):
     __tablename__ = "schedule_runs"
     __table_args__ = (
         CheckConstraint(
-            "trigger_result IN ('task_created', 'blocked')",
+            "trigger_result IN ('task_created', 'blocked', 'selection_run')",
             name="trigger_result",
+        ),
+        CheckConstraint(
+            "(trigger_result = 'task_created' AND task_id IS NOT NULL AND selection_run_id IS NULL) OR "
+            "(trigger_result = 'blocked' AND task_id IS NULL AND selection_run_id IS NULL) OR "
+            "(trigger_result = 'selection_run' AND task_id IS NULL AND selection_run_id IS NOT NULL)",
+            name="target_result",
         ),
         UniqueConstraint(
             "schedule_id",
@@ -214,6 +245,9 @@ class ScheduleRun(Base):
         Uuid(as_uuid=True),
         ForeignKey("tasks.task_id", ondelete="RESTRICT"),
         nullable=True,
+    )
+    selection_run_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("product_selection_runs.run_id", name="fk_schedule_runs_selection_run", ondelete="RESTRICT"),
     )
     trigger_result: Mapped[str] = mapped_column(String(16), nullable=False)
     trigger_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -105,6 +105,12 @@ const createStrategySchema = (realPrices: boolean) =>
       }),
       scheduled: z.boolean(),
       scheduleKind: z.enum(['hourly', 'daily']),
+      hourlyInterval: z
+        .number()
+        .int()
+        .min(1, '请输入正整数小时')
+        .max(2147483647)
+        .default(1),
       dailyTime: z.string(),
       enabled: z.boolean(),
     })
@@ -146,8 +152,9 @@ export function validateStrategy(
   realPrices = false,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
+  // Immediate retrieval does not validate or save unused schedule metadata.
   const result = (realPrices ? realStrategySchema : strategySchema).safeParse(
-    input,
+    saving ? input : { ...input, hourlyInterval: 1 },
   )
   if (!result.success)
     result.error.issues.forEach((issue) => {

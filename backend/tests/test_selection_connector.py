@@ -108,7 +108,8 @@ def test_disabled_consumer_has_no_database_or_platform_io(monkeypatch):
     asyncio.run(run_executor.execute_selection_runs_forever())
 
 
-def test_enabled_but_unconfirmed_consumer_only_recovers_expired_leases(monkeypatch):
+@pytest.mark.parametrize("capacity", [1, 3])
+def test_enabled_but_unconfirmed_consumer_only_recovers_expired_leases(monkeypatch, capacity):
     from app.modules.product_selection import run_executor
     recovered = []
     class Executor:
@@ -120,16 +121,17 @@ def test_enabled_but_unconfirmed_consumer_only_recovers_expired_leases(monkeypat
     async def stop(_):
         raise asyncio.CancelledError()
 
-    monkeypatch.setattr(run_executor, "get_settings", lambda: Settings(product_selection_execution_enabled=True))
+    monkeypatch.setattr(run_executor, "get_settings", lambda: Settings(product_selection_execution_enabled=True, product_selection_concurrency=capacity))
     monkeypatch.setattr(run_executor, "selection_request_mapping_available", lambda: False)
     monkeypatch.setattr(run_executor, "build_selection_run_executor", lambda *_: Executor())
     monkeypatch.setattr(run_executor.asyncio, "sleep", stop)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(run_executor.execute_selection_runs_forever())
-    assert recovered == [True]
+    assert recovered == [True] * capacity
 
 
-def test_enabled_confirmed_consumer_uses_existing_executor(monkeypatch):
+@pytest.mark.parametrize("capacity", [1, 3])
+def test_enabled_confirmed_consumer_uses_existing_executor(monkeypatch, capacity):
     from app.modules.product_selection import run_executor
     executed = []
     class Executor:
@@ -138,12 +140,12 @@ def test_enabled_confirmed_consumer_uses_existing_executor(monkeypatch):
             return 0
     async def stop(_):
         raise asyncio.CancelledError()
-    monkeypatch.setattr(run_executor, "get_settings", lambda: Settings(product_selection_execution_enabled=True))
+    monkeypatch.setattr(run_executor, "get_settings", lambda: Settings(product_selection_execution_enabled=True, product_selection_concurrency=capacity))
     monkeypatch.setattr(run_executor, "build_selection_run_executor", lambda *_: Executor())
     monkeypatch.setattr(run_executor.asyncio, "sleep", stop)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(run_executor.execute_selection_runs_forever())
-    assert executed == [True]
+    assert executed == [True] * capacity
 
 
 @pytest.mark.parametrize("configured,status,expired,expected", [

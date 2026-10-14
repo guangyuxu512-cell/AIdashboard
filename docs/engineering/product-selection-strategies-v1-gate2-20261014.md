@@ -1,5 +1,23 @@
 # 选品策略 A：Gate 2 与发布交接
 
+## 当前收口结果（2026-10-14）
+
+A最终Candidate `f348565b4db2cb907d9c55c3fd7c85088a1fe467`与必要纯builder工程修复
+`1677fd37d2343cb9f1e732e8f238c9a389167201`已完成Gate及正式发布，最终Green
+`af57cc3258cc4e1ab4582db57b9852956ef433f5`，dev CI
+[38547082755](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38547082755)三项success。
+Main正常no-ff Release及实际生产均为`103b1c80b82f5bfca78467b887d7fafbdeb1ab60`；
+[main CI38549554911](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38549554911)三项success，
+同一[Deploy38550018844](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38550018844)
+attempt2正式success。Main已备份并升级单一0044，三服务/Real资源/NAS及执行/管理开关通过；
+ca97独立只读再次确认完整运行SHA、0044、Backend/Signer/PG健康、Frontend运行和原每日09:00配置。
+具体构建故障、受保护备份和生产证据见`production-buildx-builder-selection-v1-gate2-20261014.md`。
+
+A现DEPLOYED；无新增生产策略/Run/平台请求，未另覆盖生产CRUD或新真实v8执行，
+复用代码未变的已通过集成/原生证据，不把部署健康当作新平台业务通过。
+B7db/0045仍只在Feature/Integration，客户端关闭自然执行已通过、仅新增控件原生确认待用户；
+不混入A。下文候选、首次失败及旧0102恢复为阶段历史，不覆盖当前收口结果。
+
 ## 候选、范围与结论
 
 - Feature：`feat/product-selection-strategies-v1`；Owner81a1，Integrator ca97。

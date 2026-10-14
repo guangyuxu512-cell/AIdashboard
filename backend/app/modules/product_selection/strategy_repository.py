@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from uuid import UUID
+from dataclasses import dataclass
 
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session, aliased
@@ -10,6 +11,12 @@ from app.modules.access.models import TeamShopAccess
 from app.modules.product_selection.models import ProductSelectionRun as Run, ProductSelectionStrategy as Strategy
 from app.modules.product_selection.run_repository import SelectionRunRepository
 from app.modules.shops.models import Shop
+
+
+@dataclass(frozen=True)
+class StrategyRunRecord:
+    execution: Run
+    receipt: Run
 
 
 class SelectionStrategyRepository:
@@ -62,7 +69,8 @@ class SelectionStrategyRepository:
         ).where(Run.strategy_id.in_([row.strategy_id for row in rows])).subquery()
         receipt = aliased(Run)
         execution = aliased(Run)
-        statement = select(ranked.c.strategy_id, execution).join(receipt, receipt.run_id == ranked.c.run_id).join(
+        statement = select(ranked.c.strategy_id, execution, receipt).join(receipt, receipt.run_id == ranked.c.run_id).join(
             execution, execution.run_id == func.coalesce(receipt.reused_run_id, receipt.run_id),
-        ).where(ranked.c.rn == 1, execution.team_id == receipt.team_id, execution.request_shop_id == receipt.request_shop_id)
-        return {key: run for key, run in self.session.execute(statement).all()}
+        ).where(ranked.c.rn == 1, execution.team_id == receipt.team_id, execution.request_shop_id == receipt.request_shop_id,
+            execution.request_fingerprint == receipt.request_fingerprint, execution.reused_run_id.is_(None))
+        return {key: StrategyRunRecord(run, submitted) for key, run, submitted in self.session.execute(statement).all()}
