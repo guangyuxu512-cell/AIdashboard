@@ -26,6 +26,21 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-15候选池独立Feature已正式放行：Owner81a1从精确Green9bb64ac创建
+feat/product-selection-candidate-result-filters-v1，串行复用已核空/最小权限的Feature库
+control_center_feat_product_selection/单一45、8101/4176 strictPort，不清库/复制会话。
+原45 released，实际最高45且无其它active，现唯一active为20261015_0046（down20261013_0045），
+仅Owner编写/Feature验证，不改42–45。最小方向为Team屏蔽/真实append-only批次/今日范围及
+关闭式复用Run/Executor单商品basic_info补充、字段状态/安全原因与旧事实保护；保留rank/PC/B既有行为，
+不新增队列/第二scanner。资源/方向接受不是Gate/立即发布，生产仅已有记录只读0平台诊断。
+7d55独立4177前端阶段无DB/Slot，两项不混；详见各资源Handoff及生产诊断文档。
+
+2026-10-15新增资源：规划人类已确认并正式分配7d55商品数据前端第一阶段，Owner从精确Green
+9bb64ac正常建立feat/shop-product-data-frontend-v1（现场旧detached3128干净，禁止旧基线编码）。
+仅前端Mock/契约只读盘点，独立4177 strictPort，无DB/Backend/Signer/Migration/第二Electron；
+不占81a1的8101/4176及Integration8100/5180，不混候选池修复或B发布。保留Profile/stash/归档，
+新Candidate Gate1后ca97受控预览，人工确认前不合dev或发布；资源文档为当前放行，不是Gate。
+
 2026-10-15 B正式收口：精确Green9bb64ac76bf9e0f51fb1715517cf8c18cef63e22经Main正常no-ff
 Release为`382ca92ee1f415e0e1a4269de6b9a02c382e114d`；main CI38599163540和正式
 Deploy38599686878 attempt1全部success，实际三服务/current同382、单一0045、健康/Real资产通过。
