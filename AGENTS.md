@@ -27,13 +27,39 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-14 人类已直接授权A部署的最小builder入口工程返修，不改业务/依赖/Migration。
+唯一Owner81a1在`feat/production-buildx-builder-selection-v1`从A Green f5正常起分支并同步
+新确认治理Green `07f1cc79bb4f72776a71eddad527faef0d46016f`（精确CI38511410020三项success，
+相对f5运行/迁移/依赖不变）；无DB、端口、服务或Migration Slot。ca97独立Gate2/精确CI后
+交Main仅发布A+必要工程修复，不能代修main/dev或混B0045。7d55只读盘点未分配/未改。
+B7db候选、已应用45与运行/Profile保留，Owner串行Ops不连接旧Feature库写入。
+
+2026-10-14 B当前集成状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`
+独立技术审查接受，已受保护备份并正式升级Integration单一0045，原PC/A/经营/Session逐行保留。
+唯一Real5180/8100匹配此候选及同一Electron/Profile；正式API配置/启停零Run、零平台请求通过。
+仅专用G2-B在北京时间13:54经原扫描自然触发，真实Run成功保存/补充各1、DB/API一致；
+停用/后续扫描无重复，再恢复Integration自动开关关闭。后续正常退出原Electron后，17:11原scanner
+再次真实成功、保存补充各1/DB/API一致，开发主进程及PC Worker均0，独立性现场通过；
+同一1.0.6/Profile/g2人员会话已恢复，B新增N/daily/下次时间/最近结果的集中原生确认尚待用户。
+B Gate2仍进行中，不合dev/main，不冒称部署。该状态替代下文“B未集成/Integration0044”的阶段记录。
+A已Green/main CI成功，但首次生产Deploy因Docker daemon panic/status-stream EOF失败，
+旧生产0102/0043及09:00原配置健康恢复；A未部署。最小builder范围已获上述直接人类授权，
+Owner1677fd3 Draft PR13/Ubuntu CI验证中，Gate1尚未放行，不能按Draft或治理提交发布。
+具体B证据与边界见`docs/engineering/product-selection-server-schedule-v1-gate2-20261014.md`。
+
 2026-10-14 当前A收口：精确候选 `f348565b4db2cb907d9c55c3fd7c85088a1fe467` 已完成
 逐项契约、实际Real5180/8100匹配验证，Integration单一0044及唯一1.0.6 Electron/Profile保留。
 用户已直接确认品牌/策略九列/启停编辑位置，以及最后候选池普通/最大化显示；不重复原生验收。
 正式v8 run `e8221905-d2a2-485e-821f-c1465cd0366a` 冻结pages[1,15]，只请求一次page1及15，
 官方rank150一条真实事实/basic_info/API一致；品牌0/1正式结果与旧v1–v7证据分开复用。
-按正常no-ff合dev后复验并等待精确CI，未Green前不放行Main或释放0044。
-A不接入服务端调度，B独立分支/0045仍reserved；Green后先释放0044、再串行激活0045。
+已正常no-ff合入dev `f5d4866459acf3e29459a9920c03c1e9118a8839`，合后复验通过；
+精确CI `38503895984` 的Backend/Real build/container三项成功，该提交为最新Green，已交Main发布A。
+A不接入服务端调度；现核销A0044为released，并串行激活B0045/down0044，唯一active为B。
+B从精确Green f5d4866正常merge，仍只在登记Feature库实施Model/Migration/PG，未部署或集成B。
+B槽位治理提交不是新Green，不将其或未验B代码混入此次A Release；具体范围以Migration登记为准。
+同日B首Feature升级约束命名不匹配曾安全回滚/返修占位，Owner只修未应用45后正常升级。
+ca97独立只读核实Feature单一0045、八项业务计数0/最小角色，恢复45 active；不冒称B Gate。
+Integration仍0044、A生产发布独立，B自然执行/容量/PC数据兼容须继续实现与验证。
 已存在v8事实，回退须保留兼容Reader、Schema、历史及审计，不能直接回旧版本或降级清数据。
 以下A PARTIAL/旧端口PID为阶段历史，不覆盖本次直接人工确认和实际运行核验；
 最终证据与发布边界见 `docs/engineering/product-selection-strategies-v1-gate2-20261014.md`。

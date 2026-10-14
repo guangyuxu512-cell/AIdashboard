@@ -30,9 +30,22 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-14 人类授权的`feat/production-buildx-builder-selection-v1`是纯发布工程返修，
+Owner81a1、ca97 Gate2、Main Release；无数据库/Schema/Migration需求、不占槽，
+不改42/43/44/45，不连接旧B Feature45实施业务持久化。0045仍唯一active，A/B发布边界不变。
+
+2026-10-14 B当前事实补记：完整7db6578技术审查接受后，ca97使用受保护Integration备份、
+正式Alembic从精确归档升级`control_center_integration`0044→单一0045，原业务/PC/Session保留。
+已应用42/43/44/45字节不改，不降级或清历史；仅专用正式API配置及有限自然timer验收。
+0045继续唯一active，B Gate2未完成/未合dev，不能因Integration迁移或Feature合成测试标released。
+下文“Integration未应用45”保留为之前阶段，不覆盖本次实际升级。生产仍0102/0043，
+A部署故障与B验收独立；Gate2细节见`product-selection-server-schedule-v1-gate2-20261014.md`。
+
 2026-10-14 A最终Candidate f348565的契约/真实闭环及最后候选池原生人工确认已通过，
-正常no-ff集成及合并后验证/精确CI继续。0044仍active直至精确Green，0045仍reserved；
-随后先核销0044，再按下列已审范围激活0045，不能把B未验代码或0045混入A Release。
+正常no-ff精确Green `f5d4866459acf3e29459a9920c03c1e9118a8839` 已合后复验及CI通过，
+CI https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38503895984 三项success。
+现先核销0044为released，再按下列已审范围串行激活0045；唯一active为B，不混入A Release。
+Owner须正常merge精确A Green，再在登记Feature库编写/应用0045及完成Gate1；治理登记不是Green。
 Integration已单一0044，A无后续新增Migration。已有v8事实须保留兼容Reader/Schema/历史审计，
 禁止对生产downgrade或直接回旧Reader；具体发布与合后结果见A Gate2文档。
 
@@ -43,7 +56,7 @@ Integration已单一0044，A无后续新增Migration。已有v8事实须保留�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-strategies-v1` / 81a1（A） | `active`（阶段修补接受，未完成Gate） | 新增一张Team-owned `product_selection_strategies`，UUID/Team/User/Shop RESTRICT、编辑version CAS、白名单相对条件及hourly/daily定时草稿；`product_selection_runs`追加可空RESTRICT策略关联。保存/启停不触发取数或创建Schedule；既有候选/观察/run保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature单一0044保留。4e584cb缺目标库保护的历史拒绝保留；77a1d96先在线查询实际库名，仅允许已登记可重建选品Feature，offline/其它库在锁与DDL前拒绝；再保留排他锁/新数据/并发writer保护。ca97独立8无连接迁移探针及62后端定向通过，upgrade函数未变，未在Integration/生产迁移或降级。Owner真实Feature PG109为开发侧合成平台证据；A参数与真实Gate仍待完成，不以此标Green/DEPLOYED。 |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `released`（2026-10-14 Gate2/精确Green CI通过） | 一张Team-owned策略表、version CAS、相对条件与定时草稿，runs可空RESTRICT策略关联；保存/启停不取数或创建Schedule，旧事实保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature/Integration单一0044；Gate2/最终原生人工确认及合并复验通过，Green f5d4866/CI38503895984。77实际downgrade保护已复核：只允许精确可重建Feature，offline/其他库锁与DDL前拒绝，再锁后查空新实体/并发writer。生产由Main备份后正式升级，已有v8或策略后保留兼容Reader/Schema/事实，不能旧Reader回退或清库；未据CI宣称生产DEPLOYED。 |
 
 ca97已通过受保护应用连接与只读事务核实复用Feature库：owner/role为
 `control_center_dev_user`，单一`20261010_0043`；候选/观察/run/ShopSession均0，
@@ -66,7 +79,7 @@ ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-server-schedule-v1` / 81a1（B） | `reserved`（非DDL技术准备可继续，禁止写/应用新Migration） | 复用schedules/schedule_runs/product_selection_runs，明确pc/server_selection目标、策略FK、服务端每N小时正整数及daily、SelectionRun回执；target/interval组合CHECK及必要索引。选品全局并发初始3可配置、每请求店铺/每非空策略至多1个running，替换旧running常量唯一约束并同步跨进程领取/lease；持久pending队列不因容量占用变blocked。保留全部旧PC数据，不新增表或第二调度器 | A最终候选必须先完成Gate并进入精确Green；先核销0044再串行激活，down `20261013_0044` | 预留 `20261013_0045_product_selection_server_schedule_v1`，计划revision `20261013_0045` | 2026-10-14直接人类turn `01a137cc-b3ba-7071-b6ef-a0dce0ec03a7`更新范围。首次下一严格整点、连续+N小时跨日不重置，COALESCE ONE；准备/平台I/O在锁外，最终人员/Team/Shop/CAS重验，Run/occurrence/next共同提交，保留reused与去重。100计划仅合成PG，须验证跨进程global/店铺/策略上限、忙店跳过、恢复及PC隔离；少量真实自然到点另验。激活后仅登记Feature应用；有B数据保留兼容Reader/Schema/审计，不回旧A镜像或清历史。降级须精确可重建Feature、无新引用及旧唯一约束可恢复，否则fail closed。 |
+| `feat/product-selection-server-schedule-v1` / 81a1（B） | `active`（A Green后串行激活；B Gate2进行中） | 复用schedules/schedule_runs/product_selection_runs，pc/server_selection目标、策略FK、每N正整数/daily、回执/组合CHECK/索引；全局3可配置、同店/有效策略至多1，持久pending容量等待及lease，旧PC保留；不新增表或扫描器 | 正常merge精确A Green `f5d4866459acf3e29459a9920c03c1e9118a8839`，down `20261013_0044` | `20261013_0045_product_selection_server_schedule_v1`，revision `20261013_0045` | 完整7db Gate1/Feature45合成PG完成，ca97接受并正式Integration0044→45、逐行保留和受保护dump可读。正式API配置零执行、一次真实自然timer及DB/API通过，原生/客户端关闭尚待，不能标released或部署。42/43/44/45不改；有B数据保留兼容Reader/Schema/审计，不回旧A镜像或清历史。downgrade仅精确可重建Feature/锁后无B引用、旧非空与唯一可恢复，否则拒绝；生产仍0043/未应用B。 |
 
 2026-10-14 上述B增量只更新reserved范围，不激活0045或执行DDL。A精确候选
 `a75fbf9d86a48adfe585d20a8cef8c05cd786f3e`的品牌/策略九列/原位操作已由上述直接人类记录确认，
@@ -92,6 +105,15 @@ hourly的interval_hours非空且正整数、其它分支明确为空，不能依
 
 B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
 OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
+
+2026-10-14 B激活后的首Feature升级记录：SQLSTATE42704，旧计划表实际约束存在命名约定
+双前缀，短名称不存在；事务完整回滚，Head0044和数据未变。0045曾rejected保留B返修占位，
+Owner仅修正尚未应用0045的已知短/双前缀精确预检及op.f命名，不改旧迁移或手改表/权限。
+正常upgrade成功后，ca97独立只读核实已分配`control_center_feat_product_selection`单一
+`20261013_0045`；候选/观察/run/策略/ShopSession/计划/回执/Task八项均0，应用角色仍最小权限。
+现核销返修并恢复0045 active。该资源/Schema接受不是B完整Gate：数据存在时的迁移/约束、
+并发领取、服务端自然到点、状态投影和PC隔离仍须Owner继续PG/定向验证；Integration与生产未升45。
+已应用45按既有规则保留，后续差异先交Integrator审核，不改写42/43/44或直接修正式库。
 
 最近释放记录：
 
