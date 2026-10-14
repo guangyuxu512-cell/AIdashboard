@@ -84,4 +84,3 @@ def test_0046_roundtrip_preserves_old_facts_b_and_pc(selection_context, postgres
     assert len(before["plans"]) == 2 and len(after["plans"]) == 1  # only synthetic PC explicitly removed
     with context[0].connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261015_0046"
-
