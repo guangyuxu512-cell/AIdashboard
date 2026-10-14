@@ -26,14 +26,15 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-15候选池独立Feature已正式放行：Owner81a1从精确Green9bb64ac创建
-feat/product-selection-candidate-result-filters-v1，串行复用已核空/最小权限的Feature库
-control_center_feat_product_selection/单一45、8101/4176 strictPort，不清库/复制会话。
-原45 released，实际最高45且无其它active，现唯一active为20261015_0046（down20261013_0045），
-仅Owner编写/Feature验证，不改42–45。最小方向为Team屏蔽/真实append-only批次/今日范围及
-关闭式复用Run/Executor单商品basic_info补充、字段状态/安全原因与旧事实保护；保留rank/PC/B既有行为，
-不新增队列/第二scanner。资源/方向接受不是Gate/立即发布，生产仅已有记录只读0平台诊断。
-7d55独立4177前端阶段无DB/Slot，两项不混；详见各资源Handoff及生产诊断文档。
+2026-10-15候选池当前精确Candidate为`51852cc6ab46bdc96533ee2f84de7cc9c1880714`，
+Owner81a1从Green9bb64ac独立开发并完成Gate1。ca97独立技术、Backend默认807项/Frontend124项、
+lint/typecheck/Real build及正式认证Integration API验证通过；受保护备份可读后正式升级Integration
+单一0046，12表旧字段逐行摘要与HuanYu valid v6保持。8100/5180 strictPort已加载精确候选，
+原生开发Electron已退出、正式客户端仍开；保留Profile，不启动第二实例，集中原生确认尚待准备。
+专用G2-CandidateResults为合成平台+真实Integration数据库/API证据，实际平台请求0，
+不是本候选真实平台成功或原生验收。0046仍唯一active/down45，42–45字节不改；无dev业务合并、
+新Green或本Feature生产授权。生产保持B382/0045；7d55独立4177不混入。
+详见候选池Gate2记录，ca97治理HEAD不代替Green9bb或授权发布。
 
 2026-10-15新增资源：规划人类已确认并正式分配7d55商品数据前端第一阶段，Owner从精确Green
 9bb64ac正常建立feat/shop-product-data-frontend-v1（现场旧detached3128干净，禁止旧基线编码）。
