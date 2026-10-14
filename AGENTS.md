@@ -32,6 +32,10 @@
 相对f5运行/迁移/依赖不变）；无DB、端口、服务或Migration Slot。ca97独立Gate2/精确CI后
 交Main仅发布A+必要工程修复，不能代修main/dev或混B0045。7d55只读盘点未分配/未改。
 B7db候选、已应用45与运行/Profile保留，Owner串行Ops不连接旧Feature库写入。
+工程1677 Gate1/独立Gate2已通过，正常no-ff新Green
+`af57cc3258cc4e1ab4582db57b9852956ef433f5`精确CI38547082755三项success，已交Main连续A发布。
+该提交代码Head0044、相对A业务/依赖/迁移/Electron不变且不含B7db；是最新Green，
+下文f5/07为已保留基线，后续纯记录提交不能取代af57。生产DEPLOYED须等Main实际核验，不据CI宣称。
 
 2026-10-14 B当前集成状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`
 独立技术审查接受，已受保护备份并正式升级Integration单一0045，原PC/A/经营/Session逐行保留。

@@ -58,3 +58,17 @@ manual selection/经营手动和每日Asia/Shanghai09:00仅昨日原配置。
 有A v8或策略事实后，恢复保留兼容Reader/Schema/事实与失败审计，不能直接旧Reader回退或downgrade清历史。
 任何新失败保留明确阶段/安全日志并针对原因处理，不据CI或参数smoke标DEPLOYED。
 本工程无Electron字节变化，无新安装包需求；既有1.0.6及Profile保留。
+
+## 精确合并Green与正式Release交接
+
+正常no-ff为`af57cc3258cc4e1ab4582db57b9852956ef433f5`，父治理d4f7384与精确1677。
+合后4工程payload与审查候选相同，A业务/依赖/全部Migration/CI/Electron差异0、B7db非祖先，
+5Shell语法及安全检查通过；远端dev精确匹配、工作树干净。
+精确[CI38547082755](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38547082755)
+completed/success，三项Backend/Real build/container-runtime全部success；该SHA为正式最新Green。
+后续纯治理记录不自动成为Green，不让Main追随最新dev带入B。
+
+已交Main持续A+工程Release，不再等授权/A视觉/B模块。受保护的builder键必须在main push前
+备份并设置，避免main CI后自动Deploy落回已知故障default；其它配置/密码不变。
+Main实际Compose能力、builder/本地image store、新鲜DB备份/main CI/正式Deploy与生产核验尚待回执。
+此时A仍未标DEPLOYED，B原生清单独立等待用户，不混入0045。
