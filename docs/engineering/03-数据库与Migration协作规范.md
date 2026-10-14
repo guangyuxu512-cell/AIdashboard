@@ -75,6 +75,14 @@ hourly的interval_hours非空且正整数、其它分支明确为空，不能依
 明确与手动/后续成功的优先级、reused canonical及PC隔离。新NULL/类型/引用出现后，
 恢复旧NOT NULL/global唯一索引须先满足真实数据前置条件，禁止填假值或清历史绕过。
 
+同日B未来多运行关联边界预审：提交/复用与claim须统一选品决策锁及行锁顺序，
+候选/运行两侧均检查有效direct与reused策略集合。两个既有running已占用不同店铺时，
+不可为coalesce再引入同策略重叠；允许仅此冲突使用原Run表创建服务器限定的策略隔离pending，
+稳定队列键包含既有冻结基键与策略UUID，不含随机值、occurrence或策略版本。已有隔离active
+先复用，不因占用解除切换canonical；日期、平台scope、Source hash与旧Run不改，
+不新增表/状态/通用队列，不写blocked吞掉待执行发生时刻。具体冻结JSON/Reader由Owner
+在B正式契约实现并通过PG交错/去重/恢复验证；此设计批准不是Gate、容量3实测或0045激活。
+
 B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
 OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
 
