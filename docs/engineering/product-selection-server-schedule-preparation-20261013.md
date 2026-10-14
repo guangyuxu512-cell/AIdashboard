@@ -145,3 +145,19 @@ pending，基键+稳定S ID，不含版本/occurrence/随机新日期；不改�
 先查已有隔离active、回放旧日期、最终授权和全集合、兼容最终A1–8及新Reader要求均列明。
 当前只落合同；两个既有running、隔离pending/fence、容量3/100事件与完整自然触发仍待A精确Green/
 active45的最终代码和真实索引验证。不得把这次11/55项当已完成该未来场景，不混A/不部署。
+
+## 2026-10-14 冲突隔离键纯契约准备
+
+`strategy_queue_key.py` 仅准备已获ca97技术认可的受限键，当前没有生产调用、Run新格式写入、
+隔离入队或新Schema。键只包含固定格式版本、原冻结条件指纹和稳定策略UUID；拒绝额外的提交键、
+occurrence、策略版本、日期、Team和随机元数据。必须绑定已有策略快照，HTTP命令不能自传此键。
+键工具不代替人员/Team/Shop授权；正式写入和Reader仍须在最终A代码上校验资源、行FK和快照。
+
+纯测试检查同条件/不同策略版本稳定、可变日期结果不改变基键、错策略/错基键/额外参数被拒绝，
+且原请求、主备计划、页面序列和来源范围不被修改。实际命令：
+`pytest -o addopts="" tests/test_selection_strategy_queue_key.py tests/test_selection_claim_capacity.py tests/test_selection_hourly_interval.py tests/test_schedule_time_rules.py tests/test_schedule_service.py tests/test_schedule_scheduler.py -q --tb=short`，
+**65 pass / 2.21s**；其中14项为本次纯键检查，51项为既有重叠回归，不相加当作数据库并发证据。
+
+A候选池普通/最大化窗口已获用户确认，ca97正进行正常集成和精确CI；不再要求重复视觉确认。
+0045仍reserved，Owner不提前写/应用DDL。收到精确Green及正式active登记后正常merge再完成队列
+运行、Schema和100计划PG；当前尚不具备完整B或真实定时验收证据。
