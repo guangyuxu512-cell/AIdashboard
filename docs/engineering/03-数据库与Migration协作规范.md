@@ -59,7 +59,12 @@ ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-server-schedule-v1` / 81a1（B） | `reserved`（非DDL技术准备可继续，禁止写/应用新Migration） | 复用schedules/schedule_runs，明确pc/server_selection目标、策略FK、服务端hourly/daily及SelectionRun回执；组合CHECK/partial unique，保留全部旧PC数据。不新增表或第二调度器 | A必须先完成Gate及精确Green；down `20261013_0044` | 预留 `20261013_0045_product_selection_server_schedule_v1`，计划revision `20261013_0045` | 审核依据为43637bb内正式B提案。准备与平台I/O在锁外，最终真实人员/Team/Shop/CAS重验，Run/occurrence/next共同提交；包含reused活动、COALESCE ONE、PC SQL过滤及原PC API回归。激活后在登记Feature验证，真实B运行后保留兼容Reader/Schema/审计，只关闭server生成/执行；不得将旧A镜像直接当作兼容回退。 |
+| `feat/product-selection-server-schedule-v1` / 81a1（B） | `reserved`（非DDL技术准备可继续，禁止写/应用新Migration） | 复用schedules/schedule_runs/product_selection_runs，明确pc/server_selection目标、策略FK、服务端每N小时正整数及daily、SelectionRun回执；target/interval组合CHECK及必要索引。选品全局并发初始3可配置、每请求店铺/每非空策略至多1个running，替换旧running常量唯一约束并同步跨进程领取/lease；持久pending队列不因容量占用变blocked。保留全部旧PC数据，不新增表或第二调度器 | A最终候选必须先完成Gate并进入精确Green；先核销0044再串行激活，down `20261013_0044` | 预留 `20261013_0045_product_selection_server_schedule_v1`，计划revision `20261013_0045` | 2026-10-14直接人类turn `01a137cc-b3ba-7071-b6ef-a0dce0ec03a7`更新范围。首次下一严格整点、连续+N小时跨日不重置，COALESCE ONE；准备/平台I/O在锁外，最终人员/Team/Shop/CAS重验，Run/occurrence/next共同提交，保留reused与去重。100计划仅合成PG，须验证跨进程global/店铺/策略上限、忙店跳过、恢复及PC隔离；少量真实自然到点另验。激活后仅登记Feature应用；有B数据保留兼容Reader/Schema/审计，不回旧A镜像或清历史。降级须精确可重建Feature、无新引用及旧唯一约束可恢复，否则fail closed。 |
+
+2026-10-14 上述B增量只更新reserved范围，不激活0045或执行DDL。A精确候选
+`a75fbf9d86a48adfe585d20a8cef8c05cd786f3e`的品牌/策略九列/原位操作已由上述直接人类记录确认，
+真实品牌两次正式Run/事实/API证据保留；新候选池宽度与目标分页收尾尚待Owner最终Candidate。
+因此A0044仍active，尚无新Green，B只继续非DDL准备，不用已通过子项提前释放Slot。
 
 B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
 OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
