@@ -1,11 +1,11 @@
-# 选品策略 B 服务端定时 Gate 2（通过，已合并，精确CI待完成）
+# 选品策略 B 服务端定时 Gate 2（通过，已正式部署）
 
 Owner81a1 / Integration ca97。精确候选
 `7db6578e67225efe8b77830712ccdbc72d6803cb`，分支
 `feat/product-selection-server-schedule-v1`，基于A精确Green
 `f5d4866459acf3e29459a9920c03c1e9118a8839`正常合入依赖。
 7db相对完整运行候选6e0ad128仅两处契约记录订正，代码、Schema及测试字节一致。
-**2026-10-15：技术、真实后台及同一原生Electron人工验收均通过；人类已明确授权继续合并、CI及B发布。下文各“尚待/禁止发布”为该时间点的阶段记录，不覆盖本项最新结论。已正常合dev并复验，精确CI待完成；尚未部署，不提前标Green/DEPLOYED。**
+**2026-10-15：Gate 2/直接人工确认、正常no-ff合并、合并树复验、精确dev/main CI与正式部署全部通过。Green为9bb64ac76bf9e0f51fb1715517cf8c18cef63e22；Main及实际生产382ca92ee1f415e0e1a4269de6b9a02c382e114d、单一0045、服务与持久定时开关已核验，B DEPLOYED。下文待确认/禁止发布/待部署仅为阶段历史。**
 
 ## 独立技术审查与证据边界
 
@@ -216,3 +216,61 @@ production Real build18.48s全部通过。只读比对现有5180/8100的验收�
 无需重启或重复原生/平台测试；本次新增DB业务写入、平台请求0。
 Git staged秘密匹配0/临时artifact0/冲突0/diff错误0；本地override/.codex/.dev-runtime被忽略。
 后续证据提交只补本节治理，不改变已复验Merge业务树；推送后的精确HEAD须三项CI成功才标Green。
+
+## 精确Green及正式Release Handoff（2026-10-15）
+
+最终dev `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22` 已推送，9bb相对Merge89仅两份证据文档，
+业务树不变。CI [38597874343](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38597874343)
+实际head_sha精确9bb，Backend、frontend-real-build、container-runtime三项全部success；
+不是额度恢复、仅提交或本地测试替代CI。推送时Git干净/远端精确相同、stash未动。
+现核销0045为released，无新的active Slot；本节及Slot后续纯治理记录不是另一个Green。
+
+交Main仅使用精确Green9bb正常合main并等待精确main CI、正式Deploy及实际生产核验。
+先新鲜生产0044备份/restore list可读，正式升级单一0045；保留旧PC计划/Task、A事实、经营和Session。
+使用已有可信mirror/独立builder及原部署校验，不改业务/依赖/迁移，不重发A旧Release。
+生产持久配置启用BACKEND_PRODUCT_SELECTION_SCHEDULE_ENABLED，既有EXECUTION/管理true保持、
+并发默认3/原scanner10秒50批次；先检查合法计划/活动队列，没有测试残留或需猜测转换的旧草稿。
+Integration样本不复制生产；生产当前选品策略/Run0、旧PC3计划、经营09:00仅昨日原配置保留。
+有B数据后应用恢复须保留兼容Reader/Schema/审计，先关闭server路径，不直接回旧A镜像或降级清库。
+无Electron/Preload/Worker变化，与实际1.0.6壳相同，不为此额外安装或清Profile。
+
+核验actual SHA/镜像/Real资产、45单一Head、Backend/Frontend/Signer健康及持久配置与实际getter；
+客户端关闭独立性复用已完成的真实自然到点证据，不追加100请求或重复人工验收。
+截至本项交接仍未部署B；服务端已发布、运行正常后另记录实际结果。
+
+## 正式部署与独立生产核验（2026-10-15 01:19）
+
+Main完成Release Gate，正常no-ff main `382ca92ee1f415e0e1a4269de6b9a02c382e114d`，
+parents为已发布103及精确Green9bb；ca97 fetch独立比对运行/迁移/发布工程相对Green差异0。
+[main CI38599163540](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38599163540)
+精确382三项success；[正式Deploy38599686878](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38599686878)
+attempt1全部步骤success。始终同一次部署；先传输3,388,510字节归档，再实际构建/下载依赖，
+没有盲重跑、改依赖/业务/Migration、prune或重启daemon。慢下载与失败明确区分。
+
+Main新鲜生产pre45 dump981523字节，SHA256
+`2179dd829bf34d2f15039f175ee8e485cd27a95d793d9a654f0704c9f35488ef`，
+pg_restore list340项可读，受保护保留。既有正式workflow应用0044→单一`20261013_0045`；
+迁移及启用前后11张相关表旧字段计数和逐行摘要由Main核对全部一致，保留失败/审计/事实/Session。
+
+健康部署后Main仅受保护地持久设置`BACKEND_PRODUCT_SELECTION_SCHEDULE_ENABLED=true`，
+其它配置及凭据逐字节保持、配置0600；仅当前正式Compose重载Backend使缓存配置重新加载。
+ca97在01:19用既有strict SSH及生产最小应用角色进行独立只读核验：
+
+- current及Backend/Frontend/Signer三镜像Tag均为完整382；Backend/Signer/PG healthy、Frontend running，
+  无OOM/启动错误，重启计数0（正常重建另见started_at，不能把0冒称从未重建）。
+- 数据库`control_center_prod`唯一Head45；实际get_settings执行/管理/定时均true，concurrency3，
+  原scanner10秒/50批次。经营manual/daily均true、09:00:00保持，原仅昨日逻辑未改。
+- PC3计划/29审计/52Task、4Session、经营34Job/393Item/124事实与pre45计数一致；
+  生产选品策略/Run/候选/来源及server plan均0、活动0。没有复制Integration样本或制造生产取数。
+- Main核验真实CIFS/NAS marker及app999权限、Real资产与实际镜像一致、旧103入口保留/缺失脚本404；
+  ca97独立HTTPS `/health`200/application-json/严格Backend `{status:ok}`契约，PC/Mobile入口200、
+  当前`/assets/index-DeNBqHxh.js`200/680629字节。初始诊断误用`/api/health`404为未登记路径，
+  不是生产Backend失败，不将错误路径与正式`/health`结果混报。
+
+Main临时跟进已核销；正式安全回执在其ignored release-receipt-382ca92e.json，备份/审计受保护。
+ca97全部生产核验业务写入、平台请求0；没有新增生产人员登录、CRUD、真实自然到点或原生操作。
+生产尚无定时策略，不能宣称已执行生产定时任务；复用精确候选已有两次Integration真实自然执行
+及关闭客户端/直接人工确认作为业务Gate。每N小时/每日能力现已正式启用，用户正常保存合法策略后运行。
+无Electron/Preload/Worker改动，不新打包、不清Profile，实际1.0.6保持；Integration两个执行开关false。
+0045 released、无active Slot；后续纯记录提交不替代Green9bb，不自动推Main触发额外部署。
+应用回退仍保留兼容Reader/45/审计与新事实，不盲回旧A或降级清库。B本轮正式收口。

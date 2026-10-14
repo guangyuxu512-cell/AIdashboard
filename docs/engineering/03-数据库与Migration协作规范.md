@@ -30,6 +30,28 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-15新资源：B45已released，实际版本文件/登记最高45，无其它active；规划人类批准
+候选池独立Feature及单项基础补充后，Owner最小方案经ca97审查接受，现串行分配唯一active如下。
+retained Feature库已新鲜只读核单一45/八项业务0/无其它连接/最小角色，复用而不清库；
+Owner正常建分支并同步本次治理后才可编写/应用新46，不改42–45、不用Integration/生产开发。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `active`（最小方向/资源接受，尚未应用46） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 精确Green9bb64ac，单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046`，down `20261013_0045` | Owner Feature PG/合成I/O验证权限/幂等/真批次/未知/迟到/保值/旧PC/B；新明细标志即使0items、新basic/状态/屏蔽及审计存在均拒绝丢语义。downgrade仅精确可重建Feature+锁后无新状态，保旧事实；共享/生产留新Reader/Schema，关新入口，不降级清历史。资源与方向不是Gate或发布。 |
+
+2026-10-15最终B：0045已released，当前无active Slot。精确Green9bb经Release Gate正常Main382，
+main CI38599163540/正式Deploy38599686878 attempt1 success；生产经新鲜pre45受保护备份981523字节/
+restore list340项可读后正式升级单一`20261013_0045`，Main11表旧字段摘要及ca97只读SHA/Head/计数核验通过。
+只启用持久B定时配置并正常重载Backend，实际并发3；原PC/A/经营/Session保留，生产选品0/未复制夹具。
+Feature/Integration45与实际1.0.6/Profile保持；有B数据后保留兼容Reader/Schema/审计，不回旧A或downgrade。
+下表B当前结果已核销，其余active/reserved或旧生产43/44为已保留阶段历史；未分配下一Slot。
+
+2026-10-15最新：B Gate1/Gate2/直接人类原生确认及正常no-ff合后验证全部通过；精确Green
+`9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`/CI38597874343三项success已核实并推送。
+现正式核销`20261013_0045_product_selection_server_schedule_v1`为released，无active Slot。
+Feature/Integration已单一0045、生产此时仍0044；Main受权在Release Gate/新鲜备份可读后正式升级。
+原Slot表active为已保留历史，不覆盖本项核销；未分配下一Slot、不开发其它Feature或释放旧数据。
+
 2026-10-15 B精确7db已完成Gate 2及直接人类原生确认、获得继续合并/CI/发布授权。
 0045仍唯一active至精确dev CI Green核销，Feature/Integration单一0045及旧事实保留；
 本次不改已应用迁移。生产当前A103b1c80/0044，0045由Main在Release Gate、备份可读后正式升级，
@@ -107,7 +129,7 @@ ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-server-schedule-v1` / 81a1（B） | `active`（A Green后串行激活；B Gate2进行中） | 复用schedules/schedule_runs/product_selection_runs，pc/server_selection目标、策略FK、每N正整数/daily、回执/组合CHECK/索引；全局3可配置、同店/有效策略至多1，持久pending容量等待及lease，旧PC保留；不新增表或扫描器 | 正常merge精确A Green `f5d4866459acf3e29459a9920c03c1e9118a8839`，down `20261013_0044` | `20261013_0045_product_selection_server_schedule_v1`，revision `20261013_0045` | 完整7db Gate1/Feature45合成PG完成，ca97接受并正式Integration0044→45、逐行保留和受保护dump可读。正式API配置零执行、一次真实自然timer及DB/API通过，原生/客户端关闭尚待，不能标released或部署。42/43/44/45不改；有B数据保留兼容Reader/Schema/审计，不回旧A镜像或清历史。downgrade仅精确可重建Feature/锁后无B引用、旧非空与唯一可恢复，否则拒绝；生产仍0043/未应用B。 |
+| `feat/product-selection-server-schedule-v1` / 81a1（B） | `released`（精确Green9bb及正式生产382收口） | 复用schedules/schedule_runs/product_selection_runs，pc/server_selection目标、策略FK、每N正整数/daily、回执/组合CHECK/索引；全局3可配置、同店/有效策略至多1，持久pending容量等待及lease，旧PC保留；不新增表或扫描器 | 正常merge精确A Green `f5d4866459acf3e29459a9920c03c1e9118a8839`，down `20261013_0044` | `20261013_0045_product_selection_server_schedule_v1`，revision `20261013_0045` | 7db Gate1/Feature合成PG、ca97正式Integration升级与真实自然执行（一次客户端完全退出）/原生确认/合后复验/精确CI全通过；Main备份可读后正式生产45，11表旧字段保留/ca97只读复核。42/43/44/45字节不改；有B数据保留兼容Reader/Schema/审计，不回旧A或降级清历史。downgrade仅精确可重建Feature/锁后无B引用、旧非空与唯一可恢复，否则拒绝；生产单一45，服务/持久开关核验通过。 |
 
 2026-10-14 上述B增量只更新reserved范围，不激活0045或执行DDL。A精确候选
 `a75fbf9d86a48adfe585d20a8cef8c05cd786f3e`的品牌/策略九列/原位操作已由上述直接人类记录确认，

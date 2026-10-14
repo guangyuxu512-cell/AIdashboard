@@ -26,6 +26,36 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-15候选池独立Feature已正式放行：Owner81a1从精确Green9bb64ac创建
+feat/product-selection-candidate-result-filters-v1，串行复用已核空/最小权限的Feature库
+control_center_feat_product_selection/单一45、8101/4176 strictPort，不清库/复制会话。
+原45 released，实际最高45且无其它active，现唯一active为20261015_0046（down20261013_0045），
+仅Owner编写/Feature验证，不改42–45。最小方向为Team屏蔽/真实append-only批次/今日范围及
+关闭式复用Run/Executor单商品basic_info补充、字段状态/安全原因与旧事实保护；保留rank/PC/B既有行为，
+不新增队列/第二scanner。资源/方向接受不是Gate/立即发布，生产仅已有记录只读0平台诊断。
+7d55独立4177前端阶段无DB/Slot，两项不混；详见各资源Handoff及生产诊断文档。
+
+2026-10-15新增资源：规划人类已确认并正式分配7d55商品数据前端第一阶段，Owner从精确Green
+9bb64ac正常建立feat/shop-product-data-frontend-v1（现场旧detached3128干净，禁止旧基线编码）。
+仅前端Mock/契约只读盘点，独立4177 strictPort，无DB/Backend/Signer/Migration/第二Electron；
+不占81a1的8101/4176及Integration8100/5180，不混候选池修复或B发布。保留Profile/stash/归档，
+新Candidate Gate1后ca97受控预览，人工确认前不合dev或发布；资源文档为当前放行，不是Gate。
+
+2026-10-15 B正式收口：精确Green9bb64ac76bf9e0f51fb1715517cf8c18cef63e22经Main正常no-ff
+Release为`382ca92ee1f415e0e1a4269de6b9a02c382e114d`；main CI38599163540和正式
+Deploy38599686878 attempt1全部success，实际三服务/current同382、单一0045、健康/Real资产通过。
+新鲜pre45备份可读、11表旧字段逐行保留；生产持久定时开关及实际getterexecution/management/
+schedule全true、并发3，原经营09:00仅昨日保持。生产选品尚0策略/Run，不复制Integration夹具或
+冒称生产到点实测；已完成真实Integration/关闭客户端及直接人工证据复用，不追加取数。
+0045 released/无active，实际1.0.6/Profile及Integration执行false保持；临时跟进已核销。
+ca97只读复核/记录，无生产写入；详细证据见B Gate2文档，后续治理不是新Green且不再自动部署。
+
+2026-10-15最新Green为`9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`，B精确7db正常no-ff
+合dev89b8d9f，合后复验/直接人类确认及CI38597874343三项success均通过。0045正式released，
+无active Slot；Main已获B发布授权，必须用精确Green9bb而非后续纯治理HEAD合main/CI/正式部署。
+生产此时仍A103/0044；最终部署/45/健康/开关核验由Main负责，不以Green或交接冒称DEPLOYED。
+本条替代下列待CI/Slot active及af57最新Green的阶段结论；无额外功能/平台请求/原生复验。
+
 2026-10-15当前B状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`的技术、
 Integration0045/正式API/真实自然到点（含客户端完全退出）及同一原生Electron验收均通过。
 新独立每日配置只供新增控件验收，旧N3/hourly6及真实历史保留；用户已直接回复“验收通过”并
