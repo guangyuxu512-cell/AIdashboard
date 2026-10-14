@@ -68,6 +68,12 @@ export interface SelectionObservationDto {
   observation_id: string
   last_run_id: string | null
   candidate_id: string
+  blocked?: boolean
+  blocked_changed_at?: string | null
+  discovery_state?: 'new' | 'known' | 'unknown'
+  hit_at?: string | null
+  result_run_id?: string | null
+  basic_info_status?: SelectionBasicStatusDto | null
   product_id: string
   platform: 'douyin'
   request_shop_id: string
@@ -110,6 +116,106 @@ export interface SelectionReadParams {
   search?: string
   sortField?: 'checked_at' | 'first_on_shelf_date' | 'rank'
   sortDirection?: 'asc' | 'desc'
+  blocked?: boolean
+  resultScope?: SelectionResultScope
+  strategyId?: string | null
+  receiptId?: string | null
+}
+
+export type SelectionResultScope = 'all' | 'today' | 'today_new' | 'today_known'
+export interface SelectionBasicStatusDto {
+  version: 1
+  attempted_at: string
+  request_started_at: string
+  state: 'succeeded' | 'partial' | 'failed'
+  category_path: SelectionBasicFieldDto
+  first_on_shelf_date: SelectionBasicFieldDto
+  bad_comment_rate: SelectionBasicFieldDto
+  error_code: string | null
+  error_stage: string | null
+  platform_business_code: string | number | null
+}
+export interface SelectionBasicFieldDto {
+  last_attempt_state: 'available' | 'missing' | 'null' | 'invalid' | 'unknown'
+  last_success_at: string | null
+}
+export interface SelectionResultContextDto {
+  receipt_id: string | null
+  execution_run_id: string | null
+  detail_state: 'recorded' | 'not_recorded' | null
+  execution: SelectionExecutionSummary | null
+  unknown_discovery_count: number
+}
+export interface SelectionBatchDto {
+  receipt_id: string
+  execution_run_id: string
+  submitted_at: string
+  detail_state: 'recorded' | 'not_recorded'
+  execution: SelectionExecutionSummary
+  visible_item_count?: number | null
+}
+export interface SelectionBasicRunDto {
+  run_id: string
+  operation_kind: 'basic_info'
+  target_observation_id: string
+  status: SelectionExecutionSummary['status']
+  saved_count: 0
+  supplemented_count: number
+  supplement_failed_count: number
+  error_code: string | null
+  error_stage: string | null
+  platform_business_code: string | number | null
+  created_at: string
+  finished_at: string | null
+}
+export interface SelectionBasicReceiptDto {
+  receipt_id: string
+  submission_key: string
+  execution_run_id: string
+  reused: boolean
+  execution: SelectionBasicRunDto
+}
+export async function blockSelectionCandidate(
+  id: string,
+  blocked: boolean,
+): Promise<SelectionObservationDto> {
+  return (
+    await httpClient.patch<SelectionObservationDto>(
+      `${basePath}/observations/${encodeURIComponent(id)}/blocked`,
+      { blocked },
+    )
+  ).data
+}
+export async function submitSelectionBasic(
+  id: string,
+  submissionKey: string,
+): Promise<SelectionBasicReceiptDto> {
+  return (
+    await httpClient.post<SelectionBasicReceiptDto>(
+      `${basePath}/basic-info-runs`,
+      { observation_id: id, submission_key: submissionKey },
+    )
+  ).data
+}
+export async function readSelectionBasic(
+  id: string,
+): Promise<SelectionBasicRunDto | null> {
+  return (
+    await httpClient.get<SelectionBasicRunDto | null>(
+      `${basePath}/observations/${encodeURIComponent(id)}/basic-info-run`,
+    )
+  ).data
+}
+export async function readSelectionBatches(
+  strategyId: string,
+  shopId: string | null,
+): Promise<PageDto<SelectionBatchDto>> {
+  return (
+    await httpClient.get<PageDto<SelectionBatchDto>>(
+      `${basePath}/strategies/${encodeURIComponent(strategyId)}/batches`,
+      { params: { shop_id: shopId ?? undefined, page: 1, page_size: 100 } },
+    )
+  ).data
 }
 
 const basePath = '/api/v1/product-selection'
@@ -126,6 +232,8 @@ export interface SelectionCapabilitiesDto {
   custom_price_available?: boolean
   first_listed_filter_available?: boolean
   max_rank?: number
+  candidate_block_available?: boolean
+  basic_info_available?: boolean
 }
 export interface SelectionRunCreateDto extends SelectionRelativeDto {
   submission_key: string
@@ -207,29 +315,36 @@ export async function readSelectionRun(
 
 export async function readSelectionCandidates(
   params: SelectionReadParams,
-): Promise<PageDto<SelectionObservationDto>> {
-  const response = await httpClient.get<PageDto<SelectionObservationDto>>(
-    `${basePath}/candidates`,
-    {
-      params: {
-        page: params.page,
-        page_size: params.pageSize,
-        shop_id: params.shopId ?? undefined,
-        source_scope_hash: params.sourceScopeHash ?? undefined,
-        search: params.search || undefined,
-        sort_field: params.sortField ?? 'checked_at',
-        sort_direction: params.sortDirection ?? 'desc',
-      },
+): Promise<
+  PageDto<SelectionObservationDto> & { context?: SelectionResultContextDto }
+> {
+  const response = await httpClient.get<
+    PageDto<SelectionObservationDto> & { context?: SelectionResultContextDto }
+  >(`${basePath}/candidates`, {
+    params: {
+      page: params.page,
+      page_size: params.pageSize,
+      shop_id: params.shopId ?? undefined,
+      source_scope_hash: params.sourceScopeHash ?? undefined,
+      search: params.search || undefined,
+      sort_field: params.sortField ?? 'checked_at',
+      sort_direction: params.sortDirection ?? 'desc',
+      blocked: params.blocked ?? false,
+      result_scope: params.resultScope ?? 'all',
+      strategy_id: params.strategyId ?? undefined,
+      receipt_id: params.receiptId ?? undefined,
     },
-  )
+  })
   return response.data
 }
 
 export async function readSelectionObservation(
   observationId: string,
+  receiptId?: string | null,
 ): Promise<SelectionObservationDto> {
   const response = await httpClient.get<SelectionObservationDto>(
     `${basePath}/observations/${encodeURIComponent(observationId)}`,
+    { params: { receipt_id: receiptId ?? undefined } },
   )
   return response.data
 }

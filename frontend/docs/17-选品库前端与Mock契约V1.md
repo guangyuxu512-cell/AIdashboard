@@ -1,5 +1,15 @@
 # 选品库前端与 Mock 交互 V1
 
+2026-10-15候选池独立返修（Feature，未过Gate2/未部署）：保留12列/主题/图片/尺寸和原策略结构。
+现有FilterBar增加结果范围all/today/today_new/today_known、真实策略名及策略后执行批次（默认最近）。
+沿用路由query恢复/返回；刷新只查询DB。旧批次not_recorded明确“未记录商品明细”，不假成功空。
+ShopSelector新增可选clearable/defaultfalse，仅候选池开启；清除→全部授权请求店铺/page1/清勾选。
+屏蔽/恢复为正式Team商品全源配置，单独能力控制；资料/竞品/手机仍禁用，不整体available=true。
+“更新基础信息”仅basic_info三字段，正式异步Run/最近进度；字段提示分别说明最新尝试与旧有效值时间。
+成功空、平台拒绝、解析、签名、网络、明确Session失效分层；不猜风险/Token，不清旧值/四视频。
+静态“手动未启用”大横幅移为按钮附近紧凑状态，读取失败仍明确可重试；Mock只演示并保留演示标识。
+正式DTO/路由见Backend schema及独立候选结果契约，不把本记录当原生验收。
+
 2026-10-14 B正式绑定实施：每N小时使用原AppNumberInput，频率/每日时间及布局保留；N保存到后端同一配置。
 原执行方式位置读取真实next_run_at，复用Schedule formatInstant以上海显示；环境自动开关关闭明确标记。
 最新ScheduleRun准备失败独立安全投影，不用旧成功/伪0掩盖，不暴露原错误message；真实Session失效提示重新登录。

@@ -7,6 +7,7 @@ import { AppButton } from '@/shared/ui'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import type { BatchCollectReceipt, SelectionService } from '../model/contracts'
 import CandidatePool from './CandidatePool.vue'
+import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
 
 const TableStub = defineComponent({
   name: 'DataTable',
@@ -61,6 +62,27 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
+  it('clearing shop removes the filter, resets pagination/selection and only reads results', async () => {
+    const service = createSelectionMockHandlers()
+    const candidates = vi.spyOn(service, 'candidates')
+    const retrieve = vi.spyOn(service, 'retrieve')
+    const { wrapper, table, dispose } = render(service)
+    await flushPromises()
+    const selector = wrapper.findComponent(ShopSelector)
+    expect(selector.props('clearable')).toBe(true)
+    selector.vm.$emit('update:modelValue', 'shop-fixture-001')
+    await flushPromises()
+    table.vm.$emit('update:checkedRowKeys', ['candidate-000'])
+    selector.vm.$emit('update:modelValue', null)
+    await flushPromises()
+    expect(candidates.mock.calls.at(-1)?.[0]).toMatchObject({
+      shopId: null,
+      page: 1,
+    })
+    expect(table.props('checkedRowKeys')).toEqual([])
+    expect(retrieve).not.toHaveBeenCalled()
+    dispose()
+  })
   it.each([
     ['succeeded', 0, null, '所选范围暂无候选商品'],
     [

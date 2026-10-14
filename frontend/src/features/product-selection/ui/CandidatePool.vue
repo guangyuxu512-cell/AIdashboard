@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, inject, ref, watch } from 'vue'
+import { routeLocationKey, routerKey } from 'vue-router'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import { useElementSize } from '@vueuse/core'
 import {
@@ -42,24 +43,22 @@ import {
 import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
 import { runResult } from '../model/run-display'
+import { candidateFilters, candidateRoute } from '../model/candidate-query'
+import { formatCandidateTime } from '../model/candidate-display'
+import { basicFieldHint } from '../model/basic-display'
 
 const props = defineProps<{ service: SelectionService; contextKey: string }>()
 const emit = defineEmits<{ 'refresh-run-feedback': [] }>()
 const message = useMessage()
-const filters = ref<CandidateQuery>({
-  page: 1,
-  pageSize: 10,
-  shopId: null,
-  keyword: '',
-  blocked: false,
-  sortField: null,
-  sortOrder: false,
-})
-const keyword = ref(''),
+const route = inject(routeLocationKey, null)
+const router = inject(routerKey, null)
+const filters = ref<CandidateQuery>(candidateFilters(route?.query ?? {}))
+const keyword = ref(filters.value.keyword),
   checked = ref<DataTableRowKey[]>([]),
   detailId = ref<string | null>(null),
   busy = ref(false)
 const selectionHint = ref<{ x: number; y: number } | null>(null)
+const detailRunId = ref<string | null>(null)
 function showSelectionHint(event: Event) {
   const checkbox =
     event.target instanceof Element
@@ -81,14 +80,102 @@ const batchFailures = computed(
     batchReceipt.value?.results.filter((result) => result.state === 'failed') ??
     [],
 )
+const strategySearch = ref('')
+const strategies = useQuery({
+  queryKey: computed(() => [
+    'selection-filter-strategies',
+    props.contextKey,
+    strategySearch.value,
+  ]),
+  queryFn: async () =>
+    props.service.strategiesPage
+      ? (
+          await props.service.strategiesPage({
+            page: 1,
+            pageSize: 100,
+            search: strategySearch.value,
+          })
+        ).items
+      : props.service.strategies(),
+  retry: false,
+})
+const selectedStrategy = useQuery({
+  queryKey: computed(() => [
+    'selection-filter-strategy',
+    props.contextKey,
+    filters.value.strategyId,
+  ]),
+  enabled: computed(
+    () =>
+      !!filters.value.strategyId &&
+      !!props.service.strategy &&
+      !strategies.data.value?.some(
+        (row) => row.id === filters.value.strategyId,
+      ),
+  ),
+  queryFn: ({ queryKey }) => props.service.strategy!(String(queryKey[2])),
+  retry: false,
+})
+const strategyOptions = computed(() => {
+  const options = (strategies.data.value ?? []).map((row) => ({
+    label: row.name,
+    value: row.id,
+  }))
+  if (
+    selectedStrategy.data.value &&
+    !options.some((option) => option.value === selectedStrategy.data.value!.id)
+  )
+    options.unshift({
+      label: selectedStrategy.data.value.name,
+      value: selectedStrategy.data.value.id,
+    })
+  return options
+})
+const batches = useQuery({
+  queryKey: computed(() => [
+    'selection-batches',
+    props.contextKey,
+    filters.value.strategyId,
+    filters.value.shopId,
+  ]),
+  enabled: computed(
+    () => !!filters.value.strategyId && !!props.service.batches,
+  ),
+  queryFn: ({ queryKey }) =>
+    props.service.batches!(String(queryKey[2]), queryKey[3] as string | null),
+  retry: false,
+})
+const batchOptions = computed(() => [
+  { label: '最近执行', value: 'latest' },
+  ...(batches.data.value ?? []).map((batch) => ({
+    label: `${formatCandidateTime(batch.submitted_at)} · ${runResult(batch.execution)}${batch.detail_state === 'not_recorded' ? ' · 未记录明细' : batch.visible_item_count == null ? '' : ` · 可见 ${batch.visible_item_count} 项`}`,
+    value: batch.receipt_id,
+  })),
+])
+const queryReady = computed(
+  () =>
+    !filters.value.strategyId ||
+    !props.service.batches ||
+    !!filters.value.receiptId ||
+    batches.isSuccess.value,
+)
+const resolvedFilters = computed<CandidateQuery>(() => ({
+  ...filters.value,
+  receiptId:
+    filters.value.receiptId ??
+    (filters.value.strategyId
+      ? (batches.data.value?.[0]?.receipt_id ?? null)
+      : null),
+}))
 const query = useQuery({
   queryKey: computed(() => [
     'selection-candidates',
     props.contextKey,
-    { ...filters.value },
+    { ...resolvedFilters.value },
   ]),
   queryFn: ({ queryKey }) =>
     props.service.candidates(queryKey[2] as CandidateQuery),
+  enabled: queryReady,
   retry: false,
   placeholderData: keepPreviousData,
 })
@@ -120,6 +207,10 @@ watch(
   },
 )
 const emptyDescription = computed(() => {
+  const context = query.data.value?.context
+  if (context?.detail_state === 'not_recorded')
+    return '该历史批次未记录商品明细'
+  if (context?.execution) return runResult(context.execution)
   if (props.service.available || filters.value.keyword) return '暂无候选商品'
   const run = latestRun.data.value
   if (!run) return '尚未获取候选，请在选品策略中执行手动选品'
@@ -132,6 +223,9 @@ async function refreshList() {
   await Promise.all([
     query.refetch(),
     ...(props.service.latestRun ? [latestRun.refetch()] : []),
+    ...(props.service.batches && filters.value.strategyId
+      ? [batches.refetch()]
+      : []),
   ])
 }
 const search = useAutoSearch(() => {
@@ -143,6 +237,41 @@ function filterChanged() {
   filters.value.page = 1
   checked.value = []
 }
+watch(
+  () => route?.query,
+  (value) => {
+    if (!value) return
+    const restored = candidateFilters(value)
+    if (JSON.stringify(restored) === JSON.stringify(filters.value)) return
+    search.cancel()
+    filters.value = restored
+    keyword.value = restored.keyword
+    checked.value = []
+  },
+)
+watch(
+  filters,
+  (value) => {
+    if (
+      !router ||
+      !route ||
+      JSON.stringify(candidateFilters(route.query)) === JSON.stringify(value)
+    )
+      return
+    void router.push({ query: { ...route.query, ...candidateRoute(value) } })
+  },
+  { deep: true },
+)
+function setStrategy(value: string | number | null) {
+  filters.value.strategyId = value === null ? null : String(value)
+  filters.value.receiptId = null
+  filterChanged()
+}
+function setBatch(value: string | number | null) {
+  filters.value.receiptId =
+    value === null || value === 'latest' ? null : String(value)
+  filterChanged()
+}
 function setBlocked(value: string | number | null) {
   filters.value.blocked = value === 'blocked'
   filterChanged()
@@ -151,6 +280,9 @@ function reset() {
   keyword.value = ''
   filters.value.shopId = null
   filters.value.blocked = false
+  filters.value.resultScope = 'all'
+  filters.value.strategyId = null
+  filters.value.receiptId = null
   search.submitNow()
 }
 function setPage(value: number) {
@@ -174,6 +306,13 @@ async function act(
   if (busy.value) return
   busy.value = true
   try {
+    if (action !== 'collect' && props.service.blockCandidate) {
+      await props.service.blockCandidate(row.id, action === 'block')
+      message.success(action === 'block' ? '已屏蔽候选商品' : '已恢复候选商品')
+      checked.value = []
+      await query.refetch()
+      return
+    }
     const receipt = await props.service.demoAction(row.id, action)
     message.info(receipt.message)
     checked.value = []
@@ -227,6 +366,20 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
   checked.value = []
 }
 const missing = () => h(NText, { depth: 3 }, () => '—')
+const basicCell = (
+  row: SelectionCandidate,
+  name: 'category_path' | 'first_on_shelf_date' | 'bad_comment_rate',
+  content: ReturnType<typeof h> | string,
+) =>
+  h(
+    NTooltip,
+    { disabled: !row.basicInfoStatus && !row.basicInfoError },
+    {
+      trigger: () => content,
+      default: () =>
+        basicFieldHint(row.basicInfoStatus, name) || row.basicInfoError,
+    },
+  )
 const wrappedHeader = (label: string) => () =>
   h('span', { style: { whiteSpace: 'normal' } }, label)
 const tableRef = ref<InstanceType<typeof DataTable> | null>(null)
@@ -329,13 +482,17 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     align: 'center',
     render: (row) => {
       const leaf = categoryLeaf(row.category)
-      return leaf === '—'
-        ? missing()
-        : h(
-            NEllipsis,
-            { tooltip: true, style: { width: '100%', textAlign: 'center' } },
-            () => leaf,
-          )
+      return basicCell(
+        row,
+        'category_path',
+        leaf === '—'
+          ? missing()
+          : h(
+              NEllipsis,
+              { tooltip: true, style: { width: '100%', textAlign: 'center' } },
+              () => leaf,
+            ),
+      )
     },
   },
   {
@@ -403,9 +560,13 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         ? filters.value.sortOrder
         : false,
     render: (row) =>
-      row.negativeReviewRate === null
-        ? missing()
-        : formatReviewRate(row.negativeReviewRate),
+      basicCell(
+        row,
+        'bad_comment_rate',
+        row.negativeReviewRate === null
+          ? missing()
+          : formatReviewRate(row.negativeReviewRate),
+      ),
   },
   {
     key: 'listedAt',
@@ -417,7 +578,11 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     sortOrder:
       filters.value.sortField === 'listedAt' ? filters.value.sortOrder : false,
     render: (row) =>
-      row.listedAt ? formatCandidateDate(row.listedAt) : missing(),
+      basicCell(
+        row,
+        'first_on_shelf_date',
+        row.listedAt ? formatCandidateDate(row.listedAt) : missing(),
+      ),
   },
   {
     key: 'collectionStatus',
@@ -447,6 +612,8 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
             size: 'small',
             onClick: () => {
               detailId.value = row.id
+              detailRunId.value =
+                row.resultRunId ?? filters.value.receiptId ?? null
             },
           },
           () => '详情',
@@ -467,7 +634,11 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
             tone: 'text',
             size: 'small',
             themeOverrides: { paddingSmall: '0' },
-            disabled: busy.value || !props.service.available,
+            disabled:
+              busy.value ||
+              !(
+                props.service.candidateBlockAvailable ?? props.service.available
+              ),
             onClick: () => act(row, row.blocked ? 'restore' : 'block'),
           },
           () => (row.blocked ? '恢复' : '屏蔽'),
@@ -489,6 +660,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       <FilterField width="md"
         ><ShopSelector
           v-model="filters.shopId"
+          clearable
           placeholder="全部请求店铺"
           @update:model-value="filterChanged"
       /></FilterField>
@@ -505,13 +677,47 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       /></FilterField>
       <FilterField width="sm"
         ><AppSelect
-          :disabled="!service.available"
+          :disabled="!(service.candidateBlockAvailable ?? service.available)"
+          aria-label="屏蔽状态筛选"
           :model-value="filters.blocked ? 'blocked' : 'normal'"
           :options="[
             { label: '未屏蔽', value: 'normal' },
             { label: '已屏蔽', value: 'blocked' },
           ]"
           @update:model-value="setBlocked"
+      /></FilterField>
+      <FilterField width="sm"
+        ><AppSelect
+          v-model="filters.resultScope"
+          aria-label="结果范围"
+          :options="[
+            { label: '全部结果', value: 'all' },
+            { label: '今日结果', value: 'today' },
+            { label: '今日新发现', value: 'today_new' },
+            { label: '今日已发现', value: 'today_known' },
+          ]"
+          @update:model-value="filterChanged"
+      /></FilterField>
+      <FilterField width="md"
+        ><AppSelect
+          :model-value="filters.strategyId"
+          placeholder="全部策略"
+          aria-label="选品策略筛选"
+          clearable
+          filterable
+          remote
+          :loading="strategies.isPending.value"
+          :options="strategyOptions"
+          @search="strategySearch = $event"
+          @update:model-value="setStrategy"
+      /></FilterField>
+      <FilterField v-if="filters.strategyId" width="md"
+        ><AppSelect
+          :model-value="filters.receiptId ?? 'latest'"
+          :options="batchOptions"
+          aria-label="执行批次"
+          :loading="batches.isPending.value"
+          @update:model-value="setBatch"
       /></FilterField>
       <template #actions
         ><AppButton @click="reset">重置</AppButton
@@ -521,12 +727,33 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       >
     </FilterBar>
     <ManagementListSection>
+      <NAlert
+        v-if="
+          strategies.isError.value ||
+          selectedStrategy.isError.value ||
+          batches.isError.value
+        "
+        type="error"
+        >{{
+          strategies.error.value?.message ??
+          selectedStrategy.error.value?.message ??
+          batches.error.value?.message
+        }}</NAlert
+      >
       <NAlert v-if="latestRun.isError.value" type="warning">{{
         latestRun.error.value?.message
       }}</NAlert>
       <TableToolbar aria-label="候选商品批量操作">
         <NText v-if="checked.length" :depth="3"
           >已选 {{ checked.length }} 项</NText
+        >
+        <NText
+          v-if="query.data.value?.context?.unknown_discovery_count"
+          depth="3"
+          >{{
+            query.data.value.context.unknown_discovery_count
+          }}
+          项发现状态未知</NText
         >
         <template #actions>
           <AppButton
@@ -554,7 +781,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         ref="tableRef"
         :columns="columns"
         :data="query.data.value?.items ?? []"
-        :loading="query.isPending.value"
+        :loading="queryReady && query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
         :theme-overrides="{
@@ -588,6 +815,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     >
     <CandidateDetailDrawer
       :id="detailId"
+      :receipt-id="detailRunId"
       :service="service"
       :context-key="contextKey"
       @close="detailId = null"

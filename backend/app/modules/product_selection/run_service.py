@@ -100,6 +100,8 @@ class SelectionRunService:
             team_id = current.require_team_id()
             old = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
             if old is not None:
+                if old.operation_kind != "rank":
+                    raise SelectionRunConflictError()
                 visible = self.repository.get_for_actor(current, old.run_id)
                 if visible is None:
                     raise SelectionRunNotFoundError()
@@ -171,6 +173,8 @@ class SelectionRunService:
                     # Replayed keys never resolve relative dates again.
                     row = self.repository.find_submission(team_id=team_id, user_id=current.user_id, key=command.submission_key)
                     if row is not None:
+                        if row.operation_kind != "rank":
+                            raise SelectionRunConflictError()
                         saved = SelectionResolvedRequest.model_validate(row.request_conditions)
                         if (saved.original != original or row.strategy_id != command.strategy_id
                             or (saved.strategy is not None and saved.strategy.version != command.strategy_version)):
@@ -207,6 +211,7 @@ class SelectionRunService:
                             run_id=uuid4(), team_id=team_id, created_by_user_id=current.user_id,
                             request_shop_id=command.shop_id, submission_key=command.submission_key,
                             strategy_id=command.strategy_id,
+                            operation_kind="rank", result_detail_version=1 if active is None else None,
                             request_fingerprint=active.request_fingerprint if active is not None else shared.fingerprint(),
                             request_conditions=shared.model_dump(mode="json"),
                             reused_run_id=active.run_id if active is not None else None,
@@ -358,14 +363,14 @@ class SelectionRunService:
             # write any facts. Do not require a now-revoked actor to end a run.
             row = self.repository.fence(claim, at)
             if error is not None:
-                request = SelectionResolvedRequest.model_validate(row.request_conditions)
-                if request.date_outcome is not None and request.date_outcome.state == "fallback_checking":
+                request = self.repository.validated_request(row)
+                if row.operation_kind == "rank" and request.date_outcome is not None and request.date_outcome.state == "fallback_checking":
                     outcome = request.date_outcome.model_copy(update={"state": "fallback_failed"})
                     row.request_conditions = request.model_copy(update={"date_outcome": outcome}).model_dump(mode="json")
                 row.error_code, row.error_stage, row.platform_business_code = safe_run_error(error)
                 row.status = "partial" if row.saved_count else "failed"
             else:
-                row.status = "partial" if row.supplement_failed_count or row.saved_count != row.result_count else "succeeded"
+                row.status = "partial" if row.supplement_failed_count or (row.operation_kind == "rank" and row.saved_count != row.result_count) else "succeeded"
                 if row.supplement_failed_count:
                     row.error_code, row.error_stage = "PRODUCT_SELECTION_BASIC_INFO_INCOMPLETE", "basic_info"
                 if row.result_count is None:

@@ -38,6 +38,11 @@ request body、query、Cookie、Authorization、密码、Token、验证码或 Se
 
 ## Access Management 审计范围
 
+候选池0046增量复用audit_logs：product_selection.block_candidate／product_selection.restore_candidate，
+target_type=selection_candidate，目标同Team Candidate UUID；只保存blocked_before/blocked_after、
+当前授权Actor及候选保存Team。同状态重复不审计，变更与审计同事务；查询/失败不造成功审计。
+basic尝试由原Run记录，不另建通用日志或保存平台原响应/凭据。
+
 审计只记录成功提交的管理写入；读取和失败写入不创建审计记录，失败由请求运行日志覆盖。下列 action
 值直接对应当前 `AccessManagementService` 的真实成功方法，避免另造未存在的业务动作：
 

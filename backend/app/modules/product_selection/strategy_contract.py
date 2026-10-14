@@ -90,6 +90,7 @@ class SelectionStrategyRead(BaseModel):
     schedule_execution_enabled: bool = False
     next_run_at: datetime | None = None
     latest_run: SelectionRunRead | None = None
+    latest_receipt_id: UUID | None = None
     latest_trigger: SelectionStrategyTriggerRead | None = None
     created_at: datetime
     updated_at: datetime

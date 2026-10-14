@@ -1,5 +1,8 @@
 # 09-基础组件与 Design System 规范
 
+ShopSelector的可选clearable默认false，透传既有AppSelect；要求必选的策略/其它入口保持默认。
+候选池筛选显式开启，null表示撤销店铺过滤，不表示自动选择团队或取得平台会话。
+
 ## 1. 目的
 
 本规范解决以下问题：

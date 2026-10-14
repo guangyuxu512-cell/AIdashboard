@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 
 from app.modules.product_selection.source import SelectionSourceScope
+from app.modules.product_selection.basic_contract import BasicInfoStatus
 from app.modules.product_selection.run_contract import SelectionDateProvenance, SelectionRealtimeDateProvenance, SelectionHistoricalDateProvenance
 
 
@@ -95,6 +96,12 @@ class SelectionObservationRead(BaseModel):
     observation_id: UUID
     last_run_id: UUID | None = None
     candidate_id: UUID
+    blocked: bool = False
+    blocked_changed_at: datetime | None = None
+    discovery_state: Literal["new", "known", "unknown"] = "unknown"
+    hit_at: datetime | None = None
+    result_run_id: UUID | None = None
+    basic_info_status: BasicInfoStatus | None = None
     product_id: StrictStr
     platform: Literal["douyin"]
     request_shop_id: UUID

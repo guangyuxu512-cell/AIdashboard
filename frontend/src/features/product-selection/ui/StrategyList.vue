@@ -1,15 +1,10 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, h, inject, nextTick, onBeforeUnmount, ref } from 'vue'
+import { routerKey } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useElementSize } from '@vueuse/core'
 import type { PageResult } from '@/shared/api'
-import {
-  useMessage,
-  type DataTableColumns,
-  NText,
-  NAlert,
-  NTooltip,
-} from 'naive-ui'
+import { useMessage, type DataTableColumns, NText, NTooltip } from 'naive-ui'
 import {
   DataTable,
   FilterBar,
@@ -37,6 +32,7 @@ const emit = defineEmits<{
   'refresh-run-feedback': []
 }>()
 const message = useMessage()
+const router = inject(routerKey, null)
 const page = ref(1),
   pageSize = ref(20),
   keyword = ref(''),
@@ -370,7 +366,25 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
     ellipsis: { tooltip: true },
     render: (row) =>
       row.latestResult
-        ? h(NText, { depth: 2 }, () => row.latestResult)
+        ? row.latestReceiptId && router
+          ? h(
+              AppButton,
+              {
+                tone: 'link',
+                size: 'small',
+                onClick: () =>
+                  router.push({
+                    path: '/product-selection',
+                    query: {
+                      strategy_id: row.id,
+                      receipt_id: row.latestReceiptId!,
+                      result_scope: 'all',
+                    },
+                  }),
+              },
+              () => row.latestResult,
+            )
+          : h(NText, { depth: 2 }, () => row.latestResult)
         : h(NText, { depth: 3 }, () => '—'),
   },
   {
@@ -430,6 +444,15 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
           @keydown.enter="search.onEnter"
       /></FilterField>
       <template #actions
+        ><NText
+          v-if="
+            service.manual &&
+            !capability.isPending.value &&
+            !capability.isError.value &&
+            !capability.data.value?.manual_execution_available
+          "
+          depth="3"
+          >当前环境未启用获取</NText
         ><AppButton @click="refresh">刷新</AppButton
         ><AppButton @click="message.info('达人登录尚未接入')"
           >达人登录</AppButton
@@ -452,14 +475,6 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
           retryable
           @retry="capability.refetch()"
         />
-        <NAlert
-          v-else-if="
-            !capability.isPending.value &&
-            !capability.data.value?.manual_execution_available
-          "
-          type="warning"
-          >此环境手动获取未启用，已入库结果仍可查询</NAlert
-        >
         <ErrorState
           v-if="latest.isError.value"
           description="获取进度查询失败"

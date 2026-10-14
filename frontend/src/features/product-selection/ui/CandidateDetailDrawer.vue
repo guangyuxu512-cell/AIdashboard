@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { Copy } from '@lucide/vue'
 import {
@@ -9,7 +9,6 @@ import {
   NTooltip,
   NCollapse,
   NCollapseItem,
-  NAlert,
   useMessage,
 } from 'naive-ui'
 import {
@@ -32,22 +31,112 @@ import {
   sourceProductUrl,
 } from '../model/candidate-display'
 import ExternalProductImage from './ExternalProductImage.vue'
+import {
+  basicRunStatus,
+  basicStatus,
+  basicFieldHint,
+} from '../model/basic-display'
 
 const props = defineProps<{
   id: string | null
   service: SelectionService
   contextKey: string
+  receiptId?: string | null
 }>()
 const emit = defineEmits<{ close: []; updated: [] }>()
 const message = useMessage()
 const busy = ref(false)
 const query = useQuery({
-  queryKey: computed(() => ['selection-candidate', props.contextKey, props.id]),
+  queryKey: computed(() => [
+    'selection-candidate',
+    props.contextKey,
+    props.id,
+    props.receiptId ?? null,
+  ]),
   enabled: computed(() => !!props.id),
-  queryFn: ({ queryKey }) => props.service.candidate(String(queryKey[2])),
+  queryFn: ({ queryKey }) =>
+    props.service.candidate(String(queryKey[2]), queryKey[3] as string | null),
   retry: false,
 })
 const row = computed(() => query.data.value)
+const capabilities = useQuery({
+  queryKey: computed(() => ['selection-capabilities', props.contextKey]),
+  enabled: computed(() => !!props.id && !!props.service.manual),
+  queryFn: () => props.service.manual!.capabilities(),
+  retry: false,
+})
+const basicRun = useQuery({
+  queryKey: computed(() => ['selection-basic-run', props.contextKey, props.id]),
+  enabled: computed(() => !!props.id && !!props.service.basic),
+  queryFn: ({ queryKey }) => props.service.basic!.latest(String(queryKey[2])),
+  retry: false,
+  refetchInterval: (query) =>
+    ['pending', 'running'].includes(query.state.data?.status ?? '')
+      ? 1000
+      : false,
+})
+const basicBusy = computed(
+  () =>
+    busy.value ||
+    ['pending', 'running'].includes(basicRun.data.value?.status ?? ''),
+)
+const basicFeedback = computed(() =>
+  basicRun.data.value
+    ? basicRunStatus(basicRun.data.value)
+    : (basicStatus(row.value?.basicInfoStatus) ??
+      row.value?.basicInfoError ??
+      null),
+)
+const basicKey = ref<string | null>(null)
+watch(
+  () => [props.id, props.contextKey],
+  () => {
+    basicKey.value = null
+  },
+)
+watch(
+  () => basicRun.data.value?.status,
+  (value, previous) => {
+    if (
+      value &&
+      previous &&
+      ['pending', 'running'].includes(previous) &&
+      !['pending', 'running'].includes(value)
+    ) {
+      if (value === 'succeeded')
+        message.success(basicRunStatus(basicRun.data.value!))
+      else message.warning(basicRunStatus(basicRun.data.value!))
+      void query.refetch()
+      emit('updated')
+    }
+  },
+)
+async function updateBasic() {
+  if (!row.value || basicBusy.value) return
+  if (!props.service.basic) {
+    await act('metrics')
+    return
+  }
+  const id = row.value.id,
+    contextKey = props.contextKey
+  busy.value = true
+  try {
+    basicKey.value ??= crypto.randomUUID()
+    const receipt = await props.service.basic.submit(id, basicKey.value)
+    if (props.id !== id || props.contextKey !== contextKey) return
+    basicKey.value = null
+    message.info(
+      receipt.reused ? '已复用正在进行的基础信息更新' : '基础信息更新已排队',
+    )
+    await basicRun.refetch()
+  } catch (error) {
+    if (props.id === id && props.contextKey === contextKey)
+      message.error(error instanceof Error ? error.message : '基础信息提交失败')
+    // Keep the same key after an uncertain HTTP receipt; retry cannot create two runs.
+  } finally {
+    busy.value = false
+  }
+}
 const sourceUrl = computed(() => sourceProductUrl(row.value?.sourceUrl ?? null))
 const change = computed(() => (row.value ? rankChange(row.value) : null))
 const descriptionTheme = {
@@ -131,12 +220,6 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
       @retry="query.refetch()"
     />
     <div v-else-if="row" class="candidate-detail">
-      <NAlert
-        v-if="row.basicInfoError"
-        type="warning"
-        title="商品补充信息未完成"
-        >{{ row.basicInfoError }}</NAlert
-      >
       <div class="candidate-detail__summary">
         <ExternalProductImage :src="row.imageUrl" :title="row.title" />
         <div class="candidate-detail__identity">
@@ -301,18 +384,38 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               >商品商家身份未确认</NText
             >
           </NDescriptionsItem>
-          <NDescriptionsItem label="完整类目">{{
-            row.category
-          }}</NDescriptionsItem>
+          <NDescriptionsItem label="完整类目"
+            ><NTooltip :disabled="!row.basicInfoStatus"
+              ><template #trigger
+                ><NText :depth="row.category === '—' ? 3 : 1">{{
+                  row.category
+                }}</NText></template
+              >{{
+                basicFieldHint(row.basicInfoStatus, 'category_path')
+              }}</NTooltip
+            ></NDescriptionsItem
+          >
           <NDescriptionsItem label="差评率"
-            ><NText :depth="row.negativeReviewRate === null ? 3 : 1">{{
-              formatReviewRate(row.negativeReviewRate)
-            }}</NText></NDescriptionsItem
+            ><NTooltip :disabled="!row.basicInfoStatus"
+              ><template #trigger
+                ><NText :depth="row.negativeReviewRate === null ? 3 : 1">{{
+                  formatReviewRate(row.negativeReviewRate)
+                }}</NText></template
+              >{{
+                basicFieldHint(row.basicInfoStatus, 'bad_comment_rate')
+              }}</NTooltip
+            ></NDescriptionsItem
           >
           <NDescriptionsItem label="首次上架日期"
-            ><NText :depth="row.listedAt === null ? 3 : 1">{{
-              formatCandidateDate(row.listedAt)
-            }}</NText></NDescriptionsItem
+            ><NTooltip :disabled="!row.basicInfoStatus"
+              ><template #trigger
+                ><NText :depth="row.listedAt === null ? 3 : 1">{{
+                  formatCandidateDate(row.listedAt)
+                }}</NText></template
+              >{{
+                basicFieldHint(row.basicInfoStatus, 'first_on_shelf_date')
+              }}</NTooltip
+            ></NDescriptionsItem
           >
           <NDescriptionsItem label="商品资料采集状态"
             ><NText v-if="row.collectionStatus === 'unknown'" depth="3">—</NText
@@ -373,13 +476,36 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
       </section>
     </div>
     <template #footer>
+      <NText v-if="basicFeedback" depth="3">{{ basicFeedback }}</NText>
+      <NText
+        v-else-if="
+          service.basic &&
+          capabilities.data.value?.basic_info_available === false
+        "
+        depth="3"
+        >当前环境未启用基础补充</NText
+      >
+      <NText
+        v-if="capabilities.isError.value || basicRun.isError.value"
+        type="error"
+        >{{
+          capabilities.error.value?.message ?? basicRun.error.value?.message
+        }}</NText
+      >
       <div class="candidate-detail__actions">
         <AppButton @click="emit('close')">关闭</AppButton>
         <AppButton
           tone="secondary"
-          :disabled="!row || busy || !service.available"
-          @click="act('metrics')"
-          >更新罗盘指标</AppButton
+          :disabled="
+            !row ||
+            basicBusy ||
+            (service.basic
+              ? capabilities.data.value?.basic_info_available !== true
+              : !service.available)
+          "
+          :loading="basicBusy"
+          @click="updateBasic"
+          >更新基础信息</AppButton
         >
         <AppButton
           tone="primary"

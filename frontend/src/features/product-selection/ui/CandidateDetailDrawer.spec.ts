@@ -136,7 +136,7 @@ describe('candidate details preserve the draft contract', () => {
     expect(
       wrapper
         .findAllComponents(AppButton)
-        .find((button) => button.text() === '更新罗盘指标')!
+        .find((button) => button.text() === '更新基础信息')!
         .props('tone'),
     ).toBe('secondary')
     selectedId.value = 'candidate-005'
