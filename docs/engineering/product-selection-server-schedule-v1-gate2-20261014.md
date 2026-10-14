@@ -1,11 +1,11 @@
-# 选品策略 B 服务端定时 Gate 2（通过，合并及精确CI待完成）
+# 选品策略 B 服务端定时 Gate 2（通过，已合并，精确CI待完成）
 
 Owner81a1 / Integration ca97。精确候选
 `7db6578e67225efe8b77830712ccdbc72d6803cb`，分支
 `feat/product-selection-server-schedule-v1`，基于A精确Green
 `f5d4866459acf3e29459a9920c03c1e9118a8839`正常合入依赖。
 7db相对完整运行候选6e0ad128仅两处契约记录订正，代码、Schema及测试字节一致。
-**2026-10-15：技术、真实后台及同一原生Electron人工验收均通过；人类已明确授权继续合并、CI及B发布。下文各“尚待/禁止发布”为该时间点的阶段记录，不覆盖本项最新结论。尚未合dev或部署，不提前标Green/DEPLOYED。**
+**2026-10-15：技术、真实后台及同一原生Electron人工验收均通过；人类已明确授权继续合并、CI及B发布。下文各“尚待/禁止发布”为该时间点的阶段记录，不覆盖本项最新结论。已正常合dev并复验，精确CI待完成；尚未部署，不提前标Green/DEPLOYED。**
 
 ## 独立技术审查与证据边界
 
@@ -202,3 +202,17 @@ latest_run/trigger仍null，list/detail一致。仅核验不覆写版本；原ho
 Gate 2 PASS；下一步正常no-ff合入当前dev（保留最新Green af57的最小builder工程和本地治理链），
 对合并后的实际代码复验并等待精确SHA CI。通过后才登记Green并交Main Release Gate；
 0045仍active至Green核销。生产当前A103b1c80/0044不重复发布，本次仅B，测试配置不带入生产。
+
+## 正常合并及合并树复验（2026-10-15）
+
+正常no-ff Merge `89b8d9f367187b9de967d0fff29d0112ce893c55`，第一parent为保留最新Green
+及全部本地治理的627c531，第二parent为精确7db候选。仅AGENTS/工程02/03三份阶段治理冲突，
+保留现行A已部署与B通过结论、Owner历史及完整B契约；未代修任何业务或迁移。
+相对7db的backend/frontend/Electron/Signer路径差异0；相对af57的发布scripts/.github差异0。
+Root应用Head为0045，42/43/44/45字节均候选原样；原共享stash保持239a68ca。
+
+在实际Merge树运行：Backend定向153/3.01s；Frontend14文件120、lint、typecheck及
+production Real build18.48s全部通过。只读比对现有5180/8100的验收候选与Merge运行字节一致，
+无需重启或重复原生/平台测试；本次新增DB业务写入、平台请求0。
+Git staged秘密匹配0/临时artifact0/冲突0/diff错误0；本地override/.codex/.dev-runtime被忽略。
+后续证据提交只补本节治理，不改变已复验Merge业务树；推送后的精确HEAD须三项CI成功才标Green。
