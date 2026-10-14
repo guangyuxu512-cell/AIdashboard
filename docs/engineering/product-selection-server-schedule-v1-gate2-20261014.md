@@ -128,3 +128,29 @@ A精确Green f5及main48ca680两条CI成功；首次Deploy38505980435失败，
 后续PR13/Linux CI、Gate1/Gate2及精确Green af57/CI38547082755已通过；
 Main精确103/main CI38549554911、正式Deploy38550018844 attempt2已success，生产单一0044。
 此A发布不包含B，原B客户端/Profile/0045资源未变；B原生清单仍未回传，不把A部署当作B Gate或发布。
+
+## 原生反馈与新鲜只读核对（2026-10-14晚间，仍未通过）
+
+用户新截图及同一窗口17303688原生AX均显示自然到点策略“每6小时·环境关闭／下次—／关闭”。
+当前仍PID19984、5180 Real；Main及ca97核对3个实际Renderer source map与7db字节相同。
+35433原隧道无监听，未认定为DB认证拒绝；仅恢复原受信任别名/forward、strict host key及BatchMode，
+新PID94772，不改账户/权限/持久配置，不重启8100/5180/Signer或另开Electron/清Profile。
+
+恢复后22:48的数据库只读事务、正式list/detail 200及当前原生显示一致：
+`eb1d3e01-75c5-4621-8391-533fdbf43c12` version8/enabled=false，
+schedule.scheduled=true/kind=hourly/interval_hours=6，关联原plan1bd19adc同为hourly6且disabled、
+local_time=null/next_run_at=null。最后更新时间为北京时间21:22:06.112699；
+JSON仍保留daily_time=17:11，但在hourly模式不是生效的日计划。
+N3策略仍version5/hourly3/disabled。schedule_available=true、全局schedule/manual execution均false，
+环境关闭为集成保护；最新真实Run206d仍17:11成功/保存补充各1，不是当前hourly6新执行。
+
+17:15 native-preview的daily17:11/次日next为当时证据，已不能直接用作当前验收清单。
+之后访问记录存在一次PUT200及一次enabled PATCH200；没有请求体或可靠操作者/意图证据，不归因给用户、
+其他会话或代码。当前DB/API/原生显示没有错值映射证据；静态核对读写映射保留kind，但不以静态证明
+所有历史编辑行为。不能仅为对齐清单覆写该策略、修改version/历史、启用取数或自动恢复daily。
+
+23:10再次只读核验scheduled及计数：28候选/34来源/11Run/3ScheduleRun/4Task，
+经营19Job/2820Item/667事实、ShopSession2均保持。诊断业务写入/平台请求0，独立人员API会话正常登出。
+只读证据在ignored display-audit-readonly-summary-20261014.json及带时间的数据库快照，原证据不覆盖。
+环境现可查询、当前小时配置/关闭及历史结果可查看；daily/next专用样本目前不具备，需Main与用户
+按实际期望明确清单/配置后再准备。本次无已证实候选缺陷，不凭此要求81a1改业务；B仍待验收、禁止合dev/发布。
