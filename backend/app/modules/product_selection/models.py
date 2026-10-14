@@ -14,6 +14,28 @@ from app.core.database import Base, TimestampMixin
 from app.shared.identifiers import generate_id
 
 
+class ProductSelectionStrategy(TimestampMixin, Base):
+    __tablename__ = "product_selection_strategies"
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
+        CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint("jsonb_typeof(conditions) = 'object'", name="conditions_object"),
+        CheckConstraint("jsonb_typeof(schedule_config) = 'object'", name="schedule_object"),
+        Index("ix_selection_strategy_team_updated", "team_id", "updated_at", "strategy_id"),
+        Index("ix_selection_strategy_shop", "request_shop_id", "strategy_id"),
+    )
+
+    strategy_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_id)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False)
+    created_by_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
+    request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    conditions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    schedule_config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
 class ProductSelectionCandidate(TimestampMixin, Base):
     """One Team-owned product identity, not a formal product-library record."""
 
@@ -55,6 +77,7 @@ class ProductSelectionRun(TimestampMixin, Base):
               unique=True, postgresql_where=text("status IN ('pending', 'running')")),
         Index("ix_selection_run_pending", "status", "created_at", "run_id"),
         Index("ix_selection_run_team_created", "team_id", "created_at", "run_id"),
+        Index("ix_selection_run_strategy_created", "strategy_id", "created_at", "run_id"),
         Index("uq_selection_run_running", text("(1)"), unique=True,
               postgresql_where=text("status = 'running'")),
         CheckConstraint("status IN ('pending','running','succeeded','partial','failed','interrupted','reused')", name="status"),
@@ -76,6 +99,9 @@ class ProductSelectionRun(TimestampMixin, Base):
     created_by_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
     request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
     submission_key: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    strategy_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("product_selection_strategies.strategy_id", name="fk_selection_run_strategy", ondelete="RESTRICT"),
+    )
     reused_run_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("product_selection_runs.run_id", ondelete="RESTRICT"),
     )

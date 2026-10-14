@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { emptyStrategy, type ShortVideoConditions } from './contracts'
-import { categoryOptions, validateStrategy } from './selection-rules'
+import {
+  categoryOptions,
+  validateStrategy,
+  conditionSummary,
+} from './selection-rules'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import {
   createSelectionService,
@@ -34,6 +38,56 @@ const query = () =>
   }) as const
 
 describe('selection draft and isolated mock handlers', () => {
+  it('Real requires two yuan bounds, preserves zero/equality and never rounds unsupported precision', () => {
+    for (const [lower, upper] of [
+      [0, 0],
+      [20, 100],
+      [20.01, 40.99],
+    ]) {
+      const draft = input({
+        priceMode: 'custom',
+        priceAbove: lower!,
+        priceBelow: upper!,
+      })
+      expect(validateStrategy(draft, false, true)).toEqual({})
+      expect(conditionSummary(draft, true)).toContain(
+        `价格 ${lower}–${upper} 元`,
+      )
+    }
+    for (const [lower, upper] of [
+      [null, 100],
+      [0, null],
+      [100, 20],
+      [20.001, 100],
+      [0, 10000000000],
+      [NaN, 100],
+      [Infinity, 100],
+    ])
+      expect(
+        Object.keys(
+          validateStrategy(
+            input({
+              priceMode: 'custom',
+              priceAbove: lower!,
+              priceBelow: upper!,
+            }),
+            false,
+            true,
+          ),
+        ),
+      ).not.toHaveLength(0)
+    // Legacy Mock's one-sided demonstration does not prove Real support.
+    expect(
+      validateStrategy(input({ priceMode: 'custom', priceAbove: 0 }), false),
+    ).toEqual({})
+    expect(
+      validateStrategy(
+        input({ priceMode: 'custom', priceAbove: 0 }),
+        false,
+        true,
+      ),
+    ).toHaveProperty('channels.shortVideo.conditions.priceBelow')
+  })
   it('allows retrieval without saving/name/schedule; saving requires name', async () => {
     expect(validateStrategy(input(), false)).toEqual({})
     expect(validateStrategy(input(), true)).toEqual({ name: '请输入策略名称' })

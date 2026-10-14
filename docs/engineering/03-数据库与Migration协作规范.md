@@ -30,6 +30,13 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-14 A最终Candidate f348565的契约/真实闭环及最后候选池原生人工确认已通过，
+正常no-ff集成及合并后验证/精确CI继续。0044仍active直至精确Green，0045仍reserved；
+随后先核销0044，再按下列已审范围激活0045，不能把B未验代码或0045混入A Release。
+Integration已单一0044，A无后续新增Migration。已有v8事实须保留兼容Reader/Schema/历史审计，
+禁止对生产downgrade或直接回旧Reader；具体发布与合后结果见A Gate2文档。
+
+以下旧阶段状态为审查历史，不替代当前事实：
 2026-10-13 为 A 段分配唯一 Slot。阶段候选4e584cb降级边界曾拒绝并保留返修占位；
 77a1d96的实际执行保护及对应修补已独立复核，恢复`active`。这不表示A完整Gate通过；
 不清库、不释放给B，不得并行增加第二条迁移链。
@@ -87,6 +94,11 @@ B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态�
 OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
 
 最近释放记录：
+
+0044阶段审查的降级保护P1已退回Owner修补：目标校验必须在Migration实际执行路径而非仅测试入口，
+在LOCK/DDL前在线核对精确登记的`control_center_feat_product_selection`，其它目标及离线删除SQL均拒绝。
+该Slot曾rejected返修占位，77a1d96边界经ca97接受后恢复active，但未通过完整业务Gate，仅在Feature应用；修补只加强downgrade，不改upgrade DDL/Head/旧事实，
+无需新编号、清库或重建；0042/0043不改。修补实测与新候选仍须ca97独立复核。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|

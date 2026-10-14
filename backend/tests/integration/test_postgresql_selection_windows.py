@@ -48,7 +48,7 @@ class WindowPlatform(FakePlatform):
         value = self.pages[(window, page_no)]
         if isinstance(value, Exception):
             raise value
-        return value if isinstance(value, CompassRankPage) else CompassRankPage(tuple(value), page_no, 10, len(value))
+        return value if isinstance(value, CompassRankPage) else CompassRankPage(tuple(value), page_no, 10, 200 if value else 0)
 
     def basic_info(self, context, product_id):
         return CompassBasicInfo(product_id, FieldObservation("available", ("厨具", "收纳")),

@@ -26,6 +26,18 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-14 当前A收口：精确候选 `f348565b4db2cb907d9c55c3fd7c85088a1fe467` 已完成
+逐项契约、实际Real5180/8100匹配验证，Integration单一0044及唯一1.0.6 Electron/Profile保留。
+用户已直接确认品牌/策略九列/启停编辑位置，以及最后候选池普通/最大化显示；不重复原生验收。
+正式v8 run `e8221905-d2a2-485e-821f-c1465cd0366a` 冻结pages[1,15]，只请求一次page1及15，
+官方rank150一条真实事实/basic_info/API一致；品牌0/1正式结果与旧v1–v7证据分开复用。
+按正常no-ff合dev后复验并等待精确CI，未Green前不放行Main或释放0044。
+A不接入服务端调度，B独立分支/0045仍reserved；Green后先释放0044、再串行激活0045。
+已存在v8事实，回退须保留兼容Reader、Schema、历史及审计，不能直接回旧版本或降级清数据。
+以下A PARTIAL/旧端口PID为阶段历史，不覆盖本次直接人工确认和实际运行核验；
+最终证据与发布边界见 `docs/engineering/product-selection-strategies-v1-gate2-20261014.md`。
+
+历史阶段记录：
 2026-10-13 选品后续人类任务已在81a1会话回读：A为罗盘条件补齐与策略保存管理，
 B为复用既有Schedule底座的服务端选品，各自Candidate/Gate/发布；不混入达人、百应或手机能力。
 81a1从精确Green `3128d6ad1048dfda1240148e863ea0c98eb6247f` 创建

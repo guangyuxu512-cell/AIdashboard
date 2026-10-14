@@ -1,0 +1,146 @@
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+from app.modules.product_selection.models import ProductSelectionRun as Run
+from app.modules.product_selection.request_mapping import freeze_short_video_request
+from app.modules.product_selection.run_contract import SelectionResolvedRequest
+from app.modules.product_selection.run_service import SelectionRunService
+from app.modules.product_selection.exceptions import SelectionRunNotFoundError
+from app.modules.access.exceptions import TeamAccessDeniedError
+from app.modules.access.models import Team, TeamShopAccess
+from app.modules.access.service import ActorContextService
+from app.modules.users.models import User
+from tests.integration.test_postgresql_product_selection import selection_context
+from tests.integration.test_postgresql_selection_runs import _input, SETTINGS
+from tests.integration.test_postgresql_selection_windows import _category_tree
+from tests.integration.test_postgresql_selection_strategies import _save
+
+pytestmark = pytest.mark.integration
+
+
+def test_new_submission_reuses_active_legacy_v2_without_rewriting_canonical(selection_context):
+    context = selection_context
+    def legacy(original, now):
+        raw = freeze_short_video_request(original, now).model_dump(mode="json")
+        return SelectionResolvedRequest.model_validate(raw | {"version": 2, "strategy": None})
+    with Session(context[0]) as session:
+        old = SelectionRunService(session, settings=SETTINGS, resolver=legacy, category_reader=lambda actor, shop: _category_tree(shop)).submit(context[4][0], _input(context, rank_from=1, rank_to=20))
+    strategy = _save(context)
+    command = _input(context, rank_from=1, rank_to=20, strategy_id=strategy.strategy_id, strategy_version=strategy.version)
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop))
+        fresh = service.submit(context[4][0], command)
+        assert fresh.reused and fresh.execution_run_id == old.execution_run_id
+        assert fresh.strategy.strategy_id == strategy.strategy_id
+        canonical = session.get(Run, old.execution_run_id)
+        assert canonical.strategy_id is None and canonical.request_conditions["version"] == 2
+        assert session.get(Run, fresh.receipt_id).request_conditions["version"] == 3
+        assert service.submit(context[4][0], command).receipt_id == fresh.receipt_id
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0], Run.status == "pending")) == 1
+
+
+def test_same_key_replays_v2_before_category_io_but_new_day_does_not_reuse_old_window(selection_context):
+    context = selection_context
+    accepted = datetime(2026, 10, 31, 12, tzinfo=UTC)
+    command = _input(context, rank_from=1, rank_to=20)
+    def legacy(original, now):
+        return SelectionResolvedRequest.model_validate(freeze_short_video_request(original, now).model_dump(mode="json") | {"version": 2, "strategy": None})
+    with Session(context[0]) as session:
+        old = SelectionRunService(session, settings=SETTINGS, resolver=legacy, category_reader=lambda actor, shop: _category_tree(shop)).submit(context[4][0], command, now=accepted)
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda *_: pytest.fail("Replayed keys must not read categories"))
+        replay = service.submit(context[4][0], command, now=accepted + timedelta(days=1))
+        assert replay.receipt_id == old.receipt_id
+        assert replay.execution.request_conditions == old.execution.request_conditions
+    with Session(context[0]) as session:
+        newer = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(context[4][0], _input(context, rank_from=1, rank_to=20), now=accepted + timedelta(days=1))
+        assert not newer.reused and newer.execution_run_id != old.execution_run_id
+        assert newer.execution.request_conditions.scope != old.execution.request_conditions.scope
+
+
+def test_super_progress_reads_saved_run_team_including_reused_unassociated_execution(selection_context):
+    context = selection_context
+    with Session(context[0]) as session:
+        old = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(
+            context[4][0], _input(context, rank_from=1, rank_to=20),
+        )
+    strategy = _save(context)
+    with Session(context[0]) as session:
+        session.get(User, context[2][0]).is_super_account = True
+        session.commit()
+        actor = ActorContextService(session).resolve(user_id=context[2][0], requested_team_id=context[1][1])
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop))
+        receipt = service.submit(actor, _input(context, rank_from=1, rank_to=20, strategy_id=strategy.strategy_id, strategy_version=strategy.version))
+        assert receipt.reused and receipt.execution_run_id == old.execution_run_id
+        assert session.get(Run, receipt.execution_run_id).strategy_id is None
+        for run_id in (receipt.receipt_id, receipt.execution_run_id):
+            assert service.get(actor, run_id).run_id == old.execution_run_id
+            with pytest.raises(SelectionRunNotFoundError):
+                service.get(context[4][1], run_id)
+        assert service.list(actor, shop_id=None, offset=0, limit=10)[1] == 0
+        session.get(Team, context[1][0]).enabled = False
+        session.commit()
+        for run_id in (receipt.receipt_id, receipt.execution_run_id):
+            with pytest.raises(TeamAccessDeniedError):
+                service.get(actor, run_id)
+        session.get(Team, context[1][0]).enabled = True
+        session.commit()
+        # Revoke current super authority and the resource Shop grant. A cached
+        # super flag cannot keep the precise receipt or canonical readable.
+        session.get(User, context[2][0]).is_super_account = False
+        session.execute(delete(TeamShopAccess).where(TeamShopAccess.team_id == context[1][0], TeamShopAccess.shop_id == context[3][0]))
+        session.commit()
+        for run_id in (receipt.receipt_id, receipt.execution_run_id):
+            with pytest.raises(SelectionRunNotFoundError):
+                service.get(replace(actor, team_id=context[1][0]), run_id)
+
+
+@pytest.mark.parametrize("reused", [False, True])
+def test_progress_rechecks_real_shop_grant_after_super_is_revoked_during_resource_resolution(selection_context, reused, monkeypatch):
+    context = selection_context
+    strategy = _save(context)
+    if reused:
+        with Session(context[0]) as session:
+            SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(
+                context[4][0], _input(context, rank_from=1, rank_to=20),
+            )
+    with Session(context[0]) as session:
+        session.get(User, context[2][0]).is_super_account = True
+        session.commit()
+        actor = ActorContextService(session).resolve(user_id=context[2][0], requested_team_id=context[1][1])
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop))
+        receipt = service.submit(actor, _input(context, rank_from=1, rank_to=20, strategy_id=strategy.strategy_id, strategy_version=strategy.version))
+        assert receipt.reused is reused
+        actual_actor_read = service.facts._current_actor
+        actual_visible_read = service.repository.get_for_actor
+        resolved, queried = [], []
+
+        def authority(current):
+            if len(resolved) == 1:
+                # A separate committed connection changes actual permission
+                # rows after the first super lookup, before the second resolve.
+                with Session(context[0]) as write:
+                    write.get(User, context[2][0]).is_super_account = False
+                    write.execute(delete(TeamShopAccess).where(TeamShopAccess.team_id == context[1][0], TeamShopAccess.shop_id == context[3][0]))
+                    write.commit()
+            final = actual_actor_read(current)
+            resolved.append(final)
+            return final
+
+        def visible(current, run_id):
+            queried.append((current, run_id))
+            return actual_visible_read(current, run_id)
+
+        monkeypatch.setattr(service.facts, "_current_actor", authority)
+        monkeypatch.setattr(service.repository, "get_for_actor", visible)
+        with pytest.raises(SelectionRunNotFoundError):
+            service.get(actor, receipt.receipt_id)
+        assert [current.is_super_account for current in resolved] == [True, False]
+        assert len(queried) == 2
+        assert queried[0][0].team_id is None
+        assert queried[1] == (resolved[1], receipt.receipt_id)
+        assert session.get(Run, receipt.execution_run_id).status == "pending"

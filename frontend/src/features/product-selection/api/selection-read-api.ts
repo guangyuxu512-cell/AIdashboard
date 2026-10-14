@@ -4,12 +4,13 @@ import type {
   SelectionFallbackReason,
   SelectionPrimaryBusinessError,
 } from '../model/contracts'
+import type { SelectionRelativeDto } from './selection-strategy-api'
 
 // Mirrors the registered SelectionObservationRead schema, not the Mock draft.
 // Decimal values stay strings. Units, channel and relative-period mappings are
 // deliberately not inferred here.
 export interface SelectionSourceDto {
-  version: 1
+  version: 1 | 2
   platform: 'douyin'
   endpoint: 'product_rank/video_bring_good'
   business: {
@@ -25,18 +26,23 @@ export interface SelectionSourceDto {
     activity_id: string
   }
   date_selection?: {
-    policy: 'shanghai_7d_once'
+    policy:
+      | 'shanghai_7d_once'
+      | 'shanghai_realtime_today'
+      | 'shanghai_1d_yesterday'
+      | 'shanghai_30d_complete_days'
     accepted_local_date: string
     primary_begin: string
     primary_end: string
-    backup_begin: string
-    backup_end: string
+    backup_begin: string | null
+    backup_end: string | null
     actual_window: 'primary' | 'backup'
     fallback_reason: SelectionFallbackReason | null
     primary_error?: SelectionPrimaryBusinessError | null
     rank_from: number
     rank_to: number
   } | null
+  first_listed_only?: true | null
 }
 
 export interface SelectionMetricDto {
@@ -112,25 +118,26 @@ export interface SelectionCapabilitiesDto {
   execution_enabled: boolean
   manual_execution_available: boolean
   unavailable_reason: 'EXECUTION_DISABLED' | null
+  strategy_save_available?: boolean
+  schedule_available?: boolean
+  supported_periods?: ('realtime' | '1d' | '7d' | '30d')[]
+  supported_brands?: ('all' | 'known' | 'unknown')[]
+  custom_price_available?: boolean
+  first_listed_filter_available?: boolean
+  max_rank?: number
 }
-export interface SelectionRunCreateDto {
+export interface SelectionRunCreateDto extends SelectionRelativeDto {
   submission_key: string
+  strategy_id?: string
+  strategy_version?: number
   shop_id: string
-  channel: 'short-video'
-  period: '7d'
-  industry_id: string
-  category_ids: string[]
-  brand: 'all'
-  price_mode: 'all'
-  first_listed_only: false
-  rank_from: number
-  rank_to: number
 }
 export interface SelectionRunReceiptDto {
   receipt_id: string
   submission_key: string
   execution_run_id: string
   reused: boolean
+  strategy?: { strategy_id: string; version: number } | null
   execution: SelectionExecutionSummary
 }
 export async function readSelectionCapabilities(): Promise<SelectionCapabilitiesDto> {

@@ -47,6 +47,11 @@ export interface SelectionStrategy extends StrategyInput {
   shopName: string
   creatorName: string
   latestResult: string | null
+  version?: number
+  latestExecution?: SelectionExecutionSummary | null
+  scheduleAvailable?: boolean
+  nextRunAt?: string | null
+  requestScope?: { industryId: string; categoryIds: string[] }
 }
 export interface CandidateSourceContext {
   leaderboardId: string
@@ -141,6 +146,8 @@ export interface BatchCollectReceipt {
 }
 export interface SelectionService {
   readonly available: boolean
+  readonly strategySaveAvailable?: boolean
+  readonly scheduleAvailable?: boolean
   readonly candidatesAvailable?: boolean
   latestRun?(shopId: string | null): Promise<SelectionExecutionSummary | null>
   run?(runId: string): Promise<SelectionExecutionSummary>
@@ -150,6 +157,7 @@ export interface SelectionService {
       input: StrategyInput,
       submissionKey: string,
       categories?: CategoryNode[],
+      strategy?: { id: string; version: number },
     ): Promise<SelectionRunReceiptDto>
   }
   previewPeriod(period: SelectionPeriod): Promise<SelectionPeriodPreview>
@@ -158,7 +166,21 @@ export interface SelectionService {
     options?: { refresh?: boolean },
   ): Promise<CategoryNode[]>
   strategies(): Promise<SelectionStrategy[]>
-  saveStrategy(input: StrategyInput, id?: string): Promise<SelectionStrategy>
+  strategiesPage?(query: {
+    page: number
+    pageSize: number
+    search: string
+  }): Promise<PageResult<SelectionStrategy>>
+  saveStrategy(
+    input: StrategyInput,
+    id?: string,
+    expectedVersion?: number,
+    categories?: CategoryNode[],
+  ): Promise<SelectionStrategy>
+  toggleStrategy?(
+    row: SelectionStrategy,
+    enabled: boolean,
+  ): Promise<SelectionStrategy>
   retrieve(input: StrategyInput, strategyId?: string): Promise<DemoReceipt>
   candidates(query: CandidateQuery): Promise<CandidatePage>
   candidate(id: string): Promise<SelectionCandidate>
@@ -189,10 +211,10 @@ export interface SelectionExecutionSummary {
   error_stage?: string | null
   platform_business_code?: string | number | null
   request_conditions?: {
-    version: 1 | 2
+    version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     scope: { begin_date: string; end_date: string }
     date_plan?: {
-      backup_scope: { begin_date: string; end_date: string }
+      backup_scope?: { begin_date: string; end_date: string }
     } | null
     date_outcome?: {
       state:
@@ -207,10 +229,13 @@ export interface SelectionExecutionSummary {
     } | null
   }
 }
-export const CREATOR_DEMO_OPTIONS = [
-  { label: '演示达人 A', value: 'creator-demo-a' },
-  { label: '演示达人 B', value: 'creator-demo-b' },
-]
+export const CREATOR_DEMO_OPTIONS =
+  import.meta.env.VITE_API_MODE === 'mock'
+    ? [
+        { label: '演示达人 A', value: 'creator-demo-a' },
+        { label: '演示达人 B', value: 'creator-demo-b' },
+      ]
+    : []
 export const CHANNEL_OPTIONS = [
   { label: '短视频榜单', value: 'short-video' },
   { label: '巨量百应', value: 'baiying' },

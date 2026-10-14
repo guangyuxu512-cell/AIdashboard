@@ -1,5 +1,39 @@
 # 选品库前端与 Mock 交互 V1
 
+2026-10-14 A收尾：候选池改以实际容器宽度分配原12列，删除强制1496 scroll-x；64px图片、
+原字段/字体/居中/8×12padding及220px右操作保留。长文本完整hover，必要表头自然换行，
+不隐藏溢出/删字段。运行Reader增加后端v8稀疏目标页支持，Frontend仍提交相对条件/官方排名，
+不自行发平台请求或计算页序列；旧v1–v7继续读取。四主题浏览器Mock证据不是Real Electron验收。
+
+## 2026-10-13 策略 A Real 绑定（当前开发）
+
+本轮保留已确认列表/工具栏/右抽屉及五项体验，不用手动结果页替换策略页。
+正式契约来自Backend `strategy_contract.py`，typed API集中在selection-strategy-api.ts；
+已有service、TanStack Query、ShopSelector、CategorySelector、AppRadio/TimePicker/按钮复用。
+服务器分页/名称搜索、保存/完整编辑expected_version、启停CAS接线；刷新/重新登录只GET。
+策略名称/相对条件/全策略定时配置/状态真实保存，无“演示策略已保存”Real提示。
+RealCRUD能力与演示/手机动作的available分开，候选采集/屏蔽/竞品等未接能力仍禁用，不因保存
+接通而假成功。A计划只保存，列表明确“未调度”、抽屉提示调度待接入；无假next_run_at。
+立即获取经原manual服务提交当前草稿及已保存策略ID/version，未保存草稿不创建策略、不保存条件。
+收到canonical后沿原消息/轮询刷新最近结果，历史完成不重复toast；不恢复常驻获取完成横幅。
+支持已确认短视频实时/近1天/近7天/近30天、默认品牌价格、原bool首次上榜返回筛选、有界官方排名1–200；
+正式类目整树的每个实际包装根动态提供industry scope，根下非零路径及父级全部可以选择/保存/提交，
+不以Shop默认industry scalar限制其它根，也不维护固定ID白名单。旧unwrapped回显兼容、24小时缓存
+和Shop切换隔离保留。行业根全部无确认参数，仍不提供执行scope；品牌按本轮0/1/-1正式接线，
+不回退Mock。来源首次上榜口径与原scope分开。类目结构的正式只读证据不替代新候选入库/原生Gate。
+2026-10-14双边自定义价格已据ca97元数/筛选对照接入：两个明确有限非负边界、至多两位小数、最低<=最高，
+Real标签最低/最高价格（元），缺一侧、逆序/超精度不提交，不静默不限；修正时更新已有字段反馈。
+策略保存/回读与手动提交共用领域转换，不保存绝对执行日期；不限不提交草稿中旧边界。
+v6实际price_bin由后端Decimal规范化，前端不转分/舍入，也不裁剪原SKU价格带。
+列表摘要、运行Reader支持v7品牌及旧v1–v6；Mock旧单边演示不作为Real能力证据。capabilities控制自定义可选性。
+知名/非知名/all由原AppSelect选择、保存和编辑回显；DTO保留known/unknown/all，后端映射字符串0/1/-1，
+不硬编码样本日期/类目或忽略用户选择。策略表9列保留，useElementSize分配实际容器、取消固定scroll-x1510；
+状态68/操作192px，其余按可用空间分配，达人/渠道常规最小84/96px。长名/摘要悬浮完整查看，
+无全局字体/shared API/颜色变化，普通与最大化Electron实际效果仍由ca97唯一窗口核验。
+详情/候选池尺寸、主题、字体和两个时间来源不改。API拦截截图不是平台/数据库/Electron证据。
+完整本轮契约见docs/engineering/product-selection-strategies-v1-contract.md；A仍PARTIAL，
+下方旧UI_ONLY/未接保存为历史阶段，B服务端自动执行尚未接通。
+
 状态：视觉/Mock为UI_ONLY，手动真实接入为PARTIAL。下述Mock模型仍是前端草案；文末“正式只读绑定”以已登记Backend DTO为准，不混用。
 Green 基线：`b34e43cb90356e03d2f793c4146c6775a11f5ab3`（ca97 确认精确 CI PASS）。
 分支：`feat/product-selection-frontend-v1`。当前前端返修阶段无 Backend、数据库、Migration、Electron 壳、真实平台或调度变更。用户已授权在前端确认后接续真实手动闭环；该阶段须另登记契约、Feature DB/Migration及真实验证，不能用本阶段证据宣称完成。
