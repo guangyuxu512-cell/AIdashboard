@@ -95,6 +95,15 @@ hourly的interval_hours非空且正整数、其它分支明确为空，不能依
 B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
 OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
 
+2026-10-14 B激活后的首Feature升级记录：SQLSTATE42704，旧计划表实际约束存在命名约定
+双前缀，短名称不存在；事务完整回滚，Head0044和数据未变。0045曾rejected保留B返修占位，
+Owner仅修正尚未应用0045的已知短/双前缀精确预检及op.f命名，不改旧迁移或手改表/权限。
+正常upgrade成功后，ca97独立只读核实已分配`control_center_feat_product_selection`单一
+`20261013_0045`；候选/观察/run/策略/ShopSession/计划/回执/Task八项均0，应用角色仍最小权限。
+现核销返修并恢复0045 active。该资源/Schema接受不是B完整Gate：数据存在时的迁移/约束、
+并发领取、服务端自然到点、状态投影和PC隔离仍须Owner继续PG/定向验证；Integration与生产未升45。
+已应用45按既有规则保留，后续差异先交Integrator审核，不改写42/43/44或直接修正式库。
+
 最近释放记录：
 
 0044阶段审查的降级保护P1已退回Owner修补：目标校验必须在Migration实际执行路径而非仅测试入口，

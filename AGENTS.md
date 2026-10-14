@@ -36,6 +36,9 @@
 A不接入服务端调度；现核销A0044为released，并串行激活B0045/down0044，唯一active为B。
 B从精确Green f5d4866正常merge，仍只在登记Feature库实施Model/Migration/PG，未部署或集成B。
 B槽位治理提交不是新Green，不将其或未验B代码混入此次A Release；具体范围以Migration登记为准。
+同日B首Feature升级约束命名不匹配曾安全回滚/返修占位，Owner只修未应用45后正常升级。
+ca97独立只读核实Feature单一0045、八项业务计数0/最小角色，恢复45 active；不冒称B Gate。
+Integration仍0044、A生产发布独立，B自然执行/容量/PC数据兼容须继续实现与验证。
 已存在v8事实，回退须保留兼容Reader、Schema、历史及审计，不能直接回旧版本或降级清数据。
 以下A PARTIAL/旧端口PID为阶段历史，不覆盖本次直接人工确认和实际运行核验；
 最终证据与发布边界见 `docs/engineering/product-selection-strategies-v1-gate2-20261014.md`。
