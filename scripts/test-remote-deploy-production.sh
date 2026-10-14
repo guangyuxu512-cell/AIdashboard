@@ -204,6 +204,9 @@ cat > "$fake_bin/docker" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$TEST_DOCKER_LOG"
+if [[ "$*" == *" build "* && "${TEST_BUILD_FAILURE:-0}" != 0 ]]; then
+    exit "$TEST_BUILD_FAILURE"
+fi
 if [[ "$1" == create ]]; then printf 'fixture-export-container\n'; fi
 if [[ "$1" == cp ]]; then printf 'console.log("fixture")\n' > "$3/index-12345678.js"; fi
 if [[ "$*" == *" run --rm backend python -m alembic upgrade head" ]]; then
@@ -225,6 +228,8 @@ touch "$migration_archive"
 : > "$docker_log"
 export TEST_RELEASE_SOURCE="$migration_source"
 export TEST_FINDMNT_FSTYPES=$'autofs\ncifs'
+# The root-managed file, not an inherited deployment-shell value, selects it.
+export PRODUCTION_BUILDX_BUILDER=ambient-builder-must-not-leak
 
 set +e
 PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$migration_archive" "$migration_sha" > "$test_root/migration.out" 2>&1
@@ -236,6 +241,8 @@ set -e
 [[ ! -e "$remote_root/current" ]]
 [[ -d "$historical_release" ]]
 [[ -f "$historical_release/marker" ]]
+grep -Fqx "compose --project-name control-center-production --env-file $remote_root/.env -f $migration_release/deploy/production/compose.yaml build douyin-signer backend frontend" "$docker_log"
+! grep -F -- '--builder' "$docker_log"
 grep -F -- 'run --rm --no-deps backend python -c' "$docker_log"
 grep -Fqx 'compose --project-name control-center-production --env-file /opt/ecommerce-control-center/production/.env -f /opt/ecommerce-control-center/production/releases/4444444444444444444444444444444444444444/deploy/production/compose.yaml run --rm backend python -m alembic upgrade head' "$docker_log"
 
@@ -300,4 +307,74 @@ set -e
 grep -F -- 'run --rm --no-deps backend python -c' "$docker_log"
 grep -Fqx "compose --project-name control-center-production --env-file /opt/ecommerce-control-center/production/.env -f /opt/ecommerce-control-center/production/releases/$nfs_sha/deploy/production/compose.yaml run --rm backend python -m alembic upgrade head" "$docker_log"
 
-echo 'Production release cleanup ownership regression passed'
+assert_builder_build() {
+    local suffix="$1" expected_builder="$2" configured_value="$3"
+    local builder_sha="${suffix}888888888888888888888888888888888888888"
+    local builder_release="$remote_root/releases/$builder_sha"
+    local builder_archive="$test_root/builder-$suffix.tar.gz"
+    local builder_output="$test_root/builder-$suffix.out"
+    local builder_status
+    # Remove only the optional key in this test-owned placeholder environment.
+    sed -i '/^PRODUCTION_BUILDX_BUILDER=/d' "$remote_root/.env"
+    printf 'PRODUCTION_BUILDX_BUILDER=%s\n' "$configured_value" >> "$remote_root/.env"
+    touch "$builder_archive"
+    : > "$docker_log"
+    set +e
+    PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$builder_archive" "$builder_sha" > "$builder_output" 2>&1
+    builder_status=$?
+    set -e
+    # Reaching the fake migration failure proves only the mocked build call.
+    [[ "$builder_status" -eq 61 ]]
+    [[ ! -e "$builder_release" && ! -e "$builder_archive" && ! -e "$remote_root/current" ]]
+    [[ -f "$historical_release/marker" ]]
+    local expected_options=""
+    if [[ -n "$expected_builder" ]]; then expected_options="--builder $expected_builder "; fi
+    grep -Fqx "compose --project-name control-center-production --env-file $remote_root/.env -f $builder_release/deploy/production/compose.yaml build ${expected_options}douyin-signer backend frontend" "$docker_log"
+    [[ "$(grep -c ' build ' "$docker_log")" -eq 1 ]]
+    ! grep -Eq 'buildx (use|create|rm|prune)|builder prune' "$docker_log"
+    ! grep -F -- '--builder' <(grep -v ' build ' "$docker_log")
+}
+
+assert_builder_build 8 fixture-builder_A.v1 fixture-builder_A.v1
+assert_builder_build 9 fixture-builder_A.v1 '"fixture-builder_A.v1"'
+assert_builder_build a fixture-builder_A.v1 "'fixture-builder_A.v1'"
+assert_builder_build b '' ''
+assert_builder_build c '' '""'
+assert_builder_build d '' "''"
+
+builder_invalid_sha="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+for invalid_builder in 'with space' ' leading' 'trailing ' '-option-like' 'path/builder' $'tab\tvalue' $'line\rvalue' $'"line\nvalue"' '$(touch builder-must-not-evaluate)' 'name;echo unsafe'; do
+    sed -i '/^PRODUCTION_BUILDX_BUILDER=/d' "$remote_root/.env"
+    printf 'PRODUCTION_BUILDX_BUILDER=%s\n' "$invalid_builder" >> "$remote_root/.env"
+    invalid_archive="$test_root/invalid-builder.tar.gz"
+    touch "$invalid_archive"
+    : > "$docker_log"
+    set +e
+    PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$invalid_archive" "$builder_invalid_sha" > "$test_root/invalid-builder.out" 2>&1
+    invalid_status=$?
+    set -e
+    [[ "$invalid_status" -eq 2 ]]
+    [[ ! -s "$docker_log" && ! -e "$invalid_archive" && ! -e "$remote_root/releases/$builder_invalid_sha" ]]
+    grep -Fqx 'Production Buildx builder must be a single name containing only letters, digits, dots, underscores or hyphens' "$test_root/invalid-builder.out"
+    ! grep -F -- "$invalid_builder" "$test_root/invalid-builder.out"
+    [[ -f "$historical_release/marker" && ! -e "$remote_root/current" ]]
+done
+
+sed -i '/^PRODUCTION_BUILDX_BUILDER=/d' "$remote_root/.env"
+printf 'PRODUCTION_BUILDX_BUILDER=fixture-build-fails\n' >> "$remote_root/.env"
+ln -sfn "$historical_release" "$remote_root/current"
+build_failed_archive="$test_root/build-failed.tar.gz"
+touch "$build_failed_archive"
+: > "$docker_log"
+set +e
+TEST_BUILD_FAILURE=62 PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$build_failed_archive" ffffffffffffffffffffffffffffffffffffffff > "$test_root/build-failed.out" 2>&1
+build_failed_status=$?
+set -e
+[[ "$build_failed_status" -eq 62 ]]
+[[ ! -e "$remote_root/releases/ffffffffffffffffffffffffffffffffffffffff" && ! -e "$build_failed_archive" ]]
+[[ "$(readlink -f "$remote_root/current")" == "$historical_release" && -f "$historical_release/marker" ]]
+grep -F -- ' build --builder fixture-build-fails douyin-signer backend frontend' "$docker_log"
+[[ "$(grep -c ' build ' "$docker_log")" -eq 1 ]]
+! grep -E ' run | up |buildx (use|create|rm|prune)' "$docker_log"
+
+echo 'Production release cleanup ownership and optional Buildx builder regressions passed'

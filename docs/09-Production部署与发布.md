@@ -106,6 +106,25 @@ current 或删除共享历史目录；此时不得把“工作流失败”直接
 
 部署脚本在 build、迁移或覆盖 Nginx 前验证这些条件，并拒绝将 Backend 指向 `control_center_dev`。首次应用部署前，先手动触发 `Production Provision Public-IP TLS` 工作流，输入当前 `origin/main` 的完整 SHA；它会严格 checkout 该 SHA、以 Certbot 5.8 的 `--ip-address` + `--preferred-profile shortlived` 申请证书，并启用续期 timer。证书阶段会先配置只返回 `503` 的 HTTPS bootstrap vhost，再由 GitHub Runner 直接访问公网 IP 并校验证书；正常 `Production Deploy` 成功后才替换为应用反向代理。该步骤需要公网端口 80 对外可达以及有效的 ACME 联系邮箱。
 
+### 可选的隔离 Buildx 构建入口
+
+正式 root-only `.env` 可选设置 `PRODUCTION_BUILDX_BUILDER=<existing-builder-name>`。
+远程部署脚本只经 `production_env_read` 读取该键，不执行环境文件；名称必须以字母或数字开头，
+其余只允许字母、数字、`.`、`_`、`-`。未配置、空值及带引号的空值仍使用原来的 Compose build 命令。
+非空时只对本次 `docker compose build` 追加 `--builder` 和一个经过校验的名称参数，不 export
+`BUILDX_BUILDER`，不执行全局 `buildx use`，不影响后续 run/up 或其他部署的 builder 选择。
+无效名称在任何 Docker 调用前安全拒绝，不回显值；实际构建失败继续返回原非零状态，不自动回退默认 builder。
+
+Main 在 Gate/CI/Release Gate 后备份并通过受保护方式更新既有持久配置，先确认宿主机 Compose 支持
+`build --builder`、命名 builder 已存在且健康，以及构建结果可进入正式部署使用的本地 image store。
+此配置入口不自动创建/启动/升级 builder，不重启 Docker，不清理镜像或缓存；小型隔离 smoke 不能代替
+实际候选的完整构建、Migration Head、运行 SHA、服务健康及业务发布核验。部署仍只走正式流水线。
+Compose 参数依据：[Docker 官方 `compose build` 文档](https://docs.docker.com/reference/cli/docker/compose/build/)。
+
+回退该工程参数时，仅在 Main 已确认默认构建路径安全的情况下恢复备份中的值或移除该键；不能用移除参数
+盲试已知故障 builder。应用/数据库恢复继续遵守本文件及 A 的兼容 Reader/数据保留要求，不降级清历史。
+这项工程修复不包含选品定时 B/0045，也不需要更新 Electron 安装包。
+
 ### 经营数据每日采集启用顺序
 
 经营数据代码发布、服务健康通过，不等于已经允许自动访问抖店平台。Release Gate 先按精确候选核对
