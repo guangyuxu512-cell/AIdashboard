@@ -38,10 +38,22 @@ export interface SelectionStrategyDto extends SelectionStrategyWriteDto {
   shop_name: string
   version: number
   schedule_available: boolean
+  schedule_execution_enabled?: boolean
   next_run_at: string | null
   latest_run: SelectionExecutionSummary | null
+  latest_trigger?: SelectionStrategyTriggerDto | null
   created_at: string
   updated_at: string
+}
+export interface SelectionStrategyTriggerDto {
+  schedule_run_id: string
+  scheduled_for: string
+  created_at: string
+  trigger_result: 'selection_run' | 'blocked'
+  receipt_id: string | null
+  execution_run_id: string | null
+  error_code: string | null
+  error_stage: string | null
 }
 const path = '/api/v1/product-selection/strategies'
 export async function readStrategies(params: {

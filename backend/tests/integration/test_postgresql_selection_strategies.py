@@ -103,7 +103,8 @@ def test_crud_refresh_edit_cas_toggle_do_not_submit_or_fetch(selection_context, 
         assert created.status_code == 201
         dto = created.json()
         assert dto["version"] == 1 and dto["latest_run"] is None
-        assert not dto["schedule_available"] and dto["next_run_at"] is None
+        assert dto["schedule_available"] and dto["next_run_at"] is not None
+        assert not dto["schedule_execution_enabled"]  # Default environment never starts platform work.
         assert dto["conditions"]["request"]["period"] == "7d"
         assert "begin_date" not in str(dto["conditions"])
         path = f'/api/v1/product-selection/strategies/{dto["strategy_id"]}'

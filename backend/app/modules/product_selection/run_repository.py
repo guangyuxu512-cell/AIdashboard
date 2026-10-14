@@ -34,6 +34,16 @@ class SelectionRunRepository:
     def get_for_actor(self, actor: ActorContext, run_id: UUID) -> Run | None:
         return self.session.scalar(self.visible_statement(actor).where(Run.run_id == run_id))
 
+    def receipts_for_actor(self, actor: ActorContext, receipt_ids: list[UUID]):
+        if not receipt_ids: return {}
+        canonical = aliased(Run)
+        statement = self.visible_statement(actor).with_only_columns(Run, canonical).join(
+            canonical, canonical.run_id == func.coalesce(Run.reused_run_id, Run.run_id),
+        ).where(Run.run_id.in_(receipt_ids), canonical.team_id == Run.team_id,
+            canonical.request_shop_id == Run.request_shop_id, canonical.request_fingerprint == Run.request_fingerprint,
+            canonical.reused_run_id.is_(None))
+        return {receipt.run_id: (receipt, execution) for receipt, execution in self.session.execute(statement)}
+
     def list_for_actor(self, actor: ActorContext, *, shop_id: UUID | None, offset: int, limit: int) -> tuple[list[Run], int]:
         statement = self.visible_statement(actor)
         statement = statement.where(Run.reused_run_id.is_(None))
@@ -81,6 +91,32 @@ class SelectionRunRepository:
             lease_id=None, lease_expires_at=None,
         ))
         return result.rowcount
+
+    def strategy_running_conflict(self, *, team_id: UUID, strategy_id: UUID, exclude_run_id: UUID) -> bool:
+        receipt, execution = aliased(Run), aliased(Run)
+        return bool(self.session.scalar(select(exists(select(receipt.run_id).join(
+            execution, execution.run_id == func.coalesce(receipt.reused_run_id, receipt.run_id),
+        ).where(
+            receipt.team_id == team_id, receipt.strategy_id == strategy_id,
+            execution.run_id != exclude_run_id, execution.status == "running",
+            receipt.team_id == execution.team_id,
+            receipt.request_shop_id == execution.request_shop_id,
+            receipt.request_fingerprint == execution.request_fingerprint,
+        )))))
+
+    @staticmethod
+    def validated_request(row: Run) -> SelectionResolvedRequest:
+        request = SelectionResolvedRequest.model_validate(row.request_conditions)
+        if request.original.shop_id != row.request_shop_id:
+            raise ValueError("Frozen request does not match its Shop FK")
+        if request.strategy_queue is not None and (
+            request.strategy_queue.strategy_id != row.strategy_id
+            or request.fingerprint() != row.request_fingerprint
+        ):
+            raise ValueError("Strategy queue metadata does not match the canonical/receipt")
+        if row.reused_run_id is None and request.fingerprint() != row.request_fingerprint:
+            raise ValueError("Canonical frozen request does not match its key")
+        return request
 
     @staticmethod
     def eligible_pending_statement():
@@ -132,13 +168,20 @@ class SelectionRunRepository:
         row = self.session.scalar(self.eligible_pending_statement())
         if row is None:
             return None
+        try:
+            request = self.validated_request(row)
+        except ValueError:
+            row.status, row.stage = "failed", "completed"
+            row.error_code, row.error_stage = "PRODUCT_SELECTION_RUN_CONTRACT_INVALID", "execution"
+            row.finished_at, row.updated_at = now, now
+            return None
         row.status, row.stage = "running", "session"
         row.started_at, row.updated_at = now, now
         row.lease_id, row.lease_expires_at = uuid4(), lease_until
         return SelectionRunClaim(
             row.run_id, row.lease_id, row.team_id, row.created_by_user_id,
             row.request_shop_id, now,
-            SelectionResolvedRequest.model_validate(row.request_conditions),
+            request,
         )
 
     def fence(self, claim: SelectionRunClaim, now: datetime) -> Run:
@@ -156,4 +199,8 @@ class SelectionRunRepository:
         if (row is None or row.lease_expires_at is None or row.lease_expires_at <= database_now
             or row.request_fingerprint != claim.request.fingerprint()):
             raise SelectionRunLeaseLostError()
+        try:
+            self.validated_request(row)
+        except ValueError:
+            raise SelectionRunLeaseLostError() from None
         return row

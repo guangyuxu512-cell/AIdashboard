@@ -1,4 +1,4 @@
-"""Non-DDL claim preparation; real multi-running PG awaits active 0045."""
+"""Pure allocator SQL boundaries; actual 0045 concurrency is verified separately in PG."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock

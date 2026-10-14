@@ -51,7 +51,10 @@ export interface SelectionStrategy extends StrategyInput {
   version?: number
   latestExecution?: SelectionExecutionSummary | null
   scheduleAvailable?: boolean
+  scheduleExecutionEnabled?: boolean
   nextRunAt?: string | null
+  latestTrigger?:
+    import('../api/selection-strategy-api').SelectionStrategyTriggerDto | null
   requestScope?: { industryId: string; categoryIds: string[] }
 }
 export interface CandidateSourceContext {

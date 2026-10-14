@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     product_selection_execution_enabled: bool = False
     # Compatible read-only rollback keeps strategy/run/fact readers available.
     product_selection_strategy_management_enabled: bool = True
+    product_selection_schedule_enabled: bool = False
+    product_selection_concurrency: int = Field(default=3, ge=1, le=20)
+
+    @field_validator("product_selection_concurrency", mode="before")
+    @classmethod
+    def reject_boolean_selection_capacity(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Selection capacity must be a positive integer")
+        return value
     product_selection_run_lease_seconds: int = Field(default=120, ge=30, le=600)
     # Disabled by default so Feature/Integration environments never begin
     # platform collection merely because the Backend process is running.

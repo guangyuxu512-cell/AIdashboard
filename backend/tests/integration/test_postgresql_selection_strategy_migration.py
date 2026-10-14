@@ -38,22 +38,27 @@ def test_0044_empty_downgrade_upgrade_preserves_0042_facts_and_0043_runs(selecti
         command.upgrade(config, "head")
     with Session(context[0]) as session:
         assert session.get(Run, receipt.execution_run_id).strategy_id is None
-        assert session.scalar(text("SELECT version_num FROM alembic_version")) == "20261013_0044"
+        assert session.scalar(text("SELECT version_num FROM alembic_version")) == "20261013_0045"
 
 
 def test_0044_refuses_data_loss_and_retains_strategy(selection_context, postgresql_url):
-    saved = save_strategy(selection_context)
+    saved = save_strategy(selection_context, schedule={"scheduled": False})
     config = _config_migration(postgresql_url.database)
-    with pytest.raises(RuntimeError, match="retain schema"):
-        command.downgrade(config, "20261010_0043")
-    with Session(selection_context[0]) as session:
-        assert session.get(Strategy, saved.strategy_id).version == 1
-        assert session.scalar(text("SELECT version_num FROM alembic_version")) == "20261013_0044"
+    command.downgrade(config, "20261013_0044")
+    try:
+        with pytest.raises(RuntimeError, match="retain schema"):
+            command.downgrade(config, "20261010_0043")
+        with Session(selection_context[0]) as session:
+            assert session.get(Strategy, saved.strategy_id).version == 1
+            assert session.scalar(text("SELECT version_num FROM alembic_version")) == "20261013_0044"
+    finally:
+        command.upgrade(config, "head")
 
 
 def test_0044_lock_waits_for_concurrent_writer_then_refuses_loss(selection_context, postgresql_url):
     context = selection_context
     config = _config_migration(postgresql_url.database)
+    command.downgrade(config, "20261013_0044")
     lock_started, results = Event(), []
     def observe(connection, cursor, statement, *args):
         if statement.startswith("LOCK TABLE product_selection_strategies,"):
@@ -80,3 +85,4 @@ def test_0044_lock_waits_for_concurrent_writer_then_refuses_loss(selection_conte
             assert writer.get(Strategy, row.strategy_id) is not None
     finally:
         event.remove(Engine, "before_cursor_execute", observe)
+        command.upgrade(config, "head")

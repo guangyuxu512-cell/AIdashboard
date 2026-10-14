@@ -68,6 +68,30 @@ const unavailable = async (): Promise<never> => {
 }
 
 describe('saved Real strategies use the registered backend contract', () => {
+  it('reads real next time and trigger failure without inventing a zero-result run', () => {
+    const dto = saved()
+    dto.schedule_available = true
+    dto.schedule_execution_enabled = false
+    dto.schedule = { ...dto.schedule, kind: 'hourly', interval_hours: 5 }
+    dto.next_run_at = '2026-10-14T06:00:00Z'
+    dto.latest_trigger = {
+      schedule_run_id: 'audit',
+      scheduled_for: '2026-10-14T01:00:00Z',
+      created_at: '2026-10-14T01:01:00Z',
+      trigger_result: 'blocked',
+      receipt_id: null,
+      execution_run_id: null,
+      error_code: 'SHOP_SESSION_AUTHENTICATION_INVALID',
+      error_stage: 'session',
+    }
+    const view = mapSelectionStrategy(dto)
+    expect(view.hourlyInterval).toBe(5)
+    expect(view.nextRunAt).toBe(dto.next_run_at)
+    expect(view.scheduleExecutionEnabled).toBe(false)
+    expect(view.latestExecution).toBeNull()
+    expect(view.latestResult).toBe('触发失败 · 店铺登录已失效，请重新登录')
+    expect(httpClient.post).not.toHaveBeenCalled()
+  })
   beforeEach(() => vi.clearAllMocks())
   it.each([
     ['known', false],

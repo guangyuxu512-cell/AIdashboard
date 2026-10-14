@@ -206,3 +206,4 @@ class ScheduleTriggerSummary(BaseModel):
     scheduled_for: datetime
     trigger_result: ScheduleRunTriggerResult
     task_id: UUID | None
+    selection_run_id: UUID | None = None

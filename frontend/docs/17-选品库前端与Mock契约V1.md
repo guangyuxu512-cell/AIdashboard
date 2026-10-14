@@ -1,5 +1,11 @@
 # 选品库前端与 Mock 交互 V1
 
+2026-10-14 B正式绑定实施：每N小时使用原AppNumberInput，频率/每日时间及布局保留；N保存到后端同一配置。
+原执行方式位置读取真实next_run_at，复用Schedule formatInstant以上海显示；环境自动开关关闭明确标记。
+最新ScheduleRun准备失败独立安全投影，不用旧成功/伪0掩盖，不暴露原错误message；真实Session失效提示重新登录。
+有启用定时策略时有限只读轮询；普通结果刷新不请求平台。手动提交共用后端pending队列，不用全局已有Run阻止其它店铺。
+同Candidate对应Backend/Frontend/Integration45及唯一Electron尚需ca97验收；不将单元测试/浏览器合成叫原生或已部署。
+
 2026-10-14 B非DDL准备：原执行频率区域增加“每N小时”及公共AppNumberInput正整数输入，
 每日仍AppTimePicker；hourlyInterval映射正式schedule.interval_hours，旧JSON默认1。
 保存/编辑回读同一数值，手动获取不顺带保存或校验未使用的间隔；未启用服务端路径时

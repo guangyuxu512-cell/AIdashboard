@@ -15,3 +15,4 @@ class ScheduleExecutionType(StrEnum):
 class ScheduleRunTriggerResult(StrEnum):
     TASK_CREATED = "task_created"
     BLOCKED = "blocked"
+    SELECTION_RUN = "selection_run"

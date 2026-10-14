@@ -80,8 +80,8 @@ def latest_daily_occurrence(
 def next_hourly_occurrence(timezone_name: str, *, after: datetime, interval_hours: int = 1, anchor: datetime | None = None) -> datetime:
     """Server selection's Shanghai next whole hour, strictly after acceptance.
 
-    This preparation helper does not expose hourly in the PC Schedule DTO,
-    extend database enums, or activate a new due scanner.
+    The server target reuses this rule; PC DTOs remain once/daily/weekly.
+    No completion-time anchor or per-calendar-day modulo is introduced.
     """
     step = _hourly_step(interval_hours)
     boundary = _shanghai_hour_boundary(timezone_name, after)

@@ -1,17 +1,21 @@
-"""Approved conflict-only key preparation, not another queue or authority source.
+"""Approved conflict-only Run key, not another queue or authority source.
 
-The final B run reader/writer will bind this metadata under the shared decision
-transaction after exact A Green sync. Nothing calls it to enqueue in this prep.
+The writer/reader bind metadata to frozen intent, strategy FK and authorized
+Team/Shop. Only unsafe running associations use this namespace; normal intent
+keeps its existing key. HTTP commands cannot supply this metadata.
 """
+
+from __future__ import annotations
 
 from hashlib import sha256
 import json
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.product_selection.run_contract import SelectionResolvedRequest
+if TYPE_CHECKING:
+    from app.modules.product_selection.run_contract import SelectionResolvedRequest
 
 
 class SelectionStrategyQueueKey(BaseModel):
@@ -32,7 +36,7 @@ class SelectionStrategyQueueKey(BaseModel):
     def from_request(cls, request: SelectionResolvedRequest, *, strategy_id: UUID) -> "SelectionStrategyQueueKey":
         if request.strategy is None or request.strategy.strategy_id != strategy_id:
             raise ValueError("Queue isolation needs its validated saved strategy snapshot")
-        return cls(base_fingerprint=request.fingerprint(), strategy_id=strategy_id)
+        return cls(base_fingerprint=request.base_fingerprint(), strategy_id=strategy_id)
 
     def validate_binding(self, request: SelectionResolvedRequest, *, strategy_id: UUID) -> None:
         expected = self.from_request(request, strategy_id=strategy_id)

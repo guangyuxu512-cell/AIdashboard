@@ -19,7 +19,7 @@ import {
   submitSelectionRun,
 } from './selection-read-api'
 import { formatSelectionInterval } from '../model/metric-display'
-import { runResult } from '../model/run-display'
+import { runResult, triggerFailure } from '../model/run-display'
 import { realPriceErrors } from '../model/selection-rules'
 import {
   readStrategies,
@@ -65,9 +65,19 @@ export function mapSelectionStrategy(
     hourlyInterval: dto.schedule.interval_hours ?? 1,
     dailyTime: dto.schedule.daily_time,
     enabled: dto.enabled,
-    latestResult: dto.latest_run ? runResult(dto.latest_run) : null,
+    latestResult:
+      dto.latest_trigger?.trigger_result === 'blocked'
+        ? triggerFailure(
+            dto.latest_trigger.error_code,
+            dto.latest_trigger.error_stage,
+          )
+        : dto.latest_run
+          ? runResult(dto.latest_run)
+          : null,
     latestExecution: dto.latest_run,
     scheduleAvailable: dto.schedule_available,
+    scheduleExecutionEnabled: dto.schedule_execution_enabled ?? false,
+    latestTrigger: dto.latest_trigger ?? null,
     nextRunAt: dto.next_run_at,
     requestScope: {
       industryId: request.industry_id,
@@ -300,7 +310,7 @@ export function createSelectionRealService(
   return {
     available: false,
     strategySaveAvailable: true,
-    scheduleAvailable: false,
+    scheduleAvailable: true,
     candidatesAvailable: true,
     latestRun: readLatestSelectionRun,
     run: readSelectionRun,

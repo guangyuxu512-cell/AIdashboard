@@ -1,4 +1,4 @@
-"""Pure key/binding checks; not two-running, new run format or actual B I/O."""
+"""Pure key/binding checks; runtime queue/fence and platform evidence remain separate."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

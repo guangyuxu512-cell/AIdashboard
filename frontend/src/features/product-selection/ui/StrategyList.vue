@@ -21,6 +21,7 @@ import {
 } from '@/shared/components'
 import { AppButton, AppInput, AppSwitch } from '@/shared/ui'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
+import { formatInstant } from '@/entities/schedule/api/schedule-mapper'
 import {
   CHANNEL_OPTIONS,
   type SelectionService,
@@ -74,7 +75,12 @@ const query = useQuery({
       ['pending', 'running'].includes(row.latestExecution?.status ?? ''),
     )
       ? 2000
-      : false,
+      : query.state.data?.items.some(
+            (row) =>
+              row.scheduled && row.enabled && row.scheduleExecutionEnabled,
+          )
+        ? 10000
+        : false,
   retry: false,
 })
 // Keep the approved management and drawer independent of manual availability.
@@ -104,8 +110,6 @@ const executionDisabledReason = computed(() => {
   if (capability.isError.value) return '手动获取状态读取失败，请刷新重试'
   if (!capability.data.value?.manual_execution_available)
     return '此环境手动获取未启用，已入库结果仍可查询'
-  if (['pending', 'running'].includes(latest.data.value?.status ?? ''))
-    return '已有选品获取任务正在执行'
   return null
 })
 function refresh() {
@@ -326,18 +330,37 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
     render: (row) =>
       !row.scheduled
         ? '手动'
-        : h(
-            NTooltip,
-            {},
-            {
-              trigger: () =>
-                `${row.scheduleKind === 'hourly' ? `每 ${row.hourlyInterval ?? 1} 小时` : `每日 ${row.dailyTime}`}${row.scheduleAvailable === false ? ' · 未调度' : ''}`,
-              default: () =>
-                row.scheduleAvailable === false
-                  ? '定时配置已保存，服务端调度待接入'
-                  : 'Asia/Shanghai',
-            },
-          ),
+        : h('div', {}, [
+            h(
+              NTooltip,
+              {},
+              {
+                trigger: () =>
+                  `${row.scheduleKind === 'hourly' ? `每 ${row.hourlyInterval ?? 1} 小时` : `每日 ${row.dailyTime}`}${row.scheduleAvailable === false ? ' · 未调度' : row.scheduleExecutionEnabled === false ? ' · 环境关闭' : ''}`,
+                default: () =>
+                  row.scheduleAvailable === false
+                    ? '定时配置已保存，服务端调度待接入'
+                    : `Asia/Shanghai · 下次 ${formatInstant(row.nextRunAt ?? null, 'Asia/Shanghai')}${row.scheduleExecutionEnabled === false ? ' · 当前环境自动执行关闭' : ''}`,
+              },
+            ),
+            ...(row.scheduleAvailable
+              ? [
+                  h(
+                    NText,
+                    {
+                      tag: 'div',
+                      depth: 3,
+                      style: {
+                        fontSize: 'var(--font-size-secondary)',
+                        whiteSpace: 'nowrap',
+                      },
+                    },
+                    () =>
+                      `下次 ${formatInstant(row.nextRunAt ?? null, 'Asia/Shanghai').slice(row.nextRunAt ? 5 : 0)}`,
+                  ),
+                ]
+              : []),
+          ]),
   },
   {
     key: 'latestResult',
@@ -381,12 +404,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
           {
             tone: 'primary',
             loading: busyId.value === row.id,
-            disabled:
-              !!props.service.manual &&
-              (!!executionDisabledReason.value ||
-                ['pending', 'running'].includes(
-                  row.latestExecution?.status ?? '',
-                )),
+            disabled: !!props.service.manual && !!executionDisabledReason.value,
             onClick: () => retrieve(row),
           },
           () => '立即获取',

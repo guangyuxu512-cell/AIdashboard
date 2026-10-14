@@ -49,7 +49,6 @@ class SelectionRunExecutor:
     def execute_available(self) -> int:
         with self.session_factory() as session:
             service = SelectionRunService(session, settings=self.settings)
-            service.recover_expired()
             claim = service.claim_next()
         if claim is None:
             return 0
@@ -232,21 +231,20 @@ async def execute_selection_runs_forever() -> None:
     if not settings.product_selection_execution_enabled:
         return
     executor = build_selection_run_executor(settings)
-    while True:
-        try:
-            if selection_request_mapping_available():
-                processed = await asyncio.to_thread(executor.execute_available)
-            else:
-                # Reconcile an expired lease even while a mapping is disabled;
-                # do not claim or resend a pending/interrupted platform request.
-                await asyncio.to_thread(executor.recover_only)
-                processed = 0
-        except asyncio.CancelledError:
-            # Canceling this await does not cancel an HTTP thread. Its finite
-            # HTTP timeout and DB lease fence remain the late-write protection.
-            raise
-        except Exception:
-            # Do not log an exception which may contain a signed URL/DSN.
-            processed = 0
-        if not processed:
-            await asyncio.sleep(1)
+    async def worker() -> None:
+        while True:
+            try:
+                if selection_request_mapping_available():
+                    processed = await asyncio.to_thread(executor.execute_available)
+                else:
+                    await asyncio.to_thread(executor.recover_only)
+                    processed = 0
+            except asyncio.CancelledError:
+                # HTTP threads have finite timeouts; lease fencing rejects
+                # writes after expiry/restart. Cancellation cannot retract I/O.
+                raise
+            except Exception:
+                processed = 0  # Never log raw exceptions/URLs/credentials.
+            if not processed:
+                await asyncio.sleep(1)
+    await asyncio.gather(*(worker() for _ in range(settings.product_selection_concurrency)))
