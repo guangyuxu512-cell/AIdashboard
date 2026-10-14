@@ -11,11 +11,13 @@ const props = withDefaults(
     modelValue?: string | null
     disabled?: boolean
     placeholder?: string
+    clearable?: boolean
   }>(),
   {
     modelValue: null,
     disabled: false,
     placeholder: '请选择店铺',
+    clearable: false,
   },
 )
 
@@ -38,6 +40,7 @@ function update(value: AppOptionValue | null): void {
     :loading="query.isPending.value"
     :disabled="props.disabled"
     :placeholder="props.placeholder"
+    :clearable="props.clearable"
     filterable
     @update:model-value="update"
   />
