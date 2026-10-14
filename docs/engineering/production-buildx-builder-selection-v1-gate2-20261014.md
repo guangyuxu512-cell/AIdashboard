@@ -39,7 +39,7 @@ production-env reader及CI/生产Workflow差异0；B7db不是该候选祖先。
 `--builder`为[Compose官方build选项](https://docs.docker.com/reference/cli/docker/compose/build/)，
 但官方文档和小scratch都不能证明VPS当前CLI/产物store或正式候选完整构建，仍由Main实际核验。
 
-**工程Gate 2审查接受；正常no-ff合dev、合后精确复验与该SHA CI尚待。**
+**工程Gate 2审查接受；正常no-ff合dev、精确CI与生产发布结果见下文。**
 A原业务/视觉已验且字节未变，复用证据，不重复Electron确认。唯一B预览仍7db/0045，
 不能把它当作A工程候选界面证据，也不为工程检查退回Integration0044或重载B客户端。
 
@@ -70,5 +70,55 @@ completed/success，三项Backend/Real build/container-runtime全部success；�
 
 已交Main持续A+工程Release，不再等授权/A视觉/B模块。受保护的builder键必须在main push前
 备份并设置，避免main CI后自动Deploy落回已知故障default；其它配置/密码不变。
-Main实际Compose能力、builder/本地image store、新鲜DB备份/main CI/正式Deploy与生产核验尚待回执。
-此时A仍未标DEPLOYED，B原生清单独立等待用户，不混入0045。
+本交接时Main实际Compose能力、builder/本地image store、新鲜DB备份/main CI/正式Deploy尚待回执。
+该阶段未标DEPLOYED；后续实际完成结果如下，B原生清单独立等待用户，不混入0045。
+
+## 精确Release与镜像源运行环境恢复
+
+Main正常no-ff Release为`103b1c80b82f5bfca78467b887d7fafbdeb1ab60`，
+其runtime/scripts/deploy/CI/依赖/Electron与af57审查范围一致、未包含B。
+精确[main CI38549554911](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38549554911)
+三项全部success。迁移前新鲜备份20261014T102018Z，976178 bytes，
+SHA256 `a709112a1a1ff85bc19fcc2686cd60a951b79eeb1abf8ca3ad620c23ffabc950`，
+restore list330通过；备份及配置副本为受保护0600文件，不登记凭据。
+
+正式[Deploy38550018844](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38550018844)
+attempt1在基础镜像registry metadata HEAD阶段出现i/o timeout/DeadlineExceeded，
+没有进入pip下载，不是已证实的哈希错误、OOM、鉴权拒绝或再次daemon panic。
+旧0102生产及0043正常，未切服务、未迁移，daemon未重启；失败发布目录由正式脚本清理。
+
+只读比较确认原独立builder未继承daemon既有可信HTTPS mirror，
+因此保留原builder/cache，另建仅本次任务的`control-center-a-103b1c80`，
+复用该既有源、严格TLS，BuildKit镜像固定为原现存digest。
+不新增未知源、不改daemon/global default、不prune、业务/依赖/Migration字节不变。
+通用Python slim样本曾遇到OCI descriptor缺失，且并非正式Backend基底，未计为通过；
+随后准确四个Dockerfile基底python3.12-slim-bookworm/node24-alpine/
+node22-bookworm-slim/nginx1.27-alpine均真实构建并导入同一daemon store成功。
+导入样本image为`sha256:6651244509bebf806e2fdb0294ec2e528ecde0db34ccea972766ae3a16883085`。
+
+受保护仅切builder键，保留其它配置字节/凭据；只对同一精确103 Release执行一次有证据的
+正式Deploy attempt2，不重跑业务CI或人工验收。构建期间不能以基础样本替代正式发布；
+ca97当时独立核验旧0102/单一0043、Backend/Signer健康、Frontend运行，原配置保持。
+
+## A正式生产发布完成（2026-10-14）
+
+同一Deploy attempt2实际completed/success，2026-10-14北京时间20:09完成，耗时1h4m49s；
+Upload and deploy release、Verify public Backend health contract均success。
+正式长耗时为APT/Node及Python wheel稳步下载，没有OOM或权限拒绝，不为提速改依赖或绕校验。
+Main回执已核验current、三服务tag/image ID与精确Release
+`103b1c80b82f5bfca78467b887d7fafbdeb1ab60`匹配，生产
+`control_center_prod`/最小应用角色、单一`20261013_0044`，未包含B0045。
+
+ca97随后独立只读于北京时间20:35复核：active Release及Backend/Frontend/Signer均为上述完整SHA；
+Backend/Signer/PG healthy、Frontend running（无container healthcheck）、重启次数0/OOM事件0，
+生产Head仅0044；实际公开配置manual selection/经营manual/daily均true、09:00:00保持。
+该检查业务写入/服务重启/平台请求均0。
+Main用同一current正式Compose恢复Backend配置后，实际getter execution与strategy management均true；
+NAS真实CIFS/mount/marker及app999:999读写执行权限通过，公网HTTPS/index及新asset200，
+旧asset仍可读、缺失脚本真实404，Real产物与新image字节一致。
+
+生产策略/Run均0；没有额外生产CRUD、新榜单、RPA或付费生成，也不把健康/配置当作新增真实业务验收。
+代码未变的A集成平台与原生验收证据复用。未更换Electron/新打包，原1.0.6/Profile及B现场保留。
+A及必要工程修复现标DEPLOYED；历史失败和备份、原builder/cache/卷继续保留，凭据无输出。
+后续B须独立完成人工确认、Green与Release；生产已有策略/v8事实后的回退保留0044/v8 Reader及审计，
+不降级清数据或直接回不兼容旧Reader。本工作树仅登记结果，不向Main额外推文档触发Deploy。

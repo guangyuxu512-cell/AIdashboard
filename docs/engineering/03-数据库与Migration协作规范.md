@@ -38,8 +38,10 @@ Owner81a1、ca97 Gate2、Main Release；无数据库/Schema/Migration需求、�
 正式Alembic从精确归档升级`control_center_integration`0044→单一0045，原业务/PC/Session保留。
 已应用42/43/44/45字节不改，不降级或清历史；仅专用正式API配置及有限自然timer验收。
 0045继续唯一active，B Gate2未完成/未合dev，不能因Integration迁移或Feature合成测试标released。
-下文“Integration未应用45”保留为之前阶段，不覆盖本次实际升级。生产仍0102/0043，
-A部署故障与B验收独立；Gate2细节见`product-selection-server-schedule-v1-gate2-20261014.md`。
+下文“Integration未应用45”保留为之前阶段，不覆盖本次实际升级。A与工程修复已正式部署，
+生产实际103b1c80/单一`20261013_0044`；Main备份restore list330通过后正式升级，
+ca97独立只读复核SHA/Head/服务及09:00原配置。未包含B45、未写新生产策略/Run；
+B验收与发布独立，细节见`product-selection-server-schedule-v1-gate2-20261014.md`。
 
 2026-10-14 A最终Candidate f348565的契约/真实闭环及最后候选池原生人工确认已通过，
 正常no-ff精确Green `f5d4866459acf3e29459a9920c03c1e9118a8839` 已合后复验及CI通过，
@@ -56,7 +58,7 @@ Integration已单一0044，A无后续新增Migration。已有v8事实须保留�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-strategies-v1` / 81a1（A） | `released`（2026-10-14 Gate2/精确Green CI通过） | 一张Team-owned策略表、version CAS、相对条件与定时草稿，runs可空RESTRICT策略关联；保存/启停不取数或创建Schedule，旧事实保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature/Integration单一0044；Gate2/最终原生人工确认及合并复验通过，Green f5d4866/CI38503895984。77实际downgrade保护已复核：只允许精确可重建Feature，offline/其他库锁与DDL前拒绝，再锁后查空新实体/并发writer。生产由Main备份后正式升级，已有v8或策略后保留兼容Reader/Schema/事实，不能旧Reader回退或清库；未据CI宣称生产DEPLOYED。 |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `released`（Gate2/Green及2026-10-14正式部署完成） | 一张Team-owned策略表、version CAS、相对条件与定时草稿，runs可空RESTRICT策略关联；保存/启停不取数或创建Schedule，旧事实保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | A验证期Feature/Integration0044证据保留，现B隔离45；最终Green af57/CI38547082755、Main103/CI38549554911及Deploy38550018844 attempt2 success。Main受保护新dump/restore list330后正式生产升级单一0044，ca97只读复核；新策略/Run/平台请求0。77实际降级guard保留；生产已有v8或策略后必须保留兼容Reader/Schema/事实/审计，不downgrade或旧Reader回退清数据。 |
 
 ca97已通过受保护应用连接与只读事务核实复用Feature库：owner/role为
 `control_center_dev_user`，单一`20261010_0043`；候选/观察/run/ShopSession均0，

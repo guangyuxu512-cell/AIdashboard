@@ -124,6 +124,7 @@ A精确Green f5及main48ca680两条CI成功；首次Deploy38505980435失败，
 
 同一人类turn已明确授权A最小builder工程修复，不改业务/依赖/Migration。
 唯一Owner81a1/独立feat/production-buildx-builder-selection-v1，Main统筹Release，7d55未切支或改文件。
-OwnerDraft1677fd3只4工程文件，Windows权限/ln语义不能替代Linux；被拒临时cleanup目标未执行且不绕过。
-正常Draft PR13触发现有Ubuntu CI38542431178，Gate1待完整通过，ca97同步静态审查；
-B资源窗口结束已回Main，正式构建仍须工程Gate2/精确Green CI，不据授权/Draft直接部署。
+工程1677fd3只4工程文件，Windows权限/ln语义不能替代Linux；被拒临时cleanup目标未执行且不绕过。
+后续PR13/Linux CI、Gate1/Gate2及精确Green af57/CI38547082755已通过；
+Main精确103/main CI38549554911、正式Deploy38550018844 attempt2已success，生产单一0044。
+此A发布不包含B，原B客户端/Profile/0045资源未变；B原生清单仍未回传，不把A部署当作B Gate或发布。
