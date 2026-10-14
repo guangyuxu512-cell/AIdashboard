@@ -1,11 +1,11 @@
-# 选品策略 B 服务端定时 Gate 2（通过，已合并，精确CI待完成）
+# 选品策略 B 服务端定时 Gate 2（通过，精确Green已交发布）
 
 Owner81a1 / Integration ca97。精确候选
 `7db6578e67225efe8b77830712ccdbc72d6803cb`，分支
 `feat/product-selection-server-schedule-v1`，基于A精确Green
 `f5d4866459acf3e29459a9920c03c1e9118a8839`正常合入依赖。
 7db相对完整运行候选6e0ad128仅两处契约记录订正，代码、Schema及测试字节一致。
-**2026-10-15：技术、真实后台及同一原生Electron人工验收均通过；人类已明确授权继续合并、CI及B发布。下文各“尚待/禁止发布”为该时间点的阶段记录，不覆盖本项最新结论。已正常合dev并复验，精确CI待完成；尚未部署，不提前标Green/DEPLOYED。**
+**2026-10-15：Gate 2/直接人工确认、正常no-ff合并、合并树复验及精确dev CI全部通过。Green为9bb64ac76bf9e0f51fb1715517cf8c18cef63e22，0045核销released，已交Main按人类授权完成B Release。下文待确认/禁止发布仅为阶段记录；生产尚未完成，不提前标DEPLOYED。**
 
 ## 独立技术审查与证据边界
 
@@ -216,3 +216,24 @@ production Real build18.48s全部通过。只读比对现有5180/8100的验收�
 无需重启或重复原生/平台测试；本次新增DB业务写入、平台请求0。
 Git staged秘密匹配0/临时artifact0/冲突0/diff错误0；本地override/.codex/.dev-runtime被忽略。
 后续证据提交只补本节治理，不改变已复验Merge业务树；推送后的精确HEAD须三项CI成功才标Green。
+
+## 精确Green及正式Release Handoff（2026-10-15）
+
+最终dev `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22` 已推送，9bb相对Merge89仅两份证据文档，
+业务树不变。CI [38597874343](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38597874343)
+实际head_sha精确9bb，Backend、frontend-real-build、container-runtime三项全部success；
+不是额度恢复、仅提交或本地测试替代CI。推送时Git干净/远端精确相同、stash未动。
+现核销0045为released，无新的active Slot；本节及Slot后续纯治理记录不是另一个Green。
+
+交Main仅使用精确Green9bb正常合main并等待精确main CI、正式Deploy及实际生产核验。
+先新鲜生产0044备份/restore list可读，正式升级单一0045；保留旧PC计划/Task、A事实、经营和Session。
+使用已有可信mirror/独立builder及原部署校验，不改业务/依赖/迁移，不重发A旧Release。
+生产持久配置启用BACKEND_PRODUCT_SELECTION_SCHEDULE_ENABLED，既有EXECUTION/管理true保持、
+并发默认3/原scanner10秒50批次；先检查合法计划/活动队列，没有测试残留或需猜测转换的旧草稿。
+Integration样本不复制生产；生产当前选品策略/Run0、旧PC3计划、经营09:00仅昨日原配置保留。
+有B数据后应用恢复须保留兼容Reader/Schema/审计，先关闭server路径，不直接回旧A镜像或降级清库。
+无Electron/Preload/Worker变化，与实际1.0.6壳相同，不为此额外安装或清Profile。
+
+核验actual SHA/镜像/Real资产、45单一Head、Backend/Frontend/Signer健康及持久配置与实际getter；
+客户端关闭独立性复用已完成的真实自然到点证据，不追加100请求或重复人工验收。
+截至本项交接仍未部署B；服务端已发布、运行正常后另记录实际结果。

@@ -26,6 +26,12 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-15最新Green为`9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`，B精确7db正常no-ff
+合dev89b8d9f，合后复验/直接人类确认及CI38597874343三项success均通过。0045正式released，
+无active Slot；Main已获B发布授权，必须用精确Green9bb而非后续纯治理HEAD合main/CI/正式部署。
+生产此时仍A103/0044；最终部署/45/健康/开关核验由Main负责，不以Green或交接冒称DEPLOYED。
+本条替代下列待CI/Slot active及af57最新Green的阶段结论；无额外功能/平台请求/原生复验。
+
 2026-10-15当前B状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`的技术、
 Integration0045/正式API/真实自然到点（含客户端完全退出）及同一原生Electron验收均通过。
 新独立每日配置只供新增控件验收，旧N3/hourly6及真实历史保留；用户已直接回复“验收通过”并

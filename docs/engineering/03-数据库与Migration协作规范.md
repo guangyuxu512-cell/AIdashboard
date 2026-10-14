@@ -30,6 +30,12 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-15最新：B Gate1/Gate2/直接人类原生确认及正常no-ff合后验证全部通过；精确Green
+`9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`/CI38597874343三项success已核实并推送。
+现正式核销`20261013_0045_product_selection_server_schedule_v1`为released，无active Slot。
+Feature/Integration已单一0045、生产此时仍0044；Main受权在Release Gate/新鲜备份可读后正式升级。
+原Slot表active为已保留历史，不覆盖本项核销；未分配下一Slot、不开发其它Feature或释放旧数据。
+
 2026-10-15 B精确7db已完成Gate 2及直接人类原生确认、获得继续合并/CI/发布授权。
 0045仍唯一active至精确dev CI Green核销，Feature/Integration单一0045及旧事实保留；
 本次不改已应用迁移。生产当前A103b1c80/0044，0045由Main在Release Gate、备份可读后正式升级，
