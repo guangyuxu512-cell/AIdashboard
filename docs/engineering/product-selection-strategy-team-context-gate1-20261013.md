@@ -50,3 +50,96 @@ GET/PUT/PATCH和关联手动Run共用它；不改归属、不硬编码Team，不
 A其它industry/date1d/date30d/brand/customprice仍缺直接参数证据，由ca97逐项补证，Owner收到即接入。
 B事务/Schema正式提案已提供，尚无新active Slot；先推进时间规则/事务拆取，未验B代码不混入A发布。
 回滚保留0044、旧事实及v4兼容Reader，不降级共享库/清数据；Owner不合dev/main、不发布生产。
+
+## 2026-10-13 追加：精确进度读取的团队一致性
+
+沿A当前`8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`继续，B独立
+`d4eaa9c4fcf686b2669290aaa45bfc2d577bb2b3`不混入。ca97技术核对认可此尾部缺口；
+8df的原生位置专项及既有实时/7d事实保留，不倒写为本次精确进度GET已验收。
+
+已有策略POST已派生资源Team，但`SelectionRunService.get`仍把super的全局Team作为
+精确ID过滤；选另一有效Team时提交成功后GET404，未选Team时不复现。
+新增Feature PG断言在旧逻辑上1 pass/1 fail，失败为`SelectionRunNotFoundError`。
+修复仅在get中重新核验人员/模块及真实super，精确查单个Run，再按已存有效Team复核；
+原`_read`回执与canonical的Team/Shop/fingerprint检查保持。canonical可以是旧无strategy
+执行，因此不只依赖strategy_id。运行列表继续按全局Team过滤，普通成员SQL/Shop权限不变。
+没有提交、事实、保存、CAS、日期、Signer、Session或前端布局变化，不新增API或Schema。
+
+定向覆盖same-header POST202→GET200、同key重放、canonical与reused receipt、旧无关联执行；
+普通成员404、资源Team停用拒绝、撤super及Shop授权后缓存super标记无效。
+全部仅登记Feature PostgreSQL和合成类目，平台Session入口被测试禁止；无真实请求。
+最终追加回归（Backend目录）：
+
+| 命令 | 实际结果 |
+| --- | --- |
+| `.venv\Scripts\python.exe -m pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_realtime.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py -q --tb=short` | 92 pass，213.19s；Feature PG＋合成I/O，非平台验收 |
+| `.venv\Scripts\python.exe -m pytest --tb=short` | 630 pass / 236 integration deselected，73.38s |
+| root `git diff --check` | pass |
+
+保留既有Starlette/httpx弃用warning。精确Candidate随Handoff回传，不在本节猜未来SHA。
+测试完成后的额外只读核验因连接对象类型错误失败，异常输出意外包含Feature连接凭据；
+未写入Git，本节不复述敏感内容。Owner已停止使用该凭据并通知ca97走受保护轮换/影响核对，
+不自行改共享/生产配置。该额外核验不算成功证据，安全事项未核销前不放行完整Gate或发布。
+
+Frontend/Electron/0042/0043/0044与8df字节不变，复用其已记录lint/typecheck/Real build与
+95项选品定向和3项完整API拦截证据；不是再次执行，也不是本次新原生验收。
+ca97只需加载匹配Backend并补实际现有上下文POST→进度/回执GET，复用不受影响的列表原生专项。
+其它行业/1d/30d/品牌/custom price仍待逐项直接证据，B0045仅reserved；A/B整体保持PARTIAL。
+
+## 2026-10-13 ca97追加审查：解析资源Team后的可见性复核
+
+`ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`的92项PG/630项默认通过事实保留，
+但它没有覆盖首次super查行之后、第二次Actor解析之前撤super的交错。
+ca97在无配置/无DB的method-only审查中发现：非reused行可能直接被投影，未再次查询Shop授权。
+此为真实代码时序的合成证据，不是新PostgreSQL或平台验收。
+
+Owner仅在原get中增加第二次权威Actor下的`get_for_actor`与不可见404；复用SQL/_read，
+不新增权限框架或只凭前端/缓存标记判断。正常成员入口保持一次现有查询，super精确ID入口
+重新校验Team后查同一个Run；仍有权限的降权成员可按正常授权读取，无授权成员不能复用旧行。
+reused回执查canonical也使用该次Actor，Team/Shop/fingerprint边界不变。
+
+新增`test_selection_run_progress_authorization.py`：不构造Settings/Session、不加载配置、不连接
+数据库或平台，执行生产get/_read和真实DTO校验，模拟权威Actor/Repository返回的许可交错。
+最初夹具漏了正式DTO的brand/price_mode必填值，先修正夹具；此6项初始校验失败不算缺陷复现。
+修正夹具后旧ed6为5 fail/1 pass，其中非reused无Shop授权仍返回记录直接复现问题；
+其余失败指出缺少第二次精确Run查询或查询了canonical而非先复核回执。
+
+实际命令（Backend）：
+`.venv\Scripts\python.exe -m pytest -o addopts="" tests/test_selection_run_progress_authorization.py tests/test_selection_request_mapping.py tests/test_selection_realtime_mapping.py tests/test_selection_strategy_contract.py tests/test_product_selection_source.py -q --tb=short`
+结果59 pass，1.42s，包含6项本次进度授权定向。`git diff --check`通过。
+Frontend/Electron/Migration仍零变更，未重复其检查；安全hold期间不执行新PG/整体需要DB的验收。
+ed6旧PG证据不是本次交错修复已通过PG。共享Role轮换/影响核对及新PG复验仍待处理，
+只交无DB代码技术复审，不称Gate1全部完成、Gate2/Green或发布放行。
+
+## 2026-10-13 凭据恢复后的Feature PostgreSQL补验
+
+ca97经现有DBA通道完成开发应用Role受保护轮换，报告生产凭据不共享；Owner没有操作
+其它环境、Role或生产配置，仅按正式恢复通知读取已同步的Feature配置。
+只读预检实际通过：目标`control_center_feat_product_selection`、单一`20261013_0044`；
+rolsuper/rolcreatedb/rolcreaterole均false；策略/run/候选/观察/ShopSession计数均0。
+使用`make_url(str(...))`且全异常只输出安全类型码，不打印配置/URL/repr；本次探针成功。
+不删除原事件或失败阶段记录，恢复Feature连接不等于全A Gate/发布通过。
+
+在56b运行时上新增2项实际PG授权交错：用另一个已提交连接在首次super查行后撤回合成User
+的super和Shop grant，第二次权威Actor变普通成员，既有精确可见SQL必须拒绝；分别覆盖
+canonical和reused receipt，不伪造权限判定或返回值。2 pass/5.22s，原运行保持pending。
+纯逻辑5文件重验59 pass/1.19s；领取测试整理前的默认测试636 pass/238 integration
+deselected/66.80s（后续只追加2项PG测试，运行时/默认单测未再变化）。
+
+首轮5文件PG实际为93 pass/1 fail/213.70s，失败是既有
+`test_claim_race_global_one_execution_and_receipts_never_claimed`断言并发胜者一定是首条。
+实际只领取1个合法canonical；`created_at`排序＋`SKIP LOCKED`允许两个事务锁不同
+canonical，全局running唯一索引只仲裁一个提交，现契约没有并发严格FIFO承诺。
+ca97回读契约后接受只修测试：候选集合内合法canonical、回执不领取、全DB仅一个running、
+另一canonical保持pending；另保留无锁串行首条排序，并以独立连接锁住首条验证可跳过。
+这3项PG定向通过/5.86s；没有修改claim算法、索引、优先级或用反复重跑隐藏原失败。
+完整5文件重跑实际96 pass/213.37s；命令为：
+
+`.venv\Scripts\python.exe -m pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py tests/integration/test_postgresql_selection_realtime.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_windows.py -q --tb=short`
+
+保留既有Starlette/httpx弃用warning。测试后只读目标/Head/最小Role及上述5项计数与预检一致，
+全0，仅清理合成夹具、没有业务数据或Schema迁移；精确测试补充Candidate随Handoff回传。
+
+运行时Backend、Frontend、Electron及全部Migration相对56b零差异；本次仅测试与证据。
+全部I/O为登记Feature PG与合成类目，不请求真实平台；未重做未变前端/原生/取数验收。
+A未知参数/原生操作及B定时仍按原独立边界推进，不把本段PG当完整业务验收。

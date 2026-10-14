@@ -1,5 +1,17 @@
 # 选品服务端定时 B：非DDL准备交接
 
+## 2026-10-14 正式B开始（下方为准备阶段历史）
+
+ca97已确认A精确Green `f5d4866459acf3e29459a9920c03c1e9118a8839`、CI38503895984成功，
+用户普通/最大化验收已记录，A独立交Main Release。串行释放0044并正式激活B0045/down0044。
+Owner保留78e06d8及原A成果，正常no-ff合入该Green，不合治理30fcb70、不cherry-pick/rebase/reset。
+合并保留A v1–v8/稀疏页/品牌价格日期/权限及表格布局，与B私有persist/决策锁和N输入组合。
+
+合并树定向实测：Backend11文件174 pass/2.00s；Feature PG策略兼容/目标页/完整策略集合
+3文件38 pass/104.67s（仍单一0044、合成平台）；Frontend13文件115 pass/11.10s、typecheck通过。
+均不是真实定时或Electron证据。0042/43/44及Models字节未改，接下来按active0045实现Schema、
+Schedule同步/原扫描器/队列容量3、跨进程及100计划合成PG，完整Gate尚未完成。
+
 本次只交技术准备，不是B功能Gate1或真实定时闭环。Owner81a1 / 审核ca97。
 已按ca97安排创建 `feat/product-selection-server-schedule-v1`：精确Green
 `3128d6ad1048dfda1240148e863ea0c98eb6247f`，正常no-ff合入A已交付依赖

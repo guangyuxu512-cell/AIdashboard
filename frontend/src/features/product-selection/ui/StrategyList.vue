@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, h, nextTick, onBeforeUnmount, ref } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useElementSize } from '@vueuse/core'
+import type { PageResult } from '@/shared/api'
 import {
   useMessage,
   type DataTableColumns,
@@ -41,17 +43,23 @@ const page = ref(1),
 const editing = ref<SelectionStrategy | null>(null),
   drawer = ref(false)
 const busyId = ref<string | null>(null)
+const queryClient = useQueryClient()
+let mounted = true
+onBeforeUnmount(() => {
+  mounted = false
+})
 const canRead = computed(
   () => props.service.strategySaveAvailable ?? props.service.available,
 )
+const listKey = computed(() => [
+  'selection-strategies',
+  props.contextKey,
+  props.service.strategiesPage ? page.value : null,
+  props.service.strategiesPage ? pageSize.value : null,
+  props.service.strategiesPage ? appliedKeyword.value : null,
+])
 const query = useQuery({
-  queryKey: computed(() => [
-    'selection-strategies',
-    props.contextKey,
-    props.service.strategiesPage ? page.value : null,
-    props.service.strategiesPage ? pageSize.value : null,
-    props.service.strategiesPage ? appliedKeyword.value : null,
-  ]),
+  queryKey: listKey,
   enabled: canRead,
   queryFn: async () =>
     props.service.strategiesPage
@@ -150,9 +158,35 @@ function setPageSize(value: number) {
   pageSize.value = value
   setPage(1)
 }
-function saved() {
+function updateSavedRow(row: SelectionStrategy) {
+  // Update the existing Query page in place; never build a second row store or
+  // move it to the front. The subsequent authorized GET remains authoritative.
+  queryClient.setQueryData<PageResult<SelectionStrategy>>(
+    listKey.value,
+    (previous) =>
+      previous
+        ? {
+            ...previous,
+            items: previous.items.map((item) =>
+              item.id === row.id &&
+              !(item.version && row.version && item.version > row.version)
+                ? row
+                : item,
+            ),
+          }
+        : previous,
+  )
+}
+async function saved(row?: SelectionStrategy) {
+  if (!mounted) return
+  if (editing.value) {
+    if (row) updateSavedRow(row)
+  } else {
+    setPage(1)
+    await nextTick()
+  }
+  if (!mounted) return
   void query.refetch()
-  setPage(1)
 }
 async function retrieve(row: SelectionStrategy) {
   if (busyId.value) return
@@ -194,21 +228,51 @@ let uncertainSubmission: { input: string; key: string } | null = null
 async function toggle(row: SelectionStrategy, enabled: boolean) {
   if (!props.service.toggleStrategy || !canSave.value || busyId.value) return
   busyId.value = row.id
+  const context = props.contextKey
   try {
-    await props.service.toggleStrategy(row, enabled)
+    const saved = await props.service.toggleStrategy(row, enabled)
+    if (!mounted || props.contextKey !== context) return
+    updateSavedRow(saved)
     message.success(enabled ? '策略已启用' : '策略已停用')
     await query.refetch()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '状态修改失败')
+    if (mounted && props.contextKey === context)
+      message.error(error instanceof Error ? error.message : '状态修改失败')
   } finally {
     busyId.value = null
   }
 }
+const tableRef = ref<InstanceType<typeof DataTable> | null>(null)
+const { width: tableWidth } = useElementSize(() => {
+  const element = tableRef.value?.$el
+  return element instanceof HTMLElement ? element : null
+})
+const columnWidths = computed(() => {
+  // Keep switch/actions usable, share the remaining actual width between
+  // existing text columns. No forced scroll-x or second table/layout API.
+  const space = Math.max(0, Math.floor(tableWidth.value || 1000) - 2 - 68 - 192)
+  const creator = Math.max(84, Math.floor((space * 0.85) / 8))
+  const channel = Math.max(96, Math.floor(space / 8))
+  const reading = Math.max(0, space - creator - channel)
+  const name = Math.floor((reading * 1.2) / 6.15)
+  const shop = Math.floor((reading * 1.15) / 6.15)
+  const conditions = Math.floor((reading * 1.55) / 6.15)
+  const execution = Math.floor((reading * 1.1) / 6.15)
+  return {
+    name,
+    shop,
+    creator,
+    channel,
+    conditions,
+    execution,
+    result: space - name - shop - creator - channel - conditions - execution,
+  }
+})
 const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
   {
     key: 'name',
     title: '策略名',
-    width: 180,
+    width: columnWidths.value.name,
     fixed: 'left',
     align: 'center',
     ellipsis: { tooltip: true },
@@ -216,16 +280,23 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
   {
     key: 'shopName',
     title: '请求店铺',
-    width: 170,
+    width: columnWidths.value.shop,
     align: 'center',
     ellipsis: { tooltip: true },
   },
-  { key: 'creatorName', title: '达人账号', width: 130, align: 'center' },
+  {
+    key: 'creatorName',
+    title: '达人账号',
+    width: columnWidths.value.creator,
+    align: 'center',
+    ellipsis: { tooltip: true },
+  },
   {
     key: 'channel',
     title: '渠道',
-    width: 130,
+    width: columnWidths.value.channel,
     align: 'center',
+    ellipsis: { tooltip: true },
     render: (row) =>
       CHANNEL_OPTIONS.filter((option) =>
         option.value === 'short-video'
@@ -238,19 +309,20 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
   {
     key: 'conditions',
     title: '条件摘要',
-    width: 230,
+    width: columnWidths.value.conditions,
     align: 'center',
     ellipsis: { tooltip: true },
     render: (row) =>
-      conditionSummary(row) === '—'
+      conditionSummary(row, !!props.service.manual) === '—'
         ? h(NText, { depth: 3 }, () => '—')
-        : conditionSummary(row),
+        : conditionSummary(row, !!props.service.manual),
   },
   {
     key: 'execution',
     title: '执行方式',
-    width: 150,
+    width: columnWidths.value.execution,
     align: 'center',
+    ellipsis: { tooltip: true },
     render: (row) =>
       !row.scheduled
         ? '手动'
@@ -270,8 +342,9 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
   {
     key: 'latestResult',
     title: '最近结果',
-    width: 150,
+    width: columnWidths.value.result,
     align: 'center',
+    ellipsis: { tooltip: true },
     render: (row) =>
       row.latestResult
         ? h(NText, { depth: 2 }, () => row.latestResult)
@@ -280,7 +353,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
   {
     key: 'enabled',
     title: '状态',
-    width: 90,
+    width: 68,
     align: 'center',
     render: (row) =>
       props.service.toggleStrategy
@@ -298,7 +371,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
   {
     key: 'actions',
     title: '操作',
-    width: 180,
+    width: 192,
     fixed: 'right',
     align: 'center',
     render: (row) =>
@@ -377,12 +450,12 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
         />
       </template>
       <DataTable
+        ref="tableRef"
         :columns="columns"
         :data="rows"
         :loading="canRead && query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
-        :scroll-x="1510"
         viewport="fill"
         appearance="list"
         :empty-description="

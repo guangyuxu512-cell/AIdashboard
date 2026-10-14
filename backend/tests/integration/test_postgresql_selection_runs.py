@@ -253,8 +253,8 @@ def test_concurrent_submit_one_execution_and_replayable_receipts(selection_conte
 def test_claim_race_global_one_execution_and_receipts_never_claimed(selection_context):
     context = selection_context
     first = _submit(context)
-    _submit(context)  # receipt only
-    _submit(context, _input(context, shop_id=context[3][1]))
+    receipt = _submit(context)  # receipt only
+    second = _submit(context, _input(context, shop_id=context[3][1]))
     barrier, claims, errors = Barrier(2), [], []
     def worker():
         try:
@@ -269,7 +269,32 @@ def test_claim_race_global_one_execution_and_receipts_never_claimed(selection_co
         thread.join(timeout=15)
         assert not thread.is_alive()
     assert not errors and len([item for item in claims if item]) == 1
-    assert next(item for item in claims if item).run_id == first.execution_run_id
+    winner = next(item for item in claims if item)
+    # SKIP LOCKED can give the two claimants different canonical rows. The
+    # unique running index admits one commit, not a guaranteed FIFO winner.
+    assert winner.run_id in {first.execution_run_id, second.execution_run_id}
+    assert winner.run_id != receipt.receipt_id
+    with Session(context[0]) as session:
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.status == "running")) == 1
+        assert session.get(Run, receipt.receipt_id).status == "reused"
+        for run_id in {first.execution_run_id, second.execution_run_id}:
+            assert session.get(Run, run_id).status == ("running" if run_id == winner.run_id else "pending")
+
+
+@pytest.mark.parametrize("earliest_locked", [False, True])
+def test_claim_orders_unlocked_canonical_rows_and_skips_receipts(selection_context, earliest_locked):
+    context = selection_context
+    first = _submit(context)
+    receipt = _submit(context)
+    second = _submit(context, _input(context, shop_id=context[3][1]))
+    with Session(context[0]) as locker:
+        if earliest_locked:
+            locker.scalar(select(Run).where(Run.run_id == first.execution_run_id).with_for_update())
+        claim = _claim(context)
+        assert claim is not None
+        assert claim.run_id == (second.execution_run_id if earliest_locked else first.execution_run_id)
+        assert claim.run_id != receipt.receipt_id
+        assert locker.get(Run, receipt.receipt_id).status == "reused"
 
 
 def test_expired_execution_is_interrupted_and_late_result_cannot_write(selection_context):
@@ -358,7 +383,7 @@ def test_unconfirmed_request_does_not_create_empty_job_or_platform_request(selec
     context = selection_context
     with Session(context[0]) as session:
         with pytest.raises(SelectionRequestUnconfirmedError):
-            SelectionRunService(session, settings=SETTINGS).submit(context[4][0], _input(context, period="1d"))
+            SelectionRunService(session, settings=SETTINGS).submit(context[4][0], _input(context, channel="baiying"))
         assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
 
 

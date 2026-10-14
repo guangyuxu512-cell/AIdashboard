@@ -20,6 +20,7 @@ import {
 } from './selection-read-api'
 import { formatSelectionInterval } from '../model/metric-display'
 import { runResult } from '../model/run-display'
+import { realPriceErrors } from '../model/selection-rules'
 import {
   readStrategies,
   writeStrategy,
@@ -90,10 +91,11 @@ function categoryNodes(
     )
     .map((node) => {
       const path = [...ancestors, node.category_id]
-      const nodeIndustryId =
-        industryWrapped && node.category_id !== industryId ? null : industryId
-      // The observed outer industry node is part of the display tree, not
-      // category_id. Keep display identities intact; submit industry separately.
+      // Every returned wrapper root supplies its own industry_id. The scalar
+      // is only the shop's default; it must not disable the other actual roots.
+      const nodeIndustryId = industryWrapped ? node.category_id : industryId
+      // Keep the root in display identities, but outside category_id. Root-all
+      // has no confirmed category expression and still has no requestScope.
       const categoryPath = path[0] === nodeIndustryId ? path.slice(1) : path
       return {
         // Qualified display identities keep repeated '0/全部' nodes distinct.
@@ -172,6 +174,8 @@ export function mapSelectionObservation(
         ? {
             shanghai_7d_once: '近7天',
             shanghai_realtime_today: '实时',
+            shanghai_1d_yesterday: '近1天',
+            shanghai_30d_complete_days: '近30天',
           }[source.date_selection.policy]
         : '',
       rankFrom: source.date_selection?.rank_from ?? null,
@@ -260,13 +264,13 @@ export function createSelectionRealService(
     if (
       !input.channels.shortVideo.selected ||
       input.channels.baiying.selected ||
-      !['realtime', '7d'].includes(choice.period) ||
-      choice.brand !== 'all' ||
-      choice.priceMode !== 'all' ||
-      choice.priceAbove !== null ||
-      choice.priceBelow !== null
+      !['realtime', '1d', '7d', '30d'].includes(choice.period) ||
+      !['all', 'known', 'unknown'].includes(choice.brand)
     )
       throw new Error('未确认的渠道、日期、品牌或价格条件暂不可执行')
+    const priceErrors = realPriceErrors(choice)
+    if (Object.keys(priceErrors).length)
+      throw new Error(Object.values(priceErrors)[0])
     if (
       choice.rankFrom === null ||
       choice.rankTo === null ||
@@ -284,8 +288,10 @@ export function createSelectionRealService(
       category_ids: scope.categoryIds,
       brand: choice.brand,
       price_mode: choice.priceMode,
-      price_above: null,
-      price_below: null,
+      price_above:
+        choice.priceMode === 'custom' ? String(choice.priceAbove) : null,
+      price_below:
+        choice.priceMode === 'custom' ? String(choice.priceBelow) : null,
       first_listed_only: choice.firstListedOnly,
       rank_from: choice.rankFrom,
       rank_to: choice.rankTo,

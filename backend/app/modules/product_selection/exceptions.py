@@ -43,6 +43,12 @@ class SelectionRequestUnconfirmedError(AppError):
     status_code = 409
 
 
+class SelectionPriceRangeInvalidError(AppError):
+    code = "PRODUCT_SELECTION_PRICE_RANGE_INVALID"
+    message = "请填写有效的最低和最高价格（元），最低价格不能大于最高价格"
+    status_code = 422
+
+
 class SelectionExecutionDisabledError(AppError):
     code = "PRODUCT_SELECTION_EXECUTION_DISABLED"
     message = "当前环境未启用手动选品执行"

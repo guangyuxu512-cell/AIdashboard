@@ -138,3 +138,227 @@ ca97另已在77正式Integration完成CRUD与零隐式取数，并取得run
 10商品/10来源/API与DB一致；basic_info 9成功1业务拒绝，正确partial且不丢候选，未重试。
 category1/rank3/basic10，完成后GET/同key重放增量0，保存版本/条件未改。此未改7d证据可复用，
 不把它替代新v4实时完整闭环/first筛选/唯一Electron；剩余参数每项有证据即接，不等待B。
+
+## 通用类目转换接证（A仍PARTIAL）
+
+本轮沿`183b35b4057b979f21a15e117cb2d3e8ef3b9efc`继续，之前“其他行业未知”的限制
+由本节新结构证据更新；历史测试/失败/验收记录保留，不要求逐行业建立人工ID白名单。
+ca97授权店铺正式GET类目200，现有24小时缓存第二次读取零平台请求，保存完整包装根和下级。
+scalar industry_id=7仅为默认选择；ca97从实际树程序读取个护家清/家清纸品，使用当前stored
+HuanYu v6及原HTTP/Signer一次只读榜单：industry_id=5、category_id=1000004647、
+近7天2026-10-06～12/page1/10，HTTP200/st整数0/10条/total200，未回退/重试/入库。
+这些ID是本次证据，不是代码名单；没有同次页面抓包，不能称本新候选完整闭环已验收。
+
+仅2个运行时文件修改：
+
+- `request_mapping.validate_shop_category`：Shop先匹配；包装树按所选实际根匹配行业，
+  根下逐层验证真实有序路径，默认scalar不再当行业白名单。旧unwrapped树仍校验原scalar。
+- `selection-real-service.categoryNodes`：每个实际包装根派生自己的scope，显示ID保留根，
+  请求category_ids排除根。父级全部用原非零前缀；行业根自身仍无scope，0/UI通配符不发平台。
+
+不改变DTO、Schema、Cache key/24小时/命中前后鉴权、类目切店清理、CAS/Team授权、Signer、
+日期冻结/有限回退、原布局/主题。保存和编辑回显复用原动态路径解析；未知根全部/其它条件不放开。
+
+实际验证：
+
+| 命令/范围 | 实际结果与边界 |
+| --- | --- |
+| Backend `pytest -o addopts="" tests/test_selection_request_mapping.py tests/test_selection_realtime_mapping.py -q --tb=short` | 37 pass/1.43s；新增任意合成根41/1082，非默认根与父前缀、错误Shop/行业/逆序/跨根路径拒绝；保留unwrapped |
+| Feature PG `pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_strategies.py -k other_actual_industry_parent -q --tb=short` | 1 pass/7.10s；正式POST/保存回读/合成执行/入库，industry41/category4101不被默认7覆盖；非真实平台 |
+| Backend默认 `pytest --tb=short` | 638 pass/241 integration deselected/97.52s |
+| Feature PG strategies/strategy_compatibility/realtime/runs/windows/categories 6文件，`-o addopts="" -m integration ... -q --tb=short` | 104 pass/249.58s；原权限、进度/回执、幂等/租约、缓存/撤权及新通用路径 |
+| Frontend `pnpm exec vitest run src/features/product-selection` | 13文件96 pass/17.66s；非默认root scope、保存/回显/提交、未知root全部仍拒绝、UI原路径/缓存/缺值回归 |
+| Frontend `pnpm lint` / `pnpm typecheck` / `pnpm build` | pass；强制Real build25.90s。E2E追加后再次lint/typecheck通过 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config ../.codex/selection-windows-v2/playwright.real.config.ts e2e/production/product-selection-strategies.spec.ts --workers=1 --output ../docs/_local/product-selection-strategies-v1/generic-categories-intercepted` | 2 pass/39.8s；真实控件、默认7d与合成非默认行业实时、父级全部/保存重开/提交、四主题；所有正式API拦截，不是Electron/平台 |
+| `git diff --check`、忽略材料/无迁移差异 | pass |
+
+保留既有Starlette/httpx、大chunk与NO_COLOR告警；没有用Mock值补真实参数，没有Owner平台请求。
+首条服务器只读结构证据、Feature合成DB/Renderer和ca97未来正式入库/原生分别登记。
+截图仅Feature浏览器API拦截，四主题同一数据/缩放位于ignored generic-categories-intercepted。
+
+下一ca97加载精确新Backend/Renderer，最小验证一个实际非默认行业父路径选择→保存/刷新→
+手动执行→run/事实/API/Real同一页面，复用旧认证成功证据，不逐行业重复请求。
+行业根全部尚缺空/省略/0的正常请求证据；1d/30d、两种品牌、20～100元自定义价格继续
+由ca97独立查材料/限量单因素服务器对照，Owner确认一项即接；不等待全部条件一起交付。
+原生稳定行序尚待用户反馈、整A/B未完成；B0045仍reserved，Owner不合dev/main/发布。
+
+## 2026-10-14 第二项参数接证：近1天/近30天
+
+沿6fc类目成果继续，不等待品牌/价格。ca97在同店/路径/品牌价格/第一页固定条件下，
+仅改日期的只读对照1d type20及30d type23各HTTP200/st int0/10条；官方当前5074脚本
+yesterday=20/seven=21/thirty=23，one对应yesterday。响应无日期echo，同商品金额区间随
+周期变化；该事实证明请求口径/效果，不是本新候选run/入库/页面或固定刷新时刻证据。
+
+v5仅新历史单窗口，上海接受D计算1d昨天、30d截至昨天的30完整自然日；保存相对条件，
+提交回执冻结日期并跨日重放。旧v1–v4 JSON/hash、7d备窗及实时当日语义保持。
+复用原single-window锚和executor/service/facts；合法空成功0，621 int/string、签名、HTTP
+失败不回退。来源明确新policy与实际日期，无备用；cap/Real服务/列表详情识别四个日期。
+v5 Reader必须保留，不能在写入后直接回旧6fc Backend，迁移/Schema/0044未改。
+
+实际验证：
+
+| 命令/范围 | 实际结果 |
+| --- | --- |
+| Backend历史/实时/request mapping 3个纯逻辑文件 | 49 pass/1.36s；上海跨日/月末/年末，冻结/序列化/拒绝备用及旧规则 |
+| Feature PG新historical文件 | 14 pass/35.90s；策略保存关联、合法空/非零、来源/API日期、621 int/string/签名/HTTP、跨日重放/拒备窗 |
+| Backend默认 `pytest --tb=short` | 650 pass/255 integration deselected/95.93s |
+| Feature PG historical/strategies/strategy_compatibility/realtime/runs/windows/categories 7文件 | 118 pass/278.37s；真实Feature PostgreSQL、全部平台输入合成，无新真实请求 |
+| Frontend选品13文件 | 100 pass/17.10s；四日期保存/回显/提交、历史来源真实范围与无备用标签 |
+| `pnpm lint` / `pnpm build` | pass，内含typecheck与强制Real build22.87s |
+| 原Real完整API拦截E2E按7d/realtime/1d/30d | 4 pass/1.3m；原抽屉/四主题/父级全部、CAS与独立获取；不是Electron/平台 |
+| `git diff --check`、忽略/无Migration/Electron差异 | pass |
+
+初轮旧未确认周期测试仍期待1d/30d的PERIOD_UNCONFIRMED，实际正确到区间长度校验，
+2 fail/35 pass；更新为已确认周期正测及仍未知品牌/未来枚举负测，未弱化门禁或改旧hash。
+既有Starlette/httpx、大chunk/NO_COLOR告警保留。截图在ignored historical-dates-intercepted。
+日期为本轮代码/Feature/拦截验收完成，ca97在精确新候选另补必要正式真实执行/Real证据。
+双边价格已有新证据、待下一独立v6接入，品牌及行业根全部仍未完成；B0045仅reserved。
+
+## 2026-10-14 第三项参数接证：双边元价格v6
+
+沿已推送0d10a9b与当前A Feature库继续。ca97已审核接受固定日期/同Session/同路径/brand=-1
+的默认、20-100及20-40单因素只读集合对照，三次各HTTP200/st整数0/10条，零Run/事实写。
+原记录的“效果尚未知”是初次单请求阶段；后续集合比较排除¥8/¥9–13、再排除¥49–59/¥99等，
+才允许本项接入。请求单位元，保留¥39–115等多SKU原价带，不外推整段SKU都在条件内。
+没有Owner平台请求、凭据复制或未知品牌猜值；原始材料继续仅在ca97受忽略目录。
+
+实现复用原relative条件、运行JSON、source、executor及Real原表单：
+
+- 双边明确有限非负、最多十位整数/两位小数、最低<=最高；缺一侧/逆序/超精度/指数拒绝。
+  Decimal无舍入编码20.00/100.0→20-100，不转分；无新接口/Schema/Migration。
+- v6仅custom，旧默认v1–v5格式/hash不变。接受时冻结原日期及price_bin，实际选择窗口入库。
+  7d仅合法第一页空可一次补查；custom621 int/string、签名/HTTP等失败不回退，Service/Reader均约束。
+  rt/1d/30d继续single窗口，失败/空结果不向前找商品，不本地重过滤平台返回价格带。
+- 保存/编辑回显与执行同一规则，立即获取可用草稿边界、不顺带保存；不限不提交隐藏旧边界。
+  AppRadio/AppNumberInput及四主题/原布局复用，Real标签最低/最高价格（元）；Mock旧单边演示隔离。
+  实际截图发现最高值修正后旧红色反馈残留，已只刷新已报错的价格字段，保留其它错误/草稿。
+- 文档同步本契约、Backend24与Frontend17。写过v6后保留v6兼容Reader，不能直接回0d10 Backend；
+  回滚关闭既有新写/执行开关，保留0044、策略、run/回执/失败及所有事实，不降级清库。
+
+实际验证（平台均合成或正式API全拦截，绝非新平台/Electron证据）：
+
+| 命令/范围 | 实际结果 |
+| --- | --- |
+| Backend `pytest -o addopts="" tests/test_selection_price_mapping.py tests/test_selection_request_mapping.py -q --tb=short` | 49 pass/1.32s；元规范/零/等值/单边/精度、各日期策略及禁止业务拒绝补查 |
+| Backend默认 `pytest -q --tb=short` | pass/exit0；同源收集673非integration项，保持原业务回归 |
+| Feature PG price/historical/strategies/strategy_compatibility/realtime/runs/windows/categories 8文件 `-o addopts="" -m integration ... -q --tb=short` | 131 pass/368.61s；含原权限、进度/幂等/租约/缓存及13个新价格用例 |
+| 新增正式价格HTTP/Connector补测 `...test_postgresql_selection_price.py -k formal_price -q --tb=short` | 1 pass/13.11s、13 deselected；真实Human/模块/Team路径、422缺上界、202同key回放、短事务类目读取、实际Connector query=20-40/12项业务字符串；无平台请求 |
+| Frontend最终 `pnpm run test` | 144文件659 pass/112.82s；修正局部反馈后重跑，Real/Mock及原页面回归 |
+| 最终 `pnpm lint` / `pnpm build` | pass，内含typecheck与强制Real build39.55s，无共享组件/Token改动 |
+| 原Real全API拦截E2E，四日期＋custom7d | 5 pass/2.1m；实际控件/四主题、双边缺项阻止请求、保存重开、未保存边界立即获取、启停/CAS |
+| 修正校验反馈后custom7d同一E2E专项 | 1 pass/23.6s；改最高值后旧错误消失，四主题截图可读；不是原生Electron |
+| `git diff --check`、忽略/无迁移/Electron/shared/app运行差异 | pass；AGENTS.override、env、截图不跟踪 |
+
+初轮纯测试误用不存在的source_scope_hash/chosen方法，5 fail/44 pass，修正为已有fingerprint/actual_window后49 pass。
+一次PG命令错写strategy_compat模块路径未收集任何测试；改为实际strategy_compatibility路径后上述131 pass。
+全量Frontend保留原JSDOM图片AggregateError stderr但659项通过，无真实生成请求；原Starlette/httpx、
+NO_COLOR及大chunk告警保留。最终Feature单一0044，role无super/createdb/createrole；
+策略/run/候选/观察/ShopSession各0，测试夹具按稳定ID清理，未碰Integration/生产。
+
+实际浏览器截图在ignored `docs/_local/product-selection-strategies-v1/custom-price-corrected-intercepted/`，
+1440×900、四主题同数据/缩放；森林/珊瑚已人工读图核对，原布局与计划草稿保留。
+日期0d已由ca97准确加载8100/5180并在同一Electron/Profile保留登录，另正式保存/重读非默认行业
+父级全部的7d/1d/30d三份disabled/unscheduled配置；零Run/Schedule/候选/观察变化。
+这不是本新v6候选的运行时证据，也不是新条件真实候选入库或定时成功。
+
+下一负责人ca97：精确新Candidate独立审查后匹配两端/同一Electron，按当前实际授权先复验双边配置，
+正式执行/入库证据按门禁协调，不用只读请求或合成结果替代。品牌只缺“知名品牌”的官方Query枚举标签，
+行业根全部仍无准确参数；B d4eaa9c/0045 reserved保持独立，不新增DDL/扫描，不混A发布。
+本增量技术检查完成，A完整Gate2/Green/Release及B服务端自动执行仍PARTIAL，Owner不合dev/main、不发布。
+
+## 2026-10-14 增量：品牌贯通与策略列表自适应
+
+父候选e05bedb7f34f44f4d7231c9b5d6ba73308e2beca；分支仍为
+feat/product-selection-strategies-v1。提交前远端核实Green
+3128d6ad1048dfda1240148e863ea0c98eb6247f、main
+0102dd6d051f89907bad113c35310bbab69412ec未变。此节覆盖之前“品牌标签待确认”的历史边界，
+不扩大A到B定时、百应、达人或手机；0044未改、无新Migration。
+
+用户本次直接提供官方页面请求顺序，冻结知名品牌=0、非知名品牌=1、不限=-1。
+ca97旧只读brand0/1对照各HTTP200/st整数0/10条、同一业务条件、商品集合不同，
+只证明请求结果存在区别；本次用户页面标签证据才闭合标签映射。旧响应商品brand_type
+不能反推选项标签。旧只读Source183b35b不是本新候选的真实执行或入库验收。
+
+实现与边界：
+
+- 复用原AppSelect、策略相对条件version1、保存/CAS/编辑回读、Run、请求映射及Connector。
+  非默认品牌运行version7保存真实品牌，签名前主窗/备窗/后续页/source/API均保留字符串0/1，
+  不经truthy默认；旧默认v1–v6的序列化/hash不变。非法枚举和其他已提交条件漂移拒绝。
+- v7沿用对应日期及价格规则，7d仅在第一页合法空、尚未入库时一次冻结备用窗口；
+  非默认品牌621 int/string不自动解释为日期未就绪或回退。rt/1d/30d单窗口不变。
+  这是ca97审核后的有界开放，不改旧默认7d规则、不改Signer/Cookie上下文。
+- 策略表保留9列及名称左固定/操作右固定。删除强制scroll-x=1510，使用现有
+  useElementSize/DataTable/ellipsis tooltip按实际容器分配宽度；状态68、操作192，
+  达人/渠道至少84/96，其余名称/店铺/摘要/执行/结果分配剩余空间。总宽为容器减2px，
+  不改共享表格API、字体、主题、不靠外层隐藏溢出。原行序、updated_at、分页、筛选、滚动不变。
+- 具体列宽公式和兼容说明见本Feature契约。新写v7后恢复必须保留v7 Reader；
+  不能直接回e05 Backend解析新Run。关闭既有写入/执行开关的恢复方式及0044/失败/事实保留规则不变。
+
+实际检查（Backend命令工作目录backend；Frontend命令工作目录frontend）：
+
+| 命令/范围 | 实际结果与证据边界 |
+| --- | --- |
+| `.venv/Scripts/python.exe -m pytest -o addopts="" tests/test_selection_brand_mapping.py tests/test_selection_request_mapping.py tests/test_selection_price_mapping.py tests/test_selection_historical_mapping.py tests/test_selection_realtime_mapping.py -q --tb=short` | 最终102 pass/1.54s；两种品牌×四日期×默认/双边价格、非法0/1标签、字段漂移、旧hash/日期 |
+| `.venv/Scripts/python.exe -m pytest -o addopts="" -m "not integration" -q --tb=short` | 最终703 pass/277 integration deselected/68.55s |
+| `.venv/Scripts/python.exe -m pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_brand.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_price.py -q --tb=short` | 66 pass/167.29s；新品牌正式API保存/重读/202重放、实际Connector参数/分页/来源、旧授权/CAS/结果/价格；全平台I/O合成 |
+| 最后负向scope约束完成后，同上仅`test_postgresql_selection_brand.py` | 8 pass/34.65s；精确最终运行逻辑再次通过Feature PostgreSQL，非共享/生产或真实平台 |
+| `pnpm exec vitest run src/features/product-selection` | 最终13文件107 pass/11.66s；保存/回显/执行标签与品牌0边界、现有9列/无scroll-x、页面回归 |
+| `pnpm lint` / `pnpm typecheck` / `pnpm build` | pass；强制Real生产构建15.55s；最后运行时代码之后仅测试/文档更新，无Electron修改 |
+| `PLAYWRIGHT_FRONTEND_PORT=4176 pnpm exec playwright test --config ../.codex/selection-windows-v2/playwright.real.config.ts e2e/production/product-selection-strategies.spec.ts --grep '7d-.*known' --workers=1 --output ../docs/_local/product-selection-strategies-v1/brand-controls-intercepted` | 2 pass/38.8s；知名默认价/非知名双边价，真实控件选择/保存/重开/未保存条件获取、四主题；全部正式API拦截，无Mock回退 |
+| 同配置`e2e/production/product-selection-strategy-position.spec.ts --workers=1 --output ../docs/_local/product-selection-strategies-v1/brand-layout-glyph-intercepted` | 最终1 pass/23.1s；1280×800、1440×900、1920×1080/四主题；9列、无横向溢出、表头字形完整、操作不重叠、名称/摘要完整hover，原位启停/编辑/page2/filter/scroll120 |
+| `git diff --check`、隐私/范围检查 | pass；无Schema/Migration/Electron/公共控件/调度差异，材料/env/override仍ignored |
+
+保留Starlette/httpx、NO_COLOR和大chunk既有告警。初轮brand条件测试98通过，补四个scope
+负例后最终102；首次Windows E2E grep含管道符未执行测试，改无管道正则后才有上述2项结果。
+初轮1280标题“达人…”未完整显示，调整最小84/96并加入实际字形宽度断言后重新通过。
+这些是受控测试/浏览器实际渲染，不是平台或Electron证据。
+
+最后仅限已分配Feature的安全只读检查：单一Head20261013_0044，策略/Run/候选/观察/
+ShopSession各0；无遗留合成队列或测试会话。检查仅输出Head和计数，不输出连接/认证值。
+
+截图为ignored `brand-controls-intercepted`及`brand-layout-glyph-intercepted`；后者12张同数据/
+同缩放列表截图。人工核图最终1280石墨及1920午夜、品牌午夜抽屉，保持已确认结构/主题/计划草稿。
+ca97本次原生窗口测量在唯一窗口遭FrameArrived/window capture timeout，已停止重复捕获；
+历史1600×1003/2560×1390用户图不是本候选实时content尺寸。未宣称普通/最大化原生验收通过。
+
+下一负责人ca97：加载精确新Candidate的Backend/Renderer，保留现有登录/Session/Profile和同一
+Electron；展示宽度用既有数据，不反复取榜。仅补本次品牌正式请求/结果差异，并检查保存/编辑回显
+及普通/最大化表格9列/固定操作、原位操作。完整A Gate2/精确dev CI后交Main，A发布不等B。
+本节Gate1技术检查完成；新Candidate尚未加载Electron/部署时不能报告已部署或完整业务验收完成。
+
+## 2026-10-14 A最终增量：候选池宽度/排名必要页
+
+父a75fbf9d86a48adfe585d20a8cef8c05cd786f3e。新直接人类任务已确认该版本品牌回显、策略
+九列普通/最大化、page2启停/编辑原位；由ca97记录，复用其同Session正式品牌0/1两Run与入库/API
+闭环，不重复取榜/操作。此增量只改候选池列预算和版本化目标页，A无DDL，B仍独立reserved。
+
+实现：保留12列/64图/字体/结构/220操作/原动作间隔。取消强制1496 scroll-x，实际容器宽度分配，
+必要表头换行，长文本tooltip；不外层裁切/删列/缩字体。核图发现首次窄屏分配标题过窄，改为
+数字列紧凑值到宽值平滑过渡，再重新渲染全部四主题/视口，短标题无需被无意义挤成两行。
+新Run只有跳页时v8，目标页ceil(start/10)..ceil(end/10)加入一次1；150–200为1/15..20，
+原首页日期判断/有限备查复用、真实rank/首次上榜/商品去重、basic_info失败事实保护保持。
+平台total在跳目标页前检查；页1目标外商品不入库，目标页失败不再切窗或强补数量。
+旧活动v3–v7同条件保留旧序列/hash复用，已存JSON不重写；原v1/v2兼容保留。
+
+实际命令/结果（Feature平台输入全部合成，Owner零真实平台请求）：
+
+| 命令/范围 | 结果 |
+| --- | --- |
+| Backend `pytest -o addopts="" tests/test_selection_target_pages.py tests/test_selection_request_mapping.py tests/test_selection_realtime_mapping.py tests/test_selection_historical_mapping.py tests/test_selection_price_mapping.py tests/test_selection_brand_mapping.py -q --tb=short` | 135 pass/1.53s；33新增边界/四日期三品牌双价/旧Reader/hash、非法页序列 |
+| Backend `pytest -o addopts="" -m "not integration" -q --tb=short` | 736 pass/291 integration deselected/83.33s；原模块回归 |
+| Feature PG target_pages/windows/strategies/strategy_compatibility 4文件，`-o addopts="" -m integration ... -q --tb=short` | 83 pass/225.99s；真实PG、合成平台；1→15..20/total/官方rank/去重/来源/API、原权限与窗口及策略回归 |
+| 增加旧v3–v7 active复用后的target_pages文件 | 18 pass/57.67s；旧JSON/fingerprint/执行序列不变 |
+| 最终target_pages + strategy_compatibility，含旧v3–v7 active及新增备查空/失败、非默认品牌/价格禁止业务探查 | 27 pass/72.62s；迟到/去重/旧回执与实际日期边界保持 |
+| Frontend `pnpm lint` / `pnpm typecheck` / `pnpm exec vitest run src/features/product-selection` / `pnpm build` | pass；最终13文件107 pass/11.68s、强制Real build17.55s；未改公共组件/主题 |
+| 正式版本范围的新增pool-fit Mock E2E，4176 strictPort、所有`/api/`请求拒绝 | 最终1 pass/22.4s；1366×768/1440×900/1920×1080/2560×1390四主题16图，12列/零横拖/固定区域不覆盖/64图/勾选分页详情 |
+| 原pool四主题/排序/分页/预览/屏蔽恢复交互E2E | 1 pass/20.1s；仅Mock演示，零真实业务请求 |
+
+初版所有新请求v8导致36个旧版本断言失败；收敛为只有页序列改变时v8，原普通范围格式/hash
+保持，旧全部断言与新目标页一起通过。首轮Mock测试baseURL误4173导致未导航；修为4176。
+拦截glob误匹配源码/api/模块导致未渲染，改URL pathname前缀后才有上述实际证据；不计作业务成功。
+保留Starlette/httpx、NO_COLOR及大chunk既有告警，截图仅ignored candidate-fit-mock与
+candidate-interaction-fit-mock，人工核最终1366石墨/1920午夜。不得冒称Electron/真实榜单验证。
+
+新v8 Reader恢复边界同步本Feature契约、Backend24/Frontend17；0042/0043/0044及事实保留。
+ca97仅补本次小范围真实跳页和同一Real Electron宽度检查，复用已确认旧项；通过交Main发布A，
+不等B。Owner继续独立B非DDL准备；0045仍reserved，A精确Green后ca97才激活，不提前写/应用。

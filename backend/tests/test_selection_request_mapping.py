@@ -51,11 +51,6 @@ def test_preparation_does_not_replace_selected_category_or_supplied_dates_with_s
 
 @pytest.mark.parametrize("changes,reason", [
     ({"channel": "baiying"}, "CHANNEL_UNCONFIRMED"),
-    ({"period": "1d"}, "PERIOD_UNCONFIRMED"),
-    ({"period": "30d"}, "PERIOD_UNCONFIRMED"),
-    ({"brand": "known"}, "BRAND_UNCONFIRMED"),
-    ({"brand": "unknown"}, "BRAND_UNCONFIRMED"),
-    ({"price_mode": "custom", "price_above": "0"}, "PRICE_UNCONFIRMED"),
     ({"industry_id": "0"}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["7", "1000009092", "1000009142"]}, "CATEGORY_PATH_UNCONFIRMED"),
     ({"category_ids": ["1000009092", "0"]}, "CATEGORY_PATH_UNCONFIRMED"),
@@ -151,7 +146,8 @@ def test_new_v3_does_not_relax_legacy_v2_pages_or_change_legacy_hashes():
 def test_v3_first_listed_return_filter_separates_source_without_guessing_platform_parameter():
     original = _original(first_listed_only=True, rank_from=151, rank_to=200)
     request = freeze_short_video_request(original, datetime.now(UTC))
-    assert request.page_numbers == tuple(range(1, 21))
+    assert request.version == 8 and request.page_numbers == (1, 16, 17, 18, 19, 20)
+    assert request.legacy_paging_request().page_numbers == tuple(range(1, 21))
     assert "first_listed_only" not in request.scope.model_dump()
     assert request.scope.fingerprint() != request.scope.fingerprint(first_listed_only=True)
     assert request.scope.context(first_listed_only=True)["first_listed_only"] is True
@@ -177,5 +173,38 @@ def test_category_membership_is_current_shop_industry_and_ordered_path_not_leaf_
     for category_ids in [("7",), ("7", "1000009092", "1000009142"), ("1000009142",), ("1000009092", "0"), ("5", "5001"), ("5001",)]:
         with pytest.raises(SelectionRequestUnconfirmedError):
             validate_shop_category(original.model_copy(update={"category_ids": category_ids}), tree)
-    with pytest.raises(SelectionRequestUnconfirmedError):
-        validate_shop_category(original.model_copy(update={"industry_id": "5", "category_ids": ("5001",)}), tree)
+    other = original.model_copy(update={"industry_id": "5", "category_ids": ("5001",)})
+    if industry_wrapped:
+        validate_shop_category(other, tree)
+    else:
+        with pytest.raises(SelectionRequestUnconfirmedError):
+            validate_shop_category(other, tree)
+
+
+@pytest.mark.parametrize("industry_id", ["41", "1082"])
+def test_wrapped_tree_uses_each_actual_root_and_parent_prefix_without_an_id_whitelist(industry_id):
+    from app.modules.product_selection.schemas import SelectionCategoriesRead
+    original = _original(industry_id=industry_id, category_ids=["9007199254740993123", "12002"])
+    tree = SelectionCategoriesRead(
+        shop_id=original.shop_id, industry_id="73", industry_name="默认行业", selected_category_id=None,
+        nodes=[
+            {"category_id": "73", "name": "默认行业", "children": [{"category_id": "7301", "name": "默认类目", "children": []}]},
+            {"category_id": industry_id, "name": "其它合成行业", "children": [
+                {"category_id": "9007199254740993123", "name": "父类目", "children": [
+                    {"category_id": "12002", "name": "子类目", "children": []},
+                ]},
+            ]},
+        ],
+    )
+    validate_shop_category(original, tree)
+    parent = original.model_copy(update={"category_ids": ("9007199254740993123",)})
+    validate_shop_category(parent, tree)
+    scope = prepare_short_video_scope(parent, period_begin=date(2026, 10, 6), period_end=date(2026, 10, 12))
+    assert scope.industry_id == industry_id
+    assert scope.category_id == "9007199254740993123"
+    for changes in (
+        {"industry_id": "9999"}, {"category_ids": ("7301",)},
+        {"category_ids": ("12002", "9007199254740993123")}, {"shop_id": uuid4()},
+    ):
+        with pytest.raises(SelectionRequestUnconfirmedError):
+            validate_shop_category(original.model_copy(update=changes), tree)

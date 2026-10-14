@@ -39,7 +39,7 @@ import {
 } from '../model/contracts'
 import type { AppOption, AppOptionValue } from '@/shared/ui/types'
 import type { SelectionCapabilitiesDto } from '../api/selection-read-api'
-import { validateStrategy } from '../model/selection-rules'
+import { validateStrategy, realPriceErrors } from '../model/selection-rules'
 import CategorySelector from './CategorySelector.vue'
 
 const props = defineProps<{
@@ -52,7 +52,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:show': [show: boolean]
-  saved: []
+  saved: [strategy: SelectionStrategy]
   retrieved: [execution?: SelectionExecutionSummary]
 }>()
 const message = useMessage()
@@ -69,7 +69,7 @@ const canSchedule = computed(
   () => props.service.scheduleAvailable ?? props.service.available,
 )
 let submission: { input: string; key: string } | null = null
-const { values, errors, setFieldValue, resetForm, setErrors } =
+const { values, errors, setFieldValue, setFieldError, resetForm, setErrors } =
   useForm<StrategyInput>({ initialValues: emptyStrategy() })
 const conditions = computed(() => values.channels.shortVideo.conditions)
 const periodPreview = useQuery({
@@ -159,10 +159,25 @@ function setCondition<K extends keyof ShortVideoConditions>(
   key: K,
   value: ShortVideoConditions[K],
 ) {
-  setFieldValue('channels.shortVideo.conditions', {
+  const next = {
     ...conditions.value,
     [key]: value,
-  })
+  }
+  const priceWasInvalid =
+    conditionError('priceAbove') || conditionError('priceBelow')
+  setFieldValue('channels.shortVideo.conditions', next)
+  if (
+    real.value &&
+    priceWasInvalid &&
+    ['priceMode', 'priceAbove', 'priceBelow'].includes(key)
+  ) {
+    const priceErrors = realPriceErrors(next)
+    for (const field of ['priceAbove', 'priceBelow'] as const)
+      setFieldError(
+        `channels.shortVideo.conditions.${field}`,
+        priceErrors[field],
+      )
+  }
 }
 function conditionError(key: keyof ShortVideoConditions) {
   return errors.value[`channels.shortVideo.conditions.${key}`]
@@ -224,6 +239,7 @@ async function submit(saving: boolean) {
   const validation = validateStrategy(
     real.value && !saving ? { ...values, scheduled: false } : values,
     saving,
+    real.value,
   )
   setErrors(validation)
   if (Object.keys(validation).length) {
@@ -272,16 +288,16 @@ async function submit(saving: boolean) {
       emit('retrieved', receipt.execution)
       emit('update:show', false)
     } else if (saving) {
-      if (real.value)
-        await props.service.saveStrategy(
-          draft,
-          props.strategy?.id,
-          props.strategy?.version,
-          categories.data.value,
-        )
-      else await props.service.saveStrategy(draft, props.strategy?.id)
+      const saved = real.value
+        ? await props.service.saveStrategy(
+            draft,
+            props.strategy?.id,
+            props.strategy?.version,
+            categories.data.value,
+          )
+        : await props.service.saveStrategy(draft, props.strategy?.id)
       message.success(real.value ? '策略已保存' : '演示策略已保存')
-      emit('saved')
+      emit('saved', saved)
       emit('update:show', false)
     } else {
       const strategyId = props.strategy?.id
@@ -454,12 +470,20 @@ async function submit(saving: boolean) {
                         {
                           label: '知名品牌',
                           value: 'known',
-                          disabled: real,
+                          disabled:
+                            real &&
+                            !(
+                              capabilities?.supported_brands ?? ['all']
+                            ).includes('known'),
                         },
                         {
                           label: '非知名品牌',
                           value: 'unknown',
-                          disabled: real,
+                          disabled:
+                            real &&
+                            !(
+                              capabilities?.supported_brands ?? ['all']
+                            ).includes('unknown'),
                         },
                       ]"
                       :disabled="!values.channels.shortVideo.selected"
@@ -478,7 +502,11 @@ async function submit(saving: boolean) {
                   :model-value="conditions.priceMode"
                   :options="[
                     { label: '不限', value: 'all' },
-                    { label: '自定义', value: 'custom', disabled: real },
+                    {
+                      label: '自定义',
+                      value: 'custom',
+                      disabled: real && !capabilities?.custom_price_available,
+                    },
                   ]"
                   :disabled="!values.channels.shortVideo.selected"
                   @update:model-value="
@@ -494,7 +522,7 @@ async function submit(saving: boolean) {
                 class="strategy-pair"
               >
                 <NFormItem
-                  label="价格大于"
+                  :label="real ? '最低价格（元）' : '价格大于'"
                   :validation-status="
                     conditionError('priceAbove') ? 'error' : undefined
                   "
@@ -508,7 +536,7 @@ async function submit(saving: boolean) {
                   />
                 </NFormItem>
                 <NFormItem
-                  label="价格小于"
+                  :label="real ? '最高价格（元）' : '价格小于'"
                   :validation-status="
                     conditionError('priceBelow') ? 'error' : undefined
                   "

@@ -7,12 +7,39 @@ import { settleSelectionTransitions as settle } from '../support/settle-selectio
 
 // Real Renderer with fully intercepted formal APIs. Synthetic configuration and
 // run responses are not live platform, persisted DB, or native Electron proof.
-for (const period of ['7d', 'realtime'] as const) {
-  test(`${period}: saved strategies keep the original UI, CAS editing, and independent immediate retrieval`, async ({
+for (const scenario of [
+  '7d',
+  'realtime',
+  '1d',
+  '30d',
+  '7d-custom-price',
+  '7d-known',
+  '7d-unknown-custom',
+] as const) {
+  const period = scenario.startsWith('7d')
+    ? '7d'
+    : (scenario as 'realtime' | '1d' | '30d')
+  const customPrice = ['7d-custom-price', '7d-unknown-custom'].includes(
+    scenario,
+  )
+  const brand =
+    scenario === '7d-known'
+      ? 'known'
+      : scenario === '7d-unknown-custom'
+        ? 'unknown'
+        : 'all'
+  const brandLabel =
+    brand === 'known' ? '知名品牌' : brand === 'unknown' ? '非知名品牌' : '不限'
+  test(`${scenario}: saved strategies keep the original UI, CAS editing, and independent immediate retrieval`, async ({
     page,
   }, info) => {
     test.setTimeout(120000)
     await page.setViewportSize({ width: 1440, height: 900 })
+    const otherIndustry = ['realtime', '30d'].includes(period)
+    const industryId = otherIndustry ? '41' : '7'
+    const categoryId = otherIndustry ? '4101' : '1001'
+    const industryLabel = otherIndustry ? '合成非默认行业' : '合成行业'
+    const categoryLabel = otherIndustry ? '其它父类目' : '父级类目'
     let strategy: SelectionStrategyDto | null = null
     const writes: {
       method: string
@@ -81,9 +108,9 @@ for (const period of ['7d', 'realtime'] as const) {
           unavailable_reason: null,
           strategy_save_available: true,
           schedule_available: false,
-          supported_periods: ['realtime', '7d'],
-          supported_brands: ['all'],
-          custom_price_available: false,
+          supported_periods: ['realtime', '1d', '7d', '30d'],
+          supported_brands: ['all', 'known', 'unknown'],
+          custom_price_available: true,
           first_listed_filter_available: true,
           max_rank: 200,
         }
@@ -94,6 +121,19 @@ for (const period of ['7d', 'realtime'] as const) {
           industry_name: '实际树合成对照',
           selected_category_id: null,
           nodes: [
+            {
+              category_id: '41',
+              name: '合成非默认行业',
+              children: [
+                {
+                  category_id: '4101',
+                  name: '其它父类目',
+                  children: [
+                    { category_id: '4102', name: '其它子类目', children: [] },
+                  ],
+                },
+              ],
+            },
             {
               category_id: '7',
               name: '合成行业',
@@ -245,15 +285,48 @@ for (const period of ['7d', 'realtime'] as const) {
     await field('请求店铺').locator('.n-base-selection').click()
     await page.getByText('授权合成店铺', { exact: true }).last().click()
     await field('类目').locator('.n-base-selection').click()
-    await page.getByText('合成行业', { exact: true }).last().click()
-    await page.getByText('父级类目', { exact: true }).last().click()
+    await page.getByText(industryLabel, { exact: true }).last().click()
+    await page.getByText(categoryLabel, { exact: true }).last().click()
     await page
       .locator('.n-cascader-submenu')
       .last()
       .getByText('全部', { exact: true })
       .click()
-    if (period === 'realtime')
-      await field('日期').getByText('实时', { exact: true }).click()
+    if (period !== '7d')
+      await field('日期')
+        .getByText(
+          { realtime: '实时', '1d': '近1天', '30d': '近30天' }[period],
+          { exact: true },
+        )
+        .click()
+    if (brand !== 'all') {
+      await field('品牌').locator('.n-base-selection').click()
+      await page
+        .locator('.n-base-select-menu')
+        .getByText(brandLabel, { exact: true })
+        .click()
+    }
+    if (customPrice) {
+      await field('价格').getByText('自定义', { exact: true }).click()
+      await field('最低价格（元）').locator('input').fill('20')
+      await field('最低价格（元）').locator('input').blur()
+      await drawer
+        .getByRole('button', { name: '立即获取', exact: true })
+        .click()
+      await expect(
+        page.getByText('请填写有效的最高价格（元，最多两位小数）', {
+          exact: true,
+        }),
+      ).toBeVisible()
+      expect(writes).toHaveLength(0)
+      await field('最高价格（元）').locator('input').fill('100')
+      await field('最高价格（元）').locator('input').blur()
+      await expect(
+        page.getByText('请填写有效的最高价格（元，最多两位小数）', {
+          exact: true,
+        }),
+      ).not.toBeVisible()
+    }
     await drawer
       .getByRole('textbox', { name: '策略名称' })
       .fill('接口拦截合成策略')
@@ -294,13 +367,22 @@ for (const period of ['7d', 'realtime'] as const) {
     expect(writes[0]!.path).toBe('/api/v1/product-selection/strategies')
     expect(JSON.stringify(writes[0]!.body)).not.toContain('begin_date')
     expect(strategy!.conditions.request.period).toBe(period)
+    expect(strategy!.conditions.request.brand).toBe(brand)
+    expect(strategy!.conditions.request.industry_id).toBe(industryId)
+    expect(strategy!.conditions.request.category_ids).toEqual([categoryId])
+    if (customPrice)
+      expect(strategy!.conditions.request).toMatchObject({
+        price_mode: 'custom',
+        price_above: '20',
+        price_below: '100',
+      })
     await page.reload()
     await expect(
       page.getByText('接口拦截合成策略', { exact: true }),
     ).toBeVisible()
     await page.getByRole('button', { name: '编辑', exact: true }).click()
     await expect(field('类目').locator('.n-cascader')).toContainText(
-      '父级类目 / 全部',
+      `${categoryLabel} / 全部`,
     )
     await expect(field('起始排名').locator('input')).toHaveValue('151')
     await expect(field('结束排名').locator('input')).toHaveValue('200')
@@ -309,6 +391,13 @@ for (const period of ['7d', 'realtime'] as const) {
       'true',
     )
     await expect(field('每日时间').getByRole('textbox')).toHaveValue('09:00')
+    await expect(field('品牌').locator('.n-base-selection')).toContainText(
+      brandLabel,
+    )
+    if (customPrice) {
+      await expect(field('最低价格（元）').locator('input')).toHaveValue('20')
+      await expect(field('最高价格（元）').locator('input')).toHaveValue('100')
+    }
     // A second editor advances the stored version. A stale save must keep the
     // current drawer/draft and must not silently retry or submit a platform run.
     strategy = { ...strategy!, version: strategy!.version + 1 }
@@ -370,6 +459,10 @@ for (const period of ['7d', 'realtime'] as const) {
     await field('结束排名').locator('input').fill('198')
     await field('结束排名').locator('input').blur()
     // The drawer switch edits a draft. Retrieval must not persist its state.
+    if (customPrice) {
+      await field('最高价格（元）').locator('input').fill('40')
+      await field('最高价格（元）').locator('input').blur()
+    }
     await field('策略状态').getByRole('switch').click()
     await expect(field('策略状态').getByRole('switch')).toHaveAttribute(
       'aria-checked',
@@ -386,12 +479,21 @@ for (const period of ['7d', 'realtime'] as const) {
       strategy_id: 'saved-strategy',
       strategy_version: 3,
       period,
-      industry_id: '7',
-      category_ids: ['1001'],
+      brand,
+      industry_id: industryId,
+      category_ids: [categoryId],
       first_listed_only: true,
       rank_from: 153,
       rank_to: 198,
     })
+    if (customPrice) {
+      expect(writes[3]!.body).toMatchObject({
+        price_mode: 'custom',
+        price_above: '20',
+        price_below: '40',
+      })
+      expect(strategy!.conditions.request.price_below).toBe('100')
+    }
     await page
       .getByRole('switch', { name: '接口拦截已保存编辑启用状态' })
       .click()

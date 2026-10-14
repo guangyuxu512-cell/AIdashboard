@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type {
   CategoryNode,
   SelectionCandidate,
+  ShortVideoConditions,
   StrategyInput,
 } from './contracts'
 
@@ -27,96 +28,132 @@ const shortVideoSchema = z.object({
   rankFrom: optionalRank,
   rankTo: optionalRank,
 })
-const shortVideoChannelSchema = z
-  .object({ selected: z.boolean(), conditions: shortVideoSchema })
-  .superRefine((channel, ctx) => {
-    if (!channel.selected) return
-    const value = channel.conditions
-    if (value.priceMode === 'custom') {
-      if (value.priceAbove === null && value.priceBelow === null)
-        ctx.addIssue({
-          code: 'custom',
-          path: ['conditions', 'priceAbove'],
-          message: '请填写至少一个价格边界',
-        })
+export function realPriceErrors(
+  value: ShortVideoConditions,
+): Record<string, string> {
+  if (value.priceMode !== 'custom') return {}
+  const errors: Record<string, string> = {}
+  for (const [key, label] of [
+    ['priceAbove', '最低'],
+    ['priceBelow', '最高'],
+  ] as const) {
+    const bound = value[key]
+    if (
+      bound === null ||
+      !Number.isFinite(bound) ||
+      !/^\d{1,10}(\.\d{1,2})?$/.test(String(bound))
+    )
+      errors[key] = `请填写有效的${label}价格（元，最多两位小数）`
+  }
+  if (!Object.keys(errors).length && value.priceAbove! > value.priceBelow!)
+    errors.priceBelow = '最高价格不能小于最低价格'
+  return errors
+}
+
+const shortVideoChannelSchema = (realPrices: boolean) =>
+  z
+    .object({ selected: z.boolean(), conditions: shortVideoSchema })
+    .superRefine((channel, ctx) => {
+      if (!channel.selected) return
+      const value = channel.conditions
+      if (value.priceMode === 'custom') {
+        if (realPrices) {
+          for (const [key, message] of Object.entries(realPriceErrors(value)))
+            ctx.addIssue({ code: 'custom', path: ['conditions', key], message })
+        } else {
+          if (value.priceAbove === null && value.priceBelow === null)
+            ctx.addIssue({
+              code: 'custom',
+              path: ['conditions', 'priceAbove'],
+              message: '请填写至少一个价格边界',
+            })
+          if (
+            value.priceAbove !== null &&
+            value.priceBelow !== null &&
+            value.priceAbove >= value.priceBelow
+          )
+            ctx.addIssue({
+              code: 'custom',
+              path: ['conditions', 'priceBelow'],
+              message: '价格小于须大于价格大于',
+            })
+        }
+      }
       if (
-        value.priceAbove !== null &&
-        value.priceBelow !== null &&
-        value.priceAbove >= value.priceBelow
+        value.rankFrom !== null &&
+        value.rankTo !== null &&
+        value.rankFrom > value.rankTo
       )
         ctx.addIssue({
           code: 'custom',
-          path: ['conditions', 'priceBelow'],
-          message: '价格小于须大于价格大于',
+          path: ['conditions', 'rankTo'],
+          message: '结束排名不能小于起始排名',
         })
-    }
-    if (
-      value.rankFrom !== null &&
-      value.rankTo !== null &&
-      value.rankFrom > value.rankTo
-    )
-      ctx.addIssue({
-        code: 'custom',
-        path: ['conditions', 'rankTo'],
-        message: '结束排名不能小于起始排名',
-      })
-  })
-
-export const strategySchema = z
-  .object({
-    name: z.string(),
-    shopId: z.string().min(1).nullable().refine(Boolean, '请选择请求店铺'),
-    creatorId: z.string().min(1).nullable(),
-    channels: z.object({
-      shortVideo: shortVideoChannelSchema,
-      baiying: z.object({
-        selected: z.boolean(),
-        conditions: z.object({}).strict(),
+    })
+const createStrategySchema = (realPrices: boolean) =>
+  z
+    .object({
+      name: z.string(),
+      shopId: z.string().min(1).nullable().refine(Boolean, '请选择请求店铺'),
+      creatorId: z.string().min(1).nullable(),
+      channels: z.object({
+        shortVideo: shortVideoChannelSchema(realPrices),
+        baiying: z.object({
+          selected: z.boolean(),
+          conditions: z.object({}).strict(),
+        }),
       }),
-    }),
-    scheduled: z.boolean(),
-    scheduleKind: z.enum(['hourly', 'daily']),
-    hourlyInterval: z
-      .number()
-      .int()
-      .min(1, '请输入正整数小时')
-      .max(2147483647)
-      .default(1),
-    dailyTime: z.string(),
-    enabled: z.boolean(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.channels.baiying.selected && !value.creatorId)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['creatorId'],
-        message: '使用巨量百应请选择达人账号',
-      })
-    if (!value.channels.shortVideo.selected && !value.channels.baiying.selected)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['channels'],
-        message: '请选择至少一个渠道',
-      })
-    if (
-      value.scheduled &&
-      value.scheduleKind === 'daily' &&
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.dailyTime)
-    )
-      ctx.addIssue({
-        code: 'custom',
-        path: ['dailyTime'],
-        message: '请输入有效的每日时间',
-      })
-  })
+      scheduled: z.boolean(),
+      scheduleKind: z.enum(['hourly', 'daily']),
+      hourlyInterval: z
+        .number()
+        .int()
+        .min(1, '请输入正整数小时')
+        .max(2147483647)
+        .default(1),
+      dailyTime: z.string(),
+      enabled: z.boolean(),
+    })
+
+    .superRefine((value, ctx) => {
+      if (value.channels.baiying.selected && !value.creatorId)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['creatorId'],
+          message: '使用巨量百应请选择达人账号',
+        })
+      if (
+        !value.channels.shortVideo.selected &&
+        !value.channels.baiying.selected
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['channels'],
+          message: '请选择至少一个渠道',
+        })
+      if (
+        value.scheduled &&
+        value.scheduleKind === 'daily' &&
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.dailyTime)
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['dailyTime'],
+          message: '请输入有效的每日时间',
+        })
+    })
+
+export const strategySchema = createStrategySchema(false)
+const realStrategySchema = createStrategySchema(true)
 
 export function validateStrategy(
   input: StrategyInput,
   saving: boolean,
+  realPrices = false,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
   // Immediate retrieval does not validate or save unused schedule metadata.
-  const result = strategySchema.safeParse(
+  const result = (realPrices ? realStrategySchema : strategySchema).safeParse(
     saving ? input : { ...input, hourlyInterval: 1 },
   )
   if (!result.success)
@@ -179,7 +216,10 @@ export function compareCandidates(
   return a.id.localeCompare(b.id, 'en')
 }
 
-export function conditionSummary(value: StrategyInput): string {
+export function conditionSummary(
+  value: StrategyInput,
+  realPrices = false,
+): string {
   if (!value.channels.shortVideo.selected) return '—'
   const conditions = value.channels.shortVideo.conditions
   const periods = {
@@ -194,7 +234,9 @@ export function conditionSummary(value: StrategyInput): string {
     brands[conditions.brand],
     conditions.categoryId ? '已选类目' : '全部类目',
     conditions.priceMode === 'custom'
-      ? `${conditions.priceAbove === null ? '' : `价格>${conditions.priceAbove}`} ${conditions.priceBelow === null ? '' : `价格<${conditions.priceBelow}`}`.trim()
+      ? realPrices
+        ? `价格 ${conditions.priceAbove ?? '—'}–${conditions.priceBelow ?? '—'} 元`
+        : `${conditions.priceAbove === null ? '' : `价格>${conditions.priceAbove}`} ${conditions.priceBelow === null ? '' : `价格<${conditions.priceBelow}`}`.trim()
       : '不限价格',
     conditions.firstListedOnly ? '首次上榜' : null,
     conditions.rankFrom !== null || conditions.rankTo !== null
