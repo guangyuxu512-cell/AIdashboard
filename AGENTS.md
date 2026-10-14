@@ -26,6 +26,16 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-14 B当前集成状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`
+独立技术审查接受，已受保护备份并正式升级Integration单一0045，原PC/A/经营/Session逐行保留。
+唯一Real5180/8100匹配此候选及同一Electron/Profile；正式API配置/启停零Run、零平台请求通过。
+仅专用G2-B在北京时间13:54经原扫描自然触发，真实Run成功保存/补充各1、DB/API一致；
+停用/后续扫描无重复，再恢复Integration自动开关关闭。关闭客户端与原生新增控件确认尚未完成。
+B Gate2仍进行中，不合dev/main，不冒称部署。该状态替代下文“B未集成/Integration0044”的阶段记录。
+A已Green/main CI成功，但首次生产Deploy因Docker daemon panic/status-stream EOF失败，
+旧生产0102/0043及09:00原配置健康恢复；A未部署，最小builder工程入口仍待人类范围授权。
+具体B证据与边界见`docs/engineering/product-selection-server-schedule-v1-gate2-20261014.md`。
+
 2026-10-14 当前A收口：精确候选 `f348565b4db2cb907d9c55c3fd7c85088a1fe467` 已完成
 逐项契约、实际Real5180/8100匹配验证，Integration单一0044及唯一1.0.6 Electron/Profile保留。
 用户已直接确认品牌/策略九列/启停编辑位置，以及最后候选池普通/最大化显示；不重复原生验收。
