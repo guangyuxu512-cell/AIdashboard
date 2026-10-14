@@ -48,6 +48,22 @@ Owner81a1、ca97 Gate2、Main Release；无数据库/Schema/Migration需求、�
 ca97独立只读复核SHA/Head/服务及09:00原配置。未包含B45、未写新生产策略/Run；
 B验收与发布独立，细节见`product-selection-server-schedule-v1-gate2-20261014.md`。
 
+以下为Owner提交时的初始Slot历史，已被上述当前状态及下方完整Gate登记替代：
+
+2026-10-14 ca97正式确认A精确Green `f5d4866459acf3e29459a9920c03c1e9118a8839`、
+CI38503895984成功，已交Main Release。0044已串行released；唯一active为
+`20261013_0045_product_selection_server_schedule_v1`，revision0045/down0044，Owner81a1。
+允许在已登记Feature库实施批准的Schedule/Run目标、hourly interval与显式NULL组合CHECK、
+FK/partial unique、运行名额索引及共用队列；不新增表，不修改已应用42/43/44。
+当前数据库仍0044，尚未应用0045或完成B验收；降级须精确可重建Feature在线校验和无新残留，
+不清理既有事实或伪造PC字段。下方旧active/reserved为历史，不覆盖此次正式通知。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-server-schedule-v1` / 81a1（B） | `active`（ca97正式批准） | 复用schedules/schedule_runs/selection_runs，server目标与策略/回执RESTRICT FK；hourly正整数间隔、nullable local_time明确组合；每店/策略running partial与共享领取全局容量 | `20261013_0044` | `20261013_0045_product_selection_server_schedule_v1`，revision `20261013_0045` | 仅Feature实施/PG验证；旧PC及A事实保留，完整Gate/自然到期证据未完成。生产应用恢复保留兼容B Reader/Schema，禁用server路径而不降级清历史。 |
+
+历史阶段记录：
+
 2026-10-14 A最终Candidate f348565的契约/真实闭环及最后候选池原生人工确认已通过，
 正常no-ff精确Green `f5d4866459acf3e29459a9920c03c1e9118a8839` 已合后复验及CI通过，
 CI https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38503895984 三项success。
@@ -60,6 +76,11 @@ Integration已单一0044，A无后续新增Migration。已有v8事实须保留�
 2026-10-13 为 A 段分配唯一 Slot。阶段候选4e584cb降级边界曾拒绝并保留返修占位；
 77a1d96的实际执行保护及对应修补已独立复核，恢复`active`。这不表示A完整Gate通过；
 不清库、不释放给B，不得并行增加第二条迁移链。
+
+ca97随后已明确B后续revision `20261013_0045`（down `20261013_0044`）为reserved，
+仅预留编号及审核最小Schema/事务提案，不授权写或应用DDL。唯一active仍A0044；
+A完整Gate与精确Green后由ca97串行释放0044、激活0045。Owner B分支当前只有非DDL准备，
+不把预留状态当数据库结构已实现，不修改0042/0043/0044。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |

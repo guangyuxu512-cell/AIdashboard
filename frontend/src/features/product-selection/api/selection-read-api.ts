@@ -120,6 +120,7 @@ export interface SelectionCapabilitiesDto {
   unavailable_reason: 'EXECUTION_DISABLED' | null
   strategy_save_available?: boolean
   schedule_available?: boolean
+  schedule_execution_enabled?: boolean
   supported_periods?: ('realtime' | '1d' | '7d' | '30d')[]
   supported_brands?: ('all' | 'known' | 'unknown')[]
   custom_price_available?: boolean

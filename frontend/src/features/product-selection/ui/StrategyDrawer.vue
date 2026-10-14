@@ -66,7 +66,10 @@ const canSave = computed(
     props.service.available,
 )
 const canSchedule = computed(
-  () => props.service.scheduleAvailable ?? props.service.available,
+  () =>
+    props.capabilities?.schedule_available ??
+    props.service.scheduleAvailable ??
+    props.service.available,
 )
 let submission: { input: string; key: string } | null = null
 const { values, errors, setFieldValue, setFieldError, resetForm, setErrors } =
@@ -447,7 +450,7 @@ async function submit(saving: boolean) {
                         /></template>
                         {{
                           real
-                            ? '当前仅支持近7天；服务器按上海日期冻结截至昨日的7天，首查合法为空时最多回退一天，实际区间显示在结果中'
+                            ? '按上海日期生成并冻结本次区间；近7天保留已确认的一次补查规则，实际区间以运行结果为准'
                             : (periodPreview.data.value?.rangeLabel ??
                               '区间暂不可用')
                         }}
@@ -616,7 +619,7 @@ async function submit(saving: boolean) {
               :model-value="values.scheduled"
               @update:model-value="setFieldValue('scheduled', $event)"
           /></template>
-          定时配置可保存；服务端调度待接入，不会创建或启用计划
+          当前后端未提供服务端调度，定时配置仅保存草稿
         </NTooltip>
         <NText v-if="real && !canSchedule" depth="3">（调度待接入）</NText>
       </NFormItem>
@@ -625,7 +628,7 @@ async function submit(saving: boolean) {
           ><AppSelect
             :model-value="values.scheduleKind"
             :options="[
-              { label: '每小时', value: 'hourly' },
+              { label: '每 N 小时', value: 'hourly' },
               { label: '每日', value: 'daily' },
             ]"
             @update:model-value="
@@ -635,6 +638,21 @@ async function submit(saving: boolean) {
               )
             "
         /></NFormItem>
+        <NFormItem
+          v-if="values.scheduleKind === 'hourly'"
+          label="间隔（小时）"
+          :validation-status="errors.hourlyInterval ? 'error' : undefined"
+          :feedback="errors.hourlyInterval"
+        >
+          <AppNumberInput
+            :model-value="values.hourlyInterval"
+            :min="1"
+            :max="2147483647"
+            :precision="0"
+            aria-label="每 N 小时"
+            @update:model-value="setFieldValue('hourlyInterval', $event ?? 0)"
+          />
+        </NFormItem>
         <NFormItem
           v-if="values.scheduleKind === 'daily'"
           label="每日时间"

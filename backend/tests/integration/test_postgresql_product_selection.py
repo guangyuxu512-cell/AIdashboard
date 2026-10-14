@@ -88,6 +88,11 @@ def selection_context(postgresql_engine):
         yield engine, teams, users, shops, actors
     finally:
         with Session(engine) as session:
+            from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
+            schedule_ids = select(Schedule.schedule_id).where(Schedule.team_id.in_(teams))
+            session.execute(delete(ScheduleRun).where(ScheduleRun.schedule_id.in_(schedule_ids)))
+            session.execute(delete(ScheduleShop).where(ScheduleShop.schedule_id.in_(schedule_ids)))
+            session.execute(delete(Schedule).where(Schedule.team_id.in_(teams)))
             session.execute(delete(AuditLog).where(AuditLog.actor_user_id.in_(users)))
             candidate_ids = select(Candidate.candidate_id).where(Candidate.team_id.in_(teams))
             session.execute(delete(Observation).where(Observation.candidate_id.in_(candidate_ids)))

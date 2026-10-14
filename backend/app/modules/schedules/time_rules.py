@@ -77,6 +77,65 @@ def latest_daily_occurrence(
     raise ValueError("Unable to determine latest daily occurrence")
 
 
+def next_hourly_occurrence(timezone_name: str, *, after: datetime, interval_hours: int = 1, anchor: datetime | None = None) -> datetime:
+    """Server selection's Shanghai next whole hour, strictly after acceptance.
+
+    The server target reuses this rule; PC DTOs remain once/daily/weekly.
+    No completion-time anchor or per-calendar-day modulo is introduced.
+    """
+    step = _hourly_step(interval_hours)
+    boundary = _shanghai_hour_boundary(timezone_name, after)
+    if anchor is None:
+        # Initial activation always starts at the next strict whole hour,
+        # irrespective of N. Subsequent occurrences use the saved anchor.
+        first = (boundary + timedelta(hours=1)).astimezone(UTC)
+        try:
+            first + step
+        except OverflowError:
+            raise ValueError("Hourly interval exceeds the supported date range") from None
+        return first
+    start = _hourly_anchor(timezone_name, anchor)
+    at = _aware_utc(after)
+    if at < start:
+        return start
+    return start + ((at - start) // step + 1) * step
+
+
+def latest_hourly_occurrence(timezone_name: str, *, at_or_before: datetime, interval_hours: int = 1, anchor: datetime | None = None) -> datetime:
+    """COALESCE ONE: an already-due whole hour is included, not skipped."""
+    step = _hourly_step(interval_hours)
+    boundary = _shanghai_hour_boundary(timezone_name, at_or_before)
+    if anchor is None:
+        if interval_hours != 1:
+            raise ValueError("Every-N-hours needs its persisted occurrence anchor")
+        return boundary.astimezone(UTC)
+    start, at = _hourly_anchor(timezone_name, anchor), _aware_utc(at_or_before)
+    if at < start:
+        raise ValueError("The first hourly occurrence is not due")
+    return start + ((at - start) // step) * step
+
+
+def _hourly_step(hours: int) -> timedelta:
+    if type(hours) is not int or not 1 <= hours <= 2147483647:
+        raise ValueError("Hourly interval must be a positive database integer")
+    return timedelta(hours=hours)
+
+
+def _hourly_anchor(timezone_name: str, anchor: datetime) -> datetime:
+    boundary = _shanghai_hour_boundary(timezone_name, anchor).astimezone(UTC)
+    if boundary != _aware_utc(anchor):
+        raise ValueError("Hourly anchor must be a saved whole-hour occurrence")
+    return boundary
+
+
+def _shanghai_hour_boundary(timezone_name: str, value: datetime) -> datetime:
+    if timezone_name != "Asia/Shanghai":
+        raise ValueError("Server selection hourly requires Asia/Shanghai")
+    return _aware_utc(value).astimezone(get_schedule_timezone(timezone_name)).replace(
+        minute=0, second=0, microsecond=0,
+    )
+
+
 def normalize_weekdays(value: list[int]) -> list[int]:
     if any(isinstance(day, bool) or not isinstance(day, int) for day in value):
         raise ValueError("weekdays must contain integer ISO weekdays")

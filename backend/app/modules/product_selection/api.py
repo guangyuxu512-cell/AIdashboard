@@ -129,6 +129,7 @@ def read_selection_capabilities(
     enabled = service.settings.product_selection_execution_enabled
     return SelectionCapabilitiesRead(execution_enabled=enabled, manual_execution_available=enabled,
                                      strategy_save_available=service.settings.product_selection_strategy_management_enabled,
+                                     schedule_execution_enabled=enabled and service.settings.product_selection_schedule_enabled,
                                      unavailable_reason=None if enabled else "EXECUTION_DISABLED")
 
 

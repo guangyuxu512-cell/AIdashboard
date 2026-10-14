@@ -58,6 +58,16 @@ A已Green/main CI成功，但首次生产Deploy因Docker daemon panic/status-str
 Owner1677fd3 Draft PR13/Ubuntu CI验证中，Gate1尚未放行，不能按Draft或治理提交发布。
 具体B证据与边界见`docs/engineering/product-selection-server-schedule-v1-gate2-20261014.md`。
 
+2026-10-14 B依赖登记历史（保留Owner交接，当前状态以上述10月15日确认优先）：ca97正式确认A精确Green
+`f5d4866459acf3e29459a9920c03c1e9118a8839`及CI38503895984全部成功、用户普通/最大化确认。
+Owner保留78e06d8及原A，正常no-ff同步该Green，不以治理HEAD代替功能基线。
+ca97已串行释放A0044，激活唯一B `20261013_0045_product_selection_server_schedule_v1`，
+revision0045/down0044。按已审核最小Schema/事务/隔离队列方案实施完整B，仅使用已登记Feature库，
+不改42/43/44，不新增表/队列/第二调度器，不写Integration/生产、不另开Electron。
+每N小时、PC隔离、默认全局3/同店及有效策略1、持久排队/租约、自然触发须分别验证；
+准备测试不代表B闭环。A已交Main独立发布不等B；平台/唯一Real Electron仍仅ca97协调。
+本阶段覆盖下方旧reserved/准备限制；旧证据和未验证事实完整保留。
+
 2026-10-14 当前A收口：精确候选 `f348565b4db2cb907d9c55c3fd7c85088a1fe467` 已完成
 逐项契约、实际Real5180/8100匹配验证，Integration单一0044及唯一1.0.6 Electron/Profile保留。
 用户已直接确认品牌/策略九列/启停编辑位置，以及最后候选池普通/最大化显示；不重复原生验收。
@@ -185,6 +195,15 @@ ca97复核并匹配加载183 Backend91792，新配置与单一0044/旧计数、H
 5180源码仍8df但与183字节相同，唯一Electron98292/Profile未动。正式既有run同key在原Team/
 无Team/另一有效Team均POST202→精确GET200，原404缺口关闭，Run/计划/事实/三类平台IO增量0。
 此为定向读取尾部收口，参数及未完成原生项仍PARTIAL，不以96项或API代替完整A Gate/Green。
+
+2026-10-13 ca97已技术认可B最小提案及独立分支安排：Owner在
+`feat/product-selection-server-schedule-v1`，从精确Green3128正常no-ff merge已交A依赖
+`43637bb051d2f4b3ba6c9fab608756429971edd3`，原A分支/候选完整保留。
+当前仅非DDL时间规则及Run事务抽取，不新增Schema/启用自动执行，不是B闭环候选。
+0044仍active、0045尚不得写/应用；A精确Green后ca97串行登记0045(down0044)，
+再由Owner实施B模型/Migration。B未验代码不作为A Release目标，之后正常merge A Green。
+ca97随后明确预留 `20261013_0045`（reserved，down0044），仅编号/技术审核，未激活。
+仍只有A0044 active；A完整Gate及精确Green后才串行激活B，不将reserved当成写/应用许可。
 
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron

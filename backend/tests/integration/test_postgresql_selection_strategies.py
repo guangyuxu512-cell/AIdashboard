@@ -103,7 +103,8 @@ def test_crud_refresh_edit_cas_toggle_do_not_submit_or_fetch(selection_context, 
         assert created.status_code == 201
         dto = created.json()
         assert dto["version"] == 1 and dto["latest_run"] is None
-        assert not dto["schedule_available"] and dto["next_run_at"] is None
+        assert dto["schedule_available"] and dto["next_run_at"] is not None
+        assert not dto["schedule_execution_enabled"]  # Default environment never starts platform work.
         assert dto["conditions"]["request"]["period"] == "7d"
         assert "begin_date" not in str(dto["conditions"])
         path = f'/api/v1/product-selection/strategies/{dto["strategy_id"]}'
@@ -256,6 +257,91 @@ def test_resource_team_binding_rechecks_super_authority_after_category_io(select
         with pytest.raises(SelectionStrategyNotFoundError):
             SelectionRunService(session, settings=SETTINGS, category_reader=revoke_super).submit(actor, _input(context, strategy_id=saved.strategy_id, strategy_version=1))
         assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 0
+
+
+def test_shared_run_persistence_leaves_commit_and_rollback_to_authorized_caller(selection_context, monkeypatch):
+    from datetime import UTC, datetime
+    context = selection_context
+    at = datetime(2026, 10, 13, 1, tzinfo=UTC)
+    command = _input(context)
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda *_: pytest.fail("Persistence must not request categories"))
+        current = service.facts._current_actor(context[4][0])
+        service.facts._execution_shop(current, command.shop_id)
+        resolved = service.resolver(command.original(), at)
+        with monkeypatch.context() as guarded:
+            guarded.setattr(session, "commit", lambda: pytest.fail("Caller owns commit"))
+            guarded.setattr(session, "rollback", lambda: pytest.fail("Caller owns outer rollback"))
+            first = service._persist_submission(current, command, resolved, at=at)
+            second = service._persist_submission(current, command, resolved, at=at)
+            assert first.receipt_id == second.receipt_id
+            assert session.in_transaction()
+        with Session(context[0]) as reader:
+            assert reader.get(Run, first.receipt_id) is None
+        session.rollback()
+        assert session.get(Run, first.receipt_id) is None
+
+
+@pytest.mark.parametrize("acknowledgement_lost", [False, True])
+def test_submission_commit_failure_and_cross_day_same_key_recovery(selection_context, monkeypatch, acknowledgement_lost):
+    from datetime import UTC, datetime, timedelta
+    context = selection_context
+    command = _input(context)
+    accepted = datetime(2026, 10, 13, 15, 59, 59, tzinfo=UTC)
+    category_reads = []
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: (category_reads.append(shop) or _category_tree(shop)))
+        commit = session.commit
+        def fail_commit():
+            if acknowledgement_lost:
+                commit()
+            raise RuntimeError("synthetic_commit_boundary_failure")
+        with monkeypatch.context() as fault:
+            fault.setattr(session, "commit", fail_commit)
+            with pytest.raises(RuntimeError, match="synthetic_commit_boundary_failure"):
+                service.submit(context[4][0], command, now=accepted)
+        with Session(context[0]) as reader:
+            stored = reader.scalar(select(Run).where(Run.team_id == context[1][0], Run.submission_key == command.submission_key))
+            assert (stored is not None) is acknowledgement_lost
+        recovered = service.submit(context[4][0], command, now=accepted + timedelta(seconds=2))
+        # A committed but unacknowledged key replays the saved old date without
+        # category I/O. An uncommitted transaction never accepted a frozen run.
+        request = recovered.execution.request_conditions
+        assert request.date_plan.accepted_local_date.isoformat() == ("2026-10-13" if acknowledgement_lost else "2026-10-14")
+        assert len(category_reads) == (1 if acknowledgement_lost else 2)
+        assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id == context[1][0])) == 1
+        assert recovered.execution.status == "pending" and recovered.execution.saved_count == 0
+
+
+@pytest.mark.parametrize("unassociated_canonical", [False, True])
+def test_strategy_activity_includes_reused_receipt_until_canonical_is_terminal(selection_context, unassociated_canonical):
+    context = selection_context
+    first, second = _save(context), _save(context, name="stage-2a1 busy via reuse")
+    if unassociated_canonical:
+        with Session(context[0]) as session:
+            receipt = SelectionRunService(session, settings=SETTINGS, category_reader=lambda actor, shop: _category_tree(shop)).submit(context[4][0], _input(context, rank_from=1, rank_to=25))
+        _submit(context, first)
+    else:
+        receipt = _submit(context, first)
+    reused = _submit(context, second)
+    assert reused.reused and reused.execution_run_id == receipt.execution_run_id
+    with Session(context[0]) as session:
+        service = SelectionRunService(session, settings=SETTINGS)
+        repository = service.repository
+        for strategy in (first, second):
+            assert repository.find_strategy_active(team_id=context[1][0], strategy_id=strategy.strategy_id).run_id == receipt.execution_run_id
+            assert repository.find_strategy_active(team_id=context[1][1], strategy_id=strategy.strategy_id) is None
+        assert repository.find_strategy_active(team_id=context[1][0], strategy_id=uuid4()) is None
+        session.rollback()
+        claim = service.claim_next()
+        assert claim.run_id == receipt.execution_run_id
+        assert repository.find_strategy_active(team_id=context[1][0], strategy_id=second.strategy_id).status == "running"
+        session.rollback()
+        service.finish(claim)  # No platform/count => failed, never a fake empty success.
+        assert session.get(Run, receipt.execution_run_id).status == "failed"
+        assert session.get(Run, reused.receipt_id).status == "reused"
+        for strategy in (first, second):
+            assert repository.find_strategy_active(team_id=context[1][0], strategy_id=strategy.strategy_id) is None
 
 
 def test_only_strategy_still_prevents_team_deletion(selection_context):

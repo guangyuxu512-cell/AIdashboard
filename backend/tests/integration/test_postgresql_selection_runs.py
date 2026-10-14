@@ -35,7 +35,9 @@ from tests.integration.test_postgresql_product_selection import (
 
 
 pytestmark = pytest.mark.integration
-SETTINGS = Settings(product_selection_execution_enabled=True)
+# Pin the legacy one-slot configuration for unchanged v1/lease regression.
+# B's independent-process/global-three tests use an explicit capacity of three.
+SETTINGS = Settings(product_selection_execution_enabled=True, product_selection_concurrency=1)
 
 
 def _resolver(original, now):

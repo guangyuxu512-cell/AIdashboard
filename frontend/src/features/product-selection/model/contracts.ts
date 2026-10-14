@@ -39,6 +39,7 @@ export interface StrategyInput {
   }
   scheduled: boolean
   scheduleKind: 'hourly' | 'daily'
+  hourlyInterval: number
   dailyTime: string
   enabled: boolean
 }
@@ -50,7 +51,10 @@ export interface SelectionStrategy extends StrategyInput {
   version?: number
   latestExecution?: SelectionExecutionSummary | null
   scheduleAvailable?: boolean
+  scheduleExecutionEnabled?: boolean
   nextRunAt?: string | null
+  latestTrigger?:
+    import('../api/selection-strategy-api').SelectionStrategyTriggerDto | null
   requestScope?: { industryId: string; categoryIds: string[] }
 }
 export interface CandidateSourceContext {
@@ -264,6 +268,7 @@ export function emptyStrategy(): StrategyInput {
     },
     scheduled: false,
     scheduleKind: 'hourly',
+    hourlyInterval: 1,
     dailyTime: '09:00',
     enabled: true,
   }

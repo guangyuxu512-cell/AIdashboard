@@ -13,7 +13,7 @@ from app.modules.product_selection.models import ProductSelectionStrategy
 from app.modules.product_selection.request_mapping import validate_preparable_short_video_choice
 from app.modules.product_selection.run_contract import SelectionRunRead
 from app.modules.product_selection.service import ProductSelectionFactService
-from app.modules.product_selection.strategy_contract import SelectionStrategyCreate, SelectionStrategyUpdate, SelectionStrategyToggle, SelectionStrategyRead
+from app.modules.product_selection.strategy_contract import SelectionStrategyCreate, SelectionStrategyUpdate, SelectionStrategyToggle, SelectionStrategyRead, SelectionStrategyTriggerRead
 from app.modules.product_selection.strategy_repository import SelectionStrategyRepository
 
 
@@ -25,16 +25,59 @@ class SelectionStrategyService:
         self.settings = settings or get_settings()
 
     def _project(self, actor, rows):
+        from app.modules.schedules.repository import ScheduleRepository
+        from app.modules.product_selection.run_repository import SelectionRunRepository
+        from app.modules.product_selection.run_service import SAFE_ERROR_CODES
         shops = self.repository.shops(rows)
         runs = self.repository.latest_runs(actor, rows)
-        return [SelectionStrategyRead(
+        schedules = ScheduleRepository(self.session)
+        ids = [row.strategy_id for row in rows]
+        plans = schedules.selection_plans(ids)
+        triggers = schedules.latest_selection_triggers(ids)
+        run_repository = SelectionRunRepository(self.session)
+        receipts = run_repository.receipts_for_actor(actor, [trigger.selection_run_id for trigger in triggers.values() if trigger.selection_run_id is not None])
+        result = []
+        for row in rows:
+            record = runs.get(row.strategy_id)
+            latest, shown_trigger = None, None
+            if record is not None:
+                run_repository.validated_request(record.receipt)
+                run_repository.validated_request(record.execution)
+                latest = SelectionRunRead.model_validate(record.execution)
+            trigger = triggers.get(row.strategy_id)
+            trigger_is_newer = trigger is not None and (record is None
+                or (trigger.created_at, str(trigger.run_id)) > (record.receipt.created_at, str(record.receipt.run_id))
+                or (trigger.created_at == record.receipt.created_at and trigger.selection_run_id == record.receipt.run_id))
+            if trigger_is_newer:
+                shown_trigger = SelectionStrategyTriggerRead(schedule_run_id=trigger.run_id, scheduled_for=trigger.scheduled_for,
+                    created_at=trigger.created_at, trigger_result="blocked", error_code="PRODUCT_SELECTION_EXECUTION_FAILED", error_stage="execution")
+                latest = None
+                linked = receipts.get(trigger.selection_run_id)
+                if trigger.trigger_result == 'selection_run' and linked is not None:
+                    submitted, canonical = linked
+                    if submitted.team_id == row.team_id and submitted.strategy_id == row.strategy_id:
+                        run_repository.validated_request(submitted)
+                        run_repository.validated_request(canonical)
+                        latest = SelectionRunRead.model_validate(canonical)
+                        shown_trigger = shown_trigger.model_copy(update={"trigger_result":"selection_run", "receipt_id":submitted.run_id,
+                            "execution_run_id":canonical.run_id, "error_code":None, "error_stage":None})
+                elif trigger.trigger_result == 'blocked':
+                    code = trigger.trigger_error_code if trigger.trigger_error_code in SAFE_ERROR_CODES else 'PRODUCT_SELECTION_EXECUTION_FAILED'
+                    stage = trigger.trigger_error_message if trigger.trigger_error_message in {'session','signer','http','response_parse','platform_business','authorization','conditions','execution'} else 'execution'
+                    shown_trigger = shown_trigger.model_copy(update={"error_code":code,"error_stage":stage})
+            plan = plans.get(row.strategy_id)
+            result.append(SelectionStrategyRead(
             strategy_id=row.strategy_id, team_id=row.team_id,
             created_by_user_id=row.created_by_user_id, name=row.name,
             shop_id=row.request_shop_id, shop_name=shops[row.request_shop_id],
             version=row.version, enabled=row.enabled, conditions=row.conditions,
             schedule=row.schedule_config, created_at=row.created_at, updated_at=row.updated_at,
-            latest_run=SelectionRunRead.model_validate(runs[row.strategy_id]) if row.strategy_id in runs else None,
-        ) for row in rows]
+            schedule_available=True,
+            schedule_execution_enabled=self.settings.product_selection_schedule_enabled and self.settings.product_selection_execution_enabled,
+            next_run_at=plan.next_run_at if plan is not None and plan.enabled else None,
+            latest_run=latest, latest_trigger=shown_trigger,
+            ))
+        return result
 
     def list(self, actor: ActorContext, *, offset: int, limit: int, search: str | None = None):
         if offset < 0 or not 1 <= limit <= 100:
@@ -102,6 +145,8 @@ class SelectionStrategyService:
             row.schedule_config = command.schedule.model_dump(mode="json")
             row.updated_at = at
             self.session.flush()
+            from app.modules.schedules.selection_service import SelectionScheduleService
+            SelectionScheduleService(self.session, settings=self.settings).sync_strategy(row, now=at)
             result = self._project(current, [row])[0]
             self.session.commit()
             return result
@@ -123,6 +168,8 @@ class SelectionStrategyService:
             row.version += 1
             row.updated_at = datetime.now(UTC)
             self.session.flush()
+            from app.modules.schedules.selection_service import SelectionScheduleService
+            SelectionScheduleService(self.session, settings=self.settings).sync_strategy(row, now=row.updated_at)
             result = self._project(current, [row])[0]
             self.session.commit()
             return result
