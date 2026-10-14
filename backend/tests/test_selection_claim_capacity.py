@@ -35,7 +35,9 @@ def test_query_skips_busy_shop_and_effective_strategy_uses_row_lock_order():
     assert "FOR UPDATE SKIP LOCKED" in sql and "ORDER BY product_selection_runs.created_at" in sql
     assert sql.count("NOT (EXISTS") == 2
     assert "request_shop_id = product_selection_runs.request_shop_id" in sql
-    assert "strategy_id = product_selection_runs.strategy_id" in sql
+    assert "running_submission.strategy_id = candidate_submission.strategy_id" in sql
+    assert "coalesce(candidate_submission.reused_run_id, candidate_submission.run_id) = product_selection_runs.run_id" in sql
+    assert "coalesce(running_submission.reused_run_id, running_submission.run_id) = running_execution.run_id" in sql
     assert "reused_run_id" in sql and "IS NULL" in sql
     assert "'pending'" in sql and "'running'" in sql
     assert "devices" not in sql and "operating_data" not in sql

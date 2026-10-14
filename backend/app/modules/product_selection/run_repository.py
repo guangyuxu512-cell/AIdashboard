@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import exists, func, or_, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.modules.access.contracts import ActorContext
@@ -84,17 +84,26 @@ class SelectionRunRepository:
 
     @staticmethod
     def eligible_pending_statement():
-        running, receipt = aliased(Run), aliased(Run)
+        running = aliased(Run, name="running_execution")
+        candidate_link = aliased(Run, name="candidate_submission")
+        running_link = aliased(Run, name="running_submission")
         busy_shop = exists(select(running.run_id).where(
             running.status == "running", running.request_shop_id == Run.request_shop_id,
         ).correlate(Run))
-        linked_strategy = exists(select(receipt.run_id).where(
-            receipt.reused_run_id == running.run_id,
-            receipt.strategy_id == Run.strategy_id,
-        ).correlate(Run, running))
-        busy_strategy = exists(select(running.run_id).where(
-            running.status == "running", Run.strategy_id.is_not(None),
-            or_(running.strategy_id == Run.strategy_id, linked_strategy),
+        busy_strategy = exists(select(candidate_link.run_id).join(
+            running_link, running_link.strategy_id == candidate_link.strategy_id,
+        ).join(
+            running, func.coalesce(running_link.reused_run_id, running_link.run_id) == running.run_id,
+        ).where(
+            func.coalesce(candidate_link.reused_run_id, candidate_link.run_id) == Run.run_id,
+            candidate_link.strategy_id.is_not(None),
+            candidate_link.team_id == Run.team_id,
+            candidate_link.request_shop_id == Run.request_shop_id,
+            candidate_link.request_fingerprint == Run.request_fingerprint,
+            running.status == "running",
+            running_link.team_id == running.team_id,
+            running_link.request_shop_id == running.request_shop_id,
+            running_link.request_fingerprint == running.request_fingerprint,
         ).correlate(Run))
         # Busy shops/strategies stay pending; they cannot head-of-line block
         # another eligible shop. Reused receipts never consume a worker slot.
@@ -103,12 +112,19 @@ class SelectionRunRepository:
             ~busy_shop, ~busy_strategy,
         ).order_by(Run.created_at, Run.run_id).with_for_update(skip_locked=True).limit(1)
 
+    def lock_execution_decision(self, *, wait: bool = False) -> bool:
+        key = func.hashtext("product_selection_run_claim")
+        if wait:
+            self.session.execute(select(func.pg_advisory_xact_lock(key)))
+            return True
+        return bool(self.session.scalar(select(func.pg_try_advisory_xact_lock(key))))
+
     def claim_next(self, *, now: datetime, lease_until: datetime, max_running: int = 1) -> SelectionRunClaim | None:
         if type(max_running) is not int or max_running < 1:
             raise ValueError("Selection execution capacity must be a positive integer")
         # Selection-only transaction lock serializes count + claim across
         # processes. No platform I/O or generic Shop/PC/operating-data lock.
-        if not self.session.scalar(select(func.pg_try_advisory_xact_lock(func.hashtext("product_selection_run_claim")))):
+        if not self.lock_execution_decision():
             return None
         self.recover_expired(now)
         if (self.session.scalar(select(func.count()).select_from(Run).where(Run.status == "running")) or 0) >= max_running:

@@ -105,3 +105,36 @@ Owner：Shanghai hourly/daily及跨年/整点边界；PG唯一occurrence/重复�
 手动与定时相同条件；保存启停/修改准备期间竞态；reused活动/事务失败；权限、停用Shop、Session失效；PC原API/调度回归。
 ca97：精确Real版本自然到点 → 正式Signer/平台 → Run/候选/来源 → API/同一Electron，
 另证Electron关闭/PC Worker离线和停用后不触发。合成测试/手调执行器不冒称真实到点验收。
+
+## 2026-10-14 effective策略集合与复用关联补充
+
+ca97复核cf95指出：pending canonical本身可无strategy_id，但通过回执有效关联S；
+也可direct T并额外关联S。运行侧同样可direct/reused。claim须检测两侧完整集合的交集，
+不能用候选单一strategy_id或仅扩展运行侧。有效关联包含canonical自身与reused回执，且Team/
+request Shop/fingerprint与canonical匹配；无效跨域引用不作为合法关联。
+新SQL以两组提交别名关联运行canonical，保留pending/稳定FIFO/SKIP LOCKED及忙Shop谓词；
+历史回执不删除，canonical终态后不永久挡住等待的执行。
+
+manual已有策略锁→选品决策事务锁→canonical；到期最终实现采用Strategy→Schedule→决策锁→
+canonical同序，不能Schedule先锁再与编辑的Strategy先锁互等。提交/复用和claim共用决策锁，
+关联写入在等待后重查人员/模块/Shop授权，无HTTP或类目I/O进入锁中。不在锁内commit helper，
+由原外层原子提交；claim try-lock失败直接留pending，不写blocked/failed。
+
+**mutex不是两个已running冲突的完整解决方案。** 对店A的S运行与店B的匿名运行同时存在，
+新S关联不能追加到店B而制造策略重叠；旧active唯一又不允许同基键再建pending。
+ca97已审核接受未来最小冲突隔离方案，正式B在A精确Green同步及0045 active后落地：
+
+- 只在该关联冲突时，由服务端在原product_selection_runs创建S隔离pending canonical；
+  不增表/状态/执行器，不放宽旧active唯一，不改变两个既有running或追加冲突关联。
+- 隔离键限既有冻结条件基键+稳定S UUID（版本化/受限元数据），不能含策略version、occurrence、
+  submission_key、随机值或新日期。S从当前权限/CAS验证的保存策略取得，HTTP不能自传键；
+  Reader严格验证元数据SID、snapshot/run.strategy_id、Team/Shop一致并拒绝篡改。
+- platform scope/原主备日期/页序列/Source hash完全不变，兼容最终A v1–v8 JSON/hash及lease fence。
+  相同submission-key跨日重放原队列；不同key同条件先查S隔离active键，冲突消失后仍复用原pending。
+  其它安全场景继续普通coalesce，不为这一个分支普遍增加平台请求。
+- 回执+occurrence+next原子事务、最终授权/CAS与完整双侧集合不变；容量等待不写blocked。
+  新元数据写入后恢复必须保留兼容Reader，不能以清库/重写旧记录规避。
+
+现0044只验证完整集合查询、正式关联服务与事务锁交错，保留旧global running唯一/caller1。
+两个既有running、隔离队列等待/释放一次执行、capacity3/100计划以及配套索引/fence的真实PG
+只在45 active后的最终A Green代码验证，禁止临时删44约束伪造。当前准备不得称完整B或生产故障。

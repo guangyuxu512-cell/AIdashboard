@@ -115,3 +115,33 @@ ca97回读01a137cc直接授权并接受方向；0045仍reserved，A最终f348技
 下一步必须ca97提供A精确Green并串行激活0045，Owner正常merge该基线并实施Schema/同步Schedule/
 原scanner/配置容量3及worker并发/100计划PG，然后ca97少量自然到点/关闭Electron/PC离线真实验收。
 目前具体门禁是A候选池原生人工反馈和0045未active，不是品牌/日期参数、登录或资源凭据缺失。
+
+## 2026-10-14 复用策略集合返修（现0044合成验证）
+
+cf95技术审核发现候选canonical的reused策略未进入busy_strategy检查，NULL策略被放行，
+direct T+额外S也未覆盖。先用正式创建/编辑/S迁店/提交/复用和一条合法running在Feature
+复现四种direct/reused组合：4 fail/1 pass，pending被旧SQL错误列为可领取。
+这不是A或生产故障；当前旧global unique/caller1仍保证一个running，未删约束伪造两个运行。
+
+返修：candidate_submission/running_submission完整集合相交，canonical自身和有效reused两侧
+均纳入，Team/Shop/fingerprint必须匹配canonical。Busy留pending；终态后旧回执保留且不挡住等待。
+提交/复用关联与claim统一选品事务决策锁，既有策略锁在先、决策锁在后、再canonical；
+helper等待后重新人员/模块/Shop授权，No HTTP/commit/outer rollback。无前端/Schema/扫描改动。
+
+验证：
+
+| 命令/范围 | 实际结果 |
+| --- | --- |
+| `pytest -o addopts="" tests/test_selection_claim_capacity.py tests/test_selection_hourly_interval.py tests/test_schedule_time_rules.py tests/test_schedule_service.py tests/test_schedule_scheduler.py -q --tb=short` | 51 pass/1.35s，更新双侧SQL结构断言，不计实际容量3 |
+| `pytest -o addopts="" -m integration tests/integration/test_postgresql_selection_effective_strategies.py tests/integration/test_postgresql_selection_runs.py tests/integration/test_postgresql_selection_strategies.py tests/integration/test_postgresql_selection_strategy_compatibility.py -q --tb=short` | 55 pass/110.11s；新4集合、无交集/错误作用域、association先/claim先服务交错、等待期间撤店铺授权0写，旧helper事务/提交/权限回归 |
+| 最后补canonical终态后待执行重新可见，独立effective_strategies文件 | 11 pass/30.20s；旧reused历史保留，不永久锁死 |
+| Backend默认 `pytest -o addopts="" -m "not integration" -q --tb=short` | 664 pass/253 integration deselected/66.74s；无新的Frontend运行改动，不重跑旧视觉 |
+
+初轮纯SQL断言仍匹配候选单一strategy_id，按新完整集合修正；权限交错首次误期望Shop unavailable，
+实际正确404 STRATEGY_NOT_FOUND避免暴露撤权资源，改精确断言，始终0新Run。告警仍原Starlette/httpx。
+
+已把ca97批准的未来冲突隔离键方案写入B正式提案：仅不安全running关联时，原Run表创建S隔离
+pending，基键+稳定S ID，不含版本/occurrence/随机新日期；不改平台条件/Source hash/旧active唯一。
+先查已有隔离active、回放旧日期、最终授权和全集合、兼容最终A1–8及新Reader要求均列明。
+当前只落合同；两个既有running、隔离pending/fence、容量3/100事件与完整自然触发仍待A精确Green/
+active45的最终代码和真实索引验证。不得把这次11/55项当已完成该未来场景，不混A/不部署。

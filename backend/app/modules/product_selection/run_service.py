@@ -154,6 +154,11 @@ class SelectionRunService:
         Schedule path must do the same under its own strategy/occurrence lock.
         This private extraction does not activate server scheduling.
         """
+        self.repository.lock_execution_decision(wait=True)
+        # A decision lock may have waited behind another writer/claim. Recheck
+        # current personnel/module/Shop authority before attaching a receipt.
+        current = self._submission_actor(current, command)
+        self.facts._execution_shop(current, command.shop_id)
         team_id = current.require_team_id()
         original = command.original()
         if resolved.original != original:
