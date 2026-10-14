@@ -30,9 +30,75 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-无（FREE）。2026-10-11选品0042/0043完整Gate2通过后统一释放，已应用迁移不可改写。
+2026-10-14 A最终Candidate f348565的契约/真实闭环及最后候选池原生人工确认已通过，
+正常no-ff集成及合并后验证/精确CI继续。0044仍active直至精确Green，0045仍reserved；
+随后先核销0044，再按下列已审范围激活0045，不能把B未验代码或0045混入A Release。
+Integration已单一0044，A无后续新增Migration。已有v8事实须保留兼容Reader/Schema/历史审计，
+禁止对生产downgrade或直接回旧Reader；具体发布与合后结果见A Gate2文档。
+
+以下旧阶段状态为审查历史，不替代当前事实：
+2026-10-13 为 A 段分配唯一 Slot。阶段候选4e584cb降级边界曾拒绝并保留返修占位；
+77a1d96的实际执行保护及对应修补已独立复核，恢复`active`。这不表示A完整Gate通过；
+不清库、不释放给B，不得并行增加第二条迁移链。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-strategies-v1` / 81a1（A） | `active`（阶段修补接受，未完成Gate） | 新增一张Team-owned `product_selection_strategies`，UUID/Team/User/Shop RESTRICT、编辑version CAS、白名单相对条件及hourly/daily定时草稿；`product_selection_runs`追加可空RESTRICT策略关联。保存/启停不触发取数或创建Schedule；既有候选/观察/run保留 | `20261010_0043` | `20261013_0044_product_selection_strategies_v1`，revision `20261013_0044`，down `20261010_0043` | Feature单一0044保留。4e584cb缺目标库保护的历史拒绝保留；77a1d96先在线查询实际库名，仅允许已登记可重建选品Feature，offline/其它库在锁与DDL前拒绝；再保留排他锁/新数据/并发writer保护。ca97独立8无连接迁移探针及62后端定向通过，upgrade函数未变，未在Integration/生产迁移或降级。Owner真实Feature PG109为开发侧合成平台证据；A参数与真实Gate仍待完成，不以此标Green/DEPLOYED。 |
+
+ca97已通过受保护应用连接与只读事务核实复用Feature库：owner/role为
+`control_center_dev_user`，单一`20261010_0043`；候选/观察/run/ShopSession均0，
+角色没有CREATEDB/CREATEROLE/SUPERUSER，35433受信任隧道已恢复且严格校验主机公钥。
+该检查没有迁移、业务写入或平台请求。0042/0043于2026-10-11统一released，已应用文件不可改写；
+新增Schema只由Owner在此Slot实现，Integrator不代写Migration，Integration/生产不用于Feature开发。
+Owner应用后，ca97再次以只读事务核实该Feature库单一`20261013_0044`、管理角色权限仍关闭；
+本工作树代码与Integration保持0043，不以Feature库升级代替集成Migration或Gate验证。
+
+2026-10-13继续A的阶段Integration验证已由ca97使用精确77a1d96归档，正式升级
+`control_center_integration`至单一`20261013_0044`；旧候选/观察/run、经营及Session计数保留。
+后续仅通过正式API创建专用策略和一个真实受控Run，未写Feature/Main/生产，未降级或修改0042/3。
+这是已执行的阶段迁移事实，替代此前“Integration仍0043”的当前状态，历史审查记录保留；
+Slot继续active，A未知映射与原生验收未完，不释放Slot或据此宣称Green/DEPLOYED。
+
+2026-10-13后续B技术提案已由ca97审核；基于81a1真实人类turn
+`01a13382-b40f-7552-a6a0-a32a6ec092d2`授权，登记下一预留编号。`reserved`不是第二active，
+不授权开始B Migration编写、应用或切换集成Schema。A0044完成Gate并进入精确Green后，
+ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/product-selection-server-schedule-v1` / 81a1（B） | `reserved`（非DDL技术准备可继续，禁止写/应用新Migration） | 复用schedules/schedule_runs/product_selection_runs，明确pc/server_selection目标、策略FK、服务端每N小时正整数及daily、SelectionRun回执；target/interval组合CHECK及必要索引。选品全局并发初始3可配置、每请求店铺/每非空策略至多1个running，替换旧running常量唯一约束并同步跨进程领取/lease；持久pending队列不因容量占用变blocked。保留全部旧PC数据，不新增表或第二调度器 | A最终候选必须先完成Gate并进入精确Green；先核销0044再串行激活，down `20261013_0044` | 预留 `20261013_0045_product_selection_server_schedule_v1`，计划revision `20261013_0045` | 2026-10-14直接人类turn `01a137cc-b3ba-7071-b6ef-a0dce0ec03a7`更新范围。首次下一严格整点、连续+N小时跨日不重置，COALESCE ONE；准备/平台I/O在锁外，最终人员/Team/Shop/CAS重验，Run/occurrence/next共同提交，保留reused与去重。100计划仅合成PG，须验证跨进程global/店铺/策略上限、忙店跳过、恢复及PC隔离；少量真实自然到点另验。激活后仅登记Feature应用；有B数据保留兼容Reader/Schema/审计，不回旧A镜像或清历史。降级须精确可重建Feature、无新引用及旧唯一约束可恢复，否则fail closed。 |
+
+2026-10-14 上述B增量只更新reserved范围，不激活0045或执行DDL。A精确候选
+`a75fbf9d86a48adfe585d20a8cef8c05cd786f3e`的品牌/策略九列/原位操作已由上述直接人类记录确认，
+真实品牌两次正式Run/事实/API证据保留；新候选池宽度与目标分页收尾尚待Owner最终Candidate。
+因此A0044仍active，尚无新Green，B只继续非DDL准备，不用已通过子项提前释放Slot。
+
+同日B非DDL合同细节审核接受，仍属于同一reserved 0045：`schedules.local_time`只允许
+server_selection/hourly为NULL；组合CHECK显式保持PC once/daily/weekly与server daily非空，
+hourly的interval_hours非空且正整数、其它分支明确为空，不能依赖SQL UNKNOWN通过。
+现行execution_type仅为API派生，不为此新增数据库列或假Skill/00:00。
+准备失败继续只记录既有ScheduleRun，SelectionRead批量按当前权限投影最新安全触发结果，
+不得伪造SelectionRun/零结果或返回原始错误；实际尝试时间和理论occurrence分开，
+明确与手动/后续成功的优先级、reused canonical及PC隔离。新NULL/类型/引用出现后，
+恢复旧NOT NULL/global唯一索引须先满足真实数据前置条件，禁止填假值或清历史绕过。
+
+同日B未来多运行关联边界预审：提交/复用与claim须统一选品决策锁及行锁顺序，
+候选/运行两侧均检查有效direct与reused策略集合。两个既有running已占用不同店铺时，
+不可为coalesce再引入同策略重叠；允许仅此冲突使用原Run表创建服务器限定的策略隔离pending，
+稳定队列键包含既有冻结基键与策略UUID，不含随机值、occurrence或策略版本。已有隔离active
+先复用，不因占用解除切换canonical；日期、平台scope、Source hash与旧Run不改，
+不新增表/状态/通用队列，不写blocked吞掉待执行发生时刻。具体冻结JSON/Reader由Owner
+在B正式契约实现并通过PG交错/去重/恢复验证；此设计批准不是Gate、容量3实测或0045激活。
+
+B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
+OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
 
 最近释放记录：
+
+0044阶段审查的降级保护P1已退回Owner修补：目标校验必须在Migration实际执行路径而非仅测试入口，
+在LOCK/DDL前在线核对精确登记的`control_center_feat_product_selection`，其它目标及离线删除SQL均拒绝。
+该Slot曾rejected返修占位，77a1d96边界经ca97接受后恢复active，但未通过完整业务Gate，仅在Feature应用；修补只加强downgrade，不改upgrade DDL/Head/旧事实，
+无需新编号、清库或重建；0042/0043不改。修补实测与新候选仍须ca97独立复核。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 |---|---|---|---|---|---|

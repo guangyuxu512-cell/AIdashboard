@@ -17,7 +17,137 @@
 - 新 Feature 从最新 Green `dev` 创建，且一个 Worktree 只绑定一个分支。已有 AI、Mobile 长期分支按登记表保留，不因本规则补做 rebase、重建或改名。
 - 当前工作树中的 `AGENTS.md` 和 `docs/` 才是该分支的规则快照；禁止把其他 Worktree 的文件当作当前分支事实。
 
+2026-10-13 7d55已正规恢复为“可用功能开发工作树，具体任务待分配”：
+主仓库Git以CI成功的Green `3128d6ad1048dfda1240148e863ea0c98eb6247f`创建原路径
+`C:\Users\Administrator\.codex\worktrees\7d55\中控台`，当前detached HEAD、源码与规则完整且工作区干净。
+旧残留目录完整改名保留于 `C:\Users\Administrator\.codex\worktrees\7d55-archive-20261013-1baaab5b`；
+经用户授权归档旧7d55聊天并正常重开Codex后，目录占用解除，未强杀或改ACL。
+本次不分配数据库、端口或Migration Slot，不启动/打包Electron，不动81a1共享stash或既有Profile。
+确定新功能后再从当时核验的最新Green建对应分支、登记所需资源；不继承旧“仅打包”职责。
+
 ### Two-Gate、问题归属与共享历史
+
+2026-10-14 当前A收口：精确候选 `f348565b4db2cb907d9c55c3fd7c85088a1fe467` 已完成
+逐项契约、实际Real5180/8100匹配验证，Integration单一0044及唯一1.0.6 Electron/Profile保留。
+用户已直接确认品牌/策略九列/启停编辑位置，以及最后候选池普通/最大化显示；不重复原生验收。
+正式v8 run `e8221905-d2a2-485e-821f-c1465cd0366a` 冻结pages[1,15]，只请求一次page1及15，
+官方rank150一条真实事实/basic_info/API一致；品牌0/1正式结果与旧v1–v7证据分开复用。
+按正常no-ff合dev后复验并等待精确CI，未Green前不放行Main或释放0044。
+A不接入服务端调度，B独立分支/0045仍reserved；Green后先释放0044、再串行激活0045。
+已存在v8事实，回退须保留兼容Reader、Schema、历史及审计，不能直接回旧版本或降级清数据。
+以下A PARTIAL/旧端口PID为阶段历史，不覆盖本次直接人工确认和实际运行核验；
+最终证据与发布边界见 `docs/engineering/product-selection-strategies-v1-gate2-20261014.md`。
+
+历史阶段记录：
+2026-10-13 选品后续人类任务已在81a1会话回读：A为罗盘条件补齐与策略保存管理，
+B为复用既有Schedule底座的服务端选品，各自Candidate/Gate/发布；不混入达人、百应或手机能力。
+81a1从精确Green `3128d6ad1048dfda1240148e863ea0c98eb6247f` 创建
+`feat/product-selection-strategies-v1`，保留已发布选品/登录与全部旧分支；对应main及最后实检生产
+`0102dd6d051f89907bad113c35310bbab69412ec`。登录当前带Team真实生产路径已通过，
+空Team生产样本未覆盖事实独立保留，不作为此次选品任务阻塞，不能倒写PASS。
+ca97仅恢复受信任35433隧道并只读核实 retained `control_center_feat_product_selection`、
+`control_center_dev_user`、单一0043、候选/观察/run/ShopSession均0、无数据库管理权限；
+Feature继续8101/4176 strictPort，Integration仍8100/5180及唯一开发Electron，不复制生产Cookie。
+A唯一Slot active（77a1阶段边界修补已复核，未完成Gate）：`20261013_0044_product_selection_strategies_v1`，revision
+`20261013_0044`，down `20261010_0043`；一张Team-owned策略表及run可空策略关联，
+版本CAS、白名单相对条件/定时草稿，保存/启停本身不取数、不创建Schedule。
+0042/0043不改写；未知平台参数不猜测开放。新条件保持旧run/事实读取与指纹兼容，
+降级仅可重建Feature且无新策略或关联run，须加锁后检查；应用回退保留Schema/历史。
+Owner编写/验证新Migration与代码，ca97不代修；B未分配Slot、不在A接入执行或新建调度框架。
+Owner已在分配Feature库应用0044，ca97只读核实该库单一`20261013_0044`与最小角色；
+Integration/生产仍0043，未在本工作树新增Migration或写Feature业务数据，实际Gate验证尚待候选。
+本记录仅资源与技术边界登记，不代表A实现、Gate或真实平台验收已经通过。
+阶段候选`4e584cb993a1a6b22204421018a3cc75d9fa5f0d`已退回Owner：0044实际downgrade缺少
+目标Feature库保护（只有测试包装器检查），隔离无连接探针确认能进入mock drop；策略停用还误用
+旧停用Shop的执行资格校验，配置无法关闭。Slot按迁移拒绝规则保留待修，不改已应用旧迁移或清库。
+隔离快照53后端定向、92前端选品、lint/typecheck/Real build通过不抵消上述缺口；
+未加载Integration、未合dev、未发布。Owner修正后交新精确候选重新审查，平台补证仍独立待完成。
+追加候选`77a1d96a2989ada3ef7f12bbba0e0782588468d1`独立复核：实际降级在锁/DDL前拒绝
+offline及非指定Feature目标；停用Shop的配置可关闭或替换合法新目标，开启/执行仍查资格，CAS/范围不放宽。
+8迁移与6配置无连接合成探针及后端定向62项通过；0044 upgrade函数不变，前端/Electron/Signer/PC/0042/3
+无差异复用原92项/lint/typecheck/Real build，不重复视觉。Slot恢复active仅表示修补边界接受；
+未加载Integration或迁移，不合dev/main，A未知参数与真实闭环仍PARTIAL，B无Slot/实现。
+
+2026-10-13后续人类明确继续A，ca97已将77阶段归档匹配加载Real5180/8100，正式Alembic升级
+Integration至单一`20261013_0044`，迁移前后旧事实/run/HuanYu valid v6保留。正常认证配置CRUD/
+CAS/启停通过且Run/Schedule/平台IO增量0；正式run `dae3090a-ceb4-44f3-8bba-4bbf362a5cbf`
+取得官方21–30、主区间10-06～10-12，10条事实/API/详情一致，basic_info9成功/1业务600002拒绝，
+partial如实保留。完成后GET与同key重放平台IO增量0。另按旧人工Query仅一次当日实时只读重放
+HTTP200/int0/10条，交Owner接独立当日窗口；不是正式实时入库，不扩7d回退。
+原生computer-use因无法确认前台Chrome网址停止本轮操作，未启动/验收Electron；仅请用户置前既有
+罗盘标签。其它周期/品牌/自定义价格/行业映射仍具体补证中，A/B未完成，不合dev/main、不标Green。
+详见`docs/engineering/product-selection-strategies-v1-integration-preparation-20261013.md`。
+
+同日实时接证候选`c6298c22378fcfc0b4a88e891875f2ae03b1da98`已独立53后端/18前端定向并
+匹配加载两服务。正式v4 run `5b3d3ba4-4d64-4202-888d-50cf8915eccc` 当日10条入库、basic10成功、
+API/详情一致、同key/刷新IO0；旧v3/9+1partial保留。现26候选/30来源/6run，0044不再修改，
+现有1.0.6壳源码相同，按正常项目入口重开唯一开发Main60592且保留Profile，非原生操作通过。
+其它参数与人员原生确认仍待完成，不以此标全A Gate/Green或发布；B仍无Slot/实现。
+
+2026-10-13后续A团队上下文候选`43637bb051d2f4b3ba6c9fab608756429971edd3`已独立审查、
+65后端定向通过并加载8100；5180/唯一1.0.6 Electron源码与该候选相同，保留当前未保存7d抽屉。
+正式API证实super无Team及另一有效Team均可按资源原Team保存/启停/GET和重放已有关联Run；
+CAS、新建/无关联草稿必须明确Team的门禁保留，Run/Schedule/事实/平台请求增量0。
+这是受控API，非原生点击通过；Chrome地址安全校验停止输入，仅请用户置前现有合法罗盘页，
+不换低层UI入口，不重新索要Cookie。未知1d/30d、品牌、自定义价格和其它行业参数仍具体补证。
+已回读81a1人类turn `01a13382-b40f-7552-a6a0-a32a6ec092d2`的A/B授权；B独立
+`feat/product-selection-server-schedule-v1`从Green3128正常合436依赖，不混A Release。
+技术提案已审核，下一Slot`20261013_0045`/down0044仅reserved；A0044仍唯一active，
+A完整Gate及精确Green后才串行激活B，此前不写或应用B DDL。详见阶段集成记录与Slot表。
+
+同日B非DDL准备`f4f61c926d40193b5a5d939927f967f6fee42068`已fetch/技术审查接受，
+隔离归档91项时间/PC/选品定向通过；无Model/Migration/Scanner/Settings/Frontend/Electron变化。
+整点辅助、调用者事务所有权及包含reused的策略活动查询只是准备，不是定时Gate或发布候选。
+OwnerPG90为Feature真实DB/合成I/O，ca97未写Feature、未在Integration加载B，0045仍reserved。
+
+同日用户接续A，列表返修Candidate `8dfb2dcf217b9883e9cd2ddbac9a02da8ee33fc3`已独立审查，
+List/Drawer14项通过、无迁移/壳/执行规则变化，精确归档已准备。早先正常启动曾在CreateProcess前
+被工具策略拒绝；用户随后正常运行启动文件，8100/5180成功启动，但本地助手ReadAllLines读取写入中
+日志报文件共享冲突。ca97仅修ignored助手的共享只读与监听归属复用，不改Feature业务或停健康服务。
+两服务HTTP200及8df运行字节/白名单启动标记已核实；正常入口已开唯一匹配1.0.6 Electron，
+原生AX确认5180/#/shops、G2-SA-V1 Super Account及原Profile保留。截图FrameArrived超时、点击无geometry，
+不以网页验收替代原生。正式API启停/编辑保持行序/固定页/筛选、真实updated_at/version/最近结果，
+Run/计划/事实/平台IO增量0；37条disabled/unscheduled配置经正式API准备完整第二页，仅测试配置。
+用户在同一窗口补行序/分页/筛选/滚动确认前不标Gate2B PASS；Integration0044/HuanYu v6及旧真实run保留。
+其它行业/父级全部、1d/30d、品牌和custom价格仍须逐项Query补证后交81a1，不猜测开放。
+A整体PARTIAL，不合dev/main或发布；B按0044 active/0045 reserved原顺序，7d55不参与选品。
+
+同日追加Candidate `ed6a98b95b74ca5f2dd29df0e926fdf1db577bd1`已推送交审，父8df。
+ca97在旧8df对同一正式v4 run同key回读复现另一有效Team POST202→GET404，原Team/无Team均200、
+Run/计划/事实/平台IO增量0。ed6仅精确GET派生资源Team，Frontend/Electron/Migration不变。
+无DB method-only交错探针发现二次权限重验后未重新按最终Shop Scope查询，已退回原Owner最小返修；
+原位置/视觉不受影响的证据保留，不把合成探针冒充PG或真实平台。
+Owner随后交`56b9614235708faf86bb237c27dffaf8b8ae6165`、父ed6；仅在最终权威Actor下再次走
+原精确Repo可见查询。ca97同一无配置/无DB方法探针确认拒绝无Shop授权的交错读取，定向边界接受；
+Owner纯逻辑6/59与父版本92PG/630默认分开，56b新PG/API仍待安全核销，不把技术接受标完整Gate。
+Owner额外核验异常工具输出暴露应用DB凭据。ca97仅内存审计确认同端点/Role/密码被Feature、
+Integration、Main smoke三处共用，生产关系UNKNOWN；候选增量内容匹配数0，不复述凭据。
+已冻结使用旧凭据的主动DB验证及发布、本机controller在加载配置/连接前拒绝；现有窗口/Profile不清理。
+没有轮换Role、改共享配置或生产。须对应管理员在明确授权范围下先核对生产关联，再受保护轮换/同步；
+参数12白名单本机捕获与无DB代码审核可继续，安全事项核销前不放行Gate/Green/Release。
+
+同日22:31（Asia/Shanghai）凭据事件恢复：人类明确条件授权后，Main另有直接人类只读任务，
+提供既有正式通道元数据；ca97经受信任root SSH/现有PG管理员完成生产只读比较，
+实际production root配置与Backend/Signer均为`control_center_prod_app`、Role/密码不共用，
+当前生产`0102dd6d051f89907bad113c35310bbab69412ec`健康且配置/进程不动。
+仅轮换`control_center_dev_user`，受保护同步81a1/ca97/Main smoke、额外0106与服务器DEV配置；
+三处新鲜连接通过、旧密码明确认证拒绝，Role属性/授权、业务计数及Integration单一0044保留。
+Main smoke实际旧Head0034只记录，不借凭据处理迁移；0106旧目标库已不存在，不重建，密码已同步。
+停止的服务器DEV容器保持停止，未来启用须正式Compose重载新配置，不直接docker start旧环境。
+只回收核实归属且无活动任务的8100 Backend，5180/唯一Electron98292/Profile保留；新Backend84500
+实际加载既有8df、新连接及health正常。加密恢复材料已撤除，秘密不进聊天/输出/Git。
+原工具历史无受支持编辑接口，失效旧值留存如实记录，不宣称已删或全部脱敏。
+凭据hold解除；Owner继续新56b必要PG，ca97随后匹配集成，A参数/原生未完成项仍PARTIAL，
+不把连接恢复当成全A Gate、Green或生产发布；未受影响验收不重复。
+
+随后Owner交测试/文档候选`183b35b4057b979f21a15e117cb2d3e8ef3b9efc`、父56b，
+运行时代码/Frontend/Electron/Migration与56b相同；实际Feature PG96通过（含真实DB权限交错2项），
+默认636/纯逻辑59分别记录。首轮93/1的并发领取过严FIFO断言及原因保留，按既有SKIP LOCKED/
+全局一个running契约仅修测试并覆盖串行/锁首条，不修改领取算法或凭重跑撞通过。
+ca97复核并匹配加载183 Backend91792，新配置与单一0044/旧计数、HuanYu valid v6保留；
+5180源码仍8df但与183字节相同，唯一Electron98292/Profile未动。正式既有run同key在原Team/
+无Team/另一有效Team均POST202→精确GET200，原404缺口关闭，Run/计划/事实/三类平台IO增量0。
+此为定向读取尾部收口，参数及未完成原生项仍PARTIAL，不以96项或API代替完整A Gate/Green。
 
 2026-10-13 ca97已接回店铺登录修复，整体审查Candidate
 `ce3e488bce0f8bb8f54671a792c01aa83938a92e`，匹配Renderer/Main/Preload唯一Real Electron

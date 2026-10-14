@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.security import SecretCipher, get_secret_cipher, EncryptionConfigurationError
-from app.modules.product_selection.run_contract import SelectionResolvedRequest
+from app.modules.product_selection.run_contract import SelectionResolvedRequest, SelectionRankQuery
 from app.modules.sessions.auth_context import ShopSessionAccessor, ShopSessionAuthContext
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
@@ -56,7 +56,7 @@ class SelectionStoredSessionIO:
     def categories(self, context: ShopSessionAuthContext) -> CompassCategoryTree:
         return self.connector.categories(context)
 
-    def rank(self, context: ShopSessionAuthContext, request: SelectionResolvedRequest, page_no: int):
+    def rank(self, context: ShopSessionAuthContext, request: SelectionResolvedRequest | SelectionRankQuery, page_no: int):
         if page_no not in request.page_numbers:
             raise ValueError("Only approved pages may be requested")
         return self.connector.rank(context, {
