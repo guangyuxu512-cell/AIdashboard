@@ -21,6 +21,12 @@ Owner先建分支、正常merge本次资源治理提交（仅文档/规则，非
 Owner已执行上述分支/资源同步及ignored任务覆盖更新，ca97独立核对parents精确Green9bb+资源7dc。
 当前开始ShopSelector.clearable及候选入口，现场一处未提交Selector改动属Owner开发成果，保留不代修。
 这是实际开工，不是Candidate/Gate通过；Owner此时声明尚无DB/平台/服务或Integration动作。
+
+2026-10-15后续实施：Owner报告46已在登记Feature正式应用、部分PG/前端质量验证通过，
+完整Candidate/Gate1尚未交付，不能按这些阶段证据标整体通过。03:48后注册35433通道掉线；
+ca97现场确认无监听后仅复用原strict-host-key/BatchMode通道恢复，04:02新鲜只读连接确认
+Feature单一`20261015_0046`、最小角色及SELECT1成功。未改凭据/配置/其它服务，未清夹具或触生产/平台。
+具体PID/日志只保留ignored运行记录，不入Git；Owner接续未完成测试，不借恢复重建环境。
 本阶段仅合成平台I/O+Feature真实PG，不发真实平台请求，不连接Integration/生产开发；
 真实Integration行为在合格精确Candidate后另由ca97安排，不将生产拒绝样本冒充原平台响应。
 
