@@ -3,7 +3,7 @@
 Owner81a1 / Integration ca97 / Main Release。精确A Green
 `f5d4866459acf3e29459a9920c03c1e9118a8839`正常no-ff同步为a62a7a7；旧分支与全部验收保留。
 0045 Schema技术片段1800f2b，Feature单一20261013_0045、旧迁移字节不改。
-**当前仍未完成完整Gate1/100计划及真实自然到期/Electron验收，不是B已部署。**
+**Gate1及单次100计划合成验证已完成，完整候选6e0ad128已交ca97独立Gate2；真实自然到期/Electron验收仍待完成，B未部署。**
 
 ## 实现边界
 
@@ -82,7 +82,7 @@ latest_trigger只暴露ScheduleRun ID/理论与实际时间/受限结果/合法�
 - 0045首次42704及回滚44、旧双前缀、未应用45最小修正、成功单一45及八项零计数已登记；ca97恢复active/独立资源接受，不等同Gate。
 - Queue三个PG case15.88s：两个running冲突的稳定隔离pending/跨日同键、忙店跳过、6独立进程全局3；合成I/O。
 - 新Service五个低并发PG case14.87s：模拟due/原子回执与next/重扫/关闭停用/失败0Run/原执行器入库/Session非空成功/PC正式API及Team隔离。
-- 当前Backend默认804 pass/343 integration deselected/64.36s，前端117定向/lint/typecheck及Real build16.22s。
+- 阶段Backend默认804 pass/343 integration deselected/64.36s，前端117定向/lint/typecheck及Real build16.22s；最终复验见下方Gate1交接。
   单轮5项纯测试失败为旧单worker断言/Mock repo缺新validator，按新容量及实际方法补齐后通过，生产代码未为测试绕过验证。
 - ca97确认健康恢复、无构建的单次受控窗口后，100计划合成PG **1 pass/231.44s**：100 occurrence/100 pending canonical，重扫0；三消费者最高3、Shop/S不重叠、100 distinct ID且最终100 succeeded，真实平台I/O=0。
   没有100并发连接，准备/触发串行、执行只3worker；先/后八项业务计数均0、单一45、自动两个配置false，全部本次随机UUID夹具清理，没有删旧事实。不重复未变压力组。
