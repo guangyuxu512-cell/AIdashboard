@@ -66,6 +66,15 @@ ca97先释放0044、同步B依赖基线，再激活0045。0042/3/4字节不变�
 真实品牌两次正式Run/事实/API证据保留；新候选池宽度与目标分页收尾尚待Owner最终Candidate。
 因此A0044仍active，尚无新Green，B只继续非DDL准备，不用已通过子项提前释放Slot。
 
+同日B非DDL合同细节审核接受，仍属于同一reserved 0045：`schedules.local_time`只允许
+server_selection/hourly为NULL；组合CHECK显式保持PC once/daily/weekly与server daily非空，
+hourly的interval_hours非空且正整数、其它分支明确为空，不能依赖SQL UNKNOWN通过。
+现行execution_type仅为API派生，不为此新增数据库列或假Skill/00:00。
+准备失败继续只记录既有ScheduleRun，SelectionRead批量按当前权限投影最新安全触发结果，
+不得伪造SelectionRun/零结果或返回原始错误；实际尝试时间和理论occurrence分开，
+明确与手动/后续成功的优先级、reused canonical及PC隔离。新NULL/类型/引用出现后，
+恢复旧NOT NULL/global唯一索引须先满足真实数据前置条件，禁止填假值或清历史绕过。
+
 B非DDL候选f4f61c9的技术准备接受与91项无DB定向不改变Slot状态；未新增或应用0045。
 OwnerFeature PG90为既有0044上的合成平台测试，不是新Schema验证或Integration Gate。
 
