@@ -141,6 +141,11 @@ DOUYIN_SIGNER_BIND_PORT="$(production_env_read DOUYIN_SIGNER_BIND_PORT || printf
 FRONTEND_BIND_PORT="$(production_env_read FRONTEND_BIND_PORT || printf '18080')"
 BACKEND_ASSET_STORAGE_MODE="$(production_env_read BACKEND_ASSET_STORAGE_MODE || printf 'local')"
 BACKEND_ASSET_STORAGE_VOLUME_SOURCE="$(production_env_read BACKEND_ASSET_STORAGE_VOLUME_SOURCE || true)"
+PRODUCTION_BUILDX_BUILDER="$(production_env_read PRODUCTION_BUILDX_BUILDER || true)"
+if [[ -n "$PRODUCTION_BUILDX_BUILDER" && ! "$PRODUCTION_BUILDX_BUILDER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+    echo "Production Buildx builder must be a single name containing only letters, digits, dots, underscores or hyphens" >&2
+    exit 2
+fi
 export PRODUCTION_DOMAIN PRODUCTION_TLS_CERTIFICATE_PATH PRODUCTION_TLS_CERTIFICATE_KEY_PATH PRODUCTION_ACME_WEBROOT_DIR
 export BACKEND_BIND_PORT DOUYIN_SIGNER_BIND_PORT FRONTEND_BIND_PORT
 nginx_target="$PRODUCTION_NGINX_VHOST_DIR/control-center-production.conf"
@@ -218,7 +223,11 @@ export DEPLOYMENT_IMAGE_TAG="$release_sha"
 export PRODUCTION_ENV_FILE="$environment_file"
 compose=(docker compose --project-name control-center-production --env-file "$environment_file" -f "$release_directory/deploy/production/compose.yaml")
 "${compose[@]}" config -q
-"${compose[@]}" build douyin-signer backend frontend
+build_options=()
+if [[ -n "$PRODUCTION_BUILDX_BUILDER" ]]; then
+    build_options+=(--builder "$PRODUCTION_BUILDX_BUILDER")
+fi
+"${compose[@]}" build "${build_options[@]}" douyin-signer backend frontend
 "${compose[@]}" run --rm --no-deps backend python -c \
     "from app.core.config import get_settings; from app.modules.assets.storage import verify_asset_storage; verify_asset_storage(get_settings()); print('asset-storage=ready')"
 
