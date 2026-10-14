@@ -26,14 +26,24 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-14 人类已直接授权A部署的最小builder入口工程返修，不改业务/依赖/Migration。
+唯一Owner81a1在`feat/production-buildx-builder-selection-v1`从A Green f5正常起分支并同步
+新确认治理Green `07f1cc79bb4f72776a71eddad527faef0d46016f`（精确CI38511410020三项success，
+相对f5运行/迁移/依赖不变）；无DB、端口、服务或Migration Slot。ca97独立Gate2/精确CI后
+交Main仅发布A+必要工程修复，不能代修main/dev或混B0045。7d55只读盘点未分配/未改。
+B7db候选、已应用45与运行/Profile保留，Owner串行Ops不连接旧Feature库写入。
+
 2026-10-14 B当前集成状态：完整候选`7db6578e67225efe8b77830712ccdbc72d6803cb`
 独立技术审查接受，已受保护备份并正式升级Integration单一0045，原PC/A/经营/Session逐行保留。
 唯一Real5180/8100匹配此候选及同一Electron/Profile；正式API配置/启停零Run、零平台请求通过。
 仅专用G2-B在北京时间13:54经原扫描自然触发，真实Run成功保存/补充各1、DB/API一致；
-停用/后续扫描无重复，再恢复Integration自动开关关闭。关闭客户端与原生新增控件确认尚未完成。
+停用/后续扫描无重复，再恢复Integration自动开关关闭。后续正常退出原Electron后，17:11原scanner
+再次真实成功、保存补充各1/DB/API一致，开发主进程及PC Worker均0，独立性现场通过；
+同一1.0.6/Profile/g2人员会话已恢复，B新增N/daily/下次时间/最近结果的集中原生确认尚待用户。
 B Gate2仍进行中，不合dev/main，不冒称部署。该状态替代下文“B未集成/Integration0044”的阶段记录。
 A已Green/main CI成功，但首次生产Deploy因Docker daemon panic/status-stream EOF失败，
-旧生产0102/0043及09:00原配置健康恢复；A未部署，最小builder工程入口仍待人类范围授权。
+旧生产0102/0043及09:00原配置健康恢复；A未部署。最小builder范围已获上述直接人类授权，
+Owner1677fd3 Draft PR13/Ubuntu CI验证中，Gate1尚未放行，不能按Draft或治理提交发布。
 具体B证据与边界见`docs/engineering/product-selection-server-schedule-v1-gate2-20261014.md`。
 
 2026-10-14 当前A收口：精确候选 `f348565b4db2cb907d9c55c3fd7c85088a1fe467` 已完成

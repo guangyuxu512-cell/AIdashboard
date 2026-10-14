@@ -30,6 +30,10 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-14 人类授权的`feat/production-buildx-builder-selection-v1`是纯发布工程返修，
+Owner81a1、ca97 Gate2、Main Release；无数据库/Schema/Migration需求、不占槽，
+不改42/43/44/45，不连接旧B Feature45实施业务持久化。0045仍唯一active，A/B发布边界不变。
+
 2026-10-14 B当前事实补记：完整7db6578技术审查接受后，ca97使用受保护Integration备份、
 正式Alembic从精确归档升级`control_center_integration`0044→单一0045，原业务/PC/Session保留。
 已应用42/43/44/45字节不改，不降级或清历史；仅专用正式API配置及有限自然timer验收。
