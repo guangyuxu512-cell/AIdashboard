@@ -18,7 +18,7 @@ async function settle(page: Page) {
     )
   })
 }
-test('keeps candidate image behavior through the shared ProductImage facade', async ({
+test('inherits the Green candidate compact thumbnail and preserves the default image summary', async ({
   page,
 }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -30,8 +30,8 @@ test('keeps candidate image behavior through the shared ProductImage facade', as
   await expect(thumbnail).toBeVisible()
   await expect(thumbnail).toHaveAttribute('referrerpolicy', 'no-referrer')
   const size = await thumbnail.boundingBox()
-  expect(size?.width).toBe(64)
-  expect(size?.height).toBe(64)
+  expect(size?.width).toBe(48)
+  expect(size?.height).toBe(48)
   await page.getByRole('button', { name: '详情', exact: true }).first().click()
   const summary = page.locator('.n-drawer .product-image--summary img')
   await expect(summary).toBeVisible()

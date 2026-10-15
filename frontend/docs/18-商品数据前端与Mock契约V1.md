@@ -3,6 +3,8 @@
 状态：UI_ONLY / 前端草案。Owner 7d55；基线 9bb64ac76bf9e0f51fb1715517cf8c18cef63e22；
 ca97 已登记独立前端 127.0.0.1:4177 --strictPort。无 Feature DB、Backend 实现或 Migration Slot。
 完成 Gate 1 后准备匹配预览，停止“待用户验收，禁止发布”。
+2026-10-16在原分支正常no-ff同步精确Green5a18bd0390cb4b8cbed637d412f7482cefff3f36，
+本模块运行代码/Mock与141修补保持不变；Green已有0046代码不构成本页DB/API授权。
 
 ## 复用与边界
 

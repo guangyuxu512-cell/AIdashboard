@@ -1,5 +1,8 @@
 # 商品数据紧凑复用／默认每页20条 — Gate 1 / Handoff
 
+2026-10-16已正常合入ca97核定Green5a18bd0；本记录保留03bd阶段39/19原始证据，
+同步后的完整Candidate及增量验证见shop-product-data-green-sync-gate1-20261016.md。
+
 2026-10-15，Owner 7d55；feat/shop-product-data-frontend-v1，功能Green基线
 9bb64ac76bf9e0f51fb1715517cf8c18cef63e22。保留b364原成果、b2草稿及全部失败/测试夹具。
 Candidate为包含本记录的最终Feature HEAD，完整SHA见最终回执与本地preview manifest。
