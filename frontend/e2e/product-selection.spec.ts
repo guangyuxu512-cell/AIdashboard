@@ -108,12 +108,47 @@ async function scrollCandidateTableToRight(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
 })
+// Ten-row visual fixtures below pin their size explicitly; this small scenario
+// covers the actual fresh default and explicit choices across reloads.
+test('candidate fresh default is 20 while explicit page sizes survive reload', async ({
+  page,
+}) => {
+  await page.goto('/#/product-selection')
+  const rows = page.locator(
+    '.candidate-pool .n-data-table-tbody .n-data-table-tr',
+  )
+  const pagination = page.locator('.candidate-pool .n-pagination')
+  await expect(rows).toHaveCount(20)
+  await expect(pagination.locator('.n-select')).toContainText('20 / 页')
+  await pagination
+    .locator('.n-pagination-item')
+    .filter({ hasText: /^2$/ })
+    .click()
+  await expect(rows).toHaveCount(12)
+  await pagination.locator('.n-select').click()
+  await page
+    .locator('.n-base-select-option')
+    .getByText('10 / 页', { exact: true })
+    .click()
+  await expect(rows).toHaveCount(10)
+  await expect(page).toHaveURL(/candidate_size=10/)
+  expect(new URL(page.url()).hash).not.toContain('candidate_page=2')
+  await page.reload()
+  await expect(rows).toHaveCount(10)
+  await expect(pagination.locator('.n-select')).toContainText('10 / 页')
+  await page.goto('/#/product-selection?candidate_size=50&candidate_page=99')
+  await expect(rows).toHaveCount(32)
+  await expect(pagination.locator('.n-select')).toContainText('50 / 页')
+  await expect(page).not.toHaveURL(/candidate_page=99/)
+  await page.reload()
+  await expect(rows).toHaveCount(32)
+})
 test('candidate three-column width rebalance at ordinary and wide viewports', async ({
   page,
 }, info) => {
   const previous = process.env.PLAYWRIGHT_WIDTH_BASELINE === 'previous'
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator(
     '.candidate-pool .n-data-table-tbody .n-data-table-tr',
   )
@@ -228,7 +263,7 @@ test('candidate product identity fits four themes with stable copy slots and acc
       return route.abort()
     },
   )
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   await loadCandidateImages(page)
@@ -471,7 +506,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
       })
     },
   )
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   await expect(page.getByText('共 32 条', { exact: true })).toBeVisible()
@@ -606,7 +641,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
       path: colorPath,
       contentType: 'application/json',
     })
-    await page.goto('/#/product-selection')
+    await page.goto('/#/product-selection?candidate_size=10')
     await expect(rows).toHaveCount(10)
   }
   await rows.first().locator('.n-image').click()
@@ -705,7 +740,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
 test('batch demo selects only the current page, rejects empty selection and guards rapid clicks', async ({
   page,
 }, info) => {
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
   await expect(rows).toHaveCount(10)
@@ -806,7 +841,7 @@ test('exception-only: batch partial failure preserves failed selection and all i
       })
     },
   )
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   await rows.nth(0).getByRole('checkbox').check()
@@ -1392,7 +1427,7 @@ test('external images from two origins render and preview without CORS response 
       })
     },
   )
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   const first = rows.first().locator('.n-image img')
   await expect
@@ -1482,7 +1517,7 @@ test('exception-only: external image failure, no authentication headers and expl
     failures++
     await route.abort()
   })
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const firstImage = page.locator('.n-data-table-tbody .n-image img').first()
   await expect(firstImage).toBeVisible()
   await firstImage.evaluate((image) => {
@@ -1533,7 +1568,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
 }, info) => {
   test.setTimeout(150000)
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
   const refresh = page.getByRole('button', { name: '刷新列表', exact: true })
@@ -2022,7 +2057,7 @@ test('detail typography: four themes, primary values, compact header metadata an
 }, info) => {
   test.setTimeout(90000)
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   const detail = page.locator('.n-drawer')
   await expect(rows).toHaveCount(10)
@@ -2255,7 +2290,7 @@ test('detail missing timestamp and zero metrics stay distinct from leaderboard t
     },
   )
   await page.setViewportSize({ width: 1366, height: 768 })
-  await page.goto('/#/product-selection')
+  await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   const collection = rows.first().locator('td').nth(10)

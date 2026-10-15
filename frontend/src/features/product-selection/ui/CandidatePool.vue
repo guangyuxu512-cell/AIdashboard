@@ -295,8 +295,9 @@ function setPageSize(value: number) {
   filterChanged()
 }
 watch(
-  () => query.data.value?.page,
-  (page) => {
+  () => query.data.value,
+  (result) => {
+    const page = result?.page
     if (page && filters.value.page !== page) filters.value.page = page
   },
 )
