@@ -14,6 +14,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
+import { ProductInfoCell } from '@/entities/product'
 import {
   DataTable,
   FilterBar,
@@ -40,7 +41,6 @@ import {
   rankChange,
   categoryLeaf,
 } from '../model/candidate-display'
-import ExternalProductImage from './ExternalProductImage.vue'
 import CandidateDetailDrawer from './CandidateDetailDrawer.vue'
 import { runResult } from '../model/run-display'
 import { candidateFilters, candidateRoute } from '../model/candidate-query'
@@ -405,10 +405,19 @@ const readingWidths = computed(() => {
     0,
     space - rank - discovery - price - review - listed - status,
   )
-  const merchant = Math.max(66, Math.floor(text * 0.28))
-  const category = Math.max(52, Math.floor(text * 0.22))
+  // Reuse the former image + three text columns' budget. Reserve a readable
+  // identity cell first, then keep merchant/category ellipses within it.
+  const remaining = Math.max(0, text + 88 - 260)
+  const merchant = Math.max(
+    66,
+    Math.min(Math.floor(text * 0.28), Math.floor(remaining * 0.56)),
+  )
+  const category = Math.max(
+    52,
+    Math.min(Math.floor(text * 0.22), remaining - merchant),
+  )
   return {
-    title: Math.max(0, text - merchant - category),
+    productInfo: Math.max(260, 88 + text - merchant - category),
     merchant,
     category,
     rank,
@@ -428,38 +437,17 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
     className: 'selection-current-page',
   },
   {
-    key: 'image',
-    title: '缩略图',
-    width: 88,
+    key: 'productInfo',
+    title: wrappedHeader('商品信息'),
+    width: readingWidths.value.productInfo,
     fixed: 'left',
     align: 'center',
     render: (row) =>
-      h(ExternalProductImage, {
-        src: row.imageUrl,
+      h(ProductInfoCell, {
+        imageUrl: row.imageUrl,
         title: row.title,
-        size: 'thumbnail',
+        productId: row.productId,
       }),
-  },
-  {
-    key: 'title',
-    title: wrappedHeader('商品标题'),
-    width: readingWidths.value.title,
-    align: 'center',
-    render: (row) =>
-      h(
-        NEllipsis,
-        {
-          lineClamp: 2,
-          tooltip: true,
-          style: {
-            width: '100%',
-            maxWidth: '360px',
-            marginInline: 'auto',
-            textAlign: 'center',
-          },
-        },
-        () => row.title,
-      ),
   },
   {
     key: 'merchant',
@@ -646,6 +634,16 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       ]),
   },
 ])
+const scrollWidth = computed(() => {
+  const content = columns.value.reduce(
+    (total, column) =>
+      total + (typeof column.width === 'number' ? column.width : 0),
+    0,
+  )
+  return tableWidth.value > 0 && content > tableWidth.value
+    ? content
+    : undefined
+})
 </script>
 
 <template>
@@ -787,6 +785,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         :loading="queryReady && query.isPending.value"
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
+        :scroll-x="scrollWidth"
         :theme-overrides="{
           tdPaddingMedium: 'var(--space-2) var(--space-3)',
           thPaddingMedium: 'var(--space-2) var(--space-3)',

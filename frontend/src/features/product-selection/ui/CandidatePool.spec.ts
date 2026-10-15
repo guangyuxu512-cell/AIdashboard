@@ -8,6 +8,7 @@ import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import type { BatchCollectReceipt, SelectionService } from '../model/contracts'
 import CandidatePool from './CandidatePool.vue'
 import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
+import { ProductInfoCell } from '@/entities/product'
 
 const TableStub = defineComponent({
   name: 'DataTable',
@@ -141,7 +142,7 @@ describe('candidate selection and batch demo', () => {
       dispose()
     },
   )
-  it('centers the two-line title and all columns, fits actual width and keeps scope out of the list', async () => {
+  it('reuses one product identity column, preserves other columns and keeps scope out of the list', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),
     )
@@ -153,8 +154,7 @@ describe('candidate selection and batch demo', () => {
       ),
     ).toEqual([
       'selection',
-      'image',
-      'title',
+      'productInfo',
       'merchant',
       'category',
       'rank',
@@ -170,19 +170,21 @@ describe('candidate selection and batch demo', () => {
     }
     const widths = columns.map((column: { width: number }) => column.width)
     expect(widths[0]).toBe(44)
-    expect(widths[1]).toBe(88)
+    expect(widths[1]).toBeGreaterThanOrEqual(260)
     expect(widths.at(-1)).toBe(220)
     expect(
       widths.reduce((total: number, width: number) => total + width, 0),
     ).toBe(1494)
     expect(table.props('scrollX')).toBeUndefined()
-    const title = columns
-      .find((column: { key: string }) => column.key === 'title')
+    const product = columns
+      .find((column: { key: string }) => column.key === 'productInfo')
       .render(table.props('data')[0])
-    expect(title.props).toMatchObject({
-      lineClamp: 2,
-      tooltip: true,
-      style: { width: '100%', textAlign: 'center' },
+    const row = table.props('data')[0]
+    expect(product.type).toBe(ProductInfoCell)
+    expect(product.props).toMatchObject({
+      title: row.title,
+      productId: row.productId,
+      imageUrl: row.imageUrl,
     })
     expect(columns.at(-1).fixed).toBe('right')
     expect(columns.at(-1).width).toBe(220)

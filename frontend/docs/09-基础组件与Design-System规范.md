@@ -10,6 +10,12 @@ AppSelect/ShopSelector 的 `labelTooltip` 默认 false；仅显式开启的文�
 函数标签不字符串化；多选关闭及 maxTagCount 保持原生行为。提示复用主题及视口安全间距，
 沿用明确传入的 to，不创建第二套选择器/Tooltip，不使用全局内部 DOM 样式覆盖。
 
+商品图片/身份展示复用 `entities/product` 的 ProductImage、ProductInfoCell（来源b364a89）。
+它们组合已有 NImage/NText/NTooltip/AppButton/Copy，不是新的基础控件；不依赖具体Feature或请求客户端。
+thumbnail64/summary80、完整图预览/no-referrer/重试保留；文本身份使用主题正文/辅助Token，
+单行溢出时由NTooltip显示原文，ID行固定复制槽且按原字符串复制，缺失值不伪造。
+现用Naive2.45的NEllipsis默认点击异常仅在新组件以既有NTooltip兼容，不升级库或全局覆盖其它字段。
+
 ## 1. 目的
 
 本规范解决以下问题：

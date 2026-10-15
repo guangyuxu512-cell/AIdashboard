@@ -56,9 +56,12 @@ async function scrollCandidateTableToRight(page: Page) {
   const body = page.locator(
     '.n-data-table-base-table-body .n-scrollbar-container',
   )
-  const image = page.getByRole('columnheader', { name: '缩略图', exact: true })
+  const image = page.getByRole('columnheader', {
+    name: '商品信息',
+    exact: true,
+  })
   const title = page.getByRole('columnheader', {
-    name: '商品标题',
+    name: '店铺名',
     exact: true,
   })
   const actions = page.getByRole('columnheader', { name: '操作', exact: true })
@@ -105,19 +108,96 @@ async function scrollCandidateTableToRight(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
 })
-test('candidate pool fits current workspace without horizontal drag in four themes', async ({
+test('candidate product identity fits four themes with stable copy slots and accessible fixed actions', async ({
   page,
 }, info) => {
-  test.setTimeout(90000)
-  const requests: string[] = []
-  await page.route((url) => url.pathname.startsWith('/api/'), (route) => {
-    requests.push(route.request().url())
-    return route.abort()
+  test.setTimeout(150000)
+  const ids = [
+    '12345',
+    '123456789012345678',
+    '90000000000000000012345678901234567890',
+    '',
+  ]
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.addInitScript(() => {
+    const copied: string[] = []
+    Object.assign(window, { copiedProductIds: copied })
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          copied.push(text)
+        },
+      },
+    })
   })
+  await page.route(
+    '**/src/features/product-selection/api/selection-mock-handlers.ts*',
+    async (route) => {
+      const response = await route.fetch(),
+        source = await response.text()
+      const pattern = /productId:\s*`9087654321098765[^`]*`/
+      expect(source).toMatch(pattern)
+      await route.fulfill({
+        response,
+        body: source.replace(
+          pattern,
+          `productId: ${JSON.stringify(ids)}[index % 4]`,
+        ),
+      })
+    },
+  )
+  const requests: string[] = []
+  await page.route(
+    (url) => url.pathname.startsWith('/api/'),
+    (route) => {
+      requests.push(route.request().url())
+      return route.abort()
+    },
+  )
   await page.goto('/#/product-selection')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   await loadCandidateImages(page)
+  for (let n = 0; n < 3; n++) {
+    const cell = rows.nth(n).locator('.product-info-cell')
+    await cell.locator('.product-info-cell__title').click()
+    await cell.locator('.product-info-cell__id-text').click()
+    await cell.getByRole('button', { name: '复制商品ID' }).click()
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { copiedProductIds: string[] })
+              .copiedProductIds,
+        ),
+      )
+      .toEqual(ids.slice(0, n + 1))
+  }
+  await expect(rows.nth(3).locator('.product-info-cell__id-text')).toHaveText(
+    'ID：—',
+  )
+  await expect(
+    rows.nth(3).getByRole('button', { name: '复制商品ID' }),
+  ).toBeDisabled()
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  const longIdText = rows.nth(2).locator('.product-info-cell__id-text')
+  await longIdText.hover()
+  const idTooltip = page
+    .locator('.n-tooltip:visible')
+    .filter({ hasText: `ID：${ids[2]}` })
+  await expect(idTooltip).toHaveText(`ID：${ids[2]}`)
+  const tooltipBox = (await idTooltip.boundingBox())!
+  expect(tooltipBox.x).toBeGreaterThanOrEqual(0)
+  expect(tooltipBox.x + tooltipBox.width).toBeLessThanOrEqual(1366)
+  await longIdText.selectText()
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    `ID：${ids[2]}`,
+  )
+  await page.evaluate(() => window.getSelection()?.removeAllRanges())
+  await page.mouse.move(10, 10)
+  await expect(idTooltip).toBeHidden()
   for (const viewport of [
     { width: 1366, height: 768 },
     { width: 1440, height: 900 },
@@ -138,10 +218,14 @@ test('candidate pool fits current workspace without horizontal drag in four them
       const body = page.locator(
         '.n-data-table-base-table-body .n-scrollbar-container',
       )
+      await body.evaluate((element) => {
+        element.scrollLeft = 0
+      })
       await expect
-        .poll(() => body.evaluate((e) => e.scrollWidth - e.clientWidth))
-        .toBeLessThanOrEqual(2)
-      await expect(page.getByRole('columnheader')).toHaveCount(12)
+        .poll(() => body.evaluate((element) => element.scrollLeft))
+        .toBe(0)
+      await settleTransitions(page)
+      await expect(page.getByRole('columnheader')).toHaveCount(11)
       for (const heading of await page.getByRole('columnheader').all())
         await expect(heading).toBeInViewport()
       const dimensions = await rows.first().evaluate((row) => {
@@ -163,9 +247,36 @@ test('candidate pool fits current workspace without horizontal drag in four them
           height: row.getBoundingClientRect().height,
         }
       })
+      await info.attach(`${viewport.width}-${theme}-column-geometry`, {
+        body: JSON.stringify({
+          dimensions,
+          scroll: await body.evaluate((element) => ({
+            left: element.scrollLeft,
+            width: element.clientWidth,
+            content: element.scrollWidth,
+          })),
+        }),
+        contentType: 'application/json',
+      })
       expect(dimensions.image).toEqual({ width: 64, height: 64 })
       expect(dimensions.height).toBeGreaterThanOrEqual(80)
-      for (let n = 1; n < dimensions.cells.length; n++)
+      expect(dimensions.height).toBeLessThanOrEqual(84)
+      const slots = await rows
+        .locator('.product-info-cell__copy')
+        .evaluateAll((buttons) =>
+          buttons.map((button) => button.getBoundingClientRect().x),
+        )
+      expect(Math.max(...slots) - Math.min(...slots)).toBeLessThanOrEqual(1)
+      const titleStyle = await rows
+        .first()
+        .locator('.product-info-cell__title')
+        .evaluate((element) => ({
+          whiteSpace: getComputedStyle(element).whiteSpace,
+          height: element.getBoundingClientRect().height,
+        }))
+      expect(titleStyle.whiteSpace).toBe('nowrap')
+      expect(titleStyle.height).toBeLessThanOrEqual(24)
+      for (let n = 1; n < dimensions.cells.length - 1; n++)
         expect(dimensions.cells[n]!.left).toBeGreaterThanOrEqual(
           dimensions.cells[n - 1]!.right - 1,
         )
@@ -187,10 +298,14 @@ test('candidate pool fits current workspace without horizontal drag in four them
         ),
         animations: 'disabled',
       })
+      await scrollCandidateTableToRight(page)
+      await body.evaluate((element) => {
+        element.scrollLeft = 0
+      })
     }
   }
   await page.setViewportSize({ width: 1366, height: 768 })
-  await rows.first().locator('td').nth(2).locator('.n-ellipsis').hover()
+  await rows.first().locator('.product-info-cell__title').hover()
   await expect(page.locator('.n-popover')).toContainText('Essence')
   await page.mouse.move(10, 10)
   await rows.first().getByRole('checkbox').check()
@@ -205,6 +320,7 @@ test('candidate pool fits current workspace without horizontal drag in four them
     .getByRole('button', { name: '关闭', exact: true })
     .click()
   expect(requests).toEqual([])
+  expect(pageErrors).toEqual([])
 })
 test('candidate pool: four themes, column alignment, IDs, full sort/pagination, preview and block/restore', async ({
   page,
@@ -243,16 +359,16 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   await expect(
     page.getByRole('columnheader', { name: '商品ID', exact: true }),
   ).toHaveCount(0)
-  const title = rows.first().locator('td').nth(2).locator('.n-ellipsis')
+  const title = rows.first().locator('.product-info-cell__title')
   await expect(title).toHaveText(fullTitle)
   expect(
     await title.evaluate((element) => ({
-      lineClamp: getComputedStyle(element).webkitLineClamp,
+      whiteSpace: getComputedStyle(element).whiteSpace,
       align: getComputedStyle(element).textAlign,
-      overflow: element.scrollHeight > element.clientHeight,
+      overflow: element.scrollWidth > element.clientWidth,
       height: element.getBoundingClientRect().height,
     })),
-  ).toMatchObject({ lineClamp: '2', align: 'center', overflow: true })
+  ).toMatchObject({ whiteSpace: 'nowrap', align: 'left', overflow: true })
   await title.hover()
   await expect(
     page.locator('.n-popover').getByText(fullTitle, { exact: true }),
@@ -264,8 +380,8 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   await page.mouse.move(10, 10)
   await expect(page.locator('.n-popover')).toBeHidden()
   for (const [index, text] of [
-    [3, longMerchant],
-    [4, longCategory],
+    [2, longMerchant],
+    [3, longCategory],
   ] as const) {
     const ellipsis = rows
       .first()
@@ -328,7 +444,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         .evaluateAll((elements) =>
           elements.map((element) => getComputedStyle(element).textAlign),
         )
-      expect(alignments).toEqual(Array(12).fill('center'))
+      expect(alignments).toEqual(Array(11).fill('center'))
     }
     await scrollCandidateTableToRight(page)
     await page.screenshot({
@@ -346,8 +462,8 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
       animations: 'disabled',
     })
     const colors = await rows.first().evaluate((row) => {
-      const plain = row.querySelector('td:nth-child(3)')!
-      const missing = row.querySelector('td:nth-child(9) .n-text')!
+      const plain = row.querySelector('.product-info-cell__title')!
+      const missing = row.querySelector('td:nth-child(8) .n-text')!
       return {
         body: getComputedStyle(plain).color,
         missing: getComputedStyle(missing).color,
@@ -763,7 +879,7 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
   const row = page
     .locator('.n-data-table-tbody .n-data-table-tr')
     .filter({ hasText: '前端验证策略长名称 A' })
-  await expect(row).toContainText('每小时')
+  await expect(row).toContainText('每 1 小时')
   await row.getByRole('button', { name: '立即获取', exact: true }).click()
   await expect(row).toContainText('演示获取 4 项')
   await page
@@ -1308,8 +1424,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
     .map((label) => label.trim())
     .filter(Boolean)
   expect(headers).toEqual([
-    '缩略图',
-    '商品标题',
+    '商品信息',
     '店铺名',
     '类目',
     '榜单排名',
@@ -1396,7 +1511,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
           rowHeight: row.getBoundingClientRect().height,
           paddingTop: getComputedStyle(cell).paddingTop,
           paddingBottom: getComputedStyle(cell).paddingBottom,
-          tableWidth: row.closest('.data-table')!.getBoundingClientRect().width,
+          tableWidth: row.getBoundingClientRect().width,
           headers: [
             ...row.closest('.n-data-table')!.querySelectorAll('th'),
           ].map((header) => ({
@@ -1474,13 +1589,12 @@ test('centered candidate columns and consistent bordered details: four rendered 
         Math.round(cell.width),
       )
       expect(actualWidths[0]).toBe(44)
-      expect(actualWidths[1]).toBe(88)
+      expect(actualWidths[1]).toBeGreaterThanOrEqual(260)
       expect(actualWidths.at(-1)).toBe(220)
       for (const width of actualWidths) expect(width).toBeGreaterThan(0)
-      expect(actualWidths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(
-        rowDimensions.tableWidth,
-        0,
-      )
+      expect(
+        rowDimensions.cells.reduce((sum, cell) => sum + cell.width, 0),
+      ).toBeCloseTo(rowDimensions.tableWidth, 0)
       for (const height of await rows.evaluateAll((rows) =>
         rows.map((row) => row.getBoundingClientRect().height),
       )) {
@@ -1525,7 +1639,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
           .getByText('↓ 2', { exact: true })
           .evaluate((element) => getComputedStyle(element).color),
       ).toBe(semanticColors.error)
-      await expect(rows.first().locator('td').nth(4)).toHaveText('上衣')
+      await expect(rows.first().locator('td').nth(3)).toHaveText('上衣')
       colorEvidence.push({
         theme: id,
         viewport,
@@ -1685,7 +1799,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
         detail.getByRole('button', { name: '采集资料', exact: true }),
       ).toBeInViewport()
       await expect(
-        detail.getByRole('button', { name: '更新罗盘指标', exact: true }),
+        detail.getByRole('button', { name: '更新基础信息', exact: true }),
       ).toBeInViewport()
       await settleTransitions(page)
       await page.screenshot({
@@ -1736,7 +1850,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
       rows
         .first()
         .locator('td')
-        .nth(2)
+        .nth(1)
         .evaluate((cell) => Math.round(cell.getBoundingClientRect().width)),
     )
     .toBeGreaterThan(360)
@@ -1749,15 +1863,13 @@ test('centered candidate columns and consistent bordered details: four rendered 
   expect(
     await rows
       .first()
-      .locator('td')
-      .nth(2)
-      .locator('.n-ellipsis')
-      .evaluate((e) => Math.round(e.getBoundingClientRect().width)),
-  ).toBeLessThanOrEqual(360)
-  expect(wideWidths[3]).toBeGreaterThan(140)
-  expect(wideWidths[4]).toBeGreaterThan(100)
+      .locator('.product-info-cell__title')
+      .evaluate((e) => e.getBoundingClientRect().height),
+  ).toBeLessThanOrEqual(24)
+  expect(wideWidths[2]).toBeGreaterThan(140)
+  expect(wideWidths[3]).toBeGreaterThan(100)
   expect(wideWidths[0]).toBe(44)
-  expect(wideWidths[1]).toBe(88)
+  expect(wideWidths[1]).toBeGreaterThanOrEqual(260)
   expect(wideWidths.at(-1)).toBe(220)
   await page.screenshot({
     path: info.outputPath('candidate-full-width-2240.png'),
@@ -1771,10 +1883,10 @@ test('centered candidate columns and consistent bordered details: four rendered 
     detail.getByRole('button', { name: '已标记竞品店铺', exact: true }),
   ).toBeDisabled()
   await detail
-    .getByRole('button', { name: '更新罗盘指标', exact: true })
+    .getByRole('button', { name: '更新基础信息', exact: true })
     .click()
   await expect(
-    page.getByText('罗盘指标更新流程演示；未向平台请求', { exact: true }),
+    page.getByText('基础信息更新流程演示；未向平台请求', { exact: true }),
   ).toBeVisible()
   await detail.getByRole('button', { name: '采集资料', exact: true }).click()
   await expect(detail).toContainText('已演示采集')
@@ -1815,10 +1927,10 @@ test('detail typography: four themes, primary values, compact header metadata an
       .locator('td')
       .evaluateAll((cells) =>
         [
+          cells[1]!.querySelector('.product-info-cell__title')!,
           cells[2]!.querySelector('.n-ellipsis')!,
           cells[3]!.querySelector('.n-ellipsis')!,
-          cells[4]!.querySelector('.n-ellipsis')!,
-          cells[6]!.querySelector('.n-text')!,
+          cells[5]!.querySelector('.n-text')!,
         ].map((element) => {
           const css = getComputedStyle(element)
           return {
@@ -2026,13 +2138,13 @@ test('detail missing timestamp and zero metrics stay distinct from leaderboard t
   await page.goto('/#/product-selection')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
-  const collection = rows.first().locator('td').nth(10)
+  const collection = rows.first().locator('td').nth(9)
   await expect(collection).toHaveText('—')
   const missingColors = await rows
     .first()
     .locator('td')
     .evaluateAll((cells) =>
-      [8, 10].map(
+      [7, 9].map(
         (index) =>
           getComputedStyle(cells[index]!.querySelector('.n-text')!).color,
       ),
