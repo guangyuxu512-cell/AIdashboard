@@ -4,7 +4,10 @@ import { NMessageProvider } from 'naive-ui'
 import { describe, expect, it, vi } from 'vitest'
 import ProductInfoCell from './ProductInfoCell.vue'
 
-function render(productId: string | null) {
+function render(
+  productId: string | null,
+  density: 'default' | 'compact' = 'default',
+) {
   return mount(
     defineComponent({
       setup: () => () =>
@@ -17,6 +20,7 @@ function render(productId: string | null) {
                 productId,
                 title: '完整长商品标题',
                 imageUrl: null,
+                density,
               }),
           },
         ),
@@ -25,6 +29,32 @@ function render(productId: string | null) {
 }
 
 describe('shared product identity (source b364a89)', () => {
+  it('opts into compact identity without changing the raw string or missing-image slot', async () => {
+    document.documentElement.style.setProperty(
+      '--list-compact-control-height',
+      '28px',
+    )
+    const id = '00000000000000000012345678901234567890'
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const wrapper = render(id, 'compact')
+    expect(wrapper.get('.product-info-cell').classes()).toContain(
+      'product-info-cell--compact',
+    )
+    expect(wrapper.get('.product-image').classes()).toContain(
+      'product-image--compact',
+    )
+    await wrapper.get('button[aria-label="复制商品ID"]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(id)
+    wrapper.unmount()
+    document.documentElement.style.removeProperty(
+      '--list-compact-control-height',
+    )
+  })
   it.each([
     '12345',
     '123456789012345678',

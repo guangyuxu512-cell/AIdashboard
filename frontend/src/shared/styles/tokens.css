@@ -22,6 +22,13 @@
   --space-8: 32px;
   --surface-padding: 16px;
 
+  /* Explicit list opt-in only; never replace the default 14/34/30px scale. */
+  --list-compact-font-size: 12px;
+  --list-compact-control-height: 28px;
+  --list-compact-image-size: 48px;
+  --list-compact-padding: var(--space-3);
+  --list-compact-gap: var(--space-2);
+
   /* Controls and semantic widths */
   --control-height-compact: 30px;
   --control-height-default: 34px;

@@ -31,6 +31,20 @@ Table header / row: 38px / 42px
 
 实际项目以 `tokens.css` 为唯一权威。
 
+### 显式紧凑列表（2026-10-15 候选池试点）
+
+不替换上述默认基线。仅 `density="compact"` 的既有列表边界采用：正文／表头／ID 12px、筛选标签 13px、控件 28px／文字 12px、筛选及列表组合间距 8px、卡片 padding 12px、商品 thumbnail 48px。图片与 8px 上下 padding 自然形成约 64–65px 行，不固定高度裁内容。
+
+尺寸唯一来源为 `tokens.css` 的 `--list-compact-*`；四主题共用尺寸，颜色／字体家族／圆角不变。现有 `--font-size-body`、`--control-height-default`、`--control-height-compact` 等默认值不变。
+
+通过既有 `PageSection`／`FilterBar` 内部 `NConfigProvider abstract` 合并尺寸，保持根 DOM／attrs／fill 链，不能用全局缩放、页面 deep 覆盖或改变默认 Provider。Naive Select 虚拟窗口必须使用可解析像素高度：`createListDensityTheme()` 只为 `InternalSelectMenu.optionHeight` 读取相同 Token 的计算值，其他样式继续使用 CSS 变量。不能以关闭虚拟滚动掩盖尺寸问题。
+
+筛选菜单和 Tooltip 的 Vue provide 随 Teleport 保留；命名 Token 位于全局定义，浮层仍能解析，但默认消费者未引用它们。**Drawer／Dialog 即使 Teleport 到其他 DOM，仍继承其声明位置的主题**，因此候选池详情／编辑 VNode 必须位于紧凑边界外。不要为此修改抽屉／表单内部。
+
+共享默认 `ProductImage` summary 80px、thumbnail 64px；`ProductInfoCell` 默认 ID 13px／复制槽 30px。compact 显式 thumbnail 48px／ID 12px／复制槽 28px，缺图及重试保留同一 48px 槽。详情不得自动缩小：包括未传密度的商品数据详情默认 thumbnail 64px。
+
+当前只授权候选池试点；策略列表须待新视觉原生确认后再显式复用。商品库／采集任务仍占位，不因有共享规则新建业务列表。
+
 建议：
 
 ```text
