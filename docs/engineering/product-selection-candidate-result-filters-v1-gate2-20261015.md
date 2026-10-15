@@ -1,16 +1,41 @@
 # 候选池结果与基础信息 Gate 2 集成记录
 
-当前预览精确Candidate为 `b99f4265a35744f854e03f1ffb0320e9c9dafe17`，正常no-ff共享依赖的
-直接父为 `cb9841e692beb4086e9374db84ee869306339ae7`。已实际加载同一Real5180及唯一
-Electron1.0.6/Profile，Backend8100不变。新增紧凑密度的原生人工确认尚待用户；已通过的
-bfaae商品信息/首次上榜及f876长标签、策略界面结论保留，不代替新尺寸确认。
+当前预览精确Candidate为 `610922781f1eec01e493122f8c1a3a50558e5bce`，正常no-ff消费
+纯共享1a8078，直接父为 `7e37c6b81f1c141e1d79e3abb0ffb2d7e4a646c9`。已实际加载同一
+Real5180及唯一Electron1.0.6/Profile，Backend8100不变。短标题、原居中及全局竖线的新增
+原生人工确认尚待用户；bfaae/f876旧结论保留，不将预览设计选择当新实际布局验收。
 真实平台单项基础更新尚未完成，Gate2整体保持进行中，不把界面确认当作平台取数通过。
 此Feature未获生产发布授权；本次未访问生产，最后已记录生产为B
 `382ca92ee1f415e0e1a4269de6b9a02c382e114d`/0045，不冒称已部署本候选。
 
 ## 紧凑候选池试点：精确检查与实际加载
 
-### 后续设计授权（尚未交新候选）
+### 最新完整610候选：独立技术检查与实际预览
+
+完整610已提交推送，父7e37c6b为原b99与纯共享1a8078的正常no-ff，无冲突。
+共享目录/商品实体/ShopSelector/图片Facade与1a逐字相同；Backend/Worker/壳/依赖/0046相对b99
+无变化。消费者仅CandidatePool局部readingWidths收紧实际商品列至280–300px，余量交商家/类目；
+原居中、图/标题/原字符串ID/复制槽、其它列与220px操作不变，不新增共享API或另设列宽框架。
+
+ca97独立2文件11项通过（8.06秒）、受影响eslint、typecheck及精确Real build18.17秒通过；
+11份归档blob核对一致。纯共享23项及未变6ac等证据按范围复用，不重复699或后端。
+Owner本次实际Mock1项36.1秒、四主题四尺寸与16张独立保留图是浏览器证据，不是原生确认。
+没有另存逐点原始像素JSON，已确认旧共享PNG被测试器回收，不能伪造或冒用新图。
+
+加载前读库因原35433隧道已退出安全停止（OperationalError）。只通过既有受信任入口恢复SSH
+转发，StrictHostKeyChecking/BatchMode保持，未改凭据/配置/业务数据，未重启Backend或Electron。
+恢复后只读事务确认单一0046、候选29/来源36/Run18/策略51及其它原计数、账号super/enabled、
+HuanYu valid v6均保持；手动和定时执行开关仍false。无迁移、平台请求或生产访问。
+
+正常5180替换后回读实际编译模块：CandidatePool五处compact、280–300列预算及AppTable
+single-line=false，Frontend/Backend HTTP200。同一Electron1.0.6主进程/Profile保留并置前，
+原生AX确认g2人员会话和5180选品页，但当前停在selection-strategy Tab。
+原生点击候选池报coordinate input geometry is unavailable；一次受支持Tab键尝试后焦点/路由
+未确认变化，停止自动输入，不走低层UI绕行。请用户手动切候选池，仅集中确认短标题/原居中/
+竖线及普通最大化可读性，并看代表性非紧凑店铺表格和详情不缩小/不双线。
+未确认前不标新Gate2B PASS、不放行7d55或策略紧凑消费者、不合业务或发布；真实basic Gate独立。
+
+### 后续设计授权（现已交610候选）
 
 ca97直接回读规划人类turn `01a13e0d-f1df-7cb1-977d-70262e09218c`：
 “好，就用这套吧。标题不用那么长，然后居中还是和以前一样，全局加竖线”。
