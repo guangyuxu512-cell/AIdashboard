@@ -2096,7 +2096,7 @@ test('detail typography: four themes, primary values, compact header metadata an
         }),
       )
     expect(listText).toEqual(
-      Array(4).fill({ size: '14px', weight: '400', color: colors.primary }),
+      Array(4).fill({ size: '12px', weight: '400', color: colors.primary }),
     )
     await settleTransitions(page)
     if (id === 'graphite')
@@ -2152,13 +2152,13 @@ test('detail typography: four themes, primary values, compact header metadata an
       }
     })
     expect(typography.title).toEqual({
-      size: '18px',
+      size: '16px',
       weight: '600',
       color: colors.primary,
     })
     for (const heading of typography.headings)
       expect(heading).toEqual({
-        size: '16px',
+        size: '14px',
         weight: '600',
         color: colors.primary,
       })
@@ -2170,16 +2170,16 @@ test('detail typography: four themes, primary values, compact header metadata an
       })
     for (const field of typography.values)
       expect(field).toEqual({
-        size: '14px',
+        size: '13px',
         weight: '400',
         color: colors.primary,
       })
     expect(typography.metrics).toEqual([
-      { size: '22px', weight: '600', color: colors.tertiary },
-      ...Array(3).fill({ size: '22px', weight: '600', color: colors.primary }),
+      { size: '18px', weight: '600', color: colors.tertiary },
+      ...Array(3).fill({ size: '18px', weight: '600', color: colors.primary }),
     ])
     expect(typography.metadata).toEqual({
-      size: '13px',
+      size: '12px',
       weight: '400',
       color: colors.tertiary,
     })
