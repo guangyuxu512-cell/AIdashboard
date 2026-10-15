@@ -1,6 +1,14 @@
 # 候选池结果与基础信息 Gate 2 集成记录
 
-当前预览精确Candidate为 `cbe30cb3a941116292b71fae4e164fd9ccc249e6`，直接父38，继承
+最新5180预览精确Candidate为`885b61834ce721b0eb326755852eee38071d3fb4`，直接父cbe。
+仅详情局部尺寸/底栏状态增量，ca97独立11项/lint/typecheck/Real build及7blob通过并实际替换
+5180 strictPort；编译模块已读到历史成功和当前暂停两条提示。8100未重启，Backend/Shared/
+实体/候选池列表/依赖/Electron/0046相对cbe逐字不变；原真实basic结果正式API仍可读。
+切换时实际无开发Electron进程，未擅自恢复用户Escape停止的原生操作；只完成前端服务准备，
+不能声称现有原生窗口已加载885。原Profile保留，正常开发启动文件已按885准备，已只询问
+是否正常重开供查看。详情现场和0.03%确认仍待，不重复取数/列表验收、不标完整Gate/发布。
+
+前阶段预览精确Candidate为 `cbe30cb3a941116292b71fae4e164fd9ccc249e6`，直接父38，继承
 正常no-ff消费纯共享1a8078的7e37c6b；仅新增候选池默认20及页码URL校正。已实际加载同一
 Real5180及唯一Electron1.0.6/Profile，Backend8100不变。用户现已明确确认38候选池前端，
 仅按当前可见界面记录；bfaae/f876旧结论保留，不补写未明确操作的尺寸或剪贴板专项。
@@ -181,7 +189,7 @@ ca97独立2文件11项、受影响eslint、typecheck、diff check及6份归档bl
 状态与按钮分区留间距、窄窗合理换行，历史结果与当前暂停并列清楚。保持已确认候选池列表、
 全局主题/Drawer默认、平台请求与字段规则；不新增请求、Schema或改变Profile/Session。
 81a1交精确增量Candidate/Gate1后，ca97只审加载该详情并集中补受影响区域，不让用户再验旧版。
-当前未交新详情Candidate，不声称已实际加载或修好；此前真实成功与失败保值PG证据沿用。
+Owner后续已交精确885，当前独立检查/服务加载见下节；此前真实成功与失败保值PG证据沿用。
 
 7d55已独立交完整消费Candidate `03bdc0238465bcad79701af02c04b9811f96a51b`，
 正常merge `03d336dee05eb99a21cc0e82193ec001f4ce2e53`双父精确为b2ccc草稿/141共享。
@@ -189,6 +197,31 @@ Owner原4项Radio失败已按原期望通过，报告39项定向/19浏览器/lin
 通过；ca97已核对提交/parents及无无关Backend/Electron/依赖/选品运行变化，但未重复执行其
 全部测试，也未将Owner Gate1标作ca97 Gate2或用户原生通过。4177仍独立UI_ONLY，
 真实Backend未接入。其受控预览/人工确认独立安排，不改变当前5180 Real或本次详情任务。
+
+### 885详情候选：独立增量检查及实际前端加载
+
+精确885直接父cbe，7文件变更；生产源码仅CandidateDetailDrawer.vue，较大diff主要是
+局部abstract Provider包裹后的模板缩进。ca97已检查脚本/状态链、底栏/尺寸与作用域，
+Shared/实体/全局Provider/CandidatePool/Backend/Worker/Electron/依赖/0046差异0。
+完整精确归档7份changed blob均匹配，复用既有锁定依赖，无安装或业务开发。
+
+ca97独立CandidateDetailDrawer＋basic-display 2文件11项PASS（6.76s）、受影响eslint/
+vue-tsc、精确Real Vite构建PASS（17.86s）；只保留既有大chunk提示，不做无关拆包。
+Owner四主题4项拦截Real Renderer/旧受影响Mock2项等按原范围分开引用，不冒称ca97重跑。
+ca97实看午夜普通1366及石墨测试窄420两张截图：历史成功/暂停独立区、按钮间距与换行
+符合预期；这仍是Owner合成浏览器资料，不是原生像素/用户通过。
+
+切换首个准备入口在停进程前因未发现开发Electron安全拒绝，5180/8100均未受影响。
+随后仅前端准备允许0或1个已知开发客户端、仍禁止重复实例；没有因此启动/关闭任何窗口。
+先建立已验证候选的standby launcher，再仅停止原73368并由原5180/strictPort切为885；
+新实际模块包含“上次基础信息已更新”“当前环境暂停更新”和新footer作用域，Real代理8100。
+不是仅核对分支HEAD；8100保留原进程，现有生命周期/手动/basic/选品定时仍关闭。
+
+正常人员认证的正式GET回读原59394f85依旧succeeded/saved0/补充1，原商品三字段与
+0.0002560163850486431/unit4保持，平台请求增量0。没有新POST、执行、Schema、生产或
+Profile/人员密码/店铺Session操作。当前确无原生窗口，不能声称已显示新版详情；用户此前
+Escape停止后未再调用原生输入。正常打开原Profile后，仅需该商品详情的局部视觉、底栏两行
+含义及0.03%确认，不重验已确认列表、不点击更新/立即获取；“采集资料”仍独立待接入。
 
 ## 紧凑候选池试点：精确检查与实际加载
 
