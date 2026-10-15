@@ -78,3 +78,28 @@ Owner只有Feature合成平台+PG+浏览器拦截，没有本候选真实平台�
 基本补充不能修复其独立视频click invalid。真平台或生产处理须另按既有授权由ca97协调。
 旧批次不补造明细；旧逐字段获取时间无证据保持未知。资料采集/竞品/手机/百应不在本轮。
 本次无Electron主进程改动或新桌面包，不合dev/main、不发布。Gate2未过不得标完整功能/生产完成。
+
+## Gate 2 返回：长选择标签（2026-10-15）
+
+接续51852，不回退已应用0046或原Gate1成果。AppSelect/ShopSelector新增默认false的labelTooltip，
+候选店铺/策略/批次及策略抽屉店铺四处opt-in，复用NTooltip，仅溢出时显示完整文字。
+selected布尔同时出现在已选菜单项和选中值，不用它猜渲染上下文；searchable焦点后原生title
+消失的路径已实测。默认renderLabel/原生renderTag/close/maxTagCount及必选店铺不变。
+不新增选择器/提示Primitive、依赖、全局CSS；不改宽度、业务请求、权限、后端或Migration。
+
+本机Naive2.45.0的NEllipsis初次点击实测抛handleClickRef.value is not a function，未升级或改库；
+改复用NTooltip与标签省略样式后点击、搜索、键盘和清除均通过，最终浏览器零pageerror。
+初轮测试还因tooltip离场/入场重叠、focused原生DOM及新增批次URL历史定位而失败；按实际结构
+和新历史步数修正测试，没有更改业务动画/延迟/路由。原生标签关闭单测将菜单受控为关闭，
+只验证close回调，菜单/虚拟列表由浏览器验证，避免将jsdom缺matchMedia当业务失败。
+
+实际命令：frontend lint、typecheck PASS；exec vitest run AppSelect.spec.ts、ShopSelector.spec.ts、
+src/features/product-selection、AppButton.spec.ts组合18文件134项PASS；生产Real build PASS/15.21s，
+只有既有>500kB分包警告。exec playwright test --config ../.codex/select-label-tooltip-playwright.config.ts：
+四主题4项PASS/57.9s，1440×900及1366×768（两尺寸均验证提示边界）、相同前缀A/B完整名称、选项/选中/搜索焦点、
+策略/批次、搜索键盘清除、原过滤/URL刷新前后退/屏蔽/basic进度等回归。
+全部API拦截，零真实平台，不称Electron/生产验收。
+
+实际截图在ignored `.codex/select-label-tooltip-e2e-final/`，四主题各shop-options、selected-shop、
+selected-shop-narrow、selected-batch及list/detail；运行127.0.0.1:4176 Real renderer。Owner未动5180/8100、Profile或原生窗口。
+新Candidate完整SHA以正式Handoff为准；ca97更新精确Renderer到同一Electron后补验，仍不标Gate2 PASS或部署。

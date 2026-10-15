@@ -18,6 +18,7 @@ describe('ShopSelector clearable opt-in', () => {
       props: { modelValue: 'shop-1' },
     })
     expect(wrapper.findComponent(AppSelect).props('clearable')).toBe(false)
+    expect(wrapper.findComponent(AppSelect).props('labelTooltip')).toBe(false)
     expect(wrapper.findComponent(AppSelect).props('modelValue')).toBe('shop-1')
   })
 
@@ -29,5 +30,17 @@ describe('ShopSelector clearable opt-in', () => {
     expect(select.props('clearable')).toBe(true)
     select.vm.$emit('update:modelValue', null)
     expect(wrapper.emitted('update:modelValue')).toEqual([[null]])
+  })
+
+  it('explicitly forwards hover labels without changing required selection', () => {
+    const wrapper = shallowMount(ShopSelector, {
+      props: { modelValue: 'shop-1', labelTooltip: true, disabled: true },
+    })
+    expect(wrapper.findComponent(AppSelect).props()).toMatchObject({
+      labelTooltip: true,
+      clearable: false,
+      filterable: true,
+      disabled: true,
+    })
   })
 })

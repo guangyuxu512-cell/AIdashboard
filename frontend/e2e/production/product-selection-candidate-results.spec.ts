@@ -14,6 +14,14 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
       theme,
     )
     const at = '2026-10-15T02:00:00Z'
+    const shopPrefix =
+      '同一前缀超长授权店铺名称：完整行业及业务范围保留，必须悬浮才能区分末尾测试店铺'
+    const shopA = `${shopPrefix}-A`,
+      shopB = `${shopPrefix}-B`
+    const strategyName =
+      '超长真实契约策略名称：不改变控件宽度，保留全部条件及团队归属，完整名称在悬浮提示中可查'
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
     const scope = {
       industry_id: '7',
       category_id: '1001,1002',
@@ -112,7 +120,7 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
     }
     const strategy = {
       strategy_id: 'strategy-1',
-      name: '真实契约策略示例',
+      name: strategyName,
       shop_id: 'shop-1',
       shop_name: '授权合成店铺',
       version: 1,
@@ -199,7 +207,19 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
           items: [
             {
               shop_id: 'shop-1',
-              display_name: '授权合成店铺',
+              display_name: shopA,
+              platform: 'douyin',
+              enabled: true,
+              owner_user_id: null,
+              note: null,
+              created_at: at,
+              updated_at: at,
+              deleted_at: null,
+              session_status: 'valid',
+            },
+            {
+              shop_id: 'shop-2',
+              display_name: shopB,
               platform: 'douyin',
               enabled: true,
               owner_user_id: null,
@@ -355,6 +375,73 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
       page.getByRole('button', { name: '详情', exact: true }),
     ).toBeVisible()
     await expect(page.getByText('演示数据', { exact: true })).toHaveCount(0)
+    const shopSelect = page.locator('.filter-bar .n-select').first()
+    const selectedLabel = shopSelect.locator(
+      '.n-base-selection-overlay .app-select-label',
+    )
+    async function hoverFullLabel(
+      label: string,
+      trigger: ReturnType<typeof page.locator>,
+    ) {
+      await trigger.hover()
+      const tooltip = page
+        .locator('.n-tooltip:visible')
+        .filter({ hasText: label })
+      await expect(tooltip).toContainText(label)
+      const rect = await tooltip.boundingBox()
+      expect(rect).not.toBeNull()
+      expect(rect!.x).toBeGreaterThanOrEqual(0)
+      expect(rect!.y).toBeGreaterThanOrEqual(0)
+      expect(rect!.x + rect!.width).toBeLessThanOrEqual(
+        page.viewportSize()!.width,
+      )
+      expect(rect!.y + rect!.height).toBeLessThanOrEqual(
+        page.viewportSize()!.height,
+      )
+    }
+    await shopSelect.click()
+    const optionA = page
+      .locator('.n-base-select-option:visible')
+      .filter({ hasText: shopA })
+    const optionB = page
+      .locator('.n-base-select-option:visible')
+      .filter({ hasText: shopB })
+    await hoverFullLabel(shopA, optionA.locator('.app-select-label'))
+    await hoverFullLabel(shopB, optionB.locator('.app-select-label'))
+    await settleSelectionTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`shop-options-${theme}.png`),
+      fullPage: true,
+    })
+    await optionB.locator('.app-select-label').click()
+    expect(pageErrors).toEqual([])
+    await expect
+      .poll(() => candidateQueries.at(-1)?.get('shop_id'))
+      .toBe('shop-2')
+    await hoverFullLabel(shopB, selectedLabel)
+    await shopSelect.locator('input').focus()
+    await expect(shopSelect.locator('input')).toBeFocused()
+    await expect(
+      shopSelect.locator('.n-base-selection-label'),
+    ).not.toHaveAttribute('title', shopB)
+    await hoverFullLabel(shopB, selectedLabel)
+    await settleSelectionTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`selected-shop-${theme}.png`),
+      fullPage: true,
+    })
+    await shopSelect.locator('input').fill('-A')
+    await expect(optionA).toBeVisible()
+    await expect(optionB).toHaveCount(0)
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await expect
+      .poll(() => candidateQueries.at(-1)?.get('shop_id'))
+      .toBe('shop-1')
+    await shopSelect.hover()
+    await shopSelect.locator('.n-base-clear').click()
+    await expect.poll(() => candidateQueries.at(-1)?.get('shop_id')).toBeNull()
+    await page.keyboard.press('Escape')
     await page.getByLabel('结果范围').click()
     await page.getByText('今日新发现', { exact: true }).click()
     await expect
@@ -407,25 +494,53 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
       .filter({ hasText: /^未屏蔽$/ })
       .click()
     await page.getByLabel('选品策略筛选').click()
-    await page.getByText('真实契约策略示例', { exact: true }).click()
+    const strategyOption = page
+      .locator('.n-base-select-option:visible')
+      .filter({ hasText: strategyName })
+    await hoverFullLabel(
+      strategyName,
+      strategyOption.locator('.app-select-label'),
+    )
+    await strategyOption.locator('.app-select-label').click()
     await expect
       .poll(() => candidateQueries.at(-1)?.get('receipt_id'))
       .toBe('receipt-1')
     await page.reload()
     await expect(page.getByLabel('执行批次')).toContainText('最近执行')
-    await page.getByLabel('执行批次').click()
-    await expect(
+    await page.getByLabel('选品策略筛选').locator('input').focus()
+    await hoverFullLabel(
+      strategyName,
       page
-        .locator('.n-base-select-option:visible')
-        .filter({ hasText: '可见 1 项' }),
-    ).toBeVisible()
+        .getByLabel('选品策略筛选')
+        .locator('.n-base-selection-overlay .app-select-label'),
+    )
     await page.keyboard.press('Escape')
+    await page.getByLabel('执行批次').click()
+    const batchOption = page
+      .locator('.n-base-select-option:visible')
+      .filter({ hasText: '可见 1 项' })
+    await expect(batchOption).toBeVisible()
+    const batchLabel = (await batchOption.innerText()).trim()
+    await hoverFullLabel(batchLabel, batchOption.locator('.app-select-label'))
+    await batchOption.locator('.app-select-label').click()
+    await hoverFullLabel(
+      batchLabel,
+      page
+        .getByLabel('执行批次')
+        .locator('.n-base-selection-input__content .app-select-label'),
+    )
+    await settleSelectionTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`selected-batch-${theme}.png`),
+      fullPage: true,
+    })
+    await page.keyboard.press('Escape')
+    await page.goBack()
+    await expect(page.getByLabel('执行批次')).toContainText('最近执行')
     await page.goBack()
     await expect(page.getByLabel('选品策略筛选')).toContainText('全部策略')
     await page.goForward()
-    await expect(page.getByLabel('选品策略筛选')).toContainText(
-      '真实契约策略示例',
-    )
+    await expect(page.getByLabel('选品策略筛选')).toContainText(strategyName)
     await page.goBack()
     await page.getByRole('button', { name: '刷新列表', exact: true }).click()
     expect(posts).toBe(1)
@@ -450,7 +565,20 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
     await expect(
       page.getByRole('button', { name: '屏蔽', exact: true }),
     ).toBeInViewport()
+    await shopSelect.click()
+    await hoverFullLabel(shopB, optionB.locator('.app-select-label'))
+    await optionB.locator('.app-select-label').click()
+    await shopSelect.locator('input').focus()
+    await hoverFullLabel(shopB, selectedLabel)
+    await settleSelectionTransitions(page)
+    await page.screenshot({
+      path: info.outputPath(`selected-shop-narrow-${theme}.png`),
+      fullPage: true,
+    })
+    await shopSelect.locator('.n-base-clear').click()
+    await expect.poll(() => candidateQueries.at(-1)?.get('shop_id')).toBeNull()
     expect(unexpected).toEqual([])
     expect(mocks).toEqual([])
+    expect(pageErrors).toEqual([])
   })
 }

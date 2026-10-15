@@ -1,5 +1,13 @@
 # 选品库前端与 Mock 交互 V1
 
+## 2026-10-15 Gate 2 长标签返修
+
+保留51852候选及0046，候选池请求店铺、策略、批次和策略抽屉请求店铺显式开启既有
+AppSelect/ShopSelector 的 `labelTooltip`。单行省略不变，悬浮可区分同前缀的完整名称；
+不扩大控件、不改名、不修改查询/身份/权限/执行行为。默认全站调用不受影响。
+四主题 Real renderer/全 API 拦截检查覆盖选中值、菜单、搜索焦点、键盘及清除；浏览器证据
+不替代 ca97 同一 Integration Electron 的人工复验。无后端、Schema、迁移、平台请求或桌面壳变更。
+
 2026-10-15候选池独立返修（Feature，未过Gate2/未部署）：保留12列/主题/图片/尺寸和原策略结构。
 现有FilterBar增加结果范围all/today/today_new/today_known、真实策略名及策略后执行批次（默认最近）。
 沿用路由query恢复/返回；刷新只查询DB。旧批次not_recorded明确“未记录商品明细”，不假成功空。

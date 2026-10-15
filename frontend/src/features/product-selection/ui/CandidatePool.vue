@@ -661,6 +661,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         ><ShopSelector
           v-model="filters.shopId"
           clearable
+          label-tooltip
           placeholder="全部请求店铺"
           @update:model-value="filterChanged"
       /></FilterField>
@@ -703,6 +704,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           :model-value="filters.strategyId"
           placeholder="全部策略"
           aria-label="选品策略筛选"
+          label-tooltip
           clearable
           filterable
           remote
@@ -716,6 +718,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           :model-value="filters.receiptId ?? 'latest'"
           :options="batchOptions"
           aria-label="执行批次"
+          label-tooltip
           :loading="batches.isPending.value"
           @update:model-value="setBatch"
       /></FilterField>
