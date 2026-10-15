@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ProductImage } from '@/entities/product'
 
-// Compatibility facade: candidate callers and dimensions stay intact.
+// Compatibility facade: existing detail callers and dimensions stay intact.
 withDefaults(
   defineProps<{
     src: string | null

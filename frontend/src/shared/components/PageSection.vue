@@ -1,16 +1,22 @@
 <script setup lang="ts">
+import { NConfigProvider } from 'naive-ui'
+import { createListDensityTheme } from '@/shared/ui/list-density'
+import type { ListDensity } from '@/shared/ui/list-density'
+
 withDefaults(
   defineProps<{
     title?: string
     description?: string
     surface?: 'card' | 'transparent'
     fill?: boolean
+    density?: ListDensity
   }>(),
   {
     title: undefined,
     description: undefined,
     surface: 'card',
     fill: false,
+    density: 'default',
   },
 )
 </script>
@@ -18,23 +24,34 @@ withDefaults(
 <template>
   <section
     class="page-section"
-    :class="[`page-section--${surface}`, { 'page-section--fill': fill }]"
+    :class="[
+      `page-section--${surface}`,
+      {
+        'page-section--fill': fill,
+        'page-section--compact': density === 'compact',
+      },
+    ]"
   >
-    <header
-      v-if="title || description || $slots.actions"
-      class="page-section__header"
+    <NConfigProvider
+      abstract
+      :theme-overrides="createListDensityTheme(density)"
     >
-      <div>
-        <h2 v-if="title">{{ title }}</h2>
-        <p v-if="description">{{ description }}</p>
+      <header
+        v-if="title || description || $slots.actions"
+        class="page-section__header"
+      >
+        <div>
+          <h2 v-if="title">{{ title }}</h2>
+          <p v-if="description">{{ description }}</p>
+        </div>
+        <div v-if="$slots.actions" class="page-section__actions">
+          <slot name="actions" />
+        </div>
+      </header>
+      <div class="page-section__content">
+        <slot />
       </div>
-      <div v-if="$slots.actions" class="page-section__actions">
-        <slot name="actions" />
-      </div>
-    </header>
-    <div class="page-section__content">
-      <slot />
-    </div>
+    </NConfigProvider>
   </section>
 </template>
 
@@ -65,6 +82,14 @@ withDefaults(
   border-radius: var(--radius-card);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
+}
+
+.page-section--compact {
+  font-size: var(--list-compact-font-size);
+}
+
+.page-section--card.page-section--compact {
+  padding: var(--list-compact-padding);
 }
 
 .page-section__header {

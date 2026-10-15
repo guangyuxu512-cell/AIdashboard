@@ -217,6 +217,8 @@ TaskSelector2.vue
 
 ## 6. 控件尺寸规范
 
+当前权威默认尺寸以 03 与 `tokens.css` 为准（34px；显式 small 30px），下方数字是历史建议，不得用它们覆盖已确认基线。2026-10-15 新增的 28px 紧凑列表是独立 opt-in，不改变默认表单或控件。
+
 所有基础控件统一使用语义尺寸。
 
 建议基线：
@@ -336,7 +338,7 @@ table border
 
 `DataTable.viewport="fill"` 用于列表 Card 必须消费剩余工作区的 Compact Management 页面。它与 `PageSection.fill` 组成 `flex: 1 / min-height: 0` 链，Loading、Empty、Error 和 Table Body 共用剩余主体空间，Pagination 由页面组合固定在底部。空间不足时通过 Naive DataTable `flex-height` 处理表格主体，不拉伸行高。
 
-`DataTable.appearance="list"` 提供无明显纵向网格的列表外观：保留轻量行分隔、表头层级、Hover、Selected 和固定列阴影。默认 `grid` 行为保持不变，必须由页面模式显式选择。
+`DataTable.appearance="list"` 保留列表既有居中、轻量行分隔、表头层级、Hover、Selected 和固定列阴影。2026-10-15 用户明确追加全局列表竖线：AppTable 的 `NDataTable.singleLine=false` 统一显示原生 1px 列分隔，颜色复用 `--border-subtle` 对接的既有 theme borderColor；grid 仍保留各列原语义对齐。外框、stripe、密度默认值不变，不能复制每页边框 CSS 或给描述表格再加双线。
 
 `DataTable.themeOverrides` 透传已有 `AppTable/NDataTable` 配置，只供有明确需求的消费者显式调整；默认 undefined、不改变其他表格。选品图片列表以 `tdPaddingMedium: var(--space-2) var(--space-3)` 组合64px缩略图形成约81px行，不改共享表格或密度Token；详情摘要图片仍为80px。
 
@@ -585,9 +587,27 @@ AI Assets Library V1 验证后增加两个纯页面模式 Primitive：
 - `StatCard` 统一使用相同 Surface，tone 仅改变 2px 轻量 Accent，禁止每张 KPI 使用不同底色。
 - `PageHeader`、`PageSection`、`FilterBar` 共享紧凑间距和 Surface Token，不在 Shop/Device 页单独调整。
 - 普通列表管理页默认省略 `PageHeader` 和 `PageSection` Header；组件本身继续保留给复杂页面使用。
-- `DataTable` 使用实色 Table Surface，统一 Header/Row/Hover/Selected；列表外观不显示明显纵向网格，仅保留极轻横向层次。固定列必须使用语义阴影和不透明单元格，避免滚动时文字叠影。
+- `DataTable` 使用实色 Table Surface，统一 Header/Row/Hover/Selected；当前列表使用原生浅色 1px 纵向与横向分隔，不改原居中和业务 grid 对齐。固定列必须使用语义阴影和不透明单元格，避免滚动时文字叠影。
 - `EmptyState`、`LoadingState`、`ErrorState` 共享紧凑状态区高度，禁止列表空态人为占满剩余视口。
 - Dialog/Drawer 统一使用 Dark/Light Surface、Border、Overlay Shadow 与紧凑 Padding。
 - Naive Provider 统一提供中文 Locale，DatePicker 与 Pagination 不得在中文页面显示默认英文文案。
 
 `Design System Playground` 是开发验收页，必须复用真实基础组件展示 Button、Input、Select、Switch、DatePicker、Status、StatCard、FilterBar、Table、Dialog 和 Drawer。禁止为 Playground 重写仿真组件。
+
+## 19. 显式列表密度 API（候选池试点）
+
+`ListDensity = 'default' | 'compact'` 从 `@/shared/ui` 导出。复用既有组件而非另造紧凑控件：
+
+| 既有入口 | 新增 API／职责 | 默认不变 |
+| --- | --- | --- |
+| `FilterBar` / `PageSection` | `density?`，内部抽象 NConfigProvider 仅合并尺寸 | 默认 undefined override，不改变继承的父主题；原根 DOM 和 slot 不变 |
+| `ManagementListSection` | `density?` 透传 PageSection，组合 gap | fill、滚动链不变 |
+| `TableToolbar` / `PaginationBar` | `density?`，独立使用时也可显式 opt-in | 页容量／事件、Slot、原尺寸不变 |
+| `ProductInfoCell` | `density?`，图片／标题／原始 ID／复制固定槽 | 原字符串复制、缺失禁用与反馈不变 |
+| `ProductImage` | `density?` 仅 thumbnail 接受 compact | summary80／thumbnail64；预览／no-referrer／失败重试不变 |
+
+`createListDensityTheme(density)` 位于 `shared/ui/list-density.ts`。默认返回 undefined；compact 返回新的仅尺寸映射。底层原生 Provider 不可变地合并父主题，主题切换不复制或硬编码颜色。该 helper 不是新 Provider 框架，也不读取业务状态。
+
+`AppInput`／`AppSelect`／`AppButton`／`AppTable`／`DataTable` 无需新增密度 API；它们消费显式列表边界主题。长标签 `AppSelect.labelTooltip`／`ShopSelector.labelTooltip` 仍默认 false；`ShopSelector.clearable` 仍默认 false。
+
+集成时须实测 Teleport 菜单、默认菜单／Tooltip、默认表单与详情尺寸，以及离开列表后的恢复。不能只断言存在 density 属性。测试用实际组件浏览器夹具不进入生产路由，不是业务页面或 Electron 验收。
