@@ -2,9 +2,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { defineComponent, h, ref } from 'vue'
 import { NMessageProvider } from 'naive-ui'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { AppButton, AppDialog, AppInput, AppSelect } from '@/shared/ui'
-import { PaginationBar } from '@/shared/components'
+import {
+  ManagementListSection,
+  PaginationBar,
+  TableToolbar,
+} from '@/shared/components'
 import { createMockProductDataSource } from '../api/product-data-mock'
 import {
   createUnavailableProductDataSource,
@@ -15,9 +19,32 @@ import type { ProductDataSource } from '../model/types'
 import ProductDataView from './ProductDataView.vue'
 import ProductDataFilterBar from './ProductDataFilterBar.vue'
 import ProductDataTable from './ProductDataTable.vue'
+import ProductDataDetailDrawer from './ProductDataDetailDrawer.vue'
 import ProductGroupManagerDialog from './ProductGroupManagerDialog.vue'
 import ProductBatchGroupDialog from './ProductBatchGroupDialog.vue'
 import ProductFieldConfigDialog from './ProductFieldConfigDialog.vue'
+
+let previousCompactHeight = ''
+beforeAll(() => {
+  previousCompactHeight = document.documentElement.style.getPropertyValue(
+    '--list-compact-control-height',
+  )
+  document.documentElement.style.setProperty(
+    '--list-compact-control-height',
+    '28px',
+  )
+})
+afterAll(() => {
+  if (previousCompactHeight)
+    document.documentElement.style.setProperty(
+      '--list-compact-control-height',
+      previousCompactHeight,
+    )
+  else
+    document.documentElement.style.removeProperty(
+      '--list-compact-control-height',
+    )
+})
 
 const DialogStub = defineComponent({
   props: ['show', 'title', 'positiveDisabled'],
@@ -65,6 +92,53 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
     .find((item) => item.text() === text)!
 }
 describe('product data view and recovery', () => {
+  it('opts only the list into compact density and declares every overlay outside its boundary', async () => {
+    const { wrapper, dispose } = render(
+      ProductDataView,
+      {
+        source: createMockProductDataSource(),
+        contextKey: 'density:team',
+        userId: 'density',
+      },
+      {
+        ProductDataTable: true,
+        ProductFieldConfigDialog: true,
+        ProductGroupManagerDialog: true,
+        ProductBatchGroupDialog: true,
+        ProductDataDetailDrawer: true,
+      },
+    )
+    await flushPromises()
+    expect(wrapper.findComponent(ManagementListSection).props('density')).toBe(
+      'compact',
+    )
+    expect(wrapper.findComponent(TableToolbar).props('density')).toBe('compact')
+    expect(wrapper.findComponent(PaginationBar).props('density')).toBe(
+      'compact',
+    )
+    const filter = wrapper.findComponent(ProductDataFilterBar)
+    filter.vm.$emit('update:modelValue', {
+      ...filter.props('modelValue'),
+      shopId: 'shop-fixture-001',
+    })
+    await flushPromises()
+    wrapper
+      .findComponent(ProductDataTable)
+      .vm.$emit('update:checked', ['product-data-demo-0'])
+    await flushPromises()
+    const list = wrapper.find('.management-list-section').element
+    for (const overlay of [
+      ProductFieldConfigDialog,
+      ProductGroupManagerDialog,
+      ProductBatchGroupDialog,
+      ProductDataDetailDrawer,
+    ]) {
+      const component = wrapper.findComponent(overlay)
+      expect(component.exists()).toBe(true)
+      expect(list.contains(component.element)).toBe(false)
+    }
+    dispose()
+  })
   it('starts at twenty per page, retains explicit page-size changes and resets page and selection without storage writes', async () => {
     const source = createMockProductDataSource()
     const list = vi.spyOn(source, 'list')

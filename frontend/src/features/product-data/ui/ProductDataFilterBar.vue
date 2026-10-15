@@ -74,7 +74,7 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
 
 <template>
   <div class="product-data-filters">
-    <FilterBar>
+    <FilterBar density="compact">
       <FilterField width="sm">
         <AppSelect
           :model-value="modelValue.shopId"
@@ -178,7 +178,7 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           @update:model-value="update('minOrders', $event)"
       /></FilterField>
     </div>
-    <FilterBar>
+    <FilterBar density="compact">
       <AppRadio
         :model-value="modelValue.datePreset"
         :options="dateOptions"
@@ -226,7 +226,7 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
 .product-data-filters__more {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--list-compact-gap);
 }
 .product-data-filters__feedback {
   display: flex;

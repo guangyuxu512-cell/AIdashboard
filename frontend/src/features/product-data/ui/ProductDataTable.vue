@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import dayjs from 'dayjs'
 import {
   NTooltip,
@@ -36,14 +37,38 @@ const emit = defineEmits<{
   detail: [row: ProductDataRow]
   retry: []
 }>()
+// Own column budget: 48px image + 8px gap + ID/copy slots, not selection's layout.
+const productColumnWidth = 304
+const table = ref<InstanceType<typeof DataTable> | null>(null)
+const { width: tableWidth } = useElementSize(() => {
+  const element = table.value?.$el
+  return element instanceof HTMLElement ? element : null
+})
+const fieldWidths = computed(() => {
+  const fields = props.visibleColumns.map((id) => ({
+    id,
+    width: PRODUCT_COLUMNS.find((column) => column.id === id)?.width ?? 0,
+  }))
+  const total = fields.reduce((sum, field) => sum + field.width, 0)
+  // Fill surplus width with the page's metric columns, not the product title.
+  const extra = Math.max(
+    0,
+    Math.floor(tableWidth.value) - 44 - productColumnWidth - 88 - total,
+  )
+  return new Map(
+    fields.map((field) => [
+      field.id,
+      field.width + (total ? (extra * field.width) / total : 0),
+    ]),
+  )
+})
 const widths = computed(
   () =>
     44 +
-    360 +
+    productColumnWidth +
     88 +
     props.visibleColumns.reduce(
-      (sum, id) =>
-        sum + (PRODUCT_COLUMNS.find((column) => column.id === id)?.width ?? 0),
+      (sum, id) => sum + (fieldWidths.value.get(id) ?? 0),
       0,
     ),
 )
@@ -82,13 +107,16 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
   {
     title: '商品信息',
     key: 'product',
-    width: 360,
+    width: productColumnWidth,
+    minWidth: productColumnWidth,
+    maxWidth: productColumnWidth,
     fixed: 'left',
     render: (row) =>
       h(ProductInfoCell, {
         productId: row.productId,
         title: row.title,
         imageUrl: row.imageUrl,
+        density: 'compact',
       }),
   },
   ...props.visibleColumns.map((id) => {
@@ -96,7 +124,7 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
     return {
       title: definition.label,
       key: id,
-      width: definition.width,
+      width: fieldWidths.value.get(id),
       align: 'center' as const,
       sorter: props.enabled,
       sortOrder:
@@ -148,6 +176,7 @@ function sortChanged(value: DataTableSortState | DataTableSortState[] | null) {
 
 <template>
   <DataTable
+    ref="table"
     class="product-data-table"
     :columns="columns"
     :data="rows"

@@ -159,8 +159,8 @@ function batchSaved() {
 </script>
 
 <template>
-  <ManagementListSection class="product-data-view">
-    <TableToolbar>
+  <ManagementListSection class="product-data-view" density="compact">
+    <TableToolbar density="compact">
       <StatusTag v-if="source.mode === 'mock'" label="演示数据" />
       <span v-if="checked.length" class="product-data-view__selected"
         >已选 {{ checked.length }} 件</span
@@ -225,46 +225,48 @@ function batchSaved() {
     />
     <PaginationBar
       v-if="query.data.value"
+      density="compact"
       :page="params.page"
       :page-size="params.pageSize"
       :item-count="query.data.value?.total ?? 0"
       @update:page="params = { ...params, page: $event }"
       @update:page-size="pageSize"
     />
-    <ProductFieldConfigDialog
-      v-model:show="fieldsShow"
-      :columns="visibleColumns"
-      :user-id="userId"
-      @saved="columnsSaved"
-    />
-    <ProductGroupManagerDialog
-      v-if="draft.shopId"
-      v-model:show="managerShow"
-      :shop-id="draft.shopId"
-      :source="source"
-      :context-key="contextKey"
-      @deleted="groupDeleted"
-    />
-    <ProductBatchGroupDialog
-      v-if="batchShopId"
-      v-model:show="batchShow"
-      :shop-id="batchShopId"
-      :rows="selectedRows"
-      :source="source"
-      :context-key="contextKey"
-      @saved="batchSaved"
-    />
-    <ProductDataDetailDrawer
-      :show="!!detail"
-      :row="detail"
-      @update:show="detail = null"
-    />
   </ManagementListSection>
+  <!-- Keep overlays outside the compact Vue provide boundary, not just its DOM. -->
+  <ProductFieldConfigDialog
+    v-model:show="fieldsShow"
+    :columns="visibleColumns"
+    :user-id="userId"
+    @saved="columnsSaved"
+  />
+  <ProductGroupManagerDialog
+    v-if="draft.shopId"
+    v-model:show="managerShow"
+    :shop-id="draft.shopId"
+    :source="source"
+    :context-key="contextKey"
+    @deleted="groupDeleted"
+  />
+  <ProductBatchGroupDialog
+    v-if="batchShopId"
+    v-model:show="batchShow"
+    :shop-id="batchShopId"
+    :rows="selectedRows"
+    :source="source"
+    :context-key="contextKey"
+    @saved="batchSaved"
+  />
+  <ProductDataDetailDrawer
+    :show="!!detail"
+    :row="detail"
+    @update:show="detail = null"
+  />
 </template>
 
 <style scoped>
 .product-data-view__selected {
   color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
+  font-size: var(--list-compact-font-size);
 }
 </style>

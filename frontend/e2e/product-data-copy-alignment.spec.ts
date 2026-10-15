@@ -34,7 +34,7 @@ for (const [width, height] of [
             const button = line.querySelector<HTMLButtonElement>('button')!
             const image = cell.querySelector<HTMLImageElement>('img')!
             const title = cell.querySelector<HTMLElement>(
-              '.product-info-cell__text > .n-ellipsis',
+              '.product-info-cell__title',
             )!
             const range = document.createRange()
             range.selectNodeContents(title)
@@ -80,12 +80,12 @@ for (const [width, height] of [
       expect(metrics[2]!.clipped).toBe(true)
       for (const item of metrics) {
         expect(item.buttonVisible).toBe(true)
-        expect(item.copyWidth).toBe(30)
-        expect(item.lineWidth).toBeLessThanOrEqual(194)
+        expect(item.copyWidth).toBe(28)
+        expect(item.lineWidth).toBeLessThanOrEqual(192)
         expect(item.titleLines).toBe(1)
-        expect(item.rowHeight).toBe(81)
-        expect(item.imageWidth).toBe(64)
-        expect(item.imageHeight).toBe(64)
+        expect(item.rowHeight).toBe(65)
+        expect(item.imageWidth).toBe(48)
+        expect(item.imageHeight).toBe(48)
       }
       for (const [index, id] of PRODUCT_ID_LENGTH_FIXTURE.entries()) {
         await expect(
@@ -106,7 +106,7 @@ for (const [width, height] of [
         path: info.outputPath('copy-alignment-' + width + '.png'),
         animations: 'disabled',
       })
-      const longId = rows.nth(2).locator('.product-info-cell__id > .n-ellipsis')
+      const longId = rows.nth(2).locator('.product-info-cell__id-text')
       await longId.hover()
       const fullId = page
         .locator('.n-tooltip')
@@ -141,7 +141,7 @@ for (const [width, height] of [
       ).toBeLessThanOrEqual(0.5)
       for (const item of constrained) {
         expect(item.buttonVisible).toBe(true)
-        expect(item.copyWidth).toBe(30)
+        expect(item.copyWidth).toBe(28)
         expect(item.lineWidth).toBe(140)
         expect(item.textWidth).toBeLessThan(160)
       }

@@ -27,7 +27,9 @@ for (const [width, height] of [
         const text = cell.querySelector<HTMLElement>(
           '.product-info-cell__text',
         )!
-        const title = text.querySelector<HTMLElement>('.n-ellipsis')!
+        const title = text.querySelector<HTMLElement>(
+          '.product-info-cell__title',
+        )!
         const id = cell.querySelector<HTMLElement>('.product-info-cell__id')!
         const image = cell.querySelector<HTMLImageElement>('img')!
         const shortRow = row.parentElement!.children[1]!
@@ -78,13 +80,12 @@ for (const [width, height] of [
       )
       expect(metrics.clipped).toBe(true)
       expect(metrics.idOnOwnLine).toBe(true)
-      expect(metrics.imageWidth).toBe(64)
-      expect(metrics.imageHeight).toBe(64)
+      expect(metrics.imageWidth).toBe(48)
+      expect(metrics.imageHeight).toBe(48)
+      expect(metrics.productColumnWidth).toBe(304)
       expect(metrics.documentOverflow).toBe(false)
 
-      const title = rows
-        .first()
-        .locator('.product-info-cell__text > .n-ellipsis')
+      const title = rows.first().locator('.product-info-cell__title')
       const fullTitle = (await title.textContent())!.trim()
       await expect(
         rows.first().locator('.product-info-cell__id > span'),

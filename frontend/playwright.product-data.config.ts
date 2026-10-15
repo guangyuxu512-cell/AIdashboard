@@ -12,6 +12,7 @@ export default defineConfig({
           'product-data.spec.ts',
           'product-data-title.spec.ts',
           'product-data-copy-alignment.spec.ts',
+          'product-data-compact.spec.ts',
         ],
   workers: 1,
   outputDir: 'test-results/product-data-' + mode,

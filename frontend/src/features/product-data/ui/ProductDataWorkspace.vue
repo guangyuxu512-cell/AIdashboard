@@ -37,10 +37,12 @@ watch(contextKey, load, { immediate: true, flush: 'sync' })
 </script>
 
 <template>
-  <PageSection v-if="error" fill
+  <PageSection v-if="error" density="compact" fill
     ><ErrorState :description="error" retryable @retry="load"
   /></PageSection>
-  <PageSection v-else-if="!source" fill><LoadingState /></PageSection>
+  <PageSection v-else-if="!source" density="compact" fill
+    ><LoadingState
+  /></PageSection>
   <ProductDataView
     v-else
     :key="contextKey"

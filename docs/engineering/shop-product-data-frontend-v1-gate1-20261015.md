@@ -1,5 +1,8 @@
 # 商品数据前端 V1 — Gate 1 / Handoff
 
+最新紧凑复用/默认20条接入仍为未过Gate 1的本地草稿，存在共享Radio尺寸缺口，
+见 shop-product-data-compact-v1-preparation-20261015.md。下文历史PASS不得外推到该草稿。
+
 本记录保留原05f1d25候选事实。2026-10-15用户提出的标题单行及ID前缀返修，
 以 shop-product-data-title-v1-gate1-20261015.md 和最新Feature候选为准；原候选未获人工通过。
 随后追加的复制按钮对齐以 shop-product-data-copy-alignment-v1-gate1-20261015.md 为准，
