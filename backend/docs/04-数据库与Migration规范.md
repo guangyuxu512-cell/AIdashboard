@@ -1,5 +1,26 @@
 # 数据库与 Migration 规范
 
+## 0046 候选结果及基础补充（当前Feature，未部署）
+
+revision `20261015_0046`，down `20261013_0045`；已在登记Feature应用，42–46均不得改写。
+新增 `product_selection_result_items`：UUID item_id主键，execution_run_id→product_selection_runs、
+observation_id→product_selection_observations均RESTRICT；unique(execution_run_id,observation_id)。
+discovery_scope_hash为规范化相对条件键，discovery_state=new/known/unknown，hit_at为实际命中时间，
+snapshot为最小冻结榜单字段；scope/observation/hit及hit/observation索引。只追加真正rank成员，
+事实/fence/计数/member同事务；不复制原平台响应或秘密，失败/空榜没有虚构成员。
+
+Candidate追加blocked、blocked_changed_at、blocked_changed_by_user_id→users(RESTRICT)及可空
+discovery_tracking_version；同Team商品全来源共用屏蔽，审计复用audit_logs；旧商品标志不回填。
+Observation追加basic_info_status JSONB和非负basic_info_version；状态/逐字段成功时间独立于旧值，
+NULL/missing/invalid或请求失败不清空成功事实。Run追加闭式operation_kind(rank/basic_info)、
+target_observation_id→Observation(RESTRICT)、可空result_detail_version和basic target/created/id索引。
+basic无strategy、saved_count=0，独立单项补充CHECK；同原队列/容量/Shop锁/租约，非第二状态系统。
+
+旧NULL detail_version=未记录，不反推完整空。rank事实与不可变批次职责分开；基础补充不改rank计数/成员。
+无批准保留期不自动删除。停用Shop历史可授权读取/屏蔽，补充执行仍拒绝；删除及Team引用继续RESTRICT。
+应用回退保留兼容Reader/Schema/数据；降级仅精确Feature加锁后没有任何新语义，包括非NULL明细版本、
+basic Run、基础状态/版本、屏蔽及其审计，即使零成员也拒绝。实际迁移/关系验证详见本Feature Gate1。
+
 ## 20261013_0045 服务端选品调度（B实施中）
 
 ca97已串行释放0044并激活0045/down0044，Owner仅在已登记Feature库实施；未完成B Gate或自然触发验收。

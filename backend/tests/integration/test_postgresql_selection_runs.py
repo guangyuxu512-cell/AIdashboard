@@ -375,7 +375,7 @@ def test_only_failed_run_prevents_team_delete_and_schema_downgrade(selection_con
     backend = Path(__file__).resolve().parents[2]
     config = Config(str(backend / "alembic.ini"))
     config.set_main_option("script_location", str(backend / "migrations"))
-    with pytest.raises(RuntimeError, match="contains run history"):
+    with pytest.raises(RuntimeError, match="contains run history|0046 result/attempt/blocking semantics exist"):
         migration_command.downgrade(config, "20261010_0042")
     with Session(context[0]) as session:
         assert session.get(Run, receipt.execution_run_id).status == "failed"

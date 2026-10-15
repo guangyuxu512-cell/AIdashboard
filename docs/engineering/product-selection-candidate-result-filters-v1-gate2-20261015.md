@@ -1,11 +1,514 @@
 # 候选池结果与基础信息 Gate 2 集成记录
 
-当前精确Candidate为 `bfaae14d76780f031e34ef68b139a26bb19b8694`，直接父为
-`9734809530f42046293a83c967611f0ac82c07a5`，继承f876/51852。技术、Integration数据库/API及用户
-提供画面的商品信息/首次上榜界面确认通过；原生剪贴板、普通/最大化专项未单独取证，不补写通过。
-真实平台单项基础更新尚未完成，Gate2整体保持进行中，不把界面确认当作平台取数通过。
+## 2026-10-16 最终人工确认与发布范围核销
+
+### 生产最终结果：DEPLOYED并核验
+
+Main已按Release Gate正常no-ff发布`21229eff5ddf9900b8f38b13c89382952f90ee7b`，
+parents为旧生产382ca92与精确Green1773；运行代码与已验收885逐字相同。
+[main CI 38790697624](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38790697624)
+全部success；[自动Deploy 38791100315](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38791100315)
+attempt1全部success，Main/远端/current及三容器Tag/实际镜像均同21229eff，没有重复发布。
+
+Main正式回执确认：生产`control_center_prod`为单一`20261015_0046`，Backend/Signer healthy，
+Frontend/HTTPS及Real静态资源PASS，原NAS真实CIFS/marker与应用身份权限正常。
+ca97另按正式`/health`契约以默认TLS证书校验独立GET确认HTTPS健康200/status ok、前端入口200；
+初次误用非正式`/api/health`所得异常未作为服务失败或验收证据。
+
+新鲜pre46受保护备份1039309字节、pg_restore目录344项可读，SHA256
+`ac032c093581d5b2d3a50e86ae7b571a8a65e6fdae7a308c76afc3995f4a5b99`。
+12类旧字段计数/逐行摘要ALL EXACT MATCH：174候选、178来源、4选品Run、1策略，
+4计划/32计划回执/53Task/4ShopSession，经营35Job/396Item/126事实及23审计均保留。
+旧3小时server计划逐值相同，核验时下一次为2026-10-16 06:00 Asia/Shanghai。
+正式.env字节与0600备份一致；实际选品execution/management/schedule均true、并发3，
+经营execution/daily均true、Asia/Shanghai09:00原计划保持。无Integration夹具/本机关闭配置带入。
+
+Main在READ ONLY事务中按存储的真实生产gy0005授权经正式ActorContext/Service/DTO核验：
+候选total174/首20、详情及latest basic读取PASS；今日/new/known为0，旧发现unknown174；
+旧策略批次2条如实not_recorded、visible_item_count=null，不把旧未记录伪称完整空榜。
+这是服务端正式只读查询，不是正常登录HTTP或生产原生操作；后两项未覆盖，明确保留，
+没有造账号/人员Session、提取用户Cookie或挪用Integration g2。新增平台请求、业务写入均0。
+旧3848213119470010668业务拒绝/click未知不因本次发布而宣称解决。
+
+无Electron原生/协议变更或新安装包，现有正式1.0.6保留Profile，正常刷新远程页面即可加载。
+本轮选品发布收口；后续四组残留清理Candidate1aec1bc独立Gate2/CI，未包含在21229eff，
+其生产发布须另行批准，不再push main触发相同版本部署。
+
+最终Green dev为`1773a97d27c56512a620337e3259cceabadca2f1`，远端dev精确相同且工作区干净。
+精确[CI 38789232361](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38789232361)
+attempt1的backend/frontend-real-build/container-runtime三Job全部success。Gate2与合后回归通过，
+现正式释放0046 Slot；后续本地纯治理提交不是新Green。Main据该精确点执行Release Gate、
+main CI和生产部署，目前尚未核实本轮生产，不预写DEPLOYED。清理Owner仅从该Green建立
+独立Feature，不能借本次发布夹带清理；7d55原工作树/候选/4177保持。
+
+最终完整Candidate：`885b61834ce721b0eb326755852eee38071d3fb4`，Owner81a1，
+基线Green `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`。ca97已直接回读规划聊天人类
+turn `01a140d6-f6ea-7c81-84f1-43417109da3c`（消息 `01a140d6-f787-7c92-8a24-5b1dcaa7a6c8`）
+的“对”，其前置问题指向ca97当前885新版详情，不是其它工作树。随后人类turn
+`01a140db-9468-7cd3-969a-b862f10aecc9`（消息 `01a140db-94fb-7093-a75f-1fb9d6cec07f`）
+明确要求“先发布部署”，并把残留代码清理另行推进。此次授权仅本选品修复及必要共享依赖；
+7d55商品数据UI_ONLY、其独立Radio增量和后续清理不混入。
+
+用户在本聊天实际原生截图可见商品 `3846580557572080245`：IVSO官方旗舰店、
+餐饮厨具／厨房小工具／手动剥蒜器/压蒜器、上架2026-10-05、差评率0.03%，以及
+“上次基础信息已更新”与“当前环境暂停更新”两条独立底栏提示。与59394f85正式真实
+Run、数据库及API保存结果一致；商家名称不是请求认证店铺HuanYu，不混同两种身份。
+材料采集未接入而显示—/禁用保持准确。新详情局部字号、间距和底栏按上述人类确认核销，
+既有候选池/长标签/策略界面确认直接复用；不补写原生剪贴板或未单独取证的双尺寸专项，
+也不把浏览器合成图片当原生证据。不再重复登录、平台取数或相同视觉验收。
+
+| Gate 2 范围 | 最终证据与结论 |
+| --- | --- |
+| 清除、屏蔽恢复、来源/策略/批次/今日事件及授权 | 独立默认后端807项、相应定向验证；真实Integration正式认证API/数据库、合成平台场景通过；与Owner66个Feature PG场景分开记录 |
+| 单商品基础信息 | 正式Run59394f85成功，Signer1次/平台basic_info1次，HTTP200、整数st=0；saved0/补充1，DB/API与本次原生截图一致；无额外取数 |
+| 失败保旧值、真实0/未知、去重/租约fence、旧rank与视频保护 | 既有合成API/PG及纯逻辑通过；不伪称本次真实失败试验，11类保护摘要与目标非basic字段保持 |
+| 新列表/共享/默认20/详情返修 | 每次精确增量均已独立检查、lint/typecheck/Real build；相应用户确认已取得，最后885独立11项及7份blob匹配 |
+| Migration与旧数据 | 0046/down0045文件保持F87B0022…；可读pre46备份、正式升级及12表旧字段保留已通过。新鲜只读仍单一0046、29候选/36来源/19 Run、活动Run0、HuanYu valid v6 |
+
+Gate 2A/2B现可核销为PASS，进入正常no-ff集成、合后回归和精确dev CI；此处不预标Green或
+DEPLOYED。0046在精确CI Green前继续active；Integration原关闭式预览/lifespan off保持，
+不得把本机验收关闭执行配置带入生产。发布由Main在精确Green交接后执行Release Gate、
+新鲜生产备份/可读性与旧数据核对、正式45→46及健康/Real资产/既有调度配置核验。
+生产已有真实策略/Run，以Main新鲜检查为准，禁止沿用上轮零数据假设或复制Integration夹具。
+Electron/Worker/Mobile、部署脚本、锁定依赖相对基线无变化，本次不需新客户端安装包。
+
+生产商品3848213119470010668的历史basic拒绝缺原始HTTP/st证据及独立click异常仍未知；
+本候选提供安全状态和可恢复入口，不宣称已修复平台拒绝或所有生产商品问题。
+后续残留代码清理另走独立Feature/Gate，当前只读盘点不抢占本次Release。
+下列“待人工确认/未执行真实basic/未获发布授权”等段落均为保留的阶段历史，以本节为准。
+
+### 正常集成与合后复验
+
+ca97在干净dev以正常`--no-ff`合入完整885，合并提交
+`d92f34ec9527a27bb1cdc6ac2015f11f69d99cc4`，parents为治理记录
+`54839e3fbbd89d52b8de59055af5f13c9e590f91`及精确885；无冲突，不改候选业务。
+本次合并没有新增AGENTS差异、锁定依赖、Electron/Worker/Mobile或发布脚本差异。
+合后backend/frontend等所有运行路径逐字等于885，不包含商品数据模块或独立Radio141。
+
+| 合后实际验证 | 结果 |
+| --- | --- |
+| Backend默认`pytest --tb=short` | 807 PASS，368 integration显式排除，83.97秒；唯一既有httpx弃用警告。不是本次重新运行PG，原Feature PG/Integration API证据按范围复用 |
+| Frontend选品/受影响Shared/实体/Audit | 25文件172 PASS，29.19秒；覆盖默认与compact隔离、长标签、筛选/批次、详情、基础状态及既有策略 |
+| Frontend lint、vue-tsc、Real production build | 全部PASS，build17.74秒；只有既有大分包警告 |
+| 正式人员认证后的只读API/实际5180模块 | Backend health200；既有59394f85仍succeeded/saved0/补充1，0.03%原值、类目及上架日期保留；served885新详情提示正确 |
+| Integration前后12类业务计数/逐行摘要 | 完全相同，单一0046、活动Run0、HuanYu valid v6；本轮平台请求0、业务写入0 |
+| Git/进程/本机材料 | 工作区干净；现存唯一1.0.6开发Electron、原Profile/人员会话保留；共享stash239a68ca保持，临时证据/构建产物ignored；敏感值及禁止artifact匹配均0 |
+
+### Main Release交接条件
+
+本节记录合后通过，尚须本提交链的精确dev CI三Job全部success并确认远端SHA，才标Green并
+向Main交付该精确点；后续纯治理HEAD不得代替Green。Main只从正式Green正常no-ff合main，
+再等精确main CI并按既有正式Deploy流程部署；不要直接发布Feature885。
+
+- 范围：结果/策略/批次/今日筛选、清除、屏蔽恢复、安全基础信息更新/进度/失败保旧值，
+  以及已确认长标签、商品信息/首次上榜、显式紧凑/默认20/竖线与885详情局部样式。
+  不带7d55商品数据、其Radio141、残留代码清理、达人/手机/资料采集或新调度功能。
+- 生产新鲜备份并验证可读；核对真实旧数据后正式从单一0045升级单一0046，不重跑/改写42–45。
+  备份、恢复入口、镜像和旧release由Main正常流程保留，不清理生产历史、失败任务或审计。
+- 0046含新结果明细/屏蔽及basic语义；downgrade仅无新语义的精确可重建Feature，
+  Integration/生产不可降级删除。生产已有新语义后回退必须保留兼容Reader/Schema/事实及审计，
+  关闭相关新执行，不直接退旧B Reader或用重建数据库回滚。
+- 发布配置须从实际生产契约确认：保留原选品management/execution/schedule与并发3、原PC/NAS及
+  经营Asia/Shanghai09:00仅昨日配置。Integration本机共用执行false/lifespan off和HTTP guard仅属
+  验收运行入口，既不在Git也不得带入生产；本候选不新增独立basic开关或执行框架。
+- Backend/Frontend/Signer健康、实际运行SHA/Real资产、0046单一Head及旧数据/原计划须正式核验。
+  本次无Electron源码/协议/版本变化，可继续现有正式1.0.6，无新安装包或Profile迁移。
+  发布核验只做必要只读检查，不重复真实平台获取，也不声称历史拒绝商品已恢复。
+
+最新5180预览精确Candidate为`885b61834ce721b0eb326755852eee38071d3fb4`，直接父cbe。
+仅详情局部尺寸/底栏状态增量，ca97独立11项/lint/typecheck/Real build及7blob通过并实际替换
+5180 strictPort；编译模块已读到历史成功和当前暂停两条提示。8100未重启，Backend/Shared/
+实体/候选池列表/依赖/Electron/0046相对cbe逐字不变；原真实basic结果正式API仍可读。
+切换时曾无开发Electron；后续已直接核实人类“同意启动”，正常入口恢复原Profile唯一
+1.0.6客户端并置前。原生AX确认5180/#/shops及G2-SA-V1 Super Account，人员登录已复用。
+885服务/编译模块已核实，但原生截图超时、菜单点击geometry不可用，已停止输入，尚未打开
+目标详情。只需用户进入候选池搜索指定商品并点详情，确认本次局部效果与0.03%；不再取数。
+详情现场确认仍待，不重复列表验收、不标完整Gate/发布。
+
+前阶段预览精确Candidate为 `cbe30cb3a941116292b71fae4e164fd9ccc249e6`，直接父38，继承
+正常no-ff消费纯共享1a8078的7e37c6b；仅新增候选池默认20及页码URL校正。已实际加载同一
+Real5180及唯一Electron1.0.6/Profile，Backend8100不变。用户现已明确确认38候选池前端，
+仅按当前可见界面记录；bfaae/f876旧结论保留，不补写未明确操作的尺寸或剪贴板专项。
+用户随后在规划turn `01a13e4f-984f-7802-a6c3-e54d5aa44e09`明确反馈标题偏短、商家和类目
+留白偏多，当前610不标视觉通过。Owner最小返修商品列至340–360px，宽裕时其余两列按6:4
+让约36/24px；其余列/居中/竖线/字号/行高/固定复制槽不变，窄窗保留可读最小值及必要横滚。
+返修38现已交付并加载，同一窗口和数据保留；不重复要求用户确认610或平台取数。
+真实平台单项基础更新已完成：59394f85正式Run成功、1次签名/1次basic请求；数据库与API一致。
+结果原生反馈检查曾被用户Escape停止；随后用户反馈详情字号/排版与底栏状态易误解，81a1正在
+局部返修。该截图不作0.03%数值确认；等精确新候选只补受影响详情，Gate2整体仍进行中。
 此Feature未获生产发布授权；本次未访问生产，最后已记录生产为B
 `382ca92ee1f415e0e1a4269de6b9a02c382e114d`/0045，不冒称已部署本候选。
+
+## 单商品 basic 剩余项：证据核销与可决策运行范围
+
+### 最新：人类批准后的一次正式真实执行（已结束，禁止重复）
+
+ca97已直接回读规划人类turn `01a13fc3-f5ae-7211-bbfe-90821feb09d3`、消息
+`01a13fc3-f654-7930-9c2d-664d48bdefde`的“同意”，其前置方案为
+`01a13fc2-e3ab-7252-8a5e-29648c3a1083`。批准仅该Integration短窗口/单商品，不包括发布。
+
+最初两次本地准备检查均在停止服务前退出：相对Vite命令未携带源码目录，改为核对父启动器、
+strictPort及实际served cbe模块；随后发现原开发Electron已退出。两次均未开许可/POST/平台请求。
+正常入口从原Profile重开唯一匹配1.0.6开发客户端；不是保留旧PID，不清会话、不启动第二实例。
+
+按获批方案短时开放旧共用提交flag，原准备HTTP guard逻辑不变、lifespan off；正常人员
+认证POST202创建唯一canonical `59394f85-2df5-4e2e-9882-223ee9dab4ba`。随即恢复API总许可
+false，正式capabilities确认manual/basic/选品定时执行均false，再全队列确认仅目标pending。
+独立进程核实实际Integration/0046/密钥依赖、经营与每日均false，无监听端口，只调用一次
+原生产工厂的execute_available。原有Signer8787 POST200恰好1次；固定商品basic GET200
+恰好1次、整数st=0、消息success；其它HTTP0，无rank/category/identity/翻页/回退/重试。
+
+北京时间2026-10-15 21:52:02开始、21:52:05成功落库。Run正式GET为succeeded，saved=0、
+supplemented=1、supplement_failed=0；目标类目、上架日期、差评率三字段均available。
+DB/正式API相同：餐饮厨具／厨房小工具／手动剥蒜器/压蒜器；上架2026-10-05；
+差评率原值由0.00010854227721697601更新为平台当前0.0002560163850486431、unit=4，
+沿既有格式页面应为0.03%。不是新排名/视频采集，原来源日期10-14保持。
+
+候选29、来源36不变，Run18→19；原18 Run和其它来源逐行摘要保持，目标全部非basic字段
+摘要相同。候选/策略/经营Job与Item/经营事实/计划/计划Run/PC任务/ShopSession共11类保护
+检查通过，活动队列0、Session仍v6。实际失败保旧值沿用此前明确标注的合成API/PG证据，
+不把本次成功伪称真实失败测试，也不为补证故意请求一次失败。
+
+结束已恢复原guard源码与关闭式预览配置，原.env未修改；实际capabilities关闭、所有后台
+生命周期持续off。启动器真实强制经营execution=false/daily=false：前期只读脚本直接读到
+.env的execution=true并非运行getter，不能将该配置文件值写成当时正在运行的执行器。
+启用且到点的旧server计划未改、未被扫描；不以全lifespan恢复唤醒它。受保护凭据只在内存，
+没有重置人员/ShopSession或输出秘密，临时运行/请求计数/摘要只保留ignored证据。
+
+原生恢复窗口已由computer-use返回并置前；后续取页面状态时工具报告用户按物理Escape
+停止。已停止全部原生输入，不重复操作或宣称结果可见。仅缺同一Integration详情对本次
+“已更新/三字段/0.03%”的现场反馈，入口为候选池HuanYu＋原商品ID；只读/刷新即可，
+不要再次点更新。此前已确认前端不重验，未合业务、未标新Green、未发布。
+
+### 以下为执行前只读审计与获批方案，保留为审计历史
+
+执行前已重新连接登记Integration，
+单一0046，29候选/36来源/18 Run/51策略保持；pending/running均0。4条basic记录全部是
+G2合成商品9999000046001001：success、failed、partial各1，另1个reused回执；
+真实商品的正式单项basic Run为0。reused记录的queued阶段不是一个待执行任务。
+
+### 已可核销的原任务，不重复开发或整体人工验收
+
+| 原范围 | 已有证据与结论 | 本次不再追加 |
+| --- | --- | --- |
+| 筛选清除、屏蔽/恢复、来源/批次/今日结果与授权 | 既有807默认后端、Feature 66项PG、Integration正式认证API＋真实DB/合成平台证明；原幂等/审计/旧批次未知规则保留 | 不重取榜、不扩样本或再造框架 |
+| 基础字段状态、失败保旧值、saved=0、队列去重与fence | G2正式API/PG覆盖成功、业务拒绝、缺失/真实0、同key/活动复用；不改rank/video/旧Run | 不故意制造真实平台失败；合成证据不冒称真实平台 |
+| 当前候选池界面、长标签、首次上榜、紧凑三列 | 直接人类确认按原范围复用；cbe只默认20/URL校正，独立14项及Real build已核验 | 不重复整体视觉、不补写未取证原生尺寸/剪贴板 |
+| 0046与旧数据保护 | 正式迁移/可读备份/12表旧字段逐行保留及既有回滚防护已核对 | 不再申请DB/Slot、不改已应用迁移 |
+| 真实单商品更新 | 仍缺一次本候选正式队列→Accessor/Signer/平台→落库→API→同一Real详情结果 | 不能用旧rank自动basic成功、诊断响应或上述夹具代替 |
+
+既有实现/资源授权已回读规划人类01a13b7e-ff39及01a13b80-979a，故不缺账号、
+新数据库、Cookie或7d55交付。但这些消息不单独证明人类批准了扩大共用执行开关的运行窗口。
+后来“是，HuanYu”只确认桌面CRUL商品列表样本店名，不扩大本项basic执行授权。
+
+### 固定的真实样本与请求/写入预算
+
+只用现有HuanYu（内部Shop c448f225-b141-409b-bc94-12f1ae74ee04，平台243321624），
+候选bbd10aa8-a302-4978-a6e9-a31217a1207d，商品原字符串ID `3846580557572080245`，
+来源 `f539713b-e369-4b31-b3b2-3cd2737f9fdd`，原来源日期10-14～10-14，保持不变。
+该Shop/Team启用且候选未屏蔽；stored Session valid v6，人员g2_sa_v1_super启用且super。
+这些仅是当前存储事实，不提前宣称平台仍接受会话。非生产Signer8787健康200，受保护Key/
+加密配置存在；本次未调用/sign，故不把health当Backend鉴权实测。
+
+正式入口为详情“更新基础信息”及POST `/api/v1/product-selection/basic-info-runs`，
+仅来源ID和submission_key。认证店铺由来源决定，不是商品商家。正常单次源码路径最多
+1次本地/sign＋1次平台basic_info GET；授权/Session/签名提前拒绝时平台请求可为0。
+无榜单、类目、身份探测、翻页、日期回退、自动重试或其它商品请求。
+
+允许的业务写入仅1个新canonical basic Run及原来源的基础状态/fence/尝试时间，
+以及平台确实下发且available的类目、上架日期、差评率原值/单位。saved保持0；不新建
+Candidate/Observation，不改原排名、视频指标、指标时间、来源日期/last_run_id、旧rank结果、
+策略/定时/PC任务/经营事实/Session。失败或未下发保留旧事实与真实成功时间，记录安全原因。
+
+### 当前运行边界与实际风险
+
+- 5180实际cbe，8100业务源码仍51852且逐字相同；127.0.0.1绑定、lifespan off，
+  既有准备入口阻断全部category/rank/basic平台HTTP。总执行=false、选品定时=false、并发3。
+- 数据库仍有1条enabled且已到点的server_selection计划；另2条server_selection和3条PC
+  计划disabled。受保护文件曾读到经营execution=true、daily=false，但实际预览启动器强制
+  覆盖两者为false，不能将文件值当运行值。不能直接开全应用lifespan：它还启动PC
+  scanner、经营执行器及reconcile/retention，不符合只做一个basic的写入范围。
+- 当前识别的只有原8100预览父/子进程，无8101或独立selection执行进程；这是即时进程核查，
+  不是永久不存在其它提交者的证明。当前5份未过期人员Session属于同一测试账号、无其它账号；
+  不把它们当5个活跃操作者，也不能据此排除其它客户端。既有会话不撤销/重置。
+- API capability、rank提交、basic提交、队列claim共用旧执行flag。开它时rank提交在技术上
+  也可用；网络guard不等于rank功能门禁。当前不存在正式rank=false/basic=true配置。
+  81a1已只读确认，尚未批准或实施新的业务开关/claim改造。
+- `execute_available()`本身只claim并执行至多1条，不循环；但claim_next不指定目标ID，
+  并会按既有规则把过期running记为interrupted。因而只读空队列不是并发排他锁。
+  BasicService.submit也会恢复全局过期running，提交前/执行前均须全队列核查，不能只查目标。
+  方法返回0不能证明零写入（合同拒绝可能已写failed），返回1也不代表业务成功。
+
+### 较小的受控验收方案（仅评估，未准备/执行）
+
+无需默认增加产品开关或新队列，可在明确批准独占运行窗口后分成“接收一个正式提交”和
+“关闭提交后执行一次”两段；仍沿用原权限、队列、生产adapter与执行器，不注入测试适配。
+
+1. 运行前重新核对唯一8100/5180/既有Electron和Profile、所有rank/basic pending/running=0，
+   无其它Integration执行器、调度扫描或提交操作者。通知同账号暂不做其它操作。
+2. 保持API lifespan off和原准备HTTP阻断逻辑，不新造或扩展guard；短时仅本进程开启旧
+   共用执行许可，以正常人员认证提交上述来源一次。现ignored入口的“总许可必须false”
+   启动断言需按获批的接收阶段准备，不能未经修改直接运行或谎称当前已可提交。
+   这只是本地运行入口准备，不改业务Service/Repository/Settings契约、不增加产品配置。
+   必须明示此短窗口rank提交技术可用；不靠操作建议冒称能力隔离。
+3. 立即恢复API执行=false、选品定时=false及原准备入口，health正常后，再只读确认唯一
+   pending canonical恰为目标basic、无其它pending/running。出现额外任务/未知生产者则
+   停止，不启动执行器、不删除/挑选/改写队列，保留记录并报告实际状态。
+4. 仅在上项通过且窗口仍排他时，用无监听端口的本地进程，进程内复用原总执行许可true，
+   调用原`build_selection_run_executor().execute_available()`恰好一次；不启动应用
+   lifespan、scheduler、forever worker，不覆盖adapter、权限、claim算法或制造claim。
+   它是现有内部生产执行器方法，不是已经存在的独立CLI；调用包装仅作获批后的本地运行准备。
+   该进程不继承API的HTTP guard，必须从其实际get_settings/SessionFactory/Signer/密钥依赖
+   核实Integration目标，不能仅传一个Settings对象就假定所有依赖已绑定正确环境。
+   API继续关闭新提交。该方法不是按目标原子领取，仍依赖操作窗口无其它DB写入者；
+   若无法保证这一点，应停止而不是绕过，另行决策是否确需窄业务隔离修订。
+5. 成功/partial/failed都读取原Run、安全业务码、原来源和正式API；同一Real详情展示结果，
+   只补本次缺失反馈，不重复整体视觉。一次调用结束即退出，恢复所有原运行配置/guard，
+   确认rank/策略/计划/经营/Session无变化。失败不重提；无法确认是否已发送也不盲重试。
+
+原执行器网络有界、已有fence保留。若进程意外退出，取消不能撤回已经发送的HTTP；
+保留原Run及旧事实、关闭许可和自动执行，先记录是否已发送。仅按现有租约到期/正式
+recover路径处理interrupted，不人为写终态、不删除失败或将未知当成功。本方案尚未制作
+可执行入口，亦未测试新的真实请求，不把源码预算写成已经发生的请求数量。
+
+下一动作由规划取得一次明确人类范围确认后，ca97准备上述短窗口；81a1不等此方案开发新开关，
+7d55不作为前置。可直接使用的最小批准范围为：
+
+> 允许ca97仅在Integration短时开启现有共用提交许可（该窗口榜单提交也技术可用），
+> 只对HuanYu商品3846580557572080245正式提交一次basic；定时和其它后台任务不运行，
+> 关闭提交后确认队列只有该项，再调用现有执行器一次，最多1次签名和1次basic平台请求、
+> 不重试，结束恢复原配置；保留同一Electron/Profile，不操作生产。
+
+此文字是待批准范围，不是已经取得的批准。本次只读审计平台/认证请求0、业务写入0、
+执行配置修改0；未标Gate2通过、未合业务、未发布。35433当前受管理的原SSH会话跨调用仍
+监听且新鲜只读成功；此前日志仅能证明remote closed，未查明根因，不宣称永久修复。
+
+### 独立共享Radio已交付，不等待basic方案
+
+纯共享Candidate `141fec65d413566987c84c79cc172fe4e32216cb`直接父1a8078；唯一生产代码
+是在原compact profile补Radio small/medium官方字号/高度键，复用现有12/28 Token。
+AppRadio/全局主题/默认Token/实体/Backend/Electron/依赖/0046均不改。
+ca97独立2文件11项、受影响eslint、typecheck、diff check及6份归档blob通过；Owner四主题
+夹具4项/默认14/34仅是共享浏览器证据，不是商品数据页面/原生验收。
+已正式交7d55在原Feature保留b2ccc草稿和原4项失败，正常no-ff消费精确141，复跑原断言
+及受影响默认Overlay/跨页隔离，完成自己的Gate1和完整Candidate/Real build再交ca97。
+不放宽原期望、不等待basic争议，不让其并改共享、合整条0046、启动DB/新Electron或发布。
+
+### 详情反馈定向返修与独立消费交付
+
+规划人类turn `01a13fe2-b3a8-7520-9258-860af17acaf8`附当前详情底栏截图；
+“基础信息已更新”与灰色按钮并不说明basic未接入：本次真实Run已成功，而当前环境按授权
+恢复执行关闭。旁边“采集资料”仍是独立未接入能力，不能顺带放开。截图不等于数值/最终详情
+人工通过，不重复平台请求。原basicFeedback的条件链可能让历史结果遮住当前环境暂停状态，
+由81a1核实实际源码后最小修补，不由ca97代修或更改执行配置。
+
+本次只候选详情：正文/字段13px、辅助12px、分区14px、商品标题16px、按钮28px；
+状态与按钮分区留间距、窄窗合理换行，历史结果与当前暂停并列清楚。保持已确认候选池列表、
+全局主题/Drawer默认、平台请求与字段规则；不新增请求、Schema或改变Profile/Session。
+81a1交精确增量Candidate/Gate1后，ca97只审加载该详情并集中补受影响区域，不让用户再验旧版。
+Owner后续已交精确885，当前独立检查/服务加载见下节；此前真实成功与失败保值PG证据沿用。
+
+7d55已独立交完整消费Candidate `03bdc0238465bcad79701af02c04b9811f96a51b`，
+正常merge `03d336dee05eb99a21cc0e82193ec001f4ce2e53`双父精确为b2ccc草稿/141共享。
+Owner原4项Radio失败已按原期望通过，报告39项定向/19浏览器/lint/typecheck/精确Real build
+通过；ca97已核对提交/parents及无无关Backend/Electron/依赖/选品运行变化，但未重复执行其
+全部测试，也未将Owner Gate1标作ca97 Gate2或用户原生通过。4177仍独立UI_ONLY，
+真实Backend未接入。其受控预览/人工确认独立安排，不改变当前5180 Real或本次详情任务。
+
+### 885详情候选：独立增量检查及实际前端加载
+
+精确885直接父cbe，7文件变更；生产源码仅CandidateDetailDrawer.vue，较大diff主要是
+局部abstract Provider包裹后的模板缩进。ca97已检查脚本/状态链、底栏/尺寸与作用域，
+Shared/实体/全局Provider/CandidatePool/Backend/Worker/Electron/依赖/0046差异0。
+完整精确归档7份changed blob均匹配，复用既有锁定依赖，无安装或业务开发。
+
+ca97独立CandidateDetailDrawer＋basic-display 2文件11项PASS（6.76s）、受影响eslint/
+vue-tsc、精确Real Vite构建PASS（17.86s）；只保留既有大chunk提示，不做无关拆包。
+Owner四主题4项拦截Real Renderer/旧受影响Mock2项等按原范围分开引用，不冒称ca97重跑。
+ca97实看午夜普通1366及石墨测试窄420两张截图：历史成功/暂停独立区、按钮间距与换行
+符合预期；这仍是Owner合成浏览器资料，不是原生像素/用户通过。
+
+切换首个准备入口在停进程前因未发现开发Electron安全拒绝，5180/8100均未受影响。
+随后仅前端准备允许0或1个已知开发客户端、仍禁止重复实例；没有因此启动/关闭任何窗口。
+先建立已验证候选的standby launcher，再仅停止原73368并由原5180/strictPort切为885；
+新实际模块包含“上次基础信息已更新”“当前环境暂停更新”和新footer作用域，Real代理8100。
+不是仅核对分支HEAD；8100保留原进程，现有生命周期/手动/basic/选品定时仍关闭。
+
+正常人员认证的正式GET回读原59394f85依旧succeeded/saved0/补充1，原商品三字段与
+0.0002560163850486431/unit4保持，平台请求增量0。没有新POST、执行、Schema、生产或
+Profile/人员密码/店铺Session操作。当前确无原生窗口，不能声称已显示新版详情；用户此前
+Escape停止后未再调用原生输入。正常打开原Profile后，仅需该商品详情的局部视觉、底栏两行
+含义及0.03%确认，不重验已确认列表、不点击更新/立即获取；“采集资料”仍独立待接入。
+
+### 原Profile正常重开后的实际原生状态
+
+直接人类批准为规划turn `01a14011-b76b-7fc1-84df-1bc80d6e8002`、消息
+`01a14011-b7e9-74e2-86fa-7879f85b5b93`的“同意启动”。ca97先重新核对5180的885启动
+父进程/strictPort/实际模块及8100健康，确认无客户端后用既有SDK/原Profile正常启动，
+没有重编壳、新包/缓存/认证重置或第二实例。Electron源码与885匹配的现有1.0.6保持。
+
+computer-use返回唯一“电商 AI 中控台”窗口并置前，恢复一次只读绑定后AX明确显示
+`http://127.0.0.1:5180/#/shops`、开发预览及G2-SA-V1 Super Account；不是生产、登录页或
+401探测推定人员已登录。未操作任何登录按钮、凭据或店铺平台窗口。
+但实际WGC截图报`FrameArrived timed out`，按新鲜树点击“商品中心”报
+`coordinate input geometry is unavailable`。已停止继续输入，不用脚本/DOM/CDP/伪句柄绕过，
+不把失败点击写作详情已打开。当前停在店铺中心，不重复尝试或要求用户重登。
+
+最小人工操作：商品中心→选品库→候选池，请求店铺HuanYu，搜索原字符串
+`3846580557572080245`，点该行“详情”。只确认新字号/间距、底栏“上次基础信息已更新”
+与“当前环境暂停更新”并存，以及差评率0.03%；不要再点更新或立即获取。原列表整体已确认，
+无须再验。实际capabilities正常认证GET确认manual/basic/选品定时执行均false，原59394f85
+正式GET仍succeeded，新增平台请求/执行调用0。Gate2仍等新详情确认，无合业务/Green/发布。
+
+## 紧凑候选池试点：精确检查与实际加载
+
+### 最新cbe默认20增量：复用38视觉，不重验整体
+
+cbe30cb3a941116292b71fae4e164fd9ccc249e6直接父38。运行仅候选池私有默认值20同时用于
+query解析和序列化，以及既有watch改为监听本次响应对象再取page，修复同页越界URL残留。
+无新增状态/请求层，显式10/20/50/100 round-trip保持，没有独立localStorage偏好或清存储。
+只同步原十行视觉测试的显式参数，未声称重跑整套历史视觉；38已确认的尺寸/布局/详情保留。
+
+ca97独立2文件14项通过（7.46秒）、受影响eslint/typecheck、一次精确Real build16.05秒通过，
+9份归档blob一致。Shared/实体/主题/Backend/Worker/Electron/依赖/0046相对38逐字不变。
+Owner定向实际Mock1项9秒：fresh20、第二页12、显式10重载、50与page99校正/重载通过；
+该执行记录与ca97单元/构建证据分开，不当作原生或平台请求成功。
+
+5180已正常切为cbe并回读DEFAULT_CANDIDATE_PAGE_SIZE=20及保留340–360列预算；Backend
+原进程/唯一1.0.6/Profile/账号/29候选及单一0046/所有旧计数/HuanYu valid v6保持，health均200。
+原生computer-use已置前原窗口，但当前是selection-strategy Tab：可读51条/20每页是策略页，
+明确不将它冒充候选池默认20原生验证；未清URL、筛选或用户显式选择，也不要求重验38整体视觉。
+本增量技术检查与加载完成，不单独声称原生分页操作通过；后续正常进入候选池可沿现有入口使用。
+无DB业务写入/新Job/平台请求/迁移/生产访问；真实单basic闭环仍独立未完，完整Gate/发布未通过。
+
+### 最新38返修：只再平衡三列空间
+
+精确38e9abfe9484aa194c37608101e338276cface1f已推送，直接父610；运行只改CandidatePool
+预算280/300为340/360及注释，Shared/实体/主题/Backend/壳/依赖/0046无变化。
+ca97独立1文件8项通过（8.47秒）、受影响eslint、typecheck、精确Real build18.05秒通过，
+6份归档blob一致。复用610和共享原验证，不重复全量或取数。
+
+ca97直接读取Owner独立保留的旧新测量JSON：1920三列总宽637.765625保持，商品列
+300.359375→360.4375、店铺197.234375→161.1875、类目140.171875→116.140625，
+其余九列逐项一致；标题219.359375→279.4375。1440时店铺/类目已在66/52最小值，
+商品280→340、合计398→458，采用必要横滚，不冒称窄窗三列总宽仍相同。
+两次48px图片/65px行高/8px 12px padding/1px竖线及原字符串ID一致。
+这些是Owner浏览器Mock的实际JSON与对应PNG，不是原生Electron像素实测或人工通过。
+
+5180已正常替换为38封存归档并回读340–360编译预算及原single-line=false，8100不重启，
+同一1.0.6 Electron/Profile/人员会话及29条数据保留。原生computer-use已置前原窗口，
+AX确认候选池路由、最大化状态、原字段与商品ID。只请用户确认普通/最大化的新三列比例，
+不再尝试此前无geometry的点击或重复已验功能。无新迁移/DB业务写入/平台请求/生产访问，
+单一0046/所有原计数/HuanYu valid v6保持。新视觉待确认，不放行7d55/策略密度或发布，
+真实单basic Gate依旧独立未完成。
+
+### 38当前可见前端人工确认与既有复用放行
+
+ca97直接回读规划聊天01a13b33-8508-7ee2-916d-8e1009cb2209的人类
+turn `01a13e99-a3a9-73a1-a01a-419c2502f7c9`、消息
+`01a13e99-a435-78a1-b18b-959fd9a153ac`：“目前候选池前端没问题，是不是复用到哪几个地方？”
+确认时5180仍为精确38/同一监听和Electron，实际编译340–360预算保持。登记当前可见
+候选池前端人工通过，不重复同版视觉；没有新附图或普通/最大化逐项、系统剪贴板的明确操作证据，
+这些专项不倒写PASS，也不把前端确认当真实单商品basic成功或发布授权。
+
+原人类01a13dba的“候选池先确认，再策略/7d55”消费条件现满足。ca97独立审核的纯共享
+`1a8078d0cd9917afc11454e84ff0d13d15a1a2f2`允许给既有批准的策略列表、商品数据Feature
+正常no-ff消费，不合整条选品0046或旧6ac、不使用ca97治理HEAD冒充Green。
+各页保留原字段/固定列/交互/权限并各自配置列宽，不把候选池340–360公式全局套用。
+全局竖线是现有AppTable列表入口；紧凑12/28/48只给批准的列表显式启用，详情/表单/Vue
+provide边界仍保持默认。商品信息实体可跨候选池/商品数据/未来商品库复用，后者仍占位，
+不因有共享组件就新增页面或业务。共享默认API/全局字号不扩大，7d55不得并行改共享层。
+Feature消费放行不是它们已实现/集成/验收或可发布；0046/basic Gate/生产授权边界不变，清理不启动。
+
+### 新增明确范围：商品数据复用与默认每页20
+
+已直接回读人类turn `01a13e9c-74c8-7950-873a-8c6e7aa0b9f8`、消息
+`01a13e9c-7546-7c31-b50f-0a7fb355db4a`“好的，那就接入商品数据复用”，以及追加消息
+`01a13e9d-2daa-71d3-ad2c-dd136d2f8108`“商品数据，候选池，商品库统一默认20页”。
+结合当次分页对话按默认每页20条执行，保留条数切换及用户已明确保存偏好，不清存储或全局
+修改其它页面。商品库仍占位，只登记未来默认20；不因这项要求构造功能。
+
+ca97已核验纯共享1a的父为6ac，Shared/商品实体/ShopSelector/Facade与已确认38逐字相同，
+独立技术证据保留。已正式向7d55交付精确完整SHA及原分支正常no-ff消费方式，明确无0046
+业务、不冒充Green、不直接合dev/main。7d55原b364/工作/4177保留，实体add/add采用受审接口
+并复核已有行为，不能并改共享或覆盖未知差异。只实施商品数据前端复用+默认20，不扩字段/
+筛选/日期/实时/API/DB/平台/调度/飞书，不启动Backend/新Electron，不动当前Profile与候选池数据。
+Owner新候选Gate1后由ca97安排匹配受控预览，前端Mock不作为真实接入完成。
+
+规划已将候选池默认20核实/必要最小修改交81a1，ca97同步确认边界，不重复下发另一实现。
+当前38已确认的字号/三列/行高/竖线不动，后续如仅分页默认变化，只补定向检查，不重复整体
+视觉或平台取数。既有真实basic Gate仍待完成，当前不发布、不启动清理。
+
+### 610候选：独立技术检查与实际预览（用户随后要求返修）
+
+完整610已提交推送，父7e37c6b为原b99与纯共享1a8078的正常no-ff，无冲突。
+共享目录/商品实体/ShopSelector/图片Facade与1a逐字相同；Backend/Worker/壳/依赖/0046相对b99
+无变化。消费者仅CandidatePool局部readingWidths收紧实际商品列至280–300px，余量交商家/类目；
+原居中、图/标题/原字符串ID/复制槽、其它列与220px操作不变，不新增共享API或另设列宽框架。
+
+ca97独立2文件11项通过（8.06秒）、受影响eslint、typecheck及精确Real build18.17秒通过；
+11份归档blob核对一致。纯共享23项及未变6ac等证据按范围复用，不重复699或后端。
+Owner本次实际Mock1项36.1秒、四主题四尺寸与16张独立保留图是浏览器证据，不是原生确认。
+没有另存逐点原始像素JSON，已确认旧共享PNG被测试器回收，不能伪造或冒用新图。
+
+加载前读库因原35433隧道已退出安全停止（OperationalError）。只通过既有受信任入口恢复SSH
+转发，StrictHostKeyChecking/BatchMode保持，未改凭据/配置/业务数据，未重启Backend或Electron。
+恢复后只读事务确认单一0046、候选29/来源36/Run18/策略51及其它原计数、账号super/enabled、
+HuanYu valid v6均保持；手动和定时执行开关仍false。无迁移、平台请求或生产访问。
+
+正常5180替换后回读实际编译模块：CandidatePool五处compact、280–300列预算及AppTable
+single-line=false，Frontend/Backend HTTP200。同一Electron1.0.6主进程/Profile保留并置前，
+原生AX确认g2人员会话和5180选品页，但当前停在selection-strategy Tab。
+原生点击候选池报coordinate input geometry is unavailable；一次受支持Tab键尝试后焦点/路由
+未确认变化，停止自动输入，不走低层UI绕行。请用户手动切候选池，仅集中确认短标题/原居中/
+竖线及普通最大化可读性，并看代表性非紧凑店铺表格和详情不缩小/不双线。
+未确认前不标新Gate2B PASS、不放行7d55或策略紧凑消费者、不合业务或发布；真实basic Gate独立。
+
+### 后续设计授权（现已交610候选）
+
+ca97直接回读规划人类turn `01a13e0d-f1df-7cb1-977d-70262e09218c`：
+“好，就用这套吧。标题不用那么长，然后居中还是和以前一样，全局加竖线”。
+本次授权实施统一列表竖线、候选池标题/商品列同步收紧，原list居中与grid业务语义保留；
+不将局部紧凑密度扩成全局。生成示意图只作设计参考，任何商品文字/数字均不替代真实数据。
+静态检查b99全src运行Vue/TS，NDataTable/原生table/NTable仅AppTable一个列表入口；
+现成single-line能力可复用，不另建竖线组件，详情描述边框不加双线。
+
+Owner81a1先在原纯共享分支从6ac追加竖线及必要的可选实体能力，再正常no-ff回原b99分支；
+新共享不得夹带选品业务/0046。ca97需要新共享与完整Feature两个精确SHA，必要检查后才更新
+同一Electron；检查代表性店铺/策略/经营的非紧凑默认尺寸和详情隔离，仅新视觉集中确认。
+7d55当前b364保留并等待新精确依赖，不能消费只有旧密度或旧商品信息的版本。
+当前b99窗口及旧人工结论保留；设计选择不等于新实际候选验收/发布授权，无生产动作。
+
+81a1已封存并推送纯共享 `1a8078d0cd9917afc11454e84ff0d13d15a1a2f2`，直接父6ac；
+运行仅AppTable singleLine=false，无实体API/密度/颜色增量。ca97独立归档5份blob及5文件23项
+通过（9.93秒），Backend/壳/依赖/迁移不变，不含bfaae或b364业务分支祖先；技术接受进入
+候选池消费。Owner四主题4项实际Mock检查仅为浏览器证据。新完整候选及一次精确Real构建/
+原生新布局确认仍待完成，不能据纯共享检查向7d55放行、标全Gate或发布。
+
+Owner随后核实：共享代表页四主题PNG曾生成，但复用Playwright outputDir测试候选池时被自动
+回收；不能继续提供旧目录作为可访问截图。4项执行/像素断言证据保留，不为找旧图重跑。
+候选池本次输出已另存独立ignored目录，ca97已查看1920石墨Mock图；它不代替新精确SHA
+核对、Real环境加载或原生人工确认。未清理业务/夹具/Profile，不因此生成额外请求。
+
+### b99精确试点证据
+
+81a1在原Feature正常no-ff合纯共享 `6ac6638be37026edb20fb8023ab4a4b7661e53c2`，再交b99。
+相对合并父，运行变化仅CandidatePool五处compact opt-in及删除重复Table padding override。
+ca97独立3文件18项、定向eslint、typecheck、精确Real build（19.99秒）通过；35份归档blob一致。
+共享密度、商品实体、ShopSelector与Facade和6ac相同，复用独立7文件29项及Owner未变证据，
+不重复699项。原审计类型是bfaae继承内容，不将纯共享分支不含它误判为新增业务变化。
+Backend/Electron/Worker/依赖/0046不变，未执行迁移或新增平台请求。
+
+5180已换为b99封存归档；回读实际编译CandidatePool五处compact、ProductInfoCell/ProductImage、
+src/shared/ui/list-density.ts及命名Token，HTTP200。8100保持原51852且字节相同、health200。
+唯一1.0.6 Electron同一PID/Profile保留并置前，原生可访问树确认候选池、第1页、29条及是/否/—样本。
+Integration单一0046、候选29/来源36/Run18/策略51及经营/计划/Session计数保持，HuanYu valid v6。
+只读事务复查，业务写入0/平台请求0；未访问生产。
+
+原生截图/几何捕获已有超时限制，未把Owner浏览器Mock截图或原生文字树当作实际尺寸人工通过。
+用户仅补新紧凑列表、筛选/分页及详情不缩小的普通/最大化确认；不重验未变的完整界面。
+新视觉待确认前不推进策略或7d55消费者、不合dev业务、不发布；真实单项basic_info Gate仍独立待完成。
+PID/脚本/本机审查记录均在ignored .codex，不提交机器材料或秘密。
 
 ## 候选与技术检查
 
@@ -73,7 +576,7 @@ turn `01a13db6-ba41-7520-86f3-4f65d62a9fc2`、消息 `01a13db6-bb67-7140-98f2-6d
 
 已直接回读规划人类turn `01a13dba-08ad-7992-977b-42350767e6a3` 的“按照你这个，分别给任务”，
 及前置三层范围说明；新授权替代仅只读评估的阶段限制，不扩大生产发布权限。
-当前仍保留已确认bfaae精确运行环境/数据，未加载或声称实现尚未交付的紧凑Candidate。
+现已收到并加载上述精确紧凑试点Candidate，仍保留原Profile、会话及数据；新视觉未确认。
 
 | 层级 | 已批准范围 |
 | --- | --- |

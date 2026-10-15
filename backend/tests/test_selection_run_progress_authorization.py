@@ -28,6 +28,7 @@ def _context(*, reused=False):
         brand="all", price_mode="all",
     ), at)
     canonical = SimpleNamespace(
+        operation_kind="rank", target_observation_id=None, result_detail_version=None,
         run_id=uuid4(), team_id=team, created_by_user_id=user,
         request_shop_id=shop, strategy_id=None, reused_run_id=None,
         request_fingerprint=request.fingerprint(), request_conditions=request.model_dump(mode="json"),

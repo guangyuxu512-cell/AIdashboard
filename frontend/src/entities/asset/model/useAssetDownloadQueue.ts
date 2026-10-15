@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-import { ApiError, toApiError } from '@/shared/api'
+import { toApiError } from '@/shared/api'
 
 import { fetchAssetDownload } from '../api/asset-api'
 
@@ -199,8 +199,4 @@ export function useAssetDownloadQueue(options: AssetDownloadQueueOptions = {}) {
     start,
     retryFailed,
   }
-}
-
-export function isAssetDownloadCancelled(error: unknown): boolean {
-  return error instanceof ApiError && error.code === 'REQUEST_CANCELLED'
 }

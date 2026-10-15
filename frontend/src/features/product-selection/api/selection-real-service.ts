@@ -17,12 +17,18 @@ import {
   type SelectionMetricDto,
   readSelectionCapabilities,
   submitSelectionRun,
+  readSelectionBatches,
+  blockSelectionCandidate,
+  submitSelectionBasic,
+  readSelectionBasic,
 } from './selection-read-api'
 import { formatSelectionInterval } from '../model/metric-display'
 import { runResult, triggerFailure } from '../model/run-display'
 import { realPriceErrors } from '../model/selection-rules'
+import { basicFailure, basicStatus } from '../model/basic-display'
 import {
   readStrategies,
+  readSavedStrategy,
   writeStrategy,
   toggleSavedStrategy,
   type SelectionRelativeDto,
@@ -75,6 +81,8 @@ export function mapSelectionStrategy(
           ? runResult(dto.latest_run)
           : null,
     latestExecution: dto.latest_run,
+    latestReceiptId:
+      dto.latest_receipt_id ?? dto.latest_trigger?.receipt_id ?? null,
     scheduleAvailable: dto.schedule_available,
     scheduleExecutionEnabled: dto.schedule_execution_enabled ?? false,
     latestTrigger: dto.latest_trigger ?? null,
@@ -166,10 +174,15 @@ export function mapSelectionObservation(
       dto.bad_comment_rate_raw === null
         ? null
         : { value: dto.bad_comment_rate_raw, unit: dto.bad_comment_rate_unit },
-    basicInfoError: dto.last_error_stage?.startsWith('basic_info')
-      ? (dto.last_error_code ?? '商品补充信息未完成')
-      : null,
-    blocked: false,
+    basicInfoStatus: dto.basic_info_status ?? null,
+    resultRunId: dto.result_run_id ?? null,
+    basicInfoError:
+      dto.basic_info_status && dto.basic_info_status.state !== 'succeeded'
+        ? basicStatus(dto.basic_info_status)
+        : dto.last_error_stage?.startsWith('basic_info')
+          ? basicFailure(dto.last_error_code, dto.last_error_stage)
+          : null,
+    blocked: dto.blocked ?? false,
     source: '罗盘商品榜',
     sourceContext: {
       leaderboardId,
@@ -203,7 +216,10 @@ export function mapSelectionObservation(
             scopeKey: dto.source_scope_hash,
             checkedAt: dto.previous_checked_at,
           },
-    discovery: 'unknown',
+    discovery:
+      dto.discovery_state === 'new'
+        ? 'new-in-scope'
+        : (dto.discovery_state ?? 'unknown'),
     firstDiscoveredAt: dto.first_seen_at,
     metricsRetrievedAt: dto.metrics_retrieved_at,
     collectionStatus: 'unknown',
@@ -312,6 +328,13 @@ export function createSelectionRealService(
     strategySaveAvailable: true,
     scheduleAvailable: true,
     candidatesAvailable: true,
+    candidateBlockAvailable: true,
+    batches: async (strategyId, shopId) =>
+      (await readSelectionBatches(strategyId, shopId)).items,
+    async blockCandidate(id, blocked) {
+      await blockSelectionCandidate(id, blocked)
+    },
+    basic: { submit: submitSelectionBasic, latest: readSelectionBasic },
     latestRun: readLatestSelectionRun,
     run: readSelectionRun,
     manual: {
@@ -339,6 +362,9 @@ export function createSelectionRealService(
       return (
         await readStrategies({ page: 1, pageSize: 100, search: '' })
       ).items.map(mapSelectionStrategy)
+    },
+    async strategy(id) {
+      return mapSelectionStrategy(await readSavedStrategy(id))
     },
     async strategiesPage(query) {
       const page = await readStrategies(query)
@@ -379,13 +405,16 @@ export function createSelectionRealService(
     },
     retrieve: unavailable,
     async candidates(query) {
-      if (query.blocked || query.sortField === 'negativeReviewRate')
-        return unavailable()
+      if (query.sortField === 'negativeReviewRate') return unavailable()
       const page = await readSelectionCandidates({
         page: query.page,
         pageSize: query.pageSize,
         shopId: query.shopId,
         search: query.keyword,
+        blocked: query.blocked,
+        resultScope: query.resultScope,
+        strategyId: query.strategyId,
+        receiptId: query.receiptId,
         sortField:
           query.sortField === 'listedAt' ? 'first_on_shelf_date' : 'checked_at',
         sortDirection:
@@ -396,10 +425,13 @@ export function createSelectionRealService(
         total: page.total,
         page: page.page,
         pageSize: page.page_size,
+        context: page.context,
       }
     },
-    async candidate(id) {
-      return mapSelectionObservation(await readSelectionObservation(id))
+    async candidate(id, receiptId) {
+      return mapSelectionObservation(
+        await readSelectionObservation(id, receiptId),
+      )
     },
     demoAction: unavailable,
     collectBatch: unavailable,

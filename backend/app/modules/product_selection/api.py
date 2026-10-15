@@ -3,11 +3,12 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session, get_session_factory
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.logging.request import get_request_id
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
@@ -24,6 +25,13 @@ from app.modules.product_selection.run_service import SelectionRunService
 from app.modules.product_selection.category_service import SelectionCategoryService
 from app.modules.product_selection.strategy_contract import SelectionStrategyCreate, SelectionStrategyUpdate, SelectionStrategyToggle, SelectionStrategyRead
 from app.modules.product_selection.strategy_service import SelectionStrategyService
+from app.modules.product_selection.result_contract import (
+    SelectionBatchRead, SelectionBlockCommand, SelectionCandidatePage, SelectionResultScope,
+)
+from app.modules.product_selection.result_service import SelectionResultService
+from app.modules.product_selection.candidate_service import SelectionCandidateService
+from app.modules.product_selection.basic_contract import SelectionBasicCreate
+from app.modules.product_selection.basic_service import SelectionBasicService
 
 
 router = APIRouter(
@@ -120,6 +128,66 @@ def get_selection_run_service(
     return SelectionRunService(session)
 
 
+def get_selection_result_service(session: Annotated[Session, Depends(get_database_session)]) -> SelectionResultService:
+    return SelectionResultService(session)
+
+
+def get_selection_candidate_service(session: Annotated[Session, Depends(get_database_session)]) -> SelectionCandidateService:
+    return SelectionCandidateService(session)
+
+
+def get_selection_basic_service(session: Annotated[Session, Depends(get_database_session)]) -> SelectionBasicService:
+    return SelectionBasicService(session)
+
+
+@router.get("/strategies/{strategy_id}/batches", response_model=Page[SelectionBatchRead])
+def read_strategy_batches(
+    strategy_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionResultService, Depends(get_selection_result_service)],
+    pagination: Annotated[PaginationParams, Depends()],
+    shop_id: Annotated[UUID | None, Query()] = None,
+) -> Page[SelectionBatchRead]:
+    items, total = service.batches(actor, strategy_id, shop_id=shop_id, offset=pagination.offset, limit=pagination.page_size)
+    return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.patch("/observations/{observation_id}/blocked", response_model=SelectionObservationRead)
+def set_candidate_blocked(
+    observation_id: UUID, command: SelectionBlockCommand, request: Request,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionCandidateService, Depends(get_selection_candidate_service)],
+) -> SelectionObservationRead:
+    return service.set_blocked(actor, observation_id, command, request_id=get_request_id(request))
+
+
+@router.post("/basic-info-runs", response_model=SelectionRunReceipt, status_code=202)
+def submit_basic_info(
+    command: SelectionBasicCreate,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionBasicService, Depends(get_selection_basic_service)],
+) -> SelectionRunReceipt:
+    return service.submit(actor, command)
+
+
+@router.get("/observations/{observation_id}/basic-info-run", response_model=SelectionRunRead | None)
+def read_latest_basic_info(
+    observation_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionBasicService, Depends(get_selection_basic_service)],
+) -> SelectionRunRead | None:
+    return service.latest(actor, observation_id)
+
+
+@router.get("/basic-info-runs/{run_id}", response_model=SelectionRunRead)
+def read_basic_info(
+    run_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_selection_actor)],
+    service: Annotated[SelectionBasicService, Depends(get_selection_basic_service)],
+) -> SelectionRunRead:
+    return service.get(actor, run_id)
+
+
 @router.get("/capabilities", response_model=SelectionCapabilitiesRead)
 def read_selection_capabilities(
     actor: Annotated[ActorContext, Depends(get_selection_actor)],
@@ -128,6 +196,7 @@ def read_selection_capabilities(
     service.facts._current_actor(actor)
     enabled = service.settings.product_selection_execution_enabled
     return SelectionCapabilitiesRead(execution_enabled=enabled, manual_execution_available=enabled,
+                                     basic_info_available=enabled,
                                      strategy_save_available=service.settings.product_selection_strategy_management_enabled,
                                      schedule_execution_enabled=enabled and service.settings.product_selection_schedule_enabled,
                                      unavailable_reason=None if enabled else "EXECUTION_DISABLED")
@@ -162,29 +231,35 @@ def read_selection_run(
     return service.get(actor, run_id)
 
 
-@router.get("/candidates", response_model=Page[SelectionObservationRead])
+@router.get("/candidates", response_model=SelectionCandidatePage)
 def read_selection_candidates(
     actor: Annotated[ActorContext, Depends(get_selection_actor)],
-    service: Annotated[ProductSelectionFactService, Depends(get_selection_fact_service)],
+    service: Annotated[SelectionResultService, Depends(get_selection_result_service)],
     pagination: Annotated[PaginationParams, Depends()],
     shop_id: Annotated[UUID | None, Query()] = None,
     source_scope_hash: Annotated[str | None, Query(pattern=r"^[a-f0-9]{64}$")] = None,
     search: Annotated[str | None, Query(max_length=255)] = None,
     sort_field: Annotated[SelectionSortField, Query()] = "checked_at",
     sort_direction: Annotated[SelectionSortDirection, Query()] = "desc",
-) -> Page[SelectionObservationRead]:
-    items, total = service.list_read(
-        actor=actor, shop_id=shop_id, scope_hash=source_scope_hash,
+    blocked: Annotated[bool, Query()] = False,
+    result_scope: Annotated[SelectionResultScope, Query()] = "all",
+    strategy_id: Annotated[UUID | None, Query()] = None,
+    receipt_id: Annotated[UUID | None, Query()] = None,
+) -> SelectionCandidatePage:
+    items, total, context = service.list(
+        actor, shop_id=shop_id, scope_hash=source_scope_hash,
+        blocked=blocked, result_scope=result_scope, strategy_id=strategy_id, receipt_id=receipt_id,
         offset=pagination.offset, limit=pagination.page_size,
         sort=sort_field, descending=sort_direction == "desc", search=search,
     )
-    return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+    return SelectionCandidatePage(items=items, total=total, page=pagination.page, page_size=pagination.page_size, context=context)
 
 
 @router.get("/observations/{observation_id}", response_model=SelectionObservationRead)
 def read_selection_observation(
     observation_id: UUID,
     actor: Annotated[ActorContext, Depends(get_selection_actor)],
-    service: Annotated[ProductSelectionFactService, Depends(get_selection_fact_service)],
+    service: Annotated[SelectionResultService, Depends(get_selection_result_service)],
+    receipt_id: Annotated[UUID | None, Query()] = None,
 ) -> SelectionObservationRead:
-    return service.get_read(actor=actor, observation_id=observation_id)
+    return service.get(actor, observation_id, receipt_id=receipt_id)

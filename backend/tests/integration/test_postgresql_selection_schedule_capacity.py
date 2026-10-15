@@ -2,8 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from threading import Lock, Thread
-from time import sleep
+from threading import Event, Lock, Thread
+from time import monotonic, sleep
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -80,9 +80,14 @@ def test_one_hundred_due_plans_persist_queue_dedup_and_bounded_execution(selecti
             original_finish(self,got,**kwargs)
             active.pop(got.run_id,None);shops.pop(got.shop_id,None)
     monkeypatch.setattr(SelectionRunService,'finish',measured_finish)
+    # Feature PG is reached through the registered SSH forward. This is a
+    # correctness stress test, not a 55-second throughput SLA. Use one common
+    # bounded deadline and never tear down its fixtures under live consumers.
+    stop = Event()
+    deadline = monotonic() + 240
     def consume():
         nonlocal max_active
-        for _ in range(150):
+        while not stop.is_set() and monotonic() < deadline:
             with Session(context[0]) as session:
                 got=SelectionRunService(session,settings=SETTINGS).claim_next()
             if got is None:
@@ -101,8 +106,11 @@ def test_one_hundred_due_plans_persist_queue_dedup_and_bounded_execution(selecti
                 active.pop(got.run_id,None);shops.pop(got.shop_id,None)
     threads=[Thread(target=consume) for _ in range(3)]
     for thread in threads:thread.start()
-    for thread in threads:thread.join(55)
-    assert not any(thread.is_alive() for thread in threads)
+    for thread in threads:thread.join(max(0, deadline-monotonic()))
+    timed_out = any(thread.is_alive() for thread in threads)
+    stop.set()
+    for thread in threads:thread.join(15)
+    assert not timed_out and not any(thread.is_alive() for thread in threads), f'bounded queue test incomplete: claimed={len(seen)}, active={len(active)}'
     assert errors==[] and max_active==3 and len(seen)==100
     with Session(context[0]) as session:
         assert session.scalar(select(func.count()).select_from(Run).where(Run.team_id==context[1][0],Run.status=='succeeded'))==100

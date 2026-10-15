@@ -2,6 +2,12 @@ import type { PageResult } from '@/shared/api'
 import type {
   SelectionRunReceiptDto,
   SelectionCapabilitiesDto,
+  SelectionBasicStatusDto,
+  SelectionBasicReceiptDto,
+  SelectionBasicRunDto,
+  SelectionBatchDto,
+  SelectionResultContextDto,
+  SelectionResultScope,
 } from '../api/selection-read-api'
 
 // Frontend draft only. No Backend DTO/Endpoint or platform unit is implied.
@@ -50,6 +56,7 @@ export interface SelectionStrategy extends StrategyInput {
   latestResult: string | null
   version?: number
   latestExecution?: SelectionExecutionSummary | null
+  latestReceiptId?: string | null
   scheduleAvailable?: boolean
   scheduleExecutionEnabled?: boolean
   nextRunAt?: string | null
@@ -96,6 +103,8 @@ export interface SelectionCandidate {
   // Real ratio remains an exact decimal string until its unit is confirmed.
   negativeReviewRateRaw?: { value: string; unit: string | number | null } | null
   basicInfoError?: string | null
+  basicInfoStatus?: SelectionBasicStatusDto | null
+  resultRunId?: string | null
   blocked: boolean
   source: string
   sourceContext: CandidateSourceContext
@@ -117,7 +126,9 @@ export interface SelectionCandidate {
   soldUnitsRange: string | null
   videoCountRange: string | null
 }
-export type CandidatePage = PageResult<SelectionCandidate>
+export type CandidatePage = PageResult<SelectionCandidate> & {
+  context?: SelectionResultContextDto
+}
 export interface CandidateQuery {
   page: number
   pageSize: number
@@ -126,6 +137,9 @@ export interface CandidateQuery {
   blocked: boolean
   sortField: 'listedAt' | 'negativeReviewRate' | null
   sortOrder: 'ascend' | 'descend' | false
+  resultScope?: SelectionResultScope
+  strategyId?: string | null
+  receiptId?: string | null
 }
 export interface DemoReceipt {
   mode: 'mock'
@@ -153,6 +167,16 @@ export interface SelectionService {
   readonly strategySaveAvailable?: boolean
   readonly scheduleAvailable?: boolean
   readonly candidatesAvailable?: boolean
+  readonly candidateBlockAvailable?: boolean
+  batches?(
+    strategyId: string,
+    shopId: string | null,
+  ): Promise<SelectionBatchDto[]>
+  blockCandidate?(id: string, blocked: boolean): Promise<void>
+  basic?: {
+    submit(id: string, submissionKey: string): Promise<SelectionBasicReceiptDto>
+    latest(id: string): Promise<SelectionBasicRunDto | null>
+  }
   latestRun?(shopId: string | null): Promise<SelectionExecutionSummary | null>
   run?(runId: string): Promise<SelectionExecutionSummary>
   manual?: {
@@ -170,6 +194,7 @@ export interface SelectionService {
     options?: { refresh?: boolean },
   ): Promise<CategoryNode[]>
   strategies(): Promise<SelectionStrategy[]>
+  strategy?(id: string): Promise<SelectionStrategy>
   strategiesPage?(query: {
     page: number
     pageSize: number
@@ -187,7 +212,7 @@ export interface SelectionService {
   ): Promise<SelectionStrategy>
   retrieve(input: StrategyInput, strategyId?: string): Promise<DemoReceipt>
   candidates(query: CandidateQuery): Promise<CandidatePage>
-  candidate(id: string): Promise<SelectionCandidate>
+  candidate(id: string, receiptId?: string | null): Promise<SelectionCandidate>
   demoAction(
     id: string,
     action: 'collect' | 'block' | 'restore',

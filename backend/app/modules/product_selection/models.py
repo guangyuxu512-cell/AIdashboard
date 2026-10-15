@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import (
     Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer,
     Numeric, String, Text, UniqueConstraint, Uuid, text,
+    false as sa_false,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -41,6 +42,8 @@ class ProductSelectionCandidate(TimestampMixin, Base):
 
     __tablename__ = "product_selection_candidates"
     __table_args__ = (
+        CheckConstraint("discovery_tracking_version IS NULL OR discovery_tracking_version = 1", name="tracking_version"),
+        CheckConstraint("(blocked_changed_at IS NULL) = (blocked_changed_by_user_id IS NULL)", name="block_actor_pair"),
         CheckConstraint("platform = 'douyin'", name="platform"),
         CheckConstraint(
             "length(trim(platform_product_id)) > 0", name="product_id_not_blank",
@@ -65,6 +68,11 @@ class ProductSelectionCandidate(TimestampMixin, Base):
     )
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     platform_product_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    blocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    blocked_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blocked_changed_by_user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", name="fk_selection_candidate_block_actor", ondelete="RESTRICT"))
+    # NULL legacy cannot prove that absent discovery history means 'new'.
+    discovery_tracking_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class ProductSelectionRun(TimestampMixin, Base):
@@ -72,12 +80,16 @@ class ProductSelectionRun(TimestampMixin, Base):
 
     __tablename__ = "product_selection_runs"
     __table_args__ = (
+        CheckConstraint("operation_kind IN ('rank','basic_info')", name="operation_kind"),
+        CheckConstraint("(operation_kind = 'rank' AND target_observation_id IS NULL) OR (operation_kind = 'basic_info' AND target_observation_id IS NOT NULL AND strategy_id IS NULL AND result_detail_version IS NULL)", name="operation_target"),
+        CheckConstraint("result_detail_version IS NULL OR result_detail_version = 1", name="detail_version"),
         UniqueConstraint("team_id", "created_by_user_id", "submission_key", name="uq_selection_run_submission"),
         Index("uq_selection_run_active_request", "team_id", "request_shop_id", "request_fingerprint",
               unique=True, postgresql_where=text("status IN ('pending', 'running')")),
         Index("ix_selection_run_pending", "status", "created_at", "run_id"),
         Index("ix_selection_run_team_created", "team_id", "created_at", "run_id"),
         Index("ix_selection_run_strategy_created", "strategy_id", "created_at", "run_id"),
+        Index("ix_selection_run_basic_target", "target_observation_id", "created_at", "run_id", postgresql_where=text("operation_kind = 'basic_info'")),
         Index("uq_selection_run_running_shop", "request_shop_id", unique=True,
               postgresql_where=text("status = 'running'")),
         Index("uq_selection_run_running_strategy", "strategy_id", unique=True,
@@ -92,11 +104,14 @@ class ProductSelectionRun(TimestampMixin, Base):
         CheckConstraint("jsonb_typeof(request_conditions) = 'object'", name="request_object"),
         CheckConstraint("result_count IS NULL OR result_count >= 0", name="result_non_negative"),
         CheckConstraint("saved_count >= 0 AND supplemented_count >= 0 AND supplement_failed_count >= 0", name="counts_non_negative"),
-        CheckConstraint("supplemented_count + supplement_failed_count <= saved_count", name="supplement_counts"),
+        CheckConstraint("(operation_kind = 'rank' AND supplemented_count + supplement_failed_count <= saved_count) OR (operation_kind = 'basic_info' AND saved_count = 0 AND supplemented_count + supplement_failed_count <= 1)", name="supplement_counts"),
         CheckConstraint("platform_business_code IS NULL OR jsonb_typeof(platform_business_code) IN ('string','number')", name="business_code_scalar"),
     )
 
     run_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_id)
+    operation_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="rank", server_default="rank")
+    target_observation_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("product_selection_observations.observation_id", name="fk_selection_run_basic_observation", ondelete="RESTRICT", use_alter=True))
+    result_detail_version: Mapped[int | None] = mapped_column(Integer)
     team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False)
     created_by_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
     request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
@@ -133,6 +148,8 @@ class ProductSelectionObservation(TimestampMixin, Base):
 
     __tablename__ = "product_selection_observations"
     __table_args__ = (
+        CheckConstraint("basic_info_version >= 0", name="basic_version"),
+        CheckConstraint("basic_info_status IS NULL OR jsonb_typeof(basic_info_status) = 'object'", name="basic_status_object"),
         CheckConstraint("period_begin <= period_end", name="period_order"),
         CheckConstraint(
             "source_scope_hash ~ '^[a-f0-9]{64}$'", name="source_hash",
@@ -220,3 +237,25 @@ class ProductSelectionObservation(TimestampMixin, Base):
     )
     last_error_code: Mapped[str | None] = mapped_column(String(96))
     last_error_stage: Mapped[str | None] = mapped_column(String(32))
+    basic_info_status: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    basic_info_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class ProductSelectionResultItem(Base):
+    """Immutable observed membership and minimal rank snapshot, not product copies."""
+    __tablename__ = "product_selection_result_items"
+    __table_args__ = (
+        UniqueConstraint("execution_run_id", "observation_id", name="uq_selection_result_run_observation"),
+        CheckConstraint("discovery_state IN ('new','known','unknown')", name="discovery_state"),
+        CheckConstraint("discovery_scope_hash ~ '^[a-f0-9]{64}$'", name="discovery_hash"),
+        CheckConstraint("jsonb_typeof(snapshot) = 'object'", name="snapshot_object"),
+        Index("ix_selection_result_discovery", "discovery_scope_hash", "observation_id", "hit_at"),
+        Index("ix_selection_result_hit", "hit_at", "observation_id"),
+    )
+    item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_id)
+    execution_run_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("product_selection_runs.run_id", ondelete="RESTRICT"), nullable=False)
+    observation_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("product_selection_observations.observation_id", ondelete="RESTRICT"), nullable=False)
+    discovery_scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    discovery_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    hit_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

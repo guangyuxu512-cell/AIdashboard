@@ -93,12 +93,17 @@ class ProductSelectionFactService:
             # Stable identity dedup within a page as well as database-enforced
             # dedup across pages/processes. No candidate is invented for empty.
             products = {product.product_id: product for product in reversed(page.products)}
+            from app.modules.product_selection.result_service import SelectionResultService
+            results = SelectionResultService(self.session)
+            captured_request = SelectionResolvedRequest.model_validate(run.request_conditions) if run is not None else None
             saved: list[UUID] = []
             for product in sorted(products.values(), key=lambda item: item.product_id):
                 candidate_id = self.repository.upsert_candidate(
                     team_id=team_id, user_id=current.user_id,
                     product_id=product.product_id, at=retrieved_at,
+                    tracked=run is not None and run.result_detail_version == 1,
                 )
+                discovery = results.classify(candidate_id, run, captured_request) if run is not None and run.result_detail_version == 1 else None
                 observation_id = self.repository.upsert_rank_observation(
                     candidate_id=candidate_id, shop_id=shop_id, scope=scope,
                     started_at=started_at, retrieved_at=retrieved_at,
@@ -124,6 +129,9 @@ class ProductSelectionFactService:
                 )
                 if observation_id is not None:
                     saved.append(observation_id)
+                    if discovery is not None:
+                        results.append_hit(run=run, observation_id=observation_id,
+                            key=discovery[0], state=discovery[1], product=product, at=retrieved_at)
             if run is not None:
                 run.stage = "basic_info"
                 run.result_count = (run.result_count or 0) + len(products)
@@ -153,7 +161,7 @@ class ProductSelectionFactService:
         self, actor: ActorContext, observation_id: UUID,
     ) -> ProductSelectionObservation:
         current = self._current_actor(actor)
-        row = self.repository.get_for_actor(actor=current, observation_id=observation_id)
+        row = self.repository.get_for_actor(actor=current, observation_id=observation_id, lock=True)
         if row is None:
             raise SelectionObservationNotFoundError()
         # Super accounts may read across teams, but writes need that record's
@@ -180,22 +188,17 @@ class ProductSelectionFactService:
             candidate = self.session.get(ProductSelectionCandidate, row.candidate_id)
             if candidate is None or candidate.platform_product_id != basic.product_id:
                 raise CompassSelectionIdentityError()
-            values: dict[str, Any] = {}
-            if basic.category_path.state == "available":
-                values["category_path"] = list(basic.category_path.value or ())
-            if basic.first_on_shelf_date.state == "available":
-                values["first_on_shelf_date"] = basic.first_on_shelf_date.value
-            if basic.bad_comment_rate.state == "available" and basic.bad_comment_rate.value:
-                values["bad_comment_rate_raw"] = basic.bad_comment_rate.value.value
-                values["bad_comment_rate_unit"] = basic.bad_comment_rate.value.unit
-            partial = any(field.state != "available" for field in (
-                basic.category_path, basic.first_on_shelf_date, basic.bad_comment_rate,
-            ))
+            from app.modules.product_selection.basic_service import basic_values_and_status
+            values, partial, status = basic_values_and_status(row, basic=basic, error=None,
+                started_at=rank_started_at, at=retrieved_at)
             changed = self.repository.update_basic_info(
                 observation_id=observation_id, rank_started_at=rank_started_at,
                 retrieved_at=retrieved_at, values=values, partial=partial,
                 once_for_run=claim is not None,
             )
+            if changed:
+                row.basic_info_status = status.model_dump(mode="json")
+                row.basic_info_version += 1
             if run is not None and changed:
                 if partial:
                     run.supplement_failed_count += 1
@@ -225,11 +228,16 @@ class ProductSelectionFactService:
                                    SelectionSourceScope.model_validate(row.source_context["business"]), at)
             if claim is not None and row.last_run_id != claim.run_id:
                 raise SelectionRunLeaseLostError()
+            from app.modules.product_selection.basic_service import basic_values_and_status
+            _, _, status = basic_values_and_status(row, basic=None, error=error, started_at=rank_started_at, at=at)
             changed = self.repository.record_basic_info_failure(
                 observation_id=observation_id, rank_started_at=rank_started_at, at=at,
                 code=error.code if error.code in safe_codes else "PLATFORM_REQUEST_FAILED",
                 once_for_run=claim is not None,
             )
+            if changed:
+                row.basic_info_status = status.model_dump(mode="json")
+                row.basic_info_version += 1
             if run is not None and changed:
                 run.supplement_failed_count += 1
                 run.updated_at = at
@@ -272,6 +280,9 @@ class ProductSelectionFactService:
             observation_id=row.observation_id,
             last_run_id=row.last_run_id,
             candidate_id=row.candidate_id,
+            blocked=identities[row.observation_id][2],
+            blocked_changed_at=identities[row.observation_id][3],
+            basic_info_status=row.basic_info_status,
             product_id=identities[row.observation_id][0], platform="douyin",
             request_shop_id=row.request_shop_id,
             request_shop_name=identities[row.observation_id][1],

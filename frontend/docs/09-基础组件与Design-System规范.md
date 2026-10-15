@@ -1,5 +1,21 @@
 # 09-基础组件与 Design System 规范
 
+ShopSelector的可选clearable默认false，透传既有AppSelect；要求必选的策略/其它入口保持默认。
+候选池筛选显式开启，null表示撤销店铺过滤，不表示自动选择团队或取得平台会话。
+
+AppSelect/ShopSelector 的 `labelTooltip` 默认 false；仅显式开启的文字标签复用 NTooltip，
+保留选中值及菜单选项的单行省略，实际溢出时悬浮查看完整标签。可搜索单选获得焦点后
+不依赖 Naive 的原生 title；仅标签恢复 pointer events，选择、搜索、键盘、清除仍由 NSelect 处理。
+不改变控件宽度、字体或颜色。默认自定义 renderLabel 原样透传，原生 renderTag 仍优先，
+函数标签不字符串化；多选关闭及 maxTagCount 保持原生行为。提示复用主题及视口安全间距，
+沿用明确传入的 to，不创建第二套选择器/Tooltip，不使用全局内部 DOM 样式覆盖。
+
+商品图片/身份展示复用 `entities/product` 的 ProductImage、ProductInfoCell（来源b364a89）。
+它们组合已有 NImage/NText/NTooltip/AppButton/Copy，不是新的基础控件；不依赖具体Feature或请求客户端。
+thumbnail64/summary80、完整图预览/no-referrer/重试保留；文本身份使用主题正文/辅助Token，
+单行溢出时由NTooltip显示原文，ID行固定复制槽且按原字符串复制，缺失值不伪造。
+现用Naive2.45的NEllipsis默认点击异常仅在新组件以既有NTooltip兼容，不升级库或全局覆盖其它字段。
+
 ## 1. 目的
 
 本规范解决以下问题：

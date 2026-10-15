@@ -24,6 +24,13 @@ class ProductSelectionRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def lock_candidate(self, candidate_id):
+        return self.session.scalar(select(Candidate).where(Candidate.candidate_id == candidate_id)
+            .with_for_update().execution_options(populate_existing=True))
+
+    def candidate(self, candidate_id):
+        return self.session.get(Candidate, candidate_id)
+
     @staticmethod
     def _basic_unattempted():
         # Even identical timestamp precision must not count the callback
@@ -37,11 +44,13 @@ class ProductSelectionRepository:
 
     def upsert_candidate(
         self, *, team_id: UUID, user_id: UUID, product_id: str, at: datetime,
+        tracked: bool = False,
     ) -> UUID:
         statement = insert(Candidate).values(
             candidate_id=generate_id(), team_id=team_id,
             created_by_user_id=user_id, platform="douyin",
             platform_product_id=product_id, created_at=at, updated_at=at,
+            discovery_tracking_version=1 if tracked else None,
         )
         return self.session.execute(
             statement.on_conflict_do_update(
@@ -193,11 +202,14 @@ class ProductSelectionRepository:
         return statement
 
     def get_for_actor(
-        self, *, actor: ActorContext, observation_id: UUID,
+        self, *, actor: ActorContext, observation_id: UUID, lock: bool = False,
     ) -> Observation | None:
-        return self.session.scalar(self.visible_statement(actor).where(
+        statement = self.visible_statement(actor).where(
             Observation.observation_id == observation_id,
-        ))
+        )
+        if lock:
+            statement = statement.with_for_update(of=Observation).execution_options(populate_existing=True)
+        return self.session.scalar(statement)
 
     def list_latest_for_actor(
         self, *, actor: ActorContext, shop_id: UUID | None = None,
@@ -244,15 +256,16 @@ class ProductSelectionRepository:
 
     def read_identities(
         self, observation_ids: list[UUID],
-    ) -> dict[UUID, tuple[str, str]]:
+    ) -> dict[UUID, tuple[str, str, bool, datetime | None]]:
         """Batch projection for already-scoped observations, not a new lookup API."""
         if not observation_ids:
             return {}
         rows = self.session.execute(select(
             Observation.observation_id, Candidate.platform_product_id, Shop.display_name,
+            Candidate.blocked, Candidate.blocked_changed_at,
         ).join(
             Candidate, Candidate.candidate_id == Observation.candidate_id,
         ).join(
             Shop, Shop.shop_id == Observation.request_shop_id,
         ).where(Observation.observation_id.in_(observation_ids))).all()
-        return {key: (product_id, shop_name) for key, product_id, shop_name in rows}
+        return {key: (product_id, shop_name, blocked, changed_at) for key, product_id, shop_name, blocked, changed_at in rows}

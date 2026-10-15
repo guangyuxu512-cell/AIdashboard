@@ -39,11 +39,12 @@ class SelectionStrategyService:
         result = []
         for row in rows:
             record = runs.get(row.strategy_id)
-            latest, shown_trigger = None, None
+            latest, shown_trigger, latest_receipt_id = None, None, None
             if record is not None:
                 run_repository.validated_request(record.receipt)
                 run_repository.validated_request(record.execution)
                 latest = SelectionRunRead.model_validate(record.execution)
+                latest_receipt_id = record.receipt.run_id
             trigger = triggers.get(row.strategy_id)
             trigger_is_newer = trigger is not None and (record is None
                 or (trigger.created_at, str(trigger.run_id)) > (record.receipt.created_at, str(record.receipt.run_id))
@@ -52,6 +53,7 @@ class SelectionStrategyService:
                 shown_trigger = SelectionStrategyTriggerRead(schedule_run_id=trigger.run_id, scheduled_for=trigger.scheduled_for,
                     created_at=trigger.created_at, trigger_result="blocked", error_code="PRODUCT_SELECTION_EXECUTION_FAILED", error_stage="execution")
                 latest = None
+                latest_receipt_id = None
                 linked = receipts.get(trigger.selection_run_id)
                 if trigger.trigger_result == 'selection_run' and linked is not None:
                     submitted, canonical = linked
@@ -59,6 +61,7 @@ class SelectionStrategyService:
                         run_repository.validated_request(submitted)
                         run_repository.validated_request(canonical)
                         latest = SelectionRunRead.model_validate(canonical)
+                        latest_receipt_id = submitted.run_id
                         shown_trigger = shown_trigger.model_copy(update={"trigger_result":"selection_run", "receipt_id":submitted.run_id,
                             "execution_run_id":canonical.run_id, "error_code":None, "error_stage":None})
                 elif trigger.trigger_result == 'blocked':
@@ -75,7 +78,7 @@ class SelectionStrategyService:
             schedule_available=True,
             schedule_execution_enabled=self.settings.product_selection_schedule_enabled and self.settings.product_selection_execution_enabled,
             next_run_at=plan.next_run_at if plan is not None and plan.enabled else None,
-            latest_run=latest, latest_trigger=shown_trigger,
+            latest_run=latest, latest_trigger=shown_trigger, latest_receipt_id=latest_receipt_id,
             ))
         return result
 

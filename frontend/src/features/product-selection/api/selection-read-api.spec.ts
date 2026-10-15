@@ -59,6 +59,10 @@ describe('registered selection database read API', () => {
           search: '19位ID%',
           sort_field: 'first_on_shelf_date',
           sort_direction: 'asc',
+          blocked: false,
+          result_scope: 'all',
+          strategy_id: undefined,
+          receipt_id: undefined,
         },
       },
     )
@@ -89,6 +93,7 @@ describe('registered selection database read API', () => {
     expect(await readSelectionObservation('observation-id')).toBe(dto)
     expect(httpClient.get).toHaveBeenCalledExactlyOnceWith(
       '/api/v1/product-selection/observations/observation-id',
+      { params: { receipt_id: undefined } },
     )
   })
 
