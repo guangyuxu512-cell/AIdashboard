@@ -2,6 +2,38 @@
 
 ## 2026-10-16 最终人工确认与发布范围核销
 
+### 生产最终结果：DEPLOYED并核验
+
+Main已按Release Gate正常no-ff发布`21229eff5ddf9900b8f38b13c89382952f90ee7b`，
+parents为旧生产382ca92与精确Green1773；运行代码与已验收885逐字相同。
+[main CI 38790697624](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38790697624)
+全部success；[自动Deploy 38791100315](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38791100315)
+attempt1全部success，Main/远端/current及三容器Tag/实际镜像均同21229eff，没有重复发布。
+
+Main正式回执确认：生产`control_center_prod`为单一`20261015_0046`，Backend/Signer healthy，
+Frontend/HTTPS及Real静态资源PASS，原NAS真实CIFS/marker与应用身份权限正常。
+ca97另按正式`/health`契约以默认TLS证书校验独立GET确认HTTPS健康200/status ok、前端入口200；
+初次误用非正式`/api/health`所得异常未作为服务失败或验收证据。
+
+新鲜pre46受保护备份1039309字节、pg_restore目录344项可读，SHA256
+`ac032c093581d5b2d3a50e86ae7b571a8a65e6fdae7a308c76afc3995f4a5b99`。
+12类旧字段计数/逐行摘要ALL EXACT MATCH：174候选、178来源、4选品Run、1策略，
+4计划/32计划回执/53Task/4ShopSession，经营35Job/396Item/126事实及23审计均保留。
+旧3小时server计划逐值相同，核验时下一次为2026-10-16 06:00 Asia/Shanghai。
+正式.env字节与0600备份一致；实际选品execution/management/schedule均true、并发3，
+经营execution/daily均true、Asia/Shanghai09:00原计划保持。无Integration夹具/本机关闭配置带入。
+
+Main在READ ONLY事务中按存储的真实生产gy0005授权经正式ActorContext/Service/DTO核验：
+候选total174/首20、详情及latest basic读取PASS；今日/new/known为0，旧发现unknown174；
+旧策略批次2条如实not_recorded、visible_item_count=null，不把旧未记录伪称完整空榜。
+这是服务端正式只读查询，不是正常登录HTTP或生产原生操作；后两项未覆盖，明确保留，
+没有造账号/人员Session、提取用户Cookie或挪用Integration g2。新增平台请求、业务写入均0。
+旧3848213119470010668业务拒绝/click未知不因本次发布而宣称解决。
+
+无Electron原生/协议变更或新安装包，现有正式1.0.6保留Profile，正常刷新远程页面即可加载。
+本轮选品发布收口；后续四组残留清理Candidate1aec1bc独立Gate2/CI，未包含在21229eff，
+其生产发布须另行批准，不再push main触发相同版本部署。
+
 最终Green dev为`1773a97d27c56512a620337e3259cceabadca2f1`，远端dev精确相同且工作区干净。
 精确[CI 38789232361](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38789232361)
 attempt1的backend/frontend-real-build/container-runtime三Job全部success。Gate2与合后回归通过，

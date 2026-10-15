@@ -30,6 +30,12 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-16生产核验完成：Main正式Release21229eff经CI38790697624/Deploy38791100315成功，
+新鲜pre46备份1039309字节/restore目录344项可读后升级生产单一20261015_0046；
+12类旧字段逐行摘要及计划/Session/审计全保持，0046文件不变，Slot继续released/无active。
+生产已有新语义后仍禁止downgrade清历史或直接回旧B Reader；保留兼容Reader/Schema及审计。
+后续独立死代码清理无Schema/DB/Slot需求，不能借此回收旧事实或改迁移。
+
 2026-10-16正式核销：0046对应完整885已通过Gate1/Gate2、正常no-ff合后复验及精确Green
 1773a97d27c56512a620337e3259cceabadca2f1，CI38789232361三Jobsuccess，现released，
 暂无active Slot。Feature/Integration单一46及事实保留；生产由Main在新鲜备份和正式Release
