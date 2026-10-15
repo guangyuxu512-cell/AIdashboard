@@ -2,6 +2,13 @@
 
 ## 2026-10-16 最终人工确认与发布范围核销
 
+最终Green dev为`1773a97d27c56512a620337e3259cceabadca2f1`，远端dev精确相同且工作区干净。
+精确[CI 38789232361](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38789232361)
+attempt1的backend/frontend-real-build/container-runtime三Job全部success。Gate2与合后回归通过，
+现正式释放0046 Slot；后续本地纯治理提交不是新Green。Main据该精确点执行Release Gate、
+main CI和生产部署，目前尚未核实本轮生产，不预写DEPLOYED。清理Owner仅从该Green建立
+独立Feature，不能借本次发布夹带清理；7d55原工作树/候选/4177保持。
+
 最终完整Candidate：`885b61834ce721b0eb326755852eee38071d3fb4`，Owner81a1，
 基线Green `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`。ca97已直接回读规划聊天人类
 turn `01a140d6-f6ea-7c81-84f1-43417109da3c`（消息 `01a140d6-f787-7c92-8a24-5b1dcaa7a6c8`）
