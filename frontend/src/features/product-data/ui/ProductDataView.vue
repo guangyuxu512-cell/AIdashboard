@@ -36,7 +36,7 @@ const params = ref<ProductDataQuery>({
   filters: emptyProductFilters(),
   period: productPeriod(emptyProductFilters()),
   page: 1,
-  pageSize: 10,
+  pageSize: 20,
   sort: null,
 })
 const checked = ref<DataTableRowKey[]>([]),

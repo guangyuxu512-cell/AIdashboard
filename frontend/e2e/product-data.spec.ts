@@ -53,7 +53,7 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
   await page.goto('/#/product-data')
   const table = page.locator('.product-data-table'),
     rows = table.locator('.n-data-table-tbody .n-data-table-tr')
-  await expect(rows).toHaveCount(10)
+  await expect(rows).toHaveCount(20)
   await expect(page.getByText('演示数据', { exact: true })).toBeVisible()
   await expect(page.locator('.pagination-bar')).toContainText('共 31 条')
   await page
@@ -142,7 +142,7 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
     page.getByText('所选范围暂无商品数据', { exact: true }),
   ).toBeVisible()
   await page.getByRole('button', { name: '重置', exact: true }).click()
-  await expect(rows).toHaveCount(10)
+  await expect(rows).toHaveCount(20)
   await settle(page)
   await page.screenshot({
     path: info.outputPath('product-data-normal.png'),
@@ -161,7 +161,7 @@ test('recovers query error and keeps wide tables and dialogs within ordinary and
   await page.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(
     page.locator('.product-data-table .n-data-table-tbody .n-data-table-tr'),
-  ).toHaveCount(10)
+  ).toHaveCount(20)
   for (const [width, height] of [
     [1024, 768],
     [1920, 1080],

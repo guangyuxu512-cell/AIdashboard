@@ -14,7 +14,7 @@ for (const [width, height] of [
       const rows = page.locator(
         '.product-data-table .n-data-table-tbody .n-data-table-tr',
       )
-      await expect(rows).toHaveCount(10)
+      await expect(rows).toHaveCount(20)
       await page.evaluate(async () => {
         await document.fonts.ready
         await Promise.all(

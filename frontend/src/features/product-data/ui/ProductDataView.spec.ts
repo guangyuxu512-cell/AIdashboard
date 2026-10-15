@@ -65,6 +65,60 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
     .find((item) => item.text() === text)!
 }
 describe('product data view and recovery', () => {
+  it('starts at twenty per page, retains explicit page-size changes and resets page and selection without storage writes', async () => {
+    const source = createMockProductDataSource()
+    const list = vi.spyOn(source, 'list')
+    const storage = vi.spyOn(Storage.prototype, 'setItem')
+    const { wrapper, dispose } = render(
+      ProductDataView,
+      { source, contextKey: 'paging:team', userId: 'paging' },
+      {
+        ProductDataTable: true,
+        ProductFieldConfigDialog: true,
+        ProductGroupManagerDialog: true,
+        ProductBatchGroupDialog: true,
+        ProductDataDetailDrawer: true,
+      },
+    )
+    try {
+      await flushPromises()
+      const pagination = () => wrapper.findComponent(PaginationBar)
+      const table = wrapper.findComponent(ProductDataTable),
+        filter = wrapper.findComponent(ProductDataFilterBar)
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      )
+      expect(pagination().props('pageSize')).toBe(20)
+      expect(table.props('rows')).toHaveLength(20)
+      pagination().vm.$emit('update:pageSize', 10)
+      await flushPromises()
+      expect(pagination().props('pageSize')).toBe(10)
+      expect(table.props('rows')).toHaveLength(10)
+      pagination().vm.$emit('update:page', 2)
+      await flushPromises()
+      expect(pagination().props('page')).toBe(2)
+      table.vm.$emit('update:checked', [table.props('rows')[0].id])
+      await flushPromises()
+      pagination().vm.$emit('update:pageSize', 50)
+      await flushPromises()
+      expect(pagination().props('page')).toBe(1)
+      expect(pagination().props('pageSize')).toBe(50)
+      expect(table.props('checked')).toEqual([])
+      expect(table.props('rows')).toHaveLength(31)
+      filter.vm.$emit('reset')
+      await flushPromises()
+      table.vm.$emit('update:sort', { field: 'receive_amt', direction: 'desc' })
+      await flushPromises()
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 50 }),
+      )
+      expect(pagination().props('pageSize')).toBe(50)
+      expect(storage).not.toHaveBeenCalled()
+    } finally {
+      dispose()
+      storage.mockRestore()
+    }
+  })
   it('keeps filters mounted during loading and error, retries and distinguishes empty success', async () => {
     const source = createMockProductDataSource()
     const original = source.list
@@ -106,7 +160,7 @@ describe('product data view and recovery', () => {
     wrapper.findComponent(ProductDataTable).vm.$emit('retry')
     await flushPromises()
     expect(wrapper.findComponent(ProductDataTable).props('rows')).toHaveLength(
-      10,
+      20,
     )
     expect(wrapper.findComponent(ProductDataTable).props('error')).toBeNull()
     dispose()
@@ -132,7 +186,7 @@ describe('product data view and recovery', () => {
       productName: '演示商品 31',
     })
     await flushPromises()
-    expect(table.props('rows')).toHaveLength(10)
+    expect(table.props('rows')).toHaveLength(20)
     filter.vm.$emit('query')
     await flushPromises()
     expect(table.props('rows')).toHaveLength(1)
@@ -269,7 +323,7 @@ describe('product data view and recovery', () => {
     resolve({ items: [], total: 0, page: 1, pageSize: 10 })
     await flushPromises()
     expect(wrapper.findComponent(ProductDataTable).props('rows')).toHaveLength(
-      10,
+      20,
     )
     expect(
       wrapper.findComponent(ProductFieldConfigDialog).props('userId'),
