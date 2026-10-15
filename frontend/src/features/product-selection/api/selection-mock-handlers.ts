@@ -261,6 +261,20 @@ export function createSelectionMockHandlers(
       const rows = candidates.filter(
         (row) =>
           row.blocked === query.blocked &&
+          (!query.resultScope ||
+            query.resultScope === 'all' ||
+            (new Date(row.sourceContext.checkedAt ?? '').toLocaleDateString(
+              'en-CA',
+              { timeZone: 'Asia/Shanghai' },
+            ) ===
+              new Date().toLocaleDateString('en-CA', {
+                timeZone: 'Asia/Shanghai',
+              }) &&
+              (query.resultScope === 'today' ||
+                (query.resultScope === 'today_new' &&
+                  row.discovery === 'new-in-scope') ||
+                (query.resultScope === 'today_known' &&
+                  row.discovery === 'known')))) &&
           (!query.shopId || row.shopId === query.shopId) &&
           (!keyword ||
             `${row.title} ${row.productId}`
@@ -294,12 +308,12 @@ export function createSelectionMockHandlers(
     },
     async updateCompassMetrics(id) {
       const row = findCandidate(id)
-      // Update the original record, not a new candidate; preserve source and raw ranges.
-      row.metricsRetrievedAt = new Date().toISOString()
+      // Basic demonstration does not alter video/rank times or raw ranges.
+      row.basicInfoError = null
       return {
         mode: 'mock',
         count: 1,
-        message: '罗盘指标更新流程演示；未向平台请求',
+        message: '基础信息更新流程演示；未向平台请求',
       }
     },
     async markCompetitor(merchantShopId) {

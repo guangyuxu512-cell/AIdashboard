@@ -11,7 +11,9 @@ import type {
 } from './selection-read-api'
 import { emptyStrategy, type CandidateQuery } from '../model/contracts'
 
-vi.mock('@/shared/api', () => ({ httpClient: { get: vi.fn(), post: vi.fn() } }))
+vi.mock('@/shared/api', () => ({
+  httpClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+}))
 
 function observation(): SelectionObservationDto {
   const unavailable: SelectionMetricDto = {
@@ -122,7 +124,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     expect(result.sourceContext.periodLabel).toBe('')
     expect(result.sourceContext.checkedAt).toBe(dto.checked_at)
     expect(result.metricsRetrievedAt).toBe(dto.metrics_retrieved_at)
-    expect(result.basicInfoError).toBe('PLATFORM_TIMEOUT')
+    expect(result.basicInfoError).toBe('网络请求失败，可重试')
   })
   it('does not invent a unique merchant when the source has several', () => {
     const dto = observation()
@@ -160,6 +162,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
     expect(httpClient.get).toHaveBeenCalledTimes(2)
     expect(httpClient.get).toHaveBeenLastCalledWith(
       '/api/v1/product-selection/observations/observation-id',
+      { params: { receipt_id: undefined } },
     )
     await expect(real.collectBatch(['observation-id'])).rejects.toThrow(
       SELECTION_UNAVAILABLE,

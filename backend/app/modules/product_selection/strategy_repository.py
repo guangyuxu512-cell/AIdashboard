@@ -66,7 +66,7 @@ class SelectionStrategyRepository:
         ranked = SelectionRunRepository.visible_statement(actor).with_only_columns(
             Run.strategy_id, Run.run_id,
             func.row_number().over(partition_by=Run.strategy_id, order_by=(Run.created_at.desc(), Run.run_id.desc())).label("rn"),
-        ).where(Run.strategy_id.in_([row.strategy_id for row in rows])).subquery()
+        ).where(Run.strategy_id.in_([row.strategy_id for row in rows]), Run.operation_kind == "rank").subquery()
         receipt = aliased(Run)
         execution = aliased(Run)
         statement = select(ranked.c.strategy_id, execution, receipt).join(receipt, receipt.run_id == ranked.c.run_id).join(

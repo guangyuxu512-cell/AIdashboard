@@ -31,7 +31,7 @@ test('product navigation preserves framed query history, refresh, fallback and l
   await bar.getByRole('button', { name: '候选池', exact: true }).click()
   await expect(page).toHaveURL(/product-selection\?context=preserved$/)
   await expect(
-    page.getByRole('columnheader', { name: '商品标题', exact: true }),
+    page.getByRole('columnheader', { name: '商品信息', exact: true }),
   ).toBeVisible()
   await page.goto('/#/product-selection?tab=unknown')
   await expect(

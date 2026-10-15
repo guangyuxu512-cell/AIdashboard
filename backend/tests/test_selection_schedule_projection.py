@@ -23,11 +23,11 @@ def setup(monkeypatch, *, receipt_hour=9, trigger_hour=10, manual=True, linked=F
     sid,team,user=uuid4(),uuid4(),uuid4()
     original=_original()
     frozen=freeze_short_video_request(original,at).model_copy(update={'strategy':SelectionStrategySnapshot(strategy_id=sid,version=1)})
-    canonical=Run(run_id=uuid4(),team_id=team,created_by_user_id=user,request_shop_id=original.shop_id,strategy_id=sid,
+    canonical=Run(operation_kind='rank',run_id=uuid4(),team_id=team,created_by_user_id=user,request_shop_id=original.shop_id,strategy_id=sid,
         submission_key=uuid4(),request_fingerprint=frozen.fingerprint(),request_conditions=frozen.model_dump(mode='json'),
         status='succeeded',stage='completed',result_count=1,saved_count=1,supplemented_count=1,supplement_failed_count=0,
         started_at=at,finished_at=at,created_at=at,updated_at=at)
-    submitted=Run(run_id=uuid4(),team_id=uuid4() if wrong_team else team,created_by_user_id=user,request_shop_id=original.shop_id,
+    submitted=Run(operation_kind='rank',run_id=uuid4(),team_id=uuid4() if wrong_team else team,created_by_user_id=user,request_shop_id=original.shop_id,
         strategy_id=sid,submission_key=uuid4(),request_fingerprint=frozen.fingerprint(),request_conditions=frozen.model_dump(mode='json'),
         reused_run_id=canonical.run_id,status='reused',stage='queued',created_at=at+timedelta(hours=receipt_hour-9),updated_at=at)
     trigger=SimpleNamespace(run_id=uuid4(),scheduled_for=at,created_at=at+timedelta(hours=trigger_hour-9),

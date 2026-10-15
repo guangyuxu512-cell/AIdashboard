@@ -336,6 +336,7 @@ async function submit(saving: boolean) {
           :feedback="errors.shopId"
         >
           <ShopSelector
+            label-tooltip
             :model-value="values.shopId"
             @update:model-value="changeShop"
           />

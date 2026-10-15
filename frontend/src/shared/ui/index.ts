@@ -14,6 +14,8 @@ export { default as AppTable } from './AppTable.vue'
 export { default as AppTabs } from './AppTabs.vue'
 export { default as AppTimePicker } from './AppTimePicker.vue'
 export * from './overlay-host'
+export { createListDensityTheme } from './list-density'
+export type { ListDensity } from './list-density'
 export { STANDARD_PAGE_SIZE_OPTIONS } from './pagination'
 
 export type { AppButtonTone } from './AppButton.vue'

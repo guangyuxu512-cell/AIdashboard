@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, model_serializer
 
 from app.modules.product_selection.source import SelectionSourceScope
+from app.modules.product_selection.basic_contract import SelectionBasicRequest
 from app.modules.product_selection.strategy_queue_key import SelectionStrategyQueueKey
 
 
@@ -444,20 +445,23 @@ class SelectionRunClaim:
     user_id: UUID
     shop_id: UUID
     started_at: datetime
-    request: SelectionResolvedRequest
+    request: SelectionResolvedRequest | SelectionBasicRequest
 
 
 class SelectionRunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     run_id: UUID
+    operation_kind: Literal["rank", "basic_info"] = "rank"
+    target_observation_id: UUID | None = None
+    result_detail_version: Literal[1] | None = None
     team_id: UUID
     created_by_user_id: UUID
     request_shop_id: UUID
     strategy_id: UUID | None = None
     status: RunStatus
     stage: RunStage
-    request_conditions: SelectionResolvedRequest
+    request_conditions: SelectionResolvedRequest | SelectionBasicRequest
     result_count: int | None
     saved_count: int
     supplemented_count: int
@@ -491,6 +495,8 @@ class SelectionCapabilitiesRead(BaseModel):
     schedule_available: bool = True
     schedule_execution_enabled: bool = False
     material_collection_available: Literal[False] = False
+    candidate_block_available: Literal[True] = True
+    basic_info_available: bool = False
     supported_periods: tuple[Literal["realtime", "1d", "7d", "30d"], ...] = ("realtime", "1d", "7d", "30d")
     supported_brands: tuple[Literal["all", "known", "unknown"], ...] = ("all", "known", "unknown")
     custom_price_available: bool = True

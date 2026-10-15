@@ -271,7 +271,11 @@ describe('selection draft and isolated mock handlers', () => {
     )
     expect(real.candidatesAvailable).toBe(true)
     await expect(
-      real.candidates({ ...query(), blocked: true }),
+      real.candidates({
+        ...query(),
+        sortField: 'negativeReviewRate',
+        sortOrder: 'ascend',
+      }),
     ).rejects.toThrow(SELECTION_UNAVAILABLE)
     await expect(real.retrieve(input())).rejects.toThrow(SELECTION_UNAVAILABLE)
     expect((await createSelectionService('mock')).available).toBe(true)
@@ -411,7 +415,7 @@ describe('selection draft and isolated mock handlers', () => {
     expect(read.sourceContext).toEqual(first.sourceContext)
     expect(read.userPaidAmountRange).toBe(first.userPaidAmountRange)
     expect(read.id).toBe(first.id)
-    expect(read.metricsRetrievedAt).not.toBe(first.metricsRetrievedAt)
+    expect(read.metricsRetrievedAt).toBe(first.metricsRetrievedAt)
     const page = await mock.candidates({ ...query(), page: 2 })
     expect(page.total).toBe(32)
     expect(page.items[0]!.sourceContext).toEqual(first.sourceContext)

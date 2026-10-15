@@ -24,6 +24,7 @@ from app.modules.product_selection.models import (
     ProductSelectionCandidate as Candidate, ProductSelectionObservation as Observation,
     ProductSelectionRun as Run,
     ProductSelectionStrategy as Strategy,
+    ProductSelectionResultItem as ResultItem,
 )
 from app.modules.product_selection.service import ProductSelectionFactService
 from app.modules.product_selection.source import SelectionSourceScope
@@ -95,6 +96,9 @@ def selection_context(postgresql_engine):
             session.execute(delete(Schedule).where(Schedule.team_id.in_(teams)))
             session.execute(delete(AuditLog).where(AuditLog.actor_user_id.in_(users)))
             candidate_ids = select(Candidate.candidate_id).where(Candidate.team_id.in_(teams))
+            session.execute(delete(ResultItem).where(ResultItem.execution_run_id.in_(select(Run.run_id).where(Run.team_id.in_(teams)))))
+            session.execute(delete(Run).where(Run.team_id.in_(teams), Run.reused_run_id.is_not(None)))
+            session.execute(delete(Run).where(Run.team_id.in_(teams), Run.operation_kind == "basic_info"))
             session.execute(delete(Observation).where(Observation.candidate_id.in_(candidate_ids)))
             session.execute(delete(Candidate).where(Candidate.team_id.in_(teams)))
             session.execute(delete(Run).where(Run.team_id.in_(teams), Run.reused_run_id.is_not(None)))
