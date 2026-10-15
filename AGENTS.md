@@ -34,8 +34,22 @@ Real build通过，复用973的140项及未变证据；Backend/Electron/依赖/0
 turn01a13db6-ba41-7520-86f3-4f65d62a9fc2的“验收没问题”及对应截图，登记商品信息和首次上榜
 可见界面确认；原生系统剪贴板结果、普通/最大化专项未单独取证，不补写通过或重复整体界面验收。
 真实单商品basic正式Run仍未执行，Gate2整体进行中、0046唯一active；未合dev业务、无新Green或
-本Feature生产授权。全局字体/控件密度仅由规划只读评估，不擅改候选或启动残留清理。
+本Feature生产授权。此前字体/控件密度的只读评估限制已被下面新增直接人类授权替代；
+原bfaae界面确认保留，不视为新紧凑尺寸确认，不启动残留清理。
 具体证据见候选池Gate2文档；本条更新最新状态，以下f876等记录作为阶段证据保留。
+
+2026-10-15紧凑列表已获规划人类turn01a13dba-08ad-7992-977b-42350767e6a3批准。
+81a1唯一共享Owner，同一工作树串行从CI成功Green9bb64ac新建纯前端
+`feat/compact-product-list-foundation-v1`，原bfaae分支/已验成果保留，不回退或改写历史。
+共享分支仅显式compact Primitive/列表模式/商品实体及必要ShopSelector透传、测试/契约，默认不变；
+不得合入选品0046业务或7d55全模块。封存精确共享SHA后，Owner正常no-ff合回原选品Feature，
+仅候选池先行；ca97独立Gate2/同一Real Electron确认新视觉后，才推进策略列表及7d55页面消费。
+7d55在原b364分支只读准备，获精确依赖及用户确认后正常no-ff消费纯共享SHA，不并改共享文件。
+表头/列表/ID12px、筛选标签13px、控件28px/文字12px、筛选gap8px、卡片padding12px、列表图48px，
+行高目标约64px但不裁内容；分页/批量栏显式匹配。默认字体/家族/导航/主题/圆角与详情/表单不改，
+summary80/默认thumbnail64保持，teleport和跨页恢复必须验。商品库/采集任务占位只登记规则。
+无新DB/Slot/端口/第二Electron；共享阶段不连DB，原0046仍仅候选池Featureactive。
+本地治理提交不是Green，真实单项basic闭环仍由ca97负责；新视觉未确认前不合功能、不发布。
 
 2026-10-15候选池阶段Candidate为`f876f83ec558766617ed2b07ccf87f213d2493cf`，
 直接父51852。共享AppSelect/ShopSelector复用NTooltip的长标签opt-in返修独立134项、lint/typecheck/
