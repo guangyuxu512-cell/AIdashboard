@@ -37,7 +37,7 @@ Owner正常建分支并同步本次治理后才可编写/应用新46，不改42�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `active`（精确51852cc6 Gate1已交，Gate2进行中） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 精确Green9bb64ac，down单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046` | Feature单一46；ca97备份可读后正式升级Integration单一46，12表旧字段逐行摘要/v6 Session保留，正式API及合成基础更新通过。文件SHA256 F87B00229065BADC506CE3BE38E59AB9E7B2DF1833918941D8F4833F924C2F9C，42–45不改。原生/实际平台未完，不释放Slot或合dev/main/发布。新明细标志即使0items、新basic/状态/屏蔽审计存在均拒绝丢语义；downgrade仅精确可重建Feature，共享/生产保Reader/Schema/审计并关入口。 |
+| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `active`（精确f876f83/父51852 Gate1已交，界面人工确认通过，Gate2进行中） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 精确Green9bb64ac，down单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046` | Feature单一46；ca97备份可读后正式升级Integration单一46，12表旧字段逐行摘要/v6 Session保留，正式API及合成基础更新通过。文件SHA256 F87B00229065BADC506CE3BE38E59AB9E7B2DF1833918941D8F4833F924C2F9C，42–45不改。f876仅长标签前端返修，本次无DDL；真实平台基础更新未完，不释放Slot或合dev/main/发布。新明细标志即使0items、新basic/状态/屏蔽审计存在均拒绝丢语义；downgrade仅精确可重建Feature，共享/生产保Reader/Schema/审计并关入口。 |
 
 2026-10-15最终B：0045已released，当前无active Slot。精确Green9bb经Release Gate正常Main382，
 main CI38599163540/正式Deploy38599686878 attempt1 success；生产经新鲜pre45受保护备份981523字节/

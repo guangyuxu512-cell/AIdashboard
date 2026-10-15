@@ -26,13 +26,18 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-15候选池当前精确Candidate为`51852cc6ab46bdc96533ee2f84de7cc9c1880714`，
+2026-10-15候选池当前精确Candidate为`f876f83ec558766617ed2b07ccf87f213d2493cf`，
+直接父51852。共享AppSelect/ShopSelector复用NTooltip的长标签opt-in返修独立134项、lint/typecheck/
+Real build通过，Backend/Electron/依赖/0046不变。5180已实际加载f876，8100父51852源码逐字相同；
+唯一匹配1.0.6开发Electron/Profile保留。用户直接确认“刚才说的策略，界面。都验收通过”，
+登记本次策略界面与长名称悬浮人工通过，不重复要求这部分操作。
 Owner81a1从Green9bb64ac独立开发并完成Gate1。ca97独立技术、Backend默认807项/Frontend124项、
 lint/typecheck/Real build及正式认证Integration API验证通过；受保护备份可读后正式升级Integration
 单一0046，12表旧字段逐行摘要与HuanYu valid v6保持。8100/5180 strictPort已加载精确候选，
-原生开发Electron已退出、正式客户端仍开；保留Profile，不启动第二实例，集中原生确认尚待准备。
+此前原生窗口恢复与固定PID入口问题已通过正常准备入口处理，不启动第二实例或重置登录。
 专用G2-CandidateResults为合成平台+真实Integration数据库/API证据，实际平台请求0，
-不是本候选真实平台成功或原生验收。0046仍唯一active/down45，42–45字节不改；无dev业务合并、
+不是本候选真实平台成功；真实单项基础更新仍待核验，整体Gate2尚未通过。
+0046仍唯一active/down45，42–45字节不改；无dev业务合并、
 新Green或本Feature生产授权。生产保持B382/0045；7d55独立4177不混入。
 详见候选池Gate2记录，ca97治理HEAD不代替Green9bb或授权发布。
 
