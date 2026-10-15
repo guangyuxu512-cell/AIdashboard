@@ -30,6 +30,12 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-16更新：完整885b618的Gate2A/2B及人类发布授权已核销；0046已应用文件、
+Integration事实及可读pre46备份完整保留。当前Slot仍active至正常no-ff集成及精确dev CI Green，
+届时正式released，不提前分配下一Slot。生产仍按Main新鲜Release检查从45升级46；
+已有策略/Run/PC/经营事实和审计须保留，不复制集成夹具，不降级或按旧零数据假设处理。
+下表bfaae14/真实basic未完为旧阶段，当前证据见候选池Gate2最终确认节。
+
 2026-10-15新资源：B45已released，实际版本文件/登记最高45，无其它active；规划人类批准
 候选池独立Feature及单项基础补充后，Owner最小方案经ca97审查接受，现串行分配唯一active如下。
 retained Feature库已新鲜只读核单一45/八项业务0/无其它连接/最小角色，复用而不清库；
