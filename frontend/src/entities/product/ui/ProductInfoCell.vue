@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { Copy } from '@lucide/vue'
-import { NTooltip, useMessage } from 'naive-ui'
+import { NConfigProvider, NTooltip, useMessage } from 'naive-ui'
 import { computed, ref } from 'vue'
 import type { CSSProperties } from 'vue'
-import { AppButton } from '@/shared/ui'
+import { AppButton, createListDensityTheme } from '@/shared/ui'
+import type { ListDensity } from '@/shared/ui'
 import ProductImage from './ProductImage.vue'
 
 // Shared source: b364a89a9955ffe4aae1c3fb6dbfcabfd0dedf8f. Use NTooltip
 // instead of the installed NEllipsis's failing default click handler.
-const props = defineProps<{
-  productId: string | null
-  title: string
-  imageUrl: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    productId: string | null
+    title: string
+    imageUrl: string | null
+    density?: ListDensity
+  }>(),
+  { density: 'default' },
+)
 const message = useMessage(),
   copying = ref(false),
   titleElement = ref<HTMLElement | null>(null),
@@ -42,59 +47,78 @@ async function copyId() {
 </script>
 
 <template>
-  <div class="product-info-cell">
-    <ProductImage :src="imageUrl" :title="title" size="thumbnail" />
-    <div class="product-info-cell__text">
-      <NTooltip
-        :get-disabled="() => !clipped(titleElement)"
-        :content-style="tooltipStyle"
-      >
-        <template #trigger
-          ><span ref="titleElement" class="product-info-cell__title">{{
-            title
-          }}</span></template
-        >
-        {{ title }}
-      </NTooltip>
-      <div class="product-info-cell__id">
+  <div
+    class="product-info-cell"
+    :class="{ 'product-info-cell--compact': density === 'compact' }"
+  >
+    <NConfigProvider
+      abstract
+      :theme-overrides="createListDensityTheme(density)"
+    >
+      <ProductImage
+        :src="imageUrl"
+        :title="title"
+        size="thumbnail"
+        :density="density"
+      />
+      <div class="product-info-cell__text">
         <NTooltip
-          placement="top-start"
-          :get-disabled="() => !id || !clipped(idElement)"
+          :get-disabled="() => !clipped(titleElement)"
           :content-style="tooltipStyle"
         >
           <template #trigger
-            ><span ref="idElement" class="product-info-cell__id-text"
-              >ID：{{ id ?? '—' }}</span
-            ></template
+            ><span ref="titleElement" class="product-info-cell__title">{{
+              title
+            }}</span></template
           >
-          ID：{{ id }}
+          {{ title }}
         </NTooltip>
-        <NTooltip>
-          <template #trigger
-            ><AppButton
-              class="product-info-cell__copy"
-              size="small"
-              tone="text"
-              :loading="copying"
-              :disabled="copying || !id"
-              aria-label="复制商品ID"
-              @click.stop="copyId"
-              ><Copy :size="14" aria-hidden="true" /></AppButton
-          ></template>
-          复制商品ID
-        </NTooltip>
+        <div class="product-info-cell__id">
+          <NTooltip
+            placement="top-start"
+            :get-disabled="() => !id || !clipped(idElement)"
+            :content-style="tooltipStyle"
+          >
+            <template #trigger
+              ><span ref="idElement" class="product-info-cell__id-text"
+                >ID：{{ id ?? '—' }}</span
+              ></template
+            >
+            ID：{{ id }}
+          </NTooltip>
+          <NTooltip>
+            <template #trigger
+              ><AppButton
+                class="product-info-cell__copy"
+                size="small"
+                tone="text"
+                :loading="copying"
+                :disabled="copying || !id"
+                aria-label="复制商品ID"
+                @click.stop="copyId"
+                ><Copy :size="14" aria-hidden="true" /></AppButton
+            ></template>
+            复制商品ID
+          </NTooltip>
+        </div>
       </div>
-    </div>
+    </NConfigProvider>
   </div>
 </template>
 
 <style scoped>
 .product-info-cell {
+  --product-id-copy-size: var(--control-height-compact);
   display: flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
   text-align: left;
+}
+.product-info-cell--compact {
+  --product-id-copy-size: var(--list-compact-control-height);
+  gap: var(--list-compact-gap);
+  font-size: var(--list-compact-font-size);
 }
 .product-info-cell > :first-child {
   flex: 0 0 auto;
@@ -115,10 +139,10 @@ async function copyId() {
 }
 .product-info-cell__id {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--control-height-compact);
+  grid-template-columns: minmax(0, 1fr) var(--product-id-copy-size);
   width: 100%;
   max-width: calc(
-    var(--field-width-sm) + var(--space-1) + var(--control-height-compact)
+    var(--field-width-sm) + var(--space-1) + var(--product-id-copy-size)
   );
   min-width: 0;
   align-items: center;
@@ -126,12 +150,15 @@ async function copyId() {
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
 }
+.product-info-cell--compact .product-info-cell__id {
+  font-size: var(--list-compact-font-size);
+}
 .product-info-cell__id-text {
   min-width: 0;
   user-select: text;
 }
 .product-info-cell__copy {
-  width: var(--control-height-compact);
-  min-width: var(--control-height-compact);
+  width: var(--product-id-copy-size);
+  min-width: var(--product-id-copy-size);
 }
 </style>

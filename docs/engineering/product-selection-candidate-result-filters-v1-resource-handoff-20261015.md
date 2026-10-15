@@ -10,7 +10,7 @@ Owner81a1，Integration ca97，规划聊天确认产品范围，Main只接合格
 | 项目 | 正式放行 |
 | --- | --- |
 | 基线 | 精确Green `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`，CI38597874343三项success；远端仍精确相同，不从ca97纯治理或main起Feature |
-| Worktree/分支 | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`；由Owner从Green正常创建 `feat/product-selection-candidate-result-filters-v1`，保留Ops1677、B7db、全部成果和共享stash239a68ca |
+| Worktree/分支 | `C:\Users\Administrator\.codex\worktrees\81a1\中控台`；已正常创建 `feat/product-selection-candidate-result-filters-v1` 并no-ff合资源7dc，实际Merge `8f27a8a86cf8c19fcde2b766e345b831f5a00956`；Ops1677/B7db/共享stash239a68ca保持 |
 | Feature DB | 串行重新分配已登记retained `control_center_feat_product_selection`；当前单一`20261013_0045`，Owner/role `control_center_dev_user`，八项业务计数0、活动Run0、其它连接0；不清库、不创建新库/权限，不复制生产或Integration会话 |
 | 连接 | 复用当前受保护Feature配置与已登记严格35433隧道；已新鲜连接成功，Role无SUPERUSER/CREATEDB/CREATEROLE；不在聊天/Git/日志输出凭据，不改其它环境配置 |
 | 端口 | 复用Feature Backend8101/Frontend4176，Vite strictPort，现场均空闲；禁止占8100/5180或另开Electron/动Profile |
@@ -18,12 +18,23 @@ Owner81a1，Integration ca97，规划聊天确认产品范围，Main只接合格
 
 Owner先建分支、正常merge本次资源治理提交（仅文档/规则，非新Green）以同步自己分支的权威登记，
 重新读完整适用规则，再编写/在登记Feature库应用46及PG测试。ca97不编写Migration或代修业务。
+Owner已执行上述分支/资源同步及ignored任务覆盖更新，ca97独立核对parents精确Green9bb+资源7dc。
+当前开始ShopSelector.clearable及候选入口，现场一处未提交Selector改动属Owner开发成果，保留不代修。
+这是实际开工，不是Candidate/Gate通过；Owner此时声明尚无DB/平台/服务或Integration动作。
+
+2026-10-15后续实施：Owner报告46已在登记Feature正式应用、部分PG/前端质量验证通过，
+完整Candidate/Gate1尚未交付，不能按这些阶段证据标整体通过。03:48后注册35433通道掉线；
+ca97现场确认无监听后仅复用原strict-host-key/BatchMode通道恢复，04:02新鲜只读连接确认
+Feature单一`20261015_0046`、最小角色及SELECT1成功。未改凭据/配置/其它服务，未清夹具或触生产/平台。
+具体PID/日志只保留ignored运行记录，不入Git；Owner接续未完成测试，不借恢复重建环境。
 本阶段仅合成平台I/O+Feature真实PG，不发真实平台请求，不连接Integration/生产开发；
 真实Integration行为在合格精确Candidate后另由ca97安排，不将生产拒绝样本冒充原平台响应。
 
 ## 接受的最小实施方向及必守修正
 
 1. 清除×只扩现有ShopSelector可选透传clearable；CandidatePool开启、策略必选默认不变，清除移除过滤条件。
+   共享透传最终冻结由81a1在本Feature单独实现；7d55收到协调已撤回重复增强并组合现有查询/选择能力。
+   不要求其反复恢复或另交共享技术片段，不重复写组件/引入未验商品数据页，两项其余开发不互等。
 2. 屏蔽在现有Team-owned Candidate身份加最小状态/时间/人员，所有来源一致；复用audit_logs，
    行锁/desired-state幂等，同状态不重复审计。先当前权限/可见来源，再资源Team重验；普通成员范围不扩大。
    屏蔽/恢复是纯DB配置，不取得Session/Signer、不因Shop停用拒绝关闭；已删除Shop仍按现有读取边界拒绝。
@@ -32,6 +43,10 @@ Owner先建分支、正常merge本次资源治理提交（仅文档/规则，非
 3. 只新增一张本业务append-only canonical→Observation结果关联，unique(canonical,observation)，
    事实、fence、计数及membership同短事务提交；复用receipt/canonical和完整策略关系。
    旧NULL明细版本=未记录，不反推；新tracked成功空/失败零item与旧未记录明确分开。
+   接受Owner补充的同表最小闭式榜单快照：真实rank/必要previous/checked、价格带、平台首次上榜标记、
+   四视频字段的状态/原精度区间/类型单位与取数时间。不是完整详情或任意response快照；无URL/凭据。
+   精确批次的本次排名/指标及排序读取此不可变快照，不用后来更新的Observation伪装历史本次。
+   图片/标题/商家和基础信息复用当前来源，单项补充不改旧快照/Run；旧未记录依旧不可反推。
 4. 来源发现范围为Team+请求Shop+原相对业务条件，不含实际日期/分页/备用选择/策略UUID/版本。
    **新key要复用已确认价格规范化**，20/20.0等同；不得修改既有rank v1–v8/hash/source_scope_hash。
    新/再次命中是进入同条件范围，不是平台首次上榜或策略名称首次出现；旧明确正证据可known，

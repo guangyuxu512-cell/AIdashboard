@@ -26,14 +26,45 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-15候选池独立Feature已正式放行：Owner81a1从精确Green9bb64ac创建
-feat/product-selection-candidate-result-filters-v1，串行复用已核空/最小权限的Feature库
-control_center_feat_product_selection/单一45、8101/4176 strictPort，不清库/复制会话。
-原45 released，实际最高45且无其它active，现唯一active为20261015_0046（down20261013_0045），
-仅Owner编写/Feature验证，不改42–45。最小方向为Team屏蔽/真实append-only批次/今日范围及
-关闭式复用Run/Executor单商品basic_info补充、字段状态/安全原因与旧事实保护；保留rank/PC/B既有行为，
-不新增队列/第二scanner。资源/方向接受不是Gate/立即发布，生产仅已有记录只读0平台诊断。
-7d55独立4177前端阶段无DB/Slot，两项不混；详见各资源Handoff及生产诊断文档。
+2026-10-15候选池当前精确Candidate为`bfaae14d76780f031e34ef68b139a26bb19b8694`，
+父9734809复用共享商品信息，继承f876长标签及原功能；新增首次上榜只读列，直接复用
+newly_on_ranking/firstListed的真/假/未知，不推算或新增排序筛选。ca97独立增量18项、lint/typecheck/
+Real build通过，复用973的140项及未变证据；Backend/Electron/依赖/0046不变。
+同一Real5180/8100、唯一1.0.6/Profile及29条数据保留。已回读规划人类
+turn01a13db6-ba41-7520-86f3-4f65d62a9fc2的“验收没问题”及对应截图，登记商品信息和首次上榜
+可见界面确认；原生系统剪贴板结果、普通/最大化专项未单独取证，不补写通过或重复整体界面验收。
+真实单商品basic正式Run仍未执行，Gate2整体进行中、0046唯一active；未合dev业务、无新Green或
+本Feature生产授权。此前字体/控件密度的只读评估限制已被下面新增直接人类授权替代；
+原bfaae界面确认保留，不视为新紧凑尺寸确认，不启动残留清理。
+具体证据见候选池Gate2文档；本条更新最新状态，以下f876等记录作为阶段证据保留。
+
+2026-10-15紧凑列表已获规划人类turn01a13dba-08ad-7992-977b-42350767e6a3批准。
+81a1唯一共享Owner，同一工作树串行从CI成功Green9bb64ac新建纯前端
+`feat/compact-product-list-foundation-v1`，原bfaae分支/已验成果保留，不回退或改写历史。
+共享分支仅显式compact Primitive/列表模式/商品实体及必要ShopSelector透传、测试/契约，默认不变；
+不得合入选品0046业务或7d55全模块。封存精确共享SHA后，Owner正常no-ff合回原选品Feature，
+仅候选池先行；ca97独立Gate2/同一Real Electron确认新视觉后，才推进策略列表及7d55页面消费。
+7d55在原b364分支只读准备，获精确依赖及用户确认后正常no-ff消费纯共享SHA，不并改共享文件。
+表头/列表/ID12px、筛选标签13px、控件28px/文字12px、筛选gap8px、卡片padding12px、列表图48px，
+行高目标约64px但不裁内容；分页/批量栏显式匹配。默认字体/家族/导航/主题/圆角与详情/表单不改，
+summary80/默认thumbnail64保持，teleport和跨页恢复必须验。商品库/采集任务占位只登记规则。
+无新DB/Slot/端口/第二Electron；共享阶段不连DB，原0046仍仅候选池Featureactive。
+本地治理提交不是Green，真实单项basic闭环仍由ca97负责；新视觉未确认前不合功能、不发布。
+
+2026-10-15候选池阶段Candidate为`f876f83ec558766617ed2b07ccf87f213d2493cf`，
+直接父51852。共享AppSelect/ShopSelector复用NTooltip的长标签opt-in返修独立134项、lint/typecheck/
+Real build通过，Backend/Electron/依赖/0046不变。5180已实际加载f876，8100父51852源码逐字相同；
+唯一匹配1.0.6开发Electron/Profile保留。用户直接确认“刚才说的策略，界面。都验收通过”，
+登记本次策略界面与长名称悬浮人工通过，不重复要求这部分操作。
+Owner81a1从Green9bb64ac独立开发并完成Gate1。ca97独立技术、Backend默认807项/Frontend124项、
+lint/typecheck/Real build及正式认证Integration API验证通过；受保护备份可读后正式升级Integration
+单一0046，12表旧字段逐行摘要与HuanYu valid v6保持。8100/5180 strictPort已加载精确候选，
+此前原生窗口恢复与固定PID入口问题已通过正常准备入口处理，不启动第二实例或重置登录。
+专用G2-CandidateResults为合成平台+真实Integration数据库/API证据，实际平台请求0，
+不是本候选真实平台成功；真实单项基础更新仍待核验，整体Gate2尚未通过。
+0046仍唯一active/down45，42–45字节不改；无dev业务合并、
+新Green或本Feature生产授权。生产保持B382/0045；7d55独立4177不混入。
+详见候选池Gate2记录，ca97治理HEAD不代替Green9bb或授权发布。
 
 2026-10-15新增资源：规划人类已确认并正式分配7d55商品数据前端第一阶段，Owner从精确Green
 9bb64ac正常建立feat/shop-product-data-frontend-v1（现场旧detached3128干净，禁止旧基线编码）。
