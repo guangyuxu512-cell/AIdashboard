@@ -16,12 +16,13 @@ ca97只读merge-tree确认正规合并无冲突，已交Owner在原分支正常n
 再封存新完整Candidate与匹配增量验证；不rebase/reset或在dev代修，不重做已通过Radio返修。
 继承最新Green是基线同步，不把清理单独再合一次或借机发布生产。
 
-7d55仍只有原4177 Mock/strictPort资源，可自行按正常入口恢复当前已停止的预览；无Backend/
-DB/Slot/Signer/平台调用或第二Electron。ca97将用匹配候选在Integration5180准备明确标识的
-Mock原生前端预览，8100/0046/Session及生产完全不动，Real边界只核不可用且无Mock回退。
-现场正式客户端仍在运行、开发Electron已退出；保留正式客户端及未保存操作，不能直接重开
-第二实例或换Profile。待候选及5180就绪后，只需用户正常保存并退出正式客户端，再打开原Profile
-唯一开发窗口；网页截图不能替代原生验收，也不提前宣称已打开商品数据新版。
+7d55仍只有原4177 Mock/strictPort资源，已恢复且仍归Owner；无Backend/DB/Slot/Signer或平台
+调用资源。最新完整b9fa5717已正常同步精确Green，ca97独立51项/lint/type/Real build及13blob通过。
+用户回复“已退出”且客户端进程0后，ca97将5180切到该归档，Real边界浏览器1项PASS后切明确Mock，
+正常打开原Profile唯一1.0.6开发Electron并置前；8100原进程/0046/Session及生产均不动。
+原生AX已确认5180/#/shops和Mock管理员预览；截图FrameArrived超时、导航点击geometry不可用，
+已停止原生输入，请用户仅从“数据中心→商品数据”进入。未声称商品数据页已现场确认或Gate2B通过，
+不以网页截图、构建或启动替代原生验收，不另开实例或更换Profile。
 
 Owner只读契约盘点并行继续：源码/旧项目/既有请求层与样本响应的字段/单位/筛选/排序/近1/7/30/
 完整分页逐项列证据。不得执行cURL、追加真实请求或猜自定义日期；“最新+上一版”尚非已批准Schema，
