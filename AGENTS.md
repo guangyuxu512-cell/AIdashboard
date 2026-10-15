@@ -26,7 +26,18 @@
 
 ### Two-Gate、问题归属与共享历史
 
-2026-10-15候选池当前精确Candidate为`f876f83ec558766617ed2b07ccf87f213d2493cf`，
+2026-10-15候选池当前精确Candidate为`bfaae14d76780f031e34ef68b139a26bb19b8694`，
+父9734809复用共享商品信息，继承f876长标签及原功能；新增首次上榜只读列，直接复用
+newly_on_ranking/firstListed的真/假/未知，不推算或新增排序筛选。ca97独立增量18项、lint/typecheck/
+Real build通过，复用973的140项及未变证据；Backend/Electron/依赖/0046不变。
+同一Real5180/8100、唯一1.0.6/Profile及29条数据保留。已回读规划人类
+turn01a13db6-ba41-7520-86f3-4f65d62a9fc2的“验收没问题”及对应截图，登记商品信息和首次上榜
+可见界面确认；原生系统剪贴板结果、普通/最大化专项未单独取证，不补写通过或重复整体界面验收。
+真实单商品basic正式Run仍未执行，Gate2整体进行中、0046唯一active；未合dev业务、无新Green或
+本Feature生产授权。全局字体/控件密度仅由规划只读评估，不擅改候选或启动残留清理。
+具体证据见候选池Gate2文档；本条更新最新状态，以下f876等记录作为阶段证据保留。
+
+2026-10-15候选池阶段Candidate为`f876f83ec558766617ed2b07ccf87f213d2493cf`，
 直接父51852。共享AppSelect/ShopSelector复用NTooltip的长标签opt-in返修独立134项、lint/typecheck/
 Real build通过，Backend/Electron/依赖/0046不变。5180已实际加载f876，8100父51852源码逐字相同；
 唯一匹配1.0.6开发Electron/Profile保留。用户直接确认“刚才说的策略，界面。都验收通过”，
