@@ -38,6 +38,44 @@ Electron/Worker/Mobile、部署脚本、锁定依赖相对基线无变化，本�
 后续残留代码清理另走独立Feature/Gate，当前只读盘点不抢占本次Release。
 下列“待人工确认/未执行真实basic/未获发布授权”等段落均为保留的阶段历史，以本节为准。
 
+### 正常集成与合后复验
+
+ca97在干净dev以正常`--no-ff`合入完整885，合并提交
+`d92f34ec9527a27bb1cdc6ac2015f11f69d99cc4`，parents为治理记录
+`54839e3fbbd89d52b8de59055af5f13c9e590f91`及精确885；无冲突，不改候选业务。
+本次合并没有新增AGENTS差异、锁定依赖、Electron/Worker/Mobile或发布脚本差异。
+合后backend/frontend等所有运行路径逐字等于885，不包含商品数据模块或独立Radio141。
+
+| 合后实际验证 | 结果 |
+| --- | --- |
+| Backend默认`pytest --tb=short` | 807 PASS，368 integration显式排除，83.97秒；唯一既有httpx弃用警告。不是本次重新运行PG，原Feature PG/Integration API证据按范围复用 |
+| Frontend选品/受影响Shared/实体/Audit | 25文件172 PASS，29.19秒；覆盖默认与compact隔离、长标签、筛选/批次、详情、基础状态及既有策略 |
+| Frontend lint、vue-tsc、Real production build | 全部PASS，build17.74秒；只有既有大分包警告 |
+| 正式人员认证后的只读API/实际5180模块 | Backend health200；既有59394f85仍succeeded/saved0/补充1，0.03%原值、类目及上架日期保留；served885新详情提示正确 |
+| Integration前后12类业务计数/逐行摘要 | 完全相同，单一0046、活动Run0、HuanYu valid v6；本轮平台请求0、业务写入0 |
+| Git/进程/本机材料 | 工作区干净；现存唯一1.0.6开发Electron、原Profile/人员会话保留；共享stash239a68ca保持，临时证据/构建产物ignored；敏感值及禁止artifact匹配均0 |
+
+### Main Release交接条件
+
+本节记录合后通过，尚须本提交链的精确dev CI三Job全部success并确认远端SHA，才标Green并
+向Main交付该精确点；后续纯治理HEAD不得代替Green。Main只从正式Green正常no-ff合main，
+再等精确main CI并按既有正式Deploy流程部署；不要直接发布Feature885。
+
+- 范围：结果/策略/批次/今日筛选、清除、屏蔽恢复、安全基础信息更新/进度/失败保旧值，
+  以及已确认长标签、商品信息/首次上榜、显式紧凑/默认20/竖线与885详情局部样式。
+  不带7d55商品数据、其Radio141、残留代码清理、达人/手机/资料采集或新调度功能。
+- 生产新鲜备份并验证可读；核对真实旧数据后正式从单一0045升级单一0046，不重跑/改写42–45。
+  备份、恢复入口、镜像和旧release由Main正常流程保留，不清理生产历史、失败任务或审计。
+- 0046含新结果明细/屏蔽及basic语义；downgrade仅无新语义的精确可重建Feature，
+  Integration/生产不可降级删除。生产已有新语义后回退必须保留兼容Reader/Schema/事实及审计，
+  关闭相关新执行，不直接退旧B Reader或用重建数据库回滚。
+- 发布配置须从实际生产契约确认：保留原选品management/execution/schedule与并发3、原PC/NAS及
+  经营Asia/Shanghai09:00仅昨日配置。Integration本机共用执行false/lifespan off和HTTP guard仅属
+  验收运行入口，既不在Git也不得带入生产；本候选不新增独立basic开关或执行框架。
+- Backend/Frontend/Signer健康、实际运行SHA/Real资产、0046单一Head及旧数据/原计划须正式核验。
+  本次无Electron源码/协议/版本变化，可继续现有正式1.0.6，无新安装包或Profile迁移。
+  发布核验只做必要只读检查，不重复真实平台获取，也不声称历史拒绝商品已恢复。
+
 最新5180预览精确Candidate为`885b61834ce721b0eb326755852eee38071d3fb4`，直接父cbe。
 仅详情局部尺寸/底栏状态增量，ca97独立11项/lint/typecheck/Real build及7blob通过并实际替换
 5180 strictPort；编译模块已读到历史成功和当前暂停两条提示。8100未重启，Backend/Shared/
