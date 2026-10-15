@@ -653,10 +653,3 @@ export function buildOperatingDashboardUnavailableRead(
     collectionAvailable: false,
   }
 }
-
-export function formatOperatingDashboardDateRange(
-  range: OperatingDashboardDateRange,
-): string {
-  if (range.startDate === range.endDate) return range.endDate
-  return `${range.startDate} 至 ${range.endDate}`
-}
