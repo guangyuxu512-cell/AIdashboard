@@ -407,10 +407,10 @@ const readingWidths = computed(() => {
     0,
     space - rank - firstListed - discovery - price - review - listed - status,
   )
-  // 48px image + 8px gap + ~200–220px text + 24px cell padding.
+  // 48px image + 8px gap + ~260–280px text + 24px cell padding.
   // Cap the actual column as well as its text budget: the merchant column then
   // moves left on wide windows instead of leaving an empty identity column.
-  const productInfo = Math.max(280, Math.min(300, text - 66 - 52))
+  const productInfo = Math.max(340, Math.min(360, text - 66 - 52))
   const remaining = Math.max(66 + 52, text - productInfo)
   const merchant = 66 + Math.floor((remaining - 66 - 52) * 0.6)
   const category = remaining - merchant

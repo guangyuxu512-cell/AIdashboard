@@ -108,6 +108,75 @@ async function scrollCandidateTableToRight(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
 })
+test('candidate three-column width rebalance at ordinary and wide viewports', async ({
+  page,
+}, info) => {
+  const previous = process.env.PLAYWRIGHT_WIDTH_BASELINE === 'previous'
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/#/product-selection')
+  const rows = page.locator(
+    '.candidate-pool .n-data-table-tbody .n-data-table-tr',
+  )
+  await expect(rows).toHaveCount(10)
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport)
+    const expected = (viewport.width === 1440 ? 280 : 300) + (previous ? 0 : 60)
+    await expect
+      .poll(async () =>
+        Math.abs(
+          (await rows
+            .first()
+            .locator('td')
+            .nth(1)
+            .evaluate((cell) => cell.getBoundingClientRect().width)) - expected,
+        ),
+      )
+      .toBeLessThanOrEqual(1)
+    await loadCandidateImages(page)
+    const dimensions = await rows.first().evaluate((row) => {
+      const cells = Array.from(row.querySelectorAll('td'))
+      const widths = cells.map((cell) => cell.getBoundingClientRect().width)
+      const title = row.querySelector('.product-info-cell__title')!,
+        image = row.querySelector('.product-image')!
+      return {
+        columns: widths,
+        productInfo: widths[1],
+        merchant: widths[2],
+        category: widths[3],
+        threeColumnTotal: widths.slice(1, 4).reduce((a, b) => a + b, 0),
+        title: title.getBoundingClientRect().width,
+        image: image.getBoundingClientRect().width,
+        rowHeight: row.getBoundingClientRect().height,
+        padding: getComputedStyle(cells[1]!).padding,
+        verticalBorder: getComputedStyle(cells[1]!).borderRightWidth,
+        rawId: row.querySelector('.product-info-cell__id-text')!.textContent,
+      }
+    })
+    expect(dimensions.image).toBe(48)
+    expect(dimensions.rowHeight).toBeGreaterThanOrEqual(64)
+    expect(dimensions.rowHeight).toBeLessThanOrEqual(66)
+    expect(dimensions.padding).toBe('8px 12px')
+    expect(dimensions.verticalBorder).toBe('1px')
+    expect(dimensions.merchant).toBeGreaterThanOrEqual(66)
+    expect(dimensions.category).toBeGreaterThanOrEqual(52)
+    await writeFile(
+      info.outputPath(
+        `${viewport.width}-${previous ? 'previous' : 'current'}-widths.json`,
+      ),
+      JSON.stringify(dimensions, null, 2),
+    )
+    await page.screenshot({
+      path: info.outputPath(
+        `${viewport.width}-${previous ? 'previous' : 'current'}-candidate.png`,
+      ),
+      animations: 'disabled',
+    })
+  }
+})
+
 test('candidate product identity fits four themes with stable copy slots and accessible fixed actions', async ({
   page,
 }, info) => {
@@ -305,10 +374,10 @@ test('candidate product identity fits four themes with stable copy slots and acc
           vertical: style.borderRightWidth,
         }
       })
-      expect(titleBudget.title).toBeGreaterThanOrEqual(198)
-      expect(titleBudget.title).toBeLessThanOrEqual(220)
-      expect(titleBudget.column).toBeGreaterThanOrEqual(280)
-      expect(titleBudget.column).toBeLessThanOrEqual(301)
+      expect(titleBudget.title).toBeGreaterThanOrEqual(258)
+      expect(titleBudget.title).toBeLessThanOrEqual(280)
+      expect(titleBudget.column).toBeGreaterThanOrEqual(340)
+      expect(titleBudget.column).toBeLessThanOrEqual(361)
       expect(titleBudget.gap).toBeGreaterThanOrEqual(24)
       expect(titleBudget.vertical).toBe('1px')
       const slots = await rows
@@ -1904,7 +1973,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
         .nth(1)
         .evaluate((cell) => Math.round(cell.getBoundingClientRect().width)),
     )
-    .toBeGreaterThan(360)
+    .toBeCloseTo(360, 0)
   const wideWidths = await rows
     .first()
     .locator('td')

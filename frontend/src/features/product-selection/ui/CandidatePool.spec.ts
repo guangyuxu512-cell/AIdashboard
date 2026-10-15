@@ -188,8 +188,8 @@ describe('candidate selection and batch demo', () => {
     }
     const widths = columns.map((column: { width: number }) => column.width)
     expect(widths[0]).toBe(44)
-    expect(widths[1]).toBeGreaterThanOrEqual(280)
-    expect(widths[1]).toBeLessThanOrEqual(300)
+    expect(widths[1]).toBeGreaterThanOrEqual(340)
+    expect(widths[1]).toBeLessThanOrEqual(360)
     expect(widths.at(-1)).toBe(220)
     expect(
       widths.reduce((total: number, width: number) => total + width, 0),
