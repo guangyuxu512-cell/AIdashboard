@@ -392,7 +392,7 @@ const readingWidths = computed(() => {
   // Preserve the image and three actions; distribute the actual remaining
   // width, instead of forcing a captured 1496px table into every window.
   const width = Math.floor(tableWidth.value || 1496) - 2
-  const space = Math.max(0, width - 44 - 88 - 220)
+  const space = Math.max(0, width - 44 - 220)
   const expand = Math.max(0, Math.min(1, (width - 1100) / 400))
   const fit = (compact: number, wide: number) =>
     Math.floor(compact + (wide - compact) * expand)
@@ -407,19 +407,15 @@ const readingWidths = computed(() => {
     0,
     space - rank - firstListed - discovery - price - review - listed - status,
   )
-  // Reuse the former image + three text columns' budget. Reserve a readable
-  // identity cell first, then keep merchant/category ellipses within it.
-  const remaining = Math.max(0, text + 88 - 260)
-  const merchant = Math.max(
-    66,
-    Math.min(Math.floor(text * 0.28), Math.floor(remaining * 0.56)),
-  )
-  const category = Math.max(
-    52,
-    Math.min(Math.floor(text * 0.22), remaining - merchant),
-  )
+  // 48px image + 8px gap + ~200–220px text + 24px cell padding.
+  // Cap the actual column as well as its text budget: the merchant column then
+  // moves left on wide windows instead of leaving an empty identity column.
+  const productInfo = Math.max(280, Math.min(300, text - 66 - 52))
+  const remaining = Math.max(66 + 52, text - productInfo)
+  const merchant = 66 + Math.floor((remaining - 66 - 52) * 0.6)
+  const category = remaining - merchant
   return {
-    productInfo: Math.max(260, 88 + text - merchant - category),
+    productInfo,
     merchant,
     category,
     rank,

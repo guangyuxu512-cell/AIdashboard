@@ -288,6 +288,29 @@ test('candidate product identity fits four themes with stable copy slots and acc
       expect(dimensions.image).toEqual({ width: 48, height: 48 })
       expect(dimensions.height).toBeGreaterThanOrEqual(64)
       expect(dimensions.height).toBeLessThanOrEqual(66)
+      const titleBudget = await rows.first().evaluate((row) => {
+        const title = row.querySelector('.product-info-cell__title')!,
+          id = row.querySelector('.product-info-cell__id')!
+        const merchant = row.querySelector('td:nth-child(3)')!,
+          text = merchant.querySelector('.n-ellipsis')!
+        const first = title.getBoundingClientRect(),
+          next = text.getBoundingClientRect(),
+          style = getComputedStyle(row.querySelector('td:nth-child(2)')!)
+        return {
+          title: first.width,
+          column: row.querySelector('td:nth-child(2)')!.getBoundingClientRect()
+            .width,
+          gap:
+            next.left - Math.max(first.right, id.getBoundingClientRect().right),
+          vertical: style.borderRightWidth,
+        }
+      })
+      expect(titleBudget.title).toBeGreaterThanOrEqual(198)
+      expect(titleBudget.title).toBeLessThanOrEqual(220)
+      expect(titleBudget.column).toBeGreaterThanOrEqual(280)
+      expect(titleBudget.column).toBeLessThanOrEqual(301)
+      expect(titleBudget.gap).toBeGreaterThanOrEqual(24)
+      expect(titleBudget.vertical).toBe('1px')
       const slots = await rows
         .locator('.product-info-cell__copy')
         .evaluateAll((buttons) =>
