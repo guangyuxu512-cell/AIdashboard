@@ -10,7 +10,7 @@ import type { GlobalThemeOverrides } from 'naive-ui'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AppButton, AppInput, AppSelect } from '@/shared/ui'
+import { AppButton, AppInput, AppRadio, AppSelect } from '@/shared/ui'
 import { createListDensityTheme } from '@/shared/ui/list-density'
 import type { ListDensity } from '@/shared/ui/list-density'
 import FilterBar from './FilterBar.vue'
@@ -75,6 +75,83 @@ describe('explicit list density', () => {
       wrapper.findComponent(NConfigProvider).props('themeOverrides'),
     ).toBeUndefined()
     expect(wrapper.findComponent(NConfigProvider).props('abstract')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('scopes Radio sizes without mutating parent colors or the default group', async () => {
+    const original = Object.freeze({
+      buttonHeightMedium: '34px',
+      fontSizeMedium: '14px',
+      buttonTextColorActive: 'green',
+    })
+    const theme = ref<GlobalThemeOverrides>({ Radio: original })
+    const density = ref<ListDensity>('compact')
+    const options = [
+      { label: '近7天', value: '7' },
+      { label: '禁用项', value: 'disabled', disabled: true },
+    ]
+    const wrapper = mount(
+      defineComponent({
+        setup: () => () =>
+          h(
+            NConfigProvider,
+            { abstract: true, themeOverrides: theme.value },
+            {
+              default: () => [
+                h(
+                  FilterBar,
+                  { density: density.value },
+                  {
+                    default: () =>
+                      h(AppRadio, {
+                        class: 'scoped-radio',
+                        modelValue: '7',
+                        options,
+                      }),
+                  },
+                ),
+                h(AppRadio, {
+                  class: 'default-radio',
+                  modelValue: '7',
+                  options,
+                }),
+              ],
+            },
+          ),
+      }),
+    )
+    const style = (selector: string) =>
+      wrapper.get(selector).attributes('style')
+    expect(style('.scoped-radio')).toContain(
+      '--n-height: var(--list-compact-control-height)',
+    )
+    expect(style('.scoped-radio')).toContain(
+      '--n-font-size: var(--list-compact-font-size)',
+    )
+    expect(style('.default-radio')).toContain('--n-height: 34px')
+    expect(style('.default-radio')).toContain('--n-font-size: 14px')
+    expect(
+      wrapper
+        .get('.scoped-radio input[value="disabled"]')
+        .attributes('disabled'),
+    ).toBeDefined()
+    theme.value = { Radio: { ...original, buttonTextColorActive: 'teal' } }
+    await nextTick()
+    expect(style('.scoped-radio')).toContain(
+      '--n-button-text-color-active: teal',
+    )
+    expect(style('.default-radio')).toContain(
+      '--n-button-text-color-active: teal',
+    )
+    density.value = 'default'
+    await nextTick()
+    expect(style('.scoped-radio')).toContain('--n-height: 34px')
+    expect(style('.scoped-radio')).toContain('--n-font-size: 14px')
+    expect(original).toEqual({
+      buttonHeightMedium: '34px',
+      fontSizeMedium: '14px',
+      buttonTextColorActive: 'green',
+    })
     wrapper.unmount()
   })
 
