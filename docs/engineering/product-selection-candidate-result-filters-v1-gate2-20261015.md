@@ -1,11 +1,32 @@
 # 候选池结果与基础信息 Gate 2 集成记录
 
-当前精确Candidate为 `bfaae14d76780f031e34ef68b139a26bb19b8694`，直接父为
-`9734809530f42046293a83c967611f0ac82c07a5`，继承f876/51852。技术、Integration数据库/API及用户
-提供画面的商品信息/首次上榜界面确认通过；原生剪贴板、普通/最大化专项未单独取证，不补写通过。
+当前预览精确Candidate为 `b99f4265a35744f854e03f1ffb0320e9c9dafe17`，正常no-ff共享依赖的
+直接父为 `cb9841e692beb4086e9374db84ee869306339ae7`。已实际加载同一Real5180及唯一
+Electron1.0.6/Profile，Backend8100不变。新增紧凑密度的原生人工确认尚待用户；已通过的
+bfaae商品信息/首次上榜及f876长标签、策略界面结论保留，不代替新尺寸确认。
 真实平台单项基础更新尚未完成，Gate2整体保持进行中，不把界面确认当作平台取数通过。
 此Feature未获生产发布授权；本次未访问生产，最后已记录生产为B
 `382ca92ee1f415e0e1a4269de6b9a02c382e114d`/0045，不冒称已部署本候选。
+
+## 紧凑候选池试点：精确检查与实际加载
+
+81a1在原Feature正常no-ff合纯共享 `6ac6638be37026edb20fb8023ab4a4b7661e53c2`，再交b99。
+相对合并父，运行变化仅CandidatePool五处compact opt-in及删除重复Table padding override。
+ca97独立3文件18项、定向eslint、typecheck、精确Real build（19.99秒）通过；35份归档blob一致。
+共享密度、商品实体、ShopSelector与Facade和6ac相同，复用独立7文件29项及Owner未变证据，
+不重复699项。原审计类型是bfaae继承内容，不将纯共享分支不含它误判为新增业务变化。
+Backend/Electron/Worker/依赖/0046不变，未执行迁移或新增平台请求。
+
+5180已换为b99封存归档；回读实际编译CandidatePool五处compact、ProductInfoCell/ProductImage、
+src/shared/ui/list-density.ts及命名Token，HTTP200。8100保持原51852且字节相同、health200。
+唯一1.0.6 Electron同一PID/Profile保留并置前，原生可访问树确认候选池、第1页、29条及是/否/—样本。
+Integration单一0046、候选29/来源36/Run18/策略51及经营/计划/Session计数保持，HuanYu valid v6。
+只读事务复查，业务写入0/平台请求0；未访问生产。
+
+原生截图/几何捕获已有超时限制，未把Owner浏览器Mock截图或原生文字树当作实际尺寸人工通过。
+用户仅补新紧凑列表、筛选/分页及详情不缩小的普通/最大化确认；不重验未变的完整界面。
+新视觉待确认前不推进策略或7d55消费者、不合dev业务、不发布；真实单项basic_info Gate仍独立待完成。
+PID/脚本/本机审查记录均在ignored .codex，不提交机器材料或秘密。
 
 ## 候选与技术检查
 
@@ -73,7 +94,7 @@ turn `01a13db6-ba41-7520-86f3-4f65d62a9fc2`、消息 `01a13db6-bb67-7140-98f2-6d
 
 已直接回读规划人类turn `01a13dba-08ad-7992-977b-42350767e6a3` 的“按照你这个，分别给任务”，
 及前置三层范围说明；新授权替代仅只读评估的阶段限制，不扩大生产发布权限。
-当前仍保留已确认bfaae精确运行环境/数据，未加载或声称实现尚未交付的紧凑Candidate。
+现已收到并加载上述精确紧凑试点Candidate，仍保留原Profile、会话及数据；新视觉未确认。
 
 | 层级 | 已批准范围 |
 | --- | --- |
