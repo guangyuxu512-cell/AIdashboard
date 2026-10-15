@@ -2,8 +2,14 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { defineComponent, h } from 'vue'
 import { NMessageProvider } from 'naive-ui'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { AppButton } from '@/shared/ui'
+import {
+  FilterBar,
+  ManagementListSection,
+  PaginationBar,
+  TableToolbar,
+} from '@/shared/components'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import type { BatchCollectReceipt, SelectionService } from '../model/contracts'
 import CandidatePool from './CandidatePool.vue'
@@ -63,6 +69,17 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
+  beforeAll(() =>
+    document.documentElement.style.setProperty(
+      '--list-compact-control-height',
+      '28px',
+    ),
+  )
+  afterAll(() =>
+    document.documentElement.style.removeProperty(
+      '--list-compact-control-height',
+    ),
+  )
   it('clearing shop removes the filter, resets pagination/selection and only reads results', async () => {
     const service = createSelectionMockHandlers()
     const candidates = vi.spyOn(service, 'candidates')
@@ -186,6 +203,7 @@ describe('candidate selection and batch demo', () => {
       title: row.title,
       productId: row.productId,
       imageUrl: row.imageUrl,
+      density: 'compact',
     })
     const firstListed = columns.find(
       (column: { key: string }) => column.key === 'firstListed',
@@ -203,10 +221,22 @@ describe('candidate selection and batch demo', () => {
     }
     expect(columns.at(-1).fixed).toBe('right')
     expect(columns.at(-1).width).toBe(220)
-    expect(table.props('themeOverrides')).toEqual({
-      tdPaddingMedium: 'var(--space-2) var(--space-3)',
-      thPaddingMedium: 'var(--space-2) var(--space-3)',
-    })
+    expect(table.props('themeOverrides')).toBeUndefined()
+    for (const component of [
+      FilterBar,
+      ManagementListSection,
+      PaginationBar,
+      TableToolbar,
+    ])
+      expect(wrapper.findComponent(component).props('density')).toBe('compact')
+    // Teleport alone does not reset provide. Detail must remain a sibling.
+    expect(
+      wrapper
+        .findComponent(ManagementListSection)
+        .find('candidate-detail-drawer-stub')
+        .exists(),
+    ).toBe(false)
+    expect(wrapper.find('candidate-detail-drawer-stub').exists()).toBe(true)
     expect(button().props('tone')).toBe('primary')
     expect(wrapper.text()).not.toContain('短视频商品榜 · 近7天 · 第1–200名')
     expect(wrapper.text()).not.toContain('查看范围')

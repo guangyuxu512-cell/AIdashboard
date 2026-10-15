@@ -450,6 +450,7 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
         imageUrl: row.imageUrl,
         title: row.title,
         productId: row.productId,
+        density: 'compact',
       }),
   },
   {
@@ -667,7 +668,7 @@ const scrollWidth = computed(() => {
     @mouseleave="selectionHint = null"
     @focusout="selectionHint = null"
   >
-    <FilterBar>
+    <FilterBar density="compact">
       <FilterField width="md"
         ><ShopSelector
           v-model="filters.shopId"
@@ -740,7 +741,7 @@ const scrollWidth = computed(() => {
         ></template
       >
     </FilterBar>
-    <ManagementListSection>
+    <ManagementListSection density="compact">
       <NAlert
         v-if="
           strategies.isError.value ||
@@ -757,7 +758,7 @@ const scrollWidth = computed(() => {
       <NAlert v-if="latestRun.isError.value" type="warning">{{
         latestRun.error.value?.message
       }}</NAlert>
-      <TableToolbar aria-label="候选商品批量操作">
+      <TableToolbar density="compact" aria-label="候选商品批量操作">
         <NText v-if="checked.length" :depth="3"
           >已选 {{ checked.length }} 项</NText
         >
@@ -799,10 +800,6 @@ const scrollWidth = computed(() => {
         :error="query.error.value?.message"
         :row-key="(row) => row.id"
         :scroll-x="scrollWidth"
-        :theme-overrides="{
-          tdPaddingMedium: 'var(--space-2) var(--space-3)',
-          thPaddingMedium: 'var(--space-2) var(--space-3)',
-        }"
         viewport="fill"
         appearance="list"
         :checked-row-keys="checked"
@@ -812,6 +809,7 @@ const scrollWidth = computed(() => {
         @update:sorter="sort"
       />
       <PaginationBar
+        density="compact"
         :page="filters.page"
         :page-size="filters.pageSize"
         :item-count="query.data.value?.total ?? 0"

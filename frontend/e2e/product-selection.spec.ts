@@ -285,9 +285,9 @@ test('candidate product identity fits four themes with stable copy slots and acc
         }),
         contentType: 'application/json',
       })
-      expect(dimensions.image).toEqual({ width: 64, height: 64 })
-      expect(dimensions.height).toBeGreaterThanOrEqual(80)
-      expect(dimensions.height).toBeLessThanOrEqual(84)
+      expect(dimensions.image).toEqual({ width: 48, height: 48 })
+      expect(dimensions.height).toBeGreaterThanOrEqual(64)
+      expect(dimensions.height).toBeLessThanOrEqual(66)
       const slots = await rows
         .locator('.product-info-cell__copy')
         .evaluateAll((buttons) =>
@@ -457,7 +457,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         getComputedStyle(image).height,
         getComputedStyle(image).objectFit,
       ]),
-  ).toEqual(['64px', '64px', 'contain'])
+  ).toEqual(['48px', '48px', 'contain'])
   for (const [id, label] of themes) {
     await page.getByRole('button', { name: '切换主题' }).click()
     await page.locator('.n-dropdown').getByText(label, { exact: true }).click()
@@ -1590,14 +1590,14 @@ test('centered candidate columns and consistent bordered details: four rendered 
         info.outputPath(`${id}-${viewport.width}-row-layout.json`),
         JSON.stringify(rowDimensions, null, 2),
       )
-      expect(rowDimensions.rowHeight).toBeGreaterThanOrEqual(80)
-      expect(rowDimensions.rowHeight).toBeLessThanOrEqual(83)
+      expect(rowDimensions.rowHeight).toBeGreaterThanOrEqual(64)
+      expect(rowDimensions.rowHeight).toBeLessThanOrEqual(66)
       expect(rowDimensions.paddingTop).toBe('8px')
       expect(rowDimensions.paddingBottom).toBe('8px')
-      expect(rowDimensions.imageHeight).toBe('64px')
+      expect(rowDimensions.imageHeight).toBe('48px')
       for (const header of rowDimensions.headers) {
         expect(header.padding).toBe('8px 12px')
-        expect(header.height).toBeGreaterThanOrEqual(38)
+        expect(header.height).toBeGreaterThanOrEqual(34)
         expect(header.height).toBeLessThanOrEqual(64)
         expect(header.verticalAlign).toBe('middle')
       }
@@ -1626,8 +1626,8 @@ test('centered candidate columns and consistent bordered details: four rendered 
       for (const height of await rows.evaluateAll((rows) =>
         rows.map((row) => row.getBoundingClientRect().height),
       )) {
-        expect(height).toBeGreaterThanOrEqual(80)
-        expect(height).toBeLessThanOrEqual(83)
+        expect(height).toBeGreaterThanOrEqual(64)
+        expect(height).toBeLessThanOrEqual(66)
       }
       for (const name of ['差评率', '首次上架日期']) {
         const offset = await page
