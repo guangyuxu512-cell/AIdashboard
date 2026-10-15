@@ -130,6 +130,12 @@ for (const [preset, label] of [
       await expect
         .poll(() => measure(select))
         .toMatchObject({ font: '12px', height: 28 })
+      for (const radio of await page
+        .locator('.product-data-filters .n-radio-button')
+        .all())
+        await expect
+          .poll(() => measure(radio))
+          .toMatchObject({ font: '12px', height: 28 })
       expect(
         await measure(
           page.getByRole('button', { name: '切换主题', exact: true }),

@@ -1,7 +1,11 @@
 # 商品数据紧凑复用与默认20条 — 接入草稿／依赖缺口
 
+历史记录说明：本文件保留b2ccc2f39d4828eeb02641ca27caa00c3d52d7a7当时的未过状态与原始失败。
+后续已正常no-ff消费ca97交付的141fec65d413566987c84c79cc172fe4e32216cb，原4个Radio
+断言按原期望通过；最新状态见shop-product-data-compact-v1-gate1-20261015.md。原report不改写。
+
 2026-10-15，Owner 7d55，原分支 feat/shop-product-data-frontend-v1。
-本轮状态：Gate 1 NOT_READY；不是验收候选、Green或发布批准。草稿完整SHA见回执及本地manifest。
+草稿阶段状态：Gate 1 NOT_READY；当时不是验收候选、Green或发布批准。草稿SHA见上方历史说明。
 原 b364a89a9955ffe4aae1c3fb6dbfcabfd0dedf8f、全部历史及虚构夹具保留。
 
 ## 授权、依赖与合并
