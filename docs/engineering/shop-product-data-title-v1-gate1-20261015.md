@@ -1,5 +1,9 @@
 # 商品数据标题单行与 ID 标签返修 — Gate 1
 
+本记录保留7954c434edcfd8dd14ad15d7a8a2ee67899087e8阶段事实。
+后续仅追加复制按钮对齐，见 shop-product-data-copy-alignment-v1-gate1-20261015.md。
+用户对已有视觉的认可不代表该追加改动或整个商品数据模块验收通过。
+
 2026-10-15，Owner 7d55；在 feat/shop-product-data-frontend-v1 上接续
 05f1d25d992054c28d1bcc52562e378dc28fc807，不切分支、不改写历史。
 本记录仅是用户两项预览返修的技术交接，不代表原候选或整个商品数据模块人工验收通过。

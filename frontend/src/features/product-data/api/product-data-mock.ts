@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import { SHOP_LIST_FIXTURE } from '@/entities/shop/fixtures/shop-list.fixture'
 import { productGroupNameSchema } from '../model/query'
+import { PRODUCT_ID_LENGTH_FIXTURE } from '../fixtures/product-id-lengths.fixture'
 import {
   PRODUCT_METRICS,
   type ProductColumnId,
@@ -23,7 +24,7 @@ export type ProductMockOperation =
 
 // Synthetic UI records; neither response sample contents nor platform facts.
 export function createMockProductDataSource(
-  options: { failOnce?: ProductMockOperation } = {},
+  options: { failOnce?: ProductMockOperation; mixedIds?: boolean } = {},
 ): ProductDataSource {
   const shops = SHOP_LIST_FIXTURE.filter(
     (shop) => shop.enabled && shop.platform === 'douyin',
@@ -35,7 +36,9 @@ export function createMockProductDataSource(
       id: 'product-data-demo-' + index,
       shopId: shop.shopId,
       shopName: shop.shopName,
-      productId: '900000000000000' + String(index + 1).padStart(4, '0'),
+      productId:
+        (options.mixedIds ? PRODUCT_ID_LENGTH_FIXTURE[index] : undefined) ??
+        '900000000000000' + String(index + 1).padStart(4, '0'),
       title:
         index === 0
           ? '演示商品 1 · 轻盈日常随行杯 超长标题用于完整信息与省略展示'

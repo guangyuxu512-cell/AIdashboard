@@ -38,6 +38,12 @@ describe('shared product display', () => {
     expect(wrapper.text()).toContain('完整长商品名称')
     expect(wrapper.findComponent(NEllipsis).props('lineClamp')).toBeUndefined()
     expect(wrapper.findComponent(NEllipsis).props('tooltip')).toBe(true)
+    const idEllipsis = wrapper.findAllComponents(NEllipsis)[1]!
+    expect(idEllipsis.props('lineClamp')).toBeUndefined()
+    expect(idEllipsis.props('tooltip')).toMatchObject({
+      placement: 'top-start',
+      contentStyle: { overflowWrap: 'anywhere' },
+    })
     wrapper.unmount()
   })
   it('preserves candidate image dimensions, no-referrer, retry and source reset through the compatibility facade', async () => {

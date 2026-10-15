@@ -8,7 +8,11 @@ export default defineConfig({
   testMatch:
     mode === 'real'
       ? 'production/product-data-unavailable.spec.ts'
-      : ['product-data.spec.ts', 'product-data-title.spec.ts'],
+      : [
+          'product-data.spec.ts',
+          'product-data-title.spec.ts',
+          'product-data-copy-alignment.spec.ts',
+        ],
   workers: 1,
   outputDir: 'test-results/product-data-' + mode,
   use: {

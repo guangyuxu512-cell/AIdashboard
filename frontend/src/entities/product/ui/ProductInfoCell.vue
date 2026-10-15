@@ -32,10 +32,21 @@ async function copyId() {
     <div class="product-info-cell__text">
       <NEllipsis>{{ title }}</NEllipsis>
       <div class="product-info-cell__id">
-        <span :title="productId">ID：{{ productId }}</span>
+        <NEllipsis
+          class="product-info-cell__id-text"
+          :tooltip="{
+            placement: 'top-start',
+            contentStyle: {
+              maxWidth: 'var(--field-width-lg)',
+              overflowWrap: 'anywhere',
+            },
+          }"
+          >ID：{{ productId }}</NEllipsis
+        >
         <NTooltip>
           <template #trigger>
             <AppButton
+              class="product-info-cell__copy"
               size="small"
               tone="text"
               :loading="copying"
@@ -68,18 +79,24 @@ async function copyId() {
   flex: 1;
 }
 .product-info-cell__id {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--control-height-compact);
+  width: 100%;
+  max-width: calc(
+    var(--field-width-sm) + var(--space-1) + var(--control-height-compact)
+  );
   min-width: 0;
   align-items: center;
   gap: var(--space-1);
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
 }
-.product-info-cell__id > span {
+.product-info-cell__id-text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   user-select: text;
+}
+.product-info-cell__copy {
+  width: var(--control-height-compact);
+  min-width: var(--control-height-compact);
 }
 </style>

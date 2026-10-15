@@ -2,6 +2,8 @@
 
 本记录保留原05f1d25候选事实。2026-10-15用户提出的标题单行及ID前缀返修，
 以 shop-product-data-title-v1-gate1-20261015.md 和最新Feature候选为准；原候选未获人工通过。
+随后追加的复制按钮对齐以 shop-product-data-copy-alignment-v1-gate1-20261015.md 为准，
+不覆盖原阶段证据，也不扩大用户已有视觉认可的验收范围。
 
 Owner 7d55，分支 feat/shop-product-data-frontend-v1，Integration ca97。
 功能基线为精确 Green 9bb64ac76bf9e0f51fb1715517cf8c18cef63e22；

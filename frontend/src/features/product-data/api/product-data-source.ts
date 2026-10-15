@@ -23,6 +23,7 @@ export async function createProductDataSource(
   if (import.meta.env.VITE_API_MODE === 'mock' && mode === 'mock') {
     const { createMockProductDataSource } = await import('./product-data-mock')
     return createMockProductDataSource({
+      mixedIds: import.meta.env.DEV && previewCase === 'mixed-ids',
       failOnce:
         import.meta.env.DEV && previewCase === 'query-error'
           ? 'list'

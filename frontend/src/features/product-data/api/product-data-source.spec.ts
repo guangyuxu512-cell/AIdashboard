@@ -5,6 +5,7 @@ import {
   PRODUCT_DATA_UNAVAILABLE,
 } from './product-data-source'
 import { emptyProductFilters, productPeriod } from '../model/query'
+import { PRODUCT_ID_LENGTH_FIXTURE } from '../fixtures/product-id-lengths.fixture'
 import type { ProductDataQuery } from '../model/types'
 
 function query(): ProductDataQuery {
@@ -17,6 +18,21 @@ function query(): ProductDataQuery {
   }
 }
 describe('product data source boundaries', () => {
+  it('limits mixed-length ID fixtures to the explicit Mock preview and preserves exact strings', async () => {
+    const preview = await createProductDataSource('mock', 'mixed-ids')
+    const ids = (await preview.list(query())).items
+      .slice(0, 3)
+      .map((row) => row.productId)
+    expect(ids).toEqual(PRODUCT_ID_LENGTH_FIXTURE)
+    expect(ids.map((id) => id.length)).toEqual([2, 18, 98])
+    const standard = await createProductDataSource('mock')
+    expect((await standard.list(query())).items[0]!.productId).toBe(
+      '9000000000000000001',
+    )
+    const real = await createProductDataSource('real', 'mixed-ids')
+    expect(real).toMatchObject({ mode: 'real', available: false })
+    await expect(real.list(query())).rejects.toThrow(PRODUCT_DATA_UNAVAILABLE)
+  })
   it('filters and sorts the entire result before pagination, keeping missing last in either direction', async () => {
     const source = createMockProductDataSource()
     const params = query()
