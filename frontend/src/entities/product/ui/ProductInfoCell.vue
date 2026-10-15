@@ -30,9 +30,9 @@ async function copyId() {
   <div class="product-info-cell">
     <ProductImage :src="imageUrl" :title="title" size="thumbnail" />
     <div class="product-info-cell__text">
-      <NEllipsis :line-clamp="2">{{ title }}</NEllipsis>
+      <NEllipsis>{{ title }}</NEllipsis>
       <div class="product-info-cell__id">
-        <span :title="productId">{{ productId }}</span>
+        <span :title="productId">ID：{{ productId }}</span>
         <NTooltip>
           <template #trigger>
             <AppButton

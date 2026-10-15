@@ -8,7 +8,7 @@ export default defineConfig({
   testMatch:
     mode === 'real'
       ? 'production/product-data-unavailable.spec.ts'
-      : 'product-data.spec.ts',
+      : ['product-data.spec.ts', 'product-data-title.spec.ts'],
   workers: 1,
   outputDir: 'test-results/product-data-' + mode,
   use: {
@@ -24,7 +24,8 @@ export default defineConfig({
       ' --strictPort --mode ' +
       mode,
     url: 'http://127.0.0.1:' + port,
-    reuseExistingServer: false,
+    reuseExistingServer:
+      mode === 'mock' && process.env.PRODUCT_DATA_REUSE_PREVIEW === '1',
     env: { VITE_API_MODE: mode },
   },
 })

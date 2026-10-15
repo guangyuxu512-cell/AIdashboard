@@ -1,5 +1,8 @@
 # 商品数据前端 V1 — Gate 1 / Handoff
 
+本记录保留原05f1d25候选事实。2026-10-15用户提出的标题单行及ID前缀返修，
+以 shop-product-data-title-v1-gate1-20261015.md 和最新Feature候选为准；原候选未获人工通过。
+
 Owner 7d55，分支 feat/shop-product-data-frontend-v1，Integration ca97。
 功能基线为精确 Green 9bb64ac76bf9e0f51fb1715517cf8c18cef63e22；
 正常 no-ff 同步资源治理 7dc8034、8f727fb，未将治理 HEAD 当作新 Green。

@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
-import { NImage, NMessageProvider } from 'naive-ui'
+import { NEllipsis, NImage, NMessageProvider } from 'naive-ui'
 import { describe, expect, it, vi } from 'vitest'
 import ProductInfoCell from './ProductInfoCell.vue'
 import ProductImage from './ProductImage.vue'
@@ -34,8 +34,10 @@ describe('shared product display', () => {
     await wrapper.get('button[aria-label="复制商品ID"]').trigger('click')
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith(id)
-    expect(wrapper.get('.product-info-cell__id span').text()).toBe(id)
+    expect(wrapper.get('.product-info-cell__id span').text()).toBe('ID：' + id)
     expect(wrapper.text()).toContain('完整长商品名称')
+    expect(wrapper.findComponent(NEllipsis).props('lineClamp')).toBeUndefined()
+    expect(wrapper.findComponent(NEllipsis).props('tooltip')).toBe(true)
     wrapper.unmount()
   })
   it('preserves candidate image dimensions, no-referrer, retry and source reset through the compatibility facade', async () => {
