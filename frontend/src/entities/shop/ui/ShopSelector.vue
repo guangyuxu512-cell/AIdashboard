@@ -10,12 +10,16 @@ const props = withDefaults(
   defineProps<{
     modelValue?: string | null
     disabled?: boolean
+    clearable?: boolean
     placeholder?: string
+    labelTooltip?: boolean
   }>(),
   {
     modelValue: null,
     disabled: false,
+    clearable: false,
     placeholder: '请选择店铺',
+    labelTooltip: false,
   },
 )
 
@@ -37,7 +41,9 @@ function update(value: AppOptionValue | null): void {
     :options="options"
     :loading="query.isPending.value"
     :disabled="props.disabled"
+    :clearable="props.clearable"
     :placeholder="props.placeholder"
+    :label-tooltip="props.labelTooltip"
     filterable
     @update:model-value="update"
   />

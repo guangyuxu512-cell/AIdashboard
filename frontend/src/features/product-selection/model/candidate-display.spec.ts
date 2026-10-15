@@ -8,9 +8,20 @@ import {
   categoryLeaf,
   sourceProductUrl,
   formatCandidateTime,
+  formatFirstListed,
 } from './candidate-display'
 
 describe('candidate rank and discovery semantics', () => {
+  it.each([
+    [true, '是'],
+    [false, '否'],
+    [null, '—'],
+  ] as const)(
+    'preserves platform first-listed state %s as %s',
+    (value, label) => {
+      expect(formatFirstListed(value)).toBe(label)
+    },
+  )
   it('compares only the same leaderboard/scope and never turns scope exit into delisting', async () => {
     const service = createSelectionMockHandlers()
     const row = await service.candidate('candidate-001')

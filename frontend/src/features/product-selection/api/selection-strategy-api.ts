@@ -41,6 +41,7 @@ export interface SelectionStrategyDto extends SelectionStrategyWriteDto {
   schedule_execution_enabled?: boolean
   next_run_at: string | null
   latest_run: SelectionExecutionSummary | null
+  latest_receipt_id?: string | null
   latest_trigger?: SelectionStrategyTriggerDto | null
   created_at: string
   updated_at: string
@@ -56,6 +57,15 @@ export interface SelectionStrategyTriggerDto {
   error_stage: string | null
 }
 const path = '/api/v1/product-selection/strategies'
+export async function readSavedStrategy(
+  id: string,
+): Promise<SelectionStrategyDto> {
+  return (
+    await httpClient.get<SelectionStrategyDto>(
+      `${path}/${encodeURIComponent(id)}`,
+    )
+  ).data
+}
 export async function readStrategies(params: {
   page: number
   pageSize: number

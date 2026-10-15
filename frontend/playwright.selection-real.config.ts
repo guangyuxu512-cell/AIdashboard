@@ -5,6 +5,8 @@ const port = process.env.PLAYWRIGHT_FRONTEND_PORT ?? '4176'
 export default defineConfig({
   testDir: './e2e/production',
   testMatch: [
+    'product-selection-detail-compact.spec.ts',
+    'product-selection-candidate-results.spec.ts',
     'product-selection-unavailable.spec.ts',
     'product-selection-strategy-restoration.spec.ts',
     'product-selection-strategies.spec.ts',

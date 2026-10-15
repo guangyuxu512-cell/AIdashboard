@@ -1,4 +1,6 @@
 export type AuditAction =
+  | 'product_selection.block_candidate'
+  | 'product_selection.restore_candidate'
   | 'access_management.create_member'
   | 'access_management.update_member'
   | 'access_management.reset_member_password'
@@ -7,7 +9,8 @@ export type AuditAction =
   | 'access_management.create_team'
   | 'access_management.update_team'
 
-export type AuditTargetType = 'user' | 'membership' | 'team'
+export type AuditTargetType =
+  'user' | 'membership' | 'team' | 'selection_candidate'
 
 export interface AuditLogViewModel {
   auditLogId: string
@@ -23,6 +26,8 @@ export interface AuditLogViewModel {
 }
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  'product_selection.block_candidate': '屏蔽候选商品',
+  'product_selection.restore_candidate': '恢复候选商品',
   'access_management.create_member': '创建员工',
   'access_management.update_member': '更新员工状态',
   'access_management.reset_member_password': '重置密码',
@@ -33,6 +38,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
 }
 
 const TARGET_LABELS: Record<AuditTargetType, string> = {
+  selection_candidate: '候选商品',
   user: '员工',
   membership: '成员关系',
   team: '团队',

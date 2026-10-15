@@ -2,11 +2,19 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { defineComponent, h } from 'vue'
 import { NMessageProvider } from 'naive-ui'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { AppButton } from '@/shared/ui'
+import {
+  FilterBar,
+  ManagementListSection,
+  PaginationBar,
+  TableToolbar,
+} from '@/shared/components'
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import type { BatchCollectReceipt, SelectionService } from '../model/contracts'
 import CandidatePool from './CandidatePool.vue'
+import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
+import { ProductInfoCell } from '@/entities/product'
 
 const TableStub = defineComponent({
   name: 'DataTable',
@@ -61,6 +69,39 @@ function render(service: SelectionService) {
 }
 
 describe('candidate selection and batch demo', () => {
+  beforeAll(() =>
+    document.documentElement.style.setProperty(
+      '--list-compact-control-height',
+      '28px',
+    ),
+  )
+  afterAll(() =>
+    document.documentElement.style.removeProperty(
+      '--list-compact-control-height',
+    ),
+  )
+  it('clearing shop removes the filter, resets pagination/selection and only reads results', async () => {
+    const service = createSelectionMockHandlers()
+    const candidates = vi.spyOn(service, 'candidates')
+    const retrieve = vi.spyOn(service, 'retrieve')
+    const { wrapper, table, dispose } = render(service)
+    await flushPromises()
+    expect(candidates.mock.calls[0]?.[0].pageSize).toBe(20)
+    const selector = wrapper.findComponent(ShopSelector)
+    expect(selector.props('clearable')).toBe(true)
+    selector.vm.$emit('update:modelValue', 'shop-fixture-001')
+    await flushPromises()
+    table.vm.$emit('update:checkedRowKeys', ['candidate-000'])
+    selector.vm.$emit('update:modelValue', null)
+    await flushPromises()
+    expect(candidates.mock.calls.at(-1)?.[0]).toMatchObject({
+      shopId: null,
+      page: 1,
+    })
+    expect(table.props('checkedRowKeys')).toEqual([])
+    expect(retrieve).not.toHaveBeenCalled()
+    dispose()
+  })
   it.each([
     ['succeeded', 0, null, '所选范围暂无候选商品'],
     [
@@ -119,7 +160,7 @@ describe('candidate selection and batch demo', () => {
       dispose()
     },
   )
-  it('centers the two-line title and all columns, fits actual width and keeps scope out of the list', async () => {
+  it('reuses one product identity column, preserves other columns and keeps scope out of the list', async () => {
     const { wrapper, table, button, dispose } = render(
       createSelectionMockHandlers(),
     )
@@ -131,11 +172,11 @@ describe('candidate selection and batch demo', () => {
       ),
     ).toEqual([
       'selection',
-      'image',
-      'title',
+      'productInfo',
       'merchant',
       'category',
       'rank',
+      'firstListed',
       'discovery',
       'priceBand',
       'negativeReviewRate',
@@ -148,26 +189,56 @@ describe('candidate selection and batch demo', () => {
     }
     const widths = columns.map((column: { width: number }) => column.width)
     expect(widths[0]).toBe(44)
-    expect(widths[1]).toBe(88)
+    expect(widths[1]).toBeGreaterThanOrEqual(340)
+    expect(widths[1]).toBeLessThanOrEqual(360)
     expect(widths.at(-1)).toBe(220)
     expect(
       widths.reduce((total: number, width: number) => total + width, 0),
     ).toBe(1494)
     expect(table.props('scrollX')).toBeUndefined()
-    const title = columns
-      .find((column: { key: string }) => column.key === 'title')
+    const product = columns
+      .find((column: { key: string }) => column.key === 'productInfo')
       .render(table.props('data')[0])
-    expect(title.props).toMatchObject({
-      lineClamp: 2,
-      tooltip: true,
-      style: { width: '100%', textAlign: 'center' },
+    const row = table.props('data')[0]
+    expect(product.type).toBe(ProductInfoCell)
+    expect(product.props).toMatchObject({
+      title: row.title,
+      productId: row.productId,
+      imageUrl: row.imageUrl,
+      density: 'compact',
     })
+    const firstListed = columns.find(
+      (column: { key: string }) => column.key === 'firstListed',
+    )
+    expect(firstListed.width).toBe(84)
+    expect(firstListed.sorter).toBeUndefined()
+    for (const [value, label, depth] of [
+      [true, '是', 1],
+      [false, '否', 1],
+      [null, '—', 3],
+    ] as const) {
+      const cell = firstListed.render({ ...row, firstListed: value })
+      expect(cell.props.depth).toBe(depth)
+      expect(cell.children.default()).toBe(label)
+    }
     expect(columns.at(-1).fixed).toBe('right')
     expect(columns.at(-1).width).toBe(220)
-    expect(table.props('themeOverrides')).toEqual({
-      tdPaddingMedium: 'var(--space-2) var(--space-3)',
-      thPaddingMedium: 'var(--space-2) var(--space-3)',
-    })
+    expect(table.props('themeOverrides')).toBeUndefined()
+    for (const component of [
+      FilterBar,
+      ManagementListSection,
+      PaginationBar,
+      TableToolbar,
+    ])
+      expect(wrapper.findComponent(component).props('density')).toBe('compact')
+    // Teleport alone does not reset provide. Detail must remain a sibling.
+    expect(
+      wrapper
+        .findComponent(ManagementListSection)
+        .find('candidate-detail-drawer-stub')
+        .exists(),
+    ).toBe(false)
+    expect(wrapper.find('candidate-detail-drawer-stub').exists()).toBe(true)
     expect(button().props('tone')).toBe('primary')
     expect(wrapper.text()).not.toContain('短视频商品榜 · 近7天 · 第1–200名')
     expect(wrapper.text()).not.toContain('查看范围')
@@ -187,7 +258,7 @@ describe('candidate selection and batch demo', () => {
     )
     const { wrapper, table, button, dispose } = render(service)
     await flushPromises()
-    expect(table.props('data')).toHaveLength(10)
+    expect(table.props('data')).toHaveLength(20)
     expect(button().props('disabled')).toBe(true)
     button().vm.$emit('click', new MouseEvent('click'))
     await flushPromises()
@@ -261,7 +332,7 @@ describe('candidate selection and batch demo', () => {
     wrapper.findComponent({ name: 'PaginationBar' }).vm.$emit('update:page', 2)
     await flushPromises()
     expect(table.props('checkedRowKeys')).toEqual([])
-    expect(table.props('data')[0].id).toBe('candidate-010')
+    expect(table.props('data')[0].id).toBe('candidate-020')
     expect(wrapper.text()).not.toContain('已选')
     dispose()
   })

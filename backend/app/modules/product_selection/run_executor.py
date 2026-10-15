@@ -22,6 +22,7 @@ from app.modules.product_selection.run_service import (
     SelectionRunService, selection_request_mapping_available, safe_run_error,
 )
 from app.modules.product_selection.service import ProductSelectionFactService
+from app.modules.product_selection.basic_contract import SelectionBasicRequest
 from app.modules.sessions.auth_context import ShopSessionAuthContext
 from app.platforms.douyin.product_selection import (
     CompassBasicInfo, CompassRankPage, CompassSelectionBusinessError,
@@ -133,6 +134,9 @@ class SelectionRunExecutor:
         return actual_request, first, chosen.date_outcome.state in {"both_empty", "backup_empty"}
 
     def execute_claim(self, claim: SelectionRunClaim) -> None:
+        if isinstance(claim.request, SelectionBasicRequest):
+            self._execute_basic(claim)
+            return
         error = None
         try:
             self._authorize(claim, "session")
@@ -207,6 +211,35 @@ class SelectionRunExecutor:
             error = failure
         except Exception:
             # No arbitrary exception/URL/payload enters logs or run records.
+            error = PlatformRequestFailedError()
+        try:
+            with self.session_factory() as session:
+                SelectionRunService(session, settings=self.settings).finish(claim, error=error)
+        except SelectionRunLeaseLostError:
+            return
+
+    def _execute_basic(self, claim):
+        from app.modules.product_selection.basic_service import SelectionBasicService
+        error = None
+        try:
+            actor = self._authorize(claim, "session")
+            context = self.platform.session_context(claim.shop_id)
+            if context.shop_id != claim.shop_id:
+                raise PlatformRequestFailedError()
+            actor = self._authorize(claim, "basic_info")
+            try:
+                basic = self.platform.basic_info(context, claim.request.product_id)
+            except AppError as failure:
+                with self.session_factory() as session:
+                    SelectionBasicService(session, settings=self.settings).persist(actor, claim, error=failure)
+                raise
+            with self.session_factory() as session:
+                SelectionBasicService(session, settings=self.settings).persist(actor, claim, basic=basic)
+        except SelectionRunLeaseLostError:
+            return
+        except AppError as failure:
+            error = failure
+        except Exception:
             error = PlatformRequestFailedError()
         try:
             with self.session_factory() as session:

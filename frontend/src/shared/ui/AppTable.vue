@@ -70,7 +70,7 @@ function handleSorterUpdate(
     :checked-row-keys="props.checkedRowKeys"
     :theme-overrides="props.themeOverrides"
     :row-class-name="rowClassName"
-    :single-line="appearance === 'list'"
+    :single-line="false"
     :flex-height="fill"
     @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
     @update:sorter="handleSorterUpdate"

@@ -10,6 +10,8 @@ export const formatCandidateDate = (value: string | null) =>
   value === null ? '—' : dayjs(value).format('YYYY-MM-DD')
 export const formatReviewRate = (value: number | null) =>
   value === null ? '—' : `${(value * 100).toFixed(2)}%`
+export const formatFirstListed = (value: boolean | null) =>
+  value === true ? '是' : value === false ? '否' : '—'
 
 export const formatCandidateTime = (
   value: string | null,
