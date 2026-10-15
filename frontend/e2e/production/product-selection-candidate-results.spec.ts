@@ -375,6 +375,9 @@ for (const theme of ['graphite', 'forest', 'coral', 'midnight']) {
       page.getByRole('button', { name: '详情', exact: true }),
     ).toBeVisible()
     await expect(page.getByText('演示数据', { exact: true })).toHaveCount(0)
+    await expect(page.locator('td[data-col-key="firstListed"]')).toHaveText(
+      '否',
+    )
     const shopSelect = page.locator('.filter-bar .n-select').first()
     const selectedLabel = shopSelect.locator(
       '.n-base-selection-overlay .app-select-label',

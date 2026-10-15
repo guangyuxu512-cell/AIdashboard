@@ -35,6 +35,7 @@ import type {
 import {
   formatCandidateDate,
   formatReviewRate,
+  formatFirstListed,
   collectionLabels,
   discoveryLabels,
   discoveryDescriptions,
@@ -396,6 +397,7 @@ const readingWidths = computed(() => {
   const fit = (compact: number, wide: number) =>
     Math.floor(compact + (wide - compact) * expand)
   const rank = fit(54, 88)
+  const firstListed = 84
   const discovery = fit(66, 88)
   const price = fit(80, 112)
   const review = fit(84, 96)
@@ -403,7 +405,7 @@ const readingWidths = computed(() => {
   const status = fit(82, 100)
   const text = Math.max(
     0,
-    space - rank - discovery - price - review - listed - status,
+    space - rank - firstListed - discovery - price - review - listed - status,
   )
   // Reuse the former image + three text columns' budget. Reserve a readable
   // identity cell first, then keep merchant/category ellipses within it.
@@ -421,6 +423,7 @@ const readingWidths = computed(() => {
     merchant,
     category,
     rank,
+    firstListed,
     discovery,
     price,
     review,
@@ -501,6 +504,16 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           : null,
       ])
     },
+  },
+  {
+    key: 'firstListed',
+    title: wrappedHeader('首次上榜'),
+    width: readingWidths.value.firstListed,
+    align: 'center',
+    render: (row) =>
+      h(NText, { depth: row.firstListed === null ? 3 : 1 }, () =>
+        formatFirstListed(row.firstListed),
+      ),
   },
   {
     key: 'discovery',

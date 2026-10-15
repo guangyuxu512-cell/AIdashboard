@@ -139,12 +139,15 @@ test('candidate product identity fits four themes with stable copy slots and acc
         source = await response.text()
       const pattern = /productId:\s*`9087654321098765[^`]*`/
       expect(source).toMatch(pattern)
+      expect(source).toContain('firstListed: index % 3 === 0')
       await route.fulfill({
         response,
-        body: source.replace(
-          pattern,
-          `productId: ${JSON.stringify(ids)}[index % 4]`,
-        ),
+        body: source
+          .replace(
+            'firstListed: index % 3 === 0',
+            'firstListed: [true, false, null][index % 3]',
+          )
+          .replace(pattern, `productId: ${JSON.stringify(ids)}[index % 4]`),
       })
     },
   )
@@ -160,6 +163,26 @@ test('candidate product identity fits four themes with stable copy slots and acc
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
   await loadCandidateImages(page)
+  for (const [index, label] of ['是', '否', '—'].entries()) {
+    const row = rows.nth(index)
+    await expect(row.locator('td[data-col-key="firstListed"]')).toHaveText(
+      label,
+    )
+    await row.getByRole('button', { name: '详情', exact: true }).click()
+    const header = page
+      .locator('.n-drawer')
+      .getByRole('columnheader', { name: '平台首次上榜', exact: true })
+    await expect(
+      header
+        .locator('xpath=../following-sibling::tr[1]')
+        .getByRole('cell')
+        .last(),
+    ).toHaveText(label)
+    await page
+      .locator('.n-drawer')
+      .getByRole('button', { name: '关闭', exact: true })
+      .click()
+  }
   for (let n = 0; n < 3; n++) {
     const cell = rows.nth(n).locator('.product-info-cell')
     await cell.locator('.product-info-cell__title').click()
@@ -220,12 +243,16 @@ test('candidate product identity fits four themes with stable copy slots and acc
       )
       await body.evaluate((element) => {
         element.scrollLeft = 0
+        element.scrollTop = 0
       })
       await expect
         .poll(() => body.evaluate((element) => element.scrollLeft))
         .toBe(0)
+      await expect
+        .poll(() => body.evaluate((element) => element.scrollTop))
+        .toBe(0)
       await settleTransitions(page)
-      await expect(page.getByRole('columnheader')).toHaveCount(11)
+      await expect(page.getByRole('columnheader')).toHaveCount(12)
       for (const heading of await page.getByRole('columnheader').all())
         await expect(heading).toBeInViewport()
       const dimensions = await rows.first().evaluate((row) => {
@@ -444,7 +471,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         .evaluateAll((elements) =>
           elements.map((element) => getComputedStyle(element).textAlign),
         )
-      expect(alignments).toEqual(Array(11).fill('center'))
+      expect(alignments).toEqual(Array(12).fill('center'))
     }
     await scrollCandidateTableToRight(page)
     await page.screenshot({
@@ -463,7 +490,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
     })
     const colors = await rows.first().evaluate((row) => {
       const plain = row.querySelector('.product-info-cell__title')!
-      const missing = row.querySelector('td:nth-child(8) .n-text')!
+      const missing = row.querySelector('td:nth-child(9) .n-text')!
       return {
         body: getComputedStyle(plain).color,
         missing: getComputedStyle(missing).color,
@@ -1428,6 +1455,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
     '店铺名',
     '类目',
     '榜单排名',
+    '首次上榜',
     '发现情况',
     '价格／价格带',
     '差评率',
@@ -1930,7 +1958,7 @@ test('detail typography: four themes, primary values, compact header metadata an
           cells[1]!.querySelector('.product-info-cell__title')!,
           cells[2]!.querySelector('.n-ellipsis')!,
           cells[3]!.querySelector('.n-ellipsis')!,
-          cells[5]!.querySelector('.n-text')!,
+          cells[6]!.querySelector('.n-text')!,
         ].map((element) => {
           const css = getComputedStyle(element)
           return {
@@ -2138,13 +2166,13 @@ test('detail missing timestamp and zero metrics stay distinct from leaderboard t
   await page.goto('/#/product-selection')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
-  const collection = rows.first().locator('td').nth(9)
+  const collection = rows.first().locator('td').nth(10)
   await expect(collection).toHaveText('—')
   const missingColors = await rows
     .first()
     .locator('td')
     .evaluateAll((cells) =>
-      [7, 9].map(
+      [8, 10].map(
         (index) =>
           getComputedStyle(cells[index]!.querySelector('.n-text')!).color,
       ),

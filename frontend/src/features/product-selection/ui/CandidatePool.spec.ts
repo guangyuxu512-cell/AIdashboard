@@ -158,6 +158,7 @@ describe('candidate selection and batch demo', () => {
       'merchant',
       'category',
       'rank',
+      'firstListed',
       'discovery',
       'priceBand',
       'negativeReviewRate',
@@ -186,6 +187,20 @@ describe('candidate selection and batch demo', () => {
       productId: row.productId,
       imageUrl: row.imageUrl,
     })
+    const firstListed = columns.find(
+      (column: { key: string }) => column.key === 'firstListed',
+    )
+    expect(firstListed.width).toBe(84)
+    expect(firstListed.sorter).toBeUndefined()
+    for (const [value, label, depth] of [
+      [true, '是', 1],
+      [false, '否', 1],
+      [null, '—', 3],
+    ] as const) {
+      const cell = firstListed.render({ ...row, firstListed: value })
+      expect(cell.props.depth).toBe(depth)
+      expect(cell.children.default()).toBe(label)
+    }
     expect(columns.at(-1).fixed).toBe('right')
     expect(columns.at(-1).width).toBe(220)
     expect(table.props('themeOverrides')).toEqual({

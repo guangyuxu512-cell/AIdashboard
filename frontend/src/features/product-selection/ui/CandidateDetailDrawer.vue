@@ -23,6 +23,7 @@ import {
   formatCandidateDate,
   formatCandidateTime,
   formatReviewRate,
+  formatFirstListed,
   comparablePreviousRank,
   rankChange,
   collectionLabels,
@@ -327,7 +328,7 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
           >
           <NDescriptionsItem label="平台首次上榜"
             ><NText :depth="row.firstListed === null ? 3 : 1">{{
-              row.firstListed === null ? '—' : row.firstListed ? '是' : '否'
+              formatFirstListed(row.firstListed)
             }}</NText></NDescriptionsItem
           >
         </NDescriptions>
