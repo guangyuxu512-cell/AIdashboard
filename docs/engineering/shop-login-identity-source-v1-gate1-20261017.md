@@ -1,6 +1,16 @@
 # 店铺身份来源与错店纠正 Gate 1
 
-Owner 为 81a1，独立审查交 ca97。本候选完成已核准的源码修复与合成验证；真实登录、匹配桌面包、安装及发布不在本轮执行授权内。
+Owner 为 81a1，独立审查交 ca97。源码修复及 998 合前 Gate 2 已完成；现按新增人类授权准备 1.0.8 匹配交付，Owner 只制作并交接包，安装、合并和发布由后续责任人执行。
+
+## 集成验收与正式交付授权
+
+ca97 已独立验证 998 全 83 项 Node、前端 61 项、lint/typecheck/Real build 及实际 Service 身份边界，真实网络/Profile 访问哨兵为零。匹配 998 的唯一 Real Integration Electron 随后完成三轮受控真实专项：前置正常保存 valid v8、错店拒绝且旧 v8/绑定保留并留窗、原失败窗口切回后显式新 lease 继续保存 valid v9。原任务事实摘要保持，三次 refresh 预算已用尽，不重复登录。
+
+规划人类 turn `01a146fd-f4c5-7383-af58-d41e0b5c9f3b` 对紧邻完整交付范围直接“同意”，ca97 已独占登记 1.0.8。此后仅从 998 正常追加 `electron/package.json` 版本、`electron/docs/05-打包升级与验证.md` 及本记录三路径，形成新的精确 Source；所有运行、Frontend、Backend blob 均保持 998，不混入 98 反馈、PDD 新逻辑、布局、商品数据或清理。
+
+交付提交须干净，现有 `package:win` 自动完成 TypeScript/83 Node、NSIS、Fuse、PE、hash 与 manifest 生成。安装器名、manifest 和 ASAR 的 Source 必须为实际交付提交，不手填为 998；EXE、manifest、checksum 保存在按版本与 Source 分开的新目录。该次实际 SHA/size/hash/包验证结果随正式 Handoff 和生成 manifest 提交审查，不在源码文档中预填尚未生成的值。
+
+Owner 不操作 Integration/生产、Profile、窗口或平台。ca97 独立核包后走 dev 合并复验及精确 CI，Main 再按 Release Gate 部署配套 Renderer；生产健康后才正常退出开发窗口、保留 userData 覆盖安装。新鲜安全检查后的生产 MyCookLab 一次正常登录由规划统一通知，失败即停，无自动重试。授权不等于已安装或已部署。
 
 ## 恢复身份 IPC 边界返修
 
@@ -17,7 +27,7 @@ Frontend、Preload、类型、Backend、数据库、包版本及其它源码相�
 - 分支 `feat/shop-login-identity-source-v1`，直接基线为精确 Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`，CI 38941889261 三项成功。
 - 基线运行代码与已发布 `c085a3f75a84f9ac68ea9da7473782431de252a3` 一致。原诊断 229d5c6、恢复 a488、反馈 98c1330 及各分支、包和本机材料保留。
 - 从 a488 逐路径复用必要留窗与人工继续代码，不合并整条恢复分支，不引入 98 的成功反馈、successMap 或查询刷新修补。
-- 共 10 个运行路径、8 个定向测试路径、3 份现有契约及本 Gate 1 记录。Backend、Shared、CSS、选品、窗口框架、依赖、Schema、迁移和包版本不变。
+- 源码修复共 10 个运行路径、8 个定向测试路径、3 份现有契约及本 Gate 1 记录；交付增量再增加 package 版本和发行文档，共 24 路径。除显式版本元数据外，Backend、Shared、CSS、选品、窗口框架、依赖、Schema 和迁移不变。
 
 ## 身份与恢复行为
 
@@ -49,7 +59,7 @@ Preload 增加固定可选 `refreshRecoverySupported: true`；原状态类型增
 
 ## 验证
 
-所有平台/HTTP 结果均为合成注入，未连接真实平台或业务数据库。
+以下为 Owner 源码阶段的合成验证，未连接真实平台或业务数据库；ca97 的三轮真实集成证据另见前述交付授权及 Gate 2 记录。
 
 | 命令与范围 | 实际结果 |
 | --- | --- |
@@ -66,8 +76,8 @@ Preload 增加固定可选 `refreshRecoverySupported: true`；原状态类型增
 
 既有生产单次失败已定位在 `candidate_identity`，发生于权威候选校验/保存之前，原 Session 保留。旧解析器缺陷可用原函数与合成结构复现；该次实际候选的字段来源未保留，不能认定用户登错账号或此缺陷就是唯一根因。
 
-本轮数据库、真实平台、生产登录、原生窗口、服务启停、Profile 读取及安装动作均为零。未重复验证已通过的选品 A/B，也未操作当前 Integration/生产配置。Backend 已发布诊断保持不变，无 Migration，无 Feature DB 需求。
+Owner 的数据库、真实平台、生产登录、原生窗口、服务启停、Profile 读取及安装动作均为零。未重复验证已通过的选品 A/B，也未操作当前 Integration/生产配置。Backend 已发布诊断保持不变，无 Migration，无 Feature DB 需求。
 
-本候选修改 Main、Preload 和 Adapter，后续真实验收必须使用与精确 Candidate 匹配的桌面代码；仅部署服务器 Frontend 不能更新旧客户端。package.json 暂保留 1.0.6，本轮不制作、安装或发放新桌面包；所需版本、真实验证和发布须由 ca97/规划另行确认。
+本候选修改 Main、Preload 和 Adapter，真实验收和正式客户端必须匹配精确 Source；仅部署服务器 Frontend 不能更新旧客户端。1.0.8 已获完整交付授权，当前版本元数据追加不改变 998 的运行代码；旧 1.0.7 包完整保留，不作为本次交付包。
 
-ca97 接收精确 SHA 后独立审查范围、恢复安全门禁和旧 Session 保护。尚无本候选真实登录或原生验收，不标 Gate 2、Green 或已部署。应用回退须成套匹配 Renderer/Preload/Main，保留现有 Profile、Session、Schema 与所有历史证据；不通过清理用户数据回退。
+998 的功能合前 Gate 2 与真实集成专项通过，不等于新交付提交已 Green、已安装或已部署。ca97 接收精确版本提交与包后继续独立核验，再推进合并和发布。应用回退须成套匹配 Renderer/Preload/Main，保留现有 Profile、Session、Schema 与所有历史证据；不通过清理用户数据回退。
