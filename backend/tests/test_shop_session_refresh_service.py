@@ -12,10 +12,12 @@ from app.core.security import SecretCipher
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
     SessionRefreshLeaseConflictError,
+    SessionRefreshLeaseInvalidError,
     SessionVersionConflictError,
+    ShopSessionPayloadInvalidError,
 )
 from app.modules.sessions.models import ShopSession
-from app.modules.sessions.refresh_service import ShopSessionRefreshService
+from app.modules.sessions.refresh_service import ShopSessionRefreshService, safe_refresh_diagnostic_details
 from app.modules.sessions.health_service import ValidatedSessionCandidate
 from app.modules.sessions.schemas import (
     CompleteShopSessionRefreshCommand,
@@ -203,6 +205,193 @@ def test_refresh_lease_blocks_concurrent_attempt_and_recovers_after_expiry() -> 
     second = service.acquire(stored.shop_id)
 
     assert second.lease_id != first.lease_id
+
+
+@pytest.mark.parametrize(("encoded", "stage"), [
+    ("not base64!", "candidate_encoding"),
+    (base64.b64encode(b"not json").decode(), "candidate_json"),
+    (base64.b64encode(b"\xff").decode(), "candidate_json"),
+    (base64.b64encode(b'{"cookies": []}').decode(), "candidate_schema"),
+])
+def test_rejected_payload_has_safe_stage_without_changing_session(encoded, stage) -> None:
+    service, stored, session_service = make_service()
+    lease = service.acquire(stored.shop_id)
+    before = (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(encoded), captured_at=datetime.now(UTC),
+        ))
+    assert failure.value.details["refresh_stage"] == stage
+    assert failure.value.code == "SHOP_SESSION_PAYLOAD_INVALID"
+    assert failure.value.status_code == 500
+    assert failure.value.message == ShopSessionPayloadInvalidError.message
+    assert encoded not in str(failure.value)
+    assert session_service.payload is None
+    assert stored.refresh_lease_id is None
+    assert before == (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
+
+
+@pytest.mark.parametrize(("field", "replacement", "stage"), [
+    ("platform", "pdd", "candidate_platform"),
+    ("identity", {"platform": "douyin", "platformShopId": "another-test-shop", "shopDisplayName": "Other"}, "candidate_identity"),
+])
+def test_wrong_platform_and_identity_keep_original_rejection(field, replacement, stage) -> None:
+    service, stored, session_service = make_service()
+    lease = service.acquire(stored.shop_id)
+    document = json.loads(captured_payload())
+    document[field] = replacement
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(json.dumps(document).encode()).decode()),
+            captured_at=datetime.now(UTC),
+        ))
+    assert failure.value.details == {"refresh_stage": stage}
+    assert failure.value.message == ("登录身份与目标店铺不匹配" if field == "identity" else ShopSessionPayloadInvalidError.message)
+    assert session_service.payload is None
+    assert stored.version == 3
+    assert stored.refresh_lease_id is None
+
+
+@pytest.mark.parametrize("changed_target", [False, True])
+def test_validation_and_changed_target_reject_before_store(changed_target) -> None:
+    original = ShopSessionPayloadInvalidError("Synthetic fixed rejection")
+    service, stored, session_service = make_service(failure=None if changed_target else original)
+    lease = service.acquire(stored.shop_id)
+
+    def recheck() -> None:
+        assert changed_target
+        service.shop_repository.shop.platform_shop_id = "changed-test-target"
+
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(captured_payload()).decode()),
+            captured_at=datetime.now(UTC),
+        ), recheck_authorization=recheck)
+    assert failure.value.details == ({"refresh_stage": "target_changed"} if changed_target else {
+        "refresh_stage": "candidate_validation", "validation_step": "unclassified",
+    })
+    if not changed_target:
+        assert failure.value is original
+        assert failure.value.message == "Synthetic fixed rejection"
+    assert session_service.payload is None
+    assert stored.version == 3
+    assert stored.refresh_lease_id is None
+
+
+@pytest.mark.parametrize("step", ["context_validation", "identity_connector", "cookie_merge", "malicious-step"])
+def test_validation_preserves_only_known_step_and_original_error(step) -> None:
+    original = ShopSessionPayloadInvalidError(details={
+        "refresh_stage": "candidate_validation", "validation_step": step,
+        "private": "SYNTHETIC_PRIVATE_CANARY",
+    })
+    service, stored, _ = make_service(failure=original)
+    lease = service.acquire(stored.shop_id)
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(captured_payload()).decode()),
+            captured_at=datetime.now(UTC),
+        ))
+    assert failure.value is original
+    assert failure.value.details == {
+        "refresh_stage": "candidate_validation",
+        "validation_step": "unclassified" if step == "malicious-step" else step,
+    }
+
+
+def test_schema_issues_are_bounded_categories_and_never_payload_values() -> None:
+    service, stored, _ = make_service()
+    lease = service.acquire(stored.shop_id)
+    document = json.loads(captured_payload())
+    document.pop("schema")
+    document["platform"] = "SYNTHETIC_PRIVATE_CANARY"
+    document["cookies"] = [{"name": "", "value": 17, "expirationDate": "SYNTHETIC_PRIVATE_CANARY"}]
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(json.dumps(document).encode()).decode()),
+            captured_at=datetime.now(UTC),
+        ))
+    assert failure.value.details == {
+        "refresh_stage": "candidate_schema", "schema_issues": [
+            {"field": "schema", "type": "missing"},
+            {"field": "platform", "type": "enum"},
+            {"field": "cookies.name", "type": "string_too_short"},
+        ], "schema_issues_truncated": True,
+    }
+    assert "SYNTHETIC_PRIVATE_CANARY" not in json.dumps(failure.value.details)
+
+
+@pytest.mark.parametrize(("document", "expected"), [
+    ([], {"field": "document", "type": "model_type"}),
+    ({"schema": "management-login.session.v1", "platform": "douyin", "cookies": []}, {"field": "cookies", "type": "too_short"}),
+    ({"schema": "management-login.session.v1", "platform": "douyin", "cookies": [{"name": "synthetic", "value": "SYNTHETIC_PRIVATE_CANARY", "expirationDate": "invalid"}]}, {"field": "cookies.expiration_date", "type": "float_parsing"}),
+])
+def test_schema_categories_do_not_expose_indices_or_values(document, expected) -> None:
+    service, stored, _ = make_service()
+    lease = service.acquire(stored.shop_id)
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(json.dumps(document).encode()).decode()),
+            captured_at=datetime.now(UTC),
+        ))
+    assert failure.value.details["schema_issues"] == [expected]
+    assert failure.value.details["schema_issues_truncated"] is False
+    assert "SYNTHETIC_PRIVATE_CANARY" not in json.dumps(failure.value.details)
+
+
+def test_unsafe_or_unknown_diagnostic_details_are_not_reflected() -> None:
+    private = "SYNTHETIC_PRIVATE_CANARY"
+    assert safe_refresh_diagnostic_details(ShopSessionPayloadInvalidError(details={"refresh_stage": private, "input": private})) == {"refresh_stage": "unclassified"}
+    assert safe_refresh_diagnostic_details(ShopSessionPayloadInvalidError(details={
+        "refresh_stage": "candidate_schema", "schema_issues": [
+            {"field": private, "type": private, "msg": private, "input": private},
+            private, {"field": "cookies.path", "type": "string_type"},
+            {"field": "cookies.value", "type": "string_type"},
+        ], "ctx": private,
+    })) == {
+        "refresh_stage": "candidate_schema", "schema_issues": [
+            {"field": "unknown", "type": "other"},
+            {"field": "cookies.path", "type": "string_type"},
+        ], "schema_issues_truncated": True,
+    }
+
+
+def test_invalid_lease_is_not_reclassified_as_payload_diagnostic() -> None:
+    service, stored, session_service = make_service()
+    with pytest.raises(SessionRefreshLeaseInvalidError):
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=uuid4(), expected_version=stored.version,
+            session_payload_base64=SecretStr("invalid"), captured_at=datetime.now(UTC),
+        ))
+    assert stored.version == 3
+    assert session_service.payload is None
+
+
+def test_authorization_recheck_denial_never_stores_or_resumes() -> None:
+    from app.modules.access.exceptions import AccessAdministrationForbiddenError
+
+    resumed: list[UUID] = []
+    service, stored, session_service = make_service(collection_resume=resumed.append)
+    lease = service.acquire(stored.shop_id)
+
+    def denied() -> None:
+        raise AccessAdministrationForbiddenError()
+
+    with pytest.raises(AccessAdministrationForbiddenError):
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(captured_payload()).decode()),
+            captured_at=datetime.now(UTC),
+        ), recheck_authorization=denied)
+    assert stored.version == 3
+    assert session_service.payload is None
+    assert stored.refresh_lease_id is None
+    assert resumed == []
 
 
 def test_cancel_releases_lease_and_complete_uses_expected_version() -> None:

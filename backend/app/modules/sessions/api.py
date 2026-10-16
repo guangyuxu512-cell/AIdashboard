@@ -1,18 +1,25 @@
+import json
+import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.logging.request import get_request_id
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import get_super_account
 from app.modules.access.service import ActorContextService
 from app.modules.sessions.auth_context import ShopSessionAccessor
 from app.modules.sessions.health_service import ShopSessionHealthService
-from app.modules.sessions.refresh_service import ShopSessionRefreshService
+from app.modules.sessions.exceptions import ShopSessionPayloadInvalidError
+from app.modules.sessions.refresh_service import (
+    ShopSessionRefreshService,
+    safe_refresh_diagnostic_details,
+)
 from app.modules.sessions.schemas import (
     CompleteShopSessionRefreshCommand,
     ShopSessionHealthRead,
@@ -21,6 +28,18 @@ from app.modules.sessions.schemas import (
 )
 from app.modules.sessions.service import ShopSessionService
 from app.platforms.registry import create_platform_connectors
+
+logger = logging.getLogger(__name__)
+
+
+def _diagnostic_request_id(request: Request) -> str:
+    value = get_request_id(request)
+    try:
+        if len(value) == 36 and str(UUID(value)) == value.lower():
+            return value
+    except (ValueError, TypeError, AttributeError):
+        pass
+    return "unavailable"
 
 
 # Compatibility name for dependency overrides; it remains the super guard.
@@ -143,6 +162,7 @@ def release_shop_session_refresh_lease(
 def complete_shop_session_refresh(
     shop_id: UUID,
     command: CompleteShopSessionRefreshCommand,
+    request: Request,
     _actor: Annotated[ActorContext, Depends(get_shop_authorized_actor)],
     service: Annotated[
         ShopSessionRefreshService,
@@ -155,4 +175,18 @@ def complete_shop_session_refresh(
         )
         get_super_account(current)
 
-    return service.complete(shop_id, command, recheck_authorization=recheck_authorization)
+    try:
+        return service.complete(shop_id, command, recheck_authorization=recheck_authorization)
+    except ShopSessionPayloadInvalidError as error:
+        diagnostic = safe_refresh_diagnostic_details(error)
+        error.details = diagnostic
+        logger.warning(json.dumps(
+            {
+                "event": "shop_session_refresh_payload_rejected",
+                "error_code": "SHOP_SESSION_PAYLOAD_INVALID",
+                "request_id": _diagnostic_request_id(request),
+                **diagnostic,
+            },
+            separators=(",", ":"),
+        ))
+        raise
