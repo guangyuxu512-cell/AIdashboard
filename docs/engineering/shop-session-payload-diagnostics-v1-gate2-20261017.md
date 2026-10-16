@@ -3,7 +3,8 @@
 ## 当前状态
 
 精确候选`229d5c6ca41be1e4fe45fd12caee4b2f988a95c6`独立Gate 2通过，
-待正常no-ff集成、合后复验与精确dev CI；此状态只针对后端诊断，不通过98 UI或原生产故障。
+已正常no-ff集成至`fe2d54d1cf0f99a6ce068186bcf03ab929d8c29c`，合后104项与16项探针再次通过。
+下一步推送精确dev并等待CI；此状态只针对后端诊断，不通过98 UI或原生产故障。
 81a1负责独立后端候选，ca97负责集成及精确dev CI，Main负责Release Gate和正式部署。生产目前为
 `21229eff5ddf9900b8f38b13c89382952f90ee7b`，单一Head为`20261015_0046`。
 
@@ -66,7 +67,9 @@ AST逐项核对原`acquire/release/complete`、`check/apply_response_cookie_upda
 漏掉Cookie merge的嵌套try；保留初次结果后修正为只递归展开三个固定catch，候选源码未改。
 无禁入临时路径，无服务、DB、真实平台或客户端操作。
 
-以下门槛均已按上述范围验证；合并后仍需复验净差异与相同测试，并等待精确CI。
+合并树与精确Candidate的完整Backend/Frontend/Electron/package/lock字节一致。
+ca97在不含本机.env的合并归档中再次执行104项及16项ASGI日志探针，全部通过，
+禁用真实HTTP/DB连接；相对生产运行净差仅三处sessions诊断文件。以下门槛均已验证，等待精确CI。
 
 - 独立核对精确Candidate、父链、8路径范围与契约，不使用Owner HEAD代替交付SHA。
 - 新候选定向测试覆盖七stage、验证子步骤、Schema有界投影及旧Session/lease/CAS保护。
