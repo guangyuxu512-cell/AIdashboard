@@ -1,8 +1,12 @@
 # 商品数据指标命名与区间筛选 Gate 1 交接
 
+本记录封存原指标筛选候选 `a28f8d3ac10c6c79ce05598db5f02071b877317b` 的阶段证据。
+同日用户已改用总体“退款率（支付时间）”，替代下述旧发货后目标；最新修正交接见
+`shop-product-data-refund-rate-v1-gate1-20261016.md`，不可用 a28 作为最新口径候选。
+
 2026-10-16，Owner 7d55，交接 ca97。本增量沿 `feat/shop-product-data-frontend-v1`
-在已推送候选 `b9fa5717c3a656ae1f3f4a5376df1e556c9b69df` 上接续；完整候选是包含本记录的
-Feature HEAD，精确 SHA 及提交后 Real 构建结果见回执与本地忽略的验收清单。
+在已推送候选 `b9fa5717c3a656ae1f3f4a5376df1e556c9b69df` 上接续；原完整候选为上述 a28f8d3，
+该阶段的精确 SHA 及提交后 Real 构建结果见原回执与本地忽略的验收清单，不作为新退款率修正证据。
 基线 Green `5a18bd0390cb4b8cbed637d412f7482cefff3f36` 已在原候选祖先中，远端 dev 复核一致。
 未重建分支、rebase、reset 或合入未审业务。状态仍为 UI_ONLY，待独立 Gate 2 与用户验收，禁止发布。
 

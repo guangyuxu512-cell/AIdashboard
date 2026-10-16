@@ -4,6 +4,7 @@ import { NText, NTooltip } from 'naive-ui'
 import { FilterField } from '@/shared/components'
 import { AppNumberInput, AppSelect, type AppOptionValue } from '@/shared/ui'
 import { productMetricTooltip } from '../model/metrics'
+import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 import {
   PRODUCT_RANGE_FILTERS,
   productRangeLabel,
@@ -40,7 +41,7 @@ function select(value: AppOptionValue | null) {
     :data-metric-filter="metricId"
     width="sm"
   >
-    <NTooltip>
+    <NTooltip :content-style="PRODUCT_METRIC_TOOLTIP_STYLE">
       <template #trigger
         ><span>{{ label }}{{ percent ? '（%）' : '' }}</span></template
       >

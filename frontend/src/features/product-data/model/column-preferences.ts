@@ -13,6 +13,9 @@ export function normalizeProductColumns(value: unknown): ProductColumnId[] {
     ...new Set(
       value.flatMap((id): ProductColumnId[] => {
         if (typeof id !== 'string') return []
+        // User-approved metric replacement: preserve only column position and
+        // visibility, never alias old metric values/filters to the new meaning.
+        if (id === 'shippedReturnRate') return ['payTimeRefundRate']
         if (known.has(id)) return [id as ProductColumnId]
         const metricId = resolveProductMetricId(id)
         return metricId ? [metricId] : []

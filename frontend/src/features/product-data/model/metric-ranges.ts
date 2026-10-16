@@ -23,7 +23,7 @@ export const PRODUCT_RANGE_FILTERS = [
   },
   { id: 'netOrders', percent: false, boundaries: [0, 5, 10, 50, 200] },
   { id: 'refundRelatedOrders', percent: false, boundaries: [0, 5, 10, 20, 50] },
-  { id: 'shippedReturnRate', percent: true, boundaries: [0, 10, 20, 30, 50] },
+  { id: 'payTimeRefundRate', percent: true, boundaries: [0, 10, 20, 30, 50] },
 ] as const
 export type ProductRangeFilterId = (typeof PRODUCT_RANGE_FILTERS)[number]['id']
 export type ProductRangeChoice =

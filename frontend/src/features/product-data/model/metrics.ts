@@ -79,13 +79,13 @@ export const PRIMARY_PRODUCT_METRICS = [
     width: 130,
   },
   {
-    id: 'shippedReturnRate',
-    label: '退货率',
-    officialLabel: '发货后退货率',
+    id: 'payTimeRefundRate',
+    label: '退款率',
+    officialLabel: '退款率（支付时间）',
     aliases: [],
     format: 'ratio',
     width: 130,
-    note: '不以其他退款率替代。',
+    note: '支付时间口径的总体退款率，包含发货前与发货后；直接使用平台总体比率，不自行相加两阶段百分比，不以仅发货后或退款时间口径替代。',
   },
   {
     id: 'pay_amt',

@@ -102,7 +102,7 @@ export function createMockProductDataSource(
       visitCartRate: [0, 0.05, 0.08, 0.1, 0.15, 0.25][index % 6]!,
       netOrders: (index === 1 ? 0 : (index + 1) * 2) * days,
       refundRelatedOrders: (index === 1 ? 0 : (index % 5) + 2) * days,
-      shippedReturnRate: [0, 0.1, 0.2, 0.3, 0.5, 0.75][index % 6]!,
+      payTimeRefundRate: [0, 0.1, 0.2, 0.3, 0.5, 0.75][index % 6]!,
       payPerOrder: 27.4 + index / 10,
       payTimeRefundAmount: (index % 4) * 18.5 * days,
       payTimeRefundOrders: (index % 4) * days,
@@ -150,7 +150,7 @@ export function createMockProductDataSource(
         'visitCartRate',
         'netOrders',
         'refundRelatedOrders',
-        'shippedReturnRate',
+        'payTimeRefundRate',
       ] as const
     ).entries()) {
       if (index === metricIndex + 5)

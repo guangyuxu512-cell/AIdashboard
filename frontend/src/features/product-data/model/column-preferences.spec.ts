@@ -12,6 +12,24 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 describe('product data personal fields', () => {
+  it('migrates only the replaced refund-rate column preference, preserving order without reading old metric data or rewriting storage', () => {
+    const key = 'control-center.product-data.columns.v1.refund-rate'
+    const raw = JSON.stringify([
+      'shop',
+      'shippedReturnRate',
+      'pay_amt',
+      'payTimeRefundRate',
+    ])
+    window.localStorage.setItem(key, raw)
+    const write = vi.spyOn(Storage.prototype, 'setItem')
+    expect(readProductColumns('refund-rate')).toEqual([
+      'shop',
+      'payTimeRefundRate',
+      'pay_amt',
+    ])
+    expect(write).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(key)).toBe(raw)
+  })
   it('reads legacy and duplicate aliases without rewriting stored preferences, deduplicating in original order only on explicit save', () => {
     const key = 'control-center.product-data.columns.v1.legacy'
     const raw = JSON.stringify([

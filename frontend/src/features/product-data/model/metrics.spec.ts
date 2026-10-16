@@ -51,8 +51,27 @@ describe('product metric semantic registry', () => {
     expect(productMetricTooltip('netOrders')).toContain(
       '不由其他订单数相减推算',
     )
-    expect(productMetricTooltip('shippedReturnRate')).toContain(
-      '不以其他退款率替代',
+    expect(productMetricTooltip('payTimeRefundRate')).toContain(
+      '不自行相加两阶段百分比',
+    )
+  })
+  it('uses the total payment-time refund rate as a distinct semantic metric, not a shipped-return alias', () => {
+    const definition = PRIMARY_PRODUCT_METRICS.find(
+      (metric) => metric.id === 'payTimeRefundRate',
+    )!
+    expect(definition).toMatchObject({
+      label: '退款率',
+      officialLabel: '退款率（支付时间）',
+      format: 'ratio',
+    })
+    expect(resolveProductMetricId('shippedReturnRate')).toBeNull()
+    expect(resolveProductMetricId('退货率')).toBeNull()
+    expect(resolveProductMetricId('退款率')).toBe('payTimeRefundRate')
+    expect(productMetricTooltip('payTimeRefundRate')).toContain(
+      '包含发货前与发货后',
+    )
+    expect(productMetricTooltip('payTimeRefundRate')).toContain(
+      '不以仅发货后或退款时间口径替代',
     )
   })
 })

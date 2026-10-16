@@ -16,6 +16,7 @@ import {
   PRODUCT_METRIC_STATE_LABELS,
 } from '../model/query'
 import { productMetricTooltip } from '../model/metrics'
+import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 import {
   PRODUCT_COLUMNS,
   type ProductColumnId,
@@ -130,10 +131,14 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
     return {
       title: productMetricTooltip(id)
         ? () =>
-            h(NTooltip, null, {
-              trigger: () => h('span', definition.label),
-              default: () => productMetricTooltip(id),
-            })
+            h(
+              NTooltip,
+              { contentStyle: PRODUCT_METRIC_TOOLTIP_STYLE },
+              {
+                trigger: () => h('span', definition.label),
+                default: () => productMetricTooltip(id),
+              },
+            )
         : definition.label,
       key: id,
       width: fieldWidths.value.get(id),

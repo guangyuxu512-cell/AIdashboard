@@ -10,6 +10,7 @@ import {
 } from '../model/query'
 import { PRODUCT_METRICS, type ProductDataRow } from '../model/types'
 import { productMetricTooltip } from '../model/metrics'
+import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 defineProps<{ show: boolean; row: ProductDataRow | null }>()
 defineEmits<{ 'update:show': [show: boolean] }>()
 </script>
@@ -40,7 +41,7 @@ defineEmits<{ 'update:show': [show: boolean] }>()
         }}</NDescriptionsItem>
         <NDescriptionsItem v-for="metric in PRODUCT_METRICS" :key="metric.id">
           <template #label>
-            <NTooltip
+            <NTooltip :content-style="PRODUCT_METRIC_TOOLTIP_STYLE"
               ><template #trigger
                 ><span>{{ metric.label }}</span></template
               >{{ productMetricTooltip(metric.id) }}</NTooltip

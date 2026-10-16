@@ -7,6 +7,7 @@ import {
   saveProductColumns,
 } from '../model/column-preferences'
 import { productMetricTooltip } from '../model/metrics'
+import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 import {
   DEFAULT_PRODUCT_COLUMNS,
   PRODUCT_COLUMNS,
@@ -89,7 +90,10 @@ function save() {
     <div class="product-fields">
       <div class="product-fields__fixed">商品信息 · 固定显示</div>
       <div v-for="(id, index) in order" :key="id" class="product-fields__row">
-        <NTooltip :disabled="!productMetricTooltip(id)">
+        <NTooltip
+          :disabled="!productMetricTooltip(id)"
+          :content-style="PRODUCT_METRIC_TOOLTIP_STYLE"
+        >
           <template #trigger>
             <AppCheckbox
               :model-value="draft.includes(id)"

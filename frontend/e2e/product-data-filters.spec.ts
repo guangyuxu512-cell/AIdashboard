@@ -37,7 +37,7 @@ test('nine range presets, custom validation and full-set filtering keep the last
     'product_click_pay_ucnt_ratio',
     'netOrders',
     'refundRelatedOrders',
-    'shippedReturnRate',
+    'payTimeRefundRate',
   ]
   for (const id of ids) {
     await page
@@ -103,6 +103,61 @@ test('nine range presets, custom validation and full-set filtering keep the last
     0,
   )
   expect(errors).toEqual([])
+})
+
+test('shows the total payment-time refund rate in fields, details and interval filtering', async ({
+  page,
+}, info) => {
+  await open(page)
+  await expect(page.locator('.product-data-filters__more')).not.toContainText(
+    '退货率',
+  )
+  const field = page.locator('[data-metric-filter="payTimeRefundRate"]')
+  await expect(field).toContainText('退款率')
+  await choose(
+    page,
+    '[data-metric-filter="payTimeRefundRate"] .n-base-selection',
+    '10%–<20%',
+  )
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect(page.locator('.pagination-bar')).toContainText('共 5 条')
+  await page.getByRole('button', { name: '字段配置', exact: true }).click()
+  const dialog = page.locator('.app-dialog')
+  await expect(
+    dialog.getByRole('checkbox', { name: '退货率', exact: true }),
+  ).toHaveCount(0)
+  await dialog.getByRole('checkbox', { name: '退款率', exact: true }).click()
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  const header = page
+    .locator('.product-data-table')
+    .getByRole('columnheader', { name: '退款率', exact: true })
+  await expect(header).toBeAttached()
+  await header.scrollIntoViewIfNeeded()
+  await header.getByText('退款率', { exact: true }).hover()
+  const tooltip = page
+    .locator('.n-tooltip:visible')
+    .filter({ hasText: '官方口径：退款率（支付时间）' })
+  await expect(tooltip).toBeVisible()
+  const tooltipBox = await tooltip.boundingBox()
+  expect(tooltipBox!.x).toBeGreaterThanOrEqual(0)
+  expect(tooltipBox!.x + tooltipBox!.width).toBeLessThanOrEqual(
+    page.viewportSize()!.width,
+  )
+  await page.screenshot({
+    path: info.outputPath('payment-time-refund-rate-tooltip.png'),
+    animations: 'disabled',
+  })
+  await page.getByRole('button', { name: '详情', exact: true }).first().click()
+  await expect(page.locator('.n-drawer')).toContainText('退款率')
+  await expect(page.locator('.n-drawer')).not.toContainText('退货率')
+  await page
+    .locator('.n-drawer')
+    .getByText('退款率', { exact: true })
+    .scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: info.outputPath('payment-time-refund-rate.png'),
+    animations: 'disabled',
+  })
 })
 
 test('combines self/cooperation, all four carriers, shop and group without fetching platform data', async ({
