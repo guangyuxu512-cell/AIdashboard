@@ -6,6 +6,10 @@
 ca97 接受该候选。独立技术验证及匹配 Real Electron 的正常保存、错店保旧留窗、同窗口显式纠正
 均已完成，没有待修业务缺陷，也不重复这三轮登录。
 
+正式交付Candidate为`d65ed079e4bcc451ef144059c54d52e78f1815bb`（P），直接父998；
+仅package版本和两份原交付记录，业务Runtime、Frontend、Backend及构建脚本与998全部blob相同。
+P与匹配1.0.8包独立审查通过，接受合入；Owner已完成正式Handoff，Source远端一致且工作区干净。
+
 Gate 2 流程尚待正常 no-ff 合入 dev、合后复验及精确 CI，当前不是新 Green 或生产交付。
 人类在规划turn `01a146fd-f4c5-7383-af58-d41e0b5c9f3b`对完整范围明确“同意”，已授权最小1.0.8交付候选/
 匹配包、正常dev合并及精确CI、Main Release/main CI/三服务部署和部署健康后的覆盖安装。
@@ -26,7 +30,8 @@ Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`。现有生产保持
 独立技术阶段仅在ignored源码快照中链接已有依赖，未安装依赖或访问现有Profile。
 获准的原生阶段沿既有受信任35433隧道恢复匹配8100/5180服务和唯一开发Electron，复用原Profile、
 人员会话及店铺映射；未重绑、清Cookie、导入生产Session或创建第二实例。
-当前package仍为1.0.6；本候选修改Adapter、Main Service及Preload，后续必须成套加载匹配代码。
+功能候选998的开发package为1.0.6，P正式交付package为1.0.8；本轮Adapter、Main Service及Preload
+必须成套加载匹配代码。当前开发实例运行字节与P相同，正式1.0.8安装仍待生产发布健康后进行。
 旧a488的1.0.7包不是本候选，不得借旧包或仅服务器前端部署声称本次客户端已更新。
 
 ## 已审查的行为
@@ -129,10 +134,18 @@ HTTP500、`SHOP_SESSION_PAYLOAD_INVALID/candidate_identity`，候选ID与目标I
 
 旧`1.0.7-48dd`及`1.0.7-a488`安装包完整保留，不用于998交付。下一版建议1.0.8；Owner与Main在现有
 工作树、登记和交付目录未发现占用，Owner远端版本/Release及历史核对也未发现1.0.8。
-1.0.8现已按上述直接人类授权正式reserved给Owner81a1；1.0.7旧候选和包封存保留，不再用于此次交付。
-Owner从998追加最小版本元数据和原发行契约，形成新精确Candidate；
-现有构建脚本自动把该新Source SHA写入文件名、manifest与ASAR，不能手填为998。
-业务源码不变时复用本次真实三轮，仅独立核对版本差异、构建/83测试、ASAR、Fuse、manifest和checksum。
+1.0.8按上述直接人类授权正式reserved给Owner81a1；1.0.7旧候选和包封存保留，不再用于此次交付。
+Owner已从干净P执行原`package:win`，83 Node通过，x64 NSIS、PE和9项Fuse通过。
+ca97独立复核EXE/checksum/manifest、应用EXE与ASAR散列；ASAR的16个运行JS逐字匹配已审核998编译文件，
+归档共17文件、白名单外文件0。Source自动为P，版本1.0.8/应用ProductVersion 1.0.8.0，
+固定AppID、生产Origin、userData、Cookie encryption与unsigned契约保持。未运行安装器或打包应用。
+
+交付目录为`D:\中控台\dist\desktop\1.0.8-d65ed079e4bc\`，安装器为
+`Siyu-AI-Control-Center-1.0.8-d65ed079e4bc-windows-x64-setup.exe`，大小120311761字节，SHA256为
+`06efddb7e50feeb59cfb502e31a23f57cc294c0b5e33aa3982be6b413b898a87`。
+ASAR SHA256为`c6effd27e480c1f18ae9985a8ca4f36bc2ff838dc578db2add49568159047574`；
+匹配的manifest、SHA256SUMS及Owner验证记录同目录保留，ca97独立结果在ignored交付审查目录。
+纯版本增量复用已验三轮和完全相同Frontend tree，不重复登录。
 
 后续完整范围为：Owner最小交付候选与匹配包→ca97增量审查及正常no-ff合dev→合后定向和原生只读复验→
 精确dev CI→Main Release Gate、正常合main/main CI和正式部署→用户正常退出开发实例、同AppID覆盖升级新包→
@@ -140,8 +153,8 @@ Owner从998追加最小版本元数据和原发行契约，形成新精确Candid
 合后只读列表/详情和现有留窗复验不追加平台请求；本次三轮不重跑。
 
 最小交付源码变更只涉及`electron/package.json`的版本、原发行文档和原Gate1交付记录；
-root package、pnpm-lock、构建器及构建脚本不变。新Candidate及安装器的Source完整SHA均待实际提交生成，
-此时不提供虚构的包路径或hash。既有NSIS为unsigned、人工覆盖升级，runAfterFinish会启动正式客户端。
+root package、pnpm-lock、构建器及构建脚本不变。安装器的Source为上述实际P，不是后续dev或main合并SHA。
+既有NSIS为unsigned、人工覆盖升级，runAfterFinish会启动正式客户端。
 
 服务器功能更新是Frontend；既有正式流水线仍构建并up全部Backend、Frontend、Signer到同一精确Release，
 不因后两者业务源码未变而沿用旧镜像SHA或临时旁路只换某个容器。
