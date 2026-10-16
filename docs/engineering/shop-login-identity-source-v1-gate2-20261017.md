@@ -10,7 +10,9 @@ ca97 接受该候选。独立技术验证及匹配 Real Electron 的正常保存
 仅package版本和两份原交付记录，业务Runtime、Frontend、Backend及构建脚本与998全部blob相同。
 P与匹配1.0.8包独立审查通过，接受合入；Owner已完成正式Handoff，Source远端一致且工作区干净。
 
-Gate 2 流程尚待正常 no-ff 合入 dev、合后复验及精确 CI，当前不是新 Green 或生产交付。
+Gate 2 已通过：P已正常no-ff合入dev，Merge为`e205d708762f3f19fbb88e2c3f36c4442b5096ef`，
+合后技术与同Electron只读原生复验全部完成。只有最终推送提交的精确CI成功后才登记Green；
+CI Run和Green SHA以正式Handoff回执为准，当前结果不替代生产交付。
 人类在规划turn `01a146fd-f4c5-7383-af58-d41e0b5c9f3b`对完整范围明确“同意”，已授权最小1.0.8交付候选/
 匹配包、正常dev合并及精确CI、Main Release/main CI/三服务部署和部署健康后的覆盖安装。
 生产MyCookLab最多1次正常Login/refresh，须临近点击新鲜安全前检后由用户操作，失败即停。
@@ -118,6 +120,23 @@ Integration背景执行和计划开关保持关闭，没有为绕过待恢复项
 不额外要求真实账号或重复整体视觉。新的正式包安装、生产MyCookLab验证仍属于后续交付，不倒写为通过。
 
 ## 生产事实和正式交付
+
+### 合后复验
+
+Merge e205的Electron/Frontend/Backend及运行资源逐字等于P，无额外业务改动。
+合后重新编译并运行83项Electron与61项前端测试、全Frontend lint/typecheck及Real build均通过；
+Real build为19.222秒，6份离线哨兵的网络与真实Profile拒绝计数全部0。
+Root合后编译的16个运行JS也逐字匹配正式1.0.8 ASAR。
+
+同一开发Electron保留原Profile和已完成的罗盘浏览窗。ca97先核列表有效、正常“登录”及错店/忙态清除；
+原生点击因geometry不可用、捕获因FrameArrived超时，键盘焦点也无法可靠确认，因此没有盲按或绕过。
+用户在规划turn `01a14711-642f-7421-958c-0b347117892d`仅代点只读“查看”，ca97随后独立从原生AX确认：
+HuanYu详情Session为v9，最近采集和最近验证均为2026-10-17 06:53，验证/登录入口正常，原罗盘owned窗口仍在。
+这完成了合后实际只读操作，不重复登录或主观视觉验收。
+
+07:36只读复核Integration单一0046、v9密文及元数据与纠正成功后相同，lease和活动项均0，
+原10表任务事实摘要保持。refresh累计仍3次、Backend权威身份读取仍2次，没有额外capture/refresh/平台诊断。
+详情代点不是新一轮认证，不占用或增加已耗尽预算。上述结果在ignored交付审查目录留存。
 
 已部署c085只增加Backend安全诊断。2026-10-17北京时间02:37:40的一次MyCookLab刷新返回
 HTTP500、`SHOP_SESSION_PAYLOAD_INVALID/candidate_identity`，候选ID与目标ID不等；尚未进入Backend
