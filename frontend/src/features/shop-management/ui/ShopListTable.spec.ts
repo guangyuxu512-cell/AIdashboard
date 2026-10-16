@@ -25,7 +25,7 @@ const shop = {
 } as ShopListItemViewModel
 
 describe('shop list uses the shared login feedback, not an independent busy state', () => {
-  it('offers the same explicit continuation action and disables it when permission or retry limit blocks it', async () => {
+  it('keeps the fixed login entry usable for continuation or focus even when further validation is blocked', async () => {
     const wrapper = mount(ShopListTable, {
       props: {
         rows: [shop],
@@ -47,7 +47,7 @@ describe('shop list uses the shared login feedback, not an independent busy stat
     })
     const action = wrapper
       .findAllComponents(AppButton)
-      .find((button) => button.text() === '继续登录')!
+      .find((button) => button.text() === '登录')!
     expect(action.props('disabled')).toBe(false)
     expect(action.props('loading')).toBe(false)
     await action.trigger('click')
@@ -69,10 +69,10 @@ describe('shop list uses the shared login feedback, not an independent busy stat
     })
     const blocked = wrapper
       .findAllComponents(AppButton)
-      .find((button) => button.text() === '验证未完成')!
-    expect(blocked.props('disabled')).toBe(true)
+      .find((button) => button.text() === '登录')!
+    expect(blocked.props('disabled')).toBe(false)
     await blocked.trigger('click')
-    expect(wrapper.emitted('login')).toHaveLength(1)
+    expect(wrapper.emitted('login')).toHaveLength(2)
     wrapper.unmount()
   })
   it('restores the actual login button after native-close feedback is removed', async () => {

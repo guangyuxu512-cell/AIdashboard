@@ -84,6 +84,31 @@ function bridge() {
     complete: vi.fn(),
   }
 }
+function retainedRefreshRejection(canContinue = true) {
+  const desktop = window.desktop!.managementLogin!
+  Object.assign(desktop, { refreshRecoverySupported: true })
+  const getStatus = vi
+    .fn()
+    .mockResolvedValueOnce({
+      attemptId: 'attempt',
+      status: 'identified',
+      message: 'identified',
+    })
+    .mockResolvedValue({
+      attemptId: 'attempt',
+      status: 'failed',
+      recovery: false,
+      message: canContinue
+        ? '请完成登录后点击登录继续验证'
+        : '本次验证次数已用尽，请取消后重新登录',
+      refreshFailure: { canContinue },
+    })
+  desktop.getStatus = getStatus
+  desktop.refresh = vi
+    .fn()
+    .mockRejectedValue(new Error('synthetic refresh rejection'))
+  return { desktop, getStatus }
+}
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(console, 'info').mockImplementation(() => undefined)
@@ -702,6 +727,206 @@ describe('page-owned shop login sync', () => {
     expect(flow.feedback.size).toBe(0)
     wrapper.unmount()
   })
+  it.each(['reject', 'timeout'] as const)(
+    'retains natural-close observation after continuation lease %s without retrying or duplicate messages',
+    async (failure) => {
+      vi.useFakeTimers()
+      const { desktop, getStatus } = retainedRefreshRejection()
+      const { flow, wrapper } = setup()
+      let lateLease: ((value: object) => void) | undefined
+      try {
+        await flow.login(shop)
+        await flushPromises()
+        if (failure === 'reject')
+          state.acquire.mockRejectedValueOnce(
+            new Error('synthetic network failure'),
+          )
+        else
+          state.acquire.mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                lateLease = resolve
+              }),
+          )
+        const continuing = flow.login(shop)
+        await flushPromises()
+        if (failure === 'timeout') await vi.advanceTimersByTimeAsync(20_000)
+        await continuing
+        expect(flow.feedback.get('shop')?.retryReady).toBe(true)
+        const errorCount = state.error.mock.calls.length
+        await vi.advanceTimersByTimeAsync(4500)
+        expect(state.error).toHaveBeenCalledTimes(errorCount)
+        getStatus.mockResolvedValue({
+          attemptId: 'attempt',
+          status: 'closed',
+          recovery: false,
+          message: 'closed',
+        })
+        await vi.advanceTimersByTimeAsync(4500)
+        expect(flow.feedback.size).toBe(0)
+        expect(desktop.close).toHaveBeenCalledExactlyOnceWith('attempt')
+        expect(desktop.open).toHaveBeenCalledTimes(1)
+        expect(desktop.refresh).toHaveBeenCalledTimes(1)
+        expect(state.acquire).toHaveBeenCalledTimes(2)
+        expect(state.success).not.toHaveBeenCalled()
+      } finally {
+        wrapper.unmount()
+        lateLease?.({
+          shopId: 'shop',
+          leaseId: 'late-lease',
+          expectedVersion: 3,
+        })
+        await flushPromises()
+      }
+    },
+  )
+
+  it.each(['close', 'cancel', 'actor'] as const)(
+    'observes %s while a continuation lease is still pending and releases only its late lease',
+    async (ending) => {
+      vi.useFakeTimers()
+      const { desktop, getStatus } = retainedRefreshRejection()
+      const { flow, wrapper } = setup()
+      let finish!: (value: object) => void
+      try {
+        await flow.login(shop)
+        await flushPromises()
+        state.acquire.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = resolve
+            }),
+        )
+        const continuing = flow.login(shop)
+        await flushPromises()
+        if (ending === 'close') {
+          getStatus.mockResolvedValue({
+            attemptId: 'attempt',
+            status: 'closed',
+            recovery: false,
+            message: 'closed',
+          })
+          await vi.advanceTimersByTimeAsync(1500)
+        } else if (ending === 'cancel') await flow.cancel('shop')
+        else reactive(state.auth).currentUser = { userId: 'other-person' }
+        await flushPromises()
+        expect(flow.feedback.size).toBe(0)
+        await continuing
+        finish({ shopId: 'shop', leaseId: 'late-lease', expectedVersion: 3 })
+        await flushPromises()
+        expect(state.release).toHaveBeenCalledExactlyOnceWith(
+          'shop',
+          'late-lease',
+        )
+        expect(desktop.open).toHaveBeenCalledTimes(1)
+        expect(desktop.refresh).toHaveBeenCalledTimes(1)
+        expect(state.success).not.toHaveBeenCalled()
+        expect(desktop.close).toHaveBeenCalledExactlyOnceWith('attempt')
+      } finally {
+        wrapper.unmount()
+        finish?.({ shopId: 'shop', leaseId: 'late-lease', expectedVersion: 3 })
+        await flushPromises()
+      }
+    },
+  )
+
+  it('a timed-out continuation receipt cannot release or overwrite the following live lease', async () => {
+    vi.useFakeTimers()
+    const { desktop, getStatus } = retainedRefreshRejection()
+    const { flow, wrapper } = setup()
+    let lateLease!: (value: object) => void
+    try {
+      await flow.login(shop)
+      await flushPromises()
+      state.acquire.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            lateLease = resolve
+          }),
+      )
+      const timedOut = flow.login(shop)
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(20_000)
+      await timedOut
+      state.acquire.mockResolvedValueOnce({
+        shopId: 'shop',
+        leaseId: 'following-lease',
+        expectedVersion: 3,
+      })
+      getStatus.mockResolvedValue({
+        attemptId: 'attempt',
+        status: 'waiting',
+        recovery: true,
+        message: 'waiting',
+      })
+      await flow.login(shop)
+      await flushPromises()
+      lateLease({
+        shopId: 'shop',
+        leaseId: 'timed-out-lease',
+        expectedVersion: 3,
+      })
+      await flushPromises()
+      expect(state.release).toHaveBeenCalledExactlyOnceWith(
+        'shop',
+        'timed-out-lease',
+      )
+      expect(flow.feedback.get('shop')?.busy).toBe(true)
+      expect(desktop.open).toHaveBeenCalledTimes(2)
+      expect(desktop.refresh).toHaveBeenCalledTimes(1)
+      await flow.cancel('shop')
+      expect(state.release.mock.calls.map((args) => args[1])).toEqual([
+        'timed-out-lease',
+        'following-lease',
+      ])
+    } finally {
+      wrapper.unmount()
+      lateLease?.({
+        shopId: 'shop',
+        leaseId: 'timed-out-lease',
+        expectedVersion: 3,
+      })
+      await flushPromises()
+    }
+  })
+
+  it.each(['limit', 'permission'] as const)(
+    'the fixed login entry only focuses when further refresh is blocked by %s',
+    async (reason) => {
+      vi.useFakeTimers()
+      const { desktop } = retainedRefreshRejection(reason !== 'limit')
+      const { flow, wrapper } = setup()
+      try {
+        await flow.login(shop)
+        await flushPromises()
+        if (reason === 'permission') {
+          state.acquire.mockRejectedValueOnce(
+            new ApiError({ code: 'FORBIDDEN', message: 'denied', status: 403 }),
+          )
+          await flow.login(shop)
+          await flushPromises()
+        }
+        const attempts = state.acquire.mock.calls.length
+        const errorCount = state.error.mock.calls.length
+        const priorError = flow.feedback.get('shop')?.error
+        desktop.focusShop = vi.fn().mockResolvedValue(true)
+        await flow.login(shop)
+        await vi.advanceTimersByTimeAsync(4500)
+        expect(desktop.focusShop).toHaveBeenCalledTimes(1)
+        expect(state.acquire).toHaveBeenCalledTimes(attempts)
+        expect(desktop.refresh).toHaveBeenCalledTimes(1)
+        expect(flow.feedback.get('shop')).toMatchObject({
+          retryReady: false,
+          retryBlocked: true,
+          error: priorError,
+        })
+        expect(state.error).toHaveBeenCalledTimes(errorCount)
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
   it('diagnostic baseline: failed identity detection triggers Renderer close and lease release without saving', async () => {
     window.desktop!.managementLogin!.getStatus = vi.fn().mockResolvedValue({
       attemptId: 'attempt',

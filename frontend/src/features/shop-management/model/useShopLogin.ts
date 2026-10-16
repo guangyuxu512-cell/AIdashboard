@@ -201,6 +201,35 @@ export function useShopLogin() {
     message.error(status.message)
     return true
   }
+  function observeRetainedWindow(
+    flow: LoginFlow,
+    getStatus: (attemptId: string) => Promise<ManagementLoginStatusResult>,
+  ) {
+    if (!flow.attemptId) return
+    const generation = flow.captureGeneration
+    const observing = () =>
+      current(flow) && flow.captureGeneration === generation
+    flow.stop?.()
+    flow.stop = startManagementLoginPolling({
+      attemptId: flow.attemptId,
+      getStatus,
+      async onStatus(status) {
+        if (!observing()) return
+        if (status.status === 'closed' || status.status === 'completed') {
+          // This receipt describes Main's old lease, not a freshly acquired
+          // renderer lease. cancel must still release any new lease it owns.
+          await cancel(flow.shopId)
+          return
+        }
+        // Read only: never capture, refresh, overwrite the lease error or toast.
+        return true
+      },
+      onError() {
+        if (observing())
+          void fail(flow, '登录窗口状态读取未完成，请重新打开登录')
+      },
+    })
+  }
   async function login(shop: ShopListItemViewModel) {
     const existing = active.get(shop.shopId)
     const correlationId = existing?.correlationId ?? crypto.randomUUID()
@@ -249,10 +278,14 @@ export function useShopLogin() {
         return
       }
       existing.focusing = true
+      const existingFeedback = feedback.get(shop.shopId)!
       feedback.set(shop.shopId, {
-        ...feedback.get(shop.shopId)!,
+        ...existingFeedback,
         focusing: true,
-        error: null,
+        error:
+          existingFeedback.retryReady || existingFeedback.retryBlocked
+            ? existingFeedback.error
+            : null,
       })
       try {
         const focused = await openingStep(
@@ -314,7 +347,8 @@ export function useShopLogin() {
     let acceptingLease = true
     let leaseStepCompleted = false
     try {
-      if (!retrying) {
+      if (retrying) observeRetainedWindow(flow, bridge.getStatus)
+      else {
         const focused = await openingStep(
           flow,
           'focus',
@@ -361,6 +395,9 @@ export function useShopLogin() {
         releaseLease(flow)
         return
       }
+      // The old window stays observable throughout lease acquisition, including
+      // rejection/timeout. Stop only when the fresh lease can rearm Main.
+      flow.stop?.()
       const opened = await openingStep(
         flow,
         'open',

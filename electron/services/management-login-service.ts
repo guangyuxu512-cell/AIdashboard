@@ -641,7 +641,7 @@ export class ManagementLoginService {
               canContinue: true,
             }
             attempt.message =
-              '当前登录信息与上次被拒绝的候选相同；请在原窗口退出后重新登录，再点击继续登录'
+              '当前登录信息与上次被拒绝的候选相同；请在原窗口退出后重新登录，再点击登录继续验证'
             await this.releaseRecoveryLease(attempt)
             return this.toStatus(attempt)
           }
@@ -1437,14 +1437,14 @@ function refreshFailureMessage(failure: RefreshFailure): string {
     return '当前店铺访问权限已变化，原会话保留；请取消登录并核对权限'
   if (!failure.canContinue) return '本次登录验证次数已用尽；请取消后重新登录'
   if (failure.code === 'candidate_rejected')
-    return '本次登录信息未通过安全校验，原会话保留；请在原窗口完成正确店铺登录后点击继续登录'
+    return '本次登录信息未通过安全校验，原会话保留；请在原窗口完成正确店铺登录后点击登录继续验证'
   if (failure.code === 'platform_auth_invalid')
-    return '本次平台登录未通过验证，原会话保留；请在原窗口重新登录后点击继续登录'
+    return '本次平台登录未通过验证，原会话保留；请在原窗口重新登录后点击登录继续验证'
   if (failure.code === 'version_conflict')
-    return '会话版本已变化；请点击继续登录，以最新版本重新验证'
+    return '会话版本已变化；请点击登录，以最新版本继续验证'
   if (failure.code === 'lease_expired')
-    return '本次验证租约已失效；请点击继续登录重新取得租约'
-  return '本次验证未完成，结果尚未确认；请稍后点击继续登录，不会自动重试'
+    return '本次验证租约已失效；请点击登录继续验证并重新取得租约'
+  return '本次验证未完成，结果尚未确认；请稍后点击登录继续验证，不会自动重试'
 }
 
 async function refreshBackendError(
