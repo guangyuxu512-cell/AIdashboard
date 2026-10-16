@@ -25,6 +25,56 @@ const shop = {
 } as ShopListItemViewModel
 
 describe('shop list uses the shared login feedback, not an independent busy state', () => {
+  it('offers the same explicit continuation action and disables it when permission or retry limit blocks it', async () => {
+    const wrapper = mount(ShopListTable, {
+      props: {
+        rows: [shop],
+        canLogin: true,
+        loginFeedback: new Map([
+          [
+            'shop',
+            {
+              busy: true,
+              opening: false,
+              retryReady: true,
+              error: '请在原窗口完成登录',
+              status: null,
+            },
+          ],
+        ]),
+      },
+      global: { stubs: { DataTable } },
+    })
+    const action = wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '继续登录')!
+    expect(action.props('disabled')).toBe(false)
+    expect(action.props('loading')).toBe(false)
+    await action.trigger('click')
+    expect(wrapper.emitted('login')?.[0]).toEqual([shop])
+    await wrapper.setProps({
+      loginFeedback: new Map([
+        [
+          'shop',
+          {
+            busy: true,
+            opening: false,
+            retryReady: false,
+            retryBlocked: true,
+            error: '请取消后核对权限',
+            status: null,
+          },
+        ],
+      ]),
+    })
+    const blocked = wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '验证未完成')!
+    expect(blocked.props('disabled')).toBe(true)
+    await blocked.trigger('click')
+    expect(wrapper.emitted('login')).toHaveLength(1)
+    wrapper.unmount()
+  })
   it('restores the actual login button after native-close feedback is removed', async () => {
     const wrapper = mount(ShopListTable, {
       props: {

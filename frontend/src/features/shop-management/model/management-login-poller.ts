@@ -1,7 +1,11 @@
 export interface ManagementLoginPollOptions {
   attemptId: string
   getStatus: (attemptId: string) => Promise<ManagementLoginStatusResult>
-  onStatus: (status: ManagementLoginStatusResult) => void | Promise<void>
+  // `true` keeps only the existing-shop failed-refresh window observable.
+  // Main remains failed and performs no capture until an explicit reopen.
+  onStatus: (
+    status: ManagementLoginStatusResult,
+  ) => void | boolean | Promise<void | boolean>
   onError: (error: unknown) => void
   intervalMs?: number
 }
@@ -20,12 +24,12 @@ export function startManagementLoginPolling(
       const status = await options.getStatus(options.attemptId)
       if (stopped) return
       if (!status) throw new Error('登录状态读取失败')
-      await options.onStatus(status)
+      const keepWatching = (await options.onStatus(status)) === true
       if (
-        status.status === 'identified' ||
         status.status === 'closed' ||
-        status.status === 'failed' ||
-        status.status === 'completed'
+        status.status === 'completed' ||
+        (!keepWatching &&
+          (status.status === 'identified' || status.status === 'failed'))
       ) {
         stop()
       }

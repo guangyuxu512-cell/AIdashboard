@@ -81,6 +81,14 @@ Cookie 到期时间只用于预警，不阻止权威平台请求。HTTPX 响应�
 
 人工恢复使用 `shop_sessions.refresh_lease_id` 与 `refresh_lease_expires_at` 作为跨 Backend 进程的可过期租约，不持有长事务。租约时长由 `BACKEND_SHOP_SESSION_REFRESH_LEASE_SECONDS` 配置，默认 1800 秒。完成、取消和 Electron 超时主动释放；客户端崩溃后由到期条件允许下一次获取。恢复提交先检查租约、版本和目标身份，关闭数据库事务后使用候选载荷做一次非缓存的权威验证，Set-Cookie 仅在内存合并。平台 I/O 后重新检查当前人员权限及店铺身份，再以租约+版本+未过期条件原子保存 `valid` 新版本并清除租约。候选失败（包括 `AUTH_INVALID`）不能证明旧 Session 失效，不修改旧 payload、状态、版本或时间；取消、过期、撤权和迟到结果不能覆盖较新状态。
 
+刷新接口的`SHOP_SESSION_PAYLOAD_INVALID`保留原错误码/HTTP500，只增加可选
+`details.refresh_stage`：`candidate_encoding`（Base64）、`candidate_json`（JSON/编码）、
+`candidate_schema`（结构）、`candidate_platform`（平台不符）、`candidate_identity`（目标店铺不符）、
+`candidate_validation`（权威候选验证中的载荷处理）、`target_changed`（验证后目标变化）。
+仅输出固定阶段，不反射Pydantic输入、字段值、身份、Cookie或原始异常；旧错误没有阶段时不能补推根因。
+失败仍在原finally中释放租约，人工继续必须重新获取租约，不复用失败命令或绕过CAS/目标校验。
+该增量不改变Accessor/Connector/Signer、经营恢复、Schema或Migration。
+
 ### 罗盘经营数据的失效处理
 
 抖店罗盘只读采集复用上述 Session 边界，不创建第二套刷新或浏览器常驻机制：

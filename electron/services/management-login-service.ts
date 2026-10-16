@@ -56,6 +56,11 @@ interface LoginAttempt {
   systemCloseRequested: boolean
   expiresAt: ReturnType<typeof setTimeout> | null
   recovery: ManagementLoginOpenInput['recovery'] | null
+  recoveryShopId: string | null
+  refreshFailure?: ManagementLoginStatusResult['refreshFailure']
+  refreshAttemptCount: number
+  rejectedCaptureFingerprint: string | null
+  lastRefreshLeaseId: string | null
   profileReused: boolean
   lastPddVerificationFailureFingerprint: string | null
   lastPddVerificationFailureAt: number | null
@@ -81,6 +86,7 @@ const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
 const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
 export const LOGIN_METADATA_TIMEOUT_MS = 15_000
 const LOGIN_OPEN_TIMEOUT_MS = 30_000
+const MAX_REFRESH_ATTEMPTS = 3
 
 interface OnboardingApiResponse {
   shop: {
@@ -363,6 +369,10 @@ export class ManagementLoginService {
         systemCloseRequested: false,
         expiresAt: null,
         recovery: input.recovery ?? null,
+        recoveryShopId: input.recovery?.shopId ?? null,
+        refreshAttemptCount: 0,
+        rejectedCaptureFingerprint: null,
+        lastRefreshLeaseId: null,
         profileReused: profile.profileReused,
         lastPddVerificationFailureFingerprint: null,
         lastPddVerificationFailureAt: null,
@@ -373,6 +383,26 @@ export class ManagementLoginService {
     if (this.closingAll || parent.isDestroyed()) {
       await this.close(attemptId, 'app_shutdown')
       throw new Error('应用正在退出')
+    }
+    if (attempt.refreshFailure) {
+      // A failed refresh consumed its lease. Only an explicit open of this
+      // same live attempt with a fresh, server-issued lease can arm capture.
+      if (
+        !attempt.refreshFailure.canContinue ||
+        !input.recovery ||
+        input.recovery.shopId !== attempt.recoveryShopId ||
+        input.recovery.leaseId === attempt.lastRefreshLeaseId ||
+        attempt.appSession !== parent.webContents.session ||
+        !attempt.window ||
+        attempt.window.isDestroyed() ||
+        this.refreshes.has(attemptId)
+      )
+        throw new Error('请取消本次登录后重新打开，不能复用已失效的恢复上下文')
+      attempt.recovery = input.recovery
+      attempt.refreshFailure = undefined
+      attempt.identity = null
+      attempt.status = 'waiting'
+      attempt.message = '继续检测原窗口登录状态'
     }
     if (
       attempt.recovery?.shopId !== input.recovery?.shopId ||
@@ -473,6 +503,8 @@ export class ManagementLoginService {
       attempt!.window = null
       if (!preserveCapture && attempt!.status !== 'completed') {
         attempt!.identity = null
+        attempt!.rejectedCaptureFingerprint = null
+        attempt!.refreshFailure = undefined
         this.clearCapturedSession(attempt!)
         attempt!.status = 'closed'
         attempt!.message = '登录窗口已提前关闭，未采集店铺会话'
@@ -597,6 +629,23 @@ export class ManagementLoginService {
             return this.toStatus(attempt)
           }
           if (
+            attempt.recoveryShopId &&
+            attempt.rejectedCaptureFingerprint ===
+              recoveryFingerprint(capturedSession)
+          ) {
+            capturedSession.payload.fill(0)
+            attempt.status = 'failed'
+            attempt.identity = null
+            attempt.refreshFailure = {
+              code: 'candidate_rejected',
+              canContinue: true,
+            }
+            attempt.message =
+              '当前登录信息与上次被拒绝的候选相同；请在原窗口退出后重新登录，再点击继续登录'
+            await this.releaseRecoveryLease(attempt)
+            return this.toStatus(attempt)
+          }
+          if (
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
@@ -710,6 +759,33 @@ export class ManagementLoginService {
     } catch (error) {
       if (attempt)
         this.report(attempt, 'refresh', 'error', diagnosticError(error))
+      if (
+        attempt &&
+        this.attempts.get(attemptId) === attempt &&
+        attempt.status === 'identified' &&
+        attempt.window &&
+        !attempt.window.isDestroyed()
+      ) {
+        const failure = refreshFailure(error)
+        if (
+          failure.code === 'candidate_rejected' ||
+          failure.code === 'platform_auth_invalid'
+        )
+          attempt.rejectedCaptureFingerprint = attempt.capturedSession
+            ? recoveryFingerprint(attempt.capturedSession)
+            : null
+        this.clearCapturedSession(attempt)
+        attempt.identity = null
+        attempt.status = 'failed'
+        attempt.refreshFailure = {
+          ...failure,
+          canContinue:
+            failure.canContinue &&
+            attempt.refreshAttemptCount < MAX_REFRESH_ATTEMPTS,
+        }
+        attempt.message = refreshFailureMessage(attempt.refreshFailure)
+        await this.releaseRecoveryLease(attempt)
+      }
       throw error
     } finally {
       this.refreshes.delete(attemptId)
@@ -725,11 +801,24 @@ export class ManagementLoginService {
     if (!attempt.capturedSession) {
       throw new Error('尚未识别有效店铺登录会话')
     }
+    if (
+      attempt.status !== 'identified' ||
+      attempt.refreshAttemptCount >= MAX_REFRESH_ATTEMPTS
+    )
+      throw new Error('本次登录验证次数已用尽，请取消后重新登录')
+    const headers = await this.authorizedHeaders(attempt)
+    if (
+      this.attempts.get(attemptId) !== attempt ||
+      attempt.status !== 'identified'
+    )
+      throw new Error('登录同步已取消')
+    attempt.refreshAttemptCount++
+    attempt.lastRefreshLeaseId = recovery.leaseId
     const response = await fetch(
       this.backendUrl(`/api/v1/shops/${recovery.shopId}/session/refresh`),
       {
         method: 'POST',
-        headers: await this.authorizedHeaders(attempt),
+        headers,
         body: JSON.stringify({
           lease_id: recovery.leaseId,
           expected_version: recovery.expectedVersion,
@@ -739,7 +828,7 @@ export class ManagementLoginService {
         }),
       },
     )
-    if (!response.ok) throw new Error(await safeBackendError(response))
+    if (!response.ok) throw await refreshBackendError(response)
     const result = (await response.json()) as RefreshApiResponse
     if (
       result.shop_id !== recovery.shopId ||
@@ -798,6 +887,8 @@ export class ManagementLoginService {
     attempt.status = 'closed'
     if (attempt.window && !attempt.window.isDestroyed()) attempt.window.close()
     attempt.identity = null
+    attempt.rejectedCaptureFingerprint = null
+    attempt.refreshFailure = undefined
     this.clearCapturedSession(attempt)
     this.clearAttemptTimeout(attempt)
     const releasing = this.releaseRecoveryLease(attempt)
@@ -843,6 +934,9 @@ export class ManagementLoginService {
       recovery: Boolean(attempt.recovery),
       profileReused: attempt.profileReused,
       message: attempt.message,
+      ...(attempt.refreshFailure
+        ? { refreshFailure: { ...attempt.refreshFailure } }
+        : {}),
     }
   }
 
@@ -857,6 +951,8 @@ export class ManagementLoginService {
     retainWindow = false,
   ): void {
     attempt.status = 'completed'
+    attempt.rejectedCaptureFingerprint = null
+    attempt.refreshFailure = undefined
     attempt.disposePageDiagnostics?.()
     attempt.message = message
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
@@ -1178,6 +1274,7 @@ export class ManagementLoginService {
   private async releaseRecoveryLease(attempt: LoginAttempt): Promise<void> {
     if (!attempt.recovery) return
     const { shopId, leaseId } = attempt.recovery
+    attempt.lastRefreshLeaseId = leaseId
     attempt.recovery = null
     try {
       await fetch(
@@ -1253,7 +1350,9 @@ async function loginDeadline<T>(
 
 function diagnosticError(
   error: unknown,
-): Pick<ManagementLoginDiagnostic, 'errorCode' | 'errno'> {
+): Pick<ManagementLoginDiagnostic, 'errorCode' | 'errno' | 'httpStatus'> {
+  if (error instanceof LoginRefreshFailure)
+    return { errorCode: error.code, errno: null, httpStatus: error.httpStatus }
   if (!error || typeof error !== 'object')
     return { errorCode: null, errno: null }
   try {
@@ -1301,6 +1400,108 @@ function sessionFingerprint(
 
 function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '登录识别失败'
+}
+
+function recoveryFingerprint(captured: CapturedManagementSession): string {
+  // In-memory only. Neither this hash nor the candidate goes to diagnostics.
+  try {
+    return sessionFingerprint(captured)
+  } catch {
+    return createHash('sha256').update(captured.payload).digest('base64url')
+  }
+}
+
+type RefreshFailure = NonNullable<ManagementLoginStatusResult['refreshFailure']>
+
+class LoginRefreshFailure extends Error {
+  constructor(
+    readonly failure: RefreshFailure,
+    readonly code: string,
+    readonly httpStatus: number,
+  ) {
+    super(refreshFailureMessage(failure))
+  }
+}
+
+function refreshFailure(error: unknown): RefreshFailure {
+  if (error instanceof LoginRefreshFailure) return error.failure
+  if (error instanceof LoginOpeningError && error.code === 'AUTH_REQUIRED')
+    return { code: 'personnel_auth_required', canContinue: false }
+  return { code: 'validation_incomplete', canContinue: true }
+}
+
+function refreshFailureMessage(failure: RefreshFailure): string {
+  if (failure.code === 'personnel_auth_required')
+    return '中控台人员登录已失效，原店铺会话保留；请重新登录中控台'
+  if (failure.code === 'forbidden')
+    return '当前店铺访问权限已变化，原会话保留；请取消登录并核对权限'
+  if (!failure.canContinue) return '本次登录验证次数已用尽；请取消后重新登录'
+  if (failure.code === 'candidate_rejected')
+    return '本次登录信息未通过安全校验，原会话保留；请在原窗口完成正确店铺登录后点击继续登录'
+  if (failure.code === 'platform_auth_invalid')
+    return '本次平台登录未通过验证，原会话保留；请在原窗口重新登录后点击继续登录'
+  if (failure.code === 'version_conflict')
+    return '会话版本已变化；请点击继续登录，以最新版本重新验证'
+  if (failure.code === 'lease_expired')
+    return '本次验证租约已失效；请点击继续登录重新取得租约'
+  return '本次验证未完成，结果尚未确认；请稍后点击继续登录，不会自动重试'
+}
+
+async function refreshBackendError(
+  response: Response,
+): Promise<LoginRefreshFailure> {
+  let code: unknown
+  let stage: unknown
+  try {
+    const body = (await response.json()) as {
+      code?: unknown
+      details?: { refresh_stage?: unknown }
+    } | null
+    code = body?.code
+    stage = body?.details?.refresh_stage
+  } catch {
+    /* Non-JSON errors retain only the actual HTTP status. */
+  }
+  const stages: Record<string, string> = {
+    candidate_encoding: 'REFRESH_CANDIDATE_ENCODING',
+    candidate_json: 'REFRESH_CANDIDATE_JSON',
+    candidate_schema: 'REFRESH_CANDIDATE_SCHEMA',
+    candidate_platform: 'REFRESH_CANDIDATE_PLATFORM',
+    candidate_identity: 'REFRESH_CANDIDATE_IDENTITY',
+    candidate_validation: 'REFRESH_CANDIDATE_VALIDATION',
+    target_changed: 'REFRESH_TARGET_CHANGED',
+  }
+  let failure: RefreshFailure = {
+    code: 'validation_incomplete',
+    canContinue: true,
+  }
+  let diagnosticCode = 'REFRESH_VALIDATION_INCOMPLETE'
+  if (code === 'SHOP_SESSION_PAYLOAD_INVALID') {
+    failure = { code: 'candidate_rejected', canContinue: true }
+    diagnosticCode =
+      typeof stage === 'string' && Object.hasOwn(stages, stage)
+        ? stages[stage]!
+        : 'REFRESH_CANDIDATE_REJECTED'
+  } else if (code === 'PLATFORM_IDENTITY_MISMATCH') {
+    failure = { code: 'candidate_rejected', canContinue: true }
+    diagnosticCode = 'REFRESH_CANDIDATE_IDENTITY'
+  } else if (code === 'AUTH_INVALID') {
+    failure = { code: 'platform_auth_invalid', canContinue: true }
+    diagnosticCode = 'REFRESH_AUTH_INVALID'
+  } else if (response.status === 401) {
+    failure = { code: 'personnel_auth_required', canContinue: false }
+    diagnosticCode = 'AUTH_REQUIRED'
+  } else if (response.status === 403) {
+    failure = { code: 'forbidden', canContinue: false }
+    diagnosticCode = 'FORBIDDEN'
+  } else if (code === 'SESSION_REFRESH_LEASE_INVALID') {
+    failure = { code: 'lease_expired', canContinue: true }
+    diagnosticCode = 'REFRESH_LEASE_INVALID'
+  } else if (code === 'SESSION_VERSION_CONFLICT') {
+    failure = { code: 'version_conflict', canContinue: true }
+    diagnosticCode = 'REFRESH_VERSION_CONFLICT'
+  }
+  return new LoginRefreshFailure(failure, diagnosticCode, response.status)
 }
 
 async function safeBackendError(response: Response): Promise<string> {

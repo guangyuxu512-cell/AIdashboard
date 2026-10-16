@@ -13,6 +13,7 @@ from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
     SessionRefreshLeaseConflictError,
     SessionVersionConflictError,
+    ShopSessionPayloadInvalidError,
 )
 from app.modules.sessions.models import ShopSession
 from app.modules.sessions.refresh_service import ShopSessionRefreshService
@@ -203,6 +204,93 @@ def test_refresh_lease_blocks_concurrent_attempt_and_recovers_after_expiry() -> 
     second = service.acquire(stored.shop_id)
 
     assert second.lease_id != first.lease_id
+
+
+@pytest.mark.parametrize(("encoded", "stage"), [
+    ("not base64!", "candidate_encoding"),
+    (base64.b64encode(b"not json").decode(), "candidate_json"),
+    (base64.b64encode(b'{"cookies": []}').decode(), "candidate_schema"),
+])
+def test_rejected_payload_reports_only_a_safe_stage_and_preserves_old_session(encoded, stage) -> None:
+    service, stored, session_service = make_service()
+    lease = service.acquire(stored.shop_id)
+    before = (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id,
+            expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(encoded),
+            captured_at=datetime.now(UTC),
+        ))
+    assert failure.value.details == {"refresh_stage": stage}
+    assert encoded not in str(failure.value)
+    assert session_service.payload is None
+    assert stored.refresh_lease_id is None
+    assert before == (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
+
+
+@pytest.mark.parametrize(("field", "replacement", "stage"), [
+    ("platform", "pdd", "candidate_platform"),
+    ("identity", {"platform": "douyin", "platformShopId": "another-test-shop", "shopDisplayName": "Other"}, "candidate_identity"),
+])
+def test_refresh_still_rejects_a_wrong_platform_or_target_identity(field, replacement, stage) -> None:
+    service, stored, session_service = make_service()
+    lease = service.acquire(stored.shop_id)
+    document = json.loads(captured_payload())
+    document[field] = replacement
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(json.dumps(document).encode()).decode()),
+            captured_at=datetime.now(UTC),
+        ))
+    assert failure.value.details == {"refresh_stage": stage}
+    assert session_service.payload is None
+    assert stored.version == 3
+    assert stored.refresh_lease_id is None
+
+
+def test_fresh_lease_can_validate_a_corrected_candidate_after_payload_rejection() -> None:
+    service, stored, session_service = make_service()
+    lease = service.acquire(stored.shop_id)
+    with pytest.raises(ShopSessionPayloadInvalidError):
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr("invalid fixture"), captured_at=datetime.now(UTC),
+        ))
+    fresh = service.acquire(stored.shop_id)
+    assert fresh.lease_id != lease.lease_id
+    result = service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+        lease_id=fresh.lease_id, expected_version=fresh.expected_version,
+        session_payload_base64=SecretStr(base64.b64encode(captured_payload()).decode()),
+        captured_at=datetime.now(UTC),
+    ))
+    assert result.status is ShopSessionStatus.VALID
+    assert result.version == 4
+    assert session_service.payload == captured_payload()
+
+
+@pytest.mark.parametrize("changed_target", [False, True])
+def test_validation_stage_and_changed_target_remain_rejected_before_store(changed_target) -> None:
+    service, stored, session_service = make_service(
+        failure=None if changed_target else ShopSessionPayloadInvalidError(),
+    )
+    lease = service.acquire(stored.shop_id)
+
+    def recheck() -> None:
+        assert changed_target
+        service.shop_repository.shop.platform_shop_id = "changed-test-target"
+
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.complete(stored.shop_id, CompleteShopSessionRefreshCommand(
+            lease_id=lease.lease_id, expected_version=lease.expected_version,
+            session_payload_base64=SecretStr(base64.b64encode(captured_payload()).decode()),
+            captured_at=datetime.now(UTC),
+        ), recheck_authorization=recheck)
+    assert failure.value.details == {"refresh_stage": "target_changed" if changed_target else "candidate_validation"}
+    assert session_service.payload is None
+    assert stored.version == 3
+    assert stored.refresh_lease_id is None
 
 
 def test_cancel_releases_lease_and_complete_uses_expected_version() -> None:

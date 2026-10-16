@@ -186,15 +186,19 @@ async function validateSession(): Promise<void> {
             v-if="recoveryAvailable"
             tone="primary"
             :loading="openingOrFocusing"
-            :disabled="openingOrFocusing"
+            :disabled="openingOrFocusing || loginFeedback?.retryBlocked"
             @click="login?.login(shop)"
           >
             {{
               loginFeedback?.opening
                 ? '打开中…'
-                : recovering
-                  ? '登录中…'
-                  : '登录'
+                : loginFeedback?.retryReady
+                  ? '继续登录'
+                  : loginFeedback?.retryBlocked
+                    ? '验证未完成'
+                    : recovering
+                      ? '登录中…'
+                      : '登录'
             }}
           </AppButton>
           <AppButton v-if="recovering" @click="login?.cancel(shop.shopId)"

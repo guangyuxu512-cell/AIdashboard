@@ -123,7 +123,8 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
                   ),
                   disabled: Boolean(
                     props.loginFeedback?.get(shop.shopId)?.opening ||
-                    props.loginFeedback?.get(shop.shopId)?.focusing,
+                    props.loginFeedback?.get(shop.shopId)?.focusing ||
+                    props.loginFeedback?.get(shop.shopId)?.retryBlocked,
                   ),
                   title:
                     props.loginFeedback?.get(shop.shopId)?.error ??
@@ -134,9 +135,13 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
                 () =>
                   props.loginFeedback?.get(shop.shopId)?.opening
                     ? '打开中…'
-                    : props.loginFeedback?.get(shop.shopId)?.busy
-                      ? '登录中…'
-                      : '登录',
+                    : props.loginFeedback?.get(shop.shopId)?.retryReady
+                      ? '继续登录'
+                      : props.loginFeedback?.get(shop.shopId)?.retryBlocked
+                        ? '验证未完成'
+                        : props.loginFeedback?.get(shop.shopId)?.busy
+                          ? '登录中…'
+                          : '登录',
               ),
             ]
           : []),

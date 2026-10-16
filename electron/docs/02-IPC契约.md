@@ -88,12 +88,37 @@ Renderer只有明确支持标记时允许超级账号无团队调用；旧1.0.5�
 同店 open、状态检测及保存均 single-flight；取消或退出后的迟到结果不再提示成功。
 新店 `complete` 的识别后自动关闭和 Onboarding 契约保留。
 
-`get-status`返回类型仍为非空`ManagementLoginStatusResult`，无新通道/字段。
+`get-status`返回类型仍为非空`ManagementLoginStatusResult`。关闭恢复原契约不变，
+1.0.7刷新拒绝的可选元数据见下文；不增加IPC通道。
 真实窗口关闭时，即使已有检测/捕获Promise未返回，等待中的同一IPC也返回最终closed状态，
 不能要求Renderer再发下一次poll才能获知关闭。已有终态先于共享pending检查；未知attempt仍拒绝，
 不返回null或伪造关闭。Main主动Onboarding自动关闭保留identified与捕获元数据，不能误清确认页。
 closed且recovery=false表示Main已接管该租约的释放尝试（并非确认远端DELETE成功）；Renderer
 清理active/忙态和旧focus，不再重复释放。释放失败继续服务器过期兜底；旧桥接/查询失败保持原清理路径。
 轮询停止后的晚到结果/错误不再调用回调，空响应报告安全读取失败而非登录失效或成功。
+
+### 1.0.7 刷新拒绝与人工继续
+
+匹配Preload增加常量`managementLogin.refreshRecoverySupported: true`。新Renderer仅在此标记
+严格为true且Main返回`failed + refreshFailure`时保留原窗口，不依赖跨IPC异常携带自定义属性。
+旧1.0.6桥接未声明支持时保留原安全失败清理，不盲目重调open；服务器前端更新不能升级旧桌面壳。
+
+`ManagementLoginStatusResult.refreshFailure?`只包含固定`code`和`canContinue`。code为
+`candidate_rejected / platform_auth_invalid / lease_expired / version_conflict /
+personnel_auth_required / forbidden / validation_incomplete`。不返回载荷、指纹、Cookie或平台响应。
+刷新失败清零捕获Buffer及身份、转failed并释放旧租约，窗口仍可供用户完成正确登录；平台认证失败
+不等于旧ShopSession失效。网络或未知结果只称验证未确认，不保证服务器已完成的提交可撤回。
+
+用户明确点击“继续登录”才由Renderer重新调用原租约API，再用原`open`与同attemptId、同店铺/平台/
+团队和新lease重新捕获。Main不创建第二窗，不接受旧lease或跨目标复用；人员/团队/权限变化仍取消。
+每attempt最多3次refresh提交（首次加2次人工继续）；相同被拒绝候选（忽略capturedAt变化）不再提交，
+须先在原窗重新登录。失败状态轮询只读Main元数据以观察自然关闭，不捕获、不请求平台、不自动重试。
+取消/退出/30分钟原期限关闭与释放；迟到候选/成功不得复活已取消流程。成功仍要求非缓存VALID、同shop、
+expectedVersion+1及真实验证时间；原Onboarding自动关闭与成功已有店铺留窗保持。
+
+Backend维持`SHOP_SESSION_PAYLOAD_INVALID`和HTTP500，增加安全的`details.refresh_stage`枚举。
+Main仅把固定阶段映射为`REFRESH_CANDIDATE_ENCODING / JSON / SCHEMA / PLATFORM / IDENTITY /
+VALIDATION`或`REFRESH_TARGET_CHANGED`诊断码，并记录实际HTTP状态；旧Backend没有阶段时仅记录
+`REFRESH_CANDIDATE_REJECTED`。响应message、任意details、字段值与完整URL均不进入诊断或Renderer。
 
 Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。拼多多 Adapter 只采集适用于 `mms.pinduoduo.com` 的 Cookie；Main 通过 Backend 预检成功取得店铺身份后才将非敏感 ID/名称放入现有 Status IPC。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。

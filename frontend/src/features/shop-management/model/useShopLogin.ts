@@ -54,11 +54,15 @@ interface LoginFlow {
   leaseReleaseStarted?: boolean
   windowOpened?: boolean
   focusing?: boolean
+  retryReady?: boolean
+  captureGeneration?: number
 }
 export interface ShopLoginFeedback {
   busy: boolean
   opening: boolean
   focusing?: boolean
+  retryReady?: boolean
+  retryBlocked?: boolean
   error: string | null
   status: string | null
 }
@@ -167,6 +171,36 @@ export function useShopLogin() {
     })
     message.error(text)
   }
+  function retainForContinue(
+    flow: LoginFlow,
+    status: ManagementLoginStatusResult,
+  ) {
+    if (
+      !current(flow) ||
+      window.desktop?.managementLogin?.refreshRecoverySupported !== true ||
+      status.status !== 'failed' ||
+      !status.refreshFailure
+    )
+      return false
+    if (status.recovery === false) flow.leaseReleaseStarted = true
+    else releaseLease(flow)
+    flow.retryReady = status.refreshFailure.canContinue
+    if (
+      feedback.get(flow.shopId)?.error === status.message &&
+      feedback.get(flow.shopId)?.retryReady === flow.retryReady
+    )
+      return true
+    feedback.set(flow.shopId, {
+      busy: true,
+      opening: false,
+      retryReady: flow.retryReady,
+      retryBlocked: !flow.retryReady,
+      error: status.message,
+      status: null,
+    })
+    message.error(status.message)
+    return true
+  }
   async function login(shop: ShopListItemViewModel) {
     const existing = active.get(shop.shopId)
     const correlationId = existing?.correlationId ?? crypto.randomUUID()
@@ -208,7 +242,8 @@ export function useShopLogin() {
     const correlation =
       bridge.correlationSupported === true ? { correlationId } : {}
     const teamContext = teamId ? { teamId } : {}
-    if (existing) {
+    const retrying = Boolean(existing?.retryReady)
+    if (existing && !retrying) {
       if (!current(existing) || !existing.windowOpened || existing.focusing) {
         reportLoginStage(correlationId, 'entry', 'duplicate')
         return
@@ -252,7 +287,8 @@ export function useShopLogin() {
       }
       return
     }
-    const flow: LoginFlow = {
+    if (existing && (!current(existing) || existing.focusing)) return
+    const flow: LoginFlow = existing ?? {
       shopId: shop.shopId,
       scopeVersion,
       actorId: auth.currentUser?.userId,
@@ -261,36 +297,57 @@ export function useShopLogin() {
       attemptId: correlationId,
       abort: new AbortController(),
     }
+    flow.retryReady = false
+    flow.focusing = retrying
+    flow.stop?.()
+    const generation = (flow.captureGeneration ?? 0) + 1
+    flow.captureGeneration = generation
+    const captureCurrent = () =>
+      current(flow) && flow.captureGeneration === generation
     active.set(shop.shopId, flow)
     feedback.set(shop.shopId, {
       busy: true,
       opening: true,
       error: null,
-      status: '正在打开店铺登录窗口',
+      status: retrying ? '正在继续原窗口登录验证' : '正在打开店铺登录窗口',
     })
+    let acceptingLease = true
+    let leaseStepCompleted = false
     try {
-      const focused = await openingStep(
-        flow,
-        'focus',
-        bridge.focusShop({
-          platform: shop.platform,
-          shopId: shop.shopId,
-          ...teamContext,
-          ...correlation,
-        }),
-        LOGIN_FOCUS_TIMEOUT_MS,
-      )
-      if (!current(flow)) return
-      if (focused) {
-        active.delete(shop.shopId)
-        feedback.delete(shop.shopId)
-        return
+      if (!retrying) {
+        const focused = await openingStep(
+          flow,
+          'focus',
+          bridge.focusShop({
+            platform: shop.platform,
+            shopId: shop.shopId,
+            ...teamContext,
+            ...correlation,
+          }),
+          LOGIN_FOCUS_TIMEOUT_MS,
+        )
+        if (!current(flow)) return
+        if (focused) {
+          active.delete(shop.shopId)
+          feedback.delete(shop.shopId)
+          return
+        }
       }
       const pendingLease = shopSessionDataSource
         .acquireRefreshLease(shop.shopId)
         .then((lease) => {
-          flow.leaseId = lease.leaseId
-          if (!current(flow)) releaseLease(flow)
+          if (!acceptingLease || !captureCurrent()) {
+            void cleanup(
+              flow,
+              shopSessionDataSource.releaseRefreshLease(
+                shop.shopId,
+                lease.leaseId,
+              ),
+            )
+          } else {
+            flow.leaseId = lease.leaseId
+            flow.leaseReleaseStarted = false
+          }
           return lease
         })
       const lease = await openingStep(
@@ -299,6 +356,7 @@ export function useShopLogin() {
         pendingLease,
         LOGIN_LEASE_TIMEOUT_MS,
       )
+      leaseStepCompleted = true
       if (!current(flow)) {
         releaseLease(flow)
         return
@@ -341,7 +399,9 @@ export function useShopLogin() {
         attemptId: opened.attemptId,
         getStatus: bridge.getStatus,
         async onStatus(status) {
-          if (!current(flow)) return
+          if (!captureCurrent()) return
+          if (status.status === 'failed' && retainForContinue(flow, status))
+            return true
           feedback.set(shop.shopId, {
             busy: true,
             opening: false,
@@ -361,8 +421,22 @@ export function useShopLogin() {
             return
           }
           if (status.status !== 'identified') return
-          const result = await bridge.refresh(status.attemptId)
-          if (!current(flow)) return
+          let result
+          try {
+            result = await bridge.refresh(status.attemptId)
+          } catch (error) {
+            if (bridge.refreshRecoverySupported === true && captureCurrent()) {
+              const rejected = await waitForLoginOpening(
+                bridge.getStatus(status.attemptId),
+                LOGIN_FOCUS_TIMEOUT_MS,
+                flow.abort.signal,
+              )
+              if (captureCurrent() && retainForContinue(flow, rejected))
+                return true
+            }
+            throw error
+          }
+          if (!captureCurrent()) return
           if (
             result.shopId !== shop.shopId ||
             result.status !== 'valid' ||
@@ -375,14 +449,14 @@ export function useShopLogin() {
             result.sessionVersion,
             result.validatedAt,
           )
-          if (!current(flow)) return
+          if (!captureCurrent()) return
           let readRefreshFailed = false
           try {
             await refresh(shop.shopId)
           } catch {
             readRefreshFailed = true
           }
-          if (!current(flow)) return
+          if (!captureCurrent()) return
           active.delete(shop.shopId)
           feedback.delete(shop.shopId)
           message.success('登录状态已更新')
@@ -392,11 +466,29 @@ export function useShopLogin() {
             message.warning(result.profileMappingWarning)
         },
         onError() {
-          void fail(flow, '本次验证未完成，原登录状态保留；请稍后重试')
+          if (captureCurrent())
+            void fail(flow, '本次验证未完成，原登录状态保留；请稍后重试')
         },
       })
     } catch (error) {
+      if (retrying && !leaseStepCompleted && current(flow)) {
+        const code = openingErrorCode(error)
+        flow.retryReady = code !== 'AUTH_REQUIRED' && code !== 'FORBIDDEN'
+        feedback.set(shop.shopId, {
+          busy: true,
+          opening: false,
+          retryReady: flow.retryReady,
+          retryBlocked: !flow.retryReady,
+          error: openingFailureMessage(error),
+          status: null,
+        })
+        message.error(openingFailureMessage(error))
+        return
+      }
       await fail(flow, openingFailureMessage(error))
+    } finally {
+      acceptingLease = false
+      flow.focusing = false
     }
   }
   watch(

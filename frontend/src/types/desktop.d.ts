@@ -15,6 +15,17 @@ declare global {
     recovery: boolean
     profileReused: boolean
     message: string
+    refreshFailure?: {
+      code:
+        | 'candidate_rejected'
+        | 'platform_auth_invalid'
+        | 'lease_expired'
+        | 'version_conflict'
+        | 'personnel_auth_required'
+        | 'forbidden'
+        | 'validation_incomplete'
+      canContinue: boolean
+    }
   }
 
   interface ManagementLoginCompleteResult {
@@ -36,6 +47,7 @@ declare global {
       managementLogin?: {
         readonly correlationSupported?: true
         readonly globalShopLoginSupported?: true
+        readonly refreshRecoverySupported?: true
         focusShop?(input: {
           platform: 'douyin' | 'pdd'
           teamId?: string

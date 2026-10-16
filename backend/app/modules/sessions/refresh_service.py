@@ -140,24 +140,39 @@ class ShopSessionRefreshService:
                 command.session_payload_base64.get_secret_value(),
                 validate=True,
             )
+        except ValueError:
+            raise ShopSessionPayloadInvalidError(
+                details={"refresh_stage": "candidate_encoding"},
+            ) from None
+        try:
+            document = json.loads(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ShopSessionPayloadInvalidError(
+                details={"refresh_stage": "candidate_json"},
+            ) from None
+        try:
             parsed = StoredManagementSessionPayload.model_validate(
-                json.loads(payload),
+                document,
             )
-        except (
-            ValueError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-            ValidationError,
-        ) as error:
-            raise ShopSessionPayloadInvalidError() from error
+        except ValidationError:
+            # Never serialize validation inputs: they contain the candidate's
+            # credentials. Only this fixed stage is returned to the desktop.
+            raise ShopSessionPayloadInvalidError(
+                details={"refresh_stage": "candidate_schema"},
+            ) from None
         if parsed.platform is not shop.platform:
-            raise ShopSessionPayloadInvalidError()
+            raise ShopSessionPayloadInvalidError(
+                details={"refresh_stage": "candidate_platform"},
+            )
         if (
             parsed.identity is not None
             and shop.platform_shop_id is not None
             and parsed.identity.platform_shop_id != shop.platform_shop_id
         ):
-            raise ShopSessionPayloadInvalidError("登录身份与目标店铺不匹配")
+            raise ShopSessionPayloadInvalidError(
+                "登录身份与目标店铺不匹配",
+                details={"refresh_stage": "candidate_identity"},
+            )
 
         platform = shop.platform
         platform_shop_id = shop.platform_shop_id
@@ -166,16 +181,24 @@ class ShopSessionRefreshService:
         # No transaction/row lock stays open during platform I/O. Nothing has
         # been changed yet; a failed candidate preserves every old Session field.
         self.session.rollback()
-        candidate = self.health_service.validate_candidate(
-            shop_id, platform, platform_shop_id, command.expected_version, payload, parsed,
-        )
+        try:
+            candidate = self.health_service.validate_candidate(
+                shop_id, platform, platform_shop_id, command.expected_version, payload, parsed,
+            )
+        except ShopSessionPayloadInvalidError:
+            raise ShopSessionPayloadInvalidError(
+                details={"refresh_stage": "candidate_validation"},
+            ) from None
         if recheck_authorization is not None:
             recheck_authorization()
         shop = self.shop_repository.get(shop_id)
         if shop is None:
             raise ShopNotFoundError()
         if shop.platform is not platform or shop.platform_shop_id != platform_shop_id:
-            raise ShopSessionPayloadInvalidError("目标店铺身份已改变，请重新登录")
+            raise ShopSessionPayloadInvalidError(
+                "目标店铺身份已改变，请重新登录",
+                details={"refresh_stage": "target_changed"},
+            )
         metadata = self.session_service.store_payload(
             StoreShopSessionCommand(
                 shop_id=shop_id,

@@ -37,6 +37,7 @@ const desktopApi: DesktopApi = {
   managementLogin: {
     correlationSupported: true,
     globalShopLoginSupported: true,
+    refreshRecoverySupported: true,
     focusShop(input) {
       return ipcRenderer.invoke(focusManagementShopChannel, input)
     },
