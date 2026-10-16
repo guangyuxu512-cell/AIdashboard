@@ -365,6 +365,38 @@ describe('page-owned shop login sync', () => {
     wrapper.unmount()
     expect(window.desktop!.managementLogin!.close).not.toHaveBeenCalled()
   })
+  it('retains this page result beyond the toast duration, clears busy and only focuses on another login click', async () => {
+    vi.useFakeTimers()
+    const { flow, wrapper } = setup()
+    try {
+      await flow.login(shop)
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(flow.feedback.get('shop')).toMatchObject({
+        busy: false,
+        opening: false,
+        error: null,
+        success: {
+          sessionVersion: 4,
+          validatedAt: '2026-10-11T09:01:00Z',
+          readRefreshFailed: false,
+        },
+      })
+      expect(flow.feedback.get('shop')?.status).toContain('本次登录已更新')
+      expect(state.success).toHaveBeenCalledExactlyOnceWith('登录状态已更新')
+      window.desktop!.managementLogin!.focusShop = vi
+        .fn()
+        .mockResolvedValue(true)
+      await flow.login(shop)
+      await flushPromises()
+      expect(state.acquire).toHaveBeenCalledTimes(1)
+      expect(window.desktop!.managementLogin!.refresh).toHaveBeenCalledTimes(1)
+      expect(flow.feedback.size).toBe(0)
+      expect(state.success).toHaveBeenCalledTimes(1)
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('focuses an already open window before acquiring any new lease', async () => {
     window.desktop!.managementLogin!.focusShop = vi.fn().mockResolvedValue(true)
     const { flow, wrapper } = setup()
@@ -641,7 +673,10 @@ describe('page-owned shop login sync', () => {
     )
     expect(state.success).toHaveBeenCalledExactlyOnceWith('登录状态已更新')
     expect(desktop.close).not.toHaveBeenCalled()
-    expect(flow.feedback.size).toBe(0)
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: false,
+      success: { sessionVersion: 6, validatedAt: '2026-10-16T01:00:00Z' },
+    })
     wrapper.unmount()
   })
   it('retained failure status polling never resubmits and a natural close clears feedback without duplicate lease release', async () => {
@@ -973,8 +1008,89 @@ describe('page-owned shop login sync', () => {
     expect(state.warning).toHaveBeenCalledWith('店铺信息刷新未完成，请刷新列表')
     expect(state.error).not.toHaveBeenCalled()
     expect(state.release).not.toHaveBeenCalled()
+    expect(flow.feedback.get('shop')).toMatchObject({
+      busy: false,
+      success: { sessionVersion: 4, readRefreshFailed: true },
+    })
+    expect(flow.feedback.get('shop')?.status).toContain('刷新未完成')
     wrapper.unmount()
   })
+  it.each(['person', 'team', 'permission', 'leave'] as const)(
+    'clears completed local feedback on %s without saving again or replaying the toast',
+    async (change) => {
+      const { flow, wrapper } = setup()
+      try {
+        await flow.login(shop)
+        await flushPromises()
+        expect(flow.feedback.get('shop')?.success?.sessionVersion).toBe(4)
+        if (change === 'person')
+          reactive(state.auth).currentUser = { userId: 'other-person' }
+        else if (change === 'team')
+          reactive(state.auth).activeTeamId = 'other-team'
+        else if (change === 'permission')
+          reactive(state.auth).isSuperAccount = false
+        else wrapper.unmount()
+        await flushPromises()
+        expect(flow.feedback.size).toBe(0)
+        expect(state.success).toHaveBeenCalledTimes(1)
+        expect(window.desktop!.managementLogin!.refresh).toHaveBeenCalledTimes(
+          1,
+        )
+        expect(window.desktop!.managementLogin!.close).not.toHaveBeenCalled()
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
+  it('does not restore or replay the completed feedback when the page is entered again', async () => {
+    const first = setup()
+    await first.flow.login(shop)
+    await flushPromises()
+    expect(first.flow.feedback.get('shop')?.success).toBeDefined()
+    first.wrapper.unmount()
+    const next = setup()
+    try {
+      await flushPromises()
+      expect(first.flow.feedback.size).toBe(0)
+      expect(next.flow.feedback.size).toBe(0)
+      expect(state.success).toHaveBeenCalledTimes(1)
+      expect(window.desktop!.managementLogin!.refresh).toHaveBeenCalledTimes(1)
+    } finally {
+      next.wrapper.unmount()
+    }
+  })
+
+  it.each([
+    { shopId: 'other-shop' },
+    { status: 'captured' },
+    { sessionVersion: 3 },
+    { validatedAt: '' },
+    { validatedAt: 'invalid-date' },
+  ])(
+    'never records a completed success for an incomplete or mismatched receipt %j',
+    async (invalid) => {
+      window.desktop!.managementLogin!.refresh = vi.fn().mockResolvedValue({
+        shopId: 'shop',
+        status: 'valid',
+        sessionVersion: 4,
+        validatedAt: '2026-10-11T09:01:00Z',
+        ...invalid,
+      })
+      const { flow, wrapper } = setup()
+      try {
+        await flow.login(shop)
+        await flushPromises()
+        expect(flow.feedback.get('shop')?.success).toBeUndefined()
+        expect(state.success).not.toHaveBeenCalled()
+        expect(state.confirm).not.toHaveBeenCalled()
+        expect(state.error).toHaveBeenCalledTimes(1)
+      } finally {
+        wrapper.unmount()
+      }
+    },
+  )
+
   it('actor change during validation discards late success and cleans the old attempt', async () => {
     let finish!: (value: object) => void
     window.desktop!.managementLogin!.refresh = vi.fn().mockImplementation(

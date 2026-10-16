@@ -166,7 +166,15 @@ async function validateSession(): Promise<void> {
 
         <NAlert
           v-if="loginFeedback?.status || loginFeedback?.error"
-          :type="loginFeedback?.error ? 'error' : 'info'"
+          :type="
+            loginFeedback?.error
+              ? 'error'
+              : loginFeedback?.success?.readRefreshFailed
+                ? 'warning'
+                : loginFeedback?.success
+                  ? 'success'
+                  : 'info'
+          "
           :bordered="true"
           class="shop-connection-section__recovery"
         >

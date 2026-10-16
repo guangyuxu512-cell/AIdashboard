@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
-import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
+import { NTooltip, type DataTableColumns, type DataTableRowKey } from 'naive-ui'
 
 import {
   getShopExecutionDeviceSummary,
@@ -13,6 +13,7 @@ import type { ShopLoginFeedback } from '../model/useShopLogin'
 import { ShopSessionStatusTag } from '@/entities/shop-session'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 
 const props = defineProps<{
   rows: ShopListItemViewModel[]
@@ -56,7 +57,23 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
     key: 'loginStatus',
     width: 96,
     align: 'center',
-    render: (shop) => h(ShopSessionStatusTag, { status: shop.loginStatus }),
+    render: (shop) => {
+      const feedback = props.loginFeedback?.get(shop.shopId)
+      const success = feedback?.success
+      if (!success || feedback.busy)
+        return h(ShopSessionStatusTag, { status: shop.loginStatus })
+      return h(NTooltip, null, {
+        trigger: () =>
+          shop.loginStatus !== 'valid'
+            ? h(ShopSessionStatusTag, { status: shop.loginStatus })
+            : h(StatusTag, {
+                label: success.readRefreshFailed ? '已保存' : '已更新',
+                tone: success.readRefreshFailed ? 'warning' : 'success',
+                'aria-label': feedback.status ?? undefined,
+              }),
+        default: () => feedback.status,
+      })
+    },
   },
   ...(props.showOwner
     ? [

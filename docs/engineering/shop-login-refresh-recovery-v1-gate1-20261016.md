@@ -31,6 +31,34 @@
 
 ## 已证实的问题与未知项
 
+### 本次成功可见反馈返修
+
+2026-10-17，ca97在已有授权范围明确放行最小纯前端返修。沿a488正常追加，不改变原候选/旧包。
+本轮依据为2026-10-16 HuanYu的既有一次成功：CID`5e3f475d-0ad5-49e7-a066-0f5077162cd8`，
+上海23:27:35.866 Main refresh finish、Backend HTTP200 Request ID`ea198ff7-8c14-4cfa-a472-309b10f29085`，
+原v6→VALID v7，validatedAt为`2026-10-16T15:27:34.958961Z`，租约已清。
+该真实保存证据直接复用，不再要求登录或发平台请求；Stored v7的后续独立业务请求没有新增验证。
+
+人类反馈未看到任何提示。源码成功后删除feedback，只保留App.vue默认top/3000ms短消息；
+列表只显示前后均有效的状态，详情NAlert也因feedback删除无法回看。现有证据不能证明toast未触发、
+被原生窗口遮挡或只是到期，不能把其中任一解释写成唯一根因。
+
+在旧a488用合成成功及查询刷新失败验证局部结果确实不存在后，实施以下范围：
+
+- 同店VALID/版本+1/有效validatedAt及scope通过后清active、保留非busy的本次success元数据和说明。
+  仅格式化返回时间；保留原message.success/查询失败warning，不改全局Provider/duration。
+- 列表在原96px状态格用原small StatusTag/NTooltip显示3字短结果与完整说明，原列宽/scroll-x/操作顺序/CSS不变；
+  后续失效等原状态优先，详情使用原NAlert success/warning。没有新增行、布局或公共组件。
+- 下一次登录/上下文/离页清除，不持久化或补播历史消息；再次点击原窗仍只focus，不重复保存。
+  查询失败不抹掉权威保存结果，错误/不完整/跨scope结果不登记成功。原失败、取消、迟到和三次上限不变。
+
+本次4文件66项定向通过（最终6.29s），lint/typecheck与Real build16.16s通过。
+四主题用实际Token验证新旧Tag高度/字号CSS变量相等、状态格96及scroll-x1114不变、操作仍为查看/登录/启停/移除；
+这是jsdom组件/尺寸契约，不是原生像素或用户视觉确认。测试CSS初次通过Vite空CSS stub取值失败，
+已改为测试直接读取本仓tokens.css，不修改生产主题或放宽尺寸断言。
+Backend/Electron/IPC/Schema/Shared/App.vue/包版本相对a488逐树无差异；不重跑未变Backend/Electron或重打包，
+待ca97登记新前端与已核销a488/1.0.7壳的关联并复验。完整Gate2仍PARTIAL，MyCookLab原拒绝子分支仍UNKNOWN。
+
 ca97已有生产与本机只读证据定位的是MyCookLab，不是历史HuanYu：2026-10-16上海21:25:13.826、
 21:25:42.498两次refresh HTTP500/`SHOP_SESSION_PAYLOAD_INVALID`，耗时23/21ms。对应Request ID
 `f159544c-7840-4bc1-a7bb-60bcb2247e56`、`6c35c1f6-51c5-49fb-a5d0-9577f6ab71ff`。
