@@ -10,10 +10,6 @@ import type {
 
 const accountInfoUrls = [
   'https://compass.jinritemai.com/compass_api/shop/mall/common/shop_info_v2',
-  'https://compass.jinritemai.com/compass_api/shop/mall/common/shop_info',
-  'https://compass.jinritemai.com/auth/get_account_info',
-  'https://compass.jinritemai.com/ecomauth/loginv1/get_account_info?login_source=doudian_pc_web',
-  'https://fxg.jinritemai.com/ecomauth/loginv1/get_account_info?login_source=doudian_pc_web',
 ] as const
 const acceptedCookieDomains = ['jinritemai.com'] as const
 
@@ -69,26 +65,19 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
                 .filter((key) => /^[A-Za-z0-9_]{1,64}$/.test(key))
                 .slice(0, 20)
             : [];
-          const readIdentity = (value, depth = 0) => {
-            if (!value || typeof value !== 'object' || depth > 4) return null;
-            if (Array.isArray(value)) {
-              for (const item of value.slice(0, 10)) {
-                const identity = readIdentity(item, depth + 1);
-                if (identity) return identity;
-              }
-              return null;
-            }
-            const id = String(
-              value.shop_id ?? value.shopId ?? value.account_id ?? value.accountId ?? ''
-            ).trim();
-            const name = String(
-              value.shop_name ?? value.shopName ?? value.account_name ?? value.accountName ?? ''
-            ).trim();
+          const readIdentity = (value, status) => {
+            if (status < 200 || status >= 300) return null;
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+            if (![undefined, null, 0, '0'].includes(value.st)) return null;
+            const data = value.data;
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+            const id = typeof data.shop_id === 'string'
+              ? data.shop_id.trim()
+              : Number.isSafeInteger(data.shop_id) && data.shop_id > 0
+                ? String(data.shop_id)
+                : '';
+            const name = typeof data.shop_name === 'string' ? data.shop_name.trim() : '';
             if (id && name) return { platformShopId: id, shopDisplayName: name };
-            for (const key of ['data', 'account_info', 'accountInfo', 'shop_info', 'shopInfo', 'current_shop', 'currentShop']) {
-              const identity = readIdentity(value[key], depth + 1);
-              if (identity) return identity;
-            }
             return null;
           };
           let lastProbe = null;
@@ -105,7 +94,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
             let body = null;
             try { body = JSON.parse(text); } catch {}
             const data = body && typeof body === 'object' ? body.data : null;
-            const identity = readIdentity(body);
+            const identity = readIdentity(body, response.status);
             const platformShopId = identity?.platformShopId ?? '';
             const shopDisplayName = identity?.shopDisplayName ?? '';
             probes.push({ probeIndex, httpStatus: response.status, elapsedMs: Math.max(0, Math.min(1800000, Date.now() - probeStarted)), requestFailed: false });

@@ -88,7 +88,19 @@ Renderer只有明确支持标记时允许超级账号无团队调用；旧1.0.5�
 同店 open、状态检测及保存均 single-flight；取消或退出后的迟到结果不再提示成功。
 新店 `complete` 的识别后自动关闭和 Onboarding 契约保留。
 
-`get-status`返回类型仍为非空`ManagementLoginStatusResult`，无新通道/字段。
+`get-status`返回类型仍为非空`ManagementLoginStatusResult`，不新增通道。支持失败留窗的新 Preload
+增加固定可选标记 `managementLogin.refreshRecoverySupported: true`；状态可含
+`refreshFailure: {code, canContinue}`。code 仅为 `candidate_rejected`、`identity_mismatch`、
+`platform_auth_invalid`、`lease_expired`、`version_conflict`、`personnel_auth_required`、`forbidden`、
+`validation_incomplete`，不反射 Backend 原始 message/body。仅 `candidate_identity` 或明确
+`PLATFORM_IDENTITY_MISMATCH` 生成 identity_mismatch；403 优先保留权限分类。
+
+失败状态的 `recovery=false` 表示旧租约已由 Main 接管释放，不表示窗口已经关闭。
+Renderer 只有固定能力标记严格为 true 且有 refreshFailure 时才保留当前失败窗口并只读观察；
+旧桥接仍走既有安全清理，不假装支持续跑。再次“登录”必须先取得新 lease/当前版本，经原 open
+白名单重新关联同一目标 attempt；不能重放消费过的 lease、切换目标或自动提交。canContinue=false
+时固定入口只经当前权限复核置前，另保留取消；同候选去重和三次 POST 上限不放宽。
+
 真实窗口关闭时，即使已有检测/捕获Promise未返回，等待中的同一IPC也返回最终closed状态，
 不能要求Renderer再发下一次poll才能获知关闭。已有终态先于共享pending检查；未知attempt仍拒绝，
 不返回null或伪造关闭。Main主动Onboarding自动关闭保留identified与捕获元数据，不能误清确认页。

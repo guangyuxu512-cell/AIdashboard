@@ -1,0 +1,63 @@
+# 店铺身份来源与错店纠正 Gate 1
+
+Owner 为 81a1，独立审查交 ca97。本候选完成已核准的源码修复与合成验证；真实登录、匹配桌面包、安装及发布不在本轮执行授权内。
+
+## 基线与范围
+
+- 分支 `feat/shop-login-identity-source-v1`，直接基线为精确 Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`，CI 38941889261 三项成功。
+- 基线运行代码与已发布 `c085a3f75a84f9ac68ea9da7473782431de252a3` 一致。原诊断 229d5c6、恢复 a488、反馈 98c1330 及各分支、包和本机材料保留。
+- 从 a488 逐路径复用必要留窗与人工继续代码，不合并整条恢复分支，不引入 98 的成功反馈、successMap 或查询刷新修补。
+- 共 10 个运行路径、8 个定向测试路径、3 份现有契约及本 Gate 1 记录。Backend、Shared、CSS、选品、窗口框架、依赖、Schema、迁移和包版本不变。
+
+## 身份与恢复行为
+
+抖店仅使用现有 `shop_info_v2` 的明确 `data.shop_id/shop_name`。HTTP 和业务状态须合法，data 不接受数组；ID 接受非空字符串或正安全整数，保留长字符串，不将不安全数字舍入。账户字段、任意递归同名字段和数组首项均不组成店铺身份。四条无明确身份契约的 fallback 取身份请求撤下，原 probeIndex 0 与固定观察边界保留。
+
+已有店铺候选刷新被拒时，Main 清零 payload、释放旧 lease、保留原窗口和原 Session。仅 `candidate_identity` 或 `PLATFORM_IDENTITY_MISMATCH` 产生 `identity_mismatch`；Schema、网络、人员认证、平台认证、权限、版本及未知错误保留独立分类。错误文本不反射平台或 Backend 原始 message/body。
+
+固定“登录”入口允许用户在原窗口手动切换正确账号后显式继续。每次重新获取当前权限下的新 lease 和 expected version；同目标、同 attempt、同人员浏览器 Session 才可重新捕获。相同被拒候选不再 POST，每次 attempt 至多三个显式 POST；不自动清 Cookie/Profile、改绑定、复用旧 lease 或自动重试。达到上限或权限阻止后，登录只做授权置前，仍可取消。
+
+失败状态轮询只读 Main 状态，不额外访问平台。原窗口在续租中、续租失败或超时后仍可观察关闭；迟到 lease 独立释放，迟到捕获只清零，取消和上下文变化不能复活旧操作。首次新增自动关闭、其它平台身份方式、原成功留窗及服务器 CAS 校验保留。
+
+## 界面与契约
+
+列表只在原 96px 登录状态格使用既有 small StatusTag 与 Tooltip 显示“店铺不符”。提示明确说明本次失败、原登录状态保留；目标名仅来自当前已授权 Shop ViewModel，不显示候选他店身份，不修改数据库 VALID 状态。原列宽、操作顺序、固定登录入口和 scroll-x 不变。
+
+详情复用原 NAlert；查询加载或失败时仅保留当前 typed 错店提示，真实 Loading/ErrorState 和重试继续显示，不将旧缓存当成新结果。普通读取错误不显示错店提示。取消、自然关闭、成功、人员/团队/权限变化清除本次反馈；不持久化或历史重播。
+
+Preload 增加固定可选 `refreshRecoverySupported: true`；原状态类型增加可选 `refreshFailure`，Main 与 Renderer 类型同步。没有新增 IPC 通道或通用执行能力。旧桥接仍安全清理，不假装具备恢复能力。
+
+## 文件清单
+
+| 组别 | 文件 |
+| --- | --- |
+| Electron 运行 5 | services/douyin-platform-auth-adapter.ts、services/management-login-service.ts、services/login-diagnostics.ts、preload/index.ts、types/desktop-api.ts |
+| Frontend 运行 5 | types/desktop.d.ts；features/shop-management/model/useShopLogin.ts、management-login-poller.ts；ui/ShopListTable.vue、ShopConnectionSection.vue |
+| Electron 测试 4 | douyin-login-probe-observation.test.ts、management-login-sync.test.ts、desktop-api.test.ts、login-diagnostics.test.ts |
+| Frontend 测试 4 | useShopLogin.spec.ts、management-login-poller.spec.ts、ShopListTable.spec.ts、ShopConnectionSection.spec.ts |
+| 现有契约 3 | electron/docs/01-Electron边界与架构.md、02-IPC契约.md；frontend/docs/05-数据模型与接口契约.md |
+
+## 验证
+
+所有平台/HTTP 结果均为合成注入，未连接真实平台或业务数据库。
+
+| 命令与范围 | 实际结果 |
+| --- | --- |
+| 原身份解析器对新增 NodeVM 契约用例 | 2 PASS / 11 FAIL，证明递归账户字段等独立缺陷；修复后该文件 13 PASS |
+| `pnpm --filter @control-center/electron test` 对应 electron 目录 `pnpm test` | TypeScript clean build 与全部 Node 测试通过，83 PASS；无原生 Electron 启动 |
+| Frontend `pnpm exec vitest run` 四份上述定向文件 | 61 PASS，最终 6.11 秒；含错店保留/清除、状态格、续租与迟到保护 |
+| 详情加载与读取错误错店提示回归 | 修复前两项 FAIL 已复现；修复后含非错店对照和反馈清除均通过，正常分支仅一份提示 |
+| Frontend `pnpm lint`、`pnpm typecheck`、`pnpm build` | 全部通过；生产 Real build 15.67 秒，保留既有大 chunk 警告 |
+| Electron `pnpm typecheck` 与最终文件检查 | 通过；diff --check 通过，实际 22 路径与白名单一致；两个 Vue style 逐字不变，Backend/Shared/选品/窗口/依赖/包版本无 diff，本地覆盖及构建产物保持 ignored |
+
+首次 Frontend 测试命令误将 `--` 透传，导致未按文件过滤；已中止，不计入通过结果，随后用 `pnpm exec vitest run 文件路径` 完成上述定向验证。没有为重跑而放宽断言或修改无关模块。
+
+## 证据边界与下一步
+
+既有生产单次失败已定位在 `candidate_identity`，发生于权威候选校验/保存之前，原 Session 保留。旧解析器缺陷可用原函数与合成结构复现；该次实际候选的字段来源未保留，不能认定用户登错账号或此缺陷就是唯一根因。
+
+本轮数据库、真实平台、生产登录、原生窗口、服务启停、Profile 读取及安装动作均为零。未重复验证已通过的选品 A/B，也未操作当前 Integration/生产配置。Backend 已发布诊断保持不变，无 Migration，无 Feature DB 需求。
+
+本候选修改 Main、Preload 和 Adapter，后续真实验收必须使用与精确 Candidate 匹配的桌面代码；仅部署服务器 Frontend 不能更新旧客户端。package.json 暂保留 1.0.6，本轮不制作、安装或发放新桌面包；所需版本、真实验证和发布须由 ca97/规划另行确认。
+
+ca97 接收精确 SHA 后独立审查范围、恢复安全门禁和旧 Session 保护。尚无本候选真实登录或原生验收，不标 Gate 2、Green 或已部署。应用回退须成套匹配 Renderer/Preload/Main，保留现有 Profile、Session、Schema 与所有历史证据；不通过清理用户数据回退。

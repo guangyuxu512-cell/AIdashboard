@@ -37,6 +37,18 @@ export interface ManagementLoginStatusResult {
   recovery: boolean
   profileReused: boolean
   message: string
+  refreshFailure?: {
+    code:
+      | 'candidate_rejected'
+      | 'identity_mismatch'
+      | 'platform_auth_invalid'
+      | 'lease_expired'
+      | 'version_conflict'
+      | 'personnel_auth_required'
+      | 'forbidden'
+      | 'validation_incomplete'
+    canContinue: boolean
+  }
 }
 
 export interface ManagementLoginCompleteInput {
@@ -83,6 +95,7 @@ export interface DesktopApi {
   managementLogin: {
     readonly correlationSupported?: true
     readonly globalShopLoginSupported?: true
+    readonly refreshRecoverySupported?: true
     focusShop(input: ManagementLoginFocusInput): Promise<boolean>
     open(input: ManagementLoginOpenInput): Promise<ManagementLoginStatusResult>
     getStatus(attemptId: string): Promise<ManagementLoginStatusResult>
