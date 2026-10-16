@@ -1,13 +1,15 @@
 import { defineComponent, h, reactive } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryObserver } from '@tanstack/vue-query'
 import {
   useShopLogin,
   supportsShopLogin,
   validationFailureMessage,
 } from './useShopLogin'
 import { ApiError } from '@/shared/api'
-import type { ShopListItemViewModel } from '@/entities/shop'
+import { shopQueryKeys, type ShopListItemViewModel } from '@/entities/shop'
+import { shopSessionQueryKeys } from '@/entities/shop-session'
 import {
   LOGIN_FOCUS_TIMEOUT_MS,
   LOGIN_LEASE_TIMEOUT_MS,
@@ -30,7 +32,8 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(),
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => reactive(state.auth) }))
-vi.mock('@tanstack/vue-query', () => ({
+vi.mock('@tanstack/vue-query', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useQueryClient: () => ({ invalidateQueries: state.invalidate }),
 }))
 vi.mock('naive-ui', async (importOriginal) => ({
@@ -1015,6 +1018,96 @@ describe('page-owned shop login sync', () => {
     expect(flow.feedback.get('shop')?.status).toContain('刷新未完成')
     wrapper.unmount()
   })
+  it.each(['list', 'detail', 'session'] as const)(
+    'keeps the saved receipt and warns when the actual QueryClient %s refetch fails',
+    async (failedRead) => {
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+            refetchOnWindowFocus: false,
+            gcTime: Infinity,
+          },
+        },
+      })
+      let failReads = false
+      const reads = await Promise.all(
+        (
+          [
+            [
+              'list',
+              shopQueryKeys.list({
+                page: 1,
+                pageSize: 10,
+                filters: {
+                  enabledStatus: null,
+                  ownerUserId: null,
+                  keyword: '',
+                },
+              }),
+            ],
+            ['detail', shopQueryKeys.detail('shop')],
+            ['session', shopSessionQueryKeys.shop('shop')],
+          ] as const
+        ).map(async ([source, queryKey]) => {
+          const cached = { source, shopId: 'shop', revision: 'cached' }
+          const queryFn = vi.fn(async () => {
+            if (failReads && source === failedRead)
+              throw new Error('synthetic read unavailable')
+            return cached
+          })
+          await client.fetchQuery({ queryKey, queryFn })
+          const observer = new QueryObserver(client, {
+            queryKey,
+            queryFn,
+            refetchOnMount: false,
+          })
+          const unsubscribe = observer.subscribe(() => undefined)
+          return { source, queryKey, cached, queryFn, unsubscribe }
+        }),
+      )
+      state.invalidate.mockImplementation(
+        (...args: Parameters<QueryClient['invalidateQueries']>) =>
+          client.invalidateQueries(...args),
+      )
+      const { flow, wrapper } = setup()
+      const desktop = window.desktop!.managementLogin!
+      try {
+        failReads = true
+        await flow.login(shop)
+        await flushPromises()
+        for (const read of reads) {
+          expect(read.queryFn).toHaveBeenCalledTimes(2)
+          expect(client.getQueryData(read.queryKey)).toEqual(read.cached)
+          expect(client.getQueryState(read.queryKey)?.status).toBe(
+            read.source === failedRead ? 'error' : 'success',
+          )
+        }
+        expect(flow.feedback.get('shop')).toMatchObject({
+          busy: false,
+          error: null,
+          success: { sessionVersion: 4, readRefreshFailed: true },
+        })
+        expect(flow.feedback.get('shop')?.status).toContain('刷新未完成')
+        expect(state.success).toHaveBeenCalledWith('登录状态已更新')
+        expect(state.warning).toHaveBeenCalledWith(
+          '店铺信息刷新未完成，请刷新列表',
+        )
+        expect(state.error).not.toHaveBeenCalled()
+        expect(state.invalidate).toHaveBeenCalledTimes(2)
+        expect(state.acquire).toHaveBeenCalledTimes(1)
+        expect(desktop.open).toHaveBeenCalledTimes(1)
+        expect(desktop.refresh).toHaveBeenCalledTimes(1)
+        expect(state.confirm).toHaveBeenCalledTimes(1)
+        expect(state.release).not.toHaveBeenCalled()
+        expect(desktop.close).not.toHaveBeenCalled()
+      } finally {
+        wrapper.unmount()
+        for (const read of reads) read.unsubscribe()
+        client.clear()
+      }
+    },
+  )
   it.each(['person', 'team', 'permission', 'leave'] as const)(
     'clears completed local feedback on %s without saving again or replaying the toast',
     async (change) => {

@@ -59,6 +59,25 @@
 Backend/Electron/IPC/Schema/Shared/App.vue/包版本相对a488逐树无差异；不重跑未变Backend/Electron或重打包，
 待ca97登记新前端与已核销a488/1.0.7壳的关联并复验。完整Gate2仍PARTIAL，MyCookLab原拒绝子分支仍UNKNOWN。
 
+### 查询刷新错误传播返修
+
+ca97独立退回`db509927cbdb0a46ba60cc79919698272fd4d73b`：实际TanStack Query在活动读取失败后
+仍可能让默认`invalidateQueries`完成，查询状态已是error、旧缓存仍保留，原mock拒绝测试未覆盖此行为。
+独立浏览器探针正常1280/1920两项通过，列表503/Session503两项没有预期warning；该浏览器结果不是Electron验收。
+
+本次只在登录后的Shop与Session两次失效调用追加`throwOnError: true`，不改Query全局配置或重试规则。
+读取失败进入原`readRefreshFailed`分支，保留权威保存成功、版本与验证时间，列表显示“已保存”警告，
+详情及短消息说明“店铺信息刷新未完成，请刷新列表”；不重新捕获、保存或申请租约。
+
+新增回归使用已安装的真实`QueryClient`和`QueryObserver`，沿现有composable注入点调用真实失效/refetch，
+先成功缓存，再分别让活动列表、店铺详情、Session查询失败。使用应用相同的`retry:false`，
+仅测试缓存回收设为Infinity并在finally清空；读取函数为合成响应，不访问任何服务。
+旧代码三个分支均复现`readRefreshFailed:false`失败，修复后验证旧缓存保护、warning及仅一次登录保存。
+最终同一四文件69项PASS（9.55s），lint、typecheck、Real production build（15.01s）、格式及diff检查通过。
+新增测试fixture首轮typecheck缺少正式列表参数，已补全page/pageSize/filters后重跑通过；既有大chunk告警保留。
+原db509及其验证记录保留，不倒写为已通过Gate2。Backend/Electron/Shared/布局与包版本完全不变，
+无需重打包或重登录；新前端仍交ca97用原独立探针和唯一匹配Electron复验。
+
 ca97已有生产与本机只读证据定位的是MyCookLab，不是历史HuanYu：2026-10-16上海21:25:13.826、
 21:25:42.498两次refresh HTTP500/`SHOP_SESSION_PAYLOAD_INVALID`，耗时23/21ms。对应Request ID
 `f159544c-7840-4bc1-a7bb-60bcb2247e56`、`6c35c1f6-51c5-49fb-a5d0-9577f6ab71ff`。

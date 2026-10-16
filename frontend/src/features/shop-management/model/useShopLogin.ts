@@ -96,10 +96,14 @@ export function useShopLogin() {
   }
   async function refresh(shopId: string) {
     await Promise.all([
-      queries.invalidateQueries({
-        queryKey: shopSessionQueryKeys.shop(shopId),
-      }),
-      queries.invalidateQueries({ queryKey: shopQueryKeys.all }),
+      queries.invalidateQueries(
+        { queryKey: shopSessionQueryKeys.shop(shopId) },
+        { throwOnError: true },
+      ),
+      queries.invalidateQueries(
+        { queryKey: shopQueryKeys.all },
+        { throwOnError: true },
+      ),
     ])
   }
   async function cancel(shopId: string) {
