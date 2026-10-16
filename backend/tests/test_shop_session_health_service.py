@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -6,16 +7,20 @@ from pydantic import SecretStr
 
 from app.core.config import Settings
 from app.modules.sessions.auth_context import (
+    ShopSessionAccessor,
     ShopSessionAuthContext,
     StoredSessionCookie,
+    StoredManagementSessionPayload,
 )
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.exceptions import ShopSessionPayloadInvalidError
 from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.schemas import ShopSessionMetadataRead
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.platforms.exceptions import (
     PlatformAuthenticationInvalidError,
+    PlatformIdentityMismatchError,
     PlatformRequestFailedError,
     PlatformRequestTimeoutError,
     PlatformResponseInvalidError,
@@ -55,6 +60,9 @@ class FakeSessionService:
 
 
 class FakeAccessor:
+    context_from_payload = staticmethod(ShopSessionAccessor.context_from_payload)
+    merge_payload_cookies = staticmethod(ShopSessionAccessor.merge_payload_cookies)
+
     def __init__(self) -> None:
         self.marked: list[ShopSessionStatus] = []
 
@@ -221,3 +229,55 @@ def test_recent_validation_skips_remote_request() -> None:
     assert result.used_cached_validation is True
     assert connector.calls == 0
     assert accessor.marked == []
+
+
+def candidate_input() -> tuple[bytes, StoredManagementSessionPayload]:
+    document = {
+        "schema": "management-login.session.v1", "platform": "douyin",
+        "cookies": [{"name": "synthetic", "value": "SYNTHETIC_PRIVATE_CANARY"}],
+    }
+    return json.dumps(document).encode(), StoredManagementSessionPayload.model_validate(document)
+
+
+@pytest.mark.parametrize(("step", "connector_calls"), [
+    ("context_validation", 0), ("identity_connector", 1), ("cookie_merge", 1),
+])
+def test_candidate_payload_diagnostic_identifies_call_boundary_without_writes(step, connector_calls, monkeypatch) -> None:
+    service, shop_id, accessor, connector, storage = make_service(identity(cookie_update=True))
+    original = ShopSessionPayloadInvalidError(details={"private": "SYNTHETIC_PRIVATE_CANARY"})
+
+    def reject(*_args):
+        raise original
+
+    if step == "context_validation":
+        monkeypatch.setattr(accessor, "context_from_payload", reject)
+    elif step == "cookie_merge":
+        monkeypatch.setattr(accessor, "merge_payload_cookies", reject)
+    else:
+        connector.result = original
+    payload, parsed = candidate_input()
+    before = storage.metadata.model_dump()
+    with pytest.raises(ShopSessionPayloadInvalidError) as failure:
+        service.validate_candidate(shop_id, ShopPlatform.DOUYIN, "platform-shop-1", 1, payload, parsed)
+    assert failure.value is original
+    assert failure.value.details == {"refresh_stage": "candidate_validation", "validation_step": step}
+    assert connector.calls == connector_calls
+    assert accessor.marked == []
+    assert storage.store_calls == 0
+    assert storage.metadata.model_dump() == before
+
+
+@pytest.mark.parametrize("failure", [
+    PlatformAuthenticationInvalidError(), PlatformIdentityMismatchError(),
+    PlatformRequestFailedError(), PlatformRequestTimeoutError(), PlatformResponseInvalidError(),
+])
+def test_candidate_non_payload_failures_keep_original_code_and_details(failure) -> None:
+    service, shop_id, accessor, connector, storage = make_service(failure)
+    payload, parsed = candidate_input()
+    with pytest.raises(type(failure)) as observed:
+        service.validate_candidate(shop_id, ShopPlatform.DOUYIN, "platform-shop-1", 1, payload, parsed)
+    assert observed.value is failure
+    assert failure.details is None
+    assert connector.calls == 1
+    assert accessor.marked == []
+    assert storage.store_calls == 0

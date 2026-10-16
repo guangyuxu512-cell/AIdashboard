@@ -30,6 +30,17 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-16生产核验完成：Main正式Release21229eff经CI38790697624/Deploy38791100315成功，
+新鲜pre46备份1039309字节/restore目录344项可读后升级生产单一20261015_0046；
+12类旧字段逐行摘要及计划/Session/审计全保持，0046文件不变，Slot继续released/无active。
+生产已有新语义后仍禁止downgrade清历史或直接回旧B Reader；保留兼容Reader/Schema及审计。
+后续独立死代码清理无Schema/DB/Slot需求，不能借此回收旧事实或改迁移。
+
+2026-10-16正式核销：0046对应完整885已通过Gate1/Gate2、正常no-ff合后复验及精确Green
+1773a97d27c56512a620337e3259cceabadca2f1，CI38789232361三Jobsuccess，现released，
+暂无active Slot。Feature/Integration单一46及事实保留；生产由Main在新鲜备份和正式Release
+中45→46，不据Green冒称生产升级成功。后续纯治理HEAD不是新Green，不自动分配下一Slot。
+
 2026-10-16更新：完整885b618的Gate2A/2B及人类发布授权已核销；0046已应用文件、
 Integration事实及可读pre46备份完整保留。当前Slot仍active至正常no-ff集成及精确dev CI Green，
 届时正式released，不提前分配下一Slot。生产仍按Main新鲜Release检查从45升级46；
@@ -43,7 +54,7 @@ Owner正常建分支并同步本次治理后才可编写/应用新46，不改42�
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `active`（精确bfaae14/父9734809，Gate1及可见界面人工确认已交，Gate2进行中） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 精确Green9bb64ac，down单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046` | Feature单一46；ca97备份可读后正式升级Integration单一46，12表旧字段逐行摘要/v6 Session保留，正式API及合成基础更新通过。文件SHA256 F87B00229065BADC506CE3BE38E59AB9E7B2DF1833918941D8F4833F924C2F9C，42–45不改。f876长标签、973商品信息、bfaae14首次上榜均仅前端，无DDL；用户截图确认不代替真实basic/原生剪贴板或双尺寸专项。真实平台基础更新未完，不释放Slot或合dev/main/发布。新明细标志即使0items、新basic/状态/屏蔽审计存在均拒绝丢语义；downgrade仅精确可重建Feature，共享/生产保Reader/Schema/审计并关入口。 |
+| `feat/product-selection-candidate-result-filters-v1` / 81a1 | `released`（完整885b618 Gate1/2及精确Green1773a97，CI38789232361三Jobsuccess） | Candidate Team级屏蔽/审计；1张append-only canonical结果关联及明细版本；关闭式rank/basic_info Run与Observation最小字段状态/fence，复用原Executor/容量/lease，不新建队列/扫描器 | 基线Green9bb64ac，down单一`20261013_0045` | `20261015_0046_product_selection_candidate_result_filters_v1`，revision `20261015_0046` | Feature/Integration单一46；可读pre46备份、正式升级及12表旧字段保留通过；正式API/合成场景与59394f85真实basic成功及原生确认分别记录。文件SHA256 F87B00229065BADC506CE3BE38E59AB9E7B2DF1833918941D8F4833F924C2F9C，42–45不改。新明细标志即使0items、新basic/状态/屏蔽审计存在均拒绝丢语义；downgrade仅精确可重建Feature，共享/生产保Reader/Schema/审计并关入口。生产升级/健康/旧数据另由Main Release核验，不据Green预标DEPLOYED。 |
 
 新增紧凑列表共享任务`feat/compact-product-list-foundation-v1`为纯前端依赖，Migration Slot：无，
 不连接DB、不创建库或DDL。81a1原Feature及Integration已应用0046完整保留，不因从Green45代码

@@ -12,6 +12,7 @@ from app.modules.sessions.auth_context import (
     StoredSessionCookie,
 )
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.exceptions import ShopSessionPayloadInvalidError
 from app.modules.sessions.schemas import (
     ShopSessionHealthRead,
     StoreShopSessionCommand,
@@ -73,13 +74,31 @@ class ShopSessionHealthService:
         connector = self.connectors.get(platform)
         if connector is None:
             raise PlatformNotSupportedError()
-        context = self.session_accessor.context_from_payload(shop_id, platform, version, parsed)
-        identity = connector.fetch_shop_identity(shop_id, context)
+        try:
+            context = self.session_accessor.context_from_payload(shop_id, platform, version, parsed)
+        except ShopSessionPayloadInvalidError as error:
+            error.details = {
+                "refresh_stage": "candidate_validation", "validation_step": "context_validation",
+            }
+            raise
+        try:
+            identity = connector.fetch_shop_identity(shop_id, context)
+        except ShopSessionPayloadInvalidError as error:
+            error.details = {
+                "refresh_stage": "candidate_validation", "validation_step": "identity_connector",
+            }
+            raise
         if platform_shop_id is None or identity.platform_shop_id != platform_shop_id:
             raise PlatformIdentityMismatchError()
         merged, count = (payload, 0)
         if identity.cookie_updates:
-            merged, count = self.session_accessor.merge_payload_cookies(payload, identity.cookie_updates)
+            try:
+                merged, count = self.session_accessor.merge_payload_cookies(payload, identity.cookie_updates)
+            except ShopSessionPayloadInvalidError as error:
+                error.details = {
+                    "refresh_stage": "candidate_validation", "validation_step": "cookie_merge",
+                }
+                raise
         return ValidatedSessionCandidate(
             payload=merged,
             platform_shop_id=identity.platform_shop_id,
