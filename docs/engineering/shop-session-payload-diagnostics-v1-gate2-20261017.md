@@ -2,8 +2,9 @@
 
 ## 当前状态
 
-诊断候选开发中，Gate 2尚未开始候选验收。81a1负责独立后端候选，ca97负责审查、
-集成及精确dev CI，Main负责Release Gate和正式部署。生产目前为
+精确候选`229d5c6ca41be1e4fe45fd12caee4b2f988a95c6`独立Gate 2通过，
+待正常no-ff集成、合后复验与精确dev CI；此状态只针对后端诊断，不通过98 UI或原生产故障。
+81a1负责独立后端候选，ca97负责集成及精确dev CI，Main负责Release Gate和正式部署。生产目前为
 `21229eff5ddf9900b8f38b13c89382952f90ee7b`，单一Head为`20261015_0046`。
 
 2026-10-17人类在规划会话的原始turn
@@ -49,7 +50,23 @@ Backend、Frontend、Electron、package及lock文件应用树一致。
 的净运行差异只有已批准诊断，不含cleanup四路径、98 UI、商品数据、配置、依赖或Migration。
 不允许Feature直接合main或以本地测试代替CI。
 
-## Gate 2 验证门槛
+## Gate 2 验证结果
+
+候选唯一直接父为1773，远端交付SHA一致。精确范围为批准8路径加Gate 1记录，
+9份归档blob校验无差异；Frontend、Electron、Core、平台、Migration、package和lock与生产完全相同。
+
+ca97独立执行七文件104项全部通过，真实HTTP transport与SQLAlchemy连接均设拒绝哨兵。
+另有独立内存ASGI/实际默认stderr日志出口16项通过：七stage、三子步骤、未知/缺失stage、
+恶意额外details、不合法请求ID、成功及非目标码均符合契约。响应、domain和原access日志合法UUID关联一致，
+新日志无合成秘密标记，API每次只调用service一次。该探针在旧98响应stage实现上准确失败于缺失domain日志，
+是本次日志出口的负向对照，不是生产平台证据。
+
+AST逐项核对原`acquire/release/complete`、`check/apply_response_cookie_updates`及保存/resume/return尾部不变。
+仅展开三个固定诊断catch后的候选验证成功路径与基线一致。初版本机AST探针只展开顶层try，
+漏掉Cookie merge的嵌套try；保留初次结果后修正为只递归展开三个固定catch，候选源码未改。
+无禁入临时路径，无服务、DB、真实平台或客户端操作。
+
+以下门槛均已按上述范围验证；合并后仍需复验净差异与相同测试，并等待精确CI。
 
 - 独立核对精确Candidate、父链、8路径范围与契约，不使用Owner HEAD代替交付SHA。
 - 新候选定向测试覆盖七stage、验证子步骤、Schema有界投影及旧Session/lease/CAS保护。
