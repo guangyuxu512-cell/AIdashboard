@@ -134,7 +134,7 @@ describe('product metric interval draft contract', () => {
     draft.exposureCount = { choice: 'custom', min: 1.5, max: null }
     expect(compileProductRanges(draft).errors.exposureCount).toContain('整数')
     draft.exposureCount.choice = 'unlimited'
-    draft.product_click_pay_ucnt_ratio = { choice: 'custom', min: 4.5, max: 6 }
+    draft.clickPayRate = { choice: 'custom', min: 4.5, max: 6 }
     expect(compileProductRanges(draft).intervals[0]).toMatchObject({
       min: 0.045,
       max: 0.06,
@@ -143,7 +143,7 @@ describe('product metric interval draft contract', () => {
 
   it('uses the continuous 2–4%, 4–6% conversion presets including the former screenshot gap', () => {
     const drafts = emptyProductRangeDrafts()
-    drafts.product_click_pay_ucnt_ratio = {
+    drafts.clickPayRate = {
       choice: 'preset-3',
       min: null,
       max: null,

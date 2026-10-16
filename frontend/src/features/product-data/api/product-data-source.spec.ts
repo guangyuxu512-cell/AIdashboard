@@ -182,8 +182,8 @@ describe('product data source boundaries', () => {
     expect(Number(week.items[0]!.metrics.receive_amt.value)).toBeCloseTo(
       Number(one.items[0]!.metrics.receive_amt.value) * 7,
     )
-    expect(week.items[0]!.metrics.product_click_pay_ucnt_ratio).toEqual(
-      one.items[0]!.metrics.product_click_pay_ucnt_ratio,
+    expect(week.items[0]!.metrics.clickPayRate).toEqual(
+      one.items[0]!.metrics.clickPayRate,
     )
     expect(one.items[1]!.metrics.product_show_ucnt).toMatchObject({
       state: 'available',
@@ -191,9 +191,7 @@ describe('product data source boundaries', () => {
     })
     expect(one.items[2]!.metrics.product_show_ucnt.state).toBe('missing')
     expect(one.items[3]!.metrics.receive_amt.state).toBe('null')
-    expect(one.items[4]!.metrics.product_click_pay_ucnt_ratio.state).toBe(
-      'invalid',
-    )
+    expect(one.items[4]!.metrics.clickPayRate.state).toBe('invalid')
     expect(
       productPeriod(
         { ...emptyProductFilters(), datePreset: 'last7Days' },

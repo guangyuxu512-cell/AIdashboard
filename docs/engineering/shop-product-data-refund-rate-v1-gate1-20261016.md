@@ -1,9 +1,12 @@
 # 商品数据支付时间退款率修正 Gate 1 交接
 
+本记录为 `1999f877a8eed6cbf98908d38a6d7edaebe6dc81` 阶段证据；最新 74 指标代码核实接回见
+`shop-product-data-verified-metrics-v1-gate1-20261016.md`，不将下述旧待核实状态当最新事实。
+
 2026-10-16，Owner 7d55，交接 ca97。沿原 `feat/shop-product-data-frontend-v1` 在已推送的
 `a28f8d3ac10c6c79ce05598db5f02071b877317b` 上做定向口径修正，保留 b9/a28 及所有旧报告。
 基线仍为原候选已包含的 Green `5a18bd0390cb4b8cbed637d412f7482cefff3f36`。
-新完整候选为包含本记录的 Feature HEAD，精确 SHA 与提交后 Real 构建结果见回执及本地忽略清单。
+本阶段完整候选为上述 1999f87，精确 SHA 与提交后 Real 构建结果见该阶段回执及本地忽略清单。
 仍为 UI_ONLY；待独立 Gate 2 和用户验收，禁止发布。
 
 ## 用户修正与实现

@@ -16,6 +16,8 @@ export function normalizeProductColumns(value: unknown): ProductColumnId[] {
         // User-approved metric replacement: preserve only column position and
         // visibility, never alias old metric values/filters to the new meaning.
         if (id === 'shippedReturnRate') return ['payTimeRefundRate']
+        if (id === 'product_click_show_ucnt_ratio') return ['exposureClickRate']
+        if (id === 'product_click_pay_ucnt_ratio') return ['clickPayRate']
         if (known.has(id)) return [id as ProductColumnId]
         const metricId = resolveProductMetricId(id)
         return metricId ? [metricId] : []

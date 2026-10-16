@@ -108,12 +108,12 @@ export function createMockProductDataSource(
       payTimeRefundOrders: (index % 4) * days,
       product_show_ucnt: exposure,
       product_click_ucnt: click,
-      product_click_pay_ucnt_ratio: click ? payVisitors / click : 0,
+      clickPayRate: click ? payVisitors / click : 0,
       pay_cnt: orders,
       receive_amt: orders * 29.9,
       pay_amt: orders * 31.9,
       pay_ucnt: payVisitors,
-      product_click_show_ucnt_ratio: exposure ? click / exposure : 0,
+      exposureClickRate: exposure ? click / exposure : 0,
       refund_amt: (index % 3) * 12.5 * days,
       refund_cnt: (index % 3) * days,
       stock_cnt: 50 + index * 9,
@@ -137,7 +137,7 @@ export function createMockProductDataSource(
     if (index === 3)
       metrics.receive_amt = { state: 'null', value: null, unit: 'yuan' }
     if (index === 4)
-      metrics.product_click_pay_ucnt_ratio = {
+      metrics.clickPayRate = {
         state: 'invalid',
         value: null,
         unit: 'ratio',

@@ -21,7 +21,7 @@ export const DEFAULT_PRODUCT_COLUMNS: ProductColumnId[] = [
   'shop',
   'group',
   'product_show_ucnt',
-  'product_click_pay_ucnt_ratio',
+  'clickPayRate',
   'pay_cnt',
   'receive_amt',
 ]

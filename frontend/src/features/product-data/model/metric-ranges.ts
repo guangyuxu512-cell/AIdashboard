@@ -10,14 +10,14 @@ export const PRODUCT_RANGE_FILTERS = [
   },
   { id: 'clickCount', percent: false, boundaries: [0, 10, 50, 100, 200] },
   {
-    id: 'product_click_show_ucnt_ratio',
+    id: 'exposureClickRate',
     percent: true,
     boundaries: [0, 1, 2, 4, 6],
   },
   { id: 'cartUsers', percent: false, boundaries: [0, 10, 50, 100, 200] },
   { id: 'visitCartRate', percent: true, boundaries: [0, 5, 8, 10, 15] },
   {
-    id: 'product_click_pay_ucnt_ratio',
+    id: 'clickPayRate',
     percent: true,
     boundaries: [0, 1, 2, 4, 6],
   },

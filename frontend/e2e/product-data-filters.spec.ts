@@ -31,10 +31,10 @@ test('nine range presets, custom validation and full-set filtering keep the last
   const ids = [
     'exposureCount',
     'clickCount',
-    'product_click_show_ucnt_ratio',
+    'exposureClickRate',
     'cartUsers',
     'visitCartRate',
-    'product_click_pay_ucnt_ratio',
+    'clickPayRate',
     'netOrders',
     'refundRelatedOrders',
     'payTimeRefundRate',
@@ -47,7 +47,7 @@ test('nine range presets, custom validation and full-set filtering keep the last
     await expect(menu.locator('.n-base-select-option')).toHaveCount(7)
     await expect(menu.getByText('不限', { exact: true })).toBeVisible()
     await expect(menu.getByText('自定义', { exact: true })).toBeVisible()
-    if (id === 'product_click_pay_ucnt_ratio')
+    if (id === 'clickPayRate')
       await expect(menu.getByText('4%–<6%', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(menu).toHaveCount(0)

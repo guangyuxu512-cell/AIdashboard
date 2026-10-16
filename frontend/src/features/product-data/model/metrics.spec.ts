@@ -8,6 +8,44 @@ import {
 import { normalizeProductColumns } from './column-preferences'
 
 describe('product metric semantic registry', () => {
+  it('freezes the seventeen verified source codes and observed raw units without treating legacy ratio IDs as source fields', () => {
+    expect(
+      PRIMARY_PRODUCT_METRICS.map((metric) => [
+        metric.id,
+        metric.platformCode,
+        metric.rawUnitCode,
+      ]),
+    ).toEqual([
+      ['exposureCount', 'product_show_cnt', 5],
+      ['clickCount', 'product_click_cnt', 5],
+      ['exposureClickRate', 'product_show_click_converse_uv_rate', 4],
+      ['cartUsers', 'click_add_to_cart_uv', 5],
+      ['visitCartRate', 'product_add_show_converse_uv_ratio', 4],
+      ['netOrders', 'net_pay_cnt', 5],
+      ['refundRelatedOrders', 'pay_cnt_exclude_refund', 5],
+      ['clickPayRate', 'product_click_pay_converse_uv_rate', 4],
+      ['payTimeRefundRate', 'pay_refund_ratio', 4],
+      ['pay_amt', 'pay_amt', 3],
+      ['pay_cnt', 'pay_cnt', 5],
+      ['pay_ucnt', 'pay_ucnt', 5],
+      ['payPerOrder', 'per_user_price', 3],
+      ['payTimeRefundAmount', 'pay_refund_success_amt', 3],
+      ['payTimeRefundOrders', 'pay_refund_success_order_cnt', 5],
+      ['product_show_ucnt', 'product_show_ucnt', 5],
+      ['product_click_ucnt', 'product_click_ucnt', 5],
+    ])
+    expect(
+      new Set(PRIMARY_PRODUCT_METRICS.map((metric) => metric.platformCode))
+        .size,
+    ).toBe(17)
+    expect(resolveProductMetricId('product_click_show_ucnt_ratio')).toBeNull()
+    expect(resolveProductMetricId('product_click_pay_ucnt_ratio')).toBeNull()
+    expect(productMetricTooltip('pay_amt')).toContain('金额分/元显示换算待确认')
+    expect(productMetricTooltip('clickPayRate')).toContain(
+      '官方页面百分比显示换算待确认',
+    )
+    expect(productMetricTooltip('clickPayRate')).toContain('真实接口尚未接入')
+  })
   it('registers seventeen distinct primary metrics and nineteen Chinese display names without duplicate columns', () => {
     expect(PRIMARY_PRODUCT_METRICS).toHaveLength(17)
     expect(
@@ -29,7 +67,7 @@ describe('product metric semantic registry', () => {
         '点击成交率',
         'clickPayRate',
       ]),
-    ).toEqual(['product_click_show_ucnt_ratio', 'product_click_pay_ucnt_ratio'])
+    ).toEqual(['exposureClickRate', 'clickPayRate'])
     for (const metric of PRODUCT_METRICS)
       expect(productMetricTooltip(metric.id)).toContain(metric.officialLabel)
   })
@@ -47,6 +85,12 @@ describe('product metric semantic registry', () => {
     expect(resolveProductMetricId('refund_cnt')).toBe('refund_cnt')
     expect(productMetricTooltip('refundRelatedOrders')).toContain(
       '不代表违规或风控异常',
+    )
+    expect(productMetricTooltip('refundRelatedOrders')).toContain(
+      '不等同发生退款订单数',
+    )
+    expect(productMetricTooltip('refundRelatedOrders')).toContain(
+      '具体业务定义待确认',
     )
     expect(productMetricTooltip('netOrders')).toContain(
       '不由其他订单数相减推算',

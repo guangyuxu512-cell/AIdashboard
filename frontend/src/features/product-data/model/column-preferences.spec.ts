@@ -12,6 +12,25 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 describe('product data personal fields', () => {
+  it('migrates both historical ratio column IDs only at the preference boundary and keeps their visible order', () => {
+    const key = 'control-center.product-data.columns.v1.ratio-compat'
+    const raw = JSON.stringify([
+      'product_click_pay_ucnt_ratio',
+      'shop',
+      'product_click_show_ucnt_ratio',
+      'clickPayRate',
+      'exposureClickRate',
+    ])
+    window.localStorage.setItem(key, raw)
+    const write = vi.spyOn(Storage.prototype, 'setItem')
+    expect(readProductColumns('ratio-compat')).toEqual([
+      'clickPayRate',
+      'shop',
+      'exposureClickRate',
+    ])
+    expect(write).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(key)).toBe(raw)
+  })
   it('migrates only the replaced refund-rate column preference, preserving order without reading old metric data or rewriting storage', () => {
     const key = 'control-center.product-data.columns.v1.refund-rate'
     const raw = JSON.stringify([
@@ -46,10 +65,10 @@ describe('product data personal fields', () => {
     const write = vi.spyOn(Storage.prototype, 'setItem')
     const expected = [
       'receive_amt',
-      'product_click_show_ucnt_ratio',
+      'exposureClickRate',
       'shop',
       'refund_amt',
-      'product_click_pay_ucnt_ratio',
+      'clickPayRate',
       'stock_cnt',
     ] as const
     expect(readProductColumns('legacy')).toEqual(expected)

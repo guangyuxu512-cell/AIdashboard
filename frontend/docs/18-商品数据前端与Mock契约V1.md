@@ -40,7 +40,8 @@ ID 行使用紧凑的统一文字槽与独立复制按钮槽：文字槽最多�
 本轮Gate 1通过，仅UI_ONLY范围；ca97 Gate 2及商品数据人工验收仍待完成，不据此发布。
 原b2草稿/失败证据保留，紧凑阶段交接见shop-product-data-compact-v1-gate1-20261015.md；
 指标筛选原交接见shop-product-data-metric-filters-v1-gate1-20261016.md；
-最新退款率修正见shop-product-data-refund-rate-v1-gate1-20261016.md。
+退款率阶段修正见shop-product-data-refund-rate-v1-gate1-20261016.md；
+最新字段核实接回见shop-product-data-verified-metrics-v1-gate1-20261016.md。
 
 ## 数据与查询草案
 
@@ -57,13 +58,13 @@ Mock 使用虚构商品，查询顺序固定为完整数据集筛选 → 全量�
 售卖、载体和更多筛选仅在显式 Mock 演示中可用，其真实平台请求参数仍待证据。
 
 指标保留 available / missing / null / invalid，0 正常展示，缺失显示 — 并可查看状态。
-默认核心字段的样本来源：
+核心字段的旧偏好兼容边界：
 
 | 旧前端 ID | 当前展示 | 边界 |
 | --- | --- | --- |
 | product_show_ucnt | 曝光人数 | 对应商品曝光人数，不是次数 |
 | product_click_ucnt | 点击人数 | 对应商品点击人数，不是次数 |
-| product_click_pay_ucnt_ratio | 转化率 | 保留旧 ID；目标口径为点击支付率（人数），真实 code 待核验，不替换为曝光支付率 |
+| product_click_pay_ucnt_ratio | 转化率 | 只在偏好入口迁移至 clickPayRate；平台正确 code 为 product_click_pay_converse_uv_rate，不再作为指标字段使用旧 ID |
 | pay_cnt | 订单数 | 目标口径为成交订单数，不是件数 |
 | receive_amt | 结算金额 | 旧响应已纠正名称，不能与 pay_amt 或 trans_amt 互换；缩放未定 |
 
@@ -92,33 +93,36 @@ Mock 组只存在当前工作区内存，刷新后恢复未分组，不声称持
 本阶段仍只有前端与 Mock，不增加 API、采集、持久化、日期回退、迁移或调度。
 
 `model/metrics.ts` 是商品数据内展示名、官方口径提示、别名和格式的唯一注册。
-这些前端 ID 不是平台 code；旧 code 形状的 ID 也不构成真实接入证据。
+id 用于 UI/偏好；platformCode、rawUnitCode 登记 ca97 单页核实的来源代码与当前值单位，不是正式 API DTO、
+Real mapper 或缩放契约。比率改用独立语义 ID，旧错误代码只留在偏好兼容入口，不能拿来请求平台。
 
-| 展示名 | 目标官方名称 | 前端语义 ID |
-| --- | --- | --- |
-| 曝光 | 商品曝光次数 | exposureCount |
-| 点击量 | 商品点击次数 | clickCount |
-| 点击率，别名曝光点击率 | 曝光点击率（人数） | product_click_show_ucnt_ratio |
-| 加购量 | 加购人数 | cartUsers |
-| 加购率 | 访问加购转化率 | visitCartRate |
-| 真实订单 | 净成交订单数 | netOrders |
-| 异常订单 | 退款后成交订单数 | refundRelatedOrders |
-| 转化率，别名点击成交率 | 点击支付率（人数） | product_click_pay_ucnt_ratio |
-| 退款率 | 退款率（支付时间） | payTimeRefundRate |
-| 支付金额 | 用户支付金额 | pay_amt |
-| 订单数 | 成交订单数 | pay_cnt |
-| 成交人数 | 成交人数 | pay_ucnt |
-| 客单价 | 成交客单价 | payPerOrder |
-| 退款金额 | 退款金额（支付时间） | payTimeRefundAmount |
-| 退款单数 | 退款订单数（支付时间） | payTimeRefundOrders |
-| 曝光人数 | 商品曝光人数 | product_show_ucnt |
-| 点击人数 | 商品点击人数 | product_click_ucnt |
+| 展示名 | 官方名称 | 前端语义 ID | 已核实 platformCode | 当前值原始 unit |
+| --- | --- | --- | --- | --- |
+| 曝光 | 商品曝光次数 | exposureCount | product_show_cnt | 5 |
+| 点击量 | 商品点击次数 | clickCount | product_click_cnt | 5 |
+| 点击率，别名曝光点击率 | 曝光点击率（人数） | exposureClickRate | product_show_click_converse_uv_rate | 4 |
+| 加购量 | 加购人数 | cartUsers | click_add_to_cart_uv | 5 |
+| 加购率 | 访问加购转化率 | visitCartRate | product_add_show_converse_uv_ratio | 4 |
+| 真实订单 | 净成交订单数 | netOrders | net_pay_cnt | 5 |
+| 异常订单 | 退款后成交订单数（支付时间） | refundRelatedOrders | pay_cnt_exclude_refund | 5 |
+| 转化率，别名点击成交率 | 点击支付率（人数） | clickPayRate | product_click_pay_converse_uv_rate | 4 |
+| 退款率 | 退款率（支付时间） | payTimeRefundRate | pay_refund_ratio | 4 |
+| 支付金额 | 用户支付金额 | pay_amt | pay_amt | 3 |
+| 订单数 | 成交订单数 | pay_cnt | pay_cnt | 5 |
+| 成交人数 | 成交人数 | pay_ucnt | pay_ucnt | 5 |
+| 客单价 | 成交客单价 | payPerOrder | per_user_price | 3 |
+| 退款金额 | 退款金额（支付时间） | payTimeRefundAmount | pay_refund_success_amt | 3 |
+| 退款单数 | 退款订单数（支付时间） | payTimeRefundOrders | pay_refund_success_order_cnt | 5 |
+| 曝光人数 | 商品曝光人数 | product_show_ucnt | product_show_ucnt | 5 |
+| 点击人数 | 商品点击人数 | product_click_ucnt | product_click_ucnt | 5 |
 
 19 个中文名称只产生 17 项目标指标，两组比率别名不增加列、查询指标或存储副本。
 表头、详情与字段配置均复用口径 Tooltip；异常订单提示退款相关而非风控，净成交与退款后成交不相减推算。
 旧结算金额、退款时间金额、未核实退款单数及库存四列作为兼容项保留，不算进 17 项目标；
 旧 refund_amt 不重绑支付时间退款，refund_cnt/stock_cnt 显式未知。原有偏好键、可见性与顺序保留，
 读取只规范同义别名并去重，不改写 localStorage；显式保存才写入，恢复默认仍沿既有列集合。
+旧 product_click_show_ucnt_ratio / product_click_pay_ucnt_ratio 分别只在此偏好入口迁移为
+exposureClickRate / clickPayRate，保留原可见顺序并去重，不作为平台代码或指标数据别名。
 
 同日人类 turn `01a1449d-2ad6-7ce0-8145-2e1ecb0a3a61` 明确改用总体“退款率（支付时间）”，
 包含发货前与发货后，替代先前发货后退货率目标；17 项独立指标数不变。
@@ -150,14 +154,20 @@ Mock 组只存在当前工作区内存，刷新后恢复未分组，不声称持
 完整 Mock 集合先按全部组合条件筛选，再排序、计算 total、分页，筛选不触发采集。
 查询成功回第 1 页并清除勾选，非法草稿保留原结果与页码；隐藏字段不清除筛选，草稿深复制后才进入 Query。
 
-ca97 旧样本的 net_pay_cnt、pay_cnt_exclude_refund 只提供名称/数值证据，不证明全额/部分退款算法。
+ca97 本次 74 指标结果已于上海 2026-10-16 20:42:43 成功：固定 2026-10-14、type20、page1/size10、
+sale1/content1，HTTP200/st0，10 行、total146；17 项各有 10/10 有效当前值，共 170/170，含显式零。
+本树离线逐字段核对代码、当前值及原单位一致，不复制这些真实值到 Mock；单页不能代表 146 件全量或其它维度。
+unit 来自 cell_info 当前值节点，不把 meta 存在当逐行有值；目标外 7 项部分只有 unit6 无 value，继续不补 0。
+net_pay_cnt、pay_cnt_exclude_refund 的 meta.tip 均为空，不证明全额/部分退款算法。
+同一商品原值成交102、净成交97、退款后成交95、支付时间退款订单7，95不等同发生退款的7单。
+用户选定“异常订单”别名保持，但 Tooltip 明示不等同发生退款订单数；业务解释交规划确认，不自行相减造字段。
 退款率目标 code 已复用 ca97 既有 70 指标成功响应离线核对为 pay_refund_ratio：
 meta 为“退款率(支付时间)”，tip 为“退款订单数(支付时间)/成交订单数”；10 行有 3 正值、7 显式零，unit4，
 首行原值 0.10384608086826178。直接保留平台总体比率，不自行相加发货前后百分比、重算覆盖或以退款时间指标替代。
 sold_pay_refund_ratio 只是发货后退款率（支付时间），不得替代总体退款率。
-该离线核对没有新平台请求，不能算本次 74 指标成功或本模块真实接入。
-本模块没有真实 mapper；其余新增次数和比率 code、单位及正式查询由 ca97 核实后另行冻结，
-平台 unit4 的归一化仍须正式契约，不在这里把原始值导入 Mock 或以 meta 存在假定逐行有值。
+本次 74 响应再次确认该字段为 3 正值、7 显式零、unit4；本树只离线接回证据，未追加请求。
+本模块没有真实 mapper/API。unit3 的金额分/元及 unit4 的官方页面百分比显示仍无独立对照，
+不自动按平台原单位换算、重算或写成真实接入完成；Mock 的 yuan/fraction 仍是合成 UI 契约。
 
 ## 验证边界
 
