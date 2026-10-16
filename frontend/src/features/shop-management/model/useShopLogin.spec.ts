@@ -206,14 +206,12 @@ describe('page-owned shop login sync', () => {
             status: 'identified',
             message: 'identified',
           })
-          desktop.refresh = vi
-            .fn()
-            .mockResolvedValue({
-              shopId: 'shop',
-              status: 'valid',
-              sessionVersion: 6,
-              validatedAt: '2026-10-17T00:00:00Z',
-            })
+          desktop.refresh = vi.fn().mockResolvedValue({
+            shopId: 'shop',
+            status: 'valid',
+            sessionVersion: 6,
+            validatedAt: '2026-10-17T00:00:00Z',
+          })
           await flow.login(shop)
           await flushPromises()
           expect(state.confirm).toHaveBeenCalledExactlyOnceWith(
