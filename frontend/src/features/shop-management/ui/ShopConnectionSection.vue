@@ -122,12 +122,17 @@ async function validateSession(): Promise<void> {
   <section class="shop-detail__section shop-connection-section">
     <h3>账号与连接</h3>
     <LoadingState v-if="loading" description="正在加载账号与连接…" />
-    <ErrorState
-      v-else-if="error"
-      :description="error"
-      retryable
-      @retry="retry"
-    />
+    <template v-else-if="error">
+      <ErrorState :description="error" retryable @retry="retry" />
+      <NAlert
+        v-if="loginFeedback?.success?.readRefreshFailed"
+        type="warning"
+        :bordered="true"
+        class="shop-connection-section__recovery"
+      >
+        {{ loginFeedback.status }}
+      </NAlert>
+    </template>
     <template v-else-if="credential && shopSession">
       <NDescriptions :column="1" label-placement="left" bordered>
         <NDescriptionsItem label="登录账号">

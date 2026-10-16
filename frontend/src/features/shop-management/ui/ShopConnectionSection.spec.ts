@@ -1,11 +1,23 @@
 import { defineComponent, h, reactive, ref } from 'vue'
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { NAlert, NMessageProvider } from 'naive-ui'
 import ShopConnectionSection from './ShopConnectionSection.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import ErrorState from '@/shared/components/ErrorState.vue'
 import { shopLoginKey, type ShopLoginFeedback } from '../model/useShopLogin'
 import type { ShopListItemViewModel } from '@/entities/shop'
+import {
+  shopSessionDataSource,
+  shopSessionQueryKeys,
+  type ShopSessionMetadataViewModel,
+} from '@/entities/shop-session'
+
+const state = vi.hoisted(() => ({
+  realSessionQuery: false,
+  credentialRefetch: vi.fn(),
+}))
 
 vi.mock('@/entities/credential', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -13,23 +25,151 @@ vi.mock('@/entities/credential', async (importOriginal) => ({
     data: { value: { configured: false } },
     isPending: { value: false },
     error: { value: null },
+    refetch: state.credentialRefetch,
   }),
   useCreateCredentialMutation: () => ({ isPending: { value: false } }),
   useUpdateCredentialMutation: () => ({ isPending: { value: false } }),
 }))
-vi.mock('@/entities/shop-session', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useShopSessionQuery: () => ({
-    data: { value: { configured: true, status: 'valid', version: 4 } },
-    isPending: { value: false },
-    error: { value: null },
-  }),
-  useValidateShopSessionMutation: () => ({ isPending: { value: false } }),
-}))
+vi.mock('@/entities/shop-session', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('@/entities/shop-session')>()
+  return {
+    ...original,
+    useShopSessionQuery: (
+      ...args: Parameters<typeof original.useShopSessionQuery>
+    ) =>
+      state.realSessionQuery
+        ? original.useShopSessionQuery(...args)
+        : {
+            data: { value: { configured: true, status: 'valid', version: 4 } },
+            isPending: { value: false },
+            error: { value: null },
+          },
+    useValidateShopSessionMutation: () => ({ isPending: { value: false } }),
+  }
+})
 
 const shop = { shopId: 'shop', platform: 'douyin' } as ShopListItemViewModel
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  state.realSessionQuery = false
+  state.credentialRefetch.mockResolvedValue(undefined)
+})
+afterEach(() => vi.restoreAllMocks())
+
 describe('shop detail retains the fixed login and cancellation entries', () => {
+  it.each([true, false])(
+    'retains the actual cached-query error and reload action, with saved receipt=%s',
+    async (withReceipt) => {
+      state.realSessionQuery = true
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+            refetchOnWindowFocus: false,
+            gcTime: Infinity,
+          },
+        },
+      })
+      const cached: ShopSessionMetadataViewModel = {
+        sessionId: 'session',
+        configured: true,
+        status: 'valid',
+        version: 3,
+        sourceDeviceId: null,
+        sourceDeviceName: null,
+        capturedAtDisplay: '2026-10-10 15:00',
+        validatedAtDisplay: '2026-10-10 15:01',
+        expiresAtDisplay: null,
+        refreshInProgress: false,
+        refreshLeaseExpiresAtDisplay: null,
+      }
+      const read = vi
+        .spyOn(shopSessionDataSource, 'getForShop')
+        .mockResolvedValue(cached)
+      const feedback = reactive(new Map<string, ShopLoginFeedback>())
+      const login = vi.fn()
+      const wrapper = mount(
+        defineComponent({
+          setup: () => () =>
+            h(NMessageProvider, null, {
+              default: () => h(ShopConnectionSection, { shop }),
+            }),
+        }),
+        {
+          global: {
+            plugins: [[VueQueryPlugin, { queryClient: client }]],
+            provide: {
+              [shopLoginKey as symbol]: {
+                canLogin: ref(true),
+                feedback,
+                login,
+              },
+            },
+            stubs: { CredentialFormDialog: true },
+          },
+        },
+      )
+      try {
+        await flushPromises()
+        expect(wrapper.text()).toContain('v3')
+        expect(read).toHaveBeenCalledTimes(1)
+        read.mockRejectedValue(new Error('synthetic metadata read failed'))
+        await expect(
+          client.invalidateQueries(
+            { queryKey: shopSessionQueryKeys.shop('shop') },
+            { throwOnError: true },
+          ),
+        ).rejects.toThrow('synthetic metadata read failed')
+        const status =
+          '本次登录已更新（v4 · 2026-10-11 17:01）；店铺信息刷新未完成，请刷新列表'
+        if (withReceipt)
+          feedback.set('shop', {
+            busy: false,
+            opening: false,
+            error: null,
+            status,
+            success: {
+              sessionVersion: 4,
+              validatedAt: '2026-10-11T09:01:00Z',
+              readRefreshFailed: true,
+            },
+          })
+        await flushPromises()
+        expect(client.getQueryData(shopSessionQueryKeys.shop('shop'))).toEqual(
+          cached,
+        )
+        expect(
+          client.getQueryState(shopSessionQueryKeys.shop('shop'))?.status,
+        ).toBe('error')
+        expect(wrapper.findComponent(ErrorState).exists()).toBe(true)
+        expect(wrapper.findComponent(ErrorState).props('description')).toBe(
+          'synthetic metadata read failed',
+        )
+        expect(wrapper.find('.shop-session-card__metadata').exists()).toBe(
+          false,
+        )
+        expect(wrapper.text()).not.toContain(cached.validatedAtDisplay)
+        const alerts = wrapper.findAllComponents(NAlert)
+        expect(alerts).toHaveLength(withReceipt ? 1 : 0)
+        if (withReceipt) {
+          expect(alerts[0]!.props('type')).toBe('warning')
+          expect(alerts[0]!.text()).toContain(status)
+        }
+        read.mockResolvedValue({ ...cached, version: 4 })
+        await wrapper.findComponent(ErrorState).find('button').trigger('click')
+        await flushPromises()
+        expect(read).toHaveBeenCalledTimes(3)
+        expect(state.credentialRefetch).toHaveBeenCalledTimes(1)
+        expect(wrapper.findComponent(ErrorState).exists()).toBe(false)
+        expect(login).not.toHaveBeenCalled()
+      } finally {
+        wrapper.unmount()
+        client.clear()
+      }
+    },
+  )
   it.each([false, true])(
     'shows the current saved result without a recovery lock, readRefreshFailed=%s',
     async (readRefreshFailed) => {

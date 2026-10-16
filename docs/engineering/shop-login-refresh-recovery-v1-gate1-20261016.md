@@ -78,6 +78,25 @@ ca97独立退回`db509927cbdb0a46ba60cc79919698272fd4d73b`：实际TanStack Quer
 原db509及其验证记录保留，不倒写为已通过Gate2。Backend/Electron/Shared/布局与包版本完全不变，
 无需重打包或重登录；新前端仍交ca97用原独立探针和唯一匹配Electron复验。
 
+### 详情读取错误时保留保存回执
+
+ca97对`67de0ac7bac965c8454e434984de4b9d2f1d1960`独立69项、lint/typecheck及Real build15.60s通过，
+确认QueryClient错误传播已修好。完整拦截浏览器三项通过、一项失败：详情Session503时，原ErrorState
+分支遮住后续正常内容里的NAlert。此时真实读取为error、旧缓存仍在、本次保存回执及warning状态也在，
+但用户只能看到加载失败。该缺口不能因toast已显示或列表“已保存”正常而视为详情通过。
+
+本次只在详情原error分支复用NAlert和已有样式，在ErrorState与重新加载入口之后显示本次保存及刷新未完成。
+不抹掉真实读取错误、不展示旧缓存元数据为fresh，不新增展示区、全局通知、样式或公共组件；
+正常成功分支逐字保持，Backend/Electron/Shared/包及登录模型不改。
+
+回归通过实际`VueQueryPlugin`和应用原`useShopSessionQuery`读取：仅对Data Source做无网络合成，
+先缓存旧v3，再让真实refetch失败，局部注入本次v4/返回验证时间回执。旧代码有回执分支复现NAlert缺失失败，
+无回执分支仍为原ErrorState；修复后两者均通过，同时验证缓存仍旧、元数据未伪装新读取、
+错误及唯一warning共存，手动重新加载只重取查询、不触发登录。此为组件/查询库回归，不是原生或平台证据。
+本次四文件71项PASS（6.25s；详情6、模型49、列表8、poller8），lint、typecheck、Real build14.46s、
+格式与diff检查通过；既有大chunk告警保留。不重复无差异Backend/Electron/PG或平台请求，不重打桌面包。
+原67de及独立3PASS/1FAIL证据保留，新候选仍由ca97复用同一独立浏览器探针及唯一Real Electron验收。
+
 ca97已有生产与本机只读证据定位的是MyCookLab，不是历史HuanYu：2026-10-16上海21:25:13.826、
 21:25:42.498两次refresh HTTP500/`SHOP_SESSION_PAYLOAD_INVALID`，耗时23/21ms。对应Request ID
 `f159544c-7840-4bc1-a7bb-60bcb2247e56`、`6c35c1f6-51c5-49fb-a5d0-9577f6ab71ff`。
