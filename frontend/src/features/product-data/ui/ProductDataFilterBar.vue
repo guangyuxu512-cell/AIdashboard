@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { NAlert } from 'naive-ui'
 import { useShopSelectionOptionsQuery } from '@/entities/shop/api/shop-queries'
@@ -8,13 +8,17 @@ import {
   AppButton,
   AppDatePicker,
   AppInput,
-  AppNumberInput,
   AppRadio,
   AppSelect,
   type AppDateValue,
   type AppOptionValue,
 } from '@/shared/ui'
 import type { ProductDataFilters, ProductGroup } from '../model/types'
+import {
+  PRODUCT_RANGE_FILTERS,
+  type ProductRangeErrors,
+} from '../model/metric-ranges'
+import ProductMetricRangeField from './ProductMetricRangeField.vue'
 
 const props = defineProps<{
   modelValue: ProductDataFilters
@@ -23,6 +27,7 @@ const props = defineProps<{
   loading: boolean
   groupsLoading?: boolean
   groupsError?: boolean
+  rangeErrors?: ProductRangeErrors
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: ProductDataFilters]
@@ -32,6 +37,12 @@ const emit = defineEmits<{
   retryGroups: []
 }>()
 const more = ref(false)
+watch(
+  () => props.rangeErrors,
+  (errors) => {
+    if (errors && Object.keys(errors).length) more.value = true
+  },
+)
 const shops = useShopSelectionOptionsQuery()
 const dateOptions = [
   { label: '昨日', value: 'yesterday' },
@@ -68,7 +79,12 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
   key: K,
   value: AppOptionValue | null,
 ) {
-  update(key, value === null ? null : (String(value) as ProductDataFilters[K]))
+  update(
+    key,
+    value === null || value === 'all'
+      ? null
+      : (String(value) as ProductDataFilters[K]),
+  )
 }
 </script>
 
@@ -123,11 +139,13 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
         ><AppSelect
           :model-value="modelValue.selling"
           clearable
-          placeholder="售卖状态"
+          aria-label="售卖类型"
+          placeholder="全部售卖类型"
           :disabled="!enabled"
           :options="[
-            { label: '在售', value: 'on-sale' },
-            { label: '停售', value: 'off-sale' },
+            { label: '全部', value: 'all' },
+            { label: '自营', value: 'self' },
+            { label: '合作', value: 'cooperation' },
           ]"
           @update:model-value="select('selling', $event)"
       /></FilterField>
@@ -135,12 +153,15 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
         ><AppSelect
           :model-value="modelValue.carrier"
           clearable
-          placeholder="商品载体"
+          aria-label="载体类型"
+          placeholder="全部载体"
           :disabled="!enabled"
           :options="[
-            { label: '商品卡', value: 'card' },
-            { label: '短视频', value: 'video' },
+            { label: '全部', value: 'all' },
             { label: '直播', value: 'live' },
+            { label: '短视频', value: 'video' },
+            { label: '商品卡', value: 'card' },
+            { label: '图文', value: 'image-text' },
           ]"
           @update:model-value="select('carrier', $event)"
       /></FilterField>
@@ -161,22 +182,24 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
       </div>
     </NAlert>
     <div v-if="more" class="product-data-filters__more">
-      <FilterField width="sm"
-        ><AppNumberInput
-          :model-value="modelValue.minExposure"
-          :min="0"
-          clearable
-          placeholder="最低曝光人数"
-          @update:model-value="update('minExposure', $event)"
-      /></FilterField>
-      <FilterField width="sm"
-        ><AppNumberInput
-          :model-value="modelValue.minOrders"
-          :min="0"
-          clearable
-          placeholder="最低成交订单数"
-          @update:model-value="update('minOrders', $event)"
-      /></FilterField>
+      <ProductMetricRangeField
+        v-for="field in PRODUCT_RANGE_FILTERS"
+        :key="field.id"
+        :metric-id="field.id"
+        :model-value="modelValue.metricRanges[field.id]"
+        :error="rangeErrors?.[field.id]"
+        :disabled="!enabled"
+        @update:model-value="
+          update('metricRanges', {
+            ...modelValue.metricRanges,
+            [field.id]: $event,
+          })
+        "
+      />
+      <span class="product-data-filters__range-help"
+        >区间含下限、不含上限；末档 ≥ 下限。自定义留空不限，百分比填 1 表示
+        1%。</span
+      >
     </div>
     <FilterBar density="compact">
       <AppRadio
@@ -227,6 +250,11 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
   display: flex;
   flex-wrap: wrap;
   gap: var(--list-compact-gap);
+  align-items: flex-start;
+}
+.product-data-filters__range-help {
+  flex-basis: 100%;
+  color: var(--text-secondary);
 }
 .product-data-filters__feedback {
   display: flex;

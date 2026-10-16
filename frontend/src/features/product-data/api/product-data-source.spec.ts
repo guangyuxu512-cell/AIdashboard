@@ -6,6 +6,7 @@ import {
 } from './product-data-source'
 import { emptyProductFilters, productPeriod } from '../model/query'
 import { PRODUCT_ID_LENGTH_FIXTURE } from '../fixtures/product-id-lengths.fixture'
+import { PRODUCT_RANGE_FILTERS } from '../model/metric-ranges'
 import type { ProductDataQuery } from '../model/types'
 
 function query(): ProductDataQuery {
@@ -18,6 +19,93 @@ function query(): ProductDataQuery {
   }
 }
 describe('product data source boundaries', () => {
+  it.each(PRODUCT_RANGE_FILTERS)(
+    'filters the complete Mock metric set, including off-page records, before pagination: $id',
+    async (field) => {
+      const source = createMockProductDataSource(),
+        params = query()
+      const full = (await source.list({ ...params, pageSize: 100 })).items
+      params.filters.metricRanges[field.id] = {
+        choice: 'custom',
+        min: field.percent ? 1 : 0,
+        max: field.percent ? 30 : 100,
+      }
+      const expected = full.filter((row) => {
+        const metric = row.metrics[field.id]
+        return (
+          metric.state === 'available' &&
+          metric.value !== null &&
+          Number(metric.value) >= (field.percent ? 0.01 : 0) &&
+          Number(metric.value) < (field.percent ? 0.3 : 100)
+        )
+      })
+      expect(expected.length).toBeGreaterThan(0)
+      expect(expected.length).toBeLessThan(full.length)
+      const filtered = await source.list({ ...params, page: 1, pageSize: 2 })
+      expect(filtered.total).toBe(expected.length)
+      expect(filtered.items).toEqual(expected.slice(0, 2))
+      const second = await source.list({ ...params, page: 2, pageSize: 2 })
+      expect(second.items).toEqual(expected.slice(2, 4))
+    },
+  )
+  it('combines shop, identity, name, group, sale type, image-text carrier and a metric interval', async () => {
+    const source = createMockProductDataSource(),
+      params = query()
+    const all = (await source.list({ ...params, pageSize: 100 })).items
+    const target = all[15]!
+    expect(target).toMatchObject({
+      selling: 'cooperation',
+      carrier: 'image-text',
+    })
+    const group = await source.saveGroup(target.shopId, {
+      id: null,
+      name: '组合筛选',
+    })
+    await source.assignGroup(target.shopId, [target.id], group.id)
+    const result = await source.list({
+      ...params,
+      page: 2,
+      filters: {
+        ...params.filters,
+        shopId: target.shopId,
+        productId: target.productId,
+        productName: '演示商品 16',
+        groupId: group.id,
+        selling: 'cooperation',
+        carrier: 'image-text',
+        metricRanges: {
+          ...params.filters.metricRanges,
+          clickCount: { choice: 'preset-3', min: null, max: null },
+        },
+      },
+    })
+    expect(result.total).toBe(1)
+    expect(result.page).toBe(1)
+    expect(result.items[0]!.id).toBe(target.id)
+    expect((await source.list(params)).total).toBe(31)
+    await expect(
+      source.list({
+        ...params,
+        filters: {
+          ...params.filters,
+          metricRanges: {
+            ...params.filters.metricRanges,
+            netOrders: { choice: 'custom', min: -1, max: null },
+          },
+        },
+      }),
+    ).rejects.toThrow('负数')
+    expect(
+      all.every(
+        (row) =>
+          row.metrics.refund_cnt.state === 'missing' &&
+          row.metrics.stock_cnt.state === 'missing',
+      ),
+    ).toBe(true)
+    expect(all[0]!.metrics.netOrders.value).toBe('2')
+    expect(all[0]!.metrics.refundRelatedOrders.value).toBe('2')
+    expect(all[0]!.metrics.pay_cnt.value).toBe('3')
+  })
   it('limits mixed-length ID fixtures to the explicit Mock preview and preserves exact strings', async () => {
     const preview = await createProductDataSource('mock', 'mixed-ids')
     const ids = (await preview.list(query())).items
@@ -69,7 +157,10 @@ describe('product data source boundaries', () => {
       filters: {
         ...params.filters,
         shopId: first.items[0]!.shopId,
-        minExposure: 10000,
+        metricRanges: {
+          ...params.filters.metricRanges,
+          exposureCount: { choice: 'custom', min: 10000, max: null },
+        },
       },
     })
     expect(narrowed.page).toBeLessThan(9)
@@ -77,7 +168,7 @@ describe('product data source boundaries', () => {
       narrowed.items.every(
         (row) =>
           row.shopId === first.items[0]!.shopId &&
-          Number(row.metrics.product_show_ucnt.value) >= 10000,
+          Number(row.metrics.exposureCount.value) >= 10000,
       ),
     ).toBe(true)
   })

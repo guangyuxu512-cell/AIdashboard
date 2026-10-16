@@ -3,6 +3,7 @@ import {
   PRODUCT_COLUMNS,
   type ProductColumnId,
 } from './types'
+import { resolveProductMetricId } from './metrics'
 
 const prefix = 'control-center.product-data.columns.v1.'
 export function normalizeProductColumns(value: unknown): ProductColumnId[] {
@@ -10,9 +11,12 @@ export function normalizeProductColumns(value: unknown): ProductColumnId[] {
   const known = new Set<string>(PRODUCT_COLUMNS.map((column) => column.id))
   const columns = [
     ...new Set(
-      value.filter(
-        (id): id is ProductColumnId => typeof id === 'string' && known.has(id),
-      ),
+      value.flatMap((id): ProductColumnId[] => {
+        if (typeof id !== 'string') return []
+        if (known.has(id)) return [id as ProductColumnId]
+        const metricId = resolveProductMetricId(id)
+        return metricId ? [metricId] : []
+      }),
     ),
   ]
   return columns.length ? columns : [...DEFAULT_PRODUCT_COLUMNS]

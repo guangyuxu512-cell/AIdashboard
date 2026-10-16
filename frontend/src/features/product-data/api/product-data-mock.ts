@@ -1,6 +1,10 @@
 import dayjs from 'dayjs'
 import { SHOP_LIST_FIXTURE } from '@/entities/shop/fixtures/shop-list.fixture'
 import { productGroupNameSchema } from '../model/query'
+import {
+  compileProductRanges,
+  matchesProductInterval,
+} from '../model/metric-ranges'
 import { PRODUCT_ID_LENGTH_FIXTURE } from '../fixtures/product-id-lengths.fixture'
 import {
   PRODUCT_METRICS,
@@ -45,8 +49,8 @@ export function createMockProductDataSource(
           : '演示商品 ' + (index + 1),
       imageUrl: photos[index % photos.length] ?? null,
       groupId: null as string | null,
-      selling: index % 5 === 0 ? ('off-sale' as const) : ('on-sale' as const),
-      carrier: (['card', 'video', 'live'] as const)[index % 3]!,
+      selling: index % 5 === 0 ? ('cooperation' as const) : ('self' as const),
+      carrier: (['card', 'video', 'live', 'image-text'] as const)[index % 4]!,
       index,
     }
   })
@@ -89,6 +93,19 @@ export function createMockProductDataSource(
     const payVisitors = index === 1 ? 0 : (index + 1) * 3 * days
     const orders = index === 1 ? 0 : payVisitors + (index % 3) * days
     const values: Record<ProductMetricId, number> = {
+      // Independent synthetic samples, never computations/aliases for missing
+      // platform metrics. The two order subsets may overlap.
+      exposureCount:
+        [0, 999, 1000, 2999, 3000, 4999, 5000, 9999, 10000][index % 9]! * days,
+      clickCount: [0, 9, 10, 49, 50, 99, 100, 199, 200][index % 9]! * days,
+      cartUsers: [0, 5, 10, 30, 50, 80, 100, 150, 200][index % 9]! * days,
+      visitCartRate: [0, 0.05, 0.08, 0.1, 0.15, 0.25][index % 6]!,
+      netOrders: (index === 1 ? 0 : (index + 1) * 2) * days,
+      refundRelatedOrders: (index === 1 ? 0 : (index % 5) + 2) * days,
+      shippedReturnRate: [0, 0.1, 0.2, 0.3, 0.5, 0.75][index % 6]!,
+      payPerOrder: 27.4 + index / 10,
+      payTimeRefundAmount: (index % 4) * 18.5 * days,
+      payTimeRefundOrders: (index % 4) * days,
       product_show_ucnt: exposure,
       product_click_ucnt: click,
       product_click_pay_ucnt_ratio: click ? payVisitors / click : 0,
@@ -125,6 +142,31 @@ export function createMockProductDataSource(
         value: null,
         unit: 'ratio',
       }
+    for (const [metricIndex, id] of (
+      [
+        'exposureCount',
+        'clickCount',
+        'cartUsers',
+        'visitCartRate',
+        'netOrders',
+        'refundRelatedOrders',
+        'shippedReturnRate',
+      ] as const
+    ).entries()) {
+      if (index === metricIndex + 5)
+        metrics[id] = {
+          ...metrics[id],
+          state:
+            metricIndex === 1
+              ? 'null'
+              : metricIndex === 2
+                ? 'invalid'
+                : 'missing',
+          value: null,
+        }
+    }
+    for (const id of ['refund_cnt', 'stock_cnt'] as const)
+      metrics[id] = { state: 'missing', value: null, unit: null }
     return {
       ...product,
       metrics,
@@ -154,13 +196,13 @@ export function createMockProductDataSource(
     async list(query) {
       maybeFail('list')
       const { filters, period, sort } = query
+      const { intervals, errors } = compileProductRanges(filters.metricRanges)
+      if (Object.keys(errors).length) throw new Error(Object.values(errors)[0])
       if (dayjs(period.endDate).isBefore(dayjs(period.startDate)))
         throw new Error('统计日期范围无效')
       const rows = products
         .map((product) => buildRow(product, query))
         .filter((row) => {
-          const exposure = row.metrics.product_show_ucnt,
-            orders = row.metrics.pay_cnt
           return (
             (!filters.shopId || row.shopId === filters.shopId) &&
             (!filters.productId.trim() ||
@@ -175,12 +217,9 @@ export function createMockProductDataSource(
                 : row.groupId === filters.groupId)) &&
             (!filters.selling || row.selling === filters.selling) &&
             (!filters.carrier || row.carrier === filters.carrier) &&
-            (filters.minExposure === null ||
-              (exposure.state === 'available' &&
-                Number(exposure.value) >= filters.minExposure)) &&
-            (filters.minOrders === null ||
-              (orders.state === 'available' &&
-                Number(orders.value) >= filters.minOrders))
+            intervals.every((interval) =>
+              matchesProductInterval(row.metrics[interval.metricId], interval),
+            )
           )
         })
       if (sort)

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { NTooltip, useMessage, type DataTableRowKey } from 'naive-ui'
+import { useForm } from 'vee-validate'
 import {
   ManagementListSection,
   PaginationBar,
@@ -12,8 +13,19 @@ import { AppButton } from '@/shared/ui'
 import { productDataKeys } from '../api/query-keys'
 import { PRODUCT_DATA_UNAVAILABLE } from '../api/product-data-source'
 import { readProductColumns } from '../model/column-preferences'
-import { emptyProductFilters, productPeriod } from '../model/query'
+import {
+  cloneProductFilters,
+  emptyProductFilters,
+  productPeriod,
+} from '../model/query'
+import {
+  compileProductRanges,
+  PRODUCT_RANGE_FILTERS,
+  type ProductRangeErrors,
+  type ProductRangeFilterId,
+} from '../model/metric-ranges'
 import type {
+  ProductDataFilters,
   ProductDataQuery,
   ProductDataRow,
   ProductDataSource,
@@ -31,7 +43,35 @@ const props = defineProps<{
   userId: string | null
 }>()
 const message = useMessage()
-const draft = ref(emptyProductFilters())
+const {
+  values,
+  setValues,
+  setFieldValue,
+  resetForm,
+  handleSubmit,
+  setFieldError,
+  errors,
+} = useForm<ProductDataFilters>({ initialValues: emptyProductFilters() })
+function rangeErrorPath(id: ProductRangeFilterId) {
+  return `metricRanges.${id}.min` as const
+}
+const draft = computed({
+  get: () => values,
+  set: (value: ProductDataFilters) => {
+    setValues(value)
+    for (const field of PRODUCT_RANGE_FILTERS)
+      setFieldError(rangeErrorPath(field.id), undefined)
+  },
+})
+const rangeErrors = computed(
+  () =>
+    Object.fromEntries(
+      PRODUCT_RANGE_FILTERS.flatMap(({ id }) => {
+        const error = errors.value[rangeErrorPath(id)]
+        return error ? [[id, error]] : []
+      }),
+    ) as ProductRangeErrors,
+)
 const params = ref<ProductDataQuery>({
   filters: emptyProductFilters(),
   period: productPeriod(emptyProductFilters()),
@@ -80,7 +120,7 @@ const batchReason = computed(() =>
 watch(
   () => draft.value.shopId,
   () => {
-    draft.value.groupId = null
+    setFieldValue('groupId', null)
     checked.value = []
     managerShow.value = false
     batchShow.value = false
@@ -101,17 +141,16 @@ watch(
       params.value = { ...params.value, page }
   },
 )
-function apply() {
+const apply = handleSubmit((filters) => {
+  const compiled = compileProductRanges(filters.metricRanges)
+  for (const field of PRODUCT_RANGE_FILTERS)
+    setFieldError(rangeErrorPath(field.id), compiled.errors[field.id])
+  if (Object.keys(compiled.errors).length) return
   try {
     const next: ProductDataQuery = {
       ...params.value,
-      filters: {
-        ...draft.value,
-        customDateRange: draft.value.customDateRange
-          ? [...draft.value.customDateRange]
-          : null,
-      },
-      period: productPeriod(draft.value),
+      filters: cloneProductFilters(filters),
+      period: productPeriod(filters),
       page: 1,
     }
     const unchanged = JSON.stringify(next) === JSON.stringify(params.value)
@@ -122,10 +161,10 @@ function apply() {
   } catch (cause) {
     message.error(cause instanceof Error ? cause.message : '筛选条件无效')
   }
-}
+})
 function reset() {
-  draft.value = emptyProductFilters()
-  apply()
+  resetForm({ values: emptyProductFilters() })
+  void apply()
 }
 function sort(value: ProductDataQuery['sort']) {
   checked.value = []
@@ -137,7 +176,7 @@ function pageSize(value: number) {
   params.value = { ...params.value, pageSize: value, page: 1 }
 }
 function groupDeleted(id: string) {
-  if (draft.value.groupId === id) draft.value.groupId = null
+  if (draft.value.groupId === id) setFieldValue('groupId', null)
   if (params.value.filters.groupId === id)
     params.value = {
       ...params.value,
@@ -199,6 +238,7 @@ function batchSaved() {
       :groups-error="!!draft.shopId && !!groups.error.value"
       :enabled="source.available"
       :loading="query.isFetching.value"
+      :range-errors="rangeErrors"
       @query="apply"
       @reset="reset"
       @fields="fieldsShow = true"

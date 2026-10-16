@@ -15,6 +15,7 @@ import {
   formatProductMetric,
   PRODUCT_METRIC_STATE_LABELS,
 } from '../model/query'
+import { productMetricTooltip } from '../model/metrics'
 import {
   PRODUCT_COLUMNS,
   type ProductColumnId,
@@ -75,9 +76,14 @@ const widths = computed(
 function value(row: ProductDataRow, id: ProductColumnId) {
   if (id === 'shop') return row.shopName
   if (id === 'group') return row.groupName ?? '未分组'
-  if (id === 'selling') return row.selling === 'on-sale' ? '在售' : '停售'
+  if (id === 'selling') return row.selling === 'self' ? '自营' : '合作'
   if (id === 'carrier')
-    return { card: '商品卡', video: '短视频', live: '直播' }[row.carrier]
+    return {
+      card: '商品卡',
+      video: '短视频',
+      live: '直播',
+      'image-text': '图文',
+    }[row.carrier]
   if (id === 'updatedAt')
     return dayjs(row.retrievedAt).format('YYYY-MM-DD HH:mm')
   const metric = row.metrics[id],
@@ -122,7 +128,13 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
   ...props.visibleColumns.map((id) => {
     const definition = PRODUCT_COLUMNS.find((column) => column.id === id)!
     return {
-      title: definition.label,
+      title: productMetricTooltip(id)
+        ? () =>
+            h(NTooltip, null, {
+              trigger: () => h('span', definition.label),
+              default: () => productMetricTooltip(id),
+            })
+        : definition.label,
       key: id,
       width: fieldWidths.value.get(id),
       align: 'center' as const,

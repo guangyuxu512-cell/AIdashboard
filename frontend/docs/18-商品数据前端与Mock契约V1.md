@@ -4,7 +4,7 @@
 ca97 已登记独立前端 127.0.0.1:4177 --strictPort。无 Feature DB、Backend 实现或 Migration Slot。
 完成 Gate 1 后准备匹配预览，停止“待用户验收，禁止发布”。
 2026-10-16在原分支正常no-ff同步精确Green5a18bd0390cb4b8cbed637d412f7482cefff3f36，
-本模块运行代码/Mock与141修补保持不变；Green已有0046代码不构成本页DB/API授权。
+同步当时本模块运行代码/Mock与141修补保持不变；随后指标筛选增量见下文，Green已有0046代码不构成本页DB/API授权。
 
 ## 复用与边界
 
@@ -19,7 +19,8 @@ ca97 已登记独立前端 127.0.0.1:4177 --strictPort。无 Feature DB、Backen
 
 入口为 /product-data，moduleCode 为 product-data、accessModuleCode 为 shop。页面没有重复标题或副标题。
 默认固定商品信息（图片、标题、字符串 ID、复制），可配置列默认包含店铺、商品分组、
-曝光人数、点击-成交转化率（人数）、成交订单数、成交金额；点击人数等可选。
+曝光人数、转化率、订单数、结算金额；点击人数等可选。结算金额是对旧 receive_amt 误标的纠正，
+不将用户支付金额、成交金额和结算金额合并。
 商品标题复用共享 ProductInfoCell 单行省略及 NTooltip 悬浮全文，ID 保持独立一行并显示“ID：”前缀；
 复制仍只提交纯字符串商品 ID，不含前缀。长标题不能增加行高或列宽。
 ID 行使用紧凑的统一文字槽与独立复制按钮槽：文字槽最多使用现有 sm 字段宽度，
@@ -37,7 +38,8 @@ ID 行使用紧凑的统一文字槽与独立复制按钮槽：文字槽最多�
 详情/分组管理/批量分组/字段配置VNode移到局部主题边界外，内部保持原默认，详情图仍64px。
 共享Radio修补消费后，原4个尺寸失败断言均按原期望12px/28px通过，四主题同样实测通过。
 本轮Gate 1通过，仅UI_ONLY范围；ca97 Gate 2及商品数据人工验收仍待完成，不据此发布。
-原b2草稿/失败证据保留，当前交接见shop-product-data-compact-v1-gate1-20261015.md。
+原b2草稿/失败证据保留，紧凑阶段交接见shop-product-data-compact-v1-gate1-20261015.md；
+最新指标筛选交接见shop-product-data-metric-filters-v1-gate1-20261016.md。
 
 ## 数据与查询草案
 
@@ -56,16 +58,17 @@ Mock 使用虚构商品，查询顺序固定为完整数据集筛选 → 全量�
 指标保留 available / missing / null / invalid，0 正常展示，缺失显示 — 并可查看状态。
 默认核心字段的样本来源：
 
-| Source Code | 样本名称 | 本次展示 |
+| 旧前端 ID | 当前展示 | 边界 |
 | --- | --- | --- |
-| product_show_ucnt | 曝光人数 | 曝光人数，不是次数 |
-| product_click_ucnt | 点击人数 | 可选列，不是点击次数 |
-| product_click_pay_ucnt_ratio | 点击-成交转化率（人数） | 不能替换成曝光成交率 |
-| pay_cnt | 成交订单数 | 不替换为成交件数 |
-| receive_amt | 成交金额 | 与 pay_amt 用户支付金额独立 |
+| product_show_ucnt | 曝光人数 | 对应商品曝光人数，不是次数 |
+| product_click_ucnt | 点击人数 | 对应商品点击人数，不是次数 |
+| product_click_pay_ucnt_ratio | 转化率 | 保留旧 ID；目标口径为点击支付率（人数），真实 code 待核验，不替换为曝光支付率 |
+| pay_cnt | 订单数 | 目标口径为成交订单数，不是件数 |
+| receive_amt | 结算金额 | 旧响应已纠正名称，不能与 pay_amt 或 trans_amt 互换；缩放未定 |
 
-样本只有响应和 meta，page_no=1/page_size=10/total=31；没有请求 URL、方法、参数、店铺、日期证明。
-金额 unit=3 的实际缩放仍未知。Real service 显式不可用，不发任何商品数据请求，
+最初盘点只有响应和 meta，page_no=1/page_size=10/total=31；后续请求与响应由 ca97 独立核验，
+不把不同周期、载体或采集时点的样本混为一次结果。金额 unit=3 的实际缩放仍未知。
+Real service 显式不可用，不发任何商品数据请求，
 不加载商品 Mock 模块，查询/分组操作不会伪造成功。后续必须先冻结正式请求/DTO/单位/排序契约。
 
 ## 分组草案与偏好
@@ -80,6 +83,70 @@ Mock 组只存在当前工作区内存，刷新后恢复未分组，不声称持
 个人字段偏好键为 control-center.product-data.columns.v1.<userId>，保存有序可见列 ID；
 商品信息和详情操作不允许隐藏。格式无效时恢复默认；保存失败保留配置弹窗及草稿，
 不提示已保存。没有人员身份时不写共享匿名偏好。
+
+## 指标命名与九项区间筛选增量
+
+2026-10-16 规划聊天人类 turn `01a1446a-0a38-75a1-b3b4-4a348c4d8651` 正式分配本增量。
+沿原分支和 b9fa5717 候选接续，17 项目标名称来自人类 turn `01a14457-9a36-7cd3-a8e0-60b8aef1911f`。
+本阶段仍只有前端与 Mock，不增加 API、采集、持久化、日期回退、迁移或调度。
+
+`model/metrics.ts` 是商品数据内展示名、官方口径提示、别名和格式的唯一注册。
+这些前端 ID 不是平台 code；旧 code 形状的 ID 也不构成真实接入证据。
+
+| 展示名 | 目标官方名称 | 前端语义 ID |
+| --- | --- | --- |
+| 曝光 | 商品曝光次数 | exposureCount |
+| 点击量 | 商品点击次数 | clickCount |
+| 点击率，别名曝光点击率 | 曝光点击率（人数） | product_click_show_ucnt_ratio |
+| 加购量 | 加购人数 | cartUsers |
+| 加购率 | 访问加购转化率 | visitCartRate |
+| 真实订单 | 净成交订单数 | netOrders |
+| 异常订单 | 退款后成交订单数 | refundRelatedOrders |
+| 转化率，别名点击成交率 | 点击支付率（人数） | product_click_pay_ucnt_ratio |
+| 退货率 | 发货后退货率 | shippedReturnRate |
+| 支付金额 | 用户支付金额 | pay_amt |
+| 订单数 | 成交订单数 | pay_cnt |
+| 成交人数 | 成交人数 | pay_ucnt |
+| 客单价 | 成交客单价 | payPerOrder |
+| 退款金额 | 退款金额（支付时间） | payTimeRefundAmount |
+| 退款单数 | 退款订单数（支付时间） | payTimeRefundOrders |
+| 曝光人数 | 商品曝光人数 | product_show_ucnt |
+| 点击人数 | 商品点击人数 | product_click_ucnt |
+
+19 个中文名称只产生 17 项目标指标，两组比率别名不增加列、查询指标或存储副本。
+表头、详情与字段配置均复用口径 Tooltip；异常订单提示退款相关而非风控，净成交与退款后成交不相减推算。
+旧结算金额、退款时间金额、未核实退款单数及库存四列作为兼容项保留，不算进 17 项目标；
+旧 refund_amt 不重绑支付时间退款，refund_cnt/stock_cnt 显式未知。原有偏好键、可见性与顺序保留，
+读取只规范同义别名并去重，不改写 localStorage；显式保存才写入，恢复默认仍沿既有列集合。
+
+售卖类型采用全部/自营/合作，载体采用全部/直播/短视频/商品卡/图文。
+`self/cooperation`、`card/video/live/image-text` 是 Mock 枚举，不直接当作平台 sale_type/content_type。
+店铺、ID、名称与分组继续组合使用。九项区间默认不限，只有选自定义才显示上下限，支持单边界、清空及重置。
+
+| 指标 | 预设边界，最后一档无上限 |
+| --- | --- |
+| 曝光 | 0 / 1000 / 3000 / 5000 / 10000 |
+| 点击量、加购量 | 0 / 10 / 50 / 100 / 200 |
+| 点击率、转化率 | 0% / 1% / 2% / 4% / 6% |
+| 加购率 | 0% / 5% / 8% / 10% / 15% |
+| 真实订单 | 0 / 5 / 10 / 50 / 200 |
+| 异常订单 | 0 / 5 / 10 / 20 / 50 |
+| 退货率 | 0% / 10% / 20% / 30% / 50% |
+
+预设和自定义统一 `[min,max)`；末档 `>= min`，空边界不限。两边均空不限制未知值；任何有效边界都排除缺失、
+空、无效、非有限及错误单位值，合法 0 仍正常参与。边界为非负有限值，数量须为整数，同时填写时 min 必须小于 max。
+截图遗漏的转化率 4%–5% 已按连续 4%–6% 档覆盖，不照搬缺口。自定义上下限纵向排列，避免窄控件的数字被步进按钮挤压。
+
+`model/metric-ranges.ts` 以 Zod 校验草稿，View 复用 vee-validate 管理错误。
+页面百分比 1 明确表示 1%，编译为 Mock 内部 fraction 0.01，数量不缩放。
+`ProductMetricInterval` 显式包含语义 metricId、min/max、含下限/不含上限和 count/fraction 单位，
+是未来查询的前端草案，不是正式 DTO；平台原始 unit 3/4/5 与金额缩放不在此转换。
+完整 Mock 集合先按全部组合条件筛选，再排序、计算 total、分页，筛选不触发采集。
+查询成功回第 1 页并清除勾选，非法草稿保留原结果与页码；隐藏字段不清除筛选，草稿深复制后才进入 Query。
+
+ca97 旧样本的 net_pay_cnt、pay_cnt_exclude_refund 只提供名称/数值证据，不证明全额/部分退款算法。
+sold_pay_refund_ratio 的实际名为发货后退款率（支付时间），不是已经核实的实物退货率，不能用于 shippedReturnRate。
+本模块没有这些真实 mapper；新增次数和比率 code、单位及正式查询由 ca97 核实后另行冻结，不因有请求参数或 meta 就假定每行有值。
 
 ## 验证边界
 

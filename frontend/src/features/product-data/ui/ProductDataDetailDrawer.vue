@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import dayjs from 'dayjs'
-import { NDescriptions, NDescriptionsItem } from 'naive-ui'
+import { NDescriptions, NDescriptionsItem, NTooltip } from 'naive-ui'
 import { ProductInfoCell } from '@/entities/product'
 import { DetailDrawer } from '@/shared/components'
 import { AppButton } from '@/shared/ui'
@@ -9,6 +9,7 @@ import {
   PRODUCT_METRIC_STATE_LABELS,
 } from '../model/query'
 import { PRODUCT_METRICS, type ProductDataRow } from '../model/types'
+import { productMetricTooltip } from '../model/metrics'
 defineProps<{ show: boolean; row: ProductDataRow | null }>()
 defineEmits<{ 'update:show': [show: boolean] }>()
 </script>
@@ -37,11 +38,14 @@ defineEmits<{ 'update:show': [show: boolean] }>()
         <NDescriptionsItem label="数据时间">{{
           dayjs(row.retrievedAt).format('YYYY-MM-DD HH:mm')
         }}</NDescriptionsItem>
-        <NDescriptionsItem
-          v-for="metric in PRODUCT_METRICS"
-          :key="metric.id"
-          :label="metric.label"
-        >
+        <NDescriptionsItem v-for="metric in PRODUCT_METRICS" :key="metric.id">
+          <template #label>
+            <NTooltip
+              ><template #trigger
+                ><span>{{ metric.label }}</span></template
+              >{{ productMetricTooltip(metric.id) }}</NTooltip
+            >
+          </template>
           {{ formatProductMetric(row.metrics[metric.id]) }}
           <span
             v-if="row.metrics[metric.id].state !== 'available'"

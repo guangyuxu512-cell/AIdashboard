@@ -194,11 +194,18 @@ test('defaults to twenty, changes page size without stale pages and retains the 
   await expect(rows).toHaveCount(20)
 })
 
-test('audits existing optional filter controls without adding date or query behavior', async ({
+test('keeps new optional range controls compact without changing date behavior', async ({
   page,
 }, info) => {
   await openProducts(page)
   await page.getByRole('button', { name: '更多筛选', exact: true }).click()
+  await page
+    .locator('[data-metric-filter="exposureCount"] .n-base-selection')
+    .click()
+  await page
+    .locator('.n-base-select-option')
+    .getByText('自定义', { exact: true })
+    .click()
   await page.locator('.n-radio-button').filter({ hasText: '自定义' }).click()
   const metrics = {
     radio: await measure(

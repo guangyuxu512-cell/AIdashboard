@@ -15,6 +15,7 @@ import {
   PRODUCT_DATA_UNAVAILABLE,
 } from '../api/product-data-source'
 import { readProductColumns } from '../model/column-preferences'
+import { emptyProductFilters } from '../model/query'
 import type { ProductDataSource } from '../model/types'
 import ProductDataView from './ProductDataView.vue'
 import ProductDataFilterBar from './ProductDataFilterBar.vue'
@@ -92,6 +93,93 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
     .find((item) => item.text() === text)!
 }
 describe('product data view and recovery', () => {
+  it('validates ranges before querying, applies immutable drafts across all data, and keeps hidden-field filters on page one', async () => {
+    const source = createMockProductDataSource(),
+      list = vi.spyOn(source, 'list')
+    const { wrapper, dispose } = render(
+      ProductDataView,
+      { source, contextKey: 'ranges:team', userId: 'ranges' },
+      {
+        ProductDataTable: true,
+        ProductFieldConfigDialog: true,
+        ProductGroupManagerDialog: true,
+        ProductBatchGroupDialog: true,
+        ProductDataDetailDrawer: true,
+      },
+    )
+    try {
+      await flushPromises()
+      const filter = wrapper.findComponent(ProductDataFilterBar),
+        table = wrapper.findComponent(ProductDataTable)
+      wrapper.findComponent(PaginationBar).vm.$emit('update:page', 2)
+      await flushPromises()
+      table.vm.$emit('update:checked', ['product-data-demo-20'])
+      const previousCalls = list.mock.calls.length
+      let filters = filter.props('modelValue')
+      filter.vm.$emit('update:modelValue', {
+        ...filters,
+        metricRanges: {
+          ...filters.metricRanges,
+          exposureCount: { choice: 'custom', min: -1, max: null },
+        },
+      })
+      await flushPromises()
+      filter.vm.$emit('query')
+      await flushPromises()
+      expect(list).toHaveBeenCalledTimes(previousCalls)
+      expect(filter.props('rangeErrors')?.exposureCount).toContain('负数')
+      expect(wrapper.findComponent(PaginationBar).props('page')).toBe(2)
+      filters = filter.props('modelValue')
+      filter.vm.$emit('update:modelValue', {
+        ...filters,
+        metricRanges: {
+          ...filters.metricRanges,
+          exposureCount: { choice: 'custom', min: 0, max: 1000 },
+        },
+      })
+      await flushPromises()
+      filter.vm.$emit('query')
+      await flushPromises()
+      expect(wrapper.findComponent(PaginationBar).props('page')).toBe(1)
+      expect(table.props('checked')).toEqual([])
+      expect(
+        table
+          .props('rows')
+          .some((row: { id: string }) => row.id === 'product-data-demo-27'),
+      ).toBe(true)
+      const applied = list.mock.calls.at(-1)![0]
+      wrapper
+        .findComponent(ProductFieldConfigDialog)
+        .vm.$emit('saved', ['shop'])
+      await flushPromises()
+      expect(filter.props('modelValue').metricRanges.exposureCount).toEqual({
+        choice: 'custom',
+        min: 0,
+        max: 1000,
+      })
+      filters = filter.props('modelValue')
+      filter.vm.$emit('update:modelValue', {
+        ...filters,
+        metricRanges: {
+          ...filters.metricRanges,
+          exposureCount: { choice: 'custom', min: 10000, max: null },
+        },
+      })
+      await flushPromises()
+      expect(applied.filters.metricRanges.exposureCount.min).toBe(0)
+      filter.vm.$emit('reset')
+      await flushPromises()
+      expect(table.props('rows')).toHaveLength(20)
+      expect(wrapper.findComponent(PaginationBar).props('pageSize')).toBe(20)
+      expect(
+        Object.values(filter.props('modelValue').metricRanges).every(
+          (range) => (range as { choice: string }).choice === 'unlimited',
+        ),
+      ).toBe(true)
+    } finally {
+      dispose()
+    }
+  })
   it('opts only the list into compact density and declares every overlay outside its boundary', async () => {
     const { wrapper, dispose } = render(
       ProductDataView,
@@ -431,18 +519,7 @@ describe('product data edit drafts', () => {
   it('keeps batch target and selected products after failure and retries without cross-shop writes', async () => {
     const source = createMockProductDataSource({ failOnce: 'assignGroup' })
     const params = {
-      filters: {
-        shopId: null,
-        productId: '',
-        productName: '',
-        groupId: null,
-        selling: null,
-        carrier: null,
-        datePreset: 'yesterday' as const,
-        customDateRange: null,
-        minExposure: null,
-        minOrders: null,
-      },
+      filters: emptyProductFilters(),
       period: { startDate: '2026-10-01', endDate: '2026-10-01' },
       page: 1,
       pageSize: 10,

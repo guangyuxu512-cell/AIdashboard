@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { NAlert } from 'naive-ui'
+import { NAlert, NTooltip } from 'naive-ui'
 import { AppButton, AppCheckbox, AppDialog } from '@/shared/ui'
-import { saveProductColumns } from '../model/column-preferences'
+import {
+  normalizeProductColumns,
+  saveProductColumns,
+} from '../model/column-preferences'
+import { productMetricTooltip } from '../model/metrics'
 import {
   DEFAULT_PRODUCT_COLUMNS,
   PRODUCT_COLUMNS,
@@ -25,11 +29,11 @@ watch(
   () => props.show,
   (show) => {
     if (!show) return
-    draft.value = [...props.columns]
+    draft.value = normalizeProductColumns(props.columns)
     order.value = [
-      ...props.columns,
+      ...draft.value,
       ...PRODUCT_COLUMNS.map((column) => column.id).filter(
-        (id) => !props.columns.includes(id),
+        (id) => !draft.value.includes(id),
       ),
     ]
     error.value = null
@@ -85,13 +89,18 @@ function save() {
     <div class="product-fields">
       <div class="product-fields__fixed">商品信息 · 固定显示</div>
       <div v-for="(id, index) in order" :key="id" class="product-fields__row">
-        <AppCheckbox
-          :model-value="draft.includes(id)"
-          @update:model-value="toggle(id, $event)"
-          >{{
-            PRODUCT_COLUMNS.find((column) => column.id === id)?.label
-          }}</AppCheckbox
-        >
+        <NTooltip :disabled="!productMetricTooltip(id)">
+          <template #trigger>
+            <AppCheckbox
+              :model-value="draft.includes(id)"
+              @update:model-value="toggle(id, $event)"
+              >{{
+                PRODUCT_COLUMNS.find((column) => column.id === id)?.label
+              }}</AppCheckbox
+            >
+          </template>
+          {{ productMetricTooltip(id) }}
+        </NTooltip>
         <div class="product-fields__actions">
           <AppButton
             size="small"

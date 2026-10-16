@@ -12,6 +12,34 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 describe('product data personal fields', () => {
+  it('reads legacy and duplicate aliases without rewriting stored preferences, deduplicating in original order only on explicit save', () => {
+    const key = 'control-center.product-data.columns.v1.legacy'
+    const raw = JSON.stringify([
+      'receive_amt',
+      '曝光点击率',
+      'shop',
+      'product_click_show_ucnt_ratio',
+      'refund_amt',
+      '点击成交率',
+      '转化率',
+      'stock_cnt',
+    ])
+    window.localStorage.setItem(key, raw)
+    const write = vi.spyOn(Storage.prototype, 'setItem')
+    const expected = [
+      'receive_amt',
+      'product_click_show_ucnt_ratio',
+      'shop',
+      'refund_amt',
+      'product_click_pay_ucnt_ratio',
+      'stock_cnt',
+    ] as const
+    expect(readProductColumns('legacy')).toEqual(expected)
+    expect(write).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(key)).toBe(raw)
+    saveProductColumns('legacy', [...expected])
+    expect(JSON.parse(window.localStorage.getItem(key)!)).toEqual(expected)
+  })
   it('preserves column order per user and resets corrupt/unknown preferences', () => {
     saveProductColumns('user-a', ['receive_amt', 'shop', 'product_click_ucnt'])
     saveProductColumns('user-b', ['pay_cnt'])

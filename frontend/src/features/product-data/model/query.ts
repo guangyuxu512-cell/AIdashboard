@@ -2,6 +2,7 @@ import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
 import { z } from 'zod'
+import { emptyProductRangeDrafts } from './metric-ranges'
 import type { ProductDataFilters, ProductDataRow, ProductMetric } from './types'
 
 dayjs.extend(utc)
@@ -17,8 +18,23 @@ export function emptyProductFilters(): ProductDataFilters {
     carrier: null,
     datePreset: 'yesterday',
     customDateRange: null,
-    minExposure: null,
-    minOrders: null,
+    metricRanges: emptyProductRangeDrafts(),
+  }
+}
+export function cloneProductFilters(
+  filters: ProductDataFilters,
+): ProductDataFilters {
+  return {
+    ...filters,
+    customDateRange: filters.customDateRange
+      ? [...filters.customDateRange]
+      : null,
+    metricRanges: Object.fromEntries(
+      Object.entries(filters.metricRanges).map(([id, range]) => [
+        id,
+        { ...range },
+      ]),
+    ) as ProductDataFilters['metricRanges'],
   }
 }
 export function productPeriod(
