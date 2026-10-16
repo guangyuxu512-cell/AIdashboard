@@ -2,6 +2,16 @@
 
 Owner 为 81a1，独立审查交 ca97。本候选完成已核准的源码修复与合成验证；真实登录、匹配桌面包、安装及发布不在本轮执行授权内。
 
+## 恢复身份 IPC 边界返修
+
+ca97 对 `bc4bdc80c6bb28d7a358233ec34ad7904042b00b` 的独立审查发现：已有店铺首次 identified 时，Backend 验证前的捕获店铺身份已经由状态 IPC 返回。新 UI 没显示该值，不能替代 IPC 边界保护。此为合成 Service 证据，不是生产泄漏证据，也不解释历史单次失败的唯一根因。
+
+本次仅正常追加四路径：`management-login-service.ts`、原 `management-login-sync.test.ts`、原 IPC 契约及本记录。状态序列化依据永久 `recoveryShopId` 对已有店铺始终返回 `identity=null`，不依赖会被释放清空的 `recovery`。内部身份和捕获 payload 不变，仍用于既有验证和正确恢复；首次新增仍返回识别身份并自动关闭。
+
+原候选加入回归后，定向四项为 2 PASS / 2 FAIL，两个恢复身份外传断言失败，Onboarding 正对照通过。修复后 Electron typecheck、clean TypeScript build 和全 83 项 Node 测试通过；原同一用例还覆盖 lease 清空的实际序列化器、失败后状态、同候选拒绝、显式新候选成功及提交 payload 保留。格式与 diff 检查通过。
+
+Frontend、Preload、类型、Backend、数据库、包版本及其它源码相对 bc4 均无差异，复用未变的前端 61 项、lint/typecheck/Real build 记录，不重复浏览器或原生检查。本次仍无真实平台、DB、Profile、窗口、服务、打包、安装或生产操作；新精确 Candidate 交 ca97 重新独立审查，不以旧 83/61 通过代替边界修复验收。
+
 ## 基线与范围
 
 - 分支 `feat/shop-login-identity-source-v1`，直接基线为精确 Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`，CI 38941889261 三项成功。

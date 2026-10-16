@@ -1025,6 +1025,7 @@ test('explicit continuation reuses one window, rejects the unchanged candidate a
   let marker = 'first-synthetic-login'
   let captureTime = 0
   const captured: Buffer[] = []
+  const submittedMarkers: string[] = []
   state.adapter.captureSession = async () => {
     const payload = Buffer.from(
       JSON.stringify({
@@ -1041,6 +1042,14 @@ test('explicit continuation reuses one window, rejects the unchanged candidate a
       return new Response(null, { status: 204 })
     }
     posts++
+    const body = JSON.parse(String(init?.body)) as {
+      session_payload_base64: string
+    }
+    submittedMarkers.push(
+      JSON.parse(
+        Buffer.from(body.session_payload_base64, 'base64').toString('utf8'),
+      ).cookies[0].value,
+    )
     return posts === 1
       ? Response.json(
           {
@@ -1060,8 +1069,22 @@ test('explicit continuation reuses one window, rejects the unchanged candidate a
   }
   try {
     const opened = await state.service.open(state.parent, input)
-    await state.service.getStatus(opened.attemptId)
+    const identified = await state.service.getStatus(opened.attemptId)
+    assert.equal(identified.status, 'identified')
+    assert.equal(identified.identity, null)
+    assert.equal(identified.sessionCaptured, true)
+    const internal = state.service['attempts'].get(opened.attemptId)!
+    assert.equal(internal.identity?.platformShopId, 'matching-test-shop')
+    // Visibility is bound to the original recovery mode, not the lease's
+    // mutable presence. Exercise the real serializer without mutating state.
+    assert.equal(
+      state.service['toStatus']({ ...internal, recovery: null }).identity,
+      null,
+    )
     await assert.rejects(state.service.refresh(opened.attemptId))
+    const rejected = await state.service.getStatus(opened.attemptId)
+    assert.equal(rejected.identity, null)
+    assert.equal(rejected.recovery, false)
     assert.equal(
       (await state.service.getStatus(opened.attemptId)).refreshFailure?.code,
       'identity_mismatch',
@@ -1075,6 +1098,7 @@ test('explicit continuation reuses one window, rejects the unchanged candidate a
     await reopen('11be0dd3-31cf-4f25-b121-19f86a4cefa4')
     const unchanged = await state.service.getStatus(opened.attemptId)
     assert.equal(unchanged.status, 'failed')
+    assert.equal(unchanged.identity, null)
     assert.equal(unchanged.sessionCaptured, false)
     assert.equal(unchanged.refreshFailure?.code, 'identity_mismatch')
     assert.match(unchanged.message, /目标店铺不匹配/)
@@ -1082,10 +1106,9 @@ test('explicit continuation reuses one window, rejects the unchanged candidate a
     assert.equal(posts, 1)
     marker = 'new-synthetic-login'
     await reopen('cf59f63e-92a4-4c14-af50-c9614ebbc04c')
-    assert.equal(
-      (await state.service.getStatus(opened.attemptId)).status,
-      'identified',
-    )
+    const continued = await state.service.getStatus(opened.attemptId)
+    assert.equal(continued.status, 'identified')
+    assert.equal(continued.identity, null)
     const [result, duplicate] = await Promise.all([
       state.service.refresh(opened.attemptId),
       state.service.refresh(opened.attemptId),
@@ -1093,6 +1116,10 @@ test('explicit continuation reuses one window, rejects the unchanged candidate a
     assert.equal(result.sessionVersion, 4)
     assert.deepEqual(duplicate, result)
     assert.equal(posts, 2)
+    assert.deepEqual(submittedMarkers, [
+      'first-synthetic-login',
+      'new-synthetic-login',
+    ])
     assert.equal(deletes, 2)
     assert.equal(state.windows.length, 1)
     assert.equal(state.windows[0]!.destroyed, false)
@@ -1403,6 +1430,8 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     ])
     assert.equal(first.status, 'identified')
     assert.equal(second.status, 'identified')
+    assert.equal(first.identity, null)
+    assert.equal(second.identity, null)
     assert.equal(state.captures(), 1)
     assert.equal(state.windows[0]!.destroyed, false)
     await Promise.all([
@@ -1434,7 +1463,10 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     )
     const reopened = await state.service.open(state.parent, input)
     assert.notEqual(reopened.attemptId, opened.attemptId)
-    await state.service.getStatus(reopened.attemptId)
+    assert.equal(
+      (await state.service.getStatus(reopened.attemptId)).identity,
+      null,
+    )
     assert.equal(state.captures(), 2)
   } finally {
     await state.service.closeAll()
@@ -1454,6 +1486,11 @@ test('first onboarding capture still auto-closes; premature close clears candida
     })
     const status = await state.service.getStatus(onboarding.attemptId)
     assert.equal(status.status, 'identified')
+    assert.deepEqual(status.identity, {
+      platform: 'douyin',
+      platformShopId: 'matching-test-shop',
+      shopDisplayName: 'test shop',
+    })
     assert.equal(status.sessionCaptured, true)
     assert.equal(state.windows[0]!.destroyed, true)
     const recovery = await state.service.open(state.parent, input)

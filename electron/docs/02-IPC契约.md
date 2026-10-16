@@ -57,7 +57,12 @@ management-login:refresh
 management-login:close
 ```
 
-`open` 只接受已注册的 `douyin` 或 `pdd` 平台、可选 UUID attempt ID和correlationId，以及白名单化的 Session 恢复上下文（shop、lease、expected version）；`get-status` 只返回状态、可用时的真实店铺身份与 Cookie 数量等非敏感元数据；`complete` 完成首次接入；`refresh` 由 Main 将 Adapter 持有的新 payload 直接提交 Backend 并触发服务器立即验证；`close` 关闭尝试、清除 Main 内存 payload 并释放恢复租约。
+`open` 只接受已注册的 `douyin` 或 `pdd` 平台、可选 UUID attempt ID和correlationId，以及白名单化的 Session 恢复上下文（shop、lease、expected version）；`get-status` 返回状态与 Cookie 数量等非敏感元数据，仅首次新增 Onboarding 可返回已识别的店铺身份；`complete` 完成首次接入；`refresh` 由 Main 将 Adapter 持有的新 payload 直接提交 Backend 并触发服务器立即验证；`close` 关闭尝试、清除 Main 内存 payload 并释放恢复租约。
+
+已有店铺恢复的全部状态均返回 `identity=null`，包括首次 identified、失败、显式继续及 lease 已释放阶段。
+此边界取决于 attempt 原始且不会随 lease 清空的 `recoveryShopId`，不能只判断可变的 `recovery`。
+Main 内部身份及候选 payload 仍用于既有权威验证和保存；Renderer 仅使用当前授权 Shop 的目标信息，
+不得在验证前从 IPC 取得候选他店名/ID。首次新增的身份确认展示及主动自动关闭保持原行为。
 
 `complete` 与 `refresh` 的成功结果均含 `profileMappingWarning: string | null`。Backend 已成功而本机 `shop_id → partition` 映射无法保存时，Main 返回成功结果和该告警、清理尝试，不允许 Renderer 把它当作可重发的业务失败；下次恢复按无可用本机 Profile 处理。
 
@@ -108,4 +113,4 @@ closed且recovery=false表示Main已接管该租约的释放尝试（并非确�
 清理active/忙态和旧focus，不再重复释放。释放失败继续服务器过期兜底；旧桥接/查询失败保持原清理路径。
 轮询停止后的晚到结果/错误不再调用回调，空响应报告安全读取失败而非登录失效或成功。
 
-Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。拼多多 Adapter 只采集适用于 `mms.pinduoduo.com` 的 Cookie；Main 通过 Backend 预检成功取得店铺身份后才将非敏感 ID/名称放入现有 Status IPC。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。
+Cookie、Token、localStorage 与 sessionStorage 不返回 Renderer。平台规则实现于固定 `PlatformAuthAdapter`，Renderer 不能传任意 URL、JavaScript、Shell 或文件路径。拼多多 Adapter 只采集适用于 `mms.pinduoduo.com` 的 Cookie；首次新增时 Main 通过 Backend 预检成功取得店铺身份后才将非敏感 ID/名称放入现有 Status IPC，已有店铺恢复仍不返回捕获身份。恢复时优先读取本机 shop 到 partition 的映射；映射不存在才创建新的 `persist:management-login-<attempt_id>`。Profile 位于 Electron `userData` 且永不上传。

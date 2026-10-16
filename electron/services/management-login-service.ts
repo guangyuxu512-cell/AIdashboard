@@ -937,7 +937,9 @@ export class ManagementLoginService {
     return {
       attemptId: attempt.attemptId,
       status: attempt.status,
-      identity: attempt.identity,
+      // A captured identity is not authorized for display in an existing-shop
+      // recovery. Keep that boundary even after its mutable lease is released.
+      identity: attempt.recoveryShopId ? null : attempt.identity,
       sessionCaptured: Boolean(attempt.capturedSession),
       cookieCount: attempt.capturedSession?.cookieCount ?? 0,
       recovery: Boolean(attempt.recovery),
