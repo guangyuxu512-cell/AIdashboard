@@ -36,6 +36,24 @@ ELK、Loki、OpenTelemetry、Kafka、Redis、事件总线或通用 Policy/Audit 
 request body、query、Cookie、Authorization、密码、Token、验证码或 Session payload。请求日志仅用于
 运行排障，不是业务审计事实。
 
+### Session refresh 的有限拒绝日志
+
+仅既有 refresh API 捕获 `SHOP_SESSION_PAYLOAD_INVALID` 时，使用模块 logger
+`app.modules.sessions.api` 输出一条 WARNING JSON；记录后仍抛出原异常，HTTP/code/message 不变。
+这是业务失败诊断，不是新的审计表、通用日志框架或请求访问日志替代品。
+
+固定 `event=shop_session_refresh_payload_rejected`、`error_code=SHOP_SESSION_PAYLOAD_INVALID`。
+其余仅允许 `request_id`、`refresh_stage`、`validation_step`、`schema_issues`、`schema_issues_truncated`；
+阶段/子步骤和最多三个字段类别/错误类型沿[Session 契约](10-账号凭证与Session规范.md)白名单投影。
+不输出任意 details、异常文本/栈、原 loc/msg/input/ctx、请求 body/query/header/URL、身份值或 Cookie 名称/值。
+
+新 domain 日志的 request_id 只接受已有的 36 字符带连字符 UUID 形状（大小写均可），否则固定
+`unavailable`；缺省请求头仍复用全局生成的 UUID。不会反射任意 `X-Request-ID` 原值，也不更改原全局
+请求 ID、响应头或 access 日志契约。合法 UUID 在响应/domain/access 中一致；`unavailable` 不能冒充已关联请求。
+
+使用现有 server stdout/stderr 的受保护收集路径，不增开关或日志端点；正式部署后由 Main 核销该 WARNING
+确实进入日志出口。ASGI 内存请求和真实 `logging.StreamHandler` 的合成验证不等于生产失败已定位。
+
 ## Access Management 审计范围
 
 候选池0046增量复用audit_logs：product_selection.block_candidate／product_selection.restore_candidate，
