@@ -4,9 +4,17 @@
 
 精确候选`229d5c6ca41be1e4fe45fd12caee4b2f988a95c6`独立Gate 2通过，
 已正常no-ff集成至`fe2d54d1cf0f99a6ce068186bcf03ab929d8c29c`，合后104项与16项探针再次通过。
-下一步推送精确dev并等待CI；此状态只针对后端诊断，不通过98 UI或原生产故障。
-81a1负责独立后端候选，ca97负责集成及精确dev CI，Main负责Release Gate和正式部署。生产目前为
-`21229eff5ddf9900b8f38b13c89382952f90ee7b`，单一Head为`20261015_0046`。
+最终Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`的CI38941889261全部成功；Main正常Release为
+`c085a3f75a84f9ac68ea9da7473782431de252a3`，main CI38942893167及自动Deploy38943384104
+attempt1成功。三服务实际c085、单一Head `20261015_0046`、健康/Real资产/NAS及原开关通过。
+诊断已部署，MyCookLab单次真实取证完成，原登录业务故障尚未修复，不通过98 UI或新客户端。
+
+本次唯一refresh的安全domain与access关联于request_id `3eba394d-eb08-408f-b93b-1d189a6e454c`，
+北京时间2026-10-17 02:37:40返回500/`SHOP_SESSION_PAYLOAD_INVALID`，stage为`candidate_identity`。
+Schema和平台检查已过，在Backend权威联网验证、保存和采集恢复之前拒绝。旧valid v1及加密payload保留；
+只有租约相关updated_at变化，两个释放DELETE均204，不是两次refresh。客户端同次为失败后主动清理关窗。
+实际身份源字段没有留存，不能由此认定用户错店、Profile问题或递归account解析就是唯一根因。
+该次生产预算已用尽，后续业务返修见`shop-login-identity-source-v1-gate2-20261017.md`，不自动重复点击。
 
 2026-10-17人类在规划会话的原始turn
 `01a145b7-e9d3-73e2-8400-ab1f43dd8dfd`确认完整最小范围：独立后端安全诊断、

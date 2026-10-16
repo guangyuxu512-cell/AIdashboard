@@ -980,6 +980,433 @@ test('unreadable optional frame state does not drop diagnostic events or affect 
   }
 })
 
+test('refresh payload rejection destroys the candidate, releases the lease and retains the same window for explicit continuation', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return init?.method === 'POST'
+      ? Response.json(
+          {
+            code: 'SHOP_SESSION_PAYLOAD_INVALID',
+            message: '店铺 Session 无法安全读取',
+            details: { refresh_stage: 'candidate_schema' },
+          },
+          { status: 500 },
+        )
+      : new Response(null, { status: 204 })
+  }
+  const state = setup()
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    const rejected = await state.service.getStatus(opened.attemptId)
+    assert.equal(rejected.status, 'failed')
+    assert.equal(rejected.recovery, false)
+    assert.equal(rejected.sessionCaptured, false)
+    assert.ok(state.buffers[0]!.every((value) => value === 0))
+    assert.equal(state.windows[0]!.destroyed, false)
+    await state.service.getStatus(opened.attemptId)
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    assert.equal(state.captures(), 1)
+    assert.deepEqual(methods, ['POST', 'DELETE'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('explicit continuation reuses one window, rejects the unchanged candidate and saves only a new validated capture', async () => {
+  const originalFetch = globalThis.fetch
+  let posts = 0
+  let deletes = 0
+  const state = setup()
+  let marker = 'first-synthetic-login'
+  let captureTime = 0
+  const captured: Buffer[] = []
+  const submittedMarkers: string[] = []
+  state.adapter.captureSession = async () => {
+    const payload = Buffer.from(
+      JSON.stringify({
+        capturedAt: ++captureTime,
+        cookies: [{ name: 'fixture', value: marker }],
+      }),
+    )
+    captured.push(payload)
+    return { payload, capturedAt: '2026-10-16T00:00:00Z', cookieCount: 1 }
+  }
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'DELETE') {
+      deletes++
+      return new Response(null, { status: 204 })
+    }
+    posts++
+    const body = JSON.parse(String(init?.body)) as {
+      session_payload_base64: string
+    }
+    submittedMarkers.push(
+      JSON.parse(
+        Buffer.from(body.session_payload_base64, 'base64').toString('utf8'),
+      ).cookies[0].value,
+    )
+    return posts === 1
+      ? Response.json(
+          {
+            code: 'SHOP_SESSION_PAYLOAD_INVALID',
+            details: { refresh_stage: 'candidate_identity' },
+          },
+          { status: 500 },
+        )
+      : Response.json({
+          shop_id: shopId,
+          status: 'valid',
+          version: 4,
+          validated_at: '2026-10-16T00:01:00Z',
+          cookie_updates_applied: 0,
+          used_cached_validation: false,
+        })
+  }
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const identified = await state.service.getStatus(opened.attemptId)
+    assert.equal(identified.status, 'identified')
+    assert.equal(identified.identity, null)
+    assert.equal(identified.sessionCaptured, true)
+    const internal = state.service['attempts'].get(opened.attemptId)!
+    assert.equal(internal.identity?.platformShopId, 'matching-test-shop')
+    // Visibility is bound to the original recovery mode, not the lease's
+    // mutable presence. Exercise the real serializer without mutating state.
+    assert.equal(
+      state.service['toStatus']({ ...internal, recovery: null }).identity,
+      null,
+    )
+    await assert.rejects(state.service.refresh(opened.attemptId))
+    const rejected = await state.service.getStatus(opened.attemptId)
+    assert.equal(rejected.identity, null)
+    assert.equal(rejected.recovery, false)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).refreshFailure?.code,
+      'identity_mismatch',
+    )
+    const reopen = (leaseId: string) =>
+      state.service.open(state.parent, {
+        ...input,
+        attemptId: opened.attemptId,
+        recovery: { ...input.recovery!, leaseId },
+      })
+    await reopen('11be0dd3-31cf-4f25-b121-19f86a4cefa4')
+    const unchanged = await state.service.getStatus(opened.attemptId)
+    assert.equal(unchanged.status, 'failed')
+    assert.equal(unchanged.identity, null)
+    assert.equal(unchanged.sessionCaptured, false)
+    assert.equal(unchanged.refreshFailure?.code, 'identity_mismatch')
+    assert.match(unchanged.message, /目标店铺不匹配/)
+    assert.match(unchanged.message, /与上次被拒绝/)
+    assert.equal(posts, 1)
+    marker = 'new-synthetic-login'
+    await reopen('cf59f63e-92a4-4c14-af50-c9614ebbc04c')
+    const continued = await state.service.getStatus(opened.attemptId)
+    assert.equal(continued.status, 'identified')
+    assert.equal(continued.identity, null)
+    const [result, duplicate] = await Promise.all([
+      state.service.refresh(opened.attemptId),
+      state.service.refresh(opened.attemptId),
+    ])
+    assert.equal(result.sessionVersion, 4)
+    assert.deepEqual(duplicate, result)
+    assert.equal(posts, 2)
+    assert.deepEqual(submittedMarkers, [
+      'first-synthetic-login',
+      'new-synthetic-login',
+    ])
+    assert.equal(deletes, 2)
+    assert.equal(state.windows.length, 1)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.ok(captured.every((buffer) => buffer.every((value) => value === 0)))
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+for (const identityMismatch of [false, true])
+  test(`${identityMismatch ? 'wrong-shop' : 'incomplete'} refresh is limited to three explicitly armed requests and does not auto-retry`, async () => {
+    const originalFetch = globalThis.fetch
+    let posts = 0
+    globalThis.fetch = async (_url, init) => {
+      if (init?.method !== 'POST') return new Response(null, { status: 204 })
+      posts++
+      return Response.json(
+        identityMismatch
+          ? {
+              code: 'SHOP_SESSION_PAYLOAD_INVALID',
+              details: { refresh_stage: 'candidate_identity' },
+              message: 'private ignored',
+            }
+          : { code: 'PLATFORM_REQUEST_FAILED', message: 'private ignored' },
+        { status: identityMismatch ? 500 : 502 },
+      )
+    }
+    const state = setup()
+    if (identityMismatch)
+      state.adapter.captureSession = async () => {
+        const payload = Buffer.from(
+          JSON.stringify({
+            cookies: [
+              { name: 'fixture', value: `synthetic-candidate-${posts}` },
+            ],
+          }),
+        )
+        state.buffers.push(payload)
+        return { payload, capturedAt: '2026-10-17T00:00:00Z', cookieCount: 1 }
+      }
+    try {
+      const opened = await state.service.open(state.parent, input)
+      for (const [index, leaseId] of [
+        input.recovery!.leaseId,
+        'f02bb5c4-946d-4e7f-a342-117a84b806e5',
+        'b15cc808-c1c6-4c90-8cd9-128d741fdde8',
+      ].entries()) {
+        if (index)
+          await state.service.open(state.parent, {
+            ...input,
+            attemptId: opened.attemptId,
+            recovery: { ...input.recovery!, leaseId },
+          })
+        await state.service.getStatus(opened.attemptId)
+        await assert.rejects(
+          state.service.refresh(opened.attemptId),
+          identityMismatch ? /目标店铺不匹配/ : /验证未完成/,
+        )
+        const failed = await state.service.getStatus(opened.attemptId)
+        assert.equal(failed.refreshFailure?.canContinue, index < 2)
+        assert.equal(
+          failed.refreshFailure?.code,
+          identityMismatch ? 'identity_mismatch' : 'validation_incomplete',
+        )
+        assert.equal(failed.message.includes('private'), false)
+        await state.service.getStatus(opened.attemptId)
+      }
+      await assert.rejects(state.service.refresh(opened.attemptId))
+      assert.equal(posts, 3)
+      assert.equal(state.windows.length, 1)
+      assert.equal(state.windows[0]!.destroyed, false)
+      assert.ok(
+        state.buffers.every((buffer) => buffer.every((value) => value === 0)),
+      )
+    } finally {
+      await state.service.closeAll()
+      globalThis.fetch = originalFetch
+    }
+  })
+
+test('continuation cannot switch targets or replay the consumed lease', async () => {
+  const originalFetch = globalThis.fetch
+  let posts = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method !== 'POST') return new Response(null, { status: 204 })
+    posts++
+    return Response.json(
+      { code: 'SHOP_SESSION_PAYLOAD_INVALID' },
+      { status: 500 },
+    )
+  }
+  try {
+    for (const wrongTarget of [false, true]) {
+      const state = setup()
+      const opened = await state.service.open(state.parent, input)
+      await state.service.getStatus(opened.attemptId)
+      await assert.rejects(state.service.refresh(opened.attemptId))
+      await assert.rejects(
+        state.service.open(state.parent, {
+          ...input,
+          attemptId: opened.attemptId,
+          recovery: {
+            ...input.recovery!,
+            ...(wrongTarget
+              ? {
+                  shopId: '100c60fe-a30b-4f4b-b156-2b135e6e47ba',
+                  leaseId: '55140bbf-0ac9-41f0-a368-43ce26cf1d22',
+                }
+              : {}),
+          },
+        }),
+        /不能复用/,
+      )
+      assert.ok(state.buffers[0]!.every((value) => value === 0))
+      assert.equal(state.windows.length, 1)
+      await state.service.closeAll()
+    }
+    assert.equal(posts, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('cancel during header preparation cannot send a late refresh after the candidate was erased', async () => {
+  const originalFetch = globalThis.fetch
+  const originalGet = loginSession.cookies.get
+  const cookies = deferred<Awaited<ReturnType<typeof originalGet>>>()
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup()
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    loginSession.cookies.get = () => cookies.promise
+    const saving = assert.rejects(
+      state.service.refresh(opened.attemptId),
+      /已取消/,
+    )
+    await nextTurn()
+    const closing = state.service.close(opened.attemptId)
+    cookies.resolve(await originalGet({}))
+    await Promise.all([saving, closing])
+    assert.deepEqual(methods, ['DELETE'])
+    assert.equal(state.windows[0]!.destroyed, true)
+    assert.ok(state.buffers[0]!.every((value) => value === 0))
+  } finally {
+    loginSession.cookies.get = originalGet
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+for (const [
+  code,
+  httpStatus,
+  failureCode,
+  diagnosticCode,
+  canContinue,
+  stage = 'candidate_schema',
+] of [
+  [
+    'SHOP_SESSION_PAYLOAD_INVALID',
+    500,
+    'candidate_rejected',
+    'REFRESH_CANDIDATE_SCHEMA',
+    true,
+  ],
+  ['AUTH_INVALID', 401, 'platform_auth_invalid', 'REFRESH_AUTH_INVALID', true],
+  [
+    'PLATFORM_IDENTITY_MISMATCH',
+    409,
+    'identity_mismatch',
+    'REFRESH_CANDIDATE_IDENTITY',
+    true,
+  ],
+  [
+    'HUMAN_SESSION_INVALID',
+    401,
+    'personnel_auth_required',
+    'AUTH_REQUIRED',
+    false,
+  ],
+  [
+    'SHOP_SESSION_PAYLOAD_INVALID',
+    500,
+    'identity_mismatch',
+    'REFRESH_CANDIDATE_IDENTITY',
+    true,
+    'candidate_identity',
+  ],
+  [
+    'SHOP_SESSION_PAYLOAD_INVALID',
+    500,
+    'candidate_rejected',
+    'REFRESH_CANDIDATE_VALIDATION',
+    true,
+    'candidate_validation',
+  ],
+  [
+    'SHOP_SESSION_PAYLOAD_INVALID',
+    500,
+    'candidate_rejected',
+    'REFRESH_CANDIDATE_REJECTED',
+    true,
+    'unknown-stage',
+  ],
+  [
+    'SHOP_SESSION_PAYLOAD_INVALID',
+    403,
+    'forbidden',
+    'FORBIDDEN',
+    false,
+    'candidate_identity',
+  ],
+  ['ACCESS_DENIED', 403, 'forbidden', 'FORBIDDEN', false],
+  [
+    'SESSION_REFRESH_LEASE_INVALID',
+    409,
+    'lease_expired',
+    'REFRESH_LEASE_INVALID',
+    true,
+  ],
+  [
+    'SESSION_VERSION_CONFLICT',
+    409,
+    'version_conflict',
+    'REFRESH_VERSION_CONFLICT',
+    true,
+  ],
+] as const) {
+  test(`refresh ${code}/${httpStatus}/${stage} preserves safe classification without reflecting backend messages or body`, async () => {
+    const originalFetch = globalThis.fetch
+    const records: ManagementLoginDiagnostic[] = []
+    const state = setup(undefined, {
+      onDiagnostic: (record) => records.push(record),
+    })
+    globalThis.fetch = async (_url, init) =>
+      init?.method === 'POST'
+        ? Response.json(
+            {
+              code,
+              message: 'private-response-fixture',
+              details: {
+                refresh_stage: stage,
+                ignored: 'private-response-fixture',
+              },
+            },
+            { status: httpStatus },
+          )
+        : new Response(null, { status: 204 })
+    try {
+      const opened = await state.service.open(state.parent, input)
+      await state.service.getStatus(opened.attemptId)
+      await assert.rejects(state.service.refresh(opened.attemptId))
+      const rejected = await state.service.getStatus(opened.attemptId)
+      assert.deepEqual(rejected.refreshFailure, {
+        code: failureCode,
+        canContinue,
+      })
+      const diagnostic = records.find(
+        (record) => record.phase === 'refresh' && record.event === 'error',
+      )!
+      assert.equal(diagnostic.errorCode, diagnosticCode)
+      assert.equal(diagnostic.httpStatus, httpStatus)
+      assert.equal(
+        JSON.stringify([records, rejected]).includes(
+          'private-response-fixture',
+        ),
+        false,
+      )
+      assert.equal(rejected.sessionCaptured, false)
+      assert.equal(state.windows[0]!.destroyed, false)
+      assert.equal(
+        rejected.message.includes('目标店铺不匹配'),
+        failureCode === 'identity_mismatch',
+      )
+    } finally {
+      await state.service.closeAll()
+      globalThis.fetch = originalFetch
+    }
+  })
+}
+
 test('existing shop: single capture/save, retain browsing without lease, focus only, close/reopen synchronizes again', async () => {
   const originalFetch = globalThis.fetch
   let saves = 0
@@ -1003,6 +1430,8 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     ])
     assert.equal(first.status, 'identified')
     assert.equal(second.status, 'identified')
+    assert.equal(first.identity, null)
+    assert.equal(second.identity, null)
     assert.equal(state.captures(), 1)
     assert.equal(state.windows[0]!.destroyed, false)
     await Promise.all([
@@ -1034,7 +1463,10 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     )
     const reopened = await state.service.open(state.parent, input)
     assert.notEqual(reopened.attemptId, opened.attemptId)
-    await state.service.getStatus(reopened.attemptId)
+    assert.equal(
+      (await state.service.getStatus(reopened.attemptId)).identity,
+      null,
+    )
     assert.equal(state.captures(), 2)
   } finally {
     await state.service.closeAll()
@@ -1054,6 +1486,11 @@ test('first onboarding capture still auto-closes; premature close clears candida
     })
     const status = await state.service.getStatus(onboarding.attemptId)
     assert.equal(status.status, 'identified')
+    assert.deepEqual(status.identity, {
+      platform: 'douyin',
+      platformShopId: 'matching-test-shop',
+      shopDisplayName: 'test shop',
+    })
     assert.equal(status.sessionCaptured, true)
     assert.equal(state.windows[0]!.destroyed, true)
     const recovery = await state.service.open(state.parent, input)
@@ -1192,6 +1629,19 @@ test('cached validation and cancellation cannot claim a fresh sync', async () =>
     const opened = await state.service.open(state.parent, input)
     await state.service.getStatus(opened.attemptId)
     await assert.rejects(state.service.refresh(opened.attemptId), /不完整/)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).sessionCaptured,
+      false,
+    )
+    await state.service.open(state.parent, {
+      ...input,
+      attemptId: opened.attemptId,
+      recovery: {
+        ...input.recovery!,
+        leaseId: 'db04b7c0-55a4-4310-b06f-084702968e0d',
+      },
+    })
+    await state.service.getStatus(opened.attemptId)
     let finish!: (response: Response) => void
     globalThis.fetch = async (_url, init) =>
       init?.method === 'POST'
