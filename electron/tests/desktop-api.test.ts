@@ -19,7 +19,7 @@ import type { Cookie, Session } from 'electron'
 
 const attemptId = '00000000-0000-4000-8000-000000000001'
 
-test('new sandboxed Preload advertises only the fixed login correlation capability at trusted origins', () => {
+test('sandboxed Preload advertises fixed login capabilities only at trusted origins', () => {
   const source = readFileSync(
     path.join(__dirname, '../preload/index.js'),
     'utf8',
@@ -54,6 +54,11 @@ test('new sandboxed Preload advertises only the fixed login correlation capabili
       assert.equal(
         (bridge as { managementLogin: { globalShopLoginSupported: boolean } })
           .managementLogin.globalShopLoginSupported,
+        true,
+      )
+      assert.equal(
+        (bridge as { managementLogin: { refreshRecoverySupported: boolean } })
+          .managementLogin.refreshRecoverySupported,
         true,
       )
     } else assert.equal(bridge, undefined)

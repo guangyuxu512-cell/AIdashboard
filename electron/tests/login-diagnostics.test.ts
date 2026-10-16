@@ -31,6 +31,34 @@ const entry = {
 }
 const message = rendererLoginDiagnosticPrefix + JSON.stringify(entry)
 
+test('refresh stage diagnostics accept only registered fixed codes and HTTP status, not payload details', () => {
+  const input = {
+    ...entry,
+    source: 'main',
+    phase: 'refresh',
+    event: 'error',
+    errorCode: 'REFRESH_CANDIDATE_IDENTITY',
+    httpStatus: 500,
+  }
+  assert.equal(
+    safeLoginDiagnostic(input)?.errorCode,
+    'REFRESH_CANDIDATE_IDENTITY',
+  )
+  assert.equal(safeLoginDiagnostic(input)?.httpStatus, 500)
+  assert.equal(
+    safeLoginDiagnostic({ ...input, errorCode: 'private-response-fixture' })
+      ?.errorCode,
+    null,
+  )
+  assert.equal(
+    safeLoginDiagnostic({
+      ...input,
+      details: { value: 'private-response-fixture' },
+    }),
+    null,
+  )
+})
+
 test('observation accepts only bounded known path/outcome metadata, never query, payload or a guessed CORS reason', () => {
   const probe = {
     probeIndex: 0,
