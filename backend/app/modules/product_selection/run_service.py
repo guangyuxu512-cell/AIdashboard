@@ -136,7 +136,7 @@ class SelectionRunService:
                 row = SelectionStrategyService(self.session).writable(current, command.strategy_id, expected_version=command.strategy_version)
                 if row.request_shop_id != command.shop_id:
                     raise SelectionRunConflictError()
-                if resolved.version not in {3, 4, 5, 6, 7, 8}:
+                if resolved.version not in {3, 4, 5, 6, 7, 8, 9}:
                     raise ValueError("Strategy association requires the versioned execution contract")
                 resolved = resolved.model_copy(update={"strategy": SelectionStrategySnapshot(strategy_id=row.strategy_id, version=row.version)})
             result = self._persist_submission(current, command, resolved, at=at)
@@ -397,7 +397,7 @@ class SelectionRunService:
             allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "backup_empty", "both_empty"}}
             if request.single_window():
                 allowed = {None: {"primary"}}
-            if (request.version not in {2, 3, 4, 5, 6, 7, 8} or state not in allowed.get(previous, set())
+            if (request.version not in {2, 3, 4, 5, 6, 7, 8, 9} or state not in allowed.get(previous, set())
                 or row.saved_count != 0 or row.result_count is not None
                 or ((request.original.price_mode != "all" or request.original.brand != "all") and (primary_error is not None or fallback_reason == "primary_business_rejection_probe"))):
                 raise SelectionRunLeaseLostError()

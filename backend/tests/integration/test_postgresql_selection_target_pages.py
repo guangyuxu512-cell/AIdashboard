@@ -120,7 +120,7 @@ def test_nondefault_brand_or_price_does_not_expand_business_retry(selection_cont
     assert platform.rank_calls == [("primary", 1)]
 
 
-@pytest.mark.parametrize("changes,version", [({}, 3), ({"period": "realtime"}, 4), ({"period": "1d"}, 5), ({"price_mode": "custom", "price_above": "20", "price_below": "100"}, 6), ({"brand": "known"}, 7)])
+@pytest.mark.parametrize("changes,version", [({}, 3), ({"period": "realtime"}, 4), ({"period": "1d"}, 5), ({"price_mode": "custom", "price_above": "20", "price_below": "100"}, 6)])
 def test_active_old_run_is_reused_without_rewriting_its_plan(selection_context, changes, version):
     context, accepted = selection_context, datetime.now(UTC)
     command = _input(context, rank_from=150, rank_to=200, **changes)
@@ -137,3 +137,43 @@ def test_active_old_run_is_reused_without_rewriting_its_plan(selection_context, 
         row = session.get(Run, old.execution_run_id)
         assert (row.request_conditions, row.request_fingerprint) == before
     assert receipt.execution.request_conditions.page_numbers == tuple(range(1, 21))
+
+
+def test_active_legacy_brand_run_is_preserved_but_not_reused_for_corrected_mapping(selection_context):
+    context, accepted = selection_context, datetime.now(UTC)
+    command = _input(context, rank_from=150, rank_to=200, brand="known")
+
+    def old_resolver(original, at):
+        default = freeze_short_video_request(original.model_copy(update={"brand": "all"}), at).legacy_paging_request()
+        raw = default.model_dump(mode="json") | {"version": 7}
+        raw["original"]["brand"] = "known"
+        raw["scope"]["brand_type"] = "0"
+        raw["date_plan"]["backup_scope"]["brand_type"] = "0"
+        return SelectionResolvedRequest.model_validate(raw)
+
+    with Session(context[0]) as session:
+        old = SelectionRunService(
+            session, settings=SETTINGS, resolver=old_resolver,
+            category_reader=lambda actor, shop: _category_tree(shop),
+        ).submit(context[4][0], command, now=accepted)
+        row = session.get(Run, old.execution_run_id)
+        before = dict(row.request_conditions), row.request_fingerprint
+
+    replay = _submit(context, command, now=accepted)
+    assert replay.execution_run_id == old.execution_run_id
+    assert replay.execution.request_conditions.version == 7
+    assert replay.execution.request_conditions.scope.brand_type == "0"
+
+    receipt = _submit(
+        context,
+        _input(context, rank_from=150, rank_to=200, brand="known"),
+        now=accepted,
+    )
+    assert receipt.execution_run_id != old.execution_run_id
+    assert receipt.execution.request_conditions.version == 9
+    assert receipt.execution.request_conditions.scope.brand_type == "1"
+    with Session(context[0]) as session:
+        row = session.get(Run, old.execution_run_id)
+        assert (row.request_conditions, row.request_fingerprint) == before
+        legacy = SelectionResolvedRequest.model_validate(row.request_conditions)
+        assert legacy.version == 7 and legacy.scope.brand_type == "0"

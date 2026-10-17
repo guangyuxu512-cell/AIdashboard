@@ -25,7 +25,11 @@ HISTORICAL_PERIOD_RULES = MappingProxyType({
     "1d": (1, "20", "shanghai_1d_yesterday"),
     "30d": (30, "23", "shanghai_30d_complete_days"),
 })
-BRAND_TYPES = MappingProxyType({"all": "-1", "known": "0", "unknown": "1"})
+BRAND_TYPES = MappingProxyType({"all": "-1", "known": "1", "unknown": "0"})
+# Frozen v7/v8 rows record the wire values produced before the 2026-10-18
+# contract correction. Keep their reader semantics immutable; only newly
+# accepted requests use BRAND_TYPES above.
+LEGACY_BRAND_TYPES_V7 = MappingProxyType({"known": "0", "unknown": "1"})
 
 
 class SelectionRelativeConditions(BaseModel):
@@ -213,7 +217,7 @@ class SelectionResolvedRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1, 2, 3, 4, 5, 6, 7, 8] = 1
+    version: Literal[1, 2, 3, 4, 5, 6, 7, 8, 9] = 1
     original: SelectionRunOriginal
     scope: SelectionSourceScope
     # V1 is deliberately bounded to at most two ten-item pages, not a crawler.
@@ -305,8 +309,11 @@ class SelectionResolvedRequest(BaseModel):
             # Reuse the versioned date validation without changing its old JSON
             # or hash semantics. This projection is never persisted or signed.
             SelectionResolvedRequest.model_validate(raw)
-        elif self.version == 7:
-            if self.original.brand not in {"known", "unknown"} or self.scope.brand_type != BRAND_TYPES[self.original.brand]:
+        elif self.version in {7, 9}:
+            brand_types = LEGACY_BRAND_TYPES_V7 if self.version == 7 else BRAND_TYPES
+            if self.version == 9 and self.page_numbers != self.target_pages():
+                raise ValueError("Corrected brand requests must use the bounded target-page plan")
+            if self.original.brand not in {"known", "unknown"} or self.scope.brand_type != brand_types[self.original.brand]:
                 raise ValueError("Actual brand query must match the confirmed original label")
             price = custom_price_bin(self.original) if self.original.price_mode == "custom" else "不限"
             if (self.original.channel != "short-video" or self.scope.price_bin != price
@@ -320,10 +327,11 @@ class SelectionResolvedRequest(BaseModel):
             raw = self.model_dump(mode="json")
             raw.pop("strategy_queue", None)
             raw["version"] = 6 if self.original.price_mode == "custom" else self._date_version()
+            raw["page_numbers"] = list(range(1, (self.original.rank_to + 9) // 10 + 1))
             raw["original"]["brand"] = "all"
             raw["scope"]["brand_type"] = "-1"
             if isinstance(self.date_plan, SelectionDatePlan):
-                if self.date_plan.backup_scope.brand_type != BRAND_TYPES[self.original.brand]:
+                if self.date_plan.backup_scope.brand_type != brand_types[self.original.brand]:
                     raise ValueError("Backup cannot change brand conditions")
                 raw["date_plan"]["backup_scope"]["brand_type"] = "-1"
             # Validate the same date/price contract, never persist/sign this
@@ -354,7 +362,7 @@ class SelectionResolvedRequest(BaseModel):
         return self
 
     def _date_version(self) -> int:
-        if self.version not in {6, 7, 8}:
+        if self.version not in {6, 7, 8, 9}:
             return self.version
         return 3 if self.original.period == "7d" else 4 if self.original.period == "realtime" else 5
 

@@ -21,7 +21,7 @@ def _branded(context, brand="known", price=False, **changes):
     return _input(context, **({"brand": brand, "rank_from": 1, "rank_to": 11} | prices | changes))
 
 
-@pytest.mark.parametrize("brand,code", [("known", "0"), ("unknown", "1")])
+@pytest.mark.parametrize("brand,code", [("known", "1"), ("unknown", "0")])
 @pytest.mark.parametrize("price", [False, True])
 def test_formal_brand_save_read_post_pages_source_and_repeat(selection_context, brand, code, price):
     context, queries = selection_context, []
@@ -52,7 +52,7 @@ def test_formal_brand_save_read_post_pages_source_and_repeat(selection_context, 
             return SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(auth_context, request, page_no)
     _executor(context, Platform(receipt.execution.request_conditions, {})).execute_available()
     run = _get(context, receipt)
-    assert run.status == "succeeded" and run.request_conditions.version == 7 and run.saved_count == 2
+    assert run.status == "succeeded" and run.request_conditions.version == 9 and run.saved_count == 2
     assert [query["page_no"] for query in queries] == ["1", "2"]
     assert all(query["brand_type"] == code and type(query["brand_type"]) is str for query in queries)
     assert all(query["price_bin"] == ("20-100" if price else "不限") for query in queries)
@@ -73,7 +73,7 @@ def test_brand_success_empty_fallback_preserves_actual_brand(selection_context, 
     run = _get(selection_context, receipt)
     assert run.status == "succeeded" and run.request_conditions.date_outcome.state == "backup"
     assert platform.rank_calls == [("primary", 1), ("backup", 1)]
-    assert run.request_conditions.actual_scope().brand_type == ("0" if brand == "known" else "1")
+    assert run.request_conditions.actual_scope().brand_type == ("1" if brand == "known" else "0")
 
 
 @pytest.mark.parametrize("code", [621000704, "621000704"])

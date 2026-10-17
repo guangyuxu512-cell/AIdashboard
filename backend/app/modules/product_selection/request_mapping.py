@@ -93,8 +93,8 @@ def _freeze_short_video_conditions(original: SelectionRunOriginal, accepted_at: 
         if isinstance(plan, SelectionDatePlan):
             plan = plan.model_copy(update={"backup_scope": plan.backup_scope.model_copy(update={"brand_type": brand_type})})
         return SelectionResolvedRequest(
-            version=7, original=original, scope=base.scope.model_copy(update={"brand_type": brand_type}),
-            page_numbers=base.page_numbers, date_plan=plan,
+            version=9, original=original, scope=base.scope.model_copy(update={"brand_type": brand_type}),
+            page_numbers=base.target_pages(), date_plan=plan,
         )
     if original.price_mode == "custom":
         # Reuse the frozen date policy, not another execution/request path.
