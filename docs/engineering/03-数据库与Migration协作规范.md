@@ -30,6 +30,19 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
+2026-10-17商品数据首版真实接入：已核当前代码最高单一 `20261015_0046`，该槽已 released，
+没有后续 active。规划人类 turn `01a14788-0c80-7b73-be1a-36ad46a23793` 已授权首版开发和资源分配。
+ca97 审定7d55最小四表申请（原申请SHA256 `C377F15DF51A9106E76042AFDBF2226801F1B8C7F1F51803E19FA0877A7EEE13`），
+正式激活下表唯一 Slot。此前“未分配下一Slot”为历史状态，0042至0046字节不改。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/shop-product-data-real-v1` / 7d55 | `active`（ca97正式分配，仅Feature实施） | 新增稳定店内商品、滚动序列、采集代/回执、17指标快照四表；同Shop/同序列复合FK、有限活动切片唯一、单调序号/lease fence与原子current/previous发布。幂等必须覆盖超级账号无Team：使用非空Actor+submission_key唯一并复核冻结上下文，不能依赖nullable Team复合UNIQUE；未知单位/值保状态、不填0 | 精确Green08176，后续正常同步新Green；down `20261015_0046` | 文件 `20261017_0047_shop_product_data_v1.py`，revision `20261017_0047` | 新独立 `control_center_feat_shop_product_data`，Admin建空库/受保护配置交付并核目标后，Owner升级既有46、实施47并完成真实PG升级/空库降级/约束并发测试。非指定可重建Feature或任一新表已有数据时downgrade拒绝；正式回滚保Schema/事实/审计、关闭新入口。无自动删除/每日采集/真实平台执行授权。 |
+
+Schema与具体资源边界见 `shop-product-data-real-v1-resource-handoff-20261017.md`。Integrator不代写
+Model/Migration，不写Feature业务表。空库创建和凭据交付由既有DBAdmin通道执行，不能复用旧库；
+建库尚待管理员完成，不将Slot active写成数据库或真实闭环已就绪。
+
 2026-10-16生产核验完成：Main正式Release21229eff经CI38790697624/Deploy38791100315成功，
 新鲜pre46备份1039309字节/restore目录344项可读后升级生产单一20261015_0046；
 12类旧字段逐行摘要及计划/Session/审计全保持，0046文件不变，Slot继续released/无active。

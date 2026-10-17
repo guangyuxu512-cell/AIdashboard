@@ -39,6 +39,10 @@ ca97 接受精确候选 `e6f68d2be01b1024a258425498eb39c2b60bf38e` 的适用 Gat
 
 先保存既有治理工作，再正常 `--no-ff` 合入精确候选并复验。只有合后检查、干净工作树及该精确 dev 的 CI 成功后才标 Green；结果在本节补记，不用本地检查代替 CI。
 
+既有治理已保存为 `6ef6dcc`，原 `6b326033` 完整保留。候选正常 no-ff 合并为 `15980a6ed866e6e7b5094201314f725e6db34671`，8 个候选 blob 与工作区逐一一致；Backend、Electron、Shared、entities 和 app 子树仍与原 Green 相同。
+
+合后从实际 dev 源码复验：84 项 PASS，lint、typecheck、Real build 全部 PASS，构建 17.759 秒；同 4 项全拦截浏览器 PASS，13.349 秒。首轮本机测试夹具因 CommonJS 模式不能加载 import.meta，在执行用例前停止；只修正 ignored 夹具的模块模式，首轮日志和报告保留，未改业务、测试断言或规则。合后证据位于本地忽略目录 `.codex/gate2-feedback-postmerge-15980a6e/`，无新窗口、平台、数据库或 Profile 操作。
+
 Migration Slot：无，单一 `20261015_0046` 不变；不访问或迁移数据库。不需要新 Electron 包，不修改已安装 1.0.8。前端回滚使用正常 revert 或正式前端版本恢复，不清 Profile、Session、缓存事实或降库。
 
 Main 当前没有本候选生产部署授权。Green 后向规划交付精确提交及 CI，生产保持原版本，Release Gate 另行确认。商品数据 UI 或真实实现不混入本候选。
