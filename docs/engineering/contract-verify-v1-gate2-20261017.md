@@ -1,6 +1,6 @@
 # Verify 独立集成验收
 
-ca97接受候选 `a07529779920d3dcc66198d8eed6f97611fc8900` 的离线Gate 2；基线为Green `157f9400814aabad574b3d7860ba8bb8a6f00c3b`。尚待正常no-ff、合后复验及精确dev CI，不能据本机结果标Green或已部署。
+ca97接受候选 `a07529779920d3dcc66198d8eed6f97611fc8900` 的离线Gate 2；基线为Green `157f9400814aabad574b3d7860ba8bb8a6f00c3b`。正常no-ff为 `80c6f488a6c1d4599f5c97dfebb8072f97057845`，合后复验通过；尚待精确dev CI，不能据本机结果标Green或已部署。
 
 ## 范围与已知差异
 
@@ -26,6 +26,7 @@ ca97接受候选 `a07529779920d3dcc66198d8eed6f97611fc8900` 的离线Gate 2；�
 | Mobile | lint/typecheck、29文件236 unit通过；Real build3.75秒 |
 | Electron | TS/typecheck、83 Node测试通过，未启动客户端或打包 |
 | Worker | 136 PASS，包含Windows适用项，未启动真实Worker/RPA |
+| 合并后实际dev `pnpm verify` | exit0，18.79秒，28 known、0 new/stale、私有manager安装树为空；候选16文件与merge逐字一致 |
 
 完整离线明确NOT_RUN：共享/生产PG、迁移、容器、平台、原生及视觉E2E，以及会绑定端口的 `test_douyin_signer_runtime.py`、`test_notification_webhook_e2e.py`。原CI完整Linux/PG/容器Job保留；新增Windows `verify-offline` Job尚待托管运行，不能把本机结果冒充CI。
 
@@ -33,7 +34,7 @@ verify调用使用空临时用户/cwd、受限环境、已有依赖和无dotenv�
 
 ## 准备失败与保护
 
-初次归档将node_modules接到另一workspace，pnpm一致性检查在测试前拒绝；独立私有布局解决，未关闭检查。随后PATH误用系统Node20.18，pnpm缺少node:sqlite，客户端探针未执行，报告失败及4条stale；明确固定已有Node24.19 PATH后默认/严格/完整均实测。初败日志/报告全部保留，不计入通过，不修改候选业务。
+初次归档将node_modules接到另一workspace，pnpm一致性检查在测试前拒绝；独立私有布局解决，未关闭检查。随后PATH误用系统Node20.18，pnpm缺少node:sqlite，客户端探针未执行，报告失败及4条stale；明确固定已有Node24.19 PATH后默认/严格/完整均实测。合后规范工作树也需用同一原锁离线ignore-scripts更新workspace元数据，锁SHA256 `cdf9803569d82da85ee9d71d3aa02641aef73f90eb884705073e9e522a70e796` 保持，原服务/窗口未切换；随后实际入口通过。初败日志/报告全部保留，不计入通过，不修改候选业务。
 
 没有读取ignored环境值、生产凭据或平台Session；代码/合同所用合成值不代表真实业务成功。现有Integration47、真实751商品快照、经营事实、用户Profile、共享stash及8100/5180服务不因Verify验证改变。
 
