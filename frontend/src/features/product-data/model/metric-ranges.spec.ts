@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PRODUCT_DISPLAY_COLUMNS } from './display-fields'
 import { cloneProductFilters, emptyProductFilters } from './query'
 import {
   PRODUCT_RANGE_FILTERS,
@@ -12,6 +13,14 @@ import {
 import type { ProductMetric } from './types'
 
 describe('product metric interval draft contract', () => {
+  it('uses the approved core display metadata as its only presentation order', () => {
+    expect(PRODUCT_RANGE_FILTERS.map(({ id }) => id)).toEqual(
+      PRODUCT_DISPLAY_COLUMNS.filter(({ group }) => group === 'core').map(
+        ({ id }) => id,
+      ),
+    )
+  })
+
   it('defaults every field to unlimited with isolated draft objects', () => {
     const first = emptyProductFilters(),
       second = emptyProductFilters()

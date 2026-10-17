@@ -201,10 +201,6 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           })
         "
       />
-      <span class="product-data-filters__range-help"
-        >区间含下限、不含上限；末档 ≥ 下限。自定义留空不限，百分比填 1 表示
-        1%。</span
-      >
     </div>
     <FilterBar density="compact">
       <AppRadio
@@ -252,14 +248,11 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
   gap: var(--space-2);
 }
 .product-data-filters__more {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--list-compact-gap);
   align-items: flex-start;
-}
-.product-data-filters__range-help {
-  flex-basis: 100%;
-  color: var(--text-secondary);
+  min-width: 0;
 }
 .product-data-filters__feedback {
   display: flex;
@@ -267,12 +260,30 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
   justify-content: space-between;
   gap: var(--space-3);
 }
+@media (max-width: 1600px) {
+  .product-data-filters__more {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 @media (max-width: 1200px) {
+  .product-data-filters__more {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .product-data-filters :deep(.filter-bar) {
     flex-wrap: wrap;
   }
   .product-data-filters :deep(.filter-bar__toolbar) {
     margin-left: auto;
+  }
+}
+@media (max-width: 900px) {
+  .product-data-filters__more {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .product-data-filters__more {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

@@ -1,32 +1,37 @@
 import { z } from 'zod'
 import { productMetricDefinition } from './metrics'
 import { shiftProductDecimal } from './decimal-units'
+import { PRODUCT_DISPLAY_COLUMNS } from './display-fields'
 import type { ProductMetric } from './types'
 
-export const PRODUCT_RANGE_FILTERS = [
-  {
-    id: 'exposureCount',
+const PRODUCT_RANGE_CONFIGS = {
+  exposureCount: {
     percent: false,
     boundaries: [0, 1000, 3000, 5000, 10000],
   },
-  { id: 'clickCount', percent: false, boundaries: [0, 10, 50, 100, 200] },
-  {
-    id: 'exposureClickRate',
-    percent: true,
-    boundaries: [0, 1, 2, 4, 6],
+  clickCount: { percent: false, boundaries: [0, 10, 50, 100, 200] },
+  exposureClickRate: { percent: true, boundaries: [0, 1, 2, 4, 6] },
+  cartUsers: { percent: false, boundaries: [0, 10, 50, 100, 200] },
+  visitCartRate: { percent: true, boundaries: [0, 5, 8, 10, 15] },
+  netOrders: { percent: false, boundaries: [0, 5, 10, 50, 200] },
+  refundRelatedOrders: {
+    percent: false,
+    boundaries: [0, 5, 10, 20, 50],
   },
-  { id: 'cartUsers', percent: false, boundaries: [0, 10, 50, 100, 200] },
-  { id: 'visitCartRate', percent: true, boundaries: [0, 5, 8, 10, 15] },
-  {
-    id: 'clickPayRate',
-    percent: true,
-    boundaries: [0, 1, 2, 4, 6],
-  },
-  { id: 'netOrders', percent: false, boundaries: [0, 5, 10, 50, 200] },
-  { id: 'refundRelatedOrders', percent: false, boundaries: [0, 5, 10, 20, 50] },
-  { id: 'payTimeRefundRate', percent: true, boundaries: [0, 10, 20, 30, 50] },
-] as const
-export type ProductRangeFilterId = (typeof PRODUCT_RANGE_FILTERS)[number]['id']
+  clickPayRate: { percent: true, boundaries: [0, 1, 2, 4, 6] },
+  payTimeRefundRate: { percent: true, boundaries: [0, 10, 20, 30, 50] },
+} as const
+export type ProductRangeFilterId = keyof typeof PRODUCT_RANGE_CONFIGS
+function isProductRangeFilterId(id: string): id is ProductRangeFilterId {
+  return id in PRODUCT_RANGE_CONFIGS
+}
+
+// Field order follows the approved core display metadata. Range boundaries
+// remain keyed configuration and do not maintain a second presentation order.
+export const PRODUCT_RANGE_FILTERS = PRODUCT_DISPLAY_COLUMNS.flatMap(
+  ({ id }) =>
+    isProductRangeFilterId(id) ? [{ id, ...PRODUCT_RANGE_CONFIGS[id] }] : [],
+)
 export type ProductRangeChoice =
   | 'unlimited'
   | 'custom'

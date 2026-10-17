@@ -54,6 +54,17 @@ describe('Product Data verified Real range controls', () => {
       await more.trigger('click')
       const fields = wrapper.findAllComponents(ProductMetricRangeField)
       expect(fields).toHaveLength(9)
+      expect(fields.map((field) => field.props('metricId'))).toEqual([
+        'exposureCount',
+        'clickCount',
+        'exposureClickRate',
+        'cartUsers',
+        'visitCartRate',
+        'netOrders',
+        'refundRelatedOrders',
+        'clickPayRate',
+        'payTimeRefundRate',
+      ])
       expect(fields.every((field) => field.props('disabled') === false)).toBe(
         true,
       )
@@ -64,7 +75,13 @@ describe('Product Data verified Real range controls', () => {
             .find((select) => select.props('placeholder') === placeholder)
             ?.props('disabled'),
         ).toBe(true)
-      expect(wrapper.text()).toContain('百分比填 1 表示 1%')
+      expect(wrapper.text()).not.toContain('区间含下限')
+      expect(wrapper.text()).not.toContain('百分比填 1 表示 1%')
+      await more.trigger('click')
+      expect(wrapper.findAllComponents(ProductMetricRangeField)).toHaveLength(0)
+      expect(more.attributes('aria-expanded')).toBe('false')
+      await more.trigger('click')
+      expect(wrapper.findAllComponents(ProductMetricRangeField)).toHaveLength(9)
       await wrapper.setProps({ enabled: false })
       expect(
         wrapper

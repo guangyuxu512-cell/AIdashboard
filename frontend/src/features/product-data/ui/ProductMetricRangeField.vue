@@ -39,7 +39,7 @@ function select(value: AppOptionValue | null) {
   <FilterField
     class="product-range-field"
     :data-metric-filter="metricId"
-    width="sm"
+    width="full"
   >
     <NTooltip :content-style="PRODUCT_METRIC_TOOLTIP_STYLE">
       <template #trigger

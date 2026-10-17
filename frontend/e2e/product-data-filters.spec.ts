@@ -1,6 +1,17 @@
 import { expect, test, type Page } from '@playwright/test'
 
 const rowSelector = '.product-data-table .n-data-table-tbody .n-data-table-tr'
+const rangeIds = [
+  'exposureCount',
+  'clickCount',
+  'exposureClickRate',
+  'cartUsers',
+  'visitCartRate',
+  'netOrders',
+  'refundRelatedOrders',
+  'clickPayRate',
+  'payTimeRefundRate',
+]
 async function open(page: Page) {
   await page.goto('/#/product-data')
   await expect(page.locator(rowSelector)).toHaveCount(20)
@@ -28,18 +39,7 @@ test('nine range presets, custom validation and full-set filtering keep the last
   await expect(page.locator('.product-range-field__bounds input')).toHaveCount(
     0,
   )
-  const ids = [
-    'exposureCount',
-    'clickCount',
-    'exposureClickRate',
-    'cartUsers',
-    'visitCartRate',
-    'clickPayRate',
-    'netOrders',
-    'refundRelatedOrders',
-    'payTimeRefundRate',
-  ]
-  for (const id of ids) {
+  for (const id of rangeIds) {
     await page
       .locator('[data-metric-filter="' + id + '"] .n-base-selection')
       .click()
@@ -195,12 +195,25 @@ test('combines self/cooperation, all four carriers, shop and group without fetch
 for (const [width, height] of [
   [1024, 768],
   [1440, 900],
+  [1920, 1080],
 ]) {
   test(
-    'nine ranges fit the compact viewport ' + width,
+    'nine ranges use the ordered responsive grid at ' + width,
     async ({ page }, info) => {
       await page.setViewportSize({ width, height })
       await open(page)
+      await expect(
+        page.locator('.product-data-filters__range-help'),
+      ).toHaveCount(0)
+      expect(
+        await page
+          .locator('[data-metric-filter]')
+          .evaluateAll((elements) =>
+            elements.map((element) =>
+              element.getAttribute('data-metric-filter'),
+            ),
+          ),
+      ).toEqual(rangeIds)
       await choose(
         page,
         '[data-metric-filter="exposureCount"] .n-base-selection',
@@ -214,6 +227,14 @@ for (const [width, height] of [
         exact: true,
       })
       await expect(minInput).toHaveValue('1000')
+      const more = page.getByRole('button', {
+        name: '更多筛选',
+        exact: true,
+      })
+      await more.click()
+      await expect(page.locator('[data-metric-filter]')).toHaveCount(0)
+      await more.click()
+      await expect(minInput).toHaveValue('1000')
       expect(
         await minInput.evaluate((element) => element.clientWidth),
       ).toBeGreaterThan(50)
@@ -224,10 +245,23 @@ for (const [width, height] of [
         const query = Array.from(
           document.querySelectorAll('.product-data-filters button'),
         ).find((button) => button.textContent?.trim() === '查询')!
-        const bounds = query.getBoundingClientRect()
+        const bounds = query.getBoundingClientRect(),
+          grid = document.querySelector(
+            '.product-data-filters__more',
+          ) as HTMLElement,
+          fields = Array.from(
+            document.querySelectorAll<HTMLElement>('[data-metric-filter]'),
+          ),
+          fieldBounds = fields.map((field) => field.getBoundingClientRect())
         return {
           overflow: document.documentElement.scrollWidth > innerWidth,
           queryInViewport: bounds.bottom <= innerHeight,
+          display: getComputedStyle(grid).display,
+          columns: getComputedStyle(grid)
+            .gridTemplateColumns.split(/\s+/)
+            .filter(Boolean).length,
+          rows: new Set(fieldBounds.map((field) => Math.round(field.y))).size,
+          widths: fieldBounds.map((field) => field.width),
           controls: Array.from(
             document.querySelectorAll('[data-metric-filter] .n-base-selection'),
           ).map((element) => ({
@@ -238,6 +272,13 @@ for (const [width, height] of [
       })
       expect(geometry.overflow).toBe(false)
       expect(geometry.queryInViewport).toBe(true)
+      const expectedColumns = width >= 1601 ? 5 : width >= 1201 ? 4 : 3
+      expect(geometry.display).toBe('grid')
+      expect(geometry.columns).toBe(expectedColumns)
+      expect(geometry.rows).toBe(Math.ceil(9 / expectedColumns))
+      expect(
+        Math.max(...geometry.widths) - Math.min(...geometry.widths),
+      ).toBeLessThan(1)
       expect(geometry.controls).toHaveLength(9)
       expect(
         geometry.controls.every(
