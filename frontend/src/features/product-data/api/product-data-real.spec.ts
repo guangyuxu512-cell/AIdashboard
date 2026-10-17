@@ -57,7 +57,7 @@ function row(): ProductDataRowDto {
               ? '900719925474099312345'
               : '0.103846080868261780123456789',
           raw_unit: definition.rawUnitCode,
-          unit_verified: definition.format === 'count',
+          unit_verified: true,
         },
       ]),
     ),
@@ -68,21 +68,22 @@ beforeEach(() => {
   post.mockReset()
 })
 describe('Product Data typed Real adapter', () => {
-  it('preserves exact identities and counts while retaining unscaled raw amount/rate metadata', () => {
+  it('preserves exact identities and raw metadata while applying verified product-list units', () => {
     const mapped = mapProductDataRow(row())
     expect(mapped.productId).toBe('900719925474099312345')
     expect(formatProductMetric(mapped.metrics.pay_cnt)).toBe(
       '900,719,925,474,099,312,345',
     )
     expect(mapped.metrics.payTimeRefundRate).toMatchObject({
-      state: 'unit_unverified',
-      value: null,
-      unit: null,
+      state: 'available',
+      value: '0.103846080868261780123456789',
+      unit: 'ratio',
       rawUnit: 4,
       rawValue: '0.103846080868261780123456789',
     })
-    expect(formatProductMetric(mapped.metrics.payTimeRefundRate)).toBe('—')
-    expect(mapped.metrics.pay_amt.state).toBe('unit_unverified')
+    expect(formatProductMetric(mapped.metrics.payTimeRefundRate)).toBe('10.38%')
+    expect(mapped.metrics.pay_amt.state).toBe('available')
+    expect(mapped.metrics.pay_amt.value).toBe('0.00103846080868261780123456789')
     expect(mapped.metrics.receive_amt.state).toBe('missing')
     expect(mapped.selling).toBeNull()
     expect(mapped.carrier).toBeNull()
@@ -188,7 +189,7 @@ describe('Product Data typed Real adapter', () => {
       expect(() => productDataParams(params)).toThrow('基准切片')
     },
   )
-  it('rejects custom dates and unverified percent/amount operations before HTTP', () => {
+  it('keeps unsupported dates blocked while allowing verified percent ranges and amount sort', () => {
     const params = query()
     params.filters.datePreset = 'custom'
     expect(() => productDataParams(params)).toThrow('基准切片')
@@ -198,10 +199,12 @@ describe('Product Data typed Real adapter', () => {
       min: null,
       max: null,
     }
-    expect(() => productDataParams(params)).toThrow('单位待核定')
+    expect(JSON.parse(productDataParams(params).ranges)).toEqual([
+      { metric: 'pay_refund_ratio', min_value: '0', max_value: '0.1' },
+    ])
     params.filters = emptyProductFilters()
     params.sort = { field: 'pay_amt', direction: 'asc' }
-    expect(() => productDataParams(params)).toThrow('单位待核定')
+    expect(productDataParams(params).sort_field).toBe('pay_amt')
     expect(get).not.toHaveBeenCalled()
   })
   it('propagates HTTP rejection without Mock fallback or invented groups', async () => {

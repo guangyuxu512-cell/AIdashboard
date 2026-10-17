@@ -81,7 +81,7 @@ class ProductDataQuery(BaseModel):
         codes = {interval.metric for interval in self.ranges}
         if self.sort_field in METRIC_BY_CODE:
             codes.add(self.sort_field)
-        if any(METRIC_BY_CODE[code].kind != "count" for code in codes):
+        if any(not METRIC_BY_CODE[code].unit_verified for code in codes):
             raise ProductDataUnitUnconfirmedError()
 
     def scope_for(self, shop_id: UUID) -> ProductDataSlice:

@@ -17,7 +17,7 @@ Owner7d55/feat/shop-product-data-real-v1，专用 `control_center_feat_shop_prod
 
 原值列为已核17 platformCode，具体清单见26号契约和固定registry。JSONB不能携任意响应或认证；
 available值必须非空、有限、非负且unit匹配，计数须整数；invalid可保留有限负原值但不显示为事实0。
-逐项状态与unit完整性分开，unit3/4尺度未知，不能据全页完整标17项显示齐全。
+逐项状态与unit完整性分开。官方商品列表调用链已核定unit3金额除100为元、unit4为原比例分数；仍不能据全页完整推断逐项有值。原三代回执unit_complete_rows=0保留采集当时语义，当前查询可确认单位不回填旧回执；原值NUMERIC、unit/state和0047均不变。
 发布需同短事务验证fence、全页覆盖、同系列和单调序号并更新成功代/两指针；平台IO不跨DB事务。
 
 升级仅新增四表，不改0042–0046。应用回滚保Schema/事实/失败审计并关闭新入口；

@@ -12,8 +12,53 @@ import {
   type ProductDataRow,
 } from '../model/types'
 import ProductDataTable from './ProductDataTable.vue'
+import {
+  PRIMARY_PRODUCT_METRICS,
+  LEGACY_PRODUCT_METRICS,
+} from '../model/metrics'
 
 describe('product data compact table consumer', () => {
+  it('enables all verified primary metric sorts in Real while leaving legacy fields unsupported', async () => {
+    const wrapper = mount(ProductDataTable, {
+      props: {
+        rows: [],
+        visibleColumns: [
+          ...PRIMARY_PRODUCT_METRICS,
+          ...LEGACY_PRODUCT_METRICS,
+        ].map((metric) => metric.id),
+        checked: [],
+        sort: null,
+        loading: false,
+        error: null,
+        enabled: true,
+        nativeOnly: true,
+      },
+      global: { stubs: { DataTable: true } },
+    })
+    try {
+      const columns = wrapper
+        .findComponent(DataTable)
+        .props('columns') as DataTableBaseColumn<ProductDataRow>[]
+      for (const metric of PRIMARY_PRODUCT_METRICS)
+        expect(columns.find((column) => column.key === metric.id)?.sorter).toBe(
+          true,
+        )
+      for (const metric of LEGACY_PRODUCT_METRICS)
+        expect(columns.find((column) => column.key === metric.id)?.sorter).toBe(
+          false,
+        )
+      await wrapper.setProps({ enabled: false })
+      const disabledColumns = wrapper
+        .findComponent(DataTable)
+        .props('columns') as DataTableBaseColumn<ProductDataRow>[]
+      for (const metric of PRIMARY_PRODUCT_METRICS)
+        expect(
+          disabledColumns.find((column) => column.key === metric.id)?.sorter,
+        ).toBe(false)
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('uses its own bounded product width and explicit shared compact props without changing configured field order', async () => {
     const rows = (
       await createMockProductDataSource().list({

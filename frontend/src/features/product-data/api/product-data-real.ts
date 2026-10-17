@@ -1,6 +1,7 @@
 import { httpClient, type PageDto } from '@/shared/api'
 import { PRIMARY_PRODUCT_METRICS, PRODUCT_METRICS } from '../model/metrics'
-import { compileProductRanges } from '../model/metric-ranges'
+import { compileProductRangeQuery } from '../model/metric-ranges'
+import { shiftProductDecimal } from '../model/decimal-units'
 import type {
   ProductDataPage,
   ProductDataQuery,
@@ -94,8 +95,6 @@ function mapCollection(dto: ProductDataCollectionDto): ProductDataCollection {
 export const PRODUCT_DATA_GROUPS_UNAVAILABLE = '商品分组尚未接入'
 export const PRODUCT_DATA_SCOPE_UNAVAILABLE =
   '当前仅支持基准切片及近1/7/30天，其他维度尚未接入'
-export const PRODUCT_DATA_UNIT_UNCONFIRMED =
-  '金额和比例显示单位待核定，暂不支持相关筛选排序'
 
 export function productDataParams(query: ProductDataQuery) {
   const { filters, sort } = query
@@ -106,25 +105,17 @@ export function productDataParams(query: ProductDataQuery) {
     filters.carrier
   )
     throw new Error(PRODUCT_DATA_SCOPE_UNAVAILABLE)
-  const compiled = compileProductRanges(filters.metricRanges)
+  const compiled = compileProductRangeQuery(filters.metricRanges)
   if (Object.keys(compiled.errors).length)
     throw new Error(Object.values(compiled.errors)[0])
   const ranges = compiled.intervals.map((interval) => {
     const metric = PRIMARY_PRODUCT_METRICS.find(
       (definition) => definition.id === interval.metricId,
     )!
-    if (interval.unit !== 'count')
-      throw new Error(PRODUCT_DATA_UNIT_UNCONFIRMED)
-    if (
-      [interval.min, interval.max].some(
-        (value) => value !== null && !Number.isSafeInteger(value),
-      )
-    )
-      throw new Error('数量边界超出精确整数范围')
     return {
       metric: metric.platformCode,
-      min_value: interval.min?.toString() ?? null,
-      max_value: interval.max?.toString() ?? null,
+      min_value: interval.min,
+      max_value: interval.max,
     }
   })
   const sorts: Record<string, string> = {
@@ -135,8 +126,6 @@ export function productDataParams(query: ProductDataQuery) {
     const metric = PRIMARY_PRODUCT_METRICS.find(
       (definition) => definition.id === sort.field,
     )
-    if (metric?.format !== 'count' && metric?.platformCode)
-      throw new Error(PRODUCT_DATA_UNIT_UNCONFIRMED)
     if (!sorts[sort.field] && !metric?.platformCode)
       throw new Error(PRODUCT_DATA_SCOPE_UNAVAILABLE)
     if (metric?.platformCode) sorts[sort.field] = metric.platformCode
@@ -178,13 +167,32 @@ export function mapProductDataRow(dto: ProductDataRowDto): ProductDataRow {
   for (const definition of PRIMARY_PRODUCT_METRICS) {
     const raw = dto.metrics[definition.platformCode]
     if (!raw) throw new Error('商品指标契约不完整')
-    const count =
-      definition.format === 'count' && raw.unit_verified && raw.raw_unit === 5
+    const verified =
+      raw.unit_verified && raw.raw_unit === definition.rawUnitCode
+    const value =
+      verified && typeof raw.raw_value === 'string'
+        ? shiftProductDecimal(
+            raw.raw_value,
+            definition.format === 'amount' ? -2 : 0,
+          )
+        : null
+    const valid =
+      value !== null && (definition.format !== 'count' || /^\d+$/.test(value))
     metrics[definition.id] = {
       state:
-        raw.state === 'available' && !count ? 'unit_unverified' : raw.state,
-      value: count ? raw.raw_value : null,
-      unit: count ? 'count' : null,
+        raw.state !== 'available'
+          ? raw.state
+          : !verified
+            ? 'unit_unverified'
+            : valid
+              ? 'available'
+              : 'invalid',
+      value: raw.state === 'available' && valid ? value : null,
+      unit: verified
+        ? definition.format === 'amount'
+          ? 'yuan'
+          : definition.format
+        : null,
       rawValue: raw.raw_value,
       rawUnit: raw.raw_unit,
     }

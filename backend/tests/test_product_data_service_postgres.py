@@ -20,7 +20,7 @@ from app.modules.access.service import ActorContextService
 from app.modules.product_data.collection import CompleteProductDataSnapshot
 from app.modules.product_data.exceptions import (
     ProductDataCollectionBusyError, ProductDataCollectionUnavailableError, ProductDataGenerationNotFoundError,
-    ProductDataIdempotencyConflictError, ProductDataPublicationRejectedError, ProductDataUnitUnconfirmedError,
+    ProductDataIdempotencyConflictError, ProductDataPublicationRejectedError,
 )
 from app.modules.product_data.models import (
     ShopProductDataGeneration as Generation, ShopProductDataProduct as Product,
@@ -114,13 +114,14 @@ def test_success_precision_zero_global_pagination_and_no_unit_guess(graph):
     assert response.items[0].metrics["pay_cnt"].raw_value == "0"
     assert response.items[0].metrics["pay_cnt"].unit_verified
     assert response.items[0].metrics["pay_refund_ratio"].raw_value == "0.103846080868261780123456789"
-    assert not response.items[0].metrics["pay_amt"].unit_verified
+    assert response.items[0].metrics["pay_amt"].unit_verified
+    assert response.coverage.unit_unconfirmed_codes == []
     second = graph.service.list(graph.actors[1], query(receipt, page=2))
     assert len(second.items) == 5
     assert not {row.product_id for row in response.items} & {row.product_id for row in second.items}
     saved = graph.service.read_generation(graph.actors[0], receipt.generation_id)
     assert saved.status == "succeeded" and saved.pages_complete and saved.raw_complete_rows == 25
-    assert saved.unit_complete_rows == 0 and not saved.lease_expired
+    assert saved.unit_complete_rows == 25 and not saved.lease_expired
 
 
 def test_failed_next_intent_preserves_old_success_and_stable_ids(graph):
@@ -196,12 +197,85 @@ def test_sql_scope_filters_sort_before_pagination_coverage_not_filtered(graph):
         graph.service.list(graph.actors[1], query(receipt, shop_id=graph.shops[1].shop_id))
 
 
-def test_unconfirmed_units_never_sort_or_filter_as_known(graph):
+def test_official_units_enable_amount_sort_and_ratio_filter(graph):
     receipt = publish(graph, total=1)
-    with pytest.raises(ProductDataUnitUnconfirmedError):
-        graph.service.list(graph.actors[0], query(receipt, sort_field="pay_amt", sort_direction="desc"))
-    with pytest.raises(ProductDataUnitUnconfirmedError):
-        graph.service.list(graph.actors[0], query(receipt, ranges=[{"metric": "pay_refund_ratio", "min_value": "0"}]))
+    assert graph.service.list(graph.actors[0], query(receipt, sort_field="pay_amt", sort_direction="desc")).total == 1
+    assert graph.service.list(graph.actors[0], query(receipt, ranges=[{"metric": "pay_refund_ratio", "min_value": "0"}])).total == 1
+
+
+RATIO_CODES = ("product_show_click_converse_uv_rate", "product_add_show_converse_uv_ratio",
+               "product_click_pay_converse_uv_rate", "pay_refund_ratio")
+
+
+@pytest.mark.parametrize("code", RATIO_CODES)
+def test_ratio_sql_exact_boundaries_unknowns_sorting_and_pagination(graph, code):
+    receipt, lease = submit(graph)
+    snapshot = complete(receipt, graph.shops[0], 11)
+    values = ["0", "0.0028999999999999999999999999999999999", "0.0029",
+              "0.0029000000000000000000000000000000001", "0.0100999999999999999999999999999999999",
+              "0.0101", "0.1", None, "0.005", "-1", None]
+    rows = []
+    for index, row in enumerate(snapshot.products):
+        state = "missing" if index == 7 else "invalid" if index in (8, 9) else "null" if index == 10 else "available"
+        unit = None if index == 7 else 6 if index == 8 else 4
+        rows.append(replace(row, metrics=tuple(replace(metric, state=state, raw_unit=unit,
+            raw_value=Decimal(values[index]) if values[index] is not None else None)
+            if metric.definition.code == code else metric for metric in row.metrics)))
+    graph.service.publish(receipt.generation_id, lease, replace(snapshot, products=tuple(rows)))
+    selected = [{"metric": code, "min_value": "0.0029", "max_value": "0.0101"}]
+    first = graph.service.list(graph.actors[1], query(receipt, ranges=selected, sort_field=code,
+                                                    sort_direction="desc", page_size=2))
+    second = graph.service.list(graph.actors[1], query(receipt, ranges=selected, sort_field=code,
+                                                     sort_direction="desc", page_size=2, page=2))
+    assert first.total == second.total == 3
+    assert [row.product_id for row in first.items + second.items] == [rows[index].product_id for index in (4, 3, 2)]
+    assert second.items[0].metrics[code].raw_value == "0.0029"
+    assert first.items[0].metrics[code].raw_value == values[4]
+    zero = graph.service.list(graph.actors[1], query(receipt, ranges=[{"metric": code, "min_value": "0", "max_value": "0.0029"}]))
+    assert zero.total == 2 and zero.items[0].metrics[code].raw_value == "0"
+    upper_only = graph.service.list(graph.actors[1], query(receipt, ranges=[{"metric": code, "max_value": "0.0101"}]))
+    lower_only = graph.service.list(graph.actors[1], query(receipt, ranges=[{"metric": code, "min_value": "0.0101"}]))
+    assert upper_only.total == 5 and lower_only.total == 2
+
+
+def test_all_nine_ranges_combine_in_sql_before_pagination(graph):
+    receipt, lease = submit(graph)
+    snapshot = complete(receipt, graph.shops[0], 25)
+    rows = tuple(replace(row, metrics=tuple(replace(metric, raw_value=Decimal(index).scaleb(-3))
+        if metric.definition.code in RATIO_CODES else metric for metric in row.metrics))
+        for index, row in enumerate(snapshot.products))
+    graph.service.publish(receipt.generation_id, lease, replace(snapshot, products=rows))
+    ranges = [{"metric": code, "min_value": "10", "max_value": "20"} for code in (
+        "product_show_cnt", "product_click_cnt", "click_add_to_cart_uv", "net_pay_cnt", "pay_cnt_exclude_refund")]
+    ranges += [{"metric": code, "min_value": "0.012", "max_value": "0.018"} for code in RATIO_CODES]
+    result = graph.service.list(graph.actors[1], query(receipt, ranges=ranges, page=2, page_size=2))
+    assert result.total == 6 and [row.product_id for row in result.items] == [rows[index].product_id for index in (14, 15)]
+
+
+@pytest.mark.parametrize("code", ["pay_amt", "per_user_price", "pay_refund_success_amt"])
+def test_amount_sort_preserves_raw_precision_with_unknowns_last(graph, code):
+    receipt, lease = submit(graph)
+    snapshot = complete(receipt, graph.shops[0], 4)
+    specs = [("available", "9007199254740993.005", 3), ("available", "9007199254740993.004", 3),
+             ("missing", None, None), ("invalid", "1", 6)]
+    rows = tuple(replace(row, metrics=tuple(replace(metric, state=state, raw_unit=unit,
+        raw_value=Decimal(raw) if raw is not None else None) if metric.definition.code == code else metric
+        for metric in row.metrics)) for row, (state, raw, unit) in zip(snapshot.products, specs, strict=True))
+    graph.service.publish(receipt.generation_id, lease, replace(snapshot, products=rows))
+    result = graph.service.list(graph.actors[1], query(receipt, sort_field=code, sort_direction="asc"))
+    assert [row.product_id for row in result.items[:2]] == [rows[index].product_id for index in (1, 0)]
+    assert result.items[0].metrics[code].raw_value == "9007199254740993.004"
+    assert {row.metrics[code].state for row in result.items[2:]} == {"missing", "invalid"}
+
+
+def test_current_unit_verification_does_not_rewrite_historical_receipt_coverage(graph):
+    receipt = publish(graph, total=1)
+    generation = graph.session.get(Generation, receipt.generation_id)
+    generation.unit_complete_rows = 0  # Simulate the original stored receipt.
+    graph.session.commit()
+    listed = graph.service.list(graph.actors[1], query(receipt))
+    assert all(metric.unit_verified for metric in listed.items[0].metrics.values())
+    assert graph.service.read_generation(graph.actors[0], receipt.generation_id).unit_complete_rows == 0
 
 
 def test_stale_lease_and_late_sequence_cannot_overwrite_success(graph):

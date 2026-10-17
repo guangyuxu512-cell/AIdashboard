@@ -48,9 +48,9 @@ describe('product metric semantic registry', () => {
     ).toBe(17)
     expect(resolveProductMetricId('product_click_show_ucnt_ratio')).toBeNull()
     expect(resolveProductMetricId('product_click_pay_ucnt_ratio')).toBeNull()
-    expect(productMetricTooltip('pay_amt')).toContain('金额分/元显示换算待确认')
+    expect(productMetricTooltip('pay_amt')).toContain('金额按原值÷100显示元')
     expect(productMetricTooltip('clickPayRate')).toContain(
-      '官方页面百分比显示换算待确认',
+      '比例按原值×100显示百分比',
     )
     expect(productMetricTooltip('clickPayRate')).toContain(
       '数据可用性以当前数据源为准',

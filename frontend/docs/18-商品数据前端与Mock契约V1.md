@@ -4,13 +4,15 @@
 正常no-ff保留af6并同步最新Green157f940。已接正式GET列表、POST手动采集和GET回执，契约以Backend05/26为准；
 Feature DB control_center_feat_shop_product_data、8102/4177与active0047由ca97登记。未部署、未新增窗口。
 
-Real在SQL分页后只映射当前页，不本地筛选或重新计算total。17指标按registry精确映射，只有unit5有效计数显示原整数，
-使用BigInt格式化不损精度。金额3/比例4保持rawValue/rawUnit并显示“显示单位待核定”，不转yuan/fraction；
+Real在SQL分页后只映射当前页，不本地筛选或重新计算total。17指标按registry精确映射，有效unit5计数显示原整数，
+使用BigInt格式化不损精度。官方商品列表cell_info→EUE→formatter链已核定金额unit3原值除100为元、比例unit4保原分数并显示乘100%。只有Backend已核定且unit匹配才应用；保留rawValue/rawUnit，unknown/无效/unit6不补0。金额规范值与最终2位金额/百分比均不经Number转换或提前舍入。
 旧四列保留未知。selling/carrier为null，不把baseline1/1猜成自营或商品卡，groupingAvailable=false不伪称未分组。
-Real禁用分组、自定义、其它售卖/载体、比例筛选及金额/比例排序；其余已声明筛选排序由Backend执行。
+Real开放五数量/四比例区间与17指标排序，均由Backend全量SQL执行。比例UI填1表示1%，精确发送0.01；复用同一Zod验证与现有数字输入，发送前从其规范十进制文本移位，不发Number除100的尾数。单边及[min,max)保持，数量超安全整数范围拒绝。分组、自定义、其它售卖/载体及四旧兼容列筛选排序仍不支持。
 页面只在环境collectionAvailable=true且查询已选单店时开放“更新数据”，不因进入、筛选、翻页或刷新发POST。
 提交失败保持同一submissionKey供显式重试；成功回执按精确ID轮询GET，完成后失效事实Query，读失败只重读不重提。
 人员/Team/Shop/期间变化拒绝旧UI结果；平台执行仍由服务器当前授权和lease保护。失败不加载Mock。
+
+单位证据与三窗口21个非零原数值独立公式回归见工程shop-product-data-unit-contract-evidence-20261017.md。保留core17_v1、来源/序列hash及原三成功代；旧unit_complete_rows=0不回填，当前GET的单位核定不冒充当时采集覆盖。新候选仍需ca97独立Gate2/页面验证，不将旧178/229/344采集结果记成新UI验收。
 
 失败回执failureCode=PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED时，原StatusTag显示“超出采集上限”，原Tooltip展示冻结窗口、可用的expectedTotal及“本次未发布，已有成功数据保持不变”；总数未知不补0。只消费Backend05现有字段，不猜当前环境上限数值，不自动重试或放宽预算。历史PLATFORM_RESPONSE_INVALID仍按原通用失败展示，不据阶段或0页倒推改写原因。
 
@@ -84,7 +86,7 @@ Mock 使用虚构商品，查询顺序固定为完整数据集筛选 → 全量�
 最初盘点只有响应和 meta，page_no=1/page_size=10/total=31；后续请求与响应由 ca97 独立核验，
 不把不同周期、载体或采集时点的样本混为一次结果。金额 unit=3 的实际缩放仍未知。
 原UI_ONLY阶段Real service显式不可用；当前Real实现见本文开头及Backend05/26。
-Mock仍不代表真实采集，分组未接入不伪造成功，金额/比例单位未核定限制保持。
+Mock仍不代表真实采集，分组未接入不伪造成功；此历史阶段的金额/比例单位待核限制已由本文开头的官方路径核定替代，不以Mock作为换算依据。
 
 ## 分组草案与偏好
 
@@ -179,8 +181,8 @@ meta 为“退款率(支付时间)”，tip 为“退款订单数(支付时间)/
 首行原值 0.10384608086826178。直接保留平台总体比率，不自行相加发货前后百分比、重算覆盖或以退款时间指标替代。
 sold_pay_refund_ratio 只是发货后退款率（支付时间），不得替代总体退款率。
 本次 74 响应再次确认该字段为 3 正值、7 显式零、unit4；本树只离线接回证据，未追加请求。
-上述历史单页核验时没有真实mapper/API；当前typed接入不改变unit3金额分/元及unit4官方百分比仍无独立对照的边界，
-不自动按平台原单位换算、重算或写成真实接入完成；Mock 的 yuan/fraction 仍是合成 UI 契约。
+上述历史单页核验时没有真实mapper/API或单位对照。当前核定依据已补独立官方商品路径及三个窗口真实原值，见本文开头；
+不由其它业务字段重算比例，不将旧单页或Mock的yuan/fraction当成换算证据。
 
 ## 验证边界
 

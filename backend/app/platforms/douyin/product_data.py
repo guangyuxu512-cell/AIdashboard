@@ -1,7 +1,7 @@
 """Fixed-path Compass product-list observations, without I/O or persistence.
 
-Only the verified 17 current metrics are read. Money/ratio values retain their
-original Decimal and unit; neither the enum nor a Mock proves a display scale.
+Only the verified 17 current metrics are read. Original Decimal/unit values stay
+unchanged. Display scales follow the official product-list cell renderer chain.
 """
 
 from __future__ import annotations
@@ -30,6 +30,11 @@ class ProductMetricDefinition:
     code: str
     kind: MetricKind
     observed_unit: int
+
+    @property
+    def unit_verified(self) -> bool:
+        # Restricted to this fixed product-list contract, not other endpoints.
+        return self.observed_unit == {"count": 5, "amount": 3, "ratio": 4}.get(self.kind)
 
 
 PRODUCT_METRICS = (
@@ -79,16 +84,20 @@ class ProductMetricObservation:
 
     @property
     def unit_verified(self) -> bool:
-        return (
-            self.definition.kind == "count"
-            and self.raw_unit == self.definition.observed_unit
-        )
+        return self.definition.unit_verified and self.raw_unit == self.definition.observed_unit
 
     @property
     def display_value(self) -> Decimal | None:
-        if self.state == "available" and self.unit_verified:
-            return self.raw_value
-        return None
+        if self.state != "available" or not self.unit_verified or self.raw_value is None:
+            return None
+        if self.definition.kind == "amount":
+            # Decimal multiplication/scaleb can round at the caller's context
+            # precision. Moving the exponent preserves every original digit.
+            value = self.raw_value.as_tuple()
+            return Decimal((value.sign, value.digits, value.exponent - 2))
+        # Ratio canonical values remain fractions; only presentation multiplies
+        # by 100. Count values remain their original integers.
+        return self.raw_value
 
 
 @dataclass(frozen=True)

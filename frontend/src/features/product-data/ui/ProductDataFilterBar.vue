@@ -193,7 +193,7 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
         :metric-id="field.id"
         :model-value="modelValue.metricRanges[field.id]"
         :error="rangeErrors?.[field.id]"
-        :disabled="!enabled || (!!nativeOnly && field.percent)"
+        :disabled="!enabled"
         @update:model-value="
           update('metricRanges', {
             ...modelValue.metricRanges,
@@ -201,11 +201,10 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           })
         "
       />
-      <span class="product-data-filters__range-help">{{
-        nativeOnly
-          ? '区间含下限、不含上限；金额和比例单位待核定，相关筛选暂不可用。'
-          : '区间含下限、不含上限；末档 ≥ 下限。自定义留空不限，百分比填 1 表示 1%。'
-      }}</span>
+      <span class="product-data-filters__range-help"
+        >区间含下限、不含上限；末档 ≥ 下限。自定义留空不限，百分比填 1 表示
+        1%。</span
+      >
     </div>
     <FilterBar density="compact">
       <AppRadio

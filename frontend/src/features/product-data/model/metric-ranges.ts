@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { productMetricDefinition } from './metrics'
+import { shiftProductDecimal } from './decimal-units'
 import type { ProductMetric } from './types'
 
 export const PRODUCT_RANGE_FILTERS = [
@@ -105,11 +106,17 @@ export function selectProductRange(
   }
 }
 
-export function compileProductRanges(drafts: ProductRangeDrafts): {
-  intervals: ProductMetricInterval[]
+interface ProductRangeInput {
+  metricId: ProductRangeFilterId
+  min: number | null
+  max: number | null
+  percent: boolean
+}
+function compileProductRangeInputs(drafts: ProductRangeDrafts): {
+  intervals: ProductRangeInput[]
   errors: ProductRangeErrors
 } {
-  const intervals: ProductMetricInterval[] = [],
+  const intervals: ProductRangeInput[] = [],
     errors: ProductRangeErrors = {}
   for (const field of PRODUCT_RANGE_FILTERS) {
     const draft = drafts[field.id]
@@ -139,17 +146,70 @@ export function compileProductRanges(drafts: ProductRangeDrafts): {
       max = field.boundaries[index + 1] ?? null
     }
     if (min === null && max === null) continue
-    const divisor = field.percent ? 100 : 1
     intervals.push({
       metricId: field.id,
-      min: min === null ? null : min / divisor,
-      max: max === null ? null : max / divisor,
-      minInclusive: true,
-      maxInclusive: false,
-      unit: field.percent ? 'fraction' : 'count',
+      min,
+      max,
+      percent: field.percent,
     })
   }
   return { intervals, errors }
+}
+
+export function compileProductRanges(drafts: ProductRangeDrafts): {
+  intervals: ProductMetricInterval[]
+  errors: ProductRangeErrors
+} {
+  const parsed = compileProductRangeInputs(drafts)
+  return {
+    errors: parsed.errors,
+    intervals: parsed.intervals.map(({ metricId, min, max, percent }) => ({
+      metricId,
+      min: min === null ? null : min / (percent ? 100 : 1),
+      max: max === null ? null : max / (percent ? 100 : 1),
+      minInclusive: true,
+      maxInclusive: false,
+      unit: percent ? 'fraction' : 'count',
+    })),
+  }
+}
+
+// The same validated UI bounds, but never divide a binary float for the wire.
+export function compileProductRangeQuery(drafts: ProductRangeDrafts) {
+  const parsed = compileProductRangeInputs(drafts)
+  const intervals: {
+    metricId: ProductRangeFilterId
+    min: string | null
+    max: string | null
+  }[] = []
+  for (const input of parsed.intervals) {
+    if (
+      !input.percent &&
+      [input.min, input.max].some(
+        (bound) => bound !== null && !Number.isSafeInteger(bound),
+      )
+    ) {
+      parsed.errors[input.metricId] = '数量边界超出精确整数范围'
+      continue
+    }
+    const min =
+      input.min === null
+        ? null
+        : shiftProductDecimal(String(input.min), input.percent ? -2 : 0)
+    const max =
+      input.max === null
+        ? null
+        : shiftProductDecimal(String(input.max), input.percent ? -2 : 0)
+    if (
+      (input.min !== null && min === null) ||
+      (input.max !== null && max === null)
+    ) {
+      parsed.errors[input.metricId] = '边界无法精确表示'
+      continue
+    }
+    intervals.push({ metricId: input.metricId, min, max })
+  }
+  return { intervals, errors: parsed.errors }
 }
 
 export function matchesProductInterval(

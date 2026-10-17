@@ -153,9 +153,7 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
         (!props.nativeOnly ||
           id === 'shop' ||
           id === 'updatedAt' ||
-          PRIMARY_PRODUCT_METRICS.some(
-            (metric) => metric.id === id && metric.format === 'count',
-          )),
+          PRIMARY_PRODUCT_METRICS.some((metric) => metric.id === id)),
       sortOrder:
         props.sort?.field === id
           ? props.sort.direction === 'asc'

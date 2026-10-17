@@ -208,7 +208,7 @@ class ProductDataService:
                 unit = snapshot.raw_units[code]
                 metrics[code] = ProductDataMetricRead(state=snapshot.metric_states[code],
                     raw_value=format(raw_value, "f") if raw_value is not None else None, raw_unit=unit,
-                    unit_verified=definition.kind == "count" and unit == definition.observed_unit)
+                    unit_verified=definition.unit_verified and unit == definition.observed_unit)
             items.append(ProductDataRowRead(shop_product_id=product.shop_product_id,
                 generation_id=generation.generation_id, shop_id=shop.shop_id, shop_name=shop.display_name,
                 product_id=product.platform_product_id, title=snapshot.observed_title,
@@ -218,4 +218,4 @@ class ProductDataService:
             coverage=ProductDataCoverageRead(supported_shop_count=len(supported), collected_shop_count=len(collected_shops),
                 missing_shop_ids=[value for value in supported if value not in set(collected_shops)],
                 collection_available=self.settings.product_data_collection_execution_enabled,
-                unit_unconfirmed_codes=[code for code, metric in METRIC_BY_CODE.items() if metric.kind != "count"]))
+                unit_unconfirmed_codes=[code for code, metric in METRIC_BY_CODE.items() if not metric.unit_verified]))

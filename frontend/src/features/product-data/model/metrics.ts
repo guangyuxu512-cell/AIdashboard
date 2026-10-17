@@ -1,6 +1,6 @@
 // Frontend semantic registry only. IDs (including historical code-shaped IDs)
 // are NOT wire fields. platformCode/rawUnitCode record a verified single-page
-// observation, not a unit converter. The Real mapper keeps amounts/rates unverified.
+// observation. Real scales are verified for this fixed product-list cell path.
 interface MetricDefinition {
   id: string
   label: string
@@ -267,9 +267,9 @@ export function productMetricTooltip(id: string): string {
   const evidence = metric.platformCode
     ? '字段代码已完成单页核验。' +
       (metric.rawUnitCode === 3
-        ? '金额分/元显示换算待确认。'
+        ? '官方商品列表金额按原值÷100显示元。'
         : metric.rawUnitCode === 4
-          ? '官方页面百分比显示换算待确认。'
+          ? '官方商品列表比例按原值×100显示百分比。'
           : '')
     : '兼容旧列的真实字段契约待确认。'
   const aliases = metric.aliases.filter((alias) =>

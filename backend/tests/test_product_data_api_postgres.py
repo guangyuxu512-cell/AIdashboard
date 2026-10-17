@@ -60,9 +60,11 @@ def test_get_uses_page_contract_and_validates_ranges_without_echo(api_client, gr
     invalid = api_client.client.get("/api/v1/product-data", params=params | {"ranges": "[synthetic-private-invalid]"})
     assert invalid.status_code == 422 and invalid.json()["code"] == "PRODUCT_DATA_QUERY_INVALID"
     assert "synthetic-private-invalid" not in invalid.text
-    unknown_unit = api_client.client.get("/api/v1/product-data", params=params | {"sort_field": "pay_amt", "sort_direction": "desc"})
-    assert unknown_unit.status_code == 422
-    assert unknown_unit.json()["code"] == "PRODUCT_DATA_UNIT_UNCONFIRMED"
+    amount_sort = api_client.client.get("/api/v1/product-data", params=params | {"sort_field": "pay_amt", "sort_direction": "desc"})
+    assert amount_sort.status_code == 200 and amount_sort.json()["coverage"]["unit_unconfirmed_codes"] == []
+    assert amount_sort.json()["items"][0]["metrics"]["pay_amt"]["unit_verified"] is True
+    legacy = api_client.client.get("/api/v1/product-data", params=params | {"sort_field": "receive_amt", "sort_direction": "desc"})
+    assert legacy.status_code == 422 and legacy.json()["code"] == "PRODUCT_DATA_QUERY_INVALID"
     assert api_client.queued == []
 
 

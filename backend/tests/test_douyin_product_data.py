@@ -1,5 +1,5 @@
 from copy import deepcopy
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 
 import pytest
 
@@ -52,10 +52,10 @@ def test_exact_seventeen_metrics_and_zero_values_are_not_missing():
     assert row.raw_metrics_complete
     assert all(metric.raw_value == 0 and metric.state == "available" for metric in row.metrics)
     assert row.metric("pay_cnt").display_value == Decimal(0)
-    assert not row.display_metrics_complete
+    assert row.display_metrics_complete
 
 
-def test_raw_precision_and_unit_not_guessed_or_recalculated():
+def test_raw_precision_and_verified_units_not_recalculated_from_other_metrics():
     raw = payload()
     current(raw)["value"] = Decimal("12345678901234567890.1234567890123456789")
     current(raw, "pay_refund_ratio")["value"] = Decimal("0.12345678901234567890123456789")
@@ -65,8 +65,8 @@ def test_raw_precision_and_unit_not_guessed_or_recalculated():
     assert str(row.metric("pay_refund_ratio").raw_value) == "0.12345678901234567890123456789"
     assert row.metric("pay_amt").raw_unit == 3
     assert row.metric("pay_refund_ratio").raw_unit == 4
-    assert row.metric("pay_amt").display_value is None
-    assert row.metric("pay_refund_ratio").display_value is None
+    assert row.metric("pay_amt").display_value == Decimal("123456789012345678.901234567890123456789")
+    assert row.metric("pay_refund_ratio").display_value == Decimal("0.12345678901234567890123456789")
     assert row.metric("pay_cnt").display_value == Decimal(900719925474099312345)
 
 
@@ -212,3 +212,38 @@ def test_empty_success_is_explicitly_gated_until_evidence_exists():
     raw["page_result"]["total"] = 0
     with pytest.raises(CompassProductDataEmptyUnconfirmedError):
         parse(raw)
+
+
+@pytest.mark.parametrize("period,amounts,ratios,yuan,percent", [
+    ("1d", ("88820", "1096", "4180"),
+     ("0.016627735006703618", "0.0005943413177790986", "0.06733167082294264", "0.04706147264129701"),
+     ("888.20", "10.96", "41.80"), ("1.66", "0.06", "6.73", "4.71")),
+    ("7d", ("404513", "1021", "30013"),
+     ("0.01508607663100517", "0.0004725560336064268", "0.07211801129120379", "0.07419539050660919"),
+     ("4045.13", "10.21", "300.13"), ("1.51", "0.05", "7.21", "7.42")),
+    ("30d", ("1477108", "1014", "143938"),
+     ("0.020178538889400067", "0.0007180525260835287", "0.06509008002145827", "0.0974458198046453"),
+     ("14771.08", "10.14", "1439.38"), ("2.02", "0.07", "6.51", "9.74")),
+])
+def test_official_cell_units_against_three_existing_window_samples(period, amounts, ratios, yuan, percent):
+    # Whitelisted numeric observations only, synthetic identity/text. Official
+    # route/formatter provenance is documented; these are not Mock UI data.
+    raw = payload()
+    amount_codes = ("pay_amt", "per_user_price", "pay_refund_success_amt")
+    ratio_codes = ("product_show_click_converse_uv_rate", "product_add_show_converse_uv_ratio",
+                   "product_click_pay_converse_uv_rate", "pay_refund_ratio")
+    for code, value in zip(amount_codes + ratio_codes, amounts + ratios, strict=True):
+        current(raw, code)["value"] = Decimal(value)
+    row = parse(raw).products[0]
+    for code, original, expected in zip(amount_codes, amounts, yuan, strict=True):
+        metric = row.metric(code)
+        assert metric.unit_verified and metric.raw_unit == 3
+        assert metric.raw_value == Decimal(original) and metric.display_value == Decimal(expected)
+    for code, original, expected in zip(ratio_codes, ratios, percent, strict=True):
+        metric = row.metric(code)
+        assert metric.unit_verified and metric.raw_unit == 4
+        assert metric.raw_value == metric.display_value == Decimal(original)
+        with localcontext() as context:
+            context.prec = 80
+            assert (metric.display_value * 100).quantize(Decimal(".01"), rounding=ROUND_HALF_UP) == Decimal(expected)
+    assert row.display_metrics_complete

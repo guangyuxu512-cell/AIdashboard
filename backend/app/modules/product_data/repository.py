@@ -195,7 +195,7 @@ class ProductDataRepository:
         for interval in query.ranges:
             column = getattr(Snapshot, interval.metric)
             statement = statement.where(Snapshot.metric_states[interval.metric].astext == "available",
-                                        Snapshot.raw_units[interval.metric].astext == "5")
+                                        Snapshot.raw_units[interval.metric].astext == str(METRIC_BY_CODE[interval.metric].observed_unit))
             if interval.min_value is not None: statement = statement.where(column >= interval.min_value)
             if interval.max_value is not None: statement = statement.where(column < interval.max_value)
         total = self.session.scalar(select(func.count()).select_from(statement.subquery())) or 0

@@ -19,6 +19,8 @@ from app.modules.product_data.models import (
 )
 from app.modules.product_data.schemas import ProductDataMetricRange, ProductDataQuery
 from app.modules.product_data.exceptions import ProductDataUnitUnconfirmedError
+from app.modules.product_data.schemas import METRIC_BY_CODE
+from app.platforms.douyin.product_data import ProductMetricDefinition
 
 
 MODEL_TABLES = [model.__table__ for model in (ShopProductDataProduct, ShopProductDataSeries,
@@ -58,10 +60,26 @@ def test_count_range_validation(value):
         ProductDataMetricRange(metric="net_pay_cnt", min_value=value)
 
 
-def test_ratio_range_and_amount_sort_are_unit_gated_before_repository():
-    selected = query(ranges=[{"metric": "pay_refund_ratio", "min_value": "10"}])
-    with pytest.raises(ProductDataUnitUnconfirmedError): selected.require_verified_units()
-    with pytest.raises(ProductDataUnitUnconfirmedError): query(sort_field="pay_amt", sort_direction="desc").require_verified_units()
+@pytest.mark.parametrize("code", ["product_show_click_converse_uv_rate", "product_add_show_converse_uv_ratio",
+                                  "product_click_pay_converse_uv_rate", "pay_refund_ratio"])
+def test_verified_ratio_ranges_use_exact_fractions_and_amount_sort_is_supported(code):
+    selected = query(ranges=[{"metric": code, "min_value": "0.0029", "max_value": "0.0101"}])
+    selected.require_verified_units()
+    assert selected.ranges[0].min_value == Decimal("0.0029")
+    assert selected.ranges[0].max_value == Decimal("0.0101")
+    query(sort_field="pay_amt", sort_direction="desc").require_verified_units()
+
+
+@pytest.mark.parametrize("value", [True, 0.1, "NaN", "Infinity", "-1"])
+def test_ratio_ranges_keep_exact_nonnegative_finite_input_validation(value):
+    with pytest.raises(ValidationError):
+        ProductDataMetricRange(metric="pay_refund_ratio", min_value=value)
+
+
+def test_unknown_future_unit_is_still_rejected_before_repository(monkeypatch):
+    monkeypatch.setitem(METRIC_BY_CODE, "pay_amt", ProductMetricDefinition("pay_amt", "amount", 6))
+    with pytest.raises(ProductDataUnitUnconfirmedError):
+        query(sort_field="pay_amt", sort_direction="asc").require_verified_units()
 
 
 def test_model_and_frozen_migration_columns_and_checks_match_without_a_database(monkeypatch):

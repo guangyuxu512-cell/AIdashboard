@@ -3,6 +3,7 @@ import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
 import { z } from 'zod'
 import { emptyProductRangeDrafts } from './metric-ranges'
+import { formatProductDecimal } from './decimal-units'
 import type { ProductDataFilters, ProductDataRow, ProductMetric } from './types'
 
 dayjs.extend(utc)
@@ -82,16 +83,7 @@ export function formatProductMetric(metric: ProductMetric): string {
     if (!/^\d+(?:\.0+)?$/.test(metric.value)) return '—'
     return BigInt(metric.value.split('.')[0]!).toLocaleString('zh-CN')
   }
-  const numeric = Number(metric.value)
-  if (!Number.isFinite(numeric)) return '—'
-  if (metric.unit === 'ratio') return (numeric * 100).toFixed(2) + '%'
-  if (metric.unit === 'yuan')
-    return (
-      '¥' +
-      numeric.toLocaleString('zh-CN', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    )
-  return numeric.toLocaleString('zh-CN')
+  if (metric.unit === 'ratio' || metric.unit === 'yuan')
+    return formatProductDecimal(metric.value, metric.unit)
+  return '—'
 }

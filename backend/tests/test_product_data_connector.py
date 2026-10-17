@@ -46,7 +46,7 @@ def test_fixed_product_endpoint_exact_numbers_current_cookie_and_query(caplog):
     row = result.page.products[0]
     assert row.metric("pay_refund_ratio").raw_value == Decimal("0.103846080868261780123456789")
     assert row.metric("pay_cnt").raw_value == Decimal(900719925474099312345)
-    assert row.metric("pay_refund_ratio").display_value is None
+    assert row.metric("pay_refund_ratio").display_value == row.metric("pay_refund_ratio").raw_value
     assert result.cookie_updates[0].value.get_secret_value() == "synthetic-rotated"
     assert len(seen) == len(signer.requests) == 1
     assert "synthetic-current-fingerprint" not in caplog.text

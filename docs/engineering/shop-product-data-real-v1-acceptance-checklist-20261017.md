@@ -2,7 +2,9 @@
 
 Owner 7d55，2026-10-17。用于ca97核销Integration及生产的“真实采集→完整代发布→正式查询→实际页面”。实现基于Green `157f9400814aabad574b3d7860ba8bb8a6f00c3b`，原候选80d3c44保留；最新精确候选见本分支交接回执。本清单不把源码/合成测试通过替代真实结果，生产执行授权和Release状态仍以规划、ca97及Main本轮记录为准，Feature Owner不自行操作其它环境或客户端。
 
-当前完成的是基础链路与原值模式，不是完整商品数据交付。17项中10项计数可显示，3项金额和4项比例的显示尺度仍待官方对照；九项区间仅5项数量可用，4项比例仍禁用。后两类核心能力在证据和接线完成前保持“未完成”，不能因一代pages_complete或某次列表有值就整体标PASS。其它可验证链路不因此停止。
+当前已完成17项原值/单位映射、金额与比例展示、五数量及四比例区间的代码与Gate1回归。3金额/4比例依据官方商品列表实际调用链核定，不再处于“等待单位”状态；证据见shop-product-data-unit-contract-evidence-20261017.md。各行仍按available/missing/null/invalid区分，不能据采集完整推断17项都有值。新精确候选仍待ca97独立Gate2/实际页面及后续Release/生产核销，不因旧三窗口成功或本机测试把全产品标PASS。
+
+原人类已确认“真实订单／异常订单”分别映射net_pay_cnt/pay_cnt_exclude_refund，本次保持别名及原键。Tooltip明示官方“净成交订单数／退款后成交订单数（支付时间）”，不将后者解释为发生退款订单或风控异常；两项index_tip为空，不凭单样本差额推算法。ca97核对授权后已撤回强制更名意见，可选名称变更需另有明确人类选择，不阻塞本次单位接线。
 
 ## 日期与执行边界
 
@@ -24,31 +26,31 @@ POST `/api/v1/product-data/collections` 只收shop_id、period、submission_key�
 
 ## 17项字段及当前显示
 
-API每项为state、精确raw_value字符串或null、raw_unit、unit_verified；快照保原值NUMERIC和固定状态/单位结构。只有available、unit5的计数可显示原整数；0正常显示，missing/null/invalid均不是0。前端计数用BigInt，商品ID始终字符串。
+API每项为state、精确raw_value字符串或null、raw_unit、unit_verified；快照保原值NUMERIC和固定状态/单位结构。available且单位匹配时，unit5显示原整数、unit3原值除100显示元、unit4原分数乘100显示百分比。最终金额/比例取2位，规范值及查询不提前舍入；0正常显示，missing/null/invalid或未知单位均不是0。前端以十进制文本/BigInt保持精度，商品ID始终字符串。
 
 | 页面名称及官方口径 | platform code | raw unit | 当前Real显示 |
 | --- | --- | --- | --- |
 | 曝光：商品曝光次数 | product_show_cnt | 5 | 有效整数 |
 | 点击量：商品点击次数 | product_click_cnt | 5 | 有效整数 |
-| 点击率／曝光点击率：曝光点击率（人数） | product_show_click_converse_uv_rate | 4 | —，单位待核；未完成 |
+| 点击率／曝光点击率：曝光点击率（人数） | product_show_click_converse_uv_rate | 4 | 原分数×100显示% |
 | 加购量：加购人数 | click_add_to_cart_uv | 5 | 有效整数，不是次数 |
-| 加购率：访问加购转化率 | product_add_show_converse_uv_ratio | 4 | —，单位待核；未完成 |
+| 加购率：访问加购转化率 | product_add_show_converse_uv_ratio | 4 | 原分数×100显示% |
 | 真实订单：净成交订单数 | net_pay_cnt | 5 | 有效整数，不相减推算 |
 | 异常订单：退款后成交订单数（支付时间） | pay_cnt_exclude_refund | 5 | 有效整数，不等于发生退款的订单、不代表风控异常 |
-| 转化率／点击成交率：点击支付率（人数） | product_click_pay_converse_uv_rate | 4 | —，单位待核；未完成 |
-| 退款率：退款率（支付时间），总体 | pay_refund_ratio | 4 | —，单位待核；未完成，不用仅发货后比率替代 |
-| 支付金额：用户支付金额 | pay_amt | 3 | —，金额尺度待核；未完成 |
+| 转化率／点击成交率：点击支付率（人数） | product_click_pay_converse_uv_rate | 4 | 原分数×100显示% |
+| 退款率：退款率（支付时间），总体 | pay_refund_ratio | 4 | 原分数×100显示%，不用仅发货后比率替代 |
+| 支付金额：用户支付金额 | pay_amt | 3 | 原值÷100显示元 |
 | 订单数：成交订单数 | pay_cnt | 5 | 有效整数，不是件数 |
 | 成交人数 | pay_ucnt | 5 | 有效整数 |
-| 客单价：成交客单价 | per_user_price | 3 | —，金额尺度待核；未完成，不自行计算 |
-| 退款金额：退款金额（支付时间） | pay_refund_success_amt | 3 | —，金额尺度待核；未完成 |
+| 客单价：成交客单价 | per_user_price | 3 | 原值÷100显示元，不自行计算 |
+| 退款金额：退款金额（支付时间） | pay_refund_success_amt | 3 | 原值÷100显示元 |
 | 退款单数：退款订单数（支付时间） | pay_refund_success_order_cnt | 5 | 有效整数 |
 | 曝光人数：商品曝光人数 | product_show_ucnt | 5 | 有效整数，不跨日/商品相加推UV |
 | 点击人数：商品点击人数 | product_click_ucnt | 5 | 有效整数，不跨日/商品相加推UV |
 
-19个中文名称只有17项，两组别名不增加列。raw unit3不能从经营接口推分/元，unit4不能从Mock fraction推百分数，比例不相加、平均或用订单重算。某指标unit6无value是缺失，不是0。完整分页、原值覆盖及显示单位覆盖是不同回执，当前unit_complete_rows=0不代表整代采集失败，也不能反过来宣称17项显示完成。
+19个中文名称只有17项，两组别名不增加列。换算依据是官方商品路由的实际formatter及同路径真实unit，不能从经营接口或Mock推尺度，比例不相加、平均或用订单重算。某指标unit6无value是缺失，不是0。完整分页、原值覆盖及显示单位覆盖是不同回执；旧三代unit_complete_rows=0保留采集当时记录，不代表失败，也不回填成新核定的结果。当前GET的unit_verified单独表示尺度契约，具体值仍按state处理。
 
-旧偏好键、顺序和四个兼容列保留：receive_amt结算金额、refund_amt退款时间金额、refund_cnt旧未核实订单、stock_cnt未核实库存，在本Real均保持未知，不重绑17项。默认列仍是店铺、商品分组、曝光人数、转化率、订单数、结算金额；旧偏好优先，不为验收清存储。默认列中单位未核定或兼容未知显示—，不是已知0。
+旧偏好键、顺序和四个兼容列保留：receive_amt结算金额、refund_amt退款时间金额、refund_cnt旧未核实订单、stock_cnt未核实库存，在本Real均保持未知，不重绑17项。默认列仍是店铺、商品分组、曝光人数、转化率、订单数、结算金额；旧偏好优先，不为验收清存储。默认列中缺失、无效或兼容未知显示—，不是已知0。
 
 ## 九项区间与排序
 
@@ -57,9 +59,9 @@ API每项为state、精确raw_value字符串或null、raw_unit、unit_verified�
 | 区间 | 当前UI | 直接API行为 |
 | --- | --- | --- |
 | 曝光、点击量、加购量、真实订单、异常订单，共5项 | 可用；各自或组合生效 | 精确数量字符串边界，SQL执行 |
-| 点击率、加购率、转化率、退款率，共4项 | 单位未核，禁用；未完成 | 422 PRODUCT_DATA_UNIT_UNCONFIRMED，不忽略区间 |
+| 点击率、加购率、转化率、退款率，共4项 | 可用；预设及自定义单/双边 | UI百分比精确转原分数字符串，SQL校验state/unit后执行 |
 
-比例单位证实后，须Owner补真实百分比到原值的精确边界转换、格式化和回归；Mock的number除100不能直接充当真实契约。金额/比例排序当前同样422；计数和正式元数据排序可用，UI只开放已有店铺、数据时间和计数列，不开放分组/售卖/载体/旧兼容列排序。
+四比例边界从现有数字输入的规范文本精确移位，例如0.29%发送0.0029，不使用Mock的number除100结果或显示舍入值。已开放17项有效指标及已有店铺、数据时间排序，金额原值同单位比较与归一化单调一致；缺失最后、同值稳定。不开放分组/售卖/载体/旧兼容列排序，未来未知单位仍明确拒绝。
 
 默认page=1/page_size=20，现有10/20/50/100选项保留。应用查询/重置/排序回第一页，显式页大小不被查询重置；翻页清勾选，不触发采集。查询、刷新、分组或字段偏好不能创建平台任务。
 
@@ -69,7 +71,7 @@ POST提交后是一次有限后台执行，没有扫描器或自动重试。same
 
 每页前后、最终发布重核原人员/Team/Shop；Session通过既有Accessor取值，HTTP不持DB事务，Set-Cookie复用加密版本CAS。当前只消费新鲜VALID，陈旧/captured要求原健康验证入口，不证明AUTH_INVALID，不要求重新登录；明确HTTP401/403才标当前被验证版本。权限、身份、版本、total/页号/短页/重复商品/预算、lease/序号任一检查失败，不发布部分代、不清旧成功值、不混旧字段补洞。最后单短事务提交完整代和current/previous指针；逐页取数不代表平台所有商品绝对同时快照，retrieved_at是本代保存时点，不是订单业务日期或平台不可修订承诺。
 
-自定义日期采集、店内分组、其它sale/content、其它平台、自动每日、通知、历史删除均不开放。UI明确禁用，Real adapter拒绝遗留不支持条件而不静默丢弃；非法/未知API维度422，不替换成基准请求。分组名称与selling/carrier未知显示—，不伪称未分组/自营/商品卡。空列表total0的真实成功包装未证实，当前明确拒绝，不发布假0商品。金额/比例仍属已选核心待完成项，与这些后续维度分开记录。
+自定义日期采集、店内分组、其它sale/content、其它平台、自动每日、通知、历史删除均不开放。UI明确禁用，Real adapter拒绝遗留不支持条件而不静默丢弃；非法/未知API维度422，不替换成基准请求。分组名称与selling/carrier未知显示—，不伪称未分组/自营/商品卡。空列表total0的真实成功包装未证实，当前明确拒绝，不发布假0商品。金额/比例及四比例区间代码已接通，其新候选集成验收仍单列待核，不与这些未支持维度混为一项。
 
 ## Integration和生产分别核销
 
@@ -80,10 +82,11 @@ POST提交后是一次有限后台执行，没有扫描器或自动重试。same
 - [ ] 1d一代真实全页→原子发布→DB同代快照→正式GET→页面，逐商品ID及17原值/unit/state对齐；不是只看HTTP200或第一页面。
 - [ ] 7d按相同证据独立核销；不能借1d通过或跨日求和代替原生7d。
 - [ ] 30d按相同证据独立核销；total超预算则明确未完成，不盲目取余页。
-- [ ] 3项金额与4项比例取得同店、同商品、同冻结窗口/切片的原值/unit以及官方页面精确显示或明确官方单位元数据。使用非零值，必要时查官方完整Tooltip，不能仅凭0或“万”缩写推缩放；截图不含认证正文。
-- [ ] Owner依据上述证据完成最小显示/格式化和4项已选比例区间接线，保留raw_value/原unit精度及47；再独立验证17项显示与九项区间，不把禁用状态勾为功能通过。
+- [ ] 独立复核3金额/4比例的官方商品路径尺度证据及三窗口同商品非零原值公式，不能仅凭枚举、0或“万”缩写推缩放；实际页面/截图不含认证正文。
+- [ ] 既定“真实订单／异常订单”别名、原键/值与旧偏好保持；官方名称说明可见，不解释为风控异常或用差额重算。可选更名不混入本次单位任务。
+- [ ] 对Owner已接通的显示/格式化及4比例区间做新候选独立验证，保留raw_value/原unit精度、旧三代/旧unit_complete_rows及47，不改contract/hash隐藏751快照；不得将本机Gate1记为Integration/生产通过。
 - [ ] 默认20、第二页、同值稳定顺序、0/未知、5数量区间组合、单位确认后的4比例区间、排序/字段隐藏及旧偏好；过滤后total与DB同集合一致。
 - [ ] 对已有成功代作GET/筛选/翻页/同键重放，平台请求增量0；重复提交不另执行。失败旧代保护用受控故障/合成负向证据，不额外制造生产风险或发无界重试。
 - [ ] 失败、撤权、迟到及不支持维度拒绝准确；旧成功数据和错误回执保留，不把未覆盖写成通过。生产端源码、部署版本、正式API、真实事实和实际客户端页面一致才收口。
 
-字段和状态权威来源：Backend product_data/source.py、schemas.py、collection.py、service.py、repository.py及26号实施契约；Frontend product-data/model/metrics.ts、metric-ranges.ts、types.ts和api/product-data-real.ts。验收若发现与此不符，由7d55在原Feature最小修订，不在Integration/生产补业务代码或改应用过的47。
+字段和状态权威来源：Backend product_data/source.py、schemas.py、collection.py、service.py、repository.py及26号实施契约；Frontend product-data/model/metrics.ts、decimal-units.ts、metric-ranges.ts、types.ts和api/product-data-real.ts。验收若发现与此不符，由7d55在原Feature最小修订，不在Integration/生产补业务代码或改应用过的47。
