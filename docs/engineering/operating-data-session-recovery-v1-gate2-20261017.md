@@ -1,6 +1,6 @@
 # 经营采集会话恢复集成验证
 
-Candidate `3f88e4f2fb60aa6d5da829ad5afb6948a71d557a`，Feature Owner 81a1，唯一直接父为精确Green `bef7093b755cea60fda55bbcc6177b5723d4738a`。ca97已完成独立源审、Integration PostgreSQL、精确构建及实际5180的页面自动化；工具拒绝的前端切换已由用户正常本机执行，实际5180/8100均核对为匹配候选。接受本候选Gate2，随后按流程正常no-ff、复验及精确dev CI；此时尚不是Green，不发布或执行生产补采。
+Candidate `3f88e4f2fb60aa6d5da829ad5afb6948a71d557a`，Feature Owner 81a1，唯一直接父为精确Green `bef7093b755cea60fda55bbcc6177b5723d4738a`。ca97已完成独立源审、Integration PostgreSQL、精确构建及实际5180的页面自动化；工具拒绝的前端切换已由用户正常本机执行，实际5180/8100均核对为匹配候选。接受本候选Gate2，按流程正常no-ff、复验及精确dev CI；Green状态以精确CI和Handoff为准，本记录不授权发布或生产补采。
 
 正常no-ff合并已完成：`1bc87c9e868f9addf4f9980c1ff7132619de91a2`。合后在中性工作目录、无数据库连接且四开关false的进程中对实际工作树再跑后端129通过，实际工作树前端38通过；全部运行代码、Migration、Electron及依赖文件相对精确Candidate无差异，复用已核Real构建与实际服务hash。临时材料追踪数0、工作树源码干净，未改写历史或共享stash。最终推送与CI结果以精确dev Handoff为准，CI未完成前不称Green。
 
