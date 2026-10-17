@@ -8,6 +8,14 @@ import {
 import { normalizeProductColumns } from './column-preferences'
 
 describe('product metric semantic registry', () => {
+  it('does not label every current data source as disconnected and retains the preview warning', () => {
+    for (const metric of PRODUCT_METRICS) {
+      const tooltip = productMetricTooltip(metric.id)
+      expect(tooltip).not.toContain('真实接口尚未接入')
+      expect(tooltip).toContain('数据可用性以当前数据源为准')
+      expect(tooltip).toContain('演示值不是平台数据')
+    }
+  })
   it('freezes the seventeen verified source codes and observed raw units without treating legacy ratio IDs as source fields', () => {
     expect(
       PRIMARY_PRODUCT_METRICS.map((metric) => [
@@ -44,7 +52,9 @@ describe('product metric semantic registry', () => {
     expect(productMetricTooltip('clickPayRate')).toContain(
       '官方页面百分比显示换算待确认',
     )
-    expect(productMetricTooltip('clickPayRate')).toContain('真实接口尚未接入')
+    expect(productMetricTooltip('clickPayRate')).toContain(
+      '数据可用性以当前数据源为准',
+    )
   })
   it('registers seventeen distinct primary metrics and nineteen Chinese display names without duplicate columns', () => {
     expect(PRIMARY_PRODUCT_METRICS).toHaveLength(17)

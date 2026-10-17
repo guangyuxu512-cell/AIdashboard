@@ -282,6 +282,6 @@ export function productMetricTooltip(id: string): string {
     (aliases.length ? '别名：' + aliases.join('、') + '。' : '') +
     (metric.note ?? '') +
     evidence +
-    '真实接口尚未接入；演示值不是平台数据。'
+    '数据可用性以当前数据源为准；演示值不是平台数据。'
   )
 }
