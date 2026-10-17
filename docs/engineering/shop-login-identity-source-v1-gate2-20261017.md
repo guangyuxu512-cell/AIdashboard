@@ -11,16 +11,21 @@ ca97 接受该候选。独立技术验证及匹配 Real Electron 的正常保存
 P与匹配1.0.8包独立审查通过，接受合入；Owner已完成正式Handoff，Source远端一致且工作区干净。
 
 Gate 2 已通过：P已正常no-ff合入dev，Merge为`e205d708762f3f19fbb88e2c3f36c4442b5096ef`，
-合后技术与同Electron只读原生复验全部完成。只有最终推送提交的精确CI成功后才登记Green；
-CI Run和Green SHA以正式Handoff回执为准，当前结果不替代生产交付。
+合后技术与同Electron只读原生复验全部完成。精确Green为`08176d9c5cdbea50114eb0656975a209205761bd`，
+[dev CI 38982396101](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38982396101)三个Job全部成功。
+Main按Release Gate正常合并并发布，实际生产为`51a5bd34b1af33fc3ad3b876cb107a1964c440fa`；
+[main CI 38982955787](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38982955787)和
+[自动部署38983317530](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38983317530)均为首次执行成功。
+正式1.0.8已完成保留资料覆盖安装，MyCookLab保存为有效v2；用户明确确认成功后手动关窗。
+本轮业务交付已收口，但实际生产refresh为两次，超过原定一次，不能登记为原单次验收通过。
 人类在规划turn `01a146fd-f4c5-7383-af58-d41e0b5c9f3b`对完整范围明确“同意”，已授权最小1.0.8交付候选/
 匹配包、正常dev合并及精确CI、Main Release/main CI/三服务部署和部署健康后的覆盖安装。
-生产MyCookLab最多1次正常Login/refresh，须临近点击新鲜安全前检后由用户操作，失败即停。
-这不是沿用旧诊断权限；当前尚未部署或安装，生产验证未执行，不以集成结果替代。
+原生产MyCookLab授权最多1次正常Login/refresh，要求临近点击新鲜安全前检后由用户操作，失败即停。
+这不是沿用旧诊断权限。实际生产请求、保存结果及预算偏差在下文分开登记，不追加尝试或追认额外授权。
 
 Owner81a1 使用 `feat/shop-login-identity-source-v1`，基线为已通过精确 CI 38941889261 的
-Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`。现有生产保持
-`c085a3f75a84f9ac68ea9da7473782431de252a3`、单一 `20261015_0046`；本次审查不改变生产。
+Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`。审查开始时生产为
+`c085a3f75a84f9ac68ea9da7473782431de252a3`、单一 `20261015_0046`；发布后仍为同一Schema Head。
 
 ## 范围和资源
 
@@ -33,7 +38,7 @@ Green `e4b70a272b0327efb5d5aa0768811d6315dd123d`。现有生产保持
 获准的原生阶段沿既有受信任35433隧道恢复匹配8100/5180服务和唯一开发Electron，复用原Profile、
 人员会话及店铺映射；未重绑、清Cookie、导入生产Session或创建第二实例。
 功能候选998的开发package为1.0.6，P正式交付package为1.0.8；本轮Adapter、Main Service及Preload
-必须成套加载匹配代码。当前开发实例运行字节与P相同，正式1.0.8安装仍待生产发布健康后进行。
+必须成套加载匹配代码。集成实例运行字节与P相同；生产健康后用户正常退出开发实例，Main已安装正式1.0.8。
 旧a488的1.0.7包不是本候选，不得借旧包或仅服务器前端部署声称本次客户端已更新。
 
 ## 已审查的行为
@@ -138,7 +143,7 @@ HuanYu详情Session为v9，最近采集和最近验证均为2026-10-17 06:53，�
 原10表任务事实摘要保持。refresh累计仍3次、Backend权威身份读取仍2次，没有额外capture/refresh/平台诊断。
 详情代点不是新一轮认证，不占用或增加已耗尽预算。上述结果在ignored交付审查目录留存。
 
-已部署c085只增加Backend安全诊断。2026-10-17北京时间02:37:40的一次MyCookLab刷新返回
+返修前已部署c085只增加Backend安全诊断。2026-10-17北京时间02:37:40的一次MyCookLab刷新返回
 HTTP500、`SHOP_SESSION_PAYLOAD_INVALID/candidate_identity`，候选ID与目标ID不等；尚未进入Backend
 权威联网验证、保存或采集恢复。原valid v1及加密payload保留，客户端旧失败清理主动关窗。
 这不能证明本次实际取自account字段，也不能认定用户登录错店；同次身份源字段没有留存。
@@ -157,7 +162,7 @@ HTTP500、`SHOP_SESSION_PAYLOAD_INVALID/candidate_identity`，候选ID与目标I
 Owner已从干净P执行原`package:win`，83 Node通过，x64 NSIS、PE和9项Fuse通过。
 ca97独立复核EXE/checksum/manifest、应用EXE与ASAR散列；ASAR的16个运行JS逐字匹配已审核998编译文件，
 归档共17文件、白名单外文件0。Source自动为P，版本1.0.8/应用ProductVersion 1.0.8.0，
-固定AppID、生产Origin、userData、Cookie encryption与unsigned契约保持。未运行安装器或打包应用。
+固定AppID、生产Origin、userData、Cookie encryption与unsigned契约保持。包审核阶段未运行安装器或打包应用；实际安装见下节。
 
 交付目录为`D:\中控台\dist\desktop\1.0.8-d65ed079e4bc\`，安装器为
 `Siyu-AI-Control-Center-1.0.8-d65ed079e4bc-windows-x64-setup.exe`，大小120311761字节，SHA256为
@@ -166,7 +171,7 @@ ASAR SHA256为`c6effd27e480c1f18ae9985a8ca4f36bc2ff838dc578db2add49568159047574`
 匹配的manifest、SHA256SUMS及Owner验证记录同目录保留，ca97独立结果在ignored交付审查目录。
 纯版本增量复用已验三轮和完全相同Frontend tree，不重复登录。
 
-后续完整范围为：Owner最小交付候选与匹配包→ca97增量审查及正常no-ff合dev→合后定向和原生只读复验→
+实际交付流程为：Owner最小交付候选与匹配包→ca97增量审查及正常no-ff合dev→合后定向和原生只读复验→
 精确dev CI→Main Release Gate、正常合main/main CI和正式部署→用户正常退出开发实例、同AppID覆盖升级新包→
 确认实际安装版本/Source与生产Origin→指定MyCookLab一次受控登录验证。
 合后只读列表/详情和现有留窗复验不追加平台请求；本次三轮不重跑。
@@ -180,8 +185,47 @@ root package、pnpm-lock、构建器及构建脚本不变。安装器的Source�
 本轮无新Migration，0046及既有执行、定时和密钥配置保持。安装使用固定AppID/userData与发行Fuse，
 保留人员Cookie、平台Profile及映射，不卸载或重置。服务器和客户端就绪前不要求用户安装或生产点击。
 
-生产MyCookLab验证前须新鲜核对实际Release、账号权限、目标绑定、旧Session/租约和全部可能被原恢复路径
-触及的待处理项；存在活动任务或未明确副作用就停，不修改开关规避。拟只允许一次正常登录/refresh及
-其内置权威身份验证，读取安全日志/元数据确认正确目标、新版本、租约和留窗；失败不自动重试或扩店补采。
-该生产预算已获上述新授权，但在部署、匹配正式客户端和临近点击的安全前检完成前不可使用。
-本次没有新生产请求；匹配新包和生产核验完成后，才能宣告正式交付收口。
+## 生产交付结果及预算偏差
+
+Main完成迁移前备份和可读性核验后，按现有三服务流水线发布。实际Backend、Frontend、Signer均对应
+上述精确Release，健康、严格HTTPS、Real资产和NAS检查通过；Migration仍为单一`20261015_0046`。
+原配置字节、经营执行及Asia/Shanghai每日09:00保持，既有三小时选品计划保持disabled和next_run_at为空，
+不恢复更早的enabled状态。发布前后12表数量及逐行摘要均保持。
+
+用户在规划turn`01a14726-2add-7393-949b-a3cd494c1a18`明确“已退出，可安装”。Main确认开发和正式
+Electron进程为0后，仅运行一次正常1.0.8安装器，无卸载、清资料或自定义参数。实际正式Main为PID43980，
+EXE FileVersion1.0.8/ProductVersion1.0.8.0，安装ASAR与上述审核散列相同，package Source为P。
+ca97独立核对实际EXE/ASAR、`refreshRecoverySupported`静态能力及原生生产`119/#/shops`。
+固定userData、店铺映射文件散列和10个Profile分区集合保持；原人员会话恢复，无额外桥接或平台探测。
+
+安装后08:02:56前检确认MyCookLab原validv1、无租约或pending/running/paused及边界待恢复项，
+人员和目标权限、绑定有效。以下是此后实际发生的生产提交，不将单一CID误算为一次请求。
+桌面与Backend各自使用本机时钟，表中提交时间采用Backend记录。
+
+| 提交 | Backend时间 | 结果 | 数据影响 |
+| --- | --- | --- | --- |
+| 首次 | 08:16:58.467 | HTTP500，candidate_identity，对应桌面REFRESH_CANDIDATE_IDENTITY | 权威联网验证和保存前拒绝，失败租约DELETE204释放 |
+| 原窗口显式继续路径 | 08:18:10.349 | HTTP200 | 正式权威目标校验和保存完成，成功原子清除租约 |
+
+两次共用CID/attempt`12140836-9e13-46f3-add9-47923b5ae983`，桌面存在两次entry、新lease和capture；
+第二次经原窗口rearm，不是同一POST重复日志。现有调用点和阶段记录符合显式入口链路，未见自动重发证据，
+不据此推定用户意图。Adapter有两次对应SHOP_INFO_V2 HTTP200身份探测记录；自然页面和人工认证的网络总量未另行测量。
+
+08:19:55正式只读核对确认MyCookLab从v1保存为有效v2，captured为08:18:09.712、validated为
+08:18:10.267078，active lease为空。原125成功/19失败及所有待处理计数保持，除Session表预期变更外，
+其余11表数量和逐行摘要精确相同，没有创建经营任务或改动采集事实、计划、开关。
+首败后、第二次成功前未取得生产v1密文的独立中间快照，不补写逐字保护证据。
+
+桌面refresh于08:18:10.205完成，08:18:13.885记录`window_closed_without_request`，没有程序close请求或
+renderer_gone。用户在规划turn`01a1473d-0e68-7ae0-81a2-f3b41f29f0e9`明确“我自己关闭的”，
+与保存后留窗、随后手动关闭一致。ca97原生确认MyCookLab有效、正常登录入口、无忙态或错店残留；不将当前
+AX未暴露已关闭窗口误判为自动关闭，也不再请求登录复现。
+
+原授权最多一次生产refresh，实际为两次，额外授权未建立；本轮不登记“单次验收通过”，不追认或抹去预算偏差。
+两次生产entry均选择了团队，生产无团队场景不另标通过，Integration已有无团队证据单列保留。
+Main和ca97未代点登录、重试、追加验证或直接写生产业务表；保留成功v2、失败历史和Profile，不回滚或清理。
+Main最终业务状态为`BUSINESS_DELIVERY_CLOSED_WITH_VALIDATION_BUDGET_EXCEPTION`。
+
+正式回执保存在Main受保护的`.dev-runtime/shop-login-identity-release-108/production-validation-receipt.json`；
+ca97的原生/白名单桌面审计在ignored交付审查目录。自动填写账号密码不属于本轮实现或凭据采集范围。
+本节仅补治理记录，不改变Green、Source、运行Release或触发第二次部署。
