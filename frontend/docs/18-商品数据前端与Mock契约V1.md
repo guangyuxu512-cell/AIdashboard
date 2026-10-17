@@ -1,7 +1,7 @@
 # 商品数据前端与 Mock 契约 V1
 
 当前增量：商品数据真实接入首里程碑，Owner 7d55，feat/shop-product-data-real-v1，
-正常no-ff保留af6并同步最新Green157f940。已接正式GET列表、POST手动采集和GET回执，契约以Backend05/26为准；
+正常no-ff保留af6/d3并同步精确Green a6df9ac（原Green157实现保留，运行业务不变）。已接正式GET列表、POST手动采集和GET回执，契约以Backend05/26为准；
 Feature DB control_center_feat_shop_product_data、8102/4177与active0047由ca97登记。未部署、未新增窗口。
 
 Real在SQL分页后只映射当前页，不本地筛选或重新计算total。17指标按registry精确映射，有效unit5计数显示原整数，

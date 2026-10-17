@@ -1,6 +1,16 @@
 # 商品数据真实接入 V1 技术验证与交接
 
-## 官方单位核定与比例区间接线
+## Green a6同步与最小复验
+
+Owner已独立核远端dev为 `a6df9ac43b0987b68bd13313ab40d2aeca84c63d`，精确CI `39024117248/attempt1` 的backend、frontend-real-build、container-runtime、verify-offline四项全部success；旧545不是采用基线，未消费main部署merge。原Feature正常no-ff同步，merge `891116750157ab5b12e83e1da6bdbfc646d66ec5` 的双亲为d3c04dae与a6df9ac，无冲突、无历史改写。运行业务树相对d3逐字一致（Backend、frontend/src、Mobile、Electron、Worker及锁），0047 blob仍为 `5128cb64a5bf3a4913b55ae0147c7c57bced0fe6`。
+
+合后正常 `pnpm verify` quick-offline exit0/21.38秒：9 Node负测、2 Python AST、4 PC/Mobile内存客户端观察及权威/消费方静态对照完成，28项精确已知未修复、0新增、0stale，私有包管理器安装树为空。known-differences文件SHA256 `4DDACAB88BC5A67737A024138EF9F487D6D536B48944092C46AB8AC79258C86B` 保持，不将例外写成缺陷已修。实际Node24.19.0、pnpm11.25.0，声明pin11.19.0不改；前端vue-tsc/eslint复验通过。精确最终候选Real production构建与资产hash附本机回执。
+
+首次Verify在入口执行前被workspace布局元数据拒绝，外层pnpm exit1，不计测试失败或已运行。确认7d55自己的node_modules/虚拟store均非他人junction后，以原store按offline/frozen-lockfile/ignore-scripts规范对齐，复用202、下载0；锁SHA256始终 `CDF9803569D82DA85EE9D71D3AA02641AEF73F90EB884705073E9E522A70E796`。未关闭verify_deps_before_run、改pin或在线安装。首次设置阻断与后续正常报告分别保留在Owner ignored `green-a6-initial-dependency-gate.json`、`green-a6-verify-default.json`。
+
+本次只做Green工程同步与元数据交接。d3的979 Backend、62 Feature PG、911前端/181定向及单位链路证据按相同运行字节复用，未冒称重跑。未执行verify --full、PG/DDL、平台业务/Signer、容器、原生或安装包；不重采、不改别名/字段、旧unit_complete_rows或真实样本。ca97已报告d3的原三窗178/229/344、12767原值及单位、12筛选/9排序与新增10 Integration PG/27表保护通过；这是其独立既有证据，不是Owner本轮动作或新候选完整Gate2。新增原生确认仍受工具限制，不据此补写Gate2B或发布通过。新候选交ca97精确增量复核，Feature不合dev/main、不释放0047或发布。
+
+## d3阶段官方单位核定与比例区间接线
 
 沿392候选追加，不改原预算修复。Owner已独立从官方商品列表HTML追到商品微应用1.0.0.3672、实际路由chunk363/表格适配37603、cell_info当前值解包33017、EUE导出54761及实际formatter nF；商品列只覆盖比例precision，没有覆盖price/ratio倍率。确认3金额unit3除100为元、4比例unit4保原分数且展示乘100%。不只采信父页4977枚举；公开资源SHA、完整调用链及三成功窗口21项非零公式见shop-product-data-unit-contract-evidence-20261017.md。
 
