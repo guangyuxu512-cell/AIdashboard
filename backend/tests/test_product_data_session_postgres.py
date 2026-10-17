@@ -8,20 +8,25 @@ from types import SimpleNamespace
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 import pytest
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app.core.security import SecretCipher
 from app.modules.product_data.exceptions import ProductDataSessionValidationRequiredError
 from app.modules.product_data.platform_io import ProductDataStoredSessionIO
-from app.modules.sessions.auth_context import StoredSessionCookie
+from app.modules.sessions.auth_context import ShopSessionAccessor, StoredSessionCookie
 from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.exceptions import SessionVersionConflictError
 from app.modules.sessions.repository import ShopSessionRepository
 from app.modules.sessions.schemas import StoreShopSessionCommand
 from app.modules.sessions.service import ShopSessionService
+from app.modules.shops.enums import ShopPlatform
+from app.modules.users.models import User
 from app.platforms.douyin.product_data import CompassProductDataBusinessError, CompassProductDataPage
 from app.platforms.douyin.product_data_connector import ProductDataFetchResult
 from app.platforms.exceptions import PlatformAuthenticationInvalidError
+from app.platforms.schemas import PlatformShopIdentity
 from tests.test_product_data_service_postgres import graph, submit, complete
 
 
@@ -132,3 +137,38 @@ def test_actor_disabled_during_http_prevents_cookie_writeback(session_graph):
     graph.session.expire_all()
     stored = ShopSessionRepository(graph.session).get_by_shop(graph.shops[0].shop_id)
     assert stored.version == 1 and b"synthetic-late-cookie" not in graph.cipher.decrypt_bytes(stored.payload_encrypted)
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_green_health_default_keeps_callers_flushed_transaction_semantics(session_graph, force):
+    """New optional IO hook must not silently roll back another caller's writes.
+
+    Cached validation keeps its transaction open. Forced successful validation
+    retains the pre-existing Accessor commit, not a new rollback boundary.
+    Both identity results are synthetic; no connector or Signer network call.
+    """
+    graph = session_graph
+    marker = "stage-2a1-spd-default-transaction"
+    user_id = graph.users[0].user_id
+    graph.users[0].display_name = marker
+    graph.session.flush()  # Deliberately empty dirty/new sets after a real write.
+    commits, rollbacks, calls = [], [], []
+    event.listen(graph.session, "after_commit", lambda *_: commits.append(True))
+    event.listen(graph.session, "after_rollback", lambda *_: rollbacks.append(True))
+
+    def identity(shop_id, _auth):
+        calls.append(shop_id)
+        assert graph.session.in_transaction()
+        assert graph.session.scalar(select(User.display_name).where(User.user_id == user_id)) == marker
+        return PlatformShopIdentity(platform_shop_id=graph.shops[0].platform_shop_id,
+                                    shop_display_name=graph.shops[0].display_name)
+
+    health = ShopSessionHealthService(graph.session, ShopSessionAccessor(graph.session, graph.cipher),
+        {ShopPlatform.DOUYIN: SimpleNamespace(fetch_shop_identity=identity)},
+        session_service=ShopSessionService(graph.session, graph.cipher), settings=graph.settings)
+    assert health.before_platform_io is None
+    result = health.check(graph.shops[0].shop_id, force=force)
+    assert result.used_cached_validation is not force
+    assert calls == ([graph.shops[0].shop_id] if force else [])
+    assert rollbacks == [] and len(commits) == int(force)
+    assert graph.session.scalar(select(User.display_name).where(User.user_id == user_id)) == marker
