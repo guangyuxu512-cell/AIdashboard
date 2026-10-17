@@ -10,8 +10,34 @@ import {
   root,
   typescriptSnapshot,
 } from "./contracts.mjs";
-import { isolatedEnvironment } from "./environment.mjs";
-import { existsSync } from "node:fs";
+import {
+  isolatedEnvironment,
+  preparedPackageManagers,
+} from "./environment.mjs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import os from "node:os";
+
+test("private package-manager guard detects a prepared installation, not metadata alone", () => {
+  const temporary = mkdtempSync(
+    path.join(os.tmpdir(), "verify-install-probe-"),
+  );
+  try {
+    mkdirSync(path.join(temporary, "pnpm/v11/metadata"), { recursive: true });
+    assert.deepEqual(preparedPackageManagers(temporary), []);
+    mkdirSync(
+      path.join(
+        temporary,
+        "pnpm/store/v11/links/@/pnpm/test/node_modules/pnpm",
+      ),
+      { recursive: true },
+    );
+    assert.equal(preparedPackageManagers(temporary).length, 1);
+  } finally {
+    assert.equal(path.dirname(temporary), os.tmpdir());
+    assert.ok(path.basename(temporary).startsWith("verify-install-probe-"));
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
 
 test("Python AST and TS compiler feed real nonzero command exits for incompatible or unsupported fields", () => {
   const local = path.join(
@@ -75,8 +101,9 @@ test("subprocesses receive synthetic configuration and cannot auto-install packa
   });
   assert.equal(env.PATH, "safe");
   assert.equal(JSON.stringify(env).includes("forbidden"), false);
-  assert.equal(env.npm_config_manage_package_manager_versions, "false");
-  assert.equal(env.npm_config_offline, "true");
+  assert.equal(env.pnpm_config_pm_on_fail, "ignore");
+  assert.equal(env.pnpm_config_verify_deps_before_run, "error");
+  assert.equal(env.pnpm_config_offline, "true");
   assert.equal(env.APPDATA, "synthetic-temp");
 });
 

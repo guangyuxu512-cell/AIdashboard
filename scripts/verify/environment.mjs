@@ -1,4 +1,26 @@
 import path from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+
+// Inspect only this invocation's empty-profile pnpm directory. Metadata/cache
+// alone is not an install; executable/package trees must never be prepared.
+export function preparedPackageManagers(temporary) {
+  const detected = [];
+  function inspect(directory) {
+    if (!existsSync(directory)) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const name = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules")
+          detected.push(path.relative(temporary, name));
+        else inspect(name);
+      } else if (/^pnpm\.(?:cjs|mjs|exe)$/i.test(entry.name))
+        detected.push(path.relative(temporary, name));
+    }
+  }
+  inspect(path.join(temporary, "pnpm"));
+  return detected;
+}
 
 export function isolatedEnvironment(temporary, source = process.env) {
   const env = {};
@@ -31,9 +53,10 @@ export function isolatedEnvironment(temporary, source = process.env) {
     VITE_API_MODE: "real",
     PYTHONDONTWRITEBYTECODE: "1",
     PYTHONUTF8: "1",
-    npm_config_manage_package_manager_versions: "false",
-    npm_config_package_manager_strict: "false",
-    npm_config_offline: "true",
+    pnpm_config_pm_on_fail: "ignore",
+    pnpm_config_runtime_on_fail: "error",
+    pnpm_config_verify_deps_before_run: "error",
+    pnpm_config_offline: "true",
     npm_config_userconfig: path.join(temporary, "empty.npmrc"),
     npm_config_globalconfig: path.join(temporary, "empty-global.npmrc"),
   });

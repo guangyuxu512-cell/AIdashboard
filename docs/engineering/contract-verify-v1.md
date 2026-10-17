@@ -61,12 +61,16 @@ PC/Mobile 探针直接 import 真实 HTTP client，使用 Axios 内存 adapter�
 
 子进程只收到白名单系统变量及临时合成环境，Backend/Worker 在空 cwd 运行，不读本机 `.env`、真实数据库、Signer、Worker Token 或 Profile。pnpm 子进程使用空 user/global npmrc、离线及关闭版本自动准备。Vite 单测/构建复用原配置，但将 dotenv 目录及读取 cwd 指向空目录；不改默认业务或测试配置。
 
+pnpm 11 使用 `pnpm_config_*`，以 `pmOnFail` 替代旧版本管理配置，见[官方迁移说明](https://pnpm.io/blog/releases/11.0)。入口仅对子进程设置 `pm_on_fail=ignore`、`verify_deps_before_run=error`、`runtime_on_fail=error` 与离线模式，使用当前已安装的工具，不下载项目所声明的另一个版本。报告分别记录实际与声明版本，并检查本次私有 pnpm 目录是否出现安装树；不修改项目 pin、全局配置或依赖。
+
 本机完整离线 profile 明确不运行以下两份会绑定端口的既有测试：
 
 - `backend/tests/test_douyin_signer_runtime.py`
 - `backend/tests/test_notification_webhook_e2e.py`
 
 它们是 NOT_RUN，不是通过。原 CI 的 disposable PostgreSQL、完整 Backend pytest、原 Real 前端/Mobile 构建及容器/部署检查全部保留，新增 verify-offline Job 不替换它们，也不改变生产触发边界。
+
+新增 Job 使用 Windows runner，以实际执行 Worker 的 DPAPI、共享故障和命名互斥量三项 Windows-only 单测，避免在 Linux 跳过后冒称完整通过。原 Ubuntu 三个 Job 保留；这仍不是启动原生 Electron 或实际 Worker 服务的验收。
 
 本机不验证 PG Migration、真实平台/数据库/权限链路、容器、原生窗口、安装包或生产。第一版不检查所有 Request DTO、路由、单位/日期业务规则、深层对象 Schema、所有 mapper、Worker/Electron 跨端契约；不会生成全仓客户端或承诺服务端改动会自动更新全部消费方。PC ScheduleRunTriggerResult 的有意子集、联合别名和 sandbox 必需的 IPC 复制不因本检查被一概认定为缺陷。
 

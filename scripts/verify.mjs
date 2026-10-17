@@ -15,9 +15,13 @@ import {
   root,
   staticContracts,
 } from "./verify/contracts.mjs";
-import { isolatedEnvironment } from "./verify/environment.mjs";
+import {
+  isolatedEnvironment,
+  preparedPackageManagers,
+} from "./verify/environment.mjs";
 
 const args = process.argv.slice(2);
+const verificationStarted = Date.now();
 if (args.includes("--help")) {
   console.log(
     "pnpm verify [--strict] [--full] [--only=backend,frontend,mobile,electron,worker] [--report=path]\nDefault: offline contracts + checker self-tests + in-memory API/client probes.\n--full: declared full-offline profile, not PG/runtime/native/production. Exit 0 scoped checks pass (known differences remain WARN); 1 new/stale difference or test failure; 2 blocked/missing dependency or skipped applicable tests. No installation, ports, platform calls or migration.\n--strict: every known contract difference also fails. --only selects full-profile suites; quick checks always run.",
@@ -75,6 +79,13 @@ const report = {
   strict,
   steps: [],
   contracts: null,
+  tools: {
+    node: process.version,
+    declaredPackageManager: JSON.parse(
+      readFileSync(path.join(root, "package.json"), "utf8"),
+    ).packageManager,
+    actualPackageManager: null,
+  },
   notRun: [
     "local/shared/production PostgreSQL and migrations",
     "container/runtime/real platform/native Electron/visual E2E",
@@ -93,7 +104,13 @@ const report = {
 };
 let blocked = false,
   failed = false;
-function run(name, executable, parameters, cwd = temporary) {
+function run(
+  name,
+  executable,
+  parameters,
+  cwd = temporary,
+  prerequisite = false,
+) {
   const started = Date.now();
   console.log(`\n[verify] ${name}`);
   const result = spawnSync(executable, parameters, {
@@ -106,6 +123,7 @@ function run(name, executable, parameters, cwd = temporary) {
   process.stdout.write(output);
   const missing =
     !!result.error ||
+    (prerequisite && result.status !== 0) ||
     /No module named|Cannot find package|Cannot find module|command not found/i.test(
       output,
     );
@@ -154,7 +172,7 @@ function packageRun(project, script, extra = []) {
     process.execPath,
     [
       pnpm,
-      "--config.manage-package-manager-versions=false",
+      "--pm-on-fail=ignore",
       "--dir",
       path.join(root, project),
       script,
@@ -164,71 +182,98 @@ function packageRun(project, script, extra = []) {
   );
 }
 try {
-  run("checker negative self-tests", process.execPath, [
-    "--test",
-    path.join(root, "scripts/verify/contracts.test.mjs"),
-  ]);
-  run("Python AST extractor self-tests", python(), [
-    "-I",
-    "-S",
-    path.join(root, "scripts/verify/python-contracts-test.py"),
-  ]);
-  try {
-    const started = Date.now();
-    const staticResult = staticContracts(
-      extractPython(python(), { env, cwd: temporary }),
+  if (pnpm && existsSync(pnpm)) {
+    const version = run(
+      "installed package manager (no preparation)",
+      process.execPath,
+      [pnpm, "--pm-on-fail=ignore", "--version"],
     );
-    report.steps.push({
-      name: "authority/consumer AST checks",
-      state: "EXECUTED",
-      seconds: (Date.now() - started) / 1000,
-    });
-    const probe = run("formal ASGI envelope probe", python(), [
+    if (version.ok) report.tools.actualPackageManager = version.output.trim();
+  }
+  const backendReady = run(
+    "offline Python prerequisites",
+    python(),
+    [
       "-I",
-      path.join(root, "scripts/verify/python-runner.py"),
-      "probe",
+      "-c",
+      'import sys; assert sys.version_info >= (3,12); import pytest, httpx, sqlalchemy, pydantic, cryptography; print("Python dependencies available")',
+    ],
+    temporary,
+    true,
+  );
+  if (backendReady.ok) {
+    run("checker negative self-tests", process.execPath, [
+      "--test",
+      path.join(root, "scripts/verify/contracts.test.mjs"),
     ]);
-    const clients = packageRun("frontend", "exec", [
-      "vitest",
-      "run",
-      "--config",
-      "verify.config.ts",
+    run("Python AST extractor self-tests", python(), [
+      "-I",
+      "-S",
+      path.join(root, "scripts/verify/python-contracts-test.py"),
     ]);
-    {
-      const findings = [...staticResult.findings];
-      if (probe.ok) findings.push(...JSON.parse(probe.output));
-      else blocked = true;
-      if (clients.ok && existsSync(env.VERIFY_PROBE_OUTPUT))
-        findings.push(
-          ...JSON.parse(readFileSync(env.VERIFY_PROBE_OUTPUT, "utf8")),
-        );
-      else blocked = true;
-      const exceptions = strict
-        ? []
-        : JSON.parse(
-            readFileSync(
-              path.join(root, "scripts/verify/known-differences.json"),
-              "utf8",
-            ),
+    try {
+      const started = Date.now();
+      const staticResult = staticContracts(
+        extractPython(python(), { env, cwd: temporary }),
+      );
+      report.steps.push({
+        name: "authority/consumer AST checks",
+        state: "EXECUTED",
+        seconds: (Date.now() - started) / 1000,
+      });
+      const probe = run("formal ASGI envelope probe", python(), [
+        "-I",
+        path.join(root, "scripts/verify/python-runner.py"),
+        "probe",
+      ]);
+      const clients = packageRun("frontend", "exec", [
+        "vitest",
+        "run",
+        "--config",
+        "verify.config.ts",
+      ]);
+      {
+        const findings = [...staticResult.findings];
+        if (probe.ok) findings.push(...JSON.parse(probe.output));
+        else blocked = true;
+        if (clients.ok && existsSync(env.VERIFY_PROBE_OUTPUT))
+          findings.push(
+            ...JSON.parse(readFileSync(env.VERIFY_PROBE_OUTPUT, "utf8")),
           );
-      const result = classify(findings, exceptions);
-      report.contracts = { ...result, coverage: staticResult.coverage };
-      for (const row of result.known)
-        console.log(`[KNOWN NOT FIXED] ${JSON.stringify(row)}`);
-      for (const row of result.failures)
-        console.log(`[CONTRACT FAIL] ${JSON.stringify(row)}`);
-      for (const row of result.stale)
-        console.log(`[STALE EXCEPTION] ${JSON.stringify(row)}`);
-      failed ||= result.failures.length > 0 || result.stale.length > 0;
+        else blocked = true;
+        const exceptions = strict
+          ? []
+          : JSON.parse(
+              readFileSync(
+                path.join(root, "scripts/verify/known-differences.json"),
+                "utf8",
+              ),
+            );
+        const result = classify(findings, exceptions);
+        report.contracts = { ...result, coverage: staticResult.coverage };
+        for (const row of result.known)
+          console.log(`[KNOWN NOT FIXED] ${JSON.stringify(row)}`);
+        for (const row of result.failures)
+          console.log(`[CONTRACT FAIL] ${JSON.stringify(row)}`);
+        for (const row of result.stale)
+          console.log(`[STALE EXCEPTION] ${JSON.stringify(row)}`);
+        failed ||= result.failures.length > 0 || result.stale.length > 0;
+      }
+    } catch (error) {
+      blocked = true;
+      report.steps.push({
+        name: "contract prerequisites",
+        state: "BLOCKED",
+        reason: error.message,
+      });
+      console.error(error.message);
     }
-  } catch (error) {
-    blocked = true;
+  } else {
     report.steps.push({
-      name: "contract prerequisites",
+      name: "offline contracts and their self-tests",
       state: "BLOCKED",
-      reason: error.message,
+      reason: "Python prerequisite unavailable; not executed",
     });
-    console.error(error.message);
   }
   if (full)
     for (const suite of suites) {
@@ -259,6 +304,16 @@ try {
       }
     }
 } finally {
+  const prepared = preparedPackageManagers(temporary);
+  report.packageManagerPreparation = { checked: true, detected: prepared };
+  if (prepared.length) {
+    failed = true;
+    report.steps.push({
+      name: "package manager isolation",
+      state: "FAIL",
+      reason: "Unexpected package manager preparation in private cache",
+    });
+  }
   try {
     // Only our concrete mkdtemp directory, never a workspace or shared runtime.
     if (
@@ -276,6 +331,8 @@ try {
     });
   }
   report.exitCode = failed ? 1 : blocked ? 2 : 0;
+  report.totalSeconds =
+    Math.round((Date.now() - verificationStarted) / 10) / 100;
   report.result = failed
     ? "FAIL"
     : blocked

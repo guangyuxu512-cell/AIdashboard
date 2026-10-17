@@ -64,7 +64,12 @@ jobs:
           pnpm --filter @control-center/mobile build
 
   verify-offline:
-    runs-on: ubuntu-latest
+    # Worker has three Windows-only unit cases; do not hide them as Linux skips.
+    # The original Linux/PostgreSQL/container jobs below and above stay intact.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -82,10 +87,10 @@ jobs:
           pnpm install --frozen-lockfile
           python -m pip install -e './backend[dev]'
           python -m venv "${RUNNER_TEMP}/verify-worker"
-          "${RUNNER_TEMP}/verify-worker/bin/python" -m pip install -e './worker[dev]'
+          "${RUNNER_TEMP}/verify-worker/Scripts/python.exe" -m pip install -e './worker[dev]'
       - name: Verify contracts and the full offline profile
         env:
-          VERIFY_WORKER_PYTHON: ${{ runner.temp }}/verify-worker/bin/python
+          VERIFY_WORKER_PYTHON: ${{ runner.temp }}/verify-worker/Scripts/python.exe
         run: pnpm verify --full --report=.dev-runtime/verify/ci.json
       - name: Upload scoped verification report
         if: always()
