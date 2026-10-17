@@ -1,0 +1,165 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import test from "node:test";
+import {
+  classify,
+  enumFindings,
+  fieldFindings,
+  finding,
+  root,
+  typescriptSnapshot,
+} from "./contracts.mjs";
+import { isolatedEnvironment } from "./environment.mjs";
+import { existsSync } from "node:fs";
+
+test("Python AST and TS compiler feed real nonzero command exits for incompatible or unsupported fields", () => {
+  const local = path.join(
+    root,
+    "backend",
+    process.platform === "win32"
+      ? ".venv/Scripts/python.exe"
+      : ".venv/bin/python",
+  );
+  const python =
+    process.env.VERIFY_AST_PYTHON ?? (existsSync(local) ? local : "python");
+  for (const [server, client, expected] of [
+    [
+      "class Dto(BaseModel):\n kind: Literal['ok']",
+      "interface Dto {kind:'other'}",
+      1,
+    ],
+    [
+      "class Dto(BaseModel):\n kind: dict[str,str]",
+      "interface Dto {kind:string}",
+      1,
+    ],
+    [
+      "class Dto(BaseModel):\n kind: Callable[[str],int]",
+      "interface Dto {kind:string}",
+      1,
+    ],
+    [
+      "class Dto(BaseModel):\n kind: Union[str,None]",
+      "interface Dto {kind:string}",
+      1,
+    ],
+    [
+      "class Dto(BaseModel):\n request_id: str",
+      "interface Dto {code:string}",
+      1,
+    ],
+    [
+      "class Dto(BaseModel):\n kind: Literal['ok']",
+      "interface Dto {kind:string}",
+      0,
+    ],
+  ]) {
+    const code = `import path from 'node:path'; import {extractPython,typescriptSnapshot,fieldFindings,classify,root} from ${JSON.stringify(new URL("./contracts.mjs", import.meta.url).href)};const authority=extractPython(${JSON.stringify(python)},{sources:{'memory.py':${JSON.stringify(server)}}})['memory.py'].Dto.fields;const name='frontend/__verify_pipeline__.ts';const client=typescriptSnapshot([name],new Map([[path.join(root,name),${JSON.stringify(client)}]]))[name].Dto.fields;const findings=Object.entries(authority).flatMap(([name,field])=>fieldFindings('memory.'+name,field.atoms,client[name]));process.exit(classify(findings).failures.length?1:0)`;
+    const result = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", code],
+      { encoding: "utf8", env: isolatedEnvironment(process.env.TEMP ?? root) },
+    );
+    assert.equal(result.status, expected, result.stderr);
+  }
+});
+
+test("subprocesses receive synthetic configuration and cannot auto-install package managers", () => {
+  const env = isolatedEnvironment("synthetic-temp", {
+    PATH: "safe",
+    BACKEND_DATABASE_URL: "forbidden",
+    WORKER_DEVICE_TOKEN: "forbidden",
+    GITHUB_TOKEN: "forbidden",
+    VITE_SECRET: "forbidden",
+  });
+  assert.equal(env.PATH, "safe");
+  assert.equal(JSON.stringify(env).includes("forbidden"), false);
+  assert.equal(env.npm_config_manage_package_manager_versions, "false");
+  assert.equal(env.npm_config_offline, "true");
+  assert.equal(env.APPDATA, "synthetic-temp");
+});
+
+test("an added server state without a consumer fails with a nonzero process exit", () => {
+  const code = `import {enumFindings,classify} from ${JSON.stringify(new URL("./contracts.mjs", import.meta.url).href)}; process.exit(classify(enumFindings('fixture',['pending','new_state'],['pending'])).failures.length ? 1 : 0)`;
+  assert.equal(
+    spawnSync(process.execPath, ["--input-type=module", "-e", code]).status,
+    1,
+  );
+});
+test("normal and explicitly intentional subset consumers pass", () => {
+  assert.deepEqual(enumFindings("fixture", ["created"], ["created"]), []);
+  assert.deepEqual(
+    enumFindings(
+      "pc_schedule_subset",
+      ["task_created", "blocked", "selection_run"],
+      ["task_created", "blocked"],
+      true,
+    ),
+    [],
+  );
+});
+test("nullable narrowing and missing error fields are not swallowed", () => {
+  assert.equal(
+    fieldFindings("dto.nullable", ["string", "null"], ["string"])[0].rule,
+    "nullable-narrowed",
+  );
+  assert.equal(
+    fieldFindings("error.request_id", ["string"], undefined)[0].rule,
+    "field-missing",
+  );
+  assert.deepEqual(
+    fieldFindings("dto.zero", ["number"], ["number", "null"]),
+    [],
+  );
+  for (const [server, client] of [
+    [["string", "null"], ["string"]],
+    [["string"], null],
+  ]) {
+    const code = `import {fieldFindings,classify} from ${JSON.stringify(new URL("./contracts.mjs", import.meta.url).href)};process.exit(classify(fieldFindings('fixture',${JSON.stringify(server)},${JSON.stringify(client)})).failures.length?1:0)`;
+    assert.equal(
+      spawnSync(process.execPath, ["--input-type=module", "-e", code]).status,
+      1,
+    );
+  }
+});
+test("TypeScript compiler resolves aliases, null and boolean without truthiness or regex guesses", () => {
+  const file = "frontend/__verify_memory__.ts";
+  const source =
+    'type State = "ok" | "new"; type Alias = State; interface Dto { value: 0 | number | null; flag: boolean | null }; const LABELS = {ok: "OK", new: "NEW"} as const; const INCOMPLETE: Record<State,string> = {ok:"OK"} as Record<State,string>';
+  const snapshot = typescriptSnapshot(
+    [file],
+    new Map([[path.join(root, file), source]]),
+  )[file];
+  assert.deepEqual(snapshot.Alias.atoms, ["literal:new", "literal:ok"]);
+  assert.deepEqual(snapshot.Dto.fields.value, ["null", "number"]);
+  assert.deepEqual(snapshot.Dto.fields.flag, ["boolean", "null"]);
+  assert.deepEqual(Object.keys(snapshot.LABELS.fields).sort(), ["new", "ok"]);
+  assert.deepEqual(snapshot.INCOMPLETE.mappingKeys, ["ok"]);
+  assert.equal(
+    enumFindings("display", ["ok", "new"], snapshot.INCOMPLETE.mappingKeys)
+      .length,
+    1,
+  );
+});
+test("known differences are exact, reviewed, never widened, and stale entries fail review", () => {
+  const old = finding(
+    "nullable-narrowed",
+    "fixture",
+    ["null", "string"],
+    ["string"],
+  );
+  const exception = {
+    ...old,
+    reason: "known fixture only",
+    review: "unit-test approval",
+  };
+  assert.equal(classify([old], [exception]).known.length, 1);
+  assert.equal(
+    classify([{ ...old, actual: ["boolean"] }], [exception]).failures.length,
+    1,
+  );
+  assert.equal(classify([], [exception]).stale.length, 1);
+  assert.throws(() => classify([old], [old]), /review/);
+  assert.throws(() => classify([old], [exception, exception]), /unique/);
+});
