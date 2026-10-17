@@ -4,6 +4,7 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "verify": "node scripts/verify.mjs",
     "dev:frontend": "pnpm --filter @control-center/frontend dev",
     "dev:mobile": "pnpm --filter @control-center/mobile dev",
     "dev:electron": "pnpm --filter @control-center/electron dev",

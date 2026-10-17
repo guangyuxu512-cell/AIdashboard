@@ -43,9 +43,13 @@ Schema与具体资源边界见 `shop-product-data-real-v1-resource-handoff-20261
 Model/Migration，不写Feature业务表。空库创建和凭据交付由既有DBAdmin通道执行，不能复用旧库；
 新库已由管理员CREATE，初次HBA拒绝历史保留。人类01a14799批准精确新库/角色/来源规则后，
 Main备份校验并reload无restart，应用目标验证通过，受限连接已交付；ca97本地独立核目标/ACL/四开关false。
-Owner已正常同步Green bef7093并在精确Feature库从46升到单一47，回报12项Schema PG测试通过，
-含精度、复合FK、无Team幂等及空表47→46→47保留旧标记。完整Gate1及事务/权限/API仍在实现，
-Slot47继续active；Integration及已发布Main/生产仍0046，不把Feature结果当集成/生产或真实平台通过。
+Owner已正常同步Green157f940并交80d/915候选，Feature单一47与已应用文件保持。ca97随后复核受保护
+pre47备份可读及hash，在精确 `control_center_integration` 正式46→47，旧23表/2020活动保持，
+并独立执行46项真实Integration PG，未在Integration运行Feature-only降级。真实HuanYu的1d178、7d229、30d344
+已完整发布，751快照/12767原始指标SQL/API/原证据一致，两个预算失败历史保留；392增量另7项PG逐例保护旧23表和真实商品4表通过。
+金额/比例d3c接线新增10项Integration PG通过，每例27表完整保留；原751事实的SQL/API/Real Web显示及筛选通过，无新增平台请求。原生专项、最终Gate及生产仍待核销。Slot47继续active，
+Main已发布/生产代码仍0046；不得因Feature或局部实测结果提前释放Slot或将0047部署生产。
+Verify a075没有Schema变化或Migration Slot，离线Gate2不连接数据库，不核销或借用0047。
 
 2026-10-16生产核验完成：Main正式Release21229eff经CI38790697624/Deploy38791100315成功，
 新鲜pre46备份1039309字节/restore目录344项可读后升级生产单一20261015_0046；
