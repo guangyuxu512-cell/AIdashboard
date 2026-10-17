@@ -28,6 +28,7 @@ const props = defineProps<{
   groupsLoading?: boolean
   groupsError?: boolean
   rangeErrors?: ProductRangeErrors
+  nativeOnly?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: ProductDataFilters]
@@ -44,12 +45,12 @@ watch(
   },
 )
 const shops = useShopSelectionOptionsQuery()
-const dateOptions = [
+const dateOptions = computed(() => [
   { label: '昨日', value: 'yesterday' },
   { label: '近7天', value: 'last7Days' },
   { label: '近30天', value: 'last30Days' },
-  { label: '自定义', value: 'custom' },
-]
+  { label: '自定义', value: 'custom', disabled: props.nativeOnly },
+])
 const groupOptions = computed(() => [
   { label: '未分组', value: 'ungrouped' },
   ...props.groups.map((group) => ({ label: group.name, value: group.id })),
@@ -130,7 +131,11 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           clearable
           placeholder="商品分组"
           :disabled="
-            !enabled || !modelValue.shopId || groupsError || groupsLoading
+            !enabled ||
+            nativeOnly ||
+            !modelValue.shopId ||
+            groupsError ||
+            groupsLoading
           "
           :loading="groupsLoading"
           @update:model-value="select('groupId', $event)"
@@ -140,8 +145,8 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           :model-value="modelValue.selling"
           clearable
           aria-label="售卖类型"
-          placeholder="全部售卖类型"
-          :disabled="!enabled"
+          :placeholder="nativeOnly ? '基准售卖切片' : '全部售卖类型'"
+          :disabled="!enabled || nativeOnly"
           :options="[
             { label: '全部', value: 'all' },
             { label: '自营', value: 'self' },
@@ -154,8 +159,8 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           :model-value="modelValue.carrier"
           clearable
           aria-label="载体类型"
-          placeholder="全部载体"
-          :disabled="!enabled"
+          :placeholder="nativeOnly ? '基准载体切片' : '全部载体'"
+          :disabled="!enabled || nativeOnly"
           :options="[
             { label: '全部', value: 'all' },
             { label: '直播', value: 'live' },
@@ -188,7 +193,7 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
         :metric-id="field.id"
         :model-value="modelValue.metricRanges[field.id]"
         :error="rangeErrors?.[field.id]"
-        :disabled="!enabled"
+        :disabled="!enabled || (!!nativeOnly && field.percent)"
         @update:model-value="
           update('metricRanges', {
             ...modelValue.metricRanges,
@@ -196,10 +201,11 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
           })
         "
       />
-      <span class="product-data-filters__range-help"
-        >区间含下限、不含上限；末档 ≥ 下限。自定义留空不限，百分比填 1 表示
-        1%。</span
-      >
+      <span class="product-data-filters__range-help">{{
+        nativeOnly
+          ? '区间含下限、不含上限；金额和比例单位待核定，相关筛选暂不可用。'
+          : '区间含下限、不含上限；末档 ≥ 下限。自定义留空不限，百分比填 1 表示 1%。'
+      }}</span>
     </div>
     <FilterBar density="compact">
       <AppRadio

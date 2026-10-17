@@ -47,3 +47,15 @@ class ProductDataSourceInvalidError(AppError):
     code = "PRODUCT_DATA_SOURCE_CONTRACT_INVALID"
     message = "商品数据来源契约不匹配，未发起请求"
     status_code = 409
+
+
+class ProductDataQueryInvalidError(AppError):
+    code = "PRODUCT_DATA_QUERY_INVALID"
+    message = "商品数据查询参数无效，请检查日期、排序和筛选区间"
+    status_code = 422
+
+
+class ProductDataSessionValidationRequiredError(AppError):
+    code = "PRODUCT_DATA_SESSION_VALIDATION_REQUIRED"
+    message = "本次采集需要已验证且仍新鲜的店铺会话，请先使用现有会话验证入口"
+    status_code = 409

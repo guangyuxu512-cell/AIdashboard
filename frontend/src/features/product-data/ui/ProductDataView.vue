@@ -36,6 +36,7 @@ import ProductFieldConfigDialog from './ProductFieldConfigDialog.vue'
 import ProductGroupManagerDialog from './ProductGroupManagerDialog.vue'
 import ProductBatchGroupDialog from './ProductBatchGroupDialog.vue'
 import ProductDataDetailDrawer from './ProductDataDetailDrawer.vue'
+import ProductDataCollectionAction from './ProductDataCollectionAction.vue'
 
 const props = defineProps<{
   source: ProductDataSource
@@ -85,6 +86,9 @@ const fieldsShow = ref(false),
   managerShow = ref(false),
   batchShow = ref(false)
 const visibleColumns = ref(readProductColumns(props.userId))
+const groupsEnabled = computed(
+  () => props.source.available && props.source.groupsAvailable !== false,
+)
 const query = useQuery({
   queryKey: computed(() =>
     productDataKeys.list(props.contextKey, params.value),
@@ -96,7 +100,7 @@ const groups = useQuery({
   queryKey: computed(() =>
     productDataKeys.groups(props.contextKey, draft.value.shopId),
   ),
-  enabled: computed(() => props.source.available && !!draft.value.shopId),
+  enabled: computed(() => groupsEnabled.value && !!draft.value.shopId),
   queryFn: ({ queryKey }) => props.source.groups(String(queryKey[3])),
   retry: false,
 })
@@ -109,8 +113,10 @@ const batchShopId = computed(() => {
   return ids.size === 1 ? selectedRows.value[0]!.shopId : null
 })
 const batchReason = computed(() =>
-  !props.source.available
-    ? PRODUCT_DATA_UNAVAILABLE
+  !groupsEnabled.value
+    ? props.source.available
+      ? '商品分组尚未接入'
+      : PRODUCT_DATA_UNAVAILABLE
     : !selectedRows.value.length
       ? '请先勾选商品'
       : !batchShopId.value
@@ -201,21 +207,48 @@ function batchSaved() {
   <ManagementListSection class="product-data-view" density="compact">
     <TableToolbar density="compact">
       <StatusTag v-if="source.mode === 'mock'" label="演示数据" />
+      <StatusTag v-else label="基准切片" />
+      <StatusTag
+        v-if="query.data.value?.coverage"
+        :label="`已采集 ${query.data.value.coverage.collectedShopCount}/${query.data.value.coverage.supportedShopCount} 店`"
+      />
       <span v-if="checked.length" class="product-data-view__selected"
         >已选 {{ checked.length }} 件</span
       >
       <template #actions>
-        <NTooltip :disabled="source.available && !!draft.shopId">
+        <ProductDataCollectionAction
+          v-if="source.collect"
+          :source="source"
+          :context-key="contextKey"
+          :shop-id="params.filters.shopId"
+          :period="
+            params.filters.datePreset === 'custom'
+              ? null
+              : params.filters.datePreset === 'last7Days'
+                ? '7d'
+                : params.filters.datePreset === 'last30Days'
+                  ? '30d'
+                  : '1d'
+          "
+          :enabled="query.data.value?.coverage?.collectionAvailable === true"
+        />
+        <NTooltip :disabled="groupsEnabled && !!draft.shopId">
           <template #trigger
             ><span
               ><AppButton
-                :disabled="!source.available || !draft.shopId"
+                :disabled="!groupsEnabled || !draft.shopId"
                 @click="managerShow = true"
                 >分组管理</AppButton
               ></span
             ></template
           >
-          {{ source.available ? '请先选择店铺' : PRODUCT_DATA_UNAVAILABLE }}
+          {{
+            !groupsEnabled
+              ? source.available
+                ? '商品分组尚未接入'
+                : PRODUCT_DATA_UNAVAILABLE
+              : '请先选择店铺'
+          }}
         </NTooltip>
         <NTooltip :disabled="!batchReason">
           <template #trigger
@@ -239,6 +272,7 @@ function batchSaved() {
       :enabled="source.available"
       :loading="query.isFetching.value"
       :range-errors="rangeErrors"
+      :native-only="source.mode === 'real'"
       @query="apply"
       @reset="reset"
       @fields="fieldsShow = true"
@@ -250,6 +284,7 @@ function batchSaved() {
       :checked="checked"
       :sort="params.sort"
       :enabled="source.available"
+      :native-only="source.mode === 'real'"
       :loading="query.isFetching.value"
       :error="
         query.error.value

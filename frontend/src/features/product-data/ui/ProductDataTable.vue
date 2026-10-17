@@ -15,7 +15,7 @@ import {
   formatProductMetric,
   PRODUCT_METRIC_STATE_LABELS,
 } from '../model/query'
-import { productMetricTooltip } from '../model/metrics'
+import { PRIMARY_PRODUCT_METRICS, productMetricTooltip } from '../model/metrics'
 import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 import {
   PRODUCT_COLUMNS,
@@ -32,6 +32,7 @@ const props = defineProps<{
   loading: boolean
   error: string | null
   enabled: boolean
+  nativeOnly?: boolean
 }>()
 const emit = defineEmits<{
   'update:checked': [keys: DataTableRowKey[]]
@@ -76,15 +77,19 @@ const widths = computed(
 )
 function value(row: ProductDataRow, id: ProductColumnId) {
   if (id === 'shop') return row.shopName
-  if (id === 'group') return row.groupName ?? '未分组'
-  if (id === 'selling') return row.selling === 'self' ? '自营' : '合作'
+  if (id === 'group')
+    return row.groupingAvailable === false ? '—' : (row.groupName ?? '未分组')
+  if (id === 'selling')
+    return row.selling === null ? '—' : row.selling === 'self' ? '自营' : '合作'
   if (id === 'carrier')
-    return {
-      card: '商品卡',
-      video: '短视频',
-      live: '直播',
-      'image-text': '图文',
-    }[row.carrier]
+    return row.carrier
+      ? {
+          card: '商品卡',
+          video: '短视频',
+          live: '直播',
+          'image-text': '图文',
+        }[row.carrier]
+      : '—'
   if (id === 'updatedAt')
     return dayjs(row.retrievedAt).format('YYYY-MM-DD HH:mm')
   const metric = row.metrics[id],
@@ -143,7 +148,14 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
       key: id,
       width: fieldWidths.value.get(id),
       align: 'center' as const,
-      sorter: props.enabled,
+      sorter:
+        props.enabled &&
+        (!props.nativeOnly ||
+          id === 'shop' ||
+          id === 'updatedAt' ||
+          PRIMARY_PRODUCT_METRICS.some(
+            (metric) => metric.id === id && metric.format === 'count',
+          )),
       sortOrder:
         props.sort?.field === id
           ? props.sort.direction === 'asc'

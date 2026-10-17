@@ -1,6 +1,6 @@
 // Frontend semantic registry only. IDs (including historical code-shaped IDs)
 // are NOT wire fields. platformCode/rawUnitCode record a verified single-page
-// observation, not a unit converter or Real API mapper. Real remains unavailable.
+// observation, not a unit converter. The Real mapper keeps amounts/rates unverified.
 interface MetricDefinition {
   id: string
   label: string

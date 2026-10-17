@@ -1,5 +1,6 @@
 import type { ApiMode } from '@/shared/api'
 import type { ProductDataSource } from '../model/types'
+import { createRealProductDataSource } from './product-data-real'
 
 export const PRODUCT_DATA_UNAVAILABLE = '商品数据接口尚未接入'
 export function createUnavailableProductDataSource(): ProductDataSource {
@@ -30,5 +31,5 @@ export async function createProductDataSource(
           : undefined,
     })
   }
-  return createUnavailableProductDataSource()
+  return createRealProductDataSource()
 }

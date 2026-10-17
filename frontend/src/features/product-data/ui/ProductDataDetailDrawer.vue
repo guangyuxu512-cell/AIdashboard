@@ -30,7 +30,7 @@ defineEmits<{ 'update:show': [show: boolean] }>()
       <NDescriptions :column="1" label-placement="left">
         <NDescriptionsItem label="店铺">{{ row.shopName }}</NDescriptionsItem>
         <NDescriptionsItem label="商品分组">{{
-          row.groupName ?? '未分组'
+          row.groupingAvailable === false ? '—' : row.groupName ?? '未分组'
         }}</NDescriptionsItem>
         <NDescriptionsItem label="统计日期"
           >{{ row.period.startDate }} ～

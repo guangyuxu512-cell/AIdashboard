@@ -4,7 +4,8 @@
 
 2026-10-17，ca97正式分配唯一active `20261017_0047`，down `20261015_0046`，
 Owner7d55/feat/shop-product-data-real-v1，专用 `control_center_feat_shop_product_data`。
-连接交付前仅离线Model/迁移及合成测试；共享PG集群并非独占实例，实际执行前必须
+已在精确Feature应用至单一47并验证空新表47→46→47保留旧User标记；应用后的47不得改写。
+共享PG集群并非独占实例，实际执行前必须
 在线核current_database()精确完整库名，不以端口、角色名或feature前缀代替目标核验。
 
 | 新表 | 身份和约束 | 保留及可见性 |

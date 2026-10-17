@@ -1,13 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createMockProductDataSource } from './product-data-mock'
-import {
-  createProductDataSource,
-  PRODUCT_DATA_UNAVAILABLE,
-} from './product-data-source'
+import { createProductDataSource } from './product-data-source'
+import { PRODUCT_DATA_GROUPS_UNAVAILABLE } from './product-data-real'
 import { emptyProductFilters, productPeriod } from '../model/query'
 import { PRODUCT_ID_LENGTH_FIXTURE } from '../fixtures/product-id-lengths.fixture'
 import { PRODUCT_RANGE_FILTERS } from '../model/metric-ranges'
 import type { ProductDataQuery } from '../model/types'
+
+vi.mock('@/shared/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api')>()),
+  httpClient: {
+    get: vi.fn(async () => {
+      throw new Error('synthetic-api-unavailable')
+    }),
+  },
+}))
 
 function query(): ProductDataQuery {
   return {
@@ -118,8 +125,14 @@ describe('product data source boundaries', () => {
       '9000000000000000001',
     )
     const real = await createProductDataSource('real', 'mixed-ids')
-    expect(real).toMatchObject({ mode: 'real', available: false })
-    await expect(real.list(query())).rejects.toThrow(PRODUCT_DATA_UNAVAILABLE)
+    expect(real).toMatchObject({
+      mode: 'real',
+      available: true,
+      groupsAvailable: false,
+    })
+    await expect(real.list(query())).rejects.toThrow(
+      'synthetic-api-unavailable',
+    )
   })
   it('filters and sorts the entire result before pagination, keeping missing last in either direction', async () => {
     const source = createMockProductDataSource()
@@ -245,16 +258,22 @@ describe('product data source boundaries', () => {
     await expect(mock.list(query())).rejects.toThrow('请重试')
     expect((await mock.list(query())).total).toBe(31)
     const source = await createProductDataSource('real', 'query-error')
-    expect(source).toMatchObject({ mode: 'real', available: false })
-    await expect(source.list(query())).rejects.toThrow(PRODUCT_DATA_UNAVAILABLE)
+    expect(source).toMatchObject({
+      mode: 'real',
+      available: true,
+      groupsAvailable: false,
+    })
+    await expect(source.list(query())).rejects.toThrow(
+      'synthetic-api-unavailable',
+    )
     await expect(source.groups('shop')).rejects.toThrow(
-      PRODUCT_DATA_UNAVAILABLE,
+      PRODUCT_DATA_GROUPS_UNAVAILABLE,
     )
     await expect(
       source.saveGroup('shop', { id: null, name: '测试' }),
-    ).rejects.toThrow(PRODUCT_DATA_UNAVAILABLE)
+    ).rejects.toThrow(PRODUCT_DATA_GROUPS_UNAVAILABLE)
     await expect(source.assignGroup('shop', ['id'], null)).rejects.toThrow(
-      PRODUCT_DATA_UNAVAILABLE,
+      PRODUCT_DATA_GROUPS_UNAVAILABLE,
     )
   })
 })

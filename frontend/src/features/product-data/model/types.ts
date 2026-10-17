@@ -2,11 +2,14 @@ import type { ApiMode, PageResult } from '@/shared/api'
 import { PRODUCT_METRICS, type ProductMetricId } from './metrics'
 import type { ProductRangeDrafts } from './metric-ranges'
 export { PRODUCT_METRICS, type ProductMetricId } from './metrics'
-export type ProductMetricState = 'available' | 'missing' | 'null' | 'invalid'
+export type ProductMetricState =
+  'available' | 'missing' | 'null' | 'invalid' | 'unit_unverified'
 export interface ProductMetric {
   state: ProductMetricState
   value: string | null
   unit: 'count' | 'ratio' | 'yuan' | null
+  rawValue?: string | null
+  rawUnit?: number | null
 }
 export const PRODUCT_COLUMNS = [
   { id: 'shop', label: '店铺', width: 140 },
@@ -34,8 +37,9 @@ export interface ProductDataRow {
   imageUrl: string | null
   groupId: string | null
   groupName: string | null
-  selling: 'self' | 'cooperation'
-  carrier: 'card' | 'video' | 'live' | 'image-text'
+  selling: 'self' | 'cooperation' | null
+  carrier: 'card' | 'video' | 'live' | 'image-text' | null
+  groupingAvailable?: boolean
   metrics: Record<ProductMetricId, ProductMetric>
   period: { startDate: string; endDate: string }
   retrievedAt: string
@@ -67,7 +71,12 @@ export interface ProductDataQuery {
 export interface ProductDataSource {
   readonly mode: ApiMode
   readonly available: boolean
-  list(query: ProductDataQuery): Promise<PageResult<ProductDataRow>>
+  readonly groupsAvailable?: boolean
+  list(query: ProductDataQuery): Promise<ProductDataPage>
+  collect?(
+    command: ProductDataCollectionCommand,
+  ): Promise<ProductDataCollection>
+  collection?(id: string): Promise<ProductDataCollection>
   groups(shopId: string): Promise<ProductGroup[]>
   saveGroup(
     shopId: string,
@@ -79,4 +88,40 @@ export interface ProductDataSource {
     productIds: string[],
     groupId: string | null,
   ): Promise<void>
+}
+
+export interface ProductDataPage extends PageResult<ProductDataRow> {
+  coverage?: {
+    supportedShopCount: number
+    collectedShopCount: number
+    missingShopIds: string[]
+    collectionAvailable: boolean
+    unitUnconfirmedCodes: string[]
+  }
+}
+
+export interface ProductDataCollectionCommand {
+  shopId: string
+  period: '1d' | '7d' | '30d'
+  submissionKey: string
+}
+export interface ProductDataCollection {
+  id: string
+  period: ProductDataCollectionCommand['period']
+  startDate: string
+  endDate: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  stage: string
+  receivedPages: number
+  expectedTotal: number | null
+  receivedTotal: number | null
+  pagesComplete: boolean
+  rawCompleteRows: number | null
+  unitCompleteRows: number | null
+  failureCode: string | null
+  createdAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  publishedAt: string | null
+  leaseExpired: boolean
 }

@@ -1,8 +1,19 @@
 # 商品数据前端与 Mock 契约 V1
 
-状态：UI_ONLY / 前端草案。Owner 7d55；基线 9bb64ac76bf9e0f51fb1715517cf8c18cef63e22；
-ca97 已登记独立前端 127.0.0.1:4177 --strictPort。无 Feature DB、Backend 实现或 Migration Slot。
-完成 Gate 1 后准备匹配预览，停止“待用户验收，禁止发布”。
+当前增量：商品数据真实接入首里程碑，Owner 7d55，feat/shop-product-data-real-v1，
+正常no-ff保留af6并同步Green bef7093。已接正式GET列表、POST手动采集和GET回执，契约以Backend05/26为准；
+Feature DB control_center_feat_shop_product_data、8102/4177与active0047由ca97登记。未部署、未新增窗口。
+
+Real在SQL分页后只映射当前页，不本地筛选或重新计算total。17指标按registry精确映射，只有unit5有效计数显示原整数，
+使用BigInt格式化不损精度。金额3/比例4保持rawValue/rawUnit并显示“显示单位待核定”，不转yuan/fraction；
+旧四列保留未知。selling/carrier为null，不把baseline1/1猜成自营或商品卡，groupingAvailable=false不伪称未分组。
+Real禁用分组、自定义、其它售卖/载体、比例筛选及金额/比例排序；其余已声明筛选排序由Backend执行。
+页面只在环境collectionAvailable=true且查询已选单店时开放“更新数据”，不因进入、筛选、翻页或刷新发POST。
+提交失败保持同一submissionKey供显式重试；成功回执按精确ID轮询GET，完成后失效事实Query，读失败只重读不重提。
+人员/Team/Shop/期间变化拒绝旧UI结果；平台执行仍由服务器当前授权和lease保护。失败不加载Mock。
+
+以下保留UI与Mock历史。其“未接入”描述对应当时阶段，不覆盖上述新Real边界。
+原UI基线9bb64ac、独立4177，旧阶段没有Feature DB或Migration；人工和Integration Electron未覆盖项仍保留。
 2026-10-16在原分支正常no-ff同步精确Green5a18bd0390cb4b8cbed637d412f7482cefff3f36，
 同步当时本模块运行代码/Mock与141修补保持不变；随后指标筛选增量见下文，Green已有0046代码不构成本页DB/API授权。
 
@@ -70,8 +81,8 @@ Mock 使用虚构商品，查询顺序固定为完整数据集筛选 → 全量�
 
 最初盘点只有响应和 meta，page_no=1/page_size=10/total=31；后续请求与响应由 ca97 独立核验，
 不把不同周期、载体或采集时点的样本混为一次结果。金额 unit=3 的实际缩放仍未知。
-Real service 显式不可用，不发任何商品数据请求，
-不加载商品 Mock 模块，查询/分组操作不会伪造成功。后续必须先冻结正式请求/DTO/单位/排序契约。
+原UI_ONLY阶段Real service显式不可用；当前Real实现见本文开头及Backend05/26。
+Mock仍不代表真实采集，分组未接入不伪造成功，金额/比例单位未核定限制保持。
 
 ## 分组草案与偏好
 
@@ -166,7 +177,7 @@ meta 为“退款率(支付时间)”，tip 为“退款订单数(支付时间)/
 首行原值 0.10384608086826178。直接保留平台总体比率，不自行相加发货前后百分比、重算覆盖或以退款时间指标替代。
 sold_pay_refund_ratio 只是发货后退款率（支付时间），不得替代总体退款率。
 本次 74 响应再次确认该字段为 3 正值、7 显式零、unit4；本树只离线接回证据，未追加请求。
-本模块没有真实 mapper/API。unit3 的金额分/元及 unit4 的官方页面百分比显示仍无独立对照，
+上述历史单页核验时没有真实mapper/API；当前typed接入不改变unit3金额分/元及unit4官方百分比仍无独立对照的边界，
 不自动按平台原单位换算、重算或写成真实接入完成；Mock 的 yuan/fraction 仍是合成 UI 契约。
 
 ## 验证边界

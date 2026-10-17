@@ -73,10 +73,15 @@ export const PRODUCT_METRIC_STATE_LABELS = {
   missing: '未取得',
   null: '平台返回空值',
   invalid: '平台值无效',
+  unit_unverified: '显示单位待核定',
 } as const
 
 export function formatProductMetric(metric: ProductMetric): string {
   if (metric.state !== 'available' || metric.value === null) return '—'
+  if (metric.unit === 'count') {
+    if (!/^\d+(?:\.0+)?$/.test(metric.value)) return '—'
+    return BigInt(metric.value.split('.')[0]!).toLocaleString('zh-CN')
+  }
   const numeric = Number(metric.value)
   if (!Number.isFinite(numeric)) return '—'
   if (metric.unit === 'ratio') return (numeric * 100).toFixed(2) + '%'

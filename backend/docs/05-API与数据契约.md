@@ -2,6 +2,22 @@
 
 Pydantic Schema / OpenAPI 为权威来源。
 
+## 商品数据手动采集与只读查询 V1
+
+实现契约见26号文档，Schema为modules/product_data/schemas.py。三个资源均使用当前人员会话、shop模块与实时Shop授权：
+
+| 方法与路径 | 契约 |
+| --- | --- |
+| GET /api/v1/product-data | period=1d/7d/30d及精确start_date/end_date；可选shop_id、十进制product_id片段、product_name、sale_type/content_type固定1、ranges、page/page_size默认1/20、成对sort_field/sort_direction。ranges为最多4096字符的JSON数组，每项metric/min_value/max_value，数值用精确十进制字符串。全量SQL筛选/排序后分页，只读已发布代，不发平台请求。 |
+| POST /api/v1/product-data/collections | Body shop_id、period、submission_key UUID，可选sale_type/content_type固定1。202返回冻结采集回执；新意图提交后仅执行一次有限后台函数。相同Actor+key重放原窗口与回执，不再次执行。默认环境开关false时503，不写等待队列。 |
+| GET /api/v1/product-data/collections/{generation_id} | 当前权限下的精确回执；普通成员仅本人原Team且仍授权Shop可读，否则404。只读状态，不恢复或重启。 |
+
+列表沿Page并增加coverage(supported_shop_count/collected_shop_count/missing_shop_ids/collection_available/unit_unconfirmed_codes)。每行shop_product_id/generation_id/shop_id/shop_name/product_id/title/image_url/metrics/scope/retrieved_at；17个metrics含state、精确raw_value字符串或null、raw_unit、unit_verified。金额3/比例4未核定，不能换算；只对有效计数5开放筛选排序。未支持的分组、定制日期、sale/content不忽略。
+
+回执含scope、status、stage、received_pages、可空expected_total/received_total/raw_complete_rows/unit_complete_rows、pages_complete、failure_code、created_at/started_at/finished_at/published_at、lease_expired。运行回执与共享商品事实分离，不返回他人进度或凭据。没有自动重试、扫描、TTL或全店铺采集。过期运行保持可观察，只有显式新意图可终结同切片过期代；旧成功数据不变。
+
+首里程碑要求现有Session已VALID且在既有freshness窗口内，未满足返回PRODUCT_DATA_SESSION_VALIDATION_REQUIRED，不冒称AUTH_INVALID或自动登录；可使用原Shop Session验证入口。HTTP/Signer在DB事务外。响应后重新核权限、Shop身份、Session版本；真实Set-Cookie复用HealthService与版本CAS。执行失败只保存白名单码/固定阶段，不保存异常文本。后台崩溃不能宣称成功，租约到期可见。
+
 原则：
 
 - 请求/响应字段明确。

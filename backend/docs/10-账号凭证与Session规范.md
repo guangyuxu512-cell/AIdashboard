@@ -73,6 +73,12 @@ Session 状态，也不触发自动登录。Backend 请求不读取 Management L
 
 ## 8. 健康检查、Cookie 更新与恢复租约
 
+商品数据首版的有限手动采集只消费仍处于既有freshness窗口内的VALID Session，陈旧/captured使用
+PRODUCT_DATA_SESSION_VALIDATION_REQUIRED明确门禁，由现有验证入口完成身份验证；不在该有限页预算中
+隐式追加身份请求、不自动登录。Cookie到期只预警。每页HTTP在DB事务外，回包重新核当前授权及版本，
+仅真实Set-Cookie复用HealthService与Accessor的加密CAS；HTTP401/403仅标当前被验证版本，业务拒绝不标invalid。
+这不改变下述经营/其它原有HealthService.check调用行为，实际平台闭环另行验收。
+
 `ShopSessionHealthService` 是解密后验证、身份匹配和状态更新的唯一边界。抖店 V1 使用已验证的 `shop_info_v2`；最近验证时间仍处于 `BACKEND_SHOP_SESSION_VALIDATION_FRESHNESS_SECONDS` 窗口时，后续业务可直接使用，超出窗口才按需先验证。没有全店铺 Cron。
 
 拼多多 V1 健康验证复用上述唯一边界与同一固定 merchant identity endpoint；每次请求仅在平台层生成并使用当次 `anti-content`，不记录 Cookie 或签名值。
