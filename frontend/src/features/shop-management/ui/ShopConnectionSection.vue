@@ -134,12 +134,20 @@ async function validateSession(): Promise<void> {
       {{ loginFeedback.error }}
     </NAlert>
     <LoadingState v-if="loading" description="正在加载账号与连接…" />
-    <ErrorState
-      v-else-if="error"
-      :description="error"
-      retryable
-      @retry="retry"
-    />
+    <template v-else-if="error">
+      <ErrorState :description="error" retryable @retry="retry" />
+      <NAlert
+        v-if="
+          !loginFeedback?.identityMismatch &&
+          loginFeedback?.success?.readRefreshFailed
+        "
+        type="warning"
+        :bordered="true"
+        class="shop-connection-section__recovery"
+      >
+        {{ loginFeedback.status }}
+      </NAlert>
+    </template>
     <template v-else-if="credential && shopSession">
       <NDescriptions :column="1" label-placement="left" bordered>
         <NDescriptionsItem label="登录账号">
@@ -178,7 +186,15 @@ async function validateSession(): Promise<void> {
 
         <NAlert
           v-if="loginFeedback?.status || loginFeedback?.error"
-          :type="loginFeedback?.error ? 'error' : 'info'"
+          :type="
+            loginFeedback?.error
+              ? 'error'
+              : loginFeedback?.success?.readRefreshFailed
+                ? 'warning'
+                : loginFeedback?.success
+                  ? 'success'
+                  : 'info'
+          "
           :bordered="true"
           class="shop-connection-section__recovery"
         >

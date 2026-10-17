@@ -59,16 +59,29 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
     align: 'center',
     render: (shop) => {
       const feedback = props.loginFeedback?.get(shop.shopId)
-      if (!feedback?.identityMismatch)
+      if (feedback?.identityMismatch)
+        return h(NTooltip, null, {
+          trigger: () =>
+            h(StatusTag, {
+              label: '店铺不符',
+              tone: 'warning',
+              'aria-label': feedback.error ?? undefined,
+            }),
+          default: () => feedback.error,
+        })
+      const success = feedback?.success
+      if (!success || feedback.busy)
         return h(ShopSessionStatusTag, { status: shop.loginStatus })
       return h(NTooltip, null, {
         trigger: () =>
-          h(StatusTag, {
-            label: '店铺不符',
-            tone: 'warning',
-            'aria-label': feedback.error ?? undefined,
-          }),
-        default: () => feedback.error,
+          shop.loginStatus !== 'valid'
+            ? h(ShopSessionStatusTag, { status: shop.loginStatus })
+            : h(StatusTag, {
+                label: success.readRefreshFailed ? '已保存' : '已更新',
+                tone: success.readRefreshFailed ? 'warning' : 'success',
+                'aria-label': feedback.status ?? undefined,
+              }),
+        default: () => feedback.status,
       })
     },
   },

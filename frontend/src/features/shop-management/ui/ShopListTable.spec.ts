@@ -1,12 +1,17 @@
-import { defineComponent, h, nextTick, reactive } from 'vue'
-import { mount } from '@vue/test-utils'
+import { defineComponent, h, nextTick, reactive, ref } from 'vue'
+import { readFileSync } from 'node:fs'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { darkTheme, NConfigProvider } from 'naive-ui'
 import ShopListTable from './ShopListTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import { ShopSessionStatusTag } from '@/entities/shop-session'
 import type { ShopListItemViewModel } from '@/entities/shop'
 import type { ShopLoginFeedback } from '../model/useShopLogin'
+import { createNaiveThemeOverrides } from '@/app/providers/naive-theme'
+
+const tokensCss = readFileSync('src/shared/styles/tokens.css', 'utf8')
 
 const DataTable = defineComponent({
   props: ['columns', 'data', 'scrollX'],
@@ -35,6 +40,106 @@ const shop = {
 } as ShopListItemViewModel
 
 describe('shop list uses the shared login feedback, not an independent busy state', () => {
+  it.each(['graphite', 'forest', 'coral', 'midnight'])(
+    'reuses the same small status tag and column space for the current result in %s',
+    async (preset) => {
+      const style = document.createElement('style')
+      style.textContent = tokensCss
+      document.head.append(style)
+      const previousTheme = document.documentElement.dataset.theme
+      const previousPreset = document.documentElement.dataset.themePreset
+      document.documentElement.dataset.theme =
+        preset === 'midnight' ? 'dark' : 'light'
+      document.documentElement.dataset.themePreset = preset
+      const feedback = ref(new Map<string, ShopLoginFeedback>())
+      const rows = ref([shop])
+      const { Tag } = createNaiveThemeOverrides(preset)
+      const wrapper = mount(NConfigProvider, {
+        props: {
+          theme: preset === 'midnight' ? darkTheme : null,
+          themeOverrides: { Tag },
+        },
+        slots: {
+          default: () =>
+            h(ShopListTable, {
+              rows: rows.value,
+              canLogin: true,
+              loginFeedback: feedback.value,
+            }),
+        },
+        global: { stubs: { DataTable } },
+      })
+      try {
+        const original = wrapper.get('[data-column="loginStatus"] .n-tag')
+          .element as HTMLElement
+        const height = original.style.getPropertyValue('--n-height')
+        const fontSize = original.style.getPropertyValue('--n-font-size')
+        expect(height).not.toBe('')
+        expect(wrapper.get('[data-column="loginStatus"]').text()).toBe('有效')
+        const status = '本次登录已更新（v4 · 2026-10-11 17:01）'
+        feedback.value.set('shop', {
+          busy: false,
+          opening: false,
+          error: null,
+          status,
+          success: {
+            sessionVersion: 4,
+            validatedAt: '2026-10-11T09:01:00Z',
+            readRefreshFailed: false,
+          },
+        })
+        await flushPromises()
+        const current = wrapper.get('[data-column="loginStatus"] .n-tag')
+          .element as HTMLElement
+        expect(current.textContent).toBe('已更新')
+        expect(current.getAttribute('aria-label')).toBe(status)
+        expect(current.style.getPropertyValue('--n-height')).toBe(height)
+        expect(current.style.getPropertyValue('--n-font-size')).toBe(fontSize)
+        const columns = wrapper.findComponent(DataTable).props('columns')
+        expect(
+          columns.find(
+            (column: { key?: string }) => column.key === 'loginStatus',
+          ).width,
+        ).toBe(96)
+        expect(wrapper.findComponent(DataTable).props('scrollX')).toBe(1114)
+        const order = wrapper
+          .findAllComponents(AppButton)
+          .map((button) => button.text())
+        expect(order).toEqual(['查看', '登录', '停用', '移除'])
+        feedback.value.set('shop', {
+          busy: false,
+          opening: false,
+          error: null,
+          status: status + '；店铺信息刷新未完成，请刷新列表',
+          success: {
+            sessionVersion: 4,
+            validatedAt: '2026-10-11T09:01:00Z',
+            readRefreshFailed: true,
+          },
+        })
+        await flushPromises()
+        expect(wrapper.get('[data-column="loginStatus"]').text()).toBe('已保存')
+        expect(
+          (
+            wrapper.get('[data-column="loginStatus"] .n-tag')
+              .element as HTMLElement
+          ).style.getPropertyValue('--n-height'),
+        ).toBe(height)
+        rows.value = [{ ...shop, loginStatus: 'invalid' }]
+        await flushPromises()
+        expect(wrapper.get('[data-column="loginStatus"]').text()).toBe('已失效')
+      } finally {
+        wrapper.unmount()
+        style.remove()
+        if (previousTheme === undefined)
+          delete document.documentElement.dataset.theme
+        else document.documentElement.dataset.theme = previousTheme
+        if (previousPreset === undefined)
+          delete document.documentElement.dataset.themePreset
+        else document.documentElement.dataset.themePreset = previousPreset
+      }
+    },
+  )
   it('keeps wrong-shop feedback local and persistent without changing the valid Session or status-cell layout', async () => {
     const error =
       '目标店铺：Synthetic target。本次登录店铺不符，原登录状态保留；请切换正确账号后点击登录继续验证'
@@ -77,6 +182,23 @@ describe('shop list uses the shared login feedback, not an independent busy stat
     expect(shop.loginStatus).toBe('valid')
     await nextTick()
     expect(wrapper.text()).toContain('店铺不符')
+    feedback.set('shop', {
+      ...feedback.get('shop')!,
+      success: {
+        sessionVersion: 4,
+        validatedAt: '2026-10-11T09:01:00Z',
+        readRefreshFailed: true,
+      },
+    })
+    await nextTick()
+    expect(wrapper.text()).toContain('店铺不符')
+    expect(wrapper.text()).not.toMatch(/已保存|已更新/)
+    expect(
+      wrapper
+        .findAllComponents(StatusTag)
+        .find((tag) => tag.props('label') === '店铺不符')!
+        .attributes('aria-label'),
+    ).toBe(error)
     feedback.delete('shop')
     await nextTick()
     expect(wrapper.findComponent(ShopSessionStatusTag).props('status')).toBe(
