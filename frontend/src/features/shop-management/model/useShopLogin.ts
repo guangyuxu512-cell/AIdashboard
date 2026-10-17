@@ -7,6 +7,7 @@ import {
 } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { useMessage } from 'naive-ui'
+import dayjs from 'dayjs'
 import { useAuthStore } from '@/stores/auth'
 import { getPlatformDefinition } from '@/entities/platform'
 import { shopQueryKeys, type ShopListItemViewModel } from '@/entities/shop'
@@ -64,6 +65,11 @@ export interface ShopLoginFeedback {
   retryReady?: boolean
   retryBlocked?: boolean
   identityMismatch?: boolean
+  success?: {
+    sessionVersion: number
+    validatedAt: string
+    readRefreshFailed: boolean
+  }
   error: string | null
   status: string | null
 }
@@ -91,10 +97,14 @@ export function useShopLogin() {
   }
   async function refresh(shopId: string) {
     await Promise.all([
-      queries.invalidateQueries({
-        queryKey: shopSessionQueryKeys.shop(shopId),
-      }),
-      queries.invalidateQueries({ queryKey: shopQueryKeys.all }),
+      queries.invalidateQueries(
+        { queryKey: shopSessionQueryKeys.shop(shopId) },
+        { throwOnError: true },
+      ),
+      queries.invalidateQueries(
+        { queryKey: shopQueryKeys.all },
+        { throwOnError: true },
+      ),
     ])
   }
   async function cancel(shopId: string) {
@@ -492,7 +502,8 @@ export function useShopLogin() {
             result.shopId !== shop.shopId ||
             result.status !== 'valid' ||
             result.sessionVersion !== lease.expectedVersion + 1 ||
-            !result.validatedAt
+            typeof result.validatedAt !== 'string' ||
+            !Number.isFinite(Date.parse(result.validatedAt))
           )
             throw new Error('未取得本次有效验证结果')
           await shopSessionDataSource.confirmRecovery(
@@ -509,7 +520,17 @@ export function useShopLogin() {
           }
           if (!captureCurrent()) return
           active.delete(shop.shopId)
-          feedback.delete(shop.shopId)
+          feedback.set(shop.shopId, {
+            busy: false,
+            opening: false,
+            error: null,
+            status: `本次登录已更新（v${result.sessionVersion} · ${dayjs(result.validatedAt).format('YYYY-MM-DD HH:mm')}）${readRefreshFailed ? '；店铺信息刷新未完成，请刷新列表' : ''}`,
+            success: {
+              sessionVersion: result.sessionVersion,
+              validatedAt: result.validatedAt,
+              readRefreshFailed,
+            },
+          })
           message.success('登录状态已更新')
           if (readRefreshFailed)
             message.warning('店铺信息刷新未完成，请刷新列表')
@@ -554,6 +575,7 @@ export function useShopLogin() {
   onScopeDispose(() => {
     scopeVersion++
     for (const shopId of active.keys()) void cancel(shopId)
+    feedback.clear()
   })
   return { canLogin, feedback, login, cancel, refresh }
 }
