@@ -88,7 +88,10 @@ test('nine range presets, custom validation and full-set filtering keep the last
   ).toHaveCount(1)
   await expect(
     dialog.getByRole('checkbox', { name: '曝光点击率', exact: true }),
-  ).toHaveCount(0)
+  ).toHaveCount(1)
+  await expect(
+    dialog.getByRole('checkbox', { name: '曝光点击率', exact: true }),
+  ).not.toBeChecked()
   await dialog.getByRole('checkbox', { name: '曝光人数', exact: true }).click()
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(min).toHaveValue('0')
@@ -126,7 +129,9 @@ test('shows the total payment-time refund rate in fields, details and interval f
   await expect(
     dialog.getByRole('checkbox', { name: '退货率', exact: true }),
   ).toHaveCount(0)
-  await dialog.getByRole('checkbox', { name: '退款率', exact: true }).click()
+  await expect(
+    dialog.getByRole('checkbox', { name: '退款率', exact: true }),
+  ).toBeChecked()
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   const header = page
     .locator('.product-data-table')

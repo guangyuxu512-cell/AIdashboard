@@ -205,6 +205,14 @@ describe('Product Data typed Real adapter', () => {
     params.filters = emptyProductFilters()
     params.sort = { field: 'pay_amt', direction: 'asc' }
     expect(productDataParams(params).sort_field).toBe('pay_amt')
+    params.sort = { field: 'trafficExposureClickRate', direction: 'desc' }
+    expect(productDataParams(params).sort_field).toBe(
+      'product_show_click_converse_uv_rate',
+    )
+    params.sort = { field: 'trafficClickPayRate', direction: 'asc' }
+    expect(productDataParams(params).sort_field).toBe(
+      'product_click_pay_converse_uv_rate',
+    )
     expect(get).not.toHaveBeenCalled()
   })
   it('propagates HTTP rejection without Mock fallback or invented groups', async () => {

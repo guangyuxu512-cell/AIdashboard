@@ -6,6 +6,7 @@ import {
   resolveProductMetricId,
 } from './metrics'
 import { normalizeProductColumns } from './column-preferences'
+import { PRODUCT_DISPLAY_COLUMNS } from './display-fields'
 
 describe('product metric semantic registry', () => {
   it('does not label every current data source as disconnected and retains the preview warning', () => {
@@ -56,7 +57,7 @@ describe('product metric semantic registry', () => {
       '数据可用性以当前数据源为准',
     )
   })
-  it('registers seventeen distinct primary metrics and nineteen Chinese display names without duplicate columns', () => {
+  it('registers seventeen distinct primary metrics and nineteen Chinese names without duplicate metric records', () => {
     expect(PRIMARY_PRODUCT_METRICS).toHaveLength(17)
     expect(
       new Set(PRIMARY_PRODUCT_METRICS.map((metric) => metric.id)).size,
@@ -82,14 +83,18 @@ describe('product metric semantic registry', () => {
       expect(productMetricTooltip(metric.id)).toContain(metric.officialLabel)
   })
   it('preserves old refund, settlement and unverified stock IDs rather than rebinding their meaning', () => {
-    expect(
-      normalizeProductColumns([
+    expect(resolveProductMetricId('refund_amt')).toBe('refund_amt')
+    expect(resolveProductMetricId('refund_cnt')).toBe('refund_cnt')
+    expect(resolveProductMetricId('receive_amt')).toBe('receive_amt')
+    expect(resolveProductMetricId('stock_cnt')).toBe('stock_cnt')
+    expect(PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining([
         'refund_amt',
         'refund_cnt',
         'receive_amt',
         'stock_cnt',
       ]),
-    ).toEqual(['refund_amt', 'refund_cnt', 'receive_amt', 'stock_cnt'])
+    )
     expect(resolveProductMetricId('退款金额')).toBe('payTimeRefundAmount')
     expect(resolveProductMetricId('退款单数')).toBe('payTimeRefundOrders')
     expect(resolveProductMetricId('refund_cnt')).toBe('refund_cnt')

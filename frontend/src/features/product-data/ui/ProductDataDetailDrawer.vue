@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import dayjs from 'dayjs'
 import { NDescriptions, NDescriptionsItem, NTooltip } from 'naive-ui'
 import { ProductInfoCell } from '@/entities/product'
 import { DetailDrawer } from '@/shared/components'
@@ -8,11 +7,31 @@ import {
   formatProductMetric,
   PRODUCT_METRIC_STATE_LABELS,
 } from '../model/query'
-import { PRODUCT_METRICS, type ProductDataRow } from '../model/types'
+import {
+  PRODUCT_DATA_FIELD_GROUPS,
+  PRODUCT_DISPLAY_COLUMNS,
+  type ProductDataRow,
+  type ProductDisplayColumn,
+} from '../model/types'
 import { productMetricTooltip } from '../model/metrics'
+import { productDisplayMetricId } from '../model/display-fields'
 import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 defineProps<{ show: boolean; row: ProductDataRow | null }>()
 defineEmits<{ 'update:show': [show: boolean] }>()
+
+function groupColumns(group: (typeof PRODUCT_DATA_FIELD_GROUPS)[number]['id']) {
+  return PRODUCT_DISPLAY_COLUMNS.filter((column) => column.group === group)
+}
+function displayValue(row: ProductDataRow, column: ProductDisplayColumn) {
+  if (column.id === 'shop') return row.shopName
+  const metricId = productDisplayMetricId(column.id)
+  return metricId ? formatProductMetric(row.metrics[metricId]) : '—'
+}
+function displayState(row: ProductDataRow, column: ProductDisplayColumn) {
+  const metricId = productDisplayMetricId(column.id)
+  if (!metricId || row.metrics[metricId].state === 'available') return null
+  return PRODUCT_METRIC_STATE_LABELS[row.metrics[metricId].state]
+}
 </script>
 
 <template>
@@ -27,38 +46,48 @@ defineEmits<{ 'update:show': [show: boolean] }>()
         :title="row.title"
         :image-url="row.imageUrl"
       />
-      <NDescriptions :column="1" label-placement="left">
-        <NDescriptionsItem label="店铺">{{ row.shopName }}</NDescriptionsItem>
-        <NDescriptionsItem label="商品分组">{{
-          row.groupingAvailable === false ? '—' : row.groupName ?? '未分组'
-        }}</NDescriptionsItem>
-        <NDescriptionsItem label="统计日期"
-          >{{ row.period.startDate }} ～
-          {{ row.period.endDate }}</NDescriptionsItem
+      <section
+        v-for="group in PRODUCT_DATA_FIELD_GROUPS"
+        :key="group.id"
+        class="product-data-detail__group"
+      >
+        <h3 class="product-data-detail__group-title">{{ group.label }}</h3>
+        <NDescriptions
+          :column="1"
+          bordered
+          label-placement="left"
+          label-align="left"
+          :label-style="{ width: 'var(--field-width-sm)' }"
         >
-        <NDescriptionsItem label="数据时间">{{
-          dayjs(row.retrievedAt).format('YYYY-MM-DD HH:mm')
-        }}</NDescriptionsItem>
-        <NDescriptionsItem v-for="metric in PRODUCT_METRICS" :key="metric.id">
-          <template #label>
-            <NTooltip :content-style="PRODUCT_METRIC_TOOLTIP_STYLE"
-              ><template #trigger
-                ><span>{{ metric.label }}</span></template
-              >{{ productMetricTooltip(metric.id) }}</NTooltip
-            >
-          </template>
-          {{ formatProductMetric(row.metrics[metric.id]) }}
-          <span
-            v-if="row.metrics[metric.id].state !== 'available'"
-            class="product-data-detail__missing"
+          <NDescriptionsItem
+            v-for="column in groupColumns(group.id)"
+            :key="column.id"
           >
-            ·
-            {{
-              PRODUCT_METRIC_STATE_LABELS[row.metrics[metric.id].state]
-            }}</span
-          >
-        </NDescriptionsItem>
-      </NDescriptions>
+            <template #label>
+              <NTooltip
+                :disabled="!column.metricId"
+                :content-style="PRODUCT_METRIC_TOOLTIP_STYLE"
+              >
+                <template #trigger
+                  ><span>{{ column.label }}</span></template
+                >
+                {{
+                  column.metricId ? productMetricTooltip(column.metricId) : ''
+                }}
+              </NTooltip>
+            </template>
+            <span class="product-data-detail__value">
+              {{ displayValue(row, column) }}
+              <span
+                v-if="displayState(row, column)"
+                class="product-data-detail__missing"
+              >
+                · {{ displayState(row, column) }}
+              </span>
+            </span>
+          </NDescriptionsItem>
+        </NDescriptions>
+      </section>
     </div>
     <template #footer
       ><AppButton @click="$emit('update:show', false)"
@@ -73,6 +102,22 @@ defineEmits<{ 'update:show': [show: boolean] }>()
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  min-width: 0;
+}
+.product-data-detail__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.product-data-detail__group-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+.product-data-detail__value {
+  overflow-wrap: anywhere;
 }
 .product-data-detail__missing {
   color: var(--text-secondary);

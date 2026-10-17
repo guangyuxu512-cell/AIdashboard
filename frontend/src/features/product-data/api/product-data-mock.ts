@@ -15,6 +15,7 @@ import {
   type ProductGroup,
   type ProductMetricId,
 } from '../model/types'
+import { productDisplayMetricId } from '../model/display-fields'
 
 const photos = Object.values(
   import.meta.glob('../../product-selection/fixtures/photos/*.webp', {
@@ -185,7 +186,9 @@ export function createMockProductDataSource(
     if (field === 'selling') return row.selling
     if (field === 'carrier') return row.carrier
     if (field === 'updatedAt') return row.retrievedAt
-    const metric = row.metrics[field]
+    const metricId = productDisplayMetricId(field) ?? field
+    if (!(metricId in row.metrics)) return null
+    const metric = row.metrics[metricId as keyof ProductDataRow['metrics']]
     return metric.state === 'available' && metric.value !== null
       ? Number(metric.value)
       : null

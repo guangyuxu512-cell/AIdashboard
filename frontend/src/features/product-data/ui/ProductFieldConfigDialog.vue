@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NAlert, NTooltip } from 'naive-ui'
 import { AppButton, AppCheckbox, AppDialog } from '@/shared/ui'
 import {
@@ -10,61 +10,59 @@ import { productMetricTooltip } from '../model/metrics'
 import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 import {
   DEFAULT_PRODUCT_COLUMNS,
-  PRODUCT_COLUMNS,
-  type ProductColumnId,
+  PRODUCT_DATA_FIELD_GROUPS,
+  PRODUCT_DISPLAY_COLUMNS,
+  type ProductDisplayColumnId,
 } from '../model/types'
+import { orderProductDisplayColumns } from '../model/display-fields'
 
 const props = defineProps<{
   show: boolean
-  columns: ProductColumnId[]
+  columns: ProductDisplayColumnId[]
   userId: string | null
 }>()
 const emit = defineEmits<{
   'update:show': [show: boolean]
-  saved: [columns: ProductColumnId[]]
+  saved: [columns: ProductDisplayColumnId[]]
 }>()
-const draft = ref<ProductColumnId[]>([]),
-  order = ref<ProductColumnId[]>([]),
+const draft = ref<ProductDisplayColumnId[]>([]),
   error = ref<string | null>(null)
 watch(
   () => props.show,
   (show) => {
     if (!show) return
     draft.value = normalizeProductColumns(props.columns)
-    order.value = [
-      ...draft.value,
-      ...PRODUCT_COLUMNS.map((column) => column.id).filter(
-        (id) => !draft.value.includes(id),
-      ),
-    ]
     error.value = null
   },
   { immediate: true },
 )
-function toggle(id: ProductColumnId, checked: boolean) {
+const visibleCount = computed(() => draft.value.length)
+function toggle(id: ProductDisplayColumnId, checked: boolean) {
   draft.value = checked
     ? [...draft.value, id]
     : draft.value.filter((column) => column !== id)
 }
-function move(index: number, direction: number) {
-  const next = [...order.value],
-    target = index + direction
-  if (target < 0 || target >= next.length) return
-  ;[next[index], next[target]] = [next[target]!, next[index]!]
-  order.value = next
+function groupColumns(group: (typeof PRODUCT_DATA_FIELD_GROUPS)[number]['id']) {
+  return PRODUCT_DISPLAY_COLUMNS.filter((column) => column.group === group)
+}
+function groupSelected(
+  group: (typeof PRODUCT_DATA_FIELD_GROUPS)[number]['id'],
+) {
+  const columns = groupColumns(group)
+  return columns.every(({ id }) => draft.value.includes(id))
+}
+function toggleGroup(group: (typeof PRODUCT_DATA_FIELD_GROUPS)[number]['id']) {
+  const ids = groupColumns(group).map(({ id }) => id)
+  draft.value = groupSelected(group)
+    ? draft.value.filter((id) => !ids.includes(id))
+    : [...new Set([...draft.value, ...ids])]
 }
 function reset() {
   draft.value = [...DEFAULT_PRODUCT_COLUMNS]
-  order.value = [
-    ...DEFAULT_PRODUCT_COLUMNS,
-    ...PRODUCT_COLUMNS.map((column) => column.id).filter(
-      (id) => !DEFAULT_PRODUCT_COLUMNS.includes(id),
-    ),
-  ]
   error.value = null
 }
 function save() {
-  const columns = order.value.filter((id) => draft.value.includes(id))
+  const columns = orderProductDisplayColumns(draft.value)
   try {
     saveProductColumns(props.userId, columns)
     emit('saved', columns)
@@ -88,46 +86,49 @@ function save() {
     @update:show="$emit('update:show', $event)"
   >
     <div class="product-fields">
-      <div class="product-fields__fixed">商品信息 · 固定显示</div>
-      <div v-for="(id, index) in order" :key="id" class="product-fields__row">
-        <NTooltip
-          :disabled="!productMetricTooltip(id)"
-          :content-style="PRODUCT_METRIC_TOOLTIP_STYLE"
+      <div class="product-fields__summary">
+        <span>可选字段</span>
+        <span
+          >已显示 {{ visibleCount }} /
+          {{ PRODUCT_DISPLAY_COLUMNS.length }}</span
         >
-          <template #trigger>
-            <AppCheckbox
-              :model-value="draft.includes(id)"
-              @update:model-value="toggle(id, $event)"
-              >{{
-                PRODUCT_COLUMNS.find((column) => column.id === id)?.label
-              }}</AppCheckbox
-            >
-          </template>
-          {{ productMetricTooltip(id) }}
-        </NTooltip>
-        <div class="product-fields__actions">
-          <AppButton
-            size="small"
-            tone="text"
-            :disabled="index === 0"
-            :aria-label="
-              '上移' + PRODUCT_COLUMNS.find((column) => column.id === id)?.label
-            "
-            @click="move(index, -1)"
-            >上移</AppButton
-          >
-          <AppButton
-            size="small"
-            tone="text"
-            :disabled="index === order.length - 1"
-            :aria-label="
-              '下移' + PRODUCT_COLUMNS.find((column) => column.id === id)?.label
-            "
-            @click="move(index, 1)"
-            >下移</AppButton
-          >
-        </div>
       </div>
+      <div class="product-fields__fixed">
+        商品信息 / ID · 固定左列；操作 · 固定右列
+      </div>
+      <section
+        v-for="group in PRODUCT_DATA_FIELD_GROUPS"
+        :key="group.id"
+        class="product-fields__group"
+      >
+        <header class="product-fields__group-header">
+          <span>{{ group.label }}</span>
+          <AppButton
+            v-if="group.id !== 'basic'"
+            size="small"
+            tone="text"
+            @click="toggleGroup(group.id)"
+            >{{ groupSelected(group.id) ? '全不选' : '全选' }}</AppButton
+          >
+        </header>
+        <div class="product-fields__options">
+          <NTooltip
+            v-for="column in groupColumns(group.id)"
+            :key="column.id"
+            :disabled="!column.metricId"
+            :content-style="PRODUCT_METRIC_TOOLTIP_STYLE"
+          >
+            <template #trigger>
+              <AppCheckbox
+                :model-value="draft.includes(column.id)"
+                @update:model-value="toggle(column.id, $event)"
+                >{{ column.label }}</AppCheckbox
+              >
+            </template>
+            {{ column.metricId ? productMetricTooltip(column.metricId) : '' }}
+          </NTooltip>
+        </div>
+      </section>
       <NAlert v-if="error" type="error" :show-icon="false">{{ error }}</NAlert>
     </div>
     <template #footer-start
@@ -140,20 +141,39 @@ function save() {
 .product-fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-4);
 }
-.product-fields__fixed {
-  color: var(--text-secondary);
-  margin-bottom: var(--space-2);
-}
-.product-fields__row {
+.product-fields__summary,
+.product-fields__group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
-.product-fields__actions {
+.product-fields__summary span:last-child,
+.product-fields__fixed {
+  color: var(--text-secondary);
+}
+.product-fields__fixed {
+  margin-top: calc(var(--space-2) * -1);
+}
+.product-fields__group {
   display: flex;
-  gap: var(--space-1);
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.product-fields__group-header {
+  font-weight: var(--font-weight-medium);
+}
+.product-fields__options {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, var(--field-width-sm)), 1fr)
+  );
+  gap: var(--space-2) var(--space-4);
+}
+.product-fields__options :deep(.app-checkbox) {
+  min-width: 0;
 }
 </style>

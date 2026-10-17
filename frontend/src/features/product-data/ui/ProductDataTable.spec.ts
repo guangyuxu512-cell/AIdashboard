@@ -8,24 +8,17 @@ import { createMockProductDataSource } from '../api/product-data-mock'
 import { emptyProductFilters } from '../model/query'
 import {
   DEFAULT_PRODUCT_COLUMNS,
-  PRODUCT_COLUMNS,
+  PRODUCT_DISPLAY_COLUMNS,
   type ProductDataRow,
 } from '../model/types'
 import ProductDataTable from './ProductDataTable.vue'
-import {
-  PRIMARY_PRODUCT_METRICS,
-  LEGACY_PRODUCT_METRICS,
-} from '../model/metrics'
 
 describe('product data compact table consumer', () => {
-  it('enables all verified primary metric sorts in Real while leaving legacy fields unsupported', async () => {
+  it('renders only the approved whitelist and reuses verified sorts for both traffic aliases', async () => {
     const wrapper = mount(ProductDataTable, {
       props: {
         rows: [],
-        visibleColumns: [
-          ...PRIMARY_PRODUCT_METRICS,
-          ...LEGACY_PRODUCT_METRICS,
-        ].map((metric) => metric.id),
+        visibleColumns: PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id),
         checked: [],
         sort: null,
         loading: false,
@@ -39,21 +32,22 @@ describe('product data compact table consumer', () => {
       const columns = wrapper
         .findComponent(DataTable)
         .props('columns') as DataTableBaseColumn<ProductDataRow>[]
-      for (const metric of PRIMARY_PRODUCT_METRICS)
-        expect(columns.find((column) => column.key === metric.id)?.sorter).toBe(
+      expect(columns.slice(2, -1).map((column) => column.key)).toEqual(
+        PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id),
+      )
+      for (const field of PRODUCT_DISPLAY_COLUMNS)
+        expect(columns.find((column) => column.key === field.id)?.sorter).toBe(
           true,
         )
-      for (const metric of LEGACY_PRODUCT_METRICS)
-        expect(columns.find((column) => column.key === metric.id)?.sorter).toBe(
-          false,
-        )
+      expect(columns.some((column) => column.key === 'receive_amt')).toBe(false)
+      expect(columns.some((column) => column.key === 'stock_cnt')).toBe(false)
       await wrapper.setProps({ enabled: false })
       const disabledColumns = wrapper
         .findComponent(DataTable)
         .props('columns') as DataTableBaseColumn<ProductDataRow>[]
-      for (const metric of PRIMARY_PRODUCT_METRICS)
+      for (const field of PRODUCT_DISPLAY_COLUMNS)
         expect(
-          disabledColumns.find((column) => column.key === metric.id)?.sorter,
+          disabledColumns.find((column) => column.key === field.id)?.sorter,
         ).toBe(false)
     } finally {
       wrapper.unmount()
@@ -99,13 +93,20 @@ describe('product data compact table consumer', () => {
     expect(columns.slice(2, -1).map((column) => column.key)).toEqual(
       DEFAULT_PRODUCT_COLUMNS,
     )
+    for (const column of columns.slice(2, -1)) {
+      const width = PRODUCT_DISPLAY_COLUMNS.find(
+        (field) => field.id === column.key,
+      )!.width
+      expect(column).toMatchObject({ width, minWidth: width, maxWidth: width })
+    }
     expect(table.props('scrollX')).toBe(
       44 +
         304 +
         88 +
         DEFAULT_PRODUCT_COLUMNS.reduce(
           (sum, id) =>
-            sum + PRODUCT_COLUMNS.find((column) => column.id === id)!.width,
+            sum +
+            PRODUCT_DISPLAY_COLUMNS.find((column) => column.id === id)!.width,
           0,
         ),
     )

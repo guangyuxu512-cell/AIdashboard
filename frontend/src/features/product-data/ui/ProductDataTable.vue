@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
-import { useElementSize } from '@vueuse/core'
-import dayjs from 'dayjs'
+import { computed, h } from 'vue'
 import {
   NTooltip,
   type DataTableColumns,
@@ -15,18 +13,24 @@ import {
   formatProductMetric,
   PRODUCT_METRIC_STATE_LABELS,
 } from '../model/query'
-import { PRIMARY_PRODUCT_METRICS, productMetricTooltip } from '../model/metrics'
+import { productMetricTooltip } from '../model/metrics'
 import { PRODUCT_METRIC_TOOLTIP_STYLE } from './metric-tooltip'
 import {
-  PRODUCT_COLUMNS,
+  PRODUCT_DISPLAY_COLUMNS,
+  type ProductDisplayColumnId,
   type ProductColumnId,
   type ProductDataQuery,
   type ProductDataRow,
 } from '../model/types'
+import {
+  orderProductDisplayColumns,
+  productDisplayColumn,
+  productDisplayMetricId,
+} from '../model/display-fields'
 
 const props = defineProps<{
   rows: ProductDataRow[]
-  visibleColumns: ProductColumnId[]
+  visibleColumns: ProductDisplayColumnId[]
   checked: DataTableRowKey[]
   sort: ProductDataQuery['sort']
   loading: boolean
@@ -42,57 +46,24 @@ const emit = defineEmits<{
 }>()
 // Own column budget: 48px image + 8px gap + ID/copy slots, not selection's layout.
 const productColumnWidth = 304
-const table = ref<InstanceType<typeof DataTable> | null>(null)
-const { width: tableWidth } = useElementSize(() => {
-  const element = table.value?.$el
-  return element instanceof HTMLElement ? element : null
-})
-const fieldWidths = computed(() => {
-  const fields = props.visibleColumns.map((id) => ({
-    id,
-    width: PRODUCT_COLUMNS.find((column) => column.id === id)?.width ?? 0,
-  }))
-  const total = fields.reduce((sum, field) => sum + field.width, 0)
-  // Fill surplus width with the page's metric columns, not the product title.
-  const extra = Math.max(
-    0,
-    Math.floor(tableWidth.value) - 44 - productColumnWidth - 88 - total,
-  )
-  return new Map(
-    fields.map((field) => [
-      field.id,
-      field.width + (total ? (extra * field.width) / total : 0),
-    ]),
-  )
-})
+const displayedColumns = computed(() =>
+  orderProductDisplayColumns(props.visibleColumns),
+)
 const widths = computed(
   () =>
     44 +
     productColumnWidth +
     88 +
-    props.visibleColumns.reduce(
-      (sum, id) => sum + (fieldWidths.value.get(id) ?? 0),
+    displayedColumns.value.reduce(
+      (sum, id) => sum + (productDisplayColumn(id)?.width ?? 0),
       0,
     ),
 )
-function value(row: ProductDataRow, id: ProductColumnId) {
+function value(row: ProductDataRow, id: ProductDisplayColumnId) {
   if (id === 'shop') return row.shopName
-  if (id === 'group')
-    return row.groupingAvailable === false ? '—' : (row.groupName ?? '未分组')
-  if (id === 'selling')
-    return row.selling === null ? '—' : row.selling === 'self' ? '自营' : '合作'
-  if (id === 'carrier')
-    return row.carrier
-      ? {
-          card: '商品卡',
-          video: '短视频',
-          live: '直播',
-          'image-text': '图文',
-        }[row.carrier]
-      : '—'
-  if (id === 'updatedAt')
-    return dayjs(row.retrievedAt).format('YYYY-MM-DD HH:mm')
-  const metric = row.metrics[id],
+  const metricId = productDisplayMetricId(id)
+  if (!metricId) return '—'
+  const metric = row.metrics[metricId],
     text = formatProductMetric(metric)
   return metric.state === 'available'
     ? text
@@ -131,29 +102,30 @@ const columns = computed<DataTableColumns<ProductDataRow>>(() => [
         density: 'compact',
       }),
   },
-  ...props.visibleColumns.map((id) => {
-    const definition = PRODUCT_COLUMNS.find((column) => column.id === id)!
+  ...displayedColumns.value.map((id) => {
+    const definition = productDisplayColumn(id)!,
+      metricId = productDisplayMetricId(id),
+      width = definition.width
     return {
-      title: productMetricTooltip(id)
+      title: metricId
         ? () =>
             h(
               NTooltip,
               { contentStyle: PRODUCT_METRIC_TOOLTIP_STYLE },
               {
                 trigger: () => h('span', definition.label),
-                default: () => productMetricTooltip(id),
+                default: () => productMetricTooltip(metricId),
               },
             )
         : definition.label,
       key: id,
-      width: fieldWidths.value.get(id),
+      width,
+      minWidth: width,
+      maxWidth: width,
       align: 'center' as const,
       sorter:
         props.enabled &&
-        (!props.nativeOnly ||
-          id === 'shop' ||
-          id === 'updatedAt' ||
-          PRIMARY_PRODUCT_METRICS.some((metric) => metric.id === id)),
+        (!props.nativeOnly || id === 'shop' || metricId !== null),
       sortOrder:
         props.sort?.field === id
           ? props.sort.direction === 'asc'
@@ -190,7 +162,7 @@ function sortChanged(value: DataTableSortState | DataTableSortState[] | null) {
   if (
     !sorter ||
     !sorter.order ||
-    !PRODUCT_COLUMNS.some((column) => column.id === field)
+    !PRODUCT_DISPLAY_COLUMNS.some((column) => column.id === field)
   )
     emit('update:sort', null)
   else
@@ -203,7 +175,6 @@ function sortChanged(value: DataTableSortState | DataTableSortState[] | null) {
 
 <template>
   <DataTable
-    ref="table"
     class="product-data-table"
     :columns="columns"
     :data="rows"

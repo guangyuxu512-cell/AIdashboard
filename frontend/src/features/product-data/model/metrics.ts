@@ -195,6 +195,9 @@ export const PRIMARY_PRODUCT_METRICS = [
   },
 ] as const satisfies readonly VerifiedPrimaryMetricDefinition[]
 
+export type PrimaryProductMetricId =
+  (typeof PRIMARY_PRODUCT_METRICS)[number]['id']
+
 // Verified source-code union only, not a wire DTO, unit converter or Real mapper.
 export type ProductPlatformMetricCode =
   (typeof PRIMARY_PRODUCT_METRICS)[number]['platformCode']

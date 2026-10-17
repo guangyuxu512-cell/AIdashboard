@@ -155,6 +155,19 @@ describe('product data source boundaries', () => {
       })
       expect(all.items.at(-1)!.metrics.product_show_ucnt.state).toBe('missing')
     }
+    const canonicalRate = await source.list({
+      ...params,
+      pageSize: 100,
+      sort: { field: 'exposureClickRate', direction: 'desc' },
+    })
+    const trafficAlias = await source.list({
+      ...params,
+      pageSize: 100,
+      sort: { field: 'trafficExposureClickRate', direction: 'desc' },
+    })
+    expect(trafficAlias.items.map(({ id }) => id)).toEqual(
+      canonicalRate.items.map(({ id }) => id),
+    )
     const byId = await source.list({
       ...params,
       filters: {

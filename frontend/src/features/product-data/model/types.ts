@@ -1,7 +1,15 @@
 import type { ApiMode, PageResult } from '@/shared/api'
 import { PRODUCT_METRICS, type ProductMetricId } from './metrics'
+import { type ProductDisplayColumnId } from './display-fields'
 import type { ProductRangeDrafts } from './metric-ranges'
 export { PRODUCT_METRICS, type ProductMetricId } from './metrics'
+export {
+  DEFAULT_PRODUCT_COLUMNS,
+  PRODUCT_DATA_FIELD_GROUPS,
+  PRODUCT_DISPLAY_COLUMNS,
+  type ProductDisplayColumn,
+  type ProductDisplayColumnId,
+} from './display-fields'
 export type ProductMetricState =
   'available' | 'missing' | 'null' | 'invalid' | 'unit_unverified'
 export interface ProductMetric {
@@ -19,15 +27,8 @@ export const PRODUCT_COLUMNS = [
   { id: 'carrier', label: '商品载体', width: 120 },
   { id: 'updatedAt', label: '数据时间', width: 170 },
 ] as const
-export type ProductColumnId = (typeof PRODUCT_COLUMNS)[number]['id']
-export const DEFAULT_PRODUCT_COLUMNS: ProductColumnId[] = [
-  'shop',
-  'group',
-  'product_show_ucnt',
-  'clickPayRate',
-  'pay_cnt',
-  'receive_amt',
-]
+export type ProductColumnId =
+  (typeof PRODUCT_COLUMNS)[number]['id'] | ProductDisplayColumnId
 export interface ProductDataRow {
   id: string
   shopId: string

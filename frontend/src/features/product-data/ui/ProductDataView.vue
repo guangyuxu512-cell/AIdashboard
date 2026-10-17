@@ -194,7 +194,10 @@ function groupDeleted(id: string) {
 }
 function columnsSaved(columns: typeof visibleColumns.value) {
   visibleColumns.value = [...columns]
-  if (params.value.sort && !columns.includes(params.value.sort.field))
+  if (
+    params.value.sort &&
+    !new Set<string>(columns).has(params.value.sort.field)
+  )
     sort(null)
 }
 function batchSaved() {

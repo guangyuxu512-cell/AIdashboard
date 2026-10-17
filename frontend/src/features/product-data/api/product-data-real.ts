@@ -2,6 +2,7 @@ import { httpClient, type PageDto } from '@/shared/api'
 import { PRIMARY_PRODUCT_METRICS, PRODUCT_METRICS } from '../model/metrics'
 import { compileProductRangeQuery } from '../model/metric-ranges'
 import { shiftProductDecimal } from '../model/decimal-units'
+import { productDisplayMetricId } from '../model/display-fields'
 import type {
   ProductDataPage,
   ProductDataQuery,
@@ -123,8 +124,9 @@ export function productDataParams(query: ProductDataQuery) {
     updatedAt: 'retrieved_at',
   }
   if (sort) {
+    const displayMetricId = productDisplayMetricId(sort.field)
     const metric = PRIMARY_PRODUCT_METRICS.find(
-      (definition) => definition.id === sort.field,
+      (definition) => definition.id === (displayMetricId ?? sort.field),
     )
     if (!sorts[sort.field] && !metric?.platformCode)
       throw new Error(PRODUCT_DATA_SCOPE_UNAVAILABLE)

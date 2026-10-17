@@ -24,9 +24,9 @@ describe('product data personal fields', () => {
     window.localStorage.setItem(key, raw)
     const write = vi.spyOn(Storage.prototype, 'setItem')
     expect(readProductColumns('ratio-compat')).toEqual([
-      'clickPayRate',
       'shop',
       'exposureClickRate',
+      'clickPayRate',
     ])
     expect(write).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(key)).toBe(raw)
@@ -49,7 +49,7 @@ describe('product data personal fields', () => {
     expect(write).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(key)).toBe(raw)
   })
-  it('reads legacy and duplicate aliases without rewriting stored preferences, deduplicating in original order only on explicit save', () => {
+  it('keeps approved legacy choices, filters retired display keys and does not rewrite storage on read', () => {
     const key = 'control-center.product-data.columns.v1.legacy'
     const raw = JSON.stringify([
       'receive_amt',
@@ -63,26 +63,19 @@ describe('product data personal fields', () => {
     ])
     window.localStorage.setItem(key, raw)
     const write = vi.spyOn(Storage.prototype, 'setItem')
-    const expected = [
-      'receive_amt',
-      'exposureClickRate',
-      'shop',
-      'refund_amt',
-      'clickPayRate',
-      'stock_cnt',
-    ] as const
+    const expected = ['shop', 'exposureClickRate', 'clickPayRate'] as const
     expect(readProductColumns('legacy')).toEqual(expected)
     expect(write).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(key)).toBe(raw)
     saveProductColumns('legacy', [...expected])
     expect(JSON.parse(window.localStorage.getItem(key)!)).toEqual(expected)
   })
-  it('preserves column order per user and resets corrupt/unknown preferences', () => {
-    saveProductColumns('user-a', ['receive_amt', 'shop', 'product_click_ucnt'])
+  it('preserves each user selection in fixed business order and resets corrupt or wholly retired preferences', () => {
+    saveProductColumns('user-a', ['product_click_ucnt', 'shop', 'pay_amt'])
     saveProductColumns('user-b', ['pay_cnt'])
     expect(readProductColumns('user-a')).toEqual([
-      'receive_amt',
       'shop',
+      'pay_amt',
       'product_click_ucnt',
     ])
     expect(readProductColumns('user-b')).toEqual(['pay_cnt'])
@@ -90,11 +83,26 @@ describe('product data personal fields', () => {
     expect(normalizeProductColumns(['shop', 'shop', 'unknown'])).toEqual([
       'shop',
     ])
+    expect(normalizeProductColumns(['receive_amt', 'stock_cnt'])).toEqual(
+      DEFAULT_PRODUCT_COLUMNS,
+    )
     window.localStorage.setItem(
       'control-center.product-data.columns.v1.user-a',
       '{broken',
     )
     expect(readProductColumns('user-a')).toEqual(DEFAULT_PRODUCT_COLUMNS)
+  })
+  it('stores traffic aliases as view preferences while reusing their canonical metrics', () => {
+    saveProductColumns('aliases', [
+      'trafficClickPayRate',
+      'trafficExposureClickRate',
+      'shop',
+    ])
+    expect(readProductColumns('aliases')).toEqual([
+      'shop',
+      'trafficExposureClickRate',
+      'trafficClickPayRate',
+    ])
   })
   it('surfaces write failure rather than pretending preferences were saved', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
