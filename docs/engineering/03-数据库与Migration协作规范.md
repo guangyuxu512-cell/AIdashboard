@@ -47,7 +47,7 @@ Owner已正常同步Green157f940并交80d/915候选，Feature单一47与已应�
 pre47备份可读及hash，在精确 `control_center_integration` 正式46→47，旧23表/2020活动保持，
 并独立执行46项真实Integration PG，未在Integration运行Feature-only降级。真实HuanYu的1d178、7d229、30d344
 已完整发布，751快照/12767原始指标SQL/API/原证据一致，两个预算失败历史保留；392增量另7项PG逐例保护旧23表和真实商品4表通过。
-金额/比例接线及最终页面/生产仍待核销。Slot47继续active，
+金额/比例d3c接线新增10项Integration PG通过，每例27表完整保留；原751事实的SQL/API/Real Web显示及筛选通过，无新增平台请求。原生专项、最终Gate及生产仍待核销。Slot47继续active，
 Main已发布/生产代码仍0046；不得因Feature或局部实测结果提前释放Slot或将0047部署生产。
 Verify a075没有Schema变化或Migration Slot，离线Gate2不连接数据库，不核销或借用0047。
 

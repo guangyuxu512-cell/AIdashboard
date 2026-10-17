@@ -1,6 +1,6 @@
 # Verify 独立集成验收
 
-ca97接受候选 `a07529779920d3dcc66198d8eed6f97611fc8900` 的离线Gate 2；基线为Green `157f9400814aabad574b3d7860ba8bb8a6f00c3b`。正常no-ff为 `80c6f488a6c1d4599f5c97dfebb8072f97057845`，合后复验通过；尚待精确dev CI，不能据本机结果标Green或已部署。
+ca97接受候选 `a07529779920d3dcc66198d8eed6f97611fc8900` 的离线Gate 2；基线为Green `157f9400814aabad574b3d7860ba8bb8a6f00c3b`。正常no-ff为 `80c6f488a6c1d4599f5c97dfebb8072f97057845`，合后本机复验通过；首轮精确dev `54513edcfc955b6b4a0887e1e6927924753b98dd` 的托管CI失败，不是Green。原Owner追加最小返修 `2e14eb1ac8c8953f302dbb4f3cb354cc59ad1efc`，ca97审查后正常no-ff为 `47f2055d42da00e37b1cf9ebdbde5a585adbbd25`，待合后及新精确CI，不据本机结果宣称已部署。
 
 ## 范围与已知差异
 
@@ -33,6 +33,16 @@ ca97接受候选 `a07529779920d3dcc66198d8eed6f97611fc8900` 的离线Gate 2；�
 verify调用使用空临时用户/cwd、受限环境、已有依赖和无dotenv的Vite配置，私有包管理器安装树检测均为空。前置依赖准备为已有store的 `--offline --frozen-lockfile --ignore-scripts`，没有改锁、联网安装或改运行资源；不宣称整个准备阶段从未建立依赖布局。
 
 ## 准备失败与保护
+
+首轮托管CI为39021696142/attempt1：原backend、frontend-real-build、container-runtime均success；新增Windows verify-offline Job117364628422已实际进入完整profile，仅PC一例失败，781通过。`shop-mapper.spec.ts:60` 原断言createdAtDisplay=18:00、updatedAtDisplay=19:00，而UTC宿主为10:00/11:00；不是额度、调度或平台认证失败。ca97与Owner分别读取同一失败日志确认，不盲重跑旧SHA。
+
+2e14eb1仅4路径44行：Verify隔离子进程环境固定Asia/Shanghai，新增UTC/Los_Angeles父环境下的子进程回归和文档。父进程、系统/业务时区、原mapper及断言、28例外、锁文件、CI原三Job保持；不新增豁免或跳过。Owner已复现原4项在UTC的3通过/1失败并完成修后完整验证；此为Gate1，不能代替ca97合后验证或新Windows CI。
+
+ca97在实际合后47f2055工作树、明确Node24.19 PATH下独立完成：外层UTC的正式 `pnpm verify --full` exit0/255.10秒，867 Backend、782 PC、236 Mobile、83 Electron、136 Worker及适用lint/type/Real builds全部通过；9项Node负测含时区隔离、2 AST和4客户端探针通过，28 known、0 new/stale。外层Los_Angeles strict为exit1/17.50秒、28 failures，缺Python为exit2/0.67秒；三次私有manager安装树均空。28例外与lock哈希仍原值，运行服务/平台/Profile无动作。
+
+返修合后报告保存在 `.codex/gate2-contract-verify-2e14eb1a-utf8/`：full UTC SHA256 `c2c2b25d6cebf4b9da0668e92eb395c49ab16cebc9fc924a0c95201c88f1ef6b`，strict SHA256 `d6a53748c933ce50f22d6707979eeda912f9f9d7cbb746d0c48537d07d9064d8`，missing-Python SHA256 `2739d06e0ca0ffcbccf5230a088a8c4411c573c00a85db49e8c2d849dea2e112`。本机Gate2接受追加，托管Windows仍须新精确CI；不重跑旧545冒充返修。
+
+首轮artifact的普通CLI下载失败输出含临时只读能力地址，未再次回显或复制，已告知规划；该地址原定上海18:05:34到期。工具历史没有可编辑接口，未声称已删除。后续日志读取捕获错误且仅投影安全失败字段；不以此轮换无关生产或数据库凭据，不删除失败证据。
 
 初次归档将node_modules接到另一workspace，pnpm一致性检查在测试前拒绝；独立私有布局解决，未关闭检查。随后PATH误用系统Node20.18，pnpm缺少node:sqlite，客户端探针未执行，报告失败及4条stale；明确固定已有Node24.19 PATH后默认/严格/完整均实测。合后规范工作树也需用同一原锁离线ignore-scripts更新workspace元数据，锁SHA256 `cdf9803569d82da85ee9d71d3aa02641aef73f90eb884705073e9e522a70e796` 保持，原服务/窗口未切换；随后实际入口通过。初败日志/报告全部保留，不计入通过，不修改候选业务。
 
