@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.modules.product_selection.platform_io import SelectionStoredSessionIO
 from app.modules.product_selection.request_mapping import freeze_short_video_request
 from app.modules.product_selection.run_contract import SelectionDateOutcome, SelectionResolvedRequest, BRAND_TYPES
 from tests.test_selection_request_mapping import _original
 
 
-@pytest.mark.parametrize("brand,code", [("known", "0"), ("unknown", "1")])
+@pytest.mark.parametrize("brand,code", [("known", "1"), ("unknown", "0")])
 @pytest.mark.parametrize("period", ["realtime", "1d", "7d", "30d"])
 @pytest.mark.parametrize("price", [False, True])
 def test_confirmed_brand_freezes_and_roundtrips_actual_scope(brand, code, period, price):
@@ -18,7 +19,7 @@ def test_confirmed_brand_freezes_and_roundtrips_actual_scope(brand, code, period
     at = datetime(2026, 12, 31, 16, tzinfo=UTC)
     request = freeze_short_video_request(original, at)
     default = freeze_short_video_request(original.model_copy(update={"brand": "all"}), at)
-    assert request.version == 7 and request.scope.brand_type == code and type(request.scope.brand_type) is str
+    assert request.version == 9 and request.scope.brand_type == code and type(request.scope.brand_type) is str
     assert request.scope.model_dump(exclude={"brand_type"}) == default.scope.model_dump(exclude={"brand_type"})
     assert request.scope.price_bin == ("20-100" if price else "不限")
     assert request.fingerprint() != default.fingerprint()
@@ -35,6 +36,63 @@ def test_confirmed_brand_freezes_and_roundtrips_actual_scope(brand, code, period
         assert selected.provenance().backup_begin is None
 
 
+@pytest.mark.parametrize("brand,code,version,rank", [
+    ("known", "0", 7, (1, 10)),
+    ("unknown", "1", 7, (1, 10)),
+    ("known", "0", 8, (150, 200)),
+    ("unknown", "1", 8, (150, 200)),
+])
+def test_legacy_v7_v8_frozen_brand_runs_remain_readable_without_reinterpretation(
+    brand, code, version, rank,
+):
+    """Old rows retain the exact wire value that they actually sent."""
+    at = datetime(2026, 12, 31, 16, tzinfo=UTC)
+    original = _original(brand=brand, rank_from=rank[0], rank_to=rank[1])
+    default = freeze_short_video_request(original.model_copy(update={"brand": "all"}), at)
+    raw = default.model_dump(mode="json") | {"version": version}
+    raw["original"]["brand"] = brand
+    raw["scope"]["brand_type"] = code
+    raw["date_plan"]["backup_scope"]["brand_type"] = code
+    legacy = SelectionResolvedRequest.model_validate(raw)
+    selected = SelectionResolvedRequest.model_validate(
+        legacy.model_dump(mode="json")
+        | {"date_outcome": {"state": "backup", "fallback_reason": "primary_success_empty"}},
+    )
+    assert legacy.version == version
+    assert selected.actual_scope().brand_type == code
+    assert SelectionResolvedRequest.model_validate_json(legacy.model_dump_json()) == legacy
+
+
+@pytest.mark.parametrize("brand,code", [("all", "-1"), ("known", "1"), ("unknown", "0")])
+def test_all_three_saved_labels_reach_the_exact_final_platform_query(brand, code):
+    """Hard-coded wire expectations prevent the labels being swapped together."""
+    captured = []
+
+    class Connector:
+        def rank(self, context, query):
+            captured.append(query)
+            return None
+
+    request = freeze_short_video_request(
+        _original(brand=brand), datetime(2026, 10, 10, 16, tzinfo=UTC),
+    )
+    SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(None, request, 1)
+    assert captured == [{
+        "page_no": "1",
+        "page_size": "10",
+        "industry_id": "7",
+        "category_id": "1000009092,1000009142",
+        "brand_type": code,
+        "price_bin": "不限",
+        "search_info": "",
+        "rank_data_type": "1",
+        "begin_date": "2026/10/04 00:00:00",
+        "end_date": "2026/10/10 00:00:00",
+        "date_type": "21",
+        "activity_id": "",
+    }]
+
+
 @pytest.mark.parametrize("brand", [0, 1, "0", "1", "other", None, False])
 def test_unknown_or_platform_code_as_user_label_is_rejected(brand):
     with pytest.raises(ValueError):
@@ -46,7 +104,7 @@ def test_nondefault_brand_does_not_accept_changed_scope_or_business_error_probe(
     request = freeze_short_video_request(_original(brand="known"), datetime.now(UTC))
     raw = request.model_dump(mode="json")
     if location == "primary": raw["scope"]["brand_type"] = "-1"
-    elif location == "backup": raw["date_plan"]["backup_scope"]["brand_type"] = "1"
+    elif location == "backup": raw["date_plan"]["backup_scope"]["brand_type"] = "0"
     elif location == "original": raw["original"]["brand"] = "unknown"
     elif location == "price": raw["scope"]["price_bin"] = "20-100"
     elif location == "industry": raw["scope"]["industry_id"] = "5"
@@ -57,7 +115,7 @@ def test_nondefault_brand_does_not_accept_changed_scope_or_business_error_probe(
 
 
 def test_default_brand_and_old_price_date_versions_remain_unchanged():
-    assert dict(BRAND_TYPES) == {"all": "-1", "known": "0", "unknown": "1"}
+    assert dict(BRAND_TYPES) == {"all": "-1", "known": "1", "unknown": "0"}
     for period, version in [("realtime", 4), ("1d", 5), ("7d", 3), ("30d", 5)]:
         plain = freeze_short_video_request(_original(period=period), datetime.now(UTC))
         assert plain.version == version and plain.scope.brand_type == "-1"

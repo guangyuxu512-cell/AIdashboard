@@ -23,24 +23,37 @@ from app.platforms.exceptions import PlatformAuthenticationInvalidError
 from tests.integration.test_postgresql_product_selection import selection_context, _product, _api_client
 from tests.integration.test_postgresql_selection_strategies import _config
 from tests.integration.test_postgresql_selection_runs import _input
-from tests.integration.test_postgresql_selection_windows import _category_tree, WindowPlatform
+from tests.integration.test_postgresql_selection_windows import _category_tree, WindowPlatform, _submit
 
 pytestmark=pytest.mark.integration
 SETTINGS=Settings(_env_file=None,product_selection_execution_enabled=True,product_selection_schedule_enabled=True,product_selection_concurrency=3)
 
 
-def save(context,monkeypatch,kind='hourly'):
+def save(context,monkeypatch,kind='hourly',brand='all'):
     from app.modules.product_selection import strategy_service
     accepted=datetime.now(UTC).replace(minute=0,second=0,microsecond=0)-timedelta(minutes=30)
     class Clock:
         @classmethod
         def now(cls,tz=None):return accepted
     monkeypatch.setattr(strategy_service,'datetime',Clock)
-    choice=_input(context,rank_from=1,rank_to=1).original().model_dump(exclude={'shop_id'})
+    choice=_input(context,rank_from=1,rank_to=1,brand=brand).original().model_dump(exclude={'shop_id'})
     config=_config(context,conditions={'version':1,'request':choice},schedule={'scheduled':True,'kind':kind,'interval_hours':3,'daily_time':'09:00'})
     with Session(context[0]) as session:
         saved=SelectionStrategyService(session,settings=SETTINGS).save(context[4][0],config)
     return saved
+
+
+@pytest.mark.parametrize('brand,code',[('known','1'),('unknown','0')])
+def test_scheduled_and_manual_runs_use_same_corrected_brand_mapping(selection_context,monkeypatch,brand,code):
+    context=selection_context
+    saved=save(context,monkeypatch,brand=brand)
+    audit=trigger(context,saved.next_run_at)
+    with Session(context[0]) as session:
+        scheduled=SelectionRunService(session).get(context[4][0],audit.selection_run_id)
+    manual=_submit(context,_input(context,rank_from=1,rank_to=1,brand=brand),now=saved.next_run_at+timedelta(minutes=1))
+    assert scheduled.request_conditions.version==manual.execution.request_conditions.version==9
+    assert scheduled.request_conditions.scope.brand_type==manual.execution.request_conditions.scope.brand_type==code
+    assert scheduled.request_conditions.original.brand==manual.execution.request_conditions.original.brand==brand
 
 
 def trigger(context,at,reader=None,settings=SETTINGS):
