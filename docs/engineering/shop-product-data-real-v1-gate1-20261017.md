@@ -1,5 +1,24 @@
 # 商品数据真实接入 V1 技术验证与交接
 
+## Green 157 同步复验
+
+当前目标基线为 `157f9400814aabad574b3d7860ba8bb8a6f00c3b`。Owner已核远端dev与精确CI `39002413981` 的headSha一致，Backend、Frontend Real build、Container runtime三项success；这不是新Feature候选的CI结果。原分支无冲突正常no-ff同步，merge `17afc7e8d98a7b40102b4c31ee41099c59d22cfb` 的双亲为原5915009与Green157，591/c448/af6历史及全部本机材料保留。
+
+复验提交 `576cb9be264b889a654c8e5a8025f7b9dc1a7307`。本轮仅新增2项真实Feature PG回归，确认HealthService新可选before_platform_io回调默认为None时，不回滚调用方已经flush的写入：缓存路径不新增提交/回滚，强制成功验证保留原Accessor提交语义。商品API、执行器、Session适配、来源/单位契约、前端商品运行代码与原591逐字相同，无需业务兼容修订。新运行差异仅为已核Green的经营恢复与共享Session增量，未追加功能。
+
+| 同步后验证 | 实际结果 |
+| --- | --- |
+| Backend默认单测 | 958通过，0失败/错误/skip；`green157-backend-unit.xml` |
+| 真实Feature PG | 46通过，0失败/错误/skip；含新增默认事务2项、商品API/权限/发布/Session与独立双连接并发；`green157-postgres.xml` |
+| Frontend定向 | 商品、Product实体、经营恢复和共享列表密度共19文件137项通过；`green157-frontend-targeted.xml` |
+| lint/typecheck | 全前端eslint与vue-tsc均通过 |
+| Real production构建 | 576cb9b干净源码，18.36秒通过，86个JS；`.codex/product-data-real-v1/real-build-576cb9b`。商品chunk `ProductDataPage-6CUqSxQ0.js` SHA256 `D92E971AEFC95012E66BDF94AF75E3005E4AD77A58CB8016100ED9FAF7E8B7B5`；合入Green导致共享chunk引用变化，不能沿用旧A7哈希。商品Fixture标记0，inert预览引用1如实保留。 |
+| DB与文件护栏 | 前后审计精确Feature库、最小角色五项高权false、单一47、四商品表0行、五执行/调度开关false。47 blob仍为`5128cb64a5bf3a4913b55ae0147c7c57bced0fe6`，本轮不执行DDL；原空表降级闭环作为旧证据保留，明确排除该1项而非标为本轮通过。 |
+
+PG命令在Owner backend目录显式选既有5个product_data PG文件、`-m integration -k 'not test_new_empty_tables_downgrade_and_upgrade_keep_existing_marker'`，没有运行他域Integration夹具或写其它库。未连接Integration/生产，平台/Signer预算仍0，没有新服务、窗口或安装包；不要求用户重新登录或提供Cookie。下述原Gate1与未覆盖项保留，新的精确候选交ca97增量Gate2复核，不把旧Gate2A或新Green视为商品真实闭环/发布通过。
+
+## 5915009 初次 Gate 1 记录
+
 Owner 7d55，2026-10-17，分支 `feat/shop-product-data-real-v1`。本里程碑完成基础手动采集、入库、查询和前端接线的Gate 1技术自检，交ca97独立Gate 2。真实平台、Integration环境和新前端人工观察未覆盖，不表示商品数据完整真实闭环通过、Green或发布授权；不再要求用户重复登录或窗口测试。
 
 运行实现提交为 `c448deaabe5a68b4a50146f4928022fb26bf1385`；本交接记录随Feature追加，最终候选HEAD以Git及交接回执为准。目标Green `origin/dev=bef7093b755cea60fda55bbcc6177b5723d4738a`，提交前ls-remote再次一致。沿原分支正常no-ff保留UI `af6b737281c16e469fdc6300f80cdfb40cb5c981` 和c301，正常同步Green；不消费ca97未推送治理HEAD，不改写共享历史。
