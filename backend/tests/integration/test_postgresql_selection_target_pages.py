@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.product_selection.models import ProductSelectionRun as Run
 from app.modules.product_selection.request_mapping import freeze_short_video_request
+from app.modules.product_selection.run_contract import SelectionResolvedRequest
 from app.modules.product_selection.run_service import SelectionRunService
 from app.platforms.douyin.product_selection import CompassRankPage, CompassSelectionBusinessError
 from app.platforms.exceptions import PlatformSignerFailedError
