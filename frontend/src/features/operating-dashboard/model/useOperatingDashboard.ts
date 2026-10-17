@@ -1,9 +1,15 @@
-import { keepPreviousData, useMutation, useQuery } from '@tanstack/vue-query'
-import { computed, ref, watch } from 'vue'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/vue-query'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import type { SelectOption } from 'naive-ui'
 
 import { getPlatformDefinition } from '@/entities/platform'
 import { apiMode, getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 
 import {
   operatingDashboardApi,
@@ -19,6 +25,7 @@ import type {
   OperatingDashboardFilters,
   OperatingDashboardRefreshResult,
   OperatingDashboardSort,
+  OperatingDashboardSessionRecovery,
   OperatingDashboardTableRow,
 } from './types'
 
@@ -28,6 +35,7 @@ export interface OperatingDashboardRefreshFeedback {
 }
 
 type DashboardRefreshMode = 'fill_gaps' | 'recollect'
+type CollectionFeedbackMode = DashboardRefreshMode | 'session_recovery'
 
 interface DashboardRefreshRequest {
   filters: OperatingDashboardFilters
@@ -98,7 +106,7 @@ function isActiveCollection(job: OperatingDashboardCollectionJobDto): boolean {
 
 function getCollectionFeedback(
   job: OperatingDashboardCollectionJobDto,
-  mode: DashboardRefreshMode | null,
+  mode: CollectionFeedbackMode | null,
 ): OperatingDashboardRefreshFeedback {
   const { counts } = job
   const waitingForDailyBoundary = job.items.filter(
@@ -117,7 +125,8 @@ function getCollectionFeedback(
     }
   }
   if (waitingForDailyBoundary > 0) {
-    const activeCount = counts.pending + counts.running - waitingForDailyBoundary
+    const activeCount =
+      counts.pending + counts.running - waitingForDailyBoundary
     return {
       tone: 'warning',
       message:
@@ -129,13 +138,21 @@ function getCollectionFeedback(
   if (isActiveCollection(job)) {
     return {
       tone: 'warning',
-      message: `已提交更新：${counts.pending + counts.running} 条店铺日期数据正在处理中。`,
+      message:
+        mode === 'session_recovery'
+          ? `已提交恢复：${counts.pending + counts.running} 条店铺日期等待服务器复核会话及采集结果。`
+          : `已提交更新：${counts.pending + counts.running} 条店铺日期数据正在处理中。`,
     }
   }
   if (counts.failed > 0) {
     return {
       tone: job.status === 'failed' ? 'error' : 'warning',
-      message: `更新已结束：成功 ${counts.succeeded} 条，失败 ${counts.failed} 条，跳过 ${counts.skipped} 条。`,
+      message: `更新已结束：成功 ${counts.succeeded} 条，失败 ${counts.failed} 条，跳过 ${counts.skipped} 条。${
+        mode === 'session_recovery'
+          ? (job.items.find((item) => item.status === 'failed')
+              ?.failure_message ?? '')
+          : ''
+      }`,
     }
   }
   if (counts.skipped > 0) {
@@ -202,6 +219,11 @@ function getCollectionSubmissionFeedback(
  * formal Backend read/update contract, which sorts before pagination.
  */
 export function useOperatingDashboard() {
+  const auth = useAuthStore()
+  const queries = useQueryClient()
+  let recoveryGeneration = 0
+  const recoveryScope = () =>
+    `${auth.currentUser?.userId ?? ''}:${auth.activeTeamId ?? ''}:${auth.isSuperAccount}`
   const filters = ref<OperatingDashboardFilters>(cloneFilters(DEFAULT_FILTERS))
   const sort = ref<OperatingDashboardSort | null>(null)
   const page = ref(1)
@@ -209,7 +231,7 @@ export function useOperatingDashboard() {
   const refreshFeedback = ref<OperatingDashboardRefreshFeedback | null>(null)
   const collectionJobId = ref<string | null>(null)
   const collectionScope = ref<OperatingDashboardFilters | null>(null)
-  const collectionMode = ref<DashboardRefreshMode | null>(null)
+  const collectionMode = ref<CollectionFeedbackMode | null>(null)
   const settledCollectionJobId = ref<string | null>(null)
   const isMockMode = apiMode === 'mock'
   const mockSource = isMockMode ? createOperatingDashboardMockSource() : null
@@ -317,6 +339,60 @@ export function useOperatingDashboard() {
     },
   })
 
+  const recoveryMutation = useMutation({
+    mutationFn: (request: {
+      target: OperatingDashboardSessionRecovery
+      filters: OperatingDashboardFilters
+      scope: string
+      generation: number
+    }) => operatingDashboardApi.recoverCollectionItem(request.target),
+    onSuccess: (job, request) => {
+      if (
+        request.generation !== recoveryGeneration ||
+        request.scope !== recoveryScope()
+      )
+        return
+      collectionJobId.value = job.collection_job_id
+      collectionScope.value = cloneFilters(request.filters)
+      collectionMode.value = 'session_recovery'
+      settledCollectionJobId.value = null
+      // The accepted Job is already authoritative. Seed the existing query so
+      // busy remains true while its first progress GET is still in flight.
+      queries.setQueryData(
+        ['operating-dashboard', 'collection', job.collection_job_id],
+        job,
+      )
+      if (sameFilters(request.filters, filters.value))
+        refreshFeedback.value = getCollectionFeedback(job, 'session_recovery')
+      if (!isActiveCollection(job)) void realQuery.refetch()
+    },
+    onError: (error, request) => {
+      if (
+        request.generation !== recoveryGeneration ||
+        request.scope !== recoveryScope() ||
+        !sameFilters(request.filters, filters.value)
+      )
+        return
+      refreshFeedback.value = { tone: 'error', message: getErrorMessage(error) }
+      // A stale eligibility receipt is never permission. Refresh its read-only
+      // projection, without retrying the mutation or triggering another login.
+      void realQuery.refetch()
+    },
+    retry: false,
+  })
+
+  function clearRecoveryIntent(): void {
+    recoveryGeneration++
+    recoveryMutation.reset()
+    if (collectionMode.value !== 'session_recovery') return
+    collectionJobId.value = null
+    collectionScope.value = null
+    collectionMode.value = null
+    refreshFeedback.value = null
+  }
+  watch(recoveryScope, clearRecoveryIntent)
+  onScopeDispose(clearRecoveryIntent)
+
   watch(
     () => collectionJobQuery.data.value,
     (job) => {
@@ -401,7 +477,9 @@ export function useOperatingDashboard() {
   const refreshing = computed(() =>
     isMockMode
       ? mockRefreshMutation.isPending.value
-      : realRefreshMutation.isPending.value || activeCollection.value,
+      : realRefreshMutation.isPending.value ||
+        recoveryMutation.isPending.value ||
+        activeCollection.value,
   )
   const tableEmptyDescription = computed(() => {
     if (!isMockMode && realQuery.isError.value)
@@ -460,6 +538,30 @@ export function useOperatingDashboard() {
     if (!isMockMode) void realQuery.refetch()
   }
 
+  function recoverCollectionItem(
+    target: OperatingDashboardSessionRecovery,
+  ): void {
+    if (isMockMode || refreshing.value || !read.value?.collectionAvailable)
+      return
+    const visible = read.value.coverage.missingSamples.some(
+      (sample) =>
+        sample.sessionRecovery?.collectionJobId === target.collectionJobId &&
+        sample.sessionRecovery.collectionItemId === target.collectionItemId &&
+        sample.sessionRecovery.sessionVersion === target.sessionVersion,
+    )
+    if (!visible) return
+    collectionJobId.value = null
+    collectionScope.value = cloneFilters(filters.value)
+    collectionMode.value = 'session_recovery'
+    refreshFeedback.value = { tone: 'warning', message: '正在提交恢复请求…' }
+    recoveryMutation.mutate({
+      target,
+      filters: cloneFilters(filters.value),
+      scope: recoveryScope(),
+      generation: recoveryGeneration,
+    })
+  }
+
   return {
     apiMode,
     filters,
@@ -496,5 +598,6 @@ export function useOperatingDashboard() {
     refresh,
     recollect: () => refresh('recollect'),
     retryRead,
+    recoverCollectionItem,
   }
 }

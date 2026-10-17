@@ -60,6 +60,7 @@ const trendTitle = computed(() => {
           @update:model-value="dashboard.updateFilters"
           @refresh="dashboard.refresh"
           @recollect="dashboard.recollect"
+          @recover="dashboard.recoverCollectionItem"
         />
 
         <OperatingDashboardTable

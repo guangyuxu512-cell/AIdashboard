@@ -157,4 +157,5 @@ def retry_operating_collection(
         collection_job_id=collection_job_id,
         item_ids=request.item_ids,
         session_recovery_version=request.session_recovery_version,
+        revalidate_current_session=request.revalidate_current_session,
     )

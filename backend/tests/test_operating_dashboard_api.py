@@ -142,6 +142,7 @@ class DashboardServiceStub:
     def __init__(self) -> None:
         self.read_calls: list[dict[str, object]] = []
         self.enqueue_calls: list[dict[str, object]] = []
+        self.retry_calls: list[dict[str, object]] = []
 
     def read(self, **kwargs: object) -> OperatingDashboardRead:
         self.read_calls.append(kwargs)
@@ -166,7 +167,8 @@ class DashboardServiceStub:
     def get_collection_job(self, **_: object) -> OperatingDataCollectionJobRead:
         return collection_job()
 
-    def retry_failed_collection_items(self, **_: object) -> OperatingDataCollectionJobRead:
+    def retry_failed_collection_items(self, **kwargs: object) -> OperatingDataCollectionJobRead:
+        self.retry_calls.append(kwargs)
         return collection_job()
 
 
@@ -206,6 +208,29 @@ def test_read_uses_formal_sort_and_pagination_contract() -> None:
     pagination = service.read_calls[0]["pagination"]
     assert getattr(pagination, "page") == 2
     assert getattr(pagination, "page_size") == 10
+
+
+def test_retry_keeps_old_default_and_maps_explicit_revalidation() -> None:
+    for flag in (None, False, True):
+        service = DashboardServiceStub()
+        body = {"item_ids": [str(uuid4())], "session_recovery_version": 3}
+        if flag is not None:
+            body["revalidate_current_session"] = flag
+        response = request("POST", f"/api/v1/operating-dashboard/collections/{JOB_ID}/retry", service=service, json=body)
+        assert response.status_code == 202
+        assert service.retry_calls[0]["revalidate_current_session"] is (flag is True)
+
+
+def test_revalidation_requires_an_explicit_single_item_version_and_boolean() -> None:
+    for body in (
+        {"item_ids": [str(uuid4())], "revalidate_current_session": True},
+        {"item_ids": [str(uuid4()), str(uuid4())], "session_recovery_version": 3, "revalidate_current_session": True},
+        {"item_ids": [str(uuid4())], "session_recovery_version": 3, "revalidate_current_session": "true"},
+    ):
+        service = DashboardServiceStub()
+        response = request("POST", f"/api/v1/operating-dashboard/collections/{JOB_ID}/retry", service=service, json=body)
+        assert response.status_code == 422
+        assert service.retry_calls == []
 
 
 def test_read_rejects_half_of_a_sort_contract_before_service_execution() -> None:

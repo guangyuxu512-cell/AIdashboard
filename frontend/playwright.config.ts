@@ -9,6 +9,7 @@ const realTestFiles = [
   '**/auth-real.spec.ts',
   '**/parameter-presets-real-api.spec.ts',
   '**/real-api.spec.ts',
+  '**/operating-dashboard-recovery-real.spec.ts',
   '**/ai-workbench-real-api.spec.ts',
   '**/ai-workbench-real-backend.spec.ts',
 ]

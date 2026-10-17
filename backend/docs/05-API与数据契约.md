@@ -514,6 +514,24 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
   item 进度、阶段、可重试状态与耗时；不返回 Cookie、Session、签名、完整平台响应或非本 Scope 的 item。
 - `POST /api/v1/operating-dashboard/collections/{collection_job_id}/retry`：只接受当前 Actor 可读取的 retryable failed item，或用户明确指定的 `DOUYIN_OPERATING_DATA_INVALID_RESPONSE / response_parse` 原失败 item；重新授权暂停、授权范围外、已跳过或成功 item 都不能藉此绕过既有 Session/Shop 校验。
 
+`coverage.missing_samples` 可附带 `session_recovery`，只投影当前授权缺失样本的原
+`collection_job_id / collection_item_id`、当前 `session_version` 和 `requires_validation`。
+没有资格时返回 `recovery_block_reason` 安全文案；不返回平台凭据或原始错误。
+读取仅批量查询元数据，不验证 Session、不入队、不调用平台。页面在原“查看缺失”中提供明确恢复动作，
+使用上述既有 retry 接口提交单个原失败项及 `session_recovery_version`，然后复用原 Job 进度查询。
+资格展示与提交复用后端同一判断，提交仍须重新校验，过期的页面回执不是授权。
+`VALID` 状态不表示验证时间仍新鲜；`requires_validation=true` 明确需要服务器权威复核，不能通过
+补造验证时间或重复要求用户登录跳过这一步。普通更新不因这份投影自动发起恢复。
+
+原 retry Body 可显式传入 `revalidate_current_session=true`（默认 `false`），且必须同时提交单个原
+Item 和 `session_recovery_version`。它只允许已有 DAILY/FAILED/retryable 的
+`session_preparation / SHOP_SESSION_VALIDATION_FAILED`，当前 Session 仍须 VALID、精确版本、
+捕获晚于原失败、时间合法、店铺启用且身份/权限有效；不扩展其它失败类型。
+旧默认提交保留 300 秒等既有 freshness 配置边界。显式选择时，仅允许将需要复核的当前会话排入原
+`session-restored:{原Item}` 单次队列；原 collector 必须先通过 `HealthService.check(force=False)`，
+才可请求经营数据。HTTP 202 仅表示排队，不表示复核或采集成功。跨进程/版本的同一原项只恢复一次，
+失败和租约超时仍终态，旧失败及累计次数不改。
+
 日金额使用整数分，响应/存储都不使用浮点累计；`null` 表示平台字段或完整日期覆盖缺失，不是 0。HTTP 200
 不能替代平台业务成功：平台 Connector 在固定路径解析、身份/Session 验证、签名、业务状态与指标结构均成功后，
 才可写入日事实。查询中的更新时间只来自实际成功采集时间。
