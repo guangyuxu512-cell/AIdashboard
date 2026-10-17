@@ -34,7 +34,7 @@ Main在READ ONLY事务中按存储的真实生产gy0005授权经正式ActorConte
 本轮选品发布收口；后续四组残留清理Candidate1aec1bc独立Gate2/CI，未包含在21229eff，
 其生产发布须另行批准，不再push main触发相同版本部署。
 
-最终Green dev为`1773a97d27c56512a620337e3259cceabadca2f1`，远端dev精确相同且工作区干净。
+本选品发布使用的Green dev为`1773a97d27c56512a620337e3259cceabadca2f1`，交接时远端dev精确相同且工作区干净。
 精确[CI 38789232361](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38789232361)
 attempt1的backend/frontend-real-build/container-runtime三Job全部success。Gate2与合后回归通过，
 现正式释放0046 Slot；后续本地纯治理提交不是新Green。Main据该精确点执行Release Gate、

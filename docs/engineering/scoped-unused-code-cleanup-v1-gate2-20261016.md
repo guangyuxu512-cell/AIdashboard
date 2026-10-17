@@ -49,6 +49,13 @@ Gate2技术审查PASS，可按正常no-ff集成和合后定向复验，再推精
 
 ## 合并与精确CI
 
+最终清理Green dev为`5a18bd0390cb4b8cbed637d412f7482cefff3f36`，远端dev精确相同，
+该点工作区干净。[CI 38793358927](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38793358927)
+attempt1的backend/frontend-real-build/container-runtime三Job全部success。
+Gate2及合后验证已完成；后续本地CI核销治理HEAD不是新Green。
+生产保持选品`21229eff5ddf9900b8f38b13c89382952f90ee7b`/0046，本清理未合main、
+未部署，须另行取得生产发布授权。无剩余开发/验收阻塞，也不需要用户重复视觉操作。
+
 已正常no-ff合入`5131c61b38925cc3bf38f5cc02359aee2e1ebcf7`，parents为
 治理记录03d67370及精确1aec1bc；无冲突或候选代码修补。合后所有运行源码与1aec逐字相同，
 只有先前独立治理文档差异。
@@ -59,5 +66,5 @@ Gate2技术审查PASS，可按正常no-ff集成和合后定向复验，再推精
 唯一开发Electron77908及8100/5180实际PID均保持，未重启/替换885运行现场或访问数据库。
 AGENTS/旧迁移/壳/依赖/部署脚本均无变化。
 
-推送后须等精确dev CI三Job全部success才标本清理Green；此处暂不预写结果。
+推送后已取得上述精确dev CI三Job全部success，再核销本清理Green，不以本地测试代替CI。
 生产仍为选品21229eff/0046，清理发布另行批准，不合main、不随选品重复部署。

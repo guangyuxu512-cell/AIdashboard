@@ -121,6 +121,18 @@ async function validateSession(): Promise<void> {
 <template>
   <section class="shop-detail__section shop-connection-section">
     <h3>账号与连接</h3>
+    <NAlert
+      v-if="
+        (loading || error) &&
+        loginFeedback?.identityMismatch &&
+        loginFeedback.error
+      "
+      type="error"
+      :bordered="true"
+      class="shop-connection-section__recovery"
+    >
+      {{ loginFeedback.error }}
+    </NAlert>
     <LoadingState v-if="loading" description="正在加载账号与连接…" />
     <ErrorState
       v-else-if="error"
@@ -192,9 +204,11 @@ async function validateSession(): Promise<void> {
             {{
               loginFeedback?.opening
                 ? '打开中…'
-                : recovering
-                  ? '登录中…'
-                  : '登录'
+                : loginFeedback?.retryReady || loginFeedback?.retryBlocked
+                  ? '登录'
+                  : recovering
+                    ? '登录中…'
+                    : '登录'
             }}
           </AppButton>
           <AppButton v-if="recovering" @click="login?.cancel(shop.shopId)"

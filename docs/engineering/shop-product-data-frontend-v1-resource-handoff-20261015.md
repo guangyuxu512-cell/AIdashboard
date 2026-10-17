@@ -3,6 +3,32 @@
 Owner 7d55，Integration ca97；规划聊天直接人类确认前端方向并要求正式分配，Main仅负责未来合格Release部署。
 本阶段仅独立商品数据前端及源码/契约只读盘点，不与81a1候选池修复合并，不接真实后台/平台/调度/通知。
 
+## 2026-10-16 接回Gate2与最新基线
+
+ca97已直接回读规划人类turn01a14160-06e9-7183-8ad5-13d9d4e6b4e4、消息
+01a14160-079e-7f83-a976-e2d9233bf306：“商品数据先推进”。本轮恢复原UI_ONLY验收，
+不将商品数据发布生产，不混生产选品21229eff或尚未另获发布授权的清理。
+
+当前精确Green为5a18bd0390cb4b8cbed637d412f7482cefff3f36，CI38793358927三Job success；
+ca97治理HEAD不是Green。旧完整候选03bdc0238465bcad79701af02c04b9811f96a51b保留，
+其共享消费03d336双父为b2ccc2f/141fec65，与当前Green的merge-base为纯共享1a8078。
+ca97只读merge-tree确认正规合并无冲突，已交Owner在原分支正常no-ff同步精确Green，
+再封存新完整Candidate与匹配增量验证；不rebase/reset或在dev代修，不重做已通过Radio返修。
+继承最新Green是基线同步，不把清理单独再合一次或借机发布生产。
+
+7d55仍只有原4177 Mock/strictPort资源，已恢复且仍归Owner；无Backend/DB/Slot/Signer或平台
+调用资源。最新完整b9fa5717已正常同步精确Green，ca97独立51项/lint/type/Real build及13blob通过。
+用户回复“已退出”且客户端进程0后，ca97将5180切到该归档，Real边界浏览器1项PASS后切明确Mock，
+正常打开原Profile唯一1.0.6开发Electron并置前；8100原进程/0046/Session及生产均不动。
+原生AX已确认5180/#/shops和Mock管理员预览；截图FrameArrived超时、导航点击geometry不可用，
+已停止原生输入，请用户仅从“数据中心→商品数据”进入。未声称商品数据页已现场确认或Gate2B通过，
+不以网页截图、构建或启动替代原生验收，不另开实例或更换Profile。
+
+Owner只读契约盘点并行继续：源码/旧项目/既有请求层与样本响应的字段/单位/筛选/排序/近1/7/30/
+完整分页逐项列证据。不得执行cURL、追加真实请求或猜自定义日期；“最新+上一版”尚非已批准Schema，
+无新迁移/调度/数据库权限。盘点和UI候选准备互不阻塞，前端验收通过也不等于真实接入完成。
+以下9bb/旧端口现场等为最初分配阶段历史，当前以本节和后续精确Gate2记录为准。
+
 ## 基线与工作树
 
 - 最新精确Green `9bb64ac76bf9e0f51fb1715517cf8c18cef63e22`，CI38597874343三项success；

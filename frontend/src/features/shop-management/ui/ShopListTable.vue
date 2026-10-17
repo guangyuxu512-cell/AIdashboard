@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
-import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
+import { NTooltip, type DataTableColumns, type DataTableRowKey } from 'naive-ui'
 
 import {
   getShopExecutionDeviceSummary,
@@ -13,6 +13,7 @@ import type { ShopLoginFeedback } from '../model/useShopLogin'
 import { ShopSessionStatusTag } from '@/entities/shop-session'
 import DataTable from '@/shared/components/DataTable.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 
 const props = defineProps<{
   rows: ShopListItemViewModel[]
@@ -56,7 +57,20 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
     key: 'loginStatus',
     width: 96,
     align: 'center',
-    render: (shop) => h(ShopSessionStatusTag, { status: shop.loginStatus }),
+    render: (shop) => {
+      const feedback = props.loginFeedback?.get(shop.shopId)
+      if (!feedback?.identityMismatch)
+        return h(ShopSessionStatusTag, { status: shop.loginStatus })
+      return h(NTooltip, null, {
+        trigger: () =>
+          h(StatusTag, {
+            label: '店铺不符',
+            tone: 'warning',
+            'aria-label': feedback.error ?? undefined,
+          }),
+        default: () => feedback.error,
+      })
+    },
   },
   ...(props.showOwner
     ? [
@@ -134,9 +148,12 @@ const columns = computed<DataTableColumns<ShopListItemViewModel>>(() => [
                 () =>
                   props.loginFeedback?.get(shop.shopId)?.opening
                     ? '打开中…'
-                    : props.loginFeedback?.get(shop.shopId)?.busy
-                      ? '登录中…'
-                      : '登录',
+                    : props.loginFeedback?.get(shop.shopId)?.retryReady ||
+                        props.loginFeedback?.get(shop.shopId)?.retryBlocked
+                      ? '登录'
+                      : props.loginFeedback?.get(shop.shopId)?.busy
+                        ? '登录中…'
+                        : '登录',
               ),
             ]
           : []),

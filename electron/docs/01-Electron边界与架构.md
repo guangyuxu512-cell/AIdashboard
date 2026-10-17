@@ -53,6 +53,16 @@ partition 与本地 Profile mapping。
 
 已有店铺登录与列表/详情同一流程：复用本机 Profile，等待正常人工登录；已登录时自动捕获，后端用当前候选重新验证真实目标身份后才 CAS 保存。成功结束 attempt、清除 Buffer/计时器并原子释放租约，保留平台浏览窗直到用户关闭；再次点击先复核当前权限再只置前，不重新保存。提前关闭、取消、失败、错店不覆盖原 Session。主窗口关闭/应用退出立即关闭捕获及保留窗口，不能等待离线 Backend 才清理；释放失败沿用服务器租约到期兜底。
 
+### 抖店身份来源与错店纠正
+
+当前抖店 Adapter 只从已验证的 `shop_info_v2` 响应取得店铺身份：HTTP 2xx、业务 `st` 缺省/null/0/"0"、`data` 为对象，且 `data.shop_id` 与 `data.shop_name` 均有明确可读值。字符串去首尾空白；数字 ID 只接受正安全整数，不舍入长 ID。账户 ID、账户名称、嵌套同名字段和数组第一项都不能替代店铺身份。撤下四个没有明确 ShopID 契约的旧 fallback 请求；当前只使用原 probeIndex 0，旧索引仅保留历史诊断含义。
+
+已有店铺的候选刷新失败会销毁内存 payload、释放本次租约，保留当前平台窗口和原 ShopSession。只有 Backend 的 `candidate_identity` 阶段或明确 `PLATFORM_IDENTITY_MISMATCH` 才显示本次店铺不匹配；编码、Schema、认证、权限、版本、网络及未知失败分别处理，不把它们统称错店。这个分类描述候选与目标的校验结果，不证明用户登错账号，也不追认历史故障的唯一原因。
+
+用户可在原窗口自行退出或切换正确账号，再点击原固定“登录”入口。继续前重新获取授权租约与当前 expected version，Main 仅允许原目标、同 attempt、同人员浏览器 Session 及新 lease 重启捕获。相同被拒候选的指纹只在内存用于阻止重复提交；一次 attempt 至多三个显式刷新 POST，达到上限后只能取消重开。等待继续期间 `get-status` 仅读状态，不重新探测平台、捕获或自动 POST。
+
+自然关闭在续租等待、续租拒绝和超时阶段仍可被观察；取消、关窗、上下文变化及成功后清除本次局部反馈与候选。迟到租约按自身 ID 释放，迟到捕获清零，不能影响新一轮。不能通过改店铺绑定、自动清 Cookie/Profile 或复用旧租约绕过验证。新店 Onboarding 自动关闭及其它平台身份识别方式保持原契约。
+
 取消、完成、应用退出和 30 分钟超时都会清空 Buffer；Session payload、密码不得写入磁盘或日志。Management Login Profile 仅保存完成接入后的平台与 partition 映射，不保存 Cookie payload。
 
 1.0.6关闭恢复收口：同一attempt的状态检测仍single-flight，但原生`closed`、显式取消及超时会

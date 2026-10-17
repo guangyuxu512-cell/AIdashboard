@@ -21,6 +21,31 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('management login terminal polling', () => {
+  it('can watch a retained failed refresh for native close without restarting capture or overlapping IPC', async () => {
+    const getStatus = vi
+      .fn()
+      .mockResolvedValueOnce(status('identified'))
+      .mockResolvedValueOnce(status('failed'))
+      .mockResolvedValue(status('closed'))
+    const onStatus = vi.fn(
+      (value: ManagementLoginStatusResult) => value.status !== 'closed',
+    )
+    const onError = vi.fn()
+    startManagementLoginPolling({
+      attemptId: 'attempt',
+      getStatus,
+      onStatus,
+      onError,
+    })
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(getStatus).toHaveBeenCalledTimes(3)
+    expect(onStatus.mock.calls.map(([value]) => value.status)).toEqual([
+      'identified',
+      'failed',
+      'closed',
+    ])
+    expect(onError).not.toHaveBeenCalled()
+  })
   it('keeps one IPC while detection is pending and stops after its closed receipt', async () => {
     const pending = deferred<ManagementLoginStatusResult>()
     const getStatus = vi.fn(() => pending.promise)
