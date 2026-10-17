@@ -305,10 +305,12 @@ class SessionAwareDouyinOperatingDataCollector:
         health_service: ShopSessionHealthService,
         session_accessor: ShopSessionAccessor,
         connector: DouyinOperatingDataConnector,
+        before_platform_io: Callable[[], None] | None = None,
     ) -> None:
         self._health_service = health_service
         self._session_accessor = session_accessor
         self._connector = connector
+        self._before_platform_io = before_platform_io
 
     def collect(self, request: DailyCollectionRequest) -> CollectionOutcome:
         started_at = monotonic()
@@ -380,6 +382,8 @@ class SessionAwareDouyinOperatingDataCollector:
             )
 
         preparation_duration_ms = round((monotonic() - preparation_started_at) * 1000)
+        if self._before_platform_io is not None:
+            self._before_platform_io()
         try:
             read = self._connector.fetch_daily_metrics(
                 request.shop_id,
@@ -578,6 +582,14 @@ def collect_douyin_operating_data_once(
     resolved_settings = settings or get_settings()
     cipher = get_secret_cipher()
     with get_session_factory()() as session:
+        def finish_owned_read() -> None:
+            # This factory created the exclusive Session above. Do not use this
+            # callback on a caller's Session: an empty dirty set cannot prove
+            # that it contains no already-flushed writes.
+            if session.new or session.dirty or session.deleted:
+                raise RuntimeError("Operating collector read boundary contains pending writes")
+            session.rollback()
+
         accessor = ShopSessionAccessor(session, cipher)
         health_service = ShopSessionHealthService(
             session,
@@ -585,11 +597,13 @@ def collect_douyin_operating_data_once(
             create_platform_connectors(),
             session_service=ShopSessionService(session, cipher),
             settings=resolved_settings,
+            before_platform_io=finish_owned_read,
         )
         return SessionAwareDouyinOperatingDataCollector(
             health_service=health_service,
             session_accessor=accessor,
             connector=DouyinOperatingDataConnector(),
+            before_platform_io=finish_owned_read,
         ).collect(request)
 
 

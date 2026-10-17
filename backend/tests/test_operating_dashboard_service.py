@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -11,15 +12,19 @@ from app.modules.operating_dashboard.exceptions import (
     OperatingDashboardInvalidRequestError,
 )
 from app.modules.operating_dashboard.models import ShopOperatingDailyMetric
-from app.modules.operating_dashboard.repository import CollectionItemState, DashboardShop
+from app.modules.operating_dashboard.repository import CollectionItemState, DashboardShop, SessionRecoveryMetadata
 from app.modules.operating_dashboard.schemas import OperatingDashboardDateRangeRead
 from app.modules.operating_dashboard.service import (
     COLLECTION_WAITING_FOR_DAILY_BOUNDARY,
     OperatingDashboardService,
+    _is_session_recovery_failure,
+    _session_recovery_block_reason,
+    _session_recovery_requires_validation,
     _prioritized_collection_items,
     operating_collection_wait_until,
 )
 from app.modules.shops.enums import ShopPlatform
+from app.modules.sessions.enums import ShopSessionStatus
 
 
 @pytest.mark.parametrize("days", [1, 30, 60])
@@ -98,6 +103,107 @@ def _recovery_service() -> OperatingDashboardService:
             _env_file=None,
         ),
     )
+
+
+@pytest.mark.parametrize(
+    "kind,code,stage,retryable,status,allowed",
+    [
+        ("daily", "SHOP_SESSION_VALIDATION_FAILED", "session_preparation", True, "failed", True),
+        ("manual_refresh", "SHOP_SESSION_VALIDATION_FAILED", "session_preparation", True, "failed", False),
+        ("retry", "SHOP_SESSION_VALIDATION_FAILED", "session_preparation", True, "failed", False),
+        ("daily", "DOUYIN_OPERATING_DATA_REJECTED", "platform_response", True, "failed", False),
+        ("daily", "DOUYIN_OPERATING_DATA_INVALID_RESPONSE", "response_parse", False, "failed", False),
+        ("daily", "SHOP_SESSION_VALIDATION_FAILED", "session_preparation", False, "failed", False),
+        ("daily", "SHOP_SESSION_VALIDATION_FAILED", "session_preparation", True, "paused_reauthorization", False),
+    ],
+)
+def test_session_recovery_eligibility_keeps_the_existing_failure_whitelist(
+    kind, code, stage, retryable, status, allowed,
+) -> None:
+    state = _collection_state(
+        collection_item_id=uuid4(), failure_code=code, failure_stage=stage,
+        retryable=retryable, status=status, attempt_count=3,
+    )
+    assert _is_session_recovery_failure(state, job_kind=kind) is allowed
+
+
+def test_valid_session_label_is_not_fresh_validation_and_never_requests_relogin() -> None:
+    now = datetime(2026, 10, 17, 3, tzinfo=UTC)
+    item = _collection_state(
+        collection_item_id=uuid4(), failure_code="SHOP_SESSION_VALIDATION_FAILED",
+        failure_stage="session_preparation", retryable=True, attempt_count=3,
+        updated_at=now - timedelta(days=2),
+    )
+    shop = DashboardShop(item.shop_id, "synthetic recovery shop", ShopPlatform.DOUYIN, True)
+    context = SessionRecoveryMetadata(
+        shop.shop_id, 3, ShopSessionStatus.VALID,
+        now - timedelta(days=1), now - timedelta(minutes=34), True,
+    )
+    params = dict(
+        item=item, job_kind="daily", shop=shop, context=context, history=[item],
+        metric=None, already_used=False, now=now, freshness_seconds=300,
+        expected_version=3,
+    )
+    reason = _session_recovery_block_reason(**params)
+    assert reason == "当前有效会话需要服务器复核后才能恢复，无需重复登录"
+    assert _session_recovery_requires_validation(context, now=now, freshness_seconds=300)
+    # A read can describe the necessary explicit action; this does not enqueue,
+    # validate, or change the original strict submission contract.
+    assert _session_recovery_block_reason(**params, require_fresh_validation=False) is None
+    params["context"] = replace(context, validated_at=now - timedelta(seconds=1))
+    assert _session_recovery_block_reason(**params) is None
+    params["already_used"] = True
+    assert _session_recovery_block_reason(**params) == "该日期已执行过一次会话恢复，请查看最近结果"
+    assert item.attempt_count == 3 and item.status == "failed"
+
+
+def test_recovery_projection_matches_eight_exhausted_daily_items_without_writes_or_validation() -> None:
+    """Production-shaped metadata, synthetic shops/IDs; no real credentials/DB."""
+    now = datetime(2026, 10, 17, 3, 10, tzinfo=UTC)
+    shops = [DashboardShop(uuid4(), f"synthetic recovery {n}", ShopPlatform.DOUYIN, True) for n in (1, 2)]
+    states = []
+    for shop, day_count in zip(shops, (2, 6), strict=True):
+        for offset in range(day_count):
+            business_date = date(2026, 10, 10) + timedelta(days=offset)
+            failure_time = datetime.combine(business_date + timedelta(days=1), time(hour=1), tzinfo=UTC)
+            states.append(replace(_collection_state(
+                collection_item_id=uuid4(), failure_code="SHOP_SESSION_VALIDATION_FAILED",
+                failure_stage="session_preparation", retryable=True,
+                attempt_count=3, updated_at=failure_time,
+            ), shop_id=shop.shop_id, business_date=business_date))
+    contexts = {shop.shop_id: SessionRecoveryMetadata(
+        shop.shop_id, n, ShopSessionStatus.VALID,
+        now - timedelta(hours=3), now - timedelta(minutes=34), True,
+    ) for n, shop in enumerate(shops, start=2)}
+    queries = []
+
+    class ReadOnlyRepository:
+        def list_session_recovery_metadata(self, shop_ids):
+            queries.append(("metadata", set(shop_ids)))
+            return contexts
+
+        def used_session_recovery_items(self, item_ids):
+            queries.append(("dedupe", set(item_ids)))
+            return set()
+
+    service = OperatingDashboardService(None, repository=ReadOnlyRepository(), settings=Settings(
+        _env_file=None, operating_dashboard_collection_execution_enabled=True,
+    ))
+    coverage = service._coverage(
+        shops=shops, metric_by_shop_date={}, collection_states=states,
+        range_value=OperatingDashboardDateRangeRead(start_date=date(2026, 10, 10), end_date=date(2026, 10, 15)),
+    )
+    service._attach_session_recovery_hints(
+        coverage, shops=shops, collection_states=states, metric_by_shop_date={}, now=now,
+    )
+    hints = [sample.session_recovery for sample in coverage.missing_samples if sample.session_recovery]
+    assert len(hints) == 8 and all(hint.requires_validation for hint in hints)
+    assert queries == [
+        ("metadata", {shop.shop_id for shop in shops}),
+        ("dedupe", {state.collection_item_id for state in states}),
+    ]
+    assert all(state.status == "failed" and state.attempt_count == 3 for state in states)
+    assert coverage.collected_shop_days == 0
 
 
 def test_explicit_response_parse_recovery_is_bounded_without_uuid_allowlist() -> None:

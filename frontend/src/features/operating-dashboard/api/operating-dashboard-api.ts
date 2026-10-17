@@ -85,6 +85,13 @@ interface DashboardReadDto {
       business_date: string
       state: OperatingDashboardCoverage['missingSamples'][number]['state']
       failure_reason: string | null
+      session_recovery?: {
+        collection_job_id: string
+        collection_item_id: string
+        session_version: number
+        requires_validation: boolean
+      } | null
+      recovery_block_reason?: string | null
     }>
     missing_samples_truncated: boolean
     manual_backfill_required: boolean
@@ -244,12 +251,13 @@ export function mapOperatingDashboardRead(
       turnoverCents: value.summary.turnover_cents,
       orderCount: value.summary.order_count,
       refundOrderCount: value.summary.refund_order_count,
-      refundOrderCoverageComplete:
-        value.summary.refund_order_coverage_complete,
+      refundOrderCoverageComplete: value.summary.refund_order_coverage_complete,
       shopCount: value.summary.shop_count,
       turnoverComparison: mapComparison(value.summary.turnover_comparison),
       orderComparison: mapComparison(value.summary.order_comparison),
-      refundOrderComparison: mapComparison(value.summary.refund_order_comparison),
+      refundOrderComparison: mapComparison(
+        value.summary.refund_order_comparison,
+      ),
       shopCountComparison: mapComparison(value.summary.shop_count_comparison),
     },
     trend: value.trend.map((point) => ({
@@ -276,6 +284,15 @@ export function mapOperatingDashboardRead(
         businessDate: sample.business_date,
         state: sample.state,
         failureReason: sample.failure_reason,
+        sessionRecovery: sample.session_recovery
+          ? {
+              collectionJobId: sample.session_recovery.collection_job_id,
+              collectionItemId: sample.session_recovery.collection_item_id,
+              sessionVersion: sample.session_recovery.session_version,
+              requiresValidation: sample.session_recovery.requires_validation,
+            }
+          : null,
+        recoveryBlockReason: sample.recovery_block_reason ?? null,
       })),
       missingSamplesTruncated: value.coverage.missing_samples_truncated,
       manualBackfillRequired: value.coverage.manual_backfill_required,
@@ -363,6 +380,25 @@ export const operatingDashboardApi = {
   ): Promise<OperatingDashboardCollectionJobDto> {
     const response = await httpClient.get<OperatingDashboardCollectionJobDto>(
       `${basePath}/collections/${encodeURIComponent(collectionJobId)}`,
+    )
+    return response.data
+  },
+
+  async recoverCollectionItem(params: {
+    collectionJobId: string
+    collectionItemId: string
+    sessionVersion: number
+    requiresValidation?: boolean
+  }): Promise<OperatingDashboardCollectionJobDto> {
+    const response = await httpClient.post<OperatingDashboardCollectionJobDto>(
+      `${basePath}/collections/${encodeURIComponent(params.collectionJobId)}/retry`,
+      {
+        item_ids: [params.collectionItemId],
+        session_recovery_version: params.sessionVersion,
+        ...(params.requiresValidation
+          ? { revalidate_current_session: true }
+          : {}),
+      },
     )
     return response.data
   },

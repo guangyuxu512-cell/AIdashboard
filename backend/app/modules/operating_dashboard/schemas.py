@@ -74,6 +74,15 @@ class OperatingDashboardTablePageRead(BaseModel):
     page_size: int = Field(ge=1, le=100)
 
 
+class OperatingSessionRecoveryRead(BaseModel):
+    collection_job_id: UUID
+    collection_item_id: UUID
+    session_version: int = Field(ge=1)
+    # A read does not validate the Session or enqueue work. A stale validation
+    # must pass the authoritative health check during explicit recovery.
+    requires_validation: bool
+
+
 class OperatingDashboardCoverageMissingRead(BaseModel):
     shop_id: UUID
     shop_name: str
@@ -91,6 +100,8 @@ class OperatingDashboardCoverageMissingRead(BaseModel):
     # A locally mapped, presentation-safe failure reason.  Raw platform
     # messages and persisted failure details must never appear in coverage.
     failure_reason: str | None = None
+    session_recovery: OperatingSessionRecoveryRead | None = None
+    recovery_block_reason: str | None = None
 
 
 class OperatingDashboardCoverageRead(BaseModel):
@@ -230,9 +241,12 @@ class OperatingDataCollectionRetryRequest(BaseModel):
 
     item_ids: list[UUID] = Field(default_factory=list, max_length=200)
     session_recovery_version: int | None = Field(default=None, ge=1)
+    revalidate_current_session: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
     def validate_session_recovery(self) -> "OperatingDataCollectionRetryRequest":
         if self.session_recovery_version is not None and len(self.item_ids) != 1:
             raise ValueError("Session恢复必须明确选择一个原失败项")
+        if self.revalidate_current_session and self.session_recovery_version is None:
+            raise ValueError("会话复核必须用于明确的单项Session恢复")
         return self

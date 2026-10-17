@@ -1,6 +1,6 @@
 # 登录成功提示集成验收
 
-ca97 接受精确候选 `e6f68d2be01b1024a258425498eb39c2b60bf38e` 的适用 Gate 2。新增提示的原生人工观察仍为 `NOT_OBSERVED`；此结论不代表新的登录、窗口或平台验收，也不授权 Main 部署。
+精确候选 `e6f68d2be01b1024a258425498eb39c2b60bf38e` 已通过适用 Gate 2、精确 dev/main CI 和 Release Gate，正式生产为 `fe7ce217dfee8a0bf3374c6da42a902d20ad9e4d`。新增提示的原生人工观察仍为 `NOT_OBSERVED`，不把技术或发布检查冒称新登录、窗口或平台验收。
 
 ## 范围与基线
 
@@ -47,4 +47,14 @@ ca97 接受精确候选 `e6f68d2be01b1024a258425498eb39c2b60bf38e` 的适用 Gat
 
 Migration Slot：无，单一 `20261015_0046` 不变；不访问或迁移数据库。不需要新 Electron 包，不修改已安装 1.0.8。前端回滚使用正常 revert 或正式前端版本恢复，不清 Profile、Session、缓存事实或降库。
 
-Main 当前没有本候选生产部署授权。Green 后向规划交付精确提交及 CI，生产保持原版本，Release Gate 另行确认。商品数据 UI 或真实实现不混入本候选。
+人类在规划 turn `01a1479d-e1b2-7883-af8e-e3e6fc26758f` 对“单独部署登录提示、不含商品数据、不换安装包、不重复登录窗口测试”明确回复“可以”。Main 为唯一发布执行者；商品数据 UI、真实实现和0047不混入本次运行代码。
+
+## 正式发布结果
+
+最终 Green 为 `bef7093b755cea60fda55bbcc6177b5723d4738a`，[dev CI 38993305361](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38993305361) 三项 success。Main 正常 no-ff 合入并推送 `fe7ce217dfee8a0bf3374c6da42a902d20ad9e4d`；[main CI 38994152520](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38994152520) 三项 success，[唯一自动部署 38994375587](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38994375587) attempt1 success，于北京时间2026-10-17 10:21:50完成。ca97已独立核对两条流水线的精确 SHA、结论及远端 main；未再次调度部署。
+
+Main 实机回执确认 current 及 Backend、Frontend、Signer 镜像均为同一 fe7ce217，Backend/Signer healthy，Frontend/public HTTPS/index与入口静态资源正常。旧51a5及历史hash资源保留，缺失JS为真实404；mounted/CIFS及应用权限正常。生产仍单一 `20261015_0046`，商品Feature的0047未发布。
+
+10:13:20与10:22:17的12表逐行摘要全部 exact-match，包含全部ShopSession；4条Schedule原值、已停用三小时计划及空next_run_at保持，原每日Asia/Shanghai 09:00、配置文件字节与0600权限均不变。新备份1187478字节、restore目录355项可读，SHA256为 `87bdcef83776b339c3779c9e495e886de4569b2b15316ba3bc33cab417960804`；旧51a5发布目录及三镜像仍保留。
+
+实机证据由Main保存在 `D:/中控台/.dev-runtime/shop-login-feedback-release-20261017/server-release-receipt.json`。正式1.0.8/P安装包和用户窗口未动，0新增login、validate、平台或RPA请求。新增反馈原生视觉继续记 `NOT_OBSERVED`；未变998/P专项证据复用。本功能按已批准范围完成发布收口，不再向main补提交引发部署。
