@@ -24,7 +24,9 @@ Owner报告的45项真实Feature PG及947项后端、856项前端全量结果仍
 
 唯一active Slot `20261017_0047` 与专库 `control_center_feat_shop_product_data`、8102/4177仍属7d55。经营恢复复用81a1旧Feature库/0046和8101/4176，不占这些资源。Integration迁移/运行按既有流程单独准备，不将Feature连接复制过去；生产仍为fe7及0046。
 
-ca97已作一次有界只读Integration预检，连前/连后精确核目标 `control_center_integration` 和最小应用角色：实际单一0046，四张商品表均不存在。HuanYu Integration UUID为 `c448f225-b141-409b-bc94-12f1ae74ee04`、平台身份243321624、启用，已有正常Session为valid v9，最近采集/验证为上海10月17日06:53。只读检查没有解密、平台验证或写入；并不证明当前freshness已满足。库内2020条旧经营活动夹具保留，不让新测试全局领取或清表。迁移前精确备份已交Main按既有管理通道准备，未执行47；同一Integration Runtime短时串行验收，不阻碍双方Feature开发或技术审查。
+ca97已作一次有界只读Integration预检，连前/连后精确核目标 `control_center_integration` 和最小应用角色：实际单一0046，四张商品表均不存在。HuanYu Integration UUID为 `c448f225-b141-409b-bc94-12f1ae74ee04`、平台身份243321624、启用，已有正常Session为valid v9，最近采集/验证为上海10月17日06:53。只读检查没有解密、平台验证或写入；并不证明当前freshness已满足。库内2020条旧经营活动夹具保留，不让新测试全局领取或清表。
+
+Main已完成新备份而非覆盖10月14/15日旧备份：上海11:36:34同一READ ONLY/REPEATABLE READ导出快照，完整custom dump为612826字节，SHA256 `573da4a09ccfe4cd82836fcd16a75538a3140bc6ec9620b8101be69048a19c7c`，`pg_restore --list`可读354项。11:37:06复核19张旧表摘要及计数均一致，包含2820个经营Item、667条日事实和全部2个Session；0046、HuanYu v9及四商品表不存在保持。备份目录禁继承且仅Admin/SYSTEM有效ACL、Git ignored；回执在Main `.dev-runtime/integration-pre0047-backup-20261017/receipt.json`。未恢复、建库或执行47。Main另作的业务年2020窄统计不代表前述活动Item条数，不能混淆；不追加扫描。同一Integration Runtime短时串行验收，不阻碍双方Feature开发或技术审查。
 
 新的真实平台请求目前未获对应预算。下一步先由规划核明确的Integration店铺、原有合法Session、原生固定窗口、一次有限全页及必要权威验证预算，再执行正式提交、完整入库、查询和Real展示。总数超预算、认证/风险或业务失败须停止，不无限重试、自动换日、复制生产Cookie或要求用户重复机械登录。
 
