@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
+from typing import Callable
 
 from sqlalchemy.orm import Session
 
@@ -50,12 +51,16 @@ class ShopSessionHealthService:
         session_service: ShopSessionService | None = None,
         shop_repository: ShopRepository | None = None,
         settings: Settings | None = None,
+        before_platform_io: Callable[[], None] | None = None,
     ) -> None:
         self.session_accessor = session_accessor
         self.connectors = connectors
         self.session_service = session_service or ShopSessionService(session)
         self.shop_repository = shop_repository or ShopRepository(session)
         self.settings = settings or get_settings()
+        # Only an owner of an exclusive read Session may opt in. Ordinary
+        # health/login callers keep their original transaction semantics.
+        self.before_platform_io = before_platform_io
 
     def validate_candidate(
         self,
@@ -116,6 +121,9 @@ class ShopSessionHealthService:
         shop = self.shop_repository.get(shop_id)
         if shop is None:
             raise ShopNotFoundError()
+        platform, platform_shop_id, shop_display_name = (
+            shop.platform, shop.platform_shop_id, shop.display_name,
+        )
         metadata = self.session_service.get_metadata(shop_id)
         now = datetime.now(UTC)
         if (
@@ -127,13 +135,13 @@ class ShopSessionHealthService:
             - timedelta(
                 seconds=self.settings.shop_session_validation_freshness_seconds,
             )
-            and shop.platform_shop_id is not None
+            and platform_shop_id is not None
         ):
             return ShopSessionHealthRead(
                 shop_id=shop_id,
-                platform=shop.platform,
-                platform_shop_id=shop.platform_shop_id,
-                shop_display_name=shop.display_name,
+                platform=platform,
+                platform_shop_id=platform_shop_id,
+                shop_display_name=shop_display_name,
                 status=metadata.status,
                 version=metadata.version,
                 validated_at=metadata.validated_at,
@@ -141,10 +149,12 @@ class ShopSessionHealthService:
                 cookie_updates_applied=0,
             )
 
-        connector = self.connectors.get(shop.platform)
+        connector = self.connectors.get(platform)
         if connector is None:
             raise PlatformNotSupportedError()
-        auth_context = self.session_accessor.get_auth_context(shop_id, shop.platform)
+        auth_context = self.session_accessor.get_auth_context(shop_id, platform)
+        if self.before_platform_io is not None:
+            self.before_platform_io()
         try:
             identity = connector.fetch_shop_identity(shop_id, auth_context)
         except PlatformAuthenticationInvalidError:
@@ -155,8 +165,8 @@ class ShopSessionHealthService:
             )
             raise
         if (
-            shop.platform_shop_id is not None
-            and identity.platform_shop_id != shop.platform_shop_id
+            platform_shop_id is not None
+            and identity.platform_shop_id != platform_shop_id
         ):
             raise PlatformIdentityMismatchError()
 
@@ -176,7 +186,7 @@ class ShopSessionHealthService:
 
         return ShopSessionHealthRead(
             shop_id=shop_id,
-            platform=shop.platform,
+            platform=platform,
             platform_shop_id=identity.platform_shop_id,
             shop_display_name=identity.shop_display_name,
             status=metadata.status,

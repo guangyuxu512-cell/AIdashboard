@@ -145,3 +145,9 @@ msg、input、ctx、错误 repr、Cookie/Token、身份值或载荷。API 对该
 关联至一次新执行，授权重放返回原恢复 Job；多进程不会另建任务。仅有一次领取，失败、授权过期或租约超时/重启
 均成为 non-retryable FAILED，不暂停、不再次 pending，也不能凭新 Session 版本重开一次。
 生产具体店铺日期由 ca97/Main 按本轮授权单独执行，Feature 不扫描或操作生产。
+
+经营页面的显式恢复可选择在原单次队列内复核当前有效 Session，契约见 05。
+只有经营 collector 原 factory 创建的独占 Session 提供 `before_platform_io` 回调：先冻结所需标量和
+认证上下文，再结束其自身只读事务，分别进行身份和经营请求。待写集合检查只是额外护栏，不能证明
+任意调用方事务没有已 flush 的写入。`HealthService` 默认回调为 `None`，其它 API、候选验证和登录保存
+不选择此边界，不会因此提交或回滚调用方事务；原 Cookie 更新、版本 CAS 和鉴权错误处理保持。

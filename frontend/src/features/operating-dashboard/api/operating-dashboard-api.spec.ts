@@ -149,6 +149,8 @@ describe('operatingDashboardApi', () => {
         businessDate: '2026-09-20',
         state: 'failed',
         failureReason: '抖店经营数据响应无效',
+        sessionRecovery: null,
+        recoveryBlockReason: null,
       },
     ])
     expect(result.collectionAvailable).toBe(true)
@@ -203,6 +205,108 @@ describe('operatingDashboardApi', () => {
     expect(result.collectionJob?.collection_job_id).toBe('job-1')
     expect(result.waitingShopDays).toBe(1)
     expect(result.refundAttentionShopDays).toBe(0)
+  })
+
+  it('maps authorized recovery metadata without starting validation or a collection', async () => {
+    const post = vi.spyOn(httpClient, 'post')
+    vi.spyOn(httpClient, 'get').mockResolvedValue({
+      data: {
+        ...dashboardDto,
+        coverage: {
+          ...dashboardDto.coverage,
+          missing_samples: [
+            {
+              ...dashboardDto.coverage.missing_samples[0],
+              session_recovery: {
+                collection_job_id: 'old-job',
+                collection_item_id: 'old-item',
+                session_version: 3,
+                requires_validation: true,
+              },
+              recovery_block_reason: null,
+            },
+          ],
+        },
+      },
+    })
+    const result = await operatingDashboardApi.read({
+      range: { startDate: '2026-09-20', endDate: '2026-09-20' },
+      filters,
+      sort: null,
+      page: 1,
+      pageSize: 10,
+    })
+    expect(result.coverage.missingSamples[0]?.sessionRecovery).toEqual({
+      collectionJobId: 'old-job',
+      collectionItemId: 'old-item',
+      sessionVersion: 3,
+      requiresValidation: true,
+    })
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('submits one explicit Session recovery through the existing retry contract', async () => {
+    const job = {
+      collection_job_id: 'recovery-job',
+      status: 'pending',
+      counts: {
+        pending: 1,
+        running: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+        paused_reauthorization: 0,
+      },
+      items: [],
+    }
+    const post = vi.spyOn(httpClient, 'post').mockResolvedValue({ data: job })
+
+    const result = await operatingDashboardApi.recoverCollectionItem({
+      collectionJobId: 'original-job',
+      collectionItemId: 'original-item',
+      sessionVersion: 4,
+    })
+
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/operating-dashboard/collections/original-job/retry',
+      { item_ids: ['original-item'], session_recovery_version: 4 },
+    )
+    expect(result).toBe(job)
+  })
+
+  it('keeps a rejected Session recovery as a failure without retry or Mock fallback', async () => {
+    const failure = new Error('recovery is not eligible')
+    const post = vi.spyOn(httpClient, 'post').mockRejectedValue(failure)
+
+    await expect(
+      operatingDashboardApi.recoverCollectionItem({
+        collectionJobId: 'original-job',
+        collectionItemId: 'original-item',
+        sessionVersion: 4,
+      }),
+    ).rejects.toBe(failure)
+
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('opts in to queued authoritative revalidation only when the server projects that need', async () => {
+    const post = vi
+      .spyOn(httpClient, 'post')
+      .mockResolvedValue({ data: { collection_job_id: 'recovery-job' } })
+    await operatingDashboardApi.recoverCollectionItem({
+      collectionJobId: 'old-job',
+      collectionItemId: 'old-item',
+      sessionVersion: 3,
+      requiresValidation: true,
+    })
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/operating-dashboard/collections/old-job/retry',
+      {
+        item_ids: ['old-item'],
+        session_recovery_version: 3,
+        revalidate_current_session: true,
+      },
+    )
   })
 
   it('uses the explicit scoped recollect endpoint only after user intent', async () => {
