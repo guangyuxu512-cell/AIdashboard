@@ -5,6 +5,7 @@ import logging
 from app.core.config import get_settings
 from app.core.database import get_session_factory
 from app.modules.product_data.collection import collect_complete_snapshot
+from app.modules.product_data.exceptions import ProductDataCollectionLimitExceededError
 from app.modules.product_data.service import ProductDataService
 from app.modules.sessions.exceptions import ShopSessionAuthenticationInvalidError
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 SAFE_FAILURE_CODES = frozenset({
+    ProductDataCollectionLimitExceededError.code,
     "PRODUCT_DATA_COLLECTION_UNAVAILABLE", "PRODUCT_DATA_PUBLICATION_REJECTED",
     "PRODUCT_DATA_SOURCE_CONTRACT_INVALID", "PRODUCT_DATA_SESSION_VALIDATION_REQUIRED",
     "SHOP_SESSION_NOT_CONFIGURED", "SHOP_SESSION_PAYLOAD_INVALID", "SESSION_VERSION_CONFLICT",
@@ -61,11 +63,17 @@ class ProductDataExecutor:
                 stage = "session_preparation"
             elif code == "PLATFORM_SIGNER_FAILED":
                 stage = "signing"
+            elif isinstance(error, ProductDataCollectionLimitExceededError):
+                stage = "collection_coverage"
             elif code in {"PLATFORM_RESPONSE_INVALID", "DOUYIN_PRODUCT_DATA_REJECTED", "DOUYIN_PRODUCT_DATA_EMPTY_UNCONFIRMED"}:
                 stage = "response_parse" if stage != "collection_coverage" else stage
             try:
                 with self.session_factory() as session:
-                    ProductDataService(session, settings=self.settings).fail(generation_id, lease_id, code, stage)
+                    metadata = (
+                        {"expected_total": error.expected_total}
+                        if isinstance(error, ProductDataCollectionLimitExceededError) else {}
+                    )
+                    ProductDataService(session, settings=self.settings).fail(generation_id, lease_id, code, stage, **metadata)
             except Exception:
                 # If even the failure CAS cannot be committed, the durable lease
                 # expires visibly. No fake success, automatic retry or raw logging.

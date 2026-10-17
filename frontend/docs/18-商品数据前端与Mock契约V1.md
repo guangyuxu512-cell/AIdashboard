@@ -12,6 +12,8 @@ Real禁用分组、自定义、其它售卖/载体、比例筛选及金额/比�
 提交失败保持同一submissionKey供显式重试；成功回执按精确ID轮询GET，完成后失效事实Query，读失败只重读不重提。
 人员/Team/Shop/期间变化拒绝旧UI结果；平台执行仍由服务器当前授权和lease保护。失败不加载Mock。
 
+失败回执failureCode=PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED时，原StatusTag显示“超出采集上限”，原Tooltip展示冻结窗口、可用的expectedTotal及“本次未发布，已有成功数据保持不变”；总数未知不补0。只消费Backend05现有字段，不猜当前环境上限数值，不自动重试或放宽预算。历史PLATFORM_RESPONSE_INVALID仍按原通用失败展示，不据阶段或0页倒推改写原因。
+
 以下保留UI与Mock历史。其“未接入”描述对应当时阶段，不覆盖上述新Real边界。
 原UI基线9bb64ac、独立4177，旧阶段没有Feature DB或Migration；人工和Integration Electron未覆盖项仍保留。
 2026-10-16在原分支正常no-ff同步精确Green5a18bd0390cb4b8cbed637d412f7482cefff3f36，

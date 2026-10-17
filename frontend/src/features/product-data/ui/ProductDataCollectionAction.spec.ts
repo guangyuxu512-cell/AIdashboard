@@ -54,7 +54,7 @@ function render(dataSource: ProductDataSource, enabled = true) {
     global: {
       plugins: [[VueQueryPlugin, { queryClient }]],
       stubs: {
-        NTooltip: { template: '<span><slot name="trigger"/><slot/></span>' },
+        Tooltip: { template: '<span><slot name="trigger"/><slot/></span>' },
       },
     },
   })
@@ -68,6 +68,52 @@ function render(dataSource: ProductDataSource, enabled = true) {
   }
 }
 describe('Explicit Product Data collection action', () => {
+  it.each([229, null])(
+    'explains an execution limit without treating %s as invalid response or zero',
+    async (total) => {
+      const dataSource = source()
+      vi.mocked(dataSource.collect!).mockResolvedValue({
+        ...receipt(),
+        stage: 'collection_coverage',
+        failureCode: 'PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED',
+        expectedTotal: total,
+      })
+      const { wrapper, queryClient, dispose } = render(dataSource)
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+      try {
+        wrapper.findComponent(AppButton).vm.$emit('click')
+        await flushPromises()
+        expect(wrapper.text()).toContain('超出采集上限')
+        expect(wrapper.text()).toContain('本次未发布')
+        expect(wrapper.text()).toContain('已有成功数据保持不变')
+        if (total !== null) expect(wrapper.text()).toContain('平台返回 229 件')
+        else expect(wrapper.text()).not.toContain('0 件')
+        expect(wrapper.text()).not.toContain('PLATFORM_RESPONSE_INVALID')
+        expect(dataSource.collect).toHaveBeenCalledTimes(1)
+        expect(dataSource.collection).not.toHaveBeenCalled()
+        expect(invalidate).not.toHaveBeenCalled()
+      } finally {
+        dispose()
+      }
+    },
+  )
+  it('does not reinterpret a legacy invalid-response failure as an execution limit', async () => {
+    const dataSource = source()
+    vi.mocked(dataSource.collect!).mockResolvedValue({
+      ...receipt(),
+      failureCode: 'PLATFORM_RESPONSE_INVALID',
+    })
+    const { wrapper, dispose } = render(dataSource)
+    try {
+      wrapper.findComponent(AppButton).vm.$emit('click')
+      await flushPromises()
+      expect(wrapper.text()).toContain('采集失败')
+      expect(wrapper.text()).toContain('PLATFORM_RESPONSE_INVALID')
+      expect(wrapper.text()).not.toContain('超出采集上限')
+    } finally {
+      dispose()
+    }
+  })
   it('does not collect on mount, disabled click, query or missing shop', async () => {
     const dataSource = source(),
       { wrapper, dispose } = render(dataSource, false)

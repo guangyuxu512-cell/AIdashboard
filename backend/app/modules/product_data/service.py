@@ -12,7 +12,8 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.access.service import ActorContextService, ModuleAccessService
 from app.modules.product_data.collection import CompleteProductDataSnapshot
 from app.modules.product_data.exceptions import (
-    ProductDataCollectionBusyError, ProductDataCollectionUnavailableError, ProductDataGenerationNotFoundError,
+    ProductDataCollectionBusyError, ProductDataCollectionLimitExceededError,
+    ProductDataCollectionUnavailableError, ProductDataGenerationNotFoundError,
     ProductDataIdempotencyConflictError, ProductDataPublicationRejectedError, ProductDataSourceInvalidError,
     ProductDataUnsupportedError,
 )
@@ -145,7 +146,7 @@ class ProductDataService:
         if generation is None:
             raise ProductDataPublicationRejectedError()
         if page.total > self.settings.product_data_collection_max_pages * 10:
-            raise PlatformResponseInvalidError(details={"failure_stage": "collection_coverage", "reason": "page_budget_exceeded"})
+            raise ProductDataCollectionLimitExceededError(page.total)
         if not self.repository.note_progress(generation, page):
             raise PlatformResponseInvalidError(details={"failure_stage": "collection_coverage", "reason": "page_total_changed"})
         self.session.commit()
@@ -182,8 +183,13 @@ class ProductDataService:
         series.published_sequence = generation.sequence
         self.session.commit()
 
-    def fail(self, generation_id, lease_id, code, stage):
-        changed = self.repository.mark_failed(generation_id, lease_id, code, stage)
+    def fail(self, generation_id, lease_id, code, stage, *, expected_total: int | None = None):
+        if expected_total is not None and (
+            code != ProductDataCollectionLimitExceededError.code
+            or type(expected_total) is not int or not 0 < expected_total <= 2_147_483_647
+        ):
+            raise ValueError("Invalid collection-limit receipt total")
+        changed = self.repository.mark_failed(generation_id, lease_id, code, stage, expected_total=expected_total)
         self.session.commit()
         return changed
 

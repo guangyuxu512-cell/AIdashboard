@@ -106,6 +106,11 @@ const disabled = computed(
   () =>
     !!reason.value || submitting.value || (busy.value && !polling.error.value),
 )
+const limitExceeded = computed(
+  () =>
+    receipt.value?.status === 'failed' &&
+    receipt.value.failureCode === 'PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED',
+)
 const status = computed(() =>
   polling.error.value
     ? '回执读取未完成'
@@ -118,7 +123,7 @@ const status = computed(() =>
               pending: '采集中',
               running: '采集中',
               succeeded: '采集完成',
-              failed: '采集失败',
+              failed: limitExceeded.value ? '超出采集上限' : '采集失败',
             }[receipt.value.status]
           : null,
 )
@@ -126,6 +131,8 @@ const details = computed(() => {
   const error = polling.error.value || submit.error.value
   if (error) return error instanceof Error ? error.message : '本次操作未完成'
   const value = receipt.value
+  if (value && limitExceeded.value)
+    return `${value.startDate} ～ ${value.endDate}；${value.expectedTotal === null ? '平台返回数量' : `平台返回 ${value.expectedTotal} 件`}超出当前环境单次采集上限；本次未发布，已有成功数据保持不变。`
   return value
     ? `${value.startDate} ～ ${value.endDate}；${value.stage}；${value.receivedPages} 页；${value.receivedTotal ?? '未知'}/${value.expectedTotal ?? '未知'} 件${value.failureCode ? '；' + value.failureCode : ''}`
     : ''

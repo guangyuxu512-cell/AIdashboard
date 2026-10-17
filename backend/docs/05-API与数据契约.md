@@ -16,6 +16,8 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 回执含scope、status、stage、received_pages、可空expected_total/received_total/raw_complete_rows/unit_complete_rows、pages_complete、failure_code、created_at/started_at/finished_at/published_at、lease_expired。运行回执与共享商品事实分离，不返回他人进度或凭据。没有自动重试、扫描、TTL或全店铺采集。过期运行保持可观察，只有显式新意图可终结同切片过期代；旧成功数据不变。
 
+超出当前环境单次采集上限时，失败回执使用PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED和collection_coverage，不再借用PLATFORM_RESPONSE_INVALID。复用expected_total保留已解析且可表示为现有INTEGER的正整数总数；超出INTEGER范围时仍保存明确失败，总数保持null而不是0。总数与终态在同一live-lease CAS提交，不覆盖已有总数或记录被拒绝页为已接收，不发布部分事实。旧失败记录不回填或改码，同key仍只回读原回执；上限配置和后续执行授权独立。
+
 首里程碑要求现有Session已VALID且在既有freshness窗口内，未满足返回PRODUCT_DATA_SESSION_VALIDATION_REQUIRED，不冒称AUTH_INVALID或自动登录；可使用原Shop Session验证入口。HTTP/Signer在DB事务外。响应后重新核权限、Shop身份、Session版本；真实Set-Cookie复用HealthService与版本CAS。执行失败只保存白名单码/固定阶段，不保存异常文本。后台崩溃不能宣称成功，租约到期可见。
 
 原则：

@@ -5,7 +5,9 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.core.exceptions import AppError
 from app.modules.product_data.collection import collect_complete_snapshot
+from app.modules.product_data.exceptions import ProductDataCollectionLimitExceededError
 from app.modules.product_data.source import ProductDataSlice, REQUESTED_METRICS, freeze_native_slice
 from app.platforms.douyin.product_data import (
     PRODUCT_METRICS, CompassProductDataPage, CompassProductDataRow,
@@ -85,14 +87,17 @@ def test_later_page_fault_never_yields_complete_snapshot(fault):
         collect_complete_snapshot(scope(), lambda number: first if number == 1 else second, max_pages=2)
 
 
-def test_budget_exceeded_stops_after_first_page_without_retry():
+@pytest.mark.parametrize("total,budget", [(146, 1), (201, 20), (229, 20)])
+def test_budget_exceeded_stops_after_first_page_without_retry(total, budget):
     calls = []
     def fetch(number):
         calls.append(number)
-        return page(number, 146)
-    with pytest.raises(PlatformResponseInvalidError) as error:
-        collect_complete_snapshot(scope(), fetch, max_pages=1)
-    assert calls == [1] and error.value.details["reason"] == "page_budget_exceeded"
+        return page(number, total)
+    with pytest.raises(AppError) as error:
+        collect_complete_snapshot(scope(), fetch, max_pages=budget)
+    assert calls == [1]
+    assert error.value.code == "PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED"
+    assert error.value.expected_total == total
 
 
 def test_network_failure_propagates_once_without_fallback_or_result():
@@ -104,3 +109,24 @@ def test_network_failure_propagates_once_without_fallback_or_result():
     with pytest.raises(TimeoutError):
         collect_complete_snapshot(scope(), fetch, max_pages=2)
     assert calls == [1, 2]
+
+
+def test_exact_20_page_budget_still_returns_complete_200_unique_products():
+    calls = []
+    def fetch(number):
+        calls.append(number)
+        return page(number, 200)
+    result = collect_complete_snapshot(scope(), fetch, max_pages=20)
+    assert calls == list(range(1, 21))
+    assert result.total == len(result.products) == 200 and result.page_count == 20
+
+
+@pytest.mark.parametrize("total,expected", [
+    (229, 229), (2_147_483_647, 2_147_483_647), (2_147_483_648, None),
+    (True, None), ("229", None), (-1, None),
+])
+def test_limit_failure_only_carries_a_safe_existing_integer_total(total, expected):
+    error = ProductDataCollectionLimitExceededError(total)
+    assert error.expected_total == expected
+    assert error.details is None
+    assert "229" not in str(error)

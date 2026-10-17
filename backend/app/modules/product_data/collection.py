@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.modules.product_data.exceptions import ProductDataCollectionLimitExceededError
 from app.modules.product_data.source import ProductDataSlice
 from app.platforms.douyin.product_data import (
     PRODUCT_METRICS,
@@ -46,7 +47,7 @@ def collect_complete_snapshot(
         raise _incomplete("first_page_contract")
     pages = (first.total + first.page_size - 1) // first.page_size
     if pages > max_pages:
-        raise _incomplete("page_budget_exceeded")
+        raise ProductDataCollectionLimitExceededError(first.total)
     products: list[CompassProductDataRow] = []
     seen: set[str] = set()
     metric_codes = tuple(item.code for item in PRODUCT_METRICS)

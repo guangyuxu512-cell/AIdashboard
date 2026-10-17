@@ -18,7 +18,9 @@ POST `/api/v1/product-data/collections` 只收shop_id、period、submission_key�
 
 切片是已核原始sale1/content1，UI称“基准切片”，不猜成自营/商品卡或已验证全部45组合。平台请求固定74字段、22业务参数，page_size=10；最终只保存17核心及固定商品信息，不存整份响应/认证材料。
 
-规划本轮交接预算为同一指定店铺每窗口至多一个正常完整generation，各自最多20页/200唯一商品；既有health至多一次，不能自行推成每页/每窗口各一次，分环境实际预算以ca97确认的本轮记录为准。ca97执行前必须核实际 `BACKEND_PRODUCT_DATA_COLLECTION_MAX_PAGES=20`，不能沿用代码默认100页；受控执行开关、配置恢复和实际计数由其留证，Owner配置不动。total超过200或任一异常停该次，不扩大预算、改日或自动重试；该窗口不得记完整实测通过，部分行不发布。可能的超预算是待决范围，不是填0或更换目标的理由。
+首轮规划交接预算为同一指定店铺每窗口至多一个正常完整generation，各自最多20页/200唯一商品；这不是产品业务容量上限。既有health至多一次，不能自行推成每页/每窗口各一次。ca97执行前必须核本批次已获准的实际 `BACKEND_PRODUCT_DATA_COLLECTION_MAX_PAGES`（首轮20，非代码默认100）；后续预算调整、新key和未执行窗口由规划/ca97另行登记，Owner配置不动，不把不同批次混记。total超过本批次上限或任一异常停该次，不擅自扩大预算、改日或自动重试；该窗口不得记完整实测通过，部分行不发布。
+
+首轮既有安全证据：1d正式代18页/178件成功，正式GET total178、同key回读无新增平台请求；7d首HTTP200/st0且严格解析10行、total229，需要23页，超过20页预算，在记录进度前主动停止。旧7d回执0页/PLATFORM_RESPONSE_INVALID不代表官方无返回，原失败保留。新候选只返修反馈：明确PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED，现有expected_total填入安全可表示的已知总数，前端明确未发布及旧成功数据保持。30d及后续批次以ca97独立实际证据为准，不能由1d推为全通过。
 
 ## 17项字段及当前显示
 
@@ -74,7 +76,7 @@ POST提交后是一次有限后台执行，没有扫描器或自动重试。same
 以下每一行都应分别附Integration与生产证据，当前本清单不预填PASS。沿用ca97既有Gate2和Main发布记录收集；代码/Feature PG、真实平台与人工页面证据分列。
 
 - [ ] 精确候选、实际Backend/Renderer源码/资产hash、Schema单一47及当前权限；备份可读、旧数据/Session/Profile和未保存内容保护。
-- [ ] 执行前核固定店铺、period、scope、预算20/200和实际配置。保留generation_id、请求关联ID、一次health是否使用、各页次数、st/total/去重行数及安全停止原因，不记录Cookie/签名/完整URL。
+- [ ] 执行前核固定店铺、period、scope、本批次登记预算和实际配置。保留generation_id、请求关联ID、一次health是否使用、各页次数、st/total/去重行数及安全停止原因，不记录Cookie/签名/完整URL；首轮20/200及其7d失败不被后续新批次覆盖。
 - [ ] 1d一代真实全页→原子发布→DB同代快照→正式GET→页面，逐商品ID及17原值/unit/state对齐；不是只看HTTP200或第一页面。
 - [ ] 7d按相同证据独立核销；不能借1d通过或跨日求和代替原生7d。
 - [ ] 30d按相同证据独立核销；total超预算则明确未完成，不盲目取余页。

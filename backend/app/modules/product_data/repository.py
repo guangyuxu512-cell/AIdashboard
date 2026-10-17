@@ -109,12 +109,17 @@ class ProductDataRepository:
             Generation.status == "running", Generation.lease_until > func.clock_timestamp())
         return self.session.scalar(statement.with_for_update() if lock else statement)
 
-    def mark_failed(self, generation_id, lease_id, code, stage):
+    def mark_failed(self, generation_id, lease_id, code, stage, *, expected_total=None):
+        values = dict(status="failed", stage=stage, failure_code=code, lease_id=None, lease_until=None,
+                      finished_at=func.clock_timestamp(), pages_complete=False)
+        if expected_total is not None:
+            # Keep an already observed total stable; fill only missing diagnostic
+            # coverage, in the same live-lease CAS as the terminal failure.
+            values["expected_total"] = func.coalesce(Generation.expected_total, expected_total)
         result = self.session.execute(update(Generation).where(
             Generation.generation_id == generation_id, Generation.lease_id == lease_id,
             Generation.status == "running", Generation.lease_until > func.clock_timestamp(),
-        ).values(status="failed", stage=stage, failure_code=code, lease_id=None, lease_until=None,
-                 finished_at=func.clock_timestamp(), pages_complete=False))
+        ).values(**values))
         return result.rowcount == 1
 
     def note_progress(self, generation, page):

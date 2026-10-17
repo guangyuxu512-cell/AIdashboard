@@ -25,6 +25,20 @@ class ProductDataCollectionBusyError(AppError):
     status_code = 409
 
 
+class ProductDataCollectionLimitExceededError(AppError):
+    code = "PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED"
+    message = "平台返回商品总数超过当前环境单次采集上限，本次数据未发布"
+    status_code = 409
+
+    def __init__(self, expected_total: int):
+        super().__init__()
+        # The existing receipt column is PostgreSQL INTEGER. An unrepresentable
+        # upstream total must not prevent saving the safe terminal failure.
+        self.expected_total = (
+            expected_total if type(expected_total) is int and 0 < expected_total <= 2_147_483_647 else None
+        )
+
+
 class ProductDataIdempotencyConflictError(AppError):
     code = "PRODUCT_DATA_IDEMPOTENCY_CONFLICT"
     message = "此请求键已用于不同的商品数据请求或团队上下文"

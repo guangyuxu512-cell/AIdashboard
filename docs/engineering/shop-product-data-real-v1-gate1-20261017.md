@@ -1,5 +1,17 @@
 # 商品数据真实接入 V1 技术验证与交接
 
+## 采集上限反馈返修
+
+ca97既有安全观测表明：915候选的正式1d代 `9b34af56-d37a-48d7-b1f8-00f526bbbe04` 已18页/178件原子发布，正式GET178、同key回读无新增平台请求。7d代 `4c695088-4432-4d33-b015-54de4bc5ba26` 首HTTP200、整数st0，严格parser成功返回page1/10行、total229；所需23页超过首轮20页/200件，Service在记录进度前主动停止，故旧回执0页/expected_total=null。根因是受控预算保护及其反馈不清，不是响应格式、日期未就绪、签名、传输或Session无效。旧7d失败不能记完整通过，后续批次与30d仍以ca97实际结果为准。
+
+最小返修沿原Feature追加：collector/Service预算分支使用独立安全码 `PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED`，Executor保持collection_coverage，在原失败live-lease CAS中通过既有expected_total填入安全可表示的已知正整数；保留已有总数，不增加已接收页或发布部分行。INTEGER范围外仍能保存明确失败而总数null，不因诊断溢出丢失终态。其它错误不传总数，错lease/终态不得被迟到失败改写。
+
+前端原StatusTag/Tooltip明确“超出采集上限”、可用总数及“本次未发布，已有成功数据保持不变”，未知不补0。旧PLATFORM_RESPONSE_INVALID不倒推改码；同key只读原失败，不自动重试。未改parser、请求参数、默认预算/并发、实际环境配置、0047、Model/DTO字段、HTTP资源或调度框架，无Electron/Worker/Mobile变化。3金额/4比例及4比例区间仍未完成，不由178条原值推断单位。
+
+实际验证：修订前预算3项失败，前端正确Tooltip stub下2项失败/6项通过；首轮stub未命中组件导致额外断言失败的原报告也保留。修订后Backend默认967项、解析/连接器/有限采集定向76项、真实Feature PG53项、Frontend19文件141项、eslint/vue-tsc均通过，0失败/错误/skip。PG包含错误/终态lease CAS、229总数与0已接收页、INTEGER溢出安全、既有总数保留、正式回执GET/同键回放及旧事实保护；合成平台与真实PG证据，不冒充新平台请求。原空表降级1项明确排除，不重跑DDL。
+
+Feature前后审计仍为精确control_center_feat_shop_product_data、最小角色五项高权false、单一0047、四表0行、五执行/调度开关false；47 blob `5128cb64a5bf3a4913b55ae0147c7c57bced0fe6` 保持。Owner没有新增平台/Signer请求或连接Integration/生产，未操作客户端。原915/80d/591、真实成功与失败、旧构建和本机材料全部保留。精确新候选及Real构建回执另附Owner ignored材料，供ca97增量Gate2，不将此返修标全产品/生产通过。
+
 ## 核心能力待完成与提示修订
 
 当前是基础链路/原值模式，不是完整商品数据交付：17项核心的10项计数可显示，3项金额及4项比例的官方显示尺度仍待同店、同商品、同冻结窗口对照；九项区间仅5项数量可用，4项比例仍禁用。须在证据取得后由7d55在原Feature完成最小映射、格式化、百分比区间接线与回归，才可核销这些核心项；不等单位而停止其它链路，也不把原值入库或禁用行为标为全功能PASS。
