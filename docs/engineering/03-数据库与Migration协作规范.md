@@ -41,7 +41,8 @@ ca97 审定7d55最小四表申请（原申请SHA256 `C377F15DF51A9106E76042AFDBF
 
 Schema与具体资源边界见 `shop-product-data-real-v1-resource-handoff-20261017.md`。Integrator不代写
 Model/Migration，不写Feature业务表。空库创建和凭据交付由既有DBAdmin通道执行，不能复用旧库；
-建库尚待管理员完成，不将Slot active写成数据库或真实闭环已就绪。
+新空库已由管理员CREATE、Owner/min-role和0非系统relation已核；唯一应用连接被HBA明确拒绝，
+配置未交付/未执行迁移，精确访问规则待批准。不将Slot active或空库创建写成PG验证/真实闭环已就绪。
 
 2026-10-16生产核验完成：Main正式Release21229eff经CI38790697624/Deploy38791100315成功，
 新鲜pre46备份1039309字节/restore目录344项可读后升级生产单一20261015_0046；

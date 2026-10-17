@@ -1,6 +1,6 @@
 # 商品数据首版开发资源交接
 
-ca97 已接受7d55的最小四表范围并分配唯一 active Migration Slot、独立 Feature 数据库及运行端口。管理员尚需创建空库并交付受保护连接；Owner 在交付前继续离线解析、DTO 和服务验证，不连接其他数据库。
+ca97 已接受7d55的最小四表范围并分配唯一 active Migration Slot、独立 Feature 数据库及运行端口。管理员已创建空库，应用连接被既有 HBA 明确拒绝，受保护配置尚未交付；Owner 继续离线实现，不连接其他数据库或绕过应用门禁。
 
 ## 授权与基线
 
@@ -14,14 +14,16 @@ Owner：7d55，原工作树 `C:\Users\Administrator\.codex\worktrees\7d55\中控
 
 | 资源 | 登记与状态 |
 | --- | --- |
-| Feature DB | 新建独立空库 `control_center_feat_shop_product_data`；已分配，创建及连接交付待 DBAdmin 回执 |
-| 应用角色 | 沿既有最小权限角色，由 Admin 核 `NOSUPERUSER/NOCREATEDB/NOCREATEROLE` 等限制；不轮换凭据、不扩大既有权限 |
-| 受保护连接 | 仅 Owner 本地 ignored 配置，单独限制文件 ACL；不输出连接串、密码或完整环境行 |
+| Feature DB | `control_center_feat_shop_product_data` 已创建，Owner 为 `control_center_dev_user`，非系统 relation 为0；尚未执行 Migration |
+| 应用角色 | Admin已核 superuser、createdb、createrole、replication、bypassrls均false、memberships0；不轮换凭据、不扩大既有权限 |
+| 受保护连接 | 唯一一次连接被HBA明确拒绝；Owner `.env` 未创建。批准精确访问规则并连通后，才交付独立受限ACL的 ignored 配置 |
 | Backend | Owner `127.0.0.1:8102`，分配时无监听；不得漂移到 Integration/Main/81a1 端口 |
 | Frontend | Owner 原 `127.0.0.1:4177 --strictPort`；分配时无监听，不启动第二 Electron |
 | Migration Slot | 唯一 active：文件 `20261017_0047_shop_product_data_v1.py`，revision `20261017_0047`，down `20261015_0046` |
 
-35433 复用已登记的严格 SSH 隧道，服务器端同为独立开发 PG 的35433，不是生产 PG。DBAdmin 只建本次新空库；保留旧 Feature、Integration、Main smoke、生产数据及凭据。没有新 Signer、RPA、Worker 或调度服务资源。
+35433 复用已登记的严格 SSH 隧道。Main 的管理员前检确认，该入口对应的既有 PostgreSQL 集群也承载其他数据库，生产备份同样经过该容器；本轮隔离边界是精确新 Feature 数据库，不是独立实例。DBAdmin 只建本次新空库，不改集群角色、密码、HBA、旧库或其他数据库权限。所有迁移和测试在执行前必须核 `current_database()` 精确等于本次登记名，不接受仅核端口或数据库名前缀。保留旧 Feature、Integration、Main smoke、生产数据及凭据。没有新 Signer、RPA、Worker 或调度服务资源。
+
+Main于北京时间2026-10-17 09:59:18执行的唯一应用连接被服务器明确拒绝，安全原因 `HBA_EXPLICIT_REJECT`，不是密码错误判断。未重试、未交付配置，未改既有认证规则。解除阻塞需要对新数据库、当前最小应用角色及实际来源的一条精确 SCRAM 规则取得批准，备份/校验后 reload，不重启、不放宽通用规则。该权限决定已交规划集中处理；批准前不经其他账号、连接或数据库绕过。
 
 ## 接受的 Schema 与必须落实的约束
 
@@ -47,4 +49,4 @@ Owner 现在可完成固定路径解析、合成测试、DTO/Service/Repository�
 
 ## 下一责任与产物
 
-DBAdmin：确认新库不存在及管理身份后创建空库，核最小角色并交付受限配置，回传目标/Owner/权限/连通白名单事实。7d55：落实幂等修正并更新申请，产出解析测试、Model/Migration/正式API候选与PG记录。ca97：复核资源回执与精确候选，Integration Gate仅写 `control_center_integration`。Main：本次无生产部署任务。
+DBAdmin：本轮空库和最小角色已完成；批准精确HBA规则后再执行一次目标连接验证并交付受限配置。7d55：首批解析代码已提交 `353464f1bfe58013494265706626c5d6363844f4`，解析与相关URL校验80项通过；继续幂等修正、Model/Migration/正式API，PG阶段待受保护连接就绪。ca97：复核资源回执与精确候选，Integration Gate仅写 `control_center_integration`。Main：本次无生产部署任务。

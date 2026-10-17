@@ -43,6 +43,8 @@ ca97 接受精确候选 `e6f68d2be01b1024a258425498eb39c2b60bf38e` 的适用 Gat
 
 合后从实际 dev 源码复验：84 项 PASS，lint、typecheck、Real build 全部 PASS，构建 17.759 秒；同 4 项全拦截浏览器 PASS，13.349 秒。首轮本机测试夹具因 CommonJS 模式不能加载 import.meta，在执行用例前停止；只修正 ignored 夹具的模块模式，首轮日志和报告保留，未改业务、测试断言或规则。合后证据位于本地忽略目录 `.codex/gate2-feedback-postmerge-15980a6e/`，无新窗口、平台、数据库或 Profile 操作。
 
+运行代码已推送于 `031732bce37a9f231be4fa2ceebb81ec66c93ab1`，[CI 38992808421](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/38992808421) 的 Backend、Frontend Real build 和 Container runtime 三项全部 success。随后仅更正商品数据资源的共享集群事实与实际访问阻塞，运行源码不变；后继治理提交仍须等待其自身精确 CI 才作为最终 Green，不把前一 CI 冒充后继提交结果。
+
 Migration Slot：无，单一 `20261015_0046` 不变；不访问或迁移数据库。不需要新 Electron 包，不修改已安装 1.0.8。前端回滚使用正常 revert 或正式前端版本恢复，不清 Profile、Session、缓存事实或降库。
 
 Main 当前没有本候选生产部署授权。Green 后向规划交付精确提交及 CI，生产保持原版本，Release Gate 另行确认。商品数据 UI 或真实实现不混入本候选。
