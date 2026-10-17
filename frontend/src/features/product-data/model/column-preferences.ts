@@ -1,7 +1,7 @@
 import {
   DEFAULT_PRODUCT_COLUMNS,
   PRODUCT_DISPLAY_COLUMNS,
-  orderProductDisplayColumns,
+  sanitizeProductDisplayColumns,
   type ProductDisplayColumnId,
 } from './display-fields'
 import { resolveProductMetricId } from './metrics'
@@ -14,22 +14,20 @@ export function normalizeProductColumns(
   const known = new Set<string>(
     PRODUCT_DISPLAY_COLUMNS.map((column) => column.id),
   )
-  const selected = new Set(
-    value.flatMap((id): ProductDisplayColumnId[] => {
-      if (typeof id !== 'string') return []
-      // User-approved metric replacement: preserve only column position and
-      // visibility, never alias old metric values/filters to the new meaning.
-      if (id === 'shippedReturnRate') return ['payTimeRefundRate']
-      if (id === 'product_click_show_ucnt_ratio') return ['exposureClickRate']
-      if (id === 'product_click_pay_ucnt_ratio') return ['clickPayRate']
-      if (known.has(id)) return [id as ProductDisplayColumnId]
-      const metricId = resolveProductMetricId(id)
-      return metricId && known.has(metricId)
-        ? [metricId as ProductDisplayColumnId]
-        : []
-    }),
-  )
-  const columns = orderProductDisplayColumns(selected)
+  const selected = value.flatMap((id): ProductDisplayColumnId[] => {
+    if (typeof id !== 'string') return []
+    // User-approved metric replacement: preserve only column position and
+    // visibility, never alias old metric values/filters to the new meaning.
+    if (id === 'shippedReturnRate') return ['payTimeRefundRate']
+    if (id === 'product_click_show_ucnt_ratio') return ['exposureClickRate']
+    if (id === 'product_click_pay_ucnt_ratio') return ['clickPayRate']
+    if (known.has(id)) return [id as ProductDisplayColumnId]
+    const metricId = resolveProductMetricId(id)
+    return metricId && known.has(metricId)
+      ? [metricId as ProductDisplayColumnId]
+      : []
+  })
+  const columns = sanitizeProductDisplayColumns(selected)
   return columns.length ? columns : [...DEFAULT_PRODUCT_COLUMNS]
 }
 export function readProductColumns(

@@ -56,6 +56,7 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
   await expect(rows).toHaveCount(20)
   await expect(page.getByText('演示数据', { exact: true })).toBeVisible()
   await expect(page.locator('.pagination-bar')).toContainText('共 31 条')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await page
     .getByRole('button', { name: '复制商品ID', exact: true })
     .first()
@@ -81,14 +82,59 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
   await expect(fields).not.toContainText('结算金额')
   await expect(fields).not.toContainText('实时可售库存')
   await fields.getByRole('checkbox', { name: '点击人数', exact: true }).click()
+  const selectedFields = fields.locator('.product-fields__selected-item')
+  await expect(selectedFields.last()).toHaveAttribute(
+    'data-field-id',
+    'product_click_ucnt',
+  )
+  await fields
+    .locator('[data-field-id="clickCount"]')
+    .dragTo(fields.locator('[data-field-id="shop"]'), {
+      targetPosition: { x: 20, y: 2 },
+    })
+  await expect(selectedFields.first()).toHaveAttribute(
+    'data-field-id',
+    'clickCount',
+  )
   await fields.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(
-    table.getByRole('columnheader', { name: '点击人数', exact: true }),
-  ).toBeAttached()
+  const clickCountHeader = table.getByRole('columnheader', {
+      name: '点击量',
+      exact: true,
+    }),
+    clickUsersHeader = table.getByRole('columnheader', {
+      name: '点击人数',
+      exact: true,
+    }),
+    shopHeader = table.getByRole('columnheader', { name: '店铺', exact: true }),
+    exposureHeader = table.getByRole('columnheader', {
+      name: '曝光',
+      exact: true,
+    })
+  await expect(clickUsersHeader).toBeAttached()
+  expect((await clickCountHeader.boundingBox())!.x).toBeLessThan(
+    (await shopHeader.boundingBox())!.x,
+  )
+  expect((await shopHeader.boundingBox())!.x).toBeLessThan(
+    (await exposureHeader.boundingBox())!.x,
+  )
   await page.reload()
-  await expect(
-    table.getByRole('columnheader', { name: '点击人数', exact: true }),
-  ).toBeAttached()
+  await expect(clickUsersHeader).toBeAttached()
+  expect((await clickCountHeader.boundingBox())!.x).toBeLessThan(
+    (await shopHeader.boundingBox())!.x,
+  )
+  await page.getByRole('button', { name: '字段配置', exact: true }).click()
+  await fields
+    .locator('[data-field-id="shop"]')
+    .dragTo(fields.locator('[data-field-id="clickCount"]'), {
+      targetPosition: { x: 20, y: 2 },
+    })
+  await fields.getByRole('button', { name: '取消', exact: true }).click()
+  expect((await clickCountHeader.boundingBox())!.x).toBeLessThan(
+    (await shopHeader.boundingBox())!.x,
+  )
+  await page.locator('.pagination-bar').getByText('2', { exact: true }).click()
+  await expect(clickUsersHeader).toBeAttached()
+  await page.locator('.pagination-bar').getByText('1', { exact: true }).click()
   await chooseShop(page, '星河服饰旗舰店')
   await page.getByText('近7天', { exact: true }).click()
   await page.getByRole('button', { name: '查询', exact: true }).click()

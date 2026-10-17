@@ -15,10 +15,11 @@ import ProductDataTable from './ProductDataTable.vue'
 
 describe('product data compact table consumer', () => {
   it('renders only the approved whitelist and reuses verified sorts for both traffic aliases', async () => {
+    const savedOrder = PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id).reverse()
     const wrapper = mount(ProductDataTable, {
       props: {
         rows: [],
-        visibleColumns: PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id),
+        visibleColumns: savedOrder,
         checked: [],
         sort: null,
         loading: false,
@@ -33,7 +34,7 @@ describe('product data compact table consumer', () => {
         .findComponent(DataTable)
         .props('columns') as DataTableBaseColumn<ProductDataRow>[]
       expect(columns.slice(2, -1).map((column) => column.key)).toEqual(
-        PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id),
+        savedOrder,
       )
       for (const field of PRODUCT_DISPLAY_COLUMNS)
         expect(columns.find((column) => column.key === field.id)?.sorter).toBe(

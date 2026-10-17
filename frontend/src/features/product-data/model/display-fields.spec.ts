@@ -3,7 +3,7 @@ import {
   DEFAULT_PRODUCT_COLUMNS,
   PRODUCT_DATA_FIELD_GROUPS,
   PRODUCT_DISPLAY_COLUMNS,
-  orderProductDisplayColumns,
+  sanitizeProductDisplayColumns,
   productDisplayMetricId,
 } from './display-fields'
 
@@ -66,14 +66,16 @@ describe('product data display whitelist', () => {
     )
   })
 
-  it('always restores fixed business order instead of checkbox or stored order', () => {
+  it('keeps the saved display order while filtering duplicates and hidden keys', () => {
     expect(
-      orderProductDisplayColumns([
+      sanitizeProductDisplayColumns([
         'trafficClickPayRate',
         'pay_amt',
         'shop',
         'clickCount',
+        'pay_amt',
+        'stock_cnt',
       ]),
-    ).toEqual(['shop', 'clickCount', 'pay_amt', 'trafficClickPayRate'])
+    ).toEqual(['trafficClickPayRate', 'pay_amt', 'shop', 'clickCount'])
   })
 })

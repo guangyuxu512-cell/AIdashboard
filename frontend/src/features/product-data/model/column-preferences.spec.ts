@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 describe('product data personal fields', () => {
-  it('migrates both historical ratio column IDs only at the preference boundary and keeps their visible order', () => {
+  it('migrates both historical ratio column IDs only at the preference boundary and preserves saved order', () => {
     const key = 'control-center.product-data.columns.v1.ratio-compat'
     const raw = JSON.stringify([
       'product_click_pay_ucnt_ratio',
@@ -24,9 +24,9 @@ describe('product data personal fields', () => {
     window.localStorage.setItem(key, raw)
     const write = vi.spyOn(Storage.prototype, 'setItem')
     expect(readProductColumns('ratio-compat')).toEqual([
+      'clickPayRate',
       'shop',
       'exposureClickRate',
-      'clickPayRate',
     ])
     expect(write).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(key)).toBe(raw)
@@ -63,20 +63,20 @@ describe('product data personal fields', () => {
     ])
     window.localStorage.setItem(key, raw)
     const write = vi.spyOn(Storage.prototype, 'setItem')
-    const expected = ['shop', 'exposureClickRate', 'clickPayRate'] as const
+    const expected = ['exposureClickRate', 'shop', 'clickPayRate'] as const
     expect(readProductColumns('legacy')).toEqual(expected)
     expect(write).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(key)).toBe(raw)
     saveProductColumns('legacy', [...expected])
     expect(JSON.parse(window.localStorage.getItem(key)!)).toEqual(expected)
   })
-  it('preserves each user selection in fixed business order and resets corrupt or wholly retired preferences', () => {
+  it('preserves each user selection and order while resetting corrupt or wholly retired preferences', () => {
     saveProductColumns('user-a', ['product_click_ucnt', 'shop', 'pay_amt'])
     saveProductColumns('user-b', ['pay_cnt'])
     expect(readProductColumns('user-a')).toEqual([
+      'product_click_ucnt',
       'shop',
       'pay_amt',
-      'product_click_ucnt',
     ])
     expect(readProductColumns('user-b')).toEqual(['pay_cnt'])
     expect(readProductColumns(null)).toEqual(DEFAULT_PRODUCT_COLUMNS)
@@ -99,9 +99,9 @@ describe('product data personal fields', () => {
       'shop',
     ])
     expect(readProductColumns('aliases')).toEqual([
-      'shop',
-      'trafficExposureClickRate',
       'trafficClickPayRate',
+      'trafficExposureClickRate',
+      'shop',
     ])
   })
   it('surfaces write failure rather than pretending preferences were saved', () => {

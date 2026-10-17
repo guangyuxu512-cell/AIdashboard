@@ -83,11 +83,16 @@ export function productDisplayMetricId(
   return productDisplayColumn(id)?.metricId ?? null
 }
 
-export function orderProductDisplayColumns(
+export function sanitizeProductDisplayColumns(
   ids: Iterable<string>,
 ): ProductDisplayColumnId[] {
-  const selected = new Set(ids)
-  return PRODUCT_DISPLAY_COLUMNS.filter(({ id }) => selected.has(id)).map(
-    ({ id }) => id,
-  )
+  const result: ProductDisplayColumnId[] = []
+  const seen = new Set<ProductDisplayColumnId>()
+  for (const id of ids) {
+    const column = productDisplayColumn(id)
+    if (!column || seen.has(column.id)) continue
+    seen.add(column.id)
+    result.push(column.id)
+  }
+  return result
 }

@@ -10,6 +10,9 @@ for (const [width, height] of [
     async ({ page }, info) => {
       await page.setViewportSize({ width, height })
       await page.goto('/#/product-data')
+      await page
+        .context()
+        .grantPermissions(['clipboard-read', 'clipboard-write'])
       const rows = page.locator(
         '.product-data-table .n-data-table-tbody .n-data-table-tr',
       )

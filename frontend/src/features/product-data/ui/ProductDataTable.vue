@@ -23,9 +23,9 @@ import {
   type ProductDataRow,
 } from '../model/types'
 import {
-  orderProductDisplayColumns,
   productDisplayColumn,
   productDisplayMetricId,
+  sanitizeProductDisplayColumns,
 } from '../model/display-fields'
 
 const props = defineProps<{
@@ -47,7 +47,7 @@ const emit = defineEmits<{
 // Own column budget: 48px image + 8px gap + ID/copy slots, not selection's layout.
 const productColumnWidth = 304
 const displayedColumns = computed(() =>
-  orderProductDisplayColumns(props.visibleColumns),
+  sanitizeProductDisplayColumns(props.visibleColumns),
 )
 const widths = computed(
   () =>
