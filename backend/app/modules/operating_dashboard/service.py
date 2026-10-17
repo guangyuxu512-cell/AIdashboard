@@ -38,6 +38,7 @@ from app.modules.operating_dashboard.repository import (
     CollectionItemState,
     DashboardShop,
     OperatingDashboardRepository,
+    SessionRecoveryMetadata,
 )
 from app.modules.operating_dashboard.schemas import (
     OperatingDashboardComparisonRead,
@@ -50,6 +51,7 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDashboardTablePageRead,
     OperatingDashboardTableRowRead,
     OperatingDashboardTrendPointRead,
+    OperatingSessionRecoveryRead,
     OperatingDataCollectionCountsRead,
     OperatingDataCollectionItemRead,
     OperatingDataCollectionJobRead,
@@ -58,7 +60,6 @@ from app.modules.operating_dashboard.schemas import (
 )
 from app.modules.shops.enums import ShopPlatform
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.sessions.repository import ShopSessionRepository
 from app.platforms.douyin.operating_data import CompassDailyMetrics
 from app.platforms.douyin.operating_data_executor import CollectionOutcome
 from app.shared.identifiers import generate_id
@@ -335,6 +336,14 @@ class OperatingDashboardService:
             metric_by_shop_date,
             trend_range,
         )
+        coverage = self._coverage(
+            shops=supported_shops, metric_by_shop_date=metric_by_shop_date,
+            collection_states=collection_states, range_value=selected_range,
+        )
+        self._attach_session_recovery_hints(
+            coverage, shops=supported_shops, collection_states=collection_states,
+            metric_by_shop_date=metric_by_shop_date, now=datetime.now(UTC),
+        )
         return OperatingDashboardRead(
             date_range=selected_range,
             comparison_date_range=comparison_range,
@@ -348,12 +357,7 @@ class OperatingDashboardService:
                 page=pagination.page,
                 page_size=pagination.page_size,
             ),
-            coverage=self._coverage(
-                shops=supported_shops,
-                metric_by_shop_date=metric_by_shop_date,
-                collection_states=collection_states,
-                range_value=selected_range,
-            ),
+            coverage=coverage,
             collection_available=self.settings.operating_dashboard_collection_execution_enabled,
         )
 
@@ -606,6 +610,7 @@ class OperatingDashboardService:
         collection_job_id: UUID,
         item_ids: Iterable[UUID],
         session_recovery_version: int | None = None,
+        revalidate_current_session: bool = False,
         now: datetime | None = None,
     ) -> OperatingDataCollectionJobRead:
         self._require_dashboard_access(actor)
@@ -620,11 +625,14 @@ class OperatingDashboardService:
         if not visible_items:
             raise OperatingDashboardCollectionNotFoundError()
         requested_ids = set(item_ids)
+        if revalidate_current_session and session_recovery_version is None:
+            raise OperatingDashboardCollectionRetryUnavailableError()
         if session_recovery_version is not None:
             return self._recover_failed_daily_session_item(
                 actor=actor, original_job_id=collection_job_id,
                 requested_ids=requested_ids, visible_items=visible_items,
                 session_version=session_recovery_version, now=now or datetime.now(UTC),
+                revalidate_current_session=revalidate_current_session,
             )
         # A broad retry request must stay limited to rows already marked
         # retryable.  The parser-specific manual recovery is intentionally
@@ -734,6 +742,7 @@ class OperatingDashboardService:
         self, *, actor: ActorContext, original_job_id: UUID,
         requested_ids: set[UUID], visible_items: list[OperatingDataCollectionItem],
         session_version: int, now: datetime,
+        revalidate_current_session: bool = False,
     ) -> OperatingDataCollectionJobRead:
         """One explicit recovery after a newly captured, server-verified Session.
 
@@ -743,11 +752,8 @@ class OperatingDashboardService:
         """
         original_job = self.repository.get_job(original_job_id)
         item = next((row for row in visible_items if row.collection_item_id in requested_ids), None)
-        if (len(requested_ids) != 1 or original_job is None or
-            original_job.kind != OperatingCollectionJobKind.DAILY.value or item is None or
-            item.status != OperatingCollectionItemStatus.FAILED.value or not item.retryable or
-            item.failure_stage != "session_preparation" or
-            item.failure_code != "SHOP_SESSION_VALIDATION_FAILED"):
+        if (len(requested_ids) != 1 or original_job is None or item is None or
+            not _is_session_recovery_failure(item, job_kind=original_job.kind)):
             raise OperatingDashboardCollectionRetryUnavailableError()
         shop = self.repository.get_authorized_shop(actor=actor, shop_id=item.shop_id)
         if shop is None:
@@ -759,32 +765,25 @@ class OperatingDashboardService:
             if existing is not None:
                 self.session.rollback()
                 return self.get_collection_job(actor=actor, collection_job_id=existing.collection_job_id)
-            stored = ShopSessionRepository(self.session).get_by_shop(item.shop_id)
-            identity_shop = self.repository.get_shop(item.shop_id)
-            failed_at = item.finished_at or item.updated_at
-            if (not shop.enabled or shop.platform is not ShopPlatform.DOUYIN or
-                identity_shop is None or not identity_shop.platform_shop_id or
-                item.business_date >= _shanghai_today(now) or
-                (shop.operating_start_date is not None and item.business_date < shop.operating_start_date) or
-                stored is None or stored.status is not ShopSessionStatus.VALID or
-                stored.version != session_version or stored.captured_at <= failed_at or
-                stored.captured_at > now or stored.validated_at is None or
-                stored.validated_at < stored.captured_at or stored.validated_at > now or
-                stored.validated_at < now - timedelta(
-                    seconds=self.settings.shop_session_validation_freshness_seconds,
-                )):
-                raise OperatingDashboardCollectionRetryUnavailableError()
+            context = self.repository.list_session_recovery_metadata((item.shop_id,)).get(item.shop_id)
             history = self.repository.list_collection_item_states(
                 shop_ids=(item.shop_id,), start_date=item.business_date, end_date=item.business_date,
             )
-            latest = _latest_state(history)
             metrics = self.repository.list_metrics(
                 shop_ids=(item.shop_id,), start_date=item.business_date, end_date=item.business_date,
             )
-            if (latest is None or latest.collection_item_id != item.collection_item_id or
-                self.repository.find_active_item(shop_id=item.shop_id, business_date=item.business_date) is not None or
-                (metrics and not _requires_collection(metrics[0]))):
-                raise OperatingDashboardCollectionRetryUnavailableError()
+            reason = _session_recovery_block_reason(
+                item=item, job_kind=original_job.kind, shop=shop, context=context,
+                history=history, metric=metrics[0] if metrics else None,
+                already_used=False, now=now, expected_version=session_version,
+                freshness_seconds=self.settings.shop_session_validation_freshness_seconds,
+                # Explicit opt-in defers only freshness to the existing
+                # collector's authoritative health gate, not its other guards.
+                # This HTTP path still performs zero platform I/O.
+                require_fresh_validation=not revalidate_current_session,
+            )
+            if reason is not None:
+                raise OperatingDashboardCollectionRetryUnavailableError(reason)
             job = self._create_collection_job(
                 kind=OperatingCollectionJobKind.RETRY, start_date=item.business_date,
                 end_date=item.business_date, shops=[shop], requested_by_user_id=actor.user_id,
@@ -1858,6 +1857,51 @@ class OperatingDashboardService:
             no_operating_scope=(total == 0 and not_operating_shop_days > 0),
         )
 
+    def _attach_session_recovery_hints(
+        self, coverage: OperatingDashboardCoverageRead, *, shops: list[DashboardShop],
+        collection_states: list[CollectionItemState],
+        metric_by_shop_date: dict[tuple[UUID, date], ShopOperatingDailyMetric], now: datetime,
+    ) -> None:
+        """Enrich only the existing bounded, authorized missing sample list."""
+        history_by_date: dict[tuple[UUID, date], list[CollectionItemState]] = defaultdict(list)
+        for state in collection_states:
+            history_by_date[(state.shop_id, state.business_date)].append(state)
+        candidates = []
+        for sample in coverage.missing_samples:
+            history = history_by_date[(sample.shop_id, sample.business_date)]
+            latest = _latest_state(history)
+            if latest is not None and _is_session_recovery_failure(latest, job_kind=latest.job_kind):
+                candidates.append((sample, latest, history))
+        if not candidates:
+            return
+        contexts = self.repository.list_session_recovery_metadata(
+            sample.shop_id for sample, _, _ in candidates
+        )
+        used = self.repository.used_session_recovery_items(
+            state.collection_item_id for _, state, _ in candidates
+        )
+        shops_by_id = {shop.shop_id: shop for shop in shops}
+        for sample, state, history in candidates:
+            context = contexts.get(sample.shop_id)
+            reason = _session_recovery_block_reason(
+                item=state, job_kind=state.job_kind, shop=shops_by_id[sample.shop_id],
+                context=context, history=history,
+                metric=metric_by_shop_date.get((sample.shop_id, sample.business_date)),
+                already_used=state.collection_item_id in used, now=now,
+                freshness_seconds=self.settings.shop_session_validation_freshness_seconds,
+                require_fresh_validation=False,
+            )
+            sample.recovery_block_reason = reason
+            if reason is None and context is not None and self.settings.operating_dashboard_collection_execution_enabled:
+                sample.session_recovery = OperatingSessionRecoveryRead(
+                    collection_job_id=state.collection_job_id,
+                    collection_item_id=state.collection_item_id, session_version=context.version,
+                    requires_validation=_session_recovery_requires_validation(
+                        context, now=now,
+                        freshness_seconds=self.settings.shop_session_validation_freshness_seconds,
+                    ),
+                )
+
     @staticmethod
     def _shop_range_values(
         shops: list[DashboardShop],
@@ -2235,6 +2279,79 @@ def _attempts_since_last_success(states: Iterable[CollectionItemState]) -> int:
             break
         attempts += state.attempt_count
     return attempts
+
+
+def _is_session_recovery_failure(
+    item: CollectionItemState | OperatingDataCollectionItem, *, job_kind: str,
+) -> bool:
+    """The existing narrow exception, shared by recovery reads and writes.
+
+    A new valid Session is not evidence that a business/signature/parser error
+    was authentication-related.  Other failure types keep their original gate.
+    """
+    return (
+        job_kind == OperatingCollectionJobKind.DAILY.value
+        and item.status == OperatingCollectionItemStatus.FAILED.value
+        and item.retryable
+        and item.failure_stage == "session_preparation"
+        and item.failure_code == "SHOP_SESSION_VALIDATION_FAILED"
+    )
+
+
+def _session_recovery_requires_validation(
+    context: SessionRecoveryMetadata, *, now: datetime, freshness_seconds: int,
+) -> bool:
+    return (
+        context.validated_at is None
+        or context.validated_at < now - timedelta(seconds=freshness_seconds)
+    )
+
+
+def _session_recovery_block_reason(
+    *, item: CollectionItemState | OperatingDataCollectionItem, job_kind: str,
+    shop: DashboardShop, context: SessionRecoveryMetadata | None,
+    history: Iterable[CollectionItemState], metric: ShopOperatingDailyMetric | None,
+    already_used: bool, now: datetime, freshness_seconds: int,
+    expected_version: int | None = None, require_fresh_validation: bool = True,
+) -> str | None:
+    """One read/write eligibility policy; successful reads never enqueue work."""
+    if not _is_session_recovery_failure(item, job_kind=job_kind):
+        return "此失败不属于会话恢复范围，请查看失败原因"
+    if not shop.enabled or shop.platform is not ShopPlatform.DOUYIN:
+        return "店铺已停用或暂不支持经营采集"
+    if item.business_date >= _shanghai_today(now) or (
+        shop.operating_start_date is not None and item.business_date < shop.operating_start_date
+    ):
+        return "该日期不属于当前可采集的完整经营日"
+    if context is None or context.shop_id != shop.shop_id or not context.identity_present:
+        return "当前店铺缺少可确认的会话或平台身份"
+    if context.status is not ShopSessionStatus.VALID:
+        return "当前店铺会话不可用，请先在店铺中心处理登录状态"
+    if expected_version is not None and context.version != expected_version:
+        return "店铺会话版本已变化，请刷新后重试"
+    failed_at = item.finished_at or item.updated_at
+    if context.captured_at is None or context.captured_at <= failed_at:
+        return "当前会话不是失败后的新会话，暂不能恢复此项"
+    if (
+        context.captured_at > now or context.validated_at is None
+        or context.validated_at < context.captured_at or context.validated_at > now
+    ):
+        return "当前会话时间记录不完整或异常，暂不能恢复"
+    states = list(history)
+    latest = _latest_state(states)
+    if latest is None or latest.collection_item_id != item.collection_item_id:
+        return "该日期已有较新执行记录，请刷新查看"
+    if any(state.status in {"pending", "running", "paused_reauthorization"} for state in states):
+        return "该日期已有采集任务，请查看当前进度"
+    if metric is not None and not _requires_collection(metric):
+        return "该日期数据已齐全，无需恢复"
+    if already_used:
+        return "该日期已执行过一次会话恢复，请查看最近结果"
+    if require_fresh_validation and _session_recovery_requires_validation(
+        context, now=now, freshness_seconds=freshness_seconds,
+    ):
+        return "当前有效会话需要服务器复核后才能恢复，无需重复登录"
+    return None
 
 
 def _is_response_parse_failure(state: CollectionItemState) -> bool:

@@ -4,6 +4,74 @@ import { describe, expect, it } from 'vitest'
 import OperatingDashboardFilterBar from './OperatingDashboardFilterBar.vue'
 
 describe('OperatingDashboardFilterBar', () => {
+  it('offers a server-projected recovery only after an explicit click and disables duplicate actions', async () => {
+    const target = {
+      collectionJobId: 'old-job',
+      collectionItemId: 'old-item',
+      sessionVersion: 3,
+      requiresValidation: true,
+    }
+    const wrapper = mount(OperatingDashboardFilterBar, {
+      props: {
+        modelValue: {
+          datePreset: 'last7Days',
+          customDateRange: null,
+          shopId: null,
+          platform: null,
+        },
+        shopOptions: [],
+        platformOptions: [],
+        refreshAvailable: true,
+        coverage: {
+          state: 'available',
+          supportedShopCount: 1,
+          collectedShopDays: 0,
+          totalShopDays: 1,
+          missingShopDays: 1,
+          missingSamplesTruncated: false,
+          manualBackfillRequired: true,
+          missingSamples: [
+            {
+              shopId: 'shop',
+              shopName: 'synthetic recovery shop',
+              businessDate: '2026-10-10',
+              state: 'failed',
+              failureReason: '历史会话校验失败',
+              sessionRecovery: target,
+            },
+          ],
+        },
+      },
+      global: {
+        stubs: {
+          FilterBar: {
+            template: '<div><slot /><slot name="primary-action" /></div>',
+          },
+          FilterField: { template: '<div><slot /></div>' },
+          AppButton: { template: '<button><slot /></button>' },
+          AppRadio: true,
+          AppSelect: true,
+          NDropdown: true,
+          Popover: { template: '<div><slot name="trigger" /><slot /></div>' },
+        },
+      },
+    })
+    expect(wrapper.emitted('recover')).toBeUndefined()
+    expect(wrapper.html()).toContain('复核会话并恢复')
+    const action = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '复核会话并恢复')!
+    await action.trigger('click')
+    expect(wrapper.emitted('recover')).toEqual([[target]])
+    expect(wrapper.text()).not.toContain('old-job')
+    expect(wrapper.text()).not.toContain('old-item')
+    await wrapper.setProps({ refreshing: true })
+    expect(action.attributes('disabled')).toBeDefined()
+    await action.trigger('click')
+    expect(wrapper.emitted('recover')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('guides the first selected range to ordinary update, not an inferred operating date', () => {
     const wrapper = mount(OperatingDashboardFilterBar, {
       props: {

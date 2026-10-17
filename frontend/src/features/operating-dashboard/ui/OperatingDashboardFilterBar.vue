@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import {
   NDropdown,
+  NPopover,
   NTooltip,
   type DropdownOption,
   type SelectOption,
@@ -18,7 +19,9 @@ import type { AppOption, AppOptionValue } from '@/shared/ui/types'
 
 import type {
   OperatingDashboardCoverage,
+  OperatingDashboardCoverageMissing,
   OperatingDashboardFilters,
+  OperatingDashboardSessionRecovery,
 } from '../model/types'
 import { formatShanghaiDate } from '../model/dashboard'
 
@@ -39,6 +42,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: OperatingDashboardFilters]
   refresh: []
   recollect: []
+  recover: [target: OperatingDashboardSessionRecovery]
 }>()
 
 const dateOptions = [
@@ -107,26 +111,28 @@ const coverageText = computed(() => {
   return `所选范围已采集 ${coverage.collectedShopDays}/${coverage.totalShopDays} 个应采店铺日期`
 })
 
+const stateLabel: Record<
+  OperatingDashboardCoverage['missingSamples'][number]['state'],
+  string
+> = {
+  missing: '待采集',
+  collecting: '采集中',
+  waiting_collection_time: '等待每日采集时间',
+  waiting_reauthorization: '等待重新登录',
+  failed: '采集失败',
+  unknown: '平台指标未知',
+}
+
+function coverageSampleText(sample: OperatingDashboardCoverageMissing): string {
+  return `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}${
+    sample.failureReason ? `（${sample.failureReason}）` : ''
+  }`
+}
+
 const coverageDetail = computed(() => {
   const coverage = props.coverage
   if (!coverage || coverage.missingSamples.length === 0) return ''
-  const stateLabel: Record<
-    OperatingDashboardCoverage['missingSamples'][number]['state'],
-    string
-  > = {
-    missing: '待采集',
-    collecting: '采集中',
-    waiting_collection_time: '等待每日采集时间',
-    waiting_reauthorization: '等待重新登录',
-    failed: '采集失败',
-    unknown: '平台指标未知',
-  }
-  const samples = coverage.missingSamples.map(
-    (sample) =>
-      `${sample.shopName} · ${sample.businessDate} · ${stateLabel[sample.state]}${
-        sample.failureReason ? `（${sample.failureReason}）` : ''
-      }`,
-  )
+  const samples = coverage.missingSamples.map(coverageSampleText)
   if (coverage.missingSamplesTruncated) samples.push('其余缺失项未展开')
   return samples.join('\n')
 })
@@ -276,7 +282,13 @@ function selectRecollect(key: string | number): void {
       role="status"
     >
       {{ coverageText }}
-      <NTooltip v-if="coverageDetail" placement="bottom-start">
+      <NPopover
+        v-if="coverageDetail"
+        trigger="click"
+        placement="bottom-start"
+        scrollable
+        style="max-height: min(60vh, 24rem)"
+      >
         <template #trigger>
           <AppButton
             tone="text"
@@ -285,10 +297,32 @@ function selectRecollect(key: string | number): void {
             查看缺失
           </AppButton>
         </template>
-        <span class="operating-dashboard-filter__coverage-tooltip">{{
-          coverageDetail
-        }}</span>
-      </NTooltip>
+        <div class="operating-dashboard-filter__coverage-tooltip">
+          <div
+            v-for="sample in coverage?.missingSamples ?? []"
+            :key="`${sample.shopId}:${sample.businessDate}`"
+            class="operating-dashboard-filter__missing-item"
+          >
+            <span>{{ coverageSampleText(sample) }}</span>
+            <AppButton
+              v-if="sample.sessionRecovery"
+              tone="secondary"
+              size="small"
+              :disabled="refreshing || !refreshAvailable"
+              @click="$emit('recover', sample.sessionRecovery)"
+              >{{
+                sample.sessionRecovery.requiresValidation
+                  ? '复核会话并恢复'
+                  : '恢复该日期'
+              }}</AppButton
+            >
+            <span v-else-if="sample.recoveryBlockReason">{{
+              sample.recoveryBlockReason
+            }}</span>
+          </div>
+          <span v-if="coverage?.missingSamplesTruncated">其余缺失项未展开</span>
+        </div>
+      </NPopover>
       <span
         v-if="(coverage?.shopsWithUnknownOperatingStart ?? 0) > 0"
         class="operating-dashboard-filter__coverage-note"
@@ -345,6 +379,13 @@ function selectRecollect(key: string | number): void {
   display: block;
   max-width: 22rem;
   white-space: pre-line;
+}
+
+.operating-dashboard-filter__missing-item {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
 }
 
 @media (max-width: 960px) {
