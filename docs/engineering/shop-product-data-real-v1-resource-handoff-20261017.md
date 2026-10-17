@@ -51,7 +51,9 @@ Owner 现在可完成固定路径解析、合成测试、DTO/Service/Repository�
 
 ## 下一责任与产物
 
-DBAdmin资源交付已完成。7d55首批解析代码 `353464f1bfe58013494265706626c5d6363844f4` 的80项及后续离线118项通过，已正常同步Green bef7093；回报Feature单一47与12项真实Schema PG测试通过，包括空新表47→46→47保旧标记。下一产物是事务原子发布、权限查询、HTTP接线及完整Candidate/Handoff；不冒称真实平台采集成功。ca97负责后续精确候选Gate2，Integration仅写 `control_center_integration`。商品数据无生产发布授权；Main另行完成的登录提示发布不含本Feature。
+DBAdmin资源交付已完成。7d55已正常同步Green bef7093，完成事务原子发布、权限查询、HTTP及typed Real接线，交付精确Candidate `5915009d85be2ea912d8498dc0807b141938f399`；Gate1回报947项后端、45项真实Feature PG及856项前端通过，库仍为单一47。此前80/118项离线与12项Schema PG是阶段证据，不代替完整闭环。
+
+ca97已独立精确归档源审、87项商品后端、78项共享回归、83项商品前端、lint/type和Real构建通过，chunk hash与交接一致；细节见本轮Gate2审查记录。Integration PG/API、新的真实平台全页及Real展示仍未覆盖，当前不是总Gate2或Green。新平台预算尚未明确前不执行；不把旧单页或合成数据当真实采集。Integration只写 `control_center_integration`，商品数据仍无生产发布授权；已发布登录提示不含本Feature。
 
 ## 经营恢复修复及固定范围诊断
 
