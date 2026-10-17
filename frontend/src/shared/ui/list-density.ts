@@ -19,6 +19,12 @@ const compactListThemeOverrides = {
     fontSizeSmall: 'var(--list-compact-font-size)',
     fontSizeMedium: 'var(--list-compact-font-size)',
   },
+  Radio: {
+    buttonHeightSmall: 'var(--list-compact-control-height)',
+    buttonHeightMedium: 'var(--list-compact-control-height)',
+    fontSizeSmall: 'var(--list-compact-font-size)',
+    fontSizeMedium: 'var(--list-compact-font-size)',
+  },
   Select: {
     peers: {
       InternalSelection: {
