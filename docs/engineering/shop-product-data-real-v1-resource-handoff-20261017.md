@@ -1,12 +1,12 @@
 # 商品数据首版开发资源交接
 
-ca97 已接受7d55的最小四表范围并分配唯一 active Migration Slot、独立 Feature 数据库及运行端口。管理员已创建空库，应用连接被既有 HBA 明确拒绝，受保护配置尚未交付；Owner 继续离线实现，不连接其他数据库或绕过应用门禁。
+ca97 已接受7d55的最小四表范围，正式分配唯一 active Migration Slot、专用 Feature 数据库和运行端口。精确HBA调整获人类批准后，管理员已完成连接验证及受限配置交付；ca97独立核查通过，资源阻塞已解除。Owner已进入真实Feature PG阶段，不再等待同一许可。
 
 ## 授权与基线
 
 直接人类授权来自规划 turn `01a14788-0c80-7b73-be1a-36ad46a23793` 的“那就分配啊”及相邻首版采集入库、查询开发范围。只推进基础手动链路，不授权生产写入、上线、执行清理或新的平台试请求。
 
-Owner：7d55，原工作树 `C:\Users\Administrator\.codex\worktrees\7d55\中控台`，分支 `feat/shop-product-data-real-v1`。从已核 Green `08176d9c5cdbea50114eb0656975a209205761bd` 正常接续并 no-ff 合入原 UI `af6b737281c16e469fdc6300f80cdfb40cb5c981`，当前 `7805ab847976bc5f49e56b49b5e66f362edb49f5`。旧 UI、样本、共享依赖和历史均保留；新的 Green 确认后正常同步，不使用 ca97 未成 Green 的治理 HEAD。
+Owner：7d55，原工作树 `C:\Users\Administrator\.codex\worktrees\7d55\中控台`，分支 `feat/shop-product-data-real-v1`。从已核 Green `08176d9c5cdbea50114eb0656975a209205761bd` 正常接续并 no-ff 合入原 UI `af6b737281c16e469fdc6300f80cdfb40cb5c981`，初始接续为 `7805ab847976bc5f49e56b49b5e66f362edb49f5`，后续已正常同步最终Green bef7093。旧 UI、样本、共享依赖和历史均保留，不使用 ca97 未成 Green 的治理 HEAD。
 
 申请为 Owner 本地 `docs/_drafts/shop-product-data-real-v1-schema-request-20261017.md`，审核时 SHA256 为 `C377F15DF51A9106E76042AFDBF2226801F1B8C7F1F51803E19FA0877A7EEE13`。本交接中的约束要求优先于草稿未修订处，不由 Integrator 代写业务代码。
 
@@ -14,16 +14,18 @@ Owner：7d55，原工作树 `C:\Users\Administrator\.codex\worktrees\7d55\中控
 
 | 资源 | 登记与状态 |
 | --- | --- |
-| Feature DB | `control_center_feat_shop_product_data` 已创建，Owner 为 `control_center_dev_user`，非系统 relation 为0；尚未执行 Migration |
+| Feature DB | `control_center_feat_shop_product_data`，Owner 为 `control_center_dev_user`；交付时为空，Owner已从46升级至单一47 |
 | 应用角色 | Admin已核 superuser、createdb、createrole、replication、bypassrls均false、memberships0；不轮换凭据、不扩大既有权限 |
-| 受保护连接 | 唯一一次连接被HBA明确拒绝；Owner `.env` 未创建。批准精确访问规则并连通后，才交付独立受限ACL的 ignored 配置 |
+| 受保护连接 | 初次HBA拒绝后获精确许可，一次目标只读验证成功。Owner ignored配置已交付，ca97独立核目标、Admin/SYSTEM ACL及4执行开关false |
 | Backend | Owner `127.0.0.1:8102`，分配时无监听；不得漂移到 Integration/Main/81a1 端口 |
 | Frontend | Owner 原 `127.0.0.1:4177 --strictPort`；分配时无监听，不启动第二 Electron |
 | Migration Slot | 唯一 active：文件 `20261017_0047_shop_product_data_v1.py`，revision `20261017_0047`，down `20261015_0046` |
 
-35433 复用已登记的严格 SSH 隧道。Main 的管理员前检确认，该入口对应的既有 PostgreSQL 集群也承载其他数据库，生产备份同样经过该容器；本轮隔离边界是精确新 Feature 数据库，不是独立实例。DBAdmin 只建本次新空库，不改集群角色、密码、HBA、旧库或其他数据库权限。所有迁移和测试在执行前必须核 `current_database()` 精确等于本次登记名，不接受仅核端口或数据库名前缀。保留旧 Feature、Integration、Main smoke、生产数据及凭据。没有新 Signer、RPA、Worker 或调度服务资源。
+35433 复用已登记的严格 SSH 隧道。该 PostgreSQL 集群也承载其他数据库，隔离边界是精确新 Feature 数据库，不是独立实例。DBAdmin只建新库并按后续精确许可新增该库的访问规则，不改角色、密码、旧规则或其他数据库权限。所有迁移和测试在执行前必须核 `current_database()` 精确等于本次登记名，不接受仅核端口或数据库名前缀。保留旧 Feature、Integration、Main smoke、生产数据及凭据。没有新 Signer、RPA、Worker 或调度服务资源。
 
-Main于北京时间2026-10-17 09:59:18执行的唯一应用连接被服务器明确拒绝，安全原因 `HBA_EXPLICIT_REJECT`，不是密码错误判断。未重试、未交付配置，未改既有认证规则。解除阻塞需要对新数据库、当前最小应用角色及实际来源的一条精确 SCRAM 规则取得批准，备份/校验后 reload，不重启、不放宽通用规则。该权限决定已交规划集中处理；批准前不经其他账号、连接或数据库绕过。
+Main于北京时间2026-10-17 09:59:18的初次应用连接被明确拒绝，安全原因 `HBA_EXPLICIT_REJECT`，不是密码错误推测。人类在规划 turn `01a14799-18f5-7282-9d93-997c37d7d9cd` 明确“可以。继续。”后，仅新增精确新库/角色/来源的SCRAM规则，旧规则逐字保留，HBA解析0错误、备份可校验，reload不重启。授权后一次应用只读连接验证库名、角色和权限通过，原拒绝历史保留。
+
+管理员正式回执为 `D:/中控台/.dev-runtime/shop-product-data-resource-20261017/db-ready-receipt.json`。ca97随后只在内存解析已登记的 `BACKEND_DATABASE_URL`，独立核完整库名、最小角色、127.0.0.1:35433、禁继承且仅Admin/SYSTEM的ACL、Git ignored/not tracked及4项自动执行开关显式false，未输出秘密、追加数据库连接或操作HBA。资源可用不等于Feature Gate或平台闭环完成。
 
 ## 接受的 Schema 与必须落实的约束
 
@@ -49,4 +51,4 @@ Owner 现在可完成固定路径解析、合成测试、DTO/Service/Repository�
 
 ## 下一责任与产物
 
-DBAdmin：本轮空库和最小角色已完成；批准精确HBA规则后再执行一次目标连接验证并交付受限配置。7d55：首批解析代码已提交 `353464f1bfe58013494265706626c5d6363844f4`，解析与相关URL校验80项通过；继续幂等修正、Model/Migration/正式API，PG阶段待受保护连接就绪。ca97：复核资源回执与精确候选，Integration Gate仅写 `control_center_integration`。Main：本次无生产部署任务。
+DBAdmin资源交付已完成。7d55首批解析代码 `353464f1bfe58013494265706626c5d6363844f4` 的80项及后续离线118项通过，已正常同步Green bef7093；回报Feature单一47与12项真实Schema PG测试通过，包括空新表47→46→47保旧标记。下一产物是事务原子发布、权限查询、HTTP接线及完整Candidate/Handoff；不冒称真实平台采集成功。ca97负责后续精确候选Gate2，Integration仅写 `control_center_integration`。商品数据无生产发布授权；Main另行完成的登录提示发布不含本Feature。

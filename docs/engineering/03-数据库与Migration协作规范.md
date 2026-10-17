@@ -30,8 +30,8 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 
 当前活跃 Migration Slot：
 
-2026-10-17商品数据首版真实接入：已核当前代码最高单一 `20261015_0046`，该槽已 released，
-没有后续 active。规划人类 turn `01a14788-0c80-7b73-be1a-36ad46a23793` 已授权首版开发和资源分配。
+2026-10-17商品数据首版真实接入：分配时当前代码最高单一 `20261015_0046`，该槽已 released，
+没有其他 active。规划人类 turn `01a14788-0c80-7b73-be1a-36ad46a23793` 已授权首版开发和资源分配。
 ca97 审定7d55最小四表申请（原申请SHA256 `C377F15DF51A9106E76042AFDBF2226801F1B8C7F1F51803E19FA0877A7EEE13`），
 正式激活下表唯一 Slot。此前“未分配下一Slot”为历史状态，0042至0046字节不改。
 
@@ -41,8 +41,11 @@ ca97 审定7d55最小四表申请（原申请SHA256 `C377F15DF51A9106E76042AFDBF
 
 Schema与具体资源边界见 `shop-product-data-real-v1-resource-handoff-20261017.md`。Integrator不代写
 Model/Migration，不写Feature业务表。空库创建和凭据交付由既有DBAdmin通道执行，不能复用旧库；
-新空库已由管理员CREATE、Owner/min-role和0非系统relation已核；唯一应用连接被HBA明确拒绝，
-配置未交付/未执行迁移，精确访问规则待批准。不将Slot active或空库创建写成PG验证/真实闭环已就绪。
+新库已由管理员CREATE，初次HBA拒绝历史保留。人类01a14799批准精确新库/角色/来源规则后，
+Main备份校验并reload无restart，应用目标验证通过，受限连接已交付；ca97本地独立核目标/ACL/四开关false。
+Owner已正常同步Green bef7093并在精确Feature库从46升到单一47，回报12项Schema PG测试通过，
+含精度、复合FK、无Team幂等及空表47→46→47保留旧标记。完整Gate1及事务/权限/API仍在实现，
+Slot47继续active；Integration及已发布Main/生产仍0046，不把Feature结果当集成/生产或真实平台通过。
 
 2026-10-16生产核验完成：Main正式Release21229eff经CI38790697624/Deploy38791100315成功，
 新鲜pre46备份1039309字节/restore目录344项可读后升级生产单一20261015_0046；
