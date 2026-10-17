@@ -107,6 +107,22 @@ test("subprocesses receive synthetic configuration and cannot auto-install packa
   assert.equal(env.APPDATA, "synthetic-temp");
 });
 
+test("offline subprocess timezone stays Shanghai under different host timezones", () => {
+  const script = `console.log(JSON.stringify(['2026-08-18T10:00:00+00:00', '2026-08-18T11:00:00+00:00'].map(value => new Date(value).getHours())))`;
+  for (const timezone of ["UTC", "America/Los_Angeles"]) {
+    const source = { ...process.env, TZ: timezone };
+    const env = isolatedEnvironment(os.tmpdir(), source);
+    assert.equal(env.TZ, "Asia/Shanghai");
+    assert.equal(source.TZ, timezone);
+    const child = spawnSync(process.execPath, ["-e", script], {
+      env,
+      encoding: "utf8",
+    });
+    assert.equal(child.status, 0, child.stderr);
+    assert.deepEqual(JSON.parse(child.stdout), [18, 19]);
+  }
+});
+
 test("an added server state without a consumer fails with a nonzero process exit", () => {
   const code = `import {enumFindings,classify} from ${JSON.stringify(new URL("./contracts.mjs", import.meta.url).href)}; process.exit(classify(enumFindings('fixture',['pending','new_state'],['pending'])).failures.length ? 1 : 0)`;
   assert.equal(

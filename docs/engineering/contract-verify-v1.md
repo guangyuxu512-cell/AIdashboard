@@ -61,6 +61,8 @@ PC/Mobile 探针直接 import 真实 HTTP client，使用 Axios 内存 adapter�
 
 子进程只收到白名单系统变量及临时合成环境，Backend/Worker 在空 cwd 运行，不读本机 `.env`、真实数据库、Signer、Worker Token 或 Profile。pnpm 子进程使用空 user/global npmrc、离线及关闭版本自动准备。Vite 单测/构建复用原配置，但将 dotenv 目录及读取 cwd 指向空目录；不改默认业务或测试配置。
 
+离线子进程固定 `TZ=Asia/Shanghai`，与现有 UI 时间显示夹具一致，不继承宿主时区。该设置只作用于本次验证进程树，不修改系统、应用运行配置或原测试断言；UTC 等 runner 环境仍须得到相同结果。
+
 pnpm 11 使用 `pnpm_config_*`，以 `pmOnFail` 替代旧版本管理配置，见[官方迁移说明](https://pnpm.io/blog/releases/11.0)。入口仅对子进程设置 `pm_on_fail=ignore`、`verify_deps_before_run=error`、`runtime_on_fail=error` 与离线模式，使用当前已安装的工具，不下载项目所声明的另一个版本。报告分别记录实际与声明版本，并检查本次私有 pnpm 目录是否出现安装树；不修改项目 pin、全局配置或依赖。
 
 本机完整离线 profile 明确不运行以下两份会绑定端口的既有测试：
