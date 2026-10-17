@@ -50,6 +50,9 @@ export function isolatedEnvironment(temporary, source = process.env) {
     XDG_CACHE_HOME: temporary,
     VERIFY_EMPTY_ENV_DIR: temporary,
     VERIFY_PROBE_OUTPUT: path.join(temporary, "client-probes.json"),
+    // Existing UI fixtures assert Shanghai display times, not the runner's OS
+    // timezone. Set this before spawning Node; do not change system/business TZ.
+    TZ: "Asia/Shanghai",
     VITE_API_MODE: "real",
     PYTHONDONTWRITEBYTECODE: "1",
     PYTHONUTF8: "1",

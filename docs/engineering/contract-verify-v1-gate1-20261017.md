@@ -2,6 +2,29 @@
 
 Owner 81a1 已实现统一入口、第一批跨端契约防回归、检查器负向自测及 CI 接线。交 ca97 独立 Gate 2，再由 Main 按正式流程发布及只读 smoke；本记录不是全项目契约一致或生产已验证的声明。
 
+## Windows CI 时区返修
+
+原 Candidate `a07529779920d3dcc66198d8eed6f97611fc8900` 的本机与 ca97 独立完整离线结果保留。精确 dev `54513edcfc955b6b4a0887e1e6927924753b98dd` 的首轮 [CI 39021696142](https://github.com/guangyuxu512-cell/AIdashboard/actions/runs/39021696142) 中，原三个 Job 成功，仅 Windows verify-offline 的完整 profile 失败；未重跑该 CI。
+
+Job `117364628422` 的 PC 测试为 781 PASS / 1 FAIL。`shop-mapper.spec.ts:60` 期望 `2026-08-18 18:00` / `19:00`，实际为 `10:00` / `11:00`；28 known、0 new、0 stale，Backend、Mobile、Electron、Worker 通过。ca97 独立读取同一日志确认。既有 mapper 使用本地时区格式化，而 Verify 隔离环境没有固定时区，导致上海本机通过、UTC 显示环境失败。
+
+本次沿原 Feature 正常追加，只在 `scripts/verify/environment.mjs` 对验证子进程设置 `TZ=Asia/Shanghai`，现有 `contracts.test.mjs` 增加一项环境隔离回归，并同步使用说明及本记录。业务 mapper、原测试断言、28 条例外、依赖版本、原 CI 配置和业务运行配置均不变；不修改系统时区。
+
+修前受控 UTC 执行原 mapper 四项测试得到 3 PASS / 1 FAIL，与 CI 两个时间字段的差异逐值相同。新时区自测修前 FAIL（TZ 未定义），修后 PASS：分别以 UTC、America/Los_Angeles 作为传入环境，独立 Node 子进程仍显示 18 / 19，原传入环境保持不变。
+
+| 修后实际入口 | 结果 |
+| --- | --- |
+| 外层 `TZ=UTC`，`pnpm verify --full --report=…/full-utc.json` | exit 0 / 256.48 秒；28 known、0 new、0 stale；9 Node 自测、2 AST 自测、4 client 探针，Backend 867、PC 782、Mobile 236、Electron 83、Worker 136 及适用 lint/typecheck/Real build 全通过；私有 manager 安装树为空 |
+| 外层 `TZ=America/Los_Angeles`，`pnpm verify --report=…/default-los-angeles.json` | exit 0 / 24.74 秒；28 known、0 new、0 stale；无 manager 安装树 |
+| 相同外层时区，`pnpm verify --strict --report=…/strict-los-angeles.json` | exit 1 / 23.66 秒；28 failures、0 known、0 stale；无 manager 安装树 |
+| 显式不存在的 `VERIFY_BACKEND_PYTHON`，普通入口 | exit 2 / 0.66 秒；契约及其自测 BLOCKED / 未执行；无 manager 安装树 |
+
+两份 MJS 的既有 Prettier、`git diff --check` 和排除路径 diff 检查通过。首次根 `pnpm exec prettier` 因根目录没有该可执行入口失败，随后使用已安装的 Frontend Prettier 检查源码；旧 Markdown 排版检查提示保留，不为本返修全量重排旧文档。工具仍为 Node 24.19.0 / pnpm 11.25.0，项目与 CI pin 未改。新的 Windows Node 22 / pnpm 11.19 hosted CI 交 ca97 在独立 Gate 2 后核验，不以本机成功冒称通过。
+
+脱敏首败摘要与复现入口位于 ignored `.codex/verify-ci-timezone-repair-20261017/`；下载日志在工具内存中筛选，未保存或输出短时下载能力 URL、认证头或 Token。
+
+本次 `full-utc.json` SHA256 `e4901c8cf1bf783839bbda91142f69bf3cc000cc9939b1a03d16b82d956287c3`，默认报告 `b25557e4ff4fd38019c8321efd3101f6e5212e823be02ae24322910a21d6e334`，严格报告 `a8f1aa639ed80fcb7fea5871ee5576ee940d0ce7c315f58b49b112afc58681d7`，缺依赖报告 `23172a427c8a9d20005f8ed8dd03958ab3f47bb4d5890fadcddb2a019aa53d9a`。28 条例外 SHA256 仍为下文原值；业务/依赖/锁/CI/Schema 无改动，本轮无 DB、平台、服务、原生窗口或生产动作。
+
 ## 基线与范围
 
 - 分支 `feat/contract-verify-v1` 正常建立于精确 Green `157f9400814aabad574b3d7860ba8bb8a6f00c3b`。Owner 独立 fetch 与读取 CI 39002413981，headSha 一致，原三个 Job 均 success。
