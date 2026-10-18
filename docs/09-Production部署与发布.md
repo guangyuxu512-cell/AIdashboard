@@ -10,15 +10,46 @@
 Feature Gate 1
 → Integration Gate 2 / Green dev
 → Release Gate / main
-→ GitHub Actions Production Deploy
+→ 本地 Codex / PowerShell 经 SSH 调用现有生产部署脚本
 ```
 
-`Production Deploy` 同时提供手动和自动入口，二者共享同一个并发组与远程部署链路：
+正式应用 CD 由 `scripts/deploy-production.ps1` 发起；代码推送与四个 CI Job 仍在 GitHub。
+`.github/workflows/production-deploy.yml` 只保留明确触发的 `workflow_dispatch` 应急入口，
+调用同一个 PowerShell 脚本，不再监听 `workflow_run`。本工程候选尚未通过 Gate/Release 时，
+这些描述是待发布行为，不能据此宣称生产执行入口已切换。
 
-- 手动入口 `workflow_dispatch` 保留，仍只接受明确等于当前 `origin/main` 的完整 40 位小写 SHA。
-- 自动入口只监听本仓库 `main` 的 `CI` 工作流完成事件；只有该事件是 `push`、分支是 `main`、且 CI 结论为 `success` 时才进入部署 Job。`dev`、Feature、Pull Request、失败和取消的 CI 都不会触发生产部署。
-- 自动入口以 `workflow_run.head_sha` 作为唯一候选，部署前重新读取 `origin/main`。若该 SHA 在排队期间已不是当前 `origin/main`，工作流以“已跳过过期的 CI 候选”成功结束；绝不能改为部署较新的、尚未由这次 CI 验证的 HEAD。
-- 若服务器 `current` 已指向同一 SHA 的 release，自动与手动入口都会明确跳过，不上传、不删除既有 release，也不重复执行 Migration 或首次管理员初始化。已存在但并非 `current` 的同 SHA release 继续被保护并拒绝覆盖，必须以新的 main SHA 发布。
+- 仅接受等于最新 `origin/main` 的完整 40 位小写 SHA；用该仓库正式 `ci.yml` 的 main push 运行核对
+  精确 SHA，以最新 Run 的结果为准，必须 completed/success。无运行、失败、取消及运行中都拒绝；
+  同 SHA 的旧成功记录不能覆盖新的失败。Deploy 在第一次 SSH 前再次读取 main/CI，Plan 不构成发布批准。
+- 归档只由 `git archive --format=tar.gz --output=... <sha>` 从提交生成。完整 Backend、PC、Mobile、
+  Compose 与原远程脚本沿用原白名单；上传的脚本也从同一归档提取，不读取本地未提交源码或 `.env`。
+- 本地与应急入口在服务器同一 `.deploy.lock` 上互斥；`flock` 不可用或已有部署持锁时失败，不并行迁移、
+  切换 `current` 或回滚。锁覆盖读取旧 current 到 EXIT 清理，退出码 75 表示有部署正在进行。
+- current 已为目标 SHA 时，在相同锁下调用 `deploy/production/verify-active-release.sh`，核三个容器的
+  实际 image tag 等于目标 SHA、均 running/未暂停、Backend/Signer 均 healthy；Frontend 沿用仅 running
+  标准。全部匹配才跳过上传/迁移，再核公网 health。混版、缺失或不健康会失败并保留现场，不能仅凭
+  current 与通用 health 判为已部署。已存在但并非 current 的同 SHA release 仍拒绝覆盖。
+  新入口还拒绝缺少共享锁的旧 release 脚本。
+
+本地使用 PowerShell 7.4+、Git、GitHub CLI、OpenSSH、tar 和 curl 的已有安装；使用既有 GitHub 认证与
+受保护 SSH config/key/known_hosts。部署主机参数是已核实的 SSH 别名或 user@host，不能关闭主机校验。
+应用秘密始终留在服务器 `.env`。默认 `Plan` 会读取 GitHub CI 并生成本地归档/收据，不联系生产服务器：
+
+```powershell
+pwsh -NoProfile -File scripts/deploy-production.ps1 -DeploySha <完整main-SHA> `
+  -SshHost <已核实生产SSH别名> -PublicHost 119.29.188.118
+```
+
+Gate/CI 与本次备份证据核齐后，Main 才执行同一命令并加 `-Mode Deploy -BackupReference <发布记录位置>`。
+备份引用应指向包含路径、大小、SHA-256 和可读性验证的现有 Release Gate 记录；该参数只登记证据引用，
+不创建或验证备份，不取代备份步骤。不能因为本地可 SSH 就跳过失败的 main CI。
+本地收据/归档在 ignored `.dev-runtime/production-deploy/<sha>-<attempt>/`；支持显式指定不存在的
+输出目录。`receipt.json` 记录目标 SHA、CI Run、归档 SHA-256、attempt、备份引用与最终结果。
+
+本地断线、关机或 SSH 非零退出后，结果按 `FAILED_REQUIRES_SITE_CHECK` 处理，不能直接判定已回滚或重试。
+Main 先核同一锁有无持有者、服务器 current、三个容器实际 SHA/健康、Migration Head、Nginx 和静态资产；
+仍有部署时等待，已有目标 current 时先只读核实。未激活的同 SHA 目录保留，按原保护规则处理。
+本地掉电可能来不及更新收据，因此收据不是服务器状态的唯一依据；本入口不引入后台任务/自动重连部署。
 
 ## 拓扑与隔离
 
@@ -118,7 +149,7 @@ current 或删除共享历史目录；此时不得把“工作流失败”直接
 Main 在 Gate/CI/Release Gate 后备份并通过受保护方式更新既有持久配置，先确认宿主机 Compose 支持
 `build --builder`、命名 builder 已存在且健康，以及构建结果可进入正式部署使用的本地 image store。
 此配置入口不自动创建/启动/升级 builder，不重启 Docker，不清理镜像或缓存；小型隔离 smoke 不能代替
-实际候选的完整构建、Migration Head、运行 SHA、服务健康及业务发布核验。部署仍只走正式流水线。
+实际候选的完整构建、Migration Head、运行 SHA、服务健康及业务发布核验。部署使用上述正式SSH入口。
 Compose 参数依据：[Docker 官方 `compose build` 文档](https://docs.docker.com/reference/cli/docker/compose/build/)。
 
 回退该工程参数时，仅在 Main 已确认默认构建路径安全的情况下恢复备份中的值或移除该键；不能用移除参数
@@ -265,20 +296,27 @@ CI：`.github/workflows/ci.yml`
 - Production Backend Docker build，并在容器内验证 Node、PDD `anti_content.js` 与签名调用；
 - Production Frontend Docker build，在只读根文件系统下验证 PC `/`、Mobile `/mobile/`、Manifest、安装图标、hash 静态资源与缺失资源 `404`，并校验 Compose 契约。
 
-生产部署：`.github/workflows/production-deploy.yml`
+GitHub 手动应急部署：`.github/workflows/production-deploy.yml`，checkout 明确固定 `ref: main`，
+即使手动触发时选择其他分支，入口仍来自受审 main。
 
-手动 `workflow_dispatch` 需要输入当前已发布的 main SHA；自动入口仅接收本仓库 `main` 的成功 `CI` push 事件。两种入口都使用以下 GitHub Actions Secrets（只记录名称）：
+手动 `workflow_dispatch` 需要输入当前已发布 main SHA 与已有备份记录引用，调用相同本地入口并核验
+该 SHA 的最新 main push CI。日常本地入口使用既有 SSH 配置；应急 workflow 使用以下 Secrets（只记录名称）：
 
 - `PRODUCTION_DEPLOY_HOST`
 - `PRODUCTION_DEPLOY_USER`
 - `PRODUCTION_DEPLOY_SSH_PRIVATE_KEY`
 - `PRODUCTION_SSH_KNOWN_HOSTS`
 
-Workflow 使用部署专用 SSH key 上传 source archive；archive 必须包含完整 `mobile/` build context，不能只包含 package manifest。远程脚本构建镜像、执行向前 Alembic Migration、验证 Signer/Backend/PC Frontend 与 Mobile `/mobile/` 的 HTML、Manifest、图标和实际 hash JS/CSS，并在健康后原子切换 Nginx vhost。随后 GitHub Runner 从公网验证 `https://<production-host>/health` 的 `application/json` 与精确 Backend `{ "status": "ok" }` 契约，防止 Worker 被 SPA HTML 误导。容器启动后，Backend 与 Frontend HTTP 就绪检查最多等待 45 秒，避免将正常的异步启动误判为失败。远程 archive 和脚本名以 GitHub run ID / attempt 隔离，避免相同 SHA 的不同尝试覆盖或清理彼此的临时材料。应用环境变量保留在服务器 `.env`，不复制到 GitHub Secrets。
+共享入口上传提交归档，先核归档 SHA-256，再执行原远程脚本构建镜像、前向 Alembic、Signer/Backend/PC/Mobile
+健康与静态资源检查，并切换 Nginx。随后在发起端验证公网 `/health` 的 application/json 与精确
+`{ "status": "ok" }` 契约。Backend/Frontend HTTP 就绪仍最多等待45秒。archive/脚本名使用每次独立UUID
+隔离，应用环境变量继续留在服务器。依赖构建仍在原服务器，移动SSH发起端不承诺缩短Docker构建时间。
 
 生产 release 与 Public-IP TLS provisioning 的每条 Runner SSH/SCP 调用都使用 OpenSSH `ServerAliveInterval=30` 与 `ServerAliveCountMax=3`，同时继续严格校验 `known_hosts`。这只让客户端在远端构建等无输出阶段保持连接；不会忽略 SSH/SCP 或远端脚本的非零退出码，远端脚本仍将其退出状态返回给 Workflow。曾观察到 `client_loop: send disconnect: Broken pipe` 时，只能将其视为连接断开的证据；未取得网络空闲超时的直接证据前，不得将其记录为已确认根因。
 
-自动入口的 SHA 判定在 `scripts/resolve-production-deploy-target.sh` 中执行，并有独立回归覆盖当前主线、过期 CI 候选与手动过期 SHA。此 helper 只决定是否部署，不读取生产凭据，也不连接生产服务器。
+旧的自动触发 SHA resolver 已无消费者并删除；精确 SHA/CI 门禁统一在 PowerShell 入口。
+`scripts/test-deploy-production.ps1` 用本地真实 Git 仓库/归档与模拟 GitHub/运输检查门禁和字节，
+`scripts/test-remote-deploy-production.sh` 在隔离 Linux fixture 验证真实 flock 并发拒绝、同SHA跳过与原失败清理。
 
 远程脚本会把 `current` 已指向的同 SHA release 视为已成功上线并无副作用跳过；除此之外仍拒绝已存在的同 SHA release，并保留该目录、历史 release 与 `current` 指向的目录。失败清理只能移除本次创建且尚未成为 `current` 的 release；不得以重试为由删除已存在目录。遇到已存在而未激活的 release 时，先保留现场并通过新的 Feature / Gate / main 发布修复后，再以新的 main SHA 重新部署。
 

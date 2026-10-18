@@ -1,5 +1,7 @@
 name: Production Deploy
 
+# Production CD is normally initiated by local Codex over SSH. This reviewed,
+# manual emergency entry uses exactly the same SHA/CI guard and remote lock.
 on:
   workflow_dispatch:
     inputs:
@@ -7,13 +9,14 @@ on:
         description: Full published origin/main commit SHA to deploy
         required: true
         type: string
-  workflow_run:
-    workflows: [CI]
-    branches: [main]
-    types: [completed]
+      backup_reference:
+        description: Release Gate record with verified backup path, size, SHA-256 and readability
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: control-center-production-deploy
@@ -21,38 +24,15 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy published main commit
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
+    name: Emergency deployment of a CI-verified main commit
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
-      - name: Resolve CI-verified production deployment target
-        id: deploy_target
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MANUAL_DEPLOY_SHA: ${{ inputs.deploy_sha }}
-          CI_DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          bash scripts/resolve-production-deploy-target.sh \
-            "${EVENT_NAME}" \
-            "${MANUAL_DEPLOY_SHA}" \
-            "${CI_DEPLOY_SHA}"
-      - name: Checkout exact CI-verified deployment target
-        if: steps.deploy_target.outputs.should_deploy == 'true'
-        env:
-          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
-        run: |
-          git checkout --detach "${DEPLOY_SHA}"
-          test "${DEPLOY_SHA}" = "$(git rev-parse HEAD)"
       - name: Configure deployment SSH
-        if: steps.deploy_target.outputs.should_deploy == 'true'
         env:
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
@@ -70,77 +50,16 @@ jobs:
           ssh-add - <<< "${PRODUCTION_DEPLOY_SSH_PRIVATE_KEY}"
           printf 'SSH_AUTH_SOCK=%s\n' "${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
           printf 'SSH_AGENT_PID=%s\n' "${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
-      - name: Package reviewed release source
-        if: steps.deploy_target.outputs.should_deploy == 'true'
+      - name: Deploy with the shared local SSH entry
+        shell: pwsh
         env:
-          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
-        run: |
-          archive_path="${RUNNER_TEMP}/control-center-production-${DEPLOY_SHA}.tar.gz"
-          tar --exclude-vcs --exclude='node_modules' --exclude='dist' --exclude='.env' --exclude='.env.*' \
-            -czf "${archive_path}" \
-            .dockerignore \
-            package.json pnpm-lock.yaml pnpm-workspace.yaml \
-            electron/package.json \
-            backend frontend mobile deploy/production \
-            scripts/production-env.sh scripts/remote-deploy-production.sh
-          printf 'RELEASE_ARCHIVE=%s\n' "${archive_path}" >> "${GITHUB_ENV}"
-      - name: Skip already active production release
-        id: active_release
-        if: steps.deploy_target.outputs.should_deploy == 'true'
-        env:
-          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          BACKUP_REFERENCE: ${{ inputs.backup_reference }}
           PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
           PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
         run: |
-          set -euo pipefail
-          remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
-          ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
-          active_release="$(ssh "${ssh_options[@]}" "${remote_target}" \
-            "readlink -f /opt/ecommerce-control-center/production/current 2>/dev/null || true")"
-          expected_release="/opt/ecommerce-control-center/production/releases/${DEPLOY_SHA}"
-          if [ "${active_release}" = "${expected_release}" ]; then
-            echo 'already_deployed=true' >> "${GITHUB_OUTPUT}"
-            echo "Production release ${DEPLOY_SHA} is already active; skipping deployment."
-          else
-            echo 'already_deployed=false' >> "${GITHUB_OUTPUT}"
-          fi
-      - name: Upload and deploy release
-        if: >-
-          steps.deploy_target.outputs.should_deploy == 'true' &&
-          steps.active_release.outputs.already_deployed != 'true'
-        env:
-          DEPLOY_SHA: ${{ steps.deploy_target.outputs.deploy_sha }}
-          DEPLOYMENT_ATTEMPT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
-          PRODUCTION_DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
-        run: |
-          set -euo pipefail
-          remote_archive="/tmp/control-center-production-${DEPLOY_SHA}-${DEPLOYMENT_ATTEMPT_ID}.tar.gz"
-          remote_script="/tmp/control-center-production-deploy-${DEPLOY_SHA}-${DEPLOYMENT_ATTEMPT_ID}.sh"
-          remote_target="${PRODUCTION_DEPLOY_USER}@${PRODUCTION_DEPLOY_HOST}"
-          ssh_options=(-o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3)
-          ssh "${ssh_options[@]}" "${remote_target}" "install -d -m 0750 /opt/ecommerce-control-center/production"
-          scp "${ssh_options[@]}" "${RELEASE_ARCHIVE}" "${remote_target}:${remote_archive}"
-          scp "${ssh_options[@]}" scripts/remote-deploy-production.sh "${remote_target}:${remote_script}"
-          ssh "${ssh_options[@]}" "${remote_target}" \
-            "chmod 0700 '${remote_script}' && '${remote_script}' '/opt/ecommerce-control-center/production' '${remote_archive}' '${DEPLOY_SHA}'; status=\$?; rm -f -- '${remote_script}'; exit \$status"
-      - name: Verify public Backend health contract
-        if: steps.deploy_target.outputs.should_deploy == 'true'
-        env:
-          PRODUCTION_DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
-        run: |
-          set -euo pipefail
-          response_body="${RUNNER_TEMP}/control-center-public-health.json"
-          trap 'rm -f -- "${response_body}"' EXIT
-          curl --fail --silent --show-error --retry 3 --retry-connrefused --connect-timeout 15 \
-            --output "${response_body}" \
-            --write-out 'content-type=%{content_type}\n' \
-            "https://${PRODUCTION_DEPLOY_HOST}/health" | grep -Eqi '^content-type=application/json'
-          python3 - "${response_body}" <<'PY'
-          import json
-          import sys
-
-          with open(sys.argv[1], encoding="utf-8") as stream:
-              if json.load(stream) != {"status": "ok"}:
-                  raise SystemExit("public /health did not return the Backend contract")
-          PY
+          ./scripts/deploy-production.ps1 -DeploySha $env:DEPLOY_SHA `
+            -SshHost "$($env:PRODUCTION_DEPLOY_USER)@$($env:PRODUCTION_DEPLOY_HOST)" `
+            -PublicHost $env:PRODUCTION_DEPLOY_HOST -Mode Deploy `
+            -BackupReference $env:BACKUP_REFERENCE
