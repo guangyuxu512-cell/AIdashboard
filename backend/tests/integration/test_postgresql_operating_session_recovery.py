@@ -341,6 +341,145 @@ def test_eight_exhausted_items_recover_through_api_queue_health_and_persisted_re
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def test_production_shaped_cross_clock_recovery_uses_shared_readiness_and_one_authoritative_check(
+    recovery_case,
+    monkeypatch,
+):
+    case = recovery_case
+    original = case["originals"][0]
+    failed_at = datetime(2026, 10, 18, 1, 1, 36, 620918, tzinfo=UTC)
+    validated_at = datetime(2026, 10, 18, 3, 51, 31, 267851, tzinfo=UTC)
+    captured_at = datetime(2026, 10, 18, 3, 51, 40, 822000, tzinfo=UTC)
+    with Session(case["engine"]) as session:
+        stored = session.scalar(
+            select(ShopSession).where(ShopSession.shop_id == original[2])
+        )
+        failed = session.get(OperatingDataCollectionItem, original[1])
+        stored.validated_at = validated_at
+        stored.captured_at = captured_at
+        failed.finished_at = failed_at
+        failed.updated_at = failed_at
+        session.commit()
+        before_jobs = session.scalar(
+            select(func.count()).select_from(OperatingDataCollectionJob)
+        )
+        before_items = session.scalar(
+            select(func.count()).select_from(OperatingDataCollectionItem)
+        )
+
+    coverage = _read(case).json()["coverage"]["missing_samples"]
+    hint = next(
+        row["session_recovery"]
+        for row in coverage
+        if row["session_recovery"]
+        and row["session_recovery"]["collection_item_id"] == str(original[1])
+    )
+    assert hint == {
+        "collection_job_id": str(original[0]),
+        "collection_item_id": str(original[1]),
+        "session_version": 3,
+        "requires_validation": True,
+    }
+
+    # The ordinary update control stays behind the existing cooldown/attempt
+    # budget.  It performs no Session validation, no platform request and no
+    # durable write, while pointing to the explicit recovery action.
+    update = _api(
+        case,
+        "POST",
+        "/api/v1/operating-dashboard/collections",
+        body={
+            "start_date": original[3].isoformat(),
+            "end_date": original[3].isoformat(),
+        },
+    )
+    assert update.status_code == 200
+    assert update.json()["state"] == "attention_required"
+    assert update.json()["collection_job"] is None
+    assert update.json()["message"] == (
+        "普通补缺仍受冷却或次数保护，请在“查看缺失”中核实是否可复核会话并恢复"
+    )
+    with Session(case["engine"]) as session:
+        assert session.scalar(
+            select(func.count()).select_from(OperatingDataCollectionJob)
+        ) == before_jobs
+        assert session.scalar(
+            select(func.count()).select_from(OperatingDataCollectionItem)
+        ) == before_items
+
+    # Cross-clock metadata is not direct READY.  The explicit action must opt
+    # in to one authoritative identity check before the metrics request.
+    assert _retry(case, original, deferred=False).status_code == 409
+    accepted = _retry(case, original, deferred=True)
+    assert accepted.status_code == 202
+    recovery_job_id = UUID(accepted.json()["collection_job_id"])
+    platform = SyntheticPlatform(case)
+    platform.install(monkeypatch)
+    assert (platform.identity_calls, platform.metric_calls) == (0, 0)
+    assert platform.executor().execute_available(collection_job_id=recovery_job_id) == 1
+    assert (platform.identity_calls, platform.metric_calls) == (1, 1)
+    assert platform.executor().execute_available(collection_job_id=recovery_job_id) == 0
+
+    with Session(case["engine"]) as session:
+        failed = session.get(OperatingDataCollectionItem, original[1])
+        metric = session.scalar(
+            select(ShopOperatingDailyMetric).where(
+                ShopOperatingDailyMetric.shop_id == original[2],
+                ShopOperatingDailyMetric.business_date == original[3],
+            )
+        )
+        assert failed.status == "failed" and failed.attempt_count == 3
+        assert (metric.turnover_cents, metric.order_count, metric.refund_order_count) == (
+            0,
+            0,
+            3,
+        )
+    evidence = (
+        Path(__file__).resolve().parents[3]
+        / ".codex"
+        / "operating-session-recovery-readiness-v1-20261018"
+    )
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "cross-clock-feature-pg-proof.json").write_text(
+        json.dumps(
+            {
+                "kind": "FEATURE_POSTGRESQL_WITH_SYNTHETIC_PLATFORM_NOT_PRODUCTION",
+                "database": DATABASE,
+                "role": ROLE,
+                "migration": "20261015_0046",
+                "failed_at": failed_at.isoformat(),
+                "validated_at": validated_at.isoformat(),
+                "captured_at": captured_at.isoformat(),
+                "cross_clock_inversion_seconds": (
+                    captured_at - validated_at
+                ).total_seconds(),
+                "coverage_recovery": hint,
+                "ordinary_update": update.json(),
+                "explicit_recovery_accepted": accepted.json(),
+                "explicit_recovery_finished": _api(
+                    case,
+                    "GET",
+                    f"/api/v1/operating-dashboard/collections/{recovery_job_id}",
+                ).json(),
+                "identity_adapter_calls": platform.identity_calls,
+                "metrics_adapter_calls": platform.metric_calls,
+                "persisted_metric": {
+                    "turnover_cents": metric.turnover_cents,
+                    "order_count": metric.order_count,
+                    "refund_order_count": metric.refund_order_count,
+                },
+                "original_failure_preserved": {
+                    "status": failed.status,
+                    "attempt_count": failed.attempt_count,
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_recovery_validation_failure_is_terminal_and_preserves_original_data(recovery_case, monkeypatch):
     case = recovery_case
     before = _read(case).json()
@@ -498,24 +637,29 @@ def test_cookie_update_cannot_overwrite_a_concurrently_newer_session(recovery_ca
 
 def test_explicit_deferred_recovery_still_rejects_disabled_or_changed_session_context(recovery_case):
     case = recovery_case
-    original = case["originals"][0]
+    changed = case["originals"][0]
     with Session(case["engine"]) as session:
-        stored = session.scalar(select(ShopSession).where(ShopSession.shop_id == original[2]))
+        stored = session.scalar(select(ShopSession).where(ShopSession.shop_id == changed[2]))
         stored.version = 4
         session.commit()
-    assert _retry(case, original).status_code == 409
+    assert _retry(case, changed).status_code == 409
+
+    future = case["originals"][1]
     with Session(case["engine"]) as session:
-        stored = session.scalar(select(ShopSession).where(ShopSession.shop_id == original[2]))
+        stored = session.scalar(select(ShopSession).where(ShopSession.shop_id == future[2]))
         stored.version = 3
         stored.validated_at = datetime.now(UTC) + timedelta(days=1)
         session.commit()
-    assert _retry(case, original).status_code == 409
+    assert _retry(case, future, deferred=False).status_code == 409
+    assert _retry(case, future, deferred=True).status_code == 202
+
+    disabled = case["originals"][2]
     with Session(case["engine"]) as session:
-        stored = session.scalar(select(ShopSession).where(ShopSession.shop_id == original[2]))
+        stored = session.scalar(select(ShopSession).where(ShopSession.shop_id == disabled[2]))
         stored.validated_at = datetime.now(UTC) - timedelta(minutes=34)
-        session.get(Shop, original[2]).enabled = False
+        session.get(Shop, disabled[2]).enabled = False
         session.commit()
-    assert _retry(case, original).status_code == 409
+    assert _retry(case, disabled).status_code == 409
     with Session(case["engine"]) as session:
         assert session.scalar(select(func.count()).select_from(OperatingDataCollectionItem).where(
-            OperatingDataCollectionItem.shop_id.in_((case["ids"]["shop1"], case["ids"]["shop2"])))) == 8
+            OperatingDataCollectionItem.shop_id.in_((case["ids"]["shop1"], case["ids"]["shop2"])))) == 9

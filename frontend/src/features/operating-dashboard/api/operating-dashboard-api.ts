@@ -45,6 +45,13 @@ interface TableRowDto {
   not_operating_for_range: boolean
 }
 
+export interface OperatingDashboardSessionRecoveryDto {
+  collection_job_id: string
+  collection_item_id: string
+  session_version: number
+  requires_validation: boolean
+}
+
 interface DashboardReadDto {
   date_range: DateRangeDto
   comparison_date_range: DateRangeDto
@@ -85,12 +92,7 @@ interface DashboardReadDto {
       business_date: string
       state: OperatingDashboardCoverage['missingSamples'][number]['state']
       failure_reason: string | null
-      session_recovery?: {
-        collection_job_id: string
-        collection_item_id: string
-        session_version: number
-        requires_validation: boolean
-      } | null
+      session_recovery?: OperatingDashboardSessionRecoveryDto | null
       recovery_block_reason?: string | null
     }>
     missing_samples_truncated: boolean

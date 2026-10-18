@@ -135,6 +135,34 @@ afterEach(() => {
 })
 
 describe('explicit operating-data recovery with the actual Query client', () => {
+  it('surfaces ordinary-update recovery guidance without starting recovery automatically', async () => {
+    calls.update.mockResolvedValue({
+      state: 'attention_required',
+      message:
+        '普通补缺仍受冷却或次数保护，请在“查看缺失”中核实是否可复核会话并恢复',
+      collectionJob: null,
+      missingShopDays: 1,
+      queuedShopDays: 0,
+      activeShopDays: 0,
+      blockedShopDays: 1,
+      waitingShopDays: 0,
+      refundAttentionShopDays: 0,
+      notOperatingShopDays: 0,
+    })
+    const flow = await setup()
+
+    flow.refresh()
+
+    await vi.waitFor(() =>
+      expect(flow.refreshFeedback.value?.message).toContain('查看缺失'),
+    )
+    expect(flow.refreshFeedback.value?.tone).toBe('warning')
+    expect(calls.update).toHaveBeenCalledTimes(1)
+    expect(calls.recover).not.toHaveBeenCalled()
+    expect(calls.collection).not.toHaveBeenCalled()
+    expect(calls.mock).not.toHaveBeenCalled()
+  })
+
   it('never auto-recovers from a read, deduplicates clicks and refreshes facts after the existing Job finishes', async () => {
     let accept!: (value: ReturnType<typeof job>) => void
     calls.recover.mockImplementation(

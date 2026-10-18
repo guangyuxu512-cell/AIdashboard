@@ -541,13 +541,17 @@ ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进�
 使用上述既有 retry 接口提交单个原失败项及 `session_recovery_version`，然后复用原 Job 进度查询。
 资格展示与提交复用后端同一判断，提交仍须重新校验，过期的页面回执不是授权。
 `VALID` 状态不表示验证时间仍新鲜；`requires_validation=true` 明确需要服务器权威复核，不能通过
-补造验证时间或重复要求用户登录跳过这一步。普通更新不因这份投影自动发起恢复。
+补造验证时间或重复要求用户登录跳过这一步。普通更新不因这份投影自动发起恢复；当冷却或累计次数
+仍在保护原失败项时，返回 `attention_required`并引导用户在“查看缺失”中核实明确的会话恢复资格，仍为零新 Job/Item
+和零平台请求。
 
 原 retry Body 可显式传入 `revalidate_current_session=true`（默认 `false`），且必须同时提交单个原
 Item 和 `session_recovery_version`。它只允许已有 DAILY/FAILED/retryable 的
 `session_preparation / SHOP_SESSION_VALIDATION_FAILED`，当前 Session 仍须 VALID、精确版本、
-捕获晚于原失败、时间合法、店铺启用且身份/权限有效；不扩展其它失败类型。
-旧默认提交保留 300 秒等既有 freshness 配置边界。显式选择时，仅允许将需要复核的当前会话排入原
+店铺启用且身份/权限有效，并必须存在严格晚于原失败时刻的服务器 `validated_at`记录；不扩展其它失败类型。
+`captured_at` 由 Electron/客户端时钟采集，只是观测元数据，不再与服务器写入的失败时间或 `validated_at` 做授权排序。客户端/服务器
+时钟偏差、验证过期、未来时间或 `validated_at < captured_at` 由公共 `collection_readiness` 统一分类为需要权威复核，不设任意容差，
+也不直接当作 READY。旧默认提交保留 300 秒等既有 freshness 配置边界。显式选择时，仅允许将需要复核的当前会话排入原
 `session-restored:{原Item}` 单次队列；原 collector 必须先通过 `HealthService.check(force=False)`，
 才可请求经营数据。HTTP 202 仅表示排队，不表示复核或采集成功。跨进程/版本的同一原项只恢复一次，
 失败和租约超时仍终态，旧失败及累计次数不改。

@@ -8,6 +8,7 @@ to the decrypted context before issuing its business request.
 
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Protocol
 
 from app.modules.sessions.auth_context import ShopSessionAuthContext
 from app.modules.sessions.enums import ShopSessionStatus
@@ -16,7 +17,7 @@ from app.modules.sessions.exceptions import (
     ShopSessionAuthenticationInvalidError,
     ShopSessionPayloadInvalidError,
 )
-from app.modules.sessions.schemas import ShopSessionHealthRead, ShopSessionMetadataRead
+from app.modules.sessions.schemas import ShopSessionHealthRead
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.exceptions import PlatformIdentityMismatchError
 
@@ -28,8 +29,29 @@ class ShopSessionCollectionReadiness(StrEnum):
     REAUTHENTICATION_REQUIRED = "reauthentication_required"
 
 
+class CollectionReadinessMetadata(Protocol):
+    """Small metadata contract shared by collection consumers.
+
+    Consumers that already hold a bounded metadata projection should not need
+    to construct a second full Session DTO merely to reuse the readiness
+    policy.  The protocol deliberately excludes payload and credential data.
+    """
+
+    @property
+    def configured(self) -> bool: ...
+
+    @property
+    def status(self) -> ShopSessionStatus: ...
+
+    @property
+    def captured_at(self) -> datetime | None: ...
+
+    @property
+    def validated_at(self) -> datetime | None: ...
+
+
 def classify_collection_readiness(
-    metadata: ShopSessionMetadataRead,
+    metadata: CollectionReadinessMetadata,
     *,
     now: datetime,
     validation_freshness: timedelta,

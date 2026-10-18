@@ -86,6 +86,12 @@ class SessionRecoveryMetadata:
     validated_at: datetime | None
     identity_present: bool
 
+    @property
+    def configured(self) -> bool:
+        """A recovery projection exists only when a stored Session exists."""
+
+        return True
+
 
 class OperatingDashboardRepository:
     def __init__(self, session: Session) -> None:
