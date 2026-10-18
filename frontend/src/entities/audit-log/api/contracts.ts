@@ -5,7 +5,7 @@ export interface AuditLogReadDto {
   request_id: string
   actor_user_id: string
   actor_display_name: string
-  team_id: string
+  team_id: string | null
   action: AuditAction
   target_type: AuditTargetType
   target_id: string

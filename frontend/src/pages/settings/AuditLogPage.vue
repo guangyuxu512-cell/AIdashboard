@@ -45,6 +45,12 @@ const auditActions: AuditAction[] = [
   'access_management.update_membership',
   'access_management.create_team',
   'access_management.update_team',
+  'access_management.move_member_team',
+  'access_management.remove_member_from_team',
+  'access_management.archive_team',
+  'access_management.delete_team',
+  'access_management.update_team_authorization',
+  'access_management.designate_super_account',
 ]
 const actionOptions: SelectOption[] = auditActions.map((value) => ({
   value,

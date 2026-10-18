@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { httpClient } from '@/shared/api'
 
 import { createAuditLogDataSource } from './audit-log-data-source'
+import { getAuditActionLabel, type AuditAction } from '../model/types'
 
 describe('Audit Log Data Source', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -84,5 +85,56 @@ describe('Audit Log Data Source', () => {
       page: 1,
       pageSize: 20,
     })
+  })
+
+  it('preserves global audit entries without a team and labels every access action', async () => {
+    vi.spyOn(httpClient, 'get').mockResolvedValue({
+      data: {
+        items: [
+          {
+            audit_log_id: 'log-global',
+            request_id: 'request-global',
+            actor_user_id: 'user-super',
+            actor_display_name: '超级管理员',
+            team_id: null,
+            action: 'access_management.designate_super_account',
+            target_type: 'user',
+            target_id: 'user-next-super',
+            details: null,
+            created_at: '2026-10-18T08:00:00Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+    })
+
+    const page = await createAuditLogDataSource('real').list({
+      page: 1,
+      pageSize: 20,
+    })
+
+    expect(page.items[0]).toMatchObject({
+      teamId: null,
+      action: 'access_management.designate_super_account',
+    })
+    expect(
+      ([
+        'access_management.move_member_team',
+        'access_management.remove_member_from_team',
+        'access_management.archive_team',
+        'access_management.delete_team',
+        'access_management.update_team_authorization',
+        'access_management.designate_super_account',
+      ] satisfies AuditAction[]).map(getAuditActionLabel),
+    ).toEqual([
+      '调整成员团队',
+      '成员移出团队',
+      '归档团队',
+      '删除团队',
+      '更新团队授权',
+      '指定超级账号',
+    ])
   })
 })
