@@ -3,6 +3,7 @@
 import asyncio
 from contextlib import nullcontext
 from datetime import UTC, datetime
+from threading import Barrier
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -122,9 +123,12 @@ def test_disabled_consumer_has_no_database_or_platform_io(monkeypatch):
 def test_enabled_but_unconfirmed_consumer_only_recovers_expired_leases(monkeypatch, capacity):
     from app.modules.product_selection import run_executor
     recovered = []
+    # The mocked idle cancellation must not abort sibling workers before their first pass.
+    first_pass = Barrier(capacity)
     class Executor:
         def recover_only(self):
             recovered.append(True)
+            first_pass.wait()
         def execute_available(self):
             pytest.fail("Unknown mapping cannot claim a run or issue HTTP")
 
@@ -144,9 +148,12 @@ def test_enabled_but_unconfirmed_consumer_only_recovers_expired_leases(monkeypat
 def test_enabled_confirmed_consumer_uses_existing_executor(monkeypatch, capacity):
     from app.modules.product_selection import run_executor
     executed = []
+    # The mocked idle cancellation must not abort sibling workers before their first pass.
+    first_pass = Barrier(capacity)
     class Executor:
         def execute_available(self):
             executed.append(True)
+            first_pass.wait()
             return 0
     async def stop(_):
         raise asyncio.CancelledError()
