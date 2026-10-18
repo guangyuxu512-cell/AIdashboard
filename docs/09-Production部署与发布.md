@@ -25,8 +25,11 @@ Feature Gate 1
   Compose 与原远程脚本沿用原白名单；上传的脚本也从同一归档提取，不读取本地未提交源码或 `.env`。
 - 本地与应急入口在服务器同一 `.deploy.lock` 上互斥；`flock` 不可用或已有部署持锁时失败，不并行迁移、
   切换 `current` 或回滚。锁覆盖读取旧 current 到 EXIT 清理，退出码 75 表示有部署正在进行。
-- current 已为目标 SHA 时，在相同锁下只读确认并跳过上传/迁移；仍验证公网 health。已存在但并非 current
-  的同 SHA release 继续拒绝覆盖。新入口还拒绝缺少共享锁的旧 release 脚本。
+- current 已为目标 SHA 时，在相同锁下调用 `deploy/production/verify-active-release.sh`，核三个容器的
+  实际 image tag 等于目标 SHA、均 running/未暂停、Backend/Signer 均 healthy；Frontend 沿用仅 running
+  标准。全部匹配才跳过上传/迁移，再核公网 health。混版、缺失或不健康会失败并保留现场，不能仅凭
+  current 与通用 health 判为已部署。已存在但并非 current 的同 SHA release 仍拒绝覆盖。
+  新入口还拒绝缺少共享锁的旧 release 脚本。
 
 本地使用 PowerShell 7.4+、Git、GitHub CLI、OpenSSH、tar 和 curl 的已有安装；使用既有 GitHub 认证与
 受保护 SSH config/key/known_hosts。部署主机参数是已核实的 SSH 别名或 user@host，不能关闭主机校验。
@@ -293,7 +296,8 @@ CI：`.github/workflows/ci.yml`
 - Production Backend Docker build，并在容器内验证 Node、PDD `anti_content.js` 与签名调用；
 - Production Frontend Docker build，在只读根文件系统下验证 PC `/`、Mobile `/mobile/`、Manifest、安装图标、hash 静态资源与缺失资源 `404`，并校验 Compose 契约。
 
-GitHub 手动应急部署：`.github/workflows/production-deploy.yml`
+GitHub 手动应急部署：`.github/workflows/production-deploy.yml`，checkout 明确固定 `ref: main`，
+即使手动触发时选择其他分支，入口仍来自受审 main。
 
 手动 `workflow_dispatch` 需要输入当前已发布 main SHA 与已有备份记录引用，调用相同本地入口并核验
 该 SHA 的最新 main push CI。日常本地入口使用既有 SSH 配置；应急 workflow 使用以下 Secrets（只记录名称）：

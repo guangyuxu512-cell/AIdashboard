@@ -62,3 +62,21 @@ Mobile、Verify 和两个生产镜像构建门槛不改。
 - 此工程只改变发起端，服务器仍按原Dockerfile构建；不承诺修复依赖安装耗时。
 - 回退工程入口须重新核对服务器无部署持锁，保留新锁/现有备份、Schema、资产、当前和回滚release。
   恢复自动CD必须是显式评审变更，不能临时把两套入口同时自动开启。
+
+## 独立审查返修与 Linux 追加证据
+
+首轮候选 `57c04c70101313e0c78e85116d5734ec269c9c22` 的 Draft PR14 / CI39133279989保留。
+该轮 Linux 的 remote语法、完整清理/真实flock并发、Ubuntu pwsh入口、workflow契约与Backend镜像步骤
+已分别 success；这是具体步骤证据，不在此预写整轮CI成功，也不覆盖下面新返修。
+
+独立审查复现：current 在 compose up 前切换，异常终止可留下 current 新、实际容器旧但health正常；
+另手动workflow默认checkout可被分支选择影响。最小修正为：
+
+- 共享只读 `verify-active-release.sh`，本地与remote同SHA分支均在已有flock内调用。核三容器目标
+  image tag、running/未暂停、Backend/Signer healthy；不符即失败，current/release保留，无自动重建。
+- 应急workflow checkout显式 `ref: main`，保留精确DeploySha/latest main push CI门禁，测试锁定该来源。
+- 本地入口重验57条断言PASS，含同SHA判定失败时收据为`FAILED_REQUIRES_SITE_CHECK`且零SCP/构建。
+- `bash scripts/test-active-release.sh` PASS，19场景（Docker inspect显式模拟）：正例及三容器逐个缺失、
+  旧SHA、停止、暂停，另Backend/Signer unhealthy/starting/无health均拒绝。
+- workflow契约、remote/fixture Bash语法、diff check再次PASS。新返修尚需新精确PR CI复验；
+  真实生产、Docker容器运行状态、SSH/SCP、Migration及部署仍NOT_RUN。

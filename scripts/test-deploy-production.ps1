@@ -8,6 +8,7 @@ New-Item -ItemType Directory -Path $testRoot | Out-Null
 $script:transportCalls = [System.Collections.Generic.List[string]]::new()
 $script:activeRelease = ''
 $script:transportFailure = ''
+$script:activeVerificationFailed = $false
 $script:assertions = 0
 
 function Assert-Test([bool]$Condition, [string]$Message) {
@@ -36,7 +37,10 @@ function Invoke-ProductionCommand {
             $failure.Data['ExitCode'] = 43
             throw $failure
         }
-        if ($FilePath -eq 'ssh' -and $Arguments[-1] -match 'readlink -f ') { return $script:activeRelease }
+        if ($FilePath -eq 'ssh' -and $Arguments[-1] -match 'readlink -f ') {
+            if ($script:activeVerificationFailed) { throw 'simulated mixed or unhealthy active containers' }
+            return $script:activeRelease
+        }
         if ($FilePath -eq 'curl') {
             $bodyIndex = [array]::IndexOf($Arguments, '--output') + 1
             '{"status":"ok"}' | Set-Content -LiteralPath $Arguments[$bodyIndex]
@@ -61,6 +65,7 @@ try {
         'committed-byte-content' | Set-Content -LiteralPath (Join-Path $repository $file)
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'remote-deploy-production.sh') -Destination (Join-Path $repository 'scripts/remote-deploy-production.sh')
+    Copy-Item -LiteralPath (Join-Path (Split-Path $PSScriptRoot) 'deploy/production/verify-active-release.sh') -Destination (Join-Path $repository 'deploy/production/verify-active-release.sh')
     'fixture-placeholder-not-a-secret' | Set-Content -LiteralPath (Join-Path $repository 'backend/.env.example')
     & $realCommand git @('-C', $repository, 'add', '.')
     & $realCommand git @('-C', $repository, 'commit', '-m', 'reviewed fixture') -CaptureOutput | Out-Null
@@ -110,7 +115,16 @@ try {
     $skipped = Invoke-ProductionDeployment @deployArguments -DeploymentMode Deploy -Backup 'fixture backup record'
     Assert-Test ($skipped.result -eq 'ALREADY_ACTIVE') 'same active SHA skips deployment'
     Assert-Test (($script:transportCalls -join "`n") -match 'flock -n -E 75.*readlink -f') 'active-SHA precheck uses the same host lock'
+    Assert-Test (($script:transportCalls -join "`n") -match 'verify-active-release.sh.*\|\| exit \$\?') 'active-SHA verification fails closed before any success result'
     Assert-Test (@($script:transportCalls | Where-Object { $_ -match '^scp |sha256sum|install -d' }).Count -eq 0) 'same SHA does not upload or mutate the server'
+    $script:transportCalls.Clear()
+    $script:activeVerificationFailed = $true
+    $failedDirectory = Join-Path $testRoot 'failed-active-state'
+    Assert-Rejected { Invoke-ProductionDeployment @deployArguments -DeploymentMode Deploy -Backup 'fixture backup record' -ArtifactDirectory $failedDirectory } 'current-only or mixed/unhealthy runtime never reports ALREADY_ACTIVE'
+    $failedReceipt = Get-Content -LiteralPath (Join-Path $failedDirectory 'receipt.json') -Raw | ConvertFrom-Json
+    Assert-Test ($failedReceipt.result -eq 'FAILED_REQUIRES_SITE_CHECK') 'active verification failure is recorded for site inspection'
+    Assert-Test (@($script:transportCalls | Where-Object { $_ -match '^scp |sha256sum|install -d|^curl ' }).Count -eq 0) 'invalid active state causes no upload, rebuild or misleading generic-health success'
+    $script:activeVerificationFailed = $false
     $script:activeRelease = ''
 
     foreach ($transport in @('scp', 'ssh')) {

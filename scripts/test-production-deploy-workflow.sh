@@ -9,6 +9,7 @@ required_fragments=(
     '  workflow_dispatch:'
     '      backup_reference:'
     '  actions: read'
+    $'      - uses: actions/checkout@v4\n        with:\n          ref: main\n          fetch-depth: 0'
     "cancel-in-progress: false"
     '        shell: pwsh'
     '          GH_TOKEN: ${{ github.token }}'
@@ -54,6 +55,7 @@ grep -Fq "'StrictHostKeyChecking=yes'" "$repository_root/scripts/deploy-producti
 grep -Fq "'ServerAliveInterval=30'" "$repository_root/scripts/deploy-production.ps1"
 grep -Fq "'ServerAliveCountMax=3'" "$repository_root/scripts/deploy-production.ps1"
 grep -Fq 'flock -n 9' "$repository_root/scripts/remote-deploy-production.sh"
+grep -Fq 'verify-active-release.sh' "$repository_root/scripts/deploy-production.ps1"
 grep -Fq 'mobile/public/manifest.webmanifest' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'verify_mobile_frontend' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'absolute_redirect off;' "$repository_root/frontend/deploy/default.conf.template"

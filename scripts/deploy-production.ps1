@@ -111,7 +111,7 @@ function Invoke-ProductionDeployment {
     $receipt.ci_run_url = $latestCi.RunUrl
     try {
         $receipt.server_contacted = $true
-        $currentCommand = "if [ -d '$remoteRoot' ]; then flock -n -E 75 '$remoteRoot/.deploy.lock' sh -c 'readlink -f $remoteRoot/current 2>/dev/null || true'; fi"
+        $currentCommand = "if [ -d '$remoteRoot' ]; then flock -n -E 75 '$remoteRoot/.deploy.lock' sh -c 'active=`$(readlink -f $remoteRoot/current 2>/dev/null || true); if [ `"`$active`" = `"$remoteRoot/releases/$Sha`" ]; then bash `"`$active/deploy/production/verify-active-release.sh`" $Sha || exit `$?; fi; printf `"%s\n`" `"`$active`"'; fi"
         $current = Invoke-ProductionCommand ssh ($sshOptions + @($Target, $currentCommand)) -CaptureOutput
         if ($current.Trim() -ceq "$remoteRoot/releases/$Sha") {
             $receipt.result = 'ALREADY_ACTIVE'
