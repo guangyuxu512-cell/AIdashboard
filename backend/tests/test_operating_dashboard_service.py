@@ -157,6 +157,146 @@ def test_valid_session_label_is_not_fresh_validation_and_never_requests_relogin(
     assert item.attempt_count == 3 and item.status == "failed"
 
 
+@pytest.mark.parametrize(
+    "captured_at",
+    [
+        # Exact production-shaped cross-clock inversion: the user PC captured
+        # the payload 9.554149 seconds after the Backend recorded validation.
+        datetime(2026, 10, 18, 3, 51, 40, 822000, tzinfo=UTC),
+        # A larger client-clock skew must follow the same authority path.  It
+        # is not made READY by an arbitrary tolerance.
+        datetime(2026, 10, 18, 8, 51, 40, 822000, tzinfo=UTC),
+    ],
+)
+def test_session_recovery_routes_cross_clock_capture_order_to_authoritative_validation(
+    captured_at: datetime,
+) -> None:
+    now = datetime(2026, 10, 18, 3, 55, 24, tzinfo=UTC)
+    failed_at = datetime(2026, 10, 18, 1, 1, 36, 620918, tzinfo=UTC)
+    validated_at = datetime(2026, 10, 18, 3, 51, 31, 267851, tzinfo=UTC)
+    item = _collection_state(
+        collection_item_id=uuid4(),
+        failure_code="SHOP_SESSION_VALIDATION_FAILED",
+        failure_stage="session_preparation",
+        retryable=True,
+        attempt_count=3,
+        updated_at=failed_at,
+    )
+    shop = DashboardShop(
+        item.shop_id,
+        "synthetic cross-clock recovery shop",
+        ShopPlatform.DOUYIN,
+        True,
+    )
+    context = SessionRecoveryMetadata(
+        shop.shop_id,
+        2,
+        ShopSessionStatus.VALID,
+        captured_at,
+        validated_at,
+        True,
+    )
+    params = dict(
+        item=item,
+        job_kind="daily",
+        shop=shop,
+        context=context,
+        history=[item],
+        metric=None,
+        already_used=False,
+        now=now,
+        freshness_seconds=300,
+        expected_version=2,
+    )
+
+    # Read-only coverage may expose exactly one explicit recovery action.  It
+    # does not contact the platform or treat the Session as directly READY.
+    assert (
+        _session_recovery_block_reason(
+            **params,
+            require_fresh_validation=False,
+        )
+        is None
+    )
+    assert _session_recovery_requires_validation(
+        context,
+        now=now,
+        freshness_seconds=300,
+    )
+    assert _session_recovery_block_reason(**params) == (
+        "当前有效会话需要服务器复核后才能恢复，无需重复登录"
+    )
+
+
+@pytest.mark.parametrize(
+    "validated_at",
+    [
+        None,
+        datetime(2026, 10, 18, 1, 1, 36, 620918, tzinfo=UTC),
+        datetime(2026, 10, 18, 1, 1, 35, tzinfo=UTC),
+    ],
+)
+def test_session_recovery_requires_server_validation_after_the_original_failure(
+    validated_at: datetime | None,
+) -> None:
+    now = datetime(2026, 10, 18, 3, 55, 24, tzinfo=UTC)
+    failed_at = datetime(2026, 10, 18, 1, 1, 36, 620918, tzinfo=UTC)
+    item = _collection_state(
+        collection_item_id=uuid4(),
+        failure_code="SHOP_SESSION_VALIDATION_FAILED",
+        failure_stage="session_preparation",
+        retryable=True,
+        attempt_count=3,
+        updated_at=failed_at,
+    )
+    shop = DashboardShop(
+        item.shop_id,
+        "synthetic missing-proof recovery shop",
+        ShopPlatform.DOUYIN,
+        True,
+    )
+    context = SessionRecoveryMetadata(
+        shop.shop_id,
+        2,
+        ShopSessionStatus.VALID,
+        now - timedelta(minutes=2),
+        validated_at,
+        True,
+    )
+
+    assert _session_recovery_block_reason(
+        item=item,
+        job_kind="daily",
+        shop=shop,
+        context=context,
+        history=[item],
+        metric=None,
+        already_used=False,
+        now=now,
+        freshness_seconds=300,
+        expected_version=2,
+        require_fresh_validation=False,
+    ) == "当前会话尚无失败后的服务器验证记录，暂不能恢复"
+
+
+def test_ordinary_update_explains_the_explicit_session_recovery_path() -> None:
+    now = datetime(2026, 10, 18, 3, 55, 24, tzinfo=UTC)
+    state = _collection_state(
+        collection_item_id=uuid4(),
+        failure_code="SHOP_SESSION_VALIDATION_FAILED",
+        failure_stage="session_preparation",
+        retryable=True,
+        attempt_count=3,
+        updated_at=now - timedelta(minutes=5),
+    )
+
+    assert _recovery_service()._manual_recovery_block_reason(
+        [state],
+        now=now,
+        allow_response_parse_recovery=False,
+    ) == "普通补缺仍受冷却或次数保护，请在“查看缺失”中核实是否可复核会话并恢复"
+
+
 def test_recovery_projection_matches_eight_exhausted_daily_items_without_writes_or_validation() -> None:
     """Production-shaped metadata, synthetic shops/IDs; no real credentials/DB."""
     now = datetime(2026, 10, 17, 3, 10, tzinfo=UTC)

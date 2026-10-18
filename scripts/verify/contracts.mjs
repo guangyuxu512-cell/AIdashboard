@@ -115,6 +115,13 @@ export const manifest = {
         refresh_lease_expires_at: "refreshLeaseExpiresAtDisplay",
       },
     ],
+    [
+      dtoRef("operating_dashboard", "OperatingSessionRecoveryRead"),
+      [
+        "frontend/src/features/operating-dashboard/api/operating-dashboard-api.ts",
+        "OperatingDashboardSessionRecoveryDto",
+      ],
+    ],
     ...["frontend", "mobile"].flatMap((client) => [
       [
         dtoRef("devices", "DeviceRead"),
