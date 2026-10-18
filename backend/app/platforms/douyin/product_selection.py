@@ -13,12 +13,12 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Generic, Literal, TypeVar
-from urllib.parse import parse_qsl, urlsplit
 
 from app.platforms.exceptions import (
     PlatformRequestFailedError,
     PlatformResponseInvalidError,
 )
+from app.platforms.product_fields import public_product_image_url
 
 
 T = TypeVar("T")
@@ -360,25 +360,4 @@ def _bad_comment_rate(raw: Mapping[str, Any]) -> FieldObservation[CompassBadComm
 
 
 def _public_url(value: Any) -> str | None:
-    text = _text(value)
-    if text is None:
-        return None
-    try:
-        parsed = urlsplit(text)
-        if (
-            parsed.scheme not in {"https", "http"}
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.fragment
-        ):
-            return None
-        sensitive_keys = {
-            "cookie", "token", "mstoken", "a_bogus", "authorization",
-            "sessionid", "verifyfp", "fp", "_lid",
-        }
-        if any(key.lower() in sensitive_keys for key, _ in parse_qsl(parsed.query)):
-            return None
-    except ValueError:
-        return None
-    return text
+    return public_product_image_url(value)

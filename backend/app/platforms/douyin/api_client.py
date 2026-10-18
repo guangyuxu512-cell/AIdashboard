@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from time import monotonic
 from typing import Any, Mapping
 
@@ -57,6 +58,7 @@ class DouyinApiClient:
         *,
         query: Mapping[str, str | int | bool] | None = None,
         body: Mapping[str, Any] | None = None,
+        precise_numbers: bool = False,
     ) -> DouyinApiResponse:
         cookies = to_httpx_cookies(auth_context.cookies)
         headers = dict(endpoint.headers)
@@ -98,7 +100,7 @@ class DouyinApiClient:
                 details={"platform_http_status": response.status_code},
             )
         try:
-            payload = response.json()
+            payload = response.json(parse_float=Decimal) if precise_numbers else response.json()
         except ValueError as error:
             raise PlatformResponseInvalidError() from error
         if not isinstance(payload, dict):

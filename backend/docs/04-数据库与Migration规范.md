@@ -1,5 +1,29 @@
 # 数据库与 Migration 规范
 
+## 商品数据首版四表与 0047
+
+2026-10-17，ca97正式分配唯一active `20261017_0047`，down `20261015_0046`，
+Owner7d55/feat/shop-product-data-real-v1，专用 `control_center_feat_shop_product_data`。
+已在精确Feature应用至单一47并验证空新表47→46→47保留旧User标记；应用后的47不得改写。
+共享PG集群并非独占实例，实际执行前必须
+在线核current_database()精确完整库名，不以端口、角色名或feature前缀代替目标核验。
+
+| 新表 | 身份和约束 | 保留及可见性 |
+| --- | --- | --- |
+| shop_product_data_products | UUID shop_product_id，Shop RESTRICT；唯一(shop_id,platform,字符串platform_product_id)及主键+Shop复合引用目标 | 稳定店内身份，不因某窗口未出现删除，不建立Team所有权 |
+| shop_product_data_series | UUID series_id，唯一Shop+rolling_series_hash；期间/维度/契约版本，不含商品或具体当天日期；next/published序号及current/previous同系列FK | 只维护读取引用，不执行TTL；两个引用不可相同，失败不切指针 |
+| shop_product_data_generations | UUID generation_id，series+Shop复合RESTRICT、Actor非空/Team可空；唯一(series,sequence)、非空(actor,submission_key)；同Shop具体来源pending/running部分唯一 | 冻结窗口、原生date_type、白名单scope、页与指标覆盖、安全阶段、持久lease；回执按Actor/当前Team/Shop再校验，不能由共享事实泄漏操作上下文 |
+| shop_product_data_metric_snapshots | PK(generation,shop_product)；同Shop复合RESTRICT；标题/图片可空，17原值NUMERIC无猜测小数尺度，固定17键unit/state JSONB | 来源是完整已发布代；真实0保留，未知不补0、不用旧代补洞；新代失败不删旧事实 |
+
+原值列为已核17 platformCode，具体清单见26号契约和固定registry。JSONB不能携任意响应或认证；
+available值必须非空、有限、非负且unit匹配，计数须整数；invalid可保留有限负原值但不显示为事实0。
+逐项状态与unit完整性分开。官方商品列表调用链已核定unit3金额除100为元、unit4为原比例分数；仍不能据全页完整推断逐项有值。原三代回执unit_complete_rows=0保留采集当时语义，当前查询可确认单位不回填旧回执；原值NUMERIC、unit/state和0047均不变。
+发布需同短事务验证fence、全页覆盖、同系列和单调序号并更新成功代/两指针；平台IO不跨DB事务。
+
+升级仅新增四表，不改0042–0046。应用回滚保Schema/事实/失败审计并关闭新入口；
+0047 downgrade在线精确只允许上述可重建Feature，锁表后发现任一新记录即拒绝，离线删除DDL拒绝。
+PG外键、并发、权限、升级/空新表回退必须真实验证，离线DDL编译不能记为PG通过。
+
 ## 0046 候选结果及基础补充（当前Feature，未部署）
 
 revision `20261015_0046`，down `20261013_0045`；已在登记Feature应用，42–46均不得改写。

@@ -21,7 +21,13 @@ import {
   TableToolbar,
   ThemeSelector,
 } from '@/shared/components'
-import { AppButton, AppDrawer, AppInput, AppSelect } from '@/shared/ui'
+import {
+  AppButton,
+  AppDrawer,
+  AppInput,
+  AppRadio,
+  AppSelect,
+} from '@/shared/ui'
 import type { ListDensity } from '@/shared/ui'
 import { useThemeStore } from '@/stores/theme'
 
@@ -33,6 +39,13 @@ const overrides = computed(() =>
 const density = ref<ListDensity>('compact')
 const selection = ref<string | null>('one')
 const search = ref('')
+const period = ref('7')
+const periodOptions = [
+  { label: '实时', value: 'now', disabled: true },
+  { label: '近1天', value: '1' },
+  { label: '近7天', value: '7' },
+  { label: '近30天', value: '30' },
+]
 const virtualSelection = ref<string | null>(null)
 const virtualOptions = Array.from({ length: 80 }, (_, index) => ({
   label: `第 ${index + 1} 项可选类目`,
@@ -149,6 +162,12 @@ const columns = computed(() => [
               data-testid="virtual-select"
               to="#app-overlay-host"
           /></FilterField>
+          <FilterField label="日期" width="lg"
+            ><AppRadio
+              v-model="period"
+              :options="periodOptions"
+              data-testid="scoped-radio"
+          /></FilterField>
           <template #actions
             ><AppButton data-testid="scoped-reset">重置</AppButton></template
           >
@@ -187,6 +206,11 @@ const columns = computed(() => [
             data-testid="default-select"
           />
           <ProductImage :src="photo" title="默认缩略图" size="thumbnail" />
+          <AppRadio
+            v-model="period"
+            :options="periodOptions"
+            data-testid="default-radio"
+          />
         </section>
       </main>
       <!-- Siblings, not just Teleport targets, keep their original parent theme. -->
@@ -204,6 +228,11 @@ const columns = computed(() => [
             :image-url="photo"
           />
           <AppInput model-value="详情表单仍为默认" />
+          <AppRadio
+            v-model="period"
+            :options="periodOptions"
+            data-testid="detail-radio"
+          />
         </section>
         <template #footer
           ><AppButton @click="show = false">关闭</AppButton></template

@@ -8,6 +8,7 @@ const shopModule = requireModuleDefinition('shop')
 const assetModule = requireModuleDefinition('asset')
 const aiWorkbenchModule = requireModuleDefinition('ai-workbench')
 const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
+const productDataModule = requireModuleDefinition('product-data')
 const productSelectionModule = requireModuleDefinition('product-selection')
 const productLibraryModule = requireModuleDefinition('product-library')
 const deviceModule = requireModuleDefinition('device')
@@ -78,6 +79,12 @@ const router = createRouter({
       component: () =>
         import('@/pages/operating-dashboard/OperatingDashboardPage.vue'),
       meta: { moduleCode: operatingDashboardModule.moduleCode },
+    },
+    {
+      path: productDataModule.routePath,
+      name: productDataModule.routeName,
+      component: () => import('@/pages/product-data/ProductDataPage.vue'),
+      meta: { moduleCode: productDataModule.moduleCode },
     },
     {
       path: productSelectionModule.routePath,
