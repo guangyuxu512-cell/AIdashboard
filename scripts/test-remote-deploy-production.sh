@@ -7,6 +7,7 @@ host_nginx_template="$repository_root/deploy/production/host-nginx.conf.template
 remote_root="/opt/ecommerce-control-center/production"
 test_root="$(mktemp -d)"
 test_root_created=false
+lock_holder=""
 
 # Worker provisioning needs the Backend health JSON, never the Frontend SPA fallback.
 grep -Fqx '    location = /health {' "$host_nginx_template"
@@ -14,6 +15,10 @@ grep -Fqx '        proxy_pass http://127.0.0.1:${BACKEND_BIND_PORT};' "$host_ngi
 grep -Fq '$BACKEND_BIND_PORT $FRONTEND_BIND_PORT' "$deployment_script"
 
 cleanup_test_root() {
+    if [[ -n "$lock_holder" ]]; then
+        touch "$test_root/release-lock"
+        wait "$lock_holder" || true
+    fi
     rm -rf -- "$test_root"
     if [[ "$test_root_created" == "true" && -f "$remote_root/.control-center-cleanup-test" ]]; then
         sudo rm -rf -- "$remote_root"
@@ -102,6 +107,34 @@ grep -Fqx 'Production release is already active for this commit; skipping' "$tes
 [[ "$(readlink -f "$remote_root/current")" == "$active_release" ]]
 [[ ! -s "$docker_log" ]]
 ln -sfn "$historical_release" "$remote_root/current"
+
+# A second caller cannot read/replace current or invoke Docker while the first
+# holds the shared host lock. Exiting the holder releases the descriptor.
+(
+    exec 9>"$remote_root/.deploy.lock"
+    flock 9
+    touch "$test_root/lock-acquired"
+    while [[ ! -e "$test_root/release-lock" ]]; do sleep 0.01; done
+) &
+lock_holder=$!
+for _ in $(seq 1 100); do
+    [[ -e "$test_root/lock-acquired" ]] && break
+    sleep 0.01
+done
+[[ -e "$test_root/lock-acquired" ]]
+locked_archive="$test_root/locked.tar.gz"
+touch "$locked_archive"
+set +e
+PATH="$fake_bin:$PATH" bash "$deployment_script" "$remote_root" "$locked_archive" 4444444444444444444444444444444444444444 > "$test_root/locked.out" 2>&1
+locked_status=$?
+set -e
+[[ "$locked_status" -eq 75 ]]
+grep -Fqx 'Another production deployment holds the server lock' "$test_root/locked.out"
+[[ ! -e "$locked_archive" && ! -e "$remote_root/releases/4444444444444444444444444444444444444444" && ! -s "$docker_log" ]]
+[[ "$(readlink -f "$remote_root/current")" == "$historical_release" ]]
+touch "$test_root/release-lock"
+wait "$lock_holder"
+lock_holder=""
 
 new_sha="3333333333333333333333333333333333333333"
 new_release="$remote_root/releases/$new_sha"

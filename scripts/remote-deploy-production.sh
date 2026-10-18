@@ -63,6 +63,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Shared by the local Codex caller and the GitHub emergency caller. Keep the
+# descriptor open through build, migration, activation and EXIT rollback/cleanup.
+if ! command -v flock >/dev/null 2>&1; then
+    echo "Production host requires flock for serialized deployment" >&2
+    exit 2
+fi
+exec 9>"$remote_root/.deploy.lock"
+flock -n 9 || { echo "Another production deployment holds the server lock" >&2; exit 75; }
+
 if [[ -L "$remote_root/current" ]]; then
     previous_release="$(readlink -f "$remote_root/current")"
 fi

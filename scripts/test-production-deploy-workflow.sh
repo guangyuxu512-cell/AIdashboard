@@ -6,20 +6,15 @@ workflow_path="$repository_root/.github/workflows/production-deploy.yml"
 tls_workflow_path="$repository_root/.github/workflows/production-provision-ip-tls.yml"
 
 required_fragments=(
-    $'  workflow_run:\n    workflows: [CI]\n    branches: [main]\n    types: [completed]'
-    "github.event.workflow_run.conclusion == 'success'"
-    "github.event.workflow_run.event == 'push'"
-    "github.event.workflow_run.head_branch == 'main'"
-    'CI_DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}'
-    "steps.deploy_target.outputs.should_deploy == 'true'"
-    "steps.active_release.outputs.already_deployed != 'true'"
+    '  workflow_dispatch:'
+    '      backup_reference:'
+    '  actions: read'
     "cancel-in-progress: false"
-    "bash scripts/resolve-production-deploy-target.sh"
-    "backend frontend mobile deploy/production"
-    "Verify public Backend health contract"
-    'https://${PRODUCTION_DEPLOY_HOST}/health'
-    '^content-type=application/json'
-    'public /health did not return the Backend contract'
+    '        shell: pwsh'
+    '          GH_TOKEN: ${{ github.token }}'
+    './scripts/deploy-production.ps1 -DeploySha $env:DEPLOY_SHA'
+    '-PublicHost $env:PRODUCTION_DEPLOY_HOST -Mode Deploy'
+    '-BackupReference $env:BACKUP_REFERENCE'
 )
 
 for fragment in "${required_fragments[@]}"; do
@@ -47,17 +42,22 @@ assert_keepalive_transport_contract() {
     test "$fail_fast_blocks" = "$expected_fail_fast_blocks"
 }
 
-assert_keepalive_transport_contract "$workflow_path" 2 5 3
+# Every application deployment is explicit. Neither a completed CI nor a push
+# may silently start the old, competing GitHub CD path.
+! grep -Eq '^  (workflow_run|push|schedule):' "$workflow_path"
+! grep -Eq '^ *scp |^ *ssh ' "$workflow_path"
 assert_keepalive_transport_contract "$tls_workflow_path" 1 3 1
 
-grep -Fq 'status=\$?; rm -f --' "$workflow_path"
 grep -Fq 'status=\$?; rm -rf --' "$tls_workflow_path"
-grep -Fq 'exit \$status' "$workflow_path"
 grep -Fq 'exit \$status' "$tls_workflow_path"
+grep -Fq "'StrictHostKeyChecking=yes'" "$repository_root/scripts/deploy-production.ps1"
+grep -Fq "'ServerAliveInterval=30'" "$repository_root/scripts/deploy-production.ps1"
+grep -Fq "'ServerAliveCountMax=3'" "$repository_root/scripts/deploy-production.ps1"
+grep -Fq 'flock -n 9' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'mobile/public/manifest.webmanifest' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'verify_mobile_frontend' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'absolute_redirect off;' "$repository_root/frontend/deploy/default.conf.template"
 grep -Fq '308 with the proxy-safe relative Location /mobile/' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq "^Location: /mobile/\$" "$repository_root/.github/workflows/ci.yml"
 
-echo 'Production deployment workflow trigger and SSH keepalive regressions passed'
+echo 'Local production CD, explicit emergency entry and SSH keepalive regressions passed'

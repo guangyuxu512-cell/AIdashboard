@@ -26,6 +26,14 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-18新增本地SSH生产部署工程任务：`feat/local-codex-ssh-deploy-v1` 从精确Green
+`1cec344b72621b9e50ed3e724e939623e7d366e4` 创建于独立
+`C:\Users\Administrator\.codex\worktrees\local-ssh-production-deploy\中控台`。
+仅本地PowerShell发起入口、共享服务器锁、GitHub手动应急入口与工程验证/文档；源码与原四Job CI
+继续GitHub，移除自动workflow_run生产CD。无DB/端口/Migration/第二Electron，不改业务或构建缓存。
+Owner只做离线模拟Gate1，不连接生产或部署失败main；独立Gate2/Green/Release前不宣称已切换。
+操作规则见`docs/09-Production部署与发布.md`；旧发布/凭据/Profile/当前生产保留。
+
 2026-10-15当前实际前端预览为Candidate `cbe30cb3a941116292b71fae4e164fd9ccc249e6`，
 直接父已获可见前端确认的38，继承正常no-ff共享1a8078。仅候选池默认20/URL省略基准及原
 响应页码校正watch修补；显式10/20/50/100保留，不清存储或改全局默认。38布局/Shared/实体/
