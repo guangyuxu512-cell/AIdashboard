@@ -186,6 +186,38 @@ describe('device mapper, query and mutation', () => {
     })
   })
 
+  it('preserves an unknown enterprise-account flag instead of claiming false', () => {
+    const inventory = mapYingdaoInventoryDto({
+      device_id: '00000000-0000-0000-0000-000000000001',
+      provider_code: 'yingdao',
+      available: true,
+      provider_version: null,
+      account_display: null,
+      account_type: null,
+      enterprise_account: null,
+      last_discovered_at: '2026-08-20T12:00:00+00:00',
+      updated_at: '2026-08-20T12:00:01+00:00',
+      inventory: {
+        provider: 'yingdao',
+        available: true,
+        status: 'ready',
+        status_reason_code: null,
+        status_reason: null,
+        provider_version: null,
+        logged_in: true,
+        account_display: null,
+        account_type: null,
+        enterprise_account: null,
+        user_id: null,
+        applications: [],
+        discovered_at: '2026-08-20T12:00:00+00:00',
+      },
+    })
+
+    expect(inventory.accountType).toBe('未知')
+    expect(inventory.enterpriseAccount).toBeNull()
+  })
+
   it('creates and updates a mock device record without inventing runtime data', async () => {
     const source = createMockDeviceDataSource()
     const created = await source.create({

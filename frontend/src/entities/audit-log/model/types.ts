@@ -8,6 +8,12 @@ export type AuditAction =
   | 'access_management.update_membership'
   | 'access_management.create_team'
   | 'access_management.update_team'
+  | 'access_management.move_member_team'
+  | 'access_management.remove_member_from_team'
+  | 'access_management.archive_team'
+  | 'access_management.delete_team'
+  | 'access_management.update_team_authorization'
+  | 'access_management.designate_super_account'
 
 export type AuditTargetType =
   'user' | 'membership' | 'team' | 'selection_candidate'
@@ -17,7 +23,7 @@ export interface AuditLogViewModel {
   requestId: string
   actorUserId: string
   actorDisplayName: string
-  teamId: string
+  teamId: string | null
   action: AuditAction
   targetType: AuditTargetType
   targetId: string
@@ -35,6 +41,12 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   'access_management.update_membership': '更新成员权限',
   'access_management.create_team': '创建团队',
   'access_management.update_team': '更新团队',
+  'access_management.move_member_team': '调整成员团队',
+  'access_management.remove_member_from_team': '成员移出团队',
+  'access_management.archive_team': '归档团队',
+  'access_management.delete_team': '删除团队',
+  'access_management.update_team_authorization': '更新团队授权',
+  'access_management.designate_super_account': '指定超级账号',
 }
 
 const TARGET_LABELS: Record<AuditTargetType, string> = {

@@ -59,6 +59,21 @@ export function normalizeApiError(error: unknown): ApiClientError {
     })
   }
 
+  const transportCode =
+    error.code === 'ERR_CANCELED'
+      ? 'REQUEST_CANCELLED'
+      : error.code === 'ECONNABORTED'
+        ? 'REQUEST_TIMEOUT'
+        : null
+  if (transportCode) {
+    return new ApiClientError({
+      message:
+        transportCode === 'REQUEST_CANCELLED' ? '请求已取消' : '请求超时',
+      code: transportCode,
+      status: error.response?.status ?? null,
+    })
+  }
+
   return new ApiClientError({
     message: '请求失败，请稍后重试',
     status: error.response?.status ?? null,

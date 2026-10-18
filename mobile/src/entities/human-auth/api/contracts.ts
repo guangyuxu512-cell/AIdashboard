@@ -4,7 +4,7 @@ export interface CurrentHumanUserDto {
 }
 
 export interface HumanTeamMembershipDto {
-  membership_id: string
+  membership_id: string | null
   team_id: string
   team_name: string
   team_enabled: boolean

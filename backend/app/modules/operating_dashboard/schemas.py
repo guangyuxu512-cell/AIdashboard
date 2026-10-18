@@ -4,6 +4,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.operating_dashboard.enums import (
+    OperatingCollectionFailureStage,
+    OperatingCollectionItemStatus,
+    OperatingCollectionJobKind,
+    OperatingCollectionJobStatus,
+)
 from app.modules.shops.enums import ShopPlatform
 
 
@@ -165,11 +171,11 @@ class OperatingDataCollectionItemRead(BaseModel):
     collection_item_id: UUID
     shop_id: UUID
     business_date: date
-    status: str
+    status: OperatingCollectionItemStatus
     retryable: bool
     failure_code: str | None
     failure_message: str | None
-    failure_stage: str | None
+    failure_stage: OperatingCollectionFailureStage | None
     attempt_count: int
     started_at: datetime | None
     finished_at: datetime | None
@@ -192,8 +198,8 @@ class OperatingDataCollectionCountsRead(BaseModel):
 
 class OperatingDataCollectionJobRead(BaseModel):
     collection_job_id: UUID
-    kind: str
-    status: str
+    kind: OperatingCollectionJobKind
+    status: OperatingCollectionJobStatus
     requested_start_date: date
     requested_end_date: date
     created_at: datetime
