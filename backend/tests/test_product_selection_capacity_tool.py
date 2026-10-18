@@ -21,6 +21,7 @@ from tools.product_selection_capacity import (
     bind_target,
     build_manifest,
     build_run_plans,
+    concurrency_acceptance,
     ensure_namespace,
     iter_candidate_plans,
     parser,
@@ -260,3 +261,64 @@ def test_capacity_thumbnails_are_self_contained_and_offline():
 
     assert first["image_url"].startswith("data:image/")
     assert "capacity.invalid" not in first["image_url"]
+
+
+def test_concurrency_acceptance_rejects_zero_completed_reads():
+    result = concurrency_acceptance(
+        {
+            "requests": 0,
+            "errors": {},
+            "p95_ms": 0,
+            "writer": {"writes": 3, "failures": 0},
+        },
+        with_writer=True,
+    )
+
+    assert result["reader_requests_passed"] is False
+    assert result["passed"] is False
+
+
+def test_concurrency_acceptance_rejects_missing_required_writer():
+    result = concurrency_acceptance(
+        {"requests": 12, "errors": {}, "p95_ms": 120, "writer": None},
+        with_writer=True,
+    )
+
+    assert result["writer"]["present"] is False
+    assert result["passed"] is False
+
+
+def test_concurrency_acceptance_rejects_writer_failures():
+    result = concurrency_acceptance(
+        {
+            "requests": 12,
+            "errors": {},
+            "p95_ms": 120,
+            "writer": {"writes": 0, "failures": 3},
+        },
+        with_writer=True,
+    )
+
+    assert result["writer"] == {
+        "present": True,
+        "writes": 0,
+        "failures": 3,
+        "passed": False,
+    }
+    assert result["passed"] is False
+
+
+def test_concurrency_acceptance_requires_successful_reads_and_writes():
+    result = concurrency_acceptance(
+        {
+            "requests": 24,
+            "errors": {},
+            "p95_ms": 3999.9,
+            "writer": {"writes": 2, "failures": 0},
+        },
+        with_writer=True,
+    )
+
+    assert result["reader_requests_passed"] is True
+    assert result["writer"]["passed"] is True
+    assert result["passed"] is True

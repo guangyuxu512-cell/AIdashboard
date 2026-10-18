@@ -32,6 +32,7 @@ ca97 已只读确认：现有 Feature、Integration、Main 与生产数据库同
 - 50k／300k／500k 使用相同固定 seed 和 run UUID；较小档位的 ID 和关系是较大档位的稳定前缀。
 - 查询覆盖默认 20／页、首／50%／90%／末页、common／rare／no-result、Shop／撤权／scope／strategy／receipt／今日、三类排序正反向、相邻页和普通 Team／小 Team／super 边界。
 - 正式 profile 固定 30 个 warm 样本／case、8 读＋1 个通过正式 FactService 的写入者、至少 60 秒；浏览器 20 行渲染单独验收，不计入 CLI acceptance。
+- ca97 首轮审查发现并发零请求或写入者全失败可能误判 PASS；返修后 acceptance 显式要求读取请求数大于 0，且启用写入者时必须有至少一次成功写入、零写入失败。缺失写入结果也直接失败。
 
 离线 manifest 的最终计数：
 
@@ -57,9 +58,9 @@ manifest 位于 ignored 的 `.codex/product-selection-capacity/<run-id>/`；不�
 
 | 检查 | 结果 |
 | --- | --- |
-| `python -m pytest tests/test_product_selection_capacity_tool.py -q` | 18 passed |
+| `python -m pytest tests/test_product_selection_capacity_tool.py -q` | 22 passed；包含零读取、缺失写入结果、写入全失败拒绝及正常读写接受 |
 | `python -m compileall -q app tools tests` | exit 0 |
-| Backend 默认 `python -m pytest --tb=short` | 1,064 passed、441 integration deselected、1 条既有 Starlette/httpx deprecation warning；84.49 秒 |
+| Backend 默认 `python -m pytest --tb=short` | 1,068 passed、441 integration deselected、1 条既有 Starlette/httpx deprecation warning；82.97 秒 |
 | `alembic heads` | `20261017_0047 (head)` |
 | 50k／300k／500k 离线 `plan` | 全部 exit 0，计数如上 |
 | `git diff --check` | exit 0 |

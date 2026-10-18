@@ -67,6 +67,7 @@
 - 每个数据库命令持有基于 run UUID 的 PostgreSQL advisory lock；同一 namespace 的造数、测量和清理不能跨进程并行。
 - `measure` 的 `as-of` 必须等于执行时的上海日期，确保“今日”查询有可验证的确定语义。
 - 正式 profile 硬性要求每 case 30 个 warm 样本、8 个读取者、1 个受控写入者和至少 60 秒；较小参数只能标记 smoke。
+- 并发 acceptance 要求实际完成至少 1 个读取请求；启用写入者时还要求写入结果存在、成功写入数大于 0 且失败数为 0。零请求或写入全失败不能因 P95 默认为 0 而通过。
 - 并发上限 16、时长上限 300 秒、statement timeout 上限 30 秒；正式计划使用更小的冻结值。
 - 单批最多 1,500 行，默认 1,000 行，避免 Observation 多列写入超过 PostgreSQL bind 参数上限。
 - 清理只按本次 run UUID 确定生成的 Team/User/Shop 与关联行删除；无 `TRUNCATE`、`DROP` 或广域日期／名称删除。

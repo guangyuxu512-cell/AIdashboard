@@ -1778,6 +1778,40 @@ def run_concurrency(
     }
 
 
+def concurrency_acceptance(
+    concurrency: Mapping[str, Any],
+    *,
+    with_writer: bool,
+) -> dict[str, Any]:
+    requests = int(concurrency.get("requests") or 0)
+    errors = dict(concurrency.get("errors") or {})
+    p95_ms = float(concurrency.get("p95_ms") or 0.0)
+    writer = concurrency.get("writer")
+    writer_present = isinstance(writer, Mapping) and bool(writer)
+    writer_writes = int(writer.get("writes") or 0) if writer_present else 0
+    writer_failures = int(writer.get("failures") or 0) if writer_present else 0
+    writer_passed = not with_writer or (
+        writer_present and writer_writes > 0 and writer_failures == 0
+    )
+    readers_passed = requests > 0
+    latency_passed = readers_passed and p95_ms <= 4_000
+    return {
+        "threshold_ms": 4_000,
+        "actual_p95_ms": p95_ms,
+        "requests": requests,
+        "reader_requests_passed": readers_passed,
+        "errors": errors,
+        "writer_required": with_writer,
+        "writer": {
+            "present": writer_present,
+            "writes": writer_writes,
+            "failures": writer_failures,
+            "passed": writer_passed,
+        },
+        "passed": latency_passed and not errors and writer_passed,
+    }
+
+
 def run_explain(engine: Engine, sample: SqlSample, statement_timeout_ms: int) -> Any:
     if not sample.statement.lstrip().lower().startswith("select"):
         raise CapacityToolError("only a captured SELECT can be explained")
@@ -1929,12 +1963,10 @@ def measure_dataset(
         })
     concurrency_check = None
     if concurrency is not None:
-        concurrency_check = {
-            "threshold_ms": 4_000,
-            "actual_p95_ms": concurrency["p95_ms"],
-            "errors": concurrency["errors"],
-            "passed": concurrency["p95_ms"] <= 4_000 and not concurrency["errors"],
-        }
+        concurrency_check = concurrency_acceptance(
+            concurrency,
+            with_writer=with_writer,
+        )
     acceptance_passed = (
         not case_errors
         and len(results) == len(cases)
