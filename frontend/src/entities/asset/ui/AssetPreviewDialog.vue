@@ -170,8 +170,7 @@ function adjustZoom(offset: -1 | 1): void {
 .asset-preview-dialog__image {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  transform-origin: center;
+  transform-origin: top left;
   transition: transform 140ms ease;
 }
 

@@ -49,6 +49,9 @@ describe('AssetContentImage', () => {
     )
     expect(createObjectUrl).toHaveBeenCalledWith(blob)
     expect(wrapper.find('img').attributes('src')).toBe('blob:protected-asset')
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(false)
+    wrapper.unmount()
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:protected-asset')
   })
 
   it('shows a protected thumbnail while an eager full image is still loading', async () => {
@@ -78,6 +81,8 @@ describe('AssetContentImage', () => {
     })
     await flushPromises()
 
+    expect(wrapper.attributes('data-state')).toBe('loading')
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(true)
     expect(mocks.fetchAssetContent).toHaveBeenNthCalledWith(
       1,
       '/api/v1/assets/asset-1/thumbnail',
@@ -96,6 +101,7 @@ describe('AssetContentImage', () => {
     expect(wrapper.attributes('data-source')).toBe('thumbnail')
     expect(wrapper.find('img').attributes('src')).toBe('blob:thumbnail')
     expect(wrapper.text()).toContain('正在加载原图')
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(false)
 
     resolveFullImage?.(new Blob(['full-image']))
     await flushPromises()
@@ -103,6 +109,8 @@ describe('AssetContentImage', () => {
     expect(wrapper.attributes('data-source')).toBe('content')
     expect(wrapper.find('img').attributes('src')).toBe('blob:full-image')
     expect(wrapper.text()).not.toContain('正在加载原图')
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(false)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumbnail')
   })
 
   it('replaces a failed full image with an explicit retry instead of leaving the thumbnail as success', async () => {
@@ -130,6 +138,7 @@ describe('AssetContentImage', () => {
     expect(wrapper.attributes('data-state')).toBe('error')
     expect(wrapper.attributes('data-source')).toBe('none')
     expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(false)
     const retry = wrapper.get('button[aria-label="重新加载图片：失败图片"]')
     await retry.trigger('click')
     await flushPromises()
@@ -191,11 +200,13 @@ describe('AssetContentImage', () => {
     )
     mocks.fetchAssetContent.mockResolvedValue(new Blob(['thumbnail']))
 
-    mount(AssetContentImage, {
+    const wrapper = mount(AssetContentImage, {
       props: { src: '/api/v1/assets/asset-1/thumbnail', alt: '延迟图片' },
     })
     await flushPromises()
     expect(mocks.fetchAssetContent).not.toHaveBeenCalled()
+    expect(wrapper.attributes('data-state')).toBe('idle')
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(true)
 
     callback?.([{ isIntersecting: true } as IntersectionObserverEntry])
     await flushPromises()
@@ -248,5 +259,18 @@ describe('AssetContentImage', () => {
 
     expect(wrapper.find('img').attributes('src')).toBe('blob:second-asset')
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not add an intrinsic grid placeholder for ready or empty direct sources', async () => {
+    const wrapper = mount(AssetContentImage, {
+      props: { src: 'data:image/svg+xml,<svg/>', alt: '竖图', loading: 'eager' },
+    })
+    expect(wrapper.attributes('data-state')).toBe('ready')
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(false)
+    await wrapper.setProps({ src: '' })
+    expect(wrapper.attributes('data-state')).toBe('empty')
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('.asset-content-image__placeholder').exists()).toBe(false)
+    wrapper.unmount()
   })
 })

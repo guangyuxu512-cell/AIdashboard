@@ -73,3 +73,11 @@ Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FA
 Visual Mock 仅在 Development 且查询参数精确为 `visualMock=1` 时动态加载，用于冻结视觉与交互测试。Production Build 默认且唯一运行 Real API 页面，不提供 Fixture fallback。
 
 页面继续复用 AI Module Shell、Shared 状态组件、表单控件、分页和工作台结构。平台展示统一复用 `PlatformDisplay` 的固定图标槽与左对齐名称，不在业务页面分别补 margin。
+
+## 7. Asset Image Display Contract
+
+- AI输入、生成结果、素材库卡片/详情/选择器和生成记录统一由 `AssetContentImage` 内部真实图片执行 `object-fit: contain`。方形或4:3槽只是排版边界，不改变图片比例；横、竖、长图完整显示，留白正常，不裁切、不拉伸。
+- 调用方必须提供固定尺寸、可解析高度或 `aspect-ratio` 槽。真实图片绝对定位在组件已有的有界 `relative` 容器中，避免图片固有尺寸撑大 Grid 轨道；占位只在无可显示图片时出现，不能与已就绪图片组成第二条轨道。
+- 调用方不重复覆盖内部 `img` 的 fit，也不依靠普通 scoped `img` 选择器穿透子组件。非AI的 `ProductImage` 独立契约不变。
+- 大图默认完整等比显示，现有缩放以左上角为锚点，让原滚动容器可达四边；切换图片恢复1倍，鉴权原图、缩略回退、错误重试、下载和 Blob 释放继续复用原链路。
+- 自动回归先构建正式 Real Production Bundle，再执行 `pnpm --filter @control-center/frontend exec playwright test --config playwright.ai-images.config.ts`。测试无监听端口/Backend/数据库；HTTPS虚拟站点全部请求由路由拦截，沿正式页面与 Query 使用受控 API/SVG。四比例自然尺寸、computed fit、实际截图四色像素、放大边界及慢图/重试共同守门，不代表真实平台或原生Electron验收。

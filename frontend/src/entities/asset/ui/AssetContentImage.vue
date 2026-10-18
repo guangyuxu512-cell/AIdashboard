@@ -211,7 +211,7 @@ watch(
       重试
     </button>
     <span
-      v-else-if="state !== 'empty'"
+      v-else-if="!renderedSrc && state !== 'empty'"
       class="asset-content-image__placeholder"
       aria-hidden="true"
     />
@@ -240,7 +240,9 @@ watch(
 }
 
 .asset-content-image__image {
-  object-fit: inherit;
+  position: absolute;
+  inset: 0;
+  object-fit: contain;
 }
 
 .asset-content-image[role='button'] {
