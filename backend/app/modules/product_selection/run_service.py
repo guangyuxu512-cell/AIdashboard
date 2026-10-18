@@ -47,6 +47,7 @@ SAFE_ERROR_CODES = {
     "DOUYIN_SELECTION_PRODUCT_ID_MISMATCH", "SHOP_SESSION_NOT_CONFIGURED",
     "SHOP_SESSION_AUTHENTICATION_INVALID", "SHOP_SESSION_PAYLOAD_INVALID",
     "SESSION_ENCRYPTION_UNAVAILABLE",
+    "SESSION_VERSION_CONFLICT",
     "PLATFORM_IDENTITY_MISMATCH", "PRODUCT_SELECTION_SHOP_UNAVAILABLE",
     "MODULE_ACCESS_DENIED", "TEAM_ACCESS_DENIED", "HUMAN_USER_DISABLED",
     "PRODUCT_SELECTION_ACCESS_REVOKED", "PRODUCT_SELECTION_EXECUTION_FAILED",
@@ -69,6 +70,7 @@ def safe_run_error(error: AppError) -> tuple[str, str, str | int | None]:
         "SHOP_SESSION_AUTHENTICATION_INVALID": "session",
         "SHOP_SESSION_PAYLOAD_INVALID": "session",
         "SESSION_ENCRYPTION_UNAVAILABLE": "session",
+        "SESSION_VERSION_CONFLICT": "session",
         "PLATFORM_IDENTITY_MISMATCH": "session",
     }.get(code, "execution")
     business_code = None
@@ -136,7 +138,7 @@ class SelectionRunService:
                 row = SelectionStrategyService(self.session).writable(current, command.strategy_id, expected_version=command.strategy_version)
                 if row.request_shop_id != command.shop_id:
                     raise SelectionRunConflictError()
-                if resolved.version not in {3, 4, 5, 6, 7, 8}:
+                if resolved.version not in {3, 4, 5, 6, 7, 8, 9}:
                     raise ValueError("Strategy association requires the versioned execution contract")
                 resolved = resolved.model_copy(update={"strategy": SelectionStrategySnapshot(strategy_id=row.strategy_id, version=row.version)})
             result = self._persist_submission(current, command, resolved, at=at)
@@ -397,7 +399,7 @@ class SelectionRunService:
             allowed = {None: {"primary", "fallback_checking"}, "fallback_checking": {"backup", "backup_empty", "both_empty"}}
             if request.single_window():
                 allowed = {None: {"primary"}}
-            if (request.version not in {2, 3, 4, 5, 6, 7, 8} or state not in allowed.get(previous, set())
+            if (request.version not in {2, 3, 4, 5, 6, 7, 8, 9} or state not in allowed.get(previous, set())
                 or row.saved_count != 0 or row.result_count is not None
                 or ((request.original.price_mode != "all" or request.original.brand != "all") and (primary_error is not None or fallback_reason == "primary_business_rejection_probe"))):
                 raise SelectionRunLeaseLostError()

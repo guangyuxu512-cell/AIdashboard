@@ -29,14 +29,20 @@ def test_only_first_probe_and_required_official_pages(first, last, pages):
 def test_sparse_pages_preserve_date_brand_price_and_old_reader(period, brand, price):
     bounds = {"price_mode": "custom", "price_above": "20", "price_below": "100"} if price else {}
     request = freeze_short_video_request(_original(period=period, brand=brand, rank_from=150, rank_to=200, **bounds), datetime(2026, 12, 31, 16, tzinfo=UTC))
-    assert request.version == 8 and request.page_numbers == (1, 15, 16, 17, 18, 19, 20)
-    legacy = request.legacy_paging_request()
-    serialized, fingerprint = legacy.model_dump_json(), legacy.fingerprint()
-    assert legacy.version in {3, 4, 5, 6, 7} and legacy.page_numbers == tuple(range(1, 21))
-    assert legacy.scope == request.scope and legacy.date_plan == request.date_plan
-    assert SelectionResolvedRequest.model_validate_json(serialized).fingerprint() == fingerprint
-    assert legacy.model_dump_json() == serialized
-    assert request.fingerprint() != fingerprint
+    assert request.page_numbers == (1, 15, 16, 17, 18, 19, 20)
+    if brand == "all":
+        assert request.version == 8
+        legacy = request.legacy_paging_request()
+        serialized, fingerprint = legacy.model_dump_json(), legacy.fingerprint()
+        assert legacy.version in {3, 4, 5, 6} and legacy.page_numbers == tuple(range(1, 21))
+        assert legacy.scope == request.scope and legacy.date_plan == request.date_plan
+        assert SelectionResolvedRequest.model_validate_json(serialized).fingerprint() == fingerprint
+        assert legacy.model_dump_json() == serialized
+        assert request.fingerprint() != fingerprint
+    else:
+        assert request.version == 9
+        assert request.scope.brand_type == ("1" if brand == "known" else "0")
+        assert SelectionResolvedRequest.model_validate_json(request.model_dump_json()) == request
     # Planning/serialization never substitutes other conditions or query dates.
     for pages in ([15, 16, 17, 18, 19, 20], [1, 2, 15, 16, 17, 18, 19, 20], [1, 16, 15, 17, 18, 19, 20], [1, 15, 15, 16, 17, 18, 19, 20]):
         with pytest.raises(ValueError):

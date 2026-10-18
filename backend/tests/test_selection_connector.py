@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import nullcontext
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -13,10 +13,20 @@ from pydantic import SecretStr
 from app.core.config import Settings
 from app.integrations.douyin_signer import DouyinSignResult
 from app.modules.sessions.auth_context import ShopSessionAuthContext, StoredSessionCookie
+from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.exceptions import (
+    SessionVersionConflictError,
+    ShopSessionAuthenticationInvalidError,
+    ShopSessionNotConfiguredError,
+)
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.api_client import DouyinApiClient
 from app.platforms.douyin.selection_connector import DouyinProductSelectionConnector
-from app.platforms.exceptions import PlatformAuthenticationInvalidError
+from app.platforms.exceptions import (
+    PlatformAuthenticationInvalidError,
+    PlatformResponseInvalidError,
+    PlatformSignerFailedError,
+)
 from tests.test_douyin_product_selection import rank_payload, basic_payload
 
 
@@ -148,24 +158,264 @@ def test_enabled_confirmed_consumer_uses_existing_executor(monkeypatch, capacity
     assert executed == [True] * capacity
 
 
-@pytest.mark.parametrize("configured,status,expired,expected", [
-    (False, "not_configured", False, "SHOP_SESSION_NOT_CONFIGURED"),
-    (True, "captured", False, "AUTH_INVALID"),
-    (True, "valid", True, "AUTH_INVALID"),
-    (True, "valid", False, "SESSION_ENCRYPTION_UNAVAILABLE"),
-])
-def test_stored_session_preparation_classifies_missing_invalid_and_cipher_failure(monkeypatch, configured, status, expired, expected):
+def _install_stored_session_fakes(monkeypatch, *, health_result, context_version=4):
+    from app.modules.product_selection import platform_io
+
+    shop_id = uuid4()
+    calls = []
+    context = ShopSessionAuthContext(
+        shop_id=shop_id,
+        platform=ShopPlatform.DOUYIN,
+        session_version=context_version,
+        cookies=(),
+    )
+
+    class Accessor:
+        def __init__(self, *_args):
+            pass
+
+        def get_auth_context(self, requested_shop_id, platform):
+            assert requested_shop_id == shop_id
+            assert platform is ShopPlatform.DOUYIN
+            calls.append("context")
+            return context
+
+    class Health:
+        def __init__(self, *_args, **kwargs):
+            assert kwargs["before_platform_io"] is not None
+
+        def check(self, requested_shop_id, *, force):
+            assert requested_shop_id == shop_id
+            assert force is False
+            calls.append("health")
+            if isinstance(health_result, Exception):
+                raise health_result
+            return health_result
+
+    monkeypatch.setattr(
+        platform_io,
+        "ShopRepository",
+        lambda _: SimpleNamespace(
+            get=lambda _: SimpleNamespace(
+                platform=ShopPlatform.DOUYIN,
+                platform_shop_id="verified-synthetic-shop",
+            ),
+        ),
+    )
+    monkeypatch.setattr(platform_io, "ShopSessionAccessor", Accessor)
+    monkeypatch.setattr(platform_io, "ShopSessionHealthService", Health)
+    monkeypatch.setattr(platform_io, "create_platform_connectors", lambda: {})
+    return shop_id, calls
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (ShopSessionNotConfiguredError(), "SHOP_SESSION_NOT_CONFIGURED"),
+        (ShopSessionAuthenticationInvalidError(), "AUTH_INVALID"),
+    ],
+)
+def test_stored_session_preparation_propagates_authoritative_readiness_errors(
+    monkeypatch,
+    failure,
+    expected,
+):
+    from app.core.exceptions import AppError
+    from app.modules.product_selection import platform_io
+    from app.modules.product_selection.run_service import safe_run_error
+
+    shop_id, calls = _install_stored_session_fakes(
+        monkeypatch,
+        health_result=failure,
+    )
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        cipher_factory=lambda: object(),
+    )
+    with pytest.raises(AppError) as caught:
+        adapter.session_context(shop_id)
+    assert caught.value.code == expected
+    assert safe_run_error(caught.value) == (expected, "session", None)
+    assert calls == ["health"]
+
+
+def test_stored_session_preparation_binds_the_checked_version_once(monkeypatch):
+    from app.modules.product_selection import platform_io
+
+    shop_id = uuid4()
+    health = SimpleNamespace(
+        shop_id=shop_id,
+        platform=ShopPlatform.DOUYIN,
+        status=ShopSessionStatus.VALID,
+        version=4,
+    )
+    actual_shop_id, calls = _install_stored_session_fakes(
+        monkeypatch,
+        health_result=health,
+        context_version=4,
+    )
+    # The closure owns the actual Shop ID used by its context.
+    health.shop_id = actual_shop_id
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        cipher_factory=lambda: object(),
+    )
+
+    assert adapter.session_context(actual_shop_id).session_version == 4
+    assert calls == ["health", "context"]
+
+
+def test_stored_session_preparation_rejects_version_change_after_check(monkeypatch):
+    from app.core.exceptions import AppError
+    from app.modules.product_selection import platform_io
+    from app.modules.product_selection.run_service import safe_run_error
+
+    health = SimpleNamespace(
+        shop_id=uuid4(),
+        platform=ShopPlatform.DOUYIN,
+        status=ShopSessionStatus.VALID,
+        version=3,
+    )
+    shop_id, calls = _install_stored_session_fakes(
+        monkeypatch,
+        health_result=health,
+        context_version=4,
+    )
+    health.shop_id = shop_id
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        cipher_factory=lambda: object(),
+    )
+
+    with pytest.raises(SessionVersionConflictError) as caught:
+        adapter.session_context(shop_id)
+    assert safe_run_error(caught.value) == ("SESSION_VERSION_CONFLICT", "session", None)
+    assert calls == ["health", "context"]
+
+
+def test_stored_session_preparation_classifies_cipher_failure(monkeypatch):
     from app.core.exceptions import AppError
     from app.core.security import EncryptionConfigurationError
     from app.modules.product_selection import platform_io
     from app.modules.product_selection.run_service import safe_run_error
-    metadata = SimpleNamespace(configured=configured, status=status, expires_at=datetime.now(UTC) - timedelta(seconds=1) if expired else None)
-    monkeypatch.setattr(platform_io, "ShopRepository", lambda _: SimpleNamespace(get=lambda _: SimpleNamespace(platform_shop_id="verified-synthetic-shop")))
-    monkeypatch.setattr(platform_io, "ShopSessionService", lambda _: SimpleNamespace(get_metadata=lambda _: metadata))
+
+    monkeypatch.setattr(
+        platform_io,
+        "ShopRepository",
+        lambda _: SimpleNamespace(
+            get=lambda _: SimpleNamespace(
+                platform=ShopPlatform.DOUYIN,
+                platform_shop_id="verified-synthetic-shop",
+            ),
+        ),
+    )
+
     def cipher():
         raise EncryptionConfigurationError("synthetic local config failure")
-    adapter = platform_io.SelectionStoredSessionIO(lambda: nullcontext(None), cipher_factory=cipher)
+
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        cipher_factory=cipher,
+    )
     with pytest.raises(AppError) as caught:
         adapter.session_context(uuid4())
-    assert caught.value.code == expected
-    assert safe_run_error(caught.value) == (expected, "session", None)
+    assert caught.value.code == "SESSION_ENCRYPTION_UNAVAILABLE"
+    assert safe_run_error(caught.value) == (
+        "SESSION_ENCRYPTION_UNAVAILABLE",
+        "session",
+        None,
+    )
+
+
+def test_stored_selection_marks_only_explicit_business_auth_invalid(monkeypatch):
+    from app.modules.product_selection import platform_io
+
+    context = _context()
+    marked = []
+
+    class Accessor:
+        def __init__(self, *_args):
+            pass
+
+        def mark_validation_status(self, shop_id, version, status):
+            marked.append((shop_id, version, status))
+
+    class Connector:
+        def categories(self, _context):
+            raise PlatformAuthenticationInvalidError()
+
+    monkeypatch.setattr(platform_io, "ShopSessionAccessor", Accessor)
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        connector=Connector(),
+        cipher_factory=lambda: object(),
+    )
+
+    with pytest.raises(PlatformAuthenticationInvalidError):
+        adapter.categories(context)
+
+    assert marked == [
+        (context.shop_id, context.session_version, ShopSessionStatus.INVALID),
+    ]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        PlatformSignerFailedError(),
+        PlatformResponseInvalidError(),
+    ],
+)
+def test_stored_selection_non_auth_failures_do_not_change_session(
+    monkeypatch,
+    failure,
+):
+    from app.modules.product_selection import platform_io
+
+    class Accessor:
+        def __init__(self, *_args):
+            pass
+
+        def mark_validation_status(self, *_args):
+            pytest.fail("non-auth failure must not change Session status")
+
+    class Connector:
+        def categories(self, _context):
+            raise failure
+
+    monkeypatch.setattr(platform_io, "ShopSessionAccessor", Accessor)
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        connector=Connector(),
+        cipher_factory=lambda: object(),
+    )
+
+    with pytest.raises(type(failure)):
+        adapter.categories(_context())
+
+
+def test_stored_selection_old_auth_failure_cannot_invalidate_new_session(
+    monkeypatch,
+):
+    from app.modules.product_selection import platform_io
+
+    class Accessor:
+        def __init__(self, *_args):
+            pass
+
+        def mark_validation_status(self, *_args):
+            raise SessionVersionConflictError()
+
+    class Connector:
+        def categories(self, _context):
+            raise PlatformAuthenticationInvalidError()
+
+    monkeypatch.setattr(platform_io, "ShopSessionAccessor", Accessor)
+    adapter = platform_io.SelectionStoredSessionIO(
+        lambda: nullcontext(None),
+        connector=Connector(),
+        cipher_factory=lambda: object(),
+    )
+
+    with pytest.raises(PlatformAuthenticationInvalidError):
+        adapter.categories(_context())

@@ -12,6 +12,8 @@ const dtoRef = (domain, name) => [`${backend}${domain}/schemas.py`, name];
 const taskConsumers = ["frontend", "mobile"].map(
   (client) => `${client}/src/entities/task/api/contracts.ts`,
 );
+const shopSessionContract = `${pc}shop-session/api/contracts.ts`;
+const shopSessionModel = `${pc}shop-session/model/types.ts`;
 
 // Deliberately explicit coverage, not a claim to scan/generate every API.
 export const manifest = {
@@ -52,6 +54,14 @@ export const manifest = {
         "status",
       ],
     ],
+    [
+      enumRef("sessions", "ShopSessionStatus"),
+      [shopSessionContract, "ShopSessionStatusDto"],
+    ],
+    [
+      enumRef("sessions", "ShopSessionStatus"),
+      [shopSessionModel, "ShopSessionStatus"],
+    ],
   ],
   maps: [
     [
@@ -66,6 +76,10 @@ export const manifest = {
       enumRef("tasks", "TaskStatus"),
       [`${client}/src/entities/task/model/status-meta.ts`, "TASK_STATUS_META"],
     ]),
+    [
+      enumRef("sessions", "ShopSessionStatus"),
+      [`${pc}shop-session/model/status-meta.ts`, "SHOP_SESSION_STATUS_META"],
+    ],
   ],
   dtos: [
     [
@@ -80,6 +94,26 @@ export const manifest = {
     [
       dtoRef("access", "MyTeamMembershipRead"),
       [`${mobile}human-auth/api/contracts.ts`, "HumanTeamMembershipDto"],
+    ],
+    [
+      dtoRef("sessions", "ShopSessionMetadataRead"),
+      [shopSessionContract, "ShopSessionMetadataReadDto"],
+    ],
+    [
+      dtoRef("sessions", "ShopSessionMetadataRead"),
+      [shopSessionModel, "ShopSessionMetadataViewModel"],
+      {
+        session_id: "sessionId",
+        configured: "configured",
+        status: "status",
+        version: "version",
+        source_device_id: "sourceDeviceId",
+        captured_at: "capturedAtDisplay",
+        validated_at: "validatedAtDisplay",
+        expires_at: "expiresAtDisplay",
+        refresh_in_progress: "refreshInProgress",
+        refresh_lease_expires_at: "refreshLeaseExpiresAtDisplay",
+      },
     ],
     ...["frontend", "mobile"].flatMap((client) => [
       [
