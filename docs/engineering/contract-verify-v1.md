@@ -48,7 +48,7 @@ pnpm verify --report=.codex/verify-report.json
 
 复用既有正式 ASGI Router、异常处理和现有测试的合成授权/Service override：比较 schedules 缺 timezone、非法 timezone 与普通参数校验的 HTTP 422、错误码及完整 envelope。无数据库或网络服务器。
 
-PC/Mobile 探针直接 import 真实 HTTP client，使用 Axios 内存 adapter，核对正式错误字段、timeout/cancel、HTML 200、detail-only 422 的安全降级、平台错误不得清人员登录态，以及 null/false/0 不混淆。设备探针使用原 mapper 检查未知企业账号状态，不修改 mapper。
+PC/Mobile 探针直接 import 真实 HTTP client，使用 Axios 内存 adapter，核对正式错误字段、timeout/cancel、HTML 200、detail-only 422 的安全降级、平台错误不得清人员登录态，以及 null/false/0 不混淆。设备探针使用正式 mapper 检查未知企业账号状态保持 `null`，不再折为 `false`。
 经营会话恢复探针通过正式 PC API 客户端和内存 HTTP spy，使用独立固定期望检查路径、单个原 Item、Session 版本及
 `revalidate_current_session=true`；不读实现常量，不解密 Session、不连平台或数据库。后端的共享就绪分类和执行前权威身份检查仍由定向服务/执行器测试覆盖，
 不把客户端探针误写成服务器会话验证。
@@ -73,6 +73,8 @@ API状态、DTO字段、unit、零值、金额、比例和日期七类受控变�
 `scripts/verify/known-differences.json` 只接受 ca97 审核后的逐条精确签名：rule、contract、expected、actual、reason、review。默认入口输出已知但未修复，不把它们改写成 PASS；严格模式忽略该文件。
 
 没有通配、正则豁免、自动记录或自动刷新命令。新发现或既有 expected/actual 扩大必须失败；已解决的旧例外变为 stale，也必须人工移除/审核。不同使用方、字段及 Literal 值不能共用一条宽泛豁免。确定的产品缺陷交原业务任务单独修复。
+
+截至 2026-10-18，首批经审核的 28 个精确存量差异已在独立 Feature 中逐项修复并移除，`known-differences.json` 当前为空数组。默认与 `--strict` 均要求 `known=0 / new=0 / stale=0` 且 exit 0；历史例外的根因、分组提交和修复前后证据见 [差异修复 Gate 1](contract-differences-remediation-v1-gate1-20261018.md)。后续若出现新差异，仍须按上述逐条审核规则处理，不能因当前清零而放宽检查器。
 
 ## 隔离与未覆盖范围
 

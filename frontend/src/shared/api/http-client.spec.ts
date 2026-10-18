@@ -25,7 +25,7 @@ describe('Human request context', () => {
           data: {},
           status: 200,
           statusText: 'OK',
-          headers: {},
+          headers: { 'content-type': 'application/json' },
           config,
         }
       },
@@ -82,5 +82,66 @@ describe('Human request context', () => {
       requestId: 'request-download-1',
       status: 404,
     })
+  })
+
+  it('rejects an HTML 200 fallback without expiring Human auth', async () => {
+    const onSessionInvalid = vi.fn()
+    configureHumanRequestContext({
+      getActiveTeamId: () => null,
+      onSessionInvalid,
+    })
+
+    await expect(
+      httpClient.request({
+        adapter: async (config): Promise<AxiosResponse> => ({
+          data: '<!doctype html><html></html>',
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'text/html' },
+          config,
+        }),
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      message: '请求失败',
+      status: 200,
+    })
+    expect(onSessionInvalid).not.toHaveBeenCalled()
+  })
+
+  it('accepts JSON, empty and explicitly binary responses', async () => {
+    const jsonResponse = await httpClient.request({
+      adapter: async (config): Promise<AxiosResponse> => ({
+        data: { ok: true },
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        config,
+      }),
+    })
+    const emptyResponse = await httpClient.request({
+      adapter: async (config): Promise<AxiosResponse> => ({
+        data: undefined,
+        status: 204,
+        statusText: 'No Content',
+        headers: {},
+        config,
+      }),
+    })
+    const blob = new Blob(['asset'], { type: 'image/png' })
+    const blobResponse = await httpClient.request({
+      responseType: 'blob',
+      adapter: async (config): Promise<AxiosResponse> => ({
+        data: blob,
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'image/png' },
+        config,
+      }),
+    })
+
+    expect(jsonResponse.data).toEqual({ ok: true })
+    expect(emptyResponse.status).toBe(204)
+    expect(blobResponse.data).toBe(blob)
   })
 })

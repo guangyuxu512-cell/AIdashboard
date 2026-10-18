@@ -2,7 +2,9 @@ import asyncio
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
+import pytest
 from httpx import ASGITransport, AsyncClient, Response
+from pydantic import ValidationError
 
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
@@ -10,6 +12,12 @@ from app.modules.access.enums import DataScope
 from app.modules.operating_dashboard.api import (
     get_operating_dashboard_actor,
     get_operating_dashboard_service,
+)
+from app.modules.operating_dashboard.enums import (
+    OperatingCollectionFailureStage,
+    OperatingCollectionItemStatus,
+    OperatingCollectionJobKind,
+    OperatingCollectionJobStatus,
 )
 from app.modules.operating_dashboard.schemas import (
     OperatingDashboardComparisonRead,
@@ -22,6 +30,7 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDashboardTableRowRead,
     OperatingDashboardTrendPointRead,
     OperatingDataCollectionCountsRead,
+    OperatingDataCollectionItemRead,
     OperatingDataCollectionJobRead,
     OperatingDataCollectionSubmissionRead,
 )
@@ -136,6 +145,62 @@ def collection_job() -> OperatingDataCollectionJobRead:
         ),
         items=[],
     )
+
+
+def test_collection_read_contract_binds_authoritative_enums_and_preserves_null() -> None:
+    now = datetime(2026, 9, 21, tzinfo=UTC)
+    item = OperatingDataCollectionItemRead(
+        collection_item_id=uuid4(),
+        shop_id=SHOP_ID,
+        business_date=date(2026, 9, 20),
+        status="failed",
+        retryable=False,
+        failure_code="SYNTHETIC_FAILURE",
+        failure_message="安全的合成失败",
+        failure_stage=None,
+        attempt_count=1,
+        started_at=now,
+        finished_at=now,
+        queue_wait_ms=0,
+        session_preparation_ms=None,
+        signature_ms=None,
+        platform_response_ms=None,
+        response_parse_ms=None,
+        total_ms=1,
+    )
+    job = OperatingDataCollectionJobRead(
+        collection_job_id=JOB_ID,
+        kind="manual_refresh",
+        status="partial_failed",
+        requested_start_date=date(2026, 9, 20),
+        requested_end_date=date(2026, 9, 20),
+        created_at=now,
+        updated_at=now,
+        started_at=now,
+        finished_at=now,
+        counts=OperatingDataCollectionCountsRead(
+            pending=0,
+            running=0,
+            succeeded=0,
+            failed=1,
+            skipped=0,
+            paused_reauthorization=0,
+        ),
+        items=[item],
+    )
+
+    assert job.kind is OperatingCollectionJobKind.MANUAL_REFRESH
+    assert job.status is OperatingCollectionJobStatus.PARTIAL_FAILED
+    assert job.items[0].status is OperatingCollectionItemStatus.FAILED
+    assert job.items[0].failure_stage is None
+    assert job.model_dump(mode="json")["items"][0]["status"] == "failed"
+
+    invalid = item.model_dump()
+    invalid["failure_stage"] = "invented_stage"
+    with pytest.raises(ValidationError):
+        OperatingDataCollectionItemRead.model_validate(invalid)
+
+    assert OperatingCollectionFailureStage.RESPONSE_PARSE.value == "response_parse"
 
 
 class DashboardServiceStub:

@@ -39,6 +39,25 @@ describe('Mobile API Client', () => {
     })
   })
 
+  it.each([
+    ['ECONNABORTED', 'REQUEST_TIMEOUT', '请求超时'],
+    ['ERR_CANCELED', 'REQUEST_CANCELLED', '请求已取消'],
+  ])(
+    'classifies %s without treating it as a Human Session failure',
+    (transportCode, expectedCode, expectedMessage) => {
+      const error = {
+        isAxiosError: true,
+        code: transportCode,
+      } as AxiosError
+
+      expect(normalizeApiError(error)).toMatchObject({
+        code: expectedCode,
+        message: expectedMessage,
+        status: null,
+      })
+    },
+  )
+
   it('uses credentialed requests without injecting a Worker or JWT authorization header', async () => {
     let authorizationHeader: unknown
 

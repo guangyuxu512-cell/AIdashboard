@@ -2,7 +2,9 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -14,13 +16,13 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.credentials.service import CredentialService
 from app.modules.schedules.schemas import (
     ScheduleCreate,
+    ScheduleListOccurrenceQuery,
     ScheduleListItemRead,
     ScheduleRead,
     ScheduleRunRead,
     ScheduleUpdate,
 )
 from app.modules.schedules.service import ScheduleService
-from app.modules.schedules.time_rules import get_schedule_timezone
 from app.modules.tasks.service import TaskService
 from app.shared.pagination import Page, PaginationParams
 
@@ -51,6 +53,19 @@ def get_schedule_service(
     )
 
 
+def get_schedule_list_occurrence_query(
+    occurrence_date: Annotated[date | None, Query()] = None,
+    view_timezone: Annotated[str | None, Query(max_length=100)] = None,
+) -> ScheduleListOccurrenceQuery:
+    try:
+        return ScheduleListOccurrenceQuery(
+            occurrence_date=occurrence_date,
+            view_timezone=view_timezone,
+        )
+    except ValidationError as error:
+        raise RequestValidationError(error.errors()) from error
+
+
 @router.post("", response_model=ScheduleRead, status_code=status.HTTP_201_CREATED)
 def create_schedule(
     data: ScheduleCreate,
@@ -65,25 +80,14 @@ def list_schedules(
     actor: Annotated[ActorContext, Depends(get_schedule_authorized_actor)],
     service: Annotated[ScheduleService, Depends(get_schedule_service)],
     pagination: Annotated[PaginationParams, Depends()],
+    occurrence_query: Annotated[
+        ScheduleListOccurrenceQuery,
+        Depends(get_schedule_list_occurrence_query),
+    ],
     enabled: Annotated[bool | None, Query()] = None,
     device_id: Annotated[UUID | None, Query()] = None,
     search: Annotated[str | None, Query(max_length=500)] = None,
-    occurrence_date: Annotated[date | None, Query()] = None,
-    view_timezone: Annotated[str | None, Query(max_length=100)] = None,
 ) -> Page[ScheduleListItemRead]:
-    if (occurrence_date is None) != (view_timezone is None):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="occurrence_date and view_timezone must be supplied together",
-        )
-    if view_timezone is not None:
-        try:
-            get_schedule_timezone(view_timezone)
-        except ValueError as error:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=str(error),
-            ) from error
     return service.list_management(
         actor=actor,
         page=pagination.page,
@@ -91,8 +95,8 @@ def list_schedules(
         enabled=enabled,
         device_id=device_id,
         search=search,
-        occurrence_date=occurrence_date,
-        view_timezone=view_timezone,
+        occurrence_date=occurrence_query.occurrence_date,
+        view_timezone=occurrence_query.view_timezone,
     )
 
 

@@ -956,12 +956,24 @@ def test_schedule_api_passes_occurrence_date_and_view_timezone_together() -> Non
         "GET",
         "/api/v1/schedules?page=1&page_size=20&occurrence_date=2026-08-24",
     )
+    invalid_timezone = request(
+        "GET",
+        "/api/v1/schedules?page=1&page_size=20"
+        "&occurrence_date=2026-08-24&view_timezone=Mars%2FOlympus",
+    )
 
     assert response.status_code == 200
     assert ApiScheduleService.last_list_kwargs is not None
     assert str(ApiScheduleService.last_list_kwargs["occurrence_date"]) == "2026-08-24"
     assert ApiScheduleService.last_list_kwargs["view_timezone"] == "Asia/Shanghai"
-    assert missing_timezone.status_code == 422
+    for invalid in (missing_timezone, invalid_timezone):
+        body = invalid.json()
+        assert invalid.status_code == 422
+        assert body["code"] == "VALIDATION_ERROR"
+        assert body["message"] == "请求参数校验失败"
+        assert body["request_id"] == invalid.headers["X-Request-ID"]
+        assert isinstance(body["details"], list)
+        assert body["details"]
 
 
 def test_task_center_accepts_aware_half_open_created_range() -> None:

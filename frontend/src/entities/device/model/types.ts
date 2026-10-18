@@ -82,7 +82,7 @@ export interface YingdaoInventoryViewModel {
   loggedIn: boolean
   accountDisplay: string
   accountType: string
-  enterpriseAccount: boolean
+  enterpriseAccount: boolean | null
   applicationCount: number
   applications: ProviderApplicationViewModel[]
   lastDiscoveredAtDisplay: string
