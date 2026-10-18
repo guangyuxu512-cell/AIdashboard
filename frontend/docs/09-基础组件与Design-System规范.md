@@ -354,6 +354,8 @@ table border
 
 `DataTable.viewport="fill"` 用于列表 Card 必须消费剩余工作区的 Compact Management 页面。它与 `PageSection.fill` 组成 `flex: 1 / min-height: 0` 链，Loading、Empty、Error 和 Table Body 共用剩余主体空间，Pagination 由页面组合固定在底部。空间不足时通过 Naive DataTable `flex-height` 处理表格主体，不拉伸行高。
 
+`DataTable.showHeaderWhenEmpty` 是成功查询为空时保留列上下文的显式 opt-in：组件继续挂载 `AppTable`，并在表体空态中复用既有 `emptyDescription`。默认值为 `false`，原有独立 `EmptyState` 行为不变；Loading、Error、Retry 的优先级也不变。业务页面不得用该属性把失败伪装为空结果，也不得为保留表头创建占位行。
+
 `DataTable.appearance="list"` 保留列表既有居中、轻量行分隔、表头层级、Hover、Selected 和固定列阴影。2026-10-15 用户明确追加全局列表竖线：AppTable 的 `NDataTable.singleLine=false` 统一显示原生 1px 列分隔，颜色复用 `--border-subtle` 对接的既有 theme borderColor；grid 仍保留各列原语义对齐。外框、stripe、密度默认值不变，不能复制每页边框 CSS 或给描述表格再加双线。
 
 `DataTable.themeOverrides` 透传已有 `AppTable/NDataTable` 配置，只供有明确需求的消费者显式调整；默认 undefined、不改变其他表格。选品图片列表以 `tdPaddingMedium: var(--space-2) var(--space-3)` 组合64px缩略图形成约81px行，不改共享表格或密度Token；详情摘要图片仍为80px。
