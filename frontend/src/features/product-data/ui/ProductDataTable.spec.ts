@@ -1,6 +1,10 @@
 import { mount } from '@vue/test-utils'
-import type { VNode } from 'vue'
-import type { DataTableBaseColumn } from 'naive-ui'
+import { defineComponent, h, nextTick, reactive, type VNode } from 'vue'
+import {
+  NConfigProvider,
+  NMessageProvider,
+  type DataTableBaseColumn,
+} from 'naive-ui'
 import { describe, expect, it } from 'vitest'
 import { ProductInfoCell } from '@/entities/product'
 import { DataTable } from '@/shared/components'
@@ -9,11 +13,97 @@ import { emptyProductFilters } from '../model/query'
 import {
   DEFAULT_PRODUCT_COLUMNS,
   PRODUCT_DISPLAY_COLUMNS,
+  type ProductDisplayColumnId,
   type ProductDataRow,
 } from '../model/types'
 import ProductDataTable from './ProductDataTable.vue'
 
 describe('product data compact table consumer', () => {
+  it('keeps fixed and configured headers only around successful empty results across state changes', async () => {
+    const visibleColumns: ProductDisplayColumnId[] = [
+      'clickCount',
+      'shop',
+      'pay_cnt',
+    ]
+    const state = reactive<{
+      loading: boolean
+      error: string | null
+    }>({ loading: true, error: null })
+    let retries = 0
+    const Harness = defineComponent({
+      setup: () => () =>
+        h(
+          NConfigProvider,
+          { abstract: true },
+          {
+            default: () =>
+              h(NMessageProvider, null, {
+                default: () =>
+                  h(ProductDataTable, {
+                    rows: [],
+                    visibleColumns,
+                    checked: [],
+                    sort: null,
+                    loading: state.loading,
+                    error: state.error,
+                    enabled: true,
+                    nativeOnly: true,
+                    onRetry: () => retries++,
+                  }),
+              }),
+          },
+        ),
+    })
+    const wrapper = mount(Harness)
+    const headerLabels = () =>
+      wrapper.findAll('.n-data-table-th').map((header) => header.text().trim())
+    try {
+      expect(wrapper.text()).toContain('正在加载')
+      expect(headerLabels()).toEqual([])
+      expect(wrapper.text()).not.toContain('所选范围暂无商品数据')
+
+      state.loading = false
+      await nextTick()
+      expect(headerLabels()).toEqual([
+        '',
+        '商品信息',
+        '点击量',
+        '店铺',
+        '订单数',
+        '操作',
+      ])
+      expect(wrapper.get('.n-data-table-empty').text()).toContain(
+        '所选范围暂无商品数据',
+      )
+      expect(
+        wrapper.findAll('.n-data-table-tbody .n-data-table-tr'),
+      ).toHaveLength(0)
+
+      state.error = '读取失败测试'
+      await nextTick()
+      expect(wrapper.text()).toContain('读取失败测试')
+      expect(headerLabels()).toEqual([])
+      expect(wrapper.text()).not.toContain('所选范围暂无商品数据')
+      await wrapper.get('button').trigger('click')
+      expect(retries).toBe(1)
+
+      state.error = null
+      await nextTick()
+      expect(headerLabels()).toEqual([
+        '',
+        '商品信息',
+        '点击量',
+        '店铺',
+        '订单数',
+        '操作',
+      ])
+      expect(wrapper.get('.n-data-table-empty').text()).toContain(
+        '所选范围暂无商品数据',
+      )
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('renders only the approved whitelist and reuses verified sorts for both traffic aliases', async () => {
     const savedOrder = PRODUCT_DISPLAY_COLUMNS.map(({ id }) => id).reverse()
     const wrapper = mount(ProductDataTable, {

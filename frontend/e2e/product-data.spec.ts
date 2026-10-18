@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 async function chooseShop(page: Page, name: string) {
   await page.locator('.product-data-filters .n-base-selection').first().click()
@@ -18,6 +18,60 @@ async function settle(page: Page) {
     )
   })
 }
+async function headerLabels(table: Locator) {
+  return table
+    .locator('.n-data-table-th')
+    .evaluateAll((headers) =>
+      headers.map((header) => (header.textContent ?? '').trim()),
+    )
+}
+test('keeps saved columns, fixed headers and horizontal scroll on the first successful empty result', async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'control-center.product-data.columns.v1.00000000-0000-4000-8000-000000000001',
+      JSON.stringify(['pay_cnt', 'clickCount', 'shop']),
+    )
+  })
+  await page.goto('/#/product-data?productDataPreview=empty-success')
+  const table = page.locator('.product-data-table')
+  await expect(table.locator('thead')).toBeVisible()
+  expect(await headerLabels(table)).toEqual([
+    '',
+    '商品信息',
+    '订单数',
+    '点击量',
+    '店铺',
+    '操作',
+  ])
+  await expect(
+    table.getByRole('columnheader', { name: '商品信息', exact: true }),
+  ).toBeVisible()
+  await expect(
+    table.getByRole('columnheader', { name: '操作', exact: true }),
+  ).toBeVisible()
+  await expect(table.locator('.n-data-table-empty')).toContainText(
+    '所选范围暂无商品数据',
+  )
+  await expect(
+    table.locator('.n-data-table-tbody .n-data-table-tr'),
+  ).toHaveCount(0)
+  expect(
+    await table.evaluate((element) =>
+      Array.from(element.querySelectorAll('.n-scrollbar-container')).some(
+        (container) => container.scrollWidth > container.clientWidth,
+      ),
+    ),
+  ).toBe(true)
+  await expect(page.locator('.pagination-bar')).toContainText('共 0 条')
+  await settle(page)
+  await page.screenshot({
+    path: info.outputPath('product-data-initial-empty.png'),
+    animations: 'disabled',
+  })
+})
 test('inherits the Green candidate compact thumbnail and preserves the default image summary', async ({
   page,
 }, info) => {
@@ -54,6 +108,15 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
   const table = page.locator('.product-data-table'),
     rows = table.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(20)
+  const zeroRow = rows.filter({
+    has: page.getByText(
+      '演示商品 1 · 轻盈日常随行杯 超长标题用于完整信息与省略展示',
+      { exact: true },
+    ),
+  })
+  await expect(zeroRow).toHaveCount(1)
+  await expect(zeroRow.getByText('0', { exact: true }).first()).toBeVisible()
+  await expect(table.locator('.n-data-table-empty')).toHaveCount(0)
   await expect(page.getByText('演示数据', { exact: true })).toBeVisible()
   await expect(page.locator('.pagination-bar')).toContainText('共 31 条')
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -190,8 +253,51 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
   await expect(
     page.getByText('所选范围暂无商品数据', { exact: true }),
   ).toBeVisible()
+  await expect(rows).toHaveCount(0)
+  await expect(table.locator('thead')).toBeVisible()
+  expect(await headerLabels(table)).toEqual([
+    '',
+    '商品信息',
+    '点击量',
+    '店铺',
+    '曝光',
+    '点击率',
+    '加购量',
+    '加购率',
+    '真实订单',
+    '异常订单',
+    '转化率',
+    '退款率',
+    '点击人数',
+    '操作',
+  ])
+  await expect(table.locator('.n-data-table-empty')).toContainText(
+    '所选范围暂无商品数据',
+  )
+  expect((await clickCountHeader.boundingBox())!.x).toBeLessThan(
+    (await shopHeader.boundingBox())!.x,
+  )
+  expect((await shopHeader.boundingBox())!.x).toBeLessThan(
+    (await exposureHeader.boundingBox())!.x,
+  )
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(rows).toHaveCount(20)
+  expect(await headerLabels(table)).toEqual([
+    '',
+    '商品信息',
+    '点击量',
+    '店铺',
+    '曝光',
+    '点击率',
+    '加购量',
+    '加购率',
+    '真实订单',
+    '异常订单',
+    '转化率',
+    '退款率',
+    '点击人数',
+    '操作',
+  ])
   await settle(page)
   await page.screenshot({
     path: info.outputPath('product-data-normal.png'),
@@ -204,13 +310,19 @@ test('recovers query error and keeps wide tables and dialogs within ordinary and
   page,
 }, info) => {
   await page.goto('/#/product-data?productDataPreview=query-error')
+  const table = page.locator('.product-data-table')
   await expect(
     page.getByText('演示操作失败，请重试', { exact: true }),
   ).toBeVisible()
+  await expect(table.locator('thead')).toHaveCount(0)
+  await expect(
+    table.getByText('所选范围暂无商品数据', { exact: true }),
+  ).toHaveCount(0)
   await page.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(
     page.locator('.product-data-table .n-data-table-tbody .n-data-table-tr'),
   ).toHaveCount(20)
+  await expect(table.locator('thead')).toBeVisible()
   for (const [width, height] of [
     [1024, 768],
     [1920, 1080],

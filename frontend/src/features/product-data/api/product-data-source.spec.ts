@@ -134,6 +134,16 @@ describe('product data source boundaries', () => {
       'synthetic-api-unavailable',
     )
   })
+  it('limits the successful initial-empty fixture to its explicit Mock preview', async () => {
+    const preview = await createProductDataSource('mock', 'empty-success')
+    await expect(preview.list(query())).resolves.toMatchObject({
+      items: [],
+      total: 0,
+      page: 1,
+    })
+    const standard = await createProductDataSource('mock')
+    await expect(standard.list(query())).resolves.toMatchObject({ total: 31 })
+  })
   it('filters and sorts the entire result before pagination, keeping missing last in either direction', async () => {
     const source = createMockProductDataSource()
     const params = query()

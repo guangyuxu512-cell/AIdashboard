@@ -25,6 +25,7 @@ export async function createProductDataSource(
     const { createMockProductDataSource } = await import('./product-data-mock')
     return createMockProductDataSource({
       mixedIds: import.meta.env.DEV && previewCase === 'mixed-ids',
+      empty: import.meta.env.DEV && previewCase === 'empty-success',
       failOnce:
         import.meta.env.DEV && previewCase === 'query-error'
           ? 'list'

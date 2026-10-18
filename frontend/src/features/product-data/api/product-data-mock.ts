@@ -29,13 +29,18 @@ export type ProductMockOperation =
 
 // Synthetic UI records; neither response sample contents nor platform facts.
 export function createMockProductDataSource(
-  options: { failOnce?: ProductMockOperation; mixedIds?: boolean } = {},
+  options: {
+    failOnce?: ProductMockOperation
+    mixedIds?: boolean
+    empty?: boolean
+  } = {},
 ): ProductDataSource {
   const shops = SHOP_LIST_FIXTURE.filter(
     (shop) => shop.enabled && shop.platform === 'douyin',
   ).slice(0, 2)
   const retrievedAt = dayjs().toISOString()
-  const products = Array.from({ length: 31 }, (_, index) => {
+  const productCount = options.empty ? 0 : 31
+  const products = Array.from({ length: productCount }, (_, index) => {
     const shop = shops[index < 16 ? 0 : 1] ?? shops[0]!
     return {
       id: 'product-data-demo-' + index,

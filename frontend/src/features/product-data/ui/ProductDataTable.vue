@@ -185,6 +185,7 @@ function sortChanged(value: DataTableSortState | DataTableSortState[] | null) {
     :checked-row-keys="checked"
     viewport="fill"
     appearance="list"
+    show-header-when-empty
     :theme-overrides="{ tdPaddingMedium: 'var(--space-2) var(--space-3)' }"
     empty-description="所选范围暂无商品数据"
     @update:checked-row-keys="$emit('update:checked', $event)"
