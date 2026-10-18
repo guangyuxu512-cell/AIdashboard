@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import date, timedelta
+from types import SimpleNamespace
 from threading import Lock
 from time import sleep
 from uuid import UUID, uuid4
@@ -10,6 +11,7 @@ from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.operating_data import (
     CompassDailyMetrics,
     CompassDailyRead,
+    DouyinOperatingDataBusinessError,
     DouyinOperatingDataMetricUnavailableError,
 )
 from app.platforms.douyin.operating_data_executor import (
@@ -184,12 +186,20 @@ def test_process_guard_rejects_an_overlapping_same_shop_collection() -> None:
 
 
 class _FakeHealthService:
-    def __init__(self) -> None:
+    def __init__(self, *, version: int = 4) -> None:
         self.applied_updates = []
+        self.checked = 0
+        self.version = version
 
     def check(self, shop_id: UUID, *, force: bool) -> object:
         assert force is False
-        return object()
+        self.checked += 1
+        return SimpleNamespace(
+            shop_id=shop_id,
+            platform=ShopPlatform.DOUYIN,
+            status=ShopSessionStatus.VALID,
+            version=self.version,
+        )
 
     def apply_response_cookie_updates(
         self,
@@ -283,6 +293,43 @@ def test_session_aware_collector_classifies_signer_and_auth_failures() -> None:
     assert auth_accessor.marked == [ShopSessionStatus.INVALID]
 
 
+def test_session_aware_collector_does_not_mark_business_rejection_invalid() -> None:
+    collector, _, accessor = _session_collector(
+        DouyinOperatingDataBusinessError(details={"platform_code": "100008"}),
+    )
+
+    outcome = collector.collect(
+        DailyCollectionRequest(accessor.context.shop_id, DAY),
+    )
+
+    assert outcome.failure_code == "DOUYIN_OPERATING_DATA_REJECTED"
+    assert outcome.requires_reauthorization is False
+    assert accessor.marked == []
+
+
+def test_session_aware_collector_rejects_a_version_change_after_health_check() -> None:
+    collector, health, accessor = _session_collector(
+        CompassDailyRead(
+            shop_id=uuid4(),
+            statistic_date=DAY,
+            metrics=CompassDailyMetrics(0, 0),
+            cookie_updates=(),
+            signature_duration_ms=None,
+            platform_duration_ms=0,
+            parse_duration_ms=0,
+        ),
+    )
+    health.version = accessor.context.session_version - 1
+
+    outcome = collector.collect(
+        DailyCollectionRequest(accessor.context.shop_id, DAY),
+    )
+
+    assert outcome.failure_code == "SHOP_SESSION_VERSION_CONFLICT"
+    assert outcome.retryable is True
+    assert outcome.requires_reauthorization is False
+
+
 def test_session_aware_collector_keeps_required_metric_parse_hint_safe() -> None:
     collector, _, accessor = _session_collector(
         PlatformResponseInvalidError(
@@ -337,3 +384,4 @@ def test_session_aware_collector_persists_only_explicit_response_cookie_updates(
     assert outcome.timings.signature_ms == 10
     assert outcome.timings.platform_response_ms == 20
     assert outcome.timings.response_parse_ms == 1
+    assert health.checked == 1
