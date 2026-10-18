@@ -4,9 +4,10 @@
 
 - 状态：**工具与离线 Gate 1 完成；正式容量验证 BLOCKED_RESOURCE**。
 - 分支：`feat/product-selection-capacity-baseline-v1`。
-- 精确基线：`9878536849fec3d2d2f1dde811e49957abcba13d`，与建分支时的 `origin/dev` 一致。
+- 初始精确基线：`9878536849fec3d2d2f1dde811e49957abcba13d`，与建分支时的 `origin/dev` 一致。
+- 最终同步 Green：正常 `--no-ff` 合入 `f07f6c244573b5891cfbd78f7a48a9ba9227368d`；未 rebase/reset，原工具提交保留。
 - Candidate：本记录所在提交；交接时另附完整 SHA。
-- Migration：无变更；源码基线唯一 head 为 `20261015_0046`。
+- Migration：本 Feature 无变更；同步 Green 后源码唯一 head 为 `20261017_0047`。未来容量实例必须登记并实查当次精确 head，不能把文档值当作固定配置。
 - 业务源码、正式 API、权限、Schema、索引、依赖、前端和 Electron 均未修改。
 
 ca97 已只读确认：现有 Feature、Integration、Main 与生产数据库同属共享 PostgreSQL 集群；本机没有独立 PostgreSQL、Docker 或 WSL 环境。因此本轮没有连接任何数据库或端口，没有造数、EXPLAIN、API 容量请求、浏览器渲染或清理操作。现有 `control_center_feat_product_selection` 明确未使用。
@@ -20,6 +21,7 @@ ca97 已只读确认：现有 Feature、Integration、Main 与生产数据库同
 | `docs/engineering/product-selection-capacity-baseline-v1-plan.md` | 冻结的数据分布、测量矩阵、阈值、资源准入与执行顺序 |
 
 工具复用现有 `SelectionResultService`／`SelectionResultRepository`、正式候选查询路由及 `ProductSelectionFactService`。它不加载 ShopSession、不调用 Signer 或平台、不运行 FastAPI lifespan，因此不会启动调度器、采集器或执行器。
+候选缩略图使用内联离线像素夹具，浏览器测量不会访问外部图片域名；源商品链接仍只是未自动请求的测试 URI。
 
 ## 固定数据与测量范围
 
@@ -55,10 +57,10 @@ manifest 位于 ignored 的 `.codex/product-selection-capacity/<run-id>/`；不�
 
 | 检查 | 结果 |
 | --- | --- |
-| `python -m pytest tests/test_product_selection_capacity_tool.py -q` | 17 passed |
+| `python -m pytest tests/test_product_selection_capacity_tool.py -q` | 18 passed |
 | `python -m compileall -q app tools tests` | exit 0 |
-| Backend 默认 `python -m pytest --tb=short` | 920 passed、378 integration deselected、1 条既有 Starlette/httpx deprecation warning；73.03 秒 |
-| `alembic heads` | `20261015_0046 (head)` |
+| Backend 默认 `python -m pytest --tb=short` | 1,064 passed、441 integration deselected、1 条既有 Starlette/httpx deprecation warning；84.49 秒 |
+| `alembic heads` | `20261017_0047 (head)` |
 | 50k／300k／500k 离线 `plan` | 全部 exit 0，计数如上 |
 | `git diff --check` | exit 0 |
 
@@ -70,6 +72,6 @@ manifest 位于 ignored 的 `.codex/product-selection-capacity/<run-id>/`；不�
 
 - 5 万冒烟：至少 4 vCPU、8 GiB RAM、15 GiB 可用磁盘。
 - 30 万／50 万正式：至少 8 vCPU、16 GiB RAM、30 GiB 可用磁盘。
-- 必需登记：数据库名、endpoint、Migration head、运行 UUID、监控入口、CPU／内存／磁盘／连接水位与停止阈值。
+- 必需登记：数据库名、endpoint、执行时精确 Migration head、运行 UUID、监控入口、CPU／内存／磁盘／连接水位与停止阈值。
 
 资源到位后由 ca97 先复核目标，再按 50k → 水位确认 → 300k → 水位确认 → 500k → 精确清理执行；81a1 不借用现有数据库继续。本 Candidate 不合 dev／main、不发布生产。

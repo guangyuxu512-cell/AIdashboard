@@ -2,7 +2,7 @@
 
 ## 边界
 
-- 基线：`9878536849fec3d2d2f1dde811e49957abcba13d`。
+- 初始开发基线：`9878536849fec3d2d2f1dde811e49957abcba13d`；工具完成后正常 `--no-ff` 同步精确 Green `f07f6c244573b5891cfbd78f7a48a9ba9227368d`。
 - 本任务只提供显式执行的合成数据与测量工具、测试计划和证据；不修改业务查询、权限、API、Schema、索引、Migration 或依赖。
 - 不调用抖音、Signer、ShopSession，不启动真实采集、扫描器、Electron 或 PC Worker。
 - 仅允许 ca97 登记的独立 PostgreSQL 资源。数据库名必须匹配 `control_center_capacity_*`；生产、dev、Integration、Feature DB 均由工具硬拒绝。
@@ -85,7 +85,7 @@
 .\.venv\Scripts\python.exe tools\product_selection_capacity.py seed `
   --allow-capacity-test --run-id <registered-run-uuid> --tier 50000 `
   --as-of <shanghai-date> --expected-database control_center_capacity_<id> `
-  --expected-endpoint <dedicated-host:port> --expected-head 20261015_0046
+  --expected-endpoint <dedicated-host:port> --expected-head <registered-exact-head>
 
 # 300k/500k 正式测量协议；50k 可先用 smoke profile 做准入冒烟
 .\.venv\Scripts\python.exe tools\product_selection_capacity.py measure `
@@ -93,11 +93,13 @@
   --with-writer --duration-seconds 60 --api-target asgi://product-selection-capacity `
   --run-id <registered-run-uuid> --tier <300000-or-500000> `
   --as-of <shanghai-date> --expected-database control_center_capacity_<id> `
-  --expected-endpoint <dedicated-host:port> --expected-head 20261015_0046
+  --expected-endpoint <dedicated-host:port> --expected-head <registered-exact-head>
 ```
+
+`--expected-head` 必须使用容量实例执行时由 ca97／DBAdmin 登记并实查的唯一 Migration head，不能从文档示例固定继承。当前同步 Green 的源码 head 是 `20261017_0047`，但未来专用实例仍以执行前实查登记值为准。
 
 `measure` 只接受进程内正式 ASGI 目标 `asgi://product-selection-capacity`，不会向外部 HTTP 地址发请求；所有平台请求计数固定为 0。工具为连接设置 `application_name=product-selection-capacity`，便于 ca97 从专用实例观察并中止。CLI 只判定 Repository／API／并发阈值；浏览器 20 行渲染由 ca97 在同一数据档位另行测量并单独记录。
 
 ## 当前资源结论（2026-10-18）
 
-ca97 只读核验确认：现有 Feature、Integration、Main 和生产数据库均位于共享 PostgreSQL 集群，本机没有独立 PostgreSQL／Docker／WSL 运行环境。因此目前只能执行离线 `plan` 和单元测试；5 万、30 万、50 万造数及正式 SQL/API/浏览器测量均未执行。待 DBAdmin 或 ca97 提供独立实例、精确 endpoint、数据库名、Migration head、监控及停止阈值后，才可进入 5 万冒烟。
+ca97 只读核验确认：现有 Feature、Integration、Main 和生产数据库均位于共享 PostgreSQL 集群，本机没有独立 PostgreSQL／Docker／WSL 运行环境。因此目前只能执行离线 `plan` 和单元测试；5 万、30 万、50 万造数及正式 SQL/API/浏览器测量均未执行。待 DBAdmin 或 ca97 提供独立实例、精确 endpoint、数据库名、执行时精确 Migration head、监控及停止阈值后，才可进入 5 万冒烟。

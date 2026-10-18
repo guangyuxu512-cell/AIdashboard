@@ -253,3 +253,10 @@ def test_database_binding_cannot_move_between_capacity_targets(tmp_path, monkeyp
     )
     with pytest.raises(CapacityToolError):
         bind_target(current, second, create=True)
+
+
+def test_capacity_thumbnails_are_self_contained_and_offline():
+    first = next(_observation_rows(spec()))
+
+    assert first["image_url"].startswith("data:image/")
+    assert "capacity.invalid" not in first["image_url"]

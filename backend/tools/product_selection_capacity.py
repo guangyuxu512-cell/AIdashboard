@@ -93,6 +93,12 @@ DEFAULT_SEED = 20_261_018
 CAPACITY_DATABASE = re.compile(r"^control_center_capacity_[a-z0-9_]+$")
 API_TARGET = "asgi://product-selection-capacity"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+# Keep browser rendering deterministic and offline. The source link remains a
+# non-fetching fixture URL, while thumbnails use an inline pixel so benchmark
+# rows never wait on DNS or an external image host.
+CAPACITY_IMAGE_DATA_URL = (
+    "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
+)
 
 SCOPE_SPECS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     ("7", ("1000009092", "1000009142"), ("家居", "智能家居", "末级 A")),
@@ -1181,7 +1187,7 @@ def _observation_rows(spec: DatasetSpec) -> Iterator[dict[str, Any]]:
                 "period_begin": scope.period_begin,
                 "period_end": scope.period_end,
                 "title": _title(candidate),
-                "image_url": f"https://capacity.invalid/{candidate.index}.jpg",
+                "image_url": CAPACITY_IMAGE_DATA_URL,
                 "source_url": f"https://capacity.invalid/product/{_product_id(candidate.index)}",
                 "merchant_snapshot": [{
                     "platform_shop_id": f"merchant-{candidate.team_index}-{candidate.index % 97}",
@@ -1676,7 +1682,7 @@ def run_synthetic_writer(engine: Engine, spec: DatasetSpec, stop: threading.Even
         products = tuple(CompassRankProduct(
             product_id=_product_id(index),
             title=_title_for_index(spec, index),
-            image_url=f"https://capacity.invalid/{index}.jpg",
+            image_url=CAPACITY_IMAGE_DATA_URL,
             rank=index % 200 + 1,
             price_band=f"{index % 100}-{index % 100 + 50}",
             merchants=(CompassMerchant(f"writer-{index}", "容量写入商家"),),
