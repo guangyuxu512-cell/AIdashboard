@@ -12,8 +12,16 @@ from app.modules.sessions.auth_context import (
     StoredManagementSessionPayload,
     StoredSessionCookie,
 )
+from app.modules.sessions.collection_readiness import (
+    ShopSessionCollectionReadiness,
+    classify_collection_readiness,
+)
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.sessions.exceptions import ShopSessionPayloadInvalidError
+from app.modules.sessions.exceptions import (
+    ShopSessionAuthenticationInvalidError,
+    ShopSessionNotConfiguredError,
+    ShopSessionPayloadInvalidError,
+)
 from app.modules.sessions.schemas import (
     ShopSessionHealthRead,
     StoreShopSessionCommand,
@@ -126,15 +134,20 @@ class ShopSessionHealthService:
         )
         metadata = self.session_service.get_metadata(shop_id)
         now = datetime.now(UTC)
+        readiness = classify_collection_readiness(
+            metadata,
+            now=now,
+            validation_freshness=timedelta(
+                seconds=self.settings.shop_session_validation_freshness_seconds,
+            ),
+        )
+        if readiness is ShopSessionCollectionReadiness.NOT_CONFIGURED:
+            raise ShopSessionNotConfiguredError()
+        if readiness is ShopSessionCollectionReadiness.REAUTHENTICATION_REQUIRED:
+            raise ShopSessionAuthenticationInvalidError()
         if (
             not force
-            and metadata.status is ShopSessionStatus.VALID
-            and metadata.validated_at is not None
-            and metadata.validated_at
-            >= now
-            - timedelta(
-                seconds=self.settings.shop_session_validation_freshness_seconds,
-            )
+            and readiness is ShopSessionCollectionReadiness.READY
             and platform_shop_id is not None
         ):
             return ShopSessionHealthRead(

@@ -34,12 +34,14 @@ pnpm verify --report=.codex/verify-report.json
 | AuditAction、AuditTargetType | PC audit-log 的类型与 ACTION_LABELS/TARGET_LABELS；动作缺少或多出分别报告 |
 | WorkerConnectionStatus、SkillClassification | Mobile 设备 DTO，包括 classification 的合法 null；不将 null 当业务类型 |
 | OperatingCollectionJobStatus、ItemStatus | 经营页面真实 Collection DTO；另检查后端 Job.kind/status、Item.status/failure_stage 是否真正引用已有权威 Enum |
+| ShopSessionStatus | PC ShopSession 原始 DTO、ViewModel 与 `SHOP_SESSION_STATUS_META`；新增或删除状态而未同步任一真实消费方会失败 |
 | AuditLogRead | PC 原始 DTO 全声明字段；ViewModel 只核对明确的 team_id→teamId 映射，不声称自动推导全部业务映射 |
+| ShopSessionMetadataRead | PC 原始 DTO 全字段，以及 Metadata→ViewModel 的显式字段名映射；不检查前端独有的来源设备显示名 |
 | MyTeamMembershipRead | Mobile HumanTeamMembershipDto |
 | DeviceRead、YingdaoProviderInventory、DeviceSkillCapabilityRead、TaskListItemRead | PC 与 Mobile 对应 DTO 的声明字段；数组/对象直接类型、primitive、Literal 和 nullable 兼容性 |
 | ErrorResponse | PC/Mobile 公共错误 DTO 的 code、message、request_id 和可空/可选 details |
 
-当前有 10 处 Enum 对照、4 个显示映射、13 处 DTO/显式 ViewModel 对照，以及 4 个后端 Enum 绑定检查。允许真实兼容的宽类型，不强迫两个领域合并成一个状态 Enum。未解析引用或未支持的权威 annotation 明确失败，不静默算一致。
+当前有 12 处 Enum 对照、5 个显示映射、15 处 DTO/显式 ViewModel 对照，以及 4 个后端 Enum 绑定检查。允许真实兼容的宽类型，不强迫两个领域合并成一个状态 Enum。未解析引用或未支持的权威 annotation 明确失败，不静默算一致。
 
 ## 第一批动态探针
 
@@ -48,6 +50,11 @@ pnpm verify --report=.codex/verify-report.json
 PC/Mobile 探针直接 import 真实 HTTP client，使用 Axios 内存 adapter，核对正式错误字段、timeout/cancel、HTML 200、detail-only 422 的安全降级、平台错误不得清人员登录态，以及 null/false/0 不混淆。设备探针使用原 mapper 检查未知企业账号状态，不修改 mapper。
 
 观察探针运行通过只说明已得到实际行为；行为是否符合契约由同一次 `verify` 的差异分类与退出码判断。不能把探针测试的 PASS 单独解释为所有客户端已一致。
+
+选品品牌 wire 探针使用独立硬编码期望核对当前 `all=-1 / known=1 / unknown=0`，并验证历史冻结
+v7/v8 的 `known=0 / unknown=1` Reader 仍可原样反序列化、序列化。期望侧不引用运行代码的品牌常量，
+避免实现与检查器一起写反仍自证通过；负向子进程故意交换 known/unknown 后必须非零退出。该探针只解析
+内存请求契约，不连接平台、Session 或数据库，也不能替代生产筛选结果对照。
 
 负向自测在临时源码字符串或内存里增加服务端状态、改变 Literal、缩窄 nullable、删除错误字段及使用不支持的 annotation，经过真实 AST/编译器与分类器后验证子进程非零。业务运行文件保持不变；正常和有意兼容的样本须为零。
 
