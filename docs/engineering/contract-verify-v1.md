@@ -37,17 +37,21 @@ pnpm verify --report=.codex/verify-report.json
 | ShopSessionStatus | PC ShopSession 原始 DTO、ViewModel 与 `SHOP_SESSION_STATUS_META`；新增或删除状态而未同步任一真实消费方会失败 |
 | AuditLogRead | PC 原始 DTO 全声明字段；ViewModel 只核对明确的 team_id→teamId 映射，不声称自动推导全部业务映射 |
 | ShopSessionMetadataRead | PC 原始 DTO 全字段，以及 Metadata→ViewModel 的显式字段名映射；不检查前端独有的来源设备显示名 |
+| OperatingSessionRecoveryRead | 经营覆盖投影中的原 Job/Item、Session 版本及 `requires_validation`，对照 PC 正式 DTO |
 | MyTeamMembershipRead | Mobile HumanTeamMembershipDto |
 | DeviceRead、YingdaoProviderInventory、DeviceSkillCapabilityRead、TaskListItemRead | PC 与 Mobile 对应 DTO 的声明字段；数组/对象直接类型、primitive、Literal 和 nullable 兼容性 |
 | ErrorResponse | PC/Mobile 公共错误 DTO 的 code、message、request_id 和可空/可选 details |
 
-当前有 12 处 Enum 对照、5 个显示映射、15 处 DTO/显式 ViewModel 对照，以及 4 个后端 Enum 绑定检查。允许真实兼容的宽类型，不强迫两个领域合并成一个状态 Enum。未解析引用或未支持的权威 annotation 明确失败，不静默算一致。
+当前有 12 处 Enum 对照、5 个显示映射、16 处 DTO/显式 ViewModel 对照，以及 4 个后端 Enum 绑定检查。允许真实兼容的宽类型，不强迫两个领域合并成一个状态 Enum。未解析引用或未支持的权威 annotation 明确失败，不静默算一致。
 
 ## 第一批动态探针
 
 复用既有正式 ASGI Router、异常处理和现有测试的合成授权/Service override：比较 schedules 缺 timezone、非法 timezone 与普通参数校验的 HTTP 422、错误码及完整 envelope。无数据库或网络服务器。
 
 PC/Mobile 探针直接 import 真实 HTTP client，使用 Axios 内存 adapter，核对正式错误字段、timeout/cancel、HTML 200、detail-only 422 的安全降级、平台错误不得清人员登录态，以及 null/false/0 不混淆。设备探针使用原 mapper 检查未知企业账号状态，不修改 mapper。
+经营会话恢复探针通过正式 PC API 客户端和内存 HTTP spy，使用独立固定期望检查路径、单个原 Item、Session 版本及
+`revalidate_current_session=true`；不读实现常量，不解密 Session、不连平台或数据库。后端的共享就绪分类和执行前权威身份检查仍由定向服务/执行器测试覆盖，
+不把客户端探针误写成服务器会话验证。
 
 观察探针运行通过只说明已得到实际行为；行为是否符合契约由同一次 `verify` 的差异分类与退出码判断。不能把探针测试的 PASS 单独解释为所有客户端已一致。
 

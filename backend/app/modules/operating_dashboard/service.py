@@ -59,6 +59,10 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDataCollectionSubmissionRead,
 )
 from app.modules.shops.enums import ShopPlatform
+from app.modules.sessions.collection_readiness import (
+    ShopSessionCollectionReadiness,
+    classify_collection_readiness,
+)
 from app.modules.sessions.enums import ShopSessionStatus
 from app.platforms.douyin.operating_data import CompassDailyMetrics
 from app.platforms.douyin.operating_data_executor import CollectionOutcome
@@ -1208,6 +1212,8 @@ class OperatingDashboardService:
             "SHOP_SESSION_VERSION_CONFLICT",
         }:
             return "店铺需要重新登录后才能继续采集"
+        if _is_session_recovery_failure(latest, job_kind=latest.job_kind):
+            return "普通补缺仍受冷却或次数保护，请在“查看缺失”中核实是否可复核会话并恢复"
         if latest.failure_code in DOUYIN_CORE_METRIC_UNKNOWN_FAILURE_CODES:
             return "平台指标未知，暂不能补采"
         if _is_response_parse_failure(latest):
@@ -2301,10 +2307,11 @@ def _is_session_recovery_failure(
 def _session_recovery_requires_validation(
     context: SessionRecoveryMetadata, *, now: datetime, freshness_seconds: int,
 ) -> bool:
-    return (
-        context.validated_at is None
-        or context.validated_at < now - timedelta(seconds=freshness_seconds)
-    )
+    return classify_collection_readiness(
+        context,
+        now=now,
+        validation_freshness=timedelta(seconds=freshness_seconds),
+    ) is ShopSessionCollectionReadiness.AUTHORITATIVE_VALIDATION_REQUIRED
 
 
 def _session_recovery_block_reason(
@@ -2330,13 +2337,20 @@ def _session_recovery_block_reason(
     if expected_version is not None and context.version != expected_version:
         return "店铺会话版本已变化，请刷新后重试"
     failed_at = item.finished_at or item.updated_at
-    if context.captured_at is None or context.captured_at <= failed_at:
-        return "当前会话不是失败后的新会话，暂不能恢复此项"
+    # ``captured_at`` is observed on the Electron host, while ``validated_at``
+    # and the failed Item timestamp are written by the Backend.  Their strict
+    # ordering is therefore not an authorization invariant.  Recovery instead
+    # requires server-clock evidence that this exact Session version passed an
+    # authoritative validation after the original failure.  Any freshness,
+    # future-time or cross-clock anomaly remains a reason for the executor to
+    # validate again through the shared readiness policy below.
     if (
-        context.captured_at > now or context.validated_at is None
-        or context.validated_at < context.captured_at or context.validated_at > now
+        context.validated_at is None
+        or context.validated_at.utcoffset() is None
+        or failed_at.utcoffset() is None
+        or context.validated_at <= failed_at
     ):
-        return "当前会话时间记录不完整或异常，暂不能恢复"
+        return "当前会话尚无失败后的服务器验证记录，暂不能恢复"
     states = list(history)
     latest = _latest_state(states)
     if latest is None or latest.collection_item_id != item.collection_item_id:

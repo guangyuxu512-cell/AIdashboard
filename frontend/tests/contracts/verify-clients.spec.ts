@@ -13,6 +13,7 @@ import {
 import { configureHumanRequestContext as configureMobile } from '../../../mobile/src/shared/api/auth-hooks'
 import { mapYingdaoInventoryDto } from '../../src/entities/device/api/device-mapper'
 import type { DeviceProviderInventoryReadDto } from '../../src/entities/device/api/contracts'
+import { operatingDashboardApi } from '../../src/features/operating-dashboard/api/operating-dashboard-api'
 
 type Finding = {
   rule: string
@@ -141,6 +142,47 @@ it('records unknown versus false in the existing device mapper; zero is not an e
       .enterpriseAccount,
   ).toBe(false)
   expect(mapYingdaoInventoryDto(dto).applicationCount).toBe(0)
+})
+
+it('keeps the explicit operating Session recovery action bound to authoritative validation', async () => {
+  const post = vi.spyOn(httpClient, 'post').mockResolvedValueOnce({
+    data: {
+      collection_job_id: 'synthetic-recovery-job',
+      status: 'pending',
+      counts: {
+        pending: 1,
+        running: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+        paused_reauthorization: 0,
+      },
+      items: [],
+    },
+  } as never)
+
+  await operatingDashboardApi.recoverCollectionItem({
+    collectionJobId: 'original-job',
+    collectionItemId: 'original-item',
+    sessionVersion: 3,
+    requiresValidation: true,
+  })
+
+  check(
+    'pc:operating-session-recovery:path',
+    '/api/v1/operating-dashboard/collections/original-job/retry',
+    post.mock.calls[0]?.[0],
+  )
+  check(
+    'pc:operating-session-recovery:body',
+    {
+      item_ids: ['original-item'],
+      session_recovery_version: 3,
+      revalidate_current_session: true,
+    },
+    post.mock.calls[0]?.[1],
+  )
+  post.mockRestore()
 })
 
 afterAll(() => {
