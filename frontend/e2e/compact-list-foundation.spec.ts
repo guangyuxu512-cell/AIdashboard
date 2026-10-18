@@ -31,6 +31,74 @@ async function hoverLabel(locator: Locator) {
 }
 
 for (const [preset, label] of themes) {
+  test(`${preset}: Radio compact dimensions stay local and default overlays restore`, async ({
+    page,
+  }, info) => {
+    const errors: string[] = [],
+      external: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.route('**/*', async (route) => {
+      const url = new URL(route.request().url())
+      if (
+        url.origin === 'http://127.0.0.1:4176' &&
+        !url.pathname.startsWith('/api/')
+      )
+        await route.continue()
+      else {
+        external.push(url.pathname)
+        await route.abort()
+      }
+    })
+    await page.addInitScript(
+      (preset) => localStorage.setItem('control-center.theme-mode', preset),
+      preset,
+    )
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/e2e/fixtures/list-density.html')
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme-preset',
+      preset,
+    )
+    const scoped = page.getByTestId('scoped-radio'),
+      regular = page.getByTestId('default-radio')
+    for (const button of await scoped.locator('.n-radio-button').all())
+      expect(await metrics(button)).toMatchObject({ font: '12px', height: 28 })
+    for (const button of await regular.locator('.n-radio-button').all())
+      expect(await metrics(button)).toMatchObject({ font: '14px', height: 34 })
+    await scoped.getByText('近30天', { exact: true }).click()
+    await expect(scoped.locator('.n-radio-button--checked')).toHaveText(
+      '近30天',
+    )
+    await expect(scoped.locator('input[value="now"]')).toBeDisabled()
+    await page.getByTestId('open-detail').click()
+    const drawer = page.getByTestId('detail-radio')
+    await expect(drawer).toBeVisible()
+    for (const button of await drawer.locator('.n-radio-button').all())
+      expect(await metrics(button)).toMatchObject({ font: '14px', height: 34 })
+    await page.screenshot({
+      path: info.outputPath(`${preset}-radio-drawer-default.png`),
+      animations: 'disabled',
+    })
+    await page.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.getByTestId('toggle-density').click()
+    await expect
+      .poll(() => metrics(scoped.locator('.n-radio-button').first()))
+      .toMatchObject({ font: '14px', height: 34 })
+    await expect(scoped.locator('.n-radio-button--checked')).toHaveText(
+      '近30天',
+    )
+    await page.getByTestId('toggle-density').click()
+    await expect
+      .poll(() => metrics(scoped.locator('.n-radio-button').first()))
+      .toMatchObject({ font: '12px', height: 28 })
+    await page.screenshot({
+      path: info.outputPath(`${preset}-radio-scoped.png`),
+      animations: 'disabled',
+    })
+    expect(errors).toEqual([])
+    expect(external).toEqual([])
+  })
+
   test(`${preset}: opt-in sizes, teleported menu and unchanged default consumers`, async ({
     page,
   }, info) => {

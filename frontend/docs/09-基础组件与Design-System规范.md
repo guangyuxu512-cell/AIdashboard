@@ -624,6 +624,6 @@ AI Assets Library V1 验证后增加两个纯页面模式 Primitive：
 
 `createListDensityTheme(density)` 位于 `shared/ui/list-density.ts`。默认返回 undefined；compact 返回新的仅尺寸映射。底层原生 Provider 不可变地合并父主题，主题切换不复制或硬编码颜色。该 helper 不是新 Provider 框架，也不读取业务状态。
 
-`AppInput`／`AppSelect`／`AppButton`／`AppTable`／`DataTable` 无需新增密度 API；它们消费显式列表边界主题。长标签 `AppSelect.labelTooltip`／`ShopSelector.labelTooltip` 仍默认 false；`ShopSelector.clearable` 仍默认 false。
+`AppInput`／`AppSelect`／`AppButton`／`AppRadio`／`AppTable`／`DataTable` 无需新增密度 API；它们消费显式列表边界主题。Radio按钮组在该局部主题内通过官方 `buttonHeightSmall/Medium` 与 `fontSizeSmall/Medium` 映射为28px／12px，不改变原组件结构、选中／禁用行为或颜色。边界外默认Radio及兄弟Overlay仍14px／34px。长标签 `AppSelect.labelTooltip`／`ShopSelector.labelTooltip` 仍默认 false；`ShopSelector.clearable` 仍默认 false。
 
 集成时须实测 Teleport 菜单、默认菜单／Tooltip、默认表单与详情尺寸，以及离开列表后的恢复。不能只断言存在 density 属性。测试用实际组件浏览器夹具不进入生产路由，不是业务页面或 Electron 验收。

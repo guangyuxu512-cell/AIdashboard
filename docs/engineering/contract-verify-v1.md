@@ -56,6 +56,12 @@ v7/v8 的 `known=0 / unknown=1` Reader 仍可原样反序列化、序列化。�
 避免实现与检查器一起写反仍自证通过；负向子进程故意交换 known/unknown 后必须非零退出。该探针只解析
 内存请求契约，不连接平台、Session 或数据库，也不能替代生产筛选结果对照。
 
+商品数据探针以另一组独立固定期望核对三个正式API的method/path/status/response model、关键DTO字段、
+generation与observation状态、查询默认值、17项code/kind/unit、0与missing/null/invalid、金额/比例/大计数
+精度，以及接受时间`2026-10-18T00:30+08:00`冻结出的1/7/30日窗口和date_type 20/21/23。
+PC Real契约用独立前端期望核对17项消费映射、状态、尺度与同一冻结日期；不从Backend常量生成期望。
+API状态、DTO字段、unit、零值、金额、比例和日期七类受控变异均由独立子进程返回非零。
+
 负向自测在临时源码字符串或内存里增加服务端状态、改变 Literal、缩窄 nullable、删除错误字段及使用不支持的 annotation，经过真实 AST/编译器与分类器后验证子进程非零。业务运行文件保持不变；正常和有意兼容的样本须为零。
 
 ## 存量差异管理
@@ -81,6 +87,6 @@ pnpm 11 使用 `pnpm_config_*`，以 `pmOnFail` 替代旧版本管理配置，�
 
 新增 Job 使用 Windows runner，以实际执行 Worker 的 DPAPI、共享故障和命名互斥量三项 Windows-only 单测，避免在 Linux 跳过后冒称完整通过。原 Ubuntu 三个 Job 保留；这仍不是启动原生 Electron 或实际 Worker 服务的验收。
 
-本机不验证 PG Migration、真实平台/数据库/权限链路、容器、原生窗口、安装包或生产。第一版不检查所有 Request DTO、路由、单位/日期业务规则、深层对象 Schema、所有 mapper、Worker/Electron 跨端契约；不会生成全仓客户端或承诺服务端改动会自动更新全部消费方。PC ScheduleRunTriggerResult 的有意子集、联合别名和 sandbox 必需的 IPC 复制不因本检查被一概认定为缺陷。
+本机不验证 PG Migration、真实平台/数据库/权限链路、容器、原生窗口、安装包或生产。除已登记的商品数据关键集合外，第一版仍不检查所有 Request DTO、路由、单位/日期业务规则、深层对象 Schema、所有 mapper、Worker/Electron 跨端契约；不会生成全仓客户端或承诺服务端改动会自动更新全部消费方。PC ScheduleRunTriggerResult 的有意子集、联合别名和 sandbox 必需的 IPC 复制不因本检查被一概认定为缺陷。
 
 新增覆盖须登记真实权威和使用方、正常及负向样本，按 Gate 1→ca97 独立 Gate 2→精确 Green/CI→Main Release 推进。生产版本和只读 smoke 仍是后续交付证据，脚本可运行不能代替发布或生产验证。
