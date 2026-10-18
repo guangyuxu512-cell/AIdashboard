@@ -264,10 +264,6 @@ function download(
   height: 100%;
 }
 
-.batch-result-tree__preview :deep(img) {
-  object-fit: cover;
-}
-
 .batch-result-tree__item > span:first-child {
   min-width: 0;
   overflow: hidden;

@@ -1,4 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+import { resolve, sep } from 'node:path'
+
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import type {
   GenerationItemReadDto,
@@ -11,6 +14,41 @@ test.skip(
   process.env.PLAYWRIGHT_API_MODE !== 'real',
   'Intercepted Real API UI contract coverage',
 )
+
+test.beforeEach(async ({ page }) => {
+  if (process.env.PLAYWRIGHT_AI_STATIC !== '1') return
+  const dist = resolve('dist')
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url())
+    if (
+      url.origin !== 'https://ai-images.test' ||
+      url.pathname.startsWith('/api/')
+    ) {
+      await route.fulfill({
+        status: 500,
+        body: 'Unhandled controlled test request',
+      })
+      return
+    }
+    const file = resolve(
+      dist,
+      `.${decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname)}`,
+    )
+    if (!file.startsWith(`${dist}${sep}`))
+      throw new Error('Invalid static asset path')
+    const extension = file.split('.').at(-1) ?? ''
+    const contentType =
+      {
+        html: 'text/html',
+        js: 'text/javascript',
+        css: 'text/css',
+        svg: 'image/svg+xml',
+        png: 'image/png',
+        woff2: 'font/woff2',
+      }[extension] ?? 'application/octet-stream'
+    await route.fulfill({ contentType, body: await readFile(file) })
+  })
+})
 
 const modelId = '11111111-1111-4111-8111-111111111111'
 const alternateModelId = '11111111-1111-4111-8111-111111111112'
@@ -73,6 +111,277 @@ interface WorkbenchApiOptions {
   batchScenario?: boolean
   assetContentGate?: Promise<void>
   failAssetContentRequests?: number
+  imageSize?: readonly [number, number]
+}
+
+function proportionImage([width, height]: readonly [number, number]): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <path d="M0 0H${width}V${height}H0Z" fill="#dc2626"/>
+    <path d="M${width / 2} 0H${width}V${height / 2}H${width / 2}Z" fill="#16a34a"/>
+    <path d="M0 ${height / 2}H${width / 2}V${height}H0Z" fill="#2563eb"/>
+    <path d="M${width / 2} ${height / 2}H${width}V${height}H${width / 2}Z" fill="#eab308"/>
+    <circle cx="${width / 2}" cy="${height / 2}" r="${Math.min(width, height) / 10}" fill="white"/>
+  </svg>`
+}
+
+async function expectCompleteProportions(
+  image: Locator,
+  size: readonly [number, number],
+): Promise<void> {
+  await expect(image).toBeVisible()
+  await expect
+    .poll(() =>
+      image.evaluate((element) => {
+        const img = element as HTMLImageElement
+        return img.complete && img.naturalWidth > 0
+      }),
+    )
+    .toBe(true)
+  await image.page().mouse.move(0, 0)
+  // Finish dialog/card transitions before measuring the screenshot coordinate
+  // system (a modal can otherwise still be scaled while its image is decoded).
+  const png = await image.screenshot({
+    animations: 'disabled',
+    path: test.info().outputPath(`probe-${size[0]}-${size[1]}.png`),
+  })
+  const geometry = await image.evaluate((element) => {
+    const img = element as HTMLImageElement
+    const box = img.getBoundingClientRect()
+    return {
+      natural: [img.naturalWidth, img.naturalHeight],
+      fit: getComputedStyle(img).objectFit,
+      position: getComputedStyle(img).objectPosition,
+      width: box.width,
+      height: box.height,
+    }
+  })
+  expect(geometry.natural).toEqual(size)
+  expect(geometry.fit).toBe('contain')
+  expect(geometry.position).toBe('50% 50%')
+  const scale = Math.min(geometry.width / size[0], geometry.height / size[1])
+  const painted = { width: size[0] * scale, height: size[1] * scale }
+  expect(painted.width).toBeLessThanOrEqual(geometry.width + 0.01)
+  expect(painted.height).toBeLessThanOrEqual(geometry.height + 0.01)
+
+  // The img element can remain square. Sample the actual contained image's four
+  // quadrants in a browser-decoded screenshot, not its element aspect ratio.
+  const colors = await image.page().evaluate(
+    async ({ bytes, box, painted }) => {
+      const bitmap = await createImageBitmap(
+        new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
+      )
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      const context = canvas.getContext('2d')!
+      context.drawImage(bitmap, 0, 0)
+      const ratioX = bitmap.width / box.width
+      const ratioY = bitmap.height / box.height
+      const colors = [
+        [0.2, 0.2],
+        [0.8, 0.2],
+        [0.2, 0.8],
+        [0.8, 0.8],
+      ].map(([x, y]) => {
+        const px =
+          ((box.width - painted.width) / 2 + painted.width * x!) * ratioX
+        const py =
+          ((box.height - painted.height) / 2 + painted.height * y!) * ratioY
+        return [
+          ...context.getImageData(Math.floor(px), Math.floor(py), 1, 1).data,
+        ].slice(0, 3)
+      })
+      bitmap.close()
+      return colors
+    },
+    { bytes: [...png], box: geometry, painted },
+  )
+  const expectedColors = [
+    [220, 38, 38],
+    [22, 163, 74],
+    [37, 99, 235],
+    [234, 179, 8],
+  ]
+  colors.forEach((color, index) =>
+    color.forEach((channel, channelIndex) => {
+      expect(
+        Math.abs(channel - expectedColors[index]![channelIndex]!),
+        JSON.stringify({ geometry, colors }),
+      ).toBeLessThanOrEqual(20)
+    }),
+  )
+}
+
+for (const [label, size] of [
+  ['landscape', [800, 450]],
+  ['portrait', [450, 800]],
+  ['long', [320, 1600]],
+  ['square', [512, 512]],
+] as const) {
+  test(`image proportions: ${label} inputs, outputs and materials`, async ({
+    page,
+  }, testInfo) => {
+    const calls = await installWorkbenchApi(page, {
+      controlledJob: true,
+      imageSize: size,
+    })
+    await page.goto('/#/ai-workbench/generate')
+    await page
+      .getByLabel('即时生成配置')
+      .getByRole('button', { name: '素材库', exact: true })
+      .click()
+    const choice = page.getByRole('button', {
+      name: '选择素材 商品图.png',
+      exact: true,
+    })
+    await expectCompleteProportions(choice.locator('img'), size)
+    await choice.click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: '选择', exact: true })
+      .click()
+    await expectCompleteProportions(
+      page.getByLabel('即时生成配置').getByAltText('商品图.png'),
+      size,
+    )
+    await page.getByLabel('提示词').fill('受控比例回归，不调用生成平台')
+    await page.getByRole('button', { name: '生成', exact: true }).click()
+    await expect.poll(calls.submitCount).toBe(1)
+    calls.setControlledJobStatus('SUCCESS')
+    const result = page.locator('[data-result-status="SUCCESS"]')
+    await expectCompleteProportions(result.getByAltText('真实结果.png'), size)
+    await result.getByRole('button', { name: /^预览 / }).click()
+    const preview = page.getByRole('region', { name: '图片预览' })
+    await expectCompleteProportions(preview.locator('img'), size)
+    await page.screenshot({ path: testInfo.outputPath(`${label}-preview.png`) })
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: '关闭', exact: true })
+      .click()
+
+    await page.goto('/#/ai-workbench/assets')
+    const card = page.getByRole('button', {
+      name: '查看素材 商品图.png',
+      exact: true,
+    })
+    await expectCompleteProportions(card.locator('img'), size)
+    await card.click()
+    const inspector = page.getByRole('region', { name: '素材详情' })
+    await expectCompleteProportions(inspector.locator('img'), size)
+    await page.screenshot({
+      path: testInfo.outputPath(`${label}-materials.png`),
+    })
+
+    expect(calls.archiveRequests()).toEqual([])
+    expect(calls.destructiveRequests()).toEqual([])
+    expect(calls.assetImageRequests()).toContainEqual({
+      assetId: outputAssetId,
+      resource: 'content',
+    })
+  })
+
+  test(`image proportions: ${label} batch outputs and records`, async ({
+    page,
+  }) => {
+    const batchCalls = await installWorkbenchApi(page, {
+      controlledJob: true,
+      batchScenario: true,
+      imageSize: size,
+    })
+    await submitControlledBatch(page)
+    await expect.poll(batchCalls.submitCount).toBe(1)
+    batchCalls.setControlledJobStatus('SUCCESS')
+    await expect(page.getByTestId('batch-execution-summary')).toContainText(
+      '已完成',
+    )
+    await expect(page.getByTestId('batch-execution-summary')).toContainText(
+      '4 / 4',
+    )
+    const detail = await selectBatchProduct(page, '手机支架')
+    await expandBatchTemplateGroup(page, '电商标准套图')
+    await expectCompleteProportions(
+      detail.getByAltText('纯白主图 结果 1'),
+      size,
+    )
+    await page
+      .getByRole('navigation', { name: 'AI 功能入口' })
+      .getByRole('button', { name: '生成记录' })
+      .click()
+    await page.getByRole('button', { name: '查看', exact: true }).click()
+    const tree = page.getByTestId('batch-result-tree')
+    await expectCompleteProportions(tree.locator('img').first(), size)
+    expect(batchCalls.archiveRequests()).toEqual([])
+    expect(batchCalls.destructiveRequests()).toEqual([])
+  })
+}
+
+for (const [label, size] of [
+  ['long', [320, 1600]],
+  ['landscape', [1600, 320]],
+] as const) {
+  test(`image proportions: ${label} preview zoom keeps all edges reachable in a small viewport`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 800, height: 650 })
+    const calls = await installWorkbenchApi(page, { imageSize: size })
+    await page.goto('/#/ai-workbench/assets')
+    await page
+      .getByRole('button', { name: '查看素材 商品图.png', exact: true })
+      .click()
+    await page
+      .getByRole('region', { name: '素材详情' })
+      .getByRole('button', { name: '预览', exact: true })
+      .click()
+      const preview = page.getByRole('region', { name: '图片预览' })
+      await expectCompleteProportions(preview.locator('img'), size)
+      await page.screenshot({ path: testInfo.outputPath(`${label}-small-fit.png`) })
+      for (let index = 0; index < 3; index += 1)
+      await page.getByRole('button', { name: '放大预览', exact: true }).click()
+    await preview.screenshot({
+      path: testInfo.outputPath(`${label}-small-zoom.png`),
+      animations: 'disabled',
+    })
+    const edges = await preview
+      .locator('.asset-preview-dialog__canvas')
+      .evaluate((canvas) => {
+        canvas.scrollTop = 0
+        canvas.scrollLeft = 0
+        const img = canvas.querySelector('img')!
+        const start = img.getBoundingClientRect()
+        const viewport = canvas.getBoundingClientRect()
+        canvas.scrollTop = canvas.scrollHeight
+        canvas.scrollLeft = canvas.scrollWidth
+        const end = img.getBoundingClientRect()
+        return {
+          topReachable: start.top >= viewport.top - 1,
+          leftReachable: start.left >= viewport.left - 1,
+          bottomReachable: end.bottom <= viewport.bottom + 1,
+          rightReachable: end.right <= viewport.right + 1,
+          dialogInsideViewport:
+            canvas.closest('[role="dialog"]')!.getBoundingClientRect().bottom <=
+            window.innerHeight + 1,
+        }
+      })
+    expect(edges).toEqual({
+      topReachable: true,
+      leftReachable: true,
+      bottomReachable: true,
+      rightReachable: true,
+      dialogInsideViewport: true,
+    })
+    await page
+      .getByRole('button', { name: '查看下一张图片', exact: true })
+      .click()
+    await expect(preview.locator('.asset-preview-dialog__image')).toHaveCSS(
+      'transform',
+      'matrix(1, 0, 0, 1, 0, 0)',
+    )
+    await expectCompleteProportions(preview.locator('img'), size)
+    const download = page.waitForEvent('download')
+    await page.getByRole('button', { name: /^下载 / }).click()
+    expect((await download).suggestedFilename()).toBe('商品图-侧面.png')
+    expect(calls.destructiveRequests()).toEqual([])
+  })
 }
 
 const templateGroup: TemplateGroupReadDto = {
@@ -654,7 +963,11 @@ async function installWorkbenchApi(
     await route.fulfill({
       status: 200,
       contentType: 'image/svg+xml',
-      body: Buffer.from(controlledAssetImage),
+      body: Buffer.from(
+        options.imageSize
+          ? proportionImage(options.imageSize)
+          : controlledAssetImage,
+      ),
     })
   }
   await page.route('**/api/v1/assets/*/content', fulfillAssetImage)
@@ -1072,7 +1385,10 @@ test('keeps real material and template toolbars compact, aligned and responsive'
   }
 
   await page.getByRole('button', { name: '切换主题' }).click()
-  await page.locator('.n-dropdown').getByText('石墨浅色', { exact: true }).click()
+  await page
+    .locator('.n-dropdown')
+    .getByText('石墨浅色', { exact: true })
+    .click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   expectCompactToolbar(await readManagementToolbarLayout(page, assetToolbar))
   await page.getByRole('button', { name: '切换主题' }).click()

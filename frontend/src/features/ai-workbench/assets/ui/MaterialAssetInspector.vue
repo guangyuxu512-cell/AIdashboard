@@ -184,13 +184,6 @@ function updateRole(value: string | number | null): void {
   cursor: zoom-in;
 }
 
-.material-asset-inspector__preview :deep(img) {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 .material-asset-inspector__filename {
   overflow: hidden;
   color: var(--text-primary);

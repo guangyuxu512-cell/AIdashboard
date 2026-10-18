@@ -128,13 +128,6 @@ function activate(assetId: string): void {
   aspect-ratio: 1;
 }
 
-.material-asset-card__preview img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .material-asset-card__name {
   display: block;
   padding: var(--space-2) var(--space-1) var(--space-1);

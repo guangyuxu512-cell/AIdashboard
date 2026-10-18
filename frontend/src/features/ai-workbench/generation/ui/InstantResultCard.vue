@@ -158,7 +158,6 @@ const resultLabel = computed(
 .instant-result-card__image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
 }
 
 .instant-result-card__state {
