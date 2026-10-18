@@ -63,12 +63,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Shared by the local Codex caller and the GitHub emergency caller. Keep the
+# descriptor open through build, migration, activation and EXIT rollback/cleanup.
+if ! command -v flock >/dev/null 2>&1; then
+    echo "Production host requires flock for serialized deployment" >&2
+    exit 2
+fi
+exec 9>"$remote_root/.deploy.lock"
+flock -n 9 || { echo "Another production deployment holds the server lock" >&2; exit 75; }
+
 if [[ -L "$remote_root/current" ]]; then
     previous_release="$(readlink -f "$remote_root/current")"
 fi
 if [[ -e "$release_directory" ]]; then
     active_release="$(readlink -f "$remote_root/current" 2>/dev/null || true)"
     if [[ "$active_release" == "$release_directory" ]]; then
+        bash "$release_directory/deploy/production/verify-active-release.sh" "$release_sha"
         echo "Production release is already active for this commit; skipping"
         exit 0
     fi
@@ -107,6 +117,7 @@ for required_path in \
     deploy/production/compose.yaml \
     deploy/production/host-nginx.conf.template \
     deploy/production/pc-static-assets.sh \
+    deploy/production/verify-active-release.sh \
     scripts/production-env.sh; do
     if [[ ! -e "$release_directory/$required_path" ]]; then
         echo "Production release is missing $required_path" >&2
