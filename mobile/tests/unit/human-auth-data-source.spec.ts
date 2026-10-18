@@ -40,6 +40,15 @@ describe('Mobile Human Auth DataSource', () => {
           data_scope: 'team',
           membership_enabled: true,
         },
+        {
+          membership_id: null,
+          team_id: 'team-2',
+          team_name: '超级账号可见团队',
+          team_enabled: true,
+          role_code: 'super_account',
+          data_scope: 'all',
+          membership_enabled: true,
+        },
       ],
     })
     get.mockResolvedValueOnce({
@@ -61,6 +70,15 @@ describe('Mobile Human Auth DataSource', () => {
         teamEnabled: true,
         roleCode: 'member',
         dataScope: 'team',
+        membershipEnabled: true,
+      },
+      {
+        membershipId: null,
+        teamId: 'team-2',
+        teamName: '超级账号可见团队',
+        teamEnabled: true,
+        roleCode: 'super_account',
+        dataScope: 'all',
         membershipEnabled: true,
       },
     ])

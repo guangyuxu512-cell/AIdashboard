@@ -6,7 +6,7 @@ export interface CurrentHumanUser {
 export type HumanDataScope = 'self' | 'team' | 'all'
 
 export interface HumanTeamMembership {
-  membershipId: string
+  membershipId: string | null
   teamId: string
   teamName: string
   teamEnabled: boolean

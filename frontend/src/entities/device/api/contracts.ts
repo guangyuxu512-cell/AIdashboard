@@ -60,8 +60,8 @@ export interface YingdaoProviderInventoryDto {
   execution_unavailable_reason?: string | null
   logged_in: boolean
   account_display: string | null
-  account_type: string
-  enterprise_account: boolean
+  account_type: string | null
+  enterprise_account: boolean | null
   user_id: string | null
   applications: ProviderApplicationInventoryDto[]
   discovered_at: string

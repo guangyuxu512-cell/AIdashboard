@@ -1,29 +1,5 @@
 [
   {
-    "rule": "nullable-narrowed",
-    "contract": "mobile/src/entities/human-auth/api/contracts.ts:HumanTeamMembershipDto.membership_id",
-    "expected": ["null", "string"],
-    "actual": ["string"],
-    "reason": "Green Mobile 尚未表达超级账号的可空成员关系",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "nullable-narrowed",
-    "contract": "frontend/src/entities/device/api/contracts.ts:YingdaoProviderInventoryDto.account_type",
-    "expected": ["null", "string"],
-    "actual": ["string"],
-    "reason": "Green PC 设备嵌套 DTO 收窄可空账号类型",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "nullable-narrowed",
-    "contract": "frontend/src/entities/device/api/contracts.ts:YingdaoProviderInventoryDto.enterprise_account",
-    "expected": ["boolean", "null"],
-    "actual": ["boolean"],
-    "reason": "Green PC 设备嵌套 DTO 收窄未知企业账号状态",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
     "rule": "unbound-authority-enum",
     "contract": "backend/app/modules/operating_dashboard/schemas.py:OperatingDataCollectionJobRead.kind",
     "expected": "OperatingCollectionJobKind",
@@ -113,14 +89,6 @@
     "expected": true,
     "actual": false,
     "reason": "Green PC client 接受 HTML 200；未在验证工程改变公共请求行为",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "runtime-contract",
-    "contract": "pc:enterprise_account:null",
-    "expected": null,
-    "actual": false,
-    "reason": "Green mapper 将未知账号标志折为 false；不冒称本轮已修复",
     "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
   }
 ]

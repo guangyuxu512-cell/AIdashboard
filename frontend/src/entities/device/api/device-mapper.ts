@@ -73,7 +73,7 @@ export function mapYingdaoInventoryDto(
     loggedIn: dto.inventory.logged_in,
     accountDisplay: dto.account_display ?? '未知',
     accountType: dto.account_type ?? '未知',
-    enterpriseAccount: dto.enterprise_account ?? false,
+    enterpriseAccount: dto.enterprise_account,
     applicationCount: dto.inventory.applications.length,
     applications: dto.inventory.applications.map((application) => ({
       appId: application.app_id,
