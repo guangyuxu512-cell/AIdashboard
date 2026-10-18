@@ -13,7 +13,11 @@ from app.modules.sessions.auth_context import (
     StoredManagementSessionPayload,
 )
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.sessions.exceptions import ShopSessionPayloadInvalidError
+from app.modules.sessions.exceptions import (
+    ShopSessionAuthenticationInvalidError,
+    ShopSessionNotConfiguredError,
+    ShopSessionPayloadInvalidError,
+)
 from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.schemas import ShopSessionMetadataRead
 from app.modules.shops.enums import ShopPlatform
@@ -24,6 +28,7 @@ from app.platforms.exceptions import (
     PlatformRequestFailedError,
     PlatformRequestTimeoutError,
     PlatformResponseInvalidError,
+    PlatformSignerFailedError,
 )
 from app.platforms.schemas import PlatformShopIdentity
 from tests.support import FakeSession
@@ -113,7 +118,7 @@ def metadata(*, validated_at: datetime | None = None) -> ShopSessionMetadataRead
         status=ShopSessionStatus.VALID,
         version=1,
         source_device_id=None,
-        captured_at=now,
+        captured_at=now - timedelta(minutes=10),
         validated_at=validated_at,
         expires_at=now - timedelta(minutes=1),
     )
@@ -193,6 +198,7 @@ def test_health_check_without_set_cookie_only_updates_validation_metadata() -> N
     [
         PlatformRequestTimeoutError(),
         PlatformRequestFailedError(details={"platform_http_status": 503}),
+        PlatformSignerFailedError(details={"retryable": True}),
         PlatformResponseInvalidError(),
     ],
 )
@@ -228,6 +234,74 @@ def test_recent_validation_skips_remote_request() -> None:
 
     assert result.used_cached_validation is True
     assert connector.calls == 0
+    assert accessor.marked == []
+
+
+@pytest.mark.parametrize(
+    ("status", "configured", "error"),
+    [
+        (ShopSessionStatus.NOT_CONFIGURED, False, ShopSessionNotConfiguredError),
+        (ShopSessionStatus.INVALID, True, ShopSessionAuthenticationInvalidError),
+        (
+            ShopSessionStatus.REFRESH_REQUIRED,
+            True,
+            ShopSessionAuthenticationInvalidError,
+        ),
+    ],
+)
+def test_terminal_readiness_states_never_issue_identity_requests(
+    status: ShopSessionStatus,
+    configured: bool,
+    error: type[Exception],
+) -> None:
+    service, shop_id, accessor, connector, storage = make_service(identity())
+    storage.metadata = storage.metadata.model_copy(
+        update={"status": status, "configured": configured},
+    )
+
+    with pytest.raises(error):
+        service.check(shop_id, force=False)
+
+    assert connector.calls == 0
+    assert accessor.marked == []
+
+
+@pytest.mark.parametrize(
+    ("status", "validated_at"),
+    [
+        (ShopSessionStatus.CAPTURED, None),
+        (ShopSessionStatus.VALID, datetime.now(UTC) - timedelta(minutes=6)),
+    ],
+)
+def test_pending_or_stale_validation_uses_one_authoritative_identity_request(
+    status: ShopSessionStatus,
+    validated_at: datetime | None,
+) -> None:
+    service, shop_id, accessor, connector, storage = make_service(
+        identity(),
+        validated_at=validated_at,
+    )
+    storage.metadata = storage.metadata.model_copy(update={"status": status})
+
+    result = service.check(shop_id, force=False)
+
+    assert result.used_cached_validation is False
+    assert connector.calls == 1
+    assert accessor.marked == [ShopSessionStatus.VALID]
+
+
+def test_stored_identity_mismatch_does_not_mark_session_invalid() -> None:
+    service, shop_id, accessor, connector, _ = make_service(
+        PlatformShopIdentity(
+            platform_shop_id="another-platform-shop",
+            shop_display_name="Other",
+        ),
+    )
+
+    with pytest.raises(PlatformIdentityMismatchError):
+        service.check(shop_id, force=True)
+
+    assert connector.calls == 1
     assert accessor.marked == []
 
 

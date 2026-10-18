@@ -2,8 +2,6 @@
 
 from collections.abc import Mapping
 
-import httpx
-
 from app.modules.sessions.auth_context import ShopSessionAuthContext
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.api_client import DouyinApiClient
@@ -16,7 +14,7 @@ from app.platforms.douyin.product_selection import (
     parse_compass_basic_info, parse_compass_categories, parse_compass_rank_page,
 )
 from app.platforms.exceptions import PlatformRequestFailedError
-from app.platforms.session_cookies import to_httpx_cookies
+from app.platforms.douyin.session_query import session_query_context
 
 
 RANK_BUSINESS_KEYS = (
@@ -30,15 +28,7 @@ def _session_query_context(endpoint: DouyinEndpoint, context: ShopSessionAuthCon
     # The successful server sample used its *selected* Session cookie for these
     # optional fields. Do not merge another domain/path's fingerprint or claim
     # that this rule is required for every Compass request.
-    request = httpx.Request("GET", endpoint.url)
-    to_httpx_cookies(context.cookies).set_cookie_header(request)
-    values = {
-        part.strip().partition("=")[2]
-        for part in request.headers.get("cookie", "").split(";")
-        if part.strip().partition("=")[0] == "s_v_web_id"
-    }
-    # Conflicting same-name fingerprints are not safe to choose by accident.
-    return {"fp": next(iter(values)), "verifyFp": next(iter(values))} if len(values) == 1 and "" not in values else {}
+    return session_query_context(endpoint, context)
 
 
 class DouyinProductSelectionConnector:

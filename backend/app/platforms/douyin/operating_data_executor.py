@@ -17,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_session_factory
 from app.core.security import get_secret_cipher
 from app.modules.sessions.auth_context import ShopSessionAccessor
+from app.modules.sessions.collection_readiness import bind_collection_auth_context
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
     SessionVersionConflictError,
@@ -316,10 +317,14 @@ class SessionAwareDouyinOperatingDataCollector:
         started_at = monotonic()
         preparation_started_at = started_at
         try:
-            self._health_service.check(request.shop_id, force=False)
-            auth_context = self._session_accessor.get_auth_context(
-                request.shop_id,
-                ShopPlatform.DOUYIN,
+            health = self._health_service.check(request.shop_id, force=False)
+            auth_context = bind_collection_auth_context(
+                health,
+                self._session_accessor.get_auth_context(
+                    request.shop_id,
+                    ShopPlatform.DOUYIN,
+                ),
+                expected_platform=ShopPlatform.DOUYIN,
             )
         except (
             PlatformAuthenticationInvalidError,

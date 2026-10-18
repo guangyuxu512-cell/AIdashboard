@@ -73,7 +73,40 @@ Session 状态，也不触发自动登录。Backend 请求不读取 Management L
 
 ## 8. 健康检查、Cookie 更新与恢复租约
 
+商品数据有限手动采集与选品、经营共用下述就绪矩阵。陈旧/captured在每次业务执行准备阶段至多执行一次
+权威身份验证，成功后才进入商品业务分页；它不占商品分页预算，也不会逐页重复。invalid/refresh_required
+直接要求重新登录且不发身份或业务请求。Cookie到期只预警。业务页HTTP在DB事务外，回包重新核当前授权及版本，
+仅真实Set-Cookie复用HealthService与Accessor的加密CAS；明确AUTH_INVALID仅标当前被验证版本，业务拒绝不标invalid。
+PRODUCT_DATA_SESSION_VALIDATION_REQUIRED仅为历史失败回执兼容保留，当前消费者不再以局部freshness门禁产生该错误。
+
 `ShopSessionHealthService` 是解密后验证、身份匹配和状态更新的唯一边界。抖店 V1 使用已验证的 `shop_info_v2`；最近验证时间仍处于 `BACKEND_SHOP_SESSION_VALIDATION_FRESHNESS_SECONDS` 窗口时，后续业务可直接使用，超出窗口才按需先验证。没有全店铺 Cron。
+
+服务器采集消费者统一使用
+`app.modules.sessions.collection_readiness.classify_collection_readiness` 的纯判定矩阵，并通过
+`ShopSessionHealthService.check(force=False)` 执行需要的权威验证：
+
+| Metadata 事实 | 采集决定 | 外部请求边界 |
+| --- | --- | --- |
+| 未配置 / `not_configured` | 不可采集，提示先登录 | 不调用身份、Signer 或业务接口 |
+| `captured` | 需要权威验证 | 每次业务执行准备阶段至多一次身份验证；成功后才进入业务请求 |
+| `valid` 且验证仍新鲜 | 可采集 | 复用缓存验证，直接进入该次业务请求 |
+| `valid` 但缺少验证时间、验证陈旧、时间在未来或早于采集时间 | 需要权威验证 | 准备阶段至多一次身份验证 |
+| `invalid` / `refresh_required` | 需要重新登录 | 不调用身份、Signer 或业务接口 |
+| 验证后店铺身份或 Session 版本改变 | 拒绝本次上下文 | 旧请求不得覆盖或冒用新 Session |
+
+`expires_at` 不参与上述授权判定，只用于预警。Cookie 的单项过期元数据可能不完整，不能据此把
+`captured` 或 `valid` 直接改成失效；最终由身份验证或业务请求的明确 `AUTH_INVALID` 处理。网络超时、
+Signer 失败、响应解析失败、平台 5xx 及原因未确定的业务拒绝都不修改 Session 状态。
+
+选品执行、经营采集和商品数据采集必须显式调用 HealthService，随后用
+`bind_collection_auth_context` 绑定同一 Shop、平台及已验证版本；不得只新增 helper 而继续在消费者里散写
+`status / validated_at / expires_at` 判断。选品一次 Run 只在准备阶段取得一次上下文，分页和每商品
+`basic_info` 复用该上下文，不为每页增加身份请求；商品一次 page 调用只在准备阶段检查一次并在业务回包后
+复核授权/版本；经营采集保留原有逐 Item 的准备边界和恢复语义。
+
+后续商品数据模块接入时，只需复用上述两个公开入口：先在短事务读取授权店铺和 Metadata，事务外调用
+`ShopSessionHealthService.check(force=False)`，再由 Accessor 解密并调用
+`bind_collection_auth_context`。不得复制判定矩阵、借用商品 0047 Migration 或自行定义另一套“新鲜”规则。
 
 拼多多 V1 健康验证复用上述唯一边界与同一固定 merchant identity endpoint；每次请求仅在平台层生成并使用当次 `anti-content`，不记录 Cookie 或签名值。
 

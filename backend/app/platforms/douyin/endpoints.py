@@ -150,3 +150,24 @@ COMPASS_SELECTION_BASIC_INFO_ENDPOINT = DouyinEndpoint(
     referer=_COMPASS_SELECTION_REFERER,
     headers=_COMPASS_SELECTION_HEADERS,
 )
+
+
+# Exact product-data endpoint and credential-free header context observed in
+# the accepted 74-field request. Not the unrelated fxg product-list probe.
+_PRODUCT_DATA_REFERER = "https://compass.jinritemai.com/shop/commodity/product-list"
+COMPASS_PRODUCT_DATA_LIST_ENDPOINT = DouyinEndpoint(
+    host="compass.jinritemai.com",
+    path="/compass_api/shop/product/product/product_list",
+    method="GET", sign_required=True, referer=_PRODUCT_DATA_REFERER,
+    headers=(
+        ("accept", "application/json, text/plain, */*"),
+        ("accept-language", "zh-CN,zh;q=0.9"), ("agw-js-conv", "str"),
+        ("cache-control", "no-cache"), ("pragma", "no-cache"), ("priority", "u=1, i"),
+        ("sec-ch-ua", '"Google Chrome";v="153", "Not_A Brand";v="8", "Chromium";v="153"'),
+        ("sec-ch-ua-mobile", "?0"), ("sec-ch-ua-platform", '"Windows"'),
+        ("sec-fetch-dest", "empty"), ("sec-fetch-mode", "cors"), ("sec-fetch-site", "same-origin"),
+        ("x-e2e-platform", "compass"), ("referer", _PRODUCT_DATA_REFERER),
+        ("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+         "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"),
+    ),
+)

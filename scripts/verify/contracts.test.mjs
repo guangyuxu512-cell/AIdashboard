@@ -130,6 +130,13 @@ test("an added server state without a consumer fails with a nonzero process exit
     1,
   );
 });
+test("a swapped product-selection brand wire mapping fails with a nonzero process exit", () => {
+  const code = `import {classify,finding} from ${JSON.stringify(new URL("./contracts.mjs", import.meta.url).href)};const expected={all:'-1',known:'1',unknown:'0'};const mutated={all:'-1',known:'0',unknown:'1'};const findings=Object.keys(expected).filter(key=>expected[key]!==mutated[key]).map(key=>finding('selection-brand-wire','product-selection:brand:'+key,expected[key],mutated[key]));process.exit(classify(findings).failures.length?1:0)`;
+  assert.equal(
+    spawnSync(process.execPath, ["--input-type=module", "-e", code]).status,
+    1,
+  );
+});
 test("normal and explicitly intentional subset consumers pass", () => {
   assert.deepEqual(enumFindings("fixture", ["created"], ["created"]), []);
   assert.deepEqual(

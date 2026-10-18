@@ -46,6 +46,12 @@ from app.modules.product_selection.models import (
     ProductSelectionRun,
     ProductSelectionStrategy,
 )
+from app.modules.product_data.models import (
+    ShopProductDataProduct,
+    ShopProductDataSeries,
+    ShopProductDataGeneration,
+    ShopProductDataMetricSnapshot,
+)
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.sessions.models import ShopSession
 from app.modules.shops.models import Shop, ShopDeviceBinding
@@ -75,6 +81,10 @@ _MODELS = (
     ProductSelectionObservation,
     ProductSelectionRun,
     ProductSelectionStrategy,
+    ShopProductDataProduct,
+    ShopProductDataSeries,
+    ShopProductDataGeneration,
+    ShopProductDataMetricSnapshot,
     PromptTemplate,
     TemplateGroup,
     Device,
