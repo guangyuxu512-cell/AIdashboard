@@ -20,6 +20,7 @@ const props = withDefaults(
     rowKey?: DataTableProps['rowKey']
     scrollX?: number
     emptyDescription?: string
+    showHeaderWhenEmpty?: boolean
     checkedRowKeys?: DataTableRowKey[]
     viewport?: 'auto' | 'stable' | 'fill'
     appearance?: 'grid' | 'list'
@@ -32,6 +33,7 @@ const props = withDefaults(
     rowKey: undefined,
     scrollX: undefined,
     emptyDescription: '暂无数据',
+    showHeaderWhenEmpty: false,
     checkedRowKeys: () => [],
     viewport: 'auto',
     appearance: 'grid',
@@ -59,7 +61,9 @@ defineEmits<{
       @retry="$emit('retry')"
     />
     <EmptyState
-      v-else-if="!loading && (props.data?.length ?? 0) === 0"
+      v-else-if="
+        !loading && (props.data?.length ?? 0) === 0 && !showHeaderWhenEmpty
+      "
       :description="emptyDescription"
     />
     <AppTable
@@ -75,7 +79,11 @@ defineEmits<{
       :fill="viewport === 'fill'"
       @update:checked-row-keys="$emit('update:checkedRowKeys', $event)"
       @update:sorter="$emit('update:sorter', $event)"
-    />
+    >
+      <template v-if="showHeaderWhenEmpty" #empty>
+        <EmptyState :description="emptyDescription" />
+      </template>
+    </AppTable>
   </div>
 </template>
 
