@@ -17,11 +17,19 @@ RUN apt-get update \
     && install -d -o app -g app /app/data/assets
 
 COPY pyproject.toml ./
+
+# The manifest is the single dependency source. Source-only changes must not
+# invalidate dependency resolution/downloads; cache wheels for manifest changes.
+RUN --mount=type=cache,id=control-center-backend-pip,target=/root/.cache/pip,sharing=locked \
+    python -c 'import subprocess, sys, tomllib; data = tomllib.load(open("pyproject.toml", "rb")); subprocess.check_call([sys.executable, "-m", "pip", "install", *data["project"]["dependencies"], *data["build-system"]["requires"]])'
+
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
 
-RUN python -m pip install --no-cache-dir .
+# Build the updated project with the declared, already-installed build backend.
+# Any unexpected build download fails instead of silently depending on a network.
+RUN --network=none python -m pip install --no-deps --no-build-isolation .
 
 USER app
 
