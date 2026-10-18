@@ -1,41 +1,5 @@
 [
   {
-    "rule": "error-envelope",
-    "contract": "schedules:missing_timezone",
-    "expected": {
-      "status": 422,
-      "required": ["code", "message", "request_id"],
-      "code": "VALIDATION_ERROR",
-      "valid_details": true
-    },
-    "actual": {
-      "status": 422,
-      "required": [],
-      "code": null,
-      "valid_details": true
-    },
-    "reason": "Green 路由手写 HTTPException 仅 detail；未在工程任务改 API 行为",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "error-envelope",
-    "contract": "schedules:invalid_timezone",
-    "expected": {
-      "status": 422,
-      "required": ["code", "message", "request_id"],
-      "code": "VALIDATION_ERROR",
-      "valid_details": true
-    },
-    "actual": {
-      "status": 422,
-      "required": [],
-      "code": null,
-      "valid_details": true
-    },
-    "reason": "Green 路由手写 HTTPException 仅 detail；未在工程任务改 API 行为",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
     "rule": "runtime-contract",
     "contract": "mobile:ECONNABORTED",
     "expected": "REQUEST_TIMEOUT",

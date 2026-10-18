@@ -161,6 +161,26 @@ class ScheduleUpdate(BaseModel):
         return normalize_weekdays(value) if value is not None else None
 
 
+class ScheduleListOccurrenceQuery(BaseModel):
+    occurrence_date: date | None = None
+    view_timezone: str | None = Field(default=None, max_length=100)
+
+    @field_validator("view_timezone")
+    @classmethod
+    def validate_view_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            get_schedule_timezone(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_pair(self) -> "ScheduleListOccurrenceQuery":
+        if (self.occurrence_date is None) != (self.view_timezone is None):
+            raise ValueError(
+                "occurrence_date and view_timezone must be supplied together"
+            )
+        return self
+
+
 class ScheduleRunRead(BaseModel):
     run_id: UUID
     schedule_id: UUID
