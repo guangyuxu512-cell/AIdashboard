@@ -1,37 +1,5 @@
 [
   {
-    "rule": "unbound-authority-enum",
-    "contract": "backend/app/modules/operating_dashboard/schemas.py:OperatingDataCollectionJobRead.kind",
-    "expected": "OperatingCollectionJobKind",
-    "actual": "str",
-    "reason": "Green 经营 Schema 未绑定既有枚举；属于覆盖缺口，不宣称实际会返回任意状态",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "unbound-authority-enum",
-    "contract": "backend/app/modules/operating_dashboard/schemas.py:OperatingDataCollectionJobRead.status",
-    "expected": "OperatingCollectionJobStatus",
-    "actual": "str",
-    "reason": "Green 经营 Schema 未绑定既有枚举；属于覆盖缺口，不宣称实际会返回任意状态",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "unbound-authority-enum",
-    "contract": "backend/app/modules/operating_dashboard/schemas.py:OperatingDataCollectionItemRead.status",
-    "expected": "OperatingCollectionItemStatus",
-    "actual": "str",
-    "reason": "Green 经营 Schema 未绑定既有枚举；属于覆盖缺口，不宣称实际会返回任意状态",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
-    "rule": "unbound-authority-enum",
-    "contract": "backend/app/modules/operating_dashboard/schemas.py:OperatingDataCollectionItemRead.failure_stage",
-    "expected": "OperatingCollectionFailureStage",
-    "actual": "str | None",
-    "reason": "Green 经营 Schema 未绑定既有枚举；保留合法 null，业务变更另行处理",
-    "review": "ca97 2026-10-17 / Green157 / proposal f8d6feccf11ad41b6d742c15f8375473c73fa862321b3f14c33d883cef47ac52"
-  },
-  {
     "rule": "error-envelope",
     "contract": "schedules:missing_timezone",
     "expected": {
