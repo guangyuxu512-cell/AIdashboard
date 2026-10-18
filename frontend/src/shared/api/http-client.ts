@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError, type AxiosResponse } from 'axios'
 
 import { apiBaseUrl, apiTimeoutMs } from './config'
 import type { ApiErrorResponseDto } from './contracts'
@@ -107,6 +107,26 @@ export const httpClient = axios.create({
   headers: { Accept: 'application/json' },
 })
 
+function hasExpectedResponse(response: AxiosResponse): boolean {
+  if (response.status === 204) return true
+
+  const responseType = response.config.responseType
+  if (
+    responseType === 'blob' ||
+    responseType === 'arraybuffer' ||
+    responseType === 'stream'
+  ) {
+    return true
+  }
+
+  const contentType = String(
+    response.headers['content-type'] ?? '',
+  ).toLowerCase()
+  return (
+    contentType.includes('application/json') || contentType.includes('+json')
+  )
+}
+
 httpClient.interceptors.request.use((config) => {
   const activeTeamId = activeTeamIdProvider()
   if (activeTeamId) config.headers.set('X-Team-ID', activeTeamId)
@@ -114,7 +134,16 @@ httpClient.interceptors.request.use((config) => {
 })
 
 httpClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (hasExpectedResponse(response)) return response
+
+    return Promise.reject(
+      new ApiError({
+        message: '请求失败',
+        status: response.status,
+      }),
+    )
+  },
   async (error: unknown) => {
     const apiError = await toResponseApiError(error)
     if (HUMAN_SESSION_ERROR_CODES.has(apiError.code)) {
