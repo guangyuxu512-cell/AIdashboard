@@ -1,29 +1,37 @@
 """Short Session transactions around, never across, a bounded platform page."""
 
-from datetime import timedelta
-
 from app.core.security import EncryptionConfigurationError, get_secret_cipher
-from app.modules.product_data.exceptions import ProductDataSessionValidationRequiredError
 from app.modules.product_data.service import ProductDataService
 from app.modules.sessions.auth_context import ShopSessionAccessor
+from app.modules.sessions.collection_readiness import bind_collection_auth_context
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
-    SessionEncryptionUnavailableError, SessionVersionConflictError, ShopSessionNotConfiguredError,
-    ShopSessionAuthenticationInvalidError,
+    SessionEncryptionUnavailableError,
+    SessionVersionConflictError,
 )
 from app.modules.sessions.health_service import ShopSessionHealthService
 from app.modules.sessions.service import ShopSessionService
 from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.product_data_connector import DouyinProductDataConnector
 from app.platforms.exceptions import PlatformAuthenticationInvalidError
+from app.platforms.registry import create_platform_connectors
 
 
 class ProductDataStoredSessionIO:
-    def __init__(self, session_factory, settings, *, connector=None, cipher_factory=get_secret_cipher):
+    def __init__(
+        self,
+        session_factory,
+        settings,
+        *,
+        connector=None,
+        cipher_factory=get_secret_cipher,
+        health_connectors=None,
+    ):
         self.session_factory = session_factory
         self.settings = settings
         self.connector = connector or DouyinProductDataConnector()
         self.cipher_factory = cipher_factory
+        self.health_connectors = health_connectors
 
     def _accessor(self, session):
         try:
@@ -35,19 +43,36 @@ class ProductDataStoredSessionIO:
         with self.session_factory() as session:
             service = ProductDataService(session, settings=self.settings)
             context = service.prepare_execution(generation_id, lease_id)
-            metadata = ShopSessionService(session).get_metadata(context.scope.shop_id)
-            if not metadata.configured:
-                raise ShopSessionNotConfiguredError()
-            if metadata.status == ShopSessionStatus.INVALID:
-                raise ShopSessionAuthenticationInvalidError()
-            now = service.repository.now()
-            # The first milestone deliberately performs no hidden identity call.
-            # A stale/captured session is not proof of invalid authentication.
-            if (metadata.status != ShopSessionStatus.VALID or metadata.validated_at is None
-                    or not now - timedelta(seconds=self.settings.shop_session_validation_freshness_seconds)
-                    <= metadata.validated_at <= now):
-                raise ProductDataSessionValidationRequiredError()
-            auth = self._accessor(session).get_auth_context(context.scope.shop_id, ShopPlatform.DOUYIN)
+            accessor = self._accessor(session)
+
+            def finish_owned_read() -> None:
+                # This adapter exclusively owns the short-lived Session. End
+                # its read transaction before an authoritative identity call.
+                if session.new or session.dirty or session.deleted:
+                    raise RuntimeError(
+                        "Product Data Session read boundary contains pending writes",
+                    )
+                session.rollback()
+
+            health_service = ShopSessionHealthService(
+                session,
+                accessor,
+                self.health_connectors
+                if self.health_connectors is not None
+                else create_platform_connectors(),
+                session_service=ShopSessionService(session, cipher=accessor.cipher),
+                settings=self.settings,
+                before_platform_io=finish_owned_read,
+            )
+            health = health_service.check(context.scope.shop_id, force=False)
+            auth = bind_collection_auth_context(
+                health,
+                accessor.get_auth_context(
+                    context.scope.shop_id,
+                    ShopPlatform.DOUYIN,
+                ),
+                expected_platform=ShopPlatform.DOUYIN,
+            )
         # All DB resources have been released before HTTP/Signer work starts.
         try:
             result = self.connector.page(auth, context.scope, context.platform_shop_id, page_no)

@@ -12,7 +12,6 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app.core.security import SecretCipher
-from app.modules.product_data.exceptions import ProductDataSessionValidationRequiredError
 from app.modules.product_data.platform_io import ProductDataStoredSessionIO
 from app.modules.sessions.auth_context import ShopSessionAccessor, StoredSessionCookie
 from app.modules.sessions.enums import ShopSessionStatus
@@ -60,8 +59,21 @@ def session_graph(graph):
     return graph
 
 
-def io(graph, connector):
-    return ProductDataStoredSessionIO(graph.factory, graph.settings, connector=connector, cipher_factory=lambda: graph.cipher)
+def io(graph, connector, *, identity=None):
+    if identity is None:
+        identity = lambda _shop_id, _auth: PlatformShopIdentity(
+            platform_shop_id=graph.shops[0].platform_shop_id,
+            shop_display_name=graph.shops[0].display_name,
+        )
+    return ProductDataStoredSessionIO(
+        graph.factory,
+        graph.settings,
+        connector=connector,
+        cipher_factory=lambda: graph.cipher,
+        health_connectors={
+            ShopPlatform.DOUYIN: SimpleNamespace(fetch_shop_identity=identity),
+        },
+    )
 
 
 def test_closed_session_during_io_and_real_cookie_update_uses_existing_cas(session_graph):
@@ -80,14 +92,42 @@ def test_closed_session_during_io_and_real_cookie_update_uses_existing_cas(sessi
     assert b"synthetic-new-cookie" in graph.cipher.decrypt_bytes(stored.payload_encrypted)
 
 
-def test_stale_validation_is_not_auth_invalid_and_does_not_call_platform(session_graph):
+def test_stale_validation_is_authoritatively_checked_once_before_business_page(
+    session_graph,
+):
     graph = session_graph
     stored = ShopSessionRepository(graph.session).get_by_shop(graph.shops[0].shop_id)
     stored.validated_at -= timedelta(seconds=graph.settings.shop_session_validation_freshness_seconds + 60)
     graph.session.commit()
-    with pytest.raises(ProductDataSessionValidationRequiredError):
-        io(graph, SimpleNamespace(page=lambda *_: pytest.fail("no hidden identity/page request"))).page(
-            graph.receipt.generation_id, graph.lease, 1)
+    identity_calls, page_calls = [], []
+
+    def identity(shop_id, _auth):
+        identity_calls.append(shop_id)
+        return PlatformShopIdentity(
+            platform_shop_id=graph.shops[0].platform_shop_id,
+            shop_display_name=graph.shops[0].display_name,
+        )
+
+    def page(*_):
+        page_calls.append(True)
+        return ProductDataFetchResult(
+            CompassProductDataPage(
+                complete(graph.receipt, graph.shops[0], 1).products,
+                1,
+                10,
+                1,
+            ),
+            (),
+        )
+
+    result = io(graph, SimpleNamespace(page=page), identity=identity).page(
+        graph.receipt.generation_id,
+        graph.lease,
+        1,
+    )
+    assert result.total == 1
+    assert identity_calls == [graph.shops[0].shop_id]
+    assert page_calls == [True]
     graph.session.expire_all()
     assert stored.status == ShopSessionStatus.VALID and stored.version == 1
 
