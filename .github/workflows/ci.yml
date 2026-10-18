@@ -132,6 +132,9 @@ jobs:
             'node --version && test -f /app/app/platforms/pdd/vendor/anti_content.js && python -c "from app.platforms.pdd.signer import PddAntiContentSigner; PddAntiContentSigner().generate()"'
       - name: Build production frontend image
         run: docker build --tag control-center-frontend-ci:${{ github.sha }} --file frontend/Dockerfile .
+      - name: Verify asset upload transport through production Nginx proxies
+        timeout-minutes: 5
+        run: bash scripts/test-asset-upload-proxy.sh control-center-frontend-ci:${{ github.sha }} control-center-backend-ci:${{ github.sha }}
       - name: Verify retained PC assets with production Nginx
         run: bash scripts/test-pc-static-nginx.sh control-center-frontend-ci:${{ github.sha }}
       - name: Verify PC and Mobile production entries with a read-only root filesystem

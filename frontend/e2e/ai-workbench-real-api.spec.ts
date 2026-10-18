@@ -112,7 +112,107 @@ interface WorkbenchApiOptions {
   assetContentGate?: Promise<void>
   failAssetContentRequests?: number
   imageSize?: readonly [number, number]
+  aiOnly?: boolean
+  failUploadName?: string
+  failAttach?: boolean
+  failCleanup?: boolean
 }
+
+test('AI upload: AI-only material upload attaches and previews through AI endpoints', async ({
+  page,
+}) => {
+  await installWorkbenchApi(page, { aiOnly: true, imageSize: [450, 800] })
+  const uploads: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST')
+      uploads.push(new URL(request.url()).pathname)
+  })
+  await page.goto('/#/ai-workbench/assets')
+  await page
+    .getByLabel('上传素材', { exact: true })
+    .setInputFiles({
+      name: 'uploaded.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(proportionImage([450, 800])),
+    })
+  const uploaded = page.getByRole('button', {
+    name: '查看素材 uploaded.png',
+    exact: true,
+  })
+  await expectCompleteProportions(uploaded.locator('img'), [450, 800])
+  await uploaded.click()
+  await expectCompleteProportions(
+    page.getByRole('region', { name: '素材详情' }).locator('img'),
+    [450, 800],
+  )
+  expect(uploads).toEqual([
+    '/api/v1/ai-workbench/assets',
+    `/api/v1/ai-workbench/product-material-groups/${materialGroupId}/assets`,
+  ])
+})
+
+test('AI upload: partial multi-file failure keeps successes and reports HTML 413 without replay', async ({
+  page,
+}) => {
+  await installWorkbenchApi(page, { aiOnly: true, failUploadName: 'bad.png' })
+  let posts = 0
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname.endsWith('/ai-workbench/assets')
+    )
+      posts += 1
+  })
+  await page.goto('/#/ai-workbench/generate')
+  await page.getByLabel('上传商品图片', { exact: true }).setInputFiles([
+    {
+      name: 'good.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(controlledAssetImage),
+    },
+    {
+      name: 'bad.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(controlledAssetImage),
+    },
+  ])
+  await expect(
+    page.getByLabel('即时生成配置').getByAltText('good.png'),
+  ).toBeVisible()
+  await expect(page.getByText(/上传 bad.png.*10 MiB.*HTTP_413/)).toBeVisible()
+  await page.reload()
+  await expect(
+    page.getByLabel('即时生成配置').getByAltText('good.png'),
+  ).toBeVisible()
+  expect(posts).toBe(2)
+})
+
+test('AI upload: attach failure and cleanup failure retain distinct request diagnostics', async ({
+  page,
+}) => {
+  const calls = await installWorkbenchApi(page, {
+    aiOnly: true,
+    failAttach: true,
+    failCleanup: true,
+  })
+  await page.goto('/#/ai-workbench/assets')
+  await page
+    .getByLabel('上传素材', { exact: true })
+    .setInputFiles({
+      name: 'uploaded.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(controlledAssetImage),
+    })
+  await expect(
+    page.getByText(
+      /关联 uploaded.png.*MODULE_ACCESS_DENIED.*attach-request.*清理未完成.*ASSET_STORAGE_UNAVAILABLE.*cleanup-request/,
+    ),
+  ).toBeVisible()
+  expect(calls.destructiveRequests()).toHaveLength(1)
+  expect(calls.destructiveRequests()[0]).toContain(
+    '/api/v1/ai-workbench/assets/',
+  )
+})
 
 function proportionImage([width, height]: readonly [number, number]): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -224,6 +324,7 @@ for (const [label, size] of [
     const calls = await installWorkbenchApi(page, {
       controlledJob: true,
       imageSize: size,
+      aiOnly: true,
     })
     await page.goto('/#/ai-workbench/generate')
     await page
@@ -287,6 +388,7 @@ for (const [label, size] of [
       controlledJob: true,
       batchScenario: true,
       imageSize: size,
+      aiOnly: true,
     })
     await submitControlledBatch(page)
     await expect.poll(batchCalls.submitCount).toBe(1)
@@ -332,10 +434,12 @@ for (const [label, size] of [
       .getByRole('region', { name: '素材详情' })
       .getByRole('button', { name: '预览', exact: true })
       .click()
-      const preview = page.getByRole('region', { name: '图片预览' })
-      await expectCompleteProportions(preview.locator('img'), size)
-      await page.screenshot({ path: testInfo.outputPath(`${label}-small-fit.png`) })
-      for (let index = 0; index < 3; index += 1)
+    const preview = page.getByRole('region', { name: '图片预览' })
+    await expectCompleteProportions(preview.locator('img'), size)
+    await page.screenshot({
+      path: testInfo.outputPath(`${label}-small-fit.png`),
+    })
+    for (let index = 0; index < 3; index += 1)
       await page.getByRole('button', { name: '放大预览', exact: true }).click()
     await preview.screenshot({
       path: testInfo.outputPath(`${label}-small-zoom.png`),
@@ -896,16 +1000,18 @@ async function installWorkbenchApi(
     '**/api/v1/access-management/me/module-access',
     async (route) => {
       await requireAuthenticated(route, {
-        module_codes: [
-          'shop',
-          'asset',
-          'ai-workbench',
-          'device',
-          'task',
-          'schedule',
-          'settings',
-        ],
-        is_access_administrator: true,
+        module_codes: options.aiOnly
+          ? ['ai-workbench']
+          : [
+              'shop',
+              'asset',
+              'ai-workbench',
+              'device',
+              'task',
+              'schedule',
+              'settings',
+            ],
+        is_access_administrator: !options.aiOnly,
       })
     },
   )
@@ -970,14 +1076,97 @@ async function installWorkbenchApi(
       ),
     })
   }
-  await page.route('**/api/v1/assets/*/content', fulfillAssetImage)
-  await page.route('**/api/v1/assets/*/thumbnail', fulfillAssetImage)
+  await page.route('**/api/v1/assets**', async (route) => {
+    throw new Error(
+      `AI must not fall back to general Asset API: ${route.request().method()}`,
+    )
+  })
 
+  const uploads: Array<(typeof materialGroup.assets)[number]> = []
+  const attachedUploadIds = new Set<string>()
   await page.route('**/api/v1/ai-workbench/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
     const method = request.method()
+
+    if (
+      /^\/api\/v1\/ai-workbench\/assets\/[^/]+\/(content|thumbnail)$/.test(path)
+    ) {
+      await fulfillAssetImage(route)
+      return
+    }
+    if (path === '/api/v1/ai-workbench/assets' && method === 'POST') {
+      const filename =
+        /filename="([^"]+)"/.exec(request.postData() ?? '')?.[1] ??
+        'uploaded.png'
+      if (filename === options.failUploadName) {
+        await route.fulfill({
+          status: 413,
+          contentType: 'text/html',
+          body: '<html>413 Request Entity Too Large</html>',
+        })
+        return
+      }
+      const original = materialGroup.assets[0]!
+      const uploaded = {
+        ...original,
+        asset: {
+          ...original.asset,
+          asset_id: `99999999-9999-4999-8999-${String(uploads.length + 1).padStart(12, '0')}`,
+          original_filename: filename,
+        },
+      }
+      uploads.push(uploaded)
+      await route.fulfill({ status: 201, json: uploaded.asset })
+      return
+    }
+    if (
+      /^\/api\/v1\/ai-workbench\/assets\/[^/]+$/.test(path) &&
+      method === 'DELETE'
+    ) {
+      await route.fulfill(
+        options.failCleanup
+          ? {
+              status: 503,
+              json: {
+                code: 'ASSET_STORAGE_UNAVAILABLE',
+                message: '资产存储挂载不可用',
+                request_id: 'cleanup-request',
+              },
+            }
+          : { status: 204 },
+      )
+      return
+    }
+    if (
+      path ===
+        `/api/v1/ai-workbench/product-material-groups/${materialGroupId}/assets` &&
+      method === 'POST'
+    ) {
+      if (!options.failAttach)
+        attachedUploadIds.add(
+          (request.postDataJSON() as { asset_id: string }).asset_id,
+        )
+      await route.fulfill(
+        options.failAttach
+          ? {
+              status: 403,
+              json: {
+                code: 'MODULE_ACCESS_DENIED',
+                message: '没有模块权限',
+                request_id: 'attach-request',
+              },
+            }
+          : {
+              json: {
+                ...materialGroup,
+                assets: [...materialGroup.assets, ...uploads],
+              },
+            },
+      )
+      return
+    }
 
     if (expireNextRequest) {
       expireNextRequest = false
@@ -1076,7 +1265,17 @@ async function installWorkbenchApi(
       path.endsWith(`/product-material-groups/${materialGroupId}`) &&
       method === 'GET'
     ) {
-      await route.fulfill({ json: materialGroup })
+      await route.fulfill({
+        json: {
+          ...materialGroup,
+          assets: [
+            ...materialGroup.assets,
+            ...uploads.filter((link) =>
+              attachedUploadIds.has(link.asset.asset_id),
+            ),
+          ],
+        },
+      })
       return
     }
     if (

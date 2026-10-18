@@ -1,7 +1,8 @@
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
@@ -54,7 +55,10 @@ from app.modules.ai_workbench.schemas import (
     TemplateGroupUpdate,
 )
 from app.modules.ai_workbench.service import AiWorkbenchService
+from app.modules.ai_workbench.asset_service import AiAssetService
+from app.modules.assets.api import asset_content_response
 from app.modules.assets.schemas import AssetRead
+from app.modules.assets.thumbnails import THUMBNAIL_CONTENT_TYPE
 from app.shared.pagination import Page, PaginationParams
 
 
@@ -68,7 +72,9 @@ AI_WORKBENCH_ERROR_RESPONSES.update(
         403: {"model": ErrorResponse, "description": "无权使用 AI 工作台或指定团队"},
         404: {"model": ErrorResponse, "description": "管理数据或资产不存在"},
         409: {"model": ErrorResponse, "description": "当前业务状态不允许该操作"},
+        413: {"model": ErrorResponse, "description": "图片超过单文件大小限制"},
         422: {"model": ErrorResponse, "description": "请求字段或业务关系无效"},
+        503: {"model": ErrorResponse, "description": "资产存储或缩略图暂不可用"},
     },
 )
 
@@ -81,6 +87,60 @@ router = APIRouter(
 
 
 get_ai_workbench_authorized_actor = require_module_access(ModuleCode.AI_WORKBENCH)
+
+
+def get_ai_asset_service(
+    session: Annotated[Session, Depends(get_database_session)],
+) -> AiAssetService:
+    return AiAssetService(session)
+
+
+@router.post("/assets", response_model=AssetRead, status_code=status.HTTP_201_CREATED)
+def upload_ai_asset(
+    file: Annotated[UploadFile, File()],
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[AiAssetService, Depends(get_ai_asset_service)],
+) -> AssetRead:
+    return AssetRead.model_validate(
+        service.upload(
+            actor=actor,
+            original_filename=file.filename,
+            content_type=file.content_type,
+            stream=file.file,
+        )
+    )
+
+
+@router.get("/assets/{asset_id}/content", response_class=StreamingResponse)
+def read_ai_asset_content(
+    asset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[AiAssetService, Depends(get_ai_asset_service)],
+) -> StreamingResponse:
+    asset, content = service.get_content(actor, asset_id)
+    return asset_content_response(asset.content_type, asset.size_bytes, content)
+
+
+@router.get("/assets/{asset_id}/thumbnail", response_class=StreamingResponse)
+def read_ai_asset_thumbnail(
+    asset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[AiAssetService, Depends(get_ai_asset_service)],
+) -> StreamingResponse:
+    _asset, content, size = service.get_thumbnail(actor, asset_id)
+    return asset_content_response(
+        THUMBNAIL_CONTENT_TYPE, size, content, cache_control="private, max-age=3600"
+    )
+
+
+@router.delete("/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cleanup_ai_asset(
+    asset_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_ai_workbench_authorized_actor)],
+    service: Annotated[AiAssetService, Depends(get_ai_asset_service)],
+) -> Response:
+    service.cleanup(actor, asset_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def get_ai_workbench_service(

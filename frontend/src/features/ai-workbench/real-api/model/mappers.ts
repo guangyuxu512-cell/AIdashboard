@@ -1,7 +1,7 @@
 import {
-  getAssetContentUrl,
-  getAssetThumbnailUrl,
-} from '@/entities/asset/api/asset-api'
+  getAiAssetContentUrl as getAssetContentUrl,
+  getAiAssetThumbnailUrl as getAssetThumbnailUrl,
+} from '@/entities/ai-workbench/api/ai-asset-api'
 import type {
   AiModelCatalogReadDto,
   GenerationItemReadDto,

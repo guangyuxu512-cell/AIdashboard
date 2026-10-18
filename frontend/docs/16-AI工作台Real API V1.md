@@ -2,7 +2,7 @@
 
 ## 1. Production Data Flow
 
-AI 生图、素材库、模板库与生成记录的生产路由直接使用 `/api/v1/ai-workbench` 和正式 Asset API。TanStack Vue Query 负责 Catalog、列表、详情缓存与短轮询，页面状态只组合 Backend DTO，不在 Frontend 模拟生成成功。
+AI 生图、素材库、模板库与生成记录的生产路由直接使用 `/api/v1/ai-workbench`，文件统一使用其受限 `/assets` 子入口。TanStack Vue Query 负责 Catalog、列表、详情缓存与短轮询，页面状态只组合 Backend DTO，不在 Frontend 模拟生成成功。
 
 ```text
 Model / Template / Material Catalog
@@ -81,3 +81,19 @@ Visual Mock 仅在 Development 且查询参数精确为 `visualMock=1` 时动态
 - 调用方不重复覆盖内部 `img` 的 fit，也不依靠普通 scoped `img` 选择器穿透子组件。非AI的 `ProductImage` 独立契约不变。
 - 大图默认完整等比显示，现有缩放以左上角为锚点，让原滚动容器可达四边；切换图片恢复1倍，鉴权原图、缩略回退、错误重试、下载和 Blob 释放继续复用原链路。
 - 自动回归先构建正式 Real Production Bundle，再执行 `pnpm --filter @control-center/frontend exec playwright test --config playwright.ai-images.config.ts`。测试无监听端口/Backend/数据库；HTTPS虚拟站点全部请求由路由拦截，沿正式页面与 Query 使用受控 API/SVG。四比例自然尺寸、computed fit、实际截图四色像素、放大边界及慢图/重试共同守门，不代表真实平台或原生Electron验收。
+
+## 8. AI 文件上传与权限（2026-10-19）
+
+- AI 上传、素材缩略/大图、下载、草稿恢复、生成输出与历史一律使用
+  `/api/v1/ai-workbench/assets`，不得退回需要独立 `asset` 授权的通用资料库入口。共享 Blob/下载队列
+  只消费完整 URL，不自行放宽授权；Backend 的 AI 文件资格为权威，见 Backend Real API 契约第5节。
+- 只授予 `ai-workbench` 即可使用合法 AI 文件，不因此获得资料库枚举或任意删除权限。当前 Team 本人
+  历史 UPLOAD 图片可作为草稿是明确例外，不声称上传来源隔离；切换 Team/模块撤销继续 fail closed。
+- 图片大小预检只复用实体层单一 `assetMaxUploadBytes = 10 * 1024 * 1024`，Backend 永远最终校验。
+  仅上传请求使用120秒有界超时，通用请求10秒、预览30秒及现有下载120秒不变；不自动重传。
+- 多文件即时上传逐项结算：一个文件失败不丢弃其他成功输入，失败提示含文件名；刷新恢复只读成功
+  Asset ID，不再次上传。素材库仍先上传再 Attach；关联失败尝试受限清理，清理失败必须单独显示，
+  不能把已经上传成功误称原文件上传失败。
+- 413（包括 HTML 代理响应）明确大小限制，409团队缺省提示选团队，403模块拒绝提示授权，超时明确
+  结果未确认并提示先刷新检查；Attach/Cleanup 阶段、受控错误码及存在时的 requestId 保留。不展示
+  原始代理 HTML、存储路径或秘密。

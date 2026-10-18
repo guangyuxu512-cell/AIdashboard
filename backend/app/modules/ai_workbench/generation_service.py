@@ -83,6 +83,7 @@ from app.modules.assets.generated_image_optimization import (
 )
 from app.modules.assets.models import Asset
 from app.modules.assets.service import AssetService
+from app.modules.ai_workbench.asset_service import AiAssetService
 from app.shared.identifiers import generate_id
 
 
@@ -243,6 +244,7 @@ class GenerationService:
         )
         self.model_repository = model_repository or AiModelRepository(session)
         self.asset_service = asset_service or AssetService(session)
+        self.ai_assets = AiAssetService(session, asset_service=self.asset_service)
 
     def submit(
         self,
@@ -413,6 +415,7 @@ class GenerationService:
                 ) or existing_group_ids != source_group_ids:
                     raise ProductMaterialGroupNotFoundError()
 
+            self._locked_assets(actor, [link.asset_id for item in actionable for link in item.input_assets])
             for item in actionable:
                 item.status = GenerationItemStatus.PENDING.value
                 if item.generation_item_id not in resume_known_provider_results:
@@ -1033,6 +1036,7 @@ class GenerationService:
             for asset in assets
         ):
             raise AssetNotFoundError()
+        self.ai_assets.require_eligible(actor, assets)
         return by_id
 
     @staticmethod

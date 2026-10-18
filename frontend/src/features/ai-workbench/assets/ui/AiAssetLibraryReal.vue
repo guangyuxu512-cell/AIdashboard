@@ -12,7 +12,8 @@ import {
   formatAssetDownloadFailure,
   useAssetDownloadQueue,
 } from '@/entities/asset'
-import { assetApi } from '@/entities/asset/api/asset-api'
+import { formatAssetOperationFailure } from '@/entities/asset/api/asset-api'
+import { aiAssetApi } from '@/entities/ai-workbench/api/ai-asset-api'
 import { aiWorkbenchApi, aiWorkbenchQueryKeys } from '@/entities/ai-workbench'
 import {
   AiManagementLayout,
@@ -305,12 +306,26 @@ function uploadFile({ file }: { file: UploadSettledFileInfo }): boolean {
     return false
   }
   void execute(async () => {
-    const asset = await assetApi.upload(selectedFile)
+    const asset = await aiAssetApi.upload(selectedFile).catch((error) => {
+      throw new Error(
+        formatAssetOperationFailure(error, `上传 ${selectedFile.name}`),
+      )
+    })
     try {
       await aiWorkbenchApi.attachAsset(groupId, asset.asset_id, role)
     } catch (error) {
-      await assetApi.remove(asset.asset_id).catch(() => undefined)
-      throw error
+      const failure = formatAssetOperationFailure(
+        error,
+        `关联 ${selectedFile.name}`,
+      )
+      try {
+        await aiAssetApi.cleanup(asset.asset_id)
+      } catch (cleanupError) {
+        throw new Error(
+          `${failure}；已上传文件清理未完成：${formatAssetOperationFailure(cleanupError, '清理')}`,
+        )
+      }
+      throw new Error(`${failure}；本次未关联文件已清理`)
     }
   }, '素材已上传')
   return false

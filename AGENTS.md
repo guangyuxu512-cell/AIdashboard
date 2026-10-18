@@ -26,6 +26,11 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-19 AI上传热修：同一独立工作树当前为`hotfix/ai-asset-upload-access-v1`，
+从Green59894正常no-ff消费冻结87ad1e，起点3fe41ace。无Schema/Slot/依赖版本/Electron变化；
+仅上传限制/提示与AI受限文件入口，明确本人当前Team的历史UPLOAD草稿例外，不冒称AI来源隔离。
+无端口/服务/生产上传；ca97已正式交付独立Feature PG（工程02登记，单一0047），旧预览分支与证据完整保留。
+
 2026-10-18 AI图片比例热修：同一独立工作树当前为`hotfix/ai-image-aspect-ratio-v1`，
 基于精确Green`59894d98d88eff3529fb9d6b4cfecd45694d2156`（CI39138982653四项成功）。
 仅统一AI/素材实体图片完整等比显示及受控Real浏览器回归；旧缓存/SSH分支与证据保留。
