@@ -27,6 +27,12 @@
 
 ### Two-Gate、问题归属与共享历史
 
+2026-10-18后端依赖缓存工程沿用独立工作树`local-ssh-production-deploy\中控台`，从精确Green
+`6f795620202e95cb9aecb9e1e92bb44edd604103` 建立`feat/backend-dependency-cache-v1`。
+旧本地SSH分支及证据保留；仅Dockerfile依赖层/BuildKit pip缓存、原container-runtime内真实冷/暖
+构建回归与工程文档，不改依赖声明/版本/源、业务/DB/API/Electron。无DB/端口/Migration/第二Electron。
+Owner不连接生产或影响在途8f274发布；真实缓存效果须独立Linux CI取证，首次下载不承诺消失。
+
 2026-10-18新增本地SSH生产部署工程任务：`feat/local-codex-ssh-deploy-v1` 从精确Green
 `1cec344b72621b9e50ed3e724e939623e7d366e4` 创建于独立
 `C:\Users\Administrator\.codex\worktrees\local-ssh-production-deploy\中控台`。

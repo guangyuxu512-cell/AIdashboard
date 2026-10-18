@@ -156,6 +156,27 @@ Compose 参数依据：[Docker 官方 `compose build` 文档](https://docs.docke
 盲试已知故障 builder。应用/数据库恢复继续遵守本文件及 A 的兼容 Reader/数据保留要求，不降级清历史。
 这项工程修复不包含选品定时 B/0045，也不需要更新 Electron 安装包。
 
+### Backend 依赖缓存
+
+`backend/Dockerfile` 先只复制 `pyproject.toml`，以 Python3.12 `tomllib` 从其中读取
+`project.dependencies` 和 `build-system.requires` 安装生产依赖/构建工具；不维护第二份 requirements。
+依赖安装使用 BuildKit 的 `control-center-backend-pip` cache mount，下载缓存属于既有 builder，
+不会进入应用数据卷。随后才复制 Alembic、migrations 和 app；项目本身以
+`RUN --network=none ... --no-deps --no-build-isolation` 打包安装，意外的构建下载会明确失败。
+Node、PDD vendor、app用户、资产目录、Healthcheck及启动命令保持原样。
+
+同一 builder/base/pyproject 下只改业务源码，应复用整个依赖层；源代码仍重新安装。
+首次构建、依赖/基础镜像变化、builder迁移或缓存被清理后仍可能下载，不能承诺消除网络问题或固定耗时。
+保留现有生产 `PRODUCTION_BUILDX_BUILDER`，不用每次创建builder、加no-cache或逐release cache-bust。
+过期构建缓存回收会让下一次重新预热，不删除生产镜像、数据库或Asset数据。
+
+原 container-runtime Job 的 Backend build 改由 `scripts/test-backend-dependency-cache.sh` 执行：
+导出精确提交的 Backend context，测试专用首次 `--no-cache` 构建；只新增一个临时app探针，再次构建。
+第二轮必须依赖步骤 `CACHED`、项目安装步骤实际执行，并从 `/tmp` 以正式非root app用户验证
+site-packages里的新探针；项目安装本身始终禁网。原PDD/Node与后续真实镜像检查继续消费原CI镜像。
+该脚本只对已经提交的 HEAD 有效，不把未提交Dockerfile或本机无Docker的语法检查当缓存通过。
+本工程发布前保留原构建方式的生产事实，实际服务器提速须发布后另核；不得改动正在执行的发布。
+
 ### 经营数据每日采集启用顺序
 
 经营数据代码发布、服务健康通过，不等于已经允许自动访问抖店平台。Release Gate 先按精确候选核对

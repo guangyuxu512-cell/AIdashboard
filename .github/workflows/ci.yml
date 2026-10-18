@@ -121,7 +121,7 @@ jobs:
       - name: Test production deployment workflow trigger contract
         run: bash scripts/test-production-deploy-workflow.sh
       - name: Build production backend image
-        run: docker build --tag control-center-backend-ci:${{ github.sha }} backend
+        run: bash scripts/test-backend-dependency-cache.sh control-center-backend-ci:${{ github.sha }}
       - name: Verify PDD Node runtime and verified source
         run: |
           docker run --rm --entrypoint sh control-center-backend-ci:${{ github.sha }} -c \
