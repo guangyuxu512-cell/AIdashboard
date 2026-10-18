@@ -35,7 +35,7 @@ Backend Pydantic/OpenAPI 始终是最终权威。Contract 不存在时停止实�
 | Shop                | `/api/v1/shops` 的列表、详情、创建、更新、软移除及设备绑定                            | `platform = douyin \| pdd`；Session 状态为 `not_configured/captured/valid/invalid/refresh_required` |
 | Device              | `/api/v1/devices` 的列表、详情、创建、更新、软移除及能力查询                          | Runtime 连接状态为 `online/offline`；Worker Credential 管理属于敏感能力                             |
 | Task                | `/api/v1/tasks` 的列表、详情、事件、活动任务与创建                                    | `pending/running/success/failed/lost`；不存在 cancel/retry API                                      |
-| Schedule            | `/api/v1/schedules` 的列表、详情、运行记录、创建、更新、软删除                        | 当前仅 `daily`；触发结果为 `task_created/blocked`                                                   |
+| Schedule            | `/api/v1/schedules` 的列表、详情、运行记录、创建、更新、软删除                        | PC 计划支持 `once/daily/weekly`，触发结果为 `task_created/blocked`；`server_selection` 的 `hourly/daily` 与 `selection_run` 属于独立选品契约，不是 Mobile Schedule V1 |
 
 具体字段、查询参数和错误码必须回到各 Domain 的 Router、Schema、Enum、Exception 与测试核对，禁止仅凭本表实现。
 
