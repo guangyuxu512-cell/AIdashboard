@@ -382,10 +382,11 @@ def test_mounted_thumbnail_unavailable_keeps_original_file(tmp_path: Path) -> No
     [
         ("test.gif", "image/gif", b"GIF89a"),
         ("fake.jpg", "image/jpeg", b"not-an-image"),
-        ("mismatch.png", "image/png", b"\xff\xd8\xffpayload"),
+        ("fake.png", "image/png", b"<html>not an image</html>"),
+        ("renamed.gif.jpg", "image/jpeg", b"GIF89a"),
     ],
 )
-def test_upload_rejects_unsupported_or_mismatched_images(
+def test_upload_rejects_unsupported_or_non_image_content(
     tmp_path: Path,
     filename: str,
     content_type: str,
@@ -402,6 +403,53 @@ def test_upload_rejects_unsupported_or_mismatched_images(
         )
 
     assert repository.assets == {}
+
+
+@pytest.mark.parametrize(
+    ("filename", "declared_type", "image_format", "expected_name", "expected_type"),
+    [
+        ("gambar utama_06.jpg", "image/jpeg", "PNG", "gambar utama_06.png", "image/png"),
+        ("second.png", "image/png", "JPEG", "second.jpg", "image/jpeg"),
+        ("third.jpg", "image/jpeg", "WEBP", "third.webp", "image/webp"),
+        ("photo.JPEG", "image/pjpeg", "JPEG", "photo.JPEG", "image/jpeg"),
+        ("camera.jpeg", "image/jpg", "JPEG", "camera.jpeg", "image/jpeg"),
+        ("source.jpg", "application/octet-stream", "JPEG", "source.jpg", "image/jpeg"),
+        ("source.png", None, "PNG", "source.png", "image/png"),
+        ("source.webp", "image/png", "WEBP", "source.webp", "image/webp"),
+        ("x" * 251 + ".jpg", "image/jpeg", "WEBP", "x" * 250 + ".webp", "image/webp"),
+    ],
+)
+def test_upload_uses_actual_image_format_and_corrects_only_wrong_suffix(
+    tmp_path: Path,
+    filename: str,
+    declared_type: str | None,
+    image_format: str,
+    expected_name: str,
+    expected_type: str,
+) -> None:
+    service, repository, session = make_service(tmp_path, max_bytes=1024 * 1024)
+    payload = image_payload(image_format=image_format)
+
+    asset = service.upload(
+        actor=ACTOR,
+        original_filename=filename,
+        content_type=declared_type,
+        stream=BytesIO(payload),
+    )
+
+    assert repository.assets == {asset.asset_id: asset}
+    assert asset.original_filename == expected_name
+    assert asset.content_type == expected_type
+    assert Path(asset.storage_key).suffix == Path(expected_name).suffix.lower()
+    assert asset.size_bytes == len(payload)
+    assert asset.sha256 == hashlib.sha256(payload).hexdigest()
+    _, content = service.get_content(ACTOR, asset.asset_id)
+    with content:
+        assert content.read() == payload
+    _, thumbnail, _ = service.get_thumbnail(ACTOR, asset.asset_id)
+    with thumbnail, Image.open(thumbnail) as image:
+        assert image.format == "WEBP"
+    assert session.commits == 1
 
 
 def test_upload_rejects_oversized_image_without_file_or_row(tmp_path: Path) -> None:

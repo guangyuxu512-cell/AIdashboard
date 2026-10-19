@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
 
@@ -112,11 +113,14 @@ class AssetService:
             header = stream.read(16)
         except OSError as error:
             raise AssetStorageError() from error
-        detected_type = validate_image_content(
+        detected_type, detected_suffix = validate_image_content(
             filename_suffix=suffix,
-            declared_content_type=content_type,
             header=header,
         )
+        if detected_suffix != suffix:
+            stem = Path(filename).stem
+            filename = f"{stem[:255 - len(detected_suffix)]}{detected_suffix}"
+            suffix = detected_suffix
         asset_id = generate_id()
         stored = self.storage.store(
             asset_id=asset_id,
