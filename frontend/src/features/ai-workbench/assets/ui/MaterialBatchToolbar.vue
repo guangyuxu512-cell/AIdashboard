@@ -10,6 +10,7 @@ defineProps<{
   currentPageCount: number
   checked: boolean
   indeterminate: boolean
+  readOnly?: boolean
 }>()
 
 defineEmits<{
@@ -55,7 +56,7 @@ defineEmits<{
         </AppButton>
         <AppButton
           tone="danger"
-          :disabled="selectedCount === 0"
+          :disabled="readOnly || selectedCount === 0"
           aria-label="批量删除"
           @click="$emit('remove')"
         >

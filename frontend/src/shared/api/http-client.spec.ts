@@ -11,6 +11,27 @@ import {
 } from './http-client'
 
 describe('Human request context', () => {
+  it('removes a stale team header when switching back to global', async () => {
+    configureHumanRequestContext({
+      getActiveTeamId: () => null,
+      onSessionInvalid: () => undefined,
+    })
+    let teamHeader: unknown
+    await httpClient.get('/api/v1/test', {
+      headers: { 'X-Team-ID': 'previous-team' },
+      adapter: async (config) => {
+        teamHeader = config.headers.get('X-Team-ID')
+        return {
+          data: {},
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          config,
+        }
+      },
+    })
+    expect(teamHeader).toBeUndefined()
+  })
   it('sends credentials and injects the selected team centrally', async () => {
     let capturedTeamHeader: unknown
     configureHumanRequestContext({

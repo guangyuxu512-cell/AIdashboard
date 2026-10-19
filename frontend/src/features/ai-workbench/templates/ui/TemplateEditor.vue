@@ -24,6 +24,7 @@ import type { AppOptionValue } from '@/shared/ui/types'
 
 const props = defineProps<{
   template: PromptTemplate
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -125,6 +126,7 @@ const submit = handleSubmit((values) => {
     </header>
 
     <NForm
+      :disabled="readOnly"
       class="template-editor__form"
       label-placement="top"
       @submit.prevent="submit"
@@ -202,7 +204,9 @@ const submit = handleSubmit((values) => {
       </NFormItem>
 
       <footer class="template-editor__footer">
-        <AppButton tone="primary" @click="submit">保存</AppButton>
+        <AppButton tone="primary" :disabled="readOnly" @click="submit"
+          >保存</AppButton
+        >
       </footer>
     </NForm>
   </section>

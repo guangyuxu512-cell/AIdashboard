@@ -12,6 +12,7 @@ import { AppButton } from '@/shared/ui'
 defineProps<{
   groups: readonly TemplateGroup[]
   selectedGroupId: string | null
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,7 +37,12 @@ function selectAction(group: TemplateGroup, key: string | number): void {
   <section class="template-group-sidebar" aria-label="模板组列表">
     <div class="template-group-sidebar__header">
       <strong>模板组</strong>
-      <AppButton tone="text" aria-label="新建模板组" @click="$emit('create')">
+      <AppButton
+        tone="text"
+        aria-label="新建模板组"
+        :disabled="readOnly"
+        @click="$emit('create')"
+      >
         <Plus :size="16" />
         新建
       </AppButton>
@@ -66,7 +72,7 @@ function selectAction(group: TemplateGroup, key: string | number): void {
             :tone="group.enabled ? 'success' : 'neutral'"
           />
         </template>
-        <template #actions>
+        <template v-if="!readOnly" #actions>
           <NDropdown
             trigger="click"
             :options="menuOptions"

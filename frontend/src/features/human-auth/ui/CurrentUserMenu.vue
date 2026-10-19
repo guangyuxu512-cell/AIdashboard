@@ -21,15 +21,28 @@ const options = computed<DropdownOption[]>(() => {
       disabled: true,
     },
     {
+      key: 'account-type',
+      label: `账号类型：${auth.isSuperAccount ? '超级管理员' : '普通成员'}`,
+      disabled: true,
+    },
+    {
       key: 'current-team',
       label: auth.isSuperAccount
-        ? `业务上下文：${auth.currentTeam?.teamName ?? '全部团队'}`
+        ? auth.currentTeam
+          ? `当前团队：${auth.currentTeam.teamName}`
+          : '当前范围：全部团队'
         : `当前团队：${auth.currentTeam?.teamName ?? '未分配团队'}`,
       disabled: true,
     },
   ]
-  if (auth.activeTeams.length > 1) {
+  if (auth.isSuperAccount || auth.activeTeams.length > 1) {
     items.push({ type: 'divider', key: 'team-divider' })
+    if (auth.isSuperAccount) {
+      items.push({
+        key: 'all-teams',
+        label: auth.activeTeamId === null ? '✓ 全部团队' : '切换至全部团队',
+      })
+    }
     items.push(
       ...auth.activeTeams.map((team) => ({
         key: `team:${team.teamId}`,
@@ -47,8 +60,14 @@ const options = computed<DropdownOption[]>(() => {
 
 async function select(key: string | number): Promise<void> {
   if (typeof key !== 'string') return
-  if (key.startsWith('team:')) {
-    auth.selectTeam(key.slice('team:'.length))
+  if (key === 'all-teams' || key.startsWith('team:')) {
+    try {
+      await auth.selectTeam(
+        key === 'all-teams' ? null : key.slice('team:'.length),
+      )
+    } catch (error) {
+      message.error(getErrorMessage(error))
+    }
     return
   }
   if (key !== 'logout') return

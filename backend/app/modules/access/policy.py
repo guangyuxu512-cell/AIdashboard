@@ -17,11 +17,10 @@ class DataScopePolicy:
         created_by_user_id_column: ColumnElement[Any] | InstrumentedAttribute[Any],
         actor: ActorContext,
     ) -> Select[Any]:
-        # The V2 product rule is intentionally smaller than the legacy
-        # SELF/TEAM/ALL matrix: a super account can read every Team and a
-        # normal member can read only its one effective Team.  Keeping this in
-        # one predicate preserves SQL-side scope filtering before pagination.
+        # Global super-account browsing has no Team. An explicit Team is both
+        # the business view and write context, including the ordinary default
+        # Team. Apply the same predicate before lists, counts and detail reads.
         del created_by_user_id_column
-        if actor.is_super_account:
+        if actor.is_super_account and actor.team_id is None:
             return statement
         return statement.where(team_id_column == actor.require_team_id())

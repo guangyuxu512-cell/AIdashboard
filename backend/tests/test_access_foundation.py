@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -203,12 +204,25 @@ def test_data_scope_policy_applies_team_predicate_or_super_account_bypass() -> N
         base,
         team_id_column=entities.c.team_id,
         created_by_user_id_column=entities.c.created_by_user_id,
-        actor=make_actor(DataScope.ALL, is_super_account=True),
+        actor=replace(make_actor(DataScope.ALL, is_super_account=True), team_id=None),
     )
 
     assert str(member_statement.whereclause).count("entities.team_id") == 1
     assert "created_by_user_id" not in str(member_statement.whereclause)
     assert super_statement.whereclause is None
+
+
+def test_super_account_explicit_team_scopes_business_reads_before_pagination() -> None:
+    entities = table("entities", column("team_id"), column("created_by_user_id"))
+    actor = make_actor(DataScope.ALL, is_super_account=True)
+    statement = DataScopePolicy.apply(
+        select(entities),
+        team_id_column=entities.c.team_id,
+        created_by_user_id_column=entities.c.created_by_user_id,
+        actor=actor,
+    )
+    assert str(statement.whereclause) == "entities.team_id = :team_id_1"
+    assert statement.compile().params["team_id_1"] == actor.team_id
 
 
 def test_data_scope_policy_fails_closed_without_an_effective_team() -> None:

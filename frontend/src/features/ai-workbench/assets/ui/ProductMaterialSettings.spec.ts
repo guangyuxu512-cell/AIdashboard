@@ -41,6 +41,17 @@ function mountSettings(overrides: Partial<ProductMaterialGroup> = {}) {
 }
 
 describe('ProductMaterialSettings', () => {
+  it('keeps product settings readable but disables every write control globally', async () => {
+    const wrapper = mountSettings()
+    await wrapper.setProps({ readOnly: true })
+    for (const control of [
+      ...wrapper.findAllComponents(AppSwitch),
+      ...wrapper.findAllComponents(AppSelect),
+    ])
+      expect(control.props().disabled).toBe(true)
+    expect(wrapper.text()).toContain('普通生图')
+  })
+
   it('uses compact multiple selects and filters options by generation mode', () => {
     const wrapper = mountSettings()
     const [normalSelect, styleSelect] = wrapper.findAllComponents(AppSelect)

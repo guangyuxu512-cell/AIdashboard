@@ -20,6 +20,7 @@ import {
   AiManagementToolbar,
 } from '@/features/ai-workbench'
 import { getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
@@ -51,6 +52,10 @@ type PendingDelete =
   | { type: 'assets'; assets: MaterialAssetReference[] }
 
 const message = useMessage()
+const auth = useAuthStore()
+const canWrite = computed(() => auth.hasTeamContext)
+const actorContextKey = () =>
+  `${auth.currentUser?.userId ?? ''}:${auth.activeTeamId ?? ''}`
 const queryClient = useQueryClient()
 const downloads = useAssetDownloadQueue()
 const productDialogShow = ref(false)
@@ -204,6 +209,18 @@ watch(
   { immediate: true, flush: 'sync' },
 )
 watch([selectedProductId, activeRole], resetSelection)
+watch(
+  actorContextKey,
+  () => {
+    productDialogShow.value = false
+    editingProduct.value = null
+    pendingDelete.value = null
+    previewAsset.value = null
+    selectedProductId.value = null
+    resetSelection()
+  },
+  { flush: 'sync' },
+)
 watch(searchQuery, () => {
   currentPage.value = 1
   resetSelection()
@@ -217,9 +234,14 @@ function resetSelection(): void {
 }
 
 async function execute(action: () => Promise<void>, success?: string) {
+  if (!canWrite.value) {
+    message.warning('请先选择具体团队')
+    return
+  }
+  const context = actorContextKey()
   try {
     await actionMutation.mutateAsync(action)
-    if (success) message.success(success)
+    if (success && context === actorContextKey()) message.success(success)
   } catch (error) {
     message.error(getErrorMessage(error))
   }
@@ -297,6 +319,8 @@ function updateProduct(
 }
 
 function uploadFile({ file }: { file: UploadSettledFileInfo }): boolean {
+  if (!canWrite.value) return false
+  const context = actorContextKey()
   const selectedFile = file.file
   const groupId = selectedProductId.value
   const role = activeRole.value
@@ -311,9 +335,15 @@ function uploadFile({ file }: { file: UploadSettledFileInfo }): boolean {
         formatAssetOperationFailure(error, `上传 ${selectedFile.name}`),
       )
     })
+    if (context !== actorContextKey()) {
+      throw new Error('团队已切换，文件保留在原团队，未关联当前素材组')
+    }
     try {
       await aiWorkbenchApi.attachAsset(groupId, asset.asset_id, role)
     } catch (error) {
+      if (context !== actorContextKey()) {
+        throw new Error('团队已切换，原团队的文件未自动清理')
+      }
       const failure = formatAssetOperationFailure(
         error,
         `关联 ${selectedFile.name}`,
@@ -511,13 +541,17 @@ function replaceBindings(
           accept="image/jpeg,image/png,image/webp"
           multiple
           :show-file-list="false"
-          :disabled="!selectedProduct || activeRole === 'AI_OUTPUT'"
+          :disabled="
+            !canWrite || !selectedProduct || activeRole === 'AI_OUTPUT'
+          "
           :input-props="{ 'aria-label': '上传素材' }"
           :on-before-upload="uploadFile"
         >
           <AppButton
             tone="primary"
-            :disabled="!selectedProduct || activeRole === 'AI_OUTPUT'"
+            :disabled="
+              !canWrite || !selectedProduct || activeRole === 'AI_OUTPUT'
+            "
           >
             <Upload :size="16" />
             上传素材
@@ -548,6 +582,7 @@ function replaceBindings(
       <ThreePaneWorkbench v-else class="ai-assets-workspace">
         <template #left>
           <ProductMaterialSidebar
+            :read-only="!canWrite"
             :products="visibleProducts"
             :selected-product-id="selectedProductId"
             @create="openCreateProduct"
@@ -578,6 +613,7 @@ function replaceBindings(
                   <span>启用</span>
                   <AppSwitch
                     :model-value="selectedProduct.enabled"
+                    :disabled="!canWrite"
                     :aria-label="`${selectedProduct.name}启用状态`"
                     @update:model-value="updateProduct({ enabled: $event })"
                   />
@@ -590,6 +626,7 @@ function replaceBindings(
                 @update:model-value="setActiveRole"
               />
               <MaterialBatchToolbar
+                :read-only="!canWrite"
                 :selection-mode="selectionMode"
                 :selected-count="currentPageSelectedCount"
                 :current-page-count="visibleAssets.length"
@@ -641,6 +678,7 @@ function replaceBindings(
         <template #right>
           <div class="ai-assets-workspace__inspector">
             <MaterialAssetInspector
+              :read-only="!canWrite"
               v-if="selectedAsset"
               :asset="selectedAsset"
               @close="selectedAssetId = null"
@@ -650,6 +688,7 @@ function replaceBindings(
               @update:role="updateAssetRole"
             />
             <ProductMaterialSettings
+              :read-only="!canWrite"
               v-else-if="selectedProduct"
               :product="selectedProduct"
               :template-group-options="templateOptionsQuery.data.value ?? []"

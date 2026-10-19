@@ -14,6 +14,7 @@ const props = defineProps<{
   active: boolean
   canMoveUp: boolean
   canMoveDown: boolean
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -72,7 +73,7 @@ function selectAction(key: string | number): void {
         :tone="template.enabled ? 'success' : 'neutral'"
       />
     </template>
-    <template #actions>
+    <template v-if="!readOnly" #actions>
       <NDropdown trigger="click" :options="menuOptions" @select="selectAction">
         <AppButton tone="text" :aria-label="`${template.name}操作`">
           <MoreHorizontal :size="16" />

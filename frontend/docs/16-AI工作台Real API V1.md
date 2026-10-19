@@ -35,6 +35,13 @@ Model / Template / Material Catalog
 - 受保护图片通过共享 Human Request Context 获取 Blob，再创建页面生命周期内的 Object URL；Provider URL 不进入页面状态。
 - 生成记录以 GenerationJob 为唯一事实来源，支持 Work Mode、Mode、Status 与分页。Real API 没有搜索 Contract，因此生产页面不展示 Mock 搜索框。
 
+### 2.1 超级账号与团队上下文
+
+- 全部团队可浏览素材、模板与生成记录，统一显示选团队提示；上传、新建、编辑、启停、删除、生成与失败重试不可用，预览和下载保留。生图页不在全局上下文挂载生成面板。
+- 切换默认团队或其他具体团队后，读取与上传关联使用同一 `X-Team-ID`，由后端统一 Team 谓词过滤；默认团队不再混入别的团队素材。用户菜单可随时切回全部团队，超级账号身份不变。
+- 切换团队时复用统一 Query/草稿清理，并关闭素材弹窗、删除确认与选择态。上传回执若迟于切换，不向新 Team 的素材组关联，也不在新 Team 发起清理；保留原 Team 文件并明确提示，不自动重传。
+- `playwright.ai-images.config.ts` 在既有 Real 产物离线测试中覆盖上述菜单、全局只读、团队上传与迟到回执。受控 API 浏览器测试与独立 PostgreSQL 授权测试分开记录，不替代 Integration 原生验收。
+
 ## 3. Polling And Terminal States
 
 Job Detail 在 `PENDING / RUNNING` 时短轮询；`SUCCESS / PARTIAL_FAILED / FAILED` 立即停止。记录列表仅在当前页存在非终态 Job 时轮询。失败重试调用 Backend 正式 API，Frontend 不自行改写 Item 状态。
