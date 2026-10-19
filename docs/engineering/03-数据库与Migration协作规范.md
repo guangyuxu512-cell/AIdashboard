@@ -38,6 +38,16 @@ ca97已由DBAdmin通道创建独立可重建Feature库
 
 当前活跃 Migration Slot：
 
+2026-10-19 当前唯一 active 为商品数据多店持久队列 0048；0047 已是本功能的发布基线，文件保持
+字节不变。ca97 已批准最小结构和独立资源，Owner 只在登记 Feature 库实施，不能借用 Integration、
+Main smoke 或生产数据库。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/shop-product-data-batch-queue-v1` / 81a1 | `active`（ca97 正式分配，仅 Feature 实施） | 新增商品数据 collection batch；generation 增加 batch 关系、稳定位置、attempt、heartbeat；移除旧单店幂等／活动切片唯一，改为批次幂等、每批每店／位置唯一、同 Shop running partial unique 和有限队列索引。0047 旧 generation 确定性一对一回填，不改商品事实、快照和 series pointer | 精确 Green `915c9d147276aa7bfcd3dabf1385c670c5696c6c`；down `20261017_0047` | `20261019_0048_shop_product_data_batch_queue_v1.py`，revision `20261019_0048` | 独立 `control_center_feat_shop_product_data_batch_queue`；空升级、允许条件下降级／再升级、0047 旧事实往返、约束、跨进程容量／同店串行／超时 fence 和 100 店排队均须真实 PG 验证。产生多店、重复领取或新队列语义后 downgrade 拒绝；正式回滚保 Schema／事实／审计并关闭消费者。无生产开关或平台批量调用授权。 |
+
+以下 2026-10-17 的 0047 active 表为首版实施历史，不覆盖上面的当前 0048 登记：
+
 2026-10-17商品数据首版真实接入：分配时当前代码最高单一 `20261015_0046`，该槽已 released，
 没有其他 active。规划人类 turn `01a14788-0c80-7b73-be1a-36ad46a23793` 已授权首版开发和资源分配。
 ca97 审定7d55最小四表申请（原申请SHA256 `C377F15DF51A9106E76042AFDBF2226801F1B8C7F1F51803E19FA0877A7EEE13`），

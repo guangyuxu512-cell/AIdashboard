@@ -41,6 +41,7 @@ from app.modules.operating_dashboard.scheduler import (
 )
 from app.modules.product_selection.api import router as product_selection_router
 from app.modules.product_data.api import router as product_data_router
+from app.modules.product_data.executor import execute_product_data_collections_forever
 from app.modules.product_selection.run_executor import execute_selection_runs_forever
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
@@ -95,6 +96,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if settings.product_selection_execution_enabled
         else None
     )
+    product_data_collection_task = (
+        asyncio.create_task(execute_product_data_collections_forever())
+        if settings.product_data_collection_execution_enabled
+        else None
+    )
     try:
         yield
     finally:
@@ -112,6 +118,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             operating_startup_recovery_task.cancel()
         if selection_run_task is not None:
             selection_run_task.cancel()
+        if product_data_collection_task is not None:
+            product_data_collection_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -135,6 +143,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if selection_run_task is not None:
             with suppress(asyncio.CancelledError):
                 await selection_run_task
+        if product_data_collection_task is not None:
+            with suppress(asyncio.CancelledError):
+                await product_data_collection_task
 
 
 def create_app() -> FastAPI:

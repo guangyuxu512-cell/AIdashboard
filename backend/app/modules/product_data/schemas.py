@@ -99,6 +99,23 @@ class ProductDataCollectionRequest(BaseModel):
     content_type: Literal["1"] = "1"
 
 
+class ProductDataCollectionBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    shop_ids: tuple[UUID, ...] = Field(min_length=1, max_length=100)
+    period: NativePeriod
+    submission_key: UUID
+    sale_type: Literal["1"] = "1"
+    content_type: Literal["1"] = "1"
+
+    @field_validator("shop_ids")
+    @classmethod
+    def distinct_shops(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("A collection batch cannot repeat a Shop")
+        return value
+
+
 class ProductDataMetricRead(BaseModel):
     state: ObservationState
     raw_value: str | None
@@ -144,8 +161,33 @@ class ProductDataGenerationRead(BaseModel):
     raw_complete_rows: int | None
     unit_complete_rows: int | None
     failure_code: str | None
+    attempt_count: int
+    last_heartbeat_at: datetime | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
     published_at: datetime | None
     lease_expired: bool
+
+
+class ProductDataCollectionItemRead(BaseModel):
+    shop_id: UUID
+    shop_name: str
+    generation: ProductDataGenerationRead
+
+
+class ProductDataCollectionBatchRead(BaseModel):
+    collection_batch_id: UUID
+    status: Literal["pending", "running", "succeeded", "partial", "failed"]
+    total_count: int
+    pending_count: int
+    running_count: int
+    succeeded_count: int
+    failed_count: int
+    created_at: datetime
+    items: list[ProductDataCollectionItemRead]
+
+
+class ProductDataCollectionShopRead(BaseModel):
+    shop_id: UUID
+    shop_name: str

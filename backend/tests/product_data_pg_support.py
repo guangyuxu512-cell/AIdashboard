@@ -11,8 +11,9 @@ import pytest
 from app.core.config import get_settings
 
 
-FEATURE_DATABASE = "control_center_feat_shop_product_data"
+FEATURE_DATABASE = "control_center_feat_shop_product_data_batch_queue"
 FEATURE_ROLE = "control_center_dev_user"
+FEATURE_PORT = 35433
 
 
 def guarded_feature_engine():
@@ -21,7 +22,7 @@ def guarded_feature_engine():
         pytest.skip("Product Data Feature connection was not delivered; PostgreSQL not verified")
     url = make_url(str(settings.database_url))
     if (url.database, url.username, url.host, url.port) != (
-        FEATURE_DATABASE, FEATURE_ROLE, "127.0.0.1", 35433,
+        FEATURE_DATABASE, FEATURE_ROLE, "127.0.0.1", FEATURE_PORT,
     ):
         raise RuntimeError("Product Data PG guard rejected an unregistered target before connecting")
     engine = create_engine(url, echo=False)

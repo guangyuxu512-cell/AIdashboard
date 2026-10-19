@@ -4,7 +4,7 @@ from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
@@ -14,10 +14,11 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
 from app.modules.product_data.exceptions import ProductDataQueryInvalidError
-from app.modules.product_data.executor import execute_product_data_collection
 from app.modules.product_data.schemas import (
-    ProductDataCollectionRequest, ProductDataGenerationRead, ProductDataListRead,
-    ProductDataMetricRange, ProductDataQuery,
+    ProductDataCollectionBatchRead, ProductDataCollectionBatchRequest,
+    ProductDataCollectionRequest, ProductDataCollectionShopRead,
+    ProductDataGenerationRead, ProductDataListRead, ProductDataMetricRange,
+    ProductDataQuery,
 )
 from app.modules.product_data.service import ProductDataService
 from app.modules.product_data.source import NativePeriod
@@ -69,14 +70,45 @@ def list_product_data(
 
 @router.post("/collections", response_model=ProductDataGenerationRead, status_code=202)
 def collect_product_data(
-    command: ProductDataCollectionRequest, background: BackgroundTasks,
+    command: ProductDataCollectionRequest,
     actor: Annotated[ActorContext, Depends(get_product_data_actor)],
     service: Annotated[ProductDataService, Depends(get_product_data_service)],
 ) -> ProductDataGenerationRead:
-    receipt, lease_id = service.request_collection(actor, command)
-    if lease_id is not None:
-        background.add_task(execute_product_data_collection, receipt.generation_id, lease_id)
+    receipt, _lease_id = service.request_collection(actor, command)
     return receipt
+
+
+@router.get("/collection-shops", response_model=list[ProductDataCollectionShopRead])
+def list_product_data_collection_shops(
+    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
+    service: Annotated[ProductDataService, Depends(get_product_data_service)],
+) -> list[ProductDataCollectionShopRead]:
+    return service.list_collection_shops(actor)
+
+
+@router.post(
+    "/collection-batches",
+    response_model=ProductDataCollectionBatchRead,
+    status_code=202,
+)
+def collect_product_data_batch(
+    command: ProductDataCollectionBatchRequest,
+    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
+    service: Annotated[ProductDataService, Depends(get_product_data_service)],
+) -> ProductDataCollectionBatchRead:
+    return service.request_collection_batch(actor, command)
+
+
+@router.get(
+    "/collection-batches/{collection_batch_id}",
+    response_model=ProductDataCollectionBatchRead,
+)
+def read_product_data_collection_batch(
+    collection_batch_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
+    service: Annotated[ProductDataService, Depends(get_product_data_service)],
+) -> ProductDataCollectionBatchRead:
+    return service.read_batch(actor, collection_batch_id)
 
 
 @router.get("/collections/{generation_id}", response_model=ProductDataGenerationRead)

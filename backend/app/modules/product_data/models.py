@@ -1,4 +1,4 @@
-"""The four approved product-data tables; no queue, scheduler or cleanup."""
+"""Product-data facts plus the smallest durable manual-collection queue."""
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -52,6 +52,40 @@ def metric_checks() -> tuple[CheckConstraint, ...]:
             ),
         ))
     return tuple(checks)
+
+
+class ShopProductDataCollectionBatch(TimestampMixin, Base):
+    __tablename__ = "shop_product_data_collection_batches"
+    __table_args__ = (
+        UniqueConstraint(
+            "requested_by_user_id",
+            "submission_key",
+            name="uq_spd_batch_actor_key",
+        ),
+        CheckConstraint(
+            "period IN ('1d','7d','30d') AND sale_type = '1' AND content_type = '1'",
+            name="native_scope",
+        ),
+    )
+
+    collection_batch_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        primary_key=True,
+        default=generate_id,
+    )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    requested_team_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("teams.team_id", ondelete="RESTRICT"),
+    )
+    submission_key: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    sale_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(8), nullable=False)
 
 
 class ShopProductDataProduct(TimestampMixin, Base):
@@ -111,9 +145,32 @@ class ShopProductDataGeneration(TimestampMixin, Base):
         ForeignKeyConstraint(["series_id", "shop_id"], ["shop_product_data_series.series_id", "shop_product_data_series.shop_id"], ondelete="RESTRICT", name="fk_spd_generation_series_shop"),
         UniqueConstraint("generation_id", "shop_id", name="uq_spd_generation_shop"),
         UniqueConstraint("generation_id", "series_id", name="uq_spd_generation_series"),
+        ForeignKeyConstraint(
+            ["collection_batch_id"],
+            ["shop_product_data_collection_batches.collection_batch_id"],
+            ondelete="RESTRICT",
+            name="fk_spd_generation_batch",
+        ),
         UniqueConstraint("series_id", "sequence", name="uq_spd_generation_sequence"),
-        UniqueConstraint("requested_by_user_id", "submission_key", name="uq_spd_generation_actor_key"),
-        Index("uq_spd_active_slice", "shop_id", "source_scope_hash", unique=True, postgresql_where=text("status IN ('pending','running')")),
+        UniqueConstraint("collection_batch_id", "shop_id", name="uq_spd_batch_shop"),
+        UniqueConstraint("collection_batch_id", "batch_position", name="uq_spd_batch_position"),
+        Index(
+            "uq_spd_running_shop",
+            "shop_id",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+        Index(
+            "ix_spd_generation_queue",
+            "status",
+            "created_at",
+            "generation_id",
+        ),
+        Index(
+            "ix_spd_generation_batch",
+            "collection_batch_id",
+            "batch_position",
+        ),
         Index("ix_spd_generation_actor", "requested_by_user_id", "requested_team_id", "created_at", "generation_id"),
         CheckConstraint("source_scope_hash ~ '^[a-f0-9]{64}$'", name="scope_hash"),
         CheckConstraint("sequence > 0", name="sequence"),
@@ -125,15 +182,18 @@ class ShopProductDataGeneration(TimestampMixin, Base):
         CheckConstraint("stage IN ('queued','session_preparation','signing','platform_response','response_parse','collection_coverage','publication','execution','complete')", name="stage"),
         CheckConstraint(exact_json_keys("request_scope", ("shop_id", "period", "start_date", "end_date", "timezone", "platform", "sale_type", "content_type", "request_contract", "metric_contract")), name="scope_keys"),
         CheckConstraint(
-            "(status = 'pending' AND lease_id IS NULL AND lease_until IS NULL AND started_at IS NULL AND finished_at IS NULL AND published_at IS NULL AND NOT pages_complete) OR "
-            "(status = 'running' AND lease_id IS NOT NULL AND lease_until IS NOT NULL AND started_at IS NOT NULL AND finished_at IS NULL AND published_at IS NULL AND NOT pages_complete) OR "
-            "(status = 'succeeded' AND lease_id IS NULL AND lease_until IS NULL AND started_at IS NOT NULL AND finished_at IS NOT NULL AND published_at IS NOT NULL AND pages_complete AND expected_total IS NOT NULL AND received_total IS NOT NULL AND received_total = expected_total AND raw_complete_rows IS NOT NULL AND unit_complete_rows IS NOT NULL AND failure_code IS NULL) OR "
-            "(status = 'failed' AND lease_id IS NULL AND lease_until IS NULL AND finished_at IS NOT NULL AND published_at IS NULL AND NOT pages_complete AND failure_code IS NOT NULL)",
+            "(status = 'pending' AND attempt_count = 0 AND lease_id IS NULL AND lease_until IS NULL AND last_heartbeat_at IS NULL AND started_at IS NULL AND finished_at IS NULL AND published_at IS NULL AND NOT pages_complete) OR "
+            "(status = 'running' AND attempt_count > 0 AND lease_id IS NOT NULL AND lease_until IS NOT NULL AND last_heartbeat_at IS NOT NULL AND started_at IS NOT NULL AND finished_at IS NULL AND published_at IS NULL AND NOT pages_complete) OR "
+            "(status = 'succeeded' AND attempt_count > 0 AND lease_id IS NULL AND lease_until IS NULL AND last_heartbeat_at IS NOT NULL AND started_at IS NOT NULL AND finished_at IS NOT NULL AND published_at IS NOT NULL AND pages_complete AND expected_total IS NOT NULL AND received_total IS NOT NULL AND received_total = expected_total AND raw_complete_rows IS NOT NULL AND unit_complete_rows IS NOT NULL AND failure_code IS NULL) OR "
+            "(status = 'failed' AND attempt_count > 0 AND lease_id IS NULL AND lease_until IS NULL AND last_heartbeat_at IS NOT NULL AND finished_at IS NOT NULL AND published_at IS NULL AND NOT pages_complete AND failure_code IS NOT NULL)",
             name="state_fields",
         ),
+        CheckConstraint("batch_position >= 0 AND attempt_count >= 0", name="queue_counts"),
     )
 
     generation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=generate_id)
+    collection_batch_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    batch_position: Mapped[int] = mapped_column(Integer, nullable=False)
     series_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     shop_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -155,8 +215,15 @@ class ShopProductDataGeneration(TimestampMixin, Base):
     pages_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     stage: Mapped[str] = mapped_column(String(32), nullable=False)
     failure_code: Mapped[str | None] = mapped_column(String(96))
+    attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     lease_id: Mapped[UUID | None] = mapped_column(Uuid)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

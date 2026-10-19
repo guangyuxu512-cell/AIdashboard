@@ -4,17 +4,26 @@ Pydantic Schema / OpenAPI 为权威来源。
 
 ## 商品数据手动采集与只读查询 V1
 
-实现契约见26号文档，Schema为modules/product_data/schemas.py。三个资源均使用当前人员会话、shop模块与实时Shop授权：
+实现契约见26号文档，Schema 为 `modules/product_data/schemas.py`。查询和采集资源均使用当前人员
+会话、shop 模块与实时 Shop 授权；多店提交是当前正式入口，原单店资源保留兼容：
 
 | 方法与路径 | 契约 |
 | --- | --- |
 | GET /api/v1/product-data | period=1d/7d/30d及精确start_date/end_date；可选shop_id、十进制product_id片段、product_name、sale_type/content_type固定1、ranges、page/page_size默认1/20、成对sort_field/sort_direction。ranges为最多4096字符的JSON数组，每项metric/min_value/max_value，数值用精确十进制字符串。全量SQL筛选/排序后分页，只读已发布代，不发平台请求。 |
-| POST /api/v1/product-data/collections | Body shop_id、period、submission_key UUID，可选sale_type/content_type固定1。202返回冻结采集回执；新意图提交后仅执行一次有限后台函数。相同Actor+key重放原窗口与回执，不再次执行。默认环境开关false时503，不写等待队列。 |
-| GET /api/v1/product-data/collections/{generation_id} | 当前权限下的精确回执；普通成员仅本人原Team且仍授权Shop可读，否则404。只读状态，不恢复或重启。 |
+| GET /api/v1/product-data/collection-shops | 返回当前人员有权、启用、未删除且支持抖店商品采集的 Shop；只读数据库，不校验平台身份或触发采集。 |
+| POST /api/v1/product-data/collection-batches | Body 为 1–100 个互不重复 `shop_ids`、period、submission_key UUID，sale/content 固定 1。202 原子创建一个批次及每店一个 pending generation；全部权限和店铺状态先通过才写入。相同 Actor+key 只在 Team、店铺集合和完整口径一致时返回原批次。默认执行开关 false 时 503 且零写入。 |
+| GET /api/v1/product-data/collection-batches/{collection_batch_id} | 返回批次总数、pending/running/succeeded/failed 计数及稳定逐店回执。普通成员仅本人原 Team 且仍拥有批次内全部 Shop 授权时可读；只读进度，不新建或恢复任务。 |
+| POST /api/v1/product-data/collections | 旧单店兼容入口；内部包装为一店批次，仍返回该店 generation 回执，不直接在 HTTP 请求内执行平台 I/O。 |
+| GET /api/v1/product-data/collections/{generation_id} | 旧单店兼容回执；普通成员仅本人原 Team 且仍授权 Shop 可读，否则 404。 |
 
 列表沿Page并增加coverage(supported_shop_count/collected_shop_count/missing_shop_ids/collection_available/unit_unconfirmed_codes)。每行shop_product_id/generation_id/shop_id/shop_name/product_id/title/image_url/metrics/scope/retrieved_at；17个metrics含state、精确raw_value字符串或null、raw_unit、unit_verified。固定商品列表路径已核定金额unit3原值除100为元、比例unit4原值为分数（展示乘100%）、计数unit5不缩放；原值字段不改变单位。unit_verified表示当前尺度契约及unit匹配，不表示数据有值；当前17项契约unit_unconfirmed_codes为空，逐行未知/无效仍保持。五数量及四比例区间在SQL执行，比例边界是精确分数字符串，min含/max不含；17项有效指标可排序。未支持的分组、定制日期、sale/content及旧兼容指标不忽略或重绑。
 
-回执含scope、status、stage、received_pages、可空expected_total/received_total/raw_complete_rows/unit_complete_rows、pages_complete、failure_code、created_at/started_at/finished_at/published_at、lease_expired。运行回执与共享商品事实分离，不返回他人进度或凭据。没有自动重试、扫描、TTL或全店铺采集。过期运行保持可观察，只有显式新意图可终结同切片过期代；旧成功数据不变。
+单店回执含 scope、status、stage、received_pages、可空 expected_total/received_total/
+raw_complete_rows/unit_complete_rows、pages_complete、failure_code、attempt_count、last_heartbeat_at、
+created_at/started_at/finished_at/published_at、lease_expired。批次状态是逐店 generation 的实时投影，
+不是第二套状态机。后台消费者只扫描已经显式提交的 durable pending／过期 running；没有每日计划、
+页面读取触发、无限重试或 TTL。过期 lease 可由一个新执行者恢复，attempt 递增，旧执行者的进度、
+Session 更新、失败和发布都必须被 lease fence 拒绝；失败不覆盖既有成功事实。
 
 单位核定不更改request_contract/metric_contract、scope/series哈希或既有快照。旧回执unit_complete_rows=0不回填，继续表示其采集当时的覆盖记录；新GET对同一原值的unit_verified可以为true，两者不矛盾。新采集只对17项state均available且单位匹配的行计显示完整。
 

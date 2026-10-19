@@ -56,11 +56,19 @@ class Settings(BaseSettings):
     task_event_retention_batch_size: int = Field(default=100, ge=1, le=1000)
     schedule_scan_interval_seconds: int = Field(default=10, ge=1, le=300)
     schedule_trigger_batch_size: int = Field(default=50, ge=1, le=500)
-    # Explicit manual Product Data execution only. No scanner or daily job.
+    # Explicit manual Product Data execution only. The consumer scans only
+    # already-submitted durable work; there is no daily planning job.
     product_data_collection_execution_enabled: bool = False
-    product_data_collection_max_pages: int = Field(default=100, ge=1, le=500)
+    # Compass returns ten rows per page. 101 pages keeps the request finite
+    # while allowing the verified 1,001-row boundary to complete.
+    product_data_collection_max_pages: int = Field(default=101, ge=1, le=500)
     product_data_collection_max_running: int = Field(default=1, ge=1, le=5)
     product_data_collection_lease_seconds: int = Field(default=600, ge=60, le=3600)
+    product_data_collection_scan_interval_seconds: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=60.0,
+    )
     shop_session_validation_freshness_seconds: int = Field(
         default=300,
         ge=0,

@@ -42,7 +42,12 @@ class ProductDataStoredSessionIO:
     def page(self, generation_id, lease_id, page_no):
         with self.session_factory() as session:
             service = ProductDataService(session, settings=self.settings)
-            context = service.prepare_execution(generation_id, lease_id)
+            context = service.prepare_execution(
+                generation_id,
+                lease_id,
+                stage="session_preparation",
+                heartbeat=True,
+            )
             accessor = self._accessor(session)
 
             def finish_owned_read() -> None:
@@ -78,12 +83,22 @@ class ProductDataStoredSessionIO:
             result = self.connector.page(auth, context.scope, context.platform_shop_id, page_no)
         except PlatformAuthenticationInvalidError:
             with self.session_factory() as session:
-                ProductDataService(session, settings=self.settings).prepare_execution(generation_id, lease_id)
+                ProductDataService(session, settings=self.settings).prepare_execution(
+                    generation_id,
+                    lease_id,
+                    stage="session_preparation",
+                    heartbeat=True,
+                )
                 self._accessor(session).mark_validation_status(auth.shop_id, auth.session_version, ShopSessionStatus.INVALID)
             raise
         with self.session_factory() as session:
             service = ProductDataService(session, settings=self.settings)
-            current = service.prepare_execution(generation_id, lease_id)
+            current = service.prepare_execution(
+                generation_id,
+                lease_id,
+                stage="platform_response",
+                heartbeat=True,
+            )
             if current != context:
                 raise SessionVersionConflictError()
             metadata = ShopSessionService(session).get_metadata(auth.shop_id)
