@@ -161,7 +161,7 @@ describe('durable multi-shop Product Data collection action', () => {
       expect(dataSource.collectionBatch).toHaveBeenCalledExactlyOnceWith(
         ACTIVE_BATCH_ID,
       )
-      expect(wrapper.text()).toContain('采集完成')
+      expect(wrapper.text()).toContain('更新完成')
       expect(wrapper.text()).toContain('成功 2')
       expect(wrapper.text()).toContain('完成 · 12 件')
       expect(invalidate).toHaveBeenCalledWith({
@@ -181,6 +181,8 @@ describe('durable multi-shop Product Data collection action', () => {
     try {
       await openAndSubmit(initial.wrapper)
       expect(initialSource.collectBatch).toHaveBeenCalledTimes(1)
+      expect(initial.wrapper.text()).toContain('查看更新进度')
+      expect(initial.wrapper.text()).not.toContain('采集进度')
       expect(
         window.localStorage.getItem(
           'control-center.product-data.active-collection-batch.v1.synthetic:team.7d',
@@ -198,7 +200,7 @@ describe('durable multi-shop Product Data collection action', () => {
         ACTIVE_BATCH_ID,
       )
       expect(restoredSource.collectBatch).not.toHaveBeenCalled()
-      expect(restored.wrapper.text()).toContain('采集完成')
+      expect(restored.wrapper.text()).toContain('更新完成')
       expect(
         window.localStorage.getItem(
           'control-center.product-data.active-collection-batch.v1.synthetic:team.7d',
@@ -309,7 +311,7 @@ describe('durable multi-shop Product Data collection action', () => {
       await flushPromises()
       expect(dataSource.collectionBatch).toHaveBeenCalledTimes(2)
       expect(dataSource.collectBatch).toHaveBeenCalledTimes(1)
-      expect(wrapper.text()).toContain('采集完成')
+      expect(wrapper.text()).toContain('更新完成')
     } finally {
       dispose()
     }
@@ -342,7 +344,7 @@ describe('durable multi-shop Product Data collection action', () => {
       await current.wrapper.setProps({ contextKey: 'other:team' })
       resolve(batch(['succeeded', 'succeeded']))
       await flushPromises()
-      expect(current.wrapper.text()).not.toContain('采集完成')
+      expect(current.wrapper.text()).not.toContain('更新完成')
       expect(dataSource.collectionBatch).not.toHaveBeenCalled()
     } finally {
       current.dispose()

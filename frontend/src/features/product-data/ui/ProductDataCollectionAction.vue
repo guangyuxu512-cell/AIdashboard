@@ -165,7 +165,7 @@ watch(
 
 const reason = computed(() =>
   !props.enabled
-    ? '当前环境未启用手动采集'
+    ? '当前环境未启用手动更新'
     : !props.period
       ? '仅支持近1/7/30天'
       : !props.source.collectBatch ||
@@ -176,15 +176,15 @@ const reason = computed(() =>
 )
 const status = computed(() => {
   if (polling.error.value) return '回执读取未完成'
-  if (restoring.value) return '读取采集进度'
+  if (restoring.value) return '读取更新进度'
   if (submit.error.value) return '提交未确认'
   if (!receipt.value) return null
   return {
-    pending: '等待采集',
-    running: '采集中',
-    succeeded: '采集完成',
+    pending: '等待更新',
+    running: '更新中',
+    succeeded: '更新完成',
     partial: '部分完成',
-    failed: '采集失败',
+    failed: '更新失败',
   }[receipt.value.status]
 })
 const summary = computed(() => {
@@ -199,7 +199,7 @@ const summary = computed(() => {
 })
 const confirmDisabledReason = computed(() =>
   shops.error.value
-    ? '可采集店铺读取失败'
+    ? '可更新店铺读取失败'
     : selectedShopIds.value.length > 100
       ? '每次最多选择 100 家店铺'
       : !selectedShopIds.value.length
@@ -249,7 +249,7 @@ function confirm() {
 }
 function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
   const failures: Record<string, string> = {
-    PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED: '超出采集上限',
+    PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED: '超出更新上限',
     PRODUCT_DATA_SESSION_VALIDATION_REQUIRED: '需要重新登录',
     SHOP_SESSION_NOT_CONFIGURED: '需要登录店铺',
     SHOP_SESSION_PAYLOAD_INVALID: '会话数据无效',
@@ -258,7 +258,7 @@ function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
   }
   return {
     pending: '排队中',
-    running: `采集中 · ${item.generation.receivedPages} 页`,
+    running: `更新中 · ${item.generation.receivedPages} 页`,
     succeeded: `完成 · ${item.generation.receivedTotal ?? 0} 件`,
     failed: `失败 · ${
       (item.generation.failureCode && failures[item.generation.failureCode]) ??
@@ -282,9 +282,9 @@ function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
             polling.error.value
               ? '重新读取进度'
               : restoring
-                ? '读取采集进度'
+                ? '读取更新进度'
                 : busy
-                  ? '查看采集进度'
+                  ? '查看更新进度'
                   : '更新数据'
           }}
         </AppButton>
@@ -295,9 +295,9 @@ function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
 
   <AppDialog
     v-model:show="visible"
-    title="更新商品数据"
+    title="商品数据更新"
     size="md"
-    :positive-text="restoring ? '读取中' : busy ? '采集中' : '提交更新'"
+    :positive-text="restoring ? '读取中' : busy ? '更新中' : '提交更新'"
     :loading="submit.isPending.value"
     :positive-disabled="
       submissionInFlight || restoring || busy || !!confirmDisabledReason
@@ -310,7 +310,7 @@ function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
         <div class="product-data-collection__empty">回执读取未完成，请重试</div>
       </template>
       <template v-else-if="restoring">
-        <div class="product-data-collection__empty">正在恢复采集进度</div>
+        <div class="product-data-collection__empty">正在恢复更新进度</div>
       </template>
       <template v-else-if="!receipt">
         <ShopMultiSelector
@@ -323,7 +323,7 @@ function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
           v-else-if="!shops.error.value"
           class="product-data-collection__empty"
         >
-          暂无可采集的授权抖店
+          暂无可更新的授权抖店
         </div>
         <div class="product-data-collection__hint">
           已选择
