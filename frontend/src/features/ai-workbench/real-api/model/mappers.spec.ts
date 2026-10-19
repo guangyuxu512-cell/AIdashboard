@@ -255,8 +255,8 @@ describe('AI Workbench real API mappers', () => {
       results: [
         {
           assetId: 'asset-0',
-          previewUrl: '/api/v1/assets/asset-0/content',
-          thumbnailUrl: '/api/v1/assets/asset-0/thumbnail',
+          previewUrl: '/api/v1/ai-workbench/assets/asset-0/content',
+          thumbnailUrl: '/api/v1/ai-workbench/assets/asset-0/thumbnail',
         },
       ],
     })

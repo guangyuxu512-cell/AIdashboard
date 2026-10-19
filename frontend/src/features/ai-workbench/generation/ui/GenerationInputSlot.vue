@@ -165,7 +165,6 @@ function upload({ file }: { file: UploadSettledFileInfo }): boolean {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
 }
 
 .generation-input-slot__image > span {

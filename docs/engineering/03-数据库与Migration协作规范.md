@@ -28,6 +28,14 @@ Feature DB 的生命周期由 Integrator 负责：仅 Integrator 可通过数据
 - 没有结构变化的 Feature 在 Handoff 中显式写“Migration Slot：无”。
 - 发生冲突、升级失败、非预期数据影响或验证不充分时，Slot 状态改为 `rejected`，候选退回原 Feature 修复；不得在 `dev` 上直接修补候选。
 
+2026-10-19 `hotfix/ai-asset-upload-access-v1` 明确为无Schema变更，Migration Slot：无。
+ca97已由DBAdmin通道创建独立可重建Feature库
+`control_center_feat_ai_asset_upload_access`，Owner为既有最小权限角色`control_center_dev_user`；
+仅新增该库、该角色、既有来源`172.17.0.1/32`的SCRAM HBA规则，保留变更前备份并reload、未重启。
+目标工作树受保护ignored连接已交付并实连，空库经既有迁移升级为单一`20261017_0047`；
+`assets`、`task_assets`、`material_group_assets`、`generation_jobs`、`generation_item_assets`均0。
+本分配不得借用或改写0047，不得连接Integration/Main smoke/生产实施Feature。
+
 当前活跃 Migration Slot：
 
 2026-10-17商品数据首版真实接入：分配时当前代码最高单一 `20261015_0046`，该槽已 released，

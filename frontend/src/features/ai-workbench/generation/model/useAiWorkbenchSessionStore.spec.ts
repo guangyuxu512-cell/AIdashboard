@@ -280,10 +280,10 @@ describe('AI Workbench session state', () => {
       {
         id: 'asset-1',
         name: '商品图.png',
-        previewUrl: '/api/v1/assets/asset-1/content',
+        previewUrl: '/api/v1/ai-workbench/assets/asset-1/content',
         role: 'PRODUCT_SOURCE',
         sourceType: 'LOCAL_UPLOAD',
-        thumbnailUrl: '/api/v1/assets/asset-1/thumbnail',
+        thumbnailUrl: '/api/v1/ai-workbench/assets/asset-1/thumbnail',
       },
     ])
     expect(restored.instantCurrentJobId).toBe('job-instant')

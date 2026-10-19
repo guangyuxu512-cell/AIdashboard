@@ -3,9 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { z } from 'zod'
 
 import {
-  getAssetContentUrl,
-  getAssetThumbnailUrl,
-} from '@/entities/asset/api/asset-api'
+  getAiAssetContentUrl as getAssetContentUrl,
+  getAiAssetThumbnailUrl as getAssetThumbnailUrl,
+} from '@/entities/ai-workbench/api/ai-asset-api'
 import {
   aiWorkbenchApi,
   type BatchGenerationSubmitDto,

@@ -40,6 +40,7 @@ from app.modules.ai_workbench.schemas import (
 )
 from app.modules.assets.exceptions import AssetNotFoundError
 from app.modules.assets.service import AssetService
+from app.modules.ai_workbench.asset_service import AiAssetService
 from app.shared.identifiers import generate_id
 
 
@@ -68,6 +69,7 @@ class AiWorkbenchService:
             session,
         )
         self.asset_service = asset_service or AssetService(session)
+        self.ai_assets = AiAssetService(session, asset_service=self.asset_service)
 
     def list_template_groups(
         self,
@@ -374,10 +376,11 @@ class AiWorkbenchService:
         data: MaterialGroupAssetAttach,
     ) -> ProductMaterialGroup:
         group = self._material_group_for_write(actor, material_group_id)
-        assets = self.asset_service.list_accessible_by_ids(actor, [data.asset_id])
+        assets = self.asset_service.list_accessible_by_ids_for_update(actor, [data.asset_id])
         if len(assets) != 1 or assets[0].team_id != group.team_id:
             self.session.rollback()
             raise AssetNotFoundError()
+        self.ai_assets.require_eligible(actor, assets)
         existing = next(
             (link for link in group.asset_links if link.asset_id == data.asset_id),
             None,

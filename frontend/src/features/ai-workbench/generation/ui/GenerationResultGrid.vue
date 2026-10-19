@@ -96,7 +96,6 @@ defineEmits<{
   aspect-ratio: 1;
   border-radius: var(--radius-control);
   background: var(--bg-subtle);
-  object-fit: cover;
 }
 
 .generation-result-card__meta,
