@@ -36,15 +36,20 @@ ca97已由DBAdmin通道创建独立可重建Feature库
 `assets`、`task_assets`、`material_group_assets`、`generation_jobs`、`generation_item_assets`均0。
 本分配不得借用或改写0047，不得连接Integration/Main smoke/生产实施Feature。
 
-当前活跃 Migration Slot：
+当前活跃 Migration Slot：无。
 
-2026-10-19 当前唯一 active 为商品数据多店持久队列 0048；0047 已是本功能的发布基线，文件保持
-字节不变。ca97 已批准最小结构和独立资源，Owner 只在登记 Feature 库实施，不能借用 Integration、
-Main smoke 或生产数据库。
+2026-10-19 正式核销商品数据多店持久队列 0048：最终 Candidate
+`29c5bab09afb95276ba72d7fbccfdb1109ea8dd9` 经 ca97 正常 no-ff 合入；精确 dev
+`65ecf3f72a6ae9ea3114d7404841ad9aae876565` 的 CI run `39255469084` attempt 1 中 Backend、
+Frontend Real Build、Container Runtime、Windows Verify Offline 四项全部成功，故该精确提交登记为
+Green。Feature PostgreSQL 59 项、Integration 0047→0048、可读 pre0048 备份、旧事实保留、双店持久
+批次恢复及人工逐店进度均已核销；测试批次清理后无 pending/running，平台请求和生产写入均为 0。
+0048 Slot 现为 `released`，未分配下一 Slot。生产仍为 0047；本核销不构成 main 合并、生产迁移或发布。
+后续纯治理提交不替代上述精确 Green。
 
 | Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
 | --- | --- | --- | --- | --- | --- |
-| `feat/shop-product-data-batch-queue-v1` / 81a1 | `active`（ca97 正式分配，仅 Feature 实施） | 新增商品数据 collection batch；generation 增加 batch 关系、稳定位置、attempt、heartbeat；移除旧单店幂等／活动切片唯一，改为批次幂等、每批每店／位置唯一、同 Shop running partial unique 和有限队列索引。0047 旧 generation 确定性一对一回填，不改商品事实、快照和 series pointer | 精确 Green `915c9d147276aa7bfcd3dabf1385c670c5696c6c`；down `20261017_0047` | `20261019_0048_shop_product_data_batch_queue_v1.py`，revision `20261019_0048` | 独立 `control_center_feat_shop_product_data_batch_queue`；空升级、允许条件下降级／再升级、0047 旧事实往返、约束、跨进程容量／同店串行／超时 fence 和 100 店排队均须真实 PG 验证。产生多店、重复领取或新队列语义后 downgrade 拒绝；正式回滚保 Schema／事实／审计并关闭消费者。无生产开关或平台批量调用授权。 |
+| `feat/shop-product-data-batch-queue-v1` / 81a1 | `released` | 新增商品数据 collection batch；generation 增加 batch 关系、稳定位置、attempt、heartbeat；移除旧单店幂等／活动切片唯一，改为批次幂等、每批每店／位置唯一、同 Shop running partial unique 和有限队列索引。0047 旧 generation 确定性一对一回填，不改商品事实、快照和 series pointer | 精确 Green `65ecf3f72a6ae9ea3114d7404841ad9aae876565`；down `20261017_0047` | `20261019_0048_shop_product_data_batch_queue_v1.py`，revision `20261019_0048` | 独立 `control_center_feat_shop_product_data_batch_queue` 与 Integration 单一 0048 已验证；CI `39255469084` 四项成功。产生多店、重复领取或新队列语义后 downgrade 拒绝；正式回滚保 Schema／事实／审计并关闭消费者。生产迁移仍待独立 Release Gate。 |
 
 以下 2026-10-17 的 0047 active 表为首版实施历史，不覆盖上面的当前 0048 登记：
 
