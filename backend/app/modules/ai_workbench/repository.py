@@ -30,6 +30,46 @@ from app.modules.ai_workbench.models import (
 )
 
 
+class AiAssetReferenceRepository:
+    """Only existing, scoped AI parent resources confer file-use eligibility."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def referenced_asset_ids(
+        self, actor: ActorContext, asset_ids: Sequence[UUID],
+    ) -> set[UUID]:
+        material = DataScopePolicy.apply(
+            select(MaterialGroupAsset.asset_id)
+            .join(ProductMaterialGroup, ProductMaterialGroup.material_group_id == MaterialGroupAsset.material_group_id)
+            .join(Asset, Asset.asset_id == MaterialGroupAsset.asset_id)
+            .where(Asset.asset_id.in_(asset_ids), Asset.team_id == ProductMaterialGroup.team_id),
+            actor=actor,
+            team_id_column=ProductMaterialGroup.team_id,
+            created_by_user_id_column=ProductMaterialGroup.created_by_user_id,
+        )
+        inputs = DataScopePolicy.apply(
+            select(GenerationItemAsset.asset_id)
+            .join(GenerationItem, GenerationItem.generation_item_id == GenerationItemAsset.generation_item_id)
+            .join(GenerationJob, GenerationJob.generation_job_id == GenerationItem.generation_job_id)
+            .join(Asset, Asset.asset_id == GenerationItemAsset.asset_id)
+            .where(Asset.asset_id.in_(asset_ids), Asset.team_id == GenerationJob.team_id),
+            actor=actor,
+            team_id_column=GenerationJob.team_id,
+            created_by_user_id_column=GenerationJob.created_by_user_id,
+        )
+        outputs = DataScopePolicy.apply(
+            select(GenerationItem.output_asset_id)
+            .join(GenerationJob, GenerationJob.generation_job_id == GenerationItem.generation_job_id)
+            .join(Asset, Asset.asset_id == GenerationItem.output_asset_id)
+            .where(Asset.asset_id.in_(asset_ids), Asset.team_id == GenerationJob.team_id),
+            actor=actor,
+            team_id_column=GenerationJob.team_id,
+            created_by_user_id_column=GenerationJob.created_by_user_id,
+        )
+        return set(self.session.scalars(material)) | set(self.session.scalars(inputs)) | set(self.session.scalars(outputs))
+
+
 class TemplateRepository:
     def __init__(self, session: Session) -> None:
         self.session = session

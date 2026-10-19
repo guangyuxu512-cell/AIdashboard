@@ -1,10 +1,13 @@
-import { apiBaseUrl, httpClient } from '@/shared/api'
+import { ApiError, apiBaseUrl, httpClient, toApiError } from '@/shared/api'
 import type { PageDto } from '@/shared/api'
 
 import type { AssetReadDto } from './contracts'
 
 export const assetDownloadTimeoutMs = 120_000
 export const assetPreviewTimeoutMs = 30_000
+export const assetUploadTimeoutMs = 120_000
+// Product upload contract; Backend validation always remains authoritative.
+export const assetMaxUploadBytes = 10 * 1024 * 1024
 
 export interface AssetDownloadProgress {
   loadedBytes: number
@@ -29,20 +32,65 @@ export interface AssetListApiParams {
 function getAssetUrl(
   assetId: string,
   resource: 'content' | 'thumbnail',
+  basePath = '/api/v1/assets',
 ): string {
-  const path = `/api/v1/assets/${encodeURIComponent(assetId)}/${resource}`
+  const path = `${basePath}/${encodeURIComponent(assetId)}/${resource}`
   if (/^https?:\/\//i.test(apiBaseUrl)) {
     return new URL(path, apiBaseUrl).toString()
   }
   return path
 }
 
-export function getAssetContentUrl(assetId: string): string {
-  return getAssetUrl(assetId, 'content')
+export function getAssetContentUrl(assetId: string, basePath?: string): string {
+  return getAssetUrl(assetId, 'content', basePath)
 }
 
-export function getAssetThumbnailUrl(assetId: string): string {
-  return getAssetUrl(assetId, 'thumbnail')
+export function getAssetThumbnailUrl(
+  assetId: string,
+  basePath?: string,
+): string {
+  return getAssetUrl(assetId, 'thumbnail', basePath)
+}
+
+export async function uploadAssetFile(
+  file: File,
+  path = '/api/v1/assets',
+): Promise<AssetReadDto> {
+  if (file.size > assetMaxUploadBytes) {
+    throw new ApiError({
+      code: 'ASSET_TOO_LARGE',
+      status: 413,
+      message: '单张图片不能超过 10 MiB',
+    })
+  }
+  const form = new FormData()
+  form.append('file', file, file.name)
+  const response = await httpClient.post<AssetReadDto>(path, form, {
+    timeout: assetUploadTimeoutMs,
+  })
+  return response.data
+}
+
+export function formatAssetOperationFailure(
+  error: unknown,
+  phase = '上传图片',
+): string {
+  const failure = toApiError(error)
+  const description =
+    failure.status === 413
+      ? '图片超过大小限制，单张图片不能超过 10 MiB'
+      : failure.code === 'TEAM_CONTEXT_REQUIRED'
+        ? '请先选择业务团队'
+        : failure.code === 'MODULE_ACCESS_DENIED'
+          ? '当前账号没有此素材操作权限，请联系管理员检查授权'
+          : failure.code === 'REQUEST_TIMEOUT'
+            ? '请求超时，结果尚未确认，请先刷新检查后再试'
+            : failure.message
+  const code =
+    failure.status && failure.code === 'NETWORK_ERROR'
+      ? `HTTP_${failure.status}`
+      : failure.code
+  return `${phase}：${description} [${code}]${failure.requestId ? ` 请求编号：${failure.requestId}` : ''}`
 }
 
 export async function fetchAssetContent(
@@ -95,10 +143,7 @@ export const assetApi = {
   },
 
   async upload(file: File): Promise<AssetReadDto> {
-    const form = new FormData()
-    form.append('file', file, file.name)
-    const response = await httpClient.post<AssetReadDto>('/api/v1/assets', form)
-    return response.data
+    return uploadAssetFile(file)
   },
 
   async remove(assetId: string): Promise<void> {

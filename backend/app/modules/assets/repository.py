@@ -123,7 +123,7 @@ class AssetRepository:
             created_by_user_id_column=Asset.created_by_user_id,
             actor=actor,
         )
-        return list(self.session.scalars(statement.with_for_update()))
+        return list(self.session.scalars(statement.order_by(Asset.asset_id).with_for_update()))
 
     def list_by_ids(self, asset_ids: Sequence[UUID]) -> Sequence[Asset]:
         if not asset_ids:

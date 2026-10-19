@@ -164,6 +164,5 @@ function setPreviewVisible(visible: boolean): void {
   width: 30px;
   height: 30px;
   border-radius: var(--radius-sm);
-  object-fit: cover;
 }
 </style>

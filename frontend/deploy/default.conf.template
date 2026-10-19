@@ -2,6 +2,9 @@ server {
     listen ${FRONTEND_BIND_HOST}:${FRONTEND_BIND_PORT};
     server_name _;
 
+    # Match the host proxy and leave multipart overhead above the 10 MiB file limit.
+    client_max_body_size 12m;
+
     root /usr/share/nginx/html;
     index index.html;
 

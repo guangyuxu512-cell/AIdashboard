@@ -6,6 +6,7 @@ import pytest
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
+from app.modules.access.module_access import ModuleCode
 from app.modules.ai_workbench.enums import (
     GenerationMode,
     GenerationSize,
@@ -299,6 +300,9 @@ class FakeAssetService:
             if (asset := self.assets.get(asset_id)) is not None and visible(asset, actor)
         ]
 
+    def list_accessible_by_ids_for_update(self, actor: ActorContext, asset_ids: Sequence[UUID]) -> list[Asset]:
+        return self.list_accessible_by_ids(actor, asset_ids)
+
 
 class FakeGenerationRepository:
     def __init__(self) -> None:
@@ -583,9 +587,12 @@ def test_product_material_group_delete_rejects_cross_team_before_locks() -> None
     assert generation_repository.locked_material_group_ids == []
 
 
-def test_asset_attach_enforces_scope_team_role_and_deduplicates() -> None:
+def test_asset_attach_enforces_scope_team_role_and_deduplicates(monkeypatch: pytest.MonkeyPatch) -> None:
     service, _, _, assets, session = make_service()
     current_actor = actor(scope=DataScope.ALL)
+    # This existing scenario intentionally exercises a caller with general
+    # Asset access; AI-only callers are covered by the dedicated file policy.
+    monkeypatch.setattr(service.ai_assets.module_access, "list_for_actor", lambda _actor: [ModuleCode.ASSET])
     group = create_material_group(service, current_actor)
     same_team = assets.add(team_id=TEAM_A, created_by_user_id=USER_A2)
     cross_team = assets.add(team_id=TEAM_B, created_by_user_id=USER_B)

@@ -6,10 +6,11 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 import {
-  assetApi,
-  getAssetContentUrl,
-  getAssetThumbnailUrl,
-} from '@/entities/asset/api/asset-api'
+  aiAssetApi,
+  getAiAssetContentUrl as getAssetContentUrl,
+  getAiAssetThumbnailUrl as getAssetThumbnailUrl,
+} from '@/entities/ai-workbench/api/ai-asset-api'
+import { formatAssetOperationFailure } from '@/entities/asset/api/asset-api'
 import {
   AssetDownloadStatusBar,
   AssetPreviewDialog,
@@ -310,8 +311,26 @@ function upload(slot: GenerationInputSlotDefinition, files: File[]): void {
     return
   }
   pendingUploadCount.value += files.length
-  void Promise.all(files.map(assetApi.upload))
-    .then((assets) => {
+  const originalInputs = inputs.value
+  void Promise.allSettled(files.map(aiAssetApi.upload))
+    .then((results) => {
+      // Actor/context recovery replaces this object; do not save old uploads
+      // into another user's or Team's draft after a context change.
+      if (inputs.value !== originalInputs) return
+      const assets = results.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      )
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          message.error(
+            formatAssetOperationFailure(
+              result.reason,
+              `上传 ${files[index]!.name}`,
+            ),
+          )
+        }
+      })
+      if (!assets.length) return
       const added = addSources(
         slot.key,
         assets.map((asset) => ({
@@ -325,7 +344,7 @@ function upload(slot: GenerationInputSlotDefinition, files: File[]): void {
       )
       if (added) message.success('图片已上传')
     })
-    .catch((error) => message.error(getErrorMessage(error)))
+    .catch((error) => message.error(formatAssetOperationFailure(error)))
     .finally(() => {
       pendingUploadCount.value -= files.length
     })

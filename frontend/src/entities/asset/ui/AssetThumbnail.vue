@@ -20,6 +20,5 @@ defineProps<{ src: string; alt: string }>()
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
-  object-fit: cover;
 }
 </style>
