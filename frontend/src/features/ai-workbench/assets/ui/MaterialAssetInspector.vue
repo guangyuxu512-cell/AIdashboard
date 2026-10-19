@@ -16,6 +16,7 @@ import { AppButton, AppSelect } from '@/shared/ui'
 
 const props = defineProps<{
   asset: MaterialAssetReference
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -98,6 +99,7 @@ function updateRole(value: string | number | null): void {
           <AppSelect
             v-if="asset.role !== 'AI_OUTPUT'"
             :model-value="asset.role"
+            :disabled="readOnly"
             :options="roleOptions"
             aria-label="素材类型"
             @update:model-value="updateRole"
@@ -139,7 +141,11 @@ function updateRole(value: string | number | null): void {
         <Download :size="16" />
         下载
       </AppButton>
-      <AppButton tone="danger" @click="$emit('remove', asset)">
+      <AppButton
+        tone="danger"
+        :disabled="readOnly"
+        @click="$emit('remove', asset)"
+      >
         <Trash2 :size="16" />
         删除
       </AppButton>

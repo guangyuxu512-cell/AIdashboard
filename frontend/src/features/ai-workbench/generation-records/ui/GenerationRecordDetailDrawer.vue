@@ -29,6 +29,7 @@ import InstantResultGrid from '../../generation/ui/InstantResultGrid.vue'
 const props = defineProps<{
   show: boolean
   record: GenerationRecordView | null
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -220,6 +221,7 @@ function setPreviewVisible(visible: boolean): void {
             record.status === 'FAILED' || record.status === 'PARTIAL_FAILED'
           "
           @click="$emit('retry', record)"
+          :disabled="readOnly"
         >
           重试失败项
         </AppButton>

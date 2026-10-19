@@ -24,6 +24,7 @@ const props = defineProps<{
   page: number
   pageSize: number
   itemCount: number
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -125,6 +126,7 @@ function canMove(template: PromptTemplate, direction: 'up' | 'down'): boolean {
             </AppButton>
           </div>
           <NDropdown
+            v-if="!readOnly"
             trigger="click"
             :options="createOptions"
             @select="createTemplate"
@@ -147,6 +149,7 @@ function canMove(template: PromptTemplate, direction: 'up' | 'down'): boolean {
           <TemplateSequenceRow
             v-for="template in templates"
             :key="template.id"
+            :read-only="readOnly"
             :template="template"
             :active="template.id === selectedTemplateId"
             :can-move-up="canMove(template, 'up')"

@@ -83,6 +83,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isSuperAccount = computed(
     () => currentModuleAccess.value?.isSuperAccount === true,
   )
+  const hasTeamContext = computed(() => currentTeam.value !== null)
   const requiresTeamSelection = computed(
     () =>
       isAuthenticated.value &&
@@ -170,13 +171,18 @@ export const useAuthStore = defineStore('auth', () => {
     clearAuthState(true)
   }
 
-  async function selectTeam(teamId: string): Promise<void> {
-    const membership = activeTeams.value.find((item) => item.teamId === teamId)
-    if (!membership || !currentUser.value) return
+  async function selectTeam(teamId: string | null): Promise<void> {
+    if (!currentUser.value) return
+    if (teamId === null) {
+      if (!isSuperAccount.value) return
+    } else if (!activeTeams.value.some((item) => item.teamId === teamId)) {
+      return
+    }
     if (activeTeamId.value === teamId) return
     activeTeamId.value = teamId
     currentModuleAccess.value = null
-    persistTeamId(currentUser.value.userId, teamId)
+    if (teamId === null) removeStoredTeamId(currentUser.value.userId)
+    else persistTeamId(currentUser.value.userId, teamId)
     authEffects.onTeamChanged()
     await refreshModuleAccess()
   }
@@ -220,6 +226,7 @@ export const useAuthStore = defineStore('auth', () => {
     restoreError,
     isAuthenticated,
     isSuperAccount,
+    hasTeamContext,
     activeTeams,
     currentTeam,
     requiresTeamSelection,

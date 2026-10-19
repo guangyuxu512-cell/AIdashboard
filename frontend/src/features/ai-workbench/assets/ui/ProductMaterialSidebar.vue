@@ -12,6 +12,7 @@ import { AppButton } from '@/shared/ui'
 defineProps<{
   products: readonly ProductMaterialGroup[]
   selectedProductId: string | null
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -39,7 +40,12 @@ function selectAction(
   <section class="product-material-sidebar" aria-label="产品文件夹">
     <div class="product-material-sidebar__header">
       <strong>产品</strong>
-      <AppButton tone="text" aria-label="新建产品" @click="$emit('create')">
+      <AppButton
+        tone="text"
+        aria-label="新建产品"
+        :disabled="readOnly"
+        @click="$emit('create')"
+      >
         <Plus :size="16" />
         新建产品
       </AppButton>
@@ -69,7 +75,7 @@ function selectAction(
             :tone="product.enabled ? 'success' : 'neutral'"
           />
         </template>
-        <template #actions>
+        <template v-if="!readOnly" #actions>
           <NDropdown
             trigger="click"
             :options="menuOptions"
