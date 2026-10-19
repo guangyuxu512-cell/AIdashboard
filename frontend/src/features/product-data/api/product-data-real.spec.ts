@@ -236,6 +236,8 @@ describe('Product Data typed Real adapter', () => {
       raw_complete_rows: null,
       unit_complete_rows: null,
       failure_code: null,
+      attempt_count: 1,
+      last_heartbeat_at: '2026-01-02T00:00:01Z',
       created_at: '2026-01-02T00:00:00Z',
       started_at: '2026-01-02T00:00:00Z',
       finished_at: null,
@@ -271,5 +273,96 @@ describe('Product Data typed Real adapter', () => {
       '/api/v1/product-data/collections/synthetic-generation',
     )
     expect(post).toHaveBeenCalledTimes(1)
+  })
+  it('maps eligible shops and a durable multi-shop collection batch', async () => {
+    const generation = {
+      generation_id: 'generation-a',
+      scope: row().scope,
+      status: 'pending' as const,
+      stage: 'queued',
+      received_pages: 0,
+      expected_total: null,
+      received_total: null,
+      pages_complete: false,
+      raw_complete_rows: null,
+      unit_complete_rows: null,
+      failure_code: null,
+      attempt_count: 0,
+      last_heartbeat_at: null,
+      created_at: '2026-01-02T00:00:00Z',
+      started_at: null,
+      finished_at: null,
+      published_at: null,
+      lease_expired: false,
+    }
+    const batch = {
+      collection_batch_id: 'batch-a',
+      status: 'pending' as const,
+      total_count: 2,
+      pending_count: 2,
+      running_count: 0,
+      succeeded_count: 0,
+      failed_count: 0,
+      created_at: '2026-01-02T00:00:00Z',
+      items: [
+        {
+          shop_id: 'shop-b',
+          shop_name: 'Shop B',
+          generation,
+        },
+        {
+          shop_id: 'shop-a',
+          shop_name: 'Shop A',
+          generation: {
+            ...generation,
+            generation_id: 'generation-b',
+            scope: { ...generation.scope, shop_id: 'shop-a' },
+          },
+        },
+      ],
+    }
+    get
+      .mockResolvedValueOnce({
+        data: [
+          { shop_id: 'shop-a', shop_name: 'Shop A' },
+          { shop_id: 'shop-b', shop_name: 'Shop B' },
+        ],
+      })
+      .mockResolvedValueOnce({ data: batch })
+    post.mockResolvedValueOnce({ data: batch })
+    const source = createRealProductDataSource()
+
+    await expect(source.collectionShops!()).resolves.toEqual([
+      { shopId: 'shop-a', shopName: 'Shop A' },
+      { shopId: 'shop-b', shopName: 'Shop B' },
+    ])
+    const submitted = await source.collectBatch!({
+      shopIds: ['shop-b', 'shop-a'],
+      period: '7d',
+      submissionKey: 'batch-key',
+    })
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/product-data/collection-batches',
+      {
+        shop_ids: ['shop-b', 'shop-a'],
+        period: '7d',
+        submission_key: 'batch-key',
+        sale_type: '1',
+        content_type: '1',
+      },
+    )
+    expect(submitted).toMatchObject({
+      id: 'batch-a',
+      totalCount: 2,
+      pendingCount: 2,
+      items: [
+        { shopId: 'shop-b', generation: { attemptCount: 0 } },
+        { shopId: 'shop-a', generation: { id: 'generation-b' } },
+      ],
+    })
+    await expect(source.collectionBatch!('batch-a')).resolves.toEqual(submitted)
+    expect(get).toHaveBeenLastCalledWith(
+      '/api/v1/product-data/collection-batches/batch-a',
+    )
   })
 })

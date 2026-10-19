@@ -1,14 +1,16 @@
+from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, insert, select, update
+from sqlalchemy import and_, case, exists, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.models import TeamShopAccess
 from app.modules.product_data.collection import CompleteProductDataSnapshot
 from app.modules.product_data.models import (
+    ShopProductDataCollectionBatch as CollectionBatch,
     ShopProductDataGeneration as Generation, ShopProductDataMetricSnapshot as Snapshot,
     ShopProductDataProduct as Product, ShopProductDataSeries as Series,
 )
@@ -18,6 +20,12 @@ from app.platforms.douyin.product_data import PRODUCT_METRIC_CONTRACT
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.shared.identifiers import generate_id
+
+
+@dataclass(frozen=True)
+class ProductDataCollectionClaim:
+    generation_id: UUID
+    lease_id: UUID
 
 
 class ProductDataRepository:
@@ -47,9 +55,65 @@ class ProductDataRepository:
             statement = statement.where(Shop.shop_id == shop_id)
         return list(self.session.scalars(statement.order_by(Shop.shop_id)))
 
-    def by_key(self, user_id, submission_key):
-        return self.session.scalar(select(Generation).where(
-            Generation.requested_by_user_id == user_id, Generation.submission_key == submission_key))
+    def collection_shops(self, actor):
+        statement = self._shop_scope(select(Shop), actor).where(
+            Shop.deleted_at.is_(None),
+            Shop.enabled.is_(True),
+            Shop.platform == ShopPlatform.DOUYIN,
+            Shop.platform_shop_id.is_not(None),
+        )
+        return list(self.session.scalars(statement.order_by(Shop.display_name, Shop.shop_id)))
+
+    def batch_by_key(self, user_id, submission_key):
+        return self.session.scalar(select(CollectionBatch).where(
+            CollectionBatch.requested_by_user_id == user_id,
+            CollectionBatch.submission_key == submission_key,
+        ))
+
+    def batch(self, collection_batch_id):
+        return self.session.get(CollectionBatch, collection_batch_id)
+
+    def batch_generations(self, collection_batch_id):
+        return list(self.session.execute(
+            select(Generation, Shop)
+            .join(Shop, Shop.shop_id == Generation.shop_id)
+            .where(Generation.collection_batch_id == collection_batch_id)
+            .order_by(Generation.batch_position, Generation.generation_id)
+        ))
+
+    def batch_shop_ids(self, collection_batch_id):
+        return tuple(self.session.scalars(
+            select(Generation.shop_id)
+            .where(Generation.collection_batch_id == collection_batch_id)
+            .order_by(Generation.shop_id)
+        ))
+
+    def visible_batch(self, actor, collection_batch_id):
+        statement = select(CollectionBatch).where(
+            CollectionBatch.collection_batch_id == collection_batch_id,
+        )
+        if not actor.is_super_account:
+            statement = statement.where(
+                CollectionBatch.requested_by_user_id == actor.user_id,
+                CollectionBatch.requested_team_id == actor.require_team_id(),
+                ~exists(
+                    select(Generation.generation_id)
+                    .join(Shop, Shop.shop_id == Generation.shop_id)
+                    .where(
+                        Generation.collection_batch_id == CollectionBatch.collection_batch_id,
+                        or_(
+                            Shop.deleted_at.is_not(None),
+                            ~exists(
+                                select(TeamShopAccess.shop_id).where(
+                                    TeamShopAccess.shop_id == Shop.shop_id,
+                                    TeamShopAccess.team_id == actor.require_team_id(),
+                                )
+                            ),
+                        ),
+                    )
+                ),
+            )
+        return self.session.scalar(statement)
 
     def visible_generation(self, actor, generation_id):
         statement = self._shop_scope(select(Generation).join(Shop, Shop.shop_id == Generation.shop_id), actor).where(
@@ -66,22 +130,38 @@ class ProductDataRepository:
         # Product Data only, transaction scoped, never held across external I/O.
         self.session.execute(select(func.pg_advisory_xact_lock(0x535044470047)))
 
-    def expire_requested_slice(self, scope):
-        self.session.execute(update(Generation).where(
-            Generation.shop_id == scope.shop_id, Generation.source_scope_hash == scope.source_scope_hash,
-            Generation.status == "running", Generation.lease_until <= func.clock_timestamp(),
-        ).values(status="failed", stage="execution", failure_code="PRODUCT_DATA_LEASE_EXPIRED",
-                 lease_id=None, lease_until=None, finished_at=func.clock_timestamp()))
+    def create_batch(self, actor, request, scopes):
+        batch = CollectionBatch(
+            collection_batch_id=generate_id(),
+            requested_by_user_id=actor.user_id,
+            requested_team_id=actor.team_id,
+            submission_key=request.submission_key,
+            period=request.period,
+            sale_type=request.sale_type,
+            content_type=request.content_type,
+        )
+        self.session.add(batch)
+        self.session.flush()
+        generations = []
+        for position, scope in enumerate(scopes):
+            generations.append(self._create_generation(
+                actor,
+                request,
+                scope,
+                collection_batch_id=batch.collection_batch_id,
+                batch_position=position,
+            ))
+        return batch, generations
 
-    def busy(self, scope, max_running):
-        active = self.session.scalar(select(Generation.generation_id).where(
-            Generation.shop_id == scope.shop_id, Generation.source_scope_hash == scope.source_scope_hash,
-            Generation.status.in_(["pending", "running"])).limit(1))
-        running = self.session.scalar(select(func.count()).select_from(Generation).where(
-            Generation.status == "running", Generation.lease_until > func.clock_timestamp())) or 0
-        return active is not None or running >= max_running
-
-    def create_generation(self, actor, request, scope, lease_seconds):
+    def _create_generation(
+        self,
+        actor,
+        request,
+        scope,
+        *,
+        collection_batch_id,
+        batch_position,
+    ):
         self.session.execute(pg_insert(Series).values(
             series_id=generate_id(), shop_id=scope.shop_id, rolling_series_hash=scope.rolling_series_hash,
             period=scope.period, sale_type=scope.sale_type, content_type=scope.content_type,
@@ -89,25 +169,110 @@ class ProductDataRepository:
         ).on_conflict_do_nothing(constraint="uq_spd_series_scope"))
         series = self.session.scalar(select(Series).where(
             Series.shop_id == scope.shop_id, Series.rolling_series_hash == scope.rolling_series_hash).with_for_update())
-        now = self.now()
         generation = Generation(
-            generation_id=generate_id(), series_id=series.series_id, shop_id=scope.shop_id,
+            generation_id=generate_id(), collection_batch_id=collection_batch_id,
+            batch_position=batch_position, series_id=series.series_id, shop_id=scope.shop_id,
             sequence=series.next_sequence, requested_by_user_id=actor.user_id, requested_team_id=actor.team_id,
             submission_key=request.submission_key, period=scope.period, date_type=scope.date_type,
             start_date=scope.start_date, end_date=scope.end_date, source_scope_hash=scope.source_scope_hash,
-            request_scope=scope.model_dump(mode="json"), status="running", stage="session_preparation",
-            lease_id=generate_id(), lease_until=now+timedelta(seconds=lease_seconds), started_at=now,
+            request_scope=scope.model_dump(mode="json"), status="pending", stage="queued",
+            attempt_count=0,
         )
         series.next_sequence += 1
         self.session.add(generation)
         self.session.flush()
         return generation
 
+    def lock_execution_decision(self, *, wait=False):
+        key = func.hashtext("shop_product_data_collection_claim")
+        if wait:
+            self.session.execute(select(func.pg_advisory_xact_lock(key)))
+            return True
+        return bool(self.session.scalar(select(func.pg_try_advisory_xact_lock(key))))
+
+    def claim_next(self, *, lease_seconds, max_running):
+        if type(max_running) is not int or max_running < 1:
+            raise ValueError("Product Data execution capacity must be positive")
+        if type(lease_seconds) is not int or lease_seconds < 1:
+            raise ValueError("Product Data lease must be positive")
+        if not self.lock_execution_decision():
+            return None
+        now = self.now()
+        live_running = and_(
+            Generation.status == "running",
+            Generation.lease_until > now,
+        )
+        running = self.session.scalar(
+            select(func.count()).select_from(Generation).where(live_running)
+        ) or 0
+        if running >= max_running:
+            return None
+        other = aliased(Generation, name="other_product_data_run")
+        busy_shop = exists(select(other.generation_id).where(
+            other.generation_id != Generation.generation_id,
+            other.shop_id == Generation.shop_id,
+            other.status == "running",
+            other.lease_until > now,
+        )).correlate(Generation)
+        candidate = self.session.scalar(
+            select(Generation)
+            .where(
+                or_(
+                    Generation.status == "pending",
+                    and_(Generation.status == "running", Generation.lease_until <= now),
+                ),
+                ~busy_shop,
+            )
+            .order_by(
+                case((Generation.status == "running", 0), else_=1),
+                Generation.created_at,
+                Generation.generation_id,
+            )
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if candidate is None:
+            return None
+        lease_id = generate_id()
+        candidate.status = "running"
+        candidate.stage = "session_preparation"
+        candidate.failure_code = None
+        candidate.attempt_count += 1
+        candidate.lease_id = lease_id
+        candidate.lease_until = now + timedelta(seconds=lease_seconds)
+        candidate.last_heartbeat_at = now
+        candidate.started_at = candidate.started_at or now
+        candidate.finished_at = None
+        candidate.published_at = None
+        candidate.pages_complete = False
+        candidate.received_pages = 0
+        candidate.expected_total = None
+        candidate.received_total = None
+        candidate.raw_complete_rows = None
+        candidate.unit_complete_rows = None
+        self.session.flush()
+        return ProductDataCollectionClaim(candidate.generation_id, lease_id)
+
     def live_generation(self, generation_id, lease_id, *, lock=False):
         statement = select(Generation).where(
             Generation.generation_id == generation_id, Generation.lease_id == lease_id,
             Generation.status == "running", Generation.lease_until > func.clock_timestamp())
-        return self.session.scalar(statement.with_for_update() if lock else statement)
+        generation = self.session.scalar(statement.with_for_update() if lock else statement)
+        if lock and generation is not None and generation.lease_until <= self.now():
+            return None
+        return generation
+
+    def heartbeat(self, generation_id, lease_id, *, stage, lease_seconds):
+        generation = self.live_generation(generation_id, lease_id, lock=True)
+        if generation is None:
+            return None
+        now = self.now()
+        if generation.lease_until <= now:
+            return None
+        generation.stage = stage
+        generation.last_heartbeat_at = now
+        generation.lease_until = now + timedelta(seconds=lease_seconds)
+        return generation
 
     def mark_failed(self, generation_id, lease_id, code, stage, *, expected_total=None):
         values = dict(status="failed", stage=stage, failure_code=code, lease_id=None, lease_until=None,

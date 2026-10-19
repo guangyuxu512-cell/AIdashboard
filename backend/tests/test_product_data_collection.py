@@ -1,11 +1,14 @@
+import asyncio
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from threading import Barrier
 from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from app.core.exceptions import AppError
+from app.core.config import Settings
 from app.modules.product_data.collection import collect_complete_snapshot
 from app.modules.product_data.exceptions import ProductDataCollectionLimitExceededError
 from app.modules.product_data.source import ProductDataSlice, REQUESTED_METRICS, freeze_native_slice
@@ -121,6 +124,41 @@ def test_exact_20_page_budget_still_returns_complete_200_unique_products():
     assert result.total == len(result.products) == 200 and result.page_count == 20
 
 
+def test_default_finite_budget_can_collect_more_than_one_thousand_products():
+    calls = []
+
+    def fetch(number):
+        calls.append(number)
+        return page(number, 1001)
+
+    settings = Settings()
+    assert settings.product_data_collection_max_pages == 101
+    result = collect_complete_snapshot(
+        scope(),
+        fetch,
+        max_pages=settings.product_data_collection_max_pages,
+    )
+    assert calls == list(range(1, 102))
+    assert result.total == len(result.products) == 1001
+    assert result.page_count == 101
+
+
+def test_default_budget_rejects_1011_before_requesting_page_two():
+    calls = []
+
+    def fetch(number):
+        calls.append(number)
+        return page(number, 1011)
+
+    with pytest.raises(ProductDataCollectionLimitExceededError):
+        collect_complete_snapshot(
+            scope(),
+            fetch,
+            max_pages=Settings().product_data_collection_max_pages,
+        )
+    assert calls == [1]
+
+
 @pytest.mark.parametrize("total,expected", [
     (229, 229), (2_147_483_647, 2_147_483_647), (2_147_483_648, None),
     (True, None), ("229", None), (-1, None),
@@ -130,3 +168,58 @@ def test_limit_failure_only_carries_a_safe_existing_integer_total(total, expecte
     assert error.expected_total == expected
     assert error.details is None
     assert "229" not in str(error)
+
+
+def test_disabled_durable_consumer_does_not_open_database_or_platform(monkeypatch):
+    from app.modules.product_data import executor
+
+    monkeypatch.setattr(
+        executor,
+        "build_product_data_executor",
+        lambda *_: pytest.fail("disabled consumer must not build an executor"),
+    )
+    monkeypatch.setattr(
+        executor,
+        "get_settings",
+        lambda: Settings(product_data_collection_execution_enabled=False),
+    )
+    asyncio.run(executor.execute_product_data_collections_forever())
+
+
+@pytest.mark.parametrize("capacity", [1, 3])
+def test_enabled_durable_consumer_starts_exact_configured_capacity(
+    monkeypatch,
+    capacity,
+):
+    from app.modules.product_data import executor
+
+    executed = []
+    first_pass = Barrier(capacity)
+
+    class FakeExecutor:
+        def execute_available(self):
+            executed.append(True)
+            first_pass.wait(timeout=5)
+            return 0
+
+    async def stop(_seconds):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(
+        executor,
+        "get_settings",
+        lambda: Settings(
+            product_data_collection_execution_enabled=True,
+            product_data_collection_max_running=capacity,
+        ),
+    )
+    monkeypatch.setattr(
+        executor,
+        "build_product_data_executor",
+        lambda *_: FakeExecutor(),
+    )
+    monkeypatch.setattr(executor.asyncio, "sleep", stop)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(executor.execute_product_data_collections_forever())
+    assert executed == [True] * capacity

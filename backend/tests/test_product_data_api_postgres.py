@@ -24,7 +24,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def api_client(graph, monkeypatch):
+def api_client(graph):
     # No application lifespan, server listener, scheduler or default DB factory.
     app = FastAPI()
     install_exception_handlers(app)
@@ -32,23 +32,53 @@ def api_client(graph, monkeypatch):
     app.dependency_overrides[api.get_product_data_actor] = lambda: graph.actors[0]
     app.dependency_overrides[api.get_product_data_service] = lambda: graph.service
     app.dependency_overrides[get_database_session] = lambda: graph.session
-    queued = []
-    monkeypatch.setattr(api, "execute_product_data_collection", lambda *ids: queued.append(ids))
-    yield SimpleNamespace(client=TestClient(app), app=app, queued=queued)
+    yield SimpleNamespace(client=TestClient(app), app=app)
 
 
-def test_explicit_post_only_once_replay_and_read_are_no_io(api_client, graph):
+def test_legacy_single_post_queues_once_and_replay_and_read_are_no_io(api_client, graph):
     body = {"shop_id": str(graph.shops[0].shop_id), "period": "1d", "submission_key": str(uuid4())}
     response = api_client.client.post("/api/v1/product-data/collections", json=body)
     assert response.status_code == 202
     first = response.json()
-    assert first["status"] == "running" and first["expected_total"] is None and first["received_total"] is None
-    assert len(api_client.queued) == 1
+    assert first["status"] == "pending"
+    assert first["stage"] == "queued" and first["attempt_count"] == 0
+    assert first["expected_total"] is None and first["received_total"] is None
     replay = api_client.client.post("/api/v1/product-data/collections", json=body)
-    assert replay.status_code == 202 and replay.json() == first and len(api_client.queued) == 1
+    assert replay.status_code == 202 and replay.json() == first
     read = api_client.client.get("/api/v1/product-data/collections/" + first["generation_id"])
-    assert read.status_code == 200 and read.json() == first and len(api_client.queued) == 1
+    assert read.status_code == 200 and read.json() == first
     assert not {"lease_id", "requested_by_user_id", "requested_team_id", "payload", "cookies"} & set(first)
+
+
+def test_multi_shop_batch_lists_eligible_shops_and_returns_per_shop_progress(api_client, graph):
+    shops = api_client.client.get("/api/v1/product-data/collection-shops")
+    assert shops.status_code == 200
+    assert {item["shop_id"] for item in shops.json()} == {
+        str(shop.shop_id) for shop in graph.shops
+    }
+    body = {
+        "shop_ids": [str(shop.shop_id) for shop in reversed(graph.shops)],
+        "period": "7d",
+        "submission_key": str(uuid4()),
+    }
+    submitted = api_client.client.post(
+        "/api/v1/product-data/collection-batches",
+        json=body,
+    )
+    assert submitted.status_code == 202
+    receipt = submitted.json()
+    assert receipt["status"] == "pending"
+    assert receipt["total_count"] == receipt["pending_count"] == 2
+    assert receipt["running_count"] == receipt["succeeded_count"] == 0
+    assert [item["shop_id"] for item in receipt["items"]] == sorted(
+        body["shop_ids"],
+    )
+    assert all(item["generation"]["status"] == "pending" for item in receipt["items"])
+    read = api_client.client.get(
+        "/api/v1/product-data/collection-batches/"
+        + receipt["collection_batch_id"],
+    )
+    assert read.status_code == 200 and read.json() == receipt
 
 
 def test_get_uses_page_contract_and_validates_ranges_without_echo(api_client, graph):
@@ -65,7 +95,6 @@ def test_get_uses_page_contract_and_validates_ranges_without_echo(api_client, gr
     assert amount_sort.json()["items"][0]["metrics"]["pay_amt"]["unit_verified"] is True
     legacy = api_client.client.get("/api/v1/product-data", params=params | {"sort_field": "receive_amt", "sort_direction": "desc"})
     assert legacy.status_code == 422 and legacy.json()["code"] == "PRODUCT_DATA_QUERY_INVALID"
-    assert api_client.queued == []
 
 
 @pytest.mark.parametrize("extra", [{"group_id": "synthetic-group"}, {"unknown": "synthetic-private-value"}])
@@ -74,14 +103,12 @@ def test_undeclared_query_dimension_is_not_silently_dropped(api_client, extra):
         "period": "1d", "start_date": "2026-01-01", "end_date": "2026-01-01", **extra})
     assert result.status_code == 422 and result.json()["code"] == "PRODUCT_DATA_QUERY_INVALID"
     assert "synthetic-private-value" not in result.text
-    assert api_client.queued == []
 
 
 def test_anonymous_api_is_not_an_alternate_authorization_path(api_client):
     api_client.app.dependency_overrides.pop(api.get_product_data_actor)
     result = api_client.client.get("/api/v1/product-data/collections/" + str(uuid4()))
     assert result.status_code == 401
-    assert api_client.queued == []
 
 
 def executor(graph, fetch):
@@ -164,7 +191,7 @@ def test_execution_limit_saves_safe_total_with_failure_and_preserves_facts(api_c
     replay = api_client.client.post("/api/v1/product-data/collections", json={
         "shop_id": str(graph.shops[0].shop_id), "period": "7d", "submission_key": str(key),
     })
-    assert replay.status_code == 202 and replay.json() == read.json() and not api_client.queued
+    assert replay.status_code == 202 and replay.json() == read.json()
     assert graph.service.list(graph.actors[0], query(first)).items[0].generation_id == first.generation_id
     assert graph.service.list(graph.actors[0], query(receipt)).total == 0
     assert graph.session.scalar(select(func.count()).select_from(Snapshot)) == 1

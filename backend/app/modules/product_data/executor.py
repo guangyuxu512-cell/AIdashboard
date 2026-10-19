@@ -1,5 +1,6 @@
-"""Finite, explicitly submitted manual collection. No scanner or retry loop."""
+"""Durable finite manual-collection consumer; no automatic business retry."""
 
+import asyncio
 import logging
 
 from app.core.config import get_settings
@@ -30,6 +31,14 @@ class ProductDataExecutor:
     def __init__(self, session_factory, settings, platform_io):
         self.session_factory, self.settings, self.platform_io = session_factory, settings, platform_io
 
+    def execute_available(self):
+        with self.session_factory() as session:
+            claim = ProductDataService(session, settings=self.settings).claim_next()
+        if claim is None:
+            return 0
+        self.execute(claim.generation_id, claim.lease_id)
+        return 1
+
     def execute(self, generation_id, lease_id):
         stage = "session_preparation"
         try:
@@ -37,7 +46,12 @@ class ProductDataExecutor:
                 from app.modules.product_data.exceptions import ProductDataCollectionUnavailableError
                 raise ProductDataCollectionUnavailableError()
             with self.session_factory() as session:
-                context = ProductDataService(session, settings=self.settings).prepare_execution(generation_id, lease_id)
+                context = ProductDataService(session, settings=self.settings).prepare_execution(
+                    generation_id,
+                    lease_id,
+                    stage="session_preparation",
+                    heartbeat=True,
+                )
 
             def fetch(page_no):
                 nonlocal stage
@@ -87,3 +101,41 @@ def execute_product_data_collection(generation_id, lease_id):
     from app.modules.product_data.platform_io import ProductDataStoredSessionIO
     settings, factory = get_settings(), get_session_factory()
     ProductDataExecutor(factory, settings, ProductDataStoredSessionIO(factory, settings)).execute(generation_id, lease_id)
+
+
+def build_product_data_executor(settings=None):
+    from app.modules.product_data.platform_io import ProductDataStoredSessionIO
+    resolved = settings or get_settings()
+    factory = get_session_factory()
+    return ProductDataExecutor(
+        factory,
+        resolved,
+        ProductDataStoredSessionIO(factory, resolved),
+    )
+
+
+async def execute_product_data_collections_forever():
+    settings = get_settings()
+    if not settings.product_data_collection_execution_enabled:
+        return
+    executor = build_product_data_executor(settings)
+
+    async def worker():
+        while True:
+            try:
+                processed = await asyncio.to_thread(executor.execute_available)
+            except asyncio.CancelledError:
+                # A finite in-flight HTTP call cannot be retracted. The durable
+                # lease fence prevents its late result from being published.
+                raise
+            except Exception:
+                # Never log a raw platform exception, URL or credential.
+                processed = 0
+            if not processed:
+                await asyncio.sleep(
+                    settings.product_data_collection_scan_interval_seconds,
+                )
+
+    await asyncio.gather(*(
+        worker() for _ in range(settings.product_data_collection_max_running)
+    ))

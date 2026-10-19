@@ -1,5 +1,26 @@
 # 数据库与 Migration 规范
 
+## 商品数据多店持久队列与 0048
+
+2026-10-19，ca97 正式分配唯一 active `20261019_0048`，down
+`20261017_0047`，Owner 81a1 / `feat/shop-product-data-batch-queue-v1`，专用
+`control_center_feat_shop_product_data_batch_queue`。0047 保持字节不变；0048 在四张既有
+商品事实表之外新增 `shop_product_data_collection_batches`，并把 generation 扩展为可持久排队、
+领取、心跳和超时恢复的批次明细。
+
+| 结构 | 0048 职责与约束 |
+| --- | --- |
+| `shop_product_data_collection_batches` | 一次 1–100 店手动提交的稳定身份；保存 Actor、可空 Team、submission key 和冻结口径；`UNIQUE(requested_by_user_id, submission_key)`；不存凭据或平台请求 |
+| `shop_product_data_generations.collection_batch_id / batch_position` | 每批每店、每位置唯一；0047 旧 generation 确定性一对一回填，批次 ID 等于原 generation ID，不改事实、series pointer 或原审计时间 |
+| `attempt_count / last_heartbeat_at` | pending 为 0 且无 lease；每次成功领取递增；running/succeeded/failed 保留最后心跳，迟到执行者必须通过 lease CAS |
+| `uq_spd_running_shop` | 数据库级 partial unique，确保同一商品数据 Shop 最多一个 running；不扩展成跨业务 Shop 锁 |
+| queue / batch indexes | `(status, created_at, generation_id)` 支持有限领取，`(collection_batch_id, batch_position)` 支持稳定逐店进度读取 |
+
+0048 downgrade 只允许精确登记的可重建 Feature 库，并要求每批仍是一对一旧语义、位置为 0、
+Actor/Team/key/口径完全一致、没有重复领取或多店历史，且可恢复 0047 两个旧唯一约束；否则明确拒绝。
+Integration／生产在产生新语义后保留 Schema、批次、失败审计和已发布事实，回滚优先关闭消费者并
+使用兼容 Reader，不通过降级或清库恢复。
+
 ## 商品数据首版四表与 0047
 
 2026-10-17，ca97正式分配唯一active `20261017_0047`，down `20261015_0046`，
