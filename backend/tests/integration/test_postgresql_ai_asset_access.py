@@ -194,6 +194,43 @@ def test_ai_only_real_asgi_large_jpeg_upload_read_cleanup_and_revocation(context
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize(
+    ("image_format", "expected_suffix", "expected_type"),
+    [("PNG", ".png", "image/png"), ("WEBP", ".webp", "image/webp")],
+)
+def test_ai_only_upload_corrects_misnamed_images_without_changing_bytes(
+    context, image_format, expected_suffix, expected_type
+):
+    c = context
+    payload = BytesIO()
+    Image.new("RGB", (1200, 1200), (20, 100, 180)).save(payload, format=image_format)
+    data = payload.getvalue()
+    app = create_app()
+    app.dependency_overrides[get_human_principal] = lambda: HumanPrincipal(c.actor.user_id, "stage-2a1 principal")
+    app.dependency_overrides[get_database_session] = lambda: c.session
+    app.dependency_overrides[get_ai_asset_service] = lambda: c.policy
+
+    async def exercise():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://testserver") as client:
+            response = await client.post(
+                "/api/v1/ai-workbench/assets",
+                files={"file": ("stage-2a1-misnamed.jpg", data, "image/jpeg")},
+            )
+            assert response.status_code == 201
+            result = response.json()
+            assert result["original_filename"] == f"stage-2a1-misnamed{expected_suffix}"
+            assert result["content_type"] == expected_type
+            asset_id = result["asset_id"]
+            content = await client.get(f"/api/v1/ai-workbench/assets/{asset_id}/content")
+            assert content.status_code == 200
+            assert content.headers["content-type"] == expected_type
+            assert content.content == data
+            assert (await client.get(f"/api/v1/ai-workbench/assets/{asset_id}/thumbnail")).status_code == 200
+            assert (await client.delete(f"/api/v1/ai-workbench/assets/{asset_id}")).status_code == 204
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("winner", ["attach", "cleanup"])
 def test_attach_cleanup_serialize_on_real_asset_row_lock(context, winner):
     c = context
