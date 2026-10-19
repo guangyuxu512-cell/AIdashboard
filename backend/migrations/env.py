@@ -47,6 +47,7 @@ from app.modules.product_selection.models import (
     ProductSelectionStrategy,
 )
 from app.modules.product_data.models import (
+    ShopProductDataCollectionBatch,
     ShopProductDataProduct,
     ShopProductDataSeries,
     ShopProductDataGeneration,
@@ -81,6 +82,7 @@ _MODELS = (
     ProductSelectionObservation,
     ProductSelectionRun,
     ProductSelectionStrategy,
+    ShopProductDataCollectionBatch,
     ShopProductDataProduct,
     ShopProductDataSeries,
     ShopProductDataGeneration,

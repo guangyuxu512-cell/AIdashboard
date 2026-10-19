@@ -21,6 +21,27 @@ EXPECTED_ROUTES = [
         "response_model": "ProductDataListRead",
     },
     {
+        "path": "/api/v1/product-data/collection-batches",
+        "method": "POST",
+        "status": 202,
+        "request_model": "ProductDataCollectionBatchRequest",
+        "response_model": "ProductDataCollectionBatchRead",
+    },
+    {
+        "path": "/api/v1/product-data/collection-batches/{collection_batch_id}",
+        "method": "GET",
+        "status": 200,
+        "request_model": None,
+        "response_model": "ProductDataCollectionBatchRead",
+    },
+    {
+        "path": "/api/v1/product-data/collection-shops",
+        "method": "GET",
+        "status": 200,
+        "request_model": None,
+        "response_model": "list",
+    },
+    {
         "path": "/api/v1/product-data/collections",
         "method": "POST",
         "status": 202,
@@ -59,6 +80,13 @@ EXPECTED_DTOS = {
         "sale_type",
         "content_type",
     ],
+    "ProductDataCollectionBatchRequest": [
+        "shop_ids",
+        "period",
+        "submission_key",
+        "sale_type",
+        "content_type",
+    ],
     "ProductDataMetricRead": [
         "state",
         "raw_value",
@@ -89,11 +117,33 @@ EXPECTED_DTOS = {
         "raw_complete_rows",
         "unit_complete_rows",
         "failure_code",
+        "attempt_count",
+        "last_heartbeat_at",
         "created_at",
         "started_at",
         "finished_at",
         "published_at",
         "lease_expired",
+    ],
+    "ProductDataCollectionItemRead": [
+        "shop_id",
+        "shop_name",
+        "generation",
+    ],
+    "ProductDataCollectionBatchRead": [
+        "collection_batch_id",
+        "status",
+        "total_count",
+        "pending_count",
+        "running_count",
+        "succeeded_count",
+        "failed_count",
+        "created_at",
+        "items",
+    ],
+    "ProductDataCollectionShopRead": [
+        "shop_id",
+        "shop_name",
     ],
 }
 
@@ -190,7 +240,11 @@ def product_data_contract_observations() -> list[dict]:
 
     from app.modules.product_data.api import router
     from app.modules.product_data.schemas import (
+        ProductDataCollectionBatchRead,
+        ProductDataCollectionBatchRequest,
+        ProductDataCollectionItemRead,
         ProductDataCollectionRequest,
+        ProductDataCollectionShopRead,
         ProductDataGenerationRead,
         ProductDataMetricRead,
         ProductDataQuery,
@@ -232,9 +286,13 @@ def product_data_contract_observations() -> list[dict]:
     dto_types = (
         ProductDataQuery,
         ProductDataCollectionRequest,
+        ProductDataCollectionBatchRequest,
         ProductDataMetricRead,
         ProductDataRowRead,
         ProductDataGenerationRead,
+        ProductDataCollectionItemRead,
+        ProductDataCollectionBatchRead,
+        ProductDataCollectionShopRead,
     )
     dto_fields = {model.__name__: list(model.model_fields) for model in dto_types}
     generation_statuses = list(

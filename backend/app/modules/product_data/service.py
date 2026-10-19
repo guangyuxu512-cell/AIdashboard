@@ -12,14 +12,16 @@ from app.modules.access.module_access import ModuleCode
 from app.modules.access.service import ActorContextService, ModuleAccessService
 from app.modules.product_data.collection import CompleteProductDataSnapshot
 from app.modules.product_data.exceptions import (
-    ProductDataCollectionBusyError, ProductDataCollectionLimitExceededError,
+    ProductDataCollectionLimitExceededError,
     ProductDataCollectionUnavailableError, ProductDataGenerationNotFoundError,
     ProductDataIdempotencyConflictError, ProductDataPublicationRejectedError, ProductDataSourceInvalidError,
     ProductDataUnsupportedError,
 )
 from app.modules.product_data.repository import ProductDataRepository
 from app.modules.product_data.schemas import (
-    METRIC_BY_CODE, ProductDataCollectionRequest, ProductDataCoverageRead, ProductDataGenerationRead,
+    METRIC_BY_CODE, ProductDataCollectionBatchRead, ProductDataCollectionBatchRequest,
+    ProductDataCollectionItemRead, ProductDataCollectionRequest,
+    ProductDataCollectionShopRead, ProductDataCoverageRead, ProductDataGenerationRead,
     ProductDataListRead, ProductDataMetricRead, ProductDataQuery, ProductDataRowRead,
 )
 from app.modules.product_data.source import ProductDataSlice, freeze_native_slice
@@ -70,55 +72,129 @@ class ProductDataService:
             raise ProductDataSourceInvalidError()
         return scope
 
-    def _receipt(self, generation):
+    def _receipt(self, generation, *, now=None):
+        database_now = now or self.repository.now()
         return ProductDataGenerationRead(
             generation_id=generation.generation_id, scope=self._scope(generation), status=generation.status,
             stage=generation.stage, received_pages=generation.received_pages, expected_total=generation.expected_total,
             received_total=generation.received_total, pages_complete=generation.pages_complete,
             raw_complete_rows=generation.raw_complete_rows, unit_complete_rows=generation.unit_complete_rows,
-            failure_code=generation.failure_code, created_at=generation.created_at, started_at=generation.started_at,
+            failure_code=generation.failure_code, attempt_count=generation.attempt_count,
+            last_heartbeat_at=generation.last_heartbeat_at,
+            created_at=generation.created_at, started_at=generation.started_at,
             finished_at=generation.finished_at, published_at=generation.published_at,
-            lease_expired=generation.status == "running" and generation.lease_until <= self.repository.now(),
+            lease_expired=generation.status == "running" and generation.lease_until <= database_now,
+        )
+
+    def _batch_receipt(self, actor, batch):
+        rows = self.repository.batch_generations(batch.collection_batch_id)
+        if not rows:
+            raise ProductDataSourceInvalidError()
+        now = self.repository.now()
+        items = [ProductDataCollectionItemRead(
+            shop_id=generation.shop_id,
+            shop_name=shop.display_name,
+            generation=self._receipt(generation, now=now),
+        ) for generation, shop in rows]
+        counts = {
+            status: sum(item.generation.status == status for item in items)
+            for status in ("pending", "running", "succeeded", "failed")
+        }
+        total = len(items)
+        if counts["running"]:
+            status = "running"
+        elif counts["pending"]:
+            status = "pending"
+        elif counts["succeeded"] == total:
+            status = "succeeded"
+        elif counts["failed"] == total:
+            status = "failed"
+        else:
+            status = "partial"
+        return ProductDataCollectionBatchRead(
+            collection_batch_id=batch.collection_batch_id,
+            status=status,
+            total_count=total,
+            pending_count=counts["pending"],
+            running_count=counts["running"],
+            succeeded_count=counts["succeeded"],
+            failed_count=counts["failed"],
+            created_at=batch.created_at,
+            items=items,
+        )
+
+    @staticmethod
+    def _as_batch_request(request: ProductDataCollectionRequest):
+        return ProductDataCollectionBatchRequest(
+            shop_ids=(request.shop_id,),
+            period=request.period,
+            submission_key=request.submission_key,
+            sale_type=request.sale_type,
+            content_type=request.content_type,
         )
 
     def request_collection(self, actor: ActorContext, request: ProductDataCollectionRequest):
+        batch = self.request_collection_batch(actor, self._as_batch_request(request))
+        return batch.items[0].generation, None
+
+    def request_collection_batch(
+        self,
+        actor: ActorContext,
+        request: ProductDataCollectionBatchRequest,
+    ) -> ProductDataCollectionBatchRead:
         actor = self._actor(actor)
-        self._shop(actor, request.shop_id, collect=True)
+        shop_ids = tuple(sorted(request.shop_ids, key=str))
+        for shop_id in shop_ids:
+            self._shop(actor, shop_id, collect=True)
         # One transaction-scoped domain decision lock protects capacity,
         # cross-process duplicate intent and sequence allocation. No I/O here.
         self.repository.submission_lock()
         self.session.expire_all()
         actor = self._actor(actor)
-        self._shop(actor, request.shop_id, collect=True)
-        previous = self.repository.by_key(actor.user_id, request.submission_key)
+        for shop_id in shop_ids:
+            self._shop(actor, shop_id, collect=True)
+        previous = self.repository.batch_by_key(actor.user_id, request.submission_key)
         if previous is not None:
-            scope = self._scope(previous)
-            if (previous.requested_team_id != actor.team_id or previous.shop_id != request.shop_id
-                    or scope.period != request.period or scope.sale_type != request.sale_type
-                    or scope.content_type != request.content_type):
+            if (
+                previous.requested_team_id != actor.team_id
+                or previous.period != request.period
+                or previous.sale_type != request.sale_type
+                or previous.content_type != request.content_type
+                or self.repository.batch_shop_ids(previous.collection_batch_id) != shop_ids
+            ):
                 raise ProductDataIdempotencyConflictError()
-            receipt = self._receipt(previous)
+            receipt = self._batch_receipt(actor, previous)
             self.session.commit()
-            return receipt, None
+            return receipt
         if not self.settings.product_data_collection_execution_enabled:
             raise ProductDataCollectionUnavailableError()
-        scope = freeze_native_slice(request.shop_id, request.period, self.repository.now())
-        self.repository.expire_requested_slice(scope)
-        if self.repository.busy(scope, self.settings.product_data_collection_max_running):
-            raise ProductDataCollectionBusyError()
+        accepted_at = self.repository.now()
+        scopes = tuple(freeze_native_slice(shop_id, request.period, accepted_at) for shop_id in shop_ids)
         try:
-            generation = self.repository.create_generation(actor, request, scope, self.settings.product_data_collection_lease_seconds)
-            lease_id = generation.lease_id
-            receipt = self._receipt(generation)
+            batch, _generations = self.repository.create_batch(actor, request, scopes)
+            receipt = self._batch_receipt(actor, batch)
             self.session.commit()
-            return receipt, lease_id
+            return receipt
         except IntegrityError as error:
             self.session.rollback()
             constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
-            if constraint not in {"uq_spd_generation_actor_key", "uq_spd_active_slice"}:
+            if constraint != "uq_spd_batch_actor_key":
                 raise
-            # Never expose another actor's run or constraint parameters.
-            raise ProductDataCollectionBusyError() from None
+            raise ProductDataIdempotencyConflictError() from None
+
+    def list_collection_shops(self, actor):
+        actor = self._actor(actor)
+        return [ProductDataCollectionShopRead(
+            shop_id=shop.shop_id,
+            shop_name=shop.display_name,
+        ) for shop in self.repository.collection_shops(actor)]
+
+    def read_batch(self, actor, collection_batch_id):
+        actor = self._actor(actor)
+        batch = self.repository.visible_batch(actor, collection_batch_id)
+        if batch is None:
+            raise ProductDataGenerationNotFoundError()
+        return self._batch_receipt(actor, batch)
 
     def read_generation(self, actor, generation_id):
         actor = self._actor(actor)
@@ -127,8 +203,37 @@ class ProductDataService:
             raise ProductDataGenerationNotFoundError()
         return self._receipt(generation)
 
-    def prepare_execution(self, generation_id, lease_id):
-        generation = self.repository.live_generation(generation_id, lease_id)
+    def claim_next(self):
+        if not self.settings.product_data_collection_execution_enabled:
+            return None
+        try:
+            claim = self.repository.claim_next(
+                lease_seconds=self.settings.product_data_collection_lease_seconds,
+                max_running=self.settings.product_data_collection_max_running,
+            )
+            self.session.commit()
+            return claim
+        except IntegrityError as collision:
+            self.session.rollback()
+            constraint = getattr(getattr(collision.orig, "diag", None), "constraint_name", None)
+            if constraint == "uq_spd_running_shop":
+                return None
+            raise
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def prepare_execution(self, generation_id, lease_id, *, stage=None, heartbeat=False):
+        generation = (
+            self.repository.heartbeat(
+                generation_id,
+                lease_id,
+                stage=stage or "execution",
+                lease_seconds=self.settings.product_data_collection_lease_seconds,
+            )
+            if heartbeat
+            else self.repository.live_generation(generation_id, lease_id)
+        )
         if generation is None:
             raise ProductDataPublicationRejectedError()
         actor = ActorContextService(self.session).resolve(user_id=generation.requested_by_user_id,
@@ -137,11 +242,23 @@ class ProductDataService:
             raise TeamAccessDeniedError()
         ModuleAccessService(self.session).require_module_access(actor, ModuleCode.SHOP)
         shop = self._shop(actor, generation.shop_id, collect=True)
-        return ProductDataExecutionContext(self._scope(generation), shop.platform_shop_id,
-                                           actor.user_id, actor.team_id)
+        context = ProductDataExecutionContext(
+            self._scope(generation),
+            shop.platform_shop_id,
+            actor.user_id,
+            actor.team_id,
+        )
+        if heartbeat:
+            self.session.commit()
+        return context
 
     def note_progress(self, generation_id, lease_id, page):
-        self.prepare_execution(generation_id, lease_id)
+        self.prepare_execution(
+            generation_id,
+            lease_id,
+            stage="collection_coverage",
+            heartbeat=True,
+        )
         generation = self.repository.live_generation(generation_id, lease_id, lock=True)
         if generation is None:
             raise ProductDataPublicationRejectedError()
@@ -152,7 +269,12 @@ class ProductDataService:
         self.session.commit()
 
     def publish(self, generation_id, lease_id, snapshot: CompleteProductDataSnapshot):
-        context = self.prepare_execution(generation_id, lease_id)
+        context = self.prepare_execution(
+            generation_id,
+            lease_id,
+            stage="publication",
+            heartbeat=True,
+        )
         generation = self.repository.generation(generation_id)
         series = self.repository.lock_series(generation.series_id)
         # Lock waits must not reuse pre-wait authorization facts.

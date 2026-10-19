@@ -19,7 +19,7 @@ from app.modules.access.models import Team, TeamMembership, TeamModuleAccess, Te
 from app.modules.access.service import ActorContextService
 from app.modules.product_data.collection import CompleteProductDataSnapshot
 from app.modules.product_data.exceptions import (
-    ProductDataCollectionBusyError, ProductDataCollectionUnavailableError, ProductDataGenerationNotFoundError,
+    ProductDataCollectionUnavailableError, ProductDataGenerationNotFoundError,
     ProductDataIdempotencyConflictError, ProductDataPublicationRejectedError,
 )
 from app.modules.product_data.models import (
@@ -35,7 +35,7 @@ from app.modules.users.models import User
 from app.platforms.douyin.product_data import (
     PRODUCT_METRICS, CompassProductDataPage, CompassProductDataRow, ProductMetricObservation, ProductTextObservation,
 )
-from tests.product_data_pg_support import guarded_feature_engine
+from tests.product_data_pg_support import FEATURE_DATABASE, guarded_feature_engine
 
 
 pytestmark = pytest.mark.integration
@@ -49,7 +49,7 @@ class SyntheticGraph(SimpleNamespace):
 @pytest.fixture
 def graph():
     engine, facts = guarded_feature_engine()
-    assert facts["database"] == "control_center_feat_shop_product_data"
+    assert facts["database"] == FEATURE_DATABASE
     connection = engine.connect()
     transaction = connection.begin()
     session = Session(connection, expire_on_commit=False, join_transaction_mode="create_savepoint")
@@ -82,8 +82,31 @@ def graph():
 
 
 def submit(graph, actor=0, shop=0, key=None, period="1d"):
-    return graph.service.request_collection(graph.actors[actor], ProductDataCollectionRequest(
-        shop_id=graph.shops[shop].shop_id, period=period, submission_key=key or uuid4()))
+    receipt, no_lease = graph.service.request_collection(
+        graph.actors[actor],
+        ProductDataCollectionRequest(
+            shop_id=graph.shops[shop].shop_id,
+            period=period,
+            submission_key=key or uuid4(),
+        ),
+    )
+    assert no_lease is None and receipt.status == "pending"
+    claim = graph.service.claim_next()
+    assert claim is not None and claim.generation_id == receipt.generation_id
+    return receipt, claim.lease_id
+
+
+def enqueue(graph, actor=0, shop=0, key=None, period="1d"):
+    receipt, no_lease = graph.service.request_collection(
+        graph.actors[actor],
+        ProductDataCollectionRequest(
+            shop_id=graph.shops[shop].shop_id,
+            period=period,
+            submission_key=key or uuid4(),
+        ),
+    )
+    assert no_lease is None
+    return receipt
 
 
 def complete(receipt, shop, total=25, offset=0):
@@ -140,12 +163,19 @@ def test_failed_next_intent_preserves_old_success_and_stable_ids(graph):
 
 def test_no_team_actor_key_replays_frozen_dates_without_duplicate_or_new_lease(graph, monkeypatch):
     key = uuid4()
-    first, lease = submit(graph, key=key)
+    first = enqueue(graph, key=key)
     def must_not_recompute(*_):
         pytest.fail("cross-day replay must not re-freeze dates")
     monkeypatch.setattr("app.modules.product_data.service.freeze_native_slice", must_not_recompute)
-    replay, replay_lease = submit(graph, key=key)
-    assert replay == first and replay_lease is None and lease is not None
+    replay, replay_lease = graph.service.request_collection(
+        graph.actors[0],
+        ProductDataCollectionRequest(
+            shop_id=graph.shops[0].shop_id,
+            period="1d",
+            submission_key=key,
+        ),
+    )
+    assert replay == first and replay_lease is None
     assert graph.session.scalar(select(func.count()).select_from(Generation)) == 1
     with pytest.raises(ProductDataIdempotencyConflictError):
         submit(graph, key=key, period="7d")
@@ -160,14 +190,23 @@ def test_replay_changed_team_rejected_even_for_super_account(graph):
             period="1d", submission_key=key))
 
 
-def test_cross_team_busy_contains_no_other_receipt_and_direct_receipt_is_hidden(graph):
-    receipt, _ = submit(graph, actor=1)
+def test_cross_team_same_shop_intents_queue_without_leaking_other_receipts(graph):
+    first, first_lease = submit(graph, actor=1)
     graph.session.add(TeamShopAccess(team_id=graph.teams[1].team_id, shop_id=graph.shops[0].shop_id)); graph.session.commit()
-    with pytest.raises(ProductDataCollectionBusyError) as error:
-        submit(graph, actor=2)
-    assert not error.value.details and str(receipt.generation_id) not in str(error.value)
+    second = enqueue(graph, actor=2)
+    assert second.status == "pending"
+    assert graph.service.claim_next() is None
     with pytest.raises(ProductDataGenerationNotFoundError):
-        graph.service.read_generation(graph.actors[2], receipt.generation_id)
+        graph.service.read_generation(graph.actors[2], first.generation_id)
+    assert graph.service.fail(
+        first.generation_id,
+        first_lease,
+        "PLATFORM_TIMEOUT",
+        "platform_response",
+    )
+    next_claim = graph.service.claim_next()
+    assert next_claim is not None
+    assert next_claim.generation_id == second.generation_id
 
 
 def test_current_grant_revoked_before_publish_blocks_it_and_reads(graph):
@@ -284,11 +323,21 @@ def test_stale_lease_and_late_sequence_cannot_overwrite_success(graph):
         lease_until=graph.service.repository.now() - timedelta(seconds=1)))
     graph.session.commit()
     assert graph.service.read_generation(graph.actors[0], first.generation_id).lease_expired
-    new = publish(graph, total=1)
+    replacement = graph.service.claim_next()
+    assert replacement is not None
+    assert replacement.generation_id == first.generation_id
+    assert replacement.lease_id != lease
     with pytest.raises(ProductDataPublicationRejectedError):
         graph.service.publish(first.generation_id, lease, complete(first, graph.shops[0], 1))
-    assert graph.service.list(graph.actors[0], query(new)).items[0].generation_id == new.generation_id
-    assert graph.session.get(Generation, first.generation_id).failure_code == "PRODUCT_DATA_LEASE_EXPIRED"
+    graph.session.rollback()
+    graph.service.publish(
+        first.generation_id,
+        replacement.lease_id,
+        complete(first, graph.shops[0], 1),
+    )
+    saved = graph.service.read_generation(graph.actors[0], first.generation_id)
+    assert saved.status == "succeeded" and saved.attempt_count == 2
+    assert graph.service.list(graph.actors[0], query(first)).items[0].generation_id == first.generation_id
 
 
 @pytest.mark.parametrize("fault", ["short", "duplicate", "scope", "identity"])
@@ -315,12 +364,24 @@ def test_disabled_execution_has_no_generation_side_effect(graph):
     assert graph.session.scalar(select(func.count()).select_from(Generation)) == 0
 
 
-def test_still_live_older_window_cannot_replace_newer_series_publication(graph, monkeypatch):
+def test_same_shop_queue_is_serial_across_frozen_windows(graph, monkeypatch):
     first, lease = submit(graph)
     shifted = first.scope.model_copy(update={"start_date": first.scope.start_date + timedelta(days=1),
                                             "end_date": first.scope.end_date + timedelta(days=1)})
     monkeypatch.setattr("app.modules.product_data.service.freeze_native_slice", lambda *_: shifted)
-    new = publish(graph, total=1)
-    with pytest.raises(ProductDataPublicationRejectedError):
-        graph.service.publish(first.generation_id, lease, complete(first, graph.shops[0], 1))
+    new = enqueue(graph)
+    assert graph.service.claim_next() is None
+    assert graph.service.fail(
+        first.generation_id,
+        lease,
+        "PLATFORM_TIMEOUT",
+        "platform_response",
+    )
+    next_claim = graph.service.claim_next()
+    assert next_claim is not None and next_claim.generation_id == new.generation_id
+    graph.service.publish(
+        new.generation_id,
+        next_claim.lease_id,
+        complete(new, graph.shops[0], 1),
+    )
     assert graph.service.list(graph.actors[0], query(new)).items[0].generation_id == new.generation_id

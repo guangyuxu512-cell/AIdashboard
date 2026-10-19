@@ -106,8 +106,17 @@ def consumer(monkeypatch):
         def __init__(self, _session, *, settings):
             del settings
 
-        def prepare_execution(self, generation_id, lease_id):
-            state.prepare_calls.append((generation_id, lease_id))
+        def prepare_execution(
+            self,
+            generation_id,
+            lease_id,
+            *,
+            stage=None,
+            heartbeat=False,
+        ):
+            state.prepare_calls.append(
+                (generation_id, lease_id, stage, heartbeat),
+            )
             return state.context
 
     class FakeSessionService:

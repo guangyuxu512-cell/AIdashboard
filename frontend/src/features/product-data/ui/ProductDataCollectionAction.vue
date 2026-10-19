@@ -2,11 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NTooltip } from 'naive-ui'
-import { AppButton } from '@/shared/ui'
+import { ShopMultiSelector } from '@/entities/shop'
+import { AppButton, AppDialog } from '@/shared/ui'
 import { StatusTag } from '@/shared/components'
 import { productDataKeys } from '../api/query-keys'
 import type {
-  ProductDataCollection,
+  ProductDataCollectionBatch,
+  ProductDataCollectionBatchCommand,
   ProductDataCollectionCommand,
   ProductDataSource,
 } from '../model/types'
@@ -19,49 +21,115 @@ const props = defineProps<{
   enabled: boolean
 }>()
 const client = useQueryClient()
-const receipt = ref<ProductDataCollection | null>(null)
-const intent = ref<ProductDataCollectionCommand | null>(null)
-const submitting = ref(false)
+const visible = ref(false)
+const selectedShopIds = ref<string[]>([])
+const receipt = ref<ProductDataCollectionBatch | null>(null)
+const intent = ref<ProductDataCollectionBatchCommand | null>(null)
+const submissionInFlight = ref(false)
 let revision = 0
+const activeBatchStoragePrefix =
+  'control-center.product-data.active-collection-batch.v1.'
+
+function activeBatchStorageKey() {
+  return `${activeBatchStoragePrefix}${props.contextKey}.${props.period ?? 'none'}`
+}
+function readActiveBatchId() {
+  try {
+    const value = window.localStorage.getItem(activeBatchStorageKey())
+    return value &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        value,
+      )
+      ? value
+      : null
+  } catch {
+    return null
+  }
+}
+function saveActiveBatchId(value: string | null) {
+  try {
+    if (value) window.localStorage.setItem(activeBatchStorageKey(), value)
+    else window.localStorage.removeItem(activeBatchStorageKey())
+  } catch {
+    // Progress remains available for this page lifetime when storage is blocked.
+  }
+}
+const activeBatchId = ref(readActiveBatchId())
+
+const shops = useQuery({
+  queryKey: computed(() => ['product-data-collection-shops', props.contextKey]),
+  queryFn: () => props.source.collectionShops!(),
+  enabled: computed(
+    () => visible.value && !!props.source.collectionShops && props.enabled,
+  ),
+  retry: false,
+})
+const shopOptions = computed(() =>
+  (shops.data.value ?? []).map((shop) => ({
+    label: shop.shopName,
+    value: shop.shopId,
+  })),
+)
+const terminal = computed(
+  () =>
+    !!receipt.value &&
+    ['succeeded', 'partial', 'failed'].includes(receipt.value.status),
+)
+const busy = computed(
+  () =>
+    !!receipt.value && ['pending', 'running'].includes(receipt.value.status),
+)
+const restoring = computed(() => !!activeBatchId.value && !receipt.value)
+
+watch(
+  () => [visible.value, shops.data.value] as const,
+  ([show, available]) => {
+    if (!show || !available || receipt.value) return
+    const ids = new Set(available.map((shop) => shop.shopId))
+    selectedShopIds.value =
+      props.shopId && ids.has(props.shopId)
+        ? [props.shopId]
+        : available.map((shop) => shop.shopId)
+  },
+  { immediate: true },
+)
+
 const submit = useMutation({
   mutationFn: ({
     command,
+    requestRevision,
   }: {
-    command: ProductDataCollectionCommand
-    revision: number
-  }) => props.source.collect!(command),
+    command: ProductDataCollectionBatchCommand
+    requestRevision: number
+  }) => {
+    void requestRevision
+    return props.source.collectBatch!(command)
+  },
   onSuccess(value, request) {
-    if (request.revision !== revision) return
+    if (request.requestRevision !== revision) return
     receipt.value = value
-    if (value.status === 'succeeded')
-      void client.invalidateQueries({
-        queryKey: productDataKeys.all(props.contextKey),
-      })
+    activeBatchId.value = value.id
+    saveActiveBatchId(value.id)
   },
   onSettled(_value, _error, request) {
-    if (request.revision === revision) submitting.value = false
+    if (request.requestRevision === revision) submissionInFlight.value = false
   },
   retry: false,
 })
 const polling = useQuery({
   queryKey: computed(() => [
-    'product-data-collection',
+    'product-data-collection-batch',
     props.contextKey,
-    receipt.value?.id,
+    activeBatchId.value,
   ]),
-  queryFn: ({ queryKey }) => props.source.collection!(String(queryKey[2])),
+  queryFn: ({ queryKey }) => props.source.collectionBatch!(String(queryKey[2])),
   enabled: computed(
-    () =>
-      !!props.source.collection &&
-      !!receipt.value &&
-      ['pending', 'running'].includes(receipt.value.status) &&
-      !receipt.value.leaseExpired,
+    () => !!props.source.collectionBatch && !!activeBatchId.value,
   ),
   refetchInterval: (query) =>
     !query.state.error &&
     query.state.data &&
-    ['pending', 'running'].includes(query.state.data.status) &&
-    !query.state.data.leaseExpired
+    ['pending', 'running'].includes(query.state.data.status)
       ? 1000
       : false,
   retry: false,
@@ -69,116 +137,252 @@ const polling = useQuery({
 watch(
   () => polling.data.value,
   (value) => {
-    if (!value || value.id !== receipt.value?.id) return
+    if (!value || value.id !== activeBatchId.value) return
     receipt.value = value
-    if (value.status === 'succeeded')
+    if (['succeeded', 'partial', 'failed'].includes(value.status)) {
+      saveActiveBatchId(null)
+      activeBatchId.value = null
+    }
+    if (['succeeded', 'partial'].includes(value.status))
       void client.invalidateQueries({
         queryKey: productDataKeys.all(props.contextKey),
       })
   },
 )
 watch(
-  () => [props.contextKey, props.shopId, props.period],
+  () => [props.contextKey, props.period],
   () => {
     revision++
+    visible.value = false
+    selectedShopIds.value = []
     receipt.value = null
+    activeBatchId.value = readActiveBatchId()
     intent.value = null
-    submitting.value = false
+    submissionInFlight.value = false
     submit.reset()
   },
 )
-const busy = computed(
-  () =>
-    !!receipt.value &&
-    ['pending', 'running'].includes(receipt.value.status) &&
-    !receipt.value.leaseExpired,
-)
+
 const reason = computed(() =>
   !props.enabled
-    ? '当前环境未启用手动采集'
-    : !props.shopId
-      ? '请先查询单个店铺'
-      : !props.period
-        ? '仅支持近1/7/30天'
+    ? '当前环境未启用手动更新'
+    : !props.period
+      ? '仅支持近1/7/30天'
+      : !props.source.collectBatch ||
+          !props.source.collectionBatch ||
+          !props.source.collectionShops
+        ? '当前数据源未接入多店更新'
         : null,
 )
-const disabled = computed(
-  () =>
-    !!reason.value || submitting.value || (busy.value && !polling.error.value),
-)
-const limitExceeded = computed(
-  () =>
-    receipt.value?.status === 'failed' &&
-    receipt.value.failureCode === 'PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED',
-)
-const status = computed(() =>
-  polling.error.value
-    ? '回执读取未完成'
-    : submit.error.value
-      ? '提交未确认'
-      : receipt.value?.leaseExpired
-        ? '租约已到期'
-        : receipt.value
-          ? {
-              pending: '采集中',
-              running: '采集中',
-              succeeded: '采集完成',
-              failed: limitExceeded.value ? '超出采集上限' : '采集失败',
-            }[receipt.value.status]
-          : null,
-)
-const details = computed(() => {
-  const error = polling.error.value || submit.error.value
-  if (error) return error instanceof Error ? error.message : '本次操作未完成'
+const status = computed(() => {
+  if (polling.error.value) return '回执读取未完成'
+  if (restoring.value) return '读取更新进度'
+  if (submit.error.value) return '提交未确认'
+  if (!receipt.value) return null
+  return {
+    pending: '等待更新',
+    running: '更新中',
+    succeeded: '更新完成',
+    partial: '部分完成',
+    failed: '更新失败',
+  }[receipt.value.status]
+})
+const summary = computed(() => {
+  if (polling.error.value || submit.error.value) {
+    const error = polling.error.value || submit.error.value
+    return error instanceof Error ? error.message : '本次操作未完成'
+  }
   const value = receipt.value
-  if (value && limitExceeded.value)
-    return `${value.startDate} ～ ${value.endDate}；${value.expectedTotal === null ? '平台返回数量' : `平台返回 ${value.expectedTotal} 件`}超出当前环境单次采集上限；本次未发布，已有成功数据保持不变。`
   return value
-    ? `${value.startDate} ～ ${value.endDate}；${value.stage}；${value.receivedPages} 页；${value.receivedTotal ?? '未知'}/${value.expectedTotal ?? '未知'} 件${value.failureCode ? '；' + value.failureCode : ''}`
+    ? `共 ${value.totalCount} 店；成功 ${value.succeededCount}；失败 ${value.failedCount}；执行中 ${value.runningCount}；排队 ${value.pendingCount}`
     : ''
 })
-function run() {
-  if (disabled.value) return
-  if (polling.error.value) {
+const confirmDisabledReason = computed(() =>
+  shops.error.value
+    ? '可更新店铺读取失败'
+    : selectedShopIds.value.length > 100
+      ? '每次最多选择 100 家店铺'
+      : !selectedShopIds.value.length
+        ? '请至少选择一家店铺'
+        : null,
+)
+
+function open() {
+  if (reason.value) return
+  if (polling.error.value && activeBatchId.value) {
+    visible.value = true
     void polling.refetch()
     return
   }
-  if (!props.shopId || !props.period || !props.source.collect) return
+  if (terminal.value) {
+    receipt.value = null
+    activeBatchId.value = null
+    saveActiveBatchId(null)
+    intent.value = null
+    selectedShopIds.value = []
+    submit.reset()
+  }
+  visible.value = true
+}
+function confirm() {
+  if (
+    submissionInFlight.value ||
+    restoring.value ||
+    busy.value ||
+    confirmDisabledReason.value ||
+    !props.period
+  )
+    return
+  const shopIds = [...selectedShopIds.value].sort()
   if (
     !intent.value ||
-    (receipt.value && (!busy.value || receipt.value.leaseExpired))
+    intent.value.period !== props.period ||
+    intent.value.shopIds.join(',') !== shopIds.join(',')
   )
     intent.value = {
-      shopId: props.shopId,
+      shopIds,
       period: props.period,
       submissionKey: crypto.randomUUID(),
     }
-  submitting.value = true
-  submit.mutate({ command: intent.value, revision })
+  submissionInFlight.value = true
+  submit.mutate({ command: intent.value, requestRevision: revision })
+}
+function itemStatus(item: ProductDataCollectionBatch['items'][number]) {
+  const failures: Record<string, string> = {
+    PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED: '超出更新上限',
+    PRODUCT_DATA_SESSION_VALIDATION_REQUIRED: '需要重新登录',
+    SHOP_SESSION_NOT_CONFIGURED: '需要登录店铺',
+    SHOP_SESSION_PAYLOAD_INVALID: '会话数据无效',
+    AUTH_INVALID: '登录已失效',
+    PLATFORM_TIMEOUT: '平台请求超时',
+  }
+  return {
+    pending: '排队中',
+    running: `更新中 · ${item.generation.receivedPages} 页`,
+    succeeded: `完成 · ${item.generation.receivedTotal ?? 0} 件`,
+    failed: `失败 · ${
+      (item.generation.failureCode && failures[item.generation.failureCode]) ??
+      item.generation.failureCode ??
+      '未知原因'
+    }`,
+  }[item.generation.status]
 }
 </script>
 
 <template>
-  <NTooltip v-if="status"
-    ><template #trigger><StatusTag :label="status" /></template
-    >{{ details }}</NTooltip
-  >
-  <NTooltip :disabled="!reason"
-    ><template #trigger
-      ><span
-        ><AppButton
-          :disabled="disabled"
-          :loading="submit.isPending.value"
-          @click="run"
-          >{{
+  <NTooltip v-if="status">
+    <template #trigger><StatusTag :label="status" /></template>
+    {{ summary }}
+  </NTooltip>
+  <NTooltip :disabled="!reason">
+    <template #trigger>
+      <span>
+        <AppButton :disabled="!!reason" @click="open">
+          {{
             polling.error.value
-              ? '重新读取回执'
-              : submit.error.value
-                ? '重试提交'
-                : '更新数据'
-          }}</AppButton
-        ></span
-      ></template
-    >{{ reason }}</NTooltip
+              ? '重新读取进度'
+              : restoring
+                ? '读取更新进度'
+                : busy
+                  ? '查看更新进度'
+                  : '更新数据'
+          }}
+        </AppButton>
+      </span>
+    </template>
+    {{ reason }}
+  </NTooltip>
+
+  <AppDialog
+    v-model:show="visible"
+    title="商品数据更新"
+    size="md"
+    :positive-text="restoring ? '读取中' : busy ? '更新中' : '提交更新'"
+    :loading="submit.isPending.value"
+    :positive-disabled="
+      submissionInFlight || restoring || busy || !!confirmDisabledReason
+    "
+    :positive-disabled-reason="confirmDisabledReason"
+    @confirm="confirm"
   >
+    <div class="product-data-collection">
+      <template v-if="polling.error.value">
+        <div class="product-data-collection__empty">回执读取未完成，请重试</div>
+      </template>
+      <template v-else-if="restoring">
+        <div class="product-data-collection__empty">正在恢复更新进度</div>
+      </template>
+      <template v-else-if="!receipt">
+        <ShopMultiSelector
+          v-if="shops.isFetching.value || shopOptions.length"
+          v-model="selectedShopIds"
+          :options="shopOptions"
+          :loading="shops.isFetching.value"
+        />
+        <div
+          v-else-if="!shops.error.value"
+          class="product-data-collection__empty"
+        >
+          暂无可更新的授权抖店
+        </div>
+        <div class="product-data-collection__hint">
+          已选择
+          {{ selectedShopIds.length }} 家；任务提交后关闭客户端也会继续执行。
+        </div>
+      </template>
+      <template v-else>
+        <div class="product-data-collection__summary">{{ summary }}</div>
+        <div class="product-data-collection__items">
+          <div
+            v-for="item in receipt.items"
+            :key="item.shopId"
+            class="product-data-collection__item"
+          >
+            <span :title="item.shopName">{{ item.shopName }}</span>
+            <span>{{ itemStatus(item) }}</span>
+          </div>
+        </div>
+      </template>
+    </div>
+  </AppDialog>
 </template>
+
+<style scoped>
+.product-data-collection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.product-data-collection__hint,
+.product-data-collection__summary,
+.product-data-collection__empty,
+.product-data-collection__item span:last-child {
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+.product-data-collection__items {
+  display: grid;
+  gap: var(--space-2);
+}
+.product-data-collection__item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+}
+.product-data-collection__item span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-data-collection__item span:last-child {
+  flex: 0 0 auto;
+}
+</style>

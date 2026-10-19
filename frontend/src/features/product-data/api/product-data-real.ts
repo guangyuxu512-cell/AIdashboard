@@ -10,6 +10,7 @@ import type {
   ProductDataSource,
   ProductMetric,
   ProductDataCollection,
+  ProductDataCollectionBatch,
 } from '../model/types'
 
 export interface ProductDataScopeDto {
@@ -64,6 +65,8 @@ export interface ProductDataCollectionDto {
   raw_complete_rows: number | null
   unit_complete_rows: number | null
   failure_code: string | null
+  attempt_count: number
+  last_heartbeat_at: string | null
   created_at: string
   started_at: string | null
   finished_at: string | null
@@ -85,11 +88,47 @@ function mapCollection(dto: ProductDataCollectionDto): ProductDataCollection {
     rawCompleteRows: dto.raw_complete_rows,
     unitCompleteRows: dto.unit_complete_rows,
     failureCode: dto.failure_code,
+    attemptCount: dto.attempt_count,
+    lastHeartbeatAt: dto.last_heartbeat_at,
     createdAt: dto.created_at,
     startedAt: dto.started_at,
     finishedAt: dto.finished_at,
     publishedAt: dto.published_at,
     leaseExpired: dto.lease_expired,
+  }
+}
+interface ProductDataCollectionBatchDto {
+  collection_batch_id: string
+  status: ProductDataCollectionBatch['status']
+  total_count: number
+  pending_count: number
+  running_count: number
+  succeeded_count: number
+  failed_count: number
+  created_at: string
+  items: Array<{
+    shop_id: string
+    shop_name: string
+    generation: ProductDataCollectionDto
+  }>
+}
+function mapCollectionBatch(
+  dto: ProductDataCollectionBatchDto,
+): ProductDataCollectionBatch {
+  return {
+    id: dto.collection_batch_id,
+    status: dto.status,
+    totalCount: dto.total_count,
+    pendingCount: dto.pending_count,
+    runningCount: dto.running_count,
+    succeededCount: dto.succeeded_count,
+    failedCount: dto.failed_count,
+    createdAt: dto.created_at,
+    items: dto.items.map((item) => ({
+      shopId: item.shop_id,
+      shopName: item.shop_name,
+      generation: mapCollection(item.generation),
+    })),
   }
 }
 
@@ -243,6 +282,34 @@ export function createRealProductDataSource(): ProductDataSource {
         `/api/v1/product-data/collections/${encodeURIComponent(id)}`,
       )
       return mapCollection(data)
+    },
+    async collectionShops() {
+      const { data } = await httpClient.get<
+        Array<{ shop_id: string; shop_name: string }>
+      >('/api/v1/product-data/collection-shops')
+      return data.map((shop) => ({
+        shopId: shop.shop_id,
+        shopName: shop.shop_name,
+      }))
+    },
+    async collectBatch(command) {
+      const { data } = await httpClient.post<ProductDataCollectionBatchDto>(
+        '/api/v1/product-data/collection-batches',
+        {
+          shop_ids: command.shopIds,
+          period: command.period,
+          submission_key: command.submissionKey,
+          sale_type: '1',
+          content_type: '1',
+        },
+      )
+      return mapCollectionBatch(data)
+    },
+    async collectionBatch(id) {
+      const { data } = await httpClient.get<ProductDataCollectionBatchDto>(
+        `/api/v1/product-data/collection-batches/${encodeURIComponent(id)}`,
+      )
+      return mapCollectionBatch(data)
     },
     async list(query): Promise<ProductDataPage> {
       const { data } = await httpClient.get<ProductDataPageDto>(
