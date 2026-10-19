@@ -1,4 +1,5 @@
 from io import BytesIO
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -197,13 +198,19 @@ def test_postgresql_asset_scope_ownership_and_sql_isolation(
             }
 
             all_items, all_total = service.list(
-                actor=super_actor,
+                actor=replace(super_actor, team_id=None),
                 page=1,
                 page_size=20,
                 search=None,
             )
             assert all_total == 5
             assert {item.asset_id for item in all_items} == asset_ids
+
+            selected_items, selected_total = service.list(
+                actor=super_actor, page=1, page_size=20, search=None,
+            )
+            assert selected_total == 4
+            assert team_b_asset.asset_id not in {item.asset_id for item in selected_items}
 
             searched, searched_total = service.list(
                 actor=member_actor,

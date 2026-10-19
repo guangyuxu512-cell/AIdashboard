@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, time
 from uuid import UUID, uuid4
 
@@ -862,6 +863,24 @@ def test_postgresql_super_without_team_reads_all_presets_but_cannot_write(
                         name="没有显式团队的写入",
                         common_parameters={},
                     ),
+                )
+            selected = replace(actor, team_id=team_a_id)
+            selected_page = service.list_all(
+                actor=selected,
+                app_id="cross-team-read-app",
+                pagination=PaginationParams(page=1, page_size=1),
+            )
+            assert selected_page.total == 1
+            assert service.get(
+                actor=selected,
+                app_id="cross-team-read-app",
+                preset_id=preset_a_id,
+            ).preset_id == preset_a_id
+            with pytest.raises(AutomationParameterPresetNotFoundError):
+                service.get(
+                    actor=selected,
+                    app_id="cross-team-read-app",
+                    preset_id=preset_b_id,
                 )
     finally:
         with Session(postgresql_engine) as session:

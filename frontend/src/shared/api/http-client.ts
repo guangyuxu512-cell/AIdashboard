@@ -130,6 +130,7 @@ function hasExpectedResponse(response: AxiosResponse): boolean {
 httpClient.interceptors.request.use((config) => {
   const activeTeamId = activeTeamIdProvider()
   if (activeTeamId) config.headers.set('X-Team-ID', activeTeamId)
+  else config.headers.delete('X-Team-ID')
   return config
 })
 

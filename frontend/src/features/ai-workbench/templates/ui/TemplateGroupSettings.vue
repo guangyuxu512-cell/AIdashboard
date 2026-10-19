@@ -6,6 +6,7 @@ import { AppSwitch } from '@/shared/ui'
 
 const props = defineProps<{
   group: TemplateGroup
+  readOnly?: boolean
 }>()
 
 defineEmits<{
@@ -31,6 +32,7 @@ const modeLabel = computed(() => GENERATION_MODE_META[props.group.mode].label)
         <span>启用</span>
         <AppSwitch
           :model-value="group.enabled"
+          :disabled="readOnly"
           aria-label="模板组启用"
           @update:model-value="$emit('update:enabled', $event)"
         />

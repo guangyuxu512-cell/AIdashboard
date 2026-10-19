@@ -209,4 +209,64 @@ describe('Human Auth Store', () => {
     await expect(auth.logout()).rejects.toThrow('network')
     expect(auth.isAuthenticated).toBe(true)
   })
+
+  it('keeps a super account global until a team is explicitly selected', async () => {
+    const auth = useAuthStore()
+    auth.setDataSource(
+      dataSource({
+        moduleAccess: {
+          moduleCodes: ['ai-workbench'],
+          isAccessAdministrator: true,
+          isSuperAccount: true,
+        },
+      }),
+    )
+    await auth.initialize()
+    expect(auth.activeTeamId).toBeNull()
+    expect(auth.hasTeamContext).toBe(false)
+    expect(auth.requiresTeamSelection).toBe(false)
+    expect(auth.isAccessAdministrator).toBe(true)
+  })
+
+  it('lets a super account return from any team to global and clears team-scoped state', async () => {
+    const onTeamChanged = vi.fn()
+    configureAuthEffects({ onTeamChanged })
+    const auth = useAuthStore()
+    const source = dataSource({
+      teams: [team('default', '默认团队'), team('shopee', 'shopee')],
+      moduleAccess: {
+        moduleCodes: ['ai-workbench'],
+        isAccessAdministrator: true,
+        isSuperAccount: true,
+      },
+    })
+    auth.setDataSource(source)
+    await auth.initialize()
+    await auth.selectTeam('default')
+    expect(auth.hasTeamContext).toBe(true)
+    expect(auth.currentTeam?.teamName).toBe('默认团队')
+    await auth.selectTeam('shopee')
+    expect(auth.currentTeam?.teamName).toBe('shopee')
+    await auth.selectTeam(null)
+    expect(auth.hasTeamContext).toBe(false)
+    expect(auth.activeTeamId).toBeNull()
+    expect(auth.isSuperAccount).toBe(true)
+    expect(onTeamChanged).toHaveBeenCalledTimes(3)
+    expect(
+      window.localStorage.getItem(`${ACTIVE_TEAM_STORAGE_PREFIX}.user-1`),
+    ).toBeNull()
+    expect(source.getCurrentModuleAccess).toHaveBeenCalledTimes(4)
+  })
+
+  it('does not let an ordinary member enter global context', async () => {
+    const onTeamChanged = vi.fn()
+    configureAuthEffects({ onTeamChanged })
+    const auth = useAuthStore()
+    auth.setDataSource(dataSource())
+    await auth.initialize()
+    await auth.selectTeam(null)
+    expect(auth.activeTeamId).toBe('team-1')
+    expect(auth.hasTeamContext).toBe(true)
+    expect(onTeamChanged).not.toHaveBeenCalled()
+  })
 })

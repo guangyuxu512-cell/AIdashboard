@@ -13,6 +13,7 @@ import type { AppOptionValue } from '@/shared/ui/types'
 const props = defineProps<{
   product: ProductMaterialGroup
   templateGroupOptions: readonly TemplateGroupOption[]
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -60,6 +61,7 @@ function updateStyleReplicationTemplates(value: AppOptionValue[]): void {
         <span>启用</span>
         <AppSwitch
           :model-value="product.enabled"
+          :disabled="readOnly"
           aria-label="产品启用"
           @update:model-value="$emit('update:enabled', $event)"
         />
@@ -69,7 +71,7 @@ function updateStyleReplicationTemplates(value: AppOptionValue[]): void {
           <span>普通生图</span>
           <AppSwitch
             :model-value="product.normalGenerationEnabled"
-            :disabled="!product.enabled"
+            :disabled="readOnly || !product.enabled"
             aria-label="普通生图"
             @update:model-value="
               $emit('update:normalGenerationEnabled', $event)
@@ -81,7 +83,9 @@ function updateStyleReplicationTemplates(value: AppOptionValue[]): void {
           <AppSelect
             :model-value="product.normalTemplateGroupIds"
             :options="normalTemplateOptions"
-            :disabled="!product.enabled || !product.normalGenerationEnabled"
+            :disabled="
+              readOnly || !product.enabled || !product.normalGenerationEnabled
+            "
             multiple
             clearable
             filterable
@@ -97,7 +101,7 @@ function updateStyleReplicationTemplates(value: AppOptionValue[]): void {
           <span>风格复刻</span>
           <AppSwitch
             :model-value="product.styleReplicationEnabled"
-            :disabled="!product.enabled"
+            :disabled="readOnly || !product.enabled"
             aria-label="风格复刻"
             @update:model-value="
               $emit('update:styleReplicationEnabled', $event)
@@ -109,7 +113,9 @@ function updateStyleReplicationTemplates(value: AppOptionValue[]): void {
           <AppSelect
             :model-value="product.styleReplicationTemplateGroupIds"
             :options="styleReplicationTemplateOptions"
-            :disabled="!product.enabled || !product.styleReplicationEnabled"
+            :disabled="
+              readOnly || !product.enabled || !product.styleReplicationEnabled
+            "
             multiple
             clearable
             filterable

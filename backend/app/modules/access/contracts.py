@@ -18,8 +18,8 @@ class ActorContext:
     """Small, request-scoped authorization context passed to business services.
 
     A super account deliberately has no membership.  It may optionally select
-    a Team as write context through ``X-Team-ID``; an omitted context means a
-    cross-Team read, never an implicit default Team.
+    a Team as business view/write context through ``X-Team-ID``; an omitted
+    context means a cross-Team read, never an implicit default Team.
     """
 
     user_id: UUID

@@ -51,6 +51,8 @@ test.beforeEach(async ({ page }) => {
 })
 
 const modelId = '11111111-1111-4111-8111-111111111111'
+const defaultTeamId = '00000000-0000-4000-8000-000000000021'
+const shopeeTeamId = '00000000-0000-4000-8000-000000000022'
 const alternateModelId = '11111111-1111-4111-8111-111111111112'
 const groupId = '22222222-2222-4222-8222-222222222222'
 const detailGroupId = '22222222-2222-4222-8222-222222222223'
@@ -116,7 +118,202 @@ interface WorkbenchApiOptions {
   failUploadName?: string
   failAttach?: boolean
   failCleanup?: boolean
+  superAccount?: boolean
+  singleTeam?: boolean
+  uploadGate?: Promise<void>
 }
+
+async function switchTeamContext(page: Page, label: string): Promise<void> {
+  await page.getByRole('button', { name: '当前用户菜单' }).click()
+  await page.getByText(label, { exact: true }).click()
+}
+
+test('Team context: super can browse globally and switch default, global and shopee with matching uploads', async ({
+  page,
+}) => {
+  const calls = await installWorkbenchApi(page, { superAccount: true })
+  const uploadTeams: Array<string | undefined> = []
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).pathname === '/api/v1/ai-workbench/assets' &&
+      request.method() === 'POST'
+    )
+      uploadTeams.push(request.headers()['x-team-id'])
+  })
+  await page.goto('/#/ai-workbench/assets')
+  await expect(
+    page.getByText('全部团队仅供浏览', { exact: false }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '上传素材', exact: true }),
+  ).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: '新建产品', exact: true }),
+  ).toBeDisabled()
+  await expect(
+    page.getByRole('button', {
+      name: `选择产品 ${secondMaterialGroup.name}`,
+      exact: true,
+    }),
+  ).toBeVisible()
+  await switchTeamContext(page, '切换至 默认团队')
+  await expect(
+    page.getByRole('button', {
+      name: `选择产品 ${materialGroup.name}`,
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', {
+      name: `选择产品 ${secondMaterialGroup.name}`,
+      exact: true,
+    }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: '上传素材', exact: true }),
+  ).toBeEnabled()
+  await switchTeamContext(page, '切换至全部团队')
+  await expect(
+    page.getByRole('button', {
+      name: `选择产品 ${secondMaterialGroup.name}`,
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '上传素材', exact: true }),
+  ).toBeDisabled()
+  await switchTeamContext(page, '切换至 shopee')
+  await expect(
+    page.getByRole('button', {
+      name: `选择产品 ${materialGroup.name}`,
+      exact: true,
+    }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', {
+      name: `选择产品 ${secondMaterialGroup.name}`,
+      exact: true,
+    }),
+  ).toBeVisible()
+  await page.getByLabel('上传素材', { exact: true }).setInputFiles({
+    name: 'shopee.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(proportionImage([400, 600])),
+  })
+  await expect(
+    page.getByRole('button', { name: '查看素材 shopee.png', exact: true }),
+  ).toBeVisible()
+  expect(uploadTeams).toEqual([shopeeTeamId])
+  expect(calls.materialAttachRequests()).toEqual([
+    `/api/v1/ai-workbench/product-material-groups/${secondMaterialGroupId}/assets`,
+  ])
+})
+
+test('Team context: a single-team super can return to global and retain it after reload', async ({
+  page,
+}) => {
+  await installWorkbenchApi(page, { superAccount: true, singleTeam: true })
+  await page.goto('/#/ai-workbench/assets')
+  await switchTeamContext(page, '切换至 默认团队')
+  await expect(
+    page.getByRole('button', { name: '上传素材', exact: true }),
+  ).toBeEnabled()
+  await switchTeamContext(page, '切换至全部团队')
+  await page.reload()
+  await expect(
+    page.getByText('全部团队仅供浏览', { exact: false }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '上传素材', exact: true }),
+  ).toBeDisabled()
+})
+
+test('Team context: global AI templates are readable but cannot be changed and generation requires a team', async ({
+  page,
+}) => {
+  const calls = await installWorkbenchApi(page, {
+    superAccount: true,
+    controlledJob: true,
+    batchScenario: true,
+  })
+  calls.setControlledJobStatus('PARTIAL_FAILED')
+  await page.goto('/#/ai-workbench/templates')
+  const createButtons = page.getByRole('button', {
+    name: '新建模板组',
+    exact: true,
+  })
+  await expect(createButtons).toHaveCount(2)
+  for (const button of await createButtons.all())
+    await expect(button).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: '添加模板', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('switch', { name: '模板组启用', exact: true }),
+  ).toBeDisabled()
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: 'AI生图', exact: true })
+    .click()
+  await expect(
+    page.getByText('请选择团队后使用生图', { exact: true }),
+  ).toBeVisible()
+  await expect(page.getByLabel('提示词', { exact: true })).toHaveCount(0)
+  await page
+    .getByRole('navigation', { name: 'AI 功能入口' })
+    .getByRole('button', { name: '生成记录', exact: true })
+    .click()
+  await page
+    .getByLabel('生成记录列表')
+    .getByRole('button', { name: '查看', exact: true })
+    .click()
+  await expect(
+    page.getByRole('button', { name: '重试失败项', exact: true }),
+  ).toBeDisabled()
+  expect(calls.retryBody()).toBeNull()
+  await switchTeamContext(page, '切换至 默认团队')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
+test('Team context: changing team while an upload finishes never attaches or cleans up in the next team', async ({
+  page,
+}) => {
+  const gate = releaseGate()
+  const calls = await installWorkbenchApi(page, {
+    superAccount: true,
+    uploadGate: gate.promise,
+  })
+  try {
+    await page.goto('/#/ai-workbench/assets')
+    await switchTeamContext(page, '切换至 默认团队')
+    await expect(
+      page.getByRole('button', { name: '上传素材', exact: true }),
+    ).toBeEnabled()
+    await page.getByLabel('上传素材', { exact: true }).setInputFiles({
+      name: 'pending.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(proportionImage([400, 600])),
+    })
+    await expect.poll(calls.uploadCount).toBe(1)
+    await switchTeamContext(page, '切换至 shopee')
+    await expect(
+      page.getByRole('button', {
+        name: `选择产品 ${secondMaterialGroup.name}`,
+        exact: true,
+      }),
+    ).toBeVisible()
+    gate.release()
+    await expect(
+      page.getByText('团队已切换，文件保留在原团队，未关联当前素材组', {
+        exact: true,
+      }),
+    ).toBeVisible()
+    expect(calls.materialAttachRequests()).toEqual([])
+    expect(calls.destructiveRequests()).toEqual([])
+  } finally {
+    gate.release()
+  }
+})
 
 test('AI upload: AI-only material upload attaches and previews through AI endpoints', async ({
   page,
@@ -929,6 +1126,7 @@ async function installWorkbenchApi(
   const submittedBodies: Record<string, unknown>[] = []
   let retryBody: Record<string, unknown> | null = null
   const archiveRequests: string[] = []
+  const materialAttachRequests: string[] = []
   const assetContentRequests: string[] = []
   const assetImageRequests: Array<{
     assetId: string
@@ -950,23 +1148,28 @@ async function installWorkbenchApi(
   })
   const currentTeams = () => [
     {
-      membership_id: '00000000-0000-4000-8000-000000000011',
-      team_id: '00000000-0000-4000-8000-000000000021',
+      membership_id: options.superAccount
+        ? null
+        : '00000000-0000-4000-8000-000000000011',
+      team_id: defaultTeamId,
       team_name: '默认团队',
       team_enabled: true,
-      role_code: 'member',
-      data_scope: 'team',
+      role_code: options.superAccount ? 'super_account' : 'member',
+      data_scope: options.superAccount ? 'all' : 'team',
       membership_enabled: true,
     },
-    ...(loginName.includes('multi')
+    ...((loginName.includes('multi') || options.superAccount) &&
+    !options.singleTeam
       ? [
           {
-            membership_id: '00000000-0000-4000-8000-000000000012',
-            team_id: '00000000-0000-4000-8000-000000000022',
-            team_name: '运营团队',
+            membership_id: options.superAccount
+              ? null
+              : '00000000-0000-4000-8000-000000000012',
+            team_id: shopeeTeamId,
+            team_name: options.superAccount ? 'shopee' : '运营团队',
             team_enabled: true,
-            role_code: 'member',
-            data_scope: 'team',
+            role_code: options.superAccount ? 'super_account' : 'member',
+            data_scope: options.superAccount ? 'all' : 'team',
             membership_enabled: true,
           },
         ]
@@ -1012,6 +1215,7 @@ async function installWorkbenchApi(
               'settings',
             ],
         is_access_administrator: !options.aiOnly,
+        is_super_account: options.superAccount === true,
       })
     },
   )
@@ -1037,6 +1241,11 @@ async function installWorkbenchApi(
       destructiveRequests.push(request.url())
     }
     if (path.endsWith('/archive')) archiveRequests.push(path)
+    if (
+      /\/product-material-groups\/[^/]+\/assets$/.test(path) &&
+      request.method() === 'POST'
+    )
+      materialAttachRequests.push(path)
   })
 
   const fulfillAssetImage = async (route: Parameters<Page['route']>[1]) => {
@@ -1083,7 +1292,7 @@ async function installWorkbenchApi(
   })
 
   const uploads: Array<(typeof materialGroup.assets)[number]> = []
-  const attachedUploadIds = new Set<string>()
+  const attachedUploadGroups = new Map<string, string>()
   await page.route('**/api/v1/ai-workbench/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -1118,6 +1327,7 @@ async function installWorkbenchApi(
         },
       }
       uploads.push(uploaded)
+      if (options.uploadGate) await options.uploadGate
       await route.fulfill({ status: 201, json: uploaded.asset })
       return
     }
@@ -1140,14 +1350,21 @@ async function installWorkbenchApi(
       return
     }
     if (
-      path ===
-        `/api/v1/ai-workbench/product-material-groups/${materialGroupId}/assets` &&
+      [materialGroupId, secondMaterialGroupId].some(
+        (id) =>
+          path === `/api/v1/ai-workbench/product-material-groups/${id}/assets`,
+      ) &&
       method === 'POST'
     ) {
-      if (!options.failAttach)
-        attachedUploadIds.add(
+      const targetGroup = path.includes(secondMaterialGroupId)
+        ? secondMaterialGroup
+        : materialGroup
+      if (!options.failAttach) {
+        attachedUploadGroups.set(
           (request.postDataJSON() as { asset_id: string }).asset_id,
+          targetGroup.material_group_id,
         )
+      }
       await route.fulfill(
         options.failAttach
           ? {
@@ -1160,8 +1377,8 @@ async function installWorkbenchApi(
             }
           : {
               json: {
-                ...materialGroup,
-                assets: [...materialGroup.assets, ...uploads],
+                ...targetGroup,
+                assets: [...targetGroup.assets, ...uploads],
               },
             },
       )
@@ -1240,9 +1457,15 @@ async function installWorkbenchApi(
       return
     }
     if (path.endsWith('/product-material-groups') && method === 'GET') {
-      const groups = options.batchScenario
-        ? [materialGroup, secondMaterialGroup]
-        : [materialGroup]
+      let groups =
+        options.batchScenario || options.superAccount
+          ? [materialGroup, secondMaterialGroup]
+          : [materialGroup]
+      if (options.superAccount) {
+        const team = request.headers()['x-team-id']
+        if (team)
+          groups = [team === shopeeTeamId ? secondMaterialGroup : materialGroup]
+      }
       await route.fulfill({
         json: {
           items: groups.map((group) => ({
@@ -1270,8 +1493,10 @@ async function installWorkbenchApi(
           ...materialGroup,
           assets: [
             ...materialGroup.assets,
-            ...uploads.filter((link) =>
-              attachedUploadIds.has(link.asset.asset_id),
+            ...uploads.filter(
+              (link) =>
+                attachedUploadGroups.get(link.asset.asset_id) ===
+                materialGroupId,
             ),
           ],
         },
@@ -1282,7 +1507,19 @@ async function installWorkbenchApi(
       path.endsWith(`/product-material-groups/${secondMaterialGroupId}`) &&
       method === 'GET'
     ) {
-      await route.fulfill({ json: secondMaterialGroup })
+      await route.fulfill({
+        json: {
+          ...secondMaterialGroup,
+          assets: [
+            ...secondMaterialGroup.assets,
+            ...uploads.filter(
+              (link) =>
+                attachedUploadGroups.get(link.asset.asset_id) ===
+                secondMaterialGroupId,
+            ),
+          ],
+        },
+      })
       return
     }
     if (path.endsWith('/generation-jobs') && method === 'POST') {
@@ -1385,6 +1622,8 @@ async function installWorkbenchApi(
   })
 
   return {
+    uploadCount: () => uploads.length,
+    materialAttachRequests: () => [...materialAttachRequests],
     submitCount: () => submitCount,
     submittedBody: () => submittedBody,
     submittedBodies: () => [...submittedBodies],

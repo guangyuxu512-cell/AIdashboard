@@ -4,6 +4,8 @@ import { computed } from 'vue'
 
 import { AiManagementToolbar } from '@/features/ai-workbench'
 import { getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
+import EmptyState from '@/shared/components/EmptyState.vue'
 import ContextSwitchBar from '@/shared/components/ContextSwitchBar.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
@@ -18,6 +20,7 @@ import BatchGenerationRealPanel from './BatchGenerationRealPanel.vue'
 import InstantGenerationRealPanel from './InstantGenerationRealPanel.vue'
 
 const sessionStore = useAiWorkbenchSessionStore()
+const auth = useAuthStore()
 const { workMode } = storeToRefs(sessionStore)
 const catalogs = useGenerationCatalogs()
 const models = computed(catalogs.models)
@@ -58,7 +61,8 @@ function reload(): void {
       @select="workMode = $event as GenerationWorkMode"
     />
   </AiManagementToolbar>
-  <LoadingState v-if="pending" description="正在加载生成配置" />
+  <EmptyState v-if="!auth.hasTeamContext" description="请选择团队后使用生图" />
+  <LoadingState v-else-if="pending" description="正在加载生成配置" />
   <ErrorState
     v-else-if="error"
     :description="getErrorMessage(error)"

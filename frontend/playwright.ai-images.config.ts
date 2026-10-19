@@ -8,7 +8,7 @@ process.env.PLAYWRIGHT_AI_STATIC = '1'
 export default defineConfig({
   testDir: './e2e',
   testMatch: 'ai-workbench-real-api.spec.ts',
-  grep: /image proportions:|AI upload:|keeps a thumbnail visible|shows an explicit retry/,
+  grep: /image proportions:|AI upload:|Team context:|keeps a thumbnail visible|shows an explicit retry/,
   workers: 1,
   timeout: 60_000,
   outputDir: './test-results/ai-image-proportions',

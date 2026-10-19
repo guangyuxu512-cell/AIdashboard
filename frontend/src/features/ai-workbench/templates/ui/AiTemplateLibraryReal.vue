@@ -15,6 +15,7 @@ import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
 import ThreePaneWorkbench from '@/shared/components/ThreePaneWorkbench.vue'
 import { getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
 import { AppButton, AppDialog, AppInput, AppSelect } from '@/shared/ui'
 import type { AppOptionValue } from '@/shared/ui/types'
@@ -41,6 +42,7 @@ type PendingDelete =
   | { type: 'template'; template: PromptTemplate }
 
 const message = useMessage()
+const auth = useAuthStore()
 const queryClient = useQueryClient()
 const activeMode = ref<GenerationMode>('NORMAL_GENERATION')
 const searchDraft = ref('')
@@ -152,12 +154,28 @@ watch(selectedGroupId, () => {
   currentPage.value = 1
   selectedTemplateId.value = null
 })
+watch(
+  () => `${auth.currentUser?.userId ?? ''}:${auth.activeTeamId ?? ''}`,
+  () => {
+    groupDialogShow.value = false
+    editingGroup.value = null
+    pendingDelete.value = null
+    selectedGroupId.value = null
+    selectedTemplateId.value = null
+    currentPage.value = 1
+  },
+  { flush: 'sync' },
+)
 watch(searchQuery, () => {
   currentPage.value = 1
   selectedTemplateId.value = null
 })
 
 async function execute(action: () => Promise<void>, success?: string) {
+  if (!auth.hasTeamContext) {
+    message.warning('请先选择具体团队')
+    return
+  }
   try {
     await actionMutation.mutateAsync(action)
     if (success) message.success(success)
@@ -378,7 +396,11 @@ function setPageSize(value: number): void {
         aria-label="生成模式"
         @update:model-value="updateMode"
       />
-      <AppButton tone="primary" @click="openCreateGroup">
+      <AppButton
+        tone="primary"
+        :disabled="!auth.hasTeamContext"
+        @click="openCreateGroup"
+      >
         <Plus :size="16" />
         新建模板组
       </AppButton>
@@ -399,6 +421,7 @@ function setPageSize(value: number): void {
     <ThreePaneWorkbench v-else>
       <template #left>
         <TemplateGroupSidebar
+          :read-only="!auth.hasTeamContext"
           :groups="visibleGroups"
           :selected-group-id="selectedGroupId"
           @create="openCreateGroup"
@@ -410,6 +433,7 @@ function setPageSize(value: number): void {
 
       <template #main>
         <TemplateSequenceList
+          :read-only="!auth.hasTeamContext"
           :group="selectedGroup"
           :templates="visibleTemplates"
           :role-filter="roleFilter"
@@ -430,6 +454,7 @@ function setPageSize(value: number): void {
 
       <template #right>
         <TemplateEditor
+          :read-only="!auth.hasTeamContext"
           v-if="selectedTemplate"
           :key="selectedTemplate.id"
           :template="selectedTemplate"
@@ -437,6 +462,7 @@ function setPageSize(value: number): void {
           @save="saveTemplate"
         />
         <TemplateGroupSettings
+          :read-only="!auth.hasTeamContext"
           v-else-if="selectedGroup"
           :group="selectedGroup"
           @update:enabled="setGroupEnabled(selectedGroup.id, $event)"

@@ -57,7 +57,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck and build frontend in Real mode
         run: pnpm --filter @control-center/frontend build
-      - name: Verify AI image proportions in the Real production bundle
+      - name: Verify AI images and team context in the Real production bundle
         run: |
           pnpm --filter @control-center/frontend exec playwright install --with-deps chromium
           pnpm --filter @control-center/frontend exec playwright test --config playwright.ai-images.config.ts

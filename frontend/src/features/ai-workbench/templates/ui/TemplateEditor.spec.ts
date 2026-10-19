@@ -1,13 +1,26 @@
 import { shallowMount } from '@vue/test-utils'
-import { NFormItem } from 'naive-ui'
+import { NForm, NFormItem } from 'naive-ui'
 import { describe, expect, it } from 'vitest'
 
 import { createTemplateGroupFixtures } from '../__fixtures__/template-groups.fixture'
-import { AppSelect } from '@/shared/ui'
+import { AppButton, AppSelect } from '@/shared/ui'
 
 import TemplateEditor from './TemplateEditor.vue'
 
 describe('TemplateEditor', () => {
+  it('keeps a globally browsed template visible with its form and save disabled', () => {
+    const template = createTemplateGroupFixtures()[0]!.templates[0]!
+    const wrapper = shallowMount(TemplateEditor, {
+      props: { template, readOnly: true },
+      global: { renderStubDefaultSlot: true },
+    })
+    expect(wrapper.findComponent(NForm).props('disabled')).toBe(true)
+    const save = wrapper
+      .findAllComponents(AppButton)
+      .find((button) => button.text() === '保存')
+    expect(save?.props('disabled')).toBe(true)
+  })
+
   it('keeps output role out of the editor while preserving editable size', () => {
     const template = createTemplateGroupFixtures()[0]!.templates[0]!
     const wrapper = shallowMount(TemplateEditor, {

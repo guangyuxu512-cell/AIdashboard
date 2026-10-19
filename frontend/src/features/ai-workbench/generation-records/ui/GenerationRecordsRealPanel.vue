@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { useMessage } from 'naive-ui'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import {
   AssetDownloadStatusBar,
@@ -21,6 +21,7 @@ import type {
   GenerationWorkMode,
 } from '@/entities/ai-workbench'
 import { getErrorMessage } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 import FilterBar from '@/shared/components/FilterBar.vue'
 import ErrorState from '@/shared/components/ErrorState.vue'
 import LoadingState from '@/shared/components/LoadingState.vue'
@@ -46,6 +47,7 @@ import GenerationRecordDetailDrawer from './GenerationRecordDetailDrawer.vue'
 import GenerationRecordsTable from './GenerationRecordsTable.vue'
 
 const message = useMessage()
+const auth = useAuthStore()
 const queryClient = useQueryClient()
 const downloads = useAssetDownloadQueue()
 const page = ref(1)
@@ -55,6 +57,18 @@ const mode = ref<'ALL' | GenerationMode>('ALL')
 const status = ref<'ALL' | GenerationJobStatus>('ALL')
 const selectedJobId = ref<string | null>(null)
 const detailVisible = ref(false)
+const actorContextKey = () =>
+  `${auth.currentUser?.userId ?? ''}:${auth.activeTeamId ?? ''}`
+
+watch(
+  actorContextKey,
+  () => {
+    detailVisible.value = false
+    selectedJobId.value = null
+    page.value = 1
+  },
+  { flush: 'sync' },
+)
 
 const listQueryParams = computed<GenerationJobListQuery>(() => ({
   page: page.value,
@@ -83,7 +97,12 @@ const retryMutation = useMutation({
         expected_attempt_count: item.attempt_count,
       }))
     if (!items.length) return null
-    return aiWorkbenchApi.retryGenerationItems(job.generation_job_id, { items })
+    const context = actorContextKey()
+    const result = await aiWorkbenchApi.retryGenerationItems(
+      job.generation_job_id,
+      { items },
+    )
+    return context === actorContextKey() ? result : null
   },
   onSuccess: (job) => {
     if (!job) return
@@ -170,6 +189,10 @@ function setPageSize(value: number): void {
 }
 
 function retry(record: GenerationRecordView): void {
+  if (!auth.hasTeamContext) {
+    message.warning('请先选择具体团队')
+    return
+  }
   retryMutation.mutate(record)
 }
 
@@ -247,6 +270,7 @@ function retryFailedDownloads(): void {
   </div>
 
   <GenerationRecordDetailDrawer
+    :read-only="!auth.hasTeamContext"
     v-model:show="detailVisible"
     :record="selectedRecord"
     @retry="retry"

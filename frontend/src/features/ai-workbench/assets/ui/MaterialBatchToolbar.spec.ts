@@ -6,6 +6,26 @@ import { AppButton, AppCheckbox } from '@/shared/ui'
 import MaterialBatchToolbar from './MaterialBatchToolbar.vue'
 
 describe('MaterialBatchToolbar', () => {
+  it('allows global downloads and selection but disables batch deletion', () => {
+    const wrapper = mount(MaterialBatchToolbar, {
+      props: {
+        readOnly: true,
+        selectionMode: true,
+        selectedCount: 2,
+        currentPageCount: 2,
+        checked: true,
+        indeterminate: false,
+      },
+    })
+    expect(
+      wrapper.get('[aria-label="批量删除"]').attributes('disabled'),
+    ).toBeDefined()
+    expect(
+      wrapper.get('[aria-label="批量下载"]').attributes('disabled'),
+    ).toBeUndefined()
+    expect(wrapper.findComponent(AppCheckbox).props('disabled')).toBe(false)
+  })
+
   it('offers selection and current-page select-all in normal mode', async () => {
     const wrapper = mount(MaterialBatchToolbar, {
       props: {
