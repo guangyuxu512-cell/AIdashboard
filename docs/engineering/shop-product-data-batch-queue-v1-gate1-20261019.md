@@ -101,3 +101,14 @@ Owner：81a1
 - 未执行真实平台批量调用、Integration Electron、Hosted CI、dev/main 合并或生产发布。
 - 未验证生产容量参数；Feature 环境为最大并发 1 且消费者关闭。
 - 本交接证明 Gate 1 代码、数据库与离线契约完成，不代表 Gate 2 或发布完成。
+
+## 用户文案增量返修
+
+- 返修提交：`7be04375b01adf449ab42b6073fbe1ad0a21ebb2`。
+- Product Data 当前流程入口由“查看采集进度”改为“查看更新进度”；弹窗和状态统一使用“商品数据更新”、
+  “等待更新”、“更新中”、“更新完成”和“更新失败”。发起操作继续使用“更新数据”。
+- 仅调整 `ProductDataCollectionAction.vue` 的用户可见文案及对应测试断言；内部 collection API、类型、
+  本机活动批次存储键、数据库、状态和错误码均保持不变。独立采集任务中心、手机采集和商品库未修改。
+- 定向 Vitest：1 文件、8 项通过；两文件定向 ESLint 通过；`git diff --check` 通过。
+- 原 Candidate `7a7aaf26008e151e5be326382bdd16e317224678` 的实现与 Gate 1 证据继续有效，但不再作为最终
+  用户命名验收候选；ca97 应以包含本增量的新 Candidate 做命名增量验证。
