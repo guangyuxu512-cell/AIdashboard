@@ -37,6 +37,19 @@ API、Model、Schema、Migration、依赖或 Electron 代码。不迁移历史�
 - `git diff --check` 通过。首次浏览器新增模板场景发现遗漏的顶栏新建按钮未禁用，已修正，最终19项通过；
   首次本树 Verify 因尚未准备 mobile 既有 axios 链接失败，离线 frozen-lockfile 补齐缓存安装后通过，未改版本/lockfile。
 
+关键命令（`python` 指 Owner 既有解释器；Backend 命令从本树 `backend` 执行，并以该目录为 `PYTHONPATH`）：
+
+```text
+python -m pytest tests -q
+python -m pytest -o addopts= -m integration -q tests/integration/test_postgresql_super_account_team_context.py tests/integration/test_postgresql_asset_scope.py
+python -m pytest -o addopts= -m integration -q tests/integration/test_postgresql_automation_parameter_presets.py::test_postgresql_super_without_team_reads_all_presets_but_cannot_write
+pnpm --filter @control-center/frontend exec vitest run
+pnpm --filter @control-center/frontend lint
+pnpm --filter @control-center/frontend build
+pnpm --dir frontend exec playwright test --config playwright.ai-images.config.ts
+pnpm verify --strict
+```
+
 ## 隔离与发布边界
 
 ca97 已正式分配并独立审计 `control_center_feat_super_account_team_context`；应用角色
