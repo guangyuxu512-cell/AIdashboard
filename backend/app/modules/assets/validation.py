@@ -24,15 +24,18 @@ def normalize_original_filename(value: str | None) -> tuple[str, str]:
 def validate_image_content(
     *,
     filename_suffix: str,
-    declared_content_type: str | None,
     header: bytes,
-) -> str:
-    expected_content_type = ALLOWED_IMAGE_TYPES[filename_suffix]
-    if declared_content_type and declared_content_type.lower() != expected_content_type:
+) -> tuple[str, str]:
+    # Browsers commonly derive Content-Type from the filename, including a wrong
+    # extension. The actual supported image signature is authoritative.
+    content_type = detect_image_content_type(header)
+    if content_type is None:
         raise AssetTypeUnsupportedError()
-    if detect_image_content_type(header) != expected_content_type:
-        raise AssetTypeUnsupportedError()
-    return expected_content_type
+    if ALLOWED_IMAGE_TYPES[filename_suffix] != content_type:
+        filename_suffix = next(
+            suffix for suffix, mime in ALLOWED_IMAGE_TYPES.items() if mime == content_type
+        )
+    return content_type, filename_suffix
 
 
 def detect_image_content_type(header: bytes) -> str | None:
