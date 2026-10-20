@@ -9,6 +9,7 @@ import {
   type BatchCollectReceipt,
   type BatchCollectItemResult,
 } from '../model/contracts'
+import { enqueueCandidateCollectionTasks } from '@/features/product-collection/api/collection-task-mock-store'
 
 // Local photographs are test fixtures; they are removed from the Real build.
 const photographs = Object.values(
@@ -368,6 +369,24 @@ export function createSelectionMockHandlers(
           if (productId !== null) products.set(productId, failure)
         }
       }
+      const succeeded = results.filter((result) => result.state === 'demo')
+      enqueueCandidateCollectionTasks(
+        succeeded.flatMap((result) => {
+          const row = candidates.find(
+            (candidate) => candidate.productId === result.productId,
+          )
+          return row
+            ? [
+                {
+                  candidateId: row.id,
+                  productId: row.productId,
+                  title: row.title,
+                  platform: 'douyin' as const,
+                },
+              ]
+            : []
+        }),
+      )
       return { mode: 'mock', results }
     },
   }

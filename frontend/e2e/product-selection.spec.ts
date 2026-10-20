@@ -1041,7 +1041,7 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
     .getByRole('button', { name: '采集任务', exact: true })
     .click()
   await expect(
-    page.getByText('采集任务功能待接入', { exact: true }),
+    page.getByRole('button', { name: '创建采集任务', exact: true }),
   ).toBeVisible()
   await page
     .getByRole('navigation', { name: '选品库切换' })
