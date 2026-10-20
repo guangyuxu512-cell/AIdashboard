@@ -70,7 +70,7 @@ def collector_v2_media_query_keys(path: tuple[str | None, ...], value: str) -> f
     allowed: set[str] = set()
     if (
         field in _VIDEO_PATHS
-        and host in {"api-play.amemv.com", "api.amemv.com"}
+        and host in {"api-play.amemv.com", "api.amemv.com", "api-play-hl.amemv.com", "api-hl.amemv.com"}
         and parts.path == "/aweme/v1/play/"
     ):
         signature = "sign"
@@ -91,7 +91,7 @@ def collector_v2_media_query_keys(path: tuple[str | None, ...], value: str) -> f
         allowed = {"dy_q", "l", "x-expires", "x-signature"}
     elif (
         field in _GALLERY_PATHS
-        and host == "p3-sellpoint1-sign.byteimg.com"
+        and host in {"p3-sellpoint1-sign.byteimg.com", "p11-sellpoint1-sign.byteimg.com"}
         and parts.path.startswith("/") and len(parts.path) > 1
     ):
         signature = "x-signature"

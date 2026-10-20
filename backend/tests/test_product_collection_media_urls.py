@@ -41,7 +41,7 @@ def _body(path, url):
 @pytest.mark.parametrize("path,url", [
     (f"{VIDEO}.{address}.url_list.*", PLAY_URL.replace("api-play.amemv.com", host))
     for address in ("play_addr", "play_addr_lowbr", "play_addr_h264", "bit_rate.*.play_addr")
-    for host in ("api-play.amemv.com", "api.amemv.com")
+    for host in ("api-play.amemv.com", "api.amemv.com", "api-play-hl.amemv.com", "api-hl.amemv.com")
 ] + [
     (f"{VIDEO}.cover.url_list.*", "https://p3-sign.douyinpic.com/tos-cn-v-2e5523/synthetic.webp?dy_q=1&l=1&x-expires=1&x-signature=synthetic-resource"),
     (f"{COMMENTS}.comment_user_avatar.src", IMAGE_URL.replace("tos-cn-i-8y5sebgt5i", "aweme-avatar")),
@@ -49,6 +49,8 @@ def _body(path, url):
     (f"{COMMENTS}.comment_medias_arr.*.media_click_action.actions.*.fields.image_url_array.*", IMAGE_URL.replace("p3-", "p9-")),
     (f"{GALLERY}.avatar.url_list.*", "https://p3-sellpoint1-sign.byteimg.com/synthetic.webp?rk3s=1&x-conf-key=synthetic&x-expires=1&x-signature=synthetic-resource"),
     (f"{GALLERY}.content_list.*.icon.*.url_list.*", "https://p3-sellpoint1-sign.byteimg.com/synthetic.webp?rk3s=1&x-conf-key=synthetic&x-expires=1&x-signature=synthetic-resource"),
+    (f"{GALLERY}.avatar.url_list.*", "https://p11-sellpoint1-sign.byteimg.com/synthetic.webp?rk3s=1&x-conf-key=synthetic&x-expires=1&x-signature=synthetic-resource"),
+    (f"{GALLERY}.content_list.*.icon.*.url_list.*", "https://p11-sellpoint1-sign.byteimg.com/synthetic.webp?rk3s=1&x-conf-key=synthetic&x-expires=1&x-signature=synthetic-resource"),
 ])
 def test_v2_preserves_only_evidenced_signed_media_in_original_fields(path, url):
     original = _body(path, url)
@@ -118,3 +120,16 @@ def test_nested_credential_fields_stay_forbidden_beside_allowed_media(key):
     with_credentials["detailBody"]["unrelated"] = {key: "synthetic-forbidden"}
     with pytest.raises(ValueError, match="credential"):
         parse_complete_package(json.dumps(with_credentials).encode())
+
+
+@pytest.mark.parametrize("path,url", [
+    (f"{VIDEO}.play_addr.url_list.*", PLAY_URL.replace("api-play.amemv.com", "api-unreviewed.amemv.com")),
+    ("request", PLAY_URL.replace("api-play.amemv.com", "api-hl.amemv.com")),
+    (f"{VIDEO}.play_addr.url_list.*", PLAY_URL.replace("api-play.amemv.com", "api-play-hl.amemv.com").replace("/aweme/v1/play/", "/passport/auth/")),
+    (f"{VIDEO}.play_addr.url_list.*", PLAY_URL.replace("api-play.amemv.com", "api-hl.amemv.com") + "&access_token=synthetic-auth"),
+    (f"{GALLERY}.avatar.url_list.*", "https://p12-sellpoint1-sign.byteimg.com/synthetic.webp?x-signature=synthetic-resource"),
+    (f"{GALLERY}.avatar.url_list.*", "https://p11-sellpoint1-sign.byteimg.com/synthetic.webp?x-signature=synthetic-resource&device_token=synthetic-auth"),
+])
+def test_cdn_variants_do_not_open_other_hosts_api_paths_fields_or_credentials(path, url):
+    with pytest.raises(ValueError, match="credential"):
+        parse_complete_package(json.dumps(_body(path, url)).encode())
