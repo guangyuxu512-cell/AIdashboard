@@ -52,6 +52,10 @@ class ProductSelectionCandidate(TimestampMixin, Base):
             "team_id", "platform", "platform_product_id",
             name="uq_selection_candidate_team_product",
         ),
+        UniqueConstraint(
+            "candidate_id", "team_id",
+            name="uq_selection_candidate_id_team",
+        ),
         Index("ix_selection_candidate_team_id", "team_id", "candidate_id"),
     )
 

@@ -39,9 +39,19 @@ from app.modules.operating_dashboard.scheduler import (
     enqueue_due_daily_operating_collections_forever,
     recover_operating_data_collections_on_startup,
 )
-from app.modules.product_selection.api import router as product_selection_router
+from app.modules.product_collection.api import router as product_collection_router
+from app.modules.product_collection.executor import (
+    build_product_collection_executor,
+    execute_product_collections_forever,
+    product_collection_consumers_enabled,
+)
+from app.modules.product_collection.internal_api import (
+    ingest_router as product_collection_ingest_router,
+    router as product_collection_internal_router,
+)
 from app.modules.product_data.api import router as product_data_router
 from app.modules.product_data.executor import execute_product_data_collections_forever
+from app.modules.product_selection.api import router as product_selection_router
 from app.modules.product_selection.run_executor import execute_selection_runs_forever
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
@@ -60,6 +70,14 @@ from app.modules.workers.reconcile import reconcile_offline_devices_forever
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     del application
     settings = get_settings()
+    # Validate protected Product Collection configuration before any
+    # background task is started.  A fail-closed startup must not leave the
+    # unrelated reconcilers running after the lifespan context aborts.
+    product_collection_executor = (
+        build_product_collection_executor(settings)
+        if product_collection_consumers_enabled(settings)
+        else None
+    )
     reconcile_task = asyncio.create_task(reconcile_lost_tasks_forever())
     offline_reconcile_task = asyncio.create_task(reconcile_offline_devices_forever())
     retention_task = asyncio.create_task(purge_expired_task_events_forever())
@@ -101,6 +119,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if settings.product_data_collection_execution_enabled
         else None
     )
+    product_collection_task = (
+        asyncio.create_task(
+            execute_product_collections_forever(
+                settings=settings,
+                executor=product_collection_executor,
+            ),
+        )
+        if product_collection_executor is not None
+        else None
+    )
     try:
         yield
     finally:
@@ -120,6 +148,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             selection_run_task.cancel()
         if product_data_collection_task is not None:
             product_data_collection_task.cancel()
+        if product_collection_task is not None:
+            product_collection_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -146,6 +176,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if product_data_collection_task is not None:
             with suppress(asyncio.CancelledError):
                 await product_data_collection_task
+        if product_collection_task is not None:
+            with suppress(asyncio.CancelledError):
+                await product_collection_task
 
 
 def create_app() -> FastAPI:
@@ -191,6 +224,9 @@ def create_app() -> FastAPI:
     application.include_router(notifications_router)
     application.include_router(operating_dashboard_router)
     application.include_router(product_selection_router)
+    application.include_router(product_collection_router)
+    application.include_router(product_collection_internal_router)
+    application.include_router(product_collection_ingest_router)
     application.include_router(product_data_router)
     application.include_router(credentials_router)
     application.include_router(sessions_router)

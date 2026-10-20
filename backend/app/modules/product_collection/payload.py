@@ -1,0 +1,87 @@
+"""Bounded parsing and URL sanitization for untrusted phone packages."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+import json
+import math
+from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from app.modules.product_collection.contracts import MobileCompletePackageV1
+
+
+MAX_COMPLETE_PACKAGE_BYTES = 16 * 1024 * 1024
+MAX_JSON_DEPTH = 64
+MAX_STRING_LENGTH = 1024 * 1024
+MAX_URL_LENGTH = 4096
+
+
+def parse_complete_package(raw: bytes) -> MobileCompletePackageV1:
+    if len(raw) > MAX_COMPLETE_PACKAGE_BYTES:
+        raise ValueError("Complete package exceeds the configured size boundary")
+    try:
+        value = json.loads(raw, parse_constant=_reject_json_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("Complete package must be valid UTF-8 JSON") from error
+    _validate_shape(value, depth=0)
+    return MobileCompletePackageV1.model_validate(value)
+
+
+def sanitize_source_url(value: str) -> str:
+    parts = _safe_url_parts(value, allowed_schemes={"http", "https"})
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def sanitize_image_url(
+    value: str,
+    *,
+    allowed_hosts: frozenset[str],
+    safe_query_keys: frozenset[str] = frozenset(),
+) -> str:
+    parts = _safe_url_parts(value, allowed_schemes={"https"})
+    if parts.hostname is None or parts.hostname.lower() not in allowed_hosts:
+        raise ValueError("Image host is not allowed")
+    query = urlencode([
+        (key, item)
+        for key, item in parse_qsl(parts.query, keep_blank_values=True)
+        if key in safe_query_keys
+    ])
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
+
+
+def _safe_url_parts(value: str, *, allowed_schemes: set[str]):
+    if len(value) > MAX_URL_LENGTH:
+        raise ValueError("URL exceeds the configured length boundary")
+    parts = urlsplit(value)
+    if parts.scheme.lower() not in allowed_schemes or not parts.hostname:
+        raise ValueError("URL scheme or host is not allowed")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError("URL userinfo is forbidden")
+    return parts
+
+
+def _reject_json_constant(_value: str):
+    raise ValueError("Complete package contains a non-finite number")
+
+
+def _validate_shape(value: Any, *, depth: int) -> None:
+    if depth > MAX_JSON_DEPTH:
+        raise ValueError("Complete package exceeds the JSON depth boundary")
+    if isinstance(value, str):
+        if len(value) > MAX_STRING_LENGTH:
+            raise ValueError("Complete package contains an oversized string")
+        return
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("Complete package contains a non-finite number")
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("Complete package object keys must be strings")
+            if len(key) > 256:
+                raise ValueError("Complete package contains an oversized key")
+            _validate_shape(item, depth=depth + 1)
+        return
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        for item in value:
+            _validate_shape(item, depth=depth + 1)
