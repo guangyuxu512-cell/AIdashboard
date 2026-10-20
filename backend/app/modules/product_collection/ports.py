@@ -10,6 +10,7 @@ from uuid import UUID
 from app.modules.product_collection.contracts import GatewaySettlementV1, SourcePlatform
 
 
+# Normal default and upper bound; 1..3 is frozen in each Dispatch's hash.
 GATEWAY_CAPTURE_MAX_ATTEMPTS = 3
 
 

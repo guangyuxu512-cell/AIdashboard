@@ -19,6 +19,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.product_collection.media_urls import collector_v2_media_query_keys
+
 
 StableExternalId = Annotated[
     str,
@@ -150,9 +152,15 @@ class MobileCompletePackageV2(BaseModel):
     sku_body: dict[str, Any] = Field(alias="skuBody")
     task_context: MobileTaskContextV1 = Field(alias="taskContext")
 
-    @field_validator("detail_body", "sku_body")
+    @field_validator("detail_body")
     @classmethod
     def reject_credential_keys(cls, value: dict[str, Any]) -> dict[str, Any]:
+        assert_no_credential_keys(value, collector_v2_media=True)
+        return value
+
+    @field_validator("sku_body")
+    @classmethod
+    def reject_sku_credential_keys(cls, value: dict[str, Any]) -> dict[str, Any]:
         assert_no_credential_keys(value)
         return value
 
@@ -388,18 +396,28 @@ def _looks_like_credential_key(value: str) -> bool:
     )
 
 
-def assert_no_credential_keys(value: Any) -> None:
+def assert_no_credential_keys(
+    value: Any, *, collector_v2_media: bool = False, _path: tuple[str | None, ...] = (),
+) -> None:
     if isinstance(value, dict):
         for key, nested in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
             if _looks_like_credential_key(normalized):
                 raise ValueError("Complete package contains a forbidden credential field")
-            assert_no_credential_keys(nested)
+            assert_no_credential_keys(
+                nested, collector_v2_media=collector_v2_media, _path=(*_path, str(key)),
+            )
     elif isinstance(value, list):
         for nested in value:
-            assert_no_credential_keys(nested)
+            assert_no_credential_keys(
+                nested, collector_v2_media=collector_v2_media, _path=(*_path, None),
+            )
     elif isinstance(value, str):
         candidate = value.strip()
+        media_keys = (
+            collector_v2_media_query_keys(_path, candidate)
+            if collector_v2_media and "://" in candidate else frozenset()
+        )
         if not candidate.lower().startswith(("http://", "https://")):
             return
         if len(candidate) > 4096:
@@ -407,5 +425,8 @@ def assert_no_credential_keys(value: Any) -> None:
         parsed = urlsplit(candidate)
         if parsed.username is not None or parsed.password is not None:
             raise ValueError("Complete package contains a credential-bearing URL")
-        if any(_looks_like_credential_key(key) for key, _item in parse_qsl(parsed.query)):
+        if any(
+            _looks_like_credential_key(key) and key.strip().lower().replace("-", "_") not in media_keys
+            for key, _item in parse_qsl(parsed.query, keep_blank_values=True)
+        ):
             raise ValueError("Complete package contains a credential-bearing URL")

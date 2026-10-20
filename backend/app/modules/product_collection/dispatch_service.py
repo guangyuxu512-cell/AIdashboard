@@ -12,6 +12,7 @@ from app.modules.product_collection.contracts import SourcePlatform, canonical_s
 from app.modules.product_collection.exceptions import (
     ProductCollectionGatewayUnavailableError,
     ProductCollectionLeaseLostError,
+    ProductCollectionStateConflictError,
 )
 from app.modules.product_collection.models import (
     ProductCollectionCaptureAttempt as CaptureAttempt,
@@ -21,6 +22,7 @@ from app.modules.product_collection.models import (
 )
 from app.modules.product_collection.ports import (
     DeliveryClaim,
+    GATEWAY_CAPTURE_MAX_ATTEMPTS,
     GatewayDispatchCommand,
     GatewayDispatchResult,
     ProductCollectionGateway,
@@ -36,7 +38,10 @@ class ProductCollectionDispatchService:
         self.session = session
         self.repository = ProductCollectionRepository(session)
 
-    def plan_pending(self, *, gateway_id: str, limit: int = 100) -> int:
+    def plan_pending(
+        self, *, gateway_id: str, limit: int = 100,
+        max_capture_attempts: int = GATEWAY_CAPTURE_MAX_ATTEMPTS,
+    ) -> int:
         normalized_gateway = gateway_id.strip()
         if not normalized_gateway or len(normalized_gateway) > 128:
             raise ValueError("Gateway id is invalid")
@@ -67,7 +72,9 @@ class ProductCollectionDispatchService:
                     )
                     + 1
                 )
-                command = build_dispatch_command(dispatch_id, item, recapture=False)
+                command = build_dispatch_command(
+                    dispatch_id, item, recapture=False, max_attempts=max_capture_attempts,
+                )
                 dispatch = Dispatch(
                     dispatch_id=dispatch_id,
                     item_id=item.item_id,
@@ -189,6 +196,7 @@ class ProductCollectionDispatchService:
                 or item.state not in {"dispatching", "failed"}
             ):
                 raise ProductCollectionLeaseLostError()
+            command = command_from_dispatch(dispatch, item)
             lease_id = generate_id()
             dispatch.state = "delivering"
             dispatch.delivery_attempts += 1
@@ -203,7 +211,7 @@ class ProductCollectionDispatchService:
             return DeliveryClaim(
                 dispatch_id=dispatch.dispatch_id,
                 lease_id=lease_id,
-                command=command_from_dispatch(dispatch, item),
+                command=command,
                 retry_gateway_job_id=dispatch.gateway_job_id,
                 attempt_no=dispatch.delivery_attempts,
             )
@@ -528,7 +536,10 @@ def build_dispatch_command(
     item: Item,
     *,
     recapture: bool = False,
+    max_attempts: int = GATEWAY_CAPTURE_MAX_ATTEMPTS,
 ) -> GatewayDispatchCommand:
+    if type(max_attempts) is not int or not 1 <= max_attempts <= GATEWAY_CAPTURE_MAX_ATTEMPTS:
+        raise ValueError("Capture attempt budget must be between 1 and 3")
     external_job_id = f"pcd_v1_{dispatch_id.hex}"
     payload = {
         "version": 1,
@@ -540,7 +551,7 @@ def build_dispatch_command(
         "job_type": "product",
         "recapture": recapture,
         "priority": 0,
-        "max_attempts": 3,
+        "max_attempts": max_attempts,
     }
     return GatewayDispatchCommand(
         dispatch_id=dispatch_id,
@@ -549,6 +560,7 @@ def build_dispatch_command(
         source_platform=SourcePlatform(item.platform),
         source_product_id=item.source_product_id,
         recapture=recapture,
+        max_attempts=max_attempts,
     )
 
 
@@ -558,13 +570,17 @@ def command_from_dispatch(
 ) -> GatewayDispatchCommand:
     """Rebuild the frozen wire command without changing its idempotency hash."""
 
-    return GatewayDispatchCommand(
-        dispatch_id=dispatch.dispatch_id,
-        external_job_id=dispatch.external_job_id,
-        canonical_payload_hash=dispatch.canonical_payload_hash,
-        source_platform=SourcePlatform(item.platform),
-        source_product_id=item.source_product_id,
-        # A new dispatch after the first one can only be created by the
-        # explicit recapture endpoint. Finite retry always reuses dispatch_no.
-        recapture=dispatch.dispatch_no > 1,
-    )
+    # 0049 already commits every wire input to this hash. Recover the only six
+    # allowed (recapture, budget) combinations instead of changing applied DDL
+    # or rebuilding a historical command from today's environment settings.
+    for recapture in (False, True):
+        for budget in range(1, GATEWAY_CAPTURE_MAX_ATTEMPTS + 1):
+            command = build_dispatch_command(
+                dispatch.dispatch_id, item, recapture=recapture, max_attempts=budget,
+            )
+            if (
+                command.external_job_id == dispatch.external_job_id
+                and command.canonical_payload_hash == dispatch.canonical_payload_hash
+            ):
+                return command
+    raise ProductCollectionStateConflictError("派发内容与已冻结记录不一致，不能安全重放")

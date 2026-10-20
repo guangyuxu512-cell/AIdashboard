@@ -118,6 +118,17 @@ class Settings(BaseSettings):
     product_collection_gateway_base_url: str | None = None
     product_collection_gateway_control_token: SecretStr | None = None
     product_collection_gateway_callback_token: SecretStr | None = None
+    # A new Dispatch freezes this finite phone-capture budget in its canonical
+    # payload hash. Isolated one-attempt Gates set 1; ordinary business keeps 3.
+    product_collection_capture_max_attempts: int = Field(default=3, ge=1, le=3)
+
+    @field_validator("product_collection_capture_max_attempts", mode="before")
+    @classmethod
+    def reject_boolean_capture_budget(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Capture attempt budget must be a positive integer")
+        return value
+
     product_collection_gateway_timeout_seconds: float = Field(
         default=15.0,
         ge=1.0,

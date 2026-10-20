@@ -57,6 +57,7 @@ class ProductCollectionExecutor:
             ProductCollectionDispatchService(session).plan_pending(
                 gateway_id=gateway_id,
                 limit=100,
+                max_capture_attempts=self.settings.product_collection_capture_max_attempts,
             )
         with self.session_factory() as session:
             return ProductCollectionDispatchService(session).deliver_once(

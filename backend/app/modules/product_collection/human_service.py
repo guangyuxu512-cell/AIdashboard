@@ -28,7 +28,8 @@ from app.modules.product_collection.exceptions import (
     ProductLibraryFilterConflictError,
     ProductLibraryProductNotFoundError,
 )
-from app.modules.product_collection.dispatch_service import build_dispatch_command
+from app.modules.product_collection.dispatch_service import build_dispatch_command, command_from_dispatch
+from app.modules.product_collection.ports import GATEWAY_CAPTURE_MAX_ATTEMPTS
 from app.modules.product_collection.human_contracts import (
     ProductCollectionItemRead,
     ProductCollectionRequestRead,
@@ -248,6 +249,7 @@ class ProductCollectionHumanService:
                 and dispatch.state == "execution_failed"
                 and dispatch.gateway_job_id is not None
                 and item.attempt_count < max_capture_attempts
+                and item.attempt_count < command_from_dispatch(dispatch, item).max_attempts
             )
             if not (can_retry_delivery or can_retry_execution):
                 raise ProductCollectionStateConflictError(
@@ -281,6 +283,7 @@ class ProductCollectionHumanService:
         item_id: UUID,
         *,
         gateway_id: str | None,
+        max_capture_attempts: int = GATEWAY_CAPTURE_MAX_ATTEMPTS,
     ) -> ProductCollectionRequestRead:
         self._write_team(actor)
         if gateway_id is None or not gateway_id.strip():
@@ -322,7 +325,9 @@ class ProductCollectionHumanService:
                 ),
             ) + 1
             dispatch_id = generate_id()
-            command = build_dispatch_command(dispatch_id, item, recapture=True)
+            command = build_dispatch_command(
+                dispatch_id, item, recapture=True, max_attempts=max_capture_attempts,
+            )
             dispatch = Dispatch(
                 dispatch_id=dispatch_id,
                 item_id=item.item_id,

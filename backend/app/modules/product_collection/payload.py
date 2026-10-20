@@ -6,19 +6,19 @@ from collections.abc import Mapping, Sequence
 import json
 import math
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlunsplit
 
 from app.modules.product_collection.contracts import (
     MobileCompletePackage,
     MobileCompletePackageV1,
     MobileCompletePackageV2,
 )
+from app.modules.product_collection.media_urls import MAX_URL_LENGTH, safe_url_parts
 
 
 MAX_COMPLETE_PACKAGE_BYTES = 16 * 1024 * 1024
 MAX_JSON_DEPTH = 64
 MAX_STRING_LENGTH = 1024 * 1024
-MAX_URL_LENGTH = 4096
 
 
 def parse_complete_package(raw: bytes) -> MobileCompletePackage:
@@ -35,7 +35,7 @@ def parse_complete_package(raw: bytes) -> MobileCompletePackage:
 
 
 def sanitize_source_url(value: str) -> str:
-    parts = _safe_url_parts(value, allowed_schemes={"http", "https"})
+    parts = safe_url_parts(value, allowed_schemes={"http", "https"})
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
@@ -45,7 +45,7 @@ def sanitize_image_url(
     allowed_hosts: frozenset[str],
     safe_query_keys: frozenset[str] = frozenset(),
 ) -> str:
-    parts = _safe_url_parts(value, allowed_schemes={"https"})
+    parts = safe_url_parts(value, allowed_schemes={"https"})
     if parts.hostname is None or parts.hostname.lower() not in allowed_hosts:
         raise ValueError("Image host is not allowed")
     query = urlencode([
@@ -54,17 +54,6 @@ def sanitize_image_url(
         if key in safe_query_keys
     ])
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
-
-
-def _safe_url_parts(value: str, *, allowed_schemes: set[str]):
-    if len(value) > MAX_URL_LENGTH:
-        raise ValueError("URL exceeds the configured length boundary")
-    parts = urlsplit(value)
-    if parts.scheme.lower() not in allowed_schemes or not parts.hostname:
-        raise ValueError("URL scheme or host is not allowed")
-    if parts.username is not None or parts.password is not None:
-        raise ValueError("URL userinfo is forbidden")
-    return parts
 
 
 def _reject_json_constant(_value: str):

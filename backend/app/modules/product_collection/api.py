@@ -138,6 +138,7 @@ def recapture_product_collection_item(
         actor,
         item_id,
         gateway_id=settings.product_collection_gateway_id,
+        max_capture_attempts=settings.product_collection_capture_max_attempts,
     )
 
 
