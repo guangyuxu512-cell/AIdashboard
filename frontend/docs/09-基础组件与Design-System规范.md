@@ -562,11 +562,11 @@ description（需要时）
 | `AppRadio`       | `NRadioGroup`  | 统一 button 模式                                 |
 | `AppTable`       | `NDataTable`   | 统一尺寸、边框和滚动入口                         |
 | `AppPagination`  | `NPagination`  | 统一 page/pageSize 事件和页容量                  |
-| `AppDialog`      | `NModal`       | sm / md / lg、固定 Header/Footer、Body 单滚动    |
+| `AppDialog`      | `NModal`       | sm / md / lg / xl、固定 Header/Footer、Body 单滚动 |
 | `AppDrawer`      | `NDrawer`      | sm / md / lg、统一内容区                         |
 | `AppTabs`        | `NTabs`        | 统一 medium 与动画                               |
 
-宽度只允许 `xs / sm / md / lg / xl / full`，弹层只允许 `sm / md / lg`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
+宽度只允许 `xs / sm / md / lg / xl / full`；Drawer 只允许 `sm / md / lg`，Dialog 可为信息密集的预览显式选择 `xl`，默认仍为 `md`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
 
 `AppButton.size="small"` 仅用于明确的紧凑行内操作，沿用已存在的 Naive small 与 `--control-height-compact`；其他调用保持 medium，不定义新尺寸或改变 tone 默认行为。
 

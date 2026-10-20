@@ -25,7 +25,12 @@ const groups: ProductGroup[] = [
   { id: 'group-ready', name: '可上架', count: 0 },
 ]
 
-const categories = ['厨房用品', '家居收纳', '女装', '智能设备']
+const categories = [
+  '厨房用品 → 厨房小工具 → 滤油壶／储油罐',
+  '家居日用 → 居家布艺 → 防尘罩／空调罩／床头罩',
+  '女装 → 女士上装 → 针织衫',
+  '智能家居 → 智能安防 → 智能门锁',
+]
 
 const products: LibraryProduct[] = Array.from({ length: 36 }, (_, index) => {
   const productId = `${3832497447662387000n + BigInt(index)}`

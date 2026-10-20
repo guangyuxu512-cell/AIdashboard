@@ -23,6 +23,23 @@ describe('AppDialog', () => {
     expect(modal.vm.$attrs.class).toContain('app-dialog')
   })
 
+  it('offers an opt-in extra-large width without changing the default', () => {
+    const regular = mount(AppDialog, {
+      props: { show: false, title: '普通弹窗' },
+    })
+    const extraLarge = mount(AppDialog, {
+      props: { show: false, title: '资料预览', size: 'xl' },
+    })
+
+    expect(regular.findComponent(NModal).vm.$attrs.style).toMatchObject({
+      width: 'var(--dialog-width-md)',
+    })
+    expect(extraLarge.findComponent(NModal).vm.$attrs.style).toMatchObject({
+      width: 'var(--dialog-width-xl)',
+      maxWidth: 'calc(100vw - var(--space-8))',
+    })
+  })
+
   it('explains why the positive action is disabled', async () => {
     vi.useFakeTimers()
     const wrapper = mount(AppDialog, {

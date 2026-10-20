@@ -3,19 +3,20 @@ import { NModal, NTooltip } from 'naive-ui'
 
 import AppButton from './AppButton.vue'
 import { APP_OVERLAY_HOST_SELECTOR } from './overlay-host'
-import type { OverlaySize } from './types'
+import type { DialogSize } from './types'
 
-const dialogWidths: Record<OverlaySize, string> = {
+const dialogWidths: Record<DialogSize, string> = {
   sm: 'var(--dialog-width-sm)',
   md: 'var(--dialog-width-md)',
   lg: 'var(--dialog-width-lg)',
+  xl: 'var(--dialog-width-xl)',
 }
 
 withDefaults(
   defineProps<{
     show: boolean
     title: string
-    size?: OverlaySize
+    size?: DialogSize
     positiveText?: string
     negativeText?: string
     showNegative?: boolean
@@ -79,7 +80,9 @@ function cancel(): void {
           <slot name="footer-start" />
         </div>
         <div class="app-dialog__footer-actions">
-          <AppButton v-if="showNegative" @click="cancel">{{ negativeText }}</AppButton>
+          <AppButton v-if="showNegative" @click="cancel">{{
+            negativeText
+          }}</AppButton>
           <NTooltip
             v-if="positiveDisabled && positiveDisabledReason"
             placement="top"

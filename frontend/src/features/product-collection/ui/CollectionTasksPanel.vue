@@ -27,7 +27,6 @@ import {
   PageSection,
   PaginationBar,
   StatusTag,
-  TableToolbar,
 } from '@/shared/components'
 import { AppButton, AppInput, AppRadio, AppSelect } from '@/shared/ui'
 import {
@@ -387,7 +386,7 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
           :active-key="status ?? 'all'"
           @select="setStatus"
         />
-        <FilterBar density="compact">
+        <FilterBar class="collection-task-filter" density="compact">
           <FilterField width="lg">
             <AppInput
               v-model="keyword"
@@ -404,12 +403,8 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
             />
           </FilterField>
           <template #actions>
+            <span v-if="selected.length">已选 {{ selected.length }} 项</span>
             <AppButton @click="searchTasks">查询</AppButton>
-          </template>
-        </FilterBar>
-        <TableToolbar density="compact">
-          <span v-if="selected.length">已选 {{ selected.length }} 项</span>
-          <template #actions>
             <NTooltip>
               <template #trigger>
                 <span>
@@ -430,7 +425,7 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
               >取消选中任务</AppButton
             >
           </template>
-        </TableToolbar>
+        </FilterBar>
         <DataTable
           :columns="columns"
           :data="pageData?.items ?? []"
@@ -488,6 +483,11 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
   justify-content: center;
   gap: var(--space-3);
   white-space: nowrap;
+}
+
+.collection-task-filter :deep(.filter-bar__actions) {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 @media (max-width: 900px) {

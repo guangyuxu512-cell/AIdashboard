@@ -336,10 +336,20 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
   {
     title: '类目',
     key: 'category',
-    width: 140,
+    width: 360,
     align: 'center',
-    ellipsis: { tooltip: true },
-    render: (row) => row.category ?? h(NText, { depth: 3 }, () => '—'),
+    render: (row) =>
+      row.category
+        ? h(
+            NEllipsis,
+            {
+              class: 'product-library-category',
+              tooltip: true,
+              lineClamp: 2,
+            },
+            () => row.category,
+          )
+        : h(NText, { depth: 3 }, () => '—'),
   },
   {
     title: '当前价格',
@@ -478,7 +488,7 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         :error="listError"
         :row-key="(row) => row.id"
         :checked-row-keys="selected"
-        :scroll-x="1212"
+        :scroll-x="1432"
         viewport="fill"
         appearance="list"
         show-header-when-empty
@@ -555,6 +565,10 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
+}
+:global(.product-library-category) {
+  width: 100%;
+  text-align: center;
 }
 :global(.product-library-actions) {
   display: flex;

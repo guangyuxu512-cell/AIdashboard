@@ -116,7 +116,7 @@ const allText = computed(() => {
   <AppDialog
     :show="show"
     title="商品资料预览"
-    size="lg"
+    size="xl"
     positive-text="关闭"
     :show-negative="false"
     @update:show="$emit('update:show', $event)"

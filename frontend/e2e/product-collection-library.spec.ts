@@ -12,7 +12,39 @@ async function switchTheme(page: Page, label: (typeof themes)[number]) {
 test('collection tasks validate drafts, deduplicate and expose task-only details', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/product-selection?tab=collection-tasks')
+  const collectionFilter = page.locator('.collection-task-filter')
+  const queryButton = collectionFilter.getByRole('button', {
+    name: '查询',
+    exact: true,
+  })
+  const retryButton = collectionFilter.getByRole('button', {
+    name: '批量重试',
+    exact: true,
+  })
+  const [queryBounds, retryBounds] = await Promise.all([
+    queryButton.boundingBox(),
+    retryButton.boundingBox(),
+  ])
+  expect(queryBounds).not.toBeNull()
+  expect(retryBounds).not.toBeNull()
+  expect(
+    Math.abs(
+      queryBounds!.y +
+        queryBounds!.height / 2 -
+        (retryBounds!.y + retryBounds!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1)
+  expect(
+    await retryButton.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      fontSize: getComputedStyle(element).fontSize,
+    })),
+  ).toEqual({ height: 28, fontSize: '12px' })
+  await expect(
+    page.locator('.collection-tasks-panel .table-toolbar'),
+  ).toHaveCount(0)
   const input = page.getByLabel('采集任务输入')
   await input.fill('not-an-id')
   await page.getByRole('button', { name: '创建采集任务' }).click()
@@ -68,6 +100,7 @@ test('candidate batch collection appears in the shared mock task workspace', asy
 test('product library filters, groups, paging and mock-only file entrances work', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/products')
   await expect(
     page.locator(
@@ -77,6 +110,20 @@ test('product library filters, groups, paging and mock-only file entrances work'
   await expect(
     page.locator('.product-library-workspace .n-pagination .n-select'),
   ).toContainText('20 / 页')
+  const categoryHeader = page.getByRole('columnheader', { name: '类目' })
+  const categoryBounds = await categoryHeader.boundingBox()
+  expect(categoryBounds).not.toBeNull()
+  expect(Math.round(categoryBounds!.width)).toBe(360)
+  const category = page.locator('.product-library-category').first()
+  await expect(category).toContainText(
+    '家居日用 → 居家布艺 → 防尘罩／空调罩／床头罩',
+  )
+  expect(
+    await categoryHeader.evaluate((element) => ({
+      fontSize: getComputedStyle(element).fontSize,
+      padding: getComputedStyle(element).padding,
+    })),
+  ).toEqual({ fontSize: '12px', padding: '8px 12px' })
   await page
     .locator('.product-library-workspace .n-pagination-item')
     .filter({ hasText: /^2$/ })
@@ -107,6 +154,20 @@ test('product library filters, groups, paging and mock-only file entrances work'
 
   await page.getByRole('button', { name: '移动分组' }).first().click()
   await expect(page.getByText('新分组名称')).toBeVisible()
+  const groupDialog = page.locator('.app-dialog').filter({
+    has: page.getByPlaceholder('新分组名称'),
+  })
+  await groupDialog.locator('.n-base-selection').click()
+  const groupMenu = page.locator('.app-select-menu--viewport-safe:visible')
+  await expect(groupMenu).toBeVisible()
+  expect(
+    await groupMenu.evaluate(
+      (element) =>
+        !!element.closest('#app-overlay-host') &&
+        !element.closest('.app-dialog'),
+    ),
+  ).toBe(true)
+  await page.keyboard.press('Escape')
   await page.getByPlaceholder('新分组名称').fill('本轮演示组')
   await page
     .locator('.app-dialog')
@@ -159,9 +220,24 @@ test('product library filters, groups, paging and mock-only file entrances work'
 test('product preview switches images and preserves unknown values', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/products')
   await page.getByRole('button', { name: '预览', exact: true }).first().click()
   await expect(page.getByText('商品资料预览')).toBeVisible()
+  const previewDialog = page.locator('.app-dialog')
+  await expect
+    .poll(async () =>
+      Math.round((await previewDialog.boundingBox())?.width ?? 0),
+    )
+    .toBe(960)
+  expect(
+    await previewDialog
+      .getByRole('button', { name: 'AI 改图' })
+      .evaluate((element) => ({
+        height: element.getBoundingClientRect().height,
+        fontSize: getComputedStyle(element).fontSize,
+      })),
+  ).toEqual({ height: 34, fontSize: '14px' })
   await expect(page.getByRole('button', { name: 'AI 改图' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'AI 审图' })).toBeDisabled()
   await page.getByRole('button', { name: '详情图', exact: true }).click()
@@ -174,6 +250,63 @@ test('product preview switches images and preserves unknown values', async ({
   await page.locator('.app-dialog').getByText('资料包', { exact: true }).click()
   await expect(page.getByText(/\.origin\.txt/)).toBeVisible()
   await expect(page.getByText(/清洗后的兼容文本/)).not.toBeVisible()
+})
+
+test('shared selects escape both product-group and member-dialog clipping bodies', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 620 })
+  await page.goto('/#/products')
+  const productRow = page
+    .locator('.product-library-workspace .n-data-table-tbody .n-data-table-tr')
+    .first()
+  await productRow.getByRole('checkbox').click()
+  await page.getByRole('button', { name: '移动分组', exact: true }).click()
+  let dialog = page.locator('.app-dialog').filter({
+    has: page.getByPlaceholder('新分组名称'),
+  })
+  await dialog.locator('.n-base-selection').click()
+  let menu = page.locator('.app-select-menu--viewport-safe:visible')
+  await expect(menu).toBeVisible()
+  expect(
+    await menu.evaluate(
+      (element) =>
+        !!element.closest('#app-overlay-host') &&
+        !element.closest('.app-dialog'),
+    ),
+  ).toBe(true)
+  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+
+  await page.goto('/#/settings/users')
+  await page.getByRole('button', { name: '新增成员', exact: true }).click()
+  dialog = page.locator('.app-dialog').filter({ hasText: '新增成员' })
+  const teamField = dialog
+    .locator('.n-form-item')
+    .filter({ hasText: '所属团队（可选）' })
+  await teamField.locator('.n-base-selection').click()
+  menu = page.locator('.app-select-menu--viewport-safe:visible')
+  await expect(menu).toBeVisible()
+  expect(
+    await menu.evaluate(
+      (element) =>
+        !!element.closest('#app-overlay-host') &&
+        !element.closest('.app-dialog'),
+    ),
+  ).toBe(true)
+  const option = menu.locator('.n-base-select-option').last()
+  const optionBounds = await option.boundingBox()
+  expect(optionBounds).not.toBeNull()
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        !!document.elementFromPoint(x, y)?.closest('.n-base-select-option'),
+      {
+        x: optionBounds!.x + optionBounds!.width / 2,
+        y: optionBounds!.y + optionBounds!.height / 2,
+      },
+    ),
+  ).toBe(true)
 })
 
 test('product workspaces remain usable in four themes and narrow viewport', async ({
