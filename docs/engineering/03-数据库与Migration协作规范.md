@@ -38,6 +38,10 @@ ca97已由DBAdmin通道创建独立可重建Feature库
 
 当前活跃 Migration Slot：无。
 
+2026-10-20 `feat/product-collection-library-frontend-v1` 明确为 UI_ONLY：无 Backend、Schema、
+数据库或 Migration，不分配 Migration Slot，不得借用已 released 的 0048。Owner 仅从精确 Green
+`65ecf3f72a6ae9ea3114d7404841ad9aae876565` 开发采集任务与商品库两页前端。
+
 2026-10-19 正式核销商品数据多店持久队列 0048：最终 Candidate
 `29c5bab09afb95276ba72d7fbccfdb1109ea8dd9` 经 ca97 正常 no-ff 合入；精确 dev
 `65ecf3f72a6ae9ea3114d7404841ad9aae876565` 的 CI run `39255469084` attempt 1 中 Backend、
