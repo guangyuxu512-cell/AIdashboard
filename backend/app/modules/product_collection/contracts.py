@@ -122,6 +122,53 @@ class MobileCompletePackageV1(BaseModel):
         return value
 
 
+class MobileCompletePackageV2(BaseModel):
+    """Exact allowlist emitted by the existing Douyin collector package writer."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        populate_by_name=True,
+        serialize_by_alias=True,
+    )
+
+    schema_version: Literal[2] = Field(alias="schemaVersion")
+    source: Literal[SourcePlatform.DOUYIN]
+    event_type: Literal["complete"] = Field(alias="eventType")
+    trigger: Literal["cart_sku", "detail_single_sku"]
+    product_id: StableExternalId = Field(alias="productId")
+    captured_at: int = Field(alias="capturedAt", ge=0, strict=True)
+    detail_captured_at: int = Field(alias="detailCapturedAt", ge=0, strict=True)
+    sku_captured_at: int = Field(alias="skuCapturedAt", ge=0, strict=True)
+    app_version: Annotated[str, StringConstraints(min_length=1, max_length=128)] = Field(
+        alias="appVersion",
+    )
+    detail_sha256: Sha256Hex = Field(alias="detailSha256")
+    sku_sha256: Sha256Hex = Field(alias="skuSha256")
+    sha256: Sha256Hex
+    detail_body: dict[str, Any] = Field(alias="detailBody")
+    sku_body: dict[str, Any] = Field(alias="skuBody")
+    task_context: MobileTaskContextV1 = Field(alias="taskContext")
+
+    @field_validator("detail_body", "sku_body")
+    @classmethod
+    def reject_credential_keys(cls, value: dict[str, Any]) -> dict[str, Any]:
+        assert_no_credential_keys(value)
+        return value
+
+    @model_validator(mode="after")
+    def require_matching_top_level_identity(self):
+        if (
+            self.source != self.task_context.source_platform
+            or self.product_id != self.task_context.source_product_id
+        ):
+            raise ValueError("Complete package identity does not match taskContext")
+        return self
+
+
+MobileCompletePackage = MobileCompletePackageV1 | MobileCompletePackageV2
+
+
 class GatewayAttemptRegistrationV1(BaseModel):
     """Trusted gateway service registration after its claim transaction commits."""
 

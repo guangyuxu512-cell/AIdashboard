@@ -8,7 +8,11 @@ import math
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from app.modules.product_collection.contracts import MobileCompletePackageV1
+from app.modules.product_collection.contracts import (
+    MobileCompletePackage,
+    MobileCompletePackageV1,
+    MobileCompletePackageV2,
+)
 
 
 MAX_COMPLETE_PACKAGE_BYTES = 16 * 1024 * 1024
@@ -17,7 +21,7 @@ MAX_STRING_LENGTH = 1024 * 1024
 MAX_URL_LENGTH = 4096
 
 
-def parse_complete_package(raw: bytes) -> MobileCompletePackageV1:
+def parse_complete_package(raw: bytes) -> MobileCompletePackage:
     if len(raw) > MAX_COMPLETE_PACKAGE_BYTES:
         raise ValueError("Complete package exceeds the configured size boundary")
     try:
@@ -25,6 +29,8 @@ def parse_complete_package(raw: bytes) -> MobileCompletePackageV1:
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Complete package must be valid UTF-8 JSON") from error
     _validate_shape(value, depth=0)
+    if isinstance(value, Mapping) and value.get("schemaVersion") == 2:
+        return MobileCompletePackageV2.model_validate(value)
     return MobileCompletePackageV1.model_validate(value)
 
 

@@ -247,7 +247,7 @@ class ProductCollectionIngestService:
                 upload_key=f"pci_upload_v1_{attempt.attempt_id.hex}",
                 content_sha256=content_hash,
                 raw_payload=normalized,
-                raw_format_version=1,
+                raw_format_version=getattr(package, "schema_version", 1),
                 state="received",
                 received_at=now,
             )
@@ -312,8 +312,6 @@ class ProductCollectionIngestService:
                 or attempt.gateway_device_id != command.device_id
                 or attempt.capture_batch_id != command.capture_batch_id
                 or attempt.ingest_credential_id != command.credential_id
-                or attempt.state not in {"registered", "running"}
-                or attempt.token_consumed_at is not None
                 or now >= attempt.accept_until
             ):
                 raise ProductCollectionBatchConflictError()
@@ -323,33 +321,38 @@ class ProductCollectionIngestService:
                 if dispatch is not None
                 else None
             )
-            if (
-                dispatch is None
-                or item is None
-                or item.current_dispatch_id != dispatch.dispatch_id
+            active_upload = (
+                attempt.state in {"registered", "running"}
+                and attempt.token_consumed_at is None
+                and attempt.accepted_content_sha256 is None
+            )
+            existing_receipt = self.session.scalar(
+                select(UploadReceipt).where(UploadReceipt.attempt_id == attempt.attempt_id),
+            )
+            receipt_replay = (
+                attempt.state in {"received", "processing", "persisted", "failed", "superseded"}
+                and attempt.token_consumed_at is not None
+                and attempt.accepted_content_sha256 is not None
+                and existing_receipt is not None
+                and existing_receipt.content_sha256 == attempt.accepted_content_sha256
+            )
+            if dispatch is None or item is None or not (active_upload or receipt_replay):
+                raise ProductCollectionBatchConflictError()
+            if active_upload and (
+                item.current_dispatch_id != dispatch.dispatch_id
                 or dispatch.state != "running"
                 or item.state != "running"
             ):
                 raise ProductCollectionBatchConflictError()
-            binding = CredentialBinding(
-                attempt_id=attempt.attempt_id,
-                gateway_id=attempt.gateway_id,
-                device_id=attempt.gateway_device_id,
-                gateway_job_id=attempt.gateway_job_id,
-                capture_batch_id=attempt.capture_batch_id,
-                source_platform=item.platform,
-                source_product_id=item.source_product_id,
-            )
-            issued = issue_credential(
-                secret=secret,
-                binding=binding,
-                version=attempt.ingest_credential_version + 1,
-            )
-            attempt.ingest_credential_id = issued.credential_id
-            attempt.ingest_credential_version = issued.version
-            attempt.ingest_token_salt = issued.salt_hex
-            attempt.ingest_token_hash = issued.token_sha256
-            attempt.token_issued_at = now
+            if receipt_replay and existing_receipt.team_id != attempt.team_id:
+                raise ProductCollectionBatchConflictError()
+            issued = self._reissue_existing(attempt, item, secret)
+            if (
+                issued.credential_id != attempt.ingest_credential_id
+                or issued.version != attempt.ingest_credential_version
+                or issued.token_sha256 != attempt.ingest_token_hash
+            ):
+                raise ProductCollectionBatchConflictError()
             attempt.token_expires_at = min(
                 attempt.accept_until,
                 now + timedelta(seconds=token_ttl_seconds),

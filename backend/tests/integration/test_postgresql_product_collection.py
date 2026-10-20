@@ -18,7 +18,9 @@ from app.modules.access.enums import DataScope
 from app.modules.access.models import Team, TeamModuleAccess, TeamShopAccess
 from app.modules.access.module_access import ModuleCode
 from app.modules.product_collection.contracts import (
+    ControlIngestV1,
     GatewayAttemptRegistrationV1,
+    GatewayCredentialRefreshV1,
     ProductCollectionRequestCreate,
 )
 from app.modules.product_collection.dispatch_service import (
@@ -87,6 +89,14 @@ class AcceptedUpload:
     credential: str
     raw: bytes
     source_product_id: str
+
+
+@dataclass(frozen=True)
+class RegisteredAttempt:
+    request_id: UUID
+    item_id: UUID
+    registration: GatewayAttemptRegistrationV1
+    control: ControlIngestV1
 
 
 def _cleanup(engine: Engine, *, user_id: UUID, team_id: UUID) -> None:
@@ -515,7 +525,7 @@ def test_stale_cancel_result_does_not_overwrite_new_current_dispatch(graph: Grap
         assert item.last_error_code == replacement.last_error_code
 
 
-def _accept_gateway_upload(graph: Graph, *, source_product_id: str) -> AcceptedUpload:
+def _register_gateway_attempt(graph: Graph, *, source_product_id: str) -> RegisteredAttempt:
     command = ProductCollectionRequestCreate.model_validate(
         {
             "submission_key": uuid4(),
@@ -573,6 +583,18 @@ def _accept_gateway_upload(graph: Graph, *, source_product_id: str) -> AcceptedU
             token_ttl_seconds=600,
             accept_grace_seconds=300,
         )
+    return RegisteredAttempt(
+        request_id=request.request_id,
+        item_id=item_id,
+        registration=registration,
+        control=control,
+    )
+
+
+def _accept_gateway_upload(graph: Graph, *, source_product_id: str) -> AcceptedUpload:
+    registered = _register_gateway_attempt(graph, source_product_id=source_product_id)
+    registration = registered.registration
+    control = registered.control
 
     body = {
         "eventType": "complete",
@@ -596,8 +618,8 @@ def _accept_gateway_upload(graph: Graph, *, source_product_id: str) -> AcceptedU
         )
         assert accepted.receipt.status == "received"
     return AcceptedUpload(
-        request_id=request.request_id,
-        item_id=item_id,
+        request_id=registered.request_id,
+        item_id=registered.item_id,
         attempt_id=control.attempt_id,
         receipt_id=accepted.receipt.receipt_id,
         credential=control.credential,
@@ -1063,6 +1085,48 @@ def test_request_to_gateway_attempt_and_raw_upload_is_durable(graph: Graph):
         assert session.get(Item, item.item_id).state == "received"
 
 
+def test_active_credential_refresh_is_a_deterministic_reissue(graph: Graph):
+    registered = _register_gateway_attempt(
+        graph,
+        source_product_id=str(6_625_000_000_000_000_000 + graph.user_id.int % 100_000),
+    )
+    registration, original = registered.registration, registered.control
+    refresh = GatewayCredentialRefreshV1(
+        schema_version=1,
+        gateway_id=registration.gateway_id,
+        gateway_job_id=registration.gateway_job_id,
+        device_id=registration.device_id,
+        capture_batch_id=registration.capture_batch_id,
+        credential_id=original.credential_id,
+    )
+
+    refreshed = []
+    for _ in range(2):
+        with Session(graph.engine, expire_on_commit=False) as session:
+            refreshed.append(
+                ProductCollectionIngestService(session).refresh_credential(
+                    attempt_id=original.attempt_id,
+                    command=refresh,
+                    secret=b"s" * 32,
+                    public_base_url="http://127.0.0.1:8101",
+                    token_ttl_seconds=600,
+                ),
+            )
+
+    assert refreshed[0].credential_id == refreshed[1].credential_id == original.credential_id
+    assert refreshed[0].credential == refreshed[1].credential == original.credential
+    with Session(graph.engine) as session:
+        attempt = session.get(CaptureAttempt, original.attempt_id)
+        assert attempt.ingest_credential_version == 1
+        assert attempt.token_consumed_at is None
+        assert attempt.accepted_content_sha256 is None
+        assert session.scalar(
+            select(func.count())
+            .select_from(UploadReceipt)
+            .where(UploadReceipt.attempt_id == original.attempt_id),
+        ) == 0
+
+
 def test_terminal_upload_replay_is_stable_and_still_authenticates(
     graph: Graph,
     monkeypatch: pytest.MonkeyPatch,
@@ -1155,6 +1219,65 @@ def test_terminal_upload_replay_is_stable_and_still_authenticates(
         )
         assert duplicate.receipt.status == "duplicate"
         assert duplicate.receipt.receipt_id == failed.receipt_id
+
+
+def test_received_upload_refresh_is_idempotent_and_only_replays_same_content(graph: Graph):
+    accepted = _accept_gateway_upload(
+        graph,
+        source_product_id=str(6_620_000_000_000_000_000 + graph.user_id.int % 100_000),
+    )
+    with Session(graph.engine) as session:
+        attempt = session.get(CaptureAttempt, accepted.attempt_id)
+        command = GatewayCredentialRefreshV1(
+            schema_version=1,
+            gateway_id=attempt.gateway_id,
+            gateway_job_id=attempt.gateway_job_id,
+            device_id=attempt.gateway_device_id,
+            capture_batch_id=attempt.capture_batch_id,
+            credential_id=attempt.ingest_credential_id,
+        )
+        original_version = attempt.ingest_credential_version
+        original_content_hash = attempt.accepted_content_sha256
+
+    refreshed = []
+    for _ in range(2):
+        with Session(graph.engine, expire_on_commit=False) as session:
+            refreshed.append(
+                ProductCollectionIngestService(session).refresh_credential(
+                    attempt_id=accepted.attempt_id,
+                    command=command,
+                    secret=b"s" * 32,
+                    public_base_url="http://127.0.0.1:8101",
+                    token_ttl_seconds=600,
+                ),
+            )
+
+    assert refreshed[0].credential_id == refreshed[1].credential_id == command.credential_id
+    assert refreshed[0].credential == refreshed[1].credential
+    with Session(graph.engine) as session:
+        replay = ProductCollectionIngestService(session).accept_complete_package(
+            attempt_id=accepted.attempt_id,
+            credential=refreshed[1].credential,
+            raw_body=accepted.raw,
+        )
+        assert replay.receipt.status == "duplicate"
+        assert replay.receipt.receipt_id == accepted.receipt_id
+
+    changed = json.loads(accepted.raw)
+    changed["detailBody"]["title"] = "different-content-after-lost-202"
+    with Session(graph.engine) as session:
+        with pytest.raises(ProductCollectionUploadConflictError):
+            ProductCollectionIngestService(session).accept_complete_package(
+                attempt_id=accepted.attempt_id,
+                credential=refreshed[1].credential,
+                raw_body=json.dumps(changed).encode(),
+            )
+
+    with Session(graph.engine) as session:
+        attempt = session.get(CaptureAttempt, accepted.attempt_id)
+        assert attempt.ingest_credential_version == original_version
+        assert attempt.accepted_content_sha256 == original_content_hash
+        assert attempt.token_consumed_at is not None
 
 
 def test_expired_final_delivery_claim_is_closed_after_restart(graph: Graph):

@@ -150,6 +150,52 @@ def test_complete_package_has_strict_allowlist_and_rejects_credentials():
         )
 
 
+def test_gateway_v2_complete_package_is_preserved_with_strict_allowlist():
+    body = {
+        "schemaVersion": 2,
+        "source": "douyin",
+        "eventType": "complete",
+        "trigger": "cart_sku",
+        "productId": "3832497447662387684",
+        "capturedAt": 1792470001000,
+        "detailCapturedAt": 1792470000000,
+        "skuCapturedAt": 1792470001000,
+        "appVersion": "0.4.10",
+        "detailSha256": "a" * 64,
+        "skuSha256": "b" * 64,
+        "sha256": "c" * 64,
+        "detailBody": {"data": {"product_id": "3832497447662387684"}},
+        "skuBody": {"data": {"product_id": "3832497447662387684"}},
+        "taskContext": {
+            "jobId": "job-a",
+            "captureBatchId": "batch-a",
+            "jobType": "product",
+            "sourcePlatform": "douyin",
+            "sourceProductId": "3832497447662387684",
+            "recaptureRequested": False,
+        },
+    }
+
+    parsed = parse_complete_package(json.dumps(body).encode())
+
+    assert parsed.schema_version == 2
+    assert parsed.model_dump(mode="json", by_alias=True) == body
+    with pytest.raises(ValidationError):
+        parse_complete_package(json.dumps({**body, "headers": {}}).encode())
+    with pytest.raises(ValidationError):
+        parse_complete_package(json.dumps({**body, "schemaVersion": 3}).encode())
+    for field, invalid_hash in (
+        ("detailSha256", "not-a-sha256"),
+        ("skuSha256", "A" * 64),
+        ("sha256", "c" * 63),
+        ("sha256", "g" * 64),
+    ):
+        with pytest.raises(ValidationError):
+            parse_complete_package(
+                json.dumps({**body, field: invalid_hash}).encode(),
+            )
+
+
 def test_source_and_image_url_sanitization_remove_secret_context():
     assert sanitize_source_url(
         "https://example.test/product/123?token=secret#fragment",

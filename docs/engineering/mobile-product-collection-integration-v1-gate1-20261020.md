@@ -100,3 +100,22 @@
   Taobao 不测。任何配对差异退回对应 Owner，不在 Integration 工作树补写业务实现。
 - 发布顺序：0049 → 部署且三开关保持关闭 → 配对闭环和 Release Gate → 写入持久化受保护配置并重启。
   Owner 81a1 不合并 dev/main、不部署；私有仓库未获安排前不 push/PR/触发 CI。
+
+## 2026-10-20 中控／网关 HTTP 适配增量
+
+- 配对基线为中控 `fb25a53fdb3448427843e501a636d356307153d1` 与只读网关
+  `391e88100bc9dd85322f8a8ae1264f8b463ca6df`。本增量不修改 Gateway、Collector、APK、手机、
+  Migration、业务 Schema、消费者配置或其它模块。
+- 中控入口同时接受历史紧凑 V1 与 Collector 0.4.10 实际原始 V2；V2 使用明确顶层 allowlist，
+  三个 SHA-256 字段严格要求 64 位小写十六进制。修前网关配对脚本证明 `not-a-sha256` 会被接受；
+  修后同一脚本保留全部实际 V2 字段并逐项拒绝三个非法哈希。
+- 相同 attempt／gateway／device／job／batch／credential identity 在 `accept_until` 内的刷新是确定性
+  重发：credential ID、version、salt 派生 token 均不轮换，只延长服务端有效期。刷新响应丢失可用原
+  credential ID 重放；Raw 已持久接收但 202 丢失时，刷新后同内容返回原 receipt 的 `duplicate`，
+  不同内容仍返回冲突。错误 identity、过期窗口、canceled 或无 Receipt 的非活动 attempt 不会复活。
+- 定向结果：Product Collection 非 PG 49 passed；实际网关 DTO 配对脚本 passed；Feature PG 两条精确
+  刷新／重放用例 passed；compileall 与 `git diff --check` passed。Feature 库 Head 仍为 0049，三个消费者
+  开关均 false，定向执行前活动 Dispatch／Attempt／Upload／Settlement 均为 0。
+- 额外运行完整 Product Collection PG 文件时，两项全局 claim 用例受到本机既有 8101 后端进程竞争，
+  分别未取得 Settlement／Inbox claim；本增量的两条精确用例单独运行通过。未停止或重启既有服务，
+  未为消除环境竞争修改队列实现或放宽测试。
