@@ -43,7 +43,8 @@ Table header / row: 38px / 42px
 
 共享默认 `ProductImage` summary 80px、thumbnail 64px；`ProductInfoCell` 默认 ID 13px／复制槽 30px。compact 显式 thumbnail 48px／ID 12px／复制槽 28px，缺图及重试保留同一 48px 槽。详情不得自动缩小：包括未传密度的商品数据详情默认 thumbnail 64px。
 
-当前只授权候选池试点；策略列表须待新视觉原生确认后再显式复用。商品库／采集任务仍占位，不因有共享规则新建业务列表。
+候选池、采集任务和商品库业务列表均须显式传 `density="compact"` 才使用紧凑规则；详情 Dialog 保持默认密度。
+各 Feature 只配置自身列宽、固定列和交互，不修改共享表格默认样式，也不复制主题颜色。
 
 建议：
 
