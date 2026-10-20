@@ -38,6 +38,10 @@ ca97已由DBAdmin通道创建独立可重建Feature库
 
 当前活跃 Migration Slot：无。
 
+2026-10-20 Shared Select Overlay Boundary Fix 为纯前端公共组件修复；无 Backend、Schema、数据库
+或 Migration，不分配 Slot。后续商品采集任务＋商品库前端仅在其独立 Gate 2 通过后正常消费，不能
+借公共修复加入业务 DDL 或复用已 released 的 0048。
+
 2026-10-20 `feat/product-collection-library-frontend-v1` 明确为 UI_ONLY：无 Backend、Schema、
 数据库或 Migration，不分配 Migration Slot，不得借用已 released 的 0048。Owner 仅从精确 Green
 `65ecf3f72a6ae9ea3114d7404841ad9aae876565` 开发采集任务与商品库两页前端。
