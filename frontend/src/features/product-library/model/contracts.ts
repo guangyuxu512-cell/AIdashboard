@@ -7,11 +7,37 @@ export interface ProductGroup {
 }
 
 export interface ProductSku {
-  id: string
+  /** Stable frontend identity for saved and unsaved SKU rows. */
+  draftKey: string
+  /** Platform source identity. Frontend-created SKUs intentionally have none. */
+  sourceSkuId: string | null
   name: string
   currentPrice: string | null
   stockLabel: string | null
   imageUrl: string | null
+  /** Frontend/Mock editing draft only; keys bind explicitly to specDimensions. */
+  specValues: Record<string, string>
+}
+
+export interface ProductSpecDimension {
+  id: string
+  name: string
+}
+
+export interface ProductEditSku {
+  draftKey: string
+  sourceSkuId: string | null
+  name: string
+  currentPrice: string | null
+  imageUrl: string | null
+  specValues: Record<string, string>
+}
+
+export interface ProductEditDraft {
+  title: string
+  attributes: Array<{ name: string; value: string }>
+  specDimensions: ProductSpecDimension[]
+  skus: ProductEditSku[]
 }
 
 export interface ProductHistory {
@@ -33,15 +59,21 @@ export interface LibraryProduct {
   collectedAt: string
   sourceUrl: string | null
   mainImageUrl: string | null
+  /** Frontend/Mock preview draft only; this is not a Backend DTO field. */
+  previewMainImageUrls?: string[]
   detailImageUrls: string[]
-  skuImageUrls: string[]
+  /** Frontend/Mock editing draft only; this is not a Backend DTO field. */
+  specDimensions: ProductSpecDimension[]
   skus: ProductSku[]
   attributes: Array<{ name: string; value: string }>
+  mockEditedAt: string | null
   packageFiles: Array<{ name: string; kind: 'txt' | 'origin-txt' | 'image' }>
   history: ProductHistory[]
 }
 
 export interface ProductLibraryQuery {
+  /** Frontend/Mock view draft; the Real query contract is not frozen. */
+  view?: ProductLibraryView
   keyword: string
   platform: PlatformCode | null
   groupId: string | null
@@ -49,6 +81,8 @@ export interface ProductLibraryQuery {
   page: number
   pageSize: number
 }
+
+export type ProductLibraryView = 'all' | 'ungrouped' | 'grouped'
 
 export interface ProductLibraryPage {
   items: LibraryProduct[]
@@ -64,6 +98,7 @@ export interface ProductLibraryService {
   groups(): Promise<ProductGroup[]>
   list(query: ProductLibraryQuery): Promise<ProductLibraryPage>
   detail(id: string): Promise<LibraryProduct>
+  saveEdit(id: string, draft: ProductEditDraft): Promise<LibraryProduct>
   createGroup(name: string): Promise<ProductGroup>
   moveToGroup(ids: string[], groupId: string | null): Promise<number>
   remove(ids: string[]): Promise<number>

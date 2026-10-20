@@ -18,6 +18,7 @@ import { PlatformDisplay } from '@/entities/platform'
 import { apiMode } from '@/shared/api'
 import {
   DataTable,
+  ContextSwitchBar,
   EmptyState,
   ErrorState,
   FilterBar,
@@ -34,10 +35,12 @@ import {
   PRODUCT_LIBRARY_UNAVAILABLE,
 } from '../api/product-library-service'
 import type {
+  ProductEditDraft,
   LibraryProduct,
   ProductGroup,
   ProductLibraryPage,
   ProductLibraryService,
+  ProductLibraryView,
 } from '../model/contracts'
 import ProductExportDialog from './ProductExportDialog.vue'
 import ProductGroupDialog from './ProductGroupDialog.vue'
@@ -58,7 +61,13 @@ const loadError = ref<string | null>(null)
 const listError = ref<string | null>(null)
 const loading = ref(false)
 const busy = ref(false)
+const previewSaving = ref(false)
 const keyword = ref('')
+const libraryView = ref<ProductLibraryView>(
+  route.query.view === 'ungrouped' || route.query.view === 'grouped'
+    ? route.query.view
+    : 'all',
+)
 const platform = ref<PlatformCode | null>(null)
 const groupId = ref<string | null>(null)
 const category = ref<string | null>(null)
@@ -72,6 +81,13 @@ const groupDialogOpen = ref(false)
 const groupDialogTitle = ref('移动商品分组')
 const groupTargetIds = ref<string[]>([])
 let revision = 0
+let pendingPreviewNavigation: 'previous' | 'next' | null = null
+
+const libraryViewItems = [
+  { key: 'all', label: '全部商品' },
+  { key: 'ungrouped', label: '采集/导入' },
+  { key: 'grouped', label: '分组商品' },
+] as const
 
 const platformOptions = [
   { label: '全部平台', value: 'all' },
@@ -82,7 +98,6 @@ const platformOptions = [
 ]
 const groupOptions = computed(() => [
   { label: '全部分组', value: 'all' },
-  { label: '未分组', value: 'ungrouped' },
   ...groups.value.map((group) => ({
     label: `${group.name}（${group.count}）`,
     value: group.id,
@@ -119,6 +134,7 @@ async function fetchList() {
   listError.value = null
   try {
     const result = await service.value.list({
+      view: libraryView.value,
       keyword: keyword.value.trim(),
       platform: platform.value,
       groupId: groupId.value,
@@ -130,6 +146,12 @@ async function fetchList() {
     pageData.value = result
     page.value = result.page
     selected.value = []
+    if (pendingPreviewNavigation && items.length) {
+      const target =
+        pendingPreviewNavigation === 'next' ? items[0] : items.at(-1)
+      pendingPreviewNavigation = null
+      if (target) await openPreview(target)
+    }
     const requested =
       typeof route.query.productId === 'string' ? route.query.productId : null
     if (requested && !preview.value) {
@@ -154,7 +176,7 @@ watch(
   },
   { immediate: true },
 )
-watch([platform, groupId, category, page, pageSize], fetchList)
+watch([libraryView, platform, groupId, category, page, pageSize], fetchList)
 
 function reset() {
   keyword.value = ''
@@ -163,6 +185,19 @@ function reset() {
   category.value = null
   page.value = 1
   void fetchList()
+}
+
+function setLibraryView(value: string) {
+  if (value !== 'all' && value !== 'ungrouped' && value !== 'grouped') return
+  libraryView.value = value
+  groupId.value = null
+  page.value = 1
+  selected.value = []
+  const query = { ...route.query }
+  if (value === 'all') delete query.view
+  else query.view = value
+  delete query.productId
+  void router.replace({ query })
 }
 
 function searchList() {
@@ -198,6 +233,98 @@ async function openPreview(row: LibraryProduct) {
     void router.replace({ query: { ...route.query, productId: row.productId } })
   } catch (error) {
     message.error(error instanceof Error ? error.message : '商品详情加载失败')
+  }
+}
+
+const previewNavigationRows = computed(() => {
+  const items = pageData.value?.items ?? []
+  if (!preview.value) return items
+  const selectedIds = new Set(selected.value.map(String))
+  return selectedIds.has(preview.value.id)
+    ? items.filter((item) => selectedIds.has(item.id))
+    : items
+})
+
+const previewNavigationIndex = computed(() =>
+  preview.value
+    ? previewNavigationRows.value.findIndex(
+        (item) => item.id === preview.value?.id,
+      )
+    : -1,
+)
+
+const previewUsesSelection = computed(
+  () =>
+    Boolean(preview.value) &&
+    selected.value.map(String).includes(preview.value?.id ?? ''),
+)
+
+const previewCanPrevious = computed(() => {
+  if (previewNavigationIndex.value > 0) return true
+  return !previewUsesSelection.value && page.value > 1
+})
+
+const previewCanNext = computed(() => {
+  if (
+    previewNavigationIndex.value >= 0 &&
+    previewNavigationIndex.value < previewNavigationRows.value.length - 1
+  )
+    return true
+  return (
+    !previewUsesSelection.value &&
+    page.value * pageSize.value < (pageData.value?.total ?? 0)
+  )
+})
+
+const previewPositionLabel = computed(() => {
+  if (!preview.value || previewNavigationIndex.value < 0) return ''
+  if (previewUsesSelection.value)
+    return `选中集 ${previewNavigationIndex.value + 1}/${previewNavigationRows.value.length}`
+  const absolute =
+    (page.value - 1) * pageSize.value + previewNavigationIndex.value + 1
+  return `当前视图 ${absolute}/${pageData.value?.total ?? 0}`
+})
+
+const previewNavigationItems = computed(() =>
+  previewNavigationRows.value.map((item) => ({
+    id: item.id,
+    title: item.title,
+    subtitle: `${getPlatformDefinition(item.platform)?.label ?? item.platform} · ${item.groupName ?? '未分组'}`,
+  })),
+)
+
+async function navigatePreviewTo(id: string) {
+  const target = previewNavigationRows.value.find((item) => item.id === id)
+  if (target) await openPreview(target)
+}
+
+async function navigatePreview(direction: 'previous' | 'next') {
+  if (!preview.value || !service.value?.available) return
+  const nextIndex =
+    previewNavigationIndex.value + (direction === 'next' ? 1 : -1)
+  const local = previewNavigationRows.value[nextIndex]
+  if (local) {
+    await openPreview(local)
+    return
+  }
+  if (previewUsesSelection.value) return
+  const targetPage = page.value + (direction === 'next' ? 1 : -1)
+  if (targetPage < 1) return
+  pendingPreviewNavigation = direction
+  page.value = targetPage
+}
+
+async function savePreviewEdit(draft: ProductEditDraft) {
+  if (!service.value?.available || !preview.value || previewSaving.value) return
+  previewSaving.value = true
+  try {
+    preview.value = await service.value.saveEdit(preview.value.id, draft)
+    message.success('已保存到当前演示会话；未写入正式商品库')
+    await fetchList()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '商品资料保存失败')
+  } finally {
+    previewSaving.value = false
   }
 }
 
@@ -284,18 +411,23 @@ async function recollectSelected() {
   }
 }
 
-async function removeSelected() {
-  if (!service.value?.available || busy.value || !selected.value.length) return
+async function removeProducts(ids: string[]) {
+  if (!service.value?.available || busy.value || !ids.length) return
   busy.value = true
   try {
-    const count = await service.value.remove(selected.value.map(String))
+    const count = await service.value.remove(ids)
     message.info(`已从演示列表移除 ${count} 个商品；未修改正式商品库`)
     selected.value = []
+    if (preview.value && ids.includes(preview.value.id)) closePreview(false)
     groups.value = await service.value.groups()
     await fetchList()
   } finally {
     busy.value = false
   }
+}
+
+function removeSelected() {
+  return removeProducts(selected.value.map(String))
 }
 
 const columns = computed<DataTableColumns<LibraryProduct>>(() => [
@@ -371,7 +503,7 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 160,
+    width: 228,
     fixed: 'right',
     align: 'center',
     render: (row) =>
@@ -379,12 +511,21 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         h(
           AppButton,
           { tone: 'link', size: 'small', onClick: () => openPreview(row) },
-          () => '预览',
+          () => '编辑商品',
         ),
         h(
           AppButton,
           { size: 'small', onClick: () => openExport([row]) },
           () => '导出 TXT',
+        ),
+        h(
+          AppButton,
+          {
+            tone: 'danger',
+            size: 'small',
+            onClick: () => removeProducts([row.id]),
+          },
+          () => '删除',
         ),
       ]),
   },
@@ -404,6 +545,13 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
     :description="PRODUCT_LIBRARY_UNAVAILABLE"
   />
   <div v-else class="product-library-workspace">
+    <ContextSwitchBar
+      label="商品库视图"
+      appearance="framed"
+      :items="libraryViewItems"
+      :active-key="libraryView"
+      @select="setLibraryView"
+    />
     <FilterBar density="compact">
       <FilterField width="lg">
         <AppInput
@@ -427,10 +575,14 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
           @update:model-value="setCategoryFilter"
         />
       </FilterField>
-      <FilterField width="sm">
+      <FilterField v-if="libraryView === 'grouped'" width="sm">
         <AppSelect
+          aria-label="商品分组筛选"
           :model-value="groupId ?? 'all'"
           :options="groupOptions"
+          filterable
+          label-tooltip
+          placeholder="搜索商品分组"
           @update:model-value="setGroupFilter"
         />
       </FilterField>
@@ -488,7 +640,7 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         :error="listError"
         :row-key="(row) => row.id"
         :checked-row-keys="selected"
-        :scroll-x="1432"
+        :scroll-x="1500"
         viewport="fill"
         appearance="list"
         show-header-when-empty
@@ -508,9 +660,17 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
     <ProductPreviewDialog
       :show="Boolean(preview)"
       :product="preview"
+      :saving="previewSaving"
+      :can-previous="previewCanPrevious"
+      :can-next="previewCanNext"
+      :position-label="previewPositionLabel"
+      :navigation-items="previewNavigationItems"
       @update:show="closePreview"
       @export="openExport([$event])"
       @group="openGroup([$event.id])"
+      @save="savePreviewEdit"
+      @navigate="navigatePreview"
+      @navigate-to="navigatePreviewTo"
     />
     <ProductExportDialog
       :show="Boolean(exportProducts.length)"

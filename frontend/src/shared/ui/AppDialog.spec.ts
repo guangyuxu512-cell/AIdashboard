@@ -30,12 +30,19 @@ describe('AppDialog', () => {
     const extraLarge = mount(AppDialog, {
       props: { show: false, title: '资料预览', size: 'xl' },
     })
+    const wide = mount(AppDialog, {
+      props: { show: false, title: '商品编辑', size: 'wide' },
+    })
 
     expect(regular.findComponent(NModal).vm.$attrs.style).toMatchObject({
       width: 'var(--dialog-width-md)',
     })
     expect(extraLarge.findComponent(NModal).vm.$attrs.style).toMatchObject({
       width: 'var(--dialog-width-xl)',
+      maxWidth: 'calc(100vw - var(--space-8))',
+    })
+    expect(wide.findComponent(NModal).vm.$attrs.style).toMatchObject({
+      width: 'var(--dialog-width-wide)',
       maxWidth: 'calc(100vw - var(--space-8))',
     })
   })

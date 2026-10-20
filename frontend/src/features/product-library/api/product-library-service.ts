@@ -13,6 +13,7 @@ function unavailable(): ProductLibraryService {
     groups: reject,
     list: reject,
     detail: reject,
+    saveEdit: reject,
     createGroup: reject,
     moveToGroup: reject,
     remove: reject,

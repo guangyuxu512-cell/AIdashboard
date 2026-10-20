@@ -90,7 +90,7 @@ AppShell 默认品牌为“思余AI中控台”。品牌图使用真实 Alpha �
 | 控件      | `--control-height-*`、`--field-width-*`、`--date-picker-width-*`                              |
 | 圆角/阴影 | `--radius-*`、`--shadow-*`                                                                    |
 | 弹层      | `--dialog-width-*`、`--drawer-width-*`                                                        |
-| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`    |
+| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`   |
 
 `typography.css` 只负责全局排版基线，`layout.css` 只负责页面和语义宽度布局，`theme.css` 是应用唯一样式入口。Naive UI 的全局覆盖位于 `app/providers/naive-theme.ts`，其尺寸直接引用 CSS Token；需要参与 Naive 颜色计算的值必须在 Provider 创建时从 CSS Token 读取计算值，禁止在 TypeScript 再复制一份颜色常量。
 
@@ -127,12 +127,12 @@ Base Token
 
 ### 四套主题返修落点
 
-| 预设 | 侧栏 | 页面 | 卡片 | 主按钮 | 辅助色 |
-| --- | --- | --- | --- | --- | --- |
-| 石墨浅色 | `#1F2937` | `#F3F4F6` | `#FFFFFF` | `#2563EB` | `#64748B` |
-| 森林绿 | `#123E3B` | `#F8FBF5` | `#FFFFFF` | `#2F6F45` | 薄荷 `#DDF7E3`、青柠 `#B7E44B` |
-| 珊瑚红 | `#F06A6B` | `#FFF9F5` | `#FFFFFF` | `#D52E3B` | 暖橙 `#F4A261`、浅珊瑚 `#FFB4A2`；图表强调 `#E63946` |
-| 午夜青 | `#0B1E3F` | `#111827` | `#1F2937` | `#12A08F` | 青绿 `#2DD4BF`、少量暖橙 `#F59E0B` |
+| 预设     | 侧栏      | 页面      | 卡片      | 主按钮    | 辅助色                                               |
+| -------- | --------- | --------- | --------- | --------- | ---------------------------------------------------- |
+| 石墨浅色 | `#1F2937` | `#F3F4F6` | `#FFFFFF` | `#2563EB` | `#64748B`                                            |
+| 森林绿   | `#123E3B` | `#F8FBF5` | `#FFFFFF` | `#2F6F45` | 薄荷 `#DDF7E3`、青柠 `#B7E44B`                       |
+| 珊瑚红   | `#F06A6B` | `#FFF9F5` | `#FFFFFF` | `#D52E3B` | 暖橙 `#F4A261`、浅珊瑚 `#FFB4A2`；图表强调 `#E63946` |
+| 午夜青   | `#0B1E3F` | `#111827` | `#1F2937` | `#12A08F` | 青绿 `#2DD4BF`、少量暖橙 `#F59E0B`                   |
 
 森林薄荷用于表头/轻层次与选中表面，青柠只用于小面积导航标识；珊瑚侧栏用 `#3B291D` 深色文字/图标（指定初值 `#3D2B1F` 对比度 4.46:1，微调达到 4.59:1）、`#FFB4A2` 选中背景、`#F78982` 悬停背景和 `#E6555B` 分割线，主按钮继续深珊瑚配白字，不把成功/警告语义改红。午夜内容表面采用中性灰明度分层，不延续全蓝工具栏/表头。颜色仍只由 CSS Token 定义，不在页面复制。
 
@@ -169,6 +169,10 @@ Dialog／Drawer 内的 `AppSelect` 菜单也必须脱离可滚动、可裁切的
 `AppDialog` 是普通 Dialog/Modal 的唯一视口约束入口。默认最大高度由
 `--dialog-max-height` 计算，安全留白统一使用 `--overlay-viewport-safe-gap`；业务组件不得复制
 `100dvh - x` 或自定义另一套安全间距。
+
+数据密集型商品编辑器可显式使用 `AppDialog size="wide"`：桌面目标宽度由
+`--dialog-width-wide`（1440px）统一控制，并继续受 AppDialog 的视口安全 `maxWidth` 约束。
+该选项不改变 `sm/md/lg/xl` 既有消费者，也不得用于普通确认弹窗扩宽。
 
 标准结构固定为：
 

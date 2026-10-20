@@ -1,68 +1,457 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import {
+  NAlert,
   NDescriptions,
   NDescriptionsItem,
+  NForm,
+  NFormItem,
   NImage,
   NList,
   NListItem,
   NTabPane,
   NText,
   NTooltip,
+  type DataTableColumns,
+  useDialog,
   useMessage,
 } from 'naive-ui'
 import { ProductImage } from '@/entities/product'
 import { PlatformDisplay } from '@/entities/platform'
-import { ContextSwitchBar, StatusTag } from '@/shared/components'
-import { AppButton, AppDialog, AppTabs } from '@/shared/ui'
-import type { LibraryProduct } from '../model/contracts'
+import { StatusTag } from '@/shared/components'
+import { AppButton, AppDialog, AppInput, AppTable, AppTabs } from '@/shared/ui'
+import type {
+  LibraryProduct,
+  ProductEditDraft,
+  ProductEditSku,
+  ProductSku,
+} from '../model/contracts'
 
-const props = defineProps<{ show: boolean; product: LibraryProduct | null }>()
-defineEmits<{
+const props = withDefaults(
+  defineProps<{
+    show: boolean
+    product: LibraryProduct | null
+    saving?: boolean
+    canPrevious?: boolean
+    canNext?: boolean
+    positionLabel?: string
+    navigationItems?: ReadonlyArray<{
+      id: string
+      title: string
+      subtitle: string
+    }>
+  }>(),
+  {
+    saving: false,
+    canPrevious: false,
+    canNext: false,
+    positionLabel: '',
+    navigationItems: () => [],
+  },
+)
+const emit = defineEmits<{
   'update:show': [value: boolean]
   export: [product: LibraryProduct]
   group: [product: LibraryProduct]
+  save: [draft: ProductEditDraft]
+  navigate: [direction: 'previous' | 'next']
+  'navigate-to': [id: string]
 }>()
 const message = useMessage()
-const gallery = ref<'main' | 'detail' | 'sku'>('main')
-const selectedImage = ref<string | null>(null)
-const imageFailed = ref(false)
-const imageRevision = ref(0)
+const dialog = useDialog()
 const detailTab = ref('sku')
-const galleryItems = [
-  { key: 'main', label: '主图' },
-  { key: 'detail', label: '详情图' },
-  { key: 'sku', label: 'SKU 图' },
-]
+const editing = ref(false)
+const editDraft = ref<ProductEditDraft | null>(null)
+const editBaseline = ref<ProductEditDraft | null>(null)
+const validationMessage = ref<string | null>(null)
 
-const images = computed(() => {
-  if (!props.product) return []
-  if (gallery.value === 'detail') return props.product.detailImageUrls
-  if (gallery.value === 'sku') return props.product.skuImageUrls
-  return props.product.mainImageUrl ? [props.product.mainImageUrl] : []
-})
+type EditableSku = ProductEditDraft['skus'][number]
+type EditableAttribute = ProductEditDraft['attributes'][number]
+let draftSkuSequence = 0
+
+function draftFromProduct(product: LibraryProduct): ProductEditDraft {
+  return {
+    title: product.title,
+    attributes: product.attributes.map((attribute) => ({ ...attribute })),
+    specDimensions: product.specDimensions.map((dimension) => ({
+      ...dimension,
+    })),
+    skus: product.skus.map((sku) => ({
+      draftKey: sku.draftKey,
+      sourceSkuId: sku.sourceSkuId,
+      name: sku.name,
+      currentPrice: sku.currentPrice,
+      imageUrl: sku.imageUrl,
+      specValues: { ...sku.specValues },
+    })),
+  }
+}
+
+function cloneDraft(draft: ProductEditDraft): ProductEditDraft {
+  return {
+    title: draft.title,
+    attributes: draft.attributes.map((attribute) => ({ ...attribute })),
+    specDimensions: draft.specDimensions.map((dimension) => ({
+      ...dimension,
+    })),
+    skus: draft.skus.map((sku) => ({
+      draftKey: sku.draftKey,
+      sourceSkuId: sku.sourceSkuId,
+      name: sku.name,
+      currentPrice: sku.currentPrice,
+      imageUrl: sku.imageUrl,
+      specValues: { ...sku.specValues },
+    })),
+  }
+}
 
 watch(
-  [() => props.show, () => props.product?.id, gallery],
-  () => {
-    selectedImage.value = images.value[0] ?? null
-    imageFailed.value = false
+  () => props.product,
+  (product) => {
+    if (!product) {
+      editing.value = false
+      editDraft.value = null
+      editBaseline.value = null
+      validationMessage.value = null
+      return
+    }
+    const next = draftFromProduct(product)
+    editDraft.value = cloneDraft(next)
+    editBaseline.value = next
+    editing.value = true
+    validationMessage.value = null
+    detailTab.value = 'sku'
   },
   { immediate: true },
 )
 
-function chooseImage(src: string) {
-  selectedImage.value = src
-  imageFailed.value = false
+const hasUnsavedChanges = computed(
+  () =>
+    editing.value &&
+    JSON.stringify(editDraft.value) !== JSON.stringify(editBaseline.value),
+)
+
+function startEditing() {
+  if (!props.product) return
+  const next = draftFromProduct(props.product)
+  editDraft.value = cloneDraft(next)
+  editBaseline.value = next
+  validationMessage.value = null
+  editing.value = true
+  detailTab.value = 'sku'
 }
 
-function setGallery(key: string) {
-  gallery.value = key as typeof gallery.value
+function cancelEditing() {
+  if (!editBaseline.value) return
+  editDraft.value = cloneDraft(editBaseline.value)
+  validationMessage.value = null
+  editing.value = false
 }
 
-function retryImage() {
-  imageFailed.value = false
-  imageRevision.value += 1
+function closeImmediately() {
+  editing.value = false
+  validationMessage.value = null
+  emit('update:show', false)
+}
+
+function requestClose() {
+  if (!hasUnsavedChanges.value) {
+    closeImmediately()
+    return
+  }
+  dialog.warning({
+    title: '放弃未保存的修改？',
+    content: '商品资料草稿尚未保存，关闭后本次修改不会写入演示商品库。',
+    positiveText: '放弃修改',
+    negativeText: '继续编辑',
+    onPositiveClick: closeImmediately,
+  })
+}
+
+function navigateImmediately(direction: 'previous' | 'next') {
+  editing.value = false
+  validationMessage.value = null
+  emit('navigate', direction)
+}
+
+function navigateToImmediately(id: string) {
+  editing.value = false
+  validationMessage.value = null
+  emit('navigate-to', id)
+}
+
+function requestNavigate(direction: 'previous' | 'next') {
+  if (!hasUnsavedChanges.value) {
+    navigateImmediately(direction)
+    return
+  }
+  dialog.warning({
+    title: '放弃未保存的修改并切换商品？',
+    content: '当前商品资料草稿尚未保存，切换后本次修改不会写入演示商品库。',
+    positiveText: '放弃并切换',
+    negativeText: '继续编辑',
+    onPositiveClick: () => navigateImmediately(direction),
+  })
+}
+
+function requestNavigateTo(id: string) {
+  if (id === props.product?.id) return
+  if (!hasUnsavedChanges.value) {
+    navigateToImmediately(id)
+    return
+  }
+  dialog.warning({
+    title: '放弃未保存的修改并切换商品？',
+    content: '当前商品资料草稿尚未保存，切换后本次修改不会写入演示商品库。',
+    positiveText: '放弃并切换',
+    negativeText: '继续编辑',
+    onPositiveClick: () => navigateToImmediately(id),
+  })
+}
+
+function validateDraft(draft: ProductEditDraft): string | null {
+  if (!draft.title.trim()) return '商品标题不能为空'
+  const attributeNames = draft.attributes.map((item) => item.name.trim())
+  if (attributeNames.some((name) => !name)) return '商品属性名称不能为空'
+  if (draft.attributes.some((item) => !item.value.trim()))
+    return '商品属性值不能为空'
+  if (new Set(attributeNames).size !== attributeNames.length)
+    return '商品属性名称不能重复'
+
+  const dimensionNames = draft.specDimensions.map((item) => item.name.trim())
+  if (dimensionNames.some((name) => !name)) return 'SKU 规格维度不能为空'
+  if (new Set(dimensionNames).size !== dimensionNames.length)
+    return 'SKU 规格维度不能重复'
+  for (const sku of draft.skus) {
+    if (!sku.name.trim()) return 'SKU 名称不能为空'
+    if (
+      draft.specDimensions.some(
+        (dimension) => !sku.specValues[dimension.id]?.trim(),
+      )
+    )
+      return `SKU「${sku.name || sku.sourceSkuId || '前端新增'}」的规格值不能为空`
+    if (
+      sku.currentPrice !== null &&
+      !/^\d+(?:\.\d{1,2})?$/.test(sku.currentPrice.trim())
+    )
+      return `SKU「${sku.name}」的当前价格应为非负数字，未知请留空`
+  }
+  return null
+}
+
+function saveEditing() {
+  if (!editDraft.value || props.saving) return
+  for (const sku of editDraft.value.skus)
+    if (sku.currentPrice !== null && !sku.currentPrice.trim())
+      sku.currentPrice = null
+  validationMessage.value = validateDraft(editDraft.value)
+  if (validationMessage.value) return
+  emit('save', cloneDraft(editDraft.value))
+}
+
+function allocateDraftSkuKey(): string {
+  const keys = new Set(editDraft.value?.skus.map((sku) => sku.draftKey) ?? [])
+  let key = ''
+  do key = `draft-sku-${++draftSkuSequence}`
+  while (keys.has(key))
+  return key
+}
+
+function addSku() {
+  if (!editDraft.value) return
+  const sku: ProductEditSku = {
+    draftKey: allocateDraftSkuKey(),
+    sourceSkuId: null,
+    name: `新增 SKU ${editDraft.value.skus.length + 1}`,
+    currentPrice: null,
+    imageUrl: null,
+    specValues: Object.fromEntries(
+      editDraft.value.specDimensions.map((dimension) => [dimension.id, '']),
+    ),
+  }
+  editDraft.value.skus.push(sku)
+  validationMessage.value = null
+}
+
+function removeSku(draftKey: string) {
+  if (!editDraft.value) return
+  editDraft.value.skus = editDraft.value.skus.filter(
+    (sku) => sku.draftKey !== draftKey,
+  )
+  validationMessage.value = null
+}
+
+function sourceSku(draftKey: string): ProductSku | undefined {
+  return props.product?.skus.find((sku) => sku.draftKey === draftKey)
+}
+
+function formatSkuSpecs(sku: ProductSku): string {
+  const dimensions = props.product?.specDimensions ?? []
+  return dimensions
+    .map(
+      (dimension) =>
+        `${dimension.name}：${sku.specValues[dimension.id] || '—'}`,
+    )
+    .join(' · ')
+}
+
+const attributeEditColumns = computed<DataTableColumns<EditableAttribute>>(
+  () => [
+    {
+      title: '属性名称',
+      key: 'name',
+      width: 220,
+      render: (row, index) =>
+        h(AppInput, {
+          modelValue: row.name,
+          ariaLabel: `属性 ${index + 1} 名称`,
+          'onUpdate:modelValue': (value: string) => {
+            row.name = value
+          },
+        }),
+    },
+    {
+      title: '属性值',
+      key: 'value',
+      render: (row, index) =>
+        h(AppInput, {
+          modelValue: row.value,
+          ariaLabel: `属性 ${index + 1} 值`,
+          'onUpdate:modelValue': (value: string) => {
+            row.value = value
+          },
+        }),
+    },
+  ],
+)
+
+const skuEditColumns = computed<DataTableColumns<EditableSku>>(() => {
+  const dimensions = editDraft.value?.specDimensions ?? []
+  return [
+    {
+      title: 'SKU 源 ID',
+      key: 'sourceSkuId',
+      width: 190,
+      render: (row) => {
+        const sourceSkuId = row.sourceSkuId
+        return sourceSkuId
+          ? h(NTooltip, null, {
+              trigger: () => h('span', sourceSkuId),
+              default: () => sourceSkuId,
+            })
+          : h(NText, { depth: 3 }, () => '前端新增（无平台源 ID）')
+      },
+    },
+    {
+      title: 'SKU 名称',
+      key: 'name',
+      width: 150,
+      render: (row) =>
+        h(AppInput, {
+          modelValue: row.name,
+          ariaLabel: `${row.draftKey} SKU 名称`,
+          'onUpdate:modelValue': (value: string) => {
+            row.name = value
+          },
+        }),
+    },
+    ...dimensions.map((dimension) => ({
+      title: dimension.name || '未命名规格',
+      key: `spec-${dimension.id}`,
+      width: 140,
+      render: (row: EditableSku) =>
+        h(AppInput, {
+          modelValue: row.specValues[dimension.id] ?? '',
+          ariaLabel: `${row.draftKey} ${dimension.name || '规格'}值`,
+          'onUpdate:modelValue': (value: string) => {
+            row.specValues[dimension.id] = value
+          },
+        }),
+    })),
+    {
+      title: '当前价格',
+      key: 'currentPrice',
+      width: 130,
+      render: (row) =>
+        h(AppInput, {
+          modelValue: row.currentPrice,
+          placeholder: '未知留空',
+          ariaLabel: `${row.draftKey} 当前价格`,
+          'onUpdate:modelValue': (value: string) => {
+            row.currentPrice = value
+          },
+        }),
+    },
+    {
+      title: '采集库存',
+      key: 'stockLabel',
+      width: 150,
+      render: (row) => sourceSku(row.draftKey)?.stockLabel ?? '—',
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 84,
+      fixed: 'right',
+      render: (row) =>
+        h(
+          AppButton,
+          {
+            size: 'small',
+            tone: 'danger',
+            'aria-label': `删除 SKU ${row.name}`,
+            onClick: () => removeSku(row.draftKey),
+          },
+          () => '删除',
+        ),
+    },
+  ]
+})
+
+const imageSections = computed(() => {
+  const product = props.product
+  if (!product) return []
+  const displayedSkus =
+    editing.value && editDraft.value ? editDraft.value.skus : product.skus
+  return [
+    {
+      key: 'main',
+      label: '主图',
+      images: (
+        product.previewMainImageUrls ??
+        (product.mainImageUrl ? [product.mainImageUrl] : [])
+      ).map((src, index) => ({
+        src,
+        label: `主图 ${index + 1}`,
+        caption: '',
+        skuKey: undefined,
+      })),
+    },
+    {
+      key: 'sku',
+      label: 'SKU 图',
+      images: displayedSkus.map((sku) => ({
+        src: sku.imageUrl,
+        label: sku.name,
+        caption: sku.sourceSkuId ?? '前端新增（无平台源 ID）',
+        skuKey: sku.draftKey,
+      })),
+    },
+    {
+      key: 'detail',
+      label: '详情图',
+      images: product.detailImageUrls.map((src, index) => ({
+        src,
+        label: `详情图 ${index + 1}`,
+        caption: '',
+        skuKey: undefined,
+      })),
+    },
+  ]
+})
+
+function replaceImage() {
+  message.info('演示模式：图片替换尚未上传或写入商品资料')
 }
 
 async function copy(value: string, label: string) {
@@ -92,7 +481,7 @@ const skuText = computed(() =>
   (props.product?.skus ?? [])
     .map(
       (sku) =>
-        `${sku.name}\t${sku.id}\t${sku.currentPrice === null ? '—' : `¥${sku.currentPrice}`}\t${sku.stockLabel ?? '—'}`,
+        `${sku.name}\t${sku.sourceSkuId ?? '前端新增（无平台源 ID）'}\t${sku.currentPrice === null ? '—' : `¥${sku.currentPrice}`}\t${sku.stockLabel ?? '—'}`,
     )
     .join('\n'),
 )
@@ -115,280 +504,564 @@ const allText = computed(() => {
 <template>
   <AppDialog
     :show="show"
-    title="商品资料预览"
-    size="xl"
+    title="编辑商品"
+    size="wide"
     positive-text="关闭"
     :show-negative="false"
-    @update:show="$emit('update:show', $event)"
-    @confirm="$emit('update:show', false)"
+    @update:show="!$event && requestClose()"
+    @confirm="requestClose"
   >
     <template v-if="product">
-      <div class="product-preview__top-actions">
-        <NTooltip>
-          <template #trigger
-            ><span><AppButton disabled>AI 改图</AppButton></span></template
-          >
-          AI 图片编辑尚未接入
-        </NTooltip>
-        <NTooltip>
-          <template #trigger
-            ><span><AppButton disabled>AI 审图</AppButton></span></template
-          >
-          AI 审图标准尚未接入
-        </NTooltip>
-      </div>
-
-      <section class="product-preview__summary">
-        <div class="product-preview__gallery">
-          <ContextSwitchBar
-            label="商品图片类型"
-            appearance="bare"
-            :items="galleryItems"
-            :active-key="gallery"
-            @select="setGallery"
-          />
-          <div class="product-preview__main-image">
-            <NText v-if="!selectedImage" depth="3">—</NText>
-            <AppButton v-else-if="imageFailed" tone="text" @click="retryImage">
-              重试商品图片
-            </AppButton>
-            <NImage
-              v-else
-              :key="imageRevision"
-              :src="selectedImage"
-              :alt="product.title"
-              object-fit="contain"
-              :img-props="{ referrerpolicy: 'no-referrer' }"
-              @error="imageFailed = true"
-            />
-          </div>
-          <div class="product-preview__thumbnails">
-            <button
-              v-for="src in images"
-              :key="src"
-              type="button"
-              class="product-preview__thumbnail"
-              :class="{
-                'product-preview__thumbnail--active': src === selectedImage,
-              }"
-              @click="chooseImage(src)"
-            >
-              <ProductImage
-                :src="src"
-                :title="product.title"
-                size="thumbnail"
-              />
-            </button>
-          </div>
-        </div>
-
-        <div class="product-preview__information">
-          <h3>{{ product.title }}</h3>
-          <NDescriptions bordered :column="1" label-placement="left">
-            <NDescriptionsItem label="来源商品 ID">
-              <span class="product-preview__inline-value">
-                {{ product.productId }}
-                <AppButton
-                  size="small"
-                  tone="link"
-                  @click="copy(product.productId, '商品 ID')"
-                >
-                  复制
-                </AppButton>
-              </span>
-            </NDescriptionsItem>
-            <NDescriptionsItem label="来源平台">
-              <PlatformDisplay :code="product.platform" />
-            </NDescriptionsItem>
-            <NDescriptionsItem label="当前价格">
-              {{
-                product.currentPrice === null ? '—' : `¥${product.currentPrice}`
-              }}
-            </NDescriptionsItem>
-            <NDescriptionsItem label="商品分组">
-              <span class="product-preview__inline-value">
-                {{ product.groupName ?? '未分组' }}
-                <AppButton size="small" @click="$emit('group', product)"
-                  >移动分组</AppButton
-                >
-              </span>
-            </NDescriptionsItem>
-            <NDescriptionsItem label="采集时间">{{
-              product.collectedAt
-            }}</NDescriptionsItem>
-          </NDescriptions>
-          <div class="product-preview__copy-actions">
-            <AppButton size="small" @click="copy(product.title, '商品标题')"
-              >复制标题</AppButton
-            >
-            <AppButton size="small" @click="copy(basicText, '基础信息')"
-              >复制基础信息</AppButton
-            >
-            <AppButton size="small" @click="copy(skuText, 'SKU 信息')"
-              >复制 SKU</AppButton
-            >
-            <AppButton size="small" @click="copy(allText, '全部商品信息')"
-              >复制全部信息</AppButton
-            >
-            <AppButton
-              tone="primary"
-              size="small"
-              @click="$emit('export', product)"
-            >
-              导出 TXT
-            </AppButton>
-          </div>
-        </div>
-      </section>
-
-      <AppTabs v-model="detailTab" type="line" class="product-preview__tabs">
-        <NTabPane name="sku" tab="SKU">
-          <NList bordered>
-            <NListItem v-for="sku in product.skus" :key="sku.id">
-              <div class="product-preview__sku">
-                <ProductImage
-                  :src="sku.imageUrl"
-                  :title="sku.name"
-                  size="thumbnail"
-                />
-                <div>
-                  <strong>{{ sku.name }}</strong
-                  ><br />{{ sku.id }}
+      <div class="product-preview__layout">
+        <div class="product-preview__content">
+          <section class="product-preview__summary">
+            <div class="product-preview__summary-heading">
+              <div class="product-preview__summary-title">
+                <NForm v-if="editing && editDraft" label-placement="top">
+                  <NFormItem label="商品标题" required>
+                    <AppInput
+                      v-model="editDraft.title"
+                      aria-label="编辑商品标题"
+                      :maxlength="120"
+                    />
+                  </NFormItem>
+                </NForm>
+                <h3 v-else>{{ product.title }}</h3>
+                <div class="product-preview__summary-meta">
+                  <PlatformDisplay :code="product.platform" />
+                  <span>商品 ID {{ product.productId }}</span>
+                  <span>
+                    当前价格
+                    {{
+                      product.currentPrice === null
+                        ? '—'
+                        : `¥${product.currentPrice}`
+                    }}
+                  </span>
+                  <span>分组 {{ product.groupName ?? '未分组' }}</span>
+                  <StatusTag
+                    v-if="product.mockEditedAt"
+                    label="演示编辑版"
+                    tone="warning"
+                  />
                 </div>
-                <span>{{
-                  sku.currentPrice === null ? '—' : `¥${sku.currentPrice}`
-                }}</span>
-                <span>{{ sku.stockLabel ?? '—' }}</span>
               </div>
-            </NListItem>
-          </NList>
-        </NTabPane>
-        <NTabPane name="attributes" tab="商品属性">
-          <NDescriptions bordered :column="2">
-            <NDescriptionsItem
-              v-for="item in product.attributes"
-              :key="item.name"
-              :label="item.name"
+              <div class="product-preview__heading-actions">
+                <div v-if="editing" class="product-preview__copy-actions">
+                  <AppButton :disabled="saving" @click="cancelEditing">
+                    取消编辑
+                  </AppButton>
+                  <AppButton
+                    tone="primary"
+                    :loading="saving"
+                    @click="saveEditing"
+                  >
+                    保存编辑
+                  </AppButton>
+                </div>
+                <div v-else class="product-preview__copy-actions">
+                  <AppButton @click="startEditing">编辑商品资料</AppButton>
+                  <AppButton
+                    size="small"
+                    @click="copy(product.title, '商品标题')"
+                    >复制标题</AppButton
+                  >
+                  <AppButton size="small" @click="copy(basicText, '基础信息')"
+                    >复制基础信息</AppButton
+                  >
+                  <AppButton size="small" @click="$emit('group', product)"
+                    >移动分组</AppButton
+                  >
+                  <AppButton
+                    tone="primary"
+                    size="small"
+                    @click="$emit('export', product)"
+                  >
+                    导出 TXT
+                  </AppButton>
+                </div>
+              </div>
+            </div>
+
+            <NAlert v-if="validationMessage" type="error">
+              {{ validationMessage }}
+            </NAlert>
+
+            <NDescriptions bordered :column="3" label-placement="left">
+              <NDescriptionsItem label="完整类目">
+                {{ product.category ?? '—' }}
+              </NDescriptionsItem>
+              <NDescriptionsItem label="采集时间">
+                {{ product.collectedAt }}
+              </NDescriptionsItem>
+              <NDescriptionsItem label="来源链接">
+                {{ product.sourceUrl ? '已记录' : '—' }}
+              </NDescriptionsItem>
+            </NDescriptions>
+          </section>
+
+          <section class="product-preview__image-workspace">
+            <article
+              v-for="section in imageSections"
+              :key="section.key"
+              class="product-preview__image-section"
             >
-              {{ item.value }}
-            </NDescriptionsItem>
-          </NDescriptions>
-        </NTabPane>
-        <NTabPane name="images" tab="图片清单">
-          <NList bordered>
-            <NListItem
-              v-for="(src, index) in [
-                ...product.detailImageUrls,
-                ...product.skuImageUrls,
-              ]"
-              :key="`${src}:${index}`"
-            >
-              图片 {{ index + 1 }} ·
-              {{ src.startsWith('data:') ? '演示内存图片' : src }}
-            </NListItem>
-          </NList>
-        </NTabPane>
-        <NTabPane name="package" tab="资料包">
-          <NList bordered>
-            <NListItem v-for="file in product.packageFiles" :key="file.name">
-              {{ file.name }}
-              <template #suffix><StatusTag :label="file.kind" /></template>
-            </NListItem>
-          </NList>
-        </NTabPane>
-        <NTabPane name="history" tab="采集历史">
-          <NList bordered>
-            <NListItem v-for="item in product.history" :key="item.id">
-              {{ item.collectedAt }} · {{ item.summary }}
-              <template #suffix>
-                <StatusTag
-                  :label="
-                    item.state === 'completed'
-                      ? '完成'
-                      : item.state === 'partial'
-                        ? '部分完成'
-                        : '失败'
-                  "
-                  :tone="
-                    item.state === 'completed'
-                      ? 'success'
-                      : item.state === 'partial'
-                        ? 'warning'
-                        : 'error'
-                  "
+              <header class="product-preview__image-section-header">
+                <h4>{{ section.label }}</h4>
+                <NText depth="3">{{ section.images.length }} 张</NText>
+              </header>
+              <NText v-if="!section.images.length" depth="3">—</NText>
+              <div v-else class="product-preview__image-strip">
+                <div
+                  v-for="(image, index) in section.images"
+                  :key="image.skuKey ?? `${section.key}:${image.src}:${index}`"
+                  class="product-preview__image-card"
+                >
+                  <div class="product-preview__image-canvas">
+                    <NImage
+                      v-if="image.src"
+                      :src="image.src"
+                      :alt="`${product.title} ${image.label}`"
+                      object-fit="contain"
+                      :img-props="{
+                        loading: 'lazy',
+                        referrerpolicy: 'no-referrer',
+                      }"
+                    />
+                    <NText v-else depth="3">尚未绑定图片</NText>
+                  </div>
+                  <strong>{{ image.label }}</strong>
+                  <NTooltip v-if="image.caption">
+                    <template #trigger>
+                      <NText depth="3" class="product-preview__image-caption">
+                        {{ image.caption }}
+                      </NText>
+                    </template>
+                    {{ image.caption }}
+                  </NTooltip>
+                  <div class="product-preview__image-actions">
+                    <AppButton size="small" @click="replaceImage"
+                      >替换</AppButton
+                    >
+                    <NTooltip>
+                      <template #trigger>
+                        <span
+                          ><AppButton size="small" disabled
+                            >AI改图</AppButton
+                          ></span
+                        >
+                      </template>
+                      AI 图片编辑尚未接入
+                    </NTooltip>
+                    <NTooltip>
+                      <template #trigger>
+                        <span
+                          ><AppButton size="small" disabled
+                            >AI鉴图</AppButton
+                          ></span
+                        >
+                      </template>
+                      AI 鉴图标准尚未接入
+                    </NTooltip>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <AppTabs
+            v-model="detailTab"
+            type="line"
+            class="product-preview__tabs"
+          >
+            <NTabPane name="sku" tab="SKU">
+              <template v-if="editing && editDraft">
+                <div class="product-preview__detail-actions">
+                  <AppButton size="small" @click="addSku">新增 SKU</AppButton>
+                </div>
+                <NForm
+                  class="product-preview__spec-dimensions"
+                  label-placement="top"
+                >
+                  <NFormItem
+                    v-for="(dimension, index) in editDraft.specDimensions"
+                    :key="dimension.id"
+                    :label="`SKU 规格维度 ${index + 1}`"
+                    required
+                  >
+                    <AppInput
+                      v-model="dimension.name"
+                      :aria-label="`SKU 规格维度 ${index + 1}`"
+                    />
+                  </NFormItem>
+                </NForm>
+                <AppTable
+                  :columns="skuEditColumns"
+                  :data="editDraft.skus"
+                  :row-key="(row) => row.draftKey"
+                  :scroll-x="900"
+                  bordered
                 />
               </template>
-            </NListItem>
-          </NList>
-        </NTabPane>
-      </AppTabs>
+              <template v-else>
+                <div class="product-preview__detail-actions">
+                  <AppButton size="small" @click="copy(skuText, 'SKU 信息')"
+                    >复制 SKU</AppButton
+                  >
+                  <AppButton size="small" @click="copy(allText, '全部商品信息')"
+                    >复制全部信息</AppButton
+                  >
+                </div>
+                <NList bordered>
+                  <NListItem v-for="sku in product.skus" :key="sku.draftKey">
+                    <div class="product-preview__sku">
+                      <ProductImage
+                        :src="sku.imageUrl"
+                        :title="sku.name"
+                        size="thumbnail"
+                      />
+                      <div>
+                        <strong>{{ sku.name }}</strong
+                        ><br />{{
+                          sku.sourceSkuId ?? '前端新增（无平台源 ID）'
+                        }}
+                        <div class="product-preview__sku-specs">
+                          {{ formatSkuSpecs(sku) }}
+                        </div>
+                      </div>
+                      <span>{{
+                        sku.currentPrice === null ? '—' : `¥${sku.currentPrice}`
+                      }}</span>
+                      <span>{{ sku.stockLabel ?? '—' }}</span>
+                    </div>
+                  </NListItem>
+                </NList>
+              </template>
+            </NTabPane>
+            <NTabPane name="attributes" tab="商品属性">
+              <AppTable
+                v-if="editing && editDraft"
+                :columns="attributeEditColumns"
+                :data="editDraft.attributes"
+                bordered
+              />
+              <NDescriptions v-else bordered :column="2">
+                <NDescriptionsItem
+                  v-for="item in product.attributes"
+                  :key="item.name"
+                  :label="item.name"
+                >
+                  {{ item.value }}
+                </NDescriptionsItem>
+              </NDescriptions>
+            </NTabPane>
+            <NTabPane name="package" tab="资料包">
+              <NAlert v-if="product.mockEditedAt" type="info">
+                将来导出应读取已保存编辑版；正式 TXT／ZIP 导出尚未接入。
+              </NAlert>
+              <NList bordered>
+                <NListItem
+                  v-for="file in product.packageFiles"
+                  :key="file.name"
+                >
+                  {{ file.name }}
+                  <template #suffix><StatusTag :label="file.kind" /></template>
+                </NListItem>
+              </NList>
+            </NTabPane>
+            <NTabPane name="history" tab="采集历史">
+              <NList bordered>
+                <NListItem v-for="item in product.history" :key="item.id">
+                  {{ item.collectedAt }} · {{ item.summary }}
+                  <template #suffix>
+                    <StatusTag
+                      :label="
+                        item.state === 'completed'
+                          ? '完成'
+                          : item.state === 'partial'
+                            ? '部分完成'
+                            : '失败'
+                      "
+                      :tone="
+                        item.state === 'completed'
+                          ? 'success'
+                          : item.state === 'partial'
+                            ? 'warning'
+                            : 'error'
+                      "
+                    />
+                  </template>
+                </NListItem>
+              </NList>
+            </NTabPane>
+          </AppTabs>
+        </div>
+
+        <aside class="product-preview__navigator" aria-label="当前范围商品列表">
+          <header class="product-preview__navigator-header">
+            <strong>当前范围商品</strong>
+            <NText v-if="positionLabel" depth="3">{{ positionLabel }}</NText>
+          </header>
+          <div class="product-preview__navigator-list">
+            <AppButton
+              v-for="item in navigationItems"
+              :key="item.id"
+              class="product-preview__navigator-item"
+              :class="{
+                'product-preview__navigator-item--active':
+                  item.id === product.id,
+              }"
+              tone="text"
+              size="small"
+              block
+              :aria-current="item.id === product.id ? 'true' : undefined"
+              @click="requestNavigateTo(item.id)"
+            >
+              <span class="product-preview__navigator-copy">
+                <NTooltip>
+                  <template #trigger>
+                    <span class="product-preview__navigator-title">
+                      {{ item.title }}
+                    </span>
+                  </template>
+                  {{ item.title }}
+                </NTooltip>
+                <span class="product-preview__navigator-subtitle">
+                  {{ item.subtitle }}
+                </span>
+              </span>
+            </AppButton>
+          </div>
+          <nav class="product-preview__navigation" aria-label="翻页商品导航">
+            <AppButton
+              size="small"
+              :disabled="!canPrevious"
+              @click="requestNavigate('previous')"
+            >
+              上一件
+            </AppButton>
+            <AppButton
+              size="small"
+              :disabled="!canNext"
+              @click="requestNavigate('next')"
+            >
+              下一件
+            </AppButton>
+          </nav>
+        </aside>
+      </div>
     </template>
   </AppDialog>
 </template>
 
 <style scoped>
-.product-preview__top-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+.product-preview__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  align-items: start;
+  gap: var(--space-4);
+}
+.product-preview__content {
+  min-width: 0;
 }
 .product-preview__summary {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
-  gap: var(--space-5);
+  gap: var(--space-3);
 }
-.product-preview__gallery,
-.product-preview__information {
+.product-preview__summary-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
   min-width: 0;
 }
-.product-preview__main-image {
+.product-preview__summary-title {
+  min-width: 0;
+  flex: 1;
+}
+.product-preview__summary-title :deep(.n-form-item) {
+  margin-bottom: 0;
+}
+.product-preview__heading-actions {
   display: grid;
-  min-height: 300px;
-  margin: var(--space-3) 0;
-  place-items: center;
+  flex: 0 1 360px;
+  justify-items: end;
+  gap: var(--space-2);
+}
+.product-preview__navigator {
+  position: sticky;
+  top: var(--space-6);
+  bottom: 0;
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
-  background: var(--bg-page);
+  background: var(--bg-surface);
 }
-.product-preview__main-image :deep(img) {
-  width: 300px;
-  max-width: 100%;
-  height: 300px;
-  object-fit: contain;
+.product-preview__navigator-header {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
 }
-.product-preview__thumbnails,
+.product-preview__navigator-list {
+  display: grid;
+  gap: var(--space-1);
+  max-height: calc(var(--table-list-row-slot-height) * 5);
+  overflow-y: auto;
+}
+.product-preview__navigator-item {
+  min-width: 0;
+  height: auto;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+}
+.product-preview__navigator-item--active {
+  border-color: var(--border-default);
+  background: var(--color-primary-soft);
+}
+.product-preview__navigator-copy {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: var(--space-1);
+  text-align: left;
+}
+.product-preview__navigator-title,
+.product-preview__navigator-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-preview__navigator-title {
+  color: var(--text-primary);
+}
+.product-preview__navigator-subtitle {
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+.product-preview__navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 .product-preview__copy-actions,
 .product-preview__inline-value {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.product-preview__thumbnails {
-  overflow-x: auto;
-}
-.product-preview__thumbnail {
-  padding: var(--space-1);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  cursor: pointer;
-}
-.product-preview__thumbnail--active {
-  border-color: var(--color-primary);
-}
-.product-preview__information h3 {
-  margin: 0 0 var(--space-3);
+.product-preview__summary-heading h3 {
+  margin: 0;
   color: var(--text-primary);
   font-size: var(--font-size-page-title);
   font-weight: var(--font-weight-semibold);
 }
+.product-preview__summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+}
 .product-preview__copy-actions {
   flex-wrap: wrap;
-  margin-top: var(--space-3);
+  justify-content: flex-end;
+}
+.product-preview__image-workspace {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.product-preview__image-section {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+}
+.product-preview__image-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.product-preview__image-section-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-section-title);
+  font-weight: var(--font-weight-semibold);
+}
+.product-preview__image-strip {
+  display: flex;
+  gap: var(--space-3);
+  max-width: 100%;
+  padding-bottom: var(--space-1);
+  overflow-x: auto;
+}
+.product-preview__image-card {
+  display: grid;
+  flex: 0 0 190px;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-page);
+}
+.product-preview__image-canvas {
+  display: grid;
+  height: 128px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+.product-preview__image-canvas :deep(.n-image),
+.product-preview__image-canvas :deep(img) {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 128px;
+  object-fit: contain;
+}
+.product-preview__image-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-preview__image-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+.product-preview__image-actions > span {
+  flex: 0 0 auto;
+}
+.product-preview__detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.product-preview__spec-dimensions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.product-preview__spec-dimensions :deep(.n-form-item) {
+  margin-bottom: 0;
 }
 .product-preview__tabs {
   margin-top: var(--space-5);
+}
+.product-preview__tabs :deep(.n-alert) {
+  margin-bottom: var(--space-3);
 }
 .product-preview__sku {
   display: grid;
@@ -396,12 +1069,35 @@ const allText = computed(() => {
   align-items: center;
   gap: var(--space-3);
 }
+.product-preview__sku-specs {
+  margin-top: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
 @media (max-width: 820px) {
-  .product-preview__summary {
-    grid-template-columns: 1fr;
+  .product-preview__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .product-preview__navigator {
+    position: static;
+  }
+  .product-preview__summary-heading {
+    flex-direction: column;
+  }
+  .product-preview__copy-actions {
+    justify-content: flex-start;
+  }
+  .product-preview__heading-actions {
+    width: 100%;
+    justify-items: start;
   }
   .product-preview__sku {
     grid-template-columns: 64px minmax(140px, 1fr);
+  }
+}
+@media (max-height: 820px) and (min-width: 821px) {
+  .product-preview__navigator-list {
+    max-height: calc(var(--table-list-row-slot-height) * 3);
   }
 }
 </style>

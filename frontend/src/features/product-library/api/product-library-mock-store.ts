@@ -20,9 +20,9 @@ const images = [
 
 let groupSequence = 4
 const groups: ProductGroup[] = [
-  { id: 'group-hot', name: '重点跟进', count: 0 },
-  { id: 'group-review', name: '待复核', count: 0 },
-  { id: 'group-ready', name: '可上架', count: 0 },
+  { id: 'group-benefit', name: '福利品', count: 0 },
+  { id: 'group-test', name: '测试款', count: 0 },
+  { id: 'group-weekly', name: '本周上架', count: 0 },
 ]
 
 const categories = [
@@ -34,7 +34,7 @@ const categories = [
 
 const products: LibraryProduct[] = Array.from({ length: 36 }, (_, index) => {
   const productId = `${3832497447662387000n + BigInt(index)}`
-  const group = groups[index % 5 === 0 ? 1 : index % 3]
+  const group = index % 5 === 0 ? undefined : groups[index % 3]
   const main = images[index % images.length]!
   return {
     id: `library-demo-${index + 1}`,
@@ -53,23 +53,35 @@ const products: LibraryProduct[] = Array.from({ length: 36 }, (_, index) => {
     sourceUrl:
       index % 6 === 0 ? null : `https://example.invalid/product/${productId}`,
     mainImageUrl: main,
+    previewMainImageUrls: [
+      main,
+      images[(index + 1) % images.length]!,
+      images[(index + 2) % images.length]!,
+    ],
     detailImageUrls: [main, images[(index + 1) % images.length]!],
-    skuImageUrls: [main, images[(index + 2) % images.length]!],
+    specDimensions: [
+      { id: 'color', name: '颜色' },
+      { id: 'model', name: '规格' },
+    ],
     skus: [
       {
-        id: `${productId}-sku-a`,
+        draftKey: `source:${productId}-sku-a`,
+        sourceSkuId: `${productId}-sku-a`,
         name: '默认款',
         currentPrice:
           index % 9 === 0 ? null : `${(19.9 + index * 2.35).toFixed(2)}`,
         stockLabel: index % 4 === 0 ? null : '平台展示：有货',
         imageUrl: main,
+        specValues: { color: '本色', model: '标准款' },
       },
       {
-        id: `${productId}-sku-b`,
+        draftKey: `source:${productId}-sku-b`,
+        sourceSkuId: `${productId}-sku-b`,
         name: '升级款',
         currentPrice: `${(29.9 + index * 2.35).toFixed(2)}`,
         stockLabel: '平台展示：库存紧张',
         imageUrl: images[(index + 1) % images.length]!,
+        specValues: { color: '升级色', model: '升级款' },
       },
     ],
     attributes: [
@@ -90,8 +102,12 @@ const products: LibraryProduct[] = Array.from({ length: 36 }, (_, index) => {
         summary: '演示资料已接收并整理',
       },
     ],
+    mockEditedAt: null,
   }
 })
+
+// Keeps the collected Mock source intact while the working list stores edits.
+const originalProducts = structuredClone(products)
 
 function refreshCounts() {
   for (const group of groups)
@@ -111,13 +127,15 @@ export function createProductLibraryMockService(): ProductLibraryService {
     },
     async list(query: ProductLibraryQuery): Promise<ProductLibraryPage> {
       const keyword = query.keyword.trim().toLocaleLowerCase()
+      const view = query.view ?? 'all'
       const filtered = products.filter(
         (product) =>
-          (!query.platform || product.platform === query.platform) &&
-          (!query.groupId ||
-            (query.groupId === 'ungrouped'
+          (view === 'all' ||
+            (view === 'ungrouped'
               ? product.groupId === null
-              : product.groupId === query.groupId)) &&
+              : product.groupId !== null)) &&
+          (!query.platform || product.platform === query.platform) &&
+          (!query.groupId || product.groupId === query.groupId) &&
           (!query.category || product.category === query.category) &&
           (!keyword ||
             `${product.title} ${product.productId} ${product.category ?? ''}`
@@ -141,6 +159,71 @@ export function createProductLibraryMockService(): ProductLibraryService {
     async detail(id) {
       const product = products.find((item) => item.id === id)
       if (!product) throw new Error('演示商品不存在')
+      return structuredClone(product)
+    },
+    async saveEdit(id, draft) {
+      const product = products.find((item) => item.id === id)
+      if (!product) throw new Error('演示商品不存在')
+      const dimensions = new Map(
+        draft.specDimensions.map((dimension) => [dimension.id, dimension]),
+      )
+      if (
+        dimensions.size !== product.specDimensions.length ||
+        product.specDimensions.some(
+          (dimension) => !dimensions.has(dimension.id),
+        )
+      )
+        throw new Error('规格维度与采集资料不一致')
+      const draftSkus = new Map(
+        draft.skus.map((sku) => [sku.draftKey, sku] as const),
+      )
+      if (draftSkus.size !== draft.skus.length)
+        throw new Error('SKU 草稿标识不能重复')
+      const sourceSkuIds = draft.skus
+        .map((sku) => sku.sourceSkuId)
+        .filter((id): id is string => Boolean(id))
+      if (new Set(sourceSkuIds).size !== sourceSkuIds.length)
+        throw new Error('来源 SKU ID 不能重复')
+      const existingSkus = new Map(
+        product.skus.map((sku) => [sku.draftKey, sku] as const),
+      )
+      for (const draftSku of draft.skus) {
+        const existing = existingSkus.get(draftSku.draftKey)
+        if (existing && existing.sourceSkuId !== draftSku.sourceSkuId)
+          throw new Error('来源 SKU ID 只读，不能修改')
+        if (!existing && draftSku.sourceSkuId !== null)
+          throw new Error('新增 SKU 不能伪造平台来源 ID')
+      }
+
+      product.title = draft.title.trim()
+      product.attributes = draft.attributes.map((attribute) => ({
+        name: attribute.name.trim(),
+        value: attribute.value.trim(),
+      }))
+      product.specDimensions = product.specDimensions.map((dimension) => ({
+        id: dimension.id,
+        name: dimensions.get(dimension.id)!.name.trim(),
+      }))
+      product.skus = draft.skus.map((edited) => {
+        const existing = existingSkus.get(edited.draftKey)
+        return {
+          draftKey: edited.draftKey,
+          sourceSkuId: edited.sourceSkuId,
+          name: edited.name.trim(),
+          currentPrice:
+            edited.currentPrice === null ? null : edited.currentPrice.trim(),
+          stockLabel: existing?.stockLabel ?? null,
+          imageUrl: edited.imageUrl,
+          specValues: Object.fromEntries(
+            product.specDimensions.map((dimension) => [
+              dimension.id,
+              edited.specValues[dimension.id]?.trim() ?? '',
+            ]),
+          ),
+        }
+      })
+      product.currentPrice = product.skus[0]?.currentPrice ?? null
+      product.mockEditedAt = new Date().toISOString()
       return structuredClone(product)
     },
     async createGroup(name) {
@@ -198,7 +281,6 @@ export function createProductLibraryMockService(): ProductLibraryService {
 }
 
 export function resetProductLibraryMockStore(): void {
-  // Tests mutate only through a fresh worker in current Gate; explicit reset is
-  // kept for future targeted tests without rebuilding the production service.
+  products.splice(0, products.length, ...structuredClone(originalProducts))
   refreshCounts()
 }

@@ -58,6 +58,9 @@ function createGroup() {
       <AppSelect
         :model-value="selected ?? 'ungrouped'"
         :options="options"
+        filterable
+        label-tooltip
+        placeholder="搜索商品分组"
         @update:model-value="
           (value) => (selected = value === 'ungrouped' ? null : String(value))
         "

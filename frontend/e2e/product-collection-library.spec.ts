@@ -102,6 +102,17 @@ test('product library filters, groups, paging and mock-only file entrances work'
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/products')
+  const libraryViews = page.getByRole('navigation', { name: '商品库视图' })
+  await expect(libraryViews.getByRole('button')).toHaveText([
+    '全部商品',
+    '采集/导入',
+    '分组商品',
+  ])
+  await libraryViews.getByRole('button', { name: '采集/导入' }).click()
+  await expect(page.getByText('未分组', { exact: true }).first()).toBeVisible()
+  await libraryViews.getByRole('button', { name: '分组商品' }).click()
+  await expect(page.getByLabel('商品分组筛选')).toBeVisible()
+  await libraryViews.getByRole('button', { name: '全部商品' }).click()
   await expect(
     page.locator(
       '.product-library-workspace .n-data-table-tbody .n-data-table-tr',
@@ -217,39 +228,287 @@ test('product library filters, groups, paging and mock-only file entrances work'
   await page.getByRole('button', { name: '取消', exact: true }).click()
 })
 
-test('product preview switches images and preserves unknown values', async ({
+test('product preview exposes three image rows and preserves unknown values', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/products')
-  await page.getByRole('button', { name: '预览', exact: true }).first().click()
-  await expect(page.getByText('商品资料预览')).toBeVisible()
+  await page
+    .getByRole('button', { name: '编辑商品', exact: true })
+    .first()
+    .click()
+  await expect(page.getByText('编辑商品', { exact: true }).last()).toBeVisible()
   const previewDialog = page.locator('.app-dialog')
   await expect
     .poll(async () =>
       Math.round((await previewDialog.boundingBox())?.width ?? 0),
     )
-    .toBe(960)
+    .toBeGreaterThan(1100)
   expect(
-    await previewDialog
-      .getByRole('button', { name: 'AI 改图' })
-      .evaluate((element) => ({
-        height: element.getBoundingClientRect().height,
-        fontSize: getComputedStyle(element).fontSize,
-      })),
+    await previewDialog.getByLabel('编辑商品标题').evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      fontSize: getComputedStyle(element).fontSize,
+    })),
   ).toEqual({ height: 34, fontSize: '14px' })
-  await expect(page.getByRole('button', { name: 'AI 改图' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'AI 审图' })).toBeDisabled()
-  await page.getByRole('button', { name: '详情图', exact: true }).click()
-  await expect(page.locator('.product-preview__thumbnails button')).toHaveCount(
-    2,
-  )
-  const skuRows = page.locator('.app-dialog .product-preview__sku')
-  await expect(skuRows.first()).toContainText('—')
-  await expect(skuRows.nth(1)).toContainText('平台展示：库存紧张')
+  await expect(
+    previewDialog.getByRole('complementary', { name: '当前范围商品列表' }),
+  ).toBeVisible()
+  await expect(
+    previewDialog.locator('.product-preview__image-section h4'),
+  ).toHaveText(['主图', 'SKU 图', '详情图'])
+  await expect(
+    previewDialog
+      .locator('.product-preview__image-section')
+      .nth(0)
+      .locator('.product-preview__image-card'),
+  ).toHaveCount(3)
+  await expect(
+    previewDialog
+      .locator('.product-preview__image-section')
+      .nth(1)
+      .locator('.product-preview__image-card'),
+  ).toHaveCount(2)
+  await expect(
+    previewDialog
+      .locator('.product-preview__image-section')
+      .nth(2)
+      .locator('.product-preview__image-card'),
+  ).toHaveCount(2)
+  await expect(
+    previewDialog.getByRole('button', { name: 'AI改图' }),
+  ).toHaveCount(7)
+  await expect(
+    previewDialog.getByRole('button', { name: 'AI改图' }).first(),
+  ).toBeDisabled()
+  await expect(
+    previewDialog.getByRole('button', { name: 'AI鉴图' }).first(),
+  ).toBeDisabled()
+  await expect(
+    previewDialog.getByLabel('source:3832497447662387000-sku-a 颜色值'),
+  ).toHaveValue('本色')
+  await expect(previewDialog.getByText('平台展示：库存紧张')).toBeVisible()
   await page.locator('.app-dialog').getByText('资料包', { exact: true }).click()
   await expect(page.getByText(/\.origin\.txt/)).toBeVisible()
   await expect(page.getByText(/清洗后的兼容文本/)).not.toBeVisible()
+})
+
+test('product edit draft saves in Mock, cancels safely and protects unsaved close', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/#/products')
+  await page
+    .getByRole('button', { name: '编辑商品', exact: true })
+    .first()
+    .click()
+  const previewDialog = page.locator('.app-dialog')
+
+  const title = previewDialog.getByLabel('编辑商品标题')
+  await title.fill('不会保存的临时标题')
+  await previewDialog.getByRole('button', { name: '新增 SKU' }).click()
+  await expect(
+    previewDialog
+      .locator('.product-preview__image-section')
+      .nth(1)
+      .locator('.product-preview__image-card'),
+  ).toHaveCount(3)
+  await previewDialog.getByRole('button', { name: '取消编辑' }).click()
+  await expect(previewDialog.getByText('不会保存的临时标题')).toHaveCount(0)
+  await expect(
+    previewDialog.getByRole('heading', { name: /家用多规格不锈钢/ }),
+  ).toBeVisible()
+  await expect(
+    previewDialog
+      .locator('.product-preview__image-section')
+      .nth(1)
+      .locator('.product-preview__image-card'),
+  ).toHaveCount(2)
+
+  await previewDialog.getByRole('button', { name: '编辑商品资料' }).click()
+  await title.fill('演示编辑版不锈钢储油罐')
+  await previewDialog.getByLabel('SKU 规格维度 1').fill('表面颜色')
+  await previewDialog
+    .getByLabel('source:3832497447662387000-sku-a SKU 名称')
+    .fill('原色标准款')
+  await previewDialog
+    .getByLabel('source:3832497447662387000-sku-a 表面颜色值')
+    .fill('原色')
+  await previewDialog
+    .getByLabel('source:3832497447662387000-sku-a 当前价格')
+    .fill('25.80')
+  await previewDialog
+    .getByRole('button', { name: '删除 SKU 原色标准款' })
+    .click()
+  await previewDialog.getByRole('button', { name: '新增 SKU' }).click()
+  const newSkuName = previewDialog.getByLabel(/draft-sku-\d+ SKU 名称/)
+  await newSkuName.fill('前端新增测试款')
+  await previewDialog.getByLabel(/draft-sku-\d+ 表面颜色值/).fill('新增色')
+  await previewDialog.getByLabel(/draft-sku-\d+ 规格值/).fill('新增规格')
+  await previewDialog.getByLabel(/draft-sku-\d+ 当前价格/).fill('49.90')
+  const skuImages = previewDialog
+    .locator('.product-preview__image-section')
+    .nth(1)
+    .locator('.product-preview__image-card')
+  await expect(skuImages).toHaveCount(2)
+  await expect(skuImages.nth(0)).toContainText('升级款')
+  await expect(skuImages.nth(1)).toContainText('前端新增测试款')
+  await expect(skuImages.nth(1)).toContainText('尚未绑定图片')
+  await previewDialog.getByText('商品属性', { exact: true }).click()
+  await previewDialog.getByLabel('属性 1 值').fill('食品级不锈钢')
+  await previewDialog.getByRole('button', { name: '保存编辑' }).click()
+
+  await expect(page.getByText(/已保存到当前演示会话/)).toBeVisible()
+  await expect(title).toHaveValue('演示编辑版不锈钢储油罐')
+  await expect(
+    previewDialog.getByText('演示编辑版', { exact: true }),
+  ).toBeVisible()
+  await previewDialog.getByText('SKU', { exact: true }).click()
+  await expect(previewDialog.getByLabel(/draft-sku-\d+ SKU 名称/)).toHaveValue(
+    '前端新增测试款',
+  )
+  await expect(
+    previewDialog.getByLabel(/draft-sku-\d+ 表面颜色值/),
+  ).toHaveValue('新增色')
+  await expect(previewDialog.getByLabel(/draft-sku-\d+ 当前价格/)).toHaveValue(
+    '49.90',
+  )
+  await expect(
+    previewDialog.getByText('前端新增（无平台源 ID）', { exact: true }).first(),
+  ).toBeVisible()
+  await previewDialog.getByText('商品属性', { exact: true }).click()
+  await expect(previewDialog.getByLabel('属性 1 值')).toHaveValue(
+    '食品级不锈钢',
+  )
+
+  await title.fill('未保存关闭测试')
+  await previewDialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(page.getByText('放弃未保存的修改？')).toBeVisible()
+  await page.getByRole('button', { name: '继续编辑' }).click()
+  await expect(title).toHaveValue('未保存关闭测试')
+  await previewDialog.getByRole('button', { name: '取消编辑' }).click()
+  await previewDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await expect(
+    page
+      .locator('.product-library-title')
+      .first()
+      .getByText('演示编辑版不锈钢储油罐'),
+  ).toBeVisible()
+  await page
+    .getByRole('button', { name: '编辑商品', exact: true })
+    .first()
+    .click()
+  await expect(page.locator('.app-dialog')).toContainText(
+    '演示编辑版不锈钢储油罐',
+  )
+  await page.locator('.app-dialog').getByText('SKU', { exact: true }).click()
+  await expect(
+    page.locator('.app-dialog').getByLabel(/draft-sku-\d+ SKU 名称/),
+  ).toHaveValue('前端新增测试款')
+})
+
+test('product navigation stays inside the current filtered page', async ({
+  page,
+}) => {
+  await page.goto('/#/products')
+  await page
+    .getByRole('button', { name: '编辑商品', exact: true })
+    .first()
+    .click()
+  const dialog = page.locator('.app-dialog')
+  await expect(dialog.getByText('当前视图 1/36')).toBeVisible()
+  const navigator = dialog.getByRole('complementary', {
+    name: '当前范围商品列表',
+  })
+  await expect(
+    navigator.locator('.product-preview__navigator-item'),
+  ).toHaveCount(20)
+  await navigator
+    .getByRole('button', { name: /^演示商品资料 2 拼多多 · 测试款$/ })
+    .click()
+  await expect(dialog.getByText('当前视图 2/36')).toBeVisible()
+  await dialog.getByRole('button', { name: '下一件' }).click()
+  await expect(dialog.getByText('当前视图 3/36')).toBeVisible()
+  await expect(dialog.getByLabel('编辑商品标题')).toHaveValue('演示商品资料 3')
+  await dialog.getByRole('button', { name: '上一件' }).click()
+  await expect(dialog.getByText('当前视图 2/36')).toBeVisible()
+  await expect(dialog.getByLabel('编辑商品标题')).toHaveValue('演示商品资料 2')
+})
+
+test('product navigation remains reachable after deep editor scrolling', async ({
+  page,
+}) => {
+  for (const viewport of [
+    { width: 1920, height: 900 },
+    { width: 1366, height: 768 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/products')
+    await page
+      .getByRole('button', { name: '编辑商品', exact: true })
+      .first()
+      .click()
+    const dialog = page.locator('.app-dialog')
+    const navigator = dialog.getByRole('complementary', {
+      name: '当前范围商品列表',
+    })
+    const scrollContainer = dialog.locator(
+      '.n-card__content-scrollbar > .n-scrollbar-container',
+    )
+    await expect(scrollContainer).toHaveCount(1)
+    await scrollContainer.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+      element.dispatchEvent(new Event('scroll'))
+    })
+    await expect(navigator).toBeInViewport({ ratio: 1 })
+    const secondProduct = navigator.getByRole('button', {
+      name: /^演示商品资料 2 拼多多 · 测试款$/,
+    })
+    await expect(secondProduct).toBeVisible()
+    await secondProduct.click()
+    await expect(dialog.getByText('当前视图 2/36')).toBeVisible()
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect(dialog).toBeHidden()
+  }
+})
+
+test('product library renders fixed views and editable SKU state', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1920, height: 1200 })
+  await page.goto('/#/products')
+  const views = page.getByRole('navigation', { name: '商品库视图' })
+  await views.getByRole('button', { name: '分组商品' }).click()
+  await expect(page.getByLabel('商品分组筛选')).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('01-商品库三视图与分组筛选.png'),
+    animations: 'disabled',
+  })
+
+  await page
+    .getByRole('button', { name: '编辑商品', exact: true })
+    .first()
+    .click()
+  const dialog = page.locator('.app-dialog')
+  await expect(dialog.getByLabel('编辑商品标题')).toBeVisible()
+  await expect(
+    dialog.getByRole('complementary', { name: '当前范围商品列表' }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('02-商品编辑图片区与范围导航.png'),
+    animations: 'disabled',
+  })
+
+  await dialog.getByText('SKU', { exact: true }).click()
+  await dialog.getByRole('button', { name: '新增 SKU' }).click()
+  await dialog.getByLabel(/draft-sku-\d+ SKU 名称/).fill('前端新增展示款')
+  await dialog.getByLabel(/draft-sku-\d+ 颜色值/).fill('展示色')
+  await dialog.getByLabel(/draft-sku-\d+ 规格值/).fill('展示规格')
+  await dialog.getByLabel(/draft-sku-\d+ 当前价格/).fill('39.90')
+  await page.screenshot({
+    path: testInfo.outputPath('03-SKU新增删除与规格价格.png'),
+    animations: 'disabled',
+  })
 })
 
 test('shared selects escape both product-group and member-dialog clipping bodies', async ({
@@ -322,10 +581,12 @@ test('product workspaces remain usable in four themes and narrow viewport', asyn
       animations: 'disabled',
     })
     await page
-      .getByRole('button', { name: '预览', exact: true })
+      .getByRole('button', { name: '编辑商品', exact: true })
       .first()
       .click()
-    await expect(page.getByText('商品资料预览')).toBeVisible()
+    await expect(
+      page.getByText('编辑商品', { exact: true }).last(),
+    ).toBeVisible()
     const dialog = page.locator('.app-dialog')
     const box = await dialog.boundingBox()
     expect(box?.width).toBeLessThanOrEqual(928)

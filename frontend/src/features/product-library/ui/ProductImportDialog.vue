@@ -72,6 +72,9 @@ function selected(event: Event) {
         :model-value="groupId ?? 'ungrouped'"
         :options="groupOptions"
         width="md"
+        filterable
+        label-tooltip
+        placeholder="搜索目标分组"
         @update:model-value="
           (value) => (groupId = value === 'ungrouped' ? null : String(value))
         "

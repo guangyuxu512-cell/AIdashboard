@@ -10,6 +10,7 @@ const dialogWidths: Record<DialogSize, string> = {
   md: 'var(--dialog-width-md)',
   lg: 'var(--dialog-width-lg)',
   xl: 'var(--dialog-width-xl)',
+  wide: 'var(--dialog-width-wide)',
 }
 
 withDefaults(
