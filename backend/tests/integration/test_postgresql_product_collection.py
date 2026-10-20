@@ -27,6 +27,7 @@ from app.modules.product_collection.dispatch_service import (
 )
 from app.modules.product_collection.exceptions import (
     ProductCollectionLeaseLostError,
+    ProductCollectionIngestCredentialError,
     ProductCollectionRequestNotFoundError,
     ProductCollectionSubmissionConflictError,
     ProductCollectionUploadConflictError,
@@ -74,6 +75,17 @@ class Graph:
     dispatch_id: UUID
     attempt_id: UUID
     upload_receipt_id: UUID
+    source_product_id: str
+
+
+@dataclass(frozen=True)
+class AcceptedUpload:
+    request_id: UUID
+    item_id: UUID
+    attempt_id: UUID
+    receipt_id: UUID
+    credential: str
+    raw: bytes
     source_product_id: str
 
 
@@ -265,15 +277,21 @@ def _claim(graph: Graph):
         return claim
 
 
-def _package(graph: Graph, *, price: int | None = 0) -> CleanedProductPackage:
+def _package(
+    graph: Graph,
+    *,
+    price: int | None = 0,
+    source_product_id: str | None = None,
+) -> CleanedProductPackage:
+    product_id = source_product_id or graph.source_product_id
     return CleanedProductPackage(
         source_platform=SourcePlatform.DOUYIN,
-        source_product_id=graph.source_product_id,
+        source_product_id=product_id,
         captured_at=datetime.now(UTC),
         source_format_version=1,
         cleaner_version="uu-adapter-v1",
         title="真实零价测试商品" if price == 0 else "测试商品",
-        source_url=f"https://example.test/product/{graph.source_product_id}",
+        source_url=f"https://example.test/product/{product_id}",
         primary_image_url="https://img.example.test/product.webp",
         merchant_snapshot={"source_id": "merchant-1", "display_name": "测试商家"},
         category_path=("家居", "收纳"),
@@ -320,6 +338,97 @@ class _Gateway:
 
     def settle(self, settlement):
         raise AssertionError(f"unexpected settlement for {settlement.job_id}")
+
+
+def _accept_gateway_upload(graph: Graph, *, source_product_id: str) -> AcceptedUpload:
+    command = ProductCollectionRequestCreate.model_validate(
+        {
+            "submission_key": uuid4(),
+            "source": {
+                "kind": "manual",
+                "targets": [
+                    {
+                        "platform": "douyin",
+                        "product_id_or_supported_url": source_product_id,
+                    },
+                ],
+            },
+        },
+    )
+    with Session(graph.engine, expire_on_commit=False) as session:
+        request = ProductCollectionHumanService(session).create_request(
+            _actor(graph),
+            command,
+        )
+    with Session(graph.engine) as session:
+        assert ProductCollectionDispatchService(session).plan_pending(
+            gateway_id="test-gateway",
+        ) == 1
+    gateway = _Gateway()
+    with Session(graph.engine) as session:
+        assert ProductCollectionDispatchService(session).deliver_once(
+            gateway,
+            lease_seconds=120,
+            max_attempts=3,
+            retry_delay_seconds=1,
+        )
+
+    with Session(graph.engine) as session:
+        item = session.scalar(select(Item).where(Item.request_id == request.request_id))
+        dispatch = session.get(Dispatch, item.current_dispatch_id)
+        registration = GatewayAttemptRegistrationV1(
+            schema_version=1,
+            dispatch_id=dispatch.dispatch_id,
+            gateway_id="test-gateway",
+            external_job_id=dispatch.external_job_id,
+            gateway_job_id=dispatch.gateway_job_id,
+            device_id="device-integration",
+            capture_batch_id=f"batch-{uuid4()}",
+            source_platform="douyin",
+            source_product_id=source_product_id,
+            lease_expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        )
+        item_id = item.item_id
+    with Session(graph.engine, expire_on_commit=False) as session:
+        control = ProductCollectionIngestService(session).register_attempt(
+            registration,
+            secret=b"s" * 32,
+            key_id="test-key-v1",
+            public_base_url="http://127.0.0.1:8101",
+            token_ttl_seconds=600,
+            accept_grace_seconds=300,
+        )
+
+    body = {
+        "eventType": "complete",
+        "detailBody": {"productId": source_product_id, "title": "integration"},
+        "skuBody": {"productId": source_product_id, "skus": []},
+        "capturedAt": int(datetime.now(UTC).timestamp() * 1000),
+        "taskContext": {
+            "jobId": registration.gateway_job_id,
+            "captureBatchId": registration.capture_batch_id,
+            "jobType": "product",
+            "sourcePlatform": "douyin",
+            "sourceProductId": source_product_id,
+        },
+    }
+    raw = json.dumps(body).encode()
+    with Session(graph.engine, expire_on_commit=False) as session:
+        accepted = ProductCollectionIngestService(session).accept_complete_package(
+            attempt_id=control.attempt_id,
+            credential=control.credential,
+            raw_body=raw,
+        )
+        assert accepted.receipt.status == "received"
+    return AcceptedUpload(
+        request_id=request.request_id,
+        item_id=item_id,
+        attempt_id=control.attempt_id,
+        receipt_id=accepted.receipt.receipt_id,
+        credential=control.credential,
+        raw=raw,
+        source_product_id=source_product_id,
+    )
 
 
 def test_upload_constraints_reject_terminal_settlement_on_received(graph: Graph):
@@ -777,6 +886,100 @@ def test_request_to_gateway_attempt_and_raw_upload_is_durable(graph: Graph):
         assert upload.state == "received"
         assert upload.raw_payload["detailBody"]["productId"] == product_id
         assert session.get(Item, item.item_id).state == "received"
+
+
+def test_terminal_upload_replay_is_stable_and_still_authenticates(
+    graph: Graph,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Clear the fixture's pre-existing inbox row so subsequent claims target
+    # the packages accepted through the real ingest service below.
+    with Session(graph.engine) as session:
+        ProductCollectionProcessingService(session).persist(_claim(graph), _package(graph))
+
+    persisted = _accept_gateway_upload(
+        graph,
+        source_product_id=str(6_640_000_000_000_000_000 + graph.user_id.int % 100_000),
+    )
+    with Session(graph.engine, expire_on_commit=False) as session:
+        claim = ProductCollectionProcessingService(session).claim(lease_seconds=120)
+        assert claim is not None and claim.upload_receipt_id == persisted.receipt_id
+    with Session(graph.engine) as session:
+        ProductCollectionProcessingService(session).persist(
+            claim,
+            _package(graph, source_product_id=persisted.source_product_id),
+        )
+
+    with Session(graph.engine) as session:
+        duplicate = ProductCollectionIngestService(session).accept_complete_package(
+            attempt_id=persisted.attempt_id,
+            credential=persisted.credential,
+            raw_body=persisted.raw,
+        )
+        assert duplicate.receipt.status == "duplicate"
+        assert duplicate.receipt.receipt_id == persisted.receipt_id
+
+    changed = json.loads(persisted.raw)
+    changed["detailBody"]["title"] = "different-content"
+    with Session(graph.engine) as session:
+        with pytest.raises(ProductCollectionUploadConflictError):
+            ProductCollectionIngestService(session).accept_complete_package(
+                attempt_id=persisted.attempt_id,
+                credential=persisted.credential,
+                raw_body=json.dumps(changed).encode(),
+            )
+
+    def unexpected_parse(_raw: bytes):
+        raise AssertionError("invalid credentials must be rejected before parsing")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            "app.modules.product_collection.ingest_service.parse_complete_package",
+            unexpected_parse,
+        )
+        with Session(graph.engine) as session:
+            with pytest.raises(ProductCollectionIngestCredentialError):
+                ProductCollectionIngestService(session).accept_complete_package(
+                    attempt_id=persisted.attempt_id,
+                    credential="wrong-credential",
+                    raw_body=b"not-json",
+                )
+
+    with Session(graph.engine) as session:
+        attempt = session.get(CaptureAttempt, persisted.attempt_id)
+        attempt.token_expires_at = attempt.token_issued_at
+        session.commit()
+    with Session(graph.engine) as session:
+        with pytest.raises(ProductCollectionIngestCredentialError):
+            ProductCollectionIngestService(session).accept_complete_package(
+                attempt_id=persisted.attempt_id,
+                credential=persisted.credential,
+                raw_body=persisted.raw,
+            )
+
+    failed = _accept_gateway_upload(
+        graph,
+        source_product_id=str(6_630_000_000_000_000_000 + graph.user_id.int % 100_000),
+    )
+    with Session(graph.engine, expire_on_commit=False) as session:
+        failed_claim = ProductCollectionProcessingService(session).claim(lease_seconds=120)
+        assert failed_claim is not None
+        assert failed_claim.upload_receipt_id == failed.receipt_id
+    with Session(graph.engine) as session:
+        ProductCollectionProcessingService(session).fail(
+            failed_claim,
+            error_code="PRODUCT_COLLECTION_CLEANER_INVALID",
+            error_stage="cleaner",
+            error_message="invalid package",
+        )
+    with Session(graph.engine) as session:
+        duplicate = ProductCollectionIngestService(session).accept_complete_package(
+            attempt_id=failed.attempt_id,
+            credential=failed.credential,
+            raw_body=failed.raw,
+        )
+        assert duplicate.receipt.status == "duplicate"
+        assert duplicate.receipt.receipt_id == failed.receipt_id
 
 
 def test_expired_final_delivery_claim_is_closed_after_restart(graph: Graph):

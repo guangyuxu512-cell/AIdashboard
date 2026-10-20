@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -163,12 +163,28 @@ class ProductCollectionIngestService:
         raw_body: bytes,
     ) -> UploadAcceptedV1:
         try:
-            package = parse_complete_package(raw_body)
-        except (ValueError, ValidationError) as error:
-            raise ProductCollectionPayloadInvalidError() from error
-        normalized = package.model_dump(mode="json", by_alias=True)
-        content_hash = canonical_sha256(normalized)
-        try:
+            # Reject an unknown/expired credential before doing bounded but
+            # potentially expensive JSON validation.  The locked read below
+            # repeats this check so a concurrent refresh/expiry cannot race
+            # package acceptance.
+            preflight_attempt = self.session.scalar(
+                select(CaptureAttempt).where(CaptureAttempt.attempt_id == attempt_id),
+            )
+            if preflight_attempt is None:
+                raise ProductCollectionAttemptNotFoundError()
+            self._validate_upload_credential(
+                preflight_attempt,
+                credential,
+                self.repository.now(),
+            )
+            self.session.rollback()
+            try:
+                package = parse_complete_package(raw_body)
+            except (ValueError, ValidationError) as error:
+                raise ProductCollectionPayloadInvalidError() from error
+            normalized = package.model_dump(mode="json", by_alias=True)
+            content_hash = canonical_sha256(normalized)
+
             attempt = self.session.scalar(
                 select(CaptureAttempt)
                 .where(CaptureAttempt.attempt_id == attempt_id)
@@ -178,12 +194,7 @@ class ProductCollectionIngestService:
             if attempt is None:
                 raise ProductCollectionAttemptNotFoundError()
             now = self.repository.now()
-            if (
-                now >= attempt.token_expires_at
-                or now > attempt.accept_until
-                or not verify_credential_hash(credential, attempt.ingest_token_hash)
-            ):
-                raise ProductCollectionIngestCredentialError()
+            self._validate_upload_credential(attempt, credential, now)
 
             existing = self.session.scalar(
                 select(UploadReceipt).where(UploadReceipt.attempt_id == attempt.attempt_id),
@@ -191,8 +202,8 @@ class ProductCollectionIngestService:
             if existing is not None:
                 if existing.content_sha256 != content_hash:
                     raise ProductCollectionUploadConflictError()
-                if attempt.state not in {"received", "processing"}:
-                    raise ProductCollectionStateConflictError()
+                if attempt.accepted_content_sha256 != existing.content_sha256:
+                    raise ProductCollectionBatchConflictError()
                 self.session.rollback()
                 return UploadAcceptedV1(
                     receipt=UploadReceiptV1(
@@ -262,6 +273,19 @@ class ProductCollectionIngestService:
         except Exception:
             self.session.rollback()
             raise
+
+    @staticmethod
+    def _validate_upload_credential(
+        attempt: CaptureAttempt,
+        credential: str,
+        now: datetime,
+    ) -> None:
+        if (
+            now >= attempt.token_expires_at
+            or now > attempt.accept_until
+            or not verify_credential_hash(credential, attempt.ingest_token_hash)
+        ):
+            raise ProductCollectionIngestCredentialError()
 
     def refresh_credential(
         self,

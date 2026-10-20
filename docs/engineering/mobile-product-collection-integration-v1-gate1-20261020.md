@@ -34,6 +34,9 @@
   身份不一致或过期凭据拒绝。
 - 手机完整包先在短事务内可靠保存 Raw 并返回 202 `received`；后台在事务外调用既有
   `convertCompletePackage()`，再以短事务提交不可变 Version、当前 Product、Persist Receipt 及统一结算 outbox。
+- 若 202 在网络中丢失，同一合法 credential 在有效时限内重放同 content hash，即使后台已进入
+  persisted/failed/superseded，也稳定返回原 `receiptId + duplicate`；不同 hash 仍为 409。服务先做凭据
+  预校验再解析 JSON，并在加锁后复核，错误或过期凭据不能借既有 Receipt 查询结果或消耗解析资源。
 - Raw payload 在进入 JSONB 前有大小、深度、字符串、URL、有限顶层和凭据键约束；Cookie、Authorization、
   Token、签名或含凭据的完整 URL 不会进入业务表、日志和文档。商品／SKU／Job／Device／Batch ID 全程字符串。
 - cleaner 子进程只获得 Node 启动所需的最小系统环境，不继承数据库连接、网关 token、ingest HMAC key
@@ -55,6 +58,8 @@
   尝试次数或永久卡在执行中。
 - 网关结算 outbox 按持久 attempt budget 有限重试；进程在最后一次 delivering 中断时会转成显式 exhausted
   failure，不会永久卡住。派发、处理、结算三个循环独立，任一阶段暂时无任务不阻塞其他阶段。
+- 结算响应的 `jobStatus` 使用网关完整既有状态枚举；旧批次 superseded 时允许当前 Job 已进入
+  pending/running/captured，不要求网关伪报 retry_wait，仍严格校验 gatewayJobId/captureBatchId 和非法状态。
 - Backend 启用任一消费者但缺少该阶段受保护配置时启动 fail-closed；外部 HTTP/cleaner timeout 必须小于
   对应数据库 fence。禁用状态不会构建外部适配器或打开数据库连接。
 
@@ -73,11 +78,11 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| Product Collection 定向单测 | 38 passed；API、凭据键拒绝、NaN/Infinity、网关认证／错误分类、cleaner、Model、消费者配置和阶段隔离通过；仅既有 Starlette/httpx warning |
-| Feature PostgreSQL 0049 | 12 passed；唯一/FK/CHECK、真实零、失败保 Raw、原子成功、Team/候选隔离、幂等、并发上传、dispatch retry/recapture、人工/迟到 fence、结算有限重试、processing lease 重启恢复及最终派发租约中断终态化通过 |
-| Backend 默认完整回归 | 1123 passed、471 integration deselected；仅既有 Starlette/httpx warning |
+| Product Collection 定向单测 | 42 passed；API、凭据键拒绝、NaN/Infinity、网关认证／错误分类、完整结算状态读取、cleaner、Model、消费者配置和阶段隔离通过；仅既有 Starlette/httpx warning |
+| Feature PostgreSQL 0049 | 13 passed；唯一/FK/CHECK、真实零、失败保 Raw、原子成功、Team/候选隔离、幂等、并发上传、终态同内容稳定重放、错误/过期凭据拒绝、dispatch retry/recapture、人工/迟到 fence、结算有限重试、processing lease 重启恢复及最终派发租约中断终态化通过 |
+| Backend 默认完整回归 | 1127 passed、472 integration deselected；仅既有 Starlette/httpx warning |
 | Node 24.19 / pnpm 11.25 `pnpm verify` | exit 0；10 Node 负测、2 Python AST、正式 ASGI probe、Frontend contract 9 passed；0 known/new/stale |
-| Node 24.19 / pnpm 11.25 `pnpm verify --full --only=backend` | exit 0；1119 passed、471 deselected；4 个原 CI 保留的开端口测试明确 NOT_RUN；0 known/new/stale |
+| Node 24.19 / pnpm 11.25 `pnpm verify --full --only=backend` | exit 0；1123 passed、472 deselected；4 个原 CI 保留的开端口测试明确 NOT_RUN；0 known/new/stale |
 | Python / diff | Product Collection、Settings、Main `compileall` exit 0；`git diff --check` exit 0 |
 | Migration | `alembic current`=`20261020_0049 (head)`；本功能 drift 0；全仓 check 仅上述存量非 Feature 漂移 |
 

@@ -223,6 +223,88 @@ def test_settlement_uses_callback_token_and_alias_payload() -> None:
     _gateway(handler).settle(settlement)
 
 
+@pytest.mark.parametrize("job_status", ["pending", "running", "captured"])
+def test_superseded_settlement_accepts_current_nonterminal_job_status(
+    job_status: str,
+) -> None:
+    settlement = GatewaySettlementV1.model_validate(
+        {
+            "schemaVersion": 1,
+            "dispatchId": uuid4(),
+            "gatewayId": GATEWAY_ID,
+            "externalJobId": "pcd_v1_superseded",
+            "gatewayJobId": "gateway-job-a",
+            "captureBatchId": "batch-old",
+            "deviceId": "device-a",
+            "sourcePlatform": "douyin",
+            "sourceProductId": "3832497447662387684",
+            "attemptId": uuid4(),
+            "receiptId": uuid4(),
+            "status": "superseded",
+            "errorCode": "PRODUCT_COLLECTION_CAPTURE_SUPERSEDED",
+            "errorMessage": "采集批次已被网关的新批次替代",
+            "persistedAt": datetime.now(UTC),
+        },
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "ok": True,
+                "settlement": {
+                    "status": "superseded",
+                    "gatewayJobId": "gateway-job-a",
+                    "captureBatchId": "batch-old",
+                    "jobStatus": job_status,
+                },
+            },
+        )
+
+    _gateway(handler).settle(settlement)
+
+
+def test_settlement_rejects_unknown_gateway_job_status() -> None:
+    settlement = GatewaySettlementV1.model_validate(
+        {
+            "schemaVersion": 1,
+            "dispatchId": uuid4(),
+            "gatewayId": GATEWAY_ID,
+            "externalJobId": "pcd_v1_superseded",
+            "gatewayJobId": "gateway-job-a",
+            "captureBatchId": "batch-old",
+            "deviceId": "device-a",
+            "sourcePlatform": "douyin",
+            "sourceProductId": "3832497447662387684",
+            "attemptId": uuid4(),
+            "receiptId": uuid4(),
+            "status": "superseded",
+            "errorCode": "PRODUCT_COLLECTION_CAPTURE_SUPERSEDED",
+            "persistedAt": datetime.now(UTC),
+        },
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "ok": True,
+                "settlement": {
+                    "status": "superseded",
+                    "gatewayJobId": "gateway-job-a",
+                    "captureBatchId": "batch-old",
+                    "jobStatus": "unknown-state",
+                },
+            },
+        )
+
+    with pytest.raises(ProductCollectionGatewayError) as captured:
+        _gateway(handler).settle(settlement)
+    assert captured.value.failure_code == "PRODUCT_COLLECTION_GATEWAY_RESPONSE_INVALID"
+
+
 @pytest.mark.parametrize(
     ("status_code", "retryable", "failure_code"),
     [

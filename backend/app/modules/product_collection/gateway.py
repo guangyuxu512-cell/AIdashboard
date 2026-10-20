@@ -139,9 +139,7 @@ class _GatewaySettlementRead(BaseModel):
     status: Literal["applied", "duplicate", "superseded"]
     gateway_job_id: str = Field(alias="gatewayJobId", min_length=1, max_length=128)
     capture_batch_id: str = Field(alias="captureBatchId", min_length=1, max_length=128)
-    job_status: Literal["completed", "retry_wait", "failed", "canceled"] = Field(
-        alias="jobStatus",
-    )
+    job_status: GatewayJobStatus = Field(alias="jobStatus")
 
 
 class _GatewaySettlementEnvelope(BaseModel):
