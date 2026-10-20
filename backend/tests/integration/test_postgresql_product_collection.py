@@ -340,6 +340,181 @@ class _Gateway:
         raise AssertionError(f"unexpected settlement for {settlement.job_id}")
 
 
+def _insert_running_cancel_chain(session: Session, graph: Graph, *, product_id: str):
+    now = datetime.now(UTC)
+    request_id, item_id, dispatch_id, attempt_id = uuid4(), uuid4(), uuid4(), uuid4()
+    gateway_job_id = f"job-{dispatch_id}"
+    request = CollectionRequest(
+        request_id=request_id,
+        team_id=graph.team_id,
+        requested_by_user_id=graph.user_id,
+        submission_key=uuid4(),
+        source_kind="manual",
+        canonical_request_hash="1" * 64,
+        status="running",
+        item_count=1,
+        cancel_requested_at=now,
+        cancel_requested_by_user_id=graph.user_id,
+    )
+    item = Item(
+        item_id=item_id,
+        request_id=request_id,
+        team_id=graph.team_id,
+        platform="douyin",
+        source_product_id=product_id,
+        collection_mode="auto_gateway",
+        state="running",
+        attempt_count=1,
+    )
+    session.add(request)
+    session.flush()
+    session.add(item)
+    session.flush()
+    dispatch = Dispatch(
+        dispatch_id=dispatch_id,
+        item_id=item_id,
+        team_id=graph.team_id,
+        dispatch_no=1,
+        external_job_id=f"pcd_v1_{dispatch_id.hex}",
+        canonical_payload_hash="2" * 64,
+        gateway_id="test-gateway",
+        gateway_job_id=gateway_job_id,
+        state="running",
+        delivery_attempts=1,
+        last_heartbeat_at=now,
+    )
+    session.add(dispatch)
+    session.flush()
+    item.current_dispatch_id = dispatch_id
+    attempt = CaptureAttempt(
+        attempt_id=attempt_id,
+        dispatch_id=dispatch_id,
+        gateway_id="test-gateway",
+        team_id=graph.team_id,
+        gateway_device_id=f"device-{attempt_id}",
+        gateway_job_id=gateway_job_id,
+        capture_batch_id=f"batch-{attempt_id}",
+        attempt_no=1,
+        ingest_credential_id=uuid4(),
+        ingest_credential_version=1,
+        ingest_token_key_id="test-key-v1",
+        ingest_token_salt="3" * 32,
+        ingest_token_hash="4" * 64,
+        token_issued_at=now,
+        token_expires_at=now + timedelta(minutes=10),
+        accept_until=now + timedelta(minutes=15),
+        state="running",
+        lease_expires_at=now + timedelta(minutes=15),
+        last_heartbeat_at=now,
+        registered_at=now,
+    )
+    session.add(attempt)
+    session.flush()
+    return request_id, item_id, dispatch_id, attempt_id, gateway_job_id
+
+
+def test_terminal_gateway_failure_reconciles_cancel_intent_idempotently(graph: Graph):
+    with Session(graph.engine) as session:
+        ids = _insert_running_cancel_chain(
+            session,
+            graph,
+            product_id=str(6_410_000_000_000_000_000 + graph.user_id.int % 100_000),
+        )
+        request_id, item_id, dispatch_id, attempt_id, gateway_job_id = ids
+        assert ProductCollectionDispatchService(session)._reconcile_cancel_result(
+            dispatch_id=dispatch_id,
+            team_id=graph.team_id,
+            gateway_job_id=gateway_job_id,
+            status="failed",
+        )
+    with Session(graph.engine) as session:
+        assert not ProductCollectionDispatchService(session)._reconcile_cancel_result(
+            dispatch_id=dispatch_id,
+            team_id=graph.team_id,
+            gateway_job_id=gateway_job_id,
+            status="failed",
+        )
+
+    with Session(graph.engine) as session:
+        request = session.get(CollectionRequest, request_id)
+        item = session.get(Item, item_id)
+        dispatch = session.get(Dispatch, dispatch_id)
+        attempt = session.get(CaptureAttempt, attempt_id)
+        assert request.cancel_requested_at is not None
+        assert request.cancel_requested_by_user_id == graph.user_id
+        assert request.status == "failed" and request.finished_at is not None
+        assert item.state == "failed" and item.finished_at is not None
+        assert dispatch.state == "execution_failed" and dispatch.finished_at is not None
+        assert attempt.state == "failed" and attempt.finished_at is not None
+        assert item.last_error_code == "PRODUCT_COLLECTION_GATEWAY_EXECUTION_FAILED"
+        assert dispatch.last_error_code == item.last_error_code
+        assert attempt.last_error_code == item.last_error_code
+def test_stale_cancel_result_does_not_overwrite_new_current_dispatch(graph: Graph):
+    with Session(graph.engine) as session:
+        ids = _insert_running_cancel_chain(
+            session,
+            graph,
+            product_id=str(6_430_000_000_000_000_000 + graph.user_id.int % 100_000),
+        )
+        request_id, item_id, old_dispatch_id, _, old_gateway_job_id = ids
+        old = session.get(Dispatch, old_dispatch_id)
+        item = session.get(Item, item_id)
+        now = datetime.now(UTC)
+        old.state = "execution_failed"
+        old.finished_at = now
+        old.last_heartbeat_at = None
+        old.last_error_code = "PRODUCT_COLLECTION_GATEWAY_EXECUTION_FAILED"
+        old.last_error_stage = "gateway_execution"
+        old.last_error_message = "并发终态"
+        new_dispatch_id = uuid4()
+        replacement = Dispatch(
+            dispatch_id=new_dispatch_id,
+            item_id=item.item_id,
+            team_id=item.team_id,
+            dispatch_no=old.dispatch_no + 1,
+            external_job_id=f"pcd_v1_{new_dispatch_id.hex}",
+            canonical_payload_hash="f" * 64,
+            gateway_id=old.gateway_id,
+            gateway_job_id=f"job-{new_dispatch_id}",
+            state="execution_failed",
+            delivery_attempts=0,
+            last_error_code="NEWER_DISPATCH_RESULT",
+            last_error_stage="gateway_execution",
+            last_error_message="较新派发结果",
+            finished_at=now,
+        )
+        session.add(replacement)
+        session.flush()
+        item.current_dispatch_id = replacement.dispatch_id
+        item.state = "failed"
+        item.last_error_code = replacement.last_error_code
+        item.last_error_stage = replacement.last_error_stage
+        item.last_error_message = replacement.last_error_message
+        item.finished_at = now
+        request = session.get(CollectionRequest, request_id)
+        request.status = "failed"
+        request.finished_at = now
+        session.commit()
+        assert not ProductCollectionDispatchService(session)._reconcile_cancel_result(
+            dispatch_id=old_dispatch_id,
+            team_id=graph.team_id,
+            gateway_job_id=old_gateway_job_id,
+            status="canceled",
+        )
+
+    with Session(graph.engine) as session:
+        request = session.get(CollectionRequest, request_id)
+        item = session.get(Item, item_id)
+        old = session.get(Dispatch, old_dispatch_id)
+        replacement = session.get(Dispatch, new_dispatch_id)
+        assert request.cancel_requested_at is not None and request.status == "failed"
+        assert item.current_dispatch_id == new_dispatch_id and item.state == "failed"
+        assert old.state == "execution_failed"
+        assert replacement.state == "execution_failed" and replacement.finished_at is not None
+        assert replacement.last_error_code == "NEWER_DISPATCH_RESULT"
+        assert item.last_error_code == replacement.last_error_code
+
+
 def _accept_gateway_upload(graph: Graph, *, source_product_id: str) -> AcceptedUpload:
     command = ProductCollectionRequestCreate.model_validate(
         {

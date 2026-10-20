@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from app.modules.product_collection.contracts import GatewaySettlementV1, SourcePlatform
@@ -53,6 +53,14 @@ class GatewayDispatchResult:
     reused: bool
 
 
+@dataclass(frozen=True, slots=True)
+class GatewayCancelResult:
+    """Authoritative terminal state returned by one gateway cancel attempt."""
+
+    gateway_job_id: str
+    status: Literal["failed", "canceled"]
+
+
 class ProductCollectionGateway(Protocol):
     """Service-authenticated operations exposed by the existing gateway."""
 
@@ -60,7 +68,7 @@ class ProductCollectionGateway(Protocol):
 
     def retry(self, *, gateway_job_id: str) -> GatewayDispatchResult: ...
 
-    def cancel(self, *, gateway_job_id: str) -> None: ...
+    def cancel(self, *, gateway_job_id: str) -> GatewayCancelResult: ...
 
     def settle(self, settlement: GatewaySettlementV1) -> None: ...
 

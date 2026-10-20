@@ -169,13 +169,67 @@ def test_retry_and_cancel_use_existing_gateway_job() -> None:
 
     gateway = _gateway(handler)
     result = gateway.retry(gateway_job_id="gateway-job-a")
-    gateway.cancel(gateway_job_id="gateway-job-a")
+    canceled = gateway.cancel(gateway_job_id="gateway-job-a")
     assert result.gateway_job_id == "gateway-job-a"
     assert result.external_job_id == "pcd_v1_original"
+    assert canceled.gateway_job_id == "gateway-job-a"
+    assert canceled.status == "canceled"
     assert requests == [
         ("POST", "/api/v1/jobs/retry"),
         ("PATCH", "/api/v1/jobs/gateway-job-a"),
     ]
+
+
+@pytest.mark.parametrize("terminal_status", ["failed", "canceled"])
+def test_cancel_accepts_exact_gateway_terminal_conflict(terminal_status: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409,
+            request=request,
+            json={
+                "ok": False,
+                "error": (
+                    "任务批次或状态已变化，拒绝 canceled 回报"
+                    f"（当前状态 {terminal_status}）"
+                ),
+            },
+        )
+
+    result = _gateway(handler).cancel(gateway_job_id="gateway-job-a")
+    assert result.gateway_job_id == "gateway-job-a"
+    assert result.status == terminal_status
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"ok": False, "error": "任务状态冲突"},
+        {
+            "ok": False,
+            "error": "任务批次或状态已变化，拒绝 canceled 回报（当前状态 completed）",
+        },
+        {"ok": True, "error": "任务批次或状态已变化，拒绝 canceled 回报（当前状态 failed）"},
+    ],
+)
+def test_cancel_does_not_guess_unknown_state_conflicts(body: dict[str, object]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, request=request, json=body)
+
+    with pytest.raises(ProductCollectionGatewayError) as captured:
+        _gateway(handler).cancel(gateway_job_id="gateway-job-a")
+    assert captured.value.failure_code == "PRODUCT_COLLECTION_GATEWAY_STATE_CONFLICT"
+    assert captured.value.gateway_job_status is None
+
+
+def test_cancel_transient_failure_remains_retryable_and_has_no_terminal_result() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request, json={"ok": False})
+
+    with pytest.raises(ProductCollectionGatewayError) as captured:
+        _gateway(handler).cancel(gateway_job_id="gateway-job-a")
+    assert captured.value.failure_code == "PRODUCT_COLLECTION_GATEWAY_UNAVAILABLE"
+    assert captured.value.retryable is True
+    assert captured.value.gateway_job_status is None
 
 
 def test_settlement_uses_callback_token_and_alias_payload() -> None:

@@ -363,28 +363,56 @@ class ProductCollectionDispatchService:
                 self.session.commit()
                 return True
             self.session.rollback()
-            gateway.cancel(gateway_job_id=gateway_job_id)
-            dispatch = self.repository.lock_dispatch(dispatch_id, team_id)
-            if dispatch is None:
+            result = gateway.cancel(gateway_job_id=gateway_job_id)
+            if result.gateway_job_id != gateway_job_id:
                 raise ProductCollectionLeaseLostError()
-            item = self.repository.lock_item(dispatch.item_id, team_id)
-            if (
-                item is None
-                or item.current_dispatch_id != dispatch.dispatch_id
-                or dispatch.state not in {"pending_delivery", "delivering", "dispatched", "running"}
-                or item.state not in {"dispatching", "dispatched", "running"}
-            ):
-                self.session.rollback()
-                return True
-            request = self.repository.lock_request(item.request_id, team_id)
-            if request is None or request.cancel_requested_at is None:
-                raise ProductCollectionLeaseLostError()
-            self._finish_canceled(dispatch, item, request)
-            self.session.commit()
+            self._reconcile_cancel_result(
+                dispatch_id=dispatch_id,
+                team_id=team_id,
+                gateway_job_id=gateway_job_id,
+                status=result.status,
+            )
             return True
         except Exception:
             self.session.rollback()
             raise
+
+    def _reconcile_cancel_result(
+        self,
+        *,
+        dispatch_id: UUID,
+        team_id: UUID,
+        gateway_job_id: str,
+        status: str,
+    ) -> bool:
+        """Fence one authoritative gateway cancel outcome onto its original run."""
+
+        if status not in {"failed", "canceled"}:
+            raise ValueError("Gateway cancel status is invalid")
+        dispatch = self.repository.lock_dispatch(dispatch_id, team_id)
+        if dispatch is None:
+            self.session.rollback()
+            return False
+        item = self.repository.lock_item(dispatch.item_id, team_id)
+        if (
+            item is None
+            or item.current_dispatch_id != dispatch.dispatch_id
+            or dispatch.gateway_job_id != gateway_job_id
+            or dispatch.state not in {"pending_delivery", "delivering", "dispatched", "running"}
+            or item.state not in {"dispatching", "dispatched", "running"}
+        ):
+            self.session.rollback()
+            return False
+        request = self.repository.lock_request(item.request_id, team_id)
+        if request is None or request.cancel_requested_at is None:
+            self.session.rollback()
+            return False
+        if status == "failed":
+            self._finish_gateway_failed(dispatch, item, request)
+        else:
+            self._finish_canceled(dispatch, item, request)
+        self.session.commit()
+        return True
 
     def _finish_canceled(
         self,
@@ -411,6 +439,52 @@ class ProductCollectionDispatchService:
         )
         if attempt is not None:
             attempt.state = "canceled"
+            attempt.finished_at = now
+        self.repository.refresh_request_state(
+            request_id=request.request_id,
+            team_id=request.team_id,
+            at=now,
+        )
+
+    def _finish_gateway_failed(
+        self,
+        dispatch: Dispatch,
+        item: Item,
+        request: CollectionRequest,
+    ) -> None:
+        now = self.repository.now()
+        error_code = "PRODUCT_COLLECTION_GATEWAY_EXECUTION_FAILED"
+        error_stage = "gateway_execution"
+        error_message = "手机采集网关任务已在取消请求前结束为失败"
+        dispatch.state = "execution_failed"
+        dispatch.finished_at = now
+        dispatch.lease_id = None
+        dispatch.lease_expires_at = None
+        dispatch.last_heartbeat_at = None
+        dispatch.next_attempt_at = None
+        dispatch.last_error_code = error_code
+        dispatch.last_error_stage = error_stage
+        dispatch.last_error_message = error_message
+        item.state = "failed"
+        item.finished_at = now
+        item.last_error_code = error_code
+        item.last_error_stage = error_stage
+        item.last_error_message = error_message
+        attempt = self.session.scalar(
+            select(CaptureAttempt)
+            .where(
+                CaptureAttempt.dispatch_id == dispatch.dispatch_id,
+                CaptureAttempt.state.in_(("registered", "running")),
+            )
+            .with_for_update(),
+        )
+        if attempt is not None:
+            attempt.state = "failed"
+            attempt.lease_expires_at = None
+            attempt.last_heartbeat_at = now
+            attempt.last_error_code = error_code
+            attempt.last_error_stage = error_stage
+            attempt.last_error_message = error_message
             attempt.finished_at = now
         self.repository.refresh_request_state(
             request_id=request.request_id,
