@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { NSelect, NTooltip } from 'naive-ui'
 import type { SelectFilter, SelectOption, SelectProps } from 'naive-ui'
-import { computed, h } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 
+import { APP_OVERLAY_HOST_SELECTOR } from './overlay-host'
 import type { AppOptionValue, AppSelectValue, FieldWidth } from './types'
 
 const props = withDefaults(
@@ -54,6 +55,21 @@ const mergedMenuProps = computed<SelectProps['menuProps']>(() => ({
   ],
 }))
 
+// NSelect otherwise inherits the closest modal/drawer body as its teleport
+// target. Those bodies intentionally clip and scroll their own content, which
+// can cut off a menu. Prefer the application overlay layer after mount and
+// fall back to Naive's fullscreen/body target for layouts (such as login) that
+// do not render AppOverlayHost. Explicit consumer targets always win.
+const defaultOverlayTarget = ref<SelectProps['to']>(true)
+onMounted(() => {
+  defaultOverlayTarget.value = document.querySelector(APP_OVERLAY_HOST_SELECTOR)
+    ? APP_OVERLAY_HOST_SELECTOR
+    : true
+})
+const resolvedTo = computed<SelectProps['to']>(() =>
+  props.to === undefined ? defaultOverlayTarget.value : props.to,
+)
+
 // Naive uses renderLabel for both selected text and options. Its searchable
 // selected overlay has pointer-events:none; restore events only on this label
 // so the existing Tooltip can observe hover. Click/keyboard handling still
@@ -74,7 +90,7 @@ const mergedRenderLabel = computed<SelectProps['renderLabel']>(() => {
     return h(
       NTooltip,
       {
-        to: props.to,
+        to: resolvedTo.value,
         getDisabled: () =>
           !trigger || trigger.scrollWidth <= trigger.clientWidth,
         contentStyle: {
@@ -144,7 +160,7 @@ function updateValue(value: AppSelectValue | null): void {
     :filter="filter"
     :menu-props="mergedMenuProps"
     :placement="placement"
-    :to="to"
+    :to="resolvedTo"
     @update:value="updateValue"
   />
 </template>

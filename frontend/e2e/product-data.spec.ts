@@ -215,11 +215,33 @@ test('queries, sorts across pages, configures fields, manages groups from zero a
   await page.getByRole('button', { name: '批量设置分组', exact: true }).click()
   const batch = page.locator('.app-dialog').filter({ hasText: '已选 1 件商品' })
   await batch.locator('.n-base-selection').click()
-  await page
-    .locator('.app-select-menu--viewport-safe')
-    .getByText('出单款', { exact: true })
-    .last()
-    .click()
+  const groupMenu = page.locator('.app-select-menu--viewport-safe:visible')
+  await expect(groupMenu.getByText('出单款', { exact: true })).toBeVisible()
+  expect(
+    await groupMenu.evaluate(
+      (element) =>
+        !!element.closest('#app-overlay-host') &&
+        !element.closest('.app-dialog'),
+    ),
+  ).toBe(true)
+  const lastOption = groupMenu.locator('.n-base-select-option').last()
+  const optionBounds = await lastOption.boundingBox()
+  expect(optionBounds).not.toBeNull()
+  expect(
+    await page.evaluate(
+      ({ x, y }) => {
+        const hit = document.elementFromPoint(x, y)
+        return !!hit?.closest('.n-base-select-option')
+      },
+      {
+        x: optionBounds!.x + optionBounds!.width / 2,
+        y: optionBounds!.y + optionBounds!.height / 2,
+      },
+    ),
+  ).toBe(true)
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(batch.locator('.n-base-selection')).toContainText('出单款')
   await batch.getByRole('button', { name: '保存', exact: true }).click()
   await page.getByRole('button', { name: '分组管理', exact: true }).click()
   await expect(manager.locator('.product-groups__row')).toContainText('1')

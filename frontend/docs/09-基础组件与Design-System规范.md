@@ -580,7 +580,7 @@ description（需要时）
 
 阶段 2D-4 为 `AppSelect` 增加通用 `renderLabel` 透传，用于 Platform Registry 等领域展示在原有 Select 中组合图标、Label 和支持状态；不得为图标选项创建第二套 Select。
 
-阶段 3A-1 增加 `AppOverlayHost`，由 AppShell 唯一渲染。`AppDrawer`、`AppDialog` 与 `NDialogProvider` 默认挂载到该 Host，使所有业务弹层只覆盖 Topbar 下方 Workspace。基础组件允许为隔离测试显式覆盖 `to`，业务页面不得自行选择 Teleport 容器。
+阶段 3A-1 增加 `AppOverlayHost`，由 AppShell 唯一渲染。`AppDrawer`、`AppDialog` 与 `NDialogProvider` 默认挂载到该 Host，使所有业务弹层只覆盖 Topbar 下方 Workspace。`AppSelect` 的菜单同样优先挂载到该 Host，避免在 Dialog／Drawer／Popover 的裁切与独立滚动 Body 内被截断；登录布局等未渲染 Host 的场景回退到 Naive 的全屏层。基础组件允许为隔离测试显式覆盖 `to`（selector、HTMLElement、`true` 或 `false` 均保持调用方语义），业务页面不得自行选择 Teleport 容器或增加局部 z-index／overflow 补丁。
 
 店铺中心与设备中心共用 `ManagementListSection`。它只封装 `PageSection.fill` 与列表内容的 `flex: 1 / min-height: 0` 链，不替代 `DataTable`、`PaginationBar` 或领域工具栏。普通管理列表不得在 Page 内复制这一布局，也不得使用固定高度或 `100vh - xxx` 修正分页位置。
 
